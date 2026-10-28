@@ -112,8 +112,11 @@ describe('OSO water heater capacity control (SDK-boundary e2e)', () => {
     setMockDrivers({ driverA: new MockDriver('driverA', [heater, plug]) });
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
     mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
-    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 4);
-    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
+    // Safe pace is 4 kW, while the actual-cap projection starts at 6 kW.
+    // This gives a temperature restriction its ordinary bounded opportunity;
+    // urgent pressure would also require direct relief from the plug now.
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 6);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 2);
     mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
     mockHomeyInstance.settings.set('controllable_devices', { 'oso-a': true, 'plug-a': true });
     mockHomeyInstance.settings.set('managed_devices', { 'oso-a': true, 'plug-a': true });
@@ -124,7 +127,7 @@ describe('OSO water heater capacity control (SDK-boundary e2e)', () => {
     const setHomePower = reportHomePower(5000);
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    // The tank is heating and has pushed the house over its limit: PELS limits
+    // The tank is heating and has pushed the house over its safe pace: PELS limits
     // the heater to its configured minimum target of 20 °C, and leaves the plug on.
     connectLiveFeed();
     const app = createApp();
@@ -142,7 +145,7 @@ describe('OSO water heater capacity control (SDK-boundary e2e)', () => {
     expect(writesTo(putSpy, 'plug-a', 'onoff')).toEqual([]);
 
     // Someone presses the heater's on button: OSO forces the element on for
-    // an hour, whatever its target, and the house is over its limit again.
+    // an hour, whatever its target, and the house is over its safe pace again.
     // PELS never answers with an on/off write of its own; it limits the plug.
     await heater.setCapabilityValue('onoff', true);
     await heater.setCapabilityValue('water_heater_heating', 'on');

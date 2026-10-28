@@ -47,7 +47,7 @@ const charger = (overrides: Partial<MeteredPlanInputDevice> = {}): MeteredPlanIn
 });
 
 /** One device's latched decisions: a single one, unless a case spells more. */
-const decided = (creditedKw: number, decidedAtMs = NOW - 3_000): ShedLatchDecision[] => [{ decidedAtMs, creditedKw }];
+const decided = (creditedKw: number, decidedAtMs = NOW - 3_000): ShedLatchDecision[] => [{ kind: 'electrical' as const, decidedAtMs, creditedKw }];
 
 const chargerLatch = (overrides: Partial<ShedPlanLatch> = {}): ShedPlanLatch => ({
   powerW: LATCHED_READING_W,
@@ -61,7 +61,7 @@ const pendingFor = (
   devices: PlanInputDevice[],
   powerW = 6_378,
 ): PendingShedRelief => {
-  const pending = resolvePendingShedRelief(latch, devices, powerW, NOW, {}, true);
+  const pending = resolvePendingShedRelief(latch, devices, powerW, NOW, {}, { kind: 'capacity' });
   if (pending === null) throw new Error('expected relief to be pending');
   return pending;
 };
@@ -91,13 +91,13 @@ describe('single-phase EV pending relief on a three-phase preset', () => {
     { creditDelivered: false, stepId: '10a' },
   ])('retains the decision-time target across step echo $stepId, creditDelivered=$creditDelivered', ({ creditDelivered, stepId }) => {
     const initial = phaseCharger('16a');
-    const chosen = selectShedDevices([phaseCandidate(initial)], 1, { code: PLAN_REASON_CODES.capacity }, false);
+    const chosen = selectShedDevices([phaseCandidate(initial)], 1, { code: PLAN_REASON_CODES.capacity }, false, { kind: 'capacity' });
     expect(chosen.shedStepTargets.get('ev')).toBe('10a');
     const latch = latchShedDecision(chosen, null, 6000, NOW - 3000, [initial]);
     expect(latch.stepTargets.get('ev')).toEqual({ stepId: '10a', expectedDrawKw: expect.closeTo(2.3, 6) });
 
     const unchanged = phaseCharger(stepId);
-    const pending = resolvePendingShedRelief(latch, [unchanged], 6000, NOW, {}, creditDelivered);
+    const pending = resolvePendingShedRelief(latch, [unchanged], 6000, NOW, {}, creditDelivered ? { kind: 'capacity' } : { kind: 'grid', deficitKw: 1 });
     if (pending === null) throw new Error('expected a pending reduction');
     expect(pending.undeliveredKw).toBeCloseTo(1.38, 6);
     expect(pending.totalKw).toBeCloseTo(1.38, 6);
@@ -105,32 +105,85 @@ describe('single-phase EV pending relief on a three-phase preset', () => {
     // A growing deficit may deepen the command, but only the additional
     // 10a→6a relief is new; an echoed 10a must not change the physical scale.
     const beyond = candidatesBeyondPendingRelief([phaseCandidate(unchanged)], pending);
-    const deeper = selectShedDevices(beyond, 0.62, { code: PLAN_REASON_CODES.capacity }, false);
+    const deeper = selectShedDevices(beyond, 0.62, { code: PLAN_REASON_CODES.capacity }, false, { kind: 'capacity' });
     expect(deeper.shedStepTargets.get('ev')).toBe('6a');
-    expect(deeper.creditedKw.get('ev')).toBeCloseTo(0.92, 6);
+    expect(deeper.reliefByDevice.get('ev')?.creditedKw).toBeCloseTo(0.92, 6);
     const relatched = latchShedDecision(deeper, pending, 6000, NOW, [unchanged]);
     expect(relatched.stepTargets.get('ev')).toEqual({ stepId: '6a', expectedDrawKw: expect.closeTo(1.38, 6) });
     expect(relatched.decisions.get('ev')).toEqual([
-      { decidedAtMs: NOW - 3000, creditedKw: expect.closeTo(2.3, 6) },
+      { kind: 'electrical' as const, decidedAtMs: NOW - 3000, creditedKw: expect.closeTo(2.3, 6) },
     ]);
 
     const landed = { ...phaseCharger('6a'), currentDrawKw: 1.38 };
-    expect(resolvePendingShedRelief(relatched, [landed], 3700, NOW + 1000, {}, creditDelivered)?.totalKw).toBe(0);
+    expect(resolvePendingShedRelief(relatched, [landed], 3700, NOW + 1000, {}, creditDelivered ? { kind: 'capacity' } : { kind: 'grid', deficitKw: 1 })?.totalKw).toBe(0);
   });
 });
 
 describe('resolvePendingShedRelief', () => {
+  it.each(['grid', 'hard_cap'] as const)('retires historical demand credit permanently under %s pressure', (pressure) => {
+    const device = buildPlanInputDevice({
+      id: 'heat', currentDrawKw: 6, currentTarget: 19, currentTemperature: 21,
+      targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
+    });
+    const latch: ShedPlanLatch = {
+      powerW: 18_000, stepTargets: new Map(),
+      decisions: new Map([['heat', [{ kind: 'demand', decidedAtMs: NOW - 1000, creditedKw: 6 }]]]),
+    };
+    const soft = resolvePendingShedRelief(latch, [device], 18_000, NOW, {}, { kind: 'capacity' });
+    expect(soft?.totalKw).toBe(6);
+    const urgent = resolvePendingShedRelief(latch, [device], 18_000, NOW, {}, { kind: pressure, deficitKw: 6 });
+    if (urgent === null) throw new Error('expected the retired latch');
+    expect(urgent.totalKw).toBe(0);
+    expect(urgent.retained.decisions.get('heat')).toEqual([
+      { kind: 'withdrawn_demand', decidedAtMs: NOW - 1000, creditedKw: 6 },
+    ]);
+    // A late old-target observation and recovered pressure cannot revive it.
+    const lateObservation = buildPlanInputDevice({
+      ...device, currentTarget: 22, targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
+    });
+    const later = resolvePendingShedRelief(
+      urgent.retained, [lateObservation], 18_000, NOW + 1000, {}, { kind: 'capacity' },
+    );
+    expect(later?.totalKw).toBe(0);
+    expect(later?.retained.decisions.get('heat')?.[0]?.kind).toBe('withdrawn_demand');
+    expect(resolvePendingShedRelief(urgent.retained, [device], 18_000, NOW + 30_000, {}, { kind: 'capacity' })?.retained.decisions.size).toBe(0);
+  });
+
+  it.each([true, false])('keeps an older withdrawn demand fall ahead of later electrical relief, demand already delivered=%s', (delivered) => {
+    const heat = buildPlanInputDevice({
+      id: 'heat', currentDrawKw: delivered ? 0 : 2, currentTarget: 19, currentTemperature: 21,
+      targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
+    });
+    const direct = buildPlanInputDevice({ id: 'direct', currentDrawKw: 0, binaryControl: { on: false } });
+    const latch: ShedPlanLatch = {
+      powerW: 10_000, stepTargets: new Map(), decisions: new Map([
+        ['heat', [{ kind: 'demand', decidedAtMs: NOW - 20_000, creditedKw: 2 }]],
+        ['direct', [{ kind: 'electrical', decidedAtMs: NOW - 10_000, creditedKw: 2 }]],
+      ]),
+    };
+    const pending = resolvePendingShedRelief(latch, [heat, direct], delivered ? 8000 : 10_000, NOW, {}, { kind: 'hard_cap', deficitKw: 2 });
+    if (pending === null) throw new Error('expected electrical relief');
+    expect(pending.totalKw).toBe(2);
+    expect([...pending.held.keys()]).toEqual(['direct']);
+    if (!delivered) {
+      // The heat reduction arrives later; it still owns the first 2 kW fall.
+      const later = resolvePendingShedRelief(pending.retained, [{ ...heat, currentDrawKw: 0 }, direct], 8000, NOW + 1000, {}, { kind: 'hard_cap', deficitKw: 2 });
+      expect(later?.totalKw).toBe(2);
+      expect(later?.held.has('direct')).toBe(true);
+    }
+  });
+
   it('for grid pressure credits only undelivered relief and retires delivered relief even when masked', () => {
-    const waiting = resolvePendingShedRelief(chargerLatch(), [charger()], LATCHED_READING_W, NOW, {}, false);
+    const waiting = resolvePendingShedRelief(chargerLatch(), [charger()], LATCHED_READING_W, NOW, {}, { kind: 'grid', deficitKw: 1 });
     expect(waiting?.totalKw).toBeCloseTo(CREDITED_KW);
-    const delivered = resolvePendingShedRelief(chargerLatch(), [charger({ currentDrawKw: 3.22 })], LATCHED_READING_W + 500, NOW, {}, false);
+    const delivered = resolvePendingShedRelief(chargerLatch(), [charger({ currentDrawKw: 3.22 })], LATCHED_READING_W + 500, NOW, {}, { kind: 'grid', deficitKw: 1 });
     expect(delivered?.totalKw).toBe(0);
     expect(delivered?.retained.decisions.size).toBe(0);
   });
 
   it('for grid pressure keeps the existing 30-second window for a device still responding', () => {
     const expired = chargerLatch({ decisions: new Map([['ev', decided(CREDITED_KW, NOW - 30_000)]]) });
-    expect(resolvePendingShedRelief(expired, [charger()], LATCHED_READING_W, NOW, {}, false)?.totalKw).toBe(0);
+    expect(resolvePendingShedRelief(expired, [charger()], LATCHED_READING_W, NOW, {}, { kind: 'grid', deficitKw: 1 })?.totalKw).toBe(0);
   });
 
   it('counts relief a stepped device has not delivered in full, however the reading moves', () => {
@@ -242,7 +295,7 @@ describe('resolvePendingShedRelief', () => {
       shedReasons: new Map(),
       shedStepTargets: new Map([['vvb', 'low']]),
       storageSetpoints: new Map(),
-      creditedKw: new Map([['vvb', 0.1]]),
+      reliefByDevice: new Map([['vvb', { kind: 'electrical' as const, creditedKw: 0.1 }]]),
     };
     const relatched = latchShedDecision(deeper, pending, 6_378, NOW, [heater]);
     expect(relatched.decisions.get('vvb')?.map((decision) => decision.decidedAtMs)).toEqual([NOW - 3_000]);
@@ -254,8 +307,8 @@ describe('resolvePendingShedRelief', () => {
     // to show, in full.
     const latch = chargerLatch({
       decisions: new Map([['ev', [
-        { decidedAtMs: NOW - 13_000, creditedKw: CREDITED_KW },
-        { decidedAtMs: NOW - 10_000, creditedKw: 0.92 },
+        { kind: 'electrical' as const, decidedAtMs: NOW - 13_000, creditedKw: CREDITED_KW },
+        { kind: 'electrical' as const, decidedAtMs: NOW - 10_000, creditedKw: 0.92 },
       ]]]),
       stepTargets: new Map([['ev', { stepId: '10a', expectedDrawKw: 2.3 }]]),
     });
@@ -263,7 +316,7 @@ describe('resolvePendingShedRelief', () => {
     const pending = pendingFor(latch, [charger({ selectedStepId: '10a', currentDrawKw: 2.3 })], LATCHED_READING_W - 1_321);
 
     expect(pending.totalKw).toBeCloseTo(0.92, 6);
-    expect(pending.held.get('ev')).toEqual([{ decidedAtMs: NOW - 10_000, creditedKw: 0.92 }]);
+    expect(pending.held.get('ev')).toEqual([{ kind: 'electrical' as const, decidedAtMs: NOW - 10_000, creditedKw: 0.92 }]);
   });
 
   it('does not lay the fall a retired decision claimed against the one still standing', () => {
@@ -271,8 +324,8 @@ describe('resolvePendingShedRelief', () => {
     // then repeats the same reading: the 10 A step is still to show, in full.
     const latch = chargerLatch({
       decisions: new Map([['ev', [
-        { decidedAtMs: NOW - 13_000, creditedKw: CREDITED_KW },
-        { decidedAtMs: NOW - 10_000, creditedKw: 0.92 },
+        { kind: 'electrical' as const, decidedAtMs: NOW - 13_000, creditedKw: CREDITED_KW },
+        { kind: 'electrical' as const, decidedAtMs: NOW - 10_000, creditedKw: 0.92 },
       ]]]),
       stepTargets: new Map([['ev', { stepId: '10a', expectedDrawKw: 2.3 }]]),
     });
@@ -286,7 +339,7 @@ describe('resolvePendingShedRelief', () => {
     expect(first.retained.powerW).toBeCloseTo(caughtUp, 6);
     expect(repeated.totalKw).toBeCloseTo(0.92, 6);
     expect(again.totalKw).toBeCloseTo(0.92, 6);
-    expect(again.held.get('ev')).toEqual([{ decidedAtMs: NOW - 10_000, creditedKw: 0.92 }]);
+    expect(again.held.get('ev')).toEqual([{ kind: 'electrical' as const, decidedAtMs: NOW - 10_000, creditedKw: 0.92 }]);
   });
 
   it('keeps an expired decision\'s claim on the fall while a newer one stands', () => {
@@ -295,8 +348,8 @@ describe('resolvePendingShedRelief', () => {
     // still credited in full, while the expired one credits nothing.
     const latch = chargerLatch({
       decisions: new Map([['ev', [
-        { decidedAtMs: NOW - 31_000, creditedKw: CREDITED_KW },
-        { decidedAtMs: NOW - 10_000, creditedKw: 0.92 },
+        { kind: 'electrical' as const, decidedAtMs: NOW - 31_000, creditedKw: CREDITED_KW },
+        { kind: 'electrical' as const, decidedAtMs: NOW - 10_000, creditedKw: 0.92 },
       ]]]),
       stepTargets: new Map([['ev', { stepId: '10a', expectedDrawKw: 2.3 }]]),
     });
@@ -308,7 +361,7 @@ describe('resolvePendingShedRelief', () => {
     expect(unchanged.totalKw).toBeCloseTo(0.92, 6);
     expect(unchanged.retained.decisions.get('ev')).toHaveLength(2);
     expect(shown.totalKw).toBeCloseTo(0.92, 6);
-    expect(shown.held.get('ev')).toEqual([{ decidedAtMs: NOW - 10_000, creditedKw: 0.92 }]);
+    expect(shown.held.get('ev')).toEqual([{ kind: 'electrical' as const, decidedAtMs: NOW - 10_000, creditedKw: 0.92 }]);
   });
 
   it('drops an expired decision once nothing newer stands', () => {
@@ -382,7 +435,7 @@ describe('resolvePendingShedRelief', () => {
   });
 
   it('answers nothing before a shed has latched', () => {
-    expect(resolvePendingShedRelief(null, [charger()], 6_378, NOW, {}, true)).toBeNull();
+    expect(resolvePendingShedRelief(null, [charger()], 6_378, NOW, {}, { kind: 'capacity' })).toBeNull();
   });
 });
 
@@ -392,7 +445,7 @@ describe('latchShedDecision', () => {
     shedReasons: new Map(),
     shedStepTargets: new Map(stepId === undefined ? [] : [[deviceId, stepId]]),
     storageSetpoints: new Map(),
-    creditedKw: new Map([[deviceId, creditedKw]]),
+    reliefByDevice: new Map([[deviceId, { kind: 'electrical' as const, creditedKw }]]),
   });
 
   it('carries held decisions on their own stamps, with what is still outstanding', () => {
@@ -400,8 +453,8 @@ describe('latchShedDecision', () => {
 
     const latch = latchShedDecision(selection('bath', 1.14), pending, 6_378, NOW, [charger(), buildPlanInputDevice({ id: 'bath', currentDrawKw: 1.14 })]);
 
-    expect(latch.decisions.get('ev')).toEqual([{ decidedAtMs: NOW - 3_000, creditedKw: pending.outstandingKw.get('ev') }]);
-    expect(latch.decisions.get('bath')).toEqual([{ decidedAtMs: NOW, creditedKw: 1.14 }]);
+    expect(latch.decisions.get('ev')).toEqual([{ kind: 'electrical' as const, decidedAtMs: NOW - 3_000, creditedKw: pending.outstandingKw.get('ev') }]);
+    expect(latch.decisions.get('bath')).toEqual([{ kind: 'electrical' as const, decidedAtMs: NOW, creditedKw: 1.14 }]);
     expect(latch.stepTargets.get('ev')?.stepId).toBe('14a');
     expect(latch.powerW).toBe(6_378);
   });
@@ -412,7 +465,7 @@ describe('latchShedDecision', () => {
 
     const latch = latchShedDecision(selection('ev', 0.92, '10a'), pending, 6_378, NOW, [charger()]);
 
-    expect(latch.decisions.get('ev')).toEqual([{ decidedAtMs: NOW - 3_000, creditedKw: CREDITED_KW + 0.92 }]);
+    expect(latch.decisions.get('ev')).toEqual([{ kind: 'electrical' as const, decidedAtMs: NOW - 3_000, creditedKw: CREDITED_KW + 0.92 }]);
     expect(latch.stepTargets.get('ev')?.stepId).toBe('10a');
   });
 
@@ -427,8 +480,8 @@ describe('latchShedDecision', () => {
     // credited for a fresh 30 s against a reading a rising load keeps from
     // showing it.
     expect(latch.decisions.get('ev')).toEqual([
-      { decidedAtMs: NOW - 3_000, creditedKw: pending.outstandingKw.get('ev') },
-      { decidedAtMs: NOW, creditedKw: 0.92 },
+      { kind: 'electrical' as const, decidedAtMs: NOW - 3_000, creditedKw: pending.outstandingKw.get('ev') },
+      { kind: 'electrical' as const, decidedAtMs: NOW, creditedKw: 0.92 },
     ]);
     expect(latch.stepTargets.get('ev')?.stepId).toBe('10a');
   });
@@ -466,7 +519,7 @@ describe('latchShedDecision', () => {
     const relatched = latchShedDecision(selection('ev', 5.98, '6a'), pending, LATCHED_READING_W, NOW, [stuck, heaterOff]);
 
     // Its expired step's watts are all in that 5.98 kW: it keeps no claim.
-    expect(relatched.decisions.get('ev')).toEqual([{ decidedAtMs: NOW, creditedKw: 5.98 }]);
+    expect(relatched.decisions.get('ev')).toEqual([{ kind: 'electrical' as const, decidedAtMs: NOW, creditedKw: 5.98 }]);
     // The charger lands at 6 A and the reading falls by the 5.98 kW: both
     // decisions have shown, and nothing is left credited.
     const landed = resolvePendingShedRelief(
@@ -475,7 +528,7 @@ describe('latchShedDecision', () => {
       LATCHED_READING_W - 5_980,
       NOW + 10_000,
       {},
-      true,
+      { kind: 'capacity' },
     );
     expect(landed?.totalKw).toBe(0);
     expect(landed?.held.size).toBe(0);

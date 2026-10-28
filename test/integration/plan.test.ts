@@ -32,6 +32,13 @@ import { steerCapacityPace } from '../helpers/capacityPaceFixture';
 vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
 
 const flushPromises = (): Promise<void> => new Promise((resolve) => { setImmediate(resolve); });
+// A 0.2 kWh margin leaves 6 kW between pace and the actual-cap projection
+// with two minutes remaining. These scenarios exercise ordinary pacing,
+// rather than opening a shortfall incident with its own recovery hysteresis.
+const useOrdinaryCapacityClock = (): void => {
+  vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'performance'] });
+  vi.setSystemTime(new Date('2025-01-15T12:58:00Z'));
+};
 const setManagedControllableDevices = (devices: Record<string, boolean>) => {
   mockHomeyInstance.settings.set('controllable_devices', devices);
   const managed = { ...devices };
@@ -126,6 +133,7 @@ describe('Device plan snapshot', () => {
     await cleanupApps();
     setAutoEnableMockDevices(false);
     vi.clearAllTimers();
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
   });
 
   it('emits plan_updated realtime event when plan changes', async () => {
@@ -161,10 +169,8 @@ describe('Device plan snapshot', () => {
   it('sheds devices with higher priority NUMBER first (priority 1 = most important, shed last)', async () => {
     // Priority 1 = most important = should be kept longest
     // Priority 10 = least important = should be shed first
-    const dev1 = new MockDevice('dev-1', 'Important Heater', ['target_temperature', 'measure_power']);
-    const dev2 = new MockDevice('dev-2', 'Less Important Heater', ['target_temperature', 'measure_power']);
-    await dev1.setCapabilityValue('measure_power', 5000); // 5 kW
-    await dev2.setCapabilityValue('measure_power', 4000); // 4 kW
+    const dev1 = await buildOnOffLoad('dev-1', 'Important Heater', 5000);
+    const dev2 = await buildOnOffLoad('dev-2', 'Less Important Heater', 4000);
 
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1, dev2]),
@@ -198,10 +204,8 @@ describe('Device plan snapshot', () => {
   });
 
   it('marks less important devices as shed when over soft limit (priority 1 = most important)', async () => {
-    const dev1 = new MockDevice('dev-1', 'Important Heater', ['target_temperature', 'measure_power']);
-    const dev2 = new MockDevice('dev-2', 'Less Important Heater', ['target_temperature', 'measure_power']);
-    await dev1.setCapabilityValue('measure_power', 5000); // 5 kW
-    await dev2.setCapabilityValue('measure_power', 4000); // 4 kW
+    const dev1 = await buildOnOffLoad('dev-1', 'Important Heater', 5000);
+    const dev2 = await buildOnOffLoad('dev-2', 'Less Important Heater', 4000);
 
     setMockDrivers({
       driverA: new MockDriver('driverA', [dev1, dev2]),
@@ -231,6 +235,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('sets a shed temperature instead of turning off when configured', async () => {
+    useOrdinaryCapacityClock();
     const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     await dev1.setCapabilityValue('target_temperature', 21);
     await dev1.setCapabilityValue('measure_power', 4000); // 4 kW
@@ -596,6 +601,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('uses concise reason when shedding to a minimum temperature', async () => {
+    useOrdinaryCapacityClock();
     const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     await dev1.setCapabilityValue('target_temperature', 21);
     await dev1.setCapabilityValue('measure_power', 4000); // 4 kW
@@ -725,6 +731,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('keeps a min-temperature shed device marked as shed during cooldown even if its target was overwritten', async () => {
+    useOrdinaryCapacityClock();
     const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     await dev1.setCapabilityValue('target_temperature', 21);
     await dev1.setCapabilityValue('measure_power', 1200); // 1.2 kW
@@ -803,6 +810,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('keeps minimum-temperature shedding in cooldown while leaving power on', async () => {
+    useOrdinaryCapacityClock();
     const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     await dev1.setCapabilityValue('target_temperature', 21);
     await dev1.setCapabilityValue('measure_power', 1200); // 1.2 kW
@@ -954,6 +962,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('restores minimum-temperature shedding after cooldown with normal reason and targets', async () => {
+    useOrdinaryCapacityClock();
     const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     await dev1.setCapabilityValue('target_temperature', 21);
     await dev1.setCapabilityValue('measure_power', 1200); // 1.2 kW
@@ -3408,7 +3417,8 @@ describe('Dry run mode', () => {
     // Only the clocks are faked: the spec lets minutes pass without running any timer.
     vi.useFakeTimers({ toFake: ['Date', 'performance'] });
     try {
-      // Detects bug where multiple devices shed via set_temperature restore simultaneously
+      // These binary-capable pumps resume demand through a slow setpoint;
+      // abundant headroom must not batch their target raises together.
       const dev1 = new MockDevice('dev-1', 'Heater 1', ['target_temperature', 'measure_power', 'onoff']);
       await dev1.setCapabilityValue('target_temperature', 20);
       await dev1.setCapabilityValue('measure_power', 1000); // 1 kW
@@ -3435,7 +3445,10 @@ describe('Dry run mode', () => {
       });
       mockHomeyInstance.settings.set('capacity_dry_run', false);
 
-      vi.setSystemTime(new Date('2023-01-01T12:00:00Z'));
+      // Keep the initial 2 kW draw above the 0.5 kW pace but below the
+      // actual-cap projection, so this tests restore pacing independently of
+      // the shortfall guard's required sustained recovery readings.
+      vi.setSystemTime(new Date('2023-01-01T12:54:00Z'));
 
       const app = createApp();
       await app.onInit();
@@ -3453,10 +3466,11 @@ describe('Dry run mode', () => {
       // Update devices to reflect shed state
       await dev1.setCapabilityValue('target_temperature', 10);
       await dev2.setCapabilityValue('target_temperature', 10);
+      await app.refreshTargetDevicesSnapshot();
 
       // 2. Restore Capacity
-      // Limit = 5.0 kW. Usage = 2.0 kW (still pulling power at lower temp? or less. say 2.0 for simplicity).
-      // Headroom = 3.0 kW. Enough to restore both.
+      // Raise capacity pace above the unchanged 2 kW draw. There is room for
+      // both heaters, but only one setpoint restore may be admitted per cycle.
       steerCapacityPace(app, 5.0);
 
       // Let five minutes pass without running the timers: firing them would let

@@ -4,7 +4,7 @@
 
 ## Candidate and step decisions
 
-- Select a device only when limiting it releases measured power. A zero-draw candidate offers no relief and must not receive a speculative shed command. A preemptive need to keep a device off belongs in admission, not shedding.
+- Offer only devices with positive measured draw and an action that reduces demand. A zero-draw candidate offers no relief and must not receive a speculative shed command. A preemptive need to keep a device off belongs in admission, not shedding. A temperature restriction requests less demand without promising an electrical target: ordinary pacing may give it the existing bounded opportunity to respond, but urgent selection banks no temperature relief.
 - For a stepped device, price every reachable lower rung with `resolveSteppedShedLadder`; rejecting the next rung because it frees nothing must not hide a deeper useful rung. `set_step` stops at the deepest non-off-classified rung; `turn_off` may include the off rung. Use `isSteppedLoadOffStep` for that classification.
 - `resolveStepChangeKw` is the common price of a step transition. It prices every rung at its nameplate `planningPowerW`, never the learned step power: the learned figure is at or below nameplate, so on the target side it can only under-reserve a climb or over-credit a descent. For an EV descent, scale the target nameplate by the current measured-to-nameplate ratio, capped at one, so a single-phase car on a three-phase preset remains a useful limiting candidate. Other devices retain nameplate descent targets. A descent cannot credit more than measured draw. A climb's current side is the smaller of measured draw and the current rung's nameplate, and 0 without a positive reading, so a climb never commits less than the target's nameplate minus what is measurably flowing. Determine direction from profile order, with an observed-off device at position zero. Learned step power belongs to smart-task energy planning.
 - Choose a stepped rung when the ranked candidate is spent, using the deficit still open at that turn. The chosen `shedStepTargets` rung is the delivered rung; materialization does not recompute it. Ranking may use the maximum available relief, but not a rung that has not yet been chosen. Bank relief before asking whether the deficit remains.
@@ -30,3 +30,18 @@ pressure. Delivered relief is retired on the next aggregate observation even
 when unmanaged demand masks its fall; period pacing retains its aggregate
 confirmation policy. Restoration keeps the shared timing gates and clear
 band, bounded to 10% of the grid target for low-power connections.
+
+Grid pressure and draw above the actual-cap projection spend only electrical
+relief. Temperature restrictions are still requested in ranking order, but
+cannot stop the selection of direct controls. A historical demand credit is
+retired permanently when urgent pressure arrives, including after a target
+echo. A pending temperature command cannot conceal actual-cap shortfall.
+The withdrawn latch retains its bounded historical claim on aggregate falls
+while newer electrical credits need ordering; it contributes no usable credit
+and cannot become eligible again.
+
+An urgent cycle sizes new cuts against the largest capacity-pace, grid, or actual-cap deficit,
+bounded by the binding deficit, before subtracting pending electrical relief.
+It does not turn a larger daily-pace deficit into an urgent electrical cut;
+the next meter-driven build decides the remaining pace pressure. An exhausted
+period retains its own full-import target or shed-everything directive.

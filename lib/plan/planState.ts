@@ -148,15 +148,18 @@ export type ShedStepTarget = {
   readonly expectedDrawKw: number;
 };
 
-export type ShedLatchDecision = {
+/** The selected action's electrical meaning, retained independently of later device settings. */
+export type ShedRelief = {
+  readonly kind: 'electrical' | 'demand';
+  /** A bounded planning credit, not observed delivery. Demand credit is withdrawn under urgent pressure. */
+  readonly creditedKw: number;
+};
+
+export type ShedLatchDecision = Omit<ShedRelief, 'kind'> & {
+  /** Withdrawn demand retains only its historical claim on aggregate meter falls. */
+  readonly kind: ShedRelief['kind'] | 'withdrawn_demand';
   /** When this device's shed was decided: its credit's own window runs from here. */
   readonly decidedAtMs: number;
-  /**
-   * Relief this decision banked that the latched reading does not show. Zero for
-   * a device selected while an older command's relief was still unconfirmed:
-   * an older decision's relief earns no credit.
-   */
-  readonly creditedKw: number;
 };
 
 /**

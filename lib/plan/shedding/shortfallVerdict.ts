@@ -95,16 +95,20 @@ function buildShortfallCapacityStateSummary(
     remainingReducibleControlledLoad: remainingReducibleControlledLoadW > 0,
     remainingActionableControlledLoadW,
     remainingActionableControlledLoad: remainingActionableControlledLoadW > 0,
-    // This build chose a shed its commands have not yet delivered, it credited
-    // relief a recent shed counted on that the reading does not show yet, or a
-    // candidate's own relief is still unconfirmed (a turn-off, a lower step or a
-    // limit PELS sent and the device has not yet reported).
-    shedReliefInFlight: selection.outcome.kind === 'shed'
-      || selection.pendingReliefKw > 0
-      || candidates.some((candidate) => candidate.unconfirmedRelief),
+    // Over the actual-cap projection a requested temperature target is not
+    // electrical relief in flight, even while its command awaits confirmation.
+    shedReliefInFlight: hasElectricalReliefInFlight(selection, candidates),
     summarySource: 'plan_input',
     summarySourceAtMs: context.nowTs,
   };
+}
+
+function hasElectricalReliefInFlight(selection: PlanSheddingResult, candidates: readonly ShedCandidate[]): boolean {
+  if (selection.pendingReliefKw > 0) return true;
+  const electrical = candidates.filter((candidate) => candidate.kind !== 'temperature');
+  return electrical.some((candidate) => candidate.unconfirmedRelief)
+    || (selection.outcome.kind === 'shed' && (selection.storageSetpoints.size > 0
+      || electrical.some((candidate) => selection.shedSet.has(candidate.id))));
 }
 
 /**
@@ -137,6 +141,7 @@ function walkShedCandidates(
  * nothing left would open an incident with an option in hand.
  */
 function resolveReliefLeftKw(candidate: ShedCandidate, selection: PlanSheddingResult): number {
+  if (candidate.kind === 'temperature') return 0;
   if (candidate.kind === 'storage') {
     // A battery chosen keeps the rest of its ladder below the setpoint it was spent at.
     const chosen = selection.storageSetpoints.get(candidate.id);

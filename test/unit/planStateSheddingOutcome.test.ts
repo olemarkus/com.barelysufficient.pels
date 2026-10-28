@@ -4,7 +4,7 @@ import { NO_SHEDDING_OUTCOME, type ShedPlanLatch } from '../../lib/plan/planStat
 const T = 1_000_000;
 const latch: ShedPlanLatch = {
   powerW: 4_351,
-  decisions: new Map([['vvb', [{ decidedAtMs: T, creditedKw: 1.8 }]]]),
+  decisions: new Map([['vvb', [{ kind: 'electrical' as const, decidedAtMs: T, creditedKw: 1.8 }]]]),
   stepTargets: new Map(),
 };
 
@@ -48,7 +48,7 @@ describe('PlanEngineState.applySheddingOutcome', () => {
     state.shedPlanLatch = latch;
     const nextLatch: ShedPlanLatch = {
       ...latch,
-      decisions: new Map([...latch.decisions, ['heater', [{ decidedAtMs: T, creditedKw: 1 }]]]),
+      decisions: new Map([...latch.decisions, ['heater', [{ kind: 'electrical' as const, decidedAtMs: T, creditedKw: 1 }]]]),
     };
     state.applySheddingOutcome(
       { kind: 'shed', atMs: T, measurementTs: T - 500, latch: nextLatch, escalatedSameSample: true },

@@ -35,6 +35,7 @@ import { isDrivableLimitScope } from './storageCandidate';
 import { resolveContinuousChargeRelief } from './continuousChargeRelief';
 import { resolveSheddingLatch } from './sheddingLatch';
 import { reportShortfallToGuard } from './shortfallVerdict';
+import { resolveShedPressure, type ShedPressure } from './pressure';
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const debug = getDebugEmitter('plan', 'plan');
@@ -117,7 +118,8 @@ function planShedding(
 ): PlanSheddingResult {
   const { nowTs } = context;
   const measurement = requireLatchedMeterReading(deps.powerTracker);
-  const pendingCharge = resolveContinuousChargeRelief(state, context.devices, storage, power, measurement, nowTs);
+  const pressure = resolveShedPressure(power, deps.shortfallThresholdKw, storage.shed);
+  const pendingCharge = resolveContinuousChargeRelief(state, context.devices, storage, pressure, measurement, nowTs);
   const entry = resolveShedEntry(context, power, state, overshoot, storage.shed);
   if (entry.kind === 'none') return emptySheddingResult(retainPendingLatch(pendingCharge));
   const { hourlyBudgetExhausted, shedsEverything, leadingStorageOnly } = entry;
@@ -134,7 +136,7 @@ function planShedding(
   const needed = candidateParams.deficitKw;
 
   const measurementDecision = resolveSameMeasurementSheddingDecision(
-    state, context.devices, measurement, nowTs, power, storage.levers,
+    state, context.devices, measurement, nowTs, pressure, storage.levers,
     pendingCharge === null ? null : pendingCharge.retained,
   );
   // Shedding every candidate goes on every cycle regardless of the sample: the
@@ -146,6 +148,7 @@ function planShedding(
   if (!shedsEverything && measurementDecision.kind === 'credit_pending_relief') {
     return shedBeyondPendingRelief(
       candidateParams, walked, measurementDecision.pending, measurement.atMs, nowTs, hourlyBudgetExhausted,
+      pressure,
     );
   }
   const escalatedSameSample = measurementDecision.kind === 'proceed' && measurementDecision.escalatedSameSample;
@@ -165,6 +168,7 @@ function planShedding(
       hourlyBudgetExhausted,
     ),
     shedsEverything,
+    pressure,
   );
 
   if (isEmptySelection(result)) {
@@ -176,7 +180,7 @@ function planShedding(
   }
   // The reading and the decision it produced latch as one pair (copied:
   // `shedSet` is mutated downstream when holds are merged in).
-  const latch = latchShedDecision(result, null, measurement.powerW, nowTs, context.devices);
+  const latch = latchShedDecision(result, measurementDecision.pending, measurement.powerW, nowTs, context.devices);
   return {
     shedSet: result.shedSet,
     shedReasons: result.shedReasons,
@@ -297,6 +301,7 @@ function shedBeyondPendingRelief(
   measurementTs: number,
   nowTs: number,
   hourlyBudgetExhausted: boolean,
+  pressure: ShedPressure,
 ): PlanSheddingResult {
   const { deficitKw: needed, limitSource } = candidateParams;
   const { candidates } = candidateSummary;
@@ -322,6 +327,7 @@ function shedBeyondPendingRelief(
     residualKw,
     reason,
     false,
+    pressure,
   );
   debug({
     event: 'plan_shed_beyond_pending_relief',
@@ -359,9 +365,9 @@ function retainPendingLatch(pending: PendingShedRelief | null): SheddingOutcome 
  * held stepped device whose next relief is its binary off.
  */
 function mergeShedDecisions(
-  held: Omit<ShedSelection, 'creditedKw'>,
+  held: Omit<ShedSelection, 'reliefByDevice'>,
   beyond: ShedSelection,
-): Omit<ShedSelection, 'creditedKw'> {
+): Omit<ShedSelection, 'reliefByDevice'> {
   const shedSet = new Set([...held.shedSet, ...beyond.shedSet]);
   const shedReasons = new Map([...held.shedReasons, ...beyond.shedReasons]);
   const shedStepTargets = new Map(held.shedStepTargets);

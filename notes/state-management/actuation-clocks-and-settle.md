@@ -268,6 +268,17 @@ allowance is that an EV charger drawing slightly over its held rung's nameplate 
 under half the gap to the rung above) has landed there, because a charger rung's nameplate is its
 current at nominal mains voltage.
 
+Temperature restrictions retain their historical action kind in the shed latch.
+Their bounded credit under ordinary pacing is an opportunity for demand to
+respond, not a promise of zero electrical draw. Grid pressure and draw above the
+actual-cap projection permanently withdraw that credit and continue to direct
+electrical controls. The withdrawn latch still owns its historical place in
+aggregate-fall attribution while later credits need ordering; this cannot restore
+its usable credit. A target echo changes neither this policy nor command
+confirmation. Urgent selection answers the physical deficit first; a larger
+daily-pace deficit remains for the next meter-driven decision. The exhausted
+period's directive retains its own sizing.
+
 ## The rule going forward
 
 - The executor may skip a write only for facts about **the write itself** — the device is
