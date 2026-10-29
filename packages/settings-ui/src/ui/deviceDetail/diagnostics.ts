@@ -8,6 +8,7 @@ import type {
 } from '../../../../contracts/src/deviceDiagnosticsTypes.ts';
 import { SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH } from '../../../../contracts/src/settingsUiApi.ts';
 import {
+  PLAN_STATE_AWAITING_PELS_START_STATUS,
   PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
@@ -124,10 +125,7 @@ const STARVATION_REASON_LABELS: Record<StarvationReason, string> = {
   deferred_objective_avoid: PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   deferred_objective_satisfied: PLAN_STATE_DEFERRED_OBJECTIVE_SATISFIED_STATUS,
   awaiting_solar_surplus: PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
-  // Same words its siblings use: there is no active service block, which is
-  // exactly what "only PELS starts this, and nothing asked" means. No new
-  // string for the policy — see `planReasonFormatting.ts`.
-  awaiting_pels_start: 'No active service block',
+  awaiting_pels_start: PLAN_STATE_AWAITING_PELS_START_STATUS,
   reserved_for_start: PLAN_STATE_RESERVED_FOR_START_STATUS,
   unknown_suppression_reason: 'Service reason unknown',
 };

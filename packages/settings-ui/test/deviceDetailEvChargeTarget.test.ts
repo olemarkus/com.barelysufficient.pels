@@ -121,6 +121,29 @@ describe('charge target status', () => {
     expect(status().textContent).toBe('PELS has no power reading from this charger, so it cannot stop it at 60%.');
   });
 
+  it('says only a smart task starts a charger whose lever is "Only PELS starts this device"', async () => {
+    const { module, state, status } = await load();
+    state.controllableMap = {};
+    state.deviceStartPolicyMap = { [CHARGER_ID]: 'pels_only' } as typeof state.deviceStartPolicyMap;
+
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 26, observedAtMs: 0 }));
+    expect(status().textContent).toBe('Charges to 60%. Now 26%. Only a smart task starts this charger.');
+
+    state.evCarAssociations = { [CHARGER_ID]: { carIds: ['car-1'] } } as typeof state.evCarAssociations;
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'unavailable', reasonCode: 'not_reported' }));
+    expect(status().textContent).toBe(
+      'Battery level not reported, so the car charges to its own limit. Only a smart task starts this charger.',
+    );
+
+    // Reaching the target already names the smart task; Power-limit control on
+    // means PELS starts the charger itself, so neither gets the condition.
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 60, observedAtMs: 0 }));
+    expect(status().textContent).toBe('Reached 60%. Charging stops here unless a smart task asks for more.');
+    state.controllableMap = { [CHARGER_ID]: true };
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 26, observedAtMs: 0 }));
+    expect(status().textContent).toBe('Charges to 60%. Now 26%.');
+  });
+
   it('says PELS only watches a charger it may not command', async () => {
     const { module, state, status } = await load();
     state.controllableMap = {};
