@@ -194,8 +194,9 @@ const headerDetail = (step: SetupJourneyStep, fact: SetupStep | undefined): stri
 };
 
 // Dutch households pay by connection size, so the open Limits step offers the
-// way out its detail explains, in one tap. Geography only offers it: the switch
-// moves when the owner taps, never on its own.
+// way out its detail explains, in one tap. A new Dutch install starts with
+// Capacity limit off; this is for one from before that default, still running
+// the built-in 10 kW. Here the switch moves only when the owner taps.
 const offersCapacityOff = (step: SetupJourneyStep, fact: SetupStep | undefined): boolean => {
   if (step !== 'hardCap' || fact === undefined || fact.status === 'done') return false;
   const market = readSetupMarket();

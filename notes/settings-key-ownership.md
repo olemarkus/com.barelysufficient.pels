@@ -292,7 +292,11 @@ realtime push, never through a settings key.
 
 `capacity_enabled`, `grid_import_enabled` and `grid_import_limit_kw` belong to
 `packages/shared-domain/src/settings/powerLimits.ts`. The runtime settings store
-uses SDK key presence to supply legacy defaults (capacity on, grid off); a listed
+uses SDK key presence to supply legacy defaults (capacity on, grid off). The one
+runtime write is a new install's market default (`lib/power/capacityMarketDefault.ts`):
+when the boot found no keys at all and the hub is outside Norway and Belgium, it
+writes `capacity_enabled` false once Homey reports the country, unless the owner
+has written the switch first. An existing install is never written. A listed
 malformed flag or an enabled grid limit without a finite positive threshold is
 unavailable and preserves the last accepted runtime posture. The browser resolves
 the saved switches first, as one posture, and takes the running effective posture

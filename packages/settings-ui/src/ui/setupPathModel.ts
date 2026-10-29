@@ -21,7 +21,9 @@ import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiA
  * the capacity limit on a built-in 10 kW, and the step names the number it is
  * running on. A saved grid import limit, a saved hard cap, or an explicit choice
  * to turn both limits off completes it. Hence Devices before Limits: what may be
- * limited, then to what.
+ * limited, then to what. A new install outside Norway and Belgium starts with
+ * Capacity limit off (`lib/power/capacityMarketDefault.ts`), so its step is
+ * already done.
  *
  * Prices follow the same rule. They apply once something in the home uses
  * them (see `SetupPrices`), and then the step stays open while PELS prices with

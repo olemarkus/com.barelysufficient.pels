@@ -78,7 +78,7 @@ This is where the grid import limit, the capacity settings and the whole-home po
 | Setting | What it does |
 | --- | --- |
 | **Grid import limit** | Turn on to keep whole-home net import from the grid under a level you choose, in kW. PELS starts reducing loads near 95% of it and brings them back in priority order when power is available again. It reads the latest meter reading, so a short overshoot is possible while the meter updates and devices respond. It is not a circuit breaker. |
-| **Capacity limit** | Turn on when your grid tariff charges for your highest hourly or 15-minute average power. Turn it off if your grid charges do not depend on measured peaks, as in the Netherlands, where the capacity tariff is a fixed charge by connection size. |
+| **Capacity limit** | Turn on when your grid tariff charges for your highest hourly or 15-minute average power. Turn it off if your grid charges do not depend on measured peaks, as in the Netherlands, where the capacity tariff is a fixed charge by connection size. A new install starts with it on in Norway and Belgium and off everywhere else. |
 | **Capacity period** | **Hourly average** for hourly tariffs; **15-minute average** for quarter-hour peak tariffs, such as Belgium's capacity tariff. |
 | **Hard cap (kW)** | The average power you don't want the selected period to exceed. Set this from the peak or tariff step you want to protect. If you are not charged for measured peaks, turn off **Capacity limit** instead. |
 | **Safety margin (kW)** | Buffer below the hard cap. PELS starts reacting before the hard cap is reached. |

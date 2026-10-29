@@ -143,7 +143,9 @@ const METER_AREA_SWITCHES_READ: Pick<CarriedFields<'read'>, 'capacityEnabled' | 
 /**
  * The Main-home switches as read, each on its own. A never-written key takes
  * its install default (Capacity limit on, grid import off); a listed one is
- * read as it stands, malformed or not.
+ * read as it stands, malformed or not. A new install outside the markets that
+ * bill a measured peak has the Capacity limit switch written off once its
+ * country is known (`capacityMarketDefault.ts`).
  */
 function readMainHomeSwitches(
   settings: SettingsPort,
