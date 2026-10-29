@@ -76,3 +76,26 @@ it('migrates legacy commitments and every revision without changing their energy
     history: [expectedRevision],
   } } });
 });
+
+// Legacy allocation clipped the last bucket to a 07:30 deadline and stored it
+// as the 07:00 hour. Ending it at 08:00 would leave a floor no live plan can
+// cover, so the task would keep its old commitment until the deadline.
+it('ends a legacy hour at the task deadline when the deadline falls inside it', () => {
+  const sevenMs = 7 * 3_600_000;
+  const deadlineAtMs = sevenMs + 1_800_000;
+  const revision = { hours: [
+    { startsAtMs: sevenMs - 3_600_000, plannedKWh: 2 },
+    { startsAtMs: sevenMs, plannedKWh: 1 },
+  ] };
+  const result = normalizeDeferredObjectiveActivePlansShape({
+    version: 1,
+    plansByDeviceId: { task: { marker: 1, deadlineAtMs, commitment: revision, original: revision, latest: revision } },
+  }, runtimeLike);
+  const expectedRevision = { hours: [
+    { startsAtMs: sevenMs - 3_600_000, plannedKWh: 2, endsAtMs: sevenMs },
+    { startsAtMs: sevenMs, plannedKWh: 1, endsAtMs: deadlineAtMs },
+  ] };
+  expect(result).toEqual({ version: 2, plansByDeviceId: { task: {
+    marker: 1, deadlineAtMs, commitment: expectedRevision, original: expectedRevision, latest: expectedRevision,
+  } } });
+});
