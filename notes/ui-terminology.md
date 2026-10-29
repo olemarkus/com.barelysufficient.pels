@@ -2227,13 +2227,17 @@ the map. **Never infer a market from the hub's language** (owner ruling
 unavailable market uses neutral copy. The UI and getting-started guide remain
 English-only.
 
-- For Dutch households, an unchosen Capacity limit explains that grid charges
-  depend on connection size, and that turning this limit off preserves prices
-  and solar. The guided Limits step offers `Turn off Capacity limit` beside
-  that detail. Like `Use 15-minute average`, it writes only its own setting, so
-  the built-in hard cap stays unchosen. Keep the running default visible until
-  the owner makes a choice; geography never disables a limit or replaces a
-  saved target.
+- A new install starts with Capacity limit on only in Norway and Belgium
+  (owner ruling 2026-10-29), where households pay for measured peaks; elsewhere
+  the runtime writes it off once the hub's country is known
+  (`lib/power/capacityMarketDefault.ts`). That is the one place geography sets
+  a limit. It never touches an existing install or replaces a saved target.
+- For Dutch households, an unchosen Capacity limit (an install from before that
+  default) explains that grid charges depend on connection size, and that
+  turning this limit off preserves prices and solar. The guided Limits step
+  offers `Turn off Capacity limit` beside that detail. Like `Use 15-minute
+  average`, it writes only its own setting, so the built-in hard cap stays
+  unchosen. Keep the running default visible until the owner makes a choice.
 - Dutch solar setup needs no dynamic contract or price configuration. Contract
   context and the end of net metering belong in optional background guidance.
 - Belgian advice stays conditional: `In Flanders? Use the 15-minute average for
