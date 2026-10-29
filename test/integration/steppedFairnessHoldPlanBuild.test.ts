@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
@@ -57,6 +57,17 @@ const charger = (stepId: string): PlanInputDevice => inputDevice({
 });
 
 describe('stepped fairness hold through a plan build', () => {
+  // The capacity pace is computed from the current hour. Pin the clock mid-hour:
+  // near an hour's end the drain changes the pace and the fixture cannot land on 8 kW.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-29T10:20:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('stamps the hold once the charger is cut to its lowest step while the heater is limited', async () => {
     // Background load keeps the house over the 8 kW pace whatever PELS limits.
     const backgroundKw = 6;
