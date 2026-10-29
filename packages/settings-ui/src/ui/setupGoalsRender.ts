@@ -22,9 +22,11 @@ export const renderSetupGoals = (
     choices: resolveSetupGoalChoices(devices, readSetupGoalContext(isSolarSetupJourney())),
     busy: setupSavePending(),
     onPrice: (id, enabled) => {
+      // The device's choice lands first: keeping the source fires a reload of
+      // the price settings, which must read the map this save just wrote.
       void trackSetupSave(`price:${id}`, async () => {
-        if (enabled) await keepAssumedPriceSource();
         await saveDevicePriceEnabled(id, enabled);
+        if (enabled) await keepAssumedPriceSource();
       })
         .catch((error) => showToastError(error, 'Failed to update price optimization settings.'))
         .finally(() => { rerender(); notifySetupPathChange(); });
