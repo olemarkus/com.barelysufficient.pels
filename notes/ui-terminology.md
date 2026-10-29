@@ -443,7 +443,9 @@ power would not start them and a kW figure would be a lie: `Waiting for cheaper
 hours` (smart task), `Smart task done, held until its ready-by time` (a smart task
 that reached its target holds its device in the hours it did not book until the
 ready-by time, owner ruling 2026-10-17; never `Waiting for cheaper hours`, which
-would say the task still needs energy), `Waiting for solar surplus`, `Reached its battery
+would say the task still needs energy), `Waiting for solar surplus`, `Waiting for a smart task` (held off by `Only PELS starts this
+device`, `PLAN_STATE_AWAITING_PELS_START_STATUS`; owner ruling 2026-10-29 replaced the
+earlier bare `Off`, which read as a fault), `Reached its battery
 target (80%)` and `Waiting for battery level` (a charger's target battery level,
 `formatChargeTargetReachedStatus` and `PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS`;
 they name the target, never the car), `Turned off elsewhere — turn
@@ -643,7 +645,8 @@ battery level task cannot plan without the level). The status line under the fie
 either: `Charges to 60%. Now 42%.`, `Reached 60%. Charging stops here unless a
 smart task asks for more.`, `Battery level not reported, so the car charges to
 its own limit.` (plus how to get a level when no car is selected), `Battery level
-not reported. Charging is held until it is.`, `No car connected.`, and, without a
+not reported. Charging is held until it is.`, `No car connected.`; a line saying the car charges gains `Only a smart task starts this charger.` when
+`Only PELS starts this device` is the lever (Power-limit control off); and, without a
 lever, `PELS only watches this charger. Turn on Power-limit control to stop it at
 60%.` A 100% target never stops the charger, so it reads `The car charges to its
 own limit. Lower the level to stop earlier.` (with the no-level toggle off: `The

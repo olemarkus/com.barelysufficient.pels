@@ -124,18 +124,16 @@ describe('resolveStartPolicyHold', () => {
   });
 });
 
-describe('the start-policy hold has no card copy', () => {
+describe('the start-policy hold card copy', () => {
   /**
-   * The owner's ruling (2026-09-10): a device its start policy is holding reads
-   * `Off` and nothing else. Off is its baseline, not a hold PELS is imposing, so
-   * there is no reason line and no new string to keep in step with anything.
-   *
-   * Pinned because the easy mistake is re-adding copy: every sibling posture has
-   * a line, and `awaitingSolarSurplus` — which this code otherwise mirrors
-   * exactly — is in `HOLD_REASON_CODES` and says "Waiting for solar surplus".
+   * The owner's ruling (2026-10-29, replacing the 2026-09-10 no-line ruling): a
+   * device its start policy is holding says what it needs. A bare `Off` read as a
+   * fault to an owner who expected a charge target alone to start the charger,
+   * and it looked the same whether a task existed, waited, or could not run.
    */
-  it('renders no reason line', () => {
-    expect(formatDeviceReasonUserFacing({ code: PLAN_REASON_CODES.awaitingPelsStart })).toBe('');
+  it('says the device waits for a smart task', () => {
+    expect(formatDeviceReasonUserFacing({ code: PLAN_REASON_CODES.awaitingPelsStart }))
+      .toBe('Waiting for a smart task');
   });
 
   /**

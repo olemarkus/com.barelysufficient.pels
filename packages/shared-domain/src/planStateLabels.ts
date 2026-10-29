@@ -180,6 +180,12 @@ export const formatChargeTargetReachedStatus = (targetPercent: number): string =
 // (reason code `awaitingBatteryLevel`), because its owner chose not to charge
 // before the level is known. Registered in `notes/ui-terminology.md`.
 export const PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS = 'Waiting for battery level';
+// Reason line for a device held off by "Only PELS starts this device" (reason
+// code `awaitingPelsStart`): only a smart task starts it, whether or not one
+// exists yet. A bare `Off` read as a fault to owners who expected a charge
+// target alone to start the charger (owner ruling 2026-10-29, replacing the
+// 2026-09-10 no-line ruling). Registered in `notes/ui-terminology.md`.
+export const PLAN_STATE_AWAITING_PELS_START_STATUS = 'Waiting for a smart task';
 // Device-detail diagnostics wording for a device standing down behind another device's startup
 // reservation. Kept beside its siblings (and out of the settings-UI view) so the screen and the
 // runtime logs cannot drift apart. Registered in `notes/ui-terminology.md`.

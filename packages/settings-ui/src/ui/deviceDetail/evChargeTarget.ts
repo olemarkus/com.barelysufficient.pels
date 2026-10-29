@@ -60,6 +60,20 @@ const hasStandingGrant = (deviceId: string): boolean => (
   || resolveDeviceStartPolicy(state.deviceStartPolicyMap, deviceId) === 'pels_only'
 );
 
+// With Power-limit control off, "Only PELS starts this device" is the lever, and
+// it starts the charger only for a smart task: a line saying the car charges
+// must say who starts it, or a charger waiting for a task reads as broken.
+const isStartedOnlyBySmartTask = (deviceId: string): boolean => (
+  state.controllableMap[deviceId] !== true
+  && resolveDeviceStartPolicy(state.deviceStartPolicyMap, deviceId) === 'pels_only'
+);
+
+const SMART_TASK_START_SUFFIX = ' Only a smart task starts this charger.';
+
+const withStartCondition = (deviceId: string, status: string): string => (
+  isStartedOnlyBySmartTask(deviceId) ? `${status}${SMART_TASK_START_SUFFIX}` : status
+);
+
 const hasSelectedCar = (deviceId: string): boolean => (
   (state.evCarAssociations[deviceId]?.carIds.length ?? 0) > 0
 );
@@ -67,9 +81,9 @@ const hasSelectedCar = (deviceId: string): boolean => (
 const buildUnreportedStatus = (deviceId: string, config: EvChargeTargetConfig): string => {
   if (!config.chargeBeforeLevelKnown) return 'Battery level not reported. Charging is held until it is.';
   const status = 'Battery level not reported, so the car charges to its own limit.';
-  return hasSelectedCar(deviceId)
+  return withStartCondition(deviceId, hasSelectedCar(deviceId)
     ? status
-    : `${status} To stop at ${config.targetPercent}%, select the car under Car or report the level with a Flow.`;
+    : `${status} To stop at ${config.targetPercent}%, select the car under Car or report the level with a Flow.`);
 };
 
 // A 100% target is the car's own limit and never stops the charger
@@ -99,10 +113,12 @@ export const buildChargeTargetStatus = (device: SettingsUiDeviceDetailItem, conf
   if (isEvObserved(device) && !isEvPlugStateConnected(device.evChargingState)) return 'No car connected.';
   const level = device.stateOfCharge?.level;
   if (level?.kind === 'known') {
-    if (config.targetPercent >= FULL_PERCENT) return `The car charges to its own limit. Now ${level.percent}%.`;
+    if (config.targetPercent >= FULL_PERCENT) {
+      return withStartCondition(device.id, `The car charges to its own limit. Now ${level.percent}%.`);
+    }
     return level.percent >= config.targetPercent
       ? `Reached ${config.targetPercent}%. Charging stops here unless a smart task asks for more.`
-      : `Charges to ${config.targetPercent}%. Now ${level.percent}%.`;
+      : withStartCondition(device.id, `Charges to ${config.targetPercent}%. Now ${level.percent}%.`);
   }
   if (level?.reasonCode === 'not_connected') return 'No car connected.';
   return buildUnreportedStatus(device.id, config);
