@@ -25,11 +25,14 @@ grid setting follows Enua's own TN fallback. A corrected upstream declaration,
 including an installation-specific lower ceiling, is left unchanged. Neither
 capability values nor source timestamps are invented.
 
-`configureTargetPower` resolves a saved PELS range against the same physical
-limits. A continuous range uses the charger's grid watts and whole-amp steps,
-with at least 6 A. An EV preset still describes the car's phase use: its
-planning watts are 230 W/A or 690 W/A, while Enua's command and readback watts
-use the grid conversion above. `stepCommand` and `targetPowerReading` convert
+`configureTargetPower` resolves a saved continuous range against the same
+physical limits: the charger's grid watts and whole-amp steps, with at least
+6 A, capped by the declared maximum. An EV preset passes through unchanged, so
+device parsing, reachability and the planner read the same preset; its ladder
+already stops at 32 A, and reachability learns a lower installation ceiling as
+it does for other chargers. An EV preset still describes the car's phase use:
+its planning watts are 230 W/A or 690 W/A, while Enua's command and readback
+watts use the grid conversion above. `stepCommand` and `targetPowerReading` convert
 through amps on commands, full reads and realtime reports. Saved settings are
 not rewritten.
 

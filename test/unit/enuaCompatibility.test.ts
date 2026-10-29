@@ -58,6 +58,7 @@ describe('Enua shipped capability compatibility', () => {
         { capabilityId: 'target_power', value: 10 * carWatts })).toEqual({
         capabilityId: 'target_power', value: Math.round(10 * gridWatts),
       });
+      expect(adapter.configureTargetPower(device, config)).toBe(config);
       expect(adapter.configureTargetPower(device, { ...config, max: 5 * carWatts }).max).toBe(5 * carWatts);
       for (let amps = 6; amps <= 32; amps += 1) {
         const command = adapter.stepCommand(device,
