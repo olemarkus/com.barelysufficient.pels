@@ -32,6 +32,7 @@ import {
   type SmartTaskPreviewView,
 } from './smartTaskDraft.ts';
 import type { SmartTaskEditPermissionKey, SmartTaskEditPermissions } from './smartTaskEdit.ts';
+import type { SetupJourneyStep } from './setupJourneyState.ts';
 import { hasActiveDeadlineObjective, hasOpenSmartTask, state } from './state.ts';
 
 // Controller for the Smart tasks page's New smart task flow: choose a device,
@@ -44,10 +45,15 @@ import { hasActiveDeadlineObjective, hasOpenSmartTask, state } from './state.ts'
 
 const DEFAULT_READY_BY = '07:00';
 
-/** Where the flow was opened from, and so where Back returns to. */
+/**
+ * Where the flow was opened from, and so where Back returns to. From setup the
+ * flow also returns there once the task is created, so the owner carries on
+ * choosing what PELS does instead of landing on the new task's page.
+ */
 export type SmartTaskCreateOrigin =
   | { kind: 'smart_tasks' }
-  | { kind: 'device'; deviceId: string; sourceTab: string };
+  | { kind: 'device'; deviceId: string; sourceTab: string }
+  | { kind: 'setup'; deviceId: string };
 
 export type SmartTaskCreateDraft = {
   goal: string;
@@ -90,7 +96,9 @@ let generation = 0;
 let paint: (current: SmartTaskCreateSnapshot | null) => void = () => {};
 // Injected at boot (`initSmartTaskCreateController`): tab navigation imports
 // the Smart tasks list, which imports this controller.
-let openPanel: (panelId: string) => void = () => {};
+let openPanel: (panelId: string, setup?: SetupJourneyStep) => void = () => {};
+
+const returnToSetup = (): void => openPanel('devices', 'goals');
 
 /** The orchestrator's paint: the flow's surface from a snapshot, or the list once it closes. */
 export const registerSmartTaskCreateRenderer = (
@@ -174,7 +182,7 @@ const loadCandidates = async (origin: SmartTaskCreateOrigin): Promise<void> => {
       return;
     }
     loadedDevices = response.devices;
-    if (origin.kind === 'device') {
+    if (origin.kind !== 'smart_tasks') {
       if (hasOpenSmartTask(origin.deviceId)) {
         goToOpenTask(origin.deviceId);
         return;
@@ -222,6 +230,7 @@ export const backFromSmartTaskCreate = (): void => {
     return;
   }
   finish();
+  if (s.origin.kind === 'setup') returnToSetup();
   if (s.origin.kind === 'device') {
     openPanel(s.origin.sourceTab);
     dispatchOpenDeviceDetail(s.origin.deviceId, 'top');
@@ -340,7 +349,8 @@ export const submitSmartTaskCreate = async (): Promise<void> => {
     }
     finish();
     refreshPlanSurface();
-    followDeadlineHref(buildDeadlineHref(device.deviceId));
+    if (s.origin.kind === 'setup') returnToSetup();
+    else followDeadlineHref(buildDeadlineHref(device.deviceId));
   } catch (error) {
     if (current !== generation) return;
     update({ ...s, busy: 'idle', errorLine: CREATE_SMART_TASK_WIDGET_COPY.createError });
@@ -368,13 +378,21 @@ export const openSmartTaskCreateDeviceSettings = (): void => {
   dispatchOpenDeviceDetail(s.step.device.deviceId, 'power-limit');
 };
 
-type OpenSmartTaskCreateDetail = { deviceId: string; sourceTab: string };
+type OpenSmartTaskCreateDetail = { origin: Exclude<SmartTaskCreateOrigin, { kind: 'smart_tasks' }> };
 
 /** The device page's Add smart task: open the flow for that device on the Smart tasks tab. */
 export const dispatchOpenSmartTaskCreate = (deviceId: string, sourceTab: string): void => {
   document.dispatchEvent(new CustomEvent<OpenSmartTaskCreateDetail>(
     'open-smart-task-create',
-    { detail: { deviceId, sourceTab } },
+    { detail: { origin: { kind: 'device', deviceId, sourceTab } } },
+  ));
+};
+
+/** Setup's New smart task: open the flow for that device, returning to setup when done. */
+export const dispatchOpenSmartTaskCreateFromSetup = (deviceId: string): void => {
+  document.dispatchEvent(new CustomEvent<OpenSmartTaskCreateDetail>(
+    'open-smart-task-create',
+    { detail: { origin: { kind: 'setup', deviceId } } },
   ));
 };
 
@@ -385,17 +403,20 @@ const repaint = (): void => {
 let listenersBound = false;
 
 /**
- * Bind the flow's document listeners: the device page's Add smart task, and the
- * repaints when what the after-task line reads may have changed.
+ * Bind the flow's document listeners: the device page's Add smart task and
+ * setup's New smart task, and the repaints when what the after-task line reads
+ * may have changed.
  */
-export const initSmartTaskCreateController = (navigateToPanel: (panelId: string) => void): void => {
+export const initSmartTaskCreateController = (
+  navigateToPanel: (panelId: string, setup?: SetupJourneyStep) => void,
+): void => {
   openPanel = navigateToPanel;
   if (listenersBound) return;
   listenersBound = true;
   document.addEventListener('open-smart-task-create', (event) => {
-    const { deviceId, sourceTab } = (event as CustomEvent<OpenSmartTaskCreateDetail>).detail;
+    const { origin } = (event as CustomEvent<OpenSmartTaskCreateDetail>).detail;
     openPanel('deadlines');
-    openSmartTaskCreate({ kind: 'device', deviceId, sourceTab });
+    openSmartTaskCreate(origin);
   });
   document.addEventListener('device-detail-closed', repaint);
   document.addEventListener('devices-updated', repaint);

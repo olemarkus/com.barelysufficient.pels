@@ -13,6 +13,8 @@ import { isSurplusTrackingDeviceShape } from './deviceDetail/solarSurplusTrackin
 import { isDumpLoadDeviceShape } from './deviceDetail/solarSurplus.ts';
 import { hasActiveDeadlineObjective, state } from './state.ts';
 import { SURPLUS_TRACKING_LABELS } from '../../../shared-domain/src/solarSurplusTrackingCopy.ts';
+import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
+import { BATTERY_MANAGED_HINT, BATTERY_WATCH_MANAGED_HINT } from './deviceDetail/batterySection.ts';
 
 export type SolarSetupAction = {
   label: string;
@@ -90,10 +92,16 @@ export const resolveSolarSetupAction = (device: SettingsUiDeviceListItem): Solar
 };
 
 const setupDeviceHint = (
-  manageability: ReturnType<typeof resolveDeviceManageability>, solar: boolean,
+  device: SettingsUiDeviceListItem,
+  manageability: ReturnType<typeof resolveDeviceManageability>,
+  solar: boolean,
 ): string | null => {
   if (manageability.nativeWiringRequired) return 'Enable device control in Setup.';
   if (solar) return null;
+  // A battery is neither paused nor set to a temperature: say what its device page's Managed says.
+  if (isHomeBatteryClassKey(device.deviceClass)) {
+    return manageability.supportsPower ? BATTERY_MANAGED_HINT : BATTERY_WATCH_MANAGED_HINT;
+  }
   return manageability.supportsPower ? 'PELS may lower or pause this device.' : 'PELS may adjust its temperature.';
 };
 
@@ -112,7 +120,7 @@ export const readSetupDeviceChoices = (devices: SettingsUiDeviceListItem[], sola
         name: formatDisplayDeviceName(device.name),
         managed: manageability.isManaged,
         disabled: !state.initialLoadComplete || !manageability.canManage || setupSavePending(),
-        hint: setupDeviceHint(manageability, solar),
+        hint: setupDeviceHint(device, manageability, solar),
         solar: action,
       }];
     }) };

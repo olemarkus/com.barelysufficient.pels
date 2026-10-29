@@ -3213,6 +3213,7 @@ md-filled-button.is-busy {
   width: 100%;
   min-height: var(--pels-touch-target-min);
   font: inherit;
+  color: inherit;
   text-align: left;
   cursor: pointer;
 }

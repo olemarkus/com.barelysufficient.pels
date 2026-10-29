@@ -133,6 +133,92 @@ test('one solar device can be configured without prices and the action reaches i
   await expect(page.locator('#setup-review-root')).toBeVisible();
 });
 
+// A Dutch home with a heat pump and an EV charger and no limit to hold: after
+// the required steps, setup offers what PELS can do with them.
+const seedHeatPumpAndCharger = async (page: Page, managedAtStart = false) => {
+  await page.addInitScript(({ managedAtStart }) => {
+    const devices = [{
+      id: 'setup-heatpump', name: 'Heat pump', zone: 'Hall', available: true,
+      deviceClass: 'heater', deviceType: 'temperature', isEvCharger: false,
+      isBatteryOrSolar: false, binaryControllable: true, canSetControl: true,
+      powerCapable: true, capabilities: ['onoff', 'target_temperature', 'measure_power'],
+      targets: [{ name: 'target_temperature', value: 21 }],
+      measuredPowerKw: 0, expectedPowerKw: 2, expectedPowerSource: 'measured-peak',
+    }, {
+      id: 'setup-charger', name: 'Car charger', zone: 'Garage', available: true,
+      deviceClass: 'evcharger', deviceType: 'onoff', isEvCharger: true,
+      isBatteryOrSolar: false, binaryControllable: true, canSetControl: true, controlModel: 'binary_power',
+      powerCapable: true, capabilities: ['onoff', 'evcharger_charging', 'measure_power'], targets: [],
+      measuredPowerKw: 0, expectedPowerKw: 7, expectedPowerSource: 'load-setting',
+    }];
+    const w = window as unknown as {
+      __PELS_HOMEY_STUB__: unknown;
+      Homey: { __stub: { getSetting: (key: string) => unknown } };
+    };
+    const managed = () => (w.Homey.__stub.getSetting('managed_devices') ?? {}) as Record<string, boolean>;
+    const all = managedAtStart ? Object.fromEntries(devices.map((device) => [device.id, true])) : {};
+    w.__PELS_HOMEY_STUB__ = {
+      settings: {
+        target_devices_snapshot: devices, managed_devices: all, controllable_devices: all,
+        price_optimization_settings: {}, capacity_dry_run: true, capacity_enabled: false,
+        daily_budget_enabled: false,
+        // Homey Energy, chosen and with prices: the Prices step has nothing to ask.
+        price_scheme: 'homey', homey_prices_today: { dateKey: '2026-10-29', pricesByHour: { 0: 0.21, 1: 0.2 } },
+        ui_hub_market_country: 'NL',
+        ui_devices_has_managed_solar: false, ui_devices_has_exhibited_export: false,
+        ui_devices_surplus_pool_reachable: false,
+      },
+      unsetSettings: ['capacity_limit_kw', 'capacity_margin_kw'],
+      apiHandlers: {
+        'GET /ui_devices': () => ({
+          devices: devices.map((device) => ({ ...device, managed: managed()[device.id] === true })),
+          chargerPhasePresets: { state: 'resolved', presets: {} },
+          hasManagedSolarDevice: false, hasExhibitedExport: false, surplusPoolReachable: false,
+        }),
+      },
+    };
+  }, { managedAtStart });
+};
+
+test('setup offers what PELS can do before the review, and the review names it', async ({ page }, testInfo) => {
+  await seedHeatPumpAndCharger(page);
+  await page.goto('/?page=settings/devices&setup=devices');
+  await page.getByRole('switch', { name: 'Manage Heat pump', exact: true }).click();
+  await page.getByRole('switch', { name: 'Manage Car charger', exact: true }).click();
+  await expect.poll(() => stored(page, 'managed_devices')).toEqual({ 'setup-heatpump': true, 'setup-charger': true });
+  const devicesHeader = page.locator('#devices-panel .setup-journey');
+  await devicesHeader.getByRole('button', { name: 'Continue', exact: true }).click();
+
+  await expect(page).toHaveURL(/setup=goals/);
+  const header = page.locator('#devices-panel .setup-journey');
+  await expect(header).toContainText('Choose what PELS does');
+  await expect(header.getByRole('button', { name: 'Review setup', exact: true })).toBeEnabled();
+  const picker = page.locator('#device-card-list');
+  await expect(picker.locator('[data-device-id="setup-charger"]').getByText('New smart task', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('goals.png'), scale: 'css', fullPage: true });
+  await page.getByRole('switch', { name: 'Price-based control for Heat pump', exact: true }).click();
+  await expect.poll(async () => {
+    const map = await stored(page, 'price_optimization_settings') as Record<string, { enabled?: boolean }>;
+    return map['setup-heatpump']?.enabled;
+  }).toBe(true);
+
+  await header.getByRole('button', { name: 'Review setup', exact: true }).click();
+  const review = page.locator('#setup-review-root');
+  await expect(review).toContainText('Power limits off');
+  await expect(review).toContainText('Price-based control on');
+  await expect(review).toContainText('Nothing for PELS to do yet');
+  await expect(review).not.toContainText('Power-limit control on');
+  await page.screenshot({ path: testInfo.outputPath('review.png'), scale: 'css', fullPage: true });
+});
+
+test('New smart task in setup opens the flow on the Smart tasks page', async ({ page }) => {
+  await seedHeatPumpAndCharger(page, true);
+  await page.goto('/?page=settings/devices&setup=goals');
+  await page.locator('#device-card-list [data-device-id="setup-charger"]').getByText('New smart task', { exact: true }).click();
+  await expect(page.locator('#smart-task-create-root')).toBeVisible();
+});
+
 test('Flemish period advice changes only the period and respects dismissal', async ({ page }) => {
   await seed(page, 'BE');
   await page.goto('/?page=settings/devices&setup=devices');

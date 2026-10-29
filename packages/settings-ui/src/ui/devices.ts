@@ -2,6 +2,7 @@ import { render } from 'preact';
 import { SetupDevicePicker } from './views/SetupJourney.tsx';
 import { currentSetupJourney, isSolarSetupJourney, trackSetupSave } from './setupJourneyState.ts';
 import { readSetupDeviceChoices } from './setupDevices.ts';
+import { renderSetupGoals } from './setupGoalsRender.ts';
 import { refreshHomeScopeAndNotify } from './homeScope.ts';
 import { notifySetupPathChange } from './setupPathFacts.ts';
 import { dispatchOpenDeviceDetail } from './cardActivation.ts';
@@ -23,14 +24,14 @@ import {
 } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
 import {
-  defaultPriceOptimizationConfig, isHomeBatteryDeviceId, resolveSurplusControlAvailable, state,
+  isHomeBatteryDeviceId, resolveSurplusControlAvailable, state,
 } from './state.ts';
 import { writeBatteryManaged } from './batteryManaged.ts';
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 import { renderPriorities } from './modes.ts';
 import { refreshPlan } from './plan.ts';
 import { renderPriceConfigDevices } from './priceConfig.ts';
-import { savePriceOptimizationSettings } from './priceOptimization.ts';
+import { saveDevicePriceEnabled } from './priceOptimization.ts';
 import { createIconToggle } from './components.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';
 import { debouncedSetSetting } from './utils.ts';
@@ -255,13 +256,8 @@ const buildControllableToggleHandler = (deviceId: string) => withInitialLoadGuar
 });
 
 const buildPriceToggleHandler = (deviceId: string) => withInitialLoadGuard('price opt', async (checked) => {
-  if (!state.priceOptimizationSettings[deviceId]) {
-    state.priceOptimizationSettings[deviceId] = { ...defaultPriceOptimizationConfig };
-  }
-  state.priceOptimizationSettings[deviceId].enabled = checked;
-  state.priceOptimizationSettings[deviceId].priceConfigured = true;
   try {
-    await savePriceOptimizationSettings();
+    await saveDevicePriceEnabled(deviceId, checked);
     renderPriceConfigDevices();
   } catch (error) {
     await logSettingsError('Failed to update price optimization settings', error, 'device list');
@@ -472,6 +468,11 @@ export const renderDevices = (devices: SettingsUiDeviceListItem[]) => {
   if (journey === 'devices' || journey === 'solar') {
     emptyState.hidden = true;
     renderSetupDevices(devices, target);
+    return;
+  }
+  if (journey === 'goals') {
+    emptyState.hidden = true;
+    renderSetupGoals(devices, target, () => renderDevices(state.latestDevices));
     return;
   }
   render(null, target);

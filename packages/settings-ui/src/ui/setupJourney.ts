@@ -1,11 +1,14 @@
 import { getChosenWholeHomeMeterName } from './homeyEnergyMeter.ts';
 import { settingsPowerSourceSelect } from './dom.ts';
 import { h, render } from 'preact';
-import { state } from './state.ts';
+import { hasOpenSmartTask, state } from './state.ts';
+import { supportsTemperatureControlDevice, type SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { showTab } from './tabNavigation.ts';
 import { selectHomeScope, readHomeMembership, subscribeToHomeScope, getHomeScope } from './homeScope.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
-import { readSetupReview, readSetupMarket, onSetupPathChange, notifySetupPathChange } from './setupPathFacts.ts';
+import {
+  readSetupReview, readSetupMarket, onSetupPathChange, notifySetupPathChange, readSetupLimitsInForce,
+} from './setupPathFacts.ts';
 import { formatSetupProgress, type SetupStep, type SetupPath } from './setupPathModel.ts';
 import {
   currentSetupJourney, isSolarSetupJourney, setupSavePending, waitForSetupSaves, type SetupJourneyStep,
@@ -27,10 +30,16 @@ import { parsePlanSnapshot } from './planSnapshotParse.ts';
 import { resolveDisplayPlanDeviceSnapshot } from './planLiveData.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { readActiveRecommendation, dismissSetupRecommendation } from './recommendations.ts';
+import { offersSetupGoals } from './setupGoals.ts';
 
 let actionBusy = false;
 let error: string | null = null;
 let meterLine: string | null = null;
+// Whether this visit has shown `Choose what PELS does`. Navigation, not
+// completion: Continue offers the page once, then goes on to the review, so a
+// step the page reopens (Prices, once a device follows them) does not lead
+// back to it. Never persisted.
+let goalsShown = false;
 
 const usesFlowMeter = (): boolean => settingsPowerSourceSelect?.value === 'flow';
 
@@ -43,7 +52,7 @@ let liveReadGeneration = 0;
 
 const PANEL_BY_STEP: Record<SetupJourneyStep, string> = {
   power: 'limits', devices: 'devices', solar: 'devices', hardCap: 'limits',
-  prices: 'electricity-prices', review: 'setup-review',
+  prices: 'electricity-prices', goals: 'devices', review: 'setup-review',
 };
 
 const currentStep = (): SetupJourneyStep | null => {
@@ -81,13 +90,21 @@ const runAction = async (action: () => Promise<void>): Promise<void> => {
   }
 };
 
+// Once the required steps are done, the optional page comes before the review.
+const goalsComeNext = (): boolean => (
+  !goalsShown && currentSetupJourney() !== 'goals' && offersSetupGoals(isSolarSetupJourney())
+);
+
 const continueSetup = (): void => {
   void runAction(async () => {
     const review = readSetupReview();
     if (!review) throw new Error('Setup could not be read. Return to setup and try again.');
     const next = review.steps.find((step) => step.status !== 'done');
     if (next) navigateStep(next);
-    else showTab('setup-review', 'review');
+    else if (goalsComeNext()) {
+      selectHomeScope(MAIN_HOME_ID);
+      showTab('devices', 'goals');
+    } else showTab('setup-review', 'review');
   });
 };
 
@@ -102,24 +119,32 @@ const startManaging = (): void => {
   });
 };
 
-const normalDeviceControl = (deviceId: string): string => (
-  state.controllableMap[deviceId] === true ? 'Power-limit control on' : 'Managed by PELS'
-);
+// What PELS will do with the device once it manages it: each saved control
+// that has something to act on. Power-limit control counts only while a limit
+// is in force; until the limits have been read it is named as saved.
+const describeDeviceJobs = (device: SettingsUiDeviceListItem): string => {
+  const solar = resolveSolarSetupAction(device);
+  const jobs = [
+    state.controllableMap[device.id] === true && readSetupLimitsInForce() !== false ? 'Power-limit control on' : null,
+    supportsTemperatureControlDevice(device) && state.priceOptimizationSettings[device.id]?.enabled === true
+      ? 'Price-based control on' : null,
+    hasOpenSmartTask(device.id) ? 'Smart task set' : null,
+    solar?.configured ? solar.label : null,
+  ].filter((job): job is string => job !== null);
+  return jobs.length > 0 ? jobs.join(' · ') : 'Nothing for PELS to do yet';
+};
 
 const readReviewDevices = (): SetupReviewDevice[] => {
   const membership = readHomeMembership();
   if (membership.state !== 'resolved') return [];
   return state.latestDevices.filter((device) => state.managedMap[device.id] === true
     && (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID)
-    .map((device) => {
-      const solar = resolveSolarSetupAction(device);
-      return {
-        id: device.id,
-        name: formatDisplayDeviceName(device.name),
-        control: solar?.configured ? solar.label : normalDeviceControl(device.id),
-        status: statuses.get(device.id) ?? null,
-      };
-    });
+    .map((device) => ({
+      id: device.id,
+      name: formatDisplayDeviceName(device.name),
+      control: describeDeviceJobs(device),
+      status: statuses.get(device.id) ?? null,
+    }));
 };
 
 // Before PELS has seen its first surplus, solar control is waiting, not broken:
@@ -158,6 +183,7 @@ const headerTitle = (step: SetupJourneyStep): string => {
   if (step === 'solar') return 'Use more of your own solar';
   if (step === 'devices') return 'Choose one device to start';
   if (step === 'hardCap') return 'Confirm your limits';
+  if (step === 'goals') return 'Choose what PELS does';
   return 'Confirm your price source';
 };
 
@@ -189,6 +215,7 @@ const headerDetail = (step: SetupJourneyStep, fact: SetupStep | undefined): stri
     return reading ?? fact?.detail ?? 'Reading meter settings…';
   }
   if (solarPending(step)) return usesFlowMeter() ? `${SOLAR_SURPLUS_PENDING} ${FLOW_SIGN_NOTE}` : SOLAR_SURPLUS_PENDING;
+  if (step === 'goals') return 'Optional. You can change these later on each device page.';
   if (step === 'devices' || step === 'solar') return null;
   return fact?.detail ?? null;
 };
@@ -212,11 +239,13 @@ const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourn
     progress: path ? formatSetupProgress(path) : 'Loading…',
     detail: headerDetail(step, fact),
     busy: actionBusy || setupSavePending(),
-    canContinue: fact?.status === 'done',
+    // The optional page never holds the journey back.
+    canContinue: step === 'goals' || fact?.status === 'done',
     error,
     meterHelp: solarPending(step) && usesFlowMeter(),
     fluviusHelp: step === 'power' && fact?.status !== 'done' && market.state === 'resolved' && market.country === 'BE',
-    continueLabel: path !== null && path.doneCount === path.steps.length ? 'Review setup' : 'Continue',
+    continueLabel: path !== null && path.doneCount === path.steps.length && !goalsComeNext()
+      ? 'Review setup' : 'Continue',
     onContinue: continueSetup,
     onCheckMeter: () => showTab('limits', 'power'),
     quarterHourAdvice: advice !== null,
@@ -237,6 +266,7 @@ const paintJourney = (): void => {
   for (const mount of document.querySelectorAll<HTMLElement>('.setup-journey-root')) mount.hidden = true;
   if (!step) return;
   if (step === 'review') { paintReview(); return; }
+  if (step === 'goals') goalsShown = true;
   const root = mountHeader(PANEL_BY_STEP[step]);
   if (!root) return;
   root.hidden = false;
@@ -295,7 +325,7 @@ export const initSetupJourney = (): void => {
     const step = currentStep();
     // Choosing an area leaves the Main-home journey and opens its ordinary settings.
     if (step && getHomeScope().selectedHomeId !== MAIN_HOME_ID) showTab(PANEL_BY_STEP[step]);
-    else if (step === 'devices' || step === 'solar') renderDevices(state.latestDevices);
+    else if (step === 'devices' || step === 'solar' || step === 'goals') renderDevices(state.latestDevices);
   });
   // Direct links into the review also need the accepted limits/provenance.
   if (currentSetupJourney()) void loadCapacitySettings().then(paintJourney);

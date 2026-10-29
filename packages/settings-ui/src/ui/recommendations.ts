@@ -170,23 +170,26 @@ const resolveCurrentRecommendations = (afterSetupRead: AfterSetupFactsRead): Set
     && (flowReporterRead.state === 'resolved' || flowReporterRead.state === 'stale')
     ? flowReporterRead.reporters
     : [];
-  // Device fixes first, by name; then what PELS can do next, in the order the
-  // setup path's lede names them. The second group is not sorted into the
-  // first: a wiring fix for one device outranks an optional feature.
+  // What PELS can do next first: an owner who has just finished setup needs a
+  // job for PELS before device tuning, and in a home with no limit to hold,
+  // prices, solar and Smart tasks are that job. Then the fixes for managed
+  // devices, by name. A device PELS does not manage gets none: its wiring,
+  // its car and its Flows are not PELS's to set up until the owner chooses it.
+  const managed = state.latestDevices.filter((device) => state.managedMap[device.id] === true);
   return [
+    ...(afterSetupRead.state === 'resolved'
+      ? resolveAfterSetupRecommendations(afterSetupRead.facts)
+      : []),
     ...currentChargingRecommendations.filter(({ target }) => target.kind === 'device'
-      && state.latestDevices.some((device) => device.id === target.deviceId)),
+      && managed.some((device) => device.id === target.deviceId)),
     ...resolveSetupRecommendations(
-      state.latestDevices,
+      managed,
       cars,
       state.evCarAssociations,
       state.nativeWiringMap,
       evSocReporters,
     ),
     ...resolveDeviceSettingRecommendations(),
-    ...(afterSetupRead.state === 'resolved'
-      ? resolveAfterSetupRecommendations(afterSetupRead.facts)
-      : []),
   ];
 };
 

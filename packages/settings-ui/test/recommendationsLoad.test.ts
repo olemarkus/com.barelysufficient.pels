@@ -102,6 +102,8 @@ const loadSubject = async (devices: SettingsUiDeviceDetailItem[]) => {
   ]);
   state.devicesLoaded = true;
   state.latestDevices = devices;
+  // Device fixes are for devices PELS manages; the fixtures are the owner's.
+  state.managedMap = Object.fromEntries(devices.map((device) => [device.id, true]));
   state.evCarAssociations = {};
   state.evCarAssociationsLoaded = true;
   state.nativeWiringMap = {};
@@ -373,6 +375,50 @@ describe('recommendation loading', () => {
       .toContain('Use built-in device control for Connected 300');
     expect(document.getElementById('setup-recommendations-root')?.textContent)
       .toContain('Some recommendation checks couldn’t be refreshed right now');
+  });
+
+  it('offers no device fix for a device PELS does not manage', async () => {
+    const recommendations = await loadSubject([device({
+      flowConflict: { conflictingCapabilities: ['target_charger_current'], flowName: 'Easee current' },
+    })]);
+    const { state } = await import('../src/ui/state.ts');
+    state.managedMap = {};
+    getSetting.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars());
+
+    await recommendations.loadRecommendationData();
+
+    expect(document.getElementById('setup-recommendations-root')?.textContent)
+      .not.toContain('Use built-in device control for Connected 300');
+  });
+
+  it('lists what PELS can do before the fixes for a managed device', async () => {
+    const recommendations = await loadSubject([device({
+      flowConflict: { conflictingCapabilities: ['target_charger_current'], flowName: 'Easee current' },
+    })]);
+    getSetting.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars());
+    afterSetupRead = {
+      state: 'resolved',
+      facts: {
+        setupComplete: true,
+        devices: [{
+          temperature: true, limitable: true, taskCapable: true, priceConfigured: false, usesSolarSurplus: false,
+        }],
+        priceOptimizationEnabled: true,
+        priceSource: { kind: 'priced', scheme: 'homey', chosen: true },
+        solarSurplusAvailable: false,
+        smartTaskConfigured: true,
+        market: { state: 'resolved', country: 'NL' },
+        belgianHomeOnHourlyPeriod: false,
+      },
+    };
+
+    await recommendations.loadRecommendationData();
+
+    const text = document.getElementById('setup-recommendations-root')?.textContent ?? '';
+    expect(text.indexOf('Heat in cheap hours')).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf('Heat in cheap hours')).toBeLessThan(text.indexOf('Use built-in device control for Connected 300'));
   });
 
   it('does not claim an all-clear while Price setup facts are unavailable', async () => {
