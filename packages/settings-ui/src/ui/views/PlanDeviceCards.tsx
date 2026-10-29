@@ -113,11 +113,12 @@ export const BudgetExemptChip = ({
   // The previewed deadline (when a preview ran) is echoed to the create call so
   // a confirm left open across an hour boundary persists what the user saw.
   const [deadlineAtMs, setDeadlineAtMs] = useState<number | undefined>(undefined);
-  // The server-formatted local "By {time}" anchor (e.g. "Today 17:00"), shown in
-  // the armed caption so the bounded horizon is visible on touch. Sourced from
-  // the same preview response as `deadlineAtMs` — the producer formats it in the
-  // Homey timezone so the view does no Date math (mirrors the rescue widget).
-  const [deadlineLabel, setDeadlineLabel] = useState<string | undefined>(undefined);
+  // The armed caption: the consequence of what the preview granted (over today's
+  // budget, or within the hard cap when no budget is on) and the server-formatted
+  // local "By {time}" anchor, so the bounded horizon is visible on touch. Both come
+  // from the same preview response as `deadlineAtMs`; the producer formats the
+  // time in the Homey timezone so the view does no Date math (mirrors the widget).
+  const [caption, setCaption] = useState<string | null>(null);
   // The permissions the per-device gate ACTUALLY granted, listed verbatim under
   // the caption. The rescue requests all three, but
   // `AppSmartTaskApi.gateCandidateExtraPermissions` drops any that would be inert
@@ -153,7 +154,11 @@ export const BudgetExemptChip = ({
         return;
       }
       setDeadlineAtMs(response.deadlineAtMs);
-      setDeadlineLabel(response.deadlineLabel);
+      // A preview with no granted set answers for the request, which asks for the
+      // budget exemption.
+      setCaption(formatStarvationRescueArmedCaption(
+        response.estimate.grantedRescuePermissions ?? { exemptFromBudget: true }, response.deadlineLabel,
+      ));
       setPermissionsLine(formatGrantedRescuePermissionsLine(response.estimate.grantedRescuePermissions));
       const { atPowerLimitNow } = response.estimate;
       setPowerLimitNote(atPowerLimitNow === undefined ? null : STARVATION_RESCUE_WIDGET_COPY.atPowerLimitNote[atPowerLimitNow]);
@@ -168,7 +173,7 @@ export const BudgetExemptChip = ({
       // rendering; on failure, return to idle so the user can retry.
       setChipState('idle');
       setDeadlineAtMs(undefined);
-      setDeadlineLabel(undefined);
+      setCaption(null);
       setPermissionsLine(null);
       setPowerLimitNote(null);
     });
@@ -208,9 +213,9 @@ export const BudgetExemptChip = ({
         <BoltIcon class="plan-chip__icon" />
         {label}
       </button>
-      {armed && (
+      {armed && caption !== null && (
         <p class="plan-card__rescue-caption" onClick={stopActivation}>
-          {formatStarvationRescueArmedCaption(deadlineLabel)}
+          {caption}
         </p>
       )}
       {armed && permissionsLine !== null && (

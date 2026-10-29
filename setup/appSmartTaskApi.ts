@@ -50,6 +50,7 @@ import {
   readStoredObjectiveState,
 } from '../lib/objectives/deferredObjectives/limitGrantGate';
 import { isRuntimePlannedDevice } from './appDeviceSupport';
+import { fitRescueToDailyBudget } from '../packages/shared-domain/src/starvationRescueShared';
 import { asMeteredSnapshot } from '../lib/ports/meteredSnapshots';
 
 /**
@@ -118,11 +119,23 @@ export class AppSmartTaskApi {
   // declared definite there) and load-bearing here (`AppContext` types the
   // member optional), which is exactly the nullability a moved body inherits.
   private requireDailyBudgetSnapshot(): DailyBudgetUiPayload | null {
+    return this.requireDailyBudgetService().getSnapshot();
+  }
+
+  private requireDailyBudgetService(): NonNullable<AppContext['dailyBudgetService']> {
     const service = this.ctx.dailyBudgetService;
     if (!service) {
       throw new Error('DailyBudgetService must be initialized before previewing a smart task.');
     }
-    return service.getSnapshot();
+    return service;
+  }
+
+  // The rescue's permissions for today's daily budget, decided by the shared
+  // rescue rule (`fitRescueToDailyBudget`); this only supplies whether one is on.
+  private fitRescueToBudgetState(
+    candidate: DeferredObjectivePlanPreviewCandidate,
+  ): DeferredObjectivePlanPreviewCandidate {
+    return fitRescueToDailyBudget(candidate, this.requireDailyBudgetService().isEnabled());
   }
 
 
@@ -141,7 +154,7 @@ export class AppSmartTaskApi {
     freshRescueCandidate: DeferredObjectivePlanPreviewCandidate,
   ): { estimate: DeferredObjectivePlanPreviewEstimate; deadlineAtMs: number; hasExistingObjective: boolean } {
     return {
-      estimate: this.previewDeferredObjectivePlan(deviceId, freshRescueCandidate),
+      estimate: this.previewDeferredObjectivePlan(deviceId, this.fitRescueToBudgetState(freshRescueCandidate)),
       deadlineAtMs: freshRescueCandidate.deadlineAtMs,
       hasExistingObjective: false,
     };
@@ -438,7 +451,9 @@ export class AppSmartTaskApi {
   ): SmartTaskWriteResult {
     // Defence-in-depth (feedback_hard_cap_is_physical): this lane exists only to
     // grant a budget exemption; reject any candidate that does not carry one so
-    // the exemption can never be smuggled in through a generic create.
+    // the exemption can never be smuggled in through a generic create. The
+    // persisted task drops it again while no daily budget is on
+    // (`fitRescueToDailyBudget`), where it would lift nothing.
     if (candidate.rescue?.exemptFromBudget !== 'always') {
       return { ok: false, reason: 'invalid_candidate' };
     }
@@ -451,7 +466,7 @@ export class AppSmartTaskApi {
     // `'preserve'`: this lane is a strictly-fresh create (the guard above
     // refuses a device that already has a task), so there is no standing rescue
     // to preserve OR replace — it takes the additive default the widget lane uses.
-    return this.createDeferredObjective(deviceId, candidate, 'preserve');
+    return this.createDeferredObjective(deviceId, this.fitRescueToBudgetState(candidate), 'preserve');
   }
 
 }

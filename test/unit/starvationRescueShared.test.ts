@@ -1,6 +1,7 @@
 import type { StarvationRescueDevice } from '../../packages/contracts/src/starvationRescue';
 import {
   buildRescueCandidate,
+  fitRescueToDailyBudget,
   mapAppRescueReason,
   parseRescueRequest,
   RESCUE_DEADLINE_HORIZON_MS,
@@ -145,5 +146,20 @@ describe('mapAppRescueReason', () => {
 describe('RESCUE_DEADLINE_HORIZON_MS', () => {
   it('is the 3-hour near-term horizon', () => {
     expect(RESCUE_DEADLINE_HORIZON_MS).toBe(3 * 60 * 60 * 1000);
+  });
+});
+
+describe('fitRescueToDailyBudget', () => {
+  const candidate = buildRescueCandidate({ kind: 'temperature', targetTemperatureC: 65 }, 1_000);
+
+  it('keeps the budget exemption while a daily budget is on', () => {
+    expect(fitRescueToDailyBudget(candidate, true)).toBe(candidate);
+  });
+
+  it('drops only the budget exemption while none is on, keeping what acts within the hard cap', () => {
+    expect(fitRescueToDailyBudget(candidate, false)).toEqual({
+      ...candidate,
+      rescue: { limitLowerPriorityDevices: 'always', pauseLowerPriorityDevices: 'always' },
+    });
   });
 });

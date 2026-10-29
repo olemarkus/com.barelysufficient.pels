@@ -158,6 +158,34 @@ describe('BudgetExemptChip', () => {
     expect(caption?.textContent).toContain(`${STARVATION_RESCUE_WIDGET_COPY.byLabel} Today 17:00`);
   });
 
+  it('names the hard cap, not a budget, when the rescue grants no budget exemption', async () => {
+    // No daily budget is on, so the app grants the rescue only what acts within
+    // the hard cap. The card must not promise to go over a budget there is none of.
+    callApi.mockImplementation((method: string, uri: string) => {
+      if (uri.includes('preview')) {
+        return Promise.resolve({
+          ok: true, deadlineAtMs: 1_000, deadlineLabel: 'Today 10:26',
+          estimate: {
+            scheduledHours: [],
+            grantedRescuePermissions: {
+              exemptFromBudget: false, limitLowerPriorityDevices: true, pauseLowerPriorityDevices: true,
+            },
+          },
+        });
+      }
+      return Promise.resolve({});
+    });
+    const mount = renderChip(buildDevice());
+    const button = mount.querySelector('button') as HTMLButtonElement;
+    await act(async () => { button.click(); });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(mount.querySelector('.plan-card__rescue-caption')?.textContent).toBe(
+      `${STARVATION_RESCUE_WIDGET_COPY.rescueConsequenceWithinCap} ${STARVATION_RESCUE_WIDGET_COPY.byLabel} Today 10:26`,
+    );
+    expect(mount.querySelector('.plan-card__rescue-perms')?.textContent).not.toMatch(/budget/i);
+  });
+
   it.each(['capacity', 'grid'] as const)('shows the existing %s limit note before confirming a rescue', async (atPowerLimitNow) => {
     callApi.mockResolvedValue({
       ok: true,
