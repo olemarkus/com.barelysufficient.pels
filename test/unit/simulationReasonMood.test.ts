@@ -94,6 +94,7 @@ describe('toSimulationReasonLine — held/limited reasons read hypothetically in
   it('rewrites the numbered waiting line exactly as it rewrites the bare one', () => {
     expect(toSimulationReasonLine('Waiting to resume — 0.8 kW more needed', true))
       .toBe('Would be waiting to resume — 0.8 kW more needed (simulation)');
+    expect(toSimulationReasonLine('Waiting to increase', true)).toBe('Would be waiting to increase (simulation)');
     expect(toSimulationReasonLine('Waiting to increase — 0.3 kW more needed', true))
       .toBe('Would be waiting to increase — 0.3 kW more needed (simulation)');
     expect(toSimulationReasonLine('Waiting to resume — 0.8 kW more needed', false))
