@@ -2561,6 +2561,28 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(persisted.savedMeteredDelivery()).toEqual([]);
     });
 
+    it('retains restored delivery and cost when the first post-restart price read throws', () => {
+      const persisted = buildPersistDeps();
+      const deadlineAtMs = 15 * 60_000;
+      const deps = { ...persisted.deps, getMeteredPricePeriods: () => quarterPrices(0, [2]) };
+      const beforeRestart = new DeferredObjectivePlanHistoryRecorder(deps);
+      tick(beforeRestart, 0, deadlineAtMs, 2);
+      tick(beforeRestart, 5 * 60_000, deadlineAtMs, 2);
+      beforeRestart.flushIfDirty();
+      const savedDelivery = persisted.savedMeteredDelivery()[0]!;
+      const getMeteredPricePeriods = vi.fn(deps.getMeteredPricePeriods)
+        .mockImplementationOnce(() => { throw new Error('transient settings read'); });
+      const afterRestart = new DeferredObjectivePlanHistoryRecorder({ ...deps, getMeteredPricePeriods });
+      expect(() => tick(afterRestart, 10 * 60_000, deadlineAtMs, 0)).toThrow('transient settings read');
+      tick(afterRestart, 11 * 60_000, deadlineAtMs, 0);
+      tick(afterRestart, deadlineAtMs, deadlineAtMs, 0);
+      afterRestart.flushIfDirty();
+      expect(persisted.saved()!.entries[0]).toMatchObject({
+        deliveredKWh: savedDelivery.deliveredKWh, totalCost: savedDelivery.totalCost,
+      });
+      expect(persisted.saved()!.entries[0]!.hourlyContributions).toEqual(savedDelivery.hourlyContributions);
+    });
+
     it('finalizes restored metered delivery when the first post-restart tick is after the deadline', () => {
       const persisted = buildPersistDeps();
       const deadlineAtMs = 10 * 60_000;

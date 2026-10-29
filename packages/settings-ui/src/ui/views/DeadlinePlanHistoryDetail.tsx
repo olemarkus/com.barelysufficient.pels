@@ -221,6 +221,8 @@ export const buildHistoryDetailChartOption = (
   const tickInterval = Math.max(1, Math.ceil(span / tickUnit / tickCount)) * tickUnit;
   const tickAnchor = Math.ceil(windowStart / tickUnit) * tickUnit;
   return {
+    // Cadence is UTC-aligned; display labels still use the selected time zone.
+    useUTC: true,
     animation: false,
     backgroundColor: 'transparent',
     textStyle: { color: palette.text, fontFamily: 'inherit' },
