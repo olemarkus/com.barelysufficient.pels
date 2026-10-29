@@ -13,6 +13,8 @@ export type RestoreDeps = {
   powerTracker: PowerTrackerState;
   getShedBehavior: (deviceId: string) => ShedBehavior;
   hasStartedDrawingSince: ObservedDeviceReads['hasStartedDrawingSince'];
+  getLiveDrawAt: ObservedDeviceReads['getLiveDrawAt'];
+  hasDrawnAtLeastSince: ObservedDeviceReads['hasDrawnAtLeastSince'];
   /** This build's resolved setpoints per temperature device (`PlanContext.temperatureSetpoints`);
    * the swap lane reads whether limiting a device still releases demand from it. */
   temperatureSetpoints: TemperatureSetpointsByDevice;

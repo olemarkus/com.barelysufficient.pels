@@ -105,16 +105,23 @@ export const buildRestoreTiming = (
 
 /** How much of its expected draw a restored device must reach before the next increase is admitted. */
 const STARTED_DRAW_FRACTION = 0.5;
+/**
+ * The smallest rise that counts as a running stepped device's step-up landing,
+ * well clear of a running charger's ordinary fluctuation.
+ */
+const MIN_STEP_UP_RISE_KW = 0.3;
 
 /**
  * Pacing evidence, not command confirmation or attribution of the household
- * watts. Every restore still inside the ordinary window needs its device to
- * have started from idle after the restore and reached half its expected draw
- * before the time the whole-home reading's current value was measured after,
- * so that value includes the draw. A running device that steps up or has its
- * setpoint raised never started, so it keeps the timer, as does a restore whose
- * own step or target command is unconfirmed, or any in-flight or pending on/off
- * command.
+ * watts. Every restore still inside the ordinary window needs its device's draw
+ * to have visibly arrived before the time the whole-home reading's current value
+ * was measured after, so that value includes the draw. A device resumed from
+ * idle must have started drawing after the restore and reached half its expected
+ * draw. A stepped device that was already running when it stepped up must have
+ * risen above its draw at the step-up by half the way to its new step's planning
+ * power, and at least `MIN_STEP_UP_RISE_KW`. A running device whose setpoint was
+ * raised keeps the timer, as does a restore whose own step or target command is
+ * unconfirmed, or any in-flight or pending on/off command.
  */
 function recentRestoresHavePowerEvidence(
   state: PlanEngineState,
@@ -133,9 +140,23 @@ function recentRestoresHavePowerEvidence(
     return device !== undefined && device.stepCommandPending !== true
       && state.pendingTargetCommands[deviceId] === undefined
       && (lastInstabilityMs === null || lastInstabilityMs < restoredAtMs)
-      && deps.hasStartedDrawingSince(deviceId, restoredAtMs, measuredAfterMs,
-        Math.max(MIN_ACTIVE_MEASURED_POWER_KW, resolveExpectedDrawKw(device) * STARTED_DRAW_FRACTION));
+      && hasRestoredDrawArrived(deps, device, restoredAtMs, measuredAfterMs);
   });
+}
+
+function hasRestoredDrawArrived(
+  deps: RestoreDeps,
+  device: DevicePlanDevice,
+  restoredAtMs: number,
+  measuredAfterMs: number,
+): boolean {
+  if (deps.hasStartedDrawingSince(device.id, restoredAtMs, measuredAfterMs,
+    Math.max(MIN_ACTIVE_MEASURED_POWER_KW, resolveExpectedDrawKw(device) * STARTED_DRAW_FRACTION))) return true;
+  if (!isSteppedLoadDevice(device)) return false;
+  const drawAtStepUpKw = deps.getLiveDrawAt(device.id, restoredAtMs);
+  if (drawAtStepUpKw === null || drawAtStepUpKw < MIN_ACTIVE_MEASURED_POWER_KW) return false;
+  const riseKw = Math.max(MIN_STEP_UP_RISE_KW, (device.planningPowerKw - drawAtStepUpKw) * STARTED_DRAW_FRACTION);
+  return deps.hasDrawnAtLeastSince(device.id, restoredAtMs, measuredAfterMs, drawAtStepUpKw + riseKw);
 }
 
 /** The step it runs at for a stepped load, its running draw otherwise. */

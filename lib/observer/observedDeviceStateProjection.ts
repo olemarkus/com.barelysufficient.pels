@@ -255,6 +255,21 @@ export type ObservedDeviceReads = {
      * back to idle or stops being live withdraws the answer.
      */
     hasStartedDrawingSince(deviceId: string, sinceMs: number, reachedBeforeMs: number, minKw: number): boolean;
+    /**
+     * The live draw this device's reading held at `atMs`: the level of the last
+     * live reading received by then. `null` when no live reading in the kept
+     * history was received by then, or the reading stopped being live since.
+     */
+    getLiveDrawAt(deviceId: string, atMs: number): number | null;
+    /**
+     * Whether this device reached at least `minKw` in a live reading measured and
+     * received after `sinceMs` and received before `reachedBeforeMs`, and is still
+     * drawing at least that. Unlike `hasStartedDrawingSince` it holds for a device
+     * that was already running, so a caller judges a rise by passing a level above
+     * the device's draw at `sinceMs`. A level reached before `sinceMs` never
+     * counts, nor does a rise of less than the active threshold within one level.
+     */
+    hasDrawnAtLeastSince(deviceId: string, sinceMs: number, reachedBeforeMs: number, minKw: number): boolean;
     /** The accepted-write counter; see `ObservedDeviceStateProjection.getRevision`. */
     getRevision(): number;
 };
@@ -264,6 +279,7 @@ type ProjectionEntry = {
     seq?: number;
     observedAtMs?: number;
     drawingRun?: DrawingRun;
+    drawLevels?: readonly DrawLevel[];
 };
 
 /**
@@ -277,6 +293,26 @@ type DrawingRun = {
     levelKw: number;
     levelReceivedAtMs: number;
 };
+
+/**
+ * One level of a device's live draw: a reading at least the active threshold
+ * away from the level before it, so ordinary fluctuation adds no level and a
+ * step does. Dated by the reading that reached it.
+ */
+type DrawLevel = {
+    kw: number;
+    measuredAtMs: number;
+    receivedAtMs: number;
+};
+
+/**
+ * How far back the levels reach, measured from the newest one. It covers the
+ * longest restore cooldown a reader judges a rise within, and the newest older
+ * level is kept beyond it so the draw at any moment inside it stays answerable.
+ */
+const DRAW_LEVEL_HISTORY_MS = 15 * 60 * 1000;
+/** A bound on the levels kept per device, whatever the reading cadence. */
+const MAX_DRAW_LEVELS = 64;
 
 /**
  * Freeze the decided value before it is stored so a reader cannot mutate the
@@ -461,6 +497,25 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
             && run.levelKw >= minKw && run.levelReceivedAtMs < reachedBeforeMs;
     }
 
+    getLiveDrawAt(deviceId: string, atMs: number): number | null {
+        const levels = this.byId.get(deviceId)?.drawLevels ?? [];
+        let kw: number | null = null;
+        for (const level of levels) {
+            if (level.receivedAtMs > atMs) break;
+            kw = level.kw;
+        }
+        return kw;
+    }
+
+    hasDrawnAtLeastSince(deviceId: string, sinceMs: number, reachedBeforeMs: number, minKw: number): boolean {
+        const levels = this.byId.get(deviceId)?.drawLevels;
+        const latest = levels?.at(-1);
+        if (!levels || latest === undefined || latest.kw < minKw) return false;
+        return levels.some((level) => level.kw >= minKw
+            && level.measuredAtMs > sinceMs && level.receivedAtMs > sinceMs
+            && level.receivedAtMs < reachedBeforeMs);
+    }
+
     /**
      * Narrow, like `getObservedState`, and with no wide sibling: it has no
      * production caller at all — only the projection's own specs. Closing it
@@ -494,6 +549,7 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
         this.byId.set(value.id, {
             value: freezeObserved(value), seq, observedAtMs,
             drawingRun: trackDrawingRun(prev, value, observedAtMs),
+            drawLevels: trackDrawLevels(prev, value, observedAtMs),
         });
         this.revision += 1;
     }
@@ -538,6 +594,29 @@ function trackDrawingRun(
         startMeasuredAtMs: reading.measuredAtMs, startReceivedAtMs: receivedAtMs,
         levelKw: reading.kw, levelReceivedAtMs: receivedAtMs,
     };
+}
+
+/**
+ * The levels continue through unrelated updates, repeats and readings within the
+ * active threshold of the last level, which re-date nothing. A reading that is
+ * not live clears them, so a level never spans a gap the device did not report.
+ */
+function trackDrawLevels(
+    previous: ProjectionEntry | undefined,
+    value: ProjectedObservedDeviceState,
+    receivedAtMs: number | undefined,
+): readonly DrawLevel[] | undefined {
+    const reading = readLivePower(value);
+    if (reading === null) return undefined;
+    if (receivedAtMs === undefined) return previous?.drawLevels;
+    const levels = previous?.drawLevels ?? [];
+    const last = levels.at(-1);
+    if (last !== undefined && (reading.measuredAtMs <= last.measuredAtMs
+        || Math.abs(reading.kw - last.kw) < MIN_ACTIVE_MEASURED_POWER_KW)) return levels;
+    const next = [...levels, { kw: reading.kw, measuredAtMs: reading.measuredAtMs, receivedAtMs }];
+    const cutoffMs = receivedAtMs - DRAW_LEVEL_HISTORY_MS;
+    const firstInside = next.findIndex((level) => level.receivedAtMs >= cutoffMs);
+    return next.slice(Math.max(0, firstInside - 1, next.length - MAX_DRAW_LEVELS));
 }
 
 function readLivePower(value: ProjectedObservedDeviceState): { kw: number; measuredAtMs: number } | null {

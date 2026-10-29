@@ -117,6 +117,8 @@ const buildContext = (overrides: PlanCycleSpec = {}): { context: PlanContext; po
 // device sheds by turning off. A case states when the power tracker last read.
 const restoreDeps = (lastTimestamp: number): RestoreDeps => ({
   hasStartedDrawingSince: () => false,
+  getLiveDrawAt: () => null,
+  hasDrawnAtLeastSince: () => false,
   structuredLog: testLogger,
   powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp }),
   temperatureSetpoints: new Map(),

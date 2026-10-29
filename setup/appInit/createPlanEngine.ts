@@ -133,6 +133,8 @@ export function createPlanEngineComposition(
     getDailyBudgetSnapshot: scope.getDailyBudgetSnapshot,
     getShedBehavior,
     hasStartedDrawingSince: ctx.observer.hasStartedDrawingSince.bind(ctx.observer),
+    getLiveDrawAt: ctx.observer.getLiveDrawAt.bind(ctx.observer),
+    hasDrawnAtLeastSince: ctx.observer.hasDrawnAtLeastSince.bind(ctx.observer),
     deviceDiagnostics,
     structuredLog,
     // Smart-task decoration seam, owned by the scope (`buildMainHomeScope`

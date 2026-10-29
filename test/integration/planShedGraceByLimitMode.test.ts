@@ -79,6 +79,8 @@ const buildHarness = (scenario: Scenario) => {
   };
   const builder = new PlanBuilder({
     hasStartedDrawingSince: () => false,
+    getLiveDrawAt: () => null,
+    hasDrawnAtLeastSince: () => false,
     structuredLog: testLogger,
     leaveOffOnRelease: () => 'released',
     getInferredSurplusKw: () => 0,

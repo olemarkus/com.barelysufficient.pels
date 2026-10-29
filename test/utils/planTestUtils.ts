@@ -1447,6 +1447,8 @@ export const restoreCycleFixture = (
     structuredLog: testLogger,
     powerTracker: {} as PowerTrackerState,
     hasStartedDrawingSince: () => false,
+    getLiveDrawAt: () => null,
+    hasDrawnAtLeastSince: () => false,
     getShedBehavior: () => ({ action: 'turn_off' }),
     temperatureSetpoints: new Map(),
   },
@@ -1576,6 +1578,8 @@ export const buildInitialPlanDevicesForSpec = (spec: {
  * spec gives some, and the shedding decision built from the two flags the pass
  * reads off it, out of shortfall unless the spec says otherwise.
  */
+type ObservedDrawReadKey = 'hasStartedDrawingSince' | 'getLiveDrawAt' | 'hasDrawnAtLeastSince';
+
 export const applyRestorePlanForSpec = (spec: {
   planDevices: DevicePlanDevice[];
   context: PlanContext;
@@ -1584,8 +1588,7 @@ export const applyRestorePlanForSpec = (spec: {
   storageLevers?: Readonly<Record<string, StorageLeverState>>;
   sheddingActive: boolean;
   guardInShortfall?: boolean;
-  deps: Omit<RestoreDeps, 'hasStartedDrawingSince'>
-    & Partial<Pick<RestoreDeps, 'hasStartedDrawingSince'>>;
+  deps: Omit<RestoreDeps, ObservedDrawReadKey> & Partial<Pick<RestoreDeps, ObservedDrawReadKey>>;
 }): RestorePlanResult => applyRestorePlan(
   spec.planDevices,
   spec.context,
@@ -1593,5 +1596,5 @@ export const applyRestorePlanForSpec = (spec: {
   spec.state,
   spec.storageLevers ?? {},
   sheddingPlanFixture({ sheddingActive: spec.sheddingActive, guardInShortfall: spec.guardInShortfall ?? false }),
-  { hasStartedDrawingSince: () => false, ...spec.deps },
+  { hasStartedDrawingSince: () => false, getLiveDrawAt: () => null, hasDrawnAtLeastSince: () => false, ...spec.deps },
 );

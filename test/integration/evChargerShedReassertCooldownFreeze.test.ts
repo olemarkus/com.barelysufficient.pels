@@ -370,7 +370,7 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
     // of expiring, which is exactly the prod freeze.
     const powerTracker = { lastTimestamp: Date.now() } as PowerTrackerState;
     const timing = buildRestoreTiming(state, 6.5, {
-      powerTracker, hasStartedDrawingSince: () => false,
+      powerTracker, hasStartedDrawingSince: () => false, getLiveDrawAt: () => null, hasDrawnAtLeastSince: () => false,
       getShedBehavior: () => ({ action: 'turn_off' }),
       temperatureSetpoints: new Map(), structuredLog: testLogger,
     }, [], Date.now());
