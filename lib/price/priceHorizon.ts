@@ -51,6 +51,34 @@ export const buildMeteredPricePeriodsForScheme = (
   return buildMeteredPricePeriods(periods, band, { unit: costUnit, divisor: costDivisor });
 };
 
+// A delivery tick books the stretch since the previous tick, so it can price
+// periods that started before a day rollover dropped their payload. A day of
+// served periods covers any tick gap within one process.
+const METERED_PRICE_RETENTION_MS = 24 * 60 * MINUTE_MS;
+
+/**
+ * The periods served now, plus earlier served periods that have started, still
+ * fall inside the retention window, and no longer appear in the series (the
+ * rollover cleared their day). A retained period keeps the price, tone and
+ * currency it was served with. A period that has not started is never
+ * retained: a source that withdraws a future period has withdrawn its price.
+ */
+export const retainServedMeteredPeriods = (
+  previous: readonly MeteredPricePeriod[],
+  served: readonly MeteredPricePeriod[],
+  nowMs: number,
+): MeteredPricePeriod[] => {
+  const sameCurrency = (period: MeteredPricePeriod): boolean => served.every((current) => (
+    current.costDisplay.unit === period.costDisplay.unit
+      && current.costDisplay.divisor === period.costDisplay.divisor
+  ));
+  const retained = previous.filter((period) => period.startMs < nowMs
+    && period.endMs > nowMs - METERED_PRICE_RETENTION_MS
+    && sameCurrency(period)
+    && !served.some((current) => current.startMs < period.endMs && current.endMs > period.startMs));
+  return [...retained, ...served].sort((left, right) => left.startMs - right.startMs);
+};
+
 /** Native task prices for presentation, alongside the existing hourly payload. */
 export const buildTaskPricePeriodsForUi = (
   periods: CombinedPricePeriod[],

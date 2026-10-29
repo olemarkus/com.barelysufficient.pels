@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PriceService from '../../lib/price/priceService';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import {
-  EXPORT_FIXED, EXPORT_PRICE_ENABLED, EXPORT_SPOT_FACTOR, FLOW_PRICES_TODAY, PRICE_SCHEME,
+  EXPORT_FIXED, EXPORT_PRICE_ENABLED, EXPORT_SPOT_FACTOR, FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW, PRICE_SCHEME,
 } from '../../lib/utils/settingsKeys';
 import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { noHomeyEnergyPrices, noHomeyWebApi } from '../helpers/homeyWebApiStub';
@@ -15,10 +15,10 @@ const START_MS = Date.parse('2026-10-25T10:00:00Z');
 const QUARTER_MS = 15 * 60_000;
 let priceCache = createInMemoryPriceCache();
 
-const createService = (): PriceService => new PriceService(
+const createService = (timeZone = 'Europe/Stockholm'): PriceService => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
   { structuredLog: testLogger },
-  () => 'Europe/Stockholm',
+  () => timeZone,
   noHomeyEnergyPrices,
   createPriceDataStore(mockHomeyInstance.settings, priceCache),
   () => ({}),
@@ -79,5 +79,40 @@ describe('Smart-task prices from the native source', () => {
     expect(metered.map((entry) => entry.priceValue)).toEqual([-2, 8]);
     expect(metered.map((entry) => entry.tone)).toEqual(['cheap', 'expensive']);
     expect(metered.every((entry) => entry.costDisplay.divisor === 1)).toBe(true);
+  });
+
+  // A delivery tick after local midnight books the seconds before it too. The
+  // day rollover has dropped yesterday's payload by then, so the price owner
+  // keeps the periods it served until they have left the metering window.
+  it('prices a delivery slice that straddles local midnight', () => {
+    const midnightMs = Date.parse('2026-10-28T23:00:00Z'); // 00:00 in Oslo
+    const quarters = (dayStartMs: number, prices: number[]) => prices.map((totalPrice, index) => ({
+      startsAt: new Date(dayStartMs + index * QUARTER_MS).toISOString(),
+      durationMinutes: 15,
+      totalPrice,
+    }));
+    priceCache.write(FLOW_PRICES_TODAY, {
+      dateKey: '2026-10-28',
+      pricesByHour: { 23: 6 },
+      pricesByPeriod: quarters(midnightMs - 4 * QUARTER_MS, [3, 5, 7, 9]),
+      updatedAt: new Date(midnightMs - 4 * QUARTER_MS).toISOString(),
+    });
+    priceCache.write(FLOW_PRICES_TOMORROW, {
+      dateKey: '2026-10-29',
+      pricesByHour: { 0: 2 },
+      pricesByPeriod: quarters(midnightMs, [1, 2, 3, 2]),
+      updatedAt: new Date(midnightMs - 4 * QUARTER_MS).toISOString(),
+    });
+    const service = createService('Europe/Oslo');
+    vi.setSystemTime(midnightMs - 30_000);
+    expect(service.getMeteredPricePeriods(midnightMs - 60_000, midnightMs - 30_000)
+      .map((entry) => entry.priceValue)).toEqual([9]);
+
+    vi.setSystemTime(midnightMs + 15_000);
+    const metered = service.getMeteredPricePeriods(midnightMs - 15_000, midnightMs + 15_000);
+    expect(metered.map((entry) => [entry.startMs, entry.endMs, entry.priceValue])).toEqual([
+      [midnightMs - QUARTER_MS, midnightMs, 9],
+      [midnightMs, midnightMs + QUARTER_MS, 1],
+    ]);
   });
 });
