@@ -212,8 +212,8 @@ describe('settingsOverviewReadModel', () => {
 
     expect(wire.status.kind).toBe(dryRun ? 'active' : 'held');
     expect(wire.status.reason?.text).toBe(dryRun
-      ? 'Would be waiting to increase — 0.9 kW more needed (simulation)'
-      : 'Waiting to increase — 0.9 kW more needed');
+      ? 'Would be waiting to increase (simulation)'
+      : 'Waiting to increase');
   });
 
   // Report 2026-10-28-diag-niro-charge-not-starting: the fairness rule cut a charger

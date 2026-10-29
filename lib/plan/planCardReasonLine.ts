@@ -247,11 +247,24 @@ export const formatFairnessHoldCardLine = (
     : formatStarvedHoldLine(starvedForMs, formatSteppedFairnessNeed(hold.limitedDeviceCount));
 };
 
+// A running stepped device denied a step-up says only that it is waiting, with no
+// figure (owner ruling 2026-10-29). Its gap was the way back to its top step, not
+// what the house is over by, so "Waiting to increase — 7.8 kW more needed" read as
+// a house shortfall that was not there; the details belong in the preview. A
+// held-back device keeps its elapsed stem, and nothing after it.
+export const STEP_UP_HELD_LINE = 'Waiting to increase';
+
 export const formatShortfallLine = (
   shortfallKw: number,
   verb: HeldCardReasonVerb,
   starvation?: SettingsUiPlanDeviceStarvation | null,
-): string => formatHeldNeedLine(formatShortfallNeed(shortfallKw), verb, starvation);
+): string => {
+  if (verb === 'increase') {
+    const starvedForMs = resolveStarvedForMs(starvation);
+    return starvedForMs === null ? STEP_UP_HELD_LINE : `Held ${formatStarvationDurationLabel(starvedForMs)}`;
+  }
+  return formatHeldNeedLine(formatShortfallNeed(shortfallKw), verb, starvation);
+};
 
 // Verb-adjusted form of `PLAN_STATE_HOURLY_BUDGET_EXHAUSTED_STATUS` (the
 // constant is the `resume` form and stays the log formatter's string).

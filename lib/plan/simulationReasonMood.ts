@@ -20,6 +20,7 @@ import {
   PLAN_STATE_DEFERRED_OBJECTIVE_SATISFIED_STATUS,
   PLAN_STATE_HELD_FALLBACK_STATUS,
 } from '../../packages/shared-domain/src/planStateLabels';
+import { STEP_UP_HELD_LINE } from './planCardReasonLine';
 
 // Swap-pending copy has a bare and a named-target variant ("Making room for
 // higher-priority device" / "… (Bedroom)"); the prefix rewrite carries any
@@ -43,6 +44,9 @@ const EXACT_SIMULATION_LINES = new Map<string, string>([
   // or a card scrolled away from the banner reads as a factual hold PELS is not
   // performing.
   [PLAN_STATE_HELD_FALLBACK_STATUS, 'Would be held back'],
+  // A running stepped device denied a step-up: a hold PELS performs, so
+  // hypothetical in simulation like the fallback above.
+  [STEP_UP_HELD_LINE, 'Would be waiting to increase'],
 ]);
 
 export const toSimulationReasonLine = (label: string, dryRun: boolean): string => {

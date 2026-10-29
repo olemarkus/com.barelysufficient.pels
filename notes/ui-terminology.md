@@ -384,7 +384,7 @@ shared by all three card variants):
 
 | Situation | Line |
 |---|---|
-| Held on power, shortfall known | `Waiting to resume — 0.8 kW more needed` (stepped step-up: `Waiting to increase — …`) |
+| Held on power, shortfall known | `Waiting to resume — 0.8 kW more needed` (running stepped step-up: `Waiting to increase`, no figure, owner ruling 2026-10-29: the gap was the way back to its top step, not what the house is over by; held back: `Held 2 h`) |
 | …and held long enough to count as held back | `Held 2 h — 0.8 kW more needed` |
 | Held because the selected capacity period's energy budget is spent | `Waiting to resume — this capacity period's budget is spent` (held back: `Held 2 h — this capacity period's budget is spent`) |
 | Held in the last ten minutes of the hour only because the next hour's target cannot hold the device (`endOfHourDrain`, `notes/end-of-hour-mode.md`; short against the drain pace too keeps the kW line) | `Waiting to resume — this hour is ending` (stepped step-up: `Waiting to increase — …`; held back: `Held 2 h — this hour is ending`). No kW: the gap would be against the next hour's target while the Overview shows room against the falling drain pace. Promises nothing about the next hour |

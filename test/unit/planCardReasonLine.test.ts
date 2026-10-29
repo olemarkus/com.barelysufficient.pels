@@ -295,12 +295,12 @@ describe('resolveHeldCardReasonLine', () => {
       expect(forCode(PLAN_REASON_CODES.dailyBudget)).toBe(forCode(PLAN_REASON_CODES.capacity));
     });
 
-    // The stepped card's `increase` verb has no bearing on the starved stem:
-    // "Held 45 min" describes the hold, not the transition being denied.
-    it('drops the verb distinction once starved', () => {
+    // A running stepped device denied a step-up carries no figure (owner ruling
+    // 2026-10-29), so once starved it reads the elapsed stem alone.
+    it('reads the elapsed stem alone for a starved step-up', () => {
       expect(resolveHeldCardReasonLine(
         { code: PLAN_REASON_CODES.capacity, shortfallKw: 0.3 }, starvation(45 * 60 * 1000), 'increase',
-      )).toBe(`Held 45${NBSP}min — 0.3 kW more needed`);
+      )).toBe(`Held 45${NBSP}min`);
     });
 
     it('decorates the spent-hour line, which still carries no kW', () => {
@@ -379,7 +379,7 @@ describe('resolveHeldCardReasonLine', () => {
     it('says "increase" for a running device denied a step up', () => {
       expect(resolveHeldCardReasonLine(
         { code: PLAN_REASON_CODES.dailyBudget, shortfallKw: 0.3 }, undefined, 'increase',
-      )).toBe('Waiting to increase — 0.3 kW more needed');
+      )).toBe('Waiting to increase');
     });
   });
 });

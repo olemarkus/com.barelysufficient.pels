@@ -523,7 +523,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Waiting to increase — 0.5 kW more needed');
+      expect(result).toBe('Waiting to increase');
     });
 
     // A swap victim denied a step-up carries the normalizer-attached gap —
@@ -540,7 +540,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Waiting to increase — 0.7 kW more needed');
+      expect(result).toBe('Waiting to increase');
     });
 
     // The exhausted-hour hold carries no gap by design; a running device denied
