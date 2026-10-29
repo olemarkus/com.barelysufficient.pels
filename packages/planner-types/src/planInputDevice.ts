@@ -2,7 +2,6 @@ import type {
   HomeBatterySetpointRange,
   DeviceControlAdapterSnapshot,
   DeviceControlModel,
-  DeviceOperatingPowerRange,
   DeviceStartPolicy,
   ExpectedPowerSource,
   RestorePowerSource,
@@ -771,8 +770,6 @@ export type PlanInputDeviceBase = {
    * (`lib/plan/shedding/chargeTargetHold.ts`).
    */
   chargeTargetHold: ChargeTargetHold;
-  /** A configured ceiling below the physical minimum is a standing off requirement. */
-  operatingPowerRange: DeviceOperatingPowerRange;
   /**
    * A smart task is ACTIVELY DRIVING this device this cycle, so its charge
    * target does not hold it: a task that booked this hour may charge past the

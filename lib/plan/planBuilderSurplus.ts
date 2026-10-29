@@ -1,5 +1,4 @@
 import type { InverterDecision } from '../planContract/inverterDecision';
-import { isOperatingPowerHeldDevice, resolveOperatingPowerHold } from './shedding/operatingPowerHold';
 import { storageSetpointToleranceW } from '../planContract/storageDecision';
 import type { StorageRelief } from './battery/storageRelief';
 import type { DevicePlanDevice } from './planTypes';
@@ -68,8 +67,6 @@ export function mergeHoldsIntoShedSet(shedSet: Set<string>, holds: ReadonlyArray
  * - A charger its target battery level holds off: it will not charge when
  *   surplus arrives, so it must not reserve pool another device could use. Its
  *   own hold claims it (`resolveChargeTargetHold`).
- * - A device whose operating ceiling cannot support its physical minimum:
- *   its own off hold wins, so it cannot reserve surplus it will not use.
  */
 export function resolvePostureExcludeIds(
   decoration: Pick<DeferredDecorationBundle, 'admittedDeviceIds'>,
@@ -79,7 +76,6 @@ export function resolvePostureExcludeIds(
     ...decoration.admittedDeviceIds,
     ...admittedDevices.filter((device) => device.externalOffHoldActive === true).map((device) => device.id),
     ...admittedDevices.filter(isChargeTargetHeldDevice).map((device) => device.id),
-    ...admittedDevices.filter(isOperatingPowerHeldDevice).map((device) => device.id),
   ]);
 }
 
@@ -119,12 +115,10 @@ export function runStandingPostureHolds(
   // the release below: a charger below its target is an ordinary managed device,
   // so it earns no posture stamp (`ShedDecisions.recordPlannedShed`).
   const chargeTargetHold = resolveChargeTargetHold(admittedDevices);
-  const operatingPowerHold = resolveOperatingPowerHold(admittedDevices);
   const heldOffOnReleaseIds = applyPostSheddingHolds(
     sheddingPlan,
     decoration,
-    new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds,
-      ...chargeTargetHold.holdIds, ...operatingPowerHold.holdIds]),
+    new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds, ...chargeTargetHold.holdIds]),
     state.shedDecisions,
     getConfig,
     leaveOffOnRelease,
@@ -150,8 +144,7 @@ export function runStandingPostureHolds(
   // its reason says what the device needs (`getInactiveReason` agrees).
   return {
     reasonById: new Map([
-      ...surplusHold.reasonById, ...startPolicyHold.reasonById,
-      ...chargeTargetHold.reasonById, ...operatingPowerHold.reasonById,
+      ...surplusHold.reasonById, ...startPolicyHold.reasonById, ...chargeTargetHold.reasonById,
     ]),
     heldOffOnReleaseIds,
   };
@@ -240,12 +233,10 @@ export function runSilentMeterSurplusHold(
   const startPolicyHold = resolveStartPolicyHold(admittedDevices);
   // And the charge target, off rather than at the owner's floor, as measured.
   const chargeTargetHold = resolveChargeTargetHold(admittedDevices);
-  const operatingPowerHold = resolveOperatingPowerHold(admittedDevices);
   applyPostSheddingHolds(
     sheddingPlan,
     decoration,
-    new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds,
-      ...chargeTargetHold.holdIds, ...operatingPowerHold.holdIds]),
+    new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds, ...chargeTargetHold.holdIds]),
     state.shedDecisions,
     (deviceId) => priceSettings[deviceId],
     deps.leaveOffOnRelease,
@@ -255,8 +246,7 @@ export function runSilentMeterSurplusHold(
   // policy over surplus, and the charge target last, so it wins the card. A
   // hold recorded on release needs no marking here:
   // this pass restores nothing, and the next build reads the stored hold.
-  return new Map([...surplusHold.reasonById, ...startPolicyHold.reasonById, ...chargeTargetHold.reasonById,
-    ...operatingPowerHold.reasonById]);
+  return new Map([...surplusHold.reasonById, ...startPolicyHold.reasonById, ...chargeTargetHold.reasonById]);
 }
 
 function clearShedStepTargets(

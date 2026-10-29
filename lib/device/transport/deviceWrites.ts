@@ -23,7 +23,6 @@ import { hasRestClient, setRawCapabilityValue } from './managerHomeyApi';
 import { recordLocalWriteObservation } from './managerObservation';
 import { isNativeSteppedLoadControlEnabled, type CapabilityWrite } from '../nativeSteppedLoadWiring';
 import { getDeviceAdapter, getSnapshotAdapter } from '../deviceAdapterRegistry';
-import { resolveOperatingPowerRange } from '../operatingPowerRange';
 import type { SteppedLoadFlowTriggerCard } from './transportTypes';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
@@ -151,7 +150,6 @@ export class DeviceWriteService {
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     return snapshot !== undefined
       && snapshot.available !== false
-      && resolveOperatingPowerRange(snapshot) === 'usable'
       && isCanSetControl(snapshot);
   }
 

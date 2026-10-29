@@ -288,10 +288,8 @@ function applySyntheticTargetPowerOverlay(
   reportedStepObservedAtMs?: number;
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
 } {
-  const savedConfig = sources.settings.getDeviceTargetPowerConfig(deviceId)
+  const config = sources.settings.getDeviceTargetPowerConfig(deviceId)
     ?? resolveDeviceCompatibilityTargetPowerConfig(device);
-  const adapter = getDeviceAdapter(device);
-  const config = savedConfig && adapter.configureTargetPower(device, savedConfig);
   if (!config || (evPresetOnly && !isEvTargetPowerPresetConfig(config))) {
     return {
       capabilities: nativeEvOverlay.capabilities,
@@ -309,8 +307,7 @@ function applySyntheticTargetPowerOverlay(
   )];
   const observedTargetPower = installationCurrent
     && resolveInstallationCurrentTargetPowerObservation(config, installationCurrent);
-  const reportedStepPowerW = observedTargetPower?.value
-    ?? resolveReportedTargetPowerW(device, config, nativeEvOverlay.capabilityObj);
+  const reportedStepPowerW = resolveReportedTargetPowerW(nativeEvOverlay.capabilityObj, observedTargetPower?.value);
   // All-or-nothing: no ladder means no stepped control, so the synthetic
   // `target_power` capability is not injected either and the device is left to
   // whatever axis it exposes natively.
@@ -340,13 +337,13 @@ function applySyntheticTargetPowerOverlay(
 }
 
 function resolveReportedTargetPowerW(
-  device: HomeyDeviceLike,
-  config: TargetPowerSteppedLoadConfig,
   capabilityObj: DeviceCapabilityMap,
+  installationPowerW: number | undefined,
 ): number | undefined {
+  if (installationPowerW !== undefined) return installationPowerW;
   const directTargetPower = capabilityObj.target_power?.value;
   return typeof directTargetPower === 'number' && Number.isFinite(directTargetPower)
-    ? Math.round(getDeviceAdapter(device).targetPowerReading(device, config, directTargetPower))
+    ? Math.round(directTargetPower)
     : undefined;
 }
 

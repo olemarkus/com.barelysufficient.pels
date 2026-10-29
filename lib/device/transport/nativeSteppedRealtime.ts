@@ -1,4 +1,4 @@
-import { getCapabilityAdapter, getDeviceAdapter, getSnapshotAdapter } from '../deviceAdapterRegistry';
+import { getCapabilityAdapter, getSnapshotAdapter } from '../deviceAdapterRegistry';
 /**
  * Native stepped-load realtime handling: translates a `target_power` /
  * stepped-load / `available_installation_current` capability change into a
@@ -161,7 +161,6 @@ function resolveEvStepObservationWattsPerUnit(capabilityId: string, preset: Targ
 // own step capabilities carry one; everything else leaves the snapshot's
 // exact power as it is.
 function resolveNativeReportedStepPowerW(
-    ingest: RealtimeIngestService,
     snapshot: TransportDeviceSnapshot,
     capabilityId: string,
     value: unknown,
@@ -172,18 +171,7 @@ function resolveNativeReportedStepPowerW(
     if (!isEvTargetPowerConfig(snapshot.targetPowerConfig)) return undefined;
     if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
     if (current && value < current.minimumChargingA) return 0;
-    const raw = ingest.reader.snapshotStore.getTrackedRawDevice(snapshot.id);
-    const planningValue = capabilityId === 'target_power' && raw
-        ? getDeviceAdapter(raw).targetPowerReading(raw, snapshot.targetPowerConfig, value) : value;
-    return Math.round(planningValue
-        * resolveEvStepObservationWattsPerUnit(capabilityId, snapshot.targetPowerConfig.preset));
-}
-
-function hasNativeStepObservationSource(
-    ingest: RealtimeIngestService, snapshot: TransportDeviceSnapshot, capabilityId: string,
-): boolean {
-    return capabilityId !== 'target_power' || !snapshot.targetPowerConfig
-        || ingest.reader.snapshotStore.getTrackedRawDevice(snapshot.id) !== undefined;
+    return Math.round(value * resolveEvStepObservationWattsPerUnit(capabilityId, snapshot.targetPowerConfig.preset));
 }
 
 export function handleNativeSteppedLoadCapabilityUpdate(
@@ -212,8 +200,7 @@ export function handleNativeSteppedLoadCapabilityUpdate(
         return isNativePowerStepUpdate;
     }
 
-    if (!hasNativeStepObservationSource(ingest, snapshot, capabilityId)) return true;
-    const reportedStepPowerW = resolveNativeReportedStepPowerW(ingest, snapshot, capabilityId, value);
+    const reportedStepPowerW = resolveNativeReportedStepPowerW(snapshot, capabilityId, value);
     // A negative watt reading is malformed, not an off-range setting: consume it
     // before it can be recorded as probe evidence or replace the last-good step.
     if (reportedStepPowerW !== undefined && reportedStepPowerW < 0) return true;
@@ -236,9 +223,7 @@ export function handleNativeSteppedLoadCapabilityUpdate(
             },
         })
         : undefined;
-    const nextReportedStepId = adapters.getReportedStepId(
-        deviceId, snapshot.steppedLoadProfile ?? profile, snapshot.targetPowerConfig,
-    )
+    const nextReportedStepId = adapters.getReportedStepId(deviceId, snapshot.steppedLoadProfile ?? profile)
         ?? fallbackReportedStepId;
 
     applyNativeSteppedLoadSnapshotUpdate(
@@ -297,8 +282,8 @@ export function handleTargetPowerSourceCapabilityUpdate(
 /**
  * An exact EV reading inside the preset range extends the confirmed ladder with
  * its step. A reading outside it (a vendor-app change, a reboot back to 32 A) is
- * still the device's state, with an exact report id outside the allowed ladder.
- * It never widens the ladder. Reachability ignores watts outside the preset.
+ * still the device's state: the caller applies its nearest rung, but it never
+ * widens the ladder. Reachability ignores watts outside the preset on its own.
  */
 /* eslint-disable functional/immutable-data -- This source owns the transport snapshot. */
 function extendLadderWithExactTargetPower(snapshot: TransportDeviceSnapshot, planningPowerW: number): void {

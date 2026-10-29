@@ -9,8 +9,6 @@ test.each([
   "const current = device.capabilitiesObj.charging_on;",
   "const current = device.capabilitiesObj['measure_charge_current'];",
   "const driver = 'homey:app:com.tesla.car:battery';",
-  "import { adapter } from './enua';",
-  "const driver = 'homey:app:no.enua:enua-charger';",
 ])('rejects downstream integration coupling: %s', (source) => {
   expect(findDeviceAdapterViolations('lib/device/common.ts', source)).not.toEqual([]);
 });

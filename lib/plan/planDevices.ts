@@ -16,7 +16,6 @@ import { applyOffStateReason } from './planOffStateReason';
 import { isStartPolicyHoldShed } from './shedding/startPolicyHold';
 import { isChargeTargetHoldShed } from './shedding/chargeTargetHold';
 import { isDeferredHoldShed } from './shedding/deferredHold';
-import { isOperatingPowerHoldShed } from './shedding/operatingPowerHold';
 import type { SheddingPlan } from './shedding/types';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { buildBasePlanDevice } from './planDevicesBase';
@@ -71,7 +70,6 @@ export function buildInitialPlanDevices(
       || isSurplusOnlyHoldShed(dev, state, shedReasons)
       || isStartPolicyHoldShed(dev, shedReasons)
       || isChargeTargetHoldShed(dev, shedReasons)
-      || isOperatingPowerHoldShed(dev, shedReasons)
       || isDeferredHoldShed(dev, shedReasons),
   );
   // Per-stage accumulators (split inside the per-device loop). Emitted once
