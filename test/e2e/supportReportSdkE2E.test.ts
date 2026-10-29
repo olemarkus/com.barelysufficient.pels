@@ -55,6 +55,8 @@ describe('manual report through the app API and Homey boundary', () => {
     if (preview.report.document.activity.state === 'available') {
       expect(preview.report.document.activity.entries).toContainEqual(expect.objectContaining({ deviceId: 'heater' }));
     }
+    // The heater has no smart task, and the report says so rather than leaving it out.
+    expect(preview.report.document.sections).toContainEqual({ title: 'Current smart task', values: { exists: false } });
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
     const id = preview.report.document.id;
     const sent = await api.support_report_send({ homey: app.homey, params: { id }, body: { consent: true } });

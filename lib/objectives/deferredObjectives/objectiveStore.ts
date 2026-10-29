@@ -96,6 +96,31 @@ export const readSmartTaskInProgress = (
   }
 };
 
+export type ObjectiveForDeviceRead =
+  | { state: 'none' }
+  | { state: 'present'; entry: DeferredObjectiveSettingsEntry }
+  | { state: 'unavailable' };
+
+/**
+ * One device's objective as a three-state read, for a reader that reports
+ * absence as a fact (a diagnostics report): a transient read or a stored value
+ * the normalizer rejects is `unavailable`, never `none`.
+ */
+export const readObjectiveForDeviceState = (
+  store: ObjectiveSettingsStore,
+  deviceId: string,
+): ObjectiveForDeviceRead => {
+  try {
+    const raw = store.get(perDeviceKey(deviceId));
+    const entry = normalizeDeferredObjectiveSettingsEntry(raw);
+    if (entry) return { state: 'present', entry };
+    if (raw !== null && raw !== undefined) return { state: 'unavailable' };
+    return objectiveAbsenceIsTrustworthy(store, deviceId) ? { state: 'none' } : { state: 'unavailable' };
+  } catch {
+    return { state: 'unavailable' };
+  }
+};
+
 /**
  * Whether we can TRUST that the device has no objective. True only when the key
  * list is readable (non-empty) AND does not contain the device's key. Both a

@@ -19,8 +19,8 @@ import { selectSupportReportActivity, supportReportWindow } from './supportRepor
 import { SupportReportInputError } from './supportReportInput';
 import {
   reportCapacitySettings, reportCarLink, reportDailyBudget, reportDeviceDecision, reportDevicePresentation,
-  reportDeviceSnapshot, reportHomePlan,
-  type SupportReportDeviceSnapshot,
+  reportDeviceSnapshot, reportHomePlan, reportSmartTask,
+  type SupportReportDeviceSnapshot, type SupportReportSmartTask,
 } from './supportReportProjection';
 
 /** Metadata from the running Homey installation. */
@@ -49,6 +49,8 @@ export type SupportReportReads = {
   getPriceTimelineForUi(): PriceTimelineRead;
   /** `undefined` for a device that is neither a charger nor a car the car link knows. */
   getCarLinkDiagnostics(deviceId: string): CarLinkDiagnostics | undefined;
+  /** The device's smart task and its plan. Throws when the task store cannot say whether one exists. */
+  readSmartTask(deviceId: string): SupportReportSmartTask;
   /** Kept device events about any of `deviceIds` in the window, oldest first; every device without ids. */
   readDeviceEvents(deviceIds: readonly string[] | 'all', fromMs: number, toMs: number): SupportReportDeviceEvent[];
   /** PELS's kept log lines in the window, without lines of `omittedEvents` (`logTailStore.ts`). */
@@ -183,6 +185,7 @@ const readDeviceSections = (
   subject: SupportReportSubject,
   device: SupportReportDeviceSnapshot | null,
   plan: SettingsUiPlanSnapshot | null | undefined,
+  capturedAtMs: number,
 ): SectionRead[] => {
   if (!device || subject.kind !== 'device') return [];
   return [
@@ -196,6 +199,10 @@ const readDeviceSections = (
       const decision = host.getLatestDevicePlan()?.devices.find((entry) => entry.id === device.id);
       return decision ? reportDeviceDecision(decision) : null;
     }),
+    // Smart tasks are Main-home only, like the device plan above.
+    readSection('Current smart task', () => (
+      subject.homeId === MAIN_HOME_ID ? reportSmartTask(host.readSmartTask(device.id), capturedAtMs) : null
+    )),
   ];
 };
 
@@ -325,7 +332,7 @@ export class SupportReportEvidenceSource {
     const carLink: CarLinkRead = subject.currentDevice
       ? readCarLink(host, request.subject) : { state: 'read', link: undefined };
     const sectionReads = [
-      ...readDeviceSections(host, request.subject, subject.currentDevice, plan),
+      ...readDeviceSections(host, request.subject, subject.currentDevice, plan, capturedAtMs),
       ...readCarLinkSection(carLink),
       ...readHomeSections(host, request.subject.homeId, plan, area),
       ...readPriceSections(host, capturedAtMs),
