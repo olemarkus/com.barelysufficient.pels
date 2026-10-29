@@ -206,15 +206,16 @@ window has visibly landed:
   received after the step-up, and it still draws that much. A setpoint raise on a
   running heating load keeps the timer: its rise cannot be told from fluctuation.
 - **It reached half its expected draw**: for a device resumed from idle, half the
-  running step's planning power for a stepped load, its expected power otherwise.
-  The observer keeps the run's highest level, re-dated only by a further rise of
-  at least 50 W, so a climb moves the date and fluctuation does not. For a running
+  running step's planning power for a stepped load, its expected power otherwise,
+  judged against the run's highest level, re-dated only by a further rise of at
+  least 50 W, so a climb moves the date and fluctuation does not. For a running
   stepped step-up, the rise must cover half the way from its draw at the step-up
   to the new step's planning power, and at least 0.3 kW, well clear of a charging
-  car's fluctuation. The observer keeps a short history of each device's draw
-  levels (a new level only on a change of at least 50 W), so the draw at the
-  step-up is known and a level reached before it never counts. A car that does
-  not take the new current never rises, and the timer expires normally.
+  car's fluctuation. A car that does not take the new current never rises, and
+  the timer expires normally. Both answers come from one short history of each
+  device's draw levels in the observer: a new level only on a change of at least
+  50 W, or on starting or stopping. So the draw at the step-up is known, and a
+  level reached before it never counts.
 - **The whole-home value was measured after it.** The tracker stamps a sample
   when PELS takes it, never when the meter measured it, and a Homey Energy poll
   returns the meter's last report, so even a value that just changed can predate

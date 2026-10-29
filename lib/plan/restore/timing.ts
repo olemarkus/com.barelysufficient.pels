@@ -150,13 +150,13 @@ function hasRestoredDrawArrived(
   restoredAtMs: number,
   measuredAfterMs: number,
 ): boolean {
-  if (deps.hasStartedDrawingSince(device.id, restoredAtMs, measuredAfterMs,
+  if (deps.drawEvidence.hasStartedDrawingSince(device.id, restoredAtMs, measuredAfterMs,
     Math.max(MIN_ACTIVE_MEASURED_POWER_KW, resolveExpectedDrawKw(device) * STARTED_DRAW_FRACTION))) return true;
   if (!isSteppedLoadDevice(device)) return false;
-  const drawAtStepUpKw = deps.getLiveDrawAt(device.id, restoredAtMs);
+  const drawAtStepUpKw = deps.drawEvidence.getLiveDrawAt(device.id, restoredAtMs);
   if (drawAtStepUpKw === null || drawAtStepUpKw < MIN_ACTIVE_MEASURED_POWER_KW) return false;
   const riseKw = Math.max(MIN_STEP_UP_RISE_KW, (device.planningPowerKw - drawAtStepUpKw) * STARTED_DRAW_FRACTION);
-  return deps.hasDrawnAtLeastSince(device.id, restoredAtMs, measuredAfterMs, drawAtStepUpKw + riseKw);
+  return deps.drawEvidence.hasDrawnAtLeastSince(device.id, restoredAtMs, measuredAfterMs, drawAtStepUpKw + riseKw);
 }
 
 /** The step it runs at for a stepped load, its running draw otherwise. */

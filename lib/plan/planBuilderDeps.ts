@@ -1,4 +1,4 @@
-import type { ObservedDeviceReads } from '../observer/observedDeviceStateProjection';
+import type { DrawEvidenceReads } from '../observer/observedDeviceStateProjection';
 /**
  * The builder's dependencies — a named domain object held by `PlanBuilder`,
  * `SilentMeterPlanBuilder` and the wiring that constructs them (a module of its
@@ -48,9 +48,8 @@ export type PlanBuilderDeps = {
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
   getShedBehavior: (deviceId: string) => ShedBehavior;
-  hasStartedDrawingSince: ObservedDeviceReads['hasStartedDrawingSince'];
-  getLiveDrawAt: ObservedDeviceReads['getLiveDrawAt'];
-  hasDrawnAtLeastSince: ObservedDeviceReads['hasDrawnAtLeastSince'];
+  /** The observer's evidence that an increase's draw has arrived (restore pacing). */
+  drawEvidence: DrawEvidenceReads;
   // Observer-owned pending-binary-command store. Plan-side reads consult
   // `peek(id)` (raw read) through this facade rather than touching
   // `state.pendingBinaryCommands[id]` directly, so the store stays the

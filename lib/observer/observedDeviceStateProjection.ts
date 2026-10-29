@@ -274,30 +274,26 @@ export type ObservedDeviceReads = {
     getRevision(): number;
 };
 
+/**
+ * The observer's answers about when a device's draw arrived, which the
+ * planner's restore pacing reads as evidence that an increase has landed.
+ */
+export type DrawEvidenceReads = Pick<
+    ObservedDeviceReads, 'hasStartedDrawingSince' | 'getLiveDrawAt' | 'hasDrawnAtLeastSince'
+>;
+
 type ProjectionEntry = {
     value: ProjectedObservedDeviceState;
     seq?: number;
     observedAtMs?: number;
-    drawingRun?: DrawingRun;
     drawLevels?: readonly DrawLevel[];
 };
 
 /**
- * One stretch of live draw since the device left idle. `levelKw` is the highest
- * level it reached, re-dated only by a rise of at least the active threshold,
- * so ordinary fluctuation leaves `levelReceivedAtMs` alone while a climb moves it.
- */
-type DrawingRun = {
-    startMeasuredAtMs: number;
-    startReceivedAtMs: number;
-    levelKw: number;
-    levelReceivedAtMs: number;
-};
-
-/**
  * One level of a device's live draw: a reading at least the active threshold
- * away from the level before it, so ordinary fluctuation adds no level and a
- * step does. Dated by the reading that reached it.
+ * away from the level before it, or on the other side of that threshold, so
+ * ordinary fluctuation adds no level while a start, a stop or a step does.
+ * Dated by the reading that reached it.
  */
 type DrawLevel = {
     kw: number;
@@ -306,9 +302,8 @@ type DrawLevel = {
 };
 
 /**
- * How far back the levels reach, measured from the newest one. It covers the
- * longest restore cooldown a reader judges a rise within, and the newest older
- * level is kept beyond it so the draw at any moment inside it stays answerable.
+ * How far back the levels reach, measured from the newest one. The newest older
+ * level is kept beyond it, so the draw at any moment inside it stays answerable.
  */
 const DRAW_LEVEL_HISTORY_MS = 15 * 60 * 1000;
 /** A bound on the levels kept per device, whatever the reading cadence. */
@@ -491,10 +486,10 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
     }
 
     hasStartedDrawingSince(deviceId: string, sinceMs: number, reachedBeforeMs: number, minKw: number): boolean {
-        const run = this.byId.get(deviceId)?.drawingRun;
-        return run !== undefined
-            && run.startMeasuredAtMs > sinceMs && run.startReceivedAtMs > sinceMs
-            && run.levelKw >= minKw && run.levelReceivedAtMs < reachedBeforeMs;
+        const run = resolveDrawingRun(this.byId.get(deviceId)?.drawLevels ?? []);
+        return run !== null
+            && run.start.measuredAtMs > sinceMs && run.start.receivedAtMs > sinceMs
+            && run.peak.kw >= minKw && run.peak.receivedAtMs < reachedBeforeMs;
     }
 
     getLiveDrawAt(deviceId: string, atMs: number): number | null {
@@ -548,7 +543,6 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
         if (prev && this.shouldDrop(prev, seq, observedAtMs)) return;
         this.byId.set(value.id, {
             value: freezeObserved(value), seq, observedAtMs,
-            drawingRun: trackDrawingRun(prev, value, observedAtMs),
             drawLevels: trackDrawLevels(prev, value, observedAtMs),
         });
         this.revision += 1;
@@ -569,37 +563,10 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
 }
 
 /**
- * The run continues through unrelated updates and repeats of the same reading.
- * Only a new live reading after a live idle one starts it, so a first reading,
- * a delayed one measured before the last, or a running device's rise never does.
- */
-function trackDrawingRun(
-    previous: ProjectionEntry | undefined,
-    value: ProjectedObservedDeviceState,
-    receivedAtMs: number | undefined,
-): DrawingRun | undefined {
-    const reading = readLivePower(value);
-    if (reading === null) return undefined;
-    if (reading.kw < MIN_ACTIVE_MEASURED_POWER_KW) return undefined;
-    const before = previous ? readLivePower(previous.value) : null;
-    const run = previous?.drawingRun;
-    if (receivedAtMs === undefined || before === null || reading.measuredAtMs <= before.measuredAtMs) return run;
-    if (run) {
-        return reading.kw >= run.levelKw + MIN_ACTIVE_MEASURED_POWER_KW
-            ? { ...run, levelKw: reading.kw, levelReceivedAtMs: receivedAtMs }
-            : run;
-    }
-    if (before.kw >= MIN_ACTIVE_MEASURED_POWER_KW) return undefined;
-    return {
-        startMeasuredAtMs: reading.measuredAtMs, startReceivedAtMs: receivedAtMs,
-        levelKw: reading.kw, levelReceivedAtMs: receivedAtMs,
-    };
-}
-
-/**
- * The levels continue through unrelated updates, repeats and readings within the
- * active threshold of the last level, which re-date nothing. A reading that is
- * not live clears them, so a level never spans a gap the device did not report.
+ * The levels continue through unrelated updates, repeats, readings measured
+ * before the last one, and readings within the active threshold of the last
+ * level on the same side of it, none of which re-date anything. A reading that
+ * is not live clears them, so a level never spans a gap the device did not report.
  */
 function trackDrawLevels(
     previous: ProjectionEntry | undefined,
@@ -608,15 +575,46 @@ function trackDrawLevels(
 ): readonly DrawLevel[] | undefined {
     const reading = readLivePower(value);
     if (reading === null) return undefined;
-    if (receivedAtMs === undefined) return previous?.drawLevels;
     const levels = previous?.drawLevels ?? [];
+    const before = previous ? readLivePower(previous.value) : null;
+    if (receivedAtMs === undefined || (before !== null && reading.measuredAtMs <= before.measuredAtMs)) {
+        return previous?.drawLevels;
+    }
     const last = levels.at(-1);
-    if (last !== undefined && (reading.measuredAtMs <= last.measuredAtMs
-        || Math.abs(reading.kw - last.kw) < MIN_ACTIVE_MEASURED_POWER_KW)) return levels;
+    if (last !== undefined && !isNewLevel(last.kw, reading.kw)) return levels;
     const next = [...levels, { kw: reading.kw, measuredAtMs: reading.measuredAtMs, receivedAtMs }];
     const cutoffMs = receivedAtMs - DRAW_LEVEL_HISTORY_MS;
     const firstInside = next.findIndex((level) => level.receivedAtMs >= cutoffMs);
     return next.slice(Math.max(0, firstInside - 1, next.length - MAX_DRAW_LEVELS));
+}
+
+const isActive = (kw: number): boolean => kw >= MIN_ACTIVE_MEASURED_POWER_KW;
+
+const isNewLevel = (lastKw: number, kw: number): boolean => (
+    Math.abs(kw - lastKw) >= MIN_ACTIVE_MEASURED_POWER_KW || isActive(kw) !== isActive(lastKw)
+);
+
+/**
+ * The stretch of draw the device is in now, if it started from idle within the
+ * kept levels: the level that left idle, and the highest one since, re-dated only
+ * by a rise of at least the active threshold, so a climb moves its date and
+ * fluctuation does not. `null` while idle, or when the levels hold no idle level
+ * before the current draw (a first reading, or a device already running when the
+ * levels began).
+ */
+function resolveDrawingRun(levels: readonly DrawLevel[]): { start: DrawLevel; peak: DrawLevel } | null {
+    let lastIdle = -1;
+    for (let index = levels.length - 1; index >= 0; index -= 1) {
+        const level = levels[index];
+        if (level !== undefined && !isActive(level.kw)) { lastIdle = index; break; }
+    }
+    const start = levels[lastIdle + 1];
+    if (lastIdle < 0 || start === undefined) return null;
+    let peak = start;
+    for (const level of levels.slice(lastIdle + 2)) {
+        if (level.kw >= peak.kw + MIN_ACTIVE_MEASURED_POWER_KW) peak = level;
+    }
+    return { start, peak };
 }
 
 function readLivePower(value: ProjectedObservedDeviceState): { kw: number; measuredAtMs: number } | null {

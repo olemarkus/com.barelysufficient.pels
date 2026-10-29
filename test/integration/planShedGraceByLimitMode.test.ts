@@ -17,6 +17,7 @@ import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
 import { testLogger } from '../utils/testLogger';
+import { noDrawEvidence } from '../helpers/observedDeviceReadsDouble';
 
 const HOUR_MS = 60 * 60 * 1000;
 const START_MS = Date.UTC(2026, 9, 5, 12, 10, 0);
@@ -78,9 +79,7 @@ const buildHarness = (scenario: Scenario) => {
     buckets: { [HOUR_KEY]: scenario.hourUsedKWh },
   };
   const builder = new PlanBuilder({
-    hasStartedDrawingSince: () => false,
-    getLiveDrawAt: () => null,
-    hasDrawnAtLeastSince: () => false,
+    drawEvidence: noDrawEvidence,
     structuredLog: testLogger,
     leaveOffOnRelease: () => 'released',
     getInferredSurplusKw: () => 0,
