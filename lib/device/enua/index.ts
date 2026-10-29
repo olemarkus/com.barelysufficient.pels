@@ -27,15 +27,15 @@ function wattsPerAmp(device: HomeyDeviceLike): number {
 function configureTargetPower(
   device: HomeyDeviceLike, config: TargetPowerConfigWithReachability,
 ): TargetPowerConfigWithReachability {
-  if (config.enabled === false) return config;
+  // An EV preset ladder already stops at 32 A in the car's phase watts, and
+  // reachability learns a lower installation ceiling. Passing it through keeps
+  // the device, reachability and planner reading the same saved preset.
+  if (config.enabled === false || resolveTargetPowerPresetPhaseCount(config.preset)) return config;
   const gridW = wattsPerAmp(device);
-  const phaseCount = resolveTargetPowerPresetPhaseCount(config.preset);
-  const planningW = phaseCount ? phaseCount * PHASE_VOLTAGE : gridW;
   const raw = device.capabilitiesObj?.target_power;
   const declaredMaxA = typeof raw?.max === 'number' && Number.isFinite(raw.max) && raw.max > 0
     ? raw.max / gridW : MAX_CURRENT_A;
-  const max = Math.min(config.max ?? MAX_CURRENT_A * planningW, Math.min(MAX_CURRENT_A, declaredMaxA) * planningW);
-  if (phaseCount) return { ...config, max };
+  const max = Math.min(config.max ?? MAX_CURRENT_A * gridW, Math.min(MAX_CURRENT_A, declaredMaxA) * gridW);
   const minimumA = Math.max(MIN_CURRENT_A, Math.ceil((config.excludeMax ?? 0) / gridW));
   return { ...config, min: 0, max, step: gridW, excludeMin: 0, excludeMax: minimumA * gridW };
 }
