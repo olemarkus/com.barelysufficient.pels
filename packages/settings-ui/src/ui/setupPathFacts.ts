@@ -155,6 +155,19 @@ const resolveSetupLimits = (configured: boolean, running: CapacityScalarSettings
   return running.capacityEnabled ? resolveSetupCapacity(configured, running) : { state: 'disabled' };
 };
 
+/**
+ * Whether a grid import limit or Capacity limit is in force, or `null` until
+ * the running limits have been read.
+ */
+export const readSetupLimitsInForce = (): boolean | null => (
+  hardCap.state === 'ready' ? hardCap.value.state !== 'disabled' : null
+);
+
+/** Respond to prices, or `null` until the price settings have been read. */
+export const readSetupRespondsToPrices = (): boolean | null => (
+  prices.state === 'ready' ? prices.value.respondToPrices : null
+);
+
 /** A bounded first read failed; preserve a previously trusted value. */
 export const publishSetupHardCapUnavailable = (): void => {
   if (hardCap.state === 'ready') return;

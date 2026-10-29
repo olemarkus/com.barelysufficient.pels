@@ -1,6 +1,7 @@
 import type { DeviceDetailFocus } from '../cardActivation.ts';
 import type { SetupPath } from '../setupPathModel.ts';
 import type { SolarSetupAction } from '../setupDevices.ts';
+import type { SetupGoalChoices } from '../setupGoals.ts';
 import { AppBar } from './AppBar.tsx';
 import {
   MdFilledButton, MdFilledTonalButton, MdTextButton, MdSwitch, readSwitchSelected,
@@ -58,6 +59,63 @@ export const SetupDevicePicker = (props: SetupDevicePickerProps) => (
     {props.choices.state === 'ready' && props.choices.devices.length === 0 && (
       <p>No suitable devices found. Check the devices available in Homey.</p>
     )}
+  </div>
+);
+
+type SetupGoalPickerProps = {
+  choices: SetupGoalChoices;
+  busy: boolean;
+  onPrice: (id: string, enabled: boolean) => void;
+  onNewSmartTask: (id: string) => void;
+  onOpenSmartTask: (id: string) => void;
+  onOpen: (id: string, focus: DeviceDetailFocus) => void;
+  onRetry: () => void;
+};
+
+const SolarGoal = ({ id, solar, onOpen }: {
+  id: string;
+  solar: SolarSetupAction;
+  onOpen: (id: string, focus: DeviceDetailFocus) => void;
+}) => <>
+  <MdTextButton type="button" onClick={() => onOpen(id, solar.focus)}>{solar.actionLabel}</MdTextButton>
+  {solar.hint && <p class="pels-card-supporting">{solar.hint}</p>}
+</>;
+
+export const SetupGoalPicker = (props: SetupGoalPickerProps) => (
+  <div class="setup-journey__devices">
+    {props.choices.state === 'loading' && <p>Loading devices…</p>}
+    {props.choices.state === 'unavailable' && <>
+      <p>Device setup could not be read.</p>
+      <MdTextButton type="button" onClick={props.onRetry}>Try again</MdTextButton>
+    </>}
+    {props.choices.state === 'ready' && props.choices.devices.map((device) => (
+      <section class="pels-surface-card setup-journey__device" key={device.id} data-device-id={device.id}>
+        <h3 class="plan-card__title">{device.name}</h3>
+        {device.price && <>
+          <label class="md-switch-row">
+            <MdSwitch selected={device.price.enabled} disabled={props.busy}
+              aria-label={`Price-based control for ${device.name}`}
+              onChange={(event: Event) => props.onPrice(device.id, readSwitchSelected(event))} />
+            <span class="md-switch-row__label pels-text-settings-label">Price-based control</span>
+          </label>
+          <p class="pels-card-supporting">
+            Raises the temperature a little in cheap hours and lowers it in expensive ones.
+            {device.price.source && ` Uses your prices from ${device.price.source}.`}
+          </p>
+        </>}
+        {device.smartTask === 'none' && <>
+          <p class="pels-card-supporting">A smart task charges to the level you set by a ready-by time, in the cheapest hours.</p>
+          <MdTextButton type="button" disabled={props.busy} onClick={() => props.onNewSmartTask(device.id)}>
+            New smart task
+          </MdTextButton>
+        </>}
+        {device.smartTask === 'open' && <>
+          <p class="pels-card-supporting">This charger has a smart task.</p>
+          <MdTextButton type="button" onClick={() => props.onOpenSmartTask(device.id)}>Open smart task</MdTextButton>
+        </>}
+        {device.solar && <SolarGoal id={device.id} solar={device.solar} onOpen={props.onOpen} />}
+      </section>
+    ))}
   </div>
 );
 

@@ -2206,6 +2206,25 @@ settings. No tour-completed flag is persisted.
   checks and their opted-in escape hatch. Use the device's actual label:
   `Use solar surplus`, `Run on solar surplus`, `Charge on solar surplus`, or
   `Match solar surplus`. Put missing prerequisites beside the action.
+- `Choose what PELS does` is an optional page after the required steps and
+  before the review (owner ruling 2026-10-29: a home with no limit to hold
+  must leave setup with a job for PELS). It lists each managed Main-home device
+  with the job that fits it, through the control that already does it:
+  `Price-based control` for a device with a temperature target while PELS
+  responds to prices, with `Raises the temperature a little in cheap hours and
+  lowers it in expensive ones.` and, when PELS already has prices, `Uses your
+  prices from {source}.`; `New smart task` for an EV charger (`Open smart task`
+  once it has one), whose flow returns to this page; and the device's solar
+  action once surplus can reach it, except inside the solar setup, whose page
+  offered it already. Header: `Optional. You can change these later on each
+  device page.` Turning Price-based control on here makes a source PELS
+  assumed the owner's, as `Use these prices` does; a source with no prices is
+  left for the Prices step. Continue offers the page once per visit, never as
+  a completion requirement, and a home with nothing to choose skips it.
+- The review names what PELS will do with each device: `Power-limit control on`
+  only while a limit is in force, `Price-based control on`, `Smart task set`,
+  and the solar label, joined with ` · `; a device with none of them reads
+  `Nothing for PELS to do yet`.
 - Simulation is not a completion requirement. The explicit review says
   `Simulation mode is on`, offers `Start managing` and `Keep simulating`, and
   shows saved controls separately from runtime status. The Main simulation
@@ -2268,6 +2287,12 @@ both during and after setup.
   than the home is using`.
 - Titles name the outcome, not the feature: `Heat in cheap hours`, `Use more of
   your own solar`, `Have something ready by a set time`.
+
+The page lists these suggestions before any device fix (owner ruling
+2026-10-29): right after setup, what PELS can do for the home matters more than
+tuning one device. Device fixes (built-in device control, charging-current
+control, a car or a battery-reporting Flow) are offered only for devices PELS
+manages.
 
 `Optional` means no configuration defect. `Recommended` identifies a suggested
 setup change. Preserve `PELS can do more for this home` / `See what` for optional

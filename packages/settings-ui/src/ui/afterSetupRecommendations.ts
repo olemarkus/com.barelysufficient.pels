@@ -103,6 +103,9 @@ const PRICE_SOURCE_NAMES: Record<PriceSchemeSetting, string> = {
   flow: 'your Flow',
 };
 
+/** How a price source is named in a sentence, as the price suggestion names it. */
+export const namePriceSource = (scheme: PriceSchemeSetting): string => PRICE_SOURCE_NAMES[scheme];
+
 /**
  * Prices are rarely what is missing: outside Norway PELS assumes a source that
  * already has them. So the suggestion says they are there and goes straight to

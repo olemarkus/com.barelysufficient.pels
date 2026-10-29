@@ -196,6 +196,32 @@ describe('New smart task flow', () => {
     document.removeEventListener('open-device-detail', opened);
   });
 
+  it('opened from setup, goes straight to the device and returns to setup once the task is created', async () => {
+    answer({
+      [SETTINGS_UI_SMART_TASK_DEVICES_PATH]: { state: 'ready', devices: [HEATER] },
+      [SETTINGS_UI_SMART_TASK_CREATE_PREVIEW_PATH]: PREVIEW,
+      [SETTINGS_UI_SMART_TASK_CREATE_PATH]: { ok: true },
+    });
+    controller.dispatchOpenSmartTaskCreateFromSetup('heater');
+    await flush();
+    expect(openPanel).toHaveBeenCalledWith('deadlines');
+    expect(step()?.kind).toBe('compose');
+    await controller.requestSmartTaskCreatePreview();
+    await controller.submitSmartTaskCreate();
+    expect(paints.at(-1)).toBeNull();
+    expect(openPanel).toHaveBeenLastCalledWith('devices', 'goals');
+    expect(navigatedTo).toEqual([]);
+  });
+
+  it('opened from setup, returns to setup on Back', async () => {
+    answer({ [SETTINGS_UI_SMART_TASK_DEVICES_PATH]: { state: 'ready', devices: [HEATER] } });
+    controller.openSmartTaskCreate({ kind: 'setup', deviceId: 'heater' });
+    await flush();
+    controller.backFromSmartTaskCreate();
+    expect(paints.at(-1)).toBeNull();
+    expect(openPanel).toHaveBeenLastCalledWith('devices', 'goals');
+  });
+
   it('opens the device page over the flow on Change, and repaints when it closes', async () => {
     answer({ [SETTINGS_UI_SMART_TASK_DEVICES_PATH]: { state: 'ready', devices: [HEATER] } });
     const opened = vi.fn();
