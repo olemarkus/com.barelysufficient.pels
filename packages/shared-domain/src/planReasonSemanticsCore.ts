@@ -60,7 +60,6 @@ export const PLAN_REASON_CODES = {
   // it has reported no battery level this session, and the owner chose not to
   // charge until one arrives. No detail, byte-stable.
   awaitingBatteryLevel: 'awaiting_battery_level',
-  powerLimitBelowMinimum: 'power_limit_below_minimum',
   // "Leave off until turned on again": an opted-in device was turned off outside
   // PELS, independently of its current plan. PELS is NOT holding the device back
   // — it is respecting an explicit action — so this pairs with the display-only
@@ -252,7 +251,6 @@ export type DeviceReason =
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
   | { code: typeof PLAN_REASON_CODES.chargeTargetReached; targetPercent: number }
   | { code: typeof PLAN_REASON_CODES.awaitingBatteryLevel }
-  | { code: typeof PLAN_REASON_CODES.powerLimitBelowMinimum }
   | { code: typeof PLAN_REASON_CODES.externalOffHold }
   | { code: typeof PLAN_REASON_CODES.neutralStartupHold }
   | { code: typeof PLAN_REASON_CODES.startupStabilization }

@@ -136,21 +136,6 @@ describe('planExecutableSteppedLoad', () => {
     expect(action?.stepNeedsAdjustment).toBe(false);
   });
 
-  it('does not use an old confirmation over a contradictory positive limit while off', () => {
-    const action = buildAction(steppedPlanDevice({
-      currentState: 'off',
-      plannedState: 'keep',
-      selectedStepId: 'max',
-      desiredStepId: 'low',
-      reportedStepId: 'max',
-      lastDesiredStepId: 'low',
-      stepCommandStatus: 'success',
-    }));
-
-    expect(action?.stepActuation.materialization.kind).toBe('not_materialized');
-    expect(action?.stepNeedsAdjustment).toBe(true);
-  });
-
   it('does NOT let a confirmed command materialize while the device is on', () => {
     // While on, observed reports keep sole materialization authority — a stale
     // 'success' must not suppress the step adjustment a clamped device needs.

@@ -77,7 +77,6 @@ export type ResolvedPlanInputFacts = Pick<PlanInputDeviceBase,
   | 'currentState' | 'confirmedNotDrawing' | 'commandableNow' | 'commandabilityReason'
   | 'objectiveKind' | 'objectiveSessionInactive' | 'waitingForCarAssociation' | 'boostSupported' | 'boostRequested'
   | 'canSetControlResolved' | 'startPolicy' | 'control' | 'startPolicyInForce' | 'chargeTargetHold'
-  | 'operatingPowerRange'
   | 'surplusOnly' | 'surplusTracking' | 'externalOffHoldActive' | 'steppedLadderMissing'
   | 'stepPowerCalibration' | 'hasStandingDemand' | 'residualKw' | 'budgetExempt'>
   & SteppedClusterFields

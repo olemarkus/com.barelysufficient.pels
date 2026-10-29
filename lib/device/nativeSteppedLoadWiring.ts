@@ -199,17 +199,13 @@ export function resolveTargetPowerSteppedControl(
   observedPowerW?: number,
 ): TargetPowerSteppedControl | undefined {
   if (!config || config.enabled === false) return undefined;
-  // The physical minimum remains a real rung when the owner's ceiling is
-  // below it. The producer projects that conflict as a standing off hold.
-  const minimumW = isEvTargetPowerConfig(config)
-    ? 6 * 230 * (config.preset === 'ev_charger_3_phase' ? 3 : 1)
-    : config.excludeMax ?? 0;
-  const physicalConfig = config.max !== undefined && config.max < minimumW
-    ? { ...config, max: minimumW } : config;
   const profile = isEvTargetPowerConfig(config)
-    ? resolveEvTargetPowerConfirmedProfile(physicalConfig, observedPowerW)
-    : buildCapabilityTargetPowerSteppedLoadProfile(physicalConfig);
-  // An invalid declaration still cannot establish a stepped identity.
+    ? resolveEvTargetPowerConfirmedProfile(config, observedPowerW)
+    : buildCapabilityTargetPowerSteppedLoadProfile(config);
+  // Belt-and-braces against the range validation in
+  // `normalizeTargetPowerSteppedLoadConfig`, which every config reaching here
+  // has already passed, and against an EV preset whose confirmed ceiling has
+  // collapsed below its lowest rung.
   const usableProfile = withUsableLadder(profile);
   return usableProfile ? { config, profile: usableProfile } : undefined;
 }
@@ -429,10 +425,16 @@ export function resolveTargetPowerReportedStepId(params: {
   if (targetPowerValue <= 0) {
     return sortedSteps.find((step) => isSteppedLoadOffStep(params.profile, step.id))?.id;
   }
-  // A limit outside the allowed ladder is still observed device state. Naming
-  // its nearest allowed rung would falsely confirm preparation at that rung.
-  const powerW = Math.round(targetPowerValue);
-  return sortedSteps.find((step) => Math.round(step.planningPowerW) === powerW)?.id ?? `${powerW}w`;
+  let nearestStep: SteppedLoadStep | undefined;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (const step of sortedSteps) {
+    const distance = Math.abs(step.planningPowerW - targetPowerValue);
+    if (distance < nearestDistance) {
+      nearestStep = step;
+      nearestDistance = distance;
+    }
+  }
+  return nearestStep?.id;
 }
 
 function normalizeText(value: unknown): string {

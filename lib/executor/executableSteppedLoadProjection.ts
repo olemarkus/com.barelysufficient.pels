@@ -152,7 +152,9 @@ export function buildExecutableSteppedLoadDevice(
   // devices still get adjusted. Requires a present observation: `current.on`
   // falls back to the plan-derived value when the device is absent from this
   // cycle's snapshot, and a plan-derived 'off' is not trusted-off evidence.
-  const confirmedCommandStepId = resolveConfirmedPreparationStep(intent, resolvedObserved, current);
+  const confirmedCommandStepId = resolvedObserved !== undefined && current.on === false
+    ? intent.confirmedCommandStepId
+    : undefined;
   const stepActuation = resolveSteppedStepActuationState({
     step: toExecutableSteppedStepState(
       resolvedObserved?.steppedLoad,
@@ -175,22 +177,6 @@ export function buildExecutableSteppedLoadDevice(
     stepNeedsAdjustment: Boolean(desiredIsNonOff && stepActuation.materialization.kind !== 'materialized'),
   };
 }
-
-const resolveConfirmedPreparationStep = (
-  intent: ExecutableSteppedLoadIntent,
-  observed: ExecutableObservedDeviceState | undefined,
-  current: ExecutableSteppedLoadCurrentState,
-): string | undefined => {
-  if (observed === undefined || current.on !== false) return undefined;
-  // An off-step/absent report can predate preparation. A different positive
-  // limit contradicts it: a swallowed vendor error may have ACKed a limit
-  // that never reached the charger, and must not authorize starting at it.
-  const reportedStepId = observed.steppedLoad?.reportedStepId;
-  if (reportedStepId !== undefined && !isSteppedLoadOffStep(intent.steppedLoadProfile, reportedStepId)) {
-    return undefined;
-  }
-  return intent.confirmedCommandStepId;
-};
 
 const withCommandSessionReportedStep = (
   observed: ExecutableObservedDeviceState | undefined,

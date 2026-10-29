@@ -12,7 +12,6 @@ import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { resolveShedIntent } from '../device/deviceActionProjection';
 import { isStartPolicyHeldDevice, isStartPolicyHoldShed } from './shedding/startPolicyHold';
 import { isDeferredHoldShed } from './shedding/deferredHold';
-import { isOperatingPowerHeldDevice, isOperatingPowerHoldShed } from './shedding/operatingPowerHold';
 import { isChargeTargetHeldDevice, isChargeTargetHoldShed, resolveHeldChargeTarget } from './shedding/chargeTargetHold';
 import { materializeShedSnapshotFields } from './planActionMaterialization';
 import { resolveSteppedLoadDirectShedStepId } from './planSteppedShedResolution';
@@ -323,21 +322,18 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
 function resolveHoldDecisions(
   inputs: BasePlanDeviceInputs,
   decision: PlannedDeviceDecision,
-): Pick<LooseDevicePlanDevice,
-  'startPolicyHoldActive' | 'chargeTargetHeld' | 'operatingPowerHeld' | 'nonCapacityHoldShed'> {
+): Pick<LooseDevicePlanDevice, 'startPolicyHoldActive' | 'chargeTargetHeld' | 'nonCapacityHoldShed'> {
   const { dev, sheddingPlan, surplusHoldShed } = inputs;
   const { shedSet, shedReasons } = sheddingPlan;
   // Keys only when true: absence is the one spelling of "not held".
   const holdOnly = (shedSet.has(dev.id)
     && (isStartPolicyHoldShed(dev, shedReasons) || isChargeTargetHoldShed(dev, shedReasons)
-      || isOperatingPowerHoldShed(dev, shedReasons)
       || isDeferredHoldShed(dev, shedReasons) || surplusHoldShed))
     || isSurplusCeilingReduction(inputs, decision);
   const chargeTargetHeld = resolveHeldChargeTarget(dev);
   return {
     ...(isStartPolicyHeldDevice(dev) ? { startPolicyHoldActive: true as const } : {}),
     ...(chargeTargetHeld ? { chargeTargetHeld } : {}),
-    ...(isOperatingPowerHeldDevice(dev) ? { operatingPowerHeld: true as const } : {}),
     ...(holdOnly ? { nonCapacityHoldShed: true as const } : {}),
   };
 }
@@ -411,7 +407,6 @@ function resolveEffectiveShedBehavior(
   // is this cycle's only reason (`isChargeTargetHoldShed`, which still decides
   // whether the shed counts as capacity pressure).
   const heldOff = isStartPolicyHoldShed(dev, shedReasons) || isChargeTargetHeldDevice(dev)
-    || isOperatingPowerHeldDevice(dev)
     || (dev.deferredHold === 'off' && isDeferredHoldShed(dev, shedReasons));
   const canTurnOff = isBinaryPlanDevice(dev) || isSteppedLoadDevice(dev);
   return shouldShed && heldOff && canTurnOff ? TURN_OFF_SHED_BEHAVIOR : configured;

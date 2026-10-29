@@ -597,25 +597,6 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     expect(h.state.surplusEligibilityByDevice[PUMP]?.eligible ?? false).toBe(false);
   });
 
-  it('leaves surplus for a lower-priority load when a charger cannot run below its operating minimum', async () => {
-    const h = makeHarness({ totalKw: -2 });
-    const charger = buildPlanInputDevice({
-      id: 'blocked-charger', name: 'Charger', priority: 1,
-      isEvCharger: true, evChargingState: 'plugged_in_paused',
-      binaryControl: { on: false }, currentDrawKw: 0, expectedPowerKw: 1.38,
-      surplusTracking: true, operatingPowerRange: 'below_minimum',
-      steppedLoadProfile: { steps: [
-        { id: 'off', planningPowerW: 0 }, { id: '6a', planningPowerW: 1380, planningCurrentA: 6 },
-      ] },
-    });
-    const pump = { ...buildPump({ on: false }), priority: 2 };
-    await h.builder.buildDevicePlanSnapshot([charger, pump]);
-    await vi.advanceTimersByTimeAsync(SURPLUS_ABSORB_SETTLE_MS);
-    const plan = await h.builder.buildDevicePlanSnapshot([charger, pump]);
-    expect(deviceOf(plan, charger.id)?.reason.code).toBe(PLAN_REASON_CODES.powerLimitBelowMinimum);
-    expect(h.state.surplusEligibilityByDevice[PUMP]?.eligible).toBe(true);
-  });
-
   it('HOIST byte-identity: a non-solar fixture builds a byte-identical plan with the surplus pass idle vs absent', async () => {
     // The eligibility pass now runs unconditionally in the builder pipeline
     // (hoisted out of buildInitialPlanDevices). For a home with no willing

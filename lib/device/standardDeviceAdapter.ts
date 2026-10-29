@@ -16,9 +16,6 @@ export const standardDeviceAdapter: Omit<DeviceAdapter, 'readsAsReported'> = {
   matches: () => false, matchesCapabilities: () => false,
   identity: (device) => device,
   overlay: (_device, capabilities, capabilityObj) => ({ kind: 'standard', capabilities, capabilityObj }),
-  configureTargetPower: (_device, config) => config,
-  targetPowerReading: (_device, _config, value) => value,
-  stepCommand: (_device, _step, command) => command,
   normalize: (_snapshot, capabilityId, value) => [{ capabilityId, value }],
   observation: (device) => Object.fromEntries(
     Object.entries(device.capabilitiesObj ?? {}).flatMap(([id, capability]) => (

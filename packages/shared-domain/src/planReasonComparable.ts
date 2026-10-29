@@ -114,7 +114,6 @@ const CODE_ONLY_REASONS = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.awaitingSolarSurplus,
   PLAN_REASON_CODES.awaitingPelsStart,
   PLAN_REASON_CODES.awaitingBatteryLevel,
-  PLAN_REASON_CODES.powerLimitBelowMinimum,
 ]);
 
 type CodeOnlyReason = Extract<
@@ -140,7 +139,6 @@ type CodeOnlyReason = Extract<
   | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
   | { code: typeof PLAN_REASON_CODES.awaitingPelsStart }
   | { code: typeof PLAN_REASON_CODES.awaitingBatteryLevel }
-  | { code: typeof PLAN_REASON_CODES.powerLimitBelowMinimum }
 >;
 
 function isCodeOnlyReason(reason: DeviceReason): reason is CodeOnlyReason {

@@ -1,6 +1,4 @@
-import type { SteppedLoadProfile, TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
-import { getDeviceAdapter } from './deviceAdapterRegistry';
-import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceCapabilityMap } from './managerControl';
 import {
@@ -19,9 +17,7 @@ type NativeSteppedLoadCommandAdapter = {
     setCapability: (capabilityId: string, value: unknown) => Promise<unknown>,
   ) => Promise<boolean>;
   observeCapabilityUpdate: (capabilityId: string, value: unknown) => void;
-  getReportedStepId: (
-    profile: SteppedLoadProfile, config: TargetPowerSteppedLoadConfig | undefined,
-  ) => string | undefined;
+  getReportedStepId: (profile: SteppedLoadProfile) => string | undefined;
 };
 
 /**
@@ -77,55 +73,46 @@ export class NativeSteppedLoadCommandAdapters {
     this.adapters.get(deviceId)?.observeCapabilityUpdate(capabilityId, value);
   }
 
-  getReportedStepId(
-    deviceId: string, profile: SteppedLoadProfile, config: TargetPowerSteppedLoadConfig | undefined,
-  ): string | undefined {
-    return this.adapters.get(deviceId)?.getReportedStepId(profile, config);
+  getReportedStepId(deviceId: string, profile: SteppedLoadProfile): string | undefined {
+    return this.adapters.get(deviceId)?.getReportedStepId(profile);
   }
 }
 
 function buildCapabilityNativeSteppedLoadCommandAdapter(
   device: HomeyDeviceLike,
 ): NativeSteppedLoadCommandAdapter {
-  let raw = device;
+  let capabilities = Array.isArray(device.capabilities) ? [...device.capabilities] : [];
+  let capabilityObj = getCapabilityObj(device);
   return {
     syncDevice(nextDevice) {
-      raw = nextDevice;
+      capabilities = Array.isArray(nextDevice.capabilities) ? [...nextDevice.capabilities] : [];
+      capabilityObj = getCapabilityObj(nextDevice);
     },
     async setStep(profile, desiredStepId, setCapability) {
       const command = resolveNativeSteppedLoadCommand({
         profile,
         desiredStepId,
-        capabilities: raw.capabilities ?? [],
-        capabilityObj: getCapabilityObj(raw),
+        capabilities,
+        capabilityObj,
       });
       if (!command) return false;
-      const step = getSteppedLoadStep(profile, desiredStepId);
-      if (!step) return false;
-      const write = getDeviceAdapter(raw).stepCommand(raw, step, command);
-      await setCapability(write.capabilityId, write.value);
+      await setCapability(command.capabilityId, command.value);
       return true;
     },
     /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
     observeCapabilityUpdate(capabilityId, value) {
-      if (!raw.capabilities?.includes(capabilityId)) return;
-      const capabilityObj = getCapabilityObj(raw);
+      if (!capabilities.includes(capabilityId)) return;
       capabilityObj[capabilityId] = {
         ...capabilityObj[capabilityId],
         value,
       };
     },
     /* eslint-enable functional/immutable-data */
-    getReportedStepId(profile, config) {
-      const capabilityObj = getCapabilityObj(raw);
-      const target = capabilityObj.target_power;
-      const values = config && typeof target?.value === 'number'
-        ? { ...capabilityObj, target_power: { ...target,
-          value: getDeviceAdapter(raw).targetPowerReading(raw, config, target.value) } } : capabilityObj;
+    getReportedStepId(profile) {
       return resolveNativeSteppedLoadReportedStepId({
         profile,
-        capabilities: raw.capabilities ?? [],
-        capabilityObj: values,
+        capabilities,
+        capabilityObj,
       });
     },
   };
