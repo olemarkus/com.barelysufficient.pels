@@ -15,9 +15,9 @@ import {
   type DeferredObjectiveEndedEvent,
   type DeferredObjectiveHoursRemainingEvent,
   type DeferredObjectivePlanRevisionWrittenEvent,
+  plannedDurationHours,
 } from '../lib/objectives/deferredObjectives';
 import { isFiniteNumber } from '../packages/shared-domain/src/numberGuards';
-import { plannedDurationHours } from '../packages/shared-domain/src/deferredPlanBookedHours';
 
 // The status-token id set is a public-API contract for flow authors. Aliasing
 // here keeps the runtime call sites readable while the single source of truth

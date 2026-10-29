@@ -23,7 +23,7 @@ import { describe, expect, it } from 'vitest';
 import { objectiveRosterFor } from '../utils/objectiveRoster';
 import { resolveDeferredObjectiveDeadline } from '../../lib/objectives/deferredObjectives';
 import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
-import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
+import { priceHorizonFromStore } from '../helpers/priceHorizonFromStore';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
@@ -217,7 +217,7 @@ const runScenario = (): { hours: HourOutcome[]; finalTempC: number } => {
       settings,
       powerTracker: buildPowerTracker(nowMs),
       dailyBudgetSnapshot: buildSnapshot(nowMs),
-      buildPriceHorizon: (n, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), n, deadlineAtMs),
+      buildPriceHorizon: (n, deadlineAtMs) => priceHorizonFromStore(buildCombinedPrices(), n, deadlineAtMs),
       priceOptimizationEnabled: true,
       activePlans,
     });

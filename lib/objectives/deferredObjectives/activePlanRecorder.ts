@@ -1,8 +1,9 @@
 import { allocatedTaskPlan } from './taskEvaluation';
 import { resolveLiveCompletion, sameLiveCompletion } from './activePlanDiagnosticReason';
 import {
-  hoursWithPlannedEnergy, plannedDurationHours,
+  hoursWithPlannedEnergy,
 } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
+import { plannedDurationHours } from './plannedDuration';
 /**
  * Persisted record-keeper for deferred-objective active plans — the slow clock
  * in this module's two-clock design (governed by

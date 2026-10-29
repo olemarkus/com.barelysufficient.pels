@@ -17,7 +17,7 @@ import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
 import { EnergyTaskDeliveryTracker } from '../../lib/objectives/deferredObjectives/energyDelivery';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
-import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
+import { priceHorizonFromStore } from '../helpers/priceHorizonFromStore';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import { type MeteredPlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
@@ -168,7 +168,7 @@ const runScenario = (tankFullAfterKWh: number, meterOnlyHourOfDay: number | null
       settings,
       powerTracker: {},
       dailyBudgetSnapshot: null,
-      buildPriceHorizon: (n, deadline) => buildPriceHorizonFromCombined(buildCombinedPrices(), n, deadline),
+      buildPriceHorizon: (n, deadline) => priceHorizonFromStore(buildCombinedPrices(), n, deadline),
       priceOptimizationEnabled: true,
       activePlans: recorder.getActivePlansSnapshot(),
     });

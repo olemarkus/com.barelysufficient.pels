@@ -19,7 +19,7 @@ import {
 } from '../../lib/objectives/deferredObjectives';
 import { objectiveRosterFor } from '../utils/objectiveRoster';
 import { reportTaskCompletionDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
-import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
+import { priceHorizonFromStore } from '../helpers/priceHorizonFromStore';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type {
   DeferredObjectivePlannedBucket,
@@ -416,7 +416,7 @@ const buildDeferredObjectiveDiagnostics = (
     isReservationSuppressed: params.isReservationSuppressed ?? noReservationSuppression,
     getDeliveredEnergyKWh: params.getDeliveredEnergyKWh ?? (() => 0),
     getPrioritiesForDevices: params.getPrioritiesForDevices ?? createFixturePriorityQuery(params.devices),
-    buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(combined, nowMs, deadlineAtMs),
+    buildPriceHorizon: (nowMs, deadlineAtMs) => priceHorizonFromStore(combined, nowMs, deadlineAtMs),
   });
 };
 
@@ -447,7 +447,7 @@ const buildDeferredObjectivePolicyHorizon = (
   };
   return buildDeferredObjectivePolicyHorizonRaw({
     ...params,
-    priceHorizon: buildPriceHorizonFromCombined(
+    priceHorizon: priceHorizonFromStore(
       combinedFromSnapshot(params.dailyBudgetSnapshot),
       params.nowMs,
       params.deadlineAtMs,

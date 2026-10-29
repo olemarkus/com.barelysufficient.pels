@@ -3,57 +3,6 @@ import {
   type CombinedPricesV2,
 } from './priceTypes';
 import type { CombinedPricesReader } from './combinedPricesReader';
-import { resolvePlanningPrice } from './budgetPrice';
-import type { PriceHorizonEntry } from '../../packages/planner-types/src/priceHorizon';
-
-const PRICE_HORIZON_HOUR_MS = 60 * 60 * 1000;
-
-/**
- * Adapt a stored hourly price series to the interval horizon contract.
- * Live Smart-task evaluations use the native periods from PriceService instead.
- * Flattens the store, filters to hours that overlap
- * `[nowMs, deadlineAtMs)`, dedupes by epoch hour (first-write-wins), and sorts
- * ascending. Returns an empty array when the store is null or no priced hour
- * falls in the window. Lives in the price layer (the producer); the leafward
- * `lib/objectives` consumer only sees the flat `PriceHorizonEntry[]` it returns.
- *
- * `startMs` is the entry's RAW hour-start instant, NOT floored to the epoch
- * hour: this is the price hour's true boundary, so for fractional-offset
- * timezones (local day starts at :30/:45 past the UTC hour) the bucket grid
- * stays phase-aligned with the daily-budget overlay (whose `startUtc` carries
- * the same instants). The epoch-hour floor is used ONLY as the dedupe/join key.
- *
- * Each hour carries the PLANNING price (`budgetPrice ?? total` — see
- * `resolvePlanningPrice`): the horizon exists to schedule flexible load, so a
- * prosumer's forecast-surplus hours rank by the blended planning price. The
- * import price remains separately available for money estimates. Both must be
- * finite: a valid planning price cannot rescue a malformed billed price.
- */
-export const buildPriceHorizonFromCombined = (
-  store: CombinedPricesV2 | null,
-  nowMs: number,
-  deadlineAtMs: number,
-): PriceHorizonEntry[] => {
-  const byHour = new Map<number, PriceHorizonEntry>();
-  for (const entry of flattenAllHours(store)) {
-    const startMs = new Date(entry.startsAt).getTime();
-    const price = resolvePlanningPrice(entry.budgetPrice, entry.total);
-    if (!Number.isFinite(startMs) || !Number.isFinite(price) || !Number.isFinite(entry.total)) continue;
-    const hourKey = Math.floor(startMs / PRICE_HORIZON_HOUR_MS) * PRICE_HORIZON_HOUR_MS;
-    // Overlap test on the price hour `[startMs, startMs + HOUR)`.
-    if (startMs + PRICE_HORIZON_HOUR_MS <= nowMs || startMs >= deadlineAtMs) continue;
-    // First-write wins: keep the earliest entry that floors to this epoch hour.
-    if (!byHour.has(hourKey)) {
-      byHour.set(hourKey, {
-        startMs,
-        endMs: startMs + PRICE_HORIZON_HOUR_MS,
-        price,
-        moneyPrice: entry.total,
-      });
-    }
-  }
-  return [...byHour.values()].sort((left, right) => left.startMs - right.startMs);
-};
 
 export const flattenAllHours = (store: CombinedPricesV2 | null): CombinedPriceEntry[] => {
   if (!store) return [];
