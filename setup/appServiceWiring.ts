@@ -62,6 +62,7 @@ import {
 } from './appInit/appHomeMembershipOptions';
 import { registerSettingsHandler } from './appInit/registerSettingsHandler';
 import { startPostStartupBackgroundTasks } from './appInit/startPostStartupBackgroundTasks';
+import { classifyInstallAtBoot, type InstallAtBoot } from './capacityMarketDefault';
 import type { BackgroundTasksController } from './backgroundTasksController';
 import type { AppPowerTracker } from './appPowerTracker';
 
@@ -190,6 +191,9 @@ export class AppServiceWiring {
   /** `reports`: the app's problem-report service, which also sends the reports the owner turned on. */
   async runInit(reports: Pick<SupportReportService, 'sendDaily' | 'sendOnEvent'>): Promise<void> {
     const { ctx } = this.deps;
+    // First, before any startup step writes a key: only a new install takes the
+    // market default for Capacity limit.
+    const installAtBoot = classifyInstallAtBoot(ctx.homey.settings);
     const deferStartupBootstrap = usesProductionStartupOrder();
     const logStartupStepFailure = (label: string, error: Error): void => {
       ctx.getStructuredLogger('startup').error({
@@ -249,9 +253,18 @@ export class AppServiceWiring {
       () => this.deps.backgroundTasks.startPriceLowestTriggerChecker(),
       logStartupStepFailure,
     );
+    await this.runPostStartupSteps(reports, installAtBoot, logStartupStepFailure);
+  }
+
+  private async runPostStartupSteps(
+    reports: Pick<SupportReportService, 'sendDaily' | 'sendOnEvent'>,
+    installAtBoot: InstallAtBoot,
+    logStartupStepFailure: (label: string, error: Error) => void,
+  ): Promise<void> {
+    const { ctx } = this.deps;
     await runStartupStep(
       'startPostStartupBackgroundTasks',
-      () => this.startPostStartupBackgroundTasks(),
+      () => this.startPostStartupBackgroundTasks(installAtBoot),
       logStartupStepFailure,
     );
     // Its own step, after the others: a report store that cannot open must not
@@ -268,7 +281,7 @@ export class AppServiceWiring {
     );
   }
 
-  startPostStartupBackgroundTasks(): void {
+  startPostStartupBackgroundTasks(installAtBoot: InstallAtBoot): void {
     const { ctx } = this.deps;
     requireInitializedAppContext(ctx);
     this.deps.powerTrackerHelpers.startPowerTrackerPruning();
@@ -279,6 +292,7 @@ export class AppServiceWiring {
       this.deps.timers,
       this.deps.handles,
       (listener) => { this.deps.observedStateEmitter.onObservedStateRefresh(listener); },
+      installAtBoot,
     );
   }
 

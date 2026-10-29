@@ -2158,8 +2158,11 @@ settings. No tour-completed flag is persisted.
   not relevant to them). Apply the same test to every step and every setup
   entry. `Power meter` and `Devices` apply to every home. `Limits` applies once
   a managed device may be limited, because a home that has never chosen still
-  runs the capacity limit on a built-in 10 kW. A saved hard cap, a saved grid
-  import limit, or an explicit choice to disable both completes that step.
+  runs the capacity limit on a built-in 10 kW. A new install starts with
+  Capacity limit off outside Norway and Belgium (owner ruling 2026-10-29: on by
+  default only where households pay for measured peaks), so its step is already
+  done as `Power limits off`. A saved hard cap, a saved grid import limit, or an
+  explicit choice to disable both completes that step.
 - **`Prices` appears once something uses prices** (owner ruling 2026-10-11).
   It stays open while PELS prices with a source the owner never chose, a source
   with no prices, or a Norway setting the owner never chose. Its detail names
