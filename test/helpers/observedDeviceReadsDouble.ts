@@ -37,6 +37,8 @@ export const observedDeviceReadsDouble = (
     return record !== undefined && hasLiveMeasuredPower(record);
   }),
   hasStartedDrawingSince: vi.fn(() => false),
+  getLiveDrawAt: vi.fn(() => null),
+  hasDrawnAtLeastSince: vi.fn(() => false),
   getRevision: vi.fn(() => 0),
   ...overrides,
 });

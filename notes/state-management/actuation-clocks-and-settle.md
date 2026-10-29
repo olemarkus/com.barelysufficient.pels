@@ -198,15 +198,23 @@ returns to the base under the existing five-minute stability rule.
 The ordinary five-minute wait may end early once every restore still inside its
 window has visibly landed:
 
-- **The device started drawing.** Its live, direct power reading went from idle
-  (below 50 W) to active in a reading measured and received after its restore
-  stamp, and it is still active. A device already running when it was restored,
-  such as a step-up or a setpoint raise on a heating load, never starts, so it
-  keeps the timer: a rise on a running load cannot be told from fluctuation.
-- **It reached half its expected draw**: the running step's planning power for a
-  stepped load, its expected power otherwise. The observer keeps the run's highest
-  level, re-dated only by a further rise of at least 50 W, so a climb moves the
-  date and fluctuation does not.
+- **The device started drawing, or a running stepped load rose.** For a device
+  resumed from idle: its live, direct power reading went from idle (below 50 W) to
+  active in a reading measured and received after its restore stamp, and it is
+  still active. For a stepped load that was already running when it stepped up:
+  its live draw rose above its draw at the step-up, in a reading measured and
+  received after the step-up, and it still draws that much. A setpoint raise on a
+  running heating load keeps the timer: its rise cannot be told from fluctuation.
+- **It reached half its expected draw**: for a device resumed from idle, half the
+  running step's planning power for a stepped load, its expected power otherwise.
+  The observer keeps the run's highest level, re-dated only by a further rise of
+  at least 50 W, so a climb moves the date and fluctuation does not. For a running
+  stepped step-up, the rise must cover half the way from its draw at the step-up
+  to the new step's planning power, and at least 0.3 kW, well clear of a charging
+  car's fluctuation. The observer keeps a short history of each device's draw
+  levels (a new level only on a change of at least 50 W), so the draw at the
+  step-up is known and a level reached before it never counts. A car that does
+  not take the new current never rises, and the timer expires normally.
 - **The whole-home value was measured after it.** The tracker stamps a sample
   when PELS takes it, never when the meter measured it, and a Homey Energy poll
   returns the meter's last report, so even a value that just changed can predate

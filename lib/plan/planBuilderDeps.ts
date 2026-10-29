@@ -49,6 +49,8 @@ export type PlanBuilderDeps = {
   getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
   getShedBehavior: (deviceId: string) => ShedBehavior;
   hasStartedDrawingSince: ObservedDeviceReads['hasStartedDrawingSince'];
+  getLiveDrawAt: ObservedDeviceReads['getLiveDrawAt'];
+  hasDrawnAtLeastSince: ObservedDeviceReads['hasDrawnAtLeastSince'];
   // Observer-owned pending-binary-command store. Plan-side reads consult
   // `peek(id)` (raw read) through this facade rather than touching
   // `state.pendingBinaryCommands[id]` directly, so the store stays the

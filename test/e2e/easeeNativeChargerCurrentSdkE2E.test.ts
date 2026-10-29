@@ -374,6 +374,57 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
     expect(charger.getActualCapabilityValue('evcharger_charging_state')).toBe('plugged_in_charging');
   });
 
+  it.each([
+    ['steps up again soon after the last step reaches the meter', true],
+    ['keeps the five-minute wait when the car does not take the new current', false],
+  ])('%s', async (_label, carFollows) => {
+    const charger = await buildChargingEasee();
+    setMockDrivers({ driverA: new MockDriver('driverA', [charger]) });
+    configureRuntime(true);
+    mockHomeyInstance.settings.set('overshoot_behaviors', {});
+    const easee = simulateEasee(charger);
+    // Room for a few amps above 6 A, so the first increase stops well short of 32 A.
+    let backgroundW = 5_500;
+    easee.setBackgroundW(backgroundW);
+    const increases: Array<{ atMs: number; currentA: number }> = [];
+    const recordIncreases = (): void => {
+      const writes = easee.writesTo(CHARGER_CURRENT_PATH).filter((value): value is number => typeof value === 'number');
+      const last = writes.at(-1);
+      const previous = increases.at(-1)?.currentA ?? 6;
+      if (last !== undefined && last > previous) increases.push({ atMs: Date.now(), currentA: last });
+    };
+    // A real meter's value moves a few watts on every report.
+    let tickCount = 0;
+    const tick = async (): Promise<void> => {
+      tickCount += 1;
+      easee.setBackgroundW(backgroundW + (tickCount % 3) * 10);
+      await vi.advanceTimersByTimeAsync(5_000);
+      recordIncreases();
+    };
+
+    const app = createApp();
+    await app.onInit();
+    // The car takes a new current about 20 s after the charger offers it (14-30 s in production).
+    await charger.setCapabilityValue('measure_power', 6 * 230);
+    for (let count = 0; count < 60 && increases.length === 0; count += 1) {
+      await charger.setCapabilityValue('measure_power', 6 * 230);
+      await tick();
+    }
+    expect(increases).toHaveLength(1);
+    const [first] = increases;
+    await charger.setCapabilityValue('measure_power', 6 * 230);
+    await vi.advanceTimersByTimeAsync(20_000);
+    if (carFollows) await charger.setCapabilityValue('measure_power', first!.currentA * 230);
+
+    // The other load goes away: room for a much higher current.
+    backgroundW = 1_000;
+    for (let count = 0; count < 80 && increases.length === 1; count += 1) await tick();
+    expect(increases.length).toBeGreaterThan(1);
+    const waitMs = increases[1]!.atMs - first!.atMs;
+    if (carFollows) expect(waitMs).toBeLessThan(150_000);
+    else expect(waitMs).toBeGreaterThanOrEqual(290_000);
+  });
+
   it('keeps an existing Easee bridge Flow authoritative after upgrade', async () => {
     const charger = await buildEaseeCharger();
     setMockDrivers({ driverA: new MockDriver('driverA', [charger]) });

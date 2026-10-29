@@ -48,6 +48,8 @@ function poweredRestore() {
   const deps: RestoreDeps = {
     powerTracker: homeReading(2300, 2500, 3000),
     hasStartedDrawingSince: observer.hasStartedDrawingSince.bind(observer),
+    getLiveDrawAt: observer.getLiveDrawAt.bind(observer),
+    hasDrawnAtLeastSince: observer.hasDrawnAtLeastSince.bind(observer),
     getShedBehavior: () => ({ action: 'turn_off' }),
     temperatureSetpoints: new Map(), structuredLog: testLogger,
   };
@@ -327,5 +329,105 @@ describe('restore cooldown early release', () => {
     });
     const held = applyShedTemperatureHold(state, restore, sheddingPlanFixture(), deps.temperatureSetpoints);
     expect(held.planDevices.find((entry) => entry.id === 'waiting')).toMatchObject({ plannedTarget: hasEvidence ? 21 : 16 });
+  });
+});
+
+// A charger running at 3.7 kW (received 500) stepped up at 1000 to a 4.6 kW step; its draw
+// reached 4.6 kW at 2000 (received 2100), and the home reading changed at 2300, after the
+// draw arrived, and again at 2500. Landing needs 3.7 + max(0.3, (4.6 - 3.7) / 2) = 4.15 kW.
+function steppedUp(options: { planningPowerKw?: number; risenKw?: number; risenReceivedAtMs?: number } = {}) {
+  const observer = new ObservedDeviceStateProjection();
+  const state = createPlanEngineState(1);
+  state.restoreBackoff.clearStartupBlock(1);
+  state.actuation.markRestore('charger', 1000);
+  observe(observer, reading('charger', 3.7, 500), 500);
+  observe(observer, reading('charger', options.risenKw ?? 4.6, 2000), options.risenReceivedAtMs ?? 2100);
+  const deps: RestoreDeps = {
+    powerTracker: homeReading(2300, 2500, 3000),
+    hasStartedDrawingSince: observer.hasStartedDrawingSince.bind(observer),
+    getLiveDrawAt: observer.getLiveDrawAt.bind(observer),
+    hasDrawnAtLeastSince: observer.hasDrawnAtLeastSince.bind(observer),
+    getShedBehavior: () => ({ action: 'turn_off' }),
+    temperatureSetpoints: new Map(), structuredLog: testLogger,
+  };
+  const devices = [steppedPlanDevice({ id: 'charger', planningPowerKw: options.planningPowerKw ?? 4.6 })];
+  return { observer, state, deps, nowTs: 4000, devices };
+}
+
+describe('observer draw levels', () => {
+  it('answers the draw a reading held at a moment, and nothing before the first live reading', () => {
+    const { observer } = steppedUp();
+    expect(observer.getLiveDrawAt('charger', 400)).toBeNull();
+    expect(observer.getLiveDrawAt('charger', 1000)).toBe(3.7);
+    expect(observer.getLiveDrawAt('charger', 2100)).toBe(4.6);
+  });
+
+  it('adds no level for a reading within the active threshold of the last one', () => {
+    const { observer } = steppedUp({ risenKw: 3.72 });
+    expect(observer.hasDrawnAtLeastSince('charger', 1000, 10_000, 3.71)).toBe(false);
+  });
+
+  it('withdraws the rise when the draw falls back, and clears on a reading that is not live', () => {
+    const { observer } = steppedUp();
+    expect(observer.hasDrawnAtLeastSince('charger', 1000, 2300, 4.15)).toBe(true);
+    observe(observer, reading('charger', 3.7, 2600), 2700);
+    expect(observer.hasDrawnAtLeastSince('charger', 1000, 2300, 4.15)).toBe(false);
+    observe(observer, { ...reading('charger', 3.7, 2800), available: false }, 2900);
+    expect(observer.getLiveDrawAt('charger', 2900)).toBeNull();
+  });
+});
+
+describe('restore cooldown early release for a running stepped step-up', () => {
+  it('releases once the rise arrived before the home value was measured', () => {
+    const { state, deps, nowTs, devices } = steppedUp();
+    expect(buildRestoreTiming(state, 8, deps, devices, nowTs).inRestoreCooldown).toBe(false);
+  });
+
+  it.each([
+    ['the draw did not rise far enough', { risenKw: 4.1 }],
+    ['the rise arrived after the home value was measured', { risenReceivedAtMs: 2400 }],
+    ['a small step rose less than the floor', { planningPowerKw: 3.9, risenKw: 3.95 }],
+  ])('keeps the timer when %s', (_label, options) => {
+    const { state, deps, nowTs, devices } = steppedUp(options);
+    expect(buildRestoreTiming(state, 8, deps, devices, nowTs).inRestoreCooldown).toBe(true);
+  });
+
+  it('releases a small step once it rose by the floor', () => {
+    const { state, deps, nowTs, devices } = steppedUp({ planningPowerKw: 3.9, risenKw: 4.05 });
+    expect(buildRestoreTiming(state, 8, deps, devices, nowTs).inRestoreCooldown).toBe(false);
+  });
+
+  it('does not count a higher draw reached before the step-up', () => {
+    const observer = new ObservedDeviceStateProjection();
+    const { state, deps, nowTs, devices } = steppedUp();
+    observe(observer, reading('charger', 4.6, 200), 200);
+    observe(observer, reading('charger', 3.7, 500), 500);
+    const fresh = {
+      ...deps,
+      hasStartedDrawingSince: observer.hasStartedDrawingSince.bind(observer),
+      getLiveDrawAt: observer.getLiveDrawAt.bind(observer),
+      hasDrawnAtLeastSince: observer.hasDrawnAtLeastSince.bind(observer),
+    };
+    expect(buildRestoreTiming(state, 8, fresh, devices, nowTs).inRestoreCooldown).toBe(true);
+  });
+
+  it('keeps the timer when the draw before the step-up is unknown', () => {
+    const { state, deps, nowTs, devices } = steppedUp();
+    state.actuation.markRestore('charger', 400);
+    expect(buildRestoreTiming(state, 8, deps, devices, nowTs).inRestoreCooldown).toBe(true);
+  });
+
+  it('keeps the doubled cooldown after instability', () => {
+    const { state, deps, nowTs, devices } = steppedUp();
+    state.restoreBackoff.noteInstability(1500);
+    const timing = buildRestoreTiming(state, 8, deps, devices, nowTs);
+    expect(timing.restoreCooldownMs).toBe(600000);
+    expect(timing.inRestoreCooldown).toBe(true);
+  });
+
+  it('keeps the timer while the step command is unconfirmed', () => {
+    const { state, deps, nowTs } = steppedUp();
+    const pending = [steppedPlanDevice({ id: 'charger', planningPowerKw: 4.6, stepCommandPending: true })];
+    expect(buildRestoreTiming(state, 8, deps, pending, nowTs).inRestoreCooldown).toBe(true);
   });
 });
