@@ -320,6 +320,10 @@ export const initSetupJourney = (): void => {
     paintJourney();
   });
   document.addEventListener('plan-updated', () => { void refreshLivePreview(); });
+  // A task created from `Choose what PELS does` lands after the page is back.
+  document.addEventListener('deferred-objectives-updated', () => {
+    if (currentStep() === 'goals') renderDevices(state.latestDevices);
+  });
   onSetupPathChange(paintJourney);
   subscribeToHomeScope(() => {
     const step = currentStep();
