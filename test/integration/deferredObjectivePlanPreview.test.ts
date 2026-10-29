@@ -15,7 +15,7 @@ import {
   resolveDeferredObjectiveDeadline,
   type DeferredObjectivePlanPreviewCandidate,
 } from '../../lib/objectives/deferredObjectives';
-import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
+import { priceHorizonFromStore } from '../helpers/priceHorizonFromStore';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import {
   buildHoursFromHorizonPlan,
@@ -259,7 +259,7 @@ const combinedFromSnapshot = (
 // same prices it used to read off the snapshot's buckets.
 const priceHorizonBuilderFor = (snapshot: DailyBudgetUiPayload | null, planningPriceScale?: number) => {
   const combined = combinedFromSnapshot(snapshot, planningPriceScale);
-  return (nowMs: number, deadlineAtMs: number) => buildPriceHorizonFromCombined(combined, nowMs, deadlineAtMs);
+  return (nowMs: number, deadlineAtMs: number) => priceHorizonFromStore(combined, nowMs, deadlineAtMs);
 };
 
 type RawDiagnosticsParams = TaskEvaluationFixture;

@@ -1,4 +1,5 @@
 export { planDeferredObjectiveHorizon } from './horizonPlanner';
+export { plannedDurationHours } from './plannedDuration';
 export {
   buildDeferredObjectiveDiagnostics,
   buildTaskEvaluationSnapshot,

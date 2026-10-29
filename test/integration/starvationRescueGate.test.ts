@@ -14,7 +14,7 @@ import {
   withTemperatureDiscriminant,
 } from '../../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
-import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
+import { priceHorizonFromStore } from '../helpers/priceHorizonFromStore';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import {
   DeferredObjectiveDecorationController,
@@ -205,7 +205,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getTimeZone: () => 'UTC',
     getPowerTracker: () => ({ ...buildPowerTracker(DAY_START_UTC), lastPowerW: LATCHED_TOTAL_W }),
     getPriceOptimizationEnabled: () => true,
-    buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(hoursInDay), nowMs, deadlineAtMs),
+    buildPriceHorizon: (nowMs, deadlineAtMs) => priceHorizonFromStore(buildCombinedPrices(hoursInDay), nowMs, deadlineAtMs),
     getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
     getDeferredObjectiveActivePlans: createEmptyActivePlans,
     resolveDeviceExclusion: noDeviceExclusion,

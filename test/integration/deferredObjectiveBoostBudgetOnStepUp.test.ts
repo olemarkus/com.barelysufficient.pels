@@ -12,7 +12,7 @@ import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helper
 // per-bucket budget overlay AND the binding planner soft limit (`softLimitSource:
 // 'daily'`), proving the boost / shed-invariant behavior is identical under the
 // budget-overlay path. Prices still come from the price layer
-// (`buildPriceHorizonFromCombined`), independent of the budget snapshot.
+// (`priceHorizonFromStore`), independent of the budget snapshot.
 //
 // Nothing internal is mocked: the REAL DeferredObjectiveDecorationController drives
 // the REAL PlanBuilder. The only lever between the two assertions is the clock hour
@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
+import { priceHorizonFromStore } from '../helpers/priceHorizonFromStore';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
   DeferredObjectiveDecorationController,
@@ -278,7 +278,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
     getTimeZone: () => 'UTC',
     getPowerTracker: () => powerTracker,
     getPriceOptimizationEnabled: () => true,
-    buildPriceHorizon: (start, deadline) => buildPriceHorizonFromCombined(buildCombinedPrices(), start, deadline),
+    buildPriceHorizon: (start, deadline) => priceHorizonFromStore(buildCombinedPrices(), start, deadline),
     getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: LIMIT_KW, marginKw: 0, periodMinutes: 60 }),
     getDeferredObjectiveActivePlans: createEmptyActivePlans,
     resolveDeviceExclusion: noDeviceExclusion,

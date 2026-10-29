@@ -11,7 +11,7 @@ import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
-import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
+import { priceHorizonFromStore } from '../helpers/priceHorizonFromStore';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import {
   DeferredObjectiveDecorationController,
@@ -213,7 +213,7 @@ const buildBuilder = (
     getTimeZone: () => 'UTC',
     getPowerTracker: () => powerTrackerRef.current,
     getPriceOptimizationEnabled: () => true,
-    buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
+    buildPriceHorizon: (nowMs, deadlineAtMs) => priceHorizonFromStore(buildCombinedPrices(), nowMs, deadlineAtMs),
     getCapacitySettings: () => capacitySettings,
     getDeferredObjectiveActivePlans: createEmptyActivePlans,
     resolveDeviceExclusion: noDeviceExclusion,
@@ -357,7 +357,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getTimeZone: () => 'UTC',
       getPowerTracker: () => powerTrackerRef.current,
       getPriceOptimizationEnabled: () => true,
-      buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
+      buildPriceHorizon: (nowMs, deadlineAtMs) => priceHorizonFromStore(buildCombinedPrices(), nowMs, deadlineAtMs),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
       getDeferredObjectiveActivePlans: createEmptyActivePlans,
       resolveDeviceExclusion: noDeviceExclusion,
@@ -607,7 +607,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getTimeZone: () => 'UTC',
       getPowerTracker: () => powerTracker,
       getPriceOptimizationEnabled: () => true,
-      buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
+      buildPriceHorizon: (nowMs, deadlineAtMs) => priceHorizonFromStore(buildCombinedPrices(), nowMs, deadlineAtMs),
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
       getDeferredObjectiveActivePlans: createEmptyActivePlans,
       resolveDeviceExclusion: noDeviceExclusion,

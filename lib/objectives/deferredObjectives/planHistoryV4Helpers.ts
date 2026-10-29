@@ -22,8 +22,9 @@ import {
 } from '../../../packages/shared-domain/src/deferredPlanHistoryAttribution';
 import { resolveRemainingEnergyKWh } from '../../../packages/shared-domain/src/energyQuantities';
 import {
-  hoursWithPlannedEnergy, plannedDurationHours,
+  hoursWithPlannedEnergy,
 } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
+import { plannedDurationHours } from './plannedDuration';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 
 // Runtime cap on persisted progress samples per entry. The contract module

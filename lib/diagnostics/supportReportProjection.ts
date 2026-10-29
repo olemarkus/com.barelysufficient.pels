@@ -11,7 +11,8 @@ import { hasObservedTemperature } from '../../packages/shared-domain/src/tempera
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
-import { hoursWithPlannedEnergy, plannedDurationHours } from '../../packages/shared-domain/src/deferredPlanBookedHours';
+import { hoursWithPlannedEnergy } from '../../packages/shared-domain/src/deferredPlanBookedHours';
+import { plannedDurationHours } from '../objectives/deferredObjectives/plannedDuration';
 import { isTemperaturePlanDevice } from '../plan/planTemperatureDevice';
 import type { DevicePlanDevice } from '../plan/planTypes';
 import type { CarLinkCarStatus, CarLinkDiagnostics } from '../ports/carLinkDiagnostics';

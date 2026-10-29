@@ -21,7 +21,7 @@ import { resolveTaskCompletion } from '../../lib/objectives/deferredObjectives/t
 // curve, which is flipped/scaled to prove the comparison is relative, not absolute.
 import { planDeferredObjectiveHorizon } from '../../lib/objectives/deferredObjectives';
 import { buildDeferredObjectivePolicyHorizon } from '../../lib/objectives/deferredObjectives/policyHorizon';
-import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
+import { priceHorizonFromStore } from '../helpers/priceHorizonFromStore';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import type {
@@ -194,7 +194,7 @@ const runBuildTime = (horizonPrices: readonly number[], energyNeededKWh: number)
     nowMs: NOW_MS,
     deadlineAtMs: DEADLINE_MS,
     priceOptimizationEnabled: true,
-    priceHorizon: buildPriceHorizonFromCombined(combinedFor(snapshot), NOW_MS, DEADLINE_MS),
+    priceHorizon: priceHorizonFromStore(combinedFor(snapshot), NOW_MS, DEADLINE_MS),
     dailyBudgetSnapshot: snapshot,
     exemptFromBudget: true, // lift the daily-budget cap so PRICE is the only allocation lever
     higherPriorityUnbookedPowerKw: 0,
@@ -245,7 +245,7 @@ const runBuildTimeSingleHour = (price: number): number => {
     nowMs: singleHourNowMs,
     deadlineAtMs: singleHourDeadlineMs,
     priceOptimizationEnabled: true,
-    priceHorizon: buildPriceHorizonFromCombined(combinedFor(snapshot), singleHourNowMs, singleHourDeadlineMs),
+    priceHorizon: priceHorizonFromStore(combinedFor(snapshot), singleHourNowMs, singleHourDeadlineMs),
     dailyBudgetSnapshot: snapshot,
     exemptFromBudget: true,
     higherPriorityUnbookedPowerKw: 0,

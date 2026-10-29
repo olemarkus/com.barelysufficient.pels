@@ -16,7 +16,7 @@ import type { StallEvidence } from '../../../packages/contracts/src/idleClassifi
 // Injected by the wiring layer: resolves the price-layer allocation horizon for
 // `[nowMs, deadlineAtMs)`. Defined as a closure (not a `CombinedPricesV2` input)
 // so this leafward subsystem never imports the `lib/price` peer — the producer
-// (`buildPriceHorizonFromCombined` in lib/price) lives in the price layer.
+// (`buildPriceHorizonFromPeriods` in lib/price) lives in the price layer.
 export type BuildPriceHorizon = (nowMs: number, deadlineAtMs: number) => PriceHorizonEntry[];
 
 // Injected by the wiring layer: reads the observer-layer idle classifier

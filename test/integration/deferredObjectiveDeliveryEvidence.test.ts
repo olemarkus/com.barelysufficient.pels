@@ -17,7 +17,7 @@ import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferr
 import { EnergyTaskDeliveryTracker } from '../../lib/objectives/deferredObjectives/energyDelivery';
 import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
-import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
+import { priceHorizonFromStore } from '../helpers/priceHorizonFromStore';
 import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import type { DeferredObjectiveRoster } from '../../packages/contracts/src/deferredObjectiveSettings';
@@ -85,7 +85,7 @@ const prices: CombinedPricesV2 = {
   avgPrice: 10, lowThreshold: 5, highThreshold: 15,
   priceScheme: 'norway', priceUnit: 'øre/kWh',
 };
-const priceHorizon = (nowMs: number, deadlineMs: number) => buildPriceHorizonFromCombined(prices, nowMs, deadlineMs);
+const priceHorizon = (nowMs: number, deadlineMs: number) => priceHorizonFromStore(prices, nowMs, deadlineMs);
 const priorities = createFixturePriorityQuery([{ id: HIGH_ID, priority: 1 }, { id: LOW_ID, priority: 2 }]);
 
 const energySettings = (): DeferredObjectiveRoster => objectiveRosterFor({

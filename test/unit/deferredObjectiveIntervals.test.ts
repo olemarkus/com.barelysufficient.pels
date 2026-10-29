@@ -4,7 +4,7 @@ import { buildHoursFromHorizonPlan, buildReservationSegmentsFromHorizonPlan, mer
 import { buildFrozenHorizonPlan } from '../../lib/objectives/deferredObjectives/frozenHorizonPlan';
 import { buildDeferredObjectivePolicyHorizon } from '../../lib/objectives/deferredObjectives/policyHorizon';
 import { inactiveTaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
-import { plannedDurationHours } from '../../packages/shared-domain/src/deferredPlanBookedHours';
+import { plannedDurationHours } from '../../lib/objectives/deferredObjectives/plannedDuration';
 import { normalizeDeferredObjectiveActivePlansShape } from '../../packages/shared-domain/src/deferredObjectiveActivePlanShape';
 import { isPastHourSettleMark } from '../../lib/objectives/deferredObjectives/settleWindow';
 import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';

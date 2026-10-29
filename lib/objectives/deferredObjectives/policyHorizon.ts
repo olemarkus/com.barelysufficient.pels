@@ -82,7 +82,7 @@ export type DeferredObjectivePolicyHorizonInputs = {
   deadlineAtMs: number;
   priceOptimizationEnabled: boolean;
   // Price + grid source for the allocation horizon, sourced directly from the
-  // price layer (`buildPriceHorizonFromCombined`). The base buckets (id /
+  // price layer (`buildPriceHorizonFromPeriods`). The base buckets (id /
   // startMs / endMs / price) are built from this — NOT the daily-budget
   // snapshot, which is now only the budget overlay below.
   priceHorizon: PriceHorizonEntry[];
@@ -378,8 +378,8 @@ const mapPolicyBuckets = (
       endMs: bucket.endMs,
       // Raw price is the sole price signal. The allocator fills hours
       // cheapest-first by comparing these relatively (currency-invariant band)
-      // and the live deferral compares them by ratio. `buildPriceHorizonFromCombined`
-      // already filters out non-finite prices, so every source bucket has one.
+      // and the live deferral compares them by ratio. Every source bucket carries
+      // the price the price owner resolved for it (`buildPriceHorizonFromPeriods`).
       price: bucket.price,
       ...(cap !== null ? { maxUsefulEnergyKWh: cap } : {}),
       ...(reservedHeadroomKw !== null ? { reservedHeadroomKw } : {}),

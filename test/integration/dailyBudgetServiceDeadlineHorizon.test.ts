@@ -11,7 +11,7 @@ import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
 import {
   buildDeferredObjectivePolicyHorizon,
 } from '../../lib/objectives/deferredObjectives/policyHorizon';
-import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
+import { priceHorizonFromStore } from '../helpers/priceHorizonFromStore';
 import { createCombinedPricesReader } from '../../lib/price/combinedPricesReader';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
@@ -150,7 +150,7 @@ describe('DailyBudgetService → deferred objective policy horizon', () => {
       nowMs: NOW_MS,
       deadlineAtMs: DEADLINE_MS,
       priceOptimizationEnabled: true,
-      priceHorizon: buildPriceHorizonFromCombined(todayOnlyPrices, NOW_MS, DEADLINE_MS),
+      priceHorizon: priceHorizonFromStore(todayOnlyPrices, NOW_MS, DEADLINE_MS),
       dailyBudgetSnapshot: snapshot,
       exemptFromBudget: false,
       higherPriorityUnbookedPowerKw: 0,
@@ -183,7 +183,7 @@ describe('DailyBudgetService → deferred objective policy horizon', () => {
       nowMs: NOW_MS,
       deadlineAtMs: DEADLINE_MS,
       priceOptimizationEnabled: true,
-      priceHorizon: buildPriceHorizonFromCombined(withTomorrowPrices, NOW_MS, DEADLINE_MS),
+      priceHorizon: priceHorizonFromStore(withTomorrowPrices, NOW_MS, DEADLINE_MS),
       dailyBudgetSnapshot: snapshot,
       exemptFromBudget: false,
       higherPriorityUnbookedPowerKw: 0,
