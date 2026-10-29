@@ -69,25 +69,37 @@ export function normalizeDeferredObjectiveActivePlansShape<TPlan, TEmpty>(
 
 // Upgrade only known legacy envelopes. Unknown versions never acquire invented
 // interval ends. Values remain untrusted until the caller validates the result.
-export function migrateLegacyRevisionIntervals(raw: unknown): unknown {
+// A legacy hour ends at the next hour or at the task's deadline, whichever is
+// first: legacy allocation clipped its last bucket to the deadline, and a live
+// plan's coverage ends there too.
+export function migrateLegacyRevisionIntervals(raw: unknown, deadlineAtMs: unknown): unknown {
   if (!isUnknownRecord(raw) || !Array.isArray(raw.hours)) return raw;
   return {
     ...raw,
     hours: raw.hours.map((hour: unknown) => (
       isUnknownRecord(hour) && typeof hour.startsAtMs === 'number'
-        ? { ...hour, endsAtMs: hour.startsAtMs + 3_600_000 }
+        ? { ...hour, endsAtMs: legacyIntervalEnd(hour.startsAtMs, hour.coversFromMs, deadlineAtMs) }
         : hour
     )),
   };
 }
 
+function legacyIntervalEnd(startsAtMs: number, rawCoversFromMs: unknown, deadlineAtMs: unknown): number {
+  const hourEndMs = startsAtMs + 3_600_000;
+  const coversFromMs = typeof rawCoversFromMs === 'number' ? rawCoversFromMs : startsAtMs;
+  return typeof deadlineAtMs === 'number' && deadlineAtMs > coversFromMs && deadlineAtMs < hourEndMs
+    ? deadlineAtMs
+    : hourEndMs;
+}
+
 function migrateLegacyActivePlanIntervals(raw: unknown): unknown {
   if (!isUnknownRecord(raw)) return raw;
+  const migrate = (revision: unknown): unknown => migrateLegacyRevisionIntervals(revision, raw.deadlineAtMs);
   return {
     ...raw,
-    ...(raw.commitment === undefined ? {} : { commitment: migrateLegacyRevisionIntervals(raw.commitment) }),
-    original: migrateLegacyRevisionIntervals(raw.original),
-    latest: migrateLegacyRevisionIntervals(raw.latest),
-    ...(Array.isArray(raw.history) ? { history: raw.history.map(migrateLegacyRevisionIntervals) } : {}),
+    ...(raw.commitment === undefined ? {} : { commitment: migrate(raw.commitment) }),
+    original: migrate(raw.original),
+    latest: migrate(raw.latest),
+    ...(Array.isArray(raw.history) ? { history: raw.history.map(migrate) } : {}),
   };
 }

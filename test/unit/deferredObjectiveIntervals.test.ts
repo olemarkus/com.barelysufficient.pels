@@ -5,6 +5,7 @@ import { buildFrozenHorizonPlan } from '../../lib/objectives/deferredObjectives/
 import { buildDeferredObjectivePolicyHorizon } from '../../lib/objectives/deferredObjectives/policyHorizon';
 import { inactiveTaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
 import { plannedDurationHours } from '../../packages/shared-domain/src/deferredPlanBookedHours';
+import { normalizeDeferredObjectiveActivePlansShape } from '../../packages/shared-domain/src/deferredObjectiveActivePlanShape';
 import { isPastHourSettleMark } from '../../lib/objectives/deferredObjectives/settleWindow';
 import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../packages/contracts/src/dailyBudgetTypes';
@@ -79,6 +80,22 @@ it('conserves a legacy hourly floor when the source changes to quarters', () => 
   expect(result.map((booking) => booking.plannedKWh)).toEqual([1, 1, 1, 1]);
   expect(result.reduce((sum, booking) => sum + booking.plannedKWh, 0)).toBe(4);
   expect(sameHourSchedule([interval(0, 4, 4)], result)).toBe(true);
+});
+
+// A plan saved before interval ends stored a deadline at :30 as its last whole
+// hour. Once migrated, live bookings that run to the deadline still cover it.
+it('adopts live bookings over a migrated legacy hour that ends at the deadline', () => {
+  const legacy = { hours: [{ startsAtMs: START, plannedKWh: 1 }] };
+  const migrated = normalizeDeferredObjectiveActivePlansShape({
+    version: 1,
+    plansByDeviceId: { task: { deadlineAtMs: START + 2 * QUARTER, commitment: legacy, original: legacy, latest: legacy } },
+  }, {
+    isValidPlan: (plan): plan is { commitment: { hours: DeferredObjectivePlanInterval[] } } => typeof plan === 'object',
+    empty: () => null,
+  });
+  const committed = migrated?.plansByDeviceId.task?.commitment.hours ?? [];
+  const merged = mergeHoursPreservingCommitment(committed, [interval(0, 1, 0.5), interval(1, 2, 1)], START);
+  expect(merged.map((booking) => booking.plannedKWh)).toEqual([0.5, 1]);
 });
 
 it('keeps elapsed history and refuses a hole in a pending floor', () => {

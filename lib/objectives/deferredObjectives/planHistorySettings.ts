@@ -419,8 +419,8 @@ const migrateLegacyRecordIntervals = (raw: unknown): unknown => {
   const record = raw as Record<string, unknown>;
   return {
     ...record,
-    originalPlan: migrateLegacyRevisionIntervals(record.originalPlan),
-    finalPlan: migrateLegacyRevisionIntervals(record.finalPlan),
+    originalPlan: migrateLegacyRevisionIntervals(record.originalPlan, record.deadlineAtMs),
+    finalPlan: migrateLegacyRevisionIntervals(record.finalPlan, record.deadlineAtMs),
     ...(record.hourStartBookings === undefined ? {} : {
       hourStartBookings: migrateLegacyHistoryIntervals(record.hourStartBookings),
     }),
