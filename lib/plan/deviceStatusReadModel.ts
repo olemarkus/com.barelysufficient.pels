@@ -19,7 +19,7 @@ import {
   type PlanStateKind,
 } from '../../packages/shared-domain/src/planStateLabels';
 import {
-  resolveHeldCardReasonLine, resolveHeldCardReasonVerb, resolveHeldCardStepView,
+  formatFairnessHoldCardLine, resolveHeldCardReasonLine, resolveHeldCardReasonVerb, resolveHeldCardStepView,
 } from './planCardReasonLine';
 import { formatDeviceReasonUserFacing, PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveSteppedStatusLine, resolveSteppedLevelFact,
@@ -36,6 +36,7 @@ import { toSimulationReasonLine } from './simulationReasonMood';
 import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
 import { resolveReportedLoadAfterPauseText, resolveSurplusHoldReportedLoadText,
   readDeviceReasonDetail } from '../../packages/shared-domain/src/planReasonFormatting';
+import type { DevicePlanDevice } from './planTypes';
 
 export type DeviceStatusInput = DeviceOverviewSnapshot & {
   carIdentificationState: CarIdentificationState;
@@ -46,7 +47,7 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   priceTargetShift: PriceTargetShift;
   /** The plan device's control adapter, spread in with it; absent on a device that has none. */
   controlAdapter?: DeviceControlAdapterSnapshot;
-};
+} & Pick<DevicePlanDevice, 'steppedFairnessHold'>;
 
 function resolveBaseKind(device: DeviceStatusInput): PlanStateKind {
   if (!device.controllable) return 'manual';
@@ -154,8 +155,12 @@ function buildReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number):
     text = idle.statusLine;
   }
   if (text === null || text === '') return null;
+  // A fairness hold lasts until other devices resume, not until a timer runs out:
+  // the shed cooldown the cycle may carry beside it is not this line's countdown.
+  const fairnessLine = device.steppedFairnessHold !== undefined
+    && text === formatFairnessHoldCardLine(device.steppedFairnessHold, device.starvation);
   text = toSimulationReasonLine(text, dryRun);
-  const countdown = buildCountdown(device, text, nowMs);
+  const countdown = fairnessLine ? undefined : buildCountdown(device, text, nowMs);
   return { text, ...(idle ? { tone: idle.tone, detail: idle.detail } : {}), ...(countdown ? { countdown } : {}) };
 }
 

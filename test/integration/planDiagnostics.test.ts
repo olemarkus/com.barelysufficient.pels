@@ -419,9 +419,10 @@ describe('plan diagnostics observations', () => {
     reason,
   });
 
-  it('holds a stepped charger below its target while its planned step is below the top, whatever the reason', () => {
-    // `shedInvariant` blocks the step-up without a counting reason; the hold is
-    // still PELS's, so a latched episode must pause rather than clear.
+  it('does not hold a stepped charger below its target while it charges on a lower step', () => {
+    // The fairness rule keeps it at 6 A while other devices are limited. It is
+    // limited, but still charging toward its target, so it is not held back and
+    // its hours do not add to a "Held" duration.
     const lowStep = buildChargerObservation(
       { kind: 'below_target', targetPercent: 80 },
       'keep',
@@ -429,14 +430,35 @@ describe('plan diagnostics observations', () => {
         code: PLAN_REASON_CODES.shedInvariant, fromStep: '6a', toStep: '16a', shedDeviceCount: 2, maxStep: '6a',
       }),
     );
-    expect(facts(lowStep)).toMatchObject({ eligibleForStarvation: true, pelsHoldsBelowTarget: true });
+    expect(facts(lowStep)).toMatchObject({ eligibleForStarvation: true, pelsHoldsBelowTarget: false });
 
-    const topStep = buildChargerObservation(
+    const cutToLowStep = buildChargerObservation(
       { kind: 'below_target', targetPercent: 80 },
-      'keep',
-      steppedCharger('16a', r('keep')),
+      'shed',
+      { ...steppedCharger('6a', r('shed due to capacity')), plannedShedTargetKind: 'step' },
     );
-    expect(facts(topStep)).toMatchObject({ eligibleForStarvation: true, pelsHoldsBelowTarget: false });
+    // Still limited, so the held-back widget accounts for it, as still charging
+    // rather than as at its target.
+    expect(facts(cutToLowStep)).toMatchObject({
+      eligibleForStarvation: true, pelsHoldsBelowTarget: false, heldBackScope: 'still_charging',
+    });
+  });
+
+  it.each([
+    // A turn-off shed takes it to off.
+    { name: 'turned off', kind: 'binary_off' },
+    // A `set_step` charger whose start the restore lane refuses is held at its off
+    // step under a `step` target kind (`buildOffSteppedRestoreShedUpdate`).
+    { name: 'held at its off step by a set-step shed', kind: 'step' },
+  ] as const)('holds a stepped charger below its target while it is $name', ({ kind }) => {
+    const offStep = buildChargerObservation(
+      { kind: 'below_target', targetPercent: 80 },
+      'shed',
+      { ...steppedCharger('off', r('shed due to capacity')), plannedShedTargetKind: kind },
+    );
+    expect(facts(offStep)).toMatchObject({
+      eligibleForStarvation: true, pelsHoldsBelowTarget: true, heldBackScope: 'candidate',
+    });
   });
 
   it('keeps an owner-held charger off the held-back widget even when capacity also sheds it', () => {

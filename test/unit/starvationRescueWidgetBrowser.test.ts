@@ -197,6 +197,8 @@ describe('starvation rescue widget browser', () => {
       notListed: [
         { deviceId: 'ev-1', deviceName: 'Easee Home', reason: { kind: 'no_battery_target' } },
         { deviceId: 'rad-1', deviceName: 'Living room', reason: { kind: 'listed_soon', remainingMs: 8.5 * 60_000 } },
+        // Limited to a lower step below its battery level: never "At its target".
+        { deviceId: 'ev-2', deviceName: 'Garage charger', reason: { kind: 'still_charging' } },
       ],
     });
 
@@ -210,6 +212,7 @@ describe('starvation rescue widget browser', () => {
       'Easee HomeTurn on Charge to a battery level to list it',
       // Rounded up: 8.5 min left reads as 9, never sooner than it is.
       `Living roomListed in 9${NBSP}min`,
+      'Garage chargerStill charging, at a lower rate',
     ]);
   });
 

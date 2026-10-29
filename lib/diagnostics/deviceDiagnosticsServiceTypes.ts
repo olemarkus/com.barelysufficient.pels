@@ -123,10 +123,13 @@ export type LiveDemandObservation = {
  *   deferral).
  * - `candidate`: starvation measures it, so it is listed once held back long
  *   enough (or not at all while it sits at its target).
+ * - `still_charging`: a charger PELS limits to a lower step while the car is
+ *   below its target battery level. It is still charging, so it is never held
+ *   back.
  * - a {@link StarvationUnmeasuredReason}: PELS limits it, and starvation cannot
  *   measure it, for that reason.
  */
-export type HeldBackScope = 'off_list' | 'candidate' | StarvationUnmeasuredReason;
+export type HeldBackScope = 'off_list' | 'candidate' | 'still_charging' | StarvationUnmeasuredReason;
 
 export type LiveStarvationObservation = {
   eligibleForStarvation: boolean;
@@ -159,8 +162,8 @@ export type LiveStarvationObservation = {
   // entry signal for starvation. For a temperature device, either PELS commands
   // a lowered setpoint (`commandedTargetC` below the intended temperature by at
   // least the target step) OR PELS sheds the device by turning it OFF while its
-  // temperature sits below the intended target. For a charger, PELS limits it
-  // (paused, or held below its top step) while the car's known level is below
+  // temperature sits below the intended target. For a charger, PELS keeps it from
+  // charging (paused, or at its off step) while the car's known level is below
   // the target battery level. All of these are PELS actively limiting the
   // device; a device PELS commands in full (`keep`) is never below. Resolved ONCE in the producer
   // (`lib/plan/planDiagnostics.ts`) so the starvation clock and the

@@ -536,10 +536,23 @@ function formatTimedReasonUserFacing(reason: TimedReason): string {
 function formatShedInvariantUserFacing(
   reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.shedInvariant }>,
 ): string {
-  const noun = reason.shedDeviceCount === 1 ? 'device is' : 'devices are';
-  const tail = `cannot increase while ${reason.shedDeviceCount} ${noun} limited`;
-  const currentStep = formatStepDisplayLabel(reason.fromStep);
-  return currentStep === '' || reason.fromStep === 'unknown'
+  return formatSteppedFairnessHoldLine(reason.fromStep, reason.shedDeviceCount);
+}
+
+// What the fairness rule waits for, also the need clause of a held-back card's
+// "Held 2 h — …" line.
+export function formatSteppedFairnessNeed(limitedDeviceCount: number): string {
+  const noun = limitedDeviceCount === 1 ? 'device is' : 'devices are';
+  return `cannot increase while ${limitedDeviceCount} ${noun} limited`;
+}
+
+// The stepped fairness line, from the `shedInvariant` reason or from the plan's
+// resolved fairness hold (`steppedFairnessHold`), which states the same rule on
+// every cycle it holds, not only on a cycle where a restore was tried.
+export function formatSteppedFairnessHoldLine(stepId: string, limitedDeviceCount: number): string {
+  const tail = formatSteppedFairnessNeed(limitedDeviceCount);
+  const currentStep = formatStepDisplayLabel(stepId);
+  return currentStep === '' || stepId === 'unknown'
     ? `Holding — ${tail}`
     : `Holding at ${currentStep} — ${tail}`;
 }

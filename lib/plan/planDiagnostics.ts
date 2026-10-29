@@ -12,7 +12,7 @@ import type { RestorePlanResult } from './restore';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
-import { getSteppedLoadHighestStep } from '../../packages/shared-domain/src/deviceControlProfiles';
+import { isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { temperatureSetpointsFor } from './planTemperatureSetpoints';
 import type {
   TemperatureSetpoints,
@@ -189,21 +189,25 @@ const isCountingHold = (device: DevicePlanDevice): boolean => (
 );
 
 /**
- * The plan keeps this charger from charging at full rate, asked by OUTCOME, as
- * the setpoint comparison asks a thermostat: paused, or a stepped charger whose
- * planned step is below its top step, whatever reason the cycle wrote.
+ * The plan keeps this charger from charging at all: paused, or a stepped charger
+ * at its off step. Asked of the decided step, not the shed action: a `set_step`
+ * charger whose start the restore lane refuses is held at its off step under a
+ * `step` target kind. A charger PELS runs at a lower step is still charging
+ * toward its target, so it is limited but not held back: counting those hours
+ * made "Held 5 h" read as if the car had been off all night.
  */
-const isChargerKeptFromFullRate = (device: DevicePlanDevice): boolean => {
-  if (device.plannedState === 'shed') return true;
-  if (!isSteppedLoadDevice(device) || device.desiredStepId === undefined) return false;
-  return device.desiredStepId !== getSteppedLoadHighestStep(device.steppedLoadProfile)?.id;
+const isChargerKeptFromCharging = (device: DevicePlanDevice): boolean => {
+  if (device.plannedState !== 'shed') return false;
+  if (device.plannedShedTargetKind !== 'step') return true;
+  return isSteppedLoadDevice(device) && device.desiredStepId !== undefined
+    && isSteppedLoadOffStep(device.steppedLoadProfile, device.desiredStepId);
 };
 
 /**
  * "PELS is holding this device below its intended target" for both kinds. A
  * charger is held below its target battery level when the plan keeps it from
- * full rate while the car is short of the target; a charger at its target, or
- * one PELS lets charge at full rate, is not.
+ * charging while the car is short of the target; a charger at its target, or one
+ * PELS lets charge at any rate, is not.
  */
 const resolvePelsHoldsBelowTarget = (
   device: DevicePlanDevice,
@@ -212,7 +216,7 @@ const resolvePelsHoldsBelowTarget = (
   pelsCommandsTurnOffShed: boolean,
 ): boolean => {
   if (setpoints !== null) return resolvePelsHoldsTemperatureBelowTarget(device, setpoints, pelsCommandsTurnOffShed);
-  return isChargerShortOfTarget(inputDevice) && isChargerKeptFromFullRate(device);
+  return isChargerShortOfTarget(inputDevice) && isChargerKeptFromCharging(device);
 };
 
 /**
@@ -340,9 +344,16 @@ const isLimitedForPower = (device: DevicePlanDevice): boolean => (
  * for power and nothing else holds it; a candidate when starvation measures it;
  * otherwise why it is not measured.
  */
-const resolveHeldBackScope = (device: DevicePlanDevice, eligibility: StarvationEligibility): HeldBackScope => {
+const resolveHeldBackScope = (
+  device: DevicePlanDevice,
+  inputDevice: PlanInputDevice | undefined,
+  eligibility: StarvationEligibility,
+): HeldBackScope => {
   if (!isLimitedForPower(device) || eligibility.kind === 'excluded') return 'off_list';
-  return eligibility.kind === 'eligible' ? 'candidate' : eligibility.reason;
+  if (eligibility.kind !== 'eligible') return eligibility.reason;
+  // Limited, short of its target, and still charging at a lower step: never held
+  // back, so the list says that rather than reading it as at its target.
+  return isChargerShortOfTarget(inputDevice) && !isChargerKeptFromCharging(device) ? 'still_charging' : 'candidate';
 };
 
 /**
@@ -543,7 +554,7 @@ const buildDiagnosticsObservation = (
     },
     starvation: {
       eligibleForStarvation,
-      heldBackScope: resolveHeldBackScope(device, eligibility),
+      heldBackScope: resolveHeldBackScope(device, inputDevice, eligibility),
       currentTemperatureC,
       intendedTarget: resolveStarvationTarget(setpoints, inputDevice),
       commandedTargetC,

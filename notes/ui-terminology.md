@@ -404,6 +404,21 @@ line (`lib/plan/planRestoreCooldownCohort.ts`). Whether a device then needs more
 power, is blocked by stepped fairness, or would require a priority swap is
 decided — and said — on the first pass after the timer, not predicted during it.
 
+**Stepped fairness is stated for as long as it holds** (2026-10-29). While
+another device is limited, a stepped device at its lowest active step may not
+step up. The plan resolves that hold from state every cycle
+(`steppedFairnessHold`, `lib/plan/planSteppedFairnessHold.ts`), and once the
+device is at that step the card reads `Holding at 6 A — cannot increase while 2
+devices are limited` until the other devices resume. It replaces the cut's kW
+line (the device's own way back to its top step, not what the house is over
+by), the shed cooldown's `Waiting after limiting a device`, a meter settle and
+the empty line of a device running at the low step. A held-back device keeps
+its elapsed stem with the same need: `Held 2 h — cannot increase while 2 devices
+are limited`. The move to the step keeps its own line (`Reducing to 6 A`,
+`Turning on to 6 A`), and so do a solar-surplus ceiling, the restore cooldown
+and queue lines above, a spent period, the end-of-hour drain and holds that are
+not about power.
+
 **Held-back cards state the elapsed hold, and still name no ceiling** (2026-08-04).
 Once a hold has run long enough to register as held back, the stem becomes
 `Held 2 h` instead of `Waiting to resume`. The duration is the device's own
@@ -713,7 +728,7 @@ The widget lists devices PELS has kept below their target for 15 minutes: a temp
 
 - The header **Held-back devices** stays in the calm empty state, so the card always says which widget it is.
 - The calm lead is `Nothing held back right now.` When PELS limits nothing else, `Devices PELS keeps below their target temperature or battery level for 15 minutes show up here.` follows.
-- Otherwise **Limited, not listed here** names each limited device with why: `No target temperature or battery level`, `Turn on Charge to a battery level to list it` (the real setting), `Battery level not reported`, `At its target`, or `Listed in 9 min` (rounded up).
+- Otherwise **Limited, not listed here** names each limited device with why: `No target temperature or battery level`, `Turn on Charge to a battery level to list it` (the real setting), `Battery level not reported`, `At its target`, `Still charging, at a lower rate` (a charger PELS limits to a lower step while the car is below its battery level: it is limited, never held back), or `Listed in 9 min` (rounded up).
 - Under a list with rows, one line reads `Also limited: Easee Home`, or `Also limited: 2 devices`.
 
 No other surface may use **held back** for a count or state that includes devices the widget excludes.
