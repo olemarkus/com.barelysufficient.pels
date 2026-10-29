@@ -72,11 +72,13 @@ type SetupGoalPickerProps = {
   onRetry: () => void;
 };
 
-const SolarGoal = ({ id, solar, onOpen }: {
+type SolarGoalProps = {
   id: string;
   solar: SolarSetupAction;
   onOpen: (id: string, focus: DeviceDetailFocus) => void;
-}) => <>
+};
+
+const SolarGoal = ({ id, solar, onOpen }: SolarGoalProps) => <>
   <MdTextButton type="button" onClick={() => onOpen(id, solar.focus)}>{solar.actionLabel}</MdTextButton>
   {solar.hint && <p class="pels-card-supporting">{solar.hint}</p>}
 </>;
