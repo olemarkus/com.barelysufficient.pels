@@ -1,4 +1,3 @@
-import type { DeferredObjectivePlanPreviewEstimate } from '../../contracts/src/deferredObjectivePlanPreview';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
 import type { SmartTaskHomeScope } from '../../contracts/src/smartTaskHomeScope';
 import type {
@@ -9,6 +8,7 @@ import type {
 // From the lean write-strings module (NOT deadlineLabels.ts) so the rescue
 // widget bundles don't drag the full smart-task copy module in.
 import { SMART_TASK_SUB_HOME_UNAVAILABLE } from './objectiveWriteStrings';
+import type { GrantedRescuePermissions } from './deadlineLabels';
 
 // Canonical starvation copy: a device held below target because the house has no
 // power to spare for it. Single home for this exact wording so the overview, the
@@ -437,8 +437,6 @@ export const resolveStarvationRescueConsequence = (dailyBudgetEnabled: boolean):
     ? STARVATION_RESCUE_WIDGET_COPY.rescueConsequence
     : STARVATION_RESCUE_WIDGET_COPY.rescueConsequenceWithinCap
 );
-
-type GrantedRescuePermissions = NonNullable<DeferredObjectivePlanPreviewEstimate['grantedRescuePermissions']>;
 
 // The granted permissions a rescue surface lists: the budget exemption only
 // while a daily budget is on, so no surface promises to go over a budget the
