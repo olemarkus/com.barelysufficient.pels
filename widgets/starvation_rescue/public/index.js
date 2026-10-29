@@ -40,6 +40,10 @@
     // Names the consequence honestly per the money-action guardrail: the rescue
     // lets this device go over today's budget so it reaches its normal target.
     rescueConsequence: "This lets the device use power beyond today\u2019s budget until it reaches its normal target.",
+    // The same consequence when no daily budget is on, so the rescue grants no
+    // budget exemption: it can only take power from lower-priority devices, and
+    // never above the hard cap (`fitRescueToDailyBudget`).
+    rescueConsequenceWithinCap: "This lets the device take power from lower-priority devices until it reaches its normal target, within the hard cap.",
     rescueConfirmButton: "Confirm",
     backButton: "Back",
     scheduledLabel: "Scheduled",
@@ -170,6 +174,7 @@
     if (reason === "device_in_sub_home") return SMART_TASK_SUB_HOME_UNAVAILABLE;
     return STARVATION_RESCUE_WIDGET_COPY.rescueError;
   };
+  var resolveStarvationRescueConsequence = (granted) => granted.exemptFromBudget ? STARVATION_RESCUE_WIDGET_COPY.rescueConsequence : STARVATION_RESCUE_WIDGET_COPY.rescueConsequenceWithinCap;
 
   // widgets/_shared/widgetRuntime.ts
   var applyPreviewTheme = (widgetDocument, searchParams) => {
@@ -1293,7 +1298,7 @@
     const { device, response, submitting, error } = view;
     const { confirmBtn, confirmTitle, confirmConsequenceEl } = targets;
     confirmTitle.textContent = device.deviceName;
-    confirmConsequenceEl.textContent = C.rescueConsequence;
+    setLine(confirmConsequenceEl, response?.ok === true ? resolveStarvationRescueConsequence(response.estimate.grantedRescuePermissions ?? { exemptFromBudget: true }) : null);
     if (response === null) {
       hideConfirmLines(targets);
       hide(targets.confirmUnavailableEl);
