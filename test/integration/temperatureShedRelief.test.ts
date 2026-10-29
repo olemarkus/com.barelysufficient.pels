@@ -10,13 +10,20 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanInputDevice, steppedInputDevice } from '../utils/planTestUtils';
 
 const NOW = 1_000_000;
-const shedBehavior = (id: string): ShedBehavior => id === 'heat'
+const shedBehavior = (id: string): ShedBehavior => id.startsWith('heat')
   ? { action: 'set_temperature', temperature: 19 } : { action: 'turn_off' };
 
 const heat = (target = 22, powerKw = 6) => buildPlanInputDevice({
   id: 'heat', name: 'Heat', priority: 3, currentDrawKw: powerKw, expectedPowerKw: powerKw,
   currentTarget: target, currentTemperature: 21,
   targets: [{ id: 'target_temperature', value: target, unit: '°C' }],
+  binaryControl: { on: true },
+});
+// A second thermostat, ranked by `priority` against `heat` (priority 3).
+const heater = (id: string, priority: number, powerKw: number) => buildPlanInputDevice({
+  id, name: id, priority, currentDrawKw: powerKw, expectedPowerKw: powerKw,
+  currentTarget: 22, currentTemperature: 21,
+  targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
   binaryControl: { on: true },
 });
 const direct = () => buildPlanInputDevice({
@@ -69,6 +76,23 @@ describe('temperature restrictions under electrical pressure', () => {
     expect(result.outcome.latch.decisions.get('heat')).toEqual([
       { kind: 'demand', decidedAtMs: NOW, creditedKw: 6 },
     ]);
+  });
+
+  it('lowers thermostats in priority order under ordinary capacity pacing', async () => {
+    // The 6 kW deficit is covered by the less important thermostat alone, so the
+    // more important one keeps its target.
+    const { result } = await decide(createPlanEngineState(NOW), [heater('heat-kept', 1, 5), heat()], 20);
+    expect([...result.shedSet]).toEqual(['heat']);
+  });
+
+  it('lowers every thermostat ranked ahead of a direct control under urgent pressure', async () => {
+    // Over the actual-cap projection a setback earns no credit, so selection
+    // keeps going until a direct control covers the deficit (owner decision,
+    // 2026-10-29): both thermostats are lowered, then the on/off load.
+    const { result } = await decide(
+      createPlanEngineState(NOW), [heater('heat-kept', 2, 5), heat(), direct()], 12,
+    );
+    expect([...result.shedSet]).toEqual(['heat', 'heat-kept', 'direct']);
   });
 
   it.each([true, false])('answers a 2 kW physical deficit without spending a 9 kW daily deficit on direct cuts, grid=%s', async (grid) => {
