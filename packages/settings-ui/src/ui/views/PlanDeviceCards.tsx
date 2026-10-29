@@ -12,6 +12,7 @@ import {
   BUDGET_EXEMPT_CARD_ACTION_COPY,
   budgetExemptCardActionAriaLabel,
   formatStarvationRescueArmedCaption,
+  resolveDisclosedRescuePermissions,
   shouldOfferBudgetExemptCardAction,
   STARVATION_RESCUE_WIDGET_COPY,
 } from '../../../../shared-domain/src/planStarvation.ts';
@@ -113,8 +114,8 @@ export const BudgetExemptChip = ({
   // The previewed deadline (when a preview ran) is echoed to the create call so
   // a confirm left open across an hour boundary persists what the user saw.
   const [deadlineAtMs, setDeadlineAtMs] = useState<number | undefined>(undefined);
-  // The armed caption: the consequence of what the preview granted (over today's
-  // budget, or within the hard cap when no budget is on) and the server-formatted
+  // The armed caption: the rescue's consequence today (over today's budget, or
+  // within the hard cap when no budget is on) and the server-formatted
   // local "By {time}" anchor, so the bounded horizon is visible on touch. Both come
   // from the same preview response as `deadlineAtMs`; the producer formats the
   // time in the Homey timezone so the view does no Date math (mirrors the widget).
@@ -154,12 +155,10 @@ export const BudgetExemptChip = ({
         return;
       }
       setDeadlineAtMs(response.deadlineAtMs);
-      // A preview with no granted set answers for the request, which asks for the
-      // budget exemption.
-      setCaption(formatStarvationRescueArmedCaption(
-        response.estimate.grantedRescuePermissions ?? { exemptFromBudget: true }, response.deadlineLabel,
-      ));
-      setPermissionsLine(formatGrantedRescuePermissionsLine(response.estimate.grantedRescuePermissions));
+      setCaption(formatStarvationRescueArmedCaption(response.dailyBudgetEnabled, response.deadlineLabel));
+      setPermissionsLine(formatGrantedRescuePermissionsLine(resolveDisclosedRescuePermissions(
+        response.estimate.grantedRescuePermissions, response.dailyBudgetEnabled,
+      )));
       const { atPowerLimitNow } = response.estimate;
       setPowerLimitNote(atPowerLimitNow === undefined ? null : STARVATION_RESCUE_WIDGET_COPY.atPowerLimitNote[atPowerLimitNow]);
       setChipState('armed');

@@ -40,10 +40,13 @@
     // Names the consequence honestly per the money-action guardrail: the rescue
     // lets this device go over today's budget so it reaches its normal target.
     rescueConsequence: "This lets the device use power beyond today\u2019s budget until it reaches its normal target.",
-    // The same consequence when no daily budget is on, so the rescue grants no
-    // budget exemption: it can only take power from lower-priority devices, and
-    // never above the hard cap (`fitRescueToDailyBudget`).
+    // The same consequence when no daily budget is on: the exemption the rescue
+    // carries lifts nothing, so it can only take power from lower-priority
+    // devices, and never above the hard cap.
     rescueConsequenceWithinCap: "This lets the device take power from lower-priority devices until it reaches its normal target, within the hard cap.",
+    // What the rescue does whether or not a budget is on, for the card chip's
+    // tooltip, which is shown before a preview says which consequence applies.
+    rescueSummary: "This lets the device take power ahead of lower-priority devices until it reaches its normal target.",
     rescueConfirmButton: "Confirm",
     backButton: "Back",
     scheduledLabel: "Scheduled",
@@ -157,11 +160,11 @@
     // from today's budget so it runs now, never a hard-cap change. The leading
     // bolt glyph distinguishes it from the adjacent "Held back" status badge.
     label: STARVATION_RESCUE_WIDGET_COPY.rescueButton,
-    // Tooltip / accessible description — the same honest money-action consequence
-    // the widget's confirm sheet names: the rescue lets the device use power
-    // beyond today's budget until it reaches its normal target. Never suggests
-    // raising the hard cap (never a remedy).
-    tooltip: STARVATION_RESCUE_WIDGET_COPY.rescueConsequence,
+    // Tooltip / accessible description. Shown before any preview, so it names
+    // only what holds with or without a daily budget; the armed caption then
+    // states the consequence for today. Never suggests raising the hard cap
+    // (never a remedy).
+    tooltip: STARVATION_RESCUE_WIDGET_COPY.rescueSummary,
     // Armed-confirm label (the two-step settings-UI confirm pattern): the first
     // tap arms this, the second commits the rescue. Reuses the widget's confirm
     // verb so the action word is shared across surfaces.
@@ -174,7 +177,8 @@
     if (reason === "device_in_sub_home") return SMART_TASK_SUB_HOME_UNAVAILABLE;
     return STARVATION_RESCUE_WIDGET_COPY.rescueError;
   };
-  var resolveStarvationRescueConsequence = (granted) => granted.exemptFromBudget ? STARVATION_RESCUE_WIDGET_COPY.rescueConsequence : STARVATION_RESCUE_WIDGET_COPY.rescueConsequenceWithinCap;
+  var resolveStarvationRescueConsequence = (dailyBudgetEnabled) => dailyBudgetEnabled ? STARVATION_RESCUE_WIDGET_COPY.rescueConsequence : STARVATION_RESCUE_WIDGET_COPY.rescueConsequenceWithinCap;
+  var resolveDisclosedRescuePermissions = (granted, dailyBudgetEnabled) => granted && !dailyBudgetEnabled ? { ...granted, exemptFromBudget: false } : granted;
 
   // widgets/_shared/widgetRuntime.ts
   var applyPreviewTheme = (widgetDocument, searchParams) => {
@@ -1280,7 +1284,10 @@
       )
     );
     setLine(targets.confirmCaveatEl, estimated && response.estimate.status !== "satisfied" ? C.estimateCaveat : null);
-    const granted = response.estimate.grantedRescuePermissions;
+    const granted = resolveDisclosedRescuePermissions(
+      response.estimate.grantedRescuePermissions,
+      response.dailyBudgetEnabled
+    );
     const permissionLabels = projectable ? resolveGrantedRescuePermissionLabels(granted) : [];
     if (permissionLabels.length > 0) renderExtraPermissionsSummary(targets, permissionLabels);
     else hide(targets.confirmPermsEl);
@@ -1298,7 +1305,7 @@
     const { device, response, submitting, error } = view;
     const { confirmBtn, confirmTitle, confirmConsequenceEl } = targets;
     confirmTitle.textContent = device.deviceName;
-    setLine(confirmConsequenceEl, response?.ok === true ? resolveStarvationRescueConsequence(response.estimate.grantedRescuePermissions ?? { exemptFromBudget: true }) : null);
+    setLine(confirmConsequenceEl, response?.ok === true ? resolveStarvationRescueConsequence(response.dailyBudgetEnabled) : null);
     if (response === null) {
       hideConfirmLines(targets);
       hide(targets.confirmUnavailableEl);
@@ -1383,7 +1390,8 @@
         limitLowerPriorityDevices: true,
         pauseLowerPriorityDevices: true
       }
-    }
+    },
+    dailyBudgetEnabled: true
   };
   var resolveTargets = (d) => {
     const root = d.getElementById("widget-root");

@@ -498,14 +498,24 @@ describe('createDeferredObjective (app)', () => {
       await app.onUninit?.();
     });
 
-    it('grants no budget exemption while no daily budget is on, so it never claims to lift one', async () => {
+    it('keeps the budget exemption while no daily budget is on, and says none is on', async () => {
+      // The exemption lifts nothing without a budget, but it is one of the
+      // conditions under which the planner fully reserves the rescue's steps,
+      // so it persists either way. The surfaces name the consequence from
+      // `dailyBudgetEnabled` instead.
       const app = await initApp();
       const candidate = rescueCandidate(65);
-      // The preview the surfaces render from reports exactly what persists.
-      expect(app.previewStarvationRescuePlan('heater-1', candidate).estimate.grantedRescuePermissions)
-        .toMatchObject({ exemptFromBudget: false });
+      const preview = app.previewStarvationRescuePlan('heater-1', candidate);
+      expect(preview.estimate.grantedRescuePermissions).toMatchObject({ exemptFromBudget: true });
+      expect(preview.dailyBudgetEnabled).toBe(false);
       expect(app.rescueDeviceWithBudgetExemption('heater-1', candidate)).toEqual({ ok: true });
-      expect(readStored().objectivesByDeviceId['heater-1']?.rescue?.exemptFromBudget).toBeUndefined();
+      expect(readStored().objectivesByDeviceId['heater-1']?.rescue?.exemptFromBudget).toBe('always');
+      await app.onUninit?.();
+    });
+
+    it('reports a daily budget that is on', async () => {
+      const app = await initApp({ dailyBudget: true });
+      expect(app.previewStarvationRescuePlan('heater-1', rescueCandidate(65)).dailyBudgetEnabled).toBe(true);
       await app.onUninit?.();
     });
 

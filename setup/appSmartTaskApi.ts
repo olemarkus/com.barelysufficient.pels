@@ -50,7 +50,7 @@ import {
   readStoredObjectiveState,
 } from '../lib/objectives/deferredObjectives/limitGrantGate';
 import { isRuntimePlannedDevice } from './appDeviceSupport';
-import { fitRescueToDailyBudget } from '../packages/shared-domain/src/starvationRescueShared';
+import type { StarvationRescuePlanPreview } from '../packages/contracts/src/starvationRescue';
 import { asMeteredSnapshot } from '../lib/ports/meteredSnapshots';
 
 /**
@@ -130,14 +130,6 @@ export class AppSmartTaskApi {
     return service;
   }
 
-  // The rescue's permissions for today's daily budget, decided by the shared
-  // rescue rule (`fitRescueToDailyBudget`); this only supplies whether one is on.
-  private fitRescueToBudgetState(
-    candidate: DeferredObjectivePlanPreviewCandidate,
-  ): DeferredObjectivePlanPreviewCandidate {
-    return fitRescueToDailyBudget(candidate, this.requireDailyBudgetService().isEnabled());
-  }
-
 
 
   // Preview the plan the starvation rescue would actually persist. A rescue only
@@ -152,11 +144,12 @@ export class AppSmartTaskApi {
   public previewStarvationRescuePlan(
     deviceId: string,
     freshRescueCandidate: DeferredObjectivePlanPreviewCandidate,
-  ): { estimate: DeferredObjectivePlanPreviewEstimate; deadlineAtMs: number; hasExistingObjective: boolean } {
+  ): StarvationRescuePlanPreview {
     return {
-      estimate: this.previewDeferredObjectivePlan(deviceId, this.fitRescueToBudgetState(freshRescueCandidate)),
+      estimate: this.previewDeferredObjectivePlan(deviceId, freshRescueCandidate),
       deadlineAtMs: freshRescueCandidate.deadlineAtMs,
       hasExistingObjective: false,
+      dailyBudgetEnabled: this.requireDailyBudgetService().isEnabled(),
     };
   }
 
@@ -451,9 +444,11 @@ export class AppSmartTaskApi {
   ): SmartTaskWriteResult {
     // Defence-in-depth (feedback_hard_cap_is_physical): this lane exists only to
     // grant a budget exemption; reject any candidate that does not carry one so
-    // the exemption can never be smuggled in through a generic create. The
-    // persisted task drops it again while no daily budget is on
-    // (`fitRescueToDailyBudget`), where it would lift nothing.
+    // the exemption can never be smuggled in through a generic create. It
+    // persists even while no daily budget is on: it is one of the conditions
+    // under which the planner fully reserves the rescue's steps
+    // (`rescueReplan.ts`), so dropping it would plan a stepped device at its
+    // lowest step.
     if (candidate.rescue?.exemptFromBudget !== 'always') {
       return { ok: false, reason: 'invalid_candidate' };
     }
@@ -466,7 +461,7 @@ export class AppSmartTaskApi {
     // `'preserve'`: this lane is a strictly-fresh create (the guard above
     // refuses a device that already has a task), so there is no standing rescue
     // to preserve OR replace — it takes the additive default the widget lane uses.
-    return this.createDeferredObjective(deviceId, this.fitRescueToBudgetState(candidate), 'preserve');
+    return this.createDeferredObjective(deviceId, candidate, 'preserve');
   }
 
 }

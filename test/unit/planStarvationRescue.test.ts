@@ -255,10 +255,11 @@ describe('starvation-rescue shared helpers', () => {
         expect(BUDGET_EXEMPT_CARD_ACTION_COPY.confirmLabel).toBe(STARVATION_RESCUE_WIDGET_COPY.rescueConfirmButton);
       });
 
-      it('names the money-action consequence without suggesting the hard cap be raised', () => {
-        // The tooltip is the canonical rescue consequence shared with the widget.
-        expect(BUDGET_EXEMPT_CARD_ACTION_COPY.tooltip).toBe(STARVATION_RESCUE_WIDGET_COPY.rescueConsequence);
-        expect(BUDGET_EXEMPT_CARD_ACTION_COPY.tooltip).toContain('budget');
+      it('names what the rescue does with or without a budget, never suggesting the hard cap be raised', () => {
+        // The tooltip shows before any preview says whether a budget is on, so it
+        // promises neither going over a budget nor staying within the cap.
+        expect(BUDGET_EXEMPT_CARD_ACTION_COPY.tooltip).toBe(STARVATION_RESCUE_WIDGET_COPY.rescueSummary);
+        expect(BUDGET_EXEMPT_CARD_ACTION_COPY.tooltip.toLowerCase()).not.toContain('budget');
         expect(BUDGET_EXEMPT_CARD_ACTION_COPY.tooltip.toLowerCase()).not.toContain('hard cap');
         expect(BUDGET_EXEMPT_CARD_ACTION_COPY.tooltip.toLowerCase()).not.toContain('raise');
       });

@@ -117,6 +117,7 @@ const OK_PREVIEW = {
     // both rescue permissions survive the backend gate.
     grantedRescuePermissions: { exemptFromBudget: true, limitLowerPriorityDevices: true, pauseLowerPriorityDevices: true },
   },
+  dailyBudgetEnabled: true,
 };
 
 // Every widget a test starts is destroyed after it, so no refresh or done-flash
@@ -333,15 +334,10 @@ describe('starvation rescue widget browser', () => {
       .toBe(STARVATION_RESCUE_WIDGET_COPY.temporaryUnavailableNote);
   });
 
-  test('names the hard cap, not a budget, when the rescue grants no budget exemption', async () => {
-    // No daily budget is on: the app grants only what acts within the hard cap.
-    const withinCap = {
-      ...OK_PREVIEW,
-      estimate: {
-        ...OK_PREVIEW.estimate,
-        grantedRescuePermissions: { exemptFromBudget: false, limitLowerPriorityDevices: true, pauseLowerPriorityDevices: true },
-      },
-    };
+  test('names the hard cap, not a budget, while no daily budget is on', async () => {
+    // The rescue still carries the budget exemption, but with no budget on it
+    // lifts nothing, so neither the consequence nor the permissions mention one.
+    const withinCap = { ...OK_PREVIEW, dailyBudgetEnabled: false };
     const homey = buildHomey({
       api: vi.fn(async (method: string, path: string) => {
         if (path === '/devices') return READY_PAYLOAD;

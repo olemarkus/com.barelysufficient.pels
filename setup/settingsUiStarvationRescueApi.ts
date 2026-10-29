@@ -55,12 +55,13 @@ export const previewSettingsUiStarvationRescue = (
   // deadline is simply the now+3h rescue horizon — the fresh candidate IS what
   // persists (preview ≡ persist).
   const candidate = buildRescueCandidate(rescuable.target, nowMs + RESCUE_DEADLINE_HORIZON_MS);
-  const { estimate, deadlineAtMs } = host.previewStarvationRescuePlan(request.deviceId, candidate);
+  const { estimate, deadlineAtMs, dailyBudgetEnabled } = host.previewStarvationRescuePlan(request.deviceId, candidate);
   return {
     ok: true,
     deadlineAtMs,
     deadlineLabel: formatSmartTaskDeadlineLong(deadlineAtMs, nowMs, timeZone),
     estimate,
+    dailyBudgetEnabled,
   };
 };
 

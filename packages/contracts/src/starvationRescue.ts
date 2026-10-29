@@ -127,6 +127,19 @@ export type StarvationRescueRejectReason =
   | 'write_conflict'
   | 'unavailable';
 
+// What the app's rescue preview returns to both rescue routes.
+// `dailyBudgetEnabled` says whether the budget exemption every rescue carries
+// lifts anything today: the surfaces name the consequence from it (over today's
+// budget, or within the hard cap) and list the budget permission only while a
+// budget is on. The exemption itself always persists, because it is one of the
+// conditions under which the planner fully reserves the rescue's steps.
+export type StarvationRescuePlanPreview = {
+  estimate: DeferredObjectivePlanPreviewEstimate;
+  deadlineAtMs: number;
+  hasExistingObjective: boolean;
+  dailyBudgetEnabled: boolean;
+};
+
 // Optional bounded-window readout shown on the confirm step (the rescue reaches
 // the device's normal target BY `deadlineAtMs`). Mirrors the widget's preview.
 export type SettingsUiStarvationRescuePreviewResponse = {
@@ -136,6 +149,7 @@ export type SettingsUiStarvationRescuePreviewResponse = {
   // timezone so the browser does no Date math.
   deadlineLabel: string;
   estimate: DeferredObjectivePlanPreviewEstimate;
+  dailyBudgetEnabled: boolean;
 } | {
   ok: false;
   reason: StarvationRescueRejectReason;

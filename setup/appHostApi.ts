@@ -38,6 +38,7 @@ import type {
   PelsWidgetHostApi,
 } from '../packages/contracts/src/widgetHostApi';
 import type { SmartTaskHomeScope } from '../packages/contracts/src/smartTaskHomeScope';
+import type { StarvationRescuePlanPreview } from '../packages/contracts/src/starvationRescue';
 import type { PriceTimelineRead } from '../packages/contracts/src/priceTimeline';
 import type { SettingsUiDeviceDiagnosticsPayload } from '../packages/contracts/src/deviceDiagnosticsTypes';
 import type { ResolvedDeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
@@ -361,9 +362,9 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public getDeferredObjectiveActivePlansUiPayload(): ResolvedDeferredObjectiveActivePlansV1 | null {
     return this.smartTaskPayloads.getDeferredObjectiveActivePlansUiPayload();
   }
-  public previewStarvationRescuePlan(deviceId: string, candidate: DeferredObjectivePlanPreviewCandidate): {
-    estimate: DeferredObjectivePlanPreviewEstimate; deadlineAtMs: number; hasExistingObjective: boolean;
-  } {
+  public previewStarvationRescuePlan(
+    deviceId: string, candidate: DeferredObjectivePlanPreviewCandidate,
+  ): StarvationRescuePlanPreview {
     return this.smartTaskApi.previewStarvationRescuePlan(deviceId, candidate);
   }
   public previewSmartTaskQuickTargets(
