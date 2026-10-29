@@ -2,7 +2,7 @@ import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import { estimatePower } from '../devicePowerEstimate';
 import { resolveMeasuredPowerKw } from '../managerMeasuredPower';
 import { getCurrentTemperature } from './managerParse';
-import type { LiveDevicePowerWatts } from '../managerEnergy';
+import { readHomeyEnergyDeviceWatts, type LiveDevicePowerWatts } from '../managerEnergy';
 import type { resolveFlowCapabilityOverlay } from '../managerNativeEv';
 import type { DeviceTransportParseDeps } from './managerParseDevice';
 import type { ParsedDeviceIdentity } from './managerParseIdentity';
@@ -24,8 +24,8 @@ export function resolveDevicePowerState(
   const { capabilities, capabilityObj } = overlay;
   const currentTemperature = getCurrentTemperature(capabilityObj);
   const measuredPower = resolveMeasuredPowerKw({
-    deviceId, deviceLabel, capabilities, capabilityObj, livePowerWByDeviceId, now,
-    measuredPowerResolver, powerState,
+    deviceId, deviceLabel, capabilities, capabilityObj, livePowerWByDeviceId,
+    deviceEnergyW: readHomeyEnergyDeviceWatts(device), now, measuredPowerResolver, powerState,
   });
   const powerEstimate = estimatePower({
     device,

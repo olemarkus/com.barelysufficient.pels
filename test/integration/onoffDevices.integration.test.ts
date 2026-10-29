@@ -264,6 +264,37 @@ describe('On/off device integration', () => {
     expect(entry?.expectedPowerKw).toBeCloseTo(0.125, 6);
   });
 
+  // Homey's live report without `?zone=` lists only the devices placed in the
+  // top zone; a device in a room appears there only inside its zone's total.
+  // The device read carries the same figure for it (`energyObj.W`), so an
+  // unmetered socket in a room gets its Homey Energy reading all the same.
+  it('reads the Homey Energy figure of an on/off device the live report lists only inside its zone', async () => {
+    setMockDrivers({});
+    const app = createApp();
+    await app.onInit();
+
+    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
+      'device-a': buildOnOffApiDevice({
+        capabilities: ['onoff'],
+        settings: { energy_value_on: 3000, energy_value_off: 0 },
+        energyObj: { W: 3000, approximation: null },
+      }),
+    });
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [{ type: 'zone', id: 'utility-room', values: { W: 3000 } }],
+    });
+
+    await app.refreshTargetDevicesSnapshot();
+
+    const entry = (getLatestTargetSnapshotForTests() as Array<{
+      id: string;
+      measuredPowerKw?: number;
+      measuredPowerIsDirectMeasurement?: boolean;
+    }>).find((device) => device.id === 'device-a');
+    expect(entry?.measuredPowerKw).toBeCloseTo(3, 6);
+    expect(entry?.measuredPowerIsDirectMeasurement).toBe(true);
+  });
+
   it('uses Homey energy W fallback to size a real-metered on/off device', async () => {
     setMockDrivers({});
     const app = createApp();
@@ -473,9 +504,11 @@ describe('On/off device integration', () => {
           light_saturation: { id: 'light_saturation', value: 0.68 },
           light_mode: { id: 'light_mode', value: 'temperature' },
         },
-        energy: null,
+        // The driver declares its draw, but Homey has no figure for the device
+        // yet: supported, with no reading to plan it by.
+        energy: { approximation: { usageOn: 10, usageOff: 0 } },
         energyObj: {
-          W: 0,
+          W: null,
           approximation: null,
         },
       },

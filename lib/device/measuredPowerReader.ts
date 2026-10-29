@@ -33,6 +33,8 @@ export function readDeviceMeasuredPowerObservation(params: {
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
   livePowerWByDeviceId?: LiveDevicePowerWatts;
+  /** The device read's own Homey Energy figure (`readHomeyEnergyDeviceWatts`). */
+  deviceEnergyW?: number | null;
   homeyEnergyObservedAtMs: number;
 }): DeviceMeasuredPowerObservation {
   const {
@@ -40,11 +42,14 @@ export function readDeviceMeasuredPowerObservation(params: {
     capabilities,
     capabilityObj,
     livePowerWByDeviceId = {},
+    deviceEnergyW = null,
     homeyEnergyObservedAtMs,
   } = params;
   const measurePower = readFinitePowerCapability(capabilities, capabilityObj, 'measure_power');
   const meterPower = readFinitePowerCapability(capabilities, capabilityObj, 'meter_power');
-  const homeyEnergyLiveW = toFiniteNumber(livePowerWByDeviceId[deviceId]);
+  // The live report lists only top-zone devices; the device read carries the
+  // same figure for a device in any zone.
+  const homeyEnergyLiveW = toFiniteNumber(livePowerWByDeviceId[deviceId]) ?? deviceEnergyW ?? undefined;
   return {
     measurePower: toDirectPowerReading(measurePower),
     meterEnergy: toMeterEnergyReading(meterPower),

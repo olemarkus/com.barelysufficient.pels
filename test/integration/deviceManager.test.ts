@@ -1483,7 +1483,9 @@ describe('DeviceTransport', () => {
             }
         });
 
-        it('keeps off Homey Energy devices supported while their live reading is absent', async () => {
+        // The live report omits a device outside the top zone; its own read
+        // still carries Homey's figure, 0 W while it is off.
+        it('reads an off Homey Energy device from its own figure when the live report omits it', async () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
                 dev1: homeyDevice(
@@ -1492,7 +1494,7 @@ describe('DeviceTransport', () => {
                         name: 'Virtual Light',
                         class: 'socket',
                         energyObj: {
-                            W: 125,
+                            W: 0,
                         },
                     },
                     { onoff: false },
@@ -1505,8 +1507,7 @@ describe('DeviceTransport', () => {
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot).toHaveLength(1);
             expect(snapshot[0].powerCapable).toBe(true);
-            expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw)
-                .toBeUndefined();
+            expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBe(0);
         });
 
         it('uses providers to populate priority and controllable fields', async () => {

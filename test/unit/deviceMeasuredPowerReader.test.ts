@@ -1,4 +1,5 @@
 import { readDeviceMeasuredPowerObservation } from '../../lib/device/measuredPowerReader';
+import { readHomeyEnergyDeviceWatts } from '../../lib/device/managerEnergy';
 
 type CapabilityObj = Parameters<typeof readDeviceMeasuredPowerObservation>[0]['capabilityObj'];
 
@@ -49,5 +50,52 @@ describe('readDeviceMeasuredPowerObservation — meter_power', () => {
     const epochMs = Date.parse(STAMP);
     expect(read({ meter_power: { value: 100.5, lastUpdated: epochMs } }).meterEnergy)
       .toEqual({ kwh: 100.5, observedAtMs: epochMs });
+  });
+});
+
+describe('readDeviceMeasuredPowerObservation — Homey Energy', () => {
+  const readEnergy = (live: Record<string, number>, deviceEnergyW: number | null) => (
+    readDeviceMeasuredPowerObservation({
+      deviceId: 'dev-1',
+      capabilities: ['onoff'],
+      capabilityObj: {},
+      livePowerWByDeviceId: live,
+      deviceEnergyW,
+      homeyEnergyObservedAtMs: Date.parse(STAMP),
+    }).homeyEnergyLive
+  );
+
+  it('reads the live report entry when the device is in the top zone', () => {
+    expect(readEnergy({ 'dev-1': 1500 }, 1500)).toEqual({ watts: 1500, observedAtMs: Date.parse(STAMP) });
+  });
+
+  it('falls back to the device figure when the live report lists only its zone', () => {
+    expect(readEnergy({}, 3000)).toEqual({ watts: 3000, observedAtMs: Date.parse(STAMP) });
+  });
+
+  it('has no reading when neither source has a figure', () => {
+    expect(readEnergy({}, null)).toBeUndefined();
+  });
+});
+
+describe('readHomeyEnergyDeviceWatts', () => {
+  it('reads the device figure, including 0 W', () => {
+    expect(readHomeyEnergyDeviceWatts({ id: 'a', name: 'A', energyObj: { W: 3000 } })).toBe(3000);
+    expect(readHomeyEnergyDeviceWatts({ id: 'a', name: 'A', energyObj: { W: 0 } })).toBe(0);
+  });
+
+  it('has no figure when Homey has none', () => {
+    expect(readHomeyEnergyDeviceWatts({ id: 'a', name: 'A', energyObj: { W: null } })).toBeNull();
+    expect(readHomeyEnergyDeviceWatts({ id: 'a', name: 'A' })).toBeNull();
+  });
+
+  // The live report lists these under their own types, never as a device draw.
+  it('skips a whole-home meter and a producer', () => {
+    expect(readHomeyEnergyDeviceWatts({ id: 'a', name: 'A', energyObj: { W: 10118, cumulative: true } })).toBeNull();
+    expect(readHomeyEnergyDeviceWatts({ id: 'a', name: 'A', energyObj: { W: 2500, generator: true } })).toBeNull();
+  });
+
+  it('skips a negative figure', () => {
+    expect(readHomeyEnergyDeviceWatts({ id: 'a', name: 'A', energyObj: { W: -800 } })).toBeNull();
   });
 });
