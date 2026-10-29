@@ -15,7 +15,7 @@
  */
 import type {
   DeferredObjectiveActivePlanV1,
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlansV2,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
 import { getLogger } from '../../logging/logger';
@@ -40,39 +40,55 @@ const storeLogger = getLogger('deferred-objectives/active-plan-store');
 
 export type ActivePlanStore = {
   /** The stored plans, or `null` when the store holds none. Throws only on I/O. */
-  read(): DeferredObjectiveActivePlansV1 | null;
+  read(): DeferredObjectiveActivePlansV2 | null;
   /** Make the store hold exactly `plans`, touching only the devices whose plan differs. */
-  write(plans: DeferredObjectiveActivePlansV1): void;
+  write(plans: DeferredObjectiveActivePlansV2): void;
 };
 
 /** The store as this module builds it: the recorder's port, and the legacy import's. */
-export type ActivePlanRepository = ActivePlanStore & MarkedLegacyImport<DeferredObjectiveActivePlansV1>;
+export type ActivePlanRepository = ActivePlanStore & MarkedLegacyImport<DeferredObjectiveActivePlansV2>;
+
+type StoredActivePlan = {
+  version: typeof DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION;
+  plan: DeferredObjectiveActivePlanV1;
+};
 
 const envelopeOf = (
   plansByDeviceId: Record<string, DeferredObjectiveActivePlanV1>,
-): DeferredObjectiveActivePlansV1 => ({
+): DeferredObjectiveActivePlansV2 => ({
   version: DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION,
   plansByDeviceId,
 });
 
 /** One row's plan, through the recorder's normaliser; `undefined` when it holds none for its key. */
-const acceptRow = (value: unknown, deviceId: string): DeferredObjectiveActivePlanV1 | undefined => {
+const acceptRow = (value: unknown, deviceId: string): StoredActivePlan | undefined => {
+  if (!isUnknownRecord(value)) return undefined;
+  // Rows written before interval scheduling were bare hourly plans. Only
+  // that known legacy shape may acquire an hourly end during normalization.
+  const version = 'version' in value ? value.version : 1;
+  if (version !== 1 && version !== DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION) return undefined;
   const plan = normalizeDeferredObjectiveActivePlans({
-    version: DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION,
-    plansByDeviceId: { [deviceId]: value },
+    version,
+    plansByDeviceId: { [deviceId]: 'version' in value ? value.plan : value },
   }).plansByDeviceId[deviceId];
-  return plan !== undefined && plan.deviceId === deviceId ? plan : undefined;
+  return plan !== undefined && plan.deviceId === deviceId
+    ? { version: DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION, plan }
+    : undefined;
 };
 
 export const createActivePlanStore = (db: UserdataDatabase): ActivePlanRepository => {
   const table = createJsonRowTable(db, 'deferred_objective_active_plans', ['device_id', 'plan_json'], acceptRow);
-  const write = (plans: DeferredObjectiveActivePlansV1): void => {
-    table.write(new Map(Object.entries(plans.plansByDeviceId)));
+  const write = (plans: DeferredObjectiveActivePlansV2): void => {
+    table.write(new Map(Object.entries(plans.plansByDeviceId).map(([deviceId, plan]): [string, StoredActivePlan] => (
+      [deviceId, { version: DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION, plan }]
+    ))));
   };
   return {
     read: () => db.transaction(() => {
       const rows = table.read();
-      return rows.size === 0 ? null : envelopeOf(Object.fromEntries(rows));
+      return rows.size === 0 ? null : envelopeOf(Object.fromEntries(
+        [...rows].map(([deviceId, row]) => [deviceId, row.plan]),
+      ));
     }),
     write: (plans) => db.transaction(() => write(plans)),
     hasImportedLegacy: () => hasLegacyImportMark(db, DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING),
@@ -88,8 +104,9 @@ export const createActivePlanStore = (db: UserdataDatabase): ActivePlanRepositor
  * plans envelope at all (an unknown version included), so a blob that vouches
  * for nothing keeps its key instead of being taken as "no plans".
  */
-const parseLegacyActivePlans = (raw: unknown): DeferredObjectiveActivePlansV1 | null => {
-  if (!isUnknownRecord(raw) || raw.version !== DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION) return null;
+const parseLegacyActivePlans = (raw: unknown): DeferredObjectiveActivePlansV2 | null => {
+  if (!isUnknownRecord(raw)
+    || (raw.version !== 1 && raw.version !== DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION)) return null;
   if (!isUnknownRecord(raw.plansByDeviceId)) return null;
   return normalizeDeferredObjectiveActivePlans(raw);
 };
@@ -151,7 +168,7 @@ export const importLegacyActivePlans = (settings: SettingsPort, store: ActivePla
  */
 export const createActivePlanPersistence = (
   store: ActivePlanStore,
-  onSaved: (plans: DeferredObjectiveActivePlansV1) => void,
+  onSaved: (plans: DeferredObjectiveActivePlansV2) => void,
 ): Pick<ActivePlanPersistDeps, 'load' | 'save'> => ({
   load: () => {
     try {

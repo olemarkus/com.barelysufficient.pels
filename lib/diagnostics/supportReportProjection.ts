@@ -11,7 +11,7 @@ import { hasObservedTemperature } from '../../packages/shared-domain/src/tempera
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
-import { hoursWithPlannedEnergy } from '../../packages/shared-domain/src/deferredPlanBookedHours';
+import { hoursWithPlannedEnergy, plannedDurationHours } from '../../packages/shared-domain/src/deferredPlanBookedHours';
 import { isTemperaturePlanDevice } from '../plan/planTemperatureDevice';
 import type { DevicePlanDevice } from '../plan/planTypes';
 import type { CarLinkCarStatus, CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
@@ -212,8 +212,6 @@ export type SupportReportSmartTask =
     cycle: SmartTaskCycleRecord | undefined;
   };
 
-const HOUR_MS = 60 * 60 * 1000;
-
 const reportSmartTaskGoal = (entry: DeferredObjectiveSettingsEntry): Record<string, SupportReportValue> => {
   if (entry.kind === 'ev_soc') return { targetPercent: entry.targetPercent };
   if (entry.kind === 'temperature') return { targetTemperatureC: entry.targetTemperatureC };
@@ -228,7 +226,7 @@ const reportSmartTaskRevision = (
   // device, so whether this hour is booked is reported apart from its energy.
   const running = hoursWithPlannedEnergy(revision.hours);
   const currentHour = revision.hours.find((hour) => (
-    hour.startsAtMs <= capturedAtMs && capturedAtMs < hour.startsAtMs + HOUR_MS
+    (hour.coversFromMs ?? hour.startsAtMs) <= capturedAtMs && capturedAtMs < hour.endsAtMs
   ));
   const nextHour = running.find((hour) => hour.startsAtMs > capturedAtMs);
   return {
@@ -237,7 +235,7 @@ const reportSmartTaskRevision = (
     revisionReason: revision.reason,
     energyNeededKWh: revision.energyNeededKWh,
     ...present('floorShortfallCause', revision.floorShortfallCause),
-    plannedHours: running.length,
+    plannedHours: plannedDurationHours(revision.hours),
     currentHourBooked: currentHour !== undefined,
     ...present('currentHourPlannedKWh', currentHour?.plannedKWh),
     ...present('nextPlannedHourStartsAtMs', nextHour?.startsAtMs),

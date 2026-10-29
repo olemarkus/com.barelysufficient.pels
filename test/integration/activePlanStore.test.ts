@@ -6,7 +6,10 @@ import {
 } from '../../lib/objectives/deferredObjectives/activePlanStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING } from '../../lib/utils/settingsKeys';
-import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type {
+  DeferredObjectiveActivePlansV2,
+  DeferredObjectiveActivePlanRevisionV1,
+} from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import { MockSettings } from '../mocks/homey';
 
 const HOUR_MS = 3_600_000;
@@ -17,7 +20,7 @@ const open = () => {
 };
 
 /** The plans a recorder holds after a Flow card created a task on each device. */
-const plansFor = (...deviceIds: string[]): DeferredObjectiveActivePlansV1 => {
+const plansFor = (...deviceIds: string[]): DeferredObjectiveActivePlansV2 => {
   const recorder = new DeferredObjectiveActivePlanRecorder({ load: () => null, save: () => {} });
   for (const deviceId of deviceIds) {
     recorder.markPending({
@@ -35,6 +38,32 @@ const plansFor = (...deviceIds: string[]): DeferredObjectiveActivePlansV1 => {
 const totalChanges = (db: ReturnType<typeof open>['db']): number => (
   (db.prepare('SELECT total_changes() AS n').get() as { n: number }).n
 );
+
+const bookedPlans = (): DeferredObjectiveActivePlansV2 => {
+  const plans = plansFor('heater');
+  const revision: DeferredObjectiveActivePlanRevisionV1 = {
+    revision: 2, revisedAtMs: HOUR_MS, computedFromPricesUpTo: null, reason: 'flow_card',
+    hours: [{ startsAtMs: HOUR_MS, endsAtMs: HOUR_MS * 1.25, coversFromMs: HOUR_MS + 300_000,
+      plannedKWh: 0.5, plannedAdmissionPowerKw: 3, plannedUnitMilestone: 65 }],
+    energyNeededKWh: 0.5, planStatus: 'on_track',
+  };
+  plans.plansByDeviceId.heater = {
+    ...plans.plansByDeviceId.heater!, pending: false,
+    original: revision, latest: { ...revision, revision: 3 }, history: [revision],
+    commitment: { committedAtMs: HOUR_MS, hours: revision.hours },
+  };
+  return plans;
+};
+
+const legacyHourlyPlans = () => {
+  const plan = bookedPlans().plansByDeviceId.heater!;
+  const { endsAtMs: _endsAtMs, ...hour } = plan.latest!.hours[0]!;
+  const revision = { ...plan.latest!, hours: [hour] };
+  return { version: 1, plansByDeviceId: { heater: {
+    ...plan, original: revision, latest: revision, history: [revision],
+    commitment: { committedAtMs: HOUR_MS, hours: [hour] },
+  } } };
+};
 
 describe('activePlanStore', () => {
   it('answers null while empty, and round-trips the plans one row per device', () => {
@@ -71,7 +100,7 @@ describe('activePlanStore', () => {
 
   it('hands a restarted recorder the plans the previous run saved, and pushes every save', () => {
     const { db, store } = open();
-    const pushed: DeferredObjectiveActivePlansV1[] = [];
+    const pushed: DeferredObjectiveActivePlansV2[] = [];
     const first = new DeferredObjectiveActivePlanRecorder(createActivePlanPersistence(store, (plans) => pushed.push(plans)));
     first.markPending({
       deviceId: 'heater', deviceName: 'Heater', objectiveKind: 'temperature',
@@ -84,6 +113,43 @@ describe('activePlanStore', () => {
       createActivePlanPersistence(createActivePlanStore(db), () => {}),
     );
     expect(restarted.getActivePlansSnapshot()).toEqual(first.getActivePlansSnapshot());
+  });
+
+  it('migrates a bare hourly SQL row across every saved revision and commitment', () => {
+    const { db } = open();
+    const legacy = legacyHourlyPlans().plansByDeviceId.heater;
+    db.prepare('INSERT INTO deferred_objective_active_plans (device_id, plan_json) VALUES (?, ?)')
+      .run('heater', JSON.stringify(legacy));
+    const snapshot = createActivePlanStore(db).read();
+    expect(snapshot?.version).toBe(2);
+    const plan = snapshot!.plansByDeviceId.heater!;
+    for (const hours of [plan.original!.hours, plan.latest!.hours, plan.history![0]!.hours, plan.commitment!.hours]) {
+      expect(hours[0]).toMatchObject({ startsAtMs: HOUR_MS, endsAtMs: HOUR_MS * 2,
+        coversFromMs: HOUR_MS + 300_000, plannedKWh: 0.5, plannedAdmissionPowerKw: 3 });
+    }
+    expect(plan.latest?.revision).toBe(3);
+  });
+
+  it('persists versioned quarter bookings and preserves their exact spans after restart', () => {
+    const { db, store } = open();
+    const plans = bookedPlans();
+    store.write(plans);
+    expect(createActivePlanStore(db).read()).toEqual(plans);
+    const row = db.prepare('SELECT plan_json FROM deferred_objective_active_plans WHERE device_id = ?')
+      .get('heater') as { plan_json: string };
+    expect(JSON.parse(row.plan_json)).toEqual({ version: 2, plan: plans.plansByDeviceId.heater });
+  });
+
+  it('quarantines a malformed current row without inventing an hourly end or accepting a future version', () => {
+    const { db } = open();
+    const legacy = legacyHourlyPlans().plansByDeviceId.heater;
+    db.prepare('INSERT INTO deferred_objective_active_plans (device_id, plan_json) VALUES (?, ?)')
+      .run('heater', JSON.stringify({ version: 2, plan: legacy }));
+    db.prepare('INSERT INTO deferred_objective_active_plans (device_id, plan_json) VALUES (?, ?)')
+      .run('future', JSON.stringify({ version: 999, plan: { ...legacy, deviceId: 'future' } }));
+    expect(createActivePlanStore(db).read()).toBeNull();
+    const rows = db.prepare('SELECT COUNT(*) AS n FROM deferred_objective_active_plans').get() as { n: number };
+    expect(rows.n).toBe(0);
   });
 
   it('seeds zero plans when the store cannot be read, and carries on when it cannot be written', () => {
@@ -122,6 +188,16 @@ describe('importLegacyActivePlans', () => {
     expect(settings.getKeys()).not.toContain(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING);
   });
 
+  it('imports a genuine v1 settings envelope as explicit hourly intervals', () => {
+    const { settings, store } = rig();
+    settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING, legacyHourlyPlans());
+    importLegacyActivePlans(settings, store);
+    expect(store.read()?.version).toBe(2);
+    expect(store.read()?.plansByDeviceId.heater?.latest?.hours[0]?.endsAtMs).toBe(HOUR_MS * 2);
+    expect(store.hasImportedLegacy()).toBe(true);
+    expect(settings.getKeys()).not.toContain(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING);
+  });
+
   it('takes a deferred blob under the plans the recorder wrote since, which win for their device', () => {
     const { settings, store } = rig();
     const legacy = plansFor('a', 'b');
@@ -155,9 +231,9 @@ describe('importLegacyActivePlans', () => {
     keys.mockRestore();
     expect(settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING)).toEqual(legacy);
 
-    settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING, { version: 2, plansByDeviceId: {} });
+    settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING, { version: 999, plansByDeviceId: {} });
     importLegacyActivePlans(settings, store);
-    expect(settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING)).toEqual({ version: 2, plansByDeviceId: {} });
+    expect(settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING)).toEqual({ version: 999, plansByDeviceId: {} });
 
     settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING, legacy);
     importLegacyActivePlans(settings, store);
@@ -172,7 +248,7 @@ describe('importLegacyActivePlans', () => {
     importLegacyActivePlans(settings, store);
     unset.mockRestore();
     // The recorder dropped the task since; the blob must not bring it back.
-    store.write({ version: 1, plansByDeviceId: {} });
+    store.write({ version: 2, plansByDeviceId: {} });
     importLegacyActivePlans(settings, store);
     expect(store.read()).toBeNull();
     expect(settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING)).toBeNull();

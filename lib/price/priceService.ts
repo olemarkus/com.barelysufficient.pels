@@ -50,7 +50,7 @@ import {
 } from './powerhourScheme';
 import type { ExportPriceConfig } from './exportPrice';
 import type { BudgetPriceInputs } from './budgetPrice';
-import { applyPlanningPriceDecorations } from './pricePlanningSeries';
+import { applyPlanningPriceDecorations, isExportCostlyAt } from './pricePlanningSeries';
 import { buildPriceTimeline } from './priceTimeline';
 import { summarizePriceLevels } from './priceLevelSummary';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
@@ -397,12 +397,7 @@ export default class PriceService {
 
   /** Current marginal export value, preserving the source's quarter-hour periods. */
   isExportCostly(nowMs: number): boolean {
-    const periods = applyExportPrices(this.buildImportPricePeriods(), this.resolveExportConfig());
-    return periods.some((period) => {
-      const start = Date.parse(period.startsAt);
-      return start <= nowMs && nowMs < start + period.durationMinutes * 60_000
-        && typeof period.exportPrice === 'number' && Number.isFinite(period.exportPrice) && period.exportPrice < 0;
-    });
+    return isExportCostlyAt(this.buildImportPricePeriods(), this.resolveExportConfig(), nowMs);
   }
 
   /**

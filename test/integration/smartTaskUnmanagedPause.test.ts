@@ -357,7 +357,7 @@ const buildTerminalFallbackCtx = (managedDevices: Record<string, boolean>) => {
     deferredObjectiveStatusBus: { forgetDevice: vi.fn() } as unknown as AppContext['deferredObjectiveStatusBus'],
     deferredObjectiveActivePlanRecorder: {
       clearForDevice: vi.fn(),
-      getActivePlansSnapshot: () => ({ version: 1, plansByDeviceId: {} }),
+      getActivePlansSnapshot: () => ({ version: 2, plansByDeviceId: {} }),
     } as unknown as AppContext['deferredObjectiveActivePlanRecorder'],
   });
   return { ctx, settingsStore, converge, abandon, setCapability, applyDeviceTargets };

@@ -101,7 +101,7 @@ describe('EV energy task through Homey SDK', () => {
     const pushes = mockHomeyInstance.api._realtimeEvents
       .filter(({ event }) => event === 'deferred_objective_active_plans_updated');
     expect(pushes.at(-1)?.data).toMatchObject({
-      version: 1,
+      version: 2,
       plansByDeviceId: { [DEVICE_ID]: { objectiveKind: 'energy', deliveredKWh: expect.any(Number) } },
     });
     expect(mockHomeyInstance.settings.getKeys()).not.toContain('deferred_objective_active_plans');
