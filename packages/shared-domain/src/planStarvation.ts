@@ -222,6 +222,8 @@ export const formatStarvationNotListedReason = (reason: StarvationNotListedReaso
       return 'Battery level not reported';
     case 'at_target':
       return 'At its target';
+    case 'still_charging':
+      return 'Still charging, at a lower rate';
     case 'listed_soon':
       // Rounded up, so the line never says a device is listed sooner than it is.
       return `Listed in ${formatStarvationDurationLabel(Math.max(1, Math.ceil(reason.remainingMs / 60_000)) * 60_000)}`;

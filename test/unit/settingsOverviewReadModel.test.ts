@@ -9,6 +9,7 @@ import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { HomeBatteryCardControl } from '../../lib/observer/observedDeviceStateProjection';
 import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
+import { formatStarvationDurationLabel } from '../../packages/shared-domain/src/planStarvation';
 
 
 type SpecDeps = Omit<SettingsOverviewReadModelDeps,
@@ -213,6 +214,70 @@ describe('settingsOverviewReadModel', () => {
     expect(wire.status.reason?.text).toBe(dryRun
       ? 'Would be waiting to increase — 0.9 kW more needed (simulation)'
       : 'Waiting to increase — 0.9 kW more needed');
+  });
+
+  // Report 2026-10-28-diag-niro-charge-not-starting: the fairness rule cut a charger
+  // to its lowest step while a heater was limited. The card said "6.0 kW more
+  // needed" at the cut (its way back to the top step, not the house's overshoot),
+  // then "Waiting after limiting a device" or nothing, and named the rule only on
+  // a cycle where a restore was tried. It now states the rule for as long as it holds.
+  it.each([
+    {
+      when: 'on the cut cycle, once the charger reports the low step',
+      fields: { plannedState: 'shed', reportedStepId: 'low', selectedStepId: 'low',
+        reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 6 } },
+    },
+    {
+      when: 'during the shed cooldown',
+      fields: { plannedState: 'shed', reportedStepId: 'low', selectedStepId: 'low',
+        reason: { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 42 } },
+    },
+    {
+      when: 'running at the low step',
+      fields: { plannedState: 'keep', reportedStepId: 'low', selectedStepId: 'low',
+        reason: { code: PLAN_REASON_CODES.keep, detail: null } },
+    },
+  ] as const)('states the stepped fairness hold $when', ({ fields }) => {
+    const device = steppedPlanDevice({
+      isEvCharger: true, currentState: 'on', currentDrawKw: 1.25, desiredStepId: 'low',
+      ...fields,
+      steppedFairnessHold: { stepId: 'low', limitedDeviceCount: 2 },
+    });
+    const wire = buildDeviceCard(device, absentTemperature);
+
+    expect(wire.status.reason?.text).toBe(
+      `Holding at ${formatStepDisplayLabel('low')} — cannot increase while 2 devices are limited`,
+    );
+    expect(wire.status.reason?.countdown).toBeUndefined();
+  });
+
+  it('says the charger is reducing while it moves down to the held step', () => {
+    const device = steppedPlanDevice({
+      isEvCharger: true, currentState: 'on', currentDrawKw: 3, plannedState: 'shed',
+      reportedStepId: 'max', selectedStepId: 'max', desiredStepId: 'low', stepCommandPending: true,
+      reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 6 },
+      steppedFairnessHold: { stepId: 'low', limitedDeviceCount: 2 },
+    });
+
+    expect(buildDeviceCard(device, absentTemperature).status.reason?.text)
+      .toBe(`Reducing to ${formatStepDisplayLabel('low')}`);
+  });
+
+  it('keeps the elapsed hold on a held-back device the fairness rule holds', () => {
+    const device = steppedPlanDevice({
+      currentState: 'on', currentDrawKw: 1.25, plannedState: 'keep',
+      reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low',
+      reason: { code: PLAN_REASON_CODES.keep, detail: null },
+      steppedFairnessHold: { stepId: 'low', limitedDeviceCount: 2 },
+    });
+    const wire = buildDeviceCard(device, {
+      ...absentTemperature,
+      getOverviewStarvation: () => ({ isStarved: true, accumulatedMs: 2 * 60 * 60 * 1000 }),
+    });
+
+    expect(wire.status.reason?.text).toBe(
+      `Held ${formatStarvationDurationLabel(2 * 60 * 60 * 1000)} — cannot increase while 2 devices are limited`,
+    );
   });
 
   it('keeps a settled stepped hold ahead of the car waiting explanation', () => {

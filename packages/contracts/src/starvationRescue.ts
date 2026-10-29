@@ -60,12 +60,15 @@ export type StarvationUnmeasuredReason = 'no_target' | 'no_battery_target' | 'ba
  * is not held back.
  *
  * - `at_target`: it is at its target, so PELS is not holding it below it.
+ * - `still_charging`: a charger limited to a lower step while the car is below
+ *   its target battery level; it is still charging, so it is not held back.
  * - `listed_soon`: held below its target, not yet for 15 minutes;
  *   `remainingMs` is how long until it is listed if the hold continues.
  */
 export type StarvationNotListedReason =
   | { kind: StarvationUnmeasuredReason }
   | { kind: 'at_target' }
+  | { kind: 'still_charging' }
   | { kind: 'listed_soon'; remainingMs: number };
 
 /** A device PELS limits for power that the held-back list does not show. */

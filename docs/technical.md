@@ -301,7 +301,7 @@ Blocked unmet-demand time is split into:
 
 ### EV Scope
 
-EV chargers are measured for unmet demand and starvation when **Charge to a battery level** is on and the car's battery level is known; a charger counts as held back only while the car is below that target and PELS keeps it from full rate. Without a target or a known level it is not measured. EV Smart tasks do know the target SoC and ready-by time, but those belong to the Smart task status and history surfaces, not to per-device starvation diagnostics. See [Deadline Charging With State of Charge](/how-to-deadline-charging-soc) for the user setup.
+EV chargers are measured for unmet demand and starvation when **Charge to a battery level** is on and the car's battery level is known; a charger counts as held back only while the car is below that target and PELS keeps it from charging. A charger PELS runs at a lower current is not held back. Without a target or a known level it is not measured. EV Smart tasks do know the target SoC and ready-by time, but those belong to the Smart task status and history surfaces, not to per-device starvation diagnostics. See [Deadline Charging With State of Charge](/how-to-deadline-charging-soc) for the user setup.
 
 EV chargers are still included in:
 

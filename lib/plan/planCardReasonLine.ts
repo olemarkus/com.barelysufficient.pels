@@ -1,6 +1,6 @@
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemanticsCore';
 import {
-  formatDeviceReasonUserFacing, resolveRestoreShortfallKw,
+  formatDeviceReasonUserFacing, formatSteppedFairnessHoldLine, formatSteppedFairnessNeed, resolveRestoreShortfallKw,
 } from '../../packages/shared-domain/src/planReasonFormatting';
 import { formatStarvationDurationLabel, formatStarvationReason } from '../../packages/shared-domain/src/planStarvation';
 import {
@@ -12,6 +12,7 @@ import {
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemanticsCore';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
 import type { ObservedCurrentState, SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type { SteppedFairnessHold } from './planTypes';
 
 // The ONE reason line a held device card may show — shared by all three card
 // variants (temperature, stepped, generic), which until 2026-08-02 each
@@ -228,6 +229,22 @@ const formatHeldNeedLine = (
   return starvedForMs === null
     ? `Waiting to ${verb} — ${need}`
     : formatStarvedHoldLine(starvedForMs, need);
+};
+
+/**
+ * The stepped fairness hold on a card: `Holding at 6 A — cannot increase while 2
+ * devices are limited`, or, once the device is held back, the elapsed-hold stem
+ * with the same need (`Held 2 h — cannot increase while 2 devices are limited`),
+ * so the card still says why it carries the rescue.
+ */
+export const formatFairnessHoldCardLine = (
+  hold: SteppedFairnessHold,
+  starvation?: SettingsUiPlanDeviceStarvation | null,
+): string => {
+  const starvedForMs = resolveStarvedForMs(starvation);
+  return starvedForMs === null
+    ? formatSteppedFairnessHoldLine(hold.stepId, hold.limitedDeviceCount)
+    : formatStarvedHoldLine(starvedForMs, formatSteppedFairnessNeed(hold.limitedDeviceCount));
 };
 
 export const formatShortfallLine = (

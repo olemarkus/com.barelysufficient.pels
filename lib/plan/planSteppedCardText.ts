@@ -19,10 +19,12 @@ import {
 import {
   formatHourEndingLine,
   formatHourlyExhaustedLine,
+  formatFairnessHoldCardLine,
   formatShortfallLine,
   resolveHeldCardReasonLine,
   resolveHeldCardReasonVerb,
 } from './planCardReasonLine';
+import type { SteppedFairnessHold } from './planTypes';
 import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
 import {
   EV_ROUTINE_CHARGING_LABEL, isRoutineEvChargingState,
@@ -51,6 +53,7 @@ type SteppedCardDevice = DeviceOverviewSnapshot & {
   stateKind?: PlanStateKind;
   steppedLoad?: SteppedLoadCardState;
   starvation?: SettingsUiPlanDeviceStarvation;
+  steppedFairnessHold?: SteppedFairnessHold;
 };
 
 const resolveCurrentStepId = (device: SteppedCardDevice): string | null => (
@@ -227,6 +230,14 @@ export const resolveSteppedStatusLine = (
   // lines below now carry the starvation themselves, through the same ladder the
   // other two card variants use, so there is nothing left to preempt.
   if (isSteppedTransit(device)) return resolveTransitStatusLine(device, profile);
+  // Once at its low step, a device the fairness rule holds says so for as long as
+  // it holds, whatever reason the cycle wrote: the cut's own gap ("6.0 kW more
+  // needed" is the way back to the top step, not the house's overshoot), the shed
+  // cooldown's "Waiting after limiting a device", a meter settle, or the empty
+  // line of `keep`. The move to the step above keeps its own line.
+  if (device.steppedFairnessHold) {
+    return formatFairnessHoldCardLine(device.steppedFairnessHold, device.starvation);
+  }
   if (isSettlingReason(device.reason.code)) {
     const suppressed = isHeadroomCheckSettlingReason(device.reason.code) && isAtTargetStep(device);
     if (!suppressed) {

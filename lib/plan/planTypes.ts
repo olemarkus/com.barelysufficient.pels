@@ -34,6 +34,14 @@ export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
  */
 export type PlannedShedTargetKind = 'binary_off' | 'step' | 'target_value';
 
+/**
+ * The stepped fairness rule keeps a device at its lowest active step (`stepId`,
+ * which is also its planned `desiredStepId`) until the other devices it waits
+ * for resume. The step rides here because the card's snapshot carries the
+ * executor's target step, not the plan's.
+ */
+export type SteppedFairnessHold = { stepId: string; limitedDeviceCount: number };
+
 // Canonical observation-source union lives in `lib/observer/`; plan
 // continues to surface this name for compatibility with the many target-
 // command callers that already import it from here.
@@ -657,6 +665,14 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
    * for power even when capacity also wanted it off.
    */
   nonCapacityHoldShed?: true;
+  /**
+   * The stepped fairness rule keeps this device at its lowest active step while
+   * other devices are limited. Stamped from the final plan by
+   * `stampSteppedFairnessHolds` (`planSteppedFairnessHold.ts`); absent when the
+   * rule does not hold it. Presentation only: the card states it for as long as
+   * it is true, whatever reason the cycle wrote.
+   */
+  steppedFairnessHold?: SteppedFairnessHold;
   /**
    * The device's boost decision this cycle, and the planner's whole boost
    * vocabulary. REQUIRED: `resolveBoostActive` (`lib/plan/planBoost.ts`) answers

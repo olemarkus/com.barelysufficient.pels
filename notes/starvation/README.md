@@ -351,13 +351,19 @@ and the planner sees only the answer.
 ```text
 intendedTarget       = { kind: 'ev_soc', targetPercent }
 pelsHoldsBelowTarget = chargeTargetHold.kind === 'below_target'
-                       && (plannedState === 'shed' || desiredStepId below the top step)
+                       && plannedState === 'shed'
+                       && (plannedShedTargetKind !== 'step' || desiredStepId is the off step)
 ```
 
-- Asked by outcome, as a thermostat's setpoint is: a paused charger, or a
-  stepped charger planned below its top step whatever reason the cycle wrote
-  (a `shedInvariant` step-up block included). A charger PELS lets charge at
-  full rate is not held, whatever its level.
+- Asked by outcome: a charger PELS keeps from charging at all, paused or at its
+  off step. The off step is read from the decided step, because a `set_step`
+  charger whose start is refused is held at its off step under a `step` target
+  kind. A charger PELS runs at a lower step is still charging toward
+  its target, so it is limited but not held back, whatever its level
+  (2026-10-29, report 2026-10-28-diag-niro-charge-not-starting: counting the
+  hours at 6 A made the card read `Held 4 h 57 min` for a car that charged most
+  of the night). The held-back widget lists such a charger under "Limited, not
+  listed here" as `Still charging, at a lower rate` (`still_charging`).
 - A charger at its target (`target_reached`, or `at_full_target`) stays eligible, so reaching the
   target CLEARS an episode through the usual 10-minute window rather than
   resetting it. Unplugging the car makes the charger ineligible (hard reset).

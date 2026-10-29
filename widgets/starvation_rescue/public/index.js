@@ -123,6 +123,8 @@
         return "Battery level not reported";
       case "at_target":
         return "At its target";
+      case "still_charging":
+        return "Still charging, at a lower rate";
       case "listed_soon":
         return `Listed in ${formatStarvationDurationLabel(Math.max(1, Math.ceil(reason.remainingMs / 6e4)) * 6e4)}`;
       default: {
