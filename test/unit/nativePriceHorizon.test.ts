@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildMeteredPricePeriods, buildPriceHorizonFromPeriods } from '../../lib/price/priceHorizon';
+import { buildMeteredPricePeriods, buildPriceHorizonFromPeriods, retainServedMeteredPeriods } from '../../lib/price/priceHorizon';
+import type { MeteredPricePeriod } from '../../packages/planner-types/src/priceHorizon';
 import type { CombinedPricePeriod } from '../../lib/price/priceTypes';
 
 const MINUTE_MS = 60_000;
@@ -78,5 +79,29 @@ describe('native metered prices', () => {
         costDisplay,
       },
     ]);
+  });
+});
+
+describe('served metered prices', () => {
+  const NOK = { unit: 'kr', divisor: 1 };
+  const metered = (offsetMinutes: number, priceValue: number, costDisplay = NOK): MeteredPricePeriod => ({
+    startMs: BASE + offsetMinutes * MINUTE_MS,
+    endMs: BASE + (offsetMinutes + 15) * MINUTE_MS,
+    priceValue,
+    tone: 'normal',
+    costDisplay,
+  });
+
+  it('keeps a started period whose day left the series, as it was served', () => {
+    const retained = retainServedMeteredPeriods([metered(-15, 9), metered(0, 4)], [metered(0, 1)], BASE + MINUTE_MS);
+    expect(retained).toEqual([metered(-15, 9), metered(0, 1)]);
+  });
+
+  it('drops a withdrawn future period, a period past retention and a period in another currency', () => {
+    const nowMs = BASE + MINUTE_MS;
+    expect(retainServedMeteredPeriods([metered(15, 7)], [metered(0, 1)], nowMs)).toEqual([metered(0, 1)]);
+    expect(retainServedMeteredPeriods([metered(-25 * 60, 7)], [metered(0, 1)], nowMs)).toEqual([metered(0, 1)]);
+    const ore = { unit: 'øre', divisor: 100 };
+    expect(retainServedMeteredPeriods([metered(-15, 9)], [metered(0, 1, ore)], nowMs)).toEqual([metered(0, 1, ore)]);
   });
 });

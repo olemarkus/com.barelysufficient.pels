@@ -76,6 +76,7 @@ import type { PriceTimelineRead } from '../../packages/contracts/src/priceTimeli
 import type { MeteredPricePeriod, PriceHorizonEntry } from '../../packages/planner-types/src/priceHorizon';
 import {
   buildMeteredPricePeriodsForScheme, buildPriceHorizonFromPeriods, buildTaskPricePeriodsForUi,
+  retainServedMeteredPeriods,
 } from './priceHorizon';
 
 export default class PriceService {
@@ -113,6 +114,7 @@ export default class PriceService {
   // `getPowerhourSourceUiStatus`.
   private powerhourSourceStatus: PowerhourSourceUiStatus = { kind: 'unknown' };
   private budgetPriceInputs?: BudgetPriceInputs;
+  private servedMeteredPeriods: MeteredPricePeriod[] = [];
   setBudgetPriceInputs(inputs: BudgetPriceInputs | undefined): void { this.budgetPriceInputs = inputs; }
   private getSettingValue(key: string): unknown { return this.homey.settings.get(key); }
   private getNumberSetting(key: string, fallback: number): number {
@@ -353,14 +355,24 @@ export default class PriceService {
     return buildTaskPricePeriodsForUi(this.getPlanningPricePeriods(), this.priceLevelBand);
   }
 
-  /** Import-price periods intersecting a delivery slice, with recorded currency. */
+  /**
+   * Import-price periods intersecting a delivery slice, with recorded currency.
+   * Includes periods served earlier whose day has since rolled out of the
+   * series (`retainServedMeteredPeriods`), so a slice that straddles local
+   * midnight is priced on both sides.
+   */
   getMeteredPricePeriods(startMs: number, endMs: number): MeteredPricePeriod[] {
-    return buildMeteredPricePeriodsForScheme(
-      this.buildImportPricePeriods(),
-      this.priceLevelBand,
-      this.getPriceScheme(),
-      this.getPriceUnitLabel(),
-    ).filter((period) => period.endMs > startMs && period.startMs < endMs);
+    this.servedMeteredPeriods = retainServedMeteredPeriods(
+      this.servedMeteredPeriods,
+      buildMeteredPricePeriodsForScheme(
+        this.buildImportPricePeriods(),
+        this.priceLevelBand,
+        this.getPriceScheme(),
+        this.getPriceUnitLabel(),
+      ),
+      Date.now(),
+    );
+    return this.servedMeteredPeriods.filter((period) => period.endMs > startMs && period.startMs < endMs);
   }
 
   /**
