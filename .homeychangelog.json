@@ -721,5 +721,8 @@
   },
   "3.25.3": {
     "en": "Enua chargers are controlled correctly again on single-phase, three-phase TN and three-phase IT grids: PELS sets the charging current in whole amps from 6 to 32 A, and sets the limit before it starts charging. A running EV charger given more current now steps up again as soon as the car has taken the last step, instead of waiting five minutes between each step, so climbing back to full current after a cut takes minutes rather than most of an hour.\n\nA stepped device held at its lowest level while other devices are limited now says so for as long as it holds, for example Holding at 6 A, cannot increase while 2 devices are limited. A running device waiting for a higher level reads Waiting to increase, without a power figure. A charger running at a lower current no longer counts as held back, and the Held-back devices widget lists it as Still charging, at a lower rate."
+  },
+  "3.25.4": {
+    "en": "PELS now reads the power of devices placed in a room from Homey Energy. An on/off device without its own power meter, such as a relay or virtual socket with Energy used when on set in Homey, now gets a reading and is limited like any other device. KNX switching actuators added with the KNX app's Light driver can now be managed by PELS, for example a relay that switches a water heater."
   }
 }
