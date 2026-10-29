@@ -328,8 +328,6 @@ export type DeadlinePlanLoadState =
     // (no boot yet, task absent/disabled).
     edit?: SmartTaskEditProps;
     afterTask?: SmartTaskAfterTaskProps;
-    // The task's device, for "Report a problem"; absent with no device in the route.
-    reportDeviceId?: string;
   }
   | {
     status: 'unavailable';
@@ -358,7 +356,6 @@ export type DeadlinePlanLoadState =
     history?: DeadlinePlanHistoryView;
     edit?: SmartTaskEditProps;
     afterTask?: SmartTaskAfterTaskProps;
-    reportDeviceId?: string;
   }
   | {
     // Detail view for a finalized plan in history. The page lands on the
@@ -1395,10 +1392,12 @@ const SmartTaskAfterTaskCard = ({ afterTask }: { afterTask: SmartTaskAfterTaskPr
 );
 
 // Opens a device report for the task's device: smart tasks are one per device
-// and Main-home only, and a device report carries the task's state. The click is
-// handled by the delegated report navigation (`supportReport.ts`).
-const SmartTaskReportButton = ({ deviceId }: { deviceId: string | undefined }) => (
-  deviceId === undefined ? null : (
+// and Main-home only, and a device report carries the task's state. Shown in
+// every page state, because a task that failed to load or already ended is as
+// much worth reporting as a live one. The click is handled by the delegated
+// report navigation (`supportReport.ts`).
+const SmartTaskReportButton = ({ deviceId }: { deviceId: string | null }) => (
+  deviceId === null ? null : (
     <div class="smart-task-report">
       <MdTextButton type="button" data-report-device-id={deviceId} data-report-home-id="main">
         Report a problem
@@ -1597,7 +1596,6 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
         <PendingHero pending={loadState.pending} />
         {loadState.edit !== undefined && <SmartTaskEditSection edit={loadState.edit} />}
         {loadState.afterTask !== undefined && <SmartTaskAfterTaskCard afterTask={loadState.afterTask} />}
-        <SmartTaskReportButton deviceId={loadState.reportDeviceId} />
         <PriorRunsHistory history={loadState.history} />
       </>
     );
@@ -1632,7 +1630,6 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
       <ScheduleQuestionCards payload={loadState.payload} />
       <PlanInputsCard payload={loadState.payload} editorOpen={loadState.edit?.snapshot != null} />
       {loadState.afterTask !== undefined && <SmartTaskAfterTaskCard afterTask={loadState.afterTask} />}
-      <SmartTaskReportButton deviceId={loadState.reportDeviceId} />
       <RevisionHistoryPanel payload={loadState.payload} />
       <PriorRunsHistory history={loadState.history} />
     </>
@@ -1717,6 +1714,11 @@ const RevisionHistoryPanel = ({ payload }: { payload: DeadlinePlanPayload }) => 
 export const renderDeadlinePlan = (
   surface: HTMLElement,
   loadState: DeadlinePlanLoadState,
+  // The route's device, for "Report a problem"; null when the route names none.
+  reportDeviceId: string | null = null,
 ): void => {
-  render(<DeadlinePlanRoot loadState={loadState} />, surface);
+  render(<>
+    <DeadlinePlanRoot loadState={loadState} />
+    <SmartTaskReportButton deviceId={reportDeviceId} />
+  </>, surface);
 };

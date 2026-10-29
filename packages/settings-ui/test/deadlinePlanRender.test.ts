@@ -711,3 +711,25 @@ describe('Smart-task estimate explanation', () => {
     expect(mount.querySelector('details.plan-inputs__learning')?.hasAttribute('open')).toBe(true);
   });
 });
+
+describe('DeadlinePlan report button', () => {
+  const reportButton = (mount: HTMLElement) => mount.querySelector<HTMLElement>('[data-report-device-id]');
+
+  it.each([
+    { status: 'loading' as const },
+    { status: 'error' as const, message: 'Could not load.' },
+    { status: 'completed' as const, objectiveKind: 'ev_soc' as const },
+    { status: 'unavailable' as const, objectiveKind: 'ev_soc' as const, reason: 'no_current_reading' as const },
+    { status: 'pending' as const, pending: buildPendingPayload() },
+  ])('offers a report on the task\'s device while the page is $status', (loadState) => {
+    const mount = mountIntoBody();
+    renderDeadlinePlan(mount, loadState, 'charger-1');
+    expect(reportButton(mount)?.dataset).toMatchObject({ reportDeviceId: 'charger-1', reportHomeId: 'main' });
+  });
+
+  it('offers none when the route names no device', () => {
+    const mount = mountIntoBody();
+    renderDeadlinePlan(mount, { status: 'loading' }, null);
+    expect(reportButton(mount)).toBeNull();
+  });
+});

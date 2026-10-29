@@ -44,7 +44,8 @@ booked the capture hour. `exists: false` is evidence, not an omission: a device 
 by "Only PELS starts this device" without a task is off by design. A task store read
 that cannot tell is an unavailable section. `Current device plan` adds whether PELS
 may command the device and which standing hold (start policy, charge target) keeps it
-off. The smart-task page opens a report on its device with **Report a problem**.
+off. The smart-task page opens a report on its device with **Report a problem**, in
+every page state, a task that failed to load or already ended included.
 Unavailable history or current sections remain visible omissions. Area reports
 never substitute Main's data where the selected area's read is unavailable.
 
