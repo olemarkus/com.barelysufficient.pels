@@ -8,7 +8,7 @@ type Harness = {
   priceOptCheckbox: HTMLElement;
   debouncedSetSetting: Mock;
   logSettingsWarn: Mock;
-  savePriceOptimizationSettings: Mock;
+  saveDevicePriceEnabled: Mock;
 };
 
 const setupDom = () => {
@@ -38,7 +38,7 @@ const setupHarness = async (options: {
 
   const debouncedSetSetting = vi.fn().mockResolvedValue(undefined);
   const logSettingsWarn = vi.fn().mockResolvedValue(undefined);
-  const savePriceOptimizationSettings = vi.fn().mockResolvedValue(undefined);
+  const saveDevicePriceEnabled = vi.fn().mockResolvedValue(undefined);
 
   vi.doMock('../src/ui/utils.ts', () => ({
     debouncedSetSetting,
@@ -54,7 +54,7 @@ const setupHarness = async (options: {
     renderPriceConfigDevices: vi.fn(),
   }));
   vi.doMock('../src/ui/priceOptimization.ts', () => ({
-    savePriceOptimizationSettings,
+    saveDevicePriceEnabled,
   }));
   vi.doMock('../src/ui/plan.ts', () => ({
     refreshPlan: vi.fn(),
@@ -94,7 +94,7 @@ const setupHarness = async (options: {
     priceOptCheckbox,
     debouncedSetSetting,
     logSettingsWarn,
-    savePriceOptimizationSettings,
+    saveDevicePriceEnabled,
   };
 };
 
@@ -154,7 +154,7 @@ describe('device settings initial load guard', () => {
       controllableCheckbox,
       priceOptCheckbox,
       debouncedSetSetting,
-      savePriceOptimizationSettings,
+      saveDevicePriceEnabled,
     } = await setupHarness({ initialLoadComplete: false, isManaged: true });
 
     expect(controllableCheckbox.getAttribute('aria-disabled')).toBe('true');
@@ -164,7 +164,7 @@ describe('device settings initial load guard', () => {
     await Promise.resolve();
 
     expect(debouncedSetSetting).not.toHaveBeenCalled();
-    expect(savePriceOptimizationSettings).not.toHaveBeenCalled();
+    expect(saveDevicePriceEnabled).not.toHaveBeenCalled();
   });
 
   it('enables controllable and price toggles after initial load completes', async () => {
@@ -172,7 +172,7 @@ describe('device settings initial load guard', () => {
       controllableCheckbox,
       priceOptCheckbox,
       debouncedSetSetting,
-      savePriceOptimizationSettings,
+      saveDevicePriceEnabled,
     } = await setupHarness({ initialLoadComplete: true, isManaged: true, deviceOverrides: { powerCapable: true } });
 
     expect(controllableCheckbox.getAttribute('aria-disabled')).not.toBe('true');
@@ -184,7 +184,7 @@ describe('device settings initial load guard', () => {
 
     expect(debouncedSetSetting).toHaveBeenCalledTimes(1);
     expect(debouncedSetSetting).toHaveBeenCalledWith('controllable_devices', expect.any(Function));
-    expect(savePriceOptimizationSettings).toHaveBeenCalledTimes(1);
+    expect(saveDevicePriceEnabled).toHaveBeenCalledTimes(1);
   });
 
   it('allows managed and price toggles, but keeps capacity toggle disabled, for temperature devices without power capability', async () => {
