@@ -350,12 +350,15 @@ describe('DeadlinePlanHistoryDetail', () => {
       value: (index: number) => number;
       coord: (value: [number, number]) => [number, number];
       style: () => Record<string, unknown>;
+      styleEmphasis: () => Record<string, unknown>;
     };
     const option = buildHistoryDetailChartOption(rows, stubPalette, false, true, 'Measured Heating') as {
       xAxis: { type: string; min: number; max: number };
       series: Array<{
         name: string; type: string; data: BarDatum[];
-        renderItem: (params: unknown, api: GeometryApi) => { shape: { x: number; width: number } };
+        renderItem: (params: unknown, api: GeometryApi) => {
+          shape: { x: number; width: number; r: number[] }; emphasis: { style: Record<string, unknown> };
+        };
       }>;
     };
     expect(option.xAxis).toMatchObject({ type: 'time', min: start, max: DEADLINE_MS });
@@ -368,13 +371,15 @@ describe('DeadlinePlanHistoryDetail', () => {
     ]);
     // A synthetic 80 px/hour axis makes the quarter 20 px wide and the
     // final hour 80 px wide, with the six-hour-and-45-minute gap intact.
-    const geometry = (datum: BarDatum) => series.renderItem({}, {
+    const rendered = (datum: BarDatum) => series.renderItem({}, {
       value: (index) => datum.value[index]!,
       coord: ([atMs, kwh]) => [(atMs - start) / HOUR_MS * 80, 100 - kwh * 10],
       style: () => ({}),
-    }).shape;
-    expect(geometry(series.data[0]!)).toMatchObject({ x: 1, width: 18 });
-    expect(geometry(series.data[2]!)).toMatchObject({ x: 561, width: 78 });
+      styleEmphasis: () => ({ stroke: '#123456', lineWidth: 2 }),
+    });
+    expect(rendered(series.data[0]!).shape).toMatchObject({ x: 1, width: 18, r: [3, 3, 0, 0] });
+    expect(rendered(series.data[2]!).shape).toMatchObject({ x: 561, width: 78 });
+    expect(rendered(series.data[0]!).emphasis.style).toEqual({ stroke: '#123456', lineWidth: 2 });
     expect(series.data[1]!.itemStyle.opacity).toBe(0);
   });
 

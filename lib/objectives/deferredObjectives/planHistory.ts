@@ -299,13 +299,13 @@ export class DeferredObjectivePlanHistoryRecorder {
     const restored = this.restoredMeteredDeliveryByKey.get(key);
     if (restored !== undefined) {
       next = mergeSavedRun(next, restored);
-      this.restoredMeteredDeliveryByKey.delete(key);
     }
     // The evaluator excludes prior-task thermal evidence until this exact
     // obligation has been observed. History consumes that resolved completion.
     // The hour-start capture runs after the restore so a restart inside an
     // hour the run already recorded keeps that hour's saved booking.
     this.storeWithHourStartBooking(key, next, plan, nowMs);
+    this.restoredMeteredDeliveryByKey.delete(key);
   }
 
   // Store a run's record after recording the current hour's booking. A newly

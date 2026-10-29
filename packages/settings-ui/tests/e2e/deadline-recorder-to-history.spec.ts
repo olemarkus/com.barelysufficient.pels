@@ -281,6 +281,40 @@ const openHistory = async (page: Page) => {
   await page.getByRole('tab', { name: 'Smart tasks' }).click();
 };
 
+test.describe('History axes in a half-hour browser time zone', () => {
+  test.use({ timezoneId: 'Asia/Kolkata' });
+  for (const width of [320, 480]) {
+    for (const minutes of [9, 480]) {
+      test(`keeps time labels visible for a ${minutes}-minute run at ${width}px`, async ({ page }) => {
+        const recorded = groupByDevice(await runRecorder()).dev_connected300![0]!;
+        const start = Date.UTC(2026, 9, 29, 13, 1);
+        const end = start + minutes * 60_000;
+        const entry: ResolvedDeferredObjectivePlanHistoryEntry = {
+          ...recorded, id: `half-hour-${minutes}`, outcome: 'missed',
+          deliveryExplanation: { kind: 'legacy_unrecorded' },
+          startedAtMs: start, deadlineAtMs: end, finalizedAtMs: end,
+          finalProgressValue: null, metAtMs: null, progressSamples: [], observedIntervals: [],
+          hourlyContributions: [], hourStartBookings: [], revisions: [], revisionCount: 1,
+          originalPlan: {
+            hours: [{ startsAtMs: Math.max(start, end - 3_600_000), endsAtMs: end, plannedKWh: 1 }],
+            energyNeededKWh: 1, planStatus: 'on_track', revisedAtMs: start,
+          },
+          finalPlan: null,
+        };
+        await page.setViewportSize({ width, height: 850 });
+        await page.addInitScript(stubHistory, { dev_connected300: [entry] });
+        await page.goto(`/?page=deadline-plan&deviceId=dev_connected300&historyId=${entry.id}`);
+        expect(await page.evaluate(() => new Date().getTimezoneOffset())).toBe(-330);
+        const chart = page.locator('.deadline-horizon-chart');
+        await expect(chart.locator('svg')).toBeVisible();
+        await expect.poll(async () => (
+          (await chart.locator('svg text').allTextContents()).filter(text => /^\d{2}:\d{2}$/.test(text)).length
+        )).toBeGreaterThanOrEqual(2);
+      });
+    }
+  }
+});
+
 test.describe('Deadline recorder → history UI round-trip', () => {
   test('runs through a met deadline and renders the Succeeded card', async ({ page }) => {
     const history = await runRecorder();

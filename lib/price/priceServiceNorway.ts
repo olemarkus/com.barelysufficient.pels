@@ -332,6 +332,7 @@ export const buildCombinedHourlyPricesNorway = (params: {
       norgesprisAdjustment = (norgesprisTargetIncVat - spotPriceIncVat) * eligibleShare;
       norgesprisAdjustmentExVat = norgesprisAdjustment / vatMultiplier;
       totalPrice += norgesprisAdjustment;
+      if (!Number.isFinite(totalPrice)) return prices;
       // Past hours display the fixed-price model but do not consume the forward-looking cap
       // estimate; only current and future hours decrement remaining cap eligibility.
       if (!isHistoricalHour) {
@@ -346,6 +347,7 @@ export const buildCombinedHourlyPricesNorway = (params: {
       );
       electricitySupport = electricitySupportExVat * vatMultiplier;
       totalPrice -= electricitySupport;
+      if (!Number.isFinite(totalPrice)) return prices;
     }
 
     return [
