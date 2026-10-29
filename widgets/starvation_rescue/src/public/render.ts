@@ -6,6 +6,7 @@ import {
   formatStarvationRowChip,
   resolveStarvationRowNote,
   resolveStarvationRowSubtext,
+  resolveDisclosedRescuePermissions,
   resolveStarvationRescueConsequence,
   resolveStarvationRowTone,
   starvationRowIsRescuable,
@@ -317,7 +318,9 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
   // Show the summary only when projectable (confirm is a live option) AND the
   // backend reported surviving granted permissions; derive the listed labels
   // from the gated set so it never claims a permission the rescue won't grant.
-  const granted = response.estimate.grantedRescuePermissions;
+  const granted = resolveDisclosedRescuePermissions(
+    response.estimate.grantedRescuePermissions, response.dailyBudgetEnabled,
+  );
   const permissionLabels = projectable ? resolveGrantedRescuePermissionLabels(granted) : [];
   if (permissionLabels.length > 0) renderExtraPermissionsSummary(targets, permissionLabels);
   else hide(targets.confirmPermsEl);
@@ -340,12 +343,12 @@ const renderConfirm = (
   const { device, response, submitting, error } = view;
   const { confirmBtn, confirmTitle, confirmConsequenceEl } = targets;
   confirmTitle.textContent = device.deviceName;
-  // The honest consequence sits above the figures (money-action guardrail). Which
-  // one follows what the preview grants: over today's budget, or within the hard
-  // cap when no budget is on. Until a preview says which, it is not stated; the
-  // confirm stays disabled meanwhile, so nothing is authorised unseen.
+  // The honest consequence sits above the figures (money-action guardrail): over
+  // today's budget, or within the hard cap when no budget is on. Until a preview
+  // says which, it is not stated; the confirm stays disabled meanwhile, so
+  // nothing is authorised unseen.
   setLine(confirmConsequenceEl, response?.ok === true
-    ? resolveStarvationRescueConsequence(response.estimate.grantedRescuePermissions ?? { exemptFromBudget: true })
+    ? resolveStarvationRescueConsequence(response.dailyBudgetEnabled)
     : null);
 
   if (response === null) {

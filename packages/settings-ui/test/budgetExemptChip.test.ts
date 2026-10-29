@@ -141,7 +141,11 @@ describe('BudgetExemptChip', () => {
     // bounded window; the caption pairs the shared consequence copy with the
     // widget's "By {deadlineLabel}" formatting.
     callApi.mockImplementation((method: string, uri: string) => {
-      if (uri.includes('preview')) return Promise.resolve({ ok: true, deadlineAtMs: 1_000, deadlineLabel: 'Today 17:00', estimate: { scheduledHours: [] } });
+      if (uri.includes('preview')) {
+        return Promise.resolve({
+          ok: true, deadlineAtMs: 1_000, deadlineLabel: 'Today 17:00', estimate: { scheduledHours: [] }, dailyBudgetEnabled: true,
+        });
+      }
       return Promise.resolve({});
     });
     const mount = renderChip(buildDevice());
@@ -158,9 +162,9 @@ describe('BudgetExemptChip', () => {
     expect(caption?.textContent).toContain(`${STARVATION_RESCUE_WIDGET_COPY.byLabel} Today 17:00`);
   });
 
-  it('names the hard cap, not a budget, when the rescue grants no budget exemption', async () => {
-    // No daily budget is on, so the app grants the rescue only what acts within
-    // the hard cap. The card must not promise to go over a budget there is none of.
+  it('names the hard cap, not a budget, while no daily budget is on', async () => {
+    // The rescue still carries the budget exemption, but with no budget on it
+    // lifts nothing. The card must not promise to go over a budget there is none of.
     callApi.mockImplementation((method: string, uri: string) => {
       if (uri.includes('preview')) {
         return Promise.resolve({
@@ -168,9 +172,10 @@ describe('BudgetExemptChip', () => {
           estimate: {
             scheduledHours: [],
             grantedRescuePermissions: {
-              exemptFromBudget: false, limitLowerPriorityDevices: true, pauseLowerPriorityDevices: true,
+              exemptFromBudget: true, limitLowerPriorityDevices: true, pauseLowerPriorityDevices: true,
             },
           },
+          dailyBudgetEnabled: false,
         });
       }
       return Promise.resolve({});
@@ -278,6 +283,7 @@ describe('BudgetExemptChip', () => {
               pauseLowerPriorityDevices: true,
             },
           },
+          dailyBudgetEnabled: true,
         });
       }
       return Promise.resolve({});

@@ -124,13 +124,16 @@ export const previewStarvationRescue = async (
   // deadline is simply the now+3h rescue horizon — the fresh candidate IS what
   // persists (preview ≡ persist).
   const candidate = buildRescueCandidate(rescuable.target, nowMs + RESCUE_DEADLINE_HORIZON_MS);
-  const { estimate, deadlineAtMs } = homey.app.previewStarvationRescuePlan(request.deviceId, candidate);
+  const { estimate, deadlineAtMs, dailyBudgetEnabled } = homey.app.previewStarvationRescuePlan(
+    request.deviceId, candidate,
+  );
   return {
     ok: true,
     deadlineAtMs,
     deadlineLabel: formatSmartTaskDeadlineLong(deadlineAtMs, nowMs, timeZone),
     scheduledWindowLabel: formatScheduledHoursWindow(estimate.scheduledHours, timeZone),
     estimate,
+    dailyBudgetEnabled,
   };
 };
 

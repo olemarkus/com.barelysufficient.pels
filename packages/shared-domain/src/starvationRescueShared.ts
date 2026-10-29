@@ -128,21 +128,6 @@ export const buildRescueCandidate = (
   },
 });
 
-// A rescue lifts the daily budget only while one is on. With the budget off the
-// exemption lifts nothing, so the rescue keeps just the permissions that act
-// within the hard cap, and every surface, which shows what the preview grants,
-// stops promising to go over a budget there is none of. Applied in the rescue
-// lane only: a user's own task keeps the permission they chose, for a budget
-// they may turn on before its deadline.
-export const fitRescueToDailyBudget = (
-  candidate: DeferredObjectivePlanPreviewCandidate,
-  dailyBudgetEnabled: boolean,
-): DeferredObjectivePlanPreviewCandidate => {
-  if (candidate.rescue === undefined || dailyBudgetEnabled) return candidate;
-  const { exemptFromBudget: _liftsNothing, ...rescue } = candidate.rescue;
-  return { ...candidate, rescue };
-};
-
 // Map a `rescueDeviceWithBudgetExemption` rejection reason onto the surfaces'
 // reject-reason union. The per-key write refused to persist (a transient
 // untrustworthy settings read) → map onto the

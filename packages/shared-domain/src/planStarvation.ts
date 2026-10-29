@@ -104,11 +104,15 @@ export const STARVATION_RESCUE_WIDGET_COPY = {
   // Names the consequence honestly per the money-action guardrail: the rescue
   // lets this device go over today's budget so it reaches its normal target.
   rescueConsequence: 'This lets the device use power beyond today’s budget until it reaches its normal target.',
-  // The same consequence when no daily budget is on, so the rescue grants no
-  // budget exemption: it can only take power from lower-priority devices, and
-  // never above the hard cap (`fitRescueToDailyBudget`).
+  // The same consequence when no daily budget is on: the exemption the rescue
+  // carries lifts nothing, so it can only take power from lower-priority
+  // devices, and never above the hard cap.
   rescueConsequenceWithinCap: 'This lets the device take power from lower-priority devices until it reaches '
     + 'its normal target, within the hard cap.',
+  // What the rescue does whether or not a budget is on, for the card chip's
+  // tooltip, which is shown before a preview says which consequence applies.
+  rescueSummary: 'This lets the device take power ahead of lower-priority devices until it reaches '
+    + 'its normal target.',
   rescueConfirmButton: 'Confirm',
   backButton: 'Back',
   scheduledLabel: 'Scheduled',
@@ -341,11 +345,11 @@ export const BUDGET_EXEMPT_CARD_ACTION_COPY = {
   // from today's budget so it runs now, never a hard-cap change. The leading
   // bolt glyph distinguishes it from the adjacent "Held back" status badge.
   label: STARVATION_RESCUE_WIDGET_COPY.rescueButton,
-  // Tooltip / accessible description — the same honest money-action consequence
-  // the widget's confirm sheet names: the rescue lets the device use power
-  // beyond today's budget until it reaches its normal target. Never suggests
-  // raising the hard cap (never a remedy).
-  tooltip: STARVATION_RESCUE_WIDGET_COPY.rescueConsequence,
+  // Tooltip / accessible description. Shown before any preview, so it names
+  // only what holds with or without a daily budget; the armed caption then
+  // states the consequence for today. Never suggests raising the hard cap
+  // (never a remedy).
+  tooltip: STARVATION_RESCUE_WIDGET_COPY.rescueSummary,
   // Armed-confirm label (the two-step settings-UI confirm pattern): the first
   // tap arms this, the second commits the rescue. Reuses the widget's confirm
   // verb so the action word is shared across surfaces.
@@ -424,16 +428,26 @@ export const resolveStarvationRescueRejectCopy = (reason: string | undefined): s
   return STARVATION_RESCUE_WIDGET_COPY.rescueError;
 };
 
-// The consequence of the rescue the preview actually grants: over today's
-// budget when it grants the budget exemption, otherwise within the hard cap.
-type RescueBudgetGrant = Pick<
-  NonNullable<DeferredObjectivePlanPreviewEstimate['grantedRescuePermissions']>, 'exemptFromBudget'
->;
-
-export const resolveStarvationRescueConsequence = (granted: RescueBudgetGrant): string => (
-  granted.exemptFromBudget
+// The rescue's consequence today. Every rescue carries the budget exemption
+// (it is part of what lets the planner fully reserve the device's steps), but
+// it lifts something only while a daily budget is on: over today's budget then,
+// otherwise within the hard cap.
+export const resolveStarvationRescueConsequence = (dailyBudgetEnabled: boolean): string => (
+  dailyBudgetEnabled
     ? STARVATION_RESCUE_WIDGET_COPY.rescueConsequence
     : STARVATION_RESCUE_WIDGET_COPY.rescueConsequenceWithinCap
+);
+
+type GrantedRescuePermissions = NonNullable<DeferredObjectivePlanPreviewEstimate['grantedRescuePermissions']>;
+
+// The granted permissions a rescue surface lists: the budget exemption only
+// while a daily budget is on, so no surface promises to go over a budget the
+// user does not have.
+export const resolveDisclosedRescuePermissions = (
+  granted: GrantedRescuePermissions | undefined,
+  dailyBudgetEnabled: boolean,
+): GrantedRescuePermissions | undefined => (
+  granted && !dailyBudgetEnabled ? { ...granted, exemptFromBudget: false } : granted
 );
 
 // The armed-state consequence line on the overview device card, composed here
@@ -447,16 +461,16 @@ export const resolveStarvationRescueConsequence = (granted: RescueBudgetGrant): 
 // "By {time}" anchor is appended (server-formatted in the Homey timezone — the
 // view does no Date math). Without one the consequence already names its own
 // bound ("…until it reaches its normal target."), so it stands alone. Which
-// consequence follows what the preview granted (`resolveStarvationRescueConsequence`).
+// consequence follows whether a daily budget is on (`resolveStarvationRescueConsequence`).
 //
 // Deliberately says nothing about the OTHER granted permissions: those are listed
 // verbatim from `formatGrantedRescuePermissionsLine`, so this surface never
 // invents a second phrasing for a permission that already has a canonical label.
 export const formatStarvationRescueArmedCaption = (
-  granted: RescueBudgetGrant,
+  dailyBudgetEnabled: boolean,
   deadlineLabel: string | undefined,
 ): string => {
-  const consequence = resolveStarvationRescueConsequence(granted);
+  const consequence = resolveStarvationRescueConsequence(dailyBudgetEnabled);
   if (deadlineLabel === undefined || deadlineLabel === '') return consequence;
   return `${consequence} ${STARVATION_RESCUE_WIDGET_COPY.byLabel} ${deadlineLabel}`;
 };

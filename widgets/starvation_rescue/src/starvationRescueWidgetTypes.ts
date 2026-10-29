@@ -38,6 +38,8 @@ export type StarvationRescuePreviewResponse = {
   // the Homey timezone. Null when no hours are scheduled.
   scheduledWindowLabel: string | null;
   estimate: DeferredObjectivePlanPreviewEstimate;
+  // Whether a daily budget is on, which names the rescue's consequence.
+  dailyBudgetEnabled: boolean;
 } | {
   ok: false;
   reason: StarvationRescueRejectReason;

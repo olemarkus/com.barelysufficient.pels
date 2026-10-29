@@ -14,7 +14,11 @@ import type {
   SmartTaskQuickTargetsRead,
 } from './deferredObjectivePlanPreview.js';
 import type { DeferredObjectiveRescuePermissions, DeferredObjectiveSettingsKind } from './deferredObjectiveSettings.js';
-import type { StarvationNotListedDevice, StarvationRescueDevice } from './starvationRescue.js';
+import type {
+  StarvationNotListedDevice,
+  StarvationRescueDevice,
+  StarvationRescuePlanPreview,
+} from './starvationRescue.js';
 import type { DailyBudgetUiRead } from './dailyBudgetTypes.js';
 import type { ResolvedDeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePlans.js';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from './settingsUiApi.js';
@@ -88,7 +92,7 @@ export type StarvationRescueHostApi = {
   previewStarvationRescuePlan(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
-  ): { estimate: DeferredObjectivePlanPreviewEstimate; deadlineAtMs: number; hasExistingObjective: boolean };
+  ): StarvationRescuePlanPreview;
   rescueDeviceWithBudgetExemption(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,

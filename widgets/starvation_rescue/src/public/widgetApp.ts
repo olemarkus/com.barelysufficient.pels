@@ -75,6 +75,7 @@ const PREVIEW_RESPONSE: StarvationRescuePreviewResponse = {
       pauseLowerPriorityDevices: true,
     },
   },
+  dailyBudgetEnabled: true,
 };
 
 const resolveTargets = (d: Document): RenderTargets | null => {
