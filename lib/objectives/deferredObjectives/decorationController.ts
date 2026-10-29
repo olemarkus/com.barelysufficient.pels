@@ -14,12 +14,13 @@ import {
   type DeferredAdmissionDecision,
 } from './admission';
 import {
-  buildDeferredObjectiveEvaluations,
+  buildDeferredObjectiveTaskResults,
   buildTaskEvaluationSnapshot,
   LIVE_LANE,
+  type TaskEvaluationReport,
   type TaskEvaluationSource,
 } from './diagnosticsBridge';
-import type { TaskEvaluation } from './taskEvaluation';
+import { buildSmartTaskCycleRecord, type SmartTaskCycleRecord } from './smartTaskCycleRecord';
 import type { DeferredObjectiveRoster } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { PriorityAllocationTracker } from './priorityAllocation';
 
@@ -41,6 +42,9 @@ import { PriorityAllocationTracker } from './priorityAllocation';
  */
 export class DeferredObjectiveDecorationController {
   private readonly priorityAllocationTracker = new PriorityAllocationTracker();
+  // The latest cycle's decision per live task, for diagnostics reports only.
+  // Replaced whole each cycle, so an ended task drops out with it.
+  private latestCycles: ReadonlyMap<string, SmartTaskCycleRecord> = new Map();
 
   constructor(
     private readonly source: TaskEvaluationSource,
@@ -49,7 +53,8 @@ export class DeferredObjectiveDecorationController {
 
   public decorate(input: DeferredDecorationInput): DeferredDecorationBundle {
     const { devices, dailyBudgetSnapshot, nowTs } = input;
-    const evaluations = this.evaluate(devices, dailyBudgetSnapshot, nowTs);
+    const reports = this.evaluate(devices, dailyBudgetSnapshot, nowTs);
+    const evaluations = reports.map((report) => report.evaluation);
     // The active-plan RECORD (revisions) is written on the lifecycle clock
     // (`DeferredObjectiveLifecycleEmitter`), not here. This stage only READS the
     // committed plan (via the diagnostics build above, which consults
@@ -57,6 +62,7 @@ export class DeferredObjectiveDecorationController {
     // every cycle; only the write rides the clock. See the carve-out note.
     const decisions = applyDeferredObjectiveAdmission(evaluations, devices);
     const admission = applyDeferredAdmissionToInput(devices, decisions);
+    this.latestCycles = recordCycles(reports, decisions, nowTs);
     return {
       admittedDevices: admission.devices,
       forceShedSet: admission.forceShedSet,
@@ -69,11 +75,16 @@ export class DeferredObjectiveDecorationController {
     };
   }
 
+  /** The latest cycle's decision for the device's task; `undefined` with no live task. */
+  public readLatestCycle(deviceId: string): SmartTaskCycleRecord | undefined {
+    return this.latestCycles.get(deviceId);
+  }
+
   private evaluate(
     devices: DeferredDecorationInput['devices'],
     dailyBudgetSnapshot: DailyBudgetUiPayload | null,
     nowTs: number,
-  ): TaskEvaluation[] {
+  ): TaskEvaluationReport[] {
     // Mirrors the planner's `trackPlanStage` (duration + per-op RSS delta) so the
     // `evaluate_deferred_objectives_ms` telemetry is unchanged by the relocation;
     // per-op RSS attribution matters under PELS's tight memory ceiling.
@@ -84,16 +95,29 @@ export class DeferredObjectiveDecorationController {
       if (!settings) return [];
       // The lifecycle clock may not have disarmed an elapsed task yet. Its
       // terminal fallback belongs to that clock; it has no admission claims.
-      return buildDeferredObjectiveEvaluations(
+      return buildDeferredObjectiveTaskResults(
         buildTaskEvaluationSnapshot(this.source, nowTs, devices, settings, dailyBudgetSnapshot),
         this.source, this.priorityAllocationTracker, LIVE_LANE,
-      ).filter((evaluation) => evaluation.deadlineAtMs > nowTs);
+      ).filter((report) => report.evaluation.deadlineAtMs > nowTs);
     } finally {
       addPerfDuration('evaluate_deferred_objectives_ms', Date.now() - start);
       recordOpRssDelta('evaluate_deferred_objectives_ms', rssBefore, safeRss());
     }
   }
 }
+
+const recordCycles = (
+  reports: readonly TaskEvaluationReport[],
+  decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
+  nowTs: number,
+): ReadonlyMap<string, SmartTaskCycleRecord> => {
+  const records = new Map<string, SmartTaskCycleRecord>();
+  for (const { diagnostic } of reports) {
+    const decision = decisions.get(diagnostic.deviceId);
+    if (decision) records.set(diagnostic.deviceId, buildSmartTaskCycleRecord(diagnostic, decision, nowTs));
+  }
+  return records;
+};
 
 // Devices whose deferred objective is currently GOVERNING them: a `planned` or
 // `idle` admission decision this cycle. Consumed by the planner as

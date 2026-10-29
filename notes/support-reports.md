@@ -39,10 +39,15 @@ timeout with the cars it waited for and why past matches did not decide, and a
 selected car that reported its plug-in after the window. A charger or car report
 also carries the current car link (`Current car link`).
 A Main device report carries the device's smart task (`Current smart task`): the
-stored task and, when the planner has one, its plan's decision, status and whether it
-booked the capture hour. `exists: false` is evidence, not an omission: a device held
-by "Only PELS starts this device" without a task is off by design. A task store read
-that cannot tell is an unavailable section. `Current device plan` adds whether PELS
+stored task; `plan`, its recorded plan (decision, learned rate, the latest revision's
+reason and bookings, and whether it booked the capture hour); and `lastCycle`, the
+smart-task controller's latest per-cycle decision (`planned`, `idle` with its hold
+cause, or `inactive` with the reason code naming the missing precondition). The
+controller keeps only that flat record per live task
+(`lib/objectives/deferredObjectives/smartTaskCycleRecord.ts`), read through the Main
+home scope. `exists: false` is evidence, not an omission: a device held by "Only PELS
+starts this device" without a task is off by design. A task store read that cannot
+tell is an unavailable section. `Current device plan` adds whether PELS
 may command the device and which standing hold (start policy, charge target) keeps it
 off. The smart-task page opens a report on its device with **Report a problem**, in
 every page state, a task that failed to load or already ended included.
