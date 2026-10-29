@@ -19,6 +19,7 @@ import { createLogTailStore } from '../../lib/diagnostics/logTailStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { CarLinkDiagnostics } from '../../lib/ports/carLinkDiagnostics';
 import type { ObjectiveSettingsStore } from '../../lib/objectives/deferredObjectives/objectiveStore';
+import type { SmartTaskCycleRecord } from '../../lib/objectives/deferredObjectives/smartTaskCycleRecord';
 import type { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 
 const request: SupportReportRequest = {
@@ -60,9 +61,10 @@ const objectiveStore = (tasks: Record<string, unknown> = {}): ObjectiveSettingsS
   getKeys: () => ['capacity_limit_kw', ...Object.keys(tasks).map((id) => `deferred_objective.${id}`)],
   set: vi.fn(), unset: vi.fn(),
 });
+const noCycle = () => undefined;
 const source = (
-  app: SupportReportApp, objectives = objectiveStore(),
-) => new SupportReportEvidenceSource(createSupportReportReads(app, objectives), {
+  app: SupportReportApp, objectives = objectiveStore(), readCycle: (deviceId: string) => SmartTaskCycleRecord | undefined = noCycle,
+) => new SupportReportEvidenceSource(createSupportReportReads(app, objectives, readCycle), {
   manifest: { version: '9.8.7-running-build' }, version: '12.4.1-running-homey',
 });
 const values = (report: SupportReportEvidence, title: string) => (
@@ -229,7 +231,7 @@ describe('support report evidence capture', () => {
     host.getDailyBudgetUiPayload = () => ({ kind: 'budget', payload: { todayKey: day.dateKey, days: { [day.dateKey]: day } } });
     const settings = { get: vi.fn(), getKeys: vi.fn(), set: vi.fn() };
     const homey = { app: host, manifest: { version: '3.21.0', apiKey: 'manifest-secret' }, version: '12.0.0', settings };
-    const report = await new SupportReportEvidenceSource(createSupportReportReads(host, objectiveStore()), homey)
+    const report = await new SupportReportEvidenceSource(createSupportReportReads(host, objectiveStore(), noCycle), homey)
       .capture(request, now);
     expect(values(report, 'Current app-wide prices')).toMatchObject({ importPrice: 42, level: 'cheap' });
     expect(values(report, 'Current app-wide price source')).toEqual({ scheme: 'norway', selection: 'chosen' });
@@ -386,8 +388,11 @@ describe('support report smart task evidence', () => {
   type RecordedPlan = NonNullable<ReturnType<DeferredObjectiveActivePlanRecorder['getActivePlan']>>;
   const recordedPlan = partialDouble<RecordedPlan>({
     deviceId: 'heater', pending: false,
+    kwhPerUnitProvenance: partialDouble<NonNullable<RecordedPlan['kwhPerUnitProvenance']>>({
+      source: 'learned', acceptedSamples: 7, confidence: 'medium',
+    }),
     latest: partialDouble<NonNullable<RecordedPlan['latest']>>({
-      planStatus: 'on_track', energyNeededKWh: 12,
+      planStatus: 'on_track', energyNeededKWh: 12, revisedAtMs: now - hour, reason: 'prices_revised',
       hours: [
         // Booked at 0 kWh: the task holds this hour without promising energy.
         { startsAtMs: now - 10 * 60_000, plannedKWh: 0 },
@@ -402,17 +407,35 @@ describe('support report smart task evidence', () => {
     expect(values(report, 'Current smart task')).toEqual({ exists: false });
   });
 
-  it('names the task, what it decided and whether it booked this hour', async () => {
+  // The controller's view of the hour Michal's charger sat off: no plan could be
+  // made, so the start policy kept holding it.
+  const cycle: SmartTaskCycleRecord = {
+    atMs: now - 20_000, decision: 'inactive', budgetExempt: false, reasonCode: 'objective_progress_stale',
+    trajectory: 'unavailable', currentValue: null, energyNeededKWh: null, planningSpeedKw: 1.4,
+    kwhPerUnitSource: 'learned', kwhPerUnitAcceptedSamples: 7,
+  };
+
+  it('names the task, its plan, and what the controller decided last cycle', async () => {
     const host = currentHost();
     const getActivePlan = vi.fn((id: string) => (id === 'heater' ? recordedPlan : undefined));
     const app = Object.assign(host, {
       deferredObjectiveActivePlanRecorder: partialDouble<DeferredObjectiveActivePlanRecorder>({ getActivePlan }),
     });
-    const report = await source(app, objectiveStore({ heater: evTask })).capture(request, now);
+    const readCycle = vi.fn((id: string) => (id === 'heater' ? cycle : undefined));
+    const report = await source(app, objectiveStore({ heater: evTask }), readCycle).capture(request, now);
     expect(values(report, 'Current smart task')).toEqual({
       exists: true, kind: 'ev_soc', enabled: true, enforcement: 'soft', deadlineAtMs: now + 8 * hour,
-      targetPercent: 80, pending: false, planStatus: 'on_track', energyNeededKWh: 12,
-      plannedHours: 2, currentHourBooked: true, currentHourPlannedKWh: 0, nextPlannedHourStartsAtMs: now + 2 * hour,
+      targetPercent: 80,
+      plan: {
+        pending: false, learnedRateSource: 'learned', learnedRateSamples: 7, learnedRateConfidence: 'medium',
+        planStatus: 'on_track', revisedAtMs: now - hour, revisionReason: 'prices_revised', energyNeededKWh: 12,
+        plannedHours: 2, currentHourBooked: true, currentHourPlannedKWh: 0, nextPlannedHourStartsAtMs: now + 2 * hour,
+      },
+      lastCycle: {
+        atMs: now - 20_000, decision: 'inactive', reasonCode: 'objective_progress_stale', trajectory: 'unavailable',
+        currentValue: null, energyNeededKWh: null, planningSpeedKw: 1.4,
+        kwhPerUnitSource: 'learned', kwhPerUnitAcceptedSamples: 7, budgetExempt: false,
+      },
     });
     // One device's record, never the assembled view of every task.
     expect(getActivePlan).toHaveBeenCalledWith('heater');

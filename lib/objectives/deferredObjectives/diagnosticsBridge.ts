@@ -6,8 +6,10 @@ import {
 } from './taskEvaluationCoordinator';
 
 export {
+  buildDeferredObjectiveTaskResults,
   buildTaskEvaluationSnapshot,
   LIVE_LANE,
+  type TaskEvaluationReport,
   type TaskEvaluationLane,
   type TaskEvaluationReaders,
   type TaskEvaluationSnapshot,
@@ -15,7 +17,6 @@ export {
 } from './taskEvaluationCoordinator';
 import type { PriorityAllocationTracker } from './priorityAllocation';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
-import type { TaskEvaluation } from './taskEvaluation';
 
 export type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 export { progressCurrentValue } from './diagnosticFields';
@@ -31,11 +32,3 @@ export const buildDeferredObjectiveDiagnostics = (
   lane: TaskEvaluationLane,
 ): DeferredObjectiveDiagnostic[] => buildDeferredObjectiveTaskResults(snapshot, readers, tracker, lane)
   .map((result) => result.diagnostic);
-
-export const buildDeferredObjectiveEvaluations = (
-  snapshot: TaskEvaluationSnapshot,
-  readers: TaskEvaluationReaders,
-  tracker: PriorityAllocationTracker,
-  lane: TaskEvaluationLane,
-): TaskEvaluation[] => buildDeferredObjectiveTaskResults(snapshot, readers, tracker, lane)
-  .map((result) => result.evaluation);
