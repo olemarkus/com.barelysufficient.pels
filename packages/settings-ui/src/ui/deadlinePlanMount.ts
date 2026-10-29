@@ -226,7 +226,7 @@ const mountHistoryDetail = async (
   // Swap to the loading state synchronously so the "Try again" button is
   // removed before the new fetch starts. Without this, fast double-clicks
   // would queue duplicate fetches (and duplicate logSettingsError calls).
-  renderDeadlinePlan(surface, { status: 'loading' });
+  renderDeadlinePlan(surface, { status: 'loading' }, deviceId);
   let history: DeadlinePlanHistoryView;
   try {
     history = await fetchDeadlinePlanHistory(deviceId, timeZone, true);
@@ -244,13 +244,13 @@ const mountHistoryDetail = async (
       // generation / `isStale` guard instead of inheriting this call's
       // closures and potentially racing the new fetch.
       onRetry: () => { void mountDeadlinePlan(); },
-    });
+    }, deviceId);
     return;
   }
   if (isStale()) return;
   const entry = history.entries.find((candidate) => candidate.id === historyId);
   if (!entry) {
-    renderDeadlinePlan(surface, { status: 'history-missing', history });
+    renderDeadlinePlan(surface, { status: 'history-missing', history }, deviceId);
     return;
   }
   renderDeadlinePlan(surface, {
@@ -258,7 +258,7 @@ const mountHistoryDetail = async (
     entry,
     timeZone: history.timeZone,
     history,
-  });
+  }, deviceId);
 };
 
 // Active mount tracks the deviceId + historyId the panel is currently
@@ -407,9 +407,8 @@ const renderActiveMount = (): void => {
       : 'edit_and_clear';
     loadState.edit = buildSmartTaskEditProps(m, mode);
     loadState.afterTask = buildSmartTaskAfterTaskProps(m);
-    if (m.deviceId !== null) loadState.reportDeviceId = m.deviceId;
   }
-  renderDeadlinePlan(m.surface, loadState);
+  renderDeadlinePlan(m.surface, loadState, m.deviceId);
 };
 
 // One-shot chrome bindings shared by every (re-)mount: close button, the
@@ -481,7 +480,7 @@ export const mountDeadlinePlan = async (): Promise<void> => {
   if (!runtimeRefreshBound) {
     runtimeRefreshBound = subscribeToRuntimeRefresh();
   }
-  renderDeadlinePlan(surface, { status: 'loading' });
+  renderDeadlinePlan(surface, { status: 'loading' }, deviceId);
 
   if (historyId !== null) {
     await mountHistoryDetail(surface, deviceId, historyId, timeZone, isStale);
@@ -503,7 +502,7 @@ export const mountDeadlinePlan = async (): Promise<void> => {
       status: 'error',
       message: buildBootErrorMessage(error),
       onRetry: () => { void mountDeadlinePlan(); },
-    });
+    }, deviceId);
     return;
   }
   renderActiveMount();
