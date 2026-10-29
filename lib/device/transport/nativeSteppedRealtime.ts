@@ -1,4 +1,4 @@
-import { getCapabilityAdapter, getSnapshotAdapter } from '../deviceAdapterRegistry';
+import { getCapabilityAdapter, getDeviceAdapter, getSnapshotAdapter } from '../deviceAdapterRegistry';
 /**
  * Native stepped-load realtime handling: translates a `target_power` /
  * stepped-load / `available_installation_current` capability change into a
@@ -161,6 +161,7 @@ function resolveEvStepObservationWattsPerUnit(capabilityId: string, preset: Targ
 // own step capabilities carry one; everything else leaves the snapshot's
 // exact power as it is.
 function resolveNativeReportedStepPowerW(
+    ingest: RealtimeIngestService,
     snapshot: TransportDeviceSnapshot,
     capabilityId: string,
     value: unknown,
@@ -171,7 +172,12 @@ function resolveNativeReportedStepPowerW(
     if (!isEvTargetPowerConfig(snapshot.targetPowerConfig)) return undefined;
     if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
     if (current && value < current.minimumChargingA) return 0;
-    return Math.round(value * resolveEvStepObservationWattsPerUnit(capabilityId, snapshot.targetPowerConfig.preset));
+    const raw = capabilityId === 'target_power'
+        ? ingest.reader.snapshotStore.getTrackedRawDevice(snapshot.id) : undefined;
+    const planningValue = raw
+        ? getDeviceAdapter(raw).targetPowerReading(raw, snapshot.targetPowerConfig, value) : value;
+    return Math.round(planningValue
+        * resolveEvStepObservationWattsPerUnit(capabilityId, snapshot.targetPowerConfig.preset));
 }
 
 export function handleNativeSteppedLoadCapabilityUpdate(
@@ -200,7 +206,7 @@ export function handleNativeSteppedLoadCapabilityUpdate(
         return isNativePowerStepUpdate;
     }
 
-    const reportedStepPowerW = resolveNativeReportedStepPowerW(snapshot, capabilityId, value);
+    const reportedStepPowerW = resolveNativeReportedStepPowerW(ingest, snapshot, capabilityId, value);
     // A negative watt reading is malformed, not an off-range setting: consume it
     // before it can be recorded as probe evidence or replace the last-good step.
     if (reportedStepPowerW !== undefined && reportedStepPowerW < 0) return true;
@@ -223,7 +229,9 @@ export function handleNativeSteppedLoadCapabilityUpdate(
             },
         })
         : undefined;
-    const nextReportedStepId = adapters.getReportedStepId(deviceId, snapshot.steppedLoadProfile ?? profile)
+    const nextReportedStepId = adapters.getReportedStepId(
+        deviceId, snapshot.steppedLoadProfile ?? profile, snapshot.targetPowerConfig,
+    )
         ?? fallbackReportedStepId;
 
     applyNativeSteppedLoadSnapshotUpdate(

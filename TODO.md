@@ -203,6 +203,30 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Device observation and transport
 
+- [ ] **A `current_before_start` charger can start at a retained limit that preparation never
+      changed.** Two shared rules allow it. `buildExecutableSteppedLoadDevice` in
+      `lib/executor/executableSteppedLoadProjection.ts` accepts a command confirmation even when
+      the stopped charger still reports a different positive limit, so a vendor app that
+      acknowledges a write it swallowed (Enua does) lets PELS enable charging at the old limit.
+      `resolveTargetPowerReportedStepId` in `lib/device/nativeSteppedLoadWiring.ts` reads an
+      off-ladder report as its nearest rung, so with an owner ceiling of 6 A a retained 32 A
+      report reads as the 6 A rung and confirms preparation. **What changes:** for devices whose
+      `activationOrder` is `current_before_start` only, preparation is confirmed by a report that
+      exactly matches the prepared rung. Planning keeps the nearest rung for every other charger,
+      because exact matching everywhere regressed Zaptec in the first Enua attempt. **Done when**
+      `test/e2e/enuaChargerSdkE2E.test.ts` covers a refused limit write and a 6 A ceiling with a
+      retained 32 A limit, and in both PELS does not enable charging, on all three grid types.
+      [P1]
+- [ ] **A target-power ceiling below the device's lowest active rung drops stepped control instead
+      of holding the device off.** `resolveTargetPowerSteppedControl`
+      (`lib/device/nativeSteppedLoadWiring.ts`) builds no usable ladder when the saved `max` is
+      below `excludeMax` or the EV preset's 6 A rung, so PELS loses stepped control. In the Enua SDK
+      e2e scenario with a 5 A ceiling, the charger charges at its last limit. **What changes:** keep the
+      physical minimum rung and project a standing off hold through plan input, the planner and
+      the actuator start preflight. **Done when** an Enua charger with a 5 A ceiling stays off
+      whether it was charging or stopped at startup, and the same holds for a Zaptec with the same
+      ceiling. [P1]
+
 - [ ] **The zone tree is refetched on every snapshot refresh — 538 Homey round-trips per 12 h for
       an answer that changed zero times.** `refreshZoneTreeCache` (`lib/device/transport/snapshotRefresh.ts`)
       fetches `manager/zones/zone` at the tail of every `refreshSnapshot`, roughly every 80 s. In the
