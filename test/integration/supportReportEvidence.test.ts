@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PelsHost } from '../../lib/app/pelsHost';
 import { SupportReportEvidenceSource } from '../../lib/diagnostics/supportReportEvidence';
-import { createSupportReportReads } from '../../setup/appInit/createSupportReports';
+import { createSupportReportReads, type SupportReportApp } from '../../setup/appInit/createSupportReports';
 import type { DailyBudgetDayPayload } from '../../packages/contracts/src/dailyBudgetTypes';
 import type { SupportReportEvidence, SupportReportRequest } from '../../packages/contracts/src/supportReport';
 import { pelsHostDouble } from '../helpers/pelsHostDouble';
@@ -19,7 +19,7 @@ import { createLogTailStore } from '../../lib/diagnostics/logTailStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { CarLinkDiagnostics } from '../../lib/ports/carLinkDiagnostics';
 import type { ObjectiveSettingsStore } from '../../lib/objectives/deferredObjectives/objectiveStore';
-import type { ResolvedDeferredObjectiveActivePlanV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 
 const request: SupportReportRequest = {
   subject: { kind: 'device', homeId: 'main', deviceId: 'heater' },
@@ -61,7 +61,7 @@ const objectiveStore = (tasks: Record<string, unknown> = {}): ObjectiveSettingsS
   set: vi.fn(), unset: vi.fn(),
 });
 const source = (
-  app: PelsHost, objectives = objectiveStore(),
+  app: SupportReportApp, objectives = objectiveStore(),
 ) => new SupportReportEvidenceSource(createSupportReportReads(app, objectives), {
   manifest: { version: '9.8.7-running-build' }, version: '12.4.1-running-homey',
 });
@@ -383,11 +383,13 @@ describe('support report log', () => {
 
 describe('support report smart task evidence', () => {
   const evTask = { kind: 'ev_soc', enforcement: 'soft', targetPercent: 80, enabled: true, deadlineAtMs: now + 8 * hour };
-  const activePlan = partialDouble<ResolvedDeferredObjectiveActivePlanV1>({
-    deviceId: 'heater', pending: false, liveCompletion: { kind: 'unmet', status: 'on_track' },
-    latest: partialDouble<NonNullable<ResolvedDeferredObjectiveActivePlanV1['latest']>>({
+  type RecordedPlan = NonNullable<ReturnType<DeferredObjectiveActivePlanRecorder['getActivePlan']>>;
+  const recordedPlan = partialDouble<RecordedPlan>({
+    deviceId: 'heater', pending: false,
+    latest: partialDouble<NonNullable<RecordedPlan['latest']>>({
       planStatus: 'on_track', energyNeededKWh: 12,
       hours: [
+        // Booked at 0 kWh: the task holds this hour without promising energy.
         { startsAtMs: now - 10 * 60_000, plannedKWh: 0 },
         { startsAtMs: now + 2 * hour, plannedKWh: 6 },
         { startsAtMs: now + 3 * hour, plannedKWh: 6 },
@@ -402,13 +404,18 @@ describe('support report smart task evidence', () => {
 
   it('names the task, what it decided and whether it booked this hour', async () => {
     const host = currentHost();
-    host.getDeferredObjectiveActivePlansUiPayload = () => ({ version: 1, plansByDeviceId: { heater: activePlan } });
-    const report = await source(host, objectiveStore({ heater: evTask })).capture(request, now);
+    const getActivePlan = vi.fn((id: string) => (id === 'heater' ? recordedPlan : undefined));
+    const app = Object.assign(host, {
+      deferredObjectiveActivePlanRecorder: partialDouble<DeferredObjectiveActivePlanRecorder>({ getActivePlan }),
+    });
+    const report = await source(app, objectiveStore({ heater: evTask })).capture(request, now);
     expect(values(report, 'Current smart task')).toEqual({
       exists: true, kind: 'ev_soc', enabled: true, enforcement: 'soft', deadlineAtMs: now + 8 * hour,
-      targetPercent: 80, pending: false, completion: 'on_track', planStatus: 'on_track', energyNeededKWh: 12,
-      plannedHours: 2, currentHourPlannedKWh: 0, nextPlannedHourStartsAtMs: now + 2 * hour,
+      targetPercent: 80, pending: false, planStatus: 'on_track', energyNeededKWh: 12,
+      plannedHours: 2, currentHourBooked: true, currentHourPlannedKWh: 0, nextPlannedHourStartsAtMs: now + 2 * hour,
     });
+    // One device's record, never the assembled view of every task.
+    expect(getActivePlan).toHaveBeenCalledWith('heater');
   });
 
   it('marks the section unavailable when the task store cannot say whether a task exists', async () => {

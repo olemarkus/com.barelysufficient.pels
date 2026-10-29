@@ -55,33 +55,29 @@ export const loadEvChargeTargetSettings = async () => {
 // "Only PELS starts this device" grant. Without one it only watches. The
 // runtime also takes a power reading for any power decision
 // (`resolveDeviceControlPosture`); that case has its own line below.
-const hasStandingGrant = (deviceId: string): boolean => (
-  state.controllableMap[deviceId] === true
-  || resolveDeviceStartPolicy(state.deviceStartPolicyMap, deviceId) === 'pels_only'
-);
+// "Only PELS starts" is a lever that starts the charger only for a smart task,
+// so every line saying the car charges must say who starts it.
+type ChargeTargetLever = 'power_limit' | 'smart_task_start' | 'none';
 
-// With Power-limit control off, "Only PELS starts this device" is the lever, and
-// it starts the charger only for a smart task: a line saying the car charges
-// must say who starts it, or a charger waiting for a task reads as broken.
-const isStartedOnlyBySmartTask = (deviceId: string): boolean => (
-  state.controllableMap[deviceId] !== true
-  && resolveDeviceStartPolicy(state.deviceStartPolicyMap, deviceId) === 'pels_only'
-);
+const resolveChargeTargetLever = (deviceId: string): ChargeTargetLever => {
+  if (state.controllableMap[deviceId] === true) return 'power_limit';
+  return resolveDeviceStartPolicy(state.deviceStartPolicyMap, deviceId) === 'pels_only' ? 'smart_task_start' : 'none';
+};
 
-const SMART_TASK_START_SUFFIX = ' Only a smart task starts this charger.';
-
-const withStartCondition = (deviceId: string, status: string): string => (
-  isStartedOnlyBySmartTask(deviceId) ? `${status}${SMART_TASK_START_SUFFIX}` : status
+const withStartCondition = (lever: ChargeTargetLever, status: string): string => (
+  lever === 'smart_task_start' ? `${status} Only a smart task starts this charger.` : status
 );
 
 const hasSelectedCar = (deviceId: string): boolean => (
   (state.evCarAssociations[deviceId]?.carIds.length ?? 0) > 0
 );
 
-const buildUnreportedStatus = (deviceId: string, config: EvChargeTargetConfig): string => {
+const buildUnreportedStatus = (
+  deviceId: string, lever: ChargeTargetLever, config: EvChargeTargetConfig,
+): string => {
   if (!config.chargeBeforeLevelKnown) return 'Battery level not reported. Charging is held until it is.';
   const status = 'Battery level not reported, so the car charges to its own limit.';
-  return withStartCondition(deviceId, hasSelectedCar(deviceId)
+  return withStartCondition(lever, hasSelectedCar(deviceId)
     ? status
     : `${status} To stop at ${config.targetPercent}%, select the car under Car or report the level with a Flow.`);
 };
@@ -105,7 +101,8 @@ export const buildChargeTargetStatus = (device: SettingsUiDeviceDetailItem, conf
   if (!supportsPowerDevice(device)) {
     return `PELS has no power reading from this charger, so it cannot ${describeStop(config)}.`;
   }
-  if (!hasStandingGrant(device.id)) {
+  const lever = resolveChargeTargetLever(device.id);
+  if (lever === 'none') {
     return `PELS only watches this charger. Turn on Power-limit control to ${describeStop(config)}.`;
   }
   // The plug decides before the level, as the runtime does: with no car on the
@@ -114,14 +111,14 @@ export const buildChargeTargetStatus = (device: SettingsUiDeviceDetailItem, conf
   const level = device.stateOfCharge?.level;
   if (level?.kind === 'known') {
     if (config.targetPercent >= FULL_PERCENT) {
-      return withStartCondition(device.id, `The car charges to its own limit. Now ${level.percent}%.`);
+      return withStartCondition(lever, `The car charges to its own limit. Now ${level.percent}%.`);
     }
     return level.percent >= config.targetPercent
       ? `Reached ${config.targetPercent}%. Charging stops here unless a smart task asks for more.`
-      : withStartCondition(device.id, `Charges to ${config.targetPercent}%. Now ${level.percent}%.`);
+      : withStartCondition(lever, `Charges to ${config.targetPercent}%. Now ${level.percent}%.`);
   }
   if (level?.reasonCode === 'not_connected') return 'No car connected.';
-  return buildUnreportedStatus(device.id, config);
+  return buildUnreportedStatus(device.id, lever, config);
 };
 
 export const renderEvChargeTargetSettings = (device: SettingsUiDeviceDetailItem | null) => {

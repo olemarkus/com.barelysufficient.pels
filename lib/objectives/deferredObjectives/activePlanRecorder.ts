@@ -730,6 +730,11 @@ export class DeferredObjectiveActivePlanRecorder {
     return true;
   }
 
+  /** One device's recorded plan, without copying the others. */
+  getActivePlan(deviceId: string): DeferredObjectiveActivePlanV1 | undefined {
+    return this.plans[deviceId];
+  }
+
   getActivePlansSnapshot(): DeferredObjectiveActivePlansV1 {
     return {
       version: DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION,

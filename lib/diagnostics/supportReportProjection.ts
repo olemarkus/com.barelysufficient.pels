@@ -11,11 +11,14 @@ import { hasObservedTemperature } from '../../packages/shared-domain/src/tempera
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
+import { hoursWithPlannedEnergy } from '../../packages/shared-domain/src/deferredPlanBookedHours';
 import { isTemperaturePlanDevice } from '../plan/planTemperatureDevice';
 import type { DevicePlanDevice } from '../plan/planTypes';
 import type { CarLinkCarStatus, CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
 import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
-import type { ResolvedDeferredObjectiveActivePlanV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type {
+  DeferredObjectiveActivePlanRevisionV1, DeferredObjectiveActivePlanV1,
+} from '../../packages/contracts/src/deferredObjectiveActivePlans';
 
 const present = (key: string, value: SupportReportValue | undefined): Record<string, SupportReportValue> => (
   value === undefined ? {} : { [key]: value }
@@ -185,6 +188,16 @@ export const reportCarLink = (link: CarLinkDiagnostics): SupportReportSection =>
   },
 });
 
+/**
+ * The fields of a task's recorded plan the report states: its decision and the
+ * latest revision's bookings. Narrowed so a capture hands over one device's
+ * record, never the assembled UI view of every task.
+ */
+export type SupportReportSmartTaskPlan = Pick<DeferredObjectiveActivePlanV1,
+  'pending' | 'pendingReason' | 'diagnosticReasonCode'> & {
+  latest: Pick<DeferredObjectiveActivePlanRevisionV1, 'planStatus' | 'energyNeededKWh' | 'hours'> | null;
+};
+
 /** The subject device's smart task as capture read it. An unreadable store throws instead. */
 export type SupportReportSmartTask =
   | { state: 'none' }
@@ -192,7 +205,7 @@ export type SupportReportSmartTask =
     state: 'present';
     entry: DeferredObjectiveSettingsEntry;
     /** `undefined` when the planner holds no plan for the task yet. */
-    activePlan: ResolvedDeferredObjectiveActivePlanV1 | undefined;
+    plan: SupportReportSmartTaskPlan | undefined;
   };
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -204,28 +217,30 @@ const reportSmartTaskGoal = (entry: DeferredObjectiveSettingsEntry): Record<stri
 };
 
 const reportSmartTaskPlan = (
-  plan: ResolvedDeferredObjectiveActivePlanV1,
+  plan: SupportReportSmartTaskPlan,
   capturedAtMs: number,
 ): Record<string, SupportReportValue> => {
-  const hours = plan.latest?.hours ?? [];
-  const currentHour = hours.find((hour) => hour.startsAtMs <= capturedAtMs && capturedAtMs < hour.startsAtMs + HOUR_MS);
-  const nextPlanned = hours
-    .filter((hour) => hour.startsAtMs > capturedAtMs && hour.plannedKWh > 0)
-    .reduce<number | undefined>((earliest, hour) => (
-      earliest === undefined || hour.startsAtMs < earliest ? hour.startsAtMs : earliest
-    ), undefined);
-  return {
+  const decision = {
     pending: plan.pending,
     ...present('pendingReason', plan.pendingReason),
     ...present('diagnosticReasonCode', plan.diagnosticReasonCode),
-    completion: plan.liveCompletion.kind === 'unmet' ? plan.liveCompletion.status : plan.liveCompletion.kind,
-    ...(plan.latest ? {
-      planStatus: plan.latest.planStatus,
-      energyNeededKWh: plan.latest.energyNeededKWh,
-      plannedHours: hours.filter((hour) => hour.plannedKWh > 0).length,
-      currentHourPlannedKWh: currentHour?.plannedKWh ?? 0,
-      ...present('nextPlannedHourStartsAtMs', nextPlanned),
-    } : { revision: 'none' }),
+  };
+  if (!plan.latest) return { ...decision, revision: 'none' };
+  // Saved hours are bookings; a booking at 0 kWh still lets the task start its
+  // device, so whether this hour is booked is reported apart from its energy.
+  const running = hoursWithPlannedEnergy(plan.latest.hours);
+  const currentHour = plan.latest.hours.find((hour) => (
+    hour.startsAtMs <= capturedAtMs && capturedAtMs < hour.startsAtMs + HOUR_MS
+  ));
+  const nextHour = running.find((hour) => hour.startsAtMs > capturedAtMs);
+  return {
+    ...decision,
+    planStatus: plan.latest.planStatus,
+    energyNeededKWh: plan.latest.energyNeededKWh,
+    plannedHours: running.length,
+    currentHourBooked: currentHour !== undefined,
+    ...present('currentHourPlannedKWh', currentHour?.plannedKWh),
+    ...present('nextPlannedHourStartsAtMs', nextHour?.startsAtMs),
   };
 };
 
@@ -236,7 +251,7 @@ const reportSmartTaskPlan = (
  */
 export const reportSmartTask = (read: SupportReportSmartTask, capturedAtMs: number): SupportReportSection => {
   if (read.state === 'none') return { title: 'Current smart task', values: { exists: false } };
-  const { entry, activePlan } = read;
+  const { entry, plan } = read;
   return {
     title: 'Current smart task',
     values: {
@@ -246,7 +261,7 @@ export const reportSmartTask = (read: SupportReportSmartTask, capturedAtMs: numb
       enforcement: entry.enforcement,
       deadlineAtMs: entry.deadlineAtMs,
       ...reportSmartTaskGoal(entry),
-      ...(activePlan ? reportSmartTaskPlan(activePlan, capturedAtMs) : { activePlan: 'none' }),
+      ...(plan ? reportSmartTaskPlan(plan, capturedAtMs) : { plan: 'none' }),
     },
   };
 };
