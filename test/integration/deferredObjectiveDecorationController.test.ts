@@ -166,3 +166,50 @@ describe('DeferredObjectiveDecorationController', () => {
     expect(bundle.deferredReleaseIntentByDeviceId).toEqual({});
   });
 });
+
+describe('DeferredObjectiveDecorationController latest cycle', () => {
+  const deadlineAtMs = Date.UTC(2026, 9, 2, 4);
+  const settings: DeferredObjectiveRoster = {
+    objectivesByDeviceId: {
+      dev: { enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 6, deadlineAtMs },
+    },
+  };
+  const buildController = () => new DeferredObjectiveDecorationController({
+    hasSolarProduction: () => false,
+    getThermalDirection: () => 'heating',
+    getPrioritiesForDevices: createFixturePriorityQuery(),
+    getTimeZone: () => 'UTC',
+    getPowerTracker: buildPowerTracker,
+    getPriceOptimizationEnabled: () => true,
+    // No prices: the task cannot plan, the case a report has to explain.
+    buildPriceHorizon: () => [],
+    getCapacitySettings: () => capacityOnlyPowerLimits(10),
+    getDeferredObjectiveActivePlans: createEmptyActivePlans,
+    resolveDeviceExclusion: noDeviceExclusion,
+    getStallClassification: noStallEvidence,
+    hasObservedTask: () => false,
+    isReservationSuppressed: noReservationSuppression,
+    getDeliveredEnergyKWh: noDeliveredEnergy,
+  }, () => settings);
+  const device = () => ({ ...buildDevice(), controlModel: 'binary_power' as const });
+
+  it('keeps the decision and its reason for a task that could not plan', () => {
+    const controller = buildController();
+    const nowTs = deadlineAtMs - 6 * 60 * 60 * 1000;
+    controller.decorate({ devices: [device()], dailyBudgetSnapshot: null, nowTs });
+
+    expect(controller.readLatestCycle('dev')).toMatchObject({
+      atMs: nowTs, decision: 'inactive', reasonCode: 'objective_missing_price_horizon', trajectory: 'unavailable',
+    });
+    expect(controller.readLatestCycle('other')).toBeUndefined();
+  });
+
+  it('drops the record once the task no longer governs the device', () => {
+    const controller = buildController();
+    controller.decorate({ devices: [device()], dailyBudgetSnapshot: null, nowTs: deadlineAtMs - 60_000 });
+    expect(controller.readLatestCycle('dev')).toBeDefined();
+
+    controller.decorate({ devices: [device()], dailyBudgetSnapshot: null, nowTs: deadlineAtMs });
+    expect(controller.readLatestCycle('dev')).toBeUndefined();
+  });
+});

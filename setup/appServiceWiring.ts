@@ -39,7 +39,7 @@ import {
   resolvePlanService,
   subscribePlanObservedState,
 } from './appInit';
-import { buildMainHomeScope, type HomeScope } from './homeRuntime/homeScope';
+import { buildMainHomeScope, type MainHomeScope } from './homeRuntime/homeScope';
 import { createHomePlanRuntime, createLastControlledStoreForApp } from './homeRuntime/createHomePlanRuntime';
 import { createHomeCapacityGuard } from './homeRuntime/createHomeCapacityGuard';
 import type { HomeRuntimeRegistry } from './homeRuntime/homeRuntimeRegistry';
@@ -160,7 +160,7 @@ export class AppServiceWiring {
   // The main home's closure bundle for the plan factories. Built once (the
   // capacity-settings store port inside it is constructed a single time at
   // this wiring site) and shared by `initPlanRuntime`.
-  private readonly mainHomeScope: HomeScope;
+  private readonly mainHomeScope: MainHomeScope;
 
   constructor(private readonly deps: AppServiceWiringDeps) {
     const { ctx } = deps;
@@ -175,7 +175,7 @@ export class AppServiceWiring {
   }
 
   createSupportReports(app: SupportReportApp) {
-    return createSupportReports(this.deps.homeyApp.homey, app);
+    return createSupportReports(this.deps.homeyApp.homey, app, this.mainHomeScope.readSmartTaskCycle);
   }
 
   createObservedTemperatureModeUpdates() {

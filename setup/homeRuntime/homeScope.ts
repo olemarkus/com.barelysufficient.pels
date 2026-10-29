@@ -50,6 +50,7 @@ import {
   DeferredObjectiveDecorationController,
   type TaskEvaluationSource,
 } from '../../lib/objectives/deferredObjectives';
+import type { SmartTaskCycleRecord } from '../../lib/objectives/deferredObjectives/smartTaskCycleRecord';
 import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import { createHomeCommandReachability } from './createHomeCommandReachability';
@@ -202,6 +203,14 @@ export type HomeScope = {
  * into the effective dry-run for the same reason a meter area folds its
  * membership and source-epoch gates into `SubHomeRuntime.isEffectiveDryRunForExecution`.
  */
+/**
+ * Main's scope plus the one smart-task read only Main has: the controller's
+ * latest decision for a device's task, for diagnostics reports.
+ */
+export type MainHomeScope = HomeScope & {
+  readSmartTaskCycle: (deviceId: string) => SmartTaskCycleRecord | undefined;
+};
+
 export function buildMainHomeScope(
   ctx: AppContext,
   taskEvaluationSource: TaskEvaluationSource,
@@ -210,7 +219,7 @@ export function buildMainHomeScope(
   getModeDeviceTargets: () => Record<string, Record<string, number>>,
   shutdown: ShutdownLatch,
   isHomeWideFenced: () => boolean,
-): HomeScope {
+): MainHomeScope {
   const homeId: HomeId = MAIN_HOME_ID;
   // Smart-task controller: lives in the app-wiring layer so the planner engine
   // (lib/plan) imports nothing from lib/objectives. The engine receives only the
@@ -291,6 +300,7 @@ export function buildMainHomeScope(
     getOperatingMode,
     getModeDeviceTargets,
     decorateDeferredObjectives: (input) => deferredObjectiveController.decorate(input),
+    readSmartTaskCycle: (deviceId) => deferredObjectiveController.readLatestCycle(deviceId),
     syncLivePlanStateAfterTargetActuation: (source) => ctx.syncLivePlanStateAfterTargetActuation(source),
     // UI / side-effect singletons — the EXACT ctx reads `createPlanService`
     // hardwired. Byte-identical for the main home.

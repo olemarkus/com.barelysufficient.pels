@@ -9,6 +9,7 @@ import { createLogTailStore } from '../../lib/diagnostics/logTailStore';
 import {
   readObjectiveForDeviceState, type ObjectiveSettingsStore,
 } from '../../lib/objectives/deferredObjectives/objectiveStore';
+import type { SmartTaskCycleRecord } from '../../lib/objectives/deferredObjectives/smartTaskCycleRecord';
 import type { AppContext } from '../../lib/app/appContext';
 import { requireDeviceManager, requireHomeMembership, requirePlanService } from './contextGuards';
 
@@ -23,6 +24,7 @@ export type SupportReportApp = Pick<PelsHost,
 export const createSupportReportReads = (
   app: SupportReportApp,
   objectiveSettings: ObjectiveSettingsStore,
+  readSmartTaskCycle: (deviceId: string) => SmartTaskCycleRecord | undefined,
 ): SupportReportReads => ({
   getDeviceSnapshot: (deviceId) => requireDeviceManager(app).getSnapshotByDeviceId(deviceId),
   getHomeMembership: () => requireHomeMembership(app),
@@ -39,7 +41,11 @@ export const createSupportReportReads = (
     const read = readObjectiveForDeviceState(objectiveSettings, deviceId);
     if (read.state === 'unavailable') throw new Error('Smart task settings are unavailable');
     if (read.state === 'none') return read;
-    return { ...read, plan: app.deferredObjectiveActivePlanRecorder?.getActivePlan(deviceId) };
+    return {
+      ...read,
+      plan: app.deferredObjectiveActivePlanRecorder?.getActivePlan(deviceId),
+      cycle: readSmartTaskCycle(deviceId),
+    };
   },
   // Built per capture: the database opens after the report service is constructed.
   readDeviceEvents: (deviceIds, fromMs, toMs) => (
@@ -51,7 +57,8 @@ export const createSupportReportReads = (
 export const createSupportReports = (
   homey: SupportReportHomey & HomeyReportRuntime & { settings: ObjectiveSettingsStore },
   app: SupportReportApp,
+  readSmartTaskCycle: (deviceId: string) => SmartTaskCycleRecord | undefined,
 ): SupportReportService => new SupportReportService(
-  new SupportReportEvidenceSource(createSupportReportReads(app, homey.settings), homey),
+  new SupportReportEvidenceSource(createSupportReportReads(app, homey.settings, readSmartTaskCycle), homey),
   new HomeyReportTransport(homey),
 );
