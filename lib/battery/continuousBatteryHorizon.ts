@@ -2,7 +2,7 @@ import type { BatteryEnergyPeriod } from '../../packages/contracts/src/batteryPl
 import type { ContinuousBatteryPlanConfig } from '../../packages/contracts/src/continuousBatteryPlan';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
-import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectiveActivePlansV2 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { PriceTimeline, PriceTimelinePeriod, PriceTimelineRead } from '../../packages/contracts/src/priceTimeline';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { isBatteryPowerLimitEnabled } from '../../packages/shared-domain/src/settings/batteryPowerLimit';
@@ -27,7 +27,7 @@ export type ContinuousBatteryHorizonSources = {
   getControllableDevices(): Readonly<Record<string, boolean>>;
   getPriceTimeline(): PriceTimelineRead;
   getPowerLimitSettings(): PowerLimitSettings;
-  getActiveTasks(): DeferredObjectiveActivePlansV1;
+  getActiveTasks(): DeferredObjectiveActivePlansV2;
   solarScope: BatterySolarScopeSource;
   /** The selected solar forecast source's hourly generation. */
   getSolarForecast(): { forecast(hourStarts: readonly number[]): readonly { generationKwh: number }[] };
@@ -39,7 +39,7 @@ export type ContinuousBatteryHorizonSources = {
  * their exact committed reservations instead. Missing reads never become zero demand. */
 function standingManagedKW(
   devices: readonly DeviceSurfaces[],
-  tasks: DeferredObjectiveActivePlansV1,
+  tasks: DeferredObjectiveActivePlansV2,
   nowMs: number,
 ): number {
   const activeTaskIds = new Set(Object.values(tasks.plansByDeviceId)

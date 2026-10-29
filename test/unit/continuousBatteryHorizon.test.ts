@@ -32,7 +32,7 @@ const sources = (overrides: Partial<ContinuousBatteryHorizonSources> = {}): Cont
     periods: [{ startsAt: new Date(NOW).toISOString(), durationMinutes: 60, importPrice: 0.2, level: 'normal' }],
   }),
   getPowerLimitSettings: () => ({ limitKw: 5, marginKw: 0, periodMinutes: 60, capacityEnabled: true, gridImportLimitKw: null }),
-  getActiveTasks: () => ({ version: 1, plansByDeviceId: {} }),
+  getActiveTasks: () => ({ version: 2, plansByDeviceId: {} }),
   solarScope: { mainDevices: () => [], allDevices: () => [] },
   getSolarForecast: () => ({ forecast: () => [] }),
   getBackgroundKWh: () => 0.5,
@@ -79,12 +79,28 @@ describe('continuous battery horizon projection', () => {
 
   it('keeps economic EV energy separate from the physical charging reservation', () => {
     const result = createContinuousBatteryPlanSource(sources({
-      getActiveTasks: () => ({ version: 1, plansByDeviceId: { ev: task(0.5) } }),
+      getActiveTasks: () => ({ version: 2, plansByDeviceId: { ev: task(0.5) } }),
     })).readHorizon('battery', config);
     if (result.kind !== 'ready') throw new Error('Expected horizon');
     expect(result.horizon.periods[0].otherManagedDemandKWh).toBe(0.5);
     expect(result.horizon.periods[0].maxChargeKW).toBe(0);
     expect(result.horizon.periods[0].gridImportLimitKW).toBe(5);
+  });
+
+  it('keeps a native quarter booking inside its bounds when reservation segments were not saved', () => {
+    const scheduled = { ...task(0.5), latest: partialDouble<DeferredObjectiveActivePlanRevisionV1>({
+      hours: [{ startsAtMs: NOW + HOUR_MS / 4, endsAtMs: NOW + HOUR_MS / 2,
+        plannedKWh: 0.5, plannedAdmissionPowerKw: 7 }],
+    }) };
+    const result = createContinuousBatteryPlanSource(sources({
+      getActiveTasks: () => ({ version: 2, plansByDeviceId: { ev: scheduled } }),
+    })).readHorizon('battery', config);
+    if (result.kind !== 'ready') throw new Error('Expected horizon');
+    expect(result.horizon.periods.map(period => period.startsAtMs)).toEqual([
+      NOW, NOW + HOUR_MS / 4, NOW + HOUR_MS / 2,
+    ]);
+    expect(result.horizon.periods.map(period => period.otherManagedDemandKWh)).toEqual([0, 0.5, 0]);
+    expect(result.horizon.periods.map(period => period.maxChargeKW)).toEqual([2.5, 0, 2.5]);
   });
 
   it.each(['unmanaged', 'other_home'])('ignores committed and pending tasks outside the participating roster: %s', (scope) => {
@@ -94,7 +110,7 @@ describe('continuous battery horizon projection', () => {
       const result = createContinuousBatteryPlanSource(sources({
         getDevices: () => scope === 'other_home' ? devices.filter(device => device.id !== 'ev')
           : devices.map(device => device.id === 'ev' ? { ...device, managed: false } : device),
-        getActiveTasks: () => ({ version: 1, plansByDeviceId: { ev: { ...task(0.5), pending } } }),
+        getActiveTasks: () => ({ version: 2, plansByDeviceId: { ev: { ...task(0.5), pending } } }),
       })).readHorizon('battery', config);
       if (result.kind !== 'ready') throw new Error('An excluded task must not block battery planning');
       expect(result.horizon.periods[0].otherManagedDemandKWh).toBe(0);
@@ -104,7 +120,7 @@ describe('continuous battery horizon projection', () => {
 
   it('waits for a participating smart task that has not settled its plan', () => {
     expect(createContinuousBatteryPlanSource(sources({
-      getActiveTasks: () => ({ version: 1, plansByDeviceId: { ev: { ...task(0.5), pending: true } } }),
+      getActiveTasks: () => ({ version: 2, plansByDeviceId: { ev: { ...task(0.5), pending: true } } }),
     })).readHorizon('battery', config)).toEqual({ kind: 'waiting', reason: 'smart_tasks_planning' });
   });
 
@@ -125,7 +141,7 @@ describe('continuous battery horizon projection', () => {
 
   it('does not spread a short EV reservation over the rest of the price period', () => {
     const result = createContinuousBatteryPlanSource(sources({
-      getActiveTasks: () => ({ version: 1, plansByDeviceId: { ev: task(0.5, NOW + HOUR_MS / 4, NOW + HOUR_MS * 3 / 4) } }),
+      getActiveTasks: () => ({ version: 2, plansByDeviceId: { ev: task(0.5, NOW + HOUR_MS / 4, NOW + HOUR_MS * 3 / 4) } }),
     })).readHorizon('battery', config);
     if (result.kind !== 'ready') throw new Error('Expected horizon');
     expect(result.horizon.periods.map(period => period.otherManagedDemandKWh)).toEqual([0, 0.5, 0]);
@@ -144,7 +160,7 @@ describe('continuous battery horizon projection', () => {
         lines: { average: 0.2, cheapAtOrBelow: 0.1, expensiveFrom: 0.3 },
         periods: [{ startsAt: new Date(NOW).toISOString(), durationMinutes: 60, importPrice: 0.2, exportPrice: 0.05, level: 'normal' }],
       }),
-      getActiveTasks: () => ({ version: 1, plansByDeviceId: { ev: task(0.5) } }),
+      getActiveTasks: () => ({ version: 2, plansByDeviceId: { ev: task(0.5) } }),
     })).readHorizon('battery', config);
     if (result.kind !== 'ready') throw new Error('Expected horizon');
     expect(result.horizon.periods[0].otherManagedDemandKWh).toBe(0.5);

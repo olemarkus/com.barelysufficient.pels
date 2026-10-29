@@ -44,7 +44,7 @@ const buildCtx = () => {
     deferredObjectiveStatusBus: { forgetDevice } as unknown as AppContext['deferredObjectiveStatusBus'],
     deferredObjectiveActivePlanRecorder: {
       clearForDevice,
-      getActivePlansSnapshot: () => ({ version: 1, plansByDeviceId: {} }),
+      getActivePlansSnapshot: () => ({ version: 2, plansByDeviceId: {} }),
     } as unknown as AppContext['deferredObjectiveActivePlanRecorder'],
   });
   return { ctx, settingsStore, forgetDevice };

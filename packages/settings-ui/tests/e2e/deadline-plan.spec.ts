@@ -85,7 +85,7 @@ test.describe('Deadline plan', () => {
     // the caption key below the chart).
     await expect(panel.getByLabel(/progress trajectory/).getByText('Heating', { exact: true })).toBeVisible();
     await expect(panel.getByLabel(/progress trajectory/).getByText('Charging', { exact: true })).toHaveCount(0);
-    await expect(panel.getByText('Filled bars are the picked hours · dimmed bars were not picked', { exact: true })).toBeVisible();
+    await expect(panel.getByText('Filled bars are scheduled · dimmed bars are not scheduled', { exact: true })).toBeVisible();
     await expect(panel.locator('.deadline-schedule-chart svg')).toBeVisible();
     await expect(panel.locator('.deadline-trajectory-chart svg')).toBeVisible();
     // Trajectory stateline answers the card's question in one sentence.
@@ -175,7 +175,7 @@ test.describe('Deadline plan', () => {
     const readout = panel.locator('.deadline-readout__primary');
     await expect(readout).toHaveText(/^Now · \d+\.\d{2} (kr|øre)\/kWh · Idle — heating starts \d{2}:\d{2}$/);
     const secondary = panel.locator('.deadline-readout__secondary');
-    await expect(secondary).toHaveText('Drag across the chart to read any hour');
+    await expect(secondary).toHaveText('Drag across the chart to read each period');
 
     // Actively selecting the Now hour (press at the far-left plot column)
     // surfaces the changed-hour revision reason the default state withheld.
@@ -235,10 +235,10 @@ test.describe('Deadline plan', () => {
       // thin to tap at 320px; drag-scrub is the contract).
       await page.mouse.move(box.x + box.width * 0.45, box.y + box.height * 0.55);
       await page.mouse.down();
-      await expect(readout).toHaveText(/^\d{2}:\d{2} · \d+\.\d{2} (kr|øre)\/kWh · /);
+      await expect(readout).toHaveText(/^\d{2}:\d{2}–\d{2}:\d{2} · \d+\.\d{2} (kr|øre)\/kWh · /);
       const midScrubText = await readout.textContent();
       await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.55);
-      await expect(readout).toHaveText(/^\d{2}:\d{2} · /);
+      await expect(readout).toHaveText(/^\d{2}:\d{2}–\d{2}:\d{2} · /);
       const lateScrubText = await readout.textContent();
       expect(lateScrubText).not.toBe(midScrubText);
       await page.mouse.up();

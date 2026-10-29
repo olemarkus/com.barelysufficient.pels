@@ -424,7 +424,7 @@ describe('createStarvationRescue', () => {
   it.each(['capacity', 'grid'] as const)('queues the success message when the house is at its %s limit', async (atPowerLimitNow) => {
     const rescueDeviceWithBudgetExemption = vi.fn(() => ({ ok: true as const }));
     const previewStarvationRescuePlan = freshPreviewPlan(buildEstimate({
-      scheduledHours: [{ startsAtMs: NOW_MS, plannedKWh: 1.5 }],
+      scheduledHours: [{ startsAtMs: NOW_MS, endsAtMs: NOW_MS + 3_600_000, plannedKWh: 1.5 }],
       atPowerLimitNow,
     }));
     const result = await createStarvationRescue({

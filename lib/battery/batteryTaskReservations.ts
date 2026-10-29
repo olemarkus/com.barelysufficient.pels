@@ -1,8 +1,8 @@
 import type {
-  DeferredObjectiveActivePlanHourV1,
+  DeferredObjectivePlanInterval,
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanV1,
-  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlansV2,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 
@@ -12,9 +12,9 @@ type CommittedTask = DeferredObjectiveActivePlanV1 & { latest: DeferredObjective
 
 /** Paused tasks retain historical bookings, but contribute no current energy or power. */
 export function tasksForDevices(
-  active: DeferredObjectiveActivePlansV1,
+  active: DeferredObjectiveActivePlansV2,
   devices: readonly DeviceSurfaces[],
-): DeferredObjectiveActivePlansV1 {
+): DeferredObjectiveActivePlansV2 {
   const managedIds = new Set(devices.filter(device => device.managed).map(device => device.id));
   return {
     ...active,
@@ -27,14 +27,14 @@ const isCommitted = (task: DeferredObjectiveActivePlanV1): task is CommittedTask
   !task.pending && task.latest !== null
 );
 
-function legacyHourReservation(
-  hour: DeferredObjectiveActivePlanHourV1,
+function bookingReservation(
+  hour: DeferredObjectivePlanInterval,
   deadlineAtMs: number,
   nowMs: number,
 ): BatteryTaskReservation[] {
   if (hour.plannedKWh <= 0) return [];
   const startMs = hour.coversFromMs ?? hour.startsAtMs;
-  const endMs = Math.min(deadlineAtMs, hour.startsAtMs + HOUR_MS);
+  const endMs = Math.min(deadlineAtMs, hour.endsAtMs);
   if (endMs <= nowMs || endMs <= startMs) return [];
   const energyKW = hour.plannedKWh * HOUR_MS / (endMs - startMs);
   return [{ startMs, endMs, energyKW, admissionKW: hour.plannedAdmissionPowerKw ?? energyKW }];
@@ -43,7 +43,7 @@ function legacyHourReservation(
 function committedReservations(task: CommittedTask, nowMs: number): BatteryTaskReservation[] {
   const segments = task.latest.reservationSegments;
   if (segments === undefined) {
-    return task.latest.hours.flatMap(hour => legacyHourReservation(hour, task.deadlineAtMs, nowMs));
+    return task.latest.hours.flatMap(hour => bookingReservation(hour, task.deadlineAtMs, nowMs));
   }
   return segments.flatMap((segment): BatteryTaskReservation[] => {
     if (segment.plannedKWh <= 0 || segment.endMs <= nowMs) return [];
@@ -57,7 +57,7 @@ function committedReservations(task: CommittedTask, nowMs: number): BatteryTaskR
 }
 
 export function taskReservations(
-  active: DeferredObjectiveActivePlansV1,
+  active: DeferredObjectiveActivePlansV2,
   nowMs: number,
 ): BatteryTaskReservation[] | 'waiting' {
   const tasks = Object.values(active.plansByDeviceId)

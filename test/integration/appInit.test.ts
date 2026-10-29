@@ -244,7 +244,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
       deferredObjectiveStatusBus: { forgetDevice } as unknown as AppContext['deferredObjectiveStatusBus'],
       deferredObjectiveActivePlanRecorder: {
         clearForDevice,
-        getActivePlansSnapshot: () => ({ version: 1, plansByDeviceId: {} }),
+        getActivePlansSnapshot: () => ({ version: 2, plansByDeviceId: {} }),
       } as unknown as AppContext['deferredObjectiveActivePlanRecorder'],
     });
     disableDeferredObjectiveInSettings(ctx, 'heater-1');

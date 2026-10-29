@@ -645,7 +645,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
       deferredObjectiveStatusBus: { forgetDevice } as unknown as AppContext['deferredObjectiveStatusBus'],
       deferredObjectiveActivePlanRecorder: {
         clearForDevice: vi.fn(),
-        getActivePlansSnapshot: () => ({ version: 1, plansByDeviceId: {} }),
+        getActivePlansSnapshot: () => ({ version: 2, plansByDeviceId: {} }),
       } as unknown as AppContext['deferredObjectiveActivePlanRecorder'],
     });
     return {

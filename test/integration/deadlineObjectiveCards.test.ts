@@ -253,7 +253,7 @@ const buildMockRecorders = (): MockRecorders => ({
     markPending: vi.fn(),
     clearForDevice: vi.fn(),
     flushIfDirty: vi.fn(),
-    getActivePlansSnapshot: vi.fn(() => ({ version: 1, plansByDeviceId: {} })),
+    getActivePlansSnapshot: vi.fn(() => ({ version: 2, plansByDeviceId: {} })),
   } as unknown as DeferredObjectiveActivePlanRecorder,
   planHistoryRecorder: {
     finalizeForUserChange: vi.fn(),

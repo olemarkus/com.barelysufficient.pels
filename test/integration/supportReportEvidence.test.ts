@@ -395,9 +395,9 @@ describe('support report smart task evidence', () => {
       planStatus: 'on_track', energyNeededKWh: 12, revisedAtMs: now - hour, reason: 'prices_revised',
       hours: [
         // Booked at 0 kWh: the task holds this hour without promising energy.
-        { startsAtMs: now - 10 * 60_000, plannedKWh: 0 },
-        { startsAtMs: now + 2 * hour, plannedKWh: 6 },
-        { startsAtMs: now + 3 * hour, plannedKWh: 6 },
+        { startsAtMs: now - 10 * 60_000, endsAtMs: now - 10 * 60_000 + hour, plannedKWh: 0 },
+        { startsAtMs: now + 2 * hour, endsAtMs: now + 3 * hour, plannedKWh: 6 },
+        { startsAtMs: now + 3 * hour, endsAtMs: now + 4 * hour, plannedKWh: 6 },
       ],
     }),
   });
@@ -439,6 +439,22 @@ describe('support report smart task evidence', () => {
     });
     // One device's record, never the assembled view of every task.
     expect(getActivePlan).toHaveBeenCalledWith('heater');
+  });
+
+  it('reports fractional scheduled duration and a gap between quarter bookings honestly', async () => {
+    const plan = { ...recordedPlan, latest: { ...recordedPlan.latest!, energyNeededKWh: 1, hours: [
+      { startsAtMs: now, endsAtMs: now + hour / 4, plannedKWh: 0.5 },
+      { startsAtMs: now + 3 * hour / 4, endsAtMs: now + hour, plannedKWh: 0.5 },
+    ] } };
+    const app = Object.assign(currentHost(), {
+      deferredObjectiveActivePlanRecorder: partialDouble<DeferredObjectiveActivePlanRecorder>({
+        getActivePlan: () => plan,
+      }),
+    });
+    const report = await source(app, objectiveStore({ heater: evTask })).capture(request, now + hour / 2);
+    expect(values(report, 'Current smart task')).toMatchObject({ plan: {
+      plannedHours: 0.5, currentHourBooked: false, nextPlannedHourStartsAtMs: now + 3 * hour / 4,
+    } });
   });
 
   it('marks the section unavailable when the task store cannot say whether a task exists', async () => {
