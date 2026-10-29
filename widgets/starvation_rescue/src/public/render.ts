@@ -6,6 +6,7 @@ import {
   formatStarvationRowChip,
   resolveStarvationRowNote,
   resolveStarvationRowSubtext,
+  resolveStarvationRescueConsequence,
   resolveStarvationRowTone,
   starvationRowIsRescuable,
 } from '../../../../packages/shared-domain/src/planStarvation';
@@ -339,12 +340,16 @@ const renderConfirm = (
   const { device, response, submitting, error } = view;
   const { confirmBtn, confirmTitle, confirmConsequenceEl } = targets;
   confirmTitle.textContent = device.deviceName;
-  // The honest consequence sits above the figures (money-action guardrail): the
-  // rescue lets the device exceed today's budget to reach its normal target.
-  confirmConsequenceEl.textContent = C.rescueConsequence;
+  // The honest consequence sits above the figures (money-action guardrail). Which
+  // one follows what the preview grants: over today's budget, or within the hard
+  // cap when no budget is on. Until a preview says which, it is not stated; the
+  // confirm stays disabled meanwhile, so nothing is authorised unseen.
+  setLine(confirmConsequenceEl, response?.ok === true
+    ? resolveStarvationRescueConsequence(response.estimate.grantedRescuePermissions ?? { exemptFromBudget: true })
+    : null);
 
   if (response === null) {
-    // Preview still loading — show the consequence + a pending button only.
+    // Preview still loading — a pending button only.
     hideConfirmLines(targets);
     hide(targets.confirmUnavailableEl);
     setLine(targets.confirmErrorEl, error);

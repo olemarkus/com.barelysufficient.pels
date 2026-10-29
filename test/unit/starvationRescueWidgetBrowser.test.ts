@@ -333,6 +333,34 @@ describe('starvation rescue widget browser', () => {
       .toBe(STARVATION_RESCUE_WIDGET_COPY.temporaryUnavailableNote);
   });
 
+  test('names the hard cap, not a budget, when the rescue grants no budget exemption', async () => {
+    // No daily budget is on: the app grants only what acts within the hard cap.
+    const withinCap = {
+      ...OK_PREVIEW,
+      estimate: {
+        ...OK_PREVIEW.estimate,
+        grantedRescuePermissions: { exemptFromBudget: false, limitLowerPriorityDevices: true, pauseLowerPriorityDevices: true },
+      },
+    };
+    const homey = buildHomey({
+      api: vi.fn(async (method: string, path: string) => {
+        if (path === '/devices') return READY_PAYLOAD;
+        if (path === '/preview') return withinCap;
+        throw new Error(`unexpected ${method} ${path}`);
+      }),
+    });
+    const controller = installWidget(window as WidgetWindow, document);
+    controller!.bootstrap(homey);
+    await flushPromises();
+
+    click('[data-rescue-button]');
+    await flushPromises();
+
+    expect((document.querySelector('[data-confirm-consequence]') as HTMLElement).textContent)
+      .toBe(STARVATION_RESCUE_WIDGET_COPY.rescueConsequenceWithinCap);
+    expect((document.querySelector('[data-confirm-perms]') as HTMLElement).textContent).not.toMatch(/budget/i);
+  });
+
   test('tapping a budget rescue previews then confirms to a success flash', async () => {
     const homey = buildHomey();
     const controller = installWidget(window as WidgetWindow, document);

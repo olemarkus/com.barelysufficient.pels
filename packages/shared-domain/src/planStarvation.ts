@@ -1,3 +1,4 @@
+import type { DeferredObjectivePlanPreviewEstimate } from '../../contracts/src/deferredObjectivePlanPreview';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
 import type { SmartTaskHomeScope } from '../../contracts/src/smartTaskHomeScope';
 import type {
@@ -103,6 +104,11 @@ export const STARVATION_RESCUE_WIDGET_COPY = {
   // Names the consequence honestly per the money-action guardrail: the rescue
   // lets this device go over today's budget so it reaches its normal target.
   rescueConsequence: 'This lets the device use power beyond today’s budget until it reaches its normal target.',
+  // The same consequence when no daily budget is on, so the rescue grants no
+  // budget exemption: it can only take power from lower-priority devices, and
+  // never above the hard cap (`fitRescueToDailyBudget`).
+  rescueConsequenceWithinCap: 'This lets the device take power from lower-priority devices until it reaches '
+    + 'its normal target, within the hard cap.',
   rescueConfirmButton: 'Confirm',
   backButton: 'Back',
   scheduledLabel: 'Scheduled',
@@ -418,6 +424,18 @@ export const resolveStarvationRescueRejectCopy = (reason: string | undefined): s
   return STARVATION_RESCUE_WIDGET_COPY.rescueError;
 };
 
+// The consequence of the rescue the preview actually grants: over today's
+// budget when it grants the budget exemption, otherwise within the hard cap.
+type RescueBudgetGrant = Pick<
+  NonNullable<DeferredObjectivePlanPreviewEstimate['grantedRescuePermissions']>, 'exemptFromBudget'
+>;
+
+export const resolveStarvationRescueConsequence = (granted: RescueBudgetGrant): string => (
+  granted.exemptFromBudget
+    ? STARVATION_RESCUE_WIDGET_COPY.rescueConsequence
+    : STARVATION_RESCUE_WIDGET_COPY.rescueConsequenceWithinCap
+);
+
 // The armed-state consequence line on the overview device card, composed here
 // rather than in the view so the string the user actually reads is single-homed
 // with the constants it joins (`feedback_ui_text_shared_with_logs`,
@@ -427,14 +445,18 @@ export const resolveStarvationRescueRejectCopy = (reason: string | undefined): s
 // has no reachable hover tooltip: the user must see what they are authorising
 // before the second tap. When the preview resolved the bounded window, the
 // "By {time}" anchor is appended (server-formatted in the Homey timezone — the
-// view does no Date math). With no preview the consequence already names its own
-// bound ("…until it reaches its normal target."), so it stands alone.
+// view does no Date math). Without one the consequence already names its own
+// bound ("…until it reaches its normal target."), so it stands alone. Which
+// consequence follows what the preview granted (`resolveStarvationRescueConsequence`).
 //
 // Deliberately says nothing about the OTHER granted permissions: those are listed
 // verbatim from `formatGrantedRescuePermissionsLine`, so this surface never
 // invents a second phrasing for a permission that already has a canonical label.
-export const formatStarvationRescueArmedCaption = (deadlineLabel: string | undefined): string => {
-  const consequence = STARVATION_RESCUE_WIDGET_COPY.rescueConsequence;
+export const formatStarvationRescueArmedCaption = (
+  granted: RescueBudgetGrant,
+  deadlineLabel: string | undefined,
+): string => {
+  const consequence = resolveStarvationRescueConsequence(granted);
   if (deadlineLabel === undefined || deadlineLabel === '') return consequence;
   return `${consequence} ${STARVATION_RESCUE_WIDGET_COPY.byLabel} ${deadlineLabel}`;
 };

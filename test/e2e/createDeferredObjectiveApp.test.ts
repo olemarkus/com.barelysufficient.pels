@@ -8,6 +8,8 @@ import {
 } from '../../lib/objectives/deferredObjectives';
 import {
   CAPACITY_PRIORITIES,
+  DAILY_BUDGET_ENABLED,
+  DAILY_BUDGET_KWH,
   DEVICE_CONTROL_PROFILES,
   MANAGED_DEVICES,
 } from '../../lib/utils/settingsKeys';
@@ -84,6 +86,8 @@ describe('createDeferredObjective (app)', () => {
     stepped?: boolean;
     /** Another managed device outranks the heater. */
     belowTopPriority?: boolean;
+    /** The owner turned a daily budget on, which a rescue's budget exemption lifts. */
+    dailyBudget?: boolean;
   };
 
   // Boot the app on a heater the owner manages, as the refresh parses it.
@@ -103,6 +107,10 @@ describe('createDeferredObjective (app)', () => {
     mockHomeyInstance.settings.set(MANAGED_DEVICES, managed);
     if (options.stepped) {
       mockHomeyInstance.settings.set(DEVICE_CONTROL_PROFILES, { 'heater-1': STEPPED_HEATER_PROFILE });
+    }
+    if (options.dailyBudget) {
+      mockHomeyInstance.settings.set(DAILY_BUDGET_ENABLED, true);
+      mockHomeyInstance.settings.set(DAILY_BUDGET_KWH, 40);
     }
     const app = createApp();
     await app.onInit();
@@ -443,7 +451,8 @@ describe('createDeferredObjective (app)', () => {
       // and never carries a device's existing standing permission, so a create with
       // both toggles off must NOT wipe a permission set elsewhere (e.g. via Flow or
       // the rescue lane).
-      const app = await initApp(); // non-stepped heater → standing exemption is budget-only
+      // Non-stepped heater with a daily budget on → the standing exemption is budget-only.
+      const app = await initApp({ dailyBudget: true });
       app.rescueDeviceWithBudgetExemption('heater-1', rescueCandidate(60));
       expect(readStored().objectivesByDeviceId['heater-1'].rescue).toEqual({ exemptFromBudget: 'always' });
       const result = app.createDeferredObjective('heater-1', tempCandidate(62));
@@ -455,7 +464,7 @@ describe('createDeferredObjective (app)', () => {
 
   describe('rescueDeviceWithBudgetExemption (fresh create — reuses the create engine)', () => {
     it('creates the rescue objective when the device has none', async () => {
-      const app = await initApp();
+      const app = await initApp({ dailyBudget: true });
       const result = app.rescueDeviceWithBudgetExemption('heater-1', rescueCandidate(65));
       expect(result).toEqual({ ok: true });
       expect(readStored().objectivesByDeviceId['heater-1']).toMatchObject({
@@ -486,6 +495,17 @@ describe('createDeferredObjective (app)', () => {
         deadlineAtMs: ownDeadline,
       });
       expect(readStored().objectivesByDeviceId['heater-1'].rescue).toBeUndefined();
+      await app.onUninit?.();
+    });
+
+    it('grants no budget exemption while no daily budget is on, so it never claims to lift one', async () => {
+      const app = await initApp();
+      const candidate = rescueCandidate(65);
+      // The preview the surfaces render from reports exactly what persists.
+      expect(app.previewStarvationRescuePlan('heater-1', candidate).estimate.grantedRescuePermissions)
+        .toMatchObject({ exemptFromBudget: false });
+      expect(app.rescueDeviceWithBudgetExemption('heater-1', candidate)).toEqual({ ok: true });
+      expect(readStored().objectivesByDeviceId['heater-1']?.rescue?.exemptFromBudget).toBeUndefined();
       await app.onUninit?.();
     });
 
