@@ -9,12 +9,14 @@ import { createLogTailStore } from '../../lib/diagnostics/logTailStore';
 import {
   readObjectiveForDeviceState, type ObjectiveSettingsStore,
 } from '../../lib/objectives/deferredObjectives/objectiveStore';
+import type { AppContext } from '../../lib/app/appContext';
 import { requireDeviceManager, requireHomeMembership, requirePlanService } from './contextGuards';
 
 export type SupportReportApp = Pick<PelsHost,
   | 'deviceManager' | 'homeMembership' | 'planService' | 'homeRuntimeRead' | 'getDeviceLogUiPayload'
   | 'getLatestPlanSnapshotForUi' | 'getCapacityScalars' | 'getDailyBudgetUiPayload' | 'readPriceSetup'
-  | 'getPriceTimelineForUi' | 'getUserdataDatabase' | 'getDeferredObjectiveActivePlansUiPayload'>;
+  | 'getPriceTimelineForUi' | 'getUserdataDatabase'>
+  & Pick<AppContext, 'deferredObjectiveActivePlanRecorder'>;
 
 // Each read reaches the app when a report is captured. A service that is not
 // running yet throws its guard's error, which capture records as unavailable.
@@ -37,8 +39,7 @@ export const createSupportReportReads = (
     const read = readObjectiveForDeviceState(objectiveSettings, deviceId);
     if (read.state === 'unavailable') throw new Error('Smart task settings are unavailable');
     if (read.state === 'none') return read;
-    const activePlan = app.getDeferredObjectiveActivePlansUiPayload()?.plansByDeviceId[deviceId];
-    return { state: 'present', entry: read.entry, activePlan };
+    return { ...read, plan: app.deferredObjectiveActivePlanRecorder?.getActivePlan(deviceId) };
   },
   // Built per capture: the database opens after the report service is constructed.
   readDeviceEvents: (deviceIds, fromMs, toMs) => (

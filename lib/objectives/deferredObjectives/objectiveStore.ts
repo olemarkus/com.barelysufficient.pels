@@ -73,38 +73,16 @@ export const hasOpenDeferredObjective = (
   return entry !== undefined && isSmartTaskOpen(entry, nowMs);
 };
 
-/**
- * Whether the device has a Smart task in progress, as a three-state read: the
- * gate on the device's temperature choice must refuse when it cannot tell, so
- * a transient read is `unavailable`, never `none`. A present entry the
- * normalizer rejects is unavailable too: the store holds something for the
- * device, and this read cannot say what.
- */
-export const readSmartTaskInProgress = (
-  store: ObjectiveSettingsStore,
-  deviceId: string,
-  nowMs: number,
-): SmartTaskInProgressRead => {
-  try {
-    const raw = store.get(perDeviceKey(deviceId));
-    const entry = normalizeDeferredObjectiveSettingsEntry(raw);
-    if (entry) return isSmartTaskInProgress(entry, nowMs) ? 'in_progress' : 'none';
-    if (raw !== null && raw !== undefined) return 'unavailable';
-    return objectiveAbsenceIsTrustworthy(store, deviceId) ? 'none' : 'unavailable';
-  } catch {
-    return 'unavailable';
-  }
-};
-
 export type ObjectiveForDeviceRead =
   | { state: 'none' }
   | { state: 'present'; entry: DeferredObjectiveSettingsEntry }
   | { state: 'unavailable' };
 
 /**
- * One device's objective as a three-state read, for a reader that reports
- * absence as a fact (a diagnostics report): a transient read or a stored value
- * the normalizer rejects is `unavailable`, never `none`.
+ * One device's objective as a three-state read, for a reader that must not
+ * mistake a read gap for "no task": a transient read, or a stored value the
+ * normalizer rejects (the store holds something it cannot name), is
+ * `unavailable`, never `none`.
  */
 export const readObjectiveForDeviceState = (
   store: ObjectiveSettingsStore,
@@ -119,6 +97,21 @@ export const readObjectiveForDeviceState = (
   } catch {
     return { state: 'unavailable' };
   }
+};
+
+/**
+ * Whether the device has a Smart task in progress, as a three-state read: the
+ * gate on the device's temperature choice must refuse when it cannot tell, so
+ * a transient read is `unavailable`, never `none`.
+ */
+export const readSmartTaskInProgress = (
+  store: ObjectiveSettingsStore,
+  deviceId: string,
+  nowMs: number,
+): SmartTaskInProgressRead => {
+  const read = readObjectiveForDeviceState(store, deviceId);
+  if (read.state !== 'present') return read.state;
+  return isSmartTaskInProgress(read.entry, nowMs) ? 'in_progress' : 'none';
 };
 
 /**
