@@ -3,11 +3,19 @@ import {
   readObservedEvChargingState,
   readObservedStateOfCharge,
   readObservedTemperatureState,
+  type DrawEvidenceReads,
   type ObservedDeviceReads,
 } from '../../lib/observer/observedDeviceStateProjection';
 import { resolveThermalDirection } from '../../lib/observer/thermalDirection';
 import { hasLiveMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import type { ProjectedObservedDeviceState, ThermalDirection } from '../../packages/contracts/src/types';
+
+/** Draw evidence for a fixture with no observed draw: no increase ever shows as landed. */
+export const noDrawEvidence: DrawEvidenceReads = {
+  hasStartedDrawingSince: () => false,
+  getLiveDrawAt: () => null,
+  hasDrawnAtLeastSince: () => false,
+};
 
 /**
  * The observer's read port (`AppContext.observer`) for a fixture, answering

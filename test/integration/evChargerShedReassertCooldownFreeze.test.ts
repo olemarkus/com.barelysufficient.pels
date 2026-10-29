@@ -74,6 +74,7 @@ import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { testParseSources } from '../helpers/deviceTransportHarness';
+import { noDrawEvidence } from '../helpers/observedDeviceReadsDouble';
 
 const SHED_REASON = fixtureDeviceReason('shed due to daily budget')!;
 const DEVICE_ID = 'elbillader-1';
@@ -370,7 +371,7 @@ describe('EV charger shed re-assert freezing all restores (executor-loop repro)'
     // of expiring, which is exactly the prod freeze.
     const powerTracker = { lastTimestamp: Date.now() } as PowerTrackerState;
     const timing = buildRestoreTiming(state, 6.5, {
-      powerTracker, hasStartedDrawingSince: () => false, getLiveDrawAt: () => null, hasDrawnAtLeastSince: () => false,
+      powerTracker, drawEvidence: noDrawEvidence,
       getShedBehavior: () => ({ action: 'turn_off' }),
       temperatureSetpoints: new Map(), structuredLog: testLogger,
     }, [], Date.now());

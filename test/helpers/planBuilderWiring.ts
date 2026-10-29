@@ -5,6 +5,7 @@ import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDec
 import type { PlanBuilderDeps } from '../../lib/plan/planBuilderDeps';
 import { fixtureTemperatureSetpoints } from './temperatureSetpointsFixture';
 import { testLogger } from '../utils/testLogger';
+import { noDrawEvidence } from './observedDeviceReadsDouble';
 
 type PlanBuilderWiring = Omit<PlanBuilderDeps,
   | 'capacityGuard'
@@ -28,9 +29,7 @@ export const planBuilderWiring = (): PlanBuilderWiring => ({
   getPriceOptimizationSettings: () => ({}),
   getDailyBudgetSnapshot: () => null,
   getShedBehavior: () => ({ action: 'turn_off' }),
-  hasStartedDrawingSince: () => false,
-  getLiveDrawAt: () => null,
-  hasDrawnAtLeastSince: () => false,
+  drawEvidence: noDrawEvidence,
   pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
   decorateDeferredObjectives: decorateWithoutDeferredObjectives,
   resolveTemperatureSetpoints: fixtureTemperatureSetpoints(),

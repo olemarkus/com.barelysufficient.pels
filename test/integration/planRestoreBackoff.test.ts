@@ -56,6 +56,7 @@ import {
 } from '../../lib/plan/planTypes';
 import { fixtureLimitedSetpoints, fixtureTemperatureSetpointsEntry } from '../helpers/temperatureSetpointsFixture';
 import { testLogger } from '../utils/testLogger';
+import { noDrawEvidence } from '../helpers/observedDeviceReadsDouble';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -116,9 +117,7 @@ const buildContext = (overrides: PlanCycleSpec = {}): { context: PlanContext; po
 // The restore deps a case is not about: no temperature setpoints, and every
 // device sheds by turning off. A case states when the power tracker last read.
 const restoreDeps = (lastTimestamp: number): RestoreDeps => ({
-  hasStartedDrawingSince: () => false,
-  getLiveDrawAt: () => null,
-  hasDrawnAtLeastSince: () => false,
+  drawEvidence: noDrawEvidence,
   structuredLog: testLogger,
   powerTracker: partialDouble<PowerTrackerState>({ lastTimestamp }),
   temperatureSetpoints: new Map(),

@@ -47,9 +47,7 @@ function poweredRestore() {
   observe(observer, reading('first', 1.5, 2000), 2100);
   const deps: RestoreDeps = {
     powerTracker: homeReading(2300, 2500, 3000),
-    hasStartedDrawingSince: observer.hasStartedDrawingSince.bind(observer),
-    getLiveDrawAt: observer.getLiveDrawAt.bind(observer),
-    hasDrawnAtLeastSince: observer.hasDrawnAtLeastSince.bind(observer),
+    drawEvidence: observer,
     getShedBehavior: () => ({ action: 'turn_off' }),
     temperatureSetpoints: new Map(), structuredLog: testLogger,
   };
@@ -344,9 +342,7 @@ function steppedUp(options: { planningPowerKw?: number; risenKw?: number; risenR
   observe(observer, reading('charger', options.risenKw ?? 4.6, 2000), options.risenReceivedAtMs ?? 2100);
   const deps: RestoreDeps = {
     powerTracker: homeReading(2300, 2500, 3000),
-    hasStartedDrawingSince: observer.hasStartedDrawingSince.bind(observer),
-    getLiveDrawAt: observer.getLiveDrawAt.bind(observer),
-    hasDrawnAtLeastSince: observer.hasDrawnAtLeastSince.bind(observer),
+    drawEvidence: observer,
     getShedBehavior: () => ({ action: 'turn_off' }),
     temperatureSetpoints: new Map(), structuredLog: testLogger,
   };
@@ -402,13 +398,8 @@ describe('restore cooldown early release for a running stepped step-up', () => {
     const { state, deps, nowTs, devices } = steppedUp();
     observe(observer, reading('charger', 4.6, 200), 200);
     observe(observer, reading('charger', 3.7, 500), 500);
-    const fresh = {
-      ...deps,
-      hasStartedDrawingSince: observer.hasStartedDrawingSince.bind(observer),
-      getLiveDrawAt: observer.getLiveDrawAt.bind(observer),
-      hasDrawnAtLeastSince: observer.hasDrawnAtLeastSince.bind(observer),
-    };
-    expect(buildRestoreTiming(state, 8, fresh, devices, nowTs).inRestoreCooldown).toBe(true);
+    expect(buildRestoreTiming(state, 8, { ...deps, drawEvidence: observer }, devices, nowTs).inRestoreCooldown)
+      .toBe(true);
   });
 
   it('keeps the timer when the draw before the step-up is unknown', () => {

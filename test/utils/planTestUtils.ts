@@ -95,6 +95,7 @@ import type { ToPlanDeviceInput } from '../../lib/planInput/planInputDeviceTypes
 import { fixtureDeviceReason } from './deviceReasonTestUtils.ts';
 import { type DescriptorIdentity, resolveFixtureDescriptorIdentity } from './deviceSnapshotFixture';
 import { testLogger } from './testLogger';
+import { noDrawEvidence } from '../helpers/observedDeviceReadsDouble';
 
 /** A home without a battery, as the surplus allocator sees it: no claimant, no discharge. */
 export const NO_STORAGE_SURPLUS: StorageSurplus = { claimants: [], dischargeW: 0 };
@@ -1446,9 +1447,7 @@ export const restoreCycleFixture = (
   deps: {
     structuredLog: testLogger,
     powerTracker: {} as PowerTrackerState,
-    hasStartedDrawingSince: () => false,
-    getLiveDrawAt: () => null,
-    hasDrawnAtLeastSince: () => false,
+    drawEvidence: noDrawEvidence,
     getShedBehavior: () => ({ action: 'turn_off' }),
     temperatureSetpoints: new Map(),
   },
@@ -1578,8 +1577,6 @@ export const buildInitialPlanDevicesForSpec = (spec: {
  * spec gives some, and the shedding decision built from the two flags the pass
  * reads off it, out of shortfall unless the spec says otherwise.
  */
-type ObservedDrawReadKey = 'hasStartedDrawingSince' | 'getLiveDrawAt' | 'hasDrawnAtLeastSince';
-
 export const applyRestorePlanForSpec = (spec: {
   planDevices: DevicePlanDevice[];
   context: PlanContext;
@@ -1588,7 +1585,7 @@ export const applyRestorePlanForSpec = (spec: {
   storageLevers?: Readonly<Record<string, StorageLeverState>>;
   sheddingActive: boolean;
   guardInShortfall?: boolean;
-  deps: Omit<RestoreDeps, ObservedDrawReadKey> & Partial<Pick<RestoreDeps, ObservedDrawReadKey>>;
+  deps: Omit<RestoreDeps, 'drawEvidence'> & Partial<Pick<RestoreDeps, 'drawEvidence'>>;
 }): RestorePlanResult => applyRestorePlan(
   spec.planDevices,
   spec.context,
@@ -1596,5 +1593,5 @@ export const applyRestorePlanForSpec = (spec: {
   spec.state,
   spec.storageLevers ?? {},
   sheddingPlanFixture({ sheddingActive: spec.sheddingActive, guardInShortfall: spec.guardInShortfall ?? false }),
-  { hasStartedDrawingSince: () => false, getLiveDrawAt: () => null, hasDrawnAtLeastSince: () => false, ...spec.deps },
+  { drawEvidence: noDrawEvidence, ...spec.deps },
 );
