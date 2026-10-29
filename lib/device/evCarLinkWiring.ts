@@ -92,9 +92,9 @@ export const buildEvCarLinkChargerViews = (
 export type EvCarLinkSnapshotAccess = {
     /**
      * Whether `get` holds the probe's whole history: not while part of it waits
-     * in the legacy settings key for the next boot's import.
+     * in the legacy settings key for an import that has not answered yet.
      */
-    historyResolved: boolean;
+    isHistoryResolved: () => boolean;
     get: () => EvCarLinkSnapshot;
     set: (snapshot: EvCarLinkSnapshot) => void;
 };
@@ -110,7 +110,7 @@ export const createEvCarLinkProducer = (
 ): EvCarLinkProducer => {
     let inMemory: EvCarLinkSnapshot = createEmptyEvCarLinkSnapshot();
     const access: EvCarLinkSnapshotAccess = snapshotAccess ?? {
-        historyResolved: true,
+        isHistoryResolved: () => true,
         get: () => inMemory,
         set: (snapshot) => { inMemory = snapshot; },
     };
@@ -119,7 +119,7 @@ export const createEvCarLinkProducer = (
         getChargers: () => buildEvCarLinkChargerViews(getSnapshots(), getSelectedCarIds),
         getSnapshot: access.get,
         setSnapshot: access.set,
-        historyResolved: access.historyResolved,
+        isHistoryResolved: access.isHistoryResolved,
         onAssociatedCarStateOfCharge,
         onAssociationEnded,
     });

@@ -112,7 +112,7 @@ export type EvCarLinkProducerDeps = {
     getSnapshot: () => EvCarLinkSnapshot;
     setSnapshot: (snapshot: EvCarLinkSnapshot) => void;
     /** Whether `getSnapshot` holds the whole history (see `EvCarLinkSnapshotAccess`). */
-    historyResolved: boolean;
+    isHistoryResolved: () => boolean;
     /**
      * A fresh battery level from the car associated with `chargerId`. Fired
      * wherever the probe already computes `wouldAdopt`, so the probe still
@@ -207,7 +207,7 @@ export class EvCarLinkProducer {
 
     /** Chargers this car has matched, from the persisted votes; selection plays no part. */
     readChargerMatchesForCar(carId: string): EvCarChargerMatchHistory {
-        if (!this.deps.historyResolved) return { state: 'unavailable' };
+        if (!this.deps.isHistoryResolved()) return { state: 'unavailable' };
         return { state: 'resolved', chargerMatches: resolveEvCarChargerMatches(this.deps.getSnapshot(), carId) };
     }
 
