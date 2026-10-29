@@ -19,6 +19,7 @@ export function resolveMeasuredPowerKw(params: {
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
   livePowerWByDeviceId: LiveDevicePowerWatts;
+  deviceEnergyW: number | null;
   now: number;
   measuredPowerResolver: DeviceMeasuredPowerResolver;
   powerState: ResolvedTransportPowerState;
@@ -29,6 +30,7 @@ export function resolveMeasuredPowerKw(params: {
     capabilities,
     capabilityObj,
     livePowerWByDeviceId,
+    deviceEnergyW,
     now,
     measuredPowerResolver,
     powerState,
@@ -41,6 +43,7 @@ export function resolveMeasuredPowerKw(params: {
       capabilities,
       capabilityObj,
       livePowerWByDeviceId,
+      deviceEnergyW,
       homeyEnergyObservedAtMs: now,
     }),
   });

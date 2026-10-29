@@ -241,7 +241,7 @@ PELS needs to estimate how much power a device will draw when turned on. One ord
 
 1. **Manual override**: From the "Set expected power for device" Flow action. A manual value is an instruction, so it wins outright — including over a higher measured reading, and including on a device that declares `settings.load`. (The action is still rejected for stepped-load devices, which are sized per configured step.)
 2. **`settings.load` (legacy/custom app setting)**: If present and > 0, use it as expected power
-3. **Measured peak**: Highest draw PELS has actually observed, from `measure_power`/`meter_power` (and Homey live report `values.W` for measured updates). Kept on a 30-day rolling window and remembered across restarts: a device that keeps reaching its peak holds it, while a one-off spike that never repeats ages out and the next reading takes over.
+3. **Measured peak**: Highest draw PELS has actually observed, from `measure_power`/`meter_power` (and the Homey Energy figure for a device without its own power capability: the live report's `values.W`, or the device's own `energyObj.W` for a device in a room, which the live report lists only inside its zone's total). Kept on a 30-day rolling window and remembered across restarts: a device that keeps reaching its peak holds it, while a one-off spike that never repeats ages out and the next reading takes over.
 4. **Device Energy settings (Homey Advanced Settings → Energy)**:
    - Use controllable delta when both are set: `energy_value_on - energy_value_off` (clamped to >= 0)
    - Otherwise use `energy_value_on`

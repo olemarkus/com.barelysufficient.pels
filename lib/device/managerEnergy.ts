@@ -393,6 +393,23 @@ export const extractSolarProductionState = (
   return { productionW, solarDeviceCount: availableSolar.length, solarDeviceIds };
 };
 
+/**
+ * The device's own Homey Energy figure (`energyObj.W` on the device read): the
+ * same watts the live report lists for it, whichever zone it sits in. The live
+ * report without `?zone=` lists only the devices placed directly in the top
+ * zone, so a device in a room reaches PELS only through this. A metered
+ * device's figure is its `measure_power`; an unmetered one's is Homey's own
+ * figure from its "Energy used when on/off" settings. A whole-home meter
+ * (`cumulative`) and a producer (`generator`) are not device draws, as in the
+ * live report, and a negative figure is not a draw either.
+ */
+export const readHomeyEnergyDeviceWatts = (device: HomeyDeviceLike): number | null => {
+  const energy = asUnknownRecord(device.energyObj);
+  if (energy === null || energy.cumulative === true || energy.generator === true) return null;
+  const watts = toFiniteNumber(energy.W);
+  return watts !== null && watts >= 0 ? watts : null;
+};
+
 export const extractLivePowerWattsByDeviceId = (liveReport: unknown): LiveDevicePowerWatts => {
   const report = asUnknownRecord(liveReport);
   if (!report || !Array.isArray(report.items)) return {};
