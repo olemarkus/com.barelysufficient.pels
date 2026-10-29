@@ -186,16 +186,29 @@ const markNothingToImport = (repository: EvCarLinkRepository): void => {
  * The probe's snapshot, read once from the store and written through on every
  * change. A write that fails keeps the change in memory, and the next write
  * carries it too: the diff base is what the database last committed.
- * `historyResolved` is what the legacy import answered.
+ *
+ * `importLegacy` is the legacy import (`importLegacyEvCarLinkState`), run before
+ * the first read and asked again, while it has not answered, whenever someone
+ * asks whether the history is whole. A new install's first boot reads an empty
+ * key list, which says nothing about the blob; asked only at boot, its cars
+ * would have no match history for that whole run. An import that lands late may
+ * have put history under the stored rows, so the snapshot is read again.
  */
 export const createPersistedEvCarLinkAccess = (
     repository: EvCarLinkRepository,
     nowMs: number,
-    historyResolved: boolean,
+    importLegacy: (nowMs: number) => boolean,
 ): EvCarLinkSnapshotAccess => {
+    let historyResolved = importLegacy(nowMs);
     let snapshot = repository.read(nowMs) ?? createEmptyEvCarLinkSnapshot();
     return {
-        historyResolved,
+        isHistoryResolved: () => {
+            if (historyResolved) return true;
+            const now = Date.now();
+            historyResolved = importLegacy(now);
+            if (historyResolved) snapshot = repository.read(now) ?? snapshot;
+            return historyResolved;
+        },
         get: () => snapshot,
         set: (next) => {
             if (next === snapshot) return;
