@@ -328,6 +328,8 @@ export type DeadlinePlanLoadState =
     // (no boot yet, task absent/disabled).
     edit?: SmartTaskEditProps;
     afterTask?: SmartTaskAfterTaskProps;
+    // The task's device, for "Report a problem"; absent with no device in the route.
+    reportDeviceId?: string;
   }
   | {
     status: 'unavailable';
@@ -356,6 +358,7 @@ export type DeadlinePlanLoadState =
     history?: DeadlinePlanHistoryView;
     edit?: SmartTaskEditProps;
     afterTask?: SmartTaskAfterTaskProps;
+    reportDeviceId?: string;
   }
   | {
     // Detail view for a finalized plan in history. The page lands on the
@@ -1391,6 +1394,19 @@ const SmartTaskAfterTaskCard = ({ afterTask }: { afterTask: SmartTaskAfterTaskPr
   </section>
 );
 
+// Opens a device report for the task's device: smart tasks are one per device
+// and Main-home only, and a device report carries the task's state. The click is
+// handled by the delegated report navigation (`supportReport.ts`).
+const SmartTaskReportButton = ({ deviceId }: { deviceId: string | undefined }) => (
+  deviceId === undefined ? null : (
+    <div class="smart-task-report">
+      <MdTextButton type="button" data-report-device-id={deviceId} data-report-home-id="main">
+        Report a problem
+      </MdTextButton>
+    </div>
+  )
+);
+
 const SmartTaskEditSection = ({ edit, inputs }: {
   edit: SmartTaskEditProps;
   inputs?: DeadlinePlanPayload['planInputs'];
@@ -1581,6 +1597,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
         <PendingHero pending={loadState.pending} />
         {loadState.edit !== undefined && <SmartTaskEditSection edit={loadState.edit} />}
         {loadState.afterTask !== undefined && <SmartTaskAfterTaskCard afterTask={loadState.afterTask} />}
+        <SmartTaskReportButton deviceId={loadState.reportDeviceId} />
         <PriorRunsHistory history={loadState.history} />
       </>
     );
@@ -1615,6 +1632,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
       <ScheduleQuestionCards payload={loadState.payload} />
       <PlanInputsCard payload={loadState.payload} editorOpen={loadState.edit?.snapshot != null} />
       {loadState.afterTask !== undefined && <SmartTaskAfterTaskCard afterTask={loadState.afterTask} />}
+      <SmartTaskReportButton deviceId={loadState.reportDeviceId} />
       <RevisionHistoryPanel payload={loadState.payload} />
       <PriorRunsHistory history={loadState.history} />
     </>

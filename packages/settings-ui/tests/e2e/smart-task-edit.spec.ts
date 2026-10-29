@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from './fixtures/test';
+import { readMdSelectHeadlineText } from './fixtures/materialWeb';
 
 // Smart-task detail edit/clear lane: the action row under the hero,
 // the inline goal/ready-by editor with the server-previewed landing line, the
@@ -282,6 +283,15 @@ test.describe('Smart task edit', () => {
 
     await editCard.getByRole('button', { name: 'Discard' }).click();
     await expect(readOnlyRow).toBeVisible();
+  });
+
+  test('reports a problem about the task\'s device from the task page', async ({ page }) => {
+    const panel = await openDeadlinePlan(page);
+    await panel.locator('.smart-task-report').getByRole('button', { name: 'Report a problem' }).click();
+    const report = page.locator('#report-problem-panel');
+    await expect(report).toBeVisible();
+    await expect.poll(() => readMdSelectHeadlineText(page, '[data-report-field="device"]')).toContain('Connected 300');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 
   test('discard closes the editor without saving', async ({ page }) => {

@@ -18,6 +18,8 @@ import {
 import { createLogTailStore } from '../../lib/diagnostics/logTailStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { CarLinkDiagnostics } from '../../lib/ports/carLinkDiagnostics';
+import type { ObjectiveSettingsStore } from '../../lib/objectives/deferredObjectives/objectiveStore';
+import type { ResolvedDeferredObjectiveActivePlanV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 
 const request: SupportReportRequest = {
   subject: { kind: 'device', homeId: 'main', deviceId: 'heater' },
@@ -52,7 +54,15 @@ const currentHost = (homeId = 'main') => pelsHostDouble({
   getSettingsUiManagedDevices: vi.fn(() => []),
   refreshTargetDevicesSnapshot: vi.fn(async () => undefined),
 });
-const source = (app: PelsHost) => new SupportReportEvidenceSource(createSupportReportReads(app), {
+// A settings store holding only the given smart tasks, keyed by device id.
+const objectiveStore = (tasks: Record<string, unknown> = {}): ObjectiveSettingsStore => ({
+  get: (key: string) => tasks[key.replace('deferred_objective.', '')],
+  getKeys: () => ['capacity_limit_kw', ...Object.keys(tasks).map((id) => `deferred_objective.${id}`)],
+  set: vi.fn(), unset: vi.fn(),
+});
+const source = (
+  app: PelsHost, objectives = objectiveStore(),
+) => new SupportReportEvidenceSource(createSupportReportReads(app, objectives), {
   manifest: { version: '9.8.7-running-build' }, version: '12.4.1-running-homey',
 });
 const values = (report: SupportReportEvidence, title: string) => (
@@ -219,7 +229,8 @@ describe('support report evidence capture', () => {
     host.getDailyBudgetUiPayload = () => ({ kind: 'budget', payload: { todayKey: day.dateKey, days: { [day.dateKey]: day } } });
     const settings = { get: vi.fn(), getKeys: vi.fn(), set: vi.fn() };
     const homey = { app: host, manifest: { version: '3.21.0', apiKey: 'manifest-secret' }, version: '12.0.0', settings };
-    const report = await new SupportReportEvidenceSource(createSupportReportReads(host), homey).capture(request, now);
+    const report = await new SupportReportEvidenceSource(createSupportReportReads(host, objectiveStore()), homey)
+      .capture(request, now);
     expect(values(report, 'Current app-wide prices')).toMatchObject({ importPrice: 42, level: 'cheap' });
     expect(values(report, 'Current app-wide price source')).toEqual({ scheme: 'norway', selection: 'chosen' });
     expect(values(report, 'Current daily budget')).toMatchObject({ dailyBudgetKWh: 50, usedKWh: 20 });
@@ -367,5 +378,43 @@ describe('support report log', () => {
     } finally {
       db.close();
     }
+  });
+});
+
+describe('support report smart task evidence', () => {
+  const evTask = { kind: 'ev_soc', enforcement: 'soft', targetPercent: 80, enabled: true, deadlineAtMs: now + 8 * hour };
+  const activePlan = partialDouble<ResolvedDeferredObjectiveActivePlanV1>({
+    deviceId: 'heater', pending: false, liveCompletion: { kind: 'unmet', status: 'on_track' },
+    latest: partialDouble<NonNullable<ResolvedDeferredObjectiveActivePlanV1['latest']>>({
+      planStatus: 'on_track', energyNeededKWh: 12,
+      hours: [
+        { startsAtMs: now - 10 * 60_000, plannedKWh: 0 },
+        { startsAtMs: now + 2 * hour, plannedKWh: 6 },
+        { startsAtMs: now + 3 * hour, plannedKWh: 6 },
+      ],
+    }),
+  });
+
+  it('says when the device has no smart task, which is evidence on its own', async () => {
+    const report = await source(currentHost()).capture(request, now);
+    expect(values(report, 'Current smart task')).toEqual({ exists: false });
+  });
+
+  it('names the task, what it decided and whether it booked this hour', async () => {
+    const host = currentHost();
+    host.getDeferredObjectiveActivePlansUiPayload = () => ({ version: 1, plansByDeviceId: { heater: activePlan } });
+    const report = await source(host, objectiveStore({ heater: evTask })).capture(request, now);
+    expect(values(report, 'Current smart task')).toEqual({
+      exists: true, kind: 'ev_soc', enabled: true, enforcement: 'soft', deadlineAtMs: now + 8 * hour,
+      targetPercent: 80, pending: false, completion: 'on_track', planStatus: 'on_track', energyNeededKWh: 12,
+      plannedHours: 2, currentHourPlannedKWh: 0, nextPlannedHourStartsAtMs: now + 2 * hour,
+    });
+  });
+
+  it('marks the section unavailable when the task store cannot say whether a task exists', async () => {
+    const flaky: ObjectiveSettingsStore = { get: () => undefined, getKeys: () => [], set: vi.fn(), unset: vi.fn() };
+    const report = await source(currentHost(), flaky).capture(request, now);
+    expect(values(report, 'Current smart task')).toBeUndefined();
+    expect(report.omissions).toContain('Current smart task is unavailable.');
   });
 });

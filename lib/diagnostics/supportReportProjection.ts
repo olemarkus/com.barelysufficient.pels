@@ -14,6 +14,8 @@ import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import { isTemperaturePlanDevice } from '../plan/planTemperatureDevice';
 import type { DevicePlanDevice } from '../plan/planTypes';
 import type { CarLinkCarStatus, CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
+import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
+import type { ResolvedDeferredObjectiveActivePlanV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 
 const present = (key: string, value: SupportReportValue | undefined): Record<string, SupportReportValue> => (
   value === undefined ? {} : { [key]: value }
@@ -82,6 +84,11 @@ export const reportDeviceDecision = (device: DevicePlanDevice): SupportReportSec
     currentState: device.currentState,
     reasonCode: device.reason.code,
     priority: device.priority,
+    // Whether PELS may command it this cycle, and which standing hold keeps it
+    // off: without these a held charger reads the same as a broken one.
+    commandAuthority: device.control.commandAuthority,
+    ...present('startPolicyHoldActive', device.startPolicyHoldActive),
+    ...present('chargeTargetHeld', device.chargeTargetHeld?.kind),
     ...present('desiredStepId', device.desiredStepId),
     ...present('lastDesiredStepId', device.lastDesiredStepId),
     ...present('reportedStepId', device.reportedStepId),
@@ -177,3 +184,69 @@ export const reportCarLink = (link: CarLinkDiagnostics): SupportReportSection =>
     ...present('associatedChargerId', link.associatedChargerId),
   },
 });
+
+/** The subject device's smart task as capture read it. An unreadable store throws instead. */
+export type SupportReportSmartTask =
+  | { state: 'none' }
+  | {
+    state: 'present';
+    entry: DeferredObjectiveSettingsEntry;
+    /** `undefined` when the planner holds no plan for the task yet. */
+    activePlan: ResolvedDeferredObjectiveActivePlanV1 | undefined;
+  };
+
+const HOUR_MS = 60 * 60 * 1000;
+
+const reportSmartTaskGoal = (entry: DeferredObjectiveSettingsEntry): Record<string, SupportReportValue> => {
+  if (entry.kind === 'ev_soc') return { targetPercent: entry.targetPercent };
+  if (entry.kind === 'temperature') return { targetTemperatureC: entry.targetTemperatureC };
+  return { targetEnergyKWh: entry.targetEnergyKWh };
+};
+
+const reportSmartTaskPlan = (
+  plan: ResolvedDeferredObjectiveActivePlanV1,
+  capturedAtMs: number,
+): Record<string, SupportReportValue> => {
+  const hours = plan.latest?.hours ?? [];
+  const currentHour = hours.find((hour) => hour.startsAtMs <= capturedAtMs && capturedAtMs < hour.startsAtMs + HOUR_MS);
+  const nextPlanned = hours
+    .filter((hour) => hour.startsAtMs > capturedAtMs && hour.plannedKWh > 0)
+    .reduce<number | undefined>((earliest, hour) => (
+      earliest === undefined || hour.startsAtMs < earliest ? hour.startsAtMs : earliest
+    ), undefined);
+  return {
+    pending: plan.pending,
+    ...present('pendingReason', plan.pendingReason),
+    ...present('diagnosticReasonCode', plan.diagnosticReasonCode),
+    completion: plan.liveCompletion.kind === 'unmet' ? plan.liveCompletion.status : plan.liveCompletion.kind,
+    ...(plan.latest ? {
+      planStatus: plan.latest.planStatus,
+      energyNeededKWh: plan.latest.energyNeededKWh,
+      plannedHours: hours.filter((hour) => hour.plannedKWh > 0).length,
+      currentHourPlannedKWh: currentHour?.plannedKWh ?? 0,
+      ...present('nextPlannedHourStartsAtMs', nextPlanned),
+    } : { revision: 'none' }),
+  };
+};
+
+/**
+ * Whether the subject has a smart task and what it decided. "No smart task" is
+ * evidence too: a device held by "Only PELS starts this device" without one is
+ * off by design, which nothing else in a report says.
+ */
+export const reportSmartTask = (read: SupportReportSmartTask, capturedAtMs: number): SupportReportSection => {
+  if (read.state === 'none') return { title: 'Current smart task', values: { exists: false } };
+  const { entry, activePlan } = read;
+  return {
+    title: 'Current smart task',
+    values: {
+      exists: true,
+      kind: entry.kind,
+      enabled: entry.enabled,
+      enforcement: entry.enforcement,
+      deadlineAtMs: entry.deadlineAtMs,
+      ...reportSmartTaskGoal(entry),
+      ...(activePlan ? reportSmartTaskPlan(activePlan, capturedAtMs) : { activePlan: 'none' }),
+    },
+  };
+};

@@ -407,6 +407,7 @@ const renderActiveMount = (): void => {
       : 'edit_and_clear';
     loadState.edit = buildSmartTaskEditProps(m, mode);
     loadState.afterTask = buildSmartTaskAfterTaskProps(m);
+    if (m.deviceId !== null) loadState.reportDeviceId = m.deviceId;
   }
   renderDeadlinePlan(m.surface, loadState);
 };

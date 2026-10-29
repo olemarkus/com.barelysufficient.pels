@@ -38,6 +38,13 @@ plug-ins and unplugs on both sides, each wait to identify the connected car, the
 timeout with the cars it waited for and why past matches did not decide, and a
 selected car that reported its plug-in after the window. A charger or car report
 also carries the current car link (`Current car link`).
+A Main device report carries the device's smart task (`Current smart task`): the
+stored task and, when the planner has one, its plan's decision, status and whether it
+booked the capture hour. `exists: false` is evidence, not an omission: a device held
+by "Only PELS starts this device" without a task is off by design. A task store read
+that cannot tell is an unavailable section. `Current device plan` adds whether PELS
+may command the device and which standing hold (start policy, charge target) keeps it
+off. The smart-task page opens a report on its device with **Report a problem**.
 Unavailable history or current sections remain visible omissions. Area reports
 never substitute Main's data where the selected area's read is unavailable.
 
