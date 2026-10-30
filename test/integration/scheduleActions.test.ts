@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ScheduleActionExecutor } from '../../lib/schedules/scheduleActions';
 import type { Schedule } from '../../packages/contracts/src/schedules';
 import type { SmartTaskCreateLaneHost } from '../../lib/objectives/deferredObjectives/smartTaskCreateLane';
@@ -19,6 +19,12 @@ const host = () => ({
 });
 
 describe('scheduled action integration', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse('2026-10-28T20:00:00Z'));
+  });
+  afterEach(() => vi.useRealTimers());
+
   it('uses the existing fresh-task write with an overnight deadline, explicit permissions and source', async () => {
     const commands = host();
     const executor = new ScheduleActionExecutor(commands, { getTimezone: () => 'Europe/Oslo' });
@@ -48,6 +54,7 @@ describe('scheduled action integration', () => {
     expect(commands.createNewDeferredObjective).not.toHaveBeenCalled();
   });
   it('rejects a ready-by DST gap without moving the promised same-day deadline to tomorrow', async () => {
+    vi.setSystemTime(Date.parse('2026-03-29T00:00:00Z'));
     const commands = host();
     const gap: Schedule = { ...schedule, at: '01:00', action: { type: 'task', task: {
       deviceId: 'charger', kind: 'ev_soc', target: 80, readyByLocalTime: '02:30',
@@ -57,6 +64,7 @@ describe('scheduled action integration', () => {
     expect(commands.createNewDeferredObjective).not.toHaveBeenCalled();
   });
   it('keeps a following-day deadline on a repeated-clock date instead of choosing the second fold today', async () => {
+    vi.setSystemTime(Date.parse('2026-10-25T00:45:00Z'));
     const commands = host();
     const fold: Schedule = { ...schedule, at: '02:45', action: { type: 'task', task: {
       deviceId: 'charger', kind: 'ev_soc', target: 80, readyByLocalTime: '02:30',
@@ -65,6 +73,33 @@ describe('scheduled action integration', () => {
       .execute(fold, Date.parse('2026-10-25T00:45:00Z'));
     expect(commands.createNewDeferredObjective).toHaveBeenCalledWith('charger', expect.objectContaining({
       deadlineAtMs: Date.parse('2026-10-26T01:30:00Z'),
+    }));
+  });
+
+  it.each(['2026-10-28T20:01:00Z', '2026-10-28T20:01:30Z'])(
+    'skips an elapsed short deadline at %s without creating a task or rolling to tomorrow', async (now) => {
+      const commands = host();
+      const short: Schedule = { ...schedule, action: { type: 'task', task: {
+        deviceId: 'charger', kind: 'ev_soc', target: 80, readyByLocalTime: '21:01',
+      } } };
+      vi.setSystemTime(Date.parse(now));
+      await expect(new ScheduleActionExecutor(commands, { getTimezone: () => 'Europe/Oslo' })
+        .execute(short, Date.parse('2026-10-28T20:00:00Z'))).rejects.toThrow('ready-by time has passed');
+      expect(commands.createNewDeferredObjective).not.toHaveBeenCalled();
+      expect(commands.handleOperatingModeChange).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps a short same-day deadline while it is still future', async () => {
+    const commands = host();
+    const short: Schedule = { ...schedule, action: { type: 'task', task: {
+      deviceId: 'charger', kind: 'ev_soc', target: 80, readyByLocalTime: '21:01',
+    } } };
+    vi.setSystemTime(Date.parse('2026-10-28T20:00:30Z'));
+    await new ScheduleActionExecutor(commands, { getTimezone: () => 'Europe/Oslo' })
+      .execute(short, Date.parse('2026-10-28T20:00:00Z'));
+    expect(commands.createNewDeferredObjective).toHaveBeenCalledWith('charger', expect.objectContaining({
+      deadlineAtMs: Date.parse('2026-10-28T20:01:00Z'),
     }));
   });
 

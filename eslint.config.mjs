@@ -787,7 +787,7 @@ export default tseslint.config(
   // the battery-neutral demand forecaster from field initialization, before the
   // main meter pipeline can sample, and the shared form defaults give the
   // pre-wiring API an explicit waiting read. Setup retains neither domain state.
-  // This exact-current 36 ceiling is the single backend exception over 20.
+  // This composition root is the single backend exception over 20.
   // Raised 36 -> 38 for the scheduled-action owner and its Flow registration.
   // Both are wired here after userdata/startup is ready; timed actions reuse
   // the existing task/mode command owners and drain before userdata closes.
