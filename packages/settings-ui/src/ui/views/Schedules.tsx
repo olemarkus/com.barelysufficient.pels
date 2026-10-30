@@ -171,13 +171,13 @@ const TaskFields = ({ draft, view }: { draft: ScheduleDraft; view: View }) => {
   const disabled = snapshot.busy || snapshot.load !== 'ready';
   return (
     <>
-      <label class="field"><span class="field__label pels-text-settings-label">Device</span>
+      <div class="field"><span class="field__label pels-text-settings-label">Device</span>
         <MdFilledSelect value={draft.deviceId} aria-label="Task device" disabled={disabled}
           onChange={(event: Event) => actions.onDevice(inputValue(event))}>
           {!device && <Choice value={draft.deviceId}>Choose an available device</Choice>}
           {snapshot.devices.map((candidate) => <Choice key={candidate.deviceId} value={candidate.deviceId}>{candidate.deviceName}</Choice>)}
         </MdFilledSelect>
-      </label>
+      </div>
       {device && <>
         <label class="field"><span class="field__label pels-text-settings-label">Target ({device.unitSymbol})</span>
           <MdFilledTextField type="number" value={draft.target} min={String(device.goalMin)} max={String(device.goalMax)}
@@ -237,24 +237,24 @@ const Editor = (view: View) => {
               onClick={() => actions.onSelectAction('mode')}>Change mode</MdOutlinedButton>
           </div>
           {draft.actionType === 'task' ? <TaskFields draft={draft} view={view} /> : <>
-            <label class="field"><span class="field__label pels-text-settings-label">Set mode to</span>
+            <div class="field"><span class="field__label pels-text-settings-label">Set mode to</span>
               <MdFilledSelect value={draft.mode} aria-label="Set mode to" disabled={disabled}
                 onChange={(event: Event) => actions.onDraftChange({ mode: inputValue(event) })}>
                 {!modeOptions.some((option) => option.value === draft.mode)
                   && <Choice value={draft.mode}>Choose an available mode</Choice>}
                 {modeOptions.map((option) => <Choice key={option.value} value={option.value}>{option.label}</Choice>)}
               </MdFilledSelect>
-            </label><p class="pels-card-supporting">The mode changes once. Later manual or Flow changes take effect normally.</p>
+            </div><p class="pels-card-supporting">The mode changes once. Later manual or Flow changes take effect normally.</p>
           </>}
         </section>
         <section class="pels-surface-card schedules-form__section">
           <h3 class="pels-text-card-title">When?</h3>
-          <label class="field"><span class="field__label pels-text-settings-label">Repeat</span>
+          <div class="field"><span class="field__label pels-text-settings-label">Repeat</span>
             <MdFilledSelect value={draft.repeat} aria-label="Repeat" disabled={disabled}
               onChange={(event: Event) => actions.onRepeat(inputValue(event) as ScheduleRepeatChoice)}>
               {REPEATS.map((repeat) => <Choice key={repeat.value} value={repeat.value}>{repeat.label}</Choice>)}
             </MdFilledSelect>
-          </label>
+          </div>
           {draft.repeat === 'custom' && <div class="schedule-days" role="group" aria-label="Days of week">
             {SCHEDULE_DAYS.map((day) => <MdOutlinedButton type="button" key={day.value} aria-pressed={draft.days.includes(day.value)}
               disabled={disabled} onClick={() => actions.onDay(day.value)}>{day.label}</MdOutlinedButton>)}
@@ -270,12 +270,12 @@ const Editor = (view: View) => {
         </section>
         <section class="pels-surface-card schedules-form__section">
           <h3 class="pels-text-card-title">Only in selected modes?</h3>
-          <label class="field"><span class="field__label pels-text-settings-label">Check mode when the schedule fires</span>
+          <div class="field"><span class="field__label pels-text-settings-label">Check mode when the schedule fires</span>
             <MdFilledSelect aria-label="Mode condition" value={draft.conditionType} disabled={disabled}
               onChange={(event: Event) => actions.onDraftChange({ conditionType: inputValue(event) as ScheduleDraft['conditionType'] })}>
               <Choice value="any">Any mode</Choice><Choice value="include">Only these modes</Choice><Choice value="exclude">Except these modes</Choice>
             </MdFilledSelect>
-          </label>
+          </div>
           {draft.conditionType !== 'any' && <div class="schedule-mode-choices">
             {modeOptions.map((option) => <label class="schedule-mode-choice" key={option.value}>
               <MdCheckbox checked={draft.conditionModes.includes(option.value)} disabled={disabled}

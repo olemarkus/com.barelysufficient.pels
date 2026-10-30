@@ -131,9 +131,17 @@ for (const width of [320, 480]) {
         await expect(night.locator('.schedule-row__state')).toHaveText('On');
         await expect(morning.locator('.schedule-row__state')).toHaveText('Off');
 
+        await night.getByRole('button', { name: 'Edit', exact: true }).click();
+        await panel.getByRole('combobox', { name: 'Set mode to', exact: true }).click();
+        await page.getByRole('option', { name: 'Home', exact: true }).click();
+        await expect(panel.getByRole('combobox', { name: 'Set mode to', exact: true })).toContainText('Home');
+        await panel.getByRole('button', { name: 'Cancel', exact: true }).click();
+
         await panel.locator('[data-schedule-id="water"]').getByRole('button', { name: 'Edit', exact: true }).click();
         await expect(panel.getByRole('heading', { name: 'Edit schedule', exact: true })).toBeVisible();
         await expect(panel).toContainText('ready by 06:00 the following day');
+        await panel.getByRole('combobox', { name: 'Task device', exact: true }).click();
+        await page.getByRole('option', { name: 'Water heater', exact: true }).click();
         await panel.getByRole('combobox', { name: 'Repeat', exact: true }).click();
         await page.getByRole('option', { name: 'Choose days', exact: true }).click();
         const dayTarget = await panel.getByRole('button', { name: 'Mon', exact: true }).boundingBox();
