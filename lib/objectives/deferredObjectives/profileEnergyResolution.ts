@@ -12,6 +12,7 @@ import { fitBandsFromSamples, resolveKwhPerUnitStat } from '../bands';
 import { applyBandedConfidence } from '../stats';
 import {
   listObjectiveRateProfileCandidates,
+  type ObjectiveProfileRung,
   type ObjectiveProfileSubject,
   type ObjectiveRateProfile,
   type ObjectiveRateProfileCandidate,
@@ -20,6 +21,14 @@ import {
 // `exact`: the task's unit IS energy (an energy task), so a kWh of progress is a
 // kWh fed. Nothing is learned, estimated or buffered.
 export type DeferredObjectiveKwhPerUnitSource = 'learned' | 'bootstrap' | 'exact';
+
+/**
+ * Which rung of the profile ladder (`profileLadder.ts`) sized an EV battery
+ * task, or `bootstrap` when none had learned a rate. Resolved where the ladder
+ * picks the rate; `null` for every other task kind and when no rate was
+ * consulted. Diagnostic only: nothing decides on it.
+ */
+export type EvRateRung = ObjectiveProfileRung | 'bootstrap';
 
 export type DeferredObjectiveEnergyResolution = {
   // Planned energy the horizon planner books hours against. This is the
@@ -62,6 +71,7 @@ export type DeferredObjectiveEnergyResolution = {
   // null when the resolution did not consult a profile, e.g. when the target
   // is already satisfied and we short-circuit `energyNeededKWh` to zero.
   kwhPerUnitSource: DeferredObjectiveKwhPerUnitSource | null;
+  evRateRung: EvRateRung | null;
   reasonCode: null;
 } | {
   energyNeededKWh: null;
@@ -72,6 +82,7 @@ export type DeferredObjectiveEnergyResolution = {
   rateConfidence: null;
   displayConfidence: null;
   kwhPerUnitSource: null;
+  evRateRung: null;
   reasonCode: 'objective_missing_capacity';
 };
 
@@ -151,19 +162,23 @@ export const resolveProfileEnergy = (
       rateConfidence: null,
       displayConfidence: 'high',
       kwhPerUnitSource: 'exact',
+      evRateRung: null,
       reasonCode: null,
     };
   }
   const learned = selectLearnedRate(powerTracker, subject, progressDirection);
   if (learned !== undefined) {
-    return buildLearnedResolution(
-      learned.directionProfile,
-      learned.kwhPerUnit,
-      remainingUnits,
-      currentValue,
-      progressDirection,
-      resolveBufferK(enforcement),
-    );
+    return {
+      ...buildLearnedResolution(
+        learned.directionProfile,
+        learned.kwhPerUnit,
+        remainingUnits,
+        currentValue,
+        progressDirection,
+        resolveBufferK(enforcement),
+      ),
+      evRateRung: objectiveKind === 'ev_soc' ? learned.candidate.rung : null,
+    };
   }
   // Bootstrap fallback for EV SoC objectives: SoC reporting depends on a
   // plugged-in charge session, so a learned `kwhPerUnit` often isn't available
@@ -187,6 +202,7 @@ export const resolveProfileEnergy = (
       rateConfidence: null,
       displayConfidence: null,
       kwhPerUnitSource: 'bootstrap',
+      evRateRung: 'bootstrap',
       reasonCode: null,
     };
   }
@@ -199,6 +215,7 @@ export const resolveProfileEnergy = (
     rateConfidence: null,
     displayConfidence: null,
     kwhPerUnitSource: null,
+    evRateRung: null,
     reasonCode: 'objective_missing_capacity',
   };
 };
@@ -276,7 +293,7 @@ const buildLearnedResolution = (
   currentValue: number | undefined,
   progressDirection: ObjectiveProgressDirection,
   k: number,
-): DeferredObjectiveEnergyResolution => {
+): Omit<Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>, 'evRateRung'> => {
   const globalMean = kWhPerUnit.mean;
   const globalSigma = sampleStdDev(kWhPerUnit);
   const globalSampleCount = kWhPerUnit.sampleCount;

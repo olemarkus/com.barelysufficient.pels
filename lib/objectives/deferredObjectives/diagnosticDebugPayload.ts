@@ -88,6 +88,9 @@ export const buildDeferredObjectiveDebugPayload = (
   // are emitted, so existing structured-log analysis / dashboards (and the
   // `deferred-load-objectives` notes that list `kWhPerPercent`) keep working.
   kWhPerPercent: diagnostic.objectiveKind === 'ev_soc' ? diagnostic.kWhPerUnitBanded : null,
+  // Which rung of the per-car profile ladder sized that rate: this car on this
+  // charger, this car on any charger, the charger's own, or the bootstrap.
+  evRateRung: diagnostic.evRateRung,
   kWhPerDegreeC: diagnostic.objectiveKind === 'temperature' ? diagnostic.kWhPerUnitBanded : null,
   kWhPerUnitBanded: diagnostic.kWhPerUnitBanded,
   rateConfidence: diagnostic.rateConfidence,

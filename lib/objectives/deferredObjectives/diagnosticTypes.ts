@@ -1,6 +1,6 @@
 import type { TaskEvaluation } from './taskEvaluation';
 import type { TaskCompletion } from './taskCompletion';
-import type { DeferredObjectiveKwhPerUnitSource } from './profileEnergyResolution';
+import type { DeferredObjectiveKwhPerUnitSource, EvRateRung } from './profileEnergyResolution';
 import type {
   DeferredObjectivePolicyHorizonUnavailableReason,
   PriceHorizonEntry,
@@ -154,6 +154,9 @@ type BaseDeferredObjectiveDiagnostic = {
   // thermal devices effectively forever. Null on bootstrap / unresolved.
   displayConfidence: 'low' | 'medium' | 'high' | null;
   kwhPerUnitSource: DeferredObjectiveKwhPerUnitSource | null;
+  // Which profile-ladder rung sized an EV battery task (`EvRateRung`); null for
+  // other kinds and when no rate was resolved. Debug payload only.
+  evRateRung: EvRateRung | null;
   // Number of accepted samples that produced the learned profile mean. Zero
   // when `kwhPerUnitSource` is `bootstrap` or null. Surfaced so the UI can
   // explain EV learning progress without re-reading the profile store.

@@ -35,6 +35,7 @@ export const ZERO_ENERGY_RESOLUTION: DeferredObjectiveEnergyResolution = {
   rateConfidence: null,
   displayConfidence: null,
   kwhPerUnitSource: null,
+  evRateRung: null,
   reasonCode: null,
 };
 
@@ -155,6 +156,7 @@ export const buildDiagnosticBase = (
     rateConfidence: null,
     displayConfidence: null,
     kwhPerUnitSource: null,
+    evRateRung: null,
     kwhPerUnitAcceptedSamples: profileSnapshot.acceptedSamples,
     kwhPerUnitLastAcceptedAtMs: profileSnapshot.lastAcceptedAtMs,
     planningSpeedKw: resolvePlanningSpeedKw(device),
@@ -228,6 +230,7 @@ export const buildKnownEnergyFields = (params: {
   DeferredObjectiveDiagnostic,
   'energyNeededKWh' | 'energyExpectedKWh' | 'kWhPerUnitBanded'
   | 'kWhPerUnitBuffered' | 'kwhPerUnitLearnedMean' | 'rateConfidence' | 'displayConfidence' | 'kwhPerUnitSource'
+  | 'evRateRung'
 > => ({
   energyNeededKWh: params.profileEnergy.energyNeededKWh,
   energyExpectedKWh: params.profileEnergy.energyExpectedKWh,
@@ -237,4 +240,5 @@ export const buildKnownEnergyFields = (params: {
   rateConfidence: params.profileEnergy.rateConfidence,
   displayConfidence: params.profileEnergy.displayConfidence,
   kwhPerUnitSource: params.profileEnergy.kwhPerUnitSource,
+  evRateRung: params.profileEnergy.evRateRung,
 });

@@ -1158,7 +1158,10 @@ A rung with no rate in the task's direction falls through. A car rung whose rate
 than `MIN_CAR_RATE_SAMPLES_OVER_CHARGER` (3) windows yields to the charger's learned rate, and is
 used ahead of the bootstrap only when nothing below it has learned. A change of rung reaches an
 active task like any other rate change: `rate_refined` from bootstrap, otherwise the
-`measured_deviation` or schedule paths. The objective signature is untouched.
+`measured_deviation` or schedule paths. The objective signature is untouched. The rung that
+sized an EV battery task rides on the energy resolution as `evRateRung` (`car_on_charger`,
+`car_any_charger`, `charger` or `bootstrap`; `null` for other kinds) and is logged beside
+`kWhPerPercent` in the smart-task debug payload. Nothing decides on it.
 
 The per-car store is bounded (`lib/objectives/carProfiles.ts`): at most 8 cars and 4 chargers
 per car, pruned after 180 days without a report, ranked by whether the pair reported this cycle
