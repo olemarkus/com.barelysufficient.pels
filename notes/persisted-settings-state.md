@@ -82,7 +82,11 @@ What survives the move, and what does not:
 Two rules that do carry over, because they are about the SDK rather than the shape:
 
 - **An empty `getKeys()` is a flake, not an empty store.** PELS always has
-  settings keys. Conclude nothing from an empty list.
+  settings keys. Conclude nothing from an empty list, with one exception: the
+  first read of a boot, before any startup step writes, where an empty list is
+  a new install (`classifyInstallAtBoot` in `lib/utils/settingsKeyList.ts`).
+  The flake looks the same there, so its one consumer, the Capacity limit
+  market default, must be safe when an existing install is taken for new.
 - **Absence is only trustworthy from the key LIST.** A value that reads back
   malformed on a listed key is a failed read, not an affirmative absence.
 

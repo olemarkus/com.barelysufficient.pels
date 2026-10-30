@@ -12,7 +12,8 @@ import { wireBudgetPrice } from './wireBudgetPrice';
 import { wireContinuousBatteryPlan } from './wireContinuousBatteryPlan';
 import { wireCurtailmentSurplus } from './wireCurtailmentSurplus';
 import { startSoleMeterAdoption } from '../soleMeterAdoption';
-import { startCapacityMarketDefault, type InstallAtBoot } from '../capacityMarketDefault';
+import { startCapacityMarketDefault } from '../capacityMarketDefault';
+import type { InstallAtBoot } from '../../lib/utils/settingsKeyList';
 
 const NATIVE_WIRING_REQUERY_INTERVAL_MS = 30 * 60 * 1000;
 

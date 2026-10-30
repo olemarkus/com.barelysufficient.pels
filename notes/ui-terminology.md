@@ -2231,7 +2231,8 @@ English-only.
   (owner ruling 2026-10-29), where households pay for measured peaks; elsewhere
   the runtime writes it off once the hub's country is known
   (`lib/power/capacityMarketDefault.ts`). That is the one place geography sets
-  a limit. It never touches an existing install or replaces a saved target.
+  a limit. It leaves an existing install's limit alone (unless a flaky first
+  read at boot takes it for new) and never replaces a saved target.
 - For Dutch households, an unchosen Capacity limit (an install from before that
   default) explains that grid charges depend on connection size, and that
   turning this limit off preserves prices and solar. The guided Limits step

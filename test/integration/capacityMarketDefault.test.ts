@@ -1,10 +1,7 @@
 import { readHubMarket } from '../../lib/home/hubMarket';
-import {
-  CapacityMarketDefault,
-  classifyInstallAtBoot,
-  type InstallAtBoot,
-} from '../../lib/power/capacityMarketDefault';
+import { CapacityMarketDefault } from '../../lib/power/capacityMarketDefault';
 import { CAPACITY_ENABLED } from '../../lib/utils/settingsKeys';
+import { classifyInstallAtBoot, type InstallAtBoot } from '../../lib/utils/settingsKeyList';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUiApi';
 import { homeyWebApiServing } from '../helpers/homeyWebApiStub';
@@ -68,6 +65,27 @@ describe('the Capacity limit default on a new install', () => {
     expect(written).toEqual([CAPACITY_ENABLED]);
     expect(api.requestedPaths).toEqual(['manager/system']);
     expect(timers.has('capacityMarketDefault')).toBe(false);
+  });
+
+  it('decides from the switch itself while the store of a new install is still empty', async () => {
+    const empty = new MockSettings();
+    const api = hubIn('DE');
+    start(empty, () => readHubMarket(api.get));
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(empty.get(CAPACITY_ENABLED)).toBe(false);
+  });
+
+  it('keeps a switch the owner set while the store still lists no keys', async () => {
+    const settings = settingsWith({ [CAPACITY_ENABLED]: true });
+    vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    const api = hubIn('DE');
+    start(settings, () => readHubMarket(api.get));
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(settings.get(CAPACITY_ENABLED)).toBe(true);
   });
 
   it.each(['NO', 'BE'])('leaves the built-in default on for a hub in %s', async (country) => {
