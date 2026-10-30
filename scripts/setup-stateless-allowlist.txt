@@ -1,0 +1,29 @@
+# setup/ files that still hold state the stateless guard can see, with a BUDGET
+# of how many stateful declarations each has (scripts/check-setup-stateless.mjs,
+# setup/AGENTS.md § "No state"). Every entry today is a check-4 closure
+# variable: a function-local `let` that a callback reassigns after the wiring
+# function returned. Each belongs with its lib/ owner, built by setup.
+#
+# Format: "<path> <count>". The count may only SHRINK: a count that goes up
+# fails, and a count left stale after a migration fails too. When the last
+# line goes, delete this file.
+
+# Log-dedupe latch on the PV forecast source selection (lastLoggedSourceId).
+setup/appInit/createPvForecastSourceSelector.ts 1
+# Watermark-write throttle for the smart-task lifecycle (lastWatermarkPersistMs).
+setup/appInit/deferredObjectiveLifecycle.ts 1
+# Load-unavailable log latch on the plan-history store (loadUnavailable).
+setup/appInit/deferredRecorders.ts 1
+# Per-hour forecast potential memo for the curtailment estimator (potentialMemo).
+setup/appInit/wireCurtailmentSurplus.ts 1
+# Main-ownership recovery loop: stopped, inFlight, inFlightOwnershipGeneration,
+# retryAttempt, retryRequestRevision. Plus mainReconcileAborted, which is
+# per-call (an onAbort callback during one awaited rebuild) and dies with the
+# call; the guard cannot tell it from retained state syntactically.
+setup/appInit/wireHomeMembership.ts 6
+# Last fired hour of the lowest-price trigger checker (lastTriggeredHourKey).
+setup/appPriceLowestTrigger.ts 1
+# Persistence-retry timer handle for target-power reachability (persistenceTimer).
+setup/appTargetPowerReachabilityWiring.ts 1
+# Last-good external-off opt-in map (lastGoodOptIn).
+setup/externalOffHoldAdapter.ts 1
