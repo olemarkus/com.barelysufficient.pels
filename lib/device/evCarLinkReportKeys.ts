@@ -1,6 +1,7 @@
 import { EV_CAR_LINK_AWAY_VERDICT_MS, type EvLinkAmbiguity, type EvLinkEdge } from './evCarLink';
 import type { EvCarLinkChargerView } from './evCarLinkChargerView';
 import type { EvCarLinkEvent } from './evCarLinkEvents';
+import { holdsCar } from './evCarLinkProvisional';
 
 /** Bound on the one-shot report-dedupe ring (see `EvCarLinkReportKeys.claim`). */
 const MAX_REPORTED_KEYS = 200;
@@ -37,17 +38,22 @@ export class EvCarLinkReportKeys {
     /**
      * A car edge older than the coincidence window that never paired means the
      * car connected somewhere other than a PELS-known charger. Reported once per
-     * edge; it carries NO vote in either direction.
+     * edge; it carries NO vote in either direction. Not for a car a charger here
+     * holds: a car confirmed on a charger whose own plug-in report came after
+     * the window is at that charger, not elsewhere. Its key is still claimed, so
+     * the edge is not called an away session once that link ends.
      */
     reportSessionsElsewhere(
         unmatched: readonly EvLinkEdge[], nowMs: number,
         carName: (carId: string) => string, emit: (event: EvCarLinkEvent) => void,
+        /** The chargers' current links, by charger id. */
+        links: ReadonlyMap<string, { carId: string }>,
     ): void {
         for (const edge of unmatched) {
             if (edge.kind !== 'connect') continue;
             if (nowMs - edge.atMs <= EV_CAR_LINK_AWAY_VERDICT_MS) continue;
             const key = `elsewhere|${edge.deviceId}|${edge.atMs}`;
-            if (!this.claim(key)) continue;
+            if (!this.claim(key) || holdsCar(links, edge.deviceId)) continue;
             emit({
                 component: 'devices',
                 event: 'ev_car_session_elsewhere',

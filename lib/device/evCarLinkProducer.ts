@@ -237,8 +237,7 @@ export class EvCarLinkProducer {
      */
     noteDeviceUpdate(device: HomeyDeviceLike, nowMs: number): void {
         this.ingestCar(device, nowMs);
-        if (!this.cars.needsCorrelation()) return;
-        this.correlate(nowMs);
+        if (this.cars.needsCorrelation()) this.correlate(nowMs);
     }
 
     /**
@@ -248,8 +247,7 @@ export class EvCarLinkProducer {
      * gone. Advancing the clock is not that evidence.
      */
     tick(nowMs: number): void {
-        if (!this.cars.needsCorrelation()) return;
-        this.correlate(nowMs);
+        if (this.cars.needsCorrelation()) this.correlate(nowMs);
     }
 
     /**
@@ -409,10 +407,14 @@ export class EvCarLinkProducer {
     private correlate(nowMs: number): void {
         const chargers = this.deps.getChargers();
         this.ingestChargerEdges(chargers, nowMs);
-        // Keep observing charger disconnects while every car is in an outage so
-        // they can disprove a preserved session, but retain no correlation edge
-        // that could later be matched against data from after the outage.
-        if (this.cars.observed.size === 0) { this.edges.carEdges = []; this.edges.chargerEdges = []; return; }
+        // Keep observing charger edges while every car is in an outage: a
+        // disconnect can disprove a preserved session, and a plug-in must still
+        // be decided once a car is back, as it is when only some cars are out.
+        // A car back from an outage brings no plug edge, so only its later,
+        // genuine transitions can pair with that plug-in, and past matches stay
+        // held to the window (`resolvePastMatchRefusal`). Dropping the plug-in
+        // here left a one-car home with no link and no timeout to explain it.
+        if (this.cars.observed.size === 0) { this.edges.carEdges = []; return; }
 
         // Hand the matcher EVERY retained charger edge: it needs the unsettled
         // ones to judge contention, and settles the decision itself.
@@ -435,7 +437,8 @@ export class EvCarLinkProducer {
         // at least one matched pass at every age up to retention — there is no
         // separate "about to expire" sweep, and adding one would report
         // successfully-linked edges as away sessions once they aged out.
-        this.reportKeys.reportSessionsElsewhere(match.unmatchedCarEdges, nowMs, this.carName, this.deps.emit);
+        this.reportKeys.reportSessionsElsewhere(
+            match.unmatchedCarEdges, nowMs, this.carName, this.deps.emit, this.activeLinks);
         this.edges.carEdges = pruneExpiredEvLinkEdges(this.edges.carEdges, nowMs, EDGE_RETENTION_MS);
         this.edges.chargerEdges = pruneExpiredEvLinkEdges(this.edges.chargerEdges, nowMs, EDGE_RETENTION_MS);
 

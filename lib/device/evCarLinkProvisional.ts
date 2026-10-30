@@ -78,6 +78,11 @@ export const findOtherLinksTo = (
     otherChargerId !== chargerId && link.carId === carId ? [otherChargerId] : []
 ));
 
+/** Whether a charger holds `carId` now: confirmed, linked, resumed or provisional. */
+export const holdsCar = (activeLinks: ReadonlyMap<string, { carId: string }>, carId: string): boolean => (
+    [...activeLinks.values()].some((link) => link.carId === carId)
+);
+
 /** Chargers whose provisional link no longer matches a current pairing for that charger, car and plug-in. */
 export const findUnsupportedProvisionalLinks = (
     activeLinks: ReadonlyMap<string, Link>,
