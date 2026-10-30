@@ -1,36 +1,32 @@
 import { handleWidgetClientLog, type WidgetClientLogContext } from '../../_shared/widgetClientLogApi';
 import {
-  buildValidSmartTaskCandidate,
   formatDeadlineLocalTime,
-  mapSmartTaskAppReason,
-  parseSmartTaskCandidateRequest,
   parseSmartTaskQuickTargetsRequest,
-  resolveSmartTaskRequestDeadline,
-  resolveSmartTaskWriteDeadline,
 } from '../../../lib/objectives/deferredObjectives';
+import { rejectForSmartTaskHomeScope } from '../../../lib/objectives/deferredObjectives/smartTaskCreateLane';
+import {
+  createWidgetSmartTask,
+  previewWidgetSmartTask,
+} from '../../../lib/objectives/deferredObjectives/smartTaskWidgetCreateLane';
 import type {
   DeferredObjectivePlanPreviewEstimate,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import type { CreateSmartTaskHostApi } from '../../../packages/contracts/src/widgetHostApi';
-import {
-  formatScheduledHoursWindow,
-  formatSmartTaskDeadlineLong,
-} from '../../../packages/shared-domain/src/smartTaskDeadlineFormat';
+import { formatSmartTaskDeadlineLong } from '../../../packages/shared-domain/src/smartTaskDeadlineFormat';
 import { buildCreateSmartTaskDevicesPayload } from './createSmartTaskWidgetPayload';
 import type {
   CreateSmartTaskQuickTargetsResponse,
   CreateSmartTaskCreateResponse,
   CreateSmartTaskDevicesPayload,
   CreateSmartTaskPreviewResponse,
-  CreateSmartTaskRejectReason,
 } from './createSmartTaskWidgetTypes';
 
-// The widget API runs in the app process. The candidate parsing, the
-// server-side "Ready by" (HH:mm local) → absolute `deadlineAtMs` conversion
-// (DST-aware, against the Homey timezone), and the candidate validation are the
-// shared smart-task request helpers (`lib/objectives/deferredObjectives/
-// smartTaskCandidateRequest.ts`) — the same lane the settings-UI edit endpoints
-// use. The app methods it forwards to (`previewDeferredObjectivePlan`,
+// The widget API runs in the app process. Preview and create are decided in
+// `lib/objectives/deferredObjectives/smartTaskWidgetCreateLane.ts`: the
+// candidate parsing, the server-side "Ready by" (HH:mm local) → absolute
+// `deadlineAtMs` conversion (DST-aware, against the Homey timezone), and the
+// candidate validation. This file binds the app and the clock and forwards. The
+// app methods the lane calls (`previewDeferredObjectivePlan`,
 // `createDeferredObjective`) are the single source of truth for projection and
 // persistence.
 
@@ -48,24 +44,10 @@ const readTimeZone = (homey: WidgetApiContext['homey']): string => {
   return typeof tz === 'string' && tz.length > 0 ? tz : 'UTC';
 };
 
-const previewReject = (reason: CreateSmartTaskRejectReason): CreateSmartTaskPreviewResponse => ({
-  ok: false,
-  reason,
+// The lane's clock: the Homey timezone, resolved when the lane reads it.
+const laneClock = (homey: WidgetApiContext['homey']): { getTimezone(): string } => ({
+  getTimezone: () => readTimeZone(homey),
 });
-
-const createReject = (reason: CreateSmartTaskRejectReason): CreateSmartTaskCreateResponse => ({
-  ok: false,
-  reason,
-});
-
-const rejectForHomeScope = (
-  scope: ReturnType<CreateSmartTaskHostApi['resolveSmartTaskHomeScope']>,
-): 'device_in_sub_home' | 'device_not_planned' | 'unavailable' | null => {
-  if (scope === 'sub_home') return 'device_in_sub_home';
-  if (scope === 'source_device') return 'device_not_planned';
-  if (scope === 'unavailable') return 'unavailable';
-  return null;
-};
 
 export const getCreateSmartTaskDevices = async (
   { homey }: WidgetApiContext,
@@ -81,37 +63,14 @@ export const getCreateSmartTaskDevices = async (
 export const previewCreateSmartTask = async (
   { homey, body }: WidgetApiContext & WidgetApiBody,
 ): Promise<CreateSmartTaskPreviewResponse> => {
-  const request = parseSmartTaskCandidateRequest(body);
-  if (!request) return previewReject('invalid_request');
-  // Call the app method on `homey.app` (not via an extracted const): the method
-  // relies on its `this` (`this.latestTargetSnapshot`, `this.getUiPickerDevices()`,
+  // Hand the lane `homey.app` itself (never a detached method): the methods
+  // rely on their `this` (`this.latestTargetSnapshot`, `this.getUiPickerDevices()`,
   // …), so a detached reference would throw a runtime TypeError.
-  if (typeof homey.app?.previewDeferredObjectivePlan !== 'function') return previewReject('unavailable');
-  if (typeof homey.app.resolveSmartTaskHomeScope !== 'function') return previewReject('unavailable');
-  const scopeReject = rejectForHomeScope(homey.app.resolveSmartTaskHomeScope(request.deviceId));
-  if (scopeReject !== null) return previewReject(scopeReject);
-
-  const timeZone = readTimeZone(homey);
-  const nowMs = Date.now();
-  const deadlineAtMs = resolveSmartTaskRequestDeadline(request, timeZone, nowMs);
-  if (deadlineAtMs === null) return previewReject('invalid_ready_by');
-
-  const devices = homey.app.getCreateSmartTaskCandidateDevices();
-  if (devices.state === 'unavailable') return previewReject('unavailable');
-  const device = devices.devices.find((entry) => entry.id === request.deviceId);
-  if (!device) return previewReject('invalid_candidate');
-  const candidate = buildValidSmartTaskCandidate(request, deadlineAtMs, device.rescue, 'always');
-  if (!candidate) return previewReject('invalid_candidate');
-  const estimate = homey.app.previewDeferredObjectivePlan(request.deviceId, candidate);
-  return {
-    ok: true,
-    deadlineAtMs,
-    deadlineLabel: formatSmartTaskDeadlineLong(deadlineAtMs, nowMs, timeZone),
-    // Format the scheduled-hours window server-side in the Homey timezone so it
-    // agrees with deadlineLabel; the widget displays it verbatim (no client TZ math).
-    scheduledWindowLabel: formatScheduledHoursWindow(estimate.scheduledHours, timeZone),
-    estimate,
-  };
+  const host = typeof homey.app?.previewDeferredObjectivePlan === 'function'
+    && typeof homey.app.resolveSmartTaskHomeScope === 'function'
+    ? homey.app
+    : null;
+  return previewWidgetSmartTask({ host, clock: laneClock(homey) }, body);
 };
 
 // The quick-target boxes for one device. The body is `{ deviceId, kind }`, the
@@ -127,7 +86,7 @@ export const getCreateSmartTaskQuickTargets = async (
     return { state: 'rejected', reason: 'unavailable' };
   }
   if (typeof homey.app.resolveSmartTaskHomeScope !== 'function') return { state: 'rejected', reason: 'unavailable' };
-  const scopeReject = rejectForHomeScope(homey.app.resolveSmartTaskHomeScope(deviceId));
+  const scopeReject = rejectForSmartTaskHomeScope(homey.app.resolveSmartTaskHomeScope(deviceId));
   if (scopeReject !== null) return { state: 'rejected', reason: scopeReject };
   const read = homey.app.previewSmartTaskQuickTargets(deviceId, request.kind);
   if (read.state === 'unavailable') return read;
@@ -157,33 +116,12 @@ const withoutPriceSeries = (
 export const createCreateSmartTask = async (
   { homey, body }: WidgetApiContext & WidgetApiBody,
 ): Promise<CreateSmartTaskCreateResponse> => {
-  const request = parseSmartTaskCandidateRequest(body);
-  if (!request) return createReject('invalid_request');
-  // Call on `homey.app` directly to preserve `this` — `createDeferredObjective`
-  // reads `this.latestTargetSnapshot` / `this.homey.settings`, so a detached
-  // reference would throw a runtime TypeError.
-  if (typeof homey.app?.createDeferredObjective !== 'function') return createReject('unavailable');
-  if (typeof homey.app.resolveSmartTaskHomeScope !== 'function') return createReject('unavailable');
-  // Re-check scope on the create request, not only during preview: the device
-  // may have moved or global ownership may have become provisional while the
-  // user was composing the task.
-  const scopeReject = rejectForHomeScope(homey.app.resolveSmartTaskHomeScope(request.deviceId));
-  if (scopeReject !== null) return createReject(scopeReject);
-
-  const timeZone = readTimeZone(homey);
-  const nowMs = Date.now();
-  const deadline = resolveSmartTaskWriteDeadline(request, timeZone, nowMs);
-  if (!deadline.ok) return createReject(deadline.reason);
-
-  const devices = homey.app.getCreateSmartTaskCandidateDevices();
-  if (devices.state === 'unavailable') return createReject('unavailable');
-  const device = devices.devices.find((entry) => entry.id === request.deviceId);
-  if (!device) return createReject('invalid_candidate');
-  const candidate = buildValidSmartTaskCandidate(request, deadline.deadlineAtMs, device.rescue, 'always');
-  if (!candidate) return createReject('invalid_candidate');
-  const result = homey.app.createDeferredObjective(request.deviceId, candidate, 'replace');
-  if (result.ok) return { ok: true };
-  return createReject(mapSmartTaskAppReason(result.reason));
+  // `homey.app` itself, for the same `this` reason as the preview.
+  const host = typeof homey.app?.createDeferredObjective === 'function'
+    && typeof homey.app.resolveSmartTaskHomeScope === 'function'
+    ? homey.app
+    : null;
+  return createWidgetSmartTask({ host, clock: laneClock(homey) }, body);
 };
 
 export const logClientError = (context: WidgetClientLogContext): { ok: boolean } => (

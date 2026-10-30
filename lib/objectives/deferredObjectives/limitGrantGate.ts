@@ -22,7 +22,7 @@ const emitSmartTaskDebug = getDebugEmitter('smart-task-api', 'deferred_objective
  * was read, and whether an absence can be trusted (a transient-empty key list
  * cannot be told from a device with no task).
  */
-type StoredObjectiveState = {
+export type StoredObjectiveState = {
   entry: DeferredObjectiveSettingsEntry | undefined;
   absenceTrustworthy: boolean;
 };
@@ -30,7 +30,7 @@ type StoredObjectiveState = {
 // Exactly what the gate reads: the identity it logs, the control model and the
 // stepped ladder. Any device carrier passes, planner input included, without
 // claiming inventory metadata it does not have.
-type GateDevice = Pick<ObservedDeviceState, 'id' | 'name'>
+export type GateDevice = Pick<ObservedDeviceState, 'id' | 'name'>
   & { controlModel?: DeviceControlModel }
   & SteppedLoadDescriptorProbe;
 
