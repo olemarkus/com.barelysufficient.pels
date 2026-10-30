@@ -124,6 +124,7 @@ const diagnosticFor = (
   rateConfidence: 'high',
   displayConfidence: 'high',
   kwhPerUnitSource: 'learned',
+  evRateRung: null,
   kwhPerUnitAcceptedSamples: 0,
   kwhPerUnitLastAcceptedAtMs: null,
   planningSpeedKw: null,

@@ -166,6 +166,7 @@ const diagnosticFor = (plan: DeferredObjectiveHorizonPlan, energyNeededKWh: numb
   rateConfidence: 'high',
   displayConfidence: 'high',
   kwhPerUnitSource: 'learned',
+  evRateRung: null,
   kwhPerUnitAcceptedSamples: 0,
   kwhPerUnitLastAcceptedAtMs: null,
   planningSpeedKw: null,

@@ -153,7 +153,9 @@ describe('per-car objective profiles', () => {
         fromMs: startMs + 10 * hourMs,
       });
 
-      expect(resolveRate(state, 'garage', 'car-a').kWhPerUnit).toBeCloseTo(0.6, 6);
+      const result = resolveRate(state, 'garage', 'car-a');
+      expect(result.kWhPerUnit).toBeCloseTo(0.6, 6);
+      expect(result.evRateRung).toBe('car_on_charger');
     });
 
     it('stays on the charger rate while the car rate rests on fewer windows', () => {
@@ -166,7 +168,9 @@ describe('per-car objective profiles', () => {
         fromMs: startMs + 10 * hourMs,
       });
 
-      expect(resolveRate(state, 'garage', 'car-a').kWhPerUnit).toBeCloseTo(0.9, 6);
+      const result = resolveRate(state, 'garage', 'car-a');
+      expect(result.kWhPerUnit).toBeCloseTo(0.9, 6);
+      expect(result.evRateRung).toBe('charger');
     });
 
     it('uses a thin car rate over the bootstrap when nothing else has learned', () => {
@@ -188,7 +192,9 @@ describe('per-car objective profiles', () => {
 
       // Pooled across garage (0.6) and work (0.8), ahead of the cabin
       // charger's own 0.9.
-      expect(resolveRate(state, 'cabin', 'car-a').kWhPerUnit).toBeCloseTo(0.7, 6);
+      const result = resolveRate(state, 'cabin', 'car-a');
+      expect(result.kWhPerUnit).toBeCloseTo(0.7, 6);
+      expect(result.evRateRung).toBe('car_any_charger');
     });
 
     it('falls back to the charger rate when the car is not known', () => {
@@ -204,6 +210,7 @@ describe('per-car objective profiles', () => {
       const result = resolveRate({}, 'garage', 'car-a');
 
       expect(result.kwhPerUnitSource).toBe('bootstrap');
+      expect(result.evRateRung).toBe('bootstrap');
       expect(result.kWhPerUnit).toBe(BOOTSTRAP_EV_SOC_KWH_PER_PERCENT);
     });
 
@@ -283,5 +290,14 @@ describe('per-car objective profiles', () => {
       expect(Object.keys(state.carObjectiveProfiles ?? {})).toHaveLength(CAR_OBJECTIVE_PROFILE_MAX_CARS);
       expect(state.carObjectiveProfiles?.[`car-${CAR_OBJECTIVE_PROFILE_MAX_CARS + 2}`]).toBeDefined();
     });
+  });
+
+  it('names no rung for a task that is not an EV battery task', () => {
+    const state = chargeHourly({}, { deviceId: 'garage', powerKw: 9, windows: 2, fromMs: startMs });
+    const result = resolveProfileEnergy(
+      state, { deviceId: 'garage', carId: null }, 'temperature', 'soft', 10, 'increasing', 40,
+    );
+
+    expect(result.evRateRung).toBeNull();
   });
 });

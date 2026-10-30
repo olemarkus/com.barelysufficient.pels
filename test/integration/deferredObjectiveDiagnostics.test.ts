@@ -2782,6 +2782,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       energyNeededKWh: 2,
       kWhPerUnitBanded: 1,
       kwhPerUnitSource: 'bootstrap',
+      evRateRung: 'bootstrap',
       rateConfidence: null,
     });
   });
@@ -2795,6 +2796,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(diagnostic).toMatchObject({
       kWhPerUnitBanded: 0.2,
       kwhPerUnitSource: 'learned',
+      // The level arrived on the charger device, so no car is known.
+      evRateRung: 'charger',
       rateConfidence: 'medium',
     });
   });
@@ -2816,6 +2819,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // Mean-based estimate present so the margin is derivable from the payload.
     expect(payload).toHaveProperty('energyExpectedKWh', diagnostic.energyExpectedKWh ?? null);
     expect(typeof payload.energyExpectedKWh === 'number' || payload.energyExpectedKWh === null).toBe(true);
+    // Which profile-ladder rung sized the EV rate, beside `kWhPerPercent`.
+    expect(payload).toHaveProperty('evRateRung', 'charger');
   });
 
   it('surfaces rescue-permission mode and applied flags in the debug payload', () => {

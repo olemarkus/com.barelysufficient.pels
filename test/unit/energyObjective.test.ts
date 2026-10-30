@@ -103,6 +103,7 @@ describe('energy task rate', () => {
       rateConfidence: null,
       displayConfidence: 'high',
       kwhPerUnitSource: 'exact',
+      evRateRung: null,
       reasonCode: null,
     });
   });
