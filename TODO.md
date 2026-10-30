@@ -74,17 +74,20 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       `resolveBlockedStatusLine` (`lib/plan/planSteppedCardText.ts`) speaks only when the target step is
       above the current one, so a water heater stepped Max→Low read `Limited · Low` for one cycle, then
       `Running 1.3 kW` with no line while the house sat at its safe pace, and the hero left it out.
-      What changes: a presentation-only stamp resolved from the final plan each cycle, beside
-      `steppedFairnessHold` (`lib/plan/planSteppedFairnessHold.ts`): a running stepped device with
-      command authority and standing demand, planned `keep` below its top step under a power or timer
-      hold, reads held (`Limited · Low`, `Waiting to increase`) until a step-up is admitted, it reaches
-      the top step or demand ends. No actuation, fairness count, restore admission or starvation change.
-      Needs an owner ruling first, because it reverses the 2026-10-27 activity-log rule that a running
-      device waiting to step up is "left on" and logs no row (`lib/plan/deviceOverviewLog.ts`
-      `buildLoggedReasonShape`). The ruling also covers whether a device PELS never lowered (left at
-      Medium by its owner) reads `Limited · Medium` when there is no room, and whether the stepped
-      fairness hold reads Limited too. Done when the ruled device reads `Limited · Low — Waiting to
-      increase` until it climbs back, and the hero counts it. [P1]
+      What changes (owner, 2026-10-30: for the next release; skip short-lived transitional copy): a
+      presentation-only stamp resolved from the final plan each cycle, beside `steppedFairnessHold`
+      (`lib/plan/planSteppedFairnessHold.ts`). It covers only the lasting case: a running stepped
+      device PELS stepped down, with command authority and standing demand, planned `keep` below its
+      top step with reason `keep` or `insufficientHeadroom` once the restore countdowns are over. That
+      device reads held (`Limited · Low`, `Waiting to increase`) until a step-up is admitted, it reaches
+      the top step or demand ends. Out of scope: the one-cycle flip after the cut and the cooldown and
+      queue countdown phases (transitional, they keep their lines), a device left at a lower step by its
+      owner, and the stepped fairness hold (it has its own line). The activity log keeps the 2026-10-27
+      rule: a device waiting to step up logs no row (`lib/plan/deviceOverviewLog.ts`
+      `buildLoggedReasonShape` treats the stamp like `left_on`). No actuation, fairness count, restore
+      admission or starvation change. Done when a water heater PELS stepped to Low reads `Limited · Low
+      — Waiting to increase` while the house has no room for the next step, the hero counts it, and its
+      activity log gains no row. [P1]
 
 ## Smart tasks
 
