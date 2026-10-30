@@ -225,7 +225,7 @@ describe('device detail solar-surplus tracking gating', () => {
       actionLabel: 'Set up solar control',
       focus: 'control-model',
     });
-    expect(action?.hint).toContain('EV 1-phase or EV 3-phase');
+    expect(action?.hint).toContain('“EV 1-phase” or “EV 3-phase”');
     expect(action?.hint).toContain('Control model');
 
     const controlRow = document.querySelector<HTMLElement>('#device-detail-control-model-row')!;
@@ -344,7 +344,7 @@ describe('device detail solar-surplus tracking gating', () => {
     expect(resolveSolarSetupAction(device)).toMatchObject({
       label: 'Use solar surplus',
       actionLabel: 'Set up solar control',
-      hint: 'Choose Return to mode target under When the temperature changes outside PELS.',
+      hint: 'Choose “Return to mode target” under “When the temperature changes outside PELS”.',
       focus: 'temperature-policy',
     });
   });

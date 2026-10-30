@@ -232,6 +232,16 @@ export const computeEnergyBarScaleKWh = (
 // shape ("Doing X — because Y"). Reading order is the action first, then the
 // constraint that motivates it.
 
+/**
+ * What PELS does for the Main home besides holding a limit, which the no-limit
+ * sentence names (`countMainHomeJobs`). `uncounted` while the device list,
+ * home membership or Respond to prices is still being read or could not be:
+ * the sentence then names no jobs rather than claim none.
+ */
+export type MainHomeJobs =
+  | { state: 'counted'; priceFollowingCount: number; smartTaskDeviceCount: number }
+  | { state: 'uncounted' };
+
 export type DecisionSentenceInput = {
   // Devices the plan carries, which are exactly the devices PELS manages (the
   // planner admits only managed devices). With none, the on-track rung must not
@@ -249,16 +259,13 @@ export type DecisionSentenceInput = {
   // Measured import is above the grid import limit's working target. Unlike the
   // hard cap this IS an instantaneous limit, so the live reading is the trigger.
   gridImportHigh: boolean;
+  // `null` when no limit is in force (no grid import limit, Capacity limit or
+  // budget pace): the snapshot parser accepts a safe pace only with its source.
+  // Then no hour is quiet against a limit, and the on-track rung says instead
+  // what PELS does for the home, from `jobs`.
   safePaceKw: number | null;
   capacityPeriodMinutes: CapacityPeriodMinutes;
-  // No limit is in force (no grid import limit, Capacity limit or budget pace),
-  // so no hour is quiet against one: the on-track rung says instead what PELS
-  // does for the home, from the two counts below. Absent reads as `false`.
-  limitsOff?: boolean;
-  // Managed devices whose Price-based control is on, while PELS responds to prices.
-  priceFollowingCount?: number;
-  // Managed devices with an open Smart task.
-  smartTaskDeviceCount?: number;
+  jobs: MainHomeJobs;
   // Subset of `limitedCount` whose hold is attributed to a smart task waiting
   // for cheaper hours (reason code `deferredObjectiveAvoid`). When the whole
   // limited set falls into this bucket, the decision sentence frames the
@@ -555,13 +562,15 @@ export const buildDecisionSentence = (
   // 9. On track. With no limit in force there is no hour to keep quiet: the
   // sentence names what PELS does for the home. It states facts and never
   // nudges; Setup & recommendations is where PELS offers more.
-  if (input.limitsOff === true) return resolveNoLimitSentence(input);
+  if (input.safePaceKw === null) return resolveNoLimitSentence(input.jobs);
   return { text: 'Quiet hour. Nothing to do.', positive: true };
 };
 
-const resolveNoLimitSentence = (input: DecisionSentenceInput): { text: string; positive: boolean } => {
-  const prices = input.priceFollowingCount ?? 0;
-  const tasks = input.smartTaskDeviceCount ?? 0;
+const resolveNoLimitSentence = (counts: MainHomeJobs): { text: string; positive: boolean } => {
+  // Uncounted names no jobs rather than claim none.
+  if (counts.state === 'uncounted') return { text: 'No limit to hold.', positive: false };
+  const prices = counts.priceFollowingCount;
+  const tasks = counts.smartTaskDeviceCount;
   const jobs = [
     prices > 0 ? `${formatDevices(prices)} ${prices === 1 ? 'follows' : 'follow'} prices` : null,
     tasks > 0 ? `${formatDevices(tasks)} ${tasks === 1 ? 'has a smart task' : 'have smart tasks'}` : null,

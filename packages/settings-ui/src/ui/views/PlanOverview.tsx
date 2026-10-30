@@ -50,7 +50,6 @@ type OverviewProps = {
   // `complete`; Main remains `loading` until every required fact arrives.
   // Resolved in the orchestrator so this view stays props-in.
   setupPath: SetupPathRead;
-  // Whether the home has solar at all, so the setup card offers solar setup.
   context: HeroContext;
   nowMs: number;
 };

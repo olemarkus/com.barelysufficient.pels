@@ -10,6 +10,16 @@ import { dispatchOpenSmartTaskCreateFromSetup } from './smartTaskCreate.ts';
 import { showToastError } from './toast.ts';
 import { SetupGoalPicker } from './views/SetupJourney.tsx';
 
+/**
+ * A Smart task saved from this page keeps the price source as Price-based
+ * control does, as a tracked setup save so Continue waits for it and a failure
+ * is shown.
+ */
+export const keepPriceSourceForSetupTask = (): void => {
+  void trackSetupSave('price-source', keepAssumedPriceSource)
+    .catch((error) => showToastError(error, 'Failed to save the price source.'));
+};
+
 /** `Choose what PELS does`, drawn where the device list goes; `rerender` repaints it after a save. */
 export const renderSetupGoals = (target: HTMLElement, rerender: () => void): void => {
   if (!target.querySelector('.setup-journey__devices')) target.replaceChildren();

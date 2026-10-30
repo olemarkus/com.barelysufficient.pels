@@ -1,6 +1,7 @@
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { supportsSmartTaskKind } from '../../../shared-domain/src/smartTaskDeviceKind.ts';
 import { supportsTemperatureControlDevice, type SettingsUiDeviceListItem } from './deviceUtils.ts';
+import type { MainHomeJobs } from './planHeroSummary.ts';
 import { readHomeMembership } from './homeScope.ts';
 import { readSetupRespondsToPrices } from './setupPathFacts.ts';
 import { hasOpenSmartTask, state } from './state.ts';
@@ -23,11 +24,11 @@ export const readMainHomeManagedDevices = (): MainHomeManagedDevices => {
 
 /**
  * Whether the device's Price-based control acts: it is on, the device has a
- * temperature target, and PELS responds to prices. A Respond to prices still
- * being read does not hold it back.
+ * temperature target, and PELS responds to prices. Nothing is claimed while
+ * Respond to prices is still being read.
  */
 export const followsPrices = (device: SettingsUiDeviceListItem): boolean => (
-  readSetupRespondsToPrices() !== false
+  readSetupRespondsToPrices() === true
   && supportsTemperatureControlDevice(device)
   && state.priceOptimizationSettings[device.id]?.enabled === true
 );
@@ -37,13 +38,11 @@ export const isSmartTaskCapable = (device: SettingsUiDeviceListItem): boolean =>
   supportsTemperatureControlDevice(device) || device.isEvCharger || supportsSmartTaskKind(device, 'energy')
 );
 
-/** What PELS does for the Main home besides holding a limit, as the Overview states it. */
-export type MainHomeJobCounts = { priceFollowingCount: number; smartTaskDeviceCount: number };
-
-export const countMainHomeJobs = (nowMs: number): MainHomeJobCounts => {
+export const countMainHomeJobs = (nowMs: number): MainHomeJobs => {
   const managed = readMainHomeManagedDevices();
-  if (managed.state !== 'ready') return { priceFollowingCount: 0, smartTaskDeviceCount: 0 };
+  if (managed.state !== 'ready' || readSetupRespondsToPrices() === null) return { state: 'uncounted' };
   return {
+    state: 'counted',
     priceFollowingCount: managed.devices.filter(followsPrices).length,
     smartTaskDeviceCount: managed.devices.filter((device) => hasOpenSmartTask(device.id, nowMs)).length,
   };

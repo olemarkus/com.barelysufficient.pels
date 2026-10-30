@@ -10,7 +10,6 @@ export type SetupRecommendationsViewProps = {
   dismissed: readonly SetupRecommendation[];
   // The first-run setup state: loading, complete, or the open path to render.
   setupPath: SetupPathRead;
-  // Whether the home has solar at all, so the page offers solar setup.
   readiness: 'loading' | 'partial' | 'resolved';
   dismissalStatus: 'loading' | 'unavailable' | 'available';
   retryAvailable: boolean;
