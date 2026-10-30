@@ -266,8 +266,7 @@ const renderFlowNote = (device: SettingsUiDeviceDetailItem, ticked: readonly str
   if (!matched) {
     deviceDetailCarFlowNote.textContent = 'Until a car is matched, this charger has no battery level. '
       + 'Confirm which selected car is connected to use its battery level for this connection. '
-      + "While a car is selected, PELS ignores both the Flow card that reports the level "
-      + "and the charger's own reading. "
+      + 'While a car is selected, PELS ignores the Flow card that reports the level. '
       + 'A smart task for an amount of energy needs no battery level.';
     return;
   }

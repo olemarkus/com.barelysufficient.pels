@@ -99,9 +99,10 @@ export const supportsSmartTaskKind = (
  * for `device` right now. The default goal, except for a plugged-in charger with
  * no battery level: a battery target cannot be planned without the level, and a
  * car app that never reports one (Kia's cloud skipping the plug-in report) left
- * that task waiting all night. An amount of energy plans from the charger's own
- * power instead. Unplugged, the battery target stays: a task made then waits for
- * the car. Flow cards name their goal and do not ask this.
+ * that task waiting all night. An amount of energy plans from the charger's
+ * measured power instead; the charger itself never knows the car's level.
+ * Unplugged, the battery target stays: a task made then waits for the car.
+ * Flow cards name their goal and do not ask this.
  */
 export const resolveSmartTaskCreationKind = (
   device: SmartTaskDeviceLike & MeasuredPowerObservedProbe & EvObservedProbe,

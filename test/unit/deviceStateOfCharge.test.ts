@@ -60,7 +60,7 @@ describe('resolveStateOfChargeSnapshot', () => {
     },
     {},
     // Only the retained session matters here: with no car ticked, the level is
-    // the charger's own reading.
+    // the one reported on the charger device.
     params.retainedSession === undefined
       ? undefined
       : stateOfChargeFixture({ percent: 34, observedAtMs: SOC_AT, ...params.retainedSession }),

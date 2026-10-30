@@ -1,7 +1,9 @@
 /**
  * SDK-boundary e2e for a charger's target battery level ("charge to N%").
  *
- * Every input crosses the Homey boundary: the charger's own `measure_battery`,
+ * Every input crosses the Homey boundary: the charger device's `measure_battery`
+ * (the car's level, as a Tesla-as-charger or a car-cloud-relaying integration
+ * reports it),
  * its plug state, the whole-home meter reading (which is what rebuilds the
  * plan), the settings key, prices and the smart task. Every assertion reads
  * what PELS wrote back to the charger, plus the published plan's reason. No
@@ -31,7 +33,7 @@ const CHARGER_ID = 'target-charger';
 const START_MS = Date.UTC(2026, 0, 1, 17, 5);
 
 type ChargerSetup = {
-  /** The charger's own battery level, or none: a charger that has not reported one. */
+  /** The battery level on the charger device, or none: a charger that has not reported one. */
   levelPercent: number | null;
   chargeBeforeLevelKnown: boolean;
   /** A current-controlled charger, whose lowest step still charges. */

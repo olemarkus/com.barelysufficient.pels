@@ -116,7 +116,7 @@ After those 20 minutes the charger's card says **Could not identify the connecte
 car**; use **Confirm connected car** in the charger's **Car** section to match it by
 hand.
 
-While any car is selected, PELS ignores both the battery-reporting Flow and the charger's own reading, even before a match is available. They do not provide fallback readings. Clear the car selection to return to those sources.
+While any car is selected, PELS ignores the battery-reporting Flow, even before a match is available. It does not provide a fallback reading. Clear the car selection to return to the Flow.
 **Setup & recommendations** flags an enabled **Report battery level for charger** action for a charger with a selected car, so the ignored action can be removed or its Flow disabled when it is no longer needed. If no selected car has been matched to that charger yet, it instead suggests clearing the car selection so the Flow keeps working until the car shows as matched.
 
 Use this Flow shape for boost mode:
@@ -160,7 +160,7 @@ Start with **Simulation mode** if you are still tuning the rest of PELS. Then ve
 | The charger is not listed in PELS | Confirm the charger is paired in Homey and choose **Refresh devices** under **Settings → Devices**. |
 | The Flow does not trigger | For a Flow-controlled charger, including an Easee setup you chose to keep, confirm it is managed, power-limit control is enabled, and PELS has live whole-home power data. A new Easee setup, or a Zaptec, Futurehome or Tesla, can use built-in control instead. |
 | The charger receives the wrong current | Check that the device uses the correct **EV 1-phase** or **EV 3-phase** control mode. |
-| Battery level does not update in PELS | If a car is selected, check whether PELS has matched it to the charger and whether that car is available in Homey. Otherwise, check the charger's own reading or that your battery-reporting Flow selects the correct charger. |
+| Battery level does not update in PELS | If a car is selected, check whether PELS has matched it to the charger and whether that car is available in Homey. Otherwise, check that your battery-reporting Flow selects the correct charger. |
 | PELS never limits the charger | Check the charger priority, your limits in **Limits & safety**, and whether Simulation mode is still enabled. |
 
 For problems beyond the charger — budget, capacity, or a missed task — see the full [Troubleshooting guide](/troubleshooting).

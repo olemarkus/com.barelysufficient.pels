@@ -263,7 +263,7 @@ export type DeviceStateOfChargeSnapshot = {
              * The charge the associated car stops at on its own, once its stops
              * qualify one (`resolveEvCarChargeLimit`). Present only on a level the
              * car lends its charger (`source.kind === 'car'`), and gone with it:
-             * the ceiling is the car's, not the charger's. A charger's own reading
+             * the ceiling is the car's, not the charger's. A `charger`-sourced reading
              * never carries it — no Homey capability reports a car's limit.
              */
             carChargeLimitPercent?: number;
@@ -304,9 +304,16 @@ export type DeviceStateOfChargeSnapshot = {
     /**
      * Where the level came from, always stated.
      *
-     * `charger` means the charger reported it itself — a native capability or the
-     * `report_evcharger_battery_level` flow card — which is every reading PELS
-     * produced before the car link existed.
+     * `charger` means the level arrived on the charger device itself: the
+     * `report_evcharger_battery_level` flow card, or a battery capability on the
+     * device. It names where the reading arrived, not what measured it. Only the
+     * car knows its battery level; an ordinary AC charger has no channel to learn
+     * it (the control pilot carries current and plug state, nothing else). A
+     * battery capability on a charger device therefore appears only where the
+     * device IS the car (a Tesla driven as a charger, `lib/device/tesla/`) or a
+     * charger integration relays the car maker's cloud; the flow card carries a
+     * car app's value the user routed there. Every reading PELS produced before
+     * the car link existed is of this kind.
      *
      * `car` means it was read off the associated car instead, because the user
      * ticked that car for this charger; the charger still owns the session, so a

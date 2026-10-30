@@ -135,8 +135,12 @@ confidently wrong charge limit.
 For a charger with a non-empty eligibility set, the associated car's battery level **is** the
 charger's `stateOfCharge`, carrying `source: { kind: 'car', carId }`. Three rules follow:
 
-- **The charger's own sources are ignored, not ranked below.** Neither a native `measure_battery`
-  nor the `report_evcharger_battery_level` flow card contributes. Ranking them as a fallback
+- **The charger-device sources are ignored, not ranked below.** Neither a `measure_battery` on the
+  charger device nor the `report_evcharger_battery_level` flow card contributes. Both are the car's
+  percentage arriving by another route: an ordinary AC charger cannot know the car's battery level,
+  so a battery capability on a charger device exists only where the device is the car (a Tesla
+  driven as a charger) or the charger integration relays the car maker's cloud. For most chargers
+  the car link and the flow card are the only possible sources. Ranking them as a fallback
   would let the level flip between two sources mid-session, and the opt-in is a clear statement
   about which one the user wants. The source is chosen at parse, so a change to the selection
   re-parses the snapshot at once; waiting for the scheduled refresh left the ignored level
@@ -161,7 +165,7 @@ charger's `stateOfCharge`, carrying `source: { kind: 'car', carId }`. Three rule
   with no persisted session reports no level until the car plugs out and back in.
 - **Unplug drops the level rather than ageing it out.** With no car there is no battery to
   report, and leaving the last percentage behind would show a departed car's charge as this
-  charger's. Only a car-sourced reading is ever dropped; a charger's own is untouched.
+  charger's. Only a car-sourced reading is ever dropped; one that arrived on the charger device is untouched.
 - **An unavailable car suspends the association.** Homey may retain cached plug and battery
   capabilities while the car integration is offline, but PELS cannot stand behind that data.
   Explicit `available: false` therefore removes the car from correlation, clears the live
@@ -175,7 +179,7 @@ charger's `stateOfCharge`, carrying `source: { kind: 'car', carId }`. Three rule
 
 The value arrives on the realtime seam, at the point the probe already computed `wouldAdopt`,
 and is dispatched as a `measure_battery` observation so the existing EV-boost plan-rebuild gate
-fires exactly as it does for a charger's own report. Nothing decays the level: the session
+fires exactly as it does for a report on the charger device. Nothing decays the level: the session
 decides whether the charger has one, and an association is not resolved at all for a car that
 reports itself disconnected (`resolveAssociatedCarSnapshot`).
 

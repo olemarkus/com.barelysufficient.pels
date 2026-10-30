@@ -35,8 +35,8 @@ export function hasCarStateOfChargeChanged(
  *
  * Removed rather than aged out: with no car there is no battery to report, and
  * leaving the last percentage behind would show a departed car's charge as this
- * charger's. Only ever clears a reading the car produced — a charger's own
- * native or flow-reported level is untouched.
+ * charger's. Only ever clears a reading the car link produced — a level that
+ * arrived on the charger device (battery capability or flow card) is untouched.
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function clearCarStateOfCharge(params: { snapshot: TransportDeviceSnapshot }): boolean {

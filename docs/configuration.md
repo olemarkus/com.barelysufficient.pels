@@ -124,8 +124,8 @@ Device detail sections. The page composes per device kind — an EV charger, a t
 | **Advanced diagnostics** | All devices | Read-only history of waiting time, failed restarts, and restart backoff. |
 
 Selecting a car chooses its matched battery reading as the charger's battery source.
-While any car is selected, PELS ignores both the charger's own battery reading and
-the **Report battery level for charger** Flow card. Until a car is matched, the charger
+While any car is selected, PELS ignores the **Report battery level for charger** Flow
+card. Until a car is matched, the charger
 has no battery level. Once a selected car has been matched to the charger,
 **Setup & recommendations** flags an enabled Flow that still reports battery level for this
 charger, because that action is ignored while a car is selected. While no selected car has
