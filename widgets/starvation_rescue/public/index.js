@@ -61,11 +61,11 @@
     estimateCaveat: "Estimate \u2014 the actual run may differ as prices and other tasks change.",
     // Heading for the read-only "what this grants" summary on the confirm sheet.
     // Must stay character-identical to `SMART_TASK_EXTRA_PERMISSIONS_TITLE` in
-    // `deadlineLabels.ts` (line items come from SMART_TASK_EXTRA_PERMISSION_LABELS
-    // there) so every surface naming these permissions reads the same. Kept as a
+    // `smartTaskCopy/permissionsCopy.ts` (line items come from
+    // SMART_TASK_EXTRA_PERMISSION_LABELS there) so every surface naming these permissions reads the same. Kept as a
     // LITERAL rather than an import on purpose: this module is deliberately off
-    // `deadlineLabels.ts` so the rescue widget bundle doesn't drag the full
-    // smart-task copy module in — see the import note at the top of this file.
+    // `smartTaskCopy/` so the rescue widget bundle doesn't drag the
+    // smart-task copy modules in — see the import note at the top of this file.
     // Here it is informational, not a set of toggles: the rescue REQUESTS all
     // three permissions (`buildRescueCandidate`), and the per-device gate decides
     // which of them survive to be listed here.
