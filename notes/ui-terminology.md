@@ -2191,35 +2191,41 @@ settings. No tour-completed flag is persisted.
   too. `Grid import limit` stays a separate choice. Norway is not asked: every
   Norwegian household pays for its measured hourly peaks, so its unchosen step
   is the running default alone.
-- `Use more of your own solar` is an optional entry during setup and remains
-  available under Setup & recommendations before export is observed. It shows
-  only in a home with solar, by the relevance rule above: a solar device,
-  material export, or a reachable surplus pool, whose export latch outlasts a
-  usage-history reset (`resolveSolarSetupOffered`). Before the first
-  surplus, the step header and the review say it is waiting, not broken:
-  `Solar control appears once PELS sees your solar produce more than the home is
-  using.` The device cards then open plain `Device settings`, since the device
-  page has no solar control yet, and repeat no waiting line. The known way
-  surplus stays hidden for good is a Flow that reports import without its sign,
-  so only a Flow home adds `Your Flow must send net import, negative when
-  exporting.` and `Check meter`. Discovery never enables solar-only settings. The existing controls keep their eligibility
-  checks and their opted-in escape hatch. Use the device's actual label:
-  `Use solar surplus`, `Run on solar surplus`, `Charge on solar surplus`, or
-  `Match solar surplus`. Put missing prerequisites beside the action.
+- Solar has no setup entry of its own: `Choose what PELS does` offers each
+  device's solar action once surplus can reach it. A home with solar, by the
+  relevance rule above (a solar device, material export, or a reachable surplus
+  pool, whose export latch outlasts a usage-history reset:
+  `resolveHomeHasSolar`), that has not shown its first surplus is told it
+  is waiting, not broken, in the review and in that page's header: `Solar
+  control appears once PELS sees your solar produce more than the home is
+  using.` The device cards say nothing about it, since the device page has no
+  solar control yet. The known way surplus stays hidden for good is a Flow that
+  reports import without its sign, so a Flow home adds `Your Flow must send net
+  import, negative when exporting.` to both, and the page header offers `Check
+  meter`. Setup never enables solar-only settings. The existing controls keep
+  their eligibility checks and their opted-in escape hatch. Use the device's
+  actual label: `Use solar surplus`, `Run on solar surplus`, `Charge on solar
+  surplus`, or `Match solar surplus`. Put missing prerequisites beside the
+  action.
 - `Choose what PELS does` is an optional page after the required steps and
   before the review (owner ruling 2026-10-29: a home with no limit to hold
-  must leave setup with a job for PELS). It lists each managed Main-home device
-  with the job that fits it, through the control that already does it:
-  `Price-based control` for a device with a temperature target while PELS
-  responds to prices, with `Raises the temperature a little in cheap hours and
-  lowers it in expensive ones.`; `New smart task` for an EV charger, whose flow
-  returns to this page, and once it has one the task's line as the device
-  page's Smart task box states it (`Target 80 % · Ready by …`) with `View
-  task`; and the device's solar action once surplus can reach it, except inside
-  the solar setup, whose page offered it already. Header: `Optional. PELS uses
-  your prices from {source}. You can change these later on each device page.`,
-  the middle sentence only when PELS already has prices. It shows no step
-  count: it is not one of the counted steps. Turning Price-based control on or
+  must leave setup with a job for PELS). It is the one place PELS offers
+  prices, solar and Smart tasks (owner ruling 2026-10-30): the after-setup
+  suggestion and the review lead to it rather than offering them again. It
+  lists each managed Main-home device with the job that fits it, through the
+  control that already does it: `Price-based control` for a device with a
+  temperature target while PELS responds to prices, with `Raises the
+  temperature a little in cheap hours and lowers it in expensive ones.`; `New
+  smart task` for a device that can carry one (`A smart task charges to the
+  level you set by a ready-by time, in the cheapest hours.` for a charger, `A
+  smart task reaches the goal you set by a ready-by time, in the cheapest
+  hours.` otherwise), whose flow returns to this page, and once it has one the
+  task's line as the device page's Smart task box states it (`Target 80 % ·
+  Ready by …`) with `View task`; and the device's solar action once surplus can
+  reach it. Header: `Optional. PELS uses your prices from {source}. You can
+  change these later on each device page.`, the middle sentence only when PELS
+  already has prices, and the solar waiting line above before it when it
+  applies. It shows no step count: it is not one of the counted steps. Turning Price-based control on or
   saving a Smart task here makes a source PELS assumed the owner's, as `Use
   these prices` does; a source with no prices is left for the Prices step.
   Continue offers the page once per visit, never as a completion requirement,
@@ -2276,11 +2282,16 @@ English-only.
 
 ### After setup: optional features
 
-`resolveAfterSetupRecommendations` offers relevant features not already in use.
-The automatic solar suggestion still requires available surplus; the explicit
-solar discovery entry above does not. Price and Smart task suggestions stay
-out of incomplete setup. The dismissible Flemish period advice can appear
-both during and after setup.
+`resolveAfterSetupRecommendations` offers relevant features not already in use,
+as one Optional card: `Choose what PELS does`, `PELS can {outcomes}. Choose for
+each device.`, action `Choose`, opening the setup page above. The body names
+only the outcomes that apply and are not in use, joined `a, b or c`. Solar
+needs available surplus, the same fact that puts solar actions on the page.
+The card stays out of incomplete setup. Dismissed, it stays away; an owner who
+dismissed one of the three cards it replaced (`after-setup:prices`,
+`after-setup:solar`, `after-setup:smart-tasks`) does not see that outcome in
+it. The dismissible Flemish period advice can appear both during and after
+setup.
 
 - **Only what is relevant to this home, never what it already uses, and never
   on an unread fact.** An unread setting looks exactly like a feature nobody
@@ -2290,10 +2301,11 @@ both during and after setup.
 - **The solar copy never says "export".** It must be true of a zero-export home
   that curtails as well as one that exports: `while your solar produces more
   than the home is using`.
-- Titles name the outcome, not the feature: `Heat in cheap hours`, `Use more of
-  your own solar`, `Have something ready by a set time`.
+- Outcomes, not features: `heat in cheap hours`, `use more of your own solar`,
+  `have something ready by a set time`. In the Netherlands, where net metering
+  is ending, solar leads.
 
-The page lists these suggestions before any device fix (owner ruling
+The page lists this suggestion before any device fix (owner ruling
 2026-10-29): right after setup, what PELS can do for the home matters more than
 tuning one device. Device fixes (built-in device control, charging-current
 control, a car or a battery-reporting Flow) are offered only for devices PELS

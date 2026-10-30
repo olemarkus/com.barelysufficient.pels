@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import { SetupDevicePicker } from './views/SetupJourney.tsx';
-import { currentSetupJourney, isSolarSetupJourney, trackSetupSave } from './setupJourneyState.ts';
+import { currentSetupJourney, trackSetupSave } from './setupJourneyState.ts';
 import { readSetupDeviceChoices } from './setupDevices.ts';
 import { renderSetupGoals } from './setupGoalsRender.ts';
 import { refreshHomeScopeAndNotify } from './homeScope.ts';
@@ -23,9 +23,7 @@ import {
   primeApiCache,
 } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
-import {
-  isHomeBatteryDeviceId, resolveSurplusControlAvailable, state,
-} from './state.ts';
+import { isHomeBatteryDeviceId, state } from './state.ts';
 import { writeBatteryManaged } from './batteryManaged.ts';
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 import { renderPriorities } from './modes.ts';
@@ -444,13 +442,9 @@ const buildDeviceClassCard = (group: DeviceGroup): HTMLElement => {
 };
 
 const renderSetupDevices = (devices: SettingsUiDeviceListItem[], target: HTMLElement): void => {
-  const solar = isSolarSetupJourney();
-  const solarReady = resolveSurplusControlAvailable();
   if (!target.querySelector('.setup-journey__devices')) target.replaceChildren();
   render(SetupDevicePicker({
-    choices: readSetupDeviceChoices(devices, solar),
-    solar,
-    solarReady,
+    choices: readSetupDeviceChoices(devices),
     onManaged: (id, value) => {
       void trackSetupSave(`managed:${id}`, () => buildManagedToggleHandler(id)(value))
         .catch((error) => showToastError(error, 'Could not save the device.'))
@@ -465,7 +459,7 @@ export const renderDevices = (devices: SettingsUiDeviceListItem[]) => {
   const target = deviceCardList;
   if (!target) return;
   const journey = currentSetupJourney();
-  if (journey === 'devices' || journey === 'solar') {
+  if (journey === 'devices') {
     emptyState.hidden = true;
     renderSetupDevices(devices, target);
     return;

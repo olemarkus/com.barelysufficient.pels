@@ -305,11 +305,10 @@ export const resolveSurplusControlAvailable = (): boolean => (
   state.surplusPoolReachable
 );
 
-// Whether setup offers `Use more of your own solar`: any evidence the home has
-// solar. The flag above joins the presence test because its export latch is
-// durable, while the 1 kWh export total behind `hasExhibitedExport` restarts
-// with usage history; a meter-only solar home must not lose the entry while its
-// solar controls are still on offer.
-export const resolveSolarSetupOffered = (): boolean => (
+// Whether setup treats the home as one with solar: any evidence of it. The flag
+// above joins the presence test because its export latch is durable, while the
+// 1 kWh export total behind `hasExhibitedExport` restarts with usage history; a
+// meter-only solar home must not lose its solar while its controls are on offer.
+export const resolveHomeHasSolar = (): boolean => (
   resolveHomeExhibitsSolar() || resolveSurplusControlAvailable()
 );

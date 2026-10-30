@@ -3,21 +3,19 @@ import { shellRouteUrl } from '../src/ui/shellRoutes.ts';
 import { setupJourneyFromSearch } from '../src/ui/setupJourneyState.ts';
 
 describe('setup navigation', () => {
-  it('keeps solar context and the Homey fragment through subsequent steps', () => {
-    const initial = { pathname: '/', search: '?page=settings/devices&setup=solar', hash: '#homey=bridge' };
+  it('keeps the Homey fragment through the steps and drops the step leaving setup', () => {
+    const initial = { pathname: '/', search: '?page=settings/devices&setup=devices', hash: '#homey=bridge' };
     const limits = shellRouteUrl('limits', initial, 'hardCap');
-    // Opening solar establishes intent; navigating from an older direct link also preserves it.
-    expect(shellRouteUrl('devices', initial, 'solar')).toContain('setupGoal=solar');
     expect(limits).toContain('setup=hardCap');
-    const next = { ...initial, search: '?page=settings/devices&setup=solar&setupGoal=solar' };
-    expect(shellRouteUrl('limits', next, 'hardCap')).toContain('setupGoal=solar');
-    expect(shellRouteUrl('limits', next, 'hardCap')).toContain('#homey=bridge');
-    expect(shellRouteUrl('overview', next)).not.toContain('setup');
+    expect(limits).toContain('#homey=bridge');
+    expect(shellRouteUrl('devices', initial, 'goals')).toContain('setup=goals');
+    expect(shellRouteUrl('overview', initial)).not.toContain('setup');
   });
 
-  it('ignores unknown setup contexts', () => {
+  it('ignores unknown setup contexts, the retired solar one among them', () => {
     expect(setupJourneyFromSearch('?setup=anything')).toBeNull();
-    expect(setupJourneyFromSearch('?setup=solar')).toBe('solar');
+    expect(setupJourneyFromSearch('?setup=solar')).toBeNull();
+    expect(setupJourneyFromSearch('?setup=goals')).toBe('goals');
   });
 });
 

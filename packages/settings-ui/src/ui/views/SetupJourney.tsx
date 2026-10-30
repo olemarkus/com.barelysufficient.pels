@@ -13,7 +13,6 @@ export type SetupDeviceChoice = {
   managed: boolean;
   disabled: boolean;
   hint: string | null;
-  solar: SolarSetupAction | null;
 };
 
 export type SetupDeviceChoices =
@@ -22,10 +21,6 @@ export type SetupDeviceChoices =
 
 type SetupDevicePickerProps = {
   choices: SetupDeviceChoices;
-  solar: boolean;
-  // Whether the solar controls exist yet. Before the first surplus the device
-  // page has none, so the card opens it as plain Device settings.
-  solarReady: boolean;
   onManaged: (id: string, value: boolean) => void;
   onOpen: (id: string, focus: DeviceDetailFocus) => void;
   onRetry: () => void;
@@ -48,12 +43,7 @@ export const SetupDevicePicker = (props: SetupDevicePickerProps) => (
           <span class="md-switch-row__label pels-text-settings-label">Managed by PELS</span>
         </label>
         {device.hint && <p class="pels-card-supporting">{device.hint}</p>}
-        <MdTextButton type="button" onClick={() => props.onOpen(
-          device.id, props.solar && props.solarReady && device.solar ? device.solar.focus : 'top',
-        )}>
-          {props.solar && props.solarReady && device.solar ? device.solar.actionLabel : 'Device settings'}
-        </MdTextButton>
-        {props.solar && device.solar?.hint && <p class="pels-card-supporting">{device.solar.hint}</p>}
+        <MdTextButton type="button" onClick={() => props.onOpen(device.id, 'top')}>Device settings</MdTextButton>
       </section>
     ))}
     {props.choices.state === 'ready' && props.choices.devices.length === 0 && (
@@ -103,7 +93,9 @@ export const SetupGoalPicker = (props: SetupGoalPickerProps) => (
           <p class="pels-card-supporting">Raises the temperature a little in cheap hours and lowers it in expensive ones.</p>
         </>}
         {device.smartTask?.state === 'none' && <>
-          <p class="pels-card-supporting">A smart task charges to the level you set by a ready-by time, in the cheapest hours.</p>
+          <p class="pels-card-supporting">{device.smartTask.charger
+            ? 'A smart task charges to the level you set by a ready-by time, in the cheapest hours.'
+            : 'A smart task reaches the goal you set by a ready-by time, in the cheapest hours.'}</p>
           <MdTextButton type="button" disabled={props.busy} onClick={() => props.onNewSmartTask(device.id)}>
             New smart task
           </MdTextButton>

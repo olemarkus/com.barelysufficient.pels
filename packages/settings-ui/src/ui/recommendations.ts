@@ -18,7 +18,7 @@ import {
   type SetupRecommendation,
 } from './recommendationsModel.ts';
 import { parseCarAssociationCandidatesRead } from './carAssociationCandidates.ts';
-import { resolveSolarSetupOffered, state } from './state.ts';
+import { state } from './state.ts';
 import { recordSmartTaskHistoryDevices } from './smartTaskUsage.ts';
 import { resolveDeviceSettingRecommendations } from './deviceSettingRecommendations.ts';
 import { notifySetupPathChange, onSetupPathChange, readSetupPath } from './setupPathFacts.ts';
@@ -155,7 +155,10 @@ const getSurfaces = (): { banner: HTMLElement | null; page: HTMLElement | null }
   page: document.getElementById('setup-recommendations-root'),
 });
 
-const resolveCurrentRecommendations = (afterSetupRead: AfterSetupFactsRead): SetupRecommendation[] => {
+const resolveCurrentRecommendations = (
+  afterSetupRead: AfterSetupFactsRead,
+  dismissals: RecommendationDismissals,
+): SetupRecommendation[] => {
   if (!state.devicesLoaded) return [];
   const inventory = carInventory;
   const carsKnown = inventory.state === 'resolved' || inventory.state === 'stale';
@@ -178,7 +181,7 @@ const resolveCurrentRecommendations = (afterSetupRead: AfterSetupFactsRead): Set
   const managed = state.latestDevices.filter((device) => state.managedMap[device.id] === true);
   return [
     ...(afterSetupRead.state === 'resolved'
-      ? resolveAfterSetupRecommendations(afterSetupRead.facts)
+      ? resolveAfterSetupRecommendations(afterSetupRead.facts, dismissals)
       : []),
     ...currentChargingRecommendations.filter(({ target }) => target.kind === 'device'
       && managed.some((device) => device.id === target.deviceId)),
@@ -288,6 +291,10 @@ const runRecommendationAction = (recommendation: SetupRecommendation): void => {
     return;
   }
   if (navigationRead.state !== 'resolved') return;
+  if (target.kind === 'setup-goals') {
+    navigationRead.navigation.openPanel('devices', 'goals');
+    return;
+  }
   if (target.kind === 'panel') {
     navigationRead.navigation.openPanel(target.panelId);
     return;
@@ -329,7 +336,7 @@ export const refreshRecommendationSurfaces = (): void => {
   const coreLoaded = hasDismissals && state.devicesLoaded;
   const readiness = resolveRecommendationReadiness(afterSetupRead);
   const dismissals = hasLoadedDismissals(dismissalRead) ? dismissalRead.dismissals : {};
-  const groups = groupSetupRecommendations(resolveCurrentRecommendations(afterSetupRead), dismissals);
+  const groups = groupSetupRecommendations(resolveCurrentRecommendations(afterSetupRead, dismissals), dismissals);
   if (banner) {
     renderSetupRecommendationsBanner(banner, {
       active: coreLoaded ? groups.active : [],
@@ -352,7 +359,6 @@ export const refreshRecommendationSurfaces = (): void => {
     renderSetupRecommendationsView(page, {
       ...groups,
       setupPath: setupRead,
-      offersSolarSetup: resolveSolarSetupOffered(),
       readiness,
       dismissalStatus: hasLoadedDismissals(dismissalRead) ? 'available' : dismissalRead.state,
       retryAvailable: dismissalRead.state === 'unavailable'
@@ -529,7 +535,8 @@ export const initRecommendationSurfaces = (nextNavigation: RecommendationNavigat
 /** Shared by the setup context and the normal recommendation card. */
 export const readActiveRecommendation = (id: string): SetupRecommendation | null => {
   if (!hasLoadedDismissals(dismissalRead)) return null;
-  return groupSetupRecommendations(resolveCurrentRecommendations(readAfterSetupFacts()), dismissalRead.dismissals)
+  const { dismissals } = dismissalRead;
+  return groupSetupRecommendations(resolveCurrentRecommendations(readAfterSetupFacts(), dismissals), dismissals)
     .active.find((recommendation) => recommendation.id === id) ?? null;
 };
 

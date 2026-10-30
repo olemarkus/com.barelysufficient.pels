@@ -430,7 +430,7 @@ describe('Redesign plan UI', () => {
         ],
       });
       const decision = document.querySelector('.plan-hero__decision') as HTMLElement | null;
-      expect(decision?.textContent?.trim()).toBe('No limit to hold, and no device follows prices yet.');
+      expect(decision?.textContent?.trim()).toBe('No limit to hold.');
       expect(decision?.hasAttribute('data-positive')).toBe(false);
     });
 

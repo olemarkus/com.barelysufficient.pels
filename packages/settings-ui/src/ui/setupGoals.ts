@@ -2,9 +2,8 @@ import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDevic
 import { supportsTemperatureControlDevice, type SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { namePriceSource } from './afterSetupRecommendations.ts';
 import { readAfterSetupFacts } from './afterSetupFacts.ts';
-import { readMainHomeManagedDevices } from './mainHomeDevices.ts';
+import { isSmartTaskCapable, readMainHomeManagedDevices } from './mainHomeDevices.ts';
 import { keepPriceSchemeInForce } from './priceSettingsPersistence.ts';
-import { isSolarSetupJourney } from './setupJourneyState.ts';
 import { readSetupRespondsToPrices } from './setupPathFacts.ts';
 import { resolveSolarSetupAction, type SolarSetupAction } from './setupDevices.ts';
 import { formatOpenSmartTaskLine } from './smartTaskSummary.ts';
@@ -19,10 +18,12 @@ import { hasOpenSmartTask, resolveSurplusControlAvailable, state } from './state
  *
  * - Price-based control for a device with a temperature target, while PELS
  *   responds to prices.
- * - A Smart task for an EV charger: charging by a ready-by time in the cheapest
- *   hours is the car's price behaviour.
- * - The device's solar action, once surplus can reach it, except in the solar
- *   setup, whose own page offered it already.
+ * - A Smart task for a device that can carry one: a goal by a ready-by time in
+ *   the cheapest hours, which for a car is its price behaviour.
+ * - The device's solar action, once surplus can reach it.
+ *
+ * It is the one place for these: the after-setup suggestion and Review lead
+ * here rather than offering them again.
  *
  * A device with none of these is left out, and a home with none is not offered
  * the page. Nothing here is a completion requirement.
@@ -31,8 +32,8 @@ export type SetupGoalChoice = {
   id: string;
   name: string;
   price: { enabled: boolean } | null;
-  /** The open task in one line, or none yet; `null` for a device that takes no task here. */
-  smartTask: { state: 'open'; summary: string } | { state: 'none' } | null;
+  /** The open task in one line, or none yet (`charger` picks the copy); `null` for a device that takes no task. */
+  smartTask: { state: 'open'; summary: string } | { state: 'none'; charger: boolean } | null;
   solar: SolarSetupAction | null;
 };
 
@@ -42,11 +43,11 @@ export type SetupGoalChoices =
   | { state: 'ready'; priceSource: string | null; devices: readonly SetupGoalChoice[] };
 
 const resolveSmartTask = (device: SettingsUiDeviceListItem): SetupGoalChoice['smartTask'] => {
-  if (!device.isEvCharger) return null;
+  if (!isSmartTaskCapable(device)) return null;
   const entry = state.deferredObjectiveSettings.objectivesByDeviceId[device.id];
   return entry !== undefined && hasOpenSmartTask(device.id)
     ? { state: 'open', summary: formatOpenSmartTaskLine(entry) }
-    : { state: 'none' };
+    : { state: 'none', charger: device.isEvCharger };
 };
 
 const readPricedSource = () => {
@@ -58,7 +59,7 @@ export const resolveSetupGoalChoices = (): SetupGoalChoices => {
   const managed = readMainHomeManagedDevices();
   if (managed.state !== 'ready') return managed;
   const respondsToPrices = readSetupRespondsToPrices() === true;
-  const solarReady = resolveSurplusControlAvailable() && !isSolarSetupJourney();
+  const solarReady = resolveSurplusControlAvailable();
   const priced = readPricedSource();
   return {
     state: 'ready',

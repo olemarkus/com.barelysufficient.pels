@@ -417,8 +417,8 @@ describe('recommendation loading', () => {
     await recommendations.loadRecommendationData();
 
     const text = document.getElementById('setup-recommendations-root')?.textContent ?? '';
-    expect(text.indexOf('Heat in cheap hours')).toBeGreaterThanOrEqual(0);
-    expect(text.indexOf('Heat in cheap hours')).toBeLessThan(text.indexOf('Use built-in device control for Connected 300'));
+    expect(text.indexOf('Choose what PELS does')).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf('Choose what PELS does')).toBeLessThan(text.indexOf('Use built-in device control for Connected 300'));
   });
 
   it('does not claim an all-clear while Price setup facts are unavailable', async () => {
@@ -464,7 +464,7 @@ describe('recommendation loading', () => {
     recommendations.initRecommendationSurfaces({ useQuarterHour: vi.fn().mockResolvedValue(undefined), openPanel: vi.fn(), openDevice: vi.fn() });
     try {
       const surface = document.getElementById('setup-recommendations-root');
-      expect(surface?.textContent).toContain('Heat in cheap hours');
+      expect(surface?.textContent).toContain('Choose what PELS does');
 
       afterSetupRead = {
         state: 'resolved',
@@ -472,7 +472,7 @@ describe('recommendation loading', () => {
       };
       publishHomeScopeChange();
 
-      expect(surface?.textContent).not.toContain('Heat in cheap hours');
+      expect(surface?.textContent).not.toContain('Choose what PELS does');
       expect(surface?.textContent).toContain('No setup suggestions right now');
     } finally {
       for (const [type, listener, options] of listeners.mock.calls) {

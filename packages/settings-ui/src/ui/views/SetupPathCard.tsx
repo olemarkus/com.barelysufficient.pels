@@ -1,4 +1,4 @@
-import { MdElevation, MdList, MdListItem, MdTextButton } from './materialWebJSX.tsx';
+import { MdElevation, MdList, MdListItem } from './materialWebJSX.tsx';
 import { MAIN_HOME_ID } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { formatSetupProgress, type SetupPath, type SetupStep } from '../setupPathModel.ts';
 
@@ -68,12 +68,9 @@ const StepRow = ({ step }: { step: SetupStep }) => (
 type SetupPathCardProps = {
   path: SetupPath;
   surface: 'overview' | 'setup';
-  // Only in a home with solar: a solar entry elsewhere asks an owner to set up
-  // something that is not there (owner ruling 2026-09-20).
-  offersSolarSetup: boolean;
 };
 
-export const SetupPathCard = ({ path, surface, offersSolarSetup }: SetupPathCardProps) => (
+export const SetupPathCard = ({ path, surface }: SetupPathCardProps) => (
   <section
     class="pels-surface-card setup-path"
     id={`${surface}-setup-path`}
@@ -88,11 +85,6 @@ export const SetupPathCard = ({ path, surface, offersSolarSetup }: SetupPathCard
     <MdList class="settings-nav-list setup-path__steps">
       {path.steps.map((step) => <StepRow key={step.id} step={step} />)}
     </MdList>
-    {offersSolarSetup && (
-      <MdTextButton type="button" data-settings-target="devices" data-setup-journey="solar" data-settings-home-scope={MAIN_HOME_ID}>
-        Use more of your own solar
-      </MdTextButton>
-    )}
     {path.simulating && (
       <p class="pels-card-supporting">Simulation mode is on.</p>
     )}

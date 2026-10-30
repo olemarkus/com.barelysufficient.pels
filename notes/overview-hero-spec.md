@@ -432,8 +432,9 @@ Priority order (first matching condition wins):
    the NL/DE first-run walk): `No limit to hold. 1 device follows prices,
    and 1 device has a smart task.`, naming each that applies: devices whose
    Price-based control acts, and devices with an open Smart task. With neither
-   it reads `No limit to hold, and no device follows prices yet.`, not
-   positive, like the nothing-managed rung. The counts are the Main home's.
+   it reads `No limit to hold.`, not positive: a fact, never a nudge, since
+   `Choose what PELS does` and its one suggestion are where PELS offers more.
+   The counts are the Main home's.
 
 Simulation mode wording must be hypothetical throughout. The subject is the
 device count, not PELS:

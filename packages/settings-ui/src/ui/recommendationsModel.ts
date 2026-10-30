@@ -1,5 +1,4 @@
 import type {
-  PriceSchemeSetting,
   SettingsUiRecommendationCar,
   SettingsUiEvSocFlowReporter,
 } from '../../../contracts/src/settingsUiApi.ts';
@@ -46,8 +45,8 @@ export type RecommendationTarget =
   // A settings panel or top-level tab, by its `data-panel` / `data-tab` id.
   | { kind: 'panel'; panelId: string }
   | { kind: 'quarter-hour' }
-  // Save the price source in force as the owner's choice, then open Devices.
-  | { kind: 'keep-price-source'; scheme: PriceSchemeSetting };
+  // `Choose what PELS does`: setup's page for prices, solar and Smart tasks.
+  | { kind: 'setup-goals' };
 
 export type SetupRecommendation = {
   id: string;

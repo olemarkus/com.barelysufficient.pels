@@ -34,18 +34,7 @@ Check the selected meter in Homey and whether its reading changes. For a Fluvius
 
 Turn on **Managed by PELS** for one suitable device. For devices with power readings, this also enables **Power-limit control**. Open **Device settings** to review what PELS may change.
 
-For solar, select **Use more of your own solar**. It appears once PELS finds a solar device in Homey or sees your home export power. The action opens the appropriate existing control:
-
-| Device control | Setting |
-| --- | --- |
-| Temperature adjustment | **Use solar surplus** |
-| On/off operation | **Run on solar surplus** |
-| EV charging with suitable control | **Charge on solar surplus** |
-| Other suitable stepped loads | **Match solar surplus** |
-
-You can find this path before your home has exported any power. Until PELS sees your solar produce more than the home is using, the hint says so, and the solar control appears after that. If a prerequisite is missing, follow the hint beside the action. [Solar setup details](/solar).
-
-A dynamic-price contract, battery, daily budget, and Smart task are not required.
+A dynamic-price contract, battery, daily budget, and Smart task are not required. Solar comes later, on **Choose what PELS does**.
 
 <span id="step-2-set-your-limits"></span>
 
@@ -71,19 +60,30 @@ For eligible Flemish digital-meter households, the **2.5 kW billing minimum** is
 
 </details>
 
-**Choose what PELS does** follows when a managed device has more to offer. Each choice is optional and can be changed later on the device's page:
+**Choose what PELS does** follows when a managed device has more to offer. It is the one place setup offers prices, solar and smart tasks. Each choice is optional and can be changed later on the device's page:
 
 - **Price-based control** for heating and hot water: PELS raises the temperature a little in cheap hours and lowers it in expensive ones.
-- **New smart task** for an EV charger: charge to the level you set by a ready-by time, in the cheapest hours. Setup returns to this page once the task is saved.
+- **New smart task** for a device that can carry one: reach the goal you set, such as a battery level or a water temperature, by a ready-by time, in the cheapest hours. Setup returns to this page once the task is saved.
+- The device's solar action, once PELS has seen your solar produce more than the home is using:
+
+| Device control | Setting |
+| --- | --- |
+| Temperature adjustment | **Use solar surplus** |
+| On/off operation | **Run on solar surplus** |
+| EV charging with suitable control | **Charge on solar surplus** |
+| Other suitable stepped loads | **Match solar surplus** |
 
 The page names where your prices come from. Turning on Price-based control or saving a smart task here keeps that price source.
-- The device's solar action, once PELS has seen your solar produce more than the home is using.
+
+With solar in Homey that has not yet produced more than the home is using, the page and the review say solar control is on its way. If your meter is a Flow, it must send net import, negative when exporting. [Solar setup details](/solar).
+
+After setup, **PELS can do more for this home** offers **Choose what PELS does** once, naming what applies and is not in use yet. Dismiss it if none of it is for you.
 
 ## Step 4: Preview and activate
 
 Open **Review setup**. It lists what PELS will do with each device, such as **Price-based control on** or **Smart task set**, and the limits that apply. **Power-limit control on** shows only while a limit is in force; a device with nothing to do yet says so, and **Choose what PELS does** takes you back to the page above.
 
-With no limit in force, the Overview says what PELS does for your home, for example **No limit to hold. 1 device follows prices.**
+With no limit in force, the Overview says what PELS does for your home, for example **No limit to hold. 1 device follows prices.** With nothing set up yet, it reads **No limit to hold.**
 
 **Simulation mode is on** means PELS is still previewing. Choose **Start managing** to enable control, or **Keep simulating** to return to Overview. The simulation banner's **Review and start** action brings you back.
 

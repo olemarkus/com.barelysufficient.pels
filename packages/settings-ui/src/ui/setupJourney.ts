@@ -1,7 +1,7 @@
 import { getChosenWholeHomeMeterName } from './homeyEnergyMeter.ts';
 import { settingsPowerSourceSelect } from './dom.ts';
 import { h, render } from 'preact';
-import { hasOpenSmartTask, resolveSolarSetupOffered, state } from './state.ts';
+import { hasOpenSmartTask, resolveHomeHasSolar, state } from './state.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { showTab } from './tabNavigation.ts';
 import { selectHomeScope, subscribeToHomeScope, getHomeScope } from './homeScope.ts';
@@ -11,7 +11,7 @@ import {
 } from './setupPathFacts.ts';
 import { formatSetupProgress, type SetupStep, type SetupPath } from './setupPathModel.ts';
 import {
-  currentSetupJourney, isSolarSetupJourney, setupSavePending, waitForSetupSaves, type SetupJourneyStep,
+  currentSetupJourney, setupSavePending, waitForSetupSaves, type SetupJourneyStep,
   acknowledgeSetupSaveFailures,
 } from './setupJourneyState.ts';
 import {
@@ -53,7 +53,7 @@ let statuses = new Map<string, string>();
 let liveReadGeneration = 0;
 
 const PANEL_BY_STEP: Record<SetupJourneyStep, string> = {
-  power: 'limits', devices: 'devices', solar: 'devices', hardCap: 'limits',
+  power: 'limits', devices: 'devices', hardCap: 'limits',
   prices: 'electricity-prices', goals: 'devices', review: 'setup-review',
 };
 
@@ -64,7 +64,7 @@ const currentStep = (): SetupJourneyStep | null => {
 
 const navigateStep = (step: SetupStep): void => {
   selectHomeScope(MAIN_HOME_ID);
-  showTab(step.target.panel, step.id === 'devices' && isSolarSetupJourney() ? 'solar' : step.id);
+  showTab(step.target.panel, step.id);
 };
 
 export const openSetupReview = (): void => {
@@ -126,7 +126,7 @@ const startManaging = (): void => {
 // a battery's also while there is solar to store. Until the limits have been
 // read it is named as saved.
 const limitControlActs = (device: SettingsUiDeviceListItem): boolean => (
-  readSetupLimitsInForce() !== false || (isHomeBatteryClassKey(device.deviceClass) && resolveSolarSetupOffered())
+  readSetupLimitsInForce() !== false || (isHomeBatteryClassKey(device.deviceClass) && resolveHomeHasSolar())
 );
 
 // What PELS will do with the device once it manages it: each saved control
@@ -160,12 +160,26 @@ const readReviewDevices = (): SetupReviewDevice[] => {
 const SOLAR_SURPLUS_PENDING = 'Solar control appears once PELS sees your solar produce more than '
   + 'the home is using.';
 
-// A solar setup that ends with no device on solar: unfinished only once there
-// is surplus to configure; before that the review says it is waiting.
+// The known way surplus stays hidden for good is a Flow that reports import
+// without its sign (`resolveSurplusControlAvailable`): the home never shows
+// producing more than it uses. So only a Flow home gets the meter check while
+// solar is still waiting. Worded as the getting-started guide's meter step.
+const FLOW_SIGN_NOTE = 'Your Flow must send net import, negative when exporting.';
+
+// A home with solar that has not shown its first surplus: solar control is on
+// its way, and the review and `Choose what PELS does` say so.
+const solarPending = (): boolean => (
+  state.devicesLoaded && resolveHomeHasSolar() && !state.surplusPoolReachable
+);
+
+const solarPendingNote = (): string => (
+  usesFlowMeter() ? `${SOLAR_SURPLUS_PENDING} ${FLOW_SIGN_NOTE}` : SOLAR_SURPLUS_PENDING
+);
+
 const resolveReviewSolarNote = (devices: readonly SetupReviewDevice[]): string | null => {
-  if (!isSolarSetupJourney()) return null;
-  if (devices.some((device) => state.priceOptimizationSettings[device.id]?.surplusWilling)) return null;
-  return state.surplusPoolReachable ? 'Solar control is not configured yet.' : SOLAR_SURPLUS_PENDING;
+  if (!solarPending()) return null;
+  return devices.some((device) => state.priceOptimizationSettings[device.id]?.surplusWilling)
+    ? null : solarPendingNote();
 };
 
 const paintReview = (): void => {
@@ -188,7 +202,6 @@ const paintReview = (): void => {
 
 const headerTitle = (step: SetupJourneyStep): string => {
   if (step === 'power') return 'Connect your meter';
-  if (step === 'solar') return 'Use more of your own solar';
   if (step === 'devices') return 'Choose one device to start';
   if (step === 'hardCap') return 'Confirm your limits';
   if (step === 'goals') return 'Choose what PELS does';
@@ -207,22 +220,14 @@ const mountHeader = (panelId: string): HTMLElement | null => {
   return mount;
 };
 
-// The known way surplus stays hidden for good is a Flow that reports import
-// without its sign (`resolveSurplusControlAvailable`): the home never shows
-// producing more than it uses. So only a Flow home gets the meter check while
-// solar is still waiting. Worded as the getting-started guide's meter step.
-const FLOW_SIGN_NOTE = 'Your Flow must send net import, negative when exporting.';
-
-const solarPending = (step: SetupJourneyStep): boolean => (
-  step === 'solar' && state.devicesLoaded && !state.surplusPoolReachable
-);
-
-// The price source is the home's, so the page names it once.
+// The price source is the home's, so the page names it once, and says once
+// when solar control is still on its way.
 const goalsHeaderDetail = (): string => {
   const choices = resolveSetupGoalChoices();
   const source = choices.state === 'ready' && choices.priceSource !== null
     ? ` PELS uses your prices from ${choices.priceSource}.` : '';
-  return `Optional.${source} You can change these later on each device page.`;
+  const solar = solarPending() ? ` ${solarPendingNote()}` : '';
+  return `Optional.${source}${solar} You can change these later on each device page.`;
 };
 
 const headerDetail = (step: SetupJourneyStep, fact: SetupStep | undefined): string | null => {
@@ -230,9 +235,8 @@ const headerDetail = (step: SetupJourneyStep, fact: SetupStep | undefined): stri
     const reading = fact?.status === 'done' ? meterSummary() : null;
     return reading ?? fact?.detail ?? 'Reading meter settings…';
   }
-  if (solarPending(step)) return usesFlowMeter() ? `${SOLAR_SURPLUS_PENDING} ${FLOW_SIGN_NOTE}` : SOLAR_SURPLUS_PENDING;
   if (step === 'goals') return goalsHeaderDetail();
-  if (step === 'devices' || step === 'solar') return null;
+  if (step === 'devices') return null;
   return fact?.detail ?? null;
 };
 
@@ -257,7 +261,7 @@ const continueLabel = (path: SetupPath | null): string => (
 );
 
 const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourneyHeaderProps => {
-  const fact = path?.steps.find((candidate) => candidate.id === (step === 'solar' ? 'devices' : step));
+  const fact = path?.steps.find((candidate) => candidate.id === step);
   const market = readSetupMarket();
   const advice = step === 'hardCap' ? readActiveRecommendation('market:flanders-capacity-period') : null;
   return {
@@ -268,7 +272,7 @@ const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourn
     // The optional page never holds the journey back.
     canContinue: step === 'goals' || fact?.status === 'done',
     error,
-    meterHelp: solarPending(step) && usesFlowMeter(),
+    meterHelp: step === 'goals' && solarPending() && usesFlowMeter(),
     fluviusHelp: step === 'power' && fact?.status !== 'done' && market.state === 'resolved' && market.country === 'BE',
     continueLabel: continueLabel(path),
     onContinue: continueSetup,
@@ -356,7 +360,7 @@ export const initSetupJourney = (): void => {
     const step = currentStep();
     // Choosing an area leaves the Main-home journey and opens its ordinary settings.
     if (step && getHomeScope().selectedHomeId !== MAIN_HOME_ID) showTab(PANEL_BY_STEP[step]);
-    else if (step === 'devices' || step === 'solar' || step === 'goals') renderDevices(state.latestDevices);
+    else if (step === 'devices' || step === 'goals') renderDevices(state.latestDevices);
   });
   // Direct links into the review also need the accepted limits/provenance.
   if (currentSetupJourney()) void loadCapacitySettings().then(paintJourney);

@@ -60,19 +60,17 @@ const choosePump = async (page: Page) => {
   await expect(page.locator('#devices-panel .setup-journey').getByRole('button', { name: 'Continue', exact: true })).toBeEnabled();
 };
 
-test('solar discovery before export keeps eligibility and restores context after reload and Back', async ({ page }) => {
+test('a solar home waiting for its first surplus keeps its setup context after reload and Back', async ({ page }) => {
   await seed(page);
   await page.goto('/');
-  await page.locator('#overview-setup-path').getByText('Use more of your own solar', { exact: true }).click();
-  await expect(page).toHaveURL(/setup=solar/);
-  await expect(page.locator('#devices-panel')).toContainText(
-    'Solar control appears once PELS sees your solar produce more than the home is using',
-  );
+  // Solar has no entry of its own: `Choose what PELS does` offers it once it can act.
+  await expect(page.locator('#overview-setup-path')).toBeVisible();
+  await expect(page.locator('#overview-setup-path').getByText('Use more of your own solar', { exact: true })).toHaveCount(0);
+  await page.goto('/?page=settings/devices&setup=devices');
   await expect(page.locator('#devices-panel .setup-journey').getByText('Check meter', { exact: true })).toHaveCount(0);
   await expect(page.locator('#device-control-legend')).toBeHidden();
   await choosePump(page);
-  // The waiting line is the header's alone, and the card names no control the
-  // device page does not have yet.
+  // The card names no control the device page does not have yet.
   await expect(page.locator('#device-card-list')).not.toContainText('Solar control appears');
   await expect(page.locator('#device-card-list').getByText('Run on solar surplus', { exact: true })).toHaveCount(0);
   await page.locator('#device-card-list').getByText('Device settings', { exact: true }).click();
@@ -82,34 +80,46 @@ test('solar discovery before export keeps eligibility and restores context after
   await page.locator('#device-detail-close').click();
   await expect(page.locator('#device-detail-overlay')).toBeHidden();
   await reloadSavedSetup(page);
-  await expect(page.locator('#devices-panel')).toContainText('Use more of your own solar');
+  await expect(page.locator('#devices-panel')).toContainText('Choose one device to start');
   await page.locator('#devices-panel .setup-journey').getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page).toHaveURL(/setup=hardCap/);
   await page.goBack();
-  await expect(page).toHaveURL(/setup=solar/);
+  await expect(page).toHaveURL(/setup=devices/);
   await page.getByRole('tab', { name: 'Overview', exact: true }).click();
   await expect(page).not.toHaveURL(/setup=/);
 });
 
-test('a home without solar is not offered solar setup', async ({ page }) => {
-  await seed(page, 'NL', false, false);
-  await page.goto('/');
-  await expect(page.locator('#overview-setup-path')).toBeVisible();
-  await expect(page.locator('#overview-setup-path').getByText('Use more of your own solar', { exact: true })).toHaveCount(0);
-});
-
 test('a Flow meter home waiting for solar is told how the Flow must report it', async ({ page }) => {
   await seed(page, 'NL', false, true, 'flow');
-  await page.goto('/?page=settings/devices&setup=solar&setupGoal=solar');
+  const note = 'Solar control appears once PELS sees your solar produce more than the home is using. '
+    + 'Your Flow must send net import, negative when exporting.';
+  // The review tells every such home, with or without a device to choose for.
+  await page.goto('/?page=settings/devices&setup=devices');
+  await choosePump(page);
+  await page.locator('#devices-panel .setup-journey').getByRole('button', { name: 'Continue', exact: true }).click();
+  await page.locator('#settings-capacity-enabled').click();
+  await expect.poll(() => stored(page, 'capacity_enabled')).toBe(false);
+  await page.locator('#limits-panel .setup-journey').getByRole('button', { name: 'Review setup', exact: true }).click();
+  await expect(page.locator('#setup-review-root')).toContainText(note);
+  // `Choose what PELS does` says it once in its header, next to the meter check.
+  await page.goto('/?page=settings/devices&setup=goals');
   const header = page.locator('#devices-panel .setup-journey');
-  await expect(header).toContainText('Your Flow must send net import, negative when exporting.');
+  await expect(header).toContainText(note);
   await expect(header.getByText('Check meter', { exact: true })).toBeVisible();
 });
 
 test('one solar device can be configured without prices and the action reaches its existing control', async ({ page }) => {
   await seed(page, 'NL', true);
-  await page.goto('/?page=settings/devices&setup=solar&setupGoal=solar');
+  await page.goto('/?page=settings/devices&setup=devices');
   await choosePump(page);
+  await page.locator('#devices-panel .setup-journey').getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page.locator('#limits-panel .setup-journey')).toContainText('Dutch household grid charges depend on connection size');
+  await expect(page.locator('#limits-panel .setup-journey')).toContainText('turn off Capacity limit and still use prices and solar');
+  await page.locator('#settings-capacity-enabled').click();
+  await expect.poll(() => stored(page, 'capacity_enabled')).toBe(false);
+  await page.locator('#limits-panel .setup-journey').getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page).toHaveURL(/setup=goals/);
+  await expect(page.locator('#devices-panel .setup-journey')).not.toContainText('Solar control appears');
   await page.locator('#device-card-list').getByText('Run on solar surplus', { exact: true }).click();
   const row = page.locator('#device-detail-dump-load-row');
   await expect(row).toBeInViewport();
@@ -119,12 +129,7 @@ test('one solar device can be configured without prices and the action reaches i
     return map['setup-pump'];
   }).toMatchObject({ surplusWilling: true, enabled: false });
   await page.locator('#device-detail-close').click();
-  await page.locator('#devices-panel .setup-journey').getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(page.locator('#limits-panel .setup-journey')).toContainText('Dutch household grid charges depend on connection size');
-  await expect(page.locator('#limits-panel .setup-journey')).toContainText('turn off Capacity limit and still use prices and solar');
-  await page.locator('#settings-capacity-enabled').click();
-  await expect.poll(() => stored(page, 'capacity_enabled')).toBe(false);
-  await page.locator('#limits-panel .setup-journey').getByRole('button', { name: 'Review setup', exact: true }).click();
+  await page.locator('#devices-panel .setup-journey').getByRole('button', { name: 'Review setup', exact: true }).click();
   await expect(page.locator('#setup-review-root')).toContainText('Run on solar surplus');
   await expect(page.locator('#setup-review-root')).not.toContainText('Prices');
   await page.getByText('Keep simulating', { exact: true }).click();
@@ -361,7 +366,7 @@ test('unavailable home membership offers a retry instead of claiming there are n
     const w = window as unknown as { __PELS_HOMEY_STUB__: { apiHandlers: Record<string, () => unknown> } };
     w.__PELS_HOMEY_STUB__.apiHandlers['GET /ui_homes'] = () => ({ configDegraded: true });
   });
-  await page.goto('/?page=settings/devices&setup=solar');
+  await page.goto('/?page=settings/devices&setup=devices');
   const picker = page.locator('#device-card-list');
   await expect(picker).toContainText('Device setup could not be read.');
   await expect(picker).not.toContainText('No suitable devices');
@@ -378,7 +383,7 @@ for (const [width, mobile] of [[320, true], [390, false], [480, true]] as const)
     test.use({ viewport: { width, height: 900 }, isMobile: mobile, hasTouch: mobile });
     test('keeps setup actions and device controls usable', async ({ page }, testInfo) => {
       await seed(page);
-      await page.goto('/?page=settings/devices&setup=solar');
+      await page.goto('/?page=settings/devices&setup=devices');
       await expect(page.getByRole('switch', { name: 'Manage Pool pump', exact: true })).toBeEnabled();
       await expect(page.locator('#devices-panel .setup-journey')).toBeInViewport();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
