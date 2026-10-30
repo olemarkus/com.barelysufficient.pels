@@ -16,7 +16,7 @@ import { partialDouble } from '../helpers/partialDouble';
 const BATTERY = 'battery-1';
 
 const source = partialDouble<PlanInputProjectionSource>({
-  getControllableDevices: () => ({}),
+  deviceControl: partialDouble<PlanInputProjectionSource['deviceControl']>({ controllableDevices: {} }),
   getNow: () => new Date(1000),
   readContinuousBatteryPlan: () => ({ status: 'disabled', config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG }),
 });
@@ -53,7 +53,7 @@ describe('resolveStorageCluster for a battery PELS can only watch', () => {
 describe('continuous battery reserve projection', () => {
   const nowMs = 12 * 60 * 60 * 1000;
   const planSource = partialDouble<PlanInputProjectionSource>({
-    getControllableDevices: () => ({}),
+    deviceControl: partialDouble<PlanInputProjectionSource['deviceControl']>({ controllableDevices: {} }),
     getNow: () => new Date(nowMs),
     readContinuousBatteryPlan: () => ({
       status: 'waiting', reason: 'prices_unavailable',

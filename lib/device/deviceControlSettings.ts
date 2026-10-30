@@ -118,6 +118,21 @@ const normalizeOrKeep = <T>(raw: unknown, normalize: (value: unknown) => T, curr
  * car-association read that is a map is normalized, dropping the entries it
  * cannot use.
  */
+/**
+ * The device-control settings the planner-input projection reads, as the
+ * runtime holds them. `DeviceControlSettings` is the implementation; setup
+ * hands it over whole.
+ */
+export type DeviceControlSettingsRead = Pick<DeviceControlSettings,
+  | 'getDeviceTargetPowerConfig'
+  | 'getTemperatureBoostConfig'
+  | 'getEvBoostConfig'
+  | 'getEvChargeTargetConfig'
+  | 'deviceStartPolicies'
+  | 'controllableDevices'
+  | 'isBudgetExempt'
+>;
+
 export class DeviceControlSettings {
   private maps: DeviceControlMaps = {
     controllable: {},
