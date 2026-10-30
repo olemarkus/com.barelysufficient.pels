@@ -5,7 +5,7 @@
   var SMART_TASK_SUB_HOME_UNAVAILABLE = "Smart tasks aren\u2019t available yet for devices on a separate meter.";
 
   // packages/shared-domain/src/smartTaskCopy/pendingReasons.ts
-  var PENDING_REASON_MISSING_CAPACITY_COPY = "Learning energy use \u2014 needs power readings from this device.";
+  var PENDING_REASON_MISSING_CAPACITY_COPY = "Learning energy use \u2014 PELS learns how much energy each degree takes from this device\u2019s power and temperature readings while it runs.";
   var SMART_TASK_DEVICE_UNMANAGED_WHY = "PELS isn\u2019t managing this device.";
   var SMART_TASK_DEVICE_UNMANAGED_RECOURSE = "Turn on Managed by PELS in Setup to resume this task.";
   var WAITING_FOR_CAR_ASSOCIATION = "Waiting to identify the connected car";
@@ -875,9 +875,9 @@
         device_unmanaged: deviceUnmanagedResolver,
         // Cold-start `missing_capacity` collapses to a single user-facing line —
         // headline + metaLine combined parse as `PENDING_REASON_MISSING_CAPACITY_COPY`
-        // ("Learning energy use — needs power readings from this device."). Earlier
-        // copy split the explanation across body + headlineReason, which buried the
-        // "give it power readings" lever in a paragraph. The pending-reason path
+        // ("Learning energy use — PELS learns how much energy each degree takes …").
+        // Earlier copy split the explanation across body + headlineReason, which
+        // buried what unblocks the plan in a paragraph. The pending-reason path
         // here intentionally addresses only `objective_missing_capacity`
         // (no-profile cold-start); the thermal `objective_missing_charge_rate`
         // fall-through still routes to this resolver via `THERMAL_LEARNING_CAPACITY_REASON_CODES`
@@ -967,7 +967,7 @@
         },
         already_satisfied: {
           headline: "Satisfied",
-          body: "The EV is already at or above the smart task target. PELS will schedule it again if the state of charge drops below target."
+          body: "The EV is already at or above the smart task target. PELS will schedule it again if the battery level drops below target."
         }
       },
       // EV mirrors the thermal copy: drop the raw % shortfall figure (users can

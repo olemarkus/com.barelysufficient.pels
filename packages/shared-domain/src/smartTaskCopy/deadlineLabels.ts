@@ -270,9 +270,9 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       device_unmanaged: deviceUnmanagedResolver,
       // Cold-start `missing_capacity` collapses to a single user-facing line —
       // headline + metaLine combined parse as `PENDING_REASON_MISSING_CAPACITY_COPY`
-      // ("Learning energy use — needs power readings from this device."). Earlier
-      // copy split the explanation across body + headlineReason, which buried the
-      // "give it power readings" lever in a paragraph. The pending-reason path
+      // ("Learning energy use — PELS learns how much energy each degree takes …").
+      // Earlier copy split the explanation across body + headlineReason, which
+      // buried what unblocks the plan in a paragraph. The pending-reason path
       // here intentionally addresses only `objective_missing_capacity`
       // (no-profile cold-start); the thermal `objective_missing_charge_rate`
       // fall-through still routes to this resolver via `THERMAL_LEARNING_CAPACITY_REASON_CODES`
@@ -367,7 +367,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       already_satisfied: {
         headline: 'Satisfied',
         body: 'The EV is already at or above the smart task target. PELS will schedule it again '
-          + 'if the state of charge drops below target.',
+          + 'if the battery level drops below target.',
       },
     },
     // EV mirrors the thermal copy: drop the raw % shortfall figure (users can
@@ -447,6 +447,12 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     planInputsRateBootstrapNote: null,
   },
 };
+
+// Added to a satisfied task's page while its device's card shows the done
+// task holding it ("Smart task done, held until its ready-by time"). With price
+// optimisation off, or in an hour the task booked, nothing holds the device, so
+// the page does not say so.
+export const SMART_TASK_SATISFIED_HOLD_SENTENCE = 'PELS holds the device until the ready-by time.';
 
 export const deadlineLabels = (
   kind: DeferredObjectiveSettingsKind,

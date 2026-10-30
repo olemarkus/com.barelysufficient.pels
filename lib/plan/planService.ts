@@ -112,7 +112,11 @@ const buildOverviewPublication = (
   idleClassifier: IdleClassifier,
 ): OverviewPublication | null => {
   const execution = deps.planEngine.getDeviceExecutionStates(plan);
-  const snapshot = buildSettingsOverviewReadModel(plan, {
+  // Present only the devices the executor still holds: one turned out of the
+  // managed set since this plan was built is gone, not unavailable (its
+  // activity log used to end on an `Unavailable` row).
+  const presented: DevicePlan = { ...plan, devices: plan.devices.filter((device) => execution.has(device.id)) };
+  const snapshot = buildSettingsOverviewReadModel(presented, {
     ...deps,
     getDeviceExecutionState: (id) => {
       const value = execution.get(id);
@@ -124,7 +128,7 @@ const buildOverviewPublication = (
     getOverviewStarvation: (deviceId) => deps.deviceDiagnostics?.getOverviewStarvation?.(deviceId),
     getIdleClassification: (deviceId) => idleClassifier.getClassification(deviceId),
   });
-  return snapshot ? { snapshot, plan, execution } : null;
+  return snapshot ? { snapshot, plan: presented, execution } : null;
 };
 
 // The decision and executor facts behind a presentation change: the activity
@@ -211,7 +215,8 @@ export class PlanService {
     const device = plan?.devices.find((candidate) => candidate.id === deviceId);
     if (!plan || !device) return { kind: 'no_decision' };
     const execution = this.deps.planEngine.getDeviceExecutionStates(plan).get(deviceId);
-    if (!execution) throw new Error(`Missing execution state for ${deviceId}`);
+    // No execution state: the device left the managed set after this plan.
+    if (!execution) return { kind: 'no_decision' };
     return resolveTaskDeliveryControl(device, execution);
   }
 

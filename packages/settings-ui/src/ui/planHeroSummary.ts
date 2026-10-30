@@ -303,22 +303,39 @@ export type DecisionSentenceResult = {
 
 const formatDevices = (n: number): string => `${n} ${n === 1 ? 'device' : 'devices'}`;
 
+// Limited devices their own smart tasks hold: more room would not run them.
+const countTaskHeld = (input: DecisionSentenceInput): number => (
+  (input.deferredObjectiveAvoidCount ?? 0) + (input.smartTaskDoneCount ?? 0)
+);
+
 const formatTaskHoldClauses = (avoidCount: number, doneCount: number): string => [
   ...(avoidCount > 0 ? [`${avoidCount} waiting for cheaper hours`] : []),
   ...(doneCount > 0 ? [`${doneCount} held until a smart task’s ready-by time`] : []),
 ].join(', ');
 
+// The devices beside the task holds, held for power: named by the constraint the
+// hero states (today's budget, or the safe pace). Without a safe pace no limit
+// holds them, and the clause stays out rather than guess one.
+const formatPowerHoldClause = (input: DecisionSentenceInput): string => {
+  const powerHeldCount = input.limitedCount - countTaskHeld(input);
+  if (powerHeldCount <= 0) return '';
+  if ((input.dailyBudgetLimitedCount ?? 0) === powerHeldCount) return `${powerHeldCount} to stay within today’s budget`;
+  if (input.safePaceKw === null) return '';
+  return `${powerHeldCount} so the house stays under ${formatKw(input.safePaceKw)}`;
+};
+
 // The smart-task rungs of the ladder below: devices their own tasks hold, either
 // waiting for cheaper hours or done and held until the ready-by time.
-const resolveSmartTaskHoldSentence = (
-  avoidCount: number,
-  doneCount: number,
-  limitedCount: number,
-): DecisionSentenceResult | null => {
+const resolveSmartTaskHoldSentence = (input: DecisionSentenceInput): DecisionSentenceResult | null => {
+  const avoidCount = input.deferredObjectiveAvoidCount ?? 0;
+  const doneCount = input.smartTaskDoneCount ?? 0;
   if (avoidCount + doneCount === 0) return null;
+  const { limitedCount } = input;
   const devicesText = formatDevices(limitedCount);
   if (avoidCount + doneCount < limitedCount) {
-    return { text: `Holding back ${devicesText}, ${formatTaskHoldClauses(avoidCount, doneCount)}.`, positive: false };
+    const clauses = [formatTaskHoldClauses(avoidCount, doneCount), formatPowerHoldClause(input)]
+      .filter((clause) => clause !== '').join(', ');
+    return { text: `Holding back ${devicesText}, ${clauses}.`, positive: false };
   }
   if (doneCount === 0) return { text: `Waiting for cheaper hours before running ${devicesText}.`, positive: true };
   if (avoidCount === 0) {
@@ -343,12 +360,10 @@ const resolveSmartTaskHoldSentence = (
 //   - Otherwise → existing capacity-defense wording (safe-pace clause when
 //     `safePaceKw !== null`).
 const resolveLimitingDecisionSentence = (input: DecisionSentenceInput): DecisionSentenceResult => {
-  const avoidCount = input.deferredObjectiveAvoidCount ?? 0;
-  const doneCount = input.smartTaskDoneCount ?? 0;
   const dailyCount = input.dailyBudgetLimitedCount ?? 0;
   const devicesText = formatDevices(input.limitedCount);
 
-  const taskHoldSentence = resolveSmartTaskHoldSentence(avoidCount, doneCount, input.limitedCount);
+  const taskHoldSentence = resolveSmartTaskHoldSentence(input);
   if (taskHoldSentence) return taskHoldSentence;
 
   if (dailyCount > 0 && dailyCount === input.limitedCount) {
@@ -406,19 +421,27 @@ const resolveOverHardCapDecisionSentence = (
     // trajectory without claiming action PELS cannot take.
     return { text: `On pace to exceed the hard cap this ${period}.`, positive: false };
   }
-  const offDevices = capacityControlOffCount === 1
-    ? 'a device that has Power-limit control turned off'
-    : `${capacityControlOffCount} devices that have Power-limit control turned off`;
-  const recourse = capacityControlOffCount === 1
-    ? 'Turn its Power-limit control back on so PELS can ease it off.'
-    : 'Turn their Power-limit control back on so PELS can ease them off.';
+  // Any draw counts a control-off device here, so it is one source of the
+  // remaining draw, not necessarily its cause: name it beside the other
+  // appliances, as the grid rule does.
   return {
-    text: `Managed devices are already eased off. The remaining draw is from ${offDevices}. ${recourse}`,
+    text: `Managed devices are already eased off. ${formatControlOffDrawing(capacityControlOffCount)}`,
     positive: false,
   };
 };
 
 const OTHER_APPLIANCES_RECOURSE = 'Turn off other appliances to stay under your limit.';
+
+// Control-off devices still drawing, with both recourses: PELS cannot ease them
+// off, and they need not be the whole draw.
+const formatControlOffDrawing = (count: number): string => {
+  const devicesText = count === 1
+    ? 'A device with Power-limit control turned off is'
+    : `${count} devices with Power-limit control turned off are`;
+  const toggle = count === 1 ? 'its' : 'their';
+  return `${devicesText} still drawing power. `
+    + `Turn ${toggle} Power-limit control back on, or turn off other appliances to stay under your limit.`;
+};
 
 // Rule 0 of `buildDecisionSentence`: import is above the grid import limit's
 // working target. The grid is still supplying power, close to the limit; the
@@ -439,19 +462,14 @@ const resolveGridImportDecisionSentence = (input: DecisionSentenceInput): Decisi
   // A control-off device drawing anything counts here, so it is one source of
   // the import, not necessarily the cause: name it beside the other appliances.
   if (capacityControlOffCount > 0) {
-    const devicesText = capacityControlOffCount === 1
-      ? 'A device with Power-limit control turned off is'
-      : `${capacityControlOffCount} devices with Power-limit control turned off are`;
-    const toggle = capacityControlOffCount === 1 ? 'its' : 'their';
-    return {
-      text: `Grid import is high. ${devicesText} still drawing power. `
-        + `Turn ${toggle} Power-limit control back on, or turn off other appliances to stay under your limit.`,
-      positive: false,
-    };
+    return { text: `Grid import is high. ${formatControlOffDrawing(capacityControlOffCount)}`, positive: false };
   }
-  if (input.limitedCount > 0) {
+  // A device its own smart task holds would stay off with room to spare, so it
+  // is not held back for the grid.
+  const gridHeldCount = input.limitedCount - countTaskHeld(input);
+  if (gridHeldCount > 0) {
     return {
-      text: `Grid import is high. Holding back ${formatDevices(input.limitedCount)}. ${OTHER_APPLIANCES_RECOURSE}`,
+      text: `Grid import is high. Holding back ${formatDevices(gridHeldCount)}. ${OTHER_APPLIANCES_RECOURSE}`,
       positive: false,
     };
   }
@@ -574,7 +592,7 @@ const formatPriceForSubline = (displayPrice: number, unitLabel: string): string 
   if (unitLabel.toLowerCase().startsWith('øre')) {
     return `${displayPrice} ${unitLabel}`;
   }
-  return `${displayPrice.toFixed(2)} ${unitLabel}`;
+  return unitLabel ? `${displayPrice.toFixed(2)} ${unitLabel}` : displayPrice.toFixed(2);
 };
 
 // Rounds a raw per-hour price to the precision the subline actually displays

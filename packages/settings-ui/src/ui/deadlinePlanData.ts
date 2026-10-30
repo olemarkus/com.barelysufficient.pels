@@ -1,5 +1,6 @@
 import type { SettingsUiBootstrap, SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
+import type { DeviceStatus } from '../../../contracts/src/deviceStatus.ts';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanStatusV1,
@@ -48,6 +49,9 @@ export const collectHorizonHours = (
 
 export type ResolvedObjectiveContext = {
   device: ObservedDeviceState & MeasuredPowerObservedProbe & Pick<DeviceDescriptor, 'priority'>;
+  // The plan's resolved status for the task's device, the one its Overview card
+  // shows; null when the bootstrap carried no plan.
+  deviceStatus: DeviceStatus | null;
   objective: DeferredObjectiveSettingsEntry;
   deviceId: string;
   deadlineAtMs: number;

@@ -561,6 +561,28 @@ describe('settingsOverviewReadModel', () => {
     expect(buildDeviceCard(stepped, absentTemperature).status.cardKind).toBe('stepped');
   });
 
+  it('names the device\u2019s own target while PELS holds it off and drives no target', () => {
+    // A heater its finished smart task held off read `target 18 °C → 20 °C` for
+    // hours: the plan's target was the task floor, and nothing wrote it.
+    const device = {
+      ...buildPlanDevice({
+        id: 'held-heater', deviceType: 'temperature', binaryCapabilityId: 'onoff', currentState: 'off',
+        plannedState: 'shed', shedAction: 'turn_off', currentTarget: 18, currentTemperature: 20.7,
+      }),
+      plannedTarget: 20,
+    };
+    const held = buildOverviewDeviceCard(device, { ...overviewReadModelWiring(), ...observedTemperature(18, 20.7),
+      getDeviceExecutionState: () => ({ ...executionStateFixture(device), desiredBinary: 'off', targetProgress: 'undriven' }),
+      dryRun: false, nowMs: 0 });
+    expect(held.status.factText).toBe('20.7 °C · target 18 °C');
+    expect(held.status.reading).toEqual({ kind: 'temperature', currentC: 20.7, targetC: 18 });
+    const driven = buildOverviewDeviceCard({ ...device, plannedState: 'keep', currentState: 'on' }, {
+      ...overviewReadModelWiring(), ...observedTemperature(18, 20.7),
+      getDeviceExecutionState: () => ({ ...executionStateFixture(device), targetProgress: 'pending' }),
+      dryRun: false, nowMs: 0 });
+    expect(driven.status.factText).toBe('20.7 °C · target 18 °C → 20 °C');
+  });
+
   it('keeps observed temperature presentation when effective control is binary', () => {
     const device = buildPlanDevice({
       id: 'externally-controlled-thermostat',

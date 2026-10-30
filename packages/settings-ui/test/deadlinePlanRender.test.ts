@@ -445,6 +445,36 @@ describe('DeadlinePlan after-task card', () => {
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps the edit lane and the card on a satisfied task, which still holds its device', () => {
+    // A satisfied task holds its device until the ready-by time; its page used
+    // to show only the Satisfied card, with no way to clear the task.
+    const mount = mountIntoBody();
+    const onClear = vi.fn();
+    renderDeadlinePlan(mount, {
+      status: 'unavailable',
+      objectiveKind: 'temperature',
+      reason: 'already_satisfied',
+      edit: {
+        mode: 'edit_and_clear',
+        snapshot: null,
+        onOpen: vi.fn(),
+        onClose: vi.fn(),
+        onReadyByInput: vi.fn(),
+        onTargetInput: vi.fn(),
+        onPermissionToggle: vi.fn(),
+        onSave: vi.fn(),
+        onClear,
+        onDismissClear: vi.fn(),
+      },
+      afterTask: { line: 'PELS turns Heater on whenever power allows.', onChange: vi.fn() },
+    });
+    expect(mount.textContent).toContain('already meets the smart task target');
+    expect(mount.textContent).toContain('Edit task');
+    mount.querySelector<HTMLButtonElement>('.smart-task-edit__clear')?.click();
+    expect(onClear).toHaveBeenCalledOnce();
+    expect(mount.querySelector('.smart-task-after-task p')?.textContent).toBe('PELS turns Heater on whenever power allows.');
+  });
+
   it('renders no card for a device the rule does not cover', () => {
     const mount = mountIntoBody();
     renderDeadlinePlan(mount, { status: 'pending', pending: buildPendingPayload() });

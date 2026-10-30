@@ -34,13 +34,15 @@ export type DeadlinePlanPendingReason =
 
 // One-line user-facing copy for the cold-start `missing_capacity` pending
 // reason. Thermal smart tasks have no shipped bootstrap kWh/°C, so a new
-// heater (or any thermal device without `measure_power`) sits "Waiting"
-// indefinitely until the planner has enough power samples to learn the
-// energy profile. This copy tells the user what unblocks the plan. The
+// heater sits pending until PELS has seen it run long enough to learn the
+// energy profile. That takes power AND temperature readings while it runs: a
+// heater drawing 3 kW whose temperature has not moved yet is still learning,
+// so the copy must not claim power readings are what is missing. The
 // thermal `missing_capacity` resolver renders it as the metaLine; the
 // canonical joined form lives here so runtime log breadcrumbs can emit
 // the same string (per `feedback_ui_text_shared_with_logs.md`).
-export const PENDING_REASON_MISSING_CAPACITY_COPY = 'Learning energy use — needs power readings from this device.';
+export const PENDING_REASON_MISSING_CAPACITY_COPY = 'Learning energy use — PELS learns how much energy each '
+  + 'degree takes from this device’s power and temperature readings while it runs.';
 
 // The device is present and the task is intact; PELS simply is not managing the
 // device, so it plans nothing for it. Named after the real switch on the device

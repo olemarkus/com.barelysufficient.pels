@@ -144,9 +144,9 @@ describe('formatCheapestHoursCaption', () => {
     expect(formatCheapestHoursCaption(pricedPeriods([0.1]), pricedPeriods([0.1]), 'kr/kWh')).toBeNull();
   });
 
-  it('suppresses the caption when the price unit is missing or the neutral placeholder', () => {
+  it('suppresses the caption when the price unit is missing', () => {
+    // A unitless source reaches here as '' (`resolveInlinePriceUnit`), never as the axis word `Price`.
     expect(formatCheapestHoursCaption(pricedPeriods([0.1, 0.2]), pricedPeriods([0.1, 0.2, 0.8, 0.9]), '')).toBeNull();
-    expect(formatCheapestHoursCaption(pricedPeriods([0.1, 0.2]), pricedPeriods([0.1, 0.2, 0.8, 0.9]), 'Price')).toBeNull();
   });
 });
 

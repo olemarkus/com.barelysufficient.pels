@@ -326,7 +326,68 @@ describe('normalizeShedReasons', () => {
     expect(reasonText(device?.reason)).toBe('waiting for cheaper hours');
   });
 
-  it('does not override shortfall or swap with the deferred-avoid framing', () => {
+  // A device its own smart task holds stays held whatever power does, so neither
+  // the shed cooldown, the out-of-levers shortfall nor a spent period may rename
+  // the hold: a satisfied task's heater read "Waiting after limiting a device
+  // (37s)", "Waiting to resume — 13.0 kW more needed" and "… this capacity
+  // period's budget is spent" while it stayed off until its ready-by time.
+  it.each([
+    ['the shed cooldown', { inCooldown: true, shedCooldownRemainingSec: 37 }, 'shed due to capacity'],
+    ['a shortfall', { guardInShortfall: true }, 'shed due to capacity'],
+  ] as const)('keeps a satisfied task\u2019s hold through %s', (_case, timing, reason) => {
+    const [device] = normalizeShedReasons([buildPlanDevice({
+        id: 'dev-task-done',
+        plannedState: 'shed',
+        reason: fixtureDeviceReason(reason)!,
+      })], reasonContext({
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      ...timing,
+      deferredHoldCauseByDeviceId: new Map([['dev-task-done', 'task_done']]),
+    }));
+
+    expect(device?.reason).toEqual({ code: PLAN_REASON_CODES.deferredObjectiveSatisfied });
+  });
+
+  it('keeps a cheaper-hours hold when the grid import limit sheds the device too', () => {
+    // More grid room would not run a device its own smart task holds.
+    const [device] = normalizeShedReasons([buildPlanDevice({
+        id: 'dev-smart-task',
+        plannedState: 'shed',
+        reason: { code: PLAN_REASON_CODES.gridImport },
+      })], reasonContext({
+      shedReasons: new Map([['dev-smart-task', { code: PLAN_REASON_CODES.gridImport }]]),
+      guardInShortfall: true,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      deferredHoldCauseByDeviceId: new Map([['dev-smart-task', 'cheaper_hours']]),
+    }));
+
+    expect(reasonText(device?.reason)).toBe('waiting for cheaper hours');
+  });
+
+  it('keeps a cheaper-hours hold through a spent capacity period', () => {
+    const [device] = normalizeShedReasons([buildPlanDevice({
+        id: 'dev-smart-task',
+        plannedState: 'shed',
+        reason: { code: PLAN_REASON_CODES.hourlyBudget },
+      })], reasonContext({
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      deferredHoldCauseByDeviceId: new Map([['dev-smart-task', 'cheaper_hours']]),
+    }));
+
+    expect(reasonText(device?.reason)).toBe('waiting for cheaper hours');
+  });
+
+  it('does not override a swap with the deferred-avoid framing', () => {
     const [device] = normalizeShedReasons([buildPlanDevice({
         id: 'dev-swap',
         plannedState: 'shed',
@@ -442,6 +503,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     guardInShortfall?: boolean;
     /** The capacity room the end-of-hour drain withheld this cycle (`resolveCapacityAdmissionCutKw`). */
     drainCutKw?: number;
+    deferredHoldCauseByDeviceId?: ReadonlyMap<string, 'task_done' | 'cheaper_hours'>;
   }) => {
     const admissionInputs = {
       ledger: buildRestoreHeadroomLedger({
@@ -472,6 +534,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       ),
       admissionInputs,
       hourlyBudgetExhausted: params.hourlyBudgetExhausted ?? false,
+      deferredHoldCauseByDeviceId: params.deferredHoldCauseByDeviceId ?? new Map(),
     }));
   };
 
@@ -577,6 +640,18 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       lastDeviceShedMsById: { 'held-dev': SHORTFALL_NOW_MS - 60_000 },
     });
     expect(device?.reason).toEqual({ code: 'shortfall', shortfallKw: 1.9 });
+  });
+
+  it('keeps a satisfied task\u2019s hold through an actually spent period in shortfall', () => {
+    // The spent-period fold runs after the task framing and cannot overwrite it.
+    const [device] = normalize({
+      devices: [heldDevice({ reason: { code: 'capacity' } })],
+      capacityAvailableKw: -0.5,
+      guardInShortfall: true,
+      hourlyBudgetExhausted: true,
+      deferredHoldCauseByDeviceId: new Map([['held-dev', 'task_done']]),
+    });
+    expect(device?.reason).toEqual({ code: PLAN_REASON_CODES.deferredObjectiveSatisfied });
   });
 
   it('folds a shortfall hold to the hour while its budget is spent', () => {

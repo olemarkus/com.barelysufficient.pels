@@ -5,7 +5,10 @@ import type {
 import { normalizeDeferredObjectiveRoster } from './deferredObjectiveRoster.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
-import { deadlineLabels } from '../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
+import {
+  deadlineLabels,
+  SMART_TASK_SATISFIED_HOLD_SENTENCE,
+} from '../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
 import {
   SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE,
 } from '../../../shared-domain/src/smartTaskCopy/listCopy.ts';
@@ -39,7 +42,7 @@ import {
   resolvePendingReason,
 } from './deadlinePlanPending.ts';
 import { buildRevisionPanelFeed } from './deadlinePlanRevisionPanelFeed.ts';
-import { resolveCostDisplayFromCombinedPrices, resolvePriceUnitLabel } from './priceUnit.ts';
+import { resolveCostDisplayFromCombinedPrices, resolveInlinePriceUnit } from './priceUnit.ts';
 import {
   collectHorizonHours,
   splitHorizonAtBookings,
@@ -47,6 +50,7 @@ import {
   type ObjectivePayloadReady,
   type ResolvedObjectiveContext,
 } from './deadlinePlanData.ts';
+import { parsePlanSnapshot } from './planSnapshotParse.ts';
 import { resolveEnergyNeededKWh, resolveTaskProgress } from './deadlinePlanResolvers.ts';
 import {
   renderDeadlinePlan,
@@ -71,6 +75,15 @@ type ResolvedContextResult =
   | { kind: 'completed'; objectiveKind: DeferredObjectiveSettingsEntry['kind'] }
   | { kind: 'absent' };
 
+// The device's status as its Overview card shows it, from the plan the bootstrap
+// carries, admitted by the same parser the Overview uses; null without a plan.
+const resolvePlanDeviceStatus = (
+  bootstrap: SettingsUiBootstrap,
+  deviceId: string,
+): ResolvedObjectiveContext['deviceStatus'] => (
+  parsePlanSnapshot(bootstrap.plan)?.devices?.find((candidate) => candidate.id === deviceId)?.status ?? null
+);
+
 const resolveObjectiveContext = (params: ObjectivePlanInput): ResolvedContextResult => {
   const nowMs = params.nowMs ?? Date.now();
   const deviceId = params.deviceId?.trim();
@@ -91,7 +104,8 @@ const resolveObjectiveContext = (params: ObjectivePlanInput): ResolvedContextRes
   // to the absent path so the generic "no deadline" card renders instead of
   // misleading "Deadline complete" copy.
   if (!objective.enabled) return { kind: 'absent' };
-  return { kind: 'active', context: { device, objective, deviceId, deadlineAtMs, activePlan, nowMs } };
+  const deviceStatus = resolvePlanDeviceStatus(params.bootstrap, deviceId);
+  return { kind: 'active', context: { device, deviceStatus, objective, deviceId, deadlineAtMs, activePlan, nowMs } };
 };
 
 // `reasonOverride` names the page's current blocker when the committed record
@@ -147,13 +161,19 @@ type ObjectivePayloadResult =
   // is behind.
   | { kind: 'awaiting_prices' };
 
+// A satisfied task holds its device only while the device's card says so: not
+// with price optimisation off, nor in an hour the task booked.
 const alreadySatisfiedResult = (
   objectiveKind: DeferredObjectiveSettingsEntry['kind'],
   progressDirection: 'increasing' | 'decreasing' | 'unknown',
-): ObjectivePayloadResult => ({
-  kind: 'unavailable', reason: 'already_satisfied',
-  body: deadlineLabels(objectiveKind, progressDirection).unavailableByReason.already_satisfied.body,
-});
+  deviceStatus: ResolvedObjectiveContext['deviceStatus'],
+): ObjectivePayloadResult => {
+  const body = deadlineLabels(objectiveKind, progressDirection).unavailableByReason.already_satisfied.body;
+  return {
+    kind: 'unavailable', reason: 'already_satisfied',
+    body: deviceStatus?.holdCause === 'smart_task_done' ? `${body} ${SMART_TASK_SATISFIED_HOLD_SENTENCE}` : body,
+  };
+};
 
 const resolveDirectionUnavailable = (
   objectiveKind: DeferredObjectiveSettingsEntry['kind'],
@@ -203,7 +223,7 @@ const prepareObjectivePayload = (
   const progress = resolveTaskProgress(ctx.device, ctx.objective, ctx.activePlan);
   if (!progress) return resolveNoReadingResult(ctx.objective.kind, ctx.activePlan, ctx.activePlan.latest);
   if (progress.remainingUnits <= 0) {
-    return alreadySatisfiedResult(ctx.objective.kind, progressDirection);
+    return alreadySatisfiedResult(ctx.objective.kind, progressDirection, ctx.deviceStatus);
   }
 
   const windowStartMs = Math.min(ctx.nowMs, ctx.activePlan.original?.revisedAtMs ?? ctx.nowMs);
@@ -220,7 +240,7 @@ const prepareObjectivePayload = (
     hours,
     energy: resolveEnergyNeededKWh(ctx.activePlan),
     costDisplay,
-    priceUnitLabel: resolvePriceUnitLabel(costDisplay),
+    priceUnitLabel: resolveInlinePriceUnit(costDisplay),
   };
 };
 

@@ -754,6 +754,28 @@ describe('formatPlanHistoryProgressLine', () => {
     }))).toBe('57.6 °C  ·  target 40.0 °C');
   });
 
+  it('keeps the arrow on an Abandoned energy task, whose progress is the energy PELS delivered', () => {
+    // A cleared 20 kWh task read `0.0 kWh · target 20.0 kWh` beside
+    // `0.3 kWh delivered`. A run split by a target edit continues from where
+    // the earlier one ended, so the arrow reconciles with its own delivery too.
+    expect(formatPlanHistoryProgressLine({
+      objectiveKind: 'energy',
+      outcome: 'abandoned',
+      progressDirection: 'increasing',
+      targetValue: 20,
+      startProgressValue: 0,
+      finalProgressValue: 0.253,
+    })).toBe('0.0 kWh → 0.3 kWh  ·  target 20.0 kWh');
+    expect(formatPlanHistoryProgressLine({
+      objectiveKind: 'energy',
+      outcome: 'replaced',
+      progressDirection: 'increasing',
+      targetValue: 20,
+      startProgressValue: 4,
+      finalProgressValue: 6,
+    })).toBe('4.0 kWh → 6.0 kWh  ·  target 20.0 kWh');
+  });
+
   it('suppresses the → final segment on Replaced temperature runs', () => {
     // `'replaced'` covers the user-swapped path (target / deadline changed
     // mid-run); same treatment as `'abandoned'` — no PELS-driven progress

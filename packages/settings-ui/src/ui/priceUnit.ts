@@ -23,6 +23,20 @@ export const resolvePriceUnitLabel = (display: CostDisplay): string => {
   return normalizeUnitWithKwh(unit);
 };
 
+/**
+ * The unit printed after a price number in a sentence, readout or axis tick.
+ * Empty when the source has no unit: the neutral `Price` label names an axis,
+ * and after a number it read as a unit (`0.20 Price`).
+ */
+export const resolveInlinePriceUnit = (display: CostDisplay): string => (
+  display.unit.trim() ? resolvePriceUnitLabel(display) : ''
+);
+
+/** `0.20 kr/kWh`, or the bare `0.20` when there is no unit. */
+export const withInlinePriceUnit = (value: string, unit: string): string => (
+  unit ? `${value} ${unit}` : value
+);
+
 /** The number {@link formatScaledPriceValue} shows, without its unit. */
 export const formatScaledPriceNumber = (rawPrice: number, display: CostDisplay): string => {
   const scaledValue = rawPrice / Math.max(1, display.divisor);

@@ -77,8 +77,8 @@ const STEADY_NOUN = (count: number): string => (count === 1 ? 'smart task' : 'sm
 
 export const resolveOverviewSmartTaskRow = (params: {
   statuses: readonly OverviewSmartTaskStatusInput[];
-  // Device-deduped recent-miss lines, worst/newest first (the past-tasks
-  // subhead's `resolveMissStreakBadges` output).
+  // Device-deduped recent-miss lines, worst/newest first: the past-tasks
+  // subhead's `resolveMissStreakBadges`, over the last 7 days' runs only.
   missStreaks: ReadonlyArray<{ deviceName: string; line: string }>;
   formatTime: (ms: number) => string;
 }): OverviewSmartTaskRow | null => {

@@ -17,6 +17,7 @@ import {
   planningPriceDivergesFromImport,
 } from '../../../shared-domain/src/price/planningPrice.ts';
 import { formatDeadlineFull, formatHourLabel } from './deadlinePlanFormatters.ts';
+import { withInlinePriceUnit } from './priceUnit.ts';
 import {
   type DeadlinePlanSchedule,
   type HorizonHour,
@@ -110,7 +111,7 @@ export const buildTimeline = (
       readout: {
         primary: formatSmartTaskHourReadoutPrimary(
           index === nowIndex ? NOW_MARKER_WORD : `${formatHourLabel(hour.startsAtMs)}–${formatHourLabel(hour.endMs)}`,
-          `${formatPrice(displayPrice)} ${priceUnitLabel}`,
+          withInlinePriceUnit(formatPrice(displayPrice), priceUnitLabel),
           currentKwh,
           labels.deviceSeriesName,
           index === nowIndex,

@@ -54,6 +54,8 @@ test('cannot-finish outranks steady and swaps Ready by → Due', async ({ page }
   await expect(row).not.toContainText('Ready by');
 });
 
+// The rollup reads only runs inside the `Last 7 days` window, so the fixture
+// runs finished hours ago.
 test('miss-streak rollup renders for the failing-recovering visitor and taps through to Smart tasks', async ({ page }) => {
   await page.addInitScript(() => {
     const w = window as unknown as {
@@ -76,10 +78,10 @@ test('miss-streak rollup renders for the failing-recovering visitor and taps thr
           version: 1,
           entriesByDeviceId: {
             dev_waterheater: [
-              entry('h4', 'missed', 4_000),
-              entry('h3', 'missed', 3_000),
-              entry('h2', 'missed', 2_000),
-              entry('h1', 'met', 1_000),
+              entry('h4', 'missed', Date.now() - 1 * 3_600_000),
+              entry('h3', 'missed', Date.now() - 2 * 3_600_000),
+              entry('h2', 'missed', Date.now() - 3 * 3_600_000),
+              entry('h1', 'met', Date.now() - 4 * 3_600_000),
             ],
           },
         }),
@@ -121,10 +123,10 @@ test('the miss rollup refreshes when new history finalizes (no stale cached read
           entriesByDeviceId: w.__historyBroken
             ? {
               dev_waterheater: [
-                entry('h4', 'missed', 4_000),
-                entry('h3', 'missed', 3_000),
-                entry('h2', 'missed', 2_000),
-                entry('h1', 'met', 1_000),
+                entry('h4', 'missed', Date.now() - 1 * 3_600_000),
+                entry('h3', 'missed', Date.now() - 2 * 3_600_000),
+                entry('h2', 'missed', Date.now() - 3 * 3_600_000),
+                entry('h1', 'met', Date.now() - 4 * 3_600_000),
               ],
             }
             : {},

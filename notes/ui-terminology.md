@@ -218,13 +218,15 @@ everything already settled off, where the sentence is just `On pace to exceed
 the hard cap this hour.`). Under Simulation mode the action clause is likewise
 dropped, because PELS is not acting and must never claim it is. When the
 managed shed cascade is exhausted (no
-controllable managed device left running to ease off) and the remaining breach
-comes from a device with **Power-limit control** turned off, the copy switches
-to the honest variant: `Managed devices are already eased off. The remaining
-draw is from a device that has Power-limit control turned off. Turn its
-Power-limit control back on so PELS can ease it off.` It names the actual
-control (never an invented feature name) and the user's real recourse — turning
-that device's Power-limit control back on, **not** raising the hard cap (see
+controllable managed device left running to ease off) and a device with
+**Power-limit control** turned off is still drawing, the copy switches to the
+honest variant: `Managed devices are already eased off. A device with
+Power-limit control turned off is still drawing power. Turn its Power-limit
+control back on, or turn off other appliances to stay under your limit.` The
+device is one source of the remaining draw, not necessarily its cause, the same
+framing as the grid sentence. It names the actual
+control (never an invented feature name) and the user's real recourses — turning
+that device's Power-limit control back on, or other appliances off, **not** raising the hard cap (see
 § "Hard cap is a capacity-period ceiling"). **`eased off`** / **`ease off`** is the sanctioned verb for
 the hard-cap shed cascade in this decision sentence (it pairs with the default
 `Easing devices off.`); reuse it here rather than reaching for a synonym, and
@@ -293,7 +295,9 @@ title + at most ONE status chip (ladder: `Let it run now` → `Held back` →
 `Boost` → `Budget exempt`; the `Smart task` badge is an
 identity/route badge and may coexist), the state row (state word + power
 fact), one modality fact line (`20.3 °C · target 22 °C`, `Charging · 64 % ·
-level 6 A`; the arrow `→` is reserved for a target *change*), and at most ONE
+level 6 A`; the arrow `→` is reserved for a target *change* PELS is driving:
+a device it holds off, where no target write goes out, reads its own target),
+and at most ONE
 exception reason line. An EV charger's fact line carries the car's battery
 level in the slot a temperature device uses for its measured value — that is
 the number the owner is asking the card for, not only the amps PELS set. It
@@ -454,7 +458,9 @@ device this hour, the normal kW line applies — the time-based copy is only for
 the truly spent hour (`hourlyBudgetExhausted`).
 
 Holds where power is not the blocker keep naming their cause, because freeing
-power would not start them and a kW figure would be a lie: `Waiting for cheaper
+power would not start them and a kW figure would be a lie. A smart task's hold
+keeps its line through a shed cooldown, a shortfall, a grid import hold and a spent
+capacity period too, since none of them releases a device its own task holds: `Waiting for cheaper
 hours` (smart task), `Smart task done, held until its ready-by time` (a smart task
 that reached its target holds its device in the hours it did not book until the
 ready-by time, owner ruling 2026-10-17; never `Waiting for cheaper hours`, which
@@ -1011,7 +1017,12 @@ The live deadline-plan hero shows only the kind chip plus a risk/failure chip
 learning is in progress, except on true cannot-finish heroes where the
 cannot-finish chip and reason own that row. The headline carries normal live
 state directly (`Heating from HH:MM`, `Cooling from HH:MM`, `Charging now`, `On track — no action
-needed yet`), so a separate state chip duplicated information. The pending hero
+needed yet`), so a separate state chip duplicated information. A booked hour that has
+started reads `Charging now` only while the device's Overview card reads `Running`;
+otherwise (Limited, Resuming through its countdown, Idle) it reads `Planned to run
+now`, the device widget's words. A satisfied task's page adds `PELS holds the device
+until the ready-by time.` only while the device card shows that hold: with price
+optimisation off, or in an hour the task booked, nothing holds it. The pending hero
 and the smart-task list still emit a state chip because there the state is the
 only available signal.
 

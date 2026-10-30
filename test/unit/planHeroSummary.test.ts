@@ -184,6 +184,14 @@ describe('buildDecisionSentence', () => {
         .toBe('Grid import is high. Holding back 2 devices. Turn off other appliances to stay under your limit.');
     });
 
+    it('does not count devices their own smart tasks hold as held back for the grid', () => {
+      expect(grid({ limitedCount: 4, deferredObjectiveAvoidCount: 1, smartTaskDoneCount: 1 }).text)
+        .toBe('Grid import is high. Holding back 2 devices. Turn off other appliances to stay under your limit.');
+      expect(grid({ limitedCount: 2, deferredObjectiveAvoidCount: 1, smartTaskDoneCount: 1 }).text).toBe(
+        'Grid import is high and PELS has no more devices to ease off. Turn off other appliances to stay under your limit.',
+      );
+    });
+
     it('never says the grid has no power', () => {
       const { text } = grid();
       expect(text).toBe(
@@ -328,15 +336,17 @@ describe('buildDecisionSentence', () => {
     })).text).toBe('On pace to exceed the hard cap this hour. Easing devices off.');
   });
 
-  it('tells the honest story when the managed cascade is exhausted and a control-off device breaches', () => {
+  it('names a control-off device as one source of the remaining draw, beside the other appliances', () => {
+    // A 3 kW control-off tank beside 20 kW of background read "The remaining
+    // draw is from a device that has Power-limit control turned off", and
+    // turning its control back on still left the hour over the cap.
     expect(buildDecisionSentence(baseline({
       projectedOverHardCap: true,
       capacityControlOffCount: 1,
       sheddableManagedRunningCount: 0,
     }))).toEqual({
-      text: 'Managed devices are already eased off. The remaining draw is from '
-        + 'a device that has Power-limit control turned off. '
-        + 'Turn its Power-limit control back on so PELS can ease it off.',
+      text: 'Managed devices are already eased off. A device with Power-limit control turned off is still drawing power. '
+        + 'Turn its Power-limit control back on, or turn off other appliances to stay under your limit.',
       positive: false,
     });
   });
@@ -347,9 +357,8 @@ describe('buildDecisionSentence', () => {
       capacityControlOffCount: 2,
       sheddableManagedRunningCount: 0,
     })).text).toBe(
-      'Managed devices are already eased off. The remaining draw is from '
-      + '2 devices that have Power-limit control turned off. '
-      + 'Turn their Power-limit control back on so PELS can ease them off.',
+      'Managed devices are already eased off. 2 devices with Power-limit control turned off are still drawing power. '
+      + 'Turn their Power-limit control back on, or turn off other appliances to stay under your limit.',
     );
   });
 
@@ -415,7 +424,7 @@ describe('buildDecisionSentence', () => {
     expect(buildDecisionSentence(baseline({
       limitedCount: 3,
       deferredObjectiveAvoidCount: 1,
-    })).text).toBe('Holding back 3 devices, 1 waiting for cheaper hours.');
+    })).text).toBe('Holding back 3 devices, 1 waiting for cheaper hours, 2 so the house stays under 12.0 kW.');
   });
 
   it('never says a done smart task is waiting for cheaper hours', () => {
@@ -437,7 +446,25 @@ describe('buildDecisionSentence', () => {
     expect(buildDecisionSentence(baseline({
       limitedCount: 3,
       smartTaskDoneCount: 1,
-    })).text).toBe('Holding back 3 devices, 1 held until a smart task’s ready-by time.');
+    })).text).toBe('Holding back 3 devices, 1 held until a smart task’s ready-by time, 2 so the house stays under 12.0 kW.');
+  });
+
+  it('names today’s budget for the devices beside the task holds when it holds all of them', () => {
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 4,
+      smartTaskDoneCount: 1,
+      dailyBudgetLimitedCount: 3,
+      safePaceKw: 2.2,
+    })).text).toBe('Holding back 4 devices, 1 held until a smart task’s ready-by time, 3 to stay within today’s budget.');
+  });
+
+  it('leaves the power clause out when no limit sets a safe pace', () => {
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 3,
+      deferredObjectiveAvoidCount: 1,
+      smartTaskDoneCount: 1,
+      safePaceKw: null,
+    })).text).toBe('Holding back 3 devices, 1 waiting for cheaper hours, 1 held until a smart task’s ready-by time.');
   });
 
   it('names today’s budget when every held device is on daily-budget pacing', () => {
@@ -519,6 +546,16 @@ describe('formatCheapestUpcomingHour', () => {
       unitLabel: 'kr/kWh',
       formatClockTime: clock,
     })).toBe('Cheapest hour ahead: 21:00, 1.25 kr/kWh.');
+  });
+
+  it('prints the bare number when the prices have no unit', () => {
+    // Flow prices carry no unit; the axis fallback `Price` after a number read as one.
+    expect(formatCheapestUpcomingHour({
+      hours: [{ startsAtMs: NOW_MS + HOUR, price: 0.2 }],
+      nowMs: NOW_MS,
+      unitLabel: '',
+      formatClockTime: clock,
+    })).toBe('Cheapest hour ahead: 21:00, 0.20.');
   });
 
   it('prefers the earlier hour when prices differ only below display precision', () => {

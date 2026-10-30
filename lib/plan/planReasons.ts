@@ -363,6 +363,18 @@ function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): Devic
   const currentReason = classifyPlanReason(dev.reason);
   const baseReason = buildBaseReason(ctx, dev);
 
+  // Smart-task framing wins over the power framings when both apply: the
+  // device's own task holds it whatever power does, so its reason ("Waiting
+  // for cheaper hours", or the done line) is the true one. That includes the
+  // shortfall and shed-cooldown relabels below, which would otherwise rename a
+  // capacity hold "Waiting to resume — 13.0 kW more needed" or "Waiting after
+  // limiting a device (37s)" on a device neither more power nor the timer
+  // releases. A swap keeps its line (`shouldAdoptDeferredAvoidFraming`).
+  const holdCause = deferredHoldCauseByDeviceId?.get(dev.id);
+  if (holdCause !== undefined && shouldAdoptDeferredAvoidFraming(currentReason, baseReason)) {
+    return { ...dev, reason: { code: DEFERRED_HOLD_REASON_CODE[holdCause] } };
+  }
+
   const shortfallReason = maybeApplyShortfallReason(ctx, currentReason);
   if (shortfallReason) return { ...dev, reason: shortfallReason };
 
@@ -383,19 +395,6 @@ function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): Devic
 
   const cooldownReason = maybeApplyCooldownReason(ctx, currentReason);
   if (cooldownReason) return { ...dev, reason: cooldownReason };
-
-  // Smart-task framing wins over capacity / dailyBudget framing when both
-  // apply: the user opted into the price-aware plan, so the task's own reason
-  // ("Waiting for cheaper hours", or the done line) reflects the planner's intent more honestly than naming whichever
-  // physical constraint happens to be binding right now. Skipped when the
-  // device has a richer hold reason (shortfall above, swap/budget below) —
-  // those carry user-actionable information the smart-task framing would
-  // hide. Active state-machine reasons (cooldown handled above) similarly
-  // pass through.
-  const holdCause = deferredHoldCauseByDeviceId?.get(dev.id);
-  if (holdCause !== undefined && shouldAdoptDeferredAvoidFraming(currentReason, baseReason)) {
-    return { ...dev, reason: { code: DEFERRED_HOLD_REASON_CODE[holdCause] } };
-  }
 
   const dailyReattribution = resolveDailyBindingReattribution(
     ctx,
@@ -563,20 +562,25 @@ const DEFERRED_HOLD_REASON_CODE = {
   task_done: PLAN_REASON_CODES.deferredObjectiveSatisfied,
 } as const satisfies Record<DeferredHoldCause, string>;
 
-// Only override capacity-shaped reasons with the smart-task framing. Swap,
-// shortfall, hourlyBudget, dailyBudget, inactive, and the various
-// state-machine reasons (`sheddingActive`, etc.) all carry information the
-// `deferredObjectiveAvoid` framing would hide, so we leave them alone.
+// The power holds the smart-task framing replaces: capacity, the grid import
+// limit, the daily budget and a spent capacity period. None of them, nor the
+// out-of-levers shortfall, would release a device its own task holds.
+const DEFERRED_FRAMING_POWER_HOLD_CODES: ReadonlySet<string> = new Set([
+  PLAN_REASON_CODES.capacity,
+  PLAN_REASON_CODES.gridImport,
+  PLAN_REASON_CODES.dailyBudget,
+  PLAN_REASON_CODES.hourlyBudget,
+]);
+
+// A swap names the device PELS made room for and keeps its line; the
+// state-machine reasons (startup holds, a silent meter) pass through.
 function shouldAdoptDeferredAvoidFraming(
   currentReason: ClassifiedPlanReason,
   baseReason: DeviceReason,
 ): boolean {
-  if (isSwapReason(currentReason) || isShortfallReason(currentReason)) return false;
-  if (currentReason.code === PLAN_REASON_CODES.hourlyBudget) return false;
-  if (currentReason.code === PLAN_REASON_CODES.dailyBudget) return true;
-  if (currentReason.code === PLAN_REASON_CODES.capacity) return true;
-  // Reason will normalize to the base reason this cycle — override when the
-  // base is capacity- or dailyBudget-shaped.
-  return baseReason.code === PLAN_REASON_CODES.capacity
-    || baseReason.code === PLAN_REASON_CODES.dailyBudget;
+  if (isSwapReason(currentReason)) return false;
+  if (isShortfallReason(currentReason)) return true;
+  // The current reason, or the base it normalizes to this cycle.
+  return DEFERRED_FRAMING_POWER_HOLD_CODES.has(currentReason.code)
+    || DEFERRED_FRAMING_POWER_HOLD_CODES.has(baseReason.code);
 }

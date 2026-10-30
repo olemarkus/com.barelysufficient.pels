@@ -10,6 +10,7 @@ import {
   SMART_TASK_HERO_STAT_LABELS,
 } from '../../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts';
 import type { DeadlineCannotMeetRecourse } from '../../../shared-domain/src/smartTaskCopy/pendingHero.ts';
+import { DEVICE_WIDGET_RUNNING_NOW } from '../../../shared-domain/src/smartTaskCopy/widgetCopy.ts';
 import {
   formatSmartTaskCarLimitReason,
   resolveSmartTaskAtRiskWhy,
@@ -130,12 +131,21 @@ export const resolveDeadlineHeroTone = (
 // limit or schedule) also suppresses it: "Charging now" from
 // the booked hour would contradict the reason line saying the device is not
 // taking power. A satisfied or healthy hero carrying a stale cause keeps it.
+//
+// A booked hour that has started is "Heating now" only while the device's
+// Overview card reads `Running`. Otherwise the hour is booked but nothing runs:
+// an energy task read "Running now" beside a charger PELS had paused at 0 kW, and
+// a device resuming is still off through its countdown, while an idle one has
+// nothing to do. It reads "Planned to run now" then, as the device widget does.
+// In simulation the card names the device's real state, and so does this
+// headline. Without a plan to read, the booked hour is all there is to go on.
 export const resolveHeroHeadline = (
   labels: DeadlineLabels,
   firstChargingHour: HorizonHour | undefined,
   nowMs: number,
   tone: DeadlinePlanHeroTone,
   liveCause: SmartTaskLiveCause | null,
+  deviceRunning: boolean,
 ): string | null => {
   // `warn` is the at-risk tone: a live cause explains that status, so the booked
   // hour's live state would contradict it. A satisfied or healthy hero keeps it.
@@ -147,7 +157,7 @@ export const resolveHeroHeadline = (
     return tone === 'good' ? 'On track — no action needed yet' : null;
   }
   if (firstChargingHour.startsAtMs <= nowMs) {
-    return `${labels.activeChipLabel} now`;
+    return deviceRunning ? `${labels.activeChipLabel} now` : DEVICE_WIDGET_RUNNING_NOW;
   }
   return `${labels.activeChipLabel} from ${formatHourLabel(firstChargingHour.startsAtMs)}`;
 };
@@ -440,7 +450,10 @@ export const buildHero = (
   return {
     chips: buildHeroChips(labels, resolveHeroStatusChip({ labels, planStatus }), confidenceChipText),
     tone,
-    headline: resolveHeroHeadline(labels, firstChargingHour, nowMs, tone, liveCause),
+    headline: resolveHeroHeadline(
+      labels, firstChargingHour, nowMs, tone, liveCause,
+      ctx.deviceStatus === null || ctx.deviceStatus.kind === 'active',
+    ),
     headlineReason: resolveQueuedHeadlineReason(
       labels,
       firstChargingHour,
