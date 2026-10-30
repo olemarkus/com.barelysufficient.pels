@@ -42,12 +42,12 @@ ESLint counts run lower than `wc -l` because the rule skips blank lines and comm
 
 The rows worth tracking are the **Bucket B documented exceptions** — files intentionally over the
 limit because the concept is centralized, which is what earns an entry in `eslint.config.mjs` with
-a ceiling and rationale. There are currently two, and only one of them is over 500 for a
-Bucket B reason:
+a ceiling and rationale. There is currently one, and no file carries a blanket
+`/* eslint-disable max-lines */` pragma (2026-10-30: `deadlineLabels.ts`, the last one, was split into
+`packages/shared-domain/src/smartTaskCopy/`):
 
 | File | LOC (2026-08-30) | Where the exception lives |
 |---|---:|---|
-| `packages/shared-domain/src/deadlineLabels.ts` | 2868 | The one remaining blanket `/* eslint-disable max-lines */` pragma. Single home for kind-aware smart-task copy, colocated so runtime logs and the UI read the same strings. Per step 3 below it should move to a config-level ceiling. |
 | `packages/settings-ui/src/ui/deviceDetail/index.ts` | 542 raw / ceiling 505 | Config-level ceiling in `eslint.config.mjs`, which records <=500 as the target it must reach. |
 
 The 2026-05-30 revision of this table listed nine Bucket B files; none of them carries an

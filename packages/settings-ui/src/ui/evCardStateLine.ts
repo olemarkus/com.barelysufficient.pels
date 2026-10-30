@@ -1,4 +1,4 @@
-import { resolveEvCardStateLine } from '../../../shared-domain/src/deadlineLabels.ts';
+import { resolveEvCardStateLine } from '../../../shared-domain/src/smartTaskCopy/pendingReasons.ts';
 import { state } from './state.ts';
 import { hoursWithPlannedEnergy } from '../../../shared-domain/src/deferredPlanBookedHours.ts';
 

@@ -12,10 +12,10 @@ import { resolveStarvationRescueRejectCopy } from '../../packages/shared-domain/
 import { SMART_TASK_SUB_HOME_UNAVAILABLE } from '../../packages/shared-domain/src/objectiveWriteStrings';
 import {
   resolveCreateSmartTaskRejectCopy,
-  resolveSmartTaskListStatus,
   resolveSmartTaskEditRejectCopy,
-  resolveSmartTaskWidgetDetailCopy,
-} from '../../packages/shared-domain/src/deadlineLabels';
+} from '../../packages/shared-domain/src/smartTaskCopy/createEditCopy';
+import { resolveSmartTaskListStatus } from '../../packages/shared-domain/src/smartTaskCopy/listStatus';
+import { resolveSmartTaskWidgetDetailCopy } from '../../packages/shared-domain/src/smartTaskCopy/widgetCopy';
 
 describe('device_in_sub_home reason mapping', () => {
   it('mapSmartTaskAppReason passes the typed reason through', () => {

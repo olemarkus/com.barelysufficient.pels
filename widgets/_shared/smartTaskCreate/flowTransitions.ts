@@ -1,4 +1,6 @@
-import { resolveCreateSmartTaskRejectCopy } from '../../../packages/shared-domain/src/deadlineLabels';
+import {
+  resolveCreateSmartTaskRejectCopy,
+} from '../../../packages/shared-domain/src/smartTaskCopy/createEditCopy';
 import { canCreateFromPreview } from './flowRender';
 import type { ComposeOrigin, FlowTargets, FlowView } from './flowView';
 import type {

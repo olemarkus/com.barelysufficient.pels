@@ -2,8 +2,9 @@ import { getSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceCo
 import type { DeviceStatus, DeviceStatusCountdown } from '../../packages/contracts/src/deviceStatus';
 import type { CarIdentificationState } from '../../packages/contracts/src/evCarLink';
 import {
-  CAR_ASSOCIATION_TIMED_OUT, WAITING_FOR_CAR_ASSOCIATION,
-} from '../../packages/shared-domain/src/deadlineLabels';
+  CAR_ASSOCIATION_TIMED_OUT,
+  WAITING_FOR_CAR_ASSOCIATION,
+} from '../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
 import type { IdleClassification } from '../../packages/contracts/src/idleClassification';

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
-import { DEVICE_WIDGET_COPY } from '../../packages/shared-domain/src/deadlineLabels';
+import { DEVICE_WIDGET_COPY } from '../../packages/shared-domain/src/smartTaskCopy/widgetCopy';
 import { installWidget, type WidgetHomey, type WidgetWindow } from '../../widgets/device/src/public/widgetApp';
 import { resolveDeviceWidgetPreviewPayload } from '../../widgets/device/src/public/previewPayloads';
 import type { DeviceWidgetPayload } from '../../widgets/device/src/deviceWidgetTypes';

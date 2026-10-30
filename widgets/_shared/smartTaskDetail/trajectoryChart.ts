@@ -3,7 +3,7 @@ import {
   SMART_TASK_WIDGET_CHART_PLANNED_LABEL,
   SMART_TASK_WIDGET_CHART_RUN_BAND_LABEL,
   SMART_TASK_WIDGET_CHART_TARGET_LABEL,
-} from '../../../packages/shared-domain/src/deadlineLabels';
+} from '../../../packages/shared-domain/src/smartTaskCopy/widgetCopy';
 import type {
   DeferredPlanHistoryChartData,
   DeferredPlanHistoryChartPoint,

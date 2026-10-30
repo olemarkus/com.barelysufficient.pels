@@ -1,4 +1,4 @@
-import { resolveChipConfidence } from '../../packages/shared-domain/src/deadlineLabels';
+import { resolveChipConfidence } from '../../packages/shared-domain/src/smartTaskCopy/estimateConfidence';
 import type {
   DeferredObjectiveKwhPerUnitProvenanceV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';

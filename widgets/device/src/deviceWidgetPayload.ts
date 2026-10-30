@@ -1,7 +1,7 @@
 import {
   DEVICE_WIDGET_RUNNING_NOW,
   formatDeviceWidgetNextRun,
-} from '../../../packages/shared-domain/src/deadlineLabels';
+} from '../../../packages/shared-domain/src/smartTaskCopy/widgetCopy';
 import { formatLocalHHMM } from '../../../packages/shared-domain/src/smartTaskDeadlineFormat';
 import { buildSmartTaskCandidateDevices } from '../../../lib/objectives/deferredObjectives';
 import type { PelsHost } from '../../../lib/app/pelsHost';

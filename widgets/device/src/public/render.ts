@@ -1,9 +1,9 @@
+import { formatSmartTaskGoalValue } from '../../../../packages/shared-domain/src/smartTaskCopy/valueFormat';
 import {
   DEVICE_WIDGET_COPY,
   formatDeviceWidgetEndedDetail,
   formatDeviceWidgetFigure,
-  formatSmartTaskGoalValue,
-} from '../../../../packages/shared-domain/src/deadlineLabels';
+} from '../../../../packages/shared-domain/src/smartTaskCopy/widgetCopy';
 import { hide, setLine, setVisible } from '../../../_shared/widgetDom';
 import type { FlowTargets } from '../../../_shared/smartTaskCreate/flowView';
 import type { CreateSmartTaskDevice } from '../../../_shared/smartTaskCreate/types';

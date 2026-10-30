@@ -2,7 +2,7 @@ import {
   SMART_TASK_USAGE_RETURN_CONTEXT,
   SMART_TASK_USAGE_RETURN_DEFAULT_HREF,
   SMART_TASK_USAGE_RETURN_LABEL,
-} from '../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../shared-domain/src/smartTaskCopy/listCopy.ts';
 
 type UsageReturnLinkState = {
   href: string;

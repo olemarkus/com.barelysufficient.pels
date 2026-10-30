@@ -14,13 +14,9 @@ import type {
   DeferredObjectivePlanHistoryRevisionSnapshot,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory';
-import {
-  deadlineLabels,
-  formatProgressValueForUnit,
-  formatSmartTaskTargetLabel,
-  APPROX_GLYPH,
-  SMART_TASK_READOUT_NOT_SCHEDULED,
-} from './deadlineLabels';
+import { deadlineLabels } from './smartTaskCopy/deadlineLabels';
+import { formatSmartTaskTargetLabel, SMART_TASK_READOUT_NOT_SCHEDULED } from './smartTaskCopy/liveDetailCopy';
+import { formatProgressValueForUnit, APPROX_GLYPH } from './smartTaskCopy/valueFormat';
 import { formatPlanHistoryRevisionEntry } from './deferredPlanHistory';
 import {
   observedValueAt,

@@ -6,7 +6,8 @@ import type {
   DeferredObjectivePlanOutcome,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory';
-import { APPROX_GLYPH, resolveRevisionReason } from './deadlineLabels';
+import { resolveRevisionReason } from './smartTaskCopy/revisionReasons';
+import { APPROX_GLYPH } from './smartTaskCopy/valueFormat';
 import { formatRefinedMissCause } from './deferredPlanHistoryAttribution';
 import {
   resolveEntryCostDisplay,

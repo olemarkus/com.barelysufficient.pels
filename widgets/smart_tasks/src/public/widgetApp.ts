@@ -1,4 +1,6 @@
-import { SMART_TASK_WIDGET_LOAD_ERROR_SUBTITLE } from '../../../../packages/shared-domain/src/deadlineLabels';
+import {
+  SMART_TASK_WIDGET_LOAD_ERROR_SUBTITLE,
+} from '../../../../packages/shared-domain/src/smartTaskCopy/widgetCopy';
 import {
   applyPreviewTheme,
   createRefreshLoop,

@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
+import { CREATE_SMART_TASK_WIDGET_COPY } from '../../packages/shared-domain/src/smartTaskCopy/createEditCopy';
 import {
-  CREATE_SMART_TASK_WIDGET_COPY,
   SMART_TASK_EXTRA_PERMISSION_HINTS,
-} from '../../packages/shared-domain/src/deadlineLabels';
+} from '../../packages/shared-domain/src/smartTaskCopy/permissionsCopy';
 import { installWidget } from '../../widgets/create_smart_task/src/public/widgetApp';
 import type { WidgetController, WidgetHomey, WidgetWindow } from '../../widgets/create_smart_task/src/public/widgetApp';
 import type { CreateSmartTaskPreviewResponse } from '../../widgets/create_smart_task/src/createSmartTaskWidgetTypes';

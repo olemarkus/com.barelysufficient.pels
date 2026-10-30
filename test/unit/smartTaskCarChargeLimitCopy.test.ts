@@ -6,16 +6,18 @@ import {
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives';
 import type { DeferredObjectiveActivePlanV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import {
+  resolveEffectivePlanStatus,
+  resolveReportedCarChargeLimit,
+  resolveSmartTaskListStatus,
+} from '../../packages/shared-domain/src/smartTaskCopy/listStatus';
+import {
   formatSmartTaskCarLimitListLine,
   formatSmartTaskCarLimitReason,
   formatSmartTaskCarLimitWhy,
-  resolveEffectivePlanStatus,
-  resolveReportedCarChargeLimit,
   resolveSmartTaskCarChargeLimit,
-  resolveSmartTaskListStatus,
   resolveSmartTaskLiveCause,
-  resolveSmartTaskWidgetDetailCopy,
-} from '../../packages/shared-domain/src/deadlineLabels';
+} from '../../packages/shared-domain/src/smartTaskCopy/shortfallCauses';
+import { resolveSmartTaskWidgetDetailCopy } from '../../packages/shared-domain/src/smartTaskCopy/widgetCopy';
 import { partialDouble } from '../helpers/partialDouble';
 
 // An EV smart task whose car's own charge limit sits below its target says so

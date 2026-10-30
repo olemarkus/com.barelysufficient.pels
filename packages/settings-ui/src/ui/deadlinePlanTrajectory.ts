@@ -10,7 +10,6 @@ import type {
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
   DEADLINE_MARKER_WORD,
-  formatProgressValueForUnit,
   formatSmartTaskTargetLabel,
   formatSmartTaskTrajectoryCardTitle,
   formatSmartTaskTrajectoryShortAmountLabel,
@@ -19,7 +18,8 @@ import {
   formatSmartTaskTrajectoryStatelineShort,
   SMART_TASK_STATELINE_AT_RISK_WORD,
   SMART_TASK_STATELINE_ON_TRACK_WORD,
-} from '../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts';
+import { formatProgressValueForUnit } from '../../../shared-domain/src/smartTaskCopy/valueFormat.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { formatDeadlineFull, formatHourLabel } from './deadlinePlanFormatters.ts';
 import {

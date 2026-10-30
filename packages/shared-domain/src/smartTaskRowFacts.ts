@@ -7,9 +7,9 @@ import type {
 import {
   resolveReportedCarChargeLimit,
   resolveSmartTaskListStatus,
-  type SmartTaskCarChargeLimit,
   type SmartTaskListStatusId,
-} from './deadlineLabels';
+} from './smartTaskCopy/listStatus';
+import type { SmartTaskCarChargeLimit } from './smartTaskCopy/shortfallCauses';
 import { resolveFirstPlannedHourMs } from './deferredPlanBookedHours';
 import { hasObservedStateOfCharge } from './stateOfChargeObservedState';
 import { hasObservedTemperature } from './temperatureObservedState';

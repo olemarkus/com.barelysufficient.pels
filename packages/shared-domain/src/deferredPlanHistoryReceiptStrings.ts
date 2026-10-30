@@ -23,7 +23,7 @@ import type {
 // Non-breaking space, used between the approx glyph + value + unit so chips
 // never wrap mid-figure ("12 / kr" breaking onto two lines at 320 px).
 // v2.7.3 — `pels-m3-critic` + `pels-ux-fit` finding. (Re-exported alongside
-// the approx glyph from `deadlineLabels` by the producer; defined here so the
+// the approx glyph from `smartTaskCopy/valueFormat` by the producer; defined here so the
 // receipt strings that interpolate it have a local source.)
 export const RECEIPT_NBSP = ' ';
 
@@ -78,7 +78,7 @@ export const formatReceiptDeliveredBare = (formattedDelivered: string): string =
 
 // "short ≈ 23 min" — the time-shortfall half of the chip. `approxGlyph` is
 // threaded from the producer (which imports `APPROX_GLYPH` from
-// `deadlineLabels`) so the glyph stays single-sourced; NBSP keeps the chip
+// `smartTaskCopy/valueFormat`) so the glyph stays single-sourced; NBSP keeps the chip
 // from wrapping mid-figure.
 export const formatReceiptShortfall = (approxGlyph: string, duration: string): string =>
   `short ${approxGlyph}${RECEIPT_NBSP}${duration}`;

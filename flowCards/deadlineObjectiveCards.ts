@@ -4,10 +4,8 @@ import type {
   DeferredObjectiveActivePlanV1,
 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
-import {
-  isDeviceExclusionPaused,
-  resolveEffectivePlanStatus,
-} from '../packages/shared-domain/src/deadlineLabels';
+import { resolveEffectivePlanStatus } from '../packages/shared-domain/src/smartTaskCopy/listStatus';
+import { isDeviceExclusionPaused } from '../packages/shared-domain/src/smartTaskCopy/pendingReasons';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { FlowCard } from '../lib/utils/types';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';

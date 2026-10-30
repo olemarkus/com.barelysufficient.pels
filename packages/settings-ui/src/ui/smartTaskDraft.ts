@@ -2,9 +2,9 @@ import type { DeferredObjectivePlanPreviewStatus } from '../../../contracts/src/
 import type { SettingsUiSmartTaskPreviewResponse } from '../../../contracts/src/smartTaskEdit.ts';
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
-  formatDeadlineCostMetaLine,
   resolveSmartTaskPreviewStatusCopy,
-} from '../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../shared-domain/src/smartTaskCopy/createEditCopy.ts';
+import { formatDeadlineCostMetaLine } from '../../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts';
 
 // What creating a Smart task and editing one share in the settings UI: how a
 // typed goal and ready-by time are read, and how a server preview is shown.

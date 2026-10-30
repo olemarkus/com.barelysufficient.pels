@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { h, render } from 'preact';
 import { PlanInputsCard, type DeadlinePlanPayload } from '../src/ui/views/DeadlinePlan.tsx';
-import { deadlineLabels } from '../../shared-domain/src/deadlineLabels.ts';
+import { deadlineLabels } from '../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
 
 // Separate file from `deadlinePlanRender.test.ts` so the freshness tests are
 // not preceded by other tests in the same module that mount the live `ready`

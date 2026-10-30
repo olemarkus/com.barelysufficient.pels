@@ -9,7 +9,7 @@ import {
   type DeadlinePlanPayload,
   type DeadlinePlanPendingPayload,
 } from '../src/ui/views/DeadlinePlan.tsx';
-import { deadlineLabels } from '../../shared-domain/src/deadlineLabels.ts';
+import { deadlineLabels } from '../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
 import { budgetOverviewProps } from './helpers/budgetOverviewProps.ts';
 
 const INDEX_HTML = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');

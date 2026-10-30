@@ -6,7 +6,7 @@ import type { SteppedLoadProfile } from '../../contracts/src/types.ts';
 import { PLAN_REASON_CODES } from '../../shared-domain/src/planReasonSemanticsCore.ts';
 import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../../shared-domain/src/planStateLabels.ts';
 import { STARVATION_RESCUE_WIDGET_COPY } from '../../shared-domain/src/planStarvation.ts';
-import { SMART_TASK_EXTRA_PERMISSION_LABELS } from '../../shared-domain/src/deadlineLabels.ts';
+import { SMART_TASK_EXTRA_PERMISSION_LABELS } from '../../shared-domain/src/smartTaskCopy/permissionsCopy.ts';
 import { uiDeviceFixture, type CardFixture } from './helpers/deviceStatusFixture.ts';
 
 // The chip calls the rescue controller, which talks to the API over `callApi`

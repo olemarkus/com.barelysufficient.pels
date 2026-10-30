@@ -1,4 +1,6 @@
-import { CREATE_SMART_TASK_WIDGET_COPY } from '../../../../packages/shared-domain/src/deadlineLabels';
+import {
+  CREATE_SMART_TASK_WIDGET_COPY,
+} from '../../../../packages/shared-domain/src/smartTaskCopy/createEditCopy';
 import {
   applyPreviewTheme,
   type WidgetController as SharedWidgetController,

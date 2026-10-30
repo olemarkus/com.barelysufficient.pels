@@ -24,7 +24,7 @@ import {
   composeSmartTaskDraftLandingLine,
   SMART_TASK_EDIT_COPY,
   resolveSmartTaskEditRejectCopy,
-} from '../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../shared-domain/src/smartTaskCopy/createEditCopy.ts';
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast } from './toast.ts';

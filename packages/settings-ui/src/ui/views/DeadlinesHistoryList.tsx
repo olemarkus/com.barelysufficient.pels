@@ -4,7 +4,7 @@ import {
   SMART_TASK_PAST_EMPTY_COPY,
   SMART_TASK_PAST_HEADING,
   SMART_TASK_PAST_LOADING_LABEL,
-} from '../../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../../shared-domain/src/smartTaskCopy/listCopy.ts';
 import { resolveMissStreakBadges } from '../../../../shared-domain/src/deferredPlanHistory.ts';
 import {
   filterPlanHistoryByDevice,

@@ -3,12 +3,10 @@ import type {
   DeferredObjectiveSettingsEntry,
 } from '../../../../contracts/src/deferredObjectiveSettings.ts';
 import type { SettingsUiSmartTaskDevicesResponse } from '../../../../contracts/src/smartTaskEdit.ts';
-import {
-  deadlineLabels,
-  formatSmartTaskGoalValue,
-  SMART_TASK_CREATE_PAGE_COPY,
-  SMART_TASK_LIST_ROW_LABELS,
-} from '../../../../shared-domain/src/deadlineLabels.ts';
+import { SMART_TASK_CREATE_PAGE_COPY } from '../../../../shared-domain/src/smartTaskCopy/createEditCopy.ts';
+import { deadlineLabels } from '../../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
+import { SMART_TASK_LIST_ROW_LABELS } from '../../../../shared-domain/src/smartTaskCopy/listCopy.ts';
+import { formatSmartTaskGoalValue } from '../../../../shared-domain/src/smartTaskCopy/valueFormat.ts';
 import { resolveObjectiveTargetValue } from '../../../../shared-domain/src/deferredObjectiveValues.ts';
 import { formatSmartTaskListDateTime } from '../../../../shared-domain/src/deferredPlanHistory.ts';
 import { resolveBrowserTimeZone } from '../deadlinePlanHistoryFetch.ts';

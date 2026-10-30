@@ -30,7 +30,7 @@ import {
   type OverviewSmartTaskStatusInput,
 } from '../../../shared-domain/src/overviewSmartTaskRow.ts';
 import { flattenPlanHistoryEntries, resolveMissStreakBadges } from '../../../shared-domain/src/deferredPlanHistory.ts';
-import { resolveSmartTaskListStatus } from '../../../shared-domain/src/deadlineLabels.ts';
+import { resolveSmartTaskListStatus } from '../../../shared-domain/src/smartTaskCopy/listStatus.ts';
 import type { OverviewDeferredObjectiveActivePlan } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { PlanSnapshot } from './planTypes.ts';
 import { applyPlanRescueGate } from './starvationRescue.ts';

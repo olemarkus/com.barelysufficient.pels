@@ -20,7 +20,10 @@ import type {
   ResolvedDeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import { resolvePlanKwhPerUnit } from '../../../shared-domain/src/deferredActivePlanResolvedView.ts';
-import { resolveChipConfidence, resolveSmartTaskLearning } from '../../../shared-domain/src/deadlineLabels.ts';
+import {
+  resolveChipConfidence,
+  resolveSmartTaskLearning,
+} from '../../../shared-domain/src/smartTaskCopy/estimateConfidence.ts';
 import { resolveRemainingEnergyKWh } from '../../../shared-domain/src/energyQuantities.ts';
 import { isFiniteNumber } from '../../../shared-domain/src/numberGuards.ts';
 

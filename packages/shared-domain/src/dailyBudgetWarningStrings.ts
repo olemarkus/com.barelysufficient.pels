@@ -13,7 +13,7 @@ import type { PowerLimitAxis } from '../../contracts/src/capacitySettings';
 // a remedy.
 // The recommended fix is to lower the daily budget so future days reserve
 // available power earlier (see `cannotMeetDailyBudgetExhausted` in
-// `deadlineLabels.ts`).
+// `smartTaskCopy/deadlineLabels.ts`).
 //
 // The banner names the limit that sets the day's ceiling
 // (`DailyBudgetPowerLimitCeiling.limit`): with Capacity limit off, or a grid

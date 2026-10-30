@@ -1,7 +1,7 @@
 import type { CreateSmartTaskCandidateDevice } from '../../../packages/contracts/src/widgetHostApi';
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
-} from '../../../packages/shared-domain/src/deadlineLabels';
+} from '../../../packages/shared-domain/src/smartTaskCopy/createEditCopy';
 import { buildSmartTaskCandidateDevices } from '../../../lib/objectives/deferredObjectives/smartTaskCandidateDevices';
 import type {
   CreateSmartTaskDevicesPayload,

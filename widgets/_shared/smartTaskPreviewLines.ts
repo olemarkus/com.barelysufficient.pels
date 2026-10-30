@@ -5,7 +5,7 @@ import type { DeferredObjectivePlanPreviewEstimate } from '../../packages/contra
 import {
   formatDeadlineCostMetaLine,
   formatEnergyEstimateKWh,
-} from '../../packages/shared-domain/src/deadlineLabels';
+} from '../../packages/shared-domain/src/smartTaskCopy/liveDetailCopy';
 
 // "<energyLabel>: <estimate>", or null when the preview has no energy estimate.
 export const formatPreviewEnergyLine = (

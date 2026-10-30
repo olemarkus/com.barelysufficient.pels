@@ -47,7 +47,7 @@ import {
   withCarChargeLimit,
   withDiagnosticReasonCode,
 } from './activePlanDiagnosticReason';
-import { resolveEffectivePlanStatus } from '../../../packages/shared-domain/src/deadlineLabels';
+import { resolveEffectivePlanStatus } from '../../../packages/shared-domain/src/smartTaskCopy/listStatus';
 import { effectivePlanStatusOf, publishOverlayOnlyStatusChange } from './effectivePlanStatusEvents';
 import type {
   DeferredObjectiveActivePlanStatusV1,

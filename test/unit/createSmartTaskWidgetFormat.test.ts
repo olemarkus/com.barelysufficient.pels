@@ -2,14 +2,14 @@
  * @vitest-environment node
  */
 import { describe, expect, it } from 'vitest';
+import { CREATE_SMART_TASK_WIDGET_COPY } from '../../packages/shared-domain/src/smartTaskCopy/createEditCopy';
 import {
   formatSmartTaskGoalValue,
   formatSmartTaskNowValueLine,
   formatSmartTaskUnknownNowValueLine,
   formatSmartTaskGoalContextLine,
   pluralHour,
-  CREATE_SMART_TASK_WIDGET_COPY,
-} from '../../packages/shared-domain/src/deadlineLabels';
+} from '../../packages/shared-domain/src/smartTaskCopy/valueFormat';
 import {
   formatScheduledHoursWindow,
   composeSmartTaskScheduledLine,

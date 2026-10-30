@@ -1,6 +1,6 @@
 import {
   resolveKwhPerUnitProvenanceRows,
-} from '../../packages/shared-domain/src/deadlineLabels';
+} from '../../packages/shared-domain/src/smartTaskCopy/estimateConfidence';
 import type {
   DeferredObjectiveKwhPerUnitProvenanceV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';

@@ -39,14 +39,16 @@ import {
   type HistoryRunBand,
   type HistoryStripReadout,
 } from '../../../../shared-domain/src/deferredPlanHistoryDetailInteraction.ts';
+import { deadlineLabels } from '../../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
 import {
-  deadlineLabels,
-  formatProgressValueForUnit,
-  REVISION_REASON_FALLBACK_WITH_DETAIL,
   SMART_TASK_HISTORY_EYEBROW,
-  SMART_TASK_READOUT_SCRUB_HINT,
   SMART_TASK_USAGE_RETURN_LABEL,
-} from '../../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../../shared-domain/src/smartTaskCopy/listCopy.ts';
+import { SMART_TASK_READOUT_SCRUB_HINT } from '../../../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts';
+import {
+  REVISION_REASON_FALLBACK_WITH_DETAIL,
+} from '../../../../shared-domain/src/smartTaskCopy/revisionReasons.ts';
+import { formatProgressValueForUnit } from '../../../../shared-domain/src/smartTaskCopy/valueFormat.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import {
   buildHistoryDetailHero,

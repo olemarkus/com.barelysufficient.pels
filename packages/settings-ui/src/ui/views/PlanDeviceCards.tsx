@@ -17,7 +17,9 @@ import {
   STARVATION_RESCUE_WIDGET_COPY,
 } from '../../../../shared-domain/src/planStarvation.ts';
 import { BoltIcon } from './icons.tsx';
-import { formatGrantedRescuePermissionsLine } from '../../../../shared-domain/src/deadlineLabels.ts';
+import {
+  formatGrantedRescuePermissionsLine,
+} from '../../../../shared-domain/src/smartTaskCopy/permissionsCopy.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { cardActivationProps } from '../cardActivation.ts';

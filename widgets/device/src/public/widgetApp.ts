@@ -1,4 +1,4 @@
-import { DEVICE_WIDGET_COPY } from '../../../../packages/shared-domain/src/deadlineLabels';
+import { DEVICE_WIDGET_COPY } from '../../../../packages/shared-domain/src/smartTaskCopy/widgetCopy';
 import {
   applyPreviewTheme,
   createRefreshLoop,

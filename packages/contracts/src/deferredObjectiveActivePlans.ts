@@ -146,7 +146,7 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // through `resolveRemainingEnergyKWh`
   // (`packages/shared-domain/src/energyQuantities.ts`), never by substituting a
   // different quantity. One display formatter still spells the rule inline —
-  // `formatEnergyEstimateKWh` in `packages/shared-domain/src/deadlineLabels.ts`,
+  // `formatEnergyEstimateKWh` in `packages/shared-domain/src/smartTaskCopy/liveDetailCopy.ts`,
   // which takes pre-resolved numbers rather than a revision; route it through
   // the resolver if its signature ever changes.
   energyExpectedKWh?: number;

@@ -24,7 +24,7 @@ import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../contracts/
 import {
   formatSmartTaskHitRateFragment,
   SMART_TASK_LIST_7DAY_HIT_RATE_LABEL,
-} from './deadlineLabels';
+} from './smartTaskCopy/listCopy';
 import {
   formatReceiptOutcomeAbandoned,
   formatReceiptOutcomeReplaced,

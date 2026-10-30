@@ -20,9 +20,9 @@ export const OBJECTIVE_WRITE_REFUSED_RETRY = 'Couldn’t save just now — pleas
 // Shared by the create widget, the settings-UI edit lane, the starvation-rescue
 // surfaces, and the deadline Flow cards' thrown card error so every surface
 // (and any runtime log breadcrumb) reads identically
-// (`feedback_ui_text_shared_with_logs.md`). Lives HERE (not deadlineLabels.ts)
+// (`feedback_ui_text_shared_with_logs.md`). Lives HERE (not `smartTaskCopy/`)
 // so lean bundles like the rescue widget can import the line without dragging
-// the full smart-task copy module in.
+// the smart-task copy modules in.
 export const SMART_TASK_SUB_HOME_UNAVAILABLE
   = 'Smart tasks aren’t available yet for devices on a separate meter.';
 

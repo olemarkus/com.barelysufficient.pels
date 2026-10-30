@@ -25,10 +25,8 @@ import type { DeferredObjectiveActivePlansV2 } from '../../packages/contracts/sr
 import type { DeferredObjectivePlanRevisionEvent } from '../../lib/objectives/deferredObjectives/planRevisionBus';
 import type { TaskDeliveryControl } from '../../packages/contracts/src/taskDelivery';
 import { effectivePlanStatusOf } from '../../lib/objectives/deferredObjectives/effectivePlanStatusEvents';
-import {
-  resolveSmartTaskListStatus,
-  resolveSmartTaskWidgetDetailCopy,
-} from '../../packages/shared-domain/src/deadlineLabels';
+import { resolveSmartTaskListStatus } from '../../packages/shared-domain/src/smartTaskCopy/listStatus';
+import { resolveSmartTaskWidgetDetailCopy } from '../../packages/shared-domain/src/smartTaskCopy/widgetCopy';
 import { objectiveRosterFor } from '../utils/objectiveRoster';
 import { resolveDeferredPlanHistoryMissAttribution } from '../../packages/shared-domain/src/deferredPlanHistoryAttribution';
 import { type MeteredPlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
