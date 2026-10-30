@@ -61,6 +61,17 @@
 //     (`PERIODIC_STATUS_MINUTE_INTERVALS = [25, 55]`). The exemption is by
 //     literal only — `const CACHE = new Map()` is state whatever it is called.
 //
+//   4. A CLOSURE VARIABLE a nested callback reassigns: a `let` or `var` declared
+//      inside a function and written from a function nested in it —
+//      `let lastSeen; emitter.on('x', () => { lastSeen = now; })`. The wiring
+//      function returns, the callback keeps the binding alive, and each call
+//      changes it: a latch held in a closure instead of a field, invisible to
+//      checks 1-3. Counted once per variable, however many callbacks write it.
+//      A local the function only writes itself, or writes from a synchronous
+//      array callback (`items.forEach((item) => { total += item; })`), dies
+//      with the call and passes. Name resolution is lexical: a nested function
+//      that redeclares the name writes its own binding, not the captured one.
+//
 // THE ALLOWLIST (`scripts/setup-stateless-allowlist.txt`) carries the files that
 // predate this rule, each with a BUDGET — how many stateful declarations it still
 // has. The count is what makes the list safe: file-level granularity alone would
@@ -70,7 +81,9 @@
 // the last line goes, delete the file — the guard then requires it to be absent.
 //
 // WHAT THIS CANNOT SEE: state reached through a closure over a module-scope
-// `const` object literal (caught — that is check 2), state stored on an injected
+// `const` object literal (caught — that is check 2), a closure `const` holding a
+// mutable container that callbacks fill (`const seen = new Set()` read and
+// written by a listener), state stored on an injected
 // dep (that dep's own module owns it, which is the point), any container
 // produced by a factory not named `create*`, and a container handed in from
 // elsewhere (`this.cache = buildCache()`). Those need review, not a regex.
@@ -86,8 +99,9 @@ const require = createRequire(import.meta.url);
 const ts = require('typescript');
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const scanDir = path.join(rootDir, 'setup');
-const allowlistFile = path.join(rootDir, 'scripts/setup-stateless-allowlist.txt');
+// Optional `<scanDir> <allowlist>` arguments point the guard at a fixture tree.
+const scanDir = path.resolve(rootDir, process.argv[2] ?? 'setup');
+const allowlistFile = path.resolve(rootDir, process.argv[3] ?? 'scripts/setup-stateless-allowlist.txt');
 
 /** `new Map()` / `[]` / `{}` / `createFooStore()` — a reference to fresh mutable state. */
 function constructsMutableState(initializer) {
@@ -181,6 +195,101 @@ function propertyName(node) {
     : node.name.getText();
 }
 
+function isFunctionLike(node) {
+  return ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)
+    || ts.isMethodDeclaration(node) || ts.isConstructorDeclaration(node)
+    || ts.isGetAccessorDeclaration(node) || ts.isSetAccessorDeclaration(node);
+}
+
+function enclosingFunction(node) {
+  let current = node.parent;
+  while (current !== undefined && !isFunctionLike(current)) current = current.parent;
+  return current;
+}
+
+/** Array methods that run their callback before they return: a write there ends with the call. */
+const SYNCHRONOUS_CALLBACK_METHODS = new Set([
+  'forEach', 'map', 'flatMap', 'filter', 'reduce', 'reduceRight', 'some', 'every',
+  'find', 'findIndex', 'findLast', 'findLastIndex', 'sort', 'toSorted',
+]);
+
+function isSynchronousCallback(fn) {
+  const call = fn.parent;
+  return call !== undefined
+    && ts.isCallExpression(call)
+    && call.arguments.includes(fn)
+    && ts.isPropertyAccessExpression(call.expression)
+    && SYNCHRONOUS_CALLBACK_METHODS.has(call.expression.name.text);
+}
+
+/** Whether `fn` itself binds `name` (a parameter, or a declaration in its own body). */
+function declaresName(fn, name) {
+  if (fn.parameters?.some((parameter) => ts.isIdentifier(parameter.name) && parameter.name.text === name)) {
+    return true;
+  }
+  let found = false;
+  const visit = (node) => {
+    if (found) return;
+    if (node !== fn && isFunctionLike(node)) {
+      // A nested function declaration binds its name in this scope.
+      if (ts.isFunctionDeclaration(node) && node.name?.text === name) found = true;
+      return;
+    }
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === name) found = true;
+    ts.forEachChild(node, visit);
+  };
+  if (fn.body !== undefined) visit(fn.body);
+  return found;
+}
+
+function assignedIdentifier(node) {
+  if (
+    ts.isBinaryExpression(node)
+    && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+    && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+    && ts.isIdentifier(node.left)
+  ) {
+    return node.left;
+  }
+  if (
+    (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
+    && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)
+    && ts.isIdentifier(node.operand)
+  ) {
+    return node.operand;
+  }
+  return undefined;
+}
+
+/**
+ * Check 4: does a function nested in `owner` write the `owner`-scoped `name`?
+ * Walks from each write up to `owner`; a function on the way that redeclares
+ * the name shadows it, and a chain of synchronous array callbacks ends with the
+ * call. Returns the first retaining write, or undefined.
+ */
+function findRetainingWrite(owner, name) {
+  let retaining;
+  const visit = (node) => {
+    if (retaining !== undefined) return;
+    const target = assignedIdentifier(node);
+    if (target !== undefined && target.text === name) {
+      let fn = enclosingFunction(node);
+      let shadowed = false;
+      let synchronous = true;
+      while (fn !== undefined && fn !== owner) {
+        if (declaresName(fn, name)) shadowed = true;
+        if (!isSynchronousCallback(fn)) synchronous = false;
+        fn = enclosingFunction(fn);
+      }
+      const nested = enclosingFunction(node) !== owner;
+      if (fn === owner && nested && !shadowed && !synchronous) retaining = node;
+    }
+    ts.forEachChild(node, visit);
+  };
+  if (owner.body !== undefined) visit(owner.body);
+  return retaining;
+}
+
 function collectOffenders(sourceFile, relPath, offenders) {
   const record = (node, name, reason) => {
     const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
@@ -250,6 +359,19 @@ function collectOffenders(sourceFile, relPath, offenders) {
           && !isConstantTable(declaration)
         ) {
           record(declaration, declaration.name.getText(), 'module-level mutable container');
+        }
+      }
+    }
+
+    // 4. A function-local `let`/`var` a nested callback reassigns.
+    if (ts.isVariableDeclarationList(node) && (node.flags & ts.NodeFlags.Const) === 0) {
+      const owner = enclosingFunction(node);
+      if (owner !== undefined) {
+        for (const declaration of node.declarations) {
+          if (!ts.isIdentifier(declaration.name)) continue;
+          if (findRetainingWrite(owner, declaration.name.text) !== undefined) {
+            record(declaration, declaration.name.text, 'closure variable reassigned by a nested callback');
+          }
         }
       }
     }

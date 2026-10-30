@@ -4,7 +4,7 @@
 
 ## No state
 
-- Keep mutable runtime state with its owning `lib/` module. A `setup/` class may hold readonly references to collaborators, not a changing cache, store, queue, or domain state. `npm run setup:stateless` enforces the syntactic rule, with no file exempt.
+- Keep mutable runtime state with its owning `lib/` module. A `setup/` class may hold readonly references to collaborators, not a changing cache, store, queue, or domain state. A function-local `let` that a callback reassigns is state held in a closure, the same as a mutable field. `npm run setup:stateless` enforces the syntactic rule; its allowlist budgets the closure variables that predate the check and may only shrink.
 - Do not add an `AppContext` slot for a new runtime service. Hand the owning `lib/` component to its consumers instead. `npm run context:slots` budgets the member count and every `ctx.<member> =` assignment under `setup/`; budgets only shrink.
 
 ## No domain logic
