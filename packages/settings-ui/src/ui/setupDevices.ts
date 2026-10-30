@@ -48,14 +48,14 @@ const solarSetupPrerequisite = (device: SettingsUiDeviceListItem): SolarSetupPre
   if (!control.isManaged) return { hint: 'Turn on Managed by PELS first.', focus: 'managed' };
   if (supportsTemperatureDevice(device)) {
     return control.canControlTemperature ? null : {
-      hint: 'Choose Return to mode target under When the temperature changes outside PELS.',
+      hint: 'Choose “Return to mode target” under “When the temperature changes outside PELS”.',
       focus: 'temperature-policy',
     };
   }
   if (!isSurplusTrackingDeviceShape(device, control) && !isDumpLoadDeviceShape(device, control)) {
     return {
       hint: resolveDeviceDetailKind(device) === 'ev_charger'
-        ? 'Choose EV 1-phase or EV 3-phase under Control model to match the charger’s connection.'
+        ? 'Choose “EV 1-phase” or “EV 3-phase” under “Control model” to match the charger’s connection.'
         : 'Choose a suitable control model in Setup.',
       focus: 'control-model',
     };

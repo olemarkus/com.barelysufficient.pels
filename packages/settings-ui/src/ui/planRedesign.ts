@@ -219,8 +219,6 @@ const resolveOverviewSetupPath = (): SetupPathRead => (
   overviewScope.kind === 'main' ? readSetupPath() : { state: 'complete' }
 );
 
-const NO_JOBS = { priceFollowingCount: 0, smartTaskDeviceCount: 0 };
-
 const doRender = () => {
   const surface = getPlanSurface();
   if (!surface) return;
@@ -256,7 +254,7 @@ const doRender = () => {
     context: {
       dryRun: overviewScope.kind === 'main' ? state.dryRun : overviewScope.simulating,
       // Main-only, like the smart-task row: price and task settings are the Main home's.
-      jobs: overviewScope.kind === 'main' ? countMainHomeJobs(now) : NO_JOBS,
+      jobs: overviewScope.kind === 'main' ? countMainHomeJobs(now) : { state: 'uncounted' },
     },
     nowMs: now,
   });

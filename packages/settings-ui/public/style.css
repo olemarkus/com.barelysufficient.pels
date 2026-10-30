@@ -354,8 +354,7 @@ md-text-button {
 }
 
 .homes-settings md-text-button,
-.setup-journey md-text-button,
-.setup-path md-text-button {
+.setup-journey md-text-button {
   padding-inline: var(--spacing-3);
 }
 

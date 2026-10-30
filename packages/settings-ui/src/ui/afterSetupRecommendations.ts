@@ -135,12 +135,10 @@ const OFFER_APPLIES: Record<Offer, (facts: AfterSetupFacts) => boolean> = {
 };
 
 // What the page offers that is not in use yet, in the order the card names it.
-const resolveGoalOutcomes = (facts: AfterSetupFacts, dismissals: RecommendationDismissals): string[] => {
+const resolveGoalOffers = (facts: AfterSetupFacts, dismissals: RecommendationDismissals): Offer[] => {
   const solarFirst = facts.market.state === 'resolved' && facts.market.country === 'NL';
   const order: Offer[] = solarFirst ? ['solar', 'prices', 'smartTasks'] : ['prices', 'solar', 'smartTasks'];
-  return order
-    .filter((offer) => OFFER_APPLIES[offer](facts) && !dismissedBefore(dismissals, offer))
-    .map((offer) => OUTCOMES[offer]);
+  return order.filter((offer) => OFFER_APPLIES[offer](facts) && !dismissedBefore(dismissals, offer));
 };
 
 /**
@@ -155,17 +153,17 @@ const resolveGoalsSuggestion = (
   facts: AfterSetupFacts,
   dismissals: RecommendationDismissals,
 ): SetupRecommendation[] => {
-  const outcomes = resolveGoalOutcomes(facts, dismissals);
-  if (outcomes.length === 0) return [];
+  const offers = resolveGoalOffers(facts, dismissals);
+  if (offers.length === 0) return [];
   return [{
     id: 'after-setup:goals',
     version: VERSION,
     category: 'optional',
     title: 'Choose what PELS does',
-    body: `PELS can ${joinOutcomes(outcomes)}. Choose for each device.`,
+    body: `PELS can ${joinOutcomes(offers.map((offer) => OUTCOMES[offer]))}. Choose for each device.`,
     actionLabel: 'Choose',
     target: { kind: 'setup-goals' },
-    ...(outcomes.includes(OUTCOMES.smartTasks) ? {
+    ...(offers.includes('smartTasks') ? {
       guideLink: {
         label: 'Heat a water heater overnight',
         href: 'https://pels.barelysufficient.org/smart-tasks#heat-a-water-heater-on-a-relay-overnight',

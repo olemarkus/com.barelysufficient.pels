@@ -148,6 +148,7 @@ describe('buildDecisionSentence', () => {
     sheddableManagedRunningCount: 0,
     capacityPeriodMinutes: 60,
     safePaceKw: 12,
+    jobs: { state: 'counted', priceFollowingCount: 0, smartTaskDeviceCount: 0 },
     ...overrides,
   });
 
@@ -389,31 +390,38 @@ describe('buildDecisionSentence', () => {
   });
 
   describe('with no limit in force', () => {
+    const counted = (priceFollowingCount: number, smartTaskDeviceCount: number): DecisionSentenceInput['jobs'] => (
+      { state: 'counted', priceFollowingCount, smartTaskDeviceCount }
+    );
     const noLimit = (overrides: Partial<DecisionSentenceInput> = {}) => buildDecisionSentence(baseline({
-      safePaceKw: null, limitsOff: true, ...overrides,
+      safePaceKw: null, ...overrides,
     }));
 
     it('names what PELS does for the home instead of a quiet hour', () => {
-      expect(noLimit({ priceFollowingCount: 1 })).toEqual({
+      expect(noLimit({ jobs: counted(1, 0) })).toEqual({
         text: 'No limit to hold. 1 device follows prices.', positive: true,
       });
-      expect(noLimit({ priceFollowingCount: 2, smartTaskDeviceCount: 1 })).toEqual({
+      expect(noLimit({ jobs: counted(2, 1) })).toEqual({
         text: 'No limit to hold. 2 devices follow prices, and 1 device has a smart task.', positive: true,
       });
-      expect(noLimit({ smartTaskDeviceCount: 2 }).text).toBe('No limit to hold. 2 devices have smart tasks.');
+      expect(noLimit({ jobs: counted(0, 2) }).text).toBe('No limit to hold. 2 devices have smart tasks.');
     });
 
     it('states only the fact when nothing asks PELS to act, and does not call it reassurance', () => {
       expect(noLimit()).toEqual({ text: 'No limit to hold.', positive: false });
     });
 
+    it('names no jobs while they are not counted, rather than claim none', () => {
+      expect(noLimit({ jobs: { state: 'uncounted' } })).toEqual({ text: 'No limit to hold.', positive: false });
+    });
+
     it('lets every measured rung above it win', () => {
-      expect(noLimit({ resumingCount: 1, priceFollowingCount: 1 }).text)
+      expect(noLimit({ resumingCount: 1, jobs: counted(1, 0) }).text)
         .toBe('Bringing 1 device back online. Power has stayed under the safe pace.');
     });
 
     it('keeps the quiet hour while a limit is in force', () => {
-      expect(buildDecisionSentence(baseline({ priceFollowingCount: 3 })).text).toBe('Quiet hour. Nothing to do.');
+      expect(buildDecisionSentence(baseline({ jobs: counted(3, 0) })).text).toBe('Quiet hour. Nothing to do.');
     });
   });
 

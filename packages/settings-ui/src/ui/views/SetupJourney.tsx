@@ -64,12 +64,15 @@ type SetupGoalPickerProps = {
 
 type SolarGoalProps = {
   id: string;
+  name: string;
   solar: SolarSetupAction;
   onOpen: (id: string, focus: DeviceDetailFocus) => void;
 };
 
-const SolarGoal = ({ id, solar, onOpen }: SolarGoalProps) => <>
-  <MdTextButton type="button" onClick={() => onOpen(id, solar.focus)}>{solar.actionLabel}</MdTextButton>
+const SolarGoal = ({ id, name, solar, onOpen }: SolarGoalProps) => <>
+  <MdTextButton type="button" aria-label={`${solar.actionLabel} for ${name}`} onClick={() => onOpen(id, solar.focus)}>
+    {solar.actionLabel}
+  </MdTextButton>
   {solar.hint && <p class="pels-card-supporting">{solar.hint}</p>}
 </>;
 
@@ -96,15 +99,17 @@ export const SetupGoalPicker = (props: SetupGoalPickerProps) => (
           <p class="pels-card-supporting">{device.smartTask.charger
             ? 'A smart task charges to the level you set by a ready-by time, in the cheapest hours.'
             : 'A smart task reaches the goal you set by a ready-by time, in the cheapest hours.'}</p>
-          <MdTextButton type="button" disabled={props.busy} onClick={() => props.onNewSmartTask(device.id)}>
+          <MdTextButton type="button" disabled={props.busy} aria-label={`New smart task for ${device.name}`}
+            onClick={() => props.onNewSmartTask(device.id)}>
             New smart task
           </MdTextButton>
         </>}
         {device.smartTask?.state === 'open' && <>
           <p class="pels-card-supporting">{device.smartTask.summary}</p>
-          <MdTextButton type="button" onClick={() => props.onOpenSmartTask(device.id)}>View task</MdTextButton>
+          <MdTextButton type="button" aria-label={`View the smart task for ${device.name}`}
+            onClick={() => props.onOpenSmartTask(device.id)}>View task</MdTextButton>
         </>}
-        {device.solar && <SolarGoal id={device.id} solar={device.solar} onOpen={props.onOpen} />}
+        {device.solar && <SolarGoal id={device.id} name={device.name} solar={device.solar} onOpen={props.onOpen} />}
       </section>
     ))}
   </div>

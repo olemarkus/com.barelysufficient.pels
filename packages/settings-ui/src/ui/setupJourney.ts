@@ -228,7 +228,7 @@ const goalsHeaderDetail = (): string => {
   const source = choices.state === 'ready' && choices.priceSource !== null
     ? ` PELS uses your prices from ${choices.priceSource}.` : '';
   const solar = solarPending() ? ` ${solarPendingNote()}` : '';
-  return `Optional.${source}${solar} You can change these later on each device page.`;
+  return `Optional. You can change each choice later on its device page.${source}${solar}`;
 };
 
 const headerDetail = (step: SetupJourneyStep, fact: SetupStep | undefined): string | null => {
@@ -304,6 +304,11 @@ const paintJourney = (): void => {
   render(h(SetupJourneyHeader, headerProps(step, readSetupReview())), root);
 };
 
+const repaintJourney = (): void => {
+  paintJourney();
+  if (currentStep() === 'goals' && state.devicesLoaded) renderDevices(state.latestDevices);
+};
+
 const formatMeterReading = (kw: number, stamp: number): string => {
   const time = new Date(stamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   return `${Number(kw.toFixed(2))} kW · Updated ${time}`;
@@ -342,7 +347,9 @@ export const initSetupJourney = (): void => {
     if (state.devicesLoaded) renderDevices(state.latestDevices);
     void refreshLivePreview();
   });
-  document.addEventListener('pels:setup-save', paintJourney);
+  // A save starting or ending, or a setup fact arriving, changes what the page
+  // offers and whether its controls are busy, not only its header.
+  document.addEventListener('pels:setup-save', repaintJourney);
   document.addEventListener('pels:recommendations-updated', paintJourney);
   document.addEventListener('devices-updated', () => { paintJourney(); notifySetupPathChange(); });
   document.addEventListener('device-detail-closed', () => {
@@ -356,7 +363,7 @@ export const initSetupJourney = (): void => {
     notifySetupPathChange();
     if (currentStep() === 'goals') renderDevices(state.latestDevices);
   });
-  onSetupPathChange(paintJourney);
+  onSetupPathChange(repaintJourney);
   subscribeToHomeScope(() => {
     const step = currentStep();
     // Choosing an area leaves the Main-home journey and opens its ordinary settings.

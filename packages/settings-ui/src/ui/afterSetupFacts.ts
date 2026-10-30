@@ -1,14 +1,13 @@
 import type { PriceOptimizationSetup } from '../../../contracts/src/priceOptimizationSettings.ts';
-import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
+import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import type { NorwayPriceSetup, SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
 import type { AfterSetupDevice, AfterSetupFacts, AfterSetupPriceSource } from './afterSetupRecommendations.ts';
 import { hasLoadedDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { supportsPowerDevice, supportsTemperatureControlDevice } from './deviceUtils.ts';
 import { logSettingsError } from './logging.ts';
-import { isSmartTaskCapable } from './mainHomeDevices.ts';
+import { isSmartTaskCapable, readMainHomeManagedDevices } from './mainHomeDevices.ts';
 import { loadPriceSetupSuggestion } from './priceSetupOffer.ts';
 import { getPricesReadModel } from './prices.ts';
-import { readHomeMembership, type HomeMembershipRead } from './homeScope.ts';
 import { isBelgianHomeOnHourlyPeriod, readSetupMarket, readSetupPath } from './setupPathFacts.ts';
 import { resolveSurplusControlAvailable, state } from './state.ts';
 
@@ -82,40 +81,33 @@ export const loadAfterSetupFacts = async (): Promise<void> => {
   }
 };
 
-type ResolvedHomeMembership = Extract<HomeMembershipRead, { state: 'resolved' }>;
-
 const resolveDevices = (
   setup: PriceOptimizationSetup,
-  membership: ResolvedHomeMembership,
+  managed: readonly SettingsUiDeviceListItem[],
 ): AfterSetupDevice[] => {
   const configuredDeviceIds = new Set(setup.configuredDeviceIds);
   const solarSurplusDeviceIds = new Set(setup.solarSurplusDeviceIds);
-  return state.latestDevices
-    .filter((device) => (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID)
-    .filter((device) => state.managedMap[device.id] === true)
-    .map((device) => {
-      return {
-        temperature: supportsTemperatureControlDevice(device),
-        limitable: supportsPowerDevice(device) && state.controllableMap[device.id] === true,
-        taskCapable: isSmartTaskCapable(device),
-        priceConfigured: configuredDeviceIds.has(device.id),
-        usesSolarSurplus: solarSurplusDeviceIds.has(device.id),
-      };
-    });
+  return managed.map((device) => ({
+    temperature: supportsTemperatureControlDevice(device),
+    limitable: supportsPowerDevice(device) && state.controllableMap[device.id] === true,
+    taskCapable: isSmartTaskCapable(device),
+    priceConfigured: configuredDeviceIds.has(device.id),
+    usesSolarSurplus: solarSurplusDeviceIds.has(device.id),
+  }));
 };
 
 export const readAfterSetupFacts = (): AfterSetupFactsRead => {
   const setupPath = readSetupPath();
-  const membership = readHomeMembership();
-  if (setupPath.state === 'loading' || !state.devicesLoaded || priceSetupState.state === 'loading'
-    || membership.state === 'loading' || !hasLoadedDeferredObjectiveSettings()) return { state: 'loading' };
+  const managed = readMainHomeManagedDevices();
+  if (setupPath.state === 'loading' || managed.state === 'loading' || priceSetupState.state === 'loading'
+    || !hasLoadedDeferredObjectiveSettings()) return { state: 'loading' };
   if (setupPath.state === 'unavailable' || priceSetupState.state === 'unavailable'
-    || membership.state === 'unavailable') return { state: 'unavailable' };
+    || managed.state !== 'ready') return { state: 'unavailable' };
   return {
     state: 'resolved',
     facts: {
       setupComplete: setupPath.state === 'complete',
-      devices: resolveDevices(priceSetupState.setup, membership),
+      devices: resolveDevices(priceSetupState.setup, managed.devices),
       priceOptimizationEnabled: priceSetupState.setup.enabled,
       priceSource: priceSetupState.priceSource,
       solarSurplusAvailable: resolveSurplusControlAvailable(),

@@ -403,7 +403,11 @@ describe('recommendation loading', () => {
       facts: {
         setupComplete: true,
         devices: [{
-          temperature: true, limitable: true, taskCapable: true, priceConfigured: false, usesSolarSurplus: false,
+          temperature: true,
+          limitable: true,
+          taskCapable: true,
+          priceConfigured: false,
+          usesSolarSurplus: false,
         }],
         priceOptimizationEnabled: true,
         priceSource: { kind: 'priced', scheme: 'homey', chosen: true },

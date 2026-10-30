@@ -2222,10 +2222,9 @@ settings. No tour-completed flag is persisted.
   hours.` otherwise), whose flow returns to this page, and once it has one the
   task's line as the device page's Smart task box states it (`Target 80 % ·
   Ready by …`) with `View task`; and the device's solar action once surplus can
-  reach it. Header: `Optional. PELS uses your prices from {source}. You can
-  change these later on each device page.`, the middle sentence only when PELS
-  already has prices, and the solar waiting line above before it when it
-  applies. It shows no step count: it is not one of the counted steps. Turning Price-based control on or
+  reach it. Header: `Optional. You can change each choice later on its device
+  page. PELS uses your prices from {source}.`, the last sentence only when PELS
+  already has prices, then the solar waiting line above when it applies. It shows no step count: it is not one of the counted steps. Turning Price-based control on or
   saving a Smart task here makes a source PELS assumed the owner's, as `Use
   these prices` does; a source with no prices is left for the Prices step.
   Continue offers the page once per visit, never as a completion requirement,
