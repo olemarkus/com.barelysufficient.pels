@@ -19,7 +19,7 @@ import type {
   DeferredObjectiveActivePlanRevisionV1,
 } from '../../contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings';
-import { resolveRevisionReason, type RevisionReasonDisambiguation } from './deadlineLabels';
+import { resolveRevisionReason, type RevisionReasonDisambiguation } from './smartTaskCopy/revisionReasons';
 import { formatTimeInTimeZone } from './utils/dateUtils';
 import { hoursWithPlannedEnergy } from './deferredPlanBookedHours';
 

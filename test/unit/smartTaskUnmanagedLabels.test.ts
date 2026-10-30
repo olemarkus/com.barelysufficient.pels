@@ -3,17 +3,19 @@
 // (list chip, pending hero, widget detail, preview) rather than letting a
 // cached revision keep claiming the task is on track.
 import { describe, expect, it } from 'vitest';
+import { deadlineLabels } from '../../packages/shared-domain/src/smartTaskCopy/deadlineLabels';
 import {
-  deadlineLabels,
   resolvePausedUnmanagedChipTone,
   resolveSmartTaskListStatus,
-  resolveSmartTaskWidgetDetailCopy,
-  SMART_TASK_DEVICE_UNMANAGED_RECOURSE,
-  SMART_TASK_DEVICE_UNMANAGED_WHY,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
   SMART_TASK_LIST_STATUS_LABELS,
   SMART_TASK_WIDGET_STATUS_LABELS,
-} from '../../packages/shared-domain/src/deadlineLabels';
+} from '../../packages/shared-domain/src/smartTaskCopy/listStatus';
+import {
+  SMART_TASK_DEVICE_UNMANAGED_RECOURSE,
+  SMART_TASK_DEVICE_UNMANAGED_WHY,
+} from '../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
+import { resolveSmartTaskWidgetDetailCopy } from '../../packages/shared-domain/src/smartTaskCopy/widgetCopy';
 import { resolveDeadlinesListHero } from '../../packages/shared-domain/src/deadlinesListHero';
 
 describe('un-managed device: list status', () => {

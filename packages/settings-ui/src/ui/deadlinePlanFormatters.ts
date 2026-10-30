@@ -1,5 +1,5 @@
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
-import { formatProgressValueForUnit } from '../../../shared-domain/src/deadlineLabels.ts';
+import { formatProgressValueForUnit } from '../../../shared-domain/src/smartTaskCopy/valueFormat.ts';
 
 export const formatHourLabel = (startsAtMs: number): string => (
   new Date(startsAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })

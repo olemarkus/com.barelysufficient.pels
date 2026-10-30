@@ -1,8 +1,10 @@
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
+} from '../../../../packages/shared-domain/src/smartTaskCopy/createEditCopy';
+import {
   formatSmartTaskNowValueLine,
   formatSmartTaskUnknownNowValueLine,
-} from '../../../../packages/shared-domain/src/deadlineLabels';
+} from '../../../../packages/shared-domain/src/smartTaskCopy/valueFormat';
 import {
   SMART_TASK_DEVICE_PICKER_COPY,
   resolveSmartTaskDeviceGroupIconLabel,

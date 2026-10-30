@@ -744,7 +744,7 @@ The **Available power** (headroom) dashboard widget shares vocabulary with the r
 
 ### Smart-task widgets and Device insight
 
-The picker names say what each widget does: **Create smart task** (`create_smart_task`) creates one, **Smart task list** (`smart_tasks`) lists them, **Device insight** (`device`) follows one device. The settings page's own action stays **New smart task**. Source of truth: `DEVICE_WIDGET_COPY` and the `formatDeviceWidget*` helpers in `packages/shared-domain/src/deadlineLabels.ts`.
+The picker names say what each widget does: **Create smart task** (`create_smart_task`) creates one, **Smart task list** (`smart_tasks`) lists them, **Device insight** (`device`) follows one device. The settings page's own action stays **New smart task**. Source of truth: `DEVICE_WIDGET_COPY` and the `formatDeviceWidget*` helpers in `packages/shared-domain/src/smartTaskCopy/widgetCopy.ts`.
 
 | Concept | Text |
 |---|---|
@@ -958,7 +958,7 @@ reads the mode target being re-applied as a bug.
 
 ## Smart task vocabulary
 
-Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every label from `deadlineLabels(kind, progressDirection)` rather than hardcoding strings. Temperature tasks use `increasing` for heating and `decreasing` for cooling; an unresolved direction uses neutral temperature wording, and legacy records without a direction retain the original heating wording. EV state of charge always increases.
+Source of truth: `packages/shared-domain/src/smartTaskCopy/deadlineLabels.ts`. Pull every label from `deadlineLabels(kind, progressDirection)` rather than hardcoding strings. Temperature tasks use `increasing` for heating and `decreasing` for cooling; an unresolved direction uses neutral temperature wording, and legacy records without a direction retain the original heating wording. EV state of charge always increases.
 
 | Concept | Heating temperature task | Cooling temperature task | EV-SoC device | Energy task (on/off device or EV charger) |
 |---|---|---|---|---|
@@ -1089,14 +1089,14 @@ make it `At risk` (`resolveReportedCarChargeLimit`).
 The hero offers no settings button: the fix is in the car. Progress
 on the detail page counts to the owner's target (`now 70% of 80% target`). A run that ends there is
 missed, with the car's limit as its cause and no recourse button; `met-at-car-limit` survives only
-for runs archived before this rule. The words come from `deadlineLabels.ts` /
+for runs archived before this rule. The words come from `smartTaskCopy/shortfallCauses.ts` /
 `deferredPlanHistoryPostmortem.ts`.
 
 ### Live causes on an at-risk or cannot-finish task
 
 A task whose plan is healthy can still be held back by something outside the plan. Only these
 causes downgrade its status, and each one has its own copy on every surface through one resolver,
-`resolveSmartTaskLiveCause` in `deadlineLabels.ts` (the hero reason line, the list card's line
+`resolveSmartTaskLiveCause` in `smartTaskCopy/shortfallCauses.ts` (the hero reason line, the list card's line
 beside the target, the widget why-line and recourse). The hero offers no settings button for any of
 them, and on an at-risk hero its live-state headline (`Charging now`) is suppressed: the fix is on
 the device or in the car.
@@ -1130,7 +1130,7 @@ deadline.`).
 
 ### Smart task list status chips
 
-The smart-task list uses one chip per task. Source: `SMART_TASK_LIST_STATUS_LABELS` in `deadlineLabels.ts`.
+The smart-task list uses one chip per task. Source: `SMART_TASK_LIST_STATUS_LABELS` in `smartTaskCopy/listStatus.ts`.
 
 | Chip | Meaning |
 |---|---|
@@ -1161,7 +1161,7 @@ The dashboard widget's compressed row variants are registered:
 `Unplugged` (for `Paused — unplugged`) and `Not managed` (for
 `Paused — not managed`) — the widget row at 320–480 px has roughly half the
 list card's width and the full em-dash forms truncate. Source:
-`SMART_TASK_WIDGET_STATUS_LABELS` in `deadlineLabels.ts`. The same compressed
+`SMART_TASK_WIDGET_STATUS_LABELS` in `smartTaskCopy/listStatus.ts`. The same compressed
 forms are the sanctioned inline status words on the list card's Ready-by line
 (where the full form's own em-dash would double the separator).
 
@@ -1182,7 +1182,7 @@ The smart-task list distinguishes two zero-active-card states by whether the
 Past tasks archive below has any finished runs. Headlines come from
 `DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE` in
 `packages/shared-domain/src/deadlinesListHero.ts`; the first-run body is
-`SMART_TASK_LIST_CREATE_HINT` in `deadlineLabels.ts`.
+`SMART_TASK_LIST_CREATE_HINT` in `smartTaskCopy/createEditCopy.ts`.
 
 | State | Headline | When |
 |---|---|---|
@@ -1192,7 +1192,7 @@ Past tasks archive below has any finished runs. Headlines come from
 #### Creating, editing, and clearing a task
 
 Source: `SMART_TASK_CREATE_PAGE_COPY`, `SMART_TASK_EDIT_COPY` and
-`SMART_TASK_AFTER_TASK_COPY` in `deadlineLabels.ts`; the create flow shares the
+`SMART_TASK_AFTER_TASK_COPY` in `smartTaskCopy/createEditCopy.ts`; the create flow shares the
 widget's field, preview, and error strings (`CREATE_SMART_TASK_WIDGET_COPY`).
 
 | Concept | Label |
@@ -1272,7 +1272,7 @@ non-zero counts only).
 
 A summary strip leads the past-tasks list with the rolling-7-day aggregate.
 Source: `SMART_TASK_LIST_7DAY_HIT_RATE_LABEL` and
-`formatSmartTaskHitRateFragment` in `packages/shared-domain/src/deadlineLabels.ts`.
+`formatSmartTaskHitRateFragment` in `packages/shared-domain/src/smartTaskCopy/listCopy.ts`.
 
 - **Lead label:** `Last 7 days, all devices`. The `, all devices` qualifier is
   load-bearing — the strip total always spans every device, so it can't be
@@ -1289,7 +1289,7 @@ Full strip example: `Last 7 days, all devices · 2 succeeded · 1 missed · 67% 
 
 ### Recourse labels
 
-Smart-task heroes render at most one recourse button. The label is action-oriented and names what the user should do *now*, not where the click lands. The **live "cannot finish"** hero and the **history-detail "missed"** card use *different* label sets — keep them distinct. Source: `CANNOT_MEET_RECOURSE` (live) and `resolveMissedHistoryRecourse` (history) in `deadlineLabels.ts`.
+Smart-task heroes render at most one recourse button. The label is action-oriented and names what the user should do *now*, not where the click lands. The **live "cannot finish"** hero and the **history-detail "missed"** card use *different* label sets — keep them distinct. Source: `CANNOT_MEET_RECOURSE` (live, `smartTaskCopy/deadlineLabels.ts`) and `resolveMissedHistoryRecourse` (history, `smartTaskCopy/missedHistoryRecourse.ts`).
 
 **Live "cannot finish"** (`CANNOT_MEET_RECOURSE`):
 
@@ -1319,10 +1319,10 @@ three), the smart-task detail page's editor (all three, on **and** off),
 the `allow_smart_task_rescue` Flow action, and the Held-back devices "Let it run
 now" lane, which grants them implicitly. Their strings come from
 `SMART_TASK_EXTRA_PERMISSIONS_TITLE` / `SMART_TASK_EXTRA_PERMISSION_LABELS` in
-`deadlineLabels.ts` — never inline a new copy. The one sanctioned duplicate is
+`smartTaskCopy/permissionsCopy.ts` — never inline a new copy. The one sanctioned duplicate is
 `planStarvation.ts`'s `extraPermissionsTitle`, which stays a literal because
-that module is deliberately kept off `deadlineLabels.ts` so the rescue widget
-bundle doesn't pull the full smart-task copy module in; it must stay
+that module is deliberately kept off `smartTaskCopy/` so the rescue widget
+bundle doesn't pull the smart-task copy modules in; it must stay
 character-identical.
 
 Copy says PELS can let a task go over today's budget, limit lower-priority devices, or reserve power so the task can
@@ -1336,7 +1336,7 @@ disclaimer).
 The smart-task detail and list surfaces render the granted permissions on a
 single read-only row whose canonical label is **`Extra permissions`**
 (source: `SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL` in
-`packages/shared-domain/src/deadlineLabels.ts`). Do **not** re-add a
+`packages/shared-domain/src/smartTaskCopy/permissionsCopy.ts`). Do **not** re-add a
 `(set via Flow)` qualifier: the detail page's editor sets these itself, so
 naming the Flow card would send a user out to build an automation for something
 the row sits right beside. The editor's own disclosure reuses
@@ -1401,7 +1401,7 @@ Visible Flow labels and hints use full words for time units: `hours`, not `h`.
 
 ### Revision-log row vocabulary
 
-The smart-task detail page renders a `Recent plan changes` panel (live runs) and a `What changed` card (post-finalization). Both surfaces read the same row helpers and the same `resolveRevisionReason` resolver in `packages/shared-domain/src/deadlineLabels.ts`, so the canonical short labels for each recorder reason are pinned here and must not drift between surfaces. No runtime log breadcrumb reads them today; any added later must read these labels rather than restate them.
+The smart-task detail page renders a `Recent plan changes` panel (live runs) and a `What changed` card (post-finalization). Both surfaces read the same row helpers and the same `resolveRevisionReason` resolver in `packages/shared-domain/src/smartTaskCopy/revisionReasons.ts`, so the canonical short labels for each recorder reason are pinned here and must not drift between surfaces. No runtime log breadcrumb reads them today; any added later must read these labels rather than restate them.
 
 | Recorder reason | Label | Notes |
 |---|---|---|
@@ -1432,7 +1432,7 @@ Hour-diff chip wording: `+Nh` (added), `−Nh` (dropped, U+2212 MINUS SIGN to ma
 
 ### Smart task live page (two-chart split)
 
-The live smart-task detail page renders two question-titled chart cards. All strings live in `packages/shared-domain/src/deadlineLabels.ts` so the UI and runtime log breadcrumbs share one vocabulary.
+The live smart-task detail page renders two question-titled chart cards. All strings live in `packages/shared-domain/src/smartTaskCopy/liveDetailCopy.ts` so the UI and runtime log breadcrumbs share one vocabulary.
 
 **Card titles** (always question-shaped):
 
@@ -2433,7 +2433,7 @@ label reads as "not for me" to everyone else on a quarter-hour tariff. Two rules
    relieve pressure. The recommended remedy when the daily budget runs out
    before a deadline is to **lower the daily budget** so future days reserve
    available power earlier — see `cannotMeetDailyBudgetExhausted` copy in
-   `deadlineLabels.ts`.
+   `smartTaskCopy/deadlineLabels.ts`.
 3. **A home not charged for measured peaks is told so, once, where the cap is
    set.** The Main home's **Capacity limit** switch turns the hard cap off, so an
    owner whose grid bills no measured peak (the Netherlands, Wallonia) is no

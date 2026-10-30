@@ -3,7 +3,7 @@ import { buildChargeByStartMs } from '../src/ui/deadlinePlanHourMaps.ts';
 import { resolveScrubHourIndex } from '../src/ui/deadlineChartScrub.ts';
 import { resolveRunBands, integratePlannedStaircase } from '../../shared-domain/src/deferredPlanHistoryChartData.ts';
 import { formatScheduledHoursWindow } from '../../shared-domain/src/smartTaskDeadlineFormat.ts';
-import { formatCheapestHoursCaption } from '../../shared-domain/src/deadlineLabels.ts';
+import { formatCheapestHoursCaption } from '../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts';
 import { resolveHistoryDetailHourlyStrip } from '../../shared-domain/src/deferredPlanHistoryHourlyStrip.ts';
 import { renderPreviewChart } from '../../../widgets/_shared/smartTaskCreate/previewChart.ts';
 

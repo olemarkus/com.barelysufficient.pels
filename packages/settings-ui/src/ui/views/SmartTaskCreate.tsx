@@ -1,14 +1,16 @@
 import { render } from 'preact';
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
-  deadlineLabels,
   formatSmartTaskGoalRangeHint,
   SMART_TASK_AFTER_TASK_COPY,
   SMART_TASK_CREATE_PAGE_COPY,
+} from '../../../../shared-domain/src/smartTaskCopy/createEditCopy.ts';
+import { deadlineLabels } from '../../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
+import {
   SMART_TASK_EXTRA_PERMISSION_HINTS,
   SMART_TASK_EXTRA_PERMISSION_LABELS,
   SMART_TASK_EXTRA_PERMISSIONS_TITLE,
-} from '../../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../../shared-domain/src/smartTaskCopy/permissionsCopy.ts';
 import {
   resolveSmartTaskCreateBack,
   type SmartTaskCreateSnapshot,

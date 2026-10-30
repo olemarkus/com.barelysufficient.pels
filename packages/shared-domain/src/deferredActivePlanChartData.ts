@@ -21,7 +21,7 @@ import {
   resolveRunBands,
   resolveStaircaseAnchor,
 } from './deferredPlanHistoryChartData';
-import { deadlineLabels } from './deadlineLabels';
+import { deadlineLabels } from './smartTaskCopy/deadlineLabels';
 import { resolvePlanKwhPerUnit } from './deferredActivePlanResolvedView';
 
 const finiteOrNull = (raw: number | null | undefined): number | null => (

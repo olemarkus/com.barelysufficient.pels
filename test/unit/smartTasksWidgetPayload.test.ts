@@ -12,12 +12,15 @@ import type {
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../packages/contracts/src/settingsUiApi';
 import { toResolvedLegacyPlanHistoryEntry } from '../utils/planHistoryFixtures';
 import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
-import { SMART_TASK_WIDGET_EMPTY_HINT, SMART_TASK_WIDGET_EMPTY_SUBTITLE } from '../../packages/shared-domain/src/deadlineLabels';
+import {
+  SMART_TASK_WIDGET_EMPTY_HINT,
+  SMART_TASK_WIDGET_EMPTY_SUBTITLE,
+} from '../../packages/shared-domain/src/smartTaskCopy/widgetCopy';
 import { SMART_TASK_SUB_HOME_UNAVAILABLE } from '../../packages/shared-domain/src/objectiveWriteStrings';
 import {
   SMART_TASK_DEVICE_UNMANAGED_RECOURSE,
   SMART_TASK_DEVICE_UNMANAGED_WHY,
-} from '../../packages/shared-domain/src/deadlineLabels';
+} from '../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
 import {
   buildSmartTaskDeviceView,
   buildSmartTasksWidgetPayload,

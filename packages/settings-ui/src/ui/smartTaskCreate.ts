@@ -14,7 +14,7 @@ import {
   composeSmartTaskCreateLandingLine,
   CREATE_SMART_TASK_WIDGET_COPY,
   resolveCreateSmartTaskRejectCopy,
-} from '../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../shared-domain/src/smartTaskCopy/createEditCopy.ts';
 import { dispatchOpenDeviceDetail } from './cardActivation.ts';
 import { buildDeadlineEditHref, buildDeadlineHref, followDeadlineHref } from './deadlineUrls.ts';
 import {

@@ -33,27 +33,39 @@ import {
   formatLocalHHMM,
   formatSmartTaskDeadlineLong,
 } from '../../../packages/shared-domain/src/smartTaskDeadlineFormat';
+import { deadlineLabels } from '../../../packages/shared-domain/src/smartTaskCopy/deadlineLabels';
 import {
-  deadlineLabels,
   formatSmartTaskListConfidenceChipLabel,
-  RECOURSE_CANNOT_MEET_BUDGET,
-  RECOURSE_CANNOT_MEET_DEVICE,
   resolveChipConfidence,
-  resolveMissedHistoryCarHint,
-  resolveMissedHistoryRecourse,
   resolveSmartTaskLearning,
-  resolveSmartTaskWidgetDetailCopy,
-  type SmartTaskCarChargeLimit,
-  suppressesSmartTaskConfidenceChip,
+} from '../../../packages/shared-domain/src/smartTaskCopy/estimateConfidence';
+import {
   resolveSmartTaskWidgetEtaVerb,
   resolveSmartTaskWidgetTargetActionVerb,
+  SMART_TASK_WIDGET_TARGET_NOUN,
+} from '../../../packages/shared-domain/src/smartTaskCopy/listCopy';
+import {
+  SMART_TASK_WIDGET_STATUS_LABELS,
+  type SmartTaskListStatusId,
+} from '../../../packages/shared-domain/src/smartTaskCopy/listStatus';
+import {
+  resolveMissedHistoryCarHint,
+  resolveMissedHistoryRecourse,
+} from '../../../packages/shared-domain/src/smartTaskCopy/missedHistoryRecourse';
+import {
+  suppressesSmartTaskConfidenceChip,
+} from '../../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
+import {
+  RECOURSE_CANNOT_MEET_BUDGET,
+  RECOURSE_CANNOT_MEET_DEVICE,
+  type SmartTaskCarChargeLimit,
+} from '../../../packages/shared-domain/src/smartTaskCopy/shortfallCauses';
+import {
+  resolveSmartTaskWidgetDetailCopy,
   SMART_TASK_WIDGET_EMPTY_HINT,
   SMART_TASK_WIDGET_EMPTY_SUBTITLE,
   SMART_TASK_WIDGET_PLAN_META_LABEL_PREFIX,
-  SMART_TASK_WIDGET_STATUS_LABELS,
-  SMART_TASK_WIDGET_TARGET_NOUN,
-  type SmartTaskListStatusId,
-} from '../../../packages/shared-domain/src/deadlineLabels';
+} from '../../../packages/shared-domain/src/smartTaskCopy/widgetCopy';
 import { getStartOfDayInTimeZone } from '../../../packages/shared-domain/src/utils/dateUtils';
 import type {
   SmartTasksWidgetEmptyPayload,

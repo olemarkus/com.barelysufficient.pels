@@ -2,19 +2,27 @@ import { render, type ComponentChildren } from 'preact';
 import { MdElevation, MdFilledTonalButton, MdRipple } from './materialWebJSX.tsx';
 import { ChevronRightIcon } from './icons.tsx';
 import {
-  deadlineLabels,
-  formatSmartTaskListConfidenceChipLabel,
-  resolveSmartTaskListDeadlineVerb,
-  resolveSmartTaskListReadyByTone,
-  resolveSmartTaskListReadyByStatusWord,
-  SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL,
   SMART_TASK_CREATE_PAGE_COPY,
   SMART_TASK_LIST_CREATE_HINT,
+} from '../../../../shared-domain/src/smartTaskCopy/createEditCopy.ts';
+import { deadlineLabels } from '../../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
+import {
+  formatSmartTaskListConfidenceChipLabel,
+} from '../../../../shared-domain/src/smartTaskCopy/estimateConfidence.ts';
+import {
+  resolveSmartTaskListDeadlineVerb,
   SMART_TASK_LIST_ROW_LABELS,
+} from '../../../../shared-domain/src/smartTaskCopy/listCopy.ts';
+import {
+  resolveSmartTaskListReadyByTone,
+  resolveSmartTaskListReadyByStatusWord,
   SMART_TASK_LIST_STATUS_LABELS,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
   type SmartTaskListStatusId,
-} from '../../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../../shared-domain/src/smartTaskCopy/listStatus.ts';
+import {
+  SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL,
+} from '../../../../shared-domain/src/smartTaskCopy/permissionsCopy.ts';
 import { formatSmartTaskListDateTime } from '../../../../shared-domain/src/deferredPlanHistory.ts';
 import { HOME_SCOPE_SMART_TASKS_MAIN_ONLY_NOTICE } from '../homeScopeCopy.ts';
 import { formatTimeInTimeZone } from '../../../../shared-domain/src/utils/dateUtils.ts';

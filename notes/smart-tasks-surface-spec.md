@@ -26,7 +26,7 @@ cadence — run it at every workstream-PR boundary and at train end, not per chi
      "No smart tasks scheduled", body points down to Past tasks — never
      "first" / "No smart tasks yet". Thread a `historyPresent` signal into the
      active-list state; add the new copy to `deadlinesListHero.ts`
-     (`DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE`) + `deadlineLabels.ts` — not
+     (`DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE`) + `smartTaskCopy/` — not
      inlined in the view (Rule 4: log strings track UI strings). Shipped:
      `empty_between_runs` in `deadlinesListHero.ts`.
 2. **Hit-rate legibility.** The strip excludes abandoned from the denominator

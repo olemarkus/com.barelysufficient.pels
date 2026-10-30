@@ -1,12 +1,16 @@
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
   SMART_TASK_EDIT_COPY,
+  resolveSmartTaskPreviewStatusCopy,
+} from '../../../packages/shared-domain/src/smartTaskCopy/createEditCopy';
+import {
   SMART_TASK_EXTRA_PERMISSION_HINTS,
   SMART_TASK_EXTRA_PERMISSION_LABELS,
+} from '../../../packages/shared-domain/src/smartTaskCopy/permissionsCopy';
+import {
   formatSmartTaskGoalValue,
   formatSmartTaskGoalContextLine,
-  resolveSmartTaskPreviewStatusCopy,
-} from '../../../packages/shared-domain/src/deadlineLabels';
+} from '../../../packages/shared-domain/src/smartTaskCopy/valueFormat';
 import {
   formatCheapestHoursSubtext,
   formatSmartTaskDeadlineLong,

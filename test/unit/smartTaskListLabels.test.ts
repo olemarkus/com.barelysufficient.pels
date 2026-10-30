@@ -1,9 +1,29 @@
+import { SMART_TASK_LIST_CREATE_HINT } from '../../packages/shared-domain/src/smartTaskCopy/createEditCopy';
+import { deadlineLabels } from '../../packages/shared-domain/src/smartTaskCopy/deadlineLabels';
+import {
+  formatConfidenceChipLabel,
+  formatSmartTaskListConfidenceChipLabel,
+  resolveSmartTaskLearning,
+} from '../../packages/shared-domain/src/smartTaskCopy/estimateConfidence';
+import {
+  formatSmartTaskHitRateFragment,
+  SMART_TASK_HISTORY_EYEBROW,
+  SMART_TASK_LIST_LOAD_ERROR_COPY,
+  SMART_TASK_LIST_ROW_LABELS,
+  SMART_TASK_PAST_EMPTY_COPY,
+} from '../../packages/shared-domain/src/smartTaskCopy/listCopy';
 import {
   resolveSmartTaskListStatus,
-  resolveEvCardStateLine,
-  deadlineLabels,
+  resolveBuildingPlanChipTone,
+  resolvePausedUnpluggedChipTone,
+  resolveSmartTaskListReadyByStatusWord,
+  resolveSmartTaskListReadyByTone,
+  SMART_TASK_LIST_STATUS_CHIP_VARIANT,
+  SMART_TASK_LIST_STATUS_LABELS,
+  SMART_TASK_WIDGET_STATUS_LABELS,
+} from '../../packages/shared-domain/src/smartTaskCopy/listStatus';
+import {
   formatCheapestHoursCaption,
-  formatConfidenceChipLabel,
   formatSmartTaskHourReadoutPrimary,
   formatSmartTaskTrajectoryCardTitle,
   formatSmartTaskTrajectoryShortAmountLabel,
@@ -11,23 +31,9 @@ import {
   formatSmartTaskTrajectoryStatelineReady,
   formatSmartTaskTrajectoryStatelineShort,
   formatEnergyEstimateKWh,
-  formatSmartTaskCurrentValueLine,
-  formatSmartTaskHitRateFragment,
-  formatSmartTaskListConfidenceChipLabel,
-  resolveBuildingPlanChipTone,
-  resolvePausedUnpluggedChipTone,
-  resolveSmartTaskLearning,
-  resolveSmartTaskListReadyByStatusWord,
-  resolveSmartTaskListReadyByTone,
-  SMART_TASK_HISTORY_EYEBROW,
-  SMART_TASK_LIST_CREATE_HINT,
-  SMART_TASK_LIST_LOAD_ERROR_COPY,
-  SMART_TASK_LIST_ROW_LABELS,
-  SMART_TASK_LIST_STATUS_CHIP_VARIANT,
-  SMART_TASK_LIST_STATUS_LABELS,
-  SMART_TASK_WIDGET_STATUS_LABELS,
-  SMART_TASK_PAST_EMPTY_COPY,
-} from '../../packages/shared-domain/src/deadlineLabels';
+} from '../../packages/shared-domain/src/smartTaskCopy/liveDetailCopy';
+import { resolveEvCardStateLine } from '../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
+import { formatSmartTaskCurrentValueLine } from '../../packages/shared-domain/src/smartTaskCopy/valueFormat';
 import {
   formatPlanHistoryDeadlineLine,
   formatSmartTaskListDateTime,

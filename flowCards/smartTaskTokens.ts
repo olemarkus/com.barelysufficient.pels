@@ -9,7 +9,7 @@
 // messages with Logic / text concatenation, and planning detail belongs
 // on device capabilities, not on trigger tokens.
 
-import type { SmartTaskStatusNotificationId } from '../packages/shared-domain/src/deadlineLabels';
+import type { SmartTaskStatusNotificationId } from '../packages/shared-domain/src/smartTaskCopy/listStatus';
 import {
   formatDeadlineLocalTime,
   type DeferredObjectiveEndedEvent,

@@ -1,22 +1,24 @@
 import type { DeferredObjectiveActivePlanStatusV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { ObjectiveProfileConfidence } from '../../../contracts/src/objectiveProfileTypes.ts';
+import type { DeadlineLabels } from '../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
+import { formatConfidenceChipLabel } from '../../../shared-domain/src/smartTaskCopy/estimateConfidence.ts';
+import { resolveReportedCarChargeLimit } from '../../../shared-domain/src/smartTaskCopy/listStatus.ts';
 import {
-  formatConfidenceChipLabel,
   formatDeadlineDeliveredSoFarLine,
-  formatSmartTaskCarLimitReason,
   formatEnergyEstimateKWh,
   formatEstimatedCostStatValue,
   SMART_TASK_HERO_STAT_LABELS,
-  resolveReportedCarChargeLimit,
+} from '../../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts';
+import type { DeadlineCannotMeetRecourse } from '../../../shared-domain/src/smartTaskCopy/pendingHero.ts';
+import {
+  formatSmartTaskCarLimitReason,
   resolveSmartTaskAtRiskWhy,
   resolveSmartTaskBudgetRole,
   resolveSmartTaskLiveCause,
-  type DeadlineCannotMeetRecourse,
   type DeadlineBudgetRole,
-  type DeadlineLabels,
   type SmartTaskCarChargeLimit,
   type SmartTaskLiveCause,
-} from '../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../shared-domain/src/smartTaskCopy/shortfallCauses.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import {
   type DeadlinePlanSchedule,

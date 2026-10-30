@@ -55,7 +55,7 @@ import type {
   ResolvedDeferredObjectivePlanHistoryEntry,
   ResolvedDeferredObjectivePlanHistoryProgressSample,
 } from '../../contracts/src/deferredObjectivePlanHistory';
-import { APPROX_GLYPH } from './deadlineLabels';
+import { APPROX_GLYPH } from './smartTaskCopy/valueFormat';
 import {
   formatReceiptAbandonedDelivered,
   formatCostFigure,

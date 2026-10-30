@@ -18,7 +18,7 @@ import type {
   DeferredObjectivePlanHistoryRevisionSnapshot,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory';
-import { deadlineLabels } from './deadlineLabels';
+import { deadlineLabels } from './smartTaskCopy/deadlineLabels';
 import { pickScheduledHours, type ScheduledHistoryHour } from './deferredPlanHistoryShared';
 import type { DeferredObjectiveUnit } from '../../contracts/src/deferredObjectiveSettings';
 

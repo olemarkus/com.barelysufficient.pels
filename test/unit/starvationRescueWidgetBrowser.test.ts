@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { STARVATION_RESCUE_WIDGET_COPY } from '../../packages/shared-domain/src/planStarvation';
-import { SMART_TASK_EXTRA_PERMISSION_LABELS } from '../../packages/shared-domain/src/deadlineLabels';
+import {
+  SMART_TASK_EXTRA_PERMISSION_LABELS,
+} from '../../packages/shared-domain/src/smartTaskCopy/permissionsCopy';
 import { installWidget as installWidgetApp } from '../../widgets/starvation_rescue/src/public/widgetApp';
 import type { WidgetHomey, WidgetWindow } from '../../widgets/starvation_rescue/src/public/widgetApp';
 import type {

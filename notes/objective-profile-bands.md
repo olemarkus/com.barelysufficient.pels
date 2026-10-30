@@ -111,7 +111,7 @@ The active-plan provenance carries two confidence values:
 3. Bands don't fully cover `[current, target]` (within a 1e-6 tolerance) → fall back to global.
 4. Otherwise → `min(confidence)` across overlapping bands.
 
-Every smart-task surface (the live-task hero, the deadlines list, the Smart tasks widget) reads the chip through `resolveChipConfidence` in `packages/shared-domain/src/deadlineLabels.ts`: `provenance.displayConfidence` first, then `provenance.confidence`, else no chip. The plan's own provenance only, never the live profile, so all surfaces agree for one plan. Producer-resolved per `docs/architecture.md` § "Clean and trusted interfaces between layers": the UI never branches on bands or per-band fields.
+Every smart-task surface (the live-task hero, the deadlines list, the Smart tasks widget) reads the chip through `resolveChipConfidence` in `packages/shared-domain/src/smartTaskCopy/estimateConfidence.ts`: `provenance.displayConfidence` first, then `provenance.confidence`, else no chip. The plan's own provenance only, never the live profile, so all surfaces agree for one plan. Producer-resolved per `docs/architecture.md` § "Clean and trusted interfaces between layers": the UI never branches on bands or per-band fields.
 
 ## Tunables
 

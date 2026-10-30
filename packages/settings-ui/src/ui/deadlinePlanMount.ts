@@ -12,7 +12,7 @@ import {
   SMART_TASK_HISTORY_EYEBROW,
   SMART_TASK_USAGE_RETURN_CONTEXT,
   SMART_TASK_USAGE_RETURN_LABEL,
-} from '../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../shared-domain/src/smartTaskCopy/listCopy.ts';
 import {
   fetchDeadlinePlanHistory,
   resolveBrowserTimeZone,
@@ -145,8 +145,9 @@ const initDeadlinePlanRecourseDispatcher = (): void => {
     // targeted recourse — which would otherwise open the device-settings
     // overlay — falls back to tab-only landing because the upstream snapshot
     // didn't yield a deviceId. `targetTab === 'overview'` is the only tab
-    // today whose recourse carries a deviceId (see `overviewDeviceRecourse`
-    // and `MISSED_HISTORY_RECOURSE_SHORTFALL` in `deadlineLabels.ts`), so
+    // today whose recourse carries a deviceId (see `overviewDeviceRecourse` in
+    // `pendingHero.ts` and `MISSED_HISTORY_RECOURSE_SHORTFALL` in
+    // `missedHistoryRecourse.ts`), so
     // gating on it keeps the warn focused on real degradations instead of
     // firing on every "Open Budget" click.
     if (targetTab === 'overview' && deviceId === '') {

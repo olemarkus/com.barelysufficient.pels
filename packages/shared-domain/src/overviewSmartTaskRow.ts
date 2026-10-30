@@ -24,12 +24,12 @@
 // ETA grammar: the canonical `Ready by HH:MM`; failing states swap to
 // `Due HH:MM` via `resolveSmartTaskWidgetEtaVerb` (`Ready by` beside
 // `Cannot finish` is registered as contradictory).
+import { resolveSmartTaskWidgetEtaVerb } from './smartTaskCopy/listCopy';
 import {
   SMART_TASK_LIST_STATUS_LABELS,
   SMART_TASK_WIDGET_STATUS_LABELS,
-  resolveSmartTaskWidgetEtaVerb,
   type SmartTaskListStatusId,
-} from './deadlineLabels';
+} from './smartTaskCopy/listStatus';
 
 export type OverviewSmartTaskRowTone = 'alert' | 'warn' | 'muted';
 

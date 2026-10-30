@@ -361,32 +361,56 @@
     notListed: []
   };
 
-  // packages/shared-domain/src/deadlineLabels.ts
+  // packages/shared-domain/src/smartTaskCopy/pendingReasons.ts
   var PENDING_REASON_MISSING_CAPACITY_COPY = "Learning energy use \u2014 needs power readings from this device.";
-  var SMART_TASK_LIST_STATUS_LABELS = {
-    building_plan: "Building plan\u2026",
-    queued: "On track",
-    unavailable: "Unavailable",
-    paused_unplugged: "Paused \u2014 unplugged",
-    paused_unmanaged: "Paused \u2014 not managed",
-    on_track: "On track",
-    at_risk: "At risk",
-    cannot_meet: "Cannot finish",
-    satisfied: "Satisfied"
-  };
-  var SMART_TASK_WIDGET_STATUS_LABELS = {
-    ...SMART_TASK_LIST_STATUS_LABELS,
-    paused_unplugged: "Unplugged",
-    paused_unmanaged: "Not managed"
-  };
   var SMART_TASK_DEVICE_UNMANAGED_WHY = "PELS isn\u2019t managing this device.";
   var SMART_TASK_DEVICE_UNMANAGED_RECOURSE = "Turn on Managed by PELS in Setup to resume this task.";
   var WAITING_FOR_CAR_ASSOCIATION = "Waiting to identify the connected car";
+
+  // packages/shared-domain/src/smartTaskCopy/permissionsCopy.ts
+  var SMART_TASK_EXTRA_PERMISSIONS_TITLE = "Extra permissions";
+  var SMART_TASK_GUARANTEE_COPY = {
+    review: "Review power guarantee",
+    currentGuarantee: "Current guarantee",
+    changeGoal: "Change target or deadline",
+    powerReading: "Latest power reading",
+    conditions: "The plan may reserve more in individual periods. This guarantee applies during scheduled operation if background and higher-priority usage follow the forecasts. House power limits still apply.",
+    extraPower: "Power beyond the plan\u2019s reservations can help this task finish sooner.",
+    reviewHint: "A stronger guarantee may reserve more power or operating time for this task, leaving less for other devices. Changes are previewed before you save.",
+    prioritiesAction: "Review device priorities",
+    prioritiesHint: "Raising this device\u2019s priority makes more devices yield to it. Their tasks may take longer.",
+    learningDetails: "Learning details",
+    learningScope: "These details describe the energy estimate, not the power guarantee. The last learning update is separate from the latest power reading.",
+    learnedRate: "Learned from previous operation."
+  };
+  var SMART_TASK_EXTRA_PERMISSION_LABELS = {
+    exemptFromBudget: "May go over daily budget",
+    limitLowerPriorityDevices: "May limit lower-priority devices",
+    pauseLowerPriorityDevices: "May reserve power to start sooner"
+  };
+  var resolveGrantedRescuePermissionLabels = (granted) => {
+    if (!granted) return [];
+    const labels = [];
+    if (granted.exemptFromBudget) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget);
+    if (granted.limitLowerPriorityDevices) {
+      labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices);
+    }
+    if (granted.pauseLowerPriorityDevices) {
+      labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices);
+    }
+    return labels;
+  };
+
+  // packages/shared-domain/src/smartTaskCopy/valueFormat.ts
+  var APPROX_GLYPH = "\u2248";
+
+  // packages/shared-domain/src/smartTaskCopy/shortfallCauses.ts
   var WHY_CANNOT_MEET_BUDGET = "Today\u2019s daily budget runs out before the deadline.";
   var WHY_AT_RISK_BUDGET = "Today\u2019s daily budget may run out before the deadline.";
   var WHY_CANNOT_MEET_BUDGET_PARTIAL = "Today\u2019s daily budget is holding part of this back, but there is not enough time either.";
   var WHY_AT_RISK_BUDGET_PARTIAL = "Today\u2019s daily budget may be holding part of this back, and time is short too.";
-  var SMART_TASK_EXTRA_PERMISSIONS_TITLE = "Extra permissions";
+
+  // packages/shared-domain/src/smartTaskCopy/createEditCopy.ts
   var CREATE_SMART_TASK_WIDGET_COPY = {
     // Step 1 — device picker.
     pickDeviceTitle: "Create smart task",
@@ -483,7 +507,7 @@
     // default; a user opts in per task. The section hint stays honest about scope
     // (only to hit THIS deadline) and never implies more total power or a raised
     // cap (`feedback_hard_cap_is_physical`). The title is an alias of the
-    // surface-neutral constant above — the smart-task editor shows the same
+    // surface-neutral constant in `permissionsCopy.ts` — the smart-task editor shows the same
     // string, so it must not live under a create-widget-scoped name.
     extraPermissionsTitle: SMART_TASK_EXTRA_PERMISSIONS_TITLE,
     extraPermissionsHint: "Off unless you turn them on \u2014 only used to hit this deadline.",
@@ -536,6 +560,33 @@
       }
     }
   };
+
+  // packages/shared-domain/src/smartTaskDeadlineFormat.ts
+  var HOUR_MS = 60 * 60 * 1e3;
+  var DAY_MS = 24 * HOUR_MS;
+  var composeSmartTaskScheduledLine = (params) => {
+    const readyByPart = `${params.readyByLabel} ${params.deadlineLabel}`;
+    if (params.scheduledWindowLabel === null) return readyByPart;
+    return `${params.scheduledLabel} ${params.scheduledWindowLabel} \xB7 ${readyByPart}`;
+  };
+
+  // packages/shared-domain/src/smartTaskCopy/listStatus.ts
+  var SMART_TASK_LIST_STATUS_LABELS = {
+    building_plan: "Building plan\u2026",
+    queued: "On track",
+    unavailable: "Unavailable",
+    paused_unplugged: "Paused \u2014 unplugged",
+    paused_unmanaged: "Paused \u2014 not managed",
+    on_track: "On track",
+    at_risk: "At risk",
+    cannot_meet: "Cannot finish",
+    satisfied: "Satisfied"
+  };
+  var SMART_TASK_WIDGET_STATUS_LABELS = {
+    ...SMART_TASK_LIST_STATUS_LABELS,
+    paused_unplugged: "Unplugged",
+    paused_unmanaged: "Not managed"
+  };
   var resolveBuildingPlanChipTone = () => "info";
   var resolvePausedUnpluggedChipTone = () => "warn";
   var resolvePausedUnmanagedChipTone = () => "warn";
@@ -572,37 +623,8 @@
     cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,
     satisfied: null
   };
-  var SMART_TASK_GUARANTEE_COPY = {
-    review: "Review power guarantee",
-    currentGuarantee: "Current guarantee",
-    changeGoal: "Change target or deadline",
-    powerReading: "Latest power reading",
-    conditions: "The plan may reserve more in individual periods. This guarantee applies during scheduled operation if background and higher-priority usage follow the forecasts. House power limits still apply.",
-    extraPower: "Power beyond the plan\u2019s reservations can help this task finish sooner.",
-    reviewHint: "A stronger guarantee may reserve more power or operating time for this task, leaving less for other devices. Changes are previewed before you save.",
-    prioritiesAction: "Review device priorities",
-    prioritiesHint: "Raising this device\u2019s priority makes more devices yield to it. Their tasks may take longer.",
-    learningDetails: "Learning details",
-    learningScope: "These details describe the energy estimate, not the power guarantee. The last learning update is separate from the latest power reading.",
-    learnedRate: "Learned from previous operation."
-  };
-  var SMART_TASK_EXTRA_PERMISSION_LABELS = {
-    exemptFromBudget: "May go over daily budget",
-    limitLowerPriorityDevices: "May limit lower-priority devices",
-    pauseLowerPriorityDevices: "May reserve power to start sooner"
-  };
-  var resolveGrantedRescuePermissionLabels = (granted) => {
-    if (!granted) return [];
-    const labels = [];
-    if (granted.exemptFromBudget) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget);
-    if (granted.limitLowerPriorityDevices) {
-      labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices);
-    }
-    if (granted.pauseLowerPriorityDevices) {
-      labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices);
-    }
-    return labels;
-  };
+
+  // packages/shared-domain/src/smartTaskCopy/listCopy.ts
   var SMART_TASK_LIST_ROW_LABELS = {
     target: "Target",
     starts: "Starts",
@@ -610,39 +632,9 @@
   };
   var SMART_TASK_WIDGET_TARGET_NOUN = SMART_TASK_LIST_ROW_LABELS.target;
   var SMART_TASK_BANNER_UNAVAILABLE_TITLE = "Smart task unavailable";
-  var REVISION_REASON_TOOLTIP_LINE = {
-    flow_card: "Updated after a flow card fired",
-    prices_arrived: "Updated as prices became available",
-    objective_changed: "Updated after the target changed",
-    direction_changed: "Updated after thermostat direction changed",
-    // Only fires when the planner consumed a newer price horizon than the
-    // previous revision. `schedule_revised` carries internal replans.
-    prices_revised: "Updated as new prices arrived",
-    // Schedule shifted without a new price horizon — daily-budget pressure
-    // moved a bucket, planStatus flipped, etc. Honest about the cause without
-    // claiming a publication event.
-    schedule_revised: "Updated as the schedule was revised",
-    rate_refined: "Updated as rates were refined",
-    flow_permission_changed: "Updated after a Flow changed what this smart task may do"
-  };
-  var SCHEDULE_REVISED_BASE = "Schedule revised";
-  var SCHEDULE_REVISED_BUDGET = `${SCHEDULE_REVISED_BASE} \u2014 daily budget shifted`;
-  var SCHEDULE_REVISED_RISK = `${SCHEDULE_REVISED_BASE} \u2014 risk changed`;
-  var SCHEDULE_REVISED_OPENED = `${SCHEDULE_REVISED_BASE} \u2014 cheaper hour opened`;
+
+  // packages/shared-domain/src/smartTaskCopy/pendingHero.ts
   var withLastFetched = (base, lastFetchedShort) => lastFetchedShort ? `${base} Last price update: ${lastFetchedShort}.` : base;
-  var resolveQueuedHeadlineReason = (params) => {
-    if (params.pricesShortOfDeadline) {
-      return `Waiting for tomorrow\u2019s prices through ${params.deadlineTime}.`;
-    }
-    if (params.plannedWindowCheaperThanNow) {
-      return `Cheaper than now \u2014 starts at ${params.firstPlannedTime}.`;
-    }
-    return `Scheduled for the cheapest times it can use \u2014 starts at ${params.firstPlannedTime}.`;
-  };
-  var CANNOT_MEET_RECOURSE = {
-    openBudget: { label: "Open Budget", targetTab: "budget" },
-    openOverview: { label: "Adjust device", targetTab: "overview" }
-  };
   var OVERVIEW_DEVICE_RECOURSE_BASE = { label: "Open device in Overview", targetTab: "overview" };
   var overviewDeviceRecourse = (deviceId) => ({ ...OVERVIEW_DEVICE_RECOURSE_BASE, deviceId });
   var separateMeterUnavailableResolver = () => ({
@@ -743,6 +735,42 @@
     "power use",
     "the device"
   );
+
+  // packages/shared-domain/src/smartTaskCopy/revisionReasons.ts
+  var REVISION_REASON_TOOLTIP_LINE = {
+    flow_card: "Updated after a flow card fired",
+    prices_arrived: "Updated as prices became available",
+    objective_changed: "Updated after the target changed",
+    direction_changed: "Updated after thermostat direction changed",
+    // Only fires when the planner consumed a newer price horizon than the
+    // previous revision. `schedule_revised` carries internal replans.
+    prices_revised: "Updated as new prices arrived",
+    // Schedule shifted without a new price horizon — daily-budget pressure
+    // moved a bucket, planStatus flipped, etc. Honest about the cause without
+    // claiming a publication event.
+    schedule_revised: "Updated as the schedule was revised",
+    rate_refined: "Updated as rates were refined",
+    flow_permission_changed: "Updated after a Flow changed what this smart task may do"
+  };
+  var SCHEDULE_REVISED_BASE = "Schedule revised";
+  var SCHEDULE_REVISED_BUDGET = `${SCHEDULE_REVISED_BASE} \u2014 daily budget shifted`;
+  var SCHEDULE_REVISED_RISK = `${SCHEDULE_REVISED_BASE} \u2014 risk changed`;
+  var SCHEDULE_REVISED_OPENED = `${SCHEDULE_REVISED_BASE} \u2014 cheaper hour opened`;
+
+  // packages/shared-domain/src/smartTaskCopy/deadlineLabels.ts
+  var resolveQueuedHeadlineReason = (params) => {
+    if (params.pricesShortOfDeadline) {
+      return `Waiting for tomorrow\u2019s prices through ${params.deadlineTime}.`;
+    }
+    if (params.plannedWindowCheaperThanNow) {
+      return `Cheaper than now \u2014 starts at ${params.firstPlannedTime}.`;
+    }
+    return `Scheduled for the cheapest times it can use \u2014 starts at ${params.firstPlannedTime}.`;
+  };
+  var CANNOT_MEET_RECOURSE = {
+    openBudget: { label: "Open Budget", targetTab: "budget" },
+    openOverview: { label: "Adjust device", targetTab: "overview" }
+  };
   var KIND_INVARIANT_LIVE_STATE_CHIP_LABELS = {
     building_plan: "Building plan\u2026",
     queued: "On track",
@@ -974,38 +1002,6 @@
       planInputsRateBootstrapNote: null
     }
   };
-  var SAMPLE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1e3;
-  var ONE_MINUTE_MS = 60 * 1e3;
-  var ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
-  var formatEnergyEstimateKWh = (params) => {
-    const planned = params.energyPlannedKWh;
-    const expected = typeof params.energyExpectedKWh === "number" ? params.energyExpectedKWh : planned;
-    const lowText = expected.toFixed(1);
-    const highText = planned.toFixed(1);
-    if (lowText === highText || planned <= expected) return `${highText} kWh`;
-    return `${lowText}\u2013${highText} kWh`;
-  };
-  var APPROX_GLYPH = "\u2248";
-  var formatDeadlineCostMetaLine = (params) => {
-    const unit = params.costUnit.trim();
-    if (unit.length === 0) return null;
-    if (!Number.isFinite(params.plannedTotalCost)) return null;
-    const plannedLabel = `${params.plannedTotalCost.toFixed(2)} ${unit}`;
-    if (params.deliveredCost !== null && Number.isFinite(params.deliveredCost)) {
-      const deliveredLabel = `${params.deliveredCost.toFixed(2)} ${unit}`;
-      return `Cost ${APPROX_GLYPH} ${deliveredLabel} so far \xB7 ${plannedLabel} planned`;
-    }
-    return `Cost ${APPROX_GLYPH} ${plannedLabel}`;
-  };
-
-  // packages/shared-domain/src/smartTaskDeadlineFormat.ts
-  var HOUR_MS = 60 * 60 * 1e3;
-  var DAY_MS = 24 * HOUR_MS;
-  var composeSmartTaskScheduledLine = (params) => {
-    const readyByPart = `${params.readyByLabel} ${params.deadlineLabel}`;
-    if (params.scheduledWindowLabel === null) return readyByPart;
-    return `${params.scheduledLabel} ${params.scheduledWindowLabel} \xB7 ${readyByPart}`;
-  };
 
   // packages/shared-domain/src/utils/dateUtils.ts
   var DAY_START_SEARCH_WINDOW_MS = 72 * 60 * 60 * 1e3;
@@ -1140,6 +1136,27 @@
     container.appendChild(svg);
     container.appendChild(axis);
     return true;
+  };
+
+  // packages/shared-domain/src/smartTaskCopy/liveDetailCopy.ts
+  var formatEnergyEstimateKWh = (params) => {
+    const planned = params.energyPlannedKWh;
+    const expected = typeof params.energyExpectedKWh === "number" ? params.energyExpectedKWh : planned;
+    const lowText = expected.toFixed(1);
+    const highText = planned.toFixed(1);
+    if (lowText === highText || planned <= expected) return `${highText} kWh`;
+    return `${lowText}\u2013${highText} kWh`;
+  };
+  var formatDeadlineCostMetaLine = (params) => {
+    const unit = params.costUnit.trim();
+    if (unit.length === 0) return null;
+    if (!Number.isFinite(params.plannedTotalCost)) return null;
+    const plannedLabel = `${params.plannedTotalCost.toFixed(2)} ${unit}`;
+    if (params.deliveredCost !== null && Number.isFinite(params.deliveredCost)) {
+      const deliveredLabel = `${params.deliveredCost.toFixed(2)} ${unit}`;
+      return `Cost ${APPROX_GLYPH} ${deliveredLabel} so far \xB7 ${plannedLabel} planned`;
+    }
+    return `Cost ${APPROX_GLYPH} ${plannedLabel}`;
   };
 
   // widgets/_shared/smartTaskPreviewLines.ts

@@ -8,7 +8,7 @@ import type {
 import type {
   DeviceDescriptor, MeasuredPowerObservedProbe, ObservedDeviceState,
 } from '../../../contracts/src/types.ts';
-import type { DeadlineLabels } from '../../../shared-domain/src/deadlineLabels.ts';
+import type { DeadlineLabels } from '../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
 import type { CostDisplay } from './dailyBudgetCost.ts';
 import type { DeadlineProgress, resolveEnergyNeededKWh } from './deadlinePlanResolvers.ts';
 

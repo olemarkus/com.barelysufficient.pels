@@ -12,9 +12,11 @@ import {
   starvationRowIsRescuable,
 } from '../../../../packages/shared-domain/src/planStarvation';
 import {
-  resolveGrantedRescuePermissionLabels,
   resolveSmartTaskPreviewStatusCopy,
-} from '../../../../packages/shared-domain/src/deadlineLabels';
+} from '../../../../packages/shared-domain/src/smartTaskCopy/createEditCopy';
+import {
+  resolveGrantedRescuePermissionLabels,
+} from '../../../../packages/shared-domain/src/smartTaskCopy/permissionsCopy';
 import {
   composeSmartTaskScheduledLine,
 } from '../../../../packages/shared-domain/src/smartTaskDeadlineFormat';

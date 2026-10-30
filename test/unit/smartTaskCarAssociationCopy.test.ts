@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  deadlineLabels,
-  resolveSmartTaskListStatus,
   resolveSmartTaskPreviewUnavailableCopy,
-  resolveSmartTaskWidgetDetailCopy,
-} from '../../packages/shared-domain/src/deadlineLabels';
+} from '../../packages/shared-domain/src/smartTaskCopy/createEditCopy';
+import { deadlineLabels } from '../../packages/shared-domain/src/smartTaskCopy/deadlineLabels';
+import { resolveSmartTaskListStatus } from '../../packages/shared-domain/src/smartTaskCopy/listStatus';
+import { resolveSmartTaskWidgetDetailCopy } from '../../packages/shared-domain/src/smartTaskCopy/widgetCopy';
 
 const waitingCopy = 'Waiting to identify the connected car';
 

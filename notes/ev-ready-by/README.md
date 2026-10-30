@@ -354,7 +354,7 @@ charging have shipped.
 
 The on/off charger card (`PlanGenericCard` in `PlanDeviceCards.tsx`) renders an
 EV plan-state line via `resolveEvCardStateLine`
-(`packages/shared-domain/src/deadlineLabels.ts`): a next-planned-start line, an
+(`packages/shared-domain/src/smartTaskCopy/pendingReasons.ts`): a next-planned-start line, an
 active-charging finish line, and a plug-out paused line. It fills the reason slot
 only when the backend-resolved `DeviceStatus` carries no reason, from the smart
 task the UI already holds for the Smart task chip. Stepped chargers state their
@@ -503,5 +503,5 @@ And the failure modes are visible:
 - Charger unavailable → "Charger unavailable" state.
 - Price data missing → pending hero copy depends on price source (the actual shipped strings
   branch on whether prices come from an external flow card vs. the managed Nordpool fetch and
-  whether the last-fetched timestamp is recent; see `packages/shared-domain/src/deadlineLabels.ts`
+  whether the last-fetched timestamp is recent; see `packages/shared-domain/src/smartTaskCopy/pendingHero.ts`
   `awaitingHorizonCopy` for the live variants).

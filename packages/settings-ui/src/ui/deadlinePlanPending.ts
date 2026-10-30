@@ -1,17 +1,21 @@
+import type { DeadlineLabels } from '../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
 import {
   resolveBuildingPlanChipTone,
-  resolveExclusionPendingReason,
   resolvePausedUnmanagedChipTone,
   resolvePausedUnpluggedChipTone,
-  resolveSmartTaskPendingReason,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
-  type DeadlineLabels,
   type DeadlineLiveState,
-  type DeadlinePendingContext,
-  type DeadlinePendingPriceSource,
-  type DeadlinePlanPendingReason,
   type SmartTaskChipTone,
-} from '../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../shared-domain/src/smartTaskCopy/listStatus.ts';
+import type {
+  DeadlinePendingContext,
+  DeadlinePendingPriceSource,
+} from '../../../shared-domain/src/smartTaskCopy/pendingHero.ts';
+import {
+  resolveExclusionPendingReason,
+  resolveSmartTaskPendingReason,
+  type DeadlinePlanPendingReason,
+} from '../../../shared-domain/src/smartTaskCopy/pendingReasons.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import type { SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';

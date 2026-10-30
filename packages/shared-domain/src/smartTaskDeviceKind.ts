@@ -10,7 +10,7 @@ import type {
   ObservedStateOfCharge,
   SteppedLoadDescriptorProbe,
 } from '../../contracts/src/types.js';
-import { deadlineLabels } from './deadlineLabels.js';
+import { deadlineLabels } from './smartTaskCopy/deadlineLabels.js';
 import { isEvObserved } from './evObservedState.js';
 import { isEvPlugStateConnected } from './evPlugState.js';
 import { hasLiveMeasuredPower } from './measuredPowerObservedState.js';

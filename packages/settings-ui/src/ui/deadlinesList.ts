@@ -42,16 +42,20 @@ import {
 import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
 import { areMeterAreasInUse, subscribeToHomeScope } from './homeScope.ts';
 import {
-  formatSmartTaskExtraPermissionsValue,
-  formatSmartTaskCurrentValueLine,
   resolveChipConfidence,
-  resolveSmartTaskBudgetRole,
   resolveSmartTaskLearning,
+} from '../../../shared-domain/src/smartTaskCopy/estimateConfidence.ts';
+import { SMART_TASK_LIST_LOAD_ERROR_COPY } from '../../../shared-domain/src/smartTaskCopy/listCopy.ts';
+import type { SmartTaskListStatusId } from '../../../shared-domain/src/smartTaskCopy/listStatus.ts';
+import {
+  formatSmartTaskExtraPermissionsValue,
+} from '../../../shared-domain/src/smartTaskCopy/permissionsCopy.ts';
+import {
+  resolveSmartTaskBudgetRole,
   resolveSmartTaskLiveCause,
-  SMART_TASK_LIST_LOAD_ERROR_COPY,
   type SmartTaskCarChargeLimit,
-  type SmartTaskListStatusId,
-} from '../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../shared-domain/src/smartTaskCopy/shortfallCauses.ts';
+import { formatSmartTaskCurrentValueLine } from '../../../shared-domain/src/smartTaskCopy/valueFormat.ts';
 import {
   renderDeadlinesList,
   type DeadlinesListActions,

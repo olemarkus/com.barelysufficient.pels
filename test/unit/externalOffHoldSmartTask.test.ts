@@ -3,8 +3,8 @@ import { applyDeferredAdmissionToInput } from '../../lib/objectives/deferredObje
 import {
   resolveEffectivePlanStatus,
   resolveSmartTaskListStatus,
-  resolveSmartTaskLiveCause,
-} from '../../packages/shared-domain/src/deadlineLabels';
+} from '../../packages/shared-domain/src/smartTaskCopy/listStatus';
+import { resolveSmartTaskLiveCause } from '../../packages/shared-domain/src/smartTaskCopy/shortfallCauses';
 import { withBinaryDiscriminant, type PlanInputDevice } from '../../lib/plan/planTypes';
 import type { DeferredAdmissionDecision } from '../../lib/objectives/deferredObjectives/admission';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';

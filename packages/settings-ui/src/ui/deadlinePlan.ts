@@ -5,18 +5,24 @@ import type {
 import { normalizeDeferredObjectiveRoster } from './deferredObjectiveRoster.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
+import { deadlineLabels } from '../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
 import {
-  deadlineLabels,
-  isDeviceExclusionPaused,
+  SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE,
+} from '../../../shared-domain/src/smartTaskCopy/listCopy.ts';
+import {
   resolveEffectivePlanStatus,
   resolveReportedCarChargeLimit,
-  resolveSmartTaskBudgetRole,
-  resolveSmartTaskLiveCause,
-  SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE,
-  type DeadlinePendingContext,
+} from '../../../shared-domain/src/smartTaskCopy/listStatus.ts';
+import type { DeadlinePendingContext } from '../../../shared-domain/src/smartTaskCopy/pendingHero.ts';
+import {
+  isDeviceExclusionPaused,
   type DeadlinePlanPendingReason,
   type DeadlinePlanUnavailableReason,
-} from '../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../shared-domain/src/smartTaskCopy/pendingReasons.ts';
+import {
+  resolveSmartTaskBudgetRole,
+  resolveSmartTaskLiveCause,
+} from '../../../shared-domain/src/smartTaskCopy/shortfallCauses.ts';
 import { buildPlanInputs } from './deadlinePlanInputs.ts';
 import { buildTrajectory } from './deadlinePlanTrajectory.ts';
 import { buildTimeline } from './deadlinePlanTimeline.ts';

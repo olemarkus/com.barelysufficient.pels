@@ -10,7 +10,7 @@ import {
   formatCheapestHoursCaption,
   formatSmartTaskHourReadoutPrimary,
   NOW_MARKER_WORD,
-} from '../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import {
   PLANNING_PRICE_REASON_LINE,

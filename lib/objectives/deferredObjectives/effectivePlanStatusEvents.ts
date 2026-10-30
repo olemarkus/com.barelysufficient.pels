@@ -7,7 +7,7 @@
 // or the car stopped at its own charge limit). The two diverge on purpose: freezing the overlay into a
 // revision would keep it alive after the cause ended.
 
-import { resolveEffectivePlanStatus } from '../../../packages/shared-domain/src/deadlineLabels';
+import { resolveEffectivePlanStatus } from '../../../packages/shared-domain/src/smartTaskCopy/listStatus';
 import type {
   DeferredObjectiveActivePlanStatusV1,
   DeferredObjectiveActivePlanV1,

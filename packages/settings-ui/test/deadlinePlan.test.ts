@@ -12,11 +12,9 @@ import type {
   ResolvedDeferredObjectiveActivePlansV2,
 } from '../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeferredObjectiveRoster } from '../../contracts/src/deferredObjectiveSettings.ts';
-import {
-  deadlineLabels,
-  resolveSmartTaskLiveCause,
-  SMART_TASK_LIST_STATUS_CHIP_VARIANT,
-} from '../../shared-domain/src/deadlineLabels.ts';
+import { deadlineLabels } from '../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
+import { SMART_TASK_LIST_STATUS_CHIP_VARIANT } from '../../shared-domain/src/smartTaskCopy/listStatus.ts';
+import { resolveSmartTaskLiveCause } from '../../shared-domain/src/smartTaskCopy/shortfallCauses.ts';
 import { toResolvedActivePlan } from '../../shared-domain/src/deferredActivePlanResolvedView.ts';
 import type { DeadlinePlanSchedule, HorizonHour, ObjectivePayloadReady } from '../src/ui/deadlinePlanData.ts';
 import type { DeadlineProgress } from '../src/ui/deadlinePlanResolvers.ts';
@@ -3917,7 +3915,7 @@ describe('cost + delivered-so-far hero lines', () => {
 // edges in isolation (empty unit, non-finite planned, negative Nordpool cost).
 describe('shared-domain hero-line formatters', () => {
   it('formatEstimatedCostStatValue uses ≈ (U+2248), never ~ or "approx"', async () => {
-    const { formatEstimatedCostStatValue } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { formatEstimatedCostStatValue } = await import('../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts');
     const out = formatEstimatedCostStatValue({ plannedTotalCost: 6.5, costUnit: 'kr' });
     expect(out).toBe('≈ 6.50 kr');
     expect(out).toContain('≈');
@@ -3926,13 +3924,13 @@ describe('shared-domain hero-line formatters', () => {
   });
 
   it('formatEstimatedCostStatValue returns null when the unit is empty', async () => {
-    const { formatEstimatedCostStatValue } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { formatEstimatedCostStatValue } = await import('../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts');
     expect(formatEstimatedCostStatValue({ plannedTotalCost: 6.5, costUnit: '' })).toBeNull();
     expect(formatEstimatedCostStatValue({ plannedTotalCost: 6.5, costUnit: '   ' })).toBeNull();
   });
 
   it('formatEstimatedCostStatValue returns null when planned cost is non-finite', async () => {
-    const { formatEstimatedCostStatValue } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { formatEstimatedCostStatValue } = await import('../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts');
     expect(formatEstimatedCostStatValue({ plannedTotalCost: Number.NaN, costUnit: 'kr' })).toBeNull();
     expect(formatEstimatedCostStatValue({ plannedTotalCost: Number.POSITIVE_INFINITY, costUnit: 'kr' })).toBeNull();
   });
@@ -3941,7 +3939,7 @@ describe('shared-domain hero-line formatters', () => {
     // A zero/negative total is a real outcome the owner should see during
     // negative-price oversupply windows — the guard rejects only non-finite
     // values, never a genuine "you got paid to charge" figure.
-    const { formatEstimatedCostStatValue } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { formatEstimatedCostStatValue } = await import('../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts');
     expect(formatEstimatedCostStatValue({ plannedTotalCost: 0, costUnit: 'kr' })).toBe('≈ 0.00 kr');
     expect(formatEstimatedCostStatValue({ plannedTotalCost: -0.30, costUnit: 'kr' })).toBe('≈ -0.30 kr');
   });
@@ -3950,7 +3948,7 @@ describe('shared-domain hero-line formatters', () => {
   // by the create_smart_task / starvation_rescue widgets, so it keeps its own
   // coverage alongside the hero's value-only stat helper above.
   it('formatDeadlineCostMetaLine renders the planned-only and composite forms', async () => {
-    const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts');
     expect(formatDeadlineCostMetaLine({ plannedTotalCost: 6.5, deliveredCost: null, costUnit: 'kr' }))
       .toBe('Cost ≈ 6.50 kr');
     expect(formatDeadlineCostMetaLine({ plannedTotalCost: 6.5, deliveredCost: 0.3, costUnit: 'kr' }))
@@ -3958,7 +3956,7 @@ describe('shared-domain hero-line formatters', () => {
   });
 
   it('formatDeadlineCostMetaLine suppresses on missing unit / non-finite total, renders negative cost', async () => {
-    const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts');
     expect(formatDeadlineCostMetaLine({ plannedTotalCost: 6.5, deliveredCost: null, costUnit: '  ' })).toBeNull();
     expect(formatDeadlineCostMetaLine({ plannedTotalCost: Number.NaN, deliveredCost: null, costUnit: 'kr' })).toBeNull();
     expect(formatDeadlineCostMetaLine({ plannedTotalCost: -0.30, deliveredCost: null, costUnit: 'kr' }))
@@ -3966,7 +3964,7 @@ describe('shared-domain hero-line formatters', () => {
   });
 
   it('formatDeadlineDeliveredSoFarLine surfaces the start → current arrow when start is known', async () => {
-    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts');
     const out = formatDeadlineDeliveredSoFarLine(
       'on_track_or_queued',
       1.8,
@@ -3980,7 +3978,7 @@ describe('shared-domain hero-line formatters', () => {
   });
 
   it('formatDeadlineDeliveredSoFarLine states an energy task once, from its own count', async () => {
-    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts');
     const out = formatDeadlineDeliveredSoFarLine(
       'on_track_or_queued',
       3.2,
@@ -4015,7 +4013,7 @@ describe('shared-domain hero-line formatters', () => {
   });
 
   it('formatDeadlineDeliveredSoFarLine collapses to `now …` when start equals current', async () => {
-    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts');
     const out = formatDeadlineDeliveredSoFarLine(
       'on_track_or_queued',
       0,
@@ -4035,7 +4033,7 @@ describe('shared-domain hero-line formatters', () => {
     // identically — producing a meaningless "45% → 45%" arrow. The helper
     // now compares the formatted labels post-rounding and falls through to
     // "now X" when they match.
-    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts');
     const out = formatDeadlineDeliveredSoFarLine(
       'on_track_or_queued',
       0.4,
@@ -4055,7 +4053,7 @@ describe('shared-domain hero-line formatters', () => {
     // the magnitude line drops the `· won't reach by HH:MM` tail and stays
     // information-only. The `still` stem (vs the on-track `now`) keeps the
     // tonal pairing with the alert chip without re-asserting the failure.
-    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts');
     const out = formatDeadlineDeliveredSoFarLine(
       'cannot_meet',
       1.8,
@@ -4070,7 +4068,7 @@ describe('shared-domain hero-line formatters', () => {
   });
 
   it('formatDeadlineDeliveredSoFarLine returns null when planned kWh is zero', async () => {
-    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts');
     expect(formatDeadlineDeliveredSoFarLine(
       'on_track_or_queued',
       0,
@@ -4083,7 +4081,7 @@ describe('shared-domain hero-line formatters', () => {
   });
 
   it('formatDeadlineDeliveredSoFarLine formats EV percent without decimals', async () => {
-    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts');
     const out = formatDeadlineDeliveredSoFarLine(
       'on_track_or_queued',
       5,
@@ -4103,7 +4101,7 @@ describe('shared-domain hero-line formatters', () => {
 // wiring and resolver copy can be reviewed separately.
 describe('shared-domain pending-hero copy', () => {
   it('temperature awaiting_horizon_plan surfaces the deadline horizon in headlineReason and emits no recourse', async () => {
-    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { deadlineLabels } = await import('../../shared-domain/src/smartTaskCopy/deadlineLabels.ts');
     const copy = deadlineLabels('temperature').pendingHeroByReason.awaiting_horizon_plan({
       priceSource: 'managed',
       hasCurrentPrice: true,
@@ -4119,7 +4117,7 @@ describe('shared-domain pending-hero copy', () => {
   it('says PELS has no prices at all, and where to set them up, rather than waiting for tomorrow', async () => {
     // No price for the current hour is no prices at all: tomorrow's arriving
     // will not fix a source that is not set up.
-    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { deadlineLabels } = await import('../../shared-domain/src/smartTaskCopy/deadlineLabels.ts');
     const copy = deadlineLabels('temperature').pendingHeroByReason.awaiting_horizon_plan({
       priceSource: 'managed',
       hasCurrentPrice: false,
@@ -4151,7 +4149,7 @@ describe('shared-domain pending-hero copy', () => {
     // Headline + body branch on the price source, but the panic-visitor's
     // "how long am I waiting?" answer is the deadline horizon regardless —
     // hence headlineReason stays stable across the two body shapes.
-    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { deadlineLabels } = await import('../../shared-domain/src/smartTaskCopy/deadlineLabels.ts');
     const copy = deadlineLabels('temperature').pendingHeroByReason.awaiting_horizon_plan({
       priceSource: 'external_flow',
       hasCurrentPrice: true,
@@ -4166,7 +4164,7 @@ describe('shared-domain pending-hero copy', () => {
   });
 
   it('temperature device_data_missing names the device in headlineReason and emits an Overview recourse', async () => {
-    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { deadlineLabels } = await import('../../shared-domain/src/smartTaskCopy/deadlineLabels.ts');
     const copy = deadlineLabels('temperature').pendingHeroByReason.device_data_missing({
       priceSource: 'managed',
       hasCurrentPrice: true,
@@ -4183,7 +4181,7 @@ describe('shared-domain pending-hero copy', () => {
   it('temperature device_data_missing falls back to "the heater" when the device snapshot has no name', async () => {
     // Empty deviceName covers the pre-load race where the device snapshot
     // hasn't landed yet; the copy must still parse cleanly.
-    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { deadlineLabels } = await import('../../shared-domain/src/smartTaskCopy/deadlineLabels.ts');
     const copy = deadlineLabels('temperature').pendingHeroByReason.device_data_missing({
       priceSource: 'managed',
       hasCurrentPrice: true,
@@ -4198,7 +4196,7 @@ describe('shared-domain pending-hero copy', () => {
 
   it('exports the canonical one-line missing_capacity copy with an em-dash separator', async () => {
     const { PENDING_REASON_MISSING_CAPACITY_COPY } = await import(
-      '../../shared-domain/src/deadlineLabels.ts'
+      '../../shared-domain/src/smartTaskCopy/pendingReasons.ts'
     );
     expect(PENDING_REASON_MISSING_CAPACITY_COPY).toBe(
       'Learning energy use — needs power readings from this device.',
@@ -4209,8 +4207,9 @@ describe('shared-domain pending-hero copy', () => {
   });
 
   it('temperature missing_capacity collapses to a one-line learning-energy-use copy', async () => {
-    const { deadlineLabels, PENDING_REASON_MISSING_CAPACITY_COPY } = await import(
-      '../../shared-domain/src/deadlineLabels.ts'
+    const { deadlineLabels } = await import('../../shared-domain/src/smartTaskCopy/deadlineLabels.ts');
+    const { PENDING_REASON_MISSING_CAPACITY_COPY } = await import(
+      '../../shared-domain/src/smartTaskCopy/pendingReasons.ts'
     );
     const copy = deadlineLabels('temperature').pendingHeroByReason.missing_capacity({
       priceSource: 'managed',
@@ -4238,7 +4237,7 @@ describe('shared-domain pending-hero copy', () => {
   });
 
   it('temperature invalid_session falls back to device_data_missing copy (thermal can’t go invalid)', async () => {
-    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { deadlineLabels } = await import('../../shared-domain/src/smartTaskCopy/deadlineLabels.ts');
     const copy = deadlineLabels('temperature').pendingHeroByReason.invalid_session({
       priceSource: 'managed',
       hasCurrentPrice: true,
@@ -4252,7 +4251,7 @@ describe('shared-domain pending-hero copy', () => {
   });
 
   it('ev_soc awaiting_horizon_plan surfaces the deadline horizon in headlineReason', async () => {
-    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { deadlineLabels } = await import('../../shared-domain/src/smartTaskCopy/deadlineLabels.ts');
     const copy = deadlineLabels('ev_soc').pendingHeroByReason.awaiting_horizon_plan({
       priceSource: 'managed',
       hasCurrentPrice: true,
@@ -4266,7 +4265,7 @@ describe('shared-domain pending-hero copy', () => {
   });
 
   it('ev_soc device_data_missing names the device and reads "state of charge"', async () => {
-    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { deadlineLabels } = await import('../../shared-domain/src/smartTaskCopy/deadlineLabels.ts');
     const copy = deadlineLabels('ev_soc').pendingHeroByReason.device_data_missing({
       priceSource: 'managed',
       hasCurrentPrice: true,
@@ -4282,7 +4281,7 @@ describe('shared-domain pending-hero copy', () => {
   it('ev_soc invalid_session restates the charger signal at headline height and emits no recourse', async () => {
     // EV plug-out is a physical action; no in-app tab maps to it, so
     // recourse stays null and the body alone names the unblocking condition.
-    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const { deadlineLabels } = await import('../../shared-domain/src/smartTaskCopy/deadlineLabels.ts');
     const copy = deadlineLabels('ev_soc').pendingHeroByReason.invalid_session({
       priceSource: 'managed',
       hasCurrentPrice: true,

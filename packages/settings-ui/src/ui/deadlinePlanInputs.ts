@@ -1,9 +1,11 @@
 import {
-  formatSmartTaskExtraPermissionsValue,
   resolveKwhPerUnitProvenanceRows,
+} from '../../../shared-domain/src/smartTaskCopy/estimateConfidence.ts';
+import {
+  formatSmartTaskExtraPermissionsValue,
   SMART_TASK_GUARANTEE_COPY,
   formatSmartTaskPriorityNote,
-} from '../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../shared-domain/src/smartTaskCopy/permissionsCopy.ts';
 import type { DeadlinePlanSchedule, ObjectivePayloadReady } from './deadlinePlanData.ts';
 import { hasObservedMeasuredPower } from '../../../shared-domain/src/measuredPowerObservedState.ts';
 import { formatAcceptedAt } from './deadlinePlanFormatters.ts';

@@ -1,4 +1,7 @@
-import { resolveMissedHistoryCarHint, resolveMissedHistoryRecourse } from '../../packages/shared-domain/src/deadlineLabels';
+import {
+  resolveMissedHistoryCarHint,
+  resolveMissedHistoryRecourse,
+} from '../../packages/shared-domain/src/smartTaskCopy/missedHistoryRecourse';
 import type { TaskDeliveryExplanation } from '../../packages/contracts/src/taskDelivery';
 
 const recorded = (

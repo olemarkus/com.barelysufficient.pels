@@ -7,7 +7,7 @@
 //
 // Trim both ends rather than only `trimEnd()`: leading whitespace isn't
 // legitimate in practice either, and `.trim()` matches the behavior of the
-// existing `.trim() || fallback` callsites in `deadlineLabels.ts` and
+// existing `.trim() || fallback` callsites in `smartTaskCopy/pendingHero.ts` and
 // `deadlinesListHero.ts`. Internal whitespace ("bad tredje") is preserved.
 //
 // Display-only: never call from write/storage paths. Persisted names stay

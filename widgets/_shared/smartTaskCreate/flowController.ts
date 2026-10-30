@@ -1,7 +1,7 @@
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
   resolveCreateSmartTaskRejectCopy,
-} from '../../../packages/shared-domain/src/deadlineLabels';
+} from '../../../packages/shared-domain/src/smartTaskCopy/createEditCopy';
 import { renderFlow } from './flowRender';
 import {
   assertUnhandledClick,

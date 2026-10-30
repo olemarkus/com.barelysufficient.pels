@@ -447,7 +447,7 @@ describe('DeadlinePlanHistoryDetail', () => {
   it('uses the kind-aware Measured Heating series name for thermostat runs', async () => {
     const { buildHistoryDetailRows, buildHistoryDetailChartOption } =
       await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
-    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels');
+    const { deadlineLabels } = await import('../../shared-domain/src/smartTaskCopy/deadlineLabels');
     const revision = buildRevision();
     const rows = buildHistoryDetailRows(
       revision,
@@ -473,7 +473,7 @@ describe('DeadlinePlanHistoryDetail', () => {
   });
 
   it('uses cooling labels for decreasing thermostat history', async () => {
-    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels');
+    const { deadlineLabels } = await import('../../shared-domain/src/smartTaskCopy/deadlineLabels');
     expect(deadlineLabels('temperature', 'decreasing').actualDeviceSeriesName).toBe('Measured Cooling');
   });
 
@@ -789,7 +789,7 @@ describe('DeadlinePlanHistoryDetail', () => {
   it('uses the kind-aware Measured Charging series name for EV runs', async () => {
     const { buildHistoryDetailRows, buildHistoryDetailChartOption } =
       await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
-    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels');
+    const { deadlineLabels } = await import('../../shared-domain/src/smartTaskCopy/deadlineLabels');
     const revision = buildRevision();
     const rows = buildHistoryDetailRows(
       revision,

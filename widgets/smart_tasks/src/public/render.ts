@@ -1,10 +1,10 @@
+import { SMART_TASK_WIDGET_TARGET_NOUN } from '../../../../packages/shared-domain/src/smartTaskCopy/listCopy';
 import {
   formatSmartTaskWidgetOverflow,
   SMART_TASK_WIDGET_ENDED_HEADING,
   SMART_TASK_WIDGET_EMPTY_SUBTITLE,
   SMART_TASK_WIDGET_LOADING,
-  SMART_TASK_WIDGET_TARGET_NOUN,
-} from '../../../../packages/shared-domain/src/deadlineLabels';
+} from '../../../../packages/shared-domain/src/smartTaskCopy/widgetCopy';
 import type {
   SmartTasksWidgetEmptyPayload,
   SmartTasksWidgetEndedRow,

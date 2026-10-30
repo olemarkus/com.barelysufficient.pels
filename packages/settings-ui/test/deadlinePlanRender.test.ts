@@ -11,11 +11,11 @@ import type {
   DeferredObjectivePlanHistoryEntry,
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory';
+import { deadlineLabels } from '../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
 import {
-  deadlineLabels,
   SMART_TASK_EXTRA_PERMISSION_HINTS,
   SMART_TASK_EXTRA_PERMISSION_LABELS,
-} from '../../shared-domain/src/deadlineLabels.ts';
+} from '../../shared-domain/src/smartTaskCopy/permissionsCopy.ts';
 import type { SmartTaskEditSnapshot } from '../src/ui/smartTaskEdit.ts';
 import { toResolvedLegacyPlanHistoryEntry } from '../../../test/utils/planHistoryFixtures.ts';
 

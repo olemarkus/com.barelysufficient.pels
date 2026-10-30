@@ -60,7 +60,7 @@
 // free of locale / Date helpers, matching the rest of the deadline copy.
 
 import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings';
-import type { SmartTaskListStatusId } from './deadlineLabels';
+import type { SmartTaskListStatusId } from './smartTaskCopy/listStatus';
 import { SMART_TASK_SUB_HOME_UNAVAILABLE } from './objectiveWriteStrings';
 
 // Minimal card payload the hero consumes. Mirrors the relevant subset of

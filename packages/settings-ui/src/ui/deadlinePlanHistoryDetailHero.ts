@@ -35,9 +35,9 @@ import {
   type PlanHistoryReceiptRow,
 } from '../../../shared-domain/src/deferredPlanHistoryReceipt.ts';
 import {
-  type DeadlineCannotMeetRecourse,
   resolveMissedHistoryRecourse,
-} from '../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../shared-domain/src/smartTaskCopy/missedHistoryRecourse.ts';
+import type { DeadlineCannotMeetRecourse } from '../../../shared-domain/src/smartTaskCopy/pendingHero.ts';
 
 // Tone slug for the history-detail hero shape. Mirrors the live hero's
 // `DeadlinePlanHeroTone` partially — the history surface only ever resolves

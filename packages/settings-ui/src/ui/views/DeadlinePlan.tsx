@@ -7,31 +7,43 @@ import type {
 } from '../../../../shared-domain/src/activePlanRevisionLog.ts';
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
-  deadlineLabels,
-  formatLastSampleValue,
   formatSmartTaskGoalRangeHint,
-  REVISION_PANEL_TITLE,
   SMART_TASK_AFTER_TASK_COPY,
-  SMART_TASK_GUARANTEE_COPY,
   SMART_TASK_EDIT_COPY,
+} from '../../../../shared-domain/src/smartTaskCopy/createEditCopy.ts';
+import {
+  deadlineLabels,
+  type DeadlineLabels,
+} from '../../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
+import {
+  formatLastSampleValue,
+  type KwhPerUnitProvenanceRow,
+} from '../../../../shared-domain/src/smartTaskCopy/estimateConfidence.ts';
+import {
   SMART_TASK_BANNER_RECORD_NOT_FOUND_BODY,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_TITLE,
   SMART_TASK_BANNER_UNAVAILABLE_TITLE,
+  SMART_TASK_LOADING_LABEL,
+} from '../../../../shared-domain/src/smartTaskCopy/listCopy.ts';
+import {
+  SMART_TASK_READOUT_SCRUB_HINT,
+  SMART_TASK_SCHEDULE_CARD_TITLE,
+  SMART_TASK_SCHEDULE_CHART_KEY,
+  type SmartTaskTrajectoryStateline,
+} from '../../../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts';
+import type { DeadlineCannotMeetRecourse } from '../../../../shared-domain/src/smartTaskCopy/pendingHero.ts';
+import type {
+  DeadlinePlanUnavailableReason,
+} from '../../../../shared-domain/src/smartTaskCopy/pendingReasons.ts';
+import {
+  SMART_TASK_GUARANTEE_COPY,
   formatGrantedRescuePermissionsLine,
   SMART_TASK_EXTRA_PERMISSION_HINTS,
   SMART_TASK_EXTRA_PERMISSION_LABELS,
   SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL,
   SMART_TASK_EXTRA_PERMISSIONS_TITLE,
-  SMART_TASK_LOADING_LABEL,
-  SMART_TASK_READOUT_SCRUB_HINT,
-  SMART_TASK_SCHEDULE_CARD_TITLE,
-  SMART_TASK_SCHEDULE_CHART_KEY,
-  type DeadlineCannotMeetRecourse,
-  type DeadlineLabels,
-  type DeadlinePlanUnavailableReason,
-  type KwhPerUnitProvenanceRow,
-  type SmartTaskTrajectoryStateline,
-} from '../../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../../shared-domain/src/smartTaskCopy/permissionsCopy.ts';
+import { REVISION_PANEL_TITLE } from '../../../../shared-domain/src/smartTaskCopy/revisionReasons.ts';
 import { useEchartsMount, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
 import { readChartPalette, readCssNumber, readCssVar } from '../dayViewChart.ts';
 import {
@@ -1637,7 +1649,7 @@ const noteFallbackRevisions = (rows: readonly ActivePlanRevisionLogRow[]): void 
     if (warnedFallbackRevisions.has(key)) continue;
     warnedFallbackRevisions.add(key);
     void logSettingsWarn(
-      `Revision ${row.revision} (${row.timeLabel}) has an unknown reason code; rendered as fallback label. Update REVISION_REASON_LABEL in deadlineLabels.ts.`,
+      `Revision ${row.revision} (${row.timeLabel}) has an unknown reason code; rendered as fallback label. Update REVISION_REASON_LABEL in smartTaskCopy/revisionReasons.ts.`,
       undefined,
       'deadline_plan.unknown_revision_reason',
     );
