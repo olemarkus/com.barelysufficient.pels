@@ -3,6 +3,7 @@ import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { normalizeError } from '../utils/errorUtils';
 import { CAPACITY_ENABLED } from '../utils/settingsKeys';
+import { readSettingsKeyList, type InstallAtBoot } from '../utils/settingsKeyList';
 import type { TimerRegistry } from '../utils/timerRegistry';
 
 const defaultLogger = getLogger('power/capacity-market-default');
@@ -20,32 +21,15 @@ const MAX_ATTEMPTS = 20;
  */
 const MEASURED_PEAK_MARKETS: ReadonlySet<string> = new Set(['NO', 'BE']);
 
-export const isCapacityLimitOnByDefault = (country: string): boolean => MEASURED_PEAK_MARKETS.has(country);
-
-/**
- * Whether this boot is the first of a new install. Only a new install takes the
- * market default; an existing one keeps the posture it has been running on.
- */
-export type InstallAtBoot = 'new' | 'existing';
-
-/**
- * Read first in boot, before any startup step writes a key: an empty key list
- * then means nothing was ever written. The SDK also answers an empty list for
- * a transient unreadable store, so an existing install can be misread as new;
- * it then gets its market's default, which is what its tariff calls for. A read
- * that throws changes nothing.
- */
-export const classifyInstallAtBoot = (settings: Pick<SettingsPort, 'getKeys'>): InstallAtBoot => {
-  try {
-    return settings.getKeys().length === 0 ? 'new' : 'existing';
-  } catch {
-    return 'existing';
-  }
-};
-
 export type CapacityMarketDefaultDeps = {
+  /**
+   * Only a new install takes the market default (`classifyInstallAtBoot`); an
+   * existing one keeps the posture it has been running on. An existing install
+   * misread as new at boot gets its market's default, which is what its tariff
+   * calls for.
+   */
   installAtBoot: InstallAtBoot;
-  settings: Pick<SettingsPort, 'getKeys' | 'set'>;
+  settings: Pick<SettingsPort, 'getKeys' | 'get' | 'set'>;
   readHubMarket: () => Promise<SettingsUiHubMarketRead>;
   timers: TimerRegistry;
 };
@@ -58,11 +42,13 @@ type AttemptResult =
   | { result: 'turn_off'; country: string }
   | { result: 'retry'; reasonCode: 'settings_unreadable' | 'market_unavailable' };
 
-const readSwitchState = (settings: Pick<SettingsPort, 'getKeys'>): SwitchState => {
+const readSwitchState = (settings: Pick<SettingsPort, 'getKeys' | 'get'>): SwitchState => {
+  const list = readSettingsKeyList(settings);
+  if (list.status === 'resolved') return list.keys.includes(CAPACITY_ENABLED) ? 'written' : 'unwritten';
+  // A new install's store can stay empty through its first minutes, and an empty
+  // list says nothing. The switch's own value does: an owner's write is a boolean.
   try {
-    const keys = settings.getKeys();
-    if (keys.length === 0) return 'unreadable';
-    return keys.includes(CAPACITY_ENABLED) ? 'written' : 'unwritten';
+    return typeof settings.get(CAPACITY_ENABLED) === 'boolean' ? 'written' : 'unwritten';
   } catch {
     return 'unreadable';
   }
@@ -120,7 +106,7 @@ export class CapacityMarketDefault {
     if (state === 'written') return { result: 'owner_chose' };
     if (state === 'unreadable') return { result: 'retry', reasonCode: 'settings_unreadable' };
     if (market.state !== 'resolved') return { result: 'retry', reasonCode: 'market_unavailable' };
-    return isCapacityLimitOnByDefault(market.country)
+    return MEASURED_PEAK_MARKETS.has(market.country)
       ? { result: 'keep_on', country: market.country }
       : { result: 'turn_off', country: market.country };
   }

@@ -62,7 +62,7 @@ import {
 } from './appInit/appHomeMembershipOptions';
 import { registerSettingsHandler } from './appInit/registerSettingsHandler';
 import { startPostStartupBackgroundTasks } from './appInit/startPostStartupBackgroundTasks';
-import { classifyInstallAtBoot, type InstallAtBoot } from './capacityMarketDefault';
+import { classifyInstallAtBoot, type InstallAtBoot } from '../lib/utils/settingsKeyList';
 import type { BackgroundTasksController } from './backgroundTasksController';
 import type { AppPowerTracker } from './appPowerTracker';
 
