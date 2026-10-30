@@ -72,7 +72,7 @@ describe('Schedule settings bridge', () => {
     await controller.refreshSchedules();
     controller.changeScheduleDraft({ target: '72' });
     const expected = {
-      deviceId: heater.deviceId, target: '72', readyBy: '07:00', actionType: 'task',
+      deviceId: heater.deviceId, taskKind: heater.kind, target: '72', readyBy: '07:00', actionType: 'task',
       permissions: { exemptFromBudget: true, limitLowerPriorityDevices: false, pauseLowerPriorityDevices: true },
     };
     renders.at(-1)?.actions.onSelectAction('task');
@@ -80,6 +80,69 @@ describe('Schedule settings bridge', () => {
     renders.at(-1)?.actions.onSelectAction('mode');
     renders.at(-1)?.actions.onSelectAction('task');
     expect(renders.at(-1)?.snapshot.editor?.draft).toMatchObject(expected);
+  });
+
+  it('preserves a saved battery target through candidate changes until the device is explicitly selected', async () => {
+    const battery: SmartTaskCandidateDevice = {
+      deviceId: 'charger', deviceName: 'Charger', kind: 'ev_soc', group: 'ev_charger',
+      unitSymbol: '%', goalMin: 1, goalMax: 100, goalStep: 1, defaultGoal: 80, currentValue: 40,
+      supportsLimitLowerPriority: false, offersQuickTargets: false,
+    };
+    const energy: SmartTaskCandidateDevice = {
+      ...battery, kind: 'energy', unitSymbol: 'kWh', goalMin: 0.1, goalStep: 0.1, defaultGoal: 20,
+    };
+    let candidate = battery;
+    read.entries[0].schedule = { ...schedule, id: 'charge', action: { type: 'task', task: {
+      deviceId: battery.deviceId, kind: battery.kind, target: 80, readyByLocalTime: '07:00',
+      exemptFromBudget: true,
+    } } };
+    callApiMock.mockImplementation(async (_method: string, path: string) => {
+      if (path === SETTINGS_UI_DEVICES_PATH) return { schedules: { ok: true, data: structuredClone(read) } };
+      if (path === SETTINGS_UI_SMART_TASK_DEVICES_PATH) return { state: 'ready', devices: [candidate] };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    window.history.replaceState({}, '', '/?page=settings/schedules&schedule=charge');
+    await controller.refreshSchedules();
+    controller.changeScheduleDraft({ name: 'Changed name' });
+    candidate = energy;
+    await controller.refreshSchedules();
+    renders.at(-1)?.actions.onSelectAction('task');
+    expect(renders.at(-1)?.snapshot.editor?.draft).toMatchObject({
+      taskKind: 'ev_soc', target: '80', permissions: { exemptFromBudget: true },
+    });
+    renders.at(-1)?.actions.onSave();
+    await vi.waitFor(() => expect(renders.at(-1)?.snapshot.error).toContain('different target'));
+    expect(setSettingMock).not.toHaveBeenCalled();
+
+    candidate = battery;
+    await controller.refreshSchedules();
+    expect(renders.at(-1)?.snapshot.editor?.draft).toMatchObject({ taskKind: 'ev_soc', target: '80' });
+    candidate = energy;
+    await controller.refreshSchedules();
+    renders.at(-1)?.actions.onDevice(energy.deviceId);
+    expect(renders.at(-1)?.snapshot.editor?.draft).toMatchObject({
+      taskKind: 'energy', target: '20', permissions: { exemptFromBudget: false },
+    });
+  });
+
+  it('allows an unavailable condition to be removed before saving its replacement', async () => {
+    read.entries[0].schedule = {
+      ...schedule, id: 'repair-condition', condition: { type: 'include', modes: ['Removed'] },
+    };
+    window.history.replaceState({}, '', '/?page=settings/schedules&schedule=repair-condition');
+    await controller.refreshSchedules();
+    renders.at(-1)?.actions.onConditionMode('Home');
+    renders.at(-1)?.actions.onSave();
+    await vi.waitFor(() => expect(renders.at(-1)?.snapshot.error).toContain('Choose the modes'));
+    expect(setSettingMock).not.toHaveBeenCalled();
+    renders.at(-1)?.actions.onConditionMode('Removed');
+    setSettingMock.mockImplementation(async (_key: string, value: Schedule) => {
+      read.entries[0].schedule = value;
+    });
+    renders.at(-1)?.actions.onSave();
+    await vi.waitFor(() => expect(setSettingMock).toHaveBeenCalledWith('schedule.repair-condition',
+      expect.objectContaining({ condition: { type: 'include', modes: ['Home'] } })));
+    await vi.waitFor(() => expect(renders.at(-1)?.snapshot.busy).toBe(false));
   });
 
   it('does not borrow a renamed mode reference from another schedule', async () => {

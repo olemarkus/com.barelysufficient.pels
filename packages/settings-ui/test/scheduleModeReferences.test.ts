@@ -56,4 +56,45 @@ describe('Retained schedule mode labels', () => {
       { value: 'Work', label: 'Work' }, { value: 'Home', label: 'Work (saved as Home)' },
     ]);
   });
+
+  it.each(['include', 'exclude'] as const)('shows unavailable %s condition values as removable choices', (type) => {
+    const editing = snapshot();
+    const saved = { ...entry.schedule, condition: { type, modes: ['Removed', 'Home'] } };
+    editing.editor = { kind: 'existing', draft: editScheduleDraft(saved, '2026-11-02') };
+    const remove = vi.fn();
+    renderSchedules(root, editing, { ...actions, onConditionMode: remove });
+    const unavailable = root.querySelector<HTMLElement & { checked: boolean }>(
+      'md-checkbox[aria-label="Removed (unavailable)"]',
+    );
+    expect(unavailable?.checked).toBe(true);
+    unavailable?.dispatchEvent(new Event('change'));
+    expect(remove).toHaveBeenCalledWith('Removed');
+    expect(editing.editor.draft.conditionModes).toEqual(['Removed', 'Home']);
+  });
+
+  it('shows the original battery target while offering an explicit change to an energy target', () => {
+    const editing = snapshot();
+    const saved = { ...entry.schedule, action: { type: 'task' as const, task: {
+      deviceId: 'charger', kind: 'ev_soc' as const, target: 80, readyByLocalTime: '07:00',
+    } } };
+    editing.editor = { kind: 'existing', draft: editScheduleDraft(saved, '2026-11-02') };
+    editing.devices = [{
+      deviceId: 'charger', deviceName: 'Charger', kind: 'energy', group: 'ev_charger',
+      unitSymbol: 'kWh', goalMin: 0.1, goalMax: 100, goalStep: 0.1, defaultGoal: 20, currentValue: null,
+      supportsLimitLowerPriority: false, offersQuickTargets: false,
+    }];
+    const select = vi.fn();
+    renderSchedules(root, editing, { ...actions, onDevice: select });
+    const target = root.querySelector<HTMLElement & { value: string; disabled: boolean }>(
+      'md-filled-text-field[aria-label="Target (%)"]',
+    );
+    expect(target?.value).toBe('80');
+    expect(target?.disabled).toBe(true);
+    expect(root.querySelector('md-filled-text-field[aria-label="Target (kWh)"]')).toBeNull();
+    const useEnergy = [...root.querySelectorAll('md-text-button')]
+      .find((button) => button.textContent?.trim() === 'Use energy target');
+    expect(useEnergy).toBeDefined();
+    useEnergy?.dispatchEvent(new Event('click'));
+    expect(select).toHaveBeenCalledWith('charger');
+  });
 });

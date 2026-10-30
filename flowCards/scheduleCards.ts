@@ -6,6 +6,7 @@ import type {
 } from '../packages/contracts/src/smartTaskEdit';
 import { buildDeviceAutocompleteOptions } from './deviceArgs';
 import { readFlowDeviceArg, readFlowStringArg } from './flowArgParsers';
+import { deadlineLabels } from '../packages/shared-domain/src/smartTaskCopy/deadlineLabels';
 
 type ScheduleCardsOwner = Pick<ScheduleService, 'definitions' | 'lookup' | 'write'>;
 type ScheduleOption = FlowAutocompleteResult & { description: string };
@@ -22,7 +23,7 @@ function scheduleDescription(schedule: Schedule, catalog: SettingsUiSmartTaskDev
   const device = catalog.state === 'ready'
     ? catalog.devices.find((candidate) => candidate.deviceId === task.deviceId) : undefined;
   const target = task.target;
-  const goal = device ? `${target}${device.unitSymbol}` : `${target}`;
+  const goal = `${target}${deadlineLabels(task.kind).targetUnit}`;
   const name = device?.deviceName ?? (catalog.state === 'ready' ? 'Unavailable device' : 'Device details unavailable');
   return `${name} · ${goal} · Create at ${schedule.at}`;
 }

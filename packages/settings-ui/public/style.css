@@ -9196,7 +9196,7 @@ md-switch {
   flex: 1 1 auto;
 }
 
-#schedules-panel .schedules [aria-pressed="true"] {
+#schedules-panel .schedules :is([aria-pressed="true"], [data-aria-pressed="true"]) {
   --md-outlined-button-outline-color: var(--accent);
   --md-outlined-button-label-text-color: var(--accent);
   background: var(--pels-surface-container);

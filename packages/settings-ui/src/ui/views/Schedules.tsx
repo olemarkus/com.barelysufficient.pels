@@ -10,10 +10,10 @@ import {
 } from '../../../../shared-domain/src/smartTaskCopy/permissionsCopy.ts';
 import type { ScheduleDraft, ScheduleRepeatChoice } from '../scheduleDraft.ts';
 import { scheduleModeLabel, scheduleModeOptions } from '../scheduleModeReferences.ts';
-import { SCHEDULE_DAYS, scheduleReadyByDay, scheduleRepeatLabel } from '../scheduleDraft.ts';
+import { SCHEDULE_DAYS, scheduleReadyByDay, scheduleRepeatLabel, scheduleTaskUnit } from '../scheduleDraft.ts';
 import type { SchedulesViewSnapshot } from '../schedulesTypes.ts';
 import { SmartTaskPermissionRow } from './DeadlinePlan.tsx';
-import { ArrowBackIcon } from './icons.tsx';
+import { ArrowBackIcon, ExpandMoreIcon } from './icons.tsx';
 import {
   MdCheckbox, MdFilledButton, MdFilledSelect, MdFilledTextField, MdIconButton,
   MdOutlinedButton, MdSelectOption, MdSwitch, MdTextButton, readSwitchSelected,
@@ -41,6 +41,7 @@ type View = { snapshot: SchedulesViewSnapshot; actions: SchedulesActions };
 const inputValue = (event: Event): string => (event.currentTarget as HTMLInputElement).value;
 const STATE_LABELS = { on: 'On', off: 'Off', paused: 'Paused', invalid: 'Needs attention', finished: 'Finished' } as const;
 const PERMISSION_KEYS = ['exemptFromBudget', 'limitLowerPriorityDevices', 'pauseLowerPriorityDevices'] as const;
+const TASK_TARGET_NAMES = { temperature: 'temperature', ev_soc: 'battery', energy: 'energy' } as const;
 const REPEATS: { value: ScheduleRepeatChoice; label: string }[] = [
   { value: 'daily', label: 'Every day' }, { value: 'weekdays', label: 'Mon–Fri' },
   { value: 'weekends', label: 'Sat–Sun' }, { value: 'custom', label: 'Choose days' },
@@ -56,7 +57,7 @@ const actionSummary = (entry: ScheduleEntry, devices: readonly SmartTaskCandidat
   }
   const { task } = schedule.action;
   const device = devices.find((candidate) => candidate.deviceId === task.deviceId);
-  const unit = { temperature: '°C', ev_soc: '%', energy: 'kWh' }[task.kind];
+  const unit = scheduleTaskUnit(task.kind);
   return `${device?.deviceName ?? 'Unavailable device'} · ${task.target} ${unit} · Ready by ${task.readyByLocalTime}`;
 };
 
@@ -165,9 +166,39 @@ const List = (view: View) => {
     </>
   );
 };
+const TaskTargetFields = ({ draft, view }: { draft: ScheduleDraft; view: View }) => {
+  if (draft.taskKind === null) return null;
+  const { snapshot, actions } = view;
+  const device = snapshot.devices.find((candidate) => candidate.deviceId === draft.deviceId);
+  const compatibleDevice = device?.kind === draft.taskKind ? device : undefined;
+  const unit = scheduleTaskUnit(draft.taskKind);
+  const disabled = snapshot.busy || snapshot.load !== 'ready';
+  return (
+    <>
+      <label class="field"><span class="field__label pels-text-settings-label">Target ({unit})</span>
+        <MdFilledTextField key={`${draft.deviceId}:${draft.taskKind}:${Boolean(compatibleDevice)}`}
+          type="number" value={draft.target} min={compatibleDevice?.goalMin.toString()}
+          max={compatibleDevice?.goalMax.toString()} step={compatibleDevice?.goalStep.toString()}
+          disabled={disabled || !compatibleDevice} aria-label={`Target (${unit})`}
+          onInput={(event: Event) => actions.onDraftChange({ target: inputValue(event) })} />
+        {compatibleDevice && <small class="field__hint">
+          {formatSmartTaskGoalRangeHint(compatibleDevice.goalMin, compatibleDevice.goalMax, unit)}
+        </small>}
+      </label>
+      {device && !compatibleDevice && <div class="pels-notice-info">
+        <p>This schedule keeps its {TASK_TARGET_NAMES[draft.taskKind]} target.
+          {' '}This device currently offers {TASK_TARGET_NAMES[device.kind]} targets.</p>
+        <MdTextButton type="button" disabled={disabled} onClick={() => actions.onDevice(device.deviceId)}>
+          Use {TASK_TARGET_NAMES[device.kind]} target
+        </MdTextButton>
+      </div>}
+    </>
+  );
+};
 const TaskFields = ({ draft, view }: { draft: ScheduleDraft; view: View }) => {
   const { snapshot, actions } = view;
   const device = snapshot.devices.find((candidate) => candidate.deviceId === draft.deviceId);
+  const supportsLimit = device?.kind === draft.taskKind && device.supportsLimitLowerPriority;
   const disabled = snapshot.busy || snapshot.load !== 'ready';
   return (
     <>
@@ -178,22 +209,18 @@ const TaskFields = ({ draft, view }: { draft: ScheduleDraft; view: View }) => {
           {snapshot.devices.map((candidate) => <Choice key={candidate.deviceId} value={candidate.deviceId}>{candidate.deviceName}</Choice>)}
         </MdFilledSelect>
       </div>
-      {device && <>
-        <label class="field"><span class="field__label pels-text-settings-label">Target ({device.unitSymbol})</span>
-          <MdFilledTextField type="number" value={draft.target} min={String(device.goalMin)} max={String(device.goalMax)}
-            step={String(device.goalStep)} disabled={disabled} aria-label={`Target (${device.unitSymbol})`}
-            onInput={(event: Event) => actions.onDraftChange({ target: inputValue(event) })} />
-          <small class="field__hint">{formatSmartTaskGoalRangeHint(device.goalMin, device.goalMax, device.unitSymbol)}</small>
-        </label>
+      {draft.taskKind !== null && <>
+        <TaskTargetFields draft={draft} view={view} />
         <label class="field"><span class="field__label pels-text-settings-label">Ready by</span>
           <input type="time" class="smart-task-edit__time-input" value={draft.readyBy} disabled={disabled}
             onInput={(event) => actions.onDraftChange({ readyBy: inputValue(event) })} />
         </label>
         <p class="pels-card-supporting">The task is created at {draft.at}, ready by {draft.readyBy} {scheduleReadyByDay(draft.at, draft.readyBy)}. PELS chooses when the device runs.</p>
         <details class="smart-task-edit__permissions">
-          <summary class="smart-task-edit__permissions-summary"><span class="plan-card__title">{SMART_TASK_EXTRA_PERMISSIONS_TITLE}</span></summary>
+          <summary class="smart-task-edit__permissions-summary"><span class="plan-card__title">{SMART_TASK_EXTRA_PERMISSIONS_TITLE}</span>
+            <ExpandMoreIcon class="disclosure-chevron" /></summary>
           <p class="section-hint">Saved for each new task this schedule creates.</p>
-          {PERMISSION_KEYS.filter((key) => key !== 'limitLowerPriorityDevices' || device.supportsLimitLowerPriority || draft.permissions[key])
+          {PERMISSION_KEYS.filter((key) => key !== 'limitLowerPriorityDevices' || supportsLimit || draft.permissions[key])
             .map((key) => <SmartTaskPermissionRow key={key} label={SMART_TASK_EXTRA_PERMISSION_LABELS[key]}
               hint={SMART_TASK_EXTRA_PERMISSION_HINTS[key]} selected={draft.permissions[key]} disabled={disabled}
               onToggle={(selected) => actions.onDraftChange({ permissions: { ...draft.permissions, [key]: selected } })} />)}
@@ -210,6 +237,9 @@ const Editor = (view: View) => {
   const editedEntry = snapshot.read.entries.find((entry) => entry.schedule.id === draft.id);
   const references = kind === 'existing' && editedEntry ? editedEntry.modeReferences : [];
   const modeOptions = scheduleModeOptions(snapshot.read.modes, references);
+  const unavailableConditions = draft.conditionModes.filter((mode) => (
+    !modeOptions.some((option) => option.value === mode)
+  ));
   const groupOff = draft.actionType === 'mode' ? !snapshot.read.controls.modeChangesEnabled
     : snapshot.read.controls.disabledTaskDeviceIds.includes(draft.deviceId);
   const pausedReason = draft.actionType === 'mode' ? 'Scheduled mode changes are off.' : 'Scheduled tasks for this device are off.';
@@ -277,6 +307,10 @@ const Editor = (view: View) => {
             </MdFilledSelect>
           </div>
           {draft.conditionType !== 'any' && <div class="schedule-mode-choices">
+            {unavailableConditions.map((mode) => <label class="schedule-mode-choice" key={mode}>
+              <MdCheckbox checked disabled={disabled} aria-label={`${mode} (unavailable)`}
+                onChange={() => actions.onConditionMode(mode)} />
+              <span>{mode} (unavailable)</span></label>)}
             {modeOptions.map((option) => <label class="schedule-mode-choice" key={option.value}>
               <MdCheckbox checked={draft.conditionModes.includes(option.value)} disabled={disabled}
                 aria-label={option.label} onChange={() => actions.onConditionMode(option.value)} />
