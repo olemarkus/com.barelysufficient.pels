@@ -1,5 +1,6 @@
 import type { Schedule, ScheduleAction, ScheduleEntry, ScheduleRepeat } from '../../../contracts/src/schedules.ts';
 import type { SmartTaskCandidateDevice } from '../../../contracts/src/smartTaskEdit.ts';
+import { deadlineLabels } from '../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
 import type { SmartTaskEditPermissions } from './smartTaskEdit.ts';
 import { isScheduleModeAvailable } from './scheduleModeReferences.ts';
 import { parseSmartTaskGoal, SMART_TASK_READY_BY_PATTERN } from './smartTaskDraft.ts';
@@ -16,6 +17,7 @@ export type ScheduleDraft = {
   actionType: 'mode' | 'task';
   mode: string;
   deviceId: string;
+  taskKind: SmartTaskCandidateDevice['kind'] | null;
   target: string;
   readyBy: string;
   permissions: SmartTaskEditPermissions;
@@ -63,6 +65,7 @@ export const createScheduleDraft = (
   actionType: device ? 'task' : 'mode',
   mode,
   deviceId: device?.deviceId ?? '',
+  taskKind: device?.kind ?? null,
   target: device ? String(device.defaultGoal) : '',
   readyBy: '07:00',
   permissions: { ...EMPTY_PERMISSIONS },
@@ -81,6 +84,7 @@ export const editScheduleDraft = (schedule: Schedule, today: string): ScheduleDr
     actionType: schedule.action.type,
     mode: schedule.action.type === 'mode' ? schedule.action.mode : '',
     deviceId: task?.deviceId ?? '', target: task ? String(task.target) : '',
+    taskKind: task ? task.kind : null,
     readyBy: task?.readyByLocalTime ?? '07:00',
     permissions: {
       exemptFromBudget: task?.exemptFromBudget === true,
@@ -102,6 +106,12 @@ const taskActionFromDraft = (
 ): TaskActionDraftResult => {
   const device = devices.find((candidate) => candidate.deviceId === draft.deviceId);
   if (!device) return { ok: false, error: 'Choose an available device for this task.' };
+  if (draft.taskKind !== device.kind) {
+    return {
+      ok: false,
+      error: 'This device currently offers a different target. Choose that target or wait until this one is available.',
+    };
+  }
   const target = parseSmartTaskGoal(draft.target);
   if (target === null || target < device.goalMin || target > device.goalMax) {
     return {
@@ -114,7 +124,7 @@ const taskActionFromDraft = (
     action: {
       type: 'task',
       task: {
-        deviceId: device.deviceId, kind: device.kind, target, readyByLocalTime: draft.readyBy,
+        deviceId: device.deviceId, kind: draft.taskKind, target, readyByLocalTime: draft.readyBy,
         ...draft.permissions,
       },
     },
@@ -161,4 +171,8 @@ export const buildScheduleFromDraft = (
 
 export const scheduleReadyByDay = (at: string, readyBy: string): string => (
   readyBy <= at ? 'the following day' : 'the same day'
+);
+
+export const scheduleTaskUnit = (kind: SmartTaskCandidateDevice['kind']): SmartTaskCandidateDevice['unitSymbol'] => (
+  deadlineLabels(kind).targetUnit
 );

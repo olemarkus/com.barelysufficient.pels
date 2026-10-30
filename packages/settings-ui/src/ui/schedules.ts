@@ -191,7 +191,7 @@ const selectScheduleDevice = (deviceId: string): void => {
   const device = view.devices.find((candidate) => candidate.deviceId === deviceId);
   if (!device) return;
   changeScheduleDraft({
-    deviceId, target: String(device.defaultGoal),
+    deviceId, taskKind: device.kind, target: String(device.defaultGoal),
     permissions: { exemptFromBudget: false, limitLowerPriorityDevices: false, pauseLowerPriorityDevices: false },
   });
 };

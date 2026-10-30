@@ -10,6 +10,13 @@ const HEATER: SmartTaskCandidateDevice = {
   unitSymbol: '°C', goalMin: 30, goalMax: 75, goalStep: 0.5, defaultGoal: 65, currentValue: 40,
   supportsLimitLowerPriority: false, offersQuickTargets: false,
 };
+const EV: SmartTaskCandidateDevice = {
+  ...HEATER, deviceId: 'charger', deviceName: 'Charger', kind: 'ev_soc', group: 'ev_charger',
+  unitSymbol: '%', goalMin: 1, goalMax: 100, goalStep: 1, defaultGoal: 80,
+};
+const ENERGY: SmartTaskCandidateDevice = {
+  ...EV, kind: 'energy', unitSymbol: 'kWh', goalMin: 0.1, goalStep: 0.1, defaultGoal: 20,
+};
 const MODES = ['Home', 'Away', 'Night'];
 
 describe('Schedule composition', () => {
@@ -66,6 +73,32 @@ describe('Schedule composition', () => {
     expect(buildScheduleFromDraft(draft, [], MODES, []).ok).toBe(false);
     draft.target = '76';
     expect(buildScheduleFromDraft(draft, [HEATER], MODES, []).ok).toBe(false);
+  });
+
+  it.each([{ original: EV, offered: ENERGY }, { original: ENERGY, offered: EV }])(
+    'keeps the intended target kind when a charger offers another task kind', ({ original, offered }) => {
+      const draft = createScheduleDraft(original, 'Home', '2026-11-02');
+      const saved = buildScheduleFromDraft(draft, [original], MODES, []);
+      if (!saved.ok) throw new Error(saved.error);
+      const edited = editScheduleDraft(saved.schedule, '2026-11-03');
+      edited.name = 'Renamed schedule';
+      expect(edited.taskKind).toBe(original.kind);
+      expect(buildScheduleFromDraft(edited, [offered], MODES, []).ok).toBe(false);
+      const restored = buildScheduleFromDraft(edited, [original], MODES, []);
+      expect(restored.ok && restored.schedule.action).toMatchObject({
+        type: 'task', task: { kind: original.kind, target: original.defaultGoal },
+      });
+    },
+  );
+
+  it.each(['include', 'exclude'] as const)('requires removing unavailable %s condition values', (conditionType) => {
+    const draft = createScheduleDraft(undefined, 'Home', '2026-11-02');
+    draft.conditionType = conditionType;
+    draft.conditionModes = ['Removed', 'Home'];
+    expect(buildScheduleFromDraft(draft, [], MODES, []).ok).toBe(false);
+    draft.conditionModes = ['Home'];
+    const repaired = buildScheduleFromDraft(draft, [], MODES, []);
+    expect(repaired.ok && repaired.schedule.condition).toEqual({ type: conditionType, modes: ['Home'] });
   });
   it('preserves retained names only when the owner resolves those references', () => {
     const draft = createScheduleDraft(undefined, 'Old Home', '2026-11-02');

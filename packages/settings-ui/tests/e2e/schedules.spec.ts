@@ -84,6 +84,76 @@ const readStored = (page: Page, key: string): Promise<unknown> => page.evaluate(
   (window as unknown as { Homey: { __stub: { getSetting(key: string): unknown } } }).Homey.__stub.getSetting(settingKey)
 ), key);
 
+test('changing an unavailable battery target stays in the editor until explicitly saved', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await installSchedules(page);
+  await page.goto('/?page=settings/schedules', { waitUntil: 'domcontentloaded' });
+  const panel = page.locator('#schedules-panel');
+  await expect(panel.getByRole('heading', { name: 'Schedules', exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    const stub = (window as unknown as { Homey: { __stub: {
+      setSetting(key: string, value: unknown): void;
+      setApiHandler(key: string, handler: () => unknown): void;
+      emitSettingsSet(key: string): void;
+    } } }).Homey.__stub;
+    stub.setSetting('schedule.water', {
+      id: 'water', name: 'Charge overnight', enabled: true, at: '21:00',
+      repeat: { type: 'weekly', days: [1, 2, 3, 4, 5, 6, 7] }, condition: { type: 'any' },
+      action: { type: 'task', task: {
+        deviceId: 'charger', kind: 'ev_soc', target: 80, readyByLocalTime: '07:00',
+        exemptFromBudget: true, limitLowerPriorityDevices: false, pauseLowerPriorityDevices: false,
+      } },
+    });
+    stub.setApiHandler('GET /ui_smart_task_devices', () => ({ state: 'ready', devices: [{
+      deviceId: 'charger', deviceName: 'Charger', kind: 'ev_soc', group: 'ev_charger',
+      unitSymbol: '%', goalMin: 1, goalMax: 100, goalStep: 1, defaultGoal: 80, currentValue: 40,
+      supportsLimitLowerPriority: false, offersQuickTargets: false,
+    }] }));
+    stub.emitSettingsSet('schedule.water');
+  });
+  const row = panel.locator('[data-schedule-id="water"]');
+  await expect(row).toContainText('Charge overnight');
+  await row.getByRole('button', { name: 'Edit', exact: true }).click();
+  const batteryTarget = panel.getByRole('spinbutton', { name: 'Target (%)', exact: true });
+  await expect(batteryTarget).toHaveValue('80');
+  await expect(batteryTarget).toBeEnabled();
+  await page.evaluate(() => {
+    const testWindow = window as unknown as { Homey: { __stub: {
+      setApiHandler(key: string, handler: () => unknown): void;
+      emitSettingsSet(key: string): void;
+    } }; __scheduleSubmitCount: number };
+    testWindow.Homey.__stub.setApiHandler('GET /ui_smart_task_devices', () => ({ state: 'ready', devices: [{
+      deviceId: 'charger', deviceName: 'Charger', kind: 'energy', group: 'ev_charger',
+      unitSymbol: 'kWh', goalMin: 0.1, goalMax: 100, goalStep: 0.1, defaultGoal: 20, currentValue: null,
+      supportsLimitLowerPriority: false, offersQuickTargets: false,
+    }] }));
+    testWindow.__scheduleSubmitCount = 0;
+    document.querySelector('#schedules-panel form')!.addEventListener('submit', () => {
+      testWindow.__scheduleSubmitCount += 1;
+    });
+    testWindow.Homey.__stub.emitSettingsSet('schedule.water');
+  });
+  await expect(batteryTarget).toBeDisabled();
+  await expect(batteryTarget).toHaveValue('80');
+  const before = await readStored(page, 'schedule.water');
+  await panel.getByRole('button', { name: 'Use energy target', exact: true }).click();
+  await expect(panel.getByRole('heading', { name: 'Edit schedule', exact: true })).toBeVisible();
+  const energyTarget = panel.getByRole('spinbutton', { name: 'Target (kWh)', exact: true });
+  await expect(energyTarget).toHaveValue('20');
+  await expect(energyTarget).toBeEnabled();
+  expect(await page.evaluate(() => (window as unknown as { __scheduleSubmitCount: number })
+    .__scheduleSubmitCount)).toBe(0);
+  expect(await readStored(page, 'schedule.water')).toEqual(before);
+  await energyTarget.fill('25');
+  await panel.getByRole('button', { name: 'Save schedule', exact: true }).click();
+  await expect(panel.getByRole('heading', { name: 'Schedules', exact: true })).toBeVisible();
+  await expect.poll(() => readStored(page, 'schedule.water')).toMatchObject({
+    action: { type: 'task', task: { kind: 'energy', target: 25 } },
+  });
+  expect(errors).toEqual([]);
+});
+
 for (const width of [320, 480]) {
   for (const mobile of [false, true]) {
     test.describe(`${width}px ${mobile ? 'dark' : 'light'} schedule controls`, () => {
@@ -147,6 +217,11 @@ for (const width of [320, 480]) {
         const dayTarget = await panel.getByRole('button', { name: 'Mon', exact: true }).boundingBox();
         expect(dayTarget).not.toBeNull();
         expect(dayTarget?.height).toBeGreaterThanOrEqual(48);
+        await panel.getByRole('button', { name: 'Sun', exact: true }).click();
+        const selectedDay = panel.locator('.schedule-days md-outlined-button').nth(0);
+        const unselectedDay = panel.locator('.schedule-days md-outlined-button').nth(6);
+        expect(await selectedDay.evaluate((element) => getComputedStyle(element).backgroundColor))
+          .not.toBe(await unselectedDay.evaluate((element) => getComputedStyle(element).backgroundColor));
         await panel.getByRole('combobox', { name: 'Mode condition', exact: true }).click();
         await page.getByRole('option', { name: 'Only these modes', exact: true }).click();
         await panel.getByRole('checkbox', { name: 'Home', exact: true }).click();
@@ -166,6 +241,7 @@ for (const width of [320, 480]) {
         await expect(panel.getByRole('heading', { name: 'Schedules', exact: true })).toBeVisible();
         await expect.poll(() => readStored(page, 'schedule.water')).toMatchObject({
           id: 'water', name: 'Morning hot water', condition: { type: 'include', modes: ['Home'] },
+          repeat: { type: 'weekly', days: [1, 2, 3, 4, 5, 6] },
           action: { type: 'task', task: { target: 70, exemptFromBudget: true, readyByLocalTime: '06:00' } },
         });
       });

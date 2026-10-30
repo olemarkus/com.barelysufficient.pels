@@ -98,6 +98,24 @@ describe('schedule Flow cards', () => {
     ]);
   });
 
+  it('keeps the saved battery target unit when a device currently offers an energy task', async () => {
+    const saved = taskSchedule();
+    saved.action = { type: 'task', task: {
+      deviceId: 'water-heater', kind: 'ev_soc', target: 80, readyByLocalTime: '06:00',
+    } };
+    const { autocomplete, getTaskDevices } = register([entry(saved)]);
+    getTaskDevices.mockReturnValue([partialDouble<SmartTaskCandidateDevice>({
+      deviceId: 'water-heater', deviceName: 'Car charger', kind: 'energy', unitSymbol: 'kWh',
+    })]);
+    await expect(autocomplete('enable_schedule', 'schedule')).resolves.toEqual([
+      expect.objectContaining({ description: 'Car charger · 80% · Create at 21:00' }),
+    ]);
+    getTaskDevices.mockImplementation(() => { throw new Error('Unavailable devices'); });
+    await expect(autocomplete('enable_schedule', 'schedule')).resolves.toEqual([
+      expect.objectContaining({ description: 'Device details unavailable · 80% · Create at 21:00' }),
+    ]);
+  });
+
   it('lists each configured task device once and matches its current name', async () => {
     const { autocomplete } = register([
       entry(modeSchedule()), entry(taskSchedule()), entry(taskSchedule('weekend-water')),
