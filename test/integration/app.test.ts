@@ -5,6 +5,7 @@ import type { PvForecastController } from '../../setup/appInit/createPvForecastS
 import type { BackgroundCollectors } from '../../setup/appInit/startBackgroundCollectors';
 import type { WeatherCollector } from '../../lib/weather/weatherCollector';
 import { partialDouble } from '../helpers/partialDouble';
+import { ScheduleService } from '../../lib/schedules/scheduleService';
 import type MyApp from '../../app.ts';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import {
@@ -924,6 +925,28 @@ describe('MyApp initialization', () => {
     await expect(reportPower({ power: 'not-a-number' })).rejects.toThrow('Power must be a number (W).');
 
     recordSpy.mockRestore();
+  });
+
+  it('stops command authority before awaiting scheduled actions and keeps receipts open until drained', async () => {
+    const app = createApp();
+    await app.onInit();
+    const db = app.getUserdataDatabase();
+    const drain = createDeferred();
+    const stop = ScheduleService.prototype.stop;
+    vi.spyOn(ScheduleService.prototype, 'stop').mockImplementationOnce(async function (this: ScheduleService) {
+      await stop.call(this);
+      await drain.promise;
+    });
+
+    const closing = app.onUninit();
+    try {
+      expect(app['shutdown'].isStopped()).toBe(true);
+      expect(db.prepare('SELECT 1 AS ready').get()).toMatchObject({ ready: 1 });
+    } finally {
+      drain.resolve();
+      await closing;
+    }
+    expect(() => db.prepare('SELECT 1')).toThrow();
   });
 
   it('clears a queued power rebuild and resolves its pending promise on uninit', async () => {

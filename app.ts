@@ -644,6 +644,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   }
 
   protected async stopSchedules(): Promise<void> {
+    this.shutdown.stop();
     this.homey.settings.removeListener('set', this.scheduleSettingsChanged);
     this.homey.settings.removeListener('unset', this.scheduleSettingsChanged);
     await this.scheduleService?.stop();

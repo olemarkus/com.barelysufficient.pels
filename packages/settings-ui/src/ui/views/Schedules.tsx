@@ -2,12 +2,12 @@ import { render } from 'preact';
 import type { ComponentChildren } from 'preact';
 import type { ScheduleEntry } from '../../../../contracts/src/schedules.ts';
 import type { SmartTaskCandidateDevice } from '../../../../contracts/src/smartTaskEdit.ts';
+import { formatSmartTaskGoalRangeHint } from '../../../../shared-domain/src/smartTaskCopy/createEditCopy.ts';
 import {
-  formatSmartTaskGoalRangeHint,
   SMART_TASK_EXTRA_PERMISSION_HINTS,
   SMART_TASK_EXTRA_PERMISSION_LABELS,
   SMART_TASK_EXTRA_PERMISSIONS_TITLE,
-} from '../../../../shared-domain/src/deadlineLabels.ts';
+} from '../../../../shared-domain/src/smartTaskCopy/permissionsCopy.ts';
 import type { ScheduleDraft, ScheduleRepeatChoice } from '../scheduleDraft.ts';
 import { scheduleModeLabel, scheduleModeOptions } from '../scheduleModeReferences.ts';
 import { SCHEDULE_DAYS, scheduleReadyByDay, scheduleRepeatLabel } from '../scheduleDraft.ts';

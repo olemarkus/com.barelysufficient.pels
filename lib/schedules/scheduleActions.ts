@@ -5,6 +5,7 @@ import type { SmartTaskCreateLaneHost } from '../objectives/deferredObjectives/s
 import { rejectForSmartTaskHomeScope } from '../objectives/deferredObjectives/smartTaskCreateLane';
 import {
   buildValidSmartTaskCandidate,
+  resolveSmartTaskWriteDeadline,
 } from '../objectives/deferredObjectives/smartTaskCandidateRequest';
 
 /** Commands shared with manual/Flow actions; this executor owns no device writes. */
@@ -29,7 +30,9 @@ export class ScheduleActionExecutor {
     const readyDate = request.readyByLocalTime <= schedule.at ? shiftDateKey(date, 1) : date;
     const deadlineAtMs = scheduleInstant(readyDate, request.readyByLocalTime, timeZone);
     if (deadlineAtMs === undefined) throw new Error('The ready-by time does not exist on this date.');
-    const candidate = buildValidSmartTaskCandidate(request, deadlineAtMs);
+    const deadline = resolveSmartTaskWriteDeadline({ ...request, deadlineAtMs }, timeZone, Date.now());
+    if (!deadline.ok) throw new Error('The ready-by time has passed. This occurrence was skipped.');
+    const candidate = buildValidSmartTaskCandidate(request, deadline.deadlineAtMs);
     if (!candidate) throw new Error('The task target is invalid.');
     const result = this.host.createNewDeferredObjective(request.deviceId, {
       ...candidate, scheduleSource: { id: schedule.id, name: schedule.name },
