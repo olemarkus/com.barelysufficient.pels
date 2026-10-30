@@ -402,7 +402,7 @@ const renderActiveMount = (): void => {
   // price-scheme/currency switch. The live hero still resolves its own display
   // inside `resolveRenderInput`.
   const loadState = resolveDeadlinePlanLoadState(renderInput, m.lastHistory);
-  if (loadState.status === 'ready' || loadState.status === 'pending') {
+  if (loadState.status === 'ready' || loadState.status === 'pending' || loadState.status === 'unavailable') {
     const mode = loadState.status === 'pending'
       ? loadState.pending.actionMode
       : 'edit_and_clear';
