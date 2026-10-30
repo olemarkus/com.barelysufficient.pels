@@ -1,6 +1,7 @@
 import type { SettingsPort } from '../ports/homeyRuntime';
 import type { DeviceOperatingModeOutcome } from './homeModeDeviceRead';
 import { MODE_DEVICE_TARGETS, homeScopedSettingsKey } from '../utils/settingsKeys';
+import { readSettingsKeyList } from '../utils/settingsKeyList';
 import {
   sanitizeModeDeviceTargets,
   type ModeDeviceTargets,
@@ -11,10 +12,11 @@ import {
  * failed read.
  *
  * `resolved` with an EMPTY catalog is the one state a caller may build a default
- * on top of: the store demonstrably never held the key. A thrown read, an
- * unusable key list, a payload the parser does not recognize, or a
- * present-but-null key all answer `unavailable`: one transient SDK miss must
- * not become a wipe by a whole-blob `set`, nor move a default derived from it
+ * on top of: the key list does not hold the key, so it was never written. A
+ * thrown read, a key list that throws or answers malformed, a payload the
+ * parser does not recognize, or a listed key that reads null all answer
+ * `unavailable`: a read that cannot tell must not become a wipe by a
+ * whole-blob `set`, nor move a default derived from it
  * (`notes/persisted-settings-state.md`).
  *
  * ONE classification for this key, in the module that owns the concept, and
@@ -41,17 +43,10 @@ export function readModeDeviceTargets(
   const parsed = sanitizeModeDeviceTargets(raw);
   if (parsed !== null) return { state: 'resolved', catalog: parsed };
   if (raw !== undefined && raw !== null) return { state: 'unavailable' };
-  let keys: unknown;
-  try {
-    keys = settings.getKeys();
-  } catch {
-    return { state: 'unavailable' };
-  }
-  // An EMPTY key list is itself a suspect read — a real install always has keys.
-  if (!Array.isArray(keys) || keys.length === 0 || !keys.every((entry) => typeof entry === 'string')) {
-    return { state: 'unavailable' };
-  }
-  return keys.includes(key) ? { state: 'unavailable' } : { state: 'resolved', catalog: {} };
+  const keyList = readSettingsKeyList(settings);
+  return keyList.status === 'resolved' && !keyList.keys.includes(key)
+    ? { state: 'resolved', catalog: {} }
+    : { state: 'unavailable' };
 }
 
 /**

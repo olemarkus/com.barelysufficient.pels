@@ -48,9 +48,9 @@
  *    to prevent, so it fails closed for opted-in devices. Every consumer pairs
  *    `isHeld` with "still observed off", so a device that is actually running is
  *    never affected.
- *  - **An empty `getKeys()` is a flake, not an empty store.** PELS always has
- *    settings keys, so an empty list means the read is untrustworthy right now
- *    (`feedback_homey_sdk_unreliable`). Nothing is concluded from it.
+ *  - **An empty key list is an empty store.** Homey answers a never-written key
+ *    by leaving it out of `getKeys()`, so an empty list holds no device. Only a
+ *    list that throws or answers malformed is unreadable.
  *  - Holds are never pruned on snapshot absence. There is no device-removal
  *    grace in the codebase today, and a stale key for a removed device is inert
  *    and bounded by device count.
@@ -339,16 +339,16 @@ export const createExternalOffHoldPolicy = (
  * keys. The decision order is load-bearing for data safety:
  *
  *  1. Marker truthy → return (already migrated).
- *  2. `getKeys()` unusable or empty → return WITHOUT the marker. PELS always has
- *     settings keys, so that is the transient-empty-store signal; retry next
- *     boot rather than record a false "migrated" against an unreadable store.
+ *  2. `getKeys()` throws or answers malformed → return WITHOUT the marker; retry
+ *     next boot rather than record a false "migrated" against an unreadable store.
  *  3. Blob key ABSENT → nothing to migrate: a fresh install, or the blob was
  *     consumed by a completed migration whose marker-set flaked. Set the marker
  *     and return — there is no source to copy or resurrect from, so a device the
  *     user released after migrating can never reappear.
- *  4. Blob present but its value does not read back as the V1 shape → a flaky or
- *     malformed read. Return WITHOUT consuming or marking; retry next boot,
- *     rather than erase the only legacy copy before any per-key is written.
+ *  4. Blob present but its value does not read back as the V1 shape → an
+ *     unreadable or malformed value. Return WITHOUT consuming or marking; retry
+ *     next boot, rather than erase the only legacy copy before any per-key is
+ *     written.
  *  5. ABSENT-ONLY copy each held device whose per-device key does not yet exist
  *     (so a partial prior copy resumes without clobbering), then UNSET the blob
  *     and its now-dead written-before marker, then set the migrated marker.
@@ -407,11 +407,10 @@ export const migrateExternalOffHoldsToPerKey = (
 
 /**
  * The device ids the legacy blob recorded a hold for, or `null` when the value
- * is not a structurally valid V1. A present key whose value transiently reads
- * back `undefined` or malformed is the same SDK flake the per-key writes refuse
- * on — consuming on that would erase the only legacy copy. A valid blob with
- * zero entries is a real answer (the user cleared their holds pre-upgrade) and
- * migrates fine.
+ * is not a structurally valid V1. A listed key whose value reads back
+ * `undefined` or malformed is not a blob the migration can trust — consuming on
+ * that would erase the only legacy copy. A valid blob with zero entries is a
+ * real answer (the user cleared their holds pre-upgrade) and migrates fine.
  *
  * Only the ids are taken: the blob's per-entry `sinceMs` had no reader then and
  * has no destination now. It is still REQUIRED to be a finite positive number

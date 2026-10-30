@@ -25,7 +25,7 @@
  *
  * As `lib/observer/externalOffHold.ts` explains: a per-key write cannot clobber
  * another battery's record, deleting one is an idempotent `unset`, and the only
- * flake signal left is an empty `getKeys()`. Unlike a hold, a record carries a
+ * untrusted read left is the key list. Unlike a hold, a record carries a
  * payload (the value to restore), so a listed key whose value does not parse is
  * a failed read of that one battery's record, never an absent record, and never
  * a reason to stop handing back any other battery.

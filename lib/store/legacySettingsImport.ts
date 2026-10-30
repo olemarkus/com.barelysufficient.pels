@@ -209,18 +209,16 @@ export const scheduleLegacyImportRetry = (timers: TimerRegistry, timerName: stri
 /**
  * The keys a legacy family still has in settings; `null` when the list itself
  * cannot be read, which concludes nothing: a boot import tries again next
- * boot, a reader on its next read. An empty list is one that was not read:
- * PELS always has settings keys once the boot migrations have run, so an
- * empty `getKeys()` is the SDK's flake or a fresh install's first boot, and
- * never says a key is gone (`notes/persisted-settings-state.md`).
+ * boot, a reader on its next read. An empty list is an empty store, a fresh
+ * install's first boot, which holds no legacy key
+ * (`notes/persisted-settings-state.md`).
  */
 export const listLegacySettingsKeys = (
   settings: SettingsPort,
   matches: (key: string) => boolean,
 ): string[] | null => {
   try {
-    const keys = settings.getKeys();
-    return keys.length === 0 ? null : keys.filter(matches);
+    return settings.getKeys().filter(matches);
   } catch {
     return null;
   }

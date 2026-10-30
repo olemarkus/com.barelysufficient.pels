@@ -89,6 +89,15 @@ describe('observation-origin mode edits', () => {
     expect(service.allowsAutomaticAdjustments('heater')).toBe(true);
   });
 
+  it('reads a policy never written to an empty store as the default policy', () => {
+    const service = new ObservedTemperatureModeUpdates(
+      mockHomeyInstance.settings, () => ({ state: 'unavailable' }), () => true, vi.fn(), () => [],
+      (_id, value) => value, () => false, () => [],
+    );
+    expect(service.allowsAutomaticAdjustments('heater')).toBe(true);
+    expect(service.allowsLimiting('heater')).toBe(true);
+  });
+
   it.each(['main', 'annex'])('updates only the active mode and device in %s', (homeId) => {
     const { settings, key, service, reloadMain, reloadArea } = start(homeId);
     const ordinarySettingsHandler = vi.fn();

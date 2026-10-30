@@ -12,6 +12,7 @@ import {
   DAILY_BUDGET_KWH,
   DEVICE_CONTROL_PROFILES,
   MANAGED_DEVICES,
+  PER_DEVICE_OBJECTIVE_KEY_PREFIX,
 } from '../../lib/utils/settingsKeys';
 import { buildCreateSmartTaskDevicesPayload } from '../../widgets/create_smart_task/src/createSmartTaskWidgetPayload';
 
@@ -627,15 +628,19 @@ describe('createDeferredObjective (app)', () => {
       await app.onUninit?.();
     });
 
-    it('GUARDRAIL: a transient-empty key list never reads as "already ended"; the clear lands', async () => {
+    it('GUARDRAIL: a listed task whose value does not read back never reads as "already ended"; the clear lands', async () => {
       const app = await initApp();
       expect(app.createDeferredObjective('heater-1', tempCandidate(60))).toEqual({ ok: true });
       const forgetStatus = vi.spyOn(app.deferredObjectiveStatusBus, 'forgetDevice');
       const forgetHours = vi.spyOn(app.deferredObjectiveHoursRemainingTracker, 'forgetDevice');
-      const getKeysSpy = vi.spyOn(mockHomeyInstance.settings, 'getKeys').mockReturnValue([]);
+      const settings = mockHomeyInstance.settings;
+      const get = settings.get.bind(settings);
+      const getSpy = vi.spyOn(settings, 'get').mockImplementation((key: string) => (
+        key === `${PER_DEVICE_OBJECTIVE_KEY_PREFIX}heater-1` ? undefined : get(key)
+      ));
 
       expect(app.cancelDeferredObjective('heater-1')).toEqual({ ok: true });
-      getKeysSpy.mockRestore();
+      getSpy.mockRestore();
       expect(readStored().objectivesByDeviceId['heater-1']).toBeUndefined();
       expect(forgetStatus).toHaveBeenCalledWith('heater-1');
       expect(forgetHours).toHaveBeenCalledWith('heater-1');

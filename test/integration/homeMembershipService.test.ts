@@ -192,9 +192,7 @@ const makeWiredHealthyHomey = (): WiredHealthyHomey => {
   // The healthy path models the Homey Energy owner: area saves are refused
   // outright on the Flow source (and unset resolves to Flow), so an absent
   // source would turn every upsert scenario into the exclusion refusal.
-  // Setting it also keeps the key list non-empty, which positively proves an
-  // absent optional Main meter setting is truly unwritten, not a store-wide
-  // transient miss. Flow-source scenarios seed 'flow' before calling this.
+  // Flow-source scenarios seed 'flow' before calling this.
   // Gate on key presence, not on the read value: an unset key reads back as
   // `null`, and so does the Main meter's explicit "Automatic" — seeding on the
   // value would overwrite the selection scenarios below deliberately set.
@@ -1121,29 +1119,6 @@ describe('ui_homes payload', () => {
     })).toEqual({ ok: false, reason: 'main_meter_required' });
 
     expect(createHomesStore(homeyLike.settings).read()).toEqual({ state: 'unwritten' });
-    expect(setSpy).not.toHaveBeenCalled();
-  });
-
-  it('refuses an area upsert as degraded before side effects on a transiently empty key list', () => {
-    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
-    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
-    const homeyWired = makeWiredHealthyHomey();
-    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
-    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key) => (
-      key === HOMEY_ENERGY_METER_DEVICE_ID ? undefined : originalGet(key)
-    ));
-    vi.spyOn(mockHomeyInstance.settings, 'getKeys').mockReturnValue([]);
-    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
-
-    expect(saveSettingsUiHomesConfig({
-      homey: homeyWired,
-      body: {
-        op: 'upsert',
-        area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm-sub' },
-      },
-    })).toEqual({ ok: false, reason: 'degraded' });
-
-    expect(createHomesStore(homeyLike.settings).read()).toEqual({ state: 'suspect' });
     expect(setSpy).not.toHaveBeenCalled();
   });
 

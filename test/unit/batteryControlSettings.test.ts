@@ -9,14 +9,17 @@ import type { SettingsPort } from '../../lib/ports/homeyRuntime';
 import { BATTERY_CONTROL_DEVICES, PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKeys';
 
 // A settings store as the SDK answers it: an unset key reads `null`, and the
-// key list follows `set`/`unset`. `listed: false` models the empty-list flake.
-const settingsStore = (initial: Record<string, unknown>, options: { listed?: boolean } = {}): SettingsPort => {
+// key list follows `set`/`unset`. `keyListThrows` models a key list that fails.
+const settingsStore = (initial: Record<string, unknown>, options: { keyListThrows?: boolean } = {}): SettingsPort => {
   const values = new Map(Object.entries(initial));
   return {
     get: (key) => (values.has(key) ? values.get(key) : null),
     set: (key, value) => { values.set(key, value); },
     unset: (key) => { values.delete(key); },
-    getKeys: () => (options.listed === false ? [] : [...values.keys()]),
+    getKeys: () => {
+      if (options.keyListThrows === true) throw new Error('settings unavailable');
+      return [...values.keys()];
+    },
   };
 };
 
@@ -36,12 +39,14 @@ describe('battery_control_devices', () => {
     },
   );
 
-  it('reads a never-written key as every battery on, and a flake or junk as unknown', () => {
+  it('reads a never-written key as every battery on, and a failed list or junk as unknown', () => {
     expect(readBatteryControlSettings(settingsStore({ other: 1 }))).toEqual({ status: 'resolved', devices: {} });
+    expect(readBatteryControlSettings(settingsStore({}))).toEqual({ status: 'resolved', devices: {} });
     expect(readBatteryControlSettings(settingsStore({ [BATTERY_CONTROL_DEVICES]: { a: false } })))
       .toEqual({ status: 'resolved', devices: { a: false } });
-    expect(readBatteryControlSettings(settingsStore({ [BATTERY_CONTROL_DEVICES]: { a: false } }, { listed: false })))
-      .toEqual({ status: 'unavailable' });
+    expect(readBatteryControlSettings(
+      settingsStore({ [BATTERY_CONTROL_DEVICES]: { a: false } }, { keyListThrows: true }),
+    )).toEqual({ status: 'unavailable' });
     expect(readBatteryControlSettings(settingsStore({ [BATTERY_CONTROL_DEVICES]: 'junk' })))
       .toEqual({ status: 'unavailable' });
   });
@@ -75,8 +80,13 @@ describe('BatteryClaimStore', () => {
         ? { records: Object.fromEntries(read.records), unreadable: read.unreadableDeviceIds }
         : read).toEqual({ records: { 'battery-2': good }, unreadable: ['battery-1'] });
     }
-    expect(new BatteryClaimStore(settingsStore({ other: 1 }, { listed: false })).readAll())
+    expect(new BatteryClaimStore(settingsStore({ other: 1 }, { keyListThrows: true })).readAll())
       .toEqual({ status: 'unavailable' });
+  });
+
+  it('reads an empty store as no records', () => {
+    expect(new BatteryClaimStore(settingsStore({})).readAll())
+      .toEqual({ status: 'resolved', records: new Map(), unreadableDeviceIds: [] });
   });
 
   it('reports a write the store refused, so the battery is not claimed', () => {

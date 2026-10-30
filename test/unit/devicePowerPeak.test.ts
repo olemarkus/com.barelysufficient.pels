@@ -125,28 +125,16 @@ describe('parseExpectedPowerOverrides', () => {
 });
 
 describe('classifyExpectedPowerOverridesSetting', () => {
-  const absent = { keyPresent: false, keyListEmpty: false };
+  const absent = { keyPresent: false };
 
   it('separates a resolved-empty record from an unreadable key', () => {
     expect(classifyExpectedPowerOverridesSetting({
       raw: null,
       keyPresent: false,
-      keyListEmpty: false,
     })).toEqual({ state: 'resolved', overrides: {} });
     expect(classifyExpectedPowerOverridesSetting({
       raw: null,
       keyPresent: true,
-      keyListEmpty: false,
-    })).toEqual({ state: 'unavailable' });
-  });
-
-  it('is unavailable when the key list itself reads empty', () => {
-    // An empty key list is the SDK saying nothing at all, not "this home has no
-    // settings".
-    expect(classifyExpectedPowerOverridesSetting({
-      raw: null,
-      keyPresent: false,
-      keyListEmpty: true,
     })).toEqual({ state: 'unavailable' });
   });
 

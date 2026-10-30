@@ -125,7 +125,7 @@ describe('lastControlledStore', () => {
   describe('an import the upgrade boot could not finish', () => {
     /** Hydrate with the key list answering nothing, as the SDK does on a transient miss. */
     const hydrateWithUnreadableKeyList = (store: ReturnType<typeof createStore>, homeId: string) => {
-      const getKeys = vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+      const getKeys = vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('sdk unavailable'); });
       const actuation = hydrated(store, homeId);
       getKeys.mockRestore();
       return actuation;
@@ -152,7 +152,7 @@ describe('lastControlledStore', () => {
     it('keeps the stamps written while it was owed, and the next write keeps what it imported', () => {
       settings.set(DEVICE_LAST_CONTROLLED_MS, { 'dev-1': 100, 'dev-2': 200 });
       const store = createStore();
-      const getKeys = vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+      const getKeys = vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('sdk unavailable'); });
       const actuation = hydrated(store, 'main');
       // Stamped and written while the key is owed; the import goes under it.
       actuation.markControlled('dev-2', 900);

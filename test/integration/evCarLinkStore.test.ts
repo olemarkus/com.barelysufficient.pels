@@ -244,13 +244,13 @@ describe('importLegacyEvCarLinkState', () => {
     expect(resolveEvCarChargeLimit(reloaded, 'car')).toBeNull();
   });
 
-  // An empty key list is the SDK's flake, not an install without the blob: the
-  // store may not hold the history yet, so a car must not read as never
-  // matched. Once an import has completed, the store holds it either way.
-  it('reports the history unresolved when the key list comes back empty, until an import completed', () => {
+  // A key list that cannot be read says nothing about the blob: the store may
+  // not hold the history yet, so a car must not read as never matched. Once an
+  // import has completed, the store holds it either way.
+  it('reports the history unresolved while the key list cannot be read, until an import completed', () => {
     const { settings, repository } = rig();
     settings.set(EV_CAR_LINK_STATE, HISTORY);
-    const keys = vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    const keys = vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('sdk unavailable'); });
     const access = createPersistedEvCarLinkAccess(
       repository, () => NOW, (nowMs) => importLegacyEvCarLinkState(settings, repository, nowMs),
     );
@@ -258,20 +258,19 @@ describe('importLegacyEvCarLinkState', () => {
     expect(producer.readChargerMatchesForCar('car')).toEqual({ state: 'unavailable' });
     expect(settings.get(EV_CAR_LINK_STATE)).toEqual(HISTORY);
 
-    // The key list answers later in the same run, as it does once a new
-    // install's first boot has written a key: the history is whole from then on.
+    // The key list answers later in the same run: the history is whole from then on.
     keys.mockRestore();
     expect(producer.readChargerMatchesForCar('car')).toMatchObject({ state: 'resolved' });
     expect(access.get()).toEqual(HISTORY);
     expect(settings.get(EV_CAR_LINK_STATE)).toBeNull();
-    vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('sdk unavailable'); });
     expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
   });
 
   it('keeps a change the store refused when the history lands late', () => {
     const { settings, repository } = rig();
     settings.set(EV_CAR_LINK_STATE, HISTORY);
-    const keys = vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    const keys = vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('sdk unavailable'); });
     const access = createPersistedEvCarLinkAccess(
       repository, () => NOW, (nowMs) => importLegacyEvCarLinkState(settings, repository, nowMs),
     );
@@ -283,17 +282,18 @@ describe('importLegacyEvCarLinkState', () => {
     expect(access.get()).toBe(changed);
   });
 
-  it('resolves the history of a new install once its key list answers, with nothing to import', () => {
-    const { settings, repository } = rig();
-    const keys = vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+  // A new install's first boot finds the settings genuinely empty: there is no
+  // blob, so its cars' match history is whole from the start.
+  it('resolves the history of a new install at once, with nothing to import', () => {
+    const { repository } = open();
+    const settings = new MockSettings();
     const producer = createEvCarLinkProducer(
       () => {}, () => [],
       createPersistedEvCarLinkAccess(repository, () => NOW, (nowMs) => importLegacyEvCarLinkState(settings, repository, nowMs)),
       undefined, undefined, () => [],
     );
-    expect(producer.readChargerMatchesForCar('car')).toEqual({ state: 'unavailable' });
-    keys.mockReturnValue(['boot_migrations_v2_unusable_stepped_config_repaired']);
     expect(producer.readChargerMatchesForCar('car')).toEqual({ state: 'resolved', chargerMatches: [] });
+    expect(repository.hasImportedLegacy()).toBe(true);
   });
 
   // The mark retires the key for good, so it must never land without the rows.
@@ -315,13 +315,13 @@ describe('importLegacyEvCarLinkState', () => {
 
   // An install that never had the blob, or retired it before imports were
   // marked, has no import to mark it. A key list read without the key marks
-  // it instead, so a later boot whose list comes back empty still resolves.
-  it('marks a key list read without the blob, so a later empty key list still resolves', () => {
+  // it instead, so a later boot whose list cannot be read still resolves.
+  it('marks a key list read without the blob, so a later unreadable key list still resolves', () => {
     const { settings, repository } = rig();
     expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
     expect(repository.hasImportedLegacy()).toBe(true);
 
-    vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('sdk unavailable'); });
     const capture = captureLogger();
     try {
       expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
@@ -339,7 +339,7 @@ describe('importLegacyEvCarLinkState', () => {
     try {
       expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
       expect(capture.findEvent('legacy_ev_car_link_state_import_mark_failed')).toBeDefined();
-      vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+      vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('sdk unavailable'); });
       expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(false);
       expect(capture.findEvent('legacy_ev_car_link_state_import_mark_unreadable')).toBeDefined();
     } finally {

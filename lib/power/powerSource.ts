@@ -49,14 +49,13 @@ export type PowerSourceSettingClassification =
 export type PowerSourceSettingEvidence = {
   raw: unknown;
   keyPresent: boolean;
-  keyListEmpty: boolean;
 };
 
 /**
  * Has the owner chosen a source? `chosen` carries what they chose (a
  * malformed non-null value counts as a choice and normalizes to Flow);
- * `unset` is a never-written key proven by a healthy, non-empty key list;
- * `suspect` is absence that cannot be told from a transient read miss. This
+ * `unset` is a key the key list does not carry, so never written;
+ * `suspect` is a listed key that reads back empty. This
  * is the one question `classifyPowerSourceSetting` collapses (unset runs as
  * Flow), asked by the one caller that must not collapse it: the boot-time
  * sole-meter adoption adopts only where nothing was chosen.
@@ -69,9 +68,8 @@ export type PowerSourceChoiceClassification =
 export const classifyPowerSourceChoice = (
   evidence: PowerSourceSettingEvidence,
 ): PowerSourceChoiceClassification => {
-  const { raw, keyPresent, keyListEmpty } = evidence;
+  const { raw, keyPresent } = evidence;
   if (raw !== undefined && raw !== null) return { state: 'chosen', value: normalizePowerSource(raw) };
-  if (keyListEmpty) return { state: 'suspect', reason: 'empty_key_list' };
   if (keyPresent) return { state: 'suspect', reason: 'missing_existing_key' };
   return { state: 'unset' };
 };

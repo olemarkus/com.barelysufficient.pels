@@ -3,11 +3,11 @@ import { readPriceSetup } from '../../lib/price/priceSetupRead';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
 import type { ResolvedPriceScheme } from '../../packages/contracts/src/settingsUi/prices';
 
-const settingsWith = (values: Record<string, unknown>, keys = Object.keys(values)): SettingsPort => ({
+const settingsWith = (values: Record<string, unknown>): SettingsPort => ({
   get: (key) => values[key],
   set: () => {},
   unset: () => {},
-  getKeys: () => keys,
+  getKeys: () => Object.keys(values),
 });
 
 const ASSUMED_NORWAY: ResolvedPriceScheme = { scheme: 'norway', basis: { kind: 'hub_location', country: 'NO' } };
@@ -77,8 +77,20 @@ describe('readPriceSetup', () => {
       .toEqual({ state: 'unavailable' });
   });
 
+  it('reads an empty store as every Norway setting assumed', () => {
+    const read = readPriceSetup(settingsWith({}), ASSUMED_NORWAY);
+
+    expect(read.state === 'resolved' && read.setup.norway).toEqual(expect.objectContaining({
+      county: { value: '03', chosen: false },
+      priceArea: { value: 'NO1', chosen: false },
+    }));
+  });
+
   it('is unavailable when the key list cannot tell a saved value from a missed read', () => {
-    expect(readPriceSetup(settingsWith({ price_area: 'NO4' }, []), ASSUMED_NORWAY))
-      .toEqual({ state: 'unavailable' });
+    const settings: SettingsPort = {
+      ...settingsWith({ price_area: 'NO4' }),
+      getKeys: () => { throw new Error('settings unavailable'); },
+    };
+    expect(readPriceSetup(settings, ASSUMED_NORWAY)).toEqual({ state: 'unavailable' });
   });
 });

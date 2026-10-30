@@ -13,7 +13,7 @@
  *
  * - key not listed: never written, so every battery is on;
  * - key listed and parsed: the owner's map;
- * - key list empty, unreadable, or a listed value that does not parse:
+ * - key list unreadable, or a listed value that does not parse:
  *   `unavailable`. Not an answer about the owner's wish.
  */
 import type { SettingsPort } from '../ports/homeyRuntime';

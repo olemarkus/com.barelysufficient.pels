@@ -34,8 +34,6 @@ const createCoordinator = (readHubMarket: () => Promise<SettingsUiHubMarketRead>
 describe('price source assumed from the hub country', () => {
   beforeEach(() => {
     resetMockHomey();
-    // An installed app always has settings keys; only the price source is unsaved.
-    mockHomeyInstance.settings.set('capacity_limit_kw', 8);
   });
 
   it('prices a hub outside Norway from Homey Energy when the owner never chose a source', async () => {

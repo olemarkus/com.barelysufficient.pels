@@ -261,9 +261,8 @@ describe('AppSmartTaskApi boot-window invariants', () => {
     })).toThrow(/DeferredObjectiveActivePlanRecorder must be initialized/);
   });
 
-  it('fails closed when the objective key list is transiently empty', () => {
+  it('fails closed when the objective key list cannot be read', () => {
     const app = wirePreviewDependencies(buildAppWithRecorders());
-    app.homey.settings.set('unrelated_setting', true);
     app.homey.settings.set(`deferred_objective.${DEVICE_ID}`, {
       enabled: true,
       kind: 'temperature',
@@ -271,7 +270,7 @@ describe('AppSmartTaskApi boot-window invariants', () => {
       targetTemperatureC: 60,
       deadlineAtMs: Date.now() + 60_000,
     });
-    app.homey.settings.getKeys = () => [];
+    app.homey.settings.getKeys = () => { throw new Error('sdk unavailable'); };
     const writes: string[] = [];
     app.homey.settings.on('set', (key: string) => writes.push(`set:${key}`));
     app.homey.settings.on('unset', (key: string) => writes.push(`unset:${key}`));

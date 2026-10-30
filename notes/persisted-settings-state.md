@@ -76,17 +76,19 @@ What survives the move, and what does not:
 | a write while the store is unreadable | may wipe every other subject | cannot reach another key |
 | deleting a subject | read-modify-write, needs a tombstone if the read failed | idempotent `unset` |
 | abandon-grace + written-before marker | required | gone |
-| trusting an empty read | needs a plausibility predicate on the value | `getKeys()` empty is the one flake signal |
+| trusting an empty read | needs a plausibility predicate on the value | an empty `getKeys()` is an empty store |
 | fail-closed reads | required | still required |
 
 Two rules that do carry over, because they are about the SDK rather than the shape:
 
-- **An empty `getKeys()` is a flake, not an empty store.** PELS always has
-  settings keys. Conclude nothing from an empty list, with one exception: the
-  first read of a boot, before any startup step writes, where an empty list is
-  a new install (`classifyInstallAtBoot` in `lib/utils/settingsKeyList.ts`).
-  The flake looks the same there, so its one consumer, the Capacity limit
-  market default, must be safe when an existing install is taken for new.
+- **An empty `getKeys()` is an empty store.** The SDK answers `getKeys()` and
+  `get()` from the settings it loaded before `onInit` (`ManagerSettings` in
+  `@athombv/homey-apps-sdk-v3`), so neither comes back transiently empty in the
+  app: an empty list means nothing was ever written, as on a new install's
+  first boot (`classifyInstallAtBoot` in `lib/utils/settingsKeyList.ts`). Only a
+  read that throws or answers malformed concludes nothing. Earlier code treated
+  an empty list as a flake on no observed evidence; do not bring that back
+  without a log or report that shows one.
 - **Absence is only trustworthy from the key LIST.** A value that reads back
   malformed on a listed key is a failed read, not an affirmative absence.
 

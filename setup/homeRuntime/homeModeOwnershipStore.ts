@@ -9,13 +9,13 @@ import {
   MODE_TARGET_OWNERSHIP_STATE_INITIALIZED,
   type HomeId,
 } from '../../lib/utils/settingsKeys';
+import { readSettingsKeyList } from '../../lib/utils/settingsKeyList';
 
 // The port types are declared with the domain (`lib/home/modeOwnershipTransfer.ts`);
 // this adapter re-exports them so existing importers keep their import site.
 export type { ModeTargetOwnershipRead };
 
 type SettingsReadResult = { value: unknown; threw: false } | { value: undefined; threw: true };
-type SettingsKeysReadResult = { value: string[]; threw: false } | { value: []; threw: true };
 
 const readKey = (
   settings: Homey.App['homey']['settings'],
@@ -25,14 +25,6 @@ const readKey = (
     return { value: settings.get(key) as unknown, threw: false };
   } catch {
     return { value: undefined, threw: true };
-  }
-};
-
-const readKeys = (settings: Homey.App['homey']['settings']): SettingsKeysReadResult => {
-  try {
-    return { value: settings.getKeys(), threw: false };
-  } catch {
-    return { value: [], threw: true };
   }
 };
 
@@ -71,20 +63,19 @@ const writeBestEffort = (
   }
 };
 
-const readKeyListForAbsence = (
-  settings: Homey.App['homey']['settings'],
-): SettingsKeysReadResult => readKeys(settings);
-
 const isAbsent = (value: unknown): boolean => value === undefined || value === null;
 
+/**
+ * True unless the key list confirms none of these keys was written. An empty
+ * list is an empty store; a thrown or malformed one confirms nothing.
+ */
 const hasAmbiguousMissingKey = (
   settings: Homey.App['homey']['settings'],
   keysToCheck: readonly string[],
 ): boolean => {
-  const keys = readKeyListForAbsence(settings);
-  return keys.threw
-    || keys.value.length === 0
-    || keysToCheck.some((key) => keys.value.includes(key));
+  const keyList = readSettingsKeyList(settings);
+  return keyList.status === 'unavailable'
+    || keysToCheck.some((key) => keyList.keys.includes(key));
 };
 
 const resolvePlausibleCopy = (params: {

@@ -38,10 +38,6 @@ const buildStore = (
   seed: Record<string, DeferredObjectiveSettingsEntry> = {},
 ): ObjectiveSettingsStore & { raw: Map<string, unknown> } => {
   const raw = new Map<string, unknown>();
-  // A real PELS store always carries non-objective settings keys, so getKeys() is
-  // never empty in production (the trustworthy-absence guard relies on this — an
-  // empty key list signals a transient store-wide flake, not a fresh create).
-  raw.set('capacity_limit_kw', 5);
   for (const [deviceId, entry] of Object.entries(seed)) raw.set(keyFor(deviceId), entry);
   return {
     raw,
@@ -131,9 +127,9 @@ describe('device-scoped objective ops (per-device-key)', () => {
     expect(h.activePlanRecorder.flushIfDirty).toHaveBeenCalledOnce();
   });
 
-  it('clear STILL unsets the key on a store-wide empty getKeys() flake (absence unconfirmable)', () => {
+  it('clear STILL unsets the key when the key list throws (absence unconfirmable)', () => {
     const store = buildStore({ 'ev-1': evEntry });
-    const flaky = { ...store, getKeys: () => [] }; // store-wide getKeys flake
+    const flaky = { ...store, getKeys: (): string[] => { throw new Error('SDK read failed'); } };
     const h = buildDeviceDeps(flaky);
     clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
     expect(store.raw.has(keyFor('ev-1'))).toBe(false); // genuinely cleared
@@ -274,17 +270,19 @@ describe('device-scoped objective ops (per-device-key)', () => {
   // ── Outcome contract: persisted vs refused (the false-success fix) ──────────
 
   it('upsert returns { persisted: true } on a successful write', () => {
+    // An empty store: Homey leaves a never-written key out of `getKeys()`, so
+    // the absence is trusted.
     const store = buildStore();
     const h = buildDeviceDeps(store);
     const outcome = upsertObjectiveForDevice(h.deps, 'ev-1', 'Driveway', evEntry);
     expect(outcome).toEqual({ persisted: true });
   });
 
-  it('upsert REFUSES with untrusted_absence on an empty-getKeys flake', () => {
-    // An empty key list cannot prove the device has no task, so a create must
-    // refuse rather than write over one it could not read.
+  it('upsert REFUSES with untrusted_absence when the key list throws', () => {
+    // A key list that cannot be read cannot prove the device has no task, so a
+    // create must refuse rather than write over one it could not read.
     const store = buildStore({ 'ev-1': evEntry });
-    const flaky = { ...store, getKeys: () => [] };
+    const flaky = { ...store, getKeys: (): string[] => { throw new Error('SDK read failed'); } };
     const h = buildDeviceDeps(flaky);
     const outcome = upsertObjectiveForDevice(h.deps, 'ev-2', 'Garage', evEntry);
     expect(outcome).toEqual({ persisted: false, reason: 'untrusted_absence' });

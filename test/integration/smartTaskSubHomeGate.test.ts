@@ -80,13 +80,11 @@ const heaterEntry: DeferredObjectiveSettingsEntry = {
 const keyFor = (deviceId: string): string => `${PER_DEVICE_OBJECTIVE_KEY_PREFIX}${deviceId}`;
 
 // In-memory store standing in for `homey.settings` (structurally an
-// ObjectiveSettingsStore); a non-objective key keeps getKeys() non-empty as a
-// real PELS store always is (the trustworthy-absence guard relies on this).
+// ObjectiveSettingsStore).
 const buildStore = (
   seed: Record<string, DeferredObjectiveSettingsEntry> = {},
 ): ObjectiveSettingsStore & { raw: Map<string, unknown> } => {
   const raw = new Map<string, unknown>();
-  raw.set('capacity_limit_kw', 5);
   for (const [deviceId, entry] of Object.entries(seed)) raw.set(keyFor(deviceId), entry);
   return {
     raw,

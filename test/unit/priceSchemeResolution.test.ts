@@ -27,7 +27,10 @@ const fakeSettings = (values: Record<string, unknown>): FakeSettings => {
       settings.values[key] = value;
     },
     unset: (key) => { delete settings.values[key]; },
-    getKeys: () => (settings.keysUnavailable ? [] : [...Object.keys(settings.values), ...settings.unreadable]),
+    getKeys: () => {
+      if (settings.keysUnavailable) throw new Error('settings key list failed');
+      return [...Object.keys(settings.values), ...settings.unreadable];
+    },
   };
   return settings;
 };
@@ -45,9 +48,6 @@ const fakeStore = (cachedResolution: unknown = null) => {
   return store;
 };
 
-// Every PELS install has some settings keys; an empty list is the SDK's miss.
-const OTHER_KEYS = { capacity_limit_kw: 8 };
-
 const NL = { state: 'resolved', country: 'NL' } as const;
 const NO = { state: 'resolved', country: 'NO' } as const;
 const NO_ANSWER = { state: 'unavailable' } as const;
@@ -61,14 +61,14 @@ const ORE_EXPORT_PRICE = { [EXPORT_PRICE_ENABLED]: true, [EXPORT_FIXED]: -5 };
 
 describe('PriceSchemeResolver', () => {
   it('runs on the Norway source while it knows neither a choice nor the hub country', () => {
-    const resolver = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS }), fakeStore());
+    const resolver = new PriceSchemeResolver(fakeSettings({}), fakeStore());
 
     expect(resolver.resolve()).toEqual(NORWAY_DEFAULT);
   });
 
   it('switches a hub outside Norway to Homey Energy when the owner never chose a source', () => {
     const store = fakeStore();
-    const resolver = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS }), store);
+    const resolver = new PriceSchemeResolver(fakeSettings({}), store);
 
     expect(resolver.refresh(NL, 'none', false)).toEqual({ kind: 'switched', resolution: HOMEY_IN_NL, exportPlan: 'none' });
     expect(resolver.resolve()).toEqual(HOMEY_IN_NL);
@@ -76,7 +76,7 @@ describe('PriceSchemeResolver', () => {
   });
 
   it('assumes the Norway source for a hub in Norway', () => {
-    const resolver = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS }), fakeStore());
+    const resolver = new PriceSchemeResolver(fakeSettings({}), fakeStore());
 
     // Same source as the default, so nothing to refetch.
     expect(resolver.refresh(NO, 'none', false)).toEqual({ kind: 'none' });
@@ -84,7 +84,7 @@ describe('PriceSchemeResolver', () => {
   });
 
   it('keeps the owner\'s saved source whatever country the hub is in', () => {
-    const resolver = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS, [PRICE_SCHEME]: 'norway' }), fakeStore());
+    const resolver = new PriceSchemeResolver(fakeSettings({ [PRICE_SCHEME]: 'norway' }), fakeStore());
 
     expect(resolver.refresh(NL, 'none', false)).toEqual({ kind: 'none' });
     expect(resolver.resolve()).toEqual({ scheme: 'norway', basis: { kind: 'chosen' } });
@@ -92,7 +92,7 @@ describe('PriceSchemeResolver', () => {
 
   it('applies a source the owner saves at once', () => {
     // The settings UI settled the export price before saving it.
-    const settings = fakeSettings({ ...OTHER_KEYS });
+    const settings = fakeSettings({});
     const resolver = new PriceSchemeResolver(settings, fakeStore(HOMEY_IN_NL));
 
     settings.values[PRICE_SCHEME] = 'norway';
@@ -104,7 +104,7 @@ describe('PriceSchemeResolver', () => {
     // The Norway form never writes the source key itself, so this owner's grid
     // company is their only record of choosing Norway. A hub placed in the
     // wrong country must not move them to Homey Energy.
-    const settings = fakeSettings({ ...OTHER_KEYS, nettleie_orgnr: '979151950' });
+    const settings = fakeSettings({ nettleie_orgnr: '979151950' });
     const resolver = new PriceSchemeResolver(settings, fakeStore());
 
     expect(resolver.refresh({ state: 'resolved', country: 'SE' }, 'none', false)).toEqual({ kind: 'none' });
@@ -114,7 +114,7 @@ describe('PriceSchemeResolver', () => {
   it('boots on the source last in force rather than on Norwegian prices', () => {
     // Before Homey reports the hub's country, and also when the first settings
     // reads fail, the cached source is what this home was running on.
-    const settings = fakeSettings({ ...OTHER_KEYS });
+    const settings = fakeSettings({});
     const resolver = new PriceSchemeResolver(settings, fakeStore(HOMEY_IN_NL));
     expect(resolver.resolve()).toEqual(HOMEY_IN_NL);
 
@@ -125,7 +125,7 @@ describe('PriceSchemeResolver', () => {
 
   it('ignores a cached source it cannot vouch for', () => {
     const resolver = new PriceSchemeResolver(
-      fakeSettings({ ...OTHER_KEYS }),
+      fakeSettings({}),
       fakeStore({ scheme: 'homey', basis: { kind: 'hub_location', country: 'nowhere' } }),
     );
 
@@ -133,14 +133,14 @@ describe('PriceSchemeResolver', () => {
   });
 
   it('changes nothing when Homey does not answer where the hub is', () => {
-    const resolver = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS }), fakeStore(HOMEY_IN_NL));
+    const resolver = new PriceSchemeResolver(fakeSettings({}), fakeStore(HOMEY_IN_NL));
 
     expect(resolver.refresh(NO_ANSWER, 'none', false)).toEqual({ kind: 'none' });
     expect(resolver.resolve()).toEqual(HOMEY_IN_NL);
   });
 
   it('keeps the source in force through a scheme key that reads back empty', () => {
-    const settings = fakeSettings({ ...OTHER_KEYS, [PRICE_SCHEME]: 'homey' });
+    const settings = fakeSettings({ [PRICE_SCHEME]: 'homey' });
     const resolver = new PriceSchemeResolver(settings, fakeStore());
     resolver.refresh(NO, 'none', false);
     expect(resolver.resolve()).toEqual({ scheme: 'homey', basis: { kind: 'chosen' } });
@@ -154,7 +154,7 @@ describe('PriceSchemeResolver', () => {
   });
 
   it('keeps the source in force when the key list cannot be read', () => {
-    const settings = fakeSettings({ ...OTHER_KEYS });
+    const settings = fakeSettings({});
     settings.keysUnavailable = true;
     const resolver = new PriceSchemeResolver(settings, fakeStore(HOMEY_IN_NL));
 
@@ -163,7 +163,7 @@ describe('PriceSchemeResolver', () => {
   });
 
   it('switches only on a refresh, settling the export price, after the settings store recovers', () => {
-    const settings = fakeSettings({ ...OTHER_KEYS, ...ORE_EXPORT_PRICE });
+    const settings = fakeSettings({ ...ORE_EXPORT_PRICE });
     settings.keysUnavailable = true;
     const resolver = new PriceSchemeResolver(settings, fakeStore());
     expect(resolver.refresh(NL, 'none', false)).toEqual({ kind: 'none' });
@@ -182,7 +182,7 @@ describe('PriceSchemeResolver', () => {
   it('holds the switch while a saved export amount reads back empty', () => {
     // Read as 0, the øre amount would look like no fixed amount at all and
     // stay enabled, a hundred times too large in Homey Energy's currency.
-    const settings = fakeSettings({ ...OTHER_KEYS, ...ORE_EXPORT_PRICE });
+    const settings = fakeSettings({ ...ORE_EXPORT_PRICE });
     settings.unreadable.add(EXPORT_FIXED);
     const resolver = new PriceSchemeResolver(settings, fakeStore());
 
@@ -197,7 +197,7 @@ describe('PriceSchemeResolver', () => {
   });
 
   it('keeps the source in force when turning the export price off fails', () => {
-    const settings = fakeSettings({ ...OTHER_KEYS, ...ORE_EXPORT_PRICE });
+    const settings = fakeSettings({ ...ORE_EXPORT_PRICE });
     settings.writesFail = true;
     const resolver = new PriceSchemeResolver(settings, fakeStore());
 
@@ -213,7 +213,7 @@ describe('PriceSchemeResolver', () => {
   it('retries a failed cache write on the next refresh', () => {
     const store = fakeStore();
     store.writesFail = true;
-    const resolver = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS }), store);
+    const resolver = new PriceSchemeResolver(fakeSettings({}), store);
     resolver.refresh(NL, 'none', false);
     expect(store.cachedResolution).toBeNull();
 
@@ -224,7 +224,7 @@ describe('PriceSchemeResolver', () => {
   });
   describe('with Power by the Hour installed outside Norway', () => {
     it('assumes Power by the Hour while nothing follows prices yet', () => {
-      const resolver = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS }), fakeStore(HOMEY_IN_NL));
+      const resolver = new PriceSchemeResolver(fakeSettings({}), fakeStore(HOMEY_IN_NL));
 
       expect(resolver.refresh(NL, 'price_device', false))
         .toEqual({ kind: 'switched', resolution: POWERHOUR_IN_NL, exportPlan: 'none' });
@@ -232,21 +232,21 @@ describe('PriceSchemeResolver', () => {
     });
 
     it('never moves devices that follow Homey Energy\'s prices by itself', () => {
-      const resolver = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS }), fakeStore(HOMEY_IN_NL));
+      const resolver = new PriceSchemeResolver(fakeSettings({}), fakeStore(HOMEY_IN_NL));
 
       expect(resolver.refresh(NL, 'price_device', true)).toEqual({ kind: 'none' });
       expect(resolver.resolve()).toEqual(HOMEY_IN_NL);
     });
 
     it('stays on Power by the Hour once devices follow its prices', () => {
-      const resolver = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS }), fakeStore(POWERHOUR_IN_NL));
+      const resolver = new PriceSchemeResolver(fakeSettings({}), fakeStore(POWERHOUR_IN_NL));
 
       expect(resolver.refresh(NL, 'price_device', true)).toEqual({ kind: 'none' });
       expect(resolver.resolve()).toEqual(POWERHOUR_IN_NL);
     });
 
     it('hands back to Homey Energy while nothing follows prices, and returns once it can price the home', () => {
-      const resolver = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS }), fakeStore(POWERHOUR_IN_NL));
+      const resolver = new PriceSchemeResolver(fakeSettings({}), fakeStore(POWERHOUR_IN_NL));
 
       expect(resolver.refresh(NL, 'none', false))
         .toEqual({ kind: 'switched', resolution: HOMEY_IN_NL, exportPlan: 'none' });
@@ -257,37 +257,37 @@ describe('PriceSchemeResolver', () => {
     it('keeps devices on Power by the Hour\'s prices through a refresh that finds it not running', () => {
       // After a reboot it may still be starting, and moving the devices to
       // Homey Energy would stick: nothing moves them back by itself.
-      const resolver = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS }), fakeStore(POWERHOUR_IN_NL));
+      const resolver = new PriceSchemeResolver(fakeSettings({}), fakeStore(POWERHOUR_IN_NL));
 
       expect(resolver.refresh(NL, 'none', true)).toEqual({ kind: 'none' });
       expect(resolver.resolve()).toEqual(POWERHOUR_IN_NL);
     });
 
     it('asks Power by the Hour only when its answer could move the source', () => {
-      const unchosen = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS }), fakeStore());
+      const unchosen = new PriceSchemeResolver(fakeSettings({}), fakeStore());
       expect(unchosen.readsPowerhour()).toBe(true);
       unchosen.refresh(NO, 'unread', false);
       expect(unchosen.readsPowerhour()).toBe(false);
 
-      const chosen = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS, [PRICE_SCHEME]: 'homey' }), fakeStore());
+      const chosen = new PriceSchemeResolver(fakeSettings({ [PRICE_SCHEME]: 'homey' }), fakeStore());
       expect(chosen.readsPowerhour()).toBe(false);
     });
 
     it('keeps whichever source is in force through an unanswered read', () => {
-      const onPowerhour = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS }), fakeStore(POWERHOUR_IN_NL));
+      const onPowerhour = new PriceSchemeResolver(fakeSettings({}), fakeStore(POWERHOUR_IN_NL));
       expect(onPowerhour.refresh(NL, 'unread', false)).toEqual({ kind: 'none' });
       expect(onPowerhour.resolve()).toEqual(POWERHOUR_IN_NL);
 
-      const onHomey = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS }), fakeStore(HOMEY_IN_NL));
+      const onHomey = new PriceSchemeResolver(fakeSettings({}), fakeStore(HOMEY_IN_NL));
       expect(onHomey.refresh(NL, 'unread', false)).toEqual({ kind: 'none' });
       expect(onHomey.resolve()).toEqual(HOMEY_IN_NL);
     });
 
     it('leaves a hub in Norway and a chosen source alone', () => {
-      const inNorway = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS }), fakeStore());
+      const inNorway = new PriceSchemeResolver(fakeSettings({}), fakeStore());
       expect(inNorway.refresh(NO, 'price_device', false)).toEqual({ kind: 'none' });
 
-      const chosen = new PriceSchemeResolver(fakeSettings({ ...OTHER_KEYS, [PRICE_SCHEME]: 'homey' }), fakeStore());
+      const chosen = new PriceSchemeResolver(fakeSettings({ [PRICE_SCHEME]: 'homey' }), fakeStore());
       expect(chosen.refresh(NL, 'price_device', false)).toEqual({ kind: 'none' });
       expect(chosen.resolve()).toEqual({ scheme: 'homey', basis: { kind: 'chosen' } });
     });

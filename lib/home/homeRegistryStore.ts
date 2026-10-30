@@ -17,9 +17,9 @@ import {
   HOMES_CONFIG,
   HOMES_CONFIG_INITIALIZED,
 } from '../utils/settingsKeys';
+import { readSettingsKeyList } from '../utils/settingsKeyList';
 
 type SettingsReadResult = { value: unknown; threw: false } | { value: undefined; threw: true };
-type SettingsKeysReadResult = { value: string[]; threw: false } | { value: []; threw: true };
 
 // Homey SDK reads can transiently fail; a throw must classify the read
 // 'suspect' (persisted truth unknown), never 'unwritten' (write permission).
@@ -28,14 +28,6 @@ const readKey = (settings: SettingsPort, key: string): SettingsReadResult => {
     return { value: settings.get(key), threw: false };
   } catch {
     return { value: undefined, threw: true };
-  }
-};
-
-const readKeys = (settings: SettingsPort): SettingsKeysReadResult => {
-  try {
-    return { value: settings.getKeys(), threw: false };
-  } catch {
-    return { value: [], threw: true };
   }
 };
 
@@ -94,11 +86,10 @@ const classifyRead = <T>(
       // the key exists, `get()` returning undefined is a transient miss — this
       // also closes the narrow window where a pre-marker blob's best-effort
       // marker backfill failed. A failed key-list read is equally suspect.
-      const keys = readKeys(settings);
-      if (keys.threw || keys.value.length === 0 || keys.value.includes(key)) {
-        return { state: 'suspect' };
-      }
-      return { state: 'unwritten' };
+      const keyList = readSettingsKeyList(settings);
+      return keyList.status === 'resolved' && !keyList.keys.includes(key)
+        ? { state: 'unwritten' }
+        : { state: 'suspect' };
     }
     return { state: 'suspect' };
   } catch {

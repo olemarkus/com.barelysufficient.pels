@@ -120,7 +120,7 @@ describe('findAreaUpsertRefusal — meter ownership', () => {
 
   it('refuses as degraded on a suspect power-source read', () => {
     expect(refusalFor(renameUpstairs('Upstairs'), {
-      powerSource: { state: 'suspect', reason: 'empty_key_list', error: new Error('suspect') },
+      powerSource: { state: 'suspect', reason: 'missing_existing_key', error: new Error('suspect') },
     })).toEqual({ ok: false, reason: 'degraded' });
   });
 

@@ -13,8 +13,9 @@ type SettingsPort = {
  * goes to its owner (`readPowerSourceChoice`: chosen, unset, or suspect).
  * The meter key is read RAW here: this is the one place that must tell a
  * never-written or stored-null meter (nothing chosen, adoptable) apart from
- * a transient miss of an explicit value (defer, try next boot). The reader's
- * job is the post-choice meaning; this classifier owns the pre-choice one.
+ * a listed key that reads back undefined or malformed (defer, try next boot).
+ * The reader's job is the post-choice meaning; this classifier owns the
+ * pre-choice one.
  */
 export const classifySoleMeterAdoptionEligibility = (
   settings: SettingsPort,
@@ -53,9 +54,7 @@ const classifyMeterKey = (
       ? { kind: 'defer', reasonCode: 'suspect_meter_value' }
       : { kind: 'explicit', meterDeviceId };
   }
-  const keys = settings.getKeys();
-  if (keys.length === 0) return { kind: 'defer', reasonCode: 'empty_key_list' };
-  const listed = keys.includes(HOMEY_ENERGY_METER_DEVICE_ID);
+  const listed = settings.getKeys().includes(HOMEY_ENERGY_METER_DEVICE_ID);
   // A listed key answering `null` is the legacy stored-null Automatic
   // selection or a transient miss of an explicitly stored id; the value
   // cannot tell them apart, so the component applies a bounded grace before

@@ -16,7 +16,7 @@ const makeSettings = (initial: Record<string, unknown>) => {
   return {
     get: vi.fn((key: string): unknown => store[key]),
     // The real SDK exposes the key list, and the fill uses it to tell a
-    // never-written catalog from a transiently-empty read.
+    // never-written catalog from a listed key that reads empty.
     getKeys: vi.fn(() => Object.keys(store)),
     set: vi.fn((key: string, value: unknown) => {
       store[key] = value;
@@ -100,13 +100,13 @@ describe('ModeDeviceTargetFill', () => {
     // Main's `mode_device_targets` is only ever written by the settings UI, so
     // an owner who never opened the Modes screen had NO mode targets at all —
     // while the planner still planned their heaters and auto-assigned them a
-    // setpoint shed. There has to be a mode to fill against. Another key is
-    // stored, so the key list reads as a real install's.
-    const settings = makeSettings({ operating_mode: 'Home' });
+    // setpoint shed. There has to be a mode to fill against. An empty store
+    // has never written the catalog either.
+    [makeSettings({ operating_mode: 'Home' }), makeSettings({})].forEach((settings) => {
+      createFill(settings).fill.persist();
 
-    createFill(settings).fill.persist();
-
-    expect(settings.set).toHaveBeenCalledWith('mode_device_targets', { Home: { 't-1': 21 } });
+      expect(settings.set).toHaveBeenCalledWith('mode_device_targets', { Home: { 't-1': 21 } });
+    });
   });
 
   it('creates the default mode when the stored catalog is an empty object', () => {
@@ -119,18 +119,20 @@ describe('ModeDeviceTargetFill', () => {
 
   it('writes nothing when the catalog read cannot be trusted', () => {
     // The next act is a whole-blob `set`. A malformed payload, a thrown read,
-    // and an empty key list are all states where one transient SDK miss would
+    // and a thrown key list are all states where a read that cannot tell would
     // otherwise become a wipe — decide nothing and retry next refresh.
     const malformed = makeSettings({ mode_device_targets: ['not', 'a', 'catalog'] });
-    const emptyKeyList = makeSettings({ operating_mode: 'Home' });
-    emptyKeyList.getKeys.mockReturnValue([]);
+    const throwingKeyList = makeSettings({ operating_mode: 'Home' });
+    throwingKeyList.getKeys.mockImplementation(() => {
+      throw new Error('boom');
+    });
     const throwingRead = makeSettings({ operating_mode: 'Home' });
     throwingRead.get.mockImplementation((key: string) => {
       if (key === 'mode_device_targets') throw new Error('boom');
       return undefined;
     });
 
-    [malformed, emptyKeyList, throwingRead].forEach((settings) => {
+    [malformed, throwingKeyList, throwingRead].forEach((settings) => {
       createFill(settings).fill.persist();
 
       expect(settings.set).not.toHaveBeenCalled();

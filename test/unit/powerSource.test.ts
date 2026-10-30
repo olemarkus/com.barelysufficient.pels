@@ -10,44 +10,36 @@ describe('classifyPowerSourceSetting', () => {
     expect(classifyPowerSourceSetting({
       raw,
       keyPresent: true,
-      keyListEmpty: false,
     })).toEqual({ state: 'resolved', value: expected });
   });
 
-  it('resolves absent source to the historical Flow default only with healthy absence evidence', () => {
+  it('resolves absent source to the historical Flow default only when the key list does not carry the key', () => {
     expect(classifyPowerSourceSetting({
       raw: undefined,
       keyPresent: false,
-      keyListEmpty: false,
     })).toEqual({ state: 'resolved', value: 'flow' });
   });
 
-  it.each([
-    ['an existing source key', true, false, 'missing_existing_key'],
-    ['an empty key list', false, true, 'empty_key_list'],
-  ] as const)('classifies absent source with %s as suspect', (_label, keyPresent, keyListEmpty, reason) => {
+  it('classifies an absent source whose key is listed as suspect', () => {
     expect(classifyPowerSourceSetting({
       raw: undefined,
-      keyPresent,
-      keyListEmpty,
-    })).toEqual({ state: 'suspect', reason });
+      keyPresent: true,
+    })).toEqual({ state: 'suspect', reason: 'missing_existing_key' });
   });
 });
 
 describe('classifyPowerSourceChoice', () => {
   it('reports a non-null raw value as chosen, normalized (a malformed value is a Flow choice)', () => {
-    expect(classifyPowerSourceChoice({ raw: 'homey_energy', keyPresent: true, keyListEmpty: false }))
+    expect(classifyPowerSourceChoice({ raw: 'homey_energy', keyPresent: true }))
       .toEqual({ state: 'chosen', value: 'homey_energy' });
-    expect(classifyPowerSourceChoice({ raw: 'malformed', keyPresent: true, keyListEmpty: false }))
+    expect(classifyPowerSourceChoice({ raw: 'malformed', keyPresent: true }))
       .toEqual({ state: 'chosen', value: 'flow' });
   });
 
-  it('reports a never-written key as unset only with healthy absence evidence', () => {
-    expect(classifyPowerSourceChoice({ raw: null, keyPresent: false, keyListEmpty: false }))
+  it('reports a never-written key as unset only when the key list does not carry the key', () => {
+    expect(classifyPowerSourceChoice({ raw: null, keyPresent: false }))
       .toEqual({ state: 'unset' });
-    expect(classifyPowerSourceChoice({ raw: undefined, keyPresent: true, keyListEmpty: false }))
+    expect(classifyPowerSourceChoice({ raw: undefined, keyPresent: true }))
       .toEqual({ state: 'suspect', reason: 'missing_existing_key' });
-    expect(classifyPowerSourceChoice({ raw: undefined, keyPresent: false, keyListEmpty: true }))
-      .toEqual({ state: 'suspect', reason: 'empty_key_list' });
   });
 });

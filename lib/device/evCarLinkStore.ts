@@ -113,7 +113,7 @@ export const createEvCarLinkRepository = (db: UserdataDatabase): EvCarLinkReposi
  * unless the mark says the store holds it. The mark is written with an import,
  * and once on a boot whose key list was read without the key, so an install
  * that never had the blob, or retired it before imports were marked, does not
- * lose its history to every later boot whose key list comes back empty. A blob
+ * lose its history to a later boot whose key list cannot be read. A blob
  * with no snapshot in it, or whose every entry is malformed, holds no history,
  * so it does not count.
  */
@@ -189,9 +189,8 @@ const markNothingToImport = (repository: EvCarLinkRepository): void => {
  *
  * `importLegacy` is the legacy import (`importLegacyEvCarLinkState`), run before
  * the first read and asked again, while it has not answered, whenever someone
- * asks whether the history is whole. A new install's first boot reads an empty
- * key list, which says nothing about the blob; asked only at boot, its cars
- * would have no match history for that whole run. An import that lands late may
+ * asks whether the history is whole: asked only at boot, one unreadable read
+ * would leave the cars with no match history for that whole run. An import that lands late may
  * have put history under the stored rows, so the snapshot is read again, unless
  * a change the store has not taken is held in memory: the store has the history
  * for the next boot, and the change would be lost.

@@ -1,6 +1,7 @@
 import type { SettingsPort } from '../ports/homeyRuntime';
 import type { PowerTrackerState } from './trackerTypes';
 import { SIGNED_EXPORT_OBSERVED } from '../utils/settingsKeys';
+import { readSettingsKeyList } from '../utils/settingsKeyList';
 import { hasRecordedAnyExport } from '../../packages/shared-domain/src/solar/exhibitedExport';
 
 /**
@@ -43,11 +44,11 @@ import { hasRecordedAnyExport } from '../../packages/shared-domain/src/solar/exh
  *
  * - `expressed` — armed, in memory or on disk.
  * - `none` — settled: the store holds no bit and this run has seen no export.
- * - `unreadable` — the stored bit could not be read (a thrown read, an empty
- *   key list, a listed key that reads back empty) and this run has seen no
- *   export. NOT `none`: after a reset the stored bit is the only evidence
- *   left, so a transient miss must not be reported as "never exported". What
- *   it means for control is the reachability policy's call
+ * - `unreadable` — the stored bit could not be read (a thrown read, an
+ *   unreadable key list, a listed key that reads back empty) and this run has
+ *   seen no export. NOT `none`: after a reset the stored bit is the only
+ *   evidence left, so a missed read must not be reported as "never exported".
+ *   What it means for control is the reachability policy's call
  *   (`resolveSurplusPoolReachable`).
  */
 export type FeedExportEvidence = 'expressed' | 'none' | 'unreadable';
@@ -57,10 +58,10 @@ export class SignedExportLatch {
 
   /**
    * Whether the stored bit still has to be read. Stays owed after a read that
-   * settles nothing — a thrown read, an empty or malformed key list, or a key
-   * the list vouches for that reads back empty — so a transient miss is asked
-   * again rather than settled as "never observed"
-   * (`notes/persisted-settings-state.md`: an empty `getKeys()` is a flake).
+   * settles nothing — a thrown read, a thrown or malformed key list, or a key
+   * the list vouches for that reads back empty — so a miss is asked again
+   * rather than settled as "never observed". A key list that was read without
+   * the key, empty or not, settles it.
    */
   private readOwed = true;
 
@@ -110,7 +111,8 @@ export class SignedExportLatch {
         this.readOwed = false;
         return;
       }
-      if (listsKeysWithout(this.settings.getKeys(), SIGNED_EXPORT_OBSERVED)) this.readOwed = false;
+      const keys = readSettingsKeyList(this.settings);
+      if (keys.status === 'resolved' && !keys.keys.includes(SIGNED_EXPORT_OBSERVED)) this.readOwed = false;
     } catch {
       // The store could not answer. Nothing is settled; the next question asks again.
     }
@@ -130,14 +132,3 @@ export class SignedExportLatch {
     }
   }
 }
-
-/**
- * Only a non-empty, well-formed key list that lacks the key proves it was never
- * written. An empty list is a flake of this platform, not an empty store.
- */
-const listsKeysWithout = (keys: unknown, key: string): boolean => (
-  Array.isArray(keys)
-  && keys.length > 0
-  && keys.every((listed): listed is string => typeof listed === 'string')
-  && !keys.includes(key)
-);

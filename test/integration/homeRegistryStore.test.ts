@@ -4,7 +4,7 @@
 // the wipe-hazard guard for read-modify-write flows), the marker lifecycle
 // (first write sets it, plausible pre-marker blobs backfill it), and
 // round-trips of both keys.
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import {
@@ -48,8 +48,8 @@ describe('createHomesStore', () => {
     ],
   };
 
-  it('classifies an empty settings-key snapshot as suspect', () => {
-    expect(createHomesStore(homey.settings).read()).toEqual({ state: 'suspect' });
+  it('classifies an empty settings store as unwritten (fresh install)', () => {
+    expect(createHomesStore(homey.settings).read()).toEqual({ state: 'unwritten' });
   });
 
   it('classifies a proven absent blob as unwritten (fresh install)', () => {
@@ -117,6 +117,14 @@ describe('createHomesStore', () => {
     expect(createHomesStore(throwingHomey.settings).read()).toEqual({ state: 'suspect' });
   });
 
+  it('classifies an absent blob as suspect when the key list throws', () => {
+    const keyRead = vi.spyOn(mockHomeyInstance.settings, 'getKeys').mockImplementation(() => {
+      throw new Error('settings backend hiccup');
+    });
+    expect(createHomesStore(homey.settings).read()).toEqual({ state: 'suspect' });
+    keyRead.mockRestore();
+  });
+
   it('a malformed marker value counts as marker-present (absent blob → suspect, not unwritten)', () => {
     mockHomeyInstance.settings.set(HOMES_CONFIG_INITIALIZED, 'yes');
     expect(createHomesStore(homey.settings).read()).toEqual({ state: 'suspect' });
@@ -182,8 +190,8 @@ describe('createHomesStore', () => {
 describe('createDeviceHomeAssignmentsStore', () => {
   const assignments = { 'dev-1': 'main', 'dev-2': 'h_aaaa1111' };
 
-  it('classifies an empty settings-key snapshot as suspect', () => {
-    expect(createDeviceHomeAssignmentsStore(homey.settings).read()).toEqual({ state: 'suspect' });
+  it('classifies an empty settings store as unwritten (fresh install)', () => {
+    expect(createDeviceHomeAssignmentsStore(homey.settings).read()).toEqual({ state: 'unwritten' });
   });
 
   it('classifies a proven absent blob as unwritten (fresh install)', () => {

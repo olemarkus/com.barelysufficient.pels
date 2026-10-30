@@ -47,7 +47,7 @@ export type SoleMeterAdoptionEligibility =
    */
   | { kind: 'complete'; meterDeviceId: string }
   | { kind: 'settled'; detail: 'flow_source' | 'explicit_meter' }
-  | { kind: 'defer'; reasonCode: 'empty_key_list' | 'missing_existing_key' | 'suspect_meter_value' | 'read_failed' };
+  | { kind: 'defer'; reasonCode: 'missing_existing_key' | 'suspect_meter_value' | 'read_failed' };
 
 /**
  * The sole-cumulative-meter census over the live report, cross-checked

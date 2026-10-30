@@ -34,11 +34,8 @@ describe('readConfiguredPowerSource', () => {
     expect(setSpy).not.toHaveBeenCalled();
   });
 
-  it('treats absent source with a store-wide empty key list as suspect', () => {
-    expect(readConfiguredPowerSource(mockHomeyInstance.settings)).toMatchObject({
-      state: 'suspect',
-      reason: 'empty_key_list',
-    });
+  it('runs an empty store on the historical Flow default', () => {
+    expect(readConfiguredPowerSource(mockHomeyInstance.settings)).toEqual({ state: 'resolved', value: 'flow' });
   });
 
   it('retains the historical Flow fallback for malformed non-null values', () => {

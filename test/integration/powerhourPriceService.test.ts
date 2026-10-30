@@ -403,7 +403,7 @@ describe('Power by the Hour price service', () => {
     expect(Object.keys(today?.pricesByHour ?? {})).toHaveLength(24);
   });
 
-  // An empty key list is the SDK's flake: the import skips the key unread, and
+  // A key list that cannot be read makes the import skip the key unread, and
   // the day it holds is not absent. Merged as absent, the app's future-only
   // answer became the whole day, and the next import retired the key under
   // that row with this morning's hours in it.
@@ -420,7 +420,9 @@ describe('Power by the Hour price service', () => {
       get: async () => dapPrices(todayKey, 14, (hour) => hour),
     });
     const service = buildService();
-    const getKeys = vi.spyOn(mockHomeyInstance.settings, 'getKeys').mockReturnValue([]);
+    const getKeys = vi.spyOn(mockHomeyInstance.settings, 'getKeys').mockImplementation(() => {
+      throw new Error('settings unavailable');
+    });
 
     await service.refreshSpotPrices(true);
     getKeys.mockRestore();

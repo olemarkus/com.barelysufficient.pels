@@ -8,10 +8,10 @@ import { buildDeferredObjectiveDeviceWriteDeps } from './deferredRecorders';
  * Settings-UI clear of a device's smart task — the same device-scoped clear op
  * the `clear_deadline` Flow card runs, including its forget side effects.
  * `task_not_found` is answered ONLY on a TRUSTWORTHY absence (key list readable
- * AND the key missing). A present key or a transient-empty `getKeys()` flake
- * falls through to the idempotent unset in `clearObjectiveForDevice`, so one
- * flaky read never makes the UI report a still-running task as "already ended"
- * (`feedback_homey_sdk_unreliable`).
+ * AND the key missing). A listed key, or a key list that cannot be read, falls
+ * through to the idempotent unset in `clearObjectiveForDevice`, so an
+ * unreadable read never makes the UI report a still-running task as "already
+ * ended".
  */
 export const cancelDeferredObjectiveForContext = (
   ctx: AppContext,

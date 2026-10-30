@@ -55,8 +55,8 @@ const thermostat = (): TargetDeviceSnapshot & TemperatureObservedProbe => ({
 });
 
 describe('temperature-control policy read', () => {
-  // The absence classification itself (fresh install, listed-but-empty, empty
-  // key list, malformed-value retention) is covered end-to-end through
+  // The absence classification itself (fresh install, listed-but-empty,
+  // malformed-value retention) is covered end-to-end through
   // `DeviceControlSettings` in test/unit/deviceControlSettings.test.ts.
   // These cases pin only what that tier does not reach: both absence shapes,
   // and the guards that fire when the key list itself cannot be trusted.
@@ -67,6 +67,13 @@ describe('temperature-control policy read', () => {
   ])('resolves a never-written key that reads back as %s', (_label, absent) => {
     expect(readTemperatureControlDisabledDevicesSetting({
       settings: settingsStore({ entries: { capacity_limit_kw: 10 }, absent }),
+      current: UNAVAILABLE,
+    })).toEqual({ devices: {}, state: 'resolved' });
+  });
+
+  it('resolves a never-written key from an empty key list: the store holds nothing', () => {
+    expect(readTemperatureControlDisabledDevicesSetting({
+      settings: settingsStore({ entries: {} }),
       current: UNAVAILABLE,
     })).toEqual({ devices: {}, state: 'resolved' });
   });

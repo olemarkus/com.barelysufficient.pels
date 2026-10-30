@@ -83,11 +83,12 @@ describe('DeviceControlSettings temperature-command policy', () => {
     expect(settings.isTemperatureControlDisabled('thermostat', temperatureDevice)).toBe(true);
   });
 
-  it('fails closed when an empty key list cannot prove fresh-install absence', () => {
+  it('resolves a fresh install whose store holds no keys', () => {
     const { port } = settingsDouble({}, []);
     const settings = loaded(port);
 
-    expect(settings.temperatureControlPolicyState).toBe('unavailable');
+    expect(settings.temperatureControlPolicyState).toBe('resolved');
+    expect(settings.isTemperatureControlDisabled('thermostat', temperatureDevice)).toBe(false);
   });
 
   it('recovers an unavailable cold-boot policy after a later valid read', () => {

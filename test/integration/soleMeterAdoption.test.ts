@@ -15,10 +15,6 @@ const makeHomey = (initial: Record<string, unknown>): Homey.App['homey'] => {
   return { settings } as unknown as Homey.App['homey'];
 };
 
-// A fresh install never has an empty key list by the time the adoption
-// classifies: the boot migrations run first and set their markers.
-const FRESH_INSTALL_BASE = { boot_migrations_v2_unusable_stepped_config_repaired: true };
-
 const cumulative = (id: string, watts: number) => ({ type: 'cumulative', id, values: { W: watts } });
 const soleMeterReport = { items: [cumulative(METER_ID, 1200)] };
 const otherSoleMeterReport = { items: [cumulative(OTHER_METER_ID, 900)] };
@@ -118,24 +114,24 @@ describe('classifySoleMeterAdoptionEligibility', () => {
       .toEqual({ kind: 'eligible', detail: 'no_meter_chosen', meterKey: 'unwritten' });
   });
 
-  it('is eligible for an unset source, regardless of any persisted history', () => {
-    expect(classifySoleMeterAdoptionEligibility(makeHomey({ ...FRESH_INSTALL_BASE }).settings))
+  it('is eligible for an unset source, on an empty store and regardless of any persisted history', () => {
+    expect(classifySoleMeterAdoptionEligibility(makeHomey({}).settings))
       .toEqual({ kind: 'eligible', detail: 'unset_source', meterKey: 'unwritten' });
     expect(classifySoleMeterAdoptionEligibility(
-      makeHomey({ ...FRESH_INSTALL_BASE, power_tracker_state: { lastPowerW: 500 } }).settings,
+      makeHomey({ power_tracker_state: { lastPowerW: 500 } }).settings,
     )).toEqual({ kind: 'eligible', detail: 'unset_source', meterKey: 'unwritten' });
   });
 
   it('completes a half-applied save: an explicit meter with no source keeps its meter and gains the source', () => {
     expect(classifySoleMeterAdoptionEligibility(
-      makeHomey({ ...FRESH_INSTALL_BASE, homey_energy_meter_device_id: METER_ID }).settings,
+      makeHomey({ homey_energy_meter_device_id: METER_ID }).settings,
     )).toEqual({ kind: 'complete', meterDeviceId: METER_ID });
     expect(classifySoleMeterAdoptionEligibility(
-      makeHomey({ ...FRESH_INSTALL_BASE, homey_energy_meter_device_id: 'bad|id' }).settings,
+      makeHomey({ homey_energy_meter_device_id: 'bad|id' }).settings,
     )).toEqual({ kind: 'defer', reasonCode: 'suspect_meter_value' });
   });
 
-  it('defers when a listed key transiently answers undefined, and on an empty key list or a throwing read', () => {
+  it('defers when a listed key transiently answers undefined, or on a throwing read', () => {
     const store: Record<string, unknown> = { power_source: 'homey_energy', homey_energy_meter_device_id: METER_ID };
     const transientMeter = {
       get: (key: string) => (key === 'homey_energy_meter_device_id' ? undefined : store[key]),
@@ -144,7 +140,6 @@ describe('classifySoleMeterAdoptionEligibility', () => {
     expect(classifySoleMeterAdoptionEligibility(transientMeter)).toEqual({ kind: 'defer', reasonCode: 'missing_existing_key' });
     const transientSource = { get: () => undefined, getKeys: () => ['power_source'] };
     expect(classifySoleMeterAdoptionEligibility(transientSource)).toEqual({ kind: 'defer', reasonCode: 'missing_existing_key' });
-    expect(classifySoleMeterAdoptionEligibility(new MockSettings())).toEqual({ kind: 'defer', reasonCode: 'empty_key_list' });
     expect(classifySoleMeterAdoptionEligibility({ get: () => { throw new Error('boom'); }, getKeys: () => [] }))
       .toEqual({ kind: 'defer', reasonCode: 'read_failed' });
   });
@@ -154,7 +149,7 @@ describe('runSoleMeterAdoption', () => {
   it('adopts the sole meter for a fresh install on the second agreeing read, even when the tracker persists mid-window', async () => {
     vi.useFakeTimers();
     stubCensus(soleMeterReport);
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const homey = makeHomey({});
     const store = freshStore();
     // The power tracker's first prune persists its state 10 s after boot.
     // This is the write that made the previous design flip a fresh install to
@@ -242,7 +237,7 @@ describe('runSoleMeterAdoption', () => {
     ];
     for (const [liveReport, registry] of cases) {
       const { report } = stubCensus(liveReport, registry);
-      const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+      const homey = makeHomey({});
       const timers = run(homey);
       await vi.advanceTimersByTimeAsync(10 * 60_000);
       expect(homey.settings.get('power_source')).toBeNull();
@@ -256,7 +251,7 @@ describe('runSoleMeterAdoption', () => {
   it('retries an unavailable report, a failed or empty registry read, and an empty report, then adopts once two reads agree', async () => {
     vi.useFakeTimers();
     const { report, devices } = stubCensus(null);
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const homey = makeHomey({});
     run(homey);
     await vi.advanceTimersByTimeAsync(30_000);
     // An uninitialised REST client answers null for the report; the registry is not asked.
@@ -286,7 +281,7 @@ describe('runSoleMeterAdoption', () => {
   it('keeps trying, then gives up, when the registry never corroborates the live meter', async () => {
     vi.useFakeTimers();
     const { report } = stubCensus(soleMeterReport, { plug: { id: 'plug', name: 'Plug', class: 'socket' } });
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const homey = makeHomey({});
     const timers = run(homey);
     await vi.advanceTimersByTimeAsync(15 * 60_000);
     expect(report.calls()).toBe(10);
@@ -297,7 +292,7 @@ describe('runSoleMeterAdoption', () => {
   it('gives up for this boot after the retry ladder when no meter ever appears, writing nothing', async () => {
     vi.useFakeTimers();
     const { report } = stubCensus({ items: [] });
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const homey = makeHomey({});
     const timers = run(homey);
     await vi.advanceTimersByTimeAsync(15 * 60_000);
     expect(report.calls()).toBe(10);
@@ -308,7 +303,7 @@ describe('runSoleMeterAdoption', () => {
   it('stops without writing when the owner chooses a source between the two reads', async () => {
     vi.useFakeTimers();
     const { report } = stubCensus(soleMeterReport);
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const homey = makeHomey({});
     const timers = run(homey);
     await vi.advanceTimersByTimeAsync(30_000);
     homey.settings.set('power_source', 'flow');
@@ -326,7 +321,7 @@ describe('runSoleMeterAdoption', () => {
     // The unset-source arm asks for the tracker's whole history: Flows fire on
     // their own cadence, so a quiet first minute proves nothing. The last
     // persisted reading here is hours old.
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const homey = makeHomey({});
     const store = freshStore();
     store.save('main', OLD_FLOW_HISTORY());
     const timers = run(homey, new TimerRegistry(), undefined, store);
@@ -340,7 +335,7 @@ describe('runSoleMeterAdoption', () => {
   it('does not adopt over a reading admitted in memory since the run started, whatever is persisted', async () => {
     vi.useFakeTimers();
     stubCensus(soleMeterReport);
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const homey = makeHomey({});
     const timers = run(homey, new TimerRegistry(), Date.now() + 15_000);
     await vi.advanceTimersByTimeAsync(10 * 60_000);
     expect(homey.settings.get('power_source')).toBeNull();
@@ -361,7 +356,7 @@ describe('runSoleMeterAdoption', () => {
   it('decides nothing this boot when the persisted tracker cannot be read (a transient, not "never")', async () => {
     vi.useFakeTimers();
     const { report } = stubCensus(soleMeterReport);
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const homey = makeHomey({});
     const timers = run(homey, new TimerRegistry(), undefined, unreadableStore().store);
     await vi.advanceTimersByTimeAsync(15 * 60_000);
     expect(homey.settings.get('power_source')).toBeNull();
@@ -373,7 +368,7 @@ describe('runSoleMeterAdoption', () => {
   it('keeps an unreadable history for the whole run: a blank tracker persisted later is no evidence', async () => {
     vi.useFakeTimers();
     const { report } = stubCensus(soleMeterReport);
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const homey = makeHomey({});
     const { store, recover } = unreadableStore();
     const timers = run(homey, new TimerRegistry(), undefined, store);
     // The store answers again and the prune persists the blank in-memory
@@ -388,7 +383,7 @@ describe('runSoleMeterAdoption', () => {
   it('reads Flow history before the prune can overwrite it', async () => {
     vi.useFakeTimers();
     stubCensus(soleMeterReport);
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const homey = makeHomey({});
     const store = freshStore();
     store.save('main', OLD_FLOW_HISTORY());
     const timers = run(homey, new TimerRegistry(), undefined, store);
@@ -423,7 +418,6 @@ describe('runSoleMeterAdoption', () => {
     vi.useFakeTimers();
     stubCensus(soleMeterReport);
     const homey = makeHomey({
-      ...FRESH_INSTALL_BASE,
       homes_config: {
         subHomes: [{ homeId: 'area-1', name: 'Rental', rootZoneId: 'zone-1', meterDeviceId: METER_ID }],
       },
@@ -438,7 +432,7 @@ describe('runSoleMeterAdoption', () => {
   it('finishes a half-applied save with the stored meter, without a census', async () => {
     vi.useFakeTimers();
     const { report } = stubCensus(otherSoleMeterReport, registryOf(OTHER_METER_ID));
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE, homey_energy_meter_device_id: METER_ID });
+    const homey = makeHomey({ homey_energy_meter_device_id: METER_ID });
     const timers = run(homey);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(homey.settings.get('homey_energy_meter_device_id')).toBe(METER_ID);
@@ -450,7 +444,7 @@ describe('runSoleMeterAdoption', () => {
   it('retries a throwing source write, then completes the pair on the next attempt', async () => {
     vi.useFakeTimers();
     stubCensus(soleMeterReport);
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const homey = makeHomey({});
     const originalSet = homey.settings.set.bind(homey.settings);
     let sourceWrites = 0;
     vi.spyOn(homey.settings, 'set').mockImplementation((key: string, value: unknown) => {
@@ -472,7 +466,7 @@ describe('runSoleMeterAdoption', () => {
   it('does not complete a half-applied save over a Flow that started feeding since this run', async () => {
     vi.useFakeTimers();
     stubCensus(soleMeterReport);
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE, homey_energy_meter_device_id: METER_ID });
+    const homey = makeHomey({ homey_energy_meter_device_id: METER_ID });
     const timers = run(homey, new TimerRegistry(), Date.now() + 15_000);
     await vi.advanceTimersByTimeAsync(10 * 60_000);
     expect(homey.settings.get('power_source')).toBeNull();
@@ -483,7 +477,7 @@ describe('runSoleMeterAdoption', () => {
   it('keeps the proposed meter across a transient census failure, and confirms on the next usable read', async () => {
     vi.useFakeTimers();
     const { report } = stubCensus(soleMeterReport);
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const homey = makeHomey({});
     run(homey);
     await vi.advanceTimersByTimeAsync(30_000);
     report.mockRejectedValue(new Error('transient'));
@@ -497,7 +491,7 @@ describe('runSoleMeterAdoption', () => {
   it('restarts the confirmation when a report answers with no meter in between', async () => {
     vi.useFakeTimers();
     const { report } = stubCensus(soleMeterReport);
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const homey = makeHomey({});
     run(homey);
     await vi.advanceTimersByTimeAsync(30_000);
     report.mockResolvedValue({ items: [] });
@@ -512,7 +506,7 @@ describe('runSoleMeterAdoption', () => {
   it('requires two CONSECUTIVE reads to agree: a different sole meter restarts the confirmation', async () => {
     vi.useFakeTimers();
     const { report, devices } = stubCensus(soleMeterReport, registryOf(METER_ID));
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const homey = makeHomey({});
     run(homey);
     await vi.advanceTimersByTimeAsync(30_000);
     report.mockResolvedValue(otherSoleMeterReport);
@@ -526,7 +520,7 @@ describe('runSoleMeterAdoption', () => {
   it('still runs the ladder after a transient miss on the first source-key read', async () => {
     vi.useFakeTimers();
     stubCensus(soleMeterReport);
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const homey = makeHomey({});
     const originalGet = homey.settings.get.bind(homey.settings);
     let sourceReads = 0;
     vi.spyOn(homey.settings, 'get').mockImplementation((key: string) => {
@@ -551,7 +545,7 @@ describe('runSoleMeterAdoption', () => {
       if (call === 1) return soleMeterReport;
       return new Promise<ApiGetResult>((resolve) => { resolveReport = resolve; });
     });
-    const homey = makeHomey({ ...FRESH_INSTALL_BASE });
+    const homey = makeHomey({});
     const timers = run(homey);
     await vi.advanceTimersByTimeAsync(30_000);
     await vi.advanceTimersByTimeAsync(30_000);

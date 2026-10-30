@@ -5,9 +5,9 @@ import {
 } from '../../lib/home/mainMeterSelection';
 
 const KEY = 'homey_energy_meter_device_id';
-/** A healthy key list that vouches for the store and lists the meter key. */
+/** A key list that holds the meter key. */
 const listed = { getKeys: () => ['power_source', KEY] };
-/** A healthy key list that proves the meter key was never written. */
+/** A key list without the meter key, which proves it was never written. */
 const unlisted = { getKeys: () => ['power_source'] };
 
 describe('Main meter settings boundary', () => {
@@ -18,7 +18,7 @@ describe('Main meter settings boundary', () => {
     })).toEqual({ state: 'resolved', meterDeviceId: 'meter-main' });
   });
 
-  it('proves "nothing chosen" only from a healthy list that omits the key', () => {
+  it('proves "nothing chosen" only from a key list that omits the key', () => {
     // Homey answers an UNSET key with `null` (setup/AGENTS.md), so an unset
     // meter is `null` + unlisted. This is the one state a retry cannot change:
     // re-reading will not make an owner pick a meter, so it must never arm the
@@ -28,7 +28,7 @@ describe('Main meter settings boundary', () => {
   });
 
   it('keeps a listed-but-empty key unavailable — that is the observed miss shape', () => {
-    // A key the list vouches for that still reads empty is a transient SDK
+    // A key the list holds that still reads empty is a transient SDK
     // miss, or the legacy stored-null Automatic selection. The value cannot
     // tell them apart, and reading either as "nothing chosen" is what the
     // sole-meter adoption's grace window exists to avoid getting wrong.
@@ -36,8 +36,8 @@ describe('Main meter settings boundary', () => {
     expect(readMainMeterSelection({ ...listed, get: () => null }).state).toBe('unavailable');
   });
 
-  it('cannot prove absence from an empty key list', () => {
-    expect(readMainMeterSelection({ getKeys: () => [], get: () => undefined }).state).toBe('unavailable');
+  it('proves "nothing chosen" from an empty key list: the store holds nothing', () => {
+    expect(readMainMeterSelection({ getKeys: () => [], get: () => null }).state).toBe('unconfigured');
   });
 
   it('classifies anything else stored as unavailable — never as nothing chosen', () => {
@@ -118,7 +118,7 @@ describe('Main meter settings boundary', () => {
       expect(of({ ...unlisted, get: () => null }).state).toBe('unconfigured');
       expect(of({ ...listed, get: () => 'meter-main' })).toEqual({ state: 'resolved', meterDeviceId: 'meter-main' });
       expect(of({ ...listed, get: () => 42 }).state).toBe('unavailable');
-      expect(of({ getKeys: () => [], get: () => null }).state).toBe('unavailable');
+      expect(of({ getKeys: () => [], get: () => null }).state).toBe('unconfigured');
       now += GRACE_MS * 10;
       // Time alone never turns an untrustworthy read into "nothing chosen".
       expect(of({ ...listed, get: () => 42 }).state).toBe('unavailable');

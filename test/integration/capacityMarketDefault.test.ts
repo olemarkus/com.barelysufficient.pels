@@ -77,15 +77,21 @@ describe('the Capacity limit default on a new install', () => {
     expect(empty.get(CAPACITY_ENABLED)).toBe(false);
   });
 
-  it('keeps a switch the owner set while the store still lists no keys', async () => {
-    const settings = settingsWith({ [CAPACITY_ENABLED]: true });
-    vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+  it('asks again while the key list cannot be read, and decides once it can', async () => {
+    const settings = settingsWith(NEW_INSTALL_KEYS);
+    const written: string[] = [];
+    settings.on('set', (key: string) => written.push(key));
+    const getKeys = vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('store unavailable'); });
     const api = hubIn('DE');
     start(settings, () => readHubMarket(api.get));
 
     await vi.advanceTimersByTimeAsync(0);
+    expect(written).toEqual([]);
 
-    expect(settings.get(CAPACITY_ENABLED)).toBe(true);
+    getKeys.mockRestore();
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(settings.get(CAPACITY_ENABLED)).toBe(false);
   });
 
   it.each(['NO', 'BE'])('leaves the built-in default on for a hub in %s', async (country) => {

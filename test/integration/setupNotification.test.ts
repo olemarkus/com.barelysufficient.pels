@@ -48,15 +48,12 @@ describe('setup notification delivery', () => {
     expect(notifications.createNotification).not.toHaveBeenCalled();
   });
 
-  it('defers an empty settings-key read until a later startup', async () => {
-    const keyRead = vi.spyOn(settings, 'getKeys').mockReturnValueOnce([]);
-    await notifySetupOnce(settings, notifications);
-    expect(notifications.createNotification).not.toHaveBeenCalled();
-    expect(capture.findEvent('setup_notification_deferred')).toBeDefined();
+  it('reminds an installation whose store holds no keys at all', async () => {
+    const empty = new MockSettings();
+    await notifySetupOnce(empty, notifications);
 
-    keyRead.mockRestore();
-    await notifySetupOnce(settings, notifications);
     expect(notifications.createNotification).toHaveBeenCalledOnce();
+    expect(empty.getKeys()).toEqual([handledKey]);
   });
 
   it('contains a settings read failure without marking delivery', async () => {

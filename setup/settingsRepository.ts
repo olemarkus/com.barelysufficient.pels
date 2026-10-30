@@ -50,8 +50,7 @@ export class SettingsRepository {
   private readPersistedRecordEvidence(key: string): PersistedRecordReadEvidence | null {
     try {
       const raw = this.homey.settings.get(key) as unknown;
-      const keys = this.homey.settings.getKeys();
-      return { raw, keyPresent: keys.includes(key), keyListEmpty: keys.length === 0 };
+      return { raw, keyPresent: this.homey.settings.getKeys().includes(key) };
     } catch {
       return null;
     }

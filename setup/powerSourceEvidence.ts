@@ -13,7 +13,6 @@ export type PowerSourceSettingsPort = {
  */
 export const readPowerSourceEvidence = (settings: PowerSourceSettingsPort): PowerSourceSettingEvidence => {
   const raw = settings.get(POWER_SOURCE);
-  if (raw !== undefined && raw !== null) return { raw, keyPresent: false, keyListEmpty: false };
-  const keys = settings.getKeys();
-  return { raw, keyPresent: keys.includes(POWER_SOURCE), keyListEmpty: keys.length === 0 };
+  if (raw !== undefined && raw !== null) return { raw, keyPresent: false };
+  return { raw, keyPresent: settings.getKeys().includes(POWER_SOURCE) };
 };

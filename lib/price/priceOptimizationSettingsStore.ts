@@ -76,10 +76,6 @@ export const createPriceOptimizationSettingsStore = (
   readSetup(): PriceOptimizationSetupRead {
     try {
       const keys = settings.getKeys();
-      // PELS always owns settings keys. An empty inventory is the SDK's
-      // transient unreadable-store spelling, never proof of a fresh install.
-      if (keys.length === 0) return { state: 'unavailable' };
-
       const enabled = keys.includes(PRICE_OPTIMIZATION_ENABLED)
         ? settings.get(PRICE_OPTIMIZATION_ENABLED)
         : true;
@@ -116,9 +112,7 @@ export const createPriceOptimizationSettingsStore = (
       if (settings.get(PRICE_OPTIMIZATION_ENABLED) === false) return false;
       const raw = settings.get(PRICE_OPTIMIZATION_SETTINGS);
       if (raw === null || raw === undefined) {
-        const keys = settings.getKeys();
-        // An empty key list is the SDK's transient unreadable-store answer.
-        return keys.length === 0 || keys.includes(PRICE_OPTIMIZATION_SETTINGS);
+        return settings.getKeys().includes(PRICE_OPTIMIZATION_SETTINGS);
       }
       const read = classifyPriceOptimizationConfigMap(raw);
       return read.state === 'unavailable' || Object.values(read.settings).some((setting) => setting.enabled);
@@ -159,9 +153,7 @@ export function writeDevicePriceAdjustment(
   try {
     raw = settings.get(PRICE_OPTIMIZATION_SETTINGS);
     if (raw === null || raw === undefined) {
-      const keys = settings.getKeys();
-      // An empty key list is the SDK's transient unreadable-store answer.
-      return keys.length > 0 && !keys.includes(PRICE_OPTIMIZATION_SETTINGS) ? 'price_control_off' : 'unavailable';
+      return settings.getKeys().includes(PRICE_OPTIMIZATION_SETTINGS) ? 'unavailable' : 'price_control_off';
     }
   } catch {
     return 'unavailable';
