@@ -2301,6 +2301,51 @@ describe('what a charger waited for, and what arrived late', () => {
     expect(h.of('ev_car_link_unmatched')).toEqual([]);
   });
 
+  it('decides a plug-in seen while the only car was in an outage once the car is back', () => {
+    h.snapshot = recordEvCarLinkVote(h.snapshot, 'car-1', 'charger-1', 1);
+    h.snapshot = recordEvCarLinkVote(h.snapshot, 'car-1', 'charger-1', 2);
+    seedSelected(plugIn - HOUR_MS);
+    h.car(carDevice({ state: 'plugged_out', socPct: 55, available: false, observedAtMs: plugIn - HOUR_MS }),
+      plugIn - 60_000);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(plugIn);
+    // Back inside the window, already connected: no plug edge, but past matches may decide.
+    const backAt = plugIn + 5 * 60_000;
+    h.car(carDevice({ state: 'plugged_in', socPct: 56, observedAtMs: backAt }), backAt);
+    h.tick(plugIn + SETTLE_MS);
+    expect(h.of('ev_car_link_resolved')).toEqual([expect.objectContaining({
+      carId: 'car-1', chargerId: 'charger-1', source: 'affinity_prior',
+    })]);
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1', socPct: 56 });
+  });
+
+  it('says why a plug-in seen while the only car was in an outage got no car', () => {
+    seedSelected(plugIn - HOUR_MS);
+    h.car(carDevice({ state: 'plugged_out', socPct: 55, available: false, observedAtMs: plugIn - HOUR_MS }),
+      plugIn - 60_000);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(plugIn);
+    const backAt = plugIn + 5 * 60_000;
+    h.car(carDevice({ state: 'plugged_in', socPct: 56, observedAtMs: backAt }), backAt);
+    h.tick(plugIn + SETTLE_MS);
+    expect(h.of('ev_car_link_resolved')).toEqual([]);
+    expect(h.of('ev_car_link_unmatched')).toEqual([expect.objectContaining({ reason: 'not_enough_past_matches' })]);
+  });
+
+  it('does not call a car confirmed here charged elsewhere when its own plug-in report comes late', () => {
+    seedSelected(plugIn - HOUR_MS);
+    h.setCharger({ evChargingState: 'plugged_in' });
+    h.tick(plugIn);
+    h.producer.confirmAssociation('charger-1', 'car-1', plugIn + 60_000);
+    const lateAt = plugIn + SETTLE_MS + 60_000;
+    h.cap('car-1', 'ev_charging_state', 'plugged_in', lateAt);
+    h.tick(lateAt + EV_CAR_LINK_AWAY_VERDICT_MS + 60_000);
+    // Unplugging after the verdict age does not turn the edge into an away session either.
+    h.setCharger({ evChargingState: 'plugged_out' });
+    h.tick(lateAt + EV_CAR_LINK_AWAY_VERDICT_MS + 120_000);
+    expect(h.of('ev_car_session_elsewhere')).toEqual([]);
+  });
+
   it('never lets a startup retry take a car from a newer link at another charger', () => {
     h.snapshot = recordEvCarLinkVote(h.snapshot, 'car-1', 'charger-1', 1);
     h.snapshot = recordEvCarLinkVote(h.snapshot, 'car-1', 'charger-1', 2);

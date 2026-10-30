@@ -168,7 +168,10 @@ charger's `stateOfCharge`, carrying `source: { kind: 'car', carId }`. Three rule
   association and car-sourced level, and ignores capability events until a usable device read
   returns. It does **not** manufacture a physical unplug edge or erase the persisted session:
   if both car and charger still report connected on recovery, the existing restart-resume rule
-  restores the association; an affirmatively disconnected recovery ends it.
+  restores the association; an affirmatively disconnected recovery ends it. A charger plug-in
+  seen while every car is in an outage is kept and decided once a car is back, as when only
+  some cars are out: the car brings no plug edge, so past matches decide under the same
+  window deadline, and a refusal says why.
 
 The value arrives on the realtime seam, at the point the probe already computed `wouldAdopt`,
 and is dispatched as a `measure_battery` observation so the existing EV-boost plan-rebuild gate
@@ -247,7 +250,8 @@ lets a rival that a later charger report sets aside stop counting.
   charger, so an edge that fits two identifies neither;
 - a car edge matches no charger edge → `ev_car_session_elsewhere`. It carries **no vote in
   either direction** — an away session is silent evidence, not counter-evidence, so it
-  must never decrement the affinity prior.
+  must never decrement the affinity prior. It is not said for a car a charger here holds
+  (a confirmation whose car reported its plug-in after the window).
 
 **Contention counts devices, not edges.** A plug that bounces (plugged, unplugged and plugged
 again inside one window) gives one charger several edges of the same kind, all fitting the same
