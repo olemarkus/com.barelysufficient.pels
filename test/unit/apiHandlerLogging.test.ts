@@ -1,9 +1,10 @@
 // Regression: every `ui_*` API handler used to be a bare `async` return. When
 // the wrapped helper threw, Homey's transport surfaced a generic "Network
 // request failed" on the client and the actual cause never reached
-// `/tmp/pels` via the structured logger. The `withApiLogging` wrapper in
-// `api.ts` now guarantees both: emit a structured `api_handler_failed` event on
-// the server, rethrow so the client sees the real failure.
+// `/tmp/pels` via the structured logger. The `withApiLogging` wrapper that
+// `setup/api/defineRoutes.ts` applies to every route table now guarantees both:
+// emit a structured `api_handler_failed` event on the server, rethrow so the
+// client sees the real failure.
 
 vi.mock('../../setup/settingsUiApi', () => ({
   buildSettingsUiBootstrap: vi.fn(),

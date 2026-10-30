@@ -48,8 +48,8 @@ shipped: PR #2252 moved `fetchZoneTree` and silently lost `zone_tree_fetch_faile
 `getDebugEmitter('devices', 'devices')`, which keeps them on the topic the owner enables and makes
 them JSON with an `event` field, and its own comment says why it is not a module logger.
 
-Every runtime file is clean, so the guard allows no site at all. `api.ts`'s pre-logger boot
-`console.error` is the one exemption, by name in the guard.
+Every runtime file is clean, so the guard allows no site at all. The app-API wrapper's pre-logger
+boot `console.error` (`setup/api/defineRoutes.ts`) is the one exemption, by name in the guard.
 
 ## Current Model
 
