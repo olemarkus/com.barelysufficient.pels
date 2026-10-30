@@ -40,15 +40,6 @@ These are not actionable. Resolve it now or delete it — do not park it here:
 Guidance that is genuinely durable — a constraint the next contributor must respect rather than a
 change someone will make — belongs in the `AGENTS.md` or the code it governs, not here.
 
-*Phantom-design items removed (2026-05-31 m3-critic merit pass): the
-"Electricity-prices two-select contrast" and "inconsistent active-vs-history chart
-styling" items were written against UI that no longer exists — there are zero
-`md-outlined-select` in shipped markup (every select is the token-bound dark-themed
-`md-filled-select`, and migrating would break `segmentedControl.ts`), and both
-smart-task charts already share the palette tokens and are deliberately different
-chart types, not two languages for one chart. Do not re-raise from the stale
-live-walk screenshots.*
-
 ## Priority Rubric
 
 - **P0:** v1 / next-release blocker: release-blocking correctness, control-integrity, startup,
@@ -71,11 +62,7 @@ The redesigned Settings UI is expected to be many users' first exposure to the n
 P1 UI items should prioritize a pleasant surprise: compact, calm, coherent, and clear enough that
 users trust the redesign immediately, while still keeping non-P0 polish out of the v1 release gate.
 
-## Shed and restore control
-
 ## Smart tasks
-
-
 
 - [ ] **Latch `currentHourClaim` for the hour instead of recomputing it through the whole `:58`
       window.** `isPastHourSettleMark` is true from `:58:00` to `:59:59`, so the fresh allocator,
@@ -102,8 +89,9 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       otherwise cleared. The preview is conservative and cannot actuate, but can understate the
       candidate's feasible schedule after the live controller has moved on. Expose a read-only
       grace classification from a clock-owned in-memory roster (never persist the derived order),
-      then add a post-grace preview-parity regression. Source: pels-runtime-reality review of
-      the relative-priority PR, 2026-08-08. [P2]
+      **Done when** a preview made after the grace no longer reserves the missing task, pinned by
+      a post-grace preview-parity regression. Source: pels-runtime-reality review of the
+      relative-priority PR, 2026-08-08. [P2]
 
 - [ ] **Move the settings-UI edit lane and the create_smart_task widget onto lib-owned request lanes.**
       *Persona:* contributor changing how a smart task is previewed or saved.
@@ -167,15 +155,15 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       *(v3.24.1..e6e399a86 release review, 2026-10-28.)* [P2]
 
 - [ ] **An inverter that reports its own mode switches curtailment off silently.**
-      `inverterExecutor.ts:145-152` turns the opt-in off on any `device` mode report while held,
-      with no UI or activity trace. **What changes:** record the switch-off as an activity row for
+      `inverterExecutor.ts:129-134` turns the opt-in off (`InverterCurtailmentSettings.disable`) on
+      an owner mode change while held, with no UI or activity trace. **What changes:** record the switch-off as an activity row for
       the inverter and show it under Avoid paying to export. **Done when** the switch-off is visible
       in both places. *(v3.24.1..e6e399a86 release review, 2026-10-28.)* [P2]
 
 - [ ] **Quiet shedding cycles now retire recent shed credit for every home.** `buildSheddingPlan`
-      (`lib/plan/shedding/buildSheddingPlan.ts:122,132`) commits a pruned latch on cycles with no
+      (`lib/plan/shedding/buildSheddingPlan.ts:124,134`) commits a pruned latch on cycles with no
       deficit, where it used to return `NO_SHEDDING_OUTCOME` and leave the latch alone
-      (`planState.ts:416`). **What changes:** scope the pruning to continuous levers, or pin the new
+      (`applySheddingOutcome` in `planState.ts`). **What changes:** scope the pruning to continuous levers, or pin the new
       behaviour with a focused test. **Done when** a shedding test covers a deficit that returns
       inside the window. *(v3.24.1..e6e399a86 release review, 2026-10-28.)* [P2]
 
@@ -194,9 +182,9 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 - [ ] **Inverter and battery plan settings polish.** `views/InverterCurtailmentSettings.tsx` shows
       no loading state (an empty roster until the read lands), words errors as a plain
-      `<p role="status">` (line 112) instead of `field__hint field__hint--alert`, and gives no
-      Simulation-mode hint; the battery section repeats "Battery plan" (`public/index.html:1294`
-      and `ContinuousBatteryPlan.tsx:925`), and the wear validation message (`:989`) has no price
+      `<p role="status">` (line 50) instead of `field__hint field__hint--alert`, and gives no
+      Simulation-mode hint; the battery section repeats "Battery plan" (`public/index.html:1297`
+      and `ContinuousBatteryPlan.tsx:136`), and the wear validation message (`:200`) has no price
       unit. **What changes:** add "Loading inverters…", the alert hint class and a simulation hint;
       drop the inner heading; put the unit in the message. **Done when** each surface reads as
       described. *(v3.24.1..e6e399a86 release review, 2026-10-28.)* [P2]
@@ -246,15 +234,15 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Settings UI surfaces and copy
 
-- [ ] **Limits & safety: converge the Main-home form onto the native `.pels-input` field language.**
-      *Persona:* multi-home owner who switches the shell's home scope bar between the Main home and a meter
-      area. *Hypothesis:* U3 added the per-home editor using native `.pels-input` + unit-in-label ("Hard cap
-      (kW)"), which follows the canonical form-styling + ui-terminology rules and matches the U1 homes editor;
-      the legacy Main-home static form (`#settings-limits-form`) still uses `md-filled-text-field` with an
-      in-field `suffix-text="kW"`, so flipping the scope morphs the identical two inputs (filled↔outlined,
-      unit relocates). Kept out of U3 to preserve byte-identical Main behavior. Migrate the Main form to the
-      native primitive (the design-system-unification direction) so both scopes read as one control. Source:
-      pels-m3-critic review of the U3 per-home Limits surface, 2026-07-20. [P2]
+- [ ] **Limits & safety: the Main-home form still uses a different field language from the
+      meter-area form.** `#settings-limits-form` in `packages/settings-ui/public/index.html` renders
+      its kW inputs as `md-filled-text-field` with `suffix-text="kW"`, while the per-home editor
+      uses the native `.pels-input` with the unit in the label ("Hard cap (kW)"), so switching the
+      home scope bar between Main and an area morphs the same inputs. **What changes:** migrate the
+      Main form to the `.pels-input` primitive and unit-in-label. **Done when** no
+      `md-filled-text-field` remains in `#settings-limits-form` and both scopes render the same
+      field markup. *Persona:* multi-home owner. Source: pels-m3-critic review of the U3 per-home
+      Limits surface, 2026-07-20. [P2]
 
 - [ ] **Settings-UI structural consolidation train (deferred by the 2026-07 coherence review).**
       A designed, not-yet-executed train that unwinds the two-rendering-paradigms mess within the
@@ -279,14 +267,18 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## Diagnostics, logging and alerts
 
-- [ ] **The sustained hard-cap card's in-app hint omits the flow-source reporting requirement.**
-      With `power_source = flow` and samples arriving less often than once a minute, every
-      sustained run ends `evidence_stale` (`lib/power/capacityShortfallAlertDispatch.ts:374`, 60 s
-      freshness bound), so thresholds of 120–600 s silently never fire during a genuine breach.
-      docs/flow-cards.md documents the once-a-minute requirement; the card hint does not. Either
-      add the caveat to the compose hint, or have the guard republish a heartbeat candidate while
-      the condition stays evidenced with a fresh-by-flow-standards sample. Source: 2026-08-02
-      release review, pels-runtime-reality + budget/alerts adversarial pass. [P2]
+- [ ] **The sustained hard-cap trigger never fires on a flow-fed home that reports less than once a
+      minute, and its card does not say so.** With `power_source = flow`, a gap over 60 s between
+      samples ends every sustained run `evidence_stale`
+      (`lib/power/capacityShortfallAlertDispatch.ts`), so the 120–600 s thresholds of
+      `capacity_shortfall_sustained` never fire during a genuine breach. `docs/flow-cards.md`
+      states the once-a-minute requirement; the card hint in
+      `.homeycompose/flow/triggers/capacity_shortfall_sustained.json` does not. **Choice:** (a) add
+      the requirement to the card hint (an `app.json` change, so Athom review), or (b) have the
+      dispatch keep a run alive while the breach is still evidenced by a sample that is fresh by
+      flow standards. **Done when** either the card hint names the requirement, or an SDK e2e with
+      flow readings every 90 s fires a 120 s threshold during a sustained breach. Source:
+      2026-08-02 release review. [P2]
 
 ## Architecture and tooling debt
 
@@ -340,56 +332,3 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       **Done when:** `PlanLimits` and `MeasuredPower` carry no nullable limit or headroom field,
       the planner reads no `softLimitSource`, and the grep above finds no limit-posture null
       branch in `lib/plan` outside the meta projection. [P2]
-
-## Closed trains and historical notes
-
-*Prior P0 closures shipped on the v2.9 train via PRs #975, #977, #978, #980,
-#982, #983; surviving follow-ups demoted to P1/P2.*
-
-*The 2026-07-25 release-review cleanup closed the prior P0 set: it partitioned realtime reconcile
-work by home, finite-gated saved meter-area limits, and corrected the Main-meter setup guide.
-Remaining multi-meter work is tracked as P1/P2/P3 follow-up.*
-
-*"Drift detection reads device state from the plan layer" closed 2026-08-21 across four PRs: the
-plan-to-plan predicate was proved settle-only and sealed behind an AST guard; the commanded axis
-and the device's rung attestation moved to `lib/executor` / `lib/observer`; drift now reads the
-observation from the observer and the command state from the executor's own stores, qualified by
-the observation revision the plan was built from; and `observedBinaryState` split into
-`observedBinaryAxis` and `observedEffectiveOn`, one meaning each on every construction path.*
-
-*v2.9.0 closeout and v2.8.x release-review follow-ups. These are safe for
-patch releases, not release blockers; each item carries its own source/date.
-(The v2.8.0 card-title rename landed in PR #934.)*
-
-*The bulk of the P1 backlog shipped in the 2026-06-03 reconciliation train (PRs #1450–#1461):
-insights mode-options coalescing, headroom over-cap overage, the history-detail title/link fixes,
-deviceOverview canonical-string routing, the flow-reported / pendingBinaryCommands /
-stepped-restore-wrapper / stepped-swap-completion refactors, the settings.test.ts flake, the
-plan_budget truncation, the starvation confirm-sheet sub-parts, and the shared widget runtime.
-(What that train left open is tracked in the theme sections.)*
-
-*P1 targeted refactors (deferred): concrete, bounded changes to specific named surfaces — not
-structural re-splits, which stay P2.*
-
-*Hard-cap trajectory rekey follow-ups (2026-07-06 review findings; the rekey itself — "Above hard
-cap" keyed to projected hourly energy instead of instantaneous kW — shipped with its P0/P1s fixed).*
-
-*v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups. The solar gross/net
-split follow-ups from this batch are fixed by the solar-accounting follow-up.*
-
-*Chart-overhaul train review follow-ups (2026-06-11, PRs #1677–#1681). Non-blocking.*
-
-*Smart-task controller extraction (2026-05-30 → PR-E #1338): COMPLETE. The planner knows nothing
-about smart tasks — `no-plan-to-smarttasks` is `error` and green. Design of record:
-`notes/state-management/deferred-objective-lifecycle-carveout.md`. Its remaining follow-ups are
-non-blocking.*
-
-*Persona grouping retained from the former P3 section: smart-task failure-investigation & live UX
-serves the underserved Optimiser and the Failing-scenario (acute/recovering) visitors
-(`notes/personas.md`).*
-
-*Persona grouping retained from the former P3 section: EV charging serves the Optimiser / EV
-commuter (`notes/personas.md`).*
-
-*Demoted from P2 (2026-06-03 scrutiny pass) — real product / future-capability work with a
-persona but no current support-cost pressure; reframed to the P3 bar.*
