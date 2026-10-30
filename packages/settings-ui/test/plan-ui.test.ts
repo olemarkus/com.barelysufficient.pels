@@ -415,6 +415,25 @@ describe('Redesign plan UI', () => {
         .toBe('Quiet hour. Nothing to do.');
     });
 
+    it('names no quiet hour while no limit is in force', async () => {
+      await renderPlanSnapshot({
+        meta: buildPlanMeta({
+          totalKw: 1.2,
+          softLimitKw: null,
+          softLimitSource: null,
+          hardCapLimitKw: 8,
+          usedKWh: 0.8,
+          hourBudgetKWh: 5,
+          minutesRemaining: 38}),
+        devices: [
+          { id: 'dev-1', name: 'Heater', priority: 1, currentState: 'on', plannedState: 'keep' },
+        ],
+      });
+      const decision = document.querySelector('.plan-hero__decision') as HTMLElement | null;
+      expect(decision?.textContent?.trim()).toBe('No limit to hold, and no device follows prices yet.');
+      expect(decision?.hasAttribute('data-positive')).toBe(false);
+    });
+
     it('claims no quiet hour when the plan manages no devices', async () => {
       await renderPlanSnapshot({
         meta: buildPlanMeta({
