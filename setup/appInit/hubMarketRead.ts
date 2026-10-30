@@ -1,5 +1,5 @@
 import { readHubMarket } from '../../lib/home/hubMarket';
-import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUi/webApp';
 import { createHomeyWebApiGet } from '../homeyWebApi';
 
 /**

@@ -1,12 +1,12 @@
 import { callApi, getHomeyClient } from './homey.ts';
+import { type SettingsUiBootstrap } from '../../../contracts/src/settingsUi/bootstrap.ts';
+import { type SettingsUiDevicesPayload } from '../../../contracts/src/settingsUi/devices.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_PRICES_PATH,
-  type SettingsUiBootstrap,
-  type SettingsUiDevicesPayload,
-  type SettingsUiPricesPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/paths.ts';
+import { type SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
 import {
   SMART_TASK_BANNER_LOAD_ERROR_PREFIX,
   SMART_TASK_HISTORY_EYEBROW,

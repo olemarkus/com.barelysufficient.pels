@@ -13,7 +13,7 @@ import {
 import {
   SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH,
   SETTINGS_UI_SMART_TASK_CANCEL_PATH,
-} from '../../contracts/src/settingsUiApi.ts';
+} from '../../contracts/src/settingsUi/paths.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../contracts/src/deferredObjectiveSettings.ts';
 import { createHomeyMock } from './helpers/homeyApiMock.ts';
 

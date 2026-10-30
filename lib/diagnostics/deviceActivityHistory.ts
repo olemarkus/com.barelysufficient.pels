@@ -1,5 +1,5 @@
 /** The bounded, observational history of the device presentation sent to owners. */
-import type { SettingsUiDeviceActivityEntry } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiDeviceActivityEntry } from '../../packages/contracts/src/settingsUi/devices';
 
 export const DEVICE_ACTIVITY_RETENTION_DAYS = 7;
 export const DEVICE_ACTIVITY_MAX_ENTRIES = 1000;

@@ -3,11 +3,8 @@ import { readSettingsKeyList } from '../utils/settingsKeyList';
 import { PRICE_SCHEME } from '../utils/settingsKeys';
 import { isPriceSchemeSetting } from '../../packages/shared-domain/src/settings/priceScheme';
 import type { ExportSchemeChangePlan } from '../../packages/shared-domain/src/settings/exportPriceSchemeChange';
-import type {
-  PriceSchemeBasis,
-  ResolvedPriceScheme,
-  SettingsUiHubMarketRead,
-} from '../../packages/contracts/src/settingsUiApi';
+import type { PriceSchemeBasis, ResolvedPriceScheme } from '../../packages/contracts/src/settingsUi/prices';
+import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUi/webApp';
 import type { PriceDataStore } from './priceDataStore';
 import { settleExportPriceForSourceChange } from './exportPrice';
 import type { PowerhourPresence } from './powerhourScheme';

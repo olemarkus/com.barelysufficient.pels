@@ -9,7 +9,7 @@
 // Power-limit control is off, and warns (without blocking) while a smart task is
 // active, since an explicit off action is meant to beat a smart task.
 import { createHomeyMock } from './helpers/homeyApiMock';
-import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/devices';
 import { mockDeviceDetailCollaborators } from './helpers/deviceDetailCollaborators.ts';
 
 const flushPromises = () => new Promise<void>((resolve) => {

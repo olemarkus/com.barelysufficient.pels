@@ -1,6 +1,6 @@
 import type { DeferredHoldCause } from '../../packages/planner-types/src/deferredDecoration';
 import type { DevicePlanDevice } from './planTypes';
-import type { SoftLimitSource } from '../../packages/contracts/src/settingsUiApi';
+import type { SoftLimitSource } from '../../packages/contracts/src/settingsUi/plan';
 import {
   PLAN_REASON_CODES,
   resolveRestoreShortfallKw,

@@ -1,7 +1,5 @@
-import {
-  SETTINGS_UI_PRICES_PATH,
-  type SettingsUiPricesPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_PRICES_PATH } from '../../../contracts/src/settingsUi/paths.ts';
+import { type SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
 import { classifyPriceTimelineRead } from './priceTimelineRead.ts';
 import { getApiReadModel } from './homey.ts';
 import { classifyPriceOptimizationSetupRead } from './priceOptimizationSetupRead.ts';

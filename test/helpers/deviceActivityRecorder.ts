@@ -1,6 +1,6 @@
 import { DeviceOverviewLogRecorder } from '../../lib/diagnostics/deviceActivityRecorder';
 import { retainDeviceActivity } from '../../lib/diagnostics/deviceActivityHistory';
-import type { SettingsUiDeviceActivityEntry } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiDeviceActivityEntry } from '../../packages/contracts/src/settingsUi/devices';
 
 export const createTestDeviceActivityRecorder = (): DeviceOverviewLogRecorder => {
   let entries: SettingsUiDeviceActivityEntry[] = [];

@@ -1,6 +1,6 @@
 import { buildPlanCycle } from '../utils/planContextPowerFixture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import type { SoftLimitSource } from '../../packages/contracts/src/settingsUiApi';
+import type { SoftLimitSource } from '../../packages/contracts/src/settingsUi/plan';
 import { describe, expect, it } from 'vitest';
 import { shouldPlanBudgetExemptRestores } from '../../lib/plan/restore/timing';
 

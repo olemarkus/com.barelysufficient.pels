@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { NorwayPriceSetup, PriceSetupRead } from '../../contracts/src/settingsUiApi.ts';
+import type { NorwayPriceSetup, PriceSetupRead } from '../../contracts/src/settingsUi/prices.ts';
 
 const pricesRead = vi.hoisted(() => ({ priceSetup: { state: 'unavailable' } as PriceSetupRead }));
 

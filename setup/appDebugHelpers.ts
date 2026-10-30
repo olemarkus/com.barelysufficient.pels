@@ -3,7 +3,7 @@ import { nextDeviceDumpId } from '../lib/diagnostics/deviceDumpId';
 import type { AppContext } from '../lib/app/appContext';
 import type { DeviceTransportPort } from '../lib/device/deviceTransport';
 import { readHomeyEnergyMeters } from '../lib/device/homeyEnergyMeters';
-import type { HomeyEnergyMeterEntry } from '../packages/contracts/src/settingsUiApi';
+import type { HomeyEnergyMeterEntry } from '../packages/contracts/src/settingsUi/power';
 import { DEVICES_API_PATH, getRawDevices } from '../lib/device/transport/managerHomeyApi';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import { isHomeyDeviceLike } from '../lib/utils/types';

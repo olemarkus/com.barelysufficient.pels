@@ -44,10 +44,8 @@ import {
 } from '../src/ui/exportPriceSettings.ts';
 
 import { EXPORT_PRICE_SOURCE } from '../../shared-domain/src/settings/settingsKeys.ts';
-import {
-  SETTINGS_UI_PRICES_PATH,
-  type PriceSchemeSetting as PriceScheme,
-} from '../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_PRICES_PATH } from '../../contracts/src/settingsUi/paths.ts';
+import { type PriceSchemeSetting as PriceScheme } from '../../contracts/src/settingsUi/prices.ts';
 
 const setSettingMock = setSetting as Mock;
 const getSettingMock = getSetting as Mock;

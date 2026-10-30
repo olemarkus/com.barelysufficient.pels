@@ -1,7 +1,7 @@
 import { act } from 'preact/test-utils';
 import type { ContinuousBatteryPlanConfig, ContinuousBatteryPlanRead } from '../../contracts/src/continuousBatteryPlan.ts';
 import { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } from '../../shared-domain/src/settings/continuousBatteryPlan.ts';
-import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/devices.ts';
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 
 const callApi = vi.fn();

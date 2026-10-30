@@ -4,7 +4,7 @@
 // Split out of `deadlinePlan.ts` (payload assembly) to keep that file under
 // the max-lines ceiling; this module owns every timeline-side resolution so
 // the view renders flat data only.
-import type { SettingsUiBootstrap } from '../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiBootstrap } from '../../../contracts/src/settingsUi/bootstrap.ts';
 import {
   DEADLINE_MARKER_WORD,
   formatCheapestHoursCaption,

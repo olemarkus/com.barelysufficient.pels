@@ -3,7 +3,7 @@ import {
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/paths.ts';
 import { getTargetDevices, renderDevices } from './devices.ts';
 import { loadStaleDataStatus } from './capacity.ts';
 import { refreshHomeBadges } from './homeBadges.ts';

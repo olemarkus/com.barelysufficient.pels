@@ -1,6 +1,6 @@
 import type { PriceOptimizationSetup } from '../../../contracts/src/priceOptimizationSettings.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
-import type { NorwayPriceSetup, SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';
+import type { NorwayPriceSetup, SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
 import type { AfterSetupDevice, AfterSetupFacts, AfterSetupPriceSource } from './afterSetupRecommendations.ts';
 import { hasLoadedDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { supportsPowerDevice, supportsTemperatureControlDevice } from './deviceUtils.ts';

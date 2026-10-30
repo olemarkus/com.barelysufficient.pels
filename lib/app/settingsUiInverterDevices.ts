@@ -1,4 +1,4 @@
-import type { SettingsUiDevicesPayload } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiDevicesPayload } from '../../packages/contracts/src/settingsUi/devices';
 import { MAIN_HOME_ID } from '../utils/settingsKeys';
 import type { PelsHost } from './pelsHost';
 import { appNotReadyError } from './settingsUiReadiness';

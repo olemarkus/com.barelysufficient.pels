@@ -26,7 +26,7 @@
  * Browser-safe: no Homey SDK types, no runtime imports.
  */
 
-import type { PriceSchemeSetting } from '../../../contracts/src/settingsUiApi.js';
+import type { PriceSchemeSetting } from '../../../contracts/src/settingsUi/prices.js';
 
 /**
  * Read policy: RECOGNISE OR DEFAULT.

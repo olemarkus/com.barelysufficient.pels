@@ -3,7 +3,7 @@
 // relocations, idempotence, and the bare-page Setup auto-expand.
 
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
-import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/devices';
 
 const SECTION_IDS = [
   'device-detail-modes-section',

@@ -1,4 +1,4 @@
-import type { SettingsUiCapacityPeak } from '../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiCapacityPeak } from '../../../contracts/src/settingsUi/power.ts';
 
 /**
  * Classify the untrusted settings-API peak at the browser boundary. Anything

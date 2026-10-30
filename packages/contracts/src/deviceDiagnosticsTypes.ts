@@ -78,3 +78,5 @@ export type SettingsUiDeviceDiagnosticsPayload = {
   windowDays: number;
   diagnosticsByDeviceId: Record<string, DeviceDiagnosticsSummary>;
 };
+
+export type SettingsUiDeviceDiagnosticsResponse = SettingsUiDeviceDiagnosticsPayload;

@@ -6,8 +6,8 @@ import {
 } from '../src/ui/views/ElectricityPricesView.tsx';
 import type { HomeyStatus, PowerhourStatus, PriceConfigState } from '../src/ui/priceConfigTypes.ts';
 import type { LiveSummarySignals } from '../src/ui/livePriceSignals.ts';
-import type { PriceLevelSummaryRead } from '../../contracts/src/settingsUiApi.ts';
-import type { PowerhourSourceUiStatus } from '../../contracts/src/settingsUiApi.ts';
+import type { PriceLevelSummaryRead } from '../../contracts/src/settingsUi/prices.ts';
+import type { PowerhourSourceUiStatus } from '../../contracts/src/settingsUi/prices.ts';
 
 const buildConfig = (overrides: Partial<PriceConfigState> = {}): PriceConfigState => ({
   optimizationEnabled: true,

@@ -1,7 +1,7 @@
 import type {
   SettingsUiDeviceActivityEntry,
   SettingsUiDeviceLogPayload,
-} from '../../packages/contracts/src/settingsUiApi';
+} from '../../packages/contracts/src/settingsUi/devices';
 import type {
   SupportReportActivity,
   SupportReportActivityEntry,

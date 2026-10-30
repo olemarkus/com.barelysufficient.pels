@@ -1,7 +1,7 @@
 import { readPelsHost } from '../../lib/app/pelsHost';
 import { readObservedStateOfCharge } from '../../lib/observer/observedDeviceStateProjection';
 import { ApiRequestError } from '../../lib/utils/apiRequestError';
-import type { SettingsUiCarAssociationConfirmation } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiCarAssociationConfirmation } from '../../packages/contracts/src/settingsUi/carLink';
 import { API_STARTING_MESSAGE, defineRoutes, type ApiContext } from './defineRoutes';
 
 export const carLinkRoutes = defineRoutes({

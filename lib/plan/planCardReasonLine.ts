@@ -10,7 +10,7 @@ import {
   formatReservedForStartStatus,
 } from '../../packages/shared-domain/src/planStateLabels';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemanticsCore';
-import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUi/plan';
 import type { ObservedCurrentState, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { SteppedFairnessHold } from './planTypes';
 

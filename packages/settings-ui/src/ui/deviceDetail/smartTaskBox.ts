@@ -1,4 +1,4 @@
-import { SETTINGS_UI_SMART_TASK_DEVICES_PATH } from '../../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_SMART_TASK_DEVICES_PATH } from '../../../../contracts/src/settingsUi/paths.ts';
 import type {
   DeferredObjectiveSettingsEntry,
 } from '../../../../contracts/src/deferredObjectiveSettings.ts';

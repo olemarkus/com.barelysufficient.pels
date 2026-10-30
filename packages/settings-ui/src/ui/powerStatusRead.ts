@@ -1,6 +1,6 @@
 /**
  * Client seam for the classified power-status read
- * (`SettingsUiPowerStatusRead`, packages/contracts/src/settingsUiApi.ts).
+ * (`SettingsUiPowerStatusRead`, packages/contracts/src/settingsUi/power.ts).
  *
  * The producer (setup/settingsUiApi.ts) classifies the home's published
  * status at the read boundary: `live` means the home's measurement gate is
@@ -14,7 +14,7 @@
 import type {
   SettingsUiPowerStatus,
   SettingsUiPowerStatusRead,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/power.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 const UNAVAILABLE_REASONS: ReadonlySet<string> = new Set([

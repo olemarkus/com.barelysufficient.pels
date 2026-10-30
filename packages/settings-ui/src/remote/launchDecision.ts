@@ -1,4 +1,5 @@
-import { SETTINGS_UI_VERSION_PATH, type SettingsUiVersionRead } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_VERSION_PATH } from '../../../contracts/src/settingsUi/paths.ts';
+import { type SettingsUiVersionRead } from '../../../contracts/src/settingsUi/webApp.ts';
 import { readWebAppCloudHost } from '../../../shared-domain/src/settings/webAppCloudHost.ts';
 import { localUrlFromAddress } from './homeyAddress.ts';
 import { PELS_APP_ID } from './remoteConnection.ts';

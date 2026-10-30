@@ -1,4 +1,4 @@
-import type { HomeyEnergyMeterEntry } from '../../packages/contracts/src/settingsUiApi';
+import type { HomeyEnergyMeterEntry } from '../../packages/contracts/src/settingsUi/power';
 import type { HomeyDeviceLike } from '../utils/types';
 import { fetchLiveMeterItems } from './transport/managerFetch';
 import { isPickableMeterItem, resolveDeviceClassKey } from './transport/managerHelpers';

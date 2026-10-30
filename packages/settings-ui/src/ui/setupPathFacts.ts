@@ -1,6 +1,6 @@
 import type { CapacityScalarSettings } from '../../../contracts/src/capacitySettings.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
-import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUi/webApp.ts';
 import {
   isBelgianHourlySetup,
   isSetupStepOpen,

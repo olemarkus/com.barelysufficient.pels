@@ -1,4 +1,4 @@
-import { SETTINGS_UI_PRICES_PATH } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_PRICES_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import { invalidateApiCache } from './homey.ts';
 import { refreshAfterSetupRecommendations } from './recommendations.ts';
 import { writePriceOptimizationSettings } from './priceConfigSettingsIo.ts';

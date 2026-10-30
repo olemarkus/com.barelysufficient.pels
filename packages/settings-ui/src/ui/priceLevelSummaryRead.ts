@@ -1,7 +1,7 @@
 import type {
   PriceLevelSummaryRead,
   PriceThresholdSuggestion,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/prices.ts';
 import { isFiniteNumber } from '../../../shared-domain/src/numberGuards.ts';
 import { asUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 

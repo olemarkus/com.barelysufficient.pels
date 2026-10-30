@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import type { ContinuousBatteryPlanConfig, ContinuousBatteryPlanRead } from '../../../../contracts/src/continuousBatteryPlan.ts';
-import { SETTINGS_UI_DEVICES_PATH } from '../../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_DEVICES_PATH } from '../../../../contracts/src/settingsUi/paths.ts';
 import { isHomeBatteryClassKey } from '../../../../shared-domain/src/batteryOrSolarRole.ts';
 import { MAIN_HOME_ID } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { isUnknownRecord } from '../../../../shared-domain/src/recordGuards.ts';

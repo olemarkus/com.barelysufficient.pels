@@ -1,7 +1,7 @@
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import type { PlanDeviceSnapshot } from '../src/ui/planTypes.ts';
-import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUi/plan.ts';
 import type { SteppedLoadProfile } from '../../contracts/src/types.ts';
 import { PLAN_REASON_CODES } from '../../shared-domain/src/planReasonSemanticsCore.ts';
 import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../../shared-domain/src/planStateLabels.ts';

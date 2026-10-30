@@ -1,7 +1,5 @@
-import type {
-  SettingsUiRecommendationCar,
-  SettingsUiEvSocFlowReporter,
-} from '../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiRecommendationCar } from '../../../contracts/src/settingsUi/carLink.ts';
+import type { SettingsUiEvSocFlowReporter } from '../../../contracts/src/settingsUi/devices.ts';
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import {

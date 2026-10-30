@@ -2,8 +2,10 @@ import type {
   ContinuousBatteryPlanConfig, ContinuousBatteryPlanConfigs, ContinuousBatteryPlanRead,
 } from '../../../../contracts/src/continuousBatteryPlan.ts';
 import {
-  SETTINGS_UI_BOOTSTRAP_PATH, SETTINGS_UI_DEVICES_PATH, SETTINGS_UI_PRICES_PATH,
-} from '../../../../contracts/src/settingsUiApi.ts';
+  SETTINGS_UI_BOOTSTRAP_PATH,
+  SETTINGS_UI_DEVICES_PATH,
+  SETTINGS_UI_PRICES_PATH,
+} from '../../../../contracts/src/settingsUi/paths.ts';
 import {
   CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, parseContinuousBatteryPlanConfig, parseContinuousBatteryPlanConfigs,
 } from '../../../../shared-domain/src/settings/continuousBatteryPlan.ts';

@@ -4,8 +4,9 @@ import {
   POWERHOUR_PRICES_TODAY, POWERHOUR_PRICES_TOMORROW, PRICE_THRESHOLD_PERCENT, PRICE_MIN_DIFF_ORE,
 } from '../utils/settingsKeys';
 import type {
-  PriceLevelSummaryRead, ResolvedPriceScheme, SettingsUiHubMarketRead, SettingsUiTaskPricePeriod,
-} from '../../packages/contracts/src/settingsUiApi';
+  PriceLevelSummaryRead, ResolvedPriceScheme, SettingsUiTaskPricePeriod,
+} from '../../packages/contracts/src/settingsUi/prices';
+import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUi/webApp';
 import {
   addDays,
   getSpotPriceCacheDecision,

@@ -1,9 +1,7 @@
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { resolveHomeScopedRead, type HomeScopedRead } from '../../../contracts/src/homeScopedRead.ts';
-import {
-  SETTINGS_UI_DEVICES_PATH,
-  type SettingsUiDevicesPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+import { type SettingsUiDevicesPayload } from '../../../contracts/src/settingsUi/devices.ts';
+import { SETTINGS_UI_DEVICES_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import { getApiReadModel, homeScopedApiUri } from './homey.ts';
 import { getHomeScope } from './homeScope.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';

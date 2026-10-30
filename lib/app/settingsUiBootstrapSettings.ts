@@ -1,4 +1,7 @@
-import type { SettingsUiBootstrapKey, SettingsUiSettingsPatch } from '../../packages/contracts/src/settingsUiApi';
+import type {
+  SettingsUiBootstrapKey,
+  SettingsUiSettingsPatch,
+} from '../../packages/contracts/src/settingsUi/bootstrap';
 import { INVERTER_CURTAILMENT_DEVICES } from '../../packages/shared-domain/src/settings/inverterCurtailment';
 import { readContinuousBatteryPlanConfigs } from '../battery/continuousBatteryPlanSettings';
 import { CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY } from '../../packages/shared-domain/src/settings/continuousBatteryPlan';

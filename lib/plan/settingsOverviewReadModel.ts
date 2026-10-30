@@ -6,7 +6,7 @@ import type {
   SettingsUiPlanMetaUnmeasuredFields,
   SettingsUiPlanDeviceStarvation,
   SettingsUiPlanSnapshot,
-} from '../../packages/contracts/src/settingsUiApi';
+} from '../../packages/contracts/src/settingsUi/plan';
 import { normalizePlanMeta } from './planStatusHelpers';
 import type { DevicePlan, PlanMeta } from './planTypes';
 import type {

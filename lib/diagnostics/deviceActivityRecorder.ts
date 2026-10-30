@@ -3,8 +3,8 @@ import type {
   SettingsUiDeviceActivityEntry,
   SettingsUiDeviceLogEntry,
   SettingsUiDeviceLogPayload,
-  SettingsUiPlanDeviceSnapshot,
-} from '../../packages/contracts/src/settingsUiApi';
+} from '../../packages/contracts/src/settingsUi/devices';
+import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUi/plan';
 import { getLogger } from '../logging/logger';
 import { normalizeError } from '../utils/errorUtils';
 import {

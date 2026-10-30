@@ -1,5 +1,7 @@
 import { handleWidgetClientLog, type WidgetClientLogContext } from '../../_shared/widgetClientLogApi';
-import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../../packages/contracts/src/settingsUiApi';
+import type {
+  SettingsUiDeferredObjectivePlanHistoryPayload,
+} from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { SmartTaskHistoryHostApi } from '../../../packages/contracts/src/widgetHostApi';
 import { buildSmartTasksWidgetPayload, ENDED_WINDOW_MS } from './smartTasksWidgetPayload';
 import type { SmartTasksWidgetPayload } from './smartTasksWidgetTypes';

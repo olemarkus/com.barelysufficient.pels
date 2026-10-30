@@ -2,7 +2,7 @@ import type {
   SettingsUiPlanMetaMeasuredFields,
   SettingsUiPlanMetaSnapshot,
   SettingsUiPlanMetaSnapshotBase,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/plan.ts';
 
 /**
  * A complete `SettingsUiPlanMetaSnapshot`, so a spec spells only the numbers its

@@ -1,13 +1,15 @@
 import './materialWeb.ts';
 import {
+  type SettingsUiDeferredObjectivePlanHistoryPayload,
+} from '../../../contracts/src/deferredObjectivePlanHistory.ts';
+import {
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
-  type SettingsUiDeferredObjectivePlanHistoryPayload,
-  type SettingsUiPlanPayload,
-  type SettingsUiPowerPayload,
-  type SettingsUiPricesPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/paths.ts';
+import { type SettingsUiPlanPayload } from '../../../contracts/src/settingsUi/plan.ts';
+import { type SettingsUiPowerPayload } from '../../../contracts/src/settingsUi/power.ts';
+import { type SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { callApi, getApiReadModel } from './homey.ts';
 import { getHomeScope, readHomeMembership } from './homeScope.ts';

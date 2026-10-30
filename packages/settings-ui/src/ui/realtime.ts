@@ -11,8 +11,8 @@ import {
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
-  type SettingsUiPowerPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/paths.ts';
+import { type SettingsUiPowerPayload } from '../../../contracts/src/settingsUi/power.ts';
 import { updateStaleDataStatusFromPowerPayload } from './capacity.ts';
 import {
   getHomeyClient,

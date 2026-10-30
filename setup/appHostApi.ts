@@ -1,4 +1,4 @@
-import type { SettingsUiTaskPricePeriod } from '../packages/contracts/src/settingsUiApi';
+import type { SettingsUiTaskPricePeriod } from '../packages/contracts/src/settingsUi/prices';
 import type { DeferredObjectiveSettingsKind } from '../packages/contracts/src/deferredObjectiveSettings';
 import type { NewSmartTaskWriteResult } from '../packages/contracts/src/smartTaskEdit';
 import { getDebugEmitter } from '../lib/logging/logger';
@@ -27,13 +27,13 @@ import type {
   DecoratedDeviceSnapshot,
   DeviceDescriptorRead,
 } from '../packages/contracts/src/types';
+import type { SettingsUiPlanSnapshot } from '../packages/contracts/src/settingsUi/plan';
+import type { SettingsUiHardCapConfigurationRead } from '../packages/contracts/src/settingsUi/power';
 import type {
   PriceLevelSummaryRead,
   PriceSetupRead,
   PriceSetupSuggestion,
-  SettingsUiHardCapConfigurationRead,
-  SettingsUiPlanSnapshot,
-} from '../packages/contracts/src/settingsUiApi';
+} from '../packages/contracts/src/settingsUi/prices';
 import type {
   CreateSmartTaskCandidateDevicesRead,
   PelsWidgetHostApi,
@@ -50,8 +50,8 @@ import type {
 import type { StarvationNotListedDevice, StarvationRescueDevice } from '../packages/contracts/src/starvationRescue';
 import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
-  SettingsUiDeviceLogPayload,
-} from '../packages/contracts/src/settingsUiApi';
+} from '../packages/contracts/src/deferredObjectivePlanHistory';
+import type { SettingsUiDeviceLogPayload } from '../packages/contracts/src/settingsUi/devices';
 import type { WeatherAdvisorReadout } from '../packages/contracts/src/weatherAdvisorTypes';
 import type { WeatherCollector } from '../lib/weather/weatherCollector';
 import type {

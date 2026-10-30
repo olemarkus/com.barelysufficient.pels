@@ -9,10 +9,8 @@
 // state, power, fact, and reason text as the Overview card. Hidden when the plan
 // carries no entry for the device (e.g. an unmanaged device opened from the
 // Devices list) — no fabricated status.
-import {
-  SETTINGS_UI_PLAN_PATH,
-  type SettingsUiPlanPayload,
-} from '../../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_PLAN_PATH } from '../../../../contracts/src/settingsUi/paths.ts';
+import { type SettingsUiPlanPayload } from '../../../../contracts/src/settingsUi/plan.ts';
 import { getApiReadModel } from '../homey.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { parsePlanSnapshot } from '../planSnapshotParse.ts';

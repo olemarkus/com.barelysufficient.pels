@@ -2,7 +2,7 @@ import type { HomeyWebApiGet } from '../../lib/price/homeyPriceFormula';
 import { HOMEY_PRICE_FORMULA } from '../../lib/utils/settingsKeys';
 import type { HomeyEnergyApi } from '../../lib/utils/homeyEnergy';
 import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
-import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUi/webApp';
 
 /**
  * A Homey Web API read that answers everything with `null`.

@@ -1,6 +1,6 @@
 import { createSettingsResync } from '../src/remote/remoteSettingsResync.ts';
 import type { RemoteRequest } from '../src/remote/remoteHomeyClient.ts';
-import { SETTINGS_UI_BOOTSTRAP_PATH } from '../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_BOOTSTRAP_PATH } from '../../contracts/src/settingsUi/paths.ts';
 import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_UPDATED_EVENT } from '../../shared-domain/src/settings/settingsKeys.ts';
 
 // Homey only sends settings events while the socket is up; after a drop the

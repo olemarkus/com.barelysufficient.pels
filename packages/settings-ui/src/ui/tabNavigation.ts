@@ -3,7 +3,7 @@ import { refreshAdvancedDeviceLogger } from './advanced.ts';
 import { refreshSupportReport } from './supportReport.ts';
 import { currentSetupJourney, type SetupJourneyStep } from './setupJourneyState.ts';
 import { panels, tabListEntries, tabs, type MdTabElement } from './dom.ts';
-import { SETTINGS_UI_POWER_PATH } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_POWER_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import { loadCapacitySettings } from './capacity.ts';
 import { refreshHomeLimitsOnLimitsPanel } from './homeLimits.ts';
 import { refreshHomeScope } from './homeScope.ts';

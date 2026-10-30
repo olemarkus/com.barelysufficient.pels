@@ -1,5 +1,5 @@
 import type { CapacityPeriodMinutes } from '../../../contracts/src/capacitySettings.ts';
-import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUi/webApp.ts';
 
 /**
  * The first-run setup path: what must be true before PELS manages a home's

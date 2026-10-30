@@ -12,11 +12,11 @@ import type {
 } from '../priceConfigTypes.ts';
 import { normalizeNorwayPriceModel, normalizePriceSchemeSelection } from '../priceSettingsPersistence.ts';
 import type {
-  SettingsUiHubMarketRead,
   PowerhourDeviceUiOption,
   PowerhourSourceUiStatus,
   PriceSetupSuggestion,
-} from '../../../../contracts/src/settingsUiApi.ts';
+} from '../../../../contracts/src/settingsUi/prices.ts';
+import type { SettingsUiHubMarketRead } from '../../../../contracts/src/settingsUi/webApp.ts';
 import { resolvePriceLevelChip } from '../../../../shared-domain/src/priceLevelChips.ts';
 import { resolvePvForecastStatusLine } from '../../../../shared-domain/src/solar/pvForecastSourceStatus.ts';
 import { isPvForecastSourceSetting } from '../../../../shared-domain/src/settings/pvForecastSource.ts';
@@ -48,7 +48,10 @@ import {
   resolvePriceWidgetAmountUnit,
   resolvePriceWidgetAxisUnit,
 } from '../../../../shared-domain/src/priceWidgetCopy.ts';
-import type { PriceLevelSummaryRead, PriceThresholdSuggestion } from '../../../../contracts/src/settingsUiApi.ts';
+import type {
+  PriceLevelSummaryRead,
+  PriceThresholdSuggestion,
+} from '../../../../contracts/src/settingsUi/prices.ts';
 
 type ValueElement = HTMLElement & { value: string };
 type SwitchElement = HTMLElement & { selected: boolean };

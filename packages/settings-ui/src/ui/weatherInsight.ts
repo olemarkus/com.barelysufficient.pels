@@ -3,7 +3,7 @@ import type {
   WeatherAdvisorReadoutPayload,
   WeatherDeviceReading,
 } from '../../../contracts/src/weatherAdvisorTypes.ts';
-import { SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import { WEATHER_ADVISOR_SETTINGS } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { isCalendarDateKey } from '../../../shared-domain/src/utils/dateUtils.ts';
 import { WEATHER_FIRST_ESTIMATE_TOAST } from '../../../shared-domain/src/weatherInsightCopy.ts';

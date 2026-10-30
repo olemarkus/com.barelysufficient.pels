@@ -12,7 +12,7 @@ import {
   PLAN_STATE_HELD_FALLBACK_STATUS,
 } from '../../packages/shared-domain/src/planStateLabels';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
-import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUi/plan';
 import type { DeviceOverviewSteppedLoad } from '../../packages/contracts/src/deviceOverview';
 
 const NOW_MS = 1_000_000;

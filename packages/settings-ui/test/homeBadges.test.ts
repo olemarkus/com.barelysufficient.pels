@@ -1,5 +1,5 @@
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
-import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/devices';
 import { SETTINGS_UI_HOMES_PATH } from '../../contracts/src/settingsUiHomes';
 import { DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG } from '../../shared-domain/src/settings/settingsKeys';
 import { createHomeyMock } from './helpers/homeyApiMock';

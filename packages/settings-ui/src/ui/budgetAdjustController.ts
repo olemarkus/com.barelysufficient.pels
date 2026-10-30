@@ -14,7 +14,7 @@ import {
 import {
   SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/paths.ts';
 import {
   MAX_DAILY_BUDGET_KWH,
   MIN_DAILY_BUDGET_KWH,

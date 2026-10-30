@@ -1,5 +1,5 @@
 import { Fragment, render } from 'preact';
-import type { SettingsUiDeviceActivityEntry } from '../../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiDeviceActivityEntry } from '../../../../contracts/src/settingsUi/devices.ts';
 import { HOME_SCOPE_ACTIVITY_NOT_RECORDED } from '../homeScopeCopy.ts';
 import { chipModifierForTone } from './chipModifier.ts';
 import { MdTextButton } from './materialWebJSX.tsx';

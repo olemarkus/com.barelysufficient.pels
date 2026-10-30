@@ -5,7 +5,7 @@
 // of homes with solar whose net never goes negative, where the runtime declines the
 // posture and the toggle would switch on a feature that cannot engage.
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
-import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/devices';
 import { createHomeyMock } from './helpers/homeyApiMock';
 import { mockDeviceDetailCollaborators } from './helpers/deviceDetailCollaborators.ts';
 

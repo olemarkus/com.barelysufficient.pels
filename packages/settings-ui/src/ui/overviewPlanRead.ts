@@ -4,7 +4,8 @@ import {
   homeScopedSettingsKey,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { resolveHomeScopedRead, type HomeScopedRead } from '../../../contracts/src/homeScopedRead.ts';
-import { SETTINGS_UI_PLAN_PATH, type SettingsUiPlanPayload } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_PLAN_PATH } from '../../../contracts/src/settingsUi/paths.ts';
+import { type SettingsUiPlanPayload } from '../../../contracts/src/settingsUi/plan.ts';
 import { getApiReadModel, getSetting, homeScopedApiUri } from './homey.ts';
 import { getHomeScope } from './homeScope.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';

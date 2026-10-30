@@ -2,13 +2,15 @@ import { state } from './state.ts';
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import {
+  type SettingsUiDeferredObjectivePlanHistoryPayload,
+} from '../../../contracts/src/deferredObjectivePlanHistory.ts';
+import { type SettingsUiBootstrap } from '../../../contracts/src/settingsUi/bootstrap.ts';
+import { type SettingsUiDevicesPayload } from '../../../contracts/src/settingsUi/devices.ts';
+import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
   SETTINGS_UI_DEVICES_PATH,
-  type SettingsUiBootstrap,
-  type SettingsUiDeferredObjectivePlanHistoryPayload,
-  type SettingsUiDevicesPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/paths.ts';
 import { normalizeDeferredObjectiveRoster } from './deferredObjectiveRoster.ts';
 import type { DeferredObjectiveRoster } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type {

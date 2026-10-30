@@ -6,12 +6,12 @@ import {
   homeScopedSettingsKey,
   MAIN_HOME_ID,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
+import { SETTINGS_UI_POWER_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import {
-  SETTINGS_UI_POWER_PATH,
   type SettingsUiCapacityPeak,
   type SettingsUiCapacityScalarsRead,
   type SettingsUiPowerPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/power.ts';
 import {
   HOME_LIMITS_CONTROL_FAILED_TOAST,
   HOME_LIMITS_CONTROL_SAVED_TOAST,

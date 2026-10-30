@@ -1,6 +1,7 @@
 import type {
-  SettingsUiDeviceActivityEntry, SettingsUiDeviceLogPayload,
-} from '../../packages/contracts/src/settingsUiApi';
+  SettingsUiDeviceActivityEntry,
+  SettingsUiDeviceLogPayload,
+} from '../../packages/contracts/src/settingsUi/devices';
 
 export const REPORT_HOUR_MS = 60 * 60 * 1000;
 export const REPORT_CAPTURE_MS = Date.UTC(2026, 9, 23, 12);

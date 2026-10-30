@@ -6,10 +6,8 @@ import { PLAN_STATUS_PUBLISHED_EVENT } from '../utils/settingsKeys';
 import { buildPlanDetailSignature } from './planLogging';
 import { createPlanRebuildOutcome } from './planRebuildMetrics';
 import { runWithContext } from '../logging/alsContext';
-import type {
-  SettingsUiDeviceLogPayload,
-  SettingsUiPlanSnapshot,
-} from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiDeviceLogPayload } from '../../packages/contracts/src/settingsUi/devices';
+import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUi/plan';
 import { buildSettingsOverviewReadModel } from './settingsOverviewReadModel';
 import {
   createIdleClassifier,

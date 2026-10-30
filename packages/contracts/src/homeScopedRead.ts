@@ -1,4 +1,20 @@
-import type { SettingsUiHomeScope } from './settingsUiApi.js';
+/**
+ * Producer-resolved home scope of a settings-UI read model — the complete
+ * classification of a `?homeId=` request, so no consumer re-derives it.
+ *
+ * ABSENT on an unscoped read: the payload is then byte-identical to the
+ * pre-multi-home shape, which is what keeps a single-home install (and every
+ * whole-home surface) on exactly the response it has always had.
+ *
+ * `unavailable` folds every non-serving case the producer knows about — a
+ * malformed or refused id, an unknown sub-home, and a home whose runtime is not
+ * (or no longer) wired. Render it as "no data for this home"; never substitute
+ * another home's values, and never read the flat payload fields as if they were
+ * that home's real state (they are the empty shape, not measurements).
+ */
+export type SettingsUiHomeScope =
+  | { readonly state: 'resolved'; readonly homeId: string }
+  | { readonly state: 'unavailable' };
 
 /**
  * A `?homeId=`-scoped read model, resolved to a shape whose flat fields are

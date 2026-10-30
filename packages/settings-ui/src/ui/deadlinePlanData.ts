@@ -1,4 +1,5 @@
-import type { SettingsUiBootstrap, SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiBootstrap } from '../../../contracts/src/settingsUi/bootstrap.ts';
+import type { SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { DeviceStatus } from '../../../contracts/src/deviceStatus.ts';
 import type {

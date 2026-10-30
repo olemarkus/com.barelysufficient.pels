@@ -1,4 +1,4 @@
-import type { PriceSchemeSetting } from '../../packages/contracts/src/settingsUiApi';
+import type { PriceSchemeSetting } from '../../packages/contracts/src/settingsUi/prices';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
@@ -67,7 +67,7 @@ export type CombinedPricePeriod = CombinedPriceFields & {
 
 /**
  * Which source prices this home. Declared once, in
- * `packages/contracts/src/settingsUiApi.ts`, because the settings UI renders
+ * `packages/contracts/src/settingsUi/prices.ts`, because the settings UI renders
  * the same union from the same bytes; the shared read policy for those bytes
  * is `packages/shared-domain/src/settings/priceScheme.ts`.
  */

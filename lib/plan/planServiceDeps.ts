@@ -2,7 +2,7 @@ import type { SettingsPort, FlowPort, ApiPort } from '../ports/homeyRuntime';
 import type { CarIdentificationState } from '../../packages/contracts/src/evCarLink';
 import type { SteppedSettleDevice } from '../observer/steppedSettleSnapshot';
 import type { Logger as PinoLogger } from '../logging/logger';
-import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUi/plan';
 import type { ThermalDirection } from '../../packages/contracts/src/types';
 import type { DeviceOverviewLogRecorder } from '../diagnostics/deviceActivityRecorder';
 import type { PendingBinaryLiveDevice } from '../ports/controlCommandConfirmation';

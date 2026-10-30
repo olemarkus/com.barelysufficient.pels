@@ -5,7 +5,7 @@
 
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import { createHomeyMock } from './helpers/homeyApiMock.ts';
-import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/devices';
 import type { EvChargingState } from '../../contracts/src/types';
 
 const IDS = [

@@ -1,4 +1,4 @@
-import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUi/webApp';
 import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { normalizeError } from '../utils/errorUtils';

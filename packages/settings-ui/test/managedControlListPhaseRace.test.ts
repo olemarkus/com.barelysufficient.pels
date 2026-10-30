@@ -1,4 +1,4 @@
-import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/devices.ts';
 
 const ensureChargerPhasePresetsRead = vi.fn();
 const applyManagedOptInControlMode = vi.fn();

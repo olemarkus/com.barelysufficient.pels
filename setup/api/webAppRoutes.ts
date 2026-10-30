@@ -2,7 +2,7 @@ import { readHubMarket } from '../../lib/home/hubMarket';
 import type {
   SettingsUiHubMarketRead,
   SettingsUiVersionRead,
-} from '../../packages/contracts/src/settingsUiApi';
+} from '../../packages/contracts/src/settingsUi/webApp';
 import { WEB_APP_CLOUD_HOST } from '../../packages/shared-domain/src/settings/settingsKeys';
 import { readWebAppCloudHost } from '../../packages/shared-domain/src/settings/webAppCloudHost';
 import { createHomeyWebApiGet } from '../homeyWebApi';

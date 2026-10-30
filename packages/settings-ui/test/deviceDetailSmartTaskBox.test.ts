@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyDeferredObjectiveRoster } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
-import { SETTINGS_UI_SMART_TASK_DEVICES_PATH } from '../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_SMART_TASK_DEVICES_PATH } from '../../contracts/src/settingsUi/paths.ts';
 
 const callApiMock = vi.fn();
 let settingsLoaded = true;

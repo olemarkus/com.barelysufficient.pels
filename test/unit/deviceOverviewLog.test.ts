@@ -14,7 +14,7 @@ import { buildOverviewDeviceCard, overviewReadModelWiring } from '../utils/setti
 import { executionStateFixture } from '../utils/deviceStatusFixture';
 import { DeviceOverviewTransitions } from '../../lib/plan/planOverviewEmit';
 import type { DeviceOverviewLogRecorder } from '../../lib/diagnostics/deviceActivityRecorder';
-import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUi/plan';
 import { partialDouble } from '../helpers/partialDouble';
 
 // The log seam receives the same resolved presentation as the UI.

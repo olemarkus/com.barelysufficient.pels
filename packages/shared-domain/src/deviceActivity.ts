@@ -1,6 +1,4 @@
-import type {
-  SettingsUiDeviceActivityEntry,
-} from '../../contracts/src/settingsUiApi';
+import type { SettingsUiDeviceActivityEntry } from '../../contracts/src/settingsUi/devices';
 import { isUnknownRecord } from './recordGuards';
 
 const text = (value: unknown): value is string => typeof value === 'string';

@@ -13,7 +13,8 @@
 
 import { getApiReadModel, getSetting, homeScopedApiUri } from './homey.ts';
 import { liveStatusOrNull } from './powerStatusRead.ts';
-import { SETTINGS_UI_POWER_PATH, type SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_POWER_PATH } from '../../../contracts/src/settingsUi/paths.ts';
+import { type SettingsUiPowerPayload } from '../../../contracts/src/settingsUi/power.ts';
 import type { MeterAreaSimulationEntry } from './state.ts';
 import {
   CAPACITY_DRY_RUN,

@@ -1,7 +1,5 @@
-import {
-  SETTINGS_UI_VERSION_PATH,
-  type SettingsUiVersionRead,
-} from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_VERSION_PATH } from '../../../contracts/src/settingsUi/paths.ts';
+import { type SettingsUiVersionRead } from '../../../contracts/src/settingsUi/webApp.ts';
 import { WEB_APP_CLOUD_HOST } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { readWebAppCloudHost, webAppCloudHostFromOrigin } from '../../../shared-domain/src/settings/webAppCloudHost.ts';
 import { cloudAddressFor } from '../remote/homeyAddress.ts';

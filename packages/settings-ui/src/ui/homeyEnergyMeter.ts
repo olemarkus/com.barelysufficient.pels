@@ -8,7 +8,8 @@ import { applySettingsPatch, callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { ERROR_DURATION_MS, showToast, showToastError } from './toast.ts';
 import { HOMEY_ENERGY_METER_DEVICE_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
-import { HOMEY_ENERGY_METERS_PATH, type HomeyEnergyMeterEntry } from '../../../contracts/src/settingsUiApi.ts';
+import { HOMEY_ENERGY_METERS_PATH } from '../../../contracts/src/settingsUi/paths.ts';
+import { type HomeyEnergyMeterEntry } from '../../../contracts/src/settingsUi/power.ts';
 import {
   SETTINGS_UI_HOMES_SAVE_PATH,
   type SettingsUiHomesSaveRefusal,

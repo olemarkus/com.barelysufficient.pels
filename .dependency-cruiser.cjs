@@ -207,6 +207,18 @@ module.exports = {
       to: { path: '^packages/contracts/' },
     },
     {
+      name: 'no-settings-ui-api-barrel',
+      comment: 'packages/contracts/src/settingsUiApi.ts is a closed barrel: its contracts live in '
+        + 'packages/contracts/src/settingsUi/<theme>.ts or with their domain contract, and every '
+        + 'import site names the owning module. The barrel stays only so branches written against '
+        + 'it still compile; import from the owning module instead. HONESTY CAVEAT: this cruise is '
+        + 'post-compilation, so it sees value imports (the path constants) and not `import type`; '
+        + 'review catches a type-only import of the barrel.',
+      severity: 'error',
+      from: {},
+      to: { path: '^packages/contracts/src/settingsUiApi\\.ts$' },
+    },
+    {
       name: 'shared-packages-no-runtime',
       comment: 'Shared packages must remain browser-safe and runtime-agnostic. '
         + '@pels/planner-types holds the planner I/O contracts (PlanInputDevice) '

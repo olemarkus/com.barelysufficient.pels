@@ -4,7 +4,7 @@ import type {
   PriceSettingChoice,
   PriceSetupRead,
   ResolvedPriceScheme,
-} from '../../packages/contracts/src/settingsUiApi';
+} from '../../packages/contracts/src/settingsUi/prices';
 import { NORWAY_SETTING_KEYS, readNorwaySchemeSettings } from './priceServiceNorway';
 
 const isUsableString = (value: unknown): boolean => typeof value === 'string' && value !== '';

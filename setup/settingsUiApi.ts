@@ -19,22 +19,32 @@ import { readAllObjectives } from '../lib/objectives/deferredObjectives/objectiv
 import type { DeferredObjectiveRoster } from '../packages/contracts/src/deferredObjectiveSettings';
 import { readPelsHost, type PelsHost } from '../lib/app/pelsHost';
 import type {
-  SettingsUiBootstrap,
   SettingsUiDeferredObjectivePlanHistoryPayload,
-  SettingsUiDeviceDiagnosticsResponse,
+} from '../packages/contracts/src/deferredObjectivePlanHistory';
+import type { SettingsUiDeviceDiagnosticsResponse } from '../packages/contracts/src/deviceDiagnosticsTypes';
+import type {
+  SettingsUiBootstrap,
+  SettingsUiLogRequest,
+} from '../packages/contracts/src/settingsUi/bootstrap';
+import type {
   SettingsUiDeviceLogPayload,
   SettingsUiDevicesPayload,
-  SettingsUiLogRequest,
-  SettingsUiPlanPayload,
-  SettingsUiPlanSnapshot,
-  SettingsUiPowerPayload,
-  SettingsUiPowerStatusRead,
-  SettingsUiPriceSourcePayloads,
-  SettingsUiPricesPayload,
-  SettingsUiResetPowerStatsResponse,
   SettingsUiDeviceSnapshot,
   SettingsUiBatteryState,
-} from '../packages/contracts/src/settingsUiApi';
+} from '../packages/contracts/src/settingsUi/devices';
+import type {
+  SettingsUiPlanPayload,
+  SettingsUiPlanSnapshot,
+} from '../packages/contracts/src/settingsUi/plan';
+import type {
+  SettingsUiPowerPayload,
+  SettingsUiPowerStatusRead,
+  SettingsUiResetPowerStatsResponse,
+} from '../packages/contracts/src/settingsUi/power';
+import type {
+  SettingsUiPriceSourcePayloads,
+  SettingsUiPricesPayload,
+} from '../packages/contracts/src/settingsUi/prices';
 import { readObservedStateOfCharge } from '../lib/observer/observedDeviceStateProjection';
 import type { ObservedStateOfChargeRead } from '../lib/observer/observedDeviceStateProjection';
 import type {

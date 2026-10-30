@@ -7,7 +7,7 @@ import {
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
-} from '../../contracts/src/settingsUiApi.ts';
+} from '../../contracts/src/settingsUi/paths.ts';
 import { SETTINGS_UI_HOMES_PATH } from '../../contracts/src/settingsUiHomes.ts';
 import { emitHomeyEvent, installHomeyMock, type MockHomeyClient } from './helpers/homeyApiMock.ts';
 import { buildPlanMeta } from './helpers/planMetaFixture.ts';

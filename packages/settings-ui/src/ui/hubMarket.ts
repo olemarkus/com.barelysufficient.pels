@@ -1,7 +1,5 @@
-import {
-  SETTINGS_UI_HUB_MARKET_PATH,
-  type SettingsUiHubMarketRead,
-} from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_HUB_MARKET_PATH } from '../../../contracts/src/settingsUi/paths.ts';
+import { type SettingsUiHubMarketRead } from '../../../contracts/src/settingsUi/webApp.ts';
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { publishSetupMarket } from './setupPathFacts.ts';

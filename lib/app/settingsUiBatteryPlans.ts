@@ -1,4 +1,4 @@
-import type { SettingsUiDevicesPayload } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiDevicesPayload } from '../../packages/contracts/src/settingsUi/devices';
 import type { PelsHost } from './pelsHost';
 
 /** The whole-home roster already excludes batteries outside Main. */

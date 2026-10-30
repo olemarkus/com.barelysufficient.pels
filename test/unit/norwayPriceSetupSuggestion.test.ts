@@ -6,7 +6,8 @@ import {
   NorwayPriceSetupSuggester,
   type HubLocationRead,
 } from '../../lib/price/norwayPriceSetupSuggestion';
-import type { NorwayPriceSetup, SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUiApi';
+import type { NorwayPriceSetup } from '../../packages/contracts/src/settingsUi/prices';
+import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUi/webApp';
 import { testLogger } from '../utils/testLogger';
 
 // Recorded 2026-10-13 for the test Homey's location in Trondheim.

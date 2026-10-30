@@ -1,5 +1,8 @@
 import type { SettingsUiPowerTracker } from '../../packages/contracts/src/powerTrackerTypes';
-import type { SettingsUiCapacityPeak, SettingsUiPowerReadings } from '../../packages/contracts/src/settingsUiApi';
+import type {
+  SettingsUiCapacityPeak,
+  SettingsUiPowerReadings,
+} from '../../packages/contracts/src/settingsUi/power';
 import { hasPowerMeasurement, resolveDisplayedPowerUpdateMs } from './lastTotalPower';
 import type { PowerTrackerState } from './trackerTypes';
 

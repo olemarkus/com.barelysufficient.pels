@@ -22,7 +22,7 @@
  * § "Home battery".
  */
 import type { DeviceStatus } from '../../packages/contracts/src/deviceStatus';
-import type { SettingsUiPlanHomeBattery } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiPlanHomeBattery } from '../../packages/contracts/src/settingsUi/plan';
 import { displayStateLabel, displayStateTone } from '../../packages/shared-domain/src/planCardGrammar';
 import { resolveBatteryUndrivableLine } from '../../packages/shared-domain/src/batteryControlCopy';
 import type { HomeBatteryCardRead } from '../observer/observedDeviceStateProjection';

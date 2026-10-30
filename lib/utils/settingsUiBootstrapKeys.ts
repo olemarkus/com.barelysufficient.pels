@@ -1,4 +1,4 @@
-import type { SettingsUiBootstrapKey } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiBootstrapKey } from '../../packages/contracts/src/settingsUi/bootstrap';
 
 // The settings keys the settings UI bootstrap (`/ui_bootstrap`) carries, in the
 // order the payload lists them. The contract owns the key union

@@ -41,7 +41,7 @@ import {
 import { formatStarvationBadge } from './planStarvation';
 import type { DeviceOverviewSnapshot } from '../../contracts/src/deviceOverview';
 import type { ObservedCurrentState } from '../../contracts/src/types';
-import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
+import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUi/plan';
 
 const isPlanStateKind = (value: string | undefined): value is PlanStateKind => (
   value === 'active'

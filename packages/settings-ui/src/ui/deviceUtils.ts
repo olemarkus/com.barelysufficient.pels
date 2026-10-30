@@ -8,7 +8,7 @@ import type {
   SteppedLoadDescriptorProbe,
   TemperatureBoostConfig,
 } from '../../../contracts/src/types.ts';
-import type { SettingsUiBatteryState } from '../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiBatteryState } from '../../../contracts/src/settingsUi/devices.ts';
 import { state } from './state.ts';
 
 /**

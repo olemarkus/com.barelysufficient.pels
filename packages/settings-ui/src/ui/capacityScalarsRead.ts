@@ -1,4 +1,4 @@
-import type { SettingsUiCapacityScalarsRead } from '../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiCapacityScalarsRead } from '../../../contracts/src/settingsUi/power.ts';
 import { resolvePowerLimitSettings } from '../../../shared-domain/src/settings/powerLimits.ts';
 import { isCapacityPeriodMinutes } from '../../../shared-domain/src/settings/capacityPeriod.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';

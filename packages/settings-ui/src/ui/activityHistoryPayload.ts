@@ -1,4 +1,4 @@
-import type { SettingsUiDeviceLogPayload } from '../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiDeviceLogPayload } from '../../../contracts/src/settingsUi/devices.ts';
 import { parseDeviceActivityEntry } from '../../../shared-domain/src/deviceActivity.ts';
 
 const positiveInteger = (value: unknown): value is number => (

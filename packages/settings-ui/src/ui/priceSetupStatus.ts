@@ -3,7 +3,7 @@ import type {
   NorwayPriceSetup,
   PriceSchemeSetting,
   SettingsUiPricesPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/prices.ts';
 import { getFlowPricePayload } from '../../../shared-domain/src/price/flowPriceUtils.ts';
 import { gridCompanies } from './gridCompanies.ts';
 

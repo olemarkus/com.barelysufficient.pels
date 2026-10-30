@@ -27,7 +27,7 @@ import {
   syncHomeyPriceFormula,
   type HomeyPriceResolution,
 } from './homeyPriceFormula';
-import type { HomeyPriceFormulaUiStatus } from '../../packages/contracts/src/settingsUiApi';
+import type { HomeyPriceFormulaUiStatus } from '../../packages/contracts/src/settingsUi/prices';
 import {
   hasMirroredExportTerms, readExportTerms, resolveHomeyExportPrice, syncHomeyExportTerms,
 } from './homeyExportPrice';

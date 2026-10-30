@@ -1,6 +1,6 @@
 import type { DeviceOverviewSnapshot } from '../../../contracts/src/deviceOverview.ts';
 import type { DeviceStatus } from '../../../contracts/src/deviceStatus.ts';
-import type { SettingsUiPlanDeviceSnapshot } from '../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiPlanDeviceSnapshot } from '../../../contracts/src/settingsUi/plan.ts';
 import type { CarIdentificationState } from '../../../contracts/src/evCarLink.ts';
 import { buildDeviceStatus } from '../../../../lib/plan/deviceStatusReadModel.ts';
 import { fixtureDeviceReason } from './fixtureDeviceReason.ts';

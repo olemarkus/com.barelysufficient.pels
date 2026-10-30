@@ -31,7 +31,7 @@ vi.mock('../../setup/appDebugHelpers', () => ({
 import api from '../../api';
 import * as stubs from '../../setup/settingsUiApi';
 import { SettingsUiDeviceReads } from '../../lib/device/settingsUiDeviceReads';
-import type { SettingsUiRecommendationCarsRead } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiRecommendationCarsRead } from '../../packages/contracts/src/settingsUi/carLink';
 import { readBudgetHistoryRange } from '../../lib/weather/budgetDiagnosticsHistory';
 
 type LoggerMock = { error: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn> };

@@ -1,4 +1,4 @@
-import type { SettingsUiHardCapConfigurationRead } from '../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiHardCapConfigurationRead } from '../../../contracts/src/settingsUi/power.ts';
 
 /** Classify the API bridge once; setup logic receives only the owner's resolved choice. */
 export const classifyHardCapConfigurationRead = (value: unknown): SettingsUiHardCapConfigurationRead => {

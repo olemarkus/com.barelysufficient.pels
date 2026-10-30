@@ -51,7 +51,7 @@ import {
   SETTINGS_UI_SMART_TASK_CREATE_PATH,
   SETTINGS_UI_SMART_TASK_CREATE_PREVIEW_PATH,
   SETTINGS_UI_SMART_TASK_DEVICES_PATH,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/paths.ts';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../../../../lib/utils/settingsUiBootstrapKeys.ts';
 import { SETTINGS_UI_HOMES_PATH, SETTINGS_UI_HOMES_SAVE_PATH } from '../../../contracts/src/settingsUiHomes.ts';
 import type { DeferredObjectiveActivePlansV2 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';

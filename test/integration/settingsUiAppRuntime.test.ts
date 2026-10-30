@@ -3,7 +3,7 @@ import { createApp, cleanupApps, getStoredPowerTrackerForTests } from '../utils/
 import { resetPowerStatsForUi } from '../../setup/settingsUiAppRuntime';
 import { refreshSettingsUiDevices } from '../../setup/settingsUiApi';
 import { readPelsHost } from '../../lib/app/pelsHost';
-import { SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX } from '../../packages/contracts/src/settingsUiApi';
+import { SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX } from '../../packages/contracts/src/settingsUi/paths';
 import { getHourBucketKey } from '../../lib/utils/hourBuckets';
 
 describe('settings UI app runtime helpers', () => {

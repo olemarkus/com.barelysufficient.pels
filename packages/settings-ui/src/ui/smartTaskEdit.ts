@@ -8,7 +8,7 @@ import {
   SETTINGS_UI_SMART_TASK_CANCEL_PATH,
   SETTINGS_UI_SMART_TASK_PREVIEW_PATH,
   SETTINGS_UI_SMART_TASK_UPDATE_PATH,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/paths.ts';
 import type {
   SettingsUiSmartTaskCancelRequest,
   SettingsUiSmartTaskCancelResponse,

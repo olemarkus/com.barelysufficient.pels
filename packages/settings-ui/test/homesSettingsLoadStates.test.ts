@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { HOMEY_ENERGY_METERS_PATH, SETTINGS_UI_DEVICES_PATH } from '../../contracts/src/settingsUiApi.ts';
+import { HOMEY_ENERGY_METERS_PATH, SETTINGS_UI_DEVICES_PATH } from '../../contracts/src/settingsUi/paths.ts';
 import {
   SETTINGS_UI_HOMES_PATH,
   type SettingsUiHomesPayload,

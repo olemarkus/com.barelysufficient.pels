@@ -18,7 +18,7 @@ import {
 } from '../../../shared-domain/src/smartTaskCopy/pendingReasons.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
-import type { SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { ResolvedDeferredObjectiveActivePlanV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeadlinePlanPendingPayload } from './views/DeadlinePlan.tsx';

@@ -4,7 +4,7 @@
 // blocks the API call without silently snapping the field back.
 
 import { resolvePowerLimitSettings } from '../../shared-domain/src/settings/powerLimits';
-import type { SettingsUiCapacityPeak } from '../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiCapacityPeak } from '../../contracts/src/settingsUi/power.ts';
 
 const LIMITS_FORM_TEMPLATE = [
   '<form id="settings-limits-form">',

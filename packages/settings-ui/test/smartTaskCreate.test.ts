@@ -4,7 +4,7 @@ import {
   SETTINGS_UI_SMART_TASK_CREATE_PATH,
   SETTINGS_UI_SMART_TASK_CREATE_PREVIEW_PATH,
   SETTINGS_UI_SMART_TASK_DEVICES_PATH,
-} from '../../contracts/src/settingsUiApi.ts';
+} from '../../contracts/src/settingsUi/paths.ts';
 import type { SmartTaskCandidateDevice } from '../../contracts/src/smartTaskEdit.ts';
 import { createEmptyDeferredObjectiveRoster } from '../../shared-domain/src/settings/deferredObjectiveSettings.ts';
 import type { SmartTaskCreateSnapshot } from '../src/ui/smartTaskCreate.ts';

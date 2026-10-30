@@ -1,5 +1,5 @@
 import { parseCarAssociationCandidatesRead } from '../src/ui/carAssociationCandidates.ts';
-import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/devices.ts';
 import {
   groupSetupRecommendations,
   normalizeRecommendationDismissals,
@@ -9,10 +9,8 @@ import {
 } from '../src/ui/recommendationsModel.ts';
 import { state } from '../src/ui/state.ts';
 import type { EvCarAssociations } from '../../contracts/src/types.ts';
-import type {
-  SettingsUiEvSocFlowReporter,
-  SettingsUiRecommendationCar,
-} from '../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiRecommendationCar } from '../../contracts/src/settingsUi/carLink.ts';
+import type { SettingsUiEvSocFlowReporter } from '../../contracts/src/settingsUi/devices.ts';
 
 const device = (overrides: Partial<SettingsUiDeviceSnapshot> = {}): SettingsUiDeviceSnapshot => ({
   id: 'device-1',

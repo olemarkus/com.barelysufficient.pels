@@ -3,7 +3,7 @@ import type {
   SteppedLoadDescriptorProbe,
   SteppedLoadProfile,
 } from '../../contracts/src/types';
-import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/devices';
 
 const createElement = (tag: string, id?: string): HTMLElement => {
   const el = document.createElement(tag);

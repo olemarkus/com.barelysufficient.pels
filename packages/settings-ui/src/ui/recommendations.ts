@@ -2,11 +2,13 @@ import { chargingRecommendations } from './chargingRecommendations.ts';
 import type { ChargingAccessStatus, ChargingCurrentRead } from '../../../contracts/src/chargingControl.ts';
 import { CHARGING_ACCESS_PATH, CHARGING_CURRENT_PATH } from '../../../contracts/src/chargingControl.ts';
 import {
+  type SettingsUiDeferredObjectivePlanHistoryPayload,
+} from '../../../contracts/src/deferredObjectivePlanHistory.ts';
+import { type SettingsUiRecommendationCar } from '../../../contracts/src/settingsUi/carLink.ts';
+import {
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
-  type SettingsUiRecommendationCar,
-  type SettingsUiDeferredObjectivePlanHistoryPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/paths.ts';
 import { callApi, coldStartReadRetryDelays, getSetting, getSettingFresh, sleep } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';

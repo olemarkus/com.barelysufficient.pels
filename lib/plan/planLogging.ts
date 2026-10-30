@@ -12,7 +12,7 @@ import {
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import type { PublishedPlan } from './publishedPlan';
-import type { SoftLimitSource } from '../../packages/contracts/src/settingsUiApi';
+import type { SoftLimitSource } from '../../packages/contracts/src/settingsUi/plan';
 import { isPlanDeviceObservedOn, isSteppedLoadDevice } from './planSteppedLoad';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type {

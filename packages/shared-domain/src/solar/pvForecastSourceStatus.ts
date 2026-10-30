@@ -13,7 +13,7 @@
 import type {
   PvForecastSourceSelectedStatus,
   PvForecastSourceUiStatus,
-} from '../../../contracts/src/settingsUiApi.js';
+} from '../../../contracts/src/settingsUi/prices.js';
 import { isUnknownRecord } from '../recordGuards';
 
 /**

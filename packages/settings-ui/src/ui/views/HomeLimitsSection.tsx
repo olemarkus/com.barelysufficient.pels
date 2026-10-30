@@ -22,7 +22,7 @@ import {
 import { composeHomeScopedTitle } from '../homeScopeCopy.ts';
 import { MdFilledSelect, MdSelectOption, MdSwitch, readSwitchSelected } from './materialWebJSX.tsx';
 import type { CapacityPeriodMinutes } from '../../../../contracts/src/capacitySettings.ts';
-import type { SettingsUiCapacityPeak } from '../../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiCapacityPeak } from '../../../../contracts/src/settingsUi/power.ts';
 import { formatCapacityPeak } from '../capacityPeakRead.ts';
 import { resolveCapacityPeriodMinutes } from '../../../../shared-domain/src/settings/capacityPeriod.ts';
 

@@ -9,12 +9,12 @@ import { dispatchOpenDeviceDetail } from './cardActivation.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { DEVICE_POWER_SUPPORT_HINT, POWER_READING_REMEDY } from './deviceControlAvailability.ts';
 import { deviceCardList, emptyState, refreshButton } from './dom.ts';
+import { type SettingsUiDevicesPayload } from '../../../contracts/src/settingsUi/devices.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_REFRESH_DEVICES_PATH,
-  type SettingsUiDevicesPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/paths.ts';
 import {
   callApi,
   getApiReadModel,

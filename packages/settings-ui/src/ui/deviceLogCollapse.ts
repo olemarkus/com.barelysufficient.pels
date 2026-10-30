@@ -14,7 +14,7 @@
 // the oldest retained entry may have started earlier than the log can show —
 // `truncated` marks that run so the caption can avoid asserting a false
 // start.
-import type { SettingsUiDeviceActivityEntry } from '../../../contracts/src/settingsUiApi';
+import type { SettingsUiDeviceActivityEntry } from '../../../contracts/src/settingsUi/devices';
 
 type CollapsedRun = {
   /** The run's newest entry, rendered in full. */

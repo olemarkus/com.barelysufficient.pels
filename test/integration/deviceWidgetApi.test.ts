@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { DeviceStatus } from '../../packages/contracts/src/deviceStatus';
-import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUi/plan';
 import type { CreateSmartTaskCandidateDevice } from '../../packages/contracts/src/widgetHostApi';
 import { getDeviceWidget } from '../../widgets/device/src/api';
 import { buildDeviceWidgetChoices } from '../../widgets/device/src/deviceWidgetPayload';

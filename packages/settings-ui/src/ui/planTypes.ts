@@ -2,7 +2,7 @@ import type {
   SettingsUiPlanDeviceSnapshot,
   SettingsUiPlanMetaSnapshot,
   SettingsUiPlanSnapshot,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/plan.ts';
 
 export type PlanMetaSnapshot = SettingsUiPlanMetaSnapshot;
 

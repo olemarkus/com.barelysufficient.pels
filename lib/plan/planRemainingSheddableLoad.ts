@@ -1,5 +1,5 @@
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
-import type { SoftLimitSource } from '../../packages/contracts/src/settingsUiApi';
+import type { SoftLimitSource } from '../../packages/contracts/src/settingsUi/plan';
 import type { DevicePlanDevice, MeteredDevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { isBinaryPlanDevice } from './planBinaryDevice';

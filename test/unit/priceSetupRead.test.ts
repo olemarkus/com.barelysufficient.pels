@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readPriceSetup } from '../../lib/price/priceSetupRead';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
-import type { ResolvedPriceScheme } from '../../packages/contracts/src/settingsUiApi';
+import type { ResolvedPriceScheme } from '../../packages/contracts/src/settingsUi/prices';
 
 const settingsWith = (values: Record<string, unknown>, keys = Object.keys(values)): SettingsPort => ({
   get: (key) => values[key],

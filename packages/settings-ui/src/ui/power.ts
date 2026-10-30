@@ -18,7 +18,8 @@ import {
   hourlyPatternReadout,
 } from './dom.ts';
 import { renderUsageHero } from './usageHero.ts';
-import { SETTINGS_UI_POWER_PATH, type SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_POWER_PATH } from '../../../contracts/src/settingsUi/paths.ts';
+import { type SettingsUiPowerPayload } from '../../../contracts/src/settingsUi/power.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   disposePowerWeekChart,
