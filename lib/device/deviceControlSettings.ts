@@ -105,20 +105,6 @@ const normalizeOrKeep = <T>(raw: unknown, normalize: (value: unknown) => T, curr
 );
 
 /**
- * The owner's per-device control configuration, as the running app holds it:
- * which devices PELS manages and may limit, their start policies, temperature
- * command authority, boost settings, charger battery targets, car associations, native EV wiring
- * choices, driver overrides, control profiles, target-power candidates and
- * shed behaviours.
- *
- * Every map is read from its settings key at {@link reload}, the maps are
- * adopted together once every read has answered, and each is kept as last
- * accepted: a read that is not the map keeps the one already held, because
- * a transient SDK miss is not an owner who cleared every entry. A boost or
- * car-association read that is a map is normalized, dropping the entries it
- * cannot use.
- */
-/**
  * The device-control settings the planner-input projection reads, as the
  * runtime holds them. `DeviceControlSettings` is the implementation; setup
  * hands it over whole.
@@ -133,6 +119,20 @@ export type DeviceControlSettingsRead = Pick<DeviceControlSettings,
   | 'isBudgetExempt'
 >;
 
+/**
+ * The owner's per-device control configuration, as the running app holds it:
+ * which devices PELS manages and may limit, their start policies, temperature
+ * command authority, boost settings, charger battery targets, car associations, native EV wiring
+ * choices, driver overrides, control profiles, target-power candidates and
+ * shed behaviours.
+ *
+ * Every map is read from its settings key at {@link reload}, the maps are
+ * adopted together once every read has answered, and each is kept as last
+ * accepted: a read that is not the map keeps the one already held, because
+ * a transient SDK miss is not an owner who cleared every entry. A boost or
+ * car-association read that is a map is normalized, dropping the entries it
+ * cannot use.
+ */
 export class DeviceControlSettings {
   private maps: DeviceControlMaps = {
     controllable: {},

@@ -153,6 +153,16 @@ export const pruneExpiredEvLinkEdges = (
     windowMs: number = EV_CAR_LINK_COINCIDENCE_WINDOW_MS,
 ): EvLinkEdge[] => edges.filter((edge) => nowMs - edge.atMs <= windowMs);
 
+/**
+ * The history kept while every car is in an outage: no car edges, and the
+ * charger edges at or after `cutoffMs`, so a plug-in still ages out when no car
+ * is there to match it.
+ */
+export const outageEdges = (history: EvLinkEdgeHistory, cutoffMs: number): EvLinkEdgeHistory => ({
+    carEdges: [],
+    chargerEdges: history.chargerEdges.filter((edge) => edge.atMs >= cutoffMs),
+});
+
 export type EvLinkCoincidence = {
     carId: string;
     chargerId: string;

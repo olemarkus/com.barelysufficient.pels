@@ -111,6 +111,13 @@ export function updateObjectiveProfilesFromSnapshot(
   };
 }
 
+// Devices whose own profile the age prune keeps: every device reporting a
+// reading now, and every charger a car profile still names.
+const keptDeviceIds = (state: PowerTrackerState, devices: ObjectiveSampleDevice[]): Set<string> => new Set([
+  ...devices.map((device) => device.id),
+  ...Object.values(state.carObjectiveProfiles ?? {}).flatMap((byCharger) => Object.keys(byCharger)),
+]);
+
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 function updateDeviceKeyedProfiles(
   state: PowerTrackerState,
@@ -154,8 +161,11 @@ function updateDeviceKeyedProfiles(
   ) {
     // Every device with a reading keeps its own profile, car-sourced ones
     // included: a charger whose level now comes from the car keeps the rate it
-    // learned before as the fallback for a session whose car is not known.
-    const pruned = pruneObjectiveProfiles(nextProfiles, new Set(devices.map((device) => device.id)), nowMs);
+    // learned before as the fallback for a session whose car is not known. That
+    // profile no longer updates once car samples take over, so a charger that
+    // still holds a car profile keeps it while idle too, for as long as the
+    // car profile lasts.
+    const pruned = pruneObjectiveProfiles(nextProfiles, keptDeviceIds(state, devices), nowMs);
     if (pruned !== nextProfiles) {
       nextProfiles = pruned;
       changed = true;
