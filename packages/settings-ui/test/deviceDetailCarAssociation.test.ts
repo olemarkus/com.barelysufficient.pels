@@ -681,7 +681,7 @@ describe('confirming the connected car', () => {
     const { state } = await import('../src/ui/state.ts');
     getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });
     await loadEvCarAssociations();
-    const device = charger({ stateOfCharge: { level: { kind: 'known', percent: 70, observedAtMs: 1_000 } } });
+    const device = charger({ stateOfCharge: { level: { kind: 'known', percent: 70, observedAtMs: 1_000, carId: null } } });
     state.latestDevices = [device];
     renderCarAssociation(device);
     await flush();
@@ -727,7 +727,7 @@ describe('confirming the connected car', () => {
         carId: 'car-1', carName: 'Polestar 3', confirmed: true,
         chargingState: 'plugged_out', chargingStateObservedAtMs: 1_000, socPct: 63,
       },
-      stateOfCharge: { level: { kind: 'known', percent: 63, observedAtMs: 1_000 } },
+      stateOfCharge: { level: { kind: 'known', percent: 63, observedAtMs: 1_000, carId: 'car-1' } },
     });
     state.latestDevices = [device];
     renderCarAssociation(device);
