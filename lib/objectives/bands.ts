@@ -17,9 +17,10 @@ export const OBJECTIVE_PROFILE_SAMPLE_BUFFER_SIZE = 64;
  * refused window never enters the buffer, so a device whose true rate moves
  * further than the admission band allows stops appending entirely — and a
  * count-bounded buffer then freezes with the old regime in it, for good. The
- * profile is keyed by the CHARGER, so a 24 kWh car swapped for a 100 kWh one on
- * the same charger is exactly that: the honest rate moves by more than four
- * times and the history that locks it out can no longer be updated by the
+ * profile is keyed by the CHARGER when the level arrives on the charger device
+ * (a car PELS reads directly has its own, `carProfiles.ts`), so a 24 kWh car
+ * swapped for a 100 kWh one there is exactly that: the honest rate moves by more
+ * than four times and the history that locks it out can no longer be updated by the
  * evidence that would correct it. Ageing observations out is the only exit that
  * needs no new state — the buffer empties on its own, the band falls back to its
  * coarse bootstrap bound, and the next window is admitted and relearned from.

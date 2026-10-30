@@ -1018,7 +1018,7 @@ describe('settingsUiApi', () => {
     expect(device?.available).toBe(false);
     expect(device?.lastUpdated).toBe(1_000);
     expect((device as { stateOfCharge?: unknown }).stateOfCharge).toEqual({
-      level: { kind: 'known', percent: 55, observedAtMs: 1_000 },
+      level: { kind: 'known', percent: 55, observedAtMs: 1_000, carId: null },
     });
   });
 
@@ -1046,7 +1046,7 @@ describe('settingsUiApi', () => {
     // arrives as the level alone. `toEqual` so a regression that forwards the bag
     // again fails here rather than quietly widening the wire.
     expect((device as { stateOfCharge?: unknown }).stateOfCharge).toEqual({
-      level: { kind: 'known', percent: 80, observedAtMs: 2_000 },
+      level: { kind: 'known', percent: 80, observedAtMs: 2_000, carId: null },
     });
   });
 

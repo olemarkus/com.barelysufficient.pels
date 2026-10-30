@@ -1003,8 +1003,8 @@ energyNeededKwh = Math.max(0, kWhPerUnit.mean * remainingUnits);
 
 where `remainingUnits` is the temperature gap in the device's progress direction for thermal or
 `(targetPercent - currentPercent)` for EV. The `kWhPerUnit` value comes from the learned
-profile, or for EV from the conservative bootstrap (`BOOTSTRAP_EV_SOC_KWH_PER_PERCENT = 1.0`)
-until learning matures. Source: `lib/objectives/deferredObjectives/profileEnergyResolution.ts`.
+profile (for EV, the car's own where PELS knows the car, see "EV rate per car"), or for EV from
+the conservative bootstrap (`BOOTSTRAP_EV_SOC_KWH_PER_PERCENT = 1.0`) until learning matures. Source: `lib/objectives/deferredObjectives/profileEnergyResolution.ts`.
 
 Available time:
 
@@ -1117,7 +1117,8 @@ optimistic.
 Shipped v1 uses one rate source plus EV bootstrap fallback (an `energy` objective short-circuits
 both with the exact rate, see "Energy objectives"):
 
-1. Learned `kWhPerUnit` profile (`lib/objectives/profiles.ts`), or
+1. Learned `kWhPerUnit` profile (`lib/objectives/profiles.ts`), taken from the most specific
+   rung of the profile ladder that has a rate (see "EV rate per car" below), or
 2. For EV without a learned profile: `BOOTSTRAP_EV_SOC_KWH_PER_PERCENT = 1.0`
    (`packages/shared-domain/src/objectiveProfileBootstrap.ts`). The recorder emits a
    `rate_refined` revision when learning takes over.
@@ -1131,6 +1132,38 @@ horizon planner sizes bucket allocation, not the `energyNeededKwh` computation i
 `admissionPowerKw`, which fits it into capacity room and sizes the reservation a booking holds
 against lower-priority tasks, is the nameplate: the same price the planner's restore admission
 puts on the rung.
+
+#### EV rate per car
+
+An EV's kWh per percent belongs to the car's battery, not the charger, so a two-car home or a
+guest car must not blend into one charger rate. The producer resolves whose battery a level is
+(`level.carId` on the state of charge, `lib/device/transport/stateOfCharge.ts`): the associated
+car's id for a level PELS read off that car (`notes/ev-car-link/README.md` § "Adoption"), `null`
+for a level that arrived on the charger device. Objectives read that field and never the
+reading's provenance.
+
+Learning routes a sample by it (`updateObjectiveProfilesFromSnapshot`): a car-sourced level
+feeds `carObjectiveProfiles[carId][chargerId]`, anything else feeds `objectiveProfiles[deviceId]`.
+A car-sourced sample never feeds the charger's own profile. The lookup
+(`lib/objectives/profileLadder.ts`, `selectLearnedRate`) walks, most specific first:
+
+1. this car on this charger;
+2. this car on any charger, pooled at read time from its per-charger observation buffers, so a
+   car moving between chargers needs no second learner with its own window state;
+3. this charger with no car known (Flow-reported or capability levels, and every profile learned
+   before per-car learning existed: the existing per-device profiles are this rung unchanged);
+4. the EV bootstrap rate.
+
+A rung with no rate in the task's direction falls through. A car rung whose rate rests on fewer
+than `MIN_CAR_RATE_SAMPLES_OVER_CHARGER` (3) windows yields to the charger's learned rate, and is
+used ahead of the bootstrap only when nothing below it has learned. A change of rung reaches an
+active task like any other rate change: `rate_refined` from bootstrap, otherwise the
+`measured_deviation` or schedule paths. The objective signature is untouched.
+
+The per-car store is bounded (`lib/objectives/carProfiles.ts`): at most 8 cars and 4 chargers
+per car, pruned after 180 days without a report, ranked by whether the pair reported this cycle
+and then by recency. The per-device store keeps its own 64-device, 30-day bound, and a charger
+that reports any level keeps its own profile as the fallback.
 
 #### Future rate-source preference (not the v1 path)
 

@@ -3650,7 +3650,7 @@ describe('periodic snapshot refresh scheduling', () => {
     });
     expect(snapshot[0].stateOfCharge).toEqual(expect.objectContaining({
       report: { percent: 32, observedAtMs: nextReportedAt },
-      level: { kind: 'known', percent: 32, observedAtMs: nextReportedAt },
+      level: { kind: 'known', percent: 32, observedAtMs: nextReportedAt, carId: null },
     }));
   });
 

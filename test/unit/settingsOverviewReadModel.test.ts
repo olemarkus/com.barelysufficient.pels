@@ -412,7 +412,7 @@ describe('settingsOverviewReadModel', () => {
           }).level,
         },
       }),
-    }).stateOfCharge).toEqual({ level: { kind: 'known', percent: 64, observedAtMs: 1_000 } });
+    }).stateOfCharge).toEqual({ level: { kind: 'known', percent: 64, observedAtMs: 1_000, carId: null } });
 
     // An ABSENT read shows nothing. Distinct from a present read whose `level`
     // says there is none: that one is a statement about a charger that does

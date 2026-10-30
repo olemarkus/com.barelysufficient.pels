@@ -3,12 +3,15 @@ import { inactiveTaskEvaluation } from './taskEvaluation';
 import type { PowerTrackerState } from '../../power/tracker';
 import {
   resolveProfileEnergy,
+  selectLearnedRate,
   type DeferredObjectiveEnergyResolution,
 } from './profileEnergyResolution';
 import {
   resolveObjectiveProgressDirectionRead,
   type ObjectiveDeviceInput,
+  type ObjectiveProgressDirectionRead,
 } from '../../objectives/types';
+import { resolveObjectiveProfileSubject, type ObjectiveProfileSubject } from '../profileLadder';
 import { formatDeadlineLocalTime } from './deadline';
 import { resolvePlanningSpeedKw } from './planningSpeed';
 import { resolveReachableTargetValue, type DeferredObjectiveProgressResolution } from './diagnosticProgress';
@@ -70,7 +73,7 @@ export const canReportFreshProgressWhileUnknown = (
 // variance buffer `k`) and current value identically.
 export const resolveProgressEnergy = (
   powerTracker: PowerTrackerState,
-  deviceId: string,
+  device: ObjectiveDeviceInput,
   objective: DeferredObjectiveSettingsEntry,
   remainingUnits: number,
   progress: ResolvedProgress,
@@ -78,7 +81,7 @@ export const resolveProgressEnergy = (
   const input = progressCurrentValue({ progress, objectiveKind: objective.kind });
   return resolveProfileEnergy(
     powerTracker,
-    deviceId,
+    resolveObjectiveProfileSubject(device),
     objective.kind,
     objective.enforcement,
     remainingUnits,
@@ -115,16 +118,21 @@ export const buildDiagnosticBase = (
   const deadlineAtMs = Number.isFinite(objective.deadlineAtMs) && objective.deadlineAtMs > 0
     ? objective.deadlineAtMs
     : null;
-  const profileSnapshot = resolveProfileSnapshot(powerTracker, deviceId);
+  const progressDirection = resolveObjectiveProgressDirectionRead({
+    objectiveKind: objective.kind,
+    thermalDirection: device?.thermalDirection ?? 'unknown',
+  });
+  const profileSnapshot = resolveProfileSnapshot(
+    powerTracker,
+    device === undefined ? { deviceId, carId: null } : resolveObjectiveProfileSubject(device),
+    progressDirection,
+  );
   const common: BaseDeferredObjectiveDiagnostic = {
     deviceId: deviceId,
     evaluation: { ...inactiveTaskEvaluation(deviceId, objective.deadlineAtMs,
       resolveObjectiveTargetValue(objective)),
       permissions: taskPermissionsForObjective(objective) },
-    progressDirection: resolveObjectiveProgressDirectionRead({
-      objectiveKind: objective.kind,
-      thermalDirection: device?.thermalDirection ?? 'unknown',
-    }),
+    progressDirection,
     deviceName: device?.name,
     objectiveId: `${deviceId}:${objective.kind}`,
     enforcement: objective.enforcement,
@@ -175,14 +183,17 @@ export const buildDiagnosticBase = (
   };
 };
 
-// Pulls accepted-sample provenance from the active learned profile. Returns
-// zeros / nulls when the device has no profile so legacy callers see safe
-// defaults.
+// Pulls accepted-sample provenance from the profile that sizes the task: the
+// rung `selectLearnedRate` picks, or the device's own profile while no rung has a
+// rate (it is still learning). Returns zeros / nulls when there is none.
 const resolveProfileSnapshot = (
   powerTracker: PowerTrackerState,
-  deviceId: string,
+  subject: ObjectiveProfileSubject,
+  progressDirection: ObjectiveProgressDirectionRead,
 ): { acceptedSamples: number; lastAcceptedAtMs: number | null } => {
-  const profile = powerTracker.objectiveProfiles?.[deviceId];
+  const profile = (
+    progressDirection === 'unknown' ? undefined : selectLearnedRate(powerTracker, subject, progressDirection)
+  )?.candidate.profile ?? powerTracker.objectiveProfiles?.[subject.deviceId];
   if (!profile) {
     return { acceptedSamples: 0, lastAcceptedAtMs: null };
   }

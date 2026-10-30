@@ -377,6 +377,7 @@ function resolveStateOfChargeLevel(
       kind: 'known',
       percent,
       observedAtMs,
+      carId: source.carId,
       ...(source.chargeLimitPercent === null ? {} : { carChargeLimitPercent: source.chargeLimitPercent }),
     };
   }
@@ -388,7 +389,7 @@ function resolveStateOfChargeLevel(
   ) {
     return { kind: 'unavailable', reasonCode: 'not_reported' };
   }
-  return { kind: 'known', percent, observedAtMs };
+  return { kind: 'known', percent, observedAtMs, carId: null };
 }
 
 /** The reading with the level its session gives it, which the reading's other fields decide. */

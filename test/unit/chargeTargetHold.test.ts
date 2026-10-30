@@ -29,7 +29,7 @@ const WAIT_FOR_LEVEL: EvChargeTargetConfig = { targetPercent: 30, chargeBeforeLe
 const AUTHORITY: DeviceControlPosture = { managed: true, commandAuthority: true };
 
 const known = (percent: number): DeviceStateOfChargeSnapshot['level'] => (
-  { kind: 'known', percent, observedAtMs: 1 }
+  { kind: 'known', percent, observedAtMs: 1, carId: null }
 );
 
 /** The charger as the producer sees it: EV identity, a plug state, and maybe a level. */
