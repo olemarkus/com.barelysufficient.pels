@@ -56,7 +56,6 @@ reviews:
     - "!packages/settings-ui/tests/**"
     - "!docs/**"
     - "!notes/**"
-    - "!TODO.md"
 
   # --- Targeted guidance per area. Mirrors the project's review subagents and
   #     the hard rules in AGENTS.md.
