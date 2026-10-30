@@ -57,10 +57,10 @@ describe('charge target status', () => {
   it('says how far the car has to go below the target and that charging stops at it', async () => {
     const { module, status } = await load();
 
-    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 42, observedAtMs: 0 }));
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 42, observedAtMs: 0, carId: null }));
     expect(status().textContent).toBe('Charges to 60%. Now 42%.');
 
-    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 60, observedAtMs: 0 }));
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 60, observedAtMs: 0, carId: null }));
     expect(status().textContent).toBe('Reached 60%. Charging stops here unless a smart task asks for more.');
 
   });
@@ -68,7 +68,7 @@ describe('charge target status', () => {
   it('says a 100% target leaves charging to the car, and promises no stop at 100%', async () => {
     const { module, state, status } = await load();
     state.evChargeTargetSettings = { [CHARGER_ID]: { targetPercent: 100, chargeBeforeLevelKnown: true } };
-    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 100, observedAtMs: 0 }));
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 100, observedAtMs: 0, carId: null }));
     expect(status().textContent).toBe('The car charges to its own limit. Lower the level to stop earlier.');
     module.renderEvChargeTargetSettings(buildCharger(null));
     expect(status().textContent).toBe('The car charges to its own limit. Lower the level to stop earlier.');
@@ -76,7 +76,7 @@ describe('charge target status', () => {
     // With the no-level toggle off, a 100% target still holds a car without a
     // level, so a known level reads as charging and a missing lever names that.
     state.evChargeTargetSettings = { [CHARGER_ID]: { targetPercent: 100, chargeBeforeLevelKnown: false } };
-    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 100, observedAtMs: 0 }));
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 100, observedAtMs: 0, carId: null }));
     expect(status().textContent).toBe('The car charges to its own limit. Now 100%.');
     state.controllableMap = {};
     module.renderEvChargeTargetSettings(buildCharger(null));
@@ -111,13 +111,13 @@ describe('charge target status', () => {
 
   it('says there is no car when the charger is unplugged, whatever level was last read', async () => {
     const { module, status } = await load();
-    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 70, observedAtMs: 0 }, 'plugged_out'));
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 70, observedAtMs: 0, carId: null }, 'plugged_out'));
     expect(status().textContent).toBe('No car connected.');
   });
 
   it('says PELS cannot stop a charger it has no power reading from', async () => {
     const { module, status } = await load();
-    module.renderEvChargeTargetSettings({ ...buildCharger({ kind: 'known', percent: 70, observedAtMs: 0 }), powerCapable: false });
+    module.renderEvChargeTargetSettings({ ...buildCharger({ kind: 'known', percent: 70, observedAtMs: 0, carId: null }), powerCapable: false });
     expect(status().textContent).toBe('PELS has no power reading from this charger, so it cannot stop it at 60%.');
   });
 
@@ -126,7 +126,7 @@ describe('charge target status', () => {
     state.controllableMap = {};
     state.deviceStartPolicyMap = { [CHARGER_ID]: 'pels_only' } as typeof state.deviceStartPolicyMap;
 
-    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 26, observedAtMs: 0 }));
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 26, observedAtMs: 0, carId: null }));
     expect(status().textContent).toBe('Charges to 60%. Now 26%. Only a smart task starts this charger.');
 
     state.evCarAssociations = { [CHARGER_ID]: { carIds: ['car-1'] } } as typeof state.evCarAssociations;
@@ -137,17 +137,17 @@ describe('charge target status', () => {
 
     // Reaching the target already names the smart task; Power-limit control on
     // means PELS starts the charger itself, so neither gets the condition.
-    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 60, observedAtMs: 0 }));
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 60, observedAtMs: 0, carId: null }));
     expect(status().textContent).toBe('Reached 60%. Charging stops here unless a smart task asks for more.');
     state.controllableMap = { [CHARGER_ID]: true };
-    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 26, observedAtMs: 0 }));
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 26, observedAtMs: 0, carId: null }));
     expect(status().textContent).toBe('Charges to 60%. Now 26%.');
   });
 
   it('says PELS only watches a charger it may not command', async () => {
     const { module, state, status } = await load();
     state.controllableMap = {};
-    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 70, observedAtMs: 0 }));
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 70, observedAtMs: 0, carId: null }));
     expect(status().textContent).toBe(
       'PELS only watches this charger. Turn on Power-limit control to stop it at 60%.',
     );
@@ -156,7 +156,7 @@ describe('charge target status', () => {
   it('shows no status and disables the fields while the target is off', async () => {
     const { module, state, status } = await load();
     state.evChargeTargetSettings = {};
-    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 70, observedAtMs: 0 }));
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 70, observedAtMs: 0, carId: null }));
     expect(status().hidden).toBe(true);
     const percent = document.getElementById('device-detail-charge-target-percent') as HTMLElement & {
       disabled: boolean;

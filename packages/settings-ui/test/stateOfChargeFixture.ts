@@ -39,6 +39,9 @@ const UNSTATED_OBSERVED_AT_MS = 1;
  * reaches this side that work is done — accepting them here would let a test
  * think it had set something the code under test cannot see.
  *
+ * The level names no car (`carId: null`): no settings-UI reader asks whose
+ * battery it is, so a fixture has no reason to say.
+ *
  * Pass `unavailable` for the no-level case: the charger reports, but PELS has no
  * level to show for it. That is distinct from the device carrying no state of
  * charge at all, which is the field being absent.
@@ -51,7 +54,7 @@ export const stateOfChargeFixture = (params: {
   const { percent, unavailable, observedAtMs } = params;
   return {
     level: unavailable === undefined
-      ? { kind: 'known', percent, observedAtMs: observedAtMs ?? UNSTATED_OBSERVED_AT_MS }
+      ? { kind: 'known', percent, observedAtMs: observedAtMs ?? UNSTATED_OBSERVED_AT_MS, carId: null }
       : { kind: 'unavailable', reasonCode: unavailable },
   };
 };
