@@ -277,6 +277,16 @@ function resolveHoldCause(device: DeviceStatusInput): DeviceStatus['holdCause'] 
   return device.reason.code === PLAN_REASON_CODES.dailyBudget ? 'daily_budget' : null;
 }
 
+// The target the card names. A planned target the executor is not driving (the
+// device is held off, so no write goes out) is not a change in progress: a
+// heater its finished smart task held off read `target 18 °C → 20 °C` for hours.
+// The card shows the device's own target then, and the arrow only while PELS is
+// actually moving it.
+function withPresentedTarget(device: DeviceStatusInput): DeviceStatusInput {
+  if (!device.temperature || device.execution.targetProgress !== 'undriven') return device;
+  return { ...device, temperature: { ...device.temperature, plannedTarget: device.temperature.currentTarget } };
+}
+
 /** Presentation consumes executor conclusions; it never resolves control axes. */
 export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus {
   const grammar = { kind: resolveBaseKind(device), reasonCode: device.reason.code,
@@ -288,11 +298,12 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
   const physicalFact = kind === 'held' ? resolvePhysicalFact(device) : null;
   const label = [displayStateLabel(kind), physicalFact].filter(Boolean).join(' · ');
   const draw = device.currentDrawKw;
+  const presented = withPresentedTarget(device);
   return {
     cardKind: resolveCardKind(device), kind, tone: displayStateTone(kind), label,
     ...resolvePower(device, limited),
-    factText: resolveFactText(device, kind, kind === 'held' && resolvePhysicalStepId(device) !== null),
-    reading: resolveReading(device),
+    factText: resolveFactText(presented, kind, kind === 'held' && resolvePhysicalStepId(device) !== null),
+    reading: resolveReading(presented),
     reason: buildReason(device, dryRun, nowMs), rail: resolveRail(device),
     limited, wouldLimit: dryRun && limited,
     canEaseOff: device.controllable && (kind === 'active' || (limited && (draw ?? 0) > 0)),

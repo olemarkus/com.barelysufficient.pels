@@ -85,6 +85,28 @@ const resolveWindowAnchorMs = (
   Number.isFinite(entry.finalizedAtMs) ? entry.finalizedAtMs : entry.deadlineAtMs
 );
 
+const isInSevenDayWindow = (
+  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'finalizedAtMs' | 'deadlineAtMs'>,
+  cutoffMs: number,
+  nowMs: number,
+): boolean => {
+  const stampMs = resolveWindowAnchorMs(entry);
+  return Number.isFinite(stampMs) && stampMs >= cutoffMs && stampMs <= nowMs;
+};
+
+/**
+ * The runs the "Last 7 days" strip counts. The Overview's miss-streak row reads
+ * the same window, so a streak from weeks ago never raises a live alert the
+ * strip itself does not count.
+ */
+export const filterSevenDayWindowEntries = <
+  TEntry extends Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'finalizedAtMs' | 'deadlineAtMs'>,
+>(entries: ReadonlyArray<TEntry>, nowMs: number, timeZone: string): TEntry[] => {
+  if (!Number.isFinite(nowMs)) return [];
+  const cutoffMs = resolveSevenDayCutoffMs(nowMs, timeZone);
+  return entries.filter((entry) => isInSevenDayWindow(entry, cutoffMs, nowMs));
+};
+
 // Tallies a single entry against the 7-day counts. Returns the counts
 // unchanged when the entry falls outside the window or is unparseable;
 // `unknown` outcomes are counted toward `inWindow` (so the strip still
@@ -95,9 +117,7 @@ const tallySevenDayEntry = (
   cutoffMs: number,
   nowMs: number,
 ): SevenDayCounts => {
-  const stampMs = resolveWindowAnchorMs(entry);
-  if (!Number.isFinite(stampMs)) return counts;
-  if (stampMs < cutoffMs || stampMs > nowMs) return counts;
+  if (!isInSevenDayWindow(entry, cutoffMs, nowMs)) return counts;
   const next: SevenDayCounts = {
     succeeded: counts.succeeded,
     missed: counts.missed,

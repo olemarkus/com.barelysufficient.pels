@@ -115,7 +115,12 @@ export const formatPlanHistoryProgressLine = (
     | 'finalProgressValue'
   >,
 ): string | null => {
-  const suppressArrow = entry.outcome === 'abandoned' || entry.outcome === 'replaced';
+  // An energy task's progress is the energy PELS delivered for it, so even a
+  // cleared run's `start → final` is attributable: keep the arrow there. It
+  // also reconciles with the row's `kWh delivered` when a target edit split the
+  // run (progress continues across the split; delivery is the difference).
+  const suppressArrow = (entry.outcome === 'abandoned' || entry.outcome === 'replaced')
+    && entry.objectiveKind !== 'energy';
   // Value selection is unit-agnostic (resolved on the producer boundary);
   // only the formatter (°C vs %) stays kind-specific.
   const formatValue = (value: number | null): string | null => (
@@ -317,8 +322,10 @@ export const flattenPlanHistoryEntries = <TEntry extends { finalizedAtMs: number
 export type MissStreakBadge = { deviceId: string; deviceName: string; line: string };
 
 // Per-device miss-streak badges (device-deduped, newest-first input order).
-// Shared by the past-tasks subhead and the Overview smart-task row so the two
-// surfaces can never disagree about which devices are on a miss streak. Per
+// Shared by the past-tasks subhead and the Overview smart-task row, so both word
+// a streak the same way. The Overview feeds it only the runs in the `Last 7
+// days` strip's window (`filterSevenDayWindowEntries`): an old streak is history
+// there, not a live alert. Per
 // `notes/smart-task-ui/README.md`, the badge surfaces the recovering-from-
 // mistake user's "pattern at a glance" signal without forcing them to
 // mentally aggregate the chip column.

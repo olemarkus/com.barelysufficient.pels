@@ -222,6 +222,31 @@ describe('Redesign plan UI', () => {
       expect(supportLines[0]).toContain('Background 5.2 kW');
     });
 
+    it('keeps the power bar and the split when the period is spent and the safe pace is zero', async () => {
+      // A spent capacity period publishes a 0.0 kW safe pace. That is a real
+      // state: the bar draws everything as overflow against a tick at zero.
+      await renderPlanSnapshot({
+        meta: buildPlanMeta({
+          totalKw: 21,
+          softLimitKw: 0,
+          controlledKw: 0,
+          uncontrolledKw: 21,
+          usedKWh: 9.7,
+          hourBudgetKWh: 9.5,
+          minutesRemaining: 4}),
+        devices: [
+          { id: 'dev-1', name: 'First', priority: 1, currentState: 'off', plannedState: 'shed' },
+        ],
+      });
+
+      const supportLines = Array.from(document.querySelectorAll('.plan-hero .plan-hero__energy-support'))
+        .map((el) => el.textContent?.trim());
+      expect(supportLines[0]).toBe('Managed 0.0 kW · Background 21.0 kW');
+      expect(document.querySelectorAll('.plan-hero .pels-meter-track')).toHaveLength(2);
+      expect(document.querySelector('.plan-hero .pels-meter-segments__seg--background')?.hasAttribute('data-over-safe-pace'))
+        .toBe(true);
+    });
+
     it('omits the managed/background legend for a background-only household', async () => {
       // No controllable device exists, so `sumControlledUsageKw` answers a
       // known 0 forever — a permanent "Managed 0.0 kW" line is noise for a
@@ -539,9 +564,8 @@ describe('Redesign plan UI', () => {
       });
       expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
         .toBe(
-          'Managed devices are already eased off. The remaining draw is from '
-          + 'a device that has Power-limit control turned off. '
-          + 'Turn its Power-limit control back on so PELS can ease it off.',
+          'Managed devices are already eased off. A device with Power-limit control turned off is still drawing power. '
+          + 'Turn its Power-limit control back on, or turn off other appliances to stay under your limit.',
         );
     });
 

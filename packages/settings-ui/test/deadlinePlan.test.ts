@@ -19,6 +19,7 @@ import { toResolvedActivePlan } from '../../shared-domain/src/deferredActivePlan
 import type { DeadlinePlanSchedule, HorizonHour, ObjectivePayloadReady } from '../src/ui/deadlinePlanData.ts';
 import type { DeadlineProgress } from '../src/ui/deadlinePlanResolvers.ts';
 import { SMART_TASK_SUB_HOME_UNAVAILABLE } from '../../shared-domain/src/objectiveWriteStrings.ts';
+import { uiDeviceFixture } from './helpers/deviceStatusFixture.ts';
 
 const atLocalHour = (base: Date, hourOffset: number): Date => {
   const date = new Date(base);
@@ -198,6 +199,7 @@ const readyHeaterPayload = (
 ): ObjectivePayloadReady => ({
   ctx: {
     device: { available: true, id: 'heater', name: 'Connected 300', targets: [], binaryControl: { on: false } },
+    deviceStatus: null,
     objective: {
       enabled: true,
       kind: 'temperature',
@@ -949,6 +951,32 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.metaLine).toBe('Limited time left before the deadline.');
   });
 
+  it('reads the booked hour as planned while the plan limits the device', () => {
+    // The device's Overview status rides the bootstrap plan; a Limited card
+    // and a "Heating now" headline cannot both be true.
+    const now = new Date(2026, 0, 1, 12, 0, 0, 0);
+    const deadline = atLocalHour(now, 4);
+    const devices = heaterDevices({ temperature: heaterTemperature(18, 20), planningPowerKw: 2, targets: waterHeaterTargets() });
+    const prices = pricesPayload(hourlyPrices(now, [50, 51, 52, 53]));
+    const base = buildBootstrap(heaterObjectiveSettings(deadline, 65), buildHeaterActivePlan({
+      now, deadline, plannedHourOffsets: [0, 1], plannedKWhPerHour: 2, targetTemperatureC: 65, energyNeededKWh: 4,
+    }));
+    const withStatus = (limited: boolean): SettingsUiBootstrap => ({
+      ...base,
+      plan: {
+        devices: [uiDeviceFixture(limited
+          ? { id: 'heater', name: 'Heater', currentState: 'off', plannedState: 'shed', reason: 'shed due to capacity' }
+          : { id: 'heater', name: 'Heater', currentState: 'on', plannedState: 'keep' })],
+        rescuableDeviceIds: [],
+      },
+    });
+    const headline = (bootstrap: SettingsUiBootstrap) => expectReady(resolveRenderInput({
+      bootstrap, deviceId: 'heater', devices, prices, nowMs: now.getTime(),
+    })).hero.headline;
+    expect(headline(withStatus(false))).toBe('Heating now');
+    expect(headline(withStatus(true))).toBe('Planned to run now');
+  });
+
   // Headline-qualifier decision (2026-05-23):
   // The partial-schedule budget-bound hero pairs the live `Heating from HH:MM`
   // / `Heating now` headline (from `resolveHeroHeadline` — `at_risk` keeps
@@ -1204,6 +1232,30 @@ describe('deadline plan page payload', () => {
     expect(result.status).toBe('unavailable');
     if (result.status !== 'unavailable') return;
     expect(result.reason).toBe('already_satisfied');
+    // Nothing says the done task holds the device (no plan status), so the page does not claim it.
+    expect(result.body).not.toContain('holds the device');
+  });
+
+  it('says a satisfied task holds its device only while the device card shows that hold', () => {
+    // With price optimisation off a satisfied task governs nothing, and in an hour
+    // it booked the device runs: the hold sentence follows the device's status.
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices = heaterDevices({ temperature: heaterTemperature(23, 20), planningPowerKw: 2 });
+    const prices = pricesPayload(hourlyPrices(now, [100, 101, 102, 103, 104, 105]));
+    const base = buildBootstrap(heaterObjectiveSettings(deadline, 22), buildHeaterActivePlan({
+      now, deadline, plannedHourOffsets: [0], plannedKWhPerHour: 0,
+    }));
+    const body = (reason: { code: 'deferred_objective_satisfied' | 'capacity' }) => {
+      const result = resolveRenderInput({
+        bootstrap: { ...base, plan: { devices: [uiDeviceFixture({ id: 'heater', name: 'Heater', currentState: 'off',
+          plannedState: 'shed', reason })], rescuableDeviceIds: [] } },
+        deviceId: 'heater', devices, prices, nowMs: now.getTime(),
+      });
+      return result.status === 'unavailable' ? result.body : undefined;
+    };
+    expect(body({ code: 'deferred_objective_satisfied' })).toContain('PELS holds the device until the ready-by time.');
+    expect(body({ code: 'capacity' })).not.toContain('holds the device');
   });
 
   it('renders the device_data_missing pending hero when the recorder flagged a progress-side failure', () => {
@@ -2146,7 +2198,7 @@ describe('deadline plan page payload', () => {
     expect(renderInput?.status).toBe('pending');
     if (renderInput?.status !== 'pending') return;
     expect(renderInput.pending.hero.headline).toBe('Learning energy use');
-    expect(renderInput.pending.hero.metaLine).toMatch(/needs power readings/i);
+    expect(renderInput.pending.hero.metaLine).toMatch(/power and temperature readings while it runs/i);
     const chipTexts = renderInput.pending.hero.chips.map((chip) => chip.text);
     expect(chipTexts).toEqual(['Temperature', 'Building plan…']);
   });
@@ -2981,6 +3033,7 @@ describe('resolveHeroHeadline', () => {
       queuedHour.startsAtMs - 60_000,
       'alert',
       null,
+      true,
     )).toBeNull();
   });
 
@@ -2992,6 +3045,7 @@ describe('resolveHeroHeadline', () => {
       queuedHour.startsAtMs - 60_000,
       'warn',
       null,
+      true,
     )).toBe('Heating from 16:00');
   });
 
@@ -3003,7 +3057,22 @@ describe('resolveHeroHeadline', () => {
       queuedHour.startsAtMs + 60_000,
       'good',
       null,
+      true,
     )).toBe('Heating now');
+  });
+
+  it('says the booked hour is planned, not running, while the device is not running', async () => {
+    // An energy task read "Running now" beside a charger PELS had paused at
+    // 0 kW for the hard cap.
+    const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveHeroHeadline(
+      labels,
+      queuedHour,
+      queuedHour.startsAtMs + 60_000,
+      'good',
+      null,
+      false,
+    )).toBe('Planned to run now');
   });
 
   it('returns the on-track sentinel when no hour is scheduled', async () => {
@@ -3014,6 +3083,7 @@ describe('resolveHeroHeadline', () => {
       queuedHour.startsAtMs,
       'good',
       null,
+      true,
     )).toBe('On track — no action needed yet');
   });
 
@@ -3028,6 +3098,7 @@ describe('resolveHeroHeadline', () => {
       queuedHour.startsAtMs,
       'warn',
       null,
+      true,
     )).toBeNull();
   });
 
@@ -3041,6 +3112,7 @@ describe('resolveHeroHeadline', () => {
       queuedHour.startsAtMs + 60_000,
       'warn',
       resolveSmartTaskLiveCause('objective_not_accepting_energy', null, 'none'),
+      true,
     )).toBeNull();
   });
 
@@ -3052,6 +3124,7 @@ describe('resolveHeroHeadline', () => {
       queuedHour.startsAtMs + 60_000,
       'good',
       resolveSmartTaskLiveCause('objective_not_accepting_energy', null, 'none'),
+      true,
     )).toBe('Heating now');
   });
 });
@@ -4199,7 +4272,8 @@ describe('shared-domain pending-hero copy', () => {
       '../../shared-domain/src/smartTaskCopy/pendingReasons.ts'
     );
     expect(PENDING_REASON_MISSING_CAPACITY_COPY).toBe(
-      'Learning energy use — needs power readings from this device.',
+      'Learning energy use — PELS learns how much energy each degree takes from this device’s power '
+        + 'and temperature readings while it runs.',
     );
     // Em-dash is the proper Unicode character (U+2014), not two hyphens.
     expect(PENDING_REASON_MISSING_CAPACITY_COPY).toContain('—');
@@ -4222,9 +4296,12 @@ describe('shared-domain pending-hero copy', () => {
     // Headline + body parse together as the canonical one-line copy
     // (`PENDING_REASON_MISSING_CAPACITY_COPY`) so the user reads the
     // pending hero as a single coherent sentence.
-    expect(`${copy.headline} — ${copy.body.replace(/^./, (c) => c.toLowerCase())}`)
-      .toBe(PENDING_REASON_MISSING_CAPACITY_COPY);
-    expect(copy.body).toBe('Needs power readings from this device.');
+    // The body fragment opens with `PELS`, so re-capitalising it is a no-op.
+    expect(`${copy.headline} — ${copy.body}`).toBe(PENDING_REASON_MISSING_CAPACITY_COPY);
+    expect(copy.headline).toBe('Learning energy use');
+    // A heater drawing power whose temperature has not moved yet is still
+    // learning: the body must not claim power readings are missing.
+    expect(copy.body).not.toContain('Needs power readings');
     // headlineReason suppressed — the one-line copy is self-contained, so
     // the resolver declines to fabricate extra subline copy that would
     // duplicate the body.

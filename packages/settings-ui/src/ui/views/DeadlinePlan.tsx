@@ -53,6 +53,7 @@ import {
 } from '../deadlineChartScrub.ts';
 import { renderDeadlineIntervalBar } from '../deadlineIntervalBar.ts';
 import { formatAcceptedAt, formatHourLabel } from '../deadlinePlanFormatters.ts';
+import { withInlinePriceUnit } from '../priceUnit.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { DeadlinePlanHistoryDetail, PlanRevisionRow } from './DeadlinePlanHistoryDetail.tsx';
@@ -599,7 +600,7 @@ export const buildScheduleChartOption = (
         // `containLabel` reserves its width.
         formatter: (value: number) => {
           if (priceAxisMin < 0 && Math.abs(value - priceAxisMin) < 0.001) return priceAxisMin.toFixed(1);
-          if (Math.abs(value - priceMax) < 0.001) return `${priceMax.toFixed(1)} ${payload.priceUnitLabel}`;
+          if (Math.abs(value - priceMax) < 0.001) return withInlinePriceUnit(priceMax.toFixed(1), payload.priceUnitLabel);
           return '';
         },
       },

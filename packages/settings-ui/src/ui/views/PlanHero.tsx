@@ -29,7 +29,7 @@ import type { PlanDeviceSnapshot, PlanMetaSnapshot, PlanSnapshot } from '../plan
 import type {
   SettingsUiPricesPayload,
 } from '../../../../contracts/src/settingsUiApi.ts';
-import { resolveCostDisplayFromCombinedPrices, resolvePriceUnitLabel } from '../priceUnit.ts';
+import { resolveCostDisplayFromCombinedPrices, resolveInlinePriceUnit } from '../priceUnit.ts';
 import { normalizeCombinedPrices } from '../combinedPrices.ts';
 import {
   formatSolarNowSubline,
@@ -180,10 +180,12 @@ const computePowerBarScale = (
 ): BarScale | null => {
   // `meta.softLimitKw` alone: it is required on the wire, and the
   // `?? capacitySoftLimitKw ?? 0` chain this used to carry was two fallbacks
-  // deep on a value the planner writes every cycle. The `<= 0` guard stays —
-  // a zero safe pace is a real configuration, not an absent one.
+  // deep on a value the planner writes every cycle. A zero safe pace is a real
+  // state, not an absent one (a spent capacity period, an exhausted daily
+  // budget): the bar draws all of the draw as overflow against a tick at zero,
+  // and the split still renders.
   const { softLimitKw: safePaceKw, softLimitSource } = meta;
-  if (safePaceKw === null || softLimitSource === null || safePaceKw <= 0) return null;
+  if (safePaceKw === null || softLimitSource === null || safePaceKw < 0) return null;
   const total = Math.max(0, headline.totalKw);
   const controlled = Math.max(0, Math.min(total, headline.controlledKw));
   // Derive background as the residual after the managed segment. `totalKw`,
@@ -198,6 +200,8 @@ const computePowerBarScale = (
   // energy bar in kWh, not on this axis.
   const gridScaleKw = meta.gridImportLimitKw === null ? [] : [meta.gridImportLimitKw * 1.2];
   const scaleKw = Math.max(safePaceKw * 1.2, ...gridScaleKw, total * 1.05);
+  // Nothing drawn against a zero pace leaves no scale to place anything on.
+  if (scaleKw <= 0) return null;
   return {
     total,
     controlled,
@@ -719,7 +723,7 @@ const resolveCheapestUpcomingText = (
   return formatCheapestUpcomingHour({
     hours,
     nowMs,
-    unitLabel: resolvePriceUnitLabel(costDisplay),
+    unitLabel: resolveInlinePriceUnit(costDisplay),
     divisor: costDisplay.divisor,
     formatClockTime: formatClockTimeShort,
   });

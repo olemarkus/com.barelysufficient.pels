@@ -200,6 +200,10 @@ Segments:
 | Free | Remaining room before safe pace |
 | Overflow | Amount above safe pace (warn tone) |
 
+A zero safe pace (a spent capacity period, an exhausted daily budget) is a real
+state: the bar still renders, with the tick at zero and all draw as overflow,
+and the split line stays.
+
 The power bar's overflow tone only compares current draw with safe pace. The
 hard-cap story is the trajectory chip plus the energy bar's projection marker
 and kWh cap tick.
@@ -358,7 +362,8 @@ Priority order (first matching condition wins):
    Once nothing is left to ease off it names control-off devices that are still
    drawing beside the other-appliances recourse (they are one source of the
    import, not necessarily its cause), else `Holding back N devices.` when
-   devices are held, and ends `Turn off other appliances to stay under your
+   devices are held for power (a device its own smart task holds is not
+   counted: grid room would not run it), and ends `Turn off other appliances to stay under your
    limit.` With nothing held either: `Grid import is high and PELS has no more
    devices to ease off. Turn off other appliances to stay under your limit.`
    Never say the grid has no power: it is still supplying it.
@@ -371,14 +376,19 @@ Priority order (first matching condition wins):
    Simulation mode the action clause is likewise dropped, because PELS is not
    acting (rule 2's hypothetical-voice principle applies here too).
    When the managed shed cascade is exhausted (no controllable managed device
-   is still running to ease off) and the remaining breach is attributed to a
-   device with Power-limit control turned off, the copy stops promising
-   mitigation PELS has finished and names the user's recourse instead:
-   `Managed devices are already eased off. The remaining draw is from a device
-   that has Power-limit control turned off. Turn its Power-limit control back
-   on so PELS can ease it off.` The recourse pluralises when several
-   control-off devices breach; the hard cap is never offered as a remedy
-   (see `notes/ui-terminology.md` § "Hard cap is a capacity-period ceiling").
+   is still running to ease off) and a device with Power-limit control turned
+   off is still drawing, the copy stops promising mitigation PELS has finished
+   and names the user's recourses instead, as rule 0 does: `Managed devices
+   are already eased off. A device with Power-limit control turned off is
+   still drawing power. Turn its Power-limit control back on, or turn off
+   other appliances to stay under your limit.` Any draw counts the device, so
+   it is one source of the remaining draw, not necessarily its cause: a 3 kW
+   control-off tank beside 20 kW of background once read `The remaining draw
+   is from a device that has Power-limit control turned off`, and turning its
+   control back on still left the hour over the cap. The recourse pluralises
+   when several control-off devices draw; the hard cap is never offered as a
+   remedy (see `notes/ui-terminology.md` § "Hard cap is a capacity-period
+   ceiling").
 2. Simulation mode would act: `2 devices would be limited right now.`
    The slim simulation banner and the `Simulation mode` status chip already
    name simulation on the Overview, so this conclusion drops the redundant
@@ -395,7 +405,11 @@ Priority order (first matching condition wins):
    hours: alone it reads `Holding 1 device until its smart task’s ready-by
    time.`, and beside cheaper-hours holds the counts are joined (`Smart tasks
    are holding 2 devices, 1 waiting for cheaper hours, 1 held until a smart
-   task’s ready-by time.`). All limited devices
+   task’s ready-by time.`). When devices held for power sit beside task holds,
+   the blend names their constraint too: `Holding back 4 devices, 1 held until
+   a smart task’s ready-by time, 3 to stay within today’s budget.` when today's
+   budget holds all of them, else `… 2 so the house stays under 9.5 kW.`; with
+   no safe pace (limits off) the power clause stays out. All limited devices
    budget-paced (reason code `dailyBudget`) → `Holding back 2 devices to stay
    within today's budget.` — the budget variant names the constraint instead
    of a kW number, because under budget pacing the kW tick is not the thing
@@ -435,7 +449,10 @@ one-tap recourse) needs a smart-task signal here. Ladder + copy live in
 1. live `Cannot finish` (`{Device} — Cannot finish · Due HH:MM`, alert) — a
    failure the owner can still prevent outranks post-hoc diagnosis;
 2. recent-miss rollup (`{Device} — 3 of last 4 runs missed`, alert — the
-   Smart-tasks archive's `formatMissStreakAggregateLine` verbatim);
+   Smart-tasks archive's `formatMissStreakAggregateLine` verbatim), over the
+   runs that ended inside the `Last 7 days` strip's window only
+   (`filterSevenDayWindowEntries`): a streak from weeks ago is history, not a
+   live alert, and it used to outrank paused tasks the owner could act on;
 3. live `At risk` (`{Device} — At risk · Ready by HH:MM`, warn);
 4. paused (compressed widget words `Unplugged` / `Not managed`, warn);
 5. steady: `N smart tasks · on track` (muted), counting only genuinely

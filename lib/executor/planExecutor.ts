@@ -299,7 +299,13 @@ export class PlanExecutor {
   public getDeviceExecutionStates(plan: DevicePlan): ReadonlyMap<string, DeviceExecutionState> {
     const reads = this.driftObservationDeps();
     const intents = buildExecutablePlan(plan).devices;
-    return new Map(plan.devices.map((device, index) => {
+    return new Map(plan.devices.flatMap((device, index) => {
+      // A device that has left the managed set since this plan was built is no
+      // longer tracked (the runtime snapshot drops unmanaged devices), so it
+      // has no configuration and the observer stops reading it: it has no
+      // execution state, rather than an unavailable one. The next plan drops
+      // it. A tracked device Homey reports unavailable keeps its state.
+      if (this.deps.getDeviceConfiguration(device.id) === undefined) return [];
       const live = readExecutorDevice(this.deps, device.id);
       const observed = live ? buildExecutableObservedDeviceState(live, live.steppedLoadProfile) : undefined;
       const execution = resolveDeviceExecutionState(intents[index]!, observed, {
@@ -307,10 +313,10 @@ export class PlanExecutor {
         target: this.state.pendingTargetCommands[device.id] ?? null,
         unansweredStepCommands: this.deps.getSteppedLoadCommandSession(device.id).unansweredStepCommands,
       }, reads.isExternalOffHeld(device.id));
-      return [device.id, {
+      return [[device.id, {
         ...execution,
         ...(live && hasObservedMeasuredPower(live) ? { currentDrawKw: live.measuredPowerKw } : {}),
-      }];
+      }] as const];
     }));
   }
 

@@ -31,6 +31,8 @@ import {
 } from '../../../shared-domain/src/overviewSmartTaskRow.ts';
 import { flattenPlanHistoryEntries, resolveMissStreakBadges } from '../../../shared-domain/src/deferredPlanHistory.ts';
 import { resolveSmartTaskListStatus } from '../../../shared-domain/src/smartTaskCopy/listStatus.ts';
+import { filterSevenDayWindowEntries } from '../../../shared-domain/src/deferredPlanHistory7DayStrip.ts';
+import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
 import type { OverviewDeferredObjectiveActivePlan } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { PlanSnapshot } from './planTypes.ts';
 import { applyPlanRescueGate } from './starvationRescue.ts';
@@ -424,7 +426,11 @@ export const refreshPlanHistory = (): void => {
       payload = null;
     }
     if (sequence !== historyRefreshSequence) return;
-    cachedMissStreaks = resolveMissStreakBadges(flattenPlanHistoryEntries(payload));
+    // A live alert reads the strip's window: misses from weeks ago are history,
+    // not something to act on now.
+    cachedMissStreaks = resolveMissStreakBadges(
+      filterSevenDayWindowEntries(flattenPlanHistoryEntries(payload), Date.now(), resolveBrowserTimeZone()),
+    );
     doRender();
   })();
 };

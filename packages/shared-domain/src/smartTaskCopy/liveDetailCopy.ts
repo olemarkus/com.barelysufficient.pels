@@ -67,7 +67,7 @@ export const formatCheapestHoursCaption = (
   unitLabel: string,
 ): string | null => {
   const unit = unitLabel.trim();
-  if (unit.length === 0 || unit === 'Price' || plannedPrices.length === 0 || allPrices.length < 2) return null;
+  if (unit.length === 0 || plannedPrices.length === 0 || allPrices.length < 2) return null;
   const durationMs = plannedPrices.reduce((sum, period) => sum + period.endsAtMs - period.startsAtMs, 0);
   if (durationMs <= 0) return null;
   const average = plannedPrices.reduce((sum, period) => (

@@ -62,6 +62,30 @@ The redesigned Settings UI is expected to be many users' first exposure to the n
 P1 UI items should prioritize a pleasant surprise: compact, calm, coherent, and clear enough that
 users trust the redesign immediately, while still keeping non-P0 polish out of the v1 release gate.
 
+## Shed and restore control
+
+- [ ] **A stepped device kept below its top step for lack of room reads `Running` with no reason.**
+      Where: once shedding stops selecting it, a running stepped device PELS stepped down is planned
+      `keep` at the reduced step (`lib/plan/planDevicesBase.ts` `resolvePlannedDeviceDecision`, target
+      from the executor's command store). With the shedding latch still set no step-up is tried
+      (`lib/plan/restore/helpers.ts` `markSteppedDevicesStayAtCurrentLevel` skips a running device);
+      once it releases, the rejection writes only `insufficientHeadroom` and the device stays `keep`.
+      `resolveBaseKind` (`lib/plan/deviceStatusReadModel.ts`) reads only `shed` as held and
+      `resolveBlockedStatusLine` (`lib/plan/planSteppedCardText.ts`) speaks only when the target step is
+      above the current one, so a water heater stepped Max→Low read `Limited · Low` for one cycle, then
+      `Running 1.3 kW` with no line while the house sat at its safe pace, and the hero left it out.
+      What changes: a presentation-only stamp resolved from the final plan each cycle, beside
+      `steppedFairnessHold` (`lib/plan/planSteppedFairnessHold.ts`): a running stepped device with
+      command authority and standing demand, planned `keep` below its top step under a power or timer
+      hold, reads held (`Limited · Low`, `Waiting to increase`) until a step-up is admitted, it reaches
+      the top step or demand ends. No actuation, fairness count, restore admission or starvation change.
+      Needs an owner ruling first, because it reverses the 2026-10-27 activity-log rule that a running
+      device waiting to step up is "left on" and logs no row (`lib/plan/deviceOverviewLog.ts`
+      `buildLoggedReasonShape`). The ruling also covers whether a device PELS never lowered (left at
+      Medium by its owner) reads `Limited · Medium` when there is no room, and whether the stepped
+      fairness hold reads Limited too. Done when the ruled device reads `Limited · Low — Waiting to
+      increase` until it climbs back, and the hero counts it. [P1]
+
 ## Smart tasks
 
 - [ ] **Latch `currentHourClaim` for the hour instead of recomputing it through the whole `:58`

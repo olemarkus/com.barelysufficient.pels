@@ -1791,6 +1791,19 @@ describe('PlanExecutor stepped loads', () => {
     expect(deviceManager.requestSteppedLoadStep).not.toHaveBeenCalled();
   });
 
+  it('has no execution state for a device that left the managed set after the plan', () => {
+    // Turning Managed by PELS off stops the observer reading the device, and the
+    // next overview publication still carried it from the last plan: it read
+    // unavailable, and its activity log ended on an `Unavailable` row.
+    const device = steppedPlanDevice({ id: 'connected-300', currentState: 'on' as const, reportedStepId: 'low',
+      selectedStepId: 'low', desiredStepId: 'low', plannedState: 'keep' });
+    if (!isSteppedLoadDeviceFixture(device)) throw new Error('expected stepped fixture');
+    // The runtime snapshot drops an unmanaged device, so it is no longer tracked.
+    const { executor } = buildExecutor(createPlanEngineState(), []);
+    const plan: DevicePlan = { meta: buildPlanMeta({}), devices: [device], inverterDecisions: [], storageReleases: [] };
+    expect(executor.getDeviceExecutionStates(plan).has(device.id)).toBe(false);
+  });
+
   it('leaves an expired pending binary command for the settle sweep when status is read', () => {
     // A settings-UI read asks what is in flight; expiring the command (and firing
     // its timeout lifecycle, which records a reachability failure) is the

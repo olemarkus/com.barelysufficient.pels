@@ -24,6 +24,8 @@ import type {
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import { toResolvedLegacyPlanHistoryEntry } from '../utils/planHistoryFixtures';
+import { filterSevenDayWindowEntries } from '../../packages/shared-domain/src/deferredPlanHistory7DayStrip';
+import { resolveMissStreakBadges } from '../../packages/shared-domain/src/deferredPlanHistory';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DEADLINE_MS = Date.UTC(2026, 4, 16, 7, 0, 0); // Sat 16 May 07:00 UTC
@@ -613,6 +615,19 @@ describe('groupPlanHistoryByIsoWeek', () => {
       expect(groups).toHaveLength(1);
       expect(groups[0]!.heading.startsWith('Last week')).toBe(true);
     });
+  });
+});
+
+describe('filterSevenDayWindowEntries', () => {
+  const NOW_MS = Date.UTC(2026, 4, 16, 12, 0, 0);
+
+  it('keeps only runs the 7-day strip counts, so an old miss streak raises no live alert', () => {
+    const recent = buildEntry({ id: 'recent', outcome: 'missed' });
+    const weeksOld = NOW_MS - 25 * 24 * HOUR_MS;
+    const old = buildEntry({ id: 'old', outcome: 'missed', deadlineAtMs: weeksOld, finalizedAtMs: weeksOld });
+    expect(filterSevenDayWindowEntries([recent, old], NOW_MS, 'UTC').map((entry) => entry.id)).toEqual(['recent']);
+    expect(resolveMissStreakBadges(filterSevenDayWindowEntries([old, { ...old, id: 'old-2' }], NOW_MS, 'UTC')))
+      .toEqual([]);
   });
 });
 
