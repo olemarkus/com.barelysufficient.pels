@@ -178,7 +178,8 @@ The same Flow inventory also exposes one separate UI fact: enabled
 **Report battery level for charger** actions, normalized by target charger.
 That action is not a native-control conflict. It becomes redundant only when
 the owner selects a car for the same charger, because selected-car mode ignores
-Flow and charger-native battery reports.
+Flow and charger-device battery reports (see `notes/ev-car-link/README.md`
+§ Adoption: an ordinary charger cannot know the car's level).
 
 Per-device-class native-write capability sets (the right-hand side of the
 intersection, consumed by the conflict classifier in a later PR):

@@ -95,13 +95,13 @@ PELS needs battery percentage for the charger it is planning. Choose one of the 
 
 Open the charger's **Car** section in **More -> Apps -> PELS -> Settings -> Devices** and select the cars that charge there. PELS reads the battery level from the car it matches to the charger. If the car is not listed, use its battery-percentage tag through Path C instead.
 
-Selecting a car does not itself establish a match. While the page says **Waiting to identify the connected car**, this charger has no battery level. While any car is selected, PELS ignores both the charger's own reading and the **Report battery level for charger** Flow card, including before a match. Clear the selection if you want to use either of those sources instead.
+Selecting a car does not itself establish a match. While the page says **Waiting to identify the connected car**, this charger has no battery level. While any car is selected, PELS ignores the **Report battery level for charger** Flow card, including before a match. Clear the selection if you want to use the Flow instead.
 
 PELS matches cars to chargers whether or not they are selected; when a car selected for another charger plugs in there, it is matched there, not here. Under each car, the **Car** section shows `Matched to this charger now` for the car on it now, `Last matched to this charger on <date>`, `Not matched to this charger` when the car has matched a different charger that is still in Homey, or `Not matched to this charger yet`. If you already report the battery level through a Flow, wait until the car shows as matched before you select it.
 
-### Path B: The Charger Reports Battery Percentage
+### Path B: The Charger Device Shows Battery Percentage
 
-Leave the charger's car selection empty. Some charger integrations expose battery level on the charger device itself. If Homey exposes that as a supported battery percentage capability, PELS can read it directly.
+An ordinary charger does not know the car's battery level. This path applies when the device PELS controls is the car itself, such as a Tesla controlled as a charger, or when the charger's Homey app fetches the level from the car maker. Leave the charger's car selection empty and PELS reads that battery percentage directly.
 
 Check the charger in **More -> Apps -> PELS -> Settings -> Devices**. The device detail should show battery level once PELS has seen a reading.
 
@@ -181,7 +181,7 @@ Typical repeating Flow:
 
 Use the same target and ready-by time you tested in the widget, for example `80%` by `07:00`.
 
-Keep the battery source you set up in Step 2 working: the selected car, the charger's own reading, or the battery-reporting Flow. The charging task is only as good as the battery percentage PELS receives.
+Keep the battery source you set up in Step 2 working: the selected car, the battery percentage on the charger device, or the battery-reporting Flow. The charging task is only as good as the battery percentage PELS receives.
 
 ## When To Use Flow-Booked Cheap Hours Instead
 

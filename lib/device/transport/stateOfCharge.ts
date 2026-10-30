@@ -13,7 +13,10 @@ import { hasCarStateOfChargeChanged } from './carStateOfChargeWrite';
 import { stateOfChargeLevelsDiffer } from './stateOfChargeLevel';
 
 /**
- * The charger reported its own level. One constant rather than a literal per
+ * The level arrived on the charger device (a battery capability or the flow
+ * card), not through the car link. The percentage is still the car's: an
+ * ordinary charger cannot know it (see `DeviceStateOfChargeSnapshot.source`).
+ * One constant rather than a literal per
  * site, so the build and the level re-resolution beside it cannot drift apart —
  * the car path hoists its `source` for the same reason.
  */
@@ -53,9 +56,9 @@ type RetainedStateOfChargeSession = Pick<
  * adopting charger retain a car reading.
  *
  * `eligibleCarIds` says whether the user ticked any car for this charger. When
- * they have, the car is the ONLY source of its battery level: the charger's own
- * native reading and the `report_evcharger_battery_level` flow card are both
- * ignored, so the level cannot flip between two sources mid-session and the user
+ * they have, the car link is the ONLY source of its battery level: a battery
+ * capability on the charger device and the `report_evcharger_battery_level`
+ * flow card are both ignored, so the level cannot flip between two sources mid-session and the user
  * gets what they asked for. The value itself arrives on the realtime seam
  * (`updateStateOfChargeFromCarObservation`); parse's job is to carry it, not to
  * re-derive it.
@@ -201,17 +204,17 @@ export function updateStateOfChargeFromRealtimeCapability(
   if (!isStateOfChargeCapabilityId(capabilityId)) return false;
   if (snapshot.deviceClass !== 'evcharger') return false;
   // A charger-sourced realtime reading never displaces an adopted car value.
-  // Parse suppresses the charger's own sources for an opted-in charger, but this
+  // Parse suppresses the charger-device sources for an opted-in charger, but this
   // seam and the retained-observation replay run between refreshes — without
   // this the charger's value would win for a while, relabel the reading as the
-  // charger's own, and then be dropped entirely by the next parse for not being
+  // charger device's, and then be dropped entirely by the next parse for not being
   // a car reading.
   if (snapshot.stateOfCharge?.source.kind === 'car') return false;
   const percent = normalizeStateOfChargePercent(value);
   if (percent === undefined) return false;
 
   const previous = snapshot.stateOfCharge;
-  // Reached only past the car guard above, so this reading is the charger's own.
+  // Reached only past the car guard above, so this reading arrived on the charger device.
   const { built: next } = applyLiveStateOfChargeReading(snapshot, {
     percent, observedAtMs, capabilityId, source: CHARGER_SOURCE,
   });

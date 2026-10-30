@@ -355,7 +355,7 @@ const SNAPSHOT_REPARSE_SETTINGS: readonly (readonly [string, string])[] = [
   [DEVICE_TARGET_POWER_CONFIGS, 'device_target_power_change'],
   [DEVICE_TARGET_POWER_REACHABILITY, 'device_target_power_reachability_change'],
   // A charger's battery-level source is chosen at parse: once a car is
-  // selected, the charger's own reading and the Flow card are ignored. Without
+  // selected, a battery capability on the charger device and the Flow card are ignored. Without
   // a re-parse the dropped source kept feeding boost and Smart tasks until the
   // next scheduled refresh.
   [EV_CAR_ASSOCIATIONS, 'ev_car_associations_change'],
