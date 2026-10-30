@@ -1,18 +1,12 @@
 import type { ObservedCurrentStateInput } from '../observer/observedState';
-import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import type {
   BinaryCommandabilityProjection,
   BinaryCommandabilityProjectionInput,
 } from '../plan/admission/binaryCommandReachability';
-import type { DeviceTargetPowerConfigsWithReachability } from '../device/targetPowerReachability';
+import type { DeviceControlSettingsRead } from '../device/deviceControlSettings';
 import type { PriceOptimizationSettings } from '../price/priceOptimizer';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
-import type {
-  AssociatedCarDecoration,
-  EvBoostConfig,
-  EvChargeTargetConfig,
-  TemperatureBoostConfig,
-} from '../../packages/contracts/src/types';
+import type { AssociatedCarDecoration } from '../../packages/contracts/src/types';
 import type {
   PlanInputDeviceBase,
   StoragePlanInputKind,
@@ -28,28 +22,20 @@ export type PlanInputProjectionSource = {
   getNow: () => Date;
   isWaitingForCarAssociation: (deviceId: string) => boolean;
   getPowerCalibrationSnapshot: () => PowerCalibrationSnapshot;
-  getTargetPowerConfig: (
-    deviceId: string,
-  ) => DeviceTargetPowerConfigsWithReachability[string] | undefined;
+  /**
+   * The owner's device-control settings: target-power, boost and charge-target
+   * configs, start policies, budget exemptions, and the `controllable_devices`
+   * map. A home battery's Power-limit control is read from that map through the
+   * battery's own gate (`isBatteryPowerLimitEnabled`, `storageProjection.ts`),
+   * never through `isCapacityControlEnabled`, which vetoes every battery.
+   */
+  deviceControl: DeviceControlSettingsRead;
   getPriceOptimizationSettings: (deviceId: string) => PriceOptimizationSettings | undefined;
   isSurplusPoolReachable: () => boolean;
   getShedBehavior: (deviceId: string) => ShedBehavior;
-  getTemperatureBoostConfig: (deviceId: string) => TemperatureBoostConfig | undefined;
-  getEvBoostConfig: (deviceId: string) => EvBoostConfig | undefined;
-  /** The charger's target battery level; `undefined` is "no target". */
-  getEvChargeTargetConfig: (deviceId: string) => EvChargeTargetConfig | undefined;
-  getDeviceStartPolicies: () => Record<string, DeviceStartPolicy>;
   isCapacityControlEnabled: (deviceId: string) => boolean;
-  /**
-   * The owner's `controllable_devices` map as the runtime holds it. A home
-   * battery's Power-limit control is read from it through the battery's own
-   * gate (`isBatteryPowerLimitEnabled`, `storageProjection.ts`), never through
-   * `isCapacityControlEnabled`, which vetoes every battery.
-   */
-  getControllableDevices: () => Readonly<Record<string, boolean>>;
   readContinuousBatteryPlan: (deviceId: string) => ContinuousBatteryPlanRead;
   resolveManagedState: (deviceId: string) => boolean;
-  isBudgetExempt: (deviceId: string) => boolean;
   isExternalOffHoldActive: (deviceId: string, device: ObservedCurrentStateInput) => boolean;
 };
 

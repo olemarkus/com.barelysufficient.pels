@@ -48,7 +48,7 @@ export const resolveStandingCommandGrant = (
 ): boolean => hasStandingCommandGrant(
   source.resolveManagedState(deviceId),
   source.isCapacityControlEnabled(deviceId),
-  resolveDeviceStartPolicy(source.getDeviceStartPolicies(), deviceId),
+  resolveDeviceStartPolicy(source.deviceControl.deviceStartPolicies, deviceId),
 );
 
 /** The contract's present-only-when-set postures: the key is the whole of "set". */
@@ -71,7 +71,7 @@ export const resolvePlanInputDeviceFacts = (
   const isSteppedDevice = isSteppedLoadSnapshot(device);
   const plannerSteppedLoadProfile = isSteppedDevice
     ? resolveEvTargetPowerPlannerProfile({
-      config: source.getTargetPowerConfig(device.id) ?? device.targetPowerConfig,
+      config: source.deviceControl.getDeviceTargetPowerConfig(device.id) ?? device.targetPowerConfig,
       confirmedProfile: device.steppedLoadProfile,
       nowMs: source.getNow().getTime(),
     })
@@ -104,8 +104,8 @@ export const resolvePlanInputDeviceFacts = (
   });
   const shedBehavior = resolveEffectiveShedBehavior(source, device);
   const temperatureBoost = resolveEffectiveTemperatureBoost(source, device);
-  const evBoost = source.getEvBoostConfig(device.id);
-  const startPolicy = resolveDeviceStartPolicy(source.getDeviceStartPolicies(), device.id);
+  const evBoost = source.deviceControl.getEvBoostConfig(device.id);
+  const startPolicy = resolveDeviceStartPolicy(source.deviceControl.deviceStartPolicies, device.id);
   const capacityControlEnabled = source.isCapacityControlEnabled(device.id);
   const control = resolveDeviceControlPosture(
     device,
@@ -155,11 +155,11 @@ export const resolvePlanInputDeviceFacts = (
     startPolicy,
     control,
     startPolicyInForce,
-    chargeTargetHold: projectChargeTargetHold(source.getEvChargeTargetConfig(device.id), device, control),
+    chargeTargetHold: projectChargeTargetHold(source.deviceControl.getEvChargeTargetConfig(device.id), device, control),
     surplusTracking,
     hasStandingDemand,
     residualKw,
-    budgetExempt: source.isBudgetExempt(device.id),
+    budgetExempt: source.deviceControl.isBudgetExempt(device.id),
     ...resolveStorageCluster(source, device, options),
   };
 };

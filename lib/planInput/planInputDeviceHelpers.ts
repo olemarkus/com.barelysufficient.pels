@@ -279,7 +279,7 @@ export function resolveEffectiveTemperatureBoost(
   device: ToPlanDeviceInput & EvObservedProbe & MeasuredPowerObservedProbe & TemperatureObservedProbe,
 ) {
   if (device.temperatureControlDisabled === true) return undefined;
-  return source.getTemperatureBoostConfig(device.id);
+  return source.deviceControl.getTemperatureBoostConfig(device.id);
 }
 
 /**

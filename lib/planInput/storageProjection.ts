@@ -69,7 +69,7 @@ export const resolveStorageCluster = (
       signedPowerW: power.signedW,
       claimHeld: control.claimHeld,
       admissible: control.admissible,
-      powerLimitControl: isBatteryPowerLimitEnabled(source.getControllableDevices(), device.id),
+      powerLimitControl: isBatteryPowerLimitEnabled(source.deviceControl.controllableDevices, device.id),
       verdict: control.verdict,
       deliveryCeilingW: Math.min(control.deliveryCeilingW, reserveCeilingW),
       chargeCeilingW: control.chargeCeilingW,
