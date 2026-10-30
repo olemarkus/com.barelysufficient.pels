@@ -10,6 +10,12 @@ import type {
 import type { DeferredObjectiveEnforcement, DeferredObjectiveKind } from './types';
 import { fitBandsFromSamples, resolveKwhPerUnitStat } from '../bands';
 import { applyBandedConfidence } from '../stats';
+import {
+  listObjectiveRateProfileCandidates,
+  type ObjectiveProfileSubject,
+  type ObjectiveRateProfile,
+  type ObjectiveRateProfileCandidate,
+} from '../profileLadder';
 
 // `exact`: the task's unit IS energy (an energy task), so a kWh of progress is a
 // kWh fed. Nothing is learned, estimated or buffered.
@@ -122,7 +128,7 @@ const bufferedRate = (mean: number, sigma: number, sampleCount: number, k: numbe
 
 export const resolveProfileEnergy = (
   powerTracker: PowerTrackerState,
-  deviceId: string,
+  subject: ObjectiveProfileSubject,
   objectiveKind: DeferredObjectiveKind,
   enforcement: DeferredObjectiveEnforcement,
   remainingUnits: number,
@@ -148,13 +154,11 @@ export const resolveProfileEnergy = (
       reasonCode: null,
     };
   }
-  const profile = powerTracker.objectiveProfiles?.[deviceId];
-  const directionProfile = resolveDirectionProfile(profile, progressDirection);
-  const kWhPerUnit = directionProfile?.kwhPerUnit;
-  if (kWhPerUnit && Number.isFinite(kWhPerUnit.mean) && kWhPerUnit.mean > 0) {
+  const learned = selectLearnedRate(powerTracker, subject, progressDirection);
+  if (learned !== undefined) {
     return buildLearnedResolution(
-      directionProfile,
-      kWhPerUnit,
+      learned.directionProfile,
+      learned.kwhPerUnit,
       remainingUnits,
       currentValue,
       progressDirection,
@@ -199,8 +203,49 @@ export const resolveProfileEnergy = (
   };
 };
 
+type LearnedRate = {
+  candidate: ObjectiveRateProfileCandidate;
+  directionProfile: Pick<DeviceObjectiveProfile, 'kwhPerUnit' | 'bands'>;
+  kwhPerUnit: ObjectiveProfileStat;
+};
+
+/**
+ * Observations a car's rate needs before it outranks the charger's own learned
+ * rate. One window is enough to beat the bootstrap constant, which is a guess,
+ * but not a charger profile with weeks of history behind it: right after the
+ * upgrade every car-linked charger has exactly that profile (learned before
+ * per-car learning, so possibly a blend) and a car rung of one window, and a
+ * single mis-billed window would otherwise resize every task at once.
+ */
+export const MIN_CAR_RATE_SAMPLES_OVER_CHARGER = 3;
+
+/**
+ * The most specific rung of the profile ladder (`profileLadder.ts`) that has a
+ * usable rate in this direction. A rung that exists but has learned nothing in
+ * it yet falls through, so a car's first session on a new charger is sized from
+ * that car's rate elsewhere rather than from the bootstrap. A car rung still
+ * thin on evidence yields to the charger's learned rate, and wins only when
+ * nothing below it has learned anything.
+ */
+export const selectLearnedRate = (
+  powerTracker: PowerTrackerState,
+  subject: ObjectiveProfileSubject,
+  progressDirection: ObjectiveProgressDirection,
+): LearnedRate | undefined => {
+  const usable = listObjectiveRateProfileCandidates(powerTracker, subject).flatMap((candidate) => {
+    const directionProfile = resolveDirectionProfile(candidate.profile, progressDirection);
+    const kwhPerUnit = directionProfile?.kwhPerUnit;
+    return kwhPerUnit && Number.isFinite(kwhPerUnit.mean) && kwhPerUnit.mean > 0
+      ? [{ candidate, directionProfile, kwhPerUnit }]
+      : [];
+  });
+  return usable.find((rate) => (
+    rate.candidate.rung === 'charger' || rate.kwhPerUnit.sampleCount >= MIN_CAR_RATE_SAMPLES_OVER_CHARGER
+  )) ?? usable[0];
+};
+
 const resolveDirectionProfile = (
-  profile: DeviceObjectiveProfile | undefined,
+  profile: ObjectiveRateProfile | undefined,
   progressDirection: ObjectiveProgressDirection,
 ): Pick<DeviceObjectiveProfile, 'kwhPerUnit' | 'bands'> | undefined => {
   if (profile === undefined) return undefined;

@@ -183,6 +183,11 @@ fires exactly as it does for a report on the charger device. Nothing decays the 
 decides whether the charger has one, and an association is not resolved at all for a car that
 reports itself disconnected (`resolveAssociatedCarSnapshot`).
 
+The adopted level also names its car (`level.carId`; `null` for a level that arrived on the
+charger device). Smart-task rate learning keys a car's kWh per percent by it, so each linked car
+learns its own battery on each charger (`notes/deferred-load-objectives/README.md` § "EV rate
+per car").
+
 A car must publish **both** `ev_charging_state` and `measure_battery` to be offered in the
 picker. Only the first is needed to associate; the second is required because a car that
 cannot report a level has nothing to contribute to the feature the association exists for.

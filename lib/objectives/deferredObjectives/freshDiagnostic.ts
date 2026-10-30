@@ -12,6 +12,7 @@ import {
 } from './policyHorizon';
 import type { DeferredObjectiveHorizonPlan } from './types';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
+import type { ObjectiveDeviceInput } from '../types';
 import {
   buildKnownEnergyFields,
   canReportFreshProgressWhileUnknown,
@@ -20,11 +21,14 @@ import {
   withUnavailableTrajectory,
 } from './diagnosticFields';
 
+// A task whose device is in this cycle's roster: progress was resolved from it.
+type PresentOrderedObjective = OrderedDeferredObjective & { device: ObjectiveDeviceInput };
+
 export const buildPolicyGatedKnownInputs = (
   base: DeferredObjectiveDiagnostic,
   progress: DeferredObjectiveProgressResolution,
   policyReasonCode: DeferredObjectivePolicyHorizonUnavailableReason,
-  task: OrderedDeferredObjective,
+  task: PresentOrderedObjective,
   powerTracker: PowerTrackerState,
 ): DeferredObjectiveDiagnostic => {
   const { deviceId, objective } = task;
@@ -36,7 +40,7 @@ export const buildPolicyGatedKnownInputs = (
 
   const profileEnergy = !progress.reasonCode && remainingUnits > 0
     && policyReasonCode === 'objective_missing_price_horizon'
-    ? resolveProgressEnergy(powerTracker, deviceId, objective, remainingUnits, progress)
+    ? resolveProgressEnergy(powerTracker, task.device, objective, remainingUnits, progress)
     : null;
 
   const withProgress = mergeProgressFields(base, progress.reasonCode ? null : progress.currentValue);
@@ -61,7 +65,7 @@ export const buildHorizonUnavailableDiagnostic = (
   base: DeferredObjectiveDiagnostic,
   progress: DeferredObjectiveProgressResolution,
   rawPolicyHorizon: UnavailablePolicyHorizon,
-  task: OrderedDeferredObjective,
+  task: PresentOrderedObjective,
   powerTracker: PowerTrackerState,
 ): DeferredObjectiveDiagnostic => withUnavailableTrajectory({
   ...buildPolicyGatedKnownInputs(base, progress, rawPolicyHorizon.reasonCode, task, powerTracker),

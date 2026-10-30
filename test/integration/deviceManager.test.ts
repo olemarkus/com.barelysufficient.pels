@@ -4166,7 +4166,7 @@ describe('DeviceTransport', () => {
                 // reading stands — there is no session anchor to move.
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: { percent: 51, observedAtMs: expect.any(Number) },
-                    level: { kind: 'known', percent: 51, observedAtMs: expect.any(Number) },
+                    level: { kind: 'known', percent: 51, observedAtMs: expect.any(Number), carId: null },
                 }));
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge?.sessionStartedAtMs).toBeUndefined();
 
@@ -4195,7 +4195,7 @@ describe('DeviceTransport', () => {
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: { percent: 52, observedAtMs: expect.any(Number) },
-                    level: { kind: 'known', percent: 52, observedAtMs: expect.any(Number) },
+                    level: { kind: 'known', percent: 52, observedAtMs: expect.any(Number), carId: null },
                 }));
 
                 evDeviceManager.destroy();
@@ -4253,7 +4253,7 @@ describe('DeviceTransport', () => {
 
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: { percent: 52, observedAtMs: expect.any(Number) },
-                    level: { kind: 'known', percent: 52, observedAtMs: expect.any(Number) },
+                    level: { kind: 'known', percent: 52, observedAtMs: expect.any(Number), carId: null },
                     capabilityId: 'measure_battery',
                 }));
                 expect(liveStateListener).toHaveBeenCalledOnce();
@@ -4415,7 +4415,7 @@ describe('DeviceTransport', () => {
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: { percent: 61, observedAtMs: expect.any(Number) },
                     capabilityId: 'measure_battery',
-                    level: { kind: 'known', percent: 61, observedAtMs: expect.any(Number) },
+                    level: { kind: 'known', percent: 61, observedAtMs: expect.any(Number), carId: null },
                 }));
 
                 evDeviceManager.destroy();
@@ -4489,7 +4489,7 @@ describe('DeviceTransport', () => {
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: { percent: 61, observedAtMs: expect.any(Number) },
                     capabilityId: 'measure_battery',
-                    level: { kind: 'known', percent: 61, observedAtMs: expect.any(Number) },
+                    level: { kind: 'known', percent: 61, observedAtMs: expect.any(Number), carId: null },
                 }));
 
                 evDeviceManager.destroy();
@@ -4563,7 +4563,7 @@ describe('DeviceTransport', () => {
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: { percent: 61, observedAtMs: expect.any(Number) },
                     capabilityId: 'measure_soc_level',
-                    level: { kind: 'known', percent: 61, observedAtMs: expect.any(Number) },
+                    level: { kind: 'known', percent: 61, observedAtMs: expect.any(Number), carId: null },
                 }));
 
                 evDeviceManager.destroy();
@@ -4600,7 +4600,7 @@ describe('DeviceTransport', () => {
                 await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     report: { percent: 50, observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime() },
-                    level: { kind: 'known', percent: 50, observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime() },
+                    level: { kind: 'known', percent: 50, observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime(), carId: null },
                 }));
 
                 // The level goes because the SESSION ended, not because time

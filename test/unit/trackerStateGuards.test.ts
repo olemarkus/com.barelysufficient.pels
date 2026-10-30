@@ -130,9 +130,24 @@ describe('isPlausiblePowerTrackerState — persisted core shape', () => {
         },
       },
     }],
+    ['a car profile map that is not keyed by charger', {
+      carObjectiveProfiles: {
+        'car-a': { updatedAtMs: 1, lastSample: { observedAtMs: 1, value: 55 }, acceptedSamples: 0, rejectedSamples: 0 },
+      },
+    }],
     ['a non-finite freshness latch', { lastTimestamp: Number.NEGATIVE_INFINITY }],
   ])('rejects %s', (_label, state) => {
     expect(isPlausiblePowerTrackerState(state)).toBe(false);
+  });
+
+  it('accepts per-car profiles keyed by car and then charger', () => {
+    expect(isPlausiblePowerTrackerState({
+      carObjectiveProfiles: {
+        'car-a': {
+          garage: { updatedAtMs: 1, lastSample: { observedAtMs: 1, value: 55 }, acceptedSamples: 0, rejectedSamples: 0 },
+        },
+      },
+    })).toBe(true);
   });
 
   it('rejects quarter coverage that runs ahead of the persisted sampling timeline', () => {
@@ -275,6 +290,17 @@ describe('salvagePowerTrackerState', () => {
       'buckets[1]', 'dailyTotals', 'generationBuckets[1]', 'hourlyAverages[1]', 'lastGenerationW', 'lastPowerW',
       'deviceBuckets[3]', 'meterIdentity', 'objectiveProfiles',
     ]);
+  });
+
+  it('drops malformed per-car profiles without costing the device profiles', () => {
+    const deviceProfile = {
+      updatedAtMs: 1, lastSample: { observedAtMs: 1, value: 55 }, acceptedSamples: 0, rejectedSamples: 0,
+    };
+    const salvaged = salvagePowerTrackerState({
+      objectiveProfiles: { garage: deviceProfile },
+      carObjectiveProfiles: { 'car-a': { garage: 'not a profile' } },
+    });
+    expect(salvaged).toEqual({ state: { objectiveProfiles: { garage: deviceProfile } }, dropped: ['carObjectiveProfiles'] });
   });
 
   it('drops a quarter whose coverage extends beyond the last sample', () => {

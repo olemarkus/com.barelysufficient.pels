@@ -22,6 +22,12 @@ import {
   resolveSubIntervalLeftEdge,
   subIntervalEnergyKwh,
 } from './energyAccumulator';
+import {
+  pruneCarObjectiveProfiles,
+  withCarProfileUpdates,
+  type ActiveCarProfileKey,
+  type CarObjectiveProfiles,
+} from './carProfiles';
 
 export type {
   DeviceObjectiveProfile,
@@ -80,13 +86,38 @@ type ProfileSampleRejection = {
   energy?: { kwhPerUnit: number; band: EnergyPerUnitBand };
 };
 
-/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
+/**
+ * Feeds this cycle's samples into the learned profiles. Which profile a sample
+ * feeds is the observed quantity's `carId`, resolved by the producer: a level
+ * PELS read off an associated car feeds that car's profile on this charger
+ * (`carObjectiveProfiles`); everything else feeds the device's own profile
+ * (`objectiveProfiles`). A car-sourced sample never feeds the charger's own
+ * profile, which is what keeps two cars, or a guest, from blending into one
+ * rate. The lookup that reads them back is `profileLadder.ts`.
+ */
 export function updateObjectiveProfilesFromSnapshot(
   state: PowerTrackerState,
   devices: ObjectiveSampleDevice[],
   nowMs: number,
   outdoorTemperatureC: number | undefined,
 ): PowerTrackerState {
+  const deviceProfiles = updateDeviceKeyedProfiles(state, devices, nowMs, outdoorTemperatureC);
+  const carProfiles = updateCarKeyedProfiles(state, devices, nowMs, outdoorTemperatureC);
+  if (deviceProfiles === state.objectiveProfiles && carProfiles === state.carObjectiveProfiles) return state;
+  return {
+    ...state,
+    ...(deviceProfiles === undefined ? {} : { objectiveProfiles: deviceProfiles }),
+    ...(carProfiles === undefined ? {} : { carObjectiveProfiles: carProfiles }),
+  };
+}
+
+/* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
+function updateDeviceKeyedProfiles(
+  state: PowerTrackerState,
+  devices: ObjectiveSampleDevice[],
+  nowMs: number,
+  outdoorTemperatureC: number | undefined,
+): PowerTrackerState['objectiveProfiles'] {
   const previousProfiles = state.objectiveProfiles ?? {};
   let nextProfiles: Record<string, DeviceObjectiveProfile> = previousProfiles;
   let changed = false;
@@ -100,6 +131,7 @@ export function updateObjectiveProfilesFromSnapshot(
   };
 
   for (const device of devices) {
+    if (device.observedQuantity.carId !== null) continue;
     const sample = buildObjectiveProfileSample(device, nowMs);
 
     const previous = previousProfiles[device.id];
@@ -120,6 +152,9 @@ export function updateObjectiveProfilesFromSnapshot(
     || hasTooManyObjectiveProfiles(previousProfiles)
     || hasExpiredObjectiveProfiles(previousProfiles, nowMs)
   ) {
+    // Every device with a reading keeps its own profile, car-sourced ones
+    // included: a charger whose level now comes from the car keeps the rate it
+    // learned before as the fallback for a session whose car is not known.
     const pruned = pruneObjectiveProfiles(nextProfiles, new Set(devices.map((device) => device.id)), nowMs);
     if (pruned !== nextProfiles) {
       nextProfiles = pruned;
@@ -131,7 +166,47 @@ export function updateObjectiveProfilesFromSnapshot(
     }
   }
 
-  return changed ? { ...state, objectiveProfiles: nextProfiles } : state;
+  return changed ? nextProfiles : state.objectiveProfiles;
+}
+
+function updateCarKeyedProfiles(
+  state: PowerTrackerState,
+  devices: ObjectiveSampleDevice[],
+  nowMs: number,
+  outdoorTemperatureC: number | undefined,
+): PowerTrackerState['carObjectiveProfiles'] {
+  const previousProfiles: CarObjectiveProfiles = state.carObjectiveProfiles ?? {};
+  const active: ActiveCarProfileKey[] = [];
+  const updates: Array<ActiveCarProfileKey & { profile: DeviceObjectiveProfile }> = [];
+
+  for (const device of devices) {
+    const { carId } = device.observedQuantity;
+    if (carId === null) continue;
+    active.push({ carId, deviceId: device.id });
+    const sample = buildObjectiveProfileSample(device, nowMs);
+    const previous = previousProfiles[carId]?.[device.id];
+    const next = updateDeviceObjectiveProfile(
+      previous,
+      sample,
+      device.id,
+      device.name,
+      outdoorTemperatureC,
+    );
+    if (next !== previous) updates.push({ carId, deviceId: device.id, profile: next });
+  }
+
+  let changed = updates.length > 0;
+  let nextProfiles = changed ? withCarProfileUpdates(previousProfiles, updates) : previousProfiles;
+  const pruned = pruneCarObjectiveProfiles(nextProfiles, active, nowMs);
+  if (pruned !== nextProfiles) {
+    nextProfiles = pruned;
+    changed = true;
+    emitProfileDebug({
+      event: 'objective_car_profile_pruned',
+      retainedCarCount: Object.keys(nextProfiles).length,
+    });
+  }
+  return changed ? nextProfiles : state.carObjectiveProfiles;
 }
 /* eslint-enable functional/immutable-data */
 

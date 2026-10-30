@@ -260,6 +260,17 @@ export type DeviceStateOfChargeSnapshot = {
         | {
             kind: 'known'; percent: number; observedAtMs: number;
             /**
+             * The car whose battery this level is, resolved here so no consumer
+             * branches on `source.kind`: the associated car's id when the level was
+             * read off that car, `null` when it arrived on the charger device (the
+             * battery-level Flow card or a battery capability), where PELS cannot
+             * say which car it describes. Required, so a carrier that drops it
+             * fails to compile instead of reading every car as unknown. Smart-task
+             * rate learning keys a car's kWh per percent by it
+             * (`lib/objectives/profileLadder.ts`).
+             */
+            carId: string | null;
+            /**
              * The charge the associated car stops at on its own, once its stops
              * qualify one (`resolveEvCarChargeLimit`). Present only on a level the
              * car lends its charger (`source.kind === 'car'`), and gone with it:

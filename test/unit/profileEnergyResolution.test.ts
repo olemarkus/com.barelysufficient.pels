@@ -51,7 +51,7 @@ const buildTracker = (profile: DeviceObjectiveProfile, deviceId = 'device-1'): P
 describe('resolveProfileEnergy (banded)', () => {
   it('falls back to the global mean when bands are absent', () => {
     const tracker = buildTracker(buildProfile({ kwhPerUnit: stat(0.4) }));
-    const result = resolveProfileEnergy(tracker, 'device-1', 'temperature', 'hard', 5, 'increasing', 50);
+    const result = resolveProfileEnergy(tracker, { deviceId: 'device-1', carId: null }, 'temperature', 'hard', 5, 'increasing', 50);
     expect(result.reasonCode).toBeNull();
     expect(result.energyNeededKWh).toBeCloseTo(2, 6);
     expect(result.kWhPerUnit).toBeCloseTo(0.4, 6);
@@ -62,7 +62,7 @@ describe('resolveProfileEnergy (banded)', () => {
       kwhPerUnit: stat(0.3),
       bands: [band(30, 50, 0.1), band(50, 70, 0.9)],
     }));
-    const result = resolveProfileEnergy(tracker, 'device-1', 'temperature', 'hard', 10, 'increasing');
+    const result = resolveProfileEnergy(tracker, { deviceId: 'device-1', carId: null }, 'temperature', 'hard', 10, 'increasing');
     expect(result.reasonCode).toBeNull();
     // Bands are present but currentValue is unknown — must not integrate.
     expect(result.energyNeededKWh).toBeCloseTo(3, 6);
@@ -75,7 +75,7 @@ describe('resolveProfileEnergy (banded)', () => {
       kwhPerUnit: stat(0.3),
       bands: [band(30, 50, 0.1), band(50, 70, 0.9)],
     }));
-    const result = resolveProfileEnergy(tracker, 'device-1', 'temperature', 'hard', 15, 'increasing', 45);
+    const result = resolveProfileEnergy(tracker, { deviceId: 'device-1', carId: null }, 'temperature', 'hard', 15, 'increasing', 45);
     expect(result.energyNeededKWh).toBeCloseTo(9.5, 6);
     // Effective kWh/unit is total energy divided by remainingUnits.
     expect(result.kWhPerUnit).toBeCloseTo(9.5 / 15, 6);
@@ -96,7 +96,7 @@ describe('resolveProfileEnergy (banded)', () => {
       kwhPerUnit: stat(0.3),
       samples,
     }));
-    const result = resolveProfileEnergy(tracker, 'device-1', 'temperature', 'hard', 4, 'decreasing', 26);
+    const result = resolveProfileEnergy(tracker, { deviceId: 'device-1', carId: null }, 'temperature', 'hard', 4, 'decreasing', 26);
     expect(result.energyExpectedKWh).toBeCloseTo(1.2, 6);
     expect(result.kWhPerUnit).toBeCloseTo(0.3, 6);
   });
@@ -114,7 +114,7 @@ describe('resolveProfileEnergy (banded)', () => {
     });
     const result = resolveProfileEnergy(
       buildTracker(profile),
-      'device-1',
+      { deviceId: 'device-1', carId: null },
       'temperature',
       'soft',
       4,
@@ -134,7 +134,7 @@ describe('resolveProfileEnergy (banded)', () => {
       kwhPerUnit: stat(0.3),
       bands: [band(30, 50, 0.1)],
     }));
-    const result = resolveProfileEnergy(tracker, 'device-1', 'temperature', 'hard', 35, 'increasing', 45);
+    const result = resolveProfileEnergy(tracker, { deviceId: 'device-1', carId: null }, 'temperature', 'hard', 35, 'increasing', 45);
     expect(result.energyNeededKWh).toBeCloseTo(9.5, 6);
   });
 
@@ -146,13 +146,13 @@ describe('resolveProfileEnergy (banded)', () => {
       kwhPerUnit: stat(0.3),
       bands: [band(50, 70, 0.9, 1)],
     }));
-    const result = resolveProfileEnergy(tracker, 'device-1', 'temperature', 'hard', 20, 'increasing', 50);
+    const result = resolveProfileEnergy(tracker, { deviceId: 'device-1', carId: null }, 'temperature', 'hard', 20, 'increasing', 50);
     expect(result.energyNeededKWh).toBeCloseTo(6, 6);
   });
 
   it('reports missing capacity when no learned profile and no bootstrap kind matches', () => {
     const tracker: PowerTrackerState = { objectiveProfiles: {} };
-    const result = resolveProfileEnergy(tracker, 'device-1', 'temperature', 'hard', 5, 'increasing', 50);
+    const result = resolveProfileEnergy(tracker, { deviceId: 'device-1', carId: null }, 'temperature', 'hard', 5, 'increasing', 50);
     expect(result.reasonCode).toBe('objective_missing_capacity');
   });
 });
@@ -173,7 +173,7 @@ describe('resolveProfileEnergy variance buffer', () => {
   it('plans against mean + k·SE for a hard objective while expected stays at the mean', () => {
     // σ = 0.2, n = 4 → SE = 0.1; hard k = 2 → rate 0.4 + 2·0.1 = 0.6.
     const tracker = buildTracker(buildProfile({ kwhPerUnit: statVar(0.4, 4, 0.2) }));
-    const result = resolveProfileEnergy(tracker, 'device-1', 'temperature', 'hard', 10, 'increasing', 50);
+    const result = resolveProfileEnergy(tracker, { deviceId: 'device-1', carId: null }, 'temperature', 'hard', 10, 'increasing', 50);
     if (result.reasonCode !== null) throw new Error('expected a learned resolution');
     expect(result.energyExpectedKWh).toBeCloseTo(4, 6); // 10 * 0.4
     expect(result.energyNeededKWh).toBeCloseTo(6, 6); // 10 * (0.4 + 2 * 0.1)
@@ -188,7 +188,7 @@ describe('resolveProfileEnergy variance buffer', () => {
   it('uses a gentler k for soft objectives', () => {
     // Same SE = 0.1; soft k = 1 → rate 0.4 + 1·0.1 = 0.5.
     const tracker = buildTracker(buildProfile({ kwhPerUnit: statVar(0.4, 4, 0.2) }));
-    const result = resolveProfileEnergy(tracker, 'device-1', 'temperature', 'soft', 10, 'increasing', 50);
+    const result = resolveProfileEnergy(tracker, { deviceId: 'device-1', carId: null }, 'temperature', 'soft', 10, 'increasing', 50);
     if (result.reasonCode !== null) throw new Error('expected a learned resolution');
     expect(result.energyNeededKWh).toBeCloseTo(5, 6); // 10 * (0.4 + 1 * 0.1)
   });
@@ -198,14 +198,14 @@ describe('resolveProfileEnergy variance buffer', () => {
     // rate 0.4 + 0.05 = 0.45, far below the n = 4 case (0.6). The buffer fades
     // toward the mean with learning rather than persisting.
     const tracker = buildTracker(buildProfile({ kwhPerUnit: statVar(0.4, 64, 0.2) }));
-    const result = resolveProfileEnergy(tracker, 'device-1', 'temperature', 'hard', 10, 'increasing', 50);
+    const result = resolveProfileEnergy(tracker, { deviceId: 'device-1', carId: null }, 'temperature', 'hard', 10, 'increasing', 50);
     if (result.reasonCode !== null) throw new Error('expected a learned resolution');
     expect(result.energyNeededKWh).toBeCloseTo(4.5, 6); // 10 * (0.4 + 2 * 0.025)
   });
 
   it('does not buffer during cold-start (sample count below the floor)', () => {
     const tracker = buildTracker(buildProfile({ kwhPerUnit: statVar(0.4, 3, 0.2) }));
-    const result = resolveProfileEnergy(tracker, 'device-1', 'temperature', 'hard', 10, 'increasing', 50);
+    const result = resolveProfileEnergy(tracker, { deviceId: 'device-1', carId: null }, 'temperature', 'hard', 10, 'increasing', 50);
     if (result.reasonCode !== null) throw new Error('expected a learned resolution');
     // Range collapses: planned == expected when the estimate is not yet trustworthy.
     expect(result.energyNeededKWh).toBeCloseTo(4, 6);
@@ -215,7 +215,7 @@ describe('resolveProfileEnergy variance buffer', () => {
   it('caps the buffer so a pathological estimate cannot explode the booked energy', () => {
     // σ = 1.0, n = 4 → SE = 0.5; hard k = 2 → mean + 1.0 = 1.4, capped at 2× mean = 0.8.
     const tracker = buildTracker(buildProfile({ kwhPerUnit: statVar(0.4, 4, 1) }));
-    const result = resolveProfileEnergy(tracker, 'device-1', 'temperature', 'hard', 10, 'increasing', 50);
+    const result = resolveProfileEnergy(tracker, { deviceId: 'device-1', carId: null }, 'temperature', 'hard', 10, 'increasing', 50);
     if (result.reasonCode !== null) throw new Error('expected a learned resolution');
     expect(result.energyNeededKWh).toBeCloseTo(8, 6); // 10 * min(1.4, 0.8)
   });
@@ -226,7 +226,7 @@ describe('resolveProfileEnergy variance buffer', () => {
       kwhPerUnit: statVar(0.3, 20, 0.05),
       bands: [{ lowerInclusive: 50, upperExclusive: 70, sampleCount: 4, mean: 0.5, m2: 0.4 * 0.4 * 3, confidence: 'low' }],
     }));
-    const result = resolveProfileEnergy(tracker, 'device-1', 'temperature', 'hard', 20, 'increasing', 50);
+    const result = resolveProfileEnergy(tracker, { deviceId: 'device-1', carId: null }, 'temperature', 'hard', 20, 'increasing', 50);
     if (result.reasonCode !== null) throw new Error('expected a learned resolution');
     expect(result.energyExpectedKWh).toBeCloseTo(10, 6); // 20 * 0.5
     expect(result.energyNeededKWh).toBeCloseTo(18, 6); // 20 * (0.5 + 2 * 0.2)
@@ -335,7 +335,7 @@ describe('resolveProfileEnergy displayConfidence', () => {
         { lowerInclusive: 40, upperExclusive: 60, sampleCount: 20, mean: 0.4, m2: 0, confidence: 'high' },
       ],
     }));
-    const result = resolveProfileEnergy(tracker, 'device-1', 'temperature', 'hard', 5, 'increasing', 50);
+    const result = resolveProfileEnergy(tracker, { deviceId: 'device-1', carId: null }, 'temperature', 'hard', 5, 'increasing', 50);
     expect(result.reasonCode).toBeNull();
     if (result.reasonCode !== null) return;
     expect(result.rateConfidence).toBe('low');
@@ -344,7 +344,7 @@ describe('resolveProfileEnergy displayConfidence', () => {
 
   it('returns null displayConfidence on the EV bootstrap path', () => {
     const tracker: PowerTrackerState = { objectiveProfiles: {} };
-    const result = resolveProfileEnergy(tracker, 'device-1', 'ev_soc', 'hard', 20, 'increasing', 40);
+    const result = resolveProfileEnergy(tracker, { deviceId: 'device-1', carId: null }, 'ev_soc', 'hard', 20, 'increasing', 40);
     expect(result.reasonCode).toBeNull();
     if (result.reasonCode !== null) return;
     expect(result.kwhPerUnitSource).toBe('bootstrap');

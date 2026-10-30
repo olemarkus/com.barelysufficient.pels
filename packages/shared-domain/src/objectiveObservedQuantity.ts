@@ -19,8 +19,16 @@ import type {
  *
  * This is the observation half of a `DeviceObjectiveProfileSample`; the power half
  * is resolved separately, from the device's draw.
+ *
+ * `carId` says whose store the value measures when that is not the device's own:
+ * the associated car's id for a level PELS read off that car, and `null` for
+ * everything else (a temperature, or a level that arrived on the charger device,
+ * which cannot say which car it describes). It travels with the value because
+ * the two are one answer: the rate a change in this value costs is that car's.
  */
-export type ObjectiveObservedQuantity = Pick<DeviceObjectiveProfileSample, 'value'>;
+export type ObjectiveObservedQuantity = Pick<DeviceObjectiveProfileSample, 'value'> & {
+  carId: string | null;
+};
 
 // Exactly what resolution reads, and nothing else: the kind predicate's two
 // descriptor fields plus the two observed facets. Deliberately NOT the whole
@@ -51,7 +59,7 @@ export function resolveObjectiveObservedQuantity(
     // the producer stands behind the level or reports none.
     const { level } = device.stateOfCharge;
     if (level.kind !== 'known') return null;
-    return { value: level.percent };
+    return { value: level.percent, carId: level.carId };
   }
 
   if (isTemperatureControlDevice(device) && hasObservedTemperature(device)) {
@@ -59,6 +67,7 @@ export function resolveObjectiveObservedQuantity(
       // Tenths: the profile's movement thresholds are in tenths of a degree, and an
       // un-rounded sensor value would make two identical readings compare unequal.
       value: Math.round(device.temperature.currentTemperature * 10) / 10,
+      carId: null,
     };
   }
 

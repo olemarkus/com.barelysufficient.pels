@@ -5,6 +5,7 @@ import {
   updateStateOfChargeObservationFreshness,
 } from '../../lib/device/transport/stateOfCharge';
 import { clearCarStateOfCharge } from '../../lib/device/transport/carStateOfChargeWrite';
+import { stateOfChargeLevelsDiffer } from '../../lib/device/transport/stateOfChargeLevel';
 
 describe('resolveStateOfChargeSnapshot', () => {
   it('prefers native SoC capabilities over flow-backed battery reports', () => {
@@ -35,7 +36,7 @@ describe('resolveStateOfChargeSnapshot', () => {
     expect(snapshot).toEqual(expect.objectContaining({
       report: { percent: 55, observedAtMs: socAt },
       capabilityId: 'measure_soc_level',
-      level: { kind: 'known', percent: 55, observedAtMs: socAt },
+      level: { kind: 'known', percent: 55, observedAtMs: socAt, carId: null },
     }));
   });
 
@@ -77,7 +78,7 @@ describe('resolveStateOfChargeSnapshot', () => {
       chargingStateAt: SOC_AT + 2 * 60_000,
     })).toEqual(expect.objectContaining({
       report: { percent: 34, observedAtMs: SOC_AT },
-      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT },
+      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT, carId: null },
     }));
   });
 
@@ -90,7 +91,7 @@ describe('resolveStateOfChargeSnapshot', () => {
       charging: false,
     })).toEqual(expect.objectContaining({
       report: { percent: 34, observedAtMs: SOC_AT },
-      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT },
+      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT, carId: null },
     }));
   });
 
@@ -103,7 +104,7 @@ describe('resolveStateOfChargeSnapshot', () => {
       charging: true,
     })).toEqual(expect.objectContaining({
       report: { percent: 34, observedAtMs: SOC_AT },
-      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT },
+      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT, carId: null },
     }));
   });
 
@@ -126,7 +127,7 @@ describe('resolveStateOfChargeSnapshot', () => {
       retainedSession: paused,
     })).toEqual(expect.objectContaining({
       report: { percent: 34, observedAtMs: SOC_AT },
-      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT },
+      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT, carId: null },
     }));
   });
 
@@ -142,7 +143,7 @@ describe('resolveStateOfChargeSnapshot', () => {
       charging: true,
     })).toEqual(expect.objectContaining({
       report: { percent: 34, observedAtMs: SOC_AT },
-      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT },
+      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT, carId: null },
     }));
   });
 
@@ -164,7 +165,7 @@ describe('resolveStateOfChargeSnapshot', () => {
       retainedSession: charging,
     })).toEqual(expect.objectContaining({
       report: { percent: 34, observedAtMs: SOC_AT },
-      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT },
+      level: { kind: 'known', percent: 34, observedAtMs: SOC_AT, carId: null },
     }));
   });
 
@@ -267,7 +268,7 @@ describe('car-sourced state of charge', () => {
     snapshot.stateOfCharge = { ...snapshot.stateOfCharge!, sessionStartedAtMs: 4_000 };
     updateStateOfChargeFromCarObservation(snapshot, 63, 1_000, 'car-1', null);
 
-    expect(snapshot.stateOfCharge?.level).toEqual({ kind: 'known', percent: 63, observedAtMs: 1_000 });
+    expect(snapshot.stateOfCharge?.level).toEqual({ kind: 'known', percent: 63, observedAtMs: 1_000, carId: 'car-1' });
   });
 
   it('never carries a charger-owned level forward as if a car had reported it', () => {
@@ -302,7 +303,7 @@ describe('car-sourced state of charge', () => {
     // two-day-old reading read fresh. Asserted on the level, which is where a
     // consumer reads it, as well as on the raw report the observer keeps.
     expect(snapshot.stateOfCharge?.report.observedAtMs).toBe(1_500);
-    expect(snapshot.stateOfCharge?.level).toEqual({ kind: 'known', percent: 63, observedAtMs: 1_500 });
+    expect(snapshot.stateOfCharge?.level).toEqual({ kind: 'known', percent: 63, observedAtMs: 1_500, carId: 'car-1' });
 
     expect(clearCarStateOfCharge({ snapshot })).toBe(true);
     expect(snapshot.stateOfCharge).toBeUndefined();
@@ -346,5 +347,15 @@ describe('updateStateOfChargeObservationFreshness', () => {
     expect(refreshLevel(carReading(), 3_000)).toBe('known');
     expect(refreshLevel(chargerReading(), 3_000)).not.toBe('known');
     expect(refreshLevel(chargerReading(), 5_000)).toBe('known');
+  });
+});
+
+describe('stateOfChargeLevelsDiffer', () => {
+  it('treats another car at the same percentage as a different answer', () => {
+    const level = (carId: string | null) => ({ kind: 'known' as const, percent: 60, observedAtMs: 1, carId });
+
+    expect(stateOfChargeLevelsDiffer(level('car-a'), level('car-a'))).toBe(false);
+    expect(stateOfChargeLevelsDiffer(level('car-a'), level('car-b'))).toBe(true);
+    expect(stateOfChargeLevelsDiffer(level(null), level('car-a'))).toBe(true);
   });
 });

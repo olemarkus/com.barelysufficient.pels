@@ -155,7 +155,7 @@ export type ObjectiveDeviceInput = {
  */
 export type ObjectiveStateOfCharge = {
   level:
-    | { kind: 'known'; percent: number; carChargeLimitPercent?: number }
+    | { kind: 'known'; percent: number; carId: string | null; carChargeLimitPercent?: number }
     | Extract<ObservedStateOfCharge['level'], { kind: 'unavailable' }>;
 };
 

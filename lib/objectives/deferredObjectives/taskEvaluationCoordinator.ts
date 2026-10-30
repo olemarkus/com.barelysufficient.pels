@@ -559,7 +559,7 @@ const buildDiagnosticWithPolicyHorizon = (
   if (progress.reasonCode) return unknownWithProgress(progress.reasonCode);
 
   const profileEnergy: DeferredObjectiveEnergyResolution = progress.remainingUnits > 0
-    ? resolveProgressEnergy(powerTracker, deviceId, objective, progress.remainingUnits, progress)
+    ? resolveProgressEnergy(powerTracker, device, objective, progress.remainingUnits, progress)
     : ZERO_ENERGY_RESOLUTION;
   if (profileEnergy.reasonCode) return unknownWithProgress(profileEnergy.reasonCode);
 

@@ -34,14 +34,14 @@ const thermostat = (
 
 describe('resolveReachableTargetValue', () => {
   it('reports a lower car ceiling separately from the requested task target', () => {
-    expect(resolveReachableTargetValue(evTask, charger({ kind: 'known', percent: 60, carChargeLimitPercent: 70 })))
+    expect(resolveReachableTargetValue(evTask, charger({ kind: 'known', percent: 60, carId: 'car', carChargeLimitPercent: 70 })))
       .toBe(70);
   });
 
   it('keeps the owner\'s target when the car stops above it, or no limit is known', () => {
-    expect(resolveReachableTargetValue(evTask, charger({ kind: 'known', percent: 60, carChargeLimitPercent: 90 })))
+    expect(resolveReachableTargetValue(evTask, charger({ kind: 'known', percent: 60, carId: 'car', carChargeLimitPercent: 90 })))
       .toBe(80);
-    expect(resolveReachableTargetValue(evTask, charger({ kind: 'known', percent: 60 }))).toBe(80);
+    expect(resolveReachableTargetValue(evTask, charger({ kind: 'known', percent: 60, carId: null }))).toBe(80);
     expect(resolveReachableTargetValue(evTask, charger({ kind: 'unavailable', reasonCode: 'not_connected' })))
       .toBe(80);
     expect(resolveReachableTargetValue(evTask, undefined)).toBe(80);
@@ -54,19 +54,19 @@ describe('resolveReachableTargetValue', () => {
 
 describe('resolveObjectiveProgress under a car limit', () => {
   it('keeps the requested charge obligation despite a lower car limit', () => {
-    const progress = resolveObjectiveProgress(evTask, charger({ kind: 'known', percent: 53, carChargeLimitPercent: 70 }), () => 0);
+    const progress = resolveObjectiveProgress(evTask, charger({ kind: 'known', percent: 53, carId: 'car', carChargeLimitPercent: 70 }), () => 0);
     expect(progress).toMatchObject({ remainingUnits: 27, currentValue: 53, reasonCode: null });
   });
 
   it('sizes the full 80% requested obligation even when the reported car limit is 70%', () => {
     const progress = resolveObjectiveProgress(
-      evTask, charger({ kind: 'known', percent: 0, carChargeLimitPercent: 70 }), () => 0,
+      evTask, charger({ kind: 'known', percent: 0, carId: 'car', carChargeLimitPercent: 70 }), () => 0,
     );
     expect(progress.reasonCode).toBeNull();
     if (progress.reasonCode !== null) throw new Error('Expected trusted EV progress');
     const energy = resolveProgressEnergy(
       partialDouble<PowerTrackerState>({ objectiveProfiles: {} }),
-      'ev',
+      { ...charger({ kind: 'known', percent: 0, carId: 'car', carChargeLimitPercent: 70 }), id: 'ev' },
       evTask,
       progress.remainingUnits,
       progress,
@@ -77,7 +77,7 @@ describe('resolveObjectiveProgress under a car limit', () => {
   });
 
   it('remains unmet once the car sits at its lower limit', () => {
-    const progress = resolveObjectiveProgress(evTask, charger({ kind: 'known', percent: 70, carChargeLimitPercent: 70 }), () => 0);
+    const progress = resolveObjectiveProgress(evTask, charger({ kind: 'known', percent: 70, carId: 'car', carChargeLimitPercent: 70 }), () => 0);
     expect(progress).toMatchObject({ remainingUnits: 10, reasonCode: null });
   });
 });

@@ -53,7 +53,20 @@ export type PowerTrackerState = {
   generationDailyTotals?: Record<string, number>;
   exportDailyTotals?: Record<string, number>;
   unreliablePeriods?: Array<{ start: number; end: number }>;
+  /**
+   * Learned rates keyed by the device itself. For an EV charger this is the
+   * rate of whatever car was on it when the level arrived on the charger device
+   * (the battery-level Flow card or a battery capability), which cannot say
+   * which car it was. Profiles learned before per-car learning existed stay here
+   * unchanged, so they serve as that charger's fallback.
+   */
   objectiveProfiles?: Record<string, DeviceObjectiveProfile>;
+  /**
+   * Learned kWh per percent of a car linked to a charger, keyed by the car's id
+   * and then the charger's device id. Only levels PELS read off an associated
+   * car feed it. Bounded per car and in total (`lib/objectives/carProfiles.ts`).
+   */
+  carObjectiveProfiles?: Record<string, Record<string, DeviceObjectiveProfile>>;
 };
 
 /**

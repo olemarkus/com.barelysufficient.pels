@@ -948,7 +948,7 @@ describe('registerFlowCards', () => {
       chargerDeviceId: 'ev-1',
       chargerName: 'Zaptec Go',
       percent: 42,
-      batteryLevel: { kind: 'known', percent: 42, observedAtMs: Date.parse('2026-03-11T10:00:00Z') },
+      batteryLevel: { kind: 'known', percent: 42, observedAtMs: Date.parse('2026-03-11T10:00:00Z'), carId: null },
     }));
   });
 

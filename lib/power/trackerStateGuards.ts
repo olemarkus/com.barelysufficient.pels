@@ -204,6 +204,11 @@ const isObjectiveProfileMap = (value: unknown): boolean => (
   isPlainObjectRecord(value) && Object.values(value).every(isDeviceObjectiveProfile)
 );
 
+/** Per car, a profile map keyed by charger. */
+const isCarObjectiveProfileMap = (value: unknown): boolean => (
+  isPlainObjectRecord(value) && Object.values(value).every(isObjectiveProfileMap)
+);
+
 const NUMBER_MAP_FIELDS = [
   'buckets',
   'hourlySampleCounts',
@@ -332,11 +337,13 @@ export function isPlausiblePowerTrackerState(value: unknown): value is PowerTrac
         && value.unreliablePeriods.every(isUnreliablePeriod)
       )
     )
-    && (
-      value.objectiveProfiles === undefined
-      || isObjectiveProfileMap(value.objectiveProfiles)
-    );
+    && hasPlausibleObjectiveProfiles(value);
 }
+
+const hasPlausibleObjectiveProfiles = (value: Record<string, unknown>): boolean => (
+  (value.objectiveProfiles === undefined || isObjectiveProfileMap(value.objectiveProfiles))
+  && (value.carObjectiveProfiles === undefined || isCarObjectiveProfileMap(value.carObjectiveProfiles))
+);
 
 export type SalvagedPowerTrackerState = {
   state: PowerTrackerState;
@@ -430,6 +437,7 @@ const SALVAGE_STEPS: readonly SalvageStep[] = [
   salvageScalar('meterIdentity', isPowerTrackerMeterIdentity),
   salvageScalar('unreliablePeriods', isUnreliablePeriodList),
   salvageScalar('objectiveProfiles', isObjectiveProfileMap),
+  salvageScalar('carObjectiveProfiles', isCarObjectiveProfileMap),
 ];
 
 /**

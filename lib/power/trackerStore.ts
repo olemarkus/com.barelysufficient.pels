@@ -86,6 +86,7 @@ const SCALAR_KEYS = [
   'lastDevicePowerWById',
   'unreliablePeriods',
   'objectiveProfiles',
+  'carObjectiveProfiles',
   'capacityQuarter',
   'capacityMonthlyPeak',
 ] as const satisfies readonly (keyof PowerTrackerState)[];

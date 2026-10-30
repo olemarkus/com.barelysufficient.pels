@@ -80,7 +80,7 @@ const resolveEv = (params: {
   deviceId?: string;
 }) => resolveProfileEnergy(
   params.state,
-  params.deviceId ?? 'ev-1',
+  { deviceId: params.deviceId ?? 'ev-1', carId: null },
   'ev_soc',
   'hard',
   params.remainingUnits,

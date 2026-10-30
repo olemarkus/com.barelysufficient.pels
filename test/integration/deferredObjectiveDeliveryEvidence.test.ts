@@ -65,7 +65,7 @@ const charger = (percent: number, limitPercent: number, drawKw: number, nowMs: n
     stateOfCharge: {
       ...snapshot,
       source: { kind: 'car', carId: 'car', chargeLimitPercent: limitPercent },
-      level: { kind: 'known', percent, observedAtMs: nowMs, carChargeLimitPercent: limitPercent },
+      level: { kind: 'known', percent, observedAtMs: nowMs, carId: 'car', carChargeLimitPercent: limitPercent },
     },
   };
 };
