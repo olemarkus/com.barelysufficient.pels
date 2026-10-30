@@ -426,7 +426,14 @@ Priority order (first matching condition wins):
    the `No managed devices` empty state. Not positive: it is an unconfigured
    state, not reassurance. Every rung above it still wins, because those state
    measured facts about the house.
-7. On track: `Quiet hour. Nothing to do.`
+7. On track: `Quiet hour. Nothing to do.` With no limit in force (the power
+   subline reads `Power limits off`) no hour is quiet against one, so the
+   sentence says what PELS does for the home instead (added 2026-10-29 after
+   the NL/DE first-run walk): `No limit to hold. 1 device follows prices,
+   and 1 device has a smart task.`, naming each that applies: devices whose
+   Price-based control acts, and devices with an open Smart task. With neither
+   it reads `No limit to hold, and no device follows prices yet.`, not
+   positive, like the nothing-managed rung. The counts are the Main home's.
 
 Simulation mode wording must be hypothetical throughout. The subject is the
 device count, not PELS:

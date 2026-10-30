@@ -1,25 +1,20 @@
 import { render } from 'preact';
 import { dispatchOpenDeviceDetail } from './cardActivation.ts';
 import { buildDeadlineHref, followDeadlineHref } from './deadlineUrls.ts';
-import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { refreshHomeScopeAndNotify } from './homeScope.ts';
 import { saveDevicePriceEnabled } from './priceOptimization.ts';
-import { keepAssumedPriceSource, readSetupGoalContext, resolveSetupGoalChoices } from './setupGoals.ts';
-import { isSolarSetupJourney, setupSavePending, trackSetupSave } from './setupJourneyState.ts';
+import { keepAssumedPriceSource, resolveSetupGoalChoices } from './setupGoals.ts';
+import { setupSavePending, trackSetupSave } from './setupJourneyState.ts';
 import { notifySetupPathChange } from './setupPathFacts.ts';
 import { dispatchOpenSmartTaskCreateFromSetup } from './smartTaskCreate.ts';
 import { showToastError } from './toast.ts';
 import { SetupGoalPicker } from './views/SetupJourney.tsx';
 
 /** `Choose what PELS does`, drawn where the device list goes; `rerender` repaints it after a save. */
-export const renderSetupGoals = (
-  devices: SettingsUiDeviceListItem[],
-  target: HTMLElement,
-  rerender: () => void,
-): void => {
+export const renderSetupGoals = (target: HTMLElement, rerender: () => void): void => {
   if (!target.querySelector('.setup-journey__devices')) target.replaceChildren();
   render(SetupGoalPicker({
-    choices: resolveSetupGoalChoices(devices, readSetupGoalContext(isSolarSetupJourney())),
+    choices: resolveSetupGoalChoices(),
     busy: setupSavePending(),
     onPrice: (id, enabled) => {
       // The device's choice lands first: keeping the source fires a reload of

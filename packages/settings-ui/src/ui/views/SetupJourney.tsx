@@ -100,20 +100,17 @@ export const SetupGoalPicker = (props: SetupGoalPickerProps) => (
               onChange={(event: Event) => props.onPrice(device.id, readSwitchSelected(event))} />
             <span class="md-switch-row__label pels-text-settings-label">Price-based control</span>
           </label>
-          <p class="pels-card-supporting">
-            Raises the temperature a little in cheap hours and lowers it in expensive ones.
-            {device.price.source && ` Uses your prices from ${device.price.source}.`}
-          </p>
+          <p class="pels-card-supporting">Raises the temperature a little in cheap hours and lowers it in expensive ones.</p>
         </>}
-        {device.smartTask === 'none' && <>
+        {device.smartTask?.state === 'none' && <>
           <p class="pels-card-supporting">A smart task charges to the level you set by a ready-by time, in the cheapest hours.</p>
           <MdTextButton type="button" disabled={props.busy} onClick={() => props.onNewSmartTask(device.id)}>
             New smart task
           </MdTextButton>
         </>}
-        {device.smartTask === 'open' && <>
-          <p class="pels-card-supporting">This charger has a smart task.</p>
-          <MdTextButton type="button" onClick={() => props.onOpenSmartTask(device.id)}>Open smart task</MdTextButton>
+        {device.smartTask?.state === 'open' && <>
+          <p class="pels-card-supporting">{device.smartTask.summary}</p>
+          <MdTextButton type="button" onClick={() => props.onOpenSmartTask(device.id)}>View task</MdTextButton>
         </>}
         {device.solar && <SolarGoal id={device.id} solar={device.solar} onOpen={props.onOpen} />}
       </section>
@@ -123,7 +120,8 @@ export const SetupGoalPicker = (props: SetupGoalPickerProps) => (
 
 export type SetupJourneyHeaderProps = {
   title: string;
-  progress: string;
+  /** The required steps done; `null` on the optional page, which is not one of them. */
+  progress: string | null;
   detail: string | null;
   busy: boolean;
   canContinue: boolean;
@@ -144,7 +142,7 @@ export const SetupJourneyHeader = (props: SetupJourneyHeaderProps) => (
   <section class="pels-surface-card setup-journey" aria-label="Setup progress">
     <div class="setup-recommendation-card__header">
       <h3 class="plan-card__title">{props.title}</h3>
-      <span class="plan-chip plan-chip--muted">{props.progress}</span>
+      {props.progress !== null && <span class="plan-chip plan-chip--muted">{props.progress}</span>}
     </div>
     {props.detail && <p class="pels-card-supporting">{props.detail}</p>}
     {/* Tonal, not text: while it shows, Continue is disabled, so this is the
@@ -185,6 +183,8 @@ export type SetupReviewProps = {
   solarNote: string | null;
   onStart: () => void;
   onContinue: () => void;
+  /** Back to `Choose what PELS does`, while it has something to offer; `null` hides the link. */
+  onChooseGoals: (() => void) | null;
 };
 
 export const SetupReview = (props: SetupReviewProps) => {
@@ -207,6 +207,11 @@ export const SetupReview = (props: SetupReviewProps) => {
               {device.status && <p class="pels-card-supporting">{device.status}</p>}
             </div>
           ))}
+          {props.onChooseGoals && (
+            <div class="setup-recommendation-card__actions">
+              <MdTextButton type="button" disabled={props.busy} onClick={props.onChooseGoals}>Choose what PELS does</MdTextButton>
+            </div>
+          )}
           {props.solarNote && <p class="pels-notice-info">{props.solarNote}</p>}
           {props.error && <p role="alert" class="pels-notice-warning">{props.error}</p>}
           <div class="setup-recommendation-card__actions">

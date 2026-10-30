@@ -97,6 +97,8 @@ let paint: (current: SmartTaskCreateSnapshot | null) => void = () => {};
 // Injected at boot (`initSmartTaskCreateController`): tab navigation imports
 // the Smart tasks list, which imports this controller.
 let openPanel: (panelId: string, setup?: SetupJourneyStep) => void = () => {};
+// What setup does once a task it opened is saved (`initSmartTaskCreateController`).
+let onSetupTaskCreated: () => void = () => {};
 
 const returnToSetup = (): void => openPanel('devices', 'goals');
 
@@ -231,7 +233,7 @@ export const backFromSmartTaskCreate = (): void => {
   }
   finish();
   if (s.origin.kind === 'setup') returnToSetup();
-  if (s.origin.kind === 'device') {
+  else if (s.origin.kind === 'device') {
     openPanel(s.origin.sourceTab);
     dispatchOpenDeviceDetail(s.origin.deviceId, 'top');
   }
@@ -349,8 +351,10 @@ export const submitSmartTaskCreate = async (): Promise<void> => {
     }
     finish();
     refreshPlanSurface();
-    if (s.origin.kind === 'setup') returnToSetup();
-    else followDeadlineHref(buildDeadlineHref(device.deviceId));
+    if (s.origin.kind === 'setup') {
+      onSetupTaskCreated();
+      returnToSetup();
+    } else followDeadlineHref(buildDeadlineHref(device.deviceId));
   } catch (error) {
     if (current !== generation) return;
     update({ ...s, busy: 'idle', errorLine: CREATE_SMART_TASK_WIDGET_COPY.createError });
@@ -405,12 +409,14 @@ let listenersBound = false;
 /**
  * Bind the flow's document listeners: the device page's Add smart task and
  * setup's New smart task, and the repaints when what the after-task line reads
- * may have changed.
+ * may have changed. `onCreatedFromSetup` runs when a task setup opened is saved.
  */
 export const initSmartTaskCreateController = (
   navigateToPanel: (panelId: string, setup?: SetupJourneyStep) => void,
+  onCreatedFromSetup: () => void,
 ): void => {
   openPanel = navigateToPanel;
+  onSetupTaskCreated = onCreatedFromSetup;
   if (listenersBound) return;
   listenersBound = true;
   document.addEventListener('open-smart-task-create', (event) => {

@@ -63,6 +63,7 @@ const recordNavigation = (event: MouseEvent): void => {
 // output, which the Smart tasks page paints.
 const paints: Array<SmartTaskCreateSnapshot | null> = [];
 const openPanel = vi.fn();
+const onCreatedFromSetup = vi.fn();
 
 const answer = (byPath: Record<string, unknown>): void => {
   callApiMock.mockImplementation(async (_method: string, path: string) => {
@@ -83,12 +84,13 @@ describe('New smart task flow', () => {
     navigatedTo.length = 0;
     paints.length = 0;
     openPanel.mockReset();
+    onCreatedFromSetup.mockReset();
     storedTasksLoaded = true;
     loadStoredTasksMock.mockClear();
     state.deferredObjectiveSettings = createEmptyDeferredObjectiveRoster();
     state.devicesLoaded = true;
     controller.registerSmartTaskCreateRenderer((snapshot) => { paints.push(snapshot); });
-    controller.initSmartTaskCreateController(openPanel);
+    controller.initSmartTaskCreateController(openPanel, onCreatedFromSetup);
     document.addEventListener('click', recordNavigation, true);
   });
 
@@ -209,6 +211,7 @@ describe('New smart task flow', () => {
     await controller.requestSmartTaskCreatePreview();
     await controller.submitSmartTaskCreate();
     expect(paints.at(-1)).toBeNull();
+    expect(onCreatedFromSetup).toHaveBeenCalledTimes(1);
     expect(openPanel).toHaveBeenLastCalledWith('devices', 'goals');
     expect(navigatedTo).toEqual([]);
   });
@@ -219,6 +222,7 @@ describe('New smart task flow', () => {
     await flush();
     controller.backFromSmartTaskCreate();
     expect(paints.at(-1)).toBeNull();
+    expect(onCreatedFromSetup).not.toHaveBeenCalled();
     expect(openPanel).toHaveBeenLastCalledWith('devices', 'goals');
   });
 

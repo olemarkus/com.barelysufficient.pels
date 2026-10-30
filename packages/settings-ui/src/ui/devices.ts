@@ -472,7 +472,7 @@ export const renderDevices = (devices: SettingsUiDeviceListItem[]) => {
   }
   if (journey === 'goals') {
     emptyState.hidden = true;
-    renderSetupGoals(devices, target, () => renderDevices(state.latestDevices));
+    renderSetupGoals(target, () => renderDevices(state.latestDevices));
     return;
   }
   render(null, target);

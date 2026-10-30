@@ -73,13 +73,17 @@ For eligible Flemish digital-meter households, the **2.5 kW billing minimum** is
 
 **Choose what PELS does** follows when a managed device has more to offer. Each choice is optional and can be changed later on the device's page:
 
-- **Price-based control** for heating and hot water: PELS raises the temperature a little in cheap hours and lowers it in expensive ones. Turning it on here keeps the price source PELS is already using.
+- **Price-based control** for heating and hot water: PELS raises the temperature a little in cheap hours and lowers it in expensive ones.
 - **New smart task** for an EV charger: charge to the level you set by a ready-by time, in the cheapest hours. Setup returns to this page once the task is saved.
+
+The page names where your prices come from. Turning on Price-based control or saving a smart task here keeps that price source.
 - The device's solar action, once PELS has seen your solar produce more than the home is using.
 
 ## Step 4: Preview and activate
 
-Open **Review setup**. It lists what PELS will do with each device, such as **Price-based control on** or **Smart task set**, and the limits that apply. **Power-limit control on** shows only while a limit is in force; a device with nothing to do yet says so.
+Open **Review setup**. It lists what PELS will do with each device, such as **Price-based control on** or **Smart task set**, and the limits that apply. **Power-limit control on** shows only while a limit is in force; a device with nothing to do yet says so, and **Choose what PELS does** takes you back to the page above.
+
+With no limit in force, the Overview says what PELS does for your home, for example **No limit to hold. 1 device follows prices.**
 
 **Simulation mode is on** means PELS is still previewing. Choose **Start managing** to enable control, or **Keep simulating** to return to Overview. The simulation banner's **Review and start** action brings you back.
 

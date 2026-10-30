@@ -92,7 +92,8 @@ export const buildEvCarLinkChargerViews = (
 export type EvCarLinkSnapshotAccess = {
     /**
      * Whether `get` holds the probe's whole history: not while part of it waits
-     * in the legacy settings key for an import that has not answered yet.
+     * in the legacy settings key for an import that has not answered yet. Until
+     * it has, a call runs that import again.
      */
     isHistoryResolved: () => boolean;
     get: () => EvCarLinkSnapshot;

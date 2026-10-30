@@ -49,7 +49,7 @@ describe('evCarLinkStore', () => {
 
   it('a vote rewrites the pairs and nothing else', () => {
     const { db, repository } = open();
-    const access = createPersistedEvCarLinkAccess(repository, NOW, () => true);
+    const access = createPersistedEvCarLinkAccess(repository, () => NOW, () => true);
     access.set(HISTORY);
     const before = totalChanges(db);
     access.set(recordEvCarLinkVote(access.get(), 'car', 'charger', NOW));
@@ -59,10 +59,10 @@ describe('evCarLinkStore', () => {
 
   it('writes every change through, so the next boot reads it', () => {
     const { repository } = open();
-    const access = createPersistedEvCarLinkAccess(repository, NOW, () => true);
+    const access = createPersistedEvCarLinkAccess(repository, () => NOW, () => true);
     access.set(recordEvCarSelfStopSoc(access.get(), 'car', 80, NOW));
     access.set(recordEvCarLinkSession(access.get(), 'charger', { carId: 'car', sinceMs: NOW }));
-    expect(createPersistedEvCarLinkAccess(repository, NOW, () => true).get()).toEqual(access.get());
+    expect(createPersistedEvCarLinkAccess(repository, () => NOW, () => true).get()).toEqual(access.get());
   });
 
   it('prunes records past the retention window on read, keeping sessions', () => {
@@ -91,7 +91,7 @@ describe('evCarLinkStore', () => {
 
   it('keeps a change whose write failed, and writes it with the next one', () => {
     const { repository } = open();
-    const access = createPersistedEvCarLinkAccess(repository, NOW, () => true);
+    const access = createPersistedEvCarLinkAccess(repository, () => NOW, () => true);
     const capture = captureLogger();
     const write = vi.spyOn(repository, 'write').mockImplementationOnce(() => { throw new Error('disk full'); });
     try {
@@ -139,7 +139,7 @@ describe('importLegacyEvCarLinkState', () => {
     expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(false);
     const producer = createEvCarLinkProducer(
       () => {}, () => [],
-      createPersistedEvCarLinkAccess(repository, NOW, (nowMs) => importLegacyEvCarLinkState(settings, repository, nowMs)),
+      createPersistedEvCarLinkAccess(repository, () => NOW, (nowMs) => importLegacyEvCarLinkState(settings, repository, nowMs)),
       undefined, undefined, () => [],
     );
     expect(producer.readChargerMatchesForCar('car')).toEqual({ state: 'unavailable' });
@@ -202,7 +202,7 @@ describe('importLegacyEvCarLinkState', () => {
     const get = vi.spyOn(settings, 'get').mockImplementation((key) => (key === EV_CAR_LINK_STATE ? undefined : originalGet(key)));
     expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(false);
     get.mockRestore();
-    const access = createPersistedEvCarLinkAccess(repository, NOW, () => false);
+    const access = createPersistedEvCarLinkAccess(repository, () => NOW, () => false);
     access.set(recordEvCarLinkVote(access.get(), 'car', 'charger', NOW));
     access.set(recordEvCarSelfStopSoc(access.get(), 'car', 80, NOW));
     access.set(recordEvCarSelfStopSoc(access.get(), 'car', 80, NOW));
@@ -226,7 +226,7 @@ describe('importLegacyEvCarLinkState', () => {
     expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
     unset.mockRestore();
     expect(settings.get(EV_CAR_LINK_STATE)).toEqual(HISTORY);
-    const access = createPersistedEvCarLinkAccess(repository, NOW, () => true);
+    const access = createPersistedEvCarLinkAccess(repository, () => NOW, () => true);
     expect(resolveEvCarChargeLimit(access.get(), 'car')).toBe(80);
     access.set(clearEvCarObservedStops(access.get(), 'car'));
 
@@ -239,7 +239,7 @@ describe('importLegacyEvCarLinkState', () => {
       capture.restore();
     }
     expect(settings.get(EV_CAR_LINK_STATE)).toBeNull();
-    const reloaded = createPersistedEvCarLinkAccess(repository, NOW, () => true).get();
+    const reloaded = createPersistedEvCarLinkAccess(repository, () => NOW, () => true).get();
     expect(reloaded.cars).toEqual({});
     expect(resolveEvCarChargeLimit(reloaded, 'car')).toBeNull();
   });
@@ -251,11 +251,10 @@ describe('importLegacyEvCarLinkState', () => {
     const { settings, repository } = rig();
     settings.set(EV_CAR_LINK_STATE, HISTORY);
     const keys = vi.spyOn(settings, 'getKeys').mockReturnValue([]);
-    const producer = createEvCarLinkProducer(
-      () => {}, () => [],
-      createPersistedEvCarLinkAccess(repository, NOW, (nowMs) => importLegacyEvCarLinkState(settings, repository, nowMs)),
-      undefined, undefined, () => [],
+    const access = createPersistedEvCarLinkAccess(
+      repository, () => NOW, (nowMs) => importLegacyEvCarLinkState(settings, repository, nowMs),
     );
+    const producer = createEvCarLinkProducer(() => {}, () => [], access, undefined, undefined, () => []);
     expect(producer.readChargerMatchesForCar('car')).toEqual({ state: 'unavailable' });
     expect(settings.get(EV_CAR_LINK_STATE)).toEqual(HISTORY);
 
@@ -263,9 +262,25 @@ describe('importLegacyEvCarLinkState', () => {
     // install's first boot has written a key: the history is whole from then on.
     keys.mockRestore();
     expect(producer.readChargerMatchesForCar('car')).toMatchObject({ state: 'resolved' });
+    expect(access.get()).toEqual(HISTORY);
     expect(settings.get(EV_CAR_LINK_STATE)).toBeNull();
     vi.spyOn(settings, 'getKeys').mockReturnValue([]);
     expect(importLegacyEvCarLinkState(settings, repository, NOW)).toBe(true);
+  });
+
+  it('keeps a change the store refused when the history lands late', () => {
+    const { settings, repository } = rig();
+    settings.set(EV_CAR_LINK_STATE, HISTORY);
+    const keys = vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    const access = createPersistedEvCarLinkAccess(
+      repository, () => NOW, (nowMs) => importLegacyEvCarLinkState(settings, repository, nowMs),
+    );
+    vi.spyOn(repository, 'write').mockImplementationOnce(() => { throw new Error('disk full'); });
+    const changed: EvCarLinkSnapshot = { ...HISTORY, pairs: {} };
+    access.set(changed);
+    keys.mockRestore();
+    expect(access.isHistoryResolved()).toBe(true);
+    expect(access.get()).toBe(changed);
   });
 
   it('resolves the history of a new install once its key list answers, with nothing to import', () => {
@@ -273,7 +288,7 @@ describe('importLegacyEvCarLinkState', () => {
     const keys = vi.spyOn(settings, 'getKeys').mockReturnValue([]);
     const producer = createEvCarLinkProducer(
       () => {}, () => [],
-      createPersistedEvCarLinkAccess(repository, NOW, (nowMs) => importLegacyEvCarLinkState(settings, repository, nowMs)),
+      createPersistedEvCarLinkAccess(repository, () => NOW, (nowMs) => importLegacyEvCarLinkState(settings, repository, nowMs)),
       undefined, undefined, () => [],
     );
     expect(producer.readChargerMatchesForCar('car')).toEqual({ state: 'unavailable' });

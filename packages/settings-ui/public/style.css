@@ -9165,3 +9165,8 @@ md-switch {
 [data-setup-journey-panel="hardCap"] #settings-limits-global {
   display: none;
 }
+
+/* Refresh devices is the device list's action; `Choose what PELS does` lists choices, not devices. */
+#devices-panel[data-setup-journey-panel="goals"] .list__footer {
+  display: none;
+}

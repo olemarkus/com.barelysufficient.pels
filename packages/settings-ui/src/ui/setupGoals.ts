@@ -1,12 +1,13 @@
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
-import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { supportsTemperatureControlDevice, type SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { namePriceSource } from './afterSetupRecommendations.ts';
 import { readAfterSetupFacts } from './afterSetupFacts.ts';
-import { readHomeMembership } from './homeScope.ts';
+import { readMainHomeManagedDevices } from './mainHomeDevices.ts';
 import { keepPriceSchemeInForce } from './priceSettingsPersistence.ts';
+import { isSolarSetupJourney } from './setupJourneyState.ts';
 import { readSetupRespondsToPrices } from './setupPathFacts.ts';
 import { resolveSolarSetupAction, type SolarSetupAction } from './setupDevices.ts';
+import { formatOpenSmartTaskLine } from './smartTaskSummary.ts';
 import { hasOpenSmartTask, resolveSurplusControlAvailable, state } from './state.ts';
 
 /**
@@ -29,51 +30,23 @@ import { hasOpenSmartTask, resolveSurplusControlAvailable, state } from './state
 export type SetupGoalChoice = {
   id: string;
   name: string;
-  /** `source` names where the prices come from, when PELS already has them. */
-  price: { enabled: boolean; source: string | null } | null;
-  smartTask: 'open' | 'none' | null;
+  price: { enabled: boolean } | null;
+  /** The open task in one line, or none yet; `null` for a device that takes no task here. */
+  smartTask: { state: 'open'; summary: string } | { state: 'none' } | null;
   solar: SolarSetupAction | null;
 };
 
 export type SetupGoalChoices =
   | { state: 'loading' | 'unavailable' }
-  | { state: 'ready'; devices: readonly SetupGoalChoice[] };
+  /** `priceSource` names where the prices come from, when PELS already has them. */
+  | { state: 'ready'; priceSource: string | null; devices: readonly SetupGoalChoice[] };
 
-export type SetupGoalContext = {
-  respondsToPrices: boolean;
-  priceSourceName: string | null;
-  solarReady: boolean;
-  solarJourney: boolean;
-};
-
-const resolveGoalChoice = (
-  device: SettingsUiDeviceListItem,
-  context: SetupGoalContext,
-): SetupGoalChoice | null => {
-  const price = context.respondsToPrices && supportsTemperatureControlDevice(device)
-    ? { enabled: state.priceOptimizationSettings[device.id]?.enabled === true, source: context.priceSourceName }
-    : null;
-  let smartTask: SetupGoalChoice['smartTask'] = null;
-  if (device.isEvCharger) smartTask = hasOpenSmartTask(device.id) ? 'open' : 'none';
-  const solar = context.solarReady && !context.solarJourney ? resolveSolarSetupAction(device) : null;
-  if (price === null && smartTask === null && solar === null) return null;
-  return { id: device.id, name: formatDisplayDeviceName(device.name), price, smartTask, solar };
-};
-
-export const resolveSetupGoalChoices = (
-  devices: readonly SettingsUiDeviceListItem[],
-  context: SetupGoalContext,
-): SetupGoalChoices => {
-  const membership = readHomeMembership();
-  if (!state.devicesLoaded || membership.state === 'loading') return { state: 'loading' };
-  if (membership.state === 'unavailable') return { state: 'unavailable' };
-  return {
-    state: 'ready',
-    devices: devices
-      .filter((device) => state.managedMap[device.id] === true
-        && (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID)
-      .flatMap((device) => resolveGoalChoice(device, context) ?? []),
-  };
+const resolveSmartTask = (device: SettingsUiDeviceListItem): SetupGoalChoice['smartTask'] => {
+  if (!device.isEvCharger) return null;
+  const entry = state.deferredObjectiveSettings.objectivesByDeviceId[device.id];
+  return entry !== undefined && hasOpenSmartTask(device.id)
+    ? { state: 'open', summary: formatOpenSmartTaskLine(entry) }
+    : { state: 'none' };
 };
 
 const readPricedSource = () => {
@@ -81,22 +54,33 @@ const readPricedSource = () => {
   return read.state === 'resolved' && read.facts.priceSource.kind === 'priced' ? read.facts.priceSource : null;
 };
 
-/** The page's context as the settings UI holds it now. */
-export const readSetupGoalContext = (solarJourney: boolean): SetupGoalContext => {
+export const resolveSetupGoalChoices = (): SetupGoalChoices => {
+  const managed = readMainHomeManagedDevices();
+  if (managed.state !== 'ready') return managed;
+  const respondsToPrices = readSetupRespondsToPrices() === true;
+  const solarReady = resolveSurplusControlAvailable() && !isSolarSetupJourney();
   const priced = readPricedSource();
   return {
-    respondsToPrices: readSetupRespondsToPrices() === true,
-    priceSourceName: priced ? namePriceSource(priced.scheme) : null,
-    solarReady: resolveSurplusControlAvailable(),
-    solarJourney,
+    state: 'ready',
+    priceSource: priced ? namePriceSource(priced.scheme) : null,
+    devices: managed.devices.flatMap((device) => {
+      const price = respondsToPrices && supportsTemperatureControlDevice(device)
+        ? { enabled: state.priceOptimizationSettings[device.id]?.enabled === true }
+        : null;
+      const smartTask = resolveSmartTask(device);
+      const solar = solarReady ? resolveSolarSetupAction(device) : null;
+      if (price === null && smartTask === null && solar === null) return [];
+      return [{ id: device.id, name: formatDisplayDeviceName(device.name), price, smartTask, solar }];
+    }),
   };
 };
 
 /**
- * Turning on Price-based control here also makes the source PELS assumed the
- * owner's, as the price suggestion's `Use these prices` does: the card named it,
- * and leaving it assumed would reopen setup on Prices the moment a device
- * follows them. A source PELS holds no prices from is left for the Prices step.
+ * Turning on Price-based control or saving a Smart task here also makes the
+ * source PELS assumed the owner's, as the price suggestion's `Use these prices`
+ * does: the page named it, and leaving it assumed would reopen setup on Prices
+ * the moment a device uses them. A source PELS holds no prices from is left for
+ * the Prices step.
  */
 export const keepAssumedPriceSource = async (): Promise<void> => {
   const priced = readPricedSource();
@@ -104,7 +88,7 @@ export const keepAssumedPriceSource = async (): Promise<void> => {
 };
 
 /** Whether any managed device has a job to choose; a read still loading offers nothing yet. */
-export const offersSetupGoals = (solarJourney: boolean): boolean => {
-  const choices = resolveSetupGoalChoices(state.latestDevices, readSetupGoalContext(solarJourney));
+export const offersSetupGoals = (): boolean => {
+  const choices = resolveSetupGoalChoices();
   return choices.state === 'ready' && choices.devices.length > 0;
 };

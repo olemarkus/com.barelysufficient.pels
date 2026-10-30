@@ -2212,19 +2212,24 @@ settings. No tour-completed flag is persisted.
   with the job that fits it, through the control that already does it:
   `Price-based control` for a device with a temperature target while PELS
   responds to prices, with `Raises the temperature a little in cheap hours and
-  lowers it in expensive ones.` and, when PELS already has prices, `Uses your
-  prices from {source}.`; `New smart task` for an EV charger (`Open smart task`
-  once it has one), whose flow returns to this page; and the device's solar
-  action once surplus can reach it, except inside the solar setup, whose page
-  offered it already. Header: `Optional. You can change these later on each
-  device page.` Turning Price-based control on here makes a source PELS
-  assumed the owner's, as `Use these prices` does; a source with no prices is
-  left for the Prices step. Continue offers the page once per visit, never as
-  a completion requirement, and a home with nothing to choose skips it.
+  lowers it in expensive ones.`; `New smart task` for an EV charger, whose flow
+  returns to this page, and once it has one the task's line as the device
+  page's Smart task box states it (`Target 80 % · Ready by …`) with `View
+  task`; and the device's solar action once surplus can reach it, except inside
+  the solar setup, whose page offered it already. Header: `Optional. PELS uses
+  your prices from {source}. You can change these later on each device page.`,
+  the middle sentence only when PELS already has prices. It shows no step
+  count: it is not one of the counted steps. Turning Price-based control on or
+  saving a Smart task here makes a source PELS assumed the owner's, as `Use
+  these prices` does; a source with no prices is left for the Prices step.
+  Continue offers the page once per visit, never as a completion requirement,
+  and a home with nothing to choose skips it.
 - The review names what PELS will do with each device: `Power-limit control on`
-  only while a limit is in force, `Price-based control on`, `Smart task set`,
-  and the solar label, joined with ` · `; a device with none of them reads
-  `Nothing for PELS to do yet`.
+  while a limit is in force (for a battery also while the home has solar to
+  store), `Price-based control on` while PELS responds to prices, `Smart task
+  set`, and the solar label, joined with ` · `; a device with none of them
+  reads `Nothing for PELS to do yet`. While the optional page has something to
+  offer, the review links back to it: `Choose what PELS does`.
 - Simulation is not a completion requirement. The explicit review says
   `Simulation mode is on`, offers `Start managing` and `Keep simulating`, and
   shows saved controls separately from runtime status. The Main simulation
