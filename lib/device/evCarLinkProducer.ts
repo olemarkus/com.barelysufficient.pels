@@ -61,7 +61,7 @@ import {
     type EvLinkEdgeHistory,
     appendEvLinkHistory,
     rememberEvLinkAmbiguities,
-    ambiguitiesToRemember, dropEvLinkCarEdges,
+    ambiguitiesToRemember, dropEvLinkCarEdges, outageEdges,
     matchCoincidentEdges,
     pruneExpiredEvLinkEdges,
     resolveEvLinkEdge,
@@ -413,8 +413,8 @@ export class EvCarLinkProducer {
         // A car back from an outage brings no plug edge, so only its later,
         // genuine transitions can pair with that plug-in, and past matches stay
         // held to the window (`resolvePastMatchRefusal`). Dropping the plug-in
-        // here left a one-car home with no link and no timeout to explain it.
-        if (this.cars.observed.size === 0) { this.edges.carEdges = []; return; }
+        // here left a one-car home with no link and no timeout; they still age out.
+        if (this.cars.observed.size === 0) { this.edges = outageEdges(this.edges, nowMs - EDGE_RETENTION_MS); return; }
 
         // Hand the matcher EVERY retained charger edge: it needs the unsettled
         // ones to judge contention, and settles the decision itself.
