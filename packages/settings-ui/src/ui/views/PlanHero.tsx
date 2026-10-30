@@ -36,6 +36,7 @@ import {
   resolveSolarNow,
   type SolarNowInput,
 } from '../../../../shared-domain/src/solar/solarNow.ts';
+import type { MainHomeJobCounts } from '../mainHomeDevices.ts';
 import { MdIconButton } from './materialWebJSX.tsx';
 
 type HeroStatus = 'on-track' | 'above-safe-pace' | 'projected-over-budget' | 'over-hard-cap' | 'dry-run';
@@ -106,13 +107,13 @@ const isWouldLimitDevice = (device: PlanDeviceSnapshot): boolean => device.statu
 // independent of UI types.
 const buildDecisionSentence = ({
   devices,
-  dryRun,
+  context,
   projectedOverHardCap,
   projectionTone,
   meta,
 }: {
   devices: PlanDeviceSnapshot[];
-  dryRun: boolean;
+  context: HeroContext;
   projectedOverHardCap: boolean;
   projectionTone: ProjectionTone | null;
   meta: PlanMetaSnapshot;
@@ -122,7 +123,11 @@ const buildDecisionSentence = ({
     managedDeviceCount: devices.length,
     limitedCount: limited.length,
     resumingCount: devices.filter(isResumingDevice).length,
-    dryRun,
+    dryRun: context.dryRun,
+    // The same test as the power subline's `Power limits off`.
+    limitsOff: meta.softLimitKw === null || meta.softLimitSource === null,
+    priceFollowingCount: context.jobs.priceFollowingCount,
+    smartTaskDeviceCount: context.jobs.smartTaskDeviceCount,
     projectedOverHardCap,
     projectedOverBudget: projectedOverHardCap
       || projectionTone === 'warning' || projectionTone === 'critical',
@@ -682,6 +687,8 @@ const EnergySection = ({
 
 export type HeroContext = {
   dryRun: boolean;
+  /** What PELS does for the home besides holding a limit; the decision sentence names it while no limit is in force. */
+  jobs: MainHomeJobCounts;
 };
 
 // Format an upcoming-hour timestamp in the user's locale, 24h clock — matches
@@ -794,7 +801,7 @@ export const PlanHero = ({
   );
   const decision = buildDecisionSentence({
     devices,
-    dryRun: context.dryRun,
+    context,
     projectedOverHardCap,
     projectionTone,
     meta,

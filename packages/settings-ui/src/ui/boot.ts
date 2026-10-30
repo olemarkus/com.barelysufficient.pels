@@ -147,6 +147,7 @@ import {
 import { panelFromSearch } from './shellRoutes.ts';
 import { initDeadlinePlanRouter } from './deadlinePlanRouter.ts';
 import { initSmartTaskCreateController } from './smartTaskCreate.ts';
+import { keepAssumedPriceSource } from './setupGoals.ts';
 import { liveStatusOrNull } from './powerStatusRead.ts';
 
 // `showTab` only STARTS the target panel's async scope work (a Main-only deep
@@ -506,7 +507,8 @@ const initializeBootHandlers = () => {
     openDevice: openDeviceDetailAt,
     useQuarterHour: () => saveCapacityPeriodSettings(15),
   });
-  initSmartTaskCreateController(showTab);
+  // A task saved from setup keeps the price source setup named, as Price-based control does.
+  initSmartTaskCreateController(showTab, () => { void keepAssumedPriceSource(); });
   initSetupJourney();
   renderPanel('overview');
   initTabHandlers();

@@ -4,15 +4,10 @@ import type {
 } from '../../../../contracts/src/deferredObjectiveSettings.ts';
 import type { SettingsUiSmartTaskDevicesResponse } from '../../../../contracts/src/smartTaskEdit.ts';
 import { SMART_TASK_CREATE_PAGE_COPY } from '../../../../shared-domain/src/smartTaskCopy/createEditCopy.ts';
-import { deadlineLabels } from '../../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
-import { SMART_TASK_LIST_ROW_LABELS } from '../../../../shared-domain/src/smartTaskCopy/listCopy.ts';
-import { formatSmartTaskGoalValue } from '../../../../shared-domain/src/smartTaskCopy/valueFormat.ts';
-import { resolveObjectiveTargetValue } from '../../../../shared-domain/src/deferredObjectiveValues.ts';
-import { formatSmartTaskListDateTime } from '../../../../shared-domain/src/deferredPlanHistory.ts';
-import { resolveBrowserTimeZone } from '../deadlinePlanHistoryFetch.ts';
 import { hasLoadedDeferredObjectiveSettings } from '../deferredObjectiveSettings.ts';
 import { callApi } from '../homey.ts';
 import { isSmartTaskCreateOpenFor } from '../smartTaskCreate.ts';
+import { formatOpenSmartTaskLine } from '../smartTaskSummary.ts';
 import { hasOpenSmartTask, state } from '../state.ts';
 
 /**
@@ -71,10 +66,8 @@ const textButton = (label: string, data: Record<string, string>): HTMLElement =>
 };
 
 const paintOpenTask = (deviceId: string, entry: DeferredObjectiveSettingsEntry): void => {
-  const goal = formatSmartTaskGoalValue(resolveObjectiveTargetValue(entry), deadlineLabels(entry.kind).targetUnit);
-  const readyBy = formatSmartTaskListDateTime(entry.deadlineAtMs, resolveBrowserTimeZone());
   paint(
-    `${SMART_TASK_LIST_ROW_LABELS.target} ${goal} · ${SMART_TASK_LIST_ROW_LABELS.readyBy} ${readyBy}`,
+    formatOpenSmartTaskLine(entry),
     textButton(SMART_TASK_CREATE_PAGE_COPY.viewTask, { smartTaskView: deviceId }),
   );
 };

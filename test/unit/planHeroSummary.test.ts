@@ -388,6 +388,35 @@ describe('buildDecisionSentence', () => {
     })).text).toBe('Holding back 1 device so the house stays under 12.0 kW.');
   });
 
+  describe('with no limit in force', () => {
+    const noLimit = (overrides: Partial<DecisionSentenceInput> = {}) => buildDecisionSentence(baseline({
+      safePaceKw: null, limitsOff: true, ...overrides,
+    }));
+
+    it('names what PELS does for the home instead of a quiet hour', () => {
+      expect(noLimit({ priceFollowingCount: 1 })).toEqual({
+        text: 'No limit to hold. 1 device follows prices.', positive: true,
+      });
+      expect(noLimit({ priceFollowingCount: 2, smartTaskDeviceCount: 1 })).toEqual({
+        text: 'No limit to hold. 2 devices follow prices, and 1 device has a smart task.', positive: true,
+      });
+      expect(noLimit({ smartTaskDeviceCount: 2 }).text).toBe('No limit to hold. 2 devices have smart tasks.');
+    });
+
+    it('says when nothing asks PELS to act yet, and does not call it reassurance', () => {
+      expect(noLimit()).toEqual({ text: 'No limit to hold, and no device follows prices yet.', positive: false });
+    });
+
+    it('lets every measured rung above it win', () => {
+      expect(noLimit({ resumingCount: 1, priceFollowingCount: 1 }).text)
+        .toBe('Bringing 1 device back online. Power has stayed under the safe pace.');
+    });
+
+    it('keeps the quiet hour while a limit is in force', () => {
+      expect(buildDecisionSentence(baseline({ priceFollowingCount: 3 })).text).toBe('Quiet hour. Nothing to do.');
+    });
+  });
+
   it('omits the safe-pace clause when the value is unavailable', () => {
     expect(buildDecisionSentence(baseline({
       limitedCount: 2,

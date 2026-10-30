@@ -39,6 +39,7 @@ import { applyPlanRescueGate } from './starvationRescue.ts';
 import { resolveEvCardStateLines } from './evCardStateLine.ts';
 import type { SetupPathRead } from './setupPathFacts.ts';
 import type { SolarNowInput } from '../../../shared-domain/src/solar/solarNow.ts';
+import { countMainHomeJobs } from './mainHomeDevices.ts';
 
 // Raw triple for the hero's "Solar now" subline; resolution (finiteness +
 // staleness + materiality gates) happens in `resolveSolarNow` at render time
@@ -216,6 +217,8 @@ const resolveOverviewSetupPath = (): SetupPathRead => (
   overviewScope.kind === 'main' ? readSetupPath() : { state: 'complete' }
 );
 
+const NO_JOBS = { priceFollowingCount: 0, smartTaskDeviceCount: 0 };
+
 const doRender = () => {
   const surface = getPlanSurface();
   if (!surface) return;
@@ -251,6 +254,8 @@ const doRender = () => {
     offersSolarSetup: resolveSolarSetupOffered(),
     context: {
       dryRun: overviewScope.kind === 'main' ? state.dryRun : overviewScope.simulating,
+      // Main-only, like the smart-task row: price and task settings are the Main home's.
+      jobs: overviewScope.kind === 'main' ? countMainHomeJobs(now) : NO_JOBS,
     },
     nowMs: now,
   });

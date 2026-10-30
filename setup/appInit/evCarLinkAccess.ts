@@ -20,7 +20,7 @@ export const createEvCarLinkAccessForApp = (
   const repository = createEvCarLinkRepository(ctx.getUserdataDatabase());
   return createPersistedEvCarLinkAccess(
     repository,
-    Date.now(),
+    Date.now,
     (nowMs) => importLegacyEvCarLinkState(ctx.homey.settings, repository, nowMs),
   );
 };

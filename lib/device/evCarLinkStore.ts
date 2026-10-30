@@ -192,21 +192,23 @@ const markNothingToImport = (repository: EvCarLinkRepository): void => {
  * asks whether the history is whole. A new install's first boot reads an empty
  * key list, which says nothing about the blob; asked only at boot, its cars
  * would have no match history for that whole run. An import that lands late may
- * have put history under the stored rows, so the snapshot is read again.
+ * have put history under the stored rows, so the snapshot is read again, unless
+ * a change the store has not taken is held in memory: the store has the history
+ * for the next boot, and the change would be lost.
  */
 export const createPersistedEvCarLinkAccess = (
     repository: EvCarLinkRepository,
-    nowMs: number,
+    now: () => number,
     importLegacy: (nowMs: number) => boolean,
 ): EvCarLinkSnapshotAccess => {
-    let historyResolved = importLegacy(nowMs);
-    let snapshot = repository.read(nowMs) ?? createEmptyEvCarLinkSnapshot();
+    let historyResolved = importLegacy(now());
+    let snapshot = repository.read(now()) ?? createEmptyEvCarLinkSnapshot();
+    let unpersisted = false;
     return {
         isHistoryResolved: () => {
             if (historyResolved) return true;
-            const now = Date.now();
-            historyResolved = importLegacy(now);
-            if (historyResolved) snapshot = repository.read(now) ?? snapshot;
+            historyResolved = importLegacy(now());
+            if (historyResolved && !unpersisted) snapshot = repository.read(now()) ?? snapshot;
             return historyResolved;
         },
         get: () => snapshot,
@@ -215,7 +217,9 @@ export const createPersistedEvCarLinkAccess = (
             snapshot = next;
             try {
                 repository.write(next);
+                unpersisted = false;
             } catch (error) {
+                unpersisted = true;
                 moduleLogger.error({ event: 'ev_car_link_persist_failed', err: normalizeError(error) });
             }
         },

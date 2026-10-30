@@ -251,6 +251,14 @@ export type DecisionSentenceInput = {
   gridImportHigh: boolean;
   safePaceKw: number | null;
   capacityPeriodMinutes: CapacityPeriodMinutes;
+  // No limit is in force (no grid import limit, Capacity limit or budget pace),
+  // so no hour is quiet against one: the on-track rung says instead what PELS
+  // does for the home, from the two counts below. Absent reads as `false`.
+  limitsOff?: boolean;
+  // Managed devices whose Price-based control is on, while PELS responds to prices.
+  priceFollowingCount?: number;
+  // Managed devices with an open Smart task.
+  smartTaskDeviceCount?: number;
   // Subset of `limitedCount` whose hold is attributed to a smart task waiting
   // for cheaper hours (reason code `deferredObjectiveAvoid`). When the whole
   // limited set falls into this bucket, the decision sentence frames the
@@ -544,8 +552,22 @@ export const buildDecisionSentence = (
     return { text: 'PELS is not managing any devices.', positive: false };
   }
 
-  // 9. On track.
+  // 9. On track. With no limit in force there is no hour to keep quiet: the
+  // sentence names what PELS does for the home, or that nothing asks it yet.
+  if (input.limitsOff === true) return resolveNoLimitSentence(input);
   return { text: 'Quiet hour. Nothing to do.', positive: true };
+};
+
+const resolveNoLimitSentence = (input: DecisionSentenceInput): { text: string; positive: boolean } => {
+  const prices = input.priceFollowingCount ?? 0;
+  const tasks = input.smartTaskDeviceCount ?? 0;
+  const jobs = [
+    prices > 0 ? `${formatDevices(prices)} ${prices === 1 ? 'follows' : 'follow'} prices` : null,
+    tasks > 0 ? `${formatDevices(tasks)} ${tasks === 1 ? 'has a smart task' : 'have smart tasks'}` : null,
+  ].filter((job): job is string => job !== null);
+  // Not positive with nothing to do: an unconfigured state, as with no managed devices.
+  if (jobs.length === 0) return { text: 'No limit to hold, and no device follows prices yet.', positive: false };
+  return { text: `No limit to hold. ${jobs.join(', and ')}.`, positive: true };
 };
 
 // ─── Anticipation subline (next cheap window) ────────────────────────────────
