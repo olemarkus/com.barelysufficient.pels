@@ -94,10 +94,8 @@ export const resolveSolarSetupAction = (device: SettingsUiDeviceListItem): Solar
 const setupDeviceHint = (
   device: SettingsUiDeviceListItem,
   manageability: ReturnType<typeof resolveDeviceManageability>,
-  solar: boolean,
 ): string | null => {
   if (manageability.nativeWiringRequired) return 'Enable device control in Setup.';
-  if (solar) return null;
   // A battery is neither paused nor set to a temperature: say what its device page's Managed says.
   if (isHomeBatteryClassKey(device.deviceClass)) {
     return manageability.supportsPower ? BATTERY_MANAGED_HINT : BATTERY_WATCH_MANAGED_HINT;
@@ -105,7 +103,7 @@ const setupDeviceHint = (
   return manageability.supportsPower ? 'PELS may lower or pause this device.' : 'PELS may adjust its temperature.';
 };
 
-export const readSetupDeviceChoices = (devices: SettingsUiDeviceListItem[], solar: boolean): SetupDeviceChoices => {
+export const readSetupDeviceChoices = (devices: SettingsUiDeviceListItem[]): SetupDeviceChoices => {
   const membership = readHomeMembership();
   if (!state.devicesLoaded || membership.state === 'loading') return { state: 'loading' };
   if (membership.state === 'unavailable') return { state: 'unavailable' };
@@ -113,15 +111,13 @@ export const readSetupDeviceChoices = (devices: SettingsUiDeviceListItem[], sola
     .filter((device) => (membership.membershipByDeviceId[device.id] ?? 'main') === 'main')
     .flatMap((device) => {
       const manageability = resolveDeviceManageability(device);
-      const action = resolveSolarSetupAction(device);
-      if (!manageability.supportsManage || (solar && !action)) return [];
+      if (!manageability.supportsManage) return [];
       return [{
         id: device.id,
         name: formatDisplayDeviceName(device.name),
         managed: manageability.isManaged,
         disabled: !state.initialLoadComplete || !manageability.canManage || setupSavePending(),
-        hint: setupDeviceHint(device, manageability, solar),
-        solar: action,
+        hint: setupDeviceHint(device, manageability),
       }];
     }) };
 };

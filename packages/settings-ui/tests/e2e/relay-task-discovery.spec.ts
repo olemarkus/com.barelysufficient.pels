@@ -35,12 +35,10 @@ test('relay energy task discovery opens settings and keeps its existing dismissa
 }, testInfo) => {
   await seedRelay(page, 'live');
   const active = page.locator('#setup-recommendations-root [aria-label="Recommendations to review"]');
-  const hint = active.locator('.setup-recommendation-card', { hasText: 'Have something ready by a set time' });
+  const hint = active.locator('.setup-recommendation-card', { hasText: 'Choose what PELS does' });
   await expect(hint).toBeVisible();
   await expect(hint.locator('.plan-chip')).toHaveText('Optional');
-  await expect(hint).toContainText('energy goal in kWh');
-  await expect(hint).toContainText('New smart task on the Smart tasks page');
-  await expect(hint).toContainText('Add energy task Flow action');
+  await expect(hint).toContainText('PELS can have something ready by a set time.');
   const guide = hint.getByRole('link', { name: 'Heat a water heater overnight' });
   await expect(guide).toHaveAttribute('href',
     'https://pels.barelysufficient.org/smart-tasks#heat-a-water-heater-on-a-relay-overnight');
@@ -62,11 +60,12 @@ test('relay energy task discovery opens settings and keeps its existing dismissa
   await expect(dismissed.getByRole('link', { name: 'Heat a water heater overnight' })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => (
     window as unknown as { Homey: { __stub: { getSetting: (key: string) => unknown } } }
-  ).Homey.__stub.getSetting('setup_recommendation_dismissals'))).toEqual({ 'after-setup:smart-tasks': 1 });
+  ).Homey.__stub.getSetting('setup_recommendation_dismissals'))).toEqual({ 'after-setup:goals': 1 });
   await dismissed.getByText('Show again', { exact: true }).click();
   await expect(hint).toBeVisible();
-  await hint.getByText('Open Smart tasks', { exact: true }).click();
-  await expect(page.locator('#deadlines-panel')).toBeVisible();
+  await hint.getByText('Choose', { exact: true }).click();
+  await expect(page).toHaveURL(/setup=goals/);
+  await expect(page.locator('#device-card-list [data-device-id="relay-heater"]')).toContainText('New smart task');
 
   if (browserName === 'chromium') {
     const context = await browser.newContext({
@@ -91,6 +90,6 @@ for (const measurement of ['derived', 'missing'] as const) {
   test(`relay energy task discovery stays hidden for ${measurement} power`, async ({ page }) => {
     await seedRelay(page, measurement);
     await expect(page.locator('#setup-recommendations-root')).toContainText('No setup suggestions right now');
-    await expect(page.getByText('Have something ready by a set time', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Choose what PELS does', { exact: true })).toHaveCount(0);
   });
 }

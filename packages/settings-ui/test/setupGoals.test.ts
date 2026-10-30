@@ -48,17 +48,15 @@ const ready = (read: ReturnType<Loaded['goals']['resolveSetupGoalChoices']>) => 
   return read.devices;
 };
 
-afterEach(() => {
-  window.history.replaceState(null, '', '/');
-});
-
 describe('Choose what PELS does', () => {
   it('offers Price-based control for a heating device and a smart task for an EV charger', async () => {
     const { goals, state } = await load();
     manage(state, [heatPump, charger]);
     expect(ready(goals.resolveSetupGoalChoices())).toEqual([
-      { id: 'pump', name: 'Heat pump', price: { enabled: false }, smartTask: null, solar: null },
-      { id: 'charger', name: 'Easee', price: null, smartTask: { state: 'none' }, solar: null },
+      {
+        id: 'pump', name: 'Heat pump', price: { enabled: false }, smartTask: { state: 'none', charger: false }, solar: null,
+      },
+      { id: 'charger', name: 'Easee', price: null, smartTask: { state: 'none', charger: true }, solar: null },
     ]);
     expect(goals.offersSetupGoals()).toBe(true);
   });
@@ -88,7 +86,10 @@ describe('Choose what PELS does', () => {
     manage(state, [heatPump, charger]);
     respondToPrices(facts, false);
     expect(ready(goals.resolveSetupGoalChoices()))
-      .toEqual([{ id: 'charger', name: 'Easee', price: null, smartTask: { state: 'none' }, solar: null }]);
+      .toEqual([
+        { id: 'pump', name: 'Heat pump', price: null, smartTask: { state: 'none', charger: false }, solar: null },
+        { id: 'charger', name: 'Easee', price: null, smartTask: { state: 'none', charger: true }, solar: null },
+      ]);
   });
 
   it('leaves out devices PELS does not manage, devices in a meter area, and devices with nothing to choose', async () => {
@@ -99,14 +100,12 @@ describe('Choose what PELS does', () => {
     expect(goals.offersSetupGoals()).toBe(false);
   });
 
-  it('adds the solar action once surplus can reach it, except in the solar setup that offered it already', async () => {
+  it('adds the solar action once surplus can reach it', async () => {
     const { goals, state } = await load();
     manage(state, [socket]);
     expect(ready(goals.resolveSetupGoalChoices())).toEqual([]);
     state.surplusPoolReachable = true;
     expect(ready(goals.resolveSetupGoalChoices()).map((device) => device.solar?.label)).toEqual(['Run on solar surplus']);
-    window.history.replaceState(null, '', '/?setup=solar&setupGoal=solar');
-    expect(ready(goals.resolveSetupGoalChoices())).toEqual([]);
   });
 
   it('decides nothing while the device list is still loading', async () => {

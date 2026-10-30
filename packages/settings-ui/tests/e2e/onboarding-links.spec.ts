@@ -253,23 +253,37 @@ test.describe('Onboarding links', () => {
     await expect(banner).toContainText('PELS can do more for this home');
     await banner.getByText('See what').click();
 
+    // One card for all three: the setup page is the one place they are offered.
     const list = page.locator('#setup-recommendations-root');
-    await expect(list).toContainText('Heat in cheap hours');
-    await expect(list).toContainText('Use more of your own solar');
-    await expect(list).toContainText('Have something ready by a set time');
-    // Optional, never "Recommended": nothing is wrong with a home that skips them.
-    await expect(list.locator('.plan-chip', { hasText: 'Optional' })).toHaveCount(3);
+    const card = list.locator('.setup-recommendation-card', { hasText: 'Choose what PELS does' });
+    await expect(card).toContainText(
+      'PELS can heat in cheap hours, use more of your own solar or have something ready by a set time.',
+    );
+    // Optional, never "Recommended": nothing is wrong with a home that skips it.
+    await expect(list.locator('.plan-chip', { hasText: 'Optional' })).toHaveCount(1);
     await expect(list.locator('.plan-chip', { hasText: 'Recommended' })).toHaveCount(0);
 
-    // Dismiss is the owner saying "not for me", and it is remembered.
-    const solar = list.locator('.setup-recommendation-card', { hasText: 'Use more of your own solar' });
-    await solar.getByText('Dismiss').click();
-    await expect(page.locator('#settings-nav-chip-recommendations')).toHaveText('2');
+    // The action opens the page that sets them up.
+    await card.getByText('Choose', { exact: true }).click();
+    await expect(page).toHaveURL(/setup=goals/);
+    await expect(page.locator('#devices-panel .setup-journey')).toContainText('Choose what PELS does');
+  });
 
-    // Each action opens the page that sets the feature up.
-    await list.locator('.setup-recommendation-card', { hasText: 'Heat in cheap hours' })
-      .getByText('Set up prices').click();
-    await expect(page.locator('#electricity-prices-panel')).toBeVisible();
+  test('a dismissed suggestion stays away: the owner has seen the offer', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+        settings: { price_optimization_settings: {} },
+        unsetSettings: ['deferred_objective.dev_connected300'],
+      };
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('#setup-recommendations-banner-root').getByText('See what').click();
+    const card = page.locator('#setup-recommendations-root .setup-recommendation-card', { hasText: 'Choose what PELS does' });
+    await card.getByText('Dismiss').click();
+    await expect(page.locator('#settings-nav-chip-recommendations')).toBeHidden();
+    await expect.poll(() => page.evaluate(() => (
+      window as unknown as { Homey: { __stub: { getSetting: (key: string) => unknown } } }
+    ).Homey.__stub.getSetting('setup_recommendation_dismissals'))).toEqual({ 'after-setup:goals': 1 });
   });
 
   const seedSolarPresence = async (page: Page, solarDevice: boolean, poolReachable = false) => {
@@ -288,24 +302,26 @@ test.describe('Onboarding links', () => {
     await page.locator('#setup-recommendations-banner-root').getByText('See what').click();
   };
 
-  test('a solar home without usable surplus can discover solar without an automatic solar recommendation', async ({ page }) => {
+  const goalsCard = (page: Page) => page.locator(
+    '#setup-recommendations-root .setup-recommendation-card', { hasText: 'Choose what PELS does' },
+  );
+
+  test('solar is not offered until surplus can reach a device, with or without a solar device', async ({ page }) => {
     await seedSolarPresence(page, true);
-    await expect(page.locator('#setup-recommendations-root .setup-recommendation-card')).toHaveCount(2);
-    await expect(page.locator('#setup-recommendations-root .setup-recommendation-card').filter({ hasText: 'solar' })).toHaveCount(0);
-    await expect(page.locator('#setup-recommendations-root').getByText('Use more of your own solar', { exact: true })).toBeVisible();
+    await expect(page.locator('#setup-recommendations-root .setup-recommendation-card')).toHaveCount(1);
+    await expect(goalsCard(page)).not.toContainText('solar');
   });
 
-  test('a home without solar is not offered solar setup', async ({ page }) => {
+  test('a home without solar is not offered solar', async ({ page }) => {
     await seedSolarPresence(page, false);
-    await expect(page.locator('#setup-recommendations-root .setup-recommendation-card')).toHaveCount(2);
-    await expect(page.locator('#setup-recommendations-root').getByText('Use more of your own solar', { exact: true })).toHaveCount(0);
+    await expect(goalsCard(page)).not.toContainText('solar');
   });
 
-  test('a meter-only solar home keeps solar setup once its export total restarts', async ({ page }) => {
+  test('a meter-only solar home keeps solar on offer once its export total restarts', async ({ page }) => {
     // Resetting usage history clears the 1 kWh export total, not the export latch
     // behind a reachable surplus pool, so the solar controls are still on offer.
     await seedSolarPresence(page, false, true);
-    await expect(page.locator('#setup-recommendations-root').getByText('Use more of your own solar', { exact: true })).toBeVisible();
+    await expect(goalsCard(page)).toContainText('use more of your own solar');
   });
 
   test('nothing is suggested while setup is still open, or to a home already using it all', async ({ page }) => {
@@ -351,7 +367,7 @@ test.describe('Onboarding links', () => {
   });
 
   test('a Dutch hub is offered its own solar first; a Norwegian hub keeps the neutral order', async ({ page }) => {
-    const titlesFor = async (country: string) => {
+    const bodyFor = async (country: string) => {
       await page.addInitScript((seeded) => {
         (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
           settings: {
@@ -363,17 +379,17 @@ test.describe('Onboarding links', () => {
       }, country);
       await page.goto('/', { waitUntil: 'domcontentloaded' });
       await page.locator('#setup-recommendations-banner-root').getByText('See what').click();
-      const cards = page.locator('#setup-recommendations-root .setup-recommendation-card .plan-card__title');
-      await expect(cards).toHaveCount(3);
-      return cards.allTextContents();
+      return (await goalsCard(page).locator('.pels-card-supporting').first().textContent())?.trim();
     };
 
-    expect(await titlesFor('NL')).toEqual([
-      'Use more of your own solar', 'Heat in cheap hours', 'Have something ready by a set time',
-    ]);
-    expect(await titlesFor('NO')).toEqual([
-      'Heat in cheap hours', 'Use more of your own solar', 'Have something ready by a set time',
-    ]);
+    expect(await bodyFor('NL')).toBe(
+      'PELS can use more of your own solar, heat in cheap hours or have something ready by a set time. '
+        + 'Choose for each device.',
+    );
+    expect(await bodyFor('NO')).toBe(
+      'PELS can heat in cheap hours, use more of your own solar or have something ready by a set time. '
+        + 'Choose for each device.',
+    );
   });
 
   test('overview keeps managed devices when an empty plan arrives', async ({ page }) => {

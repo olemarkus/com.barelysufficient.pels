@@ -26,70 +26,30 @@ const everythingApplies: AfterSetupFacts = {
   belgianHomeOnHourlyPeriod: false,
 };
 
-const ids = (facts: AfterSetupFacts) => resolveAfterSetupRecommendations(facts).map((entry) => entry.id);
+const ids = (facts: AfterSetupFacts) => resolveAfterSetupRecommendations(facts, {}).map((entry) => entry.id);
+
+const goals = (facts: AfterSetupFacts, dismissals: Record<string, number> = {}) => resolveAfterSetupRecommendations(
+  facts, dismissals,
+).find((entry) => entry.id === 'after-setup:goals');
 
 describe('after-setup suggestions', () => {
-  it('offers prices, solar and Smart tasks, in the order the setup path names them', () => {
-    expect(ids(everythingApplies)).toEqual([
-      'after-setup:prices', 'after-setup:solar', 'after-setup:smart-tasks',
-    ]);
+  it('offers prices, solar and Smart tasks as one card that opens Choose what PELS does', () => {
+    expect(ids(everythingApplies)).toEqual(['after-setup:goals']);
+    expect(goals(everythingApplies)).toMatchObject({
+      category: 'optional',
+      title: 'Choose what PELS does',
+      body: 'PELS can heat in cheap hours, use more of your own solar or have something ready by a set time. '
+        + 'Choose for each device.',
+      actionLabel: 'Choose',
+      target: { kind: 'setup-goals' },
+      guideLink: { label: 'Heat a water heater overnight' },
+    });
   });
 
-  it('marks them optional and sends each to the page that sets it up', () => {
-    const suggestions = resolveAfterSetupRecommendations(everythingApplies);
-    expect(suggestions.map((entry) => entry.category)).toEqual(['optional', 'optional', 'optional']);
-    expect(suggestions.map((entry) => entry.target)).toEqual([
-      { kind: 'panel', panelId: 'electricity-prices' },
-      { kind: 'panel', panelId: 'devices' },
-      { kind: 'panel', panelId: 'deadlines' },
-    ]);
-  });
-
-  describe('the price suggestion', () => {
-    const prices = (priceSource: AfterSetupFacts['priceSource']) => resolveAfterSetupRecommendations(
-      { ...everythingApplies, priceSource },
-    ).find((entry) => entry.id === 'after-setup:prices');
-
-    it('says the prices are there and makes the assumed source the owner\'s before opening Devices', () => {
-      // Otherwise turning on Price would reopen the setup path on Prices.
-      const suggestion = prices({ kind: 'priced', scheme: 'homey', chosen: false });
-      expect(suggestion).toMatchObject({
-        title: 'Heat in cheap hours',
-        body: 'PELS already has your prices from Homey Energy. Turn on Price for your heating and hot water '
-          + 'so they heat more in cheap hours.',
-        actionLabel: 'Use these prices',
-        target: { kind: 'keep-price-source', scheme: 'homey' },
-      });
-    });
-
-    it('names the source in force and goes straight to Devices once the owner chose it', () => {
-      expect(prices({ kind: 'priced', scheme: 'powerhour', chosen: true })).toMatchObject({
-        body: expect.stringContaining('from Power by the Hour.'),
-        actionLabel: 'Choose devices',
-        target: { kind: 'panel', panelId: 'devices' },
-      });
-    });
-
-    it('sends a home PELS holds no prices for to set them up', () => {
-      expect(prices({ kind: 'needs_setup' })).toMatchObject({
-        actionLabel: 'Set up prices',
-        target: { kind: 'panel', panelId: 'electricity-prices' },
-      });
-    });
-
-    it('asks for the source when Power by the Hour could price the home instead of Homey Energy', () => {
-      // Keeping Homey Energy from here would leave the owner's markups in
-      // Power by the Hour unused without their having seen the choice.
-      expect(prices({ kind: 'powerhour_offered' })).toMatchObject({
-        actionLabel: 'Set up prices',
-        target: { kind: 'panel', panelId: 'electricity-prices' },
-      });
-    });
-
-    it('keeps one id across its forms, so a dismissal holds', () => {
-      expect(prices({ kind: 'priced', scheme: 'homey', chosen: false })?.version)
-        .toBe(prices({ kind: 'needs_setup' })?.version);
-    });
+  it('keeps one id and version whatever it names, so a dismissal holds', () => {
+    const onlyTasks = goals({ ...everythingApplies, solarSurplusAvailable: false, priceOptimizationEnabled: false });
+    expect(onlyTasks?.body).toBe('PELS can have something ready by a set time. Choose for each device.');
+    expect(onlyTasks?.version).toBe(goals(everythingApplies)?.version);
   });
 
   it('says nothing while the setup path is open: one thing at a time', () => {
@@ -97,70 +57,74 @@ describe('after-setup suggestions', () => {
   });
 
   describe('only what is relevant to this home', () => {
-    it('does not suggest prices to a home with nothing Price can act on', () => {
+    it('does not offer prices to a home with nothing Price can act on', () => {
       // Price adjusts a temperature target. An owner with only a charger and a
       // pool pump has no device it applies to.
       const facts = { ...everythingApplies, devices: [device({ taskCapable: true })] };
-      expect(ids(facts)).not.toContain('after-setup:prices');
+      expect(goals(facts)?.body).not.toContain('cheap hours');
     });
 
-    it('does not suggest solar to a home that does not export, or that PELS cannot act on', () => {
-      expect(ids({ ...everythingApplies, solarSurplusAvailable: false })).not.toContain('after-setup:solar');
-      const nothingLimitable = {
-        ...everythingApplies,
-        devices: [device({ temperature: true, limitable: false })],
-      };
-      expect(ids(nothingLimitable)).not.toContain('after-setup:solar');
+    it('does not offer solar to a home that does not export, or that PELS cannot act on', () => {
+      expect(goals({ ...everythingApplies, solarSurplusAvailable: false })?.body).not.toContain('solar');
+      const nothingLimitable = { ...everythingApplies, devices: [device({ temperature: true, limitable: false })] };
+      expect(goals(nothingLimitable)?.body).not.toContain('solar');
     });
 
-    it('does not suggest Smart tasks to a home with nothing that could take one', () => {
-      const facts = { ...everythingApplies, devices: [device()] };
-      expect(ids(facts)).not.toContain('after-setup:smart-tasks');
+    it('does not offer Smart tasks, or the relay guide, to a home with nothing that could take one', () => {
+      const suggestion = goals({ ...everythingApplies, devices: [device({ temperature: true })] });
+      expect(suggestion?.body).not.toContain('ready by');
+      expect(suggestion?.guideLink).toBeUndefined();
     });
+
+    it('offers no card at all when nothing applies', () => {
+      expect(ids({ ...everythingApplies, devices: [device({ limitable: false })] })).toEqual([]);
+    });
+  });
+
+  it('leaves out an offer whose own card the owner dismissed before the cards became one', () => {
+    const suggestion = goals(everythingApplies, { 'after-setup:prices': 1, 'after-setup:smart-tasks': 1 });
+    expect(suggestion?.body).toBe('PELS can use more of your own solar. Choose for each device.');
+    expect(suggestion?.guideLink).toBeUndefined();
+    expect(goals(everythingApplies, {
+      'after-setup:prices': 1, 'after-setup:solar': 1, 'after-setup:smart-tasks': 1,
+    })).toBeUndefined();
   });
 
   describe('never what the owner already uses', () => {
     it('drops prices once any device has an explicit Price choice, including Off', () => {
-      const facts = {
-        ...everythingApplies,
-        devices: [device({ temperature: true, priceConfigured: true })],
-      };
-      expect(ids(facts)).not.toContain('after-setup:prices');
+      const facts = { ...everythingApplies, devices: [device({ temperature: true, priceConfigured: true })] };
+      expect(goals(facts)?.body).not.toContain('cheap hours');
     });
 
     it('drops prices when the owner turned the global feature off', () => {
-      expect(ids({ ...everythingApplies, priceOptimizationEnabled: false }))
-        .not.toContain('after-setup:prices');
+      expect(goals({ ...everythingApplies, priceOptimizationEnabled: false })?.body).not.toContain('cheap hours');
     });
 
     it('drops solar once any device uses the surplus', () => {
-      const facts = {
-        ...everythingApplies,
-        devices: [device({ usesSolarSurplus: true })],
-      };
-      expect(ids(facts)).not.toContain('after-setup:solar');
+      const facts = { ...everythingApplies, devices: [device({ taskCapable: true, usesSolarSurplus: true })] };
+      expect(goals(facts)?.body).not.toContain('solar');
     });
 
     it('drops Smart tasks once one is configured', () => {
-      expect(ids({ ...everythingApplies, smartTaskConfigured: true }))
-        .not.toContain('after-setup:smart-tasks');
+      expect(goals({ ...everythingApplies, smartTaskConfigured: true })?.body).not.toContain('ready by');
     });
   });
 
   describe('tailored by where the hub is', () => {
-    it('puts an owner\'s own solar first in the Netherlands, where net metering is ending', () => {
-      expect(ids({ ...everythingApplies, market: { state: 'resolved', country: 'NL' } })).toEqual([
-        'after-setup:solar', 'after-setup:prices', 'after-setup:smart-tasks',
-      ]);
+    it('names an owner\'s own solar first in the Netherlands, where net metering is ending', () => {
+      expect(goals({ ...everythingApplies, market: { state: 'resolved', country: 'NL' } })?.body).toBe(
+        'PELS can use more of your own solar, heat in cheap hours or have something ready by a set time. '
+          + 'Choose for each device.',
+      );
     });
 
-    it('changes the order only: no market adds or removes an optional feature', () => {
-      const norway = ids({ ...everythingApplies, market: { state: 'resolved', country: 'NO' } });
-      expect(norway).toEqual(ids(everythingApplies));
+    it('changes the order only: no market adds or removes an offer', () => {
+      const norway = goals({ ...everythingApplies, market: { state: 'resolved', country: 'NO' } });
+      expect(norway?.body).toBe(goals(everythingApplies)?.body);
     });
 
     it('asks a Belgian home on the hourly average to check its capacity period', () => {
-      const [first] = resolveAfterSetupRecommendations({ ...everythingApplies, belgianHomeOnHourlyPeriod: true });
+      const [first] = resolveAfterSetupRecommendations({ ...everythingApplies, belgianHomeOnHourlyPeriod: true }, {});
       expect(first?.id).toBe('market:flanders-capacity-period');
       // A real recommendation, and a question: only the owner knows whether
       // Belgium means Flanders, so the body says who may dismiss it.

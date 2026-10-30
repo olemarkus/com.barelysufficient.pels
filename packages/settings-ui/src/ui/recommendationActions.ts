@@ -1,11 +1,11 @@
 import type { RecommendationTarget } from './recommendationsModel.ts';
+import type { SetupJourneyStep } from './setupJourneyState.ts';
 import { checkFlowConflictNow, hasEvSocFlowReporter, refreshFlowConflictFactsExplicit } from './flowConflictRefresh.ts';
-import { keepPriceSchemeInForce } from './priceSettingsPersistence.ts';
 import { state } from './state.ts';
 import { showToast } from './toast.ts';
 
 export type RecommendationNavigation = {
-  openPanel: (panelId: string) => void;
+  openPanel: (panelId: string, setup?: SetupJourneyStep) => void;
   useQuarterHour: () => Promise<void>;
   openDevice: (deviceId: string, focus: 'top' | 'start-policy' | 'shed-limit') => void;
 };
@@ -43,15 +43,6 @@ export const resolveRecommendationTask = (
         );
       },
       failureMessage: 'Could not check Homey Flows. Try again.',
-    };
-  }
-  if (target.kind === 'keep-price-source') {
-    return {
-      run: async () => {
-        if (await keepPriceSchemeInForce(target.scheme)) navigation?.openPanel('devices');
-        else await showToast('The price source changed. Check it under Electricity prices.', 'warn');
-      },
-      failureMessage: 'Could not save the price source. Try again.',
     };
   }
   return null;

@@ -403,8 +403,8 @@ describe('buildDecisionSentence', () => {
       expect(noLimit({ smartTaskDeviceCount: 2 }).text).toBe('No limit to hold. 2 devices have smart tasks.');
     });
 
-    it('says when nothing asks PELS to act yet, and does not call it reassurance', () => {
-      expect(noLimit()).toEqual({ text: 'No limit to hold, and no device follows prices yet.', positive: false });
+    it('states only the fact when nothing asks PELS to act, and does not call it reassurance', () => {
+      expect(noLimit()).toEqual({ text: 'No limit to hold.', positive: false });
     });
 
     it('lets every measured rung above it win', () => {

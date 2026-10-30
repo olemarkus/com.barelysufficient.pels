@@ -553,7 +553,8 @@ export const buildDecisionSentence = (
   }
 
   // 9. On track. With no limit in force there is no hour to keep quiet: the
-  // sentence names what PELS does for the home, or that nothing asks it yet.
+  // sentence names what PELS does for the home. It states facts and never
+  // nudges; Setup & recommendations is where PELS offers more.
   if (input.limitsOff === true) return resolveNoLimitSentence(input);
   return { text: 'Quiet hour. Nothing to do.', positive: true };
 };
@@ -565,8 +566,8 @@ const resolveNoLimitSentence = (input: DecisionSentenceInput): { text: string; p
     prices > 0 ? `${formatDevices(prices)} ${prices === 1 ? 'follows' : 'follow'} prices` : null,
     tasks > 0 ? `${formatDevices(tasks)} ${tasks === 1 ? 'has a smart task' : 'have smart tasks'}` : null,
   ].filter((job): job is string => job !== null);
-  // Not positive with nothing to do: an unconfigured state, as with no managed devices.
-  if (jobs.length === 0) return { text: 'No limit to hold, and no device follows prices yet.', positive: false };
+  // Not positive with nothing to do: a fact, not reassurance.
+  if (jobs.length === 0) return { text: 'No limit to hold.', positive: false };
   return { text: `No limit to hold. ${jobs.join(', and ')}.`, positive: true };
 };
 

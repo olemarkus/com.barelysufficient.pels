@@ -1,5 +1,5 @@
 import type { PriceSchemeSetting, SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiApi.ts';
-import type { SetupRecommendation } from './recommendationsModel.ts';
+import type { RecommendationDismissals, SetupRecommendation } from './recommendationsModel.ts';
 
 /**
  * Optional features appear after first-run setup, using accepted facts from
@@ -21,8 +21,9 @@ export type AfterSetupDevice = {
 };
 
 /**
- * Where the home's prices come from, as far as the price suggestions need it:
- * `priced` when PELS holds prices from the source in force and nothing but
+ * Where the home's prices come from, as far as `Choose what PELS does` needs it
+ * to name the source and keep an assumed one: `priced` when PELS holds prices
+ * from the source in force and nothing but
  * choosing that source is left to set up, and whether the owner chose it;
  * `powerhour_offered` when that source is Homey Energy, assumed, while Power by
  * the Hour has a price device that could price the home instead; `needs_setup`
@@ -38,13 +39,14 @@ export type AfterSetupFacts = {
   setupComplete: boolean;
   /** Managed devices only; their Price and solar flags come from the price settings. */
   devices: readonly AfterSetupDevice[];
-  /** Producer-resolved global owner choice; explicit Off suppresses the Price suggestion. */
+  /** Producer-resolved global owner choice; explicit Off leaves Price out of the suggestion. */
   priceOptimizationEnabled: boolean;
   priceSource: AfterSetupPriceSource;
   /**
-   * The home has solar AND the surplus engine can act on it. Both: a home with
-   * panels but a pool the runtime declines would be offered a toggle that
-   * cannot engage. "Has solar" includes a zero-export home that curtails.
+   * The surplus engine can act on this home's solar (`resolveSurplusControlAvailable`),
+   * the same fact that puts solar actions on `Choose what PELS does`: a home with
+   * panels but a pool the runtime declines would be offered a toggle that cannot
+   * engage. It includes a zero-export home that curtails.
    */
   solarSurplusAvailable: boolean;
   smartTaskConfigured: boolean;
@@ -80,22 +82,6 @@ const FLANDERS_PERIOD: SetupRecommendation = {
   target: { kind: 'quarter-hour' },
 };
 
-const suggestion = (
-  id: string,
-  copy: Pick<SetupRecommendation, 'title' | 'body' | 'actionLabel' | 'guideLink'>,
-  target: SetupRecommendation['target'],
-): SetupRecommendation => ({
-  id: `after-setup:${id}`,
-  version: VERSION,
-  category: 'optional',
-  ...copy,
-  target,
-});
-
-const panel = (panelId: string): SetupRecommendation['target'] => ({ kind: 'panel', panelId });
-
-const PRICES_TITLE = 'Heat in cheap hours';
-
 const PRICE_SOURCE_NAMES: Record<PriceSchemeSetting, string> = {
   norway: 'the Norway source',
   homey: 'Homey Energy',
@@ -103,96 +89,98 @@ const PRICE_SOURCE_NAMES: Record<PriceSchemeSetting, string> = {
   flow: 'your Flow',
 };
 
-/** How a price source is named in a sentence, as the price suggestion names it. */
+/** How a price source is named in a sentence. */
 export const namePriceSource = (scheme: PriceSchemeSetting): string => PRICE_SOURCE_NAMES[scheme];
-
-/**
- * Prices are rarely what is missing: outside Norway PELS assumes a source that
- * already has them. So the suggestion says they are there and goes straight to
- * the devices. While the owner has not chosen that source, its button makes it
- * theirs first, or the setup path would reopen on Prices the moment a device
- * follows them. A home PELS holds no prices for, whose source needs more than
- * that choice, or that has two sources to choose between, is sent to set them up.
- * The car is the Smart task suggestion's: Price acts on temperature targets.
- */
-const resolvePricesSuggestion = (source: AfterSetupPriceSource): SetupRecommendation => {
-  if (source.kind !== 'priced') return suggestion('prices', {
-    title: PRICES_TITLE,
-    body: 'PELS can raise the temperature a little in cheap hours and lower it in expensive ones, so heating '
-      + 'and hot water run when power costs least. Choose where your prices come from, then turn on Price '
-      + 'for the devices that should follow them.',
-    actionLabel: 'Set up prices',
-  }, panel('electricity-prices'));
-  const body = `PELS already has your prices from ${PRICE_SOURCE_NAMES[source.scheme]}. Turn on Price for your `
-    + 'heating and hot water so they heat more in cheap hours.';
-  return source.chosen
-    ? suggestion('prices', { title: PRICES_TITLE, body, actionLabel: 'Choose devices' }, panel('devices'))
-    : suggestion(
-      'prices',
-      { title: PRICES_TITLE, body, actionLabel: 'Use these prices' },
-      { kind: 'keep-price-source', scheme: source.scheme },
-    );
-};
-
-// True of both kinds of solar home this applies to: one that exports, and a
-// zero-export home whose inverter throttles what it cannot use. Neither "exports"
-// nor "sends to the grid" may be claimed — the second home does neither.
-const SOLAR = suggestion('solar', {
-  title: 'Use more of your own solar',
-  body: 'PELS can run a device, or heat a little more, while your solar produces more than the home is '
-    + 'using, so that power is used at home. Turn on Use solar surplus on the devices that should take it.',
-  actionLabel: 'Choose devices',
-}, panel('devices'));
-
-const SMART_TASKS = suggestion('smart-tasks', {
-  title: 'Have something ready by a set time',
-  body: 'Set a temperature, battery level or energy goal and a ready-by time. PELS chooses the cheapest '
-    + 'available hours before then. For a water heater on a relay, use an energy goal in kWh. '
-    + 'Start with New smart task on the Smart tasks page. For a nightly relay routine, '
-    + 'use the Add energy task Flow action.',
-  actionLabel: 'Open Smart tasks',
-  guideLink: {
-    label: 'Heat a water heater overnight',
-    href: 'https://pels.barelysufficient.org/smart-tasks#heat-a-water-heater-on-a-relay-overnight',
-  },
-}, panel('deadlines'));
 
 const usesAny = (devices: readonly AfterSetupDevice[], flag: 'priceConfigured' | 'usesSolarSurplus'): boolean => (
   devices.some((device) => device[flag])
 );
 
-/** Prices and solar: the same two everywhere, only their order follows the market. */
-const resolvePricesAndSolar = (
-  facts: AfterSetupFacts,
-  devices: readonly AfterSetupDevice[],
-): SetupRecommendation[] => {
-  const prices = facts.priceOptimizationEnabled
-    && devices.some((device) => device.temperature)
-    && !usesAny(devices, 'priceConfigured')
-    ? [resolvePricesSuggestion(facts.priceSource)] : [];
-  const solar = facts.solarSurplusAvailable
-    && devices.some((device) => device.limitable)
-    && !usesAny(devices, 'usesSolarSurplus')
-    ? [SOLAR] : [];
-  // In the Netherlands net metering is ending, so an owner's own solar comes first.
-  const solarFirst = facts.market.state === 'resolved' && facts.market.country === 'NL';
-  return solarFirst ? [...solar, ...prices] : [...prices, ...solar];
-};
+// Outcomes, not features. The solar one never says "export": it must be true of
+// a zero-export home that curtails as well as one that exports.
+const OUTCOMES = {
+  prices: 'heat in cheap hours',
+  solar: 'use more of your own solar',
+  smartTasks: 'have something ready by a set time',
+} as const;
 
-const resolveSmartTasks = (
-  facts: AfterSetupFacts,
-  devices: readonly AfterSetupDevice[],
-): SetupRecommendation[] => (
-  !facts.smartTaskConfigured
-    && devices.some((device) => device.taskCapable)
-    ? [SMART_TASKS] : []
+type Offer = keyof typeof OUTCOMES;
+
+const joinOutcomes = (outcomes: readonly string[]): string => (
+  outcomes.length < 2 ? outcomes.join('') : `${outcomes.slice(0, -1).join(', ')} or ${outcomes[outcomes.length - 1]}`
 );
 
-export const resolveAfterSetupRecommendations = (facts: AfterSetupFacts): SetupRecommendation[] => {
-  const { devices } = facts;
+// The card each offer had before they became one. An owner who dismissed one
+// said that offer is not for them, so the one card leaves it out.
+const RETIRED_CARD_IDS: Record<Offer, string> = {
+  prices: 'after-setup:prices',
+  solar: 'after-setup:solar',
+  smartTasks: 'after-setup:smart-tasks',
+};
+
+const dismissedBefore = (dismissals: RecommendationDismissals, offer: Offer): boolean => (
+  dismissals[RETIRED_CARD_IDS[offer]] === VERSION
+);
+
+// Whether each offer applies to this home and is not in use yet.
+const OFFER_APPLIES: Record<Offer, (facts: AfterSetupFacts) => boolean> = {
+  prices: (facts) => facts.priceOptimizationEnabled
+    && facts.devices.some((device) => device.temperature)
+    && !usesAny(facts.devices, 'priceConfigured'),
+  solar: (facts) => facts.solarSurplusAvailable
+    && facts.devices.some((device) => device.limitable)
+    && !usesAny(facts.devices, 'usesSolarSurplus'),
+  smartTasks: (facts) => !facts.smartTaskConfigured && facts.devices.some((device) => device.taskCapable),
+};
+
+// What the page offers that is not in use yet, in the order the card names it.
+const resolveGoalOutcomes = (facts: AfterSetupFacts, dismissals: RecommendationDismissals): string[] => {
+  const solarFirst = facts.market.state === 'resolved' && facts.market.country === 'NL';
+  const order: Offer[] = solarFirst ? ['solar', 'prices', 'smartTasks'] : ['prices', 'solar', 'smartTasks'];
+  return order
+    .filter((offer) => OFFER_APPLIES[offer](facts) && !dismissedBefore(dismissals, offer))
+    .map((offer) => OUTCOMES[offer]);
+};
+
+/**
+ * One card for everything `Choose what PELS does` offers. Price-based control,
+ * solar surplus and Smart tasks were a card each, offering again what the setup
+ * page offers, so an owner who skipped the page met the same offer twice more.
+ * The body names only what applies and is not in use yet; in the Netherlands,
+ * where net metering is ending, solar leads. Dismissed, it stays away: the
+ * owner has seen the offer.
+ */
+const resolveGoalsSuggestion = (
+  facts: AfterSetupFacts,
+  dismissals: RecommendationDismissals,
+): SetupRecommendation[] => {
+  const outcomes = resolveGoalOutcomes(facts, dismissals);
+  if (outcomes.length === 0) return [];
+  return [{
+    id: 'after-setup:goals',
+    version: VERSION,
+    category: 'optional',
+    title: 'Choose what PELS does',
+    body: `PELS can ${joinOutcomes(outcomes)}. Choose for each device.`,
+    actionLabel: 'Choose',
+    target: { kind: 'setup-goals' },
+    ...(outcomes.includes(OUTCOMES.smartTasks) ? {
+      guideLink: {
+        label: 'Heat a water heater overnight',
+        href: 'https://pels.barelysufficient.org/smart-tasks#heat-a-water-heater-on-a-relay-overnight',
+      },
+    } : {}),
+  }];
+};
+
+/** `dismissals` are the owner's, read for the cards the one suggestion replaced. */
+export const resolveAfterSetupRecommendations = (
+  facts: AfterSetupFacts,
+  dismissals: RecommendationDismissals,
+): SetupRecommendation[] => {
   // No cap is in force, so none can be wrong, unless PELS may limit something.
-  const flanders = facts.belgianHomeOnHourlyPeriod && devices.some((device) => device.limitable)
+  const flanders = facts.belgianHomeOnHourlyPeriod && facts.devices.some((device) => device.limitable)
     ? [FLANDERS_PERIOD] : [];
   if (!facts.setupComplete) return flanders;
-  return [...flanders, ...resolvePricesAndSolar(facts, devices), ...resolveSmartTasks(facts, devices)];
+  return [...flanders, ...resolveGoalsSuggestion(facts, dismissals)];
 };

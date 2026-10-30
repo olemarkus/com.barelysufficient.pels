@@ -1,16 +1,16 @@
 import type { PriceOptimizationSetup } from '../../../contracts/src/priceOptimizationSettings.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
-import { supportsSmartTaskKind } from '../../../shared-domain/src/smartTaskDeviceKind.ts';
 import type { NorwayPriceSetup, SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';
 import type { AfterSetupDevice, AfterSetupFacts, AfterSetupPriceSource } from './afterSetupRecommendations.ts';
 import { hasLoadedDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { supportsPowerDevice, supportsTemperatureControlDevice } from './deviceUtils.ts';
 import { logSettingsError } from './logging.ts';
+import { isSmartTaskCapable } from './mainHomeDevices.ts';
 import { loadPriceSetupSuggestion } from './priceSetupOffer.ts';
 import { getPricesReadModel } from './prices.ts';
 import { readHomeMembership, type HomeMembershipRead } from './homeScope.ts';
 import { isBelgianHomeOnHourlyPeriod, readSetupMarket, readSetupPath } from './setupPathFacts.ts';
-import { state } from './state.ts';
+import { resolveSurplusControlAvailable, state } from './state.ts';
 
 type PriceSetupState =
   | { state: 'loading' }
@@ -94,11 +94,10 @@ const resolveDevices = (
     .filter((device) => (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID)
     .filter((device) => state.managedMap[device.id] === true)
     .map((device) => {
-      const temperature = supportsTemperatureControlDevice(device);
       return {
-        temperature,
+        temperature: supportsTemperatureControlDevice(device),
         limitable: supportsPowerDevice(device) && state.controllableMap[device.id] === true,
-        taskCapable: temperature || device.isEvCharger || supportsSmartTaskKind(device, 'energy'),
+        taskCapable: isSmartTaskCapable(device),
         priceConfigured: configuredDeviceIds.has(device.id),
         usesSolarSurplus: solarSurplusDeviceIds.has(device.id),
       };
@@ -119,8 +118,7 @@ export const readAfterSetupFacts = (): AfterSetupFactsRead => {
       devices: resolveDevices(priceSetupState.setup, membership),
       priceOptimizationEnabled: priceSetupState.setup.enabled,
       priceSource: priceSetupState.priceSource,
-      solarSurplusAvailable: state.surplusPoolReachable
-        && (state.hasManagedSolarDevice || state.hasExhibitedExport),
+      solarSurplusAvailable: resolveSurplusControlAvailable(),
       market: readSetupMarket(),
       belgianHomeOnHourlyPeriod: isBelgianHomeOnHourlyPeriod(),
       smartTaskConfigured: Object.keys(state.deferredObjectiveSettings.objectivesByDeviceId).length > 0,

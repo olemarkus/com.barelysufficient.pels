@@ -11,7 +11,6 @@ export type SetupRecommendationsViewProps = {
   // The first-run setup state: loading, complete, or the open path to render.
   setupPath: SetupPathRead;
   // Whether the home has solar at all, so the page offers solar setup.
-  offersSolarSetup: boolean;
   readiness: 'loading' | 'partial' | 'resolved';
   dismissalStatus: 'loading' | 'unavailable' | 'available';
   retryAvailable: boolean;
@@ -44,7 +43,7 @@ const CATEGORY_CHIP: Record<SetupRecommendation['category'], string> = {
 const busyActionLabel = (recommendation: SetupRecommendation): string | null => {
   const { kind } = recommendation.target;
   if (kind === 'flow-conflict-check' || kind === 'ev-soc-flow-conflict-check') return 'Checking…';
-  return kind === 'keep-price-source' || kind === 'quarter-hour' ? 'Saving…' : null;
+  return kind === 'quarter-hour' ? 'Saving…' : null;
 };
 
 const RecommendationCard = (props: RecommendationCardProps) => {
@@ -165,12 +164,7 @@ export const SetupRecommendationsView = (props: SetupRecommendationsViewProps) =
       title="Setup & recommendations"
     />
     {props.setupPath.state === 'open' && (
-      <SetupPathCard path={props.setupPath.path} surface="setup" offersSolarSetup={props.offersSolarSetup} />
-    )}
-    {props.setupPath.state === 'complete' && props.offersSolarSetup && (
-      <MdTextButton type="button" data-settings-target="devices" data-setup-journey="solar" data-settings-home-scope="main">
-        Use more of your own solar
-      </MdTextButton>
+      <SetupPathCard path={props.setupPath.path} surface="setup" />
     )}
     {props.readiness === 'loading' && (
       <p class="muted setup-recommendations-loading">Checking your configuration…</p>

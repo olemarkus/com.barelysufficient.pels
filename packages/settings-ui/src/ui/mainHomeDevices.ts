@@ -1,4 +1,5 @@
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
+import { supportsSmartTaskKind } from '../../../shared-domain/src/smartTaskDeviceKind.ts';
 import { supportsTemperatureControlDevice, type SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { readHomeMembership } from './homeScope.ts';
 import { readSetupRespondsToPrices } from './setupPathFacts.ts';
@@ -29,6 +30,11 @@ export const followsPrices = (device: SettingsUiDeviceListItem): boolean => (
   readSetupRespondsToPrices() !== false
   && supportsTemperatureControlDevice(device)
   && state.priceOptimizationSettings[device.id]?.enabled === true
+);
+
+/** Whether the device can carry a Smart task: a temperature, charging or supported relay energy task. */
+export const isSmartTaskCapable = (device: SettingsUiDeviceListItem): boolean => (
+  supportsTemperatureControlDevice(device) || device.isEvCharger || supportsSmartTaskKind(device, 'energy')
 );
 
 /** What PELS does for the Main home besides holding a limit, as the Overview states it. */

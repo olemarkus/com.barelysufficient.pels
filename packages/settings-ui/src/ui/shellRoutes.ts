@@ -41,7 +41,7 @@ const PAGE_PARAM = 'page';
 // Parameters that belong to a route and must not leak into the next one.
 const ROUTE_PARAMS = [
   'deviceId', 'historyId', 'edit', 'date', 'reportId', 'reportHomeId', 'reportDeviceId', 'reportAtMs',
-  'setup', 'setupGoal',
+  'setup',
 ];
 
 const isTopLevel = (id: string): boolean => (TOP_LEVEL_PANELS as readonly string[]).includes(id);
@@ -83,12 +83,6 @@ export const shellRouteUrl = (
   if (isSettingsSub(panelId)) page = `${SETTINGS_PREFIX}${panelId}`;
   else if (isBudgetViewRoute(panelId)) page = BUDGET_VIEW_ROUTES[panelId];
   params.set(PAGE_PARAM, page);
-  if (setup) {
-    params.set('setup', setup);
-    if (setup === 'solar' || new URLSearchParams(location.search).get('setup') === 'solar'
-      || new URLSearchParams(location.search).get('setupGoal') === 'solar') {
-      params.set('setupGoal', 'solar');
-    }
-  }
+  if (setup) params.set('setup', setup);
   return `${location.pathname}?${params.toString()}${location.hash}`;
 };
