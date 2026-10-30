@@ -7,6 +7,7 @@ import {
 } from '../../packages/shared-domain/src/settings/temperatureControl';
 import { isWritableModeDeviceTargets } from '../../packages/shared-domain/src/settings/modeDeviceTargets';
 import type { SettingsPort } from '../ports/homeyRuntime';
+import { readSettingsKeyList } from '../utils/settingsKeyList';
 import { getLogger } from '../logging/logger';
 
 export type DeviceModeForTemperatureUpdate =
@@ -97,9 +98,10 @@ export class ObservedTemperatureModeUpdates {
       const modes = readTemperatureControlModes(raw);
       if (modes) this.controlModes = { state: 'resolved', modes };
       else if (raw === null || raw === undefined) {
-        const keys = this.settings.getKeys();
-        if (Array.isArray(keys) && keys.length > 0 && keys.every((key) => typeof key === 'string')
-          && !keys.includes(TEMPERATURE_CONTROL_MODES)) this.controlModes = { state: 'resolved', modes: {} };
+        const keyList = readSettingsKeyList(this.settings);
+        if (keyList.status === 'resolved' && !keyList.keys.includes(TEMPERATURE_CONTROL_MODES)) {
+          this.controlModes = { state: 'resolved', modes: {} };
+        }
       }
     } catch { /* Retain the last good policy. */ }
     return this.controlModes;

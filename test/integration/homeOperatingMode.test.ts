@@ -22,9 +22,8 @@ import { createExternalOffHoldPolicy } from '../../setup/externalOffHoldAdapter'
 // - the read-failure boundary: a THROWN `operating_mode:<homeId>` settings
 //   read is contained at the adapter, `HomeModeCatalog` reports its own
 //   unavailability, and the mode-change rebuild still completes;
-// - fulfilled `undefined` for an existing pin and a store-wide empty key list
-//   are suspect reads that preserve a known pin; only a healthy key list that
-//   omits the pin proves a genuine unpin;
+// - fulfilled `undefined` for an existing pin is a suspect read that preserves
+//   a known pin; only a key list that omits the pin proves a genuine unpin;
 // - the device-scoped reader feeding a setpoint-only device's default limit: a
 //   THROWN pin read answers unavailable, never the global mode's target.
 // Pin faults (`unconfigured_mode`, `malformed_pin`) are NOT logged by any
@@ -726,10 +725,7 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Cooler');
   });
 
-  it.each([
-    ['a fulfilled undefined for the existing key', false],
-    ['a transient store-wide empty key list', true],
-  ])('holds an established pin across %s', async (_label, emptyKeys) => {
+  it('holds an established pin across a fulfilled undefined for the existing key', async () => {
     writeHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
@@ -742,11 +738,8 @@ describe('per-home operating mode (settings → bundle seam)', () => {
       .filter((event) => event.homeId === 'h_a').length;
 
     const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
-    const originalGetKeys = mockHomeyInstance.settings.getKeys.bind(mockHomeyInstance.settings);
     const getSpy = vi.spyOn(mockHomeyInstance.settings, 'get')
       .mockImplementation((key: string) => (key === pinKey ? undefined : originalGet(key)));
-    const getKeysSpy = vi.spyOn(mockHomeyInstance.settings, 'getKeys')
-      .mockImplementation(() => (emptyKeys ? [] : originalGetKeys()));
 
     // A fulfilled miss is not positive evidence that the user cleared the
     // pin. The one-shot fan-out must keep the established Cooler mode, never
@@ -759,7 +752,6 @@ describe('per-home operating mode (settings → bundle seam)', () => {
     expect(logs.findEvents('home_mode_catalog_unavailable')).toContainEqual(expect.objectContaining({ homeId: 'h_a' }));
 
     getSpy.mockRestore();
-    getKeysSpy.mockRestore();
     rig.registry.onHomeScopedSettingChanged(OPERATING_MODE_SETTING, 'h_a');
     await drainPending();
     expect(diagnosticsFor(rig.registry, 'h_a').operatingMode).toBe('Cooler');

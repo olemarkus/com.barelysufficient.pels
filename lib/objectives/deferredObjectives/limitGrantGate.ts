@@ -19,8 +19,9 @@ const emitSmartTaskDebug = getDebugEmitter('smart-task-api', 'deferred_objective
 
 /**
  * What the store says about a device's current objective: the entry when one
- * was read, and whether an absence can be trusted (a transient-empty key list
- * cannot be told from a device with no task).
+ * was read, and whether an absence can be trusted (a key list that cannot be
+ * read, or a listed key that reads back empty, cannot be told from a device
+ * with no task).
  */
 export type StoredObjectiveState = {
   entry: DeferredObjectiveSettingsEntry | undefined;

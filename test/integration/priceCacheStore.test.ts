@@ -337,7 +337,7 @@ describe('importLegacyPriceCaches: payload-fed sources', () => {
     get.mockRestore();
 
     const priceData = createPriceDataStore(settings, store);
-    const getKeys = vi.spyOn(settings, 'getKeys').mockReturnValueOnce([]);
+    const getKeys = vi.spyOn(settings, 'getKeys').mockImplementationOnce(() => { throw new Error('sdk unavailable'); });
     expect(priceData.readFlowPayload(FLOW_PRICES_TODAY)).toBeNull();
     getKeys.mockRestore();
     expect(priceData.readFlowPayload(FLOW_PRICES_TODAY)).toEqual(PAYLOAD);
@@ -354,12 +354,12 @@ describe('createPriceDataStore: a Power by the Hour day without a row', () => {
     return { settings, priceData: createPriceDataStore(settings, store) };
   };
 
-  // An empty key list is the SDK's flake, so the key itself has to answer: a
-  // `null` read is an unset key, `undefined` is no answer, and a value is a day
-  // the import skipped unread. Only the first is absence.
-  it('reads the day as absent while the key list is empty only when the key reads back null', () => {
+  // A key list that cannot be read leaves the key itself to answer: a `null`
+  // read is an unset key, `undefined` is no answer, and a value is a day the
+  // import skipped unread. Only the first is absence.
+  it('reads the day as absent while the key list is unreadable only when the key reads back null', () => {
     const { settings, priceData } = rig();
-    vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('sdk unavailable'); });
     expect(priceData.readPowerhourCache().today).toEqual({ kind: 'absent' });
 
     settings.set(POWERHOUR_PRICES_TODAY, PAYLOAD);

@@ -72,6 +72,26 @@ describe('targetPowerReachabilitySettings', () => {
     expect(settings.set).not.toHaveBeenCalled();
   });
 
+  it('writes into an empty store, where the unlisted key was never written', () => {
+    const reachability = buildTargetPowerReachabilityState({
+      config: baseConfigs.charger,
+      maxReachedPowerW: 5_750,
+    });
+    const settings = {
+      get: vi.fn(() => null),
+      getKeys: vi.fn(() => []),
+      set: vi.fn(),
+    } as unknown as Parameters<typeof writeTargetPowerReachabilitySetting>[0]['settings'];
+
+    expect(writeTargetPowerReachabilitySetting({
+      settings,
+      config: baseConfigs.charger,
+      deviceId: 'charger',
+      reachability: reachability!,
+    })).toBe('persisted');
+    expect(settings.set).toHaveBeenCalledWith(DEVICE_TARGET_POWER_REACHABILITY, { charger: reachability });
+  });
+
   it('abandons the write when a listed setting transiently reads empty', () => {
     const reachability = buildTargetPowerReachabilityState({
       config: baseConfigs.charger,

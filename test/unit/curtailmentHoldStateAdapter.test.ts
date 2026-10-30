@@ -1,9 +1,9 @@
 // Unit tests for the curtailment hold-state persistence boundary
 // (`setup/curtailmentHoldStateAdapter.ts`): the three-arm read classification
 // (`loaded` for a validated blob, `absent` for genuine absence or a condemned
-// malformed blob, `unreadable` for a thrown or key-list-contradicted read) and
-// best-effort writes. Pure over an injected settings-like object — no SDK, no
-// clock.
+// malformed blob, `unreadable` for a thrown read, a malformed key list, or an
+// empty value the key list contradicts) and best-effort writes. Pure over an
+// injected settings-like object — no SDK, no clock.
 import { describe, expect, it } from 'vitest';
 import { createCurtailmentHoldStore } from '../../setup/curtailmentHoldStateAdapter';
 import { CURTAILMENT_HOLD_STATE } from '../../lib/utils/settingsKeys';
@@ -24,8 +24,7 @@ const settingsWith = (value: unknown): SettingsLike => {
   };
 };
 
-// The hold key is genuinely unset; another stored key lets the key list vouch
-// that the settings backend actually answered (a working, non-fresh store).
+// The hold key is genuinely unset; another key is stored.
 const settingsWithout = (): SettingsLike => {
   const map = new Map<string, unknown>([['unrelated_key', 1]]);
   return {
@@ -112,15 +111,13 @@ describe('createCurtailmentHoldStore', () => {
       expect(createCurtailmentHoldStore(settingsWith(undefined)).read()).toEqual({ state: 'unreadable' });
     });
 
-    it('an empty key list cannot vouch for absence — UNREADABLE', () => {
-      // A whole-list miss is a documented transient SDK failure shape; a fresh
-      // install resolves on retry as soon as any key lands.
+    it('an empty key list is an empty store — ABSENT', () => {
       const store = createCurtailmentHoldStore({
-        get: () => undefined,
+        get: () => null,
         getKeys: () => [],
         set: () => undefined,
       });
-      expect(store.read()).toEqual({ state: 'unreadable' });
+      expect(store.read()).toEqual({ state: 'absent' });
     });
 
     it.each([

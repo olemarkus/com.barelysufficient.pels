@@ -237,7 +237,6 @@ export const createPriceDataStore = (settings: SettingsPort, cache: PriceCacheSt
   const readFlowPayload = (key: PricePayloadKey): unknown => {
     const value = cache.read(key);
     if (value !== null || (key !== FLOW_PRICES_TODAY && key !== FLOW_PRICES_TOMORROW)) return value;
-    // Even an empty key list can be a transient SDK miss; retry while no row exists.
     importPendingLegacyPriceCache(settings, cache, key);
     return cache.read(key);
   };

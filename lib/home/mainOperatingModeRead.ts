@@ -1,5 +1,6 @@
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { MAIN_HOME_ID, OPERATING_MODE_SETTING } from '../utils/settingsKeys';
+import { readSettingsKeyList } from '../utils/settingsKeyList';
 import type { DeviceModeForTemperatureUpdate } from './observedTemperatureModeUpdates';
 
 /**
@@ -20,9 +21,11 @@ import type { DeviceModeForTemperatureUpdate } from './observedTemperatureModeUp
  * (`resolveHomeOperatingMode`: absent → `globalMode`, no fault). Main was the
  * odd one out.
  *
- * A TRANSIENT miss is still `unavailable`, and that distinction is the whole
- * reason for the key-list cross-check: substituting the default mode for a read
- * that merely failed would let a consumer persist under the wrong mode.
+ * A read that cannot tell is still `unavailable` (a key list that throws or
+ * answers malformed, or a listed key that reads empty), and that distinction is
+ * the whole reason for the key-list cross-check: substituting the default mode
+ * for a read that merely failed would let a consumer persist under the wrong
+ * mode.
  */
 export function readMainOperatingMode(
   settings: SettingsPort,
@@ -32,9 +35,8 @@ export function readMainOperatingMode(
   try {
     const raw = settings.get(OPERATING_MODE_SETTING);
     if (raw === null || raw === undefined) {
-      const keys = settings.getKeys();
-      if (Array.isArray(keys) && keys.length > 0
-        && keys.every((key) => typeof key === 'string') && !keys.includes(OPERATING_MODE_SETTING)) {
+      const keyList = readSettingsKeyList(settings);
+      if (keyList.status === 'resolved' && !keyList.keys.includes(OPERATING_MODE_SETTING)) {
         // Alias-resolved like any other mode name: the default survives a rename
         // of the mode it names, so a home that renamed Home still resolves to the
         // catalog key its targets are stored under.

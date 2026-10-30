@@ -267,10 +267,6 @@ export type AppContext = {
   deferredObjectivePlanHistoryRecorder?: DeferredObjectivePlanHistoryRecorder;
   deferredObjectiveActivePlanRecorder?: DeferredObjectiveActivePlanRecorder;
   deferredObjectiveEnergyDelivery?: EnergyTaskDeliveryTracker;
-  // Latched when startup back-fill was deferred on a boot-time empty `getKeys()` flake. A
-  // later observe tick re-runs the back-fill for the still-pending offline window before
-  // advancing the watermark past it. See `runPendingDeferredObjectiveBackfill`.
-  deferredObjectiveBackfillPending?: boolean;
   deviceDiagnosticsService?: DeviceDiagnosticsService;
   /**
    * Owns the price caches and the single combined-prices read boundary every

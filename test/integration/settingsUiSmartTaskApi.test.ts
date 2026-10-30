@@ -77,10 +77,6 @@ type HandlerContext = {
 
 const buildContext = (app: Record<string, unknown>, withTask = true): HandlerContext => {
   const settings = new MockSettings();
-  // A PELS store always has SOME keys; seed one so a missing objective key
-  // reads as a TRUSTWORTHY absence (empty getKeys() is the transient flake
-  // the gate maps to the retryable write_conflict lane instead).
-  settings.set('capacity_limit_kw', 10);
   if (withTask) settings.set(OBJECTIVE_KEY, storedEntry());
   return {
     homey: {
@@ -420,11 +416,12 @@ describe('updateSettingsUiSmartTask', () => {
     expect(createDeferredObjective).not.toHaveBeenCalled();
   });
 
-  it('GUARDRAIL: a transient-empty store maps to retryable write_conflict, not task_not_found', () => {
-    // One flaky getKeys() read must never make the UI declare a still-live
-    // task "ended" — the store may hold the task even though nothing reads.
+  it('GUARDRAIL: an unreadable key list maps to retryable write_conflict, not task_not_found', () => {
+    // A key list that throws must never make the UI declare a still-live task
+    // "ended" — the store may hold the task even though nothing reads.
     const createDeferredObjective = vi.fn(() => ({ ok: true }));
     const settings = new MockSettings();
+    vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('settings unavailable'); });
     const homey = {
       app: { createDeferredObjective },
       clock: { getTimezone: () => TIME_ZONE },
@@ -579,7 +576,7 @@ describe('settings UI smart task creation', () => {
   it('GUARDRAIL: a preview over an unreadable task store is a retryable conflict, never a free device', () => {
     const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
     const { homey, settings } = buildContext({ previewDeferredObjectivePlan }, false);
-    vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('settings unavailable'); });
     expect(previewSettingsUiNewSmartTask({ homey, body: updateBody() }))
       .toEqual({ ok: false, reason: 'write_conflict' });
     expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();

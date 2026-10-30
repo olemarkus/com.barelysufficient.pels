@@ -66,10 +66,7 @@ const buildCard = (registry: CardRegistry, id: string) => {
 };
 
 const createMockHomey = () => {
-  // Seed a non-objective key so getKeys() is non-empty, as a real PELS store
-  // always is: the per-key write guard treats an empty key list as a transient
-  // store-wide flake (not a fresh create) and refuses.
-  const settings = new Map<string, unknown>([['capacity_limit_kw', 5]]);
+  const settings = new Map<string, unknown>();
   const actions: CardRegistry = new Map();
   const triggers: CardRegistry = new Map();
   const conditions: CardRegistry = new Map();
@@ -401,15 +398,14 @@ describe('deadline objective flow cards', () => {
       .rejects.toThrow(/was not found/);
   });
 
-  it('set_temperature_deadline THROWS (retryable) when the write refuses on an empty-getKeys flake', async () => {
-    // A store-wide empty getKeys() leaves the one-shot migration unable to
-    // complete (marker unconfirmable), so the write refuses. The card must throw
-    // so Homey surfaces a retryable failure instead of reporting success while
-    // nothing persisted.
+  it('set_temperature_deadline THROWS (retryable) when the write refuses on an unreadable key list', async () => {
+    // A key list that throws cannot confirm the device has no task, so the
+    // write refuses. The card must throw so Homey surfaces a retryable failure
+    // instead of reporting success while nothing persisted.
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
     });
-    mock.homey.settings.getKeys = () => []; // transient store-wide flake
+    mock.homey.settings.getKeys = () => { throw new Error('settings unavailable'); };
     registerDeadlineObjectiveCards(deps);
     const card = mock.actions.get('set_temperature_deadline')!;
     await expect(card.run!({ device: 'heater-1', target_c: 55, ready_by: '07:00' }))
@@ -429,18 +425,15 @@ describe('deadline objective flow cards', () => {
     expect(readObjective(mock.settings, 'meter-1')).toBeUndefined();
   });
 
-  it('clear_deadline still clears through an empty-getKeys flake', async () => {
+  it('clear_deadline still clears a listed key whose value does not read back', async () => {
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
     });
-    seedObjectives(mock.settings, {
-      'heater-1': { enabled: true, kind: 'temperature', enforcement: 'soft', targetTemperatureC: 55, deadlineAtMs: HH_MM_TO_UTC_MS(7, 0) },
-    });
-    mock.homey.settings.getKeys = () => []; // transient store-wide flake
+    mock.settings.set(`${PER_DEVICE_OBJECTIVE_KEY_PREFIX}heater-1`, undefined);
     registerDeadlineObjectiveCards(deps);
     const card = mock.actions.get('clear_deadline')!;
     await card.run!({ device: 'heater-1' });
-    expect(readObjective(mock.settings, 'heater-1')).toBeUndefined();
+    expect(mock.settings.has(`${PER_DEVICE_OBJECTIVE_KEY_PREFIX}heater-1`)).toBe(false);
   });
 
   it('writes an EV objective on set_ev_charge_deadline with normal task behavior', async () => {

@@ -18,8 +18,8 @@ import { readDeviceTargetPowerConfigsRecord } from '../utils/targetPowerConfig';
  * built from a read that failed holds only the device being saved, and writing
  * it erases every other device's entry. So absence is the key list's answer
  * (`readSettingsKeyList`): a key never written starts empty, while a listed key
- * that reads nullish or malformed, an empty or unreadable key list, or a throw
- * is `unavailable`, and nothing is written (`notes/persisted-settings-state.md`).
+ * that reads nullish or malformed, an unreadable key list, or a throw is
+ * `unavailable`, and nothing is written (`notes/persisted-settings-state.md`).
  * The caller turns `unavailable` into a visible failure, never a silent success.
  */
 export type DeviceSettingMapWrite = 'written' | 'unavailable';

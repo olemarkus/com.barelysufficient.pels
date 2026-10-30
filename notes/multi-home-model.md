@@ -87,8 +87,7 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
 
 - Raw Homey settings shapes stop at their adapter. In particular,
   `lib/home/mainMeterSelection.ts` owns `get`/`getKeys`, including
-  `undefined`, `null`, an empty key list, malformed values, and thrown SDK
-  errors (`setup/mainMeterSettings.ts` only re-exports its reader). Every
+  `undefined`, `null`, malformed values, and thrown SDK errors (`setup/mainMeterSettings.ts` only re-exports its reader). Every
   downstream consumer sees only the semantic `MainMeterSelection` contract:
   `resolved` (an explicit meter id), `unavailable`, or `unconfigured`.
   Absence is no longer a value — a non-string read classifies as

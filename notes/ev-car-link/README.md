@@ -119,7 +119,7 @@ is read per candidate from the probe's snapshot. While part of it may still be i
 settings key, the history is `unavailable` rather than empty, and the UI gives no match-based
 advice: an empty snapshot standing in for an unread one must not read as "never matched". That
 holds for the run of a boot whose suspect read left the key for the next boot's import, and of
-a boot whose settings key list came back empty, unless the store is marked as holding the
+a boot whose settings key list could not be read, unless the store is marked as holding the
 blob. The mark is written with the import, or once on a boot whose key list was read without
 the key, so an install that never had the blob reads its history as resolved even then.
 

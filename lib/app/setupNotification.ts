@@ -16,12 +16,6 @@ const logger = getLogger('app/setup-notification');
 export const notifySetupOnce = async (settings: SettingsPort, notifications: NotificationsPort): Promise<void> => {
   try {
     const keys = settings.getKeys();
-    if (keys.length === 0) {
-      // Startup has already written keys. An empty list here is an SDK read
-      // failure, not evidence of a new installation.
-      logger.warn({ event: 'setup_notification_deferred', reason: 'settings_unavailable' });
-      return;
-    }
     if (keys.includes(SETUP_NOTIFICATION_HANDLED)) return;
     const hasDeviceSetup = keys.includes(MANAGED_DEVICES) || keys.includes(CONTROLLABLE_DEVICES);
     if (!hasDeviceSetup) {

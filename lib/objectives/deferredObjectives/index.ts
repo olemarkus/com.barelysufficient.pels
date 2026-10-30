@@ -51,7 +51,6 @@ export {
 export {
   createTrustedDeferredObjectiveSettingsReader,
   hasOpenDeferredObjective,
-  objectiveKeyListIsTrustworthy,
   readDeferredObjectiveRoster,
   readAllObjectives,
   readObjectiveForDevice,

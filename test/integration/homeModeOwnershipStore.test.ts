@@ -25,13 +25,17 @@ describe('HomeModeOwnershipStore', () => {
     vi.restoreAllMocks();
   });
 
-  it('distinguishes fresh state from an unavailable empty key list', () => {
-    const store = new HomeModeOwnershipStore(settings);
+  it('reads an empty store as unwritten', () => {
+    expect(new HomeModeOwnershipStore(settings).read()).toEqual({ state: 'unwritten' });
+  });
 
-    expect(store.read()).toEqual({ state: 'suspect' });
+  it.each([
+    ['throws', () => { throw new Error('settings unavailable'); }],
+    ['answers malformed', () => 'not-a-list'],
+  ])('reads absent keys as suspect when the key list %s', (_label, getKeys) => {
+    vi.spyOn(settings, 'getKeys').mockImplementation(getKeys as unknown as typeof settings.getKeys);
 
-    settings.set('operating_mode', 'Home');
-    expect(store.read()).toEqual({ state: 'unwritten' });
+    expect(new HomeModeOwnershipStore(settings).read()).toEqual({ state: 'suspect' });
   });
 
   it('round-trips a validated ownership ledger', () => {

@@ -9,6 +9,7 @@ import {
   resolveValidTargetPowerReachability,
 } from '../lib/device/targetPowerReachability';
 import { DEVICE_TARGET_POWER_REACHABILITY } from '../lib/utils/settingsKeys';
+import { readSettingsKeyList } from '../lib/utils/settingsKeyList';
 import type { AppContext } from '../lib/app/appContext';
 
 type FreshConfigsRead =
@@ -35,11 +36,8 @@ const readFreshConfigs = (
     }
     if (typeof raw !== 'string') {
       if (raw !== undefined && raw !== null) return { state: 'unavailable' };
-      const keys = settings.getKeys() as unknown;
-      return Array.isArray(keys)
-        && keys.length > 0
-        && keys.every((key): key is string => typeof key === 'string')
-        && !keys.includes(DEVICE_TARGET_POWER_REACHABILITY)
+      const keyList = readSettingsKeyList(settings);
+      return keyList.status === 'resolved' && !keyList.keys.includes(DEVICE_TARGET_POWER_REACHABILITY)
         ? { state: 'resolved', reachabilityByDevice: {} }
         : { state: 'unavailable' };
     }

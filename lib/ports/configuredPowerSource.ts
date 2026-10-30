@@ -2,9 +2,7 @@
 export type PowerSource = 'homey_energy' | 'flow';
 
 /** Persisted-setting failures the power-source reader can classify. */
-export type PowerSourceSettingSuspectReason =
-  | 'missing_existing_key'
-  | 'empty_key_list';
+export type PowerSourceSettingSuspectReason = 'missing_existing_key';
 
 /** Power-source settings after the owning boundary has classified the read. */
 export type ConfiguredPowerSourceRead =

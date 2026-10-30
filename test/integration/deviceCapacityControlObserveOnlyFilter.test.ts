@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { registerCapacityControlCondition, registerDeviceCapacityControlCards } from '../../flowCards/deviceSettingsCards';
-import { CAPACITY_LIMIT_KW, CONTROLLABLE_DEVICES } from '../../lib/utils/settingsKeys';
+import { CONTROLLABLE_DEVICES } from '../../lib/utils/settingsKeys';
 import type { FlowCardDeps } from '../../flowCards/registerFlowCards';
 import type { DecoratedDeviceSnapshot, HomeBatteryControlCapability } from '../../packages/contracts/src/types';
 
@@ -43,10 +43,6 @@ const buildDeps = (): FlowCardDeps => ({
 describe('capacity-control cards exclude solar devices and accept a home battery (FIX 2)', () => {
   beforeEach(() => {
     resetMockHomey();
-    // PELS always has settings keys, and an empty store is the SDK's transient
-    // flake (`readSettingsKeyList`). A map the owner never wrote is a key missing
-    // from a list that names others.
-    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
     infoSpy.mockClear();
     controllableDevices = {};
     batteryControl = 'drivable';

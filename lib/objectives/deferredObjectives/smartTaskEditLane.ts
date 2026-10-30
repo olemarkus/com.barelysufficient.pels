@@ -74,11 +74,12 @@ const updateReject = (reason: SettingsUiSmartTaskRejectReason): SettingsUiSmartT
 //   pass flips them) are not editable either: a "revision" there would
 //   finalize the already-ended run as replaced instead of letting it record
 //   as completed/missed, silently extending a task that just ended.
-// - A transient-empty/flaky read (`getKeys()` empty — the same flake the
-//   store's write guards refuse on) maps to the retryable `write_conflict`
-//   lane instead: one flaky read must never make the UI discard an open
-//   draft and declare a still-live task "ended"
-//   (`feedback_homey_sdk_unreliable`). A read that throws is the same unknown.
+// - An absence the key list cannot confirm (the key is listed but its value
+//   does not read back, or the list itself throws or answers malformed — the
+//   same reads the store's write guards refuse on) maps to the retryable
+//   `write_conflict` lane instead: an unreadable read must never make the UI
+//   discard an open draft and declare a still-live task "ended". A read that
+//   throws is the same unknown.
 const gateEditableTask = (
   store: ObjectiveSettingsStore,
   deviceId: string,

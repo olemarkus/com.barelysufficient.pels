@@ -119,15 +119,14 @@ describe('importLegacyPowerTrackers', () => {
   });
 
   // A fresh install's first boot opens the stores before any setting is
-  // written, so its key list is genuinely empty: no news, and no warning.
-  it('says at info that an empty key list imports nothing', () => {
+  // written, so its key list is genuinely empty: nothing to import, nothing to say.
+  it('imports nothing from an empty store, without a deferral', () => {
     const settings = new MockSettings();
     const store = createTrackerStore(openUserdataDatabase(IN_MEMORY_DATABASE));
     const capture = captureLogger();
     try {
       expect(importLegacyPowerTrackers(settings, store)).toEqual({ imported: [], retired: [], deferred: [] });
-      expect(capture.findEvent('legacy_power_tracker_import_deferred'))
-        .toMatchObject({ level: 30, reason: 'key_list_unreadable' });
+      expect(capture.findEvent('legacy_power_tracker_import_deferred')).toBeUndefined();
     } finally {
       capture.restore();
     }

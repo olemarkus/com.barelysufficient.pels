@@ -24,13 +24,10 @@ import type { CurrentTaskEvaluationReader } from './currentTaskEvaluation';
 // Because a per-key `set`/`unset` cannot drop a sibling device's entry, the
 // whole-map clobber class is structurally dissolved — there is no
 // read-modify-write to guard, so these ops cannot fail-as-clobber and have no
-// refusal branch. The transient-empty protection the old hardened primitive
-// provided is now inherent: a spurious empty read of one key surfaces no
-// objective for that one device for a single cycle with NO persisted damage,
-// and self-heals on the next clean read.
+// refusal branch.
 
 // The outcome of a device-scoped write. A write either PERSISTED, or REFUSED.
-// Two refusal reasons are retryable transients (an untrustworthy absence read —
+// Two refusal reasons are retryable (an absence the key list cannot confirm —
 // see the guard below — or an unavailable home-scope read); both map to the
 // same user-facing "couldn't save just now, retry" framing.
 // `device_in_sub_home` and `device_not_planned` are hard scope rejections, NOT
@@ -186,10 +183,11 @@ function writeObjective(
   const scopeRefusal = refuseForHomeScope(deps, deviceId);
   if (scopeRefusal !== null) return scopeRefusal;
   const prevEntry = readObjectiveForDevice(deps.store, deviceId);
-  // Flaky-read guard: only proceed as a genuine create when the absence is
-  // TRUSTWORTHY (key list readable AND key absent). A present-but-unreadable key
-  // OR a store-wide empty `getKeys()` both mean "can't trust this is objective-less",
-  // so refuse rather than overwrite the user's objective / drop a preserved rescue.
+  // Unreadable-read guard: only proceed as a genuine create when the absence is
+  // TRUSTWORTHY (key list readable AND key absent). A listed key whose value does
+  // not read back, or a key list that cannot be read, means "can't trust this is
+  // objective-less", so refuse rather than overwrite the user's objective / drop
+  // a preserved rescue.
   if (prevEntry === undefined && !objectiveAbsenceIsTrustworthy(deps.store, deviceId)) {
     return refuse(deviceId, 'untrusted_absence');
   }
@@ -222,10 +220,10 @@ export const clearObjectiveForDevice = (
 ): void => {
   const { deviceId, deviceName } = params;
   // Skip ONLY when the absence is TRUSTWORTHY (key list readable AND key absent) —
-  // a genuine no-op worth skipping the notify for. A present key OR a
-  // store-wide empty `getKeys()` flake both fall through to the (idempotent) unset,
-  // so a transient/malformed read can't make the clear silently no-op while the
-  // objective stays persisted and reappears on the next clean cycle.
+  // a genuine no-op worth skipping the notify for. A listed key OR a key list
+  // that cannot be read falls through to the (idempotent) unset, so an
+  // unreadable read can't make the clear silently no-op while the objective
+  // stays persisted.
   if (objectiveAbsenceIsTrustworthy(deps.store, deviceId)) return;
   const prevEntry = readObjectiveForDevice(deps.store, deviceId);
   const previousEvaluation = readPreviousEvaluation(deps, deviceId, prevEntry);

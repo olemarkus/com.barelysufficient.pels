@@ -6,17 +6,18 @@
 // Reads are validated AND classified here, per the boundary rule, into the
 // three arms the caller acts on differently: `loaded` (a validated blob),
 // `absent` (genuinely no state, or a malformed blob — a bad blob must never
-// poison the estimator, so junk is a safe fresh start), and `unreadable` (the
-// read THREW, or an empty read the key list contradicts — a transient SDK
-// miss, so what is on disk is UNKNOWN). Absence permits a write; an unreadable
-// read forbids one, because overwriting an unread ladder with a blank one is a
-// destructive reset of persisted state on a transient failure (root
-// `AGENTS.md`; `notes/persisted-settings-state.md`).
+// poison the estimator, so junk is a safe fresh start), and `unreadable` (a
+// read that THREW, a malformed key list, or an empty value the key list
+// contradicts, so what is on disk is UNKNOWN). Absence permits a write; an
+// unreadable read forbids one, because overwriting an unread ladder with a
+// blank one is a destructive reset of persisted state (root `AGENTS.md`;
+// `notes/persisted-settings-state.md`).
 //
 // Writes stay best-effort — never thrown into the sample path — but REPORT
 // whether the value landed, so the caller can retry instead of assuming.
 
 import { CURTAILMENT_HOLD_STATE } from '../lib/utils/settingsKeys';
+import { readSettingsKeyList } from '../lib/utils/settingsKeyList';
 import {
   CURTAIL_HOLD_MAX_LEVEL,
   type CurtailmentHoldRead,
@@ -74,19 +75,15 @@ const normalize = (raw: unknown): CurtailmentHoldReadResolved => {
 };
 
 // An empty read (`null`/`undefined` — the SDK answers `null` for an unset key)
-// is only GENUINELY absent when the key list agrees. A key the list vouches
-// for that still reads empty is a transient SDK miss, an empty key list cannot
-// vouch for anything, and neither can a malformed one (the shape guard mirrors
-// the repo's other key-list readers) — all classify `unreadable`
-// (`setup/AGENTS.md`, "classify absence on both").
+// is only GENUINELY absent when the key list agrees. An empty key list is an
+// empty store, so it agrees. A key the list vouches for that still reads empty
+// is a miss, and a malformed list vouches for nothing — both classify
+// `unreadable` (`setup/AGENTS.md`, "classify absence on both").
 const classifyEmptyRead = (settings: SettingsLike): CurtailmentHoldRead => {
-  const keys: unknown = settings.getKeys();
-  if (
-    !Array.isArray(keys)
-    || keys.length === 0
-    || !keys.every((key): key is string => typeof key === 'string')
-  ) return { state: 'unreadable' };
-  return keys.includes(CURTAILMENT_HOLD_STATE) ? { state: 'unreadable' } : { state: 'absent' };
+  const keyList = readSettingsKeyList(settings);
+  return keyList.status === 'resolved' && !keyList.keys.includes(CURTAILMENT_HOLD_STATE)
+    ? { state: 'absent' }
+    : { state: 'unreadable' };
 };
 
 /** Build the typed hold store over Homey settings (junk-tolerant read, best-effort write). */

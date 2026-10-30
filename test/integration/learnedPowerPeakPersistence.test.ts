@@ -255,7 +255,7 @@ describe('the legacy learned-peaks import', () => {
   it('keeps a blob owed while the key list or its read fails, and imports it once both answer', () => {
     const { settings, repository } = rig();
     settings.set(DEVICE_POWER_PEAKS, { heater: { kw: 2, observedAtMs: NOW - 1000 } });
-    const getKeys = vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    const getKeys = vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('sdk unavailable'); });
     const capture = captureLogger();
     onTestFinished(() => capture.restore());
 
@@ -311,7 +311,7 @@ describe('a legacy learned-peaks import the upgrade boot could not finish', () =
    * miss, over a store whose reads fail while `failReads` is set.
    */
   const bootWithUnreadableKeyList = () => {
-    const getKeys = vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    const getKeys = vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('sdk unavailable'); });
     const repository = createLearnedPowerPeakRepository(db);
     const importing = createImportingLearnedPowerPeakStore(settings, repository);
     const reads = { fail: false };

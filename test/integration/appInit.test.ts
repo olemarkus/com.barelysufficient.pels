@@ -411,9 +411,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
       if (key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK) return oldWatermark;
       return undefined;
     });
-    // A real store ALWAYS has settings keys (the watermark itself), so getKeys() is
-    // non-empty even with zero objectives. An empty getKeys() here would be the
-    // transient flake the back-fill correctly defers on — not this "zero objectives" case.
+    // The store holds the watermark and no task.
     (ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>).mockReturnValue([
       DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
     ]);
@@ -426,29 +424,6 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     );
     expect(watermarkSets).toHaveLength(1);
     expect((watermarkSets[0]![1] as number)).toBeGreaterThan(oldWatermark);
-  });
-
-  it('does NOT advance the watermark when getKeys() flakes empty at boot', () => {
-    // A boot-time empty getKeys() flake makes readAllObjectives empty. Advancing the
-    // watermark then would permanently skip the back-fill window for tasks that ARE
-    // persisted, so the back-fill must leave the watermark untouched and let a later
-    // read back-fill the full window.
-    const ctx = createAppContextMock();
-    const getSpy = ctx.homey.settings.get as unknown as ReturnType<typeof vi.fn>;
-    const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
-    const oldWatermark = Date.now() - 24 * 60 * 60 * 1000;
-    getSpy.mockImplementation((key: string) => (
-      key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK ? oldWatermark : undefined
-    ));
-    (ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>).mockReturnValue([]);
-    setSpy.mockClear();
-
-    createDeferredObjectivePlanHistoryRecorder(ctx);
-
-    const watermarkSets = setSpy.mock.calls.filter(
-      ([key]) => key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
-    );
-    expect(watermarkSets).toHaveLength(0); // back-fill skipped; watermark left for next startup
   });
 
   it('persistDeferredObjectiveObservationWatermark skips the write when the recorder is still dirty', () => {

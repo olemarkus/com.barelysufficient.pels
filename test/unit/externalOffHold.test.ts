@@ -19,8 +19,8 @@ import {
 //
 // A hold is one settings key whose PRESENCE is the fact, so the rules worth
 // pinning are about the KEY LIST, not about a stored value: an unreadable list
-// must never answer "not held", an empty list is a flake rather than an empty
-// store, and a release must land whatever the list said. The blob-era rules
+// must never answer "not held", an empty list is an empty store, and a release
+// must land whatever the list said. The blob-era rules
 // (junk-tolerant value parsing, dirty-gated writes, abandon-grace, tombstoned
 // releases) are gone with the blob — their whole job was to stop one
 // full-replacing write from wiping every other device's hold, and a per-key
@@ -40,22 +40,12 @@ type FakeStore = ExternalOffHoldSettingsStore & {
 };
 
 /**
- * Stands in for the rest of PELS's settings. Seeded into every fake store,
- * because it is load-bearing rather than scenery: an empty `getKeys()` is read
- * as a transient-store flake by design, so a fixture holding nothing but the
- * hold under test would flip to fail-closed the moment that hold is released —
- * and a lost-release bug would read as a pass. A real install always carries
- * other keys. The one test that WANTS an empty list builds its own bare store.
- */
-const OTHER_SETTINGS_KEY = 'some_other_pels_setting';
-
-/**
  * An in-memory stand-in for `homey.settings`. Mirrors the real manager where it
  * matters: an unset key reads `null` (not `undefined`), and `getKeys` is derived
  * from the backing map so writes and unsets stay consistent with it.
  */
 const fakeStore = (seed: Record<string, unknown> = {}): FakeStore => {
-  const backing = new Map<string, unknown>([[OTHER_SETTINGS_KEY, 1], ...Object.entries(seed)]);
+  const backing = new Map<string, unknown>(Object.entries(seed));
   const failKeys = { current: false };
   return {
     backing,
@@ -136,6 +126,19 @@ describe('external-off hold policy — a hold is a key', () => {
     expect(policy.heldDeviceIds()).toEqual([]);
   });
 
+  it('reads an EMPTY key list as an empty store', () => {
+    // Homey answers a never-written key by leaving it out of `getKeys()`.
+    // Bare, so the migration marker write cannot fill the list.
+    const bare: ExternalOffHoldSettingsStore = {
+      get: () => null,
+      set: () => {},
+      unset: () => {},
+      getKeys: () => [],
+    };
+    expect(build(bare).isHeld('a')).toBe(false);
+    expect(build(bare).heldDeviceIds()).toEqual([]);
+  });
+
   it('ignores the bare prefix with no device id after it', () => {
     const store = fakeStore({ [PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX]: true });
     expect(build(store).heldDeviceIds()).toEqual([]);
@@ -167,19 +170,6 @@ describe('external-off hold policy — an unreadable key list is not an empty on
     store.failKeys.current = true;
     // The opt-in map cannot rule any device out either, so none is ruled out.
     expect(policy.isHeld('never-seen')).toBe(true);
-  });
-
-  it('treats an EMPTY key list as a flake, not an empty store', () => {
-    // PELS always has settings keys, so an empty list means the read is bad.
-    // Deliberately bare — this is the one fixture that must hold nothing.
-    const bare: ExternalOffHoldSettingsStore = {
-      get: () => null,
-      set: () => {},
-      unset: () => {},
-      getKeys: () => [],
-    };
-    expect(build(bare).isHeld('a')).toBe(true);
-    expect(build(bare).heldDeviceIds()).toEqual([]);
   });
 
   it('records a genuine transition rather than trusting the fail-closed guess', () => {
@@ -296,8 +286,8 @@ describe('external-off hold — blob to per-key migration', () => {
   });
 
   it('refuses to consume a blob whose value reads back malformed', () => {
-    // A present key whose value flakes is not an empty blob. Consuming here
-    // would erase the only copy of the user's holds.
+    // A listed key whose value reads back undefined is not an empty blob.
+    // Consuming here would erase the only copy of the user's holds.
     const store = fakeStore({ [EXTERNAL_OFF_HOLDS]: undefined });
     migrateExternalOffHoldsToPerKey(store);
     expect(store.backing.has(EXTERNAL_OFF_HOLDS)).toBe(true);

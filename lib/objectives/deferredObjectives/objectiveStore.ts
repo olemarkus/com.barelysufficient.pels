@@ -1,4 +1,5 @@
 import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../../utils/settingsKeys';
+import { readSettingsKeyList } from '../../utils/settingsKeyList';
 import {
   createEmptyDeferredObjectiveRoster,
   isSmartTaskInProgress,
@@ -17,8 +18,8 @@ import type {
 // (`deferred_objective.<deviceId>`), holding a single
 // `DeferredObjectiveSettingsEntry`. This structurally dissolves the
 // whole-map read-modify-write clobber class: a device-scoped create/clear
-// touches only that device's key, so a transient-empty/malformed read of one
-// key can never drop a SIBLING device's task. There is no shared map to guard.
+// touches only that device's key, so a malformed read of one key can never
+// drop a SIBLING device's task. There is no shared map to guard.
 //
 // These keys are the only place a task is stored. Whole-map consumers read
 // `readAllObjectives` or `readDeferredObjectiveRoster`, which assemble the
@@ -115,38 +116,25 @@ export const readSmartTaskInProgress = (
 };
 
 /**
- * Whether we can TRUST that the device has no objective. True only when the key
- * list is readable (non-empty) AND does not contain the device's key. Both a
- * store-wide transient-empty `getKeys()` and a key that exists but whose value
- * read back `undefined` return false — so a guarded merge refuses rather than
- * treating a flaky read as proof the device is objective-less and overwriting
- * the user's objective.
+ * Whether we can TRUST that the device has no objective: the key list resolves
+ * and does not contain the device's key. Homey answers a never-written key by
+ * leaving it out of `getKeys()`, so an empty list is a trusted absence too. A
+ * key list that throws or answers malformed, and a key that is listed but whose
+ * value read back `undefined`, return false, so a guarded merge refuses rather
+ * than overwrite an objective it could not read.
  */
 export const objectiveAbsenceIsTrustworthy = (
   store: ObjectiveSettingsStore,
   deviceId: string,
 ): boolean => {
-  const keys = store.getKeys();
-  return keys.length > 0 && !keys.includes(perDeviceKey(deviceId));
+  const keyList = readSettingsKeyList(store);
+  return keyList.status === 'resolved' && !keyList.keys.includes(perDeviceKey(deviceId));
 };
 
 /**
- * Whether the store-wide key list is trustworthy right now. PELS always has
- * settings keys, so an empty `getKeys()` is the transient-empty-store flake
- * (the same signal `objectiveAbsenceIsTrustworthy` refuses on). Callers that interpret an empty
- * `readAllObjectives` result as "genuinely zero enabled objectives" must gate
- * on this first — otherwise a flaky empty read is mistaken for real emptiness.
- */
-export const objectiveKeyListIsTrustworthy = (store: ObjectiveSettingsStore): boolean => (
-  store.getKeys().length > 0
-);
-
-/**
  * Assemble the roster from the per-device keys. Enumerates only keys carrying
- * the per-device prefix; skips malformed/empty entries. A transient-empty
- * `getKeys()` therefore yields an empty roster for one cycle (no objectives
- * shown) with NO persisted damage; the next read recovers once the SDK returns
- * the real key list. A decision that must not read that gap as an empty home
+ * the per-device prefix; skips malformed/empty entries. A decision that must
+ * not read a failed key-list read or a malformed listed value as "no task"
  * uses `readDeferredObjectiveRoster` instead.
  */
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
@@ -173,31 +161,20 @@ export type DeferredObjectiveRosterRead = {
 
 /**
  * Read the whole objective roster for a decision that must not mistake an SDK
- * read gap for an empty home. The key list is sampled exactly once; an empty or
- * thrown list, or an unreadable listed objective value, becomes an explicit
- * unavailable result instead of an optimistic empty roster.
+ * read gap for an empty home. The key list is sampled exactly once; a thrown or
+ * malformed list, or an unreadable listed objective value, becomes an explicit
+ * unavailable result instead of an optimistic empty roster. An empty list is a
+ * store with no tasks.
  */
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 export const readDeferredObjectiveRoster = (
   store: ObjectiveSettingsStore,
 ): DeferredObjectiveRosterRead => {
-  let rawKeys: unknown;
-  try {
-    // Homey's SDK typing promises `string[]`, but this is an external boundary:
-    // runtime failures have returned nullish and malformed values as well as
-    // throwing. Classify the actual value before any array operation.
-    rawKeys = store.getKeys();
-  } catch {
-    return { status: 'unavailable' };
-  }
-  if (!Array.isArray(rawKeys) || !rawKeys.every((key) => typeof key === 'string')) {
-    return { status: 'unavailable' };
-  }
-  const keys = rawKeys;
-  if (keys.length === 0) return { status: 'unavailable' };
+  const keyList = readSettingsKeyList(store);
+  if (keyList.status !== 'resolved') return { status: 'unavailable' };
   const settings = createEmptyDeferredObjectiveRoster();
   try {
-    for (const key of keys) {
+    for (const key of keyList.keys) {
       if (!key.startsWith(PER_DEVICE_OBJECTIVE_KEY_PREFIX)) continue;
       const deviceId = deviceIdFromKey(key).trim();
       if (!deviceId) return { status: 'unavailable' };

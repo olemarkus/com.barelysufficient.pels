@@ -18,11 +18,9 @@ describe('listLegacySettingsKeys', () => {
     expect(listLegacySettingsKeys(settings, (key) => key === 'other')).toEqual([]);
   });
 
-  // PELS always has settings keys: an empty list is the SDK's flake, not an
-  // empty store, and concludes nothing.
-  it('answers unknown for a key list that throws or comes back empty', () => {
+  it('answers unknown for a key list that throws, and none for an empty store', () => {
     expect(listLegacySettingsKeys(withKeys(() => { throw new Error('sdk unavailable'); }), isLegacy)).toBeNull();
-    expect(listLegacySettingsKeys(withKeys(() => []), isLegacy)).toBeNull();
+    expect(listLegacySettingsKeys(withKeys(() => []), isLegacy)).toEqual([]);
   });
 });
 
@@ -30,6 +28,7 @@ describe('isLegacySettingsKeyListed', () => {
   it('answers listed, not listed, or unknown', () => {
     expect(isLegacySettingsKeyListed(withKeys(() => ['legacy_a']), 'legacy_a')).toBe(true);
     expect(isLegacySettingsKeyListed(withKeys(() => ['capacity_enabled']), 'legacy_a')).toBe(false);
-    expect(isLegacySettingsKeyListed(withKeys(() => []), 'legacy_a')).toBeNull();
+    expect(isLegacySettingsKeyListed(withKeys(() => []), 'legacy_a')).toBe(false);
+    expect(isLegacySettingsKeyListed(withKeys(() => { throw new Error('sdk unavailable'); }), 'legacy_a')).toBeNull();
   });
 });

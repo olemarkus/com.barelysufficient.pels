@@ -43,15 +43,18 @@ const keyFor = (deviceId: string): string => `${PER_DEVICE_OBJECTIVE_KEY_PREFIX}
 
 // In-memory store mirroring `homey.settings` / the test `MockSettings`. The key
 // list derives from the backing map, so set/unset keep getKeys() consistent.
-// A `forceEmptyKeys` toggle simulates the transient-empty SDK read.
+// A `failKeys` toggle makes the key-list read throw.
 class FakeStore implements ObjectiveSettingsStore {
   readonly map = new Map<string, unknown>();
-  forceEmptyKeys = false;
+  failKeys = false;
 
   get(key: string): unknown { return this.map.get(key); }
   set(key: string, value: unknown): void { this.map.set(key, value); }
   unset(key: string): void { this.map.delete(key); }
-  getKeys(): string[] { return this.forceEmptyKeys ? [] : [...this.map.keys()]; }
+  getKeys(): string[] {
+    if (this.failKeys) throw new Error('SDK read failed');
+    return [...this.map.keys()];
+  }
 }
 
 const roster = (
@@ -107,18 +110,6 @@ describe('objectiveStore round-trips', () => {
     clearObjectiveForDevice(store, 'a');
     expect(readObjectiveForDevice(store, 'b')).toEqual(tempEntry); // still untouched
   });
-
-  it('transient-empty getKeys() yields an empty readAll, then recovers on the next read', () => {
-    const store = new FakeStore();
-    writeObjectiveForDevice(store, 'ev-1', evEntry);
-    store.forceEmptyKeys = true;
-    // One bad cycle: no objectives surfaced, but NOTHING is deleted from disk.
-    expect(readAllObjectives(store)).toEqual(roster({}));
-    expect(store.map.has(keyFor('ev-1'))).toBe(true);
-    // Next clean read recovers the entry.
-    store.forceEmptyKeys = false;
-    expect(readAllObjectives(store)).toEqual(roster({ 'ev-1': evEntry }));
-  });
 });
 
 describe('readDeferredObjectiveRoster', () => {
@@ -133,6 +124,14 @@ describe('readDeferredObjectiveRoster', () => {
     expect(readDeferredObjectiveRoster(store)).toEqual({
       status: 'resolved',
       settings: roster({ 'ev-1': evEntry }),
+    });
+  });
+
+  it('resolves an empty store to an empty roster', () => {
+    // Homey answers a never-written key by leaving it out of `getKeys()`.
+    expect(readDeferredObjectiveRoster(new FakeStore())).toEqual({
+      status: 'resolved',
+      settings: roster({}),
     });
   });
 
@@ -186,11 +185,11 @@ describe('createTrustedDeferredObjectiveSettingsReader', () => {
   it('stays unavailable before the first trusted roster and later recovers', () => {
     const store = new FakeStore();
     writeObjectiveForDevice(store, 'ev-1', evEntry);
-    store.forceEmptyKeys = true;
+    store.failKeys = true;
     const read = createTrustedDeferredObjectiveSettingsReader(store);
 
     expect(read()).toBeUndefined();
-    store.forceEmptyKeys = false;
+    store.failKeys = false;
     expect(read()).toEqual(roster({ 'ev-1': evEntry }));
   });
 });

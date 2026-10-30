@@ -40,18 +40,17 @@ describe('createPriceOptimizationSettingsStore setup read', () => {
     });
   });
 
-  it('treats an empty SDK key inventory as unavailable', () => {
-    const store = createPriceOptimizationSettingsStore(new MockSettings());
-
-    expect(store.readSetup()).toEqual({ state: 'unavailable' });
-  });
-
   it('resolves canonical defaults when price keys were never written', () => {
     const settings = new MockSettings();
     settings.set(PRICE_THRESHOLD_PERCENT, 25);
     const store = createPriceOptimizationSettingsStore(settings);
 
     expect(store.readSetup()).toEqual({
+      state: 'resolved',
+      setup: { enabled: true, configuredDeviceIds: [], solarSurplusDeviceIds: [] },
+    });
+    // An empty store has never written them either.
+    expect(createPriceOptimizationSettingsStore(new MockSettings()).readSetup()).toEqual({
       state: 'resolved',
       setup: { enabled: true, configuredDeviceIds: [], solarSurplusDeviceIds: [] },
     });
@@ -155,6 +154,7 @@ describe('createPriceOptimizationSettingsStore devicesFollowPrices', () => {
   const entry = (enabled: boolean) => ({ enabled, cheapDelta: 1, expensiveDelta: -1 });
 
   it('answers no on a fresh install and for explicit opt-outs', () => {
+    expect(createPriceOptimizationSettingsStore(new MockSettings()).devicesFollowPrices()).toBe(false);
     const fresh = new MockSettings();
     fresh.set(PRICE_THRESHOLD_PERCENT, 25);
     expect(createPriceOptimizationSettingsStore(fresh).devicesFollowPrices()).toBe(false);
@@ -175,8 +175,9 @@ describe('createPriceOptimizationSettingsStore devicesFollowPrices', () => {
   });
 
   it('answers yes when the settings cannot be read', () => {
-    // An empty key list is the SDK's unreadable store, not a fresh install.
-    expect(createPriceOptimizationSettingsStore(new MockSettings()).devicesFollowPrices()).toBe(true);
+    const unlisted = new MockSettings();
+    unlisted.getKeys = () => { throw new Error('SDK unavailable'); };
+    expect(createPriceOptimizationSettingsStore(unlisted).devicesFollowPrices()).toBe(true);
 
     const malformed = new MockSettings();
     malformed.set(PRICE_OPTIMIZATION_SETTINGS, { heater: { enabled: 'yes' } });

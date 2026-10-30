@@ -195,10 +195,21 @@ describe('createCapacitySettingsStore', () => {
       .toMatchObject({ capacityEnabled: true, gridImportLimitKw: null });
   });
 
-  it('treats an empty SDK key list as unavailable', () => {
+  it('reads an empty store as every key never written', () => {
     const store = createCapacitySettingsStore(new MockSettings(), MAIN_HOME_ID, fallback);
 
+    expect(store.read()).toEqual({ state: 'resolved', value: fallback() });
+    expect(store.readHardCapConfiguration()).toEqual({ state: 'resolved', configured: false });
+  });
+
+  it('reads nothing from a key list that throws', () => {
+    const settings = new MockSettings();
+    settings.set(CAPACITY_LIMIT_KW, 8);
+    vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('settings unavailable'); });
+    const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
+
     expect(store.read()).toEqual({ state: 'unavailable' });
+    expect(store.readHardCapConfiguration()).toEqual({ state: 'unavailable' });
   });
 
   it('reads the historical unsuffixed keys for the main home', () => {
@@ -223,11 +234,6 @@ describe('createCapacitySettingsStore', () => {
 
     expect(store.readHardCapConfiguration()).toEqual({ state: 'resolved', configured: false });
     expect(resolvedValue(store.read()).limitKw).toBe(12);
-  });
-
-  it('keeps unavailable hard-cap provenance explicit at the UI boundary', () => {
-    const store = createCapacitySettingsStore(new MockSettings(), MAIN_HOME_ID, fallback);
-    expect(store.readHardCapConfiguration()).toEqual({ state: 'unavailable' });
   });
 
   it('keeps a listed hard cap configured when its value read is transiently unavailable', () => {

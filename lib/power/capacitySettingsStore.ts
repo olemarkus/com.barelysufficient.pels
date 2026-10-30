@@ -236,7 +236,6 @@ export function createCapacitySettingsStore(
     readHardCapConfiguration(): SettingsUiHardCapConfigurationRead {
       try {
         const keys = settings.getKeys();
-        if (keys.length === 0) return { state: 'unavailable' };
         return {
           state: 'resolved',
           configured: keys.includes(homeScopedSettingsKey(CAPACITY_LIMIT_KW, homeId)),
@@ -253,9 +252,6 @@ export function createCapacitySettingsStore(
     read(): CapacityScalarSettingsRead {
       try {
         const keys = settings.getKeys();
-        // PELS always owns settings keys. An empty list is the SDK's transient
-        // unreadable-store spelling, never evidence of a fresh install.
-        if (keys.length === 0) return { state: 'unavailable' };
         const limit = settings.get(homeScopedSettingsKey(CAPACITY_LIMIT_KW, homeId));
         const margin = settings.get(homeScopedSettingsKey(CAPACITY_MARGIN_KW, homeId));
         const dryRun = settings.get(homeScopedSettingsKey(CAPACITY_DRY_RUN, homeId));

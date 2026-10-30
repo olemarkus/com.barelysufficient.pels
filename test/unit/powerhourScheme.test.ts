@@ -99,12 +99,13 @@ describe('reading the owner’s device choice', () => {
 
   it('is unchosen only when the key list says it was never written', () => {
     expect(readPowerhourDeviceChoice(settingsWith(['capacity_limit_kw']))).toEqual(unchosen);
+    expect(readPowerhourDeviceChoice(settingsWith([]))).toEqual(unchosen);
     expect(readPowerhourDeviceChoice(settingsWith(['powerhour_device_id']))).toEqual({ kind: 'unreadable' });
   });
 
-  // An empty list is the SDK's unreadable store, not a choice never made.
-  it('reads nothing from an empty key list', () => {
-    expect(readPowerhourDeviceChoice(settingsWith([]))).toEqual({ kind: 'unreadable' });
+  it('reads nothing from a key list that throws', () => {
+    const settings = { ...settingsWith([]), getKeys: () => { throw new Error('settings unavailable'); } };
+    expect(readPowerhourDeviceChoice(settings)).toEqual({ kind: 'unreadable' });
   });
 });
 

@@ -1,5 +1,6 @@
 import { resolveExplicitMainMeterDeviceId } from './homeConfig';
 import { HOMEY_ENERGY_METER_DEVICE_ID } from '../utils/settingsKeys';
+import { readSettingsKeyList } from '../utils/settingsKeyList';
 import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 
 export type MainMeterSelectionSettings = {
@@ -30,11 +31,10 @@ const LISTED_EMPTY_GRACE_MS = 90_000;
  *
  * - Homey answers an UNSET key with `null` and omits it from `getKeys()`, so
  *   empty AND unlisted is proof that nothing was ever chosen.
- * - A key a healthy list vouches for that still reads empty is either the
- *   transient-miss shape this repo has observed on real hardware or a legacy
- *   stored-null Automatic selection. One read cannot tell them apart, so one
- *   read must not call it `unconfigured` — see the reader below.
- * - An empty key list vouches for nothing and proves no absence.
+ * - A key the list holds that still reads empty is either the transient-miss
+ *   shape this repo has observed on real hardware or a legacy stored-null
+ *   Automatic selection. One read cannot tell them apart, so one read must not
+ *   call it `unconfigured` — see the reader below.
  */
 const classifyMainMeterSelection = (
   settings: MainMeterSelectionSettings,
@@ -50,9 +50,9 @@ const classifyMainMeterSelection = (
     // Anything stored that is not a string is a malformed or transient read of
     // SOMETHING: never proof that nothing is chosen.
     if (raw !== undefined && raw !== null) return { state: 'unavailable' };
-    const keys = settings.getKeys();
-    if (keys.length === 0) return { state: 'unavailable' };
-    return keys.includes(HOMEY_ENERGY_METER_DEVICE_ID)
+    const keyList = readSettingsKeyList(settings);
+    if (keyList.status === 'unavailable') return { state: 'unavailable' };
+    return keyList.keys.includes(HOMEY_ENERGY_METER_DEVICE_ID)
       ? 'listed_empty'
       : { state: 'unconfigured' };
   } catch {

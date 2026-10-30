@@ -207,13 +207,12 @@ export const parseExpectedPowerOverrides = (raw: unknown): DeviceExpectedPowerOv
  * by the classifiers below, so all Homey provenance is spent in one place. The
  * key list is load-bearing: `homey.settings.get()` answers an unset key with
  * `null` (NOT `undefined`), so an absent value on its own cannot tell "never
- * written" from "the read failed" — only a healthy, non-empty key list that does
- * not carry the key proves absence (`setup/AGENTS.md`).
+ * written" from a stored null — only a key list that does not carry the key
+ * proves absence (`setup/AGENTS.md`).
  */
 export type PersistedRecordReadEvidence = {
   raw: unknown;
   keyPresent: boolean;
-  keyListEmpty: boolean;
 };
 
 /**
@@ -238,13 +237,10 @@ export type ExpectedPowerOverridesRead =
   | { state: 'unavailable' };
 
 /**
- * Absence is only trustworthy when a healthy key list vouches for it. An empty
- * key list is the SDK saying nothing at all, and a list that carries the key
- * while the value reads empty is a miss — both stay unavailable.
+ * Absence is only trustworthy when the key list vouches for it. A list that
+ * carries the key while the value reads empty stays unavailable.
  */
-const isConfirmedAbsence = (evidence: PersistedRecordReadEvidence): boolean => (
-  !evidence.keyListEmpty && !evidence.keyPresent
-);
+const isConfirmedAbsence = (evidence: PersistedRecordReadEvidence): boolean => !evidence.keyPresent;
 
 const isAbsentRead = (raw: unknown): boolean => raw === undefined || raw === null;
 

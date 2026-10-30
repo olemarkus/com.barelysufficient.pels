@@ -458,7 +458,12 @@ describe('support report smart task evidence', () => {
   });
 
   it('marks the section unavailable when the task store cannot say whether a task exists', async () => {
-    const flaky: ObjectiveSettingsStore = { get: () => undefined, getKeys: () => [], set: vi.fn(), unset: vi.fn() };
+    const flaky: ObjectiveSettingsStore = {
+      get: () => undefined,
+      getKeys: () => { throw new Error('settings unavailable'); },
+      set: vi.fn(),
+      unset: vi.fn(),
+    };
     const report = await source(currentHost(), flaky).capture(request, now);
     expect(values(report, 'Current smart task')).toBeUndefined();
     expect(report.omissions).toContain('Current smart task is unavailable.');

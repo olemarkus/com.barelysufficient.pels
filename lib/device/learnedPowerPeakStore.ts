@@ -121,8 +121,7 @@ const sayAttempt = (attempt: ListedLegacyImportResult, said: string | null): str
 /**
  * The store the learned-peak state persists through
  * (`lib/device/learnedPowerPeakState.ts`), which settles the legacy import
- * before its boot read: after the boot migrations, whose markers are what make
- * an empty key list a flake rather than a fresh install. Reads and writes go
+ * before its boot read. Reads and writes go
  * through while the blob is still owed: the import merges the blob under what
  * the store holds, so a peak written meanwhile is never lost to it.
  */

@@ -8,8 +8,7 @@ import {
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 
 const UNUSABLE_STEPPED_CONFIG_MARKER = 'boot_migrations_v2_unusable_stepped_config_repaired';
-// An install that has run before always lists some key; a store that lists
-// none is indistinguishable from a transient read miss.
+// An install with a setting stored, none of them a stepped configuration.
 const INSTALL_SETTINGS = { capacity_limit_kw: 5 };
 // Every marker-gated entry in `BOOT_MIGRATIONS` logs one `boot_migration_applied`
 // on a fresh install, whether or not it had anything to change.
@@ -68,17 +67,29 @@ describe('runBootMigrations', () => {
     expect(capture.findEvents('boot_migration_applied')).toHaveLength(BOOT_MIGRATION_COUNT);
   });
 
-  it('defers on a store that lists no keys at all, and lands once it does', () => {
-    // A brand-new install's first boot looks like this, and so does a
-    // transient miss: nothing is lost by waiting one boot.
+  it('writes the marker on an empty store, which has nothing to repair', () => {
     const env = createHomey();
+
+    runBootMigrations({ homey: env.homey });
+
+    expect(env.store.get(UNUSABLE_STEPPED_CONFIG_MARKER)).toBe(true);
+    expect(capture.findEvent('boot_migration_deferred')).toBeUndefined();
+  });
+
+  it.each([
+    ['throws', () => { throw new Error('Settings unavailable'); }],
+    ['answers malformed', () => 'not-a-list'],
+  ])('defers when the key list %s, and lands once it reads', (_label, getKeys) => {
+    const env = createHomey(INSTALL_SETTINGS);
+    const originalGetKeys = env.homey.settings.getKeys.bind(env.homey.settings);
+    env.homey.settings.getKeys = getKeys as unknown as typeof env.homey.settings.getKeys;
 
     runBootMigrations({ homey: env.homey });
 
     expect(env.store.get(UNUSABLE_STEPPED_CONFIG_MARKER)).toBeUndefined();
     expect(capture.findEvent('boot_migration_deferred')).toBeDefined();
 
-    env.store.set('capacity_limit_kw', 5);
+    env.homey.settings.getKeys = originalGetKeys;
     runBootMigrations({ homey: env.homey });
 
     expect(env.store.get(UNUSABLE_STEPPED_CONFIG_MARKER)).toBe(true);

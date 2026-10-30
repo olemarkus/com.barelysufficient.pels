@@ -3,6 +3,7 @@ import { getLogger } from '../lib/logging/logger';
 import { normalizeDeviceControlProfiles } from '../packages/shared-domain/src/deviceControlProfiles';
 import { normalizeDeviceTargetPowerConfigs } from '../lib/utils/targetPowerConfig';
 import { DEVICE_CONTROL_PROFILES, DEVICE_TARGET_POWER_CONFIGS } from '../lib/utils/settingsKeys';
+import { readSettingsKeyList } from '../lib/utils/settingsKeyList';
 
 const repairLogger = getLogger('startup/stepped-profile-repair');
 
@@ -115,10 +116,9 @@ const repairSetting = (params: {
 /**
  * `ManagerSettings.get` answers an unset key with `null`, so absence is
  * classified on both `null` and `undefined` and then confirmed against the key
- * list — the rule in `setup/AGENTS.md`. A throw is a failed read, not an empty
- * one, and an EMPTY key list is not proof of a pristine install: a Homey that
- * momentarily reports no keys at all is a transient miss, so it defers rather
- * than declaring absence.
+ * list — the rule in `setup/AGENTS.md`. An empty key list is an empty store, so
+ * the key is absent; a throw or a malformed key list is a failed read and
+ * defers.
  */
 const readSettingEntries = (settings: RepairSettingsPort, key: string): SettingRead => {
   try {
@@ -126,18 +126,11 @@ const readSettingEntries = (settings: RepairSettingsPort, key: string): SettingR
     const entries = parseSettingRecord(raw);
     if (entries) return { state: 'resolved', entries };
     if (raw === undefined || raw === null) {
-      const keys = settings.getKeys();
-      if (
-        Array.isArray(keys)
-        && keys.length > 0
-        && keys.every((entry): entry is string => typeof entry === 'string')
-        && !keys.includes(key)
-      ) {
-        return { state: 'absent' };
-      }
+      const keyList = readSettingsKeyList(settings);
+      if (keyList.status === 'resolved' && !keyList.keys.includes(key)) return { state: 'absent' };
     }
   } catch {
-    // A failed read is indistinguishable from a transient miss; both defer.
+    // A failed read defers.
   }
   return { state: 'unavailable' };
 };

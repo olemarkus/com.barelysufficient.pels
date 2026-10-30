@@ -102,10 +102,7 @@ const buildCtx = (params: {
 } = {}): Harness => {
   const ctx = createAppContextMock();
   const unreadable = { current: params.holdsUnreadable === true };
-  // Stands in for the rest of PELS's settings: an empty key list is read as a
-  // transient-store flake by design, so a store holding only the hold under
-  // test would flip to fail-closed the moment that hold is released.
-  const settings = new Map<string, unknown>([['some_other_pels_setting', 1]]);
+  const settings = new Map<string, unknown>();
   if (params.optedIn) settings.set(RESPECT_EXTERNAL_OFF_DEVICES, { [DEVICE_ID]: true });
   for (const deviceId of params.heldBefore ?? []) {
     settings.set(`${PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX}${deviceId}`, true);

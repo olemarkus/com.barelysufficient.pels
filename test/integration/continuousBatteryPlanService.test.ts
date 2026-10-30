@@ -32,13 +32,16 @@ const source: ContinuousBatteryPlanSource = {
 };
 
 const settingsStore = (initial: Record<string, unknown> = {}) => {
-  const values = new Map<string, unknown>([['capacity_limit_kw', 5], ...Object.entries(initial)]);
+  const values = new Map<string, unknown>(Object.entries(initial));
   let unavailable = false;
   const settings: SettingsPort = {
     get: key => unavailable ? null : (values.get(key) ?? null),
     set: (key, value) => { values.set(key, value); },
     unset: key => { values.delete(key); },
-    getKeys: () => unavailable ? [] : [...values.keys()],
+    getKeys: () => {
+      if (unavailable) throw new Error('settings unavailable');
+      return [...values.keys()];
+    },
   };
   return { settings, values, loseReads: () => { unavailable = true; } };
 };

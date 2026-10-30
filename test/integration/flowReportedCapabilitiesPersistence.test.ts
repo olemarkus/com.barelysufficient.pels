@@ -51,12 +51,17 @@ describe('Flow capability persistence reads', () => {
     vi.restoreAllMocks();
   });
 
-  it('resolves a never-written setting from a healthy key list without writing it', () => {
+  it('resolves a never-written setting from a key list without the key, without writing it', () => {
     const set = vi.spyOn(mockHomeyInstance.settings, 'set');
     expect(repository.loadFlowReportedCapabilities()).toEqual({ state: 'resolved', capabilities: {} });
     buildFlowBacked().loadPersistedState();
     expect(reports).toEqual({});
     expect(set).not.toHaveBeenCalled();
+  });
+
+  it('resolves a never-written setting in an empty store', () => {
+    mockHomeyInstance.settings.clear();
+    expect(repository.loadFlowReportedCapabilities()).toEqual({ state: 'resolved', capabilities: {} });
   });
 
   it('adopts an explicitly stored empty map after accepting previous reports', () => {
@@ -71,7 +76,7 @@ describe('Flow capability persistence reads', () => {
     expect(reports).toEqual({});
   });
 
-  it('adopts confirmed removal from a healthy key list', () => {
+  it('adopts confirmed removal from the key list', () => {
     mockHomeyInstance.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, savedReports);
     const flowBacked = buildFlowBacked();
     flowBacked.loadPersistedState();
@@ -110,18 +115,14 @@ describe('Flow capability persistence reads', () => {
     expect(reports).toEqual({});
   });
 
-  it.each(['get', 'getKeys', 'empty key list'] as const)(
+  it.each(['get', 'getKeys'] as const)(
     'preserves accepted reports when %s cannot establish persisted state',
     (failure) => {
       mockHomeyInstance.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, savedReports);
       const flowBacked = buildFlowBacked();
       flowBacked.loadPersistedState();
       const accepted = reports;
-      if (failure === 'empty key list') {
-        vi.spyOn(mockHomeyInstance.settings, 'getKeys').mockReturnValue([]);
-      } else {
-        vi.spyOn(mockHomeyInstance.settings, failure).mockImplementation(() => { throw new Error('SDK unavailable'); });
-      }
+      vi.spyOn(mockHomeyInstance.settings, failure).mockImplementation(() => { throw new Error('SDK unavailable'); });
       const set = vi.spyOn(mockHomeyInstance.settings, 'set');
 
       expect(repository.loadFlowReportedCapabilities()).toEqual({ state: 'unavailable' });

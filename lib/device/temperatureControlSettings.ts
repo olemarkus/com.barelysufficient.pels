@@ -5,6 +5,7 @@ import {
   readTemperatureControlModes, temperatureControlDisabledDevices, type TemperatureControlMode,
 } from '../../packages/shared-domain/src/settings/temperatureControl';
 import type { SettingsPort } from '../ports/homeyRuntime';
+import { readSettingsKeyList } from '../utils/settingsKeyList';
 import type { SmartTaskInProgressRead } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 
 /**
@@ -27,10 +28,11 @@ type TemperatureControlSettingsPort = {
  * key-list cross-check unreachable on a real Homey and pinned the policy at
  * `unavailable`, which fails closed over every temperature device (an install
  * that never touched the toggle lost all setpoint control). The cross-check
- * still separates a genuinely absent key from a transient miss: a listed key
- * that reads empty, an empty key list, a malformed value, or a throw all stay
- * `unavailable`. `undefined` stays in the disjunction for object doubles and
- * any runtime that answers that way; the SDK itself only produces `null`.
+ * still separates a genuinely absent key from a read that cannot tell: a listed
+ * key that reads empty, a key list that throws or answers malformed, a
+ * malformed value, or a throw all stay `unavailable`. `undefined` stays in the
+ * disjunction for object doubles and any runtime that answers that way; the
+ * SDK itself only produces `null`.
  */
 export function readTemperatureControlDisabledDevicesSetting(params: {
   settings: TemperatureControlSettingsPort;
@@ -52,16 +54,8 @@ export function readTemperatureControlDisabledDevicesSetting(params: {
     if (isBooleanMap(raw)) return {
       devices: temperatureControlDisabledDevices(modes ?? {}, raw), state: 'resolved',
     };
-    if (raw === undefined || raw === null) {
-      const keys = params.settings.getKeys();
-      if (
-        Array.isArray(keys)
-        && keys.length > 0
-        && keys.every((key): key is string => typeof key === 'string')
-        && !keys.includes(TEMPERATURE_CONTROL_DISABLED_DEVICES)
-      ) {
-        return { devices: temperatureControlDisabledDevices(modes ?? {}, {}), state: 'resolved' };
-      }
+    if (isAbsent(params.settings, TEMPERATURE_CONTROL_DISABLED_DEVICES, raw)) {
+      return { devices: temperatureControlDisabledDevices(modes ?? {}, {}), state: 'resolved' };
     }
   } catch {
     // The semantic unavailable state below retains a previously resolved value.
@@ -73,9 +67,8 @@ export function readTemperatureControlDisabledDevicesSetting(params: {
 
 function isAbsent(settings: TemperatureControlSettingsPort, key: string, raw: unknown): boolean {
   if (raw !== null && raw !== undefined) return false;
-  const keys = settings.getKeys();
-  return Array.isArray(keys) && keys.length > 0
-    && keys.every((entry) => typeof entry === 'string') && !keys.includes(key);
+  const keyList = readSettingsKeyList(settings);
+  return keyList.status === 'resolved' && !keyList.keys.includes(key);
 }
 
 /** Apply the owner-resolved temperature policy to the device's command authority. */

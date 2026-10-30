@@ -700,7 +700,7 @@ export class DeferredObjectiveActivePlanRecorder {
       }
       // Diagnostic stopped appearing while the deadline is still in the
       // future. This could be objective disabled, device unavailable, or a
-      // transient empty Homey settings read. Wait for the abandon grace
+      // failed read of the task. Wait for the abandon grace
       // before dropping so a single bad cycle does not delete persisted
       // state. A re-enabled objective produces a fresh objectiveSignature
       // which observe() picks up via objective_changed before grace expires.

@@ -15,7 +15,6 @@ import {
   disableDeferredObjectiveInSettings,
   requireDeferredObjectiveActivePlanRecorder,
   requireDeferredObjectivePlanHistoryRecorder,
-  runPendingDeferredObjectiveBackfill,
   WATERMARK_IDLE_REFRESH_MS,
   writeWatermark,
   requireDeferredObjectiveEnergyDelivery,
@@ -194,11 +193,6 @@ export function createDeferredObjectiveLifecycleEmitter(
     ),
     observeDeferredObjectivePlanHistory: (diagnostics, nowMs, activePlans) => {
       const recorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
-      // Run the offline-window back-fill that an earlier attempt deferred (an empty-`getKeys()`
-      // flake) — back-fill the pending `(watermark, now]` window HERE,
-      // before the watermark-advance below jumps it to `now` and silently skips an elapsed
-      // deadline in it. No-op once back-fill completed for this session.
-      runPendingDeferredObjectiveBackfill(ctx, recorder);
       recorder.observe(diagnostics, nowMs, activePlans);
       // Advance the watermark only once the recorder is clean: a failed save leaves it
       // dirty, and the watermark stays put so the next restart re-tries the persistence.
@@ -208,13 +202,6 @@ export function createDeferredObjectiveLifecycleEmitter(
       // behind costs nothing: back-fill skips any deadline that already has an entry.
       recorder.flushIfDirty();
       if (recorder.isDirty()) return;
-      // A still-pending back-fill (this tick's retry didn't complete it — e.g. getKeys()
-      // flaked empty again) means the (watermark, now]
-      // offline window is still owed. The idle-refresh advance must NOT jump the watermark
-      // past it, or the owed window is permanently skipped — the same silent-history-loss the
-      // back-fill path itself guards against. Leave the watermark; a later healthy tick
-      // completes the back-fill and advances it then.
-      if (ctx.deferredObjectiveBackfillPending) return;
       if (nowMs - lastWatermarkPersistMs < WATERMARK_IDLE_REFRESH_MS) return;
       writeWatermark(ctx, nowMs);
       lastWatermarkPersistMs = nowMs;

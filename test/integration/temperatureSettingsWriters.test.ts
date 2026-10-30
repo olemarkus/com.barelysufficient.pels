@@ -22,8 +22,6 @@ const settings = mockHomeyInstance.settings;
 
 beforeEach(() => {
   resetMockHomey();
-  // A real install always holds some key; an empty key list reads as a suspect store.
-  settings.set('capacity_limit_kw', 10);
 });
 
 afterEach(() => {
@@ -152,8 +150,13 @@ describe('writeDevicePriceAdjustment', () => {
     expect(writeDevicePriceAdjustment(settings, 'heater', 'cheap_hour_boost', 2)).toBe('unavailable');
 
     settings.unset(PRICE_OPTIMIZATION_SETTINGS);
-    vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('SDK unavailable'); });
     expect(writeDevicePriceAdjustment(settings, 'heater', 'cheap_hour_boost', 2)).toBe('unavailable');
+  });
+
+  it('reads an empty store as Price-based control off', () => {
+    settings.clear();
+    expect(writeDevicePriceAdjustment(settings, 'heater', 'cheap_hour_boost', 2)).toBe('price_control_off');
   });
 });
 
@@ -165,9 +168,13 @@ describe('writeTemperatureControlMode', () => {
     expect(settings.get(TEMPERATURE_CONTROL_MODES)).toEqual({ other: 'update_mode', heater: 'external' });
   });
 
-  it('starts the key when it was never written', () => {
+  it('starts the key when it was never written, including in an empty store', () => {
     expect(writeTemperatureControlMode(settings, 'heater', 'mode', 'none')).toBe('written');
     expect(settings.get(TEMPERATURE_CONTROL_MODES)).toEqual({ heater: 'mode' });
+
+    settings.clear();
+    expect(writeTemperatureControlMode(settings, 'heater', 'external', 'none')).toBe('written');
+    expect(settings.get(TEMPERATURE_CONTROL_MODES)).toEqual({ heater: 'external' });
   });
 
   it('reports an unchanged choice without writing', () => {
@@ -193,6 +200,11 @@ describe('writeTemperatureControlMode', () => {
     settings.set(TEMPERATURE_CONTROL_MODES, { heater: 'sometimes' });
     expect(writeTemperatureControlMode(settings, 'heater', 'mode', 'none')).toBe('unavailable');
     expect(settings.get(TEMPERATURE_CONTROL_MODES)).toEqual({ heater: 'sometimes' });
+
+    settings.unset(TEMPERATURE_CONTROL_MODES);
+    vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('SDK unavailable'); });
+    expect(writeTemperatureControlMode(settings, 'heater', 'mode', 'none')).toBe('unavailable');
+    expect(settings.get(TEMPERATURE_CONTROL_MODES)).toBeNull();
   });
 });
 
@@ -226,7 +238,7 @@ describe('readSmartTaskInProgress', () => {
     settings.set(keyFor('junk'), { kind: 'unknown' });
     expect(readSmartTaskInProgress(settings, 'junk', NOW_MS)).toBe('unavailable');
 
-    vi.spyOn(settings, 'getKeys').mockReturnValue([]);
+    vi.spyOn(settings, 'getKeys').mockImplementation(() => { throw new Error('SDK unavailable'); });
     expect(readSmartTaskInProgress(settings, 'heater', NOW_MS)).toBe('unavailable');
   });
 });

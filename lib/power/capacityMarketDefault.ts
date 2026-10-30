@@ -24,12 +24,10 @@ const MEASURED_PEAK_MARKETS: ReadonlySet<string> = new Set(['NO', 'BE']);
 export type CapacityMarketDefaultDeps = {
   /**
    * Only a new install takes the market default (`classifyInstallAtBoot`); an
-   * existing one keeps the posture it has been running on. An existing install
-   * misread as new at boot gets its market's default, which is what its tariff
-   * calls for.
+   * existing one keeps the posture it has been running on.
    */
   installAtBoot: InstallAtBoot;
-  settings: Pick<SettingsPort, 'getKeys' | 'get' | 'set'>;
+  settings: Pick<SettingsPort, 'getKeys' | 'set'>;
   readHubMarket: () => Promise<SettingsUiHubMarketRead>;
   timers: TimerRegistry;
 };
@@ -42,16 +40,10 @@ type AttemptResult =
   | { result: 'turn_off'; country: string }
   | { result: 'retry'; reasonCode: 'settings_unreadable' | 'market_unavailable' };
 
-const readSwitchState = (settings: Pick<SettingsPort, 'getKeys' | 'get'>): SwitchState => {
+const readSwitchState = (settings: Pick<SettingsPort, 'getKeys'>): SwitchState => {
   const list = readSettingsKeyList(settings);
-  if (list.status === 'resolved') return list.keys.includes(CAPACITY_ENABLED) ? 'written' : 'unwritten';
-  // A new install's store can stay empty through its first minutes, and an empty
-  // list says nothing. The switch's own value does: an owner's write is a boolean.
-  try {
-    return typeof settings.get(CAPACITY_ENABLED) === 'boolean' ? 'written' : 'unwritten';
-  } catch {
-    return 'unreadable';
-  }
+  if (list.status === 'unavailable') return 'unreadable';
+  return list.keys.includes(CAPACITY_ENABLED) ? 'written' : 'unwritten';
 };
 
 /**

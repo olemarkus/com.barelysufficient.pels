@@ -188,8 +188,8 @@ describe('external temperature changes reach the mode through observation', () =
     // current mode target, adjusted the thermostat, and nothing was saved, with no
     // log and no UI signal, until the first mode switch.
     const app = await start('update_mode', true, false);
-    // Absent, and PROVEN absent: the key list is healthy and does not contain it,
-    // which is what separates a fresh install from a transient read miss.
+    // Absent, and PROVEN absent: the key list does not contain it, which is what
+    // separates a never-written key from a listed one that reads empty.
     expect(mockHomeyInstance.settings.get('operating_mode')).toBeNull();
     expect(mockHomeyInstance.settings.getKeys()).not.toContain('operating_mode');
     expect(app.homeModeCatalog.getSnapshot().operatingMode).toBe('Home');
