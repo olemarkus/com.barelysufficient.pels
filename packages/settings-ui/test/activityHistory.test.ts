@@ -1,7 +1,10 @@
 import { act } from 'preact/test-utils';
 import { renderActivityHistoryView } from '../src/ui/views/ActivityHistoryView';
 import { parseDeviceActivityPayload } from '../src/ui/activityHistoryPayload';
-import type { SettingsUiDeviceActivityEntry, SettingsUiDeviceLogPayload } from '../../contracts/src/settingsUiApi';
+import type {
+  SettingsUiDeviceActivityEntry,
+  SettingsUiDeviceLogPayload,
+} from '../../contracts/src/settingsUi/devices';
 
 const entry = (overrides: Partial<SettingsUiDeviceActivityEntry> = {}): SettingsUiDeviceActivityEntry => ({
   id: 'e1', deviceId: 'heater', deviceName: 'Hall heater', atMs: 2000, recordingStartedAtMs: 1000,

@@ -17,7 +17,7 @@ vi.mock('../src/ui/toast.ts', () => ({ showToast: vi.fn(), showToastError: vi.fn
 vi.mock('../src/ui/logging.ts', () => ({ logSettingsError: vi.fn() }));
 vi.mock('../src/ui/materialWeb.ts', () => ({}));
 
-import { SETTINGS_UI_PRICES_PATH } from '../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_PRICES_PATH } from '../../contracts/src/settingsUi/paths.ts';
 
 const summaryAt = (threshold: number) => ({
   state: 'ready',

@@ -446,3 +446,8 @@ export type DeferredObjectivePlanHistoryV7 = {
   version: 7;
   entries: DeferredObjectivePlanHistoryRecord[];
 };
+
+export type SettingsUiDeferredObjectivePlanHistoryPayload = {
+  version: 1;
+  entriesByDeviceId: Record<string, ResolvedDeferredObjectivePlanHistoryEntry[]>;
+};

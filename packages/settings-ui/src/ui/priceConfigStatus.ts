@@ -6,7 +6,7 @@ import {
   getExpectedFlowHours,
   getMissingFlowHours,
 } from '../../../shared-domain/src/price/flowPriceUtils.ts';
-import type { SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
 import type { FlowStatus, HomeyStatus, PowerhourStatus } from './priceConfigTypes.ts';
 import { homeyEnergyHasPrices } from './priceSetupStatus.ts';
 

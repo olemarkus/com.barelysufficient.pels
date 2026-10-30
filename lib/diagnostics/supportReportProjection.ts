@@ -1,6 +1,9 @@
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 import type { DailyBudgetDayPayload } from '../../packages/contracts/src/dailyBudgetTypes';
-import type { SettingsUiPlanSnapshot, SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUiApi';
+import type {
+  SettingsUiPlanSnapshot,
+  SettingsUiPlanDeviceSnapshot,
+} from '../../packages/contracts/src/settingsUi/plan';
 import type { SupportReportSection, SupportReportValue } from '../../packages/contracts/src/supportReport';
 import type {
   DeviceDescriptor, EvObservedProbe, MeasuredPowerObservedProbe, ObservedDeviceState, StateOfChargeObservedProbe,

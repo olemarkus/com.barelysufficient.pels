@@ -4,7 +4,7 @@ import type {
   PriceSchemeBasis,
   PriceSchemeSetting,
   SettingsUiPricesPayload,
-} from '../../contracts/src/settingsUiApi.ts';
+} from '../../contracts/src/settingsUi/prices.ts';
 import { offerPowerhour, resolvePriceSource } from '../src/ui/afterSetupFacts.ts';
 import { loadPriceSetupSuggestion } from '../src/ui/priceSetupOffer.ts';
 

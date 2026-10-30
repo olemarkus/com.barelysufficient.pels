@@ -5,7 +5,7 @@
 // through so both producers stay interchangeable.
 //
 // The setting union is declared ONCE in
-// `packages/contracts/src/settingsUiApi.ts` (type-only at runtime, so this
+// `packages/contracts/src/settingsUi/prices.ts` (type-only at runtime, so this
 // re-export is safe) and classified ONCE in
 // `packages/shared-domain/src/settings/pvForecastSource.ts`; this file
 // re-exports the type so `lib/solar` consumers keep a local path to it.
@@ -14,7 +14,7 @@
 // explicit `homey_energy` with no forecast available means "no forecast",
 // never a silent fallback).
 
-import type { PvForecastSourceSetting } from '../../packages/contracts/src/settingsUiApi';
+import type { PvForecastSourceSetting } from '../../packages/contracts/src/settingsUi/prices';
 import type { PvForecastHour } from './pvForecastService';
 import type { PvGainFit } from '../../packages/shared-domain/src/solar/pvGain';
 

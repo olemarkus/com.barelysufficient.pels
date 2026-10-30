@@ -7,7 +7,7 @@
 // Also covers the blob round-trip: enabling writes the full valid entry
 // {enabled:false, cheapDelta:0, expensiveDelta:0, surplusWilling:true}.
 import { createHomeyMock } from './helpers/homeyApiMock';
-import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/devices';
 import { mockDeviceDetailCollaborators } from './helpers/deviceDetailCollaborators.ts';
 
 const flushPromises = () => new Promise<void>((resolve) => {

@@ -1,5 +1,5 @@
 import { readCarAssociationCandidatesFromHomey } from '../../lib/device/settingsUiDeviceReads';
-import type { SettingsUiRecommendationCarsRead } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiRecommendationCarsRead } from '../../packages/contracts/src/settingsUi/carLink';
 import { defineRoutes, type ApiContext } from './defineRoutes';
 
 export const recommendationRoutes = defineRoutes({

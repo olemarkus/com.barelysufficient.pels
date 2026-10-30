@@ -4,7 +4,8 @@ import { withDescriptorIdentities } from './helpers/deviceSnapshotFixture.ts';
 import { describe, expect, it } from 'vitest';
 import { resolveRenderInput } from '../src/ui/deadlinePlan.ts';
 import { pendingChipTone } from '../src/ui/deadlinePlanPending.ts';
-import type { SettingsUiBootstrap, SettingsUiPricesPayload } from '../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiBootstrap } from '../../contracts/src/settingsUi/bootstrap.ts';
+import type { SettingsUiPricesPayload } from '../../contracts/src/settingsUi/prices.ts';
 import type { DecoratedDeviceSnapshot, ObservedStateOfChargeProbe, TemperatureObservedProbe } from '../../contracts/src/types.ts';
 import type {
   DeferredObjectiveActivePlanRevisionV1,

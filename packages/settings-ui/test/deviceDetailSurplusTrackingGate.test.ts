@@ -10,7 +10,7 @@
 // Also covers the thing that makes this control honest rather than just
 // present: the label follows the device kind, because what happens differs.
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/devices';
 import { createHomeyMock } from './helpers/homeyApiMock';
 import { mockDeviceDetailCollaborators } from './helpers/deviceDetailCollaborators.ts';
 

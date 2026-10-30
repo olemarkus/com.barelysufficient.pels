@@ -13,9 +13,7 @@ import { PlanSteppedCard } from './PlanSteppedCard.tsx';
 import { PlanGenericCard, PlanTemperatureCard } from './PlanDeviceCards.tsx';
 import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type { OverviewDeviceRow, OverviewDeviceRowsRead } from '../overviewDeviceRows.ts';
-import type {
-  SettingsUiPricesPayload,
-} from '../../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiPricesPayload } from '../../../../contracts/src/settingsUi/prices.ts';
 import type { SolarNowInput } from '../../../../shared-domain/src/solar/solarNow.ts';
 import { SetupPathCard } from './SetupPathCard.tsx';
 import { isSetupStepOpen } from '../setupPathModel.ts';

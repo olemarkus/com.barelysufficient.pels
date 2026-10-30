@@ -1,4 +1,4 @@
-import { SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX } from '../../../contracts/src/settingsUi/paths.ts';
 
 // The runtime API layer throws errors prefixed with
 // `SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX` when the PELS app shell is wired

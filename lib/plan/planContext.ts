@@ -11,7 +11,7 @@ import { toMeteredUsageDevices } from './planUsage';
 import { isCapacityBreached } from './planRemainingSheddableLoad';
 import type { PlanInputDevice } from './planTypes';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
-import type { SoftLimitSource } from '../../packages/contracts/src/settingsUiApi';
+import type { SoftLimitSource } from '../../packages/contracts/src/settingsUi/plan';
 
 /**
  * The limits one plan cycle is decided against — resolved ONCE per build by

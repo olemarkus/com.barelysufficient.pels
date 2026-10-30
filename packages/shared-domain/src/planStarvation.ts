@@ -1,4 +1,4 @@
-import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
+import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUi/plan';
 import type { SmartTaskHomeScope } from '../../contracts/src/smartTaskHomeScope';
 import type {
   StarvationNotListedDevice,

@@ -1,4 +1,4 @@
-import type { PriceSchemeSetting } from '../../../contracts/src/settingsUiApi.js';
+import type { PriceSchemeSetting } from '../../../contracts/src/settingsUi/prices.js';
 
 /**
  * What a change of price source does to an enabled export price.

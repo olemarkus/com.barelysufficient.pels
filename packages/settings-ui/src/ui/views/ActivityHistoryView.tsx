@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import type { SettingsUiDeviceLogPayload } from '../../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiDeviceLogPayload } from '../../../../contracts/src/settingsUi/devices.ts';
 import { AppBar } from './AppBar.tsx';
 import { DeviceLogContent } from './DeviceLogView.tsx';
 import { MdFilledSelect, MdOutlinedButton, MdSelectOption } from './materialWebJSX.tsx';

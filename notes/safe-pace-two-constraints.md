@@ -647,7 +647,7 @@ Two further consequences:
 
 - `softLimitSource` could emit `'both'`. It cannot today, and reviving it is a
   separate decision: the member was deleted on 2026-08-15 for having no producer at
-  any layer. The contract (`SoftLimitSource`, `packages/contracts/src/settingsUiApi.ts`)
+  any layer. The contract (`SoftLimitSource`, `packages/contracts/src/settingsUi/plan.ts`)
   carries `'capacity' | 'daily' | 'grid' | null` (`null` when no limit is on); the
   safe-pace tooltip map (`SAFE_PACE_TOOLTIP_BY_SOURCE`,
   `packages/settings-ui/src/ui/planHeroTooltips.ts`) is two-member. `notes/ui-terminology.md` rules there are exactly two, never a third.

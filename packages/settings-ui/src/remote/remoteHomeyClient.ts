@@ -1,5 +1,5 @@
 import type { HomeyCallback, HomeySettingsClient } from '../ui/homey.ts';
-import { SETTINGS_UI_BOOTSTRAP_PATH } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_BOOTSTRAP_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import { PELS_APP_ID } from './remoteConnection.ts';
 import type { RemoteTarget } from './remoteTarget.ts';
 

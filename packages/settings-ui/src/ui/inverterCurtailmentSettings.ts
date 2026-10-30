@@ -5,7 +5,10 @@ import {
 import {
   callApi, getApiReadModel, getSetting, getSettingFresh, invalidateApiCache, invalidateSettingCache, setSetting,
 } from './homey.ts';
-import { SETTINGS_UI_BOOTSTRAP_PATH, SETTINGS_UI_DEVICES_PATH } from '../../../contracts/src/settingsUiApi.ts';
+import {
+  SETTINGS_UI_BOOTSTRAP_PATH,
+  SETTINGS_UI_DEVICES_PATH,
+} from '../../../contracts/src/settingsUi/paths.ts';
 import type { InverterCurtailmentSettingsProps, InverterSettingsRead } from './views/InverterCurtailmentSettings.tsx';
 
 function parseDevices(raw: unknown): InverterSettingsRead['devices'] {

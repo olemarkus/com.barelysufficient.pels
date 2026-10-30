@@ -3,11 +3,13 @@ import { stateOfChargeFixture } from './stateOfChargeFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveDeadlinesHistoryEntries, resolveDeadlinesListCards } from '../src/ui/deadlinesList.ts';
 import {
+  type SettingsUiDeferredObjectivePlanHistoryPayload,
+} from '../../contracts/src/deferredObjectivePlanHistory.ts';
+import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
   SETTINGS_UI_DEVICES_PATH,
-  type SettingsUiDeferredObjectivePlanHistoryPayload,
-} from '../../contracts/src/settingsUiApi.ts';
+} from '../../contracts/src/settingsUi/paths.ts';
 import type {
   DeferredObjectiveActivePlanV1,
   ResolvedDeferredObjectiveActivePlansV2,

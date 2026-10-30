@@ -2,8 +2,11 @@ import type { CapacityScalarSettings } from '../../packages/contracts/src/capaci
 import type { DailyBudgetUiRead } from '../../packages/contracts/src/dailyBudgetTypes';
 import type { PriceTimelineRead } from '../../packages/contracts/src/priceTimeline';
 import type {
-  PriceSetupRead, SettingsUiDeviceActivityEntry, SettingsUiDeviceLogPayload, SettingsUiPlanSnapshot,
-} from '../../packages/contracts/src/settingsUiApi';
+  SettingsUiDeviceActivityEntry,
+  SettingsUiDeviceLogPayload,
+} from '../../packages/contracts/src/settingsUi/devices';
+import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUi/plan';
+import type { PriceSetupRead } from '../../packages/contracts/src/settingsUi/prices';
 import type {
   SupportReportDeviceEvent, SupportReportDeviceEvents, SupportReportEvidence, SupportReportLog,
   SupportReportRequest, SupportReportSection, SupportReportSubject,

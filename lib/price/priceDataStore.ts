@@ -20,7 +20,7 @@ import type {
   PowerhourCache, PowerhourCacheDevice, PowerhourCachedDay, PowerhourDay,
 } from './powerhourScheme';
 import type { CombinedPricesV2 } from './priceTypes';
-import type { ResolvedPriceScheme } from '../../packages/contracts/src/settingsUiApi';
+import type { ResolvedPriceScheme } from '../../packages/contracts/src/settingsUi/prices';
 import {
   importPendingLegacyPriceCache,
   isUsableLegacyPriceValue,

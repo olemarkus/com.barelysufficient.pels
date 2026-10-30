@@ -43,7 +43,7 @@ import type {
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { toResolvedLegacyPlanHistoryEntry } from '../../../../test/utils/planHistoryFixtures.ts';
 import type {
   SettingsUiDeviceDiagnosticsPayload,
@@ -52,8 +52,8 @@ import type {
   SettingsUiPlanDeviceSnapshot,
   SettingsUiPlanMetaSnapshot,
   SettingsUiPlanSnapshot,
-  SettingsUiPowerPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/plan.ts';
+import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUi/power.ts';
 import { buildPlanMeta } from '../helpers/planMetaFixture.ts';
 import { uiDeviceFixture } from './deviceStatusFixture.ts';
 

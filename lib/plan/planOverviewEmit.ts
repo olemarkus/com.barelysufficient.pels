@@ -11,7 +11,10 @@ import {
 } from './deviceOverviewLog';
 import type { DeviceOverviewLogRecorder } from '../diagnostics/deviceActivityRecorder';
 import { getDebugEmitter, isDebugTopicEnabled } from '../logging/logger';
-import type { SettingsUiPlanDevice, SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
+import type {
+  SettingsUiPlanDevice,
+  SettingsUiPlanSnapshot,
+} from '../../packages/contracts/src/settingsUi/plan';
 
 const emitOverviewDebug = getDebugEmitter('overview', 'overview');
 

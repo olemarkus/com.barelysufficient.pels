@@ -5,7 +5,7 @@ import { DEVICE_ACTIVITY_SETTLE_MS, DeviceOverviewLogRecorder } from '../../lib/
 import { createDeviceActivityStore } from '../../lib/diagnostics/deviceActivityStore';
 import { DEVICE_ACTIVITY_RETENTION_MS } from '../../lib/diagnostics/deviceActivityHistory';
 import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
-import type { SettingsUiDeviceActivityEntry } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiDeviceActivityEntry } from '../../packages/contracts/src/settingsUi/devices';
 import { buildOverviewDeviceCard, overviewReadModelWiring } from '../utils/settingsOverviewFixture';
 import { buildPlanDevice } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';

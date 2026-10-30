@@ -6,7 +6,7 @@ import {
   WAITING_FOR_CAR_ASSOCIATION,
 } from '../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
-import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUi/plan';
 import type { IdleClassification } from '../../packages/contracts/src/idleClassification';
 import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/deviceOverview';
 import type { PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';

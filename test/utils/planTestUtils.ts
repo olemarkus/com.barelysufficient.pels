@@ -65,7 +65,7 @@ import type {
   SettingsUiPlanMetaMeasuredFields,
   SettingsUiPlanMetaSnapshot,
   SettingsUiPlanMetaSnapshotBase,
-} from '../../packages/contracts/src/settingsUiApi';
+} from '../../packages/contracts/src/settingsUi/plan';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import {
   DEFAULT_DEVICE_START_POLICY,

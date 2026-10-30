@@ -1,5 +1,5 @@
 import { getSetting, invalidateApiCache, setSetting } from './homey.ts';
-import { SETTINGS_UI_PRICES_PATH } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_PRICES_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import { getPricesReadModel } from './prices.ts';
 import {
   NORWAY_PRICE_MODEL,

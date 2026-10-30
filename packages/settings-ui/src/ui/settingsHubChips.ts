@@ -3,10 +3,8 @@
 // matches the `syncDryRunBannerVisibility` paradigm). The chips live in
 // `index.html` as hidden spans; this module only flips `hidden` and never
 // invents copy (labels come from `shared-domain/settingsHubChips.ts`).
-import {
-  SETTINGS_UI_POWER_PATH,
-  type SettingsUiPowerPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_POWER_PATH } from '../../../contracts/src/settingsUi/paths.ts';
+import { type SettingsUiPowerPayload } from '../../../contracts/src/settingsUi/power.ts';
 import { DAILY_BUDGET_ENABLED } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { isPriceFeedAwaiting, resolveSimulationChipLabel } from '../../../shared-domain/src/settingsHubChips.ts';
 import { resolveSimulationPosture } from '../../../shared-domain/src/simulationPosture.ts';

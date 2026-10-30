@@ -1,7 +1,5 @@
-import type {
-    ChargerPhasePresetsRead,
-    SettingsUiRecommendationCarsRead,
-} from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiRecommendationCarsRead } from '../../packages/contracts/src/settingsUi/carLink';
+import type { ChargerPhasePresetsRead } from '../../packages/contracts/src/settingsUi/devices';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceSurfaces } from './deviceSurfaces';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';

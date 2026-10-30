@@ -1,5 +1,5 @@
 import type { TargetPowerSteppedLoadPreset } from '../../packages/contracts/src/types';
-import type { ChargerPhasePresets } from '../../packages/contracts/src/settingsUiApi';
+import type { ChargerPhasePresets } from '../../packages/contracts/src/settingsUi/devices';
 import type { HomeyDeviceLike } from '../utils/types';
 
 /**

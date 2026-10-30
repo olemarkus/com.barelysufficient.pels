@@ -1,7 +1,7 @@
 import type {
   SettingsUiRecommendationCar,
   SettingsUiRecommendationCarsRead,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/carLink.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 /**

@@ -9,7 +9,7 @@ import { buildPowerhourStatus } from '../src/ui/priceConfigStatus.ts';
 import type {
   PowerhourSourceUiStatus,
   SettingsUiPricesPayload,
-} from '../../contracts/src/settingsUiApi.ts';
+} from '../../contracts/src/settingsUi/prices.ts';
 
 const todayKey = '2026-01-19';
 const tomorrowKey = '2026-01-20';

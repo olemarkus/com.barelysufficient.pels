@@ -7,7 +7,7 @@ import { POWERHOUR_APP_ID } from '../../../lib/price/powerhourPriceFetch';
 import {
   EXPORT_FIXED, EXPORT_PRICE_ENABLED, EXPORT_SPOT_FACTOR, PRICE_OPTIMIZATION_SETTINGS, PRICE_SCHEME,
 } from '../../../lib/utils/settingsKeys';
-import type { SettingsUiHubMarketRead } from '../../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiHubMarketRead } from '../../../packages/contracts/src/settingsUi/webApp';
 import { createInMemoryPriceCache } from '../../helpers/priceCacheForTests';
 import { homeyWebApiServing, hubMarketIn } from '../../helpers/homeyWebApiStub';
 

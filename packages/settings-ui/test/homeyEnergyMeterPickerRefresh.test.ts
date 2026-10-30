@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { HOMEY_ENERGY_METERS_PATH } from '../../contracts/src/settingsUiApi.ts';
+import { HOMEY_ENERGY_METERS_PATH } from '../../contracts/src/settingsUi/paths.ts';
 import {
   WHOLE_HOME_METER_HINT,
   WHOLE_HOME_METER_NONE_FOUND_HINT,

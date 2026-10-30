@@ -1,7 +1,7 @@
 import type {
   SettingsUiDeviceSnapshot,
   SettingsUiFlowConflictRefreshPayload,
-} from '../../packages/contracts/src/settingsUiApi';
+} from '../../packages/contracts/src/settingsUi/devices';
 import type { FlowConflictRefreshResult } from './flowConflictRefreshCoordinator';
 
 /** The two trusted operations the Flow-conflict refresh use case needs. */

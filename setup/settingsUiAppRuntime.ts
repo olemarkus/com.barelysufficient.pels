@@ -18,7 +18,7 @@ import { resolvePowerReadingsForUi } from '../lib/power/trackerUiProjection';
 import type {
   SettingsUiPowerStatus,
   SettingsUiPowerStatusRead,
-} from '../packages/contracts/src/settingsUiApi';
+} from '../packages/contracts/src/settingsUi/power';
 import { getHourBucketKey } from '../lib/utils/hourBuckets';
 export { appNotReadyError } from '../lib/app/settingsUiReadiness';
 

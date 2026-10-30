@@ -1,4 +1,4 @@
-import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/devices';
 
 const buildDom = () => {
   document.body.innerHTML = `

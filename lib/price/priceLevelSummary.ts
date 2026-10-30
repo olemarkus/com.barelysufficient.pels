@@ -1,5 +1,8 @@
 import type { PriceTimeline } from '../../packages/contracts/src/priceTimeline';
-import type { PriceLevelSummary, PriceThresholdSuggestion } from '../../packages/contracts/src/settingsUiApi';
+import type {
+  PriceLevelSummary,
+  PriceThresholdSuggestion,
+} from '../../packages/contracts/src/settingsUi/prices';
 import type { PriceLevelBand } from './priceLevelUtils';
 import { calculateThresholds, getPriceLevelFlags } from './priceMath';
 

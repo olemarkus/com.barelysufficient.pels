@@ -1,8 +1,8 @@
 import {
-  SETTINGS_UI_DEVICES_PATH,
   type ChargerPhasePresets,
   type ChargerPhasePresetsRead,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/devices.ts';
+import { SETTINGS_UI_DEVICES_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import { isEvTargetPowerPreset } from '../../../shared-domain/src/evTargetPowerConfig.ts';
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';

@@ -1,4 +1,4 @@
-import type { SettingsUiTaskPricePeriod } from './packages/contracts/src/settingsUiApi';
+import type { SettingsUiTaskPricePeriod } from './packages/contracts/src/settingsUi/prices';
 import { createHomeModeCatalog } from './lib/home/homeModeCatalog';
 import type {
   ContinuousBatteryPlanRead,
@@ -53,8 +53,11 @@ import { BatteryManagedSettings } from './lib/battery/batteryControlSettings';
 import { BatteryDemandForecaster } from './lib/battery/batteryDemandForecast';
 import type { BatterySolarScopeSource } from './lib/battery/batterySolarScope';
 import type {
-  HomeyPriceFormulaUiStatus, PowerhourSourceUiStatus, PvForecastSourceUiStatus, SettingsUiPriceSourcePayloads,
-} from './packages/contracts/src/settingsUiApi';
+  HomeyPriceFormulaUiStatus,
+  PowerhourSourceUiStatus,
+  PvForecastSourceUiStatus,
+  SettingsUiPriceSourcePayloads,
+} from './packages/contracts/src/settingsUi/prices';
 import { createModeDeviceTargetFill } from './setup/appInit/createSnapshotSettingsPasses';
 import { normalizeError } from './lib/utils/errorUtils';
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';

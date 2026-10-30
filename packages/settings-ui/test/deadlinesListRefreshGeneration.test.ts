@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../contracts/src/settingsUiApi.ts';
+import type {
+  SettingsUiDeferredObjectivePlanHistoryPayload,
+} from '../../contracts/src/deferredObjectivePlanHistory.ts';
 import { toResolvedLegacyPlanHistoryEntry } from '../../../test/utils/planHistoryFixtures.ts';
 
 // Stale-history-refresh race guard. PR1 made the independently-fetched history

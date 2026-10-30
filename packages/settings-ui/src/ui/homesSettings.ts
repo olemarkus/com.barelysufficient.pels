@@ -1,10 +1,10 @@
 import { HOMEY_ENERGY_METER_DEVICE_ID, POWER_SOURCE } from '../../../shared-domain/src/settings/settingsKeys.ts';
+import { type SettingsUiDevicesPayload } from '../../../contracts/src/settingsUi/devices.ts';
 import {
   HOMEY_ENERGY_METERS_PATH,
   SETTINGS_UI_DEVICES_PATH,
-  type HomeyEnergyMeterEntry,
-  type SettingsUiDevicesPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/paths.ts';
+import { type HomeyEnergyMeterEntry } from '../../../contracts/src/settingsUi/power.ts';
 import {
   SETTINGS_UI_HOMES_PATH,
   SETTINGS_UI_HOMES_SAVE_PATH,

@@ -1,7 +1,7 @@
 import { readPelsHost } from '../../lib/app/pelsHost';
 import { hasPowerCapability } from '../../lib/device/transport/managerParse';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
-import type { HomeyEnergyMeterEntry } from '../../packages/contracts/src/settingsUiApi';
+import type { HomeyEnergyMeterEntry } from '../../packages/contracts/src/settingsUi/power';
 import {
   getHomeyDevicesForDebugFromApp,
   getHomeyEnergyMetersFromApp,

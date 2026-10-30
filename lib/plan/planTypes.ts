@@ -1,5 +1,5 @@
 import type { CapacityPeriodMinutes } from '../../packages/contracts/src/capacitySettings';
-import type { SoftLimitSource } from '../../packages/contracts/src/settingsUiApi';
+import type { SoftLimitSource } from '../../packages/contracts/src/settingsUi/plan';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';

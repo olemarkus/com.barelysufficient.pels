@@ -28,7 +28,10 @@ import {
 } from '../../../shared-domain/src/settings/deferredObjectiveSettings.ts';
 import type { DeferredObjectiveRoster } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { OverviewDeferredObjectiveActivePlans } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
-import type { ChargerPhasePresets, SettingsUiBatteryState } from '../../../contracts/src/settingsUiApi.ts';
+import type {
+  ChargerPhasePresets,
+  SettingsUiBatteryState,
+} from '../../../contracts/src/settingsUi/devices.ts';
 import { DEFAULT_MODE_NAME } from '../../../shared-domain/src/modeLabels.ts';
 import type { ConfiguredShedBehavior } from '../../../shared-domain/src/settings/shedBehaviors.ts';
 import { DEFAULT_PRICE_OPTIMIZATION_CONFIG } from './priceOptimizationConfig.ts';

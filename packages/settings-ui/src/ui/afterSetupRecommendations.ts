@@ -1,4 +1,5 @@
-import type { PriceSchemeSetting, SettingsUiHubMarketRead } from '../../../contracts/src/settingsUiApi.ts';
+import type { PriceSchemeSetting } from '../../../contracts/src/settingsUi/prices.ts';
+import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUi/webApp.ts';
 import type { RecommendationDismissals, SetupRecommendation } from './recommendationsModel.ts';
 
 /**

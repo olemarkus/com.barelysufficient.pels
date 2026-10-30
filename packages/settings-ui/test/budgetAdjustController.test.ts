@@ -13,7 +13,7 @@ import {
 import {
   SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH,
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
-} from '../../contracts/src/settingsUiApi.ts';
+} from '../../contracts/src/settingsUi/paths.ts';
 import type { HomeyCallback, HomeySettingsClient } from '../src/ui/homey.ts';
 
 const toastMocks = vi.hoisted(() => ({

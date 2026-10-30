@@ -13,13 +13,13 @@ import type {
 import type { DeferredObjectivePlanPreviewCandidate } from '../../packages/contracts/src/deferredObjectivePlanPreview';
 import type { SettingsUiDeviceDiagnosticsPayload } from '../../packages/contracts/src/deviceDiagnosticsTypes';
 import type { PriceOptimizationSetupRead } from '../../packages/contracts/src/priceOptimizationSettings';
+import type { SettingsUiDeviceLogPayload } from '../../packages/contracts/src/settingsUi/devices';
+import type { SettingsUiHardCapConfigurationRead } from '../../packages/contracts/src/settingsUi/power';
 import type {
   PriceLevelSummaryRead,
   PriceSetupRead,
   PriceSetupSuggestion,
-  SettingsUiDeviceLogPayload,
-  SettingsUiHardCapConfigurationRead,
-} from '../../packages/contracts/src/settingsUiApi';
+} from '../../packages/contracts/src/settingsUi/prices';
 import type { WeatherAdvisorReadout } from '../../packages/contracts/src/weatherAdvisorTypes';
 import type { PelsWidgetHostApi, WidgetObjectiveWriteResult } from '../../packages/contracts/src/widgetHostApi';
 import type { NewSmartTaskWriteResult } from '../../packages/contracts/src/smartTaskEdit';

@@ -6,7 +6,7 @@ const homeyMocks = vi.hoisted(() => ({
 vi.mock('../src/ui/homey.ts', () => homeyMocks);
 
 import { buildHomeyStatus } from '../src/ui/priceConfigStatus.ts';
-import type { SettingsUiPricesPayload } from '../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiPricesPayload } from '../../contracts/src/settingsUi/prices.ts';
 
 const dateKey = '2026-01-19';
 const localMidnightUtcMs = Date.parse('2026-01-18T23:00:00.000Z');

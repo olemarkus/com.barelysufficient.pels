@@ -1,5 +1,5 @@
 import { normalizeDeferredObjectiveRoster } from './deferredObjectiveRoster.ts';
-import { SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import { getApiReadModel } from './homey.ts';
 import { bumpPlanSurface } from './planRedesign.ts';
 import { state } from './state.ts';

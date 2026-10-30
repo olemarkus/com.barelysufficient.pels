@@ -2,8 +2,8 @@ import { refreshPowerData } from './uiRefreshTasks.ts';
 import {
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_RESET_POWER_STATS_PATH,
-  type SettingsUiResetPowerStatsResponse,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/paths.ts';
+import { type SettingsUiResetPowerStatsResponse } from '../../../contracts/src/settingsUi/power.ts';
 import { callApi, invalidateApiCacheForScopedHomes, primeApiCache } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
 import { logSettingsError, logSettingsInfo } from './logging.ts';

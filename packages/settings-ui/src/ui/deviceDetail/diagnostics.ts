@@ -6,7 +6,7 @@ import type {
   DeviceDiagnosticsWindowKey,
   SettingsUiDeviceDiagnosticsPayload,
 } from '../../../../contracts/src/deviceDiagnosticsTypes.ts';
-import { SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH } from '../../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH } from '../../../../contracts/src/settingsUi/paths.ts';
 import {
   PLAN_STATE_AWAITING_PELS_START_STATUS,
   PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,

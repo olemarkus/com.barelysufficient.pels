@@ -1,4 +1,4 @@
-import { SETTINGS_UI_DEVICE_LOG_PATH } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_DEVICE_LOG_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import { parseDeviceActivityPayload } from './activityHistoryPayload.ts';
 import { getApiReadModel } from './homey.ts';
 import { logSettingsError } from './logging.ts';

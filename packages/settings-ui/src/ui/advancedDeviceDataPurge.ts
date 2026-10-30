@@ -26,7 +26,7 @@ import {
   PRICE_OPTIMIZATION_SETTINGS,
   RESPECT_EXTERNAL_OFF_DEVICES,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
-import { SETTINGS_UI_SMART_TASK_CANCEL_PATH } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_SMART_TASK_CANCEL_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import type {
   SettingsUiSmartTaskCancelRequest,
   SettingsUiSmartTaskCancelResponse,

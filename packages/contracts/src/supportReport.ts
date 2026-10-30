@@ -1,4 +1,4 @@
-import type { SettingsUiDeviceActivityEntry } from './settingsUiApi.js';
+import type { SettingsUiDeviceActivityEntry } from './settingsUi/devices.js';
 
 export type SupportReportSubject =
   | { kind: 'app'; homeId: string }

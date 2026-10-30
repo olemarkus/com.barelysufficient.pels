@@ -30,7 +30,7 @@ import { readExportPriceSourceSetting } from '../../packages/shared-domain/src/s
 import type {
   PowerhourDeviceUiOption,
   PowerhourSourceUiStatus,
-} from '../../packages/contracts/src/settingsUiApi';
+} from '../../packages/contracts/src/settingsUi/prices';
 import type { ApiPort, SettingsPort } from '../ports/homeyRuntime';
 import { EXPORT_PRICE_ENABLED, EXPORT_PRICE_SOURCE, POWERHOUR_DEVICE_ID } from '../utils/settingsKeys';
 import { readSettingsKeyList } from '../utils/settingsKeyList';
@@ -482,7 +482,7 @@ const resolvePowerhourRefresh = async (
 };
 
 export type { PowerhourDevice, PowerhourRead, PowerhourUnavailableReason } from './powerhourPriceFetch';
-export type { PowerhourSourceUiStatus } from '../../packages/contracts/src/settingsUiApi';
+export type { PowerhourSourceUiStatus } from '../../packages/contracts/src/settingsUi/prices';
 
 /**
  * The slice of the price data store this source reads and writes.

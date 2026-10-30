@@ -1,8 +1,8 @@
 import { callApi } from './homey.ts';
 import {
-  SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
   type SettingsUiDeferredObjectivePlanHistoryPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/deferredObjectivePlanHistory.ts';
+import { SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
 
 export type DeadlinePlanHistoryView = {

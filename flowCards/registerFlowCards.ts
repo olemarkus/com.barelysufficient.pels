@@ -11,7 +11,7 @@ import type { ReportSteppedLoadActualStepResult } from '../lib/executor/steppedC
 import { registerExpectedPowerCard } from './expectedPower';
 import { registerEvChargingPhaseCard } from './evChargingPhaseCard';
 import { registerEvCarAssociationCards } from './evCarAssociationCards';
-import type { SettingsUiRecommendationCarsRead } from '../packages/contracts/src/settingsUiApi';
+import type { SettingsUiRecommendationCarsRead } from '../packages/contracts/src/settingsUi/carLink';
 import type { HeadroomCardQuery, HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';
 import type { ObservedHeadroom } from '../lib/power/lastTotalPower';
 import type { FlowReportedCapabilityId } from '../lib/device/transport/flowReportedCapabilities';

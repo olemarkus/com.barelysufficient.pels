@@ -25,10 +25,10 @@ import type {
   PriceLevelSummaryRead,
   PriceSetupRead,
   PriceSetupSuggestion,
-  SettingsUiHubMarketRead,
   SettingsUiPriceSourcePayloads,
   SettingsUiTaskPricePeriod,
-} from '../../packages/contracts/src/settingsUiApi';
+} from '../../packages/contracts/src/settingsUi/prices';
+import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUi/webApp';
 import {
   NO_NORWAY_PRICE_SETUP_SUGGESTION,
   NorwayPriceSetupSuggester,

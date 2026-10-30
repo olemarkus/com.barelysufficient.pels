@@ -21,7 +21,7 @@ import type {
 } from './starvationRescue.js';
 import type { DailyBudgetUiRead } from './dailyBudgetTypes.js';
 import type { ResolvedDeferredObjectiveActivePlansV2 } from './deferredObjectiveActivePlans.js';
-import type { SettingsUiDeferredObjectivePlanHistoryPayload } from './settingsUiApi.js';
+import type { SettingsUiDeferredObjectivePlanHistoryPayload } from './deferredObjectivePlanHistory.js';
 import type { SmartTaskHomeScope } from './smartTaskHomeScope.js';
 import type { PriceTimelineRead } from './priceTimeline.js';
 

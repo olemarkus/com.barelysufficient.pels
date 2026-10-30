@@ -9,7 +9,7 @@ import {
   type PlanStateKind,
 } from '../../packages/shared-domain/src/planStateLabels';
 import { resolveHeldCardReasonLine } from './planCardReasonLine';
-import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUi/plan';
 import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/deviceOverview';
 import type { IdleClassification } from '../../packages/contracts/src/idleClassification';
 import type { PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';

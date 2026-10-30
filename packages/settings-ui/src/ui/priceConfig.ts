@@ -47,9 +47,9 @@ import {
   SETTINGS_UI_PRICES_PATH,
   SETTINGS_UI_REFRESH_GRID_TARIFF_PATH,
   SETTINGS_UI_REFRESH_PRICES_PATH,
-  type SettingsUiPowerPayload,
-  type SettingsUiPricesPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/paths.ts';
+import { type SettingsUiPowerPayload } from '../../../contracts/src/settingsUi/power.ts';
+import { type SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
 import { buildFlowStatus, buildHomeyStatus, buildPowerhourStatus } from './priceConfigStatus.ts';
 import { onSetupPathChange, readSetupMarket } from './setupPathFacts.ts';
 import { resolveLiveSummarySignals } from './livePriceSignals.ts';

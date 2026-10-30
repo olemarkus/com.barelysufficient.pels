@@ -3,8 +3,8 @@ import type { HomeyWebApiGet } from './homeyPriceFormula';
 import type {
   NorwayPriceSetup,
   NorwayPriceSetupSuggestion,
-  SettingsUiHubMarketRead,
-} from '../../packages/contracts/src/settingsUiApi';
+} from '../../packages/contracts/src/settingsUi/prices';
+import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUi/webApp';
 import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 /**

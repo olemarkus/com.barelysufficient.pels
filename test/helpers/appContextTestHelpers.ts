@@ -48,7 +48,7 @@ import type { PriceCoordinator } from '../../lib/price/priceCoordinator';
 import { observedDeviceReadsDouble } from './observedDeviceReadsDouble';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { FlowCard, FlowHomeyLike } from '../../lib/utils/types';
-import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUi/plan';
 import { createEmptyPowerCalibrationSnapshot } from '../../lib/device/devicePowerCalibration';
 import {
   PowerCalibrationStore,

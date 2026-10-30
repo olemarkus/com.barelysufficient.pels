@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SettingsUiPlanPayload } from '../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiPlanPayload } from '../../contracts/src/settingsUi/plan.ts';
 import { state } from '../src/ui/state.ts';
 import { uiDeviceFixture } from './helpers/deviceStatusFixture.ts';
 // @vitest-environment jsdom

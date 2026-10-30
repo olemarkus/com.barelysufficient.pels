@@ -4,7 +4,7 @@
 // device, and that what it persists is the owner's pair.
 
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
-import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/devices';
 
 type StubOption = { disabled: boolean; hidden: boolean; removeAttribute: () => void; setAttribute: () => void };
 

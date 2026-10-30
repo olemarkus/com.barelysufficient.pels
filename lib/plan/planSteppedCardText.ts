@@ -2,7 +2,7 @@ import type {
   ObservedStateOfCharge,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
-import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUi/plan';
 import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/deviceOverview';
 import type { CarIdentificationState } from '../../packages/contracts/src/evCarLink';
 import {

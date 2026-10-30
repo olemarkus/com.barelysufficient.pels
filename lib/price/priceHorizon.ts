@@ -1,5 +1,5 @@
 import type { PriceHorizonEntry, MeteredPricePeriod } from '../../packages/planner-types/src/priceHorizon';
-import type { SettingsUiTaskPricePeriod } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiTaskPricePeriod } from '../../packages/contracts/src/settingsUi/prices';
 import { resolvePlanningPrice } from './budgetPrice';
 import { resolvePriceLevelTimeline, type PriceLevelBand } from './priceLevelUtils';
 import type { CombinedPricePeriod, PriceScheme } from './priceTypes';

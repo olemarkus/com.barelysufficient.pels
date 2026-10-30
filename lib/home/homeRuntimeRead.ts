@@ -37,7 +37,7 @@
  */
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
-import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUi/plan';
 import type { HomeId } from './homeConfig';
 
 /** A home runtime's diagnostics block — the single declaration, served by each `SubHomeBundle`. */

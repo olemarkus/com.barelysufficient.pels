@@ -2,7 +2,7 @@ import { SETTINGS_PATH, type RemoteRequest } from './remoteHomeyClient.ts';
 import type { RealtimeStatus } from './remoteRealtime.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_UPDATED_EVENT } from '../../../shared-domain/src/settings/settingsKeys.ts';
-import { SETTINGS_UI_BOOTSTRAP_PATH } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_BOOTSTRAP_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import { PELS_APP_ID } from './remoteConnection.ts';
 
 // Homey only delivers `settings.set` / `settings.unset` while the socket is

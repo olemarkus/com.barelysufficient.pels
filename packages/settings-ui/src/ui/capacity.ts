@@ -70,7 +70,7 @@ import { syncSimulationHomeScopeNote } from './simulationScopeNote.ts';
 import type {
   SettingsUiCapacityPeak,
   SettingsUiPowerPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/power.ts';
 import {
   classifyPowerReadingsFact,
   resolvePowerReadingsBannerContent,

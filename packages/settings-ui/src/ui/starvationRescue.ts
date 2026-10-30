@@ -1,7 +1,7 @@
 import {
   SETTINGS_UI_STARVATION_RESCUE_CREATE_PATH,
   SETTINGS_UI_STARVATION_RESCUE_PREVIEW_PATH,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/paths.ts';
 import type {
   SettingsUiStarvationRescueCreateResponse,
   SettingsUiStarvationRescuePreviewResponse,

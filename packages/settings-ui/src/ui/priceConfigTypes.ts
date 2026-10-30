@@ -6,7 +6,7 @@ import type {
   PriceSchemeSetting,
   PvForecastSourceSetting,
   PvForecastSourceUiStatus,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/prices.ts';
 import type { LiveSummarySignals } from './livePriceSignals.ts';
 import type { PriceSetupStatus } from './priceSetupStatus.ts';
 import type { ExportPriceSourceSetting } from '../../../shared-domain/src/settings/exportPriceSource.ts';

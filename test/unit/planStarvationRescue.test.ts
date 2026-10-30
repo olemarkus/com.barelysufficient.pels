@@ -17,7 +17,7 @@ import {
   starvationDurationMinutes,
   starvationRowIsRescuable,
 } from '../../packages/shared-domain/src/planStarvation';
-import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUi/plan';
 import type { StarvationTarget } from '../../packages/contracts/src/starvationRescue';
 
 const TEMPERATURE_65: StarvationTarget = { kind: 'temperature', targetTemperatureC: 65 };

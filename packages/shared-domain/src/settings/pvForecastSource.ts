@@ -19,7 +19,7 @@
  * Browser-safe: no Homey SDK types, no runtime imports.
  */
 
-import type { PvForecastSourceSetting } from '../../../contracts/src/settingsUiApi.js';
+import type { PvForecastSourceSetting } from '../../../contracts/src/settingsUi/prices.js';
 
 /**
  * Read policy: RECOGNISE OR DEFAULT.

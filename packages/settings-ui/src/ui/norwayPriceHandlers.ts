@@ -11,8 +11,8 @@ import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import {
   SETTINGS_UI_PRICES_PATH,
   SETTINGS_UI_REFRESH_GRID_TARIFF_PATH,
-  type SettingsUiPricesPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/paths.ts';
+import { type SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
 import type { NorwayPriceModel, PriceConfigState } from './priceConfigTypes.ts';
 import { isPriceArea, saveNorwayPriceModel, savePriceArea } from './priceSettingsPersistence.ts';
 import {

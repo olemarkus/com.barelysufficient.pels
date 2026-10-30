@@ -1,8 +1,6 @@
 /** What the activity log records of a card: its state changes, never a countdown or a drifting figure. */
-import type {
-  SettingsUiDeviceLogEntry,
-  SettingsUiPlanDeviceSnapshot,
-} from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiDeviceLogEntry } from '../../packages/contracts/src/settingsUi/devices';
+import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUi/plan';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemanticsCore';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 import type { DevicePlanDevice } from './planTypes';

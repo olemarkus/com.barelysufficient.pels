@@ -16,9 +16,8 @@ import type { PriceConfigState } from '../src/ui/priceConfigTypes.ts';
 import {
   SETTINGS_UI_PRICE_SETUP_SUGGESTION_PATH,
   SETTINGS_UI_REFRESH_GRID_TARIFF_PATH,
-  type NorwayPriceSetup,
-  type PriceSetupRead,
-} from '../../contracts/src/settingsUiApi.ts';
+} from '../../contracts/src/settingsUi/paths.ts';
+import { type NorwayPriceSetup, type PriceSetupRead } from '../../contracts/src/settingsUi/prices.ts';
 
 const setSettingMock = homeyMocks.setSetting as Mock;
 

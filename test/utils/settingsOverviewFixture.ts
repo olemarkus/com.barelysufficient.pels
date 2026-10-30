@@ -1,4 +1,4 @@
-import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUi/plan';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import {

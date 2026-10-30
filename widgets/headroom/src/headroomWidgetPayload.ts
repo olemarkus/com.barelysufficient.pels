@@ -2,7 +2,7 @@ import type { HeadroomWidgetLimitState } from '../../../packages/shared-domain/s
 import type {
   SettingsUiPowerStatus,
   SettingsUiPowerStatusUnavailableReason,
-} from '../../../packages/contracts/src/settingsUiApi';
+} from '../../../packages/contracts/src/settingsUi/power';
 import type { PelsStatus } from '../../../lib/plan/pelsStatus';
 import { HEADROOM_WIDGET_COPY } from '../../../packages/shared-domain/src/headroomWidgetCopy';
 import type {

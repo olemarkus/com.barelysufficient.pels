@@ -1,12 +1,14 @@
 import type { EvCarAssociations } from '../../../../contracts/src/types.ts';
 import {
+  type SettingsUiRecommendationCar,
+  type SettingsUiCarAssociationConfirmation,
+} from '../../../../contracts/src/settingsUi/carLink.ts';
+import {
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
   SETTINGS_UI_CAR_ASSOCIATION_CONFIRM_PATH,
   SETTINGS_UI_CAR_ASSOCIATION_CLEAR_PATH,
   SETTINGS_UI_DEVICES_PATH,
-  type SettingsUiRecommendationCar,
-  type SettingsUiCarAssociationConfirmation,
-} from '../../../../contracts/src/settingsUiApi.ts';
+} from '../../../../contracts/src/settingsUi/paths.ts';
 import {
   hasMatchedAnotherCurrentCharger,
   parseCarAssociationCandidatesRead,

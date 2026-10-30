@@ -1,5 +1,5 @@
 import type { DeviceDescriptor } from '../../../contracts/src/types.ts';
-import type { SettingsUiBatteryState } from '../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiBatteryState } from '../../../contracts/src/settingsUi/devices.ts';
 import { isBatteryOrSolarClassKey, isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 
 type DescriptorIdentityKey =

@@ -1,9 +1,9 @@
+import { SETTINGS_UI_PRICE_SETUP_SUGGESTION_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import {
-  SETTINGS_UI_PRICE_SETUP_SUGGESTION_PATH,
   type NorwayPriceSetup,
   type PriceSetupRead,
   type PriceSetupSuggestion,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/prices.ts';
 import { callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { gridCompanies } from './gridCompanies.ts';

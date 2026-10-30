@@ -7,7 +7,9 @@ import type {
 import type {
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
-import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../../packages/contracts/src/settingsUiApi';
+import type {
+  SettingsUiDeferredObjectivePlanHistoryPayload,
+} from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
 import { resolveRemainingEnergyKWh } from '../../../packages/shared-domain/src/energyQuantities';

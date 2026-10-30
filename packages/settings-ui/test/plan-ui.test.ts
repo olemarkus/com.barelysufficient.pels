@@ -1,7 +1,7 @@
 import type { SettingsUiDeviceView } from '../src/ui/state.ts';
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import { installHomeyMock } from './helpers/homeyApiMock.ts';
-import { SETTINGS_UI_DEVICES_PATH, SETTINGS_UI_POWER_PATH } from '../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_DEVICES_PATH, SETTINGS_UI_POWER_PATH } from '../../contracts/src/settingsUi/paths.ts';
 import { buildPlanMeta, buildUnmeasuredPlanMeta } from './helpers/planMetaFixture.ts';
 import { uiDeviceFixture } from './helpers/deviceStatusFixture.ts';
 

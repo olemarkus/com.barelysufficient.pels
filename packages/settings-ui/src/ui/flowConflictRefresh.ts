@@ -1,10 +1,12 @@
 import {
-  SETTINGS_UI_DEVICES_PATH,
-  SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH,
   type SettingsUiEvSocFlowReporter,
   type SettingsUiFlowConflictRefreshDevice,
   type SettingsUiFlowConflictRefreshPayload,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/devices.ts';
+import {
+  SETTINGS_UI_DEVICES_PATH,
+  SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH,
+} from '../../../contracts/src/settingsUi/paths.ts';
 import {
   callApi,
   invalidateApiCacheForAllHomes,

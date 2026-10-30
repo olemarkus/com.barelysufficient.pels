@@ -5,7 +5,7 @@
 // two presentations wins and with which sentence.
 
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
-import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUiApi';
+import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/devices';
 
 type StubOption = { disabled: boolean; hidden: boolean };
 

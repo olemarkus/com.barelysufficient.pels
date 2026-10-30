@@ -1,5 +1,5 @@
 import { readPelsHost } from '../../lib/app/pelsHost';
-import type { PriceSetupSuggestion } from '../../packages/contracts/src/settingsUiApi';
+import type { PriceSetupSuggestion } from '../../packages/contracts/src/settingsUi/prices';
 import {
   getSettingsUiPricesPayload,
   refreshSettingsUiGridTariff,

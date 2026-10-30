@@ -6,7 +6,7 @@ import {
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
   SETTINGS_UI_REFRESH_FLOW_CONFLICTS_PATH,
-} from '../../contracts/src/settingsUiApi.ts';
+} from '../../contracts/src/settingsUi/paths.ts';
 
 const OTHER_MODULES_API_PATH = '/ui_hub_market';
 const callApi = vi.fn();

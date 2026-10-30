@@ -24,14 +24,14 @@ import {
   resetStatsButton,
   tabs,
 } from './dom.ts';
+import { type SettingsUiBootstrap } from '../../../contracts/src/settingsUi/bootstrap.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
-  type SettingsUiBootstrap,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/paths.ts';
 import {
   applyBootstrapSettings,
   callApi,

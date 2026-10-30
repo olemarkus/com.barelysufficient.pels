@@ -53,7 +53,7 @@ import type {
   CapacityPeriodMinutes,
   CapacityScalarSettings,
 } from '../../packages/contracts/src/capacitySettings';
-import type { SettingsUiHardCapConfigurationRead } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiHardCapConfigurationRead } from '../../packages/contracts/src/settingsUi/power';
 import {
   isCapacityPeriodMinutes,
   resolveCapacityPeriodMinutes,

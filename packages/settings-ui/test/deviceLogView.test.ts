@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import { afterEach, describe, expect, it } from 'vitest';
 import { renderDeviceLogView } from '../src/ui/views/DeviceLogView.tsx';
-import type { SettingsUiDeviceActivityEntry } from '../../contracts/src/settingsUiApi';
+import type { SettingsUiDeviceActivityEntry } from '../../contracts/src/settingsUi/devices';
 
 const entry = (overrides: Partial<SettingsUiDeviceActivityEntry> = {}): SettingsUiDeviceActivityEntry => ({
   id: 'event-1', deviceId: 'dev-1', deviceName: 'Heater', recordingStartedAtMs: 0,

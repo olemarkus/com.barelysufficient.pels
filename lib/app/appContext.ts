@@ -1,4 +1,4 @@
-import type { SettingsUiTaskPricePeriod } from '../../packages/contracts/src/settingsUiApi';
+import type { SettingsUiTaskPricePeriod } from '../../packages/contracts/src/settingsUi/prices';
 import type { AcceptedFlowConflictSlice } from '../flowApi/acceptedFlowConflictStore';
 import type { BatterySolarScopeSource } from '../battery/batterySolarScope';
 import type {
@@ -72,10 +72,13 @@ import type { AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
 import type { SnapshotRefreshOptions } from '../device/snapshotRefreshScheduler';
 import type { TimerRegistry } from '../utils/timerRegistry';
 import type { FlowBackedDeviceState } from '../device/flowBackedDeviceState';
+import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUi/plan';
 import type {
   HomeyPriceFormulaUiStatus,
-  PowerhourSourceUiStatus, PvForecastSourceUiStatus, SettingsUiPlanSnapshot, SettingsUiPriceSourcePayloads,
-} from '../../packages/contracts/src/settingsUiApi';
+  PowerhourSourceUiStatus,
+  PvForecastSourceUiStatus,
+  SettingsUiPriceSourcePayloads,
+} from '../../packages/contracts/src/settingsUi/prices';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 import type { PlanRebuildTrigger } from '../plan/planRebuildTrigger';
 import type { EnergyTaskDeliveryTracker } from '../objectives/deferredObjectives/energyDelivery';

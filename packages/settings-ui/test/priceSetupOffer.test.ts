@@ -8,7 +8,7 @@ import type {
   NorwayPriceSetup,
   PriceSetupRead,
   PriceSetupSuggestion,
-} from '../../contracts/src/settingsUiApi.ts';
+} from '../../contracts/src/settingsUi/prices.ts';
 
 const NOTHING_CHOSEN: NorwayPriceSetup = {
   county: { value: '03', chosen: false },

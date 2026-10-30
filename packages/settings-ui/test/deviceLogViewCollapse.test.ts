@@ -2,7 +2,7 @@
 // row with a repeat caption, and a chip-only entry renders without an empty
 // body paragraph.
 
-import type { SettingsUiDeviceActivityEntry } from '../src/../../contracts/src/settingsUiApi';
+import type { SettingsUiDeviceActivityEntry } from '../../contracts/src/settingsUi/devices';
 import { collapseRepeatedLogEntries } from '../src/ui/deviceLogCollapse';
 import { renderDeviceLogView } from '../src/ui/views/DeviceLogView';
 

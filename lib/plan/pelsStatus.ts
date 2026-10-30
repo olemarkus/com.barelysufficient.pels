@@ -6,7 +6,7 @@ import {
   computeProjectedPeriodEnergyKWh,
   isProjectedOverHardCap,
 } from '../../packages/shared-domain/src/hourEnergyProjection';
-import type { SoftLimitSource } from '../../packages/contracts/src/settingsUiApi';
+import type { SoftLimitSource } from '../../packages/contracts/src/settingsUi/plan';
 import type { DevicePlan, PlanMeta } from './planTypes';
 import { NEUTRAL_STARTUP_HOLD_REASON } from './restore/devices';
 
@@ -45,7 +45,7 @@ export type PelsStatus = {
    * `null` when Capacity limit is off: no capacity period, no threshold
    * (`resolveShortfallThresholdKw`). This and the two headroom figures below
    * are read by no PELS surface; they stay because `SettingsUiPowerStatus`
-   * (`packages/contracts/src/settingsUiApi.ts`) declares them, so the settings
+   * (`packages/contracts/src/settingsUi/power.ts`) declares them, so the settings
    * API's `ui_power` response and its `power_updated` push promise them.
    */
   shortfallBudgetThresholdKw: number | null;

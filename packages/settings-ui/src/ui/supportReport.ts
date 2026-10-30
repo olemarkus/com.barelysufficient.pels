@@ -1,5 +1,5 @@
 import type { SupportReportResponse, SupportReportSubject } from '../../../contracts/src/supportReport.ts';
-import { SETTINGS_UI_DEVICE_LOG_PATH } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_DEVICE_LOG_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { parseDeviceActivityPayload } from './activityHistoryPayload.ts';
 import { callApi } from './homey.ts';

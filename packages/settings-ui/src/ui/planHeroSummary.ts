@@ -1,6 +1,6 @@
 import type { CapacityPeriodMinutes } from '../../../contracts/src/capacitySettings.ts';
 import { capacityPeriodNoun } from './capacityPeriodCopy.ts';
-import type { SettingsUiPlanDeviceSnapshot } from '../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiPlanDeviceSnapshot } from '../../../contracts/src/settingsUi/plan.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 
 /**

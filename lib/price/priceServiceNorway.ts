@@ -15,7 +15,7 @@ import {
   type PowerTrackerReadout,
 } from './priceServiceNorgespris';
 import type { CombinedHourlyPrice } from './priceTypes';
-import type { NorwayPriceModelSetting } from '../../packages/contracts/src/settingsUiApi';
+import type { NorwayPriceModelSetting } from '../../packages/contracts/src/settingsUi/prices';
 
 /** Declared once, in contracts, beside the settings UI read that reports it. */
 export type NorwayPriceModel = NorwayPriceModelSetting;

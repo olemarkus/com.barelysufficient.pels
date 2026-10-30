@@ -6,7 +6,7 @@ import type {
   PriceSettingChoice,
   PriceSetupRead,
   ResolvedPriceScheme,
-} from '../../../contracts/src/settingsUiApi.ts';
+} from '../../../contracts/src/settingsUi/prices.ts';
 import {
   isPriceSchemeSetting,
   readPriceSchemeSetting,

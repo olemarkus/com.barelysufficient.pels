@@ -26,9 +26,7 @@ import {
   resolveSafePaceSourceText,
 } from '../planHeroTooltips.ts';
 import type { PlanDeviceSnapshot, PlanMetaSnapshot, PlanSnapshot } from '../planTypes.ts';
-import type {
-  SettingsUiPricesPayload,
-} from '../../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiPricesPayload } from '../../../../contracts/src/settingsUi/prices.ts';
 import { resolveCostDisplayFromCombinedPrices, resolveInlinePriceUnit } from '../priceUnit.ts';
 import { normalizeCombinedPrices } from '../combinedPrices.ts';
 import {

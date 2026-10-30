@@ -13,7 +13,7 @@ import {
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
-} from '../../contracts/src/settingsUiApi.ts';
+} from '../../contracts/src/settingsUi/paths.ts';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,

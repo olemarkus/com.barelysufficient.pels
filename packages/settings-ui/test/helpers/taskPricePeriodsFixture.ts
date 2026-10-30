@@ -1,4 +1,4 @@
-import type { SettingsUiTaskPricePeriod } from '../../../contracts/src/settingsUiApi.ts';
+import type { SettingsUiTaskPricePeriod } from '../../../contracts/src/settingsUi/prices.ts';
 import { normalizeCombinedPrices } from '../../src/ui/combinedPrices.ts';
 
 // Existing scenarios seed hourly combined prices; mirror the runtime's separate
