@@ -346,6 +346,10 @@ export type DeadlinePlanLoadState =
     // healthy, so this card agrees with the list chip and the widget row.
     statusChip?: DeadlinePlanChip;
     history?: DeadlinePlanHistoryView;
+    // The task still exists (satisfied, no current reading, direction
+    // unknown), so it can be edited or cleared as from any other live state.
+    edit?: SmartTaskEditProps;
+    afterTask?: SmartTaskAfterTaskProps;
   }
   | {
     // Deadline has passed or the runtime auto-disabled the objective. The
@@ -1589,15 +1593,20 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
   if (loadState.status === 'unavailable') {
     const copy = deadlineLabels(loadState.objectiveKind).unavailableByReason[loadState.reason];
     return (
-      <section class="pels-surface-card budget-redesign-card">
-        {loadState.statusChip !== undefined && (
-          <div class="plan-hero__chips">
-            <span class={chipClass(loadState.statusChip.tone)}>{loadState.statusChip.text}</span>
-          </div>
-        )}
-        <h1 class="plan-card__title">{loadState.headline ?? copy.headline}</h1>
-        <p class="pels-card-supporting">{loadState.body ?? copy.body}</p>
-      </section>
+      <>
+        <section class="pels-surface-card budget-redesign-card">
+          {loadState.statusChip !== undefined && (
+            <div class="plan-hero__chips">
+              <span class={chipClass(loadState.statusChip.tone)}>{loadState.statusChip.text}</span>
+            </div>
+          )}
+          <h1 class="plan-card__title">{loadState.headline ?? copy.headline}</h1>
+          <p class="pels-card-supporting">{loadState.body ?? copy.body}</p>
+        </section>
+        {loadState.edit !== undefined && <SmartTaskEditSection edit={loadState.edit} />}
+        {loadState.afterTask !== undefined && <SmartTaskAfterTaskCard afterTask={loadState.afterTask} />}
+        <PriorRunsHistory history={loadState.history} />
+      </>
     );
   }
   if (loadState.status === 'completed') {
