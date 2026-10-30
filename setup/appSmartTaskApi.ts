@@ -11,10 +11,6 @@ import type {
   WidgetObjectiveWriteResult,
 } from '../packages/contracts/src/widgetHostApi';
 import {
-  supportsSmartTaskKind,
-  resolveSmartTaskGoalBounds,
-} from '../packages/shared-domain/src/smartTaskDeviceKind';
-import {
   hasOpenDeferredObjective,
   buildTaskEvaluationSnapshot,
   buildUnavailableDeferredObjectivePlanEstimate,
@@ -29,9 +25,6 @@ import {
   type TaskEvaluationSource,
 } from '../lib/objectives/deferredObjectives';
 import {
-  normalizeDeferredObjectiveSettingsEntry,
-} from '../packages/shared-domain/src/settings/deferredObjectiveSettings';
-import {
   buildDeferredObjectiveDeviceWriteDeps,
   cancelDeferredObjectiveForContext,
   toPlanDevice,
@@ -40,15 +33,16 @@ import type { CancelDeferredObjectiveOutcome } from '../lib/app/pelsHost';
 import type { NewSmartTaskWriteResult } from '../packages/contracts/src/smartTaskEdit';
 import { requirePlanService } from './appInit/contextGuards';
 import { requireDeferredObjectiveActivePlanRecorder } from './appInit/deferredRecorders';
-import { resolveObjectiveTargetValue } from '../packages/shared-domain/src/deferredObjectiveValues';
 import {
   mapObjectiveWriteRefusalReason,
   resolveSmartTaskHomeScope,
 } from './appInit/smartTaskHomeScope';
+import { gateCandidateExtraPermissions } from '../lib/objectives/deferredObjectives/limitGrantGate';
 import {
-  gateCandidateExtraPermissions,
-  readStoredObjectiveState,
-} from '../lib/objectives/deferredObjectives/limitGrantGate';
+  validateSmartTaskWrite,
+  type SmartTaskWriteReads,
+  type ValidatedSmartTaskWrite,
+} from '../lib/objectives/deferredObjectives/smartTaskWriteValidation';
 import { isRuntimePlannedDevice } from './appDeviceSupport';
 import type { StarvationRescuePlanPreview } from '../packages/contracts/src/starvationRescue';
 import { asMeteredSnapshot } from '../lib/ports/meteredSnapshots';
@@ -61,15 +55,6 @@ import { asMeteredSnapshot } from '../lib/ports/meteredSnapshots';
  * leaving a widget with a dead reject branch or an unproducible reason.
  */
 export type SmartTaskWriteResult = WidgetObjectiveWriteResult;
-
-/**
- * Durable scope reasons stay typed; transient refusals collapse to the
- * retryable `write_refused`. Deliberately NOT exported: the settings-UI edit
- * lane has its own differently-shaped `SmartTaskWriteRejectReason` in
- * `packages/contracts/src/smartTaskEdit.ts`, and two same-named unions reachable
- * from `setup/**` is an auto-import trap.
- */
-type SmartTaskWriteRejectReason = Extract<WidgetObjectiveWriteResult, { ok: false }>['reason'];
 
 /**
  * The app's smart-task (deferred-objective) WRITE surface: preview, create,
@@ -250,76 +235,25 @@ export class AppSmartTaskApi {
   }
 
   // Shared validation for both objective-write lanes (`createDeferredObjective`
-  // and `rescueDeviceWithBudgetExemption`): resolve the candidate against the
-  // runtime-planned snapshot, the device's goal kind, and the device's actual
-  // setpoint range, then normalise it through the canonical normalizer. Returns
-  // the validated device + normalised entry, or a stable rejection reason. Both
-  // callers share this so the device honesty / kind / bounds / normalizer gates
-  // never diverge between the two lanes.
+  // and `rescueDeviceWithBudgetExemption`), decided in
+  // `lib/objectives/deferredObjectives/smartTaskWriteValidation.ts`. This binds
+  // the owner reads it runs on: the runtime plan input, the planner's
+  // planned-set rule, the picker, the Main-home scope and the stored tasks.
   private resolveValidatedObjectiveEntry(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
-  ): { ok: true; device: PlanInputSnapshotDevice; entry: DeferredObjectiveSettingsEntry } | {
-    ok: false;
-    reason: SmartTaskWriteRejectReason;
-  } {
-    // Persist ONLY against the runtime-planned snapshot — see PLANNED-SET
-    // HONESTY above. A device that exists in the picker but not here, OR that is
-    // in the runtime snapshot but `managed: false` (so the planner's
-    // `isRuntimePlannedDevice` filter drops it — possible when the managed
-    // filter is inactive), is reported as `device_not_planned`, not silently
-    // persisted. Uses the SAME predicate the plan service and the candidate
-    // listing use so the three never diverge.
-    const device = this.ctx.getPlanInputSnapshot().find((entry) => entry.id === deviceId);
-    const meteredDevice = device && asMeteredSnapshot(device);
-    if (!meteredDevice || !isRuntimePlannedDevice(meteredDevice)) {
-      const inPickerOrSnapshot = device !== undefined
-        || this.ctx.getUiPickerDevices().some((entry) => entry.id === deviceId);
-      return { ok: false, reason: inPickerOrSnapshot ? 'device_not_planned' : 'device_not_found' };
-    }
-    // Multi-home v1 scope: a sub-home device is rejected with its own honest
-    // reason BEFORE kind/bounds validation — the admission math is main-only,
-    // so the task would be planned against the wrong meter's budget. Mirrors
-    // the candidate-list exclusion and the write-op gate so the three can
-    // never disagree.
-    const homeScope = resolveSmartTaskHomeScope(this.ctx, deviceId);
-    if (homeScope === 'sub_home') return { ok: false, reason: 'device_in_sub_home' };
-    if (homeScope === 'source_device') return { ok: false, reason: 'device_not_planned' };
-    if (homeScope === 'unavailable') return { ok: false, reason: 'write_refused' };
-    // The device must support the goal kind the candidate claims — an EV-SoC
-    // goal on a thermostat (or vice versa) is rejected before it can persist.
-    if (!supportsSmartTaskKind(meteredDevice, candidate.kind)) {
-      return { ok: false, reason: 'device_not_eligible' };
-    }
-    const kind = candidate.kind;
-    // Validate the target against the DEVICE's actual setpoint range, not just
-    // the generic normalizer's -50..100 °C / 1..100 % envelope. This mirrors the
-    // Flow-card `validateTargetTemperature` (which reads the device capability
-    // min/max) and the picker bounds the widget itself offered, so the write
-    // rejects an impossible target (e.g. 90 °C on a 30..75 °C heater) instead of
-    // persisting one the device can never reach.
-    const bounds = resolveSmartTaskGoalBounds(device, kind);
-    const targetValue = resolveObjectiveTargetValue(candidate);
-    if (!Number.isFinite(targetValue) || targetValue < bounds.min || targetValue > bounds.max) {
-      return { ok: false, reason: 'invalid_candidate' };
-    }
-    // Gate opt-in extra permissions against the resolved device before the entry
-    // is normalised/persisted (drops an ineligible limit-lower-priority grant),
-    // so a tampered or stale client can never persist a permission this device
-    // can't honour. Matches the gate the preview applies.
-    const gatedCandidate = gateCandidateExtraPermissions(
-      device,
-      candidate,
-      readStoredObjectiveState(this.ctx.homey.settings, deviceId),
-    );
-    // Re-validate via the canonical normalizer with `enabled: true`; a creation
-    // is implicitly an enabled objective. This rejects malformed deadlines and
-    // the generic target envelope exactly as the Flow-card / settings paths do.
-    const entry = normalizeDeferredObjectiveSettingsEntry(
-      { ...gatedCandidate, enabled: true },
-    );
-    if (!entry) return { ok: false, reason: 'invalid_candidate' };
-    return { ok: true, device: meteredDevice, entry };
+  ): ValidatedSmartTaskWrite<PlanInputSnapshotDevice> {
+    return validateSmartTaskWrite(this.writeReads(), deviceId, candidate);
+  }
+
+  private writeReads(): SmartTaskWriteReads<PlanInputSnapshotDevice> {
+    return {
+      findPlanInputDevice: (deviceId) => this.ctx.getPlanInputSnapshot().find((entry) => entry.id === deviceId),
+      isRuntimePlanned: isRuntimePlannedDevice,
+      isPickerDevice: (deviceId) => this.ctx.getUiPickerDevices().some((entry) => entry.id === deviceId),
+      resolveHomeScope: (deviceId) => resolveSmartTaskHomeScope(this.ctx, deviceId),
+      store: this.ctx.homey.settings,
+    };
   }
 
   // Persist a new smart task (deferred objective) for an eligible device,

@@ -18,6 +18,10 @@ The task governs until its deadline, also once satisfied (owner ruling 2026-10-1
 
 `steppedLadderMissing` is resolved by the producer. `resolveObjectiveSteps` and `resolvePlanningSpeedKw` read that same fact for frozen serving and user-facing diagnostics. Change both together; do not re-derive the gap from profile presence or a missing power value.
 
+## Smart-task requests are decided here
+
+The request lanes own every smart-task write decision: `smartTaskCreateLane.ts` (settings UI create, refuses an open task), `smartTaskEditLane.ts` (edit and clear, requires an open task, keeps unmentioned permissions and a left-on permission's mode) and `smartTaskWidgetCreateLane.ts` (widget create, may replace an open task, grants selected permissions outright). `smartTaskWriteValidation.ts` is the final check before persistence. The settings-UI handlers and widget routes bind ports and forward; change a rule here, not in a request adapter.
+
 ## Testing and review
 
 For a cross-cycle reproduction, drive the real bridge, recorder, allocator, and admission through the Homey SDK boundary: device temperature/SoC, prices, and clock. Do not mock internal milestones or fresh/frozen dispatch. `test/e2e/deferredObjectiveColdStartSdkE2E.test.ts` is the reference harness. A mid-hour cold-start finding must account for the committed milestone and price-deferral backstop before being treated as a regression.

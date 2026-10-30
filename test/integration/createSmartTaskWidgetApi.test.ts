@@ -18,6 +18,10 @@ import {
   previewCreateSmartTask,
 } from '../../widgets/create_smart_task/src/api';
 
+// The widget routes bind the app and clock and forward to the widget create
+// lane (`lib/objectives/deferredObjectives/smartTaskWidgetCreateLane.ts`), which
+// these tests pin through the routes.
+
 const TIME_ZONE = 'Europe/Oslo';
 // 2026-01-01 05:00 Oslo (04:00 UTC, winter = UTC+1). A 07:00 ready-by resolves
 // to today; a 03:00 ready-by rolls to tomorrow.

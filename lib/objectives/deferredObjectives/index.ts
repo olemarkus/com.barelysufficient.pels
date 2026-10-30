@@ -70,8 +70,6 @@ export {
   mapSmartTaskAppReason,
   parseSmartTaskCandidateRequest,
   parseSmartTaskQuickTargetsRequest,
-  resolveSmartTaskRequestDeadline,
-  resolveSmartTaskWriteDeadline,
 } from './smartTaskCandidateRequest';
 export { buildDeferredObjectivePolicyHorizon } from './policyHorizon';
 export {

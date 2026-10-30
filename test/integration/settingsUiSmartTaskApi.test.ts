@@ -18,11 +18,13 @@ import {
   updateSettingsUiSmartTask,
 } from '../../setup/settingsUiSmartTaskApi';
 
-// Settings-UI smart-task edit lane (detail-page edit + clear). The handlers
-// reach the SAME app methods the create_smart_task widget calls and reuse the
-// shared candidate-request helpers; what is exercised here is the lane's own
-// contract — the task-must-exist guard, the echoed-deadline anti-drift rule,
-// and the app-reason mapping.
+// Settings-UI smart-task lanes, through the handlers that bind and forward to
+// them: edit + clear (`lib/objectives/deferredObjectives/smartTaskEditLane.ts`)
+// and create (`smartTaskCreateLane.ts`). The edit lane reaches the SAME app
+// methods the create_smart_task widget calls and reuses the shared
+// candidate-request helpers; what is exercised here is the lanes' own contract —
+// the task-must-exist guard, the echoed-deadline anti-drift rule, and the
+// app-reason mapping.
 
 const TIME_ZONE = 'Europe/Oslo';
 // 2026-01-01 05:00 Oslo (04:00 UTC, winter = UTC+1). A 07:00 ready-by resolves
