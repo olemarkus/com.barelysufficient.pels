@@ -1,0 +1,34 @@
+# Budget for scripts/check-context-slots.mjs (see its header). Every count may only
+# shrink: lower or delete a line in the change that removes a slot.
+AppContext 114
+setup/appInit/createBatteryControl.ts batteryControl 1
+setup/appInit/deferredRecorders.ts deferredObjectiveBackfillPending 1
+setup/appInit/priceServices.ts getCombinedPricesForUi 1
+setup/appInit/priceServices.ts getHomeyPriceFormulaUiStatus 1
+setup/appInit/priceServices.ts getPowerhourSourceUiStatus 1
+setup/appInit/priceServices.ts getPriceSourcePayloadsForUi 1
+setup/appInit/priceServices.ts getTaskPricePeriodsForUi 1
+setup/appInit/startPostStartupBackgroundTasks.ts canContributeCurtailmentSurplus 1
+setup/appInit/startPostStartupBackgroundTasks.ts getCurtailedSurplusKw 1
+setup/appInit/startPostStartupBackgroundTasks.ts getPvForecastSourceUiStatus 1
+setup/appInit/startPostStartupBackgroundTasks.ts recordCurtailmentSample 1
+setup/appInit/wireContinuousBatteryPlan.ts hasEnabledContinuousBatteryPlan 1
+setup/appInit/wireContinuousBatteryPlan.ts readContinuousBatteryPlan 1
+setup/appInit/wireDeviceTransport.ts deviceManager 1
+setup/appInit/wireDeviceTransport.ts externalOffHold 1
+setup/appServiceWiring.ts capacityGuard 1
+setup/appServiceWiring.ts dailyBudgetService 1
+setup/appServiceWiring.ts deferredObjectiveActivePlanRecorder 1
+setup/appServiceWiring.ts deferredObjectiveEnergyDelivery 1
+setup/appServiceWiring.ts deferredObjectivePlanHistoryRecorder 1
+setup/appServiceWiring.ts deviceDiagnosticsService 1
+setup/appServiceWiring.ts homeMembership 1
+setup/appServiceWiring.ts lastNotifiedOperatingMode 1
+setup/appServiceWiring.ts lifecycleFallback 1
+setup/appServiceWiring.ts planEngine 1
+setup/appServiceWiring.ts planService 1
+setup/appServiceWiring.ts priceCoordinator 1
+setup/appServiceWiring.ts priceFlowTagPublisher 1
+setup/appServiceWiring.ts rebuildOwningHomePlanForDevice 1
+setup/appServiceWiring.ts snapshotWarmupGate 1
+setup/appServiceWiring.ts startupBootstrap 1

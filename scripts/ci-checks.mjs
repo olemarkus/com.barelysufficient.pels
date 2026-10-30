@@ -24,6 +24,8 @@ await runParallel([
   { label: 'setup:stateless', command: 'npm', args: ['run', 'setup:stateless'] },
   { label: 'setup:boundaries', command: 'npm', args: ['run', 'setup:boundaries'] },
   { label: 'params:no-bundles', command: 'npm', args: ['run', 'params:no-bundles'] },
+  { label: 'api:manifest-parity', command: 'npm', args: ['run', 'api:manifest-parity'] },
+  { label: 'context:slots', command: 'npm', args: ['run', 'context:slots'] },
   { label: 'logging:no-legacy', command: 'npm', args: ['run', 'logging:no-legacy'] },
   { label: 'executor:plan-edge', command: 'npm', args: ['run', 'executor:plan-edge'] },
   { label: 'deadcode', command: 'npm', args: ['run', 'deadcode:check'] },
