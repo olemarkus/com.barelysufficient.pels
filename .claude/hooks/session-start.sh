@@ -14,9 +14,12 @@ export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 grep -q "^export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1" "$CLAUDE_ENV_FILE" 2>/dev/null \
   || echo "export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1" >> "$CLAUDE_ENV_FILE"
 
+# npm ci installs from the lockfile without rewriting it. The container's npm
+# is older than the pinned packageManager, and npm install would strip fields
+# it does not know (such as libc), leaving every session with a dirty tree.
 echo "[pels session-start] installing workspace dependencies..."
-if ! npm install --no-audit --no-fund; then
-  echo "[pels session-start] WARN: npm install failed; continuing with existing node_modules (if any). Re-run manually if tests/lint break." >&2
+if ! npm ci --no-audit --no-fund; then
+  echo "[pels session-start] WARN: npm ci failed; continuing with existing node_modules (if any). Re-run manually if tests/lint break." >&2
 fi
 
 echo "[pels session-start] done. Playwright e2e (test:e2e / ci:test:playwright) does not run here; use unit/UI tests, e2e runs in GitHub Actions."
