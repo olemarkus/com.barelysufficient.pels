@@ -724,5 +724,8 @@
   },
   "3.26.0": {
     "en": "Smart tasks now book the price periods your price source actually publishes. With 15-minute prices, an energy, temperature or EV charging task can use a cheap quarter and skip an expensive one in the same hour; hourly sources keep hourly schedules. Charts, previews, widgets and history show the exact times booked, and the planned hours Flow token counts booked time, so two quarters read 0.5. Smart tasks you already have keep their schedules.\n\nPELS now reads the power of devices placed in a room from Homey Energy. An on/off device without its own power meter, such as a relay or virtual socket with Energy used when on set in Homey, now gets a reading and is limited like any other device. KNX switching actuators added with the KNX app's Light driver can now be managed by PELS, for example a relay that switches a water heater."
+  },
+  "3.27.0": {
+    "en": "Setup now ends by asking what PELS should do with each device: turn on Price-based control, set up a smart task, or use solar surplus once there is some to use. On a new install outside Norway and Belgium, Capacity limit now starts off, and without a limit the Overview says what PELS does for your home. After setup, PELS offers what is left in one suggestion instead of several.\n\nEV smart tasks now learn each car's charging separately, so a home with two cars or a guest car gets better estimates, and a car link now survives a car app outage. A satisfied smart task can be edited or cleared from its page, a task running across midnight keeps its full cost in its history, and several Overview, device and smart task texts now say more accurately what PELS is doing."
   }
 }
