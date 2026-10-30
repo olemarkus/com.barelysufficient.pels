@@ -51,8 +51,9 @@
 //   - An injected `StructuredDebugEmitter` (`debugStructured(...)`). It is the
 //     same emitter under a threaded name; retiring the threading is a separate,
 //     tracked migration and is not what this guard is about.
-//   - `api.ts`'s pre-logger boot `console.error` fallback, which runs before a
-//     root logger exists. It is exempted by name (`EXEMPT_SITES`).
+//   - The app-API wrapper's pre-logger boot `console.error` fallback
+//     (`setup/api/defineRoutes.ts`), which runs before a root logger exists. It
+//     is exempted by name (`EXEMPT_SITES`).
 //
 // Every other site fails: the files that predated the rule have all migrated.
 //
@@ -76,14 +77,15 @@ const EXEMPT_DIRS = [path.join('lib', 'logging')];
 /**
  * Deliberate sites, as `<path>:<kind>` → how many are allowed.
  *
- * `api.ts` runs one `console.error` before a root logger exists, so console is
- * genuinely the only channel available there.
+ * The app-API wrapper in `setup/api/defineRoutes.ts` runs one `console.error`
+ * before a root logger exists, so console is genuinely the only channel
+ * available there.
  *
  * The COUNT is what keeps this from becoming a file-wide licence: a second
- * console call in `api.ts` is over the exemption and fails, so an API handler
+ * console call in that file is over the exemption and fails, so an API handler
  * cannot quietly acquire one by sitting in an already-exempt file.
  */
-const EXEMPT_SITES = new Map([['api.ts:console', 1]]);
+const EXEMPT_SITES = new Map([['setup/api/defineRoutes.ts:console', 1]]);
 
 async function collectFiles(entry) {
   const absolute = path.join(rootDir, entry);
