@@ -727,5 +727,8 @@
   },
   "3.27.0": {
     "en": "Setup now ends by asking what PELS should do with each device: turn on Price-based control, set up a smart task, or use solar surplus once there is some to use. On a new install outside Norway and Belgium, Capacity limit now starts off, and without a limit the Overview says what PELS does for your home. After setup, PELS offers what is left in one suggestion instead of several.\n\nEV smart tasks now learn each car's charging separately, so a home with two cars or a guest car gets better estimates, and a car link now survives a car app outage. A satisfied smart task can be edited or cleared from its page, a task running across midnight keeps its full cost in its history, and several Overview, device and smart task texts now say more accurately what PELS is doing."
+  },
+  "3.28.0": {
+    "en": "New Schedules let you create Smart tasks or change mode at set times, once or on selected days. Choose a ready-by time for each task, limit a schedule to selected modes, and see its next trigger and last result. You can pause scheduled mode changes or a device's scheduled tasks together, and control schedules from Flows.\n\nPELS now keeps a charger's learned charging rate available when the connected car is not identified, and no longer matches a car returning from an outage to an old plug-in. Startup handles temporarily unreadable settings more reliably. Flow hints now explain optional power limits and when a selected car supplies the charger's battery level."
   }
 }
