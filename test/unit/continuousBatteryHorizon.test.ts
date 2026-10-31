@@ -78,7 +78,7 @@ describe('continuous battery horizon projection', () => {
 
   it('requires export quotes throughout the actual contiguous horizon, ignoring expired periods', () => {
     const base = sources();
-    let futureQuote: number | undefined;
+    let quotePublished = false;
     const source = createContinuousBatteryPlanSource(sources({
       getNowMs: () => NOW + HOUR_MS / 8,
       getPriceTimeline: () => {
@@ -89,7 +89,7 @@ describe('continuous battery horizon projection', () => {
           { ...first, startsAt: new Date(NOW - HOUR_MS).toISOString() },
           { ...first, durationMinutes: 15, exportPrice: 0.2 },
           { ...first, startsAt: new Date(NOW + HOUR_MS / 4).toISOString(), durationMinutes: 15,
-            ...(futureQuote === undefined ? {} : { exportPrice: futureQuote }) },
+            ...(quotePublished ? { exportPrice: 0 } : {}) },
           // A gap terminates the existing horizon. This later quote cannot extend it.
           { ...first, startsAt: new Date(NOW + HOUR_MS).toISOString(), exportPrice: 1 },
         ] };
@@ -97,7 +97,7 @@ describe('continuous battery horizon projection', () => {
     }));
     const incomplete = source.readHorizon('battery', config);
     expect(incomplete).toMatchObject({ kind: 'ready', exportPricing: 'incomplete' });
-    futureQuote = 0;
+    quotePublished = true;
     const complete = source.readHorizon('battery', config);
     if (complete.kind !== 'ready') throw new Error('Expected horizon');
     expect(complete.exportPricing).toBe('complete');
