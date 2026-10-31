@@ -2,6 +2,7 @@ import type {
   DecoratedDeviceSnapshot,
   DeviceDescriptor,
   EvObservedProbe,
+  MeasuredPowerObservedProbe,
   ObservedDeviceState,
   StateOfChargeObservedProbe,
   SteppedLoadDecoration,
@@ -60,6 +61,8 @@ export type CreateSmartTaskCandidateDevice = ObservedDeviceState
   & StateOfChargeObservedProbe
   // The plug state picks a charger's creation goal (`resolveSmartTaskCreationKind`).
   & EvObservedProbe
+  // Energy goals need the host's direct power observation, not just the picker default.
+  & MeasuredPowerObservedProbe
   & SteppedLoadDescriptorProbe
   & Pick<DeviceDescriptor, 'isEvCharger' | 'binaryControllable' | 'controlModel'>
   & Pick<SteppedLoadDecoration, 'temperatureControlDisabled' | 'temperatureAdjustmentsDisabled'>;

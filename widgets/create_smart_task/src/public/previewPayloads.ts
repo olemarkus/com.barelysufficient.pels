@@ -34,6 +34,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         currentValue: 48,
         supportsLimitLowerPriority: false,
     offersQuickTargets: true,
+        otherGoals: [],
       },
       {
         deviceId: 'preview-ev',
@@ -48,6 +49,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         currentValue: 42,
         supportsLimitLowerPriority: true,
     offersQuickTargets: true,
+        otherGoals: [],
       },
     ],
   },
@@ -70,6 +72,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         currentValue: 19.5,
         supportsLimitLowerPriority: false,
     offersQuickTargets: true,
+        otherGoals: [],
       },
       {
         deviceId: 'preview-bedroom',
@@ -84,6 +87,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         currentValue: 17.2,
         supportsLimitLowerPriority: false,
     offersQuickTargets: true,
+        otherGoals: [],
       },
       {
         deviceId: 'preview-bathroom-floor',
@@ -98,6 +102,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         currentValue: 22.1,
         supportsLimitLowerPriority: false,
     offersQuickTargets: true,
+        otherGoals: [],
       },
       {
         deviceId: 'preview-office',
@@ -112,6 +117,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         currentValue: 20.4,
         supportsLimitLowerPriority: false,
     offersQuickTargets: true,
+        otherGoals: [],
       },
       {
         deviceId: 'preview-hot-water',
@@ -126,6 +132,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         currentValue: 48,
         supportsLimitLowerPriority: false,
     offersQuickTargets: true,
+        otherGoals: [],
       },
       {
         deviceId: 'preview-cabin-water',
@@ -140,6 +147,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         currentValue: 55,
         supportsLimitLowerPriority: false,
     offersQuickTargets: true,
+        otherGoals: [],
       },
       {
         deviceId: 'preview-ev',
@@ -154,6 +162,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         currentValue: 42,
         supportsLimitLowerPriority: true,
     offersQuickTargets: true,
+        otherGoals: [],
       },
       {
         deviceId: 'preview-ev-guest',
@@ -168,6 +177,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         currentValue: 30,
         supportsLimitLowerPriority: true,
     offersQuickTargets: true,
+        otherGoals: [],
       },
     ],
   },

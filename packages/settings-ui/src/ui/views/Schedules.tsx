@@ -2,8 +2,10 @@ import { render } from 'preact';
 import type { ComponentChildren } from 'preact';
 import type { ScheduleEntry } from '../../../../contracts/src/schedules.ts';
 import type { SmartTaskCandidateDevice } from '../../../../contracts/src/smartTaskEdit.ts';
+import { resolveSmartTaskCandidateGoal } from '../../../../shared-domain/src/smartTaskCandidateGoal.ts';
 import { formatSmartTaskGoalRangeHint } from '../../../../shared-domain/src/smartTaskCopy/createEditCopy.ts';
 import {
+  formatGrantedRescuePermissionsLine,
   SMART_TASK_EXTRA_PERMISSION_HINTS,
   SMART_TASK_EXTRA_PERMISSION_LABELS,
   SMART_TASK_EXTRA_PERMISSIONS_TITLE,
@@ -64,6 +66,12 @@ const actionSummary = (entry: ScheduleEntry, devices: readonly SmartTaskCandidat
 const ScheduleRow = ({ entry, view }: { entry: ScheduleEntry; view: View }) => {
   const { schedule } = entry;
   const disabled = view.snapshot.busy || view.snapshot.load !== 'ready';
+  const grantedLine = schedule.action.type === 'task'
+    ? formatGrantedRescuePermissionsLine({
+      exemptFromBudget: schedule.action.task.exemptFromBudget === true,
+      limitLowerPriorityDevices: schedule.action.task.limitLowerPriorityDevices === true,
+      pauseLowerPriorityDevices: schedule.action.task.pauseLowerPriorityDevices === true,
+    }) : null;
   return (
     <article class="pels-surface-card schedule-row" data-state={entry.state} data-schedule-id={schedule.id}>
       <div class="schedule-row__main">
@@ -89,6 +97,9 @@ const ScheduleRow = ({ entry, view }: { entry: ScheduleEntry; view: View }) => {
         {entry.reason && <p>{entry.reason}</p>}
         {entry.nextAtMs !== null && <p>Next: {entry.nextLabel}</p>}
         {entry.lastResult && <p class="pels-card-supporting">Last: {entry.lastResult}</p>}
+        {grantedLine !== null && <p class="pels-card-supporting">
+          {SMART_TASK_EXTRA_PERMISSIONS_TITLE}: {grantedLine}
+        </p>}
         <MdTextButton disabled={view.snapshot.busy} onClick={() => view.actions.onEdit(schedule.id)}>Edit</MdTextButton>
       </div>
     </article>
@@ -170,24 +181,24 @@ const TaskTargetFields = ({ draft, view }: { draft: ScheduleDraft; view: View })
   if (draft.taskKind === null) return null;
   const { snapshot, actions } = view;
   const device = snapshot.devices.find((candidate) => candidate.deviceId === draft.deviceId);
-  const compatibleDevice = device?.kind === draft.taskKind ? device : undefined;
+  const goal = device && resolveSmartTaskCandidateGoal(device, draft.taskKind);
   const unit = scheduleTaskUnit(draft.taskKind);
   const disabled = snapshot.busy || snapshot.load !== 'ready';
   return (
     <>
       <label class="field"><span class="field__label pels-text-settings-label">Target ({unit})</span>
-        <MdFilledTextField key={`${draft.deviceId}:${draft.taskKind}:${Boolean(compatibleDevice)}`}
-          type="number" value={draft.target} min={compatibleDevice?.goalMin.toString()}
-          max={compatibleDevice?.goalMax.toString()} step={compatibleDevice?.goalStep.toString()}
-          disabled={disabled || !compatibleDevice} aria-label={`Target (${unit})`}
+        <MdFilledTextField key={`${draft.deviceId}:${draft.taskKind}:${Boolean(goal)}`}
+          type="number" value={draft.target} min={goal?.goalMin.toString()}
+          max={goal?.goalMax.toString()} step={goal?.goalStep.toString()}
+          disabled={disabled || !goal} aria-label={`Target (${unit})`}
           onInput={(event: Event) => actions.onDraftChange({ target: inputValue(event) })} />
-        {compatibleDevice && <small class="field__hint">
-          {formatSmartTaskGoalRangeHint(compatibleDevice.goalMin, compatibleDevice.goalMax, unit)}
+        {goal && <small class="field__hint">
+          {formatSmartTaskGoalRangeHint(goal.goalMin, goal.goalMax, unit)}
         </small>}
       </label>
-      {device && !compatibleDevice && <div class="pels-notice-info">
-        <p>This schedule keeps its {TASK_TARGET_NAMES[draft.taskKind]} target.
-          {' '}This device currently offers {TASK_TARGET_NAMES[device.kind]} targets.</p>
+      {device && device.kind !== draft.taskKind && <div class="pels-notice-info">
+        <p>This schedule keeps its {TASK_TARGET_NAMES[draft.taskKind]} target.</p>
+        {!goal && <p>This target is currently unavailable.</p>}
         <MdTextButton type="button" disabled={disabled} onClick={() => actions.onDevice(device.deviceId)}>
           Use {TASK_TARGET_NAMES[device.kind]} target
         </MdTextButton>
@@ -198,8 +209,14 @@ const TaskTargetFields = ({ draft, view }: { draft: ScheduleDraft; view: View })
 const TaskFields = ({ draft, view }: { draft: ScheduleDraft; view: View }) => {
   const { snapshot, actions } = view;
   const device = snapshot.devices.find((candidate) => candidate.deviceId === draft.deviceId);
-  const supportsLimit = device?.kind === draft.taskKind && device.supportsLimitLowerPriority;
+  const supportsLimit = device && draft.taskKind !== null
+    && resolveSmartTaskCandidateGoal(device, draft.taskKind) !== undefined && device.supportsLimitLowerPriority;
   const disabled = snapshot.busy || snapshot.load !== 'ready';
+  const savedAction = snapshot.read?.entries.find((entry) => entry.schedule.id === draft.id)?.schedule.action;
+  const savedTask = savedAction?.type === 'task' ? savedAction.task : undefined;
+  const initiallyOpen = savedTask?.exemptFromBudget === true
+    || savedTask?.limitLowerPriorityDevices === true || savedTask?.pauseLowerPriorityDevices === true;
+  const grantedLine = formatGrantedRescuePermissionsLine(draft.permissions);
   return (
     <>
       <div class="field"><span class="field__label pels-text-settings-label">Device</span>
@@ -216,15 +233,20 @@ const TaskFields = ({ draft, view }: { draft: ScheduleDraft; view: View }) => {
             onInput={(event) => actions.onDraftChange({ readyBy: inputValue(event) })} />
         </label>
         <p class="pels-card-supporting">The task is created at {draft.at}, ready by {draft.readyBy} {scheduleReadyByDay(draft.at, draft.readyBy)}. PELS chooses when the device runs.</p>
-        <details class="smart-task-edit__permissions">
-          <summary class="smart-task-edit__permissions-summary"><span class="plan-card__title">{SMART_TASK_EXTRA_PERMISSIONS_TITLE}</span>
-            <ExpandMoreIcon class="disclosure-chevron" /></summary>
-          <p class="section-hint">Saved for each new task this schedule creates.</p>
-          {PERMISSION_KEYS.filter((key) => key !== 'limitLowerPriorityDevices' || supportsLimit || draft.permissions[key])
-            .map((key) => <SmartTaskPermissionRow key={key} label={SMART_TASK_EXTRA_PERMISSION_LABELS[key]}
-              hint={SMART_TASK_EXTRA_PERMISSION_HINTS[key]} selected={draft.permissions[key]} disabled={disabled}
-              onToggle={(selected) => actions.onDraftChange({ permissions: { ...draft.permissions, [key]: selected } })} />)}
-        </details>
+        <div class="smart-task-edit__permissions-block">
+          <details class="smart-task-edit__permissions" {...(initiallyOpen ? { open: true } : {})}>
+            <summary class="smart-task-edit__permissions-summary"><span class="plan-card__title">{SMART_TASK_EXTRA_PERMISSIONS_TITLE}</span>
+              <ExpandMoreIcon class="disclosure-chevron" /></summary>
+            <p class="section-hint">Saved for each new task this schedule creates.</p>
+            {PERMISSION_KEYS.filter((key) => key !== 'limitLowerPriorityDevices' || supportsLimit
+              || savedTask?.limitLowerPriorityDevices === true || draft.permissions[key])
+              .map((key) => <SmartTaskPermissionRow key={key} label={SMART_TASK_EXTRA_PERMISSION_LABELS[key]}
+                hint={SMART_TASK_EXTRA_PERMISSION_HINTS[key]} selected={draft.permissions[key]}
+                disabled={disabled || (key === 'limitLowerPriorityDevices' && !supportsLimit && !draft.permissions[key])}
+                onToggle={(selected) => actions.onDraftChange({ permissions: { ...draft.permissions, [key]: selected } })} />)}
+          </details>
+          {grantedLine !== null && <p class="smart-task-edit__permissions-granted">{grantedLine}</p>}
+        </div>
       </>}
     </>
   );
@@ -240,16 +262,19 @@ const Editor = (view: View) => {
   const unavailableConditions = draft.conditionModes.filter((mode) => (
     !modeOptions.some((option) => option.value === mode)
   ));
-  const groupOff = draft.actionType === 'mode' ? !snapshot.read.controls.modeChangesEnabled
-    : snapshot.read.controls.disabledTaskDeviceIds.includes(draft.deviceId);
-  const pausedReason = draft.actionType === 'mode' ? 'Scheduled mode changes are off.' : 'Scheduled tasks for this device are off.';
   return (
     <>
       <div class="pels-appbar"><MdIconButton disabled={snapshot.busy} onClick={actions.onBack} aria-label="Back to schedules"><ArrowBackIcon /></MdIconButton>
         <h2 class="pels-appbar__title" id="schedule-editor-heading" tabIndex={-1}>{kind === 'new' ? 'New schedule' : 'Edit schedule'}</h2></div>
+      {editedEntry && <section class={editedEntry.state === 'invalid' ? 'pels-notice-warning' : 'pels-notice-info'}
+        aria-label="Saved schedule status">
+        <p class="pels-text-settings-label">Saved schedule: {STATE_LABELS[editedEntry.state]}</p>
+        {editedEntry.reason && <p>{editedEntry.reason}</p>}
+        {editedEntry.nextAtMs !== null && <p>Next: {editedEntry.nextLabel}</p>}
+      </section>}
       <div class="pels-surface-card schedule-editor__enabled">
-        <div><h3 class="pels-text-settings-label">Schedule {draft.enabled ? groupOff ? 'paused' : 'on' : 'off'}</h3>
-          <p class="pels-card-supporting">{!draft.enabled ? 'Saved, with no future actions.' : groupOff ? pausedReason : 'Runs at the times below.'}</p></div>
+        <div><h3 class="pels-text-settings-label">Enabled</h3>
+          <p class="pels-card-supporting">Save to apply changes.</p></div>
         <MdSwitch key={`${draft.enabled}:${disabled}`} aria-label="Schedule enabled" selected={draft.enabled} disabled={disabled}
           onChange={(event: Event) => actions.onDraftChange({ enabled: readSwitchSelected(event) })} />
       </div>

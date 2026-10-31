@@ -1,11 +1,14 @@
 import type { CreateSmartTaskCandidateDevice } from '../../../packages/contracts/src/widgetHostApi';
-import type { SmartTaskCandidateDevice } from '../../../packages/contracts/src/smartTaskEdit';
+import type {
+  SmartTaskCandidateDevice, SmartTaskCandidateGoal,
+} from '../../../packages/contracts/src/smartTaskEdit';
 import {
   resolveSmartTaskCurrentValue,
   resolveSmartTaskDefaultGoal,
   resolveSmartTaskCreationKind,
   resolveSmartTaskGoalBounds,
   supportsSmartTaskKind,
+  type SmartTaskGoalBounds,
 } from '../../../packages/shared-domain/src/smartTaskDeviceKind';
 import { resolveSmartTaskQuickTargets } from './smartTaskQuickTargetValues';
 import { deviceSupportsLimitLowerPriority } from './limitGrantGate';
@@ -13,6 +16,14 @@ import {
   compareSmartTaskPickerRows,
   resolveSmartTaskDeviceGroup,
 } from '../../../packages/shared-domain/src/smartTaskDevicePickerOrder';
+
+const TASK_KINDS = ['temperature', 'ev_soc', 'energy'] as const;
+const candidateGoal = (
+  kind: SmartTaskCandidateGoal['kind'],
+  bounds: SmartTaskGoalBounds,
+): SmartTaskCandidateGoal => ({
+  kind, unitSymbol: bounds.unit, goalMin: bounds.min, goalMax: bounds.max, goalStep: bounds.step,
+});
 
 const buildCandidateDevice = (
   // The host's candidate type, which carries the observed SoC bag
@@ -33,12 +44,11 @@ const buildCandidateDevice = (
   return {
     deviceId: device.id,
     deviceName: name && name.length > 0 ? name : device.id,
-    kind,
+    ...candidateGoal(kind, bounds),
+    otherGoals: TASK_KINDS
+      .filter((other) => other !== kind && supportsSmartTaskKind(device, other))
+      .map((other) => candidateGoal(other, resolveSmartTaskGoalBounds(device, other))),
     group: resolveSmartTaskDeviceGroup(device),
-    unitSymbol: bounds.unit,
-    goalMin: bounds.min,
-    goalMax: bounds.max,
-    goalStep: bounds.step,
     // A temperature device seeds from its first quick target: the common-case
     // 60 °C is a water heater's, and clamped into a room's range it seeded 40 °C.
     defaultGoal: (kind === 'temperature' ? quickTargets[0] : undefined)

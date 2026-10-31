@@ -39,6 +39,7 @@ const HEATER: SmartTaskCandidateDevice = {
   currentValue: 52,
   supportsLimitLowerPriority: false,
   offersQuickTargets: true,
+  otherGoals: [],
 };
 
 const PREVIEW = {

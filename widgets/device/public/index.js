@@ -1968,7 +1968,8 @@
     defaultGoal: 65,
     currentValue: 54,
     supportsLimitLowerPriority: false,
-    offersQuickTargets: true
+    offersQuickTargets: true,
+    otherGoals: []
   };
   var chargerCandidate = {
     deviceId: "ev",
@@ -1982,7 +1983,8 @@
     defaultGoal: 80,
     currentValue: null,
     supportsLimitLowerPriority: true,
-    offersQuickTargets: false
+    offersQuickTargets: false,
+    otherGoals: []
   };
   var PREVIEW_PAYLOADS = {
     ev: {
