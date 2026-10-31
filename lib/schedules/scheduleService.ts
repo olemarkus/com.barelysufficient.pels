@@ -305,12 +305,22 @@ export class ScheduleService {
     this.lastCheckAt = Math.max(after, now);
     if (after === 0 || now < after) return;
     this.load();
-    for (const schedule of [...this.schedules.values()]) {
+    for (const schedule of this.dueSchedules(after, now)) {
       if (!this.running) break;
       try { await this.runDue(schedule, after); } catch (error) {
         logger.error({ event: 'schedule_run_failed', scheduleId: schedule.id, err: error });
       }
     }
+  }
+
+  private dueSchedules(after: number, now: number): Schedule[] {
+    const timeZone = this.port.clock.getTimezone();
+    return [...this.schedules.values()].flatMap((schedule) => {
+      const occurrence = dueScheduleOccurrence(
+        schedule, Math.max(after, this.armedAt.get(schedule.id) ?? now), now, timeZone,
+      );
+      return occurrence ? [{ schedule, occurrence }] : [];
+    }).sort((a, b) => a.occurrence.atMs - b.occurrence.atMs).map(({ schedule }) => schedule);
   }
 
   private async runDue(schedule: Schedule, after: number): Promise<void> {
@@ -327,10 +337,11 @@ export class ScheduleService {
       this.port.clock.getTimezone(), receipt?.localOccurrence,
     );
     if (!occurrence) return;
-    const lastResult = this.skipReason(schedule, occurrence.key.slice(0, 10));
+    const lastResult = this.skipResult(schedule, occurrence.key.slice(0, 10));
     const consumed = {
       localOccurrence: occurrence.key, consumedAtMs: now, lastResult: lastResult || 'Trigger recorded.',
     };
+    // Persist synchronous skips and read failures before yielding or attempting another settings read.
     this.port.receipts.write(schedule.id, consumed);
     if (lastResult) return;
     const result = await this.execute(schedule, occurrence.atMs);
@@ -355,6 +366,12 @@ export class ScheduleService {
     }
   }
 
+  private skipResult(schedule: Schedule, date: string): string {
+    try { return this.skipReason(schedule, date); } catch (error) {
+      return this.failureResult(schedule, error);
+    }
+  }
+
   private skipReason(schedule: Schedule, date: string): string {
     const invalid = this.eligibility(schedule);
     if (invalid) return invalid;
@@ -374,10 +391,14 @@ export class ScheduleService {
       logger.info({ event: 'schedule_triggered', scheduleId: schedule.id, scheduledAtMs: atMs });
       return schedule.action.type === 'mode' ? 'Mode changed' : 'Smart task created';
     } catch (error) {
-      logger.error({ event: 'schedule_action_failed', scheduleId: schedule.id, err: error });
-      return error instanceof Error
-        ? `Could not run: ${error.message}`.slice(0, 240) : 'Could not run this schedule.';
+      return this.failureResult(schedule, error);
     }
+  }
+
+  private failureResult(schedule: Schedule, error: unknown): string {
+    logger.error({ event: 'schedule_run_failed', scheduleId: schedule.id, err: error });
+    return error instanceof Error
+      ? `Could not run: ${error.message}`.slice(0, 240) : 'Could not run this schedule.';
   }
 
 }
