@@ -2,9 +2,21 @@ import type { StorageDecision } from '../../planContract/storageDecision';
 import type { StorageLeverState } from '../planState';
 import type { StorageShedTerm } from '../shedding/types';
 
+/**
+ * Why the plan holds a battery this cycle, for the state log and the
+ * overview: `relief`, a limit hold discharging to hold the limit;
+ * `charge_limit`, a limit hold capping its charge (0 W included);
+ * `cap_for_device`, a surplus hold keeping its charge below what its own mode
+ * charged so a device ranked above it gets that power; `raise_charge`, a
+ * surplus hold charging past that from what its offer leaves; on a battery
+ * plan, `plan_supply` (discharging to the house), `plan_wait` (holding at
+ * 0 W), `plan_solar` (charging to store solar) or `plan_charge` (charging for
+ * any other plan reason); or `none` (not held).
+ */
 export type StorageClaimReason = 'none' | 'relief' | 'charge_limit' | 'cap_for_device' | 'raise_charge'
   | 'plan_charge' | 'plan_solar' | 'plan_supply' | 'plan_wait';
 
+/** One battery as this cycle left it, for the state log. */
 export type StorageStateSummary = {
   deviceId: string;
   reading: 'observed' | 'missing' | 'absent';
@@ -31,6 +43,10 @@ export type StorageStateSummary = {
   withheldW: number;
 };
 
+/**
+ * What the stage decided this cycle. `batteries` is the one list of what was
+ * decided for each battery; its decisions and withheld power are read from it.
+ */
 export type StorageRelief = {
   /** What shedding counts against the measured deficit. */
   shed: StorageShedTerm;
@@ -39,4 +55,10 @@ export type StorageRelief = {
   batteries: readonly StorageStateSummary[];
 };
 
+/**
+ * The headroom still to give back, W, as each battery takes its share; the
+ * deficit, which keeps a surplus hold where it is for shedding to decide; and
+ * the net import, W, moved by each battery's decided change, against which a
+ * battery plan sizes its discharge to the house.
+ */
 export type StorageBalance = { deficitW: number; headroomW: number | null; netImportW: number };
