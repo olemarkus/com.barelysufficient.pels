@@ -7,6 +7,7 @@ import {
   POWER_SAMPLE_REBUILD_CADENCE,
   resolveRebuildDecision,
   resolveRebuildIntentKind,
+  resolvePlanningPeriod,
   resolveRebuildReason,
   resolveTightNoopBackoffMs,
   shouldApplyTightMitigationHoldoff,
@@ -59,7 +60,13 @@ export type PlanRebuildThrottleDeps = {
   /** Late-bound: the scheduler's `executeIntent` calls back into this throttle. */
   getScheduler: () => PlanRebuildScheduler;
   getCapacityGuard: () => ThrottleCapacityGuardView;
+  /** Monotonic: intervals, due times and backoff. */
   getNowMs: () => number;
+  /**
+   * The Homey's wall clock, read only for the planning period a reading and a
+   * rebuild fall in. Never compared with a `getNowMs` stamp.
+   */
+  getWallClockMs: () => number;
   /**
    * `PlanService.rebuildPlanFromCache`. It never rejects: the plan queue
    * contains a build that threw and resolves it as `failed: true`, which is the
@@ -168,9 +175,12 @@ export class PlanRebuildThrottle {
     // is a device the rebuild's plan input never saw.
     const observationSeqAtDispatch = this.observationSeq;
     const dispatchedAtMs = this.deps.getNowMs();
+    // The build reads the period from the wall clock as it runs, so a rebuild
+    // queued in the old quarter and dispatched in the new one has seen the new.
+    const planningPeriod = resolvePlanningPeriod(this.deps.getWallClockMs());
     const previousBreach = this.lastRebuild === null ? NO_BREACH : this.lastRebuild.hardCapBreach;
     this.lastRebuild = {
-      atMs: dispatchedAtMs, powerW: signal.currentPowerW,
+      atMs: dispatchedAtMs, planningPeriod, powerW: signal.currentPowerW,
       hardCapBreach: previousBreach, gridBreach: this.lastRebuild?.gridBreach ?? NO_BREACH,
     };
     this.inFlight = deferred.promise;
@@ -187,7 +197,7 @@ export class PlanRebuildThrottle {
         // hard-cap incidents, and fired the owner's Flow, with kilowatts still
         // reducible.
         this.lastRebuild = {
-          atMs: dispatchedAtMs, powerW: signal.currentPowerW,
+          atMs: dispatchedAtMs, planningPeriod, powerW: signal.currentPowerW,
           hardCapBreach: signal.hardCapBreach, gridBreach: signal.gridBreach,
         };
         if (this.observedDuringFlight(observationSeqAtDispatch)) {
@@ -287,7 +297,8 @@ export class PlanRebuildThrottle {
         ? Promise.resolve() : guard.recordReading(signal.totalKw, signal.shortfallThresholdKw);
     }
     const memory = this.memory();
-    const decision = resolveRebuildDecision(signal, memory, now, cadence.maxIntervalMs);
+    const planningPeriod = resolvePlanningPeriod(this.deps.getWallClockMs());
+    const decision = resolveRebuildDecision(signal, memory, now, planningPeriod, cadence.maxIntervalMs);
     if (!decision.shouldRebuild) {
       this.recordSkip(signal, decision, now);
       // Deliberately NOT telling the guard anything from a throttled skip: entering

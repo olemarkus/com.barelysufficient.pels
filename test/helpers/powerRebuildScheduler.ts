@@ -126,6 +126,7 @@ export const createTestPlanRebuildThrottle = async (params: {
     getScheduler: () => scheduler,
     getCapacityGuard: () => guard,
     getNowMs,
+    getWallClockMs: Date.now,
     rebuildPlanFromCache: (trigger) => (
       priming ? Promise.resolve(unchangedRebuildOutcome()) : params.rebuildPlanFromCache(trigger)
     ),
@@ -161,5 +162,6 @@ export const createInertPlanRebuildThrottle = (): PlanRebuildThrottle => new Pla
   }),
   getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
   getNowMs: Date.now,
+  getWallClockMs: Date.now,
   rebuildPlanFromCache: async () => unchangedRebuildOutcome(),
 });

@@ -456,6 +456,7 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
         getScheduler: () => scheduler,
         getCapacityGuard: () => guard,
         getNowMs: () => nowMs,
+        getWallClockMs: () => nowMs,
         rebuildPlanFromCache: async () => unchangedRebuildOutcome(),
       },
     );

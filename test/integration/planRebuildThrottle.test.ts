@@ -163,6 +163,7 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
       getScheduler: () => scheduler,
       getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
       getNowMs: Date.now,
+      getWallClockMs: Date.now,
       rebuildPlanFromCache,
     });
     // A first rebuild, run by hand, so the samples below are judged against one.
@@ -398,6 +399,35 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     await sampleThrottle(throttle, tightSample);
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
     expect(rebuildPlanFromCache).toHaveBeenLastCalledWith('headroom_tight');
+  });
+
+  // Production paces on `performance.now()`, whose origin is process start, so
+  // its quarters are not the Homey's. The boundary is the wall clock's quarter.
+  it('decides the planning period on the wall clock, not the monotonic one', async () => {
+    vi.setSystemTime(new Date('2024-01-01T00:14:40.000Z'));
+    const processStartMs = Date.parse('2024-01-01T00:07:13.000Z');
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
+    const calm = { currentPowerW: 5000 };
+    const { throttle } = await createTestPlanRebuildThrottle({
+      rebuildPlanFromCache,
+      getNowMs: () => Date.now() - processStartMs,
+      lastRebuild: { msAgo: 10_000, reading: calm },
+    });
+
+    // 00:15:01 wall, 7:48 since process start: the first reading of a new
+    // wall-clock quarter, still inside the same monotonic quarter.
+    await vi.advanceTimersByTimeAsync(11_000);
+    await sampleThrottle(throttle, calm);
+    expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('period_boundary');
+
+    // 00:22:00 refreshes on the max interval; 00:22:20 (15:07 since process
+    // start) crosses only a monotonic quarter, which is no boundary.
+    await vi.advanceTimersByTimeAsync(Date.parse('2024-01-01T00:22:00.000Z') - Date.now());
+    await sampleThrottle(throttle, calm);
+    expect(rebuildPlanFromCache).toHaveBeenLastCalledWith('max_interval');
+    await vi.advanceTimersByTimeAsync(20_000);
+    await sampleThrottle(throttle, calm);
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(2);
   });
 
   it('lets meaningful power deltas bypass tight-headroom no-op backoff', async () => {

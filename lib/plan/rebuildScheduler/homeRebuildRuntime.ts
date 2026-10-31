@@ -54,11 +54,15 @@ export const createHomeRebuildRuntime = (
   // wall time in one and the monotonic clock in another would be comparing two
   // different origins. A meter area used to do exactly that. A spec driving fake
   // timers advances it as long as `performance` is among the faked globals.
+  // The wall clock answers one question only, which planning period a reading
+  // falls in: the plan build reads the price, capacity period and budget bucket
+  // from it, and the monotonic clock's quarters count from process start.
   const nowMs = (): number => performance.now();
   const throttle: PlanRebuildThrottle = new PlanRebuildThrottle({
     getScheduler: () => scheduler,
     getCapacityGuard,
     getNowMs: nowMs,
+    getWallClockMs: () => Date.now(),
     rebuildPlanFromCache: (trigger) => getPlanService().rebuildPlanFromCache(trigger),
   });
   const telemetry = new SchedulerTelemetryObserver({

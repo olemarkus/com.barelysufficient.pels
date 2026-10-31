@@ -49,6 +49,16 @@ export const POWER_SAMPLE_REBUILD_CADENCE: RebuildCadence = {
 // local one.
 const PLANNING_PERIOD_MS = 15 * 60 * 1000;
 
+/**
+ * The wall-clock planning period `wallMs` falls in: quarter-hours since the
+ * epoch. It takes the Homey's wall clock, the clock the plan build reads the
+ * price, capacity period and daily-budget bucket from, and never the
+ * throttle's monotonic clock, whose origin is process start: flooring that
+ * counted quarters from boot, so the first reading after :00/:15/:30/:45 was
+ * not a boundary at all.
+ */
+export const resolvePlanningPeriod = (wallMs: number): number => Math.floor(wallMs / PLANNING_PERIOD_MS);
+
 const MIN_REBUILD_DELTA_W = 100;
 const MIN_REBUILD_DELTA_RATIO = 0.005; // 0.5% of limit
 const MIN_LIMIT_DEFICIT_DELTA_KW = 0.001;
@@ -153,10 +163,14 @@ export const shouldRebuildFromDecision = (
 
 // `elapsedMs` is not a parameter: it is `nowMs - lastRebuild.atMs`, and both are
 // already here. Passing it alongside let a caller hand in a third opinion.
+// `nowMs` is the monotonic clock, for intervals and backoff; `planningPeriod`
+// is this reading's wall-clock period (`resolvePlanningPeriod`), compared with
+// the one the last rebuild ran in.
 export const resolveRebuildDecision = (
   signal: PowerRebuildSignal,
   memory: PlanRebuildThrottleMemory,
   nowMs: number,
+  planningPeriod: number,
   maxIntervalMs: number,
 ): RebuildDecision => {
   const { lastRebuild } = memory;
@@ -166,8 +180,7 @@ export const resolveRebuildDecision = (
   const { deltaW, deltaMeaningful } = resolvePowerDelta(signal, lastRebuild);
   const maxIntervalExceeded = maxIntervalMs > 0
     && (lastRebuild === null || nowMs - lastRebuild.atMs >= maxIntervalMs);
-  const periodBoundaryCrossed = lastRebuild !== null
-    && Math.floor(nowMs / PLANNING_PERIOD_MS) !== Math.floor(lastRebuild.atMs / PLANNING_PERIOD_MS);
+  const periodBoundaryCrossed = lastRebuild !== null && planningPeriod !== lastRebuild.planningPeriod;
   const backoffActive = isTightNoopBackoffActive(
     signal,
     memory.holdoff,
