@@ -6,7 +6,6 @@ import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import {
   CONSUMPTION_TAX_STANDARD_EX_VAT,
-  ENOVA_FEE_EX_VAT,
   VAT_MULTIPLIER_STANDARD,
 } from '../../lib/price/priceComponents';
 import {
@@ -27,7 +26,7 @@ const GRID_TARIFF_EX_VAT = 28;
 const NORGESPRIS_TARGET_INC_VAT_STANDARD = NORGESPRIS_TARGET_EX_VAT * VAT_MULTIPLIER_STANDARD;
 
 const buildExpectedBaseTotalIncVat = (): number => (
-  (SPOT_PRICE_EX_VAT + GRID_TARIFF_EX_VAT + CONSUMPTION_TAX_STANDARD_EX_VAT + ENOVA_FEE_EX_VAT)
+  (SPOT_PRICE_EX_VAT + GRID_TARIFF_EX_VAT + CONSUMPTION_TAX_STANDARD_EX_VAT)
   * VAT_MULTIPLIER_STANDARD
 );
 

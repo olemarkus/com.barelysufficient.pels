@@ -12,7 +12,6 @@ const norwayHour = (extra: Record<string, unknown>) => {
     gridTariffExVat: 20,
     providerSurchargeExVat: 2,
     consumptionTaxExVat: 7.13,
-    enovaFeeExVat: 1,
     vatMultiplier: 1.25,
     ...extra,
   };
@@ -20,7 +19,7 @@ const norwayHour = (extra: Record<string, unknown>) => {
     ? parts.norgesprisAdjustment
     : -parts.electricitySupport;
   const exVat = parts.spotPriceExVat + parts.gridTariffExVat + parts.providerSurchargeExVat
-    + parts.consumptionTaxExVat + parts.enovaFeeExVat;
+    + parts.consumptionTaxExVat;
   return { startsAt: '2026-10-13T10:00:00.000Z', total: exVat * 1.25 + relief, ...parts };
 };
 
@@ -90,9 +89,9 @@ describe('resolveLiveSummarySignals, price now', () => {
     const hour = norwayHour({ electricitySupport: 3.5 });
     const signals = resolveLiveSummarySignals({ priceScheme: 'norway', prices: [hour] }, timelineFor(hour.total), NOW);
 
-    // Shown rounded, the parts add up to the price shown (0.84): the spot price takes any rounding.
-    expect(signals.breakdownText).toBe('Spot 0.50 · grid tariff 0.25 · surcharge 0.03 · taxes 0.10 · support −0.04');
-    expect(signals.priceText).toBe('0.84 kr/kWh');
+    // Shown rounded, the parts add up to the price shown (0.83): the spot price takes any rounding.
+    expect(signals.breakdownText).toBe('Spot 0.50 · grid tariff 0.25 · surcharge 0.03 · taxes 0.09 · support −0.04');
+    expect(signals.priceText).toBe('0.83 kr/kWh');
     expect(signals.gridTariffMissing).toBe(false);
   });
 

@@ -302,8 +302,9 @@ export const buildCombinedHourlyPricesNorway = (params: {
     const spotPriceExVat = resolveSpotPriceExVat(spot, vatMultiplier);
     const gridTariffExVat = resolveGridTariffForDay(gridTariffByDay, dateKey)?.get(hour) || 0;
     const consumptionTaxExVat = rules.consumptionTaxExVat;
-    const enovaFeeExVat = rules.enovaFeeExVat;
-    const totalExVat = spotPriceExVat + gridTariffExVat + providerSurchargeExVat + consumptionTaxExVat + enovaFeeExVat;
+    // No separate Enova fee: the energy component NVE serves ex VAT already
+    // carries it (BKK, Lnett, Midtnett and Elvia price lists, 2026).
+    const totalExVat = spotPriceExVat + gridTariffExVat + providerSurchargeExVat + consumptionTaxExVat;
     const vatAmount = totalExVat * (vatMultiplier - 1);
     const spotPriceIncVat = spotPriceExVat * vatMultiplier;
 
@@ -358,7 +359,6 @@ export const buildCombinedHourlyPricesNorway = (params: {
       gridTariffExVat,
       providerSurchargeExVat,
       consumptionTaxExVat,
-      enovaFeeExVat,
       vatMultiplier,
       vatAmount,
       electricitySupportExVat,

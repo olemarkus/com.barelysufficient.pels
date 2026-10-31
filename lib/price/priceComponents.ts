@@ -1,7 +1,6 @@
 export type RegionalPricingRules = {
   vatMultiplier: number;
   consumptionTaxExVat: number;
-  enovaFeeExVat: number;
   supportThresholdExVat: number;
   supportCoverage: number;
   hasVat: boolean;
@@ -13,8 +12,6 @@ export const VAT_MULTIPLIER_EXEMPT = 1.0;
 
 export const CONSUMPTION_TAX_STANDARD_EX_VAT = 7.13;
 export const CONSUMPTION_TAX_REDUCED_EX_VAT = 0.48;
-
-export const ENOVA_FEE_EX_VAT = 1.0;
 
 export const ELECTRICITY_SUPPORT_THRESHOLD_EX_VAT = 77;
 export const ELECTRICITY_SUPPORT_COVERAGE = 0.90;
@@ -47,7 +44,6 @@ export const getRegionalPricingRules = (priceArea: string, countyCode: string): 
   return {
     vatMultiplier,
     consumptionTaxExVat,
-    enovaFeeExVat: ENOVA_FEE_EX_VAT,
     supportThresholdExVat: ELECTRICITY_SUPPORT_THRESHOLD_EX_VAT,
     supportCoverage: ELECTRICITY_SUPPORT_COVERAGE,
     hasVat: vatMultiplier !== VAT_MULTIPLIER_EXEMPT,

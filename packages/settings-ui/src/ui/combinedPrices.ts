@@ -37,8 +37,8 @@ export type CombinedPriceRow = {
 
 /**
  * The parts the Norway source adds up into an hour's price, in the price's own
- * unit. Taxes are the consumption tax and the Enova fee. VAT applies to every
- * part ex VAT; Strømstøtte and the Norgespris adjustment are given with VAT.
+ * unit. Taxes are the consumption tax; the Enova fee is part of the grid
+ * tariff. VAT applies to every part ex VAT; Strømstøtte and the Norgespris adjustment are given with VAT.
  */
 export type NorwayPriceParts = {
   spotExVat: number;
@@ -53,11 +53,11 @@ export type NorwayPriceParts = {
 
 const parseNorwayPriceParts = (entry: Record<string, unknown>): NorwayPriceParts | null => {
   const {
-    spotPriceExVat, gridTariffExVat, providerSurchargeExVat, consumptionTaxExVat, enovaFeeExVat, vatMultiplier,
+    spotPriceExVat, gridTariffExVat, providerSurchargeExVat, consumptionTaxExVat, vatMultiplier,
   } = entry;
   if (
     !isFiniteNumber(spotPriceExVat) || !isFiniteNumber(gridTariffExVat) || !isFiniteNumber(providerSurchargeExVat)
-    || !isFiniteNumber(consumptionTaxExVat) || !isFiniteNumber(enovaFeeExVat) || !isFiniteNumber(vatMultiplier)
+    || !isFiniteNumber(consumptionTaxExVat) || !isFiniteNumber(vatMultiplier)
   ) {
     return null;
   }
@@ -77,7 +77,7 @@ const parseNorwayPriceParts = (entry: Record<string, unknown>): NorwayPriceParts
     spotExVat: spotPriceExVat,
     gridTariffExVat,
     providerSurchargeExVat,
-    taxesExVat: consumptionTaxExVat + enovaFeeExVat,
+    taxesExVat: consumptionTaxExVat,
     vatMultiplier,
     relief,
   };
