@@ -5,6 +5,7 @@ import type {
 import {
   DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG,
 } from '../../packages/shared-domain/src/settings/continuousBatteryPlan';
+import { getDebugEmitter } from '../logging/logger';
 import type { ContinuousBatteryPlanSource } from '../ports/continuousBatteryPlan';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { readContinuousBatteryPlanConfigs } from './continuousBatteryPlanSettings';
@@ -14,6 +15,14 @@ type SettingsRead = { kind: 'resolved'; configs: ContinuousBatteryPlanConfigs } 
 type PlanMemo = { inputs: PlanInputs; atMs: number; validUntilMs: number; read: ContinuousBatteryPlanRead };
 type ReadyHorizon = Extract<ReturnType<ContinuousBatteryPlanSource['readHorizon']>, { kind: 'ready' }>;
 const PLAN_MEMO_MAX_AGE_MS = 30_000;
+const emitDebug = getDebugEmitter('battery', 'price');
+
+/** What the battery page shows of a read: its status and, while waiting, why. */
+type ReadStanding = { status: ContinuousBatteryPlanRead['status']; reason: string | null };
+
+const standingOf = (read: ContinuousBatteryPlanRead): ReadStanding => (
+  { status: read.status, reason: read.status === 'waiting' ? read.reason : null }
+);
 /**
  * Live device draw and the charge room it leaves move on nearly every meter
  * reading. A plan stays valid while they move less than this from the inputs it
@@ -64,6 +73,7 @@ const withinTolerance = (made: PlanInputs, current: PlanInputs): boolean => (
 export class ContinuousBatteryPlanService {
   private lastSettings: SettingsRead = { kind: 'unavailable' };
   private readonly plans = new Map<string, PlanMemo>();
+  private readonly standings = new Map<string, ReadStanding>();
 
   constructor(private readonly settings: SettingsPort, private readonly source: ContinuousBatteryPlanSource) {}
 
@@ -87,7 +97,32 @@ export class ContinuousBatteryPlanService {
     return accepted.kind === 'resolved' && Object.values(accepted.configs).some(config => config.enabled);
   }
 
+  /**
+   * The battery plan read for one battery. A change of its status or waiting
+   * reason, which otherwise reaches only the battery page, is logged once.
+   */
   read(deviceId: string): ContinuousBatteryPlanRead {
+    const read = this.resolveRead(deviceId);
+    this.logStandingChange(deviceId, read);
+    return read;
+  }
+
+  private logStandingChange(deviceId: string, read: ContinuousBatteryPlanRead): void {
+    const next = standingOf(read);
+    const previous = this.standings.get(deviceId);
+    if (previous !== undefined && previous.status === next.status && previous.reason === next.reason) return;
+    this.standings.set(deviceId, next);
+    emitDebug({
+      event: 'battery_plan_status_changed',
+      deviceId,
+      status: next.status,
+      reason: next.reason,
+      previousStatus: previous?.status ?? null,
+      previousReason: previous?.reason ?? null,
+    });
+  }
+
+  private resolveRead(deviceId: string): ContinuousBatteryPlanRead {
     const accepted = this.acceptedSettings();
     if (accepted.kind === 'unavailable') {
       return { status: 'waiting', config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, reason: 'settings_unavailable' };
