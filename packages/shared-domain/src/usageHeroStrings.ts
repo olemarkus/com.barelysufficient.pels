@@ -25,7 +25,7 @@ export const formatVsPaceChipLabel = (diff: number, absDiff: number): string => 
 // Chip label for the projected-end-of-day-vs-typical baseline. Sign follows
 // `projectedDiff`.
 export const formatVsTypicalChipLabel = (projectedDiff: number, absDiff: number): string => (
-  `${projectedDiff > 0 ? '+' : '−'}${absDiff.toFixed(1)} kWh vs typical`
+  `${projectedDiff > 0 ? '+' : '−'}${absDiff.toFixed(1)} kWh projected vs typical`
 );
 
 // Projection subline. When the projection lands inside the dead-band the prose

@@ -1518,7 +1518,7 @@ claims:
 | Chip | Baseline | When |
 |---|---|---|
 | `On pace` | Elapsed-pace comparison (`… kWh vs pace`) | Early-morning window where the end-of-day projection is suppressed — the claim is only "so far, today matches a typical day's pace". |
-| `On track` | End-of-day projection (`… kWh vs typical`) | Rest of the day — the claim is "today is projected to end near typical". |
+| `On track` | End-of-day projection (`… kWh projected vs typical`) | Rest of the day — the claim is "today is projected to end near typical". |
 
 Keep both: collapsing them to one word would either overclaim in the morning
 (`On track` before a projection exists) or underclaim later. Each chip pairs
