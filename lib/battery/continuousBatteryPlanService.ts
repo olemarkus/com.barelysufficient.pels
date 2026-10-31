@@ -10,6 +10,7 @@ import type { ContinuousBatteryPlanSource } from '../ports/continuousBatteryPlan
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { readContinuousBatteryPlanConfigs } from './continuousBatteryPlanSettings';
 import { planBatteryEnergy } from './planning/planBatteryEnergy';
+import { BatteryExportShadow } from './batteryExportShadow';
 
 type SettingsRead = { kind: 'resolved'; configs: ContinuousBatteryPlanConfigs } | { kind: 'unavailable' };
 type PlanMemo = { inputs: PlanInputs; atMs: number; validUntilMs: number; read: ContinuousBatteryPlanRead };
@@ -46,6 +47,7 @@ const planInputs = (input: ReadyHorizon): PlanInputs => {
   return {
     exact: JSON.stringify({
       priceUnit: input.priceUnit,
+      exportPricing: input.exportPricing,
       battery: exactBattery,
       periods: periods.map(period => ({
         endMs: period.startsAtMs + period.durationMs,
@@ -74,6 +76,7 @@ export class ContinuousBatteryPlanService {
   private lastSettings: SettingsRead = { kind: 'unavailable' };
   private readonly plans = new Map<string, PlanMemo>();
   private readonly standings = new Map<string, ReadStanding>();
+  private readonly exportShadow = new BatteryExportShadow();
 
   constructor(private readonly settings: SettingsPort, private readonly source: ContinuousBatteryPlanSource) {}
 
@@ -159,6 +162,8 @@ export class ContinuousBatteryPlanService {
       validUntilMs: input.horizon.periods[0].startsAtMs + input.horizon.periods[0].durationMs,
       read,
     });
+    // Diagnostics never replace the household plan returned to the planner or UI.
+    if (plan.status === 'planned') this.exportShadow.observe(deviceId, input, plan, nowMs);
     return read;
   }
 
