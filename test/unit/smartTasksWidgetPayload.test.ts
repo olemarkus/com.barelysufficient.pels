@@ -449,6 +449,13 @@ describe('buildSmartTasksWidgetPayload', () => {
         deviceName: 'Time risk',
         latest: { ...buildPlan({}).latest!, planStatus: 'at_risk' },
       }),
+      // Higher-priority load takes the room the house limit leaves: the window is
+      // long enough, so the row names the other devices and makes no time claim.
+      load: buildPlan({
+        deviceId: 'load',
+        deviceName: 'Load risk',
+        latest: { ...buildPlan({}).latest!, planStatus: 'at_risk', floorShortfallCause: 'higher_priority_load' },
+      }),
     }));
     expect(payload.state).toBe('ready');
     if (payload.state !== 'ready') return;
@@ -459,6 +466,8 @@ describe('buildSmartTasksWidgetPayload', () => {
     );
     expect(byId.time.whyLabel).toBe('Limited time left before the deadline.');
     expect(byId.time.recourseHint).toBeNull();
+    expect(byId.load.whyLabel).toBe('Other devices use the power your limit allows before the deadline.');
+    expect(byId.load.recourseHint).toBeNull();
   });
 
   // A confirmed device-side cause downgrades an on-track plan and the row names

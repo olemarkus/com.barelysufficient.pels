@@ -10,8 +10,11 @@ import type { DeferredObjectiveCurrentHourClaim, DeferredObjectiveCurrentHourFac
 //
 //   `budget`        — the soft daily budget net of forecast background bound the
 //                     floor. The hour was zeroed by a FORECAST, not by physics.
-//   `time_capacity` — physical/time even with the budget cap lifted, which also
-//                     covers `limited_by_higher_priority_task`.
+//   `time_capacity` — physical/time even with the budget cap lifted.
+//   `higher_priority_load` — a higher-priority task's bookings or the devices
+//                     above's reserved steps leave it short
+//                     (`limited_by_higher_priority_task`); for this hour it is
+//                     as short as `time_capacity`.
 //
 // The other causes are deliberately absent. `step_power` (`feasible_above_floor`)
 // means the climbed-band probe already PROVED the booked hours finish the job once
@@ -22,6 +25,7 @@ import type { DeferredObjectiveCurrentHourClaim, DeferredObjectiveCurrentHourFac
 const CAUSES_THAT_NEED_EVERY_HOUR: ReadonlySet<DeferredObjectiveActivePlanFloorShortfallCause> = new Set([
   'budget',
   'time_capacity',
+  'higher_priority_load',
 ]);
 
 export const needsEveryHour = (cause: DeferredObjectiveActivePlanFloorShortfallCause): boolean => (
@@ -40,8 +44,8 @@ export const resolveCurrentHourBooking = (
   return currentBucket.plannedUsefulEnergyKWh > 0 ? 'booked_with_energy' : 'booked_without_energy';
 };
 
-// A task that physically cannot finish (`time_capacity`: the `cannot_meet` status,
-// or a shortfall a higher-priority task causes) never price-defers an hour it
+// A task that physically cannot finish (`time_capacity`: the `cannot_meet` status;
+// `higher_priority_load`: a shortfall higher-priority load causes) never price-defers an hour it
 // booked. Being ahead of this hour's milestone proves nothing when the milestones
 // lead to a miss: the cheaper hours are already booked to their cap, so coasting
 // moves no load into them and only widens the miss.
@@ -60,6 +64,7 @@ export const resolveCurrentHourBooking = (
 // its full element there, not just the booked floor.
 const CAUSES_THAT_BLOCK_PRICE_DEFERRAL: ReadonlySet<DeferredObjectiveActivePlanFloorShortfallCause> = new Set([
   'time_capacity',
+  'higher_priority_load',
 ]);
 
 /**

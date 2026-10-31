@@ -5,6 +5,7 @@ import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helpers/deferredObjectiveWiringFixtures';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { describe, expect, it } from 'vitest';
+import { resolveSmartTaskPreviewStatusCopy } from '../../packages/shared-domain/src/smartTaskCopy/createEditCopy';
 import {
   buildDeferredObjectiveDiagnostics as buildDeferredObjectiveDiagnosticsRaw,
   DeferredObjectiveActivePlanRecorder,
@@ -421,6 +422,45 @@ describe('previewDeferredObjectivePlan', () => {
     });
     expect(estimate.status).toBe('unavailable');
     expect(estimate.unavailableReason).toBe(reason);
+  });
+
+  // A lower-priority EV candidate beside a higher-priority EV task under a 1.5 kW
+  // limit: both plan at the same 1 kW rung, so they cannot share an hour.
+  const previewBesideHigherTask = (deadlineAtMs: number) => {
+    const candidate = evCandidate({ deadlineAtMs });
+    const highDevice = buildEvDevice({ priority: 1 });
+    const lowDevice = buildEvDevice({ id: 'ev-2', name: 'Second EV', priority: 2 });
+    const profile = buildEvPowerTracker().objectiveProfiles?.['ev-1'];
+    return runPreview({
+      deviceId: 'ev-2',
+      candidate,
+      ctx: {
+        device: lowDevice,
+        devices: [highDevice, lowDevice],
+        settings: buildSettings({ deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: NOW_MS + 5 * HOUR_MS }) }),
+        powerTracker: buildEvPowerTracker({ objectiveProfiles: { 'ev-1': profile!, 'ev-2': profile! } }),
+        dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+        priceOptimizationEnabled: true,
+        capacitySettings: { limitKw: 1.5, marginKw: 0 },
+      },
+    });
+  };
+
+  it('names higher-priority load, not time, when the window fits the need on its own', () => {
+    const estimate = previewBesideHigherTask(NOW_MS + 5 * HOUR_MS);
+    expect(estimate.status).toBe('at_risk');
+    expect(estimate.floorShortfallCause).toBe('higher_priority_load');
+    expect(resolveSmartTaskPreviewStatusCopy(estimate))
+      .toBe('At risk. Other devices use the power your limit allows before the deadline.');
+  });
+
+  it('keeps the time cause for a window shorter than the need, whatever runs above it', () => {
+    const estimate = previewBesideHigherTask(DEADLINE_TIGHT_MS);
+    // Planning without the task above still misses, so the overlay does not
+    // attribute the shortfall to it.
+    expect(estimate.status).toBe('cannot_meet');
+    expect(estimate.floorShortfallCause).toBe('time_capacity');
+    expect(resolveSmartTaskPreviewStatusCopy(estimate)).not.toContain('Other devices');
   });
 
   it('plans a lower-priority candidate against higher-priority smart-task reservations', () => {

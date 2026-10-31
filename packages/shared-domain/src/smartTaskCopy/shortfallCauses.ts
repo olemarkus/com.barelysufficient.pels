@@ -15,6 +15,9 @@ export const WHY_CANNOT_MEET_DEVICE = 'Not enough delivery before the deadline.'
 // "time OR budget" guess the user would otherwise have to resolve themselves.
 export const WHY_AT_RISK_BUDGET = 'Today’s daily budget may run out before the deadline.';
 const WHY_AT_RISK_TIME = 'Limited time left before the deadline.';
+// The window is long enough, but higher-priority tasks and devices use the room
+// the house limit leaves (`higher_priority_load`). Says nothing about time.
+export const WHY_AT_RISK_HIGHER_PRIORITY_LOAD = 'Other devices use the power your limit allows before the deadline.';
 // The budget squeezed the schedule without being the whole reason. Deliberately
 // does NOT point at Budget settings the way the sole-cause lines do — lifting the
 // budget would not close this gap, and the honest lever is the task's own
@@ -193,12 +196,19 @@ export const resolveSmartTaskBudgetRole = (revision: {
 
 /**
  * The at-risk why-line for a task with no live cause, hedged because the task
- * can still land. Shared by the widget row and the detail hero's reason line so
- * the two say the same thing about the same task.
+ * can still land. Shared by the widget row, the detail hero's reason line and
+ * the create preview so they say the same thing about the same task. The
+ * budget role comes first; otherwise the producer's `floorShortfallCause` says
+ * whether higher-priority load holds the task back, and only a task it does not
+ * explain is told its time is short.
  */
-export const resolveSmartTaskAtRiskWhy = (budgetRole: DeadlineBudgetRole): string => {
+export const resolveSmartTaskAtRiskWhy = (
+  budgetRole: DeadlineBudgetRole,
+  floorShortfallCause: DeferredObjectiveActivePlanFloorShortfallCause | undefined,
+): string => {
   if (budgetRole === 'sole') return WHY_AT_RISK_BUDGET;
   if (budgetRole === 'contributing') return WHY_AT_RISK_BUDGET_PARTIAL;
+  if (floorShortfallCause === 'higher_priority_load') return WHY_AT_RISK_HIGHER_PRIORITY_LOAD;
   return WHY_AT_RISK_TIME;
 };
 

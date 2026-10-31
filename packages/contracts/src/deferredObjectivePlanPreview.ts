@@ -10,7 +10,10 @@
 // future measurements, re-plans, or device response, so it is not a guarantee.
 // Legacy callers that omit the roster retain the isolated projection mode.
 
-import type { DeferredObjectivePlanInterval } from './deferredObjectiveActivePlans.js';
+import type {
+  DeferredObjectiveActivePlanFloorShortfallCause,
+  DeferredObjectivePlanInterval,
+} from './deferredObjectiveActivePlans.js';
 import type { PowerLimitAxis } from './capacitySettings.js';
 import type { DeferredObjectiveSettingsEntry } from './deferredObjectiveSettings.js';
 
@@ -77,6 +80,11 @@ export type DeferredObjectivePlanPreviewEstimate = {
   // Resolved by the horizon producer; preview surfaces do not infer a cause
   // from the schedule or from permission settings. Unavailable previews use none.
   budgetRole: 'none' | 'sole' | 'contributing';
+  // The horizon producer's verdict on what bound the floor, the same value an
+  // active plan's revision carries. Omitted when the floor was not short, as on
+  // the revision. Lets the preview say that higher-priority load
+  // (`higher_priority_load`), not a short window, holds the task back.
+  floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
   // Present when `status === 'unavailable'`. Lets small preview surfaces explain
   // the real missing input instead of blaming every unavailable preview on
   // missing prices.

@@ -15,6 +15,10 @@ import type {
 //   `estimate`      = within the producer's variance buffer; the mean rate
 //                     would fit and only the `k·SE` padding causes the gap.
 //   `time_capacity` = physical/time even uncapped.
+//   `higher_priority_load` = the window is long enough, but higher-priority
+//                     tasks and devices take the room the house limit leaves
+//                     (`contentionOverlay.ts` proves it by planning without
+//                     them).
 //   `none`          = no shortfall (target met or `unplannedUsefulEnergyKWh
 //                     <= epsilonKWh`), or the reasonCode is one of the
 //                     non-shortfall variants (`planned_with_margin`,
@@ -30,7 +34,7 @@ const FLOOR_SHORTFALL_CAUSE_BY_REASON: Record<string, DeferredObjectiveActivePla
   limited_by_daily_budget: 'budget',
   feasible_above_floor: 'step_power',
   estimate_uncertain: 'estimate',
-  limited_by_higher_priority_task: 'time_capacity',
+  limited_by_higher_priority_task: 'higher_priority_load',
   target_cannot_be_met: 'time_capacity',
 };
 

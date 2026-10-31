@@ -3293,6 +3293,7 @@ describe('resolveCannotMeetRecourse', () => {
       'cannot_meet' as const,
       'contributing' as const,
       null,
+      'time_capacity',
     );
     expect(meta).toBe(labels.cannotMeetDailyBudgetContributed);
     // Distinct from the sole-cause line, which promises a fix this case lacks.
@@ -3320,9 +3321,9 @@ describe('resolveCannotMeetRecourse', () => {
 
   it('explains a cannot-finish hero without a live cause by the time or the budget', async () => {
     const { resolveCannotMeetMeta } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveCannotMeetMeta(labels, 'cannot_meet' as const, 'none' as const, null))
+    expect(resolveCannotMeetMeta(labels, 'cannot_meet' as const, 'none' as const, null, 'time_capacity'))
       .toContain('Not enough time');
-    expect(resolveCannotMeetMeta(labels, 'cannot_meet' as const, 'sole' as const, null))
+    expect(resolveCannotMeetMeta(labels, 'cannot_meet' as const, 'sole' as const, null, 'budget'))
       .toContain('daily budget');
   });
 
@@ -3333,7 +3334,7 @@ describe('resolveCannotMeetRecourse', () => {
   ] as const)('explains a confirmed %s with its own reason and no settings button', async (code, reason) => {
     const { resolveCannotMeetRecourse, resolveCannotMeetMeta } = await import('../src/ui/deadlinePlanHero.ts');
     const liveCause = resolveSmartTaskLiveCause(code, null, 'none');
-    expect(resolveCannotMeetMeta(labels, 'cannot_meet' as const, 'sole' as const, liveCause)).toContain(reason);
+    expect(resolveCannotMeetMeta(labels, 'cannot_meet' as const, 'sole' as const, liveCause, 'budget')).toContain(reason);
     expect(resolveCannotMeetRecourse(
       labels,
       'at_risk' as const,
@@ -3348,8 +3349,11 @@ describe('resolveCannotMeetRecourse', () => {
   // budget cause keeps its own sentence and the Open Budget button.
   it('explains a time-only at-risk hero with the widget\'s hedged line and no button', async () => {
     const { resolveCannotMeetRecourse, resolveCannotMeetMeta } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveCannotMeetMeta(labels, 'at_risk', 'none', null))
+    expect(resolveCannotMeetMeta(labels, 'at_risk', 'none', null, 'time_capacity'))
       .toBe('Limited time left before the deadline.');
+    // Higher-priority load holding a task with time to spare is not a time claim.
+    expect(resolveCannotMeetMeta(labels, 'at_risk', 'none', null, 'higher_priority_load'))
+      .toBe('Other devices use the power your limit allows before the deadline.');
     expect(resolveCannotMeetRecourse(
       labels,
       'at_risk',

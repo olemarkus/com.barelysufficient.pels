@@ -235,11 +235,7 @@ const renderOkPreview = (targets: FlowTargets, response: OkPreview): void => {
   // for the scheduled buckets, which suppresses both the cost line and its
   // "cheapest hours" subtext.
   const costLine = scheduled ? formatPreviewCostLine(response.estimate) : null;
-  const verdictLine = resolveSmartTaskPreviewStatusCopy(
-      response.estimate.status,
-      response.estimate.unavailableReason,
-      response.estimate.budgetRole,
-    );
+  const verdictLine = resolveSmartTaskPreviewStatusCopy(response.estimate);
   setLine(targets.previewFeasibilityEl, estimated ? verdictLine : null);
   setLine(targets.previewCostEl, costLine);
   setLine(

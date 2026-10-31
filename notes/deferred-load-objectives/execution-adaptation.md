@@ -171,8 +171,8 @@ producer-resolved flag + the same per-cycle admission release:
   (`hasCheaperEnergyHourAhead`, `priceBand.ts`), on the plan's `currentHourFacts`. The
   frozen read states the same two facts, replaying the `cheaperHourAhead` the `:58` settle stamped.
 - `resolveCurrentHourClaim` (`currentHourClaim.ts`) owns the rule: a booked hour is `released` when
-  both facts hold, unless the task is under `time_capacity` (it cannot finish at all, or a
-  higher-priority task's claims leave it short). Being ahead of a
+  both facts hold, unless the task is under `time_capacity` (it cannot finish at all) or
+  `higher_priority_load` (higher-priority tasks and devices leave it short). Being ahead of a
   milestone proves nothing when the milestones lead to a miss: the cheaper hours are already booked
   to their cap, so coasting moves no load into them and only widens the miss. Admission maps that claim 1:1
   (`admission.ts`) and adds only the release ROUTING, idling the device this cycle
@@ -394,7 +394,7 @@ device is driven at its real element (≫ the floor step), so it crosses that lo
 delivering only its **floor booking** (~`FLOOR_KW` for the hour). The moment it crosses,
 `isAheadOfHourMilestone` flips true; with a meaningfully cheaper hour ahead, the claim resolves to
 `released` and admission idles the device for the rest of the hour. (Price deferral does not apply
-under `time_capacity`, when the task cannot finish at all or is limited by a higher-priority task:
+under `time_capacity` or `higher_priority_load`, when the task cannot finish at all or is limited by a higher-priority task:
 then the device keeps heating through the hour, because coasting would only widen the miss. The
 common cold start is climbable, `step_power`, and keeps it.) So:
 

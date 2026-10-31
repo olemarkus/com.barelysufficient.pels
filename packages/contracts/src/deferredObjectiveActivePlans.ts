@@ -51,8 +51,14 @@ export type DeferredObjectiveActivePlanSpeedMode = 'auto' | 'learning';
 // Mirrors the planner's `statusDetail` mapping in
 // `lib/objectives/deferredObjectives/floorShortfallCause.ts` (`limited_by_daily_budget`
 // → `budget`, `feasible_above_floor` → `step_power`, `estimate_uncertain` →
-// `estimate`, `limited_by_higher_priority_task` / `target_cannot_be_met` →
-// `time_capacity`, anything else → `none`).
+// `estimate`, `limited_by_higher_priority_task` → `higher_priority_load`,
+// `target_cannot_be_met` → `time_capacity`, anything else → `none`).
+// `higher_priority_load` and `time_capacity` both mean the task needs every hour
+// it can get; they differ in what to tell the owner. `higher_priority_load` is
+// proven by the contention overlay: without the higher-priority tasks' bookings
+// and the devices above's reserved steps the same need fits, so the window is
+// long enough and other devices take the room the house limit leaves.
+// `time_capacity` is a window too short even then.
 // Persisted so the hero copy resolver can route a `cannot_meet` / `at_risk` plan
 // to the budget-bound recourse (`Open Budget`) without re-deriving cause from
 // `dailyBudgetExhaustedBucketCount` — which fails on the per-bucket background
@@ -68,6 +74,7 @@ export type DeferredObjectiveActivePlanFloorShortfallCause =
   | 'step_power'
   | 'estimate'
   | 'time_capacity'
+  | 'higher_priority_load'
   | 'none';
 
 // One booked time interval. The historical `hours` array name is retained in

@@ -1132,7 +1132,12 @@ as live risk flipped the chip (and the status Flow) on every shed cycle. They st
 past-task explanation.
 
 An at-risk task with no live cause and no budget cause uses the widget's hedged line on the detail
-hero too (`Limited time left before the deadline.`), with no device button; the `Not enough time …
+hero too (`Limited time left before the deadline.`), with no device button. When higher-priority
+tasks and devices take the room the house limit leaves (`floorShortfallCause:
+higher_priority_load`: the window would fit the need without them), that line is `Other devices use
+the power your limit allows before the deadline.` instead, and the create preview reads `At risk.
+Other devices use the power your limit allows before the deadline.`, because the window is not what
+is short; the `Not enough time …
 Lower the target` sentence and `Adjust device` belong to `Cannot finish`. A budget cause keeps the
 hero's own sentence on an at-risk task as well (`Today's daily budget is fully booked. Lower it …`,
 or the contributing variant), because it names what to change on the Budget tab, which `Open

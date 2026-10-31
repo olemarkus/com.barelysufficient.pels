@@ -107,7 +107,7 @@ An interactive widget that creates a Smart task in a few taps: pick an eligible 
 The preview is honest about whether the task can be created:
 
 - **Cannot finish** warns that the goal may not be reached in time. Choose **Edit task** to adjust it or **Create anyway** to let PELS work toward the goal within your power limits.
-- **At risk** means creation is allowed, but the task may need most of the available window.
+- **At risk** means creation is allowed, but the task may need most of the available window, or other devices may use the power your limit allows before the deadline.
 - **Satisfied** means the device already meets the goal.
 - If PELS cannot preview yet, the widget says which input is missing where possible, such as prices, a current reading, or price-aware planning.
 

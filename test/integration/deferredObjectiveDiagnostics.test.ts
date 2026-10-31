@@ -1818,6 +1818,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   it('claims an unbooked frozen hour for a cause that needs every hour', () => {
     expect(frozenClaimForCause('budget')).toBe('claimed');
     expect(frozenClaimForCause('time_capacity')).toBe('claimed');
+    expect(frozenClaimForCause('higher_priority_load')).toBe('claimed');
   });
 
   it('releases an unbooked frozen hour for a cause the task can finish without', () => {

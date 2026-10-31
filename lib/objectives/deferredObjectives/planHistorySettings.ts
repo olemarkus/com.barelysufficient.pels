@@ -123,6 +123,7 @@ const FLOOR_SHORTFALL_CAUSES: Record<DeferredObjectiveActivePlanFloorShortfallCa
   step_power: true,
   estimate: true,
   time_capacity: true,
+  higher_priority_load: true,
   none: true,
 };
 

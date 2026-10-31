@@ -57,11 +57,7 @@ export const toSmartTaskPreviewView = (
       costUnit: response.estimate.costUnit,
     })
     : null,
-  verdictLine: resolveSmartTaskPreviewStatusCopy(
-    response.estimate.status,
-    response.estimate.unavailableReason,
-    response.estimate.budgetRole,
-  ),
+  verdictLine: resolveSmartTaskPreviewStatusCopy(response.estimate),
   verdictTone: resolveSmartTaskPreviewTone(response.estimate.status),
   cannotFinish: response.estimate.status === 'cannot_meet',
   caveat: CREATE_SMART_TASK_WIDGET_COPY.estimateCaveat,
