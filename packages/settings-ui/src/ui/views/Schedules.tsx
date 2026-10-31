@@ -96,7 +96,9 @@ const ScheduleRow = ({ entry, view }: { entry: ScheduleEntry; view: View }) => {
       <div class="schedule-row__footer" id={`schedule-status-${schedule.id}`}>
         {entry.reason && <p>{entry.reason}</p>}
         {entry.nextAtMs !== null && <p>Next: {entry.nextLabel}</p>}
-        {entry.lastResult && <p class="pels-card-supporting">Last: {entry.lastResult}</p>}
+        {entry.lastResult && <p class="pels-card-supporting">
+          {entry.lastLabel ? `Last run ${entry.lastLabel}: ` : 'Last: '}{entry.lastResult}
+        </p>}
         {grantedLine !== null && <p class="pels-card-supporting">
           {SMART_TASK_EXTRA_PERMISSIONS_TITLE}: {grantedLine}
         </p>}

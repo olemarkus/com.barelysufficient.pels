@@ -14,7 +14,7 @@ const entry: ScheduleEntry = {
     condition: { type: 'include', modes: ['Old Night'] },
   },
   modeReferences: [{ stored: 'Old Home', resolved: 'Home' }, { stored: 'Old Night', resolved: 'Night' }],
-  state: 'on', reason: '', nextAtMs: 1, nextLabel: 'Tomorrow 22:00', lastResult: '',
+  state: 'on', reason: '', nextAtMs: 1, nextLabel: 'Tomorrow 22:00', lastResult: '', lastLabel: '',
 };
 const actions: SchedulesActions = {
   onRetry: vi.fn(), onNew: vi.fn(), onEdit: vi.fn(), onBack: vi.fn(), onDraftChange: vi.fn(),

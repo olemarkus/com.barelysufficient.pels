@@ -9181,6 +9181,16 @@ md-switch {
   margin-bottom: 0;
 }
 
+/* Restore the M3 lead/trail padding that Homey's host `* { padding: 0 }` reset
+   removes (see `.homes-settings md-filled-button`). */
+#schedules-panel .schedules md-filled-button {
+  padding-inline: var(--spacing-6);
+}
+
+#schedules-panel .schedules md-text-button {
+  padding-inline: var(--spacing-3);
+}
+
 #schedules-panel .schedules-toolbar,
 #schedules-panel .schedules-filters,
 #schedules-panel .schedules-action-choice,

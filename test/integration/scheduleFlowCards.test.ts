@@ -22,7 +22,7 @@ const taskSchedule = (id = 'morning-water'): Schedule => ({
   },
 });
 const entry = (schedule: Schedule, state: ScheduleEntry['state'] = 'on'): ScheduleEntry => ({
-  schedule, modeReferences: [], state, reason: '', nextAtMs: 1, nextLabel: 'Tomorrow 21:00', lastResult: '',
+  schedule, modeReferences: [], state, reason: '', nextAtMs: 1, nextLabel: 'Tomorrow 21:00', lastResult: '', lastLabel: '',
 });
 const waterHeater = (): SmartTaskCandidateDevice => partialDouble<SmartTaskCandidateDevice>({
   deviceId: 'water-heater', deviceName: 'Water heater', unitSymbol: '°C',

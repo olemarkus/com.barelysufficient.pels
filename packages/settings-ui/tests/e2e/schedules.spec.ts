@@ -52,7 +52,7 @@ const installSchedules = async (page: Page): Promise<void> => {
           reason: !schedule.enabled ? 'No future actions.' : paused ? schedule.action.type === 'mode'
             ? 'Scheduled mode changes are off.' : 'Scheduled tasks for Water heater are off.' : '',
           nextAtMs: state === 'on' ? Date.now() + 3_600_000 : null,
-          nextLabel: state === 'on' ? `Tomorrow ${schedule.at}` : '', lastResult: '',
+          nextLabel: state === 'on' ? `Tomorrow ${schedule.at}` : '', lastResult: '', lastLabel: '',
         }];
       });
       return { ok: true, data: { timeZone: 'Europe/Oslo', modes: ['Home', 'Away', 'Night'], controls, entries } };

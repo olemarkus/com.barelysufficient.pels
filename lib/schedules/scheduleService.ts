@@ -12,6 +12,7 @@ import type { SettingsPort } from '../ports/homeyRuntime';
 import { getLogger } from '../logging/logger';
 import { readSettingsKeyList } from '../utils/settingsKeyList';
 import type { TimerRegistry } from '../utils/timerRegistry';
+import { ScheduleSkip } from './scheduleSkip';
 import type { ScheduleReceipt, ScheduleReceiptStore } from './scheduleReceipts';
 import { dueScheduleOccurrence, nextScheduleOccurrence, scheduleInstant } from './scheduleTime';
 
@@ -19,6 +20,24 @@ export const SCHEDULE_PREFIX = 'schedule.';
 export const SCHEDULE_MODES_ENABLED = 'schedule_modes_enabled';
 export const SCHEDULE_TASK_ENABLED_PREFIX = 'schedule_task_enabled.';
 const logger = getLogger('schedules');
+// PELS ends a task within its 5-minute disarm grace after the ready-by. A create
+// refused meanwhile waits for that instead of losing the occurrence.
+const BUSY_RETRY_WINDOW_MS = 6 * 60_000;
+const WAITING_RESULT = "Waiting for the device's current Smart task to end.";
+const BUSY_RESULT = 'Skipped: this device already has a Smart task.';
+
+/** A consumed occurrence whose create waits for the device's ended task to close. */
+type PendingRun = { schedule: Schedule; consumed: ScheduleReceipt; atMs: number };
+
+const formatScheduleTime = (atMs: number, timeZone: string): string => new Intl.DateTimeFormat('en-GB', {
+  timeZone, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+}).format(new Date(atMs));
+
+const occurrenceLabel = (localOccurrence: string, timeZone: string): string => {
+  const [date, at] = localOccurrence.split('|');
+  const atMs = date && at ? scheduleInstant(date, at, timeZone) : undefined;
+  return atMs === undefined ? '' : formatScheduleTime(atMs, timeZone);
+};
 
 /** One catalog generation for a complete settings projection. */
 type ScheduleCatalog = { modes: string[]; taskDevices: SettingsUiSmartTaskDevicesResponse };
@@ -51,6 +70,7 @@ export class ScheduleService {
   private schedules = new Map<string, Schedule>();
   private controls: ScheduleControls = { modeChangesEnabled: true, disabledTaskDeviceIds: [] };
   private readonly armedAt = new Map<string, number>();
+  private readonly pending = new Map<string, PendingRun>();
   private lastCheckAt = 0;
   private ticking = false;
   private running = false;
@@ -76,6 +96,7 @@ export class ScheduleService {
       logger.error({ event: 'schedule_stop_drain_failed', err: error });
     }
     this.lastCheckAt = 0;
+    this.pending.clear();
   }
 
   onSettingsChanged(key: string): void {
@@ -126,10 +147,13 @@ export class ScheduleService {
     for (const schedule of next.values()) {
       const changed = JSON.stringify(this.schedules.get(schedule.id)) !== JSON.stringify(schedule);
       const resumed = groupPaused(schedule, this.controls) && !groupPaused(schedule, controls);
+      const paused = !groupPaused(schedule, this.controls) && groupPaused(schedule, controls);
       if (changed || resumed) this.armedAt.set(schedule.id, now);
+      // Any edit, enable change or pause ends a waiting retry; re-enabling arms only future triggers.
+      if (changed || resumed || paused) this.pending.delete(schedule.id);
     }
     for (const id of this.schedules.keys()) {
-      if (!next.has(id)) { this.armedAt.delete(id); this.port.receipts.delete(id); }
+      if (!next.has(id)) { this.armedAt.delete(id); this.pending.delete(id); this.port.receipts.delete(id); }
     }
   }
 
@@ -172,7 +196,7 @@ export class ScheduleService {
       logger.error({ event: 'schedule_entry_unavailable', scheduleId: schedule.id, err: error });
       return {
         schedule: structuredClone(schedule), modeReferences: [],
-        state: 'invalid', nextAtMs: null, nextLabel: '', lastResult: '',
+        state: 'invalid', nextAtMs: null, nextLabel: '', lastResult: '', lastLabel: '',
         reason: 'Schedule details are temporarily unavailable. Try again.',
       };
     }
@@ -182,10 +206,10 @@ export class ScheduleService {
     const now = this.port.getNowMs();
     const timeZone = this.port.clock.getTimezone();
     const receipt = this.port.receipts.read(schedule.id);
-    const lastResult = receipt?.lastResult ?? '';
     const base = {
       schedule: structuredClone(schedule), modeReferences: this.modeReferences(schedule, catalog.modes),
-      nextAtMs: null, nextLabel: '', lastResult,
+      nextAtMs: null, nextLabel: '', lastResult: this.lastResult(schedule.id, receipt),
+      lastLabel: receipt ? occurrenceLabel(receipt.localOccurrence, timeZone) : '',
     };
     if (!schedule.enabled) return { ...base, state: 'off', reason: 'No future triggers' };
     const next = nextScheduleOccurrence(schedule, now, timeZone, receipt?.localOccurrence);
@@ -202,12 +226,14 @@ export class ScheduleService {
         ? 'Scheduled mode changes are off' : 'Scheduled Smart tasks for this device are off',
     };
     return {
-      ...base, state: 'on', reason: '', nextAtMs: next.atMs,
-      nextLabel: new Intl.DateTimeFormat('en-GB', {
-        timeZone, weekday: 'short', day: 'numeric', month: 'short',
-        hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-      }).format(new Date(next.atMs)),
+      ...base, state: 'on', reason: '', nextAtMs: next.atMs, nextLabel: formatScheduleTime(next.atMs, timeZone),
     };
+  }
+
+  /** A waiting result whose retry ended with a stop or restart reads as the skip it became. */
+  private lastResult(id: string, receipt: ScheduleReceipt | undefined): string {
+    if (!receipt) return '';
+    return receipt.lastResult === WAITING_RESULT && !this.pending.has(id) ? BUSY_RESULT : receipt.lastResult;
   }
 
   write(raw: unknown): void {
@@ -305,6 +331,7 @@ export class ScheduleService {
     this.lastCheckAt = Math.max(after, now);
     if (after === 0 || now < after) return;
     this.load();
+    if (this.pending.size > 0) await this.retryPending();
     for (const schedule of this.dueSchedules(after, now)) {
       if (!this.running) break;
       try { await this.runDue(schedule, after); } catch (error) {
@@ -344,8 +371,31 @@ export class ScheduleService {
     // Persist synchronous skips and read failures before yielding or attempting another settings read.
     this.port.receipts.write(schedule.id, consumed);
     if (lastResult) return;
-    const result = await this.execute(schedule, occurrence.atMs);
-    this.finalize(schedule, consumed, result);
+    await this.run({ schedule, consumed, atMs: occurrence.atMs });
+  }
+
+  private async run(pending: PendingRun): Promise<void> {
+    const result = await this.execute(pending.schedule, pending.atMs);
+    if (result === undefined) this.pending.set(pending.schedule.id, pending);
+    this.finalize(pending.schedule, pending.consumed, result ?? WAITING_RESULT);
+  }
+
+  /** Retry consumed occurrences only while their schedule and receipt are unchanged. */
+  private async retryPending(): Promise<void> {
+    for (const pending of [...this.pending.values()]) {
+      if (!this.running) return;
+      const { schedule, consumed } = pending;
+      this.pending.delete(schedule.id);
+      if (this.port.receipts.read(schedule.id)?.localOccurrence !== consumed.localOccurrence) continue;
+      // A late tick never creates after the window; the device kept its task throughout it.
+      if (this.port.getNowMs() >= pending.atMs + BUSY_RETRY_WINDOW_MS) {
+        this.finalize(schedule, consumed, BUSY_RESULT);
+        continue;
+      }
+      try { await this.run(pending); } catch (error) {
+        logger.error({ event: 'schedule_run_failed', scheduleId: schedule.id, err: error });
+      }
+    }
   }
 
   private finalize(schedule: Schedule, consumed: ScheduleReceipt, result: string): void {
@@ -385,17 +435,21 @@ export class ScheduleService {
     return matches ? '' : 'Skipped: the current mode did not match the schedule condition.';
   }
 
-  private async execute(schedule: Schedule, atMs: number): Promise<string> {
+  /** The result to record, or undefined while a refused create may still be retried. */
+  private async execute(schedule: Schedule, atMs: number): Promise<string | undefined> {
     try {
       await this.port.execute(schedule, atMs);
       logger.info({ event: 'schedule_triggered', scheduleId: schedule.id, scheduledAtMs: atMs });
       return schedule.action.type === 'mode' ? 'Mode changed' : 'Smart task created';
     } catch (error) {
+      const busy = error instanceof ScheduleSkip && error.deviceBusy;
+      if (busy && this.port.getNowMs() < atMs + BUSY_RETRY_WINDOW_MS) return undefined;
       return this.failureResult(schedule, error);
     }
   }
 
   private failureResult(schedule: Schedule, error: unknown): string {
+    if (error instanceof ScheduleSkip) return error.message;
     logger.error({ event: 'schedule_run_failed', scheduleId: schedule.id, err: error });
     return error instanceof Error
       ? `Could not run: ${error.message}`.slice(0, 240) : 'Could not run this schedule.';
