@@ -176,6 +176,13 @@ export type ExecutableObservedSteppedLoadState = {
   stepId?: string;
   reportedStepId?: string;
   /**
+   * The exact target-power watts behind `reportedStepId`, before rung matching
+   * (`ReportedStepObservedProbe.reportedStepPowerW`). Absent for a device whose
+   * report is not a target-power reading. A `current_before_start` device needs
+   * it to tell its prepared rung from an off-ladder limit read as that rung.
+   */
+  reportedStepPowerW?: number;
+  /**
    * Producer-resolved current draw (`getCurrentDrawKw`), REQUIRED. Read by
    * exactly one consumer: `resolveObservedStepForShed` prices an unknown-step
    * `set_step` shed from it when no step id is available. It used to be an
