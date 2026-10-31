@@ -17,7 +17,7 @@ const modeSchedule = (id = 'morning'): Schedule => ({
 const fixture = () => {
   let now = Date.parse('2026-10-28T08:59:00Z');
   let mode = 'Night';
-  const values = new Map<string, unknown>([['sentinel', true]]);
+  const values = new Map<string, unknown>();
   const receipts = new Map<string, ScheduleReceipt>();
   const execute = vi.fn(async (_schedule: Schedule, _at: number) => {});
   const port: ScheduleRuntimePort = {
@@ -41,6 +41,10 @@ const fixture = () => {
 };
 
 describe('schedule owner', () => {
+  it('reads a store with no settings at all as no schedules', () => {
+    expect(fixture().create().read().entries).toEqual([]);
+  });
+
   it('consumes before execution, fires once, and leaves a later manual mode alone', async () => {
     const f = fixture();
     f.values.set('schedule.morning', modeSchedule());

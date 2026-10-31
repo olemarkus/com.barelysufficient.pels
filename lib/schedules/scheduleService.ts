@@ -10,6 +10,7 @@ import {
 } from '../../packages/shared-domain/src/settings/schedules';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { getLogger } from '../logging/logger';
+import { readSettingsKeyList } from '../utils/settingsKeyList';
 import type { TimerRegistry } from '../utils/timerRegistry';
 import type { ScheduleReceipt, ScheduleReceiptStore } from './scheduleReceipts';
 import { dueScheduleOccurrence, nextScheduleOccurrence, scheduleInstant } from './scheduleTime';
@@ -90,8 +91,9 @@ export class ScheduleService {
   }
 
   private loadConfiguration(): void {
-    const keys = this.port.settings.getKeys();
-    if (!Array.isArray(keys) || keys.length === 0) throw new Error('Schedules are temporarily unavailable. Try again.');
+    const keyList = readSettingsKeyList(this.port.settings);
+    if (keyList.status === 'unavailable') throw new Error('Schedules are temporarily unavailable. Try again.');
+    const { keys } = keyList;
     const next = new Map<string, Schedule>();
     const deleted: string[] = [];
     for (const key of keys.filter((entry) => entry.startsWith(SCHEDULE_PREFIX))) {
@@ -337,10 +339,10 @@ export class ScheduleService {
 
   private finalize(schedule: Schedule, consumed: ScheduleReceipt, result: string): void {
     try {
-      const keys = this.port.settings.getKeys();
-      if (!Array.isArray(keys) || keys.length === 0) throw new Error('Schedule settings are unavailable');
+      const keyList = readSettingsKeyList(this.port.settings);
+      if (keyList.status === 'unavailable') throw new Error('Schedule settings are unavailable');
       const key = `${SCHEDULE_PREFIX}${schedule.id}`;
-      if (!keys.includes(key)) return;
+      if (!keyList.keys.includes(key)) return;
       const raw = this.port.settings.get(key);
       if (isScheduleDeletion(raw) || JSON.stringify(parseSchedule(raw)) !== JSON.stringify(schedule)) return;
       const receipt = this.port.receipts.read(schedule.id);
