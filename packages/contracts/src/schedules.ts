@@ -26,6 +26,8 @@ export type ScheduleEntry = {
   nextAtMs: number | null;
   nextLabel: string;
   lastResult: string;
+  /** When the last result's occurrence was due, in the Homey time zone; empty before the first run. */
+  lastLabel: string;
 };
 export type SchedulesSnapshot = {
   timeZone: string; modes: string[]; controls: ScheduleControls; entries: ScheduleEntry[];

@@ -259,6 +259,8 @@ export const initSchedulesNavigation = (showPanel: (panel: string) => void, clos
     window.history.replaceState(
       window.history.state, '', `${window.location.pathname}?${params}${window.location.hash}`,
     );
+    // A link names its own editor; a draft left behind on another visit is not it.
+    view = { ...view, error: '', editor: null };
     updateEditorFromRoute();
     paint();
   });

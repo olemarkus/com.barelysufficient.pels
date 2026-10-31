@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ScheduleActionExecutor } from '../../lib/schedules/scheduleActions';
+import { ScheduleSkip } from '../../lib/schedules/scheduleSkip';
 import type { Schedule } from '../../packages/contracts/src/schedules';
 import type { SmartTaskCreateLaneHost } from '../../lib/objectives/deferredObjectives/smartTaskCreateLane';
 
@@ -40,7 +41,7 @@ describe('scheduled action integration', () => {
     const commands = host();
     commands.createNewDeferredObjective.mockReturnValue({ ok: false, reason: 'task_exists' });
     await expect(new ScheduleActionExecutor(commands, { getTimezone: () => 'Europe/Oslo' })
-      .execute(schedule, Date.parse('2026-10-28T20:00:00Z'))).rejects.toThrow('already has a Smart task');
+      .execute(schedule, Date.parse('2026-10-28T20:00:00Z'))).rejects.toMatchObject({ deviceBusy: true });
     expect(commands.createNewDeferredObjective).toHaveBeenCalledTimes(1);
     expect(commands.handleOperatingModeChange).not.toHaveBeenCalled();
   });
@@ -50,8 +51,14 @@ describe('scheduled action integration', () => {
     await executor.execute({ ...schedule, action: { type: 'mode', mode: 'Night' } }, Date.now());
     expect(commands.handleOperatingModeChange).toHaveBeenCalledExactlyOnceWith('Night');
     commands.resolveSmartTaskHomeScope.mockReturnValue('sub_home');
-    await expect(executor.execute(schedule, Date.now())).rejects.toThrow('not available');
+    await expect(executor.execute(schedule, Date.now())).rejects.toThrow(ScheduleSkip);
     expect(commands.createNewDeferredObjective).not.toHaveBeenCalled();
+  });
+  it('words a refused create without its reason code', async () => {
+    const commands = host();
+    commands.createNewDeferredObjective.mockReturnValue({ ok: false, reason: 'device_not_planned' });
+    await expect(new ScheduleActionExecutor(commands, { getTimezone: () => 'Europe/Oslo' })
+      .execute(schedule, Date.parse('2026-10-28T20:00:00Z'))).rejects.toThrow('PELS does not manage this device.');
   });
   it('rejects a ready-by DST gap without moving the promised same-day deadline to tomorrow', async () => {
     vi.setSystemTime(Date.parse('2026-03-29T00:00:00Z'));
@@ -84,7 +91,7 @@ describe('scheduled action integration', () => {
       } } };
       vi.setSystemTime(Date.parse(now));
       await expect(new ScheduleActionExecutor(commands, { getTimezone: () => 'Europe/Oslo' })
-        .execute(short, Date.parse('2026-10-28T20:00:00Z'))).rejects.toThrow('ready-by time has passed');
+        .execute(short, Date.parse('2026-10-28T20:00:00Z'))).rejects.toThrow('ready-by time had already passed');
       expect(commands.createNewDeferredObjective).not.toHaveBeenCalled();
       expect(commands.handleOperatingModeChange).not.toHaveBeenCalled();
     },

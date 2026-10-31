@@ -28,7 +28,7 @@ const schedule: Schedule = {
 const ownerRead = (): SchedulesSnapshot => ({
   timeZone: 'Europe/Oslo', modes: ['Home', 'Night'],
   controls: { modeChangesEnabled: true, disabledTaskDeviceIds: [] },
-  entries: [{ schedule: structuredClone(schedule), modeReferences: [], state: 'on', reason: '', nextAtMs: 1, nextLabel: 'Tomorrow 22:00', lastResult: '' }],
+  entries: [{ schedule: structuredClone(schedule), modeReferences: [], state: 'on', reason: '', nextAtMs: 1, nextLabel: 'Tomorrow 22:00', lastResult: '', lastLabel: '' }],
 });
 let read = ownerRead();
 
@@ -190,6 +190,37 @@ describe('Schedule settings bridge', () => {
     renders.at(-1)?.actions.onSave();
     await vi.waitFor(() => expect(renders.at(-1)?.snapshot.error).toBe('Choose an available mode.'));
     expect(setSettingMock).not.toHaveBeenCalled();
+  });
+
+  it('opens a device link on that device after an unsaved draft for another device', async () => {
+    const device = (deviceId: string, deviceName: string): SmartTaskCandidateDevice => ({
+      deviceId, deviceName, kind: 'temperature', group: 'heating', unitSymbol: '°C', goalMin: 30, goalMax: 75,
+      goalStep: 0.5, defaultGoal: 65, currentValue: 40, supportsLimitLowerPriority: false,
+      offersQuickTargets: false, otherGoals: [],
+    });
+    callApiMock.mockImplementation(async (_method: string, path: string) => {
+      if (path === SETTINGS_UI_DEVICES_PATH) return { schedules: { ok: true, data: structuredClone(read) } };
+      if (path === SETTINGS_UI_SMART_TASK_DEVICES_PATH) {
+        return { state: 'ready', devices: [device('tank', 'Water heater'), device('floor', 'Bathroom floor')] };
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    controller.initSchedulesNavigation(() => {}, () => {});
+    const link = (deviceId: string): HTMLElement => {
+      const anchor = document.createElement('a');
+      anchor.dataset.openSchedules = '';
+      anchor.dataset.scheduleDevice = deviceId;
+      document.body.append(anchor);
+      return anchor;
+    };
+    await controller.refreshSchedules();
+    link('tank').click();
+    expect(renders.at(-1)?.snapshot.editor?.draft.deviceId).toBe('tank');
+    // Leaving through the shell navigation drops the route but not the unsaved draft.
+    window.history.replaceState({}, '', '/?page=overview');
+    link('floor').click();
+    expect(renders.at(-1)?.snapshot.editor?.draft).toMatchObject({ deviceId: 'floor', name: 'Bathroom floor task' });
+    controller.backFromScheduleEditor();
   });
 
   it('does not turn an unavailable device deep link into an unrelated mode schedule', async () => {

@@ -27,7 +27,7 @@ const savedEntry = (): ScheduleEntry => ({
       exemptFromBudget: true, limitLowerPriorityDevices: true, pauseLowerPriorityDevices: false,
     } },
   },
-  modeReferences: [], state: 'on', reason: '', nextAtMs: 1, nextLabel: 'Tomorrow 21:00', lastResult: '',
+  modeReferences: [], state: 'on', reason: '', nextAtMs: 1, nextLabel: 'Tomorrow 21:00', lastResult: '', lastLabel: '',
 });
 const snapshotFor = (entry: ScheduleEntry): SchedulesViewSnapshot => ({
   load: 'ready', busy: false, error: '', filter: 'all', devices: [HEATER],
