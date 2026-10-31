@@ -2,7 +2,15 @@ import type { LimitBreach } from './rebuildSignal';
 
 /** The rebuild that last ran: when, and what the policy thresholds the next sample against. */
 export type LastRebuild = {
+  /** Monotonic dispatch time: what intervals, the execution floor and backoff measure from. */
   atMs: number;
+  /**
+   * The wall-clock planning period the rebuild was dispatched in
+   * (`resolvePlanningPeriod`). Kept beside `atMs` rather than derived from it:
+   * the monotonic clock starts at process start, so its quarters are not the
+   * Homey's quarters.
+   */
+  planningPeriod: number;
   powerW: number;
   /**
    * Stamped when the rebuild COMPLETES, from the signal it ran for. While it

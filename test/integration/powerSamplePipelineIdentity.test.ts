@@ -51,6 +51,7 @@ const buildPipeline = (
       getScheduler: () => scheduler,
       getCapacityGuard: () => capacityGuard,
       getNowMs: Date.now,
+      getWallClockMs: Date.now,
       rebuildPlanFromCache: async () => ({ actionChanged: false, appliedActions: false, failed: false }),
     },
   );
