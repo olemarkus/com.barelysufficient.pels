@@ -1561,7 +1561,6 @@ describe('Price optimization', () => {
     expect(firstPrice).toHaveProperty('gridTariffExVat');
     expect(firstPrice).toHaveProperty('providerSurchargeExVat');
     expect(firstPrice).toHaveProperty('consumptionTaxExVat');
-    expect(firstPrice).toHaveProperty('enovaFeeExVat');
     expect(firstPrice).toHaveProperty('vatMultiplier');
     expect(firstPrice).toHaveProperty('vatAmount');
     expect(firstPrice).toHaveProperty('electricitySupport');
@@ -1571,8 +1570,7 @@ describe('Price optimization', () => {
       (firstPrice.spotPriceExVat ?? NaN)
         + (firstPrice.gridTariffExVat ?? NaN)
         + (firstPrice.providerSurchargeExVat ?? NaN)
-        + (firstPrice.consumptionTaxExVat ?? NaN)
-        + (firstPrice.enovaFeeExVat ?? NaN),
+        + (firstPrice.consumptionTaxExVat ?? NaN),
       5,
     );
     expect(firstPrice.totalPrice).toBeCloseTo(
@@ -1703,7 +1701,7 @@ describe('Price optimization', () => {
     expect(firstPrice.gridTariffExVat).toBeCloseTo(28, 5);
     expect((firstPrice.consumptionTaxExVat ?? NaN) * (firstPrice.vatMultiplier ?? NaN)).toBeCloseTo(8.91, 2);
     expect(firstPrice.electricitySupport).toBeCloseTo(93.38, 2);
-    expect(firstPrice.totalPrice).toBeCloseTo(151.79, 2);
+    expect(firstPrice.totalPrice).toBeCloseTo(150.54, 2);
   });
 
   it('persists budgetPrice end-to-end: producer → settings payload → reader → daily-budget shaping', async () => {

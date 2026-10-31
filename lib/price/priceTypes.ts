@@ -28,7 +28,6 @@ export type CombinedPriceFields = {
   gridTariffExVat?: number;
   providerSurchargeExVat?: number;
   consumptionTaxExVat?: number;
-  enovaFeeExVat?: number;
   vatMultiplier?: number;
   vatAmount?: number;
   electricitySupportExVat?: number;

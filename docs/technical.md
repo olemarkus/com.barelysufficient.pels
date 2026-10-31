@@ -476,16 +476,15 @@ PELS supports four price schemes:
 PELS stores spot prices as øre/kWh **ex VAT** from hvakosterstrommen.no. Norway hourly totals are computed from:
 
 - Spot price (spotpris)
-- Grid tariff energy component (nettleie)
+- Grid tariff energy component (nettleie), as NVE serves it ex VAT; it already includes the Enova fee (enovaavgift)
 - Provider surcharge (incl. VAT in settings; converted to ex VAT internally)
 - Consumption tax (elavgift)
-- Enova fee (enovaavgift)
 - VAT (mva) where applicable
 - Either electricity support (strømstøtte) or Norgespris adjustment, depending on the selected Norway pricing model
 
 Calculation summary:
 
-- `totalExVat = spot + gridTariff + providerSurchargeExVat + consumptionTax + enovaFee`
+- `totalExVat = spot + gridTariff + providerSurchargeExVat + consumptionTax`
 
 Norway pricing models:
 

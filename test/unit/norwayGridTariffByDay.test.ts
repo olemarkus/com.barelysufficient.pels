@@ -58,3 +58,25 @@ describe('grid tariff per local day', () => {
     expect(gridTariffAt(prices, '2026-10-26T08:00:00Z')).toBe(26.6);
   });
 });
+
+describe('Enova fee', () => {
+  it('reproduces BKK\'s published Norgespris price from NVE\'s tariff, Enova counted once', () => {
+    // NVE serves BKK at 29.77/11.50 øre ex VAT, Enova included (BKK price list, 2026):
+    // (11.50 + 7.13) × 1.25 + Norgespris 50 = 73.29 at night, 96.13 by day.
+    const prices = buildCombinedHourlyPricesNorway({
+      spotPrices: [spotAt('2026-10-26T01:00:00Z'), spotAt('2026-10-26T09:00:00Z')],
+      gridTariffData: tariffDay('2026-10-26', 29.77, 11.5),
+      providerSurchargeIncVat: 0,
+      priceArea: 'NO3',
+      countyCode: '46',
+      tariffGroup: 'Husholdning',
+      norwayPriceModel: 'norgespris',
+      now: new Date('2026-10-26T00:00:00Z'),
+      timeZone: 'Europe/Oslo',
+    });
+    expect(prices.map((price) => price.totalPrice)).toEqual([
+      expect.closeTo(73.29, 1),
+      expect.closeTo(96.13, 1),
+    ]);
+  });
+});

@@ -155,7 +155,6 @@ const buildEntry = (
     ...(isFiniteNumber(source.providerSurchargeExVat)
       ? { providerSurchargeExVat: source.providerSurchargeExVat } : {}),
     ...(isFiniteNumber(source.consumptionTaxExVat) ? { consumptionTaxExVat: source.consumptionTaxExVat } : {}),
-    ...(isFiniteNumber(source.enovaFeeExVat) ? { enovaFeeExVat: source.enovaFeeExVat } : {}),
     ...(isFiniteNumber(source.vatMultiplier) ? { vatMultiplier: source.vatMultiplier } : {}),
     ...(isFiniteNumber(source.vatAmount) ? { vatAmount: source.vatAmount } : {}),
     ...(isFiniteNumber(source.electricitySupportExVat)
