@@ -6,7 +6,7 @@ Efter installationen öppnar du Homey > Mer > Appar > PELS > Inställningar för
 
 Elpriserna kommer från Homey Energy, Power by the Hour eller dina Flows. När tidsberoende nätavgifter ingår i den valda priskällan tar PELS med dem i planeringen. Temperaturstyrningen kan även följa kvartspriser och anpassa både värme och kyla.
 
-Med Smart tasks kan målet vara 80 % i bilbatteriet klockan 07, ett varmt vardagsrum när du kommer hem eller en viss mängd energi till varmvattenberedaren. PELS väljer de billigaste timmarna fram till sluttiden. PELS kan också använda batterinivån i laddplanen när den finns i Homey.
+Med Smart tasks kan målet vara 80 % i bilbatteriet klockan 07, ett varmt vardagsrum när du kommer hem eller en viss mängd energi till varmvattenberedaren. PELS väljer de billigaste timmarna fram till sluttiden. PELS kan också använda batterinivån i laddplanen när den finns i Homey. Med Schedules kan du skapa Smart tasks eller byta läge vid bestämda tider, en gång eller på valda dagar.
 
 PELS använder solöverskott till varmvatten, uppvärmning, kyla och billaddning och anpassar laddströmmen efter produktionen. Priset för såld el ingår också i planeringen, även när det är negativt. Ett hembatteri, till exempel Sessy eller Marstek Venus, kan lagra överskottet och leverera effekt när hushållet närmar sig din gräns. PELS begränsar också batteriets laddning när andra enheter behöver effekten.
 

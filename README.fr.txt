@@ -4,7 +4,7 @@ Après l’installation, ouvrez Homey > Plus > Apps > PELS > Paramètres pour te
 
 Les prix proviennent de Homey Energy, de Power by the Hour ou de vos Flows. Les heures pleines, les heures creuses et les frais de réseau renseignés dans la source choisie entrent dans la planification. PELS ajuste aussi le chauffage et la climatisation selon les prix au quart d'heure.
 
-Dans Smart tasks, vous fixez un objectif et une échéance : une voiture à 80 % à 7 h, un salon chaud pour votre retour ou une quantité d'énergie à fournir au chauffe-eau. PELS choisit les heures les moins chères pour y parvenir. Quand le niveau de batterie est disponible dans Homey, PELS s'en sert pour planifier la recharge jusqu'à l'objectif demandé.
+Dans Smart tasks, vous fixez un objectif et une échéance : une voiture à 80 % à 7 h, un salon chaud pour votre retour ou une quantité d'énergie à fournir au chauffe-eau. PELS choisit les heures les moins chères pour y parvenir. Quand le niveau de batterie est disponible dans Homey, PELS s'en sert pour planifier la recharge jusqu'à l'objectif demandé. Dans Schedules, programmez la création de Smart tasks ou un changement de mode à une heure précise, une seule fois ou les jours choisis.
 
 Avec Grid import limit, vous réglez la limite de puissance prélevée sur le réseau selon votre abonnement et les besoins de la maison. À son approche, PELS réduit la recharge, ajuste le chauffage ou met les appareils moins prioritaires en pause. Ils reprennent lorsque de la puissance est disponible.
 

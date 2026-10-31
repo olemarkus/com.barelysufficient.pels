@@ -6,7 +6,7 @@
     "en": "Report battery level for [[device]] as [[battery_percent]] %"
   },
   "hint": {
-    "en": "Store battery percentage for a managed charger without requiring the charger itself to expose a battery capability."
+    "en": "Report the car's battery percentage for this charger when it has no cars selected in PELS. If cars are selected, PELS uses the matched car's battery level and ignores this report."
   },
   "args": [
     {

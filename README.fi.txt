@@ -4,7 +4,7 @@ Avaa asennuksen jälkeen Homey > More > Apps > PELS > Settings ja viimeistele k�
 
 Hintatiedot tulevat Homey Energy -toiminnosta, Power by the Hour -sovelluksesta tai Flow-automaatioilla. PELS käyttää valitusta lähteestä saamaansa hintaa, myös siihen sisältyviä ajasta riippuvia siirtomaksuja. Lämmityksen ja jäähdytyksen ohjaus hyödyntää myös varttihintoja.
 
-Smart tasks -toiminnolla määrität, milloin auton pitää olla ladattu tai huoneen lämmin. Tavoitteena voi olla esimerkiksi akun 80 prosentin varaustaso aamuseitsemäksi. PELS valitsee tehtävään edullisimmat tunnit. Lämminvesivaraajalle voi määrittää halutun energiamäärän. Kun auton akun varaustaso on saatavilla Homeyn kautta, PELS käyttää sitä latauksen suunnittelussa.
+Smart tasks -toiminnolla määrität, milloin auton pitää olla ladattu tai huoneen lämmin. Tavoitteena voi olla esimerkiksi akun 80 prosentin varaustaso aamuseitsemäksi. PELS valitsee tehtävään edullisimmat tunnit. Lämminvesivaraajalle voi määrittää halutun energiamäärän. Kun auton akun varaustaso on saatavilla Homeyn kautta, PELS käyttää sitä latauksen suunnittelussa. Schedules-toiminnolla voit luoda Smart tasks -tehtäviä tai vaihtaa tilaa tiettyyn kellonaikaan, kerran tai valittuina päivinä.
 
 Saunan lämmitys voi nostaa kulutusta juuri auton latautuessa. Grid import limit seuraa kodin verkosta ottamaa tehoa, ja PELS pienentää lataustehoa, säätää lämmitystä tai keskeyttää vähemmän tärkeiden laitteiden käytön. Ne jatkavat, kun tehoa on taas käytettävissä. Jos maksat sähkönsiirrosta tehomaksua, Capacity limit auttaa tasaamaan kulutushuippuja. Erikseen mitatulle mökille voi asettaa oman tehorajan.
 

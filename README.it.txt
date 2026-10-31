@@ -6,7 +6,7 @@ Con Grid import limit imposti la potenza da prelevare dalla rete in base alle es
 
 PELS programma ricarica, riscaldamento e acqua calda nelle fasce orarie più convenienti. I prezzi arrivano da Power by the Hour o dai tuoi Flow. Le tariffe orarie e i costi di rete impostati nella fonte scelta vengono inclusi nella pianificazione. Per riscaldamento e raffrescamento, PELS tiene conto anche dei prezzi aggiornati ogni 15 minuti.
 
-In Smart tasks indichi l'obiettivo e quando deve essere raggiunto: l'auto all'80 % alle 7, il soggiorno caldo al rientro o quanta energia fornire allo scaldacqua entro il mattino. PELS sceglie le ore meno costose. Se il livello di carica dell'auto è disponibile in Homey, lo usa per pianificare la ricarica fino all'obiettivo.
+In Smart tasks indichi l'obiettivo e quando deve essere raggiunto: l'auto all'80 % alle 7, il soggiorno caldo al rientro o quanta energia fornire allo scaldacqua entro il mattino. PELS sceglie le ore meno costose. Se il livello di carica dell'auto è disponibile in Homey, lo usa per pianificare la ricarica fino all'obiettivo. Con Schedules puoi creare Smart tasks o cambiare modalità a orari prestabiliti, una sola volta o nei giorni scelti.
 
 Quando i pannelli producono più di quanto la casa consuma, il surplus viene usato per l'acqua calda, il riscaldamento, il raffrescamento o la ricarica dell'auto. La potenza di ricarica si adatta al surplus disponibile. Anche il prezzo dell'energia immessa in rete, compresi i valori negativi, rientra nella pianificazione. Con una batteria domestica come Sessy o Marstek Venus, PELS accumula il surplus rimasto, limita la carica quando altri apparecchi hanno la precedenza e usa l'energia accumulata per rispettare il limite di potenza.
 
