@@ -267,6 +267,7 @@ const buildEstimateFromDiagnostic = (
   return {
     status: resolvePreviewStatus(diag.horizonPlan.status),
     budgetRole,
+    ...(floorShortfallCause !== 'none' ? { floorShortfallCause } : {}),
     scheduledHours,
     projectedFinishAtMs: resolveProjectedFinishAtMs(diag),
     // Match the recorder: persist the buffered `energyNeededKWh` rounded to

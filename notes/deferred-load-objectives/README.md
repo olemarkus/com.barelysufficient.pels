@@ -407,7 +407,7 @@ The second is a forecast, not a reason to stop a task. So the allocator books ho
 (`bookBuckets` in `priceBand.ts`, applied by `horizonPlanner` once the plan's status is
 known): an hour is booked when it carries energy, when
 it is meaningfully cheaper than the dearest hour carrying energy, or when the task needs every hour
-(its settled shortfall cause is `budget` or `time_capacity`, `needsEveryHour`). A floor allocation
+(its settled shortfall cause is `budget`, `time_capacity` or `higher_priority_load`, `needsEveryHour`). A floor allocation
 that falls short is not enough: a stepped thermal task's floor routinely does while the task finishes
 by climbing (`step_power`) or is short only by estimate padding (`estimate`). A booked hour the forecast left no room for carries 0 kWh. Same-band hours are not
 booked: on a flat price curve that would claim every hour of the horizon. The deadline reserve is
@@ -451,6 +451,7 @@ backstop (a commitment saved before this rule, or an hour outside the booked set
 |---|---|
 | `budget` | `claimed` |
 | `time_capacity` | `claimed` |
+| `higher_priority_load` | `claimed` |
 | `step_power` | `released` |
 | `estimate` | `released` |
 | `none` | `released` |
@@ -466,13 +467,13 @@ price deferral (ahead of the milestone AND a cheaper booked hour later) and cold
 (`coldStartFeasible`: the whole remaining need fits the cheaper hours at the real element). Cold-start
 release is unconditional: it exists for the case where the floor plan reports `cannot_meet` but the
 real element finishes in the cheaper hours. Price deferral is not: a task under `time_capacity` (it
-cannot finish at all, or a higher-priority task's claims leave it short) never price-defers a booked
-hour, because the cheaper hours are already booked to their cap and coasting only widens the miss.
+cannot finish at all) or `higher_priority_load` (higher-priority tasks and devices leave it short)
+never price-defers a booked hour, because the cheaper hours are already booked to their cap and coasting only widens the miss.
 A `budget`-bound task still does.
 
 Two consequences worth knowing before reading either as a bug. A budget-bound or infeasible task
 never releases an hour for being empty, because it books every hour. A budget-bound task can still
-release a booked hour via price deferral; a `time_capacity` task can only release through
+release a booked hour via price deferral; a `time_capacity` or `higher_priority_load` task can only release through
 cold-start release. And the frozen mid-hour read replays
 the `:58` settle's `floorShortfallCause` rather than recomputing sufficiency from the live need —
 recomputing would put a control decision back on the per-cycle clock the two-clock design removes,

@@ -135,7 +135,7 @@ const resolveAtRiskCopy = (input: SmartTaskWidgetDetailInput): SmartTaskWidgetDe
   if (live !== null) return live;
   const budgetRole = resolveSmartTaskBudgetRole(input);
   return {
-    whyLabel: resolveSmartTaskAtRiskWhy(budgetRole),
+    whyLabel: resolveSmartTaskAtRiskWhy(budgetRole, input.floorShortfallCause),
     recourseHint: AT_RISK_RECOURSE_BY_BUDGET_ROLE[budgetRole],
   };
 };

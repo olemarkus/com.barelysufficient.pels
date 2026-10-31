@@ -1,4 +1,7 @@
-import type { DeferredObjectiveActivePlanStatusV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
+import type {
+  DeferredObjectiveActivePlanFloorShortfallCause,
+  DeferredObjectiveActivePlanStatusV1,
+} from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { ObjectiveProfileConfidence } from '../../../contracts/src/objectiveProfileTypes.ts';
 import type { DeadlineLabels } from '../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
 import { formatConfidenceChipLabel } from '../../../shared-domain/src/smartTaskCopy/estimateConfidence.ts';
@@ -210,6 +213,9 @@ export const resolveCannotMeetMeta = (
   planStatus: DeferredObjectiveActivePlanStatusV1,
   budgetRole: DeadlineBudgetRole,
   liveCause: SmartTaskLiveCause | null,
+  // The producer's verdict on what bound the floor, so an at-risk task that
+  // higher-priority load holds back is not told its time is short.
+  floorShortfallCause: DeferredObjectiveActivePlanFloorShortfallCause | undefined,
 ): string => {
   // A live cause (a confirmed device-side stop, the car's own charge limit)
   // outranks both cost causes: neither the target nor the
@@ -220,7 +226,7 @@ export const resolveCannotMeetMeta = (
   // Lower the target" would overstate it. The widget's at-risk line, word for
   // word. A budget cause keeps its own sentence below, which names the remedy.
   if (planStatus === 'at_risk' && budgetRole === 'none') {
-    return resolveSmartTaskAtRiskWhy(budgetRole);
+    return resolveSmartTaskAtRiskWhy(budgetRole, floorShortfallCause);
   }
   if (budgetRole === 'sole') return labels.cannotMeetDailyBudgetExhausted;
   // Named but not promised: lifting the budget would plan more energy and still
@@ -439,7 +445,7 @@ export const buildHero = (
   // the target, which says why delivery will stop short. A car that has stopped
   // there makes the task at risk, and the live cause explains it.
   const metaLine = cannotMeet
-    ? resolveCannotMeetMeta(labels, planStatus, budgetRole, liveCause)
+    ? resolveCannotMeetMeta(labels, planStatus, budgetRole, liveCause, activePlan.latest.floorShortfallCause)
     : resolveCarLimitMeta(carChargeLimit);
   // True only during genuine cold-start; gates the "Estimating" confidence chip.
   const confidenceChipText = resolveLiveHeroConfidenceChipText(

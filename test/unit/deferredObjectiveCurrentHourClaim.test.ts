@@ -55,6 +55,7 @@ describe('resolveCurrentHourClaim', () => {
   const priceDeferralByCause: Array<[DeferredObjectiveActivePlanFloorShortfallCause, string]> = [
     ['budget', 'released'],
     ['time_capacity', 'claimed'],
+    ['higher_priority_load', 'claimed'],
     ['step_power', 'released'],
     ['estimate', 'released'],
     ['none', 'released'],
@@ -78,6 +79,7 @@ describe('resolveCurrentHourClaim', () => {
   const unbookedByCause: Array<[DeferredObjectiveActivePlanFloorShortfallCause, string]> = [
     ['budget', 'claimed'],
     ['time_capacity', 'claimed'],
+    ['higher_priority_load', 'claimed'],
     ['step_power', 'released'],
     ['estimate', 'released'],
     ['none', 'released'],

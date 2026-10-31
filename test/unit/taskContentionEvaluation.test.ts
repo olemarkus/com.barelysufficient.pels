@@ -55,7 +55,7 @@ describe('operational task contention', () => {
       );
       return result.planning.kind === 'allocated' ? result.planning.plan.currentHourClaim : null;
     };
-    // Short only because of a higher-priority task (`time_capacity`): coasting would
+    // Short only because of a higher-priority task (`higher_priority_load`): coasting would
     // widen the miss, so the price-deferral facts no longer release the hour.
     expect(claimUnderContention({ ...NO_RELEASE_FACTS, aheadOfHourMilestone: true, cheaperHourAhead: true }))
       .toBe('claimed');

@@ -310,11 +310,7 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
   setLine(targets.confirmEnergyEl, estimated ? formatPreviewEnergyLine(response.estimate, C.energyLabel) : null);
   setLine(
     targets.confirmUnavailableEl,
-    resolveSmartTaskPreviewStatusCopy(
-      response.estimate.status,
-      response.estimate.unavailableReason,
-      response.estimate.budgetRole,
-    ),
+    resolveSmartTaskPreviewStatusCopy(response.estimate),
   );
   setLine(targets.confirmCaveatEl, estimated && response.estimate.status !== 'satisfied' ? C.estimateCaveat : null);
   // Show the summary only when projectable (confirm is a live option) AND the

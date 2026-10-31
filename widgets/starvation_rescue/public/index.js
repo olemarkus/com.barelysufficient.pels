@@ -407,6 +407,7 @@
   // packages/shared-domain/src/smartTaskCopy/shortfallCauses.ts
   var WHY_CANNOT_MEET_BUDGET = "Today\u2019s daily budget runs out before the deadline.";
   var WHY_AT_RISK_BUDGET = "Today\u2019s daily budget may run out before the deadline.";
+  var WHY_AT_RISK_HIGHER_PRIORITY_LOAD = "Other devices use the power your limit allows before the deadline.";
   var WHY_CANNOT_MEET_BUDGET_PARTIAL = "Today\u2019s daily budget is holding part of this back, but there is not enough time either.";
   var WHY_AT_RISK_BUDGET_PARTIAL = "Today\u2019s daily budget may be holding part of this back, and time is short too.";
 
@@ -537,10 +538,11 @@
     unknown: CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable
   };
   var resolveSmartTaskPreviewUnavailableCopy = (reason) => PREVIEW_UNAVAILABLE_COPY_BY_REASON[reason ?? "unknown"];
-  var resolveSmartTaskPreviewStatusCopy = (status, unavailableReason, budgetRole) => {
+  var resolveSmartTaskPreviewStatusCopy = (estimate) => {
+    const { status, budgetRole } = estimate;
     switch (status) {
       case "unavailable":
-        return resolveSmartTaskPreviewUnavailableCopy(unavailableReason);
+        return resolveSmartTaskPreviewUnavailableCopy(estimate.unavailableReason);
       case "cannot_meet":
         if (budgetRole === "sole") return `Cannot finish \u2014 ${WHY_CANNOT_MEET_BUDGET}`;
         if (budgetRole === "contributing") return `Cannot finish \u2014 ${WHY_CANNOT_MEET_BUDGET_PARTIAL}`;
@@ -548,6 +550,9 @@
       case "at_risk":
         if (budgetRole === "sole") return `At risk \u2014 ${WHY_AT_RISK_BUDGET}`;
         if (budgetRole === "contributing") return `At risk \u2014 ${WHY_AT_RISK_BUDGET_PARTIAL}`;
+        if (estimate.floorShortfallCause === "higher_priority_load") {
+          return `At risk. ${WHY_AT_RISK_HIGHER_PRIORITY_LOAD}`;
+        }
         return CREATE_SMART_TASK_WIDGET_COPY.atRisk;
       case "satisfied":
         return CREATE_SMART_TASK_WIDGET_COPY.previewSatisfied;
@@ -1315,11 +1320,7 @@
     setLine(targets.confirmEnergyEl, estimated ? formatPreviewEnergyLine(response.estimate, C.energyLabel) : null);
     setLine(
       targets.confirmUnavailableEl,
-      resolveSmartTaskPreviewStatusCopy(
-        response.estimate.status,
-        response.estimate.unavailableReason,
-        response.estimate.budgetRole
-      )
+      resolveSmartTaskPreviewStatusCopy(response.estimate)
     );
     setLine(targets.confirmCaveatEl, estimated && response.estimate.status !== "satisfied" ? C.estimateCaveat : null);
     const granted = resolveDisclosedRescuePermissions(

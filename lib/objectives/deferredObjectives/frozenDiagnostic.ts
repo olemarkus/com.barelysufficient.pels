@@ -41,7 +41,7 @@ import {
 // reach here — the validator rejects it — so `'none'` covers both absence and any
 // forward-compat string.
 const KNOWN_FLOOR_SHORTFALL_CAUSES: ReadonlySet<string> = new Set([
-  'budget', 'step_power', 'estimate', 'time_capacity', 'none',
+  'budget', 'step_power', 'estimate', 'time_capacity', 'higher_priority_load', 'none',
 ]);
 const toKnownFloorShortfallCause = (
   value: DeferredObjectiveActivePlanFloorShortfallCause | undefined,

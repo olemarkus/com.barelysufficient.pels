@@ -2,7 +2,6 @@
 // tasks page's New smart task flow, the preview, and the detail-page editor.
 import type {
   DeferredObjectivePlanPreviewEstimate,
-  DeferredObjectivePlanPreviewStatus,
   DeferredObjectivePlanPreviewUnavailableReason,
 } from '../../../contracts/src/deferredObjectivePlanPreview';
 import { SMART_TASK_SUB_HOME_UNAVAILABLE } from '../objectiveWriteStrings';
@@ -11,6 +10,7 @@ import { SMART_TASK_EXTRA_PERMISSIONS_TITLE } from './permissionsCopy';
 import {
   WHY_AT_RISK_BUDGET,
   WHY_AT_RISK_BUDGET_PARTIAL,
+  WHY_AT_RISK_HIGHER_PRIORITY_LOAD,
   WHY_CANNOT_MEET_BUDGET,
   WHY_CANNOT_MEET_BUDGET_PARTIAL,
 } from './shortfallCauses';
@@ -194,13 +194,15 @@ export const resolveSmartTaskPreviewUnavailableCopy = (
 ): string => PREVIEW_UNAVAILABLE_COPY_BY_REASON[reason ?? 'unknown'];
 
 export const resolveSmartTaskPreviewStatusCopy = (
-  status: DeferredObjectivePlanPreviewStatus,
-  unavailableReason: DeferredObjectivePlanPreviewUnavailableReason | undefined,
-  budgetRole: DeferredObjectivePlanPreviewEstimate['budgetRole'],
+  estimate: Pick<
+    DeferredObjectivePlanPreviewEstimate,
+    'status' | 'unavailableReason' | 'budgetRole' | 'floorShortfallCause'
+  >,
 ): string | null => {
+  const { status, budgetRole } = estimate;
   switch (status) {
     case 'unavailable':
-      return resolveSmartTaskPreviewUnavailableCopy(unavailableReason);
+      return resolveSmartTaskPreviewUnavailableCopy(estimate.unavailableReason);
     case 'cannot_meet':
       if (budgetRole === 'sole') return `Cannot finish — ${WHY_CANNOT_MEET_BUDGET}`;
       if (budgetRole === 'contributing') return `Cannot finish — ${WHY_CANNOT_MEET_BUDGET_PARTIAL}`;
@@ -208,6 +210,10 @@ export const resolveSmartTaskPreviewStatusCopy = (
     case 'at_risk':
       if (budgetRole === 'sole') return `At risk — ${WHY_AT_RISK_BUDGET}`;
       if (budgetRole === 'contributing') return `At risk — ${WHY_AT_RISK_BUDGET_PARTIAL}`;
+      // Room taken by higher-priority load is not a short window.
+      if (estimate.floorShortfallCause === 'higher_priority_load') {
+        return `At risk. ${WHY_AT_RISK_HIGHER_PRIORITY_LOAD}`;
+      }
       return CREATE_SMART_TASK_WIDGET_COPY.atRisk;
     case 'satisfied':
       return CREATE_SMART_TASK_WIDGET_COPY.previewSatisfied;
