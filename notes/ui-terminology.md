@@ -423,6 +423,19 @@ are limited`. The move to the step keeps its own line (`Reducing to 6 A`,
 and queue lines above, a spent period, the end-of-hour drain and holds that are
 not about power.
 
+**A stepped device kept below its top step for lack of room reads held**
+(2026-10-30). Once the cut and the restore countdowns are over, a running stepped
+device PELS stepped down stays planned `keep` at the reduced step, its reason the
+plain `keep` (the shedding latch stops a step-up from being tried) or a refused
+step-up. The plan resolves that wait every cycle (`steppedStepUpHold`,
+`lib/plan/planSteppedStepUpHold.ts`), and the card reads `Limited · Low` with
+`Waiting to increase` (held back: `Held 2 h`) until a step-up is admitted, the
+device reaches its top step or its demand ends; the hero counts it. The one-cycle
+flip after the cut and the restore cooldown and queue lines keep their own words,
+a device its owner left at a lower step is not PELS's wait, and the fairness hold
+keeps its line. The activity log keeps it as a device PELS leaves on, so the wait
+adds no row (`buildLoggedReasonShape`, `lib/plan/deviceOverviewLog.ts`).
+
 **Held-back cards state the elapsed hold, and still name no ceiling** (2026-08-04).
 Once a hold has run long enough to register as held back, the stem becomes
 `Held 2 h` instead of `Waiting to resume`. The duration is the device's own

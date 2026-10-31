@@ -16,6 +16,9 @@ import { DeviceOverviewTransitions } from '../../lib/plan/planOverviewEmit';
 import type { DeviceOverviewLogRecorder } from '../../lib/diagnostics/deviceActivityRecorder';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUi/plan';
 import { partialDouble } from '../helpers/partialDouble';
+import { insufficientHeadroomFixtureReason } from '../utils/deviceReasonTestUtils';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
+import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
 
 // The log seam receives the same resolved presentation as the UI.
 // Keep the decision anchor and display clock fixed; these tests do not advance time.
@@ -36,11 +39,13 @@ const overviewLogDevice = (
 // The signature with the device's own reason, as the log compares it outside a countdown wait.
 const signatureOf = (
   device: OverviewLogDevice, reasonCode: OverviewDecisionFacts['reasonCode'] = 'keep', stepCommandUnanswered = false,
-): string => buildSignatureWithReason(device, buildLoggedReasonShape(device.status, { reasonCode, stepCommandUnanswered }));
+): string => buildSignatureWithReason(device, buildLoggedReasonShape(device.status, {
+  reasonCode, stepCommandUnanswered, steppedStepUpHold: false,
+}), { steppedStepUpHold: false });
 
 // The debug event's decision facts; these tests assert the presented fields.
 const decision: OverviewDecisionFacts = {
-  reasonCode: 'keep', plannedState: 'keep', desiredStepId: null, observedStepId: null,
+  reasonCode: 'keep', plannedState: 'keep', steppedStepUpHold: false, desiredStepId: null, observedStepId: null,
   binaryProgress: 'settled', stepProgress: 'undriven', targetProgress: 'undriven', stepCommandUnanswered: false,
 };
 
@@ -211,6 +216,51 @@ describe('what the activity log keeps of a device PELS leaves on, and of a count
       'Limited · On | Waiting after limiting a device',
       'Limited · On | Waiting to resume — 4.1 kW more needed',
     ]);
+  });
+});
+
+describe('what the activity log keeps of a stepped device waiting to step up', () => {
+  // A water heater PELS stepped from Max to Low, then kept there for lack of room.
+  const heater = (overrides: Parameters<typeof steppedPlanDevice>[0]) => steppedPlanDevice({
+    id: 'heater', currentState: 'on', currentDrawKw: 1.3, plannedState: 'keep',
+    selectedStepId: 'low', reportedStepId: 'low', desiredStepId: 'low', lastDesiredStepId: 'low',
+    reason: { code: PLAN_REASON_CODES.keep, detail: null },
+    ...overrides,
+  });
+  const atMax = heater({ currentDrawKw: 3, selectedStepId: 'max', reportedStepId: 'max', desiredStepId: 'max',
+    lastDesiredStepId: 'max' });
+  const cut = heater({ plannedState: 'shed', reason: { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 50 } });
+  const restoreCooldown = heater({ reason: { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 55 } });
+
+  const record = (cycles: DevicePlanDevice[]): string[] => {
+    const recorded: string[] = [];
+    const recorder = partialDouble<DeviceOverviewLogRecorder>({
+      record: (_device, entry) => { recorded.push(`${entry.stateMsg} | ${entry.statusMsg}`); }, flush: () => undefined,
+    });
+    const transitions = new DeviceOverviewTransitions();
+    for (const device of cycles) {
+      transitions.capture(partialDouble<SettingsUiPlanSnapshot>({ devices: [asOverviewLogDevice(device)] }), recorder,
+        () => ({ ...decision, reasonCode: device.reason.code, steppedStepUpHold: device.steppedStepUpHold === true }));
+    }
+    return recorded;
+  };
+
+  it('logs the wait as the running device it interrupts, with no row while it lasts', () => {
+    const waiting = (reason: DevicePlanDevice['reason']) => heater({ reason, steppedStepUpHold: true });
+    const held = record([
+      atMax, cut,
+      waiting({ code: PLAN_REASON_CODES.keep, detail: null }),
+      restoreCooldown,
+      waiting(insufficientHeadroomFixtureReason({ needKw: 0.7, availableKw: 0.2 })),
+      restoreCooldown,
+      waiting({ code: PLAN_REASON_CODES.keep, detail: null }),
+    ]);
+    // The same cycles before the stamp, when the device read `Running` with no line.
+    const running = record([atMax, cut, heater({}), restoreCooldown, heater({}), restoreCooldown, heater({})]);
+
+    expect(held).toHaveLength(running.length);
+    expect(held).toHaveLength(3);
+    expect(held[2]).toBe(`Limited · ${formatStepDisplayLabel('low')} | Waiting to increase`);
   });
 });
 

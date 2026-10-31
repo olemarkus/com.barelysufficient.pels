@@ -4,6 +4,7 @@ import { buildOverviewDeviceCard, overviewReadModelWiring } from '../utils/setti
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
+import { insufficientHeadroomFixtureReason } from '../utils/deviceReasonTestUtils';
 import type { SettingsOverviewReadModelDeps } from '../../lib/plan/settingsOverviewReadModel';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
@@ -249,6 +250,45 @@ describe('settingsOverviewReadModel', () => {
       `Holding at ${formatStepDisplayLabel('low')} — cannot increase while 2 devices are limited`,
     );
     expect(wire.status.reason?.countdown).toBeUndefined();
+  });
+
+  describe('a running stepped device PELS keeps below its top step for lack of room', () => {
+    const heldHeater = (overrides: Partial<DevicePlanDevice> = {}) => steppedPlanDevice({
+      currentState: 'on', currentDrawKw: 1.3, plannedState: 'keep',
+      reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', lastDesiredStepId: 'low',
+      reason: { code: PLAN_REASON_CODES.keep, detail: null },
+      steppedStepUpHold: true,
+      ...overrides,
+    });
+
+    it.each([
+      { code: 'keep', reason: { code: PLAN_REASON_CODES.keep, detail: null } as const },
+      { code: 'insufficientHeadroom', reason: insufficientHeadroomFixtureReason({ needKw: 0.7, availableKw: 0.2 }) },
+    ])('reads held and waiting to increase under $code', ({ reason }) => {
+      const { status } = buildDeviceCard(heldHeater({ reason }), absentTemperature);
+
+      expect(status.label).toBe(`Limited · ${formatStepDisplayLabel('low')}`);
+      expect(status.limited).toBe(true);
+      expect(status.reason?.text).toBe('Waiting to increase');
+      expect(status.reason?.countdown).toBeUndefined();
+    });
+
+    it('states the elapsed hold once the device is held back', () => {
+      const wire = buildDeviceCard(heldHeater(), {
+        ...absentTemperature,
+        getOverviewStarvation: () => ({ isStarved: true, accumulatedMs: 2 * 60 * 60 * 1000 }),
+      });
+
+      expect(wire.status.reason?.text).toBe(`Held ${formatStarvationDurationLabel(2 * 60 * 60 * 1000)}`);
+    });
+
+    it('reads running with no line without the stamp', () => {
+      const { status } = buildDeviceCard(heldHeater({ steppedStepUpHold: undefined }), absentTemperature);
+
+      expect(status.label).toBe('Running');
+      expect(status.limited).toBe(false);
+      expect(status.reason).toBeNull();
+    });
   });
 
   it('says the charger is reducing while it moves down to the held step', () => {

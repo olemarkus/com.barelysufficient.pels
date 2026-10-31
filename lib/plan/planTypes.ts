@@ -674,6 +674,14 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
    */
   steppedFairnessHold?: SteppedFairnessHold;
   /**
+   * A running stepped device PELS put below its top step waits there for room to
+   * step up, its reason the plain `keep` or `insufficientHeadroom`. Stamped from the
+   * final plan by `stampSteppedStepUpHolds` (`planSteppedStepUpHold.ts`), after the
+   * fairness hold and never beside it; absent otherwise. Presentation only: the card
+   * reads the device as held (`Limited · Low`, `Waiting to increase`).
+   */
+  steppedStepUpHold?: true;
+  /**
    * The device's boost decision this cycle, and the planner's whole boost
    * vocabulary. REQUIRED: `resolveBoostActive` (`lib/plan/planBoost.ts`) answers
    * it for every device from the producer's two kind-free bits plus the runnable

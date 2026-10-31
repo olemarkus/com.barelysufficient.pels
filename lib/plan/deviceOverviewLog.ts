@@ -93,9 +93,12 @@ const WAITING_FOR_POWER_SHAPE = JSON.stringify({ waitingForPower: true });
  */
 export function buildLoggedReasonShape(
   status: OverviewLogDevice['status'],
-  decision: Pick<OverviewDecisionFacts, 'reasonCode' | 'stepCommandUnanswered'>,
+  decision: Pick<OverviewDecisionFacts, 'reasonCode' | 'stepCommandUnanswered' | 'steppedStepUpHold'>,
 ): string | null {
   const { reason, holdCause } = status;
+  // Kept below its top step for lack of room: the card reads it as held, but it is
+  // a device PELS leaves on that waits to step up, which the log keeps no reason for.
+  if (decision.steppedStepUpHold && !decision.stepCommandUnanswered) return null;
   if (WAITING_FOR_POWER_REASON_CODES.has(decision.reasonCode) && !decision.stepCommandUnanswered) {
     return status.kind === 'active' || status.kind === 'idle' ? null : WAITING_FOR_POWER_SHAPE;
   }
@@ -109,6 +112,19 @@ export function buildLoggedReasonShape(
   });
 }
 
+// A stepped device's level is on its rail, and its fact line names it only while
+// the state word does not (`Limited · Low` drops `Level Low`). For a device left on
+// the rail alone carries it, so a wait to step up and the running device it
+// interrupts compare alike.
+const withoutLevelFact = (factText: string | null, rail: OverviewLogDevice['status']['rail']): string | null => {
+  const index = rail?.activeIndex ?? null;
+  const level = index === null ? undefined : rail?.labels[index];
+  if (factText === null || level === undefined) return factText;
+  const levelSegment = `level ${level}`.toLowerCase();
+  const kept = factText.split(' · ').filter((segment) => segment.toLowerCase() !== levelSegment).join(' · ');
+  return kept === '' ? null : kept;
+};
+
 /**
  * What makes a log entry: a change of state, reason, rail, kind of power line
  * (live, reported, expected or none) or a categorical fact (a charger's plug
@@ -119,20 +135,29 @@ export function buildLoggedReasonShape(
  *
  * A device PELS leaves on is one state whether it is running or resting: a
  * thermostat holding its target switches its own element every few minutes,
- * and those switches would fill a busy device's history in hours. `reason` is
- * the reason and hold cause as the log keeps them (`buildLoggedReasonShape`),
- * or the ones the log carries through a countdown wait (`DeviceOverviewTransitions`).
+ * and those switches would fill a busy device's history in hours. A running
+ * stepped device kept below its top step for lack of room (`steppedStepUpHold`)
+ * is left on too, though its card reads `Limited`: it waits to step up, and the
+ * restore countdowns it passes through read `Running`. `reason` is the reason and
+ * hold cause as the log keeps them (`buildLoggedReasonShape`), or the ones the log
+ * carries through a countdown wait (`DeviceOverviewTransitions`).
  */
-export function buildOverviewSignatureForDevice(device: OverviewLogDevice, reason: string | null): string {
+export function buildOverviewSignatureForDevice(
+  device: OverviewLogDevice,
+  reason: string | null,
+  decision: Pick<OverviewDecisionFacts, 'steppedStepUpHold'>,
+): string {
   const { kind, label, tone, canEaseOff, reason: _reason, holdCause: _holdCause, ...status } = device.status;
-  const leftOn = kind === 'active' || kind === 'idle';
+  const leftOn = kind === 'active' || kind === 'idle' || decision.steppedStepUpHold;
   return JSON.stringify({
     ...status,
     kind: leftOn ? 'left_on' : kind,
     // For a device left on, the ease-off control follows whether it is running.
     ...(leftOn ? {} : { label, tone, canEaseOff }),
+    // The wait to step up reads as the device would without it: not limited.
+    ...(decision.steppedStepUpHold ? { limited: false, wouldLimit: false } : {}),
     powerText: toNullableSentenceShape(status.powerText),
-    factText: toNullableSentenceShape(status.factText),
+    factText: toNullableSentenceShape(leftOn ? withoutLevelFact(status.factText, status.rail) : status.factText),
     // The same measured figures as numbers: only which kind of reading it is
     // can move the signature.
     reading: status.reading?.kind ?? null,
@@ -168,6 +193,8 @@ export function buildDeviceLogEntry(device: OverviewLogDevice, atMs = Date.now()
  */
 export type OverviewDecisionFacts = Pick<DevicePlanDevice, 'plannedState'> & {
   reasonCode: DevicePlanDevice['reason']['code'];
+  /** The plan stamped the wait to step up (`DevicePlanDevice.steppedStepUpHold`). */
+  steppedStepUpHold: boolean;
 } & Pick<DeviceExecutionState, 'desiredStepId' | 'observedStepId' | 'binaryProgress' | 'stepProgress'
   | 'targetProgress' | 'stepCommandUnanswered'>;
 

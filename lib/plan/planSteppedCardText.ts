@@ -21,6 +21,7 @@ import {
   formatHourlyExhaustedLine,
   formatFairnessHoldCardLine,
   formatShortfallLine,
+  formatStepUpHeldLine,
   resolveHeldCardReasonLine,
   resolveHeldCardReasonVerb,
 } from './planCardReasonLine';
@@ -54,6 +55,7 @@ type SteppedCardDevice = DeviceOverviewSnapshot & {
   steppedLoad?: SteppedLoadCardState;
   starvation?: SettingsUiPlanDeviceStarvation;
   steppedFairnessHold?: SteppedFairnessHold;
+  steppedStepUpHold?: true;
 };
 
 const resolveCurrentStepId = (device: SteppedCardDevice): string | null => (
@@ -238,6 +240,9 @@ export const resolveSteppedStatusLine = (
   if (device.steppedFairnessHold) {
     return formatFairnessHoldCardLine(device.steppedFairnessHold, device.starvation);
   }
+  // Kept below its top step for lack of room, whichever of `keep` and a refused
+  // step-up the cycle wrote: it waits to increase until a step-up is admitted.
+  if (device.steppedStepUpHold) return formatStepUpHeldLine(device.starvation);
   if (isSettlingReason(device.reason.code)) {
     const suppressed = isHeadroomCheckSettlingReason(device.reason.code) && isAtTargetStep(device);
     if (!suppressed) {
