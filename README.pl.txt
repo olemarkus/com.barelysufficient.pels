@@ -6,7 +6,7 @@ Domowy magazyn energii, np. Sessy lub Marstek Venus, może gromadzić nadwyżki,
 
 Ceny rynkowe dla Polski dostarcza aplikacja Power by the Hour. Ceny z Twojej taryfy, także zależne od pory dnia, możesz przekazywać przez automatyzacje Flow. PELS uwzględnia opłaty dystrybucyjne i podatki zawarte w dostarczonych cenach. Ogrzewanie i chłodzenie dostosowuje do tańszych i droższych godzin.
 
-W Smart tasks ustawiasz cel i termin: na przykład auto naładowane do 80% przed 07:00 albo ciepły salon po powrocie z pracy. PELS wybiera tańsze godziny ładowania i grzania. Przy planowaniu ładowania uwzględnia też poziom naładowania akumulatora auta, jeśli Homey go udostępnia.
+W Smart tasks ustawiasz cel i termin: na przykład auto naładowane do 80% przed 07:00 albo ciepły salon po powrocie z pracy. PELS wybiera tańsze godziny ładowania i grzania. Przy planowaniu ładowania uwzględnia też poziom naładowania akumulatora auta, jeśli Homey go udostępnia. W Schedules możesz zaplanować tworzenie Smart tasks lub zmianę trybu o określonej godzinie, jednorazowo albo w wybrane dni.
 
 Grid import limit ogranicza bieżący pobór mocy z sieci. Gdy pobór zbliża się do ustawionego limitu, PELS zmniejsza moc ładowania auta lub wstrzymuje urządzenia o niższym priorytecie. Wznawia ich pracę, gdy można je uruchomić w ramach ustawionego limitu.
 

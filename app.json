@@ -1958,7 +1958,7 @@
           "en": "Report battery level for [[device]] as [[battery_percent]] %"
         },
         "hint": {
-          "en": "Store battery percentage for a managed charger without requiring the charger itself to expose a battery capability."
+          "en": "Report the car's battery percentage for this charger when it has no cars selected in PELS. If cars are selected, PELS uses the matched car's battery level and ignores this report."
         },
         "args": [
           {
@@ -1992,7 +1992,7 @@
           "en": "Report power [[power]] W"
         },
         "hint": {
-          "en": "Send the current whole-house power reading (W) from your meter so PELS can track energy use for the selected capacity period and stay under the hard cap. If your meter reports a signed value, send it as-is: a negative reading means you are exporting to the grid."
+          "en": "Send the current whole-house power reading (W) from your meter so PELS can track energy use and manage devices against any enabled power limits. If your meter reports a signed value, send it as-is: a negative reading means you are exporting to the grid."
         },
         "args": [
           {
@@ -2312,7 +2312,7 @@
           "en": "Deliver [[target_kwh]] kWh to [[device]] by [[ready_by]]"
         },
         "hint": {
-          "en": "PELS runs the device in the cheapest hours before the ready-by time, within the hard cap and, unless you allow more, the daily budget, until it has taken this much energy, counted from its power readings. For on/off devices like a water heater on a relay, or EV chargers, including chargers with current control. The device needs a live power reading. For EV chargers, you can choose an energy target with or without a linked car or battery reading; the energy includes charging losses. A water heater that is already hot or a car that stops accepting charge can leave the task short of its energy target. The task auto-disables once the deadline passes; run this card from a recurring Flow (for example every evening at 22:00) to set it up for the next night."
+          "en": "PELS runs the device in the cheapest hours before the ready-by time, within any enabled power limits and, unless you allow more, any enabled daily budget, until it has taken this much energy, counted from its power readings. For on/off devices like a water heater on a relay, or EV chargers, including chargers with current control. The device needs a live power reading. For EV chargers, you can choose an energy target with or without a linked car or battery reading; the energy includes charging losses. A water heater that is already hot or a car that stops accepting charge can leave the task short of its energy target. The task auto-disables once the deadline passes; run this card from a recurring Flow (for example every evening at 22:00) to set it up for the next night."
         },
         "args": [
           {
@@ -2353,7 +2353,7 @@
           "en": "Charge [[device]] to [[target_percent]] % by [[ready_by]]"
         },
         "hint": {
-          "en": "PELS plans charging from the device settings, prices, budget, and the hard cap. The smart task auto-disables once the deadline passes; run this card from a recurring Flow (e.g. when the EV is plugged in) to re-arm it for the next session."
+          "en": "PELS plans charging from the device settings and prices, within any enabled power limits and, unless you allow more, any enabled daily budget. The smart task auto-disables once the deadline passes; run this card from a recurring Flow (e.g. when the EV is plugged in) to re-arm it for the next session."
         },
         "args": [
           {
@@ -2521,7 +2521,7 @@
           "en": "Heat [[device]] to [[target_c]] °C by [[ready_by]]"
         },
         "hint": {
-          "en": "PELS plans heating from the device settings, prices, budget, and the hard cap. The smart task auto-disables once the deadline passes; run this card from a recurring Flow (e.g. on a daily schedule) to re-arm it for the next run."
+          "en": "PELS plans heating from the device settings and prices, within any enabled power limits and, unless you allow more, any enabled daily budget. The smart task auto-disables once the deadline passes; run this card from a recurring Flow (e.g. on a daily schedule) to re-arm it for the next run."
         },
         "args": [
           {

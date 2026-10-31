@@ -6,7 +6,7 @@ Je terugleverprijs telt mee in de planning, ook wanneer die negatief is. Bij ges
 
 Een thuisbatterij, zoals een Sessy of Marstek Venus, slaat het zonne-overschot op dat de andere apparaten niet gebruiken. PELS verlaagt het laadvermogen van de batterij als een apparaat met hogere prioriteit stroom nodig heeft. De batterij kan ook ontladen om het verbruik onder je ingestelde vermogensgrens te houden.
 
-Met Smart tasks leg je vast wanneer iets klaar moet zijn: de auto op 80 % om 07.00 uur, een warme woonkamer bij thuiskomst of een bepaalde hoeveelheid energie voor de boiler. PELS kiest de goedkoopste uren voor de eindtijd. Als Homey het accuniveau van je auto beschikbaar stelt, gebruikt PELS dat om de benodigde laadtijd te plannen. De temperatuurregeling voor verwarming en koeling houdt ook rekening met kwartierprijzen.
+Met Smart tasks leg je vast wanneer iets klaar moet zijn: de auto op 80 % om 07.00 uur, een warme woonkamer bij thuiskomst of een bepaalde hoeveelheid energie voor de boiler. PELS kiest de goedkoopste uren voor de eindtijd. Als Homey het accuniveau van je auto beschikbaar stelt, gebruikt PELS dat om de benodigde laadtijd te plannen. De temperatuurregeling voor verwarming en koeling houdt ook rekening met kwartierprijzen. Met Schedules maak je Smart tasks aan of wissel je van modus op vaste tijden, eenmalig of op gekozen dagen.
 
 Met een dynamisch contract kiest PELS de goedkoopste uren en kwartieren. De prijzen komen uit Homey Energy, Power by the Hour of Flows. Tijdsafhankelijke tarieven en netkosten die je gekozen prijsbron aanlevert, worden meegenomen in de planning.
 

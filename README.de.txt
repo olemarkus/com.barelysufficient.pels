@@ -2,7 +2,7 @@ Das Auto muss morgens geladen sein, die Wärmepumpe soll das Haus warm halten, a
 
 Öffne nach der Installation Homey > Mehr > Apps > PELS > Einstellungen, um die Einrichtung abzuschließen. Hier wählst du Geräte aus, richtest PELS ein und siehst, was die App macht.
 
-In Smart tasks legst du zum Beispiel fest, dass das Auto um 7 Uhr zu 80 % geladen oder das Wohnzimmer bei deiner Rückkehr warm sein soll. PELS wählt dafür die günstigsten Stunden. Ist der Akkustand in Homey verfügbar, berücksichtigt PELS ihn bei der Ladeplanung.
+In Smart tasks legst du zum Beispiel fest, dass das Auto um 7 Uhr zu 80 % geladen oder das Wohnzimmer bei deiner Rückkehr warm sein soll. PELS wählt dafür die günstigsten Stunden. Ist der Akkustand in Homey verfügbar, berücksichtigt PELS ihn bei der Ladeplanung. Mit Schedules kannst du Smart tasks erstellen oder den Modus zu festen Zeiten wechseln, einmalig oder an ausgewählten Tagen.
 
 Die Preise kommen aus Homey Energy, Power by the Hour oder deinen Flows. In der gewählten Preisquelle hinterlegte Tarifzeiten und Netzentgelte gehen in die Planung ein. Für Heizung und Kühlung berücksichtigt PELS auch Viertelstundenpreise.
 
