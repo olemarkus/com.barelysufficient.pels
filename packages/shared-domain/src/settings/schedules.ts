@@ -1,6 +1,7 @@
 import type { Schedule, ScheduleCommand, ScheduleModeCondition } from '../../../contracts/src/schedules';
 import type { SmartTaskCandidateDevice } from '../../../contracts/src/smartTaskEdit';
 import { isUnknownRecord } from '../recordGuards';
+import { resolveSmartTaskCandidateGoal } from '../smartTaskCandidateGoal';
 
 export const MAX_SCHEDULES = 100;
 export const SCHEDULE_DELETION = { deleted: true } as const;
@@ -109,9 +110,11 @@ export const scheduleEligibilityReason = (
     return modes.includes(schedule.action.mode) ? '' : 'This mode is no longer available. Edit the schedule.';
   }
   const { task } = schedule.action;
-  const device = devices.find((entry) => entry.deviceId === task.deviceId && entry.kind === task.kind);
+  const device = devices.find((entry) => entry.deviceId === task.deviceId);
   if (!device) return 'This device is not available for this Smart task. Edit the schedule.';
-  if (task.target < device.goalMin || task.target > device.goalMax) return 'The target is outside this device’s range.';
+  const goal = resolveSmartTaskCandidateGoal(device, task.kind);
+  if (!goal) return 'This device is not available for this Smart task. Edit the schedule.';
+  if (task.target < goal.goalMin || task.target > goal.goalMax) return 'The target is outside this device’s range.';
   return '';
 };
 

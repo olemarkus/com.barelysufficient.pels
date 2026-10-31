@@ -14,25 +14,30 @@ import type {
   DeferredObjectiveUnit,
 } from './deferredObjectiveSettings.js';
 
-// One device the user can set a smart task on, as both creation surfaces list
-// it (the New smart task widget and the settings UI's Smart tasks page). Kind
-// sets the goal unit (°C for temperature, % for EV charge level, kWh for an
-// amount of energy); the bounds drive the goal input. `currentValue` seeds the
-// goal and the "now → target" hint, null when the device hasn't reported a
-// reading yet. Built by `buildSmartTaskCandidateDevices`
-// (`lib/objectives/deferredObjectives/smartTaskCandidateDevices.ts`).
-export type SmartTaskCandidateDevice = {
-  deviceId: string;
-  deviceName: string;
+/** One supported task target, resolved by the candidate producer. */
+export type SmartTaskCandidateGoal = {
   kind: DeferredObjectiveSettingsKind;
-  // The picker family, from what the device is rather than the goal it is
-  // offered: a charger offered an amount of energy is still an EV charger
-  // (`resolveSmartTaskDeviceGroup`).
-  group: 'heating' | 'ev_charger';
   unitSymbol: DeferredObjectiveUnit;
   goalMin: number;
   goalMax: number;
   goalStep: number;
+};
+
+// One device the user can set a smart task on, as both creation surfaces list
+// it (the New smart task widget and the settings UI's Smart tasks page). The
+// flat goal is the picker's default; otherGoals contains its other supported
+// targets, without repeating that default. `currentValue` seeds the
+// goal and the "now → target" hint, null when the device hasn't reported a
+// reading yet. Built by `buildSmartTaskCandidateDevices`
+// (`lib/objectives/deferredObjectives/smartTaskCandidateDevices.ts`).
+export type SmartTaskCandidateDevice = SmartTaskCandidateGoal & {
+  deviceId: string;
+  deviceName: string;
+  otherGoals: SmartTaskCandidateGoal[];
+  // The picker family, from what the device is rather than the goal it is
+  // offered: a charger offered an amount of energy is still an EV charger
+  // (`resolveSmartTaskDeviceGroup`).
+  group: 'heating' | 'ev_charger';
   defaultGoal: number;
   currentValue: number | null;
   // Whether a creation surface can offer one-tap quick targets for this device

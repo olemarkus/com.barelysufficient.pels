@@ -3,8 +3,13 @@ import type { Schedule } from '../../packages/contracts/src/schedules';
 import type { ScheduleReceipt } from '../../lib/schedules/scheduleReceipts';
 import { ScheduleService, type ScheduleRuntimePort } from '../../lib/schedules/scheduleService';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
+import type { CreateSmartTaskCandidateDevice } from '../../packages/contracts/src/widgetHostApi';
+import { buildSmartTaskCandidateDevices } from '../../lib/objectives/deferredObjectives/smartTaskCandidateDevices';
+import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 
-vi.mock('../../lib/logging/logger', () => ({ getLogger: () => ({ info: vi.fn(), error: vi.fn() }) }));
+vi.mock('../../lib/logging/logger', () => ({
+  getLogger: () => ({ info: vi.fn(), error: vi.fn() }), getDebugEmitter: () => vi.fn(),
+}));
 const services: ScheduleService[] = [];
 afterEach(async () => { await Promise.all(services.splice(0).map((service) => service.stop())); });
 
@@ -12,6 +17,18 @@ const modeSchedule = (id = 'morning'): Schedule => ({
   id, name: 'Morning at home', enabled: true, at: '10:00',
   repeat: { type: 'weekly', days: [1, 2, 3, 4, 5, 6, 7] },
   condition: { type: 'any' }, action: { type: 'mode', mode: 'Home' },
+});
+
+const charger: CreateSmartTaskCandidateDevice = {
+  id: 'charger', name: 'Charger', available: true, targets: [], binaryControl: { on: false },
+  isEvCharger: true, binaryControllable: true, evChargingState: 'plugged_in',
+  measuredPowerKw: 0, measuredPowerIsDirectMeasurement: true,
+};
+const energySchedule = (): Schedule => ({
+  ...modeSchedule('charge'), action: { type: 'task', task: {
+    deviceId: charger.id, kind: 'energy', target: 150, readyByLocalTime: '11:00',
+    exemptFromBudget: false, limitLowerPriorityDevices: false, pauseLowerPriorityDevices: false,
+  } },
 });
 
 const fixture = () => {
@@ -41,6 +58,43 @@ const fixture = () => {
 };
 
 describe('schedule owner', () => {
+  it.each([
+    { transition: 'unplugs', device: { ...charger, evChargingState: 'plugged_out' as const } },
+    { transition: 'reports its battery level', device: {
+      ...charger, stateOfCharge: stateOfChargeFixture({ percent: 40 }),
+    } },
+  ])('dispatches the saved energy target when the charger $transition before the trigger', async ({ device }) => {
+    const f = fixture();
+    let observed = charger;
+    f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([observed]);
+    const schedule = energySchedule();
+    const service = f.create();
+    service.write({ type: 'save', schedule });
+    service.start();
+    observed = device;
+    // 150 kWh is valid for energy, although the new battery default stops at 100%.
+    expect(service.read().entries[0]).toMatchObject({ state: 'on', schedule });
+    f.setNow('2026-10-28T09:00:10Z');
+    await service.tick();
+    expect(f.execute).toHaveBeenCalledExactlyOnceWith(schedule, Date.parse('2026-10-28T09:00:00Z'));
+    expect(service.read().entries[0]?.lastResult).toBe('Smart task created');
+  });
+
+  it('still skips an energy target when its direct power observation is no longer available', async () => {
+    const f = fixture();
+    let observed = charger;
+    f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([observed]);
+    const service = f.create();
+    service.write({ type: 'save', schedule: energySchedule() });
+    service.start();
+    observed = { ...charger, measuredPowerIsDirectMeasurement: false };
+    expect(service.read().entries[0]).toMatchObject({ state: 'invalid' });
+    f.setNow('2026-10-28T09:00:10Z');
+    await service.tick();
+    expect(f.execute).not.toHaveBeenCalled();
+    expect(service.read().entries[0]?.lastResult).toContain('not available');
+  });
+
   it('reads a store with no settings at all as no schedules', () => {
     expect(fixture().create().read().entries).toEqual([]);
   });

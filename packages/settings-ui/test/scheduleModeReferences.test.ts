@@ -81,7 +81,7 @@ describe('Retained schedule mode labels', () => {
     editing.devices = [{
       deviceId: 'charger', deviceName: 'Charger', kind: 'energy', group: 'ev_charger',
       unitSymbol: 'kWh', goalMin: 0.1, goalMax: 100, goalStep: 0.1, defaultGoal: 20, currentValue: null,
-      supportsLimitLowerPriority: false, offersQuickTargets: false,
+      supportsLimitLowerPriority: false, offersQuickTargets: false, otherGoals: [],
     }];
     const select = vi.fn();
     renderSchedules(root, editing, { ...actions, onDevice: select });
@@ -96,5 +96,27 @@ describe('Retained schedule mode labels', () => {
     expect(useEnergy).toBeDefined();
     useEnergy?.dispatchEvent(new Event('click'));
     expect(select).toHaveBeenCalledWith('charger');
+  });
+
+  it('keeps a supported energy input enabled with kWh bounds when battery is the picker default', () => {
+    const editing = snapshot();
+    const saved = { ...entry.schedule, action: { type: 'task' as const, task: {
+      deviceId: 'charger', kind: 'energy' as const, target: 150, readyByLocalTime: '07:00',
+    } } };
+    editing.editor = { kind: 'existing', draft: editScheduleDraft(saved, '2026-11-02') };
+    editing.devices = [{
+      deviceId: 'charger', deviceName: 'Charger', kind: 'ev_soc', group: 'ev_charger',
+      unitSymbol: '%', goalMin: 1, goalMax: 100, goalStep: 1, defaultGoal: 80, currentValue: 40,
+      supportsLimitLowerPriority: true, offersQuickTargets: false,
+      otherGoals: [{ kind: 'energy', unitSymbol: 'kWh', goalMin: 0.1, goalMax: 200, goalStep: 0.1 }],
+    }];
+    renderSchedules(root, editing, actions);
+    const target = root.querySelector<HTMLElement & { value: string; disabled: boolean; max: string }>(
+      'md-filled-text-field[aria-label="Target (kWh)"]',
+    );
+    expect(target?.value).toBe('150');
+    expect(target?.disabled).toBe(false);
+    expect(target?.max).toBe('200');
+    expect(root.querySelector('md-switch[aria-label="May limit lower-priority devices"]')).not.toBeNull();
   });
 });

@@ -1839,7 +1839,8 @@
           defaultGoal: 65,
           currentValue: 48,
           supportsLimitLowerPriority: false,
-          offersQuickTargets: true
+          offersQuickTargets: true,
+          otherGoals: []
         },
         {
           deviceId: "preview-ev",
@@ -1853,7 +1854,8 @@
           defaultGoal: 80,
           currentValue: 42,
           supportsLimitLowerPriority: true,
-          offersQuickTargets: true
+          offersQuickTargets: true,
+          otherGoals: []
         }
       ]
     },
@@ -1875,7 +1877,8 @@
           defaultGoal: 21,
           currentValue: 19.5,
           supportsLimitLowerPriority: false,
-          offersQuickTargets: true
+          offersQuickTargets: true,
+          otherGoals: []
         },
         {
           deviceId: "preview-bedroom",
@@ -1889,7 +1892,8 @@
           defaultGoal: 18,
           currentValue: 17.2,
           supportsLimitLowerPriority: false,
-          offersQuickTargets: true
+          offersQuickTargets: true,
+          otherGoals: []
         },
         {
           deviceId: "preview-bathroom-floor",
@@ -1903,7 +1907,8 @@
           defaultGoal: 24,
           currentValue: 22.1,
           supportsLimitLowerPriority: false,
-          offersQuickTargets: true
+          offersQuickTargets: true,
+          otherGoals: []
         },
         {
           deviceId: "preview-office",
@@ -1917,7 +1922,8 @@
           defaultGoal: 20,
           currentValue: 20.4,
           supportsLimitLowerPriority: false,
-          offersQuickTargets: true
+          offersQuickTargets: true,
+          otherGoals: []
         },
         {
           deviceId: "preview-hot-water",
@@ -1931,7 +1937,8 @@
           defaultGoal: 65,
           currentValue: 48,
           supportsLimitLowerPriority: false,
-          offersQuickTargets: true
+          offersQuickTargets: true,
+          otherGoals: []
         },
         {
           deviceId: "preview-cabin-water",
@@ -1945,7 +1952,8 @@
           defaultGoal: 60,
           currentValue: 55,
           supportsLimitLowerPriority: false,
-          offersQuickTargets: true
+          offersQuickTargets: true,
+          otherGoals: []
         },
         {
           deviceId: "preview-ev",
@@ -1959,7 +1967,8 @@
           defaultGoal: 80,
           currentValue: 42,
           supportsLimitLowerPriority: true,
-          offersQuickTargets: true
+          offersQuickTargets: true,
+          otherGoals: []
         },
         {
           deviceId: "preview-ev-guest",
@@ -1973,7 +1982,8 @@
           defaultGoal: 80,
           currentValue: 30,
           supportsLimitLowerPriority: true,
-          offersQuickTargets: true
+          offersQuickTargets: true,
+          otherGoals: []
         }
       ]
     }

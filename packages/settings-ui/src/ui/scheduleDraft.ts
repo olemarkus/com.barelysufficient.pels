@@ -1,6 +1,7 @@
 import type { Schedule, ScheduleAction, ScheduleEntry, ScheduleRepeat } from '../../../contracts/src/schedules.ts';
 import type { SmartTaskCandidateDevice } from '../../../contracts/src/smartTaskEdit.ts';
 import { deadlineLabels } from '../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
+import { resolveSmartTaskCandidateGoal } from '../../../shared-domain/src/smartTaskCandidateGoal.ts';
 import type { SmartTaskEditPermissions } from './smartTaskEdit.ts';
 import { isScheduleModeAvailable } from './scheduleModeReferences.ts';
 import { parseSmartTaskGoal, SMART_TASK_READY_BY_PATTERN } from './smartTaskDraft.ts';
@@ -106,16 +107,17 @@ const taskActionFromDraft = (
 ): TaskActionDraftResult => {
   const device = devices.find((candidate) => candidate.deviceId === draft.deviceId);
   if (!device) return { ok: false, error: 'Choose an available device for this task.' };
-  if (draft.taskKind !== device.kind) {
+  const goal = draft.taskKind === null ? undefined : resolveSmartTaskCandidateGoal(device, draft.taskKind);
+  if (!goal) {
     return {
       ok: false,
-      error: 'This device currently offers a different target. Choose that target or wait until this one is available.',
+      error: 'This target is not available for this device. Choose another target or device.',
     };
   }
   const target = parseSmartTaskGoal(draft.target);
-  if (target === null || target < device.goalMin || target > device.goalMax) {
+  if (target === null || target < goal.goalMin || target > goal.goalMax) {
     return {
-      ok: false, error: `Choose a target between ${device.goalMin} and ${device.goalMax} ${device.unitSymbol}.`,
+      ok: false, error: `Choose a target between ${goal.goalMin} and ${goal.goalMax} ${goal.unitSymbol}.`,
     };
   }
   if (!SMART_TASK_READY_BY_PATTERN.test(draft.readyBy)) return { ok: false, error: 'Choose a valid ready-by time.' };
@@ -124,7 +126,7 @@ const taskActionFromDraft = (
     action: {
       type: 'task',
       task: {
-        deviceId: device.deviceId, kind: draft.taskKind, target, readyByLocalTime: draft.readyBy,
+        deviceId: device.deviceId, kind: goal.kind, target, readyByLocalTime: draft.readyBy,
         ...draft.permissions,
       },
     },

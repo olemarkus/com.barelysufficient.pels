@@ -67,7 +67,7 @@ const installSchedules = async (page: Page): Promise<void> => {
         'GET /ui_smart_task_devices': () => ({ state: 'ready', devices: [{
           deviceId: 'heater', deviceName: 'Water heater', kind: 'temperature', group: 'heating',
           unitSymbol: '°C', goalMin: 30, goalMax: 75, goalStep: 0.5, defaultGoal: 65, currentValue: 40,
-          supportsLimitLowerPriority: false, offersQuickTargets: false,
+          supportsLimitLowerPriority: false, offersQuickTargets: false, otherGoals: [],
         }] }),
       },
     };
@@ -108,7 +108,7 @@ test('changing an unavailable battery target stays in the editor until explicitl
     stub.setApiHandler('GET /ui_smart_task_devices', () => ({ state: 'ready', devices: [{
       deviceId: 'charger', deviceName: 'Charger', kind: 'ev_soc', group: 'ev_charger',
       unitSymbol: '%', goalMin: 1, goalMax: 100, goalStep: 1, defaultGoal: 80, currentValue: 40,
-      supportsLimitLowerPriority: false, offersQuickTargets: false,
+      supportsLimitLowerPriority: false, offersQuickTargets: false, otherGoals: [],
     }] }));
     stub.emitSettingsSet('schedule.water');
   });
@@ -126,7 +126,7 @@ test('changing an unavailable battery target stays in the editor until explicitl
     testWindow.Homey.__stub.setApiHandler('GET /ui_smart_task_devices', () => ({ state: 'ready', devices: [{
       deviceId: 'charger', deviceName: 'Charger', kind: 'energy', group: 'ev_charger',
       unitSymbol: 'kWh', goalMin: 0.1, goalMax: 100, goalStep: 0.1, defaultGoal: 20, currentValue: null,
-      supportsLimitLowerPriority: false, offersQuickTargets: false,
+      supportsLimitLowerPriority: false, offersQuickTargets: false, otherGoals: [],
     }] }));
     testWindow.__scheduleSubmitCount = 0;
     document.querySelector('#schedules-panel form')!.addEventListener('submit', () => {
@@ -152,6 +152,55 @@ test('changing an unavailable battery target stays in the editor until explicitl
     action: { type: 'task', task: { kind: 'energy', target: 25 } },
   });
   expect(errors).toEqual([]);
+});
+
+test('keeps a supported energy target editable when the picker defaults to battery', async ({ page }) => {
+  await installSchedules(page);
+  await page.goto('/?page=settings/schedules');
+  const panel = page.locator('#schedules-panel');
+  await expect(panel.getByRole('heading', { name: 'Schedules', exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    const stub = (window as unknown as { Homey: { __stub: {
+      setSetting(key: string, value: unknown): void;
+      setApiHandler(key: string, handler: () => unknown): void;
+      emitSettingsSet(key: string): void;
+    } } }).Homey.__stub;
+    stub.setSetting('schedule.water', {
+      id: 'water', name: 'Charge overnight', enabled: true, at: '21:00',
+      repeat: { type: 'weekly', days: [1, 2, 3, 4, 5, 6, 7] }, condition: { type: 'any' },
+      action: { type: 'task', task: {
+        deviceId: 'charger', kind: 'energy', target: 150, readyByLocalTime: '07:00',
+        exemptFromBudget: true, limitLowerPriorityDevices: false, pauseLowerPriorityDevices: false,
+      } },
+    });
+    stub.setApiHandler('GET /ui_smart_task_devices', () => ({ state: 'ready', devices: [{
+      deviceId: 'charger', deviceName: 'Charger', kind: 'ev_soc', group: 'ev_charger',
+      unitSymbol: '%', goalMin: 1, goalMax: 100, goalStep: 1, defaultGoal: 80, currentValue: 40,
+      supportsLimitLowerPriority: false, offersQuickTargets: false,
+      otherGoals: [{ kind: 'energy', unitSymbol: 'kWh', goalMin: 0.1, goalMax: 200, goalStep: 0.1 }],
+    }] }));
+    stub.emitSettingsSet('schedule.water');
+  });
+  const row = panel.locator('[data-schedule-id="water"]');
+  await expect(row).toContainText('Charge overnight');
+  await expect(row).toContainText('Extra permissions: May go over daily budget');
+  await row.getByRole('button', { name: 'Edit', exact: true }).click();
+  const target = panel.getByRole('spinbutton', { name: 'Target (kWh)', exact: true });
+  await expect(target).toBeEnabled();
+  await expect(target).toHaveValue('150');
+  await expect(panel.getByRole('region', { name: 'Saved schedule status', exact: true })).toContainText('Saved schedule: On');
+  const permissions = panel.locator('details.smart-task-edit__permissions');
+  await expect(permissions).toHaveAttribute('open', '');
+  await permissions.locator('summary').click();
+  await panel.getByRole('textbox', { name: 'Schedule name', exact: true }).fill('Retained energy');
+  await expect(permissions).not.toHaveAttribute('open');
+  await expect(panel.locator('.smart-task-edit__permissions-granted')).toContainText('May go over daily budget');
+  await target.fill('180');
+  await panel.getByRole('button', { name: 'Save schedule', exact: true }).click();
+  await expect(panel.getByRole('heading', { name: 'Schedules', exact: true })).toBeVisible();
+  await expect.poll(() => readStored(page, 'schedule.water')).toMatchObject({
+    name: 'Retained energy', action: { type: 'task', task: { kind: 'energy', target: 180 } },
+  });
 });
 
 for (const width of [320, 480]) {

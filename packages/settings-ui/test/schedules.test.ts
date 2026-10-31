@@ -52,7 +52,7 @@ describe('Schedule settings bridge', () => {
     const heater: SmartTaskCandidateDevice = {
       deviceId: 'heater', deviceName: 'Water heater', kind: 'temperature', group: 'heating',
       unitSymbol: '°C', goalMin: 30, goalMax: 75, goalStep: 0.5, defaultGoal: 65, currentValue: 40,
-      supportsLimitLowerPriority: false, offersQuickTargets: false,
+      supportsLimitLowerPriority: false, offersQuickTargets: false, otherGoals: [],
     };
     const entry = read.entries[0];
     if (!entry) throw new Error('Missing fixture entry');
@@ -86,7 +86,7 @@ describe('Schedule settings bridge', () => {
     const battery: SmartTaskCandidateDevice = {
       deviceId: 'charger', deviceName: 'Charger', kind: 'ev_soc', group: 'ev_charger',
       unitSymbol: '%', goalMin: 1, goalMax: 100, goalStep: 1, defaultGoal: 80, currentValue: 40,
-      supportsLimitLowerPriority: false, offersQuickTargets: false,
+      supportsLimitLowerPriority: false, offersQuickTargets: false, otherGoals: [],
     };
     const energy: SmartTaskCandidateDevice = {
       ...battery, kind: 'energy', unitSymbol: 'kWh', goalMin: 0.1, goalStep: 0.1, defaultGoal: 20,
@@ -111,7 +111,7 @@ describe('Schedule settings bridge', () => {
       taskKind: 'ev_soc', target: '80', permissions: { exemptFromBudget: true },
     });
     renders.at(-1)?.actions.onSave();
-    await vi.waitFor(() => expect(renders.at(-1)?.snapshot.error).toContain('different target'));
+    await vi.waitFor(() => expect(renders.at(-1)?.snapshot.error).toContain('not available'));
     expect(setSettingMock).not.toHaveBeenCalled();
 
     candidate = battery;
@@ -123,6 +123,38 @@ describe('Schedule settings bridge', () => {
     expect(renders.at(-1)?.snapshot.editor?.draft).toMatchObject({
       taskKind: 'energy', target: '20', permissions: { exemptFromBudget: false },
     });
+  });
+
+  it('saves a retained kWh target using its supported bounds when the picker defaults to battery', async () => {
+    const candidate: SmartTaskCandidateDevice = {
+      deviceId: 'charger', deviceName: 'Charger', kind: 'ev_soc', group: 'ev_charger',
+      unitSymbol: '%', goalMin: 1, goalMax: 100, goalStep: 1, defaultGoal: 80, currentValue: 40,
+      supportsLimitLowerPriority: false, offersQuickTargets: false,
+      otherGoals: [{ kind: 'energy', unitSymbol: 'kWh', goalMin: 0.1, goalMax: 200, goalStep: 0.1 }],
+    };
+    read.entries[0].schedule = { ...schedule, id: 'retained-energy', action: { type: 'task', task: {
+      deviceId: candidate.deviceId, kind: 'energy', target: 150, readyByLocalTime: '07:00',
+    } } };
+    callApiMock.mockImplementation(async (_method: string, path: string) => {
+      if (path === SETTINGS_UI_DEVICES_PATH) return { schedules: { ok: true, data: structuredClone(read) } };
+      if (path === SETTINGS_UI_SMART_TASK_DEVICES_PATH) return { state: 'ready', devices: [candidate] };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    setSettingMock.mockImplementation(async (_key: string, value: Schedule) => {
+      read.entries[0].schedule = value;
+    });
+    window.history.replaceState({}, '', '/?page=settings/schedules&schedule=retained-energy');
+    await controller.refreshSchedules();
+    controller.changeScheduleDraft({ name: 'More energy overnight' });
+    renders.at(-1)?.actions.onSave();
+    await vi.waitFor(() => expect(renders.at(-1)?.snapshot.editor).toBeNull());
+    expect(setSettingMock).toHaveBeenCalledWith('schedule.retained-energy', expect.objectContaining({
+      name: 'More energy overnight', action: { type: 'task', task: {
+        deviceId: 'charger', kind: 'energy', target: 150, readyByLocalTime: '07:00',
+        exemptFromBudget: false, limitLowerPriorityDevices: false, pauseLowerPriorityDevices: false,
+      } },
+    }));
+    expect(renders.at(-1)?.snapshot.error).toBe('');
   });
 
   it('allows an unavailable condition to be removed before saving its replacement', async () => {

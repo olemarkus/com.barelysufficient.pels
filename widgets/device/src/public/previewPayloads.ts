@@ -66,13 +66,13 @@ const heaterEndedRow: SmartTasksWidgetEndedRow = {
 const heaterCandidate: CreateSmartTaskDevice = {
   deviceId: 'heater', deviceName: 'Water heater', kind: 'temperature', group: 'heating', unitSymbol: '°C',
   goalMin: 20, goalMax: 85, goalStep: 1, defaultGoal: 65, currentValue: 54,
-  supportsLimitLowerPriority: false, offersQuickTargets: true,
+  supportsLimitLowerPriority: false, offersQuickTargets: true, otherGoals: [],
 };
 
 const chargerCandidate: CreateSmartTaskDevice = {
   deviceId: 'ev', deviceName: 'Garage charger', kind: 'ev_soc', group: 'ev_charger', unitSymbol: '%',
   goalMin: 1, goalMax: 100, goalStep: 1, defaultGoal: 80, currentValue: null,
-  supportsLimitLowerPriority: true, offersQuickTargets: false,
+  supportsLimitLowerPriority: true, offersQuickTargets: false, otherGoals: [],
 };
 
 const PREVIEW_PAYLOADS: Record<string, DeviceWidgetPayload> = {
