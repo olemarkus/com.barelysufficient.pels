@@ -204,7 +204,7 @@
 
     <section class="card panel hidden" id="budget-panel" data-panel="budget">
       <div class="budget-redesign-surface" id="budget-redesign-surface" aria-busy="true" data-budget-skeleton>
-        <!-- First-paint skeleton — replaced by Preact on first `renderBudgetOverview`.
+        <!-- First-paint skeleton — cleared by `budgetRedesign.ts` on its first render.
              Mirrors the eventual hero + chart card shape so the panel keeps its
              vertical rhythm and avoids a flat grey wall while the bootstrap
              fetch resolves. SR text sits as a sibling of the shimmer stack
