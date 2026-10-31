@@ -265,9 +265,26 @@ const buildProps = (): BudgetOverviewProps => {
   };
 };
 
+// The static first-paint skeleton in `#budget-redesign-surface` (index.html):
+// a shimmer stack plus a visually hidden "Loading budget…". Preact's first
+// render into a non-empty container adopts or strands those nodes, which left
+// the loading text in the DOM for good on the short Daily-budget-off tree, so
+// the first render clears them (same pattern as the Overview surface).
+// `aria-busy` stays until the budget read resolves, on or off.
+let surfaceSkeletonCleared = false;
+let budgetReadResolved = false;
+
 export const doRender = () => {
   const surface = getBudgetSurface();
   if (!surface) return;
+  if (!surfaceSkeletonCleared) {
+    surface.replaceChildren();
+    surfaceSkeletonCleared = true;
+  }
+  if (budgetReadResolved) {
+    surface.removeAttribute('aria-busy');
+    surface.removeAttribute('data-budget-skeleton');
+  }
   renderBudgetOverview(surface, buildProps());
 };
 
@@ -310,6 +327,7 @@ export const renderBudgetRedesign = (
   priceRows: CombinedPriceRow[] = [],
 ) => {
   latestRenderState = { ...latestRenderState, payload, view, costDisplay, priceRows };
+  budgetReadResolved = true;
   doRender();
 };
 
