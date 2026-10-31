@@ -120,6 +120,38 @@ describe('schedule owner', () => {
     expect(f.execute).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { start: '2026-10-28T08:59:00Z', earlier: '10:00', later: '10:01', tick: '2026-10-28T09:01:05Z' },
+    { start: '2026-10-28T22:58:00Z', earlier: '23:59', later: '00:00', tick: '2026-10-28T23:00:05Z' },
+  ])('runs delayed mode changes chronologically across $earlier and $later', async (times) => {
+    const f = fixture();
+    f.setNow(times.start);
+    f.values.set('schedule.later', { ...modeSchedule('later'), at: times.later,
+      action: { type: 'mode', mode: 'Night' } });
+    f.values.set('schedule.earlier', { ...modeSchedule('earlier'), at: times.earlier });
+    f.execute.mockImplementation(async (schedule) => {
+      if (schedule.action.type === 'mode') f.setMode(schedule.action.mode);
+    });
+    const service = f.create(); service.start();
+    f.setNow(times.tick); await service.tick();
+    expect(f.execute.mock.calls.map(([schedule]) => schedule.id)).toEqual(['earlier', 'later']);
+    expect(f.port.currentMode()).toBe('Night');
+  });
+
+  it('rechecks a pending schedule after an earlier action disables it', async () => {
+    const f = fixture();
+    const later = { ...modeSchedule('later'), at: '10:01' };
+    f.values.set('schedule.later', later);
+    f.values.set('schedule.earlier', modeSchedule('earlier'));
+    f.execute.mockImplementation(async () => {
+      f.values.set('schedule.later', { ...later, enabled: false });
+    });
+    const service = f.create(); service.start();
+    f.setNow('2026-10-28T09:01:05Z'); await service.tick();
+    expect(f.execute.mock.calls.map(([schedule]) => schedule.id)).toEqual(['earlier']);
+    expect(f.receipts.has('later')).toBe(false);
+  });
+
   it('persists consumption through a restart and rejects a backwards-clock replay', async () => {
     const f = fixture(); f.values.set('schedule.morning', modeSchedule());
     const first = f.create(); first.start();
@@ -311,11 +343,13 @@ describe('schedule owner', () => {
     expect(f.receipts.get('healthy')?.lastResult).toBe('Mode changed');
   });
 
-  it('runs a later mode schedule when an earlier task cannot read its device catalog', async () => {
+  it.each(['once', 'weekly'] as const)('records a failed %s task trigger and continues with a later mode', async (repeat) => {
     const f = fixture();
-    f.values.set('schedule.task', { ...modeSchedule('task'), action: { type: 'task', task: {
-      deviceId: 'water', kind: 'temperature', target: 65, readyByLocalTime: '07:00',
-    } } });
+    const task = energySchedule();
+    if (repeat === 'once') task.repeat = { type: 'once', date: '2026-10-28' };
+    f.values.set('schedule.charge', task);
+    f.receipts.set('charge', { localOccurrence: '2026-10-27|10:00',
+      consumedAtMs: Date.parse('2026-10-27T09:00:00Z'), lastResult: 'Smart task created' });
     f.values.set('schedule.mode', { ...modeSchedule('mode'), at: '10:01' });
     f.port.listTaskDevices = () => { throw new Error('Unavailable devices'); };
     const service = f.create(); service.start();
@@ -323,6 +357,17 @@ describe('schedule owner', () => {
     await expect(service.tick()).resolves.toBeUndefined();
     expect(f.execute).toHaveBeenCalledTimes(1);
     expect(f.execute.mock.calls[0]?.[0].id).toBe('mode');
+    expect(f.receipts.get('charge')).toMatchObject({
+      localOccurrence: '2026-10-28|10:00', lastResult: 'Could not run: Unavailable devices',
+    });
+    f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
+    expect(service.read().entries.find((entry) => entry.schedule.id === 'charge')).toMatchObject({
+      state: repeat === 'once' ? 'finished' : 'on', lastResult: 'Could not run: Unavailable devices',
+    });
+    await service.stop();
+    f.setNow('2026-10-28T08:59:45Z'); service.start();
+    f.setNow('2026-10-28T09:01:30Z'); await service.tick();
+    expect(f.execute).toHaveBeenCalledTimes(1);
   });
 
   it('finalizes a successful action despite an unrelated config read failing afterward', async () => {
@@ -353,6 +398,31 @@ describe('schedule owner', () => {
     f.setNow('2026-10-28T09:00:30Z'); await service.tick();
     expect(f.execute).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['condition', 'eligibility'] as const)(
+    'persists the synchronous %s result even if settings become unavailable', async (failure) => {
+      const f = fixture();
+      const loseSettings = () => {
+        f.port.settings.getKeys = () => { throw new Error('Settings unavailable'); };
+      };
+      if (failure === 'condition') {
+        f.values.set('schedule.morning', { ...modeSchedule(), condition: { type: 'include', modes: ['Home'] } });
+        f.port.currentMode = () => { loseSettings(); return 'Night'; };
+      } else {
+        f.values.set('schedule.charge', energySchedule());
+        f.port.listTaskDevices = () => { loseSettings(); throw new Error('Unavailable devices'); };
+      }
+      const service = f.create(); service.start();
+      f.setNow('2026-10-28T09:00:10Z'); await service.tick();
+      const lastResult = failure === 'condition'
+        ? 'Skipped: the current mode did not match the schedule condition.' : 'Could not run: Unavailable devices';
+      expect([...f.receipts.values()][0]?.lastResult).toBe(lastResult);
+      f.port.settings.getKeys = () => [...f.values.keys()];
+      f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
+      expect(service.read().entries[0]?.lastResult).toBe(lastResult);
+      expect(f.execute).not.toHaveBeenCalled();
+    },
+  );
 
   it('does not resurrect a receipt deleted while its action was in flight', async () => {
     const f = fixture(); f.values.set('schedule.morning', modeSchedule());
