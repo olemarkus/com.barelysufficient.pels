@@ -21,8 +21,8 @@ describe('usageHeroStrings', () => {
   });
 
   it('formats the vs-typical chip with sign driven by projectedDiff', () => {
-    expect(formatVsTypicalChipLabel(2, 2)).toBe('+2.0 kWh vs typical');
-    expect(formatVsTypicalChipLabel(-4, 4)).toBe('−4.0 kWh vs typical');
+    expect(formatVsTypicalChipLabel(2, 2)).toBe('+2.0 kWh projected vs typical');
+    expect(formatVsTypicalChipLabel(-4, 4)).toBe('−4.0 kWh projected vs typical');
   });
 
   it('formats the projection line, dropping the direction inside the dead-band', () => {

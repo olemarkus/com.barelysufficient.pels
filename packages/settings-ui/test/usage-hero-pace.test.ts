@@ -96,7 +96,7 @@ describe('formatDeltaChipLabel', () => {
     // 7 kWh by noon → projected 14 kWh → +2.0 vs typical 12 (16% > 10%).
     const ctx = computePaceContext(7, 12, atUtcHour(12), 'UTC');
     const result = formatDeltaChipLabel(ctx);
-    expect(result.label).toBe('+2.0 kWh vs typical');
+    expect(result.label).toBe('+2.0 kWh projected vs typical');
     expect(result.tone).toBe('warn');
   });
 
@@ -105,14 +105,14 @@ describe('formatDeltaChipLabel', () => {
     const ctx = computePaceContext(9, 12, atUtcHour(12), 'UTC');
     const result = formatDeltaChipLabel(ctx);
     expect(result.tone).toBe('alert');
-    expect(result.label).toContain('vs typical');
+    expect(result.label).toContain('projected vs typical');
   });
 
   it('reports a negative vs-typical delta with ok tone', () => {
     // 4 kWh by noon → projected 8 kWh → −4.0 vs typical 12.
     const ctx = computePaceContext(4, 12, atUtcHour(12), 'UTC');
     const result = formatDeltaChipLabel(ctx);
-    expect(result.label).toBe('−4.0 kWh vs typical');
+    expect(result.label).toBe('−4.0 kWh projected vs typical');
     expect(result.tone).toBe('ok');
   });
 
@@ -136,7 +136,7 @@ describe('formatDeltaChipLabel', () => {
     const ctx = computePaceContext(6.2, 12, atUtcHour(12), 'UTC');
     const chip = formatDeltaChipLabel(ctx);
     expect(chip.tone).toBe('ok');
-    expect(chip.label).toBe('+0.4 kWh vs typical');
+    expect(chip.label).toBe('+0.4 kWh projected vs typical');
     expect(resolveHeroTone(ctx)).toBe('ok');
   });
 });
