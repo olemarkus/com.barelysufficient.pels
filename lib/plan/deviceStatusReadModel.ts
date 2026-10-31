@@ -48,12 +48,14 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   priceTargetShift: PriceTargetShift;
   /** The plan device's control adapter, spread in with it; absent on a device that has none. */
   controlAdapter?: DeviceControlAdapterSnapshot;
-} & Pick<DevicePlanDevice, 'steppedFairnessHold'>;
+} & Pick<DevicePlanDevice, 'steppedFairnessHold' | 'steppedStepUpHold'>;
 
 function resolveBaseKind(device: DeviceStatusInput): PlanStateKind {
   if (!device.controllable) return 'manual';
   if (!device.execution.available) return 'unavailable';
-  if (device.plannedState === 'shed') return 'held';
+  // A running stepped device PELS keeps below its top step for lack of room is
+  // held for as long as it waits, though the plan keeps it (`steppedStepUpHold`).
+  if (device.plannedState === 'shed' || device.steppedStepUpHold === true) return 'held';
   if (device.execution.externalOffHeld || device.plannedState === 'inactive') return 'idle';
   if (device.execution.physicalState === 'off') {
     if (!device.execution.resumeExpected) return 'idle';

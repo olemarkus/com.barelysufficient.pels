@@ -145,6 +145,7 @@ const describeOverviewDecision = (
     if (!device || !state) throw new Error(`Missing decision for published device ${deviceId}`);
     return {
       reasonCode: device.reason.code, plannedState: device.plannedState,
+      steppedStepUpHold: device.steppedStepUpHold === true,
       desiredStepId: state.desiredStepId, observedStepId: state.observedStepId,
       binaryProgress: state.binaryProgress, stepProgress: state.stepProgress, targetProgress: state.targetProgress,
       stepCommandUnanswered: state.stepCommandUnanswered,

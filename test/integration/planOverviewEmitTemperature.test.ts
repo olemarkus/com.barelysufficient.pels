@@ -15,7 +15,7 @@ import { insufficientHeadroomFixtureReason } from '../utils/deviceReasonTestUtil
 // state the owner sees on the card.
 // The decision behind each card: the activity log reads its reason code.
 const decisionWith = (reasonCode: DeviceReason['code']) => (): OverviewDecisionFacts => ({
-  reasonCode, plannedState: 'keep', desiredStepId: null, observedStepId: null,
+  reasonCode, plannedState: 'keep', steppedStepUpHold: false, desiredStepId: null, observedStepId: null,
   binaryProgress: 'settled', stepProgress: 'undriven', targetProgress: 'undriven', stepCommandUnanswered: false,
 });
 const describeKeep = decisionWith(PLAN_REASON_CODES.keep);

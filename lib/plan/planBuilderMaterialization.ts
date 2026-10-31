@@ -41,6 +41,7 @@ import { syncHeadroomCardState } from './planHeadroomDevice';
 import { buildDeviceDiagnosticsObservations } from './planDiagnostics';
 import { getOnDevices } from './restore/devices';
 import { stampSteppedFairnessHolds } from './planSteppedFairnessHold';
+import { stampSteppedStepUpHolds } from './planSteppedStepUpHold';
 import { trackPlanStage } from './planStageTiming';
 
 type HoldPlanResult = {
@@ -190,7 +191,7 @@ export class PlanMaterializationStages {
     nowTs: number,
   ): FinalizedPlanResult {
     this.syncHeadroomCardState(planDevices, nowTs);
-    return trackPlanStage('plan_finalize_ms', () => this.stampFairnessHolds(finalizePlanDevices(
+    return trackPlanStage('plan_finalize_ms', () => this.stampSteppedHolds(finalizePlanDevices(
       planDevices, temperatureSetpoints, this.state.shedDecisions.lastPlannedShedIds, {
       onInvalidReasonPair: (issue) => {
         this.deps.structuredLog.warn({
@@ -207,9 +208,12 @@ export class PlanMaterializationStages {
   }
 
   // Read from the FINAL plan: every stage that revises a device's state or step
-  // has run, so the fairness hold describes what this plan decided.
-  private stampFairnessHolds(result: FinalizedPlanResult): FinalizedPlanResult {
-    return { ...result, planDevices: stampSteppedFairnessHolds(result.planDevices, this.state.shedDecisions) };
+  // has run, so the fairness hold and the wait to step up describe what this plan
+  // decided. The wait is resolved after the fairness hold, which states its own rule.
+  private stampSteppedHolds(result: FinalizedPlanResult): FinalizedPlanResult {
+    return { ...result, planDevices: stampSteppedStepUpHolds(
+      stampSteppedFairnessHolds(result.planDevices, this.state.shedDecisions),
+    ) };
   }
 
   private syncHeadroomCardState(planDevices: DevicePlanDevice[], nowTs: number): void {

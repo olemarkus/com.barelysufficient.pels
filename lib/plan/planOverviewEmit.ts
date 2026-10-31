@@ -64,17 +64,18 @@ export class DeviceOverviewTransitions {
     if (this.presentationById.get(device.id) === presentation) return 'unchanged';
     this.presentationById.set(device.id, presentation);
     const { reason } = device.status;
-    const shape = buildLoggedReasonShape(device.status, describeDecision(device.id));
+    const decision = describeDecision(device.id);
+    const shape = buildLoggedReasonShape(device.status, decision);
     const wait = isCountdownWait(reason);
     const carried = wait && this.steadyReasonById.has(device.id) ? this.steadyReasonById.get(device.id) ?? null : shape;
     if (!wait) this.steadyReasonById.set(device.id, shape);
-    if (this.loggedById.get(device.id) === buildOverviewSignatureForDevice(device, carried)) {
+    if (this.loggedById.get(device.id) === buildOverviewSignatureForDevice(device, carried, decision)) {
       return 'presentation_changed';
     }
     // A row written during a wait names the wait, so the log now holds that: the
     // reason coming back afterwards is a change the next row must show.
     if (wait) this.steadyReasonById.set(device.id, shape);
-    this.loggedById.set(device.id, buildOverviewSignatureForDevice(device, wait ? shape : carried));
+    this.loggedById.set(device.id, buildOverviewSignatureForDevice(device, wait ? shape : carried, decision));
     return 'state_changed';
   }
 
