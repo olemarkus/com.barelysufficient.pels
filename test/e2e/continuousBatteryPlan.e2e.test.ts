@@ -9,7 +9,8 @@ import { drainPending } from '../utils/asyncDrain';
 import { buildSetpointBatteryDevice } from '../helpers/homeBatteryMock';
 import type { HomeyEnergyApi } from '../../lib/utils/homeyEnergy';
 import {
-  CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, OPERATING_MODE_SETTING, PRICE_SCHEME,
+  CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, DEBUG_LOGGING_TOPICS,
+  OPERATING_MODE_SETTING, PRICE_SCHEME,
 } from '../../lib/utils/settingsKeys';
 
 const BATTERY = 'home-battery';
@@ -30,6 +31,7 @@ type Home = {
   app: ReturnType<typeof createApp>;
   battery: MockDevice;
   put: MockInstance<typeof mockHomeyInstance.api.put>;
+  logs: MockInstance<ReturnType<typeof createApp>['log']>;
   advance(polls: number): Promise<void>;
   setHouseW(watts: number): void;
 };
@@ -78,9 +80,10 @@ async function startHome(
   });
   const put = vi.spyOn(mockHomeyInstance.api, 'put');
   const app = createApp();
+  const logs = vi.spyOn(app, 'log');
   await app.onInit();
   return {
-    app, battery, put,
+    app, battery, put, logs,
     setHouseW: watts => { houseW = watts; },
     advance: async polls => {
       for (let poll = 0; poll < polls; poll += 1) {
@@ -190,6 +193,41 @@ describe('continuous battery plan through the Homey SDK', () => {
     await home.advance(5);
     expect(setpoints(home)).toContain(0);
     expect(setpoints(home).every(watts => watts >= 0)).toBe(true);
+  });
+
+  it('tracks profitable export economics without exposing or executing the export candidate', async () => {
+    mockHomeyInstance.settings.set(DEBUG_LOGGING_TOPICS, ['plan']);
+    mockHomeyInstance.settings.set('export_price_enabled', true);
+    mockHomeyInstance.settings.set('export_price_source', 'manual');
+    mockHomeyInstance.settings.set('export_spot_factor', 0);
+    mockHomeyInstance.settings.set('export_fixed', 1);
+    const home = await startHome(true, 80);
+    await home.advance(8);
+
+    const evaluations = home.logs.mock.calls.flatMap(args => args.flatMap((arg: unknown) => {
+      if (typeof arg !== 'string' || !arg.startsWith('{')) return [];
+      const event = JSON.parse(arg) as Record<string, unknown>;
+      return event.event === 'battery_export_shadow_evaluated' ? [event] : [];
+    }));
+    expect(evaluations).toContainEqual(expect.objectContaining({
+      deviceId: BATTERY, mode: 'shadow', selection: 'export_candidate',
+    }));
+    expect(evaluations.some(event => typeof event.estimatedSavings === 'number' && event.estimatedSavings > 0)).toBe(true);
+
+    const read = (await api.ui_devices(context())).continuousBatteryPlans[BATTERY];
+    expect(read.status).toBe('planned');
+    if (read.status !== 'planned') throw new Error('Expected the household plan');
+    expect(read.plan.periods.every(period => period.gridExportKWh === 0)).toBe(true);
+    expect(setpoints(home).some(watts => watts < 0)).toBe(true);
+    expect(setpoints(home).every(watts => watts >= -1800)).toBe(true);
+    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
+
+    home.put.mockClear();
+    home.setHouseW(0);
+    await home.advance(5);
+    expect(setpoints(home)).toContain(0);
+    expect(setpoints(home).every(watts => watts >= 0)).toBe(true);
+    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
   });
 
   it('waits for battery charging to be measured before curtailing the remaining solar export', async () => {

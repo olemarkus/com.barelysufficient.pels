@@ -98,13 +98,15 @@ function readHorizon(
     },
     periods,
   };
-  return { kind: 'ready', horizon, priceUnit: prices.priceUnit };
+  return { kind: 'ready', horizon, priceUnit: prices.priceUnit, exportPricing: periodRead.exportPricing };
 }
 
 
 type PriceSpan = { price: PriceTimelinePeriod; startsAtMs: number; endsAtMs: number };
 type WaitingHorizon = Extract<ContinuousBatteryHorizonRead, { kind: 'waiting' }>;
-type PeriodRead = { kind: 'ready'; periods: ContinuousBatteryEnergyHorizon['periods'] } | WaitingHorizon;
+type PeriodRead = {
+  kind: 'ready'; periods: ContinuousBatteryEnergyHorizon['periods']; exportPricing: 'complete' | 'incomplete';
+} | WaitingHorizon;
 type HourRead = { kind: 'ready'; backgroundKWh: number; solarKWh: number } | WaitingHorizon;
 
 function priceCuts(startMs: number, endMs: number, reservations: readonly BatteryTaskReservation[]): number[] {
@@ -177,6 +179,7 @@ function buildEnergyPeriods(
   const planningCeiling = planningPowerCeiling(sources.getPowerLimitSettings())?.kw ?? null;
   const solarByHour = new Map<number, number | undefined>();
   let periods: BatteryEnergyPeriod[] = [];
+  let exportPricing: 'complete' | 'incomplete' = 'complete';
   for (const span of priceSpans(prices.periods, nowMs, reservations)) {
     const hourStartMs = Math.floor(span.startsAtMs / HOUR_MS) * HOUR_MS;
     const hour = readHour(sources, hourStartMs, solarByHour, solarScope === 'main');
@@ -184,6 +187,7 @@ function buildEnergyPeriods(
     if (hour.solarKWh > 0 && span.price.exportPrice === undefined) {
       return { kind: 'waiting', reason: 'prices_unavailable' };
     }
+    if (span.price.exportPrice === undefined) exportPricing = 'incomplete';
     const durationMs = span.endsAtMs - span.startsAtMs;
     const fraction = durationMs / HOUR_MS;
     const otherManagedDemandKWh = standingKW * fraction
@@ -206,5 +210,5 @@ function buildEnergyPeriods(
   }
   const [firstPeriod, ...remainingPeriods] = periods;
   if (firstPeriod === undefined) return { kind: 'waiting', reason: 'prices_unavailable' };
-  return { kind: 'ready', periods: [firstPeriod, ...remainingPeriods] };
+  return { kind: 'ready', periods: [firstPeriod, ...remainingPeriods], exportPricing };
 }

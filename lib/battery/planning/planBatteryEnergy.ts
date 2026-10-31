@@ -5,7 +5,38 @@ import type {
   BatteryEnergyPlanPeriod,
   BatteryEnergyPeriod,
 } from '../../../packages/contracts/src/batteryPlan';
-import { batteryEnergyFlow, ENERGY_EPSILON_KWH } from './batteryEnergyFlow';
+import {
+  batteryEnergyFlow, ENERGY_EPSILON_KWH,
+  type BatteryEnergyExportPolicy, type BatteryExportEconomicsPolicy,
+} from './batteryEnergyFlow';
+
+export type { BatteryExportEconomicsPolicy } from './batteryEnergyFlow';
+
+type PlannedBatteryEnergy = Extract<BatteryEnergyPlan, { status: 'planned' }>;
+type BatteryPlanFrontier =
+  | { status: 'reachable'; routes: ReadonlyMap<number, Route> }
+  | Extract<BatteryEnergyPlan, { status: 'infeasible' }>;
+
+/** Diagnostic economics and export-period evidence only; never an executable plan or control permission. */
+export type BatteryExportEconomicsComparison =
+  | { kind: 'candidate_infeasible' }
+  | {
+    kind: 'compared';
+    selection: 'household' | 'export_candidate';
+    baselineEnergyCost: number;
+    candidateEnergyCost: number;
+    estimatedSavings: number;
+    terminalEnergyKWh: number;
+    exportPeriods: readonly {
+      startsAtMs: number;
+      durationMs: number;
+      batteryPowerKW: number;
+      batteryExportKWh: number;
+    }[];
+  };
+
+/** Absolute numerical comparison tolerance in the horizon's money unit. */
+const COST_COMPARISON_TOLERANCE = 1e-9;
 
 /** 203 states at most, including exact initial energy and reserve. */
 const ENERGY_INTERVALS = 200;
@@ -36,6 +67,30 @@ const energyStates = (battery: BatteryEnergyModel): EnergyStates => {
   const extra = [...new Set([battery.storedEnergyKWh, battery.minimumEnergyKWh])].filter(value => !onGrid.has(value));
   return { gridStepKWh: battery.capacityKWh / ENERGY_INTERVALS, grid, extra };
 };
+
+/**
+ * Conservative work estimate for one solve, in attempted energy transitions.
+ * Every represented origin may visit the entire reachable band plus exact
+ * extra states. Ignoring demand, reserve and unreachable origins overestimates
+ * work; this is a work-budget guard, not a wall-time guarantee.
+ */
+export function estimateBatteryEnergyTransitions(horizon: BatteryEnergyHorizon): number {
+  const { battery } = horizon;
+  const states = energyStates(battery);
+  const originCount = states.grid.length + states.extra.length;
+  const efficiency = Math.sqrt(battery.roundTripEfficiency);
+  return horizon.periods.reduce((total, period) => {
+    const hours = period.durationMs / 3_600_000;
+    const chargeKWh = Math.max(0, Math.min(battery.maxChargeKW, period.maxChargeKW)) * hours * efficiency;
+    const dischargeKWh = Math.max(0, battery.maxDischargeKW) * hours / efficiency;
+    // reachableStates pads both ends by one state. An off-grid origin may
+    // require one further rounded state, in addition to the inclusive end.
+    const gridTargets = Math.min(
+      states.grid.length, Math.ceil((chargeKWh + dischargeKWh) / states.gridStepKWh) + 4,
+    );
+    return total + originCount * (gridTargets + states.extra.length);
+  }, 0);
+}
 
 /**
  * The states one period can reach from `beforeKWh`: a band of the grid wide
@@ -76,11 +131,12 @@ function advancePeriod(
   period: BatteryEnergyPeriod,
   states: EnergyStates,
   current: ReadonlyMap<number, Route>,
+  exportPolicy: BatteryEnergyExportPolicy,
 ): ReadonlyMap<number, Route> {
   const next = new Map<number, Route>();
   for (const before of current.values()) {
     for (const afterKWh of reachableStates(battery, period, states, before.energyKWh)) {
-      const flow = batteryEnergyFlow(battery, period, before.energyKWh, afterKWh);
+      const flow = batteryEnergyFlow(battery, period, before.energyKWh, afterKWh, exportPolicy);
       if (flow === false) continue;
       const cost = before.cost + periodCost(flow);
       const throughputKWh = before.throughputKWh + Math.abs(flow.batteryPowerKW) * period.durationMs / 3_600_000;
@@ -109,7 +165,7 @@ function chooseTerminal(battery: BatteryEnergyModel, current: ReadonlyMap<number
   return selected;
 }
 
-function materializePlan(battery: BatteryEnergyModel, terminal: Route): BatteryEnergyPlan {
+function materializePlan(battery: BatteryEnergyModel, terminal: Route): PlannedBatteryEnergy {
   // Each live frontier retains only its winning predecessor per energy state.
   // The route is unwound without mutating a shared plan or input horizon.
   const reversed = new Map<number, BatteryEnergyPlanPeriod>();
@@ -147,6 +203,13 @@ function materializePlan(battery: BatteryEnergyModel, terminal: Route): BatteryE
  * that returns an explicit outcome rather than fabricating a battery action.
  */
 export function planBatteryEnergy(horizon: BatteryEnergyHorizon): BatteryEnergyPlan {
+  const frontier = buildFrontier(horizon, { kind: 'household_only' });
+  return frontier.status === 'infeasible'
+    ? frontier
+    : materializePlan(horizon.battery, chooseTerminal(horizon.battery, frontier.routes));
+}
+
+function buildFrontier(horizon: BatteryEnergyHorizon, exportPolicy: BatteryEnergyExportPolicy): BatteryPlanFrontier {
   const { battery } = horizon;
   const states = energyStates(battery);
   let current: ReadonlyMap<number, Route> = new Map([
@@ -155,7 +218,7 @@ export function planBatteryEnergy(horizon: BatteryEnergyHorizon): BatteryEnergyP
     }],
   ]);
   for (const period of horizon.periods) {
-    current = advancePeriod(battery, period, states, current);
+    current = advancePeriod(battery, period, states, current, exportPolicy);
     if (current.size === 0) {
       const netDemandKWh = period.householdDemandKWh + period.otherManagedDemandKWh - period.solarKWh;
       const absoluteSupplyKWh = (period.gridImportLimitKW + battery.maxDischargeKW) * period.durationMs / 3_600_000;
@@ -165,5 +228,42 @@ export function planBatteryEnergy(horizon: BatteryEnergyHorizon): BatteryEnergyP
       };
     }
   }
-  return materializePlan(battery, chooseTerminal(battery, current));
+  return { status: 'reachable', routes: current };
+}
+
+/**
+ * Compare a relaxed export solve with the household baseline from this exact
+ * accepted horizon. Both solves use identical represented energy states. Fixing
+ * the candidate's terminal to the baseline prevents liquidating initial stock
+ * or a changed terminal credit from appearing as trading savings. The caller
+ * has resolved complete export quotes; this result grants no control permission.
+ */
+export function compareBatteryExportEconomics(
+  horizon: BatteryEnergyHorizon,
+  policy: BatteryExportEconomicsPolicy,
+  baseline: PlannedBatteryEnergy,
+): BatteryExportEconomicsComparison {
+  const frontier = buildFrontier(horizon, policy);
+  if (frontier.status === 'infeasible') return { kind: 'candidate_infeasible' };
+  const terminal = frontier.routes.get(baseline.terminalEnergyKWh);
+  if (terminal === undefined) return { kind: 'candidate_infeasible' };
+  const candidate = materializePlan(horizon.battery, terminal);
+  const savings = baseline.energyCost - candidate.energyCost;
+  const selected = savings > COST_COMPARISON_TOLERANCE;
+  const exportPeriods = candidate.periods.flatMap(period => {
+    const batterySupplyKWh = Math.max(0, -period.batteryPowerKW * period.durationMs / 3_600_000);
+    const batteryExportKWh = Math.min(batterySupplyKWh, period.gridExportKWh);
+    return batteryExportKWh > ENERGY_EPSILON_KWH ? [{
+      startsAtMs: period.startsAtMs,
+      durationMs: period.durationMs,
+      batteryPowerKW: period.batteryPowerKW,
+      batteryExportKWh,
+    }] : [];
+  });
+  return {
+    kind: 'compared', selection: selected ? 'export_candidate' : 'household',
+    baselineEnergyCost: baseline.energyCost, candidateEnergyCost: candidate.energyCost,
+    estimatedSavings: selected ? savings : 0, terminalEnergyKWh: candidate.terminalEnergyKWh,
+    exportPeriods,
+  };
 }

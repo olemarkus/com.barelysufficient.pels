@@ -10,7 +10,13 @@ export type ContinuousBatteryEnergyHorizon = BatteryEnergyHorizon & {
 };
 
 export type ContinuousBatteryHorizonRead =
-  | { kind: 'ready'; horizon: ContinuousBatteryEnergyHorizon; priceUnit: string }
+  | {
+    kind: 'ready';
+    horizon: ContinuousBatteryEnergyHorizon;
+    priceUnit: string;
+    /** Every represented period has an actual export quote; household-only zero stand-ins do not count. */
+    exportPricing: 'complete' | 'incomplete';
+  }
   | { kind: 'waiting'; reason: ContinuousBatteryPlanWaitReason };
 
 export type ContinuousBatteryPlanSource = {

@@ -16,6 +16,13 @@ continuous or forecast-perfect optimality. Both AC conversion directions use the
 square root of round-trip efficiency. Wear is charged per AC kWh supplied.
 Battery-driven export is excluded.
 
+The hidden [export economics evaluation](./battery-export-arbitrage.md#hidden-economic-evaluation)
+compares a hypothetical export schedule with the household plan at equal terminal
+energy. It emits sampled diagnostics under the existing `plan` debug topic; the
+household plan remains the only public and executable schedule. Quote coverage,
+sampling and a conservative search-work budget govern whether a comparison runs.
+These estimates are independent forecast snapshots, not accumulated profit.
+
 `lib/battery/continuousBatteryHorizon.ts` builds the horizon from published
 import/export price periods, selected solar forecasts, battery observations, the
 house power limits (through the shared planning-ceiling arithmetic) and existing

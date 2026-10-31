@@ -61,6 +61,48 @@ describe('continuous battery horizon projection', () => {
     if (result.kind !== 'ready') throw new Error('Expected horizon');
     expect(result.horizon.periods[0].solarKWh).toBe(0);
     expect(result.horizon.periods[0].householdDemandKWh).toBe(0.5);
+    expect(result.exportPricing).toBe('incomplete');
+  });
+
+  it.each([0, -0.1, 0.1])('recognizes an actual export quote of %s without solar', (exportPrice) => {
+    const base = sources();
+    const result = createContinuousBatteryPlanSource(sources({
+      getPriceTimeline: () => {
+        const timeline = base.getPriceTimeline();
+        if (timeline.state !== 'ready') throw new Error('Expected fixture prices');
+        return { ...timeline, periods: timeline.periods.map(period => ({ ...period, exportPrice })) };
+      },
+    })).readHorizon('battery', config);
+    expect(result).toMatchObject({ kind: 'ready', exportPricing: 'complete' });
+  });
+
+  it('requires export quotes throughout the actual contiguous horizon, ignoring expired periods', () => {
+    const base = sources();
+    let futureQuote: number | undefined;
+    const source = createContinuousBatteryPlanSource(sources({
+      getNowMs: () => NOW + HOUR_MS / 8,
+      getPriceTimeline: () => {
+        const timeline = base.getPriceTimeline();
+        if (timeline.state !== 'ready') throw new Error('Expected fixture prices');
+        const first = timeline.periods[0];
+        return { ...timeline, periods: [
+          { ...first, startsAt: new Date(NOW - HOUR_MS).toISOString() },
+          { ...first, durationMinutes: 15, exportPrice: 0.2 },
+          { ...first, startsAt: new Date(NOW + HOUR_MS / 4).toISOString(), durationMinutes: 15,
+            ...(futureQuote === undefined ? {} : { exportPrice: futureQuote }) },
+          // A gap terminates the existing horizon. This later quote cannot extend it.
+          { ...first, startsAt: new Date(NOW + HOUR_MS).toISOString(), exportPrice: 1 },
+        ] };
+      },
+    }));
+    const incomplete = source.readHorizon('battery', config);
+    expect(incomplete).toMatchObject({ kind: 'ready', exportPricing: 'incomplete' });
+    futureQuote = 0;
+    const complete = source.readHorizon('battery', config);
+    if (complete.kind !== 'ready') throw new Error('Expected horizon');
+    expect(complete.exportPricing).toBe('complete');
+    expect(complete.horizon.periods.map(period => period.durationMs)).toEqual([HOUR_MS / 8, HOUR_MS / 4]);
+    expect(complete.horizon.periods.map(period => period.exportPrice)).toEqual([0.2, 0]);
   });
 
   it('ignores PV outside Main and waits when an aggregate cannot separate Main and foreign PV', () => {

@@ -9,6 +9,7 @@ import {
   parseContinuousBatteryPlanConfig,
   parseContinuousBatteryPlanConfigs,
 } from '../../packages/shared-domain/src/settings/continuousBatteryPlan';
+import { captureDebugTopic } from '../utils/loggerCapture';
 
 const NOW = Date.parse('2026-10-27T00:00:00Z');
 const config: ContinuousBatteryPlanConfig = {
@@ -28,7 +29,7 @@ const horizon: ContinuousBatteryEnergyHorizon = {
 };
 const source: ContinuousBatteryPlanSource = {
   getNowMs: () => NOW,
-  readHorizon: () => ({ kind: 'ready', horizon, priceUnit: 'EUR/kWh' }),
+  readHorizon: () => ({ kind: 'ready', exportPricing: 'complete', horizon, priceUnit: 'EUR/kWh' }),
 };
 
 const settingsStore = (initial: Record<string, unknown> = {}) => {
@@ -47,6 +48,109 @@ const settingsStore = (initial: Record<string, unknown> = {}) => {
 };
 
 describe('continuous battery plan owner', () => {
+  it('skips excessive diagnostic work without evaluating an export candidate', () => {
+    const capture = captureDebugTopic('plan');
+    const first = { ...horizon.periods[0], durationMs: 900_000, maxChargeKW: 12 };
+    const stress: ContinuousBatteryEnergyHorizon = {
+      battery: { ...horizon.battery, capacityKWh: 2, storedEnergyKWh: 1, minimumEnergyKWh: 0.4,
+        maxChargeKW: 12, maxDischargeKW: 12 },
+      periods: [first, ...Array.from({ length: 191 }, (_, index) => ({
+        ...first, startsAtMs: NOW + (index + 1) * 900_000,
+      }))],
+    };
+    const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: config } });
+    const owner = new ContinuousBatteryPlanService(store.settings, {
+      getNowMs: () => NOW,
+      readHorizon: () => ({ kind: 'ready', horizon: stress, priceUnit: 'EUR/kWh', exportPricing: 'complete' }),
+    });
+    const result = owner.read('battery');
+    if (result.status !== 'planned') throw new Error('Expected household plan');
+    expect(result.plan.periods.every(period => period.gridExportKWh === 0)).toBe(true);
+    expect(capture.findEvents('battery_export_shadow_skipped')[0]).toMatchObject({
+      reason: 'evaluation_budget_exceeded', mode: 'shadow', maxTransitions: 2_000_000,
+    });
+    expect(capture.findEvents('battery_export_shadow_evaluated')).toEqual([]);
+  });
+
+  it('logs export economics without changing the returned household plan or settings', () => {
+    const capture = captureDebugTopic('plan');
+    const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: config } });
+    const tradingHorizon: ContinuousBatteryEnergyHorizon = {
+      ...horizon,
+      battery: { ...horizon.battery, terminalValuePerKWh: 0.018 },
+      periods: [
+        { ...horizon.periods[0], importPrice: 0.05, exportPrice: 0.01, householdDemandKWh: 0 },
+        { ...horizon.periods[0], startsAtMs: NOW + 3_600_000, importPrice: 0.5, exportPrice: 1, householdDemandKWh: 0 },
+      ],
+    };
+    const owner = new ContinuousBatteryPlanService(store.settings, {
+      getNowMs: () => NOW,
+      readHorizon: () => ({ kind: 'ready', horizon: tradingHorizon, priceUnit: 'EUR/kWh', exportPricing: 'complete' }),
+    });
+    const result = owner.read('battery');
+    if (result.status !== 'planned') throw new Error('Expected household plan');
+    expect(result.plan.periods.every(period => period.gridExportKWh === 0 && period.batteryPowerKW >= 0)).toBe(true);
+    expect(result).not.toHaveProperty('estimatedSavings');
+    expect(store.values.get(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY)).toEqual({ battery: config });
+    const [event] = capture.findEvents('battery_export_shadow_evaluated');
+    expect(event).toMatchObject({ mode: 'shadow', actuation: 'household_only', selection: 'export_candidate',
+      ceilingSource: 'battery_delivery_limit', assumedNetExportCeilingKW: 2.5, priceUnit: 'EUR/kWh' });
+    expect(event?.estimatedSavings).toBeGreaterThan(0);
+    expect(event?.terminalEnergyKWh).toBe(result.plan.terminalEnergyKWh);
+    expect(owner.read('battery')).toBe(result);
+    expect(capture.findEvents('battery_export_shadow_evaluated')).toHaveLength(1);
+  });
+
+  it('does not produce shadow diagnostics with the plan topic off', () => {
+    const capture = captureDebugTopic('plan', { enabled: false });
+    const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: config } });
+    expect(new ContinuousBatteryPlanService(store.settings, source).read('battery').status).toBe('planned');
+    expect(capture.events()).toEqual([]);
+  });
+
+  it('bounds shadow sampling separately from the live plan memo and samples again after a clock rollback', () => {
+    const capture = captureDebugTopic('plan');
+    const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: config } });
+    let nowMs = NOW;
+    const owner = new ContinuousBatteryPlanService(store.settings, { ...source, getNowMs: () => nowMs });
+    owner.read('battery');
+    nowMs += 31_000;
+    owner.read('battery');
+    expect(capture.findEvents('battery_export_shadow_evaluated')).toHaveLength(1);
+    nowMs = NOW + 300_000;
+    owner.read('battery');
+    expect(capture.findEvents('battery_export_shadow_evaluated')).toHaveLength(2);
+    nowMs = NOW - 1;
+    owner.read('battery');
+    expect(capture.findEvents('battery_export_shadow_evaluated')).toHaveLength(3);
+  });
+
+  it('keeps household planning for missing export quotes and distinguishes them from an actual zero quote', () => {
+    const capture = captureDebugTopic('plan');
+    const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: config } });
+    let exportPricing: 'complete' | 'incomplete' = 'incomplete';
+    let nowMs = NOW;
+    const owner = new ContinuousBatteryPlanService(store.settings, {
+      getNowMs: () => nowMs,
+      readHorizon: () => ({ kind: 'ready', horizon, priceUnit: 'EUR/kWh', exportPricing }),
+    });
+    const first = owner.read('battery');
+    expect(first.status).toBe('planned');
+    expect(capture.findEvents('battery_export_shadow_skipped')[0]).toMatchObject({ reason: 'export_prices_incomplete' });
+    expect(capture.findEvents('battery_export_shadow_evaluated')).toHaveLength(0);
+    exportPricing = 'complete';
+    // Quote completeness participates in the memo even when all numeric prices are still zero.
+    expect(owner.read('battery')).not.toBe(first);
+    nowMs += 300_000;
+    owner.read('battery');
+    expect(capture.findEvents('battery_export_shadow_evaluated')[0]).toMatchObject({ selection: 'household', estimatedSavings: 0 });
+    exportPricing = 'incomplete';
+    nowMs += 300_000;
+    owner.read('battery');
+    expect(capture.findEvents('battery_export_shadow_skipped')).toHaveLength(2);
+    expect(capture.findEvents('battery_export_shadow_evaluated')).toHaveLength(1);
+  });
+
   it('reports whether accepted settings enable any plan as settings change', () => {
     const store = settingsStore();
     const owner = new ContinuousBatteryPlanService(store.settings, source);
@@ -112,7 +216,7 @@ describe('continuous battery plan owner', () => {
     const owner = new ContinuousBatteryPlanService(store.settings, {
       getNowMs: () => NOW,
       readHorizon: () => available
-        ? { kind: 'ready', horizon, priceUnit: 'EUR/kWh' }
+        ? { kind: 'ready', exportPricing: 'complete', horizon, priceUnit: 'EUR/kWh' }
         : { kind: 'waiting', reason: 'forecast_unavailable' },
     });
     expect(owner.read('battery').status).toBe('planned');
@@ -130,7 +234,7 @@ describe('continuous battery plan owner', () => {
       readHorizon: () => {
         readings += 1;
         const durationMs = NOW + 3_600_000 - nowMs;
-        return { kind: 'ready', priceUnit: 'EUR/kWh', horizon: { ...horizon, periods: [{
+        return { kind: 'ready', exportPricing: 'complete', priceUnit: 'EUR/kWh', horizon: { ...horizon, periods: [{
           ...horizon.periods[0], startsAtMs: nowMs, durationMs,
           householdDemandKWh: 0.5 * durationMs / 3_600_000,
           otherManagedDemandKWh: managedKWh * durationMs / 3_600_000,
