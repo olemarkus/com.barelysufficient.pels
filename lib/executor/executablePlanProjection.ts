@@ -238,6 +238,7 @@ const buildObservedSteppedLoadState = (
     on: isBinaryOnOrUnknown(snapshot),
     stepId: snapshot.selectedStepId,
     reportedStepId: snapshot.reportedStepId,
+    ...(snapshot.reportedStepPowerW !== undefined ? { reportedStepPowerW: snapshot.reportedStepPowerW } : {}),
     currentDrawKw,
   };
 };

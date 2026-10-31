@@ -55,6 +55,7 @@ function simulateEnua(charger: MockDevice, wattsPerAmp: number, chargingWattsPer
   let stopMode = 'device';
   let mode = 'homey';
   let roundReports = false;
+  let refuseLimit = false;
   const startCurrents: number[] = [];
   const publish = (): void => {
     // Stopping does not zero wallmountUserSetAmpere: the next poll publishes
@@ -76,7 +77,8 @@ function simulateEnua(charger: MockDevice, wattsPerAmp: number, chargingWattsPer
         enabled = false;
         mode = stopMode;
       } else {
-        limitA = Math.max(6, Math.min(maximumA, Math.round(value / wattsPerAmp)));
+        // Enua's cloud call can fail after Homey ACKed the capability write.
+        if (!refuseLimit) limitA = Math.max(6, Math.min(maximumA, Math.round(value / wattsPerAmp)));
         mode = 'homey';
       }
     }
@@ -105,6 +107,7 @@ function simulateEnua(charger: MockDevice, wattsPerAmp: number, chargingWattsPer
     setInstallerLimit: (amps: number) => { maximumA = amps; },
     setStopMode: (nextMode: string) => { stopMode = nextMode; },
     reportRoundedWatts: () => { roundReports = true; },
+    refuseLimits: () => { refuseLimit = true; },
   };
 }
 
@@ -207,6 +210,50 @@ describe.each(GRIDS)('Enua $grid at the SDK boundary', ({ grid, wattsPerAmp }) =
     expect(simulation.startCurrents.length).toBeGreaterThan(0);
     expect(simulation.startCurrents.every((amps) => amps >= 6 && amps <= 10)).toBe(true);
     expect(mockHomeyInstance.settings.get(DEVICE_TARGET_POWER_CONFIGS)).toEqual({ [ID]: config });
+  });
+
+  it('does not start at the retained limit when the charger swallows the limit write', async () => {
+    const charger = await buildCharger(grid, 32, false);
+    const simulation = simulateEnua(charger, wattsPerAmp);
+    simulation.refuseLimits();
+    configureRuntime(1000 + 10.5 * wattsPerAmp);
+    await createApp().onInit();
+    await vi.advanceTimersByTimeAsync(395_000);
+    expect(simulation.powerWrites().some((watts) => watts > 0)).toBe(true);
+    expect(simulation.startCurrents).toEqual([]);
+    expect(charger.getActualCapabilityValue('evcharger_charging')).toBe(false);
+    expect(charger.getActualCapabilityValue('measure_power')).toBe(0);
+  });
+
+  describe.each(SAVED_CONFIGS)('saved $mode with a 6 A ceiling and a retained 32 A limit', ({ config }) => {
+    const ceilingConfig = (carWatts: number) => ({ ...config, max: 6 * carWatts });
+
+    it('does not read the retained limit as the 6 A rung when the limit write is swallowed', async () => {
+      const charger = await buildCharger(grid, 32, false);
+      const carWatts = planningWattsPerAmp(config, wattsPerAmp);
+      const simulation = simulateEnua(charger, wattsPerAmp, carWatts);
+      simulation.refuseLimits();
+      configureRuntime(1000 + 40 * carWatts);
+      mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, { [ID]: ceilingConfig(carWatts) });
+      await createApp().onInit();
+      await vi.advanceTimersByTimeAsync(395_000);
+      expect(simulation.powerWrites().some((watts) => watts > 0)).toBe(true);
+      expect(simulation.startCurrents).toEqual([]);
+      expect(charger.getActualCapabilityValue('evcharger_charging')).toBe(false);
+      expect(charger.getActualCapabilityValue('measure_power')).toBe(0);
+    });
+
+    it('prepares 6 A before starting when the limit write lands', async () => {
+      const charger = await buildCharger(grid, 32, false);
+      const carWatts = planningWattsPerAmp(config, wattsPerAmp);
+      const simulation = simulateEnua(charger, wattsPerAmp, carWatts);
+      configureRuntime(1000 + 40 * carWatts);
+      mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, { [ID]: ceilingConfig(carWatts) });
+      await createApp().onInit();
+      await vi.advanceTimersByTimeAsync(395_000);
+      expect(simulation.startCurrents.length).toBeGreaterThan(0);
+      expect(simulation.startCurrents.every((amps) => amps === 6)).toBe(true);
+    });
   });
 
   it.each([12, 20, 28].flatMap((amps) => [

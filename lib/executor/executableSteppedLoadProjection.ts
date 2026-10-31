@@ -156,11 +156,10 @@ export function buildExecutableSteppedLoadDevice(
     ? intent.confirmedCommandStepId
     : undefined;
   const stepActuation = resolveSteppedStepActuationState({
-    step: toExecutableSteppedStepState(
-      resolvedObserved?.steppedLoad,
-      desired.stepId,
-      confirmedCommandStepId,
-    ),
+    step: intent.controlAdapter?.activationOrder === 'current_before_start'
+      ? toPreparedCurrentStepState(intent.steppedLoadProfile, resolvedObserved?.steppedLoad, desired.stepId,
+        confirmedCommandStepId)
+      : toExecutableSteppedStepState(resolvedObserved?.steppedLoad, desired.stepId, confirmedCommandStepId),
   });
   const desiredIsNonOff = desired.stepId
     && !isSteppedLoadOffStep(intent.steppedLoadProfile, desired.stepId);
@@ -259,6 +258,43 @@ const toExecutableSteppedStepState = (
     observedStep: observedStepId ? { kind: 'reported', stepId: observedStepId } : { kind: 'unknown' },
     fallbackStepId,
     confirmedCommandStepId,
+  };
+};
+
+/**
+ * Step evidence for a device that prepares its current before it starts
+ * (`activationOrder: 'current_before_start'`). Its executor enables charging
+ * once the prepared rung reads as materialized, so that answer must come from
+ * the device's own limit:
+ *
+ * - a report confirms a rung only when its watts are exactly that rung's. The
+ *   producer reads an off-ladder limit as its NEAREST rung for planning, so with
+ *   an owner ceiling of 6 A a retained 32 A limit reads as the 6 A rung;
+ * - a confirmed command counts only while the device reports no positive limit.
+ *   A vendor app can acknowledge a limit write it never applied, and a stopped
+ *   charger that still reports another positive limit contradicts that ACK.
+ *
+ * Every other device keeps the nearest-rung reading (`toExecutableSteppedStepState`).
+ */
+const toPreparedCurrentStepState = (
+  profile: ExecutableSteppedLoadIntent['steppedLoadProfile'],
+  observed: ExecutableObservedSteppedLoadState | null | undefined,
+  requestedStepId: string | undefined,
+  confirmedCommandStepId: string | undefined,
+): ExecutableSteppedStepState => {
+  const nearest = toExecutableSteppedStepState(observed, requestedStepId, confirmedCommandStepId);
+  const reportedStepId = observed?.reportedStepId;
+  if (reportedStepId === undefined) return nearest;
+  const reportedStep = getSteppedLoadStep(profile, reportedStepId);
+  const reportsOff = isSteppedLoadOffStep(profile, reportedStepId);
+  const exact = reportedStep !== null && (
+    observed?.reportedStepPowerW === undefined
+    || Math.round(observed.reportedStepPowerW) === Math.round(reportedStep.planningPowerW)
+  );
+  return {
+    ...nearest,
+    observedStep: exact ? nearest.observedStep : { kind: 'unknown' },
+    confirmedCommandStepId: reportsOff && exact ? confirmedCommandStepId : undefined,
   };
 };
 
