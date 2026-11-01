@@ -56,6 +56,20 @@ const succeeds = (cmd, args) => {
   }
 };
 
+// The bundled Fri Nettleie file map ships with the build: a grid company it
+// maps wrongly, or a file the Homey cannot read, would reach every user. Shows
+// the check's output and answers whether it passed.
+const gridTariffsCheckPasses = () => {
+  console.log("$ npm run check:grid-tariffs");
+  try {
+    execFileSync("npm", ["run", "--silent", "check:grid-tariffs"], { stdio: "inherit" });
+    return true;
+  } catch {
+    return false;
+  }
+};
+const GRID_TARIFFS_FIX = "fix what npm run check:grid-tariffs lists (usually npm run build:fri-nettleie-files) and land that first";
+
 const versionAt = (ref) => JSON.parse(read("git", ["show", `${ref}:app.json`])).version;
 
 const increment = (version, level) => {
@@ -128,12 +142,10 @@ const start = (level, changelogFile, dryRun) => {
     run("git", ["branch", "-D", branch]);
   };
   run("git", ["switch", "-c", branch, "origin/main"]);
-  // The bundled Fri Nettleie file map ships with the build: a grid company it
-  // maps wrongly, or a file the Homey cannot read, would reach every user.
-  if (!succeeds("npm", ["run", "--silent", "check:grid-tariffs"])) {
+  // Checked here, before the bump, and again by `publish` on the tree it ships.
+  if (!gridTariffsCheckPasses()) {
     leaveBranch();
-    fail("npm run check:grid-tariffs fails on origin/main: run it, fix what it lists "
-      + "(usually npm run build:fri-nettleie-files), and land that first");
+    fail(`check:grid-tariffs fails on origin/main: ${GRID_TARIFFS_FIX}`);
   }
   run("homey", ["app", "version", next, "--changelog", changelog]);
   run("homey", ["app", "validate"]);
@@ -207,6 +219,8 @@ const publish = () => {
   if (!succeeds("git", ["diff", "--quiet", "HEAD", "origin/main"])) fail("check out origin/main (or fast-forward main) before publishing");
   const version = versionAt("HEAD");
   if (!remoteHasTag(`v${version}`)) fail(`v${version} has no pushed tag; run finish first`);
+  // main may have moved since `start` checked it; this is the tree that ships.
+  if (!gridTariffsCheckPasses()) fail(`check:grid-tariffs fails on the tree to publish: ${GRID_TARIFFS_FIX}`);
   // `homey app publish` copies the app into .homeybuild before it runs
   // `npm run build`, so settings/ and the widget bundles must already be built
   // from this checkout; otherwise an older page ships (as `install-app` does).
