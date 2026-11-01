@@ -35,7 +35,7 @@ const snapshotFor = (entry: ScheduleEntry): SchedulesViewSnapshot => ({
     timeZone: 'Europe/Oslo', modes: ['Home'],
     controls: { modeChangesEnabled: true, disabledTaskDeviceIds: [] }, entries: [entry],
   },
-  editor: { kind: 'existing', draft: editScheduleDraft(entry.schedule, '2026-11-02') },
+  editor: { kind: 'existing', draft: editScheduleDraft(entry.schedule, '2026-11-02'), timeConflict: false, nameSet: true, timeSet: true },
 });
 const mounts: HTMLElement[] = [];
 const paint = (mount: HTMLElement, snapshot: SchedulesViewSnapshot): void => {

@@ -82,6 +82,49 @@ describe('Schedule settings bridge', () => {
     expect(renders.at(-1)?.snapshot.editor?.draft).toMatchObject(expected);
   });
 
+  it('starts a new schedule at a free time, lets its name and time follow the action, and flags a clash at the time', async () => {
+    const heater: SmartTaskCandidateDevice = {
+      deviceId: 'heater', deviceName: 'Water heater', kind: 'temperature', group: 'heating',
+      unitSymbol: '°C', goalMin: 30, goalMax: 75, goalStep: 0.5, defaultGoal: 65, currentValue: 40,
+      supportsLimitLowerPriority: false, offersQuickTargets: false, otherGoals: [],
+    };
+    const original = read.entries[0];
+    if (!original) throw new Error('Missing fixture entry');
+    read.entries.push({ ...original, schedule: { ...schedule, id: 'evening', at: '18:00',
+      repeat: { type: 'weekly', days: [1, 2, 3, 4, 5, 6, 7] },
+      action: { type: 'task', task: { deviceId: heater.deviceId, kind: heater.kind, target: 65, readyByLocalTime: '07:00' } },
+    } });
+    callApiMock.mockImplementation(async (_method: string, path: string) => {
+      if (path === SETTINGS_UI_DEVICES_PATH) return { schedules: { ok: true, data: structuredClone(read) } };
+      if (path === SETTINGS_UI_SMART_TASK_DEVICES_PATH) return { state: 'ready', devices: [heater] };
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    window.history.replaceState({}, '', '/?page=settings/schedules&schedule=new');
+    await controller.refreshSchedules();
+    expect(renders.at(-1)?.snapshot.editor?.draft).toMatchObject({ name: 'Water heater task', at: '19:00' });
+
+    renders.at(-1)?.actions.onSelectAction('mode');
+    expect(renders.at(-1)?.snapshot.editor?.draft).toMatchObject({ name: 'Home mode', at: '23:00' });
+
+    controller.changeScheduleDraft({ name: 'Evening heat' });
+    renders.at(-1)?.actions.onSelectAction('task');
+    expect(renders.at(-1)?.snapshot.editor?.draft).toMatchObject({ name: 'Evening heat', at: '19:00' });
+
+    // An owner-set time stays put even where it equals another action's automatic time.
+    controller.changeScheduleDraft({ at: '23:00' });
+    renders.at(-1)?.actions.onSelectAction('mode');
+    renders.at(-1)?.actions.onSelectAction('task');
+    expect(renders.at(-1)?.snapshot.editor?.draft).toMatchObject({ name: 'Evening heat', at: '23:00' });
+
+    controller.changeScheduleDraft({ at: '18:00' });
+    renders.at(-1)?.actions.onSave();
+    expect(renders.at(-1)?.snapshot.editor?.timeConflict).toBe(true);
+    expect(renders.at(-1)?.snapshot.error).toBe('');
+    expect(setSettingMock).not.toHaveBeenCalled();
+    controller.changeScheduleDraft({ at: '18:30' });
+    expect(renders.at(-1)?.snapshot.editor).toMatchObject({ timeConflict: false, draft: { at: '18:30' } });
+  });
+
   it('preserves a saved battery target through candidate changes until the device is explicitly selected', async () => {
     const battery: SmartTaskCandidateDevice = {
       deviceId: 'charger', deviceName: 'Charger', kind: 'ev_soc', group: 'ev_charger',

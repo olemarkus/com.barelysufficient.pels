@@ -41,7 +41,7 @@ describe('Retained schedule mode labels', () => {
 
   it('labels retained picker and checkbox choices while their values remain stored names', () => {
     const editing = snapshot();
-    editing.editor = { kind: 'existing', draft: editScheduleDraft(entry.schedule, '2026-11-02') };
+    editing.editor = { kind: 'existing', draft: editScheduleDraft(entry.schedule, '2026-11-02'), timeConflict: false, nameSet: true, timeSet: true };
     renderSchedules(root, editing, actions);
     const retained = [...root.querySelectorAll<HTMLElement & { value: string }>('md-select-option')]
       .find((option) => option.value === 'Old Home');
@@ -60,7 +60,7 @@ describe('Retained schedule mode labels', () => {
   it.each(['include', 'exclude'] as const)('shows unavailable %s condition values as removable choices', (type) => {
     const editing = snapshot();
     const saved = { ...entry.schedule, condition: { type, modes: ['Removed', 'Home'] } };
-    editing.editor = { kind: 'existing', draft: editScheduleDraft(saved, '2026-11-02') };
+    editing.editor = { kind: 'existing', draft: editScheduleDraft(saved, '2026-11-02'), timeConflict: false, nameSet: true, timeSet: true };
     const remove = vi.fn();
     renderSchedules(root, editing, { ...actions, onConditionMode: remove });
     const unavailable = root.querySelector<HTMLElement & { checked: boolean }>(
@@ -77,7 +77,7 @@ describe('Retained schedule mode labels', () => {
     const saved = { ...entry.schedule, action: { type: 'task' as const, task: {
       deviceId: 'charger', kind: 'ev_soc' as const, target: 80, readyByLocalTime: '07:00',
     } } };
-    editing.editor = { kind: 'existing', draft: editScheduleDraft(saved, '2026-11-02') };
+    editing.editor = { kind: 'existing', draft: editScheduleDraft(saved, '2026-11-02'), timeConflict: false, nameSet: true, timeSet: true };
     editing.devices = [{
       deviceId: 'charger', deviceName: 'Charger', kind: 'energy', group: 'ev_charger',
       unitSymbol: 'kWh', goalMin: 0.1, goalMax: 100, goalStep: 0.1, defaultGoal: 20, currentValue: null,
@@ -103,7 +103,7 @@ describe('Retained schedule mode labels', () => {
     const saved = { ...entry.schedule, action: { type: 'task' as const, task: {
       deviceId: 'charger', kind: 'energy' as const, target: 150, readyByLocalTime: '07:00',
     } } };
-    editing.editor = { kind: 'existing', draft: editScheduleDraft(saved, '2026-11-02') };
+    editing.editor = { kind: 'existing', draft: editScheduleDraft(saved, '2026-11-02'), timeConflict: false, nameSet: true, timeSet: true };
     editing.devices = [{
       deviceId: 'charger', deviceName: 'Charger', kind: 'ev_soc', group: 'ev_charger',
       unitSymbol: '%', goalMin: 1, goalMax: 100, goalStep: 1, defaultGoal: 80, currentValue: 40,
