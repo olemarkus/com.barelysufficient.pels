@@ -28,7 +28,10 @@ export const parseHomeyDeviceList = (value: unknown): HomeyDeviceListEntry[] => 
 
 let latest: readonly HomeyDeviceListEntry[] | null = null;
 
-/** Reads the list from Homey and keeps it for `findHomeyDeviceName`. Rejects when Homey cannot be read. */
+/**
+ * Reads the list from Homey and keeps it for `findHomeyDeviceName`. The route
+ * answers an empty list when Homey cannot be read.
+ */
 export const loadHomeyDeviceList = async (): Promise<readonly HomeyDeviceListEntry[]> => {
   const devices = parseHomeyDeviceList(await callApi<unknown>('GET', '/homey_devices'));
   latest = devices;

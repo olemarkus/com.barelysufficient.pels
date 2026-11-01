@@ -319,7 +319,7 @@ const Editor = (view: View) => {
               onInput={(event) => actions.onDraftChange({ date: inputValue(event) })} /></label>}
           <label class="field"><span class="field__label pels-text-settings-label">{draft.actionType === 'task' ? 'Create task at' : 'Change mode at'}</span>
             <input type="time" class="smart-task-edit__time-input" value={draft.at} disabled={disabled}
-              aria-invalid={timeConflict} aria-describedby={timeConflict ? 'schedule-time-conflict' : undefined}
+              data-schedule-field="time" aria-invalid={timeConflict} aria-describedby={timeConflict ? 'schedule-time-conflict' : undefined}
               onInput={(event) => actions.onDraftChange({ at: inputValue(event) })} />
             {timeConflict
               ? <small class="field__hint smart-task-edit__error" id="schedule-time-conflict" role="alert">

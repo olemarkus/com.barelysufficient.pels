@@ -214,7 +214,7 @@ const ReportResult = ({ state, actions, backTarget, supportDevice }: SupportRepo
         <p class="support-report__reference">Reference: {submission.reference || report.document.id}</p>
         <p class="pels-text-supporting">Support for a new device usually comes in an app update within 1–2 days, depending on how complex the device is.</p>
         <SupportContact forums={supportDevice.forums} deviceName={supportDevice.name} />
-        <MdFilledButton type="button" data-settings-target={backTarget} data-report-action="done">Done</MdFilledButton>
+        <MdFilledButton type="button" data-settings-target={backTarget} data-settings-back data-report-action="done">Done</MdFilledButton>
       </section>
     );
   }
@@ -228,7 +228,7 @@ const ReportResult = ({ state, actions, backTarget, supportDevice }: SupportRepo
             rel="noopener noreferrer">PELS forum
           thread</a> and quote the reference.
         </p>
-        <MdFilledButton type="button" data-settings-target={backTarget} data-report-action="done">Done</MdFilledButton>
+        <MdFilledButton type="button" data-settings-target={backTarget} data-settings-back data-report-action="done">Done</MdFilledButton>
       </section>
     );
   }

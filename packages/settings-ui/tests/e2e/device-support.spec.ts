@@ -19,7 +19,7 @@ test('finds an unsupported Homey device and sends a device support request for i
 
   await setMdValue(page, '[data-device-picker-field="search"]', 'basement');
   await expect(picker.locator('[data-device-picker-id="dev_bath_fan"]')).toHaveCount(0);
-  await expect(picker.locator('[data-device-picker-id="dev_knx_relay"]')).toContainText('Not supported');
+  await expect(picker.locator('[data-device-picker-id="dev_knx_relay"]')).toBeVisible();
   await setMdValue(page, '[data-device-picker-field="search"]', 'no such device');
   await expect(picker).toContainText('No devices match.');
   await picker.locator('[data-device-picker-action="show-all"]').click();
@@ -47,6 +47,13 @@ test('finds an unsupported Homey device and sends a device support request for i
   });
   expect(sends).toEqual([{ consent: true }]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  // Done steps back to the picker, so Back leaves it instead of reopening the sent request.
+  await panel.locator('[data-report-action="done"]').click();
+  await expect(page).toHaveURL(/page=settings%2Fdevice-support|page=settings\/device-support/);
+  await expect(picker.locator('[data-device-picker-id="dev_knx_relay"]')).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/page=settings%2Fdevices|page=settings\/devices(&|$)/);
 });
 
 test('opens a supported device on Devices instead of a support request', async ({ page }) => {

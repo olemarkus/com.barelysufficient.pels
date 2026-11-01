@@ -74,7 +74,7 @@ export class SupportReportController {
       const uncertain = report !== null && ['sending', 'unknown'].includes(report.submission.state);
       // An expired report keeps its incident time, so sending again reads the same activity.
       this.state = { ...this.state, notice: response.code === 'report_expired' && uncertain
-        ? REPORT_EXPIRED_UNCERTAIN : reportErrorMessage(response.code),
+        ? REPORT_EXPIRED_UNCERTAIN : reportErrorMessage(response.code, draft.subject),
         ...(response.code === 'report_expired'
           ? { report: null, draft: report ? draftFromRequest(report.document.request) : draft } : {}) };
       return;
@@ -96,7 +96,7 @@ export class SupportReportController {
       return;
     }
     if (!Number.isFinite(request.occurredAtMs) || request.occurredAtMs > Date.now() + 60_000) {
-      this.state = { ...this.state, notice: reportErrorMessage('invalid_time') };
+      this.state = { ...this.state, notice: reportErrorMessage('invalid_time', this.state.draft.subject) };
       this.show();
       return;
     }
@@ -109,7 +109,7 @@ export class SupportReportController {
         prepared = await this.api.prepare(request);
       } catch {
         if (generation === this.operationGeneration) {
-          this.state = { ...this.state, notice: reportErrorMessage('capture_failed') };
+          this.state = { ...this.state, notice: reportErrorMessage('capture_failed', this.state.draft.subject) };
         }
         return;
       }
