@@ -31,11 +31,20 @@ const RATE_REPLACEMENTS_BY_ORGANIZATION_NUMBER: ReadonlyMap<string, DatedRateRep
     fromDateKey: '2026-07-01',
     toDateKey: '2026-12-31',
     replacements: [
-      { served: { exVat: 21.99, incVat: 36.4 }, published: { exVat: 30, incVat: 46.4 } },
+      { served: { exVat: 21.99, incVat: 36.4 }, published: { exVat: 29.99, incVat: 46.4 } },
       { served: { exVat: 13.99, incVat: 26.4 }, published: { exVat: 17.99, incVat: 31.4 } },
     ],
   }],
 ]);
+
+/**
+ * Every grid company with a correction. `npm run check:nve-tariffs` probes
+ * each one against NVE and fails once its correction changes nothing.
+ */
+export const NVE_CORRECTED_ORGANIZATION_NUMBERS: readonly string[] = [
+  ...WEEKEND_AT_NIGHT_RATE_ORGANIZATION_NUMBERS,
+  ...RATE_REPLACEMENTS_BY_ORGANIZATION_NUMBER.keys(),
+];
 
 const SATURDAY = 6;
 const SUNDAY = 0;
