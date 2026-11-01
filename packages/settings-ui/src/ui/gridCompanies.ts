@@ -85,7 +85,7 @@ export const gridCompanies: GridCompany[] = [
  * Grid companies that no longer operate, kept so an owner who chose one before
  * it merged still sees their saved choice. They are not offered to anyone else;
  * the runtime prices each on the tariff file of the company that took it over
- * (`RETIRED_GRID_COMPANY_FILES` in scripts/build-nettleie-fallback.mjs).
+ * (`RETIRED_GRID_COMPANY_FILES` in scripts/build-fri-nettleie-files.mjs).
  */
 export const retiredGridCompanies: GridCompany[] = [
   { name: "AREA NETT AS (formerly LeGa Nett)", organizationNumber: "924868759", countyCodes: ["56"] },

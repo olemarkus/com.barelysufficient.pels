@@ -1,20 +1,20 @@
 import {
-  describe, it, expect, vi,
+  describe, it, expect,
 } from 'vitest';
 import {
   GRID_TARIFF_SOURCE_FALLBACK,
   isGridTariffFallbackData,
   shouldUseGridTariffCache,
 } from '../../lib/price/gridTariffUtils';
+import {
+  asFallbackRows, buildFriNettleieGridTariffDays, resolveGridTariffFallback,
+} from '../../lib/price/gridTariffFallback';
+import type { FriNettleieTariffs } from '../../lib/price/friNettleieTariff';
 
-// Synthetic fallback table so the day/month/hour expansion logic can be tested
-// deterministically, independent of the generated snapshot.
-vi.mock('../../lib/price/nettleieFallbackData.generated', () => ({
-  NETTLEIE_FALLBACK_BY_ORGNR: {
+// Synthetic Fri Nettleie tariffs, as `readFriNettleieTariffs` reads a file, so
+// the day/month/hour expansion logic can be tested deterministically.
+const TARIFFS_BY_ORGNR: Record<string, FriNettleieTariffs> = {
     '111': {
-      name: 'Test Nett',
-      file: 'test.yml',
-      tariffs: {
         Husholdning: [{
           from: '2025-01-01',
           until: '2026-07-01',
@@ -33,19 +33,20 @@ vi.mock('../../lib/price/nettleieFallbackData.generated', () => ({
           basePrice: 30,
           exceptions: [],
         }],
-      },
     },
     '222': {
-      name: 'Only Fritid',
-      file: 'fritid.yml',
-      tariffs: {
         'Hytter og fritidshus': [{ from: '2025-01-01', basePrice: 7, exceptions: [] }],
-      },
     },
-  },
-}));
+};
 
-import { buildStaticGridTariffFallback, resolveGridTariffFallback } from '../../lib/price/staticGridTariffFallback';
+// The fallback rows a saved file with `organizationNumber`'s tariffs gives.
+const savedFileRowsFor = (params: {
+  organizationNumber: string; tariffGroup: string; date: Date; timeZone: string;
+}) => {
+  const tariffs = TARIFFS_BY_ORGNR[params.organizationNumber];
+  const rows = tariffs && buildFriNettleieGridTariffDays(tariffs, params.tariffGroup, params.date, params.timeZone);
+  return rows ? asFallbackRows(rows) : null;
+};
 
 // Fri Nettleie rates leave out the Enova fee, which the fallback adds to match NVE.
 const ENOVA = 1;
@@ -59,10 +60,10 @@ const feesByHour = (entries: Array<{ time: number; energyFeeExVat: number; dateK
   return fees;
 };
 
-describe('buildStaticGridTariffFallback', () => {
+describe('buildFriNettleieGridTariffDays', () => {
   it('expands weekday peak + winter surcharge for a January weekday', () => {
     // 2026-01-05 is a Monday.
-    const entries = buildStaticGridTariffFallback({
+    const entries = savedFileRowsFor({
       organizationNumber: '111',
       tariffGroup: 'Husholdning',
       date: new Date('2026-01-05T10:00:00Z'),
@@ -90,7 +91,7 @@ describe('buildStaticGridTariffFallback', () => {
 
   it('skips the weekday-only peak on a weekend but keeps all-day surcharges', () => {
     // 2026-01-04 is a Sunday.
-    const fees = feesByHour(buildStaticGridTariffFallback({
+    const fees = feesByHour(savedFileRowsFor({
       organizationNumber: '111',
       tariffGroup: 'Husholdning',
       date: new Date('2026-01-04T10:00:00Z'),
@@ -102,7 +103,7 @@ describe('buildStaticGridTariffFallback', () => {
 
   it('prices tomorrow on its own day type', () => {
     // 2026-01-04 is a Sunday, so tomorrow is a Monday with the weekday peak.
-    const entries = buildStaticGridTariffFallback({
+    const entries = savedFileRowsFor({
       organizationNumber: '111',
       tariffGroup: 'Husholdning',
       date: new Date('2026-01-04T10:00:00Z'),
@@ -115,7 +116,7 @@ describe('buildStaticGridTariffFallback', () => {
 
   it('drops the winter surcharge outside its months', () => {
     // 2026-06-01 is a Monday in June (outside the Jan/Feb surcharge window).
-    const fees = feesByHour(buildStaticGridTariffFallback({
+    const fees = feesByHour(savedFileRowsFor({
       organizationNumber: '111',
       tariffGroup: 'Husholdning',
       date: new Date('2026-06-01T10:00:00Z'),
@@ -127,7 +128,7 @@ describe('buildStaticGridTariffFallback', () => {
 
   it('prices each day on the period valid that day', () => {
     // 2026-06-30 is a Tuesday; the new tariff applies from tomorrow, 2026-07-01.
-    const entries = buildStaticGridTariffFallback({
+    const entries = savedFileRowsFor({
       organizationNumber: '111',
       tariffGroup: 'Husholdning',
       date: new Date('2026-06-30T10:00:00Z'),
@@ -139,7 +140,7 @@ describe('buildStaticGridTariffFallback', () => {
   });
 
   it('returns null for a day before any period', () => {
-    expect(buildStaticGridTariffFallback({
+    expect(savedFileRowsFor({
       organizationNumber: '111',
       tariffGroup: 'Husholdning',
       date: new Date('2024-12-31T10:00:00Z'),
@@ -148,7 +149,7 @@ describe('buildStaticGridTariffFallback', () => {
   });
 
   it('returns null for an unknown organization number', () => {
-    expect(buildStaticGridTariffFallback({
+    expect(savedFileRowsFor({
       organizationNumber: '999',
       tariffGroup: 'Husholdning',
       date: new Date('2026-01-05T10:00:00Z'),
@@ -158,7 +159,7 @@ describe('buildStaticGridTariffFallback', () => {
 
   it('falls back to an available tariff group when the requested one is missing', () => {
     // '222' only files a holiday-home tariff; a household request still resolves.
-    const fees = feesByHour(buildStaticGridTariffFallback({
+    const fees = feesByHour(savedFileRowsFor({
       organizationNumber: '222',
       tariffGroup: 'Husholdning',
       date: new Date('2026-01-05T10:00:00Z'),
@@ -170,68 +171,46 @@ describe('buildStaticGridTariffFallback', () => {
 
 describe('resolveGridTariffFallback', () => {
   const date = new Date('2026-01-05T10:00:00Z');
-  const base = { tariffGroup: 'Husholdning', date, timeZone: 'UTC' };
+  const savedRows = savedFileRowsFor({
+    organizationNumber: '111', tariffGroup: 'Husholdning', date, timeZone: 'UTC',
+  });
+  const resolve = (existingData: Array<{ dateKey?: string; source?: unknown }> | null, entries = savedRows) => (
+    resolveGridTariffFallback(existingData, entries, date, 'UTC')
+  );
 
-  it('keeps an undated real cache when the operator has no static fallback', () => {
-    const outcome = resolveGridTariffFallback({
-      ...base, existingData: [{ energyFeeExVat: 11 } as { source?: unknown }], organizationNumber: '999',
-    });
-    expect(outcome.kind).toBe('keepCache');
+  it('keeps an undated real cache when there is no saved file', () => {
+    expect(resolve([{ energyFeeExVat: 11 } as { source?: unknown }], null).kind).toBe('keepCache');
   });
 
-  it('keeps a real cache that covers today over the static fallback', () => {
-    const outcome = resolveGridTariffFallback({
-      ...base, existingData: [{ dateKey: '2026-01-05T00:00:00' }], organizationNumber: '111',
-    });
-    expect(outcome.kind).toBe('keepCache');
+  it('keeps a real cache that covers today over the saved file', () => {
+    expect(resolve([{ dateKey: '2026-01-05T00:00:00' }]).kind).toBe('keepCache');
   });
 
-  it('replaces a real cache from an earlier day with the static fallback for today', () => {
+  it('replaces a real cache from an earlier day with the saved file\'s rows for today', () => {
     // Cached Friday and Saturday; on Monday, Monday's own day type and period apply.
-    const outcome = resolveGridTariffFallback({
-      ...base,
-      existingData: [{ dateKey: '2026-01-02T00:00:00' }, { dateKey: '2026-01-03T00:00:00' }],
-      organizationNumber: '111',
-    });
-    expect(outcome).toEqual({
-      kind: 'store',
-      entries: buildStaticGridTariffFallback({ ...base, organizationNumber: '111' }),
-    });
+    expect(resolve([{ dateKey: '2026-01-02T00:00:00' }, { dateKey: '2026-01-03T00:00:00' }]))
+      .toEqual({ kind: 'store', entries: savedRows });
   });
 
-  it('keeps a real cache from an earlier day when the operator has no static fallback', () => {
-    const outcome = resolveGridTariffFallback({
-      ...base, existingData: [{ dateKey: '2026-01-02T00:00:00' }], organizationNumber: '999',
-    });
-    expect(outcome.kind).toBe('keepCache');
+  it('keeps a real cache from an earlier day when there is no saved file', () => {
+    expect(resolve([{ dateKey: '2026-01-02T00:00:00' }], null).kind).toBe('keepCache');
   });
 
-  it('seeds the static fallback for a known operator with no cache', () => {
-    const outcome = resolveGridTariffFallback({
-      ...base, existingData: null, organizationNumber: '111',
-    });
-    expect(outcome.kind).toBe('store');
+  it('stores the saved file\'s rows with nothing cached', () => {
+    expect(resolve(null).kind).toBe('store');
   });
 
   it('keeps existing fallback without rewriting when it already matches today', () => {
-    const entries = buildStaticGridTariffFallback({ ...base, organizationNumber: '111' });
-    const outcome = resolveGridTariffFallback({ ...base, existingData: entries, organizationNumber: '111' });
-    expect(outcome.kind).toBe('fallbackCurrent');
+    expect(resolve(savedRows).kind).toBe('fallbackCurrent');
   });
 
-  it('clears stale fallback data when the operator can no longer be served', () => {
-    // Fallback cached for one operator, org number switched to an untabled one.
-    const outcome = resolveGridTariffFallback({
-      ...base, existingData: [{ source: GRID_TARIFF_SOURCE_FALLBACK }], organizationNumber: '999',
-    });
-    expect(outcome.kind).toBe('clearStaleFallback');
+  it('clears stale fallback data when there is no saved file for the operator', () => {
+    // Fallback cached for one operator, org number switched to another.
+    expect(resolve([{ source: GRID_TARIFF_SOURCE_FALLBACK }], null).kind).toBe('clearStaleFallback');
   });
 
-  it('reports noData for an unknown operator with nothing cached', () => {
-    const outcome = resolveGridTariffFallback({
-      ...base, existingData: null, organizationNumber: '999',
-    });
-    expect(outcome.kind).toBe('noData');
+  it('reports noData with nothing cached and no saved file', () => {
+    expect(resolve(null, null).kind).toBe('noData');
   });
 });
 

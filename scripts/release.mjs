@@ -123,7 +123,18 @@ const start = (level, changelogFile, dryRun) => {
   if (succeeds("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`])) fail(`branch ${branch} already exists`);
 
   const startBranch = read("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
+  const leaveBranch = () => {
+    run("git", ["switch", startBranch === "HEAD" ? "--detach" : startBranch, ...(startBranch === "HEAD" ? ["origin/main"] : [])]);
+    run("git", ["branch", "-D", branch]);
+  };
   run("git", ["switch", "-c", branch, "origin/main"]);
+  // The bundled Fri Nettleie file map ships with the build: a grid company it
+  // maps wrongly, or a file the Homey cannot read, would reach every user.
+  if (!succeeds("npm", ["run", "--silent", "check:grid-tariffs"])) {
+    leaveBranch();
+    fail("npm run check:grid-tariffs fails on origin/main: run it, fix what it lists "
+      + "(usually npm run build:fri-nettleie-files), and land that first");
+  }
   run("homey", ["app", "version", next, "--changelog", changelog]);
   run("homey", ["app", "validate"]);
   const changed = [
@@ -138,9 +149,8 @@ const start = (level, changelogFile, dryRun) => {
 
   if (dryRun) {
     console.log(`\nDry run: ${branch} and ${tag} were built locally; removing them.`);
-    run("git", ["switch", startBranch === "HEAD" ? "--detach" : startBranch, ...(startBranch === "HEAD" ? ["origin/main"] : [])]);
     run("git", ["tag", "-d", tag]);
-    run("git", ["branch", "-D", branch]);
+    leaveBranch();
     return;
   }
 

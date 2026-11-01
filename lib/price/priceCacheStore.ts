@@ -58,7 +58,7 @@ export type PricePayloadKey =
 
 /** The caches this store holds, one row each. */
 export type PriceCacheKey =
-  | 'grid_tariff' | 'spot_prices' | 'spot_price_area' | 'price_scheme_resolution'
+  | 'grid_tariff' | 'fri_nettleie_file' | 'spot_prices' | 'spot_price_area' | 'price_scheme_resolution'
   | typeof COMBINED_PRICES
   | PricePayloadKey
   | typeof HOMEY_PRICES_CURRENCY | typeof POWERHOUR_PRICES_CURRENCY | typeof POWERHOUR_PRICES_DEVICE;
@@ -140,8 +140,8 @@ export const createPriceCacheStore = (db: UserdataDatabase): PriceCacheStore => 
 };
 
 /**
- * Whether the store holds a tariff fetched from NVE. The static fallback and an
- * empty tariff do not count: a fallback is a stopgap that never outranks a real
+ * Whether the store holds a tariff fetched live. A fallback and an empty
+ * tariff do not count: a fallback is a stopgap that never outranks a real
  * tariff (`resolveGridTariffFallback` keeps a real cache over it), and the boot
  * price refresh can write one into an empty store before a deferred import has
  * run, so treating it as held would retire the real tariff unread.

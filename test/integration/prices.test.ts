@@ -22,7 +22,6 @@ import { flattenAllHours, readCombinedPriceData } from '../../lib/price/priceSto
 import { buildPriceFactors } from '../../lib/dailyBudget/dailyBudgetPrices';
 import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { SpotPriceEntry } from '../../lib/price/spotPriceFetch';
-import type { GridTariffEntryWithSource } from '../../lib/price/gridTariffUtils';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import {
   buildLocalDayBuckets,
@@ -912,61 +911,13 @@ describe('Grid tariff fetching', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it('seeds the static fallback when Fri Nettleie fails and nothing is cached', async () => {
+  it('stores nothing when NVE fails for a company Fri Nettleie does not cover', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    // Elvia (980489698) is present in the static fallback table.
-    mockHomeyInstance.settings.set('nettleie_fylke', '03');
-    mockHomeyInstance.settings.set('nettleie_orgnr', '980489698');
-    mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
-
-    // Every request fails.
-    (global.fetch as Mock).mockResolvedValue({
-      ok: false,
-      status: 500,
-      statusText: 'Internal Server Error',
-    });
-
-    const { setAllowConsoleError } = require('../setup.ts');
-    setAllowConsoleError(true);
-    try {
-      const app = createApp();
-      await app.onInit();
-
-      // Should not throw
-      mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
-      await flushPromises();
-    } finally {
-      setAllowConsoleError(false);
-    }
-
-    // Today and tomorrow of static fallback data are seeded so prices still work.
-    const gridTariffData = getStoredPriceCacheForTests('grid_tariff') as GridTariffEntryWithSource[];
-    expect(Array.isArray(gridTariffData)).toBe(true);
-    expect(gridTariffData).toHaveLength(48);
-    expect(gridTariffData.map((e: { time: number }) => e.time)).toEqual(
-      [...Array.from({ length: 24 }, (_, h) => h), ...Array.from({ length: 24 }, (_, h) => h)],
-    );
-    for (const entry of gridTariffData) {
-      // Flagged as fallback so it never suppresses the next live attempt.
-      expect(entry.source).toBe('fallback');
-      // Elvia household tariff from 2026-07-01: 16.99 øre/kWh base, 28.99 on weekday
-      // peak hours, plus the 1 øre Enova fee the grid tariff carries.
-      expect([17.99, 29.99]).toContain(entry.energyFeeExVat);
-      expect(entry.energyFeeIncVat).toBeCloseTo(entry.energyFeeExVat * 1.25, 2);
-    }
-  });
-
-  it('stores nothing when NVE fails and the operator has no static fallback', async () => {
-    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
-    setMockDrivers({
-      driverA: new MockDriver('driverA', [heater]),
-    });
-
-    // An org number that is not present in the static fallback table.
+    // An org number with no Fri Nettleie file and nothing saved.
     mockHomeyInstance.settings.set('nettleie_fylke', '03');
     mockHomeyInstance.settings.set('nettleie_orgnr', '999999999');
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
@@ -999,7 +950,7 @@ describe('Grid tariff fetching', () => {
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    // Org switched to one with no static fallback, but a previous operator's
+    // Org switched to one with nothing saved, but a previous operator's
     // fallback is still cached.
     mockHomeyInstance.settings.set('nettleie_fylke', '03');
     mockHomeyInstance.settings.set('nettleie_orgnr', '999999999');
@@ -1235,20 +1186,28 @@ tariffer:
       };
     };
 
-    const refreshElviaAt = async (now: Date, respond: (url: string) => unknown) => {
+    type Refresh = { now: Date; respond: (url: string) => unknown };
+
+    // One app refreshing Elvia's tariff at each step in turn; the rows stored after the last.
+    const refreshElvia = async (...refreshes: Refresh[]) => {
       mockHomeyInstance.settings.set('nettleie_fylke', '03');
       mockHomeyInstance.settings.set('nettleie_orgnr', '980489698');
       mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
       const originalDate = global.Date;
-      global.Date = mockDateAt(now);
       const { setAllowConsoleError } = require('../setup.ts');
       setAllowConsoleError(true);
       try {
-        (global.fetch as Mock).mockImplementation((url: string) => Promise.resolve(respond(url)));
-        const app = createApp();
-        await app.onInit();
-        mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
-        await flushPromises();
+        let app: ReturnType<typeof createApp> | null = null;
+        for (const { now, respond } of refreshes) {
+          global.Date = mockDateAt(now);
+          (global.fetch as Mock).mockImplementation((url: string) => Promise.resolve(respond(url)));
+          if (!app) {
+            app = createApp();
+            await app.onInit();
+          }
+          mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
+          await flushPromises();
+        }
       } finally {
         setAllowConsoleError(false);
         global.Date = originalDate;
@@ -1257,6 +1216,12 @@ tariffer:
         dateKey: string; time: number; energyFeeExVat: number; source?: string;
       }>;
     };
+    const refreshElviaAt = (now: Date, respond: (url: string) => unknown) => refreshElvia({ now, respond });
+
+    const FRIDAY = new Date(2026, 9, 30, 14, 0, 0);
+    const MONDAY = new Date(2026, 10, 2, 14, 0, 0);
+    const liveFile = () => streamedTextResponse(elviaFile);
+    const failingNve = { ok: false, status: 500, statusText: 'Internal Server Error' };
 
     const feeAt = (rows: Array<{ dateKey: string; time: number; energyFeeExVat: number }>, date: string, time: number) => (
       rows.find((row) => row.dateKey.startsWith(date) && row.time === time)?.energyFeeExVat
@@ -1279,35 +1244,61 @@ tariffer:
       expect(feeAt(rows, '2026-11-03', 12)).toBeCloseTo(21, 5);
     });
 
-    it('falls back to the bundled table when the live file is over the size cap', async () => {
-      const rows = await refreshElviaAt(new Date(2026, 10, 2, 14, 0, 0), () => (
-        streamedTextResponse(`${elviaFile}# ${'x'.repeat(300 * 1024)}\n`)
-      ));
+    it('falls back to the saved file when the live file is over the size cap', async () => {
+      const rows = await refreshElvia(
+        { now: FRIDAY, respond: liveFile },
+        { now: MONDAY, respond: () => streamedTextResponse(`${elviaFile}# ${'x'.repeat(300 * 1024)}\n`) },
+      );
       expect(rows).toHaveLength(48);
       expect(rows.every((row) => row.source === 'fallback')).toBe(true);
     });
 
-    it('falls back to the bundled table when the live file is unreadable', async () => {
-      const rows = await refreshElviaAt(new Date(2026, 10, 2, 14, 0, 0), () => (
-        streamedTextResponse('tariffer: {flow: map}')
-      ));
+    it('falls back to the saved file when the live file is unreadable', async () => {
+      const rows = await refreshElvia(
+        { now: FRIDAY, respond: liveFile },
+        { now: MONDAY, respond: () => streamedTextResponse('tariffer: {flow: map}') },
+      );
       expect(rows).toHaveLength(48);
       expect(rows.every((row) => row.source === 'fallback')).toBe(true);
+      expect(feeAt(rows, '2026-11-02', 12)).toBeCloseTo(29.99, 5);
     });
 
-    it('replaces a live tariff cached on an earlier day with the bundled table when the live file fails', async () => {
+    it('keeps the rows fetched live today when a later fetch the same day fails', async () => {
+      const rows = await refreshElvia(
+        { now: MONDAY, respond: liveFile },
+        { now: MONDAY, respond: () => streamedTextResponse('tariffer: {flow: map}') },
+      );
+      expect(rows).toHaveLength(48);
+      expect(rows.every((row) => row.source === undefined)).toBe(true);
+    });
+
+    it('prices later days on the saved file, each on its own day type and period, when the live file fails', async () => {
       // Fetched live on Friday; by Monday the file is unreadable. Pricing Monday
-      // on Friday's rows would miss Monday's own day type and any new period.
-      mockHomeyInstance.settings.set('nettleie_data', Array.from({ length: 24 }, (_, time) => ({
-        time, energyFeeExVat: 11.11, energyFeeIncVat: 13.89, dateKey: '2026-10-30T00:00:00',
-      })));
-      const rows = await refreshElviaAt(new Date(2026, 10, 2, 14, 0, 0), () => (
-        streamedTextResponse('tariffer: {flow: map}')
-      ));
+      // on Friday's rows would miss Monday's own day type and Tuesday's new period.
+      const rows = await refreshElvia(
+        { now: FRIDAY, respond: liveFile },
+        { now: MONDAY, respond: () => streamedTextResponse('tariffer: {flow: map}') },
+      );
       expect(rows).toHaveLength(48);
       expect(rows.every((row) => row.source === 'fallback')).toBe(true);
       expect(feeAt(rows, '2026-11-02', 3)).toBeCloseTo(17.99, 5);
       expect(feeAt(rows, '2026-11-02', 12)).toBeCloseTo(29.99, 5);
+      expect(feeAt(rows, '2026-11-03', 12)).toBeCloseTo(21, 5);
+    });
+
+    it('prices from NVE when the live file fails and none is saved', async () => {
+      const rows = await refreshElviaAt(MONDAY, (url) => (
+        url.includes('nve.no')
+          ? { ok: true, json: async () => mockNveGridTariffResponse }
+          : failingNve
+      ));
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.every((row) => row.source === undefined)).toBe(true);
+      expect(rows[0]).toHaveProperty('energyFeeExVat', 19.12);
+    });
+
+    it('stores nothing when the live file and NVE both fail and none is saved', async () => {
+      expect(await refreshElviaAt(MONDAY, () => failingNve)).toBeNull();
     });
 
     it('keeps a live tariff cached for today when the live file fails', async () => {
@@ -1335,7 +1326,7 @@ tariffer:
     // A real (non-fallback) cache from an earlier successful fetch. Its old date
     // means the top-level cache check misses, so NVE is retried; once every
     // attempt comes back empty, this real cache must be preserved (not replaced
-    // by the static fallback).
+    // by a fallback).
     const realCache = [{
       time: 0,
       energyFeeExVat: 11.11,

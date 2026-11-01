@@ -1,20 +1,24 @@
 import { getDateKeyInTimeZone, shiftDateKey } from '../../packages/shared-domain/src/utils/dateUtils';
 import { fetchGridTariffWithDateFallback } from './priceServiceUtils';
-import { fetchAndNormalizeGridTariff, shouldUseGridTariffCache } from './gridTariffUtils';
 import {
-  NETTLEIE_FALLBACK_GENERATED_AT,
+  fetchAndNormalizeGridTariff,
+  shouldUseGridTariffCache,
+  type GridTariffEntryWithSource,
+} from './gridTariffUtils';
+import {
+  asFallbackRows,
   buildFriNettleieGridTariffDays,
   friNettleieFileFor,
   resolveGridTariffFallback,
-} from './staticGridTariffFallback';
-import { fetchFriNettleieTariffs } from './friNettleieFetch';
+} from './gridTariffFallback';
+import { fetchFriNettleieFile, readFriNettleieFile, readSavedFriNettleieFile } from './friNettleieFetch';
 import type { PriceDataStore } from './priceDataStore';
 import type { PriceServiceLoggingSinks } from './priceServiceLoggingSinks';
 
 const GRID_TARIFF_FAILURE_REASONS: Record<'keepCache' | 'clearStaleFallback' | 'noData', string> = {
   keepCache: 'Keeping cached tariff data (no live tariff)',
-  clearStaleFallback: 'Cleared stale fallback (no live tariff, no static fallback for current operator)',
-  noData: 'No live tariff and no static fallback for this operator',
+  clearStaleFallback: 'Cleared stale fallback (no live tariff, no saved tariff for current operator)',
+  noData: 'No live tariff and no saved tariff for this operator',
 };
 
 /** The grid company whose tariff a refresh fetches, and where it is billed. */
@@ -24,7 +28,9 @@ export type GridTariffRequest = {
   tariffGroup: string;
 };
 
-type GridTariffStore = Pick<PriceDataStore, 'readNettleie' | 'writeNettleie'>;
+type GridTariffStore = Pick<
+  PriceDataStore, 'readNettleie' | 'writeNettleie' | 'readFriNettleieFile' | 'writeFriNettleieFile'
+>;
 
 type StoredGridTariffRow = { dateKey?: string; datoId?: string; source?: unknown };
 
@@ -61,9 +67,11 @@ const storeGridTariff = (
  * tomorrow's tariff, which differs from today's across a weekend or a tariff
  * change.
  *
- * A company Fri Nettleie covers is fetched from there, with its dated periods;
- * NVE serves stale rates for many companies after a mid-year change, so it is
- * asked only for a company Fri Nettleie does not cover. From NVE, tomorrow is
+ * A company Fri Nettleie covers is fetched from there, with its dated periods,
+ * and the file is saved. While it cannot be fetched, the saved file prices each
+ * day on its own day type and period. NVE serves stale rates for many
+ * companies after a mid-year change, so it is asked only for a company Fri
+ * Nettleie does not cover, or one with no saved file yet. From NVE, tomorrow is
  * asked for once, with no earlier-date fallback; without it, tomorrow is priced
  * on today's tariff.
  */
@@ -82,21 +90,18 @@ export const refreshGridTariff = async (
     Array<Record<string, unknown> & StoredGridTariffRow> | null;
   if (!forceRefresh && shouldUseGridTariffCache(existingData, { today, tomorrow })) return 'rebuild';
 
-  // No live tariff: keep real cached data that covers today; otherwise seed the
-  // bundled snapshot so prices still work until the source recovers (see
-  // `resolveGridTariffFallback`). The snapshot is flagged so it never
-  // suppresses the next live attempt (see `shouldUseGridTariffCache`).
-  const settleWithoutLiveTariff = (failure: Record<string, unknown>): GridTariffRefreshOutcome => {
-    const outcome = resolveGridTariffFallback({
-      existingData,
-      organizationNumber: request.organizationNumber,
-      tariffGroup: request.tariffGroup,
-      date: todayDate,
-      timeZone,
-    });
+  // No live tariff: keep real cached data that covers today; otherwise store the
+  // rows the saved Fri Nettleie file prices today and tomorrow on, so prices
+  // still follow the tariff until the source recovers (see
+  // `resolveGridTariffFallback`). They are flagged so they never suppress the
+  // next live attempt (see `shouldUseGridTariffCache`).
+  const settleWithoutLiveTariff = (
+    failure: Record<string, unknown>,
+    saved: { rows: GridTariffEntryWithSource[]; fetchedAt: string } | null,
+  ): GridTariffRefreshOutcome => {
+    const outcome = resolveGridTariffFallback(existingData, saved?.rows ?? null, todayDate, timeZone);
     if (outcome.kind === 'store') {
-      const fallbackContext = ' (static fallback — no live tariff, no cached tariff for today; '
-        + `snapshot ${NETTLEIE_FALLBACK_GENERATED_AT})`;
+      const fallbackContext = ` (saved Fri Nettleie file, fetched ${saved?.fetchedAt ?? 'earlier'}; no live tariff)`;
       return storeGridTariff(outcome.entries, fallbackContext, request, readCurrentCompany, store, sinks);
     }
     // Fallback already matches today; recompute combined prices in memory but
@@ -111,18 +116,53 @@ export const refreshGridTariff = async (
     return 'rebuild';
   };
 
-  const friNettleieFile = friNettleieFileFor(request.organizationNumber);
-  if (friNettleieFile !== undefined) {
-    const fetched = await fetchFriNettleieTariffs(friNettleieFile, today);
+  // The saved file's rows for today and tomorrow, when it is this company's.
+  const savedFileRows = (file: string): { rows: GridTariffEntryWithSource[]; fetchedAt: string } | null => {
+    const saved = readSavedFriNettleieFile(store.readFriNettleieFile());
+    if (saved?.organizationNumber !== request.organizationNumber || saved.file !== file) return null;
+    const read = readFriNettleieFile(saved.text, today);
+    const rows = read.kind === 'tariffs'
+      ? buildFriNettleieGridTariffDays(read.tariffs, request.tariffGroup, todayDate, timeZone)
+      : null;
+    return rows ? { rows: asFallbackRows(rows), fetchedAt: saved.fetchedAt } : null;
+  };
+
+  // The company's Fri Nettleie file, live or else as saved; `null` when there
+  // is neither, so NVE is asked.
+  const refreshFromFriNettleie = async (friNettleieFile: string): Promise<GridTariffRefreshOutcome | null> => {
+    const fetched = await fetchFriNettleieFile(friNettleieFile, today);
     const rows = fetched.kind === 'tariffs'
       ? buildFriNettleieGridTariffDays(fetched.tariffs, request.tariffGroup, todayDate, timeZone)
       : null;
-    if (rows) {
-      return storeGridTariff(rows, ` (Fri Nettleie ${friNettleieFile})`, request, readCurrentCompany, store, sinks);
+    if (fetched.kind === 'tariffs' && rows) {
+      const outcome = storeGridTariff(
+        rows, ` (Fri Nettleie ${friNettleieFile})`, request, readCurrentCompany, store, sinks,
+      );
+      if (outcome === 'rebuild') {
+        store.writeFriNettleieFile({
+          organizationNumber: request.organizationNumber,
+          file: friNettleieFile,
+          text: fetched.text,
+          fetchedAt: todayDate.toISOString(),
+        });
+      }
+      return outcome;
     }
-    const reason = fetched.kind === 'unavailable' ? fetched.reason : 'no period covers today';
-    return settleWithoutLiveTariff({ source: 'fri-nettleie', file: friNettleieFile, reason });
-  }
+    const failure = {
+      source: 'fri-nettleie',
+      file: friNettleieFile,
+      reason: fetched.kind === 'unavailable' ? fetched.reason : 'no period covers today',
+    };
+    const saved = savedFileRows(friNettleieFile);
+    if (saved) return settleWithoutLiveTariff(failure, saved);
+    // Nothing saved yet, as on a new install: NVE serves something meanwhile.
+    sinks.structuredLog.info({ event: 'grid_tariff_fri_nettleie_unavailable', ...failure });
+    return null;
+  };
+
+  const friNettleieFile = friNettleieFileFor(request.organizationNumber);
+  const fromFriNettleie = friNettleieFile === undefined ? null : await refreshFromFriNettleie(friNettleieFile);
+  if (fromFriNettleie) return fromFriNettleie;
 
   const { data, attempts, logContext } = await fetchGridTariffWithDateFallback({
     settings: request,
@@ -148,5 +188,5 @@ export const refreshGridTariff = async (
     return storeGridTariff(rows, logContext, request, readCurrentCompany, store, sinks);
   }
 
-  return settleWithoutLiveTariff({ source: 'nve', attempts });
+  return settleWithoutLiveTariff({ source: 'nve', attempts }, null);
 };
