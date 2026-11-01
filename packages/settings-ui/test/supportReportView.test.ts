@@ -116,7 +116,7 @@ describe('support report view', () => {
     const links = [...surface.querySelectorAll<HTMLAnchorElement>('a')].map((link) => link.getAttribute('href'));
     expect(links).toEqual([
       'https://community.homey.app/t/153359', 'https://community.homey.app/t/147496',
-      'mailto:olemarkus@gmail.com?subject=PELS%20device%20support',
+      'mailto:olemarkus@gmail.com?subject=PELS%20device%20support%3A%20Water%20heater%20relay',
     ]);
   });
 
@@ -125,9 +125,8 @@ describe('support report view', () => {
     expect(surface.textContent).toContain('Request sent');
     expect(surface.textContent).toContain('Reference: ref-9');
     expect(surface.textContent).toContain('within 1–2 days, depending on how complex the device is.');
-    expect(surface.textContent).toContain('and quote the reference.');
-    expect(surface.querySelector('a[href^="mailto:"]')?.getAttribute('href'))
-      .toBe('mailto:olemarkus@gmail.com?subject=PELS%20device%20support%20ref-9');
+    expect(surface.textContent).toContain('and mention the device.');
+    expect(surface.textContent).not.toContain('quote the reference');
     expect(surface.querySelector('[data-report-action="done"]')?.getAttribute('data-settings-target')).toBe('device-support');
   });
 });

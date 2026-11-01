@@ -54,15 +54,14 @@ const ForumLinks = ({ forums }: { forums: readonly SupportForumTopic[] }) => <>
 </>;
 
 // Where a support request gets an answer: Homey delivers the request, but it
-// carries no reply address, so a sent request's reference is how the developer finds it.
-const SupportContact = ({ forums, reference }: { forums: readonly SupportForumTopic[]; reference?: string }) => {
-  const subject = encodeURIComponent(reference ? `PELS device support ${reference}` : 'PELS device support');
+// carries no reply address, so the owner posts or emails naming the device.
+const SupportContact = ({ forums, deviceName }: { forums: readonly SupportForumTopic[]; deviceName: string | null }) => {
+  const subject = encodeURIComponent(deviceName ? `PELS device support: ${deviceName}` : 'PELS device support');
   return (
     <p class="pels-text-supporting muted">
-      To hear back, post in the <ForumLinks forums={forums} /> (preferred), or email{' '}
+      To hear back, post in the <ForumLinks forums={forums} /> (preferred) or email{' '}
       <a class="support-report__link" href={`mailto:${DEVELOPER_EMAIL}?subject=${subject}`}
-        target="_blank" rel="noopener noreferrer">{DEVELOPER_EMAIL}</a>
-      {reference ? ', and quote the reference.' : '.'}
+        target="_blank" rel="noopener noreferrer">{DEVELOPER_EMAIL}</a>, and mention the device.
     </p>
   );
 };
@@ -85,7 +84,7 @@ const DeviceSupportForm = ({ state, actions, supportDevice }: SupportReportViewP
         {state.operation === 'sending' ? 'Sending…' : 'Send request'}
       </MdFilledButton>
       <p class="pels-text-supporting muted">Sent to the PELS developer through Homey, with the app’s logs.</p>
-      <SupportContact forums={supportDevice.forums} />
+      <SupportContact forums={supportDevice.forums} deviceName={supportDevice.name} />
     </form>
   );
 };
@@ -214,7 +213,7 @@ const ReportResult = ({ state, actions, backTarget, supportDevice }: SupportRepo
         <h3 class="pels-text-section-title">Request sent</h3>
         <p class="support-report__reference">Reference: {submission.reference || report.document.id}</p>
         <p class="pels-text-supporting">Support for a new device usually comes in an app update within 1–2 days, depending on how complex the device is.</p>
-        <SupportContact forums={supportDevice.forums} reference={submission.reference || report.document.id} />
+        <SupportContact forums={supportDevice.forums} deviceName={supportDevice.name} />
         <MdFilledButton type="button" data-settings-target={backTarget} data-report-action="done">Done</MdFilledButton>
       </section>
     );
