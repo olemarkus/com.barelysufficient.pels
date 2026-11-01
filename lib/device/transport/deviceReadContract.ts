@@ -71,6 +71,7 @@ const DEVICE_MODEL_CAPABILITY_TYPES: Readonly<Record<string, ModelValueType>> = 
     measure_soc_level: 'number',
     thermostat_mode: 'string',
     target_power: 'number',
+    target_power_mode: (value) => value === 'homey' || value === 'device',
 };
 
 /**
@@ -129,7 +130,7 @@ const STATE_OF_CHARGE_CLASS_KEYS: ReadonlySet<string> = new Set(['evcharger', 'b
  * the whole read on it instead would hide the battery's power and state of
  * charge while leaving its claim exactly as it was.
  */
-const STEPPED_ONLY_CAPABILITY_IDS: ReadonlySet<string> = new Set(['target_power']);
+const STEPPED_ONLY_CAPABILITY_IDS: ReadonlySet<string> = new Set(['target_power', 'target_power_mode']);
 
 /**
  * The capabilities PELS reads from this device, by its role. A device whose

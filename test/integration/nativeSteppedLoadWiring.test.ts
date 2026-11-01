@@ -729,6 +729,46 @@ describe('native stepped-load wiring', () => {
     }
   });
 
+  it('builds and writes aligned target-power watt steps from device metadata without current inputs', async () => {
+    const device = buildTargetPowerDevice({
+      capabilitiesObj: {
+        target_power: {
+          value: 0, min: 0, max: 12747, step: 230, excludeMin: 0, excludeMax: 2391,
+          setable: true, lastUpdated: TARGET_POWER_READ_AT,
+        },
+      },
+    });
+    const put = vi.fn().mockResolvedValue(undefined);
+    try {
+      const deviceManager = createTestDeviceTransport(
+        mockHomeyInstance as unknown as Homey.App, createLogger(), {},
+      );
+      const [parsed] = await seedTransportDevices(deviceManager, [device]);
+      setRestClient({ get: vi.fn(), post: vi.fn(), put });
+      const profile = parsed.steppedLoadProfile;
+      if (!profile) throw new Error('Expected target-power stepped control');
+
+      expect(profile.steps.slice(1, 3)).toEqual([
+        { id: '2530w', planningPowerW: 2530 },
+        { id: '2760w', planningPowerW: 2760 },
+      ]);
+      for (const planningPowerW of [2530, 2760, 0]) {
+        await expect(deviceManager.requestSteppedLoadStep({
+          deviceId: device.id, profile,
+          desiredStepId: planningPowerW === 0 ? 'off' : `${planningPowerW}w`,
+          planningPowerW,
+          planningCurrentA: 0,
+        })).resolves.toEqual({ requested: true, acknowledged: true, transport: 'native_capability' });
+        expect(put).toHaveBeenLastCalledWith(
+          'manager/devices/device/target-power-1/capability/target_power',
+          { value: planningPowerW },
+        );
+      }
+    } finally {
+      restoreMockRestClient();
+    }
+  });
+
   it('does not treat unrelated max_power capabilities as native stepped-load wiring', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,

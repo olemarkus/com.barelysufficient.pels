@@ -419,6 +419,10 @@ export function resolveTargetPowerReportedStepId(params: {
   profile: SteppedLoadProfile;
   capabilityObj: DeviceCapabilityMap;
 }): string | undefined {
+  // A switchable device's saved watt target is dormant under device control.
+  // It cannot confirm that PELS's requested step has been applied.
+  const mode = params.capabilityObj.target_power_mode;
+  if (mode?.setable === true && mode.value !== 'homey') return undefined;
   const targetPowerValue = params.capabilityObj.target_power?.value;
   if (typeof targetPowerValue !== 'number' || !Number.isFinite(targetPowerValue)) return undefined;
   const sortedSteps = sortSteppedLoadSteps(params.profile.steps);

@@ -137,9 +137,10 @@ const resolveActiveMinW = (
   stepW: number,
 ): number => {
   const excludeMax = finitePositiveNumber(options?.excludeMax);
-  if (excludeMax) return excludeMax;
-  const min = finitePositiveNumber(options?.min);
-  if (min) return min;
+  // The exclusion boundary is usable, but is not the origin of the step grid.
+  // Start at the first multiple of step outside the band so Homey's rounding
+  // toward zero cannot turn the first positive request back into idle.
+  if (excludeMax) return Math.ceil(excludeMax / stepW) * stepW;
   return stepW;
 };
 

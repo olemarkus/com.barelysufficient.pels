@@ -40,6 +40,13 @@ describe('assessTargetPowerLadderOptions', () => {
       .toEqual({ valid: false, issue: 'step_exceeds_range' });
   });
 
+  it('rejects a range with no grid-aligned rung outside the excluded band', () => {
+    const options = { min: 0, max: 2500, step: 230, excludeMax: 2391 };
+    expect(assessTargetPowerLadderOptions(options))
+      .toEqual({ valid: false, issue: 'step_exceeds_range' });
+    expect(buildTargetPowerLadderSteps(options)).toBeUndefined();
+  });
+
   it('rejects a range that would generate too many steps', () => {
     expect(assessTargetPowerLadderOptions({ min: 0, max: 100_000, step: 1 }))
       .toEqual({ valid: false, issue: 'too_many_generated_steps' });
@@ -62,6 +69,40 @@ describe('buildTargetPowerLadderSteps', () => {
       { id: '2000w', planningPowerW: 2000 },
       { id: '3000w', planningPowerW: 3000 },
     ]);
+  });
+
+  it('aligns watt requests above an off-grid excluded maximum to the zero-based step grid', () => {
+    const options = { min: 0, max: 12747, step: 230, excludeMax: 2391 };
+    const steps = buildTargetPowerLadderSteps(options) ?? [];
+
+    expect(steps.slice(0, 4)).toEqual([
+      { id: 'off', planningPowerW: 0 },
+      { id: '2530w', planningPowerW: 2530 },
+      { id: '2760w', planningPowerW: 2760 },
+      { id: '2990w', planningPowerW: 2990 },
+    ]);
+    expect(steps.at(-1)).toEqual({ id: '12650w', planningPowerW: 12650 });
+    for (const { planningPowerW } of steps.slice(1)) {
+      expect(planningPowerW % options.step).toBe(0);
+      expect(planningPowerW).toBeGreaterThanOrEqual(options.excludeMax);
+      expect(planningPowerW).toBeLessThanOrEqual(options.max);
+    }
+  });
+
+  it('starts at one full step when the excluded band is smaller than a step', () => {
+    expect(buildTargetPowerLadderSteps({ max: 1000, step: 500, excludeMax: 100 })).toEqual([
+      { id: 'off', planningPowerW: 0 },
+      { id: '500w', planningPowerW: 500 },
+      { id: '1000w', planningPowerW: 1000 },
+    ]);
+  });
+
+  it('counts only aligned rungs against the generation limit', () => {
+    const options = { max: 1291, step: 10, excludeMax: 11 };
+    expect(assessTargetPowerLadderOptions(options)).toEqual({ valid: true });
+    const steps = buildTargetPowerLadderSteps(options) ?? [];
+    expect(steps).toHaveLength(TARGET_POWER_MAX_GENERATED_STEPS + 1);
+    expect(steps.at(-1)?.planningPowerW).toBe(1290);
   });
 
   it('returns nothing for a range that yields no rung — never an off-only ladder', () => {
