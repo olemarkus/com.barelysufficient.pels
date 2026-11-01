@@ -476,11 +476,13 @@ PELS supports four price schemes:
 PELS stores spot prices as øre/kWh **ex VAT** from hvakosterstrommen.no. Norway hourly totals are computed from:
 
 - Spot price (spotpris)
-- Grid tariff energy component (nettleie), as NVE serves it ex VAT; it already includes the Enova fee (enovaavgift)
+- Grid tariff energy component (nettleie) ex VAT, including the Enova fee (enovaavgift)
 - Provider surcharge (incl. VAT in settings; converted to ex VAT internally)
 - Consumption tax (elavgift)
 - VAT (mva) where applicable
 - Either electricity support (strømstøtte) or Norgespris adjustment, depending on the selected Norway pricing model
+
+The grid tariff comes from [Fri Nettleie](https://github.com/kraftsystemet/fri-nettleie) for every grid company it covers: PELS fetches the company's tariff file at each tariff refresh and prices each day on the tariff period valid that day, so an announced change applies from its own date. Fri Nettleie's rates leave out every tax, so PELS adds the 1 øre/kWh Enova fee. A grid company Fri Nettleie does not cover is priced from NVE, whose ex-VAT rate PELS takes as including the Enova fee. When the live source cannot be reached, PELS keeps the tariff it stored last, or uses the Fri Nettleie table bundled with the app (`lib/price/nettleieFallbackData.generated.ts`). `npm run check:grid-tariffs`, run weekly in CI, fails when that table differs from what Fri Nettleie publishes or a listed grid company gets no tariff.
 
 Calculation summary:
 

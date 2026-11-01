@@ -780,6 +780,10 @@ describe('Spot price fetching', () => {
   });
 });
 
+// A grid company with no Fri Nettleie file, so it is priced from NVE (NVE is mocked).
+const NVE_ONLY_ORGNR = '900000001';
+const NVE_ONLY_COUNTY = '40';
+
 describe('Grid tariff fetching', () => {
   let originalFetch: typeof global.fetch;
 
@@ -804,9 +808,9 @@ describe('Grid tariff fetching', () => {
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    // Configure grid tariff settings
-    mockHomeyInstance.settings.set('nettleie_fylke', '03');
-    mockHomeyInstance.settings.set('nettleie_orgnr', '980489698');
+    // A grid company Fri Nettleie does not cover is priced from NVE.
+    mockHomeyInstance.settings.set('nettleie_fylke', NVE_ONLY_COUNTY);
+    mockHomeyInstance.settings.set('nettleie_orgnr', NVE_ONLY_ORGNR);
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
 
     // Mock fetch response
@@ -842,8 +846,8 @@ describe('Grid tariff fetching', () => {
   it('drops the stored tariff once the owner clears the grid company', async () => {
     // Choosing another county clears the grid company: the tariff stored for
     // the old one must not stay in the prices.
-    mockHomeyInstance.settings.set('nettleie_fylke', '03');
-    mockHomeyInstance.settings.set('nettleie_orgnr', '980489698');
+    mockHomeyInstance.settings.set('nettleie_fylke', NVE_ONLY_COUNTY);
+    mockHomeyInstance.settings.set('nettleie_orgnr', NVE_ONLY_ORGNR);
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
     (global.fetch as Mock).mockResolvedValue({ ok: true, json: async () => mockNveGridTariffResponse });
     const app = createApp();
@@ -861,8 +865,8 @@ describe('Grid tariff fetching', () => {
   });
 
   it('discards a tariff fetched for a grid company the owner has since cleared', async () => {
-    mockHomeyInstance.settings.set('nettleie_fylke', '03');
-    mockHomeyInstance.settings.set('nettleie_orgnr', '980489698');
+    mockHomeyInstance.settings.set('nettleie_fylke', NVE_ONLY_COUNTY);
+    mockHomeyInstance.settings.set('nettleie_orgnr', NVE_ONLY_ORGNR);
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
     (global.fetch as Mock).mockResolvedValue({ ok: true, json: async () => [] });
     const app = createApp();
@@ -908,7 +912,7 @@ describe('Grid tariff fetching', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it('seeds the static fallback when NVE fails and nothing is cached', async () => {
+  it('seeds the static fallback when Fri Nettleie fails and nothing is cached', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -919,7 +923,7 @@ describe('Grid tariff fetching', () => {
     mockHomeyInstance.settings.set('nettleie_orgnr', '980489698');
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
 
-    // Mock fetch to return error for every NVE attempt
+    // Every request fails.
     (global.fetch as Mock).mockResolvedValue({
       ok: false,
       status: 500,
@@ -947,10 +951,10 @@ describe('Grid tariff fetching', () => {
       [...Array.from({ length: 24 }, (_, h) => h), ...Array.from({ length: 24 }, (_, h) => h)],
     );
     for (const entry of gridTariffData) {
-      // Flagged as fallback so it never suppresses the next NVE retry.
+      // Flagged as fallback so it never suppresses the next live attempt.
       expect(entry.source).toBe('fallback');
       // Elvia household tariff from 2026-07-01: 16.99 øre/kWh base, 28.99 on weekday
-      // peak hours, plus the 1 øre Enova fee that NVE's rate carries.
+      // peak hours, plus the 1 øre Enova fee the grid tariff carries.
       expect([17.99, 29.99]).toContain(entry.energyFeeExVat);
       expect(entry.energyFeeIncVat).toBeCloseTo(entry.energyFeeExVat * 1.25, 2);
     }
@@ -1037,8 +1041,8 @@ describe('Grid tariff fetching', () => {
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    mockHomeyInstance.settings.set('nettleie_fylke', '46');
-    mockHomeyInstance.settings.set('nettleie_orgnr', '976944801');
+    mockHomeyInstance.settings.set('nettleie_fylke', NVE_ONLY_COUNTY);
+    mockHomeyInstance.settings.set('nettleie_orgnr', NVE_ONLY_ORGNR);
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Hytter og fritidshus');
 
     let capturedUrl = '';
@@ -1058,8 +1062,8 @@ describe('Grid tariff fetching', () => {
 
     // Check URL contains correct parameters
     expect(capturedUrl).toContain('nettleietariffer.dataplattform.nve.no');
-    expect(capturedUrl).toContain('FylkeNr=46');
-    expect(capturedUrl).toContain('OrganisasjonsNr=976944801');
+    expect(capturedUrl).toContain(`FylkeNr=${NVE_ONLY_COUNTY}`);
+    expect(capturedUrl).toContain(`OrganisasjonsNr=${NVE_ONLY_ORGNR}`);
     // URLSearchParams uses + for spaces, which is valid URL encoding
     expect(capturedUrl).toMatch(/Tariffgruppe=Hytter(\+|%20)og(\+|%20)fritidshus/);
   });
@@ -1070,8 +1074,8 @@ describe('Grid tariff fetching', () => {
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    mockHomeyInstance.settings.set('nettleie_fylke', '46');
-    mockHomeyInstance.settings.set('nettleie_orgnr', '976944801');
+    mockHomeyInstance.settings.set('nettleie_fylke', NVE_ONLY_COUNTY);
+    mockHomeyInstance.settings.set('nettleie_orgnr', NVE_ONLY_ORGNR);
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Hytter og fritidshus');
 
     const now = new Date(2026, 0, 3, 12, 0, 0);
@@ -1110,9 +1114,9 @@ describe('Grid tariff fetching', () => {
     }
   });
 
-  describe('Lnett weekend correction', () => {
-    // NVE serves Lnett's day rate (06-22) every day, weekends included.
-    const lnettNveDay = (date: string) => Array.from({ length: 24 }, (_, time) => ({
+  describe('NVE stand-in days', () => {
+    // NVE's tariff for a day: 26.6 on 06-22, 14.6 otherwise.
+    const nveDay = (date: string) => Array.from({ length: 24 }, (_, time) => ({
       datoId: `${date}T00:00:00`,
       time,
       energileddEks: time >= 6 && time < 22 ? 26.6 : 14.6,
@@ -1120,9 +1124,9 @@ describe('Grid tariff fetching', () => {
     }));
 
     // `forced` is the settings page's refresh; otherwise the refresh at startup.
-    const refreshLnettAt = async (now: Date, answer: (date: string) => unknown[], forced = true) => {
-      mockHomeyInstance.settings.set('nettleie_fylke', '11');
-      mockHomeyInstance.settings.set('nettleie_orgnr', '980038408');
+    const refreshAt = async (now: Date, answer: (date: string) => unknown[], forced = true) => {
+      mockHomeyInstance.settings.set('nettleie_fylke', NVE_ONLY_COUNTY);
+      mockHomeyInstance.settings.set('nettleie_orgnr', NVE_ONLY_ORGNR);
       mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
       const originalDate = global.Date;
       global.Date = mockDateAt(now);
@@ -1145,19 +1149,11 @@ describe('Grid tariff fetching', () => {
       rows.find((row) => row.dateKey.startsWith(date) && row.time === time)?.energyFeeExVat
     );
 
-    it('prices Saturday at the night rate and Friday as NVE serves it', async () => {
-      // Friday 2026-10-23, with Saturday's tariff fetched as tomorrow.
-      const rows = await refreshLnettAt(new Date(2026, 9, 23, 14, 0, 0), lnettNveDay);
-      expect(feeAt(rows, '2026-10-23', 12)).toBe(26.6);
-      expect(feeAt(rows, '2026-10-24', 12)).toBe(14.6);
-    });
-
-    it('keeps an earlier day standing in for today uncorrected', async () => {
-      // Monday with nothing from NVE for Monday: Sunday's tariff stands in, and
-      // flattening it as a Sunday would price Monday's day hours at the night rate.
-      const rows = await refreshLnettAt(
+    it('keeps an earlier day standing in for today as NVE serves it', async () => {
+      // Monday with nothing from NVE for Monday: Sunday's tariff stands in.
+      const rows = await refreshAt(
         new Date(2026, 9, 26, 14, 0, 0),
-        (date) => (date === '2026-10-26' ? [] : lnettNveDay(date)),
+        (date) => (date === '2026-10-26' ? [] : nveDay(date)),
       );
       expect(feeAt(rows, '2026-10-25', 12)).toBe(26.6);
     });
@@ -1170,14 +1166,107 @@ describe('Grid tariff fetching', () => {
         dateKey: '2026-10-26T00:00:00',
       }));
       mockHomeyInstance.settings.set('nettleie_data', cachedMonday);
-      const rows = await refreshLnettAt(
+      const rows = await refreshAt(
         new Date(2026, 9, 26, 14, 0, 0),
-        (date) => (date === '2026-10-26' ? [] : lnettNveDay(date)),
+        (date) => (date === '2026-10-26' ? [] : nveDay(date)),
         false,
       );
       expect(rows.filter((row) => row.dateKey.startsWith('2026-10-26'))).toEqual(cachedMonday);
       expect(rows.some((row) => row.dateKey.startsWith('2026-10-25'))).toBe(false);
       expect(feeAt(rows, '2026-10-27', 12)).toBe(26.6);
+    });
+  });
+
+  describe('Fri Nettleie', () => {
+    // Elvia's file as Fri Nettleie publishes it (trimmed), with a period
+    // starting tomorrow added.
+    const elviaFile = `---
+netteier: 'Elvia AS'
+gln:
+  - '7080005046220'
+sist_oppdatert: '2026-06-05'
+tariffer:
+  - kundegrupper:
+      - husholdning
+      - fritid
+    fastledd:
+      metode: TRE_DØGNMAX_MND
+      terskel_inkludert: true
+      terskler:
+        - terskel: 0
+          pris: 1296
+    energiledd:
+      grunnpris: 16.99
+      unntak:
+        - navn: Virkedag
+          timer: 6-21
+          dager: [virkedag]
+          pris: 28.99
+    gyldig_fra: '2026-07-01'
+    gyldig_til: '2026-11-03'
+  - kundegrupper:
+      - husholdning
+    fastledd:
+      metode: TRE_DØGNMAX_MND
+      terskel_inkludert: true
+      terskler:
+        - terskel: 0
+          pris: 1296
+    energiledd:
+      grunnpris: 20
+    gyldig_fra: '2026-11-03'
+`;
+
+    const refreshElviaAt = async (now: Date, respond: (url: string) => unknown) => {
+      mockHomeyInstance.settings.set('nettleie_fylke', '03');
+      mockHomeyInstance.settings.set('nettleie_orgnr', '980489698');
+      mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
+      const originalDate = global.Date;
+      global.Date = mockDateAt(now);
+      const { setAllowConsoleError } = require('../setup.ts');
+      setAllowConsoleError(true);
+      try {
+        (global.fetch as Mock).mockImplementation((url: string) => Promise.resolve(respond(url)));
+        const app = createApp();
+        await app.onInit();
+        mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
+        await flushPromises();
+      } finally {
+        setAllowConsoleError(false);
+        global.Date = originalDate;
+      }
+      return getStoredPriceCacheForTests('grid_tariff') as Array<{
+        dateKey: string; time: number; energyFeeExVat: number; source?: string;
+      }>;
+    };
+
+    const feeAt = (rows: Array<{ dateKey: string; time: number; energyFeeExVat: number }>, date: string, time: number) => (
+      rows.find((row) => row.dateKey.startsWith(date) && row.time === time)?.energyFeeExVat
+    );
+
+    it('prices a covered grid company on its live file, tomorrow on its own period, without asking NVE', async () => {
+      const requested: string[] = [];
+      // Monday 2026-11-02; the new period starts Tuesday.
+      const rows = await refreshElviaAt(new Date(2026, 10, 2, 14, 0, 0), (url) => {
+        requested.push(url);
+        return { ok: true, text: async () => elviaFile };
+      });
+      expect(requested.every((url) => url.includes('raw.githubusercontent.com/kraftsystemet/fri-nettleie'))).toBe(true);
+      expect(requested.some((url) => url.endsWith('/tariffer/elvia.yml'))).toBe(true);
+      expect(rows).toHaveLength(48);
+      expect(rows.every((row) => row.source === undefined)).toBe(true);
+      // The Enova fee is added to Fri Nettleie's rates.
+      expect(feeAt(rows, '2026-11-02', 3)).toBeCloseTo(17.99, 5);
+      expect(feeAt(rows, '2026-11-02', 12)).toBeCloseTo(29.99, 5);
+      expect(feeAt(rows, '2026-11-03', 12)).toBeCloseTo(21, 5);
+    });
+
+    it('falls back to the bundled table when the live file is unreadable', async () => {
+      const rows = await refreshElviaAt(new Date(2026, 10, 2, 14, 0, 0), () => (
+        { ok: true, text: async () => 'tariffer: {flow: map}' }
+      ));
+      expect(rows).toHaveLength(48);
+      expect(rows.every((row) => row.source === 'fallback')).toBe(true);
     });
   });
 
@@ -1187,8 +1276,8 @@ describe('Grid tariff fetching', () => {
       driverA: new MockDriver('driverA', [heater]),
     });
 
-    mockHomeyInstance.settings.set('nettleie_fylke', '46');
-    mockHomeyInstance.settings.set('nettleie_orgnr', '976944801');
+    mockHomeyInstance.settings.set('nettleie_fylke', NVE_ONLY_COUNTY);
+    mockHomeyInstance.settings.set('nettleie_orgnr', NVE_ONLY_ORGNR);
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Hytter og fritidshus');
 
     // A real (non-fallback) cache from an earlier successful fetch. Its old date
@@ -1236,7 +1325,7 @@ describe('Grid tariff fetching', () => {
       const errorCalls = errorSpy.mock.calls;
       const cachedCall = errorCalls.find(([message]) => (
         typeof message === 'string'
-        && message.includes('Keeping cached tariff data (NVE returned empty list)')
+        && message.includes('Keeping cached tariff data (no live tariff)')
       ));
       expect(cachedCall).toBeTruthy();
       const payload = cachedCall?.[1] as { attempts?: Array<{ label: string; date: string }> } | undefined;
