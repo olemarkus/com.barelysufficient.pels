@@ -32,6 +32,8 @@ admitted watt target before selecting `target_power_mode = homey`, because
 the mode change may immediately apply the saved target. A saved target in
 `device` mode is dormant and cannot confirm a PELS step. Accepted mode reports
 invalidate or restore that step evidence through the normal observation path.
+When taking control, successful watt requests invalidate superseded target evidence; mode changes
+alone cannot restore it. Only a newer independent target report or read can.
 - **Easee EV charger current** (`no.easee`, charger driver): native stepped
   control writes the EV preset step's whole-amp current to the setable
   `target_charger_current` (0 A for the off step) and reads the step back from

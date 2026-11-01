@@ -72,7 +72,9 @@ export class DeviceSnapshotReader {
       this.parseDependencies(),
       'runtime',
     );
-    return parsed && this.chargingCurrentControl.projectControl(parsed);
+    return parsed && this.snapshotStore.nativeSteppedAdapters.projectObservation(
+      this.chargingCurrentControl.projectControl(parsed),
+    );
   }
 
   /**
@@ -100,7 +102,9 @@ export class DeviceSnapshotReader {
       this.snapshotStore.getSnapshotIndex(),
       this.parseDependencies(),
       purpose,
-    ).map((snapshot) => this.chargingCurrentControl.projectControl(snapshot));
+    ).map((snapshot) => this.snapshotStore.nativeSteppedAdapters.projectObservation(
+      this.chargingCurrentControl.projectControl(snapshot),
+    ));
     for (const device of list) {
       if (!getDeviceAdapter(device).retainsPlugObservation(device)) continue;
       const retained = this.retainBlockedDevice(device, purpose);

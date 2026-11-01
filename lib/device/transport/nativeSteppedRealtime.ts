@@ -113,6 +113,10 @@ function applyNativeSteppedLoadSnapshotUpdate(
     if (nextReportedStepId) currentSnapshot.reportedStepId = nextReportedStepId;
     else delete currentSnapshot.reportedStepId;
     if (reportedStepPowerW !== undefined) currentSnapshot.reportedStepPowerW = reportedStepPowerW;
+    if (!nextReportedStepId) {
+        delete currentSnapshot.reportedStepPowerW;
+        currentSnapshot.reportedStepObservedAtMs = Date.now();
+    }
     if (reportedStepObservedAtMs !== undefined) {
         currentSnapshot.reportedStepObservedAtMs = reportedStepObservedAtMs;
     }
@@ -174,6 +178,12 @@ function resolveNativeReportedStepPowerW(
     if (current && value < current.minimumChargingA) return 0;
     const raw = capabilityId === 'target_power'
         ? ingest.reader.snapshotStore.getTrackedRawDevice(snapshot.id) : undefined;
+    if (capabilityId === 'target_power' && snapshot.steppedLoadProfile
+        && !ingest.reader.snapshotStore.nativeSteppedAdapters.getReportedStepId(
+            snapshot.id, snapshot.steppedLoadProfile, snapshot.targetPowerConfig,
+        )) {
+        return undefined;
+    }
     const planningValue = raw
         ? getDeviceAdapter(raw).targetPowerReading(raw, snapshot.targetPowerConfig, value) : value;
     return Math.round(planningValue
@@ -213,9 +223,9 @@ export function handleNativeSteppedLoadCapabilityUpdate(
     const isNativePowerStepUpdate = resolveNativePowerStepUpdate(snapshot, capabilityId, value);
     if (isNativePowerStepUpdate === null) return false;
 
-    // A malformed current is not an observation. Consume it before it can
+    // A malformed numeric step is not an observation. Consume it before it can
     // replace the adapter's last-good step or advance device freshness.
-    if (isInvalidNativeCurrent(capabilityId, value)) return true;
+    if (isInvalidNativeNumericStep(capabilityId, value)) return true;
 
     const normalizedValue = normalizeRealtimeCapabilityEventValue(capabilityId, value);
     // An Easee current echo is also the only source for its reported rung and
@@ -225,6 +235,8 @@ export function handleNativeSteppedLoadCapabilityUpdate(
         return isNativePowerStepUpdate;
     }
 
+    const adapters = ingest.reader.snapshotStore.nativeSteppedAdapters;
+    adapters.observeCapabilityUpdate(deviceId, capabilityId, value);
     const reportedStepPowerW = resolveNativeReportedStepPowerW(ingest, snapshot, capabilityId, value);
     // A negative watt reading is malformed, not an off-range setting: consume it
     // before it can be recorded as probe evidence or replace the last-good step.
@@ -235,9 +247,6 @@ export function handleNativeSteppedLoadCapabilityUpdate(
       .some((control) => control.capabilityId === capabilityId)) {
         recordRealtimeObservation(ingest, deviceId, capabilityId, normalizedValue, true);
     }
-
-    const adapters = ingest.reader.snapshotStore.nativeSteppedAdapters;
-    adapters.observeCapabilityUpdate(deviceId, capabilityId, value);
 
     const fallbackReportedStepId = value === false
         ? resolveNativeSteppedLoadReportedStepId({
@@ -259,9 +268,9 @@ export function handleNativeSteppedLoadCapabilityUpdate(
     return isNativePowerStepUpdate;
 }
 
-function isInvalidNativeCurrent(capabilityId: string, value: unknown): boolean {
-    return getCapabilityAdapter([capabilityId]).nativeCurrentControls
-      .some((control) => control.capabilityId === capabilityId)
+function isInvalidNativeNumericStep(capabilityId: string, value: unknown): boolean {
+    return (capabilityId === 'target_power' || getCapabilityAdapter([capabilityId]).nativeCurrentControls
+      .some((control) => control.capabilityId === capabilityId))
         && (typeof value !== 'number' || !Number.isFinite(value) || value < 0);
 }
 

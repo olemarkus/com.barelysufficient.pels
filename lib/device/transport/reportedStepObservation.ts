@@ -5,7 +5,7 @@ import { resolveTargetPowerObservationProfile } from '../targetPowerObservationP
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { SteppedLoadProfile, TargetPowerSteppedLoadConfig } from '../../../packages/contracts/src/types';
 
-/** Keep an exact step cluster atomic when a bundled observation is older. */
+/** Keep step evidence, including a dated invalidation, atomic across older reads. */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function preserveNewerReportedStepObservation(
     previous: TransportDeviceSnapshot,
@@ -13,7 +13,7 @@ export function preserveNewerReportedStepObservation(
 ): void {
     const next = snapshot;
     if (isBuiltInSteppedLoadControlEnabled(previous) !== isBuiltInSteppedLoadControlEnabled(next)) return;
-    if (!next.steppedLoadProfile || !previous.reportedStepId) return;
+    if (!next.steppedLoadProfile) return;
     const previousObservedAtMs = previous.reportedStepObservedAtMs;
     const nextObservedAtMs = next.reportedStepObservedAtMs;
     if (
@@ -22,12 +22,14 @@ export function preserveNewerReportedStepObservation(
     ) {
         return;
     }
-    if (isEvTargetPowerConfig(next.targetPowerConfig) && previous.reportedStepPowerW !== undefined) {
+    if (previous.reportedStepId && isEvTargetPowerConfig(next.targetPowerConfig)
+        && previous.reportedStepPowerW !== undefined) {
         const ladder = resolveEvReportLadder(next.targetPowerConfig, previous, next.steppedLoadProfile);
         if (!ladder) return;
         next.steppedLoadProfile = ladder;
     }
-    if (!next.steppedLoadProfile.steps.some((step) => step.id === previous.reportedStepId)) return;
+    if (previous.reportedStepId
+        && !next.steppedLoadProfile.steps.some((step) => step.id === previous.reportedStepId)) return;
     next.reportedStepId = previous.reportedStepId;
     if (previous.reportedStepPowerW === undefined) delete next.reportedStepPowerW;
     else next.reportedStepPowerW = previous.reportedStepPowerW;

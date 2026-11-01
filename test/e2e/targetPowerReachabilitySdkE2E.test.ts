@@ -35,16 +35,21 @@ const PROBE_POWER_W = 6_440; // next candidate: 28 A
 const CHARGER_TARGET_POWER_PATH = `manager/devices/device/${CHARGER_ID}/capability/target_power`;
 const WATER_HEATER_ONOFF_PATH = `manager/devices/device/${WATER_HEATER_ID}/capability/onoff`;
 
-const buildCharger = async (): Promise<MockDevice> => {
+const buildCharger = async (switchableControl: boolean): Promise<MockDevice> => {
   const charger = new MockDevice(
     CHARGER_ID,
     'EV charger',
-    ['measure_power', 'target_power', 'evcharger_charging', 'evcharger_charging_state'],
+    ['measure_power', 'target_power', 'evcharger_charging', 'evcharger_charging_state',
+      ...(switchableControl ? ['target_power_mode'] : [])],
     'evcharger',
   );
   charger.setCapabilityMetadata('target_power', {
     units: 'W', min: 0, max: 7_360, step: 230, setable: true,
   });
+  if (switchableControl) {
+    charger.setCapabilityMetadata('target_power_mode', { setable: true });
+    await charger.setCapabilityValue('target_power_mode', 'homey');
+  }
   await charger.setCapabilityValue('measure_power', CONFIRMED_POWER_W);
   await charger.setCapabilityValue('target_power', CONFIRMED_POWER_W);
   await charger.setCapabilityValue('evcharger_charging', true);
@@ -142,84 +147,87 @@ describe('EV target-power reachability (SDK-boundary e2e)', () => {
     vi.useRealTimers();
   });
 
-  it('learns 25 A after a refused 28 A probe, releases another device, and retries later', async () => {
-    const [charger, waterHeater] = await Promise.all([buildCharger(), buildWaterHeater()]);
-    setMockDrivers({ driverA: new MockDriver('driverA', [charger, waterHeater]) });
-    configureRuntime();
-    reportHomePower(CONFIRMED_POWER_W + 700);
-    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+  it.each([false, true])(
+    'learns 25 A after a refused 28 A probe and retries later (switchable control: %s)',
+    async (switchableControl) => {
+      const [charger, waterHeater] = await Promise.all([buildCharger(switchableControl), buildWaterHeater()]);
+      setMockDrivers({ driverA: new MockDriver('driverA', [charger, waterHeater]) });
+      configureRuntime();
+      reportHomePower(CONFIRMED_POWER_W + 700);
+      const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    const app = createApp();
-    await app.onInit();
-    await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(
-      putSpy,
-      CHARGER_TARGET_POWER_PATH,
-      { value: PROBE_POWER_W },
-    );
+      const app = createApp();
+      await app.onInit();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await drainUntilCalledWith(
+        putSpy,
+        CHARGER_TARGET_POWER_PATH,
+        { value: PROBE_POWER_W },
+      );
 
-    // A second device turns off only after the exploratory command is already
-    // pending. Publish the changed SDK snapshot through the same settings seam
-    // the settings UI uses for an explicit device refresh.
-    waterHeater.setActualCapabilityValue('onoff', false, {
-      emitCapabilityEvent: false,
-      emitDeviceUpdate: false,
-    });
-    waterHeater.setActualCapabilityValue('measure_power', 0, {
-      emitCapabilityEvent: false,
-      emitDeviceUpdate: false,
-    });
-    mockHomeyInstance.settings.set('refresh_target_devices_snapshot', Date.now());
-    await drainPending();
-    expect(putSpy).not.toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
+      // A second device turns off only after the exploratory command is already
+      // pending. Publish the changed SDK snapshot through the same settings seam
+      // the settings UI uses for an explicit device refresh.
+      waterHeater.setActualCapabilityValue('onoff', false, {
+        emitCapabilityEvent: false,
+        emitDeviceUpdate: false,
+      });
+      waterHeater.setActualCapabilityValue('measure_power', 0, {
+        emitCapabilityEvent: false,
+        emitDeviceUpdate: false,
+      });
+      mockHomeyInstance.settings.set('refresh_target_devices_snapshot', Date.now());
+      await drainPending();
+      expect(putSpy).not.toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
 
-    // The UI remains honest while the probe is outstanding: configured 32 A
-    // is not exposed as reached, and the exact observed 25 A rung is retained.
-    const probingUiDevice = await readChargerFromUi();
-    expect(probingUiDevice.steppedLoadProfile?.steps.at(-1)).toMatchObject({
-      id: '25a',
-      planningPowerW: CONFIRMED_POWER_W,
-    });
-    expect(await charger.getCapabilityValue('target_power')).toBe(CONFIRMED_POWER_W);
+      // The UI remains honest while the probe is outstanding: configured 32 A
+      // is not exposed as reached, and the exact observed 25 A rung is retained.
+      const probingUiDevice = await readChargerFromUi();
+      expect(probingUiDevice.steppedLoadProfile?.steps.at(-1)).toMatchObject({
+        id: '25a',
+        planningPowerW: CONFIRMED_POWER_W,
+      });
+      expect(await charger.getCapabilityValue('target_power')).toBe(CONFIRMED_POWER_W);
 
-    // Local target-power commands settle for 90 seconds. The refresh at that
-    // deadline must classify silence as a failed probe and persist the proven
-    // ceiling instead of leaving the restore attempt pending indefinitely.
-    await vi.advanceTimersByTimeAsync(90_000);
-    await drainUntil(() => readReachability()?.probeFailureCount === 1);
-    const learned = readReachability();
-    expect(learned).toMatchObject({
-      maxReachedPowerW: CONFIRMED_POWER_W,
-      probeFailureCount: 1,
-    });
-    expect(learned?.nextProbeAtMs).toBeGreaterThan(Date.now() + 14 * 60 * 1000);
-    expect(learned?.nextProbeAtMs).toBeLessThanOrEqual(Date.now() + 15 * 60 * 1000);
+      // Local target-power commands settle for 90 seconds. The refresh at that
+      // deadline must classify silence as a failed probe and persist the proven
+      // ceiling instead of leaving the restore attempt pending indefinitely.
+      await vi.advanceTimersByTimeAsync(90_000);
+      await drainUntil(() => readReachability()?.probeFailureCount === 1);
+      const learned = readReachability();
+      expect(learned).toMatchObject({
+        maxReachedPowerW: CONFIRMED_POWER_W,
+        probeFailureCount: 1,
+      });
+      expect(learned?.nextProbeAtMs).toBeGreaterThan(Date.now() + 14 * 60 * 1000);
+      expect(learned?.nextProbeAtMs).toBeLessThanOrEqual(Date.now() + 15 * 60 * 1000);
 
-    const settledUiDevice = await readChargerFromUi();
-    expect(settledUiDevice.steppedLoadProfile?.steps.at(-1)?.id).toBe('25a');
+      const settledUiDevice = await readChargerFromUi();
+      expect(settledUiDevice.steppedLoadProfile?.steps.at(-1)?.id).toBe('25a');
 
-    // Probe settlement does not bypass the shared five-minute restore gate.
-    // The heater still gets its turn once that gate expires, even though the
-    // charger never reaches 28 A.
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(putSpy).not.toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
-    await vi.advanceTimersByTimeAsync(210_000);
-    await drainUntilCalledWith(putSpy, WATER_HEATER_ONOFF_PATH, { value: true });
-    expect(putSpy).toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
+      // Probe settlement does not bypass the shared five-minute restore gate.
+      // The heater still gets its turn once that gate expires, even though the
+      // charger never reaches 28 A.
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(putSpy).not.toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
+      await vi.advanceTimersByTimeAsync(210_000);
+      await drainUntilCalledWith(putSpy, WATER_HEATER_ONOFF_PATH, { value: true });
+      expect(putSpy).toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
 
-    // The persisted due time drives a later background plan rebuild. The
-    // planner still sees an ordinary next rung; no probe metadata crosses in.
-    const firstProbeCalls = putSpy.mock.calls.filter(
-      ([path, body]) => path === CHARGER_TARGET_POWER_PATH
-        && (body as { value?: unknown })?.value === PROBE_POWER_W,
-    ).length;
-    const retryAtMs = learned?.nextProbeAtMs;
-    if (retryAtMs === undefined) throw new Error('probe retry was not scheduled');
-    await vi.advanceTimersByTimeAsync(Math.max(0, retryAtMs - Date.now()));
-    await drainUntil(() => putSpy.mock.calls.filter(
-      ([path, body]) => path === CHARGER_TARGET_POWER_PATH
-        && (body as { value?: unknown })?.value === PROBE_POWER_W,
-    ).length > firstProbeCalls);
-    await drainPending();
-  });
+      // The persisted due time drives a later background plan rebuild. The
+      // planner still sees an ordinary next rung; no probe metadata crosses in.
+      const firstProbeCalls = putSpy.mock.calls.filter(
+        ([path, body]) => path === CHARGER_TARGET_POWER_PATH
+          && (body as { value?: unknown })?.value === PROBE_POWER_W,
+      ).length;
+      const retryAtMs = learned?.nextProbeAtMs;
+      if (retryAtMs === undefined) throw new Error('probe retry was not scheduled');
+      await vi.advanceTimersByTimeAsync(Math.max(0, retryAtMs - Date.now()));
+      await drainUntil(() => putSpy.mock.calls.filter(
+        ([path, body]) => path === CHARGER_TARGET_POWER_PATH
+          && (body as { value?: unknown })?.value === PROBE_POWER_W,
+      ).length > firstProbeCalls);
+      await drainPending();
+    },
+  );
 });

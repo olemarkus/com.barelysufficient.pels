@@ -193,6 +193,8 @@ function applyExactTargetPowerObservation(
     if (capabilityId !== 'target_power' || observation.source === 'local_write' || nextValue === undefined) {
         return false;
     }
+    if (snapshot.reportedStepId === undefined && snapshot.reportedStepObservedAtMs !== undefined
+        && observation.observedAt <= snapshot.reportedStepObservedAtMs) return false;
     const exactStep = resolveEvTargetPowerExactStep(snapshot.targetPowerConfig, nextValue);
     if (
         !exactStep
