@@ -358,6 +358,10 @@ md-text-button {
   padding-inline: var(--spacing-3);
 }
 
+.schedules md-text-button:where(:not(.md-text-button--destructive)) {
+  --md-sys-color-primary: var(--pels-text-primary);
+}
+
 .setup-journey__device md-text-button {
   padding-inline: var(--spacing-3);
   justify-self: start;
@@ -5005,6 +5009,12 @@ details[open] > summary .disclosure-chevron {
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 
+/* Unequal labels can share the track in proportion to their content. */
+.segmented--content-sized button.segmented__option.segmented__option.segmented__option {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .segmented button.segmented__option.segmented__option[aria-checked="true"][aria-checked],
 .segmented button.segmented__option.segmented__option[aria-pressed="true"][aria-pressed] {
   background: var(--pels-segmented-selected-background);
@@ -7968,7 +7978,8 @@ md-switch {
   #electricity-prices-panel,
   #price-aware-devices-panel,
   #recommendations-panel,
-  #deadlines-panel
+  #deadlines-panel,
+  #schedules-panel
 ) {
   display: grid;
   gap: var(--spacing-3);
@@ -7990,7 +8001,8 @@ md-switch {
   #electricity-prices-panel,
   #price-aware-devices-panel,
   #recommendations-panel,
-  #deadlines-panel
+  #deadlines-panel,
+  #schedules-panel
 ).hidden {
   display: none;
 }
@@ -8356,7 +8368,8 @@ md-switch {
     #electricity-prices-panel,
     #price-aware-devices-panel,
     #recommendations-panel,
-    #deadlines-panel
+    #deadlines-panel,
+    #schedules-panel
   ) {
     gap: var(--spacing-2);
   }
@@ -9192,25 +9205,11 @@ md-switch {
 }
 
 #schedules-panel .schedules-toolbar,
-#schedules-panel .schedules-filters,
-#schedules-panel .schedules-action-choice,
 #schedules-panel .schedules-form__actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--spacing-2);
-}
-
-#schedules-panel .schedules-filters md-outlined-button,
-#schedules-panel .schedules-action-choice md-outlined-button {
-  flex: 1 1 auto;
-}
-
-#schedules-panel .schedules :is([aria-pressed="true"], [data-aria-pressed="true"]) {
-  --md-outlined-button-outline-color: var(--accent);
-  --md-outlined-button-label-text-color: var(--accent);
-  background: var(--pels-surface-container);
-  border-radius: var(--radius-lg);
 }
 
 #schedules-panel .schedules-next,
@@ -9220,8 +9219,7 @@ md-switch {
 }
 
 #schedules-panel .schedule-group {
-  display: grid;
-  gap: var(--spacing-3);
+  gap: 0;
   min-width: 0;
 }
 
@@ -9231,7 +9229,16 @@ md-switch {
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-3);
-  min-height: 56px;
+  min-height: calc(var(--pels-touch-target-min) + var(--spacing-2));
+}
+
+#schedules-panel .schedule-group__bar {
+  padding-bottom: var(--spacing-3);
+}
+
+#schedules-panel .schedule-row__open h4,
+#schedules-panel .schedule-group__bar h3 {
+  margin: 0;
 }
 
 #schedules-panel .schedule-editor__enabled > div,
@@ -9254,15 +9261,16 @@ md-switch {
 }
 
 #schedules-panel .schedule-row {
-  padding: 0;
-  overflow: hidden;
+  display: grid;
+  min-width: 0;
+  border-top: 1px solid var(--pels-surface-outline);
 }
 
 #schedules-panel .schedule-row__main {
   display: flex;
   align-items: flex-start;
   gap: var(--spacing-2);
-  padding: var(--spacing-4);
+  padding-block: var(--spacing-3);
 }
 
 #schedules-panel .schedule-row__open {
@@ -9283,7 +9291,7 @@ md-switch {
   font-size: var(--font-size-sm);
 }
 
-#schedules-panel .schedule-row__open h3,
+#schedules-panel .schedule-row__open h4,
 #schedules-panel .schedule-row__open p,
 #schedules-panel .schedule-row__footer p,
 #schedules-panel .schedule-group__bar h3 {
@@ -9293,21 +9301,20 @@ md-switch {
 #schedules-panel .schedule-row__switch {
   flex-direction: column;
   gap: calc(var(--spacing-1) / 2);
-  min-width: 58px;
+  min-width: calc(var(--pels-touch-target-min) + var(--spacing-2));
 }
 
 #schedules-panel .schedule-row__switch md-switch,
 #schedules-panel .schedule-group__switch md-switch {
-  min-height: 48px;
+  min-height: var(--pels-touch-target-min);
 }
 
 #schedules-panel .schedule-row[data-state="on"] .schedule-row__state {
-  color: var(--accent);
+  color: var(--color-state-positive-text);
 }
 
 #schedules-panel .schedule-row__footer {
-  border-top: 1px solid var(--panel-border);
-  padding: var(--spacing-2) var(--spacing-4);
+  padding-block: var(--spacing-2);
   display: grid;
   gap: var(--spacing-1);
   font-size: var(--font-size-xs);
@@ -9353,10 +9360,18 @@ md-switch {
 }
 
 #schedules-panel .schedule-days md-outlined-button {
-  min-height: 48px;
-  --md-outlined-button-container-height: 48px;
+  --md-outlined-button-label-text-color: var(--pels-segmented-label-color);
+  --md-outlined-button-outline-color: var(--pels-surface-outline);
+  min-height: var(--pels-touch-target-min);
+  --md-outlined-button-container-height: var(--pels-touch-target-min);
   --md-outlined-button-leading-space: var(--spacing-2);
   --md-outlined-button-trailing-space: var(--spacing-2);
+}
+
+#schedules-panel .schedule-days md-outlined-button:is([aria-pressed="true"], [data-aria-pressed="true"]) {
+  --md-outlined-button-outline-color: var(--pels-surface-outline);
+  --md-outlined-button-label-text-color: var(--pels-segmented-selected-text);
+  background: var(--pels-segmented-selected-background);
 }
 
 #schedules-panel .schedule-mode-choices {
@@ -9366,7 +9381,7 @@ md-switch {
 #schedules-panel .schedule-mode-choice {
   display: flex;
   align-items: center;
-  min-height: 48px;
+  min-height: var(--pels-touch-target-min);
   gap: var(--spacing-2);
   overflow-wrap: anywhere;
 }
@@ -9381,7 +9396,7 @@ md-switch {
 }
 
 #schedules-panel .schedules-feedback {
-  min-height: 24px;
+  min-height: var(--spacing-6);
   display: grid;
   gap: var(--spacing-2);
 }
