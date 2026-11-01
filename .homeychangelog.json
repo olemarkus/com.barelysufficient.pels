@@ -736,5 +736,8 @@
   },
   "3.28.2": {
     "en": "Zaptec chargers on Zaptec app 1.12 or later are now controlled in watts through the charger's own power target, with the Zaptec app choosing the phases. Devices controlled through a power target now step in whole multiples of their power step, so the lowest step is never rounded down to off.\n\nWhen Fri Nettleie cannot be reached, PELS now keeps pricing on the tariff it fetched last from there, so each day still follows your grid company's day and night rates and any change it announced. The grid company list now shows only operating companies; a company you chose before it merged into another stays selected and is priced on its successor's tariff. The Schedules page now groups each device's schedules in one card."
+  },
+  "3.28.3": {
+    "en": "Devices now has Missing a device?, which lists every device in Homey by zone, with search and a filter for supported devices. For a device PELS does not support, you can send a device support request through Homey with what Homey reports about the device. The device step of setup links to it too.\n\nA charger allowed beyond today's budget no longer keeps its full charging power reserved on today's budget while PELS holds it off for the hard cap, so other devices are limited for the budget again while it waits. An off device with power steps now reserves only the step it starts at. A new schedule now starts at a free time, its name and time follow the chosen action until you change them, and a clash with another schedule is shown at the time field."
   }
 }
