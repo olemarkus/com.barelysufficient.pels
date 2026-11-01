@@ -179,7 +179,9 @@ const main = async () => {
   // it, so it blocks the build like an unreadable file.
   for (const [orgnr, file] of Object.entries(RETIRED_GRID_COMPANY_FILES)) {
     const successor = byFile[file];
-    if (byOrgnr[orgnr]) {
+    // `filesByOrgnr`, not `byOrgnr`: a company listed again under several files
+    // was dropped from `byOrgnr` above, and is listed again all the same.
+    if (filesByOrgnr[orgnr]) {
       blocking.push(`${orgnr}: listed by Fri Nettleie again; drop it from RETIRED_GRID_COMPANY_FILES`);
     } else if (!successor) {
       blocking.push(`${orgnr}: its successor ${file} is not in the table`);

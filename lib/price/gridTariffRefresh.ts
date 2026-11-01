@@ -99,7 +99,11 @@ export const refreshGridTariff = async (
     failure: Record<string, unknown>,
     saved: { rows: GridTariffEntryWithSource[]; fetchedAt: string } | null,
   ): GridTariffRefreshOutcome => {
-    const outcome = resolveGridTariffFallback(existingData, saved?.rows ?? null, todayDate, timeZone);
+    // Read the stored tariff again: a refresh that overlapped this one may have
+    // stored a live tariff for today while this one waited on its fetch, and a
+    // stale read would let this fallback replace it.
+    const current = store.readNettleie() as Array<Record<string, unknown> & StoredGridTariffRow> | null;
+    const outcome = resolveGridTariffFallback(current, saved?.rows ?? null, todayDate, timeZone);
     if (outcome.kind === 'store') {
       const fallbackContext = ` (saved Fri Nettleie file, fetched ${saved?.fetchedAt ?? 'earlier'}; no live tariff)`;
       return storeGridTariff(outcome.entries, fallbackContext, request, readCurrentCompany, store, sinks);

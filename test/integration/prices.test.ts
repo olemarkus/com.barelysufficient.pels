@@ -1286,6 +1286,45 @@ tariffer:
       expect(feeAt(rows, '2026-11-03', 12)).toBeCloseTo(21, 5);
     });
 
+    it('keeps a live tariff an overlapping refresh stored while a slower one failed', async () => {
+      mockHomeyInstance.settings.set('nettleie_fylke', '03');
+      mockHomeyInstance.settings.set('nettleie_orgnr', '980489698');
+      mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
+      const originalDate = global.Date;
+      const { setAllowConsoleError } = require('../setup.ts');
+      setAllowConsoleError(true);
+      try {
+        // Friday: fetched live, so a file is saved.
+        global.Date = mockDateAt(FRIDAY);
+        (global.fetch as Mock).mockImplementation(() => Promise.resolve(liveFile()));
+        const app = createApp();
+        await app.onInit();
+        mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
+        await flushPromises();
+
+        // Monday: the periodic refresh waits on a fetch that will fail; the
+        // settings page's refresh, started meanwhile, fetches the file live and
+        // stores Monday's tariff first. The two are not serialized.
+        global.Date = mockDateAt(MONDAY);
+        let failSlowFetch: (value: unknown) => void = () => undefined;
+        (global.fetch as Mock).mockImplementationOnce(() => new Promise((resolve) => { failSlowFetch = resolve; }));
+        const periodic = app.priceCoordinator.refreshGridTariffData();
+        await flushPromises();
+        (global.fetch as Mock).mockImplementation(() => Promise.resolve(liveFile()));
+        mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
+        await flushPromises();
+        failSlowFetch(streamedTextResponse('tariffer: {flow: map}'));
+        await periodic;
+        await flushPromises();
+      } finally {
+        setAllowConsoleError(false);
+        global.Date = originalDate;
+      }
+      const rows = getStoredPriceCacheForTests('grid_tariff') as Array<{ dateKey: string; source?: string }>;
+      expect(rows.some((row) => row.dateKey.startsWith('2026-11-02'))).toBe(true);
+      expect(rows.every((row) => row.source === undefined)).toBe(true);
+    });
+
     it('prices from NVE when the live file fails and none is saved', async () => {
       const rows = await refreshElviaAt(MONDAY, (url) => (
         url.includes('nve.no')
