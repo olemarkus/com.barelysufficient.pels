@@ -22,7 +22,7 @@ import {
   sortSteppedLoadSteps,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { buildTargetPowerLadderSteps } from '../../packages/shared-domain/src/targetPowerLadder';
-import type { DeviceCapabilityMap } from './managerControl';
+import { toCapabilityTimestampMs, type DeviceCapabilityMap } from './managerControl';
 
 const NATIVE_STEPPED_LOAD_CAPABILITY_IDS = [
   'max_power_3000',
@@ -421,8 +421,7 @@ export function resolveTargetPowerReportedStepId(params: {
 }): string | undefined {
   // A switchable device's saved watt target is dormant under device control.
   // It cannot confirm that PELS's requested step has been applied.
-  const mode = params.capabilityObj.target_power_mode;
-  if (mode?.setable === true && mode.value !== 'homey') return undefined;
+  if (!isTargetPowerControlActive(params.capabilityObj)) return undefined;
   const targetPowerValue = params.capabilityObj.target_power?.value;
   if (typeof targetPowerValue !== 'number' || !Number.isFinite(targetPowerValue)) return undefined;
   const sortedSteps = sortSteppedLoadSteps(params.profile.steps);
@@ -439,6 +438,20 @@ export function resolveTargetPowerReportedStepId(params: {
     }
   }
   return nearestStep?.id;
+}
+
+export function isTargetPowerControlActive(capabilityObj: DeviceCapabilityMap): boolean {
+  const mode = capabilityObj.target_power_mode;
+  return mode?.setable !== true || mode.value === 'homey';
+}
+
+/** A source-dated invalidation of the saved target, never fresh watt evidence. */
+export function resolveTargetPowerModeInvalidationAtMs(capabilityObj: DeviceCapabilityMap): number | undefined {
+  if (isTargetPowerControlActive(capabilityObj)) return undefined;
+  return Math.max(
+    toCapabilityTimestampMs(capabilityObj.target_power_mode?.lastUpdated) ?? 0,
+    toCapabilityTimestampMs(capabilityObj.target_power?.lastUpdated) ?? 0,
+  ) || undefined;
 }
 
 function normalizeText(value: unknown): string {

@@ -27,6 +27,8 @@ import {
   hasTargetPowerCapability,
   isNativeSteppedLoadWiringCandidate,
   isTargetPowerSteppedLoadCandidate,
+  isTargetPowerControlActive,
+  resolveTargetPowerModeInvalidationAtMs,
   resolveNativeSteppedLoadObservationCapabilityId,
   resolveNativeSteppedLoadProfileSuggestion,
   resolveNativeSteppedLoadReportedStepId,
@@ -308,8 +310,9 @@ function applySyntheticTargetPowerOverlay(
   )];
   const observedTargetPower = installationCurrent
     && resolveInstallationCurrentTargetPowerObservation(config, installationCurrent);
-  const reportedStepPowerW = observedTargetPower?.value
-    ?? resolveReportedTargetPowerW(device, config, nativeEvOverlay.capabilityObj);
+  const reportedStepPowerW = resolveActiveTargetPowerW(
+    device, config, nativeEvOverlay.capabilityObj, observedTargetPower,
+  );
   // All-or-nothing: no ladder means no stepped control, so the synthetic
   // `target_power` capability is not injected either and the device is left to
   // whatever axis it exposes natively.
@@ -333,9 +336,20 @@ function applySyntheticTargetPowerOverlay(
     steppedLoadProfile,
     reportedStepId: resolveTargetPowerReportedStepId({ profile: steppedLoadProfile, capabilityObj }),
     reportedStepPowerW,
-    reportedStepObservedAtMs: toCapabilityTimestampMs(capabilityObj.target_power?.lastUpdated),
+    reportedStepObservedAtMs: resolveTargetPowerModeInvalidationAtMs(capabilityObj)
+      ?? toCapabilityTimestampMs(capabilityObj.target_power?.lastUpdated),
     targetPowerConfig: withoutTargetPowerReachability(config),
   };
+}
+
+function resolveActiveTargetPowerW(
+  device: HomeyDeviceLike,
+  config: TargetPowerSteppedLoadConfig,
+  capabilityObj: DeviceCapabilityMap,
+  observation: ReturnType<typeof resolveInstallationCurrentTargetPowerObservation>,
+): number | undefined {
+  if (!isTargetPowerControlActive(capabilityObj)) return undefined;
+  return observation?.value ?? resolveReportedTargetPowerW(device, config, capabilityObj);
 }
 
 function resolveReportedTargetPowerW(
@@ -415,9 +429,9 @@ function resolveNativeSteppedLoadOverlay(
       activationAvailable: !targetPowerSteppedCandidate,
     }),
     reportedStepId,
-    reportedStepObservedAtMs: reportedStepId
+    reportedStepObservedAtMs: resolveTargetPowerModeInvalidationAtMs(capabilityObj) ?? (reportedStepId
       ? resolveNativeSteppedLoadObservedAtMs(capabilities, capabilityObj)
-      : undefined,
+      : undefined),
     suggestedSteppedLoadProfile,
   };
 }
