@@ -55,6 +55,18 @@ describe('support report controller', () => {
     expect(current().notice).toBe('Describe the device before sending the request.');
   });
 
+  it('words a failed device support request for its own form, not the problem report', async () => {
+    const { controller, api, current } = setup();
+    controller.selectContext({ kind: 'device_support', homeId: 'main', deviceId: 'relay' });
+    controller.edit({ ...current().draft, problem: 'KNX relay for the water heater.' });
+    vi.mocked(api.prepare).mockRejectedValueOnce(new Error('offline'));
+    await controller.submit();
+    expect(current().notice).toBe('Could not prepare the request. Your description is kept. Try Send request again.');
+    vi.mocked(api.prepare).mockResolvedValueOnce({ ok: false, code: 'invalid_subject' });
+    await controller.submit();
+    expect(current().notice).toBe('Homey no longer has this device. Go back to Find a device and choose it again.');
+  });
+
   it('ignores a second send and edits while a send is in flight', async () => {
     const { controller, api, current, report } = setup();
     let finish!: (response: SupportReportResponse) => void;

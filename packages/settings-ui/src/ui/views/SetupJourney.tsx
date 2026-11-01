@@ -32,7 +32,7 @@ const MissingDevicePrompt = () => (
   <section class="pels-surface-card setup-journey__device" data-setup-missing-device>
     <h3 class="plan-card__title">Missing a device?</h3>
     <p class="pels-card-supporting">
-      Find any device in Homey and request support for one PELS does not list. Support usually comes within 1–2 days.
+      Find any device in Homey and request support for one PELS does not list. Support usually comes in an app update within 1–2 days, depending on how complex the device is.
     </p>
     <MdTextButton type="button" data-settings-target="device-support">Find a device</MdTextButton>
   </section>

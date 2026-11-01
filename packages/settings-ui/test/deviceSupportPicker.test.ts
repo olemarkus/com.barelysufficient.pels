@@ -27,11 +27,11 @@ afterEach(() => { render(null, document.body); document.body.innerHTML = ''; });
 
 describe('device support picker rows', () => {
   it('calls every device not on Devices unsupported, and the rest managed or not managed', () => {
-    expect(toDevicePickerRows(homeyDevices, pelsDevices).map((row) => [row.id, row.status, row.typeLabel])).toEqual([
-      ['heater', 'managed', 'Heater'],
-      ['socket', 'listed', 'Socket'],
-      ['relay', 'unsupported', 'Light'],
-      ['fan', 'unsupported', 'Fan'],
+    expect(toDevicePickerRows(homeyDevices, pelsDevices).map((row) => [row.id, row.status])).toEqual([
+      ['heater', 'managed'],
+      ['socket', 'listed'],
+      ['relay', 'unsupported'],
+      ['fan', 'unsupported'],
     ]);
   });
 
@@ -43,8 +43,8 @@ describe('device support picker rows', () => {
       .toEqual(['relay', 'fan']);
     expect(groupDevicePickerRows(rows, 'listed', '').flatMap((group) => group.rows.map((row) => row.id)))
       .toEqual(['socket', 'heater']);
-    // Search reaches the zone and Homey's device type as well as the name.
-    expect(groupDevicePickerRows(rows, 'all', 'light').flatMap((group) => group.rows.map((row) => row.id)))
+    // Search reaches the zone as well as the name.
+    expect(groupDevicePickerRows(rows, 'all', 'relay').flatMap((group) => group.rows.map((row) => row.id)))
       .toEqual(['relay']);
     expect(groupDevicePickerRows(rows, 'all', 'garage').flatMap((group) => group.rows.map((row) => row.id)))
       .toEqual(['socket']);
@@ -71,11 +71,11 @@ describe('device support picker view', () => {
     return { surface, props };
   };
 
-  it('labels each device with its type and status and passes the tapped row on', () => {
+  it('shows each device by name alone and passes the tapped row on', () => {
     const rows: DevicePickerRow[] = toDevicePickerRows(homeyDevices, pelsDevices);
     const { surface, props } = mount({ state: 'ready', rows });
     const relay = surface.querySelector<HTMLElement>('[data-device-picker-id="relay"]');
-    expect(relay?.textContent).toContain('Light · Not supported');
+    expect(relay?.textContent?.trim()).toBe('Water heater relay');
     relay?.click();
     expect(props.onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'relay', status: 'unsupported' }));
     expect(surface.querySelector('.pels-appbar__back')?.getAttribute('data-settings-target')).toBe('devices');

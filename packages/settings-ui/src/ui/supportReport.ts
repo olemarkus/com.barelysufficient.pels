@@ -27,6 +27,8 @@ export const SUPPORT_REPORT_PANEL = 'report-problem';
 const SUPPORT_REPORT_PATH = '/support-report';
 let refreshSequence = 0;
 let contextInitialized = false;
+// The device a shown device support request is for; only such a request needs Homey's device list.
+let supportRequestDeviceId: string | null = null;
 
 const keepReportReference = (view: SupportReportViewState): void => {
   const url = new URL(window.location.href);
@@ -67,6 +69,8 @@ const controller = new SupportReportController({
     'POST', `${SUPPORT_REPORT_PATH}/${encodeURIComponent(id)}/send`, { consent: true },
   ),
 }, (view) => {
+  const { subject } = view.draft;
+  supportRequestDeviceId = subject.kind === 'device_support' ? subject.deviceId : null;
   const surface = document.getElementById('support-report-root');
   if (!surface) return;
   if (!view.recoveryId) keepReportReference(view);
@@ -77,7 +81,6 @@ const controller = new SupportReportController({
   const from = history && typeof history === 'object' && 'pelsFrom' in history ? history.pelsFrom : undefined;
   const backTarget = typeof from === 'string' && from && from !== SUPPORT_REPORT_PANEL ? from : 'settings';
   const previousStage = surface.querySelector<HTMLElement>('[data-report-stage]')?.dataset.reportStage;
-  const { subject } = view.draft;
   const supportDevice = subject.kind === 'device_support'
     ? { name: findHomeyDeviceName(subject.deviceId), forums: supportForumTopics() } : null;
   renderSupportReportView(surface, { state: view, homeName, backTarget, supportDevice, actions: {
@@ -124,7 +127,7 @@ export const refreshSupportReport = async (): Promise<void> => {
 // A support request names a device PELS may not list, so its name comes from
 // Homey's full device list rather than from Devices.
 const refreshSupportDeviceName = async (request: number): Promise<void> => {
-  if (findHomeyDeviceName(new URLSearchParams(window.location.search).get('reportDeviceId') ?? '') !== null) return;
+  if (supportRequestDeviceId === null || findHomeyDeviceName(supportRequestDeviceId) !== null) return;
   try {
     await loadHomeyDeviceList();
   } catch {

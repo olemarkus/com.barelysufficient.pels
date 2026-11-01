@@ -1,5 +1,4 @@
 import type { HomeyDeviceListEntry } from '../../../contracts/src/settingsUi/homeyDevices.ts';
-import { resolveDeviceClassLabel } from './deviceClassLabels.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { getTargetDevices } from './devices.ts';
 import { loadHomeyDeviceList } from './homeyDeviceList.ts';
@@ -41,7 +40,6 @@ export const toDevicePickerRows = (
       id: device.id,
       name: device.name,
       zoneName: device.zoneName,
-      typeLabel: resolveDeviceClassLabel(device.class),
       status,
     };
   });

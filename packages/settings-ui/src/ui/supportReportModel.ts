@@ -86,7 +86,18 @@ const REPORT_ERRORS: Record<SupportReportErrorCode, string> = {
   capture_failed: 'Could not prepare the report. Your description is kept. Try Send report again.',
 };
 
-export const reportErrorMessage = (code: SupportReportErrorCode): string => REPORT_ERRORS[code];
+// A device support request has one field and a Send request button, so the
+// problem report's advice about devices, activity and Send report does not fit it.
+const DEVICE_SUPPORT_ERRORS: Partial<Record<SupportReportErrorCode, string>> = {
+  invalid_subject: 'Homey no longer has this device. Go back to Find a device and choose it again.',
+  report_too_large:
+    'The request is too large to send through Homey. Email the PELS developer instead, and mention the device.',
+  capture_failed: 'Could not prepare the request. Your description is kept. Try Send request again.',
+};
+
+export const reportErrorMessage = (code: SupportReportErrorCode, subject: SupportReportSubject): string => (
+  (isDeviceSupportRequest(subject) ? DEVICE_SUPPORT_ERRORS[code] : undefined) ?? REPORT_ERRORS[code]
+);
 
 /** A report whose delivery was uncertain is gone, so nothing can tell any more whether it arrived. */
 export const REPORT_EXPIRED_UNCERTAIN = 'PELS no longer has this report, so it cannot tell whether it arrived. '
@@ -103,5 +114,8 @@ export const reportSubmissionMessage = (report: PreparedSupportReport): string =
   const { state } = report.submission;
   if (state !== 'draft') return SUBMISSION_MESSAGES[state];
   if (report.availability === 'available') return '';
-  return reportErrorMessage(report.availability === 'app_store_required' ? 'app_store_required' : 'sender_unavailable');
+  return reportErrorMessage(
+    report.availability === 'app_store_required' ? 'app_store_required' : 'sender_unavailable',
+    report.document.request.subject,
+  );
 };

@@ -240,6 +240,10 @@ const saveScheduleDraft = async (): Promise<void> => {
   if (scheduleConflict(result.schedule, pendingSchedules(view.read))) {
     view = { ...view, editor: { ...view.editor, timeConflict: true } };
     paint();
+    // Save sits below the form, so bring the field and its message into view.
+    const time = document.querySelector<HTMLInputElement>('#schedules-root [data-schedule-field="time"]');
+    time?.focus({ preventScroll: true });
+    time?.scrollIntoView({ block: 'center' });
     return;
   }
   if (await writeCommand({ type: 'save', schedule: result.schedule })) backFromScheduleEditor();

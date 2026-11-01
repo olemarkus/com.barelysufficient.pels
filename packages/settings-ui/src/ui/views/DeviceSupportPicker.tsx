@@ -14,8 +14,6 @@ export type DevicePickerRow = {
   name: string;
   /** `null` when Homey's zone is not known. */
   zoneName: string | null;
-  /** Homey's device type, as a label. */
-  typeLabel: string;
   status: DevicePickerStatus;
 };
 
@@ -38,12 +36,6 @@ export type DeviceSupportPickerProps = {
   onShowAll(): void;
 };
 
-const STATUS_LABELS: Record<DevicePickerStatus, string> = {
-  managed: 'Managed',
-  listed: 'Not managed',
-  unsupported: 'Not supported',
-};
-
 const FILTER_OPTIONS: { value: DevicePickerFilter; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'listed', label: 'Supported' },
@@ -60,7 +52,7 @@ const matchesFilter = (row: DevicePickerRow, filter: DevicePickerFilter): boolea
 const matchesQuery = (row: DevicePickerRow, query: string): boolean => {
   const needle = query.trim().toLocaleLowerCase();
   if (!needle) return true;
-  return [row.name, row.zoneName ?? '', row.typeLabel, STATUS_LABELS[row.status]]
+  return [row.name, row.zoneName ?? '']
     .some((text) => text.toLocaleLowerCase().includes(needle));
 };
 
@@ -115,7 +107,6 @@ const DeviceRows = ({ read, query, filter, onSelect, onRetry, onShowAll }: Devic
               data-device-picker-id={row.id} data-device-picker-status={row.status}
               onClick={() => onSelect(row)}>
               <span slot="headline">{row.name}</span>
-              <span slot="supporting-text">{`${row.typeLabel} · ${STATUS_LABELS[row.status]}`}</span>
             </MdListItem>
           ))}
         </MdList>
@@ -130,7 +121,7 @@ const DeviceSupportPicker = (props: DeviceSupportPickerProps) => (
       lede="Every device in Homey. Tap a device PELS does not support to request support for it." />
     <div class="device-picker">
       <MdFilledTextField type="search" label="Search devices" value={props.query}
-        supporting-text="Name, zone or type" data-device-picker-field="search"
+        supporting-text="Name or zone" data-device-picker-field="search"
         onInput={(event: Event) => props.onQuery(fieldValue(event))} />
       <SegmentedControl contentSized options={FILTER_OPTIONS} value={props.filter} ariaLabel="Show devices"
         onChange={props.onFilter} />

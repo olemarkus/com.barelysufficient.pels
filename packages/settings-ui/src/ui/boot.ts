@@ -214,9 +214,10 @@ const initTabHandlers = () => {
     const trigger = event.target.closest<HTMLElement>('[data-settings-target]');
     const target = trigger?.dataset.settingsTarget;
     if (!target) return;
-    // An app-bar back arrow steps back through history when it returns to the
-    // page this one was opened from, instead of adding an entry.
-    if (trigger.classList.contains('pels-appbar__back')) {
+    // An app-bar back arrow, or a button marked `data-settings-back` (a sent
+    // report's Done), steps back through history when it returns to the page
+    // this one was opened from, instead of adding an entry.
+    if (trigger.classList.contains('pels-appbar__back') || 'settingsBack' in trigger.dataset) {
       navigateBackTo(target);
       return;
     }
