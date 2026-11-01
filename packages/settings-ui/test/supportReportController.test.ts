@@ -37,6 +37,24 @@ describe('support report controller', () => {
     expect(current().notice).toBe('Describe what happened before sending the report.');
   });
 
+  it('starts a device support request blank, but keeps an unsent problem between devices', () => {
+    const { controller, current } = setup();
+    controller.selectContext({ kind: 'device', homeId: 'main', deviceId: 'other-heater' });
+    expect(current().draft.problem).toBe('The heater stayed off.');
+    controller.selectContext({ kind: 'device_support', homeId: 'main', deviceId: 'relay' });
+    expect(current().draft).toMatchObject({
+      subject: { kind: 'device_support', deviceId: 'relay' }, problem: '', expected: '', when: 'now',
+    });
+  });
+
+  it('asks for a device description before sending a support request', async () => {
+    const { controller, api, current } = setup();
+    controller.selectContext({ kind: 'device_support', homeId: 'main', deviceId: 'relay' });
+    await controller.submit();
+    expect(api.prepare).not.toHaveBeenCalled();
+    expect(current().notice).toBe('Describe the device before sending the request.');
+  });
+
   it('ignores a second send and edits while a send is in flight', async () => {
     const { controller, api, current, report } = setup();
     let finish!: (response: SupportReportResponse) => void;

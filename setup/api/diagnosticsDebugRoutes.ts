@@ -1,6 +1,7 @@
 import { readPelsHost } from '../../lib/app/pelsHost';
-import { hasPowerCapability } from '../../lib/device/transport/managerParse';
+import { listHomeyDevices } from '../../lib/device/homeyDeviceInventory';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import type { HomeyDeviceListEntry } from '../../packages/contracts/src/settingsUi/homeyDevices';
 import type { HomeyEnergyMeterEntry } from '../../packages/contracts/src/settingsUi/power';
 import {
   getHomeyDevicesForDebugFromApp,
@@ -14,39 +15,11 @@ const hasDeviceId = (device: HomeyDeviceLike): device is HomeyDeviceLike & { id:
 );
 
 export const diagnosticsDebugRoutes = defineRoutes({
-  homey_devices: async (
-    { homey }: ApiContext,
-  ): Promise<Array<{
-    id: string;
-    name: string;
-    class?: string;
-    hasTemperature: boolean;
-    hasPower: boolean;
-  }>> => {
+  homey_devices: async ({ homey }: ApiContext): Promise<HomeyDeviceListEntry[]> => {
     const host = readPelsHost(homey);
     if (!host) return [];
-    const devices = await getHomeyDevicesForDebugFromApp(host);
-    return devices
-      .filter(hasDeviceId)
-      .map((device) => {
-        const deviceClass = typeof device.class === 'string' ? device.class : undefined;
-        return {
-          id: device.id,
-          name: device.name,
-          class: deviceClass,
-          // Whether the device exposes a bare measure_temperature capability —
-          // lets the Weather insight pickers filter to temperature devices.
-          // Array.isArray-guarded (matching the runtime's other capability checks)
-          // since `device` crosses the SDK boundary and types aren't guaranteed.
-          hasTemperature: Array.isArray(device.capabilities)
-            && device.capabilities.includes('measure_temperature'),
-          // Whether the runtime considers the device power-capable
-          // (measure_power or meter_power — same predicate as managerParse) —
-          // lets the whole-home meter picker filter to power-reporting devices.
-          hasPower: Array.isArray(device.capabilities)
-            && hasPowerCapability(device.capabilities.filter((cap): cap is string => typeof cap === 'string')),
-        };
-      });
+    const devices = (await getHomeyDevicesForDebugFromApp(host)).filter(hasDeviceId);
+    return listHomeyDevices(devices, host.deviceManager?.getZoneTree() ?? null);
   },
   // Backs both whole-home meter pickers: the meters the Homey Energy live report
   // actually exposes (the same seam a selection is read against), so every pick

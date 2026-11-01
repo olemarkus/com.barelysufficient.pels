@@ -6,6 +6,7 @@ import type {
 } from '../../../contracts/src/supportReport.ts';
 import {
   draftFromRequest,
+  isDeviceSupportRequest,
   newReportDraft,
   REPORT_EXPIRED_UNCERTAIN,
   reportErrorMessage,
@@ -51,8 +52,10 @@ export class SupportReportController {
       };
     } else {
       const context = newReportDraft(subject, atMs);
-      // An unsent description follows the user to the new context; a sent one does not.
-      const draft = this.state.report?.submission.state === 'sent'
+      // An unsent description follows the user to the new context; a sent one does not, and
+      // neither does one written for the other kind of report (a problem, a device support request).
+      const sameKind = isDeviceSupportRequest(this.state.draft.subject) === isDeviceSupportRequest(subject);
+      const draft = this.state.report?.submission.state === 'sent' || !sameKind
         ? context : { ...this.state.draft, subject, when: context.when, atMs: context.atMs };
       this.state = { ...this.state, report: null, notice: '', draft };
     }
@@ -87,7 +90,8 @@ export class SupportReportController {
     if (reportIsLocked(this.state)) return;
     const request = reportRequest(this.state.draft);
     if (!request.problem.trim()) {
-      this.state = { ...this.state, notice: 'Describe what happened before sending the report.' };
+      this.state = { ...this.state, notice: isDeviceSupportRequest(request.subject)
+        ? 'Describe the device before sending the request.' : 'Describe what happened before sending the report.' };
       this.show();
       return;
     }

@@ -157,7 +157,7 @@ Start with **Simulation mode** if you are still tuning the rest of PELS. Then ve
 
 | Problem | What to check |
 | --- | --- |
-| The charger is not listed in PELS | Confirm the charger is paired in Homey and choose **Refresh devices** under **Settings → Devices**. |
+| The charger is not listed in PELS | Confirm the charger is paired in Homey and choose **Refresh devices** under **Settings → Devices**. If it is still missing, choose **Missing a device?** there to request support for it. |
 | The Flow does not trigger | For a Flow-controlled charger, including an Easee setup you chose to keep, confirm it is managed, power-limit control is enabled, and PELS has live whole-home power data. A new Easee setup, or a Zaptec, Futurehome or Tesla, can use built-in control instead. |
 | The charger receives the wrong current | Check that the device uses the correct **EV 1-phase** or **EV 3-phase** control mode. |
 | Battery level does not update in PELS | If a car is selected, check whether PELS has matched it to the charger and whether that car is available in Homey. Otherwise, check that your battery-reporting Flow selects the correct charger. |

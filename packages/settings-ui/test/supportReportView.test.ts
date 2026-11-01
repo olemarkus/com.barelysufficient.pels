@@ -16,7 +16,29 @@ const mount = (report: PreparedSupportReport | null = null) => {
   const actions: SupportReportActions = {
     edit: vi.fn(), submit: vi.fn(), check: vi.fn(), startAnother: vi.fn(), notice: vi.fn(),
   };
-  renderSupportReportView(surface, { state, actions, homeName: 'Main home', backTarget: 'activity' });
+  renderSupportReportView(surface, { state, actions, homeName: 'Main home', backTarget: 'activity', supportDevice: null });
+  return { surface, actions };
+};
+
+const NORWAY_FORUMS = [
+  { url: 'https://community.homey.app/t/153359', label: 'Norwegian PELS thread' },
+  { url: 'https://community.homey.app/t/147496', label: 'PELS forum thread' },
+];
+
+const mountSupportRequest = (report: PreparedSupportReport | null = null) => {
+  const surface = document.createElement('div');
+  document.body.append(surface);
+  const state: SupportReportViewState = {
+    draft: newReportDraft({ kind: 'device_support', homeId: 'main', deviceId: 'relay' }),
+    devices: [], devicesUnavailable: false, report, recoveryId: null, operation: 'idle', notice: '',
+  };
+  const actions: SupportReportActions = {
+    edit: vi.fn(), submit: vi.fn(), check: vi.fn(), startAnother: vi.fn(), notice: vi.fn(),
+  };
+  renderSupportReportView(surface, {
+    state, actions, homeName: 'Main home', backTarget: 'device-support',
+    supportDevice: { name: 'Water heater relay', forums: NORWAY_FORUMS },
+  });
   return { surface, actions };
 };
 
@@ -79,5 +101,33 @@ describe('support report view', () => {
       if (original) Object.defineProperty(navigator, 'clipboard', original);
       else Reflect.deleteProperty(navigator, 'clipboard');
     }
+  });
+
+  it('asks one question about a device PELS does not support, and says how to hear back', () => {
+    const { surface } = mountSupportRequest();
+    expect(surface.querySelector('.pels-appbar__title')?.textContent).toBe('Device support');
+    expect(surface.querySelector('[data-report-device-name]')?.textContent).toBe('Water heater relay');
+    const comment = surface.querySelector<HTMLElement & { label?: string }>('[data-report-field="problem"]');
+    expect(comment?.label ?? comment?.getAttribute('label')).toBe('Describe the device');
+    for (const field of ['device', 'expected', 'when', 'history']) {
+      expect(surface.querySelector(`[data-report-field="${field}"]`)).toBeNull();
+    }
+    expect(surface.querySelector('[data-report-action="send"]')?.textContent).toBe('Send request');
+    const links = [...surface.querySelectorAll<HTMLAnchorElement>('a')].map((link) => link.getAttribute('href'));
+    expect(links).toEqual([
+      'https://community.homey.app/t/153359', 'https://community.homey.app/t/147496',
+      'mailto:olemarkus@gmail.com?subject=PELS%20device%20support',
+    ]);
+  });
+
+  it('confirms a sent request without promising support', () => {
+    const { surface } = mountSupportRequest({ ...supportReportFixture(), submission: { state: 'sent', reference: 'ref-9' } });
+    expect(surface.textContent).toContain('Request sent');
+    expect(surface.textContent).toContain('Reference: ref-9');
+    expect(surface.textContent).toContain('Support for a new device usually needs an app update.');
+    expect(surface.textContent).toContain('and quote the reference.');
+    expect(surface.querySelector('a[href^="mailto:"]')?.getAttribute('href'))
+      .toBe('mailto:olemarkus@gmail.com?subject=PELS%20device%20support%20ref-9');
+    expect(surface.querySelector('[data-report-action="done"]')?.getAttribute('data-settings-target')).toBe('device-support');
   });
 });

@@ -223,6 +223,10 @@ while **Power-limit control** is off, once the device has had a Smart task.
 **Change** on a Smart task's **When the task is done** card opens the device page
 at **Power-limit control**.
 
+### Missing a device?
+
+**Missing a device?**, at the bottom of the Devices page, lists every device in Homey by zone, with a search field and a filter for supported and unsupported devices. Tap a supported device to open it. Tap a device PELS does not support to send a device support request: describe the device and what PELS should do with it, and PELS sends the request through Homey with what Homey reports about the device (its type, its app and its capabilities) and the app's logs. To hear back, post in the PELS forum thread or email the developer.
+
 ## Settings > Modes
 
 Modes let you store different comfort and priority profiles such as **Home**, **Away**, **Night**, or **Vacation**.

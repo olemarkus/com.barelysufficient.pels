@@ -1,4 +1,5 @@
 import type { PelsHost } from '../../lib/app/pelsHost';
+import { readHomeyDeviceForSupport } from '../../lib/diagnostics/homeyDeviceSupportSection';
 import { HomeyReportTransport, type HomeyReportRuntime } from '../../lib/diagnostics/homeyReportTransport';
 import {
   SupportReportEvidenceSource, type SupportReportHomey, type SupportReportReads,
@@ -27,6 +28,8 @@ export const createSupportReportReads = (
   readSmartTaskCycle: (deviceId: string) => SmartTaskCycleRecord | undefined,
 ): SupportReportReads => ({
   getDeviceSnapshot: (deviceId) => requireDeviceManager(app).getSnapshotByDeviceId(deviceId),
+  describeHomeyDeviceForSupport: (deviceId) => readHomeyDeviceForSupport(
+    () => requireDeviceManager(app).getDevicesForDebug(), deviceId),
   getHomeMembership: () => requireHomeMembership(app),
   getLatestDevicePlan: () => requirePlanService(app).getLatestPlanSnapshot(),
   readHome: (homeId) => app.homeRuntimeRead.readHome(homeId),
