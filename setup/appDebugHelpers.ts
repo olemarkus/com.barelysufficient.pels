@@ -60,16 +60,6 @@ export async function getHomeyDevicesForDebug(params: {
   return deviceManager.getDevicesForDebug();
 }
 
-export async function getHomeyDevicesForDebugFromApp(
-  app: Pick<AppContext, 'deviceManager' | 'error'>,
-): Promise<HomeyDeviceLike[]> {
-  if (!app.deviceManager) return [];
-  return getHomeyDevicesForDebug({ deviceManager: app.deviceManager }).catch((err) => {
-    app.error('Failed to get Homey devices for debug', normalizeError(err));
-    return [];
-  });
-}
-
 /** Bind the meter inventory owner to the initialized transport. */
 export async function getHomeyEnergyMetersFromApp(
   app: Pick<AppContext, 'deviceManager'>,

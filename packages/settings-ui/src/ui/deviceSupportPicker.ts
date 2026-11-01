@@ -85,9 +85,8 @@ export const refreshDeviceSupportPicker = async (): Promise<void> => {
       state.devicesLoaded ? Promise.resolve(state.latestDevices) : getTargetDevices(),
     ]);
     if (request !== refreshSequence) return;
-    // `/homey_devices` answers an empty list when Homey cannot be read; a Homey running PELS has devices.
-    read = homeyDevices.length === 0
-      ? { state: 'unavailable' } : { state: 'ready', rows: toDevicePickerRows(homeyDevices, pelsDevices) };
+    // `/homey_devices` rejects when Homey cannot be read, so an empty list is a real answer.
+    read = { state: 'ready', rows: toDevicePickerRows(homeyDevices, pelsDevices) };
   } catch (error) {
     if (request !== refreshSequence) return;
     read = { state: 'unavailable' };

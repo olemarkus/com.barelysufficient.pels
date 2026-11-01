@@ -1,5 +1,6 @@
 import type { HomeyDeviceListEntry } from '../../packages/contracts/src/settingsUi/homeyDevices';
 import type { HomeyDeviceLike } from '../utils/types';
+import type { DeviceTransportPort } from './deviceTransport';
 import type { ZoneTree } from './transport/managerZones';
 import { resolveZoneId } from './transport/managerHelpers';
 import { hasPowerCapability } from './transport/managerParse';
@@ -31,3 +32,16 @@ export const listHomeyDevices = (
     hasPower: hasPowerCapability(capabilities),
   };
 });
+
+/**
+ * Every Homey device, read fresh from Homey and listed with the transport's
+ * zone names. A failed read rejects rather than answering empty, so an empty
+ * list means the hub has no devices.
+ */
+export const readHomeyDeviceInventory = async (
+  transport: Pick<DeviceTransportPort, 'getDevicesForDebug' | 'getZoneTree'>,
+): Promise<HomeyDeviceListEntry[]> => {
+  // The list crosses the SDK boundary, so an entry without an id is dropped.
+  const devices = (await transport.getDevicesForDebug()).filter((device) => typeof device.id === 'string');
+  return listHomeyDevices(devices, transport.getZoneTree());
+};
