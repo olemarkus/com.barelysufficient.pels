@@ -75,6 +75,13 @@ const OVERVIEW_SAFETY_NET_POLLS = 4;
 let pollsSinceOverviewRead = 0;
 let overviewBootstrapPending = false;
 
+// Leaving before the roster settles abandons the initial activation. A later
+// return must refresh decisions made while Overview was hidden.
+document.addEventListener('pels:tab-shown', (event) => {
+  const tabId = (event as CustomEvent<{ tabId: string }>).detail?.tabId;
+  if (tabId !== 'overview') overviewBootstrapPending = false;
+});
+
 export const primeOverviewPlan = (plan: SettingsUiBootstrap['plan']): void => {
   primeApiCache(SETTINGS_UI_PLAN_PATH, { plan });
   overviewBootstrapPending = true;
