@@ -546,7 +546,7 @@ export type SteppedPlanInputDevice = PlanInputDeviceBase & SteppedLoadKind;
  *   and a battery level is an observation. The plan carries the DECISION they
  *   produced (`boostActive`), resolved once by the producer. The battery level
  *   reaches the settings UI from the seam that owns it
- *   (`getObservedStateOfCharge` in `createPlanService`); the configured
+ *   (`PlanServiceDeps.observed`); the configured
  *   thresholds never cross the plan wire at all.
  * - The start-policy settings: the DECISION travels (`startPolicyHoldActive`).
  * - The charge target (`chargeTargetHold`) and its smart-task lift: the DECISION

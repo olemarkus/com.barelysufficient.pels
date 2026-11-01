@@ -34,6 +34,7 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanMeta, restoreTimingFixture, buildInitialPlanDevicesForSpec } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
 import { overviewReadModelWiring } from '../utils/settingsOverviewFixture';
+import { noPlanServiceObservedReads } from '../helpers/observedDeviceReadsDouble';
 
 const noop = (): void => undefined;
 const loggerMock: Logger = {
@@ -230,11 +231,8 @@ describe('class-resolved identity through the plan build', () => {
       },
       dryRun: false,
       nowMs: FIXTURE_NOW_MS,
-      getObservedEvChargingState: () => ({ kind: 'absent' }),
-      getObservedStateOfCharge: () => ({ kind: 'absent' }),
+      observed: noPlanServiceObservedReads,
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getThermalDirection: () => 'heating' as const,
-      getObservedTemperature: () => ({ kind: 'absent' }),
     });
 
     expect((overview?.devices ?? []).map((device) => device.id)).toEqual([THERMOSTAT_ID]);

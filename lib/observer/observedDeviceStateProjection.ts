@@ -22,7 +22,7 @@ import { hasLiveMeasuredPower } from '../../packages/shared-domain/src/measuredP
 /**
  * Owner-blessed raw read of the observed EV plug-state, for PRODUCER wiring
  * only (the settings-UI read model materializes it as a flat DTO field via
- * `getObservedEvChargingState` in `createPlanService`). `evChargingState` is
+ * `PlanServiceDeps.observed`). `evChargingState` is
  * omitted from `ObservedDeviceState` (EV-observed slice; see `EvObservedFields`
  * in `packages/contracts/src/types.ts`) so consumers cannot read it
  * un-narrowed; the projection's stored values physically carry it (copied by
@@ -280,6 +280,21 @@ export type ObservedDeviceReads = {
  */
 export type DrawEvidenceReads = Pick<
     ObservedDeviceReads, 'hasStartedDrawingSince' | 'getLiveDrawAt' | 'hasDrawnAtLeastSince'
+>;
+
+/**
+ * The observer's per-device reads the plan service takes: the accepted record
+ * for idle evidence, and the resolved facts the settings-UI overview shows
+ * (plug state, battery level, temperature and thermal direction), none of
+ * which the plan device carries.
+ */
+export type PlanServiceObservedReads = Pick<
+    ObservedDeviceReads,
+    | 'getObservedRecord'
+    | 'getObservedEvChargingState'
+    | 'getObservedStateOfCharge'
+    | 'getObservedTemperature'
+    | 'getThermalDirection'
 >;
 
 type ProjectionEntry = {

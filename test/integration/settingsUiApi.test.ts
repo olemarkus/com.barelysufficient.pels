@@ -35,6 +35,7 @@ import { executionStateFixture } from '../utils/deviceStatusFixture';
 import { overviewReadModelWiring } from '../utils/settingsOverviewFixture';
 import { captureLogger } from '../utils/loggerCapture';
 import { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } from '../../packages/shared-domain/src/settings/continuousBatteryPlan';
+import { noPlanServiceObservedReads } from '../helpers/observedDeviceReadsDouble';
 
 describe('settingsUiApi', () => {
   const overviewFixture = (
@@ -45,11 +46,8 @@ describe('settingsUiApi', () => {
     nowMs: 123456789,
     dryRun: false,
     getDeviceExecutionState: () => executionStateFixture(device),
-    getObservedStateOfCharge: () => ({ kind: 'absent' }),
+    observed: noPlanServiceObservedReads,
     getHomeBatteryCard: () => ({ kind: 'none' } as const),
-    getObservedEvChargingState: () => ({ kind: 'absent' }),
-    getThermalDirection: () => 'heating' as const,
-    getObservedTemperature: () => ({ kind: 'absent' }),
   });
   const defaultPlanSnapshot = overviewFixture(buildPlanDevice({ id: 'dev-1', name: 'Heater' }));
 
