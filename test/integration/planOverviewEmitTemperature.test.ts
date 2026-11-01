@@ -8,6 +8,7 @@ import { executionStateFixture } from '../utils/deviceStatusFixture';
 import { buildOverviewDeviceCard, overviewReadModelWiring } from '../utils/settingsOverviewFixture';
 import { createTestDeviceActivityRecorder } from '../helpers/deviceActivityRecorder';
 import { insufficientHeadroomFixtureReason } from '../utils/deviceReasonTestUtils';
+import { noPlanServiceObservedReads } from '../helpers/observedDeviceReadsDouble';
 
 // The overview log and live-card seams share one atomic temperature resolver.
 // Pin that integration here: the shared-domain classifier reads the trio as one
@@ -54,12 +55,12 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
     const deps = {
       ...overviewReadModelWiring(),
       getDeviceExecutionState: () => executionStateFixture(plan.devices[0]), dryRun: false, nowMs: 0,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getThermalDirection: () => 'heating' as const,
-      getObservedTemperature: () => ({ kind: 'observed' as const,
-        value: { currentTarget: 16, currentTemperature: 20.8 } }),
+      observed: {
+        ...noPlanServiceObservedReads,
+        getObservedTemperature: () => ({ kind: 'observed' as const,
+          value: { currentTarget: 16, currentTemperature: 20.8 } }),
+      },
     };
     const snapshot = buildSettingsOverviewReadModel(plan, deps)!;
     const changed = new DeviceOverviewTransitions().capture(snapshot, recorder, describeKeep);
@@ -85,12 +86,12 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
       return buildSettingsOverviewReadModel({ ...satisfiedTemperaturePlan(), devices: [thermostat] }, {
         ...overviewReadModelWiring(),
         getDeviceExecutionState: () => executionStateFixture(thermostat), dryRun: false, nowMs: 0,
-        getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
         getHomeBatteryCard: () => ({ kind: 'none' } as const),
-        getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-        getThermalDirection: () => 'heating' as const,
-        getObservedTemperature: () => ({ kind: 'observed' as const,
-          value: { currentTarget: 21, currentTemperature: 21 } }),
+        observed: {
+          ...noPlanServiceObservedReads,
+          getObservedTemperature: () => ({ kind: 'observed' as const,
+            value: { currentTarget: 21, currentTemperature: 21 } }),
+        },
       })!;
     };
     const running = atTarget(0.8);
@@ -113,12 +114,12 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
     const snapshot = buildSettingsOverviewReadModel({ ...satisfiedTemperaturePlan(), devices: [thermostat] }, {
       ...overviewReadModelWiring(),
       getDeviceExecutionState: () => executionStateFixture(thermostat), dryRun: false, nowMs: 0,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getThermalDirection: () => 'heating' as const,
-      getObservedTemperature: () => ({ kind: 'observed' as const,
-        value: { currentTarget: 26, currentTemperature: 25.2 } }),
+      observed: {
+        ...noPlanServiceObservedReads,
+        getObservedTemperature: () => ({ kind: 'observed' as const,
+          value: { currentTarget: 26, currentTemperature: 25.2 } }),
+      },
     })!;
     return { snapshot, describe: decisionWith(reason.code) };
   };
@@ -184,12 +185,12 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
     const snapshot = buildSettingsOverviewReadModel(onPlan, {
       ...overviewReadModelWiring(),
       getDeviceExecutionState: () => executionStateFixture(onThermostat), dryRun: false, nowMs: 0,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getThermalDirection: () => 'heating' as const,
-      getObservedTemperature: () => ({ kind: 'observed' as const,
-        value: { currentTarget: 16, currentTemperature: 20.8 } }),
+      observed: {
+        ...noPlanServiceObservedReads,
+        getObservedTemperature: () => ({ kind: 'observed' as const,
+          value: { currentTarget: 16, currentTemperature: 20.8 } }),
+      },
     })!;
 
     expect(snapshot.devices?.[0]?.status).toMatchObject({ kind: 'idle', label: 'Idle' });
@@ -212,14 +213,14 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
     const deps = {
       ...overviewReadModelWiring(),
       getDeviceExecutionState: () => executionStateFixture(updatedDevice), dryRun: false, nowMs: 0,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getThermalDirection: () => 'heating' as const,
-      getObservedTemperature: () => ({
-        kind: 'observed' as const,
-        value: { currentTarget: 21, currentTemperature: 21.1 },
-      }),
+      observed: {
+        ...noPlanServiceObservedReads,
+        getObservedTemperature: () => ({
+          kind: 'observed' as const,
+          value: { currentTarget: 21, currentTemperature: 21.1 },
+        }),
+      },
       getObservationStale: () => false,
     };
     const recorder = createTestDeviceActivityRecorder();

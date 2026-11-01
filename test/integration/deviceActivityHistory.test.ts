@@ -9,6 +9,7 @@ import type { SettingsUiDeviceActivityEntry } from '../../packages/contracts/src
 import { buildOverviewDeviceCard, overviewReadModelWiring } from '../utils/settingsOverviewFixture';
 import { buildPlanDevice } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
+import { noPlanServiceObservedReads } from '../helpers/observedDeviceReadsDouble';
 
 const NOW = Date.UTC(2026, 9, 23, 12);
 const entry = (overrides: Partial<SettingsUiDeviceActivityEntry> = {}): SettingsUiDeviceActivityEntry => ({
@@ -21,11 +22,8 @@ const device = () => {
   return buildOverviewDeviceCard(planned, {
     ...overviewReadModelWiring(), dryRun: false, nowMs: NOW,
     getDeviceExecutionState: () => executionStateFixture(planned),
-    getThermalDirection: () => 'heating',
-    getObservedTemperature: () => ({ kind: 'absent' }),
-    getObservedStateOfCharge: () => ({ kind: 'absent' }),
+    observed: noPlanServiceObservedReads,
     getHomeBatteryCard: () => ({ kind: 'none' }),
-    getObservedEvChargingState: () => ({ kind: 'absent' }),
   });
 };
 
