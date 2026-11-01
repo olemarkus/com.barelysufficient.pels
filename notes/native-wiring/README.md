@@ -9,12 +9,13 @@ writes the same capability PELS would take over.
 "Native wiring" = PELS controlling a device directly through Homey
 capabilities instead of round-tripping through user-authored Flow cards.
 
-- **Zaptec EV** (shipped, PR #1195): native EV control is now unconditional.
-  PELS writes `charging_button` for start/stop and exposes synthetic
-  `evcharger_charging` / `evcharger_charging_state`. The toggle was retired.
-  Stepped charge current still rides a *separate* capability
-  (`installation_current_control`) driven by the user's bridge Flow, so
-  Zaptec has no native-vs-flow write conflict.
+- **Zaptec EV**: legacy app versions use `charging_button` for start/stop,
+  with PELS exposing synthetic `evcharger_charging` / `evcharger_charging_state`.
+  App 1.12.0 exposes those standard EV capabilities itself, plus writable
+  `target_power` and `target_power_mode`. PELS builds the native watt ladder
+  from the device's runtime range, step and exclusion band. The driver owns
+  phase selection and conversion to installation current; no PELS EV phase
+  preset is needed for this native watt path.
 - **Hoiax water heaters / generic `target_power` steppers**: native stepped
   control writes the step capability *directly*
   (`max_power_3000` / `max_power_2000` / `max_power`, plus `onoff` for the off
@@ -23,6 +24,14 @@ capabilities instead of round-tripping through user-authored Flow cards.
   the devices that motivate this initiative: we want native stepped control
   ON by default, but a user who already built a Flow writing `max_power_*`
   would then have two writers racing the same capability.
+
+Generic target-power ladders use multiples of the advertised watt step from
+zero, starting at the first multiple at or above `excludeMax` and ending at
+the last multiple within `max`. For a switchable device, PELS stores the
+admitted watt target before selecting `target_power_mode = homey`, because
+the mode change may immediately apply the saved target. A saved target in
+`device` mode is dormant and cannot confirm a PELS step. Accepted mode reports
+invalidate or restore that step evidence through the normal observation path.
 - **Easee EV charger current** (`no.easee`, charger driver): native stepped
   control writes the EV preset step's whole-amp current to the setable
   `target_charger_current` (0 A for the off step) and reads the step back from

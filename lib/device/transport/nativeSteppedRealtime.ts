@@ -8,7 +8,7 @@ import { getCapabilityAdapter, getDeviceAdapter, getSnapshotAdapter } from '../d
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
-import type { TargetPowerSteppedLoadPreset } from '../../../packages/contracts/src/types';
+import type { SteppedLoadProfile, TargetPowerSteppedLoadPreset } from '../../../packages/contracts/src/types';
 import { getLogger } from '../../logging/logger';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import {
@@ -180,6 +180,20 @@ function resolveNativeReportedStepPowerW(
         * resolveEvStepObservationWattsPerUnit(capabilityId, snapshot.targetPowerConfig.preset));
 }
 
+function observeNativeTargetPowerMode(
+    ingest: RealtimeIngestService,
+    snapshot: TransportDeviceSnapshot,
+    profile: SteppedLoadProfile,
+    value: unknown,
+): void {
+    if (value !== 'homey' && value !== 'device') return;
+    recordRealtimeObservation(ingest, snapshot.id, 'target_power_mode', value, false);
+    const adapters = ingest.reader.snapshotStore.nativeSteppedAdapters;
+    adapters.observeCapabilityUpdate(snapshot.id, 'target_power_mode', value);
+    const reportedStepId = adapters.getReportedStepId(snapshot.id, profile, snapshot.targetPowerConfig);
+    applyNativeSteppedLoadSnapshotUpdate(ingest, snapshot, 'target_power_mode', reportedStepId, false, undefined);
+}
+
 export function handleNativeSteppedLoadCapabilityUpdate(
     ingest: RealtimeIngestService,
     snapshot: TransportDeviceSnapshot,
@@ -190,6 +204,11 @@ export function handleNativeSteppedLoadCapabilityUpdate(
     if (!isNativeSteppedLoadControlEnabled(snapshot)) return false;
     const profile = snapshot.steppedLoadProfile;
     if (!profile) return false;
+
+    if (capabilityId === 'target_power_mode') {
+        observeNativeTargetPowerMode(ingest, snapshot, profile, value);
+        return true;
+    }
 
     const isNativePowerStepUpdate = resolveNativePowerStepUpdate(snapshot, capabilityId, value);
     if (isNativePowerStepUpdate === null) return false;

@@ -107,6 +107,13 @@ function buildCapabilityNativeSteppedLoadCommandAdapter(
       if (!command || !step) return false;
       const write = getDeviceAdapter(raw).stepCommand(raw, step, command);
       await setCapability(write.capabilityId, write.value);
+      // Store the admitted watt ceiling before handing control to Homey: a
+      // driver may immediately apply its saved target when the mode changes.
+      if (write.capabilityId === 'target_power' && capabilities.includes('target_power_mode')
+          && capabilityObj.target_power_mode?.setable === true
+          && capabilityObj.target_power_mode.value !== 'homey') {
+        await setCapability('target_power_mode', 'homey');
+      }
       return true;
     },
     /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
