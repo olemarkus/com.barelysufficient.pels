@@ -188,9 +188,11 @@ Two axes, named so no expression silently mixes them:
 
 There are two exempt sums and therefore two non-exempt quantities, and they must
 carry distinct names down to the contract field. `sumBudgetExemptProjectedUsageKw`
-returns the **projected** value: for an observed-off device
-`resolveBudgetExemptProjectedKw` (`lib/plan/planUsage.ts`) falls through to
-`getHighestKnownPowerKw`, so a parked charger contributes its configured power. That projection is correct for the
+returns the **projected** value: an observed-off device that PELS is not holding
+off contributes the step it restarts at (its lowest active step) when it has
+power steps, and `getHighestKnownPowerKw` otherwise
+(`resolveBudgetExemptProjectedKw`, `lib/plan/planUsage.ts`). A device the previous
+plan shed (`ShedDecisions.lastPlannedShedIds`) contributes only its draw. That projection is correct for the
 control threshold and wrong for anything rendering current load, and the two can
 differ by several kW. A single `exemptKw` or a single `P_nonExempt` that "lands
 twice with different inputs" would rebuild exactly the ambiguity this table
@@ -707,9 +709,9 @@ shows measured load. The geometry is therefore deferred rather than treated as a
 direct rendering of `overBudgetPace`.
 
 **Feed the slab `measuredExemptKw`, not `projectedExemptKw`.** The value
-`computeDailySoftLimit` uses is the projected one: `resolveBudgetExemptProjectedKw`
-falls through to `getHighestKnownPowerKw` for an observed-off device, so an off
-charger contributes its configured power. The hero's managed and background segments are defined as
+`computeDailySoftLimit` uses is the projected one: an observed-off device PELS is
+not holding off contributes power it is not drawing (its restart step, or
+`getHighestKnownPowerKw` without power steps). The hero's managed and background segments are defined as
 current load (`notes/overview-hero-spec.md` § "Power bar"), so painting a slab from the
 projected value would show kilowatts the device is not drawing, and in the solar
 case could paint the entire bar as exempt. The geometry needs a measured-only
@@ -743,15 +745,12 @@ Two supporting changes:
 
   **But do not repeat that comment's stated reason.** It says the add-back is the
   exempt device's live draw, "zero while it is off". That is not what the code
-  does. An observed-off exempt device falls through
-  `resolveBudgetExemptProjectedKw` to `getHighestKnownPowerKw`: the highest of
-  measured / expected / planning / configured power. So `budgetPaceImportKw`
-  **already projects an off exempt device's expected draw**, and the add-back is
-  only zero when nothing is known about the device's power at all. (There is a
-  `plannedState === 'shed'` arm ahead of the projection — it returns the device's
-  ACTUAL draw rather than projecting configured demand — but
-  `computeDailySoftLimit` sums over `PlanInputDevice[]`, which carries no
-  `plannedState`, so it cannot fire on that path.)
+  does. An observed-off exempt device that PELS is not holding off is projected
+  by `resolveBudgetExemptProjectedKw`: at its restart step when it has power
+  steps, otherwise at `getHighestKnownPowerKw`, the highest of measured /
+  expected / planning / configured power. So `budgetPaceImportKw` **already
+  projects an off exempt device's expected draw**. Only a device the previous
+  plan shed contributes its actual draw instead.
 
   The practical consequence: a proposal to "project the candidate's expected draw
   into the exempt add-back" so exempt devices become capacity-bound for restore
@@ -833,7 +832,7 @@ relitigated.
 ## Unresolved consequences of the projected/measured split
 
 Splitting `projectedExemptKw` from `measuredExemptKw` removed one ambiguity and
-exposed three questions it had been hiding. None is settled; do not treat the
+exposed three questions it had been hiding. The first two are not settled; do not treat the
 sections above as answering them.
 
 - **The physical reading of a negative value holds only for the measured
@@ -851,14 +850,15 @@ sections above as answering them.
   edge. So the carve-out geometry does *not* directly render `overBudgetPace` once
   the slab is measured-only. Either the display needs its own stated semantics or
   the projected/measured delta has to be visualised.
-- **Whether the observed-off projection is right for control is not settled
-  here.** Observed-off usage attribution is unresolved on purpose: the choice
-  between attributing the restore step and attributing zero with a separate
-  restore reservation is still live. An off exempt charger projected at 7 kW
-  against 8 kW of real non-exempt import and a 5 kW budget pace yields a control
-  value of 1 kW and suppresses daily shedding. Calling the projection "right for
-  control" pre-empts that decision; resolve the attribution question first, or
-  keep restore reservation separate from live budget accounting.
+- **Observed-off attribution (owner, 2026-11-01).** An exempt device PELS is
+  holding off claims only its draw, and an off device with power steps claims
+  its restart step, not its learned peak. Before this, a boosted charger held
+  off for the hard cap kept its 7 kW peak on the daily axis, which suppressed
+  daily shedding of every other device while it waited. An off device without
+  power steps that PELS is not holding off still claims its configured demand,
+  so a thermostat's duty cycle keeps its reservation. Attributing zero with a
+  separate restore reservation remains the alternative if that last case
+  misbehaves.
 
 ## Revisit trigger
 

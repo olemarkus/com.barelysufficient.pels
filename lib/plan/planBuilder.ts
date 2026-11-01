@@ -579,6 +579,7 @@ export class PlanBuilder {
     const projectedExemptKw = Math.max(0, sumBudgetExemptProjectedUsageKw(
       toMeteredUsageDevices(devices),
       (device) => device.control.commandAuthority,
+      this.state.shedDecisions.lastPlannedShedIds,
     ));
     const budgetPaceKw = computeDailyUsageSoftLimit(bucket, nowTs);
     // Budget-exempt load should not trigger daily-budget shedding of other devices.
