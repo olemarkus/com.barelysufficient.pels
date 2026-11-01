@@ -733,5 +733,8 @@
   },
   "3.28.1": {
     "en": "Norwegian grid tariffs now come from Fri Nettleie, which carries each grid company's price changes on the day they apply, with NVE for companies it does not cover. Norwegian prices no longer count the Enova fee twice.\n\nA schedule set to start right as the device's previous smart task finishes now waits for that task to end instead of being skipped, and schedule results are worded more clearly. A smart task at risk because other devices use the available power now says so instead of blaming time. A water heater or other stepped device kept on a lower step for lack of room now shows as held, and the Usage chip says it compares the projected total with a typical day."
+  },
+  "3.28.2": {
+    "en": "Zaptec chargers on Zaptec app 1.12 or later are now controlled in watts through the charger's own power target, with the Zaptec app choosing the phases. Devices controlled through a power target now step in whole multiples of their power step, so the lowest step is never rounded down to off.\n\nWhen Fri Nettleie cannot be reached, PELS now keeps pricing on the tariff it fetched last from there, so each day still follows your grid company's day and night rates and any change it announced. The grid company list now shows only operating companies; a company you chose before it merged into another stays selected and is priced on its successor's tariff. The Schedules page now groups each device's schedules in one card."
   }
 }
