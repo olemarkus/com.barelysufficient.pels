@@ -623,6 +623,33 @@ describe('Overview "Let it run now" rescue-gate freshness on tab activation', ()
     await flushPromises();
   });
 
+  it('refreshes on return when Overview was left before its initial roster settled', async () => {
+    let finishRoster!: () => void;
+    const roster = new Promise((resolve) => {
+      finishRoster = () => resolve({ homes: [], membershipByDeviceId: {}, configDegraded: false });
+    });
+    const homey = installHomeyMock({
+      apiHandlers: { 'GET /ui_homes': () => roster },
+      settings: buildSettingsHomeyState({ capacity_dry_run: false }),
+      uiState: {
+        devices: budgetHeldPlanDevices,
+        plan: budgetHeldPlan,
+        starvationRescuableDeviceIds: [],
+      },
+    });
+    const loading = loadSettingsScript();
+    await waitFor(() => homey.api.mock.calls.some((call) => call[1] === '/ui_homes'));
+    (document.querySelector('[data-tab="settings"]') as HTMLButtonElement)?.click();
+    finishRoster();
+    await loading;
+    await flushPromises();
+    homey.__uiState.starvationRescuableDeviceIds = ['heater-1'];
+
+    (document.querySelector('[data-tab="overview"]') as HTMLButtonElement)?.click();
+    await waitFor(() => rescueChipButton() !== null);
+    expect(homey.api.mock.calls.filter((call) => call[1] === '/ui_plan').length).toBeGreaterThan(0);
+  });
+
   it('refreshes the rescuable gate when Overview opens, so a device held back off-tab shows the chip', async () => {
     // Boot with the device budget-held but NOT yet in the rescuable set (it
     // became rescuable only later, while the user was on another tab).
