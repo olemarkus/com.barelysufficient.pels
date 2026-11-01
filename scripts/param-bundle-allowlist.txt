@@ -123,7 +123,7 @@ packages/settings-ui/src/ui/smartTaskEdit.ts 1
 packages/settings-ui/src/ui/solarStats.ts 3
 packages/settings-ui/src/ui/solarUsageSection.ts 3
 packages/settings-ui/src/ui/usageStatsChartsEcharts.ts 2
-packages/settings-ui/src/ui/views/BudgetOverview.tsx 6
+packages/settings-ui/src/ui/views/BudgetOverview.tsx 5
 packages/settings-ui/src/ui/views/DeadlinePlan.tsx 5
 packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx 6
 packages/settings-ui/src/ui/views/DeadlinesHistoryList.tsx 1

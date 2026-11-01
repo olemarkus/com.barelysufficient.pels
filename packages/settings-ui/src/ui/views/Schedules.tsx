@@ -14,6 +14,7 @@ import type { ScheduleDraft, ScheduleRepeatChoice } from '../scheduleDraft.ts';
 import { scheduleModeLabel, scheduleModeOptions } from '../scheduleModeReferences.ts';
 import { SCHEDULE_DAYS, scheduleReadyByDay, scheduleRepeatLabel, scheduleTaskUnit } from '../scheduleDraft.ts';
 import type { SchedulesViewSnapshot } from '../schedulesTypes.ts';
+import { SegmentedControl } from './SegmentedControl.tsx';
 import { SmartTaskPermissionRow } from './DeadlinePlan.tsx';
 import { ArrowBackIcon, ExpandMoreIcon } from './icons.tsx';
 import {
@@ -73,11 +74,11 @@ const ScheduleRow = ({ entry, view }: { entry: ScheduleEntry; view: View }) => {
       pauseLowerPriorityDevices: schedule.action.task.pauseLowerPriorityDevices === true,
     }) : null;
   return (
-    <article class="pels-surface-card schedule-row" data-state={entry.state} data-schedule-id={schedule.id}>
+    <article class="schedule-row" data-state={entry.state} data-schedule-id={schedule.id}>
       <div class="schedule-row__main">
         <button type="button" class="hy-nostyle schedule-row__open" disabled={view.snapshot.busy}
           onClick={() => view.actions.onEdit(schedule.id)}>
-          <h3 class="pels-text-card-title">{schedule.name}</h3>
+          <h4 class="pels-text-card-title">{schedule.name}</h4>
           <p class="pels-card-supporting">{scheduleRepeatLabel(schedule.repeat)} at {schedule.at}</p>
           <p>{actionSummary(entry, view.snapshot.devices)}</p>
           {schedule.condition.type !== 'any' && <p class="pels-card-supporting">
@@ -117,9 +118,9 @@ const Group = ({ group, view }: { group: ScheduleGroup; view: View }) => {
   const deviceName = view.snapshot.devices.find((device) => device.deviceId === id)?.deviceName ?? 'Unavailable device';
   const name = modeGroup ? 'Mode changes' : deviceName;
   return (
-    <section class="schedule-group" aria-label={`${name} schedules`}>
+    <section class="pels-surface-card schedule-group" aria-label={`${name} schedules`}>
       <div class="schedule-group__bar">
-        <div><h3 class="pels-text-card-title">{name}</h3>
+        <div><h3 class="pels-text-section-headline">{name}</h3>
           <p class="pels-card-supporting">{entries.length} {modeGroup ? 'mode' : 'task'} schedule{entries.length === 1 ? '' : 's'}</p>
         </div>
         <div class="schedule-group__switch">
@@ -163,12 +164,10 @@ const List = (view: View) => {
       {next && <section class="pels-surface-card schedules-next" aria-label="Next scheduled action">
         <p class="pels-text-settings-label">Next: {next.nextLabel}</p><p>{next.schedule.name}</p>
       </section>}
-      <div class="schedules-filters" role="group" aria-label="Schedule type">
-        {([['all', 'All'], ['task', 'Smart tasks'], ['mode', 'Modes']] as const).map(([filter, label]) => (
-          <MdOutlinedButton key={filter} aria-pressed={snapshot.filter === filter} disabled={snapshot.busy}
-            onClick={() => actions.onFilter(filter)}>{label}</MdOutlinedButton>
-        ))}
-      </div>
+      <SegmentedControl contentSized value={snapshot.filter} ariaLabel="Schedule type"
+        options={([['all', 'All'], ['task', 'Smart tasks'], ['mode', 'Modes']] as const).map(([value, label]) => ({
+          value, label, disabled: snapshot.busy,
+        }))} onChange={actions.onFilter} />
       {snapshot.load === 'loading' && <p role="status">Loading schedules…</p>}
       {snapshot.load === 'ready' && shown.length === 0 && <section class="pels-surface-card schedules-empty">
         <h3 class="pels-text-card-title">No schedules yet</h3>
@@ -287,12 +286,11 @@ const Editor = (view: View) => {
             <MdFilledTextField aria-label="Schedule name" value={draft.name} maxlength="60" required disabled={disabled}
               onInput={(event: Event) => actions.onDraftChange({ name: inputValue(event) })} />
           </label>
-          <div class="schedules-action-choice" role="group" aria-label="Scheduled action">
-            <MdOutlinedButton type="button" disabled={disabled} aria-pressed={draft.actionType === 'task'}
-              onClick={() => actions.onSelectAction('task')}>Create Smart task</MdOutlinedButton>
-            <MdOutlinedButton type="button" disabled={disabled} aria-pressed={draft.actionType === 'mode'}
-              onClick={() => actions.onSelectAction('mode')}>Change mode</MdOutlinedButton>
-          </div>
+          <SegmentedControl contentSized value={draft.actionType} ariaLabel="Scheduled action"
+            options={[
+              { value: 'task', label: 'Create Smart task', disabled },
+              { value: 'mode', label: 'Change mode', disabled },
+            ]} onChange={actions.onSelectAction} />
           {draft.actionType === 'task' ? <TaskFields draft={draft} view={view} /> : <>
             <div class="field"><span class="field__label pels-text-settings-label">Set mode to</span>
               <MdFilledSelect value={draft.mode} aria-label="Set mode to" disabled={disabled}

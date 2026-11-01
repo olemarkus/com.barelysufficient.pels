@@ -222,8 +222,20 @@ for (const width of [320, 480]) {
         expect(await page.evaluate(() => window.history.length)).toBe(historyLength);
         await page.goForward();
         await expect(panel.getByRole('heading', { name: 'Schedules', exact: true })).toBeVisible();
-        const night = panel.locator('[data-schedule-id="night"]');
-        const morning = panel.locator('[data-schedule-id="morning"]');
+        const filters = panel.getByRole('group', { name: 'Schedule type', exact: true });
+        expect(await filters.locator('button').evaluateAll((buttons) => buttons
+          .filter((button) => button.scrollWidth > button.clientWidth)
+          .map((button) => button.textContent))).toEqual([]);
+        await filters.getByRole('button', { name: 'Smart tasks', exact: true }).click();
+        await expect(filters.getByRole('button', { name: 'Smart tasks', exact: true })).toHaveAttribute('aria-pressed', 'true');
+        await expect(panel.locator('[data-schedule-id="night"]')).toHaveCount(0);
+        await expect(panel.locator('[data-schedule-id="water"]')).toBeVisible();
+        await filters.getByRole('button', { name: 'All', exact: true }).click();
+        const modeGroup = panel.getByRole('region', { name: 'Mode changes schedules', exact: true });
+        await expect(modeGroup.getByRole('heading', { name: 'Mode changes', exact: true })).toBeVisible();
+        await expect(modeGroup.getByRole('switch', { name: 'Scheduled mode changes', exact: true })).toBeVisible();
+        const night = modeGroup.locator('[data-schedule-id="night"]');
+        const morning = modeGroup.locator('[data-schedule-id="morning"]');
         await expect(night.locator('.schedule-row__state')).toHaveText('On');
         await expect(night).toContainText('Only in Home');
         const order = await panel.locator('[data-schedule-id]').evaluateAll((rows) => rows.map((row) => row.getAttribute('data-schedule-id')));
@@ -281,6 +293,10 @@ for (const width of [320, 480]) {
         await targetField.fill('70');
         await panel.getByRole('button', { name: 'Create Smart task', exact: true }).click();
         await expect(targetField).toHaveValue('70');
+        expect(await panel.getByRole('group', { name: 'Scheduled action', exact: true })
+          .locator('button').evaluateAll((buttons) => buttons
+            .filter((button) => button.scrollWidth > button.clientWidth)
+            .map((button) => button.textContent))).toEqual([]);
         await expect(panel.getByRole('switch', { name: 'May go over daily budget', exact: true })).toBeChecked();
         await page.evaluate(() => window.scrollTo(0, 0));
         await page.screenshot({ path: testInfo.outputPath(`schedules-editor-${width}-${mobile ? 'dark' : 'light'}.png`), fullPage: !mobile });
