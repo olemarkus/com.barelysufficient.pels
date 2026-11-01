@@ -213,7 +213,7 @@ const ReportResult = ({ state, actions, backTarget, supportDevice }: SupportRepo
       <section class="support-report__result" aria-label="Request sent">
         <h3 class="pels-text-section-title">Request sent</h3>
         <p class="support-report__reference">Reference: {submission.reference || report.document.id}</p>
-        <p class="pels-text-supporting">Support for a new device usually needs an app update.</p>
+        <p class="pels-text-supporting">Support for a new device usually comes in an app update within 1–2 days, depending on how complex the device is.</p>
         <SupportContact forums={supportDevice.forums} reference={submission.reference || report.document.id} />
         <MdFilledButton type="button" data-settings-target={backTarget} data-report-action="done">Done</MdFilledButton>
       </section>

@@ -316,6 +316,10 @@ then leaves it to its own app for your solar too.
   [Configuration → Devices](/configuration#settings-devices).
 - If expected usage looks wrong, verify **Device → Advanced Settings → Energy**
   in Homey so PELS has an accurate power estimate.
+- If the device is still missing, choose **Missing a device?** at the bottom of
+  **Settings → Devices** and send a device support request for it. Support
+  usually comes in an app update within 1–2 days, depending on how complex the
+  device is. See [Missing a device?](/configuration#missing-a-device).
 
 ## Still stuck?
 
