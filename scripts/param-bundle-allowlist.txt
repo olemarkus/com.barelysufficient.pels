@@ -82,7 +82,6 @@ lib/price/priceServiceCombined.ts 1
 lib/price/priceServiceNorway.ts 4
 lib/price/priceServiceUtils.ts 1
 lib/price/spotPriceFetch.ts 1
-lib/price/staticGridTariffFallback.ts 2
 lib/solar/pvForecastSourceSelection.ts 1
 lib/utils/capacityHelpers.ts 1
 lib/utils/cpuSpikeMonitor.ts 1

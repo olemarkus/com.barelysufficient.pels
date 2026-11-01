@@ -8,8 +8,9 @@ export type GridTariffSettings = {
   tariffGroup: string;
 };
 
-// Marks cached grid-tariff entries produced by the static fallback rather than the
-// NVE API, so the cache layer can tell a real fetch from a stopgap.
+// Marks cached grid-tariff entries priced on a saved Fri Nettleie file rather
+// than fetched live, so the cache layer can tell a real fetch from a stopgap.
+// Older versions marked their bundled snapshot the same way.
 export const GRID_TARIFF_SOURCE_FALLBACK = 'fallback' as const;
 
 export type GridTariffEntryWithSource = {
@@ -20,9 +21,9 @@ export type GridTariffEntryWithSource = {
   source: typeof GRID_TARIFF_SOURCE_FALLBACK;
 };
 
-// True when the cached tariff data was written by the static fallback (i.e. NVE
-// was unreachable and nothing real was cached). Such data must never block a
-// fresh NVE attempt, nor count as a "real" cache worth preserving.
+// True when the cached tariff data is a fallback (the live source was
+// unreachable). Such data must never block a fresh live attempt, nor count as a
+// "real" cache worth preserving.
 export const isGridTariffFallbackData = (
   existingData: Array<{ source?: unknown }> | null,
 ): boolean => (

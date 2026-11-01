@@ -1,17 +1,17 @@
 // Checks that PELS's grid tariff sources still cover the grid company list.
 //
-// - The bundled table (lib/price/nettleieFallbackData.generated.ts) matches
-//   what Fri Nettleie publishes today, and every published file parses with
-//   the runtime's parser (`npm run build:nettleie-fallback -- --check`).
+// - The bundled file map (lib/price/friNettleieFiles.generated.ts) matches
+//   what Fri Nettleie publishes today, and every published file reads with
+//   the runtime's parser (`npm run build:fri-nettleie-files -- --check`).
 // - Every grid company in the settings list, and every retired one an owner may
 //   have saved, gets a tariff: from its Fri Nettleie file, or else from NVE.
 //   One that gets neither has usually merged into another company: list it as
-//   retired, with its successor's file in scripts/build-nettleie-fallback.mjs.
+//   retired, with its successor's file in scripts/build-fri-nettleie-files.mjs.
 //   A company priced from NVE is listed: Fri Nettleie may cover it under
 //   another GLN.
 //
-// Exits 1 when any check needs attention. Runs weekly in
-// .github/workflows/grid-tariffs.yml.
+// Exits 1 when any check needs attention. `npm run release -- start` runs it
+// and stops on a failure, since the map ships with the build.
 //
 // Run with: npm run check:grid-tariffs
 
@@ -28,8 +28,8 @@ const loadModules = async () => {
   const result = await build({
     stdin: {
       contents: [
-        "export { buildFriNettleieGridTariffDays, friNettleieFileFor } from './lib/price/staticGridTariffFallback';",
-        "export { fetchFriNettleieTariffs } from './lib/price/friNettleieFetch';",
+        "export { buildFriNettleieGridTariffDays, friNettleieFileFor } from './lib/price/gridTariffFallback';",
+        "export { fetchFriNettleieFile } from './lib/price/friNettleieFetch';",
         "export { buildGridTariffUrl, normalizeGridTariffData } from './lib/price/gridTariffUtils';",
         "export { gridCompanies, retiredGridCompanies } from './packages/settings-ui/src/ui/gridCompanies';",
       ].join('\n'),
@@ -58,10 +58,10 @@ const nveServes = async (modules, company, date) => {
 };
 
 const checkTable = () => {
-  const run = spawnSync(process.execPath, ['scripts/build-nettleie-fallback.mjs', '--check'], { encoding: 'utf8' });
+  const run = spawnSync(process.execPath, ['scripts/build-fri-nettleie-files.mjs', '--check'], { encoding: 'utf8' });
   process.stdout.write(run.stdout ?? '');
   process.stderr.write(run.stderr ?? '');
-  return run.status === 0 ? [] : ['Bundled grid tariff table: run npm run build:nettleie-fallback'];
+  return run.status === 0 ? [] : ['Fri Nettleie file map: run npm run build:fri-nettleie-files'];
 };
 
 const checkCompanies = async (modules) => {
@@ -72,7 +72,7 @@ const checkCompanies = async (modules) => {
   for (const company of companies) {
     const file = modules.friNettleieFileFor(company.organizationNumber);
     if (file !== undefined) {
-      const fetched = await modules.fetchFriNettleieTariffs(file, date);
+      const fetched = await modules.fetchFriNettleieFile(file, date);
       const today = fetched.kind === 'tariffs'
         && modules.buildFriNettleieGridTariffDays(fetched.tariffs, TARIFF_GROUP, new Date(), TIME_ZONE);
       if (today) continue;

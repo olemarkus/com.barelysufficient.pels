@@ -12,20 +12,12 @@ import type {
   FriNettleieTariffPeriod,
   FriNettleieTariffs,
 } from './friNettleieTariff';
-import { NETTLEIE_FALLBACK_BY_ORGNR } from './nettleieFallbackData.generated';
-
-/**
- * When the bundled snapshot was generated, re-exported beside the resolver that
- * serves it: a caller reporting that it fell back to the snapshot needs to say
- * how old the snapshot is, and should not have to know which generated file it
- * came out of.
- */
-export { NETTLEIE_FALLBACK_GENERATED_AT } from './nettleieFallbackData.generated';
+import { FRI_NETTLEIE_FILE_BY_ORGNR } from './friNettleieFiles.generated';
 
 // Fri Nettleie tariff periods expanded into one grid-tariff row per local hour,
 // the shape the price pipeline reads (only the per-day, per-hour
 // `energyFeeExVat` is read downstream; see priceServiceNorway.ts). Used for the
-// tariff fetched live and for the bundled snapshot when that fetch fails.
+// file fetched live and for the one saved from the last fetch.
 //
 // Each day is priced on the period valid that day, so an announced tariff
 // change applies from its own date. Public holidays are not modelled: they are
@@ -166,25 +158,13 @@ export const buildFriNettleieGridTariffDays = (
 
 /** The grid company's file in Fri Nettleie; `undefined` when it does not cover it. */
 export const friNettleieFileFor = (organizationNumber: string): string | undefined => (
-  NETTLEIE_FALLBACK_BY_ORGNR[organizationNumber]?.file
+  FRI_NETTLEIE_FILE_BY_ORGNR[organizationNumber]
 );
 
-/**
- * The bundled snapshot's rows for today and tomorrow, flagged as fallback so
- * they never suppress the next live attempt.
- */
-export const buildStaticGridTariffFallback = (params: {
-  organizationNumber: string;
-  tariffGroup: string;
-  date: Date;
-  timeZone: string;
-}): GridTariffEntryWithSource[] | null => {
-  const { organizationNumber, tariffGroup, date, timeZone } = params;
-  const operator = NETTLEIE_FALLBACK_BY_ORGNR[organizationNumber];
-  if (!operator) return null;
-  const rows = buildFriNettleieGridTariffDays(operator.tariffs, tariffGroup, date, timeZone);
-  return rows && rows.map((row) => ({ ...row, source: GRID_TARIFF_SOURCE_FALLBACK }));
-};
+/** Rows to fall back on, flagged so they never suppress the next live attempt. */
+export const asFallbackRows = (rows: readonly GridTariffDayRow[]): GridTariffEntryWithSource[] => (
+  rows.map((row) => ({ ...row, source: GRID_TARIFF_SOURCE_FALLBACK }))
+);
 
 export type GridTariffFallbackOutcome =
   | { kind: 'store'; entries: GridTariffEntryWithSource[] }
@@ -193,33 +173,27 @@ export type GridTariffFallbackOutcome =
   | { kind: 'clearStaleFallback' }
   | { kind: 'noData' };
 
-// Decides what to do once every live attempt has failed:
-//  - real cached data covers today, or the operator has no bundled tariff →
-//    keep serving it. A real cache from an earlier day yields to the bundled
-//    tariff, which prices each day on its own day type and dated period: the
-//    price pipeline would otherwise price every later day on the last cached
-//    day while the source stays down;
-//  - a static fallback exists and already matches today's values → keep it (no
-//    redundant cache write while the sources stay down);
-//  - a static fallback exists and differs → seed it;
-//  - stale fallback data is cached but the operator no longer has one (e.g. the
-//    org number was changed to an untabled operator) → clear it so we never
-//    serve another operator's tariff;
-//  - nothing cached and no fallback → nothing to serve.
-export const resolveGridTariffFallback = (params: {
-  existingData: Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null;
-  organizationNumber: string;
-  tariffGroup: string;
-  date: Date;
-  timeZone: string;
-}): GridTariffFallbackOutcome => {
-  const {
-    existingData, organizationNumber, tariffGroup, date, timeZone,
-  } = params;
+// Decides what to do once every live attempt has failed, given `entries`: the
+// rows the saved Fri Nettleie file prices today and tomorrow on, if any.
+//  - real cached data covers today, or there are no entries → keep serving it.
+//    A real cache from an earlier day yields to the entries, which price each
+//    day on its own day type and dated period: the price pipeline would
+//    otherwise price every later day on the last cached day while the source
+//    stays down;
+//  - fallback entries already cached match → keep them (no redundant cache
+//    write while the sources stay down);
+//  - entries that differ → store them;
+//  - stale fallback data is cached but there are no entries now (e.g. the org
+//    number was changed to another operator) → clear it so we never serve
+//    another operator's tariff;
+//  - nothing cached and no entries → nothing to serve.
+export const resolveGridTariffFallback = (
+  existingData: Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null,
+  entries: GridTariffEntryWithSource[] | null,
+  date: Date,
+  timeZone: string,
+): GridTariffFallbackOutcome => {
   const existingIsFallback = isGridTariffFallbackData(existingData);
-  const entries = buildStaticGridTariffFallback({
-    organizationNumber, tariffGroup, date, timeZone,
-  });
   if (!existingIsFallback && Array.isArray(existingData) && existingData.length > 0) {
     const coversToday = gridTariffDatesOf(existingData).has(getDateKeyInTimeZone(date, timeZone));
     if (coversToday || !entries) return { kind: 'keepCache' };

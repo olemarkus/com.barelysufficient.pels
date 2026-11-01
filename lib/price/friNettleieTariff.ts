@@ -2,7 +2,7 @@
  * A Fri Nettleie tariff file (https://github.com/kraftsystemet/fri-nettleie,
  * `tariffer/*.yml`, format in its `tariff.cue`) read into the dated energy-fee
  * periods PELS prices on. Shared by the live fetch (`friNettleieFetch.ts`) and
- * the bundled snapshot's generator (`scripts/build-nettleie-fallback.mjs`).
+ * the file map's generator (`scripts/build-fri-nettleie-files.mjs`).
  *
  * Fees are øre/kWh ex VAT and without any other tax, the Enova fee included.
  */

@@ -20,6 +20,7 @@ import type {
   PowerhourCache, PowerhourCacheDevice, PowerhourCachedDay, PowerhourDay,
 } from './powerhourScheme';
 import type { CombinedPricesV2 } from './priceTypes';
+import type { SavedFriNettleieFile } from './friNettleieFetch';
 import type { ResolvedPriceScheme } from '../../packages/contracts/src/settingsUi/prices';
 import {
   importPendingLegacyPriceCache,
@@ -207,6 +208,9 @@ export type PriceDataStore = {
   writePriceSchemeResolution(resolution: ResolvedPriceScheme): void;
   readNettleie(): unknown;
   writeNettleie(data: Array<Record<string, unknown>>): void;
+  /** The Fri Nettleie file last fetched, as stored; read it with `readSavedFriNettleieFile`. */
+  readFriNettleieFile(): unknown;
+  writeFriNettleieFile(file: SavedFriNettleieFile): void;
   readFlowPayload(key: PricePayloadKey): unknown;
   writeFlowPayload(key: PricePayloadKey, payload: FlowPricePayload | null): void;
   readHomeyPricesCurrency(): string | null;
@@ -250,6 +254,8 @@ export const createPriceDataStore = (settings: SettingsPort, cache: PriceCacheSt
     writePriceSchemeResolution: (resolution) => cache.write('price_scheme_resolution', resolution),
     readNettleie: () => cache.read('grid_tariff'),
     writeNettleie: (data) => cache.write('grid_tariff', data),
+    readFriNettleieFile: () => cache.read('fri_nettleie_file'),
+    writeFriNettleieFile: (file) => cache.write('fri_nettleie_file', file),
     readFlowPayload,
     // A cleared day or marker is no row at all, never a stored `null`.
     writeFlowPayload: (key, payload) => (

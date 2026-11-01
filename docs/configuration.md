@@ -272,7 +272,7 @@ If you use Norway pricing, you also set:
 
 A setting you have not chosen says **Not chosen yet** and what PELS uses in its place, such as NO1 or Strømstøtte. Without a grid company your prices leave out the grid tariff. Choosing another county clears the grid company, because each grid company serves its own counties.
 
-PELS reads your grid company's energy rates from [Fri Nettleie](https://kraftsystemet.no/fri-nettleie/), an open dataset of Norwegian grid tariffs that carries price changes from the day they apply, including changes a grid company has announced ahead. For a grid company Fri Nettleie does not cover, PELS reads the tariff from NVE. If neither can be reached, PELS uses the tariff it fetched last, or the copy of Fri Nettleie it ships with.
+PELS reads your grid company's energy rates from [Fri Nettleie](https://kraftsystemet.no/fri-nettleie/), an open dataset of Norwegian grid tariffs that carries price changes from the day they apply, including changes a grid company has announced ahead. For a grid company Fri Nettleie does not cover, PELS reads the tariff from NVE. If Fri Nettleie cannot be reached, PELS keeps pricing on the tariff it fetched last from there, so the days ahead still follow your grid company's day and night rates and any change it announced.
 
 Grid tariffs from [Fri Nettleie](https://github.com/kraftsystemet/fri-nettleie) are licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). PELS adds the Enova fee to them and turns them into hourly prices. Grid tariffs from NVE are licensed under the [Norwegian Licence for Open Government Data (NLOD)](https://data.norge.no/nlod/en/2.0).
 

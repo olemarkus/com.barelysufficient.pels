@@ -15,7 +15,7 @@
     "build:widgets": "node scripts/build-widgets.mjs",
     "release": "node scripts/release.mjs",
     "athom:review": "node scripts/check-athom-review.mjs --report",
-    "build:nettleie-fallback": "node scripts/build-nettleie-fallback.mjs",
+    "build:fri-nettleie-files": "node scripts/build-fri-nettleie-files.mjs",
     "check:grid-tariffs": "node scripts/check-grid-tariffs.mjs",
     "minify:homey-build": "node scripts/minify-homey-build.mjs",
     "build:widgets:previews": "node widgets/headroom/scripts/build-previews.mjs",
