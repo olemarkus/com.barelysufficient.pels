@@ -4,7 +4,7 @@
 // Norwegian grid tariffs (nettleie) per grid company: the Fri Nettleie file PELS
 // fetches live, and the tariff periods it prices on when that fetch fails.
 //
-// Generated: 2026-11-01 | Operators: 70
+// Generated: 2026-11-01 | Operators: 69
 // Source: Fri Nettleie (https://github.com/kraftsystemet/fri-nettleie), CC-BY-4.0.
 // GLN→organisasjonsnr mapping from Elhub reference data.
 //
@@ -953,30 +953,6 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
             {
               "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
               "price": 35.5
-            }
-          ]
-        }
-      ]
-    }
-  },
-  "923993355": {
-    "name": "Area Nett AS - Område 1- NettiNord",
-    "file": "area-nettinord.yml",
-    "tariffs": {
-      "Husholdning": [
-        {
-          "from": "2026-01-01",
-          "basePrice": 26.89,
-          "exceptions": [
-            {
-              "hours": [0, 1, 2, 3, 4, 5, 22, 23],
-              "price": 24.89,
-              "months": [4, 5, 6, 7, 8, 9, 10, 11, 12]
-            },
-            {
-              "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-              "price": 29.89,
-              "months": [1, 2, 3]
             }
           ]
         }

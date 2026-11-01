@@ -104,6 +104,7 @@ const main = async () => {
   console.log(`Found ${files.length} operator tariff files`);
 
   const byOrgnr = {};
+  const filesByOrgnr = {};
   const unreadable = [];
   let skippedNoOrgnr = 0;
   let skippedNoTariff = 0;
@@ -117,12 +118,16 @@ const main = async () => {
       unreadable.push(`${file}: ${error.message}`);
       continue;
     }
-    const tariffs = readFriNettleieTariffs(doc, todayKey);
-    if (!tariffs) {
-      // No current period, or a current one PELS cannot read.
+    const read = readFriNettleieTariffs(doc, todayKey);
+    if (read.kind === 'malformed') {
+      unreadable.push(`${file}: a current or future tariff period cannot be read`);
+      continue;
+    }
+    if (read.kind === 'none') {
       skippedNoTariff += 1;
       continue;
     }
+    const { tariffs } = read;
 
     const glnList = Array.isArray(doc?.gln) ? doc.gln.map(String) : [];
     const orgnrs = [...new Set(glnList.map((gln) => glnToOwner.get(gln)?.orgnr).filter(Boolean))];
@@ -133,8 +138,18 @@ const main = async () => {
     }
     const name = String(doc?.netteier ?? glnToOwner.get(glnList[0])?.name ?? file).trim();
     for (const orgnr of orgnrs) {
+      (filesByOrgnr[orgnr] ??= []).push(file);
       byOrgnr[orgnr] = { name, file, tariffs };
     }
+  }
+
+  // Several files under one company's GLNs are regional tariffs (Area Nett
+  // keeps the tariffs of the companies it took over). The company PELS holds
+  // cannot say which applies, so it is left out and priced from NVE.
+  for (const [orgnr, orgnrFiles] of Object.entries(filesByOrgnr)) {
+    if (orgnrFiles.length < 2) continue;
+    console.warn(`! ${orgnr}: ${orgnrFiles.join(', ')} share its GLN; left to NVE`);
+    delete byOrgnr[orgnr];
   }
 
   const operatorCount = Object.keys(byOrgnr).length;

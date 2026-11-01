@@ -1,5 +1,7 @@
 import { readFriNettleieTariffs } from '../../lib/price/friNettleieTariff';
 
+const tariffsOf = (read: ReturnType<typeof readFriNettleieTariffs>) => (read.kind === 'tariffs' ? read.tariffs : null);
+
 const period = (from: string, until: string | undefined, grunnpris: number, extra: Record<string, unknown> = {}) => ({
   kundegrupper: ['husholdning'],
   energiledd: { grunnpris, ...extra },
@@ -9,13 +11,13 @@ const period = (from: string, until: string | undefined, grunnpris: number, extr
 
 describe('readFriNettleieTariffs', () => {
   it('keeps the current and future periods, oldest first, and drops ended ones', () => {
-    const tariffs = readFriNettleieTariffs({
+    const tariffs = tariffsOf(readFriNettleieTariffs({
       tariffer: [
         period('2027-01-01', undefined, 30),
         period('2025-01-01', '2026-07-01', 10),
         period('2026-07-01', '2027-01-01', 20),
       ],
-    }, '2026-11-02');
+    }, '2026-11-02'));
     expect(tariffs?.Husholdning?.map(({ from, until, basePrice }) => ({ from, until, basePrice }))).toEqual([
       { from: '2026-07-01', until: '2027-01-01', basePrice: 20 },
       { from: '2027-01-01', until: undefined, basePrice: 30 },
@@ -24,7 +26,7 @@ describe('readFriNettleieTariffs', () => {
   });
 
   it('reads exception hours, months and day types', () => {
-    const tariffs = readFriNettleieTariffs({
+    const tariffs = tariffsOf(readFriNettleieTariffs({
       tariffer: [period('2026-01-01', undefined, 10, {
         unntak: [
           { navn: 'Dag', timer: ['6-8', 17], dager: ['Virkedag'], måneder: ['januar', 'februar'], pris: 20 },
@@ -32,7 +34,7 @@ describe('readFriNettleieTariffs', () => {
           { navn: 'Natt', timer: '22-5', pris: 3 },
         ],
       })],
-    }, '2026-11-02');
+    }, '2026-11-02'));
     expect(tariffs?.Husholdning?.[0]?.exceptions).toEqual([
       { hours: [6, 7, 8, 17], price: 20, months: [1, 2], dayTypes: ['virkedag'] },
       { hours: Array.from({ length: 24 }, (_, hour) => hour), price: 5 },
@@ -41,39 +43,43 @@ describe('readFriNettleieTariffs', () => {
     ]);
   });
 
-  it('rejects the file when a current period has a field it cannot read', () => {
+  it('reads a file as malformed when a current period has a field it cannot read', () => {
     const withException = (unntak: Record<string, unknown>) => readFriNettleieTariffs({
       tariffer: [period('2026-01-01', undefined, 10, { unntak: [{ navn: 'Dag', timer: '6-21', pris: 20, ...unntak }] })],
-    }, '2026-11-02');
-    expect(withException({ timer: '20-99999999' })).toBeNull();
-    expect(withException({ timer: 'kveld' })).toBeNull();
-    expect(withException({ måneder: ['januar', 'jnauar'] })).toBeNull();
-    expect(withException({ dager: ['virkedag', 'hverdag'] })).toBeNull();
-    expect(withException({ pris: 'tjue' })).toBeNull();
-    expect(readFriNettleieTariffs({ tariffer: [period('2026-01-01', 'snart', 10)] }, '2026-11-02')).toBeNull();
+    }, '2026-11-02').kind;
+    expect(withException({ timer: '20-99999999' })).toBe('malformed');
+    expect(withException({ timer: 'kveld' })).toBe('malformed');
+    expect(withException({ måneder: ['januar', 'jnauar'] })).toBe('malformed');
+    expect(withException({ dager: ['virkedag', 'hverdag'] })).toBe('malformed');
+    expect(withException({ pris: 'tjue' })).toBe('malformed');
+    expect(withException({ pris: [20] })).toBe('malformed');
+    expect(readFriNettleieTariffs({ tariffer: [period('2026-01-01', 'snart', 10)] }, '2026-11-02').kind).toBe('malformed');
+    expect(readFriNettleieTariffs({ tariffer: [period('2026-01-01', undefined, [] as unknown as number)] }, '2026-11-02').kind)
+      .toBe('malformed');
   });
 
   it('ignores a malformed period that has ended', () => {
-    const tariffs = readFriNettleieTariffs({
+    const tariffs = tariffsOf(readFriNettleieTariffs({
       tariffer: [
         period('2025-01-01', '2026-01-01', 10, { unntak: [{ navn: 'Dag', timer: 'kveld', pris: 20 }] }),
         period('2026-01-01', undefined, 12),
       ],
-    }, '2026-11-02');
+    }, '2026-11-02'));
     expect(tariffs?.Husholdning?.map((entry) => entry.basePrice)).toEqual([12]);
   });
 
-  it('drops a period with an implausible fee', () => {
-    expect(readFriNettleieTariffs({ tariffer: [period('2026-01-01', undefined, 9000)] }, '2026-11-02')).toBeNull();
+  it('reads a period with an implausible fee as malformed', () => {
+    expect(readFriNettleieTariffs({ tariffer: [period('2026-01-01', undefined, 9000)] }, '2026-11-02').kind).toBe('malformed');
     expect(readFriNettleieTariffs({
       tariffer: [period('2026-01-01', undefined, 10, { unntak: [{ navn: 'Dag', timer: '6-21', pris: -500 }] })],
-    }, '2026-11-02')).toBeNull();
+    }, '2026-11-02').kind).toBe('malformed');
   });
 
-  it('is null for a document that holds no usable period', () => {
-    expect(readFriNettleieTariffs(null, '2026-11-02')).toBeNull();
-    expect(readFriNettleieTariffs({ tariffer: [period('2025-01-01', '2026-01-01', 10)] }, '2026-11-02')).toBeNull();
-    expect(readFriNettleieTariffs({ tariffer: [{ kundegrupper: ['husholdning'], energiledd: { grunnpris: 1 } }] }, '2026-11-02'))
-      .toBeNull();
+  it('tells a file with no current period from one that is not a tariff file', () => {
+    expect(readFriNettleieTariffs({ tariffer: [period('2025-01-01', '2026-01-01', 10)] }, '2026-11-02').kind).toBe('none');
+    expect(readFriNettleieTariffs(null, '2026-11-02').kind).toBe('malformed');
+    expect(readFriNettleieTariffs({
+      tariffer: [{ kundegrupper: ['husholdning'], energiledd: { grunnpris: 1 } }],
+    }, '2026-11-02').kind).toBe('malformed');
   });
 });
