@@ -3,10 +3,12 @@
 // - The bundled table (lib/price/nettleieFallbackData.generated.ts) matches
 //   what Fri Nettleie publishes today, and every published file parses with
 //   the runtime's parser (`npm run build:nettleie-fallback -- --check`).
-// - Every grid company in the settings list gets a tariff: from its Fri
-//   Nettleie file, or else from NVE. One that gets neither has usually merged
-//   into another company. A company priced from NVE is listed: Fri Nettleie may
-//   cover it under another GLN.
+// - Every grid company in the settings list, and every retired one an owner may
+//   have saved, gets a tariff: from its Fri Nettleie file, or else from NVE.
+//   One that gets neither has usually merged into another company: list it as
+//   retired, with its successor's file in scripts/build-nettleie-fallback.mjs.
+//   A company priced from NVE is listed: Fri Nettleie may cover it under
+//   another GLN.
 //
 // Exits 1 when any check needs attention. Runs weekly in
 // .github/workflows/grid-tariffs.yml.
@@ -29,7 +31,7 @@ const loadModules = async () => {
         "export { buildFriNettleieGridTariffDays, friNettleieFileFor } from './lib/price/staticGridTariffFallback';",
         "export { fetchFriNettleieTariffs } from './lib/price/friNettleieFetch';",
         "export { buildGridTariffUrl, normalizeGridTariffData } from './lib/price/gridTariffUtils';",
-        "export { gridCompanies } from './packages/settings-ui/src/ui/gridCompanies';",
+        "export { gridCompanies, retiredGridCompanies } from './packages/settings-ui/src/ui/gridCompanies';",
       ].join('\n'),
       resolveDir: process.cwd(),
       loader: 'ts',
@@ -66,7 +68,8 @@ const checkCompanies = async (modules) => {
   const date = todayKey();
   const findings = [];
   const fromNve = [];
-  for (const company of modules.gridCompanies) {
+  const companies = [...modules.gridCompanies, ...modules.retiredGridCompanies];
+  for (const company of companies) {
     const file = modules.friNettleieFileFor(company.organizationNumber);
     if (file !== undefined) {
       const fetched = await modules.fetchFriNettleieTariffs(file, date);
@@ -81,7 +84,7 @@ const checkCompanies = async (modules) => {
       findings.push(`${company.name} (${company.organizationNumber}): no tariff from Fri Nettleie or NVE on ${date}`);
     }
   }
-  console.log(`Grid companies: ${modules.gridCompanies.length}, priced from NVE: ${fromNve.length}`
+  console.log(`Grid companies: ${companies.length}, priced from NVE: ${fromNve.length}`
     + (fromNve.length > 0 ? ` (${fromNve.join(', ')})` : ''));
   return findings;
 };

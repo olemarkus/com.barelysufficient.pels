@@ -172,9 +172,36 @@ describe('resolveGridTariffFallback', () => {
   const date = new Date('2026-01-05T10:00:00Z');
   const base = { tariffGroup: 'Husholdning', date, timeZone: 'UTC' };
 
-  it('keeps a real cache even when the operator has no static fallback', () => {
+  it('keeps an undated real cache when the operator has no static fallback', () => {
     const outcome = resolveGridTariffFallback({
       ...base, existingData: [{ energyFeeExVat: 11 } as { source?: unknown }], organizationNumber: '999',
+    });
+    expect(outcome.kind).toBe('keepCache');
+  });
+
+  it('keeps a real cache that covers today over the static fallback', () => {
+    const outcome = resolveGridTariffFallback({
+      ...base, existingData: [{ dateKey: '2026-01-05T00:00:00' }], organizationNumber: '111',
+    });
+    expect(outcome.kind).toBe('keepCache');
+  });
+
+  it('replaces a real cache from an earlier day with the static fallback for today', () => {
+    // Cached Friday and Saturday; on Monday, Monday's own day type and period apply.
+    const outcome = resolveGridTariffFallback({
+      ...base,
+      existingData: [{ dateKey: '2026-01-02T00:00:00' }, { dateKey: '2026-01-03T00:00:00' }],
+      organizationNumber: '111',
+    });
+    expect(outcome).toEqual({
+      kind: 'store',
+      entries: buildStaticGridTariffFallback({ ...base, organizationNumber: '111' }),
+    });
+  });
+
+  it('keeps a real cache from an earlier day when the operator has no static fallback', () => {
+    const outcome = resolveGridTariffFallback({
+      ...base, existingData: [{ dateKey: '2026-01-02T00:00:00' }], organizationNumber: '999',
     });
     expect(outcome.kind).toBe('keepCache');
   });

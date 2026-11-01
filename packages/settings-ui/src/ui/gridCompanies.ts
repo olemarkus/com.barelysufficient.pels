@@ -23,43 +23,40 @@ export const gridCompanies: GridCompany[] = [
   { name: "ETNA NETT AS", organizationNumber: "882783022", countyCodes: ["34"] },
   { name: "EVERKET AS", organizationNumber: "966731508", countyCodes: ["40"] },
   { name: "FAGNE AS", organizationNumber: "915635857", countyCodes: ["11", "46"] },
-  { name: "FØIE AS (Akershus)", organizationNumber: "987626844", countyCodes: ["32", "33"] },
-  { name: "FØIE AS (Buskerud)", organizationNumber: "971589752", countyCodes: ["33"] },
+  { name: "FJELLNETT AS", organizationNumber: "923354204", countyCodes: ["34"] },
+  { name: "FØIE AS", organizationNumber: "971589752", countyCodes: ["32", "33"] },
   { name: "FØRE AS", organizationNumber: "925549738", countyCodes: ["40"] },
   {
     name: "GLITRE NETT AS",
     organizationNumber: "982974011",
-    countyCodes: ["03", "11", "32", "33", "34", "40", "42", "46"],
+    countyCodes: ["03", "11", "31", "32", "33", "34", "40", "42", "46"],
   },
   { name: "GRIUG AS", organizationNumber: "953681781", countyCodes: ["34"] },
   { name: "HAVNETT AS", organizationNumber: "924004150", countyCodes: ["46"] },
-  { name: "HEMSIL NETT AS", organizationNumber: "923050612", countyCodes: ["33"] },
   { name: "HØLAND OG SETSKOG ELVERK AS", organizationNumber: "923488960", countyCodes: ["32"] },
   { name: "INDRE HORDALAND KRAFTNETT AS", organizationNumber: "919415096", countyCodes: ["46"] },
   { name: "JÆREN EVERK AS", organizationNumber: "824914982", countyCodes: ["11"] },
   { name: "KE NETT AS", organizationNumber: "977285712", countyCodes: ["11"] },
+  { name: "KLIVE AS", organizationNumber: "923436596", countyCodes: ["34"] },
   { name: "KVAM ENERGI NETT AS", organizationNumber: "923789324", countyCodes: ["46"] },
   { name: "KYSTNETT AS", organizationNumber: "923152601", countyCodes: ["18"] },
   { name: "LEDE AS", organizationNumber: "979422679", countyCodes: ["33", "39", "40"] },
-  { name: "LEGA NETT AS", organizationNumber: "924868759", countyCodes: ["56"] },
   { name: "LINEA AS", organizationNumber: "917424799", countyCodes: ["18"] },
   { name: "LINJA AS", organizationNumber: "912631532", countyCodes: ["15", "46"] },
   { name: "LNETT AS", organizationNumber: "980038408", countyCodes: ["11"] },
   { name: "LUCERNA AS", organizationNumber: "982897327", countyCodes: ["56"] },
-  { name: "LUOSTEJOK NETT AS", organizationNumber: "924934867", countyCodes: ["56"] },
+  { name: "LYSNA AS", organizationNumber: "923833706", countyCodes: ["46"] },
   { name: "MELLOM AS", organizationNumber: "925668389", countyCodes: ["15"] },
   { name: "MELØY ENERGI AS", organizationNumber: "919173122", countyCodes: ["18"] },
   { name: "MIDTNETT AS", organizationNumber: "917856222", countyCodes: ["33"] },
-  { name: "MODALEN KRAFTLAG SA", organizationNumber: "877051412", countyCodes: ["46"] },
+  { name: "MOSTRAUM NETT AS", organizationNumber: "933584801", countyCodes: ["46"] },
   { name: "NETTSELSKAPET AS", organizationNumber: "921688679", countyCodes: ["50"] },
   { name: "NORANETT ANDØY AS", organizationNumber: "921680554", countyCodes: ["18", "55"] },
   { name: "NORANETT AS", organizationNumber: "985411131", countyCodes: ["18", "55"] },
   { name: "NORANETT HADSEL AS", organizationNumber: "917983550", countyCodes: ["18"] },
   { name: "NORDVEST NETT AS", organizationNumber: "980824586", countyCodes: ["15"] },
   { name: "NOREFJELL NETT AS", organizationNumber: "824701482", countyCodes: ["33"] },
-  { name: "NORGESNETT AS", organizationNumber: "980234088", countyCodes: ["31", "32", "46"] },
   { name: "R-NETT AS", organizationNumber: "925067911", countyCodes: ["33"] },
-  { name: "RAKKESTAD ENERGI AS", organizationNumber: "968398083", countyCodes: ["31"] },
   { name: "RK NETT AS", organizationNumber: "925017809", countyCodes: ["40"] },
   { name: "ROMSDALSNETT AS", organizationNumber: "926377841", countyCodes: ["15"] },
   { name: "RØROS E-VERK NETT AS", organizationNumber: "919884452", countyCodes: ["34", "50"] },
@@ -83,3 +80,34 @@ export const gridCompanies: GridCompany[] = [
   { name: "VEVIG AS", organizationNumber: "916319908", countyCodes: ["34"] },
   { name: "VISSI AS", organizationNumber: "921683057", countyCodes: ["55", "56"] },
 ];
+
+/**
+ * Grid companies that no longer operate, kept so an owner who chose one before
+ * it merged still sees their saved choice. They are not offered to anyone else;
+ * the runtime prices each on the tariff file of the company that took it over
+ * (`RETIRED_GRID_COMPANY_FILES` in scripts/build-nettleie-fallback.mjs).
+ */
+export const retiredGridCompanies: GridCompany[] = [
+  { name: "AREA NETT AS (formerly LeGa Nett)", organizationNumber: "924868759", countyCodes: ["56"] },
+  { name: "AREA NETT AS (formerly Luostejok Nett)", organizationNumber: "924934867", countyCodes: ["56"] },
+  { name: "ELVIA AS (formerly Rakkestad Energi)", organizationNumber: "968398083", countyCodes: ["31"] },
+  { name: "FØIE AS (formerly Føie Akershus)", organizationNumber: "987626844", countyCodes: ["32", "33"] },
+  { name: "FØIE AS (formerly Hemsil Nett)", organizationNumber: "923050612", countyCodes: ["33"] },
+  { name: "GLITRE NETT AS (formerly Norgesnett)", organizationNumber: "980234088", countyCodes: ["31", "32", "46"] },
+  { name: "MOSTRAUM NETT AS (formerly Modalen Kraftlag)", organizationNumber: "877051412", countyCodes: ["46"] },
+];
+
+/**
+ * The grid companies offered in a county: every operating one, plus the owner's
+ * saved company when it has since merged into another.
+ */
+export const gridCompaniesForCounty = (countyCode: string, savedOrganizationNumber: string): GridCompany[] => [
+  ...gridCompanies,
+  ...retiredGridCompanies.filter((company) => company.organizationNumber === savedOrganizationNumber),
+].filter((company) => company.countyCodes.includes(countyCode));
+
+/** A saved grid company's name, operating or retired; `undefined` when unknown. */
+export const gridCompanyNameOf = (organizationNumber: string): string | undefined => (
+  [...gridCompanies, ...retiredGridCompanies]
+    .find((company) => company.organizationNumber === organizationNumber)?.name
+);

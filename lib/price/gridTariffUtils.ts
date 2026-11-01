@@ -31,8 +31,17 @@ export const isGridTariffFallbackData = (
   && existingData[0]?.source === GRID_TARIFF_SOURCE_FALLBACK
 );
 
+type CachedGridTariffEntry = { dateKey?: string; datoId?: string; source?: unknown };
+
+/** The local dates (YYYY-MM-DD) cached grid-tariff rows cover. */
+export const gridTariffDatesOf = (
+  existingData: readonly CachedGridTariffEntry[],
+): ReadonlySet<string | undefined> => new Set(existingData.map((entry) => (
+  (typeof entry?.dateKey === 'string' ? entry.dateKey : entry?.datoId)?.slice(0, 10)
+)));
+
 export const shouldUseGridTariffCache = (
-  existingData: Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null,
+  existingData: CachedGridTariffEntry[] | null,
   dates: { today: string; tomorrow: string },
 ): boolean => {
   // Fallback data serves prices but must not suppress NVE retries — keep trying
@@ -41,9 +50,7 @@ export const shouldUseGridTariffCache = (
   if (!existingData || !Array.isArray(existingData) || existingData.length === 0) return false;
   // Tomorrow's spot prices are priced on tomorrow's tariff, so a cache that
   // holds only today is refetched for tomorrow's rows.
-  const storedDates = new Set(existingData.map((entry) => (
-    (typeof entry?.dateKey === 'string' ? entry.dateKey : entry?.datoId)?.slice(0, 10)
-  )));
+  const storedDates = gridTariffDatesOf(existingData);
   if (!storedDates.has(dates.today) || !storedDates.has(dates.tomorrow)) return false;
   emitPriceDebug({ event: 'grid_tariff_cache_used', date: dates.today, entryCount: existingData.length });
   return true;

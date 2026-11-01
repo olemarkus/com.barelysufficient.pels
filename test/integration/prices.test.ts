@@ -1294,6 +1294,32 @@ tariffer:
       expect(rows).toHaveLength(48);
       expect(rows.every((row) => row.source === 'fallback')).toBe(true);
     });
+
+    it('replaces a live tariff cached on an earlier day with the bundled table when the live file fails', async () => {
+      // Fetched live on Friday; by Monday the file is unreadable. Pricing Monday
+      // on Friday's rows would miss Monday's own day type and any new period.
+      mockHomeyInstance.settings.set('nettleie_data', Array.from({ length: 24 }, (_, time) => ({
+        time, energyFeeExVat: 11.11, energyFeeIncVat: 13.89, dateKey: '2026-10-30T00:00:00',
+      })));
+      const rows = await refreshElviaAt(new Date(2026, 10, 2, 14, 0, 0), () => (
+        streamedTextResponse('tariffer: {flow: map}')
+      ));
+      expect(rows).toHaveLength(48);
+      expect(rows.every((row) => row.source === 'fallback')).toBe(true);
+      expect(feeAt(rows, '2026-11-02', 3)).toBeCloseTo(17.99, 5);
+      expect(feeAt(rows, '2026-11-02', 12)).toBeCloseTo(29.99, 5);
+    });
+
+    it('keeps a live tariff cached for today when the live file fails', async () => {
+      mockHomeyInstance.settings.set('nettleie_data', Array.from({ length: 24 }, (_, time) => ({
+        time, energyFeeExVat: 11.11, energyFeeIncVat: 13.89, dateKey: '2026-11-02T00:00:00',
+      })));
+      const rows = await refreshElviaAt(new Date(2026, 10, 2, 14, 0, 0), () => (
+        streamedTextResponse('tariffer: {flow: map}')
+      ));
+      expect(rows).toHaveLength(24);
+      expect(rows.every((row) => row.source === undefined && row.energyFeeExVat === 11.11)).toBe(true);
+    });
   });
 
   it('keeps real cached tariff data when all NVE attempts are empty', async () => {

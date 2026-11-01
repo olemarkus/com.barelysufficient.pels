@@ -16,7 +16,7 @@ import { logSettingsError } from './logging.ts';
 import { state, defaultPriceOptimizationConfig, type SettingsUiDeviceView } from './state.ts';
 import { supportsTemperatureDevice } from './deviceUtils.ts';
 import { resolveManagedState, resolveHomeExhibitsSolar } from './state.ts';
-import { gridCompanies } from './gridCompanies.ts';
+import { gridCompaniesForCounty } from './gridCompanies.ts';
 import { readPriceSchemeInForce, savePriceScheme } from './priceSettingsPersistence.ts';
 import { createNorwayPriceHandlers } from './norwayPriceHandlers.ts';
 import { resolvePriceSetupOffer } from './priceSetupOffer.ts';
@@ -112,9 +112,8 @@ let electricityPricesSurface: HTMLElement | null = null;
 let priceAwareDevicesSurface: HTMLElement | null = null;
 let settingsLoaded = false;
 
-const getGridCompanyOptions = (countyCode: string): GridCompanyOption[] => (
-  gridCompanies
-    .filter((c) => c.countyCodes.includes(countyCode))
+const getGridCompanyOptions = (countyCode: string, savedOrganizationNumber: string): GridCompanyOption[] => (
+  gridCompaniesForCounty(countyCode, savedOrganizationNumber)
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((c) => ({ name: c.name, organizationNumber: c.organizationNumber }))
 );
@@ -145,7 +144,7 @@ const renderElectricityPrices = () => {
     config: configState,
     market: readSetupMarket(),
     handlers: electricityPricesHandlers,
-    gridCompanyOptions: getGridCompanyOptions(configState.countyCode),
+    gridCompanyOptions: getGridCompanyOptions(configState.countyCode, configState.organizationNumber),
     sourceAssumption: resolvePriceSourceAssumption(configState.priceSetup, configState.priceScheme),
     norwayChoices: resolveNorwayChoices(configState.priceSetup),
     priceSetupOffer: resolvePriceSetupOffer(configState.priceSetupSuggestion, configState.priceSetup),
