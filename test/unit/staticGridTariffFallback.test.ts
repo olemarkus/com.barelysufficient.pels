@@ -13,8 +13,11 @@ vi.mock('../../lib/price/nettleieFallbackData.generated', () => ({
   NETTLEIE_FALLBACK_BY_ORGNR: {
     '111': {
       name: 'Test Nett',
+      file: 'test.yml',
       tariffs: {
-        Husholdning: {
+        Husholdning: [{
+          from: '2025-01-01',
+          until: '2026-07-01',
           basePrice: 10,
           exceptions: [
             // Weekday daytime peak.
@@ -24,13 +27,19 @@ vi.mock('../../lib/price/nettleieFallbackData.generated', () => ({
             // Holiday-only — never matches (holidays out of scope).
             { hours: [12], price: 99, dayTypes: ['helligdager'] },
           ],
-        },
+        }, {
+          // A tariff change announced for 2026-07-01.
+          from: '2026-07-01',
+          basePrice: 30,
+          exceptions: [],
+        }],
       },
     },
     '222': {
       name: 'Only Fritid',
+      file: 'fritid.yml',
       tariffs: {
-        'Hytter og fritidshus': { basePrice: 7, exceptions: [] },
+        'Hytter og fritidshus': [{ from: '2025-01-01', basePrice: 7, exceptions: [] }],
       },
     },
   },
@@ -114,6 +123,28 @@ describe('buildStaticGridTariffFallback', () => {
     })!);
     expect(fees[6]).toBe(20 + ENOVA); // weekday peak still applies
     expect(fees[22]).toBe(10 + ENOVA); // surcharge gone in June
+  });
+
+  it('prices each day on the period valid that day', () => {
+    // 2026-06-30 is a Tuesday; the new tariff applies from tomorrow, 2026-07-01.
+    const entries = buildStaticGridTariffFallback({
+      organizationNumber: '111',
+      tariffGroup: 'Husholdning',
+      date: new Date('2026-06-30T10:00:00Z'),
+      timeZone: 'UTC',
+    })!;
+    expect(feesByHour(entries)[9]).toBe(10 + ENOVA);
+    const july = entries.filter((entry) => entry.dateKey === '2026-07-01T00:00:00');
+    expect(feesByHour(july).every((fee) => fee === 30 + ENOVA)).toBe(true);
+  });
+
+  it('returns null for a day before any period', () => {
+    expect(buildStaticGridTariffFallback({
+      organizationNumber: '111',
+      tariffGroup: 'Husholdning',
+      date: new Date('2024-12-31T10:00:00Z'),
+      timeZone: 'UTC',
+    })).toBeNull();
   });
 
   it('returns null for an unknown organization number', () => {

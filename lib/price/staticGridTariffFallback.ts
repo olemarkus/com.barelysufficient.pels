@@ -5,12 +5,13 @@ import {
   isGridTariffFallbackData,
   type GridTariffEntryWithSource,
 } from './gridTariffUtils';
-import {
-  NETTLEIE_FALLBACK_BY_ORGNR,
-  type NettleieFallbackException,
-  type NettleieFallbackTariff,
-  type NettleieFallbackTariffGroup,
-} from './nettleieFallbackData.generated';
+import type {
+  FriNettleieException,
+  FriNettleieTariffGroup,
+  FriNettleieTariffPeriod,
+  FriNettleieTariffs,
+} from './friNettleieTariff';
+import { NETTLEIE_FALLBACK_BY_ORGNR } from './nettleieFallbackData.generated';
 
 /**
  * When the bundled snapshot was generated, re-exported beside the resolver that
@@ -20,19 +21,17 @@ import {
  */
 export { NETTLEIE_FALLBACK_GENERATED_AT } from './nettleieFallbackData.generated';
 
-// Last-resort static grid-tariff fallback. Used only when the NVE API is
-// unreachable AND no live tariff has been cached yet (new user). The shape it
-// produces matches the normalized grid-tariff entries cached from NVE, so
-// the rest of the price pipeline consumes it unchanged — only the per-day,
-// per-hour `energyFeeExVat` is actually read downstream (see priceServiceNorway.ts).
+// Fri Nettleie tariff periods expanded into one grid-tariff row per local hour,
+// the shape the price pipeline reads (only the per-day, per-hour
+// `energyFeeExVat` is read downstream; see priceServiceNorway.ts). Used for the
+// tariff fetched live and for the bundled snapshot when that fetch fails.
 //
-// Fidelity is intentionally limited (decided with the maintainer): we expand the
-// real day-of-week × hour-of-day shape for today and tomorrow, but model neither public
-// holidays nor future tariff periods. Holidays are treated as their ordinary
-// weekday; the snapshot only carries the tariff that was current when generated.
+// Each day is priced on the period valid that day, so an announced tariff
+// change applies from its own date. Public holidays are not modelled: they are
+// priced as their ordinary weekday.
 
-// Fri Nettleie gives the energy rate without any tax; NVE's ex-VAT rate, which
-// the price pipeline reads, carries the Enova fee (øre/kWh, ex VAT).
+// Fri Nettleie gives the energy rate without any tax; the grid tariff the price
+// pipeline reads carries the Enova fee (øre/kWh, ex VAT).
 const ENOVA_FEE_EX_VAT = 1;
 
 // JS getDay()/getUTCDay(): 0 = Sunday … 6 = Saturday.
@@ -67,7 +66,7 @@ const resolveDayTokenWeekdays = (token: string): readonly number[] => {
 };
 
 const exceptionAppliesToday = (
-  exception: NettleieFallbackException,
+  exception: FriNettleieException,
   month: number,
   weekday: number,
 ): boolean => {
@@ -83,49 +82,58 @@ const exceptionAppliesToday = (
 // an exception matches the month + weekday + hour. Later matching exceptions
 // override earlier ones (the prices are replacements, not additions).
 const resolveHourFeeExVat = (
-  tariff: NettleieFallbackTariff,
+  period: FriNettleieTariffPeriod,
   month: number,
   weekday: number,
   hour: number,
-): number => tariff.exceptions.reduce(
+): number => period.exceptions.reduce(
   (fee, exception) => (
     exceptionAppliesToday(exception, month, weekday) && exception.hours.includes(hour)
       ? exception.price
       : fee
   ),
-  tariff.basePrice,
+  period.basePrice,
 );
 
-const selectTariff = (
-  tariffs: Partial<Record<NettleieFallbackTariffGroup, NettleieFallbackTariff>>,
+const selectPeriods = (
+  tariffs: FriNettleieTariffs,
   tariffGroup: string,
-): NettleieFallbackTariff | undefined => {
+): readonly FriNettleieTariffPeriod[] | undefined => {
   // Prefer the requested group; most operators file an identical tariff for
   // household and holiday-home, so falling back to whichever exists still gives
-  // a sensible last-resort value rather than nothing.
-  const requested = tariffs[tariffGroup as NettleieFallbackTariffGroup];
+  // a sensible value rather than nothing.
+  const requested = tariffs[tariffGroup as FriNettleieTariffGroup];
   if (requested) return requested;
   return tariffs.Husholdning ?? tariffs['Hytter og fritidshus'];
 };
 
-const buildStaticGridTariffFallbackForDateKey = (
-  organizationNumber: string,
+// The latest period started on or before `dateKey` and not yet ended.
+const periodFor = (
+  periods: readonly FriNettleieTariffPeriod[],
+  dateKey: string,
+): FriNettleieTariffPeriod | undefined => periods
+  .filter((period) => period.from <= dateKey && (period.until === undefined || dateKey < period.until))
+  .at(-1);
+
+type GridTariffDayRow = Omit<GridTariffEntryWithSource, 'source'>;
+
+const buildDayRows = (
+  tariffs: FriNettleieTariffs,
   tariffGroup: string,
   dateKey: string,
-): GridTariffEntryWithSource[] | null => {
-  const operator = NETTLEIE_FALLBACK_BY_ORGNR[organizationNumber];
-  if (!operator) return null;
-  const tariff = selectTariff(operator.tariffs, tariffGroup);
-  if (!tariff) return null;
+): GridTariffDayRow[] | null => {
+  const periods = selectPeriods(tariffs, tariffGroup);
+  const period = periods && periodFor(periods, dateKey);
+  if (!period) return null;
 
   const [year, month, day] = dateKey.split('-').map((part) => Number.parseInt(part, 10));
   // A date key that does not split into three parts names no day, so there is no
-  // fallback tariff to build for it.
+  // tariff to build for it.
   if (year === undefined || month === undefined || day === undefined) return null;
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 
   return Array.from({ length: 24 }, (_, time) => {
-    const energyFeeExVat = resolveHourFeeExVat(tariff, month, weekday, time) + ENOVA_FEE_EX_VAT;
+    const energyFeeExVat = resolveHourFeeExVat(period, month, weekday, time) + ENOVA_FEE_EX_VAT;
     return {
       time,
       energyFeeExVat,
@@ -133,14 +141,36 @@ const buildStaticGridTariffFallbackForDateKey = (
       // fair nominal default and the value is unused for VAT-exempt areas.
       energyFeeIncVat: Math.round(energyFeeExVat * VAT_MULTIPLIER_STANDARD * 100) / 100,
       dateKey: `${dateKey}T00:00:00`,
-      source: GRID_TARIFF_SOURCE_FALLBACK,
     };
   });
 };
 
 /**
- * The static fallback for the local day of `date` and the day after it, so
- * tomorrow's spot prices are priced on tomorrow's day type.
+ * Grid-tariff rows for the local day of `date` and the day after it, priced on
+ * `tariffs`, so tomorrow's spot prices are priced on tomorrow's day type and
+ * period; `null` when no period covers today.
+ */
+export const buildFriNettleieGridTariffDays = (
+  tariffs: FriNettleieTariffs,
+  tariffGroup: string,
+  date: Date,
+  timeZone: string,
+): GridTariffDayRow[] | null => {
+  const today = getDateKeyInTimeZone(date, timeZone);
+  const todayRows = buildDayRows(tariffs, tariffGroup, today);
+  if (!todayRows) return null;
+  const tomorrowRows = buildDayRows(tariffs, tariffGroup, shiftDateKey(today, 1));
+  return [...todayRows, ...(tomorrowRows ?? [])];
+};
+
+/** The grid company's file in Fri Nettleie; `undefined` when it does not cover it. */
+export const friNettleieFileFor = (organizationNumber: string): string | undefined => (
+  NETTLEIE_FALLBACK_BY_ORGNR[organizationNumber]?.file
+);
+
+/**
+ * The bundled snapshot's rows for today and tomorrow, flagged as fallback so
+ * they never suppress the next live attempt.
  */
 export const buildStaticGridTariffFallback = (params: {
   organizationNumber: string;
@@ -149,15 +179,10 @@ export const buildStaticGridTariffFallback = (params: {
   timeZone: string;
 }): GridTariffEntryWithSource[] | null => {
   const { organizationNumber, tariffGroup, date, timeZone } = params;
-  const today = getDateKeyInTimeZone(date, timeZone);
-  const todayEntries = buildStaticGridTariffFallbackForDateKey(organizationNumber, tariffGroup, today);
-  if (!todayEntries) return null;
-  const tomorrowEntries = buildStaticGridTariffFallbackForDateKey(
-    organizationNumber,
-    tariffGroup,
-    shiftDateKey(today, 1),
-  );
-  return [...todayEntries, ...(tomorrowEntries ?? [])];
+  const operator = NETTLEIE_FALLBACK_BY_ORGNR[organizationNumber];
+  if (!operator) return null;
+  const rows = buildFriNettleieGridTariffDays(operator.tariffs, tariffGroup, date, timeZone);
+  return rows && rows.map((row) => ({ ...row, source: GRID_TARIFF_SOURCE_FALLBACK }));
 };
 
 export type GridTariffFallbackOutcome =
@@ -167,10 +192,10 @@ export type GridTariffFallbackOutcome =
   | { kind: 'clearStaleFallback' }
   | { kind: 'noData' };
 
-// Decides what to do once every NVE attempt has failed:
+// Decides what to do once every live attempt has failed:
 //  - real cached data exists → keep serving it;
 //  - a static fallback exists and already matches today's values → keep it (no
-//    redundant cache write while NVE stays down);
+//    redundant cache write while the sources stay down);
 //  - a static fallback exists and differs → seed it;
 //  - stale fallback data is cached but the operator no longer has one (e.g. the
 //    org number was changed to an untabled operator) → clear it so we never
