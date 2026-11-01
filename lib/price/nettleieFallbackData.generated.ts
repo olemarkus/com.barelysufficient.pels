@@ -4,7 +4,7 @@
 // Norwegian grid tariffs (nettleie) per grid company: the Fri Nettleie file PELS
 // fetches live, and the tariff periods it prices on when that fetch fails.
 //
-// Generated: 2026-11-01 | Operators: 69
+// Generated: 2026-11-01 | Operators: 77
 // Source: Fri Nettleie (https://github.com/kraftsystemet/fri-nettleie), CC-BY-4.0.
 // GLN→organisasjonsnr mapping from Elhub reference data.
 //
@@ -111,6 +111,26 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
               ]
             }
           ]
+        }
+      ]
+    }
+  },
+  "877051412": {
+    "name": "Mostraum Nett AS",
+    "file": "mostraum.yml",
+    "tariffs": {
+      "Husholdning": [
+        {
+          "from": "2025-11-01",
+          "basePrice": 39,
+          "exceptions": []
+        }
+      ],
+      "Hytter og fritidshus": [
+        {
+          "from": "2025-11-01",
+          "basePrice": 39,
+          "exceptions": []
         }
       ]
     }
@@ -731,6 +751,36 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
       ]
     }
   },
+  "923050612": {
+    "name": "Føie AS",
+    "file": "foie.yml",
+    "tariffs": {
+      "Husholdning": [
+        {
+          "from": "2026-11-01",
+          "basePrice": 13.5,
+          "exceptions": [
+            {
+              "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+              "price": 21
+            }
+          ]
+        }
+      ],
+      "Hytter og fritidshus": [
+        {
+          "from": "2026-11-01",
+          "basePrice": 13.5,
+          "exceptions": [
+            {
+              "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+              "price": 21
+            }
+          ]
+        }
+      ]
+    }
+  },
   "923152601": {
     "name": "Kystnett AS",
     "file": "kystnett.yml",
@@ -1101,6 +1151,54 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
       ]
     }
   },
+  "924868759": {
+    "name": "Area Nett AS - Område 3 - Lega",
+    "file": "area-lega.yml",
+    "tariffs": {
+      "Husholdning": [
+        {
+          "from": "2026-01-01",
+          "basePrice": 23.9,
+          "exceptions": [
+            {
+              "hours": [0, 1, 2, 3, 4, 5, 22, 23],
+              "price": 21.9,
+              "months": [4, 5, 6, 7, 8, 9, 10, 11, 12]
+            },
+            {
+              "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+              "price": 26.9,
+              "months": [1, 2, 3]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "924934867": {
+    "name": "Area Nett AS - Område 2 - Luostejok",
+    "file": "area-luostejok.yml",
+    "tariffs": {
+      "Husholdning": [
+        {
+          "from": "2026-01-01",
+          "basePrice": 26.89,
+          "exceptions": [
+            {
+              "hours": [0, 1, 2, 3, 4, 5, 22, 23],
+              "price": 24.89,
+              "months": [4, 5, 6, 7, 8, 9, 10, 11, 12]
+            },
+            {
+              "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+              "price": 29.89,
+              "months": [1, 2, 3]
+            }
+          ]
+        }
+      ]
+    }
+  },
   "924940379": {
     "name": "Stannum AS",
     "file": "stannum.yml",
@@ -1273,6 +1371,26 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
               "price": 29.77
             }
           ]
+        }
+      ]
+    }
+  },
+  "925803375": {
+    "name": "Tnett AS",
+    "file": "tnett.yml",
+    "tariffs": {
+      "Husholdning": [
+        {
+          "from": "2026-09-01",
+          "basePrice": 28,
+          "exceptions": []
+        }
+      ],
+      "Hytter og fritidshus": [
+        {
+          "from": "2026-09-01",
+          "basePrice": 28,
+          "exceptions": []
         }
       ]
     }
@@ -1477,6 +1595,42 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
             {
               "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
               "price": 6
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "968398083": {
+    "name": "Elvia AS",
+    "file": "elvia.yml",
+    "tariffs": {
+      "Husholdning": [
+        {
+          "from": "2026-07-01",
+          "basePrice": 16.99,
+          "exceptions": [
+            {
+              "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+              "price": 28.99,
+              "dayTypes": [
+                "virkedag"
+              ]
+            }
+          ]
+        }
+      ],
+      "Hytter og fritidshus": [
+        {
+          "from": "2026-07-01",
+          "basePrice": 16.99,
+          "exceptions": [
+            {
+              "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+              "price": 28.99,
+              "dayTypes": [
+                "virkedag"
+              ]
             }
           ]
         }
@@ -1807,6 +1961,36 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
       ]
     }
   },
+  "980234088": {
+    "name": "Glitre Nett AS",
+    "file": "glitre.yml",
+    "tariffs": {
+      "Husholdning": [
+        {
+          "from": "2026-10-01",
+          "basePrice": 15.87,
+          "exceptions": [
+            {
+              "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+              "price": 27.87
+            }
+          ]
+        }
+      ],
+      "Hytter og fritidshus": [
+        {
+          "from": "2026-10-01",
+          "basePrice": 15.87,
+          "exceptions": [
+            {
+              "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+              "price": 27.87
+            }
+          ]
+        }
+      ]
+    }
+  },
   "980489698": {
     "name": "Elvia AS",
     "file": "elvia.yml",
@@ -1983,6 +2167,36 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
             {
               "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
               "price": 37.9
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "987626844": {
+    "name": "Føie AS",
+    "file": "foie.yml",
+    "tariffs": {
+      "Husholdning": [
+        {
+          "from": "2026-11-01",
+          "basePrice": 13.5,
+          "exceptions": [
+            {
+              "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+              "price": 21
+            }
+          ]
+        }
+      ],
+      "Hytter og fritidshus": [
+        {
+          "from": "2026-11-01",
+          "basePrice": 13.5,
+          "exceptions": [
+            {
+              "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+              "price": 21
             }
           ]
         }

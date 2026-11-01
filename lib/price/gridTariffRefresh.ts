@@ -82,10 +82,10 @@ export const refreshGridTariff = async (
     Array<Record<string, unknown> & StoredGridTariffRow> | null;
   if (!forceRefresh && shouldUseGridTariffCache(existingData, { today, tomorrow })) return 'rebuild';
 
-  // No live tariff: keep real cached data; with nothing cached, seed the bundled
-  // snapshot so prices still work until the source recovers. The snapshot is
-  // flagged so it never suppresses the next live attempt (see
-  // `shouldUseGridTariffCache`).
+  // No live tariff: keep real cached data that covers today; otherwise seed the
+  // bundled snapshot so prices still work until the source recovers (see
+  // `resolveGridTariffFallback`). The snapshot is flagged so it never
+  // suppresses the next live attempt (see `shouldUseGridTariffCache`).
   const settleWithoutLiveTariff = (failure: Record<string, unknown>): GridTariffRefreshOutcome => {
     const outcome = resolveGridTariffFallback({
       existingData,
@@ -95,7 +95,7 @@ export const refreshGridTariff = async (
       timeZone,
     });
     if (outcome.kind === 'store') {
-      const fallbackContext = ' (static fallback — no live tariff, no cached tariff; '
+      const fallbackContext = ' (static fallback — no live tariff, no cached tariff for today; '
         + `snapshot ${NETTLEIE_FALLBACK_GENERATED_AT})`;
       return storeGridTariff(outcome.entries, fallbackContext, request, readCurrentCompany, store, sinks);
     }

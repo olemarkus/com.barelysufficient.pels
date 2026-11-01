@@ -34,6 +34,28 @@ const GRID_OWNERS_URL = `${RAW_BASE}/referanse-data/elhub/grid_owners.json`;
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_PATH = path.join(ROOT, 'lib/price/nettleieFallbackData.generated.ts');
 
+// Grid companies that no longer operate, each priced on the file of the company
+// that took over its grid (Elhub's structural changes). An owner may have saved
+// one before it merged; the settings list shows those as `retiredGridCompanies`
+// and offers them to no one else. Fri Nettleie no longer lists their GLNs.
+//  - Hemsil Nett (Hemsedal) and Føie Akershus moved to Føie on 2026-05-11, on
+//    one Føie price list since August 2025 (fri-nettleie #164).
+//  - Norgesnett moved to Glitre Nett on 2026-10-12 (#445), on Glitre's energy
+//    rates since 2026-07-01.
+//  - Rakkestad Energi moved to Elvia on 2026-03-02, and Modalen Kraftlag to
+//    Mostraum Nett on 2025-02-10.
+//  - LeGa Nett and Luostejok Nett moved to Area Nett on 2024-11-07. Area keeps
+//    their regional tariffs, so each keeps its own file.
+const RETIRED_GRID_COMPANY_FILES = {
+  '923050612': 'foie.yml',
+  '987626844': 'foie.yml',
+  '980234088': 'glitre.yml',
+  '968398083': 'elvia.yml',
+  '877051412': 'mostraum.yml',
+  '924868759': 'area-lega.yml',
+  '924934867': 'area-luostejok.yml',
+};
+
 // GitHub's REST API rejects requests without a User-Agent, so set one explicitly
 // rather than relying on the runtime's default.
 const USER_AGENT = 'pels-nettleie-fallback-generator';
@@ -104,8 +126,9 @@ const main = async () => {
   console.log(`Found ${files.length} operator tariff files`);
 
   const byOrgnr = {};
+  const byFile = {};
   const filesByOrgnr = {};
-  const unreadable = [];
+  const blocking = [];
   let skippedNoOrgnr = 0;
   let skippedNoTariff = 0;
 
@@ -115,12 +138,12 @@ const main = async () => {
     try {
       doc = parseFriNettleieYaml(raw);
     } catch (error) {
-      unreadable.push(`${file}: ${error.message}`);
+      blocking.push(`${file}: unreadable: ${error.message}`);
       continue;
     }
     const read = readFriNettleieTariffs(doc, todayKey);
     if (read.kind === 'malformed') {
-      unreadable.push(`${file}: a current or future tariff period cannot be read`);
+      blocking.push(`${file}: a current or future tariff period cannot be read`);
       continue;
     }
     if (read.kind === 'none') {
@@ -137,9 +160,10 @@ const main = async () => {
       continue;
     }
     const name = String(doc?.netteier ?? glnToOwner.get(glnList[0])?.name ?? file).trim();
+    byFile[file] = { name, file, tariffs };
     for (const orgnr of orgnrs) {
       (filesByOrgnr[orgnr] ??= []).push(file);
-      byOrgnr[orgnr] = { name, file, tariffs };
+      byOrgnr[orgnr] = byFile[file];
     }
   }
 
@@ -152,12 +176,25 @@ const main = async () => {
     delete byOrgnr[orgnr];
   }
 
+  // A retired company whose successor file is gone is a table that would drop
+  // it, so it blocks the build like an unreadable file.
+  for (const [orgnr, file] of Object.entries(RETIRED_GRID_COMPANY_FILES)) {
+    const successor = byFile[file];
+    if (byOrgnr[orgnr]) {
+      blocking.push(`${orgnr}: listed by Fri Nettleie again; drop it from RETIRED_GRID_COMPANY_FILES`);
+    } else if (!successor) {
+      blocking.push(`${orgnr}: its successor ${file} is not in the table`);
+    } else {
+      byOrgnr[orgnr] = successor;
+    }
+  }
+
   const operatorCount = Object.keys(byOrgnr).length;
   console.log(
     `Resolved ${operatorCount} orgnr entries `
     + `(skipped ${skippedNoOrgnr} without orgnr, ${skippedNoTariff} without a current tariff)`,
   );
-  for (const line of unreadable) console.warn(`! unreadable: ${line}`);
+  for (const line of blocking) console.warn(`! ${line}`);
 
   const sorted = Object.fromEntries(Object.entries(byOrgnr).sort(([a], [b]) => a.localeCompare(b)));
   // Collapse pure-number arrays (the hour lists) onto a single line for readability.
@@ -203,13 +240,13 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     console.log(matches
       ? 'Grid tariff table matches Fri Nettleie'
       : 'Grid tariff table differs from Fri Nettleie: run npm run build:nettleie-fallback');
-    if (!matches || unreadable.length > 0) process.exitCode = 1;
+    if (!matches || blocking.length > 0) process.exitCode = 1;
     return;
   }
-  // A table built without an unreadable file would drop that company, so the
+  // A table built past a blocking problem would drop that company, so the
   // committed one stays until every file reads.
-  if (unreadable.length > 0) {
-    console.error(`Not writing ${OUT_PATH}: ${unreadable.length} unreadable file(s)`);
+  if (blocking.length > 0) {
+    console.error(`Not writing ${OUT_PATH}: ${blocking.length} blocking problem(s)`);
     process.exitCode = 1;
     return;
   }

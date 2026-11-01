@@ -5,7 +5,7 @@ import type {
   SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUi/prices.ts';
 import { getFlowPricePayload } from '../../../shared-domain/src/price/flowPriceUtils.ts';
-import { gridCompanies } from './gridCompanies.ts';
+import { gridCompanyNameOf } from './gridCompanies.ts';
 
 /**
  * How far the owner has set up prices: which source PELS is pricing from, and
@@ -75,8 +75,7 @@ export const NORWAY_PRICE_MODEL_NAMES: Record<NorwayPriceModelSetting, string> =
 };
 
 const gridCompanyName = (organizationNumber: string): string => (
-  gridCompanies.find((company) => company.organizationNumber === organizationNumber)?.name
-  ?? 'your grid company'
+  gridCompanyNameOf(organizationNumber) ?? 'your grid company'
 );
 
 const joinAnd = (items: string[]): string => (

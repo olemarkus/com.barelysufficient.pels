@@ -2,6 +2,7 @@ import { getDateKeyInTimeZone, shiftDateKey } from '../../packages/shared-domain
 import { VAT_MULTIPLIER_STANDARD } from './priceComponents';
 import {
   GRID_TARIFF_SOURCE_FALLBACK,
+  gridTariffDatesOf,
   isGridTariffFallbackData,
   type GridTariffEntryWithSource,
 } from './gridTariffUtils';
@@ -193,7 +194,11 @@ export type GridTariffFallbackOutcome =
   | { kind: 'noData' };
 
 // Decides what to do once every live attempt has failed:
-//  - real cached data exists → keep serving it;
+//  - real cached data covers today, or the operator has no bundled tariff →
+//    keep serving it. A real cache from an earlier day yields to the bundled
+//    tariff, which prices each day on its own day type and dated period: the
+//    price pipeline would otherwise price every later day on the last cached
+//    day while the source stays down;
 //  - a static fallback exists and already matches today's values → keep it (no
 //    redundant cache write while the sources stay down);
 //  - a static fallback exists and differs → seed it;
@@ -202,7 +207,7 @@ export type GridTariffFallbackOutcome =
 //    serve another operator's tariff;
 //  - nothing cached and no fallback → nothing to serve.
 export const resolveGridTariffFallback = (params: {
-  existingData: Array<{ source?: unknown }> | null;
+  existingData: Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null;
   organizationNumber: string;
   tariffGroup: string;
   date: Date;
@@ -212,12 +217,14 @@ export const resolveGridTariffFallback = (params: {
     existingData, organizationNumber, tariffGroup, date, timeZone,
   } = params;
   const existingIsFallback = isGridTariffFallbackData(existingData);
-  if (!existingIsFallback && Array.isArray(existingData) && existingData.length > 0) {
-    return { kind: 'keepCache' };
-  }
   const entries = buildStaticGridTariffFallback({
     organizationNumber, tariffGroup, date, timeZone,
   });
+  if (!existingIsFallback && Array.isArray(existingData) && existingData.length > 0) {
+    const coversToday = gridTariffDatesOf(existingData).has(getDateKeyInTimeZone(date, timeZone));
+    if (coversToday || !entries) return { kind: 'keepCache' };
+    return { kind: 'store', entries };
+  }
   if (entries) {
     // Compare full content (not just the date) so an org-number change still
     // refreshes, while an unchanged day-over-day fallback skips the flash write.
