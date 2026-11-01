@@ -7,8 +7,8 @@
  * through only a few dozen calls in a burst. Homey's web app serves the settings
  * page from that host whenever it reaches the Homey through the cloud, so the
  * page saves its own origin here (`packages/settings-ui/src/ui/webAppLink.ts`)
- * and `ui_version` hands it out (`api.ts`), so every browser learns it, even
- * one that only ever opens PELS at home. The page carries it in the bootstrap,
+ * and `ui_version` hands it out (`lib/app/settingsUiVersion.ts`), so every
+ * browser learns it, even one that only ever opens PELS at home. The page carries it in the bootstrap,
  * so checking it costs no call.
  *
  * A learned value in settings rather than the userdata store: keeping it there

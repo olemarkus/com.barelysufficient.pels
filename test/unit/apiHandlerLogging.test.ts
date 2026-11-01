@@ -24,7 +24,6 @@ vi.mock('../../setup/settingsUiApi', () => ({
 }));
 
 vi.mock('../../setup/appDebugHelpers', () => ({
-  getHomeyDevicesForDebugFromApp: vi.fn(),
   logHomeyDeviceForDebugFromApp: vi.fn(),
 }));
 

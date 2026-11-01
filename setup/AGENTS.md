@@ -9,7 +9,7 @@
 
 ## No domain logic
 
-- Do not parse, classify, project, validate, or calculate domain values here. Do not read the Homey SDK here. Hand a narrow port from `lib/ports/homeyRuntime.ts` to the domain module that owns the read and its failure policy. `npm run setup:boundaries` enforces peer and SDK import budgets; regenerate shrinking allowlists only through the guard's `--seed` flow after a migration.
+- Do not parse, classify, project, validate, or calculate domain values here. Do not read the Homey SDK here. Hand a narrow port from `lib/ports/homeyRuntime.ts` to the domain module that owns the read and its failure policy. `npm run setup:boundaries` enforces peer and SDK import budgets, and rejects any `homey.*` read in a `setup/api/` route table; regenerate shrinking allowlists only through the guard's `--seed` flow after a migration.
 - `lib/planInput/` owns the deliberate cross-domain projection into planner input. Setup binds its narrow source operations; it does not recreate the projection. A setting read by both runtime and UI has its shared type and policy in `packages/shared-domain/src/settings/`; a runtime-only setting belongs to its `lib/` owner. See `notes/settings-key-ownership.md`.
 - Prefer one concrete wiring purpose per file. Existing endpoint handler groups are organized by endpoint family; do not add unrelated handlers or generic helper bags.
 
