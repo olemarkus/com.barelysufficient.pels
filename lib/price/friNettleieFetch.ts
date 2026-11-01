@@ -11,6 +11,28 @@ export type FriNettleieFetchOutcome =
   | { kind: 'tariffs'; tariffs: FriNettleieTariffs }
   | { kind: 'unavailable'; reason: string };
 
+/* eslint-disable functional/immutable-data -- Chunks accumulate in place while the body streams in. */
+// The body as text, or `null` once it passes `MAX_FILE_BYTES`: the cap holds on
+// the bytes received, whatever the response declares, before anything larger
+// is buffered.
+const readCappedText = async (response: Awaited<ReturnType<typeof fetch>>): Promise<string | null> => {
+  const reader = response.body?.getReader();
+  if (!reader) return '';
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+    const value = chunk.value as Uint8Array;
+    bytes += value.byteLength;
+    if (bytes > MAX_FILE_BYTES) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks));
+};
+/* eslint-enable functional/immutable-data */
+
 /**
  * Fetch and read `file` (an operator file under `tariffer/` in Fri Nettleie),
  * keeping the periods still valid on `todayKey` or starting later. A failed
@@ -27,10 +49,9 @@ export const fetchFriNettleieTariffs = async (file: string, todayKey: string): P
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!response.ok) return { kind: 'unavailable', reason: `HTTP ${response.status}` };
-    const declaredBytes = Number(response.headers?.get('content-length'));
-    if (declaredBytes > MAX_FILE_BYTES) return { kind: 'unavailable', reason: `file of ${declaredBytes} bytes` };
-    text = await response.text();
-    if (text.length > MAX_FILE_BYTES) return { kind: 'unavailable', reason: `file of ${text.length} characters` };
+    const body = await readCappedText(response);
+    if (body === null) return { kind: 'unavailable', reason: `file over ${MAX_FILE_BYTES} bytes` };
+    text = body;
   } catch (error) {
     return { kind: 'unavailable', reason: error instanceof Error ? error.message : String(error) };
   }
@@ -41,6 +62,8 @@ export const fetchFriNettleieTariffs = async (file: string, todayKey: string): P
     const message = error instanceof Error ? error.message : String(error);
     return { kind: 'unavailable', reason: `unreadable file: ${message}` };
   }
-  const tariffs = readFriNettleieTariffs(document, todayKey);
-  return tariffs ? { kind: 'tariffs', tariffs } : { kind: 'unavailable', reason: 'no current tariff period' };
+  const read = readFriNettleieTariffs(document, todayKey);
+  if (read.kind === 'tariffs') return read;
+  const reason = read.kind === 'none' ? 'no current tariff period' : 'unreadable tariff period';
+  return { kind: 'unavailable', reason };
 };

@@ -1217,6 +1217,24 @@ tariffer:
     gyldig_fra: '2026-11-03'
 `;
 
+    // The live fetch reads the body as a stream, as Homey's fetch serves it.
+    const streamedTextResponse = (text: string) => {
+      let sent = false;
+      return {
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: async () => {
+              if (sent) return { done: true, value: undefined };
+              sent = true;
+              return { done: false, value: new TextEncoder().encode(text) };
+            },
+            cancel: async () => undefined,
+          }),
+        },
+      };
+    };
+
     const refreshElviaAt = async (now: Date, respond: (url: string) => unknown) => {
       mockHomeyInstance.settings.set('nettleie_fylke', '03');
       mockHomeyInstance.settings.set('nettleie_orgnr', '980489698');
@@ -1249,7 +1267,7 @@ tariffer:
       // Monday 2026-11-02; the new period starts Tuesday.
       const rows = await refreshElviaAt(new Date(2026, 10, 2, 14, 0, 0), (url) => {
         requested.push(url);
-        return { ok: true, text: async () => elviaFile };
+        return streamedTextResponse(elviaFile);
       });
       expect(requested.every((url) => url.includes('raw.githubusercontent.com/kraftsystemet/fri-nettleie'))).toBe(true);
       expect(requested.some((url) => url.endsWith('/tariffer/elvia.yml'))).toBe(true);
@@ -1261,9 +1279,17 @@ tariffer:
       expect(feeAt(rows, '2026-11-03', 12)).toBeCloseTo(21, 5);
     });
 
+    it('falls back to the bundled table when the live file is over the size cap', async () => {
+      const rows = await refreshElviaAt(new Date(2026, 10, 2, 14, 0, 0), () => (
+        streamedTextResponse(`${elviaFile}# ${'x'.repeat(300 * 1024)}\n`)
+      ));
+      expect(rows).toHaveLength(48);
+      expect(rows.every((row) => row.source === 'fallback')).toBe(true);
+    });
+
     it('falls back to the bundled table when the live file is unreadable', async () => {
       const rows = await refreshElviaAt(new Date(2026, 10, 2, 14, 0, 0), () => (
-        { ok: true, text: async () => 'tariffer: {flow: map}' }
+        streamedTextResponse('tariffer: {flow: map}')
       ));
       expect(rows).toHaveLength(48);
       expect(rows.every((row) => row.source === 'fallback')).toBe(true);

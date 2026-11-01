@@ -55,10 +55,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
 );
 
-const finiteNumber = (value: unknown): number | null => {
-  const number = typeof value === 'number' ? value : Number(value);
-  return typeof value !== 'boolean' && value !== null && Number.isFinite(number) ? number : null;
-};
+// The parser reads a numeric scalar as a number; anything else is not a fee.
+const finiteNumber = (value: unknown): number | null => (
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+);
 
 // A present field PELS cannot read makes its period malformed: reading past it
 // would misprice, e.g. an unknown month name would widen "January" to every
@@ -162,18 +162,24 @@ const hasEnded = (tariff: Record<string, unknown>, todayKey: string): boolean =>
 };
 
 /**
- * The periods of a parsed tariff file still valid on `todayKey` (YYYY-MM-DD) or
- * starting later, per tariff group and oldest first; `null` when the document
- * is not a tariff file, holds no such period, or holds a malformed period that
- * has not visibly ended. A partly read tariff is never returned: it would price
- * the days of the period it could not read on another one.
+ * A parsed tariff file read for `todayKey`: its periods still valid that day or
+ * starting later, per tariff group and oldest first (`tariffs`); `none` when it
+ * holds no such period; `malformed` when it is not a tariff file or holds a
+ * period, not visibly ended, that PELS cannot read. A partly read tariff is
+ * never returned: it would price the days of the period it could not read on
+ * another one.
  */
-export const readFriNettleieTariffs = (document: unknown, todayKey: string): FriNettleieTariffs | null => {
-  if (!isRecord(document) || !Array.isArray(document.tariffer)) return null;
-  if (!document.tariffer.every(isRecord)) return null;
+export type FriNettleieTariffRead =
+  | { kind: 'tariffs'; tariffs: FriNettleieTariffs }
+  | { kind: 'none' }
+  | { kind: 'malformed' };
+
+export const readFriNettleieTariffs = (document: unknown, todayKey: string): FriNettleieTariffRead => {
+  if (!isRecord(document) || !Array.isArray(document.tariffer)) return { kind: 'malformed' };
+  if (!document.tariffer.every(isRecord)) return { kind: 'malformed' };
   const tariffer = document.tariffer.filter((tariff) => !hasEnded(tariff, todayKey));
   const parsed = tariffer.map((tariff) => ({ tariff, period: parsePeriod(tariff) }));
-  if (parsed.some(({ period }) => period === MALFORMED)) return null;
+  if (parsed.some(({ period }) => period === MALFORMED)) return { kind: 'malformed' };
   const groups = KUNDEGRUPPE_TO_TARIFF_GROUP.flatMap(([kundegruppe, group]) => {
     const periods = parsed
       .filter(({ tariff }) => Array.isArray(tariff.kundegrupper) && tariff.kundegrupper.includes(kundegruppe))
@@ -181,5 +187,5 @@ export const readFriNettleieTariffs = (document: unknown, todayKey: string): Fri
       .sort((a, b) => a.from.localeCompare(b.from));
     return periods.length > 0 ? [[group, periods] as const] : [];
   });
-  return groups.length > 0 ? Object.fromEntries(groups) : null;
+  return groups.length > 0 ? { kind: 'tariffs', tariffs: Object.fromEntries(groups) } : { kind: 'none' };
 };

@@ -26,7 +26,7 @@ const loadModules = async () => {
   const result = await build({
     stdin: {
       contents: [
-        "export { friNettleieFileFor } from './lib/price/staticGridTariffFallback';",
+        "export { buildFriNettleieGridTariffDays, friNettleieFileFor } from './lib/price/staticGridTariffFallback';",
         "export { fetchFriNettleieTariffs } from './lib/price/friNettleieFetch';",
         "export { buildGridTariffUrl, normalizeGridTariffData } from './lib/price/gridTariffUtils';",
         "export { gridCompanies } from './packages/settings-ui/src/ui/gridCompanies';",
@@ -70,8 +70,11 @@ const checkCompanies = async (modules) => {
     const file = modules.friNettleieFileFor(company.organizationNumber);
     if (file !== undefined) {
       const fetched = await modules.fetchFriNettleieTariffs(file, date);
-      if (fetched.kind === 'tariffs') continue;
-      findings.push(`${company.name}: Fri Nettleie ${file} ${fetched.reason}`);
+      const today = fetched.kind === 'tariffs'
+        && modules.buildFriNettleieGridTariffDays(fetched.tariffs, TARIFF_GROUP, new Date(), TIME_ZONE);
+      if (today) continue;
+      const reason = fetched.kind === 'tariffs' ? 'has no period covering today' : fetched.reason;
+      findings.push(`${company.name}: Fri Nettleie ${file} ${reason}`);
     } else if (await nveServes(modules, company, date)) {
       fromNve.push(company.name);
     } else {
