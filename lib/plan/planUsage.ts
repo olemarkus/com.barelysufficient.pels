@@ -1,4 +1,5 @@
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import { getSteppedLoadLowestActiveStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { getHighestKnownPowerKw } from '../observer/observedPower';
 import { isPlanDeviceObservedOff } from './planSteppedLoad';
 import { isMeteredPlanDevice } from './planMeteredDevice';
@@ -13,7 +14,6 @@ type UsageDevice = {
   currentState?: string;
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
-  plannedState?: string;
   currentDrawKw: number;
   expectedPowerKw: number;
   planningPowerKw?: number;
@@ -30,14 +30,19 @@ export const toMeteredUsageDevices = <T extends { control: { commandAuthority: b
   devices.filter((device): device is T & MeteredKind => isMeteredPlanDevice(device))
 );
 
-export const sumBudgetExemptProjectedUsageKw = <T extends UsageDevice>(
+/**
+ * `heldOffDeviceIds` is the previous plan's shed set
+ * (`ShedDecisions.lastPlannedShedIds`): the devices PELS itself is keeping off.
+ */
+export const sumBudgetExemptProjectedUsageKw = <T extends UsageDevice & { id: string }>(
   devices: readonly T[],
   countsAsManaged: (device: T) => boolean,
+  heldOffDeviceIds: ReadonlySet<string>,
 ): number => {
   let totalKw = 0;
   for (const dev of devices) {
     if (!dev.budgetExempt || !countsAsManaged(dev)) continue;
-    totalKw += resolveBudgetExemptProjectedKw(dev);
+    totalKw += resolveBudgetExemptProjectedKw(dev, heldOffDeviceIds.has(dev.id));
   }
   return totalKw;
 };
@@ -58,16 +63,23 @@ export const sumBudgetExemptProjectedUsageKw = <T extends UsageDevice>(
  * device being observed OFF, and its measured sibling
  * (`sumBudgetExemptMeasuredUsageKw` in `lib/power/usageAttribution.ts`) is what
  * restore admission spends.
+ *
+ * Two off devices claim less than their configured demand:
+ * - One PELS is holding off claims only what it still draws. The plan is to
+ *   keep its load away, so reserving its demand would only loosen daily-budget
+ *   limiting for every other device while it waits (prod 2026-11-01: a boosted
+ *   charger held off for the hard cap kept its 7 kW learned peak on this axis).
+ * - A device with power steps claims the step it restarts at, its lowest active
+ *   step, never its learned peak: a restart from off never jumps past that rung.
  */
-const resolveBudgetExemptProjectedKw = (dev: UsageDevice): number => {
-  // Kept from the pre-refactor ladder, and currently INERT: the one caller sums
-  // a shape that carries no `plannedState` (`planBuilder` over
-  // `PlanInputDevice[]`), so this never fires today — see `notes/safe-pace-two-constraints.md`. It stays because the
-  // rule it encodes is right: a device PELS decided to shed has no claim to
-  // project, since the plan is to take its load away.
-  if (dev.plannedState === 'shed') return dev.currentDrawKw;
+const resolveBudgetExemptProjectedKw = (dev: UsageDevice, heldOffByPels: boolean): number => {
+  if (heldOffByPels) return dev.currentDrawKw;
   if (dev.currentDrawKw > 0) return dev.currentDrawKw;
   if (!isPlanDeviceObservedOff(dev)) return dev.currentDrawKw;
   // Reached only when the draw is 0, so the fallback arm is 0 — not "the draw".
+  if (dev.steppedLoadProfile) {
+    const restartStep = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);
+    return restartStep ? restartStep.planningPowerW / 1000 : 0;
+  }
   return getHighestKnownPowerKw(dev).kw;
 };
