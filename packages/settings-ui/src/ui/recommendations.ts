@@ -1,13 +1,9 @@
 import { chargingRecommendations } from './chargingRecommendations.ts';
 import type { ChargingAccessStatus, ChargingCurrentRead } from '../../../contracts/src/chargingControl.ts';
 import { CHARGING_ACCESS_PATH, CHARGING_CURRENT_PATH } from '../../../contracts/src/chargingControl.ts';
-import {
-  type SettingsUiDeferredObjectivePlanHistoryPayload,
-} from '../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { type SettingsUiRecommendationCar } from '../../../contracts/src/settingsUi/carLink.ts';
 import {
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
-  SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
 } from '../../../contracts/src/settingsUi/paths.ts';
 import { callApi, coldStartReadRetryDelays, getSetting, getSettingFresh, sleep } from './homey.ts';
 import { logSettingsError } from './logging.ts';
@@ -21,6 +17,7 @@ import {
 } from './recommendationsModel.ts';
 import { parseCarAssociationCandidatesRead } from './carAssociationCandidates.ts';
 import { state } from './state.ts';
+import { readDeferredObjectiveHistory } from './deferredObjectiveHistoryRead.ts';
 import { recordSmartTaskHistoryDevices } from './smartTaskUsage.ts';
 import { resolveDeviceSettingRecommendations } from './deviceSettingRecommendations.ts';
 import { notifySetupPathChange, onSetupPathChange, readSetupPath } from './setupPathFacts.ts';
@@ -117,9 +114,7 @@ const loadSmartTaskUsage = async (): Promise<void> => {
   smartTaskUsageGeneration += 1;
   const generation = smartTaskUsageGeneration;
   try {
-    const history = await callApi<SettingsUiDeferredObjectivePlanHistoryPayload>(
-      'GET', SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
-    );
+    const history = await readDeferredObjectiveHistory('recommendations');
     if (generation !== smartTaskUsageGeneration) return;
     recordSmartTaskHistoryDevices(Object.entries(history.entriesByDeviceId)
       .filter(([, entries]) => entries.length > 0)

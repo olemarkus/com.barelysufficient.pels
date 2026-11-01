@@ -28,7 +28,6 @@ import { type SettingsUiBootstrap } from '../../../contracts/src/settingsUi/boot
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH,
-  SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
 } from '../../../contracts/src/settingsUi/paths.ts';
@@ -43,7 +42,7 @@ import {
 import { showToast, showToastError } from './toast.ts';
 import { initDiagnosticsReportSwitches } from './diagnosticsReportSwitches.ts';
 import { refreshDevices, renderDevices } from './devices.ts';
-import { refreshPowerData } from './uiRefreshTasks.ts';
+import { primeOverviewPlan, refreshPowerData } from './uiRefreshTasks.ts';
 import {
   loadCapacitySettings,
   loadAdvancedSettings,
@@ -414,7 +413,7 @@ const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
     if (bootstrap?.settings && typeof bootstrap.settings === 'object') {
       applyBootstrapSettings(bootstrap.settings);
     }
-    primeApiCache(SETTINGS_UI_PLAN_PATH, { plan: bootstrap.plan ?? null });
+    primeOverviewPlan(bootstrap.plan ?? null);
     primeApiCache(SETTINGS_UI_POWER_PATH, bootstrap.power);
     // Seed the Budget price-level chip from cached power status so the chip
     // is visible on first render. Without this it stays hidden until the

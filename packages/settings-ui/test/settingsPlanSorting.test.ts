@@ -597,6 +597,32 @@ describe('Overview "Let it run now" rescue-gate freshness on tab activation', ()
     document.querySelector('#plan-cards .plan-card__rescue button')
   );
 
+  it('paints the boot Overview from bootstrap while sharing the pending recommendation history', async () => {
+    let finishHistory!: () => void;
+    const history = new Promise((resolve) => {
+      finishHistory = () => resolve({ version: 1, entriesByDeviceId: {} });
+    });
+    const homey = installHomeyMock({
+      apiHandlers: { 'GET /ui_deferred_objective_history': () => history },
+      settings: buildSettingsHomeyState({ capacity_dry_run: false }),
+      uiState: {
+        devices: budgetHeldPlanDevices,
+        plan: budgetHeldPlan,
+        starvationRescuableDeviceIds: ['heater-1'],
+      },
+    });
+
+    await loadSettingsScript();
+    await waitFor(() => rescueChipButton() !== null);
+    await flushPromises();
+
+    expect(homey.api.mock.calls.filter((call) => call[1] === '/ui_bootstrap')).toHaveLength(1);
+    expect(homey.api.mock.calls.filter((call) => call[1] === '/ui_plan')).toHaveLength(0);
+    expect(homey.api.mock.calls.filter((call) => call[1] === '/ui_deferred_objective_history')).toHaveLength(1);
+    finishHistory();
+    await flushPromises();
+  });
+
   it('refreshes the rescuable gate when Overview opens, so a device held back off-tab shows the chip', async () => {
     // Boot with the device budget-held but NOT yet in the rescuable set (it
     // became rescuable only later, while the user was on another tab).
