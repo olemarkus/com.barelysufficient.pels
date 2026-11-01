@@ -358,10 +358,6 @@ md-text-button {
   padding-inline: var(--spacing-3);
 }
 
-.schedules md-text-button:where(:not(.md-text-button--destructive)) {
-  --md-sys-color-primary: var(--pels-text-primary);
-}
-
 .setup-journey__device md-text-button {
   padding-inline: var(--spacing-3);
   justify-self: start;
@@ -3183,7 +3179,24 @@ md-filled-button.is-busy {
 
 .deadlines-list-create-action {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
+  gap: var(--spacing-2);
+}
+
+/* Homey's host stylesheet resets every element's padding, which collapses the
+ * labels onto the buttons' edges; restore the M3 lead/trail space (same idiom
+ * as `.smart-task-actions > md-filled-tonal-button`). The buttons wrap rather
+ * than shrink. */
+.deadlines-list-create-action > md-filled-tonal-button {
+  flex: none;
+  padding-inline: var(--spacing-6);
+}
+
+.deadlines-list-create-action > md-text-button {
+  flex: none;
+  padding-inline: var(--spacing-3);
 }
 
 .smart-task-create,

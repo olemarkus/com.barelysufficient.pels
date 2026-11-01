@@ -1,17 +1,19 @@
 import type {
-  ScheduleCommand, SchedulesSnapshot,
+  Schedule, ScheduleCommand, SchedulesSnapshot,
 } from '../../../contracts/src/schedules.ts';
 import { SETTINGS_UI_SMART_TASK_DEVICES_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import type {
   SettingsUiSmartTaskDevicesResponse, SmartTaskCandidateDevice,
 } from '../../../contracts/src/smartTaskEdit.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
+import { scheduleConflict } from '../../../shared-domain/src/settings/schedules.ts';
 import { callApi } from './homey.ts';
 import { persistScheduleCommand, readSchedules } from './schedulesTransport.ts';
 export { persistScheduleCommand, readSchedules } from './schedulesTransport.ts';
 import { state } from './state.ts';
 import {
-  buildScheduleFromDraft, createScheduleDraft, daysForRepeat, editScheduleDraft,
+  automaticScheduleName, automaticScheduleTime, buildScheduleFromDraft, createScheduleDraft, daysForRepeat,
+  editScheduleDraft,
   type ScheduleDraft, type ScheduleRepeatChoice,
 } from './scheduleDraft.ts';
 import { renderSchedules } from './views/Schedules.tsx';
@@ -59,6 +61,11 @@ const localToday = (timeZone: string): string => {
   return `${parts.year}-${parts.month}-${parts.day}`;
 };
 
+// The schedules a saved one is checked against; a finished one-off acts no more.
+const pendingSchedules = (read: SchedulesSnapshot): Schedule[] => (
+  read.entries.filter((entry) => entry.state !== 'finished').map((entry) => entry.schedule)
+);
+
 const newScheduleDevice = (params: URLSearchParams): SmartTaskCandidateDevice | undefined => {
   const deviceId = params.get(DEVICE_PARAM);
   if (deviceId) return view.devices.find((candidate) => candidate.deviceId === deviceId);
@@ -76,7 +83,8 @@ const hydrateEditor = (id: string, read: SchedulesSnapshot, params: URLSearchPar
       return;
     }
     view = { ...view, editor: {
-      kind: 'new', draft: createScheduleDraft(device, read.modes[0] ?? '', today),
+      kind: 'new', draft: createScheduleDraft(device, read.modes[0] ?? '', today, pendingSchedules(read)),
+      timeConflict: false, nameSet: false, timeSet: false,
     } };
     return;
   }
@@ -85,7 +93,8 @@ const hydrateEditor = (id: string, read: SchedulesSnapshot, params: URLSearchPar
     view = { ...view, editor: null, error: 'This schedule no longer exists. Its saved tasks are unchanged.' };
     return;
   }
-  view = { ...view, editor: { kind: 'existing', draft: editScheduleDraft(schedule, today) } };
+  view = { ...view, editor: { kind: 'existing', draft: editScheduleDraft(schedule, today),
+    timeConflict: false, nameSet: true, timeSet: true } };
 };
 
 const updateEditorFromRoute = (): void => {
@@ -176,7 +185,17 @@ export const backFromScheduleEditor = (): void => {
 
 export const changeScheduleDraft = (patch: Partial<ScheduleDraft>): void => {
   if (!view.editor || view.busy) return;
-  view = { ...view, editor: { ...view.editor, draft: { ...view.editor.draft, ...patch } }, error: '' };
+  const nameSet = view.editor.nameSet || patch.name !== undefined;
+  const timeSet = view.editor.timeSet || patch.at !== undefined;
+  const next = { ...view.editor.draft, ...patch };
+  // A name or time the owner has not set follows the action, device and mode.
+  const schedules = view.read ? pendingSchedules(view.read) : [];
+  const draft = {
+    ...next,
+    name: nameSet ? next.name : automaticScheduleName(next, view.devices),
+    at: timeSet ? next.at : automaticScheduleTime(next, schedules),
+  };
+  view = { ...view, editor: { ...view.editor, draft, timeConflict: false, nameSet, timeSet }, error: '' };
   paint();
 };
 const selectScheduleAction = (actionType: 'mode' | 'task'): void => {
@@ -217,6 +236,12 @@ const saveScheduleDraft = async (): Promise<void> => {
   const references = view.editor.kind === 'existing' && editedEntry ? editedEntry.modeReferences : [];
   const result = buildScheduleFromDraft(view.editor.draft, view.devices, view.read.modes, references);
   if (!result.ok) { view = { ...view, error: result.error }; paint(); return; }
+  // Said at the time field: the owner fixes it there, and nothing needs refreshing.
+  if (scheduleConflict(result.schedule, pendingSchedules(view.read))) {
+    view = { ...view, editor: { ...view.editor, timeConflict: true } };
+    paint();
+    return;
+  }
   if (await writeCommand({ type: 'save', schedule: result.schedule })) backFromScheduleEditor();
 };
 const deleteScheduleDraft = async (): Promise<void> => {

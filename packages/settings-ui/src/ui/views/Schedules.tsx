@@ -255,7 +255,7 @@ const TaskFields = ({ draft, view }: { draft: ScheduleDraft; view: View }) => {
 const Editor = (view: View) => {
   const { snapshot, actions } = view;
   if (!snapshot.editor || !snapshot.read) return null;
-  const { draft, kind } = snapshot.editor;
+  const { draft, kind, timeConflict } = snapshot.editor;
   const disabled = snapshot.busy || snapshot.load !== 'ready';
   const editedEntry = snapshot.read.entries.find((entry) => entry.schedule.id === draft.id);
   const references = kind === 'existing' && editedEntry ? editedEntry.modeReferences : [];
@@ -319,8 +319,15 @@ const Editor = (view: View) => {
               onInput={(event) => actions.onDraftChange({ date: inputValue(event) })} /></label>}
           <label class="field"><span class="field__label pels-text-settings-label">{draft.actionType === 'task' ? 'Create task at' : 'Change mode at'}</span>
             <input type="time" class="smart-task-edit__time-input" value={draft.at} disabled={disabled}
+              aria-invalid={timeConflict} aria-describedby={timeConflict ? 'schedule-time-conflict' : undefined}
               onInput={(event) => actions.onDraftChange({ at: inputValue(event) })} />
-            <small class="field__hint">Days above refer to this action time{draft.actionType === 'task' ? ', even when the task is ready the following day' : ''}.</small>
+            {timeConflict
+              ? <small class="field__hint smart-task-edit__error" id="schedule-time-conflict" role="alert">
+                Another schedule {draft.actionType === 'task' ? 'creates a task for this device' : 'changes mode'} at this time. Choose another time or day.
+              </small>
+              : draft.actionType === 'task' && draft.repeat !== 'once' && <small class="field__hint">
+                The repeat days count from this time, even when the task is ready the following day.
+              </small>}
           </label>
         </section>
         <section class="pels-surface-card schedules-form__section">

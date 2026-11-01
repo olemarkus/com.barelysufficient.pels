@@ -55,28 +55,59 @@ export const scheduleRepeatLabel = (repeat: ScheduleRepeat): string => {
   return SCHEDULE_DAYS.filter((day) => repeat.days.includes(day.value)).map((day) => day.label).join(', ');
 };
 
+/** The name a new schedule carries from its action until the owner types another. */
+export const automaticScheduleName = (draft: ScheduleDraft, devices: readonly SmartTaskCandidateDevice[]): string => {
+  if (draft.actionType === 'mode') return `${draft.mode} mode`;
+  const device = devices.find((candidate) => candidate.deviceId === draft.deviceId);
+  return device ? `${device.deviceName} task` : draft.name;
+};
+
+const performsSameAction = (draft: ScheduleDraft, schedule: Schedule): boolean => (
+  draft.actionType === 'mode' ? schedule.action.type === 'mode'
+    : schedule.action.type === 'task' && schedule.action.task.deviceId === draft.deviceId
+);
+
+/**
+ * The first whole hour from the action's usual time that no other schedule
+ * performing the same action uses, so a new schedule never starts out in
+ * conflict. Repeat days are not compared: a free time is free on every day.
+ */
+export const automaticScheduleTime = (draft: ScheduleDraft, schedules: readonly Schedule[]): string => {
+  const taken = new Set(schedules
+    .filter((schedule) => schedule.id !== draft.id && schedule.enabled && performsSameAction(draft, schedule))
+    .map((schedule) => schedule.at));
+  const startHour = draft.actionType === 'task' ? 18 : 22;
+  const free = Array.from({ length: 24 }, (_, offset) => `${String((startHour + offset) % 24).padStart(2, '0')}:00`)
+    .find((time) => !taken.has(time));
+  return free ?? `${startHour}:00`;
+};
+
 export const createScheduleDraft = (
   device: SmartTaskCandidateDevice | undefined,
   mode: string,
   today: string,
-): ScheduleDraft => ({
-  id: crypto.randomUUID(),
-  name: device ? `${device.deviceName} task` : `${mode} mode`,
-  enabled: true,
-  actionType: device ? 'task' : 'mode',
-  mode,
-  deviceId: device?.deviceId ?? '',
-  taskKind: device?.kind ?? null,
-  target: device ? String(device.defaultGoal) : '',
-  readyBy: '07:00',
-  permissions: { ...EMPTY_PERMISSIONS },
-  at: device ? '18:00' : '22:00',
-  repeat: 'daily',
-  days: daysForRepeat('daily'),
-  date: today,
-  conditionType: 'any',
-  conditionModes: [],
-});
+  schedules: readonly Schedule[],
+): ScheduleDraft => {
+  const draft: ScheduleDraft = {
+    id: crypto.randomUUID(),
+    name: device ? `${device.deviceName} task` : `${mode} mode`,
+    enabled: true,
+    actionType: device ? 'task' : 'mode',
+    mode,
+    deviceId: device?.deviceId ?? '',
+    taskKind: device?.kind ?? null,
+    target: device ? String(device.defaultGoal) : '',
+    readyBy: '07:00',
+    permissions: { ...EMPTY_PERMISSIONS },
+    at: '',
+    repeat: 'daily',
+    days: daysForRepeat('daily'),
+    date: today,
+    conditionType: 'any',
+    conditionModes: [],
+  };
+  return { ...draft, at: automaticScheduleTime(draft, schedules) };
+};
 
 export const editScheduleDraft = (schedule: Schedule, today: string): ScheduleDraft => {
   const task = schedule.action.type === 'task' ? schedule.action.task : null;
