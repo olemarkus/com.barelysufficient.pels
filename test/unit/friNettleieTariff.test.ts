@@ -29,21 +29,38 @@ describe('readFriNettleieTariffs', () => {
         unntak: [
           { navn: 'Dag', timer: ['6-8', 17], dager: ['Virkedag'], måneder: ['januar', 'februar'], pris: 20 },
           { navn: 'Hele døgnet', pris: 5 },
-          { navn: 'Uten pris', timer: '1' },
+          { navn: 'Natt', timer: '22-5', pris: 3 },
         ],
       })],
     }, '2026-11-02');
     expect(tariffs?.Husholdning?.[0]?.exceptions).toEqual([
       { hours: [6, 7, 8, 17], price: 20, months: [1, 2], dayTypes: ['virkedag'] },
       { hours: Array.from({ length: 24 }, (_, hour) => hour), price: 5 },
+      // A span past midnight.
+      { hours: [0, 1, 2, 3, 4, 5, 22, 23], price: 3 },
     ]);
   });
 
-  it('clamps an hour range to the day', () => {
-    const tariffs = readFriNettleieTariffs({
-      tariffer: [period('2026-01-01', undefined, 10, { unntak: [{ navn: 'Kveld', timer: '20-99999999', pris: 20 }] })],
+  it('rejects the file when a current period has a field it cannot read', () => {
+    const withException = (unntak: Record<string, unknown>) => readFriNettleieTariffs({
+      tariffer: [period('2026-01-01', undefined, 10, { unntak: [{ navn: 'Dag', timer: '6-21', pris: 20, ...unntak }] })],
     }, '2026-11-02');
-    expect(tariffs?.Husholdning?.[0]?.exceptions[0]?.hours).toEqual([20, 21, 22, 23]);
+    expect(withException({ timer: '20-99999999' })).toBeNull();
+    expect(withException({ timer: 'kveld' })).toBeNull();
+    expect(withException({ måneder: ['januar', 'jnauar'] })).toBeNull();
+    expect(withException({ dager: ['virkedag', 'hverdag'] })).toBeNull();
+    expect(withException({ pris: 'tjue' })).toBeNull();
+    expect(readFriNettleieTariffs({ tariffer: [period('2026-01-01', 'snart', 10)] }, '2026-11-02')).toBeNull();
+  });
+
+  it('ignores a malformed period that has ended', () => {
+    const tariffs = readFriNettleieTariffs({
+      tariffer: [
+        period('2025-01-01', '2026-01-01', 10, { unntak: [{ navn: 'Dag', timer: 'kveld', pris: 20 }] }),
+        period('2026-01-01', undefined, 12),
+      ],
+    }, '2026-11-02');
+    expect(tariffs?.Husholdning?.map((entry) => entry.basePrice)).toEqual([12]);
   });
 
   it('drops a period with an implausible fee', () => {

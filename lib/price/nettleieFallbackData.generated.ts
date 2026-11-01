@@ -661,6 +661,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
               "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
               "price": 12.7,
               "months": [1, 2, 3, 4, 11, 12]
+            },
+            {
+              "hours": [0, 1, 2, 3, 4, 5, 22, 23],
+              "price": 2.7,
+              "months": [1, 2, 3, 4, 11, 12]
             }
           ]
         }
@@ -678,6 +683,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
             {
               "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
               "price": 12.7,
+              "months": [1, 2, 3, 4, 11, 12]
+            },
+            {
+              "hours": [0, 1, 2, 3, 4, 5, 22, 23],
+              "price": 2.7,
               "months": [1, 2, 3, 4, 11, 12]
             }
           ]
@@ -959,6 +969,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
           "basePrice": 26.89,
           "exceptions": [
             {
+              "hours": [0, 1, 2, 3, 4, 5, 22, 23],
+              "price": 24.89,
+              "months": [4, 5, 6, 7, 8, 9, 10, 11, 12]
+            },
+            {
               "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
               "price": 29.89,
               "months": [1, 2, 3]
@@ -1076,6 +1091,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
               "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
               "price": 31.4,
               "months": [1, 2, 3, 10, 11, 12]
+            },
+            {
+              "hours": [0, 1, 2, 3, 4, 5, 22, 23],
+              "price": 28.4,
+              "months": [1, 2, 3, 10, 11, 12]
             }
           ]
         }
@@ -1093,6 +1113,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
             {
               "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
               "price": 31.4,
+              "months": [1, 2, 3, 10, 11, 12]
+            },
+            {
+              "hours": [0, 1, 2, 3, 4, 5, 22, 23],
+              "price": 28.4,
               "months": [1, 2, 3, 10, 11, 12]
             }
           ]

@@ -119,6 +119,7 @@ const main = async () => {
     }
     const tariffs = readFriNettleieTariffs(doc, todayKey);
     if (!tariffs) {
+      // No current period, or a current one PELS cannot read.
       skippedNoTariff += 1;
       continue;
     }
@@ -190,9 +191,15 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     if (!matches || unreadable.length > 0) process.exitCode = 1;
     return;
   }
+  // A table built without an unreadable file would drop that company, so the
+  // committed one stays until every file reads.
+  if (unreadable.length > 0) {
+    console.error(`Not writing ${OUT_PATH}: ${unreadable.length} unreadable file(s)`);
+    process.exitCode = 1;
+    return;
+  }
   await writeFile(OUT_PATH, ts, 'utf8');
   console.log(`Wrote ${OUT_PATH}`);
-  if (unreadable.length > 0) process.exitCode = 1;
 };
 
 main().catch((error) => {
