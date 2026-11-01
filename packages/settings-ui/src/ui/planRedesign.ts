@@ -3,7 +3,6 @@ import {
   type SettingsUiDeferredObjectivePlanHistoryPayload,
 } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
 import {
-  SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
 } from '../../../contracts/src/settingsUi/paths.ts';
@@ -11,7 +10,8 @@ import { type SettingsUiPlanPayload } from '../../../contracts/src/settingsUi/pl
 import { type SettingsUiPowerPayload } from '../../../contracts/src/settingsUi/power.ts';
 import { type SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
-import { callApi, getApiReadModel } from './homey.ts';
+import { getApiReadModel } from './homey.ts';
+import { readDeferredObjectiveHistory } from './deferredObjectiveHistoryRead.ts';
 import { getHomeScope, readHomeMembership } from './homeScope.ts';
 import { setPlanUnmeasured } from './planMeasurementSignal.ts';
 import { readAreaSimulationPosture, readOverviewPlan } from './overviewPlanRead.ts';
@@ -407,9 +407,10 @@ const readPricesForPlanRefresh = async (): Promise<SettingsUiPricesPayload | nul
 // Fire-and-forget history refresh: the row's miss-streak variant is optional
 // context, so a slow or retrying `/ui_deferred_objective_history` read must
 // never delay the main Overview refresh (plan/power/prices). Uncached read
-// (the same contract the Smart-tasks list uses): nothing invalidates a cached
-// history payload when a run finalizes. Last-wins guarded so an older slow
-// read can't overwrite a fresher one; repaints when the badges land.
+// (the same contract the Smart-tasks list uses), sharing only an in-flight
+// recommendation read; completed history responses are never cached. Last-wins
+// guarded so an older slow read can't overwrite a fresher one; repaints when
+// the badges land.
 // A streak changes only when a run ends, so the history is read when the
 // Overview opens, when a task's active plan changes, and on the Overview's
 // slow safety-net refresh, not on every plan refresh. Main only: the row is a
@@ -422,10 +423,7 @@ export const refreshPlanHistory = (): void => {
   void (async () => {
     let payload: SettingsUiDeferredObjectivePlanHistoryPayload | null;
     try {
-      payload = await callApi<SettingsUiDeferredObjectivePlanHistoryPayload>(
-        'GET',
-        SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
-      );
+      payload = await readDeferredObjectiveHistory('overview');
     } catch {
       payload = null;
     }

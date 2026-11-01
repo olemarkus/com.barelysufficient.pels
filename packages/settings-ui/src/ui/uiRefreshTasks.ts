@@ -8,7 +8,8 @@ import { getTargetDevices, renderDevices } from './devices.ts';
 import { loadStaleDataStatus } from './capacity.ts';
 import { refreshHomeBadges } from './homeBadges.ts';
 import { refreshHomeScopeAndNotify, subscribeToHomeScope } from './homeScope.ts';
-import { invalidateApiCache, invalidateApiCacheForAllHomes } from './homey.ts';
+import { invalidateApiCache, invalidateApiCacheForAllHomes, primeApiCache } from './homey.ts';
+import type { SettingsUiBootstrap } from '../../../contracts/src/settingsUi/bootstrap.ts';
 import { loadModeAndPriorities, renderPriorities } from './modes.ts';
 import { refreshCurrentPriceView, refreshPriceConfigView, renderPriceConfigDevices } from './priceConfig.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
@@ -72,6 +73,12 @@ export const isPanelVisible = (selector: string): boolean => {
 // hero's power from the status read they already make.
 const OVERVIEW_SAFETY_NET_POLLS = 4;
 let pollsSinceOverviewRead = 0;
+let overviewBootstrapPending = false;
+
+export const primeOverviewPlan = (plan: SettingsUiBootstrap['plan']): void => {
+  primeApiCache(SETTINGS_UI_PLAN_PATH, { plan });
+  overviewBootstrapPending = true;
+};
 
 // Opening the Overview, or picking a home while it is open, reads the plan anew:
 // a device can have become held back (or gained a smart task) while the panel
@@ -80,7 +87,11 @@ let pollsSinceOverviewRead = 0;
 export const refreshOverviewPlan = (): Promise<void> => {
   // A full read: the safety net counts from here.
   pollsSinceOverviewRead = 0;
-  invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
+  // The first activation (including the initial roster publication) can use
+  // bootstrap's plan. Normal cache invalidations still apply while boot runs.
+  // Later activations must re-read changes made while Overview was hidden.
+  if (!overviewBootstrapPending) invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
+  overviewBootstrapPending = false;
   refreshPlanHistory();
   return refreshPlan();
 };

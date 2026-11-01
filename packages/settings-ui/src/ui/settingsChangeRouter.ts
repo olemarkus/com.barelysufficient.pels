@@ -1,3 +1,4 @@
+import { invalidateDeferredObjectiveHistoryRead } from './deferredObjectiveHistoryRead.ts';
 import { notifySchedulesSettingChanged } from './schedules.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
 import {
@@ -393,6 +394,7 @@ const refreshAreaPowerTracker = (homeId: string, context: string) => {
 // BOTH `settings.set` (create/change) and `settings.unset` (clear).
 const reloadObjectivesIfObjectiveKey = (key: string, context: string): void => {
   if (!key.startsWith(PER_DEVICE_OBJECTIVE_KEY_PREFIX)) return;
+  invalidateDeferredObjectiveHistoryRead();
   invalidateApiCache(SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH);
   runLoggedTask(loadDeferredObjectiveSettings(), 'Failed to reload deferred objectives', context);
   // The list re-reads three payloads, so a hidden Smart tasks panel waits for
@@ -412,6 +414,7 @@ const reloadObjectivesIfObjectiveKey = (key: string, context: string): void => {
  * that dropped a plan (the task ended) arrives the same way.
  */
 export const handleDeferredObjectiveActivePlansUpdated = (payload: unknown): void => {
+  invalidateDeferredObjectiveHistoryRead();
   applyDeferredObjectiveActivePlansPush(payload);
   // A run that ended can extend or break a miss streak on the Overview row.
   refreshPlanHistoryIfVisible();
