@@ -21,6 +21,7 @@ import {
   parseSmartTaskCandidateRequest,
   resolveSmartTaskRequestDeadline,
   resolveSmartTaskWriteDeadline,
+  type SmartTaskLanePorts,
 } from './smartTaskCandidateRequest';
 import { rejectForSmartTaskHomeScope } from './smartTaskCreateLane';
 
@@ -43,14 +44,9 @@ export type SmartTaskEditLaneHost = Pick<
   cancelDeferredObjective(deviceId: string): SettingsUiSmartTaskCancelResponse;
 };
 
-/**
- * What the lane reads and calls: the app (`null` while it is not wired, during
- * the boot window), the stored tasks, and the Homey clock.
- */
-export type SmartTaskEditLanePorts = {
-  host: SmartTaskEditLaneHost | null;
+/** What the lane reads and calls: the app, the Homey clock, and the stored tasks. */
+export type SmartTaskEditLanePorts = SmartTaskLanePorts<SmartTaskEditLaneHost> & {
   store: ObjectiveSettingsStore;
-  clock: { getTimezone(): string };
 };
 
 const previewReject = (reason: SettingsUiSmartTaskRejectReason): SettingsUiSmartTaskPreviewResponse => ({

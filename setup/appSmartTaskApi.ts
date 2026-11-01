@@ -17,32 +17,30 @@ import {
   readDeferredObjectiveRoster,
   previewDeferredObjectivePlan,
   previewSmartTaskQuickTargetsForDevice,
-  createObjectiveForDevice,
-  upsertObjectiveForDevice,
   type DeferredObjectivePlanPreviewCandidate,
   type DeferredObjectiveSettingsEntry,
   type SmartTaskQuickTargetPreview,
   type TaskEvaluationSource,
 } from '../lib/objectives/deferredObjectives';
 import {
-  buildDeferredObjectiveDeviceWriteDeps,
   cancelDeferredObjectiveForContext,
   toPlanDevice,
 } from './appInit';
 import type { CancelDeferredObjectiveOutcome } from '../lib/app/pelsHost';
 import type { NewSmartTaskWriteResult } from '../packages/contracts/src/smartTaskEdit';
 import { requirePlanService } from './appInit/contextGuards';
-import { requireDeferredObjectiveActivePlanRecorder } from './appInit/deferredRecorders';
 import {
-  mapObjectiveWriteRefusalReason,
-  resolveSmartTaskHomeScope,
-} from './appInit/smartTaskHomeScope';
+  requireDeferredObjectiveActivePlanRecorder,
+  resolveDeferredObjectiveDeviceWriteDeps,
+} from './appInit/deferredRecorders';
+import { resolveSmartTaskHomeScope } from './appInit/smartTaskHomeScope';
 import { gateCandidateExtraPermissions } from '../lib/objectives/deferredObjectives/limitGrantGate';
 import {
-  validateSmartTaskWrite,
-  type SmartTaskWriteReads,
-  type ValidatedSmartTaskWrite,
-} from '../lib/objectives/deferredObjectives/smartTaskWriteValidation';
+  createFreshSmartTask,
+  upsertSmartTask,
+  type SmartTaskWritePorts,
+} from '../lib/objectives/deferredObjectives/smartTaskWrite';
+import { createRescueSmartTask } from '../lib/objectives/deferredObjectives/smartTaskRescueCreateLane';
 import { isRuntimePlannedDevice } from './appDeviceSupport';
 import type { StarvationRescuePlanPreview } from '../packages/contracts/src/starvationRescue';
 import { asMeteredSnapshot } from '../lib/ports/meteredSnapshots';
@@ -60,9 +58,11 @@ export type SmartTaskWriteResult = WidgetObjectiveWriteResult;
  * The app's smart-task (deferred-objective) WRITE surface: preview, create,
  * cancel, and the budget-exempt starvation rescue. `PelsApp` keeps thin
  * delegating stubs because both the widget host API (`PelsWidgetHostApi`) and
- * the settings-UI handlers reach these through `homey.app`; the bodies (and the
- * gating rationale) live here. Read-only payload assembly is the sibling
- * `AppSmartTaskPayloads`.
+ * the settings-UI handlers reach these through `homey.app`. The previews are
+ * assembled here; the writes bind their ports and forward to
+ * `lib/objectives/deferredObjectives/` (`smartTaskWrite.ts`,
+ * `smartTaskRescueCreateLane.ts`), which decides them. Read-only payload
+ * assembly is the sibling `AppSmartTaskPayloads`.
  *
  * Everything this needs is already on `AppContext` (snapshot reads, clock,
  * price/budget services, the deferred-objective recorders), so the cluster
@@ -234,168 +234,53 @@ export class AppSmartTaskApi {
     };
   }
 
-  // Shared validation for both objective-write lanes (`createDeferredObjective`
-  // and `rescueDeviceWithBudgetExemption`), decided in
-  // `lib/objectives/deferredObjectives/smartTaskWriteValidation.ts`. This binds
-  // the owner reads it runs on: the runtime plan input, the planner's
-  // planned-set rule, the picker, the Main-home scope and the stored tasks.
-  private resolveValidatedObjectiveEntry(
-    deviceId: string,
-    candidate: DeferredObjectivePlanPreviewCandidate,
-  ): ValidatedSmartTaskWrite<PlanInputSnapshotDevice> {
-    return validateSmartTaskWrite(this.writeReads(), deviceId, candidate);
-  }
-
-  private writeReads(): SmartTaskWriteReads<PlanInputSnapshotDevice> {
+  // The ports every smart-task write runs on, decided in
+  // `lib/objectives/deferredObjectives/smartTaskWrite.ts`: the runtime plan
+  // input, the planner's planned-set rule, the picker, the Main-home scope, the
+  // stored tasks, and the device-scoped write op's deps.
+  private writePorts(): SmartTaskWritePorts<PlanInputSnapshotDevice> {
+    const nowMs = this.ctx.getNow().getTime();
     return {
-      findPlanInputDevice: (deviceId) => this.ctx.getPlanInputSnapshot().find((entry) => entry.id === deviceId),
-      isRuntimePlanned: isRuntimePlannedDevice,
-      isPickerDevice: (deviceId) => this.ctx.getUiPickerDevices().some((entry) => entry.id === deviceId),
-      resolveHomeScope: (deviceId) => resolveSmartTaskHomeScope(this.ctx, deviceId),
-      store: this.ctx.homey.settings,
+      reads: {
+        findPlanInputDevice: (deviceId) => this.ctx.getPlanInputSnapshot().find((entry) => entry.id === deviceId),
+        isRuntimePlanned: isRuntimePlannedDevice,
+        isPickerDevice: (deviceId) => this.ctx.getUiPickerDevices().some((entry) => entry.id === deviceId),
+        resolveHomeScope: (deviceId) => resolveSmartTaskHomeScope(this.ctx, deviceId),
+        store: this.ctx.homey.settings,
+      },
+      resolveWriteDeps: () => resolveDeferredObjectiveDeviceWriteDeps(this.ctx, nowMs),
+      nowMs,
     };
   }
 
-  // Persist a new smart task (deferred objective) for an eligible device,
-  // routing through the SAME device-scoped write op the deadline Flow cards use
-  // (`upsertObjectiveForDevice` over the per-device-key store, built by
-  // `buildDeferredObjectiveDeviceWriteDeps`). There is no parallel
-  // persistence path: the candidate is validated through the same
-  // `normalizeDeferredObjectiveSettingsEntry` normalizer that gates Flow-card
-  // and settings writes, and the device's eligibility/kind is checked against
-  // the live snapshot the same way the Flow cards check it.
-  //
-  // PLANNED-SET HONESTY: persistence is restricted to devices in
-  // `getPlanInputSnapshot` — the managed, runtime-planned set. The planner only
-  // evaluates objectives whose device is in that snapshot (see
-  // `buildDeferredObjectiveDiagnostics`: a missing device yields
-  // `objective_missing_device` and is never planned). When the managed-device
-  // filter is active, a picker-only (unmanaged) device is absent from the
-  // snapshot, so creating a task on it would persist a task that never plans or
-  // controls anything. The Flow-card create path is already honest here — its
-  // device autocomplete is sourced from the same runtime snapshot — so to match
-  // it we reject picker-only devices with `device_not_planned` rather than
-  // inventing a promotion mechanism neither path has. (The preview at
-  // `previewDeferredObjectivePlan` uses the same managed runtime snapshot, so
-  // preview and execution agree about which devices can be planned.)
-  //
-  // The candidate's `deadlineAtMs` is resolved by the caller (the widget API
-  // handler, server-side, via `resolveDeferredObjectiveDeadline` against the
-  // app timezone) so this method stays timezone-agnostic and matches the
-  // Flow-card contract of receiving an already-absolute deadline.
-  //
-  // Returns `{ ok: false }` with a stable reason code on rejection so the
-  // widget can surface an honest error without leaking internal detail.
-  //
+  // The widget create and the settings UI's edit (`upsertSmartTask`).
   // `rescuePolicy` is REQUIRED here on purpose: the app stub already defaults
   // it, and a second default on this body could drift from that one.
-  // `'preserve'` is the additive lane, where a candidate that names no
-  // permissions leaves a standing grant alone; the settings-UI edit lane passes
-  // `'replace'` because its request states the COMPLETE desired set, so an
-  // unchecked toggle must actually revoke.
   public createDeferredObjective(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
     rescuePolicy: 'preserve' | 'replace',
   ): SmartTaskWriteResult {
-    const validated = this.resolveValidatedObjectiveEntry(deviceId, candidate);
-    if (!validated.ok) return validated;
-    const { device, entry } = validated;
-
-    if (!this.ctx.deferredObjectivePlanHistoryRecorder || !this.ctx.deferredObjectiveActivePlanRecorder) {
-      return { ok: false, reason: 'invalid_candidate' };
-    }
-
-    // Per-device-key write: touches only this device's settings key, so it
-    // cannot drop a sibling task. When the candidate carries opt-in "Extra
-    // permissions" (already eligibility-gated above), the entry's own `rescue` is
-    // persisted as-is. When it does not, the default `preserve` policy keeps a
-    // standing permission set elsewhere (e.g. by the budget-exempt rescue lane,
-    // `rescueDeviceWithBudgetExemption`) intact rather than wiping it. The write
-    // can still REFUSE on an untrustworthy absence read; surface that as a
-    // retryable failure instead of a false
-    // success so the widget can re-offer the create.
-    const outcome = upsertObjectiveForDevice(
-      buildDeferredObjectiveDeviceWriteDeps(this.ctx, this.ctx.getNow().getTime()),
-      deviceId, device.name ?? null, entry, rescuePolicy,
-    );
-    // Refusal → reject union mapping (durable scope reasons stay typed; the
-    // transient refusals collapse to the retryable `write_refused` lane).
-    if (!outcome.persisted) return { ok: false, reason: mapObjectiveWriteRefusalReason(outcome.reason) };
-    return { ok: true };
+    return upsertSmartTask(this.writePorts(), deviceId, candidate, rescuePolicy);
   }
 
-  // The settings UI's create: a fresh task, never one written over an open task
-  // (`createObjectiveForDevice` refuses against its own read of the previous
-  // entry), with exactly the permissions the request names (`'replace'`), since
-  // the create form shows every one of them and its preview priced exactly those.
+  // The settings UI's create (`createFreshSmartTask`).
   public createNewDeferredObjective(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
   ): NewSmartTaskWriteResult {
-    const validated = this.resolveValidatedObjectiveEntry(deviceId, candidate);
-    if (!validated.ok) return validated;
-    const { device, entry } = validated;
-    if (!this.ctx.deferredObjectivePlanHistoryRecorder || !this.ctx.deferredObjectiveActivePlanRecorder) {
-      return { ok: false, reason: 'invalid_candidate' };
-    }
-    const outcome = createObjectiveForDevice(
-      buildDeferredObjectiveDeviceWriteDeps(this.ctx, this.ctx.getNow().getTime()),
-      deviceId, device.name ?? null, entry, 'replace',
-    );
-    if (outcome.persisted) return { ok: true };
-    if (outcome.reason === 'open_task_exists') return { ok: false, reason: 'task_exists' };
-    return { ok: false, reason: mapObjectiveWriteRefusalReason(outcome.reason) };
+    return createFreshSmartTask(this.writePorts(), deviceId, candidate);
   }
 
   public cancelDeferredObjective(deviceId: string): CancelDeferredObjectiveOutcome {
     return cancelDeferredObjectiveForContext(this.ctx, deviceId);
   }
 
-  // Grant a device the starvation-rescue widget's bounded budget-exempt rescue.
-  // A rescue is always a FRESH task: `getStarvedRescueDevices` only offers a
-  // device that has no smart task yet (and this method re-asserts it), so there
-  // is no merge — the rescue REUSES the create engine (`createDeferredObjective`).
-  // The candidate carries ALL THREE extra permissions (`buildRescueCandidate`):
-  // `exemptFromBudget`, `limitLowerPriorityDevices` and `pauseLowerPriorityDevices`.
-  // `createDeferredObjective`'s `gateCandidateExtraPermissions` keeps the budget
-  // exemption and the startup reservation for any device — both are ungated — and
-  // the limit-lower-priority grant wherever it has effect (stepped-load; NOT
-  // gated on priority). So a rescue can persist any
-  // subset, and the surfaces derive what they show from the preview's
-  // `grantedRescuePermissions` rather than from the request.
-  //
-  // This lifts the DAILY BUDGET, grants priority over lower-priority devices
-  // where effective, and reserves the device's startup power from lower-priority
-  // admission — but NEVER raises the capacity cap (the hard cap holds the tariff
-  // step; never a remedy): every one of those only redistributes load WITHIN the
-  // cap. The budget-exemption assertion below is defence-in-depth so the
-  // exemption can't be smuggled through a generic create — it doesn't rest solely
-  // on the widget API being the only caller.
+  // The starvation rescue's budget-exempt create (`createRescueSmartTask`).
   public rescueDeviceWithBudgetExemption(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
   ): SmartTaskWriteResult {
-    // Defence-in-depth (feedback_hard_cap_is_physical): this lane exists only to
-    // grant a budget exemption; reject any candidate that does not carry one so
-    // the exemption can never be smuggled in through a generic create. It
-    // persists even while no daily budget is on: it is one of the conditions
-    // under which the planner fully reserves the rescue's steps
-    // (`rescueReplan.ts`), so dropping it would plan a stepped device at its
-    // lowest step.
-    if (candidate.rescue?.exemptFromBudget !== 'always') {
-      return { ok: false, reason: 'invalid_candidate' };
-    }
-    // A device that already has an open smart task is not rescuable. Re-assert
-    // here (the list already excludes it) so this lane can never REPLACE a user's
-    // active or paused future task: the rescue is strictly a fresh create.
-    if (this.hasDeferredObjectiveForDevice(deviceId)) {
-      return { ok: false, reason: 'device_not_eligible' };
-    }
-    // `'preserve'`: this lane is a strictly-fresh create (the guard above
-    // refuses a device that already has a task), so there is no standing rescue
-    // to preserve OR replace — it takes the additive default the widget lane uses.
-    return this.createDeferredObjective(deviceId, candidate, 'preserve');
+    return createRescueSmartTask(this.writePorts(), deviceId, candidate);
   }
-
 }

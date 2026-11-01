@@ -42,7 +42,6 @@ export {
   applyDeferredObjectiveChange,
 } from './objectiveChange';
 export {
-  createObjectiveForDevice,
   upsertObjectiveForDevice,
   clearObjectiveForDevice,
   type DeferredObjectiveDeviceWriteDeps,
