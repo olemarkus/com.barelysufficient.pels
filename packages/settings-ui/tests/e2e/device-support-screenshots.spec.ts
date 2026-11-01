@@ -38,6 +38,12 @@ test('captures device support surfaces', async ({ browser, browserName, baseURL 
     await link.scrollIntoViewIfNeeded();
     return page.locator('#devices-panel .list__footer');
   } });
+  await captureThemes({ browser, baseURL, outDir, prepare, name: 'setup', open: async (page) => {
+    await page.goto('/?page=settings/devices&setup=devices');
+    const prompt = page.locator('#devices-panel [data-setup-missing-device]');
+    await prompt.scrollIntoViewIfNeeded();
+    return prompt;
+  } });
   await captureThemes({ browser, baseURL, outDir, prepare, name: 'picker', open: async (page) => {
     await openPicker(page);
   } });

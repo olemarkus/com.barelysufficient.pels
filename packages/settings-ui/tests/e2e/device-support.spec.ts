@@ -59,3 +59,16 @@ test('opens a supported device on Devices instead of a support request', async (
   await expect(page.locator('#report-problem-panel')).toBeHidden();
   expect((await readDeviceSupportStub(page)).requests).toHaveLength(0);
 });
+
+test('setup points to Find a device under its device list, and Back returns to setup', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 1100 });
+  await page.goto('/?page=settings/devices&setup=devices');
+  const prompt = page.locator('#devices-panel [data-setup-missing-device]');
+  await expect(prompt).toContainText('Missing a device?');
+  await prompt.getByRole('button', { name: 'Find a device' }).click();
+  const picker = page.locator('#device-support-panel');
+  await expect(picker.locator('[data-device-picker-id="dev_knx_relay"]')).toBeVisible();
+  await picker.getByRole('button', { name: 'Back to Devices' }).click();
+  await expect(page).toHaveURL(/setup=devices/);
+  await expect(prompt).toBeVisible();
+});

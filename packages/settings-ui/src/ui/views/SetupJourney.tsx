@@ -26,6 +26,18 @@ type SetupDevicePickerProps = {
   onRetry: () => void;
 };
 
+// Setup is where an owner first notices a device PELS does not list, so the
+// way to request support for it sits right under the list.
+const MissingDevicePrompt = () => (
+  <section class="pels-surface-card setup-journey__device" data-setup-missing-device>
+    <h3 class="plan-card__title">Missing a device?</h3>
+    <p class="pels-card-supporting">
+      Find any device in Homey and request support for one PELS does not list. Support usually comes within 1–2 days.
+    </p>
+    <MdTextButton type="button" data-settings-target="device-support">Find a device</MdTextButton>
+  </section>
+);
+
 export const SetupDevicePicker = (props: SetupDevicePickerProps) => (
   <div class="setup-journey__devices">
     {props.choices.state === 'loading' && <p>Loading devices…</p>}
@@ -49,6 +61,7 @@ export const SetupDevicePicker = (props: SetupDevicePickerProps) => (
     {props.choices.state === 'ready' && props.choices.devices.length === 0 && (
       <p>No suitable devices found. Check the devices available in Homey.</p>
     )}
+    {props.choices.state === 'ready' && <MissingDevicePrompt />}
   </div>
 );
 

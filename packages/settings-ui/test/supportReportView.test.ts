@@ -124,7 +124,7 @@ describe('support report view', () => {
     const { surface } = mountSupportRequest({ ...supportReportFixture(), submission: { state: 'sent', reference: 'ref-9' } });
     expect(surface.textContent).toContain('Request sent');
     expect(surface.textContent).toContain('Reference: ref-9');
-    expect(surface.textContent).toContain('Support for a new device usually needs an app update.');
+    expect(surface.textContent).toContain('within 1–2 days, depending on how complex the device is.');
     expect(surface.textContent).toContain('and quote the reference.');
     expect(surface.querySelector('a[href^="mailto:"]')?.getAttribute('href'))
       .toBe('mailto:olemarkus@gmail.com?subject=PELS%20device%20support%20ref-9');
