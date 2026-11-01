@@ -16,9 +16,9 @@ const readSubject = (raw: unknown): SupportReportSubject => {
   if (!isUnknownRecord(raw) || typeof raw.homeId !== 'string' || !raw.homeId.trim()
     || raw.homeId.length > 200) throw new SupportReportInputError('invalid_subject');
   if (raw.kind === 'app') return { kind: 'app', homeId: raw.homeId };
-  if (raw.kind === 'device' && typeof raw.deviceId === 'string'
+  if ((raw.kind === 'device' || raw.kind === 'device_support') && typeof raw.deviceId === 'string'
     && raw.deviceId.trim() && raw.deviceId.length <= 200) {
-    return { kind: 'device', homeId: raw.homeId, deviceId: raw.deviceId };
+    return { kind: raw.kind, homeId: raw.homeId, deviceId: raw.deviceId };
   }
   throw new SupportReportInputError('invalid_subject');
 };

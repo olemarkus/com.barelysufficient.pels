@@ -130,6 +130,7 @@ import { initTooltips } from './tooltips.ts';
 import { initWebAppAddressCopy, saveCloudHost } from './webAppLink.ts';
 import { initExternalLinks } from './externalLinks.ts';
 import { initSupportReportNavigation } from './supportReport.ts';
+import { initDeviceSupportPicker } from './deviceSupportPicker.ts';
 import { initDebouncedSaveFlush } from './utils.ts';
 import { handleResetStats } from './resetStats.ts';
 import { createSwitchField } from './components.ts';
@@ -526,6 +527,7 @@ const initializeBootHandlers = () => {
   initCurrentModes();
   initDeviceDetailHandlers();
   initSupportReportNavigation(showTab, closeDeviceDetail);
+  initDeviceSupportPicker({ openPanel: showTab, openDevice: openDeviceDetailAt });
   initModeHandlers();
   initLimitsAndSimulationHandlers();
   initDailyBudgetHandlers();

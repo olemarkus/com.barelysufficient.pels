@@ -8,8 +8,20 @@ import { getHomeIdForUiDevice, getHomeScope, readHomeMembership, refreshHomeScop
 import { state } from './state.ts';
 import { SupportReportController } from './supportReportController.ts';
 import type { ReportDeviceOption, SupportReportViewState } from './supportReportModel.ts';
-import { renderSupportReportView } from './views/SupportReportView.tsx';
+import { renderSupportReportView, type SupportForumTopic } from './views/SupportReportView.tsx';
 import { showToast } from './toast.ts';
+import { findHomeyDeviceName, loadHomeyDeviceList } from './homeyDeviceList.ts';
+import { readSetupMarket } from './setupPathFacts.ts';
+
+const APP_FORUM_TOPIC = { url: 'https://community.homey.app/t/147496', label: 'PELS forum thread' };
+const NORWEGIAN_FORUM_TOPIC = { url: 'https://community.homey.app/t/153359', label: 'Norwegian PELS thread' };
+
+/** Where to post for an answer: the app's forum thread, and in Norway first the Norwegian-language one. */
+const supportForumTopics = (): readonly SupportForumTopic[] => {
+  const market = readSetupMarket();
+  return market.state === 'resolved' && market.country === 'NO'
+    ? [NORWEGIAN_FORUM_TOPIC, APP_FORUM_TOPIC] : [APP_FORUM_TOPIC];
+};
 
 export const SUPPORT_REPORT_PANEL = 'report-problem';
 const SUPPORT_REPORT_PATH = '/support-report';
@@ -22,8 +34,11 @@ const keepReportReference = (view: SupportReportViewState): void => {
   if (view.report) url.searchParams.set('reportId', view.report.document.id);
   else url.searchParams.delete('reportId');
   url.searchParams.set('reportHomeId', view.draft.subject.homeId);
-  if (view.draft.subject.kind === 'device') url.searchParams.set('reportDeviceId', view.draft.subject.deviceId);
-  else url.searchParams.delete('reportDeviceId');
+  const { subject } = view.draft;
+  if (subject.kind === 'app') url.searchParams.delete('reportDeviceId');
+  else url.searchParams.set('reportDeviceId', subject.deviceId);
+  if (subject.kind === 'device_support') url.searchParams.set('reportKind', subject.kind);
+  else url.searchParams.delete('reportKind');
   const { atMs } = view.draft;
   if (view.draft.when === 'custom' && Number.isFinite(atMs)) url.searchParams.set('reportAtMs', String(atMs));
   else url.searchParams.delete('reportAtMs');
@@ -62,7 +77,10 @@ const controller = new SupportReportController({
   const from = history && typeof history === 'object' && 'pelsFrom' in history ? history.pelsFrom : undefined;
   const backTarget = typeof from === 'string' && from && from !== SUPPORT_REPORT_PANEL ? from : 'settings';
   const previousStage = surface.querySelector<HTMLElement>('[data-report-stage]')?.dataset.reportStage;
-  renderSupportReportView(surface, { state: view, homeName, backTarget, actions: {
+  const { subject } = view.draft;
+  const supportDevice = subject.kind === 'device_support'
+    ? { name: findHomeyDeviceName(subject.deviceId), forums: supportForumTopics() } : null;
+  renderSupportReportView(surface, { state: view, homeName, backTarget, supportDevice, actions: {
     edit: (draft) => { clearReportReference(); controller.edit(draft); },
     submit: () => { clearReportReference(); return controller.submit(); },
     check: () => controller.check(),
@@ -95,11 +113,25 @@ export const refreshSupportReport = async (): Promise<void> => {
     const homeId = params.get('reportHomeId') || getHomeScope().selectedHomeId;
     const deviceId = params.get('reportDeviceId');
     const atMs = params.has('reportAtMs') ? Number(params.get('reportAtMs')) : undefined;
-    setSupportReportContext(deviceId ? { kind: 'device', deviceId, homeId } : { kind: 'app', homeId },
+    const kind = params.get('reportKind') === 'device_support' ? 'device_support' : 'device';
+    setSupportReportContext(deviceId ? { kind, deviceId, homeId } : { kind: 'app', homeId },
       atMs !== undefined && Number.isFinite(atMs) ? atMs : undefined);
   }
   controller.show();
-  await refreshReportDevices(request);
+  await Promise.all([refreshReportDevices(request), refreshSupportDeviceName(request)]);
+};
+
+// A support request names a device PELS may not list, so its name comes from
+// Homey's full device list rather than from Devices.
+const refreshSupportDeviceName = async (request: number): Promise<void> => {
+  if (findHomeyDeviceName(new URLSearchParams(window.location.search).get('reportDeviceId') ?? '') !== null) return;
+  try {
+    await loadHomeyDeviceList();
+  } catch {
+    // The form names the device generically; the report still reads it from Homey.
+    return;
+  }
+  if (request === refreshSequence) controller.show();
 };
 
 const refreshReportDevices = async (request: number): Promise<void> => {
@@ -150,6 +182,15 @@ const openDeviceReport = async (button: HTMLElement, openPanel: (panel: string) 
   setSupportReportContext({ kind: 'device', homeId, deviceId },
     atMs !== undefined && Number.isFinite(atMs) ? atMs : undefined);
   closeDeviceDetail();
+  openPanel(SUPPORT_REPORT_PANEL);
+};
+
+/**
+ * Opens the report form as a support request for a device PELS does not list.
+ * Always Main: the request is about the app, not about a meter area's plan.
+ */
+export const openDeviceSupportRequest = (deviceId: string, openPanel: (panel: string) => void): void => {
+  setSupportReportContext({ kind: 'device_support', homeId: MAIN_HOME_ID, deviceId });
   openPanel(SUPPORT_REPORT_PANEL);
 };
 

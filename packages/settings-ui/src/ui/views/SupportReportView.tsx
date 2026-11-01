@@ -28,11 +28,66 @@ export type SupportReportActions = {
   notice(message: string): void;
 };
 
+export type SupportForumTopic = { url: string; label: string };
+
+/**
+ * A support request for a device PELS does not list. `name` is `null` until
+ * Homey's device list has been read.
+ */
+type SupportDevice = { name: string | null; forums: readonly SupportForumTopic[] };
+
 type SupportReportViewProps = {
   state: SupportReportViewState;
   actions: SupportReportActions;
   homeName: string;
   backTarget: string;
+  supportDevice: SupportDevice | null;
+};
+
+const DEVELOPER_EMAIL = 'olemarkus@gmail.com';
+
+const ForumLinks = ({ forums }: { forums: readonly SupportForumTopic[] }) => <>
+  {forums.map((forum, index) => <span key={forum.url}>
+    {index > 0 && ' or the '}
+    <a class="support-report__link" href={forum.url} target="_blank" rel="noopener noreferrer">{forum.label}</a>
+  </span>)}
+</>;
+
+// Where a support request gets an answer: Homey delivers the request, but it
+// carries no reply address, so a sent request's reference is how the developer finds it.
+const SupportContact = ({ forums, reference }: { forums: readonly SupportForumTopic[]; reference?: string }) => {
+  const subject = encodeURIComponent(reference ? `PELS device support ${reference}` : 'PELS device support');
+  return (
+    <p class="pels-text-supporting muted">
+      To hear back, post in the <ForumLinks forums={forums} /> (preferred), or email{' '}
+      <a class="support-report__link" href={`mailto:${DEVELOPER_EMAIL}?subject=${subject}`}
+        target="_blank" rel="noopener noreferrer">{DEVELOPER_EMAIL}</a>
+      {reference ? ', and quote the reference.' : '.'}
+    </p>
+  );
+};
+
+const DeviceSupportForm = ({ state, actions, supportDevice }: SupportReportViewProps & { supportDevice: SupportDevice }) => {
+  const { draft } = state;
+  const disabled = reportIsLocked(state);
+  return (
+    <form class="support-report__form" onSubmit={(event) => {
+      event.preventDefault();
+      if (event.currentTarget.reportValidity()) void actions.submit();
+    }}>
+      <h3 class="pels-text-section-title" data-report-device-name>{supportDevice.name ?? 'Selected device'}</h3>
+      <MdFilledTextField type="textarea" rows="4" label="Describe the device" required
+        value={draft.problem} maxlength={SUPPORT_REPORT_PROBLEM_MAX_LENGTH} disabled={disabled}
+        supporting-text="What it is and what PELS should do with it, such as a water heater on a relay to turn off when power is short."
+        data-report-field="problem" onInput={(event: Event) => actions.edit({ ...draft, problem: fieldValue(event) })} />
+      <ReportNotice state={state} />
+      <MdFilledButton type="submit" disabled={disabled} data-report-action="send">
+        {state.operation === 'sending' ? 'Sending…' : 'Send request'}
+      </MdFilledButton>
+      <p class="pels-text-supporting muted">Sent to the PELS developer through Homey, with the app’s logs.</p>
+      <SupportContact forums={supportDevice.forums} />
+    </form>
+  );
 };
 
 const fieldValue = (event: Event): string => (event.currentTarget as HTMLElement & { value: string }).value;
@@ -120,6 +175,7 @@ const ReportForm = ({ state, actions, homeName }: SupportReportViewProps) => {
 
 // Shown only when the report cannot be sent, so it can be shared another way.
 const ReportCopy = ({ report, actions }: { report: PreparedSupportReport; actions: SupportReportActions }) => {
+  const subject = report.document.request.subject.kind === 'device_support' ? 'PELS%20device%20support' : 'PELS%20problem%20report';
   const [manual, setManual] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
@@ -137,9 +193,9 @@ const ReportCopy = ({ report, actions }: { report: PreparedSupportReport; action
   return (
     <div class="support-report__copy">
       <p class="pels-text-supporting">Copy the report and email it to the PELS developer at{' '}
-        <a class="support-report__link" href="mailto:olemarkus@gmail.com?subject=PELS%20problem%20report"
+        <a class="support-report__link" href={`mailto:${DEVELOPER_EMAIL}?subject=${subject}`}
           target="_blank" rel="noopener noreferrer">
-          olemarkus@gmail.com</a>.
+          {DEVELOPER_EMAIL}</a>.
       </p>
       <MdOutlinedButton type="button" onClick={() => { void copy(); }} data-report-action="copy">Copy report</MdOutlinedButton>
       {manual && <textarea ref={textRef} readOnly rows={6} class="support-report__text" aria-label="Report text"
@@ -148,10 +204,21 @@ const ReportCopy = ({ report, actions }: { report: PreparedSupportReport; action
   );
 };
 
-const ReportResult = ({ state, actions, backTarget }: SupportReportViewProps) => {
+const ReportResult = ({ state, actions, backTarget, supportDevice }: SupportReportViewProps) => {
   const { report } = state;
   if (!report) return null;
   const { submission } = report;
+  if (submission.state === 'sent' && supportDevice) {
+    return (
+      <section class="support-report__result" aria-label="Request sent">
+        <h3 class="pels-text-section-title">Request sent</h3>
+        <p class="support-report__reference">Reference: {submission.reference || report.document.id}</p>
+        <p class="pels-text-supporting">Support for a new device usually needs an app update.</p>
+        <SupportContact forums={supportDevice.forums} reference={submission.reference || report.document.id} />
+        <MdFilledButton type="button" data-settings-target={backTarget} data-report-action="done">Done</MdFilledButton>
+      </section>
+    );
+  }
   if (submission.state === 'sent') {
     return (
       <section class="support-report__result" aria-label="Report sent">
@@ -199,13 +266,18 @@ const SupportReportView = (props: SupportReportViewProps) => {
   const copyable = report !== null && operation === 'idle' && (state === 'draft' || state === 'failed');
   let stage = recoveryId ? 'recovery' : 'description';
   if (report && settled) stage = `${report.document.id}:${report.submission.state}`;
+  const { supportDevice } = props;
+  const lede = supportDevice
+    ? 'PELS adds what Homey reports about this device: its type, app and capabilities.'
+    : 'Describe what happened. PELS adds recent device activity and its current state.';
   return <>
-    <AppBar back={{ target: props.backTarget, label: 'Back' }} title="Report a problem"
-      lede={settled || recoveryId ? undefined
-        : 'Describe what happened. PELS adds recent device activity and its current state.'} />
+    <AppBar back={{ target: props.backTarget, label: 'Back' }}
+      title={supportDevice ? 'Device support' : 'Report a problem'}
+      lede={settled || recoveryId ? undefined : lede} />
     <div class="support-report" data-report-stage={stage} tabIndex={-1}>
       {(settled || recoveryId) && <ReportNotice state={props.state} />}
-      {!settled && !recoveryId && <ReportForm {...props} />}
+      {!settled && !recoveryId && (supportDevice
+        ? <DeviceSupportForm {...props} supportDevice={supportDevice} /> : <ReportForm {...props} />)}
       {copyable && <ReportCopy report={report} actions={props.actions} />}
       {settled && <ReportResult {...props} />}
       {recoveryId && operation === 'idle' && <div class="support-report__actions">

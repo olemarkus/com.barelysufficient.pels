@@ -1,5 +1,7 @@
 import api from '../../api';
-import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
+import {
+  mockHomeyInstance, resetMockHomey, setMockDrivers, setMockZones, MockDevice, MockDriver,
+} from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
 import { httpResponse } from '../helpers/httpResponse';
@@ -68,6 +70,40 @@ describe('manual report through the app API and Homey boundary', () => {
     expect(JSON.parse(String(posts[0]?.[1]?.body))).toEqual({ message: preview.report.message });
     await api.support_report_send({ homey: app.homey, params: { id }, body: { consent: true } });
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+  });
+
+  it('lists a device PELS does not support with its zone, and requests support for it from what Homey reports', async () => {
+    setMockZones({ z1: { id: 'z1', name: 'Home', parent: null }, z2: { id: 'z2', name: 'Basement', parent: 'z1' } });
+    const heater = new MockDevice('heater', 'Hall heater', ['onoff', 'measure_power'], 'socket');
+    const relay = new MockDevice('relay', 'Water heater relay', ['onoff', 'measure_power'], 'light');
+    relay.setZone('z2');
+    relay.setDriverIdentity({ ownerUri: 'homey:app:com.knx', driverId: 'switch' });
+    await relay.setCapabilityValue('onoff', true);
+    await relay.setCapabilityValue('measure_power', 2950);
+    setMockDrivers({ sockets: new MockDriver('sockets', [heater]), knx: new MockDriver('knx', [relay]) });
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockImplementation(async () => httpResponse({ origin: 'appstore' })));
+    const app = createApp({ withoutPowerMeasurement: true });
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    const devices = await api.homey_devices({ homey: app.homey });
+    expect(devices).toContainEqual({
+      id: 'relay', name: 'Water heater relay', class: 'light', zoneName: 'Basement', hasTemperature: false, hasPower: true,
+    });
+
+    const prepared = await api.support_report_prepare({ homey: app.homey, body: {
+      subject: { kind: 'device_support', homeId: 'main', deviceId: 'relay' },
+      problem: 'A water heater on a KNX relay.', expected: '', occurredAtMs: Date.now(), historyWindow: 'incident',
+    } });
+    if (!prepared.ok) throw Error(prepared.code);
+    expect(prepared.report.document.subjectName).toBe('Water heater relay');
+    expect(prepared.report.document.sections).toContainEqual(expect.objectContaining({
+      title: 'Homey device',
+      values: expect.objectContaining({
+        class: 'light', ownerUri: 'homey:app:com.knx', driverId: 'switch',
+        capabilities: expect.objectContaining({ measure_power: expect.objectContaining({ value: 2950 }) }),
+      }),
+    }));
   });
 
   it.each([200, 400, 408])('sends the daily report only once a day even after HTTP %s', async (status) => {

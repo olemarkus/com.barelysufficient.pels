@@ -1,6 +1,7 @@
 import { refreshActivityHistory } from './activityHistory.ts';
 import { refreshAdvancedDeviceLogger } from './advanced.ts';
 import { refreshSupportReport } from './supportReport.ts';
+import { refreshDeviceSupportPicker } from './deviceSupportPicker.ts';
 import { currentSetupJourney, type SetupJourneyStep } from './setupJourneyState.ts';
 import { panels, tabListEntries, tabs, type MdTabElement } from './dom.ts';
 import { SETTINGS_UI_POWER_PATH } from '../../../contracts/src/settingsUi/paths.ts';
@@ -94,6 +95,7 @@ const SINGLE_REFRESH_PANELS: Record<string, { refresh: () => Promise<void>; fail
   activity: { refresh: refreshActivityHistory, failure: 'Failed to refresh activity history' },
   advanced: { refresh: refreshAdvancedDeviceLogger, failure: 'Failed to load Homey devices' },
   'report-problem': { refresh: refreshSupportReport, failure: 'Failed to load report form' },
+  'device-support': { refresh: refreshDeviceSupportPicker, failure: 'Failed to load Homey devices' },
   deadlines: { refresh: refreshDeadlinesList, failure: 'Failed to load deadlines list' },
   schedules: { refresh: refreshSchedules, failure: 'Failed to load schedules' },
   weather: { refresh: refreshWeatherInsightOnWeatherPanel, failure: 'Failed to refresh weather insight' },

@@ -1987,13 +1987,17 @@
       // (which filter on hasTemperature), and the whole-home meter picker
       // (which filters on hasPower + class 'sensor'). Mirrors the api.ts
       // homey_devices shape.
+      // Also backs "Missing a device?", which lists every device by zone; the
+      // relay and the fan are devices PELS does not list on Devices.
       return [
-        { id: 'dev_outdoor', name: 'Outdoor sensor', class: 'sensor', hasTemperature: true, hasPower: false },
-        { id: 'dev_han', name: 'HAN power meter', class: 'sensor', hasTemperature: false, hasPower: true },
-        { id: 'dev_heatpump', name: 'Living Room Heat Pump', class: 'thermostat', hasTemperature: true, hasPower: true },
-        { id: 'dev_floorheat', name: 'Bathroom Floor Heat', class: 'thermostat', hasTemperature: true, hasPower: true },
-        { id: 'dev_waterheater', name: 'Water Heater', class: 'heater', hasTemperature: false, hasPower: true },
-        { id: 'dev_evcharger', name: 'Generic EV Charger', class: 'evcharger', hasTemperature: false, hasPower: true },
+        { id: 'dev_outdoor', name: 'Outdoor sensor', class: 'sensor', zoneName: 'Garden', hasTemperature: true, hasPower: false },
+        { id: 'dev_han', name: 'HAN power meter', class: 'sensor', zoneName: 'Hallway', hasTemperature: false, hasPower: true },
+        { id: 'dev_heatpump', name: 'Living Room Heat Pump', class: 'thermostat', zoneName: 'Living room', hasTemperature: true, hasPower: true },
+        { id: 'dev_floorheat', name: 'Bathroom Floor Heat', class: 'thermostat', zoneName: 'Bathroom', hasTemperature: true, hasPower: true },
+        { id: 'dev_waterheater', name: 'Water Heater', class: 'heater', zoneName: 'Basement', hasTemperature: false, hasPower: true },
+        { id: 'dev_evcharger', name: 'Generic EV Charger', class: 'evcharger', zoneName: 'Garage', hasTemperature: false, hasPower: true },
+        { id: 'dev_knx_relay', name: 'Water heater relay', class: 'light', zoneName: 'Basement', hasTemperature: false, hasPower: true },
+        { id: 'dev_bath_fan', name: 'Bathroom fan', class: 'fan', zoneName: 'Bathroom', hasTemperature: false, hasPower: false },
       ];
     },
     // A spec seeds car candidates, with their match history, through

@@ -8,6 +8,11 @@ import type {
 
 export type ReportDeviceOption = { id: string; name: string; homeId: string };
 
+/** A request for support for a device PELS does not list, rather than a problem report. */
+export const isDeviceSupportRequest = (
+  subject: SupportReportSubject,
+): subject is Extract<SupportReportSubject, { kind: 'device_support' }> => subject.kind === 'device_support';
+
 export type ReportDraft = {
   subject: SupportReportSubject;
   problem: string;

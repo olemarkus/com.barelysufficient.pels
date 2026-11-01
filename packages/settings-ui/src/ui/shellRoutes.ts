@@ -34,6 +34,7 @@ export const SETTINGS_SUB_PANELS = [
   'web-app',
   'activity',
   'report-problem',
+  'device-support',
   'advanced',
 ] as const;
 
@@ -41,7 +42,7 @@ const SETTINGS_PREFIX = 'settings/';
 const PAGE_PARAM = 'page';
 // Parameters that belong to a route and must not leak into the next one.
 const ROUTE_PARAMS = [
-  'deviceId', 'historyId', 'edit', 'date', 'reportId', 'reportHomeId', 'reportDeviceId', 'reportAtMs',
+  'deviceId', 'historyId', 'edit', 'date', 'reportId', 'reportHomeId', 'reportDeviceId', 'reportKind', 'reportAtMs',
   'setup', 'schedule', 'scheduleDevice', 'scheduleFilter',
 ];
 

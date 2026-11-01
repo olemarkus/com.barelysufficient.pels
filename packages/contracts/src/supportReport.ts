@@ -1,8 +1,13 @@
 import type { SettingsUiDeviceActivityEntry } from './settingsUi/devices.js';
 
+/**
+ * `device_support` asks for support for a Homey device PELS does not list on
+ * Devices; its report describes the device as Homey reports it.
+ */
 export type SupportReportSubject =
   | { kind: 'app'; homeId: string }
-  | { kind: 'device'; homeId: string; deviceId: string };
+  | { kind: 'device'; homeId: string; deviceId: string }
+  | { kind: 'device_support'; homeId: string; deviceId: string };
 
 /** User-authored incident description. Time is an instant, independent of the browser's timezone. */
 export type SupportReportRequest = {

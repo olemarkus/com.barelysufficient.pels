@@ -469,3 +469,54 @@ describe('support report smart task evidence', () => {
     expect(report.omissions).toContain('Current smart task is unavailable.');
   });
 });
+
+describe('device support request evidence', () => {
+  const supportRequest: SupportReportRequest = {
+    subject: { kind: 'device_support', homeId: 'main', deviceId: 'relay' },
+    problem: 'A water heater on a KNX relay.', expected: '', occurredAtMs: now, historyWindow: 'incident',
+  };
+  const relay = {
+    id: 'relay', name: 'Water heater relay', class: 'light', ownerUri: 'homey:app:com.knx',
+    driverUri: 'homey:app:com.knx', driverId: 'switch', available: true,
+    capabilities: ['onoff', 'measure_power'],
+    capabilitiesObj: {
+      onoff: { id: 'onoff', value: true, setable: true, getable: true, title: 'Turned on' },
+      measure_power: { id: 'measure_power', value: 2950, units: 'W', setable: false },
+    },
+    settings: { energy_value_on: 3000, password: 'secret' },
+  };
+  const hostWithHomeyDevices = (read: () => Promise<unknown[]>) => pelsHostDouble({
+    homeMembership: membership(),
+    deviceManager: partialDouble<NonNullable<PelsHost['deviceManager']>>({
+      getSnapshotByDeviceId: vi.fn(() => undefined),
+      getDevicesForDebug: vi.fn(read) as NonNullable<PelsHost['deviceManager']>['getDevicesForDebug'],
+    }),
+    getDeviceLogUiPayload: vi.fn(() => reportHistoryFixture([])),
+  });
+
+  it('describes a device PELS does not list from what Homey reports, and no more of its settings', async () => {
+    const host = hostWithHomeyDevices(async () => [relay]);
+    const report = await source(host).capture(supportRequest, now);
+    expect(report.subjectName).toBe('Water heater relay');
+    expect(values(report, 'Homey device')).toEqual({
+      id: 'relay', class: 'light', virtualClass: null, ownerUri: 'homey:app:com.knx',
+      driverUri: 'homey:app:com.knx', driverId: 'switch', available: true,
+      capabilities: {
+        onoff: { value: true, setable: true, getable: true },
+        measure_power: { value: 2950, units: 'W', setable: false },
+      },
+      energySettings: { energy_value_on: 3000 },
+      energy: null,
+    });
+    expect(JSON.stringify(report)).not.toContain('secret');
+    // PELS has no snapshot of the device, so no section claims to describe one.
+    expect(values(report, 'Current device observation and configuration')).toBeUndefined();
+  });
+
+  it('asks for another try when Homey cannot be read, and rejects a device Homey no longer has', async () => {
+    await expect(source(hostWithHomeyDevices(async () => { throw new Error('Homey busy'); }))
+      .capture(supportRequest, now)).rejects.toMatchObject({ code: 'capture_failed' });
+    await expect(source(hostWithHomeyDevices(async () => []))
+      .capture(supportRequest, now)).rejects.toMatchObject({ code: 'invalid_subject' });
+  });
+});

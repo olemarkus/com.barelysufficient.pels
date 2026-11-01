@@ -12,6 +12,7 @@ import type {
   SupportReportRequest, SupportReportSection, SupportReportSubject,
 } from '../../packages/contracts/src/supportReport';
 import type { CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
+import type { HomeyDeviceSupportDescription } from './homeyDeviceSupportSection';
 import { DEVICE_EVENT_MAX_ENTRIES_PER_DEVICE, DEVICE_EVENT_RETENTION_DAYS } from './deviceEventStore';
 import type { LogTailRead } from './logTailStore';
 import { MAIN_HOME_ID } from '../home/homeConfig';
@@ -39,6 +40,12 @@ export type SupportReportHomey = {
 export type SupportReportReads = {
   /** `undefined` when device transport does not hold the device. */
   getDeviceSnapshot(deviceId: string): SupportReportDeviceSnapshot | undefined;
+  /**
+   * A Homey device as a device support request describes it, whether or not
+   * PELS lists it; `undefined` when Homey has no such device. Rejects when
+   * Homey cannot be read.
+   */
+  describeHomeyDeviceForSupport(deviceId: string): Promise<HomeyDeviceSupportDescription | undefined>;
   getHomeMembership(): Pick<HomeMembershipPort,
     'isOwnershipReady' | 'hasPendingOwnershipGeneration' | 'getHomeIdForDevice'>;
   /** Main's latest plan decisions; `null` before the first plan. */
@@ -78,13 +85,38 @@ const readSection = (title: string, read: () => SupportReportSection | null): Se
   return section ? { state: 'available', section } : { state: 'unavailable', reason: `${title} is unavailable.` };
 };
 
+type DeviceSupportSubject = { name: string; sections: readonly SupportReportSection[] };
+
+/**
+ * A device support request is about a device PELS may not list, so it reads
+ * the device from Homey instead of PELS's snapshot. Without that read there is
+ * nothing to request support for: a failed read asks for another try, and a
+ * device Homey no longer has is an invalid subject.
+ */
+const resolveDeviceSupportSubject = async (
+  host: SupportReportReads,
+  subject: SupportReportSubject,
+): Promise<DeviceSupportSubject | null> => {
+  if (subject.kind !== 'device_support') return null;
+  let description: Awaited<ReturnType<SupportReportReads['describeHomeyDeviceForSupport']>>;
+  try {
+    description = await host.describeHomeyDeviceForSupport(subject.deviceId);
+  } catch {
+    throw new SupportReportInputError('capture_failed');
+  }
+  if (!description) throw new SupportReportInputError('invalid_subject');
+  return { name: description.name, sections: [description.section] };
+};
+
 const resolveSubject = (
   host: SupportReportReads,
   subject: SupportReportSubject,
   history: SettingsUiDeviceLogPayload | undefined,
   capturedAtMs: number,
+  supportSubject: DeviceSupportSubject | null,
 ): ReportSubject => {
-  if (subject.kind === 'app') return { name: 'PELS', currentDevice: null, omissions: [] };
+  if (supportSubject) return { name: supportSubject.name, currentDevice: null, omissions: [] };
+  if (subject.kind !== 'device') return { name: 'PELS', currentDevice: null, omissions: [] };
   const recorded = history?.entries.filter((entry) => (
     entry.deviceId === subject.deviceId && entry.atMs <= capturedAtMs
   )).reduce<SettingsUiDeviceActivityEntry | undefined>((latest, entry) => (
@@ -327,14 +359,16 @@ export class SupportReportEvidenceSource {
     const { host } = this;
     const history = request.subject.homeId === MAIN_HOME_ID
       ? readOptional(() => host.getDeviceLogUiPayload()) : undefined;
-    const subject = resolveSubject(host, request.subject, history, capturedAtMs);
+    const supportSubject = await resolveDeviceSupportSubject(host, request.subject);
+    const subject = resolveSubject(host, request.subject, history, capturedAtMs, supportSubject);
     const area = readArea(host, request.subject.homeId);
     const plan = request.subject.homeId === MAIN_HOME_ID
       ? readOptional(() => host.getLatestPlanSnapshotForUi()) : area?.plan;
     // Like the other current device details, only for a device still in the reported home.
     const carLink: CarLinkRead = subject.currentDevice
       ? readCarLink(host, request.subject) : { state: 'read', link: undefined };
-    const sectionReads = [
+    const sectionReads: SectionRead[] = [
+      ...(supportSubject?.sections ?? []).map((section): SectionRead => ({ state: 'available', section })),
       ...readDeviceSections(host, request.subject, subject.currentDevice, plan, capturedAtMs),
       ...readCarLinkSection(carLink),
       ...readHomeSections(host, request.subject.homeId, plan, area),
