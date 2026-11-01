@@ -4,7 +4,7 @@
 // Static, last-resort fallback for Norwegian grid tariffs (nettleie), used only
 // when the NVE API is unreachable and no live tariff has been cached yet.
 //
-// Generated: 2026-06-03 | Operators: 75
+// Generated: 2026-11-01 | Operators: 70
 // Source: Fri Nettleie (https://github.com/kraftsystemet/fri-nettleie), CC-BY-4.0.
 // GLN→organisasjonsnr mapping from Elhub reference data.
 //
@@ -37,7 +37,7 @@ export interface NettleieFallbackOperator {
   readonly tariffs: Partial<Record<NettleieFallbackTariffGroup, NettleieFallbackTariff>>;
 }
 
-export const NETTLEIE_FALLBACK_GENERATED_AT = '2026-06-03';
+export const NETTLEIE_FALLBACK_GENERATED_AT = '2026-11-01';
 
 export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbackOperator>> = {
   "824368082": {
@@ -57,11 +57,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Norefjell Nett AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 15.08,
+        "basePrice": 18.58,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 22.53,
+            "price": 23.53,
             "dayTypes": [
               "alle"
             ]
@@ -69,11 +69,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 15.08,
+        "basePrice": 18.58,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 22.53,
+            "price": 23.53,
             "dayTypes": [
               "alle"
             ]
@@ -115,11 +115,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Etna Nett AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 18.59,
+        "basePrice": 20.59,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 25.55,
+            "price": 27.55,
             "dayTypes": [
               "virkedag"
             ]
@@ -127,11 +127,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 18.59,
+        "basePrice": 20.59,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 25.55,
+            "price": 27.55,
             "dayTypes": [
               "virkedag"
             ]
@@ -144,20 +144,20 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Linja AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 15.382,
+        "basePrice": 14.808,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 22.382
+            "price": 22.808
           }
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 15.382,
+        "basePrice": 14.808,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 22.382
+            "price": 22.808
           }
         ]
       }
@@ -296,20 +296,20 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Asker Nett",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 15.87,
+        "basePrice": 19.87,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 23.87
+            "price": 29.87
           }
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 15.87,
+        "basePrice": 19.87,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 23.87
+            "price": 29.87
           }
         ]
       }
@@ -319,11 +319,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Midtnett AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 18.86,
+        "basePrice": 26,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 23.86,
+            "price": 31,
             "dayTypes": [
               "alle"
             ]
@@ -331,11 +331,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 18.86,
+        "basePrice": 26,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 23.86,
+            "price": 31,
             "dayTypes": [
               "alle"
             ]
@@ -584,38 +584,15 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
       }
     }
   },
-  "923050612": {
-    "name": "Føie AS",
-    "tariffs": {
-      "Husholdning": {
-        "basePrice": 9.998,
-        "exceptions": [
-          {
-            "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 16.502
-          }
-        ]
-      },
-      "Hytter og fritidshus": {
-        "basePrice": 9.998,
-        "exceptions": [
-          {
-            "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 16.502
-          }
-        ]
-      }
-    }
-  },
   "923152601": {
     "name": "Kystnett AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 18,
+        "basePrice": 17,
         "exceptions": []
       },
       "Hytter og fritidshus": {
-        "basePrice": 18,
+        "basePrice": 17,
         "exceptions": []
       }
     }
@@ -624,11 +601,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Fjellnett AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 12.9,
+        "basePrice": 14.8,
         "exceptions": []
       },
       "Hytter og fritidshus": {
-        "basePrice": 12.9,
+        "basePrice": 14.8,
         "exceptions": []
       }
     }
@@ -650,11 +627,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Høland og Setskog Elverk AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 17.5,
+        "basePrice": 23.5,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 22.5,
+            "price": 27.5,
             "dayTypes": [
               "virkedag"
             ]
@@ -662,11 +639,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 17.5,
+        "basePrice": 23.5,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 22.5,
+            "price": 27.5,
             "dayTypes": [
               "virkedag"
             ]
@@ -737,7 +714,7 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Lysna AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 24,
+        "basePrice": 26,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
@@ -746,7 +723,7 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 24,
+        "basePrice": 26,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
@@ -924,11 +901,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "RK Nett AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 20.14,
+        "basePrice": 23.02,
         "exceptions": []
       },
       "Hytter og fritidshus": {
-        "basePrice": 20.14,
+        "basePrice": 23.02,
         "exceptions": []
       }
     }
@@ -1022,11 +999,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Romsdalsnett AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 20.72,
+        "basePrice": 21.78,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 30.72,
+            "price": 32.29,
             "dayTypes": [
               "ukedag"
             ]
@@ -1034,11 +1011,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 20.72,
+        "basePrice": 21.78,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 30.72,
+            "price": 32.29,
             "dayTypes": [
               "ukedag"
             ]
@@ -1097,14 +1074,14 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     }
   },
   "955996836": {
-    "name": "Vest-Telemark Kraftlag AS Nett",
+    "name": "Tnett AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 25,
+        "basePrice": 28,
         "exceptions": []
       },
       "Hytter og fritidshus": {
-        "basePrice": 25,
+        "basePrice": 28,
         "exceptions": []
       }
     }
@@ -1172,11 +1149,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Barents Nett AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 11.32,
+        "basePrice": 10.75,
         "exceptions": []
       },
       "Hytter og fritidshus": {
-        "basePrice": 11.32,
+        "basePrice": 10.75,
         "exceptions": []
       }
     }
@@ -1185,20 +1162,20 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Føie AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 9.998,
+        "basePrice": 13.5,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 16.502
+            "price": 21
           }
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 9.998,
+        "basePrice": 13.5,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 16.502
+            "price": 21
           }
         ]
       }
@@ -1266,20 +1243,20 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Tensio TS AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 10.206,
+        "basePrice": 10.902,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 20.702
+            "price": 22.102
           }
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 10.206,
+        "basePrice": 10.902,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 20.702
+            "price": 22.102
           }
         ]
       }
@@ -1312,11 +1289,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Elinett AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 14.64,
+        "basePrice": 17.5,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 22.64,
+            "price": 25.5,
             "dayTypes": [
               "virkedag"
             ]
@@ -1324,11 +1301,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 14.64,
+        "basePrice": 17.5,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 22.64,
+            "price": 25.5,
             "dayTypes": [
               "virkedag"
             ]
@@ -1367,7 +1344,7 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Elvenett AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 11,
+        "basePrice": 5,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
@@ -1376,7 +1353,7 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 11,
+        "basePrice": 5,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
@@ -1415,38 +1392,15 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
       }
     }
   },
-  "980234088": {
-    "name": "Norgesnett AS",
-    "tariffs": {
-      "Husholdning": {
-        "basePrice": 13.29,
-        "exceptions": [
-          {
-            "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 20.26
-          }
-        ]
-      },
-      "Hytter og fritidshus": {
-        "basePrice": 13.29,
-        "exceptions": [
-          {
-            "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 20.26
-          }
-        ]
-      }
-    }
-  },
   "980489698": {
     "name": "Elvia AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 12.99,
+        "basePrice": 16.99,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 20.99,
+            "price": 28.99,
             "dayTypes": [
               "virkedag"
             ]
@@ -1454,11 +1408,11 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 12.99,
+        "basePrice": 16.99,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 20.99,
+            "price": 28.99,
             "dayTypes": [
               "virkedag"
             ]
@@ -1471,43 +1425,20 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Nordvest Nett AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 20.03,
+        "basePrice": 25.23,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 26.03
+            "price": 31.23
           }
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 20.03,
+        "basePrice": 25.23,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 26.03
-          }
-        ]
-      }
-    }
-  },
-  "981915550": {
-    "name": "Glitre Nett AS",
-    "tariffs": {
-      "Husholdning": {
-        "basePrice": 12.6,
-        "exceptions": [
-          {
-            "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 24.6
-          }
-        ]
-      },
-      "Hytter og fritidshus": {
-        "basePrice": 12.6,
-        "exceptions": [
-          {
-            "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 24.6
+            "price": 31.23
           }
         ]
       }
@@ -1521,7 +1452,10 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 19.32
+            "price": 19.32,
+            "dayTypes": [
+              "virkedag"
+            ]
           }
         ]
       },
@@ -1530,7 +1464,10 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 19.32
+            "price": 19.32,
+            "dayTypes": [
+              "virkedag"
+            ]
           }
         ]
       }
@@ -1540,20 +1477,20 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Glitre Nett AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 12.6,
+        "basePrice": 15.87,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 24.6
+            "price": 27.87
           }
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 12.6,
+        "basePrice": 15.87,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 24.6
+            "price": 27.87
           }
         ]
       }
@@ -1595,38 +1532,15 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
       }
     }
   },
-  "987626844": {
-    "name": "Føie AS",
-    "tariffs": {
-      "Husholdning": {
-        "basePrice": 9.998,
-        "exceptions": [
-          {
-            "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 16.502
-          }
-        ]
-      },
-      "Hytter og fritidshus": {
-        "basePrice": 9.998,
-        "exceptions": [
-          {
-            "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 16.502
-          }
-        ]
-      }
-    }
-  },
   "988807648": {
     "name": "Tensio TN AS",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 13.006,
+        "basePrice": 13.702,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 25.902,
+            "price": 27.198,
             "dayTypes": [
               "alle"
             ]
@@ -1634,37 +1548,14 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 13.006,
+        "basePrice": 13.702,
         "exceptions": [
           {
             "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 25.902,
+            "price": 27.198,
             "dayTypes": [
               "alle"
             ]
-          }
-        ]
-      }
-    }
-  },
-  "990892679": {
-    "name": "Arva AS",
-    "tariffs": {
-      "Husholdning": {
-        "basePrice": 11.6,
-        "exceptions": [
-          {
-            "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 23.1
-          }
-        ]
-      },
-      "Hytter og fritidshus": {
-        "basePrice": 11.6,
-        "exceptions": [
-          {
-            "hours": [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-            "price": 23.1
           }
         ]
       }
@@ -1674,21 +1565,21 @@ export const NETTLEIE_FALLBACK_BY_ORGNR: Readonly<Record<string, NettleieFallbac
     "name": "Sør Aurdal Energi AS Nett",
     "tariffs": {
       "Husholdning": {
-        "basePrice": 21.52,
+        "basePrice": 25.52,
         "exceptions": [
           {
             "hours": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
-            "price": 25.52,
+            "price": 29.52,
             "months": [1, 2, 3, 10, 11, 12]
           }
         ]
       },
       "Hytter og fritidshus": {
-        "basePrice": 21.52,
+        "basePrice": 25.52,
         "exceptions": [
           {
             "hours": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23],
-            "price": 25.52,
+            "price": 29.52,
             "months": [1, 2, 3, 10, 11, 12]
           }
         ]

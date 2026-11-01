@@ -38,6 +38,9 @@ vi.mock('../../lib/price/nettleieFallbackData.generated', () => ({
 
 import { buildStaticGridTariffFallback, resolveGridTariffFallback } from '../../lib/price/staticGridTariffFallback';
 
+// Fri Nettleie rates leave out the Enova fee, which the fallback adds to match NVE.
+const ENOVA = 1;
+
 // The fees for the first day the fallback covers: the day of the given date.
 const feesByHour = (entries: Array<{ time: number; energyFeeExVat: number; dateKey: string }>): number[] => {
   const fees = new Array<number>(24).fill(Number.NaN);
@@ -63,12 +66,12 @@ describe('buildStaticGridTariffFallback', () => {
     expect(entries![24]?.dateKey).toBe('2026-01-06T00:00:00');
 
     const fees = feesByHour(entries!);
-    expect(fees[6]).toBe(20); // weekday peak
-    expect(fees[8]).toBe(20);
-    expect(fees[9]).toBe(10); // base
-    expect(fees[12]).toBe(10); // holiday-only exception ignored
-    expect(fees[22]).toBe(5); // winter surcharge
-    expect(fees[23]).toBe(5);
+    expect(fees[6]).toBe(20 + ENOVA); // weekday peak
+    expect(fees[8]).toBe(20 + ENOVA);
+    expect(fees[9]).toBe(10 + ENOVA); // base
+    expect(fees[12]).toBe(10 + ENOVA); // holiday-only exception ignored
+    expect(fees[22]).toBe(5 + ENOVA); // winter surcharge
+    expect(fees[23]).toBe(5 + ENOVA);
 
     const first = entries![0];
     expect(first.source).toBe(GRID_TARIFF_SOURCE_FALLBACK);
@@ -84,8 +87,8 @@ describe('buildStaticGridTariffFallback', () => {
       date: new Date('2026-01-04T10:00:00Z'),
       timeZone: 'UTC',
     })!);
-    expect(fees[6]).toBe(10); // virkedag exception does not apply on Sunday
-    expect(fees[22]).toBe(5); // months-only exception still applies
+    expect(fees[6]).toBe(10 + ENOVA); // virkedag exception does not apply on Sunday
+    expect(fees[22]).toBe(5 + ENOVA); // months-only exception still applies
   });
 
   it('prices tomorrow on its own day type', () => {
@@ -97,8 +100,8 @@ describe('buildStaticGridTariffFallback', () => {
       timeZone: 'UTC',
     })!;
     const monday = entries.filter((entry) => entry.dateKey === '2026-01-05T00:00:00');
-    expect(feesByHour(monday)[6]).toBe(20);
-    expect(feesByHour(entries)[6]).toBe(10);
+    expect(feesByHour(monday)[6]).toBe(20 + ENOVA);
+    expect(feesByHour(entries)[6]).toBe(10 + ENOVA);
   });
 
   it('drops the winter surcharge outside its months', () => {
@@ -109,8 +112,8 @@ describe('buildStaticGridTariffFallback', () => {
       date: new Date('2026-06-01T10:00:00Z'),
       timeZone: 'UTC',
     })!);
-    expect(fees[6]).toBe(20); // weekday peak still applies
-    expect(fees[22]).toBe(10); // surcharge gone in June
+    expect(fees[6]).toBe(20 + ENOVA); // weekday peak still applies
+    expect(fees[22]).toBe(10 + ENOVA); // surcharge gone in June
   });
 
   it('returns null for an unknown organization number', () => {
@@ -130,7 +133,7 @@ describe('buildStaticGridTariffFallback', () => {
       date: new Date('2026-01-05T10:00:00Z'),
       timeZone: 'UTC',
     })!);
-    expect(fees.every((f) => f === 7)).toBe(true);
+    expect(fees.every((f) => f === 7 + ENOVA)).toBe(true);
   });
 });
 

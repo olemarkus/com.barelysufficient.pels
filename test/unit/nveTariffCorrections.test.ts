@@ -1,4 +1,4 @@
-import { correctNveGridTariffDay } from '../../lib/price/nveTariffCorrections';
+import { correctNveGridTariffDay, NVE_CORRECTED_ORGANIZATION_NUMBERS } from '../../lib/price/nveTariffCorrections';
 
 const LNETT = '980038408';
 const ELVIA = '980489698';
@@ -47,7 +47,7 @@ describe('correctNveGridTariffDay for Elvia', () => {
   it('prices Elvia at its July 2026 rates', () => {
     const corrected = correctNveGridTariffDay(elviaDay('2026-11-02'), ELVIA, '2026-11-02');
     expect(corrected[3]).toMatchObject({ energyFeeExVat: 17.99, energyFeeIncVat: 31.4, time: 3 });
-    expect(corrected[12]).toMatchObject({ energyFeeExVat: 30, energyFeeIncVat: 46.4, time: 12 });
+    expect(corrected[12]).toMatchObject({ energyFeeExVat: 29.99, energyFeeIncVat: 46.4, time: 12 });
   });
 
   it('prices an Elvia weekend at the July night rate', () => {
@@ -63,7 +63,13 @@ describe('correctNveGridTariffDay for Elvia', () => {
   });
 
   it('leaves an Elvia rate NVE has already corrected', () => {
-    const corrected = elviaDay('2026-11-02').map((row) => ({ ...row, energyFeeExVat: 30, energyFeeIncVat: 46.4 }));
+    const corrected = elviaDay('2026-11-02').map((row) => ({ ...row, energyFeeExVat: 29.99, energyFeeIncVat: 46.4 }));
     expect(correctNveGridTariffDay(corrected, ELVIA, '2026-11-02')).toEqual(corrected);
+  });
+});
+
+describe('NVE_CORRECTED_ORGANIZATION_NUMBERS', () => {
+  it('lists every corrected company, so the weekly NVE check probes each one', () => {
+    expect([...NVE_CORRECTED_ORGANIZATION_NUMBERS].sort()).toEqual([LNETT, ELVIA].sort());
   });
 });

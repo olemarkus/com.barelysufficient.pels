@@ -949,8 +949,9 @@ describe('Grid tariff fetching', () => {
     for (const entry of gridTariffData) {
       // Flagged as fallback so it never suppresses the next NVE retry.
       expect(entry.source).toBe('fallback');
-      // Elvia household tariff: 12.99 øre/kWh base, 20.99 on weekday peak hours.
-      expect([12.99, 20.99]).toContain(entry.energyFeeExVat);
+      // Elvia household tariff from 2026-07-01: 16.99 øre/kWh base, 28.99 on weekday
+      // peak hours, plus the 1 øre Enova fee that NVE's rate carries.
+      expect([17.99, 29.99]).toContain(entry.energyFeeExVat);
       expect(entry.energyFeeIncVat).toBeCloseTo(entry.energyFeeExVat * 1.25, 2);
     }
   });

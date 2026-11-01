@@ -31,6 +31,10 @@ export { NETTLEIE_FALLBACK_GENERATED_AT } from './nettleieFallbackData.generated
 // holidays nor future tariff periods. Holidays are treated as their ordinary
 // weekday; the snapshot only carries the tariff that was current when generated.
 
+// Fri Nettleie gives the energy rate without any tax; NVE's ex-VAT rate, which
+// the price pipeline reads, carries the Enova fee (øre/kWh, ex VAT).
+const ENOVA_FEE_EX_VAT = 1;
+
 // JS getDay()/getUTCDay(): 0 = Sunday … 6 = Saturday.
 const WEEKDAYS = [1, 2, 3, 4, 5];
 const WEEKEND = [0, 6];
@@ -121,7 +125,7 @@ const buildStaticGridTariffFallbackForDateKey = (
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 
   return Array.from({ length: 24 }, (_, time) => {
-    const energyFeeExVat = resolveHourFeeExVat(tariff, month, weekday, time);
+    const energyFeeExVat = resolveHourFeeExVat(tariff, month, weekday, time) + ENOVA_FEE_EX_VAT;
     return {
       time,
       energyFeeExVat,
