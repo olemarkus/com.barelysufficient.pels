@@ -38,7 +38,10 @@ export type WidgetObjectiveWriteResult =
   | {
     ok: false;
     reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible'
-      | 'device_in_sub_home' | 'invalid_candidate' | 'write_refused';
+      | 'device_in_sub_home' | 'invalid_candidate' | 'write_refused'
+      // The app has not finished starting (the plan recorders a new task is
+      // seeded through are not wired yet). Retryable.
+      | 'unavailable';
   };
 
 /**

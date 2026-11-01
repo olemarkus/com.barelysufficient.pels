@@ -3,11 +3,10 @@ import type {
   SettingsUiSmartTaskCancelResponse,
   SettingsUiSmartTaskDevicesResponse,
   SettingsUiSmartTaskPreviewResponse,
-  SettingsUiSmartTaskRejectReason,
   SettingsUiSmartTaskUpdateResponse,
 } from '../packages/contracts/src/smartTaskEdit';
 import { buildSmartTaskCandidateDevices } from '../lib/objectives/deferredObjectives';
-import { readPelsHost, type PelsHost } from '../lib/app/pelsHost';
+import { readPelsHost } from '../lib/app/pelsHost';
 import {
   createNewSmartTask,
   previewNewSmartTask,
@@ -31,19 +30,9 @@ type ApiContext = {
   homey: Homey.App['homey'];
 };
 
-const previewReject = (reason: SettingsUiSmartTaskRejectReason): SettingsUiSmartTaskPreviewResponse => ({
-  ok: false,
-  reason,
-});
-
-const updateReject = (reason: SettingsUiSmartTaskRejectReason): SettingsUiSmartTaskUpdateResponse => ({
-  ok: false,
-  reason,
-});
-
-// The edit lane's ports: the running app (null during the boot window), the
-// stored tasks, and the Homey clock.
-const editLanePorts = (homey: Homey.App['homey']): SmartTaskEditLanePorts => ({
+// Both lanes' ports: the running app (null during the boot window), the stored
+// tasks, and the Homey clock.
+const lanePorts = (homey: Homey.App['homey']): SmartTaskCreateLanePorts & SmartTaskEditLanePorts => ({
   host: readPelsHost(homey),
   store: homey.settings,
   clock: homey.clock,
@@ -51,15 +40,15 @@ const editLanePorts = (homey: Homey.App['homey']): SmartTaskEditLanePorts => ({
 
 export const previewSettingsUiSmartTask = (
   { homey, body }: ApiContext & { body?: unknown },
-): SettingsUiSmartTaskPreviewResponse => previewSmartTaskEdit(editLanePorts(homey), body);
+): SettingsUiSmartTaskPreviewResponse => previewSmartTaskEdit(lanePorts(homey), body);
 
 export const updateSettingsUiSmartTask = (
   { homey, body }: ApiContext & { body?: unknown },
-): SettingsUiSmartTaskUpdateResponse => updateSmartTask(editLanePorts(homey), body);
+): SettingsUiSmartTaskUpdateResponse => updateSmartTask(lanePorts(homey), body);
 
 export const cancelSettingsUiSmartTask = (
   { homey, body }: ApiContext & { body?: unknown },
-): SettingsUiSmartTaskCancelResponse => cancelSmartTask(editLanePorts(homey), body);
+): SettingsUiSmartTaskCancelResponse => cancelSmartTask(lanePorts(homey), body);
 
 export const getSettingsUiSmartTaskDevices = (
   { homey }: ApiContext,
@@ -71,26 +60,10 @@ export const getSettingsUiSmartTaskDevices = (
   return { state: 'ready', devices: buildSmartTaskCandidateDevices(read.devices) };
 };
 
-// The create lane's ports: the running app, the stored tasks, and the Homey
-// clock (`lib/objectives/deferredObjectives/smartTaskCreateLane.ts` decides).
-const createLanePorts = (homey: Homey.App['homey'], host: PelsHost): SmartTaskCreateLanePorts => ({
-  host,
-  store: homey.settings,
-  clock: homey.clock,
-});
-
 export const previewSettingsUiNewSmartTask = (
   { homey, body }: ApiContext & { body?: unknown },
-): SettingsUiSmartTaskPreviewResponse => {
-  const host = readPelsHost(homey);
-  if (!host) return previewReject('unavailable');
-  return previewNewSmartTask(createLanePorts(homey, host), body);
-};
+): SettingsUiSmartTaskPreviewResponse => previewNewSmartTask(lanePorts(homey), body);
 
 export const createSettingsUiSmartTask = (
   { homey, body }: ApiContext & { body?: unknown },
-): SettingsUiSmartTaskUpdateResponse => {
-  const host = readPelsHost(homey);
-  if (!host) return updateReject('unavailable');
-  return createNewSmartTask(createLanePorts(homey, host), body);
-};
+): SettingsUiSmartTaskUpdateResponse => createNewSmartTask(lanePorts(homey), body);

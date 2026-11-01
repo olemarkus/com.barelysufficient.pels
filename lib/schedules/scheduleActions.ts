@@ -18,6 +18,7 @@ const CREATE_FAILURES: Record<CreateFailure, string> = {
   device_in_sub_home: 'This device is in a separately metered home.',
   invalid_candidate: 'The task target is invalid.',
   write_refused: 'The Smart task could not be saved.',
+  unavailable: 'The Smart task could not be saved.',
 };
 
 /** Commands shared with manual/Flow actions; this executor owns no device writes. */
