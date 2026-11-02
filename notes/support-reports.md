@@ -123,11 +123,16 @@ start so a report never captures a half-started app. When the next one is due li
 in the userdata database and is written before sending, as if the report goes out,
 so a restart mid-send or a failed write afterwards never sends it twice; a write that
 fails before sending sends nothing. A due time more than a day ahead was written while
-the clock ran ahead, so it counts as due. The next is due 23.5 hours later: a day, less half
-the hourly check, so the report stays on the same check instead of drifting later each
-day, and an uncertain one is never sent again. One Homey refused or that could not be
-prepared tries again 3 hours later. An install that cannot send at all (anything but
-an App Store install) captures nothing and checks again a day later. The switch is
+the clock ran ahead, so it counts as due; a day also covers the 23.5 hours earlier
+versions wrote, so an update right after a report does not send another. The next is due 18.5 hours later: 19
+hours, less half the hourly check, so it goes out on the check 19 hours on, and an
+uncertain one is never sent again. 19 shares no factor with 24, so each report goes out
+5 hours earlier in the day than the one before and 24 reports cover every hour: the
+report's current state and its newest log lines, which a size limit keeps over the
+oldest, are seen at every time of day, not always at the hour the app happened to
+start. One Homey refused or that could not be prepared tries again 3 hours later. An
+install that cannot send at all (anything but an App Store install) captures nothing
+and checks again after the full interval. The switch is
 read again once the report is prepared, so turning it off meanwhile sends nothing.
 
 ## Reports on specific events
