@@ -49,6 +49,16 @@ alone cannot restore it. Only a newer independent target report or read can.
   arrives as an observed step and is corrected by the ordinary stepped
   mismatch path, as it was with the Flow.
 
+  **Connection state is resolved at the SDK seam.** When the driver declares
+  `charger_status`, the Easee adapter uses that dated observation for the plug
+  state, whether built-in control is on or off. `Completed` means the car is
+  still connected but has stopped requesting charge; it resolves to
+  `plugged_in`, despite the Easee app publishing `plugged_out` for that mode.
+  `Standby` is a disconnect. Realtime status reports use the same mapping, and
+  the app's redundant plug-state publications do not overwrite it. The adapter
+  also supplies positive charge-completion evidence to car-link diagnostics;
+  completion does not turn an observed off switch into an on switch.
+
   **The charging switch is translated at the SDK seam, and nowhere else.**
   Everything above `lib/device` treats `evcharger_charging` as this charger's
   switch, like any EV charger's. The Easee app turns `false` into

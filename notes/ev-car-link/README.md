@@ -372,9 +372,12 @@ charge limit, so it must be the car's and nobody else's. It requires all of
   keep seeing the old draw after the pause. Whether that delivery belongs to this session is
   decided from the pass, because a steady draw is not re-reported;
 - **nobody else switched it off**: a charger that still reads connected with its observed
-  switch off was stopped from outside (an owner's "car at 80 % → charger off" Flow would
-  otherwise bank 80 % every session). `plugged_out` is exempt, since that is how an Easee ends
-  the session at the car's limit;
+  switch off supplies no self-stop evidence unless its integration positively observed
+  charge completion. Otherwise an owner's "car at 80 % → charger off" Flow would bank
+  80 % every session. The Easee adapter resolves its `Completed` mode as connected and
+  supplies completion evidence separately from the switch. A legacy `plugged_out` report
+  remains exempt for integrations whose reported state does not distinguish completion
+  from a physical unplug;
 - the charger is **not holding the session paused** (`plugged_in_paused`), where PELS's own
   0 A pause and a charger-app schedule both land;
 - the car reports connected-but-not-charging, continuously for the dwell window (2 min).
@@ -382,21 +385,22 @@ charge limit, so it must be the car's and nobody else's. It requires all of
 An unreadable power measurement is not evidence of idleness, and neither history survives a
 restart, so no stop counts until delivery is seen again.
 
-The charger's own belief is **not** asked for. It used to be ("the charger still believes it
-is delivering", including `binaryControl.on`), and that was both too strict and too loose: an
-Easee ends the session at the car's limit and reads `plugged_out` with the car still
-connected, and an Easee switched on by PELS reads "on" through its roughly five-minute resume
-hold-off with nothing flowing. Production had both on record: the car's real stop at its 70 %
-limit (2026-09-26 03:15:59) was never banked, and the only sample ever banked (2026-09-15,
-42 %) came two minutes after PELS switched the charger on.
+The charging activity bit alone is **not** a self-stop verdict. An Easee switched on by
+PELS can read "on" through its roughly five-minute resume hold-off with nothing flowing,
+while its `Completed` mode reports an off switch after the car stopped requesting charge.
+Positive completion evidence admits the latter without inventing an on switch; prior
+delivery, the car's stop, the dwell, and the exclusion of PELS stop commands still apply.
 
-**A charger that ends the session while the car stays connected** tears the link down before
-the car has reported anything (the Easee at 03:15:59, the car 17 s later). The watcher keeps
+**A charger whose reported state does not distinguish completion from an unplug** can tear
+the link down before the car has reported anything. The watcher keeps
 such a link only to see that stop through. A physical unplug reads the same on the charger, and
 a car app can lag in reporting it, so a stop on a lingering link is banked only once the car
 has stayed connected for 10 minutes after the charger let go. The link goes the moment the car
 disconnects or links to another charger, and after 17 minutes (the confirm window, one device
-poll and the dwell).
+poll and the dwell). An Easee with a declared `charger_status` resolves `Completed` as
+connected at its adapter boundary, so ordinary completion preserves the association and
+battery session without entering this lingering path. A genuine disconnect from either
+endpoint still ends the association; it does not wait for both devices to agree.
 
 **The charge limit** (`resolveEvCarChargeLimit`) is the lowest of the newest three banked
 stops (or two, while only two exist), once every one of them lies within 2 percentage points.

@@ -59,6 +59,7 @@ export class FuturehomeChargerSession implements DeviceAdapterSession {
   observedIds(): string[] { return []; }
   observes(): boolean { return false; }
   controls(snapshot: AdapterControlTarget): boolean { return this.chargers.has(snapshot.id); }
+  hasCarStopEvidence(): boolean { return false; }
 
   /** A Flow report carries its own date and is left as reported. */
   project(snapshot: TransportDeviceSnapshot): TransportDeviceSnapshot {
