@@ -102,6 +102,11 @@ const buildHeaterActivePlan = (params: {
   floorShortfallCause?: 'budget' | 'step_power' | 'estimate' | 'time_capacity' | 'none';
   planningSpeedKw?: number;
   initialPlanningSpeedKw?: number;
+  // The task's reading when the revision was recorded. Given, the revision's
+  // rate is recorded as production does: expected energy over the units left
+  // then (`kWhPerUnitBanded`), so a page whose reading has not moved shows the
+  // revision's own energy. Absent, the rate is a flat 1 kWh/°C.
+  revisionReadingC?: number;
 // `latest` is narrowed to non-null: the contract allows `null` (a task committed
 // but not yet planned), but this builder always produces a revision, and tests
 // that reach into `plan.latest.hours` should not have to assert what the builder
@@ -132,7 +137,10 @@ const buildHeaterActivePlan = (params: {
     // figure the plan's provenance below carries.
     kwhPerUnitSource: 'learned' as const,
     speedMode: 'auto' as const,
-    rateMean: 1,
+    rateMean: params.revisionReadingC === undefined
+      ? 1
+      : (params.energyExpectedKWh ?? params.energyNeededKWh ?? params.plannedHourOffsets.length * params.plannedKWhPerHour)
+        / Math.abs((params.targetTemperatureC ?? 22) - params.revisionReadingC),
   };
   const latestRevision = params.latestHourOffsets
     ? {
@@ -321,6 +329,7 @@ describe('deadline plan page payload', () => {
         energyNeededKWh: 2,
         targetTemperatureC: 22,
         progressDirection: 'decreasing',
+        revisionReadingC: 26,
       })),
       deviceId: 'heater',
       devices,
@@ -707,6 +716,7 @@ describe('deadline plan page payload', () => {
       deadline,
       plannedHourOffsets: [0, 1, 2],
       plannedKWhPerHour: 1.5,
+      revisionReadingC: 18,
     }));
 
     const payload = expectReady(resolveRenderInput({
@@ -2928,6 +2938,7 @@ describe('energy estimate range (expected…planned, end-to-end through resolveR
       energyNeededKWh: 10,
       ...(energyExpectedKWh !== undefined ? { energyExpectedKWh } : {}),
       planStatus,
+      revisionReadingC: 18,
     });
     if (coldStartProvenance) {
       // Bootstrap-sourced provenance with zero accepted samples is the
@@ -3787,6 +3798,40 @@ describe('cost + delivered-so-far hero lines', () => {
     expect(withoutTrajectory.hero.deliveredSoFarLine).toBe('Delivered 1.0 of 4.0 kWh · now 19.0 °C of 22.0 °C target');
   });
 
+  it('brings the revision\'s energy forward to the live reading between revisions', () => {
+    // The revision was recorded at 18 °C: 4 °C to go at 1 kWh/°C. An hour on,
+    // 2 kWh went in and the tank reads 20 °C, with no revision since. The page
+    // must read what is still needed now, not the revision's 4 kWh.
+    const planAnchor = new Date(2026, 0, 1, 12, 0, 0, 0);
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(planAnchor, 6);
+    const prices = buildStubPrices(planAnchor, 6, 200);
+    const plan = buildHeaterActivePlan({
+      now: planAnchor,
+      deadline,
+      plannedHourOffsets: [0, 1, 2],
+      plannedKWhPerHour: 2,
+      targetTemperatureC: 22,
+      energyNeededKWh: 4,
+      planStatus: 'on_track',
+      revisionReadingC: 18,
+    });
+    const payload = expectReady(resolveRenderInput({
+      bootstrap: buildStubBootstrap(planAnchor, deadline, plan, 22, { [planAnchor.toISOString()]: 2 }),
+      deviceId: 'heater',
+      devices: buildHeaterDevice(20),
+      prices,
+      nowMs: now.getTime(),
+    }));
+    expect(payload.hero.stats.find((stat) => stat.label === 'Needs')?.value).toBe('2.0 kWh');
+    // The run's total, not the remaining figure under the delivered one.
+    expect(payload.hero.deliveredSoFarLine).toBe('Delivered 2.0 of 4.0 kWh · now 20.0 °C of 22.0 °C target');
+    // The staircase converts planned kWh at the live rate: the two booked hours
+    // still ahead reach the target. At the revision's 4 kWh it read 0.5 °C per
+    // kWh and drew a shortfall.
+    expect(payload.trajectory.shortfall).toBeNull();
+  });
+
   it('prorates the plan-start hour bucket so pre-plan usage does not inflate delivered totals', () => {
     // Regression: device buckets are full-hour aggregates. If a plan starts
     // mid-hour (e.g. 12:30) and the 12:00 bucket has 1.0 kWh, all of that
@@ -3807,6 +3852,7 @@ describe('cost + delivered-so-far hero lines', () => {
       targetTemperatureC: 22,
       energyNeededKWh: 4,
       planStatus: 'on_track',
+      revisionReadingC: 19,
     });
     // 1.0 kWh recorded in the 12:00 bucket. Half occurred before plan start
     // at 12:30, so only 0.5 kWh should count as delivered.
@@ -3821,7 +3867,9 @@ describe('cost + delivered-so-far hero lines', () => {
     // Est. cost stat carries the planned total only (8.00 kr); the prorated
     // delivered figure is still verified via the delivered-kWh line below.
     expect(payload.hero.stats.find((stat) => stat.label === 'Estimated cost')?.value).toBe('≈ 8.00 kr');
-    expect(payload.hero.deliveredSoFarLine).toMatch(/Delivered 0\.5 of 4\.0 kWh/);
+    // The run's total is the prorated 0.5 kWh delivered plus the 4 kWh still
+    // needed at a reading that has not moved since the revision.
+    expect(payload.hero.deliveredSoFarLine).toMatch(/Delivered 0\.5 of 4\.5 kWh/);
   });
 
   it('at-risk: keeps on-track-shape delivered line — the chip warns, the line stays hopeful', () => {
@@ -3933,6 +3981,7 @@ describe('cost + delivered-so-far hero lines', () => {
       targetTemperatureC: 65,
       energyNeededKWh: 16, // far more than 4 kWh allocated → won't reach
       planStatus: 'cannot_meet',
+      revisionReadingC: 40,
     });
     const payload = expectReady(resolveRenderInput({
       bootstrap: buildStubBootstrap(now, deadline, plan, 65),

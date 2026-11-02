@@ -345,9 +345,10 @@ const resolveFiniteNumber = (value: number | null | undefined): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
 );
 
-// Resolves the "Delivered X of Y kWh · …" subline against the energy the
-// planner currently estimates the run needs (`latest.energyNeededKWh`; replans
-// can shift it as the planner observes the device). The two visible branches
+// Resolves the "Delivered X of Y kWh · …" subline, Y being the run's total: the
+// energy delivered plus what the planner estimates is still needed at the live
+// reading (`resolveEnergyNeededKWh`; replans can shift it as the planner
+// observes the device). The two visible branches
 // collapse the planner's status union to two phrasing shapes: the "still
 // {curr} of {target}" stem *only* on the physically-can't-deliver case
 // (`cannot_meet`), while at-risk keeps the on-track-shaped phrasing ("now …")
@@ -360,10 +361,14 @@ const resolveDeliveredSoFarLine = (
   deliveredKWh: number,
 ): string | null => {
   const { progress, energy } = input;
+  // "of Y" is the run's total: what was delivered plus what is still needed now.
+  // `energyNeededKWh` alone is only the part still ahead, so it shrank under the
+  // delivered figure as the run went on.
+  const neededKWh = energy?.energyNeededKWh ?? 0;
   return formatDeadlineDeliveredSoFarLine(
     planStatus === 'cannot_meet' ? 'cannot_meet' : 'on_track_or_queued',
     deliveredKWh,
-    energy?.energyNeededKWh ?? 0,
+    neededKWh > 0 ? deliveredKWh + neededKWh : 0,
     progress.currentValue,
     input.ctx.activePlan.startProgressValue ?? null,
     progress.targetValue,

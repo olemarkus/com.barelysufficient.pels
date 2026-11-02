@@ -20,6 +20,7 @@ import type {
   ResolvedDeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import { resolvePlanKwhPerUnit } from '../../../shared-domain/src/deferredActivePlanResolvedView.ts';
+import { resolveLiveRemainingEnergy } from '../../../shared-domain/src/deferredActivePlanLiveRemaining.ts';
 import {
   resolveChipConfidence,
   resolveSmartTaskLearning,
@@ -164,7 +165,14 @@ export const resolveDisplayRateAndSpeedMode = (
   return { rateMean: resolvePlanKwhPerUnit(activePlan), usingBootstrap: speedMode === 'learning', speedMode };
 };
 
-export const resolveEnergyNeededKWh = (activePlan: ResolvedDeferredObjectiveActivePlanV1): {
+// `currentValue` is the task's live reading (`DeadlineProgress.currentValue`): the
+// revision's figures are brought forward to it (`resolveLiveRemainingEnergy`), since
+// a revision lands about once an hour and its own figures trail delivery until the
+// next one. Without a live answer the revision's figures are read as they are.
+export const resolveEnergyNeededKWh = (
+  activePlan: ResolvedDeferredObjectiveActivePlanV1,
+  currentValue: number,
+): {
   energyNeededKWh: number;
   // Mean-based estimate paired with the buffered `energyNeededKWh` for the
   // `expected…planned` range. Equals `energyNeededKWh` (range collapses) when
@@ -179,7 +187,8 @@ export const resolveEnergyNeededKWh = (activePlan: ResolvedDeferredObjectiveActi
   // authoritative even under `cannot_meet` (allocated hours can round to zero
   // for sub-second remaining buckets). The UI never needs its own learned
   // profile to render the timeline.
-  const revisionEnergy = activePlan.latest?.energyNeededKWh;
+  const live = resolveLiveRemainingEnergy(activePlan, currentValue);
+  const revisionEnergy = live?.neededKWh ?? activePlan.latest?.energyNeededKWh;
   if (!isFiniteNumber(revisionEnergy) || revisionEnergy <= 0) return null;
   // Absence encodes equality with `energyNeededKWh` (steady device, cold-start,
   // or a plan persisted before the variance buffer shipped). Routed through the
@@ -192,7 +201,7 @@ export const resolveEnergyNeededKWh = (activePlan: ResolvedDeferredObjectiveActi
   // rather than substituting `revisionEnergy` keeps this a read of the
   // resolver's result instead of a kept fallback derivation (root `AGENTS.md`).
   const energyExpectedKWh = resolveRemainingEnergyKWh({
-    energyExpectedKWh: activePlan.latest?.energyExpectedKWh,
+    energyExpectedKWh: live?.expectedKWh ?? activePlan.latest?.energyExpectedKWh,
     energyNeededKWh: revisionEnergy,
   });
   if (energyExpectedKWh === null) return null;
