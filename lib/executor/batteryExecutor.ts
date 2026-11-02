@@ -473,7 +473,7 @@ export class BatteryExecutor {
     const progressW = (power.signedW - record.startSignedW) * Math.sign(record.setpointW - record.startSignedW);
     const moved = progressW >= toleranceW;
     if (increase && !towardDischarge) {
-      verification.recordChargeCeiling(deviceId, Math.max(0, power.signedW), level, nowMs);
+      verification.recordChargeCeiling(deviceId, { signedW: power.signedW, toleranceW, level }, nowMs);
       logger.info({ event: 'battery_storage_charge_plateaued', ...event, moved, levelPercent: level?.percent ?? null });
       if (!moved) return 'inconclusive';
       verification.recordResponding(deviceId, { signedW: power.signedW, toleranceW, level }, nowMs);
