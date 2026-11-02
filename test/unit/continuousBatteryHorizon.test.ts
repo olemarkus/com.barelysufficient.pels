@@ -14,7 +14,7 @@ const config: ContinuousBatteryPlanConfig = {
 };
 const control: BatteryLeverRead = {
   kind: 'setpoint', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
-  deliveryCeilingW: 2500, chargeCeiling: { everyLevelW: 2500, taper: [] }, claimHeld: false, handBackDeferred: false,
+  deliveryCeilingW: 2500, chargeCeiling: { everyLevelW: 2500, taper: [], planningTaper: [] }, claimHeld: false, handBackDeferred: false,
   claimEngaged: false, admissible: true, verdict: 'responding',
 };
 
@@ -64,10 +64,14 @@ describe('continuous battery horizon projection', () => {
     expect(result.exportPricing).toBe('incomplete');
   });
 
-  it('carries a learned charge taper as stored-energy steps', () => {
+  it('carries the planning taper as stored-energy steps, not the live one', () => {
     const tapered: BatteryLeverRead = {
       ...control,
-      chargeCeiling: { everyLevelW: 2000, taper: [{ fromPercent: 90, ceilingW: 3000 }, { fromPercent: 95, ceilingW: 600 }] },
+      chargeCeiling: {
+        everyLevelW: 2000,
+        taper: [],
+        planningTaper: [{ fromPercent: 90, ceilingW: 3000 }, { fromPercent: 95, ceilingW: 600 }],
+      },
     };
     const result = createContinuousBatteryPlanSource(sources({
       getControl: () => partialDouble<BatteryControlOwner>({ readControl: () => tapered }),

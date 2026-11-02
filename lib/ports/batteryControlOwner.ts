@@ -160,8 +160,17 @@ export type BatteryLeverRead =
 export type BatteryChargeCeiling = {
   /** The ceiling at every level: the charge range, or a lesson taught below the taper bands. */
   everyLevelW: number;
-  /** Lower ceilings from a charge level up, ascending `fromPercent`; empty without a held taper lesson. */
+  /**
+   * Live control's lower ceilings from a charge level up, ascending
+   * `fromPercent`: each band's lesson while it holds (30 min), after which PELS
+   * asks for full power again. Empty without a held taper lesson.
+   */
   taper: readonly { fromPercent: number; ceilingW: number }[];
+  /**
+   * The continuous plan's taper, same shape: each band's latest lesson, kept
+   * for days until re-taught or lifted, because the plan charges hours ahead.
+   */
+  planningTaper: readonly { fromPercent: number; ceilingW: number }[];
 };
 
 /**

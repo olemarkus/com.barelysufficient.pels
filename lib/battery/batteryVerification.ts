@@ -28,8 +28,13 @@
  *   batteries accept less charge from about 80 % up, and every full battery
  *   accepts none, so a lesson taught near full caps only its own band and the
  *   bands above it. A lesson below 80 %, or without a reported level, caps
- *   every level, as before. Each band keeps its own expiry, and a charge at a
- *   known level lifts every band it shows to be too low.
+ *   every level, as before. A charge at a known level lifts every band it
+ *   shows to be too low.
+ * - A band lesson serves two readers on two clocks. Live control holds it for
+ *   `DELIVERY_CEILING_TTL_MS`, then asks for full power again, which re-teaches
+ *   or lifts it. The continuous plan, built hours ahead, keeps each band's
+ *   latest lesson for `CHARGE_TAPER_PLANNING_RETENTION_MS` (`planningTaper`),
+ *   until it is re-taught or lifted. Both are in memory: a restart relearns.
  */
 import type { BatteryChargeCeiling, BatteryDelivery } from '../ports/batteryControlOwner';
 import type { HomeBatteryLevelObservation, HomeBatterySetpointRange } from '../../packages/contracts/src/types';
@@ -44,6 +49,16 @@ export const BATTERY_REPROBE_BACKOFF_MS = [15 * 60_000, 30 * 60_000, 60 * 60_000
 
 /** How long a learned delivery ceiling holds before the battery gets its full range again. */
 export const DELIVERY_CEILING_TTL_MS = 30 * 60_000;
+
+/**
+ * How long the continuous plan keeps a band's latest charge lesson. A taper is
+ * the battery's own charge curve, steady from one day to the next, but a battery
+ * reaches 80 % only on some days (sunny ones, cheap nights), so a shorter
+ * memory would forget it between charges. A week spans several such charges,
+ * and a lesson taught in a cold spell, or by a battery whose curve has since
+ * changed, still fades within one.
+ */
+export const CHARGE_TAPER_PLANNING_RETENTION_MS = 7 * 24 * 60 * 60_000;
 
 /**
  * The last plateau an increase taught, and when, as a magnitude, W: discharge
@@ -115,18 +130,37 @@ const resolveCeilingW = (rangeW: number, plateau: LearnedPlateau, nowMs: number)
   isCeilingHeld(plateau, nowMs) ? Math.min(rangeW, plateau.powerW) : rangeW
 );
 
-/** The charge range, capped by each band's held lesson. */
+/** Whether the plan still keeps a band lesson. */
+const isPlanningRetained = (
+  plateau: LearnedPlateau,
+  nowMs: number,
+): plateau is Extract<LearnedPlateau, { kind: 'learned' }> => (
+  plateau.kind === 'learned' && nowMs - plateau.learnedAtMs < CHARGE_TAPER_PLANNING_RETENTION_MS
+);
+
+/** The bands' lessons each predicate keeps, ascending, capped by the charge range. */
+const taperSteps = (
+  rangeW: number,
+  plateaus: ReadonlyMap<ChargeBand, LearnedPlateau>,
+  keeps: (plateau: LearnedPlateau) => plateau is Extract<LearnedPlateau, { kind: 'learned' }>,
+): BatteryChargeCeiling['taper'] => [...plateaus]
+  .filter(([band, plateau]) => band !== 0 && keeps(plateau))
+  .sort(([left], [right]) => left - right)
+  .map(([band, plateau]) => ({
+    fromPercent: band,
+    ceilingW: plateau.kind === 'learned' ? Math.min(rangeW, plateau.powerW) : rangeW,
+  }));
+
+/** The charge range, capped by each band's held lesson and, for the plan, its retained one. */
 const resolveChargeCeiling = (
   rangeW: number,
   plateaus: ReadonlyMap<ChargeBand, LearnedPlateau>,
   nowMs: number,
-): BatteryChargeCeiling => {
-  const taper = [...plateaus]
-    .filter(([band, plateau]) => band !== 0 && isCeilingHeld(plateau, nowMs))
-    .sort(([left], [right]) => left - right)
-    .map(([band, plateau]) => ({ fromPercent: band, ceilingW: resolveCeilingW(rangeW, plateau, nowMs) }));
-  return { everyLevelW: resolveCeilingW(rangeW, plateaus.get(0) ?? NO_PLATEAU, nowMs), taper };
-};
+): BatteryChargeCeiling => ({
+  everyLevelW: resolveCeilingW(rangeW, plateaus.get(0) ?? NO_PLATEAU, nowMs),
+  taper: taperSteps(rangeW, plateaus, (plateau) => isCeilingHeld(plateau, nowMs)),
+  planningTaper: taperSteps(rangeW, plateaus, (plateau) => isPlanningRetained(plateau, nowMs)),
+});
 
 /**
  * The most charge PELS may ask for at this charge level, W: the every-level
@@ -182,8 +216,11 @@ export class BatteryVerificationLedger {
     const { plateau, chargePlateaus } = entry;
     const { signedW, toleranceW, level } = delivery;
     const dischargeLifted = isLifted(plateau, -signedW, toleranceW, nowMs);
-    const liftedBands = [...chargePlateaus].filter(([band, charge]) => (
-      bandApplies(band, level) && isLifted(charge, signedW, toleranceW, nowMs)
+    // A band the plan still keeps is lifted too, held or not: a charge past it
+    // shows the plan's taper is wrong as well as live control's.
+    const liftedBands = [...chargePlateaus].filter(([band, charge]) => bandApplies(band, level) && (
+      band === 0 ? isLifted(charge, signedW, toleranceW, nowMs)
+        : isPlanningRetained(charge, nowMs) && signedW > charge.powerW + toleranceW
     ));
     const remaining = new Map(chargePlateaus);
     for (const [band] of liftedBands) remaining.delete(band);

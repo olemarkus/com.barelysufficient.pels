@@ -17,10 +17,13 @@ square root of round-trip efficiency. Wear is charged per AC kWh supplied.
 Charge power follows the taper the battery has shown: the verification ledger
 (`batteryVerification.ts`) learns where a charge stopped short per 5 % band
 from 80 % up (below 80 %, or without a reported level, the lesson applies at
-every level), each band expiring on its own. The horizon carries these as
-stored-energy steps, and each transition's charge is capped by the steps at or
-below the energy it starts from, so a battery that slows near full starts
-charging earlier. Live control caps charge by the band of the current level.
+every level). Live control caps charge by the band of the current level for 30
+minutes, then asks for full power again. The plan keeps each band's latest
+lesson for a week, until it is re-taught or a charge past it lifts it, since it
+charges hours ahead; the lessons are in memory and a restart relearns them. The
+horizon carries these as stored-energy steps, and each transition's charge is
+capped by the steps at or below the energy it starts from, so a battery that
+slows near full starts charging earlier.
 Battery-driven export is excluded.
 
 The hidden [export economics evaluation](./battery-export-arbitrage.md#hidden-economic-evaluation)

@@ -62,7 +62,7 @@ describe('continuous battery reserve projection', () => {
   });
   const control: BatteryLeverRead = {
     kind: 'setpoint', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
-    deliveryCeilingW: 2500, chargeCeiling: { everyLevelW: 2500, taper: [] }, claimHeld: true,
+    deliveryCeilingW: 2500, chargeCeiling: { everyLevelW: 2500, taper: [], planningTaper: [] }, claimHeld: true,
     handBackDeferred: false, claimEngaged: true, admissible: true, verdict: 'responding',
   };
 
@@ -77,7 +77,9 @@ describe('continuous battery reserve projection', () => {
   it('caps charging by the taper band of the current level', () => {
     const tapered: BatteryLeverRead = {
       ...control,
-      chargeCeiling: { everyLevelW: 2500, taper: [{ fromPercent: 90, ceilingW: 800 }] },
+      chargeCeiling: {
+        everyLevelW: 2500, taper: [{ fromPercent: 90, ceilingW: 800 }], planningTaper: [{ fromPercent: 90, ceilingW: 800 }],
+      },
     };
     const at = (percent: number) => resolveStorageCluster(planSource, device({
       batteryPower: { signedW: 0, observedAtMs: nowMs },
