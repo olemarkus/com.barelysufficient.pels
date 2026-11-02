@@ -10,6 +10,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { attachDeferredReleaseIntents } from '../../lib/plan/planBuilderDecoration';
+import { buildPlanDevice } from '../utils/planTestUtils';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 
 type PlanDevice = DevicePlan['devices'][number];
@@ -34,9 +35,10 @@ describe('attachDeferredReleaseIntents — the binary_restore seam', () => {
       [evDevice()],
       { 'ev-1': 'binary_restore' },
       true,
+      () => ({ action: 'turn_off' }),
     );
 
-    expect(result[0].deferredReleaseIntent).toBe('binary_restore');
+    expect(result[0].deferredReleaseIntent).toEqual({ kind: 'binary_restore' });
   });
 
   it('withholds a binary_restore intent when the pass forbids it (the silent-meter pass)', () => {
@@ -44,6 +46,7 @@ describe('attachDeferredReleaseIntents — the binary_restore seam', () => {
       [evDevice()],
       { 'ev-1': 'binary_restore' },
       false,
+      () => ({ action: 'turn_off' }),
     );
 
     expect(result[0].deferredReleaseIntent).toBeUndefined();
@@ -54,8 +57,58 @@ describe('attachDeferredReleaseIntents — the binary_restore seam', () => {
       [evDevice()],
       { 'ev-1': 'binary_release' },
       false,
+      () => ({ action: 'turn_off' }),
     );
 
-    expect(result[0].deferredReleaseIntent).toBe('binary_release');
+    expect(result[0].deferredReleaseIntent).toEqual({ kind: 'binary_release' });
+  });
+});
+
+describe('idle-task release posture', () => {
+  it("freezes a cap-off task's configured temperature before execution", () => {
+    const device = buildPlanDevice({ controllable: false, shedAction: 'turn_off' });
+    let configuredTarget = 15;
+    const [resolved] = attachDeferredReleaseIntents(
+      [device], { [device.id]: 'shed_release' }, true,
+      () => ({ action: 'set_temperature', temperature: configuredTarget }),
+    );
+    configuredTarget = 20;
+    expect(resolved.deferredReleaseIntent).toEqual({
+      kind: 'shed_release', posture: { kind: 'target_value', target: 15 },
+    });
+  });
+
+  it('resolves set_step to binary off when the device has a binary axis', () => {
+    const device = buildPlanDevice();
+    const [resolved] = attachDeferredReleaseIntents(
+      [device], { [device.id]: 'shed_release' }, true, () => ({ action: 'set_step' }),
+    );
+    expect(resolved.deferredReleaseIntent).toEqual({ kind: 'shed_release', posture: { kind: 'binary_off' } });
+  });
+
+  it.each([true, false])('resolves a step-only release on a measured cycle=%s', (measured) => {
+    const device = buildPlanDevice({
+      binaryControllable: false,
+      steppedLoadProfile: { steps: [{ id: 'low', planningPowerW: 500 }, { id: 'high', planningPowerW: 1500 }] },
+      selectedStepId: 'high',
+      releaseShedStepId: 'low',
+    });
+    const [resolved] = attachDeferredReleaseIntents(
+      [device], { [device.id]: 'shed_release' }, measured, () => ({ action: 'set_step' }),
+    );
+    expect(resolved.deferredReleaseIntent).toEqual({ kind: 'shed_release', posture: { kind: 'step', stepId: 'low' } });
+  });
+
+  it('omits a step release whose target is absent from its selected ladder', () => {
+    const device = buildPlanDevice({
+      binaryControllable: false,
+      steppedLoadProfile: { steps: [{ id: 'low', planningPowerW: 500 }] },
+      selectedStepId: 'low',
+      releaseShedStepId: null,
+    });
+    const [resolved] = attachDeferredReleaseIntents(
+      [device], { [device.id]: 'shed_release' }, true, () => ({ action: 'set_step' }),
+    );
+    expect(resolved.deferredReleaseIntent).toBeUndefined();
   });
 });

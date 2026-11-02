@@ -8,7 +8,8 @@ import {
 } from '../../lib/plan/planLogging';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { fixtureDeviceReason, insufficientHeadroomFixtureReason } from '../utils/deviceReasonTestUtils';
-import { fixtureControlPosture } from '../utils/planTestUtils';
+import { buildPlanDevice, buildPlanMeta, fixtureControlPosture } from '../utils/planTestUtils';
+import type { ShedReleasePosture } from '../../lib/planContract/releaseIntent';
 
 const r = fixtureDeviceReason;
 const KEEP_REASON = r('keep')!;
@@ -17,6 +18,20 @@ const CAPACITY_REASON = r('shed due to capacity')!;
 const SNAPSHOT_SOURCE = { summarySource: 'plan_snapshot', summarySourceAtMs: 1234 } as const;
 
 describe('plan logging helpers', () => {
+  it.each<[ShedReleasePosture, ShedReleasePosture]>([
+    [{ kind: 'target_value', target: 15 }, { kind: 'target_value', target: 18 }],
+    [{ kind: 'binary_off' }, { kind: 'target_value', target: 15 }],
+    [{ kind: 'step', stepId: 'low' }, { kind: 'step', stepId: 'mid' }],
+  ])('changes the action signature when only the release posture changes', (before, after) => {
+    const device = buildPlanDevice({ deferredReleaseIntent: { kind: 'shed_release', posture: before } });
+    const plan: DevicePlan = { meta: buildPlanMeta(), devices: [device], inverterDecisions: [], storageReleases: [] };
+    const changed: DevicePlan = {
+      ...plan,
+      devices: [{ ...device, deferredReleaseIntent: { kind: 'shed_release', posture: after } }],
+    };
+    expect(buildPlanSignature(changed)).not.toBe(buildPlanSignature(plan));
+  });
+
   it('includes an absent battery release in both signatures even for an empty plan', () => {
     const empty = { devices: [], inverterDecisions: [], storageReleases: [] } as unknown as DevicePlan;
     const released: DevicePlan = {

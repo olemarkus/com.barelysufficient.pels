@@ -532,7 +532,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       buildDevice({ id: 'resume', name: 'Resume', controllable: false, currentOn: false, binaryControl: { on: false } }),
     ]);
 
-    expect(plan.devices.find((dev) => dev.id === 'release')?.deferredReleaseIntent).toBe('binary_release');
+    expect(plan.devices.find((dev) => dev.id === 'release')?.deferredReleaseIntent).toEqual({ kind: 'binary_release' });
     expect(plan.devices.find((dev) => dev.id === 'resume')?.deferredReleaseIntent).toBeUndefined();
   });
 });

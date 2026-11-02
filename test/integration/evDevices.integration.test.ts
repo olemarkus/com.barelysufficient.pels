@@ -81,7 +81,7 @@ type PlanDeviceEntry = {
   id: string;
   plannedState?: string;
   reason?: DeviceReason;
-  deferredReleaseIntent?: 'binary_restore' | 'binary_release';
+  deferredReleaseIntent?: { kind: 'binary_restore' | 'binary_release' };
 };
 
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
@@ -863,12 +863,12 @@ function expectDeferredReleaseIntent(
 ): void {
   // Only stringify the plan entry on mismatch — this suite is CPU-load
   // sensitive, so the diagnostic must not add overhead to passing runs.
-  if (evPlan.deferredReleaseIntent === expected) {
-    expect(evPlan.deferredReleaseIntent).toBe(expected);
+  if (evPlan.deferredReleaseIntent?.kind === expected) {
+    expect(evPlan.deferredReleaseIntent?.kind).toBe(expected);
     return;
   }
   expect(
-    evPlan.deferredReleaseIntent,
+    evPlan.deferredReleaseIntent?.kind,
     `deferredReleaseIntent mismatch — plan entry: ${JSON.stringify(evPlan)}`,
   ).toBe(expected);
 }

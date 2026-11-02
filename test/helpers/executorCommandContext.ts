@@ -38,7 +38,6 @@ export const createTestExecutorCommandContext = (
   readDevice: () => undefined,
   getCapacityDryRun: () => false,
   getOperatingMode: () => 'Home',
-  getShedBehavior: () => ({ action: 'turn_off' }),
   getSteppedLoadCommandSession: () => ({
     hasPriorStepCommand: false,
     stepCommandPending: false,

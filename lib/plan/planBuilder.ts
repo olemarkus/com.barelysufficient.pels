@@ -353,7 +353,7 @@ export class PlanBuilder {
       }, holdResult,
     );
     const planDevices = attachDeferredReleaseIntents(
-      reasoned.planDevices, decoration.deferredReleaseIntentByDeviceId, true,
+      reasoned.planDevices, decoration.deferredReleaseIntentByDeviceId, true, this.deps.getShedBehavior,
     );
     const decidedDevices = attachStorageDecisions(
       this.stages.finalizePlan(planDevices, heldContext.temperatureSetpoints, nowTs).planDevices, storageRelief,

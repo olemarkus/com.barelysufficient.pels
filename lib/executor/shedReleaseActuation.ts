@@ -1,5 +1,4 @@
 import { isBinaryControlled, isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
-import type { ShedAction } from '../plan/planTypes';
 import type { DesiredBinaryKind } from './executableDesiredState';
 import type {
   SteppedLoadProfile,
@@ -31,27 +30,9 @@ import { getDebugEmitter } from '../logging/logger';
  */
 const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
-// shed_release fires the device's configured shedBehavior exactly once for a cap-off device
-// whose smart task transitioned out of plannable status (or is in an idle bucket). The
-// executor resolves the concrete actuation primitive at apply time from getShedBehavior():
-//   'turn_off' / 'set_step' → binary shed via the onoff/evcharger_charging capability,
-//                              or (for set_step on a stepped-only device) a synthesized
-//                              shed-purpose stepped command via the step capability
-//   'set_temperature'       → target write at the configured shed setpoint, with an
-//                              explicit recordReleaseShedActuation so diagnostics see the event
-// Each axis's existing idempotency guard prevents re-actuation when the device is already in
-// the configured shed posture (binary observedBinaryState; target pendingTargetCommand
-// dampening inside applyTargetUpdate; stepped commandStepId vs current.stepId), so the
-// per-cycle re-emission of the intent is safe.
-//
-// `recordReleaseShedActuation` writes the per-device `pels_shed` diagnostic event and closes
-// any open activation attempt for the (now satisfied) smart task. Unlike a capacity-driven
-// shed, it does NOT poke `lastInstabilityMs` or `lastDeviceShedMs`, so a lifecycle-end
-// release doesn't start a 5 s shed-throttle window that would interfere with later capacity
-// decisions for unrelated devices.
-//
-// The lifecycle fallback lane drives its own posture through the temperature and stepped
-// halves directly (`applyShedReleaseTemperature`, `applyShedReleaseStepFallback`).
+// The planner resolves the idle-task posture before execution. Each axis keeps
+// its existing observation, pending-command and lifecycle accounting guards.
+// The lifecycle fallback lane drives the same target/step helpers directly.
 export const applyShedReleaseIntent = async (
   ctx: ExecutorCommandContext,
   intent: ExecutableReleaseIntent,
@@ -59,20 +40,15 @@ export const applyShedReleaseIntent = async (
   observed: ExecutableObservedDeviceState | undefined,
 ): Promise<boolean> => {
   if (intent.kind !== 'shed_release') return false;
-  const behavior = ctx.getShedBehavior(intent.deviceId);
-  if (behavior.action === 'set_temperature') {
-    return applyShedReleaseTemperature(ctx, intent, behavior.temperature, observed, false);
+  const { posture } = intent;
+  if (posture.kind === 'target_value') {
+    return applyShedReleaseTemperature(ctx, intent, posture.target, observed, false);
   }
-  // Stepped-only devices (no `onoff`/`evcharger_charging` capability) cannot route through
-  // the binary off path: re-project a shed-purpose stepped action at apply time and dispatch
-  // via the step capability before falling through to the binary handler.
-  if (
-    behavior.action === 'set_step'
-    && steppedLoadIntent
-    && !isBinaryControlled(observed?.snapshot)
-    && await applyShedReleaseSteppedLoad(ctx, intent, steppedLoadIntent, observed, false)
-  ) return true;
-  return applyShedReleaseBinaryOff(ctx, intent, behavior.action, observed);
+  if (posture.kind === 'step') {
+    if (!steppedLoadIntent || !observed) return false;
+    return applyShedReleaseStepFallback(ctx, intent, steppedLoadIntent, observed, false);
+  }
+  return applyShedReleaseBinaryOff(ctx, intent, observed);
 };
 
 export const applyShedReleaseTemperature = async (
@@ -108,7 +84,6 @@ export const applyShedReleaseTemperature = async (
 const applyShedReleaseBinaryOff = async (
   ctx: ExecutorCommandContext,
   intent: ExecutableReleaseIntent,
-  action: ShedAction,
   observed: ExecutableObservedDeviceState | undefined,
 ): Promise<boolean> => {
   // No EV re-derivation here: shed_release is only ever produced for non-EV (temperature)
@@ -116,11 +91,6 @@ const applyShedReleaseBinaryOff = async (
   // intent is authoritative (see the objectiveKind↔device invariant note in admission.ts);
   // a device with no binary handle is still rejected below.
   if (!isBinaryControlled(observed?.snapshot)) {
-    // No binary handle, and the stepped re-projection above either didn't apply (turn_off
-    // shedBehavior, or no steppedLoad intent available) or returned false. Stay silent on
-    // turn_off (rare config); for set_step log a one-off so any remaining gap shows up in
-    // prod traces.
-    if (action === 'set_step') emitShedReleaseSkipped(intent, 'no_binary_handle_for_set_step');
     return false;
   }
   // Idempotency: only fire the release when the device is observed 'on'; treat 'off' as
@@ -247,7 +217,9 @@ const resolveProducerShedReleaseStep = (
   intent: ExecutableReleaseIntent,
   profile: SteppedLoadProfile,
 ): SteppedLoadStep | null => {
-  const targetStepId = intent.releaseShedStepId;
+  const targetStepId = intent.kind === 'shed_release' && intent.posture.kind === 'step'
+    ? intent.posture.stepId
+    : undefined;
   const targetStep = targetStepId ? getSteppedLoadStep(profile, targetStepId) : null;
   if (!targetStep) {
     emitExecutorDebug({

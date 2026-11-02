@@ -307,7 +307,6 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     getShortfallThresholdKw: () => 0,
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
-    getShedBehavior: () => ({ action: 'turn_off' as const }),
     // REAL pending-command bookkeeping: the executor's step command lands in the
     // helper's runtime state, decoration surfaces it as
     // stepCommandPending/stepCommandStatus, and the flow report has to confirm

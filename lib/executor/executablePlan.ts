@@ -1,3 +1,4 @@
+import type { PlannedReleaseIntent } from '../planContract/releaseIntent';
 import type { DesiredBinaryKind } from './executableDesiredState';
 import type { EvDeviceIdentity } from '../../packages/shared-domain/src/evPlugState';
 import type {
@@ -231,16 +232,9 @@ export type ExecutableBinaryIntent = DesiredBinaryKind & {
   source: 'controlled' | 'uncontrolled';
 };
 
-export type ExecutableReleaseIntent = {
-  kind: 'binary_restore' | 'binary_release' | 'shed_release';
+export type ExecutableReleaseIntent = PlannedReleaseIntent & {
   deviceId: string;
   name: string;
-  // Producer-resolved release-cascade target step (configured `shedBehavior.stepId` →
-  // lowest-active → off-step). Populated only for `shed_release` on a stepped device whose
-  // configured shedBehavior is `set_step`; null otherwise (including for binary release/restore).
-  // The lifecycle-end release executor reads this directly instead of re-running the
-  // cascade at apply time.
-  releaseShedStepId?: string | null;
 };
 
 export type ExecutableTargetIntent = {

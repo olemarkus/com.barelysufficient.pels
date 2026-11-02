@@ -304,7 +304,7 @@ describe('executable plan projection (characterization)', () => {
   it('projects the release axis', () => {
     const plan = buildPlan([buildBinaryDevice({
       plannedState: 'keep',
-      deferredReleaseIntent: 'shed_release',
+      deferredReleaseIntent: { kind: 'shed_release', posture: { kind: 'binary_off' } },
     })]);
     expect(buildExecutablePlan(plan)).toEqual({
       "devices": [
@@ -322,7 +322,7 @@ describe('executable plan projection (characterization)', () => {
             "deviceId": "dev-2",
             "kind": "shed_release",
             "name": "Heater",
-            "releaseShedStepId": undefined,
+            "posture": { "kind": "binary_off" },
           },
         },
       ],

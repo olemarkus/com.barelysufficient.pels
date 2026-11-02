@@ -298,7 +298,7 @@ describe('planExecutablePlan', () => {
       plannedState: 'keep',
       currentState: 'on',
       evChargingState: 'plugged_in_paused',
-      deferredReleaseIntent: 'binary_restore',
+      deferredReleaseIntent: { kind: 'binary_restore' },
       reason,
     });
 
@@ -331,7 +331,7 @@ describe('planExecutablePlan', () => {
       plannedState: 'keep',
       currentState: 'on',
       evChargingState: 'plugged_in_paused',
-      deferredReleaseIntent: 'binary_restore',
+      deferredReleaseIntent: { kind: 'binary_restore' },
     });
 
     const executablePlan = buildExecutablePlan({
