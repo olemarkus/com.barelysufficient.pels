@@ -5,10 +5,11 @@ import {
   SupportReportEvidenceSource, type SupportReportHomey, type SupportReportReads,
 } from '../../lib/diagnostics/supportReportEvidence';
 import { SupportReportService } from '../../lib/diagnostics/supportReportService';
+import { readSmartTaskRuns } from '../../lib/diagnostics/supportReportSmartTasks';
 import { createDeviceEventStore } from '../../lib/diagnostics/deviceEventStore';
 import { createLogTailStore } from '../../lib/diagnostics/logTailStore';
 import {
-  readObjectiveForDeviceState, type ObjectiveSettingsStore,
+  readDeferredObjectiveRoster, readObjectiveForDeviceState, type ObjectiveSettingsStore,
 } from '../../lib/objectives/deferredObjectives/objectiveStore';
 import type { SmartTaskCycleRecord } from '../../lib/objectives/deferredObjectives/smartTaskCycleRecord';
 import type { AppContext } from '../../lib/app/appContext';
@@ -17,8 +18,8 @@ import { requireDeviceManager, requireHomeMembership, requirePlanService } from 
 export type SupportReportApp = Pick<PelsHost,
   | 'deviceManager' | 'homeMembership' | 'planService' | 'homeRuntimeRead' | 'getDeviceLogUiPayload'
   | 'getLatestPlanSnapshotForUi' | 'getCapacityScalars' | 'getDailyBudgetUiPayload' | 'readPriceSetup'
-  | 'getPriceTimelineForUi' | 'getUserdataDatabase'>
-  & Pick<AppContext, 'deferredObjectiveActivePlanRecorder'>;
+  | 'getPriceTimelineForUi' | 'getUserdataDatabase' | 'readSchedules'>
+  & Pick<AppContext, 'deferredObjectiveActivePlanRecorder' | 'deferredObjectivePlanHistoryRecorder'>;
 
 // Each read reaches the app when a report is captured. A service that is not
 // running yet throws its guard's error, which capture records as unavailable.
@@ -49,6 +50,20 @@ export const createSupportReportReads = (
       plan: app.deferredObjectiveActivePlanRecorder?.getActivePlan(deviceId),
       cycle: readSmartTaskCycle(deviceId),
     };
+  },
+  readSmartTaskDeviceIds: () => {
+    const roster = readDeferredObjectiveRoster(objectiveSettings);
+    if (roster.status === 'unavailable') throw new Error('Smart task settings are unavailable');
+    return Object.keys(roster.settings.objectivesByDeviceId);
+  },
+  readSmartTaskRuns: () => {
+    if (!app.deferredObjectivePlanHistoryRecorder) throw new Error('Smart task history is not running');
+    return readSmartTaskRuns(app.deferredObjectivePlanHistoryRecorder);
+  },
+  readSchedules: () => {
+    const read = app.readSchedules();
+    if (!read.ok) throw new Error(read.error);
+    return read.data;
   },
   // Built per capture: the database opens after the report service is constructed.
   readDeviceEvents: (deviceIds, fromMs, toMs) => (

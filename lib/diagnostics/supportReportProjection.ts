@@ -14,18 +14,11 @@ import { hasObservedTemperature } from '../../packages/shared-domain/src/tempera
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
-import { hoursWithPlannedEnergy } from '../../packages/shared-domain/src/deferredPlanBookedHours';
-import { plannedDurationHours } from '../objectives/deferredObjectives/plannedDuration';
 import { isTemperaturePlanDevice } from '../plan/planTemperatureDevice';
 import type { DevicePlanDevice } from '../plan/planTypes';
 import type { CarLinkCarStatus, CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
-import type { SmartTaskCycleRecord } from '../objectives/deferredObjectives/smartTaskCycleRecord';
-import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
-import type {
-  DeferredObjectiveActivePlanRevisionV1, DeferredObjectiveActivePlanV1,
-} from '../../packages/contracts/src/deferredObjectiveActivePlans';
 
-const present = (key: string, value: SupportReportValue | undefined): Record<string, SupportReportValue> => (
+export const present = (key: string, value: SupportReportValue | undefined): Record<string, SupportReportValue> => (
   value === undefined ? {} : { [key]: value }
 );
 
@@ -192,115 +185,3 @@ export const reportCarLink = (link: CarLinkDiagnostics): SupportReportSection =>
     ...present('associatedChargerId', link.associatedChargerId),
   },
 });
-
-/**
- * The fields of a task's recorded plan the report states: its decision, the
- * learned rate behind it and the latest revision. Narrowed so a capture hands
- * over one device's record, never the assembled UI view of every task.
- */
-export type SupportReportSmartTaskPlan = Pick<DeferredObjectiveActivePlanV1,
-  'pending' | 'pendingReason' | 'diagnosticReasonCode' | 'kwhPerUnitProvenance'> & {
-  latest: Pick<DeferredObjectiveActivePlanRevisionV1,
-    'planStatus' | 'energyNeededKWh' | 'hours' | 'revisedAtMs' | 'reason' | 'floorShortfallCause'> | null;
-};
-
-/** The subject device's smart task as capture read it. An unreadable store throws instead. */
-export type SupportReportSmartTask =
-  | { state: 'none' }
-  | {
-    state: 'present';
-    entry: DeferredObjectiveSettingsEntry;
-    /** `undefined` when the planner holds no plan for the task yet. */
-    plan: SupportReportSmartTaskPlan | undefined;
-    /** `undefined` before the controller's first cycle with this task. */
-    cycle: SmartTaskCycleRecord | undefined;
-  };
-
-const reportSmartTaskGoal = (entry: DeferredObjectiveSettingsEntry): Record<string, SupportReportValue> => {
-  if (entry.kind === 'ev_soc') return { targetPercent: entry.targetPercent };
-  if (entry.kind === 'temperature') return { targetTemperatureC: entry.targetTemperatureC };
-  return { targetEnergyKWh: entry.targetEnergyKWh };
-};
-
-const reportSmartTaskRevision = (
-  revision: NonNullable<SupportReportSmartTaskPlan['latest']>,
-  capturedAtMs: number,
-): Record<string, SupportReportValue> => {
-  // Saved hours are bookings; a booking at 0 kWh still lets the task start its
-  // device, so whether this hour is booked is reported apart from its energy.
-  const running = hoursWithPlannedEnergy(revision.hours);
-  const currentHour = revision.hours.find((hour) => (
-    (hour.coversFromMs ?? hour.startsAtMs) <= capturedAtMs && capturedAtMs < hour.endsAtMs
-  ));
-  const nextHour = running.find((hour) => hour.startsAtMs > capturedAtMs);
-  return {
-    planStatus: revision.planStatus,
-    revisedAtMs: revision.revisedAtMs,
-    revisionReason: revision.reason,
-    energyNeededKWh: revision.energyNeededKWh,
-    ...present('floorShortfallCause', revision.floorShortfallCause),
-    plannedHours: plannedDurationHours(revision.hours),
-    currentHourBooked: currentHour !== undefined,
-    ...present('currentHourPlannedKWh', currentHour?.plannedKWh),
-    ...present('nextPlannedHourStartsAtMs', nextHour?.startsAtMs),
-  };
-};
-
-const reportSmartTaskPlan = (
-  plan: SupportReportSmartTaskPlan,
-  capturedAtMs: number,
-): Record<string, SupportReportValue> => ({
-  pending: plan.pending,
-  ...present('pendingReason', plan.pendingReason),
-  ...present('diagnosticReasonCode', plan.diagnosticReasonCode),
-  ...(plan.kwhPerUnitProvenance ? {
-    learnedRateSource: plan.kwhPerUnitProvenance.source,
-    learnedRateSamples: plan.kwhPerUnitProvenance.acceptedSamples,
-    ...present('learnedRateConfidence', plan.kwhPerUnitProvenance.confidence ?? undefined),
-  } : {}),
-  ...(plan.latest ? reportSmartTaskRevision(plan.latest, capturedAtMs) : { revision: 'none' }),
-});
-
-// The controller's latest decision: `planned` lets the task start its device,
-// `idle` holds it (`holdCause`), `inactive` names the missing precondition in
-// `reasonCode`. This is what a report on "why does it not run" turns on.
-const reportSmartTaskCycle = (cycle: SmartTaskCycleRecord): Record<string, SupportReportValue> => ({
-  atMs: cycle.atMs,
-  decision: cycle.decision,
-  ...present('holdCause', cycle.holdCause),
-  reasonCode: cycle.reasonCode,
-  trajectory: cycle.trajectory,
-  currentValue: cycle.currentValue,
-  energyNeededKWh: cycle.energyNeededKWh,
-  planningSpeedKw: cycle.planningSpeedKw,
-  kwhPerUnitSource: cycle.kwhPerUnitSource,
-  kwhPerUnitAcceptedSamples: cycle.kwhPerUnitAcceptedSamples,
-  budgetExempt: cycle.budgetExempt,
-  ...present('engageBoost', cycle.engageBoost),
-  ...present('reservesStartupPower', cycle.reservesStartupPower),
-  ...present('liveStepsUnavailable', cycle.liveStepsUnavailable),
-});
-
-/**
- * Whether the subject has a smart task, what the planner recorded for it and
- * what the controller decided last cycle. "No smart task" is evidence too: a
- * device held by "Only PELS starts this device" without one is off by design,
- * which nothing else in a report says.
- */
-export const reportSmartTask = (read: SupportReportSmartTask, capturedAtMs: number): SupportReportSection => {
-  if (read.state === 'none') return { title: 'Current smart task', values: { exists: false } };
-  const { entry, plan, cycle } = read;
-  return {
-    title: 'Current smart task',
-    values: {
-      exists: true,
-      kind: entry.kind,
-      enabled: entry.enabled,
-      enforcement: entry.enforcement,
-      deadlineAtMs: entry.deadlineAtMs,
-      ...reportSmartTaskGoal(entry),
-      plan: plan ? reportSmartTaskPlan(plan, capturedAtMs) : 'none',
-      lastCycle: cycle ? reportSmartTaskCycle(cycle) : 'none',
-    },
-  };
-};

@@ -7,6 +7,7 @@ import type {
 } from '../../packages/contracts/src/settingsUi/devices';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUi/plan';
 import type { PriceSetupRead } from '../../packages/contracts/src/settingsUi/prices';
+import type { SchedulesSnapshot } from '../../packages/contracts/src/schedules';
 import type {
   SupportReportDeviceEvent, SupportReportDeviceEvents, SupportReportEvidence, SupportReportLog,
   SupportReportRequest, SupportReportSection, SupportReportSubject,
@@ -23,9 +24,13 @@ import { selectSupportReportActivity, supportReportWindow } from './supportRepor
 import { SupportReportInputError } from './supportReportInput';
 import {
   reportCapacitySettings, reportCarLink, reportDailyBudget, reportDeviceDecision, reportDevicePresentation,
-  reportDeviceSnapshot, reportHomePlan, reportSmartTask,
-  type SupportReportDeviceSnapshot, type SupportReportSmartTask,
+  reportDeviceSnapshot, reportHomePlan, type SupportReportDeviceSnapshot,
 } from './supportReportProjection';
+import {
+  reportSmartTask, reportSmartTaskRuns, reportSmartTasks, reportSmartTaskSchedules,
+  SUPPORT_REPORT_MAX_DEVICE_SMART_TASK_RUNS, SUPPORT_REPORT_MAX_SMART_TASK_RUNS,
+  type SupportReportDeviceSmartTask, type SupportReportSmartTask, type SupportReportSmartTaskRun,
+} from './supportReportSmartTasks';
 
 /** Metadata from the running Homey installation. */
 export type SupportReportHomey = {
@@ -61,6 +66,12 @@ export type SupportReportReads = {
   getCarLinkDiagnostics(deviceId: string): CarLinkDiagnostics | undefined;
   /** The device's smart task and its plan. Throws when the task store cannot say whether one exists. */
   readSmartTask(deviceId: string): SupportReportSmartTask;
+  /** The devices with a saved smart task. Throws when the task store cannot say which. */
+  readSmartTaskDeviceIds(): readonly string[];
+  /** The finalized runs the history keeps. Throws while the history recorder is not running. */
+  readSmartTaskRuns(): readonly SupportReportSmartTaskRun[];
+  /** Throws while schedules are starting or cannot be read. */
+  readSchedules(): SchedulesSnapshot;
   /** Kept device events about any of `deviceIds` in the window, oldest first; every device without ids. */
   readDeviceEvents(deviceIds: readonly string[] | 'all', fromMs: number, toMs: number): SupportReportDeviceEvent[];
   /** PELS's kept log lines in the window, without lines of `omittedEvents` (`logTailStore.ts`). */
@@ -108,6 +119,17 @@ const resolveDeviceSupportSubject = async (
   return { name: description.name, sections: [description.section] };
 };
 
+/** The device's latest retained activity row at or before `atMs`. */
+const latestActivity = (
+  history: SettingsUiDeviceLogPayload | undefined,
+  deviceId: string,
+  atMs: number,
+): SettingsUiDeviceActivityEntry | undefined => history?.entries.filter((entry) => (
+  entry.deviceId === deviceId && entry.atMs <= atMs
+)).reduce<SettingsUiDeviceActivityEntry | undefined>((latest, entry) => (
+  !latest || entry.atMs > latest.atMs ? entry : latest
+), undefined);
+
 const resolveSubject = (
   host: SupportReportReads,
   subject: SupportReportSubject,
@@ -117,11 +139,7 @@ const resolveSubject = (
 ): ReportSubject => {
   if (supportSubject) return { name: supportSubject.name, currentDevice: null, omissions: [] };
   if (subject.kind !== 'device') return { name: 'PELS', currentDevice: null, omissions: [] };
-  const recorded = history?.entries.filter((entry) => (
-    entry.deviceId === subject.deviceId && entry.atMs <= capturedAtMs
-  )).reduce<SettingsUiDeviceActivityEntry | undefined>((latest, entry) => (
-    !latest || entry.atMs > latest.atMs ? entry : latest
-  ), undefined);
+  const recorded = latestActivity(history, subject.deviceId, capturedAtMs);
   let device: SupportReportDeviceSnapshot | undefined;
   try {
     device = host.getDeviceSnapshot(subject.deviceId);
@@ -238,8 +256,59 @@ const readDeviceSections = (
     readSection('Current smart task', () => (
       subject.homeId === MAIN_HOME_ID ? reportSmartTask(host.readSmartTask(device.id), capturedAtMs) : null
     )),
+    readSection('Smart task runs', () => (
+      subject.homeId === MAIN_HOME_ID ? reportSmartTaskRuns(
+        host.readSmartTaskRuns().filter((run) => run.record.deviceId === device.id),
+        SUPPORT_REPORT_MAX_DEVICE_SMART_TASK_RUNS, () => device.name, null,
+      ) : null
+    )),
+    readSection('Smart task schedules', () => (
+      subject.homeId === MAIN_HOME_ID ? reportSmartTaskSchedules(host.readSchedules(), device.id) : null
+    )),
   ];
 };
+
+/**
+ * A report about the whole app states every smart task: what each asks for and
+ * may override, how its hours are booked, the runs that ended in the window and
+ * the schedules that create them. Smart tasks are Main-home only.
+ */
+const readAppSmartTaskSections = (
+  host: SupportReportReads,
+  request: SupportReportRequest,
+  deviceName: (deviceId: string) => string | undefined,
+  capturedAtMs: number,
+): SectionRead[] => {
+  if (request.subject.kind !== 'app' || request.subject.homeId !== MAIN_HOME_ID) return [];
+  const window = supportReportWindow(request, capturedAtMs);
+  return [
+    readSection('Current smart tasks', () => reportSmartTasks(
+      host.readSmartTaskDeviceIds().flatMap((deviceId): SupportReportDeviceSmartTask[] => {
+        // A task ended between the two reads is no longer current.
+        const task = host.readSmartTask(deviceId);
+        return task.state === 'present' ? [{ deviceId, task }] : [];
+      }),
+      deviceName, capturedAtMs,
+    )),
+    readSection('Smart task runs', () => reportSmartTaskRuns(
+      host.readSmartTaskRuns().filter((run) => (
+        run.record.finalizedAtMs >= window.fromMs && run.record.finalizedAtMs <= window.toMs
+      )),
+      SUPPORT_REPORT_MAX_SMART_TASK_RUNS, deviceName, window,
+    )),
+    readSection('Smart task schedules', () => reportSmartTaskSchedules(host.readSchedules(), null)),
+  ];
+};
+
+/** A device's current name, or the latest its retained activity recorded. */
+const deviceNames = (
+  host: SupportReportReads,
+  history: SettingsUiDeviceLogPayload | undefined,
+  capturedAtMs: number,
+): (deviceId: string) => string | undefined => (deviceId) => (
+  readOptional(() => host.getDeviceSnapshot(deviceId)?.name)
+  ?? latestActivity(history, deviceId, capturedAtMs)?.deviceName
+);
 
 type CarLinkRead = { state: 'read'; link: CarLinkDiagnostics | undefined } | { state: 'failed' };
 
@@ -370,6 +439,7 @@ export class SupportReportEvidenceSource {
     const sectionReads: SectionRead[] = [
       ...(supportSubject?.sections ?? []).map((section): SectionRead => ({ state: 'available', section })),
       ...readDeviceSections(host, request.subject, subject.currentDevice, plan, capturedAtMs),
+      ...readAppSmartTaskSections(host, request, deviceNames(host, history, capturedAtMs), capturedAtMs),
       ...readCarLinkSection(carLink),
       ...readHomeSections(host, request.subject.homeId, plan, area),
       ...readPriceSections(host, capturedAtMs),
