@@ -1,43 +1,24 @@
 import { readPelsHost } from '../../lib/app/pelsHost';
-import { readObservedStateOfCharge } from '../../lib/observer/observedDeviceStateProjection';
-import { ApiRequestError } from '../../lib/utils/apiRequestError';
+import {
+  clearCarAssociationFromUi,
+  confirmCarAssociationFromUi,
+  type CarAssociationUiTarget,
+} from '../../lib/device/carAssociationUiApi';
 import type { SettingsUiCarAssociationConfirmation } from '../../packages/contracts/src/settingsUi/carLink';
 import { API_STARTING_MESSAGE, defineRoutes, type ApiContext } from './defineRoutes';
 
+function carAssociation(homey: ApiContext['homey']): CarAssociationUiTarget {
+  const transport = readPelsHost(homey)?.deviceManager;
+  if (!transport) throw new Error(API_STARTING_MESSAGE);
+  return transport;
+}
+
+// `lib/device` validates the request and answers the charger's car link.
 export const carLinkRoutes = defineRoutes({
   ui_car_association_confirm: (
     { homey, body }: ApiContext & { body?: unknown },
-  ): SettingsUiCarAssociationConfirmation => {
-    if (!body || typeof body !== 'object' || Array.isArray(body)
-      || !('chargerId' in body) || typeof body.chargerId !== 'string' || !body.chargerId.trim()
-      || !('carId' in body) || typeof body.carId !== 'string' || !body.carId.trim()) {
-      throw new ApiRequestError('Choose a charger and a car.');
-    }
-    const transport = readPelsHost(homey)?.deviceManager;
-    if (!transport) throw new Error(API_STARTING_MESSAGE);
-    transport.confirmCarAssociation(body.chargerId, body.carId);
-    const charge = readObservedStateOfCharge(transport.getSnapshotByDeviceId(body.chargerId));
-    return {
-      carConfirmation: transport.getCarConfirmation(body.chargerId),
-      associatedCar: transport.getAssociatedCar(body.chargerId),
-      ...(charge.kind === 'observed' ? { stateOfCharge: charge.value } : {}),
-    };
-  },
+  ): SettingsUiCarAssociationConfirmation => confirmCarAssociationFromUi(carAssociation(homey), body),
   ui_car_association_clear: (
     { homey, body }: ApiContext & { body?: unknown },
-  ): SettingsUiCarAssociationConfirmation => {
-    if (!body || typeof body !== 'object' || Array.isArray(body)
-      || !('chargerId' in body) || typeof body.chargerId !== 'string' || !body.chargerId.trim()) {
-      throw new ApiRequestError('Choose a charger.');
-    }
-    const transport = readPelsHost(homey)?.deviceManager;
-    if (!transport) throw new Error(API_STARTING_MESSAGE);
-    transport.clearCarConfirmation(body.chargerId);
-    const charge = readObservedStateOfCharge(transport.getSnapshotByDeviceId(body.chargerId));
-    return {
-      carConfirmation: transport.getCarConfirmation(body.chargerId),
-      associatedCar: transport.getAssociatedCar(body.chargerId),
-      ...(charge.kind === 'observed' ? { stateOfCharge: charge.value } : {}),
-    };
-  },
+  ): SettingsUiCarAssociationConfirmation => clearCarAssociationFromUi(carAssociation(homey), body),
 });

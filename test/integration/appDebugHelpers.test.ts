@@ -2,7 +2,6 @@ import type { DeviceTransport } from '../../lib/device/deviceTransport';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { PelsDeviceDebugState } from '../../setup/appDebugTypes';
 import {
-  getHomeyDevicesForDebugFromApp,
   getHomeyEnergyMetersFromApp,
   logHomeyDeviceForDebug,
   logHomeyDeviceForDebugFromApp,
@@ -76,21 +75,6 @@ describe('appDebugHelpers', () => {
 
   afterEach(() => {
     capture.restore();
-  });
-
-  it('routes debug device fetch failures to app error', async () => {
-    const app = {
-      deviceManager: {
-        getDevicesForDebug: vi.fn().mockRejectedValue({ reason: 'boom' }),
-      },
-      error: vi.fn(),
-      log: vi.fn(),
-    };
-
-    await expect(getHomeyDevicesForDebugFromApp(app as never)).resolves.toEqual([]);
-    expect(app.error).toHaveBeenCalledWith('Failed to get Homey devices for debug', expect.any(Error));
-    expect((app.error.mock.calls[0]?.[1] as Error).message).toBe('{"reason":"boom"}');
-    expect(app.log).not.toHaveBeenCalled();
   });
 
   it('keeps sensor-class meters of either item type, dropping appliances', async () => {

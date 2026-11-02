@@ -27,6 +27,12 @@
 //      structural port from `lib/ports/homeyRuntime.ts` and that module does the
 //      read, the absence classification and the last-good policy.
 //
+//   3. SDK READS IN ROUTE TABLES. A route table under `setup/api/` receives
+//      `homey` typed as `AppContext['homey']`, so it can read the SDK without
+//      importing `'homey'` and check 2 cannot see it. Every `homey.<member>`
+//      or `homey[...]` access there is a violation, with no allowlist: a route
+//      binds `homey` to the `lib/` reader that owns the read and forwards it.
+//
 // TYPE-ONLY IMPORTS COUNT for the peer check, and deliberately. `import type`
 // leaves no runtime edge, but the coupling it expresses is the thing being
 // measured: a file that needs to name three domains' types to do its job is
@@ -128,6 +134,23 @@ const moduleSpecifiers = (sourceFile) => {
   return out;
 };
 
+const routeTableDir = `setup${path.sep}api${path.sep}`;
+
+/** Line numbers of every `homey.<member>` or `homey[...]` access in the file. */
+const homeyAccesses = (sourceFile) => {
+  const lines = [];
+  const visit = (node) => {
+    if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node))
+      && ts.isIdentifier(node.expression)
+      && node.expression.text === 'homey') {
+      lines.push(sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return lines;
+};
+
 const analyse = (specifiers) => {
   const peers = new Set();
   let sdk = false;
@@ -160,6 +183,7 @@ const readAllowlist = async (file, withCounts) => {
 const files = await listFiles(scanDir);
 const peerOffenders = new Map();
 const sdkOffenders = [];
+const routeSdkReads = [];
 
 for (const absolute of files) {
   const rel = path.relative(rootDir, absolute);
@@ -168,6 +192,9 @@ for (const absolute of files) {
   const { peers, sdk } = analyse(moduleSpecifiers(sourceFile));
   if (peers.size >= 2) peerOffenders.set(rel, [...peers].sort());
   if (sdk) sdkOffenders.push(rel);
+  if (rel.startsWith(routeTableDir)) {
+    for (const line of homeyAccesses(sourceFile)) routeSdkReads.push(`${rel}:${line}`);
+  }
 }
 sdkOffenders.sort();
 
@@ -224,6 +251,10 @@ for (const file of sdkOffenders) {
 }
 for (const [file] of sdkAllow.entries) {
   if (!sdkOffenders.includes(file)) problems.push(`  ${file} — listed as an SDK importer but is clean; delete the line`);
+}
+
+for (const location of routeSdkReads) {
+  problems.push(`  ${location} — a route table reads \`homey\`; hand it to the lib/ reader that owns the read`);
 }
 
 if (problems.length > 0) {
