@@ -3,6 +3,7 @@ import type { DeviceAdapter, DeviceAdapterSession, SwitchWrite } from './deviceA
 const unrestrictedSession: DeviceAdapterSession = {
   observeDevice() {}, observeCapability() {}, retainDevices() {}, setTrustEpoch() {},
   observedIds: () => [], observes: () => false, controls: () => false,
+  hasCarStopEvidence: () => false,
   project: (snapshot) => snapshot, assertAllowed() {},
   controlEvents: (_id, capabilityId, value) => [{ capabilityId, value }],
 };

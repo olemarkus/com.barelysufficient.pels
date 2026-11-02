@@ -619,6 +619,8 @@ export type EvCarStopObservation = {
     chargerPowerW: number;
     /** The charger's observed switch, `binaryControl.on`. */
     chargerSwitchOn: boolean;
+    /** Positive device evidence that its car completed/stopped requesting energy. */
+    carStopReported: boolean;
     lastDeliveryReadingAtMs: number | undefined;
     lastStopCommandAtMs: number | undefined;
 };
@@ -635,9 +637,9 @@ export type EvCarStopObservation = {
  *   which reports both as connected-but-not-charging;
  * - nobody else switched it off: a charger that still reads connected but whose
  *   switch reads off was stopped from outside (an owner's "car at 80 % → charger
- *   off" Flow would otherwise bank 80 % every session). A charger that reads
- *   `plugged_out` is exempt, because an Easee ends the session at the car's
- *   limit exactly that way, switch and plug state together;
+ *   off" Flow would otherwise bank 80 % every session). Positive device evidence
+ *   that the car completed charging is exempt, as is a legacy charger that ends
+ *   its reported session with `plugged_out`, switch and plug state together;
  * - the charger is not holding the session paused (`plugged_in_paused`), which
  *   is where PELS's own 0 A pause and a charger-app schedule both land;
  * - the car reports connected-but-not-charging.
@@ -665,7 +667,7 @@ export const classifyEvCarSelfStop = (observation: EvCarStopObservation): EvCarS
     const stoppedByPels = lastStopCommandAtMs !== undefined
         && lastStopCommandAtMs >= lastDeliveryReadingAtMs - EV_CAR_LINK_PELS_STOP_LOOKBACK_MS;
     if (stoppedByPels) return null;
-    if (!chargerSwitchOn && chargerState !== 'plugged_out') return null;
+    if (!chargerSwitchOn && chargerState !== 'plugged_out' && !observation.carStopReported) return null;
     if (chargerState === 'plugged_in_paused') return null;
     if (carState === 'plugged_in_paused') return 'car_schedule_hold';
     if (carState === 'plugged_in') return 'car_not_charging';

@@ -32,6 +32,7 @@ export class TeslaChargingSession implements DeviceAdapterSession {
   constructor(private readonly home: HomeLocation) {}
 
   controls(snapshot: AdapterControlTarget): boolean { return hasTeslaChargingSurface(snapshot); }
+  hasCarStopEvidence(): boolean { return false; }
 
   assertAllowed(device: HomeyDeviceLike, setup: ChargingCurrentSetup, connected: boolean): void {
     if (!isTeslaChargingDevice(device)) return;

@@ -18,11 +18,12 @@ import { createObservationEmitGate } from './observationEmitGate';
 import { SolarProductionProducer } from './solarProductionProducer';
 import type { EvCarLinkEventEmitter, EvCarLinkProducer, EvCarLinkProducerDeps } from './evCarLinkProducer';
 import { carLinkEventDeviceIds, isJournalledCarLinkEvent } from './evCarLinkEvents';
+import type { DeviceAdapterSessions } from './deviceAdapterRegistry';
 import type { DeviceJournal } from '../ports/deviceJournal';
+import type { DeviceTransportOptions } from './transport/transportTypes';
 import {
     createEvCarLinkProducer,
     type ChargerViewInput,
-    type EvCarLinkSnapshotAccess,
 } from './evCarLinkWiring';
 
 export type ObservationProducers = {
@@ -37,11 +38,10 @@ export type ObservationProducers = {
 /**
  * `emit` is the structured-log sink every producer emits through;
  * `getSnapshots` the committed snapshots, read lazily by the EV car-link
- * charger view; `evCarLinkSnapshotAccess` the probe's persistence port,
- * injected by the wiring layer (without one the probe stays in-memory); and
- * the last two the probe's callbacks for a fresh battery level from a
- * charger's associated car and for a charger's car session ending (see the
- * probe deps).
+ * charger view. The transport options hold the probe's persistence and journal
+ * ports. The association callbacks publish car battery observations and clear
+ * them when a session ends; selection and completion evidence stay with their
+ * configuration and adapter owners.
  */
 /**
  * Car-link events go to the structured log and to the device journal: a problem
@@ -58,14 +58,13 @@ const createCarLinkEventEmitter = (
 
 export const createObservationProducers = (
     emit: (payload: Record<string, unknown>) => void,
-    /** Where the car-link probe's events are also kept, for problem reports. */
-    deviceJournal: DeviceJournal,
+    options: Pick<DeviceTransportOptions, 'deviceJournal' | 'evCarLinkSnapshotAccess'>,
     getSnapshots: () => readonly ChargerViewInput[],
-    evCarLinkSnapshotAccess: EvCarLinkSnapshotAccess | undefined,
     onAssociatedCarStateOfCharge: EvCarLinkProducerDeps['onAssociatedCarStateOfCharge'],
     onAssociationEnded: EvCarLinkProducerDeps['onAssociationEnded'],
     /** The cars the owner selected for a charger (`DeviceControlSettings`). */
     getSelectedCarIds: (chargerId: string) => readonly string[],
+    adapterSessions: DeviceAdapterSessions,
 ): ObservationProducers => {
     // Gated: battery and solar re-report the SAME value on every fetch (~1/min),
     // so an unchanged repeat carries nothing. The gate wraps them here rather
@@ -79,7 +78,7 @@ export const createObservationProducers = (
     // second occurrence. It is also not a volume problem. See the caller
     // contract in `observationEmitGate.ts`.
     const observationEmit = createObservationEmitGate({ emit });
-    const carLinkEvents = createCarLinkEventEmitter(emit, deviceJournal);
+    const carLinkEvents = createCarLinkEventEmitter(emit, options.deviceJournal);
     return ({
     temperature: new TemperatureAdjustmentObserver(),
     battery: new BatteryStateProducer((payload) => observationEmit({ ...payload })),
@@ -87,10 +86,11 @@ export const createObservationProducers = (
     evCarLink: createEvCarLinkProducer(
         carLinkEvents,
         getSnapshots,
-        evCarLinkSnapshotAccess,
+        options.evCarLinkSnapshotAccess,
         onAssociatedCarStateOfCharge,
         onAssociationEnded,
         getSelectedCarIds,
+        adapterSessions,
     ),
     carLinkEvents,
     });

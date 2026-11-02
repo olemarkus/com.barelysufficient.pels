@@ -33,6 +33,8 @@ export type EvCarLinkChargerView = {
      * someone switched off from one whose car stopped (`classifyEvCarSelfStop`).
      */
     controlOn: boolean;
+    /** The adapter observed the car ending energy delivery, independently of the switch. */
+    carStopReported: boolean;
     /** Charge already on the charger snapshot (the existing flow card); absent
      *  when that card has never reported. */
     reportedSocPct?: number;

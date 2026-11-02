@@ -242,9 +242,8 @@ export class DeviceTransport {
         );
         this.observationProducers = createObservationProducers(
             (p) => this.logger.structuredLog.info(p),
-            options.deviceJournal,
+            options,
             () => this.snapshotStore.getSnapshot(),
-            options.evCarLinkSnapshotAccess,
             // The probe reports; this decides whether anything is written.
             (reading) => {
                 if (!applyAssociatedCarStateOfCharge(
@@ -260,6 +259,7 @@ export class DeviceTransport {
                 this.dispatchObservedStateForDevice(chargerId, 'measure_battery');
             },
             (chargerId) => this.sources.settings.getEvCarAssociationCarIds(chargerId),
+            this.chargingCurrentControl.sessions,
         );
         this.carAssociationControl = createEvCarAssociationControl(
             this.observationProducers.evCarLink, this.sources.settings, this.snapshotStore,

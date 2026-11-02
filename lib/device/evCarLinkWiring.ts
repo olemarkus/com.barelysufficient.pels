@@ -25,6 +25,7 @@ import {
     type EvCarLinkEventEmitter,
 } from './evCarLinkProducer';
 import { createEmptyEvCarLinkSnapshot } from './evCarLinkSnapshot';
+import type { DeviceAdapterSessions } from './deviceAdapterRegistry';
 
 export type ChargerViewInput = TargetDeviceSnapshot
     & EvObservedProbe
@@ -42,6 +43,7 @@ export type ChargerViewInput = TargetDeviceSnapshot
 export const buildEvCarLinkChargerViews = (
     snapshots: readonly ChargerViewInput[],
     getSelectedCarIds: (chargerId: string) => readonly string[],
+    adapterSessions: Pick<DeviceAdapterSessions, 'hasCarStopEvidence'>,
 ): EvCarLinkChargerView[] => snapshots.flatMap((snapshot) => {
     if (!isEvObserved(snapshot)) return [];
     // Unknowns are OMITTED, never defaulted: a fabricated 0 W would read as
@@ -65,6 +67,7 @@ export const buildEvCarLinkChargerViews = (
             }
             : {}),
         controlOn: snapshot.binaryControl?.on === true,
+        carStopReported: adapterSessions.hasCarStopEvidence(snapshot.id),
         selectedCarIds: getSelectedCarIds(snapshot.id),
         // `hasObservedStateOfCharge` is presence-only, so it also passes a
         // percentage the observation layer has already marked stale or
@@ -108,6 +111,7 @@ export const createEvCarLinkProducer = (
     onAssociatedCarStateOfCharge: EvCarLinkProducerDeps['onAssociatedCarStateOfCharge'],
     onAssociationEnded: EvCarLinkProducerDeps['onAssociationEnded'],
     getSelectedCarIds: (chargerId: string) => readonly string[],
+    adapterSessions: Pick<DeviceAdapterSessions, 'hasCarStopEvidence'>,
 ): EvCarLinkProducer => {
     let inMemory: EvCarLinkSnapshot = createEmptyEvCarLinkSnapshot();
     const access: EvCarLinkSnapshotAccess = snapshotAccess ?? {
@@ -117,7 +121,7 @@ export const createEvCarLinkProducer = (
     };
     return new EvCarLinkProducer({
         emit,
-        getChargers: () => buildEvCarLinkChargerViews(getSnapshots(), getSelectedCarIds),
+        getChargers: () => buildEvCarLinkChargerViews(getSnapshots(), getSelectedCarIds, adapterSessions),
         getSnapshot: access.get,
         setSnapshot: access.set,
         isHistoryResolved: access.isHistoryResolved,

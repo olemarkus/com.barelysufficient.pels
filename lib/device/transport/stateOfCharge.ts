@@ -45,6 +45,25 @@ type RetainedStateOfChargeSession = Pick<
 >;
 
 /**
+ * Resolve session boundaries from the newest accepted plug observation. A full
+ * parse runs before the observation merge: letting an older unplug reach the
+ * boundary resolver would manufacture an invalidation that a later restoration
+ * of the connected state cannot undo.
+ */
+export function withRetainedEvSessionState(
+  capabilityObj: DeviceCapabilityMap, previous: TransportDeviceSnapshot | undefined,
+): DeviceCapabilityMap {
+  const observedAtMs = previous?.evChargingStateObservedAtMs;
+  if (previous?.evChargingState === undefined || observedAtMs === undefined) return capabilityObj;
+  const incomingAtMs = toCapabilityTimestampMs(capabilityObj.evcharger_charging_state?.lastUpdated);
+  if (incomingAtMs !== undefined && incomingAtMs >= observedAtMs) return capabilityObj;
+  return {
+    ...capabilityObj,
+    evcharger_charging_state: { value: previous.evChargingState, lastUpdated: observedAtMs },
+  };
+}
+
+/**
  * The charger's level as a full parse sees it.
  *
  * `retained` is the level transport already holds for this charger. It carries

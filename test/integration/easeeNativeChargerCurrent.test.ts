@@ -22,6 +22,9 @@ import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { mockHomeyInstance } from '../mocks/homey';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
+import { createEmptyEvCarLinkSnapshot } from '../../lib/device/evCarLinkSnapshot';
+import { EV_CAR_LINK_SELF_STOP_MIN_MS } from '../../lib/device/evCarLink';
+import type { EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
 
 // Shapes are taken from a production Easee charger on the deployed Easee app
 // 2.0.5: `target_charger_current` is the setable dynamic charger current in amps,
@@ -126,6 +129,130 @@ beforeEach(() => { logCapture = captureLogger(); });
 afterEach(() => { logCapture.restore(); });
 
 describe('Easee native charger current', () => {
+  it.each([false, true])('keeps a completed Easee physically connected with built-in control %s', async (builtIn) => {
+    const device = buildEaseeCharger({
+      charger_status: { value: 'Completed', lastUpdated: READ_AT },
+      evcharger_charging: { value: false, lastUpdated: READ_AT },
+      evcharger_charging_state: { value: 'plugged_out', lastUpdated: READ_AT },
+      measure_power: { value: 0, lastUpdated: READ_AT },
+    });
+    device.capabilities = [...EASEE_CAPABILITIES, 'charger_status'];
+    const [parsed] = await seedTransportDevices(createEaseeTransport(builtIn), [device]);
+    expect(parsed.evChargingState).toBe('plugged_in');
+    expect(parsed.binaryControl).toEqual({ on: false });
+  });
+
+  it.each([false, true])('preserves the linked car and battery session through completion and resume with built-in control %s', async (builtIn) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(READ_AT));
+    const startMs = Date.now();
+    let history: EvCarLinkSnapshot = { ...createEmptyEvCarLinkSnapshot(), sessions: {
+      [EASEE_ID]: { carId: 'car-1', sinceMs: startMs - 60_000 },
+    } };
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, createLogger(), {
+      settings: {
+        getDeviceTargetPowerConfig: id => id === EASEE_ID ? evPreset : undefined,
+        getEvCarAssociationCarIds: () => ['car-1'],
+      },
+      nativeWiring: { resolveNativeWiringEnabled: () => builtIn },
+    }, undefined, { evCarLinkSnapshotAccess: {
+      isHistoryResolved: () => true, get: () => history, set: next => { history = next; },
+    } });
+    const device = buildEaseeCharger({
+      charger_status: { value: 'Completed', lastUpdated: READ_AT },
+      evcharger_charging: { value: false, lastUpdated: READ_AT },
+      evcharger_charging_state: { value: 'plugged_out', lastUpdated: READ_AT },
+      measure_power: { value: 0, lastUpdated: READ_AT },
+    });
+    device.capabilities = [...EASEE_CAPABILITIES, 'charger_status'];
+    const car: HomeyDeviceLike = {
+      id: 'car-1', name: 'Car', class: 'car',
+      capabilities: ['ev_charging_state', 'measure_battery'],
+      capabilitiesObj: {
+        ev_charging_state: { value: 'plugged_in', lastUpdated: READ_AT },
+        measure_battery: { value: 79, lastUpdated: READ_AT },
+      },
+    };
+    try {
+      await initWithLiveFeed(transport);
+      let [parsed] = await seedTransportDevices(transport, [device, car]);
+      // A restart while Easee says Completed resumes the saved physical pair
+      // immediately; it neither forgets the car nor waits for a new plug edge.
+      expect(parsed.evChargingState).toBe('plugged_in');
+      expect(transport.getAssociatedCar(EASEE_ID)).toMatchObject({ carId: 'car-1', socPct: 79 });
+      const sessionStart = parsed.stateOfCharge?.sessionStartedAtMs;
+      expect(parsed.stateOfCharge?.level).toMatchObject({ kind: 'known', percent: 79 });
+
+      vi.setSystemTime(startMs + 1_000);
+      await emitCapability(EASEE_ID, 'charger_status', 'Charging');
+      await emitCapability(EASEE_ID, 'evcharger_charging', true);
+      await emitCapability(EASEE_ID, 'evcharger_charging_state', 'plugged_in_charging');
+      await emitCapability(EASEE_ID, 'measure_power', 3_600);
+      await emitCapability('car-1', 'ev_charging_state', 'plugged_in_charging');
+
+      vi.setSystemTime(startMs + 60_000);
+      await emitCapability(EASEE_ID, 'charger_status', 'Completed');
+      await emitCapability(EASEE_ID, 'evcharger_charging', false);
+      await emitCapability(EASEE_ID, 'evcharger_charging_state', 'plugged_out');
+      await emitCapability(EASEE_ID, 'measure_power', 0);
+      await emitCapability('car-1', 'ev_charging_state', 'plugged_in');
+      await emitCapability('car-1', 'measure_battery', 80);
+      expect(parsed.evChargingState).toBe('plugged_in');
+      expect(parsed.binaryControl).toEqual({ on: false });
+      expect(transport.getAssociatedCar(EASEE_ID)).toMatchObject({ carId: 'car-1', socPct: 80 });
+      expect(parsed.stateOfCharge?.level).toMatchObject({ kind: 'known', percent: 80 });
+      expect(parsed.stateOfCharge?.sessionStartedAtMs).toBe(sessionStart);
+      expect(parsed.stateOfCharge?.invalidatedAtMs).toBeUndefined();
+
+      vi.setSystemTime(startMs + 60_000 + EV_CAR_LINK_SELF_STOP_MIN_MS + 1);
+      transport.tickEvCarLink(Date.now());
+      expect(transport.getTaskDeliveryConstraint(EASEE_ID)).toEqual({
+        kind: 'self_stopped', cause: 'device_not_accepting',
+      });
+      expect(history.cars['car-1']?.stopSocPct).toEqual([80]);
+
+      // A full fetch that still carries an older Standby must not manufacture
+      // a battery-session invalidation before the fresher Completed wins merge.
+      const staleStandby: HomeyDeviceLike = {
+        ...device,
+        capabilitiesObj: {
+          ...device.capabilitiesObj,
+          charger_status: { value: 'Standby', lastUpdated: READ_AT },
+        },
+      };
+      await seedTransportDevices(transport, [staleStandby, car]);
+      const afterStaleRead = transport.getSnapshotByDeviceId(EASEE_ID);
+      expect(transport.getAssociatedCar(EASEE_ID)).toMatchObject({ carId: 'car-1', socPct: 80 });
+      expect(afterStaleRead?.evChargingState).toBe('plugged_in');
+      expect(afterStaleRead?.stateOfCharge?.level).toMatchObject({ kind: 'known', percent: 80 });
+      expect(afterStaleRead?.stateOfCharge?.sessionStartedAtMs).toBe(sessionStart);
+      expect(afterStaleRead?.stateOfCharge?.invalidatedAtMs).toBeUndefined();
+      parsed = afterStaleRead!;
+
+      await emitCapability(EASEE_ID, 'charger_status', 'Charging');
+      await emitCapability(EASEE_ID, 'evcharger_charging', true);
+      await emitCapability(EASEE_ID, 'evcharger_charging_state', 'plugged_in_charging');
+      await emitCapability(EASEE_ID, 'measure_power', 3_600);
+      await emitCapability('car-1', 'ev_charging_state', 'plugged_in_charging');
+      expect(transport.getAssociatedCar(EASEE_ID)).toMatchObject({ carId: 'car-1' });
+      expect(history.sessions[EASEE_ID]?.sinceMs).toBe(startMs - 60_000);
+      expect(parsed.stateOfCharge?.sessionStartedAtMs).toBe(sessionStart);
+
+      // A real charger unplug ends the pair even when the car's cloud still
+      // reports connected, so a guest car cannot inherit its battery level.
+      await emitCapability(EASEE_ID, 'charger_status', 'Standby');
+      await emitCapability(EASEE_ID, 'evcharger_charging', false);
+      await emitCapability(EASEE_ID, 'evcharger_charging_state', 'plugged_out');
+      expect(parsed.evChargingState).toBe('plugged_out');
+      expect(transport.getAssociatedCar(EASEE_ID)).toBeUndefined();
+      expect(history.sessions).toEqual({});
+      expect(parsed.stateOfCharge?.level.kind).not.toBe('known');
+    } finally {
+      transport.destroy();
+      vi.useRealTimers();
+    }
+  });
+
   it('writes a step as its whole-amp charger current, and the off step as 0 A', () => {
     const capabilityObj = buildEaseeCapabilityObj();
 

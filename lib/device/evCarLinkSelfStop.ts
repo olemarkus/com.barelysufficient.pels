@@ -223,6 +223,7 @@ export class EvCarSelfStopWatcher {
             chargerState: charger.evChargingState,
             chargerPowerW: charger.measuredPowerW,
             chargerSwitchOn: charger.controlOn,
+            carStopReported: charger.carStopReported,
             lastDeliveryReadingAtMs: delivery !== undefined && delivery.seenAtMs >= link.sinceMs
                 ? delivery.readingAtMs
                 : undefined,

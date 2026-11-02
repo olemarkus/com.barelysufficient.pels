@@ -42,6 +42,7 @@ import {
 } from './managerParseSnapshot';
 import {
     resolveStateOfChargeSnapshot,
+    withRetainedEvSessionState,
     } from './stateOfCharge';
 import { resolveDeviceParsedControlState } from './managerParsedControlState';
 import { resolveAvailable as resolveAvail } from './managerParsedAvailability';
@@ -253,7 +254,8 @@ export function assembleDeviceSnapshot(params: {
         overlay.capabilityObj.evcharger_charging_state?.lastUpdated,
     );
     const stateOfCharge = resolveStateOfChargeSnapshot(
-        deviceClassKey, overlay.capabilityObj, overlay.reportedCapabilities, previousSnapshot?.stateOfCharge,
+        deviceClassKey, withRetainedEvSessionState(overlay.capabilityObj, previousSnapshot),
+        overlay.reportedCapabilities, previousSnapshot?.stateOfCharge,
         deps.settings.getEvCarAssociationCarIds(deviceId),
     );
     const binaryControlObservation = resolveBinaryControlObservation(overlay, control.binaryCapabilityId);
