@@ -13,6 +13,7 @@ const battery = (changes: Partial<BatteryEnergyModel> = {}): BatteryEnergyModel 
   storedEnergyKWh: 1,
   minimumEnergyKWh: 1,
   maxChargeKW: 3,
+  chargeTaper: [],
   maxDischargeKW: 3,
   roundTripEfficiency: 1,
   wearCostPerKWh: 0,
@@ -232,6 +233,28 @@ describe('continuous battery energy planning', () => {
     });
     expect(result.periods.every(value => value.reason === 'hold_energy')).toBe(true);
     expect(result.energyCost).toBeCloseTo(1);
+  });
+
+  it('starts charging earlier when a taper near full slows the last kWh', () => {
+    // 4 kWh must be stored before an expensive hour. Untapered, the two cheapest
+    // hours take 2 kWh each; with 1 kW from 4 kWh up, the dearer first hour has to help.
+    const periods = [
+      period(0, { importPrice: 0.3, householdDemandKWh: 0 }),
+      period(1, { importPrice: 0.2, householdDemandKWh: 0 }),
+      period(2, { importPrice: 0.2, householdDemandKWh: 0 }),
+      period(3, { importPrice: 5, householdDemandKWh: 6, gridImportLimitKW: 10 }),
+    ];
+    const base = { capacityKWh: 10, storedEnergyKWh: 2, minimumEnergyKWh: 0, maxChargeKW: 2, maxDischargeKW: 6 };
+    const untapered = planned({ battery: battery(base), periods });
+    const tapered = planned({
+      battery: battery({ ...base, chargeTaper: [{ fromEnergyKWh: 4, maxChargeKW: 1 }] }),
+      periods,
+    });
+
+    expect(untapered.periods.map(entry => entry.batteryPowerKW)).toEqual([0, 2, 2, -6]);
+    expect(tapered.periods.map(entry => entry.batteryPowerKW)).toEqual([1, 2, 1, -6]);
+    expect(tapered.periods[2].energyAfterKWh).toBeCloseTo(untapered.periods[2].energyAfterKWh, 9);
+    expect(tapered.importCost).toBeCloseTo(0.9, 9);
   });
 
   it('matches an independent exhaustive optimum on a small integral-energy horizon', () => {

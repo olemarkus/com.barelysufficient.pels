@@ -81,7 +81,8 @@ function readHorizon(
   if (prices.priceUnit.trim().toLowerCase() !== config.priceUnit.trim().toLowerCase()) {
     return { kind: 'waiting', reason: 'price_unit_changed' };
   }
-  const periodRead = buildEnergyPeriods(sources, prices, devices, control.chargeCeilingW / 1000);
+  const { chargeCeiling } = control;
+  const periodRead = buildEnergyPeriods(sources, prices, devices, chargeCeiling.everyLevelW / 1000);
   if (periodRead.kind === 'waiting') return periodRead;
   const { periods } = periodRead;
   const cheapestImport = Math.max(0, Math.min(...periods.map(period => period.importPrice)));
@@ -90,7 +91,11 @@ function readHorizon(
       capacityKWh: config.usableCapacityKWh,
       storedEnergyKWh: config.usableCapacityKWh * level.percent / 100,
       minimumEnergyKWh: config.usableCapacityKWh * config.minimumReservePercent / 100,
-      maxChargeKW: Math.min(control.range.maxW, control.chargeCeilingW) / 1000,
+      maxChargeKW: Math.min(control.range.maxW, chargeCeiling.everyLevelW) / 1000,
+      chargeTaper: chargeCeiling.taper.map(step => ({
+        fromEnergyKWh: config.usableCapacityKWh * step.fromPercent / 100,
+        maxChargeKW: Math.min(control.range.maxW, step.ceilingW) / 1000,
+      })),
       maxDischargeKW: Math.min(-control.range.minW, control.deliveryCeilingW) / 1000,
       roundTripEfficiency: config.roundTripEfficiency,
       wearCostPerKWh: config.wearCostPerKWh,

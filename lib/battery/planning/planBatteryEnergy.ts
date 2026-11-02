@@ -6,7 +6,7 @@ import type {
   BatteryEnergyPeriod,
 } from '../../../packages/contracts/src/batteryPlan';
 import {
-  batteryEnergyFlow, ENERGY_EPSILON_KWH,
+  batteryEnergyFlow, chargeLimitKW, ENERGY_EPSILON_KWH,
   type BatteryEnergyExportPolicy, type BatteryExportEconomicsPolicy,
 } from './batteryEnergyFlow';
 
@@ -106,7 +106,7 @@ function* reachableStates(
 ): Generator<number> {
   const hours = period.durationMs / 3_600_000;
   const efficiency = Math.sqrt(battery.roundTripEfficiency);
-  const chargeKWh = Math.max(0, Math.min(battery.maxChargeKW, period.maxChargeKW)) * hours * efficiency;
+  const chargeKWh = chargeLimitKW(battery, period, beforeKWh) * hours * efficiency;
   const dischargeKWh = Math.max(0, battery.maxDischargeKW) * hours / efficiency;
   const first = Math.max(0, Math.floor((beforeKWh - dischargeKWh) / states.gridStepKWh) - 1);
   const last = Math.min(states.grid.length - 1, Math.ceil((beforeKWh + chargeKWh) / states.gridStepKWh) + 1);

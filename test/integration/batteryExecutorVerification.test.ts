@@ -12,7 +12,11 @@ import type {
 } from '../../lib/ports/batteryControlOwner';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
-import type { HomeBatteryPowerObservation, HomeBatterySetpointRange } from '../../packages/contracts/src/types';
+import type {
+  HomeBatteryLevelObservation,
+  HomeBatteryPowerObservation,
+  HomeBatterySetpointRange,
+} from '../../packages/contracts/src/types';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { ExecutorDeviceReadDeps, ObserverDeviceRead } from '../../lib/executor/executorDeviceRead';
 import type { DeviceConfigurationRead } from '../../lib/ports/deviceConfigurationRead';
@@ -73,6 +77,7 @@ const buildLane = () => {
   ));
   const actuator: Actuator = { canTurnOnDevice: () => true, resolveTemperatureTarget: (_id, desired) => desired, apply };
   let power: HomeBatteryPowerObservation = { signedW: 0, observedAtMs: START_MS - 1_000 };
+  let level: HomeBatteryLevelObservation | undefined;
   let managedW = 2000;
   const tracker: PowerTrackerState = { lastPowerW: 4000, lastTimestamp: START_MS };
   const recordRestore = vi.fn();
@@ -81,7 +86,7 @@ const buildLane = () => {
     getDeviceConfiguration: () => undefined,
     getDeviceConfigurations: () => [{ id: LOAD, isBatteryOrSolar: false } as DeviceConfigurationRead],
     getObservedState: (deviceId) => (deviceId === BATTERY
-      ? { id: deviceId, batteryPower: power }
+      ? { id: deviceId, batteryPower: power, batteryLevel: level }
       : { id: deviceId, measuredPowerKw: managedW / 1000 }) as ObserverDeviceRead,
   };
   const lane = new BatteryExecutor(
@@ -122,6 +127,8 @@ const buildLane = () => {
       lane.sync(Date.now());
     },
     pelsActedAt: (afterMs: number) => { lastActionAtMs = START_MS + afterMs; },
+    /** The battery's own charge level from now on. */
+    setLevel: (percent: number) => { level = { percent, observedAtMs: Date.now() }; },
   };
 };
 
@@ -304,7 +311,7 @@ describe('battery storage lane', () => {
     await send(-2500, laterMs + 60_000);
     read(-2000, 2000, laterMs + 60_000 + CONTROL_COMMAND_CONFIRMATION_MS);
     expect(ledger.read(BATTERY, RANGE, Date.now()))
-      .toEqual({ verdict: 'responding', deliveryCeilingW: 2000, chargeCeilingW: 2500 });
+      .toEqual({ verdict: 'responding', deliveryCeilingW: 2000, chargeCeiling: { everyLevelW: 2500, taper: [] } });
   });
 
   it('confirms a charge setpoint and checks its sign the other way round', async () => {
@@ -317,12 +324,12 @@ describe('battery storage lane', () => {
     read(1500, 5510, 15_000);
     read(1500, 5520, 25_000);
     expect(verdict()).toBe('responding');
-    expect(ledger.read(BATTERY, RANGE, Date.now()).chargeCeilingW).toBe(2500);
+    expect(ledger.read(BATTERY, RANGE, Date.now()).chargeCeiling).toEqual({ everyLevelW: 2500, taper: [] });
   });
 
   it('learns a charge ceiling from a charge that stops short, and a full battery is no failure', async () => {
     const { lane, send, read, verdict, ledger } = buildLane();
-    const chargeCeiling = () => ledger.read(BATTERY, RANGE, Date.now()).chargeCeilingW;
+    const chargeCeiling = () => ledger.read(BATTERY, RANGE, Date.now()).chargeCeiling.everyLevelW;
 
     // A full battery asked to charge does not move: its own limit, not a fault.
     await send(2000, 0);
@@ -343,6 +350,16 @@ describe('battery storage lane', () => {
     await send(2000, laterMs + 200_000);
     read(2000, 5000, laterMs + 205_000);
     expect(chargeCeiling()).toBe(2500);
+  });
+
+  it('caps only the charge band near full where a full battery stopped charging', async () => {
+    const { send, read, setLevel, ledger } = buildLane();
+
+    setLevel(98);
+    await send(2000, 0);
+    read(0, 3000, CONTROL_COMMAND_CONFIRMATION_MS);
+    expect(ledger.read(BATTERY, RANGE, Date.now()).chargeCeiling)
+      .toEqual({ everyLevelW: 2500, taper: [{ fromPercent: 95, ceilingW: 0 }] });
   });
 
   it('marks a battery sign-inverted from charge steps too', async () => {

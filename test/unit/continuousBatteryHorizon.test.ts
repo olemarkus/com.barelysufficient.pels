@@ -14,7 +14,7 @@ const config: ContinuousBatteryPlanConfig = {
 };
 const control: BatteryLeverRead = {
   kind: 'setpoint', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
-  deliveryCeilingW: 2500, chargeCeilingW: 2500, claimHeld: false, handBackDeferred: false,
+  deliveryCeilingW: 2500, chargeCeiling: { everyLevelW: 2500, taper: [] }, claimHeld: false, handBackDeferred: false,
   claimEngaged: false, admissible: true, verdict: 'responding',
 };
 
@@ -62,6 +62,22 @@ describe('continuous battery horizon projection', () => {
     expect(result.horizon.periods[0].solarKWh).toBe(0);
     expect(result.horizon.periods[0].householdDemandKWh).toBe(0.5);
     expect(result.exportPricing).toBe('incomplete');
+  });
+
+  it('carries a learned charge taper as stored-energy steps', () => {
+    const tapered: BatteryLeverRead = {
+      ...control,
+      chargeCeiling: { everyLevelW: 2000, taper: [{ fromPercent: 90, ceilingW: 3000 }, { fromPercent: 95, ceilingW: 600 }] },
+    };
+    const result = createContinuousBatteryPlanSource(sources({
+      getControl: () => partialDouble<BatteryControlOwner>({ readControl: () => tapered }),
+    })).readHorizon('battery', config);
+    if (result.kind !== 'ready') throw new Error('Expected horizon');
+    expect(result.horizon.battery.maxChargeKW).toBe(2);
+    expect(result.horizon.battery.chargeTaper).toEqual([
+      { fromEnergyKWh: 9, maxChargeKW: 2.5 },
+      { fromEnergyKWh: 9.5, maxChargeKW: 0.6 },
+    ]);
   });
 
   it.each([0, -0.1, 0.1])('recognizes an actual export quote of %s without solar', (exportPrice) => {

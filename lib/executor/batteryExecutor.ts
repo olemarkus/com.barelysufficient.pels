@@ -457,11 +457,12 @@ export class BatteryExecutor {
   ): SetpointVerdict {
     const toleranceW = storageSetpointToleranceW(record.setpointW, record.stepW);
     const { verification } = this.owner;
+    const level = this.devices.getObservedState(deviceId)?.batteryLevel;
     const event = {
       deviceId, setpointW: record.setpointW, startPowerW: record.startSignedW, observedPowerW: power.signedW,
     };
     if (reached) {
-      verification.recordResponding(deviceId, { signedW: power.signedW, toleranceW }, nowMs);
+      verification.recordResponding(deviceId, { signedW: power.signedW, toleranceW, level }, nowMs);
       logger.info({ event: 'battery_storage_setpoint_confirmed', ...event, elapsedMs: nowMs - record.issuedAtMs });
       return 'followed';
     }
@@ -472,10 +473,10 @@ export class BatteryExecutor {
     const progressW = (power.signedW - record.startSignedW) * Math.sign(record.setpointW - record.startSignedW);
     const moved = progressW >= toleranceW;
     if (increase && !towardDischarge) {
-      verification.recordChargeCeiling(deviceId, Math.max(0, power.signedW), nowMs);
-      logger.info({ event: 'battery_storage_charge_plateaued', ...event, moved });
+      verification.recordChargeCeiling(deviceId, Math.max(0, power.signedW), level, nowMs);
+      logger.info({ event: 'battery_storage_charge_plateaued', ...event, moved, levelPercent: level?.percent ?? null });
       if (!moved) return 'inconclusive';
-      verification.recordResponding(deviceId, { signedW: power.signedW, toleranceW }, nowMs);
+      verification.recordResponding(deviceId, { signedW: power.signedW, toleranceW, level }, nowMs);
       return 'followed';
     }
     if (increase && (moved || verification.startsAtPlateau(deviceId, -record.startSignedW, toleranceW))) {

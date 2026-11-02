@@ -1,5 +1,6 @@
 import { isBatteryPowerLimitEnabled } from '../../packages/shared-domain/src/settings/batteryPowerLimit';
 import { continuousReserveCeilingW } from '../battery/continuousBatteryReserve';
+import { chargeCeilingAtLevelW } from '../battery/batteryVerification';
 import type {
   PlanInputProjectionSource, StorageClusterFields, ToPlanDeviceInput, ToPlanDeviceOptions,
 } from './planInputDeviceTypes';
@@ -72,7 +73,7 @@ export const resolveStorageCluster = (
       powerLimitControl: isBatteryPowerLimitEnabled(source.deviceControl.controllableDevices, device.id),
       verdict: control.verdict,
       deliveryCeilingW: Math.min(control.deliveryCeilingW, reserveCeilingW),
-      chargeCeilingW: control.chargeCeilingW,
+      chargeCeilingW: chargeCeilingAtLevelW(control.chargeCeiling, device.batteryLevel),
       ...(currentPeriod === undefined ? {} : {
         continuousPlan: {
           setpointW: currentPeriod.batteryPowerKW * 1000,

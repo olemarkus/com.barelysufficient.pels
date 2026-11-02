@@ -12,7 +12,7 @@ const HOUR_MS = 3_600_000;
 const policy: BatteryExportEconomicsPolicy = { kind: 'price_export', netExportCeilingKW: 1 };
 const battery = (changes: Partial<BatteryEnergyModel> = {}): BatteryEnergyModel => ({
   capacityKWh: 2, storedEnergyKWh: 0, minimumEnergyKWh: 0,
-  maxChargeKW: 2, maxDischargeKW: 2, roundTripEfficiency: 1,
+  maxChargeKW: 2, chargeTaper: [], maxDischargeKW: 2, roundTripEfficiency: 1,
   wearCostPerKWh: 0, terminalValuePerKWh: 0, ...changes,
 });
 const period = (index: number, changes: Partial<BatteryEnergyPeriod> = {}): BatteryEnergyPeriod => ({

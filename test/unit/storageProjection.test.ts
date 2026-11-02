@@ -62,7 +62,7 @@ describe('continuous battery reserve projection', () => {
   });
   const control: BatteryLeverRead = {
     kind: 'setpoint', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
-    deliveryCeilingW: 2500, chargeCeilingW: 2500, claimHeld: true,
+    deliveryCeilingW: 2500, chargeCeiling: { everyLevelW: 2500, taper: [] }, claimHeld: true,
     handBackDeferred: false, claimEngaged: true, admissible: true, verdict: 'responding',
   };
 
@@ -72,6 +72,19 @@ describe('continuous battery reserve projection', () => {
       batteryLevel: { percent: 60, observedAtMs: 1000 },
     }), options(control));
     expect(cluster).toMatchObject({ storage: { reading: 'observed', deliveryCeilingW: 2500 } });
+  });
+
+  it('caps charging by the taper band of the current level', () => {
+    const tapered: BatteryLeverRead = {
+      ...control,
+      chargeCeiling: { everyLevelW: 2500, taper: [{ fromPercent: 90, ceilingW: 800 }] },
+    };
+    const at = (percent: number) => resolveStorageCluster(planSource, device({
+      batteryPower: { signedW: 0, observedAtMs: nowMs },
+      batteryLevel: { percent, observedAtMs: nowMs },
+    }), options(tapered));
+    expect(at(85)).toMatchObject({ storage: { chargeCeilingW: 2500 } });
+    expect(at(92)).toMatchObject({ storage: { chargeCeilingW: 800 } });
   });
 
   it('still authorizes no discharge when no battery level was accepted', () => {
