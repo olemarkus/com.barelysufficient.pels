@@ -739,5 +739,8 @@
   },
   "3.28.3": {
     "en": "Devices now has Missing a device?, which lists every device in Homey by zone, with search and a filter for supported devices. For a device PELS does not support, you can send a device support request through Homey with what Homey reports about the device. The device step of setup links to it too.\n\nA charger allowed beyond today's budget no longer keeps its full charging power reserved on today's budget while PELS holds it off for the hard cap, so other devices are limited for the budget again while it waits. An off device with power steps now reserves only the step it starts at. A new schedule now starts at a free time, its name and time follow the chosen action until you change them, and a clash with another schedule is shown at the time field."
+  },
+  "3.28.4": {
+    "en": "When Homey Energy has no prices for your Homey, Electricity prices now also suggests Power by the Hour, which covers most European bidding zones, and setup keeps Prices open until your home has prices. The help explains how to enter a fixed or day and night tariff in Power by the Hour.\n\nAn Easee charger that has finished charging no longer reads as unplugged, so its car keeps its battery level. To make room for a more important device, PELS now turns a charger or other stepped device down a step instead of off when that frees enough. A home battery's plan allows for charging slowing down near full, and the solar forecast learns which hours of the day your panels produce more or less. The Modes editor is more compact, Missing a device? says which devices you can request support for, and the automatic diagnostics report goes out at a different time each day with more detail on smart tasks."
   }
 }
