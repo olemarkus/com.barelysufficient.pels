@@ -236,7 +236,7 @@ const prepareObjectivePayload = (
     bootstrap: params.bootstrap,
     progress,
     hours,
-    energy: resolveEnergyNeededKWh(ctx.activePlan),
+    energy: resolveEnergyNeededKWh(ctx.activePlan, progress.currentValue),
     costDisplay,
     priceUnitLabel: resolveInlinePriceUnit(costDisplay),
   };
