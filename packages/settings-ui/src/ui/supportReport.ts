@@ -82,8 +82,9 @@ const controller = new SupportReportController({
   const backTarget = typeof from === 'string' && from && from !== SUPPORT_REPORT_PANEL ? from : 'settings';
   const previousStage = surface.querySelector<HTMLElement>('[data-report-stage]')?.dataset.reportStage;
   const supportDevice = subject.kind === 'device_support'
-    ? { name: findHomeyDeviceName(subject.deviceId), forums: supportForumTopics() } : null;
-  renderSupportReportView(surface, { state: view, homeName, backTarget, supportDevice, actions: {
+    ? { name: findHomeyDeviceName(subject.deviceId) } : null;
+  renderSupportReportView(surface, { state: view, homeName, backTarget, supportDevice,
+    forums: supportForumTopics(), actions: {
     edit: (draft) => { clearReportReference(); controller.edit(draft); },
     submit: () => { clearReportReference(); return controller.submit(); },
     check: () => controller.check(),

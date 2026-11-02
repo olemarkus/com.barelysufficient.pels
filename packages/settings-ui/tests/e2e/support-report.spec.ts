@@ -75,6 +75,9 @@ test('keeps a draft through Back, sends it in one step, and starts fresh after D
   await panel.locator('[data-report-action="send"]').click();
   await expect(panel.getByRole('heading', { name: 'Report sent' })).toBeInViewport();
   await expect(panel).toContainText('homey-receipt-1');
+  const email = new URL(await panel.locator('a[href^="mailto:"]').getAttribute('href') ?? '');
+  expect(email.searchParams.get('body')).toContain('The heater stayed off.');
+  expect(email.searchParams.get('body')).toContain('homey-receipt-1');
   await expect(panel.locator('[data-report-field="problem"]')).toHaveCount(0);
   await expect(panel).not.toContainText('PELS PROBLEM REPORT');
   const stub = () => page.evaluate(() => {
@@ -155,7 +158,7 @@ test('keeps the latest navigation target when a previous report loads late', asy
   await expect.poll(() => readMdValue(page, '[data-report-field="problem"]')).toBe('');
 });
 
-test('opens an activity incident at its exact time and renders the form and result at narrow widths in both themes', async ({ browser, browserName, baseURL }, testInfo) => {
+test('keeps incident context and renders both report flows at narrow widths in both themes', async ({ browser, browserName, baseURL }, testInfo) => {
   test.skip(browserName !== 'chromium', 'Touch emulation uses Chromium');
   for (const width of [320, 480]) {
     for (const dark of [false, true]) {
@@ -187,6 +190,17 @@ test('opens an activity incident at its exact time and renders the form and resu
         await page.screenshot({ path: testInfo.outputPath(`sent-${width}-${dark ? 'dark' : 'light'}.png`) });
         await panel.getByRole('button', { name: 'Back', exact: true }).click();
         await expect(page.locator('#activity-panel')).toBeVisible();
+
+        await page.goto('/?page=settings/report-problem&reportKind=device_support&reportDeviceId=dev_knx_relay');
+        await expect(panel.getByRole('heading', { name: 'Device support', exact: true })).toBeVisible();
+        await panel.locator('[data-report-field="problem"] textarea').fill('KNX relay switching my water heater.');
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await panel.screenshot({ path: testInfo.outputPath(`request-${width}-${dark ? 'dark' : 'light'}.png`) });
+        await panel.locator('[data-report-action="send"]').click();
+        await expect(panel.getByRole('heading', { name: 'Request sent' })).toBeInViewport();
+        await expect(panel.getByRole('link', { name: 'olemarkus@gmail.com' })).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await panel.screenshot({ path: testInfo.outputPath(`request-sent-${width}-${dark ? 'dark' : 'light'}.png`) });
       } finally {
         await context.close();
       }
