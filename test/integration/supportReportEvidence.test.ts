@@ -21,6 +21,11 @@ import type { CarLinkDiagnostics } from '../../lib/ports/carLinkDiagnostics';
 import type { ObjectiveSettingsStore } from '../../lib/objectives/deferredObjectives/objectiveStore';
 import type { SmartTaskCycleRecord } from '../../lib/objectives/deferredObjectives/smartTaskCycleRecord';
 import type { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
+import type {
+  DeferredObjectivePlanHistoryRecorder,
+} from '../../lib/objectives/deferredObjectives/planHistory';
+import type { DeferredObjectivePlanHistoryRecord } from '../../packages/contracts/src/deferredObjectivePlanHistory';
+import type { ScheduleEntry, SchedulesSnapshot } from '../../packages/contracts/src/schedules';
 
 const request: SupportReportRequest = {
   subject: { kind: 'device', homeId: 'main', deviceId: 'heater' },
@@ -425,16 +430,18 @@ describe('support report smart task evidence', () => {
     const report = await source(app, objectiveStore({ heater: evTask }), readCycle).capture(request, now);
     expect(values(report, 'Current smart task')).toEqual({
       exists: true, kind: 'ev_soc', enabled: true, enforcement: 'soft', deadlineAtMs: now + 8 * hour,
-      targetPercent: 80,
+      targetPercent: 80, savedPermissions: {}, hourlyBookingColumns: ['hourStartMs', 'plannedKWh'],
       plan: {
         pending: false, learnedRateSource: 'learned', learnedRateSamples: 7, learnedRateConfidence: 'medium',
         planStatus: 'on_track', revisedAtMs: now - hour, revisionReason: 'prices_revised', energyNeededKWh: 12,
         plannedHours: 2, currentHourBooked: true, currentHourPlannedKWh: 0, nextPlannedHourStartsAtMs: now + 2 * hour,
+        // The hour booked at 0 kWh stays: it still lets the task start its device.
+        hourlyBookings: [[now - hour, 0], [now, 0], [now + 2 * hour, 6], [now + 3 * hour, 6]],
       },
       lastCycle: {
         atMs: now - 20_000, decision: 'inactive', reasonCode: 'objective_progress_stale', trajectory: 'unavailable',
         currentValue: null, energyNeededKWh: null, planningSpeedKw: 1.4,
-        kwhPerUnitSource: 'learned', kwhPerUnitAcceptedSamples: 7, budgetExempt: false,
+        kwhPerUnitSource: 'learned', kwhPerUnitAcceptedSamples: 7, budgetExempt: false, permissionsInForce: [],
       },
     });
     // One device's record, never the assembled view of every task.
@@ -467,6 +474,170 @@ describe('support report smart task evidence', () => {
     const report = await source(currentHost(), flaky).capture(request, now);
     expect(values(report, 'Current smart task')).toBeUndefined();
     expect(report.omissions).toContain('Current smart task is unavailable.');
+  });
+});
+
+describe('support report smart task audit', () => {
+  const quarter = hour / 4;
+  // A charger task that may break the daily budget once it is at risk, made by a weekday schedule.
+  const evTask = {
+    kind: 'ev_soc', enforcement: 'soft', targetPercent: 80, enabled: true, deadlineAtMs: now + 8 * hour,
+    rescue: { exemptFromBudget: 'at_risk' }, scheduleSource: { id: 'weekday-ev', name: 'Weekday car' },
+  };
+  const cycle: SmartTaskCycleRecord = {
+    atMs: now - 20_000, decision: 'planned', budgetExempt: true, reasonCode: 'objective_progress_stale',
+    trajectory: 'at_risk', currentValue: 40, energyNeededKWh: 20, planningSpeedKw: 7,
+    kwhPerUnitSource: 'learned', kwhPerUnitAcceptedSamples: 4, permissionsInForce: ['exemptFromBudget'],
+  };
+  const run = (overrides: Partial<DeferredObjectivePlanHistoryRecord> = {}): DeferredObjectivePlanHistoryRecord => ({
+    id: 'run-1', deviceId: 'heater', objectiveKind: 'temperature', targetValue: 65,
+    startProgressValue: 45, finalProgressValue: 58, deadlineAtMs: now - 2 * hour, startedAtMs: now - 6 * hour,
+    finalizedAtMs: now - 2 * hour, initialEnergyNeededKWh: 6, initialEnergyExpectedKWh: 6.0004, deliveredKWh: 3.5, totalCost: 410,
+    costDisplay: { unit: 'kr', divisor: 100 }, outcome: 'missed', metAtMs: null, usedDeadlineReserve: true,
+    observedIntervals: [], discoveredFrom: 'observation', originalPlan: null, revisionCount: 3,
+    finalPlan: {
+      hours: [], energyNeededKWh: 2.5, planStatus: 'cannot_meet', revisedAtMs: now - 3 * hour,
+      floorShortfallCause: 'time_capacity', planningSpeedKw: 2,
+    },
+    // Four quarter bookings in one hour and one hour on its own: allocations read by hour.
+    hourStartBookings: [
+      { atMs: now - 5 * hour, endsAtMs: now - 5 * hour + quarter, bookedKWh: 0.5 },
+      { atMs: now - 5 * hour + quarter, endsAtMs: now - 5 * hour + 2 * quarter, bookedKWh: 0.5 },
+      { atMs: now - 5 * hour + 2 * quarter, endsAtMs: now - 5 * hour + 3 * quarter, bookedKWh: 0.5 },
+      { atMs: now - 5 * hour + 3 * quarter, endsAtMs: now - 4 * hour, bookedKWh: 0.5 },
+      { atMs: now - 3 * hour, endsAtMs: now - 2 * hour, bookedKWh: 2 },
+    ],
+    hourlyContributions: [
+      { atMs: now - 5 * hour, endsAtMs: now - 4 * hour, deliveredKWh: 1.5, priceValue: 100, tone: 'cheap' },
+      // Delivered in an hour the run had not booked.
+      { atMs: now - 4 * hour, endsAtMs: now - 3 * hour, deliveredKWh: 2, priceValue: 130, tone: 'normal' },
+    ],
+    deliveryExplanation: {
+      kind: 'recorded', primary: { kind: 'blocked', cause: 'capacity_limited' }, contributors: ['budget_limited'],
+      intervals: [
+        { fromMs: now - 3 * hour, toMs: now - 3 * hour + quarter, cause: 'capacity_limited' },
+        { fromMs: now - 3 * hour + quarter, toMs: now - 2 * hour, cause: 'capacity_limited' },
+      ],
+    },
+    ...overrides,
+  });
+  const scheduleEntry = (overrides: Partial<ScheduleEntry['schedule']>): ScheduleEntry => ({
+    schedule: {
+      id: 'weekday-ev', name: 'Weekday car', enabled: true, at: '22:00',
+      repeat: { type: 'weekly', days: [1, 2, 3, 4, 5] }, condition: { type: 'exclude', modes: ['Away'] },
+      action: { type: 'task', task: {
+        deviceId: 'heater', kind: 'ev_soc', target: 80, readyByLocalTime: '07:00', exemptFromBudget: true,
+      } },
+      ...overrides,
+    },
+    modeReferences: [], state: 'on', reason: '', nextAtMs: now + 10 * hour, nextLabel: 'Today 22:00',
+    lastResult: 'Created a smart task', lastLabel: 'Yesterday 22:00',
+  });
+  const schedules: SchedulesSnapshot = {
+    timeZone: 'Europe/Oslo', modes: ['Home', 'Away'],
+    controls: { modeChangesEnabled: true, disabledTaskDeviceIds: ['boiler'] },
+    entries: [
+      scheduleEntry({}),
+      scheduleEntry({ id: 'night', name: 'Night', action: { type: 'mode', mode: 'Night' } }),
+      scheduleEntry({ id: 'boiler-top-up', name: 'Boiler', action: { type: 'task', task: {
+        deviceId: 'boiler', kind: 'energy', target: 3, readyByLocalTime: '06:00',
+      } } }),
+    ],
+  };
+  const auditedApp = (runs: DeferredObjectivePlanHistoryRecord[]) => Object.assign(currentHost(), {
+    readSchedules: () => ({ ok: true as const, data: schedules }),
+    deferredObjectiveActivePlanRecorder: partialDouble<DeferredObjectiveActivePlanRecorder>({
+      getActivePlan: () => undefined,
+    }),
+    deferredObjectivePlanHistoryRecorder: partialDouble<DeferredObjectivePlanHistoryRecorder>({
+      getHistorySnapshot: () => ({ version: 7, entries: runs }),
+      getBudgetOnlyMisses: () => [],
+    }),
+  });
+  const dayRequest: SupportReportRequest = {
+    ...request, subject: { kind: 'app', homeId: 'main' }, historyWindow: 'day', occurredAtMs: now,
+  };
+
+  it('states what each task asks for, may override, booked and delivered, and the schedules behind it', async () => {
+    const old = run({ id: 'old', finalizedAtMs: now - 30 * hour });
+    const report = await source(auditedApp([old, run()]), objectiveStore({ heater: evTask }), () => cycle)
+      .capture(dayRequest, now);
+    expect(values(report, 'Current smart tasks')).toMatchObject({ tasks: [{
+      deviceId: 'heater', deviceName: 'Hall heater now', kind: 'ev_soc', targetPercent: 80,
+      savedPermissions: { exemptFromBudget: 'at_risk' }, schedule: { id: 'weekday-ev', name: 'Weekday car' },
+      plan: 'none', lastCycle: { decision: 'planned', trajectory: 'at_risk', permissionsInForce: ['exemptFromBudget'] },
+    }] });
+    // Only the run that ended in the day's window.
+    expect(values(report, 'Smart task runs')).toEqual({
+      fromMs: now - 24 * hour, toMs: now,
+      hourColumns: ['hourStartMs', 'bookedKWh', 'deliveredKWh'], blockedColumns: ['fromMs', 'toMs', 'cause'],
+      leftOut: 0,
+      runs: [{
+        deviceId: 'heater', deviceName: 'Hall heater now', kind: 'temperature', target: 65,
+        startValue: 45, finalValue: 58, startedAtMs: now - 6 * hour, deadlineAtMs: now - 2 * hour,
+        finalizedAtMs: now - 2 * hour, outcome: 'missed', metAtMs: null, neededKWh: 6, deliveredKWh: 3.5,
+        cost: { total: 410, unit: 'kr', divisor: 100 }, usedDeadlineReserve: true, budgetOnlyMiss: false,
+        revisionCount: 3, finalPlanStatus: 'cannot_meet', floorShortfallCause: 'time_capacity', planningSpeedKw: 2,
+        constraint: {
+          recorded: true, primary: 'capacity_limited', contributors: ['budget_limited'],
+          blocked: [[now - 3 * hour, now - 2 * hour, 'capacity_limited']], blockedLeftOut: 0,
+        },
+        hours: [[now - 5 * hour, 2, 1.5], [now - 4 * hour, null, 2], [now - 3 * hour, 2, null]],
+      }],
+    });
+    expect(values(report, 'Smart task schedules')).toEqual({
+      timeZone: 'Europe/Oslo', pausedDeviceIds: ['boiler'],
+      schedules: [
+        {
+          id: 'weekday-ev', name: 'Weekday car', enabled: true, state: 'on', at: '22:00',
+          repeat: { type: 'weekly', days: [1, 2, 3, 4, 5] }, condition: { type: 'exclude', modes: ['Away'] },
+          deviceId: 'heater', kind: 'ev_soc', target: 80, readyBy: '07:00', permissions: ['exemptFromBudget'],
+          nextAtMs: now + 10 * hour, lastResult: 'Created a smart task', lastDue: 'Yesterday 22:00',
+        },
+        expect.objectContaining({ id: 'boiler-top-up', deviceId: 'boiler', permissions: [] }),
+      ],
+    });
+  });
+
+  it('shares an interval that crosses an hour over both hours, booked and delivered alike', async () => {
+    // A half-hour price period from :45 to :15, booked from a restart at :50.
+    const report = await source(auditedApp([run({
+      hourStartBookings: [{ atMs: now - 3 * hour - 10 * 60_000, endsAtMs: now - 2 * hour - 45 * 60_000, bookedKWh: 1 }],
+      hourlyContributions: [{
+        atMs: now - 3 * hour - quarter, endsAtMs: now - 2 * hour - 45 * 60_000, deliveredKWh: 0.8,
+        priceValue: 100, tone: 'cheap',
+      }],
+    })]), objectiveStore()).capture(dayRequest, now);
+    expect(values(report, 'Smart task runs')).toMatchObject({ runs: [{
+      hours: [[now - 4 * hour, 0.4, 0.4], [now - 3 * hour, 0.6, 0.4]],
+    }] });
+  });
+
+  it('keeps the newest runs and says how many older ones it left out', async () => {
+    const runs = Array.from({ length: 14 }, (_, index) => run({ id: `run-${index}`, finalizedAtMs: now - index * hour }));
+    const report = await source(auditedApp(runs), objectiveStore()).capture(dayRequest, now);
+    const section = values(report, 'Smart task runs') as { runs: { finalizedAtMs: number }[]; leftOut: number };
+    expect(section.runs).toHaveLength(12);
+    expect(section.runs[0]?.finalizedAtMs).toBe(now);
+    expect(section.leftOut).toBe(2);
+  });
+
+  it('narrows a device report to its own runs and schedules', async () => {
+    const report = await source(auditedApp([run(), run({ id: 'boiler-run', deviceId: 'boiler' })]),
+      objectiveStore({ heater: evTask }), () => cycle).capture(request, now);
+    expect(values(report, 'Current smart tasks')).toBeUndefined();
+    expect(values(report, 'Smart task runs')).toMatchObject({ runs: [{ deviceId: 'heater' }], leftOut: 0 });
+    expect(values(report, 'Smart task schedules')).toMatchObject({
+      paused: false, schedules: [{ id: 'weekday-ev' }],
+    });
+  });
+
+  it('says which smart task evidence it could not read and keeps the rest', async () => {
+    const report = await source(currentHost(), objectiveStore({ heater: evTask })).capture(dayRequest, now);
+    expect(values(report, 'Current smart tasks')).toMatchObject({ tasks: [{ deviceId: 'heater' }] });
+    expect(report.omissions).toEqual(expect.arrayContaining([
+      'Smart task runs is unavailable.', 'Smart task schedules is unavailable.',
+    ]));
   });
 });
 

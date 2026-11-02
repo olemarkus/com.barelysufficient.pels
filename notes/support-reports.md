@@ -47,7 +47,19 @@ controller keeps only that flat record per live task
 (`lib/objectives/deferredObjectives/smartTaskCycleRecord.ts`), read through the Main
 home scope. `exists: false` is evidence, not an omission: a device held by "Only PELS
 starts this device" without a task is off by design. A task store read that cannot
-tell is an unavailable section. `Current device plan` adds whether PELS
+tell is an unavailable section. The task states its `savedPermissions` (each with its
+`always` or `at_risk` mode) and the schedule that created it; `plan.hourlyBookings`
+sums the bookings per UTC hour, sharing an interval over the hours it spans, a 0 kWh booking included; `lastCycle.permissionsInForce`
+names the permissions the producer applied that cycle. `Smart task runs` carries the
+device's five newest finalized runs from the plan history: target, start and final
+value, outcome, needed and delivered energy, cost, the recorded primary blocker and
+contributors with the longest 24 blocked intervals, whether the history classed the
+miss as budget-only, and `hours` rows of booked beside delivered energy per hour.
+`Smart task schedules` carries the device's task schedules with the permissions each
+grants. A Main report about the whole app carries every saved task
+(`Current smart tasks`), the runs that finalized in its window (the newest 12) and
+every task schedule. These sections are bounded (about 40 KB at most) and are kept
+whole: the log gives way first when a report must fit its size limit. `Current device plan` adds whether PELS
 may command the device and which standing hold (start policy, charge target) keeps it
 off. The smart-task page opens a report on its device with **Report a problem**, in
 every page state, a task that failed to load or already ended included.

@@ -1,3 +1,4 @@
+import type { DeferredObjectiveRescuePermissions } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { DeferredHoldCause } from '../../../packages/planner-types/src/deferredDecoration';
 import type { DeferredAdmissionDecision } from './admission';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
@@ -27,6 +28,12 @@ export type SmartTaskCycleRecord = {
   kwhPerUnitSource: DeferredObjectiveDiagnostic['kwhPerUnitSource'];
   kwhPerUnitAcceptedSamples: number;
   liveStepsUnavailable?: true;
+  /**
+   * The task's saved permissions the producer applied this cycle; absent when
+   * none did. A saved `at_risk` permission waits here until the task is at risk,
+   * and satisfaction strips them all.
+   */
+  permissionsInForce?: readonly (keyof DeferredObjectiveRescuePermissions)[];
 };
 
 const decisionFields = (decision: DeferredAdmissionDecision): Pick<SmartTaskCycleRecord,
@@ -41,6 +48,17 @@ const decisionFields = (decision: DeferredAdmissionDecision): Pick<SmartTaskCycl
     return { decision: 'idle', budgetExempt: decision.budgetExempt, holdCause: decision.holdCause };
   }
   return { decision: 'inactive', budgetExempt: decision.budgetExempt };
+};
+
+const permissionsInForce = (
+  diagnostic: DeferredObjectiveDiagnostic,
+): Pick<SmartTaskCycleRecord, 'permissionsInForce'> => {
+  const applied = [
+    ...(diagnostic.budgetExemptApplied ? ['exemptFromBudget' as const] : []),
+    ...(diagnostic.limitLowerPriorityApplied ? ['limitLowerPriorityDevices' as const] : []),
+    ...(diagnostic.pauseLowerPriorityApplied ? ['pauseLowerPriorityDevices' as const] : []),
+  ];
+  return applied.length > 0 ? { permissionsInForce: applied } : {};
 };
 
 export const buildSmartTaskCycleRecord = (
@@ -58,4 +76,5 @@ export const buildSmartTaskCycleRecord = (
   kwhPerUnitSource: diagnostic.kwhPerUnitSource,
   kwhPerUnitAcceptedSamples: diagnostic.kwhPerUnitAcceptedSamples,
   ...(diagnostic.liveStepsUnavailable ? { liveStepsUnavailable: true as const } : {}),
+  ...permissionsInForce(diagnostic),
 });
