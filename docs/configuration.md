@@ -337,6 +337,12 @@ Use this while you are tuning priorities, power estimates, and limits. Turn it o
 
 Simulation mode covers your Main home. Each [meter area](/meter-areas) has its own **Control devices in this area** switch under **Limits & safety**, so an area can keep limiting its devices while Simulation mode is on.
 
+## Settings > Report a problem
+
+Describe what happened and send the report. PELS adds relevant device activity and current state. Opening the form from a device, Smart task or Activity entry keeps that context; an Activity entry also sets the incident time.
+
+Problem reports and device-support requests use the same sending and follow-up flow. After sending, choose the PELS forum thread or email the developer to hear back. The email link includes your description and the report reference. Copying the diagnostic report is available if Homey cannot send it.
+
 ## Settings > Advanced
 
 Advanced is for diagnostics, cleanup, and expert tuning.

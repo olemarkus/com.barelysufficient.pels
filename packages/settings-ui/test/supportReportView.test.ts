@@ -5,7 +5,9 @@ import { renderSupportReportView, type SupportReportActions } from '../src/ui/vi
 import { newReportDraft, type SupportReportViewState } from '../src/ui/supportReportModel';
 import { supportReportFixture } from './helpers/supportReportFixture';
 
-const mount = (report: PreparedSupportReport | null = null) => {
+const GENERAL_FORUMS = [{ url: 'https://community.homey.app/t/147496', label: 'PELS forum thread' }];
+
+const mount = (report: PreparedSupportReport | null = null, forums = GENERAL_FORUMS) => {
   const surface = document.createElement('div');
   document.body.append(surface);
   const state: SupportReportViewState = {
@@ -16,7 +18,9 @@ const mount = (report: PreparedSupportReport | null = null) => {
   const actions: SupportReportActions = {
     edit: vi.fn(), submit: vi.fn(), check: vi.fn(), startAnother: vi.fn(), notice: vi.fn(),
   };
-  renderSupportReportView(surface, { state, actions, homeName: 'Main home', backTarget: 'activity', supportDevice: null });
+  renderSupportReportView(surface, {
+    state, actions, homeName: 'Main home', backTarget: 'activity', supportDevice: null, forums,
+  });
   return { surface, actions };
 };
 
@@ -37,7 +41,7 @@ const mountSupportRequest = (report: PreparedSupportReport | null = null) => {
   };
   renderSupportReportView(surface, {
     state, actions, homeName: 'Main home', backTarget: 'device-support',
-    supportDevice: { name: 'Water heater relay', forums: NORWAY_FORUMS },
+    supportDevice: { name: 'Water heater relay' }, forums: NORWAY_FORUMS,
   });
   return { surface, actions };
 };
@@ -82,9 +86,21 @@ describe('support report view', () => {
     expect(surface.textContent).toContain('Reference: report-1');
     const forum = surface.querySelector<HTMLAnchorElement>('a[target="_blank"]');
     expect(forum?.getAttribute('href')).toBe('https://community.homey.app/t/147496');
-    expect(surface.textContent).toContain('quote the reference');
+    expect(surface.textContent).toContain('To hear back');
+    const email = new URL(surface.querySelector<HTMLAnchorElement>('a[href^="mailto:"]')?.href ?? '');
+    expect(email.searchParams.get('subject')).toBe('PELS: Hall heater');
+    expect(email.searchParams.get('body')).toBe('The heater stayed off.\n\nReport reference: report-1');
+    expect(surface.textContent).not.toContain('quote the reference');
     expect(surface.querySelector('[data-report-action="done"]')?.getAttribute('data-settings-target')).toBe('activity');
     expect(surface.querySelector('[data-report-field="problem"]')).toBeNull();
+  });
+
+  it('offers the same country-aware follow-up for an ordinary report', () => {
+    const { surface } = mount({ ...supportReportFixture(), submission: { state: 'sent', reference: 'ref-9' } }, NORWAY_FORUMS);
+    const links = [...surface.querySelectorAll<HTMLAnchorElement>('a')];
+    expect(links.slice(0, 2).map((link) => link.href)).toEqual(NORWAY_FORUMS.map((forum) => forum.url));
+    expect(links[2].href).toContain('mailto:olemarkus@gmail.com');
+    expect(new URL(links[2].href).searchParams.get('body')).toContain('Report reference: ref-9');
   });
 
   it('shows the report text for manual copying only when the clipboard fails', async () => {
@@ -103,7 +119,7 @@ describe('support report view', () => {
     }
   });
 
-  it('asks one question about a device PELS does not support, and says how to hear back', () => {
+  it('asks one question about a device PELS does not support, with one send action', () => {
     const { surface } = mountSupportRequest();
     expect(surface.querySelector('.pels-appbar__title')?.textContent).toBe('Device support');
     expect(surface.querySelector('[data-report-device-name]')?.textContent).toBe('Water heater relay');
@@ -113,11 +129,10 @@ describe('support report view', () => {
       expect(surface.querySelector(`[data-report-field="${field}"]`)).toBeNull();
     }
     expect(surface.querySelector('[data-report-action="send"]')?.textContent).toBe('Send request');
-    const links = [...surface.querySelectorAll<HTMLAnchorElement>('a')].map((link) => link.getAttribute('href'));
-    expect(links).toEqual([
-      'https://community.homey.app/t/153359', 'https://community.homey.app/t/147496',
-      'mailto:olemarkus@gmail.com?subject=PELS%20device%20support%3A%20Water%20heater%20relay',
-    ]);
+    expect(surface.querySelectorAll('form')).toHaveLength(1);
+    expect(surface.querySelectorAll('[data-report-action="send"]')).toHaveLength(1);
+    expect(surface.querySelector('[data-report-action="preview"]')).toBeNull();
+    expect(surface.querySelector('a')).toBeNull();
   });
 
   it('confirms a sent request without promising support', () => {
@@ -125,7 +140,11 @@ describe('support report view', () => {
     expect(surface.textContent).toContain('Request sent');
     expect(surface.textContent).toContain('Reference: ref-9');
     expect(surface.textContent).toContain('within 1–2 days, depending on how complex the device is.');
-    expect(surface.textContent).toContain('and mention the device.');
+    expect(surface.textContent).toContain('To hear back');
+    const links = [...surface.querySelectorAll<HTMLAnchorElement>('a')];
+    expect(links.slice(0, 2).map((link) => link.href)).toEqual(NORWAY_FORUMS.map((forum) => forum.url));
+    const email = new URL(links[2].href);
+    expect(email.searchParams.get('body')).toContain('Report reference: ref-9');
     expect(surface.textContent).not.toContain('quote the reference');
     expect(surface.querySelector('[data-report-action="done"]')?.getAttribute('data-settings-target')).toBe('device-support');
   });

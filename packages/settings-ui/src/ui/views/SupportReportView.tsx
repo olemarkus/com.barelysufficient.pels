@@ -17,9 +17,6 @@ import {
   MdFilledButton, MdFilledSelect, MdFilledTextField, MdOutlinedButton, MdSelectOption, MdTextButton,
 } from './materialWebJSX.tsx';
 
-/** The app's Homey Community topic (`homeyCommunityTopicId` in the manifest). */
-const FORUM_URL = 'https://community.homey.app/t/147496';
-
 export type SupportReportActions = {
   edit(draft: ReportDraft): void;
   submit(): Promise<void>;
@@ -34,7 +31,7 @@ export type SupportForumTopic = { url: string; label: string };
  * A support request for a device PELS does not list. `name` is `null` until
  * Homey's device list has been read.
  */
-type SupportDevice = { name: string | null; forums: readonly SupportForumTopic[] };
+type SupportDevice = { name: string | null };
 
 type SupportReportViewProps = {
   state: SupportReportViewState;
@@ -42,6 +39,7 @@ type SupportReportViewProps = {
   homeName: string;
   backTarget: string;
   supportDevice: SupportDevice | null;
+  forums: readonly SupportForumTopic[];
 };
 
 const DEVELOPER_EMAIL = 'olemarkus@gmail.com';
@@ -53,45 +51,40 @@ const ForumLinks = ({ forums }: { forums: readonly SupportForumTopic[] }) => <>
   </span>)}
 </>;
 
-// Where a support request gets an answer: Homey delivers the request, but it
-// carries no reply address, so the owner posts or emails naming the device.
-const SupportContact = ({ forums, deviceName }: { forums: readonly SupportForumTopic[]; deviceName: string | null }) => {
-  const subject = encodeURIComponent(deviceName ? `PELS device support: ${deviceName}` : 'PELS device support');
+// Homey carries no reply address. Keep the next step the same for every report;
+// email includes its reference so the owner need not copy a technical identifier.
+const SupportContact = ({ forums, report }: {
+  forums: readonly SupportForumTopic[]; report: PreparedSupportReport;
+}) => {
+  const subject = encodeURIComponent(`PELS: ${report.document.subjectName}`);
+  const reference = report.submission.state === 'sent' ? report.submission.reference : '';
+  const body = encodeURIComponent(`${report.document.request.problem}\n\nReport reference: ${reference || report.document.id}`);
   return (
     <p class="pels-text-supporting muted">
       To hear back, post in the <ForumLinks forums={forums} /> (preferred) or email{' '}
-      <a class="support-report__link" href={`mailto:${DEVELOPER_EMAIL}?subject=${subject}`}
-        target="_blank" rel="noopener noreferrer">{DEVELOPER_EMAIL}</a>, and mention the device.
+      <a class="support-report__link" href={`mailto:${DEVELOPER_EMAIL}?subject=${subject}&body=${body}`}
+        target="_blank" rel="noopener noreferrer">{DEVELOPER_EMAIL}</a>.
     </p>
   );
 };
 
-const DeviceSupportForm = ({ state, actions, supportDevice }: SupportReportViewProps & { supportDevice: SupportDevice }) => {
-  const { draft } = state;
-  const disabled = reportIsLocked(state);
-  return (
-    <form class="support-report__form" onSubmit={(event) => {
-      event.preventDefault();
-      if (event.currentTarget.reportValidity()) void actions.submit();
-    }}>
-      <h3 class="pels-text-section-title" data-report-device-name>{supportDevice.name ?? 'Selected device'}</h3>
-      <MdFilledTextField type="textarea" rows="4" label="Describe the device" required
-        value={draft.problem} maxlength={SUPPORT_REPORT_PROBLEM_MAX_LENGTH} disabled={disabled}
-        supporting-text="What it is and what PELS should do with it, such as a water heater on a relay to turn off when power is short."
-        data-report-field="problem" onInput={(event: Event) => actions.edit({ ...draft, problem: fieldValue(event) })} />
-      <ReportNotice state={state} />
-      <MdFilledButton type="submit" disabled={disabled} data-report-action="send">
-        {state.operation === 'sending' ? 'Sending…' : 'Send request'}
-      </MdFilledButton>
-      <p class="pels-text-supporting muted">Sent to the PELS developer through Homey, with the app’s logs.</p>
-      <SupportContact forums={supportDevice.forums} deviceName={supportDevice.name} />
-    </form>
-  );
-};
+const DeviceSupportFields = ({ state, actions, supportDevice }: SupportReportViewProps & {
+  supportDevice: SupportDevice;
+}) => (
+  <>
+    <h3 class="pels-text-section-title" data-report-device-name>{supportDevice.name ?? 'Selected device'}</h3>
+    <MdFilledTextField type="textarea" rows="4" label="Describe the device" required
+      value={state.draft.problem} maxlength={SUPPORT_REPORT_PROBLEM_MAX_LENGTH} disabled={reportIsLocked(state)}
+      supporting-text="What it is and what PELS should do with it, such as a water heater on a relay to turn off when power is short."
+      data-report-field="problem" onInput={(event: Event) => actions.edit({
+        ...state.draft, problem: fieldValue(event),
+      })} />
+  </>
+);
 
 const fieldValue = (event: Event): string => (event.currentTarget as HTMLElement & { value: string }).value;
 
-const ReportForm = ({ state, actions, homeName }: SupportReportViewProps) => {
+const IncidentFields = ({ state, actions, homeName }: SupportReportViewProps) => {
   const { draft } = state;
   const disabled = reportIsLocked(state);
   const selectedId = draft.subject.kind === 'device' ? draft.subject.deviceId : '';
@@ -102,10 +95,7 @@ const ReportForm = ({ state, actions, homeName }: SupportReportViewProps) => {
     if (deviceSelect.current) deviceSelect.current.value = selectedId ? `device:${selectedId}` : 'app';
   }, [selectedId, state.devices]);
   return (
-    <form class="support-report__form" onSubmit={(event) => {
-      event.preventDefault();
-      if (event.currentTarget.reportValidity()) void actions.submit();
-    }}>
+    <>
       <p class="pels-text-supporting muted">Home: {homeName}</p>
       <MdFilledSelect ref={deviceSelect} label="Affected device" disabled={disabled}
         data-report-field="device" onChange={(event: Event) => {
@@ -161,11 +151,22 @@ const ReportForm = ({ state, actions, homeName }: SupportReportViewProps) => {
       <p class="pels-text-supporting muted">{draft.historyWindow === 'incident'
         ? 'Includes available activity from one hour before the incident until now, plus the preceding recorded state.'
         : 'Includes available activity from 24 hours before the incident until now, plus the preceding recorded state.'}</p>
-      {/* Beside the button that caused it: at 320 px a notice at the top of a
-          long form is off screen, and the page does not scroll within a stage. */}
+    </>
+  );
+};
+
+const ReportForm = (props: SupportReportViewProps) => {
+  const { state, actions, supportDevice } = props;
+  return (
+    <form class="support-report__form" onSubmit={(event) => {
+      event.preventDefault();
+      if (event.currentTarget.reportValidity()) void actions.submit();
+    }}>
+      {supportDevice ? <DeviceSupportFields {...props} supportDevice={supportDevice} /> : <IncidentFields {...props} />}
+      {/* Keep feedback beside the action, including on narrow screens. */}
       <ReportNotice state={state} />
-      <MdFilledButton type="submit" disabled={disabled} data-report-action="send">
-        {state.operation === 'sending' ? 'Sending…' : 'Send report'}
+      <MdFilledButton type="submit" disabled={reportIsLocked(state)} data-report-action="send">
+        {state.operation === 'sending' ? 'Sending…' : supportDevice ? 'Send request' : 'Send report'}
       </MdFilledButton>
       <p class="pels-text-supporting muted">Sent to the PELS developer through Homey, with the app’s logs.</p>
     </form>
@@ -203,31 +204,20 @@ const ReportCopy = ({ report, actions }: { report: PreparedSupportReport; action
   );
 };
 
-const ReportResult = ({ state, actions, backTarget, supportDevice }: SupportReportViewProps) => {
+const ReportResult = ({ state, actions, backTarget, supportDevice, forums }: SupportReportViewProps) => {
   const { report } = state;
   if (!report) return null;
   const { submission } = report;
-  if (submission.state === 'sent' && supportDevice) {
-    return (
-      <section class="support-report__result" aria-label="Request sent">
-        <h3 class="pels-text-section-title">Request sent</h3>
-        <p class="support-report__reference">Reference: {submission.reference || report.document.id}</p>
-        <p class="pels-text-supporting">Support for a new device usually comes in an app update within 1–2 days, depending on how complex the device is.</p>
-        <SupportContact forums={supportDevice.forums} deviceName={supportDevice.name} />
-        <MdFilledButton type="button" data-settings-target={backTarget} data-settings-back data-report-action="done">Done</MdFilledButton>
-      </section>
-    );
-  }
   if (submission.state === 'sent') {
+    const title = supportDevice ? 'Request sent' : 'Report sent';
     return (
-      <section class="support-report__result" aria-label="Report sent">
-        <h3 class="pels-text-section-title">Report sent</h3>
+      <section class="support-report__result" aria-label={title}>
+        <h3 class="pels-text-section-title">{title}</h3>
         <p class="support-report__reference">Reference: {submission.reference || report.document.id}</p>
-        <p class="pels-text-supporting">
-          Want an answer? Post in the <a class="support-report__link" href={FORUM_URL} target="_blank"
-            rel="noopener noreferrer">PELS forum
-          thread</a> and quote the reference.
-        </p>
+        {supportDevice && <p class="pels-text-supporting">
+          Support for a new device usually comes in an app update within 1–2 days, depending on how complex the device is.
+        </p>}
+        <SupportContact forums={forums} report={report} />
         <MdFilledButton type="button" data-settings-target={backTarget} data-settings-back data-report-action="done">Done</MdFilledButton>
       </section>
     );
@@ -275,8 +265,7 @@ const SupportReportView = (props: SupportReportViewProps) => {
       lede={settled || recoveryId ? undefined : lede} />
     <div class="support-report" data-report-stage={stage} tabIndex={-1}>
       {(settled || recoveryId) && <ReportNotice state={props.state} />}
-      {!settled && !recoveryId && (supportDevice
-        ? <DeviceSupportForm {...props} supportDevice={supportDevice} /> : <ReportForm {...props} />)}
+      {!settled && !recoveryId && <ReportForm {...props} />}
       {copyable && <ReportCopy report={report} actions={props.actions} />}
       {settled && <ReportResult {...props} />}
       {recoveryId && operation === 'idle' && <div class="support-report__actions">

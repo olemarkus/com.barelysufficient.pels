@@ -31,7 +31,7 @@ test('finds an unsupported Homey device and sends a device support request for i
   await picker.locator('[data-device-picker-id="dev_knx_relay"]').click();
   const panel = page.locator('#report-problem-panel');
   await expect(panel).toContainText('Water heater relay');
-  await expect(panel.getByRole('link', { name: /forum/i }).first()).toBeVisible();
+  await expect(panel.getByRole('link', { name: /forum/i })).toHaveCount(0);
   await panel.locator('[data-report-action="send"]').click();
   await expect(panel.getByRole('textbox', { name: 'Describe the device' })).toHaveAttribute('aria-invalid', 'true');
   expect((await readDeviceSupportStub(page)).requests).toHaveLength(0);
@@ -39,6 +39,10 @@ test('finds an unsupported Homey device and sends a device support request for i
   await setMdValue(page, '[data-report-field="problem"]', 'KNX relay switching my water heater.');
   await panel.locator('[data-report-action="send"]').click();
   await expect(panel.getByRole('heading', { name: 'Request sent' })).toBeInViewport();
+  await expect(panel.getByRole('link', { name: /forum/i }).first()).toBeVisible();
+  const email = new URL(await panel.locator('a[href^="mailto:"]').getAttribute('href') ?? '');
+  expect(email.searchParams.get('body')).toContain('KNX relay switching my water heater.');
+  expect(email.searchParams.get('body')).toContain('homey-receipt-1');
   const { requests, sends } = await readDeviceSupportStub(page);
   expect(requests).toHaveLength(1);
   expect(requests[0]).toMatchObject({
