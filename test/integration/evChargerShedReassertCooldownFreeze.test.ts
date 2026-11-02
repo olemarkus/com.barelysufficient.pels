@@ -1,3 +1,4 @@
+import { createTestPlanExecutor } from '../utils/planEngineStateFixture';
 import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import { withDeviceConfiguration } from '../utils/planTestUtils';
 /**
@@ -44,7 +45,7 @@ import { withDeviceConfiguration } from '../utils/planTestUtils';
  * charger itself could never start its own planned bucket.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
+import type { PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
@@ -260,7 +261,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     storageLane: { kind: 'none' },
     inverterLane: NO_INVERTER_EXECUTION,
   };
-  const executor = new PlanExecutor(deps, state);
+  const executor = createTestPlanExecutor(deps, state);
   return {
     executor,
     pendingBinaryCommandStore,

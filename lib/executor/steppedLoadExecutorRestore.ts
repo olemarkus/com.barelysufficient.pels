@@ -77,7 +77,9 @@ export const maybeSkipSteppedLoadRestoreBinary = (
   if (!snapshot) return logSteppedLoadRestoreSkip(intent, 'missing_snapshot');
   if (!ctx.actuator.canTurnOnDevice(intent.id)) return logSteppedLoadRestoreSkip(intent, 'not_setable');
   const snapshotOn = isBinaryOnOrUnknown(snapshot);
-  if (ctx.state.actuation.isRestoreInFlight(intent.id)) return logSteppedLoadRestoreSkip(intent, 'already_in_progress');
+  if (ctx.execution.actuation.isRestoreInFlight(intent.id)) {
+    return logSteppedLoadRestoreSkip(intent, 'already_in_progress');
+  }
   if (snapshotOn !== false && !stepNeedsAdjustment) return logSteppedLoadRestoreSkip(intent, 'no_keep_violation');
   return null;
 };
@@ -108,11 +110,11 @@ export const executeSteppedLoadRestoreBinary = async (
   intent: ExecutableSteppedLoadIntent,
   snapshot: ExecutorDeviceSnapshot,
 ): Promise<boolean> => {
-  ctx.state.actuation.beginRestore(intent.id);
+  ctx.execution.actuation.beginRestore(intent.id);
   try {
     const applied = await dispatchSteppedLoadRestoreBinaryCommand(ctx, intent, snapshot);
     if (!applied) return false;
-    ctx.state.actuation.markSteppedBinaryRestoreAttempt(intent.id, Date.now());
+    ctx.execution.actuation.markSteppedBinaryRestoreAttempt(intent.id, Date.now());
     return true;
   } catch (error) {
     logger.error({
@@ -122,7 +124,7 @@ export const executeSteppedLoadRestoreBinary = async (
     });
     return false;
   } finally {
-    ctx.state.actuation.endRestore(intent.id);
+    ctx.execution.actuation.endRestore(intent.id);
   }
 };
 
@@ -144,7 +146,7 @@ export const applyKeepInvariantShedBlock = (
     msg: `Capacity: skip stepped-load restore for ${name}, shed invariant: `
       + `desiredStep=${desiredStepId} exceeds lowestNonZeroStep=${lowestNonZeroStep.id}`,
   });
-  const prevBlock = ctx.state.keepInvariantShedBlockedByDevice[id];
+  const prevBlock = ctx.feedback.getKeepInvariantShedBlock(id);
   const unchanged = prevBlock !== undefined
     && prevBlock.desiredStepId === desiredStepId
     && prevBlock.lowestNonZeroStepId === lowestNonZeroStep.id;
@@ -158,7 +160,7 @@ export const applyKeepInvariantShedBlock = (
       lowestNonZeroStepId: lowestNonZeroStep.id,
       rejectionReason: 'shed_invariant',
     });
-    ctx.state.setKeepInvariantShedBlock(id, {
+    ctx.feedback.setKeepInvariantShedBlock(id, {
       desiredStepId,
       lowestNonZeroStepId: lowestNonZeroStep.id,
     });

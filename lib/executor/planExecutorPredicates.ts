@@ -1,5 +1,6 @@
 import type { DevicePlan, SteppedPlanDevice } from '../plan/planTypes';
-import type { PlanEngineState } from '../plan/planState';
+import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes';
+import type { PlannerExecutionFeedback } from '../ports/plannerExecutionFeedback';
 import type {
   ExecutableSteppedLoadCommandSession,
   ExecutableSteppedLoadDevice,
@@ -16,7 +17,7 @@ import { isCommandableNow } from '../../packages/shared-domain/src/commandableNo
 import { resolveSteppedCommandAttempt } from './steppedCommandAttempt';
 
 export function resolveConfirmedBinaryCommandReasonCode(
-  pending: PlanEngineState['pendingBinaryCommands'][string],
+  pending: PendingBinaryCommand,
 ): string {
   if (!pending.desired) return pending.lifecycleRelease ? 'lifecycle_release' : 'shedding';
   if (pending.logContext === 'capacity_control_off') {
@@ -27,12 +28,12 @@ export function resolveConfirmedBinaryCommandReasonCode(
 
 export function hasStableUncontrolledRestoreActuation(
   dev: DevicePlan['devices'][number],
-  state: PlanEngineState,
+  feedback: PlannerExecutionFeedback,
 ): boolean {
   return dev.control.commandAuthority === false
     && dev.plannedState === 'keep'
     && isPlanDeviceObservedOff(dev)
-    && state.shedDecisions.standingShedIds.has(dev.id);
+    && feedback.isStandingShed(dev.id);
 }
 
 export function hasStableBinaryReleaseActuation(dev: DevicePlan['devices'][number]): boolean {

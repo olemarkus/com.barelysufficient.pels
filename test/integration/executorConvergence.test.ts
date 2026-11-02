@@ -1,3 +1,4 @@
+import { createTestPlanExecutor } from '../utils/planEngineStateFixture';
 import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
 import { hasPlanExecutionDriftAgainstIntent } from '../../lib/executor/executorConvergence';
@@ -1001,7 +1002,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
       storageLane: { kind: 'none' },
     inverterLane: NO_INVERTER_EXECUTION,
     };
-    return new PlanExecutor(deps, state);
+    return createTestPlanExecutor(deps, state);
   };
 
   // The same planned restore for either device; only the device differs. The

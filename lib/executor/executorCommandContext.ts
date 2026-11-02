@@ -1,5 +1,6 @@
-import type { PendingTargetObservationSource } from '../plan/planTypes';
-import type { PendingTargetCommandState, PlanEngineState } from '../plan/planState';
+import type { PendingTargetObservationSource } from '../ports/pendingTargetCommand';
+import type { ExecutionState, PendingTargetCommandState } from './executionState';
+import type { PlannerExecutionFeedback } from '../ports/plannerExecutionFeedback';
 import type { Actuator } from '../actuator/deviceActuator';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
@@ -15,7 +16,7 @@ export type ActuationRecorder = (deviceId: string, name: string, now: number) =>
  * ordinary lane, the lifecycle fallback's own for its lane (plan maintenance
  * never prunes that one).
  */
-export type PendingTargetCommandStore = Pick<PlanEngineState, 'pendingTargetCommands' | 'deletePendingTargetCommand'>;
+export type PendingTargetCommandStore = Pick<ExecutionState, 'pendingTargetCommands' | 'deletePendingTargetCommand'>;
 
 /** The lifecycle fallback lane as the ordinary lane must respect it. */
 export type LifecycleFallbackView = {
@@ -43,8 +44,8 @@ export type LifecycleFallbackView = {
  */
 export type ExecutorCommandContext = {
   owner: TargetCommandOwner;
-  /** Engine state without its target retry store: a lane reads that only through `targetCommands`. */
-  state: Omit<PlanEngineState, keyof PendingTargetCommandStore>;
+  execution: ExecutionState;
+  feedback: PlannerExecutionFeedback;
   targetCommands: PendingTargetCommandStore;
   /** The single device write seam; also answers whether a device can be turned on. */
   actuator: Actuator;

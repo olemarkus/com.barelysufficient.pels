@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { PlanEngineState } from '../../lib/plan/planState';
+import type { PlanEngineState } from '../utils/planEngineStateFixture';
 import type { PlanInputDevice, ShedBehavior } from '../../lib/plan/planTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { buildSheddingPlanForSpec } from '../helpers/sheddingPlanForSpec';

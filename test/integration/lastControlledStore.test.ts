@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
-import { ActuationRecord } from '../../lib/plan/actuationRecord';
+import { ActuationRecord } from '../../lib/executor/actuationRecord';
 import {
   createLastControlledRepository,
   createLastControlledStore,

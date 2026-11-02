@@ -1,17 +1,15 @@
 import type {
-  DevicePlan, PendingTargetObservationSource,
+  DevicePlan,
 } from '../plan/planTypes';
 import {
   type ExecutorDeviceReadDeps,
   readExecutorDevice,
   readExecutorDevices,
 } from './executorDeviceRead';
-import type { PlanEngineState } from '../plan/planState';
+import type { PendingTargetObservationSource } from '../ports/pendingTargetCommand';
+import type { PlannerExecutionFeedback } from '../ports/plannerExecutionFeedback';
+import type { ExecutionState } from './executionState';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import {
-  closeActivationAttemptForShedActuation,
-  recordActivationAttemptStarted,
-} from './executorSupport';
 import { getLogger } from '../logging/logger';
 import type { PendingBinaryCommandStore, PendingBinaryConfirmation } from '../observer/pendingBinaryCommands';
 import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes';
@@ -82,9 +80,8 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & ExecutorDeviceReadDeps & 
    * Observer-owned pending-binary-command store. The executor's
    * dispatch path (`binaryControlDispatch.ts`) writes/clears entries
    * through this store as part of PR #4 of the observer/transport
-   * split. Plan-side read sites still consult the backing field on
-   * `PlanEngineState.pendingBinaryCommands` (mutated only via the
-   * store).
+   * split. `ExecutionState` owns its backing field; plan-side read sites
+   * receive readonly entries through `PlanExecutionRead`.
    */
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   /**
@@ -108,12 +105,14 @@ export class PlanExecutor {
   private readonly ctx: ExecutorCommandContext;
   private readonly lifecycleFallback: LifecycleFallbackDispatcher;
 
-  constructor(private readonly deps: PlanExecutorDeps, private readonly state: PlanEngineState) {
-    this.shortfallExecutor = new ShortfallExecutor(deps, state);
+  constructor(private readonly deps: PlanExecutorDeps, private readonly execution: ExecutionState,
+    private readonly feedback: PlannerExecutionFeedback) {
+    this.shortfallExecutor = new ShortfallExecutor(deps, feedback);
     this.ctx = {
       owner: 'ordinary',
-      state,
-      targetCommands: state,
+      execution,
+      feedback,
+      targetCommands: execution,
       actuator: deps.actuator,
       pendingBinaryCommandStore: deps.pendingBinaryCommandStore,
       getObservedState: deps.getObservedState,
@@ -134,8 +133,8 @@ export class PlanExecutor {
       recordShedActuation: (deviceId, name, now) => this.recordShedActuation(deviceId, name, now),
       recordReleaseShedActuation: (deviceId, name, now) => this.recordReleaseShedActuation(deviceId, name, now),
       recordRestoreActuation: (deviceId, name, now) => this.recordRestoreActuation(deviceId, name, now),
-      recordActivationAttemptStarted: (deviceId, name, now) => recordActivationAttemptStarted(
-        state, deps.deviceDiagnostics, deviceId, name, now,
+      recordActivationAttemptStarted: (deviceId, name, now) => (
+        feedback.recordActivationAttemptStarted(deviceId, name, now)
       ),
     };
     this.lifecycleFallback = new LifecycleFallbackDispatcher(this.ctx);
@@ -144,7 +143,7 @@ export class PlanExecutor {
       deps.actuator,
       deps,
       deps.getPowerTracker,
-      state.actuation,
+      execution.actuation,
       this.ctx.recordRestoreActuation,
     );
   }
@@ -172,8 +171,8 @@ export class PlanExecutor {
       this.recordReleaseShedActuation(deviceId, name, now);
       return;
     }
-    this.state.restoreBackoff.noteInstability(now);
-    this.state.actuation.markShed(deviceId, now);
+    this.feedback.noteInstability(now);
+    this.execution.actuation.markShed(deviceId, now);
     this.recordReleaseShedActuation(deviceId, name, now);
   }
 
@@ -183,17 +182,17 @@ export class PlanExecutor {
   private recordReleaseShedActuation(deviceId: string, name: string, now: number): void {
     this.recordControlTimestamp(deviceId, now);
     this.deps.deviceDiagnostics?.recordControlEvent({ kind: 'pels_shed', deviceId, name, nowTs: now });
-    closeActivationAttemptForShedActuation(this.state, this.deps.deviceDiagnostics, deviceId, name, now);
+    this.feedback.closeActivationAttemptForShed(deviceId, name, now);
   }
 
   private recordRestoreActuation(deviceId: string, name: string, now: number): void {
-    this.state.actuation.markRestore(deviceId, now);
+    this.execution.actuation.markRestore(deviceId, now);
     this.recordControlTimestamp(deviceId, now);
     this.deps.deviceDiagnostics?.recordControlEvent({ kind: 'pels_restore', deviceId, name, nowTs: now });
   }
 
   private recordControlTimestamp(deviceId: string, now: number): void {
-    this.state.actuation.markControlled(deviceId, now);
+    this.execution.actuation.markControlled(deviceId, now);
     this.lastControlledPersistenceDirty = true;
   }
 
@@ -212,9 +211,9 @@ export class PlanExecutor {
     if (pending.desired) {
       // Any confirmed turn-on undoes PELS's shed at once: an owner who switches
       // the device off again before the next build is not overruled later.
-      this.state.shedDecisions.noteShedReleased(deviceId);
+      this.feedback.noteShedReleased(deviceId);
       if (pending.logContext === 'capacity_control_off') {
-        this.state.actuation.clearShed(deviceId);
+        this.execution.actuation.clearShed(deviceId);
       } else {
         this.recordRestoreActuation(deviceId, liveDevice.name, now);
         this.ctx.recordActivationAttemptStarted(deviceId, liveDevice.name, now);
@@ -236,7 +235,7 @@ export class PlanExecutor {
     if (this.controlPersistenceBatchDepth > 0) return;
     if (!this.lastControlledPersistenceDirty) return;
     try {
-      this.deps.persistLastControlledMs(this.state.actuation.lastDeviceControlledMs);
+      this.deps.persistLastControlledMs(this.execution.actuation.lastDeviceControlledMs);
       this.lastControlledPersistenceDirty = false;
     } catch (error) {
       logger.error({
@@ -269,7 +268,7 @@ export class PlanExecutor {
       getCommandState: (deviceId) => this.resolveCommandState(
         deviceId, this.deps.pendingBinaryCommandStore.get(deviceId),
       ),
-      isExternalOffHeld: (deviceId) => this.state.isExternalOffHeld(deviceId),
+      isExternalOffHeld: (deviceId) => this.feedback.isExternalOffHeld(deviceId),
       hasStorageDrift: (device) => this.storage.hasDrift(device),
       hasStorageReleaseDrift: (intent) => this.storage.hasReleaseDrift(intent),
     };
@@ -308,7 +307,7 @@ export class PlanExecutor {
       const observed = live ? buildExecutableObservedDeviceState(live, live.steppedLoadProfile) : undefined;
       const execution = resolveDeviceExecutionState(intents[index]!, observed, {
         ...this.resolveCommandState(device.id, this.deps.pendingBinaryCommandStore.peekActive(device.id)),
-        target: this.state.pendingTargetCommands[device.id] ?? null,
+        target: this.execution.pendingTargetCommands[device.id] ?? null,
         unansweredStepCommands: this.deps.getSteppedLoadCommandSession(device.id).unansweredStepCommands,
       }, reads.isExternalOffHeld(device.id));
       return [[device.id, {
@@ -332,7 +331,9 @@ export class PlanExecutor {
    */
   public hasStablePlanActuation(plan: DevicePlan): boolean {
     return plan.devices.some((dev) => {
-      if (hasStableUncontrolledRestoreActuation(dev, this.state) || hasStableBinaryReleaseActuation(dev)) return true;
+      if (hasStableUncontrolledRestoreActuation(dev, this.feedback) || hasStableBinaryReleaseActuation(dev)) {
+        return true;
+      }
       const stepped = buildExecutableSteppedLoadIntent(dev);
       return hasStableSteppedLoadStepActuation(dev, stepped, this.deps.getSteppedLoadCommandSession(dev.id))
         || hasStableSteppedLoadBinaryRestoreActuation(dev, stepped);

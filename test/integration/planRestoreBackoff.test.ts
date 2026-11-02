@@ -23,7 +23,7 @@ import {
 import { planRestoreForSteppedDevice } from '../../lib/plan/restore/helpers';
 import type { RestoreLoopState } from '../../lib/plan/restore/types';
 import type { RestoreTiming } from '../../lib/plan/restore/timing';
-import type { PlanEngineState } from '../../lib/plan/planState';
+import type { PlanEngineState } from '../utils/planEngineStateFixture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
   hasAnyReservation,

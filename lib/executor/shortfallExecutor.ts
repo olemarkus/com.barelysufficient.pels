@@ -1,6 +1,6 @@
 import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import type { PowerTrackerState } from '../power/tracker';
-import type { PlanEngineState } from '../plan/planState';
+import type { PlannerExecutionFeedback } from '../ports/plannerExecutionFeedback';
 import { getLogger } from '../logging/logger';
 import { incPerfCounter } from '../utils/perfCounters';
 import type { HomeId } from '../utils/settingsKeys';
@@ -39,7 +39,7 @@ export class ShortfallExecutor {
   // Distinct from `state.inShortfall`: the builder can synchronize that shared
   // planner/persistence latch before a temporarily fenced enter callback lands.
   private stateSideEffectActive = false;
-  constructor(private deps: ShortfallExecutorDeps, private state: PlanEngineState) {}
+  constructor(private deps: ShortfallExecutorDeps, private feedback: PlannerExecutionFeedback) {}
 
   public async handleShortfall(deficitKw: number): Promise<void> {
     if (this.stateSideEffectActive) return;
@@ -62,11 +62,11 @@ export class ShortfallExecutor {
         + `soft ${softLimit.toFixed(2)}kW)`,
     });
 
-    if (!this.state.inShortfall) {
+    if (!this.feedback.isInShortfall()) {
       // Persist first, then commit the in-memory latch. A failed durable write
       // must leave the immediate semantic transition retryable.
       this.deps.setCapacityInShortfall(true);
-      this.state.inShortfall = true;
+      this.feedback.commitShortfall(true);
       incPerfCounter('settings_set.capacity_in_shortfall');
     }
 
@@ -74,7 +74,7 @@ export class ShortfallExecutor {
   }
 
   public async handleShortfallCleared(): Promise<void> {
-    if (!this.state.inShortfall && !this.stateSideEffectActive) return;
+    if (!this.feedback.isInShortfall() && !this.stateSideEffectActive) return;
 
     logger.info({
       event: 'executor_plan_log',
@@ -82,11 +82,11 @@ export class ShortfallExecutor {
       homeId: this.deps.homeId,
       msg: 'Capacity shortfall resolved',
     });
-    if (this.state.inShortfall) {
+    if (this.feedback.isInShortfall()) {
       // Same commit ordering as enter: a failed durable write must leave the
       // in-memory latch retryable so a deferred clear is not silently consumed.
       this.deps.setCapacityInShortfall(false);
-      this.state.inShortfall = false;
+      this.feedback.commitShortfall(false);
       incPerfCounter('settings_set.capacity_in_shortfall');
     }
     this.stateSideEffectActive = false;

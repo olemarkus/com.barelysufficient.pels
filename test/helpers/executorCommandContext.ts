@@ -1,3 +1,5 @@
+import { getTestExecutionState } from '../utils/planEngineStateFixture';
+import { PlanExecutionFeedback } from '../../lib/plan/planExecutionFeedback';
 import { vi } from 'vitest';
 import type { PlanEngineState } from '../../lib/plan/planState';
 import type { ExecutorCommandContext } from '../../lib/executor/executorCommandContext';
@@ -26,8 +28,9 @@ export const createTestExecutorCommandContext = (
   overrides: Partial<ExecutorCommandContext> = {},
 ): ExecutorCommandContext => ({
   owner: 'ordinary',
-  state,
-  targetCommands: state,
+  execution: getTestExecutionState(state),
+  feedback: new PlanExecutionFeedback(state, undefined),
+  targetCommands: getTestExecutionState(state),
   actuator: {
     canTurnOnDevice: () => true,
     apply: async () => ({ requested: false }),

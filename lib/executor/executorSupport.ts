@@ -1,11 +1,6 @@
 import { isBinaryObservedOff } from '../../packages/shared-domain/src/binaryControlState';
 import type { ObservedDeviceState } from '../../packages/contracts/src/types';
-import type { PlanEngineState } from '../plan/planState';
-import {
-  closeActivationAttemptForShed,
-  recordActivationAttemptStart,
-} from '../plan/admission';
-import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
+import type { ActuationRecord } from './actuationRecord';
 import { getDebugEmitter } from '../logging/logger';
 
 /**
@@ -44,7 +39,7 @@ export const shouldSkipUnavailable = (
  * `notes/state-management/actuation-clocks-and-settle.md`.
  */
 export const shouldSkipShedding = (
-  actuation: PlanEngineState['actuation'],
+  actuation: ActuationRecord,
   deviceId: string,
   deviceName: string,
   snapshotState: Pick<ObservedDeviceState, 'available' | 'binaryControl'> | undefined,
@@ -81,24 +76,3 @@ export const shouldSkipShedding = (
   return false;
 };
 
-export const recordActivationAttemptStarted = (
-  state: PlanEngineState,
-  diagnostics: DeviceDiagnosticsRecorder | undefined,
-  deviceId: string,
-  name: string,
-  nowTs: number,
-): void => {
-  const transition = recordActivationAttemptStart(state, deviceId, nowTs);
-  if (transition) diagnostics?.recordActivationTransition(transition, { name });
-};
-
-export const closeActivationAttemptForShedActuation = (
-  state: PlanEngineState,
-  diagnostics: DeviceDiagnosticsRecorder | undefined,
-  deviceId: string,
-  name: string,
-  nowTs: number,
-): void => {
-  const transition = closeActivationAttemptForShed(state, deviceId, nowTs);
-  if (transition) diagnostics?.recordActivationTransition(transition, { name });
-};

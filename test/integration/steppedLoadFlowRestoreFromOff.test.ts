@@ -1,3 +1,4 @@
+import { createTestPlanExecutor } from '../utils/planEngineStateFixture';
 import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import { withDeviceConfiguration } from '../utils/planTestUtils';
 /**
@@ -41,7 +42,7 @@ import { syncSteppedCommands } from '../../lib/executor/syncSteppedCommands';
 import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnapshot';
 import { steppedStoresForTest } from '../helpers/steppedStores';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
+import type { PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
@@ -319,7 +320,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     inverterLane: NO_INVERTER_EXECUTION,
   };
   return {
-    executor: new PlanExecutor(deps, state),
+    executor: createTestPlanExecutor(deps, state),
     deviceManager,
     helpers,
     decorate,

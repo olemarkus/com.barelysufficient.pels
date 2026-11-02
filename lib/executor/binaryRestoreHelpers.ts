@@ -69,7 +69,7 @@ export const applyBinaryRestoreWithSnapshot = async (
   // — so one guard covers them all and they cannot drift apart. See
   // `skipRestoreForExternalOffHold`.
   if (skipRestoreForExternalOffHold(ctx, deviceId, name)) return false;
-  if (ctx.state.actuation.isRestoreInFlight(deviceId)) {
+  if (ctx.execution.actuation.isRestoreInFlight(deviceId)) {
     emitExecutorDebug({
       event: 'restore_command_skipped',
       reasonCode: 'already_in_progress',
@@ -83,7 +83,7 @@ export const applyBinaryRestoreWithSnapshot = async (
     });
     return false;
   }
-  ctx.state.actuation.beginRestore(deviceId);
+  ctx.execution.actuation.beginRestore(deviceId);
   try {
     try {
       const outcome = await runBinaryControl(
@@ -102,6 +102,6 @@ export const applyBinaryRestoreWithSnapshot = async (
       return false;
     }
   } finally {
-    ctx.state.actuation.endRestore(deviceId);
+    ctx.execution.actuation.endRestore(deviceId);
   }
 };

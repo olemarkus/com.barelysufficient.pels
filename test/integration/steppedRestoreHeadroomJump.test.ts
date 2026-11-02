@@ -1,3 +1,4 @@
+import { getTestExecutionFacts } from '../utils/planEngineStateFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { planRestoreForSteppedDevice } from '../../lib/plan/restore/helpers';
 import { buildRestoreBatchState } from '../../lib/plan/restore/batch';
@@ -149,7 +150,7 @@ describe('running stepped loads jump on the full room, and later devices on the 
   ])('raises the bar for a step-up when the device was limited $label', ({ shedAgoMs, target }) => {
     const dev = runningDevice();
     const cycle = cycleFor(dev, 1.3);
-    cycle.state.actuation.lastDeviceShedMs[dev.id] = Date.now() - shedAgoMs;
+    getTestExecutionFacts(cycle.state).actuation.lastDeviceShedMs[dev.id] = Date.now() - shedAgoMs;
     restore(cycle, dev, 1.3);
     expect(cycle.deviceMap.get(dev.id)?.desiredStepId).toBe(target);
   });
@@ -157,7 +158,7 @@ describe('running stepped loads jump on the full room, and later devices on the 
   it('holds a recently reduced EV charger even with room for a large jump', () => {
     const dev = runningDevice({ isEvCharger: true });
     const cycle = cycleFor(dev, 12);
-    cycle.state.actuation.lastDeviceShedMs[dev.id] = Date.now() - 120_000;
+    getTestExecutionFacts(cycle.state).actuation.lastDeviceShedMs[dev.id] = Date.now() - 120_000;
     restore(cycle, dev, 12);
     expect(cycle.deviceMap.get(dev.id)).toMatchObject({ desiredStepId: '1', reason: { code: PLAN_REASON_CODES.cooldownRestore } });
   });
@@ -166,7 +167,7 @@ describe('running stepped loads jump on the full room, and later devices on the 
     const dev = runningDevice({ isEvCharger: true, surplusTracking: true, selectedStepId: '3', desiredStepId: '3' });
     const cycle = cycleFor(dev, 12);
     cycle.state.surplusTrackingByDevice[dev.id] = { kind: 'rung', stepId: '3', funded: true };
-    cycle.state.actuation.lastDeviceShedMs[dev.id] = Date.now() - 120_000;
+    getTestExecutionFacts(cycle.state).actuation.lastDeviceShedMs[dev.id] = Date.now() - 120_000;
     restore(cycle, dev, 12);
     expect(cycle.deviceMap.get(dev.id)).toMatchObject({ desiredStepId: '3', reason: { code: PLAN_REASON_CODES.cooldownRestore } });
   });

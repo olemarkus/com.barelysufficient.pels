@@ -14,6 +14,9 @@
  */
 export const CONTROL_COMMAND_CONFIRMATION_MS = 90 * 1000;
 
+/** Repeat cadence for diagnostics while a target write awaits observation. */
+export const TARGET_WAITING_LOG_REPEAT_MS = 60 * 1000;
+
 /**
  * A device as binary-command confirmation reads it: transport projects only
  * these confirmation facts (`binaryCommandConfirmationSnapshot.ts`), and the
@@ -31,3 +34,10 @@ export type PendingBinaryLiveDevice = {
       observedAtMs: number;
     };
 };
+
+/** Accepted observation delivery paths that can settle a pending command. */
+export type PendingObservationSource =
+  | 'rebuild'
+  | 'snapshot_refresh'
+  | 'realtime_capability'
+  | 'device_update';

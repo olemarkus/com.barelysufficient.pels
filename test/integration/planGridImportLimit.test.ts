@@ -4,7 +4,7 @@ import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanInputDevice, steppedInputDevice } from '../utils/planTestUtils';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
-import type { PlanEngineState } from '../../lib/plan/planState';
+import type { PlanEngineState } from '../utils/planEngineStateFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 
 const chargerProfile = { steps: [

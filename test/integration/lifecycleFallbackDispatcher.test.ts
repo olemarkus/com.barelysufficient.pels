@@ -6,7 +6,14 @@ import {
   type LifecycleFallbackRequest,
 } from '../../lib/executor/lifecycleFallbackDispatcher';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import { prunePendingTargetCommandsForPlan } from '../../lib/plan/planTargetControl';
+import { prunePendingTargetCommands } from '../../lib/executor/pendingTargetObservation';
+import { resolveWantedPendingTargetCommands } from '../../lib/plan/planTargetControl';
+import { getTestExecutionState } from '../utils/planEngineStateFixture';
+import type { DevicePlan } from '../../lib/plan/planTypes';
+
+const prunePendingTargetCommandsForPlan = (state: ReturnType<typeof createPlanEngineState>, plan: DevicePlan): boolean => (
+  prunePendingTargetCommands(getTestExecutionState(state), resolveWantedPendingTargetCommands(plan))
+);
 import { recordTargetCommandAttempt } from '../../lib/executor/targetCommandRetry';
 import { applyDeferredBinaryCommand } from '../../lib/executor/binaryExecutor';
 import { runBinaryControl } from '../../lib/executor/binaryControlShared';

@@ -1,3 +1,4 @@
+import { getTestExecutionFacts } from '../utils/planEngineStateFixture';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import { partialDouble } from '../helpers/partialDouble';
 
@@ -142,7 +143,7 @@ describe('Shed vs Restore Logic', () => {
         app.capacityGuard = mockGuard;
         // Mock timing so cooldowns don't block
         app.planEngine.state.restoreBackoff.lastInstabilityMs = 0;
-        app.planEngine.state.actuation.lastRestoreMs = 0;
+        getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = 0;
         app.planEngine.state.shedDecisions.lastPlannedShedIds = new Set(['dev-E']);
 
         const devices = targetDevices;

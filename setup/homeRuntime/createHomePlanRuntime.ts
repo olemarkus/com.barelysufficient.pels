@@ -50,8 +50,8 @@ export const createHomePlanRuntime = (
   scope: HomeScope,
   options: CreatePlanEngineOptions,
 ): HomePlanRuntime => {
-  const { planEngine, lifecycleFallbackPort } = createPlanEngineComposition(ctx, scope, options);
-  ctx.getLastControlledStore().hydrate(scope.homeId, planEngine.state.actuation);
+  const { planEngine, lifecycleFallbackPort, actuationHydration } = createPlanEngineComposition(ctx, scope, options);
+  ctx.getLastControlledStore().hydrate(scope.homeId, actuationHydration);
   // Hold restores until this home's meter proves live; the first fresh sample
   // clears the window through the pipeline.
   planEngine.beginStartupRestoreStabilization(Date.now());

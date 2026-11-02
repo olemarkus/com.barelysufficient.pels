@@ -3,7 +3,7 @@ import { retainSolarWhileDemandSettles } from '../../lib/plan/planBuilderSurplus
 import { InverterCurtailmentPlanner } from '../../lib/plan/inverterCurtailment';
 import { NO_STORAGE_RELIEF, type StorageRelief } from '../../lib/plan/battery/storageRelief';
 import type { InverterControllableInput, InverterPlanInput } from '../../lib/ports/inverterControl';
-import type { PlanEngineState } from '../../lib/plan/planState';
+import type { PlanEngineState } from '../utils/planEngineStateFixture';
 import { partialDouble } from '../helpers/partialDouble';
 
 const NOW = 1_800_000_000_000;

@@ -137,7 +137,7 @@ const NO_INVERTED_STEPS = { kind: 'inverted', invertedSteps: 0, stepDownSeen: fa
 
 /**
  * What PELS did to the managed loads, as the sign check reads it: the plan's
- * actuation record (`lib/plan/actuationRecord.ts`).
+ * execution-owned actuation record (`lib/executor/actuationRecord.ts`).
  */
 export type LoadActuationHistory = {
   /** Whether PELS shed or restored any device at or after this time. */

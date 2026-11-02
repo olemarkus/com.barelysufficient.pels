@@ -1,3 +1,4 @@
+import { getTestExecutionFacts } from '../utils/planEngineStateFixture';
 import type MyApp from '../../app.ts';
 
 import {
@@ -86,8 +87,8 @@ describe('Mixed Type Restoration Throttling', () => {
 
         // Reset timers
         app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-        app.planEngine.state.actuation.lastRestoreMs = 0;
-        app.planEngine.state.actuation.lastDeviceShedMs = {};
+        getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = 0;
+        getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs = {};
     });
 
     afterEach(async () => {

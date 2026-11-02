@@ -4,34 +4,20 @@
  *
  * Executor-owned: this is command materialization — "has my write landed, and
  * when may I re-issue it?" — not a planner decision about desired state
- * (`lib/AGENTS.md` § Layer boundaries). It moved here from
- * `lib/plan/planTargetControl.ts`, which keeps the plan-lifecycle half
- * (decoration, pruning, observed synchronization). No file imported both
- * halves, so the split is along a seam the call graph already had.
+ * (`lib/AGENTS.md` § Layer boundaries). Pending observation and pruning
+ * live beside it in `pendingTargetObservation.ts`; plan decoration reads
+ * the executor-owned facts without mutating them.
  *
- * The `PendingTargetCommandState` records still live on the shared
- * `PlanEngineState`; narrowing that to an executor-owned store is the next
- * stage of the planner/executor seam train, and this module is deliberately
- * written against `Pick<PlanEngineState, 'pendingTargetCommands'>` so that
- * narrowing is a type change here rather than a rewrite.
- *
- * **YOU ARE NOT THE ONLY WRITER OF THAT RECORD, AND THAT IS THE TRAP.** This
- * module creates and replaces entries; `lib/plan/planTargetControl.ts` DELETES
- * them (`prunePendingTargetCommandsForPlan`, and the missing-device path) and
- * mutates their observation fields in place. So the backoff ladder is a policy
- * spanning two layers: `retryCount` is read here to pick the next delay from
- * `TARGET_COMMAND_RETRY_DELAYS_MS`, while a planner rebuild whose
- * `plannedTarget` no longer equals `pending.desired` deletes the record and
- * silently rewinds that ladder to zero. That is pre-existing behaviour, not
- * something this split introduced — but before the split it was one file's
- * problem, and no test pins it. Whoever moves the storage owns reconciling it;
- * do not discover it by breaking it.
+ * The executor owns both retry records and their observation lifecycle.
+ * A newly decided target reconciles ordinary records before dispatch; a target
+ * the plan no longer wants drops its old retry history. Lifecycle fallback
+ * uses a separate store and is not reconciled against ordinary plans.
  */
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from './commandRetrySchedule';
-import type { PendingTargetCommandState, PlanEngineState } from '../plan/planState';
+import type { PendingTargetCommandState, ExecutionState } from './executionState';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
 
-type PendingTargetStore = Pick<PlanEngineState, 'pendingTargetCommands'>;
+type PendingTargetStore = Pick<ExecutionState, 'pendingTargetCommands'>;
 
 type PendingTargetDecision =
   | { type: 'send' }

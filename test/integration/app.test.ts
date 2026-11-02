@@ -1,3 +1,4 @@
+import { getTestExecutionFacts } from '../utils/planEngineStateFixture';
 import type { ComposedPlanEngine } from '../../setup/appInit/composedPlanEngine';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import { getDebugEmitter } from '../../lib/logging/logger';
@@ -1182,8 +1183,8 @@ describe('MyApp initialization', () => {
     await rebuildAtFirstReading(app, rebuildSpy, 5000);
 
     const nowMs = Date.now();
-    app.planEngine.state.actuation.lastRestoreMs = nowMs - 1_000;
-    app.planEngine.state.actuation.lastDeviceRestoreMs = { 'dev-1': nowMs - 1_000 };
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = nowMs - 1_000;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceRestoreMs = { 'dev-1': nowMs - 1_000 };
 
     await app['powerSamplePipeline']['runPowerSample']({ generationSegments: [], currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
 
@@ -1302,7 +1303,7 @@ describe('MyApp initialization', () => {
     await initApp(app);
     await waitForSnapshot();
 
-    expect(app.planEngine.state.actuation.lastDeviceControlledMs).toEqual({ 'dev-1': controlledAt });
+    expect(getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceControlledMs).toEqual({ 'dev-1': controlledAt });
   });
 
   it('coalesces multiple power sample triggers into a single rerun', async () => {
@@ -2197,7 +2198,7 @@ describe('MyApp initialization', () => {
     await waitForSnapshot();
 
     const nowMs = new Date('2026-03-20T06:00:00.000Z').getTime();
-    app.planEngine.state.pendingTargetCommands['dev-1'] = {
+    getTestExecutionFacts(app.planEngine.state).pendingTargetCommands['dev-1'] = {
       desired: 18,
       startedMs: nowMs - 5_000,
       lastAttemptMs: nowMs - 5_000,
@@ -2211,11 +2212,11 @@ describe('MyApp initialization', () => {
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     try {
       await emitCapability('dev-1', 'target_temperature', 18);
-      expect(app.planEngine.state.pendingTargetCommands['dev-1']).toBeDefined();
+      expect(getTestExecutionFacts(app.planEngine.state).pendingTargetCommands['dev-1']).toBeDefined();
 
       heater.setApiCapabilityValue('target_temperature', 18);
       emitDeviceUpdate(heater.toHomeyApiDevice());
-      await waitFor(() => app.planEngine.state.pendingTargetCommands['dev-1'] === undefined);
+      await waitFor(() => getTestExecutionFacts(app.planEngine.state).pendingTargetCommands['dev-1'] === undefined);
     } finally {
       nowSpy.mockRestore();
     }
@@ -2242,7 +2243,7 @@ describe('MyApp initialization', () => {
     // This describe fakes only the interval clocks, so the stuck-confirmation
     // poll fires when the spec advances them, while `Date.now()` stays real.
     const nowMs = Date.now();
-    app.planEngine.state.pendingTargetCommands['dev-1'] = {
+    getTestExecutionFacts(app.planEngine.state).pendingTargetCommands['dev-1'] = {
       desired: 16,
       startedMs: nowMs - 60_000 - 1,
       lastAttemptMs: nowMs - 5_000,
