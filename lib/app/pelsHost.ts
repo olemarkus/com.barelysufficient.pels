@@ -1,4 +1,5 @@
 import type { SchedulesResponse } from '../../packages/contracts/src/schedules';
+import type { BatteryEfficiencyMeasurement } from '../../packages/contracts/src/continuousBatteryPlan';
 import type { ControlContestReading } from '../ports/controlContest';
 import type { AppContext } from './appContext';
 import type { SupportReportService } from '../diagnostics/supportReportService';
@@ -68,6 +69,8 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   | 'getPowerhourSourceUiStatus'
 > & {
   readSchedules(): SchedulesResponse;
+  /** The battery owner's measured round-trip efficiency, offered beside the configured value. */
+  readBatteryEfficiencyMeasurement(deviceId: string): BatteryEfficiencyMeasurement;
   readonly supportReports: Pick<SupportReportService, 'prepare' | 'get' | 'send'>;
   /** Which devices keep reporting another value after PELS sets them (`lib/executor/controlContest.ts`). */
   readonly controlContests: ControlContestReading;

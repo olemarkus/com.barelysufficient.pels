@@ -240,6 +240,7 @@ describe('settingsUiApi', () => {
     const capacitySettings = options.capacitySettings ?? { limitKw: 12, marginKw: 0.5, periodMinutes: 60 as const };
     const app = pelsHostDouble({
       readContinuousBatteryPlan: () => ({ status: 'disabled' as const, config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG }),
+      readBatteryEfficiencyMeasurement: () => ({ status: 'measuring' as const, cycles: 1, cyclesNeeded: 3 }),
       getModePrioritiesForUi: createFixturePriorityQuery(),
       // The price caches live in the userdata store, which the app serves;
       // they are not settings keys.
@@ -682,7 +683,7 @@ describe('settingsUiApi', () => {
         },
       ],
       // The fixture's trusted app seam reports a warm snapshot with no charger wiring.
-      inverterDevices: [], continuousBatteryPlans: {}, schedules: { ok: false, error: 'Schedules are unavailable for this home.' },
+      inverterDevices: [], continuousBatteryPlans: {}, batteryEfficiencyMeasurements: {}, schedules: { ok: false, error: 'Schedules are unavailable for this home.' },
       chargerPhasePresets: { state: 'resolved', presets: {} },
       hasManagedSolarDevice: false,
       hasExhibitedExport: false,
@@ -861,6 +862,7 @@ describe('settingsUiApi', () => {
     const payload = getSettingsUiDevicesPayload({ homey: homey as never });
     const { devices } = payload;
     expect(Object.keys(payload.continuousBatteryPlans)).toEqual(['batt-main']);
+    expect(payload.batteryEfficiencyMeasurements).toEqual({ 'batt-main': { status: 'measuring', cycles: 1, cyclesNeeded: 3 } });
 
     expect(devices.map((device) => device.id)).toEqual(['batt-main']);
     expect(devices[0]).toMatchObject({ batteryTakenOver: true, batteryControl: 'drivable' });

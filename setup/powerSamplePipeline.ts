@@ -81,7 +81,7 @@ export type PowerSamplePipelineDeps = {
    *  undefined for flow-source samples) to the curtailment-surplus estimator;
    *  no-op when absent. */
   recordCurtailmentSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
-  /** Main meter tap for the battery-neutral demand forecast; meter areas omit it. */
+  /** Main meter tap for the battery owner's demand forecast and efficiency measurement; meter areas omit it. */
   recordBatteryDemandSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
   /**
    * Main meter tap for the passive heating observations the daily report carries

@@ -8,7 +8,7 @@ import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTy
 import { hasMaterialExhibitedExport } from '../packages/shared-domain/src/solar/exhibitedExport';
 import { getLogger } from '../lib/logging/logger';
 import { readSettingsUiBootstrapSettings } from '../lib/app/settingsUiBootstrapSettings';
-import { readSettingsUiBatteryPlans } from '../lib/app/settingsUiBatteryPlans';
+import { readSettingsUiBatteryEfficiency, readSettingsUiBatteryPlans } from '../lib/app/settingsUiBatteryPlans';
 import { readSettingsUiInverterDevices } from '../lib/app/settingsUiInverterDevices';
 import { MAIN_HOME_ID } from '../lib/utils/settingsKeys';
 import {
@@ -460,7 +460,7 @@ const UNAVAILABLE_POWER_PAYLOAD: SettingsUiPowerPayload = {
   homeScope: { state: 'unavailable' },
 };
 const UNAVAILABLE_DEVICES_PAYLOAD: SettingsUiDevicesPayload = {
-  devices: [], inverterDevices: [], continuousBatteryPlans: {},
+  devices: [], inverterDevices: [], continuousBatteryPlans: {}, batteryEfficiencyMeasurements: {},
   schedules: { ok: false, error: 'Schedules are unavailable for this home.' },
   chargerPhasePresets: { state: 'unavailable' }, homeScope: { state: 'unavailable' },
 };
@@ -540,7 +540,7 @@ const devicesPayloadForHome = (
     // A meter area's battery and solar devices are telemetry only: PELS does
     // not control a battery outside the Main home.
     devices: members.filter((device) => !device.isBatteryOrSolar),
-    inverterDevices: [], continuousBatteryPlans: {},
+    inverterDevices: [], continuousBatteryPlans: {}, batteryEfficiencyMeasurements: {},
     schedules: { ok: false, error: 'Schedules are unavailable for this home.' },
     // Keyed by device id and consulted only for a device the owner is looking
     // at, so the whole-home map serves a sub-home unchanged: a charger outside
@@ -579,7 +579,7 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
   if (!host) {
     return {
       devices: [],
-      inverterDevices: [], continuousBatteryPlans: {},
+      inverterDevices: [], continuousBatteryPlans: {}, batteryEfficiencyMeasurements: {},
       schedules: { ok: false, error: 'Schedules are unavailable for this home.' },
       chargerPhasePresets: readChargerPhasePresetsFromHomey(homey),
       hasManagedSolarDevice: false,
@@ -595,6 +595,7 @@ const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPay
     // snapshot for telemetry only.
     devices,
     continuousBatteryPlans: readSettingsUiBatteryPlans(host, devices),
+    batteryEfficiencyMeasurements: readSettingsUiBatteryEfficiency(host, devices),
     inverterDevices: readSettingsUiInverterDevices(host),
     schedules: host.readSchedules(),
     chargerPhasePresets: readChargerPhasePresetsFromHomey(homey),

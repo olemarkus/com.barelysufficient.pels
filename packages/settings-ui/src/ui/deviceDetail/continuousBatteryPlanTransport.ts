@@ -1,5 +1,5 @@
 import type {
-  ContinuousBatteryPlanConfig, ContinuousBatteryPlanConfigs, ContinuousBatteryPlanRead,
+  BatteryEfficiencyMeasurement, ContinuousBatteryPlanConfig, ContinuousBatteryPlanConfigs, ContinuousBatteryPlanRead,
 } from '../../../../contracts/src/continuousBatteryPlan.ts';
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
@@ -49,6 +49,37 @@ export async function loadContinuousBatteryPlan(deviceId: string): Promise<Conti
     return read as ContinuousBatteryPlanRead;
   }
   throw new Error('Invalid battery plan response.');
+}
+
+const isCycleCount = (value: unknown): value is number => (
+  typeof value === 'number' && Number.isInteger(value) && value >= 0
+);
+
+const isEfficiency = (value: unknown): value is number => (
+  typeof value === 'number' && Number.isFinite(value) && value >= 0.5 && value <= 1
+);
+
+const parseEfficiencyMeasurement = (entry: Record<string, unknown> | null): BatteryEfficiencyMeasurement => {
+  if (entry === null || !isCycleCount(entry.cycles)) return { status: 'unavailable' };
+  if (entry.status === 'measuring' && isCycleCount(entry.cyclesNeeded) && entry.cyclesNeeded > 0) {
+    return { status: 'measuring', cycles: entry.cycles, cyclesNeeded: entry.cyclesNeeded };
+  }
+  if (entry.status === 'measured' && isEfficiency(entry.roundTripEfficiency)) {
+    return { status: 'measured', roundTripEfficiency: entry.roundTripEfficiency, cycles: entry.cycles };
+  }
+  return { status: 'unavailable' };
+};
+
+/**
+ * The battery owner's efficiency measurement for one battery. It only adds a
+ * suggestion, so an absent or malformed entry reads as `unavailable` and never
+ * fails the plan load.
+ */
+export async function loadBatteryEfficiencyMeasurement(deviceId: string): Promise<BatteryEfficiencyMeasurement> {
+  const payload = asUnknownRecord(await getApiReadModel<unknown>(SETTINGS_UI_DEVICES_PATH));
+  const measurements = asUnknownRecord(payload?.batteryEfficiencyMeasurements);
+  return parseEfficiencyMeasurement(measurements !== null && Object.hasOwn(measurements, deviceId)
+    ? asUnknownRecord(measurements[deviceId]) : null);
 }
 
 async function readFreshConfigs(): Promise<ContinuousBatteryPlanConfigs> {

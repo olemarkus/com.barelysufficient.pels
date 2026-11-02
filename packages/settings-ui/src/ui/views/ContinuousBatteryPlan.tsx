@@ -1,12 +1,15 @@
 import { useState } from 'preact/hooks';
-import type { ContinuousBatteryPlanConfig, ContinuousBatteryPlanRead } from '../../../../contracts/src/continuousBatteryPlan.ts';
+import type {
+  BatteryEfficiencyMeasurement, ContinuousBatteryPlanConfig, ContinuousBatteryPlanRead,
+} from '../../../../contracts/src/continuousBatteryPlan.ts';
 import type { BatteryEnergyPlanPeriod } from '../../../../contracts/src/batteryPlan.ts';
 import { parseContinuousBatteryPlanConfig } from '../../../../shared-domain/src/settings/continuousBatteryPlan.ts';
 import { formatDayFirstInTimeZone, formatTimeInTimeZone, getDateKeyInTimeZone, shiftDateKey } from '../../../../shared-domain/src/utils/dateUtils.ts';
-import { MdFilledButton, MdFilledTextField, MdOutlinedButton, MdSwitch, readSwitchSelected } from './materialWebJSX.tsx';
+import { MdFilledButton, MdFilledTextField, MdOutlinedButton, MdSwitch, MdTextButton, readSwitchSelected } from './materialWebJSX.tsx';
 
 export type ContinuousBatteryPlanProps = {
   read: ContinuousBatteryPlanRead;
+  efficiency: BatteryEfficiencyMeasurement;
   priceUnit: string;
   timeZone: string;
   blockedReason: string;
@@ -144,6 +147,28 @@ function BatteryPlanPreview(props: Pick<ContinuousBatteryPlanProps, 'read' | 'ti
   </div>;
 }
 
+/** The measured-efficiency line beside the efficiency field: the owner's measurement and the field's draft value. */
+type MeasuredEfficiencyProps = {
+  efficiency: BatteryEfficiencyMeasurement;
+  draft: string;
+  busy: boolean;
+  onUse: (value: string) => void;
+};
+
+/** What PELS measured beside the efficiency field; Use fills the field, and Save stores it like any edit. */
+function MeasuredEfficiency(props: MeasuredEfficiencyProps) {
+  const { efficiency } = props;
+  if (efficiency.status === 'unavailable') return null;
+  if (efficiency.status === 'measuring') {
+    return <p class="field__hint battery-plan-measured">PELS is measuring this battery’s round-trip efficiency: {efficiency.cycles} of {efficiency.cyclesNeeded} full charge cycles so far.</p>;
+  }
+  const percent = String(Math.round(efficiency.roundTripEfficiency * 100));
+  return <div class="battery-plan-measured">
+    <p class="field__hint">Measured round-trip efficiency: {percent}% over the last {efficiency.cycles} full charge cycles.</p>
+    {props.draft.trim() !== percent && <MdTextButton disabled={props.busy} onClick={() => props.onUse(percent)}>Use {percent}%</MdTextButton>}
+  </div>;
+}
+
 const canSaveBatteryPlan = (config: ContinuousBatteryPlanConfig | null, enableBlocked: boolean, busy: boolean): boolean => (
   !busy && config !== null && (!config.enabled || !enableBlocked)
 );
@@ -195,6 +220,8 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
         <MdFilledTextField id="device-detail-battery-plan-wear" label={`Wear allowance (${priceUnit})`} type="number" min="0" max="1000" step="any" value={draft.wear} disabled={props.busy}
           onInput={(event: Event) => update('wear', (event.currentTarget as HTMLInputElement).value)} />
       </div>
+      <MeasuredEfficiency efficiency={props.efficiency} draft={draft.efficiency} busy={props.busy}
+        onUse={value => update('efficiency', value)} />
       <p class="field__hint">Wear is an allowance per kWh supplied from the battery, in the same units as your electricity prices. 0 ignores battery wear.</p>
     </details>}
     {config === null && <p class="field__hint field__hint--alert" role="alert">Enter capacity from 0.1 to 500 kWh, reserve from 0% to 95%, efficiency from 50% to 100%, and wear from 0 to 1000.</p>}

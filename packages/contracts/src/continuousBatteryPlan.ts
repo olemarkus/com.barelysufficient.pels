@@ -36,3 +36,15 @@ export type ContinuousBatteryPlanRead =
     priceUnit: string;
     plan: Extract<BatteryEnergyPlan, { status: 'planned' }>;
   };
+
+/**
+ * The battery owner's measurement of a battery's round-trip efficiency, offered
+ * beside the configured value; the plan always uses the configured value.
+ * `measuring` counts the accepted full cycles so far against the number a
+ * suggestion needs; `unavailable` is a runtime
+ * that has not started measuring (before wiring, or a store it cannot read).
+ */
+export type BatteryEfficiencyMeasurement =
+  | { status: 'unavailable' }
+  | { status: 'measuring'; cycles: number; cyclesNeeded: number }
+  | { status: 'measured'; roundTripEfficiency: number; cycles: number };

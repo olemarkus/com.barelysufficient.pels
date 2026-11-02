@@ -126,8 +126,11 @@ describe('continuous battery plan through the Homey SDK', () => {
   it('plans from real prices and observed demand, claims and charges through the existing actuator', async () => {
     const home = await startHome();
     await home.advance(8);
-    const read = (await api.ui_devices(context())).continuousBatteryPlans[BATTERY];
+    const payload = await api.ui_devices(context());
+    const read = payload.continuousBatteryPlans[BATTERY];
     expect(read.status).toBe('planned');
+    // No full cycle in eight minutes: the owner says it is still measuring.
+    expect(payload.batteryEfficiencyMeasurements[BATTERY]).toEqual({ status: 'measuring', cycles: 0, cyclesNeeded: 3 });
     expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
     expect(setpoints(home).some(watts => watts > 0)).toBe(true);
     expect(setpoints(home).every(watts => watts <= 2500)).toBe(true);

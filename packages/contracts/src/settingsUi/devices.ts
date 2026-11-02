@@ -1,4 +1,4 @@
-import type { ContinuousBatteryPlanRead } from '../continuousBatteryPlan.js';
+import type { BatteryEfficiencyMeasurement, ContinuousBatteryPlanRead } from '../continuousBatteryPlan.js';
 import type { ControlContestDecoration } from '../controlContest.js';
 import type { DeviceOverviewStrings } from '../deviceOverview.js';
 import type { SettingsUiHomeScope } from '../homeScopedRead.js';
@@ -80,6 +80,8 @@ export type SettingsUiDevicesPayload = {
   inverterDevices: { id: string; name: string }[];
   /** Owner-resolved plans for visible Main-home batteries; empty for scoped/unavailable rosters. */
   continuousBatteryPlans: Record<string, ContinuousBatteryPlanRead>;
+  /** Owner-measured round-trip efficiency for the same batteries; empty when the plans are. */
+  batteryEfficiencyMeasurements: Record<string, BatteryEfficiencyMeasurement>;
   // Read from the same device list `devices` comes from, unmanaged chargers
   // included (the opt-in it serves happens before a charger is managed). The
   // tagged read keeps an unavailable device snapshot distinct from a trusted

@@ -1,5 +1,7 @@
 import { act } from 'preact/test-utils';
-import type { ContinuousBatteryPlanConfig, ContinuousBatteryPlanRead } from '../../contracts/src/continuousBatteryPlan.ts';
+import type {
+  BatteryEfficiencyMeasurement, ContinuousBatteryPlanConfig, ContinuousBatteryPlanRead,
+} from '../../contracts/src/continuousBatteryPlan.ts';
 import { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } from '../../shared-domain/src/settings/continuousBatteryPlan.ts';
 import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/devices.ts';
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
@@ -11,6 +13,7 @@ let managed = true;
 let powerLimit = true;
 let priceUnit = 'EUR';
 let cachedDevices: unknown = null;
+let efficiency: BatteryEfficiencyMeasurement | undefined;
 vi.mock('../src/ui/homey.ts', () => ({
   callApi: async (method: string, path: string) => path === '/ui_prices'
     ? { priceTimeline: { state: 'ready', priceUnit } }
@@ -18,7 +21,8 @@ vi.mock('../src/ui/homey.ts', () => ({
   getApiReadModel: async (path: string) => {
     if (cachedDevices !== null) return cachedDevices;
     const result = await callApi('GET', path);
-    cachedDevices = { inverterDevices: [], continuousBatteryPlans: { battery: result, first: result, second: result } };
+    cachedDevices = { inverterDevices: [], continuousBatteryPlans: { battery: result, first: result, second: result },
+      batteryEfficiencyMeasurements: efficiency === undefined ? {} : { battery: efficiency } };
     return cachedDevices;
   },
   getSettingFresh: (...args: unknown[]) => getSettingFresh(...args),
@@ -76,6 +80,7 @@ beforeEach(() => {
   powerLimit = true;
   priceUnit = 'EUR';
   cachedDevices = null;
+  efficiency = undefined;
   callApi.mockReset();
   callApi.mockResolvedValue(read);
   getSettingFresh.mockReset().mockResolvedValue({ battery: config });
@@ -90,6 +95,30 @@ test('renders the real trajectory and combines adjacent charge periods into one 
   expect(document.body.textContent).toContain('Expected 40% charged at the end');
   expect(field('Wear allowance (EUR/kWh)')).toBeDefined();
   expect(document.getElementById('device-detail-managed-hint')?.textContent).toContain('PELS plans charging and household supply');
+});
+
+test('offers the measured efficiency, and Use fills the field for an ordinary save', async () => {
+  efficiency = { status: 'measured', roundTripEfficiency: 0.86, cycles: 4 };
+  await openBattery();
+  expect(document.body.textContent).toContain('Measured round-trip efficiency: 86% over the last 4 full charge cycles.');
+  const use = [...document.querySelectorAll<HTMLElement>('md-text-button')].find(entry => entry.textContent === 'Use 86%')!;
+  await act(async () => use.click());
+  expect(field('Round-trip efficiency (%)').value).toBe('86');
+  expect(document.querySelector('.battery-plan-measured md-text-button')).toBeNull();
+  expect(setSetting).not.toHaveBeenCalled();
+  await act(async () => button('Save battery plan').click());
+  await vi.waitFor(() => expect(setSetting).toHaveBeenCalledWith('continuous_battery_plan', { battery: { ...config, roundTripEfficiency: 0.86 } }));
+});
+
+test('says how far the measurement is, and shows nothing without one', async () => {
+  efficiency = { status: 'measuring', cycles: 1, cyclesNeeded: 3 };
+  await openBattery();
+  expect(document.body.textContent).toContain('1 of 3 full charge cycles so far.');
+  await act(async () => setContinuousBatteryPlanDevice(null));
+  efficiency = undefined;
+  cachedDevices = null;
+  await openBattery();
+  expect(document.querySelector('.battery-plan-measured')).toBeNull();
 });
 
 test('a saved plan that cannot run keeps the managed hint', async () => {
