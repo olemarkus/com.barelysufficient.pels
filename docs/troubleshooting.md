@@ -204,7 +204,10 @@ The banner above the Overview tells you which state you are in:
   grid tariff, so the cheapest hours can be the wrong ones.
 - If the page says **Homey Energy has no electricity prices for your Homey
   yet**, turn on dynamic prices under **Energy > Electricity** in the Homey app,
-  then press **Refresh prices**, or choose another price source. A Smart task
+  then press **Refresh prices**. Homey Energy has prices only for some
+  countries; elsewhere, such as in Poland, install
+  [Power by the Hour](https://homey.app/a/com.gruijter.powerhour), add a price
+  device for your bidding zone and choose it as the price source. A Smart task
   says **PELS has no electricity prices** in the same situation.
 - On the **Homey Energy** source, check the status card on that same page. If it
   reads **Not usable** or **No usable prices**, PELS could not work out your

@@ -46,7 +46,9 @@ const parsePriceArea = (value: unknown): PriceSetupSuggestion['priceArea'] => {
 
 const parsePowerhour = (value: unknown): PriceSetupSuggestion['powerhour'] => {
   const kind = asUnknownRecord(value)?.kind;
-  return kind === 'has_price_device' || kind === 'no_price_device' ? { kind } : { kind: 'none' };
+  return kind === 'has_price_device' || kind === 'no_price_device' || kind === 'app_unavailable'
+    ? { kind }
+    : { kind: 'none' };
 };
 
 /**

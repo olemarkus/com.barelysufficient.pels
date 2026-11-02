@@ -212,12 +212,14 @@ export type NorwayPriceSetupSuggestion = {
  * What PELS can suggest for the price setup: the Norway settings above, and,
  * while Homey Energy is the source, whether Power by the Hour is installed
  * with a price device PELS could read prices from instead (`no_price_device`:
- * it is running and has none).
+ * it is running and has none; `app_unavailable`: Homey answered that it is not
+ * installed, enabled and running; `none`: no answer to go on).
  */
 export type PriceSetupSuggestion = NorwayPriceSetupSuggestion & {
   readonly powerhour:
     | { readonly kind: 'has_price_device' }
     | { readonly kind: 'no_price_device' }
+    | { readonly kind: 'app_unavailable' }
     | { readonly kind: 'none' };
 };
 

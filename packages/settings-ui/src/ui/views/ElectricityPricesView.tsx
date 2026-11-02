@@ -758,6 +758,21 @@ const assumedSourceHint = (
 
 type SourceStatusLines = { hint: ComponentChildren; followUp: ComponentChildren };
 
+// Homey's store page for Power by the Hour, in the owner's own store locale.
+const POWERHOUR_STORE_URL = 'https://homey.app/a/com.gruijter.powerhour';
+
+// Homey Energy prices only the countries it covers, so beside turning it on the
+// page names the way to prices everywhere else: Power by the Hour, at whatever
+// step this Homey has reached with it. Homey cannot say whether that app is
+// missing or only stopped, so the copy asks for either.
+const POWERHOUR_INSTEAD_OF_HOMEY: Record<PriceSetupSuggestion['powerhour']['kind'], string> = {
+  has_price_device: ' Or use Power by the Hour, which has a price device on this Homey.',
+  no_price_device: ' Or add a price device for your bidding zone in Power by the Hour, then choose it above.',
+  app_unavailable: ' Otherwise, install or start Power by the Hour, which has day-ahead prices for most of Europe, '
+    + 'and add a price device for your bidding zone.',
+  none: ' Or choose another source above.',
+};
+
 /**
  * What the owner needs to know about the source in force: a hint under the
  * select and, below the field, what to do about it. A source with no prices
@@ -774,20 +789,27 @@ const resolveSourceStatusLines = (props: ElectricityPricesViewProps): SourceStat
   const powerhourReady = config.priceScheme === 'homey'
     && config.priceSetupSuggestion.powerhour.kind === 'has_price_device';
   if (config.priceScheme === 'homey' && config.homeyStatus?.hasPrices === false) {
+    const powerhour = config.priceSetupSuggestion.powerhour.kind;
     return {
       hint: <small class="field__hint field__hint--alert">Homey Energy has no electricity prices for your Homey yet.</small>,
       followUp: (
         <>
           <p class="pels-card-supporting">
-            Turn on dynamic prices in the Homey app under Energy &gt; Electricity, then press Refresh prices.
-            {powerhourReady
-              ? ' Or use Power by the Hour, which has a price device on this Homey.'
-              : ' Or choose another source above.'}
+            If Homey Energy has prices for your country, turn on dynamic prices in the Homey app under
+            Energy &gt; Electricity, then press Refresh prices.
+            {POWERHOUR_INSTEAD_OF_HOMEY[powerhour]}
           </p>
           {powerhourReady && (
             <div class="form__actions">
               <MdOutlinedButton type="button" onClick={() => handlers.onSchemeChange('powerhour')}>
                 Use Power by the Hour
+              </MdOutlinedButton>
+            </div>
+          )}
+          {powerhour === 'app_unavailable' && (
+            <div class="form__actions">
+              <MdOutlinedButton href={POWERHOUR_STORE_URL} target="_blank">
+                Get Power by the Hour
               </MdOutlinedButton>
             </div>
           )}
