@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import type {
-  BatteryEfficiencyMeasurement, ContinuousBatteryPlanConfig, ContinuousBatteryPlanRead,
+  BatteryEfficiencyMeasurement, ContinuousBatteryExportDecision, ContinuousBatteryPlanConfig, ContinuousBatteryPlanRead,
 } from '../../../../contracts/src/continuousBatteryPlan.ts';
 import type { BatteryEnergyPlanPeriod } from '../../../../contracts/src/batteryPlan.ts';
 import {
@@ -12,6 +12,11 @@ import { MdFilledButton, MdFilledTextField, MdOutlinedButton, MdSwitch, MdTextBu
 export type ContinuousBatteryPlanProps = {
   read: ContinuousBatteryPlanRead;
   efficiency: BatteryEfficiencyMeasurement;
+  /**
+   * The saved settings the form edits: the read's own config, or what was just
+   * saved while the plan for it is still loading.
+   */
+  config: ContinuousBatteryPlanConfig;
   priceUnit: string;
   timeZone: string;
   blockedReason: string;
@@ -78,12 +83,9 @@ const REASON_COPY: Record<BatteryEnergyPlanPeriod['reason'], string> = {
 /** The money unit of a price unit such as `EUR/kWh`: what an estimated cost reduction is counted in. */
 const moneyUnitOf = (priceUnit: string): string => priceUnit.replace(/\s*\/\s*kwh$/i, '').trim();
 
-type ExportDecision = Extract<ContinuousBatteryPlanRead, { status: 'planned' }>['exportDecision'];
-
-/** What the selling choice decided for the plan shown, or nothing while selling is off. */
-export const batteryPlanSellingLine = (decision: ExportDecision, priceUnit: string): string | null => {
+/** What the selling choice decided for the plan shown. */
+export const batteryPlanSellingLine = (decision: ContinuousBatteryExportDecision, priceUnit: string): string => {
   switch (decision.kind) {
-    case 'household_only': return null;
     case 'selling': return `Selling is planned. Estimated ${decision.estimatedSavings.toFixed(2)} ${moneyUnitOf(priceUnit)} lower electricity cost than keeping the energy for your home over this plan.`;
     case 'kept_household': return 'Selling would not lower your cost in this plan, so PELS keeps the energy for your home.';
     case 'waiting': return decision.reason === 'export_prices_incomplete'
@@ -166,10 +168,8 @@ function BatteryPlanPreview(props: Pick<ContinuousBatteryPlanProps, 'read' | 'ti
     : 'Keeping stored energy for the periods where it lowers your bill.';
   return <div class="battery-plan-preview">
     <h4 class="pels-text-settings-label">Battery plan</h4><p class="pels-text-status-line">{summary}</p>
-    {(() => {
-      const selling = batteryPlanSellingLine(read.exportDecision, read.priceUnit);
-      return selling === null ? null : <p class="field__hint" role="status">{selling}</p>;
-    })()}
+    {'exportDecision' in read
+      && <p class="field__hint" role="status">{batteryPlanSellingLine(read.exportDecision, read.priceUnit)}</p>}
     <BatteryLevelChart periods={read.plan.periods} config={read.config} generatedAtMs={read.generatedAtMs} timeZone={timeZone} />
     <ol class="battery-plan-windows">{windows.map(window => <li key={window.startsAtMs}>
       <span class="field__hint">{batteryPlanTimeLabel(window.startsAtMs, read.generatedAtMs, timeZone)} – {batteryPlanTimeLabel(window.endsAtMs, read.generatedAtMs, timeZone)}</span>
@@ -207,13 +207,13 @@ const canSaveBatteryPlan = (config: ContinuousBatteryPlanConfig | null, enableBl
 );
 
 export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
-  const [form, setForm] = useState(() => ({ savedConfig: props.read.config, draft: draftFrom(props.read.config), dirty: false }));
+  const [form, setForm] = useState(() => ({ savedConfig: props.config, draft: draftFrom(props.config), dirty: false }));
   // A config snapshot and its edits move together. An after-paint effect that
   // captured a clean form could otherwise overwrite an edit made just after
   // loading. New plan reads update clean forms and preserve dirty drafts.
   let currentForm = form;
-  if (form.savedConfig !== props.read.config) {
-    currentForm = { savedConfig: props.read.config, draft: form.dirty ? form.draft : draftFrom(props.read.config), dirty: form.dirty };
+  if (form.savedConfig !== props.config) {
+    currentForm = { savedConfig: props.config, draft: form.dirty ? form.draft : draftFrom(props.config), dirty: form.dirty };
     setForm(currentForm);
   }
   const { draft, dirty } = currentForm;
@@ -221,10 +221,10 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
     ...current, draft: { ...current.draft, [key]: value }, dirty: true,
   }));
   const config = draft.enabled ? readBatteryPlanDraft(draft, props.priceUnit)
-    : { ...props.read.config, enabled: false };
+    : { ...props.config, enabled: false };
   const unitAvailable = props.priceUnit.trim() !== '' && props.priceUnit.trim().toLowerCase() !== 'price units';
-  const changedUnit = draft.enabled && unitAvailable && props.read.config.priceUnit !== 'price units'
-    && props.read.config.priceUnit.trim().toLowerCase() !== props.priceUnit.trim().toLowerCase();
+  const changedUnit = draft.enabled && unitAvailable && props.config.priceUnit !== 'price units'
+    && props.config.priceUnit.trim().toLowerCase() !== props.priceUnit.trim().toLowerCase();
   const enableBlocked = props.blockedReason !== '' || !unitAvailable;
   const canSave = canSaveBatteryPlan(config, enableBlocked, props.busy);
   const priceUnit = props.priceUnit.toLowerCase().includes('/kwh') ? props.priceUnit : `${props.priceUnit}/kWh`;
@@ -237,7 +237,7 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
     <p class="field__hint">PELS plans charging and household supply. Your battery’s own schedule resumes when you turn this off. Changes apply when you save.</p>
     {props.blockedReason && <p class="field__hint" role="status">{props.blockedReason}</p>}
     {!unitAvailable && <p class="field__hint" role="status">Waiting for the electricity price unit.</p>}
-    {changedUnit && <p class="field__hint" role="status">The electricity price unit changed from {props.read.config.priceUnit} to {props.priceUnit}. Review the wear allowance and save the battery plan.</p>}
+    {changedUnit && <p class="field__hint" role="status">The electricity price unit changed from {props.config.priceUnit} to {props.priceUnit}. Review the wear allowance and save the battery plan.</p>}
     {props.error && <p class="field__hint field__hint--alert" role="alert">{props.error}</p>}
     {draft.enabled && <div class="form-grid battery-plan-fields">
       <MdFilledTextField id="device-detail-battery-plan-capacity" label="Usable capacity (kWh)" type="number" min="0.1" max="500" step="0.1" value={draft.capacity} disabled={props.busy}

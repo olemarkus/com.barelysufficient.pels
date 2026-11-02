@@ -251,9 +251,17 @@ export function resolveStorageSurplus(
   // Every battery read this cycle: one PELS only watches is never a claimant,
   // but its discharge is stored energy all the same.
   const read = devices.flatMap((device) => (
-    hasStorageInput(device) && device.storage.reading !== 'missing' ? [device.storage] : []
+    hasStorageInput(device) && device.storage.reading !== 'missing' ? [{ id: device.id, storage: device.storage }] : []
   ));
-  return { claimants, dischargeW: read.reduce((totalW, storage) => totalW + ownDischargeWOf(storage), 0) };
+  const readIds = new Set(read.map(({ id }) => id));
+  let dischargeW = 0;
+  for (const { storage } of read) dischargeW += ownDischargeWOf(storage);
+  // A held battery not read this cycle may still deliver what PELS last held it
+  // to: that discharge, a sale included, is stored energy too, never surplus.
+  for (const [deviceId, lever] of Object.entries(levers)) {
+    if (!readIds.has(deviceId)) dischargeW += Math.max(0, -lever.setpointW);
+  }
+  return { claimants, dischargeW };
 }
 
 /**
@@ -507,7 +515,7 @@ class StorageReliefCycle {
       : Math.max(0, previousDischargeW - nextDischargeW);
     const creditW = resolveCreditW(storage, next, nowTs);
     this.balance = {
-      deficitW: this.balance.deficitW,
+      ...this.balance,
       netImportW: this.balance.netImportW + next.setpointW - storage.signedPowerW,
       headroomW: this.balance.headroomW === null
         ? null
@@ -529,7 +537,9 @@ class StorageReliefCycle {
    * unknown, and an unknown resolves toward shedding. An absent battery's
    * release travels on the plan itself. A planned device without a storage
    * cluster cannot say whether it is admissible: its hold is kept for the
-   * window, then released.
+   * window, then released. A sale is not kept even that long: unread, its
+   * export is bounded by nothing PELS measures, so it steps to 0 W at once
+   * (`keepUnreadLever`).
    */
   decideUnread(
     deviceId: string,
@@ -550,7 +560,8 @@ class StorageReliefCycle {
     }
     const event = { deviceId, heldSetpointW: previous.setpointW };
     if (previous.reading.kind === 'read') logger.warn({ event: 'storage_relief_input_missing', ...event });
-    const lever: StorageLeverState = { ...previous, reading: { kind: 'unread', sinceMs } };
+    const lever = keepUnreadLever(previous, sinceMs);
+    if (lever.setpointW !== previous.setpointW) logger.warn({ event: 'storage_relief_unread_sale_stopped', ...event });
     this.levers[deviceId] = lever;
     return {
       ...summary,
@@ -618,6 +629,20 @@ class StorageReliefCycle {
   }
 }
 
+/**
+ * The hold an unread battery keeps. A selling hold's discharge was bounded
+ * only by the house's measured draw plus the export ceiling; with no battery
+ * reading that bound is gone, so it steps to 0 W and waits rather than resend
+ * a sale for the whole missing-input window. Every other hold is kept as it was.
+ */
+const keepUnreadLever = (previous: StorageLeverState, sinceMs: number): StorageLeverState => {
+  const reading = { kind: 'unread' as const, sinceMs };
+  if (previous.purpose !== 'continuous' || previous.continuousReason !== 'export_energy') {
+    return { ...previous, reading };
+  }
+  return { ...previous, setpointW: 0, continuousReason: 'hold_energy', reading };
+};
+
 /** How the state log names a battery this cycle could not read. */
 const toUnreadReading = (carrier: UnreadCarrier): 'missing' | 'absent' => (carrier === 'absent' ? 'absent' : 'missing');
 
@@ -643,6 +668,7 @@ export function decideStorageRelief(
     deficitW: power.headroomKw === null ? 0 : Math.max(0, -power.headroomKw * 1000),
     headroomW: power.headroomKw === null ? null : Math.max(0, power.headroomKw * 1000),
     netImportW: power.drawKw * 1000,
+    sampledAtMs: power.sampledAtMs,
   }, offers, nowTs);
   const seen = new Set<string>();
   for (const device of devices) {

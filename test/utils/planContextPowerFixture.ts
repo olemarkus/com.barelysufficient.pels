@@ -5,7 +5,7 @@ import { resolveFixtureTemperatureSetpoints } from '../helpers/temperatureSetpoi
 /**
  * A measurement a spec pins directly — for the many cases that are about a
  * particular headroom rather than a particular reading. Defaults describe an
- * on-track cycle: 3 kW drawn, 1 kW of headroom on the binding and capacity
+ * on-track cycle: 3 kW drawn at time 0, 1 kW of headroom on the binding and capacity
  * axes, no daily axis, capacity not breached. `physicalLimitBreached` is
  * derived from the two breach flags exactly as `resolveMeasuredPower` derives
  * it, unless the spec pins it.
@@ -16,6 +16,7 @@ export const buildMeasuredPower = (overrides: Partial<MeasuredPower> = {}): Meas
     gridHeadroomKw: null,
     gridBreached: false,
     drawKw: 3,
+    sampledAtMs: 0,
     headroomKw: 1,
     capacityHeadroomKw: 1,
     budgetHeadroomKw: null,

@@ -190,6 +190,8 @@ export type ObservedStorageInput = {
   handBackDeferred: boolean;
   /** The battery's own signed power, W: positive charging, negative discharging. */
   signedPowerW: number;
+  /** When the observer accepted `signedPowerW`, ms. */
+  observedAtMs: number;
   /** PELS holds a recorded claim on the battery (it owes a hand-back). */
   claimHeld: boolean;
   /** PELS may hold the battery: control on, Main home, claim recordable, not in simulation. */

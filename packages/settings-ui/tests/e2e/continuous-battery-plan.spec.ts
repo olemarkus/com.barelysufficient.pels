@@ -31,7 +31,7 @@ for (const width of [320, 480]) {
                   gridImportKWh: 0.5, importCost: 0.18, reason: 'supply_house' },
               ], importCost: 0.7, exportRevenue: 0, wearCost: 0, energyCost: 0.7, terminalEnergyValue: 0,
               objectiveCost: 0.7, terminalEnergyKWh: terminal, resolutionKWh: 0.05,
-            }, exportDecision: { kind: 'household_only' } };
+            } };
           };
           (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
             settings: {

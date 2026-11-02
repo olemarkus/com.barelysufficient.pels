@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decideStorageRelief, resumeContinuousStorage } from '../../lib/plan/battery/storageRelief';
+import { decideStorageRelief, resolveStorageSurplus, resumeContinuousStorage } from '../../lib/plan/battery/storageRelief';
 import { applyStorageHandBacks, applyStorageLimits } from '../../lib/plan/battery/storageLimit';
 import { buildStorageCandidate, resolveStorageSpend } from '../../lib/plan/shedding/storageCandidate';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
@@ -13,7 +13,7 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}, id = 'battery'):
   ...buildPlanInputDevice({ id, name: id, isBatteryOrSolar: true, commandAuthority: false, currentDrawKw: 0 }),
   storage: {
     reading: 'observed', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
-    handBackDeferred: false, signedPowerW: 0, claimHeld: true, admissible: true,
+    handBackDeferred: false, signedPowerW: 0, observedAtMs: 0, claimHeld: true, admissible: true,
     verdict: 'responding', deliveryCeilingW: 2500, chargeCeilingW: 2500, powerLimitControl: true,
     continuousPlan: { setpointW: 0, validUntilMs: NOW + 60_000, reason: 'hold_energy' },
     ...overrides,
@@ -118,6 +118,63 @@ describe('continuous battery execution decisions', () => {
     expect(selling.batteries[0].setpointW).toBe(-1500);
     expect(selling.shed.netCreditKw).toBe(0);
     expect(selling.batteries[0].withheldW).toBe(1500);
+  });
+
+  describe('a sale PELS cannot read', () => {
+    const sale = { setpointW: -2000, validUntilMs: NOW + 600_000, reason: 'export_energy' as const, netExportCeilingW: 3000 };
+    const selling = () => decideStorageRelief([battery({ continuousPlan: sale })],
+      buildMeasuredPower({ drawKw: 0 }), {}, offers(), NOW);
+    const unread = (id = 'battery') => ({
+      ...battery({}, id), storage: { reading: 'missing' as const, handBackDeferred: false, claimHeld: true as const, admissible: true },
+    });
+
+    it('steps a missing sale to 0 W at once, and keeps it there, rather than resending it for the window', () => {
+      const first = selling();
+      expect(first.levers.battery.setpointW).toBe(-2000);
+      const missing = decideStorageRelief([unread()], buildMeasuredPower({ drawKw: -2 }), first.levers, offers(), NOW + 10_000);
+      expect(missing.batteries[0]).toMatchObject({
+        decision: { kind: 'setpoint', setpointW: 0 }, claim: 'plan_wait', withheldW: 2000,
+      });
+      // Whatever happened to the plan meanwhile, an unread sale stays stopped until its hold is released.
+      const later = decideStorageRelief([unread()], buildMeasuredPower({ drawKw: 0 }), missing.levers, offers(),
+        NOW + 20_000);
+      expect(later.batteries[0]).toMatchObject({ decision: { kind: 'setpoint', setpointW: 0 }, claim: 'plan_wait' });
+    });
+
+    it('stops the sale of a battery that left the plan too, sending nothing', () => {
+      const absent = decideStorageRelief([], buildMeasuredPower({ drawKw: -2 }), selling().levers, offers(), NOW + 10_000);
+      expect(absent.levers.battery.setpointW).toBe(0);
+      expect(absent.batteries[0]).toMatchObject({ decision: { kind: 'none' }, claim: 'plan_wait' });
+    });
+
+    it('never lets an unread held discharge look like solar surplus', () => {
+      const { levers } = selling();
+      expect(resolveStorageSurplus([unread()], levers, -2000).dischargeW).toBe(2000);
+      expect(resolveStorageSurplus([], levers, -2000).dischargeW).toBe(2000);
+      // A battery read this cycle counts its own observed discharge instead.
+      expect(resolveStorageSurplus([battery({ signedPowerW: -1500 })], levers, -1500).dischargeW).toBe(1500);
+    });
+  });
+
+  it('holds but never raises a discharge while the battery reading lags the meter sample', () => {
+    const supply = { setpointW: -2500, validUntilMs: NOW + 60_000, reason: 'supply_house' as const };
+    const sale = { setpointW: -2500, validUntilMs: NOW + 600_000, reason: 'export_energy' as const, netExportCeilingW: 1500 };
+    const meter = (sampledAtMs: number) => buildMeasuredPower({ drawKw: 0.2, sampledAtMs });
+    const lagging = (plan: typeof supply | typeof sale) => battery({ signedPowerW: -300, observedAtMs: NOW - 20_000, continuousPlan: plan });
+    expect(decideStorageRelief([lagging(supply)], meter(NOW), {}, offers(), NOW).batteries[0].setpointW).toBe(-300);
+    expect(decideStorageRelief([lagging(sale)], meter(NOW), {}, offers(), NOW).batteries[0].setpointW).toBe(-300);
+    // In step with the meter (within the tolerance), the room is the house's draw plus the ceiling.
+    const fresh = battery({ signedPowerW: -300, observedAtMs: NOW - 5_000, continuousPlan: sale });
+    expect(decideStorageRelief([fresh], meter(NOW), {}, offers(), NOW).batteries[0].setpointW).toBe(-1900);
+    // A battery steady at the setpoint PELS holds it to reads old without lagging behind it.
+    const held = decideStorageRelief([fresh], meter(NOW), {}, offers(), NOW).levers;
+    const steady = battery({ signedPowerW: -1900, observedAtMs: NOW - 60_000, continuousPlan: sale });
+    expect(decideStorageRelief([steady], meter(NOW + 60_000), held, offers(), NOW + 60_000).batteries[0].setpointW)
+      .toBe(-2500);
+    // One that has not reached it yet is held where it is.
+    const behind = battery({ signedPowerW: -1000, observedAtMs: NOW - 60_000, continuousPlan: sale });
+    expect(decideStorageRelief([behind], meter(NOW + 60_000), held, offers(), NOW + 60_000).batteries[0].setpointW)
+      .toBe(-1000);
   });
 
   it('withholds pending charge every cycle while the meter has not observed it', () => {

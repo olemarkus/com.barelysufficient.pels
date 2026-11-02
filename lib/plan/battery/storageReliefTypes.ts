@@ -62,4 +62,9 @@ export type StorageRelief = {
  * the net import, W, moved by each battery's decided change, against which a
  * battery plan sizes its discharge to the house.
  */
-export type StorageBalance = { deficitW: number; headroomW: number | null; netImportW: number };
+/**
+ * The measured cycle the batteries are decided in: the deficit and headroom
+ * left so far, the whole-home net import, W, and when the meter took the
+ * reading behind them, ms.
+ */
+export type StorageBalance = { deficitW: number; headroomW: number | null; netImportW: number; sampledAtMs: number };

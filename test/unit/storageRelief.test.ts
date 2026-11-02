@@ -52,6 +52,7 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}): PlanInputDevice
     range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
     handBackDeferred: false,
     signedPowerW: 0,
+    observedAtMs: 0,
     claimHeld: false,
     admissible: true,
     verdict: 'unverified',
@@ -525,8 +526,10 @@ describe('the batteries in the surplus pool', () => {
     });
   });
 
-  it('reads nothing of a battery it cannot read', () => {
-    expect(claimed(unreadBattery(), { battery: lever() }, 0)).toEqual({ claimants: [], dischargeW: 0 });
+  it('offers nothing of a battery it cannot read, and counts what PELS last held it to discharge', () => {
+    expect(claimed(unreadBattery(), { battery: lever() }, 0)).toEqual({
+      claimants: [], dischargeW: Math.max(0, -lever().setpointW),
+    });
   });
 });
 

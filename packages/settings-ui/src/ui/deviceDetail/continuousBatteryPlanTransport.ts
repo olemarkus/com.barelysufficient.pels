@@ -28,16 +28,23 @@ const validPeriod = (raw: unknown): boolean => {
 const validExportDecision = (raw: unknown): boolean => {
   const decision = asUnknownRecord(raw);
   if (decision === null) return false;
-  if (decision.kind === 'household_only' || decision.kind === 'kept_household') return true;
+  if (decision.kind === 'kept_household') return true;
   if (decision.kind === 'selling') return finiteFields(decision, ['estimatedSavings']);
   return decision.kind === 'waiting'
     && ['export_prices_incomplete', 'evaluation_budget_exceeded'].includes(String(decision.reason));
 };
 
-const validPlannedRead = (read: Record<string, unknown>): boolean => {
+/** An export decision exactly when the owner authorized selling, and none otherwise. */
+const validExportOutcome = (read: Record<string, unknown>, config: ContinuousBatteryPlanConfig): boolean => (
+  config.exportPolicy.kind === 'price_export'
+    ? validExportDecision(read.exportDecision)
+    : !Object.hasOwn(read, 'exportDecision')
+);
+
+const validPlannedRead = (read: Record<string, unknown>, config: ContinuousBatteryPlanConfig): boolean => {
   const plan = asUnknownRecord(read.plan);
   return finiteFields(read, ['generatedAtMs']) && typeof read.priceUnit === 'string'
-    && validExportDecision(read.exportDecision)
+    && validExportOutcome(read, config)
     && plan !== null && plan.status === 'planned' && Array.isArray(plan.periods) && plan.periods.every(validPeriod)
     && finiteFields(plan, [
       'importCost', 'exportRevenue', 'wearCost', 'energyCost', 'terminalEnergyValue',
@@ -50,13 +57,16 @@ export async function loadContinuousBatteryPlan(deviceId: string): Promise<Conti
   const payload = asUnknownRecord(await getApiReadModel<unknown>(SETTINGS_UI_DEVICES_PATH));
   const plans = asUnknownRecord(payload?.continuousBatteryPlans);
   const read = plans !== null && Object.hasOwn(plans, deviceId) ? asUnknownRecord(plans[deviceId]) : null;
-  if (asUnknownRecord(payload?.homeScope)?.state === 'unavailable' || read === null
-    || parseContinuousBatteryPlanConfig(read.config) === null) throw new Error('Battery planning is unavailable.');
+  const config = read === null ? null : parseContinuousBatteryPlanConfig(read.config);
+  if (asUnknownRecord(payload?.homeScope)?.state === 'unavailable' || read === null || config === null) {
+    throw new Error('Battery planning is unavailable.');
+  }
   if (read.status === 'disabled' || (read.status === 'waiting' && [
     'settings_unavailable', 'battery_unavailable', 'prices_unavailable', 'forecast_unavailable', 'solar_scope_shared',
     'background_unavailable', 'control_unavailable', 'smart_tasks_planning', 'horizon_infeasible', 'price_unit_changed',
-  ].includes(String(read.reason))) || (read.status === 'planned' && validPlannedRead(read))) {
-    return read as ContinuousBatteryPlanRead;
+  ].includes(String(read.reason))) || (read.status === 'planned' && validPlannedRead(read, config))) {
+    // The parsed config, never the wire's: it is what the form edits and saves.
+    return { ...read, config } as ContinuousBatteryPlanRead;
   }
   throw new Error('Invalid battery plan response.');
 }

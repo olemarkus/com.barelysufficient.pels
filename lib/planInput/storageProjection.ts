@@ -1,6 +1,5 @@
-import type {
-  BatteryEnergyExportPolicy, BatteryEnergyPlanPeriod,
-} from '../../packages/contracts/src/batteryPlan';
+import type { BatteryEnergyPlanPeriod } from '../../packages/contracts/src/batteryPlan';
+import type { PlannedContinuousBatteryRead } from '../../packages/contracts/src/continuousBatteryPlan';
 import type { ContinuousStoragePlan } from '../../packages/planner-types/src/planInputDevice';
 import { isBatteryPowerLimitEnabled } from '../../packages/shared-domain/src/settings/batteryPowerLimit';
 import { continuousReserveCeilingW } from '../battery/continuousBatteryReserve';
@@ -14,20 +13,19 @@ const NO_STORAGE_CLUSTER: StorageClusterFields = {};
 /**
  * The current period as the planner's storage intent. A selling period carries
  * the owner's export ceiling with its reason, so permission and bound travel
- * together. The plan and its config come from one battery-owner read, so only a
- * price-export policy plans an export period; the types still require an
- * answer for the other policy, and that answer is the house only.
+ * together. Only a price-export read can plan a selling period: the plan and
+ * its policy come from one battery-owner read.
  */
 const resolveContinuousStoragePlan = (
   period: BatteryEnergyPlanPeriod,
-  policy: BatteryEnergyExportPolicy,
+  read: PlannedContinuousBatteryRead,
 ): ContinuousStoragePlan => {
   const setpointW = period.batteryPowerKW * 1000;
   const validUntilMs = period.startsAtMs + period.durationMs;
   if (period.reason !== 'export_energy') return { setpointW, validUntilMs, reason: period.reason };
-  return policy.kind === 'price_export'
-    ? { setpointW, validUntilMs, reason: 'export_energy', netExportCeilingW: policy.netExportCeilingKW * 1000 }
-    : { setpointW, validUntilMs, reason: 'supply_house' };
+  if (!('exportDecision' in read)) throw new Error('A household-only battery plan cannot sell');
+  const netExportCeilingW = read.config.exportPolicy.netExportCeilingKW * 1000;
+  return { setpointW, validUntilMs, reason: 'export_energy', netExportCeilingW };
 };
 
 /**
@@ -91,6 +89,7 @@ export const resolveStorageCluster = (
       range: control.range,
       handBackDeferred: control.handBackDeferred,
       signedPowerW: power.signedW,
+      observedAtMs: power.observedAtMs,
       claimHeld: control.claimHeld,
       admissible: control.admissible,
       powerLimitControl: isBatteryPowerLimitEnabled(source.deviceControl.controllableDevices, device.id),
@@ -98,7 +97,7 @@ export const resolveStorageCluster = (
       deliveryCeilingW: Math.min(control.deliveryCeilingW, reserveCeilingW),
       chargeCeilingW: chargeCeilingAtLevelW(control.chargeCeiling, device.batteryLevel),
       ...(currentPeriod === undefined || continuous.status !== 'planned' ? {} : {
-        continuousPlan: resolveContinuousStoragePlan(currentPeriod, continuous.config.exportPolicy),
+        continuousPlan: resolveContinuousStoragePlan(currentPeriod, continuous),
       }),
     },
   };
