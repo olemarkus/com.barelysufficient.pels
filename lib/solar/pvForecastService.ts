@@ -6,7 +6,9 @@
 //             concurrent shortwave irradiance stamped per hour
 //   learn:    complete recorded hours → (irradiance, generation) training points
 //             → fitPvGain
-//   forecast: forward hours → forecast irradiance × learned gain
+//   shape:    the same hours → a per-hour-of-day factor for roof orientation
+//             (pvHourShape)
+//   forecast: forward hours → forecast irradiance × learned gain × hour factor
 //
 // SDK-free: the irradiance provider is injected (the setup layer wires the
 // Open-Meteo-backed provider; tests mock it). The service needs no coordinates
@@ -26,6 +28,7 @@ import {
 } from '../../packages/shared-domain/src/solar/pvGain';
 import { forecastPvKwh } from '../../packages/shared-domain/src/solar/pvForecast';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
+import { learnPvHourShape, pvHourShapeFactor, type PvHourShape } from './pvHourShape';
 
 const HOUR_MS = 3_600_000;
 const DEFAULT_RETENTION_MS = 90 * 24 * HOUR_MS;
@@ -156,10 +159,11 @@ export const mergeRecoveredPvForecastState = (
 
 // The gain memo. Nothing memoised yet (or an invalidation since) is a state of
 // the MEMO — `stale` — not a missing gain: the gain's own `learning` member
-// already means "no fit yet", and one type may not carry both meanings.
+// already means "no fit yet", and one type may not carry both meanings. The hour
+// shape is learned from the same data against that gain, so it shares the memo.
 type PvGainMemo =
   | { kind: 'stale' }
-  | { kind: 'fresh'; gain: LearnedPvGain };
+  | { kind: 'fresh'; gain: LearnedPvGain; shape: PvHourShape };
 
 export class PvForecastService {
   private history: PvGenerationHistory;
@@ -227,25 +231,57 @@ export class PvForecastService {
    * reading, or the gain's `learning` member (too few usable hours).
    */
   getFit(): LearnedPvGain {
-    if (this.cachedFit.kind === 'fresh') return this.cachedFit.gain;
-    const gain = this.computeFit();
-    this.cachedFit = { kind: 'fresh', gain };
-    return gain;
+    return this.readFit().gain;
   }
 
-  private computeFit(): LearnedPvGain {
-    const points: PvGainTrainingPoint[] = [];
+  /**
+   * The learned per-hour-of-day factors (UTC hour → factor); empty while the
+   * gain is still learning. Hours absent from it forecast with the plain gain.
+   */
+  getHourShape(): PvHourShape {
+    return this.readFit().shape;
+  }
+
+  private readFit(): Extract<PvGainMemo, { kind: 'fresh' }> {
+    if (this.cachedFit.kind === 'fresh') return this.cachedFit;
+    const fresh = { kind: 'fresh' as const, ...this.computeFit() };
+    this.cachedFit = fresh;
+    return fresh;
+  }
+
+  private computeFit(): { gain: LearnedPvGain; shape: PvHourShape } {
+    const points: (PvGainTrainingPoint & { hourStartMs: number })[] = [];
     for (const hour of pvTrainingHours(this.history)) {
       const irradianceWm2 = this.irradianceByHour[String(hour.hourStartMs)];
       if (!isFiniteNumber(irradianceWm2)) continue;
       points.push({
+        hourStartMs: hour.hourStartMs,
         irradianceWm2,
         generationKwh: hour.generationKwh,
         // 'unknown' is expressed as an absent field on the training point.
         ...(hour.netEvidence === 'unknown' ? {} : { netEvidence: hour.netEvidence }),
       });
     }
-    return fitPvGain(points);
+    const gain = fitPvGain(points);
+    return { gain, shape: this.learnShape(gain, points) };
+  }
+
+  /**
+   * The hour shape is learned from the same pool the gain was: the unclamped
+   * hours when the gain trained on them alone, every unthrottled hour for the
+   * plain median. A clamp-aware gain is an upper-quantile estimate of what the
+   * panels could produce; recorded hours sit below it by construction, so a
+   * shape learned against it would pull the potential back down. It gets none.
+   */
+  private learnShape(
+    gain: LearnedPvGain,
+    points: readonly (PvGainTrainingPoint & { hourStartMs: number })[],
+  ): PvHourShape {
+    if (gain.kind === 'learning' || gain.fit.trainingMode === 'clamp_aware_quantile') return new Map();
+    const pool = gain.fit.trainingMode === 'unclamped_median'
+      ? points.filter((point) => point.netEvidence === 'unclamped')
+      : points;
+    return learnPvHourShape(pool, gain.fit.gainKwhPerWm2);
   }
 
   /**
@@ -269,10 +305,10 @@ export class PvForecastService {
   /**
    * Forecast generation (kWh) for the given forward UTC hour-starts. Empty when not
    * yet armed (no fit); hours without a forecast irradiance are skipped rather than
-   * guessed.
+   * guessed. Each hour applies its learned shape factor (1 while unlearned).
    */
   forecast(hourStarts: readonly number[]): PvForecastHour[] {
-    const learned = this.getFit();
+    const { gain: learned, shape } = this.readFit();
     if (learned.kind === 'learning') return [];
     const result: PvForecastHour[] = [];
     for (const hourStart of hourStarts) {
@@ -280,7 +316,8 @@ export class PvForecastService {
       if (read.kind === 'absent') continue;
       result.push({
         hourStartMs: hourStart,
-        generationKwh: forecastPvKwh(learned.fit.gainKwhPerWm2, read.irradianceWm2),
+        generationKwh: forecastPvKwh(learned.fit.gainKwhPerWm2, read.irradianceWm2)
+          * pvHourShapeFactor(shape, hourStart),
       });
     }
     return result;
