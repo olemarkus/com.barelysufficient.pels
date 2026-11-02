@@ -5,6 +5,20 @@ describe('daily budget manager state guard', () => {
     expect(isDailyBudgetState({})).toBe(true);
   });
 
+  it('accepts the day budget and the closed day it kept', () => {
+    expect(isDailyBudgetState({
+      dayBudgetKWh: 88,
+      closedDayBudget: { dateKey: '2026-11-01', dailyBudgetKWh: 83 },
+    })).toBe(true);
+  });
+
+  it('rejects a malformed day budget or closed day', () => {
+    expect(isDailyBudgetState({ dayBudgetKWh: 0 })).toBe(false);
+    expect(isDailyBudgetState({ closedDayBudget: { dateKey: '2026-11-01' } })).toBe(false);
+    expect(isDailyBudgetState({ closedDayBudget: { dateKey: 1, dailyBudgetKWh: 83 } })).toBe(false);
+    expect(isDailyBudgetState({ closedDayBudget: { dateKey: '2026-11-01', dailyBudgetKWh: Number.NaN } })).toBe(false);
+  });
+
   it('rejects plannedKWh containing non-finite values', () => {
     const state = {
       plannedKWh: [1, Number.NaN, 3],

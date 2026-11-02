@@ -120,6 +120,19 @@ const isHourlyArrayOrUndefined = (value: unknown): boolean => (
     && value.every((entry) => typeof entry === 'number' && Number.isFinite(entry)))
 );
 
+const isPositiveFiniteOrUndefined = (value: unknown): boolean => (
+  value === undefined || (typeof value === 'number' && Number.isFinite(value) && value > 0)
+);
+
+const isClosedDayBudgetOrUndefined = (value: unknown): boolean => {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object') return false;
+  const closed = value as { dateKey?: unknown; dailyBudgetKWh?: unknown };
+  return typeof closed.dateKey === 'string'
+    && closed.dailyBudgetKWh !== undefined
+    && isPositiveFiniteOrUndefined(closed.dailyBudgetKWh);
+};
+
 export const isDailyBudgetState = (value: unknown): value is DailyBudgetState => {
   if (!value || typeof value !== 'object') return false;
   const state = value as DailyBudgetState;
@@ -140,7 +153,9 @@ export const isDailyBudgetState = (value: unknown): value is DailyBudgetState =>
     , isNullableFiniteNumberOrUndefined(state.dayStartUtcMs)
     , isNullableFiniteNumberOrUndefined(state.lastPlanBucketStartUtcMs)
     , isBooleanOrUndefined(state.frozen)
-    , isNumberOrUndefined(state.lastUsedNowKWh),
+    , isNumberOrUndefined(state.lastUsedNowKWh)
+    , isPositiveFiniteOrUndefined(state.dayBudgetKWh)
+    , isClosedDayBudgetOrUndefined(state.closedDayBudget),
   ];
   return checks.every(Boolean);
 };

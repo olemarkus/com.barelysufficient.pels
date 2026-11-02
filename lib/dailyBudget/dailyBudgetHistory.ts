@@ -23,6 +23,12 @@ export const buildDailyBudgetHistory = (params: {
   dayStartUtcMs: number;
   timeZone: string;
   powerTracker: PowerTrackerState;
+  /**
+   * The budget this day ran with (`DailyBudgetState.closedDayBudget`), or null
+   * when none was recorded for it: the day ran without a daily budget, or closed
+   * before this was kept. Null reports the day with no budget, never a guess.
+   */
+  closedDayBudgetKWh: number | null;
   combinedPrices: CombinedPriceData | null;
   priceShapingEnabled: boolean;
   profileSampleCount: number;
@@ -34,6 +40,7 @@ export const buildDailyBudgetHistory = (params: {
     dayStartUtcMs,
     timeZone,
     powerTracker,
+    closedDayBudgetKWh,
     combinedPrices,
     priceShapingEnabled,
     profileSampleCount,
@@ -54,11 +61,19 @@ export const buildDailyBudgetHistory = (params: {
     bucketUsageUncontrolled,
     bucketUsageExempt,
   } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
-  const plannedKWh = bucketKeys.map((key) => powerTracker.dailyBudgetCaps?.[key] ?? 0);
-  const hasPlanned = plannedKWh.some((value) => value > 0);
+  // Each hour's cap is its share of the budget as that hour closed. On a day that
+  // runs under budget, the unused share is offered again to later hours, so the
+  // caps sum to more than the budget. They give the day's shape, scaled to the
+  // budget the day ran with.
+  const hourCapsKWh = bucketKeys.map((key) => powerTracker.dailyBudgetCaps?.[key] ?? 0);
+  const hasPlanned = hourCapsKWh.some((value) => value > 0);
   const hasUsage = bucketUsage.some((value) => value > 0);
   if (!hasPlanned && !hasUsage) return null;
-  const dailyBudgetKWh = sumArray(plannedKWh);
+  const dailyBudgetKWh = closedDayBudgetKWh ?? 0;
+  const capsTotalKWh = sumArray(hourCapsKWh);
+  const plannedKWh = dailyBudgetKWh > 0 && capsTotalKWh > 0
+    ? hourCapsKWh.map((value) => value * (dailyBudgetKWh / capsTotalKWh))
+    : hourCapsKWh;
   const {
     budgetControlBucketUsage,
     budgetControlUsedNowKWh,

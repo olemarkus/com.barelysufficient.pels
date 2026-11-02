@@ -33,6 +33,7 @@ describe('daily budget history reproduction', () => {
       controlledUsageWeight: CONTROLLED_USAGE_WEIGHT,
       priceShapingFlexShare: PRICE_SHAPING_FLEX_SHARE,
     };
+    manager.loadState({ closedDayBudget: { dateKey: yesterdayKey, dailyBudgetKWh: 10 } });
     const history = manager.buildHistory(yesterdayStartUtcMs, TZ, powerTracker, settings, {
       combinedPrices: null,
       priceOptimizationEnabled: true,

@@ -21,6 +21,7 @@ import {
   type DayContext,
 } from './dailyBudgetState';
 import { buildDailyBudgetHistory } from './dailyBudgetHistory';
+import { getDateKeyInTimeZone } from '../../packages/shared-domain/src/utils/dateUtils';
 import type {
   DailyBudgetDayPayload,
   DailyBudgetSettings,
@@ -141,9 +142,11 @@ export class DailyBudgetManager {
     if (profileResult.changed) this.markDirty('manual');
     this.state = profileResult.state;
     if (refreshObservedStats) this.maybeUpdateObservedStats(powerTracker, timeZone, context.nowMs);
+    this.closeDayBudget(context);
     this.handleRollover(context, settings, powerTracker);
     const enabled = isDailyBudgetEnabled(settings);
     this.syncEnabledState(enabled);
+    this.recordDayBudget(enabled, settings.dailyBudgetKWh);
     const planState = this.preparePlanState(context, enabled, settings.dailyBudgetKWh);
     this.clearFrozenPlanForRecompute(context, enabled, recomputeFrozenPlan);
 
@@ -193,6 +196,30 @@ export class DailyBudgetManager {
     this.snapshot = snapshot;
     this.recordRuntimeState(context);
     return { snapshot, persistReason: this.consumePersistReason() };
+  }
+
+  /**
+   * At the first update of a new day, keeps the budget the closing day ran with
+   * (`closedDayBudget`) before the new day records its own. Runs whether or not
+   * the budget is on now: the closing day's figure was taken while it was current.
+   */
+  private closeDayBudget(context: DayContext): void {
+    const closingDateKey = this.state.dateKey;
+    if (!closingDateKey || closingDateKey === context.dateKey) return;
+    const dailyBudgetKWh = this.state.dayBudgetKWh;
+    if (dailyBudgetKWh === undefined) delete this.state.closedDayBudget;
+    else this.state.closedDayBudget = { dateKey: closingDateKey, dailyBudgetKWh };
+    delete this.state.dayBudgetKWh;
+    this.markDirty('rollover');
+  }
+
+  /** The budget the current day runs with; see `DailyBudgetState.dayBudgetKWh`. */
+  private recordDayBudget(enabled: boolean, dailyBudgetKWh: number): void {
+    const next = enabled && Number.isFinite(dailyBudgetKWh) && dailyBudgetKWh > 0 ? dailyBudgetKWh : undefined;
+    if (this.state.dayBudgetKWh === next) return;
+    if (next === undefined) delete this.state.dayBudgetKWh;
+    else this.state.dayBudgetKWh = next;
+    this.markDirty('runtime');
   }
 
   private handleRollover(context: DayContext, settings: DailyBudgetSettings, powerTracker: PowerTrackerState): void {
@@ -403,10 +430,13 @@ export class DailyBudgetManager {
     // live plan uses. The legacy `profile` field is absent on current installs
     // and only catches up on export on older ones, so its count reads 0 or stale.
     const profile = getEffectiveProfileData(this.state, settings, DEFAULT_PROFILE);
+    const closed = this.state.closedDayBudget;
+    const dateKey = getDateKeyInTimeZone(new Date(dayStartUtcMs), timeZone);
     return buildDailyBudgetHistory({
       dayStartUtcMs,
       timeZone,
       powerTracker,
+      closedDayBudgetKWh: closed?.dateKey === dateKey ? closed.dailyBudgetKWh : null,
       combinedPrices: inputs.combinedPrices,
       priceShapingEnabled: settings.priceShapingEnabled,
       profileSampleCount: profile.sampleCount,
