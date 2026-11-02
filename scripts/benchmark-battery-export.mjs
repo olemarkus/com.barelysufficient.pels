@@ -32,6 +32,7 @@ function createHorizon(capacityKWh, maxPowerKW) {
       storedEnergyKWh: capacityKWh * 0.5,
       minimumEnergyKWh: capacityKWh * 0.2,
       maxChargeKW: maxPowerKW,
+      chargeTaper: [],
       maxDischargeKW: maxPowerKW,
       roundTripEfficiency: 0.9,
       wearCostPerKWh: 0.02,

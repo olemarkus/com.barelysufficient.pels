@@ -24,9 +24,15 @@
  *   not, and changes no verdict: a battery that is full stops charging, and
  *   that is its own limit, not a failure to follow. Whether it follows is
  *   judged on its discharge and by the sign check.
+ * - The charge ceiling is learned per charge band (`chargeBandOf`). Many
+ *   batteries accept less charge from about 80 % up, and every full battery
+ *   accepts none, so a lesson taught near full caps only its own band and the
+ *   bands above it. A lesson below 80 %, or without a reported level, caps
+ *   every level, as before. Each band keeps its own expiry, and a charge at a
+ *   known level lifts every band it shows to be too low.
  */
-import type { BatteryDelivery } from '../ports/batteryControlOwner';
-import type { HomeBatterySetpointRange } from '../../packages/contracts/src/types';
+import type { BatteryChargeCeiling, BatteryDelivery } from '../ports/batteryControlOwner';
+import type { HomeBatteryLevelObservation, HomeBatterySetpointRange } from '../../packages/contracts/src/types';
 import type { StorageVerdict } from '../../packages/planner-types/src/planInputDevice';
 import { getLogger } from '../logging/logger';
 import { backoffDelayMs } from './retryBackoff';
@@ -46,6 +52,27 @@ export const DELIVERY_CEILING_TTL_MS = 30 * 60_000;
  */
 type LearnedPlateau = { kind: 'none' } | { kind: 'learned'; powerW: number; learnedAtMs: number };
 
+/**
+ * Where a charge lesson applies: `0` at every level, otherwise from that
+ * charge level up. Taper typically starts between 80 and 90 %; 5 % bands are
+ * half a kWh on a 10 kWh battery, fine enough to follow the taper and coarse
+ * enough that a band is taught again before its lesson expires.
+ */
+type ChargeBand = 0 | 80 | 85 | 90 | 95;
+
+/** The band a charge lesson taught at this level falls in. */
+const chargeBandOf = (level: HomeBatteryLevelObservation | undefined): ChargeBand => {
+  if (level === undefined || level.percent < 80) return 0;
+  if (level.percent < 85) return 80;
+  if (level.percent < 90) return 85;
+  return level.percent < 95 ? 90 : 95;
+};
+
+/** Whether a band's lesson applies at this level: an unreported level only gets the every-level one. */
+const bandApplies = (band: ChargeBand, level: HomeBatteryLevelObservation | undefined): boolean => (
+  band === 0 || (level !== undefined && level.percent >= band)
+);
+
 type VerificationEntry = {
   verdict: Exclude<StorageVerdict, 'reprobing'>;
   /** Unanswered setpoints in a row; reset by any answered one. */
@@ -53,14 +80,16 @@ type VerificationEntry = {
   /** When a `not_responding` battery may be probed again. */
   nextProbeAtMs: number;
   plateau: LearnedPlateau;
-  chargePlateau: LearnedPlateau;
+  /** Charge plateaus by band; an absent band has taught nothing. */
+  chargePlateaus: ReadonlyMap<ChargeBand, LearnedPlateau>;
 };
 
 const NO_PLATEAU: LearnedPlateau = { kind: 'none' };
+const NO_CHARGE_PLATEAUS: ReadonlyMap<ChargeBand, LearnedPlateau> = new Map();
 
 /** A battery nothing has been judged for yet. */
 const UNVERIFIED: VerificationEntry = {
-  verdict: 'unverified', failures: 0, nextProbeAtMs: 0, plateau: NO_PLATEAU, chargePlateau: NO_PLATEAU,
+  verdict: 'unverified', failures: 0, nextProbeAtMs: 0, plateau: NO_PLATEAU, chargePlateaus: NO_CHARGE_PLATEAUS,
 };
 
 export type BatteryVerificationRead = {
@@ -70,11 +99,8 @@ export type BatteryVerificationRead = {
    * the plateau an increase stopped at while that lesson holds.
    */
   deliveryCeilingW: number;
-  /**
-   * The most charge PELS may ask for, W: the battery's charge range, or the
-   * charge a short charge stopped at while that lesson holds.
-   */
-  chargeCeilingW: number;
+  /** The most charge PELS may ask for, by charge level (`chargeCeilingAtLevelW`). */
+  chargeCeiling: BatteryChargeCeiling;
 };
 
 const isCeilingHeld = (
@@ -88,6 +114,31 @@ const isCeilingHeld = (
 const resolveCeilingW = (rangeW: number, plateau: LearnedPlateau, nowMs: number): number => (
   isCeilingHeld(plateau, nowMs) ? Math.min(rangeW, plateau.powerW) : rangeW
 );
+
+/** The charge range, capped by each band's held lesson. */
+const resolveChargeCeiling = (
+  rangeW: number,
+  plateaus: ReadonlyMap<ChargeBand, LearnedPlateau>,
+  nowMs: number,
+): BatteryChargeCeiling => {
+  const taper = [...plateaus]
+    .filter(([band, plateau]) => band !== 0 && isCeilingHeld(plateau, nowMs))
+    .sort(([left], [right]) => left - right)
+    .map(([band, plateau]) => ({ fromPercent: band, ceilingW: resolveCeilingW(rangeW, plateau, nowMs) }));
+  return { everyLevelW: resolveCeilingW(rangeW, plateaus.get(0) ?? NO_PLATEAU, nowMs), taper };
+};
+
+/**
+ * The most charge PELS may ask for at this charge level, W: the every-level
+ * ceiling and each taper step at or below the level. An unreported level gets
+ * the every-level ceiling: no band lesson can be placed against it.
+ */
+export const chargeCeilingAtLevelW = (
+  ceiling: BatteryChargeCeiling,
+  level: HomeBatteryLevelObservation | undefined,
+): number => ceiling.taper
+  .filter(step => level !== undefined && level.percent >= step.fromPercent)
+  .reduce((ceilingW, step) => Math.min(ceilingW, step.ceilingW), ceiling.everyLevelW);
 
 /** Whether a delivery past a held plateau by more than the tolerance lifts it. */
 const isLifted = (plateau: LearnedPlateau, deliveredW: number, toleranceW: number, nowMs: number): boolean => (
@@ -116,7 +167,7 @@ export class BatteryVerificationLedger {
     return {
       verdict: resolveVerdict(entry, nowMs),
       deliveryCeilingW: resolveCeilingW(Math.max(0, -range.minW), entry.plateau, nowMs),
-      chargeCeilingW: resolveCeilingW(Math.max(0, range.maxW), entry.chargePlateau, nowMs),
+      chargeCeiling: resolveChargeCeiling(Math.max(0, range.maxW), entry.chargePlateaus, nowMs),
     };
   }
 
@@ -128,19 +179,29 @@ export class BatteryVerificationLedger {
   recordResponding(deviceId: string, delivery: BatteryDelivery, nowMs: number): void {
     const entry = this.entryOf(deviceId);
     if (entry.verdict === 'sign_inverted') return;
-    const { plateau, chargePlateau } = entry;
-    const { signedW, toleranceW } = delivery;
+    const { plateau, chargePlateaus } = entry;
+    const { signedW, toleranceW, level } = delivery;
     const dischargeLifted = isLifted(plateau, -signedW, toleranceW, nowMs);
-    const chargeLifted = isLifted(chargePlateau, signedW, toleranceW, nowMs);
+    const liftedBands = [...chargePlateaus].filter(([band, charge]) => (
+      bandApplies(band, level) && isLifted(charge, signedW, toleranceW, nowMs)
+    ));
+    const remaining = new Map(chargePlateaus);
+    for (const [band] of liftedBands) remaining.delete(band);
     this.transition(deviceId, entry, {
       verdict: 'responding',
       failures: 0,
       nextProbeAtMs: 0,
       plateau: dischargeLifted ? NO_PLATEAU : plateau,
-      chargePlateau: chargeLifted ? NO_PLATEAU : chargePlateau,
+      chargePlateaus: liftedBands.length === 0 ? chargePlateaus : remaining,
     });
     if (dischargeLifted) logCeilingLifted('battery_control_delivery_ceiling_lifted', deviceId, plateau, signedW);
-    if (chargeLifted) logCeilingLifted('battery_control_charge_ceiling_lifted', deviceId, chargePlateau, signedW);
+    for (const [band, charge] of liftedBands) {
+      if (charge.kind !== 'learned') continue;
+      logger.info({
+        event: 'battery_control_charge_ceiling_lifted', deviceId, band,
+        previousCeilingW: charge.powerW, deliveredSignedW: signedW,
+      });
+    }
   }
 
   recordDeliveryCeiling(deviceId: string, dischargeW: number, nowMs: number): void {
@@ -151,12 +212,21 @@ export class BatteryVerificationLedger {
     logger.info({ event: 'battery_control_delivery_ceiling_learned', deviceId, dischargeW: plateau.powerW });
   }
 
-  recordChargeCeiling(deviceId: string, chargeW: number, nowMs: number): void {
+  recordChargeCeiling(
+    deviceId: string,
+    chargeW: number,
+    level: HomeBatteryLevelObservation | undefined,
+    nowMs: number,
+  ): void {
     const entry = this.entryOf(deviceId);
     if (entry.verdict === 'sign_inverted') return;
+    const band = chargeBandOf(level);
     const chargePlateau = { kind: 'learned' as const, powerW: Math.max(0, chargeW), learnedAtMs: nowMs };
-    this.entries.set(deviceId, { ...entry, chargePlateau });
-    logger.info({ event: 'battery_control_charge_ceiling_learned', deviceId, chargeW: chargePlateau.powerW });
+    this.entries.set(deviceId, { ...entry, chargePlateaus: new Map(entry.chargePlateaus).set(band, chargePlateau) });
+    logger.info({
+      event: 'battery_control_charge_ceiling_learned', deviceId, chargeW: chargePlateau.powerW, band,
+      levelPercent: level?.percent ?? null,
+    });
   }
 
   recordNotResponding(deviceId: string, nowMs: number): void {
@@ -172,7 +242,7 @@ export class BatteryVerificationLedger {
     const entry = this.entryOf(deviceId);
     if (entry.verdict === 'sign_inverted') return;
     this.transition(deviceId, entry, {
-      verdict: 'sign_inverted', failures: 0, nextProbeAtMs: 0, plateau: NO_PLATEAU, chargePlateau: NO_PLATEAU,
+      verdict: 'sign_inverted', failures: 0, nextProbeAtMs: 0, plateau: NO_PLATEAU, chargePlateaus: NO_CHARGE_PLATEAUS,
     });
     logger.error({
       event: 'battery_control_sign_inverted',

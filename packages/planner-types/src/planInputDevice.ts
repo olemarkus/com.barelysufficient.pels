@@ -209,8 +209,9 @@ export type ObservedStorageInput = {
    */
   deliveryCeilingW: number;
   /**
-   * The most charge PELS may ask for, W: the charge range, or less once a
-   * charge stopped short of what it asked (a full battery stops at 0 W).
+   * The most charge PELS may ask for, W, at the battery's current charge
+   * level: the charge range, or less once a charge stopped short of what it
+   * asked at that level's band (a full battery stops at 0 W).
    */
   chargeCeilingW: number;
   /** Present only while the owner has an executable continuous strategy. Its absence

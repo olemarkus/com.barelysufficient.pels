@@ -2,6 +2,7 @@ import type {
   HomeBatteryClaimObservation,
   HomeBatteryControlCapability,
   HomeBatteryControlSurface,
+  HomeBatteryLevelObservation,
   HomeBatterySetpointRange,
 } from '../../packages/contracts/src/types';
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
@@ -127,10 +128,10 @@ export type BatteryLeverRead =
      */
     deliveryCeilingW: number;
     /**
-     * The most charge PELS may ask for, W: the charge range, or less while a
-     * charge that stopped short of it is the lesson.
+     * The most charge PELS may ask for, by charge level: the charge range, or
+     * less while a charge that stopped short of it is the lesson.
      */
-    chargeCeilingW: number;
+    chargeCeiling: BatteryChargeCeiling;
     /** PELS holds a recorded claim and owes the battery a hand-back. */
     claimHeld: boolean;
     /**
@@ -151,11 +152,28 @@ export type BatteryLeverRead =
   };
 
 /**
- * What a followed setpoint showed: the battery's own signed power then
- * (negative discharging, positive charging), and the tolerance it was judged
- * within, W.
+ * The most charge PELS may ask for a battery, W, by its charge level. A charge
+ * that stopped short near full caps only the levels from its band up
+ * (`lib/battery/batteryVerification.ts`); resolve a level with
+ * `chargeCeilingAtLevelW`.
  */
-export type BatteryDelivery = { signedW: number; toleranceW: number };
+export type BatteryChargeCeiling = {
+  /** The ceiling at every level: the charge range, or a lesson taught below the taper bands. */
+  everyLevelW: number;
+  /** Lower ceilings from a charge level up, ascending `fromPercent`; empty without a held taper lesson. */
+  taper: readonly { fromPercent: number; ceilingW: number }[];
+};
+
+/**
+ * What a followed setpoint showed: the battery's own signed power then
+ * (negative discharging, positive charging), the tolerance it was judged
+ * within, W, and the battery's charge level then, if it reports one.
+ */
+export type BatteryDelivery = {
+  signedW: number;
+  toleranceW: number;
+  level: HomeBatteryLevelObservation | undefined;
+};
 
 /**
  * What the executor's storage lane learns from each setpoint, written to the
@@ -171,11 +189,17 @@ export type BatteryVerificationRecorder = {
   /** An increase in discharge plateaued short of its setpoint, at this discharge, W. */
   recordDeliveryCeiling(deviceId: string, dischargeW: number, nowMs: number): void;
   /**
-   * An increase in charge stopped short of its setpoint, at this charge, W. It
-   * teaches the charge ceiling and says nothing about whether the battery
-   * follows: a full battery stops charging every sunny afternoon.
+   * An increase in charge stopped short of its setpoint, at this charge, W, and
+   * this charge level, if reported. It teaches the charge ceiling for that
+   * level's band and says nothing about whether the battery follows: a full
+   * battery stops charging every sunny afternoon.
    */
-  recordChargeCeiling(deviceId: string, chargeW: number, nowMs: number): void;
+  recordChargeCeiling(
+    deviceId: string,
+    chargeW: number,
+    level: HomeBatteryLevelObservation | undefined,
+    nowMs: number,
+  ): void;
   /**
    * Whether this discharge, W, is within the tolerance of the last plateau the
    * battery showed this run, held or expired: a re-probe that starts there and

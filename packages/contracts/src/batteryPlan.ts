@@ -5,11 +5,26 @@
  * reserve and observed stored energy are within usable capacity, and periods
  * have positive duration and are contiguous absolute instants.
  */
+/**
+ * A lower AC charge ceiling the battery has shown from this stored energy up:
+ * many batteries accept less charge as they near full.
+ */
+export type BatteryChargeTaperStep = {
+  fromEnergyKWh: number;
+  maxChargeKW: number;
+};
+
 export type BatteryEnergyModel = {
   capacityKWh: number;
   storedEnergyKWh: number;
   minimumEnergyKWh: number;
   maxChargeKW: number;
+  /**
+   * Steps in ascending `fromEnergyKWh`. A transition's charge is capped by
+   * every step at or below the stored energy it starts from, as well as by
+   * `maxChargeKW`; empty when the battery has shown no taper.
+   */
+  chargeTaper: readonly BatteryChargeTaperStep[];
   maxDischargeKW: number;
   roundTripEfficiency: number;
   /** Allowance per AC kWh supplied by the battery. Same currency as prices. */

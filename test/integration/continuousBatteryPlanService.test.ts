@@ -18,7 +18,7 @@ const config: ContinuousBatteryPlanConfig = {
 const horizon: ContinuousBatteryEnergyHorizon = {
   battery: {
     capacityKWh: 10, storedEnergyKWh: 4, minimumEnergyKWh: 2,
-    maxChargeKW: 2.5, maxDischargeKW: 2.5, roundTripEfficiency: 0.9,
+    maxChargeKW: 2.5, chargeTaper: [], maxDischargeKW: 2.5, roundTripEfficiency: 0.9,
     wearCostPerKWh: 0.03, terminalValuePerKWh: 0.1,
   },
   periods: [{

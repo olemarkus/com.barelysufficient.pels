@@ -346,7 +346,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
       kind: 'setpoint',
       range: surface.range,
       deliveryCeilingW: verification.deliveryCeilingW,
-      chargeCeilingW: verification.chargeCeilingW,
+      chargeCeiling: verification.chargeCeiling,
       claimHeld: claims.status === 'loaded' && claims.records.has(deviceId),
       handBackDeferred: this.releasing.has(deviceId) || this.pending.isWaiting(deviceId, nowMs)
         || (record !== undefined && this.claimWrites.readStanding(deviceId, record, battery, nowMs) === 'taken_over'),

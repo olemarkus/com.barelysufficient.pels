@@ -19,6 +19,20 @@ const reasonFor = (batteryEnergyKWh: number, gridImportKWh: number): BatteryEner
 };
 
 /**
+ * The most AC charge, kW, a transition starting at `beforeKWh` may take: the
+ * battery and period ceilings, and every taper step at or below that energy.
+ * A period's charge is capped by the energy it starts from, not its path.
+ */
+export function chargeLimitKW(battery: BatteryEnergyModel, period: BatteryEnergyPeriod, beforeKWh: number): number {
+  let limitKW = Math.min(battery.maxChargeKW, period.maxChargeKW);
+  for (const step of battery.chargeTaper) {
+    if (step.fromEnergyKWh > beforeKWh + ENERGY_EPSILON_KWH) break;
+    limitKW = Math.min(limitKW, step.maxChargeKW);
+  }
+  return Math.max(0, limitKW);
+}
+
+/**
  * Evaluate one represented storage transition, or reject it. Both directions
  * include conversion loss. An already-below-reserve battery can hold or charge
  * but cannot discharge further; once above reserve that floor applies normally.
@@ -45,7 +59,7 @@ export function batteryEnergyFlow(
   const dischargeAllowanceKWh = Math.max(0, netDemandKWh + exportAllowanceKWh);
   const reserveFloorKWh = Math.min(battery.minimumEnergyKWh, beforeKWh);
   if (afterKWh < reserveFloorKWh - ENERGY_EPSILON_KWH
-    || acEnergyKWh > Math.min(battery.maxChargeKW, period.maxChargeKW) * hours + ENERGY_EPSILON_KWH
+    || acEnergyKWh > chargeLimitKW(battery, period, beforeKWh) * hours + ENERGY_EPSILON_KWH
     || -acEnergyKWh > battery.maxDischargeKW * hours + ENERGY_EPSILON_KWH
     || -acEnergyKWh > dischargeAllowanceKWh + ENERGY_EPSILON_KWH
     || gridEnergyKWh > period.gridImportLimitKW * hours + ENERGY_EPSILON_KWH) return false;
