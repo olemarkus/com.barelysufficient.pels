@@ -32,9 +32,10 @@ export type PvGainTrainingPoint = {
 
 export type PvGainConfidence = 'low' | 'medium' | 'high';
 
-/** How the gain was trained — LOG OBSERVABILITY ONLY: consumers MUST NOT branch
- *  on it (resolution belongs in the producer; the fit's meaning is complete in
- *  `gainKwhPerWm2` + `confidence`). */
+/** How the gain was trained — LOG OBSERVABILITY for consumers, which MUST NOT
+ *  branch on it (resolution belongs in the producer; the fit's meaning is
+ *  complete in `gainKwhPerWm2` + `confidence`). The one reader is the forecast
+ *  service that owns the fit: it learns the hour shape from the same pool. */
 export type PvGainTrainingMode = 'unclamped_median' | 'clamp_aware_quantile' | 'unsegmented_median';
 
 export type PvGainFit = {
@@ -45,7 +46,7 @@ export type PvGainFit = {
   /** Median absolute deviation of the pool's gains around the fit / gain. */
   relativeScatter: number;
   confidence: PvGainConfidence;
-  /** Log observability only — consumers MUST NOT branch on it. */
+  /** Log observability for consumers — see `PvGainTrainingMode`. */
   trainingMode: PvGainTrainingMode;
 };
 
@@ -63,7 +64,7 @@ export type LearnedPvGain =
 
 // Below this irradiance the hour is too dim to learn from (dawn/dusk/deep
 // overcast): a tiny denominator amplifies measurement noise into the gain.
-const MIN_IRRADIANCE_WM2 = 50;
+export const PV_GAIN_MIN_IRRADIANCE_WM2 = 50;
 
 /** Minimum trained hours before a gain is returned at all (≈ a few daylight days). */
 export const MIN_PV_GAIN_SAMPLES = 24;
@@ -149,7 +150,7 @@ export const fitPvGain = (points: readonly PvGainTrainingPoint[]): LearnedPvGain
   for (const point of points) {
     // `!finite` must short-circuit: a NaN irradiance would make `NaN < floor` false
     // and slip a NaN ratio into the median, poisoning the whole gain.
-    if (!Number.isFinite(point.irradianceWm2) || point.irradianceWm2 < MIN_IRRADIANCE_WM2) continue;
+    if (!Number.isFinite(point.irradianceWm2) || point.irradianceWm2 < PV_GAIN_MIN_IRRADIANCE_WM2) continue;
     if (!Number.isFinite(point.generationKwh) || point.generationKwh < 0) continue;
     const gain = point.generationKwh / point.irradianceWm2;
     gains.push(gain);

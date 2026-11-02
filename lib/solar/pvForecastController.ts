@@ -194,6 +194,10 @@ export class PvForecastController {
       sampleCount: gain.fit.sampleCount,
       // Observability for tuning the clamp-evidence thresholds — never branched on.
       trainingMode: gain.fit.trainingMode,
+      // UTC hour of day → learned orientation factor; unlearned hours are absent.
+      hourShapeFactors: Object.fromEntries(
+        [...this.service.getHourShape()].map(([hour, factor]) => [hour, Math.round(factor * 100) / 100]),
+      ),
     });
   }
 

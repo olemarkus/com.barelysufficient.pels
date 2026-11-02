@@ -118,6 +118,38 @@ describe('Learning a PV device (irradiance mocked)', () => {
     expect(blind.hasForwardForecast(forwardMs)).toBe(false);
   });
 
+  it('learns an east-facing roof\'s hour shape and keeps it across a restart', () => {
+    // The roof turns horizontal irradiance into more energy in the morning and
+    // less in the afternoon. One global gain gets the day's total roughly right
+    // at the wrong hours; the hour shape moves the forecast onto the roof.
+    const eastFactor = (hourStartMs: number): number => {
+      const hourOfDay = Math.floor(hourStartMs / HOUR_MS) % 24;
+      return hourOfDay < 12 ? 1.3 : 0.8;
+    };
+    const roofKwh = (hourStartMs: number): number => trueGenerationKwh(hourStartMs) * eastFactor(hourStartMs);
+    const service = new PvForecastService({
+      irradiance: mockIrradiance,
+      initialState: emptyPvForecastServiceState(),
+    });
+    const startMs = Date.UTC(2026, 5, 1, 0);
+    const days = 18;
+    for (let t = startMs; t < startMs + days * 24 * HOUR_MS; t += 5 * 60_000) {
+      service.recordSample(roofKwh(Math.floor(t / HOUR_MS) * HOUR_MS) * 1000, t);
+    }
+
+    const nextDayStart = startMs + days * 24 * HOUR_MS;
+    const morning = nextDayStart + 8 * HOUR_MS;
+    const afternoon = nextDayStart + 16 * HOUR_MS;
+    const [morningForecast, afternoonForecast] = service.forecast([morning, afternoon]);
+    expect(morningForecast.generationKwh).toBeCloseTo(roofKwh(morning), 5);
+    expect(afternoonForecast.generationKwh).toBeCloseTo(roofKwh(afternoon), 5);
+
+    // The shape is learned from the persisted history, so a restarted service
+    // forecasts the same hours without any state of its own.
+    const restarted = new PvForecastService({ irradiance: mockIrradiance, initialState: service.getState() });
+    expect(restarted.forecast([morning])[0].generationKwh).toBeCloseTo(roofKwh(morning), 5);
+  });
+
   it('hasForwardForecast is false while still cold (no fit at all)', () => {
     const service = new PvForecastService({
       irradiance: mockIrradiance,
