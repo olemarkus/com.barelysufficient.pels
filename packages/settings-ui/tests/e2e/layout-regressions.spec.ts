@@ -85,6 +85,53 @@ test.describe('settings shell layout regressions', () => {
   // second surface without hiding the inactive one from assistive tech.
   const TAB_DESTINATIONS = ['Overview', 'Budget', 'Usage', 'Smart tasks', 'Settings'] as const;
   for (const width of [320, 480] as const) {
+    test(`keeps Modes ranks beside device names with usable controls at ${width}px`, async ({ page }) => {
+      await injectHomeyHostCss(page);
+      await page.addInitScript(() => {
+        (window as Window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
+          settings: {
+            target_devices_snapshot: [
+              {
+                id: 'thermostat',
+                name: 'Termostat hovedsoverom',
+                deviceType: 'temperature',
+                targets: [{ name: 'target_temperature', value: 23 }],
+              },
+              { id: 'charger', name: 'Elbillader', capabilities: ['onoff'] },
+            ],
+            managed_devices: { thermostat: true, charger: true },
+          },
+        };
+      });
+      await openApp(page, width);
+      await openSettingsSection(page, 'modes');
+      await loadSpaceGrotesk(page);
+      const rows = page.locator('#priority-list .mode-row');
+      await expect(rows).toHaveCount(2);
+      const actionTops = await page.locator('.mode-actions > *').evaluateAll((buttons) => (
+        buttons.map((button) => button.getBoundingClientRect().top)
+      ));
+      expect(new Set(actionTops).size, 'Mode actions stay on one row').toBe(1);
+      for (const row of await rows.all()) {
+        const name = (await row.locator('.device-row__name').boundingBox())!;
+        const rank = (await row.locator('.priority-badge').boundingBox())!;
+        // A full-span target used to auto-place the rank on a third row.
+        expect(rank.y).toBeGreaterThanOrEqual(name.y);
+        expect(rank.y + rank.height).toBeLessThanOrEqual(name.y + name.height + 1);
+        const handle = (await row.locator('.drag-handle').boundingBox())!;
+        expect(handle.width).toBeGreaterThanOrEqual(48);
+        expect(handle.height).toBeGreaterThanOrEqual(48);
+      }
+      const target = page.getByRole('spinbutton', { name: 'Target temperature for Termostat hovedsoverom' });
+      await expect(target).toHaveValue('23');
+      const inputSize = await target.evaluate((element) => ({ width: element.clientWidth, needed: element.scrollWidth }));
+      expect(inputSize.width).toBeGreaterThanOrEqual(inputSize.needed);
+      await expectNoHorizontalOverflow(page, `Modes at ${width}px`);
+      await page.locator('#rename-mode-button').click();
+      await expect(page.locator('#mode-name-editor')).toBeVisible();
+      await expectNoHorizontalOverflow(page, `Mode name editor at ${width}px`);
+    });
+
     test(`exposes each top-nav destination exactly once in the a11y tree at ${width}px`, async ({ page }) => {
       await openApp(page, width);
       await expect(page.getByRole('tablist', { name: 'PELS settings sections' })).toBeVisible();
