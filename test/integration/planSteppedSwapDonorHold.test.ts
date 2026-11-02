@@ -9,6 +9,7 @@ import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { steppedPlanDevice, applyRestorePlanForSpec } from '../utils/planTestUtils';
 import { hasReservation, swappedOutFor } from '../utils/swapLedgerFixture';
 import { testLogger } from '../utils/testLogger';
+import { SWAP_RESERVATION_MAX_MS } from '../../lib/plan/planConstants';
 
 /**
  * A stepped device paused to fund a swap stays paused until the swap's target
@@ -298,5 +299,55 @@ describe('stepped swap donor step-down', () => {
       reason: { code: PLAN_REASON_CODES.swappedOut, targetName: 'Water heater' },
     });
     expect(charger && resolvePlannedShedTargetKind(charger)).toBe('binary_off');
+  });
+
+  it('switches an EV donor off when its car draws less than the step, rather than count power a lower step would not free', () => {
+    // The charger is at `max` (3 kW nameplate) but the car takes 1.5 kW, as
+    // near full. `medium` (2 kW nameplate) would not lower that draw, so it
+    // frees nothing sure, and the heater's +1 kW needs the stop.
+    const state = createPlanEngineState();
+    vi.setSystemTime(T0);
+    const approved = applyRestorePlanForSpec({
+      planDevices: [heater('medium'), { ...chargerAt('max', 1.5), isEvCharger: true }],
+      ...buildPlanCycle({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps: deps(T0),
+    });
+    expect(swappedOutFor(state, 'charger')).toBe('heater');
+    const charger = byId(approved.planDevices, 'charger');
+    expect(charger && resolvePlannedShedTargetKind(charger)).toBe('binary_off');
+  });
+
+  it('lets a swap lapse when its donor\'s step-down never reports, and starts again from what the donor reports', () => {
+    const state = createPlanEngineState();
+    vi.setSystemTime(T0);
+    applyRestorePlanForSpec({
+      planDevices: [heater('medium'), chargerAt('max', 3)],
+      ...buildPlanCycle({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps: deps(T0),
+    });
+    expect(swappedOutFor(state, 'charger')).toBe('heater');
+
+    // The charger never reports `medium` (a stale report or a rejected command).
+    state.shedDecisions.lastPlannedShedIds = new Set(['charger']);
+    const lapsedAt = T0 + SWAP_RESERVATION_MAX_MS + 1;
+    vi.setSystemTime(lapsedAt);
+    applyRestorePlanForSpec({
+      planDevices: [heater('medium'), chargerAt('max', 3)],
+      ...buildPlanCycle({ headroomRaw: 0, headroom: 0 }),
+      state,
+      sheddingActive: false,
+      deps: deps(lapsedAt),
+    });
+    // The held step-down is not kept past the reservation ceiling: the old
+    // reservation is dropped, and the heater, still short of room, opens a
+    // fresh swap priced from the charger's reported `max`.
+    expect(state.swapLedger.reservationFor('heater')).toMatchObject({
+      openedAtMs: lapsedAt,
+      donors: new Map([['charger', { kind: 'step', stepId: 'low' }]]),
+    });
   });
 });

@@ -3,7 +3,7 @@ import {
   SWAP_RESTORE_RESERVE_KW,
 } from '../planConstants';
 import { buildRestoreAdmissionMetrics, isRestoreAdmitted, type RestoreAdmissionMetrics } from '../admission';
-import { isSteppedLoadDevice, resolveStepChangeKw } from '../planSteppedLoad';
+import { isSteppedLoadDevice, resolveStepChangeKw, resolveSteppedLoadPlanningKw } from '../planSteppedLoad';
 import { getSteppedLoadLowestActiveStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { getSteppedLoadNextLowerStep } from '../../utils/steppedLoadLadder';
 import type { SwapDonorRelease, SwapLedger } from './swapLedger';
@@ -81,6 +81,13 @@ function isViableSwapCandidate(
  * donor keeps delivering, and a stopped charger can take minutes to draw again
  * once it is restarted. Each step is priced by `resolveStepChangeKw`, so it is
  * never credited with more than the donor is measured drawing.
+ *
+ * An EV charger's lower step is credited only down to its full nameplate. The
+ * step estimate scales a descent by measured over nameplate draw, which fits a
+ * car on fewer phases, but a car limiting itself (tapering near full) keeps the
+ * same draw at the lower step and frees nothing. The swap lets a target start
+ * on this relief, so it takes the sure figure; when no step frees enough that
+ * way, the charger stops, as before steps were offered.
  */
 function resolveDonorRelease(
   onDev: MeteredDevicePlanDevice,
@@ -99,9 +106,12 @@ function resolveDonorRelease(
   ) {
     const change = resolveStepChangeKw(onDev, onDev.selectedStepId, step.id);
     if (change.direction !== 'down') continue;
-    const availableKw = Math.max(0, potentialKw + change.deltaKw - SWAP_RESTORE_RESERVE_KW);
+    const reliefKw = onDev.isEvCharger
+      ? Math.max(0, Math.min(change.deltaKw, onDev.currentDrawKw - resolveSteppedLoadPlanningKw(onDev, step.id)))
+      : change.deltaKw;
+    const availableKw = Math.max(0, potentialKw + reliefKw - SWAP_RESTORE_RESERVE_KW);
     if (isRestoreAdmitted(buildRestoreAdmissionMetrics({ availableKw, neededKw }))) {
-      return { release: { kind: 'step', stepId: step.id }, reliefKw: change.deltaKw };
+      return { release: { kind: 'step', stepId: step.id }, reliefKw };
     }
   }
   return stop;
