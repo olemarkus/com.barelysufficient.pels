@@ -160,7 +160,7 @@ const installBoundary = (options: {
     getUiPickerDevices: () => [],
   });
   const app: ScopedApiApp = pelsHostDouble<ScopedApiApp>({
-    deviceManager: partialDouble<DeviceTransport>({ getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, hasWarmSnapshot: () => true, readInverterControlOptions: () => [] }),
+    deviceManager: partialDouble<DeviceTransport>({ getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, getContestedControl: () => undefined, hasWarmSnapshot: () => true, readInverterControlOptions: () => [] }),
     getModePrioritiesForUi: createFixturePriorityQuery(),
     settingsUiDeviceReads,
     latestTargetSnapshot: [

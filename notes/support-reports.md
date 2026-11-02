@@ -161,7 +161,10 @@ one, and what each report is about, are listed in `REPORTED_EVENTS` in
   hour, reported about that device as of the first of those changes. Its `kind` is
   `reverted` when every time the device went back to its value from before PELS's write
   (the write did not stick, as with a device app that reports a setting its cloud never
-  took), and `overridden` otherwise (a Flow, app or schedule setting its own value). `ControlContestObserver` (`lib/device/controlContestObserver.ts`) records it:
+  took), and `overridden` otherwise (a Flow, app or schedule setting its own value). The
+  same observer answers `/ui_devices`'s `controlContest` for each device while its rounds
+  in the last hour reach the threshold; the settings UI then lists a recommendation and
+  shows a notice above Managed by PELS on the device page, worded by `kind`. `ControlContestObserver` (`lib/device/controlContestObserver.ts`) records it:
   it sees PELS's own writes and every control change transport observes. It does not
   count a device reaching PELS's command, a late echo of one PELS replaced in the last
   two minutes, or a change PELS accepts instead of setting back. A Flow, another app or a schedule that fights PELS on a timer keeps a limit
