@@ -279,20 +279,15 @@ const buildExecutableReleaseIntent = (
   dev: PlanDevice,
   planMeta?: PlanMeta,
 ): ExecutableReleaseIntent | undefined => {
-  const kind = dev.deferredReleaseIntent;
-  if (!kind) return undefined;
+  const release = dev.deferredReleaseIntent;
+  if (!release) return undefined;
+  const { kind } = release;
   // The release intent is producer-resolved in deferred-objective admission. This per-cycle
   // projection only reconciles a binary_restore (resume) against the current cycle's planner
   // state — power-freshness (re-evaluated every cycle, incl. realtime reconcile) and the final
   // plan reason — via shared predicates in planDecisionSemantics. The actual executor
   // (planExecutor) then actuates the resulting intent flatly, without re-checking reasons.
-  if (kind === 'shed_release') {
-    // shed_release fires the device's configured shedBehavior; the executor resolves the
-    // concrete actuation primitive (turn_off / set_temperature / set_step) at apply time.
-    // `releaseShedStepId` is producer-resolved (see `resolveShedIntent`); the lifecycle-end
-    // release path reads it for the stepped-no-binary case and falls back to binary off otherwise.
-    return { kind, deviceId: dev.id, name: dev.name, releaseShedStepId: dev.releaseShedStepId };
-  }
+  if (kind === 'shed_release') return { ...release, deviceId: dev.id, name: dev.name };
   if (kind === 'binary_release') return { kind, deviceId: dev.id, name: dev.name };
   // binary_restore is the only positive (turn-on) intent: require a MEASURED power
   // sample (avoid racing the capacity guard), the device kept, no pending swap target,

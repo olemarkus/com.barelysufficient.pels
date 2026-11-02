@@ -1,3 +1,4 @@
+import type { PlannedReleaseIntent } from '../planContract/releaseIntent';
 import type { CapacityPeriodMinutes } from '../../packages/contracts/src/capacitySettings';
 import type { SoftLimitSource } from '../../packages/contracts/src/settingsUi/plan';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -588,10 +589,9 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
   // One-shot intent emitted by deferred-objective admission when a cap-off device's smart task
   // transitions out of a plannable status (or the device is in an idle bucket). Binary-controlled
   // devices map to 'binary_restore'/'binary_release' and use the dedicated binary executor path;
-  // everything else maps to 'shed_release', which causes the executor to issue the device's
-  // configured shedBehavior (turn_off / set_temperature / set_step) exactly once, gated by
-  // observed-state idempotency.
-  deferredReleaseIntent?: 'binary_restore' | 'binary_release' | 'shed_release';
+  // everything else maps to 'shed_release' with its resolved posture, gated by
+  // observed-state idempotency at execution.
+  deferredReleaseIntent?: PlannedReleaseIntent;
   /** Draw when running, in kW. REQUIRED — see the twin docblock on `PlanInputDevice`. */
   expectedPowerKw: number;
   // `planningPowerKw` is NOT here: it is a stepped-ladder fact and lives on

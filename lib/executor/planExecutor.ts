@@ -1,5 +1,5 @@
 import type {
-  DevicePlan, PendingTargetObservationSource, ShedBehavior,
+  DevicePlan, PendingTargetObservationSource,
 } from '../plan/planTypes';
 import {
   type ExecutorDeviceReadDeps,
@@ -74,7 +74,6 @@ export type PlanExecutorDeps = ShortfallExecutorDeps & ExecutorDeviceReadDeps & 
   actuator: Actuator;
   getCapacityDryRun: () => boolean;
   getOperatingMode: () => string;
-  getShedBehavior: (deviceId: string) => ShedBehavior;
   markSteppedLoadDesiredStepIssued: (params: MarkSteppedLoadDesiredStepIssuedParams) => void;
   getSteppedLoadCommandSession: (deviceId: string) => ExecutableSteppedLoadCommandSession;
   syncLivePlanStateAfterTargetActuation: (source: PendingTargetObservationSource) => boolean | void;
@@ -121,7 +120,6 @@ export class PlanExecutor {
       readDevice: (deviceId) => readExecutorDevice(deps, deviceId),
       getCapacityDryRun: deps.getCapacityDryRun,
       getOperatingMode: deps.getOperatingMode,
-      getShedBehavior: deps.getShedBehavior,
       getSteppedLoadCommandSession: deps.getSteppedLoadCommandSession,
       markSteppedLoadDesiredStepIssued: deps.markSteppedLoadDesiredStepIssued,
       syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,

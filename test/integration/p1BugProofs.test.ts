@@ -68,7 +68,6 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
   });
   const state = createPlanEngineState();
   const deps: PlanExecutorDeps = {
-    getShedBehavior: () => ({ action: 'turn_off' }),
     getHomeDisplayName: () => 'Main home',
     homeId: 'main',
     setCapacityInShortfall: vi.fn(),

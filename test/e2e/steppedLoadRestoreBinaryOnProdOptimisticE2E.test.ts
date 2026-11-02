@@ -236,7 +236,6 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     getShortfallThresholdKw: () => 0,
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
-    getShedBehavior: () => ({ action: 'turn_off' as const }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
     syncLivePlanStateAfterTargetActuation: vi.fn(),
     getSteppedLoadCommandSession: () => ({

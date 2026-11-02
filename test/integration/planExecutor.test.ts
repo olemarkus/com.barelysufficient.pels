@@ -337,7 +337,6 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     getShortfallThresholdKw: () => 0,
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
-    getShedBehavior: () => ({ action: 'turn_off' as const }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
     syncLivePlanStateAfterTargetActuation: vi.fn(),
     getSteppedLoadCommandSession: () => ({
@@ -1234,9 +1233,7 @@ describe('PlanExecutor restore logging', () => {
         binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
       },
-    ], {
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 16 }),
-    });
+    ]);
 
     await executor.applyPlanActions(buildTargetPlan(16, 23));
 
@@ -1459,9 +1456,7 @@ describe('PlanExecutor pending target commands', () => {
         targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
       },
     ];
-    const { executor, deviceManager } = buildExecutor(undefined, snapshot, {
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 16 }),
-    });
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions({
       meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4 }),
@@ -1599,9 +1594,7 @@ describe('PlanExecutor pending target commands', () => {
         binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
       },
-    ], {
-      getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
-    });
+    ]);
 
     await executor.applyPlanActions({
       meta: buildPlanMeta({
@@ -2344,7 +2337,7 @@ describe('PlanExecutor stepped loads', () => {
       reportedStepId: 'max',
       desiredStepId: 'max',
       releaseShedStepId: 'low',
-      deferredReleaseIntent: 'shed_release',
+      deferredReleaseIntent: { kind: 'shed_release', posture: { kind: 'step', stepId: 'low' } },
       reason: { code: PLAN_REASON_CODES.capacityControlOff },
     });
     const { executor, desiredSteppedTrigger } = buildExecutor(
@@ -2354,7 +2347,7 @@ describe('PlanExecutor stepped loads', () => {
         binaryControl: undefined,
         reportedStepId: 'max',
       }),
-      { getShedBehavior: () => ({ action: 'set_step' }) },
+      {},
     );
 
     await executor.applyPlanActions(plan);
@@ -2735,7 +2728,7 @@ describe('PlanExecutor stepped loads', () => {
       binaryCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_paused',
       binaryControl: { on: false },
-      deferredReleaseIntent: 'binary_restore',
+      deferredReleaseIntent: { kind: 'binary_restore' },
       ...overrides,
     })],
     inverterDecisions: [],
@@ -2754,7 +2747,7 @@ describe('PlanExecutor stepped loads', () => {
     expect(executor.hasStablePlanActuation(evDeadlinePlan({
       evChargingState: 'plugged_in_charging',
       binaryControl: { on: true },
-      deferredReleaseIntent: 'binary_release',
+      deferredReleaseIntent: { kind: 'binary_release' },
     }))).toBe(true);
   });
 

@@ -8,7 +8,6 @@ import type {
   ExecutableReleaseIntent,
   ExecutableSteppedLoadIntent,
 } from '../../lib/executor/executablePlan';
-import type { ShedBehavior } from '../../lib/plan/planTypes';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 vi.mock('../../lib/executor/targetExecutor', () => ({
@@ -29,8 +28,11 @@ const mockedApplyTargetUpdate = applyTargetUpdate as unknown as ReturnType<typeo
 const mockedApplyBinaryLifecycleRelease = applyBinaryLifecycleRelease as unknown as ReturnType<typeof vi.fn>;
 const mockedApplySteppedLoadCommand = applySteppedLoadCommand as unknown as ReturnType<typeof vi.fn>;
 
-const buildIntent = (overrides?: Partial<ExecutableReleaseIntent>): ExecutableReleaseIntent => ({
+type ShedReleaseIntent = Extract<ExecutableReleaseIntent, { kind: 'shed_release' }>;
+
+const buildIntent = (overrides?: Partial<ShedReleaseIntent>): ShedReleaseIntent => ({
   kind: 'shed_release',
+  posture: { kind: 'binary_off' },
   deviceId: 'dev-1',
   name: 'Device 1',
   ...overrides,
@@ -75,12 +77,8 @@ const buildSteppedLoadIntent = (
 });
 
 const buildCtx = (
-  behavior: ShedBehavior,
   overrides: Partial<ExecutorCommandContext> = {},
-): ExecutorCommandContext => createTestExecutorCommandContext(createPlanEngineState(), {
-  getShedBehavior: () => behavior,
-  ...overrides,
-});
+): ExecutorCommandContext => createTestExecutorCommandContext(createPlanEngineState(), overrides);
 
 describe('applyShedReleaseIntent', () => {
   beforeEach(() => {
@@ -90,7 +88,7 @@ describe('applyShedReleaseIntent', () => {
   });
 
   it('returns false for an EV intent (this dispatch is for non-EV release only)', async () => {
-    const ctx = buildCtx({ action: 'turn_off' });
+    const ctx = buildCtx();
     const result = await applyShedReleaseIntent(
       ctx,
       { kind: 'binary_release', deviceId: 'dev-1', name: 'Device 1' },
@@ -102,7 +100,7 @@ describe('applyShedReleaseIntent', () => {
   });
 
   it('fires a binary turn-off when shedBehavior is turn_off and the device is currently on', async () => {
-    const ctx = buildCtx({ action: 'turn_off' });
+    const ctx = buildCtx();
     const result = await applyShedReleaseIntent(
       ctx,
       buildIntent(),
@@ -117,7 +115,7 @@ describe('applyShedReleaseIntent', () => {
     // The binary disable must carry lifecycleRelease so both the direct write and any
     // deferred flow-backed confirmation record via the diagnostic-only recorder (no
     // capacity cooldown markers), and skip the capacity throttle / pendingSheds path.
-    const ctx = buildCtx({ action: 'turn_off' });
+    const ctx = buildCtx();
     await applyShedReleaseIntent(
       ctx,
       buildIntent(),
@@ -136,7 +134,7 @@ describe('applyShedReleaseIntent', () => {
   });
 
   it('skips the binary write when the binary axis already reads "off" (idempotent)', async () => {
-    const ctx = buildCtx({ action: 'turn_off' });
+    const ctx = buildCtx();
     const result = await applyShedReleaseIntent(
       ctx,
       buildIntent(),
@@ -156,7 +154,7 @@ describe('applyShedReleaseIntent', () => {
     // `binaryControlObservation`.) So this asserts robustness of the comparison
     // rather than a state the app can be in; it is deliberately cast past the
     // type, and it is not evidence that a third state exists.
-    const ctx = buildCtx({ action: 'turn_off' });
+    const ctx = buildCtx();
     const result = await applyShedReleaseIntent(
       ctx,
       buildIntent(),
@@ -173,13 +171,11 @@ describe('applyShedReleaseIntent', () => {
 
   it('fires a target write at the shed temperature when shedBehavior is set_temperature', async () => {
     const recordReleaseShedActuation = vi.fn();
-    const ctx = buildCtx(
-      { action: 'set_temperature', temperature: 18 },
-      { recordReleaseShedActuation },
+    const ctx = buildCtx({ recordReleaseShedActuation },
     );
     const result = await applyShedReleaseIntent(
       ctx,
-      buildIntent(),
+      buildIntent({ posture: { kind: 'target_value', target: 18 } }),
       undefined,
       buildObserved({
         target: { observedValue: 22 },
@@ -202,13 +198,11 @@ describe('applyShedReleaseIntent', () => {
 
   it('does not record a pels_shed event when the temperature target is skipped (no double-record)', async () => {
     const recordReleaseShedActuation = vi.fn();
-    const ctx = buildCtx(
-      { action: 'set_temperature', temperature: 18 },
-      { recordReleaseShedActuation },
+    const ctx = buildCtx({ recordReleaseShedActuation },
     );
     const result = await applyShedReleaseIntent(
       ctx,
-      buildIntent(),
+      buildIntent({ posture: { kind: 'target_value', target: 18 } }),
       undefined,
       buildObserved({
         target: { observedValue: 18 },
@@ -221,10 +215,10 @@ describe('applyShedReleaseIntent', () => {
   });
 
   it('skips the temperature write when the observed target already equals the shed temperature', async () => {
-    const ctx = buildCtx({ action: 'set_temperature', temperature: 18 });
+    const ctx = buildCtx();
     const result = await applyShedReleaseIntent(
       ctx,
-      buildIntent(),
+      buildIntent({ posture: { kind: 'target_value', target: 18 } }),
       undefined,
       buildObserved({
         target: { observedValue: 18 },
@@ -236,7 +230,7 @@ describe('applyShedReleaseIntent', () => {
   });
 
   it('routes set_step shedBehavior through the binary off path when the device has binary control', async () => {
-    const ctx = buildCtx({ action: 'set_step' });
+    const ctx = buildCtx();
     const result = await applyShedReleaseIntent(
       ctx,
       buildIntent(),
@@ -256,10 +250,10 @@ describe('applyShedReleaseIntent', () => {
   // `!snapshot.binaryCapabilityId` routing above ever changes, that guarantee is
   // gone and the admission needs its own "does PELS want this device on?" gate.
   it('never dispatches a stepped release for a binary-capable device observed off at a non-off step', async () => {
-    const ctx = buildCtx({ action: 'set_step' });
+    const ctx = buildCtx();
     const result = await applyShedReleaseIntent(
       ctx,
-      buildIntent({ releaseShedStepId: 'low' }),
+      buildIntent({ posture: { kind: 'step', stepId: 'low' } }),
       buildSteppedLoadIntent(),
       // The prod shape: PELS turned the charger off, and the flow then reported a
       // higher step (Easee reverting to 32 A) which is now observed truth.
@@ -284,13 +278,11 @@ describe('applyShedReleaseIntent', () => {
 
   it('fires a stepped-load command for set_step on a stepped-only device with no binary control', async () => {
     const recordReleaseShedActuation = vi.fn();
-    const ctx = buildCtx(
-      { action: 'set_step' },
-      { recordReleaseShedActuation },
+    const ctx = buildCtx({ recordReleaseShedActuation },
     );
     const result = await applyShedReleaseIntent(
       ctx,
-      buildIntent({ releaseShedStepId: 'low' }),
+      buildIntent({ posture: { kind: 'step', stepId: 'low' } }),
       buildSteppedLoadIntent(),
       buildObserved({
         steppedLoad: { on: true, stepId: 'high', reportedStepId: 'high', currentDrawKw: 0 },
@@ -318,12 +310,12 @@ describe('applyShedReleaseIntent', () => {
 
   it('uses the producer-resolved step (lowest-active fallback) when the configured stepId is null', async () => {
     // The producer's release cascade picks `lowest-active` when no preferred stepId is
-    // configured; the consumer just reads `intent.releaseShedStepId`. This test simulates that
+    // configured; the consumer just reads `intent.posture.stepId`. This test simulates that
     // producer-side resolution by passing the already-resolved id on the intent.
-    const ctx = buildCtx({ action: 'set_step' });
+    const ctx = buildCtx();
     const result = await applyShedReleaseIntent(
       ctx,
-      buildIntent({ releaseShedStepId: 'low' }),
+      buildIntent({ posture: { kind: 'step', stepId: 'low' } }),
       buildSteppedLoadIntent(),
       buildObserved({
         steppedLoad: { on: true, stepId: 'high', reportedStepId: 'high', currentDrawKw: 0 },
@@ -336,26 +328,11 @@ describe('applyShedReleaseIntent', () => {
     expect(action.intent.desired.stepId).toBe('low');
   });
 
-  it('skips the stepped re-projection when intent.releaseShedStepId is null (degenerate profile)', async () => {
-    const ctx = buildCtx({ action: 'set_step' });
-    const result = await applyShedReleaseIntent(
-      ctx,
-      buildIntent({ releaseShedStepId: null }),
-      buildSteppedLoadIntent(),
-      buildObserved({
-        steppedLoad: { on: true, stepId: 'high', currentDrawKw: 0 },
-        snapshot: { id: 'dev-1' } as never,
-      }),
-    );
-    expect(result).toBe(false);
-    expect(mockedApplySteppedLoadCommand).not.toHaveBeenCalled();
-  });
-
   it('skips the stepped re-projection when the device is already at the shed step (idempotent)', async () => {
-    const ctx = buildCtx({ action: 'set_step' });
+    const ctx = buildCtx();
     const result = await applyShedReleaseIntent(
       ctx,
-      buildIntent({ releaseShedStepId: 'low' }),
+      buildIntent({ posture: { kind: 'step', stepId: 'low' } }),
       buildSteppedLoadIntent(),
       buildObserved({
         steppedLoad: { on: true, stepId: 'low', reportedStepId: 'low', currentDrawKw: 0 },
@@ -367,10 +344,10 @@ describe('applyShedReleaseIntent', () => {
   });
 
   it('skips the stepped re-projection when the device is already below the shed step (never step up)', async () => {
-    const ctx = buildCtx({ action: 'set_step' });
+    const ctx = buildCtx();
     const result = await applyShedReleaseIntent(
       ctx,
-      buildIntent({ releaseShedStepId: 'mid' }),
+      buildIntent({ posture: { kind: 'step', stepId: 'mid' } }),
       buildSteppedLoadIntent(),
       buildObserved({
         steppedLoad: { on: true, stepId: 'low', reportedStepId: 'low', currentDrawKw: 0 },
@@ -382,7 +359,7 @@ describe('applyShedReleaseIntent', () => {
   });
 
   it('skips turn_off shedBehavior on a device without binary control', async () => {
-    const ctx = buildCtx({ action: 'turn_off' });
+    const ctx = buildCtx();
     const result = await applyShedReleaseIntent(
       ctx,
       buildIntent(),
@@ -395,10 +372,10 @@ describe('applyShedReleaseIntent', () => {
   });
 
   it('skips stepped release when selected state exists but no reported step id is present', async () => {
-    const ctx = buildCtx({ action: 'set_step' });
+    const ctx = buildCtx();
     const result = await applyShedReleaseIntent(
       ctx,
-      buildIntent({ releaseShedStepId: 'low' }),
+      buildIntent({ posture: { kind: 'step', stepId: 'low' } }),
       buildSteppedLoadIntent(),
       buildObserved({
         steppedLoad: { on: true, stepId: 'high', reportedStepId: undefined, currentDrawKw: 0 },
@@ -410,10 +387,10 @@ describe('applyShedReleaseIntent', () => {
   });
 
   it('skips stepped release when the observed step id is not in the current profile (ambiguous state)', async () => {
-    const ctx = buildCtx({ action: 'set_step' });
+    const ctx = buildCtx();
     const result = await applyShedReleaseIntent(
       ctx,
-      buildIntent({ releaseShedStepId: 'low' }),
+      buildIntent({ posture: { kind: 'step', stepId: 'low' } }),
       buildSteppedLoadIntent(),
       buildObserved({
         steppedLoad: {
@@ -430,18 +407,18 @@ describe('applyShedReleaseIntent', () => {
   });
 
   it('skips stepped release when the planner has a step command awaiting confirmation', async () => {
-    const ctx = buildCtx({ action: 'set_step' });
+    const ctx = buildCtx();
     const result = await applyShedReleaseIntent(
       ctx,
-      buildIntent(),
+      buildIntent({ posture: { kind: 'step', stepId: 'low' } }),
       buildSteppedLoadIntent({
         matchingCommandAttempt: {
           status: 'awaiting_confirmation',
           requestedStepId: 'mid',
-        } as never,
+        },
       }),
       buildObserved({
-        steppedLoad: { on: true, stepId: 'high', currentDrawKw: 0 },
+        steppedLoad: { on: true, stepId: 'high', reportedStepId: 'high', currentDrawKw: 0 },
         snapshot: { id: 'dev-1' } as never,
       }),
     );
@@ -450,15 +427,15 @@ describe('applyShedReleaseIntent', () => {
   });
 
   it('skips stepped release when a step-command retry is scheduled', async () => {
-    const ctx = buildCtx({ action: 'set_step' });
+    const ctx = buildCtx();
     const result = await applyShedReleaseIntent(
       ctx,
-      buildIntent(),
+      buildIntent({ posture: { kind: 'step', stepId: 'low' } }),
       buildSteppedLoadIntent({
-        nextStepCommandRetryAtMs: Date.now() + 60_000,
+        matchingCommandAttempt: { status: 'retry_backoff', requestedStepId: 'low' },
       }),
       buildObserved({
-        steppedLoad: { on: true, stepId: 'high', currentDrawKw: 0 },
+        steppedLoad: { on: true, stepId: 'high', reportedStepId: 'high', currentDrawKw: 0 },
         snapshot: { id: 'dev-1' } as never,
       }),
     );

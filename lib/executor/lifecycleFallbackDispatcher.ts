@@ -319,7 +319,8 @@ export class LifecycleFallbackDispatcher {
     forceAgainstReleasedOpposing: boolean,
   ): void {
     const intent: ExecutableReleaseIntent = {
-      kind: 'shed_release', deviceId: observed.id, name: observed.name, releaseShedStepId: null,
+      kind: 'shed_release', deviceId: observed.id, name: observed.name,
+      posture: { kind: 'target_value', target: desired },
     };
     void this.dispatch(observed, authorityToken, async () => {
       const deviceId = observed.id;
@@ -345,7 +346,7 @@ export class LifecycleFallbackDispatcher {
     forceAgainstReleasedOpposing: boolean,
   ): void {
     const intent: ExecutableReleaseIntent = {
-      kind: 'shed_release', deviceId: observed.id, name: observed.name, releaseShedStepId: targetStepId,
+      kind: 'shed_release', deviceId: observed.id, name: observed.name, posture: { kind: 'step', stepId: targetStepId },
     };
     void this.dispatch(observed, authorityToken, () => applyShedReleaseStepFallback(
       this.lifecycleContext(observed.id, authorityToken), intent, steppedLoad, observed, forceAgainstReleasedOpposing,

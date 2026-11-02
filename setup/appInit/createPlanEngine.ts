@@ -169,7 +169,6 @@ export function createPlanEngineComposition(
     getShortfallThresholdKw: () => builder.computeShortfallThreshold(),
     getCapacityDryRun: scope.getCapacityDryRun,
     getOperatingMode: scope.getOperatingMode,
-    getShedBehavior,
     markSteppedLoadDesiredStepIssued: (params) => ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(params),
     getSteppedLoadCommandSession: (deviceId) => (
       ctx.deviceControlHelpers.getSteppedLoadCommandSession(deviceId)

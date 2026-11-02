@@ -46,6 +46,10 @@ const resolvePlanDeviceObservedOn = (device: PlanDevice): boolean | null => {
   return null;
 };
 
+const isIdleTaskReleaseWithoutAuthority = (dev: PlanDevice): boolean => (
+  !dev.control.commandAuthority && dev.deferredReleaseIntent?.kind === 'shed_release'
+);
+
 export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSteppedLoadIntent | undefined {
   if (!isSteppedLoadDevice(dev)) return undefined;
   // A restore hold may allow lowering a controlled device; lack of authority
@@ -59,7 +63,7 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
   };
   const plannedStepId = resolveSteppedKeepDesiredStepId(dev);
   const held = isHeldByPlanReason(dev);
-  const releaseWithoutAuthority = !dev.control.commandAuthority && dev.deferredReleaseIntent === 'shed_release';
+  const releaseWithoutAuthority = isIdleTaskReleaseWithoutAuthority(dev);
   // The step-only lifecycle release needs the ladder even when the ordinary
   // plan leaves the rung alone. Its dispatcher resolves the release step.
   if (held && !releaseWithoutAuthority && !isKeptStepDown(dev, planningCurrent, plannedStepId)) return undefined;

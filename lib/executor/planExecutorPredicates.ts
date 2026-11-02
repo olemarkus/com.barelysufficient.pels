@@ -37,13 +37,13 @@ export function hasStableUncontrolledRestoreActuation(
 
 export function hasStableBinaryReleaseActuation(dev: DevicePlan['devices'][number]): boolean {
   if (dev.binaryCommandPending === true) return false;
-  if (dev.deferredReleaseIntent === 'binary_restore') {
+  if (dev.deferredReleaseIntent?.kind === 'binary_restore') {
     // Released = off-but-commandable, the only state a restore acts on. A device
     // with no control capability this cycle is not binary → not "observed off".
     // `currentOn` is the producer-resolved on/off truth (binary axis + stepped-off).
     return isBinaryPlanDevice(dev) && dev.currentOn === false && isCommandableNow(dev);
   }
-  if (dev.deferredReleaseIntent === 'binary_release') {
+  if (dev.deferredReleaseIntent?.kind === 'binary_release') {
     // On (the consolidated binary truth = `currentOn`). Non-binary keeps the prior
     // "on/unknown" default (true) so a release without observed-off evidence is not
     // yet stable.

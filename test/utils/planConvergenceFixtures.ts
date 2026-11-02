@@ -195,7 +195,7 @@ export const buildEvDevice = (
   isEvCharger: true,
   binaryCapabilityId: 'evcharger_charging',
   evChargingState: 'plugged_in_paused',
-  deferredReleaseIntent: 'binary_restore',
+  deferredReleaseIntent: { kind: 'binary_restore' },
   ...overrides,
 });
 

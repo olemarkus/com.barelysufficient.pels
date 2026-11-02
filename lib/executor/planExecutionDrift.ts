@@ -156,10 +156,9 @@ function hasExecutableBinaryExecutionDrift(
   if (release && (release.kind === 'binary_restore' || release.kind === 'binary_release')) {
     return hasExecutableBinaryReleaseExecutionDrift({ ...release, kind: release.kind }, observed, runtime);
   }
-  // shed_release is materialized at apply time via getShedBehavior; the resulting actuation
-  // (binary off, target setpoint write, stepped command) reuses the same axis-specific
-  // executor primitives that have their own pending-command dampening, so drift here is the
-  // empty case — re-emission cycle-over-cycle is the intended idempotent behaviour.
+  // Idle-task release carries its resolved posture. Its axis-specific primitives
+  // retain their pending-command dampening; the ordinary drift projection does
+  // not yet compare that release posture here.
   const expectedBinaryState = resolveExpectedBinaryStateForIntent(intent);
   return hasBinaryStateDrift(expectedBinaryState, observed, runtime.pendingBinary);
 }

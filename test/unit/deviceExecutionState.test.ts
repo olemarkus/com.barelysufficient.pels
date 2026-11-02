@@ -92,7 +92,7 @@ describe('resolveDeviceExecutionState', () => {
     const offStep = profile?.steps.find((step) => step.planningPowerW === 0);
     if (!offStep) throw new Error('fixture needs an off rung');
     const intent = buildExecutableDeviceIntent(steppedPlanDevice({
-      id: offPlan.id, plannedState: 'keep', controllable: false, deferredReleaseIntent: 'binary_release',
+      id: offPlan.id, plannedState: 'keep', controllable: false, deferredReleaseIntent: { kind: 'binary_release' },
     }));
     const state = resolveDeviceExecutionState(intent, observe(true, offStep.id), noCommands, false);
     expect(state).toMatchObject({ physicalState: 'off', desiredBinary: 'off', binaryProgress: 'unmet' });

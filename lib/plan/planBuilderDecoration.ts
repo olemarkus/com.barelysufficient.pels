@@ -1,10 +1,15 @@
 /**
  * Deferred-objective (smart-task) decoration helpers sliced out of
  * `planBuilder.ts`. The identity bundle is the no-smart-task fallback; the
- * release-intent attach copies the decoration seam's intents onto plan devices.
- * Behaviour is unchanged — these moved verbatim from the builder.
+ * release-intent attach resolves requested releases into the posture this plan
+ * commands. Execution consumes that decision without reading policy.
  */
-import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
+import type { DevicePlanDevice, PlanInputDevice, ShedBehavior } from './planTypes';
+import { isBinaryPlanDevice } from './planBinaryDevice';
+import { isSteppedLoadDevice } from './planSteppedLoad';
+import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
+import type { ShedReleasePosture } from '../planContract/releaseIntent';
+import { getDebugEmitter } from '../logging/logger';
 import type {
   DeferredDecorationBundle,
   DeferredDecorationInput,
@@ -50,12 +55,37 @@ export function attachDeferredReleaseIntents(
   planDevices: DevicePlanDevice[],
   intentByDeviceId: Record<string, DeferredReleaseIntent>,
   binaryRestoreAllowed: boolean,
+  getShedBehavior: (deviceId: string) => ShedBehavior,
 ): DevicePlanDevice[] {
   if (Object.keys(intentByDeviceId).length === 0) return planDevices;
   return planDevices.map((device) => {
     const deferredReleaseIntent = intentByDeviceId[device.id];
     if (!deferredReleaseIntent) return device;
     if (deferredReleaseIntent === 'binary_restore' && !binaryRestoreAllowed) return device;
-    return { ...device, deferredReleaseIntent };
+    if (deferredReleaseIntent !== 'shed_release') {
+      return { ...device, deferredReleaseIntent: { kind: deferredReleaseIntent } };
+    }
+    const posture = resolveShedReleasePosture(device, getShedBehavior(device.id));
+    return posture ? { ...device, deferredReleaseIntent: { kind: 'shed_release', posture } } : device;
   });
+}
+
+const emitPlanDebug = getDebugEmitter('plan', 'plan');
+
+/** The idle-task lane honors its configured policy even after task authority ends. */
+function resolveShedReleasePosture(device: DevicePlanDevice, behavior: ShedBehavior): ShedReleasePosture | undefined {
+  if (behavior.action === 'set_temperature') return { kind: 'target_value', target: behavior.temperature };
+  if (behavior.action === 'turn_off' || isBinaryPlanDevice(device)) return { kind: 'binary_off' };
+  if (isSteppedLoadDevice(device) && device.releaseShedStepId
+    && getSteppedLoadStep(device.steppedLoadProfile, device.releaseShedStepId)) {
+    return { kind: 'step', stepId: device.releaseShedStepId };
+  }
+  emitPlanDebug({
+    event: 'shed_release_skipped',
+    reasonCode: 'no_producer_step_target',
+    deviceId: device.id,
+    deviceName: device.name,
+    releaseShedStepId: device.releaseShedStepId ?? null,
+  });
+  return undefined;
 }

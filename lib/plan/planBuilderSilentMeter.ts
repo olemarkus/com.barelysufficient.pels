@@ -134,7 +134,9 @@ export class SilentMeterPlanBuilder {
     // Smart-task release intents still ride the plan (a release is a negative
     // command, safe without a measurement); a `binary_restore` is the one
     // positive intent and needs a measured cycle, which this is not.
-    planDevices = attachDeferredReleaseIntents(planDevices, decoration.deferredReleaseIntentByDeviceId, false);
+    planDevices = attachDeferredReleaseIntents(
+      planDevices, decoration.deferredReleaseIntentByDeviceId, false, this.deps.getShedBehavior,
+    );
     const finalized = this.stages.finalizePlan(
       planDevices,
       context.temperatureSetpoints,

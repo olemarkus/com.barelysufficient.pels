@@ -18,12 +18,17 @@
  *
  * Approach: rather than re-wire a complete deferred-objective allocation around
  * this executor-focused assertion, we drive the
- * release dispatch directly through `applyShedReleaseIntent`, using the real
+ * release from the real planner decoration and executable projection through
+ * `applyShedReleaseIntent`, using the real
  * `applyBinaryLifecycleRelease` / `applyTargetUpdate` executors (no mocks for
  * the dispatch itself). The intent shape is exactly what the planner emits in
  * the cap-off idle-bucket case, so the executor's view of the world is
  * production-faithful.
  */
+import { attachDeferredReleaseIntents } from '../../lib/plan/planBuilderDecoration';
+import { buildExecutablePlan } from '../../lib/executor/executablePlanProjection';
+import { hasReleaseCommand } from '../../lib/executor/executablePlan';
+import { buildPlanDevice, buildPlanMeta } from '../utils/planTestUtils';
 import { applyShedReleaseIntent } from '../../lib/executor/shedReleaseActuation';
 import { applyBinarySheddingToDevice } from '../../lib/executor/binaryExecutor';
 import type { ExecutorCommandContext } from '../../lib/executor/executorCommandContext';
@@ -204,11 +209,23 @@ const buildHarnessNoSnapshotMutation = (devices: TargetDeviceSnapshot[]): Return
   };
 };
 
-const buildIntent = (deviceId: string, name: string): ExecutableReleaseIntent => ({
-  kind: 'shed_release',
-  deviceId,
-  name,
-});
+const buildIntent = (snapshot: TargetDeviceSnapshot, behavior: ShedBehavior): ExecutableReleaseIntent => {
+  const device = buildPlanDevice({
+    id: snapshot.id,
+    name: snapshot.name,
+    deviceType: snapshot.targets.length > 0 ? 'temperature' : 'onoff',
+    controllable: false,
+    currentTarget: 22,
+    currentTemperature: 22,
+    plannedTarget: 22,
+  });
+  const devices = attachDeferredReleaseIntents([device], { [device.id]: 'shed_release' }, true, () => behavior);
+  const [intent] = buildExecutablePlan({
+    meta: buildPlanMeta(), devices, inverterDecisions: [], storageReleases: [],
+  }).devices;
+  if (!intent || !hasReleaseCommand(intent)) throw new Error('Expected the planner to emit the idle-task release');
+  return intent.release;
+};
 
 const buildObserved = (
   deviceId: string,
@@ -229,21 +246,15 @@ const buildObserved = (
   commandableNow: overrides?.commandableNow ?? true,
 });
 
-/** The harness context with the device's configured release posture. */
-const withShedBehavior = (ctx: ExecutorCommandContext, shedBehavior: ShedBehavior): ExecutorCommandContext => ({
-  ...ctx,
-  getShedBehavior: () => shedBehavior,
-});
-
 describe('idle-bucket release for non-EV devices — integration', () => {
   it('binary heater: fires the configured turn-off once, then is idempotent on re-emission', async () => {
       const heater = buildBinaryHeaterSnapshot();
       const harness = buildHarness([heater]);
 
       // First released-bucket cycle: shed_release intent → binary turn-off.
-      const intent = buildIntent(heater.id, heater.name);
+      const intent = buildIntent(heater, { action: 'turn_off' });
       const observed = buildObserved(heater.id, heater.name, heater);
-      const ctx = withShedBehavior(harness.ctx, { action: 'turn_off' });
+      const ctx = harness.ctx;
       const firstResult = await applyShedReleaseIntent(ctx, intent, undefined, observed);
 
       expect(firstResult).toBe(true);
@@ -286,9 +297,9 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       // already-off gate does NOT short-circuit; we want to verify the
       // throttle, not the already-off path.
       const racedSnap = { ...heater, binaryControl: { on: true } } as TargetDeviceSnapshot;
-      const intent = buildIntent(heater.id, heater.name);
+      const intent = buildIntent(heater, { action: 'turn_off' });
       const observed = buildObserved(heater.id, heater.name, racedSnap, { binaryControl: { on: true } });
-      const ctx = withShedBehavior(harness.ctx, { action: 'turn_off' });
+      const ctx = harness.ctx;
       // `shouldSkipShedding` only asks whether the device is reachable and
       // whether one of THIS executor's writes is still in flight
       // (the record's in-flight shed set), and pendingSheds is cleared in the first call's
@@ -309,11 +320,11 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       const harness = buildHarness([thermostat]);
       const shedTemperature = 15;
 
-      const intent = buildIntent(thermostat.id, thermostat.name);
+      const intent = buildIntent(thermostat, { action: 'set_temperature', temperature: shedTemperature });
       const observed = buildObserved(thermostat.id, thermostat.name, thermostat, {
         target: { observedValue: 22 },
       });
-      const ctx = withShedBehavior(harness.ctx, { action: 'set_temperature', temperature: shedTemperature });
+      const ctx = harness.ctx;
 
       // First cycle.
       const firstResult = await applyShedReleaseIntent(ctx, intent, undefined, observed);
@@ -360,11 +371,11 @@ describe('idle-bucket release for non-EV devices — integration', () => {
       const harness = buildHarnessNoSnapshotMutation([thermostat]);
       const shedTemperature = 15;
 
-      const intent = buildIntent(thermostat.id, thermostat.name);
+      const intent = buildIntent(thermostat, { action: 'set_temperature', temperature: shedTemperature });
       const initialObserved = buildObserved(thermostat.id, thermostat.name, thermostat, {
         target: { observedValue: 22 },
       });
-      const ctx = withShedBehavior(harness.ctx, { action: 'set_temperature', temperature: shedTemperature });
+      const ctx = harness.ctx;
       const firstResult = await applyShedReleaseIntent(ctx, intent, undefined, initialObserved);
       expect(firstResult).toBe(true);
 

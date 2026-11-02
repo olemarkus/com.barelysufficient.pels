@@ -1,4 +1,4 @@
-import type { PendingTargetObservationSource, ShedBehavior } from '../plan/planTypes';
+import type { PendingTargetObservationSource } from '../plan/planTypes';
 import type { PendingTargetCommandState, PlanEngineState } from '../plan/planState';
 import type { Actuator } from '../actuator/deviceActuator';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
@@ -56,7 +56,6 @@ export type ExecutorCommandContext = {
   readDevice: (deviceId: string) => ExecutorDeviceRead | undefined;
   getCapacityDryRun: () => boolean;
   getOperatingMode: () => string;
-  getShedBehavior: (deviceId: string) => ShedBehavior;
   getSteppedLoadCommandSession: (deviceId: string) => ExecutableSteppedLoadCommandSession;
   markSteppedLoadDesiredStepIssued: (params: MarkSteppedLoadDesiredStepIssuedParams) => void;
   syncLivePlanStateAfterTargetActuation: (source: PendingTargetObservationSource) => boolean | void;

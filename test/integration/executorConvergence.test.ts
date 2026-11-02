@@ -266,7 +266,7 @@ describe('executorConvergence stepped device drift', () => {
     it('treats charging EV state as drift when a deadline pause is expected', () => {
       const plan = buildPlan([buildEvDevice({
         evChargingState: 'plugged_in_charging',
-        deferredReleaseIntent: 'binary_release',
+        deferredReleaseIntent: { kind: 'binary_release' },
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'ev-1',
@@ -286,7 +286,7 @@ describe('executorConvergence stepped device drift', () => {
     it('dampens EV deadline pause drift while the matching binary command is pending', () => {
       const plan = buildPlan([buildEvDevice({
         evChargingState: 'plugged_in_charging',
-        deferredReleaseIntent: 'binary_release',
+        deferredReleaseIntent: { kind: 'binary_release' },
       })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'ev-1',
@@ -990,7 +990,6 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
       getShortfallThresholdKw: () => 0,
       getCapacityDryRun: () => false,
       getOperatingMode: () => 'Home',
-      getShedBehavior: () => ({ action: 'turn_off' as const }),
       markSteppedLoadDesiredStepIssued: vi.fn(),
       syncLivePlanStateAfterTargetActuation: vi.fn(),
       getSteppedLoadCommandSession: () => ({
@@ -1013,7 +1012,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
       currentState: 'off' as const,
       plannedState: 'keep',
       plannedTarget: undefined,
-      deferredReleaseIntent: 'binary_restore',
+      deferredReleaseIntent: { kind: 'binary_restore' },
     })])
   );
 
