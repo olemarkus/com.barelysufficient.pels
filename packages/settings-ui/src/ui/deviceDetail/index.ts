@@ -85,6 +85,7 @@ import {
   renderTemperatureBoostSettings,
 } from './temperatureBoost.ts';
 import { persistDeviceControlProfile as persistDeviceControlProfileWrite } from './controlProfileWrite.ts';
+import { renderDeviceDetailControlContest } from './controlContest.ts';
 import {
   resetNativeWiringSetupDisclosure,
   initDeviceDetailNativeWiringHandler,
@@ -211,6 +212,7 @@ const setDeviceDetailControlStates = (deviceId: string, device: SettingsUiDevice
   const controlState = resolveDeviceDetailControlState(device, deviceId);
 
   setDeviceDetailNativeWiringState(device);
+  renderDeviceDetailControlContest(device);
   renderManagedControl(device, controlState);
   renderDeviceDetailBattery(device);
   setContinuousBatteryPlanDevice(device);

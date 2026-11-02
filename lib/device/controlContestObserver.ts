@@ -1,5 +1,6 @@
 import type { DeviceJournal } from '../ports/deviceJournal';
 import type { CapabilityWrite } from './deviceAdapter';
+import type { ContestKind, ContestedControl } from '../../packages/contracts/src/controlContest';
 import type { ObservedControlStateChangedEvent } from '../ports/observedStateEvents';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 
@@ -19,28 +20,11 @@ const CONTEST_EVENT_MAX_CHANGES = 8;
 type ControlValue = number | boolean;
 /** `before`: the device's value when PELS wrote, when transport had one. */
 type Command = { value: ControlValue; before?: ControlValue; supersededAtMs?: number };
-/**
- * How a round went: `reverted`, the device went back to its value from before
- * PELS's write (the write did not stick); `overridden`, something set another
- * value (a Flow, app or schedule with its own idea).
- */
-export type ContestKind = 'reverted' | 'overridden';
 type ContestedChange = {
   atMs: number; capabilityId: string; commanded: ControlValue; observed: ControlValue; kind: ContestKind;
 };
 type PendingChange = { deviceName: string; change: ContestedChange };
 
-/** A device whose control setting something outside PELS keeps changing back. */
-export type ContestedControl = {
-  /** The setting changed most recently. */
-  capabilityId: string;
-  /** `reverted` when every round in the window was one, else `overridden`. */
-  kind: ContestKind;
-  /** Rounds within the last {@link CONTEST_WINDOW_MS}. */
-  count: number;
-  /** The first of those rounds. */
-  sinceMs: number;
-};
 
 const commandKey = (deviceId: string, capabilityId: string): string => `${deviceId}\u0000${capabilityId}`;
 
