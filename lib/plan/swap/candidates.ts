@@ -3,7 +3,16 @@ import {
   SWAP_RESTORE_RESERVE_KW,
 } from '../planConstants';
 import { buildRestoreAdmissionMetrics, isRestoreAdmitted, type RestoreAdmissionMetrics } from '../admission';
-import type { SwapLedger } from './swapLedger';
+import { isSteppedLoadDevice, resolveStepChangeKw } from '../planSteppedLoad';
+import { getSteppedLoadLowestActiveStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
+import { getSteppedLoadNextLowerStep } from '../../utils/steppedLoadLadder';
+import type { SwapDonorRelease, SwapLedger } from './swapLedger';
+
+/** A running device the swap pauses, and what it gives up. */
+export type SwapDonor = {
+  device: MeteredDevicePlanDevice;
+  release: SwapDonorRelease;
+};
 
 /**
  * The half of swap viability that does not depend on who wants the power: a
@@ -65,6 +74,39 @@ function isViableSwapCandidate(
   return true;
 }
 
+/**
+ * What a donor gives up, and the draw that frees: the gentlest lower step that
+ * alone completes the swap, or a stop when no step does (and for a device
+ * without steps). A lower step that is enough is preferred over a stop: the
+ * donor keeps delivering, and a stopped charger can take minutes to draw again
+ * once it is restarted. Each step is priced by `resolveStepChangeKw`, so it is
+ * never credited with more than the donor is measured drawing.
+ */
+function resolveDonorRelease(
+  onDev: MeteredDevicePlanDevice,
+  potentialKw: number,
+  neededKw: number,
+): { release: SwapDonorRelease; reliefKw: number } {
+  const stop = { release: { kind: 'off' } as const, reliefKw: onDev.currentDrawKw };
+  if (!isSteppedLoadDevice(onDev)) return stop;
+  const profile = onDev.steppedLoadProfile;
+  const floor = getSteppedLoadLowestActiveStep(profile);
+  if (!floor) return stop;
+  for (
+    let step = getSteppedLoadNextLowerStep(profile, onDev.selectedStepId, floor.id);
+    step !== null;
+    step = getSteppedLoadNextLowerStep(profile, step.id, floor.id)
+  ) {
+    const change = resolveStepChangeKw(onDev, onDev.selectedStepId, step.id);
+    if (change.direction !== 'down') continue;
+    const availableKw = Math.max(0, potentialKw + change.deltaKw - SWAP_RESTORE_RESERVE_KW);
+    if (isRestoreAdmitted(buildRestoreAdmissionMetrics({ availableKw, neededKw }))) {
+      return { release: { kind: 'step', stepId: step.id }, reliefKw: change.deltaKw };
+    }
+  }
+  return stop;
+}
+
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function buildSwapCandidates(
   dev: DevicePlanDevice,
@@ -75,7 +117,7 @@ export function buildSwapCandidates(
   restoredThisCycle: ReadonlySet<string>,
 ): {
   ready: boolean;
-  toShed: MeteredDevicePlanDevice[];
+  toShed: SwapDonor[];
   shedNames: string;
   shedPower: string;
   potentialHeadroom: number;
@@ -87,7 +129,7 @@ export function buildSwapCandidates(
   admission: RestoreAdmissionMetrics;
   reserveKw: number;
 } {
-  const toShed: MeteredDevicePlanDevice[] = [];
+  const toShed: SwapDonor[] = [];
   let currentPotential = availableHeadroom;
   let effectiveHeadroom = Math.max(0, currentPotential - SWAP_RESTORE_RESERVE_KW);
   let admission = buildRestoreAdmissionMetrics({ availableKw: effectiveHeadroom, neededKw: needed });
@@ -95,9 +137,9 @@ export function buildSwapCandidates(
   for (const onDev of onDevices) {
     if (!isViableSwapCandidate(onDev, dev, ledger, restoredThisCycle)) continue;
 
-    const pwr = onDev.currentDrawKw;
-    toShed.push(onDev);
-    currentPotential += pwr;
+    const { release, reliefKw } = resolveDonorRelease(onDev, currentPotential, needed);
+    toShed.push({ device: onDev, release });
+    currentPotential += reliefKw;
     effectiveHeadroom = Math.max(0, currentPotential - SWAP_RESTORE_RESERVE_KW);
     admission = buildRestoreAdmissionMetrics({ availableKw: effectiveHeadroom, neededKw: needed });
 
@@ -105,7 +147,7 @@ export function buildSwapCandidates(
   }
 
   const ready = isRestoreAdmitted(admission);
-  const names = toShed.map((d) => d.name).join(', ');
+  const names = toShed.map((d) => d.device.name).join(', ');
   // Display values from the UNCLAMPED effective headroom. The `Math.max(0, …)`
   // clamp above protects the admission arithmetic, but a margin computed off
   // the clamped value flattens the displayed shortfall to `needed + reserves`

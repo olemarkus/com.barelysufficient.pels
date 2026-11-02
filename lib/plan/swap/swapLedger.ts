@@ -64,10 +64,21 @@ export type SwapWait =
   | { readonly kind: 'lane_shut' }
   | { readonly kind: 'serving'; readonly sinceMs: number };
 
+/**
+ * What a donor gave up for its target: switched off, or kept running at a
+ * lower step. Recorded at approval because the device cannot say it later — a
+ * stepped donor switched off still carries its old step as the plan's step
+ * until it reports off, so "held at a step" and "on its way off" look the same.
+ */
+export type SwapDonorRelease =
+  | { readonly kind: 'off' }
+  | { readonly kind: 'step'; readonly stepId: string };
+
 export type SwapReservation = {
   readonly targetId: string;
   readonly promise: SwapPromise;
-  readonly donorIds: ReadonlySet<string>;
+  /** Keyed by donor id. */
+  readonly donors: ReadonlyMap<string, SwapDonorRelease>;
   /** When the reservation was approved. Basis of the absolute ceiling. */
   readonly openedAtMs: number;
   readonly wait: SwapWait;
@@ -107,19 +118,19 @@ export class SwapLedger {
    * shared `swappedOutFor` map, so the target owned every donor it had ever
    * cost. A plain `set` here would instead drop the earlier donors: they would
    * lose their `swapped_out` reason for the priority rule's `swap_pending`,
-   * stop being waited on by `hasPendingSwapSourcesStillOn`, vanish from
+   * stop being waited on by `hasUnreleasedSwapDonors`, vanish from
    * `swap_settled.donorCount` — the number that event exists to make auditable
    * — and reset `openedAtMs`, so each re-approval would push the absolute
    * ceiling further out.
    *
-   * So the donor set unions and `openedAtMs` is preserved. The serviceable
+   * So the donors merge and `openedAtMs` is preserved. The serviceable
    * window and the plan watermark DO advance: a re-approval is fresh work
    * against a fresh reading, which is exactly what that clock measures.
    */
   open(
     targetId: string,
     promise: SwapPromise,
-    donorIds: ReadonlySet<string>,
+    donors: ReadonlyMap<string, SwapDonorRelease>,
     planMeasurementTs: number,
     nowMs: number,
   ): void {
@@ -127,7 +138,7 @@ export class SwapLedger {
     this.reservations.set(targetId, {
       targetId,
       promise,
-      donorIds: existing === undefined ? donorIds : union(existing.donorIds, donorIds),
+      donors: existing === undefined ? donors : new Map([...existing.donors, ...donors]),
       openedAtMs: existing?.openedAtMs ?? nowMs,
       // Opening is never itself a served cycle: the approval sheds donors, and
       // the executor's shed arms the cooldown that shuts the restore lane. So a
@@ -258,7 +269,7 @@ export class SwapLedger {
       event: 'swap_settled',
       deviceId: reservation.targetId,
       outcome,
-      donorCount: reservation.donorIds.size,
+      donorCount: reservation.donors.size,
     });
   }
 
@@ -301,13 +312,18 @@ export class SwapLedger {
   /** The reservation `donorId` was paused to fund. */
   reservationHolding(donorId: string): SwapReservation | undefined {
     for (const reservation of this.reservations.values()) {
-      if (reservation.donorIds.has(donorId)) return reservation;
+      if (reservation.donors.has(donorId)) return reservation;
     }
     return undefined;
   }
 
   isDonor(donorId: string): boolean {
     return this.reservationHolding(donorId) !== undefined;
+  }
+
+  /** What `donorId` gave up for the reservation it funds, if it funds one. */
+  donorRelease(donorId: string): SwapDonorRelease | undefined {
+    return this.reservationHolding(donorId)?.donors.get(donorId);
   }
 
   /**
@@ -345,19 +361,12 @@ function resolveWait(current: SwapWait, laneOpen: boolean, nowMs: number): SwapW
   return current.kind === 'serving' ? current : { kind: 'serving', sinceMs: nowMs };
 }
 
-/** Donor sets merge rather than replace — see `open`. */
-function union(left: ReadonlySet<string>, right: ReadonlySet<string>): ReadonlySet<string> {
-  const merged = new Set(left);
-  for (const id of right) merged.add(id);
-  return merged;
-}
-
 /** The same reservation carrying a new wait state. */
 function waiting(reservation: SwapReservation, wait: SwapWait): SwapReservation {
   return {
     targetId: reservation.targetId,
     promise: reservation.promise,
-    donorIds: reservation.donorIds,
+    donors: reservation.donors,
     openedAtMs: reservation.openedAtMs,
     wait,
     planMeasurementTs: reservation.planMeasurementTs,

@@ -5,6 +5,7 @@ import {
   buildSwapCandidates,
   hasSwappableDraw,
   resolveSwapPromise,
+  type SwapDonorRelease,
   type SwapLedger,
 } from '../swap';
 import { buildInsufficientHeadroomUpdate, resolveRestorePowerSource } from './accounting';
@@ -12,6 +13,7 @@ import { isOffSteppedRestoreCandidate } from './devices';
 import { buildOffSteppedRestoreHoldUpdate, setRestorePlanDevice as setDevice } from './planDeviceUpdates';
 import type { RestoreNeed } from './support';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
+import { getSteppedLoadStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { buildRestoreAdmissionMetrics } from '../admission';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
@@ -64,7 +66,7 @@ export function attemptSwapRestore(
   const measurementTs = cycle.timing.measurementTs;
   const { admitted: admittedDeviceUpdate, rejected: rejectedDeviceUpdate } = updates;
 
-  if (hasPendingSwapSourcesStillOn(swapLedger, dev.id, deviceMap)) {
+  if (hasUnreleasedSwapDonors(swapLedger, dev.id, deviceMap)) {
     setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
     return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
   }
@@ -117,16 +119,17 @@ export function attemptSwapRestore(
   swapLedger.open(
     dev.id,
     resolveSwapPromise(admittedDeviceUpdate),
-    new Set(swap.toShed.map((shedDev) => shedDev.id)),
+    new Map(swap.toShed.map(({ device, release }) => [device.id, release])),
     measurementTs,
     cycle.timing.nowTs,
   );
-  for (const shedDev of swap.toShed) {
-    setDevice(deviceMap, shedDev.id, buildSwappedOutUpdate(dev.name));
+  for (const { device, release } of swap.toShed) {
+    setDevice(deviceMap, device.id, buildSwappedOutUpdate(dev.name, release));
     emitSwapDebug({
       event: 'restore_swap_shed',
-      shedDeviceId: shedDev.id,
-      shedDeviceName: shedDev.name,
+      shedDeviceId: device.id,
+      shedDeviceName: device.name,
+      toStepId: release.kind === 'step' ? release.stepId : undefined,
       forDeviceId: dev.id,
       forDeviceName: dev.name,
     });
@@ -135,26 +138,35 @@ export function attemptSwapRestore(
   return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
 }
 
-function hasPendingSwapSourcesStillOn(
+function hasUnreleasedSwapDonors(
   swapLedger: SwapLedger,
   targetDeviceId: string,
   deviceMap: ReadonlyMap<string, DevicePlanDevice>,
 ): boolean {
   const reservation = swapLedger.reservationFor(targetDeviceId);
   if (reservation === undefined) return false;
-  for (const deviceId of reservation.donorIds) {
+  for (const [deviceId, release] of reservation.donors) {
     const sourceDevice = deviceMap.get(deviceId);
-    if (!sourceDevice) return true;
-    // A swap source can be any kind: a binary device is off via `!currentOn`, a
-    // step-only stepper via the step axis. Partition rather than assume binary —
-    // a binary-only check would treat an off step-only source as "still on" and
-    // hold its swap target indefinitely.
-    const sourceOff = isBinaryPlanDevice(sourceDevice)
-      ? !sourceDevice.currentOn
-      : isOffSteppedRestoreCandidate(sourceDevice);
-    if (!sourceOff) return true;
+    if (!sourceDevice || !hasDonorReleased(sourceDevice, release)) return true;
   }
   return false;
+}
+
+/**
+ * Whether a donor has given up what the swap took from it, on the device's own
+ * report. A swap source can be any kind: a binary device is off via
+ * `!currentOn`, a step-only stepper via the step axis. Partition rather than
+ * assume binary — a binary-only check would treat an off step-only source as
+ * "still on" and hold its swap target indefinitely. A donor kept at a lower step
+ * has released once it reports that step or lower.
+ */
+function hasDonorReleased(device: DevicePlanDevice, release: SwapDonorRelease): boolean {
+  if (release.kind === 'step' && isSteppedLoadDevice(device)) {
+    const held = getSteppedLoadStep(device.steppedLoadProfile, release.stepId);
+    const reported = getSteppedLoadStep(device.steppedLoadProfile, device.reportedStepId);
+    if (held && reported && reported.planningPowerW <= held.planningPowerW) return true;
+  }
+  return isBinaryPlanDevice(device) ? !device.currentOn : isOffSteppedRestoreCandidate(device);
 }
 
 export function holdPendingSwapTargetUntilSourcesAreOff(
@@ -162,7 +174,7 @@ export function holdPendingSwapTargetUntilSourcesAreOff(
   targetDevice: DevicePlanDevice,
   deviceMap: Map<string, DevicePlanDevice>,
 ): boolean {
-  if (!hasPendingSwapSourcesStillOn(swapLedger, targetDevice.id, deviceMap)) return false;
+  if (!hasUnreleasedSwapDonors(swapLedger, targetDevice.id, deviceMap)) return false;
   setDevice(deviceMap, targetDevice.id, buildSwapPendingTargetUpdate(targetDevice));
   return true;
 }
@@ -190,11 +202,12 @@ export function holdSteppedSwapDonor(
   const target = swapLedger.blockingTarget(dev, deviceMap);
   // `blockingTarget` settles a kept reservation first, so a donor whose target
   // has been served is no longer one by the time this is asked.
-  if (target === undefined || !swapLedger.isDonor(dev.id)) return false;
+  const release = swapLedger.donorRelease(dev.id);
+  if (target === undefined || release === undefined) return false;
   clearRestoreDebugEvent(state, `stepped:${dev.id}`);
   setDevice(deviceMap, dev.id, isOffSteppedRestoreCandidate(dev)
     ? buildOffSteppedRestoreHoldUpdate(dev, { code: PLAN_REASON_CODES.swapPending, targetName: target.name })
-    : buildSwappedOutUpdate(target.name));
+    : buildSwappedOutUpdate(target.name, release));
   return true;
 }
 
@@ -250,7 +263,7 @@ function emitSwapApprovedDebug(
     deviceId: dev.id,
     deviceName: dev.name,
     phase,
-    shedDeviceIds: swap.toShed.map((d) => d.id),
+    shedDeviceIds: swap.toShed.map(({ device }) => device.id),
     neededKw: restoreNeed.needed,
     potentialHeadroomKw: swap.potentialHeadroom,
     effectiveHeadroomKw: swap.effectiveHeadroom,
@@ -313,9 +326,14 @@ function rejectSwapRestoreForMeasurement(
   return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
 }
 
-/** A swap donor paused to fund `targetName`'s restore. */
-function buildSwappedOutUpdate(targetName: string): Partial<DevicePlanDevice> {
-  return { plannedState: 'shed', reason: { code: PLAN_REASON_CODES.swappedOut, targetName } };
+/**
+ * A swap donor paused to fund `targetName`'s restore: switched off, or kept
+ * running at the step the swap lowered it to.
+ */
+function buildSwappedOutUpdate(targetName: string, release: SwapDonorRelease): Partial<DevicePlanDevice> {
+  const reason = { code: PLAN_REASON_CODES.swappedOut, targetName } as const;
+  if (release.kind === 'off') return { plannedState: 'shed', reason };
+  return { plannedState: 'shed', desiredStepId: release.stepId, plannedShedStepId: release.stepId, reason };
 }
 
 function buildSwapPendingTargetUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {

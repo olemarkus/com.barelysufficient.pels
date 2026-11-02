@@ -28,6 +28,7 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import {
   hasAnyReservation,
   hasReservation,
+  offDonors,
   seedPlanWatermark,
   seedServedSwapReservation,
   seedSwapReservation,
@@ -4759,7 +4760,7 @@ describe('stepped-load shed invariant', () => {
     expect(state.swapLedger.reservationFor('dev-step')).toEqual({
       targetId: 'dev-step',
       promise: steppedPromise('low'),
-      donorIds: new Set(['lower-priority']),
+      donors: offDonors(['lower-priority']),
       openedAtMs: now,
       wait: { kind: 'lane_shut' },
       planMeasurementTs: 123,

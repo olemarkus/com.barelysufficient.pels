@@ -48,7 +48,7 @@ describe('buildSwapCandidates', () => {
     expect(forNonExempt.toShed).toHaveLength(0);
 
     const forExempt = buildSwapCandidates(buildPlanDevice({ id: 'target-exempt', priority: 50, budgetExempt: true }), onDevices, new SwapLedger(), 0.3, 1.2, new Set());
-    expect(forExempt.toShed.map((device) => device.id)).toEqual(['exempt-src']);
+    expect(forExempt.toShed.map(({ device }) => device.id)).toEqual(['exempt-src']);
   });
 
   it('defaults missing priorities to 100 when evaluating swap candidates', () => {
@@ -58,7 +58,7 @@ describe('buildSwapCandidates', () => {
       ], new SwapLedger(), 0.8, 2, new Set());
 
     expect(result.ready).toBe(true);
-    expect(result.toShed.map((device) => device.id)).toEqual(['lower-priority']);
+    expect(result.toShed.map(({ device }) => device.id)).toEqual(['lower-priority']);
   });
 
   it('skips ineligible devices and returns ready when enough headroom is found', () => {
@@ -79,7 +79,7 @@ describe('buildSwapCandidates', () => {
     const result = buildSwapCandidates(buildPlanDevice({ priority: 50 }), onDevices, swapLedger, 0.8, 3, restoredThisCycle);
 
     expect(result.ready).toBe(true);
-    expect(result.toShed.map((device) => device.id)).toEqual(['add1', 'add2']);
+    expect(result.toShed.map(({ device }) => device.id)).toEqual(['add1', 'add2']);
     expect(result.shedNames).toBe('Add1, Add2');
     expect(result.shedPower).toBe('3.00');
   });
@@ -128,7 +128,7 @@ describe('buildSwapCandidates', () => {
       ], new SwapLedger(), 0.2, 1.3, new Set());
 
     expect(result.ready).toBe(false);
-    expect(result.toShed.map((device) => device.id)).toEqual(['candidate']);
+    expect(result.toShed.map(({ device }) => device.id)).toEqual(['candidate']);
     expect(result.potentialHeadroom).toBeCloseTo(1.4, 6); // 0.2 headroom + 1.2 expectedPowerKw
     expect(result.effectiveHeadroom).toBeCloseTo(1.1, 6); // swap reserve applied before approval
     expect(result.shedPower).toBe('1.20');
