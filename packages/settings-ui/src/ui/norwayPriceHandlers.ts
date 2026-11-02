@@ -38,11 +38,45 @@ const refreshGridTariff = async (): Promise<void> => {
 };
 
 /**
+ * When the page asks the runtime what it can suggest for the price setup: on
+ * opening and after a source change, once per source per visit. The Norway
+ * lookup sends the hub's coordinates to NVE and Kartverket, so it runs only
+ * while something is still missing, and never again after an answer. The same
+ * answer says whether Power by the Hour could price a Homey Energy home that
+ * has no prices, or whose source PELS assumed. An answer for Homey Energy says
+ * nothing about Norway, so an owner who switches source in the same visit is
+ * asked about the new one.
+ */
+const createPriceSetupSuggestionAsker = (ctx: NorwayPriceHandlersContext) => {
+  let suggestionRequestedFor: string | null = null;
+  const suggestFromLocation = async (): Promise<void> => {
+    const { priceSetup, homeyStatus, priceScheme } = ctx.getState();
+    // No Homey status yet reads as having prices: nothing is asked on a guess.
+    if (suggestionRequestedFor === priceScheme) return;
+    if (!priceSetupNeedsSuggestion(priceSetup, homeyStatus?.hasPrices ?? true)) return;
+    suggestionRequestedFor = priceScheme;
+    ctx.patchState({ priceSetupSuggestion: await loadPriceSetupSuggestion() });
+    ctx.rerender();
+  };
+
+  // Refresh prices on Homey Energy asks again. There the answer is a local read
+  // of Power by the Hour, which the owner may have installed, started or given
+  // a price device since the page asked. The Norway lookup is never repeated.
+  const suggestAgainAfterRefresh = async (): Promise<void> => {
+    if (ctx.getState().priceScheme === 'homey') suggestionRequestedFor = null;
+    await suggestFromLocation();
+  };
+
+  return { suggestFromLocation, suggestAgainAfterRefresh };
+};
+
+/**
  * The Norway section's handlers. Each writes its own key, even when the value
  * equals the default PELS was already pricing with: that write is the owner
  * choosing it.
  */
 export const createNorwayPriceHandlers = (ctx: NorwayPriceHandlersContext) => {
+  const suggestionAsker = createPriceSetupSuggestionAsker(ctx);
   const saveChoice = async (save: () => Promise<void>, label: string): Promise<void> => {
     try {
       await save();
@@ -121,24 +155,6 @@ export const createNorwayPriceHandlers = (ctx: NorwayPriceHandlersContext) => {
     }
   };
 
-  // Asked once per visit to the settings: the Norway lookup sends the hub's
-  // coordinates to NVE and Kartverket, so it runs only when the owner opens the
-  // page and something is still missing, and never again after an answer. The
-  // same answer says whether Power by the Hour could price a Homey Energy home
-  // that has no prices, or whose source PELS assumed.
-  // Per source: an answer for Homey Energy says nothing about Norway, so an
-  // owner who switches source in the same visit is asked about the new one.
-  let suggestionRequestedFor: string | null = null;
-  const suggestFromLocation = async (): Promise<void> => {
-    const { priceSetup, homeyStatus, priceScheme } = ctx.getState();
-    // No Homey status yet reads as having prices: nothing is asked on a guess.
-    if (suggestionRequestedFor === priceScheme) return;
-    if (!priceSetupNeedsSuggestion(priceSetup, homeyStatus?.hasPrices ?? true)) return;
-    suggestionRequestedFor = priceScheme;
-    ctx.patchState({ priceSetupSuggestion: await loadPriceSetupSuggestion() });
-    ctx.rerender();
-  };
-
   // One confirmation writes everything offered. The county goes with the grid
   // company because the company belongs to it, unless the owner chose it.
   // Every write starts on the tap, so a field the owner changes while they are
@@ -178,7 +194,7 @@ export const createNorwayPriceHandlers = (ctx: NorwayPriceHandlersContext) => {
     onCountyChange,
     onOrganizationChange,
     onTariffGroupChange,
-    suggestFromLocation,
+    ...suggestionAsker,
     onUseOffer,
   };
 };

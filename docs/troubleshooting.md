@@ -207,7 +207,8 @@ The banner above the Overview tells you which state you are in:
   then press **Refresh prices**. Homey Energy has prices only for some
   countries; elsewhere, such as in Poland, install
   [Power by the Hour](https://homey.app/a/com.gruijter.powerhour), add a price
-  device for your bidding zone and choose it as the price source. A Smart task
+  device for your bidding zone, enter your tariff there and choose it as the
+  price source. A Smart task
   says **PELS has no electricity prices** in the same situation.
 - On the **Homey Energy** source, check the status card on that same page. If it
   reads **Not usable** or **No usable prices**, PELS could not work out your
