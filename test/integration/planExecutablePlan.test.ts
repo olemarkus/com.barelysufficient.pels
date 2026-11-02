@@ -5,7 +5,6 @@ import {
   hasExecutableShedDevices,
 } from '../../lib/executor/executablePlanProjection';
 import {
-  buildExecutableTargetIntent,
   buildExecutableTargetUpdate,
 } from '../../lib/executor/executableTargetProjection';
 import { hasReleaseCommand, hasSteppedCommand } from '../../lib/executor/executablePlan';
@@ -139,7 +138,7 @@ describe('planExecutablePlan', () => {
       recordRestoreOnTargetApply: true,
       priceTargetShift: { kind: 'none' },
     });
-    const intent = buildExecutableTargetIntent(thermostat);
+    const intent = thermostat.targetCommand;
     const observed = buildExecutableObservedDeviceState({
       available: true,
       isEvCharger: false,
@@ -176,7 +175,7 @@ describe('planExecutablePlan', () => {
       recordRestoreOnTargetApply: true,
       priceTargetShift: { kind: 'none' },
     });
-    const intent = buildExecutableTargetIntent(thermostat);
+    const intent = thermostat.targetCommand;
     // Observed moved off the floor (a person nudged it to 17) after the build.
     const observed = buildExecutableObservedDeviceState({
       available: true,
@@ -211,7 +210,7 @@ describe('planExecutablePlan', () => {
       recordRestoreOnTargetApply: true,
       priceTargetShift: { kind: 'none' },
     });
-    const intent = buildExecutableTargetIntent(thermostat);
+    const intent = thermostat.targetCommand;
     const observed = buildExecutableObservedDeviceState({
       available: true,
       isEvCharger: false,
@@ -244,7 +243,7 @@ describe('planExecutablePlan', () => {
       recordRestoreOnTargetApply: true,
       priceTargetShift: { kind: 'none' },
     });
-    const intent = buildExecutableTargetIntent(coolingUnit);
+    const intent = coolingUnit.targetCommand;
     const observedAt = (value: number) => buildExecutableObservedDeviceState({
       available: true,
       isEvCharger: false,
@@ -463,7 +462,7 @@ describe('planExecutablePlan', () => {
       currentTemperature: 18,
       plannedTarget: 20,
     });
-    const intent = buildExecutableTargetIntent(thermostat);
+    const intent = thermostat.targetCommand;
     const observed = buildExecutableObservedDeviceState({
       available: true,
       isEvCharger: false,

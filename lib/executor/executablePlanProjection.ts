@@ -31,7 +31,6 @@ import { getCurrentDrawKw } from '../observer/observedPower';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { buildExecutableSteppedLoadIntent } from './executableSteppedLoadProjection';
 import type { ExecutorDeviceRead } from './executorDeviceRead';
-import { buildExecutableTargetIntent } from './executableTargetProjection';
 import { isBinaryPlanDevice } from '../plan/planBinaryDevice';
 import { isSteppedLoadDevice } from '../plan/planSteppedLoad';
 
@@ -45,7 +44,7 @@ export function buildExecutablePlan(plan: DevicePlan): ExecutablePlan {
 }
 
 export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: PlanMeta): ExecutableDeviceIntent {
-  const target = buildExecutableTargetIntent(planDevice);
+  const target = planDevice.targetCommand;
   const binary = buildExecutableBinaryIntent(planDevice);
   const release = buildExecutableReleaseIntent(planDevice, planMeta);
   const steppedLoad = buildExecutableSteppedLoadIntent(planDevice);

@@ -88,8 +88,8 @@ function isObservedAtShedFloor(
  *
  * Gated on the floor being OBSERVED, for the reason `resolveRestoreDecision`
  * documents for its own reserve carve-out: `cooldownRestore` is in
- * `RESTORE_ADMISSION_HOLD_REASON_CODES`, so `buildExecutableTargetIntent`
- * (`lib/executor/executableTargetProjection.ts`) builds NO write for a device
+ * `RESTORE_ADMISSION_HOLD_REASON_CODES`, so `buildPlannedTargetCommand`
+ * (`lib/plan/planTargetCommand.ts`) builds NO write for a device
  * carrying it. That is free once the device sits at its floor — there is nothing
  * left to write — but while the shed is still in flight (a dropped write, or a
  * setpoint raised outside PELS) the actuating fallback must keep asserting, or

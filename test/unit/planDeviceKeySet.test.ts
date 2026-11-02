@@ -32,7 +32,7 @@ const ALWAYS: readonly string[] = [
   'currentState', 'desiredStepId', 'deviceType',
   'expectedPowerKw', 'expectedPowerSource', 'hasStandingDemand', 'id', 'isEvCharger',
   'lastDesiredStepId', 'lastStepCommandIssuedAt', 'name', 'nextStepCommandRetryAtMs', 'isBatteryOrSolar',
-  'plannedState', 'previousStepId', 'priceTargetShift', 'priority', 'reason', 'recordRestoreOnTargetApply',
+  'plannedState', 'previousStepId', 'priceTargetShift', 'priority', 'reason',
   'releaseShedStepId', 'reportedStepId', 'residualKw', 'shedAction', 'shedTemperature',
   'stepCommandPending', 'stepCommandRetryCount', 'stepCommandStatus', 'storageHold', 'surplusAbsorbActive',
   'surplusTracking',

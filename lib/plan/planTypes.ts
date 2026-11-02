@@ -1,3 +1,4 @@
+import type { PlannedTargetCommand } from '../planContract/targetCommand';
 import type { PlannedReleaseIntent } from '../planContract/releaseIntent';
 import type { CapacityPeriodMinutes } from '../../packages/contracts/src/capacitySettings';
 import type { SoftLimitSource } from '../../packages/contracts/src/settingsUi/plan';
@@ -751,20 +752,8 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
    * `desiredStepId`, and pairs it with this kind.
    */
   plannedShedTargetKind?: PlannedShedTargetKind;
-  /**
-   * Executor bookkeeping, planner-resolved: applying this plan's target write
-   * counts as a RESTORE — the executor stamps the restore clocks
-   * (`lastRestoreMs`/`lastDeviceRestoreMs`, cooldown bump) when it lands.
-   * True exactly when the device's observed setpoint sits AT its
-   * capability-normalized shed floor and the planned target raises it.
-   * Stamped once, by `finalizePlanDevices` (like `plannedShedTargetKind`:
-   * anything derived earlier goes stale when a later stage revises
-   * `plannedState`/`plannedTarget`); every constructor before finalize sets
-   * `false`. The executor consumes this instead of re-deriving the
-   * classification from shed config — why the planner chose the setpoint is
-   * the planner's problem (owner ruling, 2026-08-25).
-   */
-  recordRestoreOnTargetApply: boolean;
+  /** The resolved target command, present only when this plan drives the temperature axis. */
+  targetCommand?: PlannedTargetCommand;
   pendingTargetCommand?: PendingTargetCommandSummary;
 };
 
