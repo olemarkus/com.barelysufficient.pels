@@ -354,16 +354,16 @@ describe('battery storage lane', () => {
     expect(chargeCeiling()).toBe(2500);
   });
 
-  it('caps only the charge band near full where a full battery stopped charging', async () => {
+  it('caps only the charge band near full where a full battery stopped charging, and only for live control', async () => {
     const { send, read, setLevel, ledger } = buildLane();
 
     setLevel(98);
     await send(2000, 0);
     read(0, 3000, CONTROL_COMMAND_CONFIRMATION_MS);
+    // A stop (no charge taken) is not a taper: the plan, whose live control asks
+    // no more than it plans, would otherwise never charge above 95 % that week.
     expect(ledger.read(BATTERY, RANGE, Date.now()).chargeCeiling)
-      .toEqual({
-        everyLevelW: 2500, taper: [{ fromPercent: 95, ceilingW: 0 }], planningTaper: [{ fromPercent: 95, ceilingW: 0 }],
-      });
+      .toEqual({ everyLevelW: 2500, taper: [{ fromPercent: 95, ceilingW: 0 }], planningTaper: [] });
   });
 
   it('marks a battery sign-inverted from charge steps too', async () => {

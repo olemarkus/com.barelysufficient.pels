@@ -602,7 +602,7 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
 
     expect(owner.readControl(BATTERY)).toMatchObject({ verdict: 'responding', deliveryCeilingW: 900 });
 
-    owner.verification.recordChargeCeiling(BATTERY, 0, undefined, T0);
+    owner.verification.recordChargeCeiling(BATTERY, { signedW: 0, toleranceW: 150, level: undefined }, T0);
     expect(owner.readControl(BATTERY)).toMatchObject({
       verdict: 'responding', chargeCeiling: { everyLevelW: 0, taper: [], planningTaper: [] },
     });

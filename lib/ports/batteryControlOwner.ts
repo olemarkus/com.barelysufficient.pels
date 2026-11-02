@@ -198,17 +198,13 @@ export type BatteryVerificationRecorder = {
   /** An increase in discharge plateaued short of its setpoint, at this discharge, W. */
   recordDeliveryCeiling(deviceId: string, dischargeW: number, nowMs: number): void;
   /**
-   * An increase in charge stopped short of its setpoint, at this charge, W, and
-   * this charge level, if reported. It teaches the charge ceiling for that
-   * level's band and says nothing about whether the battery follows: a full
-   * battery stops charging every sunny afternoon.
+   * An increase in charge stopped short of its setpoint, at this delivery: the
+   * charge it reached, the tolerance it was judged within, and the charge level,
+   * if reported. It teaches the charge ceiling for that level's band and says
+   * nothing about whether the battery follows: a full battery stops charging
+   * every sunny afternoon.
    */
-  recordChargeCeiling(
-    deviceId: string,
-    chargeW: number,
-    level: HomeBatteryLevelObservation | undefined,
-    nowMs: number,
-  ): void;
+  recordChargeCeiling(deviceId: string, delivery: BatteryDelivery, nowMs: number): void;
   /**
    * Whether this discharge, W, is within the tolerance of the last plateau the
    * battery showed this run, held or expired: a re-probe that starts there and
