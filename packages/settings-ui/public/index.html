@@ -165,15 +165,14 @@
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
         </md-icon-button>
         <h2 class="pels-appbar__title" id="modes-title">Modes</h2>
+        <md-text-button data-open-schedules data-schedule-filter="mode">Mode schedules</md-text-button>
       </div>
-      <md-text-button data-open-schedules data-schedule-filter="mode">Mode schedules</md-text-button>
       <form id="priority-form" class="form-grid">
         <div class="field">
           <label class="field__label pels-text-settings-label" for="mode-select">Edit mode</label>
           <md-filled-select id="mode-select" name="mode"></md-filled-select>
           <div class="mode-actions">
             <md-filled-tonal-button type="button" id="add-mode-button">
-              <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/></svg>
               New mode
             </md-filled-tonal-button>
             <md-text-button type="button" id="rename-mode-button">Rename</md-text-button>
@@ -188,7 +187,7 @@
           </div>
           <small class="field__hint">PELS orders devices automatically. Drag to change the order — the top device keeps running longest. Changes save automatically.</small>
         </div>
-        <ul id="priority-list" class="device-list tight-list"></ul>
+        <ul id="priority-list" class="device-list pels-surface-card" aria-label="Device priority"></ul>
         <p id="priority-empty" class="muted" hidden>No managed devices. Turn on Managed for a device under Devices to see it here.</p>
         <!-- Names each battery PELS can drive and what its place means (modes.ts). -->
         <p id="priority-battery-note" class="muted" hidden></p>

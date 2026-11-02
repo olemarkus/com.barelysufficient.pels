@@ -182,7 +182,6 @@ hr {
   --info: var(--color-semantic-info);
   --radius: var(--radius-lg);
   --font-sans: var(--font-family-sans);
-  --temp-input-width: 80px;
   --pels-md-primary: var(--accent);
   --pels-md-on-primary: var(--color-semantic-text-inverse);
   --pels-md-primary-container: var(--color-surface-4);
@@ -1430,18 +1429,23 @@ md-filled-button.is-busy {
 
 .mode-row {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) 80px 44px;
+  grid-template-columns: var(--pels-touch-target-min) minmax(0, 1fr) auto;
+  grid-template-areas:
+    "handle name rank"
+    "handle target target";
   align-items: center;
-  gap: var(--spacing-1);
+  gap: var(--spacing-1) var(--spacing-2);
+  padding: var(--spacing-3);
 }
 
 .mode-target-placeholder {
   color: var(--muted);
   font-size: var(--font-size-sm);
-  text-align: center;
+  grid-area: target;
 }
 
 .mode-row__inputs {
+  grid-area: rank;
   display: inline-flex;
   gap: var(--spacing-1);
   align-items: center;
@@ -4286,35 +4290,21 @@ md-filled-button.is-busy {
 }
 
 .mode-target-input {
-  width: var(--temp-input-width);
-  padding: var(--spacing-1) 28px var(--spacing-1) var(--spacing-2) !important;
-  font-size: var(--font-size-sm);
-  flex: 0 0 auto;
+  grid-area: target;
+  width: 132px;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .priority-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 32px;
-  padding: var(--spacing-1) var(--spacing-2);
-  text-align: center;
-  margin-left: var(--spacing-1);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-bold);
-  flex: 0 0 auto;
-  background: var(--color-state-positive-bg);
-  color: var(--color-state-positive-text);
-  border: 1px solid var(--color-state-positive-border);
-  border-radius: var(--radius-full);
+  font-variant-numeric: tabular-nums;
 }
 
 .mode-row .device-row__name {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: var(--font-size-sm);
-  line-height: var(--font-line-height-tight);
+  grid-area: name;
+  margin: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .device-row__title {
@@ -8035,9 +8025,7 @@ md-switch {
   #weather-panel,
   #electricity-prices-panel,
   #price-aware-devices-panel
-) .settings-form-card,
-#modes-panel > .form-grid,
-:where(#modes-panel) :where(#priority-form) {
+) .settings-form-card {
   display: grid;
   gap: var(--spacing-3);
   margin: 0;
@@ -8046,6 +8034,11 @@ md-switch {
   border-radius: var(--radius-md);
   background: var(--pels-surface-container-low);
   box-shadow: var(--shadow-sm);
+}
+
+#modes-panel > .form-grid {
+  margin: 0;
+  gap: var(--spacing-4);
 }
 
 :where(
@@ -8200,7 +8193,7 @@ md-switch {
   margin-top: var(--spacing-1);
 }
 
-/* Modes panel action row: "+ New mode" (tonal) leads, with Rename and Delete
+/* Modes panel action row: "New mode" (tonal) leads, with Rename and Delete
  * as quiet text buttons. Delete carries the destructive tone. They wrap
  * naturally at narrow widths rather than stretching to fill a grid. */
 #modes-panel .mode-actions {
@@ -8211,15 +8204,23 @@ md-switch {
   margin-top: var(--spacing-1);
 }
 
-/* "+ New mode" sits on the `--panel` (surface-container-low) modes card. The
- * default tonal container (`--color-surface-3`) is only one tier up and washes
- * into the card. Lift it to the highest surface tier so the button's edge reads
- * clearly as a tappable control against the card surface. */
-#modes-panel .mode-actions md-filled-tonal-button {
+/* Restore Material host padding after Homey's universal padding reset. */
+#modes-panel md-filled-tonal-button {
+  min-height: var(--pels-touch-target-min);
+  padding-inline: var(--spacing-4);
   --md-filled-tonal-button-container-color: var(--pels-surface-container-highest);
 }
 
-/* On-demand name editor, revealed by "+ New mode" / "Rename". The field spans
+#modes-panel md-text-button {
+  padding-inline: var(--spacing-3);
+}
+
+#modes-panel .pels-appbar md-text-button {
+  margin-inline-start: auto;
+  flex: 0 0 auto;
+}
+
+/* On-demand name editor, revealed by "New mode" / "Rename". The field spans
  * the width with its confirm/cancel pair trailing right. */
 #modes-panel .mode-name-editor {
   display: grid;
@@ -8238,62 +8239,24 @@ md-switch {
   gap: var(--spacing-2);
 }
 
-#modes-panel .mode-row {
-  /* Temperature column: 116–132 px. Material's light fine-pointer number
-   * field reserves room for native spinner chrome plus the °C suffix; 112 px
-   * leaves only ~25 px for the input and clips the second digit. The extra
-   * token-sized step keeps two-digit targets visible at 480 px while the name
-   * column continues to wrap normally. */
-  grid-template-columns: auto minmax(0, 1fr) minmax(116px, 132px) auto;
-  gap: var(--spacing-3);
-  padding: var(--spacing-3);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  background: var(--pels-surface-container-low);
-  box-shadow: var(--shadow-sm);
+#priority-list {
+  --pels-card-padding: 0;
+  gap: 0;
 }
 
-/* Norwegian device names like "Termostat hovedsoverom" are long enough to
- * collide with the number-input + priority-badge cluster on the right of a
- * priority row at the 480 px supported width — without the wrap override
- * below, the name was rendering as "hovedsoveron", the final `m` lost under
- * the next column. The base `.mode-row .device-row__name` rule has
- * `white-space: nowrap` + `text-overflow: ellipsis`; the 430 px breakpoint
- * already relaxes it, but at 431–480 px the user still saw clipped text. Drop
- * the nowrap inside the modes priority list at all widths — the panel is
- * capped at 480 px so the name column is always short, and a 2-line wrap is
- * acceptable and complete vs. a silent character cut. `break-word` prefers
- * breaks at word boundaries and only falls back to mid-word when no
- * opportunity exists — matches the segmented control's wrap strategy and
- * avoids awkward mid-glyph splits when a space or hyphen is available. */
-/* The cell also carries the meter-area home badge once areas are in use, so it
- * wraps onto a second line rather than squeezing the name and the badge into
- * one. Single-home installs render no badge and see no change. */
-#modes-panel .mode-row .device-row__name {
-  white-space: normal;
-  overflow-wrap: break-word;
-  text-overflow: clip;
-  flex-wrap: wrap;
-  row-gap: var(--spacing-1);
+#priority-list:empty {
+  display: none;
 }
 
-#modes-panel .mode-row:last-child {
-  border-bottom: 1px solid var(--panel-border);
-}
-
-#modes-panel .drag-handle {
-  width: 32px;
-  height: 32px;
+:where(.mode-row) .drag-handle {
+  grid-area: handle;
+  align-self: start;
+  width: var(--pels-touch-target-min);
+  height: var(--pels-touch-target-min);
   padding: 0;
+  border: 0;
+  background: transparent;
   border-radius: var(--radius-md);
-}
-
-#modes-panel .mode-target-input {
-  width: 100%;
-}
-
-#modes-panel .priority-badge {
-  margin-left: 0;
 }
 
 #device-detail-panel.slide-panel {
@@ -8410,24 +8373,6 @@ md-switch {
     min-height: 40px;
   }
 
-
-  #modes-panel .mode-row {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: var(--spacing-2);
-  }
-
-  #modes-panel .mode-row .device-row__name {
-    white-space: normal;
-  }
-
-  #modes-panel :where(
-    .mode-target-input,
-    .mode-target-placeholder
-  ) {
-    grid-column: 1 / -1;
-    width: 100%;
-    justify-self: stretch;
-  }
 
   #device-detail-panel.slide-panel {
     max-width: 100%;

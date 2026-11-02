@@ -209,6 +209,8 @@ const buildModeTargetInput = (device: SettingsUiDeviceListItem, desired: number 
   tempInput.placeholder = 'Desired';
   tempInput.setAttribute('inputmode', tempInput.inputMode);
   tempInput.setAttribute('placeholder', tempInput.placeholder);
+  tempInput.setAttribute('label', 'Target');
+  tempInput.setAttribute('aria-label', `Target temperature for ${formatDisplayDeviceName(device.name)}`);
   tempInput.setAttribute('suffix-text', '°C');
   tempInput.value = desired === null ? '' : desired.toString();
   tempInput.dataset.deviceId = device.id;
@@ -239,11 +241,7 @@ const buildPriorityRow = (device: SettingsUiDeviceListItem) => {
   const input = buildModeTargetInput(device, desired);
 
   const badge = document.createElement('span');
-  // `.priority-badge` is a fully-styled pill (radius-full + positive bg) and
-  // overrides every chip property; the legacy `chip` companion class added
-  // no styles. Dropped 2026-05-24 chip primitive consolidation so the
-  // priority pill stops aliasing as a chip in inspector / regression scans.
-  badge.className = 'priority-badge';
+  badge.className = 'priority-badge pels-text-caption';
   badge.textContent = '…';
 
   const badgeWrap = document.createElement('div');
