@@ -13,6 +13,10 @@ import type {
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import { hoursWithPlannedEnergy } from '../../../packages/shared-domain/src/deferredPlanBookedHours';
 import { resolveRemainingEnergyKWh } from '../../../packages/shared-domain/src/energyQuantities';
+import {
+  resolveLiveRemainingEnergy,
+  type LiveRemainingEnergy,
+} from '../../../packages/shared-domain/src/deferredActivePlanLiveRemaining';
 import { resolveActivePlanChartData } from '../../../packages/shared-domain/src/deferredActivePlanChartData';
 import {
   resolveSmartTaskRowFacts,
@@ -139,11 +143,30 @@ const formatKwh = (value: number): string => {
   return `${rounded.toFixed(1)} kWh`;
 };
 
-const resolveDurationPart = (revision: DeferredObjectiveActivePlanRevisionV1): string | null => {
-  if (revision.estimatedDurationText) return `≈${revision.estimatedDurationText}`;
+// The energy a row's meta line quotes: the latest revision's figures, brought
+// forward to the live reading when the plan allows (`resolveLiveRemainingEnergy`).
+// A revision lands about once an hour, so its own figures can trail delivery by
+// up to an hour of charging.
+type MetaEnergy = { neededKWh: number; expectedKWh: number | null };
+
+const resolveMetaEnergy = (
+  revision: DeferredObjectiveActivePlanRevisionV1,
+  live: LiveRemainingEnergy | null,
+): MetaEnergy => (
+  live ?? { neededKWh: revision.energyNeededKWh, expectedKWh: resolveRemainingEnergyKWh(revision) }
+);
+
+const resolveDurationPart = (
+  revision: DeferredObjectiveActivePlanRevisionV1,
+  energy: MetaEnergy,
+  live: boolean,
+): string | null => {
+  // The revision's own text is the same quotient at its moment; past it, only
+  // the live figure is current.
+  if (!live && revision.estimatedDurationText) return `≈${revision.estimatedDurationText}`;
   const speed = revision.planningSpeedKw;
-  if (speed && speed > 0 && revision.energyNeededKWh > 0) {
-    const dur = formatDurationFromHours(revision.energyNeededKWh / speed);
+  if (speed && speed > 0 && energy.neededKWh > 0) {
+    const dur = formatDurationFromHours(energy.neededKWh / speed);
     return dur ? `≈${dur}` : null;
   }
   return null;
@@ -155,14 +178,9 @@ const resolveSpeedPart = (revision: DeferredObjectiveActivePlanRevisionV1): stri
   return `${(Math.round(speed * 10) / 10).toFixed(1)} kW`;
 };
 
-const resolveEnergyPart = (revision: DeferredObjectiveActivePlanRevisionV1): string | null => {
-  // Routed through the shared resolver rather than re-spelling the
-  // absence-encodes-equality rule a third time. When the revision omits
-  // `energyExpectedKWh` this answers `needed`, the range collapses, and the
-  // single-figure branch below renders — same output as before, one less copy
-  // of the rule.
-  const expected = resolveRemainingEnergyKWh(revision);
-  const needed = revision.energyNeededKWh;
+const resolveEnergyPart = ({ neededKWh: needed, expectedKWh: expected }: MetaEnergy): string | null => {
+  // A null expected figure collapses the range to the single needed figure,
+  // as an absent `energyExpectedKWh` does on the revision itself.
   if (isFiniteNumber(expected) && expected > 0 && needed > 0 && Math.abs(expected - needed) > 0.05) {
     const low = Math.round(Math.min(expected, needed) * 10) / 10;
     const high = Math.round(Math.max(expected, needed) * 10) / 10;
@@ -172,11 +190,15 @@ const resolveEnergyPart = (revision: DeferredObjectiveActivePlanRevisionV1): str
   return null;
 };
 
-const formatPlanMetaLabel = (revision: DeferredObjectiveActivePlanRevisionV1): string | null => {
+const formatPlanMetaLabel = (
+  revision: DeferredObjectiveActivePlanRevisionV1,
+  live: LiveRemainingEnergy | null,
+): string | null => {
+  const energy = resolveMetaEnergy(revision, live);
   const parts = [
-    resolveDurationPart(revision),
+    resolveDurationPart(revision, energy, live !== null),
     resolveSpeedPart(revision),
-    resolveEnergyPart(revision),
+    resolveEnergyPart(energy),
   ].filter((part): part is string => part !== null && part !== '');
   if (parts.length === 0) return null;
   // Prefix (from shared-domain so smart-task copy stays single-sourced) names the
@@ -271,7 +293,9 @@ const resolveRowCopy = (
   const suppressConfidence = smartTaskScheduleNoLongerGoverns(statusId)
     || (statusId === 'building_plan' && suppressesSmartTaskConfidenceChip(plan.pendingReason));
   return {
-    planMetaLabel: suppressPlanMeta || plan.latest === null ? null : formatPlanMetaLabel(plan.latest),
+    planMetaLabel: suppressPlanMeta || plan.latest === null
+      ? null
+      : formatPlanMetaLabel(plan.latest, resolveLiveRemainingEnergy(plan, facts.currentValue)),
     confidenceLabel: suppressConfidence
       ? null
       : resolveConfidenceLabel(plan.kwhPerUnitProvenance, statusId),

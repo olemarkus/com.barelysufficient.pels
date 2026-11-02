@@ -656,6 +656,51 @@ describe('buildSmartTasksWidgetPayload', () => {
     expect(payload.rows[0].planMetaLabel).toContain('7.2 kWh');
   });
 
+  test('brings an energy task meta line forward to the energy delivered since the revision', () => {
+    // SHS2 lab, run A: the revision read 3.5 kWh / 2h 32m for two hours while 2.6 kWh went in.
+    const ev = buildPlan({
+      deviceId: 'ev',
+      objectiveKind: 'energy',
+      targetValue: 3.5,
+      latest: {
+        ...buildPlan({}).latest!,
+        energyNeededKWh: 3.5,
+        planningSpeedKw: 1.38,
+        estimatedDurationText: '2h 32m',
+      },
+    });
+    const payload = buildSmartTasksWidgetPayload({
+      ...buildInput({ ev }),
+      activePlans: resolveActivePlanFixtures({ ev }, () => 2.6),
+    });
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    expect(payload.rows[0].planMetaLabel).toBe('Estimate ≈39m · 1.4 kW · ≈0.9 kWh');
+  });
+
+  test('brings a heating task meta line forward to the live temperature', () => {
+    // Revision: 10 °C left at 0.4 kWh/°C, 4.4 kWh booked. Live: 5 °C left.
+    const heater = buildPlan({
+      deviceId: 'dev',
+      latest: {
+        ...buildPlan({}).latest!,
+        progressDirection: 'increasing',
+        energyNeededKWh: 4.4,
+        energyExpectedKWh: 4,
+        rateMean: 0.4,
+        planningSpeedKw: 2,
+        estimatedDurationText: '2h 12m',
+      },
+    });
+    const device = buildDevice({
+      temperature: { currentTemperature: 50, target: { id: 'target_temperature', value: 55, unit: '°C' } },
+    });
+    const payload = buildSmartTasksWidgetPayload(buildInput({ dev: heater }, [device]));
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    expect(payload.rows[0].planMetaLabel).toBe('Estimate ≈1h 6m · 2.0 kW · ≈2.0–2.2 kWh');
+  });
+
   test('composes planMetaLabel range form when expected differs from needed', () => {
     const plan = buildPlan({
       deviceId: 'dev',
