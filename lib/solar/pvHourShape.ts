@@ -17,7 +17,7 @@
 // state of its own and ages out with the history's retention window.
 
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
-import { PV_GAIN_MIN_IRRADIANCE_WM2 } from '../../packages/shared-domain/src/solar/pvGain';
+import { PV_GAIN_MIN_IRRADIANCE_WM2, type PvGainTrainingPoint } from '../../packages/shared-domain/src/solar/pvGain';
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -46,13 +46,8 @@ const BRIGHT_REFERENCE_QUANTILE = 0.9;
  *  recent days weigh more than days from the start of the retention window. */
 const RECENCY_HALF_LIFE_MS = 30 * DAY_MS;
 
-export type PvHourShapeSample = {
-  hourStartMs: number;
-  irradianceWm2: number;
-  generationKwh: number;
-  /** Zero-export clamp evidence; a `suspect` hour's output is throttled, not shaped. */
-  netEvidence?: 'unclamped' | 'suspect';
-};
+/** A gain training point at its hour; a `suspect` hour's output is throttled, not shaped. */
+export type PvHourShapeSample = PvGainTrainingPoint & { hourStartMs: number };
 
 /** Per-UTC-hour-of-day factors; an hour without enough evidence is absent and
  *  forecasts with the plain gain. */
@@ -105,24 +100,26 @@ const learnHourFactor = (
 };
 
 /**
- * Learn the hour shape from recorded hours against a fitted gain. Hours too dim
- * to learn from, clamp-suspect hours and non-finite readings are skipped; an hour
- * of day with fewer than `PV_HOUR_SHAPE_MIN_SAMPLES` usable hours gets no factor.
+ * Learn the hour shape from recorded hours against a learned gain. The samples
+ * are training points (finite irradiance, positive generation, from
+ * `pvTrainingHours`) and the gain is a fit's, so neither is checked again here.
+ * Hours too dim to learn from and clamp-suspect hours are skipped; an hour of
+ * day with fewer than `PV_HOUR_SHAPE_MIN_SAMPLES` usable hours gets no factor.
  */
 export const learnPvHourShape = (
   samples: readonly PvHourShapeSample[],
   gainKwhPerWm2: number,
 ): PvHourShape => {
   const shape = new Map<number, number>();
-  if (!isFiniteNumber(gainKwhPerWm2) || gainKwhPerWm2 <= 0) return shape;
   const byHour = new Map<number, PvHourShapeSample[]>();
   let latestMs = Number.NEGATIVE_INFINITY;
   for (const sample of samples) {
-    if (!isFiniteNumber(sample.irradianceWm2) || sample.irradianceWm2 < PV_GAIN_MIN_IRRADIANCE_WM2) continue;
-    if (!isFiniteNumber(sample.generationKwh) || sample.generationKwh < 0) continue;
-    if (sample.netEvidence === 'suspect') continue;
+    if (sample.irradianceWm2 < PV_GAIN_MIN_IRRADIANCE_WM2 || sample.netEvidence === 'suspect') continue;
     const hour = utcHourOfDay(sample.hourStartMs);
-    byHour.set(hour, [...(byHour.get(hour) ?? []), sample]);
+    const bucket = byHour.get(hour);
+    // eslint-disable-next-line functional/immutable-data -- one bucket per hour, filled in place
+    if (bucket) bucket.push(sample);
+    else byHour.set(hour, [sample]);
     latestMs = Math.max(latestMs, sample.hourStartMs);
   }
   for (const [hour, bucket] of byHour) {

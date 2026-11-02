@@ -21,14 +21,10 @@ import {
   recordPvSample,
   type PvGenerationHistory,
 } from '../../packages/shared-domain/src/solar/pvGenerationHistory';
-import {
-  fitPvGain,
-  type LearnedPvGain,
-  type PvGainTrainingPoint,
-} from '../../packages/shared-domain/src/solar/pvGain';
+import { fitPvGain, type LearnedPvGain } from '../../packages/shared-domain/src/solar/pvGain';
 import { forecastPvKwh } from '../../packages/shared-domain/src/solar/pvForecast';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
-import { learnPvHourShape, pvHourShapeFactor, type PvHourShape } from './pvHourShape';
+import { learnPvHourShape, pvHourShapeFactor, type PvHourShape, type PvHourShapeSample } from './pvHourShape';
 
 const HOUR_MS = 3_600_000;
 const DEFAULT_RETENTION_MS = 90 * 24 * HOUR_MS;
@@ -250,7 +246,7 @@ export class PvForecastService {
   }
 
   private computeFit(): { gain: LearnedPvGain; shape: PvHourShape } {
-    const points: (PvGainTrainingPoint & { hourStartMs: number })[] = [];
+    const points: PvHourShapeSample[] = [];
     for (const hour of pvTrainingHours(this.history)) {
       const irradianceWm2 = this.irradianceByHour[String(hour.hourStartMs)];
       if (!isFiniteNumber(irradianceWm2)) continue;
@@ -275,7 +271,7 @@ export class PvForecastService {
    */
   private learnShape(
     gain: LearnedPvGain,
-    points: readonly (PvGainTrainingPoint & { hourStartMs: number })[],
+    points: readonly PvHourShapeSample[],
   ): PvHourShape {
     if (gain.kind === 'learning' || gain.fit.trainingMode === 'clamp_aware_quantile') return new Map();
     const pool = gain.fit.trainingMode === 'unclamped_median'

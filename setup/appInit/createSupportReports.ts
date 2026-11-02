@@ -5,11 +5,11 @@ import {
   SupportReportEvidenceSource, type SupportReportHomey, type SupportReportReads,
 } from '../../lib/diagnostics/supportReportEvidence';
 import { SupportReportService } from '../../lib/diagnostics/supportReportService';
-import { readSmartTaskRuns } from '../../lib/diagnostics/supportReportSmartTasks';
+import { readSmartTaskDeviceIds, readSmartTaskRuns } from '../../lib/diagnostics/supportReportSmartTasks';
 import { createDeviceEventStore } from '../../lib/diagnostics/deviceEventStore';
 import { createLogTailStore } from '../../lib/diagnostics/logTailStore';
 import {
-  readDeferredObjectiveRoster, readObjectiveForDeviceState, type ObjectiveSettingsStore,
+  readObjectiveForDeviceState, type ObjectiveSettingsStore,
 } from '../../lib/objectives/deferredObjectives/objectiveStore';
 import type { SmartTaskCycleRecord } from '../../lib/objectives/deferredObjectives/smartTaskCycleRecord';
 import type { AppContext } from '../../lib/app/appContext';
@@ -51,11 +51,7 @@ export const createSupportReportReads = (
       cycle: readSmartTaskCycle(deviceId),
     };
   },
-  readSmartTaskDeviceIds: () => {
-    const roster = readDeferredObjectiveRoster(objectiveSettings);
-    if (roster.status === 'unavailable') throw new Error('Smart task settings are unavailable');
-    return Object.keys(roster.settings.objectivesByDeviceId);
-  },
+  readSmartTaskDeviceIds: () => readSmartTaskDeviceIds(objectiveSettings),
   readSmartTaskRuns: () => {
     if (!app.deferredObjectivePlanHistoryRecorder) throw new Error('Smart task history is not running');
     return readSmartTaskRuns(app.deferredObjectivePlanHistoryRecorder);
