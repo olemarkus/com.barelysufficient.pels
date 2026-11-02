@@ -137,7 +137,9 @@ entries for batteries outside the visible roster. A null WebView read requires
 an uncached bootstrap read; malformed or unavailable maps refuse the save rather
 than falling back to an earlier map. This browser read-modify-write is not atomic
 across clients. The owner retains its last accepted map through transient failures.
-The existing `ui_devices` response carries the owner's battery plan readout.
+The existing `ui_devices` response carries the owner's battery plan readout, and
+the battery owner's measured round-trip efficiency beside it, which the device page
+only offers: Use fills the efficiency field and the owner saves it like any edit.
 Each enabled configuration records capacity, reserve, efficiency, wear allowance
 and price unit. Enabling checks the current price unit; the runtime also pauses
 execution when that unit changes until the allowance is reviewed and saved again.
@@ -265,7 +267,11 @@ carries it, where the userdata store would need an API route of its own
   (`lib/objectives/deferredObjectives/activePlanStore.ts`, one row per device,
   diffed; once `deferred_objective_active_plans`, re-plannable state the
   recorder saved on every revision, and the settings UI now hears each save as
-  the `deferred_objective_active_plans_updated` push carrying the plans). A cache belongs here whatever its size (owner, 2026-09-27):
+  the `deferred_objective_active_plans_updated` push carrying the plans), and
+  each home battery's measured round-trip efficiency cycles
+  (`setup/appInit/batteryMeterLearning.ts` on the battery owner's row rule,
+  one row per battery, written only
+  when a cycle is accepted). A cache belongs here whatever its size (owner, 2026-09-27):
   shrinking one does not make it configuration.
 - **Nowhere** — a value that is a fact of the running app and nothing else. The
   live status (`PelsStatus`, once the `pels_status` / `pels_status:<homeId>`

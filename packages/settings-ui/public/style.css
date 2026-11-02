@@ -1195,6 +1195,18 @@ md-primary-tab.tab[active] {
   padding-block: var(--spacing-3);
 }
 
+.battery-plan-measured {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  margin-block: var(--spacing-2);
+}
+
+.battery-plan-measured .field__hint {
+  margin: 0;
+}
+
 .battery-plan-chart {
   margin: var(--spacing-3) 0;
 }

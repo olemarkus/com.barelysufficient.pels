@@ -1,5 +1,7 @@
 import { render } from 'preact';
-import type { ContinuousBatteryPlanConfig, ContinuousBatteryPlanRead } from '../../../../contracts/src/continuousBatteryPlan.ts';
+import type {
+  BatteryEfficiencyMeasurement, ContinuousBatteryPlanConfig, ContinuousBatteryPlanRead,
+} from '../../../../contracts/src/continuousBatteryPlan.ts';
 import { SETTINGS_UI_DEVICES_PATH } from '../../../../contracts/src/settingsUi/paths.ts';
 import { isHomeBatteryClassKey } from '../../../../shared-domain/src/batteryOrSolarRole.ts';
 import { MAIN_HOME_ID } from '../../../../shared-domain/src/settings/settingsKeys.ts';
@@ -13,13 +15,16 @@ import { formatSettingsError } from '../toast.ts';
 import { createSerializedAsyncRunner } from './settingsWrite.ts';
 import { BATTERY_MANAGED_HINT } from './batterySection.ts';
 import { ContinuousBatteryPlanLoading, ContinuousBatteryPlanView } from '../views/ContinuousBatteryPlan.tsx';
-import { loadContinuousBatteryPlan, saveContinuousBatteryPlanConfig } from './continuousBatteryPlanTransport.ts';
+import {
+  loadBatteryEfficiencyMeasurement, loadContinuousBatteryPlan, saveContinuousBatteryPlanConfig,
+} from './continuousBatteryPlanTransport.ts';
 
 type BatteryPlanSession = {
   deviceId: string;
   drivable: boolean;
   blockedReason: string;
   read: ContinuousBatteryPlanRead | null;
+  efficiency: BatteryEfficiencyMeasurement;
   priceUnit: string;
   busy: boolean;
   error: string;
@@ -47,7 +52,7 @@ function display(current: BatteryPlanSession): void {
     render(<ContinuousBatteryPlanLoading failed={current.error !== ''} onRetry={() => refresh(current)} />, mount);
     return;
   }
-  render(<ContinuousBatteryPlanView key={current.deviceId} read={current.read} priceUnit={current.priceUnit}
+  render(<ContinuousBatteryPlanView key={current.deviceId} read={current.read} efficiency={current.efficiency} priceUnit={current.priceUnit}
     timeZone={getHomeyTimezone()} blockedReason={current.blockedReason} busy={current.busy}
     error={current.error} previewAvailable={current.previewAvailable}
     onSave={config => save(current, config)} onRefresh={() => refresh(current)} />, mount);
@@ -62,12 +67,14 @@ async function load(current: BatteryPlanSession): Promise<void> {
   const generation = ++current.generation;
   current.loading = true;
   try {
-    const [read, prices] = await Promise.all([
+    const [read, efficiency, prices] = await Promise.all([
       loadContinuousBatteryPlan(current.deviceId),
+      loadBatteryEfficiencyMeasurement(current.deviceId).catch((): BatteryEfficiencyMeasurement => ({ status: 'unavailable' })),
       getPricesReadModel().catch(() => null),
     ]);
     if (session !== current || generation !== current.generation) return;
     current.read = read;
+    current.efficiency = efficiency;
     current.previewAvailable = true;
     const combined = prices?.combinedPrices;
     current.priceUnit = 'price units';
@@ -136,7 +143,7 @@ export function setContinuousBatteryPlanDevice(device: SettingsUiDeviceDetailIte
     display(session);
     return;
   }
-  session = { deviceId: device.id, drivable: device.batteryControl === 'drivable', blockedReason, read: null, priceUnit: 'price units', busy: false,
+  session = { deviceId: device.id, drivable: device.batteryControl === 'drivable', blockedReason, read: null, efficiency: { status: 'unavailable' }, priceUnit: 'price units', busy: false,
     error: '', loading: false, previewAvailable: true, generation: 0 };
   display(session);
   void load(session);

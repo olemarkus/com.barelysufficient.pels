@@ -71,6 +71,22 @@ zero Main generation, even if another meter area produces solar. If both Main
 and another area have panels, the aggregate cannot resolve Main's share;
 planning waits and demand learning skips those samples.
 
+`lib/battery/batteryEfficiencyLearner.ts` measures each managed Main-home
+battery's round-trip efficiency, whoever drives it. On every Main meter sample
+it integrates the battery's own signed power (holding the previous reading over
+the interval) and closes a cycle when the reported level re-enters the percent
+the span started on, from the same direction, after travelling at least 20
+percentage points. Equal level at both ends makes AC out / AC in the round trip,
+independent of the configured capacity, and entering from the same side keeps
+both ends on the same rounding boundary. A missing or unavailable reading, a
+meter-sample gap over five minutes, a nonzero power reading older than fifteen
+minutes or a span over 72 hours abandons the cycle in progress; results outside
+60-100 % are rejected. The last five accepted results persist per battery in the
+userdata store (built in `setup/appInit/batteryMeterLearning.ts` behind the
+`lib/ports/batteryEfficiencyStore.ts` port); after three, the device page offers
+their median beside the efficiency field. Use fills the field and the owner
+saves it as any edit: the plan reads only the configured value.
+
 The configured wear allowance is bound to its electricity price unit. Switching
 units cannot silently reinterpret its value. The form starts an unbound wear
 allowance at zero and explains that zero ignores wear.

@@ -9,3 +9,12 @@ export const readSettingsUiBatteryPlans = (
   devices.filter(device => device.deviceClass === 'battery')
     .map(device => [device.id, host.readContinuousBatteryPlan(device.id)]),
 );
+
+/** The battery owner's efficiency measurement for the same visible Main-home batteries. */
+export const readSettingsUiBatteryEfficiency = (
+  host: PelsHost,
+  devices: SettingsUiDevicesPayload['devices'],
+): SettingsUiDevicesPayload['batteryEfficiencyMeasurements'] => Object.fromEntries(
+  devices.filter(device => device.deviceClass === 'battery')
+    .map(device => [device.id, host.readBatteryEfficiencyMeasurement(device.id)]),
+);

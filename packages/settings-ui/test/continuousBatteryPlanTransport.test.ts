@@ -6,7 +6,7 @@ const getSettingFresh = vi.fn();
 const setSetting = vi.fn();
 const invalidateApiCache = vi.fn();
 vi.mock('../src/ui/homey.ts', () => ({ callApi, getApiReadModel, getSettingFresh, setSetting, invalidateApiCache }));
-const { loadContinuousBatteryPlan, saveContinuousBatteryPlanConfig } = await import('../src/ui/deviceDetail/continuousBatteryPlanTransport.ts');
+const { loadBatteryEfficiencyMeasurement, loadContinuousBatteryPlan, saveContinuousBatteryPlanConfig } = await import('../src/ui/deviceDetail/continuousBatteryPlanTransport.ts');
 
 const key = 'continuous_battery_plan';
 const config = { ...defaults, enabled: true, priceUnit: 'EUR' };
@@ -39,6 +39,24 @@ test.each([
 ])('refuses an unavailable or malformed device read rather than showing planning off', async (payload) => {
   getApiReadModel.mockResolvedValue(payload);
   await expect(loadContinuousBatteryPlan('battery')).rejects.toThrow('unavailable');
+});
+
+test.each([
+  { status: 'measuring', cycles: 2, cyclesNeeded: 3 },
+  { status: 'measured', roundTripEfficiency: 0.87, cycles: 5 },
+])('reads the owner efficiency measurement from the same device read model', async (measurement) => {
+  getApiReadModel.mockResolvedValue({ continuousBatteryPlans: { battery: waiting }, batteryEfficiencyMeasurements: { battery: measurement } });
+  expect(await loadBatteryEfficiencyMeasurement('battery')).toEqual(measurement);
+});
+
+test.each([
+  {},
+  { batteryEfficiencyMeasurements: { battery: { status: 'measured', roundTripEfficiency: 1.4, cycles: 5 } } },
+  { batteryEfficiencyMeasurements: { battery: { status: 'measuring', cycles: -1, cyclesNeeded: 3 } } },
+  { batteryEfficiencyMeasurements: Object.create({ battery: { status: 'measuring', cycles: 1, cyclesNeeded: 3 } }) },
+])('reads an absent or malformed efficiency measurement as unavailable', async (payload) => {
+  getApiReadModel.mockResolvedValue(payload);
+  expect(await loadBatteryEfficiencyMeasurement('battery')).toEqual({ status: 'unavailable' });
 });
 
 test('does not resolve inherited map entries as battery plans', async () => {
