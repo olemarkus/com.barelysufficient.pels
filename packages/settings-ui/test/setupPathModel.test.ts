@@ -162,7 +162,7 @@ describe('setup path', () => {
   });
 
   it('asks for prices last, only once something uses them, naming what PELS prices with meanwhile', () => {
-    const summary = 'Homey Energy has no electricity prices for your Homey yet.';
+    const summary = 'Homey Energy has no prices for your Homey.';
     const usingPrices: SetupPathFacts = {
       ...configuredAndSimulating,
       prices: { state: 'used', complete: false, summary },

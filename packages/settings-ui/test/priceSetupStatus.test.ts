@@ -116,13 +116,13 @@ describe('resolvePriceSetupStatus', () => {
 
   it('is open on Homey Energy while Homey has no prices for the hub, whoever chose it', () => {
     expect(statusOf(readOf({ scheme: 'homey', basis: CHOSEN })))
-      .toEqual({ state: 'open', summary: 'Homey Energy has no electricity prices for your Homey yet.' });
+      .toEqual({ state: 'open', summary: 'Homey Energy has no prices for your Homey.' });
   });
 
   it('is open on Power by the Hour until it has given PELS prices, whoever chose it', () => {
     // Chosen while the app is not running, or before it has a price device.
     expect(statusOf(readOf({ scheme: 'powerhour', basis: CHOSEN })))
-      .toEqual({ state: 'open', summary: 'Power by the Hour has no prices for PELS yet.' });
+      .toEqual({ state: 'open', summary: 'Power by the Hour has no prices yet.' });
     expect(statusOf(readOf({ scheme: 'powerhour', basis: CHOSEN }), null, { kind: 'applied' }, HOMEY_DAY))
       .toEqual({ state: 'complete', summary: 'Power by the Hour' });
   });

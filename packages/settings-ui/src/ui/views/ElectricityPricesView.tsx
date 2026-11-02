@@ -764,15 +764,13 @@ const POWERHOUR_STORE_URL = 'https://homey.app/a/com.gruijter.powerhour';
 // Homey Energy prices only the countries it covers, so beside turning it on the
 // page names the way to prices everywhere else: Power by the Hour, at whatever
 // step this Homey has reached with it. Homey cannot say whether that app is
-// missing or only stopped, so the copy asks for either. A price device left as
-// it comes prices the home on spot, which an owner on a flat or day/night tariff
-// does not pay, so the copy asks for their own tariff there.
+// missing or only stopped, so the copy says "use", not "install". A price device
+// left as it comes prices the home on spot, which an owner on a flat or
+// day/night tariff does not pay, so the copy asks for their tariff there.
 const POWERHOUR_INSTEAD_OF_HOMEY: Record<PriceSetupSuggestion['powerhour']['kind'], string> = {
-  has_price_device: ' Or use Power by the Hour, which has a price device on this Homey.',
-  no_price_device: ' Or add a price device for your bidding zone in Power by the Hour, enter your tariff there, '
-    + 'then choose it above.',
-  app_unavailable: ' Otherwise, install or start Power by the Hour, add a price device for your bidding zone '
-    + 'and enter your tariff there.',
+  has_price_device: ' Or use Power by the Hour, which already has a price device.',
+  no_price_device: ' Or add a price device with your tariff in Power by the Hour.',
+  app_unavailable: ' Otherwise, use Power by the Hour with your tariff.',
   none: ' Or choose another source above.',
 };
 
@@ -794,12 +792,12 @@ const resolveSourceStatusLines = (props: ElectricityPricesViewProps): SourceStat
   if (config.priceScheme === 'homey' && config.homeyStatus?.hasPrices === false) {
     const powerhour = config.priceSetupSuggestion.powerhour.kind;
     return {
-      hint: <small class="field__hint field__hint--alert">Homey Energy has no electricity prices for your Homey yet.</small>,
+      hint: <small class="field__hint field__hint--alert">Homey Energy has no prices for your Homey.</small>,
       followUp: (
         <>
           <p class="pels-card-supporting">
-            If Homey Energy has prices for your country, turn on dynamic prices in the Homey app under
-            Energy &gt; Electricity, then press Refresh prices.
+            If Homey Energy covers your country, turn on dynamic prices in the Homey app under
+            Energy &gt; Electricity.
             {POWERHOUR_INSTEAD_OF_HOMEY[powerhour]}
           </p>
           {powerhourReady && (

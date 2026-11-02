@@ -136,7 +136,7 @@ export const resolvePriceSetupStatus = (
   }
   if (source.scheme === 'homey') {
     if (!homeyEnergyHasPrices(payload)) {
-      return { state: 'open', summary: 'Homey Energy has no electricity prices for your Homey yet.' };
+      return { state: 'open', summary: 'Homey Energy has no prices for your Homey.' };
     }
     // A price setup in Homey that PELS cannot work out pauses prices, whatever
     // Homey holds; Electricity prices says why.
@@ -150,7 +150,7 @@ export const resolvePriceSetupStatus = (
     && getFlowPricePayload(payload.powerhourToday) === null
     && getFlowPricePayload(payload.powerhourTomorrow) === null
   ) {
-    return { state: 'open', summary: 'Power by the Hour has no prices for PELS yet.' };
+    return { state: 'open', summary: 'Power by the Hour has no prices yet.' };
   }
   const name = SOURCE_NAMES[source.scheme];
   return source.basis.kind === 'chosen'

@@ -1578,21 +1578,20 @@ never saw). On Electricity prices:
   device: `Not chosen yet. Power by the Hour has no price device, so PELS uses
   Homey Energy.` Homey Energy assumed while Power by the Hour has a price device
   adds a `Use Power by the Hour` button next to `Keep Homey Energy`.
-- Homey Energy without prices, whoever chose it: `Homey Energy has no electricity
-  prices for your Homey yet.`, then `If Homey Energy has prices for your
-  country, turn on dynamic prices in the Homey app under Energy > Electricity,
-  then press Refresh prices.` Homey Energy covers only some countries (not
-  Poland, for one), so the line always names Power by the Hour beside it, at
-  the step this Homey has reached: with a price device, `Or use Power by the
-  Hour, which has a price device on this Homey.` and a `Use Power by the Hour`
-  button; running without one, `Or add a price device for your bidding zone in
-  Power by the Hour, enter your tariff there, then choose it above.`; not
-  installed or not running (Homey cannot say which), `Otherwise, install or
-  start Power by the Hour, add a price device for your bidding zone and enter
-  your tariff there.` and a `Get Power by the Hour` button that opens its App
-  Store page. The copy asks for the owner's tariff because a price device left
-  as it comes prices on spot, which a flat or day/night tariff does not pay. With no answer from Homey about the app: `Or choose another
-  source above.` Its status row reads `Prices found` / `No prices`: whether PELS can
+- Homey Energy without prices, whoever chose it: `Homey Energy has no prices
+  for your Homey.` (no "yet": in a country Homey Energy does not cover, none
+  will come), then `If Homey Energy covers your country, turn on dynamic prices
+  in the Homey app under Energy > Electricity.` Homey Energy covers only some
+  countries (not Poland or Switzerland), so the line always names Power by the
+  Hour beside it, at the step this Homey has reached: with a price device, `Or
+  use Power by the Hour, which already has a price device.` and a `Use Power by
+  the Hour` button; running without one, `Or add a price device with your tariff
+  in Power by the Hour.`; not installed or not running (Homey cannot say which,
+  so the line says "use", not "install"), `Otherwise, use Power by the Hour with
+  your tariff.` and a `Get Power by the Hour` button that opens its App Store
+  page. "Your tariff" because a price device left as it comes prices on spot,
+  which a flat or day/night tariff does not pay. With no answer from Homey about
+  the app: `Or choose another source above.` Its status row reads `Prices found` / `No prices`: whether PELS can
   use them is the `Price setup` row's to say.
 - Norway settings: `Not chosen yet. PELS uses NO1.` / `… Strømstøtte.` under a
   `Select price area` / `Select pricing model` placeholder, so picking the value
@@ -2196,9 +2195,8 @@ settings. No tour-completed flag is persisted.
   what PELS prices with meanwhile, as Limits names its 10 kW: `Norway, without
   your grid tariff. PELS uses NO1 and Strømstøtte until you choose.` / `PELS
   uses Homey Energy until you choose a source.` A source with no prices says
-  so: `Homey Energy has no electricity prices for your Homey yet.` / `Power by
-  the Hour has no prices for PELS yet.` (chosen while that app is not running
-  or has no price device). Source of truth:
+  so: `Homey Energy has no prices for your Homey.` / `Power by the Hour has no
+  prices yet.` (chosen while that app is not running or has no price device). Source of truth:
   `resolvePriceSetupStatus` (`packages/settings-ui/src/ui/priceSetupStatus.ts`).
 - **Priority is automatic, not a setup step** (owner ruling 2026-09-22). Modes
   explains the optional adjustment: `PELS orders devices automatically. Drag to
