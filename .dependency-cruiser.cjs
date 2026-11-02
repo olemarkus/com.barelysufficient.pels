@@ -256,7 +256,8 @@ module.exports = {
     },
     // ---- Peer DAG: explicit inversions forbidden ----------------------------
     // The domain peers form a (mostly) top-down DAG:
-    //   executor > plan > {power, dailyBudget, price, objectives, observer}
+    //   plan > {power, dailyBudget, price, observer}
+    //   executor > {observer, power, planContract, diagnostics}
     //   dailyBudget > {power, price}
     //   device > power (whole-home capacity gating, tracker types)
     //   power <-> objectives (type-only cycle, file-distinct, established)
@@ -470,43 +471,23 @@ module.exports = {
       to: { path: '^lib/(plan|observer)/' },
     },
     {
-      name: 'todo-tighten-executor-to-plan',
+      name: 'no-executor-to-plan',
       comment:
-        'RATCHET, not a ban (yet). The plan -> executor direction has been enforced for a while '
-        + '(no-plan-to-executor + scripts/check-plan-objectives-edge.mjs); the REVERSE direction had '
-        + 'no rule at all, and that is where the coupling accumulated — at the baseline this rule was '
-        + 'written against (cede8d98a): 45 edges across 23 files, 14 lib/plan modules, including '
-        + 'planner decisions the executor then re-derives. '
-        + 'The target state is ZERO edges: the planner emits a total action contract and the executor '
-        + 'consumes only that. This rule is warn while the seam train shrinks the set, and flips to '
-        + 'error as its definition-of-done. HONESTY CAVEAT, and it is the important part: '
-        + 'tsPreCompilationDeps is unset, so this cruise sees only VALUE imports — and MOST of the '
-        + "executor's plan edges are type-only, so this rule alone would wave through the majority of "
-        + 'them. The enforceable half is scripts/check-executor-plan-edge.mjs (npm run '
-        + 'executor:plan-edge), which carries the per-edge allowlist and fails on a NEW edge or a '
-        + 'STALE allowlist entry. Shrink the list there; this rule states the intent.',
-      severity: 'warn',
+        'The planner emits ExecutionPlan through lib/planContract; execution owns convergence and '
+        + 'command lifecycle. No executor import may reach planner decisions or planner state. '
+        + 'This rule covers compiled value edges; scripts/check-executor-plan-edge.mjs also '
+        + 'rejects type-only, re-export and dynamic source imports.',
+      severity: 'error',
       from: { path: '^lib/executor/' },
       to: { path: '^lib/plan/' },
     },
     {
       name: 'no-plancontract-to-layers',
       comment:
-        'lib/planContract/** is the neutral boundary contract shared by planner, executor, '
-        + 'diagnostics and logging (no-plan-to-executor names it as the sanctioned shared home). It '
-        + 'must stay a leaf: importing a layer from here would make the contract depend on one of its '
-        + 'own consumers and create a plan <-> planContract cycle. This costs nothing today '
-        + '(planContract imports only packages/shared-domain) and is added BEFORE the seam train '
-        + 'starts moving contract types into this directory, because the first shortcut taken under '
-        + 'deadline is exactly the one a rule has to already be in place to stop. HONESTY CAVEAT, '
-        + 'same as the sibling rule: tsPreCompilationDeps is unset, so this cruise sees only VALUE '
-        + 'imports — and the tempting shortcut here is `import type { DevicePlanDevice } from '
-        + "'../plan/planTypes'`, which is erased before the cruiser sees it. So this rule does NOT, "
-        + 'on its own, prevent the plan <-> planContract cycle its first draft claimed it did (and '
-        + 'no-circular would have caught that cycle anyway). What it uniquely holds is the ACYCLIC '
-        + 'case — planContract -> device/power/observer — for value imports. Closing the type half '
-        + 'needs a companion AST guard; scripts/check-executor-plan-edge.mjs is already a from-dir/'
-        + 'to-dir scan and generalizes to it.',
+        'Neutral decision contracts must not import their runtime consumers. The source guard '
+        + 'behind executor:plan-edge covers type-only imports too, restricts local contract '
+        + 'dependencies to neutral contract/shared packages and logging/utils, and rejects Homey '
+        + 'SDK imports. These are direct-import checks; they do not traverse allowed utilities.',
       severity: 'error',
       from: { path: '^lib/planContract/' },
       // Every peer, by exclusion rather than enumeration. An enumerated list was

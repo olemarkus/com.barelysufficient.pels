@@ -188,7 +188,7 @@ The domain peers (`lib/device`, `lib/power`, `lib/objectives`, `lib/observer`, `
 
 ```
 executor → {observer, power, planContract, diagnostics}
-executor → plan       (warn ratchet, target zero: executor:plan-edge)
+executor ↛ plan       (executor:plan-edge, value and type)
 executor → actuator   (type-only: the injected Actuator)
 plan → {power, dailyBudget, price, observer, diagnostics, planContract}
      ↘ device  (only deviceActionProjection.ts and deviceResidualKw.ts)
@@ -205,7 +205,28 @@ leaves: power, price, observer, actuator, battery, weather, solar, home
 
 The rules behind this DAG (`no-power-to-peer-except-objectives`, `no-device-to-peer-except-power`, `no-plan-to-device`, `no-observer-to-peer`, `no-price-to-peer`, `no-thermostat-to-peer-except-price`, `no-actuator-to-peer`, `no-battery-to-peer`, …) were the gate that drove the `lib/app` dissolution to completion: a helper that, if pushed into a peer, would create a forbidden edge cannot stay inside one.
 
-**That gate is not a licence to park logic at the composition root.** This paragraph used to end "wiring residue stays at the composition root (`app.ts` or `setup/**`), not inside a peer", and that sentence is withdrawn. It is how `setup/` reached 138 files (at `41e19c454`) with 58% of its lines importing two or more peers and the same logic density as `lib/plan` — a wiring layer by name only. Code that needs two peers is not residue; it is a concept nobody has named. Name it and give it a module: a domain service goes beside the port it implements, and a projection between two peers' shapes goes in a neutral contract module (`lib/planContract/` is the built precedent). `setup/**` gets the wiring and nothing else — see `setup/AGENTS.md` § "No domain logic".
+**That gate is not a licence to park logic at the composition root.** This paragraph used to end "wiring residue stays at the composition root (`app.ts` or `setup/**`), not inside a peer", and that sentence is withdrawn. It is how `setup/` reached 138 files (at `41e19c454`) with 58% of its lines importing two or more peers and the same logic density as `lib/plan` — a wiring layer by name only. Code that needs two peers is not residue; it is a concept nobody has named. Name it and give it a module: a domain service goes beside the port it implements, and a producer projects its resolved result into a neutral contract (`lib/planContract/` is the built precedent). `setup/**` gets the wiring and nothing else — see `setup/AGENTS.md` § "No domain logic".
+
+### Planner and execution boundary
+
+`lib/plan/planExecutionProjection.ts` projects the finalized decision into the neutral
+`ExecutionPlan`. It selects device commands and qualifies stable work, and carries
+storage and inverter decisions. Its named step baseline records historical state
+at decision time; it never becomes a live observation. Setup forwards this projection
+without selecting actions.
+
+Execution materializes commands using its current `SteppedCommandStore` sessions and
+reads accepted observations separately. `ExecutionState` owns actuation history and
+pending command backing; the observer-owned binary store remains the sole writer of
+binary pending entries. Planning receives live readonly execution views through
+`PlanExecutionRead`. `PlanExecutionFeedback` applies execution results to planner-owned
+admission, shed membership and shortfall state through a narrow behavior port.
+
+Neither owner imports the other. `no-executor-to-plan` rejects compiled imports;
+`npm run executor:plan-edge` also rejects erased type imports, re-exports and dynamic
+imports. It restricts local `planContract` imports to neutral contract/shared packages,
+`planContract`, logging and utilities, and rejects Homey SDK imports. This checks direct
+imports, including entry points and setup; it does not traverse allowed utilities.
 
 ### Realtime event flow
 
@@ -219,11 +240,10 @@ The executor's drift verdict (`lib/executor/planExecutionDrift.ts`, `ExecutableD
 
 See `notes/state-management/observer-transport-split.md` for the layering rationale and the six-step split-train history.
 
-## Transitional allowances
+## Boundary enforcement
 
-A small number of modules still cross layers in ways the contract above forbids. Each is registered as a named `.dependency-cruiser.cjs` rule and accepted as tightening work, not as new patterns to imitate:
+The named `.dependency-cruiser.cjs` rules and companion source guards enforce these owner boundaries:
 
-- `lib/executor/**` still imports `lib/plan/**`. The `todo-tighten-executor-to-plan` rule is a warning-severity ratchet whose target is zero edges; `npm run executor:plan-edge` (`scripts/check-executor-plan-edge.mjs`) holds the per-edge allowlist and fails on a new edge or a stale entry.
 - `lib/plan/**` imports no executor modules. Setup owns the concrete planner/executor composition and implements the narrow `PlanEngine` behavior contract; neutral cross-boundary result types live in `lib/planContract/`. The cruiser rejects compiled plan→executor edges through `no-plan-to-executor`, and the source AST guard behind `npm run arch:grep` rejects type-only and dynamic forms before compilation erases them.
 - `lib/plan/**` and `lib/executor/**` hold no read interface over the device transport: observed state reaches them from the observer projection (`lib/observer/observedDeviceStateProjection.ts`), and the executor joins it with the transport's descriptors in `lib/executor/executorDeviceRead.ts`. The `no-plan-to-device` cruiser rule allows `lib/plan/**` only the two producer seams (`deviceActionProjection.ts`, `deviceResidualKw.ts`), and `no-executor-to-device-internals` allows the executor nothing. Binary control writes are dispatched by executor (`lib/executor/binaryControlDispatch.ts`), not plan. The orchestrating class is now `DeviceTransport` at `lib/device/deviceTransport.ts` — see `notes/state-management/observer-transport-split.md` for the layering rationale and the per-PR split history.
 

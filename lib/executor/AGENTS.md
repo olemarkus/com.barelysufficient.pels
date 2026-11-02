@@ -6,7 +6,7 @@
 
 - The plan's `plannedShedTargetKind` names the selected end state (`binary_off`, `step`, or `target_value`). A configured `turn_off` behavior is only the deepest floor the planner may choose; the current plan may leave a stepped device running at an intermediate rung. Binary shed dispatch consumes the selected end state and must not re-read shed policy.
 - The ordinary `shed_release` and lifecycle fallback lanes consume resolved postures. The planner selects the idle-task axis and target before execution; the executor never reads shed policy.
-- Project broad plan-device shapes into narrow executor intent and observation types. Compatibility reads from legacy plan fields belong in small adapters. Keep planner admission, UI wording, snapshot serialization, and settings contracts out of this layer.
+- Consume the planner-emitted `ExecutionPlan` from `lib/planContract/`. The planner selects commands and qualifies stable work; execution attaches current command sessions and accepted observations. Keep planner admission, UI wording, snapshot serialization, and raw planning inputs out of this layer.
 
 ## Convergence
 
@@ -14,6 +14,6 @@
 - `hasPlanExecutionDriftAgainstIntent` is the actuation predicate, run against the plan the rebuild just built. There is no plan-to-plan settle comparison: the published plan is never refreshed by merging device inputs onto it.
 - There is one actuation lane. Do not revive a reconcile mode that bypasses retry suppression or cooldowns, and do not add executor-side pacing that silently drops a planner decision. Skip a write for the write's own facts: already matching state, unreachable device, or an equivalent command in flight. The post-activation `force: stepRestore.wroteBinary` is a narrow exception because activation may reset a device's step limit.
 - `ExecutableObservedDeviceState.observedBinaryAxis` is the raw on/off handle; `observedEffectiveOn` is the producer fold of binary and stepped axes. Use the field that answers the question at hand; do not merge them into one ambiguous state.
-- `lib/executor/` imports from `lib/plan/` are a shrinking migration list enforced by `npm run executor:plan-edge`. Prefer contracts in `lib/planContract/` and remove stale allowlist entries when an edge disappears.
+- `lib/executor/` must not import `lib/plan/`, including types and re-exports. `npm run executor:plan-edge` enforces zero imports and prevents neutral contracts from importing runtime owners. `ExecutionState` owns actuation history and pending command backing; planner feedback uses the narrow `PlannerExecutionFeedback` port. A historical `stepBaseline` is not a current observation.
 
 Timing details are in `notes/state-management/actuation-clocks-and-settle.md`.
