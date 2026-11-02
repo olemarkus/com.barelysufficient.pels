@@ -27,7 +27,7 @@ afterEach(() => { render(null, document.body); document.body.innerHTML = ''; });
 
 describe('device support picker rows', () => {
   it('calls every device not on Devices unsupported, and the rest managed or not managed', () => {
-    expect(toDevicePickerRows(homeyDevices, pelsDevices).map((row) => [row.id, row.status])).toEqual([
+    expect(toDevicePickerRows(homeyDevices, pelsDevices, null).map((row) => [row.id, row.status])).toEqual([
       ['heater', 'managed'],
       ['socket', 'listed'],
       ['relay', 'unsupported'],
@@ -35,8 +35,16 @@ describe('device support picker rows', () => {
     ]);
   });
 
+  it('calls the whole-home meter PELS reads power from supported, not a device to request', () => {
+    const meter = homeyDevice('meter', 'HAN reader', 'sensor', 'Hall');
+    const rows = toDevicePickerRows([...homeyDevices, meter], pelsDevices, 'meter');
+    expect(rows.find((row) => row.id === 'meter')?.status).toBe('power_source');
+    expect(groupDevicePickerRows(rows, 'unsupported', '').flatMap((group) => group.rows.map((row) => row.id)))
+      .toEqual(['relay', 'fan']);
+  });
+
   it('groups by zone with devices without a zone last, and filters by status and search', () => {
-    const rows = toDevicePickerRows(homeyDevices, pelsDevices);
+    const rows = toDevicePickerRows(homeyDevices, pelsDevices, null);
     expect(groupDevicePickerRows(rows, 'all', '').map((group) => group.zone))
       .toEqual(['Basement', 'Garage', 'Hall', 'No zone']);
     expect(groupDevicePickerRows(rows, 'unsupported', '').flatMap((group) => group.rows.map((row) => row.id)))
@@ -71,11 +79,21 @@ describe('device support picker view', () => {
     return { surface, props };
   };
 
-  it('shows each device by name alone and passes the tapped row on', () => {
-    const rows: DevicePickerRow[] = toDevicePickerRows(homeyDevices, pelsDevices);
+  it('names each device, says what a tap does where it is not opening the device, and passes the tapped row on', () => {
+    const meter = homeyDevice('meter', 'HAN reader', 'sensor', 'Hall');
+    const rows: DevicePickerRow[] = toDevicePickerRows([...homeyDevices, meter], pelsDevices, 'meter');
     const { surface, props } = mount({ state: 'ready', rows });
     const relay = surface.querySelector<HTMLElement>('[data-device-picker-id="relay"]');
-    expect(relay?.textContent?.trim()).toBe('Water heater relay');
+    expect(relay?.querySelector('[slot="headline"]')?.textContent).toBe('Water heater relay');
+    expect(relay?.querySelector('[slot="supporting-text"]')?.textContent).toBe('Request support');
+    const heater = surface.querySelector<HTMLElement>('[data-device-picker-id="heater"]');
+    expect(heater?.querySelector('[slot="supporting-text"]')).toBeNull();
+    // The meter opens Power source through the app-wide settings link.
+    const meterRow = surface.querySelector<HTMLElement>('[data-device-picker-id="meter"]');
+    expect(meterRow?.querySelector('[slot="supporting-text"]')?.textContent).toBe('Whole-home meter');
+    expect(meterRow?.dataset).toMatchObject({
+      settingsTarget: 'limits', settingsAnchor: '#settings-power-source', settingsHomeScope: 'main',
+    });
     relay?.click();
     expect(props.onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'relay', status: 'unsupported' }));
     expect(surface.querySelector('.pels-appbar__back')?.getAttribute('data-settings-target')).toBe('devices');
@@ -89,7 +107,7 @@ describe('device support picker view', () => {
   });
 
   it('offers every device again when the search matches none', () => {
-    const { surface, props } = mount({ state: 'ready', rows: toDevicePickerRows(homeyDevices, pelsDevices) }, 'no such device');
+    const { surface, props } = mount({ state: 'ready', rows: toDevicePickerRows(homeyDevices, pelsDevices, null) }, 'no such device');
     expect(surface.textContent).toContain('No devices match.');
     surface.querySelector<HTMLElement>('[data-device-picker-action="show-all"]')?.click();
     expect(props.onShowAll).toHaveBeenCalledTimes(1);

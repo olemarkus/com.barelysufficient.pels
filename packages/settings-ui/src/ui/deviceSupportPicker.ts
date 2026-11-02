@@ -2,6 +2,8 @@ import type { HomeyDeviceListEntry } from '../../../contracts/src/settingsUi/hom
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { getTargetDevices } from './devices.ts';
 import { loadHomeyDeviceList } from './homeyDeviceList.ts';
+import { getChosenWholeHomeMeterId } from './homeyEnergyMeter.ts';
+import { settingsPowerSourceSelect } from './dom.ts';
 import { logSettingsError } from './logging.ts';
 import { state } from './state.ts';
 import { openDeviceSupportRequest } from './supportReport.ts';
@@ -25,16 +27,19 @@ let refreshSequence = 0;
 
 /**
  * Every Homey device, with where it stands in PELS. A device on Devices is
- * supported; every other Homey device is one PELS does not support.
+ * supported, and so is the whole-home meter PELS reads power from, which is
+ * not a device it controls; every other Homey device is one PELS does not
+ * support.
  */
 export const toDevicePickerRows = (
   homeyDevices: readonly HomeyDeviceListEntry[],
   pelsDevices: readonly SettingsUiDeviceListItem[],
+  wholeHomeMeterId: string | null,
 ): DevicePickerRow[] => {
   const listed = new Map(pelsDevices.map((device) => [device.id, device] as const));
   return homeyDevices.map((device) => {
     const pelsDevice = listed.get(device.id);
-    let status: DevicePickerRow['status'] = 'unsupported';
+    let status: DevicePickerRow['status'] = device.id === wholeHomeMeterId ? 'power_source' : 'unsupported';
     if (pelsDevice) status = pelsDevice.managed ? 'managed' : 'listed';
     return {
       id: device.id,
@@ -45,8 +50,14 @@ export const toDevicePickerRows = (
   });
 };
 
+/** The whole-home meter PELS reads power from: the chosen one only while Power source is Homey Energy. */
+const activeWholeHomeMeterId = (): string | null => (
+  settingsPowerSourceSelect?.value === 'homey_energy' ? getChosenWholeHomeMeterId() : null
+);
+
 const select = (row: DevicePickerRow): void => {
-  if (!navigation) return;
+  // The whole-home meter's row is a settings link to Power source (`data-settings-target`).
+  if (!navigation || row.status === 'power_source') return;
   if (row.status === 'unsupported') {
     openDeviceSupportRequest(row.id, navigation.openPanel);
     return;
@@ -85,7 +96,8 @@ export const refreshDeviceSupportPicker = async (): Promise<void> => {
     if (request !== refreshSequence) return;
     // `/homey_devices` answers an empty list when Homey cannot be read; a Homey running PELS has devices.
     read = homeyDevices.length === 0
-      ? { state: 'unavailable' } : { state: 'ready', rows: toDevicePickerRows(homeyDevices, pelsDevices) };
+      ? { state: 'unavailable' }
+      : { state: 'ready', rows: toDevicePickerRows(homeyDevices, pelsDevices, activeWholeHomeMeterId()) };
   } catch (error) {
     if (request !== refreshSequence) return;
     read = { state: 'unavailable' };

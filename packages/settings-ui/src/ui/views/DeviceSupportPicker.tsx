@@ -5,9 +5,10 @@ import { SegmentedControl } from './SegmentedControl.tsx';
 
 /**
  * Where a Homey device stands with PELS: on Devices and managed, on Devices
- * but not managed, or not on Devices at all because PELS does not support it.
+ * but not managed, the whole-home meter PELS reads power from, or not on
+ * Devices at all because PELS does not support it.
  */
-export type DevicePickerStatus = 'managed' | 'listed' | 'unsupported';
+export type DevicePickerStatus = 'managed' | 'listed' | 'power_source' | 'unsupported';
 
 export type DevicePickerRow = {
   id: string;
@@ -43,6 +44,25 @@ const FILTER_OPTIONS: { value: DevicePickerFilter; label: string }[] = [
 ];
 
 const NO_ZONE = 'No zone';
+
+/**
+ * What a tap does, on the rows where it is not opening the device: a device
+ * PELS does not support starts a support request, and the whole-home meter
+ * opens Power source.
+ */
+const ROW_ACTIONS: Record<DevicePickerStatus, string | null> = {
+  managed: null,
+  listed: null,
+  power_source: 'Whole-home meter',
+  unsupported: 'Request support',
+};
+
+/** The whole-home meter row's link, followed by the app-wide settings link handler. */
+const POWER_SOURCE_LINK = {
+  'data-settings-target': 'limits',
+  'data-settings-anchor': '#settings-power-source',
+  'data-settings-home-scope': 'main',
+};
 
 const matchesFilter = (row: DevicePickerRow, filter: DevicePickerFilter): boolean => {
   if (filter === 'all') return true;
@@ -105,8 +125,10 @@ const DeviceRows = ({ read, query, filter, onSelect, onRetry, onShowAll }: Devic
           {group.rows.map((row) => (
             <MdListItem key={row.id} type="button" class="device-picker__row"
               data-device-picker-id={row.id} data-device-picker-status={row.status}
+              {...(row.status === 'power_source' ? POWER_SOURCE_LINK : {})}
               onClick={() => onSelect(row)}>
               <span slot="headline">{row.name}</span>
+              {ROW_ACTIONS[row.status] && <span slot="supporting-text">{ROW_ACTIONS[row.status]}</span>}
             </MdListItem>
           ))}
         </MdList>
