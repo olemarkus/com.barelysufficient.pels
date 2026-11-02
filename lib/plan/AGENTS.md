@@ -12,6 +12,8 @@
 
 ## Decisions and rebuilds
 
+- Emit executable decisions through `planExecutionProjection.ts` into `ExecutionPlan`. Keep selection here and command lifecycle in execution. Read execution facts through readonly ports; apply execution feedback through `PlanExecutionFeedback`, without exposing mutable planner state. The named historical step baseline must stay separate from desired commands and live observations.
+
 - A whole-home meter reading normally triggers a rebuild. A device observation changes input and may clear a throttle, but does not trigger a rebuild or reapply a committed plan. `PLAN_REBUILD_TRIGGERS` in `planRebuildTrigger.ts` is the trigger record. An executor action follows a newly decided plan, not an apply-without-decide path.
 - The published plan is what a build decided. Between builds it may gain pending-target decoration (`pendingTargetCommand`), never device inputs; its binary and step pending flags stay as of the build. The raw `PlanInputDevice` predates admission, so merging it onto a plan pairs the plan's decisions with a posture they were not made under (a smart task's command authority is the case that broke). A reader that needs a current reading asks the observer or executor at read time, as `settingsOverviewReadModel.ts` does.
 - `lib/power/` resolves meter trust. The ordinary builder receives measured power, never a stale label or sentinel value. `SilentMeterPlanBuilder` takes an explicit fail-closed directive and sheds candidates to their floor once when the power owner escalates. `planBuildGate` blocks later rebuilds until a new reading. Display freshness stays outside planner context.

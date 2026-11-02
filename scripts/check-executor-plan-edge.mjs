@@ -1,38 +1,9 @@
-// AST guard + ratchet for the executor -> planner source-level boundary.
-//
-// WHY THIS EXISTS: the plan -> executor direction has been enforced for a while
-// (`no-plan-to-executor` plus scripts/check-plan-objectives-edge.mjs). The
-// REVERSE direction had no rule at all, and that is where the coupling actually
-// accumulated: 24 files under lib/executor/ importing 13 distinct lib/plan
-// modules, including planner decisions the executor then re-derives.
-//
-// The target state is zero edges: the planner emits a total action contract and
-// the executor consumes only that (see the planner/executor seam train). Until
-// then this guard is a RATCHET, not a ban — every edge that exists today is
-// listed in ALLOWED below, and the guard fails on two things:
-//
-//   1. a NEW edge that is not in the allowlist, and
-//   2. a STALE allowlist entry — one listed here that the code no longer has.
-//
-// (2) is the half that makes this a ratchet rather than a snapshot. Without it,
-// a later stage deletes an edge, nobody removes the entry, and the edge can be
-// silently re-added months later with CI green. Deleting an edge is therefore
-// required to include deleting its line here, which is exactly the bookkeeping
-// a multi-PR train needs.
-//
-// dependency-cruiser cannot do this job alone: it runs post-compilation
-// (tsPreCompilationDeps is deliberately unset — see .dependency-cruiser.cjs),
-// so `import type` edges are erased before it sees the graph, and most of the
-// executor's plan imports are type-only. The companion cruiser rule
-// (`todo-tighten-executor-to-plan`, warn) covers the value edges and states the
-// intent; this guard is what actually holds the line.
-//
-// Implementation mirrors scripts/check-plan-objectives-edge.mjs: TypeScript
-// compiler API rather than raw-text regex, so comments never false-positive and
-// every specifier shape is covered (import/export-from, import=require,
-// dynamic import()/require(), and type-position `import('...')`).
-//
-// Runs in `ci:checks` (pre-push hook + CI checks job).
+// Source-level enforcement of the completed planner/executor boundary.
+// dependency-cruiser sees compiled value imports; this guard also rejects
+// type-only edges and non-static imports before compilation can erase them.
+// Neutral plan contracts cannot reach back into runtime owners, so relocating
+// a planner type behind a contract re-export cannot bypass the boundary.
+// Optional root argument supports isolated guard fixtures.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -42,44 +13,32 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const ts = require('typescript');
 
-const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const rootDir = process.argv[2] === undefined
+  ? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+  : path.resolve(process.argv[2]);
 const executorDir = path.join(rootDir, 'lib', 'executor');
 const planDir = path.join(rootDir, 'lib', 'plan');
 
-// Every executor -> plan edge that exists today, as `importer -> target module`.
-// SHRINK THIS LIST. Do not grow it: a new entry needs an explicit reason in the
-// PR description, and the seam train's definition-of-done is this list empty and
-// the cruiser rule flipped to error.
-const ALLOWED = new Set([]);
+const contractDir = path.join(rootDir, 'lib', 'planContract');
+const libDir = path.join(rootDir, 'lib');
+const contractDependencyDirs = [
+  ...['planContract', 'logging', 'utils'].map((name) => path.join(libDir, name)),
+  ...['contracts', 'shared-domain', 'planner-types'].map((name) => path.join(rootDir, 'packages', name)),
+];
 
 function isWithin(directory, candidate) {
   const relative = path.relative(directory, candidate);
   return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
 }
 
-// The plan target a specifier addresses, as the allowlist spells it, or null
-// when the specifier does not reach into lib/plan at all.
-//
-// The FULL relative path is tracked, not just its top segment. An earlier
-// version collapsed `../plan/admission/activationBackoff` to `admission`, which
-// quietly defeated the ratchet twice over: once allowlisted, a new import of
-// `../plan/admission/sheddingGuard` from the same file was invisible, and
-// deleting the original edge never went stale while any file under `admission/`
-// was still imported. A directory import (`../plan/admission`) resolves to the
-// directory itself and is spelled without a trailing segment, so a barrel and a
-// named file inside it stay distinct entries.
-//
-// `../plan` itself — a hypothetical `lib/plan/index.ts` barrel — is reported as
-// the empty-string target rather than skipped, because a barrel import is the
-// widest possible edge and the one most worth failing on.
-function planTargetModule(importerPath, text) {
+function isForbiddenSpecifier(importerPath, text) {
   const isRelative = text === '.' || text === '..' || text.startsWith('./') || text.startsWith('../');
-  if (!isRelative && !path.isAbsolute(text)) return null;
-  const resolved = path.resolve(path.dirname(importerPath), text);
-  if (!isWithin(planDir, resolved)) return null;
-  const relative = path.relative(planDir, resolved);
-  if (relative === '') return '<barrel>';
-  return relative.split(path.sep).join('/').replace(/\.(tsx?|mts|cts|js|mjs|cjs)$/, '');
+  if (!isRelative && !path.isAbsolute(text)) {
+    return isWithin(contractDir, importerPath) && /^(homey|homey-api)(\/|$)/.test(text);
+  }
+  const target = path.resolve(path.dirname(importerPath), text);
+  if (isWithin(executorDir, importerPath)) return isWithin(planDir, target);
+  return !contractDependencyDirs.some((directory) => isWithin(directory, target));
 }
 
 function specifierText(node) {
@@ -89,17 +48,12 @@ function specifierText(node) {
   return null;
 }
 
-function collectEdges(sourceFile, importerPath, relPath, found, offenders, unresolvable) {
+function collectEdges(sourceFile, importerPath, relPath, offenders, unresolvable) {
   const record = (node, text) => {
     if (text === null) return;
-    const target = planTargetModule(importerPath, text);
-    if (target === null) return;
-    const key = `${relPath} -> ${target}`;
-    found.add(key);
-    if (!ALLOWED.has(key)) {
-      const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-      offenders.push({ file: relPath, line: line + 1, specifier: text, key });
-    }
+    if (!isForbiddenSpecifier(importerPath, text)) return;
+    const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+    offenders.push({ file: relPath, line: line + 1, specifier: text });
   };
 
   const visit = (node) => {
@@ -130,11 +84,7 @@ function collectEdges(sourceFile, importerPath, relPath, found, offenders, unres
         const arg = node.arguments[0];
         const text = specifierText(arg);
         if (text === null) {
-          // A computed specifier cannot be proven to stay out of lib/plan, so it
-          // is reported — but as its OWN category, not as a planner-boundary
-          // violation. Filing it with the allowlist offenders would print a
-          // message about lib/plan for an import that may have nothing to do
-          // with the planner, and the resulting key is not addable to ALLOWED.
+          // A runtime expression cannot be proven to stay inside this boundary.
           const locationNode = arg ?? node;
           const { line } = sourceFile.getLineAndCharacterOfPosition(locationNode.getStart(sourceFile));
           unresolvable.push({
@@ -166,57 +116,40 @@ async function collectTsFiles(dir) {
   return files.flat();
 }
 
-const files = await collectTsFiles(executorDir);
+const files = (await Promise.all([collectTsFiles(executorDir), collectTsFiles(contractDir)])).flat();
 const offenders = [];
 const unresolvable = [];
-const found = new Set();
 
 for (const file of files) {
   const source = await fs.readFile(file, 'utf8');
   const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
-  collectEdges(sourceFile, file, path.relative(executorDir, file), found, offenders, unresolvable);
+  collectEdges(sourceFile, file, path.relative(rootDir, file), offenders, unresolvable);
 }
-
-const stale = [...ALLOWED].filter((key) => !found.has(key)).sort();
 
 if (offenders.length > 0) {
   process.stderr.write(
-    'Architecture boundary violation (executor -> planner source guard):\n'
-    + 'lib/executor/** may only import the lib/plan modules already listed in\n'
-    + `${path.relative(rootDir, fileURLToPath(import.meta.url))} (ALLOWED).\n`
-    + 'The seam train is shrinking that list — do not add to it without saying why\n'
-    + 'in the PR description. New edge(s):\n',
+    'Architecture boundary violation (executor/planner source guard):\n'
+    + 'lib/executor/** must not import lib/plan/**, including type-only imports.\n'
+    + 'lib/planContract/** must remain independent of runtime owners.\n',
   );
   for (const { file, line, specifier } of offenders) {
-    process.stderr.write(`  lib/executor/${file}:${line}  imports '${specifier}'\n`);
-  }
-}
-
-if (stale.length > 0) {
-  process.stderr.write(
-    'Stale allowlist entries (executor -> planner source guard):\n'
-    + 'These edges no longer exist in the code. Delete them from ALLOWED in\n'
-    + `${path.relative(rootDir, fileURLToPath(import.meta.url))} so the ratchet cannot slip back:\n`,
-  );
-  for (const key of stale) {
-    process.stderr.write(`  ${key}\n`);
+    process.stderr.write(`  ${file}:${line}  imports '${specifier}'\n`);
   }
 }
 
 if (unresolvable.length > 0) {
   process.stderr.write(
-    'Non-static import specifier in lib/executor/**:\n'
-    + 'This guard resolves specifiers lexically, so it cannot prove a computed\n'
-    + 'import()/require() stays out of lib/plan. Use a static specifier:\n',
+    'Non-static import specifier at the executor/planner boundary:\n'
+    + 'Use a static import()/require() specifier so its owner can be checked.\n',
   );
   for (const { file, line, specifier } of unresolvable) {
-    process.stderr.write(`  lib/executor/${file}:${line}  ${specifier}\n`);
+    process.stderr.write(`  ${file}:${line}  ${specifier}\n`);
   }
 }
 
-if (offenders.length > 0 || stale.length > 0 || unresolvable.length > 0) process.exit(1);
+if (offenders.length > 0 || unresolvable.length > 0) process.exit(1);
 
 process.stdout.write(
-  `executor:plan-edge OK — ${found.size} allowed lib/executor -> lib/plan edges, 0 new, 0 stale `
+  'executor:plan-edge OK — 0 lib/executor -> lib/plan edges; neutral contracts import no runtime layers '
   + `(${files.length} files scanned)\n`,
 );
