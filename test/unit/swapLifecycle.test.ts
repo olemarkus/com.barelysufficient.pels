@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SwapLedger, type SwapPromise } from '../../lib/plan/swap';
+import { offDonors } from '../utils/swapLedgerFixture';
 import { partialDouble } from '../helpers/partialDouble';
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import { SWAP_RESERVATION_MAX_MS, SWAP_TIMEOUT_MS } from '../../lib/plan/planConstants';
@@ -54,7 +55,7 @@ const openLedger = (params: {
   ledger.open(
     'target',
     params.promise,
-    new Set(params.donorIds ?? []),
+    offDonors(params.donorIds),
     params.planMeasurementTs ?? 0,
     params.openedAtMs ?? 0,
   );
@@ -243,12 +244,12 @@ describe('re-approving a live reservation', () => {
     const ledger = openLedger({
       promise: steppedPromise('medium'), donorIds: ['first'], planMeasurementTs: 100, openedAtMs: 0,
     });
-    ledger.open('target', steppedPromise('max'), new Set(['second']), 200, 30_000);
+    ledger.open('target', steppedPromise('max'), offDonors(['second']), 200, 30_000);
 
     expect(ledger.reservationFor('target')).toEqual({
       targetId: 'target',
       promise: steppedPromise('max'),
-      donorIds: new Set(['first', 'second']),
+      donors: offDonors(['first', 'second']),
       openedAtMs: 0,
       // A re-approval sheds again, so it goes back to waiting — but the
       // ceiling basis does not move.

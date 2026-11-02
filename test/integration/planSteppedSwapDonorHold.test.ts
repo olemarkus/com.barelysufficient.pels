@@ -3,6 +3,7 @@ import { buildPlanCycle } from '../utils/planContextPowerFixture';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
+import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { steppedPlanDevice, applyRestorePlanForSpec } from '../utils/planTestUtils';
@@ -187,5 +188,115 @@ describe('stepped swap donor hold', () => {
       desiredStepId: 'medium',
       reason: { code: PLAN_REASON_CODES.swapPending },
     });
+  });
+});
+
+/** A donor charger at `stepId`, drawing that step's nameplate. */
+const chargerAt = (stepId: 'low' | 'medium' | 'max', currentDrawKw: number): DevicePlanDevice => steppedPlanDevice({
+  id: 'charger',
+  name: 'Charger',
+  priority: 90,
+  currentState: 'on',
+  plannedState: 'keep',
+  selectedStepId: stepId,
+  reportedStepId: stepId,
+  desiredStepId: stepId,
+  currentDrawKw,
+});
+
+describe('stepped swap donor step-down', () => {
+  it('lowers a stepped donor to the gentlest step that funds the swap, and holds it there until the swap settles', () => {
+    // Production, 2026-11-01: a charger at 14 A was switched off to start a
+    // higher-priority water heater when stepping it to 6 A freed enough. Each
+    // stop cost the charger about five minutes before it drew again.
+    const state = createPlanEngineState();
+
+    // Cycle 1: 0.5 kW available, the heater needs +1 kW. The charger stepping
+    // from `max` to `medium` frees 1 kW, enough with the swap reserve.
+    vi.setSystemTime(T0);
+    const approved = applyRestorePlanForSpec({
+      planDevices: [heater('medium'), chargerAt('max', 3)],
+      ...buildPlanCycle({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps: deps(T0),
+    });
+    expect(swappedOutFor(state, 'charger')).toBe('heater');
+    expect(byId(approved.planDevices, 'charger')).toMatchObject({
+      plannedState: 'shed',
+      desiredStepId: 'medium',
+      plannedShedStepId: 'medium',
+      reason: { code: PLAN_REASON_CODES.swappedOut, targetName: 'Water heater' },
+    });
+    // The end state the executor acts on: running at a lower step, not off.
+    const parked = byId(approved.planDevices, 'charger');
+    expect(parked && resolvePlannedShedTargetKind(parked)).toBe('step');
+
+    // Cycle 2: the charger still reads `max`. It is held at `medium`, not
+    // switched off, and the heater waits for the step-down to land.
+    state.shedDecisions.lastPlannedShedIds = new Set(['charger']);
+    vi.setSystemTime(T0 + 10_000);
+    const lagging = applyRestorePlanForSpec({
+      planDevices: [heater('medium'), chargerAt('max', 3)],
+      ...buildPlanCycle({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps: deps(T0 + 10_000),
+    });
+    expect(byId(lagging.planDevices, 'charger')).toMatchObject({
+      plannedState: 'shed',
+      desiredStepId: 'medium',
+      plannedShedStepId: 'medium',
+    });
+    expect(byId(lagging.planDevices, 'heater')).toMatchObject({
+      desiredStepId: 'medium',
+      reason: { code: PLAN_REASON_CODES.swapPending },
+    });
+
+    // Cycle 3, inside the swap's served window: the charger reports `medium`
+    // and a fresh reading shows the freed power. The heater steps up; the charger stays at `medium`, still running.
+    vi.setSystemTime(T0 + 40_000);
+    const served = applyRestorePlanForSpec({
+      planDevices: [heater('medium'), chargerAt('medium', 2)],
+      ...buildPlanCycle({ headroomRaw: 1.5, headroom: 1.5 }),
+      state,
+      sheddingActive: false,
+      deps: deps(T0 + 40_000),
+    });
+    expect(byId(served.planDevices, 'heater')?.desiredStepId).toBe('max');
+    expect(byId(served.planDevices, 'charger')).toMatchObject({ plannedState: 'shed', desiredStepId: 'medium' });
+
+    // Cycle 4: the heater reports `max`, so the swap settles and the charger is
+    // free to climb again on its own merits.
+    vi.setSystemTime(T0 + 50_000);
+    applyRestorePlanForSpec({
+      planDevices: [heater('max'), chargerAt('medium', 2)],
+      ...buildPlanCycle({ headroomRaw: 1.5, headroom: 1.5 }),
+      state,
+      sheddingActive: false,
+      deps: deps(T0 + 50_000),
+    });
+    expect(hasReservation(state, 'heater')).toBe(false);
+  });
+
+  it('still switches a stepped donor off when no lower step frees enough', () => {
+    // `medium` -> `low` frees 0.75 kW; with 0.3 kW available the heater's
+    // +1 kW step needs more, so the charger is switched off as before.
+    const state = createPlanEngineState();
+    vi.setSystemTime(T0);
+    const approved = applyRestorePlanForSpec({
+      planDevices: [heater('medium'), chargerAt('medium', 2)],
+      ...buildPlanCycle({ headroomRaw: 0.3, headroom: 0.3 }),
+      state,
+      sheddingActive: false,
+      deps: deps(T0),
+    });
+    expect(swappedOutFor(state, 'charger')).toBe('heater');
+    const charger = byId(approved.planDevices, 'charger');
+    expect(charger).toMatchObject({
+      plannedState: 'shed',
+      reason: { code: PLAN_REASON_CODES.swappedOut, targetName: 'Water heater' },
+    });
+    expect(charger && resolvePlannedShedTargetKind(charger)).toBe('binary_off');
   });
 });

@@ -1,4 +1,4 @@
-import { SwapLedger, type SwapPromise } from '../../lib/plan/swap';
+import { SwapLedger, type SwapDonorRelease, type SwapPromise } from '../../lib/plan/swap';
 import type { PlanEngineState } from '../../lib/plan/planState';
 
 /**
@@ -14,6 +14,11 @@ import type { PlanEngineState } from '../../lib/plan/planState';
 export const steppedPromise = (stepId: string): SwapPromise => ({ kind: 'stepped', stepId });
 export const binaryPromise: SwapPromise = { kind: 'binary' };
 
+/** Donors the swap switched off, keyed by id — what an approval records for binary donors. */
+export const offDonors = (donorIds: readonly string[] = []): ReadonlyMap<string, SwapDonorRelease> => (
+  new Map(donorIds.map((id) => [id, { kind: 'off' }]))
+);
+
 /** Open one reservation on a state's ledger, the way an approved swap does. */
 export function seedSwapReservation(
   state: PlanEngineState,
@@ -28,7 +33,7 @@ export function seedSwapReservation(
   state.swapLedger.open(
     params.targetId,
     params.promise ?? binaryPromise,
-    new Set(params.donorIds ?? []),
+    offDonors(params.donorIds),
     params.planMeasurementTs ?? 0,
     params.openedAtMs ?? Date.now(),
   );
@@ -46,7 +51,7 @@ export function ledgerWithReservation(params: {
   ledger.open(
     params.targetId,
     params.promise ?? binaryPromise,
-    new Set(params.donorIds ?? []),
+    offDonors(params.donorIds),
     params.planMeasurementTs ?? 0,
     params.openedAtMs ?? Date.now(),
   );
