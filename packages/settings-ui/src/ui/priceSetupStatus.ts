@@ -113,11 +113,15 @@ const SOURCE_NAMES: Record<Exclude<PriceSchemeSetting, 'norway'>, string> = {
 /**
  * Prices are set up when the owner chose the source and the source can price
  * the home: on Norway's own source that takes the grid company, the price area
- * and the pricing model, and Homey Energy must have prices for this hub in a
- * price setup PELS can work out.
+ * and the pricing model; Homey Energy must have prices for this hub in a
+ * price setup PELS can work out; and Power by the Hour must have given PELS
+ * prices, which it cannot while it is not running or has no price device.
  */
 export const resolvePriceSetupStatus = (
-  payload: Pick<SettingsUiPricesPayload, 'priceSetup' | 'homeyToday' | 'homeyTomorrow' | 'homeyPriceFormula'>,
+  payload: Pick<
+    SettingsUiPricesPayload,
+    'priceSetup' | 'homeyToday' | 'homeyTomorrow' | 'homeyPriceFormula' | 'powerhourToday' | 'powerhourTomorrow'
+  >,
 ): PriceSetupStatus => {
   const read = payload.priceSetup;
   if (read.state !== 'resolved') return { state: 'unavailable' };
@@ -140,6 +144,13 @@ export const resolvePriceSetupStatus = (
     if (formula === 'unsupported' || formula === 'prices_nothing') {
       return { state: 'open', summary: 'PELS can’t use the price setup in Homey Energy.' };
     }
+  }
+  if (
+    source.scheme === 'powerhour'
+    && getFlowPricePayload(payload.powerhourToday) === null
+    && getFlowPricePayload(payload.powerhourTomorrow) === null
+  ) {
+    return { state: 'open', summary: 'Power by the Hour has no prices for PELS yet.' };
   }
   const name = SOURCE_NAMES[source.scheme];
   return source.basis.kind === 'chosen'

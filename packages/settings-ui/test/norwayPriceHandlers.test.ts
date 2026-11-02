@@ -184,6 +184,33 @@ describe('Norway price handlers', () => {
       expect(homeyMocks.callApi).toHaveBeenCalledTimes(2);
     });
 
+    it('asks again on Homey Energy after Refresh prices, but never repeats the Norway lookup', async () => {
+      // The owner tapped Get Power by the Hour, installed it and came back to
+      // press Refresh prices: the answer from before is out of date.
+      (homeyMocks.callApi as Mock).mockResolvedValue(null);
+      const norway = norwaySetup({}) as Extract<PriceSetupRead, { state: 'resolved' }>;
+      let state = {
+        priceScheme: 'homey',
+        priceSetup: { state: 'resolved', setup: { ...norway.setup, source: { scheme: 'homey', basis: { kind: 'chosen' } } } },
+        homeyStatus: { hasPrices: false },
+      } as unknown as PriceConfigState;
+      const handlers = createNorwayPriceHandlers({
+        getState: () => state,
+        patchState: (patch) => { state = { ...state, ...patch }; },
+        rerender: vi.fn(),
+        refreshStatus: vi.fn(async () => undefined),
+      });
+
+      await handlers.suggestFromLocation();
+      await handlers.suggestAgainAfterRefresh();
+      expect(homeyMocks.callApi).toHaveBeenCalledTimes(2);
+
+      state = { ...state, priceScheme: 'norway', priceSetup: norway };
+      await handlers.suggestFromLocation();
+      await handlers.suggestAgainAfterRefresh();
+      expect(homeyMocks.callApi).toHaveBeenCalledTimes(3);
+    });
+
     it('sends the location nowhere once the owner chose both', async () => {
       const { handlers } = createHandlers({
         priceSetup: norwaySetup({

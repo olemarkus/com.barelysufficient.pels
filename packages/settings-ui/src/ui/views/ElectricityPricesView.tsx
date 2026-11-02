@@ -764,12 +764,15 @@ const POWERHOUR_STORE_URL = 'https://homey.app/a/com.gruijter.powerhour';
 // Homey Energy prices only the countries it covers, so beside turning it on the
 // page names the way to prices everywhere else: Power by the Hour, at whatever
 // step this Homey has reached with it. Homey cannot say whether that app is
-// missing or only stopped, so the copy asks for either.
+// missing or only stopped, so the copy asks for either. A price device left as
+// it comes prices the home on spot, which an owner on a flat or day/night tariff
+// does not pay, so the copy asks for their own tariff there.
 const POWERHOUR_INSTEAD_OF_HOMEY: Record<PriceSetupSuggestion['powerhour']['kind'], string> = {
   has_price_device: ' Or use Power by the Hour, which has a price device on this Homey.',
-  no_price_device: ' Or add a price device for your bidding zone in Power by the Hour, then choose it above.',
-  app_unavailable: ' Otherwise, install or start Power by the Hour, which has day-ahead prices for most of Europe, '
-    + 'and add a price device for your bidding zone.',
+  no_price_device: ' Or add a price device for your bidding zone in Power by the Hour, enter your tariff there, '
+    + 'then choose it above.',
+  app_unavailable: ' Otherwise, install or start Power by the Hour, add a price device for your bidding zone '
+    + 'and enter your tariff there.',
   none: ' Or choose another source above.',
 };
 

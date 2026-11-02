@@ -256,13 +256,18 @@ Price support is optional, but it makes the app more useful for thermal loads, d
 
 | Setting | What it does |
 | --- | --- |
-| **Price source** | Choose **Norway (spot + grid tariff)**, **Homey Energy (dynamic prices)**, **Power by the Hour (app)**, or **Flow (prices from a Flow card)**. Until you choose, PELS uses **Norway (spot + grid tariff)** on a Homey in Norway and **Homey Energy** elsewhere, going by the country Homey reports for its location. The page then says **Not chosen yet** with a button to keep that source. Outside Norway, PELS uses **Power by the Hour** instead when that app can price your home (its only price device, or the one you picked) and no device follows prices yet. Once devices follow prices, PELS never moves them to another source by itself, and the page offers **Use Power by the Hour** next to **Keep Homey Energy**. If Homey Energy has no prices for your Homey, the page says so; turn on dynamic prices under **Energy > Electricity** in the Homey app if Homey Energy covers your country. The page also names Power by the Hour, which has day-ahead prices for most of Europe, including Poland: **Use Power by the Hour** when that app has a price device, how to add one when it has none, and **Get Power by the Hour** when it is not installed or not running. |
+| **Price source** | Choose **Norway (spot + grid tariff)**, **Homey Energy (dynamic prices)**, **Power by the Hour (app)**, or **Flow (prices from a Flow card)**. Until you choose, PELS uses **Norway (spot + grid tariff)** on a Homey in Norway and **Homey Energy** elsewhere, going by the country Homey reports for its location. The page then says **Not chosen yet** with a button to keep that source. Outside Norway, PELS uses **Power by the Hour** instead when that app can price your home (its only price device, or the one you picked) and no device follows prices yet. Once devices follow prices, PELS never moves them to another source by itself, and the page offers **Use Power by the Hour** next to **Keep Homey Energy**. If Homey Energy has no prices for your Homey, the page says so; turn on dynamic prices under **Energy > Electricity** in the Homey app if Homey Energy covers your country. The page also names Power by the Hour, which has a price device for most European bidding zones, Poland included: **Use Power by the Hour** when that app has a price device, how to add one and enter your tariff when it has none, and **Get Power by the Hour** when it is not installed or not running. Until Power by the Hour gives PELS prices, setup keeps **Prices** open. |
 
 **Power by the Hour** reads prices straight from that app, with no Flow to build. Install
 [Power by the Hour](https://homey.app/a/com.gruijter.powerhour/) (version 8.10.0 or newer), add a price device
 for your bidding zone in it, and pick this source. If you have more than one price device, PELS asks which one
 prices your home. The prices are the ones that app publishes — the spot price plus the markups you set there —
 so the **grid tariff is not included** unless you added it there yourself as a fixed or time-of-day markup.
+On a fixed or day/night tariff rather than spot prices, turn on **Ignore market price (Fixed price only)** in
+the price device, enter the cheaper rate as **Import fixed markup per kWh** and what the dearer hours add as
+**Import Extra Time Of Day markup** (`7:0.08;20:0` adds 0.08 from 07:00 until 20:00), so PELS shifts load by the
+prices you pay. **Import Extra Weekend markup** replaces the time-of-day markup only when it is not zero, and the
+app has no public holidays: change the markup from a Flow on those days.
 
 If you use Norway pricing, you also set:
 

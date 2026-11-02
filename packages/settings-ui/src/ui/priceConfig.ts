@@ -324,7 +324,12 @@ const handleSchemeChange = async (scheme: PriceScheme) => {
     renderAll();
     await logSettingsError('Failed to save price scheme', error, 'priceConfig');
     await showToastError(error, 'Failed to save price settings. If this keeps happening, send a diagnostics report.');
+    return;
   }
+  // The page asks for a suggestion for the source it shows, so a source picked
+  // here is asked about now, not only the next time the page opens. Outside
+  // the save above: an advisory read must never roll a saved source back.
+  await norwayPriceHandlers.suggestFromLocation();
 };
 
 const handleProviderSurchargeChange = async (val: number) => {
@@ -431,7 +436,9 @@ const handleRefreshPrices = async () => {
   } catch (error) {
     await logSettingsError('Failed to refresh prices', error, 'priceConfig');
     await showToastError(error, 'Failed to refresh spot prices. If this keeps happening, send a diagnostics report.');
+    return;
   }
+  await norwayPriceHandlers.suggestAgainAfterRefresh();
 };
 
 const handleRefreshGridTariff = async () => {

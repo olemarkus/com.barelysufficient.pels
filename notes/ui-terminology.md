@@ -1586,11 +1586,12 @@ never saw). On Electricity prices:
   the step this Homey has reached: with a price device, `Or use Power by the
   Hour, which has a price device on this Homey.` and a `Use Power by the Hour`
   button; running without one, `Or add a price device for your bidding zone in
-  Power by the Hour, then choose it above.`; not installed or not running
-  (Homey cannot say which), `Otherwise, install or start Power by the Hour,
-  which has day-ahead prices for most of Europe, and add a price device for
-  your bidding zone.` and a `Get Power by the Hour` button that opens its App
-  Store page. With no answer from Homey about the app: `Or choose another
+  Power by the Hour, enter your tariff there, then choose it above.`; not
+  installed or not running (Homey cannot say which), `Otherwise, install or
+  start Power by the Hour, add a price device for your bidding zone and enter
+  your tariff there.` and a `Get Power by the Hour` button that opens its App
+  Store page. The copy asks for the owner's tariff because a price device left
+  as it comes prices on spot, which a flat or day/night tariff does not pay. With no answer from Homey about the app: `Or choose another
   source above.` Its status row reads `Prices found` / `No prices`: whether PELS can
   use them is the `Price setup` row's to say.
 - Norway settings: `Not chosen yet. PELS uses NO1.` / `… Strømstøtte.` under a
@@ -2194,7 +2195,10 @@ settings. No tour-completed flag is persisted.
   with no prices, or a Norway setting the owner never chose. Its detail names
   what PELS prices with meanwhile, as Limits names its 10 kW: `Norway, without
   your grid tariff. PELS uses NO1 and Strømstøtte until you choose.` / `PELS
-  uses Homey Energy until you choose a source.` Source of truth:
+  uses Homey Energy until you choose a source.` A source with no prices says
+  so: `Homey Energy has no electricity prices for your Homey yet.` / `Power by
+  the Hour has no prices for PELS yet.` (chosen while that app is not running
+  or has no price device). Source of truth:
   `resolvePriceSetupStatus` (`packages/settings-ui/src/ui/priceSetupStatus.ts`).
 - **Priority is automatic, not a setup step** (owner ruling 2026-09-22). Modes
   explains the optional adjustment: `PELS orders devices automatically. Drag to

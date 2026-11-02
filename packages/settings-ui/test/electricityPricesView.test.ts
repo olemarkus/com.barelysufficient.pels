@@ -1075,7 +1075,7 @@ describe('ElectricityPricesView, Homey Energy without prices', () => {
     }));
 
     expect(mount.textContent).toContain('If Homey Energy has prices for your country, turn on dynamic prices');
-    expect(mount.textContent).toContain('install or start Power by the Hour, which has day-ahead prices for most of Europe');
+    expect(mount.textContent).toContain('install or start Power by the Hour, add a price device for your bidding zone and enter your tariff there.');
     const get = Array.from(mount.querySelectorAll('md-outlined-button'))
       .find((button) => button.textContent?.trim() === 'Get Power by the Hour') as (HTMLElement & { href?: string; target?: string }) | undefined;
     expect(get?.href).toBe('https://homey.app/a/com.gruijter.powerhour');
@@ -1092,7 +1092,7 @@ describe('ElectricityPricesView, Homey Energy without prices', () => {
       priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'no_price_device' } },
     }));
 
-    expect(mount.textContent).toContain('Or add a price device for your bidding zone in Power by the Hour, then choose it above.');
+    expect(mount.textContent).toContain('Or add a price device for your bidding zone in Power by the Hour, enter your tariff there, then choose it above.');
     expect(mount.textContent).not.toContain('Get Power by the Hour');
   });
 });
