@@ -5,6 +5,8 @@ import type {
   SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUi/prices.ts';
 import { getFlowPricePayload } from '../../../shared-domain/src/price/flowPriceUtils.ts';
+import { getDateKeyInTimeZone, shiftDateKey } from '../../../shared-domain/src/utils/dateUtils.ts';
+import { getHomeyTimezone } from './homey.ts';
 import { gridCompanyNameOf } from './gridCompanies.ts';
 
 /**
@@ -68,6 +70,22 @@ export const homeyEnergyHasPrices = (
 ): boolean => (
   getFlowPricePayload(payload.homeyToday) !== null || getFlowPricePayload(payload.homeyTomorrow) !== null
 );
+
+/**
+ * Whether Power by the Hour has given PELS prices for today or tomorrow. PELS
+ * keeps the days it last read, so a day left from before the app stopped, or
+ * lost its price device, does not count.
+ */
+const powerhourHasPrices = (
+  payload: Pick<SettingsUiPricesPayload, 'powerhourToday' | 'powerhourTomorrow'>,
+): boolean => {
+  const todayKey = getDateKeyInTimeZone(new Date(), getHomeyTimezone());
+  const current = new Set([todayKey, shiftDateKey(todayKey, 1)]);
+  return [payload.powerhourToday, payload.powerhourTomorrow].some((raw) => {
+    const day = getFlowPricePayload(raw);
+    return day !== null && current.has(day.dateKey);
+  });
+};
 
 export const NORWAY_PRICE_MODEL_NAMES: Record<NorwayPriceModelSetting, string> = {
   stromstotte: 'Strømstøtte',
@@ -145,11 +163,7 @@ export const resolvePriceSetupStatus = (
       return { state: 'open', summary: 'PELS can’t use the price setup in Homey Energy.' };
     }
   }
-  if (
-    source.scheme === 'powerhour'
-    && getFlowPricePayload(payload.powerhourToday) === null
-    && getFlowPricePayload(payload.powerhourTomorrow) === null
-  ) {
+  if (source.scheme === 'powerhour' && !powerhourHasPrices(payload)) {
     return { state: 'open', summary: 'Power by the Hour has no prices yet.' };
   }
   const name = SOURCE_NAMES[source.scheme];

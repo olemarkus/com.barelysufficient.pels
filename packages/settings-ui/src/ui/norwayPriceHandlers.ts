@@ -12,7 +12,7 @@ import {
   SETTINGS_UI_PRICES_PATH,
   SETTINGS_UI_REFRESH_GRID_TARIFF_PATH,
 } from '../../../contracts/src/settingsUi/paths.ts';
-import { type SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
+import { type PriceSetupSuggestion, type SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
 import type { NorwayPriceModel, PriceConfigState } from './priceConfigTypes.ts';
 import { isPriceArea, saveNorwayPriceModel, savePriceArea } from './priceSettingsPersistence.ts';
 import {
@@ -39,35 +39,29 @@ const refreshGridTariff = async (): Promise<void> => {
 
 /**
  * When the page asks the runtime what it can suggest for the price setup: on
- * opening and after a source change, once per source per visit. The Norway
- * lookup sends the hub's coordinates to NVE and Kartverket, so it runs only
- * while something is still missing, and never again after an answer. The same
- * answer says whether Power by the Hour could price a Homey Energy home that
- * has no prices, or whose source PELS assumed. An answer for Homey Energy says
- * nothing about Norway, so an owner who switches source in the same visit is
- * asked about the new one.
+ * opening, after a source change and after Refresh prices. On Homey Energy the
+ * answer is a local read of whether Power by the Hour could price the home,
+ * which changes when the owner installs it, starts it or gives it a price device
+ * (Get Power by the Hour sends them away to do that), so the page asks every
+ * time. The Norway lookup sends the hub's coordinates to NVE and Kartverket, so
+ * it runs only while something is still missing, and at most once per visit.
  */
 const createPriceSetupSuggestionAsker = (ctx: NorwayPriceHandlersContext) => {
-  let suggestionRequestedFor: string | null = null;
-  const suggestFromLocation = async (): Promise<void> => {
+  // The location answer, kept for the visit: an answer for Homey Energy replaces
+  // the page's suggestion, so switching back to Norway shows this one again.
+  let locationAnswer: PriceSetupSuggestion | null = null;
+  return async (): Promise<void> => {
     const { priceSetup, homeyStatus, priceScheme } = ctx.getState();
     // No Homey status yet reads as having prices: nothing is asked on a guess.
-    if (suggestionRequestedFor === priceScheme) return;
     if (!priceSetupNeedsSuggestion(priceSetup, homeyStatus?.hasPrices ?? true)) return;
-    suggestionRequestedFor = priceScheme;
-    ctx.patchState({ priceSetupSuggestion: await loadPriceSetupSuggestion() });
+    if (priceScheme === 'homey') {
+      ctx.patchState({ priceSetupSuggestion: await loadPriceSetupSuggestion() });
+    } else {
+      locationAnswer ??= await loadPriceSetupSuggestion();
+      ctx.patchState({ priceSetupSuggestion: locationAnswer });
+    }
     ctx.rerender();
   };
-
-  // Refresh prices on Homey Energy asks again. There the answer is a local read
-  // of Power by the Hour, which the owner may have installed, started or given
-  // a price device since the page asked. The Norway lookup is never repeated.
-  const suggestAgainAfterRefresh = async (): Promise<void> => {
-    if (ctx.getState().priceScheme === 'homey') suggestionRequestedFor = null;
-    await suggestFromLocation();
-  };
-
-  return { suggestFromLocation, suggestAgainAfterRefresh };
 };
 
 /**
@@ -76,7 +70,7 @@ const createPriceSetupSuggestionAsker = (ctx: NorwayPriceHandlersContext) => {
  * choosing it.
  */
 export const createNorwayPriceHandlers = (ctx: NorwayPriceHandlersContext) => {
-  const suggestionAsker = createPriceSetupSuggestionAsker(ctx);
+  const askForPriceSetupSuggestion = createPriceSetupSuggestionAsker(ctx);
   const saveChoice = async (save: () => Promise<void>, label: string): Promise<void> => {
     try {
       await save();
@@ -194,7 +188,7 @@ export const createNorwayPriceHandlers = (ctx: NorwayPriceHandlersContext) => {
     onCountyChange,
     onOrganizationChange,
     onTariffGroupChange,
-    ...suggestionAsker,
+    askForPriceSetupSuggestion,
     onUseOffer,
   };
 };
