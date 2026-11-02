@@ -1417,7 +1417,12 @@
       // red deadline render.
       energyNeededKWh: deadlinePlanUnderBooked ? 35 : plannedHourCount * 2,
       planningSpeedKw: 0.75,
-      rateMean: 0.8,
+      // The page brings the revision's energy forward to the live reading at
+      // this rate, so the under-booked plan records it as production does
+      // (expected energy over the units left: 35 kWh over 65 − 51.1 °C).
+      // Otherwise 0.8 kWh/°C would size the 13.9 °C left at 11.1 kWh, which
+      // the 12 booked kWh cover.
+      rateMean: deadlinePlanUnderBooked ? 35 / (65 - 51.1) : 0.8,
       kwhPerUnitSource: 'learned',
       speedMode: 'auto',
       planStatus: deadlinePlanUnderBooked ? 'cannot_meet' : 'on_track',
