@@ -7,6 +7,8 @@ describe('Headroom for device condition', () => {
   beforeEach(() => {
     resetMockHomey();
     vi.clearAllTimers();
+    vi.useFakeTimers({ toFake: ['Date', 'performance'] });
+    vi.setSystemTime(new Date('2026-03-03T12:00:00.000Z'));
   });
 
   afterEach(async () => {
