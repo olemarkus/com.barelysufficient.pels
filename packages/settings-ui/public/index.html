@@ -806,7 +806,7 @@
           <p class="muted">Enable the scenarios that match what you're investigating &mdash; each turns on the log streams that scenario needs. Selections stay enabled across restarts.</p>
         </div>
       </details>
-      <details class="settings-collapse">
+      <details class="settings-collapse" id="advanced-diagnostics-reports">
         <summary>
           <h3 class="section-title">Diagnostics reports</h3>
           <span class="section-hint">Help the developer</span>
@@ -826,6 +826,10 @@
               <span class="md-switch-row__label pels-text-settings-label" id="advanced-event-reports-label">Send a report on specific events</span>
               <small class="field__hint">When PELS sees something go wrong, such as a charger that could not identify the connected car, or a Flow or another app that keeps changing a device back, it sends the developer a report about it a few minutes later.</small>
             </span>
+          </div>
+          <p class="muted">To send a report yourself and describe what you noticed:</p>
+          <div class="inline-actions">
+            <md-text-button type="button" data-settings-target="report-problem" id="advanced-report-problem-link">Report a problem</md-text-button>
           </div>
         </div>
       </details>

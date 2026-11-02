@@ -169,6 +169,17 @@ const ReportForm = (props: SupportReportViewProps) => {
         {state.operation === 'sending' ? 'Sending…' : supportDevice ? 'Send request' : 'Send report'}
       </MdFilledButton>
       <p class="pels-text-supporting muted">Sent to the PELS developer through Homey, with the app’s logs.</p>
+      {/* The owner's switches for reports PELS sends by itself (Settings → Advanced); a
+          device support request is not a problem those reports would cover. */}
+      {!supportDevice && (
+        <>
+          <p class="pels-text-supporting muted">PELS can also send reports by itself, daily or when something goes wrong.</p>
+          <MdTextButton type="button" class="support-report__cross-link" data-settings-target="advanced"
+            data-settings-anchor="#advanced-diagnostics-reports" data-report-action="automatic">
+            Automatic reports
+          </MdTextButton>
+        </>
+      )}
     </form>
   );
 };

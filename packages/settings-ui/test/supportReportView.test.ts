@@ -58,6 +58,17 @@ describe('support report view', () => {
     expect(surface.querySelector('.pels-appbar__back')?.getAttribute('data-settings-target')).toBe('activity');
   });
 
+  it('links a problem report to the automatic reports, but not a device support request', () => {
+    const automatic = mount().surface.querySelector('[data-report-action="automatic"]');
+    expect(automatic?.getAttribute('data-settings-target')).toBe('advanced');
+    expect(automatic?.getAttribute('data-settings-anchor')).toBe('#advanced-diagnostics-reports');
+    render(null, document.body);
+    document.body.innerHTML = '';
+    const { surface } = mountSupportRequest();
+    expect(surface.querySelector('[data-report-action="automatic"]')).toBeNull();
+    expect(surface.textContent).not.toContain('PELS can also send reports by itself');
+  });
+
   it('offers copying a report that cannot be sent without showing its contents', () => {
     const { surface } = mount({ ...supportReportFixture(), availability: 'app_store_required' });
     expect(surface.querySelector('[data-report-action="copy"]')).not.toBeNull();
