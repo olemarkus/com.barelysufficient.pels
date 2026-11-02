@@ -55,7 +55,10 @@ alone cannot restore it. Only a newer independent target report or read can.
   still connected but has stopped requesting charge; it resolves to
   `plugged_in`, despite the Easee app publishing `plugged_out` for that mode.
   `Standby` is a disconnect. Realtime status reports use the same mapping, and
-  the app's redundant plug-state publications do not overwrite it. The adapter
+  the app's redundant plug-state publications do not overwrite it. A mode the
+  adapter does not know (the app names it `UNKNOWN (n)`) is still a valid read,
+  so the charger stays readable: a full read carries the app's own plug state,
+  and the session keeps the last mode it knew for realtime updates. The adapter
   also supplies positive charge-completion evidence to car-link diagnostics;
   completion does not turn an observed off switch into an on switch.
 

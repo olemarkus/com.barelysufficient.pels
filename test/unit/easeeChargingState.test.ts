@@ -40,10 +40,18 @@ describe('Easee physical connection state', () => {
     expect(findDeviceReadContractViolation(read)).toBeNull();
   });
 
-  it.each([null, 'Not a known status', 4])('rejects a complete read with malformed declared status %s', status => {
+  it.each([null, 4])('rejects a complete read with malformed declared status %s', status => {
     expect(findDeviceReadContractViolation(device(status))).toEqual({
       reason: 'unexpected_value', capabilityId: 'charger_status',
     });
+  });
+
+  it('accepts a mode the adapter does not know and keeps the app\'s own plug state', () => {
+    // The Easee app names a mode it does not know `UNKNOWN (n)`.
+    const read = device('UNKNOWN (9)');
+    expect(findDeviceReadContractViolation(read)).toBeNull();
+    const values = read.capabilitiesObj as DeviceCapabilityMap;
+    expect(withEaseeChargingState(read.capabilities ?? [], values)).toBe(values);
   });
 
   it('rejects an undated status even when the app dated its lossy standard state', () => {

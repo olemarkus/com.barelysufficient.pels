@@ -5,7 +5,7 @@ import { isEaseeChargerDevice, isEaseeChargerCurrentCandidate, EASEE_CHARGER_CUR
   EASEE_CHARGER_CURRENT_FLOW_CARD_ID, EASEE_MIN_CHARGING_CURRENT_A, resolveCurrentStep } from './current';
 import { isEaseeUnderBuiltInControl, resolveEaseeRealtimeUpdates, withEaseeObservedCharging,
   resolveEaseeSwitchWrite, recoverEaseeSwitchWrite } from './switch';
-import { EASEE_CHARGER_STATUS, isEaseeChargingStatus, withEaseeChargingState } from './chargingState';
+import { EASEE_CHARGER_STATUS, withEaseeChargingState } from './chargingState';
 import { EaseeChargingSession } from './session';
 
 const currentControl: NativeCurrentControl = {
@@ -37,7 +37,8 @@ export const easeeAdapter: DeviceAdapter = {
     ? {
       [EASEE_CHARGER_CURRENT_CAPABILITY_ID]: 'number',
       ...(device.capabilities?.includes(EASEE_CHARGER_STATUS)
-        ? { [EASEE_CHARGER_STATUS]: isEaseeChargingStatus } : {}),
+        // Any mode name: a full read with one this adapter does not know carries the app's own plug state.
+        ? { [EASEE_CHARGER_STATUS]: 'string' } : {}),
     } : {},
   createSession: () => new EaseeChargingSession(),
   phaseReport: (device) => isEaseeDevice(device) ? resolveEaseePhaseReport(device.settings) : { kind: 'not_reported' },
