@@ -3,7 +3,7 @@ import {
   shedActuationStampsCapacityMarkers,
 } from '../../lib/executor/lifecycleReleaseRecording';
 import { resolveConfirmedBinaryCommandReasonCode } from '../../lib/executor/planExecutorPredicates';
-import type { PlanEngineState } from '../../lib/plan/planState';
+import type { PlanEngineState } from '../utils/planEngineStateFixture';
 import type { ActuationRecorder } from '../../lib/executor/executorCommandContext';
 
 type PendingBinaryCommand = PlanEngineState['pendingBinaryCommands'][string];

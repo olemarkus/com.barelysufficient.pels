@@ -1,5 +1,5 @@
 import { isNonSteppedDeviceRecovering } from '../../lib/plan/planShedRecovery';
-import type { PlanEngineState } from '../../lib/plan/planState';
+import type { PlanEngineState } from '../utils/planEngineStateFixture';
 import { seedSwapReservation } from '../utils/swapLedgerFixture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanInputDevice, steppedInputDevice } from '../utils/planTestUtils';

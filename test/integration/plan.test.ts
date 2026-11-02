@@ -1,3 +1,4 @@
+import { getTestExecutionFacts } from '../utils/planEngineStateFixture';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import type MyApp from '../../app.ts';
 /**
@@ -367,12 +368,12 @@ describe('Device plan snapshot', () => {
     const structuredEvents = capturePlanBuilderStructuredLog(app);
 
     const pendingStartedMs = Date.now();
-    app.planEngine.state.pendingBinaryCommands['dev-pending'] = {
+    getTestExecutionFacts(app.planEngine.state).pendingBinaryCommands['dev-pending'] = {
       dispatchState: 'dispatching',
       desired: true,
       startedMs: pendingStartedMs,
     };
-    app.planEngine.state.actuation.lastDeviceShedMs['dev-cooldown'] = Date.now();
+    getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs['dev-cooldown'] = Date.now();
     app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now();
 
     await app['powerSamplePipeline'].recordPowerSample(3000);
@@ -490,7 +491,7 @@ describe('Device plan snapshot', () => {
     await app['powerSamplePipeline'].recordPowerSample(700);
     structuredEvents.length = 0;
 
-    app.planEngine.state.pendingBinaryCommands['dev-off-pending'] = {
+    getTestExecutionFacts(app.planEngine.state).pendingBinaryCommands['dev-off-pending'] = {
       dispatchState: 'dispatching',
       desired: false,
       startedMs: Date.now(),
@@ -530,7 +531,7 @@ describe('Device plan snapshot', () => {
     await app['powerSamplePipeline'].recordPowerSample(2500);
     structuredEvents.length = 0;
 
-    app.planEngine.state.pendingBinaryCommands['dev-on-pending'] = {
+    getTestExecutionFacts(app.planEngine.state).pendingBinaryCommands['dev-on-pending'] = {
       dispatchState: 'dispatching',
       desired: true,
       startedMs: Date.now(),
@@ -576,7 +577,7 @@ describe('Device plan snapshot', () => {
     await app['powerSamplePipeline'].recordPowerSample(700);
     structuredEvents.length = 0;
 
-    app.planEngine.state.pendingTargetCommands['dev-target-pending'] = {
+    getTestExecutionFacts(app.planEngine.state).pendingTargetCommands['dev-target-pending'] = {
       desired: 23,
       startedMs: Date.now(),
       lastAttemptMs: Date.now(),
@@ -755,7 +756,7 @@ describe('Device plan snapshot', () => {
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
 
     // Force cooldown window for device by keeping lastDeviceShedMs recent.
-    app.planEngine.state.actuation.lastDeviceShedMs['dev-1'] = Date.now();
+    getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs['dev-1'] = Date.now();
     app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now();
 
     // Now plan with ample headroom but still within cooldown. The plan is still
@@ -1054,7 +1055,7 @@ describe('Device plan snapshot', () => {
     // Plenty of headroom but still in cooldown due to a recent shed
     steerCapacityPace(app, 5);
     app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now(); // force cooldown window
-    app.planEngine.state.actuation.lastDeviceShedMs['dev-1'] = Date.now();
+    getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs['dev-1'] = Date.now();
 
     await app['powerSamplePipeline'].recordPowerSample(1000);
 
@@ -1266,7 +1267,7 @@ describe('Device plan snapshot', () => {
     // Step 3: Large headroom - device should restore
     // Clear all cooldowns to allow restoration
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-    app.planEngine.state.actuation.lastRestoreMs = 0;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = 0;
 
     // Set soft limit high enough for restoration:
     // with recent-shed backoff (1.15×) → needed≈1.38kW, plus 0.25kW reserve + 0.25kW floor.
@@ -1487,7 +1488,7 @@ describe('Device plan snapshot', () => {
       await heaterB.setCapabilityValue('onoff', false);
       await reportDevicePower(app, [[heaterB, 0]]);
 
-      app.planEngine.state.actuation.lastRestoreMs = Date.now() - 60000;
+      getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = Date.now() - 60000;
       await app.planService.rebuildPlanFromCache('unknown');
       plan = getLatestPlanSnapshotForTests();
       const dev1Plan = plan.devices.find((d: { id: string }) => d.id === 'dev-1');
@@ -1550,7 +1551,7 @@ describe('Device plan snapshot', () => {
     await app.planEngine.applyPlanActions(binaryShedPlan('dev-1', 'No On/Off Device'));
 
     expect(putSpy).not.toHaveBeenCalled();
-    const after = app.planEngine.state.actuation.lastDeviceShedMs['dev-1'];
+    const after = getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs['dev-1'];
     expect(typeof after).toBe('number');
   });
 
@@ -2090,8 +2091,8 @@ describe('Device plan snapshot', () => {
 
     // Clear any shedding/overshoot timestamps to avoid cooldown
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-    app.planEngine.state.actuation.lastRestoreMs = null;
-    app.planEngine.state.actuation.lastDeviceShedMs = {};
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs = {};
     if (app.capacityGuard) {
       // Ensure shedding is not active
       app.planEngine.state.sheddingActive = false;
@@ -2182,7 +2183,7 @@ describe('Device plan snapshot', () => {
     steerCapacityPace(app, 3.5);
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-    app.planEngine.state.actuation.lastRestoreMs = null;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
 
     await app['powerSamplePipeline'].recordPowerSample(3000);
 
@@ -2233,8 +2234,8 @@ describe('Device plan snapshot', () => {
     steerCapacityPace(app, 4.3);
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-    app.planEngine.state.actuation.lastRestoreMs = null;
-    app.planEngine.state.actuation.lastDeviceShedMs = {};
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs = {};
 
     await app['powerSamplePipeline'].recordPowerSample(3000);
 
@@ -2296,7 +2297,7 @@ describe('Device plan snapshot', () => {
     steerCapacityPace(app, 2);
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-    app.planEngine.state.actuation.lastRestoreMs = null;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
 
     // Simulate that a swap was initiated: the target holds a reservation
     // This mimics the state after a swap where the target hasn't been restored yet
@@ -2349,7 +2350,7 @@ describe('Device plan snapshot', () => {
     steerCapacityPace(app, 1.4);
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-    app.planEngine.state.actuation.lastRestoreMs = null;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
     seedSwapReservation(app.planEngine.state, { targetId: 'dev-pending-low' });
 
     await app['powerSamplePipeline'].recordPowerSample(300);
@@ -2397,7 +2398,7 @@ describe('Device plan snapshot', () => {
     steerCapacityPace(app, 3);
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-    app.planEngine.state.actuation.lastRestoreMs = null;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
 
     // Simulate swap state: dev-swapped was shed for dev-target, but dev-target can't restore
     // Set timestamp to 61 seconds ago (stale)
@@ -2502,8 +2503,8 @@ describe('Device plan snapshot', () => {
     // Set up conditions for swap
     steerCapacityPace(app, 4.3);
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-    app.planEngine.state.actuation.lastRestoreMs = null;
-    app.planEngine.state.actuation.lastDeviceShedMs = {};
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs = {};
     if (app.capacityGuard) {
       app.planEngine.state.sheddingActive = false;
     }
@@ -2561,8 +2562,8 @@ describe('Device plan snapshot', () => {
     // Set up conditions for swap
     steerCapacityPace(app, 4.5);
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-    app.planEngine.state.actuation.lastRestoreMs = null;
-    app.planEngine.state.actuation.lastDeviceShedMs = {};
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs = {};
     if (app.capacityGuard) {
       app.planEngine.state.sheddingActive = false;
     }
@@ -2628,8 +2629,8 @@ describe('Device plan snapshot', () => {
 
     steerCapacityPace(app, 4.5);
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-    app.planEngine.state.actuation.lastRestoreMs = null;
-    app.planEngine.state.actuation.lastDeviceShedMs = {};
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs = {};
     if (app.capacityGuard) {
       app.planEngine.state.sheddingActive = false;
     }
@@ -2676,8 +2677,8 @@ describe('Device plan snapshot', () => {
 
     steerCapacityPace(app, 4.3);
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-    app.planEngine.state.actuation.lastRestoreMs = null;
-    app.planEngine.state.actuation.lastDeviceShedMs = {};
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs = {};
     if (app.capacityGuard) {
       app.planEngine.state.sheddingActive = false;
     }
@@ -2691,7 +2692,7 @@ describe('Device plan snapshot', () => {
     // Clear swap state without a new measurement.
     settleReservationsKeepingWatermarks(app.planEngine.state);
 
-    app.planEngine.state.actuation.lastRestoreMs = Date.now() - 120000;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = Date.now() - 120000;
     await app['powerSamplePipeline'].recordPowerSample(3000, sampleBaseMs + 1000);
 
     const plan = getLatestPlanSnapshotForTests();
@@ -3038,8 +3039,8 @@ describe('Dry run mode', () => {
     vi.spyOn(app.priceCoordinator, 'getCurrentHourPriceLevel').mockReturnValue(PriceLevel.CHEAP);
     steerCapacityPace(app, 3);
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-    app.planEngine.state.actuation.lastRestoreMs = null;
-    app.planEngine.state.actuation.lastDeviceShedMs = {};
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs = {};
     app.planEngine.state.shedDecisions.lastPlannedShedIds = new Set();
 
     await app.planService.rebuildPlanFromCache('unknown');
@@ -3224,7 +3225,7 @@ describe('Dry run mode', () => {
     }
     app.planEngine.state.inShortfall = false;
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-    app.planEngine.state.actuation.lastRestoreMs = null;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
@@ -3271,7 +3272,7 @@ describe('Dry run mode', () => {
     steerCapacityPace(app, 2.8);
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-    app.planEngine.state.actuation.lastRestoreMs = null;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
@@ -3481,7 +3482,7 @@ describe('Dry run mode', () => {
       // Explicitly clear cooldowns to avoid test flakiness with Date mocking
       app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
       app.planEngine.state.restoreBackoff.lastRecoveryMs = 0;
-      app.planEngine.state.actuation.lastDeviceShedMs = {};
+      getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs = {};
       // Deactivate the guard so the next cycle doesn't trigger a fresh recovery transition.
       app.planEngine.state.sheddingActive = false;
       // Drain the microtask the previous step's rebuild is still sitting on.
@@ -3758,7 +3759,7 @@ describe('Dry run mode', () => {
     steerCapacityPace(app, 0.4); // 0.4kW limit
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-    app.planEngine.state.actuation.lastRestoreMs = null;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
 
     // Headroom = 0.4 - 0.2 = 0.2 kW. The spotlights need their 0.05 kW plus the 0.2 kW restore
     // buffer, so a direct restore does not fit and the lower-priority thermostat is swapped out.
@@ -3817,7 +3818,7 @@ describe('Dry run mode', () => {
     steerCapacityPace(app, 0.4);
 
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
-    app.planEngine.state.actuation.lastRestoreMs = null;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
 
     await app['powerSamplePipeline'].recordPowerSample(200);
 

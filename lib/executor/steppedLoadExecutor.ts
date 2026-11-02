@@ -72,8 +72,8 @@ const suppressRecentSteppedBinaryRestore = (
   if (
     effectiveCurrentOn !== false
     || !isBinaryObservedOff(snapshot)
-    || !ctx.state.actuation.hasRecentSteppedBinaryRestoreAttempt(
-      action.intent.id, Date.now(), ctx.state.restoreBackoff.restoreCooldownMs,
+    || !ctx.execution.actuation.hasRecentSteppedBinaryRestoreAttempt(
+      action.intent.id, Date.now(), ctx.feedback.getRestoreCooldownMs(),
     )
   ) return false;
   logSteppedLoadRestoreSkip(action.intent, 'recent_binary_restore_attempt');
@@ -104,7 +104,7 @@ export const applySteppedLoadCommand = async (
   // commands are real actuation too: suppress every one while the durable hold
   // is active, just as the binary restore funnels do.
   const { intent } = action;
-  if (ctx.state.isExternalOffHeld(intent.id)) {
+  if (ctx.feedback.isExternalOffHeld(intent.id)) {
     emitExecutorDebug({
       event: 'stepped_load_command_skipped',
       deviceId: intent.id,
@@ -203,7 +203,7 @@ export const applySteppedLoadRestore = async (
     });
   }
   if (applyKeepInvariantShedBlock(ctx, intent, hasShedDevices, requestedStepId)) return NOT_RESTORED;
-  ctx.state.clearKeepInvariantShedBlock(intent.id);
+  ctx.feedback.clearKeepInvariantShedBlock(intent.id);
   if (suppressRecentSteppedBinaryRestore(ctx, action, snapshot)) return { ready: true, wroteBinary: false };
   const binaryRestoreSkip = maybeSkipSteppedLoadRestoreBinary(ctx, intent, snapshot, stepNeedsAdjustment);
   if (binaryRestoreSkip === false) return NOT_RESTORED;

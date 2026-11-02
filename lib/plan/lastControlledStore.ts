@@ -1,6 +1,6 @@
 /**
  * When PELS last wrote each device, per home, in the userdata database: the
- * repository behind `ActuationRecord.lastDeviceControlledMs`, the one store the
+ * repository behind `ActuationHydration.lastDeviceControlledMs`, the one store the
  * app's homes hydrate from and write through, and the one-shot import of the
  * legacy `device_last_controlled_ms` settings keys, retried during the run
  * while a home's key is still owed.
@@ -29,7 +29,7 @@ import { isNumberMap } from '../utils/appTypeGuards';
 import { normalizeError } from '../utils/errorUtils';
 import { DEVICE_LAST_CONTROLLED_MS, homeScopedSettingsKey, type HomeId } from '../utils/settingsKeys';
 import type { TimerRegistry } from '../utils/timerRegistry';
-import type { ActuationRecord } from './actuationRecord';
+import type { ActuationHydration } from '../ports/actuationHistory';
 
 const moduleLogger = getLogger('plan/last-controlled-store');
 
@@ -183,7 +183,7 @@ export type LastControlledStore = {
    * writes them, before the home's next write could delete them: a write makes
    * the store hold exactly the record's map. Throws only on I/O (the read).
    */
-  hydrate(homeId: HomeId, actuation: ActuationRecord): void;
+  hydrate(homeId: HomeId, actuation: ActuationHydration): void;
   /** Make the store hold exactly `lastControlledMs` for this home, touching only the devices that differ. */
   write(homeId: HomeId, lastControlledMs: Readonly<Record<string, number>>): void;
 };
@@ -194,10 +194,10 @@ export const createLastControlledStore = (
   timers: TimerRegistry,
 ): LastControlledStore => {
   /** The homes whose legacy key is still owed, each with the record its import goes into. */
-  const owed = new Map<HomeId, ActuationRecord>();
+  const owed = new Map<HomeId, ActuationHydration>();
   const saidDeferrals = new Map<HomeId, string>();
 
-  const attempt = (homeId: HomeId, actuation: ActuationRecord): LegacyImportStanding => {
+  const attempt = (homeId: HomeId, actuation: ActuationHydration): LegacyImportStanding => {
     const result = importLegacyLastControlled(settings, repository, homeId, (imported) => {
       actuation.loadLastControlled(laterStamps(actuation.lastDeviceControlledMs, imported));
     });

@@ -1,3 +1,4 @@
+import { getTestExecutionFacts } from '../utils/planEngineStateFixture';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { steerCapacityPace } from '../helpers/capacityPaceFixture';
@@ -259,12 +260,12 @@ describe('Headroom for device condition', () => {
     const runCondition = mockHomeyInstance.flow._conditionCardListeners.has_headroom_for_device;
     expect(runCondition).toBeDefined();
 
-    app.planEngine.state.actuation.lastDeviceShedMs['dev-1'] = Date.now();
+    getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs['dev-1'] = Date.now();
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 0.9 })).resolves.toBe(false);
     await expect(runCondition({ device: { id: 'dev-2' }, required_kw: 0.9 })).resolves.toBe(true);
 
-    delete app.planEngine.state.actuation.lastDeviceShedMs['dev-1'];
-    app.planEngine.state.actuation.lastDeviceRestoreMs['dev-1'] = Date.now();
+    delete getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs['dev-1'];
+    getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceRestoreMs['dev-1'] = Date.now();
     await expect(runCondition({ device: { id: 'dev-1' }, required_kw: 0.9 })).resolves.toBe(false);
     await expect(runCondition({ device: { id: 'dev-2' }, required_kw: 0.9 })).resolves.toBe(true);
   });

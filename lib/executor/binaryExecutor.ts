@@ -57,7 +57,7 @@ export const applyUncontrolledBinaryRestore = async (
   // Only a shed PELS has not undone is PELS's to undo. A baseline-off posture
   // hold never counts (`ShedDecisions.standingShedIds`), so a dump load is
   // never started here.
-  if (!ctx.state.shedDecisions.standingShedIds.has(intent.deviceId)) return false;
+  if (!ctx.feedback.isStandingShed(intent.deviceId)) return false;
   const entry = ctx.readDevice(intent.deviceId) ?? observed?.snapshot;
   if (entry && isBinaryOnOrUnknown(entry)) return false;
   if (!canApplyRestoreSnapshot(ctx, entry, intent.deviceId, intent.name, 'capacity_control_off') || !entry) {
@@ -95,12 +95,12 @@ export const applyBinarySheddingToDevice = async (
 ): Promise<boolean> => {
   if (ctx.getCapacityDryRun()) return false;
   const snapshot = ctx.readDevice(deviceId);
-  if (shouldSkipShedding(ctx.state.actuation, deviceId, deviceName, snapshot)) return false;
-  ctx.state.actuation.beginShed(deviceId);
+  if (shouldSkipShedding(ctx.execution.actuation, deviceId, deviceName, snapshot)) return false;
+  ctx.execution.actuation.beginShed(deviceId);
   try {
     return await turnOffDevice(ctx, deviceId, deviceName, snapshot, false, false);
   } finally {
-    ctx.state.actuation.endShed(deviceId);
+    ctx.execution.actuation.endShed(deviceId);
   }
 };
 
@@ -187,7 +187,7 @@ const turnOffDevice = async (
     const hasTarget = Array.isArray(snapshot?.targets) && snapshot.targets.length > 0;
     if (shedActuationStampsCapacityMarkers(lifecycleRelease)) {
       const now = Date.now();
-      ctx.state.actuation.markShed(deviceId, now);
+      ctx.execution.actuation.markShed(deviceId, now);
     }
     emitExecutorDebug({
       event: 'binary_command_skipped',

@@ -3,7 +3,7 @@ import {
   getPendingTargetCommandDecision,
   recordTargetCommandAttempt,
 } from './targetCommandRetry';
-import type { PendingTargetCommandStatus } from '../plan/planTypes';
+import type { PendingTargetCommandStatus } from '../ports/pendingTargetCommand';
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import { isHeldByLifecycleLane, type ExecutorCommandContext } from './executorCommandContext';
 import {

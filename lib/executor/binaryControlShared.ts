@@ -32,11 +32,11 @@ const emitExecutorDebug = getDebugEmitter('executor', 'plan');
  * the user turned it off, and nothing PELS recorded about it is released by that.
  */
 export const skipRestoreForExternalOffHold = (
-  ctx: Pick<ExecutorCommandContext, 'state'>,
+  ctx: Pick<ExecutorCommandContext, 'feedback'>,
   deviceId: string,
   name: string,
 ): boolean => {
-  if (!ctx.state.isExternalOffHeld(deviceId)) return false;
+  if (!ctx.feedback.isExternalOffHeld(deviceId)) return false;
   emitExecutorDebug({
     event: 'restore_command_skipped',
     reasonCode: PLAN_REASON_CODES.externalOffHold,

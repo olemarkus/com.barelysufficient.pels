@@ -8,7 +8,7 @@ import {
   type DeferredAdmissionDecision,
 } from '../../lib/objectives/deferredObjectives/admission';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
-import type { PlanEngineState } from '../../lib/plan/planState';
+import type { PlanEngineState } from '../utils/planEngineStateFixture';
 import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { inputDevice } from '../utils/planConvergenceFixtures';

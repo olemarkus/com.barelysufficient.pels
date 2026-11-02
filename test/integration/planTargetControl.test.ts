@@ -1,9 +1,13 @@
+import { recordTargetCommandAttempt } from '../../lib/executor/targetCommandRetry';
 import { captureDebugTopic } from '../utils/loggerCapture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
-import {
-  prunePendingTargetCommandsForPlan,
-  syncPendingTargetCommands,
-} from '../../lib/plan/planTargetControl';
+import { syncPendingTargetCommands, prunePendingTargetCommands } from '../../lib/executor/pendingTargetObservation';
+import { resolveWantedPendingTargetCommands } from '../../lib/plan/planTargetControl';
+import { getTestExecutionState, type PlanEngineState } from '../utils/planEngineStateFixture';
+
+const prunePendingTargetCommandsForPlan = (state: PlanEngineState, plan: DevicePlan): boolean => (
+  prunePendingTargetCommands(getTestExecutionState(state), resolveWantedPendingTargetCommands(plan))
+);
 import type { DevicePlan, MeteredPlanInputDevice } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { TARGET_WAITING_LOG_REPEAT_MS } from '../../lib/plan/planConstants';
@@ -315,7 +319,7 @@ describe('prunePendingTargetCommandsForPlan', () => {
       desired: 23,
       startedMs: Date.now() - 5_000,
       lastAttemptMs: Date.now() - 5_000,
-      retryCount: 0,
+      retryCount: 4,
       nextRetryAtMs: Date.now() + 30_000,
       status: 'waiting_confirmation',
       lastObservedValue: 25,
@@ -339,6 +343,12 @@ describe('prunePendingTargetCommandsForPlan', () => {
 
     expect(changed).toBe(true);
     expect(state.pendingTargetCommands['dev-1']).toBeUndefined();
+    const replacementAtMs = Date.now();
+    const replacement = recordTargetCommandAttempt(
+      getTestExecutionState(state), 'dev-1', 18, replacementAtMs, 'waiting_confirmation', 25,
+    );
+    expect(replacement.retryCount).toBe(0);
+    expect(replacement.startedMs).toBe(replacementAtMs);
     expect(debug.events()).toContainEqual(expect.objectContaining({
       event: 'pending_target_command_cleared',
       reason: 'plan_no_longer_wants',

@@ -1,25 +1,9 @@
 
 /**
- * What the executor did to which device, and when — the actuation-time clocks
- * and the in-flight commands the planner's cooldowns, back-offs, cards and
- * convergence reads consult. One per `PlanEngineState`. Written by the
- * executor through the mutators below (and hydrated when its engine is
- * created, from the persisted last-controlled map); read by the planner by
- * reference. The clock
- * maps stay public for the same reason `PlanEngineState`'s do: the planner
- * reads them transparently across `lib/plan`. The in-flight sets are private:
- * the executor begins and ends them, and the planner asks only whether
- * anything is in flight.
- *
- * These are ACTUATION clocks. "Is this device in shed posture?" is the
- * planner's question, answered by plan membership (`ShedDecisions`): a device
- * the plan decided to shed but that was already off (write skipped) has no
- * entry here.
- *
- * Hosted on the planner's state because the planner reads it and may not
- * import the executor; under the planner/executor seam train the executor
- * owns this record and the planner declares a read-only view of the clocks,
- * so nothing that decides belongs here.
+ * Executor-owned command history and in-flight work, one per home.
+ * Planner consumers receive only ActuationHistoryRead; persistence receives
+ * ActuationHydration so a delayed legacy import updates the same live record.
+ * These clocks describe actual writes, independently of planner shed membership.
  */
 export class ActuationRecord {
   /**
@@ -133,5 +117,3 @@ export class ActuationRecord {
   }
 }
 
-/** The read a consumer that only asks "is anything in flight?" is handed. */
-export type ActuationPendingRead = Pick<ActuationRecord, 'hasInFlight'>;

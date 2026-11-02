@@ -1,4 +1,4 @@
-import type { PendingTargetCommandState } from '../plan/planState';
+import type { PendingTargetCommandState } from './executionState';
 import type { DesiredBinaryKind } from './executableDesiredState';
 import { getPendingTargetCommandDecision } from './targetCommandRetry';
 import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';

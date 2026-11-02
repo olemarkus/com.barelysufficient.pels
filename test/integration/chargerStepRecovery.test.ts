@@ -1,5 +1,5 @@
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from '../../lib/plan/planTypes';
-import type { PlanEngineState } from '../../lib/plan/planState';
+import type { PlanEngineState } from '../utils/planEngineStateFixture';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { isOffSteppedRestoreCandidate } from '../../lib/plan/restore/devices';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';

@@ -1,3 +1,4 @@
+import { createTestPlanExecutor } from '../utils/planEngineStateFixture';
 import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import { onTestFinished } from 'vitest';
 import { steppedPlanDevice } from '../utils/planTestUtils';
@@ -5,7 +6,7 @@ import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsServiceTypes';
 import { partialDouble } from '../helpers/partialDouble';
 import type Homey from 'homey';
-import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
+import type { PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/executor/commandRetrySchedule';
@@ -351,7 +352,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     ...depsOverrides,
   };
   return {
-    executor: new PlanExecutor(deps, state),
+    executor: createTestPlanExecutor(deps, state),
     deps,
     deviceManager,
     nativeSteppedAdapters,

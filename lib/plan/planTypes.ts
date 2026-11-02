@@ -44,15 +44,8 @@ export type PlannedShedTargetKind = 'binary_off' | 'step' | 'target_value';
  */
 export type SteppedFairnessHold = { stepId: string; limitedDeviceCount: number };
 
-// Canonical observation-source union lives in `lib/observer/`; plan
-// continues to surface this name for compatibility with the many target-
-// command callers that already import it from here.
-import type { PendingObservationSource } from '../observer/pendingBinaryCommandTypes';
-export type PendingTargetObservationSource = PendingObservationSource;
-
-export type PendingTargetCommandStatus =
-  | 'waiting_confirmation'
-  | 'temporary_unavailable';
+import type { PendingTargetObservationSource, PendingTargetCommandStatus } from '../ports/pendingTargetCommand';
+export type { PendingTargetObservationSource, PendingTargetCommandStatus } from '../ports/pendingTargetCommand';
 
 export type PendingTargetCommandSummary = {
   desired: number;

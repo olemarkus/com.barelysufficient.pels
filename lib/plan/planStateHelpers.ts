@@ -1,7 +1,8 @@
 import { isPendingBinaryCommandActive } from '../observer/pendingBinaryCommandTypes';
 import type { PlanEngineState } from './planState';
 import type { OvershootIncidentRead } from './overshootIncident';
-import type { ActuationPendingRead } from './actuationRecord';
+import type { ActuationHistoryRead } from '../ports/actuationHistory';
+type ActuationPendingRead = Pick<ActuationHistoryRead, 'hasInFlight'>;
 
 export type PlanConvergenceState = {
   overshoot: OvershootIncidentRead;

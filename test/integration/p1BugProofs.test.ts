@@ -1,9 +1,10 @@
+import { createTestPlanExecutor } from '../utils/planEngineStateFixture';
 import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import { withDeviceConfiguration, buildInitialPlanDevicesForSpec } from '../utils/planTestUtils';
 import { NO_STORAGE_RELIEF } from '../../lib/plan/battery/storageRelief';
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
 import type CapacityGuard from '../../lib/power/capacityGuard';
-import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
+import type { PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import type { MeteredPlanInputDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
@@ -110,7 +111,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     inverterLane: NO_INVERTER_EXECUTION,
   };
   return {
-    executor: new PlanExecutor(deps, state),
+    executor: createTestPlanExecutor(deps, state),
     deviceManager,
   };
 };

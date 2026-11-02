@@ -1,3 +1,5 @@
+import { ExecutionState } from '../../lib/executor/executionState';
+import { PlanExecutionFeedback } from '../../lib/plan/planExecutionFeedback';
 import { createInverterCurtailment } from '../homeRuntime/createInverterCurtailment';
 import { buildDeviceActuator } from './buildDeviceActuator';
 import { requireDeviceManager } from './contextGuards';
@@ -45,6 +47,7 @@ export type CreatePlanEngineOptions = {
 
 export type PlanEngineCompositionResult = {
   planEngine: PlanEngine;
+  actuationHydration: import('../../lib/ports/actuationHistory').ActuationHydration;
   lifecycleFallbackPort: NonNullable<AppContext['lifecycleFallback']>;
 };
 
@@ -97,12 +100,13 @@ export function createPlanEngineComposition(
   // executor's restore carve-out a no-op for that home's devices. Same
   // resolution the producer applies, so plan and executor share one definition
   // of "held".
+  const execution = new ExecutionState();
   const state = createPlanEngineState(Date.now(), (deviceId) => isExternalOffHeldForObservedDevice(
     ctx.externalOffHold?.isHeld(deviceId) === true,
     ctx.observer.getObservedRecord(deviceId),
-  ));
+  ), execution);
   const pendingBinaryCommandStore = createPendingBinaryCommandStore(
-    state.pendingBinaryCommands,
+    execution.pendingBinaryCommands,
     scope.binaryCommandLifecycle,
   );
   // Scope-owned diagnostics recorder, resolved LIVE at engine construction
@@ -179,10 +183,11 @@ export function createPlanEngineComposition(
     pendingBinaryCommandStore,
     storageLane: options.storageLane,
     inverterLane: inverters.executor,
-  }, state);
+  }, execution, new PlanExecutionFeedback(state, deviceDiagnostics));
   return {
     planEngine: new ComposedPlanEngine({
       state,
+      execution,
       pendingBinaryCommandStore,
       // App-wide, like the profiles they interpret: device ids are globally
       // unique, so every home's settle pass reads the same two stores.
@@ -194,5 +199,6 @@ export function createPlanEngineComposition(
       structuredLog,
     }),
     lifecycleFallbackPort: executor.getLifecycleFallbackPort(),
+    actuationHydration: execution.actuation,
   };
 }

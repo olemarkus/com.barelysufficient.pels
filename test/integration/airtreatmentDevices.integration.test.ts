@@ -1,3 +1,4 @@
+import { getTestExecutionFacts } from '../utils/planEngineStateFixture';
 import {
   getLatestPlanSnapshotForTests,
   mockHomeyInstance,
@@ -236,7 +237,7 @@ describe('Airtreatment device integration', () => {
     );
     expect(restoreCallsAfterCooldownWindow).toHaveLength(1);
 
-    app.planEngine.state.actuation.lastRestoreMs = Date.now() - 180000;
+    getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = Date.now() - 180000;
     app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now() - 180000;
 
     await app.refreshTargetDevicesSnapshot();

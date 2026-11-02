@@ -1,6 +1,6 @@
 import { buildSheddingPlan } from '../../lib/plan/shedding';
 import type { PlanContext, MeasuredPower } from '../../lib/plan/planContext';
-import type { PlanEngineState } from '../../lib/plan/planState';
+import type { PlanEngineState } from '../utils/planEngineStateFixture';
 import type { SheddingDeps, SheddingOvershootInput, SheddingPlan } from '../../lib/plan/shedding/types';
 import { NO_STORAGE_RELIEF } from '../../lib/plan/battery/storageRelief';
 

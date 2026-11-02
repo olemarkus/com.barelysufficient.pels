@@ -1,9 +1,11 @@
-import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes';
+import type { PendingBinaryCommandRead } from '../ports/pendingBinaryCommand';
 import type { PlanRebuildTrigger } from './planRebuildTrigger';
 import type { PlanLimits } from './planContext';
 import { OvershootIncident } from './overshootIncident';
 import { CapacityDrainStart } from './capacityDrainStart';
-import { ActuationRecord } from './actuationRecord';
+import type { ActuationHistoryRead } from '../ports/actuationHistory';
+import type { PlanExecutionRead } from '../ports/planExecutionRead';
+import type { PendingTargetCommandRead } from '../ports/pendingTargetCommand';
 import { RestoreBackoff } from './restoreBackoff';
 import { ShedDecisions } from './shedDecisions';
 import { SwapLedger } from './swap';
@@ -12,22 +14,9 @@ import type {
   BinaryControlDiscriminantProbe,
   DevicePlanDevice,
   MeteredKind,
-  PendingTargetCommandStatus,
-  PendingTargetObservationSource,
 } from './planTypes';
 
-export type PendingTargetCommandState = {
-  desired: number;
-  startedMs: number;
-  lastAttemptMs: number;
-  retryCount: number;
-  nextRetryAtMs: number;
-  status: PendingTargetCommandStatus;
-  lastObservedValue?: unknown;
-  lastObservedSource?: PendingTargetObservationSource;
-  lastObservedAtMs?: number;
-  lastWaitingLogAtMs?: number;
-};
+export type { PendingTargetCommandRead as PendingTargetCommandState } from '../ports/pendingTargetCommand';
 
 /**
  * An activation PELS issued and is still attributing overshoot to. Owned by
@@ -319,8 +308,8 @@ export type OvershootTrackedPlanDevice = Pick<
 export class PlanEngineState {
   appStartedAtMs: number;
 
-  /** What the executor did to which device and when — see `ActuationRecord`. */
-  readonly actuation = new ActuationRecord();
+  /** Execution-owned history, exposed here without command or hydration authority. */
+  readonly actuation: ActuationHistoryRead;
 
   /** How long restores wait after instability, and when it last was — see `RestoreBackoff`. */
   readonly restoreBackoff = new RestoreBackoff();
@@ -374,9 +363,9 @@ export class PlanEngineState {
 
   headroomCardByDevice: Record<string, HeadroomCardState> = {};
 
-  pendingBinaryCommands: Record<string, PendingBinaryCommand> = {};
+  readonly pendingBinaryCommands: Readonly<Record<string, PendingBinaryCommandRead>>;
 
-  pendingTargetCommands: Record<string, PendingTargetCommandState> = {};
+  readonly pendingTargetCommands: Readonly<Record<string, PendingTargetCommandRead>>;
 
   lastShedPlanMeasurementTs: number | null = null;
 
@@ -552,7 +541,11 @@ export class PlanEngineState {
   constructor(
     nowTs: number,
     isExternalOffHeld: (deviceId: string) => boolean,
+    execution: PlanExecutionRead,
   ) {
+    this.actuation = execution.actuation;
+    this.pendingBinaryCommands = execution.pendingBinaryCommands;
+    this.pendingTargetCommands = execution.pendingTargetCommands;
     this.appStartedAtMs = nowTs;
     this.isStoredExternalOffHeld = isExternalOffHeld;
   }
@@ -570,16 +563,12 @@ export class PlanEngineState {
     delete this.keepInvariantShedBlockedByDevice[deviceId];
   }
 
-  /** Drop the pending target-command record for a device (confirmed/settled). */
-  deletePendingTargetCommand(deviceId: string): void {
-    delete this.pendingTargetCommands[deviceId];
-  }
-
 }
 
 export function createPlanEngineState(
   nowTs: number,
   isExternalOffHeld: (deviceId: string) => boolean,
+  execution: PlanExecutionRead,
 ): PlanEngineState {
-  return new PlanEngineState(nowTs, isExternalOffHeld);
+  return new PlanEngineState(nowTs, isExternalOffHeld, execution);
 }

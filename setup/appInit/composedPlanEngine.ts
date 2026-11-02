@@ -1,3 +1,5 @@
+import type { ExecutionState } from '../../lib/executor/executionState';
+import { syncPendingTargetCommands, prunePendingTargetCommands } from '../../lib/executor/pendingTargetObservation';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsService';
 import { syncSteppedCommands } from '../../lib/executor/syncSteppedCommands';
 import type { SteppedSettleDevice } from '../../lib/observer/steppedSettleSnapshot';
@@ -25,8 +27,7 @@ import {
 import type { PlanEngineState } from '../../lib/plan/planState';
 import {
   decoratePlanWithPendingTargetCommands,
-  prunePendingTargetCommandsForPlan,
-  syncPendingTargetCommands,
+  resolveWantedPendingTargetCommands,
 } from '../../lib/plan/planTargetControl';
 import type {
   DevicePlan,
@@ -37,6 +38,7 @@ import type {
 
 export type PlanEngineComposition = {
   state: PlanEngineState;
+  execution: ExecutionState;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   steppedCommandStore: SteppedCommandStore;
   steppedReportedStore: SteppedReportedStepStore;
@@ -61,6 +63,7 @@ export type PlanEngineComposition = {
 /** Setup-owned facade binding the planner and executor to one state instance. */
 export class ComposedPlanEngine implements PlanEngine {
   public readonly state: PlanEngineState;
+  private readonly execution: ExecutionState;
   public readonly pendingBinaryCommandStore: PendingBinaryCommandStore;
 
   private readonly steppedCommandStore: SteppedCommandStore;
@@ -74,6 +77,7 @@ export class ComposedPlanEngine implements PlanEngine {
 
   public constructor(composition: PlanEngineComposition) {
     this.state = composition.state;
+    this.execution = composition.execution;
     this.pendingBinaryCommandStore = composition.pendingBinaryCommandStore;
     this.steppedCommandStore = composition.steppedCommandStore;
     this.steppedReportedStore = composition.steppedReportedStore;
@@ -143,12 +147,12 @@ export class ComposedPlanEngine implements PlanEngine {
     source: PendingTargetObservationSource,
   ): boolean {
     return syncPendingTargetCommands(
-      this.state, devices, source, (payload) => this.structuredLog.info(payload),
+      this.execution, devices, source, (payload) => this.structuredLog.info(payload),
     );
   }
 
   public prunePendingTargetCommands(plan: DevicePlan): boolean {
-    return prunePendingTargetCommandsForPlan(this.state, plan);
+    return prunePendingTargetCommands(this.execution, resolveWantedPendingTargetCommands(plan));
   }
 
   public syncSteppedCommands(getDevices: () => readonly SteppedSettleDevice[]): boolean {
@@ -185,7 +189,7 @@ export class ComposedPlanEngine implements PlanEngine {
   }
 
   public hasPendingTargetCommands(): boolean {
-    return Object.keys(this.state.pendingTargetCommands).length > 0;
+    return this.execution.hasPendingTargetCommands();
   }
 
   public isInverterReleaseRecoveryReady(): boolean { return this.executor.isInverterReleaseRecoveryReady(); }
@@ -195,9 +199,7 @@ export class ComposedPlanEngine implements PlanEngine {
   }
 
   public hasPendingTargetCommandsOlderThan(thresholdMs: number): boolean {
-    const nowMs = Date.now();
-    return Object.values(this.state.pendingTargetCommands)
-      .some((pending) => (nowMs - pending.startedMs) >= thresholdMs);
+    return this.execution.hasPendingTargetCommandsOlderThan(thresholdMs);
   }
 
   public hasPendingBinaryCommands(): boolean {

@@ -1,7 +1,7 @@
 import { vi } from 'vitest';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import type { PlanEngineState } from '../../lib/plan/planState';
+import type { PlanEngineState } from '../utils/planEngineStateFixture';
 import type { SheddingDeps } from '../../lib/plan/shedding/types';
 import { partialDouble } from './partialDouble';
 import { testLogger } from '../utils/testLogger';
