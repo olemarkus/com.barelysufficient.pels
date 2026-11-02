@@ -152,9 +152,21 @@ read again once the report is prepared, so turning it off meanwhile sends nothin
 A report about the device an event concerns, from an hour before the event through
 capture, saying what happened (`SupportReportService.sendOnEvent`). The events that send
 one, and what each report is about, are listed in `REPORTED_EVENTS` in
-`lib/diagnostics/eventReportSchedule.ts`; a new event is one entry there. Today that is
-`ev_car_link_unmatched`, a charger whose window closed with no car identified, reported
-about the charger as of its plug-in.
+`lib/diagnostics/eventReportSchedule.ts`; a new event is one entry there. Today they are:
+
+- `ev_car_link_unmatched`, a charger whose window closed with no car identified, reported
+  about the charger as of its plug-in.
+- `device_control_contested`, a device whose setting (target temperature, on/off or another
+  target) moved away from what PELS had set, and PELS set back, at least 4 times within an
+  hour, reported about that device as of the first of those changes. Its `kind` is
+  `reverted` when every time the device went back to its value from before PELS's write
+  (the write did not stick, as with a device app that reports a setting its cloud never
+  took), and `overridden` otherwise (a Flow, app or schedule setting its own value). `ControlContestObserver` (`lib/device/controlContestObserver.ts`) records it:
+  it sees PELS's own writes and every control change transport observes. It does not
+  count a device reaching PELS's command, a late echo of one PELS replaced in the last
+  two minutes, or a change PELS accepts instead of setting back. A Flow, another app or a schedule that fights PELS on a timer keeps a limit
+  from holding and stalls the restore of everything behind it, while the plan itself
+  looks normal.
 
 The schedule checks every 5 minutes from 17 minutes after start (two minutes off the daily
 report's hourly check), over the device events kept in the last 30 minutes, so a report

@@ -68,6 +68,26 @@ describe('reports on specific events the owner turned on', () => {
     }, expect.any(Function));
   });
 
+  it.each([
+    ['reverted', 'changes PELS made to the settings of Ovn stue did not stick: it went back to its earlier setting'],
+    ['overridden', 'something outside PELS changed the settings of Ovn stue away from what PELS set'],
+  ])('sends a report about a device that does not keep the settings PELS gives it (%s)', async (kind, what) => {
+    vi.useFakeTimers({ now: NOW });
+    const { events, sendOnEvent, schedule } = setup(true);
+    vi.setSystemTime(NOW - 5 * MINUTE_MS);
+    events.record(['stove'], {
+      component: 'devices', event: 'device_control_contested', deviceId: 'stove', deviceName: 'Ovn stue', kind,
+      windowMs: 60 * MINUTE_MS, count: 4, firstAtMs: NOW - 20 * MINUTE_MS, changes: [],
+    });
+    await schedule().check(NOW);
+    expect(sendOnEvent).toHaveBeenCalledTimes(1);
+    expect(sendOnEvent.mock.calls[0][0]).toMatchObject({
+      subject: { kind: 'device', homeId: 'main', deviceId: 'stove' },
+      problem: `Sent because ${what} 4 times within an hour. The owner turned on reports on specific events.`,
+      occurredAtMs: NOW - 20 * MINUTE_MS,
+    });
+  });
+
   it('sends nothing until the owner turns it on, and nothing for an event outside the lookback', async () => {
     vi.useFakeTimers({ now: NOW });
     const { sendOnEvent, schedule, unmatched, values } = setup(undefined);

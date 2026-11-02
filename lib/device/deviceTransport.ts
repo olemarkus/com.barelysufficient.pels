@@ -269,6 +269,7 @@ export class DeviceTransport {
             this.snapshotStore,
             options.observedStateDispatcher,
             this.observationProducers.temperature,
+            this.observationProducers.controlContest,
         );
         this.writeService = new DeviceWriteService(
             this.snapshotStore,
