@@ -5,6 +5,7 @@ import type {
   DeferredHoldCause,
 } from '../../../packages/planner-types/src/deferredDecoration';
 import { addPerfDuration } from '../../utils/perfCounters';
+import { getHourBucketKey } from '../../utils/hourBuckets';
 import { recordOpRssDelta, safeRss } from '../../utils/opRssTracker';
 import {
   applyDeferredAdmissionToInput,
@@ -45,6 +46,9 @@ export class DeferredObjectiveDecorationController {
   // The latest cycle's decision per live task, for diagnostics reports only.
   // Replaced whole each cycle, so an ended task drops out with it.
   private latestCycles: ReadonlyMap<string, SmartTaskCycleRecord> = new Map();
+  // The latest cycle's budget-exempt claims and the hour they were decided for.
+  // Replaced in the same step as `latestCycles`; `null` before the first cycle.
+  private latestBudgetExemptClaims: BudgetExemptClaims | null = null;
 
   constructor(
     private readonly source: TaskEvaluationSource,
@@ -63,6 +67,10 @@ export class DeferredObjectiveDecorationController {
     const decisions = applyDeferredObjectiveAdmission(evaluations, devices);
     const admission = applyDeferredAdmissionToInput(devices, decisions);
     this.latestCycles = recordCycles(reports, decisions, nowTs);
+    this.latestBudgetExemptClaims = {
+      hourKey: getHourBucketKey(nowTs),
+      deviceIds: admission.budgetExemptClaimDeviceIds,
+    };
     return {
       admittedDevices: admission.devices,
       forceShedSet: admission.forceShedSet,
@@ -78,6 +86,20 @@ export class DeferredObjectiveDecorationController {
   /** The latest cycle's decision for the device's task; `undefined` with no live task. */
   public readLatestCycle(deviceId: string): SmartTaskCycleRecord | undefined {
     return this.latestCycles.get(deviceId);
+  }
+
+  /**
+   * The devices a smart task exempts from the daily budget at `nowMs`: the latest
+   * cycle's claims while that cycle's hour is still the current one. A claim
+   * belongs to the hour it was decided for, so until the first cycle of a new
+   * hour decides again there is none. The power sample path books these
+   * devices' draw as exempt energy, which is the same claim the planner's
+   * threshold reads off its decorated input.
+   */
+  public readBudgetExemptDeviceIds(nowMs: number): ReadonlySet<string> {
+    const claims = this.latestBudgetExemptClaims;
+    if (claims === null || claims.hourKey !== getHourBucketKey(nowMs)) return NO_BUDGET_EXEMPT_CLAIMS;
+    return claims.deviceIds;
   }
 
   private evaluate(
@@ -105,6 +127,13 @@ export class DeferredObjectiveDecorationController {
     }
   }
 }
+
+type BudgetExemptClaims = {
+  hourKey: string;
+  deviceIds: ReadonlySet<string>;
+};
+
+const NO_BUDGET_EXEMPT_CLAIMS: ReadonlySet<string> = new Set();
 
 const recordCycles = (
   reports: readonly TaskEvaluationReport[],

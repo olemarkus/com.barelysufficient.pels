@@ -333,7 +333,7 @@ describe('P1 bug proofs', () => {
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getDeviceSurfaces: () => [deviceSurfacesFixture(rawDevice)],
-      planBudgetExemptDeviceIds: new Set(),
+      taskBudgetExemptDeviceIds: new Set(),
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),

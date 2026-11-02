@@ -78,6 +78,8 @@ import { createHomeCapacityGuard } from './createHomeCapacityGuard';
 import type { PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
 import { PriceLevel } from '../../lib/price/priceLevels';
 
+const NO_TASK_BUDGET_EXEMPTIONS: ReadonlySet<string> = new Set();
+
 /**
  * Every seam that must be answered by the home that OWNS a device rather than by
  * main (multi-home R7b P1#1). Main filters sub-home members out of its plan and
@@ -275,6 +277,9 @@ function createBundleSamplePipeline(
     // (`recordMeterSample` ingests bare watts), so this is the second of two
     // independent guards rather than the only one.
     noteResolvedHomeMeter: () => {},
+    // A meter area has no smart tasks (`decorateWithoutDeferredObjectives`), so no
+    // task ever exempts one of its devices.
+    readTaskBudgetExemptDeviceIds: () => NO_TASK_BUDGET_EXEMPTIONS,
     // No weather/PV/curtailment taps for sub-homes: a sub-home meter's net W is
     // not the home's grid power — feeding it to those estimators would corrupt them.
     // Nor the main home's production: this home reads none of its own.

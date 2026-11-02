@@ -18,7 +18,7 @@ describe('plan usage budget exemption helpers', () => {
       {
         id: 'a',
         budgetExempt: true,
-        countsAsManagedUsage: true,
+        control: { commandAuthority: true },
         currentDrawKw: 1.2,
         expectedPowerKw: 2,
       },
@@ -27,10 +27,10 @@ describe('plan usage budget exemption helpers', () => {
         id: 'b',
         currentDrawKw: 0,
         budgetExempt: true,
-        countsAsManagedUsage: true,
+        control: { commandAuthority: true },
         expectedPowerKw: 0.8,
       },
-    ], (device) => device.countsAsManagedUsage, NONE_HELD)).toBeCloseTo(1.2, 6);
+    ], NONE_HELD)).toBeCloseTo(1.2, 6);
   });
 
   it('projects an observed-off exempt device onto its configured demand', () => {
@@ -43,14 +43,14 @@ describe('plan usage budget exemption helpers', () => {
         id: 'a',
         currentDrawKw: 0,
         budgetExempt: true,
-        countsAsManagedUsage: true,
+        control: { commandAuthority: true },
         currentOn: false,
         expectedPowerKw: 1.5,
       },
       {
         id: 'b',
         budgetExempt: true,
-        countsAsManagedUsage: true,
+        control: { commandAuthority: true },
         currentDrawKw: 0.5,
         expectedPowerKw: 2,
       },
@@ -58,10 +58,10 @@ describe('plan usage budget exemption helpers', () => {
         id: 'c',
         currentDrawKw: 0,
         budgetExempt: false,
-        countsAsManagedUsage: true,
+        control: { commandAuthority: true },
         expectedPowerKw: 10,
       },
-    ], (device) => device.countsAsManagedUsage, NONE_HELD)).toBeCloseTo(2, 6);
+    ], NONE_HELD)).toBeCloseTo(2, 6);
   });
 
   it('gives an exempt device PELS is holding off no claim beyond its draw', () => {
@@ -73,7 +73,7 @@ describe('plan usage budget exemption helpers', () => {
       {
         id: 'charger',
         budgetExempt: true,
-        countsAsManagedUsage: true,
+        control: { commandAuthority: true },
         currentOn: false,
         currentDrawKw: 0,
         expectedPowerKw: 7,
@@ -82,12 +82,12 @@ describe('plan usage budget exemption helpers', () => {
         // Still winding down after the turn-off: what it draws still counts.
         id: 'heater',
         budgetExempt: true,
-        countsAsManagedUsage: true,
+        control: { commandAuthority: true },
         currentOn: false,
         currentDrawKw: 0.4,
         expectedPowerKw: 3,
       },
-    ], (device) => device.countsAsManagedUsage, held)).toBeCloseTo(0.4, 6);
+    ], held)).toBeCloseTo(0.4, 6);
   });
 
   it('projects an off exempt device with power steps onto its restart step, not its peak', () => {
@@ -95,7 +95,7 @@ describe('plan usage budget exemption helpers', () => {
       {
         id: 'charger',
         budgetExempt: true,
-        countsAsManagedUsage: true,
+        control: { commandAuthority: true },
         currentOn: false,
         steppedLoadProfile: chargerLadder,
         selectedStepId: '6a',
@@ -103,24 +103,34 @@ describe('plan usage budget exemption helpers', () => {
         expectedPowerKw: 6.99,
         planningPowerKw: 1.38,
       },
-    ], (device) => device.countsAsManagedUsage, NONE_HELD)).toBeCloseTo(1.38, 6);
+    ], NONE_HELD)).toBeCloseTo(1.38, 6);
   });
 
-  it('ignores budget-exempt devices with capacity control disabled', () => {
+  it('counts what an exempt device PELS does not command draws, and reserves nothing for it when off', () => {
+    // The exempt set has no gate of its own: a drawing exempt device counts here
+    // exactly when its energy books as exempt. Only the reservation for an off
+    // device needs authority, because only then is the restart PELS's to make.
     expect(sumBudgetExemptProjectedUsageKw([
-      { id: 'a',
+      { id: 'drawing',
         expectedPowerKw: 1,
         budgetExempt: true,
-        countsAsManagedUsage: false,
+        control: { commandAuthority: false },
         currentDrawKw: 5,
       },
-      { id: 'b',
+      { id: 'off',
+        expectedPowerKw: 3,
+        budgetExempt: true,
+        control: { commandAuthority: false },
+        currentOn: false,
+        currentDrawKw: 0,
+      },
+      { id: 'commanded',
         expectedPowerKw: 1,
         budgetExempt: true,
-        countsAsManagedUsage: true,
+        control: { commandAuthority: true },
         currentDrawKw: 1.5,
       },
-    ], (device) => device.countsAsManagedUsage, NONE_HELD)).toBeCloseTo(1.5, 6);
+    ], NONE_HELD)).toBeCloseTo(6.5, 6);
   });
 
 });

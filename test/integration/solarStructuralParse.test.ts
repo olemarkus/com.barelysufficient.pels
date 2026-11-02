@@ -60,6 +60,23 @@ describe('structural solar-role resolution at parse', () => {
     expect(parsed.controllable).toBe(false);
   });
 
+  it('never stamps a solar device budget-exempt, whatever the stored setting says', async () => {
+    // Every exempt sum counts an exempt device's draw with no gate of its own, so a
+    // stale exemption would book the panel's production as exempt consumption.
+    const transport = createTestDeviceTransport(homeyMock, loggerMock, {
+      settings: { isBudgetExempt: () => true },
+    });
+    const [parsed] = await seedTransportDevices(transport, [{
+      id: 'solar1',
+      name: 'Solar Panel',
+      class: 'solarpanel',
+      capabilities: ['measure_power', 'meter_power'],
+      capabilitiesObj: solarCaps,
+    }]);
+
+    expect(parsed.budgetExempt).toBe(false);
+  });
+
   it('does NOT stamp a non-solar bidirectional grid meter (export cap, class:sensor) observe-only', async () => {
     // FIX 1 regression: a grid / P1 meter declares `meterPowerExportedCapability` but is
     // class 'sensor', NOT 'solarpanel'. The export property is NOT the solar identity

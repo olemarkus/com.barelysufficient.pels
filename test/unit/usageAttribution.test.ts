@@ -1,6 +1,7 @@
 import {
   splitControlledUsageKw,
   sumControlledUsageKw,
+  splitBudgetExemptMeasuredUsageKw,
   sumBudgetExemptMeasuredUsageKw,
 } from '../../lib/power/usageAttribution';
 
@@ -163,15 +164,16 @@ describe('splitControlledUsageKw', () => {
 });
 
 describe('sumBudgetExemptMeasuredUsageKw', () => {
-  it('counts only resolved draw of budget-exempt devices PELS may command', () => {
+  it('counts the resolved draw of every budget-exempt device, managed usage or not', () => {
+    // Exemption is its own axis: a smart task on a charger with Power-limit control
+    // off is background usage AND exempt (prod 2026-11-02).
     const devices = [
       { budgetExempt: true, countsAsManagedUsage: true, currentDrawKw: 1.2 },
       { budgetExempt: true, countsAsManagedUsage: true, currentDrawKw: 0.3 },
       { budgetExempt: true, countsAsManagedUsage: false, currentDrawKw: 4 },
       { budgetExempt: false, countsAsManagedUsage: true, currentDrawKw: 5 },
-      { countsAsManagedUsage: true, currentDrawKw: 6 },
     ] as const;
-    expect(sumBudgetExemptMeasuredUsageKw(devices)).toBeCloseTo(1.5, 6);
+    expect(sumBudgetExemptMeasuredUsageKw(devices)).toBeCloseTo(5.5, 6);
   });
 
   it('does not reserve expected demand for an observed-off exempt device', () => {
@@ -183,5 +185,19 @@ describe('sumBudgetExemptMeasuredUsageKw', () => {
       expectedPowerKw: 2,
     }] as const;
     expect(sumBudgetExemptMeasuredUsageKw(devices)).toBe(0);
+  });
+});
+
+describe('splitBudgetExemptMeasuredUsageKw', () => {
+  it('splits the exempt draw by the managed / background attribution it belongs to', () => {
+    const devices = [
+      { budgetExempt: true, countsAsManagedUsage: true, currentDrawKw: 1.2 },
+      { budgetExempt: true, countsAsManagedUsage: false, currentDrawKw: 2.6 },
+      { budgetExempt: false, countsAsManagedUsage: true, currentDrawKw: 5 },
+      { budgetExempt: false, countsAsManagedUsage: false, currentDrawKw: 3 },
+    ] as const;
+    const split = splitBudgetExemptMeasuredUsageKw(devices);
+    expect(split.controlledKw).toBeCloseTo(1.2, 6);
+    expect(split.uncontrolledKw).toBeCloseTo(2.6, 6);
   });
 });

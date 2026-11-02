@@ -428,17 +428,32 @@ first reading in the new bucket recomputes it, capacity alone binds.
 Exempt netting happens in `resolveDailySoftLimitBucket` (`lib/plan/planDailyBudgetWindow.ts`): the bucket's
 `usedKWh` is `meteredUsedKWh - exemptUsedKWh`. (`buildBudgetUsageViews` in `lib/dailyBudget/dailyBudgetState.ts`
 performs the same subtraction for the daily-budget state and UI view; that is a
-parallel path, not the one the planner paces on.)
+parallel path, not the one the planner paces on.) Both read `exemptUsedKWh` from
+one place, `resolveBudgetExemptKWh` (`lib/power/budgetExemptEnergy.ts`): the
+managed share (`exemptBuckets`, a subset of `controlledBuckets`) plus the
+background share (`uncontrolledExemptBuckets`, a subset of `uncontrolledBuckets`),
+bounded by the metered total. The shares are booked apart because the daily
+budget's breakdown and learning move exempt load to the background side
+(`resolveAttributionSplit`); only the managed share needs moving, and folding the
+background share in a second time would report more background than the meter
+read.
 
-The two axes read different sums over different device sets. The power term at
-`lib/plan/planBuilder.ts` reads the PROJECTED sum
-(`sumBudgetExemptProjectedUsageKw`, `lib/plan/planUsage.ts`) over plan devices,
-which include a smart task's `exemptFromBudget` grant. The energy accrual at
-`lib/power/sampleIngest.ts` reads the MEASURED sum
-(`sumBudgetExemptMeasuredUsageKw`, `lib/power/usageAttribution.ts`) over the raw
-snapshot, which carries only the owner's static `budget_exempt_devices` setting.
-So a smart task's exemption lifts the control threshold but its energy still
-counts as used today: an open gap, not a design choice. The accrual
+Both axes read one exempt set. A device is exempt when it is a managed load the
+owner exempted (`budget_exempt_devices`, resolved `false` for a battery or solar
+device where it is read) or one a smart task's "may go over daily budget" claims
+for the current hour. Neither sum adds a gate of its own: not Power-limit
+control, not command authority. The power term at `lib/plan/planBuilder.ts`
+reads the PROJECTED sum (`sumBudgetExemptProjectedUsageKw`, `lib/plan/planUsage.ts`)
+over plan devices, whose `budgetExempt` the smart-task decoration completes. The
+energy accrual at `lib/power/sampleIngest.ts` reads the MEASURED sum, split by
+attribution (`splitBudgetExemptMeasuredUsageKw`, `lib/power/usageAttribution.ts`),
+over the raw snapshot plus the same claims, read from their owner
+(`DeferredObjectiveDecorationController.readBudgetExemptDeviceIds`). Command
+authority decides only whether an OFF exempt device keeps a reservation, since
+only then is the restart PELS's to make. Gating the energy side on Power-limit
+control once left a smart task's charger with that control off exempt on the
+threshold and counted as spent budget on the energy side, so the higher-priority
+thermostats were held for the daily budget while it ran (prod 2026-11-02). The accrual
 must never read the projection: it would book an off exempt device's configured
 power into a persisted kWh bucket, and because each sample's exempt power is only
 bounded by the whole home's draw, a large parked charger would book the entire
@@ -793,8 +808,8 @@ means and answers in kW.* The nullable was the symptom; the layering was the
 defect. Two further facts point the same way:
 
 - Both ingredients already live in `lib/power`. `sampleIngest` computes the
-  measured exempt sum and records `exemptPowerW` into the tracker's
-  `exemptBuckets`. The planner subtracting a
+  measured exempt sum and records it, split by attribution, into the tracker's
+  `exemptBuckets` and `uncontrolledExemptBuckets`. The planner subtracting a
   device-list sum from a meter reading is a re-derivation.
 - The settings UI already has a power-owned channel, `SettingsUiPowerPayload`
   (read via `getPowerReadModel()`, the same one the capacity scalars use). A
@@ -817,11 +832,11 @@ spend an off exempt device's projection), the exempt kWh integrated at
 `lib/power/sampleIngest.ts`, and, eventually, the hero's display value
 (§ "Overview hero").
 
-On the sample path a device is exempt when its own flag says so OR the plan in
-force exempts it (`resolvePublishedBudgetExemptDeviceIds`), because a smart
-task's "may go over daily budget" exempts its device on the plan only. A plan
-published in an earlier tracker hour answers nothing, since a task's claim is
-per hour.
+On the sample path a managed device is exempt when its own flag says so OR a
+smart task claims it (`readTaskBudgetExemptDeviceIds`, answered by the smart-task
+controller that decides the claim, not read back off the plan). The claim
+belongs to the hour it was decided for, so the latest cycle's claims answer
+nothing once a new tracker hour starts.
 
 The alternative policy, allocating solar pro-rata across exempt and non-exempt
 load instead of to non-exempt first, was considered and rejected: it would let an

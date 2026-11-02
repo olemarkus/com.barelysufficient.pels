@@ -2,6 +2,7 @@ import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../power/tracker';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { resolveAttributionSplit } from '../../packages/shared-domain/src/dailyBudget/attributionSplit';
+import { resolveBudgetExemptKWh } from '../power/budgetExemptEnergy';
 
 export type CurrentHourUsageSplit = {
   totalKWh?: number;
@@ -83,14 +84,13 @@ export function resolveDailySoftLimitBucket(
   if (!input) return null;
   const window = resolveDailySoftLimitWindow(input);
   if (!window || nowMs >= window.bucketEndMs) return null;
-  // Floor metered usage (a persisted solar-export hour can be negative) and clamp exempt to
-  // it — exempt is grossed up at the tracker, so bound it by the net metered total here, matching
-  // the other budget-control consumers (dailyBudgetState/Learning/ObservedStats).
+  // Floor metered usage (a persisted solar-export hour can be negative); the exempt
+  // energy is already bounded by it (`resolveBudgetExemptKWh`, the read the daily
+  // budget's own views use too).
   const meteredUsedKWh = Math.max(0, powerTracker.buckets?.[input.bucketStartIso] ?? 0);
-  const exemptUsedKWh = Math.max(0, Math.min(meteredUsedKWh, powerTracker.exemptBuckets?.[input.bucketStartIso] ?? 0));
   return {
     plannedKWh: input.plannedKWh,
-    usedKWh: Math.max(0, meteredUsedKWh - exemptUsedKWh),
+    usedKWh: Math.max(0, meteredUsedKWh - resolveBudgetExemptKWh(powerTracker, input.bucketStartIso)),
     ...window,
   };
 }

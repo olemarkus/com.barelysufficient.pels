@@ -78,6 +78,32 @@ export function pruneHourlyBucketsOnly(params: {
   return nextBuckets;
 }
 
+/**
+ * The families kept at hourly resolution only, never folded into daily totals:
+ * per-device kWh, and the background exempt share (nothing reads it past the
+ * hourly window). Each drops what aged out; the exempt share stays absent in a
+ * state that never carried it.
+ */
+export function pruneHourlyOnlyFamilies(
+  state: PowerTrackerState,
+  hourlyThreshold: number,
+): Pick<PowerTrackerState, 'deviceBuckets' | 'uncontrolledExemptBuckets'> {
+  const deviceBucketEntries = (
+    Object.entries(state.deviceBuckets || {}).flatMap(([deviceId, buckets]) => {
+      const retained = Object.fromEntries(pruneHourlyBucketsOnly({ buckets, hourlyThreshold }) || []);
+      return Object.keys(retained).length > 0 ? [[deviceId, retained] as const] : [];
+    })
+  );
+  const uncontrolledExemptBuckets = pruneHourlyBucketsOnly({
+    buckets: state.uncontrolledExemptBuckets,
+    hourlyThreshold,
+  });
+  return {
+    deviceBuckets: deviceBucketEntries.length > 0 ? Object.fromEntries(deviceBucketEntries) : undefined,
+    ...(uncontrolledExemptBuckets ? { uncontrolledExemptBuckets: Object.fromEntries(uncontrolledExemptBuckets) } : {}),
+  };
+}
+
 // Floor each aged hour before folding it into the per-day total: a legacy solar-export hour
 // (persisted before the write-side clamp) carries negative kWh that a read-side
 // `Math.max(0, dailyTotal)` can't repair once it has been summed into the day.
@@ -116,6 +142,14 @@ function accumulatePowerIfAvailable(params: {
   });
 }
 
+/** One sample's attributed draws, each bounded for its own bucket family. */
+export type TrackedSamplePowers = {
+  controlledPowerW?: number;
+  uncontrolledPowerW?: number;
+  exemptPowerW?: number;
+  uncontrolledExemptPowerW?: number;
+};
+
 /**
  * Accrues the held sample's controlled / uncontrolled / exempt / per-device
  * energy over [startTs, endTs]. Each family integrates only when both the
@@ -124,23 +158,14 @@ function accumulatePowerIfAvailable(params: {
  * `recordPowerSample`).
  */
 export function accrueTrackedSampleFamilies(params: {
-  previous: {
-    controlledPowerW?: number;
-    uncontrolledPowerW?: number;
-    exemptPowerW?: number;
-    devicePowerWById?: Record<string, number>;
-  };
-  next: {
-    controlledPowerW?: number;
-    uncontrolledPowerW?: number;
-    exemptPowerW?: number;
-    devicePowerWById?: Record<string, number>;
-  };
+  previous: TrackedSamplePowers & { devicePowerWById?: Record<string, number> };
+  next: TrackedSamplePowers & { devicePowerWById?: Record<string, number> };
   startTs: number;
   endTs: number;
   controlledBuckets: Map<string, number>;
   uncontrolledBuckets: Map<string, number>;
   exemptBuckets: Map<string, number>;
+  uncontrolledExemptBuckets: Map<string, number>;
   deviceBuckets: Map<string, Map<string, number>>;
 }): void {
   const { previous, next, startTs, endTs } = params;
@@ -164,6 +189,13 @@ export function accrueTrackedSampleFamilies(params: {
     startTs,
     endTs,
     buckets: params.exemptBuckets,
+  });
+  accumulatePowerIfAvailable({
+    previousPowerW: previous.uncontrolledExemptPowerW,
+    nextPowerW: next.uncontrolledExemptPowerW,
+    startTs,
+    endTs,
+    buckets: params.uncontrolledExemptBuckets,
   });
   accumulateDevicePowerIfAvailable({
     previousPowerWById: previous.devicePowerWById,

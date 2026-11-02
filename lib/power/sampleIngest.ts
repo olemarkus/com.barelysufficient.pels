@@ -13,7 +13,7 @@ import {
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import {
   splitControlledUsageKw,
-  sumBudgetExemptMeasuredUsageKw,
+  splitBudgetExemptMeasuredUsageKw,
   sumControlledUsageKw,
   type UsageDevice,
 } from './usageAttribution';
@@ -262,11 +262,12 @@ export async function recordPowerSampleForApp(params: {
   /** Inventory metadata joined with accepted Observer state for attribution. */
   getDeviceSurfaces: () => DeviceSurfaces[];
   /**
-   * Devices the plan in force exempts from the daily budget beyond their own
-   * static flag (a smart task's claim; `resolvePublishedBudgetExemptDeviceIds`).
-   * Their measured draw books as exempt energy, as the threshold already treats it.
+   * Devices a smart task exempts from the daily budget for the current hour,
+   * beyond the owner's own setting: the smart-task controller's claims
+   * (`DeferredObjectiveDecorationController.readBudgetExemptDeviceIds`), the
+   * same claims the planner's threshold reads off its input.
    */
-  planBudgetExemptDeviceIds: ReadonlySet<string>;
+  taskBudgetExemptDeviceIds: ReadonlySet<string>;
   powerTracker: PowerTrackerState;
   schedulePlanRebuild: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
@@ -280,7 +281,7 @@ export async function recordPowerSampleForApp(params: {
     timeZone,
     capacitySettings,
     getDeviceSurfaces,
-    planBudgetExemptDeviceIds,
+    taskBudgetExemptDeviceIds,
     powerTracker,
     schedulePlanRebuild,
     saveState,
@@ -290,10 +291,13 @@ export async function recordPowerSampleForApp(params: {
   const devices = getDeviceSurfaces();
   // Observer supplies measured readings; DeviceReads supplies class and
   // controllability metadata. `!== false` preserves the established rule that
-  // an unpopulated controllable flag counts as managed usage.
+  // an unpopulated controllable flag counts as managed usage. Exemption is the
+  // planner's set over the same devices: a managed device whose owner exempted
+  // it or whose smart task claims the hour (the parse already answers `false`
+  // for a battery or solar device). It does not depend on `countsAsManagedUsage`.
   const usageDevices = devices.map((device) => ({
     ...device,
-    budgetExempt: device.budgetExempt === true || planBudgetExemptDeviceIds.has(device.id),
+    budgetExempt: device.managed && (device.budgetExempt === true || taskBudgetExemptDeviceIds.has(device.id)),
     currentDrawKw: normalizeMeasuredPowerKw(device.measuredPowerKw) ?? 0,
     countsAsManagedUsage: device.controllable !== false,
   }));
@@ -318,11 +322,13 @@ export async function recordPowerSampleForApp(params: {
   // MEASURED exempt draw: this feeds a persisted kWh integral, so an off exempt
   // device books nothing. The planner's projection (an off device claiming its
   // configured demand) is a control threshold, never energy
-  // (`notes/safe-pace-two-constraints.md`).
-  const exemptKw = devices.length ? sumBudgetExemptMeasuredUsageKw(usageDevices) : null;
+  // (`notes/safe-pace-two-constraints.md`). Split by the attribution it is a
+  // subset of, so the background share is not moved to background a second time.
+  const exemptKw = devices.length ? splitBudgetExemptMeasuredUsageKw(usageDevices) : null;
   const controlledPowerW = controlledKw !== null ? Math.max(0, controlledKw * 1000) : undefined;
   const managedDraw = resolveManagedLoadDraw(devices, generationW);
-  const exemptPowerW = exemptKw !== null ? Math.max(0, exemptKw * 1000) : undefined;
+  const exemptPowerW = exemptKw !== null ? Math.max(0, exemptKw.controlledKw * 1000) : undefined;
+  const uncontrolledExemptPowerW = exemptKw !== null ? Math.max(0, exemptKw.uncontrolledKw * 1000) : undefined;
   const currentDevicePowerWById = buildMeasuredDevicePowerWById({ devices });
   const profilingState = updateObjectiveProfiles({
     state: powerTracker,
@@ -340,6 +346,7 @@ export async function recordPowerSampleForApp(params: {
     generationSegments: params.generationSegments,
     controlledPowerW,
     exemptPowerW,
+    uncontrolledExemptPowerW,
     currentDevicePowerWById,
     managedDraw,
     nowMs,

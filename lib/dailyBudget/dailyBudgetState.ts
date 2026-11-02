@@ -1,6 +1,7 @@
 import type { PowerLimitCeiling } from '../../packages/contracts/src/capacitySettings';
 import type { DailyBudgetAllocationPressure } from '../../packages/contracts/src/dailyBudgetTypes';
 import type { PowerTrackerState } from '../power/tracker';
+import { resolveBudgetExemptKWh } from '../power/budgetExemptEnergy';
 import {
   buildLocalDayBuckets,
   getDateKeyInTimeZone,
@@ -162,8 +163,10 @@ export const buildBucketUsage = (params: {
   const uncontrolledRaw = powerTracker.uncontrolledBuckets ?? {};
   const exemptRaw = powerTracker.exemptBuckets ?? {};
   // ATTRIBUTION split (managed vs background of ACTUAL consumption) via the shared
-  // gross-preferring resolver. Budget PACING is unaffected — it uses `bucketUsage` (net
-  // total) minus exempt, not this split.
+  // gross-preferring resolver. Only the MANAGED exempt share moves to background
+  // here; the background share (`uncontrolledExemptBuckets`) is already inside
+  // `uncontrolledBuckets`. Budget PACING is unaffected — it uses `bucketUsage` (net
+  // total) minus all exempt energy, not this split.
   const splitUsage = bucketKeys.map((key, index) => resolveAttributionSplit({
     totalNet: bucketUsage[index] ?? 0,
     controlledGross: controlledRaw[key],
@@ -172,11 +175,7 @@ export const buildBucketUsage = (params: {
   }));
   const bucketUsageControlled = splitUsage.map((entry) => entry.controlled);
   const bucketUsageUncontrolled = splitUsage.map((entry) => entry.uncontrolled);
-  const bucketUsageExempt = bucketKeys.map((key, index) => {
-    const rawExempt = exemptRaw[key];
-    const exempt = typeof rawExempt === 'number' && Number.isFinite(rawExempt) ? rawExempt : 0;
-    return clamp(exempt, 0, Math.max(0, bucketUsage[index] ?? 0));
-  });
+  const bucketUsageExempt = bucketKeys.map((key) => resolveBudgetExemptKWh(powerTracker, key));
   const hasExempt = bucketUsageExempt.some((value) => value > 0);
   return {
     bucketKeys,

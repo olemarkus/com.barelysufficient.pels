@@ -66,6 +66,23 @@ describe('structural battery-role resolution at parse', () => {
     expect(parsed.controllable).toBe(false);
   });
 
+  it('never stamps a battery budget-exempt, whatever the stored setting says', async () => {
+    // Every exempt sum counts an exempt device's draw with no gate of its own, so a
+    // stale exemption would book the battery's charging as exempt consumption.
+    const transport = createTestDeviceTransport(homeyMock, loggerMock, {
+      settings: { ...adversarialProviders.settings, isBudgetExempt: () => true },
+    });
+    const [parsed] = await seedTransportDevices(transport, [{
+      id: 'battery1',
+      name: 'Home Battery',
+      class: 'battery',
+      capabilities: ['measure_battery', 'measure_power'],
+      capabilitiesObj: batteryCaps,
+    }]);
+
+    expect(parsed.budgetExempt).toBe(false);
+  });
+
   it('stamps a battery the owner turned Managed off as unmanaged, still non-controllable', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, {
       ...adversarialProviders,

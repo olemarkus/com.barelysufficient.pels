@@ -337,6 +337,9 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
       this.runtime.homeMembershipService?.noteResolvedHomeMeter(deviceId, sampleAtMs)
     ),
     savePowerTracker: (state) => this.savePowerTracker(state),
+    // Late-bound like the plan getters: the smart-task controller lives in
+    // `serviceWiring`, a field declared after this one.
+    readTaskBudgetExemptDeviceIds: (nowMs) => this.serviceWiring.readTaskBudgetExemptDeviceIds(nowMs),
     getOutdoorTemperatureC: () => this.runtime.backgroundCollectors?.weatherCollector.getCurrentOutdoorTemperatureC(),
     recordPvGenerationSample: (genW, nowMs, netW) => (
       this.runtime.backgroundCollectors?.pvForecast.recordSample(genW, nowMs, netW)

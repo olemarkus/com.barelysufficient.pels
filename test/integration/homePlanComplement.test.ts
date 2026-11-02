@@ -480,6 +480,7 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
       // Write back as production does (`savePowerTracker` -> `setPowerTracker`),
       // so the latch the scheduler reads is the sample just admitted.
       savePowerTracker: (state) => { saved = state; ctx.powerTracker = state; },
+      readTaskBudgetExemptDeviceIds: () => new Set(),
     });
     await pipeline.recordPowerSample(5000, nowMs);
     return saved;

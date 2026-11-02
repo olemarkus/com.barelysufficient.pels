@@ -6,7 +6,7 @@ import { resolveUsableCapacityKWh } from '../power/capacityModel';
 import type { PowerTrackerState } from '../power/tracker';
 import type { MeasuredPowerReading } from '../power/powerCycleReading';
 import { getCurrentCapacityPeriodContext, getCurrentHourContext } from './planHourContext';
-import { sumBudgetExemptMeasuredUsageKwFor } from '../power/usageAttribution';
+import { sumBudgetExemptMeasuredUsageKw } from '../power/usageAttribution';
 import { toMeteredUsageDevices } from './planUsage';
 import { isCapacityBreached } from './planRemainingSheddableLoad';
 import type { PlanInputDevice } from './planTypes';
@@ -235,10 +235,7 @@ export function resolveMeasuredPower(
     gridHeadroomKw,
     gridBreached,
     budgetHeadroomKw: hasBudgetAxis
-      ? reading.headroomKw(budgetPaceKw + sumBudgetExemptMeasuredUsageKwFor(
-        toMeteredUsageDevices(devices),
-        (device) => device.control.commandAuthority,
-      ))
+      ? reading.headroomKw(budgetPaceKw + sumBudgetExemptMeasuredUsageKw(toMeteredUsageDevices(devices)))
       : null,
     capacityBreached,
     physicalLimitBreached,

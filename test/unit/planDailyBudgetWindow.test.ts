@@ -129,6 +129,19 @@ describe('resolveDailySoftLimitBucket', () => {
     });
   });
 
+  it('counts neither exempt share as used: managed or background', () => {
+    // Prod 2026-11-02: 4.40 kWh metered, 3.06 kWh of it a smart task's exempt
+    // charger with Power-limit control off (background usage). Only the rest is
+    // what the budget paces.
+    const withExempt = {
+      buckets: { [hourStart(5)]: 4.4 },
+      exemptBuckets: { [hourStart(5)]: 0.2 },
+      uncontrolledExemptBuckets: { [hourStart(5)]: 3.06 },
+    };
+    expect(resolveDailySoftLimitBucket(snapshotAtHour(5), withExempt, DAY_START_MS + 5.5 * HOUR_MS)?.usedKWh)
+      .toBeCloseTo(1.14, 6);
+  });
+
   it('paces nothing once that bucket has ended', () => {
     expect(resolveDailySoftLimitBucket(snapshotAtHour(5), tracker, DAY_START_MS + 6 * HOUR_MS)).toBeNull();
     expect(resolveDailySoftLimitBucket(snapshotAtHour(5), tracker, DAY_START_MS + 6 * HOUR_MS + 1_000)).toBeNull();

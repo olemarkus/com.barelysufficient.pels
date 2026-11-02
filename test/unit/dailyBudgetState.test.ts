@@ -81,6 +81,31 @@ describe('daily budget state helpers', () => {
     expect(result.bucketUsageExempt).toEqual([1, 1.5]);
   });
 
+  it('buildBucketUsage paces both exempt shares but moves only the managed one to background', () => {
+    // Prod 2026-11-02, 21:00 local: 4.40 kWh metered, managed thermostats 0.69 kWh,
+    // and a smart task's charger with Power-limit control off at 3.06 kWh, which is
+    // background usage and exempt. Booked beside the background side, it must not be
+    // folded into background a second time (6.77 kWh of background in a 4.40 kWh
+    // hour) nor taken from the managed side.
+    const key = new Date(Date.UTC(2026, 10, 2, 20)).toISOString();
+    const result = buildBucketUsage({
+      bucketStartUtcMs: [Date.parse(key)],
+      powerTracker: {
+        buckets: { [key]: 4.4 },
+        controlledBuckets: { [key]: 0.69 },
+        uncontrolledBuckets: { [key]: 3.71 },
+        uncontrolledExemptBuckets: { [key]: 3.06 },
+      },
+    });
+
+    expect(result.bucketUsageControlled[0]).toBeCloseTo(0.69, 6);
+    expect(result.bucketUsageUncontrolled[0]).toBeCloseTo(3.71, 6);
+    expect(result.bucketUsageExempt?.[0]).toBeCloseTo(3.06, 6);
+    const views = buildBudgetUsageViews({ bucketUsage: result.bucketUsage, bucketUsageExempt: result.bucketUsageExempt });
+    expect(views.budgetControlUsedNowKWh).toBeCloseTo(1.34, 6);
+    expect(views.meteredUsedNowKWh).toBeCloseTo(4.4, 6);
+  });
+
   it('buildBucketUsage uses the gross uncontrolled bucket when controlled data is missing', () => {
     const dayStart = Date.UTC(2024, 0, 1, 0, 0, 0);
     const bucketStartUtcMs = [dayStart];

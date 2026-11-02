@@ -216,6 +216,13 @@ export type DeferredAdmissionInput = {
   lentAuthorityDeviceIds: Set<string>;
   /** Devices whose "Leave off" hold this cycle's booked hour lifts (`liftsExternalOffHold`). */
   externalOffHoldLiftedDeviceIds: Set<string>;
+  /**
+   * Devices this cycle's task exempts from the daily budget: exactly those whose
+   * input gains `budgetExempt` here. The power sample path books their draw as
+   * exempt energy (`DeferredObjectiveDecorationController.readBudgetExemptDeviceIds`),
+   * so the threshold and the energy read one decision.
+   */
+  budgetExemptClaimDeviceIds: Set<string>;
 };
 
 // A planned limit-lower-priority task forces the device's boost on. `resolveBoostActive`
@@ -320,12 +327,17 @@ export const applyDeferredAdmissionToInput = (
 ): DeferredAdmissionInput => {
   if (decisions.size === 0) {
     return {
-      devices, forceShedSet: new Set(), lentAuthorityDeviceIds: new Set(), externalOffHoldLiftedDeviceIds: new Set(),
+      devices,
+      forceShedSet: new Set(),
+      lentAuthorityDeviceIds: new Set(),
+      externalOffHoldLiftedDeviceIds: new Set(),
+      budgetExemptClaimDeviceIds: new Set(),
     };
   }
   const forceShedSet = new Set<string>();
   const lentAuthorityDeviceIds = new Set<string>();
   const externalOffHoldLiftedDeviceIds = new Set<string>();
+  const budgetExemptClaimDeviceIds = new Set<string>();
   const transformed = devices.map((heldOrFree) => {
     const decision = decisions.get(heldOrFree.id);
     if (!decision) return heldOrFree;
@@ -339,6 +351,7 @@ export const applyDeferredAdmissionToInput = (
     const deferredHold = resolveDeferredHold(decision, device);
     if (deferredHold) forceShedSet.add(device.id);
     const claims = resolveHourClaims(decision, device);
+    if (claims.budgetExempt) budgetExemptClaimDeviceIds.add(device.id);
     if (!override && !deferredHold && !hasDeadlineFloor && !claimsAnything(claims)) return device;
     return {
       ...device,
@@ -347,7 +360,11 @@ export const applyDeferredAdmissionToInput = (
     };
   });
   return {
-    devices: transformed, forceShedSet, lentAuthorityDeviceIds, externalOffHoldLiftedDeviceIds,
+    devices: transformed,
+    forceShedSet,
+    lentAuthorityDeviceIds,
+    externalOffHoldLiftedDeviceIds,
+    budgetExemptClaimDeviceIds,
   };
 };
 

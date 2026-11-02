@@ -15,8 +15,9 @@ import {
   calculateEnergyAcrossBoundaries,
   foldAgedHourIntoDay,
   normalizeDevicePowerWById,
-  pruneHourlyBucketsOnly,
+  pruneHourlyOnlyFamilies,
   serializeDeviceBuckets,
+  type TrackedSamplePowers,
 } from './trackerEnergy';
 import { accrueCapacityQuarter, startCapacityQuarterTracking } from './capacityQuarterTracking';
 import { accrueSolarSample, buildSolarAggregatePatch, resolveSampleGenerationW } from './trackerSolar';
@@ -50,6 +51,7 @@ function buildNextPowerState(params: {
   nextControlledBuckets?: Map<string, number>;
   nextUncontrolledBuckets?: Map<string, number>;
   nextExemptBuckets?: Map<string, number>;
+  nextUncontrolledExemptBuckets: Map<string, number>;
   nextGenerationBuckets: Map<string, number>;
   nextExportBuckets: Map<string, number>;
   nextDeviceBuckets: Map<string, Map<string, number>>;
@@ -58,6 +60,7 @@ function buildNextPowerState(params: {
   currentControlledPowerW?: number;
   currentUncontrolledPowerW?: number;
   currentExemptPowerW?: number;
+  currentUncontrolledExemptPowerW?: number;
   currentGenerationW?: number;
   currentDevicePowerWById?: Record<string, number>;
   heldReading: HeldReading;
@@ -73,6 +76,7 @@ function buildNextPowerState(params: {
     nextControlledBuckets,
     nextUncontrolledBuckets,
     nextExemptBuckets,
+    nextUncontrolledExemptBuckets,
     nextGenerationBuckets,
     nextExportBuckets,
     nextDeviceBuckets,
@@ -81,6 +85,7 @@ function buildNextPowerState(params: {
     currentControlledPowerW,
     currentUncontrolledPowerW,
     currentExemptPowerW,
+    currentUncontrolledExemptPowerW,
     currentGenerationW,
     currentDevicePowerWById,
     heldReading,
@@ -92,7 +97,16 @@ function buildNextPowerState(params: {
   // reading must DROP any carried lastGenerationW rather than hold it stale, so
   // the base spread deliberately excludes it and the conditional spread below
   // re-adds it only when THIS sample carried one.
-  const { lastGenerationW: _droppedGenerationLatch, ...carriedState } = state;
+  //
+  // The background exempt latch is sparse the same way: kept only while that share
+  // draws. Accrual integrates the previous sample's power and needs both ends, so
+  // an interval starting at 0 W books nothing either way, and a home whose devices
+  // never draw that share never gains the latch or the bucket family.
+  const {
+    lastGenerationW: _droppedGenerationLatch,
+    lastUncontrolledExemptPowerW: _droppedUncontrolledExemptLatch,
+    ...carriedState
+  } = state;
   return {
     ...carriedState,
     buckets: addToHourlyBuckets(state.buckets, nextBuckets),
@@ -107,6 +121,12 @@ function buildNextPowerState(params: {
       ? addToHourlyBuckets(state.uncontrolledBuckets, nextUncontrolledBuckets)
       : state.uncontrolledBuckets,
     exemptBuckets: nextExemptBuckets ? addToHourlyBuckets(state.exemptBuckets, nextExemptBuckets) : state.exemptBuckets,
+    // Sparse like the solar families: only a home where an exempt device counted
+    // as background usage drew ever gains the key (see the latch above).
+    ...(nextUncontrolledExemptBuckets.size > 0
+      ? {
+        uncontrolledExemptBuckets: addToHourlyBuckets(state.uncontrolledExemptBuckets, nextUncontrolledExemptBuckets),
+      } : {}),
     // Sparse solar families: serialize only when non-empty so a non-solar home
     // never gains the keys and its persisted state stays deep-equal (merge gate).
     ...(nextGenerationBuckets.size > 0
@@ -122,6 +142,8 @@ function buildNextPowerState(params: {
     lastControlledPowerW: currentControlledPowerW,
     lastUncontrolledPowerW: currentUncontrolledPowerW,
     lastExemptPowerW: currentExemptPowerW,
+    ...(currentUncontrolledExemptPowerW !== undefined && currentUncontrolledExemptPowerW > 0
+      ? { lastUncontrolledExemptPowerW: currentUncontrolledExemptPowerW } : {}),
     unreliablePeriods: unreliablePeriods || state.unreliablePeriods,
   };
 }
@@ -187,6 +209,7 @@ function createSampleBucketChanges() {
     nextControlledBuckets: new Map<string, number>(),
     nextUncontrolledBuckets: new Map<string, number>(),
     nextExemptBuckets: new Map<string, number>(),
+    nextUncontrolledExemptBuckets: new Map<string, number>(),
     nextGenerationBuckets: new Map<string, number>(),
     nextExportBuckets: new Map<string, number>(),
     nextDeviceBuckets: new Map<string, Map<string, number>>(),
@@ -374,13 +397,6 @@ export function aggregateAndPruneHistory(
   );
   // Solar families: gate + averages-discard rules live in trackerSolar.ts.
   const solarAggregatePatch = buildSolarAggregatePatch(state, aggregateForType);
-  const deviceBucketEntries = (
-    Object.entries(state.deviceBuckets || {}).flatMap(([deviceId, buckets]) => {
-      const retained = Object.fromEntries(pruneHourlyBucketsOnly({ buckets, hourlyThreshold }) || []);
-      return Object.keys(retained).length > 0 ? [[deviceId, retained] as const] : [];
-    })
-  );
-  const deviceBuckets = deviceBucketEntries.length > 0 ? Object.fromEntries(deviceBucketEntries) : undefined;
 
   const nextBudgets = new Map<string, number>();
   const nextDailyCaps = new Map<string, number>();
@@ -409,16 +425,41 @@ export function aggregateAndPruneHistory(
     uncontrolledHourlyAverages: uncontrolledAggregate.hourlyAverages,
     exemptHourlyAverages: exemptAggregate.hourlyAverages,
     ...solarAggregatePatch,
-    deviceBuckets,
+    ...pruneHourlyOnlyFamilies(state, hourlyThreshold),
     unreliablePeriods: (state.unreliablePeriods || []).filter((p) => p.end >= hourlyThreshold),
+  };
+}
+
+function resolveTrackedSamplePowers(params: RecordPowerSampleParams, grossConsumptionW: number): TrackedSamplePowers {
+  const { controlledPowerW, uncontrolledPowerW } = resolveControlledSample({
+    // Split is bounded by gross consumption, not net import, so managed load that
+    // runs off self-consumed solar is attributed in full and the unmanaged
+    // residual (gross − managed) reflects true background load.
+    currentPowerW: grossConsumptionW,
+    controlledPowerW: params.controlledPowerW,
+  });
+  // Exempt is device draw (gross at the appliance), split like the controlled /
+  // uncontrolled pair it is a subset of. The managed share is bound by GROSS
+  // consumption like controlled, so under solar self-consumption it isn't clamped to
+  // the smaller net total (which would leak exempt load back into the managed
+  // bucket). The background share is bound by the background residual it is part
+  // of: a device report sampled apart from the meter (a charger just stopped) must
+  // not book more exempt background than the meter left for background. Billing
+  // stays correct: every budget consumer re-clamps exempt against the net total.
+  return {
+    controlledPowerW,
+    uncontrolledPowerW,
+    exemptPowerW: resolveBoundedTrackedPowerW(grossConsumptionW, params.exemptPowerW),
+    uncontrolledExemptPowerW: resolveBoundedTrackedPowerW(
+      uncontrolledPowerW ?? grossConsumptionW, params.uncontrolledExemptPowerW,
+    ),
   };
 }
 
 export async function recordPowerSample(params: RecordPowerSampleParams): Promise<void> {
   const bookkeepingStart = Date.now();
   const {
-    state, currentPowerW, controlledPowerW, exemptPowerW, currentDevicePowerWById, nowMs = Date.now(),
-    hourBudgetKWh, rebuildPlanFromCache, saveState,
+    state, currentPowerW, currentDevicePowerWById, nowMs = Date.now(), hourBudgetKWh, rebuildPlanFromCache, saveState,
   } = params;
   // Whole-home actual consumption (net import + generation) bounds the managed/unmanaged
   // split so solar-fed managed load is not clamped to the smaller net total. It defaults
@@ -435,27 +476,14 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     nextControlledBuckets,
     nextUncontrolledBuckets,
     nextExemptBuckets,
+    nextUncontrolledExemptBuckets,
     nextGenerationBuckets,
     nextExportBuckets,
     nextDeviceBuckets,
   } = createSampleBucketChanges();
   const budgetKWh = applyCurrentHourSample({ nextHourlySampleCounts, nextBudgets, nowMs, hourBudgetKWh });
 
-  const {
-    controlledPowerW: boundedControlledPowerW,
-    uncontrolledPowerW: boundedUncontrolledPowerW,
-  } = resolveControlledSample({
-    // Split is bounded by gross consumption, not net import, so managed load that
-    // runs off self-consumed solar is attributed in full and the unmanaged
-    // residual (gross − managed) reflects true background load.
-    currentPowerW: grossConsumptionW,
-    controlledPowerW,
-  });
-  // Exempt is a managed-device draw (gross at the appliance); bound it by GROSS
-  // consumption like controlled, so under solar self-consumption it isn't clamped to
-  // the smaller net total (which would leak exempt load back into the managed bucket).
-  // Billing stays correct: every budget consumer re-clamps exempt against the net total.
-  const boundedExemptPowerW = resolveBoundedTrackedPowerW(grossConsumptionW, exemptPowerW);
+  const tracked = resolveTrackedSamplePowers(params, grossConsumptionW);
   const normalizedDevicePowerWById = normalizeDevicePowerWById(currentDevicePowerWById);
   const resetSampling = shouldResetSamplingState(state, nowMs);
   const heldReading = resolveNextHeldReading(state, currentPowerW, params.managedDraw, nowMs, resetSampling);
@@ -470,14 +498,16 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     nextControlledBuckets,
     nextUncontrolledBuckets,
     nextExemptBuckets,
+    nextUncontrolledExemptBuckets,
     nextGenerationBuckets,
     nextExportBuckets,
     nextDeviceBuckets,
     nowMs,
     currentPowerW,
-    currentControlledPowerW: boundedControlledPowerW,
-    currentUncontrolledPowerW: boundedUncontrolledPowerW,
-    currentExemptPowerW: boundedExemptPowerW,
+    currentControlledPowerW: tracked.controlledPowerW,
+    currentUncontrolledPowerW: tracked.uncontrolledPowerW,
+    currentExemptPowerW: tracked.exemptPowerW,
+    currentUncontrolledExemptPowerW: tracked.uncontrolledExemptPowerW,
     currentGenerationW,
     currentDevicePowerWById: normalizedDevicePowerWById,
     heldReading,
@@ -532,19 +562,16 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
       controlledPowerW: state.lastControlledPowerW,
       uncontrolledPowerW: state.lastUncontrolledPowerW,
       exemptPowerW: state.lastExemptPowerW,
+      uncontrolledExemptPowerW: state.lastUncontrolledExemptPowerW,
       devicePowerWById: state.lastDevicePowerWById,
     },
-    next: {
-      controlledPowerW: boundedControlledPowerW,
-      uncontrolledPowerW: boundedUncontrolledPowerW,
-      exemptPowerW: boundedExemptPowerW,
-      devicePowerWById: normalizedDevicePowerWById,
-    },
+    next: { ...tracked, devicePowerWById: normalizedDevicePowerWById },
     startTs: previousTs,
     endTs: nowMs,
     controlledBuckets: nextControlledBuckets,
     uncontrolledBuckets: nextUncontrolledBuckets,
     exemptBuckets: nextExemptBuckets,
+    uncontrolledExemptBuckets: nextUncontrolledExemptBuckets,
     deviceBuckets: nextDeviceBuckets,
   });
 

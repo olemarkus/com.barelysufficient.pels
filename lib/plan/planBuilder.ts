@@ -578,7 +578,6 @@ export class PlanBuilder {
     // power axis to sum, so the unresolved state is gone.
     const projectedExemptKw = Math.max(0, sumBudgetExemptProjectedUsageKw(
       toMeteredUsageDevices(devices),
-      (device) => device.control.commandAuthority,
       this.state.shedDecisions.lastPlannedShedIds,
     ));
     const budgetPaceKw = computeDailyUsageSoftLimit(bucket, nowTs);

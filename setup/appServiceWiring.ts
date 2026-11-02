@@ -175,6 +175,11 @@ export class AppServiceWiring {
     );
   }
 
+  /** Main's smart-task budget-exempt claims, for Main's power sample path (a field built before this wiring). */
+  readTaskBudgetExemptDeviceIds(nowMs: number): ReadonlySet<string> {
+    return this.mainHomeScope.readTaskBudgetExemptDeviceIds(nowMs);
+  }
+
   createSupportReports(app: SupportReportApp) {
     return createSupportReports(this.deps.homeyApp.homey, app, this.mainHomeScope.readSmartTaskCycle);
   }

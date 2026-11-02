@@ -2,6 +2,7 @@ import { DeviceControlSettings } from '../../lib/device/deviceControlSettings';
 import type { DeviceTargetPowerConfigsWithReachability } from '../../lib/device/targetPowerReachability';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import {
+  BUDGET_EXEMPT_DEVICES,
   CONTROLLABLE_DEVICES,
   DEVICE_START_POLICIES,
   DEVICE_TARGET_POWER_CONFIGS,
@@ -13,6 +14,7 @@ import {
 type DeviceControlSettingsFixture = {
   controllableDevices?: Record<string, boolean>;
   managedDevices?: Record<string, boolean>;
+  budgetExemptDevices?: Record<string, boolean>;
   deviceStartPolicies?: Record<string, DeviceStartPolicy>;
   deviceTargetPowerConfigs?: DeviceTargetPowerConfigsWithReachability;
 };
@@ -26,6 +28,7 @@ export const deviceControlSettingsFixture = (maps: DeviceControlSettingsFixture 
   const values = new Map<string, unknown>([[TEMPERATURE_CONTROL_DISABLED_DEVICES, {}]]);
   if (maps.controllableDevices) values.set(CONTROLLABLE_DEVICES, maps.controllableDevices);
   if (maps.managedDevices) values.set(MANAGED_DEVICES, maps.managedDevices);
+  if (maps.budgetExemptDevices) values.set(BUDGET_EXEMPT_DEVICES, maps.budgetExemptDevices);
   if (maps.deviceStartPolicies) values.set(DEVICE_START_POLICIES, maps.deviceStartPolicies);
   if (maps.deviceTargetPowerConfigs) {
     // Stored as the settings UI and the probe store them: the candidate configs

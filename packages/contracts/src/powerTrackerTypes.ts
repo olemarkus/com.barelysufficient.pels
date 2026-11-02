@@ -18,6 +18,8 @@ export type PowerTrackerState = {
   lastControlledPowerW?: number;
   lastUncontrolledPowerW?: number;
   lastExemptPowerW?: number;
+  /** The uncontrolled share's latch for `uncontrolledExemptBuckets`, as `lastExemptPowerW` is for `exemptBuckets`. */
+  lastUncontrolledExemptPowerW?: number;
   /**
    * Gross PV generation (W) carried by the LAST sample, present only when that
    * sample carried a finite generation reading. A generation-less sample drops
@@ -34,7 +36,20 @@ export type PowerTrackerState = {
   hourlyAverages?: Record<string, { sum: number; count: number }>;
   controlledBuckets?: Record<string, number>;
   uncontrolledBuckets?: Record<string, number>;
+  /**
+   * Budget-exempt draw of devices counted as managed usage: a subset of
+   * `controlledBuckets`. The daily budget's breakdown and learning move it to the
+   * background side (`resolveAttributionSplit`).
+   */
   exemptBuckets?: Record<string, number>;
+  /**
+   * Budget-exempt draw of devices counted as background usage (Power-limit
+   * control off, e.g. a smart task's device): a subset of `uncontrolledBuckets`,
+   * so attribution leaves it where it is. Pacing reads the two exempt families
+   * together (`resolveBudgetExemptKWh`). Hourly only: no consumer reads it past
+   * the hourly retention.
+   */
+  uncontrolledExemptBuckets?: Record<string, number>;
   controlledDailyTotals?: Record<string, number>;
   uncontrolledDailyTotals?: Record<string, number>;
   exemptDailyTotals?: Record<string, number>;

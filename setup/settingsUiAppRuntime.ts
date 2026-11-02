@@ -219,6 +219,7 @@ export const resetPowerStatsForUi = (host: PelsHost): PowerTrackerState => {
     controlledBuckets: preserveCurrentHour(currentState.controlledBuckets),
     uncontrolledBuckets: preserveCurrentHour(currentState.uncontrolledBuckets),
     exemptBuckets: preserveCurrentHour(currentState.exemptBuckets),
+    uncontrolledExemptBuckets: preserveCurrentHour(currentState.uncontrolledExemptBuckets),
     hourlyBudgets: preserveCurrentHour(currentState.hourlyBudgets),
     // Solar families (generation + export). Without these the `...currentState`
     // spread leaves them intact, so "Reset usage history" would leave the Solar

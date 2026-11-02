@@ -11,7 +11,6 @@ import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
 import { resolveObjectiveSampleDevices } from '../lib/objectives/samples';
 import { buildPublishedPlanCapacityStateSummary } from '../lib/plan/planLogging';
-import { resolvePublishedBudgetExemptDeviceIds } from '../lib/plan/publishedPlan';
 import { resolvePlanRebuildPosture } from '../lib/plan/planRebuildPosture';
 import { addPerfDuration, incPerfCounter } from '../lib/utils/perfCounters';
 import type { PreparedReconcileFence } from '../lib/power/preparedReconcileFence';
@@ -51,6 +50,12 @@ export type PowerSamplePipelineDeps = {
   /** This home's rebuild throttle — the admitted sample's one exit into the planner. */
   planRebuildThrottle: PlanRebuildThrottle;
   getDeviceSurfaces: () => DeviceSurfaces[];
+  /**
+   * The devices a smart task exempts from the daily budget at `nowMs`, read from
+   * the claims' owner (the home's smart-task controller); a home with no smart
+   * tasks answers the empty set.
+   */
+  readTaskBudgetExemptDeviceIds: (nowMs: number) => ReadonlySet<string>;
   getThermalDirection: (deviceId: string) => ThermalDirection;
   savePowerTracker: (state: PowerTrackerState) => void;
   /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
@@ -303,7 +308,7 @@ export class PowerSamplePipeline {
         capacitySettings,
         timeZone: this.deps.getTimeZone(),
         getDeviceSurfaces: () => this.deps.getDeviceSurfaces(),
-        planBudgetExemptDeviceIds: resolvePublishedBudgetExemptDeviceIds(latestPublishedPlan, nowMs),
+        taskBudgetExemptDeviceIds: this.deps.readTaskBudgetExemptDeviceIds(nowMs),
         powerTracker,
         updateObjectiveProfiles: this.updateObjectiveProfiles,
         schedulePlanRebuild: async () => {

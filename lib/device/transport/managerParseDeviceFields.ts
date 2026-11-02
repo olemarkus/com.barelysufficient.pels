@@ -339,7 +339,11 @@ function resolveParsedDeviceSettings(
     // device: `DeviceManagement.isManaged` answers from the owner's battery-control setting
     // (`lib/battery/batteryControlSettings.ts`), and the managed filter keeps it in
     // the runtime snapshot either way (`managerManagedFilter.ts`).
-    if (isSolarPanelDevice(device)) return { ...base, managed: true, controllable: false };
-    if (isHomeBatteryDevice(device)) return { ...base, controllable: false };
+    //
+    // Neither is ever budget-exempt: the exemption is a load's, and every exempt sum
+    // counts an exempt device's draw with no gate of its own, so a stale setting
+    // would book a panel's production or a battery's charge as exempt consumption.
+    if (isSolarPanelDevice(device)) return { ...base, managed: true, controllable: false, budgetExempt: false };
+    if (isHomeBatteryDevice(device)) return { ...base, controllable: false, budgetExempt: false };
     return base;
 }

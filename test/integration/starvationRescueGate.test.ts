@@ -194,7 +194,7 @@ const buildSettings = (rescue?: DeferredObjectiveRescuePermissions): DeferredObj
   },
 });
 
-const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 24) => {
+const buildHarness = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 24) => {
   // Large capacity limit, zero margin — capacity never binds, so the daily budget is the
   // only soft constraint and any shed is a daily-budget shed.
   const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
@@ -214,7 +214,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
   }, () => buildSettings(rescue));
-  return new PlanBuilder({
+  const builder = new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: capacityGuard,
     getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
@@ -223,7 +223,12 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(hoursInDay),
     decorateDeferredObjectives: (input) => deferredController.decorate(input),
   }, createPlanEngineState());
+  return { builder, deferredController };
 };
+
+const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 24) => (
+  buildHarness(rescue, hoursInDay).builder
+);
 
 const findDevice = (devices: DevicePlanDevice[]): DevicePlanDevice => {
   const device = devices.find((d) => d.id === DEVICE_ID);
@@ -273,6 +278,25 @@ describe('starvation-rescue gate: exemptFromBudget clears daily-budget starvatio
     expect(device.plannedState).not.toBe('shed');
     expect(device.reason.code).not.toBe(PLAN_REASON_CODES.dailyBudget);
     expect(device.budgetExempt).toBe(true);
+  });
+
+  it('hands the power sample path the claim the plan exempted, for that hour only', async () => {
+    // The energy side reads the claim from its owner, not from the plan: the two
+    // must be the same decision, or the task's energy counts as spent budget.
+    const { builder, deferredController } = buildHarness({ exemptFromBudget: 'always' });
+    const snapshot = await builder.buildDevicePlanSnapshot([buildDevice(DAY_START_UTC)]);
+
+    expect(findDevice(snapshot.devices).budgetExempt).toBe(true);
+    expect([...deferredController.readBudgetExemptDeviceIds(DAY_START_UTC + 59 * 60_000)]).toEqual([DEVICE_ID]);
+    // A claim belongs to the hour it was decided for.
+    expect(deferredController.readBudgetExemptDeviceIds(DAY_START_UTC + 60 * 60_000).size).toBe(0);
+  });
+
+  it('hands the power sample path no claim without the exemption', async () => {
+    const { builder, deferredController } = buildHarness();
+    await builder.buildDevicePlanSnapshot([buildDevice(DAY_START_UTC)]);
+
+    expect(deferredController.readBudgetExemptDeviceIds(DAY_START_UTC).size).toBe(0);
   });
 
   it('on a 23-hour DST day, a non-exempt device is still shed for the daily budget', async () => {

@@ -7,6 +7,8 @@ import type { MeteredKind } from './planTypes';
 
 type UsageDevice = {
   budgetExempt: boolean;
+  // Whether PELS may restart the device: only that earns an off device a reservation.
+  control: { commandAuthority: boolean };
   // Producer-resolved on/off truth, present iff the device is binary
   // (`binaryCapabilityId` set). A step-only stepper carries no `currentOn`; its
   // off-state is read from the step axis, so the stepped fields travel too.
@@ -31,17 +33,20 @@ export const toMeteredUsageDevices = <T extends { control: { commandAuthority: b
 );
 
 /**
+ * Projected exemption (`projectedExemptKw`) over the same exempt set as the
+ * measured sum (`sumBudgetExemptMeasuredUsageKw`): no gate of its own, so a
+ * drawing exempt device counts here exactly when its energy books as exempt.
+ *
  * `heldOffDeviceIds` is the previous plan's shed set
  * (`ShedDecisions.lastPlannedShedIds`): the devices PELS itself is keeping off.
  */
 export const sumBudgetExemptProjectedUsageKw = <T extends UsageDevice & { id: string }>(
   devices: readonly T[],
-  countsAsManaged: (device: T) => boolean,
   heldOffDeviceIds: ReadonlySet<string>,
 ): number => {
   let totalKw = 0;
   for (const dev of devices) {
-    if (!dev.budgetExempt || !countsAsManaged(dev)) continue;
+    if (!dev.budgetExempt) continue;
     totalKw += resolveBudgetExemptProjectedKw(dev, heldOffDeviceIds.has(dev.id));
   }
   return totalKw;
@@ -64,7 +69,9 @@ export const sumBudgetExemptProjectedUsageKw = <T extends UsageDevice & { id: st
  * (`sumBudgetExemptMeasuredUsageKw` in `lib/power/usageAttribution.ts`) is what
  * restore admission spends.
  *
- * Two off devices claim less than their configured demand:
+ * Three off devices claim less than their configured demand:
+ * - One PELS does not command claims only what it draws. A restart is not PELS's
+ *   to make, so there is nothing to reserve it for.
  * - One PELS is holding off claims only what it still draws. The plan is to
  *   keep its load away, so reserving its demand would only loosen daily-budget
  *   limiting for every other device while it waits (prod 2026-11-01: a boosted
@@ -73,7 +80,7 @@ export const sumBudgetExemptProjectedUsageKw = <T extends UsageDevice & { id: st
  *   step, never its learned peak: a restart from off never jumps past that rung.
  */
 const resolveBudgetExemptProjectedKw = (dev: UsageDevice, heldOffByPels: boolean): number => {
-  if (heldOffByPels) return dev.currentDrawKw;
+  if (heldOffByPels || !dev.control.commandAuthority) return dev.currentDrawKw;
   if (dev.currentDrawKw > 0) return dev.currentDrawKw;
   if (!isPlanDeviceObservedOff(dev)) return dev.currentDrawKw;
   // Reached only when the draw is 0, so the fallback arm is 0 — not "the draw".

@@ -218,6 +218,7 @@ const NUMBER_MAP_FIELDS = [
   'controlledBuckets',
   'uncontrolledBuckets',
   'exemptBuckets',
+  'uncontrolledExemptBuckets',
   'controlledDailyTotals',
   'uncontrolledDailyTotals',
   'exemptDailyTotals',
@@ -313,6 +314,7 @@ const FINITE_NUMBER_FIELDS = [
   'lastControlledPowerW',
   'lastUncontrolledPowerW',
   'lastExemptPowerW',
+  'lastUncontrolledExemptPowerW',
   'lastTimestamp',
 ] as const;
 

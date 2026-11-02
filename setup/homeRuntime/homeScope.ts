@@ -209,6 +209,8 @@ export type HomeScope = {
  */
 export type MainHomeScope = HomeScope & {
   readSmartTaskCycle: (deviceId: string) => SmartTaskCycleRecord | undefined;
+  /** The smart-task controller's budget-exempt claims for `nowMs`'s hour, for Main's power sample path. */
+  readTaskBudgetExemptDeviceIds: (nowMs: number) => ReadonlySet<string>;
 };
 
 export function buildMainHomeScope(
@@ -301,6 +303,7 @@ export function buildMainHomeScope(
     getModeDeviceTargets,
     decorateDeferredObjectives: (input) => deferredObjectiveController.decorate(input),
     readSmartTaskCycle: (deviceId) => deferredObjectiveController.readLatestCycle(deviceId),
+    readTaskBudgetExemptDeviceIds: (nowMs) => deferredObjectiveController.readBudgetExemptDeviceIds(nowMs),
     syncLivePlanStateAfterTargetActuation: (source) => ctx.syncLivePlanStateAfterTargetActuation(source),
     // UI / side-effect singletons — the EXACT ctx reads `createPlanService`
     // hardwired. Byte-identical for the main home.

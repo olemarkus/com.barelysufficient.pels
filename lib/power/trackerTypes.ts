@@ -132,7 +132,10 @@ export type RecordPowerSampleParams = {
    */
   generationSegments: readonly GenerationSegment[];
   controlledPowerW?: number;
+  /** Budget-exempt draw of devices counted as managed usage (`exemptBuckets`). */
   exemptPowerW?: number;
+  /** Budget-exempt draw of devices counted as background usage (`uncontrolledExemptBuckets`). */
+  uncontrolledExemptPowerW?: number;
   currentDevicePowerWById?: Record<string, number>;
   /** The evidence a held reading is checked against (`lib/power/heldReading.ts`). */
   managedDraw: ManagedLoadDraw;

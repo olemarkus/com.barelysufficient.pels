@@ -480,6 +480,27 @@ describe('power tracker integration', () => {
     }
   });
 
+  it('keeps the uncontrolled exempt share hourly only, and never adds the key to a home without it', () => {
+    vi.useFakeTimers();
+    try {
+      const now = Date.UTC(2025, 1, 15, 0, 0, 0);
+      vi.setSystemTime(now);
+      const freshBucket = new Date(now - 2 * 60 * 60 * 1000).toISOString();
+      const staleBucket = new Date(now - 40 * 24 * 60 * 60 * 1000).toISOString();
+
+      const pruned = aggregateAndPruneHistory({
+        buckets: { [freshBucket]: 3, [staleBucket]: 4 },
+        uncontrolledExemptBuckets: { [freshBucket]: 2.6, [staleBucket]: 3 },
+      }, 'UTC');
+      expect(pruned.uncontrolledExemptBuckets).toEqual({ [freshBucket]: 2.6 });
+
+      const withoutShare = aggregateAndPruneHistory({ buckets: { [freshBucket]: 3 } }, 'UTC');
+      expect(withoutShare).not.toHaveProperty('uncontrolledExemptBuckets');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('counts a boundary day once per weekday/hour slot across two prune runs', () => {
     vi.useFakeTimers();
     try {

@@ -81,6 +81,7 @@ const buildPipeline = (
     getDeviceSurfaces: () => [],
     getThermalDirection: () => 'heating',
     savePowerTracker: (state) => { powerTracker = state; savedStates.push(state); },
+    readTaskBudgetExemptDeviceIds: () => new Set(),
     getCoSampledGenerationW: () => undefined,
     getObservedGenerationSegments: () => [],
     noteResolvedHomeMeter,

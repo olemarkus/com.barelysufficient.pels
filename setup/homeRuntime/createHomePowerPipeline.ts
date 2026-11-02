@@ -39,6 +39,7 @@ export type HomePowerPipelineDeps = Pick<PowerSamplePipelineDeps,
   | 'recordCurtailmentSample'
   | 'recordBatteryDemandSample'
   | 'noteResolvedHomeMeter'
+  | 'readTaskBudgetExemptDeviceIds'
 > & {
   ctx: AppContext;
   /** The home this pipeline samples for; scopes the snapshot view below. */
@@ -87,6 +88,7 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
       return deps.homeId === MAIN_HOME_ID ? devices : [];
     },
     savePowerTracker: deps.savePowerTracker,
+    readTaskBudgetExemptDeviceIds: deps.readTaskBudgetExemptDeviceIds,
     getOutdoorTemperatureC: deps.getOutdoorTemperatureC,
     getCoSampledGenerationW: (nowMs) => resolveFreshGenerationW({
       generationW: observedHomePower.getGenerationW(),

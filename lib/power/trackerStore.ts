@@ -51,6 +51,7 @@ const HOURLY_FAMILIES = [
   'controlledBuckets',
   'uncontrolledBuckets',
   'exemptBuckets',
+  'uncontrolledExemptBuckets',
   'generationBuckets',
   'exportBuckets',
 ] as const satisfies readonly (keyof PowerTrackerState)[];
@@ -80,6 +81,7 @@ const SCALAR_KEYS = [
   'lastControlledPowerW',
   'lastUncontrolledPowerW',
   'lastExemptPowerW',
+  'lastUncontrolledExemptPowerW',
   'lastGenerationW',
   'lastTimestamp',
   'heldReading',

@@ -91,6 +91,7 @@ const buildPipeline = (
     // `getPowerTracker()` sees the admitted sample. Discarding the write leaves
     // the tracker permanently unlatched — a state no admitted sample produces.
     savePowerTracker: (state) => { powerTracker = state; },
+    readTaskBudgetExemptDeviceIds: () => new Set(),
     recordCurtailmentSample: taps.curtailment,
     recordPvGenerationSample: taps.pvForecast,
     getCoSampledGenerationW: () => coSampledGenerationW,
