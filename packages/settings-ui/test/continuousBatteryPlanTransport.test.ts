@@ -73,10 +73,25 @@ test('accepts a selling plan and refuses one whose selling decision is malformed
   };
   getApiReadModel.mockResolvedValue({ continuousBatteryPlans: { battery: selling } });
   expect(await loadContinuousBatteryPlan('battery')).toEqual(selling);
-  for (const exportDecision of [undefined, { kind: 'selling' }, { kind: 'waiting', reason: 'later' }]) {
+  for (const exportDecision of [undefined, { kind: 'selling' }, { kind: 'waiting', reason: 'later' }, { kind: 'household_only' }]) {
     getApiReadModel.mockResolvedValue({ continuousBatteryPlans: { battery: { ...selling, exportDecision } } });
     await expect(loadContinuousBatteryPlan('battery')).rejects.toThrow('Invalid battery plan response');
   }
+  // A household-only plan carries no decision at all.
+  const householdOnly = { ...selling, config };
+  getApiReadModel.mockResolvedValue({ continuousBatteryPlans: { battery: householdOnly } });
+  await expect(loadContinuousBatteryPlan('battery')).rejects.toThrow('Invalid battery plan response');
+  const withoutDecision: Record<string, unknown> = { ...householdOnly };
+  delete withoutDecision.exportDecision;
+  getApiReadModel.mockResolvedValue({ continuousBatteryPlans: { battery: withoutDecision } });
+  expect(await loadContinuousBatteryPlan('battery')).toEqual(withoutDecision);
+});
+
+test('returns the parsed config, not the wire copy', async () => {
+  const legacy: Record<string, unknown> = { ...config };
+  delete legacy.exportPolicy;
+  getApiReadModel.mockResolvedValue({ continuousBatteryPlans: { battery: { ...waiting, config: { ...legacy, priceUnit: ' EUR ' } } } });
+  expect((await loadContinuousBatteryPlan('battery')).config).toEqual(config);
 });
 
 test('does not resolve inherited map entries as battery plans', async () => {

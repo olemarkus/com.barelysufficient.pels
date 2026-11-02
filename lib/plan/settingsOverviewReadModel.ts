@@ -25,6 +25,7 @@ import { buildDeviceStatus } from './deviceStatusReadModel';
 import {
   buildHomeBatteryStatus,
   buildSettingsUiPlanHomeBattery,
+  resolveMainExportEvidence,
   type MainExportEvidence,
   readHomeBatteryCardForHome,
   type HomeBatteryCard,
@@ -177,14 +178,6 @@ function resolveOverviewEvChargingState(
   const read = deps.getObservedEvChargingState(deviceId);
   return read.kind === 'observed' ? read.value : undefined;
 }
-
-/** Below this measured whole-home export, kW, the meter shows no export worth a battery state. */
-const MAIN_EXPORT_MIN_KW = 0.05;
-
-/** The plan cycle's own Main-meter evidence: a measured reading only, never a carried one. */
-const resolveMainExportEvidence = (meta: DevicePlan['meta']): MainExportEvidence => (
-  { exporting: meta.powerIsMeasured && meta.totalKw <= -MAIN_EXPORT_MIN_KW }
-);
 
 /** A home battery's card: its own status, never a load's (`batteryStatusReadModel.ts`). */
 function buildHomeBatteryOverviewDevice(

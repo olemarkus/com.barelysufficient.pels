@@ -328,7 +328,8 @@ export type StorageSurplus = {
   claimants: readonly StorageSurplusClaimant[];
   /**
    * Every battery's own discharge, W: stored energy, never surplus. Out of the
-   * pool, and counted as import by the hard-off.
+   * pool, and counted as import by the hard-off. A held battery not read this
+   * cycle counts the discharge PELS last held it to, a sale included.
    */
   dischargeW: number;
 };

@@ -11,10 +11,12 @@
  * - **Limited · Charging**: PELS caps its charge at its place in the priority
  *   order, with the load's `Limited` word; the reason line says how much more
  *   charge its own mode would take.
- * - **Selling to grid**: PELS holds it to sell stored energy, the battery reports
- *   discharging, and the Main meter measured export in the same plan cycle.
- *   Solar export alone never produces it, and a discharging battery the house
- *   still uses up reads Supplying.
+ * - **Selling to grid**: PELS holds it to sell stored energy (`plan_export`),
+ *   the battery reports discharging (`DIRECTION_MIN_W` or more), and the plan
+ *   cycle's measured Main reading shows export (`resolveMainExportEvidence`).
+ *   Solar export alone never produces it, a discharging battery the house still
+ *   uses up reads Supplying, and an unread selling hold has stepped to 0 W
+ *   (`plan_wait`), so it never reads as selling.
  * - **Own mode**: it runs the mode chosen in its own app. With its Power-limit
  *   control off, the reason line says so: PELS never takes it over, and its
  *   own app is in charge. One PELS cannot drive says PELS can only watch it,
@@ -30,7 +32,7 @@ import type { SettingsUiPlanHomeBattery } from '../../packages/contracts/src/set
 import { displayStateLabel, displayStateTone } from '../../packages/shared-domain/src/planCardGrammar';
 import { resolveBatteryUndrivableLine } from '../../packages/shared-domain/src/batteryControlCopy';
 import type { HomeBatteryCardRead } from '../observer/observedDeviceStateProjection';
-import type { StorageHold } from './planTypes';
+import type { PlanMeta, StorageHold } from './planTypes';
 import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
 
 export type HomeBatteryCard = Extract<HomeBatteryCardRead, { kind: 'battery' }>;
@@ -39,10 +41,21 @@ type Direction = 'supplying' | 'charging' | 'waiting';
 
 /**
  * Whether the Main meter measured export in the plan cycle this card belongs
- * to: a measured whole-home export of at least 0.05 kW. A carried reading
- * on an unmeasured build is not export evidence.
+ * to (`resolveMainExportEvidence`).
  */
 export type MainExportEvidence = { exporting: boolean };
+
+/** Below this measured whole-home export, kW, the meter shows no export worth a battery state. */
+const MAIN_EXPORT_MIN_KW = 0.05;
+
+/**
+ * The plan cycle's own Main-meter evidence: the build's measured whole-home
+ * reading at or beyond `MAIN_EXPORT_MIN_KW` of export. The carried reading of an
+ * unmeasured build is no evidence.
+ */
+export const resolveMainExportEvidence = (meta: PlanMeta): MainExportEvidence => (
+  { exporting: meta.powerIsMeasured && meta.totalKw <= -MAIN_EXPORT_MIN_KW }
+);
 /** The holds of a battery PELS does not hold: it runs its own mode. */
 type OwnModeHoldKind = 'none' | 'power_limit_off';
 const isOwnModeHold = (hold: StorageHold): hold is Extract<StorageHold, { kind: OwnModeHoldKind }> => (

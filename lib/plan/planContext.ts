@@ -122,6 +122,8 @@ export type PlanContext = PlanLimits & {
 export type MeasuredPower = {
   /** The whole-home draw, signed net (negative on export), kW. */
   drawKw: number;
+  /** When the meter took this reading, ms. */
+  sampledAtMs: number;
   /**
    * The spare room before the BINDING pace (`limits.softLimit`), kW — negative
    * when above it. Drives shedding and the full restore pass's gate.
@@ -230,6 +232,7 @@ export function resolveMeasuredPower(
   const physicalLimitBreached = capacityBreached || gridBreached;
   return {
     drawKw,
+    sampledAtMs: reading.lastPowerUpdateMs,
     headroomKw: softLimit === null ? null : reading.headroomKw(softLimit),
     capacityHeadroomKw: capacitySoftLimit === null ? null : reading.headroomKw(capacitySoftLimit),
     gridHeadroomKw,

@@ -40,6 +40,35 @@ const exportAllowanceW = (plan: ContinuousStoragePlan): number => (
   plan.reason === 'export_energy' ? plan.netExportCeilingW : 0
 );
 
+/**
+ * A battery reading older than the meter sample by more than this, ms, lags it.
+ * The house's draw without the battery is the meter less the battery's own
+ * power; with a lagging battery reading that difference mixes two moments, and
+ * a battery that has since cut its discharge would read as house demand.
+ * Batteries report less often than meters, so a strict "older than" would
+ * freeze discharge between battery reports.
+ */
+export const STORAGE_READING_LAG_TOLERANCE_MS = 15_000;
+
+/**
+ * The most discharge a plan may ask for this cycle, W. A lagging reading may
+ * hold a discharge but never raise it: no more than the battery is observed
+ * delivering. A battery that already sits at the setpoint PELS holds it to is
+ * the exception: Homey stamps a reading only when it changes, so a battery
+ * steady at its setpoint reads old while being exactly where it was put, and
+ * bounding it would freeze its discharge for good.
+ */
+const laggingDischargeCeilingW = (
+  storage: ObservedStorageInput,
+  previous: StorageLeverState | undefined,
+  balance: StorageBalance,
+): number => {
+  if (balance.sampledAtMs - storage.observedAtMs <= STORAGE_READING_LAG_TOLERANCE_MS) return Number.POSITIVE_INFINITY;
+  const atHeldSetpoint = previous !== undefined && Math.abs(storage.signedPowerW - previous.setpointW)
+    <= storageSetpointToleranceW(previous.setpointW, previous.stepW);
+  return atHeldSetpoint ? Number.POSITIVE_INFINITY : ownDischargeWOf(storage);
+};
+
 export const continuousLever = (
   storage: ObservedStorageInput,
   previous: StorageLeverState | undefined,
@@ -51,7 +80,10 @@ export const continuousLever = (
   if (plan === undefined) throw new Error('A continuous hold requires a battery plan');
   const marginW = drawMarginWFor(storage);
   const importWithoutBatteryW = balance.netImportW - storage.signedPowerW;
-  const dischargeRoomW = Math.max(0, importWithoutBatteryW + exportAllowanceW(plan) - marginW);
+  const dischargeRoomW = Math.min(
+    Math.max(0, importWithoutBatteryW + exportAllowanceW(plan) - marginW),
+    laggingDischargeCeilingW(storage, previous, balance),
+  );
   const desiredW = plan.setpointW < 0
     ? -Math.min(-plan.setpointW, storage.deliveryCeilingW, dischargeRoomW)
     : Math.min(plan.setpointW, storage.chargeCeilingW);
@@ -90,6 +122,7 @@ export function resumeContinuousStorage(
     deficitW: power.headroomKw === null ? 0 : Math.max(0, -power.headroomKw * 1000),
     headroomW: power.headroomKw === null ? null : Math.max(0, power.headroomKw * 1000),
     netImportW: power.drawKw * 1000,
+    sampledAtMs: power.sampledAtMs,
   };
   const resumed = relief.batteries.flatMap((battery) => {
     if (battery.decision.kind !== 'release' || battery.decision.reason !== 'restored') return [];

@@ -51,6 +51,7 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}): PlanInputDevice
     range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
     handBackDeferred: false,
     signedPowerW: 0,
+    observedAtMs: 0,
     claimHeld: false,
     admissible: true,
     powerLimitControl: true,

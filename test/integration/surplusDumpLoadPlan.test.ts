@@ -650,6 +650,8 @@ describe('surplus by priority without a battery (byte-identity)', () => {
       range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
       handBackDeferred: false,
       signedPowerW: 0,
+      // In step with every meter reading this spec takes: no battery reading lags.
+      observedAtMs: Number.POSITIVE_INFINITY,
       claimHeld: false,
       admissible: true,
       verdict: 'unverified',

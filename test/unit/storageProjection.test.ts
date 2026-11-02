@@ -103,21 +103,23 @@ describe('continuous battery selling projection', () => {
     startsAtMs: nowMs - 60_000, durationMs: 3_600_000, batteryPowerKW: -2, energyBeforeKWh: 6, energyAfterKWh: 4,
     gridImportKWh: 0, gridExportKWh: 1.5, importCost: 0, exportRevenue: 1.5, wearCost: 0.06, reason: 'export_energy' as const,
   };
-  const plannedSource = (exportPolicy: typeof DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG.exportPolicy) => (
+  const plan = {
+    status: 'planned' as const, periods: [period], importCost: 0, exportRevenue: 1.5, wearCost: 0.06, energyCost: -1.44,
+    terminalEnergyValue: 0, objectiveCost: -1.44, terminalEnergyKWh: 4, resolutionKWh: 0.05,
+  };
+  const base = { ...DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, enabled: true, priceUnit: 'EUR/kWh' };
+  const plannedSource = (read: ReturnType<PlanInputProjectionSource['readContinuousBatteryPlan']>) => (
     partialDouble<PlanInputProjectionSource>({
       deviceControl: partialDouble<PlanInputProjectionSource['deviceControl']>({ controllableDevices: {} }),
       getNow: () => new Date(nowMs),
-      readContinuousBatteryPlan: () => ({
-        status: 'planned', generatedAtMs: nowMs, priceUnit: 'EUR/kWh',
-        config: { ...DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, enabled: true, priceUnit: 'EUR/kWh', exportPolicy },
-        exportDecision: { kind: 'selling', estimatedSavings: 0.4 },
-        plan: {
-          status: 'planned', periods: [period], importCost: 0, exportRevenue: 1.5, wearCost: 0.06, energyCost: -1.44,
-          terminalEnergyValue: 0, objectiveCost: -1.44, terminalEnergyKWh: 4, resolutionKWh: 0.05,
-        },
-      }),
+      readContinuousBatteryPlan: () => read,
     })
   );
+  const selling = plannedSource({
+    status: 'planned', generatedAtMs: nowMs, priceUnit: 'EUR/kWh', plan,
+    config: { ...base, exportPolicy: { kind: 'price_export', netExportCeilingKW: 3 } },
+    exportDecision: { kind: 'selling', estimatedSavings: 0.4 },
+  });
   const control: BatteryLeverRead = {
     kind: 'setpoint', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
     deliveryCeilingW: 2500, chargeCeiling: { everyLevelW: 2500, taper: [], planningTaper: [] }, claimHeld: true,
@@ -126,17 +128,17 @@ describe('continuous battery selling projection', () => {
   const input = device({ batteryPower: { signedW: 0, observedAtMs: nowMs }, batteryLevel: { percent: 60, observedAtMs: nowMs } });
 
   it('carries the owner export ceiling with a selling period', () => {
-    const cluster = resolveStorageCluster(
-      plannedSource({ kind: 'price_export', netExportCeilingKW: 3 }), input, options(control),
-    );
+    const cluster = resolveStorageCluster(selling, input, options(control));
     expect(cluster).toMatchObject({ storage: { continuousPlan: {
       setpointW: -2000, validUntilMs: period.startsAtMs + period.durationMs, reason: 'export_energy', netExportCeilingW: 3000,
     } } });
   });
 
-  it('supplies the house only when a selling period has no price-export policy behind it', () => {
-    const cluster = resolveStorageCluster(plannedSource({ kind: 'household_only' }), input, options(control));
-    expect(cluster).toMatchObject({ storage: { continuousPlan: { setpointW: -2000, reason: 'supply_house' } } });
-    expect(cluster.storage).not.toHaveProperty('continuousPlan.netExportCeilingW');
+  it('refuses a selling period on a household-only plan rather than quietly supplying the house', () => {
+    const contradictory = plannedSource({
+      status: 'planned', generatedAtMs: nowMs, priceUnit: 'EUR/kWh', plan,
+      config: { ...base, exportPolicy: { kind: 'household_only' } },
+    });
+    expect(() => resolveStorageCluster(contradictory, input, options(control))).toThrow('cannot sell');
   });
 });

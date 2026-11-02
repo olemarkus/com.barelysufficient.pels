@@ -66,6 +66,8 @@ const battery = (
     range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
     handBackDeferred: false,
     signedPowerW: 0,
+    // In step with every meter reading these specs take: no battery reading lags.
+    observedAtMs: Number.POSITIVE_INFINITY,
     claimHeld: false,
     admissible: true,
     verdict: 'unverified',

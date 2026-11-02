@@ -25,6 +25,8 @@ type BatteryPlanSession = {
   blockedReason: string;
   read: ContinuousBatteryPlanRead | null;
   efficiency: BatteryEfficiencyMeasurement;
+  /** The saved settings the form edits: the read's config, or a config just saved. */
+  config: ContinuousBatteryPlanConfig | null;
   priceUnit: string;
   busy: boolean;
   error: string;
@@ -48,11 +50,11 @@ function display(current: BatteryPlanSession): void {
       ? 'PELS plans charging and household supply, and holds your power limit. Turn off battery planning to return to its own schedule.'
       : BATTERY_MANAGED_HINT;
   }
-  if (current.read === null) {
+  if (current.read === null || current.config === null) {
     render(<ContinuousBatteryPlanLoading failed={current.error !== ''} onRetry={() => refresh(current)} />, mount);
     return;
   }
-  render(<ContinuousBatteryPlanView key={current.deviceId} read={current.read} efficiency={current.efficiency} priceUnit={current.priceUnit}
+  render(<ContinuousBatteryPlanView key={current.deviceId} read={current.read} efficiency={current.efficiency} config={current.config} priceUnit={current.priceUnit}
     timeZone={getHomeyTimezone()} blockedReason={current.blockedReason} busy={current.busy}
     error={current.error} previewAvailable={current.previewAvailable}
     onSave={config => save(current, config)} onRefresh={() => refresh(current)} />, mount);
@@ -75,6 +77,7 @@ async function load(current: BatteryPlanSession): Promise<void> {
     if (session !== current || generation !== current.generation) return;
     current.read = read;
     current.efficiency = efficiency;
+    current.config = read.config;
     current.previewAvailable = true;
     const combined = prices?.combinedPrices;
     current.priceUnit = 'price units';
@@ -101,7 +104,7 @@ const save = (current: BatteryPlanSession, config: ContinuousBatteryPlanConfig):
   display(current);
   try {
     const saved = await saveContinuousBatteryPlanConfig(current.deviceId, config);
-    if (current.read !== null) current.read = { ...current.read, config: saved };
+    current.config = saved;
     current.previewAvailable = false;
     await load(current);
     if (current.error) current.error = `Battery plan saved. ${current.error}`;
@@ -143,7 +146,7 @@ export function setContinuousBatteryPlanDevice(device: SettingsUiDeviceDetailIte
     display(session);
     return;
   }
-  session = { deviceId: device.id, drivable: device.batteryControl === 'drivable', blockedReason, read: null, efficiency: { status: 'unavailable' }, priceUnit: 'price units', busy: false,
+  session = { deviceId: device.id, drivable: device.batteryControl === 'drivable', blockedReason, read: null, efficiency: { status: 'unavailable' }, config: null, priceUnit: 'price units', busy: false,
     error: '', loading: false, previewAvailable: true, generation: 0 };
   display(session);
   void load(session);

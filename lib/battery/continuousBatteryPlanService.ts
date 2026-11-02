@@ -1,7 +1,9 @@
+import type { BatteryEnergyPlan, BatteryPriceExportPolicy } from '../../packages/contracts/src/batteryPlan';
 import type {
   ContinuousBatteryPlanConfig,
   ContinuousBatteryPlanConfigs,
   ContinuousBatteryPlanRead,
+  PlannedContinuousBatteryRead,
 } from '../../packages/contracts/src/continuousBatteryPlan';
 import {
   DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG,
@@ -16,6 +18,8 @@ import { selectBatteryExportPlan, type BatteryExportSelection } from './batteryE
 
 type SettingsRead = { kind: 'resolved'; configs: ContinuousBatteryPlanConfigs } | { kind: 'unavailable' };
 type PlanMemo = { inputs: PlanInputs; atMs: number; validUntilMs: number; read: ContinuousBatteryPlanRead };
+type HouseholdPlan = Extract<BatteryEnergyPlan, { status: 'planned' }>;
+type ExportMemo = { key: string; atMs: number; validUntilMs: number; selection: BatteryExportSelection };
 type ReadyHorizon = Extract<ReturnType<ContinuousBatteryPlanSource['readHorizon']>, { kind: 'ready' }>;
 const PLAN_MEMO_MAX_AGE_MS = 30_000;
 const emitDebug = getDebugEmitter('battery', 'price');
@@ -24,7 +28,7 @@ const emitDebug = getDebugEmitter('battery', 'price');
 type ReadStanding = { status: ContinuousBatteryPlanRead['status']; reason: string | null; selling: string | null };
 
 const sellingOf = (read: ContinuousBatteryPlanRead): string | null => {
-  if (read.status !== 'planned') return null;
+  if (read.status !== 'planned' || !('exportDecision' in read)) return null;
   const { exportDecision } = read;
   return exportDecision.kind === 'waiting' ? `waiting:${exportDecision.reason}` : exportDecision.kind;
 };
@@ -72,6 +76,28 @@ const planInputs = (input: ReadyHorizon, config: ContinuousBatteryPlanConfig): P
   };
 };
 
+/**
+ * The exact economics an export decision rests on: the owner's policy, the price
+ * unit and quote coverage, the battery's economics, and each period's end and
+ * prices. Period ends move with smart-task reservation boundaries. The charge
+ * level, live device draw and power limits are not in it: they move on nearly
+ * every reading, and the storage lane bounds each command by measurement.
+ */
+const exportEconomicsKey = (input: ReadyHorizon, policy: BatteryPriceExportPolicy): string => {
+  const {
+    capacityKWh, minimumEnergyKWh, roundTripEfficiency, wearCostPerKWh, terminalValuePerKWh,
+  } = input.horizon.battery;
+  return JSON.stringify({
+    policy,
+    priceUnit: input.priceUnit,
+    exportPricing: input.exportPricing,
+    battery: { capacityKWh, minimumEnergyKWh, roundTripEfficiency, wearCostPerKWh, terminalValuePerKWh },
+    periods: input.horizon.periods.map(period => [
+      period.startsAtMs + period.durationMs, period.importPrice, period.exportPrice,
+    ]),
+  });
+};
+
 const withinTolerance = (made: PlanInputs, current: PlanInputs): boolean => (
   made.exact === current.exact && made.livePowerKW.length === current.livePowerKW.length
   && made.livePowerKW.every((kw, index) => {
@@ -86,6 +112,7 @@ export class ContinuousBatteryPlanService {
   private readonly plans = new Map<string, PlanMemo>();
   private readonly standings = new Map<string, ReadStanding>();
   private readonly exportShadow = new BatteryExportShadow();
+  private readonly exportMemos = new Map<string, ExportMemo>();
 
   constructor(private readonly settings: SettingsPort, private readonly source: ContinuousBatteryPlanSource) {}
 
@@ -99,6 +126,7 @@ export class ContinuousBatteryPlanService {
     if (next.kind === 'resolved') {
       this.lastSettings = next;
       for (const id of this.plans.keys()) if (!next.configs[id]?.enabled) this.plans.delete(id);
+      for (const id of this.exportMemos.keys()) if (!next.configs[id]?.enabled) this.exportMemos.delete(id);
     }
     return this.lastSettings;
   }
@@ -122,10 +150,11 @@ export class ContinuousBatteryPlanService {
   private logStandingChange(deviceId: string, read: ContinuousBatteryPlanRead): void {
     const next = standingOf(read);
     const previous = this.standings.get(deviceId);
-    if (previous !== undefined && previous.status === next.status && previous.reason === next.reason
-      && previous.selling === next.selling) return;
+    const statusChanged = previous?.status !== next.status || previous.reason !== next.reason;
+    const sellingChanged = (previous?.selling ?? null) !== next.selling;
+    if (!statusChanged && !sellingChanged) return;
     this.standings.set(deviceId, next);
-    if (previous === undefined || previous.status !== next.status || previous.reason !== next.reason) {
+    if (statusChanged) {
       emitDebug({
         event: 'battery_plan_status_changed',
         deviceId,
@@ -135,18 +164,22 @@ export class ContinuousBatteryPlanService {
         previousReason: previous?.reason ?? null,
       });
     }
-    if (read.status === 'planned' && previous?.selling !== next.selling) this.logSellingChange(deviceId, read);
+    if (read.status === 'planned' && sellingChanged) this.logSellingChange(deviceId, read);
   }
 
-  /** The selling decision and its planned export periods, once per change, for the activity log. */
-  private logSellingChange(deviceId: string, read: Extract<ContinuousBatteryPlanRead, { status: 'planned' }>): void {
+  /**
+   * The selling decision and its planned export periods, once per change, for
+   * the activity log; `household_only` when the owner turned selling off.
+   */
+  private logSellingChange(deviceId: string, read: PlannedContinuousBatteryRead): void {
     const exportPeriods = read.plan.periods.filter(period => period.reason === 'export_energy');
+    const decision = 'exportDecision' in read ? read.exportDecision : null;
     getLogger('battery').info({
       event: 'battery_export_decision_changed',
       deviceId,
-      decision: read.exportDecision.kind,
-      waitingReason: read.exportDecision.kind === 'waiting' ? read.exportDecision.reason : null,
-      estimatedSavings: read.exportDecision.kind === 'selling' ? read.exportDecision.estimatedSavings : null,
+      decision: decision?.kind ?? 'household_only',
+      waitingReason: decision?.kind === 'waiting' ? decision.reason : null,
+      estimatedSavings: decision?.kind === 'selling' ? decision.estimatedSavings : null,
       priceUnit: read.priceUnit,
       exportPeriodCount: exportPeriods.length,
       firstExportStartsAtMs: exportPeriods[0]?.startsAtMs ?? null,
@@ -182,14 +215,8 @@ export class ContinuousBatteryPlanService {
     if (previous !== undefined && withinTolerance(previous.inputs, inputs) && nowMs >= previous.atMs
       && nowMs - previous.atMs < PLAN_MEMO_MAX_AGE_MS && nowMs < previous.validUntilMs) return previous.read;
     const household = planBatteryEnergy(input.horizon);
-    const selection = household.status === 'planned'
-      ? this.selectPlan(deviceId, input, config, household, nowMs)
-      : null;
-    const read: ContinuousBatteryPlanRead = selection !== null
-      ? {
-        status: 'planned', config, generatedAtMs: this.source.getNowMs(), priceUnit: input.priceUnit,
-        plan: selection.plan, exportDecision: selection.decision,
-      }
+    const read: ContinuousBatteryPlanRead = household.status === 'planned'
+      ? this.plannedRead(deviceId, input, config, household, nowMs)
       : { status: 'waiting', config, reason: 'horizon_infeasible' };
     this.plans.set(deviceId, {
       inputs, atMs: nowMs,
@@ -204,18 +231,52 @@ export class ContinuousBatteryPlanService {
    * shadow only logs, and never replaces the household plan. An owner who
    * authorized selling gets the complete-plan comparison instead.
    */
-  private selectPlan(
+  private plannedRead(
     deviceId: string,
     input: ReadyHorizon,
     config: ContinuousBatteryPlanConfig,
-    household: Extract<ReturnType<typeof planBatteryEnergy>, { status: 'planned' }>,
+    household: HouseholdPlan,
     nowMs: number,
-  ): BatteryExportSelection {
-    if (config.exportPolicy.kind === 'household_only') {
+  ): PlannedContinuousBatteryRead {
+    const common = { status: 'planned' as const, generatedAtMs: nowMs, priceUnit: input.priceUnit };
+    const policy = config.exportPolicy;
+    if (policy.kind === 'household_only') {
+      this.exportMemos.delete(deviceId);
       this.exportShadow.observe(deviceId, input, household, nowMs);
-      return { plan: household, decision: { kind: 'household_only' } };
+      return { ...common, config: { ...config, exportPolicy: policy }, plan: household };
     }
-    return selectBatteryExportPlan(input, config.exportPolicy, household);
+    const selection = this.selectExport(deviceId, input, policy, household, nowMs);
+    return {
+      ...common, config: { ...config, exportPolicy: policy }, plan: selection.plan, exportDecision: selection.decision,
+    };
   }
 
+  /**
+   * The export decision, kept for the rest of its first period while the
+   * horizon's economics stay exactly as they were (`exportEconomicsKey`). The
+   * comparison is a second full solve; live device draw and the battery's own
+   * charge level move on nearly every meter reading, and re-deciding on that
+   * churn would both cost a solve per memo miss and flip a sale on and off near
+   * the comparison's tolerance. A kept sale keeps its plan; a kept household
+   * decision uses the household plan just solved.
+   */
+  private selectExport(
+    deviceId: string,
+    input: ReadyHorizon,
+    policy: BatteryPriceExportPolicy,
+    household: HouseholdPlan,
+    nowMs: number,
+  ): BatteryExportSelection {
+    const key = exportEconomicsKey(input, policy);
+    const kept = this.exportMemos.get(deviceId);
+    if (kept !== undefined && kept.key === key && nowMs >= kept.atMs && nowMs < kept.validUntilMs) {
+      return kept.selection.decision.kind === 'selling'
+        ? kept.selection
+        : { plan: household, decision: kept.selection.decision };
+    }
+    const selection = selectBatteryExportPlan(input, policy, household);
+    const first = input.horizon.periods[0];
+    this.exportMemos.set(deviceId, { key, atMs: nowMs, validUntilMs: first.startsAtMs + first.durationMs, selection });
+    return selection;
+  }
 }

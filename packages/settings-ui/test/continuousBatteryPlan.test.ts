@@ -43,7 +43,9 @@ vi.mock('../src/ui/toast.ts', () => ({ formatSettingsError: (error: unknown) => 
 const { setContinuousBatteryPlanDevice, initContinuousBatteryPlanRefresh } = await import('../src/ui/deviceDetail/continuousBatteryPlan.tsx');
 const { batteryPlanWindows, batteryPlanTimeLabel, readBatteryPlanDraft } = await import('../src/ui/views/ContinuousBatteryPlan.tsx');
 
-const config = { ...DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, enabled: true, priceUnit: 'EUR' };
+const config = {
+  ...DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, enabled: true, priceUnit: 'EUR', exportPolicy: { kind: 'household_only' as const },
+};
 const startsAtMs = Date.parse('2026-10-27T01:00:00Z');
 const period = {
   startsAtMs, durationMs: 3_600_000, batteryPowerKW: 1, energyBeforeKWh: 2, energyAfterKWh: 3,
@@ -53,8 +55,7 @@ const read: ContinuousBatteryPlanRead = { status: 'planned', config, generatedAt
   plan: { status: 'planned', periods: [period, { ...period, startsAtMs: startsAtMs + 3_600_000,
     energyBeforeKWh: 3, energyAfterKWh: 4 }],
   importCost: 0.4, exportRevenue: 0, wearCost: 0, energyCost: 0.4, terminalEnergyValue: 0,
-  objectiveCost: 0.4, terminalEnergyKWh: 4, resolutionKWh: 0.05 },
-  exportDecision: { kind: 'household_only' } };
+  objectiveCost: 0.4, terminalEnergyKWh: 4, resolutionKWh: 0.05 } };
 const battery = (id = 'battery'): SettingsUiDeviceSnapshot => withDescriptorIdentity<SettingsUiDeviceSnapshot>({
   id, name: 'Sessy', available: true, deviceClass: 'battery', targets: [], capabilities: ['measure_power', 'measure_battery'],
   expectedPowerKw: 2.5, expectedPowerSource: 'default', batteryControl: 'drivable', batteryTakenOver: false,

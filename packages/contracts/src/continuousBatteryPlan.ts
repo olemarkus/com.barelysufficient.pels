@@ -1,4 +1,4 @@
-import type { BatteryEnergyExportPolicy, BatteryEnergyPlan } from './batteryPlan.js';
+import type { BatteryEnergyExportPolicy, BatteryEnergyPlan, BatteryPriceExportPolicy } from './batteryPlan.js';
 
 /** The owner's explicit opt-in and battery economics, in the household price unit. */
 export type ContinuousBatteryPlanConfig = {
@@ -29,30 +29,43 @@ export type ContinuousBatteryPlanWaitReason =
   | 'price_unit_changed';
 
 /**
- * What the price-export policy decided for this plan. `household_only` while
- * selling is off. Selling waits, keeping the household plan, while export
- * quotes are incomplete or the comparison exceeds its work budget. `kept_household`:
- * the comparison found no strictly cheaper plan that sells. `selling`: the plan
- * sells, with its estimated net energy-cost reduction against household-only
- * planning over the same horizon and the same final stored energy.
+ * What the owner's price-export policy decided for this plan. Selling waits,
+ * keeping the household plan, while export quotes are incomplete or the
+ * comparison exceeds its work budget. `kept_household`: the comparison found no
+ * strictly cheaper plan that sells. `selling`: the plan sells, with its
+ * estimated net energy-cost reduction against household-only planning over the
+ * same horizon and the same final stored energy.
  */
 export type ContinuousBatteryExportDecision =
-  | { kind: 'household_only' }
   | { kind: 'waiting'; reason: 'export_prices_incomplete' | 'evaluation_budget_exceeded' }
   | { kind: 'kept_household' }
   | { kind: 'selling'; estimatedSavings: number };
 
+/** A config whose owner has not authorized selling. */
+export type HouseholdOnlyBatteryPlanConfig = ContinuousBatteryPlanConfig & { exportPolicy: { kind: 'household_only' } };
+/** A config whose owner authorized selling, with its Main-meter export ceiling. */
+export type PriceExportBatteryPlanConfig = ContinuousBatteryPlanConfig & { exportPolicy: BatteryPriceExportPolicy };
+
+type PlannedBatteryRead = {
+  status: 'planned';
+  generatedAtMs: number;
+  priceUnit: string;
+  plan: Extract<BatteryEnergyPlan, { status: 'planned' }>;
+};
+
+/**
+ * A plan, and, only under a price-export policy, what selling decided: a
+ * household-only plan carries no export decision at all, so a decision that
+ * contradicts the policy cannot be expressed.
+ */
+export type PlannedContinuousBatteryRead =
+  | PlannedBatteryRead & { config: HouseholdOnlyBatteryPlanConfig }
+  | PlannedBatteryRead & { config: PriceExportBatteryPlanConfig; exportDecision: ContinuousBatteryExportDecision };
+
 export type ContinuousBatteryPlanRead =
   | { status: 'disabled'; config: ContinuousBatteryPlanConfig }
   | { status: 'waiting'; config: ContinuousBatteryPlanConfig; reason: ContinuousBatteryPlanWaitReason }
-  | {
-    status: 'planned';
-    config: ContinuousBatteryPlanConfig;
-    generatedAtMs: number;
-    priceUnit: string;
-    plan: Extract<BatteryEnergyPlan, { status: 'planned' }>;
-    exportDecision: ContinuousBatteryExportDecision;
-  };
+  | PlannedContinuousBatteryRead;
 
 /**
  * The battery owner's measurement of a battery's round-trip efficiency, offered
