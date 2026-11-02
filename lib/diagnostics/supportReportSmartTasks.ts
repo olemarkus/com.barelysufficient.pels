@@ -13,6 +13,9 @@ import { pickScheduledHours } from '../../packages/shared-domain/src/deferredPla
 import { plannedDurationHours } from '../objectives/deferredObjectives/plannedDuration';
 import type { DeferredObjectivePlanHistoryRecorder } from '../objectives/deferredObjectives/planHistory';
 import type { SmartTaskCycleRecord } from '../objectives/deferredObjectives/smartTaskCycleRecord';
+import {
+  readDeferredObjectiveRoster, type ObjectiveSettingsStore,
+} from '../objectives/deferredObjectives/objectiveStore';
 import { present } from './supportReportProjection';
 
 /**
@@ -60,6 +63,16 @@ export const readSmartTaskRuns = (
 ): SupportReportSmartTaskRun[] => {
   const budgetOnly = new Set(recorder.getBudgetOnlyMisses().map((miss) => miss.id));
   return recorder.getHistorySnapshot().entries.map((record) => ({ record, budgetOnlyMiss: budgetOnly.has(record.id) }));
+};
+
+/**
+ * The devices with a saved smart task. A roster the store cannot read throws,
+ * so the report marks its smart task section unavailable rather than empty.
+ */
+export const readSmartTaskDeviceIds = (store: ObjectiveSettingsStore): string[] => {
+  const roster = readDeferredObjectiveRoster(store);
+  if (roster.status === 'unavailable') throw new Error('Smart task settings are unavailable');
+  return Object.keys(roster.settings.objectivesByDeviceId);
 };
 
 /** At most this many finalized runs in a report about the whole app: the newest in its window. */
