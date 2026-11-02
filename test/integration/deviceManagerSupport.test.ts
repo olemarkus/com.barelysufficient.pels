@@ -25,7 +25,7 @@ import {
   resolveDeviceCapabilities,
 } from '../../lib/device/transport/managerParse';
 import { resolveCandidateCapabilities } from '../../lib/device/managerNativeEv';
-import { getBinaryControlPlan } from '../../lib/plan/planBinaryControl';
+import { getBinaryControlPlan } from '../../lib/executor/binaryControlPreflight';
 import {
   reconcileRealtimeDeviceUpdate,
   updateLastKnownPower,

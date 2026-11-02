@@ -48,10 +48,6 @@ import {
 // `lib/observer/` can share one source under the
 // `no-device-to-peer-except-power` layering rule.
 
-export type BinaryControlPlan = {
-  canSet: boolean;
-};
-
 type SteppedLoadIdentity = {
   steppedLoadProfile?: SteppedLoadProfile;
 };
@@ -205,35 +201,6 @@ export function resolveBoostRequested(dev: BoostResolveInput): boolean {
   return level.kind === 'measured' && level.current < level.boostFloor;
 }
 
-/**
- * Exactly the fields the binary control plan reads. Narrow on purpose: both call
- * sites pass a PROJECTED snapshot shape (`BinaryControlDecisionSnapshot` in plan,
- * `ExecutorDeviceSnapshot` in executor), never a whole `TargetDeviceSnapshot`.
- * Declaring the parameter as the full descriptor only type-checked for as long as
- * every descriptor field happened to be optional, so the first required one broke
- * both callers.
- */
-export type BinaryControlPlanInput = BinaryCapabilityResolveInput & {
-  canSetControl?: boolean;
-};
-
-export function getBinaryControlPlan(snapshot?: BinaryControlPlanInput): BinaryControlPlan | null {
-  if (!snapshot || !hasBinaryAxis(snapshot)) return null;
-  return {
-    // Routed through `resolveCanSetControl` so the planner-side producer bit
-    // and the legacy `getBinaryControlPlan().canSet` view stay bit-exact in
-    // lockstep.
-    canSet: resolveCanSetControl({
-      binaryControl: snapshot.binaryControl,
-      currentOn: snapshot.currentOn,
-      capabilities: snapshot.capabilities,
-      canSetControl: snapshot.canSetControl,
-    }),
-  };
-}
-
-
-
 type BinaryCapabilityResolveInput = {
   binaryControl?: { on: boolean };
   currentOn?: boolean;
@@ -243,10 +210,6 @@ type BinaryCapabilityResolveInput = {
 const hasBinaryAxis = (snapshot: BinaryCapabilityResolveInput): boolean => (
   snapshot.binaryControl !== undefined || typeof snapshot.currentOn === 'boolean'
 );
-
-// `resolveCanSetBinaryControl` collapsed into `resolveCanSetControl` above
-// (chunk 6 of the planner-detype refactor). `getBinaryControlPlan` now routes
-// through the same producer that PlanInputDevice consumers read.
 
 // =============================================================================
 // Chunk 2 of the planner-detype refactor: resolve commandableNow + boostActive
@@ -267,9 +230,8 @@ const hasBinaryAxis = (snapshot: BinaryCapabilityResolveInput): boolean => (
 
 // -----------------------------------------------------------------------------
 // canSetControl — sibling producer-resolved bit (chunk 6 of the planner-detype
-// refactor). Mirrors the `canSet` computation inside `getBinaryControlPlan`
-// (`canSetControl !== false`) so executor consumers can read a single resolved flag
-// instead of round-tripping through `getBinaryControlPlan`.
+// refactor). Planner consumers read this resolved flag rather than inspecting
+// the binary axis or capability writeability themselves.
 //
 // Kept separate from `commandableNow`: commandableNow answers "is the device
 // responsive right now" (EV plug state, available) which `planOffStateReason`
@@ -284,13 +246,8 @@ export type CanSetControlResolveInput = BinaryCapabilityResolveInput & {
 /**
  * Resolve whether the device's binary control capability can be written this
  * cycle. Returns `false` when:
- *  - the device exposes no resolvable binary capability (no `controlCapabilityId`,
- *    no matching entry in `capabilities`); or
+ *  - the device has no semantic binary axis; or
  *  - `canSetControl === false`.
- *
- * Mirrors `getBinaryControlPlan(snapshot)?.canSet ?? false` exactly so the
- * actuator preflight (`DeviceWriteService.canTurnOnDevice`) stays byte-for-byte
- * equivalent for the existing snapshot shapes the executor passes in.
  */
 export function resolveCanSetControl(input: CanSetControlResolveInput): boolean {
   if (!hasBinaryAxis(input)) return false;

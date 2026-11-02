@@ -82,7 +82,7 @@ boundary, and `lib/executor/AGENTS.md` now names both directions.
 The 5 s guard had no job. `shouldSkipShedding` gates two axes, and each already has its own
 idempotency and in-flight guards one level down — longer, and on better evidence:
 
-- **Binary** — `shouldSkipBinaryControl` (`lib/plan/planBinaryControlHelpers.ts`):
+- **Binary** — `shouldSkipBinaryControl` (`lib/executor/binaryControlPreflight.ts`):
   `already_matched` (observed state equals desired) and `already_pending` (a matching command in
   flight for the whole confirmation window — 90 s, `CONTROL_COMMAND_CONFIRMATION_MS`,
   `lib/ports/controlCommandConfirmation.ts`). The pending entry is recorded by

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getBinaryControlPlan } from '../../lib/plan/planBinaryControl';
+import { getBinaryControlPlan } from '../../lib/executor/binaryControlPreflight';
 import {
   createPendingBinaryCommandStore,
   syncPendingBinaryCommands,

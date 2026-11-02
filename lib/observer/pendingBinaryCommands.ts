@@ -5,7 +5,7 @@
  * pending-binary-command bookkeeping is observer-owned:
  *
  * - Writes happen at dispatch time (`lib/executor/binaryControlDispatch.ts`)
- *   after the plan layer produces a `BinaryControlDecision`.
+ *   after executor binary-command preflight accepts the requested command.
  * - Deletes happen in two places: the dispatcher clears when the actuator
  *   declines or dispatch fails, and the per-cycle sync sweep (this module's
  *   `syncPendingBinaryCommands`) clears on confirmation or timeout.
