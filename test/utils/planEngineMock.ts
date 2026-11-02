@@ -1,3 +1,4 @@
+import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 /**
  * Specs that exercise drift supply the fixtures the observer would have served.
  * Absent, the engine sees no observations at all — which the predicate skips,
@@ -83,7 +84,7 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
       // not evidence about this one.
       if ((options?.getObservationRevision?.() ?? 0) !== observationRevisionAtBuild) return false;
       return hasPlanExecutionDriftAgainstIntent(
-        plannedSnapshot,
+        buildExecutionPlan(plannedSnapshot),
         driftDepsFromPlanInputs(
           options?.getDriftDevices ?? (() => []),
           options?.getDriftBinaryCommand ?? (() => ({ kind: 'none' })),

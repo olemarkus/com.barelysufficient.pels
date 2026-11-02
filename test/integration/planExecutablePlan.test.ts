@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildExecutableObservedDeviceState,
-  buildExecutablePlan,
-  hasExecutableShedDevices,
-} from '../../lib/executor/executablePlanProjection';
+import { buildExecutablePlan, hasExecutableShedDevices } from '../utils/executionDecisionFixture';
+import { buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
 import {
   buildExecutableTargetUpdate,
 } from '../../lib/executor/executableTargetProjection';

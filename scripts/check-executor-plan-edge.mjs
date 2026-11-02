@@ -50,22 +50,7 @@ const planDir = path.join(rootDir, 'lib', 'plan');
 // SHRINK THIS LIST. Do not grow it: a new entry needs an explicit reason in the
 // PR description, and the seam train's definition-of-done is this list empty and
 // the cruiser rule flipped to error.
-const ALLOWED = new Set([
-  'executablePlanProjection.ts -> planBinaryDevice',
-  'executablePlanProjection.ts -> planSteppedLoad',
-  'executablePlanProjection.ts -> planTypes',
-  'executableSteppedLoadProjection.ts -> planBinaryDevice',
-  'executableSteppedLoadProjection.ts -> planSteppedLoad',
-  'executableSteppedLoadProjection.ts -> planTypes',
-  'executorConvergence.ts -> planTypes',
-  'planExecutionDrift.ts -> planSteppedLoad',
-  'planExecutionDrift.ts -> planTypes',
-  'planExecutor.ts -> planTypes',
-  'planExecutorDispatch.ts -> planTypes',
-  'planExecutorPredicates.ts -> planBinaryDevice',
-  'planExecutorPredicates.ts -> planSteppedLoad',
-  'planExecutorPredicates.ts -> planTypes',
-]);
+const ALLOWED = new Set([]);
 
 function isWithin(directory, candidate) {
   const relative = path.relative(directory, candidate);

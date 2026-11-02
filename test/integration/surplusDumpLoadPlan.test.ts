@@ -32,7 +32,7 @@ import {
 import { resolveFixtureCurrentOn, withFixtureResidualKw } from '../utils/planTestUtils';
 import { SURPLUS_ABSORB_SETTLE_MS } from '../../lib/plan/admission/surplusAbsorb';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import { buildExecutablePlan, hasExecutableShedDevices } from '../../lib/executor/executablePlanProjection';
+import { buildExecutablePlan, hasExecutableShedDevices } from '../utils/executionDecisionFixture';
 import {
   applyBinarySheddingToDevice,
   applyUncontrolledBinaryRestore,

@@ -38,6 +38,7 @@ export class SteppedDeviceControl {
   getSteppedLoadCommandSession(deviceId: string) {
     const profile = this.getSteppedLoadProfile(deviceId);
     return {
+      command: this.store.getDesired(deviceId),
       initializationAssumedStepId: this.store.peekInitializationLatch(deviceId,
         profile ? getSteppedLoadLowestActiveStep(profile)?.id : undefined),
       hasPriorStepCommand: this.store.hasPriorStepCommand(deviceId),

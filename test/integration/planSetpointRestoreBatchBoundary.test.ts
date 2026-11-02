@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import type { MeteredPlanInputDevice } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
-import { buildExecutableSteppedLoadIntent } from '../../lib/executor/executableSteppedLoadProjection';
+import { buildExecutableSteppedLoadIntent } from '../utils/executionDecisionFixture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';

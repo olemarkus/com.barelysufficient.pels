@@ -8,7 +8,7 @@ import {
   buildDeferredReleaseIntents,
   type DeferredAdmissionDecision,
 } from '../../lib/objectives/deferredObjectives/admission';
-import { buildExecutableDeviceIntent } from '../../lib/executor/executablePlanProjection';
+import { buildExecutableDeviceIntent } from '../utils/executionDecisionFixture';
 import { hasBinaryCommand } from '../../lib/executor/executablePlan';
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../lib/power/sampleFreshness';

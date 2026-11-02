@@ -21,10 +21,9 @@
  *
  * Governing reference: `notes/state-management/README.md`.
  */
-import type { DevicePlan } from '../plan/planTypes';
+import type { ExecutionPlan } from '../planContract/executionPlan';
 import type { DriftObservationDeps } from './driftObservedDevice';
 import { hasPlanDeviceExecutionDrift } from './planExecutionDrift';
-import { hasStorageDecision } from '../planContract/storageDecision';
 
 /**
  * Does the executor have work to do against this plan?
@@ -37,19 +36,19 @@ import { hasStorageDecision } from '../planContract/storageDecision';
  * value more favourable than anything measured.
  */
 export function hasPlanExecutionDriftAgainstIntent(
-  plan: DevicePlan,
+  plan: ExecutionPlan,
   deps: DriftObservationDeps,
 ): boolean {
   if (plan.storageReleases.some((intent) => deps.hasStorageReleaseDrift(intent))) return true;
+  if (plan.storageDevices.some((device) => deps.hasStorageDrift(device))) return true;
   for (const planDevice of plan.devices) {
-    if (hasStorageDecision(planDevice) && deps.hasStorageDrift(planDevice)) return true;
-    const observed = deps.getObservedState(planDevice.id);
+    const observed = deps.getObservedState(planDevice.commands.id);
     if (!observed) continue;
     if (hasPlanDeviceExecutionDrift(
       planDevice,
       observed,
-      deps.getCommandState(planDevice.id),
-      deps.isExternalOffHeld(planDevice.id),
+      deps.getCommandState(planDevice.commands.id),
+      deps.isExternalOffHeld(planDevice.commands.id),
     )) return true;
   }
   return false;

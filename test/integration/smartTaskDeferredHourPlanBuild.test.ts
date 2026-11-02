@@ -9,11 +9,7 @@ import {
   type DeferredAdmissionDecision,
 } from '../../lib/objectives/deferredObjectives/admission';
 import { resolveDeferredHoldCauses } from '../../lib/objectives/deferredObjectives/decorationController';
-import {
-  buildExecutableDeviceIntent,
-  buildExecutablePlan,
-  hasExecutableShedDevices,
-} from '../../lib/executor/executablePlanProjection';
+import { buildExecutableDeviceIntent, buildExecutablePlan, hasExecutableShedDevices } from '../utils/executionDecisionFixture';
 import { hasBinaryCommand } from '../../lib/executor/executablePlan';
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import { PriceLevel } from '../../lib/price/priceLevels';

@@ -26,7 +26,7 @@
  * production-faithful.
  */
 import { attachDeferredReleaseIntents } from '../../lib/plan/planBuilderDecoration';
-import { buildExecutablePlan } from '../../lib/executor/executablePlanProjection';
+import { buildExecutablePlan } from '../utils/executionDecisionFixture';
 import { hasReleaseCommand } from '../../lib/executor/executablePlan';
 import { buildPlanDevice, buildPlanMeta } from '../utils/planTestUtils';
 import { applyShedReleaseIntent } from '../../lib/executor/shedReleaseActuation';

@@ -1,3 +1,4 @@
+import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 import { createTestPlanExecutor } from '../utils/planEngineStateFixture';
 import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import { withDeviceConfiguration, buildInitialPlanDevicesForSpec } from '../utils/planTestUtils';
@@ -366,7 +367,7 @@ describe('P1 bug proofs', () => {
       currentOn: true,
     }]);
 
-    await executor.applyPlanActions({
+    await executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({
         totalKw: 5,
         softLimitKw: 4,
@@ -385,7 +386,7 @@ describe('P1 bug proofs', () => {
       })],
       inverterDecisions: [],
       storageReleases: [],
-    });
+    }));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
   });

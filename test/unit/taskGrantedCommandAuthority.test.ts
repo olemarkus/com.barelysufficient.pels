@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isRestoreLiveEligibleDevice } from '../../lib/plan/restore/devices';
-import { buildExecutableDeviceIntent } from '../../lib/executor/executablePlanProjection';
+import { buildExecutableDeviceIntent } from '../utils/executionDecisionFixture';
 import { buildPlanDevice } from '../utils/planTestUtils';
 
 /**

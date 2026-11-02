@@ -22,7 +22,7 @@
  * positive projection coverage — the axis PR3 totalizes.
  */
 import { describe, expect, it } from 'vitest';
-import { buildExecutablePlan } from '../../lib/executor/executablePlanProjection';
+import { buildExecutablePlan } from '../utils/executionDecisionFixture';
 import {
   buildBinaryDevice,
   buildPlan,
