@@ -42,6 +42,8 @@ describe('parsePriceSetupSuggestion', () => {
       .toEqual({ kind: 'has_price_device' });
     expect(parsePriceSetupSuggestion({ ...NOTHING, powerhour: { kind: 'no_price_device' } }).powerhour)
       .toEqual({ kind: 'no_price_device' });
+    expect(parsePriceSetupSuggestion({ ...NOTHING, powerhour: { kind: 'app_unavailable' } }).powerhour)
+      .toEqual({ kind: 'app_unavailable' });
     expect(parsePriceSetupSuggestion({ ...NOTHING, powerhour: 'yes' }).powerhour).toEqual({ kind: 'none' });
   });
 

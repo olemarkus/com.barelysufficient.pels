@@ -205,9 +205,13 @@ export class PriceCoordinator {
   }
 
   // A local app-to-app read: Power by the Hour answers from the Homey itself.
+  // Homey's answer that the app is not running is worth suggesting it; a read
+  // that failed says nothing about the app, so it suggests nothing.
   private async probePowerhourPriceDevice(): Promise<PriceSetupSuggestion['powerhour']> {
     const read = await fetchPowerhourPrices(this.deps.homey.api);
-    if (read.kind !== 'resolved') return NO_POWERHOUR;
+    if (read.kind !== 'resolved') {
+      return read.reason === 'app_unavailable' ? { kind: 'app_unavailable' } : NO_POWERHOUR;
+    }
     return read.devices.length > 0 ? { kind: 'has_price_device' } : { kind: 'no_price_device' };
   }
 

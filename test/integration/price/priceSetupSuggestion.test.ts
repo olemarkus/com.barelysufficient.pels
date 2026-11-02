@@ -72,9 +72,20 @@ describe('price setup suggestion, by source in force', () => {
     fetchSpy.mockRestore();
   });
 
-  it('on Homey Energy, suggests nothing when Power by the Hour is not installed', async () => {
+  it('on Homey Energy, says when Homey answers that Power by the Hour is not running', async () => {
+    // Homey Energy has no prices in several countries (Poland among them), so
+    // the page suggests installing or starting the app.
     mockHomeyInstance.settings.set('price_scheme', 'homey');
     setMockApiApp(POWERHOUR_APP_ID, { installed: false, get: powerhourGet });
+    const { coordinator } = createCoordinator();
+
+    await expect(coordinator.suggestPriceSetup()).resolves.toMatchObject({ powerhour: { kind: 'app_unavailable' } });
+    expect(powerhourGet).not.toHaveBeenCalled();
+  });
+
+  it('on Homey Energy, suggests nothing when Power by the Hour cannot be read', async () => {
+    mockHomeyInstance.settings.set('price_scheme', 'homey');
+    setMockApiApp(POWERHOUR_APP_ID, { installed: true, get: async () => { throw new Error('busy'); } });
     const { coordinator } = createCoordinator();
 
     await expect(coordinator.suggestPriceSetup()).resolves.toMatchObject({ powerhour: { kind: 'none' } });

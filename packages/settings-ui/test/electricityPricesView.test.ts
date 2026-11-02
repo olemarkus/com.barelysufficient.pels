@@ -1060,6 +1060,40 @@ describe('ElectricityPricesView, Homey Energy without prices', () => {
 
     expect(mount.textContent).toContain('Or choose another source above.');
     expect(mount.textContent).not.toContain('Use Power by the Hour');
+    expect(mount.textContent).not.toContain('Get Power by the Hour');
+  });
+
+  it('recommends getting Power by the Hour beside Homey Energy when that app is not running', () => {
+    // A Polish hub: Homey Energy has no prices for Poland, so turning it on
+    // cannot help there, and Power by the Hour is the way to market prices.
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    renderElectricityPricesView(mount, buildProps({
+      priceScheme: 'homey',
+      homeyStatus: noPricesStatus,
+      priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'app_unavailable' } },
+    }));
+
+    expect(mount.textContent).toContain('If Homey Energy has prices for your country, turn on dynamic prices');
+    expect(mount.textContent).toContain('install or start Power by the Hour, which has day-ahead prices for most of Europe');
+    const get = Array.from(mount.querySelectorAll('md-outlined-button'))
+      .find((button) => button.textContent?.trim() === 'Get Power by the Hour') as (HTMLElement & { href?: string; target?: string }) | undefined;
+    expect(get?.href).toBe('https://homey.app/a/com.gruijter.powerhour');
+    expect(get?.target).toBe('_blank');
+    expect(mount.textContent).not.toContain('Use Power by the Hour');
+  });
+
+  it('asks for a price device when Power by the Hour runs without one', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    renderElectricityPricesView(mount, buildProps({
+      priceScheme: 'homey',
+      homeyStatus: noPricesStatus,
+      priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'no_price_device' } },
+    }));
+
+    expect(mount.textContent).toContain('Or add a price device for your bidding zone in Power by the Hour, then choose it above.');
+    expect(mount.textContent).not.toContain('Get Power by the Hour');
   });
 });
 
