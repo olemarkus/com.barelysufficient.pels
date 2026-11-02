@@ -9,12 +9,13 @@ import type { StorageShedTerm } from '../shedding/types';
  * `cap_for_device`, a surplus hold keeping its charge below what its own mode
  * charged so a device ranked above it gets that power; `raise_charge`, a
  * surplus hold charging past that from what its offer leaves; on a battery
- * plan, `plan_supply` (discharging to the house), `plan_wait` (holding at
+ * plan, `plan_supply` (discharging to the house), `plan_export` (selling stored
+ * energy, the house first), `plan_wait` (holding at
  * 0 W), `plan_solar` (charging to store solar) or `plan_charge` (charging for
  * any other plan reason); or `none` (not held).
  */
 export type StorageClaimReason = 'none' | 'relief' | 'charge_limit' | 'cap_for_device' | 'raise_charge'
-  | 'plan_charge' | 'plan_solar' | 'plan_supply' | 'plan_wait';
+  | 'plan_charge' | 'plan_solar' | 'plan_supply' | 'plan_export' | 'plan_wait';
 
 /** One battery as this cycle left it, for the state log. */
 export type StorageStateSummary = {

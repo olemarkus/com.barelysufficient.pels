@@ -1,3 +1,7 @@
+import type {
+  BatteryEnergyExportPolicy, BatteryEnergyPlanPeriod,
+} from '../../packages/contracts/src/batteryPlan';
+import type { ContinuousStoragePlan } from '../../packages/planner-types/src/planInputDevice';
 import { isBatteryPowerLimitEnabled } from '../../packages/shared-domain/src/settings/batteryPowerLimit';
 import { continuousReserveCeilingW } from '../battery/continuousBatteryReserve';
 import { chargeCeilingAtLevelW } from '../battery/batteryVerification';
@@ -6,6 +10,25 @@ import type {
 } from './planInputDeviceTypes';
 
 const NO_STORAGE_CLUSTER: StorageClusterFields = {};
+
+/**
+ * The current period as the planner's storage intent. A selling period carries
+ * the owner's export ceiling with its reason, so permission and bound travel
+ * together. The plan and its config come from one battery-owner read, so only a
+ * price-export policy plans an export period; the types still require an
+ * answer for the other policy, and that answer is the house only.
+ */
+const resolveContinuousStoragePlan = (
+  period: BatteryEnergyPlanPeriod,
+  policy: BatteryEnergyExportPolicy,
+): ContinuousStoragePlan => {
+  const setpointW = period.batteryPowerKW * 1000;
+  const validUntilMs = period.startsAtMs + period.durationMs;
+  if (period.reason !== 'export_energy') return { setpointW, validUntilMs, reason: period.reason };
+  return policy.kind === 'price_export'
+    ? { setpointW, validUntilMs, reason: 'export_energy', netExportCeilingW: policy.netExportCeilingKW * 1000 }
+    : { setpointW, validUntilMs, reason: 'supply_house' };
+};
 
 /**
  * A home battery's storage cluster (`StoragePlanInputKind`), or none when the
@@ -74,12 +97,8 @@ export const resolveStorageCluster = (
       verdict: control.verdict,
       deliveryCeilingW: Math.min(control.deliveryCeilingW, reserveCeilingW),
       chargeCeilingW: chargeCeilingAtLevelW(control.chargeCeiling, device.batteryLevel),
-      ...(currentPeriod === undefined ? {} : {
-        continuousPlan: {
-          setpointW: currentPeriod.batteryPowerKW * 1000,
-          validUntilMs: currentPeriod.startsAtMs + currentPeriod.durationMs,
-          reason: currentPeriod.reason,
-        },
+      ...(currentPeriod === undefined || continuous.status !== 'planned' ? {} : {
+        continuousPlan: resolveContinuousStoragePlan(currentPeriod, continuous.config.exportPolicy),
       }),
     },
   };

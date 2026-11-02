@@ -253,6 +253,7 @@ export type StorageHold =
   | { kind: 'plan_charge' }
   | { kind: 'plan_solar' }
   | { kind: 'plan_supply' }
+  | { kind: 'plan_export' }
   | { kind: 'plan_wait' };
 
 export type DevicePlanDevice = SteppedPlanDevice | NonSteppedPlanDevice;

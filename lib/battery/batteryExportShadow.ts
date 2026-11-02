@@ -2,14 +2,16 @@ import type { BatteryEnergyPlan } from '../../packages/contracts/src/batteryPlan
 import type { ContinuousBatteryHorizonRead } from '../ports/continuousBatteryPlan';
 import { getDebugEmitter, getLogger, isDebugTopicEnabled } from '../logging/logger';
 import { compareBatteryExportEconomics, estimateBatteryEnergyTransitions } from './planning/planBatteryEnergy';
+import { MAX_EXPORT_COMPARISON_TRANSITIONS as MAX_SHADOW_TRANSITIONS } from './batteryExportSelection';
 
 type ReadyHorizon = Extract<ContinuousBatteryHorizonRead, { kind: 'ready' }>;
 type HouseholdPlan = Extract<BatteryEnergyPlan, { status: 'planned' }>;
 const SAMPLE_INTERVAL_MS = 5 * 60_000;
-const MAX_SHADOW_TRANSITIONS = 2_000_000;
 
 /** Diagnostic snapshots, never an executable plan or a cumulative savings ledger.
- * Only the existing plan debug topic enables the extra solve. The assumed net
+ * It runs only for a household-only battery (an owner who authorized selling
+ * gets the real comparison instead), and only the existing plan debug topic
+ * enables the extra solve. The assumed net
  * export ceiling is the current battery delivery limit, not owner permission.
  * One battery can be enabled, so only its latest sample time is retained. */
 export class BatteryExportShadow {
@@ -49,7 +51,11 @@ export class BatteryExportShadow {
     try {
       const comparison = compareBatteryExportEconomics(input.horizon,
         { kind: 'price_export', netExportCeilingKW }, baseline);
-      emit({ event: 'battery_export_shadow_evaluated', ...sample, ...comparison,
+      // The diagnostic logs the comparison, never the candidate schedule itself.
+      const evidence = comparison.kind === 'compared'
+        ? (({ candidate: _plan, ...rest }) => rest)(comparison)
+        : comparison;
+      emit({ event: 'battery_export_shadow_evaluated', ...sample, ...evidence,
         estimatedTransitions, evaluationDurationMs: performance.now() - startedAt });
     } catch (err) {
       // An experimental diagnostic must not prevent the accepted household plan

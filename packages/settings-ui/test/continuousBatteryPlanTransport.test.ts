@@ -59,6 +59,26 @@ test.each([
   expect(await loadBatteryEfficiencyMeasurement('battery')).toEqual({ status: 'unavailable' });
 });
 
+test('accepts a selling plan and refuses one whose selling decision is malformed', async () => {
+  const period = {
+    startsAtMs: 0, durationMs: 3_600_000, batteryPowerKW: -2, energyBeforeKWh: 4, energyAfterKWh: 2,
+    gridImportKWh: 0, gridExportKWh: 2, importCost: 0, exportRevenue: 2, wearCost: 0.06, reason: 'export_energy',
+  };
+  const selling = {
+    status: 'planned', config: { ...config, exportPolicy: { kind: 'price_export', netExportCeilingKW: 3 } },
+    generatedAtMs: 0, priceUnit: 'EUR',
+    plan: { status: 'planned', periods: [period], importCost: 0, exportRevenue: 2, wearCost: 0.06, energyCost: -1.94,
+      terminalEnergyValue: 0, objectiveCost: -1.94, terminalEnergyKWh: 2, resolutionKWh: 0.05 },
+    exportDecision: { kind: 'selling', estimatedSavings: 0.4 },
+  };
+  getApiReadModel.mockResolvedValue({ continuousBatteryPlans: { battery: selling } });
+  expect(await loadContinuousBatteryPlan('battery')).toEqual(selling);
+  for (const exportDecision of [undefined, { kind: 'selling' }, { kind: 'waiting', reason: 'later' }]) {
+    getApiReadModel.mockResolvedValue({ continuousBatteryPlans: { battery: { ...selling, exportDecision } } });
+    await expect(loadContinuousBatteryPlan('battery')).rejects.toThrow('Invalid battery plan response');
+  }
+});
+
 test('does not resolve inherited map entries as battery plans', async () => {
   getApiReadModel.mockResolvedValue({ continuousBatteryPlans: Object.create({ battery: waiting }) });
   await expect(loadContinuousBatteryPlan('battery')).rejects.toThrow('unavailable');

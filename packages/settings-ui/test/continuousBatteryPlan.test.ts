@@ -53,7 +53,8 @@ const read: ContinuousBatteryPlanRead = { status: 'planned', config, generatedAt
   plan: { status: 'planned', periods: [period, { ...period, startsAtMs: startsAtMs + 3_600_000,
     energyBeforeKWh: 3, energyAfterKWh: 4 }],
   importCost: 0.4, exportRevenue: 0, wearCost: 0, energyCost: 0.4, terminalEnergyValue: 0,
-  objectiveCost: 0.4, terminalEnergyKWh: 4, resolutionKWh: 0.05 } };
+  objectiveCost: 0.4, terminalEnergyKWh: 4, resolutionKWh: 0.05 },
+  exportDecision: { kind: 'household_only' } };
 const battery = (id = 'battery'): SettingsUiDeviceSnapshot => withDescriptorIdentity<SettingsUiDeviceSnapshot>({
   id, name: 'Sessy', available: true, deviceClass: 'battery', targets: [], capabilities: ['measure_power', 'measure_battery'],
   expectedPowerKw: 2.5, expectedPowerSource: 'default', batteryControl: 'drivable', batteryTakenOver: false,
@@ -224,8 +225,8 @@ test('a slow response for a previous battery cannot paint the newly opened one',
 });
 
 test('refuses empty and malformed numeric input rather than saving zeroes', () => {
-  expect(readBatteryPlanDraft({ enabled: true, capacity: '', reserve: '20', efficiency: '90', wear: '0.03' }, 'EUR')).toBeNull();
-  expect(readBatteryPlanDraft({ enabled: true, capacity: '10', reserve: '101', efficiency: '90', wear: '0.03' }, 'EUR')).toBeNull();
+  expect(readBatteryPlanDraft({ enabled: true, capacity: '', reserve: '20', efficiency: '90', wear: '0.03', sell: false, exportCeiling: '' }, 'EUR')).toBeNull();
+  expect(readBatteryPlanDraft({ enabled: true, capacity: '10', reserve: '101', efficiency: '90', wear: '0.03', sell: false, exportCeiling: '' }, 'EUR')).toBeNull();
   expect(batteryPlanWindows([period, { ...period, startsAtMs: startsAtMs + 7_200_000 }])).toHaveLength(2);
 });
 
@@ -279,4 +280,49 @@ test('uses local calendar days across DST and a dated label beyond tomorrow', ()
   const generated = Date.parse('2026-10-24T22:30:00Z'); // 00:30 on the 25-hour Amsterdam day.
   expect(batteryPlanTimeLabel(Date.parse('2026-10-25T23:15:00Z'), generated, 'Europe/Amsterdam')).toBe('Tomorrow 00:15');
   expect(batteryPlanTimeLabel(Date.parse('2026-10-26T23:15:00Z'), generated, 'Europe/Amsterdam')).toContain('27 Oct');
+});
+
+test('reads a selling opt-in only with a valid export limit', () => {
+  const draft = { enabled: true, capacity: '10', reserve: '20', efficiency: '90', wear: '0.03', sell: true, exportCeiling: '3' };
+  expect(readBatteryPlanDraft(draft, 'EUR')?.exportPolicy).toEqual({ kind: 'price_export', netExportCeilingKW: 3 });
+  expect(readBatteryPlanDraft({ ...draft, exportCeiling: '' }, 'EUR')).toBeNull();
+  expect(readBatteryPlanDraft({ ...draft, exportCeiling: '0' }, 'EUR')).toBeNull();
+  expect(readBatteryPlanDraft({ ...draft, sell: false, exportCeiling: '' }, 'EUR')?.exportPolicy).toEqual({ kind: 'household_only' });
+});
+
+test('saves the selling opt-in and its export limit through the settings channel', async () => {
+  callApi.mockImplementation(async (method: string, _path: string, body: unknown) => method === 'PUT' ? body : read);
+  await openBattery();
+  expect(document.querySelector('#device-detail-battery-plan-export-ceiling')).toBeNull();
+  const sell = document.querySelector<HTMLElement & { selected: boolean }>('md-switch[aria-label="Sell stored energy when profitable"]')!;
+  await act(async () => { sell.selected = true; sell.dispatchEvent(new Event('change')); });
+  expect(button('Save battery plan').hasAttribute('disabled')).toBe(true);
+  const ceiling = field('Export limit at your meter (kW)');
+  await act(async () => { ceiling.value = '4.5'; ceiling.dispatchEvent(new Event('input')); });
+  await act(async () => button('Save battery plan').click());
+  await vi.waitFor(() => expect(setSetting).toHaveBeenCalledWith('continuous_battery_plan', {
+    battery: { ...config, exportPolicy: { kind: 'price_export', netExportCeilingKW: 4.5 } },
+  }));
+});
+
+test.each([
+  [{ kind: 'selling', estimatedSavings: 0.4262 }, 'Estimated 0.43 EUR lower electricity cost than keeping the energy for your home'],
+  [{ kind: 'kept_household' }, 'Selling would not lower your cost in this plan'],
+  [{ kind: 'waiting', reason: 'export_prices_incomplete' }, 'Selling waits for an export price for every hour of the plan'],
+] as const)('says what selling decided for the plan shown (%o)', async (exportDecision, text) => {
+  const selling = { ...config, exportPolicy: { kind: 'price_export' as const, netExportCeilingKW: 3 } };
+  callApi.mockResolvedValue({ ...read, config: selling, priceUnit: 'EUR/kWh', exportDecision, plan: { ...read.plan, periods: [
+    period, { ...period, startsAtMs: startsAtMs + 3_600_000, batteryPowerKW: -2, energyBeforeKWh: 3, energyAfterKWh: 1,
+      gridImportKWh: 0, gridExportKWh: 2, reason: 'export_energy' as const },
+  ] } });
+  await openBattery();
+  expect(document.body.textContent).toContain(text);
+  expect(document.querySelector('.battery-plan-windows')?.textContent).toContain('Sell to grid');
+});
+
+test('shows no selling line while selling is off', async () => {
+  await openBattery();
+  const preview = document.querySelector('.battery-plan-preview')?.textContent ?? '';
+  expect(preview).not.toContain('Selling');
+  expect(preview).toContain('Charge from grid');
 });

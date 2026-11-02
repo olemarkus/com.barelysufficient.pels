@@ -1,4 +1,5 @@
 import type {
+  BatteryEnergyExportPolicy,
   BatteryEnergyModel,
   BatteryEnergyPeriod,
   BatteryEnergyPlanPeriod,
@@ -8,12 +9,15 @@ import type {
 const HOUR_MS = 3_600_000;
 export const ENERGY_EPSILON_KWH = 1e-9;
 
-/** Battery-owner policy; the export ceiling is a resolved finite positive Main-meter kW bound. */
-export type BatteryExportEconomicsPolicy = { kind: 'price_export'; netExportCeilingKW: number };
-export type BatteryEnergyExportPolicy = { kind: 'household_only' } | BatteryExportEconomicsPolicy;
-
-const reasonFor = (batteryEnergyKWh: number, gridImportKWh: number): BatteryEnergyReason => {
-  if (batteryEnergyKWh < -ENERGY_EPSILON_KWH) return 'supply_house';
+/**
+ * A discharge whose energy reaches the grid is an export; one the house uses
+ * is household supply. Household-only planning can never export battery
+ * energy: its discharge allowance is bounded by net demand.
+ */
+const reasonFor = (batteryEnergyKWh: number, gridImportKWh: number, gridExportKWh: number): BatteryEnergyReason => {
+  if (batteryEnergyKWh < -ENERGY_EPSILON_KWH) {
+    return Math.min(-batteryEnergyKWh, gridExportKWh) > ENERGY_EPSILON_KWH ? 'export_energy' : 'supply_house';
+  }
   if (batteryEnergyKWh <= ENERGY_EPSILON_KWH) return 'hold_energy';
   return gridImportKWh > ENERGY_EPSILON_KWH ? 'charge_grid' : 'store_solar';
 };
@@ -76,6 +80,6 @@ export function batteryEnergyFlow(
     importCost: gridImportKWh * period.importPrice,
     exportRevenue: gridExportKWh * period.exportPrice,
     wearCost: Math.max(0, -acEnergyKWh) * battery.wearCostPerKWh,
-    reason: reasonFor(acEnergyKWh, gridImportKWh),
+    reason: reasonFor(acEnergyKWh, gridImportKWh, gridExportKWh),
   };
 }

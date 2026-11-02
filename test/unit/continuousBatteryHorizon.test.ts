@@ -11,6 +11,7 @@ const HOUR_MS = 3_600_000;
 const config: ContinuousBatteryPlanConfig = {
   enabled: true, usableCapacityKWh: 10, minimumReservePercent: 20,
   roundTripEfficiency: 0.9, wearCostPerKWh: 0.03, priceUnit: 'EUR/kWh',
+  exportPolicy: { kind: 'household_only' },
 };
 const control: BatteryLeverRead = {
   kind: 'setpoint', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },

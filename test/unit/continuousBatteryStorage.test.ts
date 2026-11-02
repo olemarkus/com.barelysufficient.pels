@@ -86,6 +86,40 @@ describe('continuous battery execution decisions', () => {
     expect(decideStorageRelief([reserved], power, {}, offers(), NOW).batteries[0].setpointW).toBe(0);
   });
 
+  it('lets a selling period export up to the owner ceiling on top of the house, never past the plan or reserve', () => {
+    const sell = (setpointW: number, netExportCeilingW: number) => (
+      { setpointW, validUntilMs: NOW + 60_000, reason: 'export_energy' as const, netExportCeilingW }
+    );
+    const power = buildMeasuredPower({ drawKw: 0.5 });
+    // 0.5 kW of house draw plus 1.5 kW of export, less the 100 W response margin.
+    const selling = decideStorageRelief([battery({ continuousPlan: sell(-2500, 1500) })], power, {}, offers(), NOW);
+    expect(selling.batteries[0]).toMatchObject({ setpointW: -1900, claim: 'plan_export' });
+    expect(selling.levers.battery.continuousReason).toBe('export_energy');
+    // The plan's own setpoint and the reserve ceiling still bound the sale.
+    expect(decideStorageRelief([battery({ continuousPlan: sell(-1000, 1500) })], power, {}, offers(), NOW)
+      .batteries[0].setpointW).toBe(-1000);
+    expect(decideStorageRelief([battery({ deliveryCeilingW: 0, continuousPlan: sell(-2500, 1500) })], power, {},
+      offers(), NOW).batteries[0].setpointW).toBe(0);
+  });
+
+  it('takes measured house demand out of a sale rather than raising discharge to keep the forecast export', () => {
+    const plan = { setpointW: -2000, validUntilMs: NOW + 60_000, reason: 'export_energy' as const, netExportCeilingW: 1500 };
+    const quiet = decideStorageRelief([battery({ continuousPlan: plan })], buildMeasuredPower({ drawKw: 0 }), {}, offers(), NOW);
+    expect(quiet.batteries[0].setpointW).toBe(-1400);
+    const busy = decideStorageRelief([battery({ continuousPlan: plan })], buildMeasuredPower({ drawKw: 1.8 }), {}, offers(), NOW);
+    expect(busy.batteries[0].setpointW).toBe(-2000);
+  });
+
+  it('banks no speculative credit for a sale and withholds its discharge from restores', () => {
+    const plan = { setpointW: -1500, validUntilMs: NOW + 600_000, reason: 'export_energy' as const, netExportCeilingW: 3000 };
+    const idle = decideStorageRelief([battery()], buildMeasuredPower({ drawKw: 3 }), {}, offers(), NOW);
+    const selling = decideStorageRelief([battery({ continuousPlan: plan })], buildMeasuredPower({ drawKw: 3 }),
+      idle.levers, offers(), NOW + 60_000);
+    expect(selling.batteries[0].setpointW).toBe(-1500);
+    expect(selling.shed.netCreditKw).toBe(0);
+    expect(selling.batteries[0].withheldW).toBe(1500);
+  });
+
   it('withholds pending charge every cycle while the meter has not observed it', () => {
     const plan = { setpointW: 1500, validUntilMs: NOW + 60_000, reason: 'charge_grid' as const };
     const devices = [battery({ continuousPlan: plan }, 'a'), battery({ continuousPlan: plan }, 'b')];

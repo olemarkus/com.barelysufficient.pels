@@ -96,3 +96,47 @@ describe('continuous battery reserve projection', () => {
     expect(cluster).toMatchObject({ storage: { reading: 'observed', deliveryCeilingW: 0 } });
   });
 });
+
+describe('continuous battery selling projection', () => {
+  const nowMs = 12 * 60 * 60 * 1000;
+  const period = {
+    startsAtMs: nowMs - 60_000, durationMs: 3_600_000, batteryPowerKW: -2, energyBeforeKWh: 6, energyAfterKWh: 4,
+    gridImportKWh: 0, gridExportKWh: 1.5, importCost: 0, exportRevenue: 1.5, wearCost: 0.06, reason: 'export_energy' as const,
+  };
+  const plannedSource = (exportPolicy: typeof DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG.exportPolicy) => (
+    partialDouble<PlanInputProjectionSource>({
+      deviceControl: partialDouble<PlanInputProjectionSource['deviceControl']>({ controllableDevices: {} }),
+      getNow: () => new Date(nowMs),
+      readContinuousBatteryPlan: () => ({
+        status: 'planned', generatedAtMs: nowMs, priceUnit: 'EUR/kWh',
+        config: { ...DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, enabled: true, priceUnit: 'EUR/kWh', exportPolicy },
+        exportDecision: { kind: 'selling', estimatedSavings: 0.4 },
+        plan: {
+          status: 'planned', periods: [period], importCost: 0, exportRevenue: 1.5, wearCost: 0.06, energyCost: -1.44,
+          terminalEnergyValue: 0, objectiveCost: -1.44, terminalEnergyKWh: 4, resolutionKWh: 0.05,
+        },
+      }),
+    })
+  );
+  const control: BatteryLeverRead = {
+    kind: 'setpoint', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
+    deliveryCeilingW: 2500, chargeCeiling: { everyLevelW: 2500, taper: [], planningTaper: [] }, claimHeld: true,
+    handBackDeferred: false, claimEngaged: true, admissible: true, verdict: 'responding',
+  };
+  const input = device({ batteryPower: { signedW: 0, observedAtMs: nowMs }, batteryLevel: { percent: 60, observedAtMs: nowMs } });
+
+  it('carries the owner export ceiling with a selling period', () => {
+    const cluster = resolveStorageCluster(
+      plannedSource({ kind: 'price_export', netExportCeilingKW: 3 }), input, options(control),
+    );
+    expect(cluster).toMatchObject({ storage: { continuousPlan: {
+      setpointW: -2000, validUntilMs: period.startsAtMs + period.durationMs, reason: 'export_energy', netExportCeilingW: 3000,
+    } } });
+  });
+
+  it('supplies the house only when a selling period has no price-export policy behind it', () => {
+    const cluster = resolveStorageCluster(plannedSource({ kind: 'household_only' }), input, options(control));
+    expect(cluster).toMatchObject({ storage: { continuousPlan: { setpointW: -2000, reason: 'supply_house' } } });
+    expect(cluster.storage).not.toHaveProperty('continuousPlan.netExportCeilingW');
+  });
+});

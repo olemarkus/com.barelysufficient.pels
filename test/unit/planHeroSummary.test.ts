@@ -214,7 +214,7 @@ describe('buildDecisionSentence', () => {
       level: { kind: 'observed', percent: 60 },
     });
     const named = (hold: DevicePlanDevice['storageHold'], signedW: number, available = true) => {
-      const devices = [{ name: 'Sessy battery', homeBattery: buildSettingsUiPlanHomeBattery(card(signedW), hold, available) }];
+      const devices = [{ name: 'Sessy battery', homeBattery: buildSettingsUiPlanHomeBattery(card(signedW), hold, available, { exporting: false }) }];
       return buildDecisionSentence(baseline({ supplyingBatteries: resolveSupplyingBatteries(devices) })).text;
     };
 

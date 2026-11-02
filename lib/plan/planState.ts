@@ -1,3 +1,4 @@
+import type { ContinuousStoragePlan } from '../../packages/planner-types/src/planInputDevice';
 import type { PendingBinaryCommandRead } from '../ports/pendingBinaryCommand';
 import type { PlanRebuildTrigger } from './planRebuildTrigger';
 import type { PlanLimits } from './planContext';
@@ -204,7 +205,7 @@ export type StorageLeverState = {
    */
   purpose: 'limit' | 'surplus' | 'continuous';
   /** Present on the continuous strategy's own holds. */
-  continuousReason?: 'charge_grid' | 'store_solar' | 'supply_house' | 'hold_energy';
+  continuousReason?: ContinuousStoragePlan['reason'];
   /**
    * When the current discharge increase was decided: its credit's settle
    * window runs from here. A hold that only caps the charge has no discharge

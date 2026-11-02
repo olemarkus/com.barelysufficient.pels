@@ -3,7 +3,9 @@ import type {
   BatteryEfficiencyMeasurement, ContinuousBatteryPlanConfig, ContinuousBatteryPlanRead,
 } from '../../../../contracts/src/continuousBatteryPlan.ts';
 import type { BatteryEnergyPlanPeriod } from '../../../../contracts/src/batteryPlan.ts';
-import { parseContinuousBatteryPlanConfig } from '../../../../shared-domain/src/settings/continuousBatteryPlan.ts';
+import {
+  EXPORT_CEILING_MAX_KW, EXPORT_CEILING_MIN_KW, parseContinuousBatteryPlanConfig,
+} from '../../../../shared-domain/src/settings/continuousBatteryPlan.ts';
 import { formatDayFirstInTimeZone, formatTimeInTimeZone, getDateKeyInTimeZone, shiftDateKey } from '../../../../shared-domain/src/utils/dateUtils.ts';
 import { MdFilledButton, MdFilledTextField, MdOutlinedButton, MdSwitch, MdTextButton, readSwitchSelected } from './materialWebJSX.tsx';
 
@@ -20,17 +22,23 @@ export type ContinuousBatteryPlanProps = {
   onRefresh: () => Promise<void>;
 };
 
-type Draft = { enabled: boolean; capacity: string; reserve: string; efficiency: string; wear: string };
+type Draft = {
+  enabled: boolean; capacity: string; reserve: string; efficiency: string; wear: string;
+  sell: boolean; exportCeiling: string;
+};
 const draftFrom = (config: ContinuousBatteryPlanConfig): Draft => ({
   enabled: config.enabled,
   capacity: String(config.usableCapacityKWh),
   reserve: String(config.minimumReservePercent),
   efficiency: String(Math.round(config.roundTripEfficiency * 100)),
   wear: config.priceUnit === 'price units' ? '0' : String(config.wearCostPerKWh),
+  sell: config.exportPolicy.kind === 'price_export',
+  exportCeiling: config.exportPolicy.kind === 'price_export' ? String(config.exportPolicy.netExportCeilingKW) : '',
 });
 
 export const readBatteryPlanDraft = (draft: Draft, priceUnit: string): ContinuousBatteryPlanConfig | null => {
   if ([draft.capacity, draft.reserve, draft.efficiency, draft.wear].some(value => value.trim() === '')) return null;
+  if (draft.sell && draft.exportCeiling.trim() === '') return null;
   const config = {
     enabled: draft.enabled,
     usableCapacityKWh: Number(draft.capacity),
@@ -38,6 +46,9 @@ export const readBatteryPlanDraft = (draft: Draft, priceUnit: string): Continuou
     roundTripEfficiency: Number(draft.efficiency) / 100,
     wearCostPerKWh: Number(draft.wear),
     priceUnit,
+    exportPolicy: draft.sell
+      ? { kind: 'price_export', netExportCeilingKW: Number(draft.exportCeiling) }
+      : { kind: 'household_only' },
   };
   return parseContinuousBatteryPlanConfig(config);
 };
@@ -61,6 +72,24 @@ const REASON_COPY: Record<BatteryEnergyPlanPeriod['reason'], string> = {
   store_solar: 'Store solar',
   supply_house: 'Supply the house',
   hold_energy: 'Keep energy for later',
+  export_energy: 'Sell to grid',
+};
+
+/** The money unit of a price unit such as `EUR/kWh`: what an estimated cost reduction is counted in. */
+const moneyUnitOf = (priceUnit: string): string => priceUnit.replace(/\s*\/\s*kwh$/i, '').trim();
+
+type ExportDecision = Extract<ContinuousBatteryPlanRead, { status: 'planned' }>['exportDecision'];
+
+/** What the selling choice decided for the plan shown, or nothing while selling is off. */
+export const batteryPlanSellingLine = (decision: ExportDecision, priceUnit: string): string | null => {
+  switch (decision.kind) {
+    case 'household_only': return null;
+    case 'selling': return `Selling is planned. Estimated ${decision.estimatedSavings.toFixed(2)} ${moneyUnitOf(priceUnit)} lower electricity cost than keeping the energy for your home over this plan.`;
+    case 'kept_household': return 'Selling would not lower your cost in this plan, so PELS keeps the energy for your home.';
+    case 'waiting': return decision.reason === 'export_prices_incomplete'
+      ? 'Selling waits for an export price for every hour of the plan. PELS keeps planning for your home.'
+      : 'This plan is too large to compare with selling. PELS keeps planning for your home.';
+  }
 };
 
 /** Calendar-day labels follow the Homey's zone, including 23/25-hour DST days. */
@@ -137,6 +166,10 @@ function BatteryPlanPreview(props: Pick<ContinuousBatteryPlanProps, 'read' | 'ti
     : 'Keeping stored energy for the periods where it lowers your bill.';
   return <div class="battery-plan-preview">
     <h4 class="pels-text-settings-label">Battery plan</h4><p class="pels-text-status-line">{summary}</p>
+    {(() => {
+      const selling = batteryPlanSellingLine(read.exportDecision, read.priceUnit);
+      return selling === null ? null : <p class="field__hint" role="status">{selling}</p>;
+    })()}
     <BatteryLevelChart periods={read.plan.periods} config={read.config} generatedAtMs={read.generatedAtMs} timeZone={timeZone} />
     <ol class="battery-plan-windows">{windows.map(window => <li key={window.startsAtMs}>
       <span class="field__hint">{batteryPlanTimeLabel(window.startsAtMs, read.generatedAtMs, timeZone)} – {batteryPlanTimeLabel(window.endsAtMs, read.generatedAtMs, timeZone)}</span>
@@ -213,6 +246,18 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
         onInput={(event: Event) => update('reserve', (event.currentTarget as HTMLInputElement).value)} />
     </div>}
     {draft.enabled && <p class="field__hint">Check usable capacity against your battery’s specification before saving. PELS also respects the battery’s own limits.</p>}
+    {draft.enabled && <label class="md-switch-row">
+      <span class="md-switch-row__content"><span class="md-switch-row__label pels-text-settings-label">Sell stored energy when profitable</span></span>
+      <MdSwitch aria-label="Sell stored energy when profitable" selected={draft.sell} disabled={props.busy}
+        onChange={(event: Event) => update('sell', readSwitchSelected(event))} />
+    </label>}
+    {draft.enabled && <p class="field__hint">PELS compares selling with keeping the energy for your home, after losses and wear, and sells only when that lowers your electricity cost. Stored solar can then go to the grid in the evening, when export pays more than at midday. Your minimum reserve stays. Selling needs an export price, set under Electricity prices.</p>}
+    {draft.enabled && draft.sell && <div class="form-grid battery-plan-fields">
+      <MdFilledTextField id="device-detail-battery-plan-export-ceiling" label="Export limit at your meter (kW)" type="number"
+        min={String(EXPORT_CEILING_MIN_KW)} max={String(EXPORT_CEILING_MAX_KW)} step="0.1" value={draft.exportCeiling} disabled={props.busy}
+        onInput={(event: Event) => update('exportCeiling', (event.currentTarget as HTMLInputElement).value)} />
+    </div>}
+    {draft.enabled && draft.sell && <p class="field__hint">The most power the house may send to the grid while the battery sells, measured at your main meter. Use what your grid connection and contract allow.</p>}
     {draft.enabled && <details class="battery-plan-advanced"><summary>Losses and battery wear</summary>
       <div class="form-grid battery-plan-fields">
         <MdFilledTextField id="device-detail-battery-plan-efficiency" label="Round-trip efficiency (%)" type="number" min="50" max="100" step="1" value={draft.efficiency} disabled={props.busy}
@@ -224,7 +269,7 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
         onUse={value => update('efficiency', value)} />
       <p class="field__hint">Wear is an allowance per kWh supplied from the battery, in the same units as your electricity prices. 0 ignores battery wear.</p>
     </details>}
-    {config === null && <p class="field__hint field__hint--alert" role="alert">Enter capacity from 0.1 to 500 kWh, reserve from 0% to 95%, efficiency from 50% to 100%, and wear from 0 to 1000.</p>}
+    {config === null && <p class="field__hint field__hint--alert" role="alert">Enter capacity from 0.1 to 500 kWh, reserve from 0% to 95%, efficiency from 50% to 100%, and wear from 0 to 1000{draft.sell ? `, and an export limit from ${EXPORT_CEILING_MIN_KW} to ${EXPORT_CEILING_MAX_KW} kW` : ''}.</p>}
     <div class="form__actions"><MdFilledButton disabled={!canSave || !dirty} onClick={async () => {
       if (config && await props.onSave(config)) setForm(current => ({ ...current, draft: draftFrom(config), dirty: false }));
     }}>{props.busy ? 'Saving…' : 'Save battery plan'}</MdFilledButton>

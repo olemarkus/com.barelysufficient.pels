@@ -47,7 +47,7 @@ export const claimSurplusLever = (
 export const resolveClaimReason = (lever: StorageLeverState): StorageClaimReason => {
   if (lever.purpose === 'limit') return lever.setpointW < 0 ? 'relief' : 'charge_limit';
   if (lever.purpose === 'continuous') {
-    if (lever.setpointW < 0) return 'plan_supply';
+    if (lever.setpointW < 0) return lever.continuousReason === 'export_energy' ? 'plan_export' : 'plan_supply';
     if (lever.setpointW <= 0) return 'plan_wait';
     return lever.continuousReason === 'store_solar' ? 'plan_solar' : 'plan_charge';
   }

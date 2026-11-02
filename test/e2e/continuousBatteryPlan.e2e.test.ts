@@ -18,7 +18,7 @@ const HOUR_MS = 3_600_000;
 const CONFIG: ContinuousBatteryPlanConfig = {
   enabled: true, usableCapacityKWh: 10, minimumReservePercent: 20,
   roundTripEfficiency: 0.9, wearCostPerKWh: 0.03,
-  priceUnit: 'EUR',
+  priceUnit: 'EUR', exportPolicy: { kind: 'household_only' },
 };
 const context = () => ({ homey: mockHomeyInstance as unknown as Homey.App['homey'] });
 
@@ -230,6 +230,38 @@ describe('continuous battery plan through the Homey SDK', () => {
     await home.advance(5);
     expect(setpoints(home)).toContain(0);
     expect(setpoints(home).every(watts => watts >= 0)).toBe(true);
+    expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
+  });
+
+  it('sells beyond the house through the existing actuator once the owner opts in, without solar', async () => {
+    mockHomeyInstance.settings.set('export_price_enabled', true);
+    mockHomeyInstance.settings.set('export_price_source', 'manual');
+    mockHomeyInstance.settings.set('export_spot_factor', 0);
+    mockHomeyInstance.settings.set('export_fixed', 1);
+    const selling = { ...CONFIG, exportPolicy: { kind: 'price_export', netExportCeilingKW: 3 } } as const;
+    const home = await startHome(true, 80);
+    mockHomeyInstance.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, { [BATTERY]: selling });
+    await home.advance(8);
+
+    const read = (await api.ui_devices(context())).continuousBatteryPlans[BATTERY];
+    if (read.status !== 'planned') throw new Error('Expected a battery plan');
+    expect(read.exportDecision.kind).toBe('selling');
+    const sale = read.plan.periods.find(period => period.reason === 'export_energy');
+    if (sale === undefined) throw new Error('Expected a planned sale');
+    // Export pays the same every hour, so the sale may be planned for later: go there.
+    if (sale.startsAtMs > Date.now()) vi.setSystemTime(sale.startsAtMs + 60_000);
+    home.put.mockClear();
+    await home.advance(8);
+    // The house draws 1.8 kW: a sale discharges past it, within the 2.5 kW range.
+    expect(setpoints(home).some(watts => watts < -1800)).toBe(true);
+    expect(setpoints(home).every(watts => watts >= -2500)).toBe(true);
+
+    // Turning selling off keeps the claim and supplies the house only.
+    home.put.mockClear();
+    mockHomeyInstance.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, { [BATTERY]: CONFIG });
+    await home.advance(5);
+    expect(setpoints(home).length).toBeGreaterThan(0);
+    expect(setpoints(home).every(watts => watts >= -1800)).toBe(true);
     expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
   });
 

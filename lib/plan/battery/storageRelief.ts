@@ -433,9 +433,13 @@ const advanceSurplusLever = (
  * The discharge this battery was asked for and has not delivered yet, W,
  * while its increase settles. Measured against its own discharge only: a
  * charge it has not stopped yet is pending relief's credit, never this one.
+ * A selling hold earns none.
  */
 export const resolveCreditW = (storage: ObservedStorageInput, lever: StorageLeverState, nowTs: number): number => {
   if (!isStorageReliefCreditable(storage) || !isSettling(lever, nowTs)) return 0;
+  // A sale is no relief PELS may bank before it lands: its export creates no
+  // speculative credit for shedding to spend.
+  if (lever.continuousReason === 'export_energy') return 0;
   return Math.max(0, -lever.setpointW - Math.max(ownDischargeWOf(storage), lever.creditBaseW));
 };
 

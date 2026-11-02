@@ -943,6 +943,23 @@ describe('storage charge from surplus in the plan build', () => {
     expect(plannedState(plan, 'pump')).toBe('shed');
   });
 
+  it('sells through a held battery without offering its export to a surplus device', async () => {
+    const { build } = buildHarness({ paceKw: 10 });
+    const continuousPlan = {
+      setpointW: -3000, validUntilMs: START_MS + HOUR_MS, reason: 'export_energy' as const, netExportCeilingW: 3000,
+    };
+    // PELS sells at the battery's 2.5 kW delivery ceiling: the meter exports all
+    // of it, and none of it is solar.
+    const selling = battery({ signedPowerW: -2500, claimHeld: true, continuousPlan });
+    let plan = await build(-2500, [pump(false), selling]);
+    for (let reading = 1; reading <= 12; reading += 1) {
+      plan = await build(-2500, [pump(false), selling], reading * 10_000);
+      expect(storageDecision(plan)).toMatchObject({ kind: 'setpoint', setpointW: -2500 });
+    }
+    expect(plannedState(plan, 'pump')).toBe('shed');
+    expect(plan.devices.find(device => device.id === 'battery')?.storageHold).toEqual({ kind: 'plan_export' });
+  });
+
   it('offers the devices nothing of a battery PELS can only watch, discharging 2 kW into the export', async () => {
     const watched = buildHarness({ paceKw: 10 });
     const solar = buildHarness({ paceKw: 10 });

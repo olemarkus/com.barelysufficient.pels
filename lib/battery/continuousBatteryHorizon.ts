@@ -204,7 +204,10 @@ function buildEnergyPeriods(
       startsAtMs: span.startsAtMs,
       durationMs,
       importPrice: span.price.importPrice,
-      exportPrice: span.price.exportPrice ?? 0, // No forecast export: this price cannot affect the objective.
+      // No quote and no solar: household planning exports nothing, so this zero
+      // cannot affect its objective. It never authorizes selling: an absent
+      // quote marks the horizon `incomplete`, and selling waits for complete quotes.
+      exportPrice: span.price.exportPrice ?? 0,
       householdDemandKWh: hour.backgroundKWh * fraction,
       otherManagedDemandKWh,
       solarKWh: hour.solarKWh * fraction,

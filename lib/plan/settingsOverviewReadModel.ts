@@ -25,6 +25,7 @@ import { buildDeviceStatus } from './deviceStatusReadModel';
 import {
   buildHomeBatteryStatus,
   buildSettingsUiPlanHomeBattery,
+  type MainExportEvidence,
   readHomeBatteryCardForHome,
   type HomeBatteryCard,
 } from './batteryStatusReadModel';
@@ -177,10 +178,19 @@ function resolveOverviewEvChargingState(
   return read.kind === 'observed' ? read.value : undefined;
 }
 
+/** Below this measured whole-home export, kW, the meter shows no export worth a battery state. */
+const MAIN_EXPORT_MIN_KW = 0.05;
+
+/** The plan cycle's own Main-meter evidence: a measured reading only, never a carried one. */
+const resolveMainExportEvidence = (meta: DevicePlan['meta']): MainExportEvidence => (
+  { exporting: meta.powerIsMeasured && meta.totalKw <= -MAIN_EXPORT_MIN_KW }
+);
+
 /** A home battery's card: its own status, never a load's (`batteryStatusReadModel.ts`). */
 function buildHomeBatteryOverviewDevice(
   device: DevicePlan['devices'][number],
   battery: HomeBatteryCard,
+  mainExport: MainExportEvidence,
   deps: SettingsOverviewReadModelDeps,
 ): SettingsUiPlanDeviceSnapshot {
   const { available } = deps.getDeviceExecutionState(device.id);
@@ -189,11 +199,11 @@ function buildHomeBatteryOverviewDevice(
     name: device.name,
     controllable: device.control.commandAuthority,
     available,
-    status: buildHomeBatteryStatus(battery, device.storageHold, available, deps.dryRun),
+    status: buildHomeBatteryStatus(battery, device.storageHold, available, deps.dryRun, mainExport),
     isEvCharger: false,
     budgetExempt: device.budgetExempt,
     boostActive: false,
-    homeBattery: buildSettingsUiPlanHomeBattery(battery, device.storageHold, available),
+    homeBattery: buildSettingsUiPlanHomeBattery(battery, device.storageHold, available, mainExport),
   };
 }
 
@@ -270,6 +280,7 @@ export function buildSettingsOverviewReadModel(
   if (!plan) return null;
   // Built once per serialize (not per device) so the raw-snapshot scan stays O(n).
   const steppedLoadProfileById = deps.getSteppedLoadProfileById();
+  const mainExport = resolveMainExportEvidence(plan.meta);
   return {
     generatedAtMs: plan.generatedAtMs,
     meta: buildSettingsOverviewMetaReadModel(plan.meta),
@@ -280,7 +291,9 @@ export function buildSettingsOverviewReadModel(
     // area reads as no battery card (`readHomeBatteryCardForHome`).
     devices: plan.devices.flatMap((device) => {
       const homeBattery = readHomeBatteryCardForHome(deps.homeId, deps.getHomeBatteryCard, device.id);
-      if (homeBattery.kind === 'battery') return [buildHomeBatteryOverviewDevice(device, homeBattery, deps)];
+      if (homeBattery.kind === 'battery') {
+        return [buildHomeBatteryOverviewDevice(device, homeBattery, mainExport, deps)];
+      }
       if (device.isBatteryOrSolar) return [];
       return [buildLoadOverviewDevice(
         device,

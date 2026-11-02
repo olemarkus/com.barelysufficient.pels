@@ -53,7 +53,16 @@ export type BatteryEnergyHorizon = {
   periods: readonly BatteryEnergyPeriod[];
 };
 
-export type BatteryEnergyReason = 'charge_grid' | 'store_solar' | 'supply_house' | 'hold_energy';
+/**
+ * Why a period moves energy. `export_energy` is a discharge that sends battery
+ * energy to the grid, which only a price-export policy can plan.
+ */
+export type BatteryEnergyReason = 'charge_grid' | 'store_solar' | 'supply_house' | 'hold_energy' | 'export_energy';
+
+/** The owner's explicit authority to sell stored energy, with a finite positive Main-meter net-export ceiling, kW. */
+export type BatteryPriceExportPolicy = { kind: 'price_export'; netExportCeilingKW: number };
+/** Household-only planning, the default, never plans battery-driven export. */
+export type BatteryEnergyExportPolicy = { kind: 'household_only' } | BatteryPriceExportPolicy;
 
 export type BatteryEnergyPlanPeriod = {
   startsAtMs: number;

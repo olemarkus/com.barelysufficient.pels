@@ -1,15 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import {
-  compareBatteryExportEconomics, planBatteryEnergy,
-  type BatteryExportEconomicsPolicy,
-} from '../../lib/battery/planning/planBatteryEnergy';
+import { compareBatteryExportEconomics, planBatteryEnergy } from '../../lib/battery/planning/planBatteryEnergy';
 import { batteryEnergyFlow } from '../../lib/battery/planning/batteryEnergyFlow';
 import type {
-  BatteryEnergyHorizon, BatteryEnergyModel, BatteryEnergyPeriod,
+  BatteryEnergyHorizon, BatteryEnergyModel, BatteryEnergyPeriod, BatteryPriceExportPolicy,
 } from '../../packages/contracts/src/batteryPlan';
 
 const HOUR_MS = 3_600_000;
-const policy: BatteryExportEconomicsPolicy = { kind: 'price_export', netExportCeilingKW: 1 };
+const policy: BatteryPriceExportPolicy = { kind: 'price_export', netExportCeilingKW: 1 };
 const battery = (changes: Partial<BatteryEnergyModel> = {}): BatteryEnergyModel => ({
   capacityKWh: 2, storedEnergyKWh: 0, minimumEnergyKWh: 0,
   maxChargeKW: 2, chargeTaper: [], maxDischargeKW: 2, roundTripEfficiency: 1,
@@ -42,6 +39,16 @@ describe('battery export shadow economics', () => {
     expect(result.exportPeriods).toEqual([{
       startsAtMs: HOUR_MS, durationMs: HOUR_MS, batteryPowerKW: -1, batteryExportKWh: 1,
     }]);
+    expect(result.candidate.periods.map(entry => entry.reason)).toEqual(['charge_grid', 'export_energy']);
+  });
+
+  it('labels a discharge that reaches the grid export_energy and one the house uses supply_house', () => {
+    const store = battery({ storedEnergyKWh: 2 });
+    const hour = period(0, { householdDemandKWh: 0.5, exportPrice: 1 });
+    expect(batteryEnergyFlow(store, hour, 2, 0.5, policy)).toMatchObject({ reason: 'export_energy', gridExportKWh: 1 });
+    expect(batteryEnergyFlow(store, hour, 2, 1.5, policy)).toMatchObject({ reason: 'supply_house', gridExportKWh: 0 });
+    // Household-only planning cannot discharge past the house's demand at all.
+    expect(batteryEnergyFlow(store, hour, 2, 0.5, { kind: 'household_only' })).toBe(false);
   });
 
   it('accounts for reserve, both conversion losses and wear per AC kWh supplied', () => {
