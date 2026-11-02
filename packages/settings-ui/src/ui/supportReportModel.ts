@@ -93,6 +93,9 @@ const DEVICE_SUPPORT_ERRORS: Partial<Record<SupportReportErrorCode, string>> = {
   report_too_large:
     'The request is too large to send through Homey. Email the PELS developer instead, and mention the device.',
   capture_failed: 'Could not prepare the request. Your description is kept. Try Send request again.',
+  report_expired: 'The request expired before it was sent. Your description is kept; send it again.',
+  report_busy: 'Another report or request is being sent or was sent a moment ago. Wait a minute, then send yours.',
+  consent_required: 'Use Send request to send the request.',
 };
 
 export const reportErrorMessage = (code: SupportReportErrorCode, subject: SupportReportSubject): string => (

@@ -65,6 +65,11 @@ describe('support report controller', () => {
     vi.mocked(api.prepare).mockResolvedValueOnce({ ok: false, code: 'invalid_subject' });
     await controller.submit();
     expect(current().notice).toBe('Homey no longer has this device. Go back to Find a device and choose it again.');
+    vi.mocked(api.prepare).mockResolvedValueOnce({ ok: false, code: 'report_busy' });
+    await controller.submit();
+    expect(current().notice).toBe(
+      'Another report or request is being sent or was sent a moment ago. Wait a minute, then send yours.',
+    );
   });
 
   it('ignores a second send and edits while a send is in flight', async () => {
