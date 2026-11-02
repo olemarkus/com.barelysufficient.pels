@@ -137,8 +137,8 @@ describe('Norway price handlers', () => {
       });
       const { handlers, getState } = createHandlers({ priceSetup: norwaySetup({}) });
 
-      await handlers.suggestFromLocation();
-      await handlers.suggestFromLocation();
+      await handlers.askForPriceSetupSuggestion();
+      await handlers.askForPriceSetupSuggestion();
 
       expect(homeyMocks.callApi).toHaveBeenCalledTimes(1);
       expect(homeyMocks.callApi).toHaveBeenCalledWith('GET', SETTINGS_UI_PRICE_SETUP_SUGGESTION_PATH);
@@ -152,11 +152,11 @@ describe('Norway price handlers', () => {
         setup: { ...norway.setup, source: { scheme: 'homey', basis: { kind: 'chosen' } } },
       };
       const withPrices = createHandlers({ priceSetup: homeySetup, homeyStatus: { hasPrices: true } as PriceConfigState['homeyStatus'] });
-      await withPrices.handlers.suggestFromLocation();
+      await withPrices.handlers.askForPriceSetupSuggestion();
       expect(homeyMocks.callApi).not.toHaveBeenCalled();
 
       const without = createHandlers({ priceSetup: homeySetup, homeyStatus: { hasPrices: false } as PriceConfigState['homeyStatus'] });
-      await without.handlers.suggestFromLocation();
+      await without.handlers.askForPriceSetupSuggestion();
       expect(homeyMocks.callApi).toHaveBeenCalledWith('GET', SETTINGS_UI_PRICE_SETUP_SUGGESTION_PATH);
     });
 
@@ -175,18 +175,18 @@ describe('Norway price handlers', () => {
         refreshStatus: vi.fn(async () => undefined),
       });
 
-      await handlers.suggestFromLocation();
+      await handlers.askForPriceSetupSuggestion();
       // The owner follows "choose another source" and picks Norway.
       state = { ...state, priceScheme: 'norway', priceSetup: norway };
-      await handlers.suggestFromLocation();
-      await handlers.suggestFromLocation();
+      await handlers.askForPriceSetupSuggestion();
+      await handlers.askForPriceSetupSuggestion();
 
       expect(homeyMocks.callApi).toHaveBeenCalledTimes(2);
     });
 
-    it('asks again on Homey Energy after Refresh prices, but never repeats the Norway lookup', async () => {
+    it('asks again on Homey Energy each time, but never repeats the Norway lookup', async () => {
       // The owner tapped Get Power by the Hour, installed it and came back to
-      // press Refresh prices: the answer from before is out of date.
+      // the page (or pressed Refresh prices): the answer from before is out of date.
       (homeyMocks.callApi as Mock).mockResolvedValue(null);
       const norway = norwaySetup({}) as Extract<PriceSetupRead, { state: 'resolved' }>;
       let state = {
@@ -201,14 +201,53 @@ describe('Norway price handlers', () => {
         refreshStatus: vi.fn(async () => undefined),
       });
 
-      await handlers.suggestFromLocation();
-      await handlers.suggestAgainAfterRefresh();
+      await handlers.askForPriceSetupSuggestion();
+      await handlers.askForPriceSetupSuggestion();
       expect(homeyMocks.callApi).toHaveBeenCalledTimes(2);
 
+      const homey = state;
       state = { ...state, priceScheme: 'norway', priceSetup: norway };
-      await handlers.suggestFromLocation();
-      await handlers.suggestAgainAfterRefresh();
+      await handlers.askForPriceSetupSuggestion();
+      await handlers.askForPriceSetupSuggestion();
       expect(homeyMocks.callApi).toHaveBeenCalledTimes(3);
+
+      // Back to Homey Energy in the same visit: asked again, not answered from before.
+      state = homey;
+      await handlers.askForPriceSetupSuggestion();
+      expect(homeyMocks.callApi).toHaveBeenCalledTimes(4);
+    });
+
+    it('shows the Norway offer again after a detour through Homey Energy, without a second lookup', async () => {
+      const norwayAnswer = {
+        gridCompany: { kind: 'found', organizationNumber: '978631029', name: 'TENSIO TS AS', countyCode: '50' },
+        priceArea: { kind: 'from_homey_energy', area: 'NO3' },
+      };
+      (homeyMocks.callApi as Mock).mockResolvedValueOnce(norwayAnswer).mockResolvedValue(null);
+      const norway = norwaySetup({}) as Extract<PriceSetupRead, { state: 'resolved' }>;
+      let state = { priceScheme: 'norway', priceSetup: norway } as unknown as PriceConfigState;
+      const handlers = createNorwayPriceHandlers({
+        getState: () => state,
+        patchState: (patch) => { state = { ...state, ...patch }; },
+        rerender: vi.fn(),
+        refreshStatus: vi.fn(async () => undefined),
+      });
+
+      await handlers.askForPriceSetupSuggestion();
+      const offered = state.priceSetupSuggestion;
+      expect(offered).toMatchObject({ gridCompany: { kind: 'found' } });
+
+      state = {
+        ...state,
+        priceScheme: 'homey',
+        priceSetup: { state: 'resolved', setup: { ...norway.setup, source: { scheme: 'homey', basis: { kind: 'chosen' } } } },
+        homeyStatus: { hasPrices: false },
+      } as unknown as PriceConfigState;
+      await handlers.askForPriceSetupSuggestion();
+
+      state = { ...state, priceScheme: 'norway', priceSetup: norway };
+      await handlers.askForPriceSetupSuggestion();
+      expect(homeyMocks.callApi).toHaveBeenCalledTimes(2);
+      expect(state.priceSetupSuggestion).toEqual(offered);
     });
 
     it('sends the location nowhere once the owner chose both', async () => {
@@ -219,7 +258,7 @@ describe('Norway price handlers', () => {
         }),
       });
 
-      await handlers.suggestFromLocation();
+      await handlers.askForPriceSetupSuggestion();
 
       expect(homeyMocks.callApi).not.toHaveBeenCalled();
     });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   resolveNorwayChoices,
   resolvePriceSetupStatus,
@@ -120,11 +120,20 @@ describe('resolvePriceSetupStatus', () => {
   });
 
   it('is open on Power by the Hour until it has given PELS prices, whoever chose it', () => {
-    // Chosen while the app is not running, or before it has a price device.
-    expect(statusOf(readOf({ scheme: 'powerhour', basis: CHOSEN })))
-      .toEqual({ state: 'open', summary: 'Power by the Hour has no prices yet.' });
-    expect(statusOf(readOf({ scheme: 'powerhour', basis: CHOSEN }), null, { kind: 'applied' }, HOMEY_DAY))
-      .toEqual({ state: 'complete', summary: 'Power by the Hour' });
+    vi.useFakeTimers({ now: new Date('2026-10-11T12:00:00Z') });
+    try {
+      // Chosen while the app is not running, or before it has a price device.
+      expect(statusOf(readOf({ scheme: 'powerhour', basis: CHOSEN })))
+        .toEqual({ state: 'open', summary: 'Power by the Hour has no prices yet.' });
+      expect(statusOf(readOf({ scheme: 'powerhour', basis: CHOSEN }), null, { kind: 'applied' }, HOMEY_DAY))
+        .toEqual({ state: 'complete', summary: 'Power by the Hour' });
+      // A day kept from before the app stopped is not prices.
+      vi.setSystemTime(new Date('2026-10-14T12:00:00Z'));
+      expect(statusOf(readOf({ scheme: 'powerhour', basis: CHOSEN }), null, { kind: 'applied' }, HOMEY_DAY))
+        .toEqual({ state: 'open', summary: 'Power by the Hour has no prices yet.' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('is open on Homey Energy while PELS cannot work out its price setup', () => {

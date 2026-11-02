@@ -329,7 +329,7 @@ const handleSchemeChange = async (scheme: PriceScheme) => {
   // The page asks for a suggestion for the source it shows, so a source picked
   // here is asked about now, not only the next time the page opens. Outside
   // the save above: an advisory read must never roll a saved source back.
-  await norwayPriceHandlers.suggestFromLocation();
+  await norwayPriceHandlers.askForPriceSetupSuggestion();
 };
 
 const handleProviderSurchargeChange = async (val: number) => {
@@ -438,7 +438,7 @@ const handleRefreshPrices = async () => {
     await showToastError(error, 'Failed to refresh spot prices. If this keeps happening, send a diagnostics report.');
     return;
   }
-  await norwayPriceHandlers.suggestAgainAfterRefresh();
+  await norwayPriceHandlers.askForPriceSetupSuggestion();
 };
 
 const handleRefreshGridTariff = async () => {
@@ -561,12 +561,13 @@ export const refreshPriceConfigView = async () => {
 };
 
 /**
- * Opening Electricity prices: refresh it, then offer the Norway settings for
- * the hub's location if any are still missing.
+ * Opening Electricity prices: refresh it, then ask what the setup could use:
+ * the Norway settings for the hub's location while any are missing, or Power by
+ * the Hour on a Homey Energy home without prices.
  */
 export const openElectricityPricesView = async () => {
   await refreshPriceConfigView();
-  await norwayPriceHandlers.suggestFromLocation();
+  await norwayPriceHandlers.askForPriceSetupSuggestion();
 };
 
 export const reloadPriceConfigSettings = async () => {
