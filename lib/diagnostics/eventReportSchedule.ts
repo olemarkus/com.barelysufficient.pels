@@ -1,6 +1,7 @@
 /**
  * Reports on specific events the owner turned on (Settings → Advanced), such as
- * a charger that could not identify the connected car.
+ * a charger that could not identify the connected car, or a device that does
+ * not keep the settings PELS gives it.
  *
  * Checked every few minutes ({@link EVENT_REPORT_CHECK_INTERVAL_MS}) from a
  * while after start ({@link EVENT_REPORT_FIRST_CHECK_DELAY_MS}), over the device events kept in the
@@ -75,6 +76,25 @@ export const REPORTED_EVENTS: ReadonlyMap<string, (event: SupportReportDeviceEve
       problem: `Sent because ${text(event.details.chargerName) ?? chargerId} was plugged in and PELS could not `
         + `identify the connected car${reason === undefined ? '' : ` (${reason})`}. `
         + 'The owner turned on reports on specific events.',
+    }];
+  }],
+  // A device's setting kept going back to its earlier value after PELS set it,
+  // or something outside PELS kept changing it (`lib/device/controlContestObserver.ts`).
+  ['device_control_contested', (event: SupportReportDeviceEvent): EventReport[] => {
+    const deviceId = text(event.details.deviceId);
+    if (deviceId === undefined) return [];
+    const { count, firstAtMs, kind } = event.details;
+    const name = text(event.details.deviceName) ?? deviceId;
+    const times = typeof count === 'number' ? ` ${count} times` : ' repeatedly';
+    const what = kind === 'reverted'
+      ? `changes PELS made to the settings of ${name} did not stick: it went back to its earlier setting`
+      : `something outside PELS changed the settings of ${name} away from what PELS set`;
+    return [{
+      key: `${event.event}|${deviceId}`,
+      event: event.event,
+      deviceId,
+      occurredAtMs: typeof firstAtMs === 'number' ? firstAtMs : event.atMs,
+      problem: `Sent because ${what}${times} within an hour. The owner turned on reports on specific events.`,
     }];
   }],
 ]);
