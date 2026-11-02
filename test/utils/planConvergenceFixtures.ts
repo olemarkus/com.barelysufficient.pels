@@ -17,6 +17,7 @@ import {
   fixtureResidualKw,
   resolveFixtureCurrentOn,
   withMaterializedEvPlugState,
+  withFixtureTargetCommand,
 } from './planTestUtils';
 import type { BinaryControlObservation } from '../../packages/contracts/src/types';
 
@@ -26,6 +27,7 @@ export type LooseOutputDevice = Partial<DevicePlan['devices'][number]>
   & MeteredDiscriminantProbe
   & {
     binaryCapabilityId?: string; evChargingState?: string;
+    recordRestoreOnTargetApply?: boolean;
     /**
      * Fixture shorthands for the control posture, resolved exactly as on the
      * input side: a spec that only cares whether the device is power-limited
@@ -43,7 +45,7 @@ export const asOutputDevice = (
 ): DevicePlan['devices'][number] => {
   const materialized = withMaterializedEvPlugState(loose);
   const {
-    binaryCapabilityId, binaryControl, currentOn,
+    binaryCapabilityId, binaryControl, currentOn, recordRestoreOnTargetApply = false,
     // Plan-INPUT bits. `withMaterializedEvPlugState` stamps them for the input
     // builder; an output device carries none of them, and `confirmedNotDrawing`
     // in particular is the evidence `planTypes.ts` says must not travel onto the
@@ -53,7 +55,7 @@ export const asOutputDevice = (
     confirmedNotDrawing: _confirmedNotDrawing,
     ...semantic
   } = materialized;
-  return withBinaryDiscriminant(withTemperatureDiscriminant({
+  const device = withBinaryDiscriminant(withTemperatureDiscriminant({
     ...semantic,
     // Producer-resolved and REQUIRED on the plan device, so absence never reads
     // as "no": a fixture that says nothing is an ordinary on/off load.
@@ -86,6 +88,7 @@ export const asOutputDevice = (
       currentOn: currentOn ?? resolveFixtureCurrentOn({ ...materialized, binaryControl }),
     } : {}),
   })) as DevicePlan['devices'][number];
+  return withFixtureTargetCommand(device, recordRestoreOnTargetApply);
 };
 
 export type LooseInputDevice = Partial<PlanInputDevice>

@@ -64,6 +64,7 @@ import {
   resolveFixtureCurrentOn,
   withFixtureResidualKw,
   withMaterializedEvPlugState,
+  withFixtureTargetCommand,
 } from '../utils/planTestUtils';
 import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import { noStorageTransport } from '../helpers/storageTransportStub';
@@ -98,7 +99,9 @@ const pd = (
     & SteppedDiscriminantProbe
     & {
       deviceType?: 'temperature' | 'onoff';
+      recordRestoreOnTargetApply?: boolean;
       currentTarget?: number;
+      currentDrawKw?: number;
       currentTemperature?: number;
       plannedTarget?: number;
       evChargingState?: string;
@@ -109,33 +112,37 @@ const pd = (
       managed?: boolean;
       commandAuthority?: boolean;
     },
-): DevicePlanDevice => withTemperatureDiscriminant(
-  // `withMaterializedEvPlugState` regroups the way the producer does: it strips the
-  // raw `evChargingState` (which the producer drops in production) and
-  // materializes `commandableNow` + the EV trio in its place. Without it these
-  // fixtures kept a field production removes, which is exactly why the executor's
-  // EV path looked covered while `hasStableBinaryReleaseActuation` was dead.
-  withSteppedDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
-    ...withMaterializedEvPlugState(loose),
-    // Producer-resolved identity, REQUIRED on the plan device: a fixture that
-    // says nothing is an ordinary on/off load.
-    deviceType: loose.deviceType ?? 'onoff',
-    isEvCharger: loose.isEvCharger ?? false,
-    isBatteryOrSolar: loose.isBatteryOrSolar ?? false,
-    control: fixtureControlPosture(loose),
-    currentOn: resolveFixtureCurrentOn(loose),
-    // Mirrors production's ONE stamp site (`finalizePlanDevices`): the plan's
-    // shed END STATE, which is what the executor projection reads instead of
-    // the shed policy. An explicit override still wins.
-    plannedShedTargetKind: loose.plannedShedTargetKind
-      ?? resolvePlannedShedTargetKind({
-        plannedState: loose.plannedState ?? 'keep',
-        shedAction: loose.shedAction,
-        steppedLoadProfile: loose.steppedLoadProfile,
-        plannedShedStepId: loose.plannedShedStepId,
-      }),
-  }))),
-) as DevicePlanDevice;
+): DevicePlanDevice => {
+  const { recordRestoreOnTargetApply = false, ...semantic } = loose;
+  const device = withTemperatureDiscriminant(
+    // `withMaterializedEvPlugState` regroups the way the producer does: it strips the
+    // raw `evChargingState` (which the producer drops in production) and
+    // materializes `commandableNow` + the EV trio in its place. Without it these
+    // fixtures kept a field production removes, which is exactly why the executor's
+    // EV path looked covered while `hasStableBinaryReleaseActuation` was dead.
+    withSteppedDiscriminant(withBinaryDiscriminant(withFixtureResidualKw({
+      ...withMaterializedEvPlugState(semantic),
+      // Producer-resolved identity, REQUIRED on the plan device: a fixture that
+      // says nothing is an ordinary on/off load.
+      deviceType: loose.deviceType ?? 'onoff',
+      isEvCharger: loose.isEvCharger ?? false,
+      isBatteryOrSolar: loose.isBatteryOrSolar ?? false,
+      control: fixtureControlPosture(loose),
+      currentOn: resolveFixtureCurrentOn(loose),
+      // Mirrors production's ONE stamp site (`finalizePlanDevices`): the plan's
+      // shed END STATE, which is what the executor projection reads instead of
+      // the shed policy. An explicit override still wins.
+      plannedShedTargetKind: loose.plannedShedTargetKind
+        ?? resolvePlannedShedTargetKind({
+          plannedState: loose.plannedState ?? 'keep',
+          shedAction: loose.shedAction,
+          steppedLoadProfile: loose.steppedLoadProfile,
+          plannedShedStepId: loose.plannedShedStepId,
+        }),
+    }))),
+  ) as DevicePlanDevice;
+  return withFixtureTargetCommand(device, recordRestoreOnTargetApply);
+};
 
 const buildPlan = (): DevicePlan => ({
   meta: buildPlanMeta({
@@ -143,18 +150,15 @@ const buildPlan = (): DevicePlan => ({
     softLimitKw: 5,
     headroomKw: 4}),
   devices: [
-    withTemperatureDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
+    pd({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
       recordRestoreOnTargetApply: false,
       priceTargetShift: { kind: 'none' as const },
       binaryCommandPending: false,
       id: 'dev-1',
       name: 'Heater',
       commandableNow: true,
-      boostSupported: false,
-      boostRequested: false,
       hasStandingDemand: true,
       surplusTracking: false,
-      confirmedNotDrawing: false,
       deviceType: 'temperature' as const,
       isEvCharger: false,
       isBatteryOrSolar: false,
@@ -169,7 +173,7 @@ const buildPlan = (): DevicePlan => ({
       available: true,
       currentOn: false,
       reason: KEEP_REASON,
-    })),
+    }),
   ],
   inverterDecisions: [],
   storageReleases: [],
@@ -181,7 +185,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
     softLimitKw: 5,
     headroomKw: 4}),
   devices: [
-    withTemperatureDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
+    pd({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
       // What production's `finalizePlanDevices` stamps for this harness's flat
       // 16° floor: observed at the floor and the plan raises it.
       recordRestoreOnTargetApply: currentTarget === 16 && plannedTarget > currentTarget,
@@ -190,11 +194,8 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       id: 'dev-1',
       name: 'Heater',
       commandableNow: true,
-      boostSupported: false,
-      boostRequested: false,
       hasStandingDemand: true,
       surplusTracking: false,
-      confirmedNotDrawing: false,
       deviceType: 'temperature' as const,
       isEvCharger: false,
       isBatteryOrSolar: false,
@@ -209,7 +210,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       available: true,
       currentOn: true,
       reason: KEEP_REASON,
-    })),
+    }),
   ],
   inverterDecisions: [],
   storageReleases: [],
@@ -1879,8 +1880,7 @@ describe('PlanExecutor stepped loads', () => {
         softLimitKw: 5,
         headroomKw: 4}),
       devices: [
-        withTemperatureDiscriminant(withSteppedDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
-          recordRestoreOnTargetApply: false,
+        withFixtureTargetCommand(withTemperatureDiscriminant(withSteppedDiscriminant(withFixtureResidualKw({ expectedPowerKw: 1, expectedPowerSource: 'default' as const, currentDrawKw: 0,
           priceTargetShift: { kind: 'none' as const },
           binaryCommandPending: false,
           ...merged,
@@ -1901,7 +1901,7 @@ describe('PlanExecutor stepped loads', () => {
               plannedShedStepId?: string;
             },
           ),
-        }))),
+        }))) as DevicePlanDevice),
       ],
       inverterDecisions: [],
       storageReleases: [],

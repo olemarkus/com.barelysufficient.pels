@@ -265,6 +265,7 @@ function buildPlanSignatureDevice(device: DevicePlanDevice): Record<string, unkn
     desiredStepId: device.desiredStepId,
     shedAction: device.shedAction,
     deferredReleaseIntent: device.deferredReleaseIntent,
+    targetCommand: device.targetCommand,
     commandAuthority: device.control.commandAuthority,
     // A home battery's setpoint or hand-back is an action like any other: a
     // changed one must reach the executor (`lib/executor/batteryExecutor.ts`).

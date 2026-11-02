@@ -1,3 +1,4 @@
+import { buildPlannedTargetCommand } from './planTargetCommand';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { DevicePlanDevice } from './planTypes';
 import {
@@ -270,16 +271,18 @@ export function finalizePlanDevices(
   // at device-build time would be stale by the time the plan leaves the builder;
   // this is the last transform before `DevicePlan.devices`, so what it sees is
   // the decision. See `PlannedShedTargetKind`. The restore classification
-  // (`recordRestoreOnTargetApply`) is stamped here for the same reason, from
+  // carried by `targetCommand` is stamped here for the same reason, from
   // the same decision-of-record view.
   const normalizedShedFloorCByDevice = resolveNormalizedShedFloors(temperatureSetpoints);
-  const stamped = planDevices.map((dev): DevicePlanDevice => ({
-    ...dev,
-    plannedShedTargetKind: resolvePlannedShedTargetKind(dev),
-    recordRestoreOnTargetApply: resolveRecordRestoreOnTargetApply(
-      dev, temperatureSetpoints, normalizedShedFloorCByDevice, wasShedLastBuild,
-    ),
-  }));
+  const stamped = planDevices.map((dev): DevicePlanDevice => {
+    const finalized = { ...dev, plannedShedTargetKind: resolvePlannedShedTargetKind(dev) };
+    return {
+      ...finalized,
+      targetCommand: buildPlannedTargetCommand(finalized, resolveRecordRestoreOnTargetApply(
+        dev, temperatureSetpoints, normalizedShedFloorCByDevice, wasShedLastBuild,
+      )),
+    };
+  });
   const sorted = sortByPriorityAsc(stamped);
   const issues = sorted
     .map(validatePlanReasonPair)
@@ -299,7 +302,7 @@ export function finalizePlanDevices(
 
 /**
  * Planner-resolved restore classification for the executor's target lane
- * (semantics on the `DevicePlanDevice.recordRestoreOnTargetApply` docblock):
+ * (semantics on the `PlannedTargetCommand.recordRestoreOnTargetApply` docblock):
  * the device's observed setpoint sits AT a shed floor and this plan moves it
  * off that floor — applying that write is a restore, and the executor stamps
  * the restore clocks when it lands.

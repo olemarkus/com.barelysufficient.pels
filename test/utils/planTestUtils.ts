@@ -1,3 +1,4 @@
+import { buildPlannedTargetCommand } from '../../lib/plan/planTargetCommand';
 import type { ChargeTargetHold, DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import { NO_SHEDDING_OUTCOME } from '../../lib/plan/planState';
 import type { SheddingPlan } from '../../lib/plan/shedding/types';
@@ -810,6 +811,8 @@ export type PlanDeviceFixtureOverrides = Partial<DevicePlanDevice> & Temperature
   reason?: DevicePlanDevice['reason'] | string;
   evChargingState?: string;
   deviceType?: 'temperature' | 'onoff';
+  /** Input to fixture finalization, consumed rather than copied onto the plan. */
+  recordRestoreOnTargetApply?: boolean;
   currentOn?: boolean;
   binaryControl?: { on: boolean };
   binaryControllable?: boolean;
@@ -845,6 +848,14 @@ export type PlanDeviceFixtureOverrides = Partial<DevicePlanDevice> & Temperature
   shedBehavior?: FixtureShedBehavior;
 };
 
+/** Finalize the temperature axis on a fixture through the real planner producer. */
+export function withFixtureTargetCommand<T extends DevicePlanDevice>(
+  device: T,
+  recordRestoreOnTargetApply = false,
+): T {
+  return { ...device, targetCommand: buildPlannedTargetCommand(device, recordRestoreOnTargetApply) };
+}
+
 /** A fixture with no power reading: no `currentDrawKw` is stamped. */
 export function buildPlanDevice(overrides: PlanDeviceFixtureOverrides & { unmetered: true }): DevicePlanDevice;
 /**
@@ -857,7 +868,7 @@ export function buildPlanDevice(
 ): MeteredDevicePlanDevice;
 export function buildPlanDevice(overrides: PlanDeviceFixtureOverrides = {}): DevicePlanDevice {
   const {
-    reason, currentTarget, currentTemperature,
+    reason, currentTarget, currentTemperature, recordRestoreOnTargetApply = false,
     binaryControllable: _binaryControllable,
     binaryCapabilityId: _binaryCapabilityId,
     shedBehavior: _shedBehavior,
@@ -871,14 +882,12 @@ export function buildPlanDevice(overrides: PlanDeviceFixtureOverrides = {}): Dev
   };
   const binaryExplicitlyDisabled = fixtureBinaryAxisDisabled(overrides);
   const currentOn = resolveFixtureCurrentOn(o);
-  return {
+  const device = {
     id: 'dev',
     name: 'Device',
     // Producer-resolved label (an explicit override in `...rest` still wins below).
     currentState: resolveFixtureCurrentState({ ...o, binaryControllable: !binaryExplicitlyDisabled }),
     plannedState: 'keep',
-    // Finalize-stamped in production; fixture default mirrors pre-finalize.
-    recordRestoreOnTargetApply: false,
     priceTargetShift: { kind: 'none' },
     reason: fixtureDeviceReason('keep')!,
     ...withFixtureSteppedTriple(withFixtureTemperatureKind({
@@ -951,6 +960,7 @@ export function buildPlanDevice(overrides: PlanDeviceFixtureOverrides = {}): Dev
       ? { reason: typeof reason === 'string' ? fixtureDeviceReason(reason)! : reason }
       : {}),
   } as DevicePlanDevice;
+  return withFixtureTargetCommand(device, recordRestoreOnTargetApply);
 }
 
 /**

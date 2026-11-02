@@ -1,34 +1,9 @@
-import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import { isRestoreAdmissionHoldReason } from '../planContract/planDecisionSemantics';
-import { isTemperaturePlanDevice } from '../plan/planTemperatureDevice';
-import type { DevicePlan } from '../plan/planTypes';
 import type {
   ExecutableObservedDeviceState,
   ExecutableTargetCommand,
   ExecutableTargetIntent,
   ExecutableTargetUpdate,
 } from './executablePlan';
-
-type PlanDevice = DevicePlan['devices'][number];
-
-export function buildExecutableTargetIntent(dev: PlanDevice): ExecutableTargetIntent | undefined {
-  if (!isTemperaturePlanDevice(dev)) return undefined;
-  if (dev.reason?.code === PLAN_REASON_CODES.swapPending && dev.reason.targetName === null) return undefined;
-  if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return undefined;
-  const intent: ExecutableTargetIntent = {
-    deviceId: dev.id,
-    name: dev.name,
-    desired: dev.plannedTarget,
-    // `shed_temperature` when the setpoint the plan wants written IS this
-    // device's shed end state, rather than an ordinary target update.
-    purpose: dev.plannedShedTargetKind === 'target_value'
-      ? 'shed_temperature'
-      : 'target_update',
-    recordRestoreOnTargetApply: dev.recordRestoreOnTargetApply,
-    restoreFromTarget: dev.currentTarget,
-  };
-  return intent;
-}
 
 export function buildExecutableTargetUpdate(
   intent: ExecutableTargetIntent | undefined,

@@ -214,8 +214,6 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
     deviceType: dev.deviceType,
     currentState,
     plannedState,
-    // Finalize decides (`finalizePlanDevices`); pre-finalize always false.
-    recordRestoreOnTargetApply: false,
     reportedStepId: dev.reportedStepId,
     desiredStepId: effectiveDesiredStepId,
     previousStepId: dev.previousStepId,

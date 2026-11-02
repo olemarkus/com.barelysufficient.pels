@@ -6,7 +6,6 @@ import {
 } from '../../lib/plan/planReasonShortfall';
 import { computeRestoreRequirementKw, estimateRestorePower } from '../../lib/plan/restore/accounting';
 import { getRestoreNeed } from '../../lib/plan/restore/support';
-import { buildExecutableTargetIntent } from '../../lib/executor/executableTargetProjection';
 import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';
 import { buildRestoreHeadroomReason } from '../../lib/plan/planReasonStrings';
 import { formatDeviceReasonUserFacing, PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -1010,7 +1009,7 @@ describe('finalizePlanDevices', () => {
       plannedTarget: 21,
     })], fixtureLimitedSetpoints({ 'dev': 17 }), new Set(['dev']));
 
-    expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(true);
+    expect(finalized.planDevices[0]?.targetCommand?.recordRestoreOnTargetApply).toBe(true);
   });
 
   it('stamps the restore classification for a move off the limit, whichever way it goes', () => {
@@ -1027,7 +1026,7 @@ describe('finalizePlanDevices', () => {
       plannedTarget: 22,
     })], fixtureLimitedSetpoints({ 'dev': 28 }), new Set<string>());
 
-    expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(true);
+    expect(finalized.planDevices[0]?.targetCommand?.recordRestoreOnTargetApply).toBe(true);
   });
 
   it('does not stamp the restore classification for a write TO the limit', () => {
@@ -1039,7 +1038,7 @@ describe('finalizePlanDevices', () => {
       plannedTarget: 28,
     })], fixtureLimitedSetpoints({ 'dev': 28 }), new Set<string>(['dev']));
 
-    expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(false);
+    expect(finalized.planDevices[0]?.targetCommand?.recordRestoreOnTargetApply).toBe(false);
   });
 
   it('does not stamp the restore classification for an ordinary off-floor raise', () => {
@@ -1051,7 +1050,7 @@ describe('finalizePlanDevices', () => {
       plannedTarget: 21,
     })], fixtureLimitedSetpoints({ 'dev': 16 }), new Set<string>());
 
-    expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(false);
+    expect(finalized.planDevices[0]?.targetCommand?.recordRestoreOnTargetApply).toBe(false);
   });
 
   it('does not stamp the restore classification for a move off the limit that asks for less work', () => {
@@ -1065,7 +1064,7 @@ describe('finalizePlanDevices', () => {
       plannedTarget: 15,
     })], fixtureLimitedSetpoints({ dev: 16 }, { keepC: 15, keepAddsDemand: false }), new Set<string>(['dev']));
 
-    expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(false);
+    expect(finalized.planDevices[0]?.targetCommand?.recordRestoreOnTargetApply).toBe(false);
   });
 
   it('does not stamp the restore classification for a device not limited by setpoint', () => {
@@ -1078,7 +1077,7 @@ describe('finalizePlanDevices', () => {
       plannedTarget: 21,
     })], new Map([['dev', fixtureTemperatureSetpointsEntry({ keepAddsDemand: true })]]), new Set<string>(['dev']));
 
-    expect(finalized.planDevices[0]?.recordRestoreOnTargetApply).toBe(false);
+    expect(finalized.planDevices[0]?.targetCommand?.recordRestoreOnTargetApply).toBe(false);
   });
 
   it('throws when an awaitingSolarSurplus reason rides a device WITHOUT the surplusOnly posture', () => {
@@ -1407,17 +1406,19 @@ describe('applyShedTemperatureHold', () => {
     });
 
     // `cooldownRestore` is in `RESTORE_ADMISSION_HOLD_REASON_CODES`, so
-    // `buildExecutableTargetIntent` builds NO write for a device carrying it.
+    // `buildPlannedTargetCommand` builds NO write for a device carrying it.
     // Harmless once the device sits at its floor — there is nothing left to
     // write — but fatal while the shed is still in flight: the thermostat would
     // draw unchecked for the whole 60–300 s cooldown. Asserting `plannedTarget`
     // alone does not catch that; it is the plan's intent, not the executor's.
     it('keeps building the floor write while the shed has not materialized', () => {
       const inFlight = runHold({ timing: { inRestoreCooldown: true }, currentTarget: 22 });
-      const [device] = inFlight.planDevices;
+      const [device] = finalizePlanDevices(
+        inFlight.planDevices, fixtureLimitedSetpoints({ 'dev-temp': 16 }), new Set(['dev-temp']),
+      ).planDevices;
 
       expect(device?.reason.code).toBe(PLAN_REASON_CODES.capacity);
-      expect(device && buildExecutableTargetIntent(device)).toMatchObject({
+      expect(device?.targetCommand).toMatchObject({
         desired: 16,
         purpose: 'shed_temperature',
       });
@@ -1426,6 +1427,10 @@ describe('applyShedTemperatureHold', () => {
       // so the honest countdown wins.
       const settled = runHold({ timing: { inRestoreCooldown: true } });
       expect(settled.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.cooldownRestore);
+      const [finalSettled] = finalizePlanDevices(
+        settled.planDevices, fixtureLimitedSetpoints({ 'dev-temp': 16 }), new Set(['dev-temp']),
+      ).planDevices;
+      expect(finalSettled.targetCommand).toBeUndefined();
     });
 
     it('reads startup stabilization for a device PELS has controlled', () => {
@@ -1466,5 +1471,30 @@ describe('applyShedTemperatureHold', () => {
 
       expect(result.planDevices[0]?.reason.code).toBe(PLAN_REASON_CODES.capacity);
     });
+  });
+});
+
+describe('finalized target command boundary', () => {
+  it.each<DevicePlanDevice['reason']>([
+    fixtureDeviceReason('cooldown (restore, 30s remaining)')!,
+    { code: PLAN_REASON_CODES.swapPending, targetName: null },
+  ])('removes a carried command when the final reason holds the target axis', (reason) => {
+    const device = buildPlanDevice({ deviceType: 'temperature', currentTarget: 16, currentTemperature: 16, plannedTarget: 21 });
+    expect(device.targetCommand).toBeDefined();
+    const [finalized] = finalizePlanDevices(
+      [{ ...device, reason }], fixtureLimitedSetpoints({ dev: 16 }), new Set<string>(),
+    ).planDevices;
+    expect(finalized.targetCommand).toBeUndefined();
+  });
+
+  it('replaces an earlier command with the final target and restore classification', () => {
+    const device = buildPlanDevice({ deviceType: 'temperature', currentTarget: 16, currentTemperature: 16, plannedTarget: 21 });
+    expect(device.targetCommand?.desired).toBe(21);
+    if (!isTemperaturePlanDevice(device)) throw new Error('Expected a temperature fixture');
+    const changed = { ...device, plannedTarget: 23 };
+    const [finalized] = finalizePlanDevices(
+      [changed], fixtureLimitedSetpoints({ dev: 16 }), new Set<string>(),
+    ).planDevices;
+    expect(finalized.targetCommand).toMatchObject({ desired: 23, recordRestoreOnTargetApply: true, restoreFromTarget: 16 });
   });
 });
