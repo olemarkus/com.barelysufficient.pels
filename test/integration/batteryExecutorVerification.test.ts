@@ -311,7 +311,9 @@ describe('battery storage lane', () => {
     await send(-2500, laterMs + 60_000);
     read(-2000, 2000, laterMs + 60_000 + CONTROL_COMMAND_CONFIRMATION_MS);
     expect(ledger.read(BATTERY, RANGE, Date.now()))
-      .toEqual({ verdict: 'responding', deliveryCeilingW: 2000, chargeCeiling: { everyLevelW: 2500, taper: [] } });
+      .toEqual({
+        verdict: 'responding', deliveryCeilingW: 2000, chargeCeiling: { everyLevelW: 2500, taper: [], planningTaper: [] },
+      });
   });
 
   it('confirms a charge setpoint and checks its sign the other way round', async () => {
@@ -324,7 +326,7 @@ describe('battery storage lane', () => {
     read(1500, 5510, 15_000);
     read(1500, 5520, 25_000);
     expect(verdict()).toBe('responding');
-    expect(ledger.read(BATTERY, RANGE, Date.now()).chargeCeiling).toEqual({ everyLevelW: 2500, taper: [] });
+    expect(ledger.read(BATTERY, RANGE, Date.now()).chargeCeiling).toEqual({ everyLevelW: 2500, taper: [], planningTaper: [] });
   });
 
   it('learns a charge ceiling from a charge that stops short, and a full battery is no failure', async () => {
@@ -359,7 +361,9 @@ describe('battery storage lane', () => {
     await send(2000, 0);
     read(0, 3000, CONTROL_COMMAND_CONFIRMATION_MS);
     expect(ledger.read(BATTERY, RANGE, Date.now()).chargeCeiling)
-      .toEqual({ everyLevelW: 2500, taper: [{ fromPercent: 95, ceilingW: 0 }] });
+      .toEqual({
+        everyLevelW: 2500, taper: [{ fromPercent: 95, ceilingW: 0 }], planningTaper: [{ fromPercent: 95, ceilingW: 0 }],
+      });
   });
 
   it('marks a battery sign-inverted from charge steps too', async () => {

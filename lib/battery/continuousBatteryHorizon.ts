@@ -92,7 +92,7 @@ function readHorizon(
       storedEnergyKWh: config.usableCapacityKWh * level.percent / 100,
       minimumEnergyKWh: config.usableCapacityKWh * config.minimumReservePercent / 100,
       maxChargeKW: Math.min(control.range.maxW, chargeCeiling.everyLevelW) / 1000,
-      chargeTaper: chargeCeiling.taper.map(step => ({
+      chargeTaper: chargeCeiling.planningTaper.map(step => ({
         fromEnergyKWh: config.usableCapacityKWh * step.fromPercent / 100,
         maxChargeKW: Math.min(control.range.maxW, step.ceilingW) / 1000,
       })),
