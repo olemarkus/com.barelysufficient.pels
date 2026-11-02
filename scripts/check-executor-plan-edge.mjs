@@ -51,10 +51,6 @@ const planDir = path.join(rootDir, 'lib', 'plan');
 // PR description, and the seam train's definition-of-done is this list empty and
 // the cruiser rule flipped to error.
 const ALLOWED = new Set([
-  'binaryControlDispatch.ts -> planBinaryControl',
-  'binaryControlDispatch.ts -> planBinaryControlHelpers',
-  'binaryControlShared.ts -> planBinaryControlHelpers',
-  'binaryExecutor.ts -> planBinaryControl',
   'executablePlanProjection.ts -> planBinaryDevice',
   'executablePlanProjection.ts -> planSteppedLoad',
   'executablePlanProjection.ts -> planTypes',

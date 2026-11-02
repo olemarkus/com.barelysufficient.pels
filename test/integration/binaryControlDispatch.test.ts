@@ -139,6 +139,47 @@ describe('binary command dispatch', () => {
     expect(requestBinaryControl).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [false, false],
+    [true, true],
+  ])('uses the supplied snapshot only for lifecycle release=%s', async (lifecycleRelease, applied) => {
+    const { requestBinaryControl, transport } = buildTransport();
+    transport.getObservedState = () => ({ binaryControl: { on: false } });
+
+    await expect(decideAndDispatchBinaryControl(
+      transport,
+      { deviceId: 'device-1', name: 'Load', desired: false, logContext: 'capacity', lifecycleRelease },
+      { targets: [], binaryControl: { on: true }, canSetControl: true },
+    )).resolves.toEqual({ applied });
+    expect(requestBinaryControl).toHaveBeenCalledTimes(applied ? 1 : 0);
+  });
+
+  it('suppresses a matching pending command before it is observed', async () => {
+    const { requestBinaryControl, transport } = buildTransport();
+    transport.pendingBinaryCommandStore.record('device-1', { desired: true, startedMs: Date.now() });
+
+    await expect(decideAndDispatchBinaryControl(
+      transport,
+      { deviceId: 'device-1', name: 'Load', desired: true, logContext: 'capacity' },
+      { targets: [], binaryControl: { on: false }, canSetControl: true },
+    )).resolves.toEqual({ applied: false });
+    expect(requestBinaryControl).not.toHaveBeenCalled();
+    expect(logs.findEvent('binary_command_skipped')).toMatchObject({ reasonCode: 'already_pending' });
+  });
+
+  it('supersedes an opposite pending command even when observation already matches', async () => {
+    const { requestBinaryControl, state, transport } = buildTransport();
+    transport.pendingBinaryCommandStore.record('device-1', { desired: true, startedMs: Date.now() });
+
+    await expect(decideAndDispatchBinaryControl(
+      transport,
+      { deviceId: 'device-1', name: 'Load', desired: false, logContext: 'capacity' },
+      { targets: [], binaryControl: { on: false }, canSetControl: true },
+    )).resolves.toEqual({ applied: true });
+    expect(requestBinaryControl).toHaveBeenCalledWith('device-1', false);
+    expect(state.pendingBinaryCommands['device-1']).toMatchObject({ desired: false });
+  });
+
   it('settles a binary command from the producer-confirmed control-capability read', () => {
     const state = createPlanEngineState();
     const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);

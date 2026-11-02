@@ -5,7 +5,6 @@ import {
   resolveBinaryCommandCurrentOn,
 } from '../../packages/shared-domain/src/binaryControlState';
 import { getDebugEmitter } from '../logging/logger';
-import type { BinaryControlPlan } from '../device/deviceActionProjection';
 
 /**
  * Command decisions go to the `plan` debug topic: a skip is the executor half of
@@ -17,7 +16,7 @@ import type { BinaryControlPlan } from '../device/deviceActionProjection';
 const emitExecutorDebug = getDebugEmitter('executor', 'plan');
 
 /**
- * The decomposed snapshot surface the binary-control decision reads: observed
+ * The decomposed snapshot surface the binary-command preflight reads: observed
  * truth (`targets`/`binaryControl`) plus the descriptor config the skip/route
  * gates consult. Narrower than the raw producer `TargetDeviceSnapshot` — the
  * full snapshot remains assignable, so callers pass it unchanged.
@@ -30,7 +29,7 @@ export type BinaryControlDecisionSnapshot = Pick<ObservedDeviceState, 'targets' 
 
 /**
  * The observer's binary axis for one device, live — the only observed read the
- * binary-control decision makes. `undefined` for a device the observer has not
+ * binary-command preflight makes. `undefined` for a device the observer has not
  * recorded; the decision then falls back to the snapshot the caller carried
  * into the cycle. Stage 5 of the snapshot decomposition: this used to be the
  * transport's `getSnapshotByDeviceId`, which handed the decision the whole raw
@@ -40,24 +39,27 @@ export type ObservedBinaryControlRead = (
   deviceId: string,
 ) => Pick<ObservedDeviceState, 'binaryControl'> | undefined;
 
-// `BinaryControlPlan` is owned by the producer
-// (`lib/device/deviceActionProjection.ts`) — plan consumes the same flat
-// shape it gets back from `getBinaryControlPlan`. Re-exported here for
-// plan-internal consumers that already imported it from this module.
-export type { BinaryControlPlan };
+type BinaryControlPlan = { canSet: boolean };
 
-export type BinaryControlLogContext = 'capacity' | 'capacity_control_off';
+type BinaryControlPlanInput = Pick<BinaryControlDecisionSnapshot, 'binaryControl' | 'currentOn' | 'canSetControl'>;
 
 /**
- * One binary command. The executor asks for it in this shape (`runBinaryControl`)
- * and the plan layer's `decideBinaryControl` hands it back for each device that
- * should actuate. The executor records provisional pending state
- * before dispatch, accepts it only after transport success and a live authority
- * check, and clears it when dispatch cannot proceed.
- *
- * Keep this struct flat and serializable — it is the structural seam the
- * cruiser rule pins between `lib/plan/` (decision producer) and
- * `lib/executor/` (transport dispatcher).
+ * Compatibility preflight over the executor's accepted snapshot. Device-side
+ * capability resolution stays with the device owner; the actuator checks the
+ * current write surface before dispatch. Keep a missing axis distinct from an
+ * unwritable one because binary shedding records those outcomes differently.
+ */
+export function getBinaryControlPlan(snapshot?: BinaryControlPlanInput): BinaryControlPlan | null {
+  if (!snapshot || (!isBinaryControlled(snapshot) && typeof snapshot.currentOn !== 'boolean')) return null;
+  return { canSet: snapshot.canSetControl !== false };
+}
+
+type BinaryControlLogContext = 'capacity' | 'capacity_control_off';
+
+/**
+ * One requested binary command. Executor preflight checks observed and pending
+ * state before dispatch records the provisional pending entry. Lifecycle release
+ * carries its distinct accounting through direct and deferred confirmation.
  */
 export type BinaryControlDecision = {
   deviceId: string;
@@ -74,18 +76,39 @@ export type BinaryControlDecision = {
 };
 
 /**
- * The two live reads the binary-control decision makes. The executor's command
+ * The two live reads the binary-command preflight makes. The executor's command
  * context carries both under these names, so it passes itself.
  */
-export type BinaryControlDeps = {
+type BinaryControlDeps = {
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   getObservedState: ObservedBinaryControlRead;
 };
 
-export function shouldSkipBinaryControl(
+/** Skip unsupported, already-matched or already-pending writes without changing the requested state. */
+export function decideBinaryControl(
+  deps: BinaryControlDeps,
+  command: BinaryControlDecision,
+  snapshot: BinaryControlDecisionSnapshot | undefined,
+  forceAgainstReleasedOpposing: boolean,
+): BinaryControlDecision | null {
+  const controlPlan = getBinaryControlPlan(snapshot);
+  const decision: BinaryControlDecision = {
+    deviceId: command.deviceId,
+    name: command.name,
+    desired: command.desired,
+    logContext: command.logContext,
+    ...(command.lifecycleRelease ? { lifecycleRelease: true } : {}),
+  };
+  if (shouldSkipBinaryControl(deps, controlPlan, decision, snapshot, forceAgainstReleasedOpposing)) {
+    return null;
+  }
+  return decision;
+}
+
+function shouldSkipBinaryControl(
   deps: BinaryControlDeps,
   controlPlan: BinaryControlPlan | null,
-  /** The decision this cycle would hand the executor if nothing skips it. */
+  /** The requested command, before dispatch preflight. */
   decision: BinaryControlDecision,
   snapshot: BinaryControlDecisionSnapshot | undefined,
   forceAgainstReleasedOpposing: boolean,
@@ -146,7 +169,7 @@ export function shouldSkipBinaryControl(
   return false;
 }
 
-export function shouldSkipAlreadyMatched(
+function shouldSkipAlreadyMatched(
   deps: BinaryControlDeps,
   decision: BinaryControlDecision,
   snapshot: BinaryControlDecisionSnapshot | undefined,
@@ -183,7 +206,7 @@ function hasOppositePendingBinaryCommand(
   return pending.desired !== desired;
 }
 
-export function hasPendingMatchingBinaryCommand(
+function hasPendingMatchingBinaryCommand(
   pendingBinaryCommandStore: PendingBinaryCommandStore,
   deviceId: string,
   desired: boolean,

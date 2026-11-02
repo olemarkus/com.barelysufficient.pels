@@ -9,7 +9,7 @@ import {
 } from './executorSupport';
 import {
   getBinaryControlPlan,
-} from '../plan/planBinaryControl';
+} from './binaryControlPreflight';
 import {
   shedActuationStampsCapacityMarkers,
 } from './lifecycleReleaseRecording';

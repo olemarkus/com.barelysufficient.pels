@@ -1,9 +1,9 @@
 import {
+  decideBinaryControl,
   type BinaryControlDecision,
   type BinaryControlDecisionSnapshot,
   type ObservedBinaryControlRead,
-} from '../plan/planBinaryControlHelpers';
-import { decideBinaryControl } from '../plan/planBinaryControl';
+} from './binaryControlPreflight';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type { Actuator } from '../actuator/deviceActuator';
 import { getLogger } from '../logging/logger';
@@ -11,7 +11,7 @@ import { getLogger } from '../logging/logger';
 /**
  * Discriminated dispatch outcome. `decideAndDispatchBinaryControl`
  * collapses this to a boolean for callers that don't distinguish
- * "plan skipped" from "dispatch failed".
+ * "preflight skipped" from "dispatch failed".
  */
 export type DispatchBinaryControlResult =
   | { ok: true }
@@ -57,11 +57,10 @@ export type BinaryControlTransport = {
 const logger = getLogger('executor/binary-dispatch');
 
 /**
- * Convenience wrapper: ask the plan layer to decide (reading the binary axis
- * via the transport's `getObservedState`) and, if it returns a
- * decision, dispatch it via the same transport. Returns `{ applied: true }`
- * when the underlying dispatch succeeded, `{ applied: false }` when the plan
- * skipped or the dispatch failed.
+ * Check command preflight against the binary axis from `getObservedState`,
+ * then dispatch through the same command transport. Returns `{ applied: true }`
+ * when the underlying dispatch succeeded, `{ applied: false }` when preflight
+ * skipped or dispatch failed.
  *
  * The decide-and-dispatch pair must share one observation source to avoid
  * deciding against one reading and logging against another; that's why the
@@ -82,7 +81,7 @@ export async function decideAndDispatchBinaryControl(
 }
 
 /**
- * Dispatch a decision produced by the plan layer.
+ * Dispatch a requested command accepted by executor preflight.
  *
  * Pending bookkeeping is observer-owned (PR #4 of the
  * observer/transport split):
@@ -104,7 +103,7 @@ export async function decideAndDispatchBinaryControl(
  *   a write left the process, so the device is worth re-reading.
  *
  * The return shape is discriminated so callers can distinguish
- * skipped-by-plan (handled by `decideAndDispatchBinaryControl`'s null
+ * skipped-by-preflight (handled by `decideAndDispatchBinaryControl`'s null
  * branch) from a declined request or dispatch failure.
  */
 export async function dispatchBinaryControlDecision(params: {

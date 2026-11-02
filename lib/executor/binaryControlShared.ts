@@ -2,7 +2,7 @@ import {
   type BinaryControlOutcome,
   decideAndDispatchBinaryControl,
 } from './binaryControlDispatch';
-import type { BinaryControlDecision, BinaryControlDecisionSnapshot } from '../plan/planBinaryControlHelpers';
+import type { BinaryControlDecision, BinaryControlDecisionSnapshot } from './binaryControlPreflight';
 import { getDebugEmitter } from '../logging/logger';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isHeldByLifecycleLane, type ExecutorCommandContext } from './executorCommandContext';
