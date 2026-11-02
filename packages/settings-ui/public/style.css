@@ -9043,6 +9043,11 @@ md-switch {
 }
 
 /* Manual problem reports */
+/* A link out of the form, left-aligned so it does not read as a form action. */
+.support-report__cross-link {
+  align-self: flex-start;
+}
+
 .support-report,
 .support-report__form,
 .support-report__result,

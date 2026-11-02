@@ -168,6 +168,9 @@ const scrollSettingsAnchorWhenVisible = (selector: string, attempt = 0): void =>
     void logSettingsError('Invalid settings anchor selector', error, 'settingsAnchor');
     return;
   }
+  // An anchor inside a collapsed section promises its content, so open it.
+  const collapsed = element?.closest('details:not([open])');
+  if (collapsed instanceof HTMLDetailsElement) collapsed.open = true;
   if (element instanceof HTMLElement && element.offsetParent !== null) {
     element.scrollIntoView({ block: 'center' });
     return;
