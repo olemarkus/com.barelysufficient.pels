@@ -11,6 +11,10 @@
  * - **Limited · Charging**: PELS caps its charge at its place in the priority
  *   order, with the load's `Limited` word; the reason line says how much more
  *   charge its own mode would take.
+ * - **Selling to grid**: PELS holds it to sell stored energy, the battery reports
+ *   discharging, and the Main meter measured export in the same plan cycle.
+ *   Solar export alone never produces it, and a discharging battery the house
+ *   still uses up reads Supplying.
  * - **Own mode**: it runs the mode chosen in its own app. With its Power-limit
  *   control off, the reason line says so: PELS never takes it over, and its
  *   own app is in charge. One PELS cannot drive says PELS can only watch it,
@@ -32,6 +36,13 @@ import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
 export type HomeBatteryCard = Extract<HomeBatteryCardRead, { kind: 'battery' }>;
 type StorageHoldKind = StorageHold['kind'];
 type Direction = 'supplying' | 'charging' | 'waiting';
+
+/**
+ * Whether the Main meter measured export in the plan cycle this card belongs
+ * to: a measured whole-home export of at least 0.05 kW. A carried reading
+ * on an unmeasured build is not export evidence.
+ */
+export type MainExportEvidence = { exporting: boolean };
 /** The holds of a battery PELS does not hold: it runs its own mode. */
 type OwnModeHoldKind = 'none' | 'power_limit_off';
 const isOwnModeHold = (hold: StorageHold): hold is Extract<StorageHold, { kind: OwnModeHoldKind }> => (
@@ -59,6 +70,7 @@ const DIRECTION_MIN_W = 50;
 
 export const BATTERY_STATE_LABELS = {
   supplying: 'Supplying',
+  selling: 'Selling to grid',
   charging: 'Charging',
   own_mode: 'Own mode',
   waiting: 'Waiting',
@@ -77,6 +89,7 @@ export const BATTERY_REASON_LINES = {
   plan_charge: 'Buying cheap electricity for later',
   plan_solar: 'Storing solar for later household use',
   plan_supply: 'Using stored energy while power is expensive',
+  plan_export: 'Selling stored energy while export pays more',
   plan_wait: 'Keeping stored energy for later',
 } as const satisfies Record<StorageHoldKind, string>;
 
@@ -92,6 +105,7 @@ const INTENDED_DIRECTION = {
   plan_charge: 'charging',
   plan_solar: 'charging',
   plan_supply: 'supplying',
+  plan_export: 'supplying',
   plan_wait: 'waiting',
 } as const satisfies Record<Exclude<StorageHoldKind, OwnModeHoldKind>, Direction>;
 
@@ -114,6 +128,7 @@ export function buildSettingsUiPlanHomeBattery(
   battery: HomeBatteryCard,
   hold: StorageHold,
   available: boolean,
+  mainExport: MainExportEvidence,
 ): SettingsUiPlanHomeBattery {
   const direction = resolveObservedDirection(battery);
   const power: SettingsUiPlanHomeBattery['power'] = direction !== null && battery.power.kind === 'observed'
@@ -125,6 +140,9 @@ export function buildSettingsUiPlanHomeBattery(
   // A capped charge holds nothing: only a discharge for the limit does.
   const holdsLimit = available && hold.kind === 'relief' && direction === 'supplying';
   if (isOwnModeHold(hold)) return { activity: 'own_mode', power, holdsLimit };
+  if (hold.kind === 'plan_export' && direction === 'supplying' && mainExport.exporting) {
+    return { activity: 'selling', power, holdsLimit };
+  }
   return { activity: direction ?? INTENDED_DIRECTION[hold.kind], power, holdsLimit };
 }
 
@@ -157,6 +175,7 @@ export function buildHomeBatteryStatus(
   hold: StorageHold,
   available: boolean,
   dryRun: boolean,
+  mainExport: MainExportEvidence,
 ): DeviceStatus {
   const common = {
     cardKind: 'binary' as const,
@@ -180,7 +199,7 @@ export function buildHomeBatteryStatus(
       reason: null,
     };
   }
-  const { activity, power } = buildSettingsUiPlanHomeBattery(battery, hold, available);
+  const { activity, power } = buildSettingsUiPlanHomeBattery(battery, hold, available, mainExport);
   if (hold.kind === 'charge_limit') {
     return {
       ...common,

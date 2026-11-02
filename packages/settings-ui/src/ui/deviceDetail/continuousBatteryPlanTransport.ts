@@ -22,12 +22,22 @@ const validPeriod = (raw: unknown): boolean => {
     'startsAtMs', 'durationMs', 'batteryPowerKW', 'energyBeforeKWh', 'energyAfterKWh',
     'gridImportKWh', 'gridExportKWh', 'importCost', 'exportRevenue', 'wearCost',
   ]) && Number(period.durationMs) > 0
-    && ['charge_grid', 'store_solar', 'hold_energy', 'supply_house'].includes(String(period.reason));
+    && ['charge_grid', 'store_solar', 'hold_energy', 'supply_house', 'export_energy'].includes(String(period.reason));
+};
+
+const validExportDecision = (raw: unknown): boolean => {
+  const decision = asUnknownRecord(raw);
+  if (decision === null) return false;
+  if (decision.kind === 'household_only' || decision.kind === 'kept_household') return true;
+  if (decision.kind === 'selling') return finiteFields(decision, ['estimatedSavings']);
+  return decision.kind === 'waiting'
+    && ['export_prices_incomplete', 'evaluation_budget_exceeded'].includes(String(decision.reason));
 };
 
 const validPlannedRead = (read: Record<string, unknown>): boolean => {
   const plan = asUnknownRecord(read.plan);
   return finiteFields(read, ['generatedAtMs']) && typeof read.priceUnit === 'string'
+    && validExportDecision(read.exportDecision)
     && plan !== null && plan.status === 'planned' && Array.isArray(plan.periods) && plan.periods.every(validPeriod)
     && finiteFields(plan, [
       'importCost', 'exportRevenue', 'wearCost', 'energyCost', 'terminalEnergyValue',

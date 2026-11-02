@@ -1,4 +1,4 @@
-import type { ObservedStorageInput } from '../../../packages/planner-types/src/planInputDevice';
+import type { ContinuousStoragePlan, ObservedStorageInput } from '../../../packages/planner-types/src/planInputDevice';
 import type { StorageLeverState } from '../planState';
 import type { PlanInputDevice } from '../planTypes';
 import type { MeasuredPower } from '../planContext';
@@ -30,6 +30,16 @@ function dischargeCredit(
   return { increaseDecidedAtMs: nowTs, creditBaseW: Math.max(observedW, requestedW) };
 }
 
+/**
+ * The Main-meter export a period may add on top of covering the house, W. Only a
+ * selling period carries the owner's ceiling; household supply stops at the
+ * house's measured draw. Measured demand can take part or all of a planned
+ * sale: the lever never raises discharge to keep a forecast export quantity.
+ */
+const exportAllowanceW = (plan: ContinuousStoragePlan): number => (
+  plan.reason === 'export_energy' ? plan.netExportCeilingW : 0
+);
+
 export const continuousLever = (
   storage: ObservedStorageInput,
   previous: StorageLeverState | undefined,
@@ -41,8 +51,9 @@ export const continuousLever = (
   if (plan === undefined) throw new Error('A continuous hold requires a battery plan');
   const marginW = drawMarginWFor(storage);
   const importWithoutBatteryW = balance.netImportW - storage.signedPowerW;
+  const dischargeRoomW = Math.max(0, importWithoutBatteryW + exportAllowanceW(plan) - marginW);
   const desiredW = plan.setpointW < 0
-    ? -Math.min(-plan.setpointW, storage.deliveryCeilingW, Math.max(0, importWithoutBatteryW - marginW))
+    ? -Math.min(-plan.setpointW, storage.deliveryCeilingW, dischargeRoomW)
     : Math.min(plan.setpointW, storage.chargeCeilingW);
   // Replacing a discharge with charge must first pay back that discharge;
   // it is not measured room for a new charging load.

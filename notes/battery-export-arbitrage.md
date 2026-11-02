@@ -1,10 +1,27 @@
 # Battery export arbitrage
 
-**Status:** user-facing export remains proposed. The hidden economic evaluation
-stage described below is implemented; it grants no export permission. Extends
-[`continuous-battery-plan.md`](./continuous-battery-plan.md). Current battery
-planning can charge cheaply and supply the house; it deliberately excludes
-battery-driven grid export.
+**Status:** the first version below is implemented: an owner opt-in on the
+battery device page (**Sell stored energy when profitable**, with an export
+limit in kW). Household-only planning remains the default. The hidden economic
+evaluation still runs for household-only batteries under the `plan` debug topic.
+Extends [`continuous-battery-plan.md`](./continuous-battery-plan.md).
+
+## Implementation
+
+| Owner | Where |
+| --- | --- |
+| Policy contract | `BatteryEnergyExportPolicy` (`packages/contracts/src/batteryPlan.ts`) on `ContinuousBatteryPlanConfig.exportPolicy`; absence parses to household-only (`parseContinuousBatteryPlanConfig`). The ceiling accepts 0.1 to 100 kW. |
+| Selection | `lib/battery/batteryExportSelection.ts`: complete quotes, the two-million-transition work budget, then `compareBatteryExportEconomics` at the baseline's terminal energy. The read's `exportDecision` says `household_only`, `waiting` (`export_prices_incomplete`, `evaluation_budget_exceeded`), `kept_household` or `selling` with its estimated cost reduction. |
+| Period reason | `export_energy`: a discharge whose energy reaches the grid (`batteryEnergyFlow`). A household-only plan cannot produce it. |
+| Planner input | `ContinuousStoragePlan` (`packages/planner-types`): only `export_energy` carries `netExportCeilingW`, copied from the same read's policy (`lib/planInput/storageProjection.ts`). |
+| Live bound | `continuousLever` (`lib/plan/battery/storageContinuous.ts`): discharge up to `import without battery + ceiling - draw margin`, within the plan setpoint, delivery and reserve ceilings. `resolveCreditW` banks no settling credit for a sale; `resolveWithheldW` keeps its discharge from restore and admission; the surplus pool already subtracts every battery discharge. |
+| Overview | Hold `plan_export`; `Selling to grid` needs observed discharge and a measured Main export of at least 0.05 kW in the same plan cycle (`batteryStatusReadModel.ts`). |
+| Settings UI | `ContinuousBatteryPlan.tsx` saves the policy in the existing `continuous_battery_plan` map; the export-price section also opens for a drivable battery (`resolveHomeHasDrivableBattery`). |
+| Activity log | `battery_export_decision_changed` (info), once per decision change, with export period count and first start. |
+
+Response margin: the storage lane's existing draw margin (`drawMarginWFor`).
+Memo: the export policy is part of the plan memo's exact inputs, so turning
+selling off replans at once.
 
 ## Hidden economic evaluation
 

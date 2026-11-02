@@ -26,10 +26,10 @@ const battery = (signedW: number, percent: number): HomeBatteryCard => ({
   level: { kind: 'observed', percent },
 });
 
-const batteryDevice = (card: HomeBatteryCard, hold: StorageHold): PlanDeviceSnapshot => ({
+const batteryDevice = (card: HomeBatteryCard, hold: StorageHold, exporting = false): PlanDeviceSnapshot => ({
   ...uiDeviceFixture({ id: 'battery-1', name: 'Sessy battery', controllable: false }),
-  status: buildHomeBatteryStatus(card, hold, true, false),
-  homeBattery: buildSettingsUiPlanHomeBattery(card, hold, true),
+  status: buildHomeBatteryStatus(card, hold, true, false, { exporting }),
+  homeBattery: buildSettingsUiPlanHomeBattery(card, hold, true, { exporting }),
 });
 
 const renderCard = (dev: PlanDeviceSnapshot): HTMLDivElement => {
@@ -61,6 +61,26 @@ describe('home battery Overview card', () => {
       '52 % charged',
       'Waiting to charge faster · 2.4 kW more needed',
     ]);
+  });
+
+  it('names a sale Selling to grid only while the battery discharges and the meter exports', () => {
+    const selling = renderCard(batteryDevice(battery(-2400, 64), { kind: 'plan_export' }, true));
+    const lines = [...selling.querySelectorAll('.plan-card__state-row > span, .plan-card__secondary-line, p')].map((el) => el.textContent);
+    expect(lines).toEqual([
+      'Selling to grid',
+      '2.4 kW',
+      '64 % charged',
+      'Selling stored energy while export pays more',
+    ]);
+    // The house still takes all of it: no export at the meter, so it is supplying.
+    expect(renderCard(batteryDevice(battery(-2400, 64), { kind: 'plan_export' }, false))
+      .querySelector('.plan-card__state-row > span')?.textContent).toBe('Supplying');
+    // Solar export alone, beside a battery that is not discharging, is no sale.
+    expect(renderCard(batteryDevice(battery(0, 64), { kind: 'plan_export' }, true))
+      .querySelector('.plan-card__state-row > span')?.textContent).toBe('Supplying');
+    // A household-supply hold never reads as selling, whatever the meter shows.
+    expect(renderCard(batteryDevice(battery(-2400, 64), { kind: 'plan_supply' }, true))
+      .querySelector('.plan-card__state-row > span')?.textContent).toBe('Supplying');
   });
 
   it('adds what a battery in its own mode is doing to the charge level', () => {

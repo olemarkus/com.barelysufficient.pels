@@ -304,6 +304,15 @@ export const resolveHomeExhibitsSolar = (): boolean => (
   state.hasManagedSolarDevice || state.hasExhibitedExport
 );
 
+// A home battery PELS can drive: selling stored energy needs an export price,
+// so it unlocks the export-PRICE section on its own, in a home without solar or
+// export history. Never a solar signal.
+export const resolveHomeHasDrivableBattery = (): boolean => (
+  state.latestDevices.some((device) => (
+    isHomeBatteryClassKey(device.deviceClass) && device.batteryControl === 'drivable'
+  ))
+);
+
 // The per-device "Use solar surplus" control, which needs a pool the engine can
 // actually allocate from — a strictly narrower question than having solar.
 // Kept separate rather than folded into the flag above because the two diverge

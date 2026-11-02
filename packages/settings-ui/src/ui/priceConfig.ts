@@ -15,7 +15,7 @@ import { showToast, showToastError } from './toast.ts';
 import { logSettingsError } from './logging.ts';
 import { state, defaultPriceOptimizationConfig, type SettingsUiDeviceView } from './state.ts';
 import { supportsTemperatureDevice } from './deviceUtils.ts';
-import { resolveManagedState, resolveHomeExhibitsSolar } from './state.ts';
+import { resolveManagedState, resolveHomeExhibitsSolar, resolveHomeHasDrivableBattery } from './state.ts';
 import { gridCompaniesForCounty } from './gridCompanies.ts';
 import { readPriceSchemeInForce, savePriceScheme } from './priceSettingsPersistence.ts';
 import { createNorwayPriceHandlers } from './norwayPriceHandlers.ts';
@@ -157,7 +157,9 @@ const renderElectricityPrices = () => {
     // NOT in lockstep with the surplus-toggle gate any more: that one asks the
     // narrower "can the surplus POOL open" question (`surplusPoolReachable`),
     // while a fixed feed-in amount needs no pool at all.
-    showExportSection: resolveHomeExhibitsSolar() || configState.exportPriceEnabled,
+    // A battery PELS can drive unlocks it too: selling stored energy needs an
+    // export price in a home with no solar or export history.
+    showExportSection: resolveHomeExhibitsSolar() || resolveHomeHasDrivableBattery() || configState.exportPriceEnabled,
     // Same solar gate as the export section, plus two escape hatches: a user
     // who already pinned a non-default source is never stranded, and a home
     // whose panels only Homey Energy knows about (no production feed reaches

@@ -65,6 +65,7 @@ If you change the battery's mode in its own app while PELS holds it, PELS takes 
 | `Charging` · `Storing the solar power your devices leave` | PELS holds the battery for a device above it, and lets it store the solar that device leaves. |
 | `Charging` · `Charging less so a device can use the solar` | PELS lowered the battery's charge so a device above it can run on the sun. |
 | `Limited · Charging` · `Waiting to charge faster` | PELS capped the battery's charge at its place in the priority order, and gives the rest back as the house has room. |
+| `Selling to grid` · `Selling stored energy while export pays more` | With **Plan charging with PELS** and **Sell stored energy when profitable** on, the battery sells stored energy: it discharges and your meter shows export. While the house still uses all of it, the card reads `Supplying`. |
 | `Own mode` · `PELS takes over when your limit or solar needs it` | PELS has no job for the battery right now; its own app is in charge. |
 | `Own mode` · `PELS can only watch it: its app does not accept control` | The battery's app refused PELS (for example a Sessy on its cloud login). PELS tries again after six hours or when PELS restarts. |
 | `Own mode` · `PELS can only watch it: its app does not give Homey control` | The battery's app offers Homey no power setting or Homey/API mode PELS can use, so PELS reads the battery and never controls it. |
@@ -90,6 +91,7 @@ If you uninstall PELS while it holds the battery, switch the battery's mode back
 5. **Point devices at the sun.** Turn on **Use solar surplus** on heating and water heaters, **Run on solar surplus** on on/off loads such as a pool pump, and **Charge on solar surplus** on the EV charger. See [Solar and Self-Consumption](../solar.md).
 6. **Place the battery in your priority list.** Leave it last to give your devices the sun first and to cover the whole house at a peak, or move it up if filling the battery for the evening matters more. See [Configuration](../configuration.md#settings-modes).
 7. **Add Smart tasks for what must be ready.** A car charged by 07:00 or hot water by morning goes into a [Smart task](../smart-tasks.md), and PELS picks the cheapest hours before the deadline.
+8. **Sell stored solar in the evening (optional).** Where evening export pays more than midday export, turn on **Plan charging with PELS** on the battery's device page, then **Sell stored energy when profitable**, and enter your **Export limit at your meter**. PELS sells only when that lowers your cost compared with keeping the energy for your home, and keeps your minimum reserve. See [Home batteries](../solar.md#home-batteries).
 
 ## A sunny day and an evening
 

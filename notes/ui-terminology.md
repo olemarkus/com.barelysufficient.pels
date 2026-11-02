@@ -827,6 +827,7 @@ keeps the word for what PELS holds it to do.
 | Concept | Text |
 |---|---|
 | State while PELS holds it and it discharges | `Supplying` |
+| State while the battery plan sells, the battery discharges and the Main meter exports in the same plan cycle | `Selling to grid` (a sale the house still uses up reads `Supplying`) |
 | State while PELS holds it and it charges | `Charging` |
 | State while it runs the mode chosen in its own app | `Own mode` |
 | State while the battery plan keeps its stored energy for later | `Waiting` |
@@ -839,6 +840,10 @@ keeps the word for what PELS holds it to do.
 | Reason while the battery plan stores solar | `Storing solar for later household use` |
 | Reason while the battery plan supplies the home | `Using stored energy while power is expensive` |
 | Reason while the battery plan keeps its charge | `Keeping stored energy for later` |
+| Reason while the battery plan sells stored energy | `Selling stored energy while export pays more` |
+| Battery plan window, a sale | `Sell to grid` |
+| Device page, selling opt-in under Plan charging with PELS | `Sell stored energy when profitable`; its limit field `Export limit at your meter (kW)` |
+| Device page, selling decided | `Selling is planned. Estimated 0.43 EUR lower electricity cost than keeping the energy for your home over this plan.` / `Selling would not lower your cost in this plan, so PELS keeps the energy for your home.` / `Selling waits for an export price for every hour of the plan. PELS keeps planning for your home.` |
 | Reason in its own mode (a battery PELS can drive) | `PELS takes over when your limit or solar needs it` |
 | Reason in its own mode, Power-limit control off (PELS never takes it over: no charge cap, no discharge, no surplus claim) | `Power-limit control is off: its own app is in charge` |
 | Reason in its own mode, its app rejected PELS's claim (a Sessy on its cloud login), for 6 h, or until PELS restarts or its controls change | `PELS can only watch it: its app does not accept control` |
@@ -868,6 +873,7 @@ Flow card that turns capacity control on refuses it.
 Sources: `lib/plan/batteryStatusReadModel.ts` (card),
 `packages/shared-domain/src/batteryControlCopy.ts` (the can-only-watch lines),
 `packages/settings-ui/src/ui/planHeroSummary.ts` (hero),
+`packages/settings-ui/src/ui/views/ContinuousBatteryPlan.tsx` (battery plan and selling),
 `packages/settings-ui/src/ui/deviceDetail/batterySection.ts` and
 `packages/settings-ui/public/index.html` (device page, Modes note),
 `packages/settings-ui/src/ui/deviceListPresentation.ts` (device-list row).

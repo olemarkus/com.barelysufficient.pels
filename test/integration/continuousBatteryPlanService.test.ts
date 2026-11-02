@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, onTestFinished } from 'vitest';
 import { ContinuousBatteryPlanService } from '../../lib/battery/continuousBatteryPlanService';
 import type { ContinuousBatteryEnergyHorizon, ContinuousBatteryPlanSource } from '../../lib/ports/continuousBatteryPlan';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
@@ -9,7 +9,7 @@ import {
   parseContinuousBatteryPlanConfig,
   parseContinuousBatteryPlanConfigs,
 } from '../../packages/shared-domain/src/settings/continuousBatteryPlan';
-import { captureDebugTopic } from '../utils/loggerCapture';
+import { captureDebugTopic, captureLogger } from '../utils/loggerCapture';
 
 const NOW = Date.parse('2026-10-27T00:00:00Z');
 const config: ContinuousBatteryPlanConfig = {
@@ -265,5 +265,94 @@ describe('continuous battery plan owner', () => {
       { ...config, roundTripEfficiency: 0 }, { ...config, wearCostPerKWh: -1 }, { ...config, priceUnit: '' },
     ]) expect(parseContinuousBatteryPlanConfig(invalid)).toBeNull();
     expect(parseContinuousBatteryPlanConfigs({ battery: config, other: { enabled: true } })).toBeNull();
+  });
+
+  it('resolves a config saved before selling existed to household-only, and refuses a malformed export policy', () => {
+    const { exportPolicy: _policy, ...legacy } = config;
+    expect(parseContinuousBatteryPlanConfig(legacy)?.exportPolicy).toEqual({ kind: 'household_only' });
+    expect(parseContinuousBatteryPlanConfig({ ...config, exportPolicy: { kind: 'price_export', netExportCeilingKW: 3 } })
+      ?.exportPolicy).toEqual({ kind: 'price_export', netExportCeilingKW: 3 });
+    for (const exportPolicy of [
+      { kind: 'price_export' }, { kind: 'price_export', netExportCeilingKW: 0 },
+      { kind: 'price_export', netExportCeilingKW: Number.POSITIVE_INFINITY }, { kind: 'sell_everything' }, null,
+    ]) expect(parseContinuousBatteryPlanConfig({ ...config, exportPolicy })).toBeNull();
+  });
+});
+
+describe('selling stored energy', () => {
+  const selling: ContinuousBatteryPlanConfig = {
+    ...config, exportPolicy: { kind: 'price_export', netExportCeilingKW: 2 },
+  };
+  // Cheap grid hour, then an hour where export pays far more than the cycle costs.
+  const tradingHorizon: ContinuousBatteryEnergyHorizon = {
+    ...horizon,
+    battery: { ...horizon.battery, terminalValuePerKWh: 0.018 },
+    periods: [
+      { ...horizon.periods[0], importPrice: 0.05, exportPrice: 0.01, householdDemandKWh: 0 },
+      { ...horizon.periods[0], startsAtMs: NOW + 3_600_000, importPrice: 0.5, exportPrice: 1, householdDemandKWh: 0 },
+    ],
+  };
+  const ownerFor = (stored: ContinuousBatteryPlanConfig, readHorizon: ContinuousBatteryPlanSource['readHorizon']) => {
+    const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: stored } });
+    return { store, owner: new ContinuousBatteryPlanService(store.settings, { getNowMs: () => NOW, readHorizon }) };
+  };
+  const ready = (input: ContinuousBatteryEnergyHorizon, exportPricing: 'complete' | 'incomplete' = 'complete') => (
+    () => ({ kind: 'ready' as const, horizon: input, priceUnit: 'EUR/kWh', exportPricing })
+  );
+
+  it('executes the export plan only when the owner opted in and it is strictly cheaper', () => {
+    const optedIn = ownerFor(selling, ready(tradingHorizon)).owner.read('battery');
+    const householdOnly = ownerFor(config, ready(tradingHorizon)).owner.read('battery');
+    if (optedIn.status !== 'planned' || householdOnly.status !== 'planned') throw new Error('Expected plans');
+    expect(householdOnly.exportDecision).toEqual({ kind: 'household_only' });
+    expect(householdOnly.plan.periods.some(period => period.reason === 'export_energy')).toBe(false);
+    expect(optedIn.exportDecision.kind).toBe('selling');
+    if (optedIn.exportDecision.kind !== 'selling') return;
+    expect(optedIn.exportDecision.estimatedSavings).toBeCloseTo(householdOnly.plan.energyCost - optedIn.plan.energyCost, 9);
+    expect(optedIn.plan.terminalEnergyKWh).toBe(householdOnly.plan.terminalEnergyKWh);
+    const [cheap, expensive] = optedIn.plan.periods;
+    expect(cheap?.reason).toBe('charge_grid');
+    expect(expensive).toMatchObject({ reason: 'export_energy' });
+    expect(expensive!.gridExportKWh).toBeLessThanOrEqual(2 + 1e-9);
+  });
+
+  it('keeps the household plan when selling would not lower the cost', () => {
+    const [first, second] = tradingHorizon.periods;
+    const flat: ContinuousBatteryEnergyHorizon = { ...tradingHorizon, periods: [
+      { ...first, importPrice: 0.2, exportPrice: 0.1 }, { ...second!, importPrice: 0.2, exportPrice: 0.1 },
+    ] };
+    const read = ownerFor(selling, ready(flat)).owner.read('battery');
+    if (read.status !== 'planned') throw new Error('Expected a plan');
+    expect(read.exportDecision).toEqual({ kind: 'kept_household' });
+    expect(read.plan.periods.some(period => period.reason === 'export_energy')).toBe(false);
+  });
+
+  it('waits to sell, keeping a usable household plan, while export quotes are incomplete', () => {
+    const read = ownerFor(selling, ready(tradingHorizon, 'incomplete')).owner.read('battery');
+    if (read.status !== 'planned') throw new Error('Expected a household plan');
+    expect(read.exportDecision).toEqual({ kind: 'waiting', reason: 'export_prices_incomplete' });
+    expect(read.plan.periods.every(period => period.gridExportKWh === 0)).toBe(true);
+  });
+
+  it('replans for the household as soon as the owner turns selling off, without waiting out the memo', () => {
+    const { store, owner } = ownerFor(selling, ready(tradingHorizon));
+    expect(owner.read('battery')).toMatchObject({ exportDecision: { kind: 'selling' } });
+    store.values.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, { battery: config });
+    const read = owner.read('battery');
+    if (read.status !== 'planned') throw new Error('Expected a plan');
+    expect(read.exportDecision).toEqual({ kind: 'household_only' });
+    expect(read.plan.periods.some(period => period.reason === 'export_energy')).toBe(false);
+  });
+
+  it('logs the selling decision once per change, with its planned export periods', () => {
+    const capture = captureLogger('debug', ['plan']);
+    onTestFinished(() => capture.restore());
+    const { owner } = ownerFor(selling, ready(tradingHorizon));
+    owner.read('battery');
+    owner.read('battery');
+    expect(capture.findEvents('battery_export_shadow_evaluated')).toEqual([]);
+    const logs = capture.findEvents('battery_export_decision_changed');
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ decision: 'selling', exportPeriodCount: 1, firstExportStartsAtMs: NOW + 3_600_000 });
   });
 });

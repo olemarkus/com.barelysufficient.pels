@@ -216,12 +216,22 @@ export type ObservedStorageInput = {
   chargeCeilingW: number;
   /** Present only while the owner has an executable continuous strategy. Its absence
    * means the battery's own schedule remains the routine policy. */
-  continuousPlan?: {
+  continuousPlan?: ContinuousStoragePlan;
+};
+
+/**
+ * The battery owner's current continuous-plan period. Only `export_energy`
+ * carries permission to discharge beyond household demand: the owner-entered
+ * Main-meter net-export ceiling, W. Every other reason supplies at most what the
+ * house draws.
+ */
+export type ContinuousStoragePlan =
+  | {
     setpointW: number;
     validUntilMs: number;
     reason: 'charge_grid' | 'store_solar' | 'supply_house' | 'hold_energy';
-  };
-};
+  }
+  | { setpointW: number; validUntilMs: number; reason: 'export_energy'; netExportCeilingW: number };
 
 /**
  * A battery PELS holds a claim on but cannot read this cycle: Homey reports it

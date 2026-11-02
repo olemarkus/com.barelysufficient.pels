@@ -107,7 +107,7 @@ export type SettingsUiPlanMetaSnapshot = SettingsUiPlanMetaSnapshotBase
  * (`lib/plan/batteryStatusReadModel.ts`).
  */
 export type SettingsUiPlanHomeBattery = {
-  activity: 'supplying' | 'charging' | 'own_mode' | 'waiting';
+  activity: 'supplying' | 'selling' | 'charging' | 'own_mode' | 'waiting';
   power: { kind: 'observed'; kw: number } | { kind: 'absent' };
   holdsLimit: boolean;
 };

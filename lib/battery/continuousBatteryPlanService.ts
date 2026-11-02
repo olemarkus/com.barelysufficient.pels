@@ -1,16 +1,18 @@
 import type {
+  ContinuousBatteryPlanConfig,
   ContinuousBatteryPlanConfigs,
   ContinuousBatteryPlanRead,
 } from '../../packages/contracts/src/continuousBatteryPlan';
 import {
   DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG,
 } from '../../packages/shared-domain/src/settings/continuousBatteryPlan';
-import { getDebugEmitter } from '../logging/logger';
+import { getDebugEmitter, getLogger } from '../logging/logger';
 import type { ContinuousBatteryPlanSource } from '../ports/continuousBatteryPlan';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { readContinuousBatteryPlanConfigs } from './continuousBatteryPlanSettings';
 import { planBatteryEnergy } from './planning/planBatteryEnergy';
 import { BatteryExportShadow } from './batteryExportShadow';
+import { selectBatteryExportPlan, type BatteryExportSelection } from './batteryExportSelection';
 
 type SettingsRead = { kind: 'resolved'; configs: ContinuousBatteryPlanConfigs } | { kind: 'unavailable' };
 type PlanMemo = { inputs: PlanInputs; atMs: number; validUntilMs: number; read: ContinuousBatteryPlanRead };
@@ -18,11 +20,17 @@ type ReadyHorizon = Extract<ReturnType<ContinuousBatteryPlanSource['readHorizon'
 const PLAN_MEMO_MAX_AGE_MS = 30_000;
 const emitDebug = getDebugEmitter('battery', 'price');
 
-/** What the battery page shows of a read: its status and, while waiting, why. */
-type ReadStanding = { status: ContinuousBatteryPlanRead['status']; reason: string | null };
+/** What the battery page shows of a read: its status and, while waiting, why; and what selling decided. */
+type ReadStanding = { status: ContinuousBatteryPlanRead['status']; reason: string | null; selling: string | null };
+
+const sellingOf = (read: ContinuousBatteryPlanRead): string | null => {
+  if (read.status !== 'planned') return null;
+  const { exportDecision } = read;
+  return exportDecision.kind === 'waiting' ? `waiting:${exportDecision.reason}` : exportDecision.kind;
+};
 
 const standingOf = (read: ContinuousBatteryPlanRead): ReadStanding => (
-  { status: read.status, reason: read.status === 'waiting' ? read.reason : null }
+  { status: read.status, reason: read.status === 'waiting' ? read.reason : null, selling: sellingOf(read) }
 );
 /**
  * Live device draw and the charge room it leaves move on nearly every meter
@@ -41,11 +49,12 @@ const toKW = (energyKWh: number, durationMs: number): number => energyKWh * 3_60
  * Preserve power rates and end boundaries, so a quiet battery can reuse a plan
  * for at most 30 seconds; any SoC, forecast, task, price or reserve change
  * invalidates it, and live power within the tolerance does not. */
-const planInputs = (input: ReadyHorizon): PlanInputs => {
+const planInputs = (input: ReadyHorizon, config: ContinuousBatteryPlanConfig): PlanInputs => {
   const { battery, periods } = input.horizon;
   const { maxChargeKW, ...exactBattery } = battery;
   return {
     exact: JSON.stringify({
+      exportPolicy: config.exportPolicy,
       priceUnit: input.priceUnit,
       exportPricing: input.exportPricing,
       battery: exactBattery,
@@ -113,15 +122,34 @@ export class ContinuousBatteryPlanService {
   private logStandingChange(deviceId: string, read: ContinuousBatteryPlanRead): void {
     const next = standingOf(read);
     const previous = this.standings.get(deviceId);
-    if (previous !== undefined && previous.status === next.status && previous.reason === next.reason) return;
+    if (previous !== undefined && previous.status === next.status && previous.reason === next.reason
+      && previous.selling === next.selling) return;
     this.standings.set(deviceId, next);
-    emitDebug({
-      event: 'battery_plan_status_changed',
+    if (previous === undefined || previous.status !== next.status || previous.reason !== next.reason) {
+      emitDebug({
+        event: 'battery_plan_status_changed',
+        deviceId,
+        status: next.status,
+        reason: next.reason,
+        previousStatus: previous?.status ?? null,
+        previousReason: previous?.reason ?? null,
+      });
+    }
+    if (read.status === 'planned' && previous?.selling !== next.selling) this.logSellingChange(deviceId, read);
+  }
+
+  /** The selling decision and its planned export periods, once per change, for the activity log. */
+  private logSellingChange(deviceId: string, read: Extract<ContinuousBatteryPlanRead, { status: 'planned' }>): void {
+    const exportPeriods = read.plan.periods.filter(period => period.reason === 'export_energy');
+    getLogger('battery').info({
+      event: 'battery_export_decision_changed',
       deviceId,
-      status: next.status,
-      reason: next.reason,
-      previousStatus: previous?.status ?? null,
-      previousReason: previous?.reason ?? null,
+      decision: read.exportDecision.kind,
+      waitingReason: read.exportDecision.kind === 'waiting' ? read.exportDecision.reason : null,
+      estimatedSavings: read.exportDecision.kind === 'selling' ? read.exportDecision.estimatedSavings : null,
+      priceUnit: read.priceUnit,
+      exportPeriodCount: exportPeriods.length,
+      firstExportStartsAtMs: exportPeriods[0]?.startsAtMs ?? null,
     });
   }
 
@@ -148,23 +176,46 @@ export class ContinuousBatteryPlanService {
     // charge room and import limit they leave may move within the tolerance, for
     // at most the memo's age; storage rules cap each command by live headroom.
     // One entry per configured device; no accumulated revision history.
-    const inputs = planInputs(input);
+    const inputs = planInputs(input, config);
     const nowMs = this.source.getNowMs();
     const previous = this.plans.get(deviceId);
     if (previous !== undefined && withinTolerance(previous.inputs, inputs) && nowMs >= previous.atMs
       && nowMs - previous.atMs < PLAN_MEMO_MAX_AGE_MS && nowMs < previous.validUntilMs) return previous.read;
-    const plan = planBatteryEnergy(input.horizon);
-    const read: ContinuousBatteryPlanRead = plan.status === 'planned'
-      ? { status: 'planned', config, generatedAtMs: this.source.getNowMs(), priceUnit: input.priceUnit, plan }
+    const household = planBatteryEnergy(input.horizon);
+    const selection = household.status === 'planned'
+      ? this.selectPlan(deviceId, input, config, household, nowMs)
+      : null;
+    const read: ContinuousBatteryPlanRead = selection !== null
+      ? {
+        status: 'planned', config, generatedAtMs: this.source.getNowMs(), priceUnit: input.priceUnit,
+        plan: selection.plan, exportDecision: selection.decision,
+      }
       : { status: 'waiting', config, reason: 'horizon_infeasible' };
     this.plans.set(deviceId, {
       inputs, atMs: nowMs,
       validUntilMs: input.horizon.periods[0].startsAtMs + input.horizon.periods[0].durationMs,
       read,
     });
-    // Diagnostics never replace the household plan returned to the planner or UI.
-    if (plan.status === 'planned') this.exportShadow.observe(deviceId, input, plan, nowMs);
     return read;
+  }
+
+  /**
+   * The executable plan. Household-only planning never sells; its diagnostic
+   * shadow only logs, and never replaces the household plan. An owner who
+   * authorized selling gets the complete-plan comparison instead.
+   */
+  private selectPlan(
+    deviceId: string,
+    input: ReadyHorizon,
+    config: ContinuousBatteryPlanConfig,
+    household: Extract<ReturnType<typeof planBatteryEnergy>, { status: 'planned' }>,
+    nowMs: number,
+  ): BatteryExportSelection {
+    if (config.exportPolicy.kind === 'household_only') {
+      this.exportShadow.observe(deviceId, input, household, nowMs);
+      return { plan: household, decision: { kind: 'household_only' } };
+    }
+    return selectBatteryExportPlan(input, config.exportPolicy, household);
   }
 
 }

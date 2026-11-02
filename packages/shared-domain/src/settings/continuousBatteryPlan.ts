@@ -1,3 +1,4 @@
+import type { BatteryEnergyExportPolicy } from '../../../contracts/src/batteryPlan';
 import type {
   ContinuousBatteryPlanConfig,
   ContinuousBatteryPlanConfigs,
@@ -14,11 +15,29 @@ export const DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG: ContinuousBatteryPlanConfig
   roundTripEfficiency: 0.9,
   wearCostPerKWh: 0.03,
   priceUnit: 'price units',
+  exportPolicy: { kind: 'household_only' },
 };
+
+/** The export ceiling's accepted range, kW: a positive Main-meter bound a home connection can carry. */
+export const EXPORT_CEILING_MIN_KW = 0.1;
+export const EXPORT_CEILING_MAX_KW = 100;
 
 const inRange = (value: unknown, low: number, high: number): value is number => (
   typeof value === 'number' && Number.isFinite(value) && value >= low && value <= high
 );
+
+/**
+ * A config written before selling existed has no policy: household-only. A
+ * present policy must be complete; a malformed one is not quietly household-only.
+ */
+function parseExportPolicy(value: unknown): BatteryEnergyExportPolicy | null {
+  if (value === undefined) return { kind: 'household_only' };
+  if (!isUnknownRecord(value)) return null;
+  if (value.kind === 'household_only') return { kind: 'household_only' };
+  const ceilingKW = value.netExportCeilingKW;
+  if (value.kind !== 'price_export' || !inRange(ceilingKW, EXPORT_CEILING_MIN_KW, EXPORT_CEILING_MAX_KW)) return null;
+  return { kind: 'price_export', netExportCeilingKW: ceilingKW };
+}
 
 /** External settings/API boundary; no consumer reinterprets malformed battery economics. */
 export function parseContinuousBatteryPlanConfig(value: unknown): ContinuousBatteryPlanConfig | null {
@@ -30,6 +49,8 @@ export function parseContinuousBatteryPlanConfig(value: unknown): ContinuousBatt
     || !inRange(value.wearCostPerKWh, 0, 1000)
     || typeof value.priceUnit !== 'string' || !value.priceUnit.trim() || value.priceUnit.length > 64
     || (value.enabled && value.priceUnit.trim().toLowerCase() === 'price units')) return null;
+  const exportPolicy = parseExportPolicy(value.exportPolicy);
+  if (exportPolicy === null) return null;
   return {
     enabled: value.enabled,
     usableCapacityKWh: value.usableCapacityKWh,
@@ -37,6 +58,7 @@ export function parseContinuousBatteryPlanConfig(value: unknown): ContinuousBatt
     roundTripEfficiency: value.roundTripEfficiency,
     wearCostPerKWh: value.wearCostPerKWh,
     priceUnit: value.priceUnit.trim(),
+    exportPolicy,
   };
 }
 

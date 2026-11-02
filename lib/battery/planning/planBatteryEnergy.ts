@@ -1,28 +1,30 @@
 import type {
+  BatteryEnergyExportPolicy,
   BatteryEnergyHorizon,
   BatteryEnergyModel,
   BatteryEnergyPlan,
   BatteryEnergyPlanPeriod,
   BatteryEnergyPeriod,
+  BatteryPriceExportPolicy,
 } from '../../../packages/contracts/src/batteryPlan';
-import {
-  batteryEnergyFlow, chargeLimitKW, ENERGY_EPSILON_KWH,
-  type BatteryEnergyExportPolicy, type BatteryExportEconomicsPolicy,
-} from './batteryEnergyFlow';
-
-export type { BatteryExportEconomicsPolicy } from './batteryEnergyFlow';
+import { batteryEnergyFlow, chargeLimitKW, ENERGY_EPSILON_KWH } from './batteryEnergyFlow';
 
 type PlannedBatteryEnergy = Extract<BatteryEnergyPlan, { status: 'planned' }>;
 type BatteryPlanFrontier =
   | { status: 'reachable'; routes: ReadonlyMap<number, Route> }
   | Extract<BatteryEnergyPlan, { status: 'infeasible' }>;
 
-/** Diagnostic economics and export-period evidence only; never an executable plan or control permission. */
+/**
+ * The complete-plan comparison. `candidate` is the export-capable plan ending
+ * at the baseline's stored energy; it is executable only when `selection` is
+ * `export_candidate` and the owner authorized selling.
+ */
 export type BatteryExportEconomicsComparison =
   | { kind: 'candidate_infeasible' }
   | {
     kind: 'compared';
     selection: 'household' | 'export_candidate';
+    candidate: PlannedBatteryEnergy;
     baselineEnergyCost: number;
     candidateEnergyCost: number;
     estimatedSavings: number;
@@ -192,7 +194,8 @@ function materializePlan(battery: BatteryEnergyModel, terminal: Route): PlannedB
  * Lowest-cost path through a fixed stored-energy grid. This is a horizon-wide
  * dynamic program, not a cheap-period charging rule. Each period includes the
  * household's committed demand and AC import ceiling; battery export is never
- * admitted. Reserve, power, conversion loss, export opportunity cost, wear and
+ * admitted here (`compareBatteryExportEconomics` solves the export candidate).
+ * Reserve, power, conversion loss, export opportunity cost, wear and
  * the configured value of usable energy beyond the horizon all affect choices.
  *
  * The optimum is over this represented grid (capacity / 200 kWh plus exact
@@ -236,11 +239,12 @@ function buildFrontier(horizon: BatteryEnergyHorizon, exportPolicy: BatteryEnerg
  * accepted horizon. Both solves use identical represented energy states. Fixing
  * the candidate's terminal to the baseline prevents liquidating initial stock
  * or a changed terminal credit from appearing as trading savings. The caller
- * has resolved complete export quotes; this result grants no control permission.
+ * has resolved complete export quotes; the owner's policy, not this result,
+ * grants control permission.
  */
 export function compareBatteryExportEconomics(
   horizon: BatteryEnergyHorizon,
-  policy: BatteryExportEconomicsPolicy,
+  policy: BatteryPriceExportPolicy,
   baseline: PlannedBatteryEnergy,
 ): BatteryExportEconomicsComparison {
   const frontier = buildFrontier(horizon, policy);
@@ -261,7 +265,7 @@ export function compareBatteryExportEconomics(
     }] : [];
   });
   return {
-    kind: 'compared', selection: selected ? 'export_candidate' : 'household',
+    kind: 'compared', selection: selected ? 'export_candidate' : 'household', candidate,
     baselineEnergyCost: baseline.energyCost, candidateEnergyCost: candidate.energyCost,
     estimatedSavings: selected ? savings : 0, terminalEnergyKWh: candidate.terminalEnergyKWh,
     exportPeriods,

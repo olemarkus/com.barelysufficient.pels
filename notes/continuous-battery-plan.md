@@ -37,12 +37,14 @@ stopped at 100 % would never be charged from 95 % again that week. The
 horizon carries these as stored-energy steps, and each transition's charge is
 capped by the steps at or below the energy it starts from, so a battery that
 slows near full starts charging earlier.
-Battery-driven export is excluded.
+Battery-driven export is excluded unless the owner opted in to selling; see
+[battery export](./battery-export-arbitrage.md#implementation).
 
 The hidden [export economics evaluation](./battery-export-arbitrage.md#hidden-economic-evaluation)
 compares a hypothetical export schedule with the household plan at equal terminal
-energy. It emits sampled diagnostics under the existing `plan` debug topic; the
-household plan remains the only public and executable schedule. Quote coverage,
+energy for a household-only battery. It emits sampled diagnostics under the
+existing `plan` debug topic; for that battery the household plan remains the only
+public and executable schedule. Quote coverage,
 sampling and a conservative search-work budget govern whether a comparison runs.
 These estimates are independent forecast snapshots, not accumulated profit.
 
@@ -104,7 +106,8 @@ Economic charging is capped by measured available power and the priority solar
 offer. Extra capacity relief is selected in the existing priority walk. The
 configured reserve also bounds capacity discharge. Economic discharge is bounded
 by the house's measured demand and is withheld from admission, so it never creates
-room for unrelated restores. A capacity hold returns directly to continuous
+room for unrelated restores. A selling period (`export_energy`) may add Main
+export up to the owner's ceiling and earns no settling credit. A capacity hold returns directly to continuous
 planning after its ordinary resume admission, without a native-mode pulse.
 
 Inverter curtailment waits while a newly planned battery charge has not reached

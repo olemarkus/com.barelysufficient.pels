@@ -132,6 +132,10 @@ cards write it.
 `lib/battery/continuousBatteryPlanSettings.ts` resolves genuine absence and
 unavailable settings reads; the existing bootstrap uses that same boundary.
 The shared schema validates the complete map and permits one enabled battery.
+Each entry carries an `exportPolicy` (household-only, or price export with a
+0.1 to 100 kW Main-meter ceiling); an entry written before selling existed has
+none and resolves to household-only. A present but malformed policy refuses the
+map rather than quietly selling nothing.
 The UI saves through Homey settings after a fresh complete-map read, preserving
 entries for batteries outside the visible roster. A null WebView read requires
 an uncached bootstrap read; malformed or unavailable maps refuse the save rather
