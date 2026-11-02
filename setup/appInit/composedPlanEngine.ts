@@ -1,3 +1,4 @@
+import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 import type { ExecutionState } from '../../lib/executor/executionState';
 import { syncPendingTargetCommands, prunePendingTargetCommands } from '../../lib/executor/pendingTargetObservation';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsService';
@@ -112,15 +113,15 @@ export class ComposedPlanEngine implements PlanEngine {
   }
 
   public async applyPlanActions(plan: DevicePlan): Promise<PlanActuationResult> {
-    return this.executor.applyPlanActions(plan);
+    return this.executor.applyPlanActions(buildExecutionPlan(plan));
   }
 
   public getDeviceExecutionStates(plan: DevicePlan) {
-    return this.executor.getDeviceExecutionStates(plan);
+    return this.executor.getDeviceExecutionStates(buildExecutionPlan(plan));
   }
 
   public shouldApplyStablePlanActions(plan: DevicePlan): boolean {
-    return this.executor.hasStablePlanActuation(plan);
+    return this.executor.hasStablePlanActuation(buildExecutionPlan(plan));
   }
 
   public getObservationRevision(): number {
@@ -138,8 +139,8 @@ export class ComposedPlanEngine implements PlanEngine {
     // the hard cap (`inc_26449fb9`). Decline; the next whole-home reading
     // re-decides against the observation that moved, which is the honest answer.
     if (this.executor.getObservationRevision() !== observationRevisionAtBuild) return false;
-    return this.executor.hasInverterWork(plannedSnapshot)
-      || hasPlanExecutionDriftAgainstIntent(plannedSnapshot, this.executor.driftObservationDeps());
+    return this.executor.hasInverterWork(buildExecutionPlan(plannedSnapshot))
+      || hasPlanExecutionDriftAgainstIntent(buildExecutionPlan(plannedSnapshot), this.executor.driftObservationDeps());
   }
 
   public syncPendingTargetCommands(
@@ -195,7 +196,7 @@ export class ComposedPlanEngine implements PlanEngine {
   public isInverterReleaseRecoveryReady(): boolean { return this.executor.isInverterReleaseRecoveryReady(); }
 
   public getPendingInverterReleaseCount(plan: DevicePlan): number {
-    return this.executor.getPendingInverterReleaseCount(plan);
+    return this.executor.getPendingInverterReleaseCount(buildExecutionPlan(plan));
   }
 
   public hasPendingTargetCommandsOlderThan(thresholdMs: number): boolean {

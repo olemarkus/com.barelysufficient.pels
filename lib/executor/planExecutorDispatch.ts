@@ -1,4 +1,4 @@
-import type { DevicePlan } from '../plan/planTypes';
+import type { ExecutionPlan, PlannedStepBaseline } from '../planContract/executionPlan';
 import { isBinaryDrivenIntent } from './executableDesiredState';
 import {
   hasBinaryCommand,
@@ -12,7 +12,6 @@ import type {
   ExecutableBinaryIntent,
   ExecutableDeviceIntent,
   ExecutableObservedDeviceState,
-  ExecutablePlan,
   ExecutableReleaseIntent,
   ExecutableSteppedLoadDevice,
   ExecutableSteppedLoadIntent,
@@ -36,13 +35,10 @@ import {
 import { applyShedReleaseIntent } from './shedReleaseActuation';
 import {
   buildExecutableObservedDeviceState,
-  buildExecutablePlan,
-  findDroppedSteppedShedIntents,
-  hasExecutableShedDevices,
+  materializeExecutableDeviceIntent,
 } from './executablePlanProjection';
 import {
   buildExecutableSteppedLoadDevice,
-  resolveSteppedLoadCurrentFallback,
 } from './executableSteppedLoadProjection';
 import {
   buildExecutableTargetCommand,
@@ -51,7 +47,6 @@ import {
 import { isSteppedLoadRestoreFromOff } from './planExecutorPredicates';
 import { isRequestedStepMaterialized } from './steppedLoadActuation';
 import type { PlanActuationResult } from '../planContract/planActuationResult';
-import { hasStorageDecision } from '../planContract/storageDecision';
 import type { StorageLane } from './batteryExecutor';
 
 const logger = getLogger('executor/plan');
@@ -275,7 +270,7 @@ const applyDeviceIntent = async (
   intent: ExecutableDeviceIntent,
   observed: ExecutableObservedDeviceState | undefined,
   hasShedDevices: boolean,
-  steppedFallback: ReturnType<typeof resolveSteppedLoadCurrentFallback>,
+  steppedFallback: PlannedStepBaseline | undefined,
 ): Promise<DispatchDelta> => {
   if (intent.projectionError) throw intent.projectionError;
   const commands = resolveDeviceCommands(intent);
@@ -307,57 +302,37 @@ const applyDeviceIntent = async (
   return applyDefaultBinaryIntent(ctx, device);
 };
 
-const logUnderspecifiedSteppedShedDevices = (
-  plan: DevicePlan,
-  exec: ExecutablePlan,
-): void => {
-  for (const dropped of findDroppedSteppedShedIntents(plan, exec)) {
-    emitExecutorDebug({
-      event: 'stepped_load_shed_intent_dropped',
-      reasonCode: 'underspecified_set_step',
-      ...dropped,
-    });
-  }
-};
-
 /**
  * Carries out a plan against the executor's current read of every device, then
  * the storage lane's decisions.
  */
 export const dispatchPlanActions = async (
   ctx: ExecutorCommandContext,
-  plan: DevicePlan,
+  plan: ExecutionPlan,
   devices: ExecutorDeviceRead[],
   storage: StorageLane,
 ): Promise<PlanActuationResult> => {
-  const executablePlan = buildExecutablePlan(plan);
   const observedMap = new Map(devices.map((device) => [
     device.id,
     buildExecutableObservedDeviceState(device, undefined),
   ]));
-  // Producer-resolved current state per device. The raw dispatch snapshot carries
-  // no observed step (`selectedStepId` is a plan-device decoration, absent here),
-  // so the effective current step/on is resolved once on the plan device and
-  // supplied to the projection — keeping current-state resolution in the producer
-  // layer rather than re-derived on the (desired-only) executable intent. The
-  // observation stays authoritative for any field it does carry (binary on,
-  // reported step, measured power).
-  const steppedFallbackMap = new Map(
-    plan.devices.map((device) => [device.id, resolveSteppedLoadCurrentFallback(device)]),
-  );
-  const hasShedDevices = hasExecutableShedDevices(plan, executablePlan);
-  logUnderspecifiedSteppedShedDevices(plan, executablePlan);
+  for (const dropped of plan.droppedSteppedSheds) {
+    emitExecutorDebug({ event: 'stepped_load_shed_intent_dropped', reasonCode: 'underspecified_set_step', ...dropped });
+  }
   let deviceWriteCount = 0;
   let commandRequestCount = 0;
   let deviceApplyFailureCount = 0;
-  for (const intent of executablePlan.devices) {
+  for (const device of plan.devices) {
     try {
+      const intent = materializeExecutableDeviceIntent(
+        device.commands, ctx.getSteppedLoadCommandSession(device.commands.id), Date.now(),
+      );
       const result = await applyDeviceIntent(
         ctx,
         intent,
         observedMap.get(intent.id),
-        hasShedDevices,
-        steppedFallbackMap.get(intent.id),
+        plan.hasShedDevices,
+        device.stepBaseline,
       );
       deviceWriteCount += result.deviceWriteCount;
       commandRequestCount += result.commandRequestCount;
@@ -365,7 +340,7 @@ export const dispatchPlanActions = async (
       deviceApplyFailureCount += 1;
       logger.error({
         event: 'executor_plan_error',
-        msg: `Failed to apply action for ${intent.name}; continuing with remaining devices`,
+        msg: `Failed to apply action for ${device.commands.name}; continuing with remaining devices`,
         err: error,
       });
     }
@@ -383,12 +358,11 @@ export const dispatchPlanActions = async (
 /** The plan's home-battery decisions, through the storage lane (none in a meter area). */
 const dispatchStorageDecisions = async (
   storage: StorageLane,
-  plan: DevicePlan,
+  plan: ExecutionPlan,
 ): Promise<{ commandRequestCount: number; failureCount: number }> => {
   let commandRequestCount = 0;
   let failureCount = 0;
-  for (const device of plan.devices) {
-    if (!hasStorageDecision(device)) continue;
+  for (const device of plan.storageDevices) {
     try {
       if (await storage.apply(device)) commandRequestCount += 1;
     } catch (error) {

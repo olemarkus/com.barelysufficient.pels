@@ -29,10 +29,8 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { SteppedLoadTransportError } from '../../lib/ports/steppedLoadWrite';
 import { buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
-import {
-  buildExecutableSteppedLoadDevice,
-  buildExecutableSteppedLoadIntent,
-} from '../../lib/executor/executableSteppedLoadProjection';
+import { buildExecutableSteppedLoadIntent } from '../utils/executionDecisionFixture';
+import { buildExecutableSteppedLoadDevice } from '../../lib/executor/executableSteppedLoadProjection';
 import type {
   DevicePlanDevice,
   BinaryControlDiscriminantProbe,

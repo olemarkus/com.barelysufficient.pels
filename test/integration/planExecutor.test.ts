@@ -1,3 +1,5 @@
+import type { ExecutableSteppedLoadCommandSession } from '../../lib/executor/executablePlan';
+import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 import { createTestPlanExecutor } from '../utils/planEngineStateFixture';
 import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import { onTestFinished } from 'vitest';
@@ -365,6 +367,16 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
   };
 };
 
+/** The command owner has already issued this step; no unknown-step initialization is due. */
+const issuedStepSession = (
+  command: NonNullable<ExecutableSteppedLoadCommandSession['command']>,
+): ExecutableSteppedLoadCommandSession => ({
+  command,
+  hasPriorStepCommand: true,
+  stepCommandPending: command.status === 'pending',
+  unansweredStepCommands: { kind: 'none' },
+});
+
 let logCapture: LoggerCapture;
 beforeEach(() => { logCapture = captureLogger(); });
 afterEach(() => { logCapture.restore(); });
@@ -489,7 +501,7 @@ describe('PlanExecutor declined actuator requests', () => {
       persistLastControlledMs,
     });
 
-    const result = await executor.applyPlanActions({
+    const result = await executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({
         totalKw: 6,
         softLimitKw: 5,
@@ -509,7 +521,7 @@ describe('PlanExecutor declined actuator requests', () => {
       })],
       inverterDecisions: [],
       storageReleases: [],
-    });
+    }));
 
     expect(apply).toHaveBeenCalledWith({
       kind: 'binary',
@@ -551,7 +563,7 @@ describe('PlanExecutor declined actuator requests', () => {
       persistLastControlledMs,
     });
 
-    const result = await executor.applyPlanActions(buildTargetPlan());
+    const result = await executor.applyPlanActions(buildExecutionPlan(buildTargetPlan()));
 
     expect(apply).toHaveBeenCalledWith({
       kind: 'target',
@@ -594,7 +606,7 @@ describe('PlanExecutor restore logging', () => {
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await expect(executor.applyPlanActions({
+    await expect(executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({
         totalKw: 2,
         softLimitKw: 1,
@@ -632,7 +644,7 @@ describe('PlanExecutor restore logging', () => {
       ],
       inverterDecisions: [],
       storageReleases: [],
-    })).resolves.toEqual({
+    }))).resolves.toEqual({
       deviceWriteCount: 1,
       commandRequestCount: 0,
       // The thrown projection counts as an apply failure — the silence
@@ -662,7 +674,7 @@ describe('PlanExecutor restore logging', () => {
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions({
+    await executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
@@ -683,7 +695,7 @@ describe('PlanExecutor restore logging', () => {
       ],
       inverterDecisions: [],
       storageReleases: [],
-    });
+    }));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
   });
@@ -701,7 +713,7 @@ describe('PlanExecutor restore logging', () => {
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions({
+    await executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
@@ -722,7 +734,7 @@ describe('PlanExecutor restore logging', () => {
       ],
       inverterDecisions: [],
       storageReleases: [],
-    });
+    }));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
   });
@@ -742,7 +754,7 @@ describe('PlanExecutor restore logging', () => {
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions({
+    await executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
@@ -764,7 +776,7 @@ describe('PlanExecutor restore logging', () => {
       ],
       inverterDecisions: [],
       storageReleases: [],
-    });
+    }));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
   });
@@ -772,7 +784,7 @@ describe('PlanExecutor restore logging', () => {
   it('does not restore a pending swap target even if it has keep intent', async () => {
     const { executor, deviceManager } = buildExecutor();
 
-    await executor.applyPlanActions({
+    await executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
@@ -793,7 +805,7 @@ describe('PlanExecutor restore logging', () => {
       ],
       inverterDecisions: [],
       storageReleases: [],
-    });
+    }));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
   });
@@ -810,7 +822,7 @@ describe('PlanExecutor restore logging', () => {
       evChargingState: 'plugged_in_charging',
     }]);
 
-    await executor.applyPlanActions({
+    await executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
@@ -831,7 +843,7 @@ describe('PlanExecutor restore logging', () => {
       ],
       inverterDecisions: [],
       storageReleases: [],
-    });
+    }));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', true);
     expect(logCapture.events.every((e) => typeof e.msg !== 'string' || !e.msg.includes('evaluating EV restore'))).toBe(true);
@@ -851,7 +863,7 @@ describe('PlanExecutor restore logging', () => {
       evChargingState: 'plugged_in_charging',
     }]);
 
-    await executor.applyPlanActions({
+    await executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
@@ -872,7 +884,7 @@ describe('PlanExecutor restore logging', () => {
       ],
       inverterDecisions: [],
       storageReleases: [],
-    });
+    }));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', true);
     expect(logCapture.events.every((e) => typeof e.msg !== 'string' || !e.msg.includes('evaluating EV restore'))).toBe(true);
@@ -881,7 +893,7 @@ describe('PlanExecutor restore logging', () => {
   it('does not actuate a binary restore while meter settling keeps an off device in keep state', async () => {
     const { executor, deviceManager } = buildExecutor();
 
-    await executor.applyPlanActions({
+    await executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
@@ -902,7 +914,7 @@ describe('PlanExecutor restore logging', () => {
       ],
       inverterDecisions: [],
       storageReleases: [],
-    });
+    }));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
@@ -922,7 +934,7 @@ describe('PlanExecutor restore logging', () => {
       }],
     );
 
-    await executor.applyPlanActions({
+    await executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({
         totalKw: 6,
         softLimitKw: 5,
@@ -942,7 +954,7 @@ describe('PlanExecutor restore logging', () => {
       })],
       inverterDecisions: [],
       storageReleases: [],
-    });
+    }));
 
     expect(flowBackedTurnOffTrigger.trigger).toHaveBeenCalledWith(
       {},
@@ -1005,7 +1017,7 @@ describe('PlanExecutor restore logging', () => {
       );
     });
 
-    await executor.applyPlanActions(buildPlan());
+    await executor.applyPlanActions(buildExecutionPlan(buildPlan()));
 
     expect(flowBackedTurnOnTrigger.trigger).toHaveBeenCalledWith(
       {},
@@ -1067,7 +1079,7 @@ describe('PlanExecutor restore logging', () => {
       }],
     );
 
-    await executor.applyPlanActions({
+    await executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({
         totalKw: 6,
         softLimitKw: 5,
@@ -1087,7 +1099,7 @@ describe('PlanExecutor restore logging', () => {
       })],
       inverterDecisions: [],
       storageReleases: [],
-    });
+    }));
 
     expect(state.actuation.lastDeviceShedMs['dev-1']).toBeUndefined();
     const pending = state.pendingBinaryCommands['dev-1'];
@@ -1123,7 +1135,7 @@ describe('PlanExecutor restore logging', () => {
     const previousDeviceRestoreMs = state.actuation.lastDeviceRestoreMs['dev-1'];
     const { executor, deviceManager, state: nextState } = buildExecutor(state);
 
-    await executor.applyPlanActions(buildPlan());
+    await executor.applyPlanActions(buildExecutionPlan(buildPlan()));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     const restorePending = nextState.pendingBinaryCommands['dev-1'];
@@ -1169,7 +1181,7 @@ describe('PlanExecutor restore logging', () => {
       deviceDiagnostics: partialDouble<DeviceDiagnosticsRecorder>(deviceDiagnostics),
     });
 
-    await executor.applyPlanActions({
+    await executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({
         totalKw: 6,
         softLimitKw: 5,
@@ -1189,7 +1201,7 @@ describe('PlanExecutor restore logging', () => {
       })],
       inverterDecisions: [],
       storageReleases: [],
-    });
+    }));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
     const shedPending = nextState.pendingBinaryCommands['dev-1'];
@@ -1237,7 +1249,7 @@ describe('PlanExecutor restore logging', () => {
       },
     ]);
 
-    await executor.applyPlanActions(buildTargetPlan(16, 23));
+    await executor.applyPlanActions(buildExecutionPlan(buildTargetPlan(16, 23)));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
     expect(logCapture.events).toContainEqual(expect.objectContaining({
@@ -1287,8 +1299,8 @@ describe('executor command decisions reach the plan debug topic', () => {
     ]);
     deviceManager.setCapability.mockRejectedValue(new Error('Device offline'));
     const plan = buildTargetPlan();
-    await executor.applyPlanActions(plan);
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
+    await executor.applyPlanActions(buildExecutionPlan(plan));
     const event = capture.findEvent('target_command_skipped');
     capture.restore();
     return event;
@@ -1339,8 +1351,8 @@ describe('PlanExecutor pending target commands', () => {
     ]);
     const plan = buildTargetPlan();
 
-    await executor.applyPlanActions(plan);
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
@@ -1349,11 +1361,11 @@ describe('PlanExecutor pending target commands', () => {
       retryCount: 0,
     });
     vi.advanceTimersByTime(90_000 - 1);
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
 
     vi.advanceTimersByTime(1);
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(2);
     expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
@@ -1391,8 +1403,8 @@ describe('PlanExecutor pending target commands', () => {
     deviceManager.setCapability.mockRejectedValue(failure);
     const plan = buildTargetPlan();
 
-    await executor.applyPlanActions(plan);
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
     expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
@@ -1427,7 +1439,7 @@ describe('PlanExecutor pending target commands', () => {
     state.actuation.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;
     const { executor, deviceManager } = buildExecutor(state, []);
 
-    await executor.applyPlanActions(buildPlan());
+    await executor.applyPlanActions(buildExecutionPlan(buildPlan()));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
     expect(logCapture.events).toContainEqual(expect.objectContaining({
@@ -1460,7 +1472,7 @@ describe('PlanExecutor pending target commands', () => {
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions({
+    await executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4 }),
       devices: [
         pd({
@@ -1483,7 +1495,7 @@ describe('PlanExecutor pending target commands', () => {
       ],
       inverterDecisions: [],
       storageReleases: [],
-    });
+    }));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'target_temperature', 16);
@@ -1508,7 +1520,7 @@ describe('PlanExecutor pending target commands', () => {
       },
     ]);
 
-    await expect(executor.applyPlanActions({
+    await expect(executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4 }),
       devices: [pd({
         id: 'dev-1',
@@ -1523,7 +1535,7 @@ describe('PlanExecutor pending target commands', () => {
       })],
       inverterDecisions: [],
       storageReleases: [],
-    })).resolves.toEqual(expect.objectContaining({ deviceWriteCount: 1 }));
+    }))).resolves.toEqual(expect.objectContaining({ deviceWriteCount: 1 }));
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
   });
 
@@ -1542,7 +1554,7 @@ describe('PlanExecutor pending target commands', () => {
       },
     ]);
 
-    await executor.applyPlanActions(buildTargetPlan());
+    await executor.applyPlanActions(buildExecutionPlan(buildTargetPlan()));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
     expect(logCapture.events).toContainEqual(expect.objectContaining({
@@ -1572,14 +1584,14 @@ describe('PlanExecutor pending target commands', () => {
       },
     ]);
 
-    await executor.applyPlanActions(buildTargetPlan(40, 46));
+    await executor.applyPlanActions(buildExecutionPlan(buildTargetPlan(40, 46)));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 45);
     expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
       desired: 45,
       retryCount: 0,
     });
-    await executor.applyPlanActions(buildTargetPlan(40, 46));
+    await executor.applyPlanActions(buildExecutionPlan(buildTargetPlan(40, 46)));
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
   });
 
@@ -1598,7 +1610,7 @@ describe('PlanExecutor pending target commands', () => {
       },
     ]);
 
-    await executor.applyPlanActions({
+    await executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({
         totalKw: 1,
         softLimitKw: 5,
@@ -1620,7 +1632,7 @@ describe('PlanExecutor pending target commands', () => {
       ],
       inverterDecisions: [],
       storageReleases: [],
-    });
+    }));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 15);
     expect(logCapture.events).toContainEqual(expect.objectContaining({
@@ -1664,7 +1676,7 @@ describe('PlanExecutor pending target commands', () => {
       },
     ]);
 
-    await executor.applyPlanActions(buildTargetPlan(28, 23));
+    await executor.applyPlanActions(buildExecutionPlan(buildTargetPlan(28, 23)));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
     // The pending entry is left untouched — no attempt was made, so nothing to count.
@@ -1710,7 +1722,7 @@ describe('PlanExecutor pending target commands', () => {
     );
 
     vi.advanceTimersByTime(TARGET_COMMAND_RETRY_DELAYS_MS[0] + 1);
-    await executor.applyPlanActions(buildTargetPlan(25, 23));
+    await executor.applyPlanActions(buildExecutionPlan(buildTargetPlan(25, 23)));
 
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
@@ -1756,7 +1768,7 @@ describe('PlanExecutor pending target commands', () => {
     ]);
 
     vi.advanceTimersByTime(TARGET_COMMAND_RETRY_DELAYS_MS[0] + 1);
-    await executor.applyPlanActions(buildTargetPlan(18, 23));
+    await executor.applyPlanActions(buildExecutionPlan(buildTargetPlan(18, 23)));
 
     expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
       desired: 23,
@@ -1778,7 +1790,7 @@ describe('PlanExecutor stepped loads', () => {
       steppedLoadProfile: device.steppedLoadProfile, reportedStepId: 'low', measuredPowerKw: 0 }]);
     const before = JSON.stringify(state);
     const plan: DevicePlan = { meta: buildPlanMeta({}), devices: [device], inverterDecisions: [], storageReleases: [] };
-    expect(executor.getDeviceExecutionStates(plan).get(device.id)).toMatchObject({
+    expect(executor.getDeviceExecutionStates(buildExecutionPlan(plan)).get(device.id)).toMatchObject({
       physicalState: 'off', observedStepId: 'low', desiredBinary: 'off', desiredStepId: null,
       binaryProgress: 'settled', stepProgress: 'undriven', currentDrawKw: 0 });
     expect(JSON.stringify(state)).toBe(before);
@@ -1796,7 +1808,7 @@ describe('PlanExecutor stepped loads', () => {
     // The runtime snapshot drops an unmanaged device, so it is no longer tracked.
     const { executor } = buildExecutor(createPlanEngineState(), []);
     const plan: DevicePlan = { meta: buildPlanMeta({}), devices: [device], inverterDecisions: [], storageReleases: [] };
-    expect(executor.getDeviceExecutionStates(plan).has(device.id)).toBe(false);
+    expect(executor.getDeviceExecutionStates(buildExecutionPlan(plan)).has(device.id)).toBe(false);
   });
 
   it('leaves an expired pending binary command for the settle sweep when status is read', () => {
@@ -1814,7 +1826,7 @@ describe('PlanExecutor stepped loads', () => {
       steppedLoadProfile: device.steppedLoadProfile, reportedStepId: 'low', measuredPowerKw: 0 }]);
     const plan: DevicePlan = { meta: buildPlanMeta({}), devices: [device], inverterDecisions: [], storageReleases: [] };
 
-    expect(executor.getDeviceExecutionStates(plan).get(device.id)?.binaryProgress).not.toBe('pending');
+    expect(executor.getDeviceExecutionStates(buildExecutionPlan(plan)).get(device.id)?.binaryProgress).not.toBe('pending');
     expect(state.pendingBinaryCommands[device.id]).toBe(expired);
   });
 
@@ -1918,9 +1930,9 @@ describe('PlanExecutor stepped loads', () => {
       }),
     );
 
-    await expect(executor.applyPlanActions(steppedPlan({
+    await expect(executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       reportedStepId: undefined,
-    }))).resolves.toEqual(expect.objectContaining({
+    })))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 1,
     }));
@@ -1968,11 +1980,11 @@ describe('PlanExecutor stepped loads', () => {
       },
     );
 
-    await expect(executor.applyPlanActions(steppedPlan({
+    await expect(executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       reportedStepId: undefined,
       selectedStepId: 'low',
       desiredStepId: 'max',
-    }))).resolves.toEqual(expect.objectContaining({
+    })))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 0,
     }));
@@ -1998,11 +2010,11 @@ describe('PlanExecutor stepped loads', () => {
       },
     );
 
-    await expect(executor.applyPlanActions(steppedPlan({
+    await expect(executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       reportedStepId: undefined,
       selectedStepId: 'low',
       desiredStepId: 'max',
-    }))).resolves.toEqual(expect.objectContaining({
+    })))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 0,
     }));
@@ -2022,11 +2034,11 @@ describe('PlanExecutor stepped loads', () => {
     deviceManager.requestSteppedLoadStep.mockResolvedValue({ requested: false });
 
     const plan = steppedPlan({ reportedStepId: undefined });
-    await expect(executor.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
+    await expect(executor.applyPlanActions(buildExecutionPlan(plan))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 0,
     }));
-    await expect(executor.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
+    await expect(executor.applyPlanActions(buildExecutionPlan(plan))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 0,
     }));
@@ -2060,9 +2072,9 @@ describe('PlanExecutor stepped loads', () => {
       },
     );
 
-    await expect(executor.applyPlanActions(steppedPlan({
+    await expect(executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       reportedStepId: undefined,
-    }))).resolves.toEqual(expect.objectContaining({
+    })))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 1,
     }));
@@ -2105,8 +2117,8 @@ describe('PlanExecutor stepped loads', () => {
       selectedStepId: 'low',
       desiredStepId: 'low',
     });
-    expect(executor.hasStablePlanActuation(plan)).toBe(false);
-    await expect(executor.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(plan))).toBe(false);
+    await expect(executor.applyPlanActions(buildExecutionPlan(plan))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 0,
     }));
@@ -2131,7 +2143,7 @@ describe('PlanExecutor stepped loads', () => {
       }),
     );
 
-    await executor.applyPlanActions(steppedPlan({ selectedStepId: 'max', desiredStepId: 'max' }));
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({ selectedStepId: 'max', desiredStepId: 'max' })));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
@@ -2147,7 +2159,7 @@ describe('PlanExecutor stepped loads', () => {
       }),
     );
 
-    await executor.applyPlanActions(steppedPlan({ selectedStepId: 'max', desiredStepId: 'max' }));
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({ selectedStepId: 'max', desiredStepId: 'max' })));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
@@ -2158,7 +2170,7 @@ describe('PlanExecutor stepped loads', () => {
     // The producer (EV target-power profile builder) stamps `planningCurrentA`
     // onto each step; the executor reads it off the desired step instead of
     // re-deriving it from the target-power preset config.
-    await expect(executor.applyPlanActions(steppedPlan({
+    await expect(executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       steppedLoadProfile: {
         steps: [
           { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
@@ -2166,7 +2178,7 @@ describe('PlanExecutor stepped loads', () => {
           { id: 'max', planningPowerW: 3000, planningCurrentA: 3000 / 230 },
         ],
       },
-    }))).resolves.toEqual(expect.objectContaining({
+    })))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 1,
       commandRequestCount: 1,
     }));
@@ -2186,7 +2198,7 @@ describe('PlanExecutor stepped loads', () => {
 
     // Capability-built / non-preset profiles carry no per-step current, which is
     // the same zero the old watts-per-amp path produced for a missing preset.
-    await expect(executor.applyPlanActions(steppedPlan())).resolves.toEqual(expect.objectContaining({
+    await expect(executor.applyPlanActions(buildExecutionPlan(steppedPlan()))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 1,
       commandRequestCount: 1,
     }));
@@ -2228,11 +2240,11 @@ describe('PlanExecutor stepped loads', () => {
       return true;
     });
 
-    await expect(executor.applyPlanActions(steppedPlan({
+    await expect(executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentTarget: 18,
       currentTemperature: 18,
       plannedTarget: 23,
-    }))).resolves.toEqual(expect.objectContaining({
+    })))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 1,
       commandRequestCount: 1,
     }));
@@ -2271,14 +2283,14 @@ describe('PlanExecutor stepped loads', () => {
       },
     } as HomeyDeviceLike);
 
-    await expect(executor.applyPlanActions(steppedPlan({
+    await expect(executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       controlAdapter: {
         kind: 'capability_adapter',
         activationAvailable: true,
         activationRequired: false,
         activationEnabled: true,
       },
-    }))).resolves.toEqual(expect.objectContaining({
+    })))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 1,
     }));
@@ -2295,16 +2307,16 @@ describe('PlanExecutor stepped loads', () => {
   it('marks stable keep step-up intent as actuatable while the selected step remains lower', () => {
     const { executor } = buildExecutor();
 
-    expect(executor.hasStablePlanActuation(steppedPlan())).toBe(true);
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(steppedPlan()))).toBe(true);
   });
 
   it('marks stable keep step-down intent as actuatable while the selected step remains higher', () => {
     const { executor } = buildExecutor();
 
-    expect(executor.hasStablePlanActuation(steppedPlan({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(steppedPlan({
       selectedStepId: 'max',
       desiredStepId: 'low',
-    }))).toBe(true);
+    })))).toBe(true);
   });
 
   it('does not send a stale lower step through a Flow after command authority is removed', async () => {
@@ -2321,8 +2333,8 @@ describe('PlanExecutor stepped loads', () => {
       steppedSnapshot({ reportedStepId: 'max' }),
     );
 
-    expect(executor.hasStablePlanActuation(plan)).toBe(false);
-    await expect(executor.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(plan))).toBe(false);
+    await expect(executor.applyPlanActions(buildExecutionPlan(plan))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 0,
     }));
@@ -2351,7 +2363,7 @@ describe('PlanExecutor stepped loads', () => {
       {},
     );
 
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
@@ -2388,8 +2400,8 @@ describe('PlanExecutor stepped loads', () => {
       steppedSnapshot({ reportedStepId: 'max' }),
     );
 
-    expect(executor.hasStablePlanActuation(plan)).toBe(true);
-    await expect(executor.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(plan))).toBe(true);
+    await expect(executor.applyPlanActions(buildExecutionPlan(plan))).resolves.toEqual(expect.objectContaining({
       commandRequestCount: 1,
     }));
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
@@ -2409,8 +2421,8 @@ describe('PlanExecutor stepped loads', () => {
     const plan = steppedPlan({ reason });
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, steppedSnapshot());
 
-    expect(executor.hasStablePlanActuation(plan)).toBe(false);
-    await executor.applyPlanActions(plan);
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(plan))).toBe(false);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
   });
@@ -2428,8 +2440,8 @@ describe('PlanExecutor stepped loads', () => {
       steppedSnapshot({ binaryControl: { on: false }, reportedStepId: 'max' }),
     );
 
-    expect(executor.hasStablePlanActuation(plan)).toBe(false);
-    await executor.applyPlanActions(plan);
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(plan))).toBe(false);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
   });
@@ -2459,8 +2471,8 @@ describe('PlanExecutor stepped loads', () => {
       steppedSnapshot({ steppedLoadProfile: fourStepProfile, reportedStepId: 'low' }),
     );
 
-    expect(executor.hasStablePlanActuation(plan)).toBe(true);
-    await expect(executor.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(plan))).toBe(true);
+    await expect(executor.applyPlanActions(buildExecutionPlan(plan))).resolves.toEqual(expect.objectContaining({
       commandRequestCount: 0,
     }));
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
@@ -2493,8 +2505,8 @@ describe('PlanExecutor stepped loads', () => {
       steppedSnapshot({ binaryCapabilityId: undefined, binaryControl: undefined, reportedStepId: 'off' }),
     );
 
-    expect(executor.hasStablePlanActuation(stepOnlyPlan)).toBe(true);
-    await expect(executor.applyPlanActions(stepOnlyPlan)).resolves.toEqual(expect.objectContaining({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(stepOnlyPlan))).toBe(true);
+    await expect(executor.applyPlanActions(buildExecutionPlan(stepOnlyPlan))).resolves.toEqual(expect.objectContaining({
       commandRequestCount: 0,
     }));
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
@@ -2541,7 +2553,7 @@ describe('PlanExecutor stepped loads', () => {
       return { requested: true, acknowledged: true as const, transport: 'flow' as const };
     });
 
-    const applying = executor.applyPlanActions(plan);
+    const applying = executor.applyPlanActions(buildExecutionPlan(plan));
     await firstWriteStarted;
     Object.assign(snapshot[1]!, { reportedStepId: laterReport });
     releaseFirstWrite();
@@ -2558,38 +2570,46 @@ describe('PlanExecutor stepped loads', () => {
   });
 
   it('does not mark stable stepped step-up intent actuatable while the same command is pending', () => {
-    const { executor } = buildExecutor();
+    const { executor } = buildExecutor(undefined, undefined, {
+      getSteppedLoadCommandSession: () => issuedStepSession({ stepId: 'max', status: 'pending', retryCount: 0 }),
+    });
 
-    expect(executor.hasStablePlanActuation(steppedPlan({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(steppedPlan({
       lastDesiredStepId: 'max',
       lastStepCommandIssuedAt: Date.now() - 1_000,
       stepCommandPending: true,
       stepCommandStatus: 'pending',
-    }))).toBe(false);
+    })))).toBe(false);
   });
 
   it('does not mark a stepped step-up actuatable while a probe rung outside the confirmed ladder is in flight', () => {
     // An EV target-power probe commands a rung the configured ladder does not
     // hold yet, so the plan device carries no `lastDesiredStepId` for it; the
     // command in flight is still the plan's desired step.
-    const { executor } = buildExecutor();
+    const { executor } = buildExecutor(undefined, undefined, {
+      getSteppedLoadCommandSession: () => issuedStepSession({ stepId: 'max', status: 'pending', retryCount: 0 }),
+    });
 
-    expect(executor.hasStablePlanActuation(steppedPlan({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(steppedPlan({
       lastDesiredStepId: undefined,
       stepCommandPending: true,
       stepCommandStatus: 'pending',
-    }))).toBe(false);
+    })))).toBe(false);
   });
 
   it('does not mark stable stepped step-up intent actuatable during retry backoff', () => {
-    const { executor } = buildExecutor();
+    const { executor } = buildExecutor(undefined, undefined, {
+      getSteppedLoadCommandSession: () => issuedStepSession({
+        stepId: 'max', status: 'stale', retryCount: 0, nextRetryAtMs: Date.now() + 30_000,
+      }),
+    });
 
-    expect(executor.hasStablePlanActuation(steppedPlan({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(steppedPlan({
       lastDesiredStepId: 'max',
       stepCommandPending: false,
       stepCommandStatus: 'stale',
       nextStepCommandRetryAtMs: Date.now() + 30_000,
-    }))).toBe(false);
+    })))).toBe(false);
   });
 
   // Prod incident 2026-07-25: a flow-backed EV charger sat off for 6+ minutes with
@@ -2620,15 +2640,15 @@ describe('PlanExecutor stepped loads', () => {
   it('marks a prepared stepped restore-from-off actuatable so the binary-on still fires', () => {
     const { executor } = buildExecutor();
 
-    expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan())).toBe(true);
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(preparedRestoreFromOffPlan()))).toBe(true);
   });
 
   it('marks a prepared stepped restore-from-off actuatable under a plain keep reason', () => {
     const { executor } = buildExecutor();
 
-    expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(preparedRestoreFromOffPlan({
       reason: KEEP_REASON,
-    }))).toBe(true);
+    })))).toBe(true);
   });
 
   it('does not mark a stepped restore-from-off actuatable before the step is reported', () => {
@@ -2637,33 +2657,34 @@ describe('PlanExecutor stepped loads', () => {
     // issued the step command is what drives that cycle.
     const { executor } = buildExecutor();
 
-    expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(preparedRestoreFromOffPlan({
       reportedStepId: undefined,
-    }))).toBe(false);
+    })))).toBe(false);
   });
 
   it('does not mark a prepared stepped restore-from-off actuatable once the device reads on', () => {
     const { executor } = buildExecutor();
 
-    expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(preparedRestoreFromOffPlan({
       currentState: 'on' as const,
-    }))).toBe(false);
+    })))).toBe(false);
   });
 
   it('does not mark a prepared stepped restore-from-off actuatable during a restore hold', () => {
     const { executor } = buildExecutor();
 
-    expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(preparedRestoreFromOffPlan({
       reason: { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 120 },
-    }))).toBe(false);
+    })))).toBe(false);
   });
 
   it('does not mark a prepared stepped restore-from-off actuatable while a binary command is pending', () => {
-    const { executor } = buildExecutor();
+    const { executor, deps } = buildExecutor();
+    deps.pendingBinaryCommandStore.record('dev-1', { desired: true, startedMs: Date.now() });
 
-    expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(preparedRestoreFromOffPlan({
       binaryCommandPending: true,
-    }))).toBe(false);
+    })))).toBe(false);
   });
 
   it('marks a prepared stepped restore-from-off actuatable for an EV charger regrouped like production', () => {
@@ -2689,7 +2710,7 @@ describe('PlanExecutor stepped loads', () => {
     // (owner ruling, `lib/plan/AGENTS.md`).
     expect(evPlan.devices[0]).not.toHaveProperty('evChargingState');
     expect(evPlan.devices[0]).toHaveProperty('objectiveKind', 'ev_soc');
-    expect(executor.hasStablePlanActuation(evPlan)).toBe(true);
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(evPlan))).toBe(true);
   });
 
   it('still marks a prepared stepped restore-from-off actuatable right after the step preparation', () => {
@@ -2702,7 +2723,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, state } = buildExecutor();
     state.actuation.lastDeviceRestoreMs['dev-1'] = Date.now() - 1_000;
 
-    expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan())).toBe(true);
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(preparedRestoreFromOffPlan()))).toBe(true);
   });
 
   const evDeadlinePlan = (
@@ -2739,25 +2760,26 @@ describe('PlanExecutor stepped loads', () => {
   it('marks stable EV deadline resume actuatable while the charger remains paused', () => {
     const { executor } = buildExecutor();
 
-    expect(executor.hasStablePlanActuation(evDeadlinePlan())).toBe(true);
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(evDeadlinePlan()))).toBe(true);
   });
 
   it('marks stable EV deadline pause actuatable while the charger remains charging', () => {
     const { executor } = buildExecutor();
 
-    expect(executor.hasStablePlanActuation(evDeadlinePlan({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(evDeadlinePlan({
       evChargingState: 'plugged_in_charging',
       binaryControl: { on: true },
       deferredReleaseIntent: { kind: 'binary_release' },
-    }))).toBe(true);
+    })))).toBe(true);
   });
 
   it('does not mark stable EV deadline actuation while a binary command is pending', () => {
-    const { executor } = buildExecutor();
+    const { executor, deps } = buildExecutor();
+    deps.pendingBinaryCommandStore.record('ev-1', { desired: true, startedMs: Date.now() });
 
-    expect(executor.hasStablePlanActuation(evDeadlinePlan({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(evDeadlinePlan({
       binaryCommandPending: true,
-    }))).toBe(false);
+    })))).toBe(false);
   });
 
   it('does not mark an unplugged charger stable for a deadline resume', () => {
@@ -2770,9 +2792,9 @@ describe('PlanExecutor stepped loads', () => {
     // states that genuinely blocks actuation, so it must read false here.
     const { executor } = buildExecutor();
 
-    expect(executor.hasStablePlanActuation(evDeadlinePlan({
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(evDeadlinePlan({
       evChargingState: 'plugged_out',
-    }))).toBe(false);
+    })))).toBe(false);
   });
 
   it('does not wait for stepped-load flow execution before completing apply', async () => {
@@ -2783,7 +2805,7 @@ describe('PlanExecutor stepped loads', () => {
     desiredSteppedTrigger.trigger.mockImplementation(() => new Promise<void>(() => {}));
 
     const outcome = await Promise.race([
-      executor.applyPlanActions(steppedPlan()).then(() => 'resolved'),
+      executor.applyPlanActions(buildExecutionPlan(steppedPlan())).then(() => 'resolved'),
       new Promise<'pending'>((resolve) => {
         setTimeout(() => resolve('pending'), 0);
       }),
@@ -2813,13 +2835,14 @@ describe('PlanExecutor stepped loads', () => {
       steppedSnapshot({
         binaryControlObservation: onoffObservation(true),
       }),
+      { getSteppedLoadCommandSession: () => issuedStepSession({ stepId: 'max', status: 'pending', retryCount: 0 }) },
     );
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       lastDesiredStepId: 'max',
       stepCommandPending: true,
       stepCommandStatus: 'pending',
-    }));
+    })));
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
@@ -2837,16 +2860,19 @@ describe('PlanExecutor stepped loads', () => {
           binaryControl: { on: true },
           binaryControlObservation: onoffObservation(true),
         }),
+        { getSteppedLoadCommandSession: () => issuedStepSession({
+          stepId: 'max', status: 'stale', retryCount: 0, nextRetryAtMs: now + 20_000,
+        }) },
       );
 
-      await executor.applyPlanActions(steppedPlan({
+      await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
         lastDesiredStepId: 'max',
         stepCommandPending: false,
         stepCommandStatus: 'stale',
         lastStepCommandIssuedAt: now - 10_000,
         stepCommandRetryCount: 0,
         nextStepCommandRetryAtMs: now + 20_000,
-      }));
+      })));
 
       expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
       expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
@@ -2863,14 +2889,14 @@ describe('PlanExecutor stepped loads', () => {
       const now = Date.now();
       const { executor, desiredSteppedTrigger, deps } = buildExecutor();
 
-      await executor.applyPlanActions(steppedPlan({
+      await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
         lastDesiredStepId: 'max',
         stepCommandPending: false,
         stepCommandStatus: 'stale',
         lastStepCommandIssuedAt: now - 40_000,
         stepCommandRetryCount: 0,
         nextStepCommandRetryAtMs: now - 1,
-      }));
+      })));
 
       expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
         step_id: 'max',
@@ -2899,7 +2925,7 @@ describe('PlanExecutor stepped loads', () => {
       const now = Date.now();
       const { executor, desiredSteppedTrigger, deps } = buildExecutor();
 
-      await executor.applyPlanActions(steppedPlan({
+      await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
         selectedStepId: 'low',
         lastDesiredStepId: 'max',
         stepCommandPending: false,
@@ -2907,7 +2933,7 @@ describe('PlanExecutor stepped loads', () => {
         lastStepCommandIssuedAt: now - 40_000,
         stepCommandRetryCount: 0,
         nextStepCommandRetryAtMs: now - 1,
-      }));
+      })));
 
       expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
         step_id: 'max',
@@ -2936,14 +2962,14 @@ describe('PlanExecutor stepped loads', () => {
     });
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'low',
       reportedStepId: 'low',
       desiredStepId: 'low', // no step change needed
-    }));
+    })));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(logCapture.events).toContainEqual(expect.objectContaining({
@@ -2966,13 +2992,13 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'off',
-    }));
+    })));
 
     // Raw snapshot has currentOn=false, so decideBinaryControl skips both shed-off
     // and restore — no binary command issued
@@ -2995,13 +3021,13 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'low', // intentionally illegal: shed + upward step target
-    }));
+    })));
 
     // Step trigger must not fire — that would be a restore, not a shed
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
@@ -3025,7 +3051,7 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
@@ -3033,7 +3059,7 @@ describe('PlanExecutor stepped loads', () => {
       desiredStepId: 'off',
       shedAction: 'turn_off',
       reason,
-    }));
+    })));
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
@@ -3056,7 +3082,7 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
@@ -3064,7 +3090,7 @@ describe('PlanExecutor stepped loads', () => {
       desiredStepId: 'off',
       shedAction: 'turn_off',
       reason,
-    }));
+    })));
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
@@ -3087,7 +3113,7 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
@@ -3095,7 +3121,7 @@ describe('PlanExecutor stepped loads', () => {
       desiredStepId: 'off',
       shedAction: 'turn_off',
       reason,
-    }));
+    })));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
@@ -3125,7 +3151,7 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
@@ -3133,7 +3159,7 @@ describe('PlanExecutor stepped loads', () => {
       desiredStepId: 'off',
       shedAction: 'turn_off',
       reason,
-    }));
+    })));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
@@ -3157,13 +3183,13 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'low', // restore-related field; must not trigger invariant restore
-    }));
+    })));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
     // A restore dispatch logs its turn-on; `binary_command_applied` would need a
@@ -3189,13 +3215,13 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'on' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'low',
       desiredStepId: 'low',
-    }));
+    })));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
   });
@@ -3213,12 +3239,12 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       selectedStepId: 'off',
       desiredStepId: 'low',
       reason: fixtureDeviceReason('meter settling (30s remaining)'),
-    }));
+    })));
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
@@ -3235,13 +3261,13 @@ describe('PlanExecutor stepped loads', () => {
       },
     ];
     const noTargets = buildExecutor(undefined, noTargetsSnapshot);
-    await noTargets.executor.applyPlanActions(steppedPlan({
+    await noTargets.executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'off',
-    }));
+    })));
 
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_failed',
@@ -3265,14 +3291,14 @@ describe('PlanExecutor stepped loads', () => {
     const missingCapability = buildExecutor(undefined, missingCapabilitySnapshot);
     // Named for its own snapshot, so the assertion below cannot be met by the
     // first half's event still in the capture.
-    await missingCapability.executor.applyPlanActions(steppedPlan({
+    await missingCapability.executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       name: 'Heater',
       currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'off',
-    }));
+    })));
 
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_failed',
@@ -3297,13 +3323,13 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'low', // step change will be issued
-    }));
+    })));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     // The desired step is reasserted immediately after activation.
@@ -3329,13 +3355,13 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'max',
       desiredStepId: 'max',
-    }));
+    })));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
@@ -3358,13 +3384,13 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
     deviceManager.requestSteppedLoadStep.mockResolvedValueOnce({ requested: false });
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'max',
       desiredStepId: 'max',
-    }));
+    })));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(logCapture.events).toContainEqual(expect.objectContaining({
@@ -3389,7 +3415,7 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
@@ -3398,7 +3424,7 @@ describe('PlanExecutor stepped loads', () => {
       lastDesiredStepId: 'low',
       stepCommandPending: true,
       stepCommandStatus: 'pending',
-    }));
+    })));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
@@ -3421,7 +3447,7 @@ describe('PlanExecutor stepped loads', () => {
     const now = Date.now();
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
@@ -3431,7 +3457,7 @@ describe('PlanExecutor stepped loads', () => {
       stepCommandPending: false,
       stepCommandStatus: 'stale',
       nextStepCommandRetryAtMs: now + 30_000,
-    }));
+    })));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
@@ -3457,13 +3483,13 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, deviceManager, state } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'off',
-    }));
+    })));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
     expect(state.pendingBinaryCommands['dev-1']).toMatchObject({ desired: false });
@@ -3483,7 +3509,7 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, desiredSteppedTrigger, deviceManager, state, deps } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
@@ -3493,7 +3519,7 @@ describe('PlanExecutor stepped loads', () => {
       // The planner took this shed all the way to the floor, so the decided end
       // state IS the binary axis and the two-phase descent is what it asks for.
       plannedShedStepId: 'off',
-    }));
+    })));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
@@ -3538,7 +3564,7 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(state, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
@@ -3547,7 +3573,7 @@ describe('PlanExecutor stepped loads', () => {
       selectedStepId: 'max',
       desiredStepId: 'low',
       plannedShedStepId: 'low',
-    }));
+    })));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
@@ -3582,7 +3608,7 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(state, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
@@ -3591,7 +3617,7 @@ describe('PlanExecutor stepped loads', () => {
       selectedStepId: 'max',
       desiredStepId: 'low',
       ...(nonCapacityHold ? { nonCapacityHoldShed: true as const } : {}),
-    }));
+    })));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
@@ -3630,13 +3656,13 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, deps } = buildExecutor(state, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'max',
-    }));
+    })));
 
     expect(state.actuation.lastDeviceRestoreMs['dev-1']).toEqual(expect.any(Number));
     expect(state.actuation.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
@@ -3671,7 +3697,7 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, deps } = buildExecutor(state, snapshot);
 
-    await executor.applyPlanActions({
+    await executor.applyPlanActions(buildExecutionPlan({
       meta: buildPlanMeta({
         totalKw: 2,
         softLimitKw: 5,
@@ -3702,7 +3728,7 @@ describe('PlanExecutor stepped loads', () => {
       ],
       inverterDecisions: [],
       storageReleases: [],
-    });
+    }));
 
     const settingsCalls = (deps.homey.settings.set as ReturnType<typeof vi.fn>).mock.calls
       .filter(([key]) => key === DEVICE_LAST_CONTROLLED_MS);
@@ -3728,7 +3754,7 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'on' as const,
       plannedState: 'shed',
       boostActive: false,
@@ -3738,7 +3764,7 @@ describe('PlanExecutor stepped loads', () => {
       // `turn_off` behaviour is only the floor, so the binary axis is not this
       // device's end state and must stay untouched.
       plannedShedStepId: 'low',
-    }));
+    })));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
   });
@@ -3756,13 +3782,13 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'on' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'low',
-    }));
+    })));
 
     // setCapability should not be called with false — only step trigger fires
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
@@ -3783,13 +3809,13 @@ describe('PlanExecutor stepped loads', () => {
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       plannedState: 'shed',
       boostActive: false,
       selectedStepId: 'off',
       desiredStepId: 'off',
-    }));
+    })));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
   });
@@ -3866,7 +3892,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       selectedStepId: 'low',
       reportedStepId: 'low',
     }));
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
@@ -3885,7 +3911,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       undefined,
       buildSnapshot({ binaryControl: { on: false } }),
     );
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'low' }),
@@ -3898,7 +3924,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const plan = steppedPlan({ currentState: 'off' as const, selectedStepId: 'off', reportedStepId: undefined, desiredStepId: 'low' });
 
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: false } }));
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),
@@ -3931,7 +3957,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       buildSnapshot({ binaryControl: { on: true }, binaryControlObservation: onoffObservation(true) }),
     );
 
-    await expect(executor.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
+    await expect(executor.applyPlanActions(buildExecutionPlan(plan))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 0,
       commandRequestCount: 1,
     }));
@@ -3970,7 +3996,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       },
     });
 
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
@@ -4000,7 +4026,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'low',
     });
 
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     // Step command should be issued to move from off -> low
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
@@ -4029,7 +4055,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'max',
     });
 
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'max', previous_step_id: 'low' }),
@@ -4047,7 +4073,9 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // Genuinely-on device (trusted onoff observation) with a step command in
     // flight: the step deferral applies and no defensive binary-on is needed.
     const snapshot = buildSnapshot({ binaryControl: { on: true }, binaryControlObservation: onoffObservation(true) });
-    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, snapshot, {
+      getSteppedLoadCommandSession: () => issuedStepSession({ stepId: 'max', status: 'pending', retryCount: 0 }),
+    });
 
     const plan = steppedPlan({
       currentState: 'on' as const,
@@ -4061,7 +4089,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       stepCommandStatus: 'pending',
     });
 
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(logCapture.events).toContainEqual(expect.objectContaining({
@@ -4090,7 +4118,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   it('treats a stepped restore retry window as backoff instead of no keep violation', async () => {
     const snapshot = buildSnapshot({ binaryControl: { on: true } });
     const now = Date.now();
-    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, snapshot, {
+      getSteppedLoadCommandSession: () => issuedStepSession({
+        stepId: 'max', status: 'stale', retryCount: 0, nextRetryAtMs: now + 30_000,
+      }),
+    });
 
     const plan = steppedPlan({
       currentState: 'on' as const,
@@ -4104,7 +4136,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       nextStepCommandRetryAtMs: now + 30_000,
     });
 
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(logCapture.events).toContainEqual(expect.objectContaining({
@@ -4136,7 +4168,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'low',
     });
 
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
@@ -4164,7 +4196,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'low',
     });
 
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     // Step command follows binary activation in the same cycle.
@@ -4192,7 +4224,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'low',
     });
 
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'low' }),
@@ -4216,7 +4248,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'low',
     });
 
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'low' }),
@@ -4242,7 +4274,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'low',
     });
 
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'low' }),
@@ -4255,14 +4287,14 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const snapshot = buildSnapshot({ binaryControl: { on: true } });
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'on' as const,
       plannedState: 'keep',
       boostActive: false,
       selectedStepId: 'low',
       desiredStepId: 'max',
       reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
-    }));
+    })));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
@@ -4282,7 +4314,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     });
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
-    await executor.applyPlanActions(steppedPlan({
+    await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
       currentState: 'off' as const,
       plannedState: 'keep',
       boostActive: false,
@@ -4292,7 +4324,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentTemperature: 18,
       plannedTarget: 23,
       reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
-    }));
+    })));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
@@ -4311,7 +4343,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     });
 
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: true } }));
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),
@@ -4344,7 +4376,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     });
 
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: true } }));
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
@@ -4390,7 +4422,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       storageReleases: [],
     };
 
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
@@ -4435,7 +4467,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       storageReleases: [],
     };
 
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
@@ -4445,7 +4477,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({ currentState: 'off' as const, selectedStepId: 'off', desiredStepId: 'max' });
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
@@ -4474,7 +4506,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       storageReleases: [],
     };
 
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
@@ -4527,7 +4559,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }));
 
     await executor.applyPlanActions(
-      { meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}), devices: [shedDevice, steppedDevice('medium')], inverterDecisions: [], storageReleases: [] },
+      buildExecutionPlan({ meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}), devices: [shedDevice, steppedDevice('medium')], inverterDecisions: [], storageReleases: [] }),
     );
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),
@@ -4541,7 +4573,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     desiredSteppedTrigger.trigger.mockClear();
     deviceManager.setCapability.mockClear();
     await executor.applyPlanActions(
-      { meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}), devices: [shedDevice, steppedDevice('max')], inverterDecisions: [], storageReleases: [] },
+      buildExecutionPlan({ meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}), devices: [shedDevice, steppedDevice('max')], inverterDecisions: [], storageReleases: [] }),
     );
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),
@@ -4588,16 +4620,16 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       storageReleases: [],
     };
 
-    await executor.applyPlanActions(blockedPlan);
+    await executor.applyPlanActions(buildExecutionPlan(blockedPlan));
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
 
     deviceManager.setCapability.mockClear();
-    await executor.applyPlanActions(admittedPlan);
+    await executor.applyPlanActions(buildExecutionPlan(admittedPlan));
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
 
-    await executor.applyPlanActions(blockedPlan);
+    await executor.applyPlanActions(buildExecutionPlan(blockedPlan));
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
@@ -4656,7 +4688,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       storageReleases: [],
     };
 
-    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(buildExecutionPlan(plan));
 
     // Restore must NOT be gated by the phantom shed-1.
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
@@ -4690,14 +4722,14 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       });
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
-      await executor.applyPlanActions(steppedPlan({
+      await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
         currentState: 'off' as const,
         plannedState: 'keep',
         boostActive: false,
         selectedStepId: 'low',
         reportedStepId: 'low',
         desiredStepId: 'low', // non-zero, matches selected — no step change
-      }));
+      })));
 
       // Binary must be restored
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
@@ -4719,13 +4751,13 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       });
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
-      await executor.applyPlanActions(steppedPlan({
+      await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
         currentState: 'off' as const,
         plannedState: 'keep',
         boostActive: false,
         selectedStepId: 'off',
         desiredStepId: 'low', // pre-normalized to lowest non-zero
-      }));
+      })));
 
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
       // Step command from off → low
@@ -4742,13 +4774,13 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       const snapshot = buildSnapshot({ binaryControl: { on: false } });
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
-      await executor.applyPlanActions(steppedPlan({
+      await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
         currentState: 'off' as const,
         plannedState: 'keep',
         boostActive: false,
         selectedStepId: undefined as unknown as string, // unknown
         desiredStepId: 'max', // non-zero intended step
-      }));
+      })));
 
       // Step command must normalize to the lowest non-zero step.
       expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
@@ -4766,14 +4798,14 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       });
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
-      await executor.applyPlanActions(steppedPlan({
+      await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
         currentState: 'off' as const,
         plannedState: 'keep',
         boostActive: false,
         selectedStepId: 'low',
         reportedStepId: 'low',
         desiredStepId: 'low',
-      }));
+      })));
 
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
       expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
@@ -4795,13 +4827,13 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       ];
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
-      await executor.applyPlanActions(steppedPlan({
+      await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
         currentState: 'off' as const,
         plannedState: 'keep',
         boostActive: false,
         selectedStepId: undefined as unknown as string,
         desiredStepId: 'max',
-      }));
+      })));
 
       expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
         expect.objectContaining({ step_id: 'low' }),
@@ -4830,13 +4862,13 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
       // Both desiredStepId and selectedStepId are off-step — un-normalized state
       // that planDevices currently produces for a restored device shed to off-step.
-      await executor.applyPlanActions(steppedPlan({
+      await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
         currentState: 'off' as const,
         plannedState: 'keep',
         boostActive: false,
         selectedStepId: 'off',
         desiredStepId: 'off', // un-normalized: should still trigger step command to 'low'
-      }));
+      })));
 
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
       // A step command to the lowest non-zero step must also be issued
@@ -4865,7 +4897,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       ];
       const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
-      await executor.applyPlanActions({
+      await executor.applyPlanActions(buildExecutionPlan({
         meta: buildPlanMeta({
           totalKw: 1,
           softLimitKw: 5,
@@ -4887,7 +4919,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         ],
         inverterDecisions: [],
         storageReleases: [],
-      });
+      }));
 
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
     });
@@ -4907,14 +4939,14 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
       // Device is shed with turn_off at a non-off step; binary is already off.
-      await executor.applyPlanActions(steppedPlan({
+      await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
         currentState: 'off' as const,  // off because binary is false
         plannedState: 'shed',
         boostActive: false,
         shedAction: 'turn_off',
         selectedStepId: 'low', // not at off-step yet
         desiredStepId: 'off',  // intended lowest
-      }));
+      })));
 
       // Binary must NOT be re-enabled (no onoff=true)
       expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
@@ -4939,14 +4971,14 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       // Device is planned to shed with turn_off. It is currently at a non-off step.
       // The contract says onoff=false must be sent as part of the turn_off action,
       // not only after the step has already stepped down to the off-step.
-      await executor.applyPlanActions(steppedPlan({
+      await executor.applyPlanActions(buildExecutionPlan(steppedPlan({
         currentState: 'on' as const,
         plannedState: 'shed',
         boostActive: false,
         shedAction: 'turn_off',
         selectedStepId: 'low', // NOT at off-step
         desiredStepId: 'off',  // intended lowest step (per contract)
-      }));
+      })));
 
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
     });
@@ -4998,7 +5030,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         binaryControlObservation: trustedOffObservation,
       }));
 
-      await executor.applyPlanActions(chargerShedPlan());
+      await executor.applyPlanActions(buildExecutionPlan(chargerShedPlan()));
 
       expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
       expect(state.restoreBackoff.lastInstabilityMs).toBeNull();
@@ -5012,7 +5044,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         binaryControlObservation: trustedOffObservation,
       }));
 
-      await executor.applyPlanActions(chargerShedPlan());
+      await executor.applyPlanActions(buildExecutionPlan(chargerShedPlan()));
 
       expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
       expect(state.restoreBackoff.lastInstabilityMs).toBeNull();
@@ -5026,7 +5058,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         binaryControlObservation: { ...trustedOffObservation, observedValue: true },
       }));
 
-      await executor.applyPlanActions(chargerShedPlan());
+      await executor.applyPlanActions(buildExecutionPlan(chargerShedPlan()));
 
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
       const pending = state.pendingBinaryCommands['dev-1'];
@@ -5058,7 +5090,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       const plan = chargerShedPlan();
       plan.devices[0] = { ...plan.devices[0], nonCapacityHoldShed: true };
 
-      await executor.applyPlanActions(plan);
+      await executor.applyPlanActions(buildExecutionPlan(plan));
 
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
       const pending = state.pendingBinaryCommands['dev-1'];
@@ -5086,7 +5118,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         binaryControl: { on: false },
       }));
 
-      await executor.applyPlanActions(chargerShedPlan());
+      await executor.applyPlanActions(buildExecutionPlan(chargerShedPlan()));
 
       expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
       expect(state.restoreBackoff.lastInstabilityMs).toBeNull();

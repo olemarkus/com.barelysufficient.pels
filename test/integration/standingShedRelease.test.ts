@@ -15,7 +15,7 @@ import { inputDevice } from '../utils/planConvergenceFixtures';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { buildExecutablePlan } from '../../lib/executor/executablePlanProjection';
+import { buildExecutablePlan } from '../utils/executionDecisionFixture';
 import { hasBinaryCommand } from '../../lib/executor/executablePlan';
 import {
   applyUncontrolledBinaryRestore,

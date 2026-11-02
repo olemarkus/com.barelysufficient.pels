@@ -2,11 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildExecutableObservedDeviceState,
 } from '../../lib/executor/executablePlanProjection';
-import {
-  buildExecutableSteppedLoadDevice,
-  buildExecutableSteppedLoadIntent,
-  resolveSteppedLoadCurrentFallback,
-} from '../../lib/executor/executableSteppedLoadProjection';
+import { buildExecutableSteppedLoadIntent, resolveSteppedLoadCurrentFallback } from '../utils/executionDecisionFixture';
+import { buildExecutableSteppedLoadDevice } from '../../lib/executor/executableSteppedLoadProjection';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';

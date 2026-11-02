@@ -1,6 +1,7 @@
 import { resolveTaskDeliveryControl } from '../../lib/plan/taskDeliveryControl';
 import { resolveDeviceExecutionState } from '../../lib/executor/deviceExecutionState';
-import { buildExecutableDeviceIntent, buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
+import { buildExecutableDeviceIntent } from '../utils/executionDecisionFixture';
+import { buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
 import type { ExecutorDeviceRead } from '../../lib/executor/executorDeviceRead';
 // Multi-owner integration reproduction: relay on/off + measured watts, or EV SoC +
 // car charge limit, with real lifecycle, diagnostics, allocation, energy and

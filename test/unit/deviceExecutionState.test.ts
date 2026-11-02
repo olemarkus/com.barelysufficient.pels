@@ -1,5 +1,6 @@
 import { resolveDeviceExecutionState } from '../../lib/executor/deviceExecutionState';
-import { buildExecutableDeviceIntent, buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
+import { buildExecutableDeviceIntent } from '../utils/executionDecisionFixture';
+import { buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
 import type { ExecutorDeviceRead } from '../../lib/executor/executorDeviceRead';
 import { steppedPlanDevice, buildPlanDevice } from '../utils/planTestUtils';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';

@@ -1,3 +1,4 @@
+import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 import { createTestPlanExecutor } from '../utils/planEngineStateFixture';
 import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import { withDeviceConfiguration } from '../utils/planTestUtils';
@@ -297,7 +298,7 @@ describe('stepped-load restore binary onoff at the SDK boundary', () => {
       .toEqual(['off', 'low', 'medium', 'max']);
 
     const { executor, deviceManager } = buildExecutor(snapshot, device);
-    await executor.applyPlanActions(buildRestoreToLowPlan());
+    await executor.applyPlanActions(buildExecutionPlan(buildRestoreToLowPlan()));
 
     // CORRECT behaviour (the deliverable assertion): the binary onoff=true write
     // must reach the SDK boundary so the device actually turns on. On the buggy
@@ -330,7 +331,7 @@ describe('stepped-load restore binary onoff at the SDK boundary', () => {
     expect(snapshot.reportedStepId).toBe('low');
 
     const { executor, deviceManager } = buildExecutor(snapshot, device);
-    await executor.applyPlanActions(buildRestoreToLowPlan());
+    await executor.applyPlanActions(buildExecutionPlan(buildRestoreToLowPlan()));
 
     // With a trusted-off observation the bug does NOT reproduce: the binary
     // onoff=true write DOES reach the boundary on this same base commit. This

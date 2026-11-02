@@ -1,4 +1,4 @@
-import type { DevicePlan } from '../plan/planTypes';
+import type { PlannedDeviceExecution } from '../planContract/executionPlan';
 import type { DriftCommandRead } from './driftObservedDevice';
 import type { ExecutorDeviceRead } from './executorDeviceRead';
 import {
@@ -7,7 +7,6 @@ import {
   hasSteppedCommand,
   hasTargetCommand,
 } from './executablePlan';
-import { isSteppedLoadDevice } from '../plan/planSteppedLoad';
 import type {
   ExecutableDeviceIntent,
   ExecutableObservedDeviceState,
@@ -15,7 +14,7 @@ import type {
   ExecutableSteppedLoadIntent,
 } from './executablePlan';
 import {
-  buildExecutableDeviceIntent,
+  materializeExecutableDeviceIntent,
   buildExecutableObservedDeviceState,
 } from './executablePlanProjection';
 import {
@@ -24,7 +23,6 @@ import {
   resolveExpectedBinaryStateForSteppedIntent,
 } from './executionExpectations';
 
-type PlanDevice = DevicePlan['devices'][number];
 type BinaryState = 'on' | 'off';
 type DriftPendingBinaryCommand =
   | { kind: 'pending'; desired: boolean | 'unknown' }
@@ -42,7 +40,7 @@ type DriftRuntimeState = {
 type ExecutableSteppedLoadTransition = NonNullable<ExecutableSteppedLoadIntent['transition']>;
 
 export function hasPlanDeviceExecutionDrift(
-  planDevice: PlanDevice,
+  device: PlannedDeviceExecution,
   observed: ExecutorDeviceRead,
   command: DriftCommandRead,
   externalOffHeld: boolean,
@@ -61,7 +59,7 @@ export function hasPlanDeviceExecutionDrift(
   // The hold is only ever set while the device is STILL observed off, so it is
   // a posture rather than a reading, and this layer never asks why.
   if (externalOffHeld) return false;
-  const intent = buildExecutableDeviceIntent(planDevice);
+  const intent = materializeExecutableDeviceIntent(device.commands, command.session, Date.now());
   // The observation comes from the observer and the ladder from the intent —
   // no plan decision passes through either. The one observed-state producer
   // resolves the rung, the on/off fold and the draw, so the comparison below
@@ -71,12 +69,12 @@ export function hasPlanDeviceExecutionDrift(
     observed,
     hasSteppedCommand(intent) ? intent.steppedLoad.steppedLoadProfile : undefined,
   );
-  const runtime = buildDriftRuntimeState(planDevice, command);
+  const runtime = buildDriftRuntimeState(command);
   // The planned current step is the plan device's producer-resolved effective
   // step; drift compares it against the live observed step. It is read from the
   // plan device (narrowed — a non-stepped plan device tracks no step), not
   // from the (desired-only) executable intent.
-  const plannedCurrentStepId = isSteppedLoadDevice(planDevice) ? planDevice.selectedStepId : undefined;
+  const plannedCurrentStepId = device.stepBaseline?.stepId;
   // Drift compares observer-reported state with planner-intended state.
   // Observer-reported state is authoritative here — even a stale observation
   // is what the device actually shows, and re-actuating against a drift is
@@ -101,21 +99,9 @@ export function hasPlanDeviceExecutionDrift(
 // for the other. Keep the dampener: it is what makes this predicate idempotent
 // across cycles, independent of the executor.
 function buildDriftRuntimeState(
-  planDevice: PlanDevice,
   command: DriftCommandRead,
 ): DriftRuntimeState {
-  // `pendingTargetCommand` is engine state, projected onto the plan device by
-  // `decoratePlanWithPendingTargetCommands` (`lib/plan/planTargetControl.ts`).
-  // The plan snapshot is the authoritative source for in-flight target
-  // commands; the input device only carries observed capability values.
-  const pendingTarget = planDevice.pendingTargetCommand;
-  return {
-    pendingBinary: command.binary,
-    pendingStep: command.step,
-    pendingTarget: pendingTarget
-      ? { kind: 'pending', desired: pendingTarget.desired }
-      : { kind: 'none' },
-  };
+  return { pendingBinary: command.binary, pendingStep: command.step, pendingTarget: command.target };
 }
 
 function hasExecutableTargetExecutionDrift(

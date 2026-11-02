@@ -13,7 +13,7 @@ import {
   isPendingBinaryCommandMatchingExpected,
 } from './executionExpectations';
 
-export type ExecutionCommandState = DriftCommandRead & {
+export type ExecutionCommandState = Pick<DriftCommandRead, 'binary' | 'step'> & {
   target: { desired: number } | null;
   /** The tracked step command, when commands for it in a row drew no report of any level. */
   unansweredStepCommands: UnansweredStepCommands;

@@ -23,7 +23,8 @@ type PlanInputDeviceFixture = PlanInputDevice
   // production. Here that is the point: it is the observer's axis, and reading
   // it back out is what reconstitutes the observation the fixture describes.
   & BinaryControlDiscriminantProbe
-  & MeteredDiscriminantProbe;
+  & MeteredDiscriminantProbe
+  & { lastDesiredStepId?: string };
 
 /**
  * Split a `PlanInputDevice` fixture into the two things the drift path actually
@@ -84,6 +85,19 @@ export const splitPlanInputDevice = (
     ...(live.evChargingState !== undefined ? { evChargingState: live.evChargingState } : {}),
   } as ExecutorDeviceRead,
   command: {
+    session: {
+      command: live.lastDesiredStepId ? {
+        stepId: live.lastDesiredStepId,
+        status: live.stepCommandPending ? 'pending' : (live.stepCommandStatus ?? 'idle'),
+        retryCount: live.stepCommandRetryCount ?? 0,
+        nextRetryAtMs: live.nextStepCommandRetryAtMs,
+      } : undefined,
+      hasPriorStepCommand: live.lastDesiredStepId !== undefined,
+      reportedStepId: live.reportedStepId,
+      stepCommandPending: live.stepCommandPending === true,
+      unansweredStepCommands: { kind: 'none' },
+    },
+    target: { kind: 'none' },
     binary: binaryCommand,
     step: live.stepCommandPending === true ? { kind: 'pending' } : { kind: 'none' },
   },
@@ -108,7 +122,8 @@ export const driftDepsFromPlanInputs = (
     const live = getDevices().find((device) => device.id === deviceId);
     return live
       ? splitPlanInputDevice(live, getBinaryCommand(deviceId)).command
-      : { binary: { kind: 'none' }, step: { kind: 'none' } };
+      : { binary: { kind: 'none' }, step: { kind: 'none' }, target: { kind: 'none' },
+        session: { hasPriorStepCommand: false, stepCommandPending: false, unansweredStepCommands: { kind: 'none' } } };
   },
   isExternalOffHeld: (deviceId) => {
     const live = getDevices().find((device) => device.id === deviceId);

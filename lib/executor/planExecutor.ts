@@ -1,6 +1,4 @@
-import type {
-  DevicePlan,
-} from '../plan/planTypes';
+import type { ExecutionPlan } from '../planContract/executionPlan';
 import {
   type ExecutorDeviceReadDeps,
   readExecutorDevice,
@@ -18,10 +16,7 @@ import type { ExecutorCommandContext } from './executorCommandContext';
 import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
 import type { ExecutableSteppedLoadCommandSession } from './executablePlan';
 import {
-  hasStableBinaryReleaseActuation,
-  hasStableSteppedLoadBinaryRestoreActuation,
-  hasStableSteppedLoadStepActuation,
-  hasStableUncontrolledRestoreActuation,
+  hasStableDeviceActuation,
   resolveConfirmedBinaryCommandReasonCode,
 } from './planExecutorPredicates';
 import { selectShedActuationRecorder } from './lifecycleReleaseRecording';
@@ -32,8 +27,7 @@ import {
   type LifecycleFallbackPort,
 } from './lifecycleFallbackDispatcher';
 import { createCommandClaim } from './commandClaim';
-import { buildExecutablePlan, buildExecutableObservedDeviceState } from './executablePlanProjection';
-import { buildExecutableSteppedLoadIntent } from './executableSteppedLoadProjection';
+import { materializeExecutableDeviceIntent, buildExecutableObservedDeviceState } from './executablePlanProjection';
 import type { DriftObservationDeps } from './driftObservedDevice';
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
@@ -278,11 +272,15 @@ export class PlanExecutor {
     deviceId: string,
     pendingBinary: PendingBinaryCommand | undefined,
   ): ReturnType<DriftObservationDeps['getCommandState']> {
+    const session = this.deps.getSteppedLoadCommandSession(deviceId);
+    const target = this.execution.pendingTargetCommands[deviceId];
     return {
+      session,
+      target: target ? { kind: 'pending', desired: target.desired } : { kind: 'none' },
       binary: pendingBinary
         ? { kind: 'pending', desired: pendingBinary.desired }
         : { kind: 'none' },
-      step: this.deps.getSteppedLoadCommandSession(deviceId).stepCommandPending
+      step: session.stepCommandPending
         ? { kind: 'pending' }
         : { kind: 'none' },
     };
@@ -293,10 +291,10 @@ export class PlanExecutor {
    * expired pending command reads as none here and is left for the settle sweep
    * to expire, so a settings-UI read cannot run the command lifecycle.
    */
-  public getDeviceExecutionStates(plan: DevicePlan): ReadonlyMap<string, DeviceExecutionState> {
+  public getDeviceExecutionStates(plan: ExecutionPlan): ReadonlyMap<string, DeviceExecutionState> {
     const reads = this.driftObservationDeps();
-    const intents = buildExecutablePlan(plan).devices;
-    return new Map(plan.devices.flatMap((device, index) => {
+    return new Map(plan.devices.flatMap((decision) => {
+      const device = decision.commands;
       // A device that has left the managed set since this plan was built is no
       // longer tracked (the runtime snapshot drops unmanaged devices), so it
       // has no configuration and the observer stops reading it: it has no
@@ -305,7 +303,9 @@ export class PlanExecutor {
       if (this.deps.getDeviceConfiguration(device.id) === undefined) return [];
       const live = readExecutorDevice(this.deps, device.id);
       const observed = live ? buildExecutableObservedDeviceState(live, live.steppedLoadProfile) : undefined;
-      const execution = resolveDeviceExecutionState(intents[index]!, observed, {
+      const execution = resolveDeviceExecutionState(materializeExecutableDeviceIntent(
+        device, this.deps.getSteppedLoadCommandSession(device.id), Date.now(),
+      ), observed, {
         ...this.resolveCommandState(device.id, this.deps.pendingBinaryCommandStore.peekActive(device.id)),
         target: this.execution.pendingTargetCommands[device.id] ?? null,
         unansweredStepCommands: this.deps.getSteppedLoadCommandSession(device.id).unansweredStepCommands,
@@ -329,24 +329,22 @@ export class PlanExecutor {
    * sets no expectation. The stepped checks read the stepped intent dispatch
    * carries out, so a device the projection holds is not reported as work.
    */
-  public hasStablePlanActuation(plan: DevicePlan): boolean {
-    return plan.devices.some((dev) => {
-      if (hasStableUncontrolledRestoreActuation(dev, this.feedback) || hasStableBinaryReleaseActuation(dev)) {
-        return true;
-      }
-      const stepped = buildExecutableSteppedLoadIntent(dev);
-      return hasStableSteppedLoadStepActuation(dev, stepped, this.deps.getSteppedLoadCommandSession(dev.id))
-        || hasStableSteppedLoadBinaryRestoreActuation(dev, stepped);
-    });
+  public hasStablePlanActuation(plan: ExecutionPlan): boolean {
+    return plan.devices.some((device) => hasStableDeviceActuation(
+      device,
+      this.deps.getSteppedLoadCommandSession(device.commands.id),
+      this.deps.pendingBinaryCommandStore.hasActiveCommand(device.commands.id),
+      this.feedback.isStandingShed(device.commands.id),
+    ));
   }
 
-  public hasInverterWork(plan: DevicePlan): boolean {
+  public hasInverterWork(plan: ExecutionPlan): boolean {
     return this.deps.inverterLane.hasWork(plan.inverterDecisions);
   }
 
   public isInverterReleaseRecoveryReady(): boolean { return this.deps.inverterLane.releaseRecoveryReady(); }
 
-  public getPendingInverterReleaseCount(plan: DevicePlan): number {
+  public getPendingInverterReleaseCount(plan: ExecutionPlan): number {
     return this.deps.inverterLane.pendingReleaseCount(plan.inverterDecisions);
   }
 
@@ -358,7 +356,7 @@ export class PlanExecutor {
     await this.shortfallExecutor.handleShortfallCleared();
   }
 
-  public async applyPlanActions(plan: DevicePlan): Promise<PlanActuationResult> {
+  public async applyPlanActions(plan: ExecutionPlan): Promise<PlanActuationResult> {
     if (!plan || !Array.isArray(plan.devices)) {
       return { deviceWriteCount: 0, commandRequestCount: 0,
         deviceApplyFailureCount: 0, pendingInverterReleaseCount: 0 };
@@ -374,7 +372,7 @@ export class PlanExecutor {
     }
 
     this.nonCapacityHoldShedIds = new Set(
-      plan.devices.filter((device) => device.nonCapacityHoldShed === true).map((device) => device.id),
+      plan.devices.filter((device) => device.nonCapacityHoldShed).map((device) => device.commands.id),
     );
     this.controlPersistenceBatchDepth += 1;
     try {

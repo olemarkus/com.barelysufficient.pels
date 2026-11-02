@@ -1,3 +1,5 @@
+import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
+import { executionDeviceForFixture } from '../utils/executionDecisionFixture';
 import { createTestPlanExecutor } from '../utils/planEngineStateFixture';
 import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
@@ -44,16 +46,17 @@ const hasPlanExecutionDriftForDevice = (
   const live = liveDevices.find((device) => device.id === deviceId);
   if (!planDevice || !live) return false;
   const { observed, command, externalOffHeld } = splitPlanInputDevice(live, binaryCommand);
-  return hasPlanDeviceExecutionDrift(planDevice, observed, command, externalOffHeld);
+  return hasPlanDeviceExecutionDrift(executionDeviceForFixture(planDevice), observed, command, externalOffHeld);
 };
 
 describe('executorConvergence stepped device drift', () => {
   it('finds release work in an empty plan without requiring a live device', () => {
     const intent = { deviceId: 'battery', reason: 'not_admissible' as const };
     const hasStorageReleaseDrift = vi.fn(() => true);
-    expect(hasPlanExecutionDriftAgainstIntent({ ...buildPlan([]), inverterDecisions: [], storageReleases: [intent] }, {
+    expect(hasPlanExecutionDriftAgainstIntent(buildExecutionPlan({ ...buildPlan([]), inverterDecisions: [], storageReleases: [intent] }), {
       getObservedState: () => undefined,
-      getCommandState: () => ({ binary: { kind: 'none' }, step: { kind: 'none' } }),
+      getCommandState: () => ({ binary: { kind: 'none' }, step: { kind: 'none' }, target: { kind: 'none' },
+        session: { hasPriorStepCommand: false, stepCommandPending: false, unansweredStepCommands: { kind: 'none' } } }),
       isExternalOffHeld: () => false,
       hasStorageDrift: () => false,
       hasStorageReleaseDrift,
@@ -1026,13 +1029,13 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     const plan = restorePlanFor({
       id: 'ev-1', name: 'Driveway charger', binaryCapabilityId: 'evcharger_charging', isEvCharger: true,
     });
-    expect(hasPlanExecutionDriftAgainstIntent(plan, (await buildExecutor()).driftObservationDeps())).toBe(false);
+    expect(hasPlanExecutionDriftAgainstIntent(buildExecutionPlan(plan), (await buildExecutor()).driftObservationDeps())).toBe(false);
   });
 
   it('reports drift for the same planned restore of a plain on/off device observed off', async () => {
     const plan = restorePlanFor({
       id: 'socket-1', name: 'Garage socket', binaryCapabilityId: 'onoff', isEvCharger: false,
     });
-    expect(hasPlanExecutionDriftAgainstIntent(plan, (await buildExecutor()).driftObservationDeps())).toBe(true);
+    expect(hasPlanExecutionDriftAgainstIntent(buildExecutionPlan(plan), (await buildExecutor()).driftObservationDeps())).toBe(true);
   });
 });

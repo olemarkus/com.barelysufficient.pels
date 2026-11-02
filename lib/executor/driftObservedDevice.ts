@@ -27,9 +27,12 @@
  */
 import type { StorageDecidedDevice, StorageReleaseIntent } from '../planContract/storageDecision';
 import type { ExecutorDeviceRead } from './executorDeviceRead';
+import type { ExecutableSteppedLoadCommandSession } from './executablePlan';
 
 /** In-flight command state, owned by this layer. */
 export type DriftCommandRead = {
+  session: ExecutableSteppedLoadCommandSession;
+  target: { kind: 'pending'; desired: number } | { kind: 'none' };
   binary: { kind: 'pending'; desired: boolean | 'unknown' } | { kind: 'none' };
   step: { kind: 'pending' } | { kind: 'none' };
 };

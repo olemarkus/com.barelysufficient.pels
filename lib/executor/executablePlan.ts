@@ -1,34 +1,13 @@
+import type { PlannedBinaryCommand, PlannedSteppedCommand, PlannedStepTransition } from '../planContract/executionPlan';
+import type { SteppedLoadDesiredRuntimeState } from './steppedCommandState';
 import type { PlannedTargetCommand as ExecutableTargetIntent } from '../planContract/targetCommand';
 import type { PlannedReleaseIntent } from '../planContract/releaseIntent';
-import type { DesiredBinaryKind } from './executableDesiredState';
 import type { EvDeviceIdentity } from '../../packages/shared-domain/src/evPlugState';
 import type {
-  DeviceControlAdapterSnapshot,
   ObservedDeviceState,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import type { SteppedStepActuationState } from './steppedLoadActuation';
-
-/**
- * The plan's shed end state for a stepped device, as this layer holds it: the
- * producer-decided kind (`DevicePlanDevice.plannedShedTargetKind`, resolved in
- * `lib/plan`) paired with the step the EXECUTOR resolved for it — the
- * transition's command step, else the planned step, which can differ from the
- * plan's own `desiredStepId`. Absent when the device is not shed this cycle.
- *
- * The executor pairs; it never decides the kind. The planner's shed-policy
- * discriminant is not reachable from this layer at all — a device's configured
- * shed behaviour is a FLOOR, the deepest the planner may go, so it cannot be
- * re-read here as this cycle's decision (`lib/executor/AGENTS.md`).
- */
-export type ExecutableShedTarget =
-  | { kind: 'binary_off' }
-  | { kind: 'step'; stepId: string | undefined }
-  | { kind: 'target_value' };
-
-export type ExecutablePlan = {
-  devices: ExecutableDeviceIntent[];
-};
 
 /**
  * The decomposed snapshot surface the executor consumes: observer-owned
@@ -209,29 +188,7 @@ export type ExecutableObservedSteppedLoadState = {
  * was a swap label threaded through five signatures only to be stored as
  * metadata on the pending-command record — it decided nothing.
  */
-export type ExecutableBinaryIntent = DesiredBinaryKind & {
-  deviceId: string;
-  name: string;
-  /**
-   * The authority-withdrawal path ONLY, and the last provenance field on this type.
-   *
-   * `uncontrolled` marks the one case where PELS must undo its OWN prior
-   * actuation: a device PELS had shed while it held authority over it, whose
-   * Power-limit control the owner then turned off. (An unmanaged device leaves
-   * the plan, so it never reaches this lane.) Without this release it stays off
-   * forever, because shed selection does not consult commandability while both
-   * restore paths do. `applyUncontrolledBinaryRestore` gates it on
-   * `shedDecisions.standingShedIds`, so it can only ever fire for a shed PELS
-   * itself decided and has not undone.
-   *
-   * It is NOT a general "is this device controllable" flag and must not be read
-   * as one. It belongs on `ExecutableReleaseIntent` beside `binary_release` /
-   * `shed_release`, which is where the release semantics already live; it stays
-   * here for now because moving it is a behavioural change to the one path that
-   * keeps a device from being stranded off.
-   */
-  source: 'controlled' | 'uncontrolled';
-};
+export type ExecutableBinaryIntent = PlannedBinaryCommand;
 
 export type ExecutableReleaseIntent = PlannedReleaseIntent & {
   deviceId: string;
@@ -252,20 +209,7 @@ export type ExecutableTargetUpdate = ExecutableTargetCommand & {
   isRestoring: boolean;
 };
 
-export type ExecutableSteppedLoadTransition = {
-  effectiveTransition:
-    | 'full_shed_to_off'
-    | 'restore_from_off_at_low'
-    | 'initialize_unknown_step_at_low'
-    | 'step_down_while_on'
-    | 'step_up_while_on'
-    | 'steady';
-  stepPreparationPurpose: 'prepare_for_off' | 'prepare_for_on' | 'initialize_unknown_step' | null;
-  binaryTarget: boolean | null;
-  commandStepId: string | undefined;
-  plannedDesiredStepId: string | undefined;
-  transitionPhase: 'step_preparation' | 'binary_transition' | 'settled';
-};
+export type ExecutableSteppedLoadTransition = PlannedStepTransition;
 
 /**
  * An outstanding step command of this layer's own — see
@@ -302,36 +246,8 @@ export type ExecutableSteppedLoadCurrentState = ExecutableSteppedLoadState & {
   stepIsOffStep: boolean;
 };
 
-/**
- * What the plan wants a stepped device's STEP axis to be. The binary axis is
- * NOT here: it rides `DesiredBinaryKind` on the intent, attached only when this
- * cycle's decision actually moves the on/off handle, so an un-narrowed read is
- * a compile error rather than a `boolean | null` every consumer re-interprets.
- */
-export type ExecutableSteppedLoadDesiredState = {
-  stepId?: string;
-  plannedStepId?: string;
-};
 
-export type ExecutableSteppedLoadIntent = {
-  id: string;
-  name: string;
-  steppedLoadProfile: SteppedLoadProfile;
-  controlAdapter?: DeviceControlAdapterSnapshot;
-  /** This cycle's shed end state — see `ExecutableShedTarget`. */
-  plannedShedTarget?: ExecutableShedTarget;
-  desired: ExecutableSteppedLoadDesiredState;
-  /**
-   * Which way this cycle's decision may move the step. `down_only` is a kept
-   * device's step-down the plan decided while it holds the device: a hold
-   * blocks raising a device, never lowering it, and the plan judged the
-   * step-down against its own view of the device. Dispatch writes it only while
-   * the observer's record, read at the write, has the device on and reporting a
-   * step strictly above the target (`applySteppedLoadCommand`).
-   */
-  stepDirection: 'any' | 'down_only';
-  previousStepId?: string;
-  transition: ExecutableSteppedLoadTransition | null;
+export type ExecutableSteppedLoadIntent = PlannedSteppedCommand & {
   /** Read by both the restore lane and the command lane: one attempt, one answer. */
   matchingCommandAttempt: ExecutableSteppedCommandAttempt;
   stepCommandRetryCount: number;
@@ -358,6 +274,8 @@ export type ExecutableSteppedLoadDevice = {
 };
 
 export type ExecutableSteppedLoadCommandSession = {
+  /** The executor's tracked command, independent of the plan's historical inputs. */
+  command?: Pick<SteppedLoadDesiredRuntimeState, 'stepId' | 'status' | 'retryCount' | 'nextRetryAtMs'>;
   initializationAssumedStepId?: string;
   hasPriorStepCommand: boolean;
   reportedStepId?: string;

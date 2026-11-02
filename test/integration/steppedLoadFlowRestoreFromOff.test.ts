@@ -1,3 +1,4 @@
+import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 import { createTestPlanExecutor } from '../utils/planEngineStateFixture';
 import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import { withDeviceConfiguration } from '../utils/planTestUtils';
@@ -359,7 +360,7 @@ describe('flow-backed stepped restore-from-off — binary activation before step
       executor, helpers, decorate, setSnapshot, desiredSteppedTrigger,
     } = buildHarness(snapshot);
 
-    await executor.applyPlanActions(buildRunningTo8aPlan(decorate()));
+    await executor.applyPlanActions(buildExecutionPlan(buildRunningTo8aPlan(decorate())));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenNthCalledWith(1, {
       step_id: '6a',
@@ -383,7 +384,7 @@ describe('flow-backed stepped restore-from-off — binary activation before step
     // No flow report arrives. The accepted initialization is a one-shot
     // command-axis premise, so the next eligible cycle may issue the real ramp.
     vi.setSystemTime(cycle1Ms + 10_000);
-    await executor.applyPlanActions(buildRunningTo8aPlan(decorate()));
+    await executor.applyPlanActions(buildExecutionPlan(buildRunningTo8aPlan(decorate())));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenNthCalledWith(2, {
       step_id: '8a',
@@ -424,7 +425,7 @@ describe('flow-backed stepped restore-from-off — binary activation before step
       charging: true,
     }, EV_PROFILE));
     vi.setSystemTime(turnedOnAgainMs);
-    await executor.applyPlanActions(buildRunningTo8aPlan(decorate()));
+    await executor.applyPlanActions(buildExecutionPlan(buildRunningTo8aPlan(decorate())));
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenNthCalledWith(3, {
       step_id: '6a',
@@ -442,12 +443,12 @@ describe('flow-backed stepped restore-from-off — binary activation before step
     snapshot.controlAdapter = { kind: 'capability_adapter', activationRequired: false,
       activationEnabled: true, activationOrder: 'current_before_start' };
     const { executor, deviceManager, helpers, decorate, desiredSteppedTrigger } = buildHarness(snapshot);
-    await executor.applyPlanActions(buildRestoreTo6aPlan(decorate()));
+    await executor.applyPlanActions(buildExecutionPlan(buildRestoreTo6aPlan(decorate())));
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(1);
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1000);
     helpers.reportSteppedLoadActualStep(DEVICE_ID, '6a');
-    await executor.applyPlanActions(buildRestoreTo6aPlan(decorate()));
+    await executor.applyPlanActions(buildExecutionPlan(buildRestoreTo6aPlan(decorate())));
     expect(deviceManager.setCapability).toHaveBeenCalledWith(DEVICE_ID, 'evcharger_charging', true);
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(1);
   });
@@ -473,7 +474,7 @@ describe('flow-backed stepped restore-from-off — binary activation before step
 
     // Restore admission activates the binary axis first, then requests the
     // desired current in the same executor cycle.
-    await executor.applyPlanActions(buildRestoreTo6aPlan(decorate()));
+    await executor.applyPlanActions(buildExecutionPlan(buildRestoreTo6aPlan(decorate())));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith(DEVICE_ID, 'evcharger_charging', true);
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
@@ -492,7 +493,7 @@ describe('flow-backed stepped restore-from-off — binary activation before step
     // Before either command has echoed back, a rebuild must suppress both a
     // duplicate binary ON and a duplicate step Flow request.
     vi.setSystemTime(cycle1Ms + 10_000);
-    await executor.applyPlanActions(buildRestoreTo6aPlan(decorate()));
+    await executor.applyPlanActions(buildExecutionPlan(buildRestoreTo6aPlan(decorate())));
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(1);
 
@@ -517,7 +518,7 @@ describe('flow-backed stepped restore-from-off — binary activation before step
     // dampener prevents another toggle-style ON. Confirmed 6a also prevents a
     // duplicate post-activation Flow request.
     vi.setSystemTime(cycle1Ms + 35_000);
-    await executor.applyPlanActions(buildRestoreTo6aPlan(decorate()));
+    await executor.applyPlanActions(buildExecutionPlan(buildRestoreTo6aPlan(decorate())));
 
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(1);
@@ -546,7 +547,7 @@ describe('flow-backed stepped restore-from-off — binary activation before step
       stepCommandPending: false,
       stepCommandStatus: 'idle',
     });
-    await executor.applyPlanActions(buildRestoreTo6aPlan(decorate()));
+    await executor.applyPlanActions(buildExecutionPlan(buildRestoreTo6aPlan(decorate())));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith(DEVICE_ID, 'evcharger_charging', true);
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
@@ -579,7 +580,7 @@ describe('flow-backed stepped restore-from-off — binary activation before step
     } = buildHarness(snapshot);
 
     helpers.reportSteppedLoadActualStep(DEVICE_ID, '6a');
-    await executor.applyPlanActions(buildRestoreTo6aPlan(decorate(), resetProfile));
+    await executor.applyPlanActions(buildExecutionPlan(buildRestoreTo6aPlan(decorate(), resetProfile)));
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(1);
 
@@ -593,7 +594,7 @@ describe('flow-backed stepped restore-from-off — binary activation before step
     expect(afterReport.stepCommandPending).toBe(false);
 
     vi.setSystemTime(cycle1Ms + 6_000);
-    await executor.applyPlanActions(buildRestoreTo6aPlan(decorate(), resetProfile));
+    await executor.applyPlanActions(buildExecutionPlan(buildRestoreTo6aPlan(decorate(), resetProfile)));
 
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
     expect(desiredSteppedTrigger.trigger).toHaveBeenNthCalledWith(2, {

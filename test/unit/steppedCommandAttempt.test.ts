@@ -11,20 +11,22 @@ const steppedLoadProfile: SteppedLoadProfile = {
 
 const NOW = 1_000_000;
 
-type AttemptOverrides = Partial<Parameters<typeof resolveSteppedCommandAttempt>[0]> & {
+type AttemptOverrides = {
   requestedStepId?: string;
+  lastDesiredStepId?: string;
+  stepCommandPending?: boolean;
+  stepCommandStatus?: 'idle' | 'pending' | 'success' | 'stale';
+  nextStepCommandRetryAtMs?: number;
 };
 
 const resolve = (overrides: AttemptOverrides = {}) => {
   const { requestedStepId, ...device } = { requestedStepId: 'low', ...overrides };
   return resolveSteppedCommandAttempt({
-    lastDesiredStepId: 'low',
-    steppedLoadProfile,
-    stepCommandPending: false,
-    stepCommandStatus: 'idle',
-    nextStepCommandRetryAtMs: undefined,
-    ...device,
-  }, requestedStepId, NOW);
+    stepId: device.lastDesiredStepId ?? 'low',
+    status: device.stepCommandPending ? 'pending' : (device.stepCommandStatus ?? 'idle'),
+    retryCount: 0,
+    nextRetryAtMs: device.nextStepCommandRetryAtMs,
+  }, steppedLoadProfile, requestedStepId, NOW);
 };
 
 describe('resolveSteppedCommandAttempt', () => {
