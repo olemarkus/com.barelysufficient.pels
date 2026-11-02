@@ -5,13 +5,16 @@
  * start ({@link DAILY_REPORT_FIRST_CHECK_DELAY_MS}) so a report never captures a
  * half-started app. When the switch is on and the next attempt is due, PELS
  * sends a report about the whole app over the last day (`SupportReportService
- * .sendDaily`). When the next attempt is due lives in the userdata database, so
- * a restart or an update neither sends twice nor skips a day.
+ * .sendDaily`). About once a day: every 19 hours
+ * ({@link DAILY_REPORT_INTERVAL_MS}), so the time of day moves around the
+ * clock. When the next attempt is due lives in the userdata database, so a
+ * restart or an update neither sends twice nor skips one.
  *
- * A report that went out, or whose delivery is uncertain, waits a day: sending
- * again could deliver it twice. One that could not go out tries again in a few
- * hours. An install that cannot send at all (anything but an App Store install)
- * waits a day, so it never checks more than daily.
+ * A report that went out, or whose delivery is uncertain, waits the full
+ * interval: sending again soon could deliver it twice. One that could not go
+ * out tries again in a few hours. An install that cannot send at all (anything
+ * but an App Store install) waits the full interval too, so it never checks
+ * more than about daily.
  */
 import type { SupportReportResponse } from '../../packages/contracts/src/supportReport';
 import { readDailyDiagnosticsReportEnabled } from '../../packages/shared-domain/src/settings/dailyDiagnosticsReport';
@@ -24,11 +27,22 @@ const HOUR_MS = 60 * 60 * 1000;
 export const DAILY_REPORT_CHECK_INTERVAL_MS = HOUR_MS;
 export const DAILY_REPORT_FIRST_CHECK_DELAY_MS = 15 * 60 * 1000;
 /**
- * A day, less half the hourly check: a report sent on one check is due again
- * on the same check the next day, rather than drifting an hour later each day.
+ * 19 hours, less half the hourly check: a report sent on one check is due
+ * again on the check 19 hours later, never one either side of it. 19 shares no
+ * factor with 24, so each report goes out 5 hours earlier in the day than the
+ * one before, and 24 of them cover every hour of the day: a home is seen at
+ * night, at the morning and evening peaks, and in between, not always at the
+ * hour it happened to start.
  */
-export const DAILY_REPORT_INTERVAL_MS = 23.5 * HOUR_MS;
+export const DAILY_REPORT_INTERVAL_MS = 18.5 * HOUR_MS;
 export const DAILY_REPORT_RETRY_MS = 3 * HOUR_MS;
+/**
+ * The furthest ahead a due time is ever written: a day covers the interval and
+ * the 23.5 hours earlier versions wrote, so an update right after a
+ * report never mistakes that report's due time for one written while the clock
+ * ran ahead, and sends again at once.
+ */
+const DAILY_REPORT_MAX_AHEAD_MS = 24 * HOUR_MS;
 const logger = getLogger('diagnostics/daily-report');
 
 export type DailyReportStateStore = {
@@ -98,7 +112,7 @@ export class DailyReportSchedule {
       // Never more than a day ahead, unless it was written while the clock ran
       // ahead; then waiting for it could hold the report back for days.
       if (nextAttemptAtMs !== undefined && nowMs < nextAttemptAtMs
-        && nextAttemptAtMs - nowMs <= DAILY_REPORT_INTERVAL_MS) return;
+        && nextAttemptAtMs - nowMs <= DAILY_REPORT_MAX_AHEAD_MS) return;
       this.state.writeNextAttemptAtMs(nowMs + DAILY_REPORT_INTERVAL_MS);
       const { delayMs, outcome } = resolveNextAttempt(await this.reports.sendDaily(() => this.isOn()));
       if (delayMs !== DAILY_REPORT_INTERVAL_MS) this.state.writeNextAttemptAtMs(nowMs + delayMs);

@@ -1,6 +1,6 @@
 /**
  * The `daily_diagnostics_report` setting: whether the owner asked PELS to send
- * the developer a diagnostics report once a day. Off unless the owner turned it
+ * the developer a diagnostics report about once a day. Off unless the owner turned it
  * on: Homey files every report as submitted by the user, and only this switch
  * makes that true of a report nobody pressed Send for (owner, 2026-10-25).
  *

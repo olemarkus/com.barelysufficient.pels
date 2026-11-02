@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  createDailyReportStateStore, DAILY_REPORT_INTERVAL_MS, DAILY_REPORT_RETRY_MS, DailyReportSchedule,
+  createDailyReportStateStore, DAILY_REPORT_CHECK_INTERVAL_MS, DAILY_REPORT_INTERVAL_MS, DAILY_REPORT_RETRY_MS,
+  DailyReportSchedule,
 } from '../../lib/diagnostics/dailyReportSchedule';
 import type { PreparedSupportReport, SupportReportResponse } from '../../packages/contracts/src/supportReport';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
@@ -40,13 +41,26 @@ describe('the daily diagnostics report the owner turned on', () => {
     expect(sendDaily).not.toHaveBeenCalled();
   });
 
-  it('sends once a day, and remembers it across a restart', async () => {
+  it('sends again once the interval has passed, and remembers it across a restart', async () => {
     const { sendDaily, schedule } = setup(true, []);
     await schedule().check(NOW);
     await schedule().check(NOW + DAILY_REPORT_INTERVAL_MS - 1);
     expect(sendDaily).toHaveBeenCalledTimes(1);
     await schedule().check(NOW + DAILY_REPORT_INTERVAL_MS);
     expect(sendDaily).toHaveBeenCalledTimes(2);
+  });
+
+  it('sends every 19 hours on the hourly checks, so the reports cover every hour of the day', async () => {
+    const { sendDaily, schedule } = setup(true, []);
+    const sentAt: number[] = [];
+    for (let at = NOW + 17 * 60 * 1000; sentAt.length < 24; at += DAILY_REPORT_CHECK_INTERVAL_MS) {
+      const before = sendDaily.mock.calls.length;
+      await schedule().check(at);
+      if (sendDaily.mock.calls.length > before) sentAt.push(at);
+    }
+    const gapsHours = sentAt.slice(1).map((at, index) => (at - sentAt[index]!) / DAILY_REPORT_CHECK_INTERVAL_MS);
+    expect(new Set(gapsHours)).toEqual(new Set([19]));
+    expect(new Set(sentAt.map((at) => new Date(at).getUTCHours())).size).toBe(24);
   });
 
   it('tries again in a few hours when a report could not go out, but never resends an uncertain one', async () => {
@@ -92,6 +106,13 @@ describe('the daily diagnostics report the owner turned on', () => {
     await schedule().check(NOW);
     expect(sendDaily).toHaveBeenCalledTimes(1);
     expect(state.readNextAttemptAtMs()).toBe(NOW + DAILY_REPORT_INTERVAL_MS);
+  });
+
+  it('waits for a due time an earlier version wrote, a day less half an hour ahead', async () => {
+    const { sendDaily, schedule, state } = setup(true, []);
+    state.writeNextAttemptAtMs(NOW + 23.5 * 60 * 60 * 1000);
+    await schedule().check(NOW);
+    expect(sendDaily).not.toHaveBeenCalled();
   });
 
   it('asks again whether the owner still wants it once the report is prepared', async () => {
