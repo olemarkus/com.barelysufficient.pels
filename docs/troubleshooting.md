@@ -202,14 +202,12 @@ The banner above the Overview tells you which state you are in:
   filling in for you, such as NO1 or Strømstøtte. Choose your own price area and
   pricing model, and your grid company: without one, your prices leave out the
   grid tariff, so the cheapest hours can be the wrong ones.
-- If the page says **Homey Energy has no electricity prices for your Homey
-  yet**, turn on dynamic prices under **Energy > Electricity** in the Homey app,
-  then press **Refresh prices**. Homey Energy has prices only for some
-  countries; elsewhere, such as in Poland, install
-  [Power by the Hour](https://homey.app/a/com.gruijter.powerhour), add a price
-  device for your bidding zone, enter your tariff there and choose it as the
-  price source. A Smart task
-  says **PELS has no electricity prices** in the same situation.
+- If the page says **Homey Energy has no prices for your Homey**, turn on
+  dynamic prices under **Energy > Electricity** in the Homey app if Homey
+  Energy covers your country. Elsewhere, such as in Poland, use
+  [Power by the Hour](https://homey.app/a/com.gruijter.powerhour) with a price
+  device for your bidding zone and your tariff entered there. A Smart task says
+  **PELS has no electricity prices** in the same situation.
 - On the **Homey Energy** source, check the status card on that same page. If it
   reads **Not usable** or **No usable prices**, PELS could not work out your
   price setup and has paused prices on purpose. Simplify the formula under

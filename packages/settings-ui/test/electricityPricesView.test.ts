@@ -792,7 +792,7 @@ describe('ElectricityPricesView, Power by the Hour source', () => {
         },
       }, { sourceAssumption: { kind: 'assumed', reason: 'outside_norway' } });
 
-      expect(alertHints(mount)).toEqual(['Homey Energy has no electricity prices for your Homey yet.']);
+      expect(alertHints(mount)).toEqual(['Homey Energy has no prices for your Homey.']);
       expect(mount.textContent).toContain('under Energy > Electricity');
       expect(mount.textContent).toContain('No prices');
       expect(mount.textContent).not.toContain('Keep Homey Energy');
@@ -1046,7 +1046,7 @@ describe('ElectricityPricesView, Homey Energy without prices', () => {
       priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'has_price_device' } },
     }, { handlers: buildHandlers({ onSchemeChange }) }));
 
-    expect(mount.textContent).toContain('Or use Power by the Hour, which has a price device on this Homey.');
+    expect(mount.textContent).toContain('Or use Power by the Hour, which already has a price device.');
     const use = Array.from(mount.querySelectorAll('md-outlined-button'))
       .find((button) => button.textContent?.trim() === 'Use Power by the Hour') as HTMLElement | undefined;
     use?.click();
@@ -1074,8 +1074,8 @@ describe('ElectricityPricesView, Homey Energy without prices', () => {
       priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'app_unavailable' } },
     }));
 
-    expect(mount.textContent).toContain('If Homey Energy has prices for your country, turn on dynamic prices');
-    expect(mount.textContent).toContain('install or start Power by the Hour, add a price device for your bidding zone and enter your tariff there.');
+    expect(mount.textContent).toContain('If Homey Energy covers your country, turn on dynamic prices');
+    expect(mount.textContent).toContain('Otherwise, use Power by the Hour with your tariff.');
     const get = Array.from(mount.querySelectorAll('md-outlined-button'))
       .find((button) => button.textContent?.trim() === 'Get Power by the Hour') as (HTMLElement & { href?: string; target?: string }) | undefined;
     expect(get?.href).toBe('https://homey.app/a/com.gruijter.powerhour');
@@ -1092,7 +1092,7 @@ describe('ElectricityPricesView, Homey Energy without prices', () => {
       priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'no_price_device' } },
     }));
 
-    expect(mount.textContent).toContain('Or add a price device for your bidding zone in Power by the Hour, enter your tariff there, then choose it above.');
+    expect(mount.textContent).toContain('Or add a price device with your tariff in Power by the Hour.');
     expect(mount.textContent).not.toContain('Get Power by the Hour');
   });
 });
