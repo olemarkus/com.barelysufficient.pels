@@ -25,6 +25,20 @@ export type DailyBudgetState = Partial<ObservedHourlyStats> & {
   frozen?: boolean;
   lastPlanBucketStartUtcMs?: number | null;
   lastUsedNowKWh?: number;
+  /**
+   * The daily budget `dateKey` runs with: the last value seen while that day was
+   * current, absent while the daily budget is off. The setting cannot answer this
+   * at the day's close, since auto-apply writes the next day's budget just after
+   * midnight.
+   */
+  dayBudgetKWh?: number;
+  /**
+   * The budget the most recently closed day ran with, kept at its rollover from
+   * `dayBudgetKWh`. Absent when that day ran without a daily budget. Yesterday's
+   * history compares against it; the hourly caps sum to more than the budget on a
+   * day that runs under it, since each hour's unused share is offered again later.
+   */
+  closedDayBudget?: { dateKey: string; dailyBudgetKWh: number };
   profile?: DailyBudgetProfile;
   profileUncontrolled?: DailyBudgetProfile;
   profileControlled?: DailyBudgetProfile;

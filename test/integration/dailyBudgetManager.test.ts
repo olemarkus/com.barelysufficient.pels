@@ -126,6 +126,7 @@ describe('daily budget profile blending', () => {
       profileControlledShare: 0.5,
       profileSampleCount: 10,
       profileSplitSampleCount: 10,
+      closedDayBudget: { dateKey: '2024-01-14', dailyBudgetKWh: 10 },
     });
 
     const powerTracker = {
@@ -140,6 +141,68 @@ describe('daily budget profile blending', () => {
 
     expect(history).not.toBeNull();
     expect(history?.state.confidence).toBeCloseTo(getProfileBlendConfidence(10), 10);
+  });
+
+  it('compares yesterday with the budget the day ran with, not the sum of its hourly caps', () => {
+    // Prod, 2026-11-01: an 83 kWh day that ran under budget left hourly caps
+    // summing to 117.7 kWh, because each hour's unused share was offered again
+    // to the hours after it. Auto-apply then wrote the next day's budget just
+    // after midnight, so the setting no longer held the closed day's either.
+    const manager = buildManager();
+    const dayStart = getDateKeyStartMs('2024-01-14', TZ);
+    const nextDayStart = getDateKeyStartMs('2024-01-15', TZ);
+    const { bucketStartUtcMs } = buildLocalDayBuckets({
+      dayStartUtcMs: dayStart, nextDayStartUtcMs: nextDayStart, timeZone: TZ,
+    });
+    const keys = bucketStartUtcMs.map((ms) => new Date(ms).toISOString());
+    const powerTracker = {
+      buckets: Object.fromEntries(keys.map((key) => [key, 3])),
+      dailyBudgetCaps: Object.fromEntries(keys.map((key, index) => [key, index < 12 ? 6 : 4])),
+    };
+    const update = (nowMs: number, dailyBudgetKWh: number) => manager.update({
+      planningCeiling: null,
+      nowMs,
+      timeZone: TZ,
+      settings: buildSettings({ dailyBudgetKWh }),
+      powerTracker,
+      priceOptimizationEnabled: false,
+    });
+    update(dayStart + 30 * 60 * 1000, 83);
+    update(nextDayStart - 30 * 60 * 1000, 83);
+    // The first update of the next day already reads the newly applied budget.
+    update(nextDayStart + 10 * 60 * 1000, 88);
+
+    const history = manager.buildHistory(dayStart, TZ, powerTracker, buildSettings({ dailyBudgetKWh: 88 }), {
+      combinedPrices: null,
+      priceOptimizationEnabled: false,
+      planningCeiling: null,
+    });
+
+    expect(history?.budget.dailyBudgetKWh).toBe(83);
+    expect(history?.state.allowedNowKWh).toBeCloseTo(83, 6);
+    expect(history?.state.remainingKWh).toBeCloseTo(83 - 72, 6);
+    // The day's shape is kept: the morning caps were half as large again as the evening ones.
+    const planned = history?.buckets.plannedKWh ?? [];
+    expect(planned[0]! / planned[23]!).toBeCloseTo(1.5, 6);
+  });
+
+  it('reports a day with no recorded budget without one', () => {
+    const manager = buildManager();
+    const yesterdayStartUtcMs = getDateKeyStartMs('2024-01-14', TZ);
+    const firstBucketKey = new Date(yesterdayStartUtcMs).toISOString();
+    // A closed day kept for an older date says nothing about this one.
+    manager.loadState({ closedDayBudget: { dateKey: '2024-01-13', dailyBudgetKWh: 10 } });
+    const history = manager.buildHistory(yesterdayStartUtcMs, TZ, {
+      buckets: { [firstBucketKey]: 1.2 },
+      dailyBudgetCaps: { [firstBucketKey]: 6 },
+    }, buildSettings({ dailyBudgetKWh: 10 }), {
+      combinedPrices: null,
+      priceOptimizationEnabled: false,
+      planningCeiling: null,
+    });
+
+    expect(history?.budget.enabled).toBe(false);
+    expect(history?.budget.dailyBudgetKWh).toBe(0);
   });
 
   it('reuses cached confidence on background updates when refreshConfidence is false', () => {
