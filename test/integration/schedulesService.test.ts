@@ -78,7 +78,7 @@ describe('schedule owner', () => {
     f.setNow('2026-10-28T09:00:10Z');
     await service.tick();
     expect(f.execute).toHaveBeenCalledExactlyOnceWith(schedule, Date.parse('2026-10-28T09:00:00Z'));
-    expect(service.read().entries[0]?.lastResult).toBe('Smart task created');
+    expect(service.read().entries[0]?.lastResult).toBe('Smart task created.');
   });
 
   it('still skips an energy target when its direct power observation is no longer available', async () => {
@@ -110,7 +110,7 @@ describe('schedule owner', () => {
     expect(f.execute).toHaveBeenCalledTimes(3);
     expect(f.execute.mock.calls.every(([, atMs]) => atMs === Date.parse('2026-10-28T09:00:00Z'))).toBe(true);
     expect(service.read().entries[0]).toMatchObject({
-      lastResult: 'Smart task created', lastLabel: 'Wed 28 Oct, 10:00',
+      lastResult: 'Smart task created.', lastLabel: 'Wed 28 Oct, 10:00',
     });
     f.setNow('2026-10-28T09:01:00Z'); await service.tick();
     expect(f.execute).toHaveBeenCalledTimes(3);
@@ -199,7 +199,7 @@ describe('schedule owner', () => {
     f.setMode('Night'); await service.tick();
     expect(f.execute).toHaveBeenCalledTimes(1);
     expect(f.port.currentMode()).toBe('Night');
-    expect(service.read().entries[0]?.lastResult).toBe('Mode changed');
+    expect(service.read().entries[0]?.lastResult).toBe('Mode changed.');
   });
 
   it.each([
@@ -221,6 +221,21 @@ describe('schedule owner', () => {
     expect(f.receipts.get(schedule.id)?.lastResult).toBe(result);
     // The row's own reason stays in the present tense: it says what to fix now.
     expect(service.read().entries[0]).toMatchObject({ state: 'invalid', reason, lastResult: result });
+  });
+
+  it.each([
+    ['Skipped: the ready-by time had already passed.', 'Skipped because the ready-by time had already passed.'],
+    ['Could not run: Unavailable devices', 'Could not run. Unavailable devices'],
+    ['Mode changed', 'Mode changed.'],
+    ['Trigger recorded.', 'Trigger recorded.'],
+  ])('reads a result stored by an earlier version as %j in today\'s wording', (stored, shown) => {
+    const f = fixture();
+    f.values.set('schedule.morning', modeSchedule());
+    f.receipts.set('morning', {
+      localOccurrence: '2026-10-27|10:00', consumedAtMs: Date.parse('2026-10-27T09:00:00Z'), lastResult: stored,
+    });
+    const service = f.create(); service.start();
+    expect(service.read().entries[0]?.lastResult).toBe(shown);
   });
 
   it('does not catch up at startup or after a long outage', async () => {
@@ -383,7 +398,7 @@ describe('schedule owner', () => {
     finish(); await tick; await stopped;
     expect(drained).toBe(true);
     expect(f.execute).toHaveBeenCalledTimes(1);
-    expect(f.receipts.get('morning')?.lastResult).toBe('Mode changed');
+    expect(f.receipts.get('morning')?.lastResult).toBe('Mode changed.');
   });
 
   it('keeps config lookup and control writes independent of unrelated task eligibility', () => {
@@ -451,7 +466,7 @@ describe('schedule owner', () => {
     await expect(service.tick()).resolves.toBeUndefined();
     expect(f.execute).toHaveBeenCalledTimes(1);
     expect(f.execute.mock.calls[0]?.[0].id).toBe('healthy');
-    expect(f.receipts.get('healthy')?.lastResult).toBe('Mode changed');
+    expect(f.receipts.get('healthy')?.lastResult).toBe('Mode changed.');
   });
 
   it.each(['once', 'weekly'] as const)('records a failed %s task trigger and continues with a later mode', async (repeat) => {
@@ -493,7 +508,7 @@ describe('schedule owner', () => {
       };
     });
     f.setNow('2026-10-28T09:00:10Z'); await service.tick();
-    expect(f.receipts.get('morning')?.lastResult).toBe('Mode changed');
+    expect(f.receipts.get('morning')?.lastResult).toBe('Mode changed.');
     f.port.settings.get = (key) => f.values.get(key);
     f.setNow('2026-10-28T09:00:30Z'); await service.tick();
     expect(f.execute).toHaveBeenCalledTimes(1);

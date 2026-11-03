@@ -34,6 +34,22 @@ const ELIGIBILITY_SKIP_RESULTS: Record<ScheduleEligibilityIssue, string> = {
   target_out_of_range: 'Skipped because the target was outside the device’s range.',
 };
 
+// Results stored by earlier versions read "Skipped: …" and "Could not run: …", and the
+// two successes had no full stop. A row reads them in today's wording, so its
+// "Last: … · …" line keeps one colon.
+const LEGACY_RESULT_PREFIXES: ReadonlyArray<readonly [string, string]> = [
+  ['Skipped: ', 'Skipped because '], ['Could not run: ', 'Could not run. '],
+];
+const LEGACY_RESULTS: Readonly<Record<string, string>> = {
+  'Mode changed': 'Mode changed.', 'Smart task created': 'Smart task created.',
+};
+const currentResultWording = (result: string): string => {
+  const legacy = LEGACY_RESULTS[result];
+  if (legacy) return legacy;
+  const prefix = LEGACY_RESULT_PREFIXES.find(([old]) => result.startsWith(old));
+  return prefix ? `${prefix[1]}${result.slice(prefix[0].length)}` : result;
+};
+
 /** A consumed occurrence whose create waits for the device's ended task to close. */
 type PendingRun = { schedule: Schedule; consumed: ScheduleReceipt; atMs: number };
 
@@ -241,7 +257,8 @@ export class ScheduleService {
   /** A waiting result whose retry ended with a stop or restart reads as the skip it became. */
   private lastResult(id: string, receipt: ScheduleReceipt | undefined): string {
     if (!receipt) return '';
-    return receipt.lastResult === WAITING_RESULT && !this.pending.has(id) ? BUSY_RESULT : receipt.lastResult;
+    return receipt.lastResult === WAITING_RESULT && !this.pending.has(id)
+      ? BUSY_RESULT : currentResultWording(receipt.lastResult);
   }
 
   write(raw: unknown): void {
@@ -448,7 +465,7 @@ export class ScheduleService {
     try {
       await this.port.execute(schedule, atMs);
       logger.info({ event: 'schedule_triggered', scheduleId: schedule.id, scheduledAtMs: atMs });
-      return schedule.action.type === 'mode' ? 'Mode changed' : 'Smart task created';
+      return schedule.action.type === 'mode' ? 'Mode changed.' : 'Smart task created.';
     } catch (error) {
       const busy = error instanceof ScheduleSkip && error.deviceBusy;
       if (busy && this.port.getNowMs() < atMs + BUSY_RETRY_WINDOW_MS) return undefined;
