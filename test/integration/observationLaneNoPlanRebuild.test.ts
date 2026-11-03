@@ -5,7 +5,7 @@ import {
 } from '../../lib/observer/pendingBinaryCommands';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 import { createBinaryCommandReachability } from '../../lib/plan/admission/binaryCommandReachability';
-import type { PendingBinaryCommand } from '../../lib/observer/pendingBinaryCommandTypes';
+import type { PendingBinaryCommand } from '../../lib/ports/pendingBinaryCommand';
 import Homey from 'homey';
 import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
 import type { PlanService } from '../../lib/plan/planService';

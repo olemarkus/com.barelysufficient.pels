@@ -2,12 +2,6 @@
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
 import type { PendingBinaryCommandRead } from '../ports/pendingBinaryCommand';
 
-export type { PendingObservationSource } from '../ports/controlCommandConfirmation';
-export type {
-  PendingBinaryCommand,
-  PendingBinaryCommandRead,
-} from '../ports/pendingBinaryCommand';
-
 export function isPendingBinaryCommandActive(params: {
   pending?: PendingBinaryCommandRead;
   nowMs?: number;

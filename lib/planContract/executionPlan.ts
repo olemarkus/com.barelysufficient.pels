@@ -53,14 +53,19 @@ export type PlannedSteppedCommand = {
  */
 export type PlannedBinaryDrive = { desiredOn: boolean };
 
-/** Axes are attached only when this decision drives them. */
+/**
+ * One device's commands for this cycle. Axes are attached only when this
+ * decision drives them. A device whose commands could not be projected is a
+ * `failed` projection: it carries no axes, and dispatch reports its error.
+ */
 export type PlannedDeviceCommands = {
   id: string;
   name: string;
   commandAuthority: boolean;
-  /** Set only by the projection's failure path; the device carries no commands. */
-  projectionError?: unknown;
-};
+} & (
+  | { projection: 'decided' }
+  | { projection: 'failed'; error: unknown }
+);
 
 /**
  * The axes a decision may attach to `PlannedDeviceCommands`, typed for the

@@ -4,7 +4,7 @@ import {
   syncPendingBinaryCommands,
 } from '../../lib/observer/pendingBinaryCommands';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
-import type { PendingBinaryCommand } from '../../lib/observer/pendingBinaryCommandTypes';
+import type { PendingBinaryCommand } from '../../lib/ports/pendingBinaryCommand';
 
 /**
  * The store owns the in-flight question, in the two forms consumers actually

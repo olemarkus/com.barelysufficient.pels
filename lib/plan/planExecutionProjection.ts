@@ -33,6 +33,7 @@ export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: P
     id: planDevice.id,
     name: planDevice.name,
     commandAuthority: planDevice.control.commandAuthority,
+    projection: 'decided',
     ...(target ? { target } : {}),
     ...(binary ? { binary } : {}),
     ...(release ? { release } : {}),
@@ -49,7 +50,8 @@ function buildExecutableDeviceIntentSafe(planDevice: PlanDevice, planMeta?: Plan
       id: planDevice.id,
       name: planDevice.name,
       commandAuthority: planDevice.control.commandAuthority,
-      projectionError: error,
+      projection: 'failed',
+      error,
     };
   }
 }

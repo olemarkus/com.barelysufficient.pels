@@ -43,6 +43,7 @@ describe('executable plan projection (characterization)', () => {
           "commandAuthority": true,
           "id": "dev-2",
           "name": "Heater",
+          "projection": "decided",
         },
       ],
     });
@@ -62,6 +63,7 @@ describe('executable plan projection (characterization)', () => {
           "commandAuthority": true,
           "id": "dev-2",
           "name": "Heater",
+          "projection": "decided",
         },
       ],
     });
@@ -88,6 +90,7 @@ describe('executable plan projection (characterization)', () => {
           "commandAuthority": true,
           "id": "dev-2",
           "name": "Heater",
+          "projection": "decided",
           "target": {
             "desired": 21,
             "deviceId": "dev-2",
@@ -115,6 +118,7 @@ describe('executable plan projection (characterization)', () => {
           "commandAuthority": true,
           "id": "dev-2",
           "name": "Heater",
+          "projection": "decided",
           "target": {
             "desired": 16,
             "deviceId": "dev-2",
@@ -135,6 +139,7 @@ describe('executable plan projection (characterization)', () => {
           "commandAuthority": true,
           "id": "dev-1",
           "name": "Tank",
+          "projection": "decided",
           "steppedLoad": {
             "controlAdapter": undefined,
             "desired": {
@@ -187,6 +192,7 @@ describe('executable plan projection (characterization)', () => {
           "commandAuthority": true,
           "id": "dev-1",
           "name": "Tank",
+          "projection": "decided",
           "steppedLoad": {
             "controlAdapter": undefined,
             "desired": {
@@ -240,6 +246,7 @@ describe('executable plan projection (characterization)', () => {
           "commandAuthority": true,
           "id": "dev-1",
           "name": "Tank",
+          "projection": "decided",
           "steppedLoad": {
             "controlAdapter": undefined,
             "desired": {
@@ -296,6 +303,7 @@ describe('executable plan projection (characterization)', () => {
           "commandAuthority": true,
           "id": "dev-2",
           "name": "Heater",
+          "projection": "decided",
           "release": {
             "deviceId": "dev-2",
             "kind": "shed_release",

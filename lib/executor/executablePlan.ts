@@ -3,7 +3,7 @@ import type {
   PlannedStepTransition,
 } from '../planContract/executionPlan';
 import type { SteppedLoadDesiredRuntimeState } from './steppedCommandState';
-import type { PlannedTargetCommand as ExecutableTargetIntent } from '../planContract/targetCommand';
+import type { PlannedTargetCommand } from '../planContract/targetCommand';
 import type { EvDeviceIdentity } from '../../packages/shared-domain/src/evPlugState';
 import type {
   ObservedDeviceState,
@@ -184,7 +184,7 @@ export type ExecutableBinaryIntent = PlannedBinaryCommand;
 
 export type ExecutableReleaseIntent = PlannedReleaseCommand;
 
-export type { PlannedTargetCommand as ExecutableTargetIntent } from '../planContract/targetCommand';
+export type ExecutableTargetIntent = PlannedTargetCommand;
 
 /** A temperature setpoint write: the desired value against the observed one. */
 export type ExecutableTargetCommand = {

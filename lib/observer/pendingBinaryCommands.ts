@@ -24,17 +24,14 @@
  * store and the `isPlanActivelyConverging` active-command probe; no consumer
  * reads or evicts it in place.
  */
+import { isPendingBinaryCommandActive } from './pendingBinaryCommandTypes';
+import type { PendingBinaryCommand } from '../ports/pendingBinaryCommand';
 import {
-  type PendingBinaryCommand,
+  CONTROL_COMMAND_CONFIRMATION_MS,
+  type PendingBinaryLiveDevice,
   type PendingObservationSource,
-  isPendingBinaryCommandActive,
-} from './pendingBinaryCommandTypes';
-import { CONTROL_COMMAND_CONFIRMATION_MS, type PendingBinaryLiveDevice } from '../ports/controlCommandConfirmation';
+} from '../ports/controlCommandConfirmation';
 import { getDebugEmitter } from '../logging/logger';
-
-export type {
-  PendingBinaryCommand,
-} from './pendingBinaryCommandTypes';
 
 const emitPendingCommandDebug = getDebugEmitter('observer', 'devices');
 export const RECENT_CONFIRMED_BINARY_OFF_MS = 5 * 60 * 1000;

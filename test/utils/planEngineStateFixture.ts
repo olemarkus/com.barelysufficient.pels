@@ -1,4 +1,4 @@
-import type { PendingBinaryCommand } from '../../lib/observer/pendingBinaryCommandTypes';
+import type { PendingBinaryCommand } from '../../lib/ports/pendingBinaryCommand';
 import { createPlanEngineState as createRealPlanEngineState, type PlanEngineState as RealPlanEngineState } from '../../lib/plan/planState';
 import { ExecutionState, type PendingTargetCommandState } from '../../lib/executor/executionState';
 import { ActuationRecord } from '../../lib/executor/actuationRecord';
@@ -9,8 +9,9 @@ import { PlanExecutor as RealPlanExecutor, type PlanExecutorDeps } from '../../l
 
 export type PlanEngineState = RealPlanEngineState & {
   actuation: ActuationRecord;
-  pendingBinaryCommands: Record<string, PendingBinaryCommand>;
-  pendingTargetCommands: Record<string, PendingTargetCommandState>;
+  // The maps belong to execution and are read through getters: seed them in place.
+  readonly pendingBinaryCommands: Record<string, PendingBinaryCommand>;
+  readonly pendingTargetCommands: Record<string, PendingTargetCommandState>;
 };
 const executionByState = new WeakMap<RealPlanEngineState, ExecutionState>();
 const contestsByState = new WeakMap<RealPlanEngineState, ControlContestRecord>();

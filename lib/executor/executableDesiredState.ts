@@ -18,10 +18,9 @@
  * null`: the producer knows which is which, and a nullable would hand the
  * executor back the question the planner already answered.
  *
- * Only the binary axis lives here so far. The step and target axes still reach
- * the executor as `ExecutableSteppedLoadIntent.purpose` / the `desired` bag and
- * `ExecutableTargetIntent.purpose`; their end-state kinds land with that
- * migration rather than sitting here unused.
+ * Only the binary axis lives here. The step axis reaches the executor as its
+ * `desired` step and `plannedShedTarget` end state, the target axis as
+ * `ExecutableTargetIntent.desired` and `.purpose`.
  */
 
 import type { PlannedBinaryDrive } from '../planContract/executionPlan';

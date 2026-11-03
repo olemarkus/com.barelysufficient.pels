@@ -307,7 +307,9 @@ export class PlanEngineState {
   appStartedAtMs: number;
 
   /** Execution-owned history, exposed here without command or hydration authority. */
-  readonly actuation: ActuationHistoryRead;
+  get actuation(): ActuationHistoryRead {
+    return this.execution.actuation;
+  }
 
   /** How long restores wait after instability, and when it last was — see `RestoreBackoff`. */
   readonly restoreBackoff = new RestoreBackoff();
@@ -361,9 +363,13 @@ export class PlanEngineState {
 
   headroomCardByDevice: Record<string, HeadroomCardState> = {};
 
-  readonly pendingBinaryCommands: Readonly<Record<string, PendingBinaryCommandRead>>;
+  get pendingBinaryCommands(): Readonly<Record<string, PendingBinaryCommandRead>> {
+    return this.execution.pendingBinaryCommands;
+  }
 
-  readonly pendingTargetCommands: Readonly<Record<string, PendingTargetCommandRead>>;
+  get pendingTargetCommands(): Readonly<Record<string, PendingTargetCommandRead>> {
+    return this.execution.pendingTargetCommands;
+  }
 
   lastShedPlanMeasurementTs: number | null = null;
 
@@ -536,14 +542,15 @@ export class PlanEngineState {
 
   restoreDecisionLogByKey: Record<string, string> = {};
 
+  /** Execution's read authority over its command facts, held whole rather than copied. */
+  private readonly execution: PlanExecutionRead;
+
   constructor(
     nowTs: number,
     isExternalOffHeld: (deviceId: string) => boolean,
     execution: PlanExecutionRead,
   ) {
-    this.actuation = execution.actuation;
-    this.pendingBinaryCommands = execution.pendingBinaryCommands;
-    this.pendingTargetCommands = execution.pendingTargetCommands;
+    this.execution = execution;
     this.appStartedAtMs = nowTs;
     this.isStoredExternalOffHeld = isExternalOffHeld;
   }

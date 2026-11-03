@@ -269,7 +269,7 @@ const applyDeviceIntent = async (
   hasShedDevices: boolean,
   steppedFallback: PlannedStepBaseline | undefined,
 ): Promise<DispatchDelta> => {
-  if (intent.projectionError) throw intent.projectionError;
+  if (intent.projection === 'failed') throw intent.error;
   const commands = resolveDeviceCommands(intent);
   const { steppedCommand } = commands;
   const steppedAction = buildExecutableSteppedLoadDevice(
