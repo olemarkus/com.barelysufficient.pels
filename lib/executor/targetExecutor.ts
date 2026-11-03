@@ -310,6 +310,8 @@ const executeTargetCommandDispatch = async (
     // after the request's own timeout; such a write may still land. It is a
     // send, so the device's next read of PELS's value confirms it afresh and a
     // confirmation from before it never counts towards a contest.
+    // `desired` is the value the actuator resolved for this write (`dispatchTargetCommand`),
+    // the one a write Homey answers carries as well.
     if (isHomeyRequestTimeout(error)) reportTargetSent(ctx, command, desired, latestObservedValue, nowMs);
     const retryDelaySec = Math.max(1, Math.ceil((failedPending.nextRetryAtMs - nowMs) / 1000));
     logger.error({

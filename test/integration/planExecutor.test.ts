@@ -1,6 +1,7 @@
 import type { ExecutableSteppedLoadCommandSession } from '../../lib/executor/executablePlan';
 import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 import { createTestPlanExecutor, getTestControlContests } from '../utils/planEngineStateFixture';
+import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import { onTestFinished } from 'vitest';
 import { steppedPlanDevice } from '../utils/planTestUtils';
@@ -1443,6 +1444,35 @@ describe('PlanExecutor pending target commands', () => {
     expect(contests.hasStandingCommands()).toBe(true);
     contests.commandReleased('annex', 'temperature');
     expect(contests.hasStandingCommands()).toBe(false);
+  });
+
+  it('keeps a timed-out setpoint write as the command at the value the actuator resolved', async () => {
+    // The thermostat takes half degrees, so PELS writes 23.5 °C for the plan's 23.3 °C.
+    const state = createPlanEngineState();
+    const { executor, deviceManager } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        expectedPowerKw: 1,
+        name: 'Heater',
+        binaryCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        binaryControl: { on: true },
+        targets: [{ id: 'target_temperature', value: 18, unit: '°C', step: 0.5 }],
+      },
+    ]);
+    // Homey answers only once the driver's listener returns, after the request's own timeout.
+    deviceManager.setCapability.mockRejectedValue(new HomeyRequestTimeoutError(
+      'PUT', 'manager/devices/device/dev-1/capability/target_temperature',
+    ));
+    const plan = buildExecutionPlan(buildTargetPlan(18, 23.3));
+    await executor.applyPlanActions(plan);
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23.5);
+
+    // The plan still asks for what that write carried, so the write stays PELS's
+    // command for the device's later reading to confirm.
+    executor.retainContestedCommands(plan);
+    expect(getTestControlContests(state).hasStandingCommands()).toBe(true);
   });
 
   it('backs off failed target writes and marks the device temporarily unavailable', async () => {
