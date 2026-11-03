@@ -1,7 +1,9 @@
-import type { PlannedBinaryCommand, PlannedSteppedCommand, PlannedStepTransition } from '../planContract/executionPlan';
+import type {
+  PlannedBinaryCommand, PlannedDeviceCommands, PlannedReleaseCommand, PlannedStepBaseline, PlannedSteppedCommand,
+  PlannedStepTransition,
+} from '../planContract/executionPlan';
 import type { SteppedLoadDesiredRuntimeState } from './steppedCommandState';
 import type { PlannedTargetCommand as ExecutableTargetIntent } from '../planContract/targetCommand';
-import type { PlannedReleaseIntent } from '../planContract/releaseIntent';
 import type { EvDeviceIdentity } from '../../packages/shared-domain/src/evPlugState';
 import type {
   ObservedDeviceState,
@@ -45,22 +47,17 @@ export type ExecutorDeviceSnapshot = ObservedDeviceState
  *
  * Note the producer obligation this drops: `release` used to be a REQUIRED
  * `| null` property, so forgetting it was a compile error (TS2741). With every
- * axis conditional, omitting a spread in `buildExecutableDeviceIntent` compiles
- * cleanly — and `release` is the axis with no positive projection test, since
- * the lifecycle-release suites hand their appliers a hand-built intent. Treat
- * that spread as load-bearing when editing the producer.
+ * axis conditional, omitting a spread in `buildExecutableDeviceIntent`
+ * (`lib/plan/planExecutionProjection.ts`) compiles cleanly — and `release` is
+ * the axis with no positive projection test, since the lifecycle-release suites
+ * hand their appliers a hand-built intent. Treat that spread as load-bearing
+ * when editing the producer; `PlannedCommandAxes` types each attached command.
  *
  * There is no "which axes does this device have" question here: that is settled
  * upstream (`isSteppedLoadDevice`, `isBinaryPlanDevice`). Presence of a command
  * means the plan wants that axis DRIVEN this cycle, nothing more.
  */
-export type ExecutableDeviceIntent = {
-  id: string;
-  name: string;
-  commandAuthority: boolean;
-  /** Set only by the projection's failure path; the device carries no commands. */
-  projectionError?: unknown;
-};
+export type ExecutableDeviceIntent = PlannedDeviceCommands;
 
 export type ExecutableTargetCommandKind = { target: ExecutableTargetIntent };
 export type ExecutableBinaryCommandKind = { binary: ExecutableBinaryIntent };
@@ -190,10 +187,7 @@ export type ExecutableObservedSteppedLoadState = {
  */
 export type ExecutableBinaryIntent = PlannedBinaryCommand;
 
-export type ExecutableReleaseIntent = PlannedReleaseIntent & {
-  deviceId: string;
-  name: string;
-};
+export type ExecutableReleaseIntent = PlannedReleaseCommand;
 
 export type { PlannedTargetCommand as ExecutableTargetIntent } from '../planContract/targetCommand';
 
@@ -233,10 +227,7 @@ export type ExecutableSteppedCommandAttempt = {
  * re-derives a planning fallback. When an observation exists, the observed
  * state is authoritative and the fallback is ignored.
  */
-export type ExecutableSteppedLoadState = {
-  on: boolean | null;
-  stepId?: string;
-};
+export type ExecutableSteppedLoadState = PlannedStepBaseline;
 
 export type ExecutableSteppedLoadCurrentState = ExecutableSteppedLoadState & {
   stepForShed?: {

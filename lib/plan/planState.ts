@@ -16,8 +16,6 @@ import type {
   MeteredKind,
 } from './planTypes';
 
-export type { PendingTargetCommandRead as PendingTargetCommandState } from '../ports/pendingTargetCommand';
-
 /**
  * An activation PELS issued and is still attributing overshoot to. Owned by
  * `lib/plan/admission/activationBackoff.ts`; an entry exists exactly while the

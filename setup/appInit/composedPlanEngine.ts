@@ -140,8 +140,9 @@ export class ComposedPlanEngine implements PlanEngine {
     // the hard cap (`inc_26449fb9`). Decline; the next whole-home reading
     // re-decides against the observation that moved, which is the honest answer.
     if (this.executor.getObservationRevision() !== observationRevisionAtBuild) return false;
-    return this.executor.hasInverterWork(buildExecutionPlan(plannedSnapshot))
-      || hasPlanExecutionDriftAgainstIntent(buildExecutionPlan(plannedSnapshot), this.executor.driftObservationDeps());
+    const executionPlan = buildExecutionPlan(plannedSnapshot);
+    return this.executor.hasInverterWork(executionPlan)
+      || hasPlanExecutionDriftAgainstIntent(executionPlan, this.executor.driftObservationDeps());
   }
 
   public syncPendingTargetCommands(

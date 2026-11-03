@@ -10,7 +10,8 @@ import {
 } from '../planContract/planDecisionSemantics';
 import { hasStorageDecision } from '../planContract/storageDecision';
 import { hasPlannedStep, type PlannedDeviceCommands, type PlannedBinaryCommand, type PlannedReleaseCommand,
-  type StableExecutionOperation, type PlannedSteppedCommand, type ExecutionPlan } from '../planContract/executionPlan';
+  type StableExecutionOperation, type PlannedSteppedCommand, type ExecutionPlan,
+  type PlannedCommandAxes } from '../planContract/executionPlan';
 import type { DroppedSteppedShedIntent } from '../planContract/executionPlan';
 type PlanDevice = DevicePlan['devices'][number];
 type PlanMeta = DevicePlan['meta'];
@@ -27,8 +28,8 @@ export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: P
   const release = buildPlannedReleaseCommand(planDevice, planMeta);
   const steppedLoad = buildPlannedSteppedCommand(planDevice);
   // Attach a command only for an axis the plan drives; absence IS the answer, so
-  // no consumer re-derives it. See `PlannedDeviceCommands`.
-  return {
+  // no consumer re-derives it. See `PlannedDeviceCommands` and `PlannedCommandAxes`.
+  const commands: PlannedDeviceCommands & PlannedCommandAxes = {
     id: planDevice.id,
     name: planDevice.name,
     commandAuthority: planDevice.control.commandAuthority,
@@ -37,6 +38,7 @@ export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: P
     ...(release ? { release } : {}),
     ...(steppedLoad ? { steppedLoad } : {}),
   };
+  return commands;
 }
 
 function buildExecutableDeviceIntentSafe(planDevice: PlanDevice, planMeta?: PlanMeta): PlannedDeviceCommands {
@@ -75,17 +77,14 @@ export function hasExecutableShedDevices(
   return false;
 }
 
-// A "Run on solar surplus" hold is an OPT-IN posture (the device's baseline is
-// off), NOT capacity pressure — so it must NOT count toward the keep-invariant
-// stepped-restore block (`applyKeepInvariantShedBlock`), which caps unrelated
-// stepped loads at their lowest non-zero step while any device is shed for
-// capacity. Discriminated on the `awaitingSolarSurplus` reason code (not the
-// `surplusOnly` flag): a dump load that is genuinely capacity-shed carries a
-// `capacity` reason and MUST still block. See `notes/state-management/`.
-// The STANDING POSTURES (solar surplus, the start policy, the charge target),
-// discriminated on their reason codes rather than on the
-// producer flags behind them: a device that is genuinely capacity-shed carries a
-// `capacity` reason and MUST still block, whatever its posture settings say.
+// A STANDING POSTURE (a "Run on solar surplus" hold, the start policy, the
+// charge target) is an opt-in posture whose baseline is off, not capacity
+// pressure, so it must NOT count toward the keep-invariant stepped-restore block
+// (`applyKeepInvariantShedBlock`), which caps unrelated stepped loads at their
+// lowest non-zero step while any device is shed for capacity. Each is
+// discriminated on its reason code rather than on the producer flags behind it:
+// a device that is genuinely capacity-shed carries a `capacity` reason and MUST
+// still block, whatever its posture settings say. See `notes/state-management/`.
 //
 // A smart task's deferred-hour hold is read off the plan's decided flag
 // (`nonCapacityHoldShed`) instead: it covers both standing and borrowed authority,
@@ -151,18 +150,16 @@ const buildPlannedBinaryCommand = (dev: PlanDevice): PlannedBinaryCommand | unde
       ? { deviceId: dev.id, name: dev.name, desiredOn: true, source: 'uncontrolled' }
       : undefined;
   }
-  if (dev.plannedState === 'shed') {
-    return buildExecutableBinaryShedIntent(dev);
-  }
-  if (dev.plannedState !== 'keep') return undefined;
+  if (dev.plannedState !== 'shed' && dev.plannedState !== 'keep') return undefined;
+  // A pending swap target or a restore-admission hold leaves the binary axis
+  // alone, whether the device is kept or shed.
   if (isSwapTargetPendingReason(dev.reason)) return undefined;
   if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return undefined;
+  if (dev.plannedState === 'shed') return buildExecutableBinaryShedIntent(dev);
   return { deviceId: dev.id, name: dev.name, desiredOn: true, source: 'controlled' };
 };
 
 const buildExecutableBinaryShedIntent = (dev: PlanDevice): PlannedBinaryCommand | undefined => {
-  if (isSwapTargetPendingReason(dev.reason)) return undefined;
-  if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return undefined;
   // A shed whose end state is the setpoint has no binary intent to issue.
   if (dev.plannedShedTargetKind === 'target_value') return undefined;
   return {

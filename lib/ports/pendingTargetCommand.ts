@@ -14,7 +14,6 @@ export type PendingTargetCommandRead = {
   readonly lastObservedValue?: unknown;
   readonly lastObservedSource?: PendingTargetObservationSource;
   readonly lastObservedAtMs?: number;
-  readonly lastWaitingLogAtMs?: number;
 };
 
 /** A current decision's desired target, used to retire superseded ordinary retries. */

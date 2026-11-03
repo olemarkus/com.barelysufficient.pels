@@ -1,5 +1,5 @@
-import type { WantedTargetCommand } from '../ports/pendingTargetCommand';
-import type { PendingTargetCommandState, PlanEngineState } from './planState';
+import type { PendingTargetCommandRead, WantedTargetCommand } from '../ports/pendingTargetCommand';
+import type { PlanEngineState } from './planState';
 import type {
   DevicePlan,
   DevicePlanDevice,
@@ -7,30 +7,39 @@ import type {
 } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 
+/** The setpoint the plan moves a temperature device to; `undefined` when it moves none. */
+function resolvePlanWantedTarget(device: DevicePlanDevice): number | undefined {
+  return isTemperaturePlanDevice(device) && device.plannedTarget !== device.currentTarget
+    && typeof device.plannedTarget === 'number'
+    ? device.plannedTarget
+    : undefined;
+}
+
 /**
- * Whether the plan still wants the target a pending command is writing: a
- * temperature device whose planned target moves it and is the value the
- * command is waiting to see. One answer for the three readers that keep,
- * expose, or attribute the pending command.
+ * Whether the plan still wants the target a pending command is writing: the
+ * setpoint the plan moves the device to is the value the command is waiting to
+ * see. One answer for the three readers that keep, expose, or attribute the
+ * pending command.
  */
 export function planStillWantsPendingTarget(
   device: DevicePlanDevice,
-  pending: PendingTargetCommandState,
+  pending: PendingTargetCommandRead,
 ): boolean {
-  return isTemperaturePlanDevice(device)
-    && device.plannedTarget !== device.currentTarget
-    && device.plannedTarget === pending.desired;
+  return resolvePlanWantedTarget(device) === pending.desired;
 }
 
-/** Desired setpoint changes cancel ordinary retries; lifecycle commands have their own store. */
+/**
+ * Desired setpoint changes cancel ordinary retries; lifecycle commands have
+ * their own store. A device the plan moves to no setpoint stays in the map with
+ * its name, which the prune log names it by.
+ */
 export function resolveWantedPendingTargetCommands(plan: DevicePlan): ReadonlyMap<string, WantedTargetCommand> {
-  return new Map(plan.devices.map((device): [string, WantedTargetCommand] => [
-    device.id,
-    isTemperaturePlanDevice(device) && device.plannedTarget !== device.currentTarget
-      && typeof device.plannedTarget === 'number'
-      ? { kind: 'target', desired: device.plannedTarget, name: device.name }
-      : { kind: 'none', name: device.name },
-  ]));
+  return new Map(plan.devices.map((device): [string, WantedTargetCommand] => {
+    const desired = resolvePlanWantedTarget(device);
+    return [device.id, desired === undefined
+      ? { kind: 'none', name: device.name }
+      : { kind: 'target', desired, name: device.name }];
+  }));
 }
 
 export function decoratePlanWithPendingTargetCommands(

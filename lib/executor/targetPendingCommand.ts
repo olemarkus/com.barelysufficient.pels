@@ -1,6 +1,7 @@
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import type { ExecutableTargetCommand } from './executablePlan';
 import type { ExecutorCommandContext, PendingTargetCommandStore } from './executorCommandContext';
+import { formatObservedTarget } from './pendingTargetObservation';
 
 const logger = getLogger('executor/target');
 /**
@@ -66,9 +67,3 @@ export const logPendingTargetRetry = (
     msg: `Capacity: retried temperature for ${name} to ${desired}°C `
     + `(retry ${retryCount}, next retry in ${retryDelaySec}s)` });
 };
-
-function formatObservedTarget(value: unknown): string {
-  if (typeof value === 'number' && Number.isFinite(value)) return `${value}°C`;
-  if (value === null || value === undefined) return 'unknown';
-  return String(value);
-}
