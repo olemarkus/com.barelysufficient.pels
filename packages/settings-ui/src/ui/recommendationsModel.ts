@@ -373,7 +373,8 @@ export const resolveSetpointShedLimitRecommendations = (
  * Present only while the runtime reports the contest, so it leaves once the
  * device keeps its settings for an hour. The caller passes managed devices
  * only (`recommendations.ts`): a device the owner let go is no longer PELS's
- * to contest.
+ * to contest. Its version is when the contest began: dismissing it hides this
+ * contest, and a later one shows again.
  */
 export const resolveControlContestRecommendations = (
   devices: readonly SettingsUiDeviceDetailItem[],
@@ -382,7 +383,7 @@ export const resolveControlContestRecommendations = (
   const notice = controlContestNotice(formatDisplayDeviceName(device.name), device.controlContest);
   return [{
     id: recommendationId('control-contest', device.id),
-    version: RECOMMENDATION_VERSION,
+    version: device.controlContest.sinceMs,
     category: 'recommendation',
     ...notice,
     actionLabel: 'Open device',
