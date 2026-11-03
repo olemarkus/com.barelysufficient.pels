@@ -154,10 +154,35 @@ describe('ControlContestRecord', () => {
     expect(contests.contestedControl(DEVICE, 4 * MINUTE_MS)).toBeUndefined();
   });
 
-  it('lets rounds older than the hour go', () => {
+  it('keeps a contest until its latest round is an hour old', () => {
+    // Rounds at 15, 30, 45 and 60 minutes, then the device keeps PELS's value.
     const { contests } = contestRounds(4, 22, 15 * MINUTE_MS);
     expect(contests.contestedControl(DEVICE, 60 * MINUTE_MS)?.count).toBe(4);
-    expect(contests.contestedControl(DEVICE, 15 * MINUTE_MS + CONTEST_WINDOW_MS)).toBeUndefined();
+    expect(contests.contestedControl(DEVICE, 15 * MINUTE_MS + CONTEST_WINDOW_MS)).toEqual({
+      setting: 'temperature', commanded: 5, observed: 22, count: 3, sinceMs: 15 * MINUTE_MS,
+    });
+    expect(contests.contestedControl(DEVICE, 60 * MINUTE_MS + CONTEST_WINDOW_MS - 1)?.count).toBe(1);
+    expect(contests.contestedControl(DEVICE, 60 * MINUTE_MS + CONTEST_WINDOW_MS)).toBeUndefined();
+  });
+
+  it.each([15, 16])('keeps one contest, shown throughout, for a device that reports another value every %i minutes', (
+    minutes,
+  ) => {
+    // A round about every 15 minutes keeps 3 or 4 in the hour: at exactly 15,
+    // the first round is exactly an hour old when the fifth lands.
+    const everyMs = minutes * MINUTE_MS;
+    const { contests } = controlContestsForTest();
+    contests.commandSent(sent(0, 5));
+    const shownSinceMs = new Set<number | undefined>();
+    for (let round = 1; round <= 12; round += 1) {
+      for (let atMs = (round - 1) * everyMs; round > 4 && atMs < round * everyMs; atMs += MINUTE_MS) {
+        shownSinceMs.add(contests.contestedControl(DEVICE, atMs)?.sinceMs);
+      }
+      contests.controlReported(reported(round * everyMs - MINUTE_MS, 7));
+      contests.commandSent(sent(round * everyMs, 5));
+    }
+    // Shown at every minute from the fourth round on, with one start, so a dismissal sticks.
+    expect([...shownSinceMs]).toEqual([everyMs]);
   });
 
   it('counts each setting on its own', () => {

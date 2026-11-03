@@ -69,9 +69,13 @@ const settingKey = (deviceId: string, setting: ContestedSetting): string => `${d
  *   is not contesting anything.
  *
  * When one setting has {@link CONTEST_THRESHOLD} rounds within
- * {@link CONTEST_WINDOW_MS}, the device is contested. The first time in a
- * window it records `device_control_contested` in the structured log and the
- * device journal, so the owner's event reports
+ * {@link CONTEST_WINDOW_MS}, the device is contested, and it stays contested,
+ * with the same start, until that setting's latest round is
+ * {@link CONTEST_WINDOW_MS} old: a device that reports another value every 15
+ * minutes keeps one contest running, rather than one that ends and starts
+ * again as its first rounds age out. The first time in a window it records
+ * `device_control_contested` in the structured log and the device journal, so
+ * the owner's event reports
  * (`lib/diagnostics/eventReportSchedule.ts`) can send a report while the
  * evidence is fresh. PELS keeps setting the device: this only warns and reports.
  *
@@ -83,6 +87,12 @@ const settingKey = (deviceId: string, setting: ContestedSetting): string => `${d
 export class ControlContestRecord implements ControlContestRecording, ControlContestReading {
   private readonly commands = new Map<string, StandingCommand>();
   private readonly rounds = new Map<string, ContestRound[]>();
+  /**
+   * When each setting's contest began: the first of the rounds that reached
+   * the threshold. The contest runs while its latest round is within the
+   * window; a round after that starts afresh.
+   */
+  private readonly contestSinceMs = new Map<string, number>();
   private readonly reportedAtMs = new Map<string, number>();
 
   constructor(private readonly journal: DeviceJournal) {}
@@ -120,23 +130,25 @@ export class ControlContestRecord implements ControlContestRecording, ControlCon
   }
 
   /**
-   * The device's contest at `nowMs`: its setting with the most rounds in the
-   * window, while they reach the threshold, with the values of the latest.
+   * The device's contest at `nowMs`: of its settings whose contest still runs,
+   * the one with the most rounds in the window, with the values of the latest
+   * round and when that contest began.
    */
   contestedControl(deviceId: string, nowMs: number): ContestedControl | undefined {
     let contested: ContestedControl | undefined;
     for (const setting of SETTINGS) {
       const rounds = this.roundsWithin(deviceId, setting, nowMs);
-      const first = rounds[0];
       const latest = rounds[rounds.length - 1];
-      if (!first || !latest || rounds.length < CONTEST_THRESHOLD) continue;
+      const sinceMs = this.contestSinceMs.get(settingKey(deviceId, setting));
+      // With no round left in the window, the contest has ended.
+      if (!latest || sinceMs === undefined) continue;
       if (contested && contested.count >= rounds.length) continue;
       contested = {
         setting,
         commanded: latest.commanded,
         observed: latest.observed,
         count: rounds.length,
-        sinceMs: first.atMs,
+        sinceMs,
       };
     }
     return contested;
@@ -149,8 +161,15 @@ export class ControlContestRecord implements ControlContestRecording, ControlCon
 
   private noteRound(sent: ControlCommandSent, observed: ControlValue): void {
     const round: ContestRound = { atMs: sent.atMs, setting: sent.setting, commanded: sent.value, observed };
-    const rounds = [...this.roundsWithin(sent.deviceId, sent.setting, sent.atMs), round];
-    this.rounds.set(settingKey(sent.deviceId, sent.setting), rounds);
+    const key = settingKey(sent.deviceId, sent.setting);
+    const earlier = this.roundsWithin(sent.deviceId, sent.setting, sent.atMs);
+    const rounds = [...earlier, round];
+    this.rounds.set(key, rounds);
+    // `rounds` ends with `round`, so its head is always present.
+    const firstAtMs = (rounds[0] ?? round).atMs;
+    const running = earlier.length > 0 && this.contestSinceMs.has(key);
+    if (!running && rounds.length >= CONTEST_THRESHOLD) this.contestSinceMs.set(key, firstAtMs);
+    else if (!running) this.contestSinceMs.delete(key);
     if (rounds.length < CONTEST_THRESHOLD) return;
     const lastAtMs = this.reportedAtMs.get(sent.deviceId);
     if (lastAtMs !== undefined && sent.atMs - lastAtMs < CONTEST_WINDOW_MS) return;
@@ -165,8 +184,7 @@ export class ControlContestRecord implements ControlContestRecording, ControlCon
       observed: round.observed,
       windowMs: CONTEST_WINDOW_MS,
       count: rounds.length,
-      // `rounds` ends with `round`, so its head is always present.
-      firstAtMs: (rounds[0] ?? round).atMs,
+      firstAtMs,
       rounds: rounds.slice(-CONTEST_EVENT_MAX_ROUNDS),
     };
     logger.info(event);

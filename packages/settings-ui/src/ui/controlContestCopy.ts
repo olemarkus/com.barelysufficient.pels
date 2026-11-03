@@ -10,14 +10,16 @@ export const controlContestNotice = (
   name: string,
   contest: ContestedControl,
 ): { title: string; body: string } => {
-  const { count, setting } = contest;
+  const { setting } = contest;
+  // A contest lasts until its latest round is an hour old, so it may be down to one.
+  const times = `${contest.count === 1 ? 'Once' : `${contest.count} times`} in the last hour`;
   const commanded = formatContestedValue(setting, contest.commanded);
   const observed = formatContestedValue(setting, contest.observed);
   const title = `${name} doesn't keep PELS's changes`;
   if (setting === 'temperature') {
     return {
       title,
-      body: `${count} times in the last hour, PELS set ${name} to ${commanded} and ${name} then reported ${observed}. `
+      body: `${times}, PELS set ${name} to ${commanded} and ${name} then reported ${observed}. `
         + `The device may not accept ${commanded}, or a Flow, another app or a schedule may set it. `
         + `Change the temperature PELS uses for ${name}, turn off what sets it, or turn off Managed by PELS for it.`,
     };
@@ -25,14 +27,14 @@ export const controlContestNotice = (
   if (setting === 'on_off') {
     return {
       title,
-      body: `${count} times in the last hour, PELS turned ${name} ${commanded} and ${name} then reported ${observed}. `
+      body: `${times}, PELS turned ${name} ${commanded} and ${name} then reported ${observed}. `
         + `Check for a Flow, another app, a schedule or the device's own app that turns it ${observed}, `
         + 'or turn off Managed by PELS for it.',
     };
   }
   return {
     title,
-    body: `${count} times in the last hour, PELS set the level of ${name} and ${name} then reported another level. `
+    body: `${times}, PELS set the level of ${name} and ${name} then reported another level. `
       + 'Check for a Flow, another app or the device\'s own app that sets it, or turn off Managed by PELS for it.',
   };
 };

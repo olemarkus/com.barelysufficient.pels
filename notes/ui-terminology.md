@@ -726,6 +726,9 @@ never claims a cause: for a temperature it says `The device may not accept {valu
 or a Flow, another app or a schedule may set it.`, and it ends with what the owner
 can do, ending with turning off **Managed by PELS**. Never write "something outside
 PELS" or name one cause as fact. Source: `packages/settings-ui/src/ui/controlContestCopy.ts`.
+Both stay until the device has kept its settings for an hour, however its rounds
+fall in that time, so `{count} times` reads `Once` when one round is left in the
+hour.
 
 ### Device-page "Power when running" — one line about the present source
 
