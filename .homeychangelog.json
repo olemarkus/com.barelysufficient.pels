@@ -745,5 +745,8 @@
   },
   "3.28.5": {
     "en": "The smart task widget and the smart task page now keep the time and energy still needed current between plan updates, instead of trailing the charging by up to an hour. The smart task page shows the run's total in \"Delivered X of Y kWh\".\n\nBudget's Yesterday view now compares the day with the daily budget it ran with. Before, a day that ran under budget could read as much further under budget than it was.\n\nReport a problem and the automatic diagnostics reports in Advanced now link to each other, and problem reports and device support requests share the same follow-up."
+  },
+  "3.28.6": {
+    "en": "A boost now takes power only from lower-priority devices: a boosted device waits while a device ranked above it is limited, and the boost chip and settings say so. A Tesla charging current the car has accepted is no longer sent again while PELS waits for the car to report the new current, and PELS keeps room for it in the meantime.\n\nThe device page and recommendations now warn when a device keeps moving away from a setting PELS gave it, such as its temperature. The automatic diagnostics report now includes the past day's heating observations."
   }
 }
