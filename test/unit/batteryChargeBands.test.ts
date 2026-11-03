@@ -128,11 +128,47 @@ describe('battery charge ceiling by charge band', () => {
       .toEqual([{ fromPercent: 95, ceilingW: 400 }]);
   });
 
-  it('replaces a band lesson when the band is taught again', () => {
+  it('re-teaches a confirmed band with a plateau that repeats it within the tolerance', () => {
     const ledger = new BatteryVerificationLedger();
     teachTwice(ledger, 1000, level(91), 0);
     ledger.recordChargeCeiling(BATTERY, charged(900, level(93)), 2 * DELIVERY_CEILING_TTL_MS);
     expect(ceilingAt(ledger, 2 * DELIVERY_CEILING_TTL_MS).planningTaper).toEqual([{ fromPercent: 90, ceilingW: 900 }]);
+  });
+
+  it('keeps a confirmed taper through one lower plateau, which waits for its own confirmation', () => {
+    const ledger = new BatteryVerificationLedger();
+    teachTwice(ledger, 2000, level(86), 0);
+    // One slow ramp reads 600 W after the confirmation window: live control
+    // holds it, the plan keeps the taper it had.
+    ledger.recordChargeCeiling(BATTERY, charged(600, level(87)), DELIVERY_CEILING_TTL_MS);
+    expect(ceilingAt(ledger, DELIVERY_CEILING_TTL_MS)).toEqual({
+      everyLevelW: 2500,
+      taper: [{ fromPercent: 85, ceilingW: 600 }],
+      planningTaper: [{ fromPercent: 85, ceilingW: 2000 }],
+    });
+    // The same low plateau again confirms it.
+    ledger.recordChargeCeiling(BATTERY, charged(600, level(88)), 2 * DELIVERY_CEILING_TTL_MS);
+    expect(ceilingAt(ledger, 2 * DELIVERY_CEILING_TTL_MS).planningTaper).toEqual([{ fromPercent: 85, ceilingW: 600 }]);
+  });
+
+  it('lifts a confirmed taper with a higher plateau, which waits for its own confirmation', () => {
+    const ledger = new BatteryVerificationLedger();
+    teachTwice(ledger, 1000, level(86), 0);
+    ledger.recordChargeCeiling(BATTERY, charged(1500, level(87)), DELIVERY_CEILING_TTL_MS);
+    expect(ceilingAt(ledger, DELIVERY_CEILING_TTL_MS).planningTaper).toEqual([]);
+    ledger.recordChargeCeiling(BATTERY, charged(1500, level(88)), 2 * DELIVERY_CEILING_TTL_MS);
+    expect(ceilingAt(ledger, 2 * DELIVERY_CEILING_TTL_MS).planningTaper).toEqual([{ fromPercent: 85, ceilingW: 1500 }]);
+  });
+
+  it('lifts the held low plateau, and keeps the confirmed taper, from a charge between them', () => {
+    const ledger = new BatteryVerificationLedger();
+    teachTwice(ledger, 2000, level(86), 0);
+    ledger.recordChargeCeiling(BATTERY, charged(600, level(87)), DELIVERY_CEILING_TTL_MS);
+    ledger.recordResponding(BATTERY, { signedW: 1200, toleranceW: TOLERANCE_W, level: level(87) },
+      DELIVERY_CEILING_TTL_MS + 1000);
+    expect(ceilingAt(ledger, DELIVERY_CEILING_TTL_MS + 1000)).toEqual({
+      everyLevelW: 2500, taper: [], planningTaper: [{ fromPercent: 85, ceilingW: 2000 }],
+    });
   });
 
   it('lifts a band from both live control and the plan once a charge passes it, even after live expiry', () => {
