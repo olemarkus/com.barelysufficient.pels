@@ -14,7 +14,8 @@
  * path to it.
  *
  * **Two axes, deliberately kept apart.** `desired` is what PELS commanded;
- * `reported` is what the device attested through a Flow. They answer different
+ * `reported` is what the device attested through a Flow. A device's echo of
+ * its accepted setting only acknowledges `desired`; it is not a report. They answer different
  * questions and neither is derived from the other — see the module docblock in
  * `steppedCommandState.ts`.
  *
@@ -30,7 +31,9 @@ import {
   confirmSteppedLoadDesiredStep,
   createDeviceControlRuntimeState,
   expireConfirmedDesiredStepOnBinaryOff,
+  isSteppedLoadCommandInFlight,
   markSteppedLoadDesiredStepIssued,
+  noteSteppedLoadAcknowledgedStep,
   noteSteppedLoadReportedStep,
   preserveSteppedLoadDesiredStep,
   pruneStaleSteppedLoadCommandStates,
@@ -131,9 +134,9 @@ export class SteppedCommandStore {
       : { kind: 'none' };
   }
 
-  /** Whether a step command is issued and not yet settled. */
+  /** Whether a step command is issued and not yet settled, acknowledged or not. */
   isStepCommandPending(deviceId: string): boolean {
-    return this.state.steppedLoadDesiredByDeviceId.get(deviceId)?.status === 'pending';
+    return isSteppedLoadCommandInFlight(this.state.steppedLoadDesiredByDeviceId.get(deviceId)?.status);
   }
 
   /**
@@ -144,7 +147,7 @@ export class SteppedCommandStore {
   hasPendingTargetPowerProbe(): boolean {
     for (const desired of this.state.steppedLoadDesiredByDeviceId.values()) {
       if (
-        desired.status === 'pending'
+        isSteppedLoadCommandInFlight(desired.status)
         && desired.targetPowerProbeConfirmedMaxPowerW !== undefined
         && desired.targetPowerProbeStartedAtMs !== undefined
       ) {
@@ -166,6 +169,11 @@ export class SteppedCommandStore {
 
   reportActualStep(observation: FlowSteppedLoadObservation): ReportSteppedLoadActualStepResult {
     return reportSteppedLoadActualStep(this.state, this.reportedStore, observation);
+  }
+
+  /** Acknowledge or contradict the tracked command by the device's setting echo (`noteSteppedLoadAcknowledgedStep`). */
+  noteAcknowledgedStep(deviceId: string, stepId: string, observedAtMs: number): void {
+    noteSteppedLoadAcknowledgedStep(this.state, deviceId, stepId, observedAtMs);
   }
 
   /** Settle the tracked command against the step the device reports (`noteSteppedLoadReportedStep`). */

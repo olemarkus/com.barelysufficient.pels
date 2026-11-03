@@ -299,6 +299,7 @@ export function assembleDeviceSnapshot(params: {
         reportedStepId: overlay.reportedStepId,
         reportedStepPowerW: overlay.reportedStepPowerW,
         reportedStepObservedAtMs: overlay.reportedStepObservedAtMs,
+        ...(overlay.acknowledgedStep ? { acknowledgedStep: overlay.acknowledgedStep } : {}),
         suggestedSteppedLoadProfile: overlay.suggestedSteppedLoadProfile,
         ...(overlay.flowBackedCapabilityIds.length > 0 ? {
             flowBacked: true,

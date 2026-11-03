@@ -1,4 +1,5 @@
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerControl';
+import { ACKNOWLEDGED_CURRENT_CAPABILITY_ID } from '../deviceAdapter';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { isTeslaChargingDevice } from './identity';
 
@@ -33,9 +34,11 @@ export function teslaChargingCapabilities(
   if (!isTeslaChargingDevice(device)) return capabilityObj;
   const currentPower = capabilityObj.measure_charge_power;
   const confirmedCurrent = confirmedTeslaCurrent(capabilityObj);
+  const acknowledgedCurrent = acknowledgedTeslaCurrent(capabilityObj);
   return {
     ...capabilityObj,
     ...(confirmedCurrent ? { available_installation_current: confirmedCurrent } : {}),
+    ...(acknowledgedCurrent ? { [ACKNOWLEDGED_CURRENT_CAPABILITY_ID]: acknowledgedCurrent } : {}),
     evcharger_charging: { ...capabilityObj.charging_on, setable: true },
     evcharger_charging_state: {
       ...capabilityObj.charging_state, value: resolveTeslaChargingState(capabilityObj.charging_state?.value),
@@ -68,6 +71,21 @@ export function confirmedTeslaCurrent(
     return undefined;
   }
   return { value: limit.value, lastUpdated: new Date(Math.min(actual.at, power.at)).toISOString(), setable: false };
+}
+
+/**
+ * The limit the vehicle accepted, dated by its own update. The Tesla app awaits
+ * the vehicle command and throws on failure; on success it sets
+ * `measure_charge_current_max` to the commanded amps at once, and its poll
+ * later sets it from the car's charge request. That echo acknowledges a
+ * command but is not confirmation while running: actual current and power
+ * arrive only with the next poll (`confirmedTeslaCurrent`).
+ */
+export function acknowledgedTeslaCurrent(
+  capabilities: Readonly<Partial<DeviceCapabilityMap>>,
+): DeviceCapabilityMap[string] | undefined {
+  const limit = readDatedNumber(capabilities.measure_charge_current_max, 32);
+  return limit ? { value: limit.value, lastUpdated: new Date(limit.at).toISOString(), setable: false } : undefined;
 }
 
 function hasStoppedChargingState(capabilities: Readonly<Partial<DeviceCapabilityMap>>): boolean {

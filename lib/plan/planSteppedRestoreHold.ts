@@ -12,8 +12,15 @@ import {
   resolveSteppedRestoreAttemptState,
 } from './planSteppedRestorePending';
 
+/**
+ * `acknowledged` holds the device on its acknowledged step-up without holding
+ * the restore queue: its reservation was debited before the pass
+ * (`resolveAcknowledgedStepUpReservationKw`), so it spends no headroom here and
+ * does not count as this cycle's restore.
+ */
 export type SteppedRestoreAttemptHold =
   | { kind: 'pending'; availableHeadroom: number | null; restoredOneThisCycle: true }
+  | { kind: 'acknowledged'; availableHeadroom: number | null; restoredOneThisCycle: boolean }
   | { kind: 'retry_backoff'; availableHeadroom: number | null; restoredOneThisCycle: boolean }
   | { kind: 'not_handled'; availableHeadroom: number | null; restoredOneThisCycle: boolean };
 
@@ -36,8 +43,9 @@ export function applySteppedRestoreAttemptHold(
   if (pendingRestoreHold) {
     delete state.steppedRestoreRejectedByDevice[dev.id];
     incPerfCounter('restore_planning_skipped_inflight');
+    const acknowledged = steppedRestoreAttempt?.status === 'awaiting_settlement';
     let reservationGapKw = 0;
-    if (steppedRestoreAttempt) {
+    if (steppedRestoreAttempt && !acknowledged) {
       reservationGapKw = steppedRestoreAttempt.status === 'awaiting_power_settle'
         ? steppedRestoreAttempt.deltaKw
         : resolveSteppedRestoreObservedGapKw(dev, steppedRestoreAttempt);
@@ -68,6 +76,7 @@ export function applySteppedRestoreAttemptHold(
       decision: 'deferred',
       reasonCode: pendingRestoreHold.reasonCode,
     });
+    if (acknowledged) return { kind: 'acknowledged', availableHeadroom, restoredOneThisCycle };
     return {
       kind: 'pending',
       availableHeadroom: availableHeadroom === null ? null : availableHeadroom - needed,

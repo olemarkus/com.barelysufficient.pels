@@ -47,6 +47,15 @@ export type BinaryTarget =
   | { kind: 'capability'; writeCapabilityId: string; observationCapabilityId: string };
 export type SwitchWrite = { write: CapabilityWrite; readBackAsWritten: boolean };
 
+/**
+ * Canonical amp observation an integration adds to its overlay and control
+ * events when the device echoes the current it accepted as its setting, while
+ * its settled reading (`available_installation_current`) still waits for the
+ * device's own draw reports. Common transport resolves it to an
+ * `acknowledgedStep`; it never confirms a step on its own.
+ */
+export const ACKNOWLEDGED_CURRENT_CAPABILITY_ID = 'pels_acknowledged_current';
+
 /** A native current control is a real device capability, not a vendor identity. */
 export type NativeCurrentControl = {
   capabilityId: string;

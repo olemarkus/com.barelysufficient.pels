@@ -1,12 +1,22 @@
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
 import { buildMeterSettlingReason, buildRestorePendingReason } from './planReasonStrings';
-import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
+import {
+  ACKNOWLEDGED_COMMAND_SETTLE_MS, CONTROL_COMMAND_CONFIRMATION_MS,
+} from '../ports/controlCommandConfirmation';
 import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { isPlanDeviceObservedOff, isSteppedLoadDevice } from './planSteppedLoad';
+import { isMeteredPlanDevice } from './planMeteredDevice';
 import { RESTORE_COOLDOWN_MS } from './planConstants';
+import { computeRestoreBufferKw } from './restore/accounting';
 
+/**
+ * `awaiting_settlement` is a step-up the device acknowledged: still in flight,
+ * but its unarrived watts are reserved for the whole pass up front
+ * (`resolveAcknowledgedStepUpReservationKw`), so it does not hold the restore
+ * queue the way an unacknowledged `awaiting_confirmation` does.
+ */
 export type SteppedRestoreAttemptState = {
-  status: 'awaiting_confirmation' | 'awaiting_power_settle' | 'retry_backoff';
+  status: 'awaiting_confirmation' | 'awaiting_settlement' | 'awaiting_power_settle' | 'retry_backoff';
   requestedStepId: string;
   requestedPowerKw: number;
   baselinePowerKw: number;
@@ -61,8 +71,9 @@ export function buildPendingSteppedRestoreHold(
   attempt: SteppedRestoreAttemptState | null,
 ): PendingSteppedRestoreHold | null {
   if (!attempt || attempt.status === 'retry_backoff') return null;
+  const awaitingCommand = attempt.status === 'awaiting_confirmation' || attempt.status === 'awaiting_settlement';
   return {
-    reason: attempt.status === 'awaiting_confirmation'
+    reason: awaitingCommand
       ? buildRestorePendingReason(attempt.remainingSec, {
         countdownStartedAtMs: attempt.countdownStartedAtMs,
         countdownTotalSec: attempt.countdownTotalSec,
@@ -72,7 +83,7 @@ export function buildPendingSteppedRestoreHold(
         countdownTotalSec: attempt.countdownTotalSec,
       }),
     remainingSec: attempt.remainingSec,
-    reasonCode: attempt.status === 'awaiting_confirmation'
+    reasonCode: awaitingCommand
       ? 'waiting_confirmation'
       : 'meter_settling',
   };
@@ -141,13 +152,14 @@ function resolvePendingOrBackoffAttempt(
   nowMs: number,
 ): SteppedRestoreAttemptState | null {
   if (dev.stepCommandPending === true) {
-    const pendingWindowMs = CONTROL_COMMAND_CONFIRMATION_MS;
+    const acknowledged = dev.stepCommandStatus === 'acknowledged';
+    const pendingWindowMs = acknowledged ? ACKNOWLEDGED_COMMAND_SETTLE_MS : CONTROL_COMMAND_CONFIRMATION_MS;
     const issuedAtMs = typeof dev.lastStepCommandIssuedAt === 'number'
       ? dev.lastStepCommandIssuedAt
       : nowMs;
     const remainingSec = Math.max(1, Math.ceil((issuedAtMs + pendingWindowMs - nowMs) / 1000));
     return {
-      status: 'awaiting_confirmation',
+      status: acknowledged ? 'awaiting_settlement' : 'awaiting_confirmation',
       ...baseAttempt,
       remainingSec,
       countdownStartedAtMs: issuedAtMs,
@@ -191,4 +203,19 @@ export function resolveSteppedRestoreObservedGapKw(
   const actualKw = dev.currentDrawKw;
   const observedIncrementKw = Math.max(0, actualKw - reservation.baselinePowerKw);
   return Math.max(0, reservation.deltaKw - observedIncrementKw);
+}
+
+/**
+ * The headroom an acknowledged step-up keeps reserved: the part of its increase
+ * the device's draw has not shown yet, plus the restore buffer on it. Debited from
+ * the restore pass before any candidate is admitted, so the device it belongs
+ * to need not be evaluated first; zero for any other device.
+ */
+export function resolveAcknowledgedStepUpReservationKw(dev: DevicePlanDevice): number {
+  if (dev.stepCommandStatus !== 'acknowledged' || !isMeteredPlanDevice(dev)) return 0;
+  if (dev.desiredStepId === undefined) return 0;
+  const reservation = resolveSteppedRestoreBaseAttempt(dev, dev.desiredStepId)?.reservation;
+  if (!reservation) return 0;
+  const gapKw = resolveSteppedRestoreObservedGapKw(dev, reservation);
+  return gapKw > 0 ? gapKw + computeRestoreBufferKw(gapKw) : 0;
 }

@@ -1,7 +1,10 @@
 import type { ChargingCurrentSetup } from '../../../packages/contracts/src/chargingControl';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { DeviceAdapterSession, AdapterControlTarget } from '../deviceAdapter';
-import { hasTeslaChargingSurface, confirmedTeslaCurrent, isTeslaChargingState } from './charging';
+import {
+  acknowledgedTeslaCurrent, hasTeslaChargingSurface, confirmedTeslaCurrent, isTeslaChargingState,
+} from './charging';
+import { ACKNOWLEDGED_CURRENT_CAPABILITY_ID } from '../deviceAdapter';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { toCapabilityTimestampMs } from '../managerControl';
 import { isTeslaChargingDevice } from './identity';
@@ -60,6 +63,14 @@ export class TeslaChargingSession implements DeviceAdapterSession {
       const current = this.confirmedCurrent(deviceId);
       if (current !== undefined) events.push({ capabilityId: 'available_installation_current', value: current });
     }
+    // The limit echo acknowledges a command at once; it is published apart from
+    // the confirmed current, which still waits for fresh actual measurements.
+    if (capabilityId === 'measure_charge_current_max') {
+      const acknowledged = this.acknowledgedCurrent(deviceId);
+      if (acknowledged !== undefined) {
+        events.push({ capabilityId: ACKNOWLEDGED_CURRENT_CAPABILITY_ID, value: acknowledged });
+      }
+    }
     return events;
   }
 
@@ -100,6 +111,12 @@ export class TeslaChargingSession implements DeviceAdapterSession {
     const raw = this.devices.get(deviceId);
     return raw && isTeslaChargingDevice(raw)
       ? confirmedTeslaCurrent(raw.capabilitiesObj ?? {})?.value as number | undefined : undefined;
+  }
+
+  acknowledgedCurrent(deviceId: string): number | undefined {
+    const raw = this.devices.get(deviceId);
+    return raw && isTeslaChargingDevice(raw)
+      ? acknowledgedTeslaCurrent(raw.capabilitiesObj ?? {})?.value as number | undefined : undefined;
   }
 
   observedIds(): string[] { return [...this.devices.keys()]; }

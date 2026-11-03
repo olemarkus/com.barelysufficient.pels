@@ -1,6 +1,8 @@
 import type { ReportedStepObservedProbe } from '../../packages/contracts/src/types';
 import type { Logger as PinoLogger } from '../logging/logger';
-import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
+import {
+  ACKNOWLEDGED_COMMAND_SETTLE_MS, CONTROL_COMMAND_CONFIRMATION_MS,
+} from '../ports/controlCommandConfirmation';
 import type {
   TargetPowerProbeConfiguration, TargetPowerReachabilityOwner,
 } from '../ports/targetPowerReachabilityOwner';
@@ -97,7 +99,11 @@ export class TargetPowerCommandLifecycle {
         requestedPowerW: desired.planningPowerW,
         confirmedMaxPowerW: desired.targetPowerProbeConfirmedMaxPowerW,
         issuedAtMs: desired.targetPowerProbeStartedAtMs,
-        settleWindowMs: CONTROL_COMMAND_CONFIRMATION_MS,
+        // A probe the charger acknowledged waits for its settled report as any
+        // acknowledged command does; judging it at 90 s would fail a rung the
+        // charger accepted and is still reporting.
+        settleWindowMs: desired.status === 'acknowledged'
+          ? ACKNOWLEDGED_COMMAND_SETTLE_MS : CONTROL_COMMAND_CONFIRMATION_MS,
       },
       evidence,
       nowMs,

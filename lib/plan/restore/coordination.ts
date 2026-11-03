@@ -23,6 +23,10 @@ function isSteppedRestorePending(device: DevicePlanDevice): boolean {
   // off device whose selected rung already matches its first active rung.
   if (device.reason.code === PLAN_REASON_CODES.restoreNeed) return true;
   if (device.stepCommandPending !== true) return false;
+  // An acknowledged step-up keeps its unarrived watts reserved for every restore
+  // pass (`resolveAcknowledgedStepUpReservationKw`) instead of holding the
+  // queue: the device heard the command and may take one cloud poll to show it.
+  if (device.stepCommandStatus === 'acknowledged') return false;
   if (!device.desiredStepId || device.desiredStepId === device.selectedStepId) {
     return false;
   }

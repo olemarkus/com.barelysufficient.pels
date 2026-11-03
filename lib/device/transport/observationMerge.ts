@@ -13,6 +13,7 @@ import {
 import { incPerfCounter } from '../../utils/perfCounters';
 import { applyCapabilityObservation, clearCapabilityObservationIfMatched } from './observationApply';
 import { preserveNewerReportedStepObservation } from './reportedStepObservation';
+import { preserveNewerAcknowledgedStep } from '../acknowledgedStep';
 import { preserveNewerHomeBatteryReadings } from './homeBatteryObservation';
 import { recordCapabilityObservation } from './observationRecord';
 import { hasControlFacetBesideTemperature } from './temperatureObservation';
@@ -203,6 +204,7 @@ function mergeSnapshotObservationsForDevice(
         snapshot,
     });
     preserveNewerReportedStepObservation(previous, snapshot);
+    preserveNewerAcknowledgedStep(previous, snapshot);
     preserveNewerMeteredPowerReading(previous, snapshot);
     preserveNewerHomeBatteryReadings(previous, snapshot);
 

@@ -719,6 +719,84 @@ describe('restore cooldown backoff', () => {
     expect(reasonText(offDevice?.reason)).toBe('waiting for other devices to recover');
   });
 
+  describe('an acknowledged stepped step-up', () => {
+    // The device echoed the commanded step (a cloud car's new charge limit) but
+    // its draw report lags by up to one poll. It reserves its unarrived watts
+    // instead of holding the restore queue.
+    const acknowledgedStepUpCase = (stepCommandStatus: 'acknowledged' | 'pending', headroom: number) => {
+      const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+      vi.setSystemTime(now);
+      const state = createPlanEngineState();
+      state.actuation.lastDeviceShedMs['dev-step'] = now - 30_000;
+      state.actuation.lastDeviceRestoreMs['dev-step'] = now - 5_000;
+      const result = applyRestorePlan({
+        planDevices: [
+          steppedPlanDevice({
+            id: 'dev-step',
+            name: 'Car',
+            currentState: 'on',
+            selectedStepId: 'low',
+            desiredStepId: 'medium',
+            lastDesiredStepId: 'medium',
+            lastStepCommandIssuedAt: now - 60_000,
+            stepCommandPending: true,
+            stepCommandStatus,
+            currentDrawKw: 1.25,
+            planningPowerKw: 1.25,
+          }),
+          buildPlanDevice({
+            id: 'dev-off',
+            name: 'Hall heater',
+            currentState: 'off',
+            plannedState: 'keep',
+            boostActive: false,
+            expectedPowerKw: 1.5,
+            measuredPowerKw: 0,
+          }),
+        ],
+        ...buildContext({ headroomRaw: headroom, headroom }),
+        state,
+        sheddingActive: false,
+        deps: restoreDeps(123),
+      });
+      return {
+        result,
+        stepped: result.planDevices.find((device) => device.id === 'dev-step'),
+        off: result.planDevices.find((device) => device.id === 'dev-off'),
+      };
+    };
+
+    it('does not block another device restore', () => {
+      const { off, stepped } = acknowledgedStepUpCase('acknowledged', 5);
+
+      expect(off?.plannedState).toBe('keep');
+      expect(reasonText(off?.reason)).not.toBe('waiting for other devices to recover');
+      // The step-up stays as commanded; the heater's restore this cycle only
+      // gates a further step.
+      expect(stepped?.plannedState).toBe('keep');
+      expect(stepped?.desiredStepId).toBe('medium');
+    });
+
+    it('keeps its unarrived watts reserved against that restore', () => {
+      // 0.75 kW still to arrive (low 1.25 kW -> medium 2 kW) plus its 0.2 kW
+      // buffer leaves 1 kW, short of the heater's 1.5 kW + 0.25 kW need.
+      const reserved = acknowledgedStepUpCase('acknowledged', 2);
+      expect(reserved.off?.plannedState).toBe('shed');
+      expect(reasonText(reserved.off?.reason)).not.toBe('waiting for other devices to recover');
+      expect(reserved.result.availableHeadroom).toBeCloseTo(2 - 0.95);
+
+      const roomy = acknowledgedStepUpCase('acknowledged', 2.8);
+      expect(roomy.off?.plannedState).toBe('keep');
+    });
+
+    it('still holds the queue while unacknowledged', () => {
+      const { off } = acknowledgedStepUpCase('pending', 5);
+
+      expect(off?.plannedState).toBe('shed');
+      expect(reasonText(off?.reason)).toBe('waiting for other devices to recover');
+    });
+  });
+
   it('holds a timed-out stepped restore in retry backoff without reserving headroom or surfacing restore pending', () => {
     const now = Date.UTC(2024, 0, 1, 10, 0, 0);
     vi.setSystemTime(now);

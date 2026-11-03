@@ -2,13 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { syncSteppedCommands } from '../../lib/executor/syncSteppedCommands';
 import type { SteppedSettleDevice } from '../../lib/observer/steppedSettleSnapshot';
 import { STEPPED_LOAD_COMMAND_STALE_MS } from '../../lib/executor/steppedCommandState';
+import { resolveSteppedCommandAttempt } from '../../lib/executor/steppedCommandAttempt';
+import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from '../../lib/executor/commandRetrySchedule';
+import { ACKNOWLEDGED_COMMAND_SETTLE_MS } from '../../lib/ports/controlCommandConfirmation';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { steppedStoresForTest } from '../helpers/steppedStores';
+import { buildSteppedSettleSnapshot } from '../../lib/observer/steppedSettleSnapshot';
 
 const device = (overrides: Partial<SteppedSettleDevice> = {}): SteppedSettleDevice => ({
   id: 'dev-1',
   lowestActiveStepId: 'low',
   observedOn: true,
   steppedCommandConfirmation: { state: 'unavailable' },
+  steppedCommandAcknowledgement: { state: 'unavailable' },
   ...overrides,
 });
 
@@ -142,4 +148,157 @@ describe('syncSteppedCommands', () => {
     expect(store.hasTrackedState()).toBe(false);
   });
 
+});
+
+const ladder: SteppedLoadProfile = {
+  steps: [{ id: 'off', planningPowerW: 0 }, { id: '20a', planningPowerW: 13_800 }, { id: '24a', planningPowerW: 16_560 }],
+};
+
+/**
+ * A device that echoes its accepted setting (a cloud car publishing its new
+ * charge limit) answers a command long before its draw report does. The echo
+ * stops the resend; only the settled report confirms.
+ */
+describe('syncSteppedCommands: acknowledged commands', () => {
+  const ISSUED = 1_000_000;
+  const acknowledging = (stepId: string, observedAtMs: number, overrides: Partial<SteppedSettleDevice> = {}) => device({
+    steppedCommandAcknowledgement: { state: 'observed', acknowledgedStepId: stepId, observedAtMs },
+    steppedCommandConfirmation: { state: 'observed', observedStepId: '24a', observedAtMs: ISSUED - 60_000 },
+    ...overrides,
+  });
+  const attemptAt = (store: ReturnType<typeof steppedStoresForTest>['store'], nowMs: number) => (
+    resolveSteppedCommandAttempt(store.getDesired('dev-1'), ladder, '20a', nowMs)
+  );
+
+  it('acknowledges, but does not confirm, a command its setting echo names after it was issued', () => {
+    const { store } = steppedStoresForTest();
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: '20a', issuedAtMs: ISSUED });
+
+    syncSteppedCommands({ store, devices: [acknowledging('20a', ISSUED + 5_000)], nowMs: ISSUED + 5_000 });
+
+    expect(store.getDesired('dev-1')).toMatchObject({ status: 'acknowledged', acknowledgedAtMs: ISSUED + 5_000 });
+    expect(store.isStepCommandPending('dev-1')).toBe(true);
+  });
+
+  it('ignores an echo from before the command was issued', () => {
+    const { store } = steppedStoresForTest();
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: '20a', issuedAtMs: ISSUED });
+
+    syncSteppedCommands({ store, devices: [acknowledging('20a', ISSUED - 1)], nowMs: ISSUED + 5_000 });
+
+    expect(store.getDesired('dev-1')).toMatchObject({ status: 'pending' });
+  });
+
+  it('is not re-sent inside the acknowledgement window, and confirms on the settled report', () => {
+    const { store } = steppedStoresForTest();
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: '20a', issuedAtMs: ISSUED });
+    const echoed = acknowledging('20a', ISSUED + 5_000);
+
+    // Every pass the unconfirmed command used to go stale at 90 s and resend on
+    // the 30 s / 2 / 5 / 15 min ladder.
+    for (const nowMs of [ISSUED + 5_000, ISSUED + 95_000, ISSUED + 10 * 60_000, ISSUED + 19 * 60_000]) {
+      syncSteppedCommands({ store, devices: [echoed], nowMs });
+      expect(store.getDesired('dev-1')?.status).toBe('acknowledged');
+      expect(attemptAt(store, nowMs)).toEqual({ status: 'awaiting_confirmation', requestedStepId: '20a' });
+    }
+
+    syncSteppedCommands({
+      store,
+      devices: [acknowledging('20a', ISSUED + 5_000, {
+        steppedCommandConfirmation: { state: 'observed', observedStepId: '20a', observedAtMs: ISSUED + 15 * 60_000 },
+      })],
+      nowMs: ISSUED + 19 * 60_000 + 1,
+    });
+
+    expect(store.getDesired('dev-1')).toMatchObject({ status: 'success' });
+    expect(store.isStepCommandPending('dev-1')).toBe(false);
+  });
+
+  it('turns stale on the ordinary backoff when the window expires unsettled, and the same echo cannot revive it', () => {
+    const { store } = steppedStoresForTest();
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: '20a', issuedAtMs: ISSUED });
+    const echoed = acknowledging('20a', ISSUED + 5_000);
+    syncSteppedCommands({ store, devices: [echoed], nowMs: ISSUED + 5_000 });
+
+    const expiredAtMs = ISSUED + ACKNOWLEDGED_COMMAND_SETTLE_MS;
+    syncSteppedCommands({ store, devices: [echoed], nowMs: expiredAtMs });
+
+    const retryAtMs = expiredAtMs + STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS[0];
+    expect(store.getDesired('dev-1')).toMatchObject({ status: 'stale', nextRetryAtMs: retryAtMs });
+    expect(store.isStepCommandPending('dev-1')).toBe(false);
+    expect(attemptAt(store, expiredAtMs)).toEqual({ status: 'retry_backoff', requestedStepId: '20a' });
+    expect(attemptAt(store, retryAtMs)).toBeNull();
+  });
+
+  it('becomes eligible for retry when a newer report contradicts the acknowledgement', () => {
+    const { store } = steppedStoresForTest();
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: '20a', issuedAtMs: ISSUED });
+    syncSteppedCommands({ store, devices: [acknowledging('20a', ISSUED + 5_000)], nowMs: ISSUED + 5_000 });
+
+    // The car's poll put the limit back where it was.
+    const revertedAtMs = ISSUED + 6 * 60_000;
+    syncSteppedCommands({ store, devices: [acknowledging('24a', revertedAtMs)], nowMs: revertedAtMs });
+
+    const retryAtMs = revertedAtMs + STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS[0];
+    expect(store.getDesired('dev-1')).toMatchObject({ status: 'stale', nextRetryAtMs: retryAtMs });
+    expect(attemptAt(store, retryAtMs)).toBeNull();
+  });
+
+  it('becomes eligible for retry when a newer settled report names another step', () => {
+    const { store } = steppedStoresForTest();
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: '20a', issuedAtMs: ISSUED });
+    syncSteppedCommands({ store, devices: [acknowledging('20a', ISSUED + 5_000)], nowMs: ISSUED + 5_000 });
+
+    syncSteppedCommands({
+      store,
+      devices: [acknowledging('20a', ISSUED + 5_000, {
+        steppedCommandConfirmation: { state: 'observed', observedStepId: '24a', observedAtMs: ISSUED + 60_000 },
+      })],
+      nowMs: ISSUED + 60_000,
+    });
+
+    expect(store.getDesired('dev-1')).toMatchObject({ status: 'stale' });
+  });
+
+  it('sends a 24 A to 20 A command once when the echo is immediate and the draw report comes 15 minutes later', () => {
+    // The reported case: the same command was re-sent four times in 13 minutes.
+    const { store } = steppedStoresForTest();
+    const source = {
+      id: 'dev-1', binaryControl: { on: true }, steppedLoadProfile: ladder, selectedStepId: '24a',
+      reportedStepId: '24a', reportedStepObservedAtMs: ISSUED - 60_000,
+    };
+    let sends = 0;
+    let echo: { stepId: string; observedAtMs: number } | undefined;
+    let report = { reportedStepId: '24a', reportedStepObservedAtMs: ISSUED - 60_000 };
+    for (let nowMs = ISSUED; nowMs <= ISSUED + 16 * 60_000; nowMs += 30_000) {
+      if (nowMs === ISSUED + 30_000) echo = { stepId: '20a', observedAtMs: ISSUED + 5_000 };
+      if (nowMs === ISSUED + 15 * 60_000) report = { reportedStepId: '20a', reportedStepObservedAtMs: nowMs };
+      const settleDevices = buildSteppedSettleSnapshot([{
+        ...source, ...report, ...(echo ? { acknowledgedStep: echo } : {}),
+      }]);
+      syncSteppedCommands({ store, devices: settleDevices, nowMs });
+      const desired = store.getDesired('dev-1');
+      if (desired?.status !== 'success' && attemptAt(store, nowMs) === null) {
+        store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: '20a', previousStepId: '24a', issuedAtMs: nowMs });
+        sends += 1;
+      }
+    }
+
+    expect(sends).toBe(1);
+    expect(store.getDesired('dev-1')).toMatchObject({ status: 'success', retryCount: 0 });
+  });
+
+  it('keeps the unacknowledged path unchanged: stale at the 90 s window, then the first retry rung', () => {
+    const { store } = steppedStoresForTest();
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: '20a', issuedAtMs: ISSUED });
+
+    syncSteppedCommands({ store, devices: [device()], nowMs: ISSUED + STEPPED_LOAD_COMMAND_STALE_MS - 1 });
+    expect(attemptAt(store, ISSUED + STEPPED_LOAD_COMMAND_STALE_MS - 1))
+      .toEqual({ status: 'awaiting_confirmation', requestedStepId: '20a' });
+
+    syncSteppedCommands({ store, devices: [device()], nowMs: ISSUED + STEPPED_LOAD_COMMAND_STALE_MS });
+    const retryAtMs = ISSUED + STEPPED_LOAD_COMMAND_STALE_MS + STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS[0];
+    expect(store.getDesired('dev-1')).toMatchObject({ status: 'stale', nextRetryAtMs: retryAtMs });
+    expect(attemptAt(store, retryAtMs)).toBeNull();
+  });
 });

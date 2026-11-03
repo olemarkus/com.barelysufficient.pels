@@ -9,7 +9,7 @@ import { getLogger } from '../../lib/logging/logger';
 import { TeslaChargingSession } from '../../lib/device/tesla/session';
 import { applyNativeEvWiringOverlay } from '../../lib/device/nativeEvWiring';
 import { resolveDeviceClassKey } from '../../lib/device/transport/managerHelpers';
-import { confirmedTeslaCurrent } from '../../lib/device/tesla/charging';
+import { acknowledgedTeslaCurrent, confirmedTeslaCurrent } from '../../lib/device/tesla/charging';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowConflictStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
@@ -117,6 +117,21 @@ test('current ceiling needs fresh actual current and power; lower draw is valid'
   expect(confirmedTeslaCurrent(caps)).toBeUndefined();
 });
 
+test('a running limit echo acknowledges the current; fresh actual current and power confirm it', () => {
+  // The Tesla app sets the limit as soon as the vehicle accepts the command;
+  // actual current and power arrive only with its next poll.
+  const caps = { charging_on: cap(true, now - 60_000), charging_state: cap('Charging', now - 60_000),
+    measure_charge_current_max: cap(20), measure_charge_current: cap(24, now - 60_000),
+    measure_charge_power: cap(16.5, now - 60_000) };
+  expect(acknowledgedTeslaCurrent(caps)).toEqual({ value: 20, lastUpdated: cap(20).lastUpdated, setable: false });
+  expect(confirmedTeslaCurrent(caps)).toBeUndefined();
+
+  caps.measure_charge_current = cap(20, now + 15 * 60_000);
+  caps.measure_charge_power = cap(13.8, now + 15 * 60_000);
+  expect(confirmedTeslaCurrent(caps)?.value).toBe(20);
+  expect(acknowledgedTeslaCurrent({ ...caps, measure_charge_current_max: cap(40) })).toBeUndefined();
+});
+
 test('a stopped vehicle reports its prepared current without refreshing unchanged zero measurements', () => {
   const caps = { charging_on: cap(false, now - 1000), charging_state: cap('Stopped', now - 1000),
     measure_charge_current_max: cap(6), measure_charge_current: cap(0, now - 1000),
@@ -176,6 +191,35 @@ test('realtime prepared-current feedback changes the step without inventing powe
     await emitCapability('battery', 'measure_charge_current', 8);
     await emitCapability('battery', 'measure_charge_power', 5.52);
     expect(transport.getSnapshot()[0]).toMatchObject({ reportedStepId: '8a', measuredPowerKw: 5.52 });
+  } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
+});
+
+test('a realtime limit echo while charging publishes an acknowledged step, not a reported one', async () => {
+  vi.useRealTimers();
+  mockHomeyInstance.settings.set('charging_current_control', { battery: { method: 'flow', confirmation: 'vehicle' } });
+  const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
+    { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') },
+    {
+      settings: {
+        getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase',
+          min: 0, max: 11040, step: 1380, excludeMin: 1, excludeMax: 4140 }),
+      },
+    });
+  try {
+    await initWithLiveFeed(transport);
+    const initial = devices();
+    const polledAt = Date.now() - 60_000;
+    Object.assign(initial[0]!.capabilitiesObj!, { measure_charge_current_max: cap(16, polledAt),
+      measure_charge_current: cap(16, polledAt), measure_charge_power: cap(11, polledAt) });
+    await seedTransportDevices(transport, initial);
+    expect(transport.getSnapshot()[0]).toMatchObject({ reportedStepId: '16a',
+      acknowledgedStep: { stepId: '16a', observedAtMs: polledAt } });
+
+    const echoedAt = Date.now();
+    await emitCapability('battery', 'measure_charge_current_max', 8);
+
+    expect(transport.getSnapshot()[0]).toMatchObject({ reportedStepId: '16a', acknowledgedStep: {
+      stepId: '8a', observedAtMs: expect.toSatisfy((atMs: number) => atMs >= echoedAt) } });
   } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
 });
 

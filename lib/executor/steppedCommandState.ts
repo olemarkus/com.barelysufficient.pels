@@ -1,6 +1,9 @@
 import type { FlowSteppedLoadObservation } from '../ports/flowSteppedLoadAdmission';
 import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from './commandRetrySchedule';
-import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
+import {
+  ACKNOWLEDGED_COMMAND_SETTLE_MS, CONTROL_COMMAND_CONFIRMATION_MS,
+} from '../ports/controlCommandConfirmation';
+import { getLogger } from '../logging/logger';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
@@ -19,6 +22,13 @@ import type {
 
 export const STEPPED_LOAD_COMMAND_STALE_MS = CONTROL_COMMAND_CONFIRMATION_MS;
 
+const logger = getLogger('executor/stepped-load');
+
+/** In flight: issued and not yet settled, whether or not the device acknowledged it. */
+export const isSteppedLoadCommandInFlight = (status: SteppedLoadCommandStatus | undefined): boolean => (
+  status === 'pending' || status === 'acknowledged'
+);
+
 export type SteppedLoadDesiredRuntimeState = {
   capabilityId: typeof PELS_TARGET_STEP_CAPABILITY_ID;
   stepId: string;
@@ -29,8 +39,18 @@ export type SteppedLoadDesiredRuntimeState = {
   /** Whether the device has reported anything back since PELS began asking for this step. */
   answer: SteppedLoadCommandAnswer;
   nextRetryAtMs?: number;
-  /** `pending` exactly while the command is in flight; there is no separate flag. */
+  /**
+   * `pending` or `acknowledged` exactly while the command is in flight; there
+   * is no separate flag (`isSteppedLoadCommandInFlight`).
+   */
   status: SteppedLoadCommandStatus;
+  /**
+   * When the device's echo that acknowledged this command, or last
+   * contradicted that acknowledgement, was observed. Kept on a command the
+   * acknowledgement window expired, so the same echo cannot acknowledge it
+   * again; only a newer echo can.
+   */
+  acknowledgedAtMs?: number;
   planningPowerW?: number;
   previousPlanningPowerW?: number;
   /** Present only when the producer admitted one rung above the confirmed EV ceiling. */
@@ -277,10 +297,84 @@ export const noteSteppedLoadReportedStep = (
     confirmSteppedLoadDesiredStep(runtimeState, deviceId, desired);
     return;
   }
+  if (desired.status === 'acknowledged' && desired.acknowledgedAtMs !== undefined
+    && reportedAtMs > desired.acknowledgedAtMs) {
+    contradictAcknowledgedStep(runtimeState, deviceId, desired, stepId, reportedAtMs);
+    return;
+  }
   if (desired.answer.kind === 'answered' || desired.lastIssuedAtMs === undefined
     || reportedAtMs < desired.lastIssuedAtMs) return;
   runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, { ...desired, answer: ANSWERED });
 };
+
+/**
+ * The device echoed `stepId` as its accepted setting at `observedAtMs`. An echo
+ * of the commanded step after the command was issued acknowledges it: it is not
+ * re-sent, and waits up to `ACKNOWLEDGED_COMMAND_SETTLE_MS` from issue for its
+ * settled report. A newer echo of another step contradicts an acknowledgement,
+ * so the command is retried on the ordinary backoff. An echo of another step
+ * before any acknowledgement only answers the command, as a report does. An
+ * echo from before the command, or one already considered, says nothing.
+ */
+export const noteSteppedLoadAcknowledgedStep = (
+  runtimeState: DeviceControlRuntimeState,
+  deviceId: string,
+  stepId: string,
+  observedAtMs: number,
+): void => {
+  const desired = runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
+  if (!desired || desired.lastIssuedAtMs === undefined || observedAtMs < desired.lastIssuedAtMs) return;
+  if (desired.acknowledgedAtMs !== undefined && observedAtMs <= desired.acknowledgedAtMs) return;
+  if (desired.stepId !== stepId) {
+    if (desired.status === 'acknowledged') {
+      contradictAcknowledgedStep(runtimeState, deviceId, desired, stepId, observedAtMs);
+    } else if (isSteppedLoadCommandInFlight(desired.status) || desired.status === 'stale') {
+      runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, { ...desired, answer: ANSWERED });
+    }
+    return;
+  }
+  if (desired.status !== 'pending' && desired.status !== 'stale') return;
+  runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
+    ...desired,
+    answer: ANSWERED,
+    acknowledgedAtMs: observedAtMs,
+    nextRetryAtMs: undefined,
+    status: 'acknowledged',
+  });
+  logger.info({
+    event: 'stepped_load_command_acknowledged',
+    deviceId,
+    desiredStepId: stepId,
+    issuedAtMs: desired.lastIssuedAtMs,
+    acknowledgedAtMs: observedAtMs,
+    settleDeadlineAtMs: desired.lastIssuedAtMs + ACKNOWLEDGED_COMMAND_SETTLE_MS,
+  });
+};
+
+/** A newer level than the acknowledged one: the device no longer holds the command. */
+function contradictAcknowledgedStep(
+  runtimeState: DeviceControlRuntimeState,
+  deviceId: string,
+  desired: SteppedLoadDesiredRuntimeState,
+  observedStepId: string,
+  observedAtMs: number,
+): void {
+  const nextRetryAtMs = observedAtMs + resolveSteppedLoadCommandRetryDelayMs(desired.retryCount);
+  runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
+    ...desired,
+    acknowledgedAtMs: observedAtMs,
+    nextRetryAtMs,
+    status: 'stale',
+  });
+  logger.info({
+    event: 'stepped_load_acknowledged_command_contradicted',
+    deviceId,
+    desiredStepId: desired.stepId,
+    observedStepId,
+    observedAtMs,
+    nextRetryAtMs,
+  });
+}
 
 export const pruneStaleSteppedLoadCommandStates = (
   runtimeState: DeviceControlRuntimeState,
@@ -288,6 +382,10 @@ export const pruneStaleSteppedLoadCommandStates = (
 ): boolean => {
   let changed = false;
   for (const [deviceId, desired] of runtimeState.steppedLoadDesiredByDeviceId.entries()) {
+    if (desired.status === 'acknowledged') {
+      if (expireAcknowledgedSteppedLoadCommand(runtimeState, deviceId, desired, nowMs)) changed = true;
+      continue;
+    }
     if (desired.status !== 'pending' || typeof desired.lastIssuedAtMs !== 'number') continue;
     if (nowMs - desired.lastIssuedAtMs < STEPPED_LOAD_COMMAND_STALE_MS) continue;
     runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
@@ -305,6 +403,29 @@ export const pruneStaleSteppedLoadCommandStates = (
   }
   return changed;
 };
+
+/** An acknowledged command that never settled within its window is retried on the ordinary backoff. */
+function expireAcknowledgedSteppedLoadCommand(
+  runtimeState: DeviceControlRuntimeState,
+  deviceId: string,
+  desired: SteppedLoadDesiredRuntimeState,
+  nowMs: number,
+): boolean {
+  if (desired.lastIssuedAtMs === undefined) return false;
+  const expiredAtMs = desired.lastIssuedAtMs + ACKNOWLEDGED_COMMAND_SETTLE_MS;
+  if (nowMs < expiredAtMs) return false;
+  const nextRetryAtMs = expiredAtMs + resolveSteppedLoadCommandRetryDelayMs(desired.retryCount);
+  runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, { ...desired, nextRetryAtMs, status: 'stale' });
+  logger.info({
+    event: 'stepped_load_acknowledged_command_expired',
+    deviceId,
+    desiredStepId: desired.stepId,
+    issuedAtMs: desired.lastIssuedAtMs,
+    acknowledgedAtMs: desired.acknowledgedAtMs ?? null,
+    nextRetryAtMs,
+  });
+  return true;
+}
 
 function resolveSteppedLoadCommandRetryDelayMs(retryCount: number): number {
   const normalizedRetryCount = Number.isFinite(retryCount) ? Math.max(0, Math.trunc(retryCount)) : 0;

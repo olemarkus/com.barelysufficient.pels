@@ -1,4 +1,5 @@
 import type {
+  AcknowledgedStepObservation,
   DeviceControlAdapterSnapshot,
   SteppedLoadProfile,
   TargetPowerSteppedLoadConfig,
@@ -38,6 +39,8 @@ import {
   stripNativeSteppedLoadControlCapabilities,
 } from './nativeSteppedLoadWiring';
 import { getDeviceAdapter } from './deviceAdapterRegistry';
+import { ACKNOWLEDGED_CURRENT_CAPABILITY_ID } from './deviceAdapter';
+import { resolveAcknowledgedStepObservation } from './acknowledgedStep';
 import { warnIfTargetPowerCapabilityViolatesContract } from './targetPowerContractWarn';
 import { resolveDeviceCompatibilityTargetPowerConfig } from './compatibility';
 import { withoutTargetPowerReachability } from './targetPowerReachability';
@@ -74,6 +77,7 @@ export function resolveFlowCapabilityOverlay(
   reportedStepId?: string;
   reportedStepPowerW?: number;
   reportedStepObservedAtMs?: number;
+  acknowledgedStep?: AcknowledgedStepObservation;
   suggestedSteppedLoadProfile?: SteppedLoadProfile;
   controlModel?: 'stepped_load';
   steppedLoadProfile?: SteppedLoadProfile;
@@ -149,6 +153,7 @@ export function resolveFlowCapabilityOverlay(
     reportedStepPowerW: targetPowerOverlay.reportedStepPowerW,
     reportedStepObservedAtMs: targetPowerOverlay.reportedStepPowerW !== undefined
       ? targetPowerOverlay.reportedStepObservedAtMs : nativeSteppedOverlay.reportedStepObservedAtMs,
+    acknowledgedStep: targetPowerOverlay.acknowledgedStep,
     suggestedSteppedLoadProfile: nativeSteppedOverlay.suggestedSteppedLoadProfile,
     controlModel: steppedLoadProfile ? 'stepped_load' : undefined,
     steppedLoadProfile,
@@ -288,6 +293,7 @@ function applySyntheticTargetPowerOverlay(
   reportedStepId?: string;
   reportedStepPowerW?: number;
   reportedStepObservedAtMs?: number;
+  acknowledgedStep?: AcknowledgedStepObservation;
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
 } {
   const savedConfig = sources.settings.getDeviceTargetPowerConfig(deviceId)
@@ -338,6 +344,9 @@ function applySyntheticTargetPowerOverlay(
     reportedStepPowerW,
     reportedStepObservedAtMs: resolveTargetPowerModeInvalidationAtMs(capabilityObj)
       ?? toCapabilityTimestampMs(capabilityObj.target_power?.lastUpdated),
+    acknowledgedStep: resolveAcknowledgedStepObservation(
+      config, nativeEvOverlay.capabilityObj[ACKNOWLEDGED_CURRENT_CAPABILITY_ID],
+    ),
     targetPowerConfig: withoutTargetPowerReachability(config),
   };
 }
