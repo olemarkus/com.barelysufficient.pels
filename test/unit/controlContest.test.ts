@@ -57,6 +57,19 @@ describe('ControlContestRecord', () => {
       .contestedControl(DEVICE, 40 * MINUTE_MS)?.kind).toBe('overridden');
   });
 
+  it('says overridden for on/off, whose earlier value says nothing about what moved it', () => {
+    const { contests } = controlContestsForTest();
+    contests.commandSent(sent(0, false, true, 'on_off'));
+    contests.commandConfirmed(DEVICE, 'on_off', false);
+    for (let round = 1; round <= 4; round += 1) {
+      contests.commandSent(sent(round * MINUTE_MS, false, true, 'on_off'));
+      contests.commandConfirmed(DEVICE, 'on_off', false);
+    }
+    expect(contests.contestedControl(DEVICE, 4 * MINUTE_MS)).toEqual({
+      setting: 'on_off', kind: 'overridden', count: 4, sinceMs: MINUTE_MS,
+    });
+  });
+
   it('counts a correction that did not stick once, not again on its retries', () => {
     const { contests } = contestRounds(3, () => 22);
     contests.commandSent(sent(40 * MINUTE_MS, 5, 22));

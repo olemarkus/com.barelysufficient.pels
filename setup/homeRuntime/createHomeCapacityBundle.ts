@@ -37,6 +37,7 @@
  * follows main's debounce/hour-rollover policy, minus main-only daily-budget,
  * UI, and calibration piggybacks. Teardown stops timers; persisted state stays.
  */
+import type { ControlContestRecord } from '../../lib/executor/controlContest';
 import type { AppContext } from '../../lib/app/appContext';
 import type { SubHomeBundle } from '../../lib/home/homeRuntimeRegistry';
 import type {
@@ -289,6 +290,7 @@ function createBundlePlanningRuntime(
   timerKey: (suffix: string) => string,
   tracker: HomeTrackerPersistence,
   modeCatalog: HomeModeCatalog,
+  controlContests: ControlContestRecord,
 ) {
   // This home's meter-silence policy: shared by the composed plan-build gate
   // (via the scope), the pipeline's admitted-sample push, and the freshness
@@ -328,7 +330,7 @@ function createBundlePlanningRuntime(
     ctx,
     scope,
     // Home-battery control is Main only (v1): a meter area builds no storage lane.
-    { capacityGuard: guard, isActuationFenced, storageLane: { kind: 'none' } },
+    { capacityGuard: guard, isActuationFenced, storageLane: { kind: 'none' }, controlContests },
   );
   const { pipeline, scheduler: planRebuildScheduler, throttle: planRebuildThrottle } = createBundleSamplePipeline(
     ctx, scope, timerKey, planEngine, planService, guard, tracker,
@@ -373,6 +375,8 @@ export function createHomeCapacityBundle(
   initialPowerTrackerState: PowerTrackerState,
   /** Identity every tracker persist from this runtime must carry. */
   powerTrackerMeterIdentity: PowerTrackerMeterIdentity,
+  /** The app's record of drift corrections, which this area's plan engine feeds. */
+  controlContests: ControlContestRecord,
 ): HomeCapacityBundle {
   const { homeId } = runtime;
   const logger = () => ctx.getStructuredLogger('homes');
@@ -412,7 +416,7 @@ export function createHomeCapacityBundle(
     planRebuildScheduler,
     planRebuildThrottle,
     meterSilenceMonitor,
-  } = createBundlePlanningRuntime(ctx, runtime, timerKey, tracker, modeCatalog);
+  } = createBundlePlanningRuntime(ctx, runtime, timerKey, tracker, modeCatalog, controlContests);
   const beginPreparedReconcile = (sampleRevision: number): (() => void) => {
     holdDeferredShortfallSideEffect();
     return pipeline.preparedReconcileFence.begin(sampleRevision);

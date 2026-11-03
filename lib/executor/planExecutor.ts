@@ -325,17 +325,15 @@ export class PlanExecutor {
    * compared as the actuator resolves them, which is the value a send carries.
    */
   public retainContestedCommands(plan: ExecutionPlan): void {
-    const reads = this.driftObservationDeps();
     const nowMs = Date.now();
     for (const decision of plan.devices) {
       const device = decision.commands;
       const planned = resolvePlannedCommandValues(materializeExecutableDeviceIntent(
         device, this.deps.getSteppedLoadCommandSession(device.id), nowMs,
-      ), reads.isExternalOffHeld(device.id));
+      ), this.feedback.isExternalOffHeld(device.id));
       this.execution.controlContests.retainPlanned(device.id, {
-        on_off: planned.on,
-        level: planned.stepId,
-        temperature: this.resolvePlannedTemperature(device.id, planned.target),
+        ...planned,
+        temperature: this.resolvePlannedTemperature(device.id, planned.temperature),
       });
     }
   }

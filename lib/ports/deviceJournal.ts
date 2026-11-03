@@ -4,9 +4,9 @@
  * emits. Homey attaches only the last 100 stdout lines to a report, so an event
  * hours older than the report is gone from the log; this keeps it.
  *
- * Transport (`lib/device/`) records through this port and diagnostics
- * (`lib/diagnostics/deviceEventStore.ts`) persists and reads it. Neither layer
- * may import the other, so the shapes live here.
+ * Transport (`lib/device/`) and the executor (`lib/executor/controlContest.ts`)
+ * record through this port, and diagnostics (`lib/diagnostics/deviceEventStore.ts`)
+ * persists and reads it. Neither side may import the other, so the shapes live here.
  */
 export type DeviceJournalEvent = {
   readonly component: string;

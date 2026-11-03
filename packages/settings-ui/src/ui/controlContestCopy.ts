@@ -1,11 +1,5 @@
-import type { ContestedControl, ContestedSetting } from '../../../contracts/src/controlContest.ts';
-
-/** What the owner calls the setting PELS kept setting back. */
-const SETTING_WORDS: Readonly<Record<ContestedSetting, string>> = {
-  temperature: 'temperature',
-  on_off: 'on/off setting',
-  level: 'level',
-};
+import type { ContestedControl } from '../../../contracts/src/controlContest.ts';
+import { CONTESTED_SETTING_WORDS } from '../../../shared-domain/src/contestedSetting.ts';
 
 /**
  * The warning for a device that keeps moving away from what PELS set: a write
@@ -16,7 +10,7 @@ export const controlContestNotice = (
   name: string,
   contest: ContestedControl,
 ): { title: string; body: string } => {
-  const what = SETTING_WORDS[contest.setting];
+  const what = CONTESTED_SETTING_WORDS[contest.setting];
   if (contest.kind === 'reverted') {
     return {
       title: `${name} doesn't keep PELS's changes`,

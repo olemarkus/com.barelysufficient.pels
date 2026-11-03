@@ -1,4 +1,5 @@
 import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
+import { controlContestsForTest } from '../helpers/controlContests';
 import { createExternalOffHoldPolicy } from '../../setup/externalOffHoldAdapter';
 // Integration coverage for the per-home operating mode (multi-home):
 // - the settings→bundle seam: an `operating_mode:<homeId>` write routes
@@ -123,6 +124,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     { isSubHomeExecutionReady: () => true },
     createRawHomesStore(ctx.homey.settings),
     createModeOwnershipTransfer(ctx, getHomeModeCatalogForTest(ctx)),
+    controlContestsForTest().contests,
   );
   return { ctx, registry };
 };

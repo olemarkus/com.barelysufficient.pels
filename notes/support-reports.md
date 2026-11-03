@@ -162,7 +162,8 @@ one, and what each report is about, are listed in `REPORTED_EVENTS` in
   as of the first of those rounds. Its `kind` is `reverted` when every time the device went
   back to its value from before PELS first asked (the write did not stick, as with a device
   app that reports a setting its cloud never took), and `overridden` otherwise (a Flow, app
-  or schedule setting its own value). `ControlContestRecord` (`lib/executor/controlContest.ts`)
+  or schedule setting its own value). An on/off setting has only two values, so its rounds
+  are always `overridden`. `ControlContestRecord` (`lib/executor/controlContest.ts`)
   records it, because the executor owns confirmation: a retry of a command the device never
   confirmed is never a round, so a thermostat that clamps PELS's 5 °C to 7 °C is retried
   without being reported. A command the plan no longer asks for, or whose command session
