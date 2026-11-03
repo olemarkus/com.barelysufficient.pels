@@ -124,7 +124,7 @@ export const STARVATION_RESCUE_WIDGET_COPY = {
   energyLabel: 'Energy',
   // Same estimate caveat the create widget uses — the projection includes the
   // current priority roster, but future prices and task changes can re-plan it.
-  estimateCaveat: 'Estimate — the actual run may differ as prices and other tasks change.',
+  estimateCaveat: 'This is an estimate. The actual run may differ as prices and other tasks change.',
   // Heading for the read-only "what this grants" summary on the confirm sheet.
   // Must stay character-identical to `SMART_TASK_EXTRA_PERMISSIONS_TITLE` in
   // `smartTaskCopy/permissionsCopy.ts` (line items come from
@@ -151,7 +151,7 @@ export const STARVATION_RESCUE_WIDGET_COPY = {
   },
   // Preview couldn't be projected (no prices yet, missing reading, price
   // optimisation off). Distinct from a hard error.
-  previewUnavailable: 'Can’t preview this yet — PELS needs more current data for this window.',
+  previewUnavailable: 'Can’t preview this yet. PELS needs more current data for this window.',
   rescuePending: 'Setting up…',
   // Two honest success flashes, branched on whether the projected plan actually
   // runs the device now. The rescue grants the device priority over lower-

@@ -1185,7 +1185,13 @@ never a dash: `Cannot finish. Not enough usable time before this ready-by time.`
 may need most of the available window.`, and with a budget cause `Cannot finish. Today’s daily
 budget runs out before the deadline.` or `At risk. Today’s daily budget may run out before the
 deadline.` (the contributing variants likewise). Source: `resolveSmartTaskPreviewStatusCopy` in
-`smartTaskCopy/createEditCopy.ts`.
+`smartTaskCopy/createEditCopy.ts`. The same rule holds for the preview's other lines and the
+editor's confirmations: `Can’t preview this yet. {reason}` (`Can’t preview this yet. PELS needs a
+current device reading.`), `This goal is already met, so there is nothing to schedule.`, `This is
+an estimate. The actual run may differ as prices and other tasks change.` (the Held-back rescue
+sheet shares it, `planStarvation.ts`), `Off unless you turn them on. PELS uses them only to meet
+this deadline.`, `Smart task updated. The earlier run is now in Past tasks.` and `Smart task
+updated. The new permissions apply to this run.`
 
 ### Smart task list status chips
 

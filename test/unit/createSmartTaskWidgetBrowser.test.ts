@@ -498,7 +498,7 @@ describe('create smart task widget browser', () => {
       await flushPromises();
 
       const statusLine = document.querySelector('[data-preview-unavailable]') as HTMLElement;
-      expect(statusLine.textContent).toBe('Can’t preview this yet — PELS needs a current device reading.');
+      expect(statusLine.textContent).toBe('Can’t preview this yet. PELS needs a current device reading.');
       expect(statusLine.textContent).not.toContain('prices published');
       const createBtn = document.querySelector('[data-create-btn]') as HTMLButtonElement;
       expect(createBtn.disabled).toBe(true);
