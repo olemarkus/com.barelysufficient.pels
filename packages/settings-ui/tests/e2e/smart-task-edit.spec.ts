@@ -236,7 +236,7 @@ test.describe('Smart task edit', () => {
     // deadline the stub demands (the anti-drift echo, pinned by the first test).
     await expect(editCard.locator('.smart-task-edit__preview-when')).toBeVisible();
     await editCard.getByRole('button', { name: 'Save changes' }).click();
-    await expect(page.locator('#toast')).toHaveText('Smart task updated — the new permissions apply to this run.');
+    await expect(page.locator('#toast')).toHaveText('Smart task updated. The new permissions apply to this run.');
   });
 
   test('hides the read-only permissions row while the editor owns the same setting', async ({ page }) => {

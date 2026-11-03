@@ -66,7 +66,7 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   // The estimate coordinates against the current higher-priority roster, but
   // future prices, measurements, and task edits can still move it. Keep the
   // caveat short for the 320–480 px widget.
-  estimateCaveat: 'Estimate — the actual run may differ as prices and other tasks change.',
+  estimateCaveat: 'This is an estimate. The actual run may differ as prices and other tasks change.',
   createButton: 'Create task',
   createAnywayButton: 'Create anyway',
   chartPrice: 'Price',
@@ -76,7 +76,7 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   // Shown when the preview can't be projected and the backend did not provide a
   // more specific missing-input reason. Distinct from a hard error. Avoids the
   // reserved "plan" noun (`feedback_terminology_plan_vs_deadline`).
-  previewUnavailable: 'Can’t preview this yet — PELS needs more current data for this window.',
+  previewUnavailable: 'Can’t preview this yet. PELS needs more current data for this window.',
   // Shown specifically when the device has no learned energy profile yet
   // (`unavailableReason === 'needs_observation'`): there is no temperature
   // bootstrap rate, so PELS can't estimate the run until it has watched the
@@ -91,7 +91,7 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   // → zero scheduled hours): there is nothing to schedule, so explain that
   // honestly rather than reusing the no-prices line. Uses the canonical "goal"
   // noun (matches `goalLabel`) and avoids the reserved "plan" noun.
-  previewSatisfied: 'This goal is already met — nothing to schedule.',
+  previewSatisfied: 'This goal is already met, so there is nothing to schedule.',
   // Pending state on the Create button while the /create round-trip is in
   // flight. Distinct from `created` (the confirmed-success label): the button
   // must read as work-in-progress, never as success, until a `{ ok: true }`
@@ -124,7 +124,7 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   // surface-neutral constant in `permissionsCopy.ts` — the smart-task editor shows the same
   // string, so it must not live under a create-widget-scoped name.
   extraPermissionsTitle: SMART_TASK_EXTRA_PERMISSIONS_TITLE,
-  extraPermissionsHint: 'Off unless you turn them on — only used to hit this deadline.',
+  extraPermissionsHint: 'Off unless you turn them on. PELS uses them only to meet this deadline.',
   // Shown in the preview when the coordinated projection returns a real planner
   // verdict that the deadline may not be met — `cannot_meet` (won't make it) or
   // `at_risk` (might not). Surfaced as a prominent warning so a user never
@@ -176,17 +176,17 @@ export const SMART_TASK_LIST_CREATE_HINT
 
 const PREVIEW_UNAVAILABLE_COPY_BY_REASON: Record<DeferredObjectivePlanPreviewUnavailableReason, string> = {
   invalid_deadline: 'Can’t preview this ready-by time yet.',
-  invalid_session: 'Can’t preview this yet — plug the EV in to start.',
-  missing_capacity: 'Can’t preview this yet — PELS needs power readings from this device.',
-  missing_device: 'Can’t preview this yet — PELS can’t find this device.',
-  device_unmanaged: 'Can’t preview this yet — turn “Managed by PELS” on for this device.',
+  invalid_session: 'Can’t preview this yet. Plug the EV in to start.',
+  missing_capacity: 'Can’t preview this yet. PELS needs power readings from this device.',
+  missing_device: 'Can’t preview this yet. PELS can’t find this device.',
+  device_unmanaged: 'Can’t preview this yet. Turn “Managed by PELS” on for this device.',
   needs_observation: CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation,
-  missing_prices: 'Can’t preview this yet — prices through this window are not available yet.',
-  missing_reading: 'Can’t preview this yet — PELS needs a current device reading.',
-  price_feature_disabled: 'Can’t preview this yet — price-aware planning is off.',
+  missing_prices: 'Can’t preview this yet. Prices through this window are not available yet.',
+  missing_reading: 'Can’t preview this yet. PELS needs a current device reading.',
+  price_feature_disabled: 'Can’t preview this yet. Price-aware planning is off.',
   waiting_for_car: WAITING_FOR_CAR_ASSOCIATION,
-  progress_stale: 'Can’t preview this yet — PELS needs a fresher device reading.',
-  settings_unavailable: 'Can’t preview this yet — PELS couldn’t read Smart tasks. Try again.',
+  progress_stale: 'Can’t preview this yet. PELS needs a fresher device reading.',
+  settings_unavailable: 'Can’t preview this yet. PELS couldn’t read Smart tasks. Try again.',
   unknown: CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable,
 };
 
@@ -276,7 +276,7 @@ export const SMART_TASK_EDIT_COPY = {
   // is filed under Past tasks (where it wears the Abandoned chip) — said here
   // so the user who later scans history isn't surprised by a run they never
   // knowingly abandoned.
-  updated: 'Smart task updated — the earlier run is now in Past tasks.',
+  updated: 'Smart task updated. The earlier run is now in Past tasks.',
   // A permission-only save changes no goal, no ready-by, and no deadline, so
   // `objectivesMatch` holds and the recorder no-ops: the run continues and
   // NOTHING lands in Past tasks. Claiming otherwise would send the user looking
@@ -284,7 +284,7 @@ export const SMART_TASK_EDIT_COPY = {
   // toggle had broken their task. Says "this run", not "re-planned": *plan* is
   // reserved for the planning layer on smart-task surfaces
   // (`notes/ui-terminology.md` § "Plan vs deadline").
-  updatedPermissionsOnly: 'Smart task updated — the new permissions apply to this run.',
+  updatedPermissionsOnly: 'Smart task updated. The new permissions apply to this run.',
   cleared: 'Smart task cleared.',
   // The task ended (completed/expired/cleared elsewhere) while the editor was
   // open — the editor closes rather than offering a retry that would re-create
