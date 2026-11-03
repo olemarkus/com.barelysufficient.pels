@@ -1,25 +1,18 @@
 import { readPelsHost } from '../../lib/app/pelsHost';
-import { listHomeyDevices } from '../../lib/device/homeyDeviceInventory';
-import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { HomeyDeviceListEntry } from '../../packages/contracts/src/settingsUi/homeyDevices';
 import type { HomeyEnergyMeterEntry } from '../../packages/contracts/src/settingsUi/power';
 import {
-  getHomeyDevicesForDebugFromApp,
   getHomeyEnergyMetersFromApp,
+  listHomeyDevicesFromApp,
   logHomeyDeviceForDebugFromApp,
 } from '../appDebugHelpers';
 import { defineRoutes, type ApiContext } from './defineRoutes';
-
-const hasDeviceId = (device: HomeyDeviceLike): device is HomeyDeviceLike & { id: string } => (
-  typeof device.id === 'string'
-);
 
 export const diagnosticsDebugRoutes = defineRoutes({
   homey_devices: async ({ homey }: ApiContext): Promise<HomeyDeviceListEntry[]> => {
     const host = readPelsHost(homey);
     if (!host) return [];
-    const devices = (await getHomeyDevicesForDebugFromApp(host)).filter(hasDeviceId);
-    return listHomeyDevices(devices, host.deviceManager?.getZoneTree() ?? null);
+    return listHomeyDevicesFromApp(host);
   },
   // Backs both whole-home meter pickers: the meters the Homey Energy live report
   // actually exposes (the same seam a selection is read against), so every pick

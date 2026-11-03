@@ -1,6 +1,7 @@
 import type { HomeyDeviceListEntry } from '../../packages/contracts/src/settingsUi/homeyDevices';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { ZoneTree } from './transport/managerZones';
+import type { DeviceTransportPort } from './deviceTransport';
 import { resolveZoneId } from './transport/managerHelpers';
 import { hasPowerCapability } from './transport/managerParse';
 
@@ -31,3 +32,11 @@ export const listHomeyDevices = (
     hasPower: hasPowerCapability(capabilities),
   };
 });
+
+/**
+ * The full inventory read from the transport: the devices Homey lists now,
+ * named by the zone tree the transport last fetched (none before its first).
+ */
+export const readHomeyDeviceList = async (
+  transport: Pick<DeviceTransportPort, 'getDevicesForDebug' | 'getZoneTree'>,
+): Promise<HomeyDeviceListEntry[]> => listHomeyDevices(await transport.getDevicesForDebug(), transport.getZoneTree());

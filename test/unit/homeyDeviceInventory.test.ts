@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { listHomeyDevices } from '../../lib/device/homeyDeviceInventory';
+import { listHomeyDevices, readHomeyDeviceList } from '../../lib/device/homeyDeviceInventory';
 import { describeHomeyDeviceForSupport } from '../../lib/diagnostics/homeyDeviceSupportSection';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 
@@ -14,6 +14,18 @@ describe('Homey device inventory', () => {
       { id: 'sensor', name: 'Sensor', zoneName: null, hasTemperature: true, hasPower: false },
     ]);
     expect(listHomeyDevices(devices, null).map((entry) => entry.zoneName)).toEqual([null, null]);
+  });
+
+  it('reads the devices and the zone tree from the transport together', async () => {
+    const transport = {
+      getDevicesForDebug: async (): Promise<HomeyDeviceLike[]> => [{ id: 'relay', name: 'Relay', zone: 'z2' }],
+      getZoneTree: () => ({ z2: { id: 'z2', name: 'Basement', parent: null } }),
+    };
+    await expect(readHomeyDeviceList(transport)).resolves.toEqual([
+      { id: 'relay', name: 'Relay', zoneName: 'Basement', hasTemperature: false, hasPower: false },
+    ]);
+    await expect(readHomeyDeviceList({ ...transport, getZoneTree: () => null })).resolves
+      .toMatchObject([{ id: 'relay', zoneName: null }]);
   });
 
   it('bounds what a vendor payload can put into a support request', () => {
