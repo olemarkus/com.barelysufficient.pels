@@ -202,6 +202,27 @@ describe('schedule owner', () => {
     expect(service.read().entries[0]?.lastResult).toBe('Mode changed');
   });
 
+  it.each([
+    { issue: 'a removed mode', schedule: { ...modeSchedule(), action: { type: 'mode' as const, mode: 'Away' } },
+      result: 'Skipped because the mode was no longer available.',
+      reason: 'This mode is no longer available. Edit the schedule.' },
+    { issue: 'a removed condition mode', schedule: { ...modeSchedule(), condition: { type: 'include' as const, modes: ['Away'] } },
+      result: 'Skipped because a mode in its condition was no longer available.',
+      reason: 'A mode in this condition is no longer available. Edit the schedule.' },
+    { issue: 'a device it cannot use', schedule: energySchedule(),
+      result: 'Skipped because the device was not available for this Smart task.',
+      reason: 'This device is not available for this Smart task. Edit the schedule.' },
+  ])('records a past-tense skip for $issue at the occurrence', async ({ schedule, result, reason }) => {
+    const f = fixture();
+    f.values.set(`schedule.${schedule.id}`, schedule);
+    const service = f.create(); service.start();
+    f.setNow('2026-10-28T09:00:10Z'); await service.tick();
+    expect(f.execute).not.toHaveBeenCalled();
+    expect(f.receipts.get(schedule.id)?.lastResult).toBe(result);
+    // The row's own reason stays in the present tense: it says what to fix now.
+    expect(service.read().entries[0]).toMatchObject({ state: 'invalid', reason, lastResult: result });
+  });
+
   it('does not catch up at startup or after a long outage', async () => {
     const f = fixture(); f.values.set('schedule.morning', modeSchedule());
     f.setNow('2026-10-28T09:00:10Z'); const service = f.create(); service.start(); await service.tick();

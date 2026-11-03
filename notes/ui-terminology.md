@@ -2534,6 +2534,12 @@ and `scheduleActions.ts`:
   `this device is not available for a scheduled Smart task.`, `another schedule
   has the same time and target.`, or `the current mode did not match the
   schedule condition.`
+- A schedule that could not run as saved records a past-tense skip, while the
+  row's reason line says what to fix now (`This mode is no longer available.
+  Edit the schedule.`): `Skipped because` `the mode was no longer available.`,
+  `a mode in its condition was no longer available.`, `the device was not
+  available for this Smart task.`, or `the target was outside the device’s
+  range.`
 - `Could not run. {reason}`, or `Could not run this schedule.` without one.
 
 ## Report a problem: after sending

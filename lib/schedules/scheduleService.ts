@@ -5,8 +5,9 @@ import type {
   SettingsUiSmartTaskDevicesResponse, SmartTaskCandidateDevice,
 } from '../../packages/contracts/src/smartTaskEdit';
 import {
-  MAX_SCHEDULES, isScheduleDeletion, isScheduleId, parseSchedule, parseScheduleCommand,
-  scheduleConflict, scheduleConflictOnDate, scheduleEligibilityReason,
+  MAX_SCHEDULES, SCHEDULE_ELIGIBILITY_REASONS, isScheduleDeletion, isScheduleId, parseSchedule,
+  parseScheduleCommand, scheduleConflict, scheduleConflictOnDate, scheduleEligibilityIssue,
+  scheduleEligibilityReason, type ScheduleEligibilityIssue,
 } from '../../packages/shared-domain/src/settings/schedules';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { getLogger } from '../logging/logger';
@@ -25,6 +26,13 @@ const logger = getLogger('schedules');
 const BUSY_RETRY_WINDOW_MS = 6 * 60_000;
 const WAITING_RESULT = "Waiting for the device's current Smart task to end.";
 const BUSY_RESULT = 'Skipped because this device already has a Smart task.';
+// What an occurrence records when its schedule could not run as saved.
+const ELIGIBILITY_SKIP_RESULTS: Record<ScheduleEligibilityIssue, string> = {
+  condition_mode_missing: 'Skipped because a mode in its condition was no longer available.',
+  mode_missing: 'Skipped because the mode was no longer available.',
+  device_unavailable: 'Skipped because the device was not available for this Smart task.',
+  target_out_of_range: 'Skipped because the target was outside the device’s range.',
+};
 
 /** A consumed occurrence whose create waits for the device's ended task to close. */
 type PendingRun = { schedule: Schedule; consumed: ScheduleReceipt; atMs: number };
@@ -283,14 +291,14 @@ export class ScheduleService {
       : 'Device details are temporarily unavailable. Try again.';
   }
 
-  private eligibility(schedule: Schedule): string {
+  private eligibility(schedule: Schedule): ScheduleEligibilityIssue | null {
     const devices = schedule.action.type === 'task' ? this.port.listTaskDevices() : [];
-    return scheduleEligibilityReason(this.resolveModes(schedule), this.port.listModes(), devices);
+    return scheduleEligibilityIssue(this.resolveModes(schedule), this.port.listModes(), devices);
   }
 
   private save(schedule: Schedule): void {
-    const error = this.eligibility(schedule);
-    if (error) throw new Error(error);
+    const issue = this.eligibility(schedule);
+    if (issue) throw new Error(SCHEDULE_ELIGIBILITY_REASONS[issue]);
     if (!this.schedules.has(schedule.id) && this.schedules.size >= MAX_SCHEDULES) {
       throw new Error(`Use at most ${MAX_SCHEDULES} schedules.`);
     }
@@ -423,8 +431,8 @@ export class ScheduleService {
   }
 
   private skipReason(schedule: Schedule, date: string): string {
-    const invalid = this.eligibility(schedule);
-    if (invalid) return invalid;
+    const issue = this.eligibility(schedule);
+    if (issue) return ELIGIBILITY_SKIP_RESULTS[issue];
     if (scheduleConflictOnDate(schedule, [...this.schedules.values()], date)) {
       return 'Skipped because another schedule has the same time and target.';
     }
