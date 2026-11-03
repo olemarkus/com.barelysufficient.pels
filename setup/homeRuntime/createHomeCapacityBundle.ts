@@ -37,7 +37,7 @@
  * follows main's debounce/hour-rollover policy, minus main-only daily-budget,
  * UI, and calibration piggybacks. Teardown stops timers; persisted state stays.
  */
-import type { ControlContestRecord } from '../../lib/executor/controlContest';
+import type { ControlContestRecording } from '../../lib/ports/controlContest';
 import type { AppContext } from '../../lib/app/appContext';
 import type { SubHomeBundle } from '../../lib/home/homeRuntimeRegistry';
 import type {
@@ -290,7 +290,7 @@ function createBundlePlanningRuntime(
   timerKey: (suffix: string) => string,
   tracker: HomeTrackerPersistence,
   modeCatalog: HomeModeCatalog,
-  controlContests: ControlContestRecord,
+  controlContests: ControlContestRecording,
 ) {
   // This home's meter-silence policy: shared by the composed plan-build gate
   // (via the scope), the pipeline's admitted-sample push, and the freshness
@@ -376,7 +376,7 @@ export function createHomeCapacityBundle(
   /** Identity every tracker persist from this runtime must carry. */
   powerTrackerMeterIdentity: PowerTrackerMeterIdentity,
   /** The app's record of drift corrections, which this area's plan engine feeds. */
-  controlContests: ControlContestRecord,
+  controlContests: ControlContestRecording,
 ): HomeCapacityBundle {
   const { homeId } = runtime;
   const logger = () => ctx.getStructuredLogger('homes');

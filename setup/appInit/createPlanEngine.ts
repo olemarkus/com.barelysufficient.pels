@@ -1,5 +1,5 @@
 import { ExecutionState } from '../../lib/executor/executionState';
-import type { ControlContestRecord } from '../../lib/executor/controlContest';
+import type { ControlContestRecording } from '../../lib/ports/controlContest';
 import { PlanExecutionFeedback } from '../../lib/plan/planExecutionFeedback';
 import { createInverterCurtailment } from '../homeRuntime/createInverterCurtailment';
 import { buildDeviceActuator } from './buildDeviceActuator';
@@ -45,7 +45,7 @@ export type CreatePlanEngineOptions = {
    */
   storageLane: StorageLaneBinding;
   /** The app's one record of drift corrections; this home's commands feed it (`lib/executor/controlContest.ts`). */
-  controlContests: ControlContestRecord;
+  controlContests: ControlContestRecording;
 };
 
 export type PlanEngineCompositionResult = {

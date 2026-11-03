@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ContestedSetting } from '../../packages/contracts/src/controlContest';
-import type { ControlValue } from '../../lib/executor/controlContest';
+import type { ControlValue } from '../../lib/ports/controlContest';
 import { CONTEST_WINDOW_MS } from '../../lib/executor/controlContest';
 import { controlContestsForTest } from '../helpers/controlContests';
 
