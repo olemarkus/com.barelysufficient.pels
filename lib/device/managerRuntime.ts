@@ -16,6 +16,7 @@ import {
   type ExplicitControlObservation,
 } from './transport/managerExplicitBinaryObservation';
 import { preserveNewerReportedStepObservation } from './transport/reportedStepObservation';
+import { preserveNewerAcknowledgedStep } from './acknowledgedStep';
 import { mergeTemperatureRejectionsIntoDeviceUpdate } from './transport/managerObservation';
 import { nextLearnedPeak, type LearnedPeaksByDeviceId } from './devicePowerPeak';
 import type { ObservedCapabilityChange } from '../ports/observedStateEvents';
@@ -148,7 +149,10 @@ export function reconcileRealtimeDeviceUpdate(params: {
   preserveRecentLocalBinaryState(
     previous, parsed, deviceId, observationState, explicitBinaryValueAccepted === true,
   );
-  if (previous) preserveNewerReportedStepObservation(previous, parsed);
+  if (previous) {
+    preserveNewerReportedStepObservation(previous, parsed);
+    preserveNewerAcknowledgedStep(previous, parsed);
+  }
   // No temperature is carried over from the previous entry: a read that reaches
   // here conformed to the device-read contract (`deviceReadContract.ts`), so a
   // declared temperature pair came with both values. A `null` member was

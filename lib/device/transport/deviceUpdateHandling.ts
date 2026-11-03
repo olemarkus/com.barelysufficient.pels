@@ -219,7 +219,8 @@ export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, d
 }
 
 /** The facets a whole-device update can change with no capability event of their own. */
-type ObservedFlushFacets = Pick<TransportDeviceSnapshot, 'available' | 'reportedStepId' | 'reportedStepObservedAtMs'>;
+type ObservedFlushFacets = Pick<TransportDeviceSnapshot,
+    'available' | 'reportedStepId' | 'reportedStepObservedAtMs' | 'acknowledgedStep'>;
 
 // Dispatch the reconcile's deferred observed-state events — and when it emitted
 // none, still dispatch for an availability flip or a reported-step change. Availability is not a
@@ -232,7 +233,8 @@ type ObservedFlushFacets = Pick<TransportDeviceSnapshot, 'available' | 'reported
 // the snapshot decomposition), so it would keep writing to a device Homey had
 // marked unreachable, or skip one that had come back, for up to that long.
 // A reported step read from a device setting (Futurehome's current limit) has
-// the same problem: a settings change arrives only as a whole-device update.
+// the same problem: a settings change arrives only as a whole-device update, and
+// so does an acknowledged step read from one.
 // Called AFTER the commit, like every dispatch on this path.
 function flushDeferredObservedState(
     ingest: RealtimeIngestService,
@@ -245,6 +247,8 @@ function flushDeferredObservedState(
     if (events.length > 0 || !currentSnapshot) return;
     if (previousSnapshot?.available === currentSnapshot.available
         && previousSnapshot.reportedStepId === currentSnapshot.reportedStepId
-        && previousSnapshot.reportedStepObservedAtMs === currentSnapshot.reportedStepObservedAtMs) return;
+        && previousSnapshot.reportedStepObservedAtMs === currentSnapshot.reportedStepObservedAtMs
+        && previousSnapshot.acknowledgedStep?.stepId === currentSnapshot.acknowledgedStep?.stepId
+        && previousSnapshot.acknowledgedStep?.observedAtMs === currentSnapshot.acknowledgedStep?.observedAtMs) return;
     ingest.observationBridge.dispatchStateForDevice(deviceId);
 }

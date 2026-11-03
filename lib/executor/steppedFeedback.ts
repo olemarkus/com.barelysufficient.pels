@@ -5,7 +5,7 @@ import {
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { FlowSteppedLoadObservation } from '../ports/flowSteppedLoadAdmission';
-import type { SteppedLoadDesiredRuntimeState } from './steppedCommandState';
+import { isSteppedLoadCommandInFlight, type SteppedLoadDesiredRuntimeState } from './steppedCommandState';
 
 /** The step a report is judged against: the latest plan's, else the command still on the ladder. */
 export function resolvePlannedDesiredStepId(
@@ -82,7 +82,7 @@ function logConfirmed(
     targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
     reportedStepId: stepId,
     desiredStepId: desiredStepId,
-    pending: previousDesired?.status === 'pending',
+    pending: isSteppedLoadCommandInFlight(previousDesired?.status),
     stale: previousDesired?.status === 'stale',
   });
 }

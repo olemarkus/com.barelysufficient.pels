@@ -32,7 +32,9 @@ export type SyncSteppedCommandsParams = {
  *
  * Ordering matters and is the decorator's, preserved: expire the ended
  * on-session first (a device that went off has no live command to confirm),
- * then settle against the reported rung (the commanded rung confirms the
+ * then note the device's echo of its accepted setting (the commanded rung
+ * acknowledges the command, a later different one contradicts that), then
+ * settle against the reported rung (the commanded rung confirms the
  * command, and any rung reported after it answers it), then reconcile the
  * initialization latch against the ladder in force. The stale sweep runs once
  * for the whole pass rather than per device, because it is a timeout over the
@@ -51,6 +53,13 @@ export const syncSteppedCommands = (params: SyncSteppedCommandsParams): boolean 
   for (const device of devices) {
     const before = store.getDesired(device.id);
     store.expireConfirmedDesiredOnBinaryOff(device.id, device.observedOn);
+
+    // Acknowledgement first, so a settled report in the same pass still wins:
+    // a confirmed command ignores a later echo of its own step.
+    const acknowledgement = device.steppedCommandAcknowledgement;
+    if (acknowledgement.state === 'observed') {
+      store.noteAcknowledgedStep(device.id, acknowledgement.acknowledgedStepId, acknowledgement.observedAtMs);
+    }
 
     const confirmation = device.steppedCommandConfirmation;
     if (confirmation.state === 'observed') {

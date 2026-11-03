@@ -152,6 +152,43 @@ No test ever covered the throttle. The one that claimed to
 `lastDeviceShedMs` was never set on that path and that the real gate was the pending record;
 its title and comments were corrected in the same PR.
 
+## An acknowledged command
+
+Some devices answer a stepped command twice: at once with an echo of the setting they
+accepted, and later with the draw that proves it. A cloud car's charge limit is the case
+that needed this (`lib/device/tesla/charging.ts`): the vendor app sets the limit as soon as
+the car accepts the command, while actual current and power arrive only with its poll,
+about every 15 minutes. Treating the echo as confirmation would let a limit settle a power
+adjustment; ignoring it made the executor resend an accepted command at 90 s, 2, 5 and 15
+minutes.
+
+So acknowledged is its own in-flight status (`SteppedLoadCommandStatus` `acknowledged`),
+not settlement. An integration publishes the echo as a generic observation
+(`acknowledgedStep` on the snapshot, `steppedCommandAcknowledgement` in the settle sweep).
+An echo of the commanded step dated at or after the issue acknowledges the command
+(`noteSteppedLoadAcknowledgedStep`): it is not re-sent, and it waits up to
+`ACKNOWLEDGED_COMMAND_SETTLE_MS` (20 minutes from issue) for the settled report, which
+alone confirms it. A newer echo or settled report naming another step contradicts the
+acknowledgement, and an expired window ends it; either way the command becomes `stale`
+on the ordinary retry ladder, and the same echo cannot acknowledge it again. Without an
+echo nothing changes: 90 s, then the ladder. A probe the charger acknowledged waits the
+same window before it can be judged failed.
+
+`stepCommandPending` stays true while acknowledged, so shedding still counts an
+acknowledged lower step as pending, attribution and the restore-power evidence keep
+waiting, and the step-up hold is not stamped. One thing differs: an acknowledged step-up
+does not hold the restore queue (`restore/coordination.ts`). Its unarrived watts, plus the
+restore buffer, are debited from every admission axis before the restore pass admits
+anything (`resolveAcknowledgedStepUpReservationKw`), and it does not count as the cycle's
+restore. The gap is measured against the device's own draw, which for a cloud car lags
+the meter by up to one poll, so the reservation errs on the side of less room.
+
+This is not the pending-restore reservation removed below. That one released on an
+unattributable whole-home sample or a fixed timer, beside the restore cooldown. This one
+exists only while the device's own command is in flight, shrinks with the device's own
+draw, ends when that command settles, is contradicted or expires, and stands in for the
+queue hold an unacknowledged step-up still takes. The restore cooldown paces as before.
+
 ## The pending-restore reservation, and why it was removed
 
 Removed 2026-08-28, with nothing put in its place. `reserveHeadroomForPendingRestores`

@@ -11,7 +11,15 @@ export type TargetCapabilitySnapshot = {
 
 export type DeviceControlModel = 'temperature_target' | 'binary_power' | 'stepped_load';
 
-export type SteppedLoadCommandStatus = 'idle' | 'pending' | 'success' | 'stale';
+/**
+ * The executor's stepped-command lifecycle. `pending` and `acknowledged` are
+ * both in flight: `acknowledged` means the device echoed the commanded step as
+ * its accepted setting after the command was issued, so the command is not
+ * re-sent, but its draw has not been attested yet (`success` still requires the
+ * settled report). Planner consumers treat it as pending except where its own
+ * rule says otherwise.
+ */
+export type SteppedLoadCommandStatus = 'idle' | 'pending' | 'acknowledged' | 'success' | 'stale';
 
 /**
  * The plan-cycle decision PELS made for a device. `shed` = actively held off
@@ -911,6 +919,20 @@ export type ReportedStepObservedProbe = {
     reportedStepPowerW?: number;
     /** Timestamp of the exact step observation, not general snapshot freshness. */
     reportedStepObservedAtMs?: number;
+    /**
+     * The step the device echoes as its accepted setting, separate from the
+     * settled `reportedStepId`: an integration publishes it when the device
+     * acknowledges a level before its own draw reports catch up. Proof that a
+     * command was heard, never that its draw arrived. Absent until a device
+     * that publishes one does so.
+     */
+    acknowledgedStep?: AcknowledgedStepObservation;
+};
+
+/** A device's echo of its accepted step setting, dated by its source. */
+export type AcknowledgedStepObservation = {
+    stepId: string;
+    observedAtMs: number;
 };
 
 /**

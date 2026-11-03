@@ -27,6 +27,16 @@ export type SteppedCommandConfirmation =
   | { state: 'unavailable' }
   | { state: 'observed'; observedStepId: string; observedAtMs: number };
 
+/**
+ * The step the device echoes as its accepted setting, dated by its source.
+ * Evidence that a command was heard, never that it settled: it can only
+ * acknowledge or contradict a command, never confirm one. `unavailable` for a
+ * device that publishes no such echo.
+ */
+export type SteppedCommandAcknowledgement =
+  | { state: 'unavailable' }
+  | { state: 'observed'; acknowledgedStepId: string; observedAtMs: number };
+
 export type SteppedSettleDevice = {
   id: string;
   /** The ladder's lowest active rung, for reconciling the initialization latch. */
@@ -34,6 +44,7 @@ export type SteppedSettleDevice = {
   /** Whether the device is drawing at all — the on/off fold, producer-resolved. */
   observedOn: boolean;
   steppedCommandConfirmation: SteppedCommandConfirmation;
+  steppedCommandAcknowledgement: SteppedCommandAcknowledgement;
 };
 import {
   getSteppedLoadLowestActiveStep,
@@ -51,7 +62,7 @@ export type SteppedSettleSourceDevice = {
   binaryControl?: { on: boolean };
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
-} & Pick<ReportedStepObservedProbe, 'reportedStepId' | 'reportedStepObservedAtMs'>;
+} & Pick<ReportedStepObservedProbe, 'reportedStepId' | 'reportedStepObservedAtMs' | 'acknowledgedStep'>;
 
 const resolveConfirmation = (
   device: SteppedSettleSourceDevice,
@@ -62,6 +73,16 @@ const resolveConfirmation = (
   }
   return { state: 'observed', observedStepId, observedAtMs: device.reportedStepObservedAtMs };
 };
+
+const resolveAcknowledgement = (
+  device: SteppedSettleSourceDevice,
+): SteppedCommandAcknowledgement => (device.acknowledgedStep === undefined
+  ? { state: 'unavailable' }
+  : {
+    state: 'observed',
+    acknowledgedStepId: device.acknowledgedStep.stepId,
+    observedAtMs: device.acknowledgedStep.observedAtMs,
+  });
 
 export const buildSteppedSettleSnapshot = (
   devices: readonly SteppedSettleSourceDevice[],
@@ -80,5 +101,6 @@ export const buildSteppedSettleSnapshot = (
       selectedStepId: device.selectedStepId,
     }),
     steppedCommandConfirmation: resolveConfirmation(device),
+    steppedCommandAcknowledgement: resolveAcknowledgement(device),
   }];
 });

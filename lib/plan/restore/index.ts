@@ -21,6 +21,7 @@ import { applyBudgetExemptRestorePass } from './exemptRestoreLane';
 import { resolveHeadroomReserves, resolveRestoreDecisionPhase } from '../admission';
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './headroomLedger';
 import { buildDisabledRestoreBatchState, buildRestoreBatchState } from './batch';
+import { resolveAcknowledgedStepUpReservationKw } from '../planSteppedRestorePending';
 import { resolveCapacityAdmissionHeadroomKw } from '../planBudget';
 import {
   markOffDevicesStayOff,
@@ -86,6 +87,7 @@ export function applyRestorePlan(
   const restoredThisCycle = new Set<string>();
   const storageHandedBack = new Set<string>();
   const ledger = buildCycleHeadroomLedger(power, context);
+  reserveAcknowledgedStepUps(ledger, planDevices);
   let restoredOneThisCycle = false;
   const batchState = context.gridImportLimitKw !== null ? buildDisabledRestoreBatchState() : buildRestoreBatchState({
     timing: effectiveTiming,
@@ -178,6 +180,14 @@ function buildCycleHeadroomLedger(power: MeasuredPower, context: PlanContext): R
     gridAvailableKw: power.gridHeadroomKw,
     budgetAvailableKw: power.budgetHeadroomKw,
   });
+}
+
+// An acknowledged step-up's unarrived watts are draw about to arrive that the
+// meter cannot show yet. Unlike an unacknowledged one, it does not hold other
+// restores back (`restore/coordination.ts`), so it is debited from every axis
+// before any candidate is admitted, whatever its place in the priority order.
+function reserveAcknowledgedStepUps(ledger: RestoreHeadroomLedger, planDevices: readonly DevicePlanDevice[]): void {
+  for (const device of planDevices) ledger.commit(device, resolveAcknowledgedStepUpReservationKw(device));
 }
 
 // The ordinary unrestricted restore pass (the shouldPlanRestores branch of

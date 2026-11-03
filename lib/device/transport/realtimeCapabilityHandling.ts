@@ -30,6 +30,7 @@ import {
   updateTemperatureTarget,
 } from './temperatureObservation';
 import { handleThermostatModeCapabilityUpdate } from './thermostatModeRealtime';
+import { handleAcknowledgedCurrentUpdate } from './acknowledgedStepRealtime';
 import {
     handleHomeBatteryClaimCapabilityUpdate,
     handleHomeBatteryLevelCapabilityUpdate,
@@ -261,6 +262,18 @@ function handleReconcileCapabilityUpdate(
 }
 /* eslint-enable functional/immutable-data */
 
+/** A stepped-load source event (acknowledged current, native step, installation current), consumed when true. */
+function handleSteppedSourceCapabilityUpdate(
+    ingest: RealtimeIngestService,
+    snapshot: TransportDeviceSnapshot,
+    capabilityId: string,
+    value: unknown,
+): boolean {
+    return handleAcknowledgedCurrentUpdate(ingest, snapshot, capabilityId, value)
+        || handleNativeSteppedLoadCapabilityUpdate(ingest, snapshot, capabilityId, value)
+        || handleTargetPowerSourceCapabilityUpdate(ingest, snapshot, capabilityId, value);
+}
+
 export function handleRealtimeCapabilityUpdate(
     ingest: RealtimeIngestService,
     deviceId: string,
@@ -277,10 +290,7 @@ export function handleRealtimeCapabilityUpdate(
 
     const normalizedEvents = normalizeNativeEvCapabilityUpdate(snapshot, capabilityId, value);
     for (const normalizedEvent of normalizedEvents) {
-        if (handleNativeSteppedLoadCapabilityUpdate(
-            ingest, snapshot, normalizedEvent.capabilityId, normalizedEvent.value,
-        )) continue;
-        if (handleTargetPowerSourceCapabilityUpdate(
+        if (handleSteppedSourceCapabilityUpdate(
             ingest, snapshot, normalizedEvent.capabilityId, normalizedEvent.value,
         )) continue;
 

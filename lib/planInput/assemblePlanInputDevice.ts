@@ -35,6 +35,9 @@ const withoutNonPlanInputFields = (device: ToPlanDeviceInput) => {
     inverterObservation: _inverterObservation,
     // Identification metadata stays with the device; planning uses the resolved waiting fact.
     carConfirmation: _carConfirmation,
+    // The device's echo of its accepted step settles the executor's command
+    // session; the planner reads the resolved `stepCommandStatus` instead.
+    acknowledgedStep: _acknowledgedStep,
     ...deviceFields
   } = device;
   return deviceFields;

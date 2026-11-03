@@ -133,5 +133,8 @@ function projectReportedStepObservation(snapshot: TransportDeviceSnapshot): Repo
         ...(snapshot.reportedStepObservedAtMs !== undefined
             ? { reportedStepObservedAtMs: snapshot.reportedStepObservedAtMs }
             : {}),
+        ...(snapshot.acknowledgedStep !== undefined
+            ? { acknowledgedStep: { ...snapshot.acknowledgedStep } }
+            : {}),
     };
 }
