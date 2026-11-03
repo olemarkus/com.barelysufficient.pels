@@ -4,9 +4,13 @@
  * shed invariant at every rung because the freshly-entered step had no
  * accepted calibration samples yet, costing ~5 minutes per step.
  *
- * Contract under test: an ACTIVE boost bypasses the shed invariant
- * unconditionally — it is the user's priority override over the fairness rule,
- * and this layer asks no further questions about it. The draw evidence that
+ * Contract under test: an ACTIVE boost bypasses the shed invariant while only
+ * LOWER-priority devices are limited: it is the user's priority override over
+ * the fairness rule toward devices ranked below it, and this layer asks no
+ * further questions about it. A limited device ranked above it holds it at its
+ * lowest active step like any other (owner ruling 2026-11-03: a boosted
+ * priority-4 charger climbed to 12 A while priority-2 and -3 thermostats were
+ * held). The draw evidence that
  * decides whether a boost stays active at all lives one layer up, in
  * `resolveBoostActive` (`test/unit/planBoost.test.ts`), and deliberately keeps
  * boosting while calibration has no confident idle verdict — which is exactly
@@ -45,7 +49,7 @@ const buildContextFields = (overrides: PlanCycleSpec = {}): PlanCycle => buildPl
 // binding scalar used to provide.
 const buildContext = (overrides: PlanCycleSpec = {}): PlanCycle => buildContextFields(overrides);
 
-describe('boost bypasses the shed invariant unconditionally', () => {
+describe('boost bypasses the shed invariant over lower-priority devices only', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-05T20:07:00Z'));
@@ -55,14 +59,14 @@ describe('boost bypasses the shed invariant unconditionally', () => {
     vi.useRealTimers();
   });
 
-  const runScenario = () => {
+  const runScenario = (heaterPriority = 1, thermostatPriority = 5) => {
     const state = createPlanEngineState();
     return applyRestorePlanForSpec({
       planDevices: [
         steppedPlanDevice({
           id: 'water-heater',
           name: 'Connected 300',
-          priority: 1,
+          priority: heaterPriority,
           currentState: 'on',
           plannedState: 'keep',
           boostActive: true,
@@ -76,7 +80,7 @@ describe('boost bypasses the shed invariant unconditionally', () => {
         buildPlanDevice({
           id: 'shed-thermostat',
           name: 'Termostat gang',
-          priority: 5,
+          priority: thermostatPriority,
           currentState: 'off',
           plannedState: 'shed',
           boostActive: false,
@@ -95,6 +99,15 @@ describe('boost bypasses the shed invariant unconditionally', () => {
       },
     });
   };
+
+  it('holds a boosted device at its step while a higher-priority device is limited', () => {
+    // Prod 2026-11-02: the boosted charger (priority 4) stepped up past the
+    // fairness rule while the priority-2 and -3 thermostats were held.
+    const result = runScenario(5, 1);
+    const heater = result.planDevices.find((d) => d.id === 'water-heater');
+    expect(heater?.desiredStepId).toBe('medium');
+    expect(heater?.reason).toMatchObject({ code: PLAN_REASON_CODES.shedInvariant, shedDeviceCount: 1 });
+  });
 
   it('escalates past the invariant while the boost is active (staircase case)', () => {
     const result = runScenario();

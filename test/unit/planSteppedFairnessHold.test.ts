@@ -5,8 +5,8 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
 
-const limitedHeater = (id: string): DevicePlanDevice => buildPlanDevice({
-  id, plannedState: 'shed', reason: { code: PLAN_REASON_CODES.capacity },
+const limitedHeater = (id: string, priority = 5): DevicePlanDevice => buildPlanDevice({
+  id, priority, plannedState: 'shed', reason: { code: PLAN_REASON_CODES.capacity },
 });
 
 const charger = (overrides: Parameters<typeof steppedPlanDevice>[0] = {}) => steppedPlanDevice({
@@ -43,11 +43,22 @@ describe('stampSteppedFairnessHolds', () => {
     expect(stampFor([refused, limitedHeater('heater')])).toEqual({ stepId: 'low', limitedDeviceCount: 3 });
   });
 
+  it('holds a boosted device while a device ranked above it is limited', () => {
+    // Prod 2026-11-02: a boosted priority-4 charger climbed past the rule while
+    // the priority-2 thermostat was held. Only the device ranked above it counts.
+    expect(stampFor([
+      charger({ boostActive: true, priority: 4 }), limitedHeater('thermostat', 2), limitedHeater('heater', 6),
+    ])).toEqual({ stepId: 'low', limitedDeviceCount: 1 });
+  });
+
   it.each([
     { name: 'no other device is limited', devices: [charger()] },
     { name: 'it is above its lowest active step', devices: [charger({ desiredStepId: 'medium' }), limitedHeater('h')] },
     { name: 'it is off', devices: [charger({ desiredStepId: 'off' }), limitedHeater('h')] },
-    { name: 'it is boosted', devices: [charger({ boostActive: true }), limitedHeater('h')] },
+    {
+      name: 'it is boosted and only devices ranked below it are limited',
+      devices: [charger({ boostActive: true, priority: 1 }), limitedHeater('h', 5)],
+    },
     {
       name: 'it is observed off and starting at its low step',
       devices: [charger({ currentState: 'off', reason: { code: PLAN_REASON_CODES.restoreNeed,

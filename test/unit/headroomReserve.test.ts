@@ -119,7 +119,7 @@ describe('resolveHeadroomReserves', () => {
       plannedTarget: undefined,
       shedBehavior: { action: 'turn_off' },
       sheddingPlan: noShedding,
-      anyOtherDeviceLimited: false,
+      fairnessLimited: false,
       boostActive: false,
       surplusHoldShed: false,
       surplusAbsorbActive: false,

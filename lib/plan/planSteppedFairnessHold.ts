@@ -1,6 +1,6 @@
 import type { DevicePlanDevice, SteppedFairnessHold } from './planTypes';
 import { isSteppedLoadDevice } from './planSteppedLoad';
-import { countShedDevices } from './restore/coordination';
+import { countFairnessLimitedDevices } from './restore/coordination';
 import type { ShedDecisions } from './shedDecisions';
 import {
   getSteppedLoadHighestStep,
@@ -45,10 +45,11 @@ const resolveSteppedFairnessHold = (
   shedDecisions: ShedDecisions,
 ): SteppedFairnessHold | null => {
   if (!isSteppedLoadDevice(device)) return null;
-  // Boost bypasses the rule; a non-capacity reduction is not the rule's doing; a
-  // device tracking solar surplus is capped by its surplus ceiling, which the card
-  // states on its own.
-  if (device.boostActive || device.nonCapacityHoldShed === true || device.surplusTracking === true) return null;
+  // A non-capacity reduction is not the rule's doing; a device tracking solar
+  // surplus is capped by its surplus ceiling, which the card states on its own. A
+  // boosted device is held only by devices ranked above it
+  // (`countFairnessLimitedDevices`), so it reaches the count below.
+  if (device.nonCapacityHoldShed === true || device.surplusTracking === true) return null;
   if (!device.control.commandAuthority || device.plannedState === 'inactive') return null;
   // An off device at its lowest step is starting, not being held there.
   if (device.currentState === 'off') return null;
@@ -61,7 +62,7 @@ const resolveSteppedFairnessHold = (
   // so the card states the same number.
   const limitedDeviceCount = device.reason.code === PLAN_REASON_CODES.shedInvariant
     ? device.reason.shedDeviceCount
-    : countShedDevices(deviceMap, device.id, shedDecisions);
+    : countFairnessLimitedDevices(deviceMap, device, shedDecisions);
   return limitedDeviceCount > 0 ? { stepId: lowest.id, limitedDeviceCount } : null;
 };
 

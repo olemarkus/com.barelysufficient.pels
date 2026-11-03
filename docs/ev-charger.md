@@ -128,7 +128,7 @@ Use this Flow shape for boost mode:
 
 Choose the same charger in the PELS action card, and map the battery percentage tag from the car or charger app to **battery level**.
 
-With no car selected, this Flow supplies battery reports for the charger. EV boost mode can use the resulting battery level to give the charger extra priority while the car is below the configured boost threshold.
+With no car selected, this Flow supplies battery reports for the charger. EV boost mode can use the resulting battery level to let the charger take power from lower-priority devices while the car is below the configured boost threshold.
 
 ## Step 6 (Optional): Charge to a Battery Level
 
@@ -141,7 +141,7 @@ Without a target battery level, a charger under power limiting charges until the
 - **PELS needs Power-limit control** (or **Only PELS starts this device**) and a power reading from the charger to stop it. Without them, PELS only watches the charger and the status line says so.
 - **A car kept below the level shows as held back.** When PELS keeps the charger paused for 15 minutes while the car's known battery level is below the level, its Overview card says **Held back**, and the **Held-back devices** widget offers **Let it run now**: a short smart task that aims to charge the car to the level within three hours.
 
-Charge boost and **Charge to a battery level** do different jobs: boost takes power from other devices while the battery is below its level, and the battery level is where charging stops.
+Charge boost and **Charge to a battery level** do different jobs: boost takes power from lower-priority devices while the battery is below its level, and the battery level is where charging stops.
 
 ## Step 7: Check the Setup
 

@@ -1537,11 +1537,11 @@ export const sheddingPlanFixture = (overrides: Partial<SheddingPlan> = {}): Shed
  */
 export const keepDesiredStepIdUnder = (
   device: Parameters<typeof resolveSteppedKeepDesiredStepIdFor>[0],
-  anyOtherDeviceLimited: boolean,
+  fairnessLimited: boolean,
   boostActive = false,
   surplusCeilingStepId?: string,
 ): string | undefined => resolveSteppedKeepDesiredStepIdFor(
-  device, device.plannedState, device.desiredStepId, anyOtherDeviceLimited, boostActive, surplusCeilingStepId,
+  device, device.plannedState, device.desiredStepId, fairnessLimited, boostActive, surplusCeilingStepId,
 );
 
 /**

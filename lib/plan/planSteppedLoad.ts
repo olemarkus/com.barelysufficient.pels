@@ -275,9 +275,17 @@ export const resolveSteppedKeepDesiredStepIdFor = (
   device: SteppedKeepDevice,
   plannedState: string | undefined,
   desiredStepId: string | undefined,
-  /** Another device is limited this cycle: fairness clamps the keep step to the lowest active rung. */
-  anyOtherDeviceLimited: boolean,
-  /** A boost is live: it bypasses the fairness clamp and the surplus ceiling alike. */
+  /**
+   * A device this one yields to is limited this cycle (`isFairnessLimited`): any
+   * other device, or for a boosted device one ranked above it. Fairness then
+   * clamps the keep step to the lowest active rung.
+   */
+  fairnessLimited: boolean,
+  /**
+   * A boost is live: it raises the keep step and bypasses the surplus ceiling.
+   * It is never a bypass of the fairness clamp; `fairnessLimited` already leaves
+   * out the lower-priority devices a boost may take power from.
+   */
   boostActive: boolean,
   /**
    * The rung this cycle's surplus allocation bought a surplus-TRACKING device
@@ -304,14 +312,18 @@ export const resolveSteppedKeepDesiredStepIdFor = (
     const baseStepId = desiredStepId && isSteppedLoadOffStep(profile, desiredStepId)
       ? lowestActiveStepId
       : desiredStepId;
-    // Boost bypasses the surplus ceiling deliberately, exactly as it bypasses
-    // the lowest-active fairness clamp: a boost is a live demand the owner (or a
-    // smart task) asked for, and "use only your own sun" must not outrank it.
+    // Boost bypasses the surplus ceiling deliberately: a boost is a live demand
+    // the owner (or a smart task) asked for, and "use only your own sun" must not
+    // outrank it. It does not outrank a device ranked above it: while one is
+    // limited, the boosted device is clamped like any other (owner ruling
+    // 2026-11-03).
     if (boostActive) {
-      return resolveHigherSteppedLoadStepId(profile, baseStepId, device.selectedStepId) ?? lowestActiveStepId;
+      const boostedStepId = resolveHigherSteppedLoadStepId(profile, baseStepId, device.selectedStepId)
+        ?? lowestActiveStepId;
+      return clampToLowestActiveWhenFairnessLimited(profile, boostedStepId, lowestActiveStep, fairnessLimited);
     }
-    return clampToSurplusCeiling(profile, clampToLowestActiveWhenOtherDevicesLimited(
-      profile, baseStepId, lowestActiveStep, anyOtherDeviceLimited,
+    return clampToSurplusCeiling(profile, clampToLowestActiveWhenFairnessLimited(
+      profile, baseStepId, lowestActiveStep, fairnessLimited,
     ), surplusCeilingStepId);
   }
 
@@ -323,8 +335,8 @@ export const resolveSteppedKeepDesiredStepIdFor = (
   if (!selectedStep || selectedStep.planningPowerW <= 0) {
     return clampToSurplusCeiling(profile, lowestActiveStepId, surplusCeilingStepId);
   }
-  return clampToSurplusCeiling(profile, clampToLowestActiveWhenOtherDevicesLimited(
-    profile, selectedStep.id, lowestActiveStep, anyOtherDeviceLimited,
+  return clampToSurplusCeiling(profile, clampToLowestActiveWhenFairnessLimited(
+    profile, selectedStep.id, lowestActiveStep, fairnessLimited,
   ), surplusCeilingStepId);
 };
 
@@ -374,16 +386,17 @@ const resolveHigherSteppedLoadStepId = (
 
 // docs/technical.md:222 — "While any other managed device is still limited, stepped devices
 // are capped at their lowest non-zero step." Symmetric to applyKeepInvariantShedBlock on the
-// restore path: if a stepped device is currently above lowest-non-zero and any other device
-// is being limited this cycle, clamp the keep desired step down so the executor issues a
-// step-down command (e.g. medium -> low) instead of holding the higher step.
-const clampToLowestActiveWhenOtherDevicesLimited = (
+// restore path: if a stepped device is currently above lowest-non-zero and a device it yields
+// to is being limited this cycle (`isFairnessLimited`: for a boosted device, only one ranked
+// above it), clamp the keep desired step down so the executor issues a step-down command
+// (e.g. medium -> low) instead of holding the higher step.
+const clampToLowestActiveWhenFairnessLimited = (
   profile: SteppedLoadProfile,
   stepId: string | undefined,
   lowestActiveStep: SteppedLoadStep,
-  anyOtherDeviceLimited: boolean,
+  fairnessLimited: boolean,
 ): string | undefined => {
-  if (!anyOtherDeviceLimited || !stepId) return stepId;
+  if (!fairnessLimited || !stepId) return stepId;
   if (stepId === lowestActiveStep.id) return stepId;
   const step = getSteppedLoadStep(profile, stepId);
   if (!step || step.planningPowerW <= lowestActiveStep.planningPowerW) return stepId;

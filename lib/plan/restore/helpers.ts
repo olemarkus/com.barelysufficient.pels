@@ -12,7 +12,7 @@ import {
   resolveActivationRestoreBlock,
 } from '../admission';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
-import { countShedDevices } from './coordination';
+import { countFairnessLimitedDevices } from './coordination';
 import { buildActivationBackoffReason } from '../planReasonStrings';
 import {
   applySteppedRestoreAttemptHold,
@@ -125,7 +125,7 @@ export function planRestoreForSteppedDevice(
   const { deviceMap, state, batchState } = cycle;
   if (keepInactiveSteppedDeviceInactive(cycle, dev)) return loop;
 
-  if (countShedDevices(deviceMap, dev.id, state.shedDecisions) === 0) {
+  if (countFairnessLimitedDevices(deviceMap, dev, state.shedDecisions) === 0) {
     delete state.steppedRestoreRejectedByDevice[dev.id];
   }
 
