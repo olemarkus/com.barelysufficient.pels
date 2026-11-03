@@ -40,6 +40,9 @@ export class SupportReportController {
 
   show(): void { this.render(this.state); }
 
+  /** Who or what the held draft is about. */
+  get subject(): SupportReportSubject { return this.state.draft.subject; }
+
   setDevices(devices: readonly ReportDeviceOption[], unavailable: boolean): void {
     this.state = { ...this.state, devices, devicesUnavailable: unavailable };
     this.show();
