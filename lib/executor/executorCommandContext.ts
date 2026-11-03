@@ -7,6 +7,7 @@ import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCom
 import type { ExecutorDeviceRead, ObserverDeviceRead } from './executorDeviceRead';
 import type { ExecutableSteppedLoadCommandSession } from './executablePlan';
 import type { CommandClaim, CommandClaimState, TargetCommandOwner } from './commandClaim';
+import type { HomeId } from '../utils/settingsKeys';
 
 /** Records one actuation against the executor's clocks and diagnostics. */
 export type ActuationRecorder = (deviceId: string, name: string, now: number) => void;
@@ -43,6 +44,8 @@ export type LifecycleFallbackView = {
  * observer read, the pending store, the actuator and the authority check.
  */
 export type ExecutorCommandContext = {
+  /** The home whose plan both lanes execute; its sends are that home's commands. */
+  homeId: HomeId;
   owner: TargetCommandOwner;
   execution: ExecutionState;
   feedback: PlannerExecutionFeedback;

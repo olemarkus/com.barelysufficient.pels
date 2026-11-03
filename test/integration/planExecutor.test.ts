@@ -1415,6 +1415,30 @@ describe('PlanExecutor pending target commands', () => {
     expect(logCapture.events.some((event) => event.event === 'device_control_contested')).toBe(false);
   });
 
+  it('lets a contested command go once its device leaves the home\'s plan, and keeps another home\'s', () => {
+    const state = createPlanEngineState();
+    const { executor } = buildExecutor(state);
+    const contests = getTestControlContests(state);
+    // Three rounds each: this home's heater and a meter area's, whose commands
+    // this home's plans never hold.
+    const startMs = Date.now();
+    const devices = [{ homeId: 'main', deviceId: 'dev-1' }, { homeId: 'area', deviceId: 'annex' }];
+    const round = (atMs: number) => {
+      for (const { homeId, deviceId } of devices) {
+        contests.controlReported({ deviceId, setting: 'temperature', value: 22, reportedAtMs: atMs - 1 });
+        contests.commandSent({ homeId, deviceId, deviceName: deviceId, setting: 'temperature', value: 5, atMs });
+      }
+    };
+    for (let index = 0; index <= 3; index += 1) round(startMs + index * 600_000);
+
+    // The owner stopped managing the heater: this home's next plan does not hold it.
+    executor.retainContestedCommands(buildExecutionPlan({ ...buildTargetPlan(), devices: [] }));
+    round(startMs + 4 * 600_000);
+
+    expect(contests.contestedControl('dev-1', startMs + 4 * 600_000)).toBeUndefined();
+    expect(contests.contestedControl('annex', startMs + 4 * 600_000)?.count).toBe(4);
+  });
+
   it('backs off failed target writes and marks the device temporarily unavailable', async () => {
     const state = createPlanEngineState();
     const failure = new Error('Device offline');

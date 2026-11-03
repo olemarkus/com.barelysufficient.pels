@@ -12,6 +12,7 @@ import type {
   PlannedControls,
 } from '../ports/controlContest';
 import type { DeviceJournal } from '../ports/deviceJournal';
+import type { HomeId } from '../utils/settingsKeys';
 
 /**
  * How many rounds on one setting, within {@link CONTEST_WINDOW_MS}, make a
@@ -26,10 +27,14 @@ const CONTEST_EVENT_MAX_ROUNDS = 8;
 const SETTINGS: readonly ContestedSetting[] = ['temperature', 'on_off', 'level'];
 
 /**
- * `contradiction`: the device's latest own report of the setting, after PELS
- * sent `value`, when it was another value.
+ * `homeId`: the home whose executor sent it latest. `contradiction`: the
+ * device's latest own report of the setting, after PELS sent `value`, when it
+ * was another value.
  */
 type StandingCommand = {
+  homeId: HomeId;
+  deviceId: string;
+  setting: ContestedSetting;
   value: ControlValue;
   sentAtMs: number;
   contradiction?: { value: ControlValue; reportedAtMs: number };
@@ -59,8 +64,9 @@ const settingKey = (deviceId: string, setting: ContestedSetting): string => `${d
  *   a round: PELS set it, the device reported another value, PELS set it again.
  *   A retry with no report in between is no round.
  * - `retainPlanned` drops a command the plan just built no longer asks for,
- *   and `commandReleased` one whose command session ended: a device that
- *   moves while PELS is not holding it is not contesting anything.
+ *   or whose device left that home's plan, and `commandReleased` one whose
+ *   command session ended: a device that moves while PELS is not holding it
+ *   is not contesting anything.
  *
  * When one setting has {@link CONTEST_THRESHOLD} rounds within
  * {@link CONTEST_WINDOW_MS}, the device is contested. The first time in a
@@ -69,7 +75,10 @@ const settingKey = (deviceId: string, setting: ContestedSetting): string => `${d
  * (`lib/diagnostics/eventReportSchedule.ts`) can send a report while the
  * evidence is fresh. PELS keeps setting the device: this only warns and reports.
  *
- * One record serves every home; device ids are globally unique.
+ * One record serves every home; device ids are globally unique. Each
+ * command carries the home that sent it, since a home's plan holds only its
+ * own devices: a device absent from it is released only by the home that
+ * sent its command.
  */
 export class ControlContestRecord implements ControlContestRecording, ControlContestReading {
   private readonly commands = new Map<string, StandingCommand>();
@@ -91,18 +100,22 @@ export class ControlContestRecord implements ControlContestRecording, ControlCon
     if (standing?.contradiction && Object.is(standing.value, sent.value)) {
       this.noteRound(sent, standing.contradiction.value);
     }
-    this.commands.set(key, { value: sent.value, sentAtMs: sent.atMs });
+    this.commands.set(key, {
+      homeId: sent.homeId, deviceId: sent.deviceId, setting: sent.setting, value: sent.value, sentAtMs: sent.atMs,
+    });
   }
 
   commandReleased(deviceId: string, setting: ContestedSetting): void {
     this.commands.delete(settingKey(deviceId, setting));
   }
 
-  retainPlanned(deviceId: string, planned: PlannedControls): void {
-    for (const setting of SETTINGS) {
-      const key = settingKey(deviceId, setting);
-      const standing = this.commands.get(key);
-      if (standing && !Object.is(standing.value, planned[setting])) this.commands.delete(key);
+  retainPlanned(homeId: HomeId, planned: ReadonlyMap<string, PlannedControls>): void {
+    for (const [key, standing] of this.commands) {
+      const controls = planned.get(standing.deviceId);
+      const released = controls === undefined
+        ? standing.homeId === homeId
+        : !Object.is(standing.value, controls[standing.setting]);
+      if (released) this.commands.delete(key);
     }
   }
 

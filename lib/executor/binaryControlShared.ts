@@ -71,7 +71,7 @@ export const runBinaryControl = async (
     outcome = await decideAndDispatchBinaryControl(ctx, command, snapshot, forceAgainstReleasedOpposing);
     if (outcome.applied) {
       ctx.execution.controlContests.commandSent({
-        deviceId, deviceName: command.name, setting: 'on_off', value: desired, atMs,
+        homeId: ctx.homeId, deviceId, deviceName: command.name, setting: 'on_off', value: desired, atMs,
       });
     }
     return outcome;

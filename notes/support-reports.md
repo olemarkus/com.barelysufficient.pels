@@ -166,8 +166,10 @@ one, and what each report is about, are listed in `REPORTED_EVENTS` in
   reports. Homey does not say who set a value, so a thermostat that cannot go down to
   PELS's 5 °C and reports 7 °C is counted like a Flow that sets 23 °C, and the event names
   no cause. A retry with no report in between is no round. `ControlContestRecord`
-  (`lib/executor/controlContest.ts`) records it. A command the plan no longer asks for, or
-  whose command session ended, is forgotten, so a later send of it is a new command. The
+  (`lib/executor/controlContest.ts`) records it. A command the plan no longer asks for, one
+  for a device that left the plan of the home that sent it (a device the owner stopped
+  managing, say), and one whose command session ended are forgotten, so a later send of it
+  is a new command. The
   same record answers `/ui_devices`'s `controlContest` for each managed device while its
   rounds in the last hour reach the threshold; the settings UI then lists a recommendation
   and shows a notice above Managed by PELS on the device page, with both values. PELS keeps
