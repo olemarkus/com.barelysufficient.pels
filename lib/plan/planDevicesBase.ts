@@ -13,6 +13,7 @@ import { resolveShedIntent } from '../device/deviceActionProjection';
 import { isStartPolicyHeldDevice, isStartPolicyHoldShed } from './shedding/startPolicyHold';
 import { isDeferredHoldShed } from './shedding/deferredHold';
 import { isChargeTargetHeldDevice, isChargeTargetHoldShed, resolveHeldChargeTarget } from './shedding/chargeTargetHold';
+import { isCarCurrentRangeHeldDevice, isCarCurrentRangeHoldShed } from './shedding/carCurrentRangeHold';
 import { materializeShedSnapshotFields } from './planActionMaterialization';
 import { resolveSteppedLoadDirectShedStepId } from './planSteppedShedResolution';
 import {
@@ -115,7 +116,11 @@ function resolvePlannedDeviceDecision(inputs: BasePlanDeviceInputs): PlannedDevi
   // materializer read that active rung as the decided end state, and the device
   // parked at 6 A under a switch promising PELS turns it off.
   const shedBehavior = resolveEffectiveShedBehavior(dev, shouldShed, inputs.shedBehavior, shedReasons);
-  const runtimeDesiredStepId = dev.desiredStepId ?? resolveSteppedLoadInitialDesiredStepId(dev);
+  // A command from the previous configuration can sit outside this cycle's
+  // allowed ladder. Keep it as command history, not as a new planner target.
+  const runtimeDesiredStepId = isSteppedLoadDevice(dev)
+    ? getSteppedLoadStep(dev.steppedLoadProfile, dev.desiredStepId)?.id ?? resolveSteppedLoadInitialDesiredStepId(dev)
+    : dev.desiredStepId;
   const shedDesiredStepId = resolveSteppedLoadDirectShedStepId(
     dev, shedBehavior, shouldShed, shedStepTargets.get(dev.id),
   );
@@ -320,18 +325,21 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
 function resolveHoldDecisions(
   inputs: BasePlanDeviceInputs,
   decision: PlannedDeviceDecision,
-): Pick<LooseDevicePlanDevice, 'startPolicyHoldActive' | 'chargeTargetHeld' | 'nonCapacityHoldShed'> {
+): Pick<LooseDevicePlanDevice,
+  'startPolicyHoldActive' | 'chargeTargetHeld' | 'carCurrentRangeHeld' | 'nonCapacityHoldShed'> {
   const { dev, sheddingPlan, surplusHoldShed } = inputs;
   const { shedSet, shedReasons } = sheddingPlan;
   // Keys only when true: absence is the one spelling of "not held".
   const holdOnly = (shedSet.has(dev.id)
     && (isStartPolicyHoldShed(dev, shedReasons) || isChargeTargetHoldShed(dev, shedReasons)
+      || isCarCurrentRangeHoldShed(dev, shedReasons)
       || isDeferredHoldShed(dev, shedReasons) || surplusHoldShed))
     || isSurplusCeilingReduction(inputs, decision);
   const chargeTargetHeld = resolveHeldChargeTarget(dev);
   return {
     ...(isStartPolicyHeldDevice(dev) ? { startPolicyHoldActive: true as const } : {}),
     ...(chargeTargetHeld ? { chargeTargetHeld } : {}),
+    ...(isCarCurrentRangeHeldDevice(dev) ? { carCurrentRangeHeld: true as const } : {}),
     ...(holdOnly ? { nonCapacityHoldShed: true as const } : {}),
   };
 }
@@ -405,6 +413,7 @@ function resolveEffectiveShedBehavior(
   // is this cycle's only reason (`isChargeTargetHoldShed`, which still decides
   // whether the shed counts as capacity pressure).
   const heldOff = isStartPolicyHoldShed(dev, shedReasons) || isChargeTargetHeldDevice(dev)
+    || isCarCurrentRangeHeldDevice(dev)
     || (dev.deferredHold === 'off' && isDeferredHoldShed(dev, shedReasons));
   const canTurnOff = isBinaryPlanDevice(dev) || isSteppedLoadDevice(dev);
   return shouldShed && heldOff && canTurnOff ? TURN_OFF_SHED_BEHAVIOR : configured;

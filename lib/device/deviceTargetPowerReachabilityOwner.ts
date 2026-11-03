@@ -25,7 +25,21 @@ export class DeviceTargetPowerReachabilityOwner implements TargetPowerReachabili
 
   private activeConfig(deviceId: string): TargetPowerConfigWithReachability | undefined {
     const effective = this.getConfiguration(deviceId)?.targetPowerConfig;
-    return isEvTargetPowerConfig(effective) ? this.getConfig(deviceId) ?? effective : undefined;
+    if (!isEvTargetPowerConfig(effective)) return undefined;
+    const saved = this.getConfig(deviceId);
+    return { ...saved, ...effective };
+  }
+
+  private persistEvidence(deviceId: string, reachability: TargetPowerReachabilityState): boolean {
+    const config = this.getConfig(deviceId);
+    if (!config) return false;
+    const resolved = buildTargetPowerReachabilityState({
+      config,
+      maxReachedPowerW: reachability.maxReachedPowerW,
+      probeFailureCount: reachability.probeFailureCount,
+      nextProbeAtMs: reachability.nextProbeAtMs,
+    });
+    return resolved !== undefined && this.persist(deviceId, resolved);
   }
 
   readProbeConfiguration(deviceId: string): TargetPowerProbeConfiguration {
@@ -49,11 +63,11 @@ export class DeviceTargetPowerReachabilityOwner implements TargetPowerReachabili
       probeFailureCount: current?.probeFailureCount,
       nextProbeAtMs: current?.nextProbeAtMs,
     });
-    if (next) this.persist(deviceId, next);
+    if (next) this.persistEvidence(deviceId, next);
   }
 
   update(deviceId: string, reachability: TargetPowerReachabilityState): boolean {
-    return this.activeConfig(deviceId) !== undefined && this.persist(deviceId, reachability);
+    return this.activeConfig(deviceId) !== undefined && this.persistEvidence(deviceId, reachability);
   }
 
   resolveIssuedStepPowers(command: MarkSteppedLoadDesiredStepIssuedParams): IssuedTargetPowerStepPowers {

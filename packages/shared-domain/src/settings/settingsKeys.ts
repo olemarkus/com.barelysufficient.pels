@@ -61,6 +61,10 @@ export const EV_CHARGE_TARGET_SETTINGS = 'ev_charge_target_settings';
 // empty = off for that charger). An eligibility set, never an association — the
 // association is session-scoped and in-memory.
 export const EV_CAR_ASSOCIATIONS = 'ev_car_associations';
+// Charging ranges keyed by car device id, applied through the live car match.
+export const EV_CAR_CURRENT_LIMITS = 'ev_car_current_limits';
+// Defaults for unidentified cars and cars without a saved current range.
+export const EV_CHARGER_CURRENT_LIMITS = 'ev_charger_current_limits';
 export const NATIVE_EV_WIRING_DEVICES = 'native_ev_wiring_devices';
 export const DEVICE_DRIVER_OVERRIDES = 'device_driver_overrides';
 export const DEVICE_CONTROL_PROFILES = 'device_control_profiles';

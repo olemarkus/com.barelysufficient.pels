@@ -95,6 +95,7 @@ const isPostureHoldShed = (planDevice: PlanDevice): boolean => (
   planDevice.reason?.code === PLAN_REASON_CODES.awaitingSolarSurplus
   || planDevice.reason?.code === PLAN_REASON_CODES.awaitingPelsStart
   || planDevice.reason?.code === PLAN_REASON_CODES.chargeTargetReached
+  || planDevice.reason?.code === PLAN_REASON_CODES.carCurrentRangeUnavailable
   || planDevice.reason?.code === PLAN_REASON_CODES.awaitingBatteryLevel
   || planDevice.nonCapacityHoldShed === true
 );
@@ -257,7 +258,7 @@ function qualifyStableStepOperations(
     device.reportedStepId === undefined && isPlanDeviceObservedOn(device) && desired.planningPowerW > 0
       ? 'initialize_step' : undefined,
     isRunningLimitPreparation(device, step)
-      || (desired.id !== device.selectedStepId && selected && desired.planningPowerW !== selected.planningPowerW)
+      || (desired.id !== device.selectedStepId && (!selected || desired.planningPowerW !== selected.planningPowerW))
       ? 'step_change' : undefined,
   ];
 }

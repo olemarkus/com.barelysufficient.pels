@@ -18,6 +18,8 @@ import type {
   EvBoostSettings,
   EvChargeTargetSettings,
   EvCarAssociations,
+  EvCarCurrentLimits,
+  EvChargerCurrentLimits,
   MeasuredPowerObservedProbe,
   TemperatureBoostConfig,
   TemperatureBoostSettings,
@@ -127,6 +129,10 @@ export type UiState = {
   evChargeTargetSettings: EvChargeTargetSettings;
   evCarAssociations: EvCarAssociations;
   evCarAssociationsLoaded: boolean;
+  evCarCurrentLimits: EvCarCurrentLimits;
+  evCarCurrentLimitsLoaded: boolean;
+  evChargerCurrentLimits: EvChargerCurrentLimits;
+  evChargerCurrentLimitsLoaded: boolean;
   deferredObjectiveSettings: DeferredObjectiveRoster;
   deferredObjectiveActivePlans: OverviewDeferredObjectiveActivePlans | null;
   priceOptimizationSettings: Record<string, PriceOptimizationConfig>;
@@ -224,6 +230,10 @@ export const state: UiState = {
   evChargeTargetSettings: {},
   evCarAssociations: {},
   evCarAssociationsLoaded: false,
+  evCarCurrentLimits: {},
+  evCarCurrentLimitsLoaded: false,
+  evChargerCurrentLimits: {},
+  evChargerCurrentLimitsLoaded: false,
   deferredObjectiveSettings: createEmptyDeferredObjectiveRoster(),
   deferredObjectiveActivePlans: null,
   priceOptimizationSettings: {},

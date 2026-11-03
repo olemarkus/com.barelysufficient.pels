@@ -36,6 +36,8 @@ import {
 import { resolveEvTargetPowerPlannerProfile } from '../device/targetPowerReachability';
 import { resolveStorageCluster } from './storageProjection';
 import { projectChargeTargetHold } from './chargeTargetHold';
+import { hasUsableSteppedLoadLadder } from '../../packages/shared-domain/src/deviceControlProfiles';
+import type { SteppedClusterFields } from '../plan/planTypes';
 
 /**
  * The owner's standing grants for a device, read from the same settings the
@@ -62,6 +64,34 @@ const resolvePresenceFlags = (
   ...(externalOffHoldActive ? { externalOffHoldActive: true as const } : {}),
 });
 
+/** Resolve the command ladder and an incompatible car range together at the input boundary. */
+const resolveSteppedPlanInputFields = (
+  source: PlanInputProjectionSource,
+  device: ToPlanDeviceInput,
+): SteppedClusterFields & Pick<ResolvedPlanInputFacts, 'carCurrentRangeUnavailable'> => {
+  const isSteppedDevice = isSteppedLoadSnapshot(device);
+  const limitedSteppedLoadProfile = isSteppedDevice
+    ? resolveEvTargetPowerPlannerProfile({
+      config: device.targetPowerConfig?.preset
+        ? { ...source.deviceControl.getDeviceTargetPowerConfig(device.id), ...device.targetPowerConfig }
+        : device.targetPowerConfig,
+      confirmedProfile: device.steppedLoadProfile,
+      nowMs: source.getNow().getTime(),
+    })
+    : undefined;
+  const carCurrentRangeUnavailable = device.carCurrentRangeUnavailable === true
+    || (device.targetPowerConfig?.currentLimits !== undefined
+      && !hasUsableSteppedLoadLadder(limitedSteppedLoadProfile));
+  // An impossible car/charger range is a forced-off policy, not a missing
+  // control channel. Retain the real usable ladder so the pause can execute.
+  const plannerSteppedLoadProfile = carCurrentRangeUnavailable && isSteppedDevice
+    ? device.steppedLoadProfile : limitedSteppedLoadProfile;
+  return {
+    ...resolveSteppedClusterFields(plannerSteppedLoadProfile, device),
+    ...(carCurrentRangeUnavailable ? { carCurrentRangeUnavailable: true as const } : {}),
+  };
+};
+
 /** Resolve configuration and observation into the facts used by plan input. */
 export const resolvePlanInputDeviceFacts = (
   source: PlanInputProjectionSource,
@@ -69,16 +99,7 @@ export const resolvePlanInputDeviceFacts = (
   options: ToPlanDeviceOptions,
 ): ResolvedPlanInputFacts => {
   const isSteppedDevice = isSteppedLoadSnapshot(device);
-  const plannerSteppedLoadProfile = isSteppedDevice
-    ? resolveEvTargetPowerPlannerProfile({
-      config: device.targetPowerConfig?.preset
-        ? source.deviceControl.getDeviceTargetPowerConfig(device.id) ?? device.targetPowerConfig
-        : device.targetPowerConfig,
-      confirmedProfile: device.steppedLoadProfile,
-      nowMs: source.getNow().getTime(),
-    })
-    : undefined;
-  const steppedCluster = resolveSteppedClusterFields(plannerSteppedLoadProfile, device);
+  const steppedCluster = resolveSteppedPlanInputFields(source, device);
   const observedCurrentState = resolveObservedCurrentState(device);
   const powerCalibration = source.getPowerCalibrationSnapshot();
   const calibration = isSteppedDevice || device.isEvCharger

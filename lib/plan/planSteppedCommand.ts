@@ -254,13 +254,12 @@ const isKeptStepDown = (
 const resolveCurrentStepForShed = (
   dev: SteppedPlanDevice,
 ): PlanningSteppedState['stepForShed'] => {
-  // A `selectedStepId` outside the (possibly capped) planner profile is a real
-  // domain state, not a presence gap — no measured-draw fallback lane exists
-  // anymore: the producer guarantees the effective step for every stepped
-  // device.
+  // The command ladder can exclude a physically observed current after the
+  // owner tightens its range. Its producer-resolved planning power still prices
+  // that selected step; measured draw is not a substitute for step identity.
   const currentStep = getSteppedLoadStep(dev.steppedLoadProfile, dev.selectedStepId);
-  return currentStep ? {
-    stepId: currentStep.id,
-    planningPowerW: currentStep.planningPowerW,
-  } : undefined;
+  return {
+    stepId: dev.selectedStepId,
+    planningPowerW: currentStep?.planningPowerW ?? dev.planningPowerKw * 1000,
+  };
 };

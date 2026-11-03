@@ -30,6 +30,8 @@ type DeviceConfigurationFields = {
   expectedPowerKw: number;
   expectedPowerSource: DeviceDescriptorRead['expectedPowerSource'];
   targetPowerConfig?: DeviceDescriptorRead['targetPowerConfig'];
+  /** The identified car authorizes no active charging range on this charger. */
+  carCurrentRangeUnavailable?: true;
 };
 
 /** The device owner resolves the control identity and usable ladder together. */

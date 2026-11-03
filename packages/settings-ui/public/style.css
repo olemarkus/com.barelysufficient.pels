@@ -1277,6 +1277,8 @@ md-primary-tab.tab[active] {
 }
 
 #device-detail-charging-current,
+#device-detail-charger-current-limits,
+[data-car-current-limits],
 .charging-current-setup > * {
   min-width: 0;
 }

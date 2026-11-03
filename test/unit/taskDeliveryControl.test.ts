@@ -28,6 +28,11 @@ describe('delivery control uses live convergence, not a command as proof', () =>
     expect(resolveTaskDeliveryControl({ ...device(), reason: { code: 'capacity' as const } },
       state({ physicalState: 'off', desiredBinary: 'off' }))).toEqual({ kind: 'restricted', cause: 'capacity_limited' });
   });
+  it('attributes an incompatible car current range to the device limit after pausing', () => {
+    expect(resolveTaskDeliveryControl({ ...device(), reason: { code: 'car_current_range_unavailable' } },
+      state({ physicalState: 'off', desiredBinary: 'off' })))
+      .toEqual({ kind: 'restricted', cause: 'device_limit' });
+  });
   it('recognizes a settled step limit even with the binary axis on', () => {
     expect(resolveTaskDeliveryControl({ ...device(), reason: { code: 'capacity' as const } },
       state({ observedStepId: 'low', desiredStepId: 'low', stepProgress: 'settled' })))

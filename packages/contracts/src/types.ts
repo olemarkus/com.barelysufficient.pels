@@ -104,6 +104,16 @@ export type TargetPowerReachabilityState = {
   nextProbeAtMs?: number;
 };
 
+/** Active charging range; stopping charging remains a separate action. */
+export type EvChargingCurrentLimits = { minA: number; maxA: number };
+
+/** Charging ranges keyed by the identity owned by their settings map. */
+export type EvChargingCurrentLimitsMap = Record<string, EvChargingCurrentLimits>;
+/** Per-car overrides, shared across every charger that identifies the car. */
+export type EvCarCurrentLimits = EvChargingCurrentLimitsMap;
+/** Default ranges for cars without their own saved range, keyed by charger id. */
+export type EvChargerCurrentLimits = EvChargingCurrentLimitsMap;
+
 export type TargetPowerSteppedLoadConfig = {
   enabled?: boolean;
   preset?: TargetPowerSteppedLoadPreset;
@@ -112,6 +122,8 @@ export type TargetPowerSteppedLoadConfig = {
   step?: number;
   excludeMin?: number;
   excludeMax?: number;
+  /** Effective active range; never persisted in the target-power configuration. */
+  currentLimits?: EvChargingCurrentLimits;
 };
 
 export type DeviceTargetPowerConfigs = Record<string, TargetPowerSteppedLoadConfig>;

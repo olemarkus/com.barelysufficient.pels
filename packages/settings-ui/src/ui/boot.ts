@@ -1,3 +1,4 @@
+import { loadEvCarCurrentLimits, loadEvChargerCurrentLimits } from './deviceDetail/chargingCurrentLimits.tsx';
 import { initSetupJourney, openSetupReview } from './setupJourney.ts';
 import { setupJourneyFromSearch } from './setupJourneyState.ts';
 import { showUsageDayToday } from './usageDayView.ts';
@@ -459,6 +460,8 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
     loadEvChargeTargetSettings(),
     loadDeviceExpectedPowerOverrides(),
     loadEvCarAssociations(),
+    loadEvCarCurrentLimits(),
+    loadEvChargerCurrentLimits(),
     loadDeferredObjectiveSettings(),
     loadAdvancedSettings(),
     initWeatherInsight(),

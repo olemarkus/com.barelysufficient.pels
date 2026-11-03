@@ -77,6 +77,8 @@ export type SettingsUiBootstrapKey =
   | 'ev_charge_target_settings'
   | 'device_expected_power_overrides'
   | 'ev_car_associations'
+  | 'ev_car_current_limits'
+  | 'ev_charger_current_limits'
   | 'setup_recommendation_dismissals'
   | 'weather_advisor_first_estimate_seen';
 

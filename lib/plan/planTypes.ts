@@ -638,6 +638,8 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
    * it writes once the charger is off. Absent when nothing holds.
    */
   chargeTargetHeld?: HeldChargeTarget;
+  /** This cycle keeps the charger off because its identified car has no permitted charging level. */
+  carCurrentRangeHeld?: true;
   /**
    * This cycle's reduction is NOT capacity pressure: "Only PELS starts this
    * device", a smart task's deferred hour, a solar hold, or a keep step lowered

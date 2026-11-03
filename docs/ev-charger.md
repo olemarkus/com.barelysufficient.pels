@@ -51,6 +51,12 @@ Then configure the charger as a normal managed device:
 
 Lower priority numbers are more important. Devices with higher numbers are limited first when PELS needs to stay under your grid import limit or hard cap.
 
+Under **Setup → Default charging current limits**, save the minimum and maximum currents to use when the connected car has no saved range. This covers older cars without a Homey car device and cars PELS has not identified. Both values accept whole amps from 6 to 32.
+
+In the charger's **Car** section, select the cars that charge there. Each selected car can have its own **Charging current limits**. When that car is matched or confirmed, its saved range replaces the charger default. The same car range follows it to other chargers. Selecting a car alone does not identify which car is connected. Clearing a car's range returns it to the charger default.
+
+The minimum is the lowest current PELS requests while charging; PELS can still pause charging. The maximum also bounds attempts to raise the current, including an exact 25 A ceiling. The charger's physical limits always apply. If no supported level fits the active range, PELS pauses charging. Changing the charger's phase configuration keeps the saved amp limits.
+
 ## Step 3: Create the Charger Current Flow
 
 Skip this step when using built-in current control. Easee needs no key or Flow; supported Zaptec and Tesla devices can use a Homey API key when a writable current capability is unavailable, and Futurehome always uses one. Follow the vendor-specific guide above before selecting a method.
@@ -90,7 +96,7 @@ When the reported value is amps, add `A` after the tag in the **matching** field
 
 If you have solar and PELS can see your export, you can have the charger follow the sun instead of running to your hard cap. In the charger's device page, turn on **Charge on solar surplus**.
 
-PELS then picks the charging current your export covers and adjusts it as the sun changes. A charger cannot go below **6 A** — about 1.4 kW on one phase, 4.1 kW on three — so when your surplus cannot cover even that, PELS falls back to the same **Power limiting** choice it uses for your hard cap: charging is turned off, or lowered to the step you picked and topped up from the grid.
+PELS then picks the charging current your export covers and adjusts it as the sun changes. The default minimum is **6 A** — about 1.4 kW on one phase, 4.1 kW on three. If the active car or charger range has a higher minimum, surplus must cover that level. When it cannot, PELS falls back to the same **Power limiting** choice it uses for your hard cap: charging is turned off, or lowered to the step you picked and topped up from the grid.
 
 Your grid import limit, hard cap and daily budget still come first, and a smart task with a deadline overrides this while it is running. See [Solar and Self-Consumption](/solar) for the full picture.
 

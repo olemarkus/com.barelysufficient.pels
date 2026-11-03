@@ -69,6 +69,7 @@ const matchedTo = (chargerId: string) => ({
 });
 
 const rows = () => [...document.querySelectorAll<HTMLInputElement>('#device-detail-car-list input')];
+const matchHints = () => [...document.querySelectorAll('#device-detail-car-list .detail-car-row .field__hint')];
 const status = () => document.querySelector('#device-detail-car-status')?.textContent ?? '';
 const flowNote = () => document.querySelector('#device-detail-car-flow-note') as HTMLElement;
 
@@ -86,6 +87,28 @@ beforeEach(() => {
 });
 
 describe('charger car picker', () => {
+  it('offers current limits for selected known cars and keeps a draft during device updates', async () => {
+    const { state } = await import('../src/ui/state.ts');
+    state.evCarAssociations = { 'charger-1': { carIds: ['car-1', 'deleted-car'] } };
+    state.evCarCurrentLimitsLoaded = true;
+    state.evCarCurrentLimits = {};
+    const { renderCarAssociation } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    renderCarAssociation(charger());
+    await flush();
+    expect([...document.querySelectorAll<HTMLElement>('[data-car-current-limits]')]
+      .map((element) => element.dataset.carCurrentLimits)).toEqual(['car-1']);
+    const maximum = document.getElementById('car-charging-current-car-1-max') as HTMLElement & { value: string };
+    maximum.value = '25';
+    maximum.dispatchEvent(new Event('input'));
+    await flush();
+    renderCarAssociation(charger());
+    expect(document.getElementById('car-charging-current-car-1-max')).toBe(maximum);
+    expect(maximum.value).toBe('25');
+    state.evCarAssociations = {};
+    renderCarAssociation(charger());
+    expect(document.querySelector('[data-car-current-limits]')).toBeNull();
+  });
+
   it('offers the backend-resolved eligible cars without repeating eligibility checks', async () => {
     const { renderCarAssociation } = await import('../src/ui/deviceDetail/carAssociation.ts');
     renderCarAssociation(charger());
@@ -464,7 +487,7 @@ describe('charger car picker', () => {
     renderCarAssociation(charger());
     await flush();
 
-    const hints = [...document.querySelectorAll('#device-detail-car-list .field__hint')]
+    const hints = matchHints()
       .map((element) => element.textContent);
     // A match to another charger says nothing about this one, and no "yet":
     // a car that charges elsewhere is not about to match here.
@@ -492,7 +515,7 @@ describe('charger car picker', () => {
     }));
     await flush();
 
-    const hints = [...document.querySelectorAll('#device-detail-car-list .field__hint')]
+    const hints = matchHints()
       .map((element) => element.textContent);
     expect(hints).toEqual(['Matched to this charger now']);
     expect(status()).toBe('Kia EV6 · Car reports: Charging');
@@ -511,7 +534,7 @@ describe('charger car picker', () => {
     renderCarAssociation(charger());
     await flush();
 
-    const hints = [...document.querySelectorAll('#device-detail-car-list .field__hint')]
+    const hints = matchHints()
       .map((element) => element.textContent);
     expect(hints).toEqual(['Not matched to this charger yet']);
   });
@@ -546,14 +569,14 @@ describe('charger car picker', () => {
     );
     renderCarAssociation(charger());
     await flush();
-    expect(document.querySelectorAll('#device-detail-car-list .field__hint')).toHaveLength(1);
+    expect(matchHints()).toHaveLength(1);
 
     callApi.mockReturnValue(new Promise(() => {}));
     invalidateCarOptions();
     renderCarAssociation(charger());
 
     expect(rows().map((input) => input.dataset.carId)).toEqual(['car-1']);
-    expect(document.querySelectorAll('#device-detail-car-list .field__hint')).toHaveLength(0);
+    expect(matchHints()).toHaveLength(0);
   });
 
   it('keeps the rows on screen when a re-read fails', async () => {
@@ -570,7 +593,7 @@ describe('charger car picker', () => {
 
     expect(rows().map((input) => input.dataset.carId)).toEqual(['car-1']);
     // The old history can no longer vouch for "not matched".
-    expect(document.querySelectorAll('#device-detail-car-list .field__hint')).toHaveLength(0);
+    expect(matchHints()).toHaveLength(0);
   });
 
   it('gives a page opened during an in-flight read its own fresh read', async () => {
@@ -637,7 +660,7 @@ describe('charger car picker', () => {
     renderCarAssociation(charger());
     await flush();
 
-    expect(document.querySelectorAll('#device-detail-car-list .field__hint')).toHaveLength(0);
+    expect(matchHints()).toHaveLength(0);
     expect(flowNote().textContent).toContain('Until a car is matched, this charger has no battery level');
   });
 });

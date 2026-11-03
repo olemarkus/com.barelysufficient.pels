@@ -357,6 +357,8 @@ export type PlanInputDeviceBase = {
    * `externalOffHoldActive`.
    */
   steppedLadderMissing?: true;
+  /** The identified car has no usable charging level within its authored current range. */
+  carCurrentRangeUnavailable?: true;
   /**
    * This device's rank in the home's active mode: unique, gap-free `1..N`, lower
    * wins. REQUIRED — the producer (`buildHomePlanDevices`) ranks the whole planned
@@ -916,6 +918,7 @@ export type PlanDeviceCarriedKey =
  */
 export type PlanDeviceStrippedKey =
   'acknowledgedStep' | 'batteryClaim' | 'batteryLevel' | 'batteryPower' | 'inverterControl' | 'inverterObservation'
-  | 'binaryControl' | 'binaryControlObservation' | 'carConfirmation' | 'evChargingState' | 'measuredPowerKw'
+  | 'binaryControl' | 'binaryControlObservation' | 'carConfirmation' | 'carCurrentRangeUnavailable'
+  | 'evChargingState' | 'measuredPowerKw'
   | 'measuredPowerIsDirectMeasurement' | 'setpointShedFloorC' | 'steppedLoadProfile' | 'targetPowerConfig'
   | 'temperature' | 'temperatureAdjustmentsDisabled' | 'temperatureControlDisabled' | 'thermostatMode';

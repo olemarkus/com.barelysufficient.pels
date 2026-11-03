@@ -34,17 +34,19 @@ const resolveDefaultMaxPowerW = (config: TargetPowerSteppedLoadConfig): number =
   32 * NOMINAL_PHASE_VOLTAGE * resolvePhaseCount(config)
 );
 
-const resolveCandidateMaxPowerW = (config: TargetPowerSteppedLoadConfig): number => (
-  typeof config.max === 'number' && Number.isFinite(config.max) && config.max > 0
+const resolveCandidateMaxPowerW = (config: TargetPowerSteppedLoadConfig): number => {
+  const physicalMaximum = typeof config.max === 'number' && Number.isFinite(config.max) && config.max > 0
     ? Math.round(config.max)
-    : resolveDefaultMaxPowerW(config)
-);
+    : resolveDefaultMaxPowerW(config);
+  return config.currentLimits
+    ? Math.min(physicalMaximum, config.currentLimits.maxA * NOMINAL_PHASE_VOLTAGE * resolvePhaseCount(config))
+    : physicalMaximum;
+};
 
 const resolveCandidateMinPowerW = (config: TargetPowerSteppedLoadConfig): number => (
-  Math.min(
-    6 * NOMINAL_PHASE_VOLTAGE * resolvePhaseCount(config),
-    resolveCandidateMaxPowerW(config),
-  )
+  config.currentLimits
+    ? config.currentLimits.minA * NOMINAL_PHASE_VOLTAGE * resolvePhaseCount(config)
+    : Math.min(6 * NOMINAL_PHASE_VOLTAGE * resolvePhaseCount(config), resolveCandidateMaxPowerW(config))
 );
 
 const formatCurrentStepId = (currentA: number): string => {
@@ -110,9 +112,9 @@ const appendExactStep = (
 };
 
 /**
- * Full EV ladder bounded only by the user-authored candidate maximum.
+ * Candidate EV commands inside the authored operating range.
  *
- * The maximum is a CEILING, not a rung. A cap between two rungs — a 25 A
+ * A legacy watt maximum is a CEILING, not a rung. A cap between two rungs — a 25 A
  * supply limit, say — leaves 24 A as the highest step, because this ladder is
  * a set of currents an EV charger is known to offer and the cap is not one of
  * them: nothing has shown the charger has a step there. The cap still bounds
@@ -141,16 +143,22 @@ export const buildEvTargetPowerCandidateProfile = (
 ): SteppedLoadProfile => {
   const phaseCount = resolvePhaseCount(config);
   const maxPowerW = resolveCandidateMaxPowerW(config);
+  const minPowerW = resolveCandidateMinPowerW(config);
+  // Explicit whole-amp bounds are usable commands, including between the
+  // standard rungs. A legacy watt ceiling alone still does not prove a rung.
+  const currents = config.currentLimits
+    ? [...new Set([...EV_CHARGER_AMPS, config.currentLimits.minA, config.currentLimits.maxA])].sort((a, b) => a - b)
+    : EV_CHARGER_AMPS;
   return {
     steps: [
       { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
-      ...EV_CHARGER_AMPS
+      ...currents
         .map((amps) => ({
           id: `${amps}a`,
           planningPowerW: amps * NOMINAL_PHASE_VOLTAGE * phaseCount,
           planningCurrentA: amps,
         }))
-        .filter((step) => step.planningPowerW <= maxPowerW),
+        .filter((step) => step.planningPowerW >= minPowerW && step.planningPowerW <= maxPowerW),
     ],
   };
 };
@@ -169,6 +177,16 @@ export const resolveValidTargetPowerReachability = (
 ): TargetPowerReachabilityState | undefined => {
   if (!isEvTargetPowerConfig(config)) return undefined;
   const state = config.reachability;
+  if (state && config.currentLimits && state.profileFingerprint !== buildEvTargetPowerProfileFingerprint(config)) {
+    const { currentLimits: _currentLimits, ...chargerConfig } = config;
+    const chargerEvidence = resolveValidTargetPowerReachability(chargerConfig);
+    return chargerEvidence && buildTargetPowerReachabilityState({
+      config,
+      maxReachedPowerW: Math.min(chargerEvidence.maxReachedPowerW, resolveCandidateMaxPowerW(config)),
+      probeFailureCount: chargerEvidence.probeFailureCount,
+      nextProbeAtMs: chargerEvidence.nextProbeAtMs,
+    });
+  }
   if (!state || state.profileFingerprint !== buildEvTargetPowerProfileFingerprint(config)) return undefined;
   if (!isFiniteNonNegative(state.maxReachedPowerW)) return undefined;
   if (state.maxReachedPowerW < resolveCandidateMinPowerW(config)) return undefined;
@@ -225,16 +243,31 @@ export const resolveEvTargetPowerPlannerProfile = (params: {
   nowMs: number;
 }): SteppedLoadProfile => {
   const { config, confirmedProfile, nowMs } = params;
-  if (!isEvTargetPowerConfig(config)) return confirmedProfile;
+  // The observation ladder retains device truth. Car policy narrows commands
+  // only: Automatic current ladders carry their integration-resolved amps;
+  // a Manual EV preset carries its configured nominal phase conversion.
+  const planningProfile = config?.currentLimits ? {
+    ...confirmedProfile,
+    steps: confirmedProfile.steps.filter((step) => {
+      if (step.planningPowerW === 0) return true;
+      if (isEvTargetPowerConfig(config)) {
+        return step.planningPowerW >= resolveCandidateMinPowerW(config)
+          && step.planningPowerW <= resolveCandidateMaxPowerW(config);
+      }
+      return step.planningCurrentA !== undefined && config.currentLimits !== undefined
+        && step.planningCurrentA >= config.currentLimits.minA && step.planningCurrentA <= config.currentLimits.maxA;
+    }),
+  } : confirmedProfile;
+  if (!isEvTargetPowerConfig(config)) return planningProfile;
   const reachability = resolveValidTargetPowerReachability(config);
-  if ((reachability?.nextProbeAtMs ?? 0) > nowMs) return confirmedProfile;
-  const confirmedMaxW = Math.max(...confirmedProfile.steps.map((step) => step.planningPowerW));
+  if ((reachability?.nextProbeAtMs ?? 0) > nowMs) return planningProfile;
+  const confirmedMaxW = Math.max(...planningProfile.steps.map((step) => step.planningPowerW));
   const nextCandidate = buildEvTargetPowerCandidateProfile(config).steps
     .find((step) => step.planningPowerW > confirmedMaxW);
-  if (!nextCandidate) return confirmedProfile;
+  if (!nextCandidate) return planningProfile;
   return {
-    ...confirmedProfile,
-    steps: sortSteps([...confirmedProfile.steps, nextCandidate]),
+    ...planningProfile,
+    steps: sortSteps([...planningProfile.steps, nextCandidate]),
   };
 };
 

@@ -34,6 +34,7 @@ const RESTRICTIONS: Record<DevicePlanDevice['reason']['code'], TaskDeliveryContr
   awaiting_pels_start: { kind: 'uncontrolled' },
   // The owner's charge target holds the charger; no smart task is driving it.
   charge_target_reached: { kind: 'uncontrolled' },
+  car_current_range_unavailable: { kind: 'restricted', cause: 'device_limit' },
   awaiting_battery_level: { kind: 'uncontrolled' },
   deferred_objective_avoid: { kind: 'uncontrolled' },
   deferred_objective_satisfied: { kind: 'uncontrolled' },

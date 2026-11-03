@@ -126,7 +126,9 @@ const buildCurrentState = (
   // from the plan-device fallback the observed-state producer supplies for a
   // device absent from this cycle's snapshot. The intent carries desired-only
   // state and never contributes current state here.
-  const stepId = observed?.stepId ?? currentFallback?.stepId;
+  // A newly bounded command ladder may exclude the physical reported step.
+  // Keep that identity so its allowed fallback cannot look already applied.
+  const stepId = observed?.reportedStepId ?? observed?.stepId ?? currentFallback?.stepId;
   return {
     on: observed?.on
       ?? (observedDevice ? isBinaryOnOrUnknown(observedDevice) : (currentFallback?.on ?? null)),

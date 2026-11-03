@@ -3,6 +3,7 @@ import type {
     FlowBackedRead,
     NativeWiringRead,
 } from './managerParseDevice';
+import type { DeviceControlSettings } from '../deviceControlSettings';
 import type { BatteryManagedRead } from '../../ports/batteryControlOwner';
 import type { AcceptedFlowConflictSlice } from '../../flowApi/acceptedFlowConflictStore';
 import type { FlowCapabilityWrites } from '../../flowApi/userFlows';
@@ -127,7 +128,9 @@ export type DeviceTransportOptions = {
      */
     acceptedFlowWrites: AcceptedFlowConflictSlice<FlowCapabilityWrites>;
     /** The owner's per-device configuration (`DeviceControlSettings`). */
-    settings: DeviceParseSettings;
+    settings: DeviceParseSettings & Pick<
+      DeviceControlSettings, 'resolveEvCarCurrentLimits' | 'resolveEvChargerCurrentLimits'
+    >;
     /** Native wiring and Flow conflicts (`BuiltInControlFlowConflicts`). */
     nativeWiring: NativeWiringRead;
     /** The Flow-reported capability values and learned peaks (`FlowBackedDeviceState`). */
