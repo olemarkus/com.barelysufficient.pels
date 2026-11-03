@@ -232,7 +232,7 @@ export class PlanService {
   }
 
   private getIdleObservation(deviceId: string): IdleClassifierObservation | undefined {
-    const current = this.deps.getObservedRecord(deviceId);
+    const current = this.deps.observed.getObservedRecord(deviceId);
     if (!current?.available || !hasObservedMeasuredPower(current)
       || !this.getLatestPlanSnapshot()?.devices.some((device) => device.id === deviceId)) return undefined;
     const temperature = readObservedTemperatureState(current);
@@ -565,7 +565,7 @@ export class PlanService {
     const idleInputs = plan.devices
       .filter((device): device is MeteredDevicePlanDevice => isMeteredPlanDevice(device))
       .map((device): IdleClassifierDeviceInput => {
-        const temperature = this.deps.getObservedTemperature(device.id);
+        const temperature = this.deps.observed.getObservedTemperature(device.id);
         return {
           id: device.id,
           name: device.name,

@@ -1,4 +1,5 @@
 import { createTestDeviceActivityRecorder } from './deviceActivityRecorder';
+import { noPlanServiceObservedReads } from './observedDeviceReadsDouble';
 import type { PlanServiceDeps } from '../../lib/plan/planServiceDeps';
 import { SnapshotWarmupGate } from '../../lib/plan/snapshotWarmupGate';
 import { testLogger } from '../utils/testLogger';
@@ -6,7 +7,7 @@ import { testLogger } from '../utils/testLogger';
 type PlanServiceWiring = Pick<PlanServiceDeps,
   | 'getAssociatedCarChargingState'
   | 'getCarIdentificationState'
-  | 'getObservedRecord'
+  | 'observed'
   | 'getSteppedLoadProfileById'
   | 'schedulePostActuationRefresh'
   | 'structuredLog'
@@ -17,16 +18,16 @@ type PlanServiceWiring = Pick<PlanServiceDeps,
 
 /**
  * The plan-service deps `createPlanService` always wires, for a spec that is
- * not about them: no associated car, no stepped profiles, no structured logger,
- * the Main home's realtime channel, no rescuable device, and a warmup gate
- * that has already released. A spec about one of them overrides it. Debug
- * topics are the process-wide set: a spec reading a debug event captures it
- * with `captureLogger(level, topics)`.
+ * not about them: nothing observed, no associated car, no stepped profiles, no
+ * structured logger, the Main home's realtime channel, no rescuable device, and
+ * a warmup gate that has already released. A spec about one of them overrides
+ * it. Debug topics are the process-wide set: a spec reading a debug event
+ * captures it with `captureLogger(level, topics)`.
  */
 export const planServiceWiring = (): PlanServiceWiring => ({
   getAssociatedCarChargingState: () => undefined,
   getCarIdentificationState: () => 'not_waiting',
-  getObservedRecord: () => undefined,
+  observed: noPlanServiceObservedReads,
   getSteppedLoadProfileById: () => new Map(),
   schedulePostActuationRefresh: () => undefined,
   structuredLog: testLogger,

@@ -126,11 +126,7 @@ describe('Price level flow cards', () => {
     const planService = new PlanService({
       ...planServiceWiring(),
       hasStandingCommandGrant: () => false,
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getThermalDirection: () => 'heating' as const,
-      getObservedTemperature: () => ({ kind: 'absent' }),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],
       homeId: 'main',

@@ -3,15 +3,11 @@ import type { CarIdentificationState } from '../../packages/contracts/src/evCarL
 import type { SteppedSettleDevice } from '../observer/steppedSettleSnapshot';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { SettingsUiPlanDeviceSnapshot } from '../../packages/contracts/src/settingsUi/plan';
-import type { ThermalDirection } from '../../packages/contracts/src/types';
 import type { DeviceOverviewLogRecorder } from '../diagnostics/deviceActivityRecorder';
 import type { PendingBinaryLiveDevice } from '../ports/controlCommandConfirmation';
 import type {
   HomeBatteryCardRead,
-  ObservedEvChargingStateRead,
-  ObservedStateOfChargeRead,
-  ObservedTemperatureRead,
-  ObservedDeviceReads,
+  PlanServiceObservedReads,
 } from '../observer/observedDeviceStateProjection';
 import type { PelsStatus } from './pelsStatus';
 import type { PriceLevel } from '../price/priceLevels';
@@ -71,8 +67,17 @@ export type PlanServiceDeps = {
   publishPelsStatus: (status: PelsStatus) => void;
   planEngine: PlanServicePlanEngine;
   getPlanDevices: () => PlanInputDevice[];
-  /** Accepted single-device truth for idle evidence, without projecting the whole home. */
-  getObservedRecord: ObservedDeviceReads['getObservedRecord'];
+  /**
+   * The observer's per-device reads, from their canonical owner rather than the
+   * plan device: the accepted record for idle evidence (one device, without
+   * projecting the whole home), and the settings-UI overview's plug state,
+   * battery level, temperature and thermal direction. The plan device carries
+   * the decisions made from these (`boostActive`), never the readings: there is
+   * no raw `evChargingState` on it, and a temperature-control-disabled device,
+   * projected to the planner as binary, still shows its external target and
+   * measured temperature through this seam.
+   */
+  observed: PlanServiceObservedReads;
   /**
    * Whether the owner has granted PELS standing command authority over a
    * device: Power-limit control, or "Only PELS starts this device". Answers for
@@ -84,10 +89,6 @@ export type PlanServiceDeps = {
   getSettleDevices: () => PendingBinaryLiveDevice[];
   /** The stepped axis's settle evidence; see `lib/observer/steppedSettleSnapshot.ts`. */
   getSteppedSettleDevices: () => readonly SteppedSettleDevice[];
-  // EV charging state for the settings-UI read model, sourced from the observer
-  // (its canonical owner — `ObservedDeviceState`), not the plan device. The
-  // planner no longer carries the raw `evChargingState`.
-  getObservedEvChargingState: (deviceId: string) => ObservedEvChargingStateRead;
   /**
    * The plug state reported by the CAR associated with this charger, when the
    * user has ticked one and the probe matched it. Absent means PELS has no car
@@ -97,20 +98,6 @@ export type PlanServiceDeps = {
   getAssociatedCarChargingState: (deviceId: string) => EvChargingState | undefined;
   /** Live device-owned wait state, used only for presentation and Activity. */
   getCarIdentificationState: (deviceId: string, nowMs: number) => CarIdentificationState;
-  /**
-   * The charger's battery level for the settings-UI card, from the observer that
-   * owns it. The plan device carries the boost DECISION (`boostActive`), never
-   * the reading behind it — a planner that held a percentage would sooner or
-   * later be asked to compare one.
-   */
-  getObservedStateOfCharge: (deviceId: string) => ObservedStateOfChargeRead;
-  // Temperature readings for the settings-UI overview are observational truth,
-  // not planner command state. In particular, a temperature-control-disabled
-  // device is projected to the planner as binary but still shows the external
-  // target and measured temperature through this observer-owned seam.
-  getObservedTemperature: (deviceId: string) => ObservedTemperatureRead;
-  /** Which way the device's setpoint moves demand (the observer's resolution). */
-  getThermalDirection: (deviceId: string) => ThermalDirection;
   /**
    * A home battery's card facts for the settings-UI overview: its control
    * surface from the transport and its own power and level from the observer.

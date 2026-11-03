@@ -37,7 +37,13 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     // `toPlanDevice` + shared planned-set predicate); the invariants are
     // documented at the closure in `setup/homeRuntime/homeScope.ts`.
     getPlanDevices: scope.getPlanDevices,
-    getObservedRecord: (deviceId) => ctx.observer.getObservedRecord(deviceId),
+    // The observer's per-device reads, passed as the observer itself. NB: do NOT
+    // read them off `ctx.getPlanInputSnapshot()` instead — that getter rebuilds
+    // and re-decorates the full runtime projection on every access, so a
+    // per-device lookup mid-serialization is O(n²) and re-entrant-unsafe (it
+    // breaks the SDK-boundary shed e2es). The bootstrap refresh publishes the
+    // boot snapshot to Observer before the warmup gate admits the first plan cycle.
+    observed: ctx.observer,
     hasStandingCommandGrant: (deviceId) => resolveStandingCommandGrant(planInputSource, deviceId),
     // Explicit observer projection: transport capability and Flow bindings must
     // never cross into the plan-owned service merely because structural typing
@@ -46,25 +52,10 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     // The decorated devices carry their own ladder, so the settle evidence is a
     // pure projection off them — no profile lookup at the consumer.
     getSteppedSettleDevices: () => buildSteppedSettleSnapshot(ctx.getPlanInputSnapshot()),
-    // EV charging state for the settings-UI read model comes from the observer
-    // (its canonical owner), not the plan device — the planner carries only the
-    // resolved flat EV plug-state sub-fields, not the raw observed plug-state. NB: do NOT
-    // fall back to `ctx.getPlanInputSnapshot()` here — that getter rebuilds
-    // and re-decorates the full runtime projection on every access, so a per-device lookup
-    // mid-serialization is O(n²) and re-entrant-unsafe (it breaks the SDK-boundary
-    // shed e2es). The bootstrap refresh publishes the boot snapshot to Observer
-    // before the warmup gate admits the first plan cycle.
-    getObservedEvChargingState: (deviceId) => ctx.observer.getObservedEvChargingState(deviceId),
     // Read live from the transport, not off a snapshot: the association is
     // resolved per read and moves within seconds of a plug edge.
     getAssociatedCarChargingState: (deviceId) => deviceManager.getAssociatedCar(deviceId)?.chargingState,
     getCarIdentificationState: (deviceId, nowMs) => deviceManager.getCarIdentificationState(deviceId, nowMs),
-    // The card's battery level. Same seam and same reason as the plug-state
-    // above: the plan device carries the boost DECISION, not the reading it was
-    // made from.
-    getObservedStateOfCharge: (deviceId) => ctx.observer.getObservedStateOfCharge(deviceId),
-    getObservedTemperature: (deviceId) => ctx.observer.getObservedTemperature(deviceId),
-    getThermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
     getHomeBatteryCard: (deviceId) => readHomeBatteryCard(
       deviceManager.getSnapshotByDeviceId(deviceId),
       ctx.observer.getObservedRecord(deviceId),
