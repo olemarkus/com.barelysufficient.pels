@@ -103,6 +103,7 @@ export class PlanExecutor {
     private readonly feedback: PlannerExecutionFeedback) {
     this.shortfallExecutor = new ShortfallExecutor(deps, feedback);
     this.ctx = {
+      homeId: deps.homeId,
       owner: 'ordinary',
       execution,
       feedback,
@@ -319,22 +320,23 @@ export class PlanExecutor {
 
   /**
    * The plan just built is what PELS now stands behind: a command it no longer
-   * asks for leaves the contest record, so a later send of the same value
-   * after the device moved is a new command, not a correction. Setpoints are
-   * compared as the actuator resolves them, which is the value a send carries.
+   * asks for, or for a device that left this home's plan, leaves the contest
+   * record, so a later send of the same value after the device moved is a new
+   * command, not a correction. Setpoints are compared as the actuator resolves
+   * them, which is the value a send carries.
    */
   public retainContestedCommands(plan: ExecutionPlan): void {
     const nowMs = Date.now();
-    for (const decision of plan.devices) {
+    this.execution.controlContests.retainPlanned(this.deps.homeId, new Map(plan.devices.map((decision) => {
       const device = decision.commands;
       const planned = resolvePlannedCommandValues(materializeExecutableDeviceIntent(
         device, this.deps.getSteppedLoadCommandSession(device.id), nowMs,
       ), this.feedback.isExternalOffHeld(device.id));
-      this.execution.controlContests.retainPlanned(device.id, {
+      return [device.id, {
         ...planned,
         temperature: this.resolvePlannedTemperature(device.id, planned.temperature),
-      });
-    }
+      }] as const;
+    })));
   }
 
   /** A device with no setpoint the transport can resolve takes no temperature command. */

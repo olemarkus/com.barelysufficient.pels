@@ -27,6 +27,7 @@ export const createTestExecutorCommandContext = (
   state: PlanEngineState,
   overrides: Partial<ExecutorCommandContext> = {},
 ): ExecutorCommandContext => ({
+  homeId: 'main',
   owner: 'ordinary',
   execution: getTestExecutionState(state),
   feedback: new PlanExecutionFeedback(state, undefined),

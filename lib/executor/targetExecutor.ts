@@ -261,6 +261,7 @@ const executeTargetCommandDispatch = async (
       ctx.targetCommands, deviceId, requestedValue, nowMs, 'waiting_confirmation', latestObservedValue ?? observedValue,
     );
     ctx.execution.controlContests.commandSent({
+      homeId: ctx.homeId,
       deviceId,
       deviceName: name,
       setting: 'temperature',
