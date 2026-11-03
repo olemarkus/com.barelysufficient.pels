@@ -338,6 +338,30 @@ describe('Zaptec native target power', () => {
     expect(refreshed.reportedStepObservedAtMs).toBe(Date.now());
   });
 
+  it('reads a saved phase preset step back from the watt target, not the installation current', async () => {
+    // The app converts watts its own way: 4,140 W on this IT installation is
+    // about 10 A, which the 3-phase preset would read back as 6,900 W (10 A).
+    const base = buildZaptecTargetPowerDevice();
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {
+      settings: { getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase', max: 22080 }) },
+    });
+    await initWithLiveFeed(transport);
+    const [parsed] = await seedTransportDevices(transport, [buildZaptecTargetPowerDevice({
+      capabilitiesObj: {
+        target_power: { ...base.capabilitiesObj?.target_power, value: 4140 },
+        target_power_mode: { ...base.capabilitiesObj?.target_power_mode, value: 'homey' },
+        available_installation_current: { ...base.capabilitiesObj?.available_installation_current, value: 10 },
+      },
+    })]);
+    expect(parsed).toMatchObject({ reportedStepId: '6a', reportedStepPowerW: 4140 });
+
+    await emitCapability(base.id, 'available_installation_current', 11);
+    expect(transport.getSnapshotByDeviceId(base.id)).toMatchObject({ reportedStepId: '6a', reportedStepPowerW: 4140 });
+
+    await emitCapability(base.id, 'target_power', 4830);
+    expect(transport.getSnapshotByDeviceId(base.id)).toMatchObject({ reportedStepId: '7a', reportedStepPowerW: 4830 });
+  });
+
   it.each(['external', 42, undefined])('rejects a full read with an invalid target-power mode %s', async (value) => {
     const base = buildZaptecTargetPowerDevice();
     const device = buildZaptecTargetPowerDevice({

@@ -292,8 +292,11 @@ export function handleTargetPowerSourceCapabilityUpdate(
     value: unknown,
 ): boolean {
     if (capabilityId !== AVAILABLE_INSTALLATION_CURRENT_CAPABILITY_ID) return false;
+    // A native step is read from the capability PELS writes: a native current,
+    // or the device's own watt target (`applySyntheticTargetPowerOverlay`).
     if (isNativeSteppedLoadControlEnabled(snapshot)
-        && getSnapshotAdapter(snapshot).nativeCurrentControls.length > 0) return true;
+        && (getSnapshotAdapter(snapshot).nativeCurrentControls.length > 0
+          || snapshot.nativeWriteCapabilities?.includes('target_power') === true)) return true;
     const phaseCount = resolveTargetPowerPresetPhaseCount(snapshot.targetPowerConfig?.preset);
     if (!phaseCount || typeof value !== 'number' || !Number.isFinite(value)) return false;
     const profile = snapshot.steppedLoadProfile;
