@@ -2741,6 +2741,16 @@ describe('PlanExecutor stepped loads', () => {
     })))).toBe(false);
   });
 
+  it('still marks a prepared stepped restore-from-off actuatable while only a turn-off is pending', () => {
+    // Only a pending turn-ON holds the stable binary work back, as the plan
+    // device's `binaryCommandPending` (a pending turn-on) did before the stable
+    // work moved behind the execution contract.
+    const { executor, deps } = buildExecutor();
+    deps.pendingBinaryCommandStore.record('dev-1', { desired: false, startedMs: Date.now() });
+
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(preparedRestoreFromOffPlan()))).toBe(true);
+  });
+
   it('marks a prepared stepped restore-from-off actuatable for an EV charger regrouped like production', () => {
     // The motivating device is an EV charger, and the plan device carries no
     // `evChargingState` at all, so `isCommandableNow(dev)` is always false
@@ -2834,6 +2844,18 @@ describe('PlanExecutor stepped loads', () => {
     expect(executor.hasStablePlanActuation(buildExecutionPlan(evDeadlinePlan({
       binaryCommandPending: true,
     })))).toBe(false);
+  });
+
+  it('still marks stable EV deadline actuation while only a turn-off is pending', () => {
+    const { executor, deps } = buildExecutor();
+    deps.pendingBinaryCommandStore.record('ev-1', { desired: false, startedMs: Date.now() });
+
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(evDeadlinePlan()))).toBe(true);
+    expect(executor.hasStablePlanActuation(buildExecutionPlan(evDeadlinePlan({
+      evChargingState: 'plugged_in_charging',
+      binaryControl: { on: true },
+      deferredReleaseIntent: { kind: 'binary_release' },
+    })))).toBe(true);
   });
 
   it('does not mark an unplugged charger stable for a deadline resume', () => {
