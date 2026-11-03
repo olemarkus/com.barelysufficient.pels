@@ -4,6 +4,12 @@ import type {
   ContestedSetting,
 } from '../../packages/contracts/src/controlContest';
 import { getLogger } from '../logging/logger';
+import type {
+  ControlCommandSent,
+  ControlContestRecording,
+  ControlValue,
+  PlannedControls,
+} from '../ports/controlContest';
 import type { DeviceJournal } from '../ports/deviceJournal';
 
 /**
@@ -16,23 +22,6 @@ export const CONTEST_WINDOW_MS = 60 * 60 * 1000;
 /** The rounds the journalled event carries, newest last. */
 const CONTEST_EVENT_MAX_ROUNDS = 8;
 const SETTINGS: readonly ContestedSetting[] = ['temperature', 'on_off', 'level'];
-
-/** A setpoint, an on/off state or a step id. */
-export type ControlValue = number | boolean | string;
-
-/** What the plan just built asks of each setting; `null` where it asks nothing. */
-export type PlannedControls = Readonly<Record<ContestedSetting, ControlValue | null>>;
-
-/** One command PELS sent, with the device's value for that setting just before. */
-export type ControlCommandSent = {
-  deviceId: string;
-  deviceName: string;
-  setting: ContestedSetting;
-  value: ControlValue;
-  /** `undefined` when the device had not reported the setting. */
-  observed: ControlValue | undefined;
-  atMs: number;
-};
 
 /**
  * `before`: the device's value when PELS first asked for `value`, kept while
@@ -88,7 +77,7 @@ const contestKind = (rounds: readonly ContestRound[]): ContestKind => (
  *
  * One record serves every home; device ids are globally unique.
  */
-export class ControlContestRecord {
+export class ControlContestRecord implements ControlContestRecording {
   private readonly commands = new Map<string, SettingCommand>();
   private readonly rounds = new Map<string, ContestRound[]>();
   private readonly reportedAtMs = new Map<string, number>();

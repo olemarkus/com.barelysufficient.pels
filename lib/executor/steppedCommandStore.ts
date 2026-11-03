@@ -44,7 +44,7 @@ import {
 } from './steppedCommandState';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
-import type { ControlContestRecord } from './controlContest';
+import type { ControlContestRecording } from '../ports/controlContest';
 
 export class SteppedCommandStore {
   private readonly state: DeviceControlRuntimeState = createDeviceControlRuntimeState();
@@ -57,7 +57,7 @@ export class SteppedCommandStore {
    */
   constructor(
     private readonly reportedStore: SteppedReportedStepStore,
-    private readonly contests: ControlContestRecord,
+    private readonly contests: ControlContestRecording,
   ) {}
 
   // --- Commanded axis: reads -------------------------------------------------
@@ -240,5 +240,5 @@ export class SteppedCommandStore {
 
 export const createSteppedCommandStore = (
   reportedStore: SteppedReportedStepStore,
-  contests: ControlContestRecord,
+  contests: ControlContestRecording,
 ): SteppedCommandStore => new SteppedCommandStore(reportedStore, contests);

@@ -1,0 +1,32 @@
+import type { ContestedSetting } from '../../packages/contracts/src/controlContest';
+
+/** A setpoint, an on/off state or a step id. */
+export type ControlValue = number | boolean | string;
+
+/** What the plan just built asks of each setting; `null` where it asks nothing. */
+export type PlannedControls = Readonly<Record<ContestedSetting, ControlValue | null>>;
+
+/** One command PELS sent, with the device's value for that setting just before. */
+export type ControlCommandSent = {
+  deviceId: string;
+  deviceName: string;
+  setting: ContestedSetting;
+  value: ControlValue;
+  /** `undefined` when the device had not reported the setting. */
+  observed: ControlValue | undefined;
+  atMs: number;
+};
+
+/**
+ * The executor's record of drift corrections as its writers feed it: every
+ * home's execution state and the stepped command store. One record serves the
+ * app; `lib/executor/controlContest.ts` is the only implementation, and setup
+ * hands it to each home by this port.
+ */
+export type ControlContestRecording = {
+  commandSent(sent: ControlCommandSent): void;
+  commandConfirmed(deviceId: string, setting: ContestedSetting, value: ControlValue): void;
+  commandReleased(deviceId: string, setting: ContestedSetting): void;
+  retainPlanned(deviceId: string, planned: PlannedControls): void;
+  hasStandingCommands(): boolean;
+};

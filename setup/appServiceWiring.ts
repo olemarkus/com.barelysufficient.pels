@@ -1,5 +1,5 @@
 import { createObservedTemperatureModeUpdates } from './appInit/createObservedTemperatureModeUpdates';
-import type { ControlContestRecord } from '../lib/executor/controlContest';
+import type { ControlContestRecording } from '../lib/ports/controlContest';
 import type { TeardownRegistry } from '../lib/utils/teardownRegistry';
 import type Homey from 'homey';
 import type { ObservedStateEmitter } from '../lib/observer/observedStateEvents';
@@ -138,7 +138,7 @@ export type AppServiceWiringDeps = {
   observedHomePower: ObservedHomePower;
   observedDeviceStateProjection: ObservedDeviceStateProjection;
   /** The executor's drift corrections, shared by every home's plan engine. */
-  controlContests: ControlContestRecord;
+  controlContests: ControlContestRecording;
   /** First: every repository is open before any step can reach for one. */
   openUserdataStores: () => void;
   /** Last: every tracker has flushed by now, and nothing reads the file after this. */

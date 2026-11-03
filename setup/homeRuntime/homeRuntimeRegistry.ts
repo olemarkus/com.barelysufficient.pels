@@ -7,7 +7,7 @@
  * bundle, composed from the plan, power and price factories against the power
  * source the registry names.
  */
-import type { ControlContestRecord } from '../../lib/executor/controlContest';
+import type { ControlContestRecording } from '../../lib/ports/controlContest';
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomesStore } from '../../lib/home/homeConfig';
 import type { HomeMembershipService } from '../../lib/home/homeMembershipService';
@@ -37,7 +37,7 @@ export function createHomeRuntimeRegistry(
   homesStore: HomesStore,
   modeOwnershipTransfer: ModeOwnershipTransfer,
   /** The app's record of drift corrections, which every area's plan engine feeds. */
-  controlContests: ControlContestRecord,
+  controlContests: ControlContestRecording,
 ): HomeRuntimeRegistry {
   const sourceEpoch = new PowerSourceEpochFence(() => readConfiguredPowerSource(ctx.homey.settings));
   const bundleFactory: SubHomeBundleFactory<OwningHomeHooks> = {

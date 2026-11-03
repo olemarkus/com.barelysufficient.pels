@@ -10,7 +10,7 @@
  * - the `AppContext` read port (`buildHomeRuntimeReadPort`) — the settings UI's
  *   already-committed per-home read.
  */
-import type { ControlContestRecord } from '../../lib/executor/controlContest';
+import type { ControlContestRecording } from '../../lib/ports/controlContest';
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomeRuntimeReadPort } from '../../lib/home/homeRuntimeRead';
 import type { HomeModeCatalog } from '../../lib/home/homeModeCatalog';
@@ -25,7 +25,7 @@ export const createHomeRuntimeRegistryForApp = (
   ctx: AppContext,
   homeModeCatalog: HomeModeCatalog,
   membership: Pick<HomeMembershipService, 'isSubHomeExecutionReady'>,
-  controlContests: ControlContestRecord,
+  controlContests: ControlContestRecording,
 ): HomeRuntimeRegistry => {
   const registry = createHomeRuntimeRegistry(
     ctx,
