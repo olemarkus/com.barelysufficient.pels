@@ -167,8 +167,9 @@ export type BatteryChargeCeiling = {
    */
   taper: readonly { fromPercent: number; ceilingW: number }[];
   /**
-   * The continuous plan's taper, same shape: each band's latest lesson, kept
-   * for days until re-taught or lifted, because the plan charges hours ahead.
+   * The continuous plan's taper, same shape: each band's latest lesson a
+   * second plateau confirmed, kept for days until re-taught or lifted, because
+   * the plan charges hours ahead.
    */
   planningTaper: readonly { fromPercent: number; ceilingW: number }[];
 };
