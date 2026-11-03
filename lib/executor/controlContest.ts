@@ -71,7 +71,9 @@ const contestKind = (rounds: readonly ContestRound[]): ContestKind => (
  * - `commandSent` with the same value as a confirmed command, while the
  *   device reads another value, is a round. Every send leaves the command
  *   unconfirmed, so a correction that does not stick in turn is retried, not
- *   counted again.
+ *   counted again. A round is `reverted` when the device went back to its
+ *   value from before PELS first asked; an on/off round is always
+ *   `overridden`, since a two-valued setting cannot tell the two apart.
  * - `commandConfirmed` marks the standing command confirmed.
  * - `retainPlanned` drops a command the plan just built no longer asks for,
  *   and `commandReleased` one whose command session ended: a device that
@@ -120,6 +122,11 @@ export class ControlContestRecord {
     this.commands.delete(settingKey(deviceId, setting));
   }
 
+  /** Whether PELS stands behind any command; with none, there is nothing to retain. */
+  hasStandingCommands(): boolean {
+    return this.commands.size > 0;
+  }
+
   retainPlanned(deviceId: string, planned: PlannedControls): void {
     for (const setting of SETTINGS) {
       const key = settingKey(deviceId, setting);
@@ -155,7 +162,9 @@ export class ControlContestRecord {
       setting: sent.setting,
       commanded: sent.value,
       observed,
-      kind: Object.is(observed, standing.before) ? 'reverted' : 'overridden',
+      // An on/off setting has two values, so going back to the earlier one says
+      // nothing about what moved it: every such round is `overridden`.
+      kind: sent.setting !== 'on_off' && Object.is(observed, standing.before) ? 'reverted' : 'overridden',
     };
     const rounds = [...this.roundsWithin(sent.deviceId, sent.setting, sent.atMs), round];
     this.rounds.set(settingKey(sent.deviceId, sent.setting), rounds);

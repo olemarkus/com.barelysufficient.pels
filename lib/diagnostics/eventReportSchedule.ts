@@ -17,6 +17,7 @@
  * that keeps failing, never sends the same report twice. One that could not go
  * out is tried again on a later check while its event is still in the lookback.
  */
+import { CONTESTED_SETTING_WORDS, isContestedSetting } from '../../packages/shared-domain/src/contestedSetting';
 import type {
   SupportReportDeviceEvent, SupportReportErrorCode, SupportReportRequest, SupportReportResponse,
 } from '../../packages/contracts/src/supportReport';
@@ -59,11 +60,6 @@ const text = (value: unknown): string | undefined => (typeof value === 'string' 
  * The events that send a report, each turning a kept event into the report
  * it asks for; an event without the fields its report needs asks for none.
  */
-/** How a report names the setting of a `device_control_contested` event. */
-const CONTESTED_SETTING_WORDS: ReadonlyMap<string, string> = new Map([
-  ['temperature', 'temperature'], ['on_off', 'on/off setting'], ['level', 'level'],
-]);
-
 export const REPORTED_EVENTS: ReadonlyMap<string, (event: SupportReportDeviceEvent) => EventReport[]> = new Map([
   // A charger's window closed with no car identified (`notes/ev-car-link/README.md`).
   ['ev_car_link_unmatched', (event: SupportReportDeviceEvent): EventReport[] => {
@@ -91,7 +87,9 @@ export const REPORTED_EVENTS: ReadonlyMap<string, (event: SupportReportDeviceEve
     if (deviceId === undefined) return [];
     const { count, firstAtMs, kind } = event.details;
     const name = text(event.details.deviceName) ?? deviceId;
-    const setting = CONTESTED_SETTING_WORDS.get(text(event.details.setting) ?? '') ?? 'setting';
+    const setting = isContestedSetting(event.details.setting)
+      ? CONTESTED_SETTING_WORDS[event.details.setting]
+      : 'setting';
     const times = typeof count === 'number' ? ` ${count} times` : ' repeatedly';
     const what = kind === 'reverted'
       ? `changes PELS made to the ${setting} of ${name} did not stick: it went back to its earlier ${setting}`

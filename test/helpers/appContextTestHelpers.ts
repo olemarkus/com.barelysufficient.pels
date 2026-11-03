@@ -528,7 +528,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     deviceControlHelpers,
     steppedCommandStore: steppedStores.store,
     steppedReportedStore: steppedStores.reportedStore,
-    controlContests: steppedStores.contests,
     timers,
   };
 

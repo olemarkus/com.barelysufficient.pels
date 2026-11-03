@@ -1,4 +1,5 @@
 import { ExecutionState } from '../../lib/executor/executionState';
+import type { ControlContestRecord } from '../../lib/executor/controlContest';
 import { PlanExecutionFeedback } from '../../lib/plan/planExecutionFeedback';
 import { createInverterCurtailment } from '../homeRuntime/createInverterCurtailment';
 import { buildDeviceActuator } from './buildDeviceActuator';
@@ -43,6 +44,8 @@ export type CreatePlanEngineOptions = {
    * meter area, which plans and commands no battery.
    */
   storageLane: StorageLaneBinding;
+  /** The app's one record of drift corrections; this home's commands feed it (`lib/executor/controlContest.ts`). */
+  controlContests: ControlContestRecord;
 };
 
 export type PlanEngineCompositionResult = {
@@ -100,7 +103,7 @@ export function createPlanEngineComposition(
   // executor's restore carve-out a no-op for that home's devices. Same
   // resolution the producer applies, so plan and executor share one definition
   // of "held".
-  const execution = new ExecutionState(ctx.controlContests);
+  const execution = new ExecutionState(options.controlContests);
   const state = createPlanEngineState(Date.now(), (deviceId) => isExternalOffHeldForObservedDevice(
     ctx.externalOffHold?.isHeld(deviceId) === true,
     ctx.observer.getObservedRecord(deviceId),

@@ -113,21 +113,22 @@ function isStepCommandUnanswered(
 }
 
 /**
- * What the intent asks of each axis, in the values the executor sends; `null`
- * where it asks nothing. A held external off asks nothing of any axis.
+ * What the intent asks of each setting, in the values the executor sends
+ * (a setpoint before the actuator resolves it); `null` where it asks nothing.
+ * A held external off asks nothing of any setting.
  */
-export type PlannedCommandValues = { on: boolean | null; stepId: string | null; target: number | null };
+export type PlannedCommandValues = { on_off: boolean | null; level: string | null; temperature: number | null };
 
 export function resolvePlannedCommandValues(
   intent: ExecutableDeviceIntent,
   externalOffHeld: boolean,
 ): PlannedCommandValues {
-  if (externalOffHeld) return { on: null, stepId: null, target: null };
+  if (externalOffHeld) return { on_off: null, level: null, temperature: null };
   const desiredBinary = resolveDesiredBinary(intent);
   return {
-    on: desiredBinary === null ? null : desiredBinary === 'on',
-    stepId: resolveDesiredStep(intent),
-    target: resolveDesiredTarget(intent),
+    on_off: desiredBinary === null ? null : desiredBinary === 'on',
+    level: resolveDesiredStep(intent),
+    temperature: resolveDesiredTarget(intent),
   };
 }
 

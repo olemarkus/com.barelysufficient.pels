@@ -1,4 +1,5 @@
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
+import { controlContestsForTest } from '../helpers/controlContests';
 import { withTaskDiagnosticFixture } from '../helpers/taskDiagnosticFixture';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticTypes';
 import { inertPlanHistoryDeps, createInertEnergyDelivery } from '../helpers/deferredObjectiveWiringFixtures';
@@ -67,7 +68,7 @@ describe('app init plan service wiring', () => {
       deviceManager: undefined,
     });
 
-    expect(() => createPlanEngineComposition(ctx, buildMainHomeScopeForTest(ctx, () => false), { capacityGuard: ctx.capacityGuard, isActuationFenced: () => false, storageLane: { kind: 'none' } })).toThrow(
+    expect(() => createPlanEngineComposition(ctx, buildMainHomeScopeForTest(ctx, () => false), { capacityGuard: ctx.capacityGuard, isActuationFenced: () => false, storageLane: { kind: 'none' }, controlContests: controlContestsForTest().contests })).toThrow(
       'DeviceTransport must be initialized before use.',
     );
   });
@@ -106,6 +107,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
       capacityGuard: engineCtx.capacityGuard,
       isActuationFenced: () => fenced,
       storageLane: { kind: 'none' },
+      controlContests: controlContestsForTest().contests,
     });
     const actuator = (
       capturedPlanExecutorDeps.current as unknown as { actuator: Actuator }

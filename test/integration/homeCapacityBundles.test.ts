@@ -19,6 +19,7 @@
 // the real homes store, capacity store, and the last-controlled blob; an
 // in-memory userdata store backs the tracker persistence; the bundles run
 // their REAL plan engine/service/guard/pipeline.
+import { controlContestsForTest } from '../helpers/controlContests';
 import { createModeOwnershipTransfer } from '../../setup/homeRuntime/createModeOwnershipTransfer';
 import { createExternalOffHoldPolicy } from '../../setup/externalOffHoldAdapter';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -120,6 +121,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     },
     createRawHomesStore(ctx.homey.settings),
     createModeOwnershipTransfer(ctx, getHomeModeCatalogForTest(ctx)),
+    controlContestsForTest().contests,
   );
   return {
     ctx,

@@ -66,7 +66,7 @@ const limitTheHouse = (): void => {
   });
 };
 
-const setpointWrites = (putSpy: ReturnType<typeof vi.spyOn>): number => putSpy.mock.calls
+const setpointWrites = (putSpy: { mock: { calls: readonly (readonly unknown[])[] } }): number => putSpy.mock.calls
   .filter(([path, body]) => path === SETPOINT_PATH && (body as { value?: unknown }).value === LIMITED_C).length;
 
 /** The device as the settings UI receives it, through the registered endpoint. */

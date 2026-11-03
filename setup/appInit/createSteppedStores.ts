@@ -6,9 +6,9 @@ import {
   createSteppedReportedStepStore,
   type SteppedReportedStepStore,
 } from '../../lib/observer/steppedReportedStep';
-import type { ControlContestRecord } from '../../lib/executor/controlContest';
+import { ControlContestRecord } from '../../lib/executor/controlContest';
+import { createDeferredDeviceJournal } from '../../lib/diagnostics/deviceEventStore';
 import type { UserdataDatabase } from '../../lib/store/userdataDatabase';
-import { createControlContests } from './createControlContests';
 
 export type SteppedStores = {
   /** What PELS commanded: the executor's axis. */
@@ -33,7 +33,8 @@ export type SteppedStores = {
  */
 export const createSteppedStores = (getUserdataDatabase: () => UserdataDatabase): SteppedStores => {
   const reportedStore = createSteppedReportedStepStore();
-  const controlContests = createControlContests(getUserdataDatabase);
+  // Built with the app, before the userdata database opens.
+  const controlContests = new ControlContestRecord(createDeferredDeviceJournal(getUserdataDatabase));
   return {
     commandStore: createSteppedCommandStore(reportedStore, controlContests),
     reportedStore,

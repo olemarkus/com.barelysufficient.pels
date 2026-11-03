@@ -114,3 +114,22 @@ export const createDeviceEventStore = (db: UserdataDatabase): DeviceEventStore =
     },
   };
 };
+
+/**
+ * The journal for a writer built before the userdata database opens, such as
+ * the executor's contest record: it opens the store when an event comes. Like
+ * `record`, it never throws; an event that comes while the database is closed
+ * is logged and dropped.
+ */
+export const createDeferredDeviceJournal = (getDatabase: () => UserdataDatabase): DeviceJournal => ({
+  record: (deviceIds, event) => {
+    let store: DeviceEventStore;
+    try {
+      store = createDeviceEventStore(getDatabase());
+    } catch (error) {
+      logger.error({ event: 'device_event_write_failed', recordedEvent: event.event, err: normalizeError(error) });
+      return;
+    }
+    store.record(deviceIds, event);
+  },
+});
