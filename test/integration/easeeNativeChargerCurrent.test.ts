@@ -940,7 +940,7 @@ describe('Easee native charger current', () => {
 
       await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
 
-      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, { value: 6 }]]);
+      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, pelsCapabilityWrite(6)]]);
     });
 
     it('resumes by current once Easee reports completion in realtime', async () => {
@@ -955,7 +955,7 @@ describe('Easee native charger current', () => {
 
       await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
 
-      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, { value: 6 }]]);
+      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, pelsCapabilityWrite(6)]]);
     });
 
     it.each(['Car connected', 'Awaiting Authentication'])(
@@ -966,7 +966,7 @@ describe('Easee native charger current', () => {
 
         await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
 
-        expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, { value: true }]]);
+        expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, pelsCapabilityWrite(true)]]);
       },
     );
 
@@ -980,7 +980,7 @@ describe('Easee native charger current', () => {
 
       await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
 
-      expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, { value: true }]]);
+      expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, pelsCapabilityWrite(true)]]);
     });
 
     it('sends nothing to a session the car completed while built-in control is off', async () => {
@@ -993,7 +993,7 @@ describe('Easee native charger current', () => {
       expect(put).not.toHaveBeenCalled();
 
       await deviceManager.requestBinaryControl(EASEE_ID, false, triggerFlow);
-      expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, { value: false }]]);
+      expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, pelsCapabilityWrite(false)]]);
     });
 
     it.each(['Car connected', 'Awaiting Authentication'])(
@@ -1004,7 +1004,7 @@ describe('Easee native charger current', () => {
 
         await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
 
-        expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, { value: true }]]);
+        expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, pelsCapabilityWrite(true)]]);
       },
     );
 
