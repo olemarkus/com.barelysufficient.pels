@@ -1,5 +1,6 @@
 import { resolveCommandableNow } from '../../../packages/shared-domain/src/commandableNow';
 import type { ChargingCurrentControl } from '../chargingCurrentControl';
+import type { EvChargingCurrentLimitPolicy } from '../evChargingCurrentLimitPolicy';
 import { resolveChargingCurrentAdapter } from '../chargingCurrentAdapter';
 /**
  * Device write service for `DeviceTransport`. Applies capability writes without
@@ -124,6 +125,7 @@ export class DeviceWriteService {
     private readonly logger: Logger,
     private readonly chargingCurrentControl: ChargingCurrentControl,
     private readonly nativeWiring: NativeWiringRead,
+    private readonly currentLimitPolicy: EvChargingCurrentLimitPolicy,
     private readonly observationProducers: ObservationProducers,
     private readonly getFlowTriggerCard: (cardId: string) => SteppedLoadFlowTriggerCard | undefined,
     private readonly dispatchObservedStateForDevice: (deviceId: string, capabilityId?: string) => void,
@@ -203,12 +205,15 @@ export class DeviceWriteService {
     const snapshotBefore = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     const requested: CapabilityWrite = { capabilityId, value: normalizedValue };
     this.assertBinaryWriteAllowed(snapshotBefore, requested);
+    if (snapshotBefore?.binaryCapabilityId === capabilityId && normalizedValue === true) {
+      this.currentLimitPolicy.assertStartAllowed(snapshotBefore);
+    }
     // `readBackAsWritten`: whether PELS reads the requested capability back as
     // Homey holds it. Only then may the local write stand in for a read that
     // Homey dated before it.
     const sdkWrite: SwitchWrite = snapshotBefore?.binaryCapabilityId === capabilityId
         ? resolveSwitchSdkWrite(
-          snapshotBefore,
+          this.currentLimitPolicy.projectSwitchSnapshot(snapshotBefore),
           this.snapshotStore.getTrackedRawDevice(deviceId),
           requested,
           this.chargingCurrentControl.sessions,
@@ -387,6 +392,7 @@ export class DeviceWriteService {
   async requestSteppedLoadStep(
     params: SteppedLoadWrite,
   ): Promise<SteppedLoadStepRequestResult> {
+    this.currentLimitPolicy.assertStepAllowed(params);
     const {
       deviceId,
       profile,

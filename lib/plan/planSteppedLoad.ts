@@ -183,7 +183,11 @@ export const resolveSteppedLoadInitialDesiredStepId = (
 ): string | undefined => {
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return undefined;
-  return getSteppedLoadStep(profile, device.selectedStepId)?.id;
+  const selectedStep = getSteppedLoadStep(profile, device.selectedStepId);
+  if (selectedStep) return selectedStep.id;
+  // An authored range can exclude the physically observed step. Start at an
+  // allowed active rung without relabeling that observation as already there.
+  return device.selectedStepId === undefined ? undefined : getSteppedLoadLowestActiveStep(profile)?.id;
 };
 
 /* eslint-disable complexity, sonarjs/cognitive-complexity --

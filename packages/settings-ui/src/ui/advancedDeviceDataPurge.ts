@@ -1,3 +1,6 @@
+import {
+  isEvChargingCurrentLimitsMap, normalizeEvChargingCurrentLimitsMap,
+} from '../../../shared-domain/src/settings/evChargingCurrentLimits.ts';
 import { readModePriorityCatalog } from '../../../shared-domain/src/settings/modePriorities.ts';
 import {
   readTemperatureControlModes, temperatureControlDisabledDevices,
@@ -13,6 +16,8 @@ import {
   EV_BOOST_SETTINGS,
   EV_CHARGE_TARGET_SETTINGS,
   EV_CAR_ASSOCIATIONS,
+  EV_CAR_CURRENT_LIMITS,
+  EV_CHARGER_CURRENT_LIMITS,
   CAPACITY_PRIORITIES,
   MAIN_HOME_ID,
   MODE_DEVICE_TARGETS,
@@ -76,6 +81,8 @@ const collectDeviceIdsFromSettings = (): Set<string> => {
     ...Object.keys(state.temperatureBoostSettings),
     ...Object.keys(state.evBoostSettings),
     ...Object.keys(state.evChargeTargetSettings),
+    ...Object.keys(state.evCarCurrentLimits),
+    ...Object.keys(state.evChargerCurrentLimits),
     // Both sides of the association map: a charger that ONLY has ticked cars,
     // and a car that only appears inside some charger's list, are otherwise
     // invisible to cleanup discovery and can never be purged.
@@ -250,6 +257,20 @@ const PURGED_MAPS: readonly PurgedMap[] = [
     EV_CHARGE_TARGET_SETTINGS,
     () => state.evChargeTargetSettings,
     (map) => { state.evChargeTargetSettings = map; },
+  ),
+  purgedMap(
+    EV_CHARGER_CURRENT_LIMITS,
+    (value) => isEvChargingCurrentLimitsMap(value) ? normalizeEvChargingCurrentLimitsMap(value) : null,
+    () => state.evChargerCurrentLimits,
+    (map) => { state.evChargerCurrentLimits = map; },
+    removeDeviceIdsFromRecord,
+  ),
+  purgedMap(
+    EV_CAR_CURRENT_LIMITS,
+    (value) => isEvChargingCurrentLimitsMap(value) ? normalizeEvChargingCurrentLimitsMap(value) : null,
+    () => state.evCarCurrentLimits,
+    (map) => { state.evCarCurrentLimits = map; },
+    removeDeviceIdsFromRecord,
   ),
   purgedMap(
     EV_CAR_ASSOCIATIONS,

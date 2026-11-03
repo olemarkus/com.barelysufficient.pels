@@ -40,7 +40,8 @@ export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): device is
     // binary restore, stepped restore, headroom reservation, and swap
     // beneficiary selection at once. The device stays managed and its measured
     // draw still counts toward whole-home power — PELS just never resumes it.
-    && device.externalOffHoldActive !== true;
+    && device.externalOffHoldActive !== true
+    && device.carCurrentRangeHeld !== true;
 }
 
 /**
@@ -273,6 +274,7 @@ export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
   // where both hold a charger its reason says what the device needs, where the
   // start policy's says nothing (the posture adoption in `planBuilderSurplus.ts`
   // writes the same precedence for the cycle it is still running).
+  if (dev.carCurrentRangeHeld === true) return { code: PLAN_REASON_CODES.carCurrentRangeUnavailable };
   if (dev.chargeTargetHeld) return buildChargeTargetHoldReason(dev.chargeTargetHeld);
   if (dev.startPolicyHoldActive === true) return { code: PLAN_REASON_CODES.awaitingPelsStart };
 

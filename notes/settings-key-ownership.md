@@ -336,6 +336,24 @@ must have accepted a map or confirmed key absence before their empty defaults
 can authorize automatic control. Listed unreadable legacy keys keep the device
 manual; a valid explicit mode choice still takes precedence.
 
+`ev_car_current_limits` and `ev_charger_current_limits` are settings-UI-authored
+maps from car id and charger id, respectively, to `{ minA, maxA }`. The shared
+boundary in `packages/shared-domain/src/settings/evChargingCurrentLimits.ts`
+accepts ordered whole amps from 6 through 32. Each map retains its own last
+accepted state on unreadable reads. Before the first accepted map, only a key
+list confirming absence authorizes an empty map; an unread active policy holds
+charging off until resolved.
+
+The device owner resolves the live selected car match or explicit confirmation
+on every runtime read. A saved car range overrides the charger default. Without
+a car override, including an unidentified or non-smart car, the charger default
+applies. Without either entry, the existing charging model applies. Limits are
+never copied onto held device observations. The command ladder intersects the
+active range with the charger's physical capabilities, which a car override
+cannot widen. Pausing remains available, including when no active level fits.
+`device_target_power_configs` remains the charger's phase/power model; its
+persisted shape does not include these current ranges.
+
 ## Inverter curtailment
 
 `inverter_curtailment_devices` is an explicit opt-in map owned by

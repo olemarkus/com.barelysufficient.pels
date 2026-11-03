@@ -71,7 +71,8 @@ import {
 import { DeviceWriteService } from './transport/deviceWrites';
 import type { ZoneTree } from './transport/managerZones';
 import { TransportSnapshotStore } from './transport/transportSnapshotStore';
-import { DeviceConfigurationStore } from './deviceConfiguration';
+import { RuntimeDeviceConfiguration } from './runtimeDeviceConfiguration';
+import type { DeviceConfigurationStore } from './deviceConfiguration';
 import {
   computePeriodicStatusMetrics,
   fetchLiveGenerationW as runFetchLiveGenerationW,
@@ -118,7 +119,8 @@ export class DeviceTransport {
     // kinds (incl. the EV plug-state the consumer-facing snapshot type omits).
     private readonly snapshotStore = new TransportSnapshotStore();
     private readonly refreshState = new SnapshotRefreshState();
-    readonly deviceConfigurationStore = new DeviceConfigurationStore();
+    private readonly runtimeConfiguration: RuntimeDeviceConfiguration;
+    get deviceConfigurationStore(): DeviceConfigurationStore { return this.runtimeConfiguration; }
     // Per-device transient-miss state for targeted (by-id) refreshes. A device
     // present in the targeted request set but absent from the read result this
     // cycle advances its {misses,firstMissMs}; a successful read (or any full
@@ -240,6 +242,7 @@ export class DeviceTransport {
         );
         // Roles and saved current choices are resolved by their owning services.
         this.sources = createDeviceParseSources(options, this, this.chargingCurrentControl);
+        this.runtimeConfiguration = new RuntimeDeviceConfiguration(options.settings, this, this.snapshotStore);
         this.observationProducers = createObservationProducers(
             (p) => this.logger.structuredLog.info(p),
             options,
@@ -270,16 +273,7 @@ export class DeviceTransport {
             options.observedStateDispatcher,
             this.observationProducers.temperature,
         );
-        this.writeService = new DeviceWriteService(
-            this.snapshotStore,
-            this.observationBridge.state,
-            this.logger,
-            this.chargingCurrentControl,
-            this.sources.nativeWiring,
-            this.observationProducers,
-            (cardId) => this.getFlowTriggerCard?.(cardId),
-            (deviceId, capabilityId) => this.dispatchObservedStateForDevice(deviceId, capabilityId),
-        );
+        this.writeService = this.createWriteService();
         this.powerState = {
             ...powerState,
             lastEstimateDecisionLogByDevice: createEstimateDecisionLogState(),
@@ -334,6 +328,20 @@ export class DeviceTransport {
             this.reader,
             this.notifications,
             this.deviceConfigurationStore,
+        );
+    }
+
+    private createWriteService(): DeviceWriteService {
+        return new DeviceWriteService(
+            this.snapshotStore,
+            this.observationBridge.state,
+            this.logger,
+            this.chargingCurrentControl,
+            this.sources.nativeWiring,
+            this.runtimeConfiguration.currentLimits,
+            this.observationProducers,
+            (cardId) => this.getFlowTriggerCard?.(cardId),
+            (deviceId, capabilityId) => this.dispatchObservedStateForDevice(deviceId, capabilityId),
         );
     }
 

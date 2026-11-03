@@ -36,13 +36,13 @@ PELS turns it on by itself when none of your Flows already sets the charger's cu
 
 Setting the current below 6 A in the Easee app, where the charger pauses, counts as turning charging off outside PELS. When PELS wants the charger running, it puts current back, unless **Leave off until turned on again** is on.
 
-Pausing at 0 A keeps the charging session open. A charger that needs an RFID tag to charge does not ask for the tag again when PELS resumes it, and charging resumes at 6 A instead of the charger's maximum. PELS then raises the current to the planned level as power allows.
+Pausing at 0 A keeps the charging session open. A charger that needs an RFID tag to charge does not ask for the tag again when PELS resumes it. Charging resumes at the matched car's configured minimum, otherwise the charger default (6 A when neither is set). PELS then raises the current to the planned level as power allows.
 
 After PELS raises the current again, the Easee charger waits about 5 minutes before the car starts charging. PELS counts the charger as on during that wait and keeps its power set aside. Do not start charging in the Easee app during the wait: that starts a new charging session at the charger's maximum current.
 
-If you turn off **Power-limit control** for the charger while PELS has it paused, PELS lets it charge again at 6 A and then stops changing the current. It stays at 6 A until the next charging session starts. Raise the current in the Easee app if you want it to charge faster.
+If you turn off **Power-limit control** for the charger while PELS has it paused, PELS lets it charge again at the active minimum from the car or charger default (6 A when neither is set) and then stops changing the current. It stays at that current until the next charging session starts. Raise the current in the Easee app if you want it to charge faster.
 
-If you turn off **Use built-in device control** while PELS has the charger paused, PELS still sets 6 A when it wants the charger running, because only a current resumes a paused session. After that, your own Flow sets the current.
+If you turn off **Use built-in device control** while PELS has the charger paused, PELS still sets the active minimum from the car or charger default (6 A when neither is set) when it wants the charger running, because only a current resumes a paused session. After that, your own Flow sets the current.
 
 PELS does not change the charger's maximum current setting in the Easee app.
 

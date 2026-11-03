@@ -5,7 +5,7 @@ import {
 } from '../../packages/shared-domain/src/binaryControlState';
 import { isBinaryDrivenIntent } from './executableDesiredState';
 import { getSteppedLoadStep, isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
-import type { SteppedLoadStep } from '../../packages/contracts/src/types';
+import type { SteppedLoadProfile, SteppedLoadStep } from '../../packages/contracts/src/types';
 import { runBinaryControl } from './binaryControlShared';
 import type {
   ExecutableSteppedLoadDevice,
@@ -150,15 +150,9 @@ const skipsHeldStepRaise = (
   desiredStep: SteppedLoadStep,
 ): boolean => {
   if (intent.stepDirection !== 'down_only') return false;
-  const { steppedLoadProfile: profile } = intent;
   const live = ctx.readDevice(intent.id);
   const liveOn = live !== undefined && isBinaryOnOrUnknown(live);
-  const reported = liveOn ? getSteppedLoadStep(profile, live.reportedStepId) : null;
-  if (
-    reported !== null
-    && !isSteppedLoadOffStep(profile, reported.id)
-    && desiredStep.planningPowerW < reported.planningPowerW
-  ) return false;
+  if (isReportedStepDescent(intent.steppedLoadProfile, live, desiredStep)) return false;
   // An unknown native limit was prepared from measured draw, never from its
   // lowest-rung planning fallback. Recheck that decided descent against the
   // live reading; an OFF or a lower draw cannot authorize this held write.
@@ -170,6 +164,18 @@ const skipsHeldStepRaise = (
     { desiredStepId: desiredStep.id, reportedStepId: live?.reportedStepId ?? null, observedOn: liveOn },
   );
   return true;
+};
+
+/** Exact telemetry can prove a descent even when the new command ladder excludes its rung. */
+const isReportedStepDescent = (
+  profile: SteppedLoadProfile,
+  live: ExecutorDeviceRead | undefined,
+  desiredStep: SteppedLoadStep,
+): boolean => {
+  if (!live || !isBinaryOnOrUnknown(live) || live.reportedStepId === undefined
+    || isSteppedLoadOffStep(profile, live.reportedStepId)) return false;
+  const reportedPowerW = getSteppedLoadStep(profile, live.reportedStepId)?.planningPowerW ?? live.reportedStepPowerW;
+  return reportedPowerW !== undefined && desiredStep.planningPowerW < reportedPowerW;
 };
 
 const isUnknownNativeLimitDescent = (

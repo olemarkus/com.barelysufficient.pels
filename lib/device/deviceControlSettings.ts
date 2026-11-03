@@ -25,6 +25,10 @@ import { normalizeEvBoostSettings } from '../../packages/shared-domain/src/setti
 import { normalizeEvChargeTargetSettings } from '../../packages/shared-domain/src/settings/evChargeTarget';
 import { normalizeTemperatureBoostSettings } from '../../packages/shared-domain/src/settings/temperatureBoost';
 import { normalizeEvCarAssociations } from '../../packages/shared-domain/src/settings/evCarAssociations';
+import {
+  readEvChargingCurrentLimitsSetting, resolveEvChargingCurrentPolicy,
+  type EvChargingCurrentLimitsRead, type EvChargingCurrentPolicy,
+} from './evChargingCurrentLimitSettings';
 import { normalizeDeviceControlProfiles } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { isDevicePowerControlModes } from '../../packages/shared-domain/src/settings/devicePowerControlModes';
 import { readSettingsKeyList } from '../utils/settingsKeyList';
@@ -53,6 +57,8 @@ import {
   EV_BOOST_SETTINGS,
   EV_CHARGE_TARGET_SETTINGS,
   EV_CAR_ASSOCIATIONS,
+  EV_CAR_CURRENT_LIMITS,
+  EV_CHARGER_CURRENT_LIMITS,
   MANAGED_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
   OVERSHOOT_BEHAVIORS,
@@ -89,6 +95,8 @@ type DeviceControlMaps = {
   readonly evBoost: EvBoostSettings;
   readonly evChargeTargets: EvChargeTargetSettings;
   readonly evCarAssociations: EvCarAssociations;
+  readonly evCarCurrentLimits: EvChargingCurrentLimitsRead;
+  readonly evChargerCurrentLimits: EvChargingCurrentLimitsRead;
   readonly nativeEvWiring: NativeWiringPolicy;
   readonly driverOverrides: Readonly<Record<string, string>>;
   readonly controlProfiles: DeviceControlProfilesRead;
@@ -171,6 +179,8 @@ export class DeviceControlSettings {
     evBoost: {},
     evChargeTargets: {},
     evCarAssociations: {},
+    evCarCurrentLimits: { state: 'unavailable' },
+    evChargerCurrentLimits: { state: 'unavailable' },
     nativeEvWiring: { devices: {}, state: 'unavailable' },
     driverOverrides: {},
     controlProfiles: { profiles: {}, state: 'unavailable' },
@@ -214,6 +224,24 @@ export class DeviceControlSettings {
     return this.maps.evChargeTargets[deviceId];
   }
   getEvCarAssociationCarIds(deviceId: string): string[] { return this.maps.evCarAssociations[deviceId]?.carIds ?? []; }
+  resolveEvCarCurrentLimits(carId: string): EvChargingCurrentPolicy {
+    if (this.maps.evCarCurrentLimits.state === 'unavailable') {
+      this.maps = { ...this.maps,
+        evCarCurrentLimits: readEvChargingCurrentLimitsSetting(
+          this.settings, EV_CAR_CURRENT_LIMITS, this.maps.evCarCurrentLimits,
+        ) };
+    }
+    return resolveEvChargingCurrentPolicy(this.maps.evCarCurrentLimits, carId);
+  }
+  resolveEvChargerCurrentLimits(deviceId: string): EvChargingCurrentPolicy {
+    if (this.maps.evChargerCurrentLimits.state === 'unavailable') {
+      this.maps = { ...this.maps,
+        evChargerCurrentLimits: readEvChargingCurrentLimitsSetting(
+          this.settings, EV_CHARGER_CURRENT_LIMITS, this.maps.evChargerCurrentLimits,
+        ) };
+    }
+    return resolveEvChargingCurrentPolicy(this.maps.evChargerCurrentLimits, deviceId);
+  }
   getDeviceControlProfile(deviceId: string): DeviceControlProfile | undefined {
     return this.maps.controlProfiles.profiles[deviceId];
   }
@@ -334,6 +362,12 @@ export class DeviceControlSettings {
       ),
       evCarAssociations: normalizeOrKeep(
         settings.get(EV_CAR_ASSOCIATIONS), normalizeEvCarAssociations, current.evCarAssociations,
+      ),
+      evCarCurrentLimits: readEvChargingCurrentLimitsSetting(
+        settings, EV_CAR_CURRENT_LIMITS, current.evCarCurrentLimits,
+      ),
+      evChargerCurrentLimits: readEvChargingCurrentLimitsSetting(
+        settings, EV_CHARGER_CURRENT_LIMITS, current.evChargerCurrentLimits,
       ),
       nativeEvWiring: this.readNativeWiringPolicy(),
       driverOverrides: isStringMap(driverOverrides) ? normalizeStringMap(driverOverrides) : current.driverOverrides,

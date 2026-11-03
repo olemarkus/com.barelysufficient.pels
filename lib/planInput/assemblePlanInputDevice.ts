@@ -15,6 +15,7 @@ const withoutNonPlanInputFields = (device: ToPlanDeviceInput) => {
     temperatureAdjustmentsDisabled: _temperatureAdjustmentsDisabled,
     steppedLoadProfile: _confirmedSteppedLoadProfile,
     targetPowerConfig: _targetPowerConfig,
+    carCurrentRangeUnavailable: _carCurrentRangeUnavailable,
     measuredPowerKw: _measuredPowerKw,
     measuredPowerIsDirectMeasurement: _measuredPowerIsDirectMeasurement,
     binaryControl: _binaryControl,

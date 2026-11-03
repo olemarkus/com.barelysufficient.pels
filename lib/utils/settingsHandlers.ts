@@ -30,6 +30,8 @@ import {
   EV_BOOST_SETTINGS,
   EV_CHARGE_TARGET_SETTINGS,
   EV_CAR_ASSOCIATIONS,
+  EV_CAR_CURRENT_LIMITS,
+  EV_CHARGER_CURRENT_LIMITS,
   EXPORT_FIXED,
   EXPORT_PRICE_ENABLED,
   EXPORT_PRICE_SOURCE,
@@ -361,6 +363,8 @@ const SNAPSHOT_REPARSE_SETTINGS: readonly (readonly [string, string])[] = [
   // a re-parse the dropped source kept feeding boost and Smart tasks until the
   // next scheduled refresh.
   [EV_CAR_ASSOCIATIONS, 'ev_car_associations_change'],
+  [EV_CAR_CURRENT_LIMITS, 'ev_car_current_limits_change'],
+  [EV_CHARGER_CURRENT_LIMITS, 'ev_charger_current_limits_change'],
 ];
 
 function buildSnapshotReparseHandlers(deps: SettingsHandlerDeps): SettingsHandlerMap {

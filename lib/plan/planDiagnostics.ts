@@ -309,7 +309,7 @@ const resolveStarvationEligibility = (
   // The episode cannot outlive the hour: `applyObservationSpan` hard-resets the
   // accrual on the first cycle eligibility drops, which is the cycle the hold
   // returns.
-  if (device.startPolicyHoldActive === true) return EXCLUDED;
+  if (device.startPolicyHoldActive === true || device.carCurrentRangeHeld === true) return EXCLUDED;
   // And for an hour the device's own smart task defers (`deferredHold`): the
   // task scheduled its energy for a cheaper hour and holds the device off until
   // then (owner ruling, 2026-09-25). PELS is not withholding power, and a "Let it

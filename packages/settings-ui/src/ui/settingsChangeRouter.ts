@@ -1,3 +1,6 @@
+import {
+  clearEvCarCurrentLimits, loadEvCarCurrentLimits, clearEvChargerCurrentLimits, loadEvChargerCurrentLimits,
+} from './deviceDetail/chargingCurrentLimits.tsx';
 import { invalidateDeferredObjectiveHistoryRead } from './deferredObjectiveHistoryRead.ts';
 import { notifySchedulesSettingChanged } from './schedules.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
@@ -29,6 +32,8 @@ import {
   EV_BOOST_SETTINGS,
   EV_CHARGE_TARGET_SETTINGS,
   EV_CAR_ASSOCIATIONS,
+  EV_CAR_CURRENT_LIMITS,
+  EV_CHARGER_CURRENT_LIMITS,
   NATIVE_EV_WIRING_DEVICES,
   RESPECT_EXTERNAL_OFF_DEVICES,
   DEVICE_START_POLICIES,
@@ -488,6 +493,11 @@ export const createSettingsUnsetHandler = () => (key: string) => {
   reloadObjectivesIfObjectiveKey(key, 'settings.unset');
   reloadWeatherInsightIfWeatherKey(key, 'settings.unset');
   reloadRecommendationsIfKey(key, 'settings.unset');
+  if (key === EV_CAR_CURRENT_LIMITS || key === EV_CHARGER_CURRENT_LIMITS) {
+    if (key === EV_CAR_CURRENT_LIMITS) clearEvCarCurrentLimits();
+    else clearEvChargerCurrentLimits();
+    refreshModeAndDeviceControls();
+  }
   refreshModeCatalogSurfaces(key, 'settings.unset');
   // An unset device-control map is a real configuration change — the runtime
   // reads an absent map as "nobody opted in" — so it has to reload here too.
@@ -533,6 +543,14 @@ const DEVICE_SETTING_RELOADERS: Readonly<Record<string, { load: () => Promise<vo
   },
   [EV_BOOST_SETTINGS]: { load: loadEvBoostSettings, failure: 'Failed to load EV boost settings' },
   [EV_CHARGE_TARGET_SETTINGS]: { load: loadEvChargeTargetSettings, failure: 'Failed to load charge target settings' },
+  [EV_CAR_CURRENT_LIMITS]: {
+    load: () => loadEvCarCurrentLimits().then(refreshModeAndDeviceControls),
+    failure: 'Failed to load car charging current limits',
+  },
+  [EV_CHARGER_CURRENT_LIMITS]: {
+    load: () => loadEvChargerCurrentLimits().then(refreshModeAndDeviceControls),
+    failure: 'Failed to load charger default current limits',
+  },
   [DEVICE_EXPECTED_POWER_OVERRIDES]: {
     load: loadDeviceExpectedPowerOverrides,
     failure: 'Failed to load expected power overrides',

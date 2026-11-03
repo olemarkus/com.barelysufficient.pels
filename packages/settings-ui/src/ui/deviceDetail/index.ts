@@ -1,3 +1,4 @@
+import { renderChargerCurrentLimits } from './chargingCurrentLimits.tsx';
 import { hideDeviceDetailLiveStatus, renderDeviceDetailLiveStatus } from './liveStatus.ts';
 import { initContinuousBatteryPlanRefresh, setContinuousBatteryPlanDevice } from './continuousBatteryPlan.tsx';
 import { hideDeviceSmartTaskBox, renderDeviceSmartTaskBox } from './smartTaskBox.ts';
@@ -309,8 +310,7 @@ const refreshOpenDeviceDetail = () => {
   renderDeviceSmartTaskBox(currentDetailDeviceId);
   setDeviceDetailControlStates(currentDetailDeviceId, device);
   setDeviceDetailShedBehavior(currentDetailDeviceId, device, updateSetStepOptionLabel);
-  renderSteppedLoadDraft(device);
-  renderTargetPowerConfig(device);
+  renderDeviceDetailPowerModel(device);
   renderExpectedPowerField(device);
   renderTemperatureBoostSettings(device);
   renderChargingCardSettings(device);
@@ -322,6 +322,12 @@ const refreshOpenDeviceDetail = () => {
   updateSurplusSectionVisibility(device);
   updateShedFieldVisibility(device);
   syncSwitchRowDisabledStyling();
+};
+
+const renderDeviceDetailPowerModel = (device: SettingsUiDeviceView): void => {
+  renderSteppedLoadDraft(device);
+  renderTargetPowerConfig(device);
+  renderChargerCurrentLimits(device, refreshOpenDeviceDetail);
 };
 
 export const openDeviceDetail = (deviceId: string) => {
@@ -344,8 +350,7 @@ export const openDeviceDetail = (deviceId: string) => {
   renderDeviceSmartTaskBox(deviceId);
   setDeviceDetailControlStates(deviceId, device);
   setDeviceDetailShedBehavior(deviceId, device, updateSetStepOptionLabel);
-  renderSteppedLoadDraft(device);
-  renderTargetPowerConfig(device);
+  renderDeviceDetailPowerModel(device);
   renderExpectedPowerField(device);
   renderTemperatureBoostSettings(device);
   renderChargingCardSettings(device);

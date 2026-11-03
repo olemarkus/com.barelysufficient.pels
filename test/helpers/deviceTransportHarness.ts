@@ -34,10 +34,9 @@ import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
 import type { ChargingCurrentControl } from '../../lib/device/chargingCurrentControl';
 import { DEVICES_API_PATH, setRestClient } from '../../lib/device/transport/managerHomeyApi';
-import type { SnapshotRefreshOptions } from '../../lib/device/transport/transportTypes';
+import type { DeviceTransportOptions, SnapshotRefreshOptions } from '../../lib/device/transport/transportTypes';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type {
-  DeviceParseSettings,
   DeviceParseSources,
   FlowBackedRead,
   NativeWiringRead,
@@ -65,7 +64,7 @@ const emitterByTransport = new WeakMap<DeviceTransport, ObservedStateEmitter>();
  * read.
  */
 export type TestTransportInputs = {
-  settings?: Partial<DeviceParseSettings>;
+  settings?: Partial<DeviceTransportOptions['settings']>;
   nativeWiring?: Partial<NativeWiringRead>;
   flowBacked?: Partial<FlowBackedRead>;
   batteryManaged?: Partial<BatteryManagedRead>;
@@ -73,7 +72,7 @@ export type TestTransportInputs = {
 };
 
 /** Every device managed and controllable, the filter on, and no per-device configuration. */
-export const testParseSettings = (settings: Partial<DeviceParseSettings> = {}): DeviceParseSettings => ({
+export const testParseSettings = (settings: Partial<DeviceTransportOptions['settings']> = {}): DeviceTransportOptions['settings'] => ({
   isManaged: () => true,
   isControllable: () => true,
   isManagedFilterActive: () => true,
@@ -86,6 +85,8 @@ export const testParseSettings = (settings: Partial<DeviceParseSettings> = {}): 
     ?? (settings.getDeviceTargetPowerConfig?.(id) || settings.getDeviceControlProfile?.(id) || hasCurrent
       ? 'manual' : 'automatic'),
   getEvCarAssociationCarIds: () => [],
+  resolveEvCarCurrentLimits: () => ({ kind: 'unrestricted' }),
+  resolveEvChargerCurrentLimits: () => ({ kind: 'unrestricted' }),
   ...settings,
 });
 

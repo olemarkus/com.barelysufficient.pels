@@ -553,6 +553,8 @@ function resolvePostureHoldReasonAdoption(
   // this the posture adoption ran first and discarded the task reason outright,
   // because a deferring task does not lift the hold (only a `planned` decision
   // stamps `startPolicyHoldLifted`, and a deferring task is not one).
+  // A task cannot lift an incompatible car range, even while it is driving.
+  if (reason.code === PLAN_REASON_CODES.carCurrentRangeUnavailable) return reason;
   if (ctx.deferredHoldCauseByDeviceId?.has(dev.id)) return null;
   return reason;
 }

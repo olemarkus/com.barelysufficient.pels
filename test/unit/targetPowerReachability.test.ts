@@ -1,5 +1,6 @@
 import {
   buildEvTargetPowerCandidateProfile,
+  resolveEvTargetPowerExactStepById,
   buildTargetPowerReachabilityState,
   resolveEvTargetPowerConfirmedProfile,
   resolveEvTargetPowerPlannerProfile,
@@ -33,6 +34,40 @@ const buildConfig = (maxReachedPowerW = 5_750): TargetPowerConfigWithReachabilit
 };
 
 describe('targetPowerReachability', () => {
+  it.each(['ev_charger_1_phase', 'ev_charger_3_phase'] as const)(
+    'bounds candidate commands and probes by the matched car current range (%s)',
+    (preset) => {
+      const config: TargetPowerSteppedLoadConfig = {
+        enabled: true, preset, currentLimits: { minA: 9, maxA: 25 },
+      };
+      const candidate = buildEvTargetPowerCandidateProfile(config);
+      expect(candidate.steps.map((step) => step.id)).toEqual([
+        'off', '9a', '10a', '12a', '14a', '16a', '20a', '24a', '25a',
+      ]);
+      const cold = resolveEvTargetPowerConfirmedProfile(config);
+      expect(cold.steps.map((step) => step.id)).toEqual(['off', '9a']);
+      expect(resolveEvTargetPowerExactStepById(config, '8a')).toBeUndefined();
+      expect(resolveEvTargetPowerExactStepById(config, '28a')).toBeUndefined();
+      const phaseCount = preset === 'ev_charger_3_phase' ? 3 : 1;
+      const confirmed = resolveEvTargetPowerConfirmedProfile(config, 25 * 230 * phaseCount);
+      expect(confirmed.steps.at(-1)?.id).toBe('25a');
+      expect(resolveEvTargetPowerPlannerProfile({ config, confirmedProfile: confirmed, nowMs: 1_000 }))
+        .toEqual(confirmed);
+    },
+  );
+
+  it('supports a single allowed current while keeping the off step', () => {
+    const config: TargetPowerSteppedLoadConfig = {
+      preset: 'ev_charger_1_phase', currentLimits: { minA: 25, maxA: 25 },
+    };
+    expect(resolveEvTargetPowerConfirmedProfile(config).steps.map((step) => step.id)).toEqual(['off', '25a']);
+  });
+
+  it('reuses charger reachability within the matched car range', () => {
+    const config = { ...buildConfig(), currentLimits: { minA: 8, maxA: 25 } };
+    expect(resolveValidTargetPowerReachability(config)).toMatchObject({ maxReachedPowerW: 5750 });
+  });
+
   it('keeps the candidate ceiling while ending the confirmed ladder at an exact 25 A rung', () => {
     const config = buildConfig();
     const candidate = buildEvTargetPowerCandidateProfile(config);

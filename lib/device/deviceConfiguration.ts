@@ -7,6 +7,7 @@
 import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { resolveSetpointShedFloorC } from '../../packages/shared-domain/src/utils/airtreatmentShedTemperature';
+import type { EvChargingCurrentLimitPolicy } from './evChargingCurrentLimitPolicy';
 
 export type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 
@@ -64,12 +65,19 @@ const resolveConfiguration = (snapshot: TransportDeviceSnapshot): DeviceConfigur
 export class DeviceConfigurationStore implements DeviceConfiguration {
   private readonly byId = new Map<string, DeviceConfigurationRead>();
 
+  constructor(
+    private readonly currentLimitPolicy: Pick<EvChargingCurrentLimitPolicy, 'projectConfiguration'> = {
+      projectConfiguration: (configuration) => configuration,
+    },
+  ) {}
+
   get(deviceId: string): DeviceConfigurationRead | undefined {
-    return this.byId.get(deviceId);
+    const configuration = this.byId.get(deviceId);
+    return configuration && this.currentLimitPolicy.projectConfiguration(configuration);
   }
 
   getAll(): DeviceConfigurationRead[] {
-    return [...this.byId.values()];
+    return [...this.byId.values()].map((configuration) => this.currentLimitPolicy.projectConfiguration(configuration));
   }
 
   ids(): string[] {

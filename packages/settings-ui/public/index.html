@@ -1305,12 +1305,12 @@
           <details class="settings-collapse detail-collapse" open>
             <summary>
               <h3 class="section-title">Car</h3>
-              <span class="section-hint">Where the battery level comes from</span>
+              <span class="section-hint">Battery level and charging limits</span>
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
               <p class="muted" id="device-detail-car-intro">
-                Select the cars that charge here. When PELS matches one to this charger, it reads that car's battery level.
+                Select the cars that charge here. When PELS matches one to this charger, it uses that car's battery level and saved charging current limits.
               </p>
               <p class="detail-car-status" id="device-detail-car-status" hidden></p>
               <div class="detail-car-list" id="device-detail-car-list"></div>
@@ -1563,6 +1563,7 @@
                   <small class="field__hint" id="device-detail-power-control-range"></small>
                 </div>
                 <div id="device-detail-charging-current"></div>
+                <div id="device-detail-charger-current-limits" hidden></div>
                 <div class="md-switch-row" id="device-detail-native-wiring-row" hidden>
                   <md-switch id="device-detail-native-wiring"></md-switch>
                   <span class="md-switch-row__content">

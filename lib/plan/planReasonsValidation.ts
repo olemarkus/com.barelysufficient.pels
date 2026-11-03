@@ -68,6 +68,7 @@ const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
   // standing shed intent while the charger still runs.
   { code: PLAN_REASON_CODES.chargeTargetReached },
   { code: PLAN_REASON_CODES.awaitingBatteryLevel },
+  { code: PLAN_REASON_CODES.carCurrentRangeUnavailable },
   { code: PLAN_REASON_CODES.neutralStartupHold },
   { code: PLAN_REASON_CODES.shortfall },
   { code: PLAN_REASON_CODES.cooldownShedding },
@@ -124,6 +125,10 @@ const REASON_REQUIRED_FLAGS = [
     code: PLAN_REASON_CODES.awaitingBatteryLevel,
     flags: ['chargeTargetHeld'],
   },
+  {
+    code: PLAN_REASON_CODES.carCurrentRangeUnavailable,
+    flags: ['carCurrentRangeHeld'],
+  },
 ] as const satisfies readonly {
   code: PlanReasonCode;
   flags: readonly (keyof DevicePlanDevice)[];
@@ -141,6 +146,7 @@ const INACTIVE_REASON_RULES: readonly ReasonCodeRule[] = [
   // runs, `inactive` once it is off.
   { code: PLAN_REASON_CODES.chargeTargetReached },
   { code: PLAN_REASON_CODES.awaitingBatteryLevel },
+  { code: PLAN_REASON_CODES.carCurrentRangeUnavailable },
 ] as const;
 
 function getAllowedReasonRules(plannedState: string): readonly ReasonCodeRule[] {

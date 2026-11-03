@@ -22,6 +22,7 @@ import {
 } from './current';
 import { isNativeSteppedLoadControlEnabled } from '../deviceAdapter';
 import type { CapabilityWrite, SessionEvidence } from '../deviceAdapter';
+import { buildEvTargetPowerCandidateProfile, isEvTargetPowerConfig } from '../targetPowerReachability';
 
 /**
  * How PELS's write to an Easee's charging switch reaches the charger: as a
@@ -36,14 +37,14 @@ import type { CapabilityWrite, SessionEvidence } from '../deviceAdapter';
  * control:
  *
  * - **off** writes 0 A.
- * - **on** writes 6 A, the smallest current the charger charges at. PELS sets its
+ * - **on** writes the configured minimum (6 A by default). PELS sets its
  *   planned level from there with its ordinary step commands.
  * - **on** for a session known to be stopped (`plugged_in`: Easee's `Car connected`
  *   or `Awaiting Authentication`) goes to the switch, which starts a new one: a
  *   charger stopped outside PELS, in the Easee app, still gets its session
  *   started again.
  * - **on** for a session the car has completed (`Completed`, also `plugged_in`)
- *   writes 6 A like any open one. The car is still connected and has stopped
+ *   writes the configured minimum like any open one. The car is still connected and has stopped
  *   asking for charge, and a start would open a new session at 32 A for a full
  *   car. The Easee session observes the mode (`hasCarStopEvidence`).
  *
@@ -57,11 +58,11 @@ import type { CapabilityWrite, SessionEvidence } from '../deviceAdapter';
  *
  * Without built-in control the switch is the app's, with two exceptions: a
  * session paused below 6 A (PELS's own 0 A pause, say, from before built-in
- * control was turned off) gets 6 A on, since no start command resumes it; and
- * **on** for a session the car has completed sends nothing. That session is
- * open and the car is done: a start would open a new one, and PELS does not set
- * the current of a charger it does not control. It charges again by itself
- * when the car asks.
+ * control was turned off) gets the configured minimum on, since no start
+ * command resumes it; and **on** for a session the car has completed sends
+ * nothing. That session is open and the car is done: a start would open a new
+ * one, and PELS does not set the current of a charger it does not control.
+ * It charges again by itself when the car asks.
  */
 export type EaseeSwitchWrite =
   | { kind: 'current'; write: CapabilityWrite }
@@ -72,10 +73,23 @@ const PAUSE: EaseeSwitchWrite = {
   kind: 'current',
   write: { capabilityId: EASEE_CHARGER_CURRENT_CAPABILITY_ID, value: 0 },
 };
-const RESUME: EaseeSwitchWrite = {
+const resume = (snapshot: TransportDeviceSnapshot): EaseeSwitchWrite => ({
   kind: 'current',
-  write: { capabilityId: EASEE_CHARGER_CURRENT_CAPABILITY_ID, value: EASEE_MIN_CHARGING_CURRENT_A },
-};
+  write: { capabilityId: EASEE_CHARGER_CURRENT_CAPABILITY_ID,
+    value: resumeCurrent(snapshot) },
+});
+
+function resumeCurrent(snapshot: TransportDeviceSnapshot): number {
+  const config = snapshot.targetPowerConfig;
+  const limits = config?.currentLimits;
+  if (!limits) return EASEE_MIN_CHARGING_CURRENT_A;
+  const profile = isEvTargetPowerConfig(config)
+    ? buildEvTargetPowerCandidateProfile(config) : snapshot.steppedLoadProfile;
+  const allowed = profile?.steps.filter((step) => step.planningCurrentA !== undefined
+    && step.planningCurrentA >= limits.minA && step.planningCurrentA <= limits.maxA);
+  // A car whose minimum exceeds the charger's maximum cannot resume here.
+  return allowed?.[0]?.planningCurrentA ?? 0;
+}
 const SWITCH: EaseeSwitchWrite = { kind: 'switch' };
 const NOTHING: EaseeSwitchWrite = { kind: 'none' };
 
@@ -91,7 +105,7 @@ export function resolveEaseeSwitchWrite(
 ): EaseeSwitchWrite {
   if (isEaseeUnderBuiltInControl(snapshot)) {
     if (!desired) return PAUSE;
-    return isStoppedSession(snapshot, sessions) ? SWITCH : RESUME;
+    return isStoppedSession(snapshot, sessions) ? SWITCH : resume(snapshot);
   }
   return desired && isCompletedSession(snapshot, sessions) ? NOTHING : SWITCH;
 }
@@ -105,7 +119,7 @@ export function recoverEaseeSwitchWrite(
   const capabilityObj = getCapabilityObj(device);
   if (!isEaseeChargerCurrentCandidate(device, capabilityObj)) return SWITCH;
   const currentA = readCurrentA(capabilityObj[EASEE_CHARGER_CURRENT_CAPABILITY_ID]?.value);
-  return currentA !== undefined && !holdsChargingCurrent(currentA) ? RESUME : SWITCH;
+  return currentA !== undefined && !holdsChargingCurrent(currentA) ? resume(snapshot) : SWITCH;
 }
 
 /**

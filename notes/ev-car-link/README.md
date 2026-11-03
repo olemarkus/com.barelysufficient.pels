@@ -1,7 +1,8 @@
 # EV car ↔ charger link — detection probe
 
-**Status: probe + adoption.** Correlation is still observation-only — nothing here reaches
-planning or actuation directly. What the probe resolves is now *used*: for a charger the user
+**Status: probe + adoption.** Correlation observes connection evidence and resolves
+car identity. The device owner uses that identity for battery adoption and the
+matched car’s saved charging-current range; the probe itself issues no commands. What the probe resolves is now *used*: for a charger the user
 opted in, the associated car's `measure_battery` becomes that charger's `stateOfCharge`, which
 does reach anything that reads a charger's charge (EV boost, smart-task progress), and the car's
 qualified charge limit rides with it (`carChargeLimitPercent`) as reporting evidence for that charger's EV smart
@@ -191,6 +192,32 @@ per car").
 A car must publish **both** `ev_charging_state` and `measure_battery` to be offered in the
 picker. Only the first is needed to associate; the second is required because a car that
 cannot report a level has nothing to contribute to the feature the association exists for.
+
+## Car overrides and charger default current limits
+
+The owner can save a minimum and maximum charging current for each selected car
+in the charger's Car section, and a default range in the charger's Setup.
+`ev_car_current_limits` is keyed by car id; `ev_charger_current_limits` by charger
+id. A saved car range follows it to other chargers and replaces the charger
+default when that car is identified. Without a saved car override, including a
+non-smart car with no Homey telemetry or an unmatched connection, the charger
+default applies. Selection alone never identifies a car. Clearing a car's range
+returns it to the charger default.
+
+Runtime configuration resolves the current eligible association or explicit
+confirmation on every read. Confirmation retains identity through a car-app
+outage until the connection ends. An initially unread active policy holds charging off;
+later failed reads retain its accepted range. The device owner intersects the
+active range with its current-capable charger model. Manual EV presets supply
+the configured phase conversion; Automatic current models supply their
+integration-resolved amps. No supported level in that range means charging stays
+off. A car override never widens physical capabilities.
+
+Raw snapshots and observations remain unchanged, including current above a newly
+lowered maximum. Normal meter-driven planning chooses the next command;
+matching itself does not rebuild or reapply a plan. Delivery rejects a queued
+command outside the range that applies now without choosing another command.
+Minimum current governs active charging and never removes pausing.
 
 ## Correlation rules
 

@@ -1,3 +1,6 @@
+import {
+  loadEvCarCurrentLimits, loadEvChargerCurrentLimits, renderCarCurrentLimits,
+} from './chargingCurrentLimits.tsx';
 import type { EvCarAssociations } from '../../../../contracts/src/types.ts';
 import {
   type SettingsUiRecommendationCar,
@@ -146,9 +149,11 @@ const ensureCarsLoaded = async (render: () => void): Promise<void> => {
   const generation = carOptionsGeneration;
   let invalidatedInFlight = false;
   try {
-    const read = parseCarAssociationCandidatesRead(
-      await callApi<unknown>('GET', SETTINGS_UI_RECOMMENDATION_CARS_PATH),
-    );
+    const [candidates] = await Promise.all([
+      callApi<unknown>('GET', SETTINGS_UI_RECOMMENDATION_CARS_PATH),
+      loadEvCarCurrentLimits(), loadEvChargerCurrentLimits(),
+    ]);
+    const read = parseCarAssociationCandidatesRead(candidates);
     if (read.state === 'unavailable') throw new Error('Car candidates are unavailable.');
     carOptions = read.cars;
     invalidatedInFlight = generation !== carOptionsGeneration;
@@ -313,8 +318,14 @@ const matchHint = (car: CarOption, charger: SettingsUiDeviceDetailItem): string 
     : 'Not matched to this charger yet';
 };
 
+const canConfirmCar = (device: SettingsUiDeviceDetailItem, carId: string): boolean => (
+  device.available && isConnectedCharger(device) && device.carConfirmation?.carId !== carId
+);
+
 const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly string[]): void => {
   if (!deviceDetailCarList) return;
+  const editors = new Map([...deviceDetailCarList.querySelectorAll<HTMLElement>('[data-car-current-limits]')]
+    .map((element) => [element.dataset.carCurrentLimits, element]));
   deviceDetailCarList.replaceChildren();
   if (deviceDetailCarIntro) deviceDetailCarIntro.hidden = false;
 
@@ -337,9 +348,14 @@ const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly stri
     return;
   }
   for (const car of rows) {
-    deviceDetailCarList.append(carRow(device, car, ticked.includes(car.id), !orphans.includes(car)));
-    if (ticked.includes(car.id) && !orphans.includes(car) && device.available && isConnectedCharger(device)
-      && device.carConfirmation?.carId !== car.id) {
+    const selected = ticked.includes(car.id);
+    deviceDetailCarList.append(carRow(device, car, selected, !orphans.includes(car)));
+    if (!selected || orphans.includes(car)) continue;
+    const editor = editors.get(car.id) ?? document.createElement('div');
+    editor.dataset.carCurrentLimits = car.id;
+    deviceDetailCarList.append(editor);
+    renderCarCurrentLimits(editor, car, device, () => renderCarAssociation(currentDevice));
+    if (canConfirmCar(device, car.id)) {
       const button = document.createElement('md-outlined-button');
       button.textContent = 'Confirm connected car';
       button.setAttribute('aria-label', `Confirm ${formatDisplayDeviceName(car.name)} as the connected car`);

@@ -4,6 +4,7 @@ import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { isStartPolicyHeldDevice } from './shedding/startPolicyHold';
 import { isChargeTargetHeldDevice } from './shedding/chargeTargetHold';
+import { isCarCurrentRangeHeldDevice } from './shedding/carCurrentRangeHold';
 
 /**
  * A non-stepped device counts as "recovering" when it is currently observed off
@@ -29,7 +30,7 @@ export function isNonSteppedDeviceRecovering(
   // its charge target: no amount of room brings it back, so no stepped device owes
   // it a rung. It stays in the shed set, so it counts again once the hold ends.
   if (candidate.deferredHold !== undefined || isStartPolicyHeldDevice(candidate)
-    || isChargeTargetHeldDevice(candidate)) return false;
+    || isChargeTargetHeldDevice(candidate) || isCarCurrentRangeHeldDevice(candidate)) return false;
   if (state.swapLedger.isDonor(candidate.id) || state.swapLedger.reservationFor(candidate.id) !== undefined) {
     return true;
   }

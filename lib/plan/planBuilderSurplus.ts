@@ -34,6 +34,7 @@ import { withdrawSurplusEligibility, type PriceOptDeviceConfig } from './planSur
 import { resolveSurplusHold } from './shedding/surplusHold';
 import { resolveStartPolicyHold } from './shedding/startPolicyHold';
 import { isChargeTargetHeldDevice, resolveChargeTargetHold } from './shedding/chargeTargetHold';
+import { isCarCurrentRangeHeldDevice, resolveCarCurrentRangeHold } from './shedding/carCurrentRangeHold';
 
 // Re-exported so the builder's deps typing needs no extra planSurplusAbsorb import.
 export type { PriceOptDeviceConfig };
@@ -76,6 +77,7 @@ export function resolvePostureExcludeIds(
     ...decoration.admittedDeviceIds,
     ...admittedDevices.filter((device) => device.externalOffHoldActive === true).map((device) => device.id),
     ...admittedDevices.filter(isChargeTargetHeldDevice).map((device) => device.id),
+    ...admittedDevices.filter(isCarCurrentRangeHeldDevice).map((device) => device.id),
   ]);
 }
 
@@ -115,10 +117,13 @@ export function runStandingPostureHolds(
   // the release below: a charger below its target is an ordinary managed device,
   // so it earns no posture stamp (`ShedDecisions.recordPlannedShed`).
   const chargeTargetHold = resolveChargeTargetHold(admittedDevices);
+  const carCurrentRangeHold = resolveCarCurrentRangeHold(admittedDevices);
   const heldOffOnReleaseIds = applyPostSheddingHolds(
     sheddingPlan,
     decoration,
-    new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds, ...chargeTargetHold.holdIds]),
+    new Set([
+      ...surplusHold.holdIds, ...startPolicyHold.holdIds, ...chargeTargetHold.holdIds, ...carCurrentRangeHold.holdIds,
+    ]),
     state.shedDecisions,
     getConfig,
     leaveOffOnRelease,
@@ -145,6 +150,7 @@ export function runStandingPostureHolds(
   return {
     reasonById: new Map([
       ...surplusHold.reasonById, ...startPolicyHold.reasonById, ...chargeTargetHold.reasonById,
+      ...carCurrentRangeHold.reasonById,
     ]),
     heldOffOnReleaseIds,
   };
@@ -233,10 +239,13 @@ export function runSilentMeterSurplusHold(
   const startPolicyHold = resolveStartPolicyHold(admittedDevices);
   // And the charge target, off rather than at the owner's floor, as measured.
   const chargeTargetHold = resolveChargeTargetHold(admittedDevices);
+  const carCurrentRangeHold = resolveCarCurrentRangeHold(admittedDevices);
   applyPostSheddingHolds(
     sheddingPlan,
     decoration,
-    new Set([...surplusHold.holdIds, ...startPolicyHold.holdIds, ...chargeTargetHold.holdIds]),
+    new Set([
+      ...surplusHold.holdIds, ...startPolicyHold.holdIds, ...chargeTargetHold.holdIds, ...carCurrentRangeHold.holdIds,
+    ]),
     state.shedDecisions,
     (deviceId) => priceSettings[deviceId],
     deps.leaveOffOnRelease,
@@ -246,7 +255,10 @@ export function runSilentMeterSurplusHold(
   // policy over surplus, and the charge target last, so it wins the card. A
   // hold recorded on release needs no marking here:
   // this pass restores nothing, and the next build reads the stored hold.
-  return new Map([...surplusHold.reasonById, ...startPolicyHold.reasonById, ...chargeTargetHold.reasonById]);
+  return new Map([
+    ...surplusHold.reasonById, ...startPolicyHold.reasonById, ...chargeTargetHold.reasonById,
+    ...carCurrentRangeHold.reasonById,
+  ]);
 }
 
 function clearShedStepTargets(

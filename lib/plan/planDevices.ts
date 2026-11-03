@@ -15,6 +15,7 @@ import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
 import { applyOffStateReason } from './planOffStateReason';
 import { isStartPolicyHoldShed } from './shedding/startPolicyHold';
 import { isChargeTargetHoldShed } from './shedding/chargeTargetHold';
+import { isCarCurrentRangeHoldShed } from './shedding/carCurrentRangeHold';
 import { isDeferredHoldShed } from './shedding/deferredHold';
 import type { SheddingPlan } from './shedding/types';
 import { isSteppedLoadDevice } from './planSteppedLoad';
@@ -70,6 +71,7 @@ export function buildInitialPlanDevices(
       || isSurplusOnlyHoldShed(dev, state, shedReasons)
       || isStartPolicyHoldShed(dev, shedReasons)
       || isChargeTargetHoldShed(dev, shedReasons)
+      || isCarCurrentRangeHoldShed(dev, shedReasons)
       || isDeferredHoldShed(dev, shedReasons),
   );
   // The ranks the fairness clamp compares a boosted device against (`isFairnessLimited`).
