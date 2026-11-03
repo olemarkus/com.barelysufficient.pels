@@ -174,12 +174,18 @@ alone cannot restore it. Only a newer independent target report or read can.
   instance when Power-limit control is turned off for it.
 
   With built-in control off the switch is the app's, read and written as any
-  EV charger's, with one exception: a switch-on for a session paused below 6 A
-  writes 6 A, because no start command resumes it. That is PELS's own 0 A
+  EV charger's, with two exceptions. A switch-on for a session paused below
+  6 A writes 6 A, because no start command resumes it. That is PELS's own 0 A
   pause when the owner turned built-in control off before PELS resumed it;
   without the exception nothing would raise the current again. The raw
   current comes from the tracked Homey device, since the snapshot has no
-  native step for a charger PELS does not step itself.
+  native step for a charger PELS does not step itself. A switch-on for a
+  session the car has completed sends nothing: the session is open and the
+  car is done, a start would open a new one, and PELS sets no current on a
+  charger it does not control. The charger charges again by itself when the
+  car asks. The transport sends no device command for it (`SwitchWrite`
+  `none`), but the executor still books the switch-on as sent, so it goes
+  unconfirmed and the ordinary back-off follows.
 
   Unlike a stopped session, a paused one resumes on any current of 6 A or
   more, so a charging step written while the plan holds the charger off would

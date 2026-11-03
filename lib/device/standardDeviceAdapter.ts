@@ -31,6 +31,7 @@ export const standardDeviceAdapter: Omit<DeviceAdapter, 'readsAsReported'> = {
   phaseReport: () => ({ kind: 'not_reported' }), currentBindings: () => [],
   nativeCurrentControls: [], readBackAfterWrite: true, supportsProductionLimits: true,
   switchWrite: (snapshot, request): SwitchWrite => ({
+    kind: 'write',
     write: { ...request, capabilityId: snapshot.binaryWriteCapabilityId ?? request.capabilityId },
     readBackAsWritten: true,
   }),
