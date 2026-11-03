@@ -793,11 +793,14 @@ export default tseslint.config(
   // the existing task/mode command owners and drain before userdata closes.
   // Raised 38 -> 39 for passive heating evidence: the composition root builds
   // Main's collector beside its other Main-meter taps.
+  // Raised 39 -> 40 so the battery's Main device reads take the membership
+  // owner's rule (`filterDevicesForHome`) instead of an empty list before
+  // membership is wired; no setup module that app.ts imports may take lib/home.
   {
     files: ['app.ts'],
     plugins: { 'import-x': importX },
     rules: {
-      'import-x/max-dependencies': ['error', { max: 39, ignoreTypeImports: true }],
+      'import-x/max-dependencies': ['error', { max: 40, ignoreTypeImports: true }],
     },
   },
   // lib/store is the one place `node:sqlite` is named (dependency-cruiser's

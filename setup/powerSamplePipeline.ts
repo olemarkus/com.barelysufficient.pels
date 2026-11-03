@@ -287,9 +287,6 @@ export class PowerSamplePipeline {
     // contract (it trains on hourly buckets) and takes the merged value.
     this.deps.recordCurtailmentSample?.(currentPowerW, request.coTemporalGenerationW, nowMs);
     this.deps.recordBatteryDemandSample?.(currentPowerW, generationW, nowMs);
-    if (this.deps.recordHeatingObservations) {
-      this.deps.recordHeatingObservations(this.deps.getDeviceSurfaces(), nowMs);
-    }
     const powerTracker = this.deps.getPowerTracker();
     const previousSampleTs = powerTracker.lastTimestamp;
     try {
@@ -354,6 +351,10 @@ export class PowerSamplePipeline {
       });
       if (previousSampleTs === undefined || nowMs > previousSampleTs) {
         planEngine.clearStartupRestoreStabilization(nowMs);
+      }
+      // After the tracker and the plan rebuild, so reading the devices again can never hold them up.
+      if (this.deps.recordHeatingObservations) {
+        this.deps.recordHeatingObservations(this.deps.getDeviceSurfaces(), nowMs);
       }
     } finally {
       addPerfDuration('power_sample_ms', Date.now() - sampleStart);
