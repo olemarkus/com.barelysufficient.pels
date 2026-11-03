@@ -295,7 +295,7 @@ describe('applyShedReleaseIntent', () => {
     expect(action).toMatchObject({
       intent: {
         id: 'dev-1',
-        plannedShedTarget: { kind: 'step', stepId: 'low' },
+        plannedShedTarget: { kind: 'step' },
         // Load-bearing: the release path drives the binary axis ON so
         // `applySteppedLoadCommand` does not early-return on its observed-off guard.
         desiredOn: true,

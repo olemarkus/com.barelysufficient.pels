@@ -20,12 +20,10 @@ export const projectLifecycleFallbackDevice = (
     name: device.name,
     isEvCharger: device.isEvCharger,
     controlAdapter: device.controlAdapter,
-    selectedStepId: device.selectedStepId,
     stepCommandPending: device.stepCommandPending,
     stepCommandRetryCount: device.stepCommandRetryCount,
     nextStepCommandRetryAtMs: device.nextStepCommandRetryAtMs,
     desiredStepId: device.desiredStepId,
-    previousStepId: device.previousStepId,
     stepCommandStatus: device.stepCommandStatus,
     binaryAxis: isCanSetControl(device)
       ? { state: 'writable' }

@@ -48,12 +48,11 @@ export const resolveLifecycleFallbackRequest = (params: {
   } = params;
   const posture = resolveFallbackPosture(device, configuredFallback);
   if (posture.kind === 'no_writable_axis') return { state: 'no_writable_axis' };
-  // The plan's rung decoration stays out of the read: the observed rung is
-  // resolved from the report, against the ladder the step posture drives. The
-  // dispatcher's retries judge a fresh read by the same ladder.
-  const { selectedStepId: _plannedStepId, ...descriptor } = device;
+  // The observed rung is resolved from the report, against the ladder the step
+  // posture drives. The dispatcher's retries judge a fresh read by the same
+  // ladder.
   const observed = buildExecutableObservedDeviceState(
-    { ...descriptor, ...observedState },
+    { ...device, ...observedState },
     posture.kind === 'step' ? posture.profile : undefined,
   );
   if (posture.kind === 'binary_off') return { state: 'resolved', request: { kind: 'binary_off', observed } };
@@ -119,15 +118,14 @@ const buildSteppedIntent = (
   steppedLoadProfile: posture.profile,
   controlAdapter: device.controlAdapter,
   // The lifecycle fallback drives the device to its configured posture, and for
-  // a step-axis device that posture IS `posture.stepId`. It keeps its own
-  // discriminant (the `step_fallback` request kind) rather than borrowing
-  // the capacity path's — see
-  // `notes/state-management/deferred-objective-lifecycle-carveout.md`.
-  plannedShedTarget: { kind: 'step', stepId: posture.stepId },
+  // a step-axis device that posture IS `posture.stepId`, the rung a `step`
+  // end state names through `desired.stepId`. It keeps its own discriminant
+  // (the `step_fallback` request kind) rather than borrowing the capacity
+  // path's — see `notes/state-management/deferred-objective-lifecycle-carveout.md`.
+  plannedShedTarget: { kind: 'step' },
   desiredOn: false,
-  desired: {},
+  desired: { stepId: posture.stepId, plannedStepId: posture.stepId },
   stepDirection: 'any',
-  previousStepId: device.selectedStepId ?? device.previousStepId,
   transition: null,
   matchingCommandAttempt: resolveMatchingStepCommandAttempt(device, posture.stepId, nowMs),
   stepCommandRetryCount: device.stepCommandRetryCount ?? 0,

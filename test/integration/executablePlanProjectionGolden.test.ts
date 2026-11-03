@@ -148,7 +148,6 @@ describe('executable plan projection (characterization)', () => {
             "name": "Tank",
             "nextStepCommandRetryAtMs": undefined,
             "plannedShedTarget": undefined,
-            "previousStepId": "low",
             "stepCommandRetryCount": 0,
             "stepDirection": "any",
             "steppedLoadProfile": {
@@ -169,9 +168,7 @@ describe('executable plan projection (characterization)', () => {
             },
             "transition": {
               "binaryTarget": null,
-              "commandStepId": "low",
               "effectiveTransition": "steady",
-              "plannedDesiredStepId": "low",
               "stepPreparationPurpose": null,
               "transitionPhase": "settled",
             },
@@ -207,9 +204,7 @@ describe('executable plan projection (characterization)', () => {
             "nextStepCommandRetryAtMs": undefined,
             "plannedShedTarget": {
               "kind": "step",
-              "stepId": "off",
             },
-            "previousStepId": "low",
             "stepCommandRetryCount": 0,
             "stepDirection": "any",
             "steppedLoadProfile": {
@@ -230,9 +225,7 @@ describe('executable plan projection (characterization)', () => {
             },
             "transition": {
               "binaryTarget": null,
-              "commandStepId": "off",
               "effectiveTransition": "step_down_while_on",
-              "plannedDesiredStepId": "off",
               "stepPreparationPurpose": null,
               "transitionPhase": "settled",
             },
@@ -268,7 +261,6 @@ describe('executable plan projection (characterization)', () => {
             "name": "Tank",
             "nextStepCommandRetryAtMs": undefined,
             "plannedShedTarget": undefined,
-            "previousStepId": "off",
             "stepCommandRetryCount": 0,
             "stepDirection": "any",
             "steppedLoadProfile": {
@@ -289,9 +281,7 @@ describe('executable plan projection (characterization)', () => {
             },
             "transition": {
               "binaryTarget": true,
-              "commandStepId": "low",
               "effectiveTransition": "restore_from_off_at_low",
-              "plannedDesiredStepId": "low",
               "stepPreparationPurpose": "prepare_for_on",
               "transitionPhase": "step_preparation",
             },

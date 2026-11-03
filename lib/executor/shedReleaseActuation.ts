@@ -174,7 +174,7 @@ const buildShedReleaseSteppedAction = (
     // release-cascade rung (`resolveProducerShedReleaseStep`), not a capacity-path
     // shed decision. Lifecycle release deliberately keeps its own target — see
     // `notes/state-management/deferred-objective-lifecycle-carveout.md`.
-    plannedShedTarget: { kind: 'step', stepId: targetStep.id },
+    plannedShedTarget: { kind: 'step' },
     // Drives the binary axis ON so `applySteppedLoadCommand` does not early-return
     // on its `observed off + plan wants off` guard — this path dispatches a STEP
     // command via the step capability, not a binary off.
@@ -184,7 +184,6 @@ const buildShedReleaseSteppedAction = (
       plannedStepId: targetStep.id,
     },
     stepDirection: 'any',
-    previousStepId: currentStepId,
     transition: null,
     matchingCommandAttempt: null,
     stepCommandRetryCount: 0,

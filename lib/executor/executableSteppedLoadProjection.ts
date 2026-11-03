@@ -27,8 +27,6 @@ export function buildExecutableSteppedLoadDevice(
       effectiveTransition: 'initialize_unknown_step_at_low',
       stepPreparationPurpose: 'initialize_unknown_step',
       binaryTarget: null,
-      commandStepId: initializationStepId,
-      plannedDesiredStepId: intent.desired.plannedStepId ?? intent.desired.stepId,
       transitionPhase: 'step_preparation',
     }
     : intent.transition;
@@ -50,13 +48,7 @@ export function buildExecutableSteppedLoadDevice(
   const desiredIsNonOff = desired.stepId
     && !isSteppedLoadOffStep(intent.steppedLoadProfile, desired.stepId);
   return {
-    intent: {
-      ...intent,
-      desired,
-      transition,
-      // A seeded unknown step has no step before it to report.
-      previousStepId: initializesUnknownStep ? undefined : current.stepId ?? intent.previousStepId,
-    },
+    intent: { ...intent, desired, transition },
     current,
     stepActuation,
     stepNeedsAdjustment: Boolean(desiredIsNonOff && stepActuation.materialization.kind !== 'materialized'),

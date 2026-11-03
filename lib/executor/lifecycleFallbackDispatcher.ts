@@ -54,8 +54,8 @@ DeviceDescriptor,
 'id' | 'name' | 'isEvCharger'
 > & Pick<
 SteppedLoadDecoration,
-  'selectedStepId' | 'stepCommandPending' | 'stepCommandRetryCount'
-| 'nextStepCommandRetryAtMs' | 'desiredStepId' | 'previousStepId' | 'stepCommandStatus'
+  'stepCommandPending' | 'stepCommandRetryCount'
+| 'nextStepCommandRetryAtMs' | 'desiredStepId' | 'stepCommandStatus'
 > & {
   controlAdapter?: DeviceControlAdapterSnapshot;
   /** Producer-resolved write authority and complete descriptor for each axis. */
