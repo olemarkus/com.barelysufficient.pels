@@ -73,6 +73,8 @@ export type CeilingShortfallInputs = {
   // never take.
   onDevices: readonly MeteredDevicePlanDevice[];
   swapLedger: SwapLedger;
+  /** This plan's devices: the ranks of the targets a swap donor is already held for. */
+  deviceMap: ReadonlyMap<string, DevicePlanDevice>;
   restoredThisCycle: ReadonlySet<string>;
   // Shed timestamps + this cycle's clock, so the need matches the restore gate's
   // recent-shed inflation (`computeRestoreRequirementKw`). Not optional: a missing
@@ -146,6 +148,7 @@ export function resolveCeilingShortfall(params: {
     dev,
     [...inputs.onDevices],
     inputs.swapLedger,
+    inputs.deviceMap,
     reserved.availableKw - reserved.reservedKw,
     neededKw,
     inputs.restoredThisCycle,

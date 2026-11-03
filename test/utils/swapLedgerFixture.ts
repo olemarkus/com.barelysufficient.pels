@@ -63,9 +63,17 @@ export const hasReservation = (state: PlanEngineState, targetId: string): boolea
   state.swapLedger.reservationFor(targetId) !== undefined
 );
 
+/**
+ * The targets a donor was paused to fund, in the order their swaps opened.
+ * Typed element access into the private lookup, as below.
+ */
+export const swapHoldersOf = (state: PlanEngineState, donorId: string): string[] => (
+  state.swapLedger['reservationsHolding'](donorId).map((reservation) => reservation.targetId)
+);
+
 /** The target a donor was paused to fund — the old `swappedOutFor`. */
 export const swappedOutFor = (state: PlanEngineState, donorId: string): string | undefined => (
-  state.swapLedger.reservationHolding(donorId)?.targetId
+  swapHoldersOf(state, donorId)[0]
 );
 
 /**

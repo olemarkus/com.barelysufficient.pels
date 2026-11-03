@@ -42,6 +42,7 @@ const inputs = (params: {
   headroomReserves: params.headroomReserves ?? [],
   onDevices: params.onDevices ?? [],
   swapLedger: params.swapLedger ?? new SwapLedger(),
+  deviceMap: new Map((params.onDevices ?? []).map((device) => [device.id, device])),
   restoredThisCycle: params.restoredThisCycle ?? new Set(),
   lastDeviceShedMsById: params.lastDeviceShedMsById ?? {},
   nowMs: params.nowMs ?? NOW_MS,
