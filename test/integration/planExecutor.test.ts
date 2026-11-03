@@ -1410,7 +1410,7 @@ describe('PlanExecutor pending target commands', () => {
 
     // 90 s, then 2, 5 and every 15 min.
     expect(deviceManager.setCapability.mock.calls.length).toBeGreaterThanOrEqual(10);
-    expect(getTestControlContests(state).contestedControl('dev-1', Date.now())).toBeUndefined();
+    expect(getTestControlContests(state).contestedControl({ id: 'dev-1', managed: true }, Date.now())).toBeUndefined();
     expect(logCapture.events.some((event) => event.event === 'device_control_contested')).toBe(false);
   });
 

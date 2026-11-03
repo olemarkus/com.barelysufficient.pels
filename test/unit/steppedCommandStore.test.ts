@@ -150,6 +150,7 @@ describe('SteppedCommandStore', () => {
   });
   it('tells the contest record what the device confirmed, and when, and which command sessions ended', () => {
     const roundMs = 20 * 60_000;
+    const tank = { id: 'dev-1', managed: true };
     const { store, contests } = steppedStoresForTest();
     // PELS asks for `low` while the device runs at `max`, as the executor reports its send.
     const send = (atMs: number, observed: string) => {
@@ -164,13 +165,13 @@ describe('SteppedCommandStore', () => {
       send(round * roundMs, 'max');
       store.noteReportedStep('dev-1', 'low', round * roundMs + 1_000);
     }
-    expect(contests.contestedControl('dev-1', 4 * roundMs)).toMatchObject({ setting: 'level', count: 4 });
+    expect(contests.contestedControl(tank, 4 * roundMs)).toMatchObject({ setting: 'level', count: 4 });
     // A fifth round, whose step the device reports 10 minutes after the send:
     // the record settles from the report, so a send 10 minutes after it is no round.
     send(5 * roundMs, 'max');
     store.noteReportedStep('dev-1', 'low', 5 * roundMs + 10 * 60_000);
     send(6 * roundMs, 'max');
-    expect(contests.contestedControl('dev-1', 6 * roundMs)?.count).toBe(5);
+    expect(contests.contestedControl(tank, 6 * roundMs)?.count).toBe(5);
 
     // An on→off edge ends the session: a later send of the same step is a new command.
     const { store: fresh, contests: freshContests } = steppedStoresForTest();
@@ -187,6 +188,6 @@ describe('SteppedCommandStore', () => {
         atMs: round * roundMs,
       });
     }
-    expect(freshContests.contestedControl('dev-1', 4 * roundMs)).toBeUndefined();
+    expect(freshContests.contestedControl(tank, 4 * roundMs)).toBeUndefined();
   });
 });

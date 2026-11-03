@@ -8,6 +8,7 @@ const MINUTE_MS = 60_000;
 /** Past the settle: the device read PELS's value for longer than {@link CONTEST_SETTLE_MS} before it moved. */
 const ROUND_MS = 20 * MINUTE_MS;
 const DEVICE = 'mill';
+const MILL = { id: DEVICE, managed: true };
 
 const sent = (
   atMs: number,
@@ -37,13 +38,13 @@ describe('ControlContestRecord', () => {
     const { contests, journalled } = controlContestsForTest();
     contests.commandSent(sent(0, 5, 20));
     for (let retry = 1; retry <= 12; retry += 1) contests.commandSent(sent(retry * 15 * MINUTE_MS, 5, 7));
-    expect(contests.contestedControl(DEVICE, 3 * 60 * MINUTE_MS)).toBeUndefined();
+    expect(contests.contestedControl(MILL, 3 * 60 * MINUTE_MS)).toBeUndefined();
     expect(journalled).toEqual([]);
   });
 
   it('counts a setting the device kept, then moved away from, four times in 2 hours, and reports it once', () => {
     const { contests, journalled } = contestRounds(5, () => 22);
-    expect(contests.contestedControl(DEVICE, 100 * MINUTE_MS)).toEqual({
+    expect(contests.contestedControl(MILL, 100 * MINUTE_MS)).toEqual({
       setting: 'temperature', kind: 'overridden', count: 5, sinceMs: ROUND_MS,
     });
     expect(journalled).toHaveLength(1);
@@ -66,7 +67,7 @@ describe('ControlContestRecord', () => {
         contests.commandSent(sent(atMs, 5, atMs === 0 ? 20 : 7));
         contests.commandConfirmed(DEVICE, 'temperature', 5, atMs + 5_000);
       }
-      expect(contests.contestedControl(DEVICE, 4 * 60 * MINUTE_MS)).toBeUndefined();
+      expect(contests.contestedControl(MILL, 4 * 60 * MINUTE_MS)).toBeUndefined();
       expect(journalled).toEqual([]);
     }
   });
@@ -80,7 +81,7 @@ describe('ControlContestRecord', () => {
       contests.commandSent(sent(confirmedAtMs + CONTEST_SETTLE_MS, 5, 22));
       contests.commandConfirmed(DEVICE, 'temperature', 5, round * ROUND_MS + MINUTE_MS);
     }
-    expect(contests.contestedControl(DEVICE, 80 * MINUTE_MS)?.count).toBe(4);
+    expect(contests.contestedControl(MILL, 80 * MINUTE_MS)?.count).toBe(4);
   });
 
   it('settles from the send when the confirming report is dated before it', () => {
@@ -90,7 +91,7 @@ describe('ControlContestRecord', () => {
     // A report from before the send says nothing about how long the device has kept it since.
     contests.commandConfirmed(DEVICE, 'temperature', 5, 50 * MINUTE_MS);
     contests.commandSent(sent(80 * MINUTE_MS, 5, 22));
-    expect(contests.contestedControl(DEVICE, 80 * MINUTE_MS)).toBeUndefined();
+    expect(contests.contestedControl(MILL, 80 * MINUTE_MS)).toBeUndefined();
   });
 
   it('settles from the first confirmation after a send, not a later one', () => {
@@ -99,13 +100,13 @@ describe('ControlContestRecord', () => {
     contests.commandConfirmed(DEVICE, 'temperature', 5, 70 * MINUTE_MS);
     contests.commandConfirmed(DEVICE, 'temperature', 5, 80 * MINUTE_MS);
     contests.commandSent(sent(70 * MINUTE_MS + CONTEST_SETTLE_MS, 5, 22));
-    expect(contests.contestedControl(DEVICE, 90 * MINUTE_MS)?.count).toBe(4);
+    expect(contests.contestedControl(MILL, 90 * MINUTE_MS)?.count).toBe(4);
   });
 
   it('says reverted while every round went back to the value from before PELS asked', () => {
-    expect(contestRounds(4, () => 20).contests.contestedControl(DEVICE, 80 * MINUTE_MS)?.kind).toBe('reverted');
+    expect(contestRounds(4, () => 20).contests.contestedControl(MILL, 80 * MINUTE_MS)?.kind).toBe('reverted');
     expect(contestRounds(4, (round) => (round === 2 ? 22 : 20)).contests
-      .contestedControl(DEVICE, 80 * MINUTE_MS)?.kind).toBe('overridden');
+      .contestedControl(MILL, 80 * MINUTE_MS)?.kind).toBe('overridden');
   });
 
   it('says overridden for on/off, whose earlier value says nothing about what moved it', () => {
@@ -116,7 +117,7 @@ describe('ControlContestRecord', () => {
       contests.commandSent(sent(round * ROUND_MS, false, true, 'on_off'));
       contests.commandConfirmed(DEVICE, 'on_off', false, round * ROUND_MS);
     }
-    expect(contests.contestedControl(DEVICE, 4 * ROUND_MS)).toEqual({
+    expect(contests.contestedControl(MILL, 4 * ROUND_MS)).toEqual({
       setting: 'on_off', kind: 'overridden', count: 4, sinceMs: ROUND_MS,
     });
   });
@@ -127,7 +128,7 @@ describe('ControlContestRecord', () => {
     contests.commandSent(sent(82 * MINUTE_MS, 5, 22));
     contests.commandSent(sent(87 * MINUTE_MS, 5, 22));
     contests.commandSent(sent(102 * MINUTE_MS, 5, 22));
-    expect(contests.contestedControl(DEVICE, 102 * MINUTE_MS)?.count).toBe(4);
+    expect(contests.contestedControl(MILL, 102 * MINUTE_MS)?.count).toBe(4);
   });
 
   it('is no round when the device already reads the value, or reads nothing', () => {
@@ -135,21 +136,21 @@ describe('ControlContestRecord', () => {
     contests.commandSent(sent(80 * MINUTE_MS, 5, 5));
     contests.commandConfirmed(DEVICE, 'temperature', 5, 80 * MINUTE_MS);
     contests.commandSent(sent(100 * MINUTE_MS, 5, undefined));
-    expect(contests.contestedControl(DEVICE, 100 * MINUTE_MS)).toBeUndefined();
+    expect(contests.contestedControl(MILL, 100 * MINUTE_MS)).toBeUndefined();
   });
 
   it('forgets a command the plan no longer asks for, so asking again is a new command', () => {
     const { contests } = contestRounds(3, () => 22);
     contests.retainPlanned('main', new Map([[DEVICE, { temperature: 21, on_off: null, level: null }]]));
     contests.commandSent(sent(80 * MINUTE_MS, 5, 22));
-    expect(contests.contestedControl(DEVICE, 80 * MINUTE_MS)).toBeUndefined();
+    expect(contests.contestedControl(MILL, 80 * MINUTE_MS)).toBeUndefined();
   });
 
   it('keeps the command the plan still asks for', () => {
     const { contests } = contestRounds(3, () => 22);
     contests.retainPlanned('main', new Map([[DEVICE, { temperature: 5, on_off: null, level: null }]]));
     contests.commandSent(sent(80 * MINUTE_MS, 5, 22));
-    expect(contests.contestedControl(DEVICE, 80 * MINUTE_MS)?.count).toBe(4);
+    expect(contests.contestedControl(MILL, 80 * MINUTE_MS)?.count).toBe(4);
   });
 
   it('forgets the commands of a device that left its home\'s plan, and only that home\'s', () => {
@@ -167,8 +168,14 @@ describe('ControlContestRecord', () => {
     contests.retainPlanned('main', new Map());
     contests.commandSent(sent(80 * MINUTE_MS, 5, 22));
     contests.commandSent({ ...areaHeater, observed: 22, atMs: 80 * MINUTE_MS });
-    expect(contests.contestedControl(DEVICE, 80 * MINUTE_MS)).toBeUndefined();
-    expect(contests.contestedControl('annex', 80 * MINUTE_MS)?.count).toBe(4);
+    expect(contests.contestedControl(MILL, 80 * MINUTE_MS)).toBeUndefined();
+    expect(contests.contestedControl({ id: 'annex', managed: true }, 80 * MINUTE_MS)?.count).toBe(4);
+  });
+
+  it('answers no contest for a device PELS no longer manages', () => {
+    const { contests } = contestRounds(4, () => 22);
+    expect(contests.contestedControl(MILL, 80 * MINUTE_MS)?.count).toBe(4);
+    expect(contests.contestedControl({ ...MILL, managed: false }, 80 * MINUTE_MS)).toBeUndefined();
   });
 
   it('forgets a command whose session ended', () => {
@@ -177,35 +184,35 @@ describe('ControlContestRecord', () => {
     contests.commandConfirmed(DEVICE, 'level', 'max', 0);
     contests.commandReleased(DEVICE, 'level');
     for (let round = 1; round <= 4; round += 1) contests.commandSent(sent(round * ROUND_MS, 'max', 'low', 'level'));
-    expect(contests.contestedControl(DEVICE, 4 * ROUND_MS)).toBeUndefined();
+    expect(contests.contestedControl(MILL, 4 * ROUND_MS)).toBeUndefined();
   });
 
   it('lets rounds older than 2 hours go', () => {
     const { contests } = contestRounds(4, () => 22);
-    expect(contests.contestedControl(DEVICE, 2 * 60 * MINUTE_MS)?.count).toBe(4);
-    expect(contests.contestedControl(DEVICE, ROUND_MS + CONTEST_WINDOW_MS)).toBeUndefined();
+    expect(contests.contestedControl(MILL, 2 * 60 * MINUTE_MS)?.count).toBe(4);
+    expect(contests.contestedControl(MILL, ROUND_MS + CONTEST_WINDOW_MS)).toBeUndefined();
   });
 
   it('keeps when a contest began while it runs on, and a later contest begins anew', () => {
     const { contests } = contestRounds(10, () => 22);
     // Rounds every 20 minutes from 20 to 200: the window now holds 100 to 200.
-    expect(contests.contestedControl(DEVICE, 200 * MINUTE_MS)).toMatchObject({ count: 6, sinceMs: ROUND_MS });
+    expect(contests.contestedControl(MILL, 200 * MINUTE_MS)).toMatchObject({ count: 6, sinceMs: ROUND_MS });
 
     // Quiet for 2 hours, so that contest ended; four more rounds make a new one.
     const resumedAtMs = 200 * MINUTE_MS + CONTEST_WINDOW_MS;
     for (let round = 0; round < 4; round += 1) {
       contests.commandSent(sent(resumedAtMs + round * ROUND_MS, 5, 22));
       contests.commandConfirmed(DEVICE, 'temperature', 5, resumedAtMs + round * ROUND_MS);
-      if (round < 3) expect(contests.contestedControl(DEVICE, resumedAtMs + round * ROUND_MS)).toBeUndefined();
+      if (round < 3) expect(contests.contestedControl(MILL, resumedAtMs + round * ROUND_MS)).toBeUndefined();
     }
-    expect(contests.contestedControl(DEVICE, resumedAtMs + 3 * ROUND_MS)).toMatchObject({
+    expect(contests.contestedControl(MILL, resumedAtMs + 3 * ROUND_MS)).toMatchObject({
       count: 4, sinceMs: resumedAtMs,
     });
   });
 
   it('needs the four rounds within 2 hours, not spread over a longer stretch', () => {
     const { contests, journalled } = contestRounds(6, () => 22, 45 * MINUTE_MS);
-    expect(contests.contestedControl(DEVICE, 6 * 45 * MINUTE_MS)).toBeUndefined();
+    expect(contests.contestedControl(MILL, 6 * 45 * MINUTE_MS)).toBeUndefined();
     expect(journalled).toEqual([]);
   });
 
@@ -222,6 +229,6 @@ describe('ControlContestRecord', () => {
       contests.commandSent(sent(round * ROUND_MS, false, true, 'on_off'));
       contests.commandConfirmed(DEVICE, 'on_off', false, round * ROUND_MS);
     }
-    expect(contests.contestedControl(DEVICE, 3 * ROUND_MS)).toBeUndefined();
+    expect(contests.contestedControl(MILL, 3 * ROUND_MS)).toBeUndefined();
   });
 });

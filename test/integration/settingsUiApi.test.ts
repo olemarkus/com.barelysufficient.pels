@@ -3,6 +3,7 @@ import { partialDouble } from '../helpers/partialDouble';
 import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { pelsHostDouble } from '../helpers/pelsHostDouble';
+import { controlContestsForTest } from '../helpers/controlContests';
 import { observedDeviceReadsDouble } from '../helpers/observedDeviceReadsDouble';
 import type { ProjectedObservedDeviceState } from '../../packages/contracts/src/types';
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
@@ -948,7 +949,6 @@ describe('settingsUiApi', () => {
   });
 
   it('carries the executor\'s contest for a managed device that does not keep PELS\'s settings', () => {
-    const contest = { setting: 'temperature', kind: 'reverted', count: 5, sinceMs: 1_000 } as const;
     const homey = createHomey({
       latestDevicesOverride: [
         { id: 'mill', name: 'Gang nede ovn', deviceType: 'temperature', available: true, managed: true },
@@ -956,11 +956,24 @@ describe('settingsUiApi', () => {
         { id: 'let-go', name: 'Kjeller', deviceType: 'temperature', available: true, managed: false },
       ],
     });
-    Object.assign(homey.app, {
-      controlContests: { contestedControl: (id: string) => (id === 'calm' ? undefined : contest) },
-    });
+    // Something sets each of two heaters away from PELS's 15 °C four times, every 20 minutes.
+    const { contests } = controlContestsForTest();
+    const startMs = Date.now() - 100 * 60_000;
+    for (const deviceId of ['mill', 'let-go']) {
+      for (let round = 0; round <= 4; round += 1) {
+        const atMs = startMs + round * 20 * 60_000;
+        contests.commandSent({
+          homeId: MAIN_HOME_ID, deviceId, deviceName: deviceId, setting: 'temperature', value: 15,
+          observed: round === 0 ? 20 : 22, atMs,
+        });
+        contests.commandConfirmed(deviceId, 'temperature', 15, atMs);
+      }
+    }
+    Object.assign(homey.app, { controlContests: contests });
     const devices = getSettingsUiDevicesPayload({ homey: homey as never }).devices;
-    expect(devices.find(({ id }) => id === 'mill')?.controlContest).toEqual(contest);
+    expect(devices.find(({ id }) => id === 'mill')?.controlContest).toEqual({
+      setting: 'temperature', kind: 'overridden', count: 4, sinceMs: startMs + 20 * 60_000,
+    });
     expect(devices.find(({ id }) => id === 'calm')).not.toHaveProperty('controlContest');
     // The owner let it go: it is no longer PELS's to contest.
     expect(devices.find(({ id }) => id === 'let-go')).not.toHaveProperty('controlContest');

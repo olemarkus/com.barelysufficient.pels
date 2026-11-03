@@ -3,6 +3,7 @@ import type {
   ContestedControl,
   ContestedSetting,
 } from '../../packages/contracts/src/controlContest';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { getLogger } from '../logging/logger';
 import type {
   ControlCommandSent,
@@ -175,13 +176,16 @@ export class ControlContestRecord implements ControlContestRecording {
 
   /**
    * The device's contest at `nowMs`: its setting with the most rounds in the
-   * window, while they reach the threshold, and when that contest began.
+   * window, while they reach the threshold, and when that contest began. Only
+   * a managed device is contested: one the owner has let go is no longer
+   * PELS's to contest, whatever its rounds before.
    */
-  contestedControl(deviceId: string, nowMs: number): ContestedControl | undefined {
+  contestedControl(device: Pick<TargetDeviceSnapshot, 'id' | 'managed'>, nowMs: number): ContestedControl | undefined {
+    if (!device.managed) return undefined;
     let contested: ContestedControl | undefined;
     for (const setting of SETTINGS) {
-      const rounds = this.roundsWithin(deviceId, setting, nowMs);
-      const sinceMs = this.contestSinceMs.get(settingKey(deviceId, setting));
+      const rounds = this.roundsWithin(device.id, setting, nowMs);
+      const sinceMs = this.contestSinceMs.get(settingKey(device.id, setting));
       if (rounds.length < CONTEST_THRESHOLD || sinceMs === undefined) continue;
       if (contested && contested.count >= rounds.length) continue;
       contested = { setting, kind: contestKind(rounds), count: rounds.length, sinceMs };
