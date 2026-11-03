@@ -1,5 +1,4 @@
 import type { ContinuousBatteryPlanRead } from '../continuousBatteryPlan.js';
-import type { ControlContestDecoration } from '../controlContest.js';
 import type { DeviceOverviewStrings } from '../deviceOverview.js';
 import type { SettingsUiHomeScope } from '../homeScopedRead.js';
 import type { SchedulesResponse } from '../schedules.js';
@@ -19,9 +18,7 @@ import type {
  * own device type widened straight back to it. Naming the resolved carrier here
  * makes the payload's shape the contract rather than a convention.
  */
-export type SettingsUiDeviceSnapshot = DecoratedDeviceSnapshot & ObservedStateOfChargeProbe & SettingsUiBatteryState
-  // Present while the device keeps moving away from what PELS set.
-  & ControlContestDecoration;
+export type SettingsUiDeviceSnapshot = DecoratedDeviceSnapshot & ObservedStateOfChargeProbe & SettingsUiBatteryState;
 
 /**
  * A listed device's home-battery facts, resolved from the battery control

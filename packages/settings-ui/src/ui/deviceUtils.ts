@@ -8,7 +8,6 @@ import type {
   SteppedLoadDescriptorProbe,
   TemperatureBoostConfig,
 } from '../../../contracts/src/types.ts';
-import type { ControlContestDecoration } from '../../../contracts/src/controlContest.ts';
 import type { SettingsUiBatteryState } from '../../../contracts/src/settingsUi/devices.ts';
 import { state } from './state.ts';
 
@@ -65,8 +64,6 @@ export type SettingsUiDeviceDetailItem = SettingsUiDeviceListItem
   & Pick<DeviceDescriptor,
     'capabilities' | 'flowConflict'
   >
-  // Present while the device keeps moving away from what PELS set.
-  & ControlContestDecoration
   // `steppedLoadProfile` / `targetPowerConfig` moved off `DeviceDescriptor` onto
   // the stepped-descriptor cluster; the `/ui_devices` snapshot physically carries
   // them, which the control-mode / target-power / stepped-load-draft detail panes

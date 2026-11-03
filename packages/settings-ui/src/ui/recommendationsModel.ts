@@ -2,7 +2,6 @@ import type { SettingsUiRecommendationCar } from '../../../contracts/src/setting
 import type { SettingsUiEvSocFlowReporter } from '../../../contracts/src/settingsUi/devices.ts';
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
-import { controlContestNotice } from './controlContestCopy.ts';
 import {
   resolveDeviceStartPolicy,
   type DeviceStartPolicy,
@@ -368,26 +367,6 @@ export const resolveSetpointShedLimitRecommendations = (
   }];
 });
 
-/**
- * A managed device that keeps moving away from what PELS set holds up every
- * device behind it. Present only while the runtime reports the contest, so it
- * leaves once the device keeps its settings for an hour.
- */
-export const resolveControlContestRecommendations = (
-  devices: readonly SettingsUiDeviceDetailItem[],
-): SetupRecommendation[] => devices.flatMap((device) => {
-  if (!device.controlContest) return [];
-  const notice = controlContestNotice(formatDisplayDeviceName(device.name), device.controlContest);
-  return [{
-    id: recommendationId('control-contest', device.id),
-    version: RECOMMENDATION_VERSION,
-    category: 'recommendation',
-    ...notice,
-    actionLabel: 'Open device',
-    target: { kind: 'device', deviceId: device.id },
-  }];
-});
-
 export const resolveSetupRecommendations = (
   devices: readonly SettingsUiDeviceDetailItem[],
   cars: readonly SettingsUiRecommendationCar[],
@@ -397,7 +376,6 @@ export const resolveSetupRecommendations = (
 ): SetupRecommendation[] => (
   [
     ...[
-      ...resolveControlContestRecommendations(devices),
       ...resolveNativeControlRecommendations(devices, nativeWiringEnabledByDeviceId),
       ...resolveEvSocFlowConflictRecommendations(devices, associations, evSocReporters, cars),
     ].sort((left, right) => left.title.localeCompare(right.title)),

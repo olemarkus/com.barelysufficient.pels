@@ -1,5 +1,4 @@
 import { ChargingCurrentControl } from './chargingCurrentControl';
-import type { ContestedControl } from '../../packages/contracts/src/controlContest';
 import type { TaskDeviceConstraint } from '../../packages/contracts/src/taskDelivery';
 import type { CarIdentificationState } from '../../packages/contracts/src/evCarLink';
 /**
@@ -270,7 +269,6 @@ export class DeviceTransport {
             this.snapshotStore,
             options.observedStateDispatcher,
             this.observationProducers.temperature,
-            this.observationProducers.controlContest,
         );
         this.writeService = new DeviceWriteService(
             this.snapshotStore,
@@ -381,11 +379,6 @@ export class DeviceTransport {
         const eligibleCarIds = this.sources.settings.getEvCarAssociationCarIds(id);
         const associatedCar = this.observationProducers.evCarLink.getAssociatedCarForCharger(id);
         return resolveAssociatedCar(eligibleCarIds, associatedCar);
-    }
-
-    /** Whether this device keeps moving away from what PELS set, as of now. */
-    getContestedControl(id: string): ContestedControl | undefined {
-        return this.observationProducers.controlContest.contestedControl(id, Date.now());
     }
 
     /** Raw Flow feedback is resolved once against the owner-selected control configuration. */

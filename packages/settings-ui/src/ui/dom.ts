@@ -190,9 +190,6 @@ export const deviceDetailSetupDisclosure = document.querySelector<HTMLDetailsEle
 export const deviceDetailNativeWiringNotice = qs('#device-detail-native-wiring-notice');
 export const deviceDetailFlowConflictNotice = qs('#device-detail-flow-conflict-notice');
 export const deviceDetailFlowConflictTitle = qs('#device-detail-flow-conflict-title');
-export const deviceDetailControlContestNotice = qs('#device-detail-control-contest-notice');
-export const deviceDetailControlContestTitle = qs('#device-detail-control-contest-title');
-export const deviceDetailControlContestBody = qs('#device-detail-control-contest-body');
 export const deviceDetailFlowConflictBody = qs('#device-detail-flow-conflict-body');
 export const deviceDetailFlowConflictCheck = document.querySelector(
   '#device-detail-flow-conflict-check',
