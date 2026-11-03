@@ -262,11 +262,12 @@ function resolveActiveNativeSteppedProfile(params: {
 
 /**
  * The capability carrying the charger current an EV preset ladder is read back
- * from. `available_installation_current` (Zaptec) is a read-only report and is
- * always read. An Easee's `target_charger_current` is only read while PELS
- * controls it natively: with built-in control off, the owner's Flow writes that
- * capability and reports it through `Report stepped load`, and reading it here
- * as well would put a second reporter on the same step.
+ * from. `available_installation_current` (Zaptec) is a read-only report, read
+ * whenever PELS does not write the charger's own watt target. An Easee's
+ * `target_charger_current` is only read while PELS controls it natively: with
+ * built-in control off, the owner's Flow writes that capability and reports it
+ * through `Report stepped load`, and reading it here as well would put a second
+ * reporter on the same step.
  */
 function resolveInstallationCurrentCapabilityId(
   device: HomeyDeviceLike,
@@ -308,12 +309,18 @@ function applySyntheticTargetPowerOverlay(
   const capabilities = hasTargetPowerCapability(nativeEvOverlay.capabilities)
     ? nativeEvOverlay.capabilities
     : [...nativeEvOverlay.capabilities, 'target_power'];
-  const installationCurrent = nativeEvOverlay.capabilityObj[resolveInstallationCurrentCapabilityId(
-    device,
-    deviceId,
-    nativeEvOverlay.capabilityObj,
-    sources,
-  )];
+  // On the native watt path PELS writes the device's own watt target, which
+  // its driver turns into a current its own way (a Zaptec on an IT grid, or one
+  // switching phases), so that target is the step it holds; the current times
+  // the preset's phases would read another rung.
+  const installationCurrent = isTargetPowerSteppedLoadCandidate(nativeEvOverlay)
+    ? undefined
+    : nativeEvOverlay.capabilityObj[resolveInstallationCurrentCapabilityId(
+      device,
+      deviceId,
+      nativeEvOverlay.capabilityObj,
+      sources,
+    )];
   const observedTargetPower = installationCurrent
     && resolveInstallationCurrentTargetPowerObservation(config, installationCurrent);
   const reportedStepPowerW = resolveActiveTargetPowerW(
