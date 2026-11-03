@@ -316,7 +316,6 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
 
   // Main's passive heating observations for the daily report; a meter area collects none.
   private readonly heatingShadow = createMainHeatingShadowCollector(() => this.getUserdataDatabase(),
-    () => this.context.homeMembership?.filterDevicesForHome(this.getDeviceSurfaces(), MAIN_HOME_ID) ?? [],
     (deviceId) => this.observer.getThermalDirection(deviceId), () => this.getTimeZone(),
     () => this.runtime.backgroundCollectors?.weatherCollector.getCurrentOutdoorTemperatureC());
 
@@ -352,7 +351,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     // main-home tap only (sub-home pipelines omit it — see the pipeline factory).
     recordCurtailmentSample: (netW, genW, nowMs) => this.recordCurtailmentSample?.(netW, genW, nowMs),
     recordBatteryDemandSample: (netW, genW, nowMs) => this.batteryDemandForecaster.recordNetSample(netW, genW, nowMs),
-    recordHeatingObservations: (nowMs) => this.heatingShadow.record(nowMs),
+    recordHeatingObservations: (devices, nowMs) => this.heatingShadow.record(devices, nowMs),
     // Production for samples that do not carry their own; the factory bounds its
     // freshness. Main home only — a sub-home must not adopt this production.
     observedHomePower: this.observedHomePower,
