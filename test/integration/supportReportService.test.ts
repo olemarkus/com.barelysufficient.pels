@@ -156,9 +156,13 @@ describe('manual support reporting', () => {
     expect(delivery.send).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps a daily report deliverable even when the new omission notice cannot fit', async () => {
+  it('keeps ordinary logs and the report deliverable when the new omission notice cannot fit', async () => {
     const live = evidence();
     live.sections = [{ title: 'Ordinary evidence', values: { text: '' } }];
+    if (live.log.state !== 'available') throw new Error('Expected the kept log');
+    const ordinaryLog = { ...live.log, lines: [{ atMs: now, level: 'info' as const,
+      entry: { event: 'ordinary-evidence', text: 'x'.repeat(150) } }] };
+    live.log = ordinaryLog;
     const baseline = report(await new SupportReportService({ capture: async () => live }, transport()).sendDaily(() => true));
     const freeBytes = SUPPORT_REPORT_MAX_BYTES - Buffer.byteLength(baseline.message, 'utf8') - 1;
     live.sections = [
@@ -167,6 +171,7 @@ describe('manual support reporting', () => {
     ];
     const sent = report(await new SupportReportService({ capture: async () => live }, transport()).sendDaily(() => true));
     expect(sent.document.sections).toHaveLength(1);
+    expect(sent.document.log).toEqual(ordinaryLog);
     expect(Buffer.byteLength(sent.message, 'utf8')).toBe(SUPPORT_REPORT_MAX_BYTES - 1);
     expect(sent.submission.state).toBe('sent');
   });
