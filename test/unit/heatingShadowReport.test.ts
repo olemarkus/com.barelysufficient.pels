@@ -175,3 +175,32 @@ describe('compact daily heating observations', () => {
     expect([...exported].sort()).toEqual(ids);
   });
 });
+
+describe('daily heating observations budget walk', () => {
+  // Blocks of uneven sizes, so whole-device selection lands close to the budget
+  // and smaller blocks later in the order fill the gap a larger one left.
+  it('keeps every block that fits and leaves out only blocks that do not', () => {
+    const day = dayAt('2026-11-01');
+    const sizes = [256, 40, 180, 3, 256, 90, 7, 130, 1, 256, 60, 11, 220, 0, 75, 19];
+    const ids = sizes.map((_, index) => `heater-${'x'.repeat(index)}`);
+    day.devices = Object.fromEntries(ids.map((id, index) => [id, deviceDay(day, sizes[index])]));
+    day.eligibleDeviceIds = ids;
+    const report = readHeatingShadowDaily(stateFor(day), day.endMs + 60_000, TIME_ZONE)!;
+    const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value), 'utf8');
+    expect(bytes(report)).toBeLessThanOrEqual(HEATING_SHADOW_REPORT_BUDGET_BYTES);
+    const coverage = report.values.coverage as { omittedWholeDevicesForBudget: string[]; exportedDeviceCount: number };
+    expect(coverage.omittedWholeDevicesForBudget.length).toBeGreaterThan(0);
+    expect(coverage.exportedDeviceCount).toBeGreaterThan(1);
+    // Adding any omitted block to what was selected would exceed the budget.
+    for (const omitted of coverage.omittedWholeDevicesForBudget) {
+      const alone = readHeatingShadowDaily(stateFor({ ...day, devices: { [omitted]: day.devices[omitted]! } }),
+        day.endMs + 60_000, TIME_ZONE)!;
+      const block = (alone.values.devices as unknown[])[0];
+      const grown = { ...report, values: { ...report.values,
+        devices: [...(report.values.devices as unknown[]), block],
+        coverage: { ...coverage, exportedDeviceCount: coverage.exportedDeviceCount + 1,
+          omittedWholeDevicesForBudget: coverage.omittedWholeDevicesForBudget.filter((id) => id !== omitted) } } };
+      expect(bytes(grown)).toBeGreaterThan(HEATING_SHADOW_REPORT_BUDGET_BYTES);
+    }
+  });
+});
