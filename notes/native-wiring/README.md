@@ -26,7 +26,13 @@ capabilities instead of round-tripping through user-authored Flow cards.
   installation: no mode takeover and no watt steps, and the charger behaves
   as one without watt control. The Zaptec session decides this from each full
   refresh's device list, and a device update keeps the last decision
-  (`lib/device/zaptec/session.ts`).
+  (`lib/device/zaptec/session.ts`). A charger whose `target_power_mode`
+  already reads `homey` (claimed by an earlier build, or joined by a second
+  charger after PELS claimed it) keeps its watt control and is stepped as
+  before: hiding it would leave the installation at PELS's last watt target.
+  Open: such an installation keeps the shared last-written current until
+  PELS can hand the mode back to `device`, which needs a hand-back command and
+  an owner to issue it through the actuator seam.
 - **Hoiax water heaters / generic `target_power` steppers**: native stepped
   control writes the step capability *directly*
   (`max_power_3000` / `max_power_2000` / `max_power`, plus `onoff` for the off

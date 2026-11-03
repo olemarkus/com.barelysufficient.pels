@@ -15,6 +15,12 @@ export const zaptecInstallationOf = (device: HomeyDeviceLike): string | undefine
  * steps, as built-in current control refuses such an installation
  * (`hasSharedChargingInstallation`). A device update keeps the decision the
  * last full inventory made.
+ *
+ * A charger whose mode already reads `homey` keeps its watt control: PELS
+ * claimed it before (or a second charger joined after), and hiding the control
+ * would leave the installation at PELS's last watt target with nothing to hand
+ * the mode back. It is stepped as before and keeps the shared last-written
+ * current until a hand-back exists.
  */
 export class ZaptecInstallationSession implements DeviceAdapterSession {
   private sharedInstallations: ReadonlySet<string> = new Set();
@@ -33,8 +39,8 @@ export class ZaptecInstallationSession implements DeviceAdapterSession {
 
   withheldCapabilities(device: HomeyDeviceLike): readonly string[] {
     const installationId = zaptecInstallationOf(device);
-    return installationId !== undefined && this.sharedInstallations.has(installationId)
-      ? ['target_power', 'target_power_mode'] : [];
+    if (installationId === undefined || !this.sharedInstallations.has(installationId)) return [];
+    return device.capabilitiesObj?.target_power_mode?.value === 'homey' ? [] : ['target_power', 'target_power_mode'];
   }
 
   observeDevice(): void {}
