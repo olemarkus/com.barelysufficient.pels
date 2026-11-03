@@ -32,6 +32,29 @@ describe('plan logging helpers', () => {
     expect(buildPlanSignature(changed)).not.toBe(buildPlanSignature(plan));
   });
 
+  it('keeps the action signature when only the observed setpoint behind a target command moves', () => {
+    const targetCommand = {
+      deviceId: 'dev-1', name: 'Heater', desired: 21, purpose: 'target_update' as const,
+      recordRestoreOnTargetApply: false, restoreFromTarget: 18,
+    };
+    // Set after the builder, which derives its own command from the fixture.
+    const device = { ...buildPlanDevice(), targetCommand };
+    const plan: DevicePlan = { meta: buildPlanMeta(), devices: [device], inverterDecisions: [], storageReleases: [] };
+    const observedMoved: DevicePlan = {
+      ...plan,
+      devices: [{
+        ...device,
+        targetCommand: { ...targetCommand, restoreFromTarget: 19, recordRestoreOnTargetApply: true },
+      }],
+    };
+    const desiredMoved: DevicePlan = {
+      ...plan,
+      devices: [{ ...device, targetCommand: { ...targetCommand, desired: 22 } }],
+    };
+    expect(buildPlanSignature(observedMoved)).toBe(buildPlanSignature(plan));
+    expect(buildPlanSignature(desiredMoved)).not.toBe(buildPlanSignature(plan));
+  });
+
   it('includes an absent battery release in both signatures even for an empty plan', () => {
     const empty = { devices: [], inverterDecisions: [], storageReleases: [] } as unknown as DevicePlan;
     const released: DevicePlan = {

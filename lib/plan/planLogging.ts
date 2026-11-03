@@ -265,7 +265,13 @@ function buildPlanSignatureDevice(device: DevicePlanDevice): Record<string, unkn
     desiredStepId: device.desiredStepId,
     shedAction: device.shedAction,
     deferredReleaseIntent: device.deferredReleaseIntent,
-    targetCommand: device.targetCommand,
+    // The decision only: `restoreFromTarget` and the restore classification are
+    // read from the observed setpoint, so signing them would turn every reported
+    // setpoint change into an action change and bypass the observation-revision
+    // gate in `shouldApplyPlan`.
+    targetCommand: device.targetCommand
+      ? { desired: device.targetCommand.desired, purpose: device.targetCommand.purpose }
+      : undefined,
     commandAuthority: device.control.commandAuthority,
     // A home battery's setpoint or hand-back is an action like any other: a
     // changed one must reach the executor (`lib/executor/batteryExecutor.ts`).
