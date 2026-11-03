@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type {
-  HeatingShadowDay, HeatingShadowDeviceDay, HeatingShadowSignal,
-} from '../../packages/contracts/src/heatingShadow';
-import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
+  HeatingShadowDay, HeatingShadowDeviceDay, HeatingShadowSignal, HeatingShadowState,
+} from '../../lib/diagnostics/heatingShadowTypes';
 import {
   getDateKeyStartMs, shiftDateKey,
 } from '../../packages/shared-domain/src/utils/dateUtils';
@@ -36,8 +35,8 @@ function deviceDay(day: HeatingShadowDay, changes = 0): HeatingShadowDeviceDay {
     })), omittedIntervals: 0, omittedChanges: 0, interruptions: 0, signalChanged: false };
 }
 
-function stateFor(day: HeatingShadowDay): PowerTrackerState {
-  return { heatingShadow: { version: 1, timeZone: TIME_ZONE, days: [day] } };
+function stateFor(day: HeatingShadowDay): HeatingShadowState {
+  return { version: 1, timeZone: TIME_ZONE, days: [day] };
 }
 
 describe('compact daily heating observations', () => {
@@ -95,11 +94,10 @@ describe('compact daily heating observations', () => {
   it('selects the latest completed retained local day and never the current day', () => {
     const older = dayAt('2026-10-31'), latest = dayAt('2026-11-01'), current = dayAt('2026-11-02');
     for (const day of [older, latest, current]) day.devices = { heater: deviceDay(day) };
-    const state: PowerTrackerState = { heatingShadow: { version: 1, timeZone: TIME_ZONE,
-      days: [current, older, latest] } };
+    const state: HeatingShadowState = { version: 1, timeZone: TIME_ZONE, days: [current, older, latest] };
     expect(readHeatingShadowDaily(state, current.startMs + 3_600_000, TIME_ZONE)?.values.dateKey).toBe(latest.dateKey);
-    expect(readHeatingShadowDaily({ heatingShadow: { ...state.heatingShadow!, days: [current] } },
-      current.startMs + 3_600_000, TIME_ZONE)).toBeUndefined();
+    expect(readHeatingShadowDaily({ ...state, days: [current] }, current.startMs + 3_600_000, TIME_ZONE))
+      .toBeUndefined();
     expect(readHeatingShadowDaily(state, current.endMs, 'UTC')).toBeUndefined();
     expect(readHeatingShadowDaily(state, getDateKeyStartMs('2026-11-05', TIME_ZONE), TIME_ZONE)).toBeUndefined();
   });

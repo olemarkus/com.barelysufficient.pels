@@ -10,7 +10,6 @@ import { requireLastTotalPowerKw } from '../lib/power/lastTotalPower';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
 import { resolveObjectiveSampleDevices } from '../lib/objectives/samples';
-import { recordHeatingShadowFromSnapshot } from '../lib/diagnostics/heatingShadowIngest';
 import { buildPublishedPlanCapacityStateSummary } from '../lib/plan/planLogging';
 import { resolvePublishedBudgetExemptDeviceIds } from '../lib/plan/publishedPlan';
 import { resolvePlanRebuildPosture } from '../lib/plan/planRebuildPosture';
@@ -84,6 +83,11 @@ export type PowerSamplePipelineDeps = {
   recordCurtailmentSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
   /** Main meter tap for the battery-neutral demand forecast; meter areas omit it. */
   recordBatteryDemandSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
+  /**
+   * Main meter tap for the passive heating observations the daily report carries
+   * (`lib/diagnostics/heatingShadowCollector.ts`); meter areas omit it.
+   */
+  recordHeatingObservations?: (nowMs: number) => void;
   /**
    * Publish the identity of the meter an INGESTED whole-home sample came from
    * (multi-home: membership's sampled-meter ownership fence). Called only after
@@ -197,9 +201,8 @@ export class PowerSamplePipeline {
   // at 0 W.
   // The objectives owner resolves its progress quantity and observer direction
   // from this power-scoped view. No observation time travels with the sample.
-  private readonly updateObjectiveProfiles: UpdateObjectiveProfiles = (params) => {
-    const outdoorTemperatureC = this.deps.getOutdoorTemperatureC?.();
-    const learned = updateObjectiveProfilesFromSnapshot(
+  private readonly updateObjectiveProfiles: UpdateObjectiveProfiles = (params) => (
+    updateObjectiveProfilesFromSnapshot(
       params.state,
       // Devices with nothing to sample are dropped here rather than passed with an
       // empty quantity: `ObjectiveSampleDevice` then means "a device with a reading"
@@ -211,11 +214,9 @@ export class PowerSamplePipeline {
         (deviceId) => this.deps.getThermalDirection(deviceId),
       ),
       params.nowMs,
-      outdoorTemperatureC,
-    );
-    return recordHeatingShadowFromSnapshot(learned, params.devices, params.nowMs,
-      outdoorTemperatureC, (deviceId) => this.deps.getThermalDirection(deviceId), this.deps.getTimeZone());
-  };
+      this.deps.getOutdoorTemperatureC?.(),
+    )
+  );
 
   constructor(private readonly deps: PowerSamplePipelineDeps) {}
 
@@ -285,6 +286,7 @@ export class PowerSamplePipeline {
     // contract (it trains on hourly buckets) and takes the merged value.
     this.deps.recordCurtailmentSample?.(currentPowerW, request.coTemporalGenerationW, nowMs);
     this.deps.recordBatteryDemandSample?.(currentPowerW, generationW, nowMs);
+    this.deps.recordHeatingObservations?.(nowMs);
     const powerTracker = this.deps.getPowerTracker();
     const previousSampleTs = powerTracker.lastTimestamp;
     try {

@@ -14,9 +14,10 @@ Resource telemetry and memory-reclaim tasks remain observational and must not in
 ## Passive heating evidence
 
 `heatingShadowIngest.ts` resolves eligibility from accepted device observations;
-the collector retains bounded chronological evidence independently of objective
-learning. Persistence and delayed-hydration merges preserve real timestamps and
-gaps. `heatingShadowReport.ts` projects whole device-days within its budget; the
+the collector (`heatingShadowCollector.ts`) retains bounded chronological
+evidence independently of objective learning and of the power tracker, in its
+own store (`heatingShadowStore.ts`). Persistence and delayed-hydration merges
+preserve real timestamps and gaps. `heatingShadowReport.ts` projects whole device-days within its budget; the
 support-report owner gates inclusion on the actual daily trigger and existing
 consent. No fitting, planning or control consumes shadow evidence. See
 `notes/heating-shadow-diagnostics.md` for limits and source semantics.

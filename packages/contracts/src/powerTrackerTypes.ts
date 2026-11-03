@@ -1,5 +1,4 @@
 import type { DeviceObjectiveProfile } from './objectiveProfileTypes.js';
-import type { HeatingShadowState } from './heatingShadow.js';
 
 /**
  * Durable identity of the meter signal whose freshness latch is carried by a
@@ -68,8 +67,6 @@ export type PowerTrackerState = {
    * car feed it. Bounded per car and in total (`lib/objectives/carProfiles.ts`).
    */
   carObjectiveProfiles?: Record<string, Record<string, DeviceObjectiveProfile>>;
-  /** Bounded passive diagnostics; never consumed by model fitting or control. */
-  heatingShadow?: HeatingShadowState;
 };
 
 /**

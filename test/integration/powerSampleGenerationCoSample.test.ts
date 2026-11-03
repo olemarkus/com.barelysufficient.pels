@@ -32,6 +32,7 @@ const T0 = Date.parse('2026-07-27T10:00:00Z');
 type Taps = {
   curtailment: ReturnType<typeof vi.fn<(netW: number, generationW: number | undefined, nowMs: number) => void>>;
   pvForecast: ReturnType<typeof vi.fn<(generationW: number | undefined, nowMs: number, netW?: number) => void>>;
+  heating: ReturnType<typeof vi.fn<(nowMs: number) => void>>;
 };
 
 const buildPipeline = (
@@ -42,6 +43,7 @@ const buildPipeline = (
   const taps: Taps = {
     curtailment: vi.fn<(netW: number, generationW: number | undefined, nowMs: number) => void>(),
     pvForecast: vi.fn<(generationW: number | undefined, nowMs: number, netW?: number) => void>(),
+    heating: vi.fn<(nowMs: number) => void>(),
   };
   // The scheduler stub executes every accepted intent at once by calling back
   // into the throttle, so the ingest path settles like production.
@@ -93,6 +95,7 @@ const buildPipeline = (
     savePowerTracker: (state) => { powerTracker = state; },
     recordCurtailmentSample: taps.curtailment,
     recordPvGenerationSample: taps.pvForecast,
+    recordHeatingObservations: taps.heating,
     getCoSampledGenerationW: () => coSampledGenerationW,
     getObservedGenerationSegments: () => observedSegments,
   });
@@ -181,5 +184,16 @@ describe('PowerSamplePipeline generation co-sampling', () => {
     await pipeline.recordPowerSample(-1_500, T0 + 30 * 60_000, { generationW: 0 });
 
     expect(getTracker().generationBuckets?.[new Date(T0).toISOString()]).toBeCloseTo(7 / 60, 6);
+  });
+});
+
+describe('PowerSamplePipeline heating observations tap', () => {
+  it('hands each ingested sample its own call, apart from the tracker and objective learning', async () => {
+    const { pipeline, taps, getTracker } = buildPipeline(undefined);
+    await pipeline.recordPowerSample(1_500, T0);
+    await pipeline.recordPowerSample(1_500, T0 + 10_000);
+
+    expect(taps.heating.mock.calls).toEqual([[T0], [T0 + 10_000]]);
+    expect(getTracker().lastTimestamp).toBe(T0 + 10_000);
   });
 });

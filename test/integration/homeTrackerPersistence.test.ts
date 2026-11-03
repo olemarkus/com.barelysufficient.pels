@@ -5,8 +5,6 @@ import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { partialDouble } from '../helpers/partialDouble';
-import { recordHeatingShadow } from '../../lib/diagnostics/heatingShadow';
-import type { HeatingShadowDevice } from '../../packages/contracts/src/heatingShadow';
 
 const UNBOUND: TrackerMeterBinding = { kind: 'unbound' };
 const BOUND: TrackerMeterBinding = { kind: 'bound', identity: { powerSource: 'homey_energy', meterDeviceId: 'meter-a' } };
@@ -160,36 +158,6 @@ describe('HomeTrackerPersistence boot hydration', () => {
       capacityQuarter: { startMs: 0, energyKWh: 0.375, trackedMs: 600_000 },
       capacityMonthlyPeak: { monthKey: '2026-09', peakKw: 4.2 },
     });
-  });
-
-  it('retains prior heating days and earlier intervals when failed boot hydration recovers', async () => {
-    vi.useFakeTimers();
-    const start = Date.UTC(2026, 10, 2, 9);
-    const source = (atMs: number): HeatingShadowDevice => ({ id: 'room',
-      signal: { temperatureCapability: 'measure_temperature', temperatureRole: 'unclassified',
-        targetCapability: 'target_temperature', electricalInput: 'held_reported_direct_power' },
-      reading: { atMs, temperatureC: 20, powerKw: 1, targetC: 22, control: 'enabled' },
-    });
-    const previousDay = recordHeatingShadow(undefined, [source(start - 86_400_000)],
-      start - 86_400_000, -2, 'Europe/Oslo');
-    const earlier = recordHeatingShadow(previousDay, [source(start)], start, -2, 'Europe/Oslo');
-    const storedShadow = recordHeatingShadow(earlier, [source(start + 300_000)],
-      start + 300_000, -2, 'Europe/Oslo');
-    const liveShadow = recordHeatingShadow(undefined, [source(start + 1_800_000)],
-      start + 1_800_000, -1, 'Europe/Oslo');
-    const { tracker, store, stored } = build(UNBOUND);
-    store.save('main', { buckets: { old: 2 }, heatingShadow: storedShadow });
-    vi.spyOn(store, 'load').mockImplementationOnce(() => { throw new Error('disk busy'); });
-    tracker.hydrate();
-    tracker.save({ buckets: { current: 1 }, heatingShadow: liveShadow });
-    await vi.advanceTimersByTimeAsync(61_000);
-    const restored = stored();
-    expect(restored?.buckets).toEqual({ old: 2, current: 1 });
-    expect(restored?.heatingShadow?.days.map((day) => day.dateKey)).toEqual(['2026-11-01', '2026-11-02']);
-    const device = restored?.heatingShadow?.days[1]?.devices.room;
-    expect(device?.intervals).toMatchObject([{ startMs: start, endMs: start + 300_000, inputKWh: 1 / 12 }]);
-    expect(device?.window?.start.atMs).toBe(start + 1_800_000);
-    expect(tracker.getState()).toEqual(restored);
   });
 
   it('the owner\'s reset after a failed boot read discards the stored history by intent', () => {

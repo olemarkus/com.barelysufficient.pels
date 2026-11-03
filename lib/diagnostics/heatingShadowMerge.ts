@@ -1,7 +1,7 @@
 import type {
   HeatingShadowDay, HeatingShadowDeviceDay, HeatingShadowInterval, HeatingShadowOutdoorPoint,
   HeatingShadowReading, HeatingShadowSignal, HeatingShadowState,
-} from '../../packages/contracts/src/heatingShadow';
+} from './heatingShadowTypes';
 import { shiftDateKey } from '../../packages/shared-domain/src/utils/dateUtils';
 import {
   HEATING_SHADOW_COMPLETED_DAYS, HEATING_SHADOW_MAX_CHANGES, HEATING_SHADOW_MAX_ELIGIBLE_DEVICES,
