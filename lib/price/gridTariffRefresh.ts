@@ -104,6 +104,14 @@ export const refreshGridTariff = async (
     // stale read would let this fallback replace it.
     const current = store.readNettleie() as Array<Record<string, unknown> & StoredGridTariffRow> | null;
     const outcome = resolveGridTariffFallback(current, saved?.rows ?? null, todayDate, timeZone);
+    if (outcome.kind === 'store' || outcome.kind === 'fallbackCurrent') {
+      // Prices follow the saved file, so the live fetch's failure is logged
+      // here or nowhere.
+      sinks.structuredLog.warn({
+        event: 'grid_tariff_saved_file_used', ...failure, ...request,
+        savedFetchedAt: saved?.fetchedAt, stored: outcome.kind === 'store',
+      });
+    }
     if (outcome.kind === 'store') {
       const fallbackContext = ` (saved Fri Nettleie file, fetched ${saved?.fetchedAt ?? 'earlier'}; no live tariff)`;
       return storeGridTariff(outcome.entries, fallbackContext, request, readCurrentCompany, store, sinks);
