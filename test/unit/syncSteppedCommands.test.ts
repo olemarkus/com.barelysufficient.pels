@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { syncSteppedCommands } from '../../lib/executor/syncSteppedCommands';
+import { describe, expect, it, vi } from 'vitest';
+import { syncSteppedCommands, syncTrackedSteppedCommands } from '../../lib/executor/syncSteppedCommands';
 import type { SteppedSettleDevice } from '../../lib/observer/steppedSettleSnapshot';
 import { STEPPED_LOAD_COMMAND_STALE_MS } from '../../lib/executor/steppedCommandState';
 import { resolveSteppedCommandAttempt } from '../../lib/executor/steppedCommandAttempt';
@@ -300,5 +300,34 @@ describe('syncSteppedCommands: acknowledged commands', () => {
     const retryAtMs = ISSUED + STEPPED_LOAD_COMMAND_STALE_MS + STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS[0];
     expect(store.getDesired('dev-1')).toMatchObject({ status: 'stale', nextRetryAtMs: retryAtMs });
     expect(attemptAt(store, retryAtMs)).toBeNull();
+  });
+});
+
+describe('syncTrackedSteppedCommands', () => {
+  it('resolves no settle devices when nothing is tracked or reported', () => {
+    const { store, reportedStore } = steppedStoresForTest();
+    const getDevices = vi.fn(() => [device()]);
+
+    expect(syncTrackedSteppedCommands(store, reportedStore, getDevices)).toBe(false);
+    expect(getDevices).not.toHaveBeenCalled();
+  });
+
+  it('settles a tracked command against the devices it resolves', () => {
+    const { store, reportedStore } = steppedStoresForTest();
+    store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: Date.now() });
+
+    expect(syncTrackedSteppedCommands(store, reportedStore, () => [device({
+      steppedCommandConfirmation: { state: 'observed', observedStepId: 'high', observedAtMs: Date.now() },
+    })])).toBe(true);
+    expect(store.getDesired('dev-1')).toMatchObject({ status: 'success' });
+  });
+
+  it('runs the sweep once a rung has been reported, with no command tracked', () => {
+    const { store, reportedStore } = steppedStoresForTest();
+    reportedStore.record({ deviceId: 'dev-1', stepId: 'low', reportedAtMs: Date.now() });
+    const getDevices = vi.fn(() => [device()]);
+
+    syncTrackedSteppedCommands(store, reportedStore, getDevices);
+    expect(getDevices).toHaveBeenCalledTimes(1);
   });
 });
