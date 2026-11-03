@@ -728,7 +728,8 @@ can do, ending with turning off **Managed by PELS**. Never write "something outs
 PELS" or name one cause as fact. Source: `packages/settings-ui/src/ui/controlContestCopy.ts`.
 Both stay until the device has kept its settings for an hour, however its rounds
 fall in that time, so `{count} times` reads `Once` when one round is left in the
-hour.
+hour. Dismissing the recommendation hides that contest while it runs; a later
+contest on the same device shows again.
 
 ### Device-page "Power when running" — one line about the present source
 

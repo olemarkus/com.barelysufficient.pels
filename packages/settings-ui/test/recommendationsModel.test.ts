@@ -243,6 +243,24 @@ describe('setup recommendations', () => {
     ]);
   });
 
+  it('hides a dismissed contest, and shows a later contest on the same device again', () => {
+    const contestOf = (sinceMs: number, count: number) => resolve([
+      device({
+        id: 'mill',
+        name: 'Gang nede ovn',
+        controlContest: { setting: 'temperature', commanded: 4.5, observed: 5, count, sinceMs },
+      }),
+    ]).filter(({ id }) => id.startsWith('control-contest:'));
+    const [dismissed] = contestOf(1_700_000_000_000, 4);
+    if (!dismissed) throw new Error('expected the contest recommendation');
+    const dismissals = { [dismissed.id]: dismissed.version };
+
+    // The same contest, still running with more rounds, stays dismissed.
+    expect(groupSetupRecommendations(contestOf(1_700_000_000_000, 6), dismissals).active).toEqual([]);
+    expect(groupSetupRecommendations(contestOf(1_700_000_000_000 + 2 * 60 * 60_000, 4), dismissals).active)
+      .toEqual([expect.objectContaining({ id: 'control-contest:mill' })]);
+  });
+
   it('says once for a contest down to its last round in the hour', () => {
     const [recommendation] = resolve([device({
       id: 'mill', name: 'Gang nede ovn',
