@@ -2244,7 +2244,7 @@ settings. No tour-completed flag is persisted.
   `resolvePriceSetupStatus` (`packages/settings-ui/src/ui/priceSetupStatus.ts`).
 - **Priority is automatic, not a setup step** (owner ruling 2026-09-22). Modes
   explains the optional adjustment: `PELS orders devices automatically. Drag to
-  change the order — the top device keeps running longest. Changes save
+  change the order: the top device keeps running longest. Changes save
   automatically.`
 - The checklist keeps noun titles and done / next / later status icons.
   Devices says `Choose one device to start`. A received reading says `Meter
