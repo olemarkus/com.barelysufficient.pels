@@ -252,10 +252,9 @@ export type ExecutableSteppedLoadIntent = PlannedSteppedCommand & {
 
 /**
  * One stepped device ready to command this cycle: the intent with this cycle's
- * resolved `desired` / `transition` / `previousStepId` (an unknown running step
- * is seeded at the lowest active rung with no previous step; otherwise the
- * previous step is the current one), the current state it is commanded from,
- * and whether the requested step has materialized.
+ * resolved `desired` / `transition` (an unknown running step is seeded at the
+ * lowest active rung), the current state it is commanded from, and whether the
+ * requested step has materialized.
  */
 export type ExecutableSteppedLoadDevice = {
   intent: ExecutableSteppedLoadIntent;
@@ -263,6 +262,16 @@ export type ExecutableSteppedLoadDevice = {
   stepActuation: SteppedStepActuationState;
   stepNeedsAdjustment: boolean;
 };
+
+/**
+ * The step a command for `action` moves the device from: its current one, or
+ * none while an unknown running step is seeded at the lowest rung.
+ */
+export const resolveCommandPreviousStepId = (action: ExecutableSteppedLoadDevice): string | undefined => (
+  action.intent.transition?.effectiveTransition === 'initialize_unknown_step_at_low'
+    ? undefined
+    : action.current.stepId
+);
 
 export type ExecutableSteppedLoadCommandSession = {
   /** The executor's tracked command, independent of the plan's historical inputs. */

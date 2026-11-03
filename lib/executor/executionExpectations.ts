@@ -17,12 +17,12 @@ export function resolveExpectedBinaryStateForIntent(intent: ExecutableDeviceInte
 export function resolveExpectedBinaryStateForSteppedIntent(
   intent: ExecutableSteppedLoadIntent,
 ): BinaryState | undefined {
-  const shedTarget = intent.plannedShedTarget;
   // A shed that ends at a step decides the binary axis through that step: off
   // only if the step itself is the off step.
-  if (shedTarget?.kind === 'step') {
-    if (!shedTarget.stepId) return undefined;
-    return isSteppedLoadOffStep(intent.steppedLoadProfile, shedTarget.stepId) ? 'off' : 'on';
+  if (intent.plannedShedTarget?.kind === 'step') {
+    const { stepId } = intent.desired;
+    if (!stepId) return undefined;
+    return isSteppedLoadOffStep(intent.steppedLoadProfile, stepId) ? 'off' : 'on';
   }
   if (isBinaryDrivenIntent(intent)) return intent.desiredOn ? 'on' : 'off';
   // Neither a binary drive nor a shed target defines the axis, so this cycle

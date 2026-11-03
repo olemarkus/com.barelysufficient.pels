@@ -4,6 +4,7 @@ import {
 } from '../../lib/executor/executablePlanProjection';
 import { buildExecutableSteppedLoadIntent, resolveSteppedLoadCurrentFallback } from '../utils/executionDecisionFixture';
 import { buildExecutableSteppedLoadDevice } from '../../lib/executor/executableSteppedLoadProjection';
+import { resolveCommandPreviousStepId } from '../../lib/executor/executablePlan';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
@@ -81,7 +82,6 @@ describe('planExecutableSteppedLoad', () => {
           stepId: 'low',
           plannedStepId: 'low',
         },
-        previousStepId: 'low',
         transition: {
           effectiveTransition: 'restore_from_off_at_low',
           transitionPhase: 'binary_transition',
@@ -93,6 +93,7 @@ describe('planExecutableSteppedLoad', () => {
         materialization: { kind: 'materialized', stepId: 'low', source: 'observed' },
       },
     });
+    expect(resolveCommandPreviousStepId(action!)).toBe('low');
   });
 
   it('keeps fallback-only step evidence out of executor materialization', () => {

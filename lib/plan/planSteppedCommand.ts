@@ -1,12 +1,13 @@
 import type { DevicePlan, SteppedPlanDevice } from './planTypes';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isPlanDeviceObservedOff, isPlanDeviceObservedOn, isSteppedLoadDevice,
-  resolveSteppedKeepDesiredStepId, resolveSteppedLoadTransition } from './planSteppedLoad';
+  resolveSteppedKeepDesiredStepId, resolveSteppedLoadTransition, type SteppedLoadTransition } from './planSteppedLoad';
 import {
   allowsSteppedLoadKeepInvariantRestore, isRestoreAdmissionHoldReason,
 } from '../planContract/planDecisionSemantics';
 import type {
   PlannedBinaryDrive, PlannedSteppedCommand, PlannedStepBaseline, PlannedStepDesiredState, PlannedShedTarget,
+  PlannedStepTransition,
 } from '../planContract/executionPlan';
 import { getSteppedLoadStep, isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 type PlanDevice = DevicePlan['devices'][number];
@@ -49,15 +50,15 @@ export function buildPlannedSteppedCommand(dev: PlanDevice): PlannedSteppedComma
   // turned on.
   const desiredOn = held ? null : resolveDesiredOn(dev, planningCurrent, plannedTransition, desiredStepId);
   if (isUnderspecifiedSetStepShedIntent(dev, desired)) return undefined;
-  const transition = desiredMatchesTransition(desired, desiredOn, plannedTransition)
-    ? plannedTransition
+  const transition = plannedTransition && desiredMatchesTransition(desired, desiredOn, plannedTransition)
+    ? toPlannedStepTransition(plannedTransition)
     : null;
   const intent: PlannedSteppedCommand & Partial<PlannedBinaryDrive> = {
     id: dev.id,
     name: dev.name,
     steppedLoadProfile: dev.steppedLoadProfile,
     controlAdapter: dev.controlAdapter,
-    plannedShedTarget: toPlannedShedTarget(dev.plannedShedTargetKind, desired.stepId),
+    plannedShedTarget: toPlannedShedTarget(dev.plannedShedTargetKind),
     desired,
     stepDirection: held ? 'down_only' : 'any',
     // The binary axis is attached ONLY when this cycle's decision moves it.
@@ -66,7 +67,6 @@ export function buildPlannedSteppedCommand(dev: PlanDevice): PlannedSteppedComma
     // nothing about the on/off handle — previously that `null` travelled as a
     // third value every consumer re-interpreted through `!== true`.
     ...(desiredOn !== null ? { desiredOn } : {}),
-    previousStepId: dev.selectedStepId,
     transition,
   };
   return intent;
@@ -89,17 +89,26 @@ export function resolveSteppedLoadCurrentFallback(
 }
 
 /**
- * Pairs the producer-decided kind (`plannedShedTargetKind`) with the step THIS
- * layer resolved. The planner pairs the selected kind with the decided command step — see
- * `PlannedShedTarget`.
+ * The producer-decided end state (`plannedShedTargetKind`). A `step` end state's
+ * rung is the command's `desired.stepId` — see `PlannedShedTarget`.
  */
 const toPlannedShedTarget = (
   kind: PlanDevice['plannedShedTargetKind'],
-  desiredStepId: string | undefined,
-): PlannedShedTarget | undefined => {
-  if (kind === undefined) return undefined;
-  return kind === 'step' ? { kind, stepId: desiredStepId } : { kind };
-};
+): PlannedShedTarget | undefined => (kind === undefined ? undefined : { kind });
+
+/**
+ * The transition without the step ids it was resolved from: it is kept only
+ * when its command step is `desired.stepId` (`desiredMatchesTransition`), and
+ * its planned step is `desired.plannedStepId` by construction.
+ */
+const toPlannedStepTransition = (
+  transition: SteppedLoadTransition,
+): PlannedStepTransition => ({
+  effectiveTransition: transition.effectiveTransition,
+  stepPreparationPurpose: transition.stepPreparationPurpose,
+  binaryTarget: transition.binaryTarget,
+  transitionPhase: transition.transitionPhase,
+});
 
 // A shed the plan decided should end at a step, for which no step could be
 // resolved, is not actionable — drop the intent rather than emit a destination

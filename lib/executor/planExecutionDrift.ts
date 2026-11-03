@@ -235,8 +235,7 @@ function hasSteppedStepDrift(
 function resolveUnexecutedShedStepId(
   intent: ExecutableSteppedLoadIntent,
 ): string | undefined {
-  const shedTarget = intent.plannedShedTarget;
-  return shedTarget?.kind === 'step' ? shedTarget.stepId : undefined;
+  return intent.plannedShedTarget?.kind === 'step' ? intent.desired.stepId : undefined;
 }
 
 function isSteppedBinaryTransitionInFlight(
@@ -249,7 +248,9 @@ function isSteppedBinaryTransitionInFlight(
   if (!transition || transition.binaryTarget === null) return false;
   if (!hasRelevantPendingForTransition(runtime, transition.binaryTarget)) return false;
   const liveStepId = observed.steppedLoad?.stepId;
-  if (!isObservedStepAllowedForTransition(transition, liveStepId, plannedCurrentStepId)) return false;
+  if (!isObservedStepAllowedForTransition(transition, intent.desired.stepId, liveStepId, plannedCurrentStepId)) {
+    return false;
+  }
   return isObservedBinaryStateForTransition(transition, observed);
 }
 
@@ -262,17 +263,19 @@ function hasRelevantPendingForTransition(
     || isPendingBinaryCommandMatchingExpected(runtime.pendingBinary, binaryTarget ? 'on' : 'off');
 }
 
+/** `commandStepId` is the step the transition commands: the intent's `desired.stepId`. */
 function isObservedStepAllowedForTransition(
   transition: ExecutableSteppedLoadTransition,
+  commandStepId: string | undefined,
   liveStepId: string | undefined,
   previousStepId: string | undefined,
 ): boolean {
   if (transition.transitionPhase === 'binary_transition') {
-    return Boolean(transition.commandStepId && liveStepId === transition.commandStepId);
+    return Boolean(commandStepId && liveStepId === commandStepId);
   }
   if (transition.transitionPhase === 'step_preparation') {
     const expectedStepIds = new Set(
-      [previousStepId, transition.commandStepId].filter((stepId): stepId is string => typeof stepId === 'string'),
+      [previousStepId, commandStepId].filter((stepId): stepId is string => typeof stepId === 'string'),
     );
     return expectedStepIds.size === 0 || expectedStepIds.has(liveStepId ?? '');
   }

@@ -46,7 +46,6 @@ function resolveDesiredStep(intent: ExecutableDeviceIntent): string | null {
   if (!hasSteppedCommand(intent)) return null;
   const stepped = intent.steppedLoad;
   if (stepped.plannedShedTarget?.kind === 'binary_off') return null;
-  if (stepped.plannedShedTarget?.kind === 'step') return stepped.plannedShedTarget.stepId ?? null;
   return stepped.desired.stepId ?? null;
 }
 

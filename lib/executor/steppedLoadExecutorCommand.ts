@@ -8,6 +8,7 @@ import type {
   ExecutableSteppedLoadIntent,
   ExecutableSteppedLoadTransition,
 } from './executablePlan';
+import { resolveCommandPreviousStepId } from './executablePlan';
 import {
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
@@ -32,7 +33,7 @@ export const isSteppedLoadStepCommandRedundant = (
 ): boolean => {
   const { transition } = action.intent;
   const needsStepPreparation = transition?.transitionPhase === 'step_preparation'
-    && transition.commandStepId === commandStepId;
+    && action.intent.desired.stepId === commandStepId;
   const restoreStepNeedsMaterialization = transition?.effectiveTransition === 'restore_from_off_at_low'
     && !isRequestedStepMaterialized(action.stepActuation);
   return commandStepId === action.current.stepId
@@ -133,7 +134,7 @@ const markAcceptedSteppedLoadCommand = (
   ctx.markSteppedLoadDesiredStepIssued({
     deviceId: action.intent.id,
     desiredStepId: desiredStep.id,
-    previousStepId: action.intent.previousStepId,
+    previousStepId: resolveCommandPreviousStepId(action),
     issuedAtMs: now,
   });
 };
@@ -156,11 +157,12 @@ const logAcceptedSteppedLoadCommand = (
   options: SteppedCommandOptions,
   commandTransport: SteppedLoadStepRequestTransport,
 ): void => {
-  const { transition, previousStepId } = action.intent;
+  const { transition } = action.intent;
+  const previousStepId = resolveCommandPreviousStepId(action);
   const commandPurpose = resolveCommandPurpose(transition, options.commandPurpose);
   const postActivation = commandPurpose === 'post_activation_step';
   const transitionFields = transition ? {
-    plannedDesiredStepId: transition.plannedDesiredStepId ?? desiredStep.id,
+    plannedDesiredStepId: action.intent.desired.plannedStepId ?? desiredStep.id,
     commandPurpose,
     stepPreparationPurpose: postActivation ? null : (transition.stepPreparationPurpose ?? null),
     effectiveTransition: transition.effectiveTransition,
@@ -189,7 +191,7 @@ const logAcceptedSteppedLoadCommand = (
 
 const recordAcceptedSteppedLoadPlanActuation = (
   ctx: ExecutorCommandContext,
-  intent: ExecutableSteppedLoadIntent,
+  action: ExecutableSteppedLoadDevice,
   desiredStep: SteppedLoadStep,
   now: number,
   options: SteppedCommandOptions,
@@ -200,6 +202,7 @@ const recordAcceptedSteppedLoadPlanActuation = (
   recordActivationAttempt: boolean,
 ): void => {
   if (options.recordPlanActuation === false) return;
+  const { intent } = action;
   const effectiveTransition = intent.transition?.effectiveTransition;
   if (effectiveTransition === 'step_down_while_on') {
     ctx.recordShedActuation(intent.id, intent.name, now);
@@ -208,7 +211,7 @@ const recordAcceptedSteppedLoadPlanActuation = (
   if (
     effectiveTransition !== 'step_up_while_on'
     && effectiveTransition !== 'restore_from_off_at_low'
-    && !isSteppedLoadRestoreStepIncrease(intent, desiredStep.id)
+    && !isSteppedLoadRestoreStepIncrease(action, desiredStep.id)
   ) return;
   ctx.recordRestoreActuation(intent.id, intent.name, now);
   if (!recordActivationAttempt) return;
@@ -216,10 +219,11 @@ const recordAcceptedSteppedLoadPlanActuation = (
 };
 
 const isSteppedLoadRestoreStepIncrease = (
-  intent: ExecutableSteppedLoadIntent,
+  action: ExecutableSteppedLoadDevice,
   desiredStepId: string,
 ): boolean => {
-  const { previousStepId } = intent;
+  const { intent } = action;
+  const previousStepId = resolveCommandPreviousStepId(action);
   // Load-bearing, not cosmetic: this gates `recordRestoreActuation`, which
   // stamps the restore cooldown. A shed device observed BELOW its decided rung
   // is commanded up, so the power comparison alone would read that as a restore.
@@ -279,7 +283,7 @@ const markUnacknowledgedSteppedLoadCommand = (
   ctx.markSteppedLoadDesiredStepIssued({
     deviceId: action.intent.id,
     desiredStepId: desiredStep.id,
-    previousStepId: action.intent.previousStepId,
+    previousStepId: resolveCommandPreviousStepId(action),
     issuedAtMs: now,
     unacknowledged: true,
   });
@@ -291,7 +295,8 @@ const logUnacknowledgedSteppedLoadCommand = (
   options: SteppedCommandOptions,
   outcome: UnacknowledgedStep,
 ): void => {
-  const { transition, previousStepId } = action.intent;
+  const { transition } = action.intent;
+  const previousStepId = resolveCommandPreviousStepId(action);
   logger.warn({
     event: 'stepped_load_command_outcome_unknown',
     reasonCode: outcome.reasonCode,
@@ -305,7 +310,7 @@ const logUnacknowledgedSteppedLoadCommand = (
     // The direction is load-bearing here, not decoration: it selects which
     // cooldown clock the unacknowledged write stamped.
     effectiveTransition: transition?.effectiveTransition ?? 'steady',
-    plannedDesiredStepId: transition?.plannedDesiredStepId ?? desiredStep.id,
+    plannedDesiredStepId: (transition ? action.intent.desired.plannedStepId : undefined) ?? desiredStep.id,
     commandTransport: outcome.transport,
     ...(outcome.reasonCode === 'command_request_timed_out' ? { err: outcome.err } : {}),
   });
@@ -348,7 +353,7 @@ const recordUnacknowledgedSteppedLoadCommand = (
 ): boolean => {
   markUnacknowledgedSteppedLoadCommand(ctx, action, desiredStep, now);
   logUnacknowledgedSteppedLoadCommand(action, desiredStep, options, outcome);
-  recordAcceptedSteppedLoadPlanActuation(ctx, action.intent, desiredStep, now, options, false);
+  recordAcceptedSteppedLoadPlanActuation(ctx, action, desiredStep, now, options, false);
   return true;
 };
 
@@ -362,7 +367,7 @@ const recordAcceptedSteppedLoadCommand = (
 ): boolean => {
   markAcceptedSteppedLoadCommand(ctx, action, desiredStep, now, options);
   logAcceptedSteppedLoadCommand(action, desiredStep, options, commandTransport);
-  recordAcceptedSteppedLoadPlanActuation(ctx, action.intent, desiredStep, now, options, true);
+  recordAcceptedSteppedLoadPlanActuation(ctx, action, desiredStep, now, options, true);
   return true;
 };
 
@@ -387,7 +392,7 @@ export const executeSteppedLoadCommand = async (
     const result = await ctx.actuator.apply({
       kind: 'step', deviceId: intent.id, profile: intent.steppedLoadProfile,
       desiredStepId: desiredStep.id, planningPowerW: desiredStep.planningPowerW,
-      planningCurrentA: resolvePlanningCurrentA(desiredStep), previousStepId: intent.previousStepId,
+      planningCurrentA: resolvePlanningCurrentA(desiredStep), previousStepId: resolveCommandPreviousStepId(action),
     });
     if (!result.requested) {
       return logSteppedLoadCommandSkip(

@@ -4,10 +4,13 @@ import type { StorageDecidedDevice, StorageReleaseIntent } from './storageDecisi
 import type { InverterDecision } from './inverterDecision';
 import type { PlannedTargetCommand } from './targetCommand';
 
-/** A selected end state. This is a decision, never a configured shed floor. */
+/**
+ * A selected end state. This is a decision, never a configured shed floor. A
+ * `step` end state's rung is the command's `desired.stepId`.
+ */
 export type PlannedShedTarget =
   | { kind: 'binary_off' }
-  | { kind: 'step'; stepId: string | undefined }
+  | { kind: 'step' }
   | { kind: 'target_value' };
 
 export type PlannedBinaryCommand = {
@@ -17,13 +20,16 @@ export type PlannedBinaryCommand = {
   source: 'controlled' | 'uncontrolled';
 };
 export type PlannedReleaseCommand = PlannedReleaseIntent & { deviceId: string; name: string };
+/**
+ * How this cycle's step command moves the device. It rides only beside the
+ * desired state it was resolved for: the step it commands is `desired.stepId`,
+ * the planned step behind it `desired.plannedStepId`.
+ */
 export type PlannedStepTransition = {
   effectiveTransition: 'full_shed_to_off' | 'restore_from_off_at_low' | 'initialize_unknown_step_at_low'
     | 'step_down_while_on' | 'step_up_while_on' | 'steady';
   stepPreparationPurpose: 'prepare_for_off' | 'prepare_for_on' | 'initialize_unknown_step' | null;
   binaryTarget: boolean | null;
-  commandStepId: string | undefined;
-  plannedDesiredStepId: string | undefined;
   transitionPhase: 'step_preparation' | 'binary_transition' | 'settled';
 };
 export type PlannedStepDesiredState = { stepId?: string; plannedStepId?: string };
@@ -37,7 +43,6 @@ export type PlannedSteppedCommand = {
   plannedShedTarget?: PlannedShedTarget;
   desired: PlannedStepDesiredState;
   stepDirection: 'any' | 'down_only';
-  previousStepId?: string;
   transition: PlannedStepTransition | null;
 };
 
