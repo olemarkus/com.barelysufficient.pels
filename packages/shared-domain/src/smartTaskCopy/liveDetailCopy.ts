@@ -378,6 +378,11 @@ export const SMART_TASK_HERO_STAT_LABELS = {
 // "still {curr} of {target}" stem (vs the on-track "now …") still tonally
 // pairs with the alert chip without re-asserting the failure.
 //
+// Y is the run's total as the latest revision set it, so between revisions the
+// delivered figure can pass it (a tank losing heat faster than estimated). The
+// line then states the bare `Delivered X kWh`, as the history receipt does,
+// instead of a ratio over 100 %.
+//
 // Returns `null` when planned energy is non-finite / zero (no allocation yet,
 // or revision predates the field) or when both delivered and progress data
 // are absent — the line has nothing concrete to say so the view suppresses it
@@ -404,7 +409,9 @@ export const formatDeadlineDeliveredSoFarLine = (
   }
   const deliveredKWhSafe = Number.isFinite(deliveredKWh) && deliveredKWh > 0
     ? deliveredKWh : 0;
-  const energyPart = `Delivered ${deliveredKWhSafe.toFixed(1)} of ${plannedTotalKWh.toFixed(1)} kWh`;
+  const energyPart = deliveredKWhSafe < plannedTotalKWh
+    ? `Delivered ${deliveredKWhSafe.toFixed(1)} of ${plannedTotalKWh.toFixed(1)} kWh`
+    : `Delivered ${deliveredKWhSafe.toFixed(1)} kWh`;
   const currentLabel = formatProgressValueForUnit(currentProgress, targetUnit);
   const targetLabel = formatProgressValueForUnit(targetValue, targetUnit);
   if (status === 'cannot_meet') {
