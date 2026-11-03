@@ -1,6 +1,6 @@
 import type { ExecutableSteppedLoadCommandSession } from '../../lib/executor/executablePlan';
 import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
-import { createTestPlanExecutor, getTestExecutionState } from '../utils/planEngineStateFixture';
+import { createTestPlanExecutor, getTestControlContests } from '../utils/planEngineStateFixture';
 import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import { onTestFinished } from 'vitest';
 import { steppedPlanDevice } from '../utils/planTestUtils';
@@ -1410,7 +1410,7 @@ describe('PlanExecutor pending target commands', () => {
 
     // 90 s, then 2, 5 and every 15 min.
     expect(deviceManager.setCapability.mock.calls.length).toBeGreaterThanOrEqual(10);
-    expect(getTestExecutionState(state).controlContests.contestedControl('dev-1', Date.now())).toBeUndefined();
+    expect(getTestControlContests(state).contestedControl('dev-1', Date.now())).toBeUndefined();
     expect(logCapture.events.some((event) => event.event === 'device_control_contested')).toBe(false);
   });
 

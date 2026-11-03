@@ -3,6 +3,7 @@ import { createPlanEngineState as createRealPlanEngineState, type PlanEngineStat
 import { ExecutionState, type PendingTargetCommandState } from '../../lib/executor/executionState';
 import { ActuationRecord } from '../../lib/executor/actuationRecord';
 import { controlContestsForTest } from '../helpers/controlContests';
+import type { ControlContestRecord } from '../../lib/executor/controlContest';
 import { PlanExecutionFeedback } from '../../lib/plan/planExecutionFeedback';
 import { PlanExecutor as RealPlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 
@@ -12,16 +13,26 @@ export type PlanEngineState = RealPlanEngineState & {
   pendingTargetCommands: Record<string, PendingTargetCommandState>;
 };
 const executionByState = new WeakMap<RealPlanEngineState, ExecutionState>();
+const contestsByState = new WeakMap<RealPlanEngineState, ControlContestRecord>();
 const noDeviceExternallyHeld = (): boolean => false;
 
 export const createPlanEngineState = (
   nowTs = Date.now(),
   isExternalOffHeld: (deviceId: string) => boolean = noDeviceExternallyHeld,
 ): PlanEngineState => {
-  const execution = new ExecutionState(controlContestsForTest().contests);
+  const { contests } = controlContestsForTest();
+  const execution = new ExecutionState(contests);
   const state = createRealPlanEngineState(nowTs, isExternalOffHeld, execution) as PlanEngineState;
   executionByState.set(state, execution);
+  contestsByState.set(state, contests);
   return state;
+};
+
+/** The contest record the state's execution feeds, to read what it counted. */
+export const getTestControlContests = (state: RealPlanEngineState): ControlContestRecord => {
+  const contests = contestsByState.get(state);
+  if (!contests) throw new Error('Construct state through planEngineStateFixture');
+  return contests;
 };
 
 export const getTestExecutionState = (state: RealPlanEngineState): ExecutionState => {
