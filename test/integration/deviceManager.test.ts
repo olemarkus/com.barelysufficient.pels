@@ -5371,6 +5371,33 @@ describe('DeviceTransport', () => {
                 }
             });
 
+            it('hands the device\'s own setpoint and switch reports to the contest record, never PELS\'s echo', async () => {
+                const controlReported = vi.fn();
+                deviceManager = createTestDeviceTransport(homeyMock, loggerMock, {}, undefined, {
+                    observedStateDispatcher: createTestObservedStateDispatcher({ controlReported }),
+                });
+                mockApiGet.mockResolvedValue(buildTempDevice());
+                await deviceManager.init();
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+                mockApiPut.mockResolvedValue({});
+                await deviceManager.setCapability('dev1', 'target_temperature', 16);
+                await deviceManager.setCapability('dev1', 'onoff', false);
+
+                await emitCapability(
+                    'dev1', 'target_temperature', 16, ownWriteTransactionId(mockApiPut, 'dev1', 'target_temperature'),
+                );
+                await emitCapability('dev1', 'onoff', false, ownWriteTransactionId(mockApiPut, 'dev1', 'onoff'));
+                expect(controlReported).not.toHaveBeenCalled();
+
+                // The thermostat reports the setpoint it holds, and something turns it back on.
+                await emitCapability('dev1', 'target_temperature', 7.04, 'f3a1c2d4-driver-report');
+                await emitCapability('dev1', 'onoff', true, '9b1e77a0-other-writer');
+                expect(controlReported.mock.calls.map(([report]) => report)).toEqual([
+                    { deviceId: 'dev1', setting: 'temperature', value: 7, reportedAtMs: expect.any(Number) },
+                    { deviceId: 'dev1', setting: 'on_off', value: true, reportedAtMs: expect.any(Number) },
+                ]);
+            });
+
             it('takes a report of the value PELS wrote, without PELS\'s transaction id, as an observation', async () => {
                 mockApiGet.mockResolvedValue(buildTempDevice());
                 await deviceManager.init();

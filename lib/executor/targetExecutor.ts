@@ -265,9 +265,6 @@ const executeTargetCommandDispatch = async (
       deviceName: name,
       setting: 'temperature',
       value: requestedValue,
-      observed: typeof latestObservedValue === 'number' && Number.isFinite(latestObservedValue)
-        ? latestObservedValue
-        : undefined,
       atMs: nowMs,
     });
     const {

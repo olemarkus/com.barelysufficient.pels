@@ -69,15 +69,23 @@ describe('reports on specific events the owner turned on', () => {
   });
 
   it.each([
-    ['reverted', 'changes PELS made to the temperature of Ovn stue did not stick: it went back to its earlier temperature'],
-    ['overridden', 'something outside PELS changed the temperature of Ovn stue away from what PELS set'],
-  ])('sends a report about a device that does not keep the settings PELS gives it (%s)', async (kind, what) => {
+    [
+      'with the values PELS set and the device reported',
+      { commanded: 4.5, observed: 5 },
+      'PELS set the temperature of Ovn stue to 4.5 °C and it then reported 5 °C',
+    ],
+    [
+      'from an event journalled before the values were recorded',
+      { kind: 'overridden' },
+      'Ovn stue kept reporting another temperature after PELS set it',
+    ],
+  ])('sends a report about a device that does not keep the settings PELS gives it, %s', async (_case, values, what) => {
     vi.useFakeTimers({ now: NOW });
     const { events, sendOnEvent, schedule } = setup(true);
     vi.setSystemTime(NOW - 5 * MINUTE_MS);
     events.record(['stove'], {
       component: 'executor', event: 'device_control_contested', deviceId: 'stove', deviceName: 'Ovn stue',
-      setting: 'temperature', kind, windowMs: 60 * MINUTE_MS, count: 4, firstAtMs: NOW - 20 * MINUTE_MS, rounds: [],
+      setting: 'temperature', ...values, windowMs: 60 * MINUTE_MS, count: 4, firstAtMs: NOW - 20 * MINUTE_MS, rounds: [],
     });
     await schedule().check(NOW);
     expect(sendOnEvent).toHaveBeenCalledTimes(1);

@@ -148,32 +148,41 @@ describe('SteppedCommandStore', () => {
     expect(store.getDesired('dev-1')).toBeUndefined();
     expect(store.hasPriorStepCommand('dev-1')).toBe(false);
   });
-  it('tells the contest record what the device confirmed and which command sessions ended', () => {
+  it('tells the contest record the steps the device reports and which command sessions ended', () => {
     const { store, contests } = steppedStoresForTest();
-    // PELS asks for `low` while the device runs at `max`, as the executor reports its send.
-    const send = (atMs: number, observed: string) => {
-      contests.commandSent({ deviceId: 'dev-1', deviceName: 'Tank', setting: 'level', value: 'low', observed, atMs });
+    // PELS asks for `low` and the device reports `max` before each send.
+    const send = (atMs: number) => {
+      contests.commandSent({ deviceId: 'dev-1', deviceName: 'Tank', setting: 'level', value: 'low', atMs });
       store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'low', issuedAtMs: atMs });
     };
-    send(0, 'max');
-    store.noteReportedStep('dev-1', 'low', 1_000);
+    send(0);
     for (let round = 1; round <= 4; round += 1) {
-      send(round * 60_000, 'max');
-      store.noteReportedStep('dev-1', 'low', round * 60_000 + 1_000);
+      store.noteReportedStep('dev-1', 'max', round * 60_000 - 1_000);
+      send(round * 60_000);
     }
-    expect(contests.contestedControl('dev-1', 5 * 60_000)).toMatchObject({ setting: 'level', count: 4 });
+    expect(contests.contestedControl('dev-1', 5 * 60_000)).toMatchObject({
+      setting: 'level', commanded: 'low', observed: 'max', count: 4,
+    });
+
+    // A Flow's report of the step is the device's own report too.
+    const { store: flowStore, contests: flowContests } = steppedStoresForTest();
+    flowContests.commandSent({ deviceId: 'dev-1', deviceName: 'Tank', setting: 'level', value: 'low', atMs: 0 });
+    for (let round = 1; round <= 4; round += 1) {
+      flowStore.reportActualStep({ deviceId: 'dev-1', stepId: 'max', planningPowerW: 3000, observedAtMs: round * 60_000 - 1_000 });
+      flowContests.commandSent({ deviceId: 'dev-1', deviceName: 'Tank', setting: 'level', value: 'low', atMs: round * 60_000 });
+    }
+    expect(flowContests.contestedControl('dev-1', 5 * 60_000)).toMatchObject({ observed: 'max', count: 4 });
 
     // An on→off edge ends the session: a later send of the same step is a new command.
     const { store: fresh, contests: freshContests } = steppedStoresForTest();
-    freshContests.commandSent({ deviceId: 'dev-1', deviceName: 'Tank', setting: 'level', value: 'low', observed: 'max', atMs: 0 });
+    freshContests.commandSent({ deviceId: 'dev-1', deviceName: 'Tank', setting: 'level', value: 'low', atMs: 0 });
     fresh.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'low', issuedAtMs: 0 });
     fresh.noteReportedStep('dev-1', 'low', 1_000);
     fresh.expireConfirmedDesiredOnBinaryOff('dev-1', true);
     fresh.expireConfirmedDesiredOnBinaryOff('dev-1', false);
     for (let round = 1; round <= 4; round += 1) {
-      freshContests.commandSent({
-        deviceId: 'dev-1', deviceName: 'Tank', setting: 'level', value: 'low', observed: 'max', atMs: round * 60_000,
-      });
+      fresh.noteReportedStep('dev-1', 'max', round * 60_000 - 1_000);
+      freshContests.commandSent({ deviceId: 'dev-1', deviceName: 'Tank', setting: 'level', value: 'low', atMs: round * 60_000 });
     }
     expect(freshContests.contestedControl('dev-1', 5 * 60_000)).toBeUndefined();
   });

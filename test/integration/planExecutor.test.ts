@@ -1385,9 +1385,10 @@ describe('PlanExecutor pending target commands', () => {
     }));
   });
 
-  it('retries a setpoint the device never reports on its ladder, and counts no contest', async () => {
-    // A thermostat that clamps 23 °C keeps reporting 18 °C: every send after the
-    // first retries a command the device never confirmed, so none is a correction.
+  it('retries a setpoint on its ladder, and counts no contest without a report from the device', async () => {
+    // A thermostat that never takes 23 °C reads 18 °C throughout. A round needs the
+    // device to report another value after a send (`ControlContestRecord`); the
+    // retries alone are none.
     const state = createPlanEngineState();
     const { executor, deviceManager } = buildExecutor(state, [
       {

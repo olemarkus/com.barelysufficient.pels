@@ -8,7 +8,7 @@ const contested = {
   deviceType: 'temperature',
   capabilities: ['target_temperature', 'measure_temperature'],
   targets: [{ id: 'target_temperature', value: 15, unit: '°C' }],
-  controlContest: { setting: 'temperature', kind: 'reverted', count: 6, sinceMs: 0 },
+  controlContest: { setting: 'temperature', commanded: 4.5, observed: 5, count: 6, sinceMs: 0 },
 };
 
 const stubContestedDevice = async (page: Page) => {
@@ -34,7 +34,7 @@ test.describe('A device that does not keep what PELS sets', () => {
     const notice = page.locator('#device-detail-control-contest-notice');
     await expect(notice).toBeVisible();
     await expect(notice).toContainText("Gang nede ovn doesn't keep PELS's changes");
-    await expect(notice).toContainText('went back to its earlier temperature');
+    await expect(notice).toContainText('PELS set Gang nede ovn to 4.5 °C and Gang nede ovn then reported 5 °C');
     expect(await page.locator('#device-detail-panel').evaluate((panel) => (
       panel.scrollWidth <= panel.clientWidth
     ))).toBe(true);

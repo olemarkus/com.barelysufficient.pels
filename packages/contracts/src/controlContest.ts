@@ -1,22 +1,21 @@
-/**
- * How a device's rounds against PELS went: `reverted`, it went back to its
- * value from before PELS's write (the write did not stick); `overridden`,
- * something set another value (a Flow, app or schedule with its own idea).
- */
-export type ContestKind = 'reverted' | 'overridden';
-
 /** The setting PELS kept setting back: a setpoint, the on/off switch, or a stepped load's level. */
 export type ContestedSetting = 'temperature' | 'on_off' | 'level';
 
+/** A setpoint, an on/off state or a step id. */
+export type ContestedValue = number | boolean | string;
+
 /**
- * A device whose setting keeps moving away from what PELS set and confirmed,
- * as the executor's `ControlContestRecord` answers it while the rounds within
- * the last hour reach its threshold.
+ * A device whose setting keeps reading another value after PELS set it, as the
+ * executor's `ControlContestRecord` answers it while the rounds within the last
+ * hour reach its threshold. It says what PELS measured, not who moved the
+ * setting: Homey does not say.
  */
 export type ContestedControl = {
   setting: ContestedSetting;
-  /** `reverted` when every round in the window was one, else `overridden`. */
-  kind: ContestKind;
+  /** What PELS set in the latest round. */
+  commanded: ContestedValue;
+  /** What the device reported instead in the latest round. */
+  observed: ContestedValue;
   /** Rounds within the last hour. */
   count: number;
   /** The first of those rounds. */

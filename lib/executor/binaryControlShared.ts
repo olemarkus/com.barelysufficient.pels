@@ -6,10 +6,6 @@ import type { BinaryControlDecision, BinaryControlDecisionSnapshot } from './bin
 import { getDebugEmitter } from '../logging/logger';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isHeldByLifecycleLane, type ExecutorCommandContext } from './executorCommandContext';
-import {
-  isBinaryControlled,
-  resolveBinaryCommandCurrentOn,
-} from '../../packages/shared-domain/src/binaryControlState';
 
 /**
  * Command decisions go to the `plan` debug topic: a skip is the executor half of
@@ -71,13 +67,11 @@ export const runBinaryControl = async (
   }
   let outcome: BinaryControlOutcome = { applied: false };
   try {
-    const observed = ctx.getObservedState(deviceId);
-    const observedOn = isBinaryControlled(observed) ? resolveBinaryCommandCurrentOn(observed) : undefined;
     const atMs = Date.now();
     outcome = await decideAndDispatchBinaryControl(ctx, command, snapshot, forceAgainstReleasedOpposing);
     if (outcome.applied) {
       ctx.execution.controlContests.commandSent({
-        deviceId, deviceName: command.name, setting: 'on_off', value: desired, observed: observedOn, atMs,
+        deviceId, deviceName: command.name, setting: 'on_off', value: desired, atMs,
       });
     }
     return outcome;

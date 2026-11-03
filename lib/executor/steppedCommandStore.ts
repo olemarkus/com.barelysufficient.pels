@@ -174,7 +174,8 @@ export class SteppedCommandStore {
 
   reportActualStep(observation: FlowSteppedLoadObservation): ReportSteppedLoadActualStepResult {
     const result = reportSteppedLoadActualStep(this.state, this.reportedStore, observation);
-    this.noteConfirmation(observation.deviceId);
+    const { deviceId, stepId, observedAtMs } = observation;
+    this.contests.controlReported({ deviceId, setting: 'level', value: stepId, reportedAtMs: observedAtMs });
     return result;
   }
 
@@ -186,7 +187,7 @@ export class SteppedCommandStore {
   /** Settle the tracked command against the step the device reports (`noteSteppedLoadReportedStep`). */
   noteReportedStep(deviceId: string, stepId: string, reportedAtMs: number): void {
     noteSteppedLoadReportedStep(this.state, deviceId, stepId, reportedAtMs);
-    this.noteConfirmation(deviceId);
+    this.contests.controlReported({ deviceId, setting: 'level', value: stepId, reportedAtMs });
   }
 
   /**
@@ -206,7 +207,6 @@ export class SteppedCommandStore {
 
   confirmDesired(deviceId: string, desired: SteppedLoadDesiredRuntimeState): void {
     confirmSteppedLoadDesiredStep(this.state, deviceId, desired);
-    this.noteConfirmation(deviceId);
   }
 
   /** An on→off edge ends the command session, and with it the command PELS stood behind. */
@@ -232,10 +232,6 @@ export class SteppedCommandStore {
     this.contests.commandReleased(deviceId, 'level');
   }
 
-  private noteConfirmation(deviceId: string): void {
-    const desired = this.state.steppedLoadDesiredByDeviceId.get(deviceId);
-    if (desired?.status === 'success') this.contests.commandConfirmed(deviceId, 'level', desired.stepId);
-  }
 }
 
 export const createSteppedCommandStore = (

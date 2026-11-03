@@ -156,22 +156,22 @@ one, and what each report is about, are listed in `REPORTED_EVENTS` in
 
 - `ev_car_link_unmatched`, a charger whose window closed with no car identified, reported
   about the charger as of its plug-in.
-- `device_control_contested`, a device that confirmed a setting PELS set (its target
-  temperature, on/off state or stepped level), then moved away from it, and that PELS set
-  back, at least 4 times on one setting within an hour. It is reported about that device
-  as of the first of those rounds. Its `kind` is `reverted` when every time the device went
-  back to its value from before PELS first asked (the write did not stick, as with a device
-  app that reports a setting its cloud never took), and `overridden` otherwise (a Flow, app
-  or schedule setting its own value). An on/off setting has only two values, so its rounds
-  are always `overridden`. `ControlContestRecord` (`lib/executor/controlContest.ts`)
-  records it, because the executor owns confirmation: a retry of a command the device never
-  confirmed is never a round, so a thermostat that clamps PELS's 5 °C to 7 °C is retried
-  without being reported. A command the plan no longer asks for, or whose command session
-  ended, is forgotten, so a later send of it is a new command. The same record answers
-  `/ui_devices`'s `controlContest` for each managed device while its rounds in the last hour
-  reach the threshold; the settings UI then lists a recommendation and shows a notice above
-  Managed by PELS on the device page, worded by `kind`. PELS keeps setting the device back:
-  the record only warns and reports.
+- `device_control_contested`, a device that kept reporting another value after PELS set
+  one of its settings (its target temperature, on/off state or stepped level): PELS set it,
+  the device reported another value, and PELS set it again, at least 4 times on one setting
+  within an hour. It is reported about that device as of the first of those rounds, with
+  `commanded` and `observed`, the values of the latest round. A report is the device's own:
+  the live feed's switch and setpoint events that are not Homey's echo of PELS's write
+  (`lib/device/transport/ownCapabilityWrites.ts`), and the step the device or its Flow
+  reports. Homey does not say who set a value, so a thermostat that cannot go down to
+  PELS's 5 °C and reports 7 °C is counted like a Flow that sets 23 °C, and the event names
+  no cause. A retry with no report in between is no round. `ControlContestRecord`
+  (`lib/executor/controlContest.ts`) records it. A command the plan no longer asks for, or
+  whose command session ended, is forgotten, so a later send of it is a new command. The
+  same record answers `/ui_devices`'s `controlContest` for each managed device while its
+  rounds in the last hour reach the threshold; the settings UI then lists a recommendation
+  and shows a notice above Managed by PELS on the device page, with both values. PELS keeps
+  setting the device: the record only warns and reports.
 
 The schedule checks every 5 minutes from 17 minutes after start (two minutes off the daily
 report's hourly check), over the device events kept in the last 30 minutes, so a report

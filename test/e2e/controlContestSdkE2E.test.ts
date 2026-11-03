@@ -94,7 +94,7 @@ describe('Drift breaker (SDK-boundary e2e)', () => {
     vi.useRealTimers();
   });
 
-  it('reports a thermostat that something sets away from PELS\'s limit four times in an hour', async () => {
+  it('reports a thermostat that reports another setpoint after PELS sets its limit, four times in an hour', async () => {
     const device = await buildThermostat();
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     limitTheHouse();
@@ -110,20 +110,22 @@ describe('Drift breaker (SDK-boundary e2e)', () => {
       await vi.advanceTimersByTimeAsync(10 * MINUTE_MS);
       expect((await deviceFromUi()).controlContest).toBeUndefined();
       const before = setpointWrites(putSpy);
-      // Something outside PELS (a Flow, an app, a schedule) sets its own value.
+      // The thermostat reports another setpoint: Homey does not say whether the
+      // device, a Flow, an app or a schedule set it.
       device.setActualCapabilityValue('target_temperature', 23);
       await vi.advanceTimersByTimeAsync(MINUTE_MS);
       expect(setpointWrites(putSpy)).toBe(before + 1);
     }
 
     expect((await deviceFromUi()).controlContest).toEqual({
-      setting: 'temperature', kind: 'overridden', count: 4, sinceMs: expect.any(Number),
+      setting: 'temperature', commanded: LIMITED_C, observed: 23, count: 4, sinceMs: expect.any(Number),
     });
     const journal = createDeviceEventStore(app.getUserdataDatabase()).read([DEVICE_ID], 0, Date.now());
     expect(journal.filter(({ event }) => event === 'device_control_contested')).toEqual([
       expect.objectContaining({
         details: expect.objectContaining({
-          deviceId: DEVICE_ID, deviceName: 'Hallway Heatpump', setting: 'temperature', kind: 'overridden', count: 4,
+          deviceId: DEVICE_ID, deviceName: 'Hallway Heatpump', setting: 'temperature',
+          commanded: LIMITED_C, observed: 23, count: 4,
         }),
       }),
     ]);

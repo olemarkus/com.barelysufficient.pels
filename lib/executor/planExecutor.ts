@@ -193,7 +193,6 @@ export class PlanExecutor {
   public handleConfirmedBinaryCommand(confirmation: PendingBinaryConfirmation): void {
     const { liveDevice, pending, confirmedAtMs: now } = confirmation;
     const deviceId = liveDevice.id;
-    this.execution.controlContests.commandConfirmed(deviceId, 'on_off', pending.desired);
     logger.info({
       event: 'binary_command_applied',
       deviceId,

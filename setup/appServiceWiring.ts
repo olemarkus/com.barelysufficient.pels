@@ -572,6 +572,7 @@ export class AppServiceWiring {
     observedStateEmitter.onExternalTemperatureAdjusted(
       ctx.observedTemperatureModeUpdates.accept.bind(ctx.observedTemperatureModeUpdates),
     );
+    observedStateEmitter.onControlReported(this.deps.controlContests.controlReported.bind(this.deps.controlContests));
     subscribePlanObservedState({
       ctx,
       observedStateEmitter,

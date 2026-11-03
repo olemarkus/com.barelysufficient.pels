@@ -54,10 +54,14 @@ intent. The producer records normalized PELS writes before the SDK call, includi
 calls whose outcome fails, since rejection does not prove a device never acted.
 The latest commanded value stays attributable; superseded values remain
 attributable for two minutes after supersession. Matching values are conservatively
-ignored, including a user deliberately choosing that same value. Homey does not
-identify the actor: other apps and Flows qualify as external changes too. A
-superseded echo arriving beyond that window cannot be distinguished from a new
-external adjustment. Command attribution is in-memory and starts afresh at boot.
+ignored, including a user deliberately choosing that same value. The first other
+value within 15 minutes of PELS's latest write, and less than a degree from it, is
+the device's answer to the write (a heater that only takes whole degrees reports
+21 °C for PELS's 20.5 °C), never the owner's choice. Homey identifies PELS's own
+writes by the transaction id PELS sends with them, but not anyone else's: other
+apps and Flows qualify as external changes too. A superseded echo arriving beyond
+that window cannot be distinguished from a new external adjustment. Command
+attribution is in-memory and starts afresh at boot.
 
 Ownership/catalog unavailability skips the edit rather than writing another
 home's mode or replacing a partial catalog. Each synchronous edit resolves its

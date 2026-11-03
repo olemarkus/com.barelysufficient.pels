@@ -7,126 +7,148 @@ import { controlContestsForTest } from '../helpers/controlContests';
 const MINUTE_MS = 60_000;
 const DEVICE = 'mill';
 
-const sent = (
-  atMs: number,
-  value: ControlValue,
-  observed: ControlValue | undefined,
-  setting: ContestedSetting = 'temperature',
-) => ({ deviceId: DEVICE, deviceName: 'Gang nede ovn', setting, value, observed, atMs });
+const sent = (atMs: number, value: ControlValue, setting: ContestedSetting = 'temperature') => (
+  { deviceId: DEVICE, deviceName: 'Gang nede ovn', setting, value, atMs }
+);
+const reported = (reportedAtMs: number, value: ControlValue, setting: ContestedSetting = 'temperature') => (
+  { deviceId: DEVICE, setting, value, reportedAtMs }
+);
 
-/** PELS asks for 5 °C over 20 °C and the device confirms; then `moves` rounds of `drifted`, each set back and confirmed. */
-const contestRounds = (moves: number, drifted: (round: number) => ControlValue, everyMs = 10 * MINUTE_MS) => {
+/** PELS sets 5 °C; then `moves` times the device reports `drifted` and PELS sets 5 °C again. */
+const contestRounds = (moves: number, drifted: ControlValue = 22, everyMs = 10 * MINUTE_MS) => {
   const record = controlContestsForTest();
-  record.contests.commandSent(sent(0, 5, 20));
-  record.contests.commandConfirmed(DEVICE, 'temperature', 5);
+  record.contests.commandSent(sent(0, 5));
   for (let round = 1; round <= moves; round += 1) {
-    record.contests.commandSent(sent(round * everyMs, 5, drifted(round)));
-    record.contests.commandConfirmed(DEVICE, 'temperature', 5);
+    record.contests.controlReported(reported(round * everyMs - MINUTE_MS, drifted));
+    record.contests.commandSent(sent(round * everyMs, 5));
   }
   return record;
 };
 
 describe('ControlContestRecord', () => {
-  it('never counts the retries of a command the device did not confirm', () => {
-    // A thermostat that clamps 5 °C to 7 °C: PELS retries on its ladder for hours.
-    const { contests, journalled } = controlContestsForTest();
-    contests.commandSent(sent(0, 5, 20));
-    for (let retry = 1; retry <= 12; retry += 1) contests.commandSent(sent(retry * 15 * MINUTE_MS, 5, 7));
-    expect(contests.contestedControl(DEVICE, 3 * 60 * MINUTE_MS)).toBeUndefined();
-    expect(journalled).toEqual([]);
-  });
-
-  it('counts a confirmed setting that something moves away four times in an hour, and reports it once', () => {
-    const { contests, journalled } = contestRounds(5, () => 22);
+  it('counts a setting the device keeps reporting away from four times in an hour, and reports it once', () => {
+    const { contests, journalled } = contestRounds(5);
     expect(contests.contestedControl(DEVICE, 50 * MINUTE_MS)).toEqual({
-      setting: 'temperature', kind: 'overridden', count: 5, sinceMs: 10 * MINUTE_MS,
+      setting: 'temperature', commanded: 5, observed: 22, count: 5, sinceMs: 10 * MINUTE_MS,
     });
     expect(journalled).toHaveLength(1);
     expect(journalled[0]).toEqual({
       deviceIds: [DEVICE],
       event: expect.objectContaining({
         event: 'device_control_contested', deviceId: DEVICE, deviceName: 'Gang nede ovn', setting: 'temperature',
-        kind: 'overridden', count: 4, firstAtMs: 10 * MINUTE_MS,
+        commanded: 5, observed: 22, count: 4, firstAtMs: 10 * MINUTE_MS,
       }),
     });
   });
 
-  it('says reverted while every round went back to the value from before PELS asked', () => {
-    expect(contestRounds(4, () => 20).contests.contestedControl(DEVICE, 40 * MINUTE_MS)?.kind).toBe('reverted');
-    expect(contestRounds(4, (round) => (round === 2 ? 22 : 20)).contests
-      .contestedControl(DEVICE, 40 * MINUTE_MS)?.kind).toBe('overridden');
-  });
-
-  it('says overridden for on/off, whose earlier value says nothing about what moved it', () => {
+  it('counts a device that never takes the value as the rounds it reports another value', () => {
+    // A thermostat whose minimum is 7 °C: after every write of 5 °C it reports 7 °C again.
     const { contests } = controlContestsForTest();
-    contests.commandSent(sent(0, false, true, 'on_off'));
-    contests.commandConfirmed(DEVICE, 'on_off', false);
-    for (let round = 1; round <= 4; round += 1) {
-      contests.commandSent(sent(round * MINUTE_MS, false, true, 'on_off'));
-      contests.commandConfirmed(DEVICE, 'on_off', false);
+    contests.commandSent(sent(0, 5));
+    for (let retry = 1; retry <= 4; retry += 1) {
+      contests.controlReported(reported(retry * 10 * MINUTE_MS - MINUTE_MS, 7));
+      contests.commandSent(sent(retry * 10 * MINUTE_MS, 5));
     }
-    expect(contests.contestedControl(DEVICE, 4 * MINUTE_MS)).toEqual({
-      setting: 'on_off', kind: 'overridden', count: 4, sinceMs: MINUTE_MS,
+    expect(contests.contestedControl(DEVICE, 40 * MINUTE_MS)).toEqual({
+      setting: 'temperature', commanded: 5, observed: 7, count: 4, sinceMs: 10 * MINUTE_MS,
     });
   });
 
-  it('counts a correction that did not stick once, not again on its retries', () => {
-    const { contests } = contestRounds(3, () => 22);
-    contests.commandSent(sent(40 * MINUTE_MS, 5, 22));
-    contests.commandSent(sent(42 * MINUTE_MS, 5, 22));
-    contests.commandSent(sent(47 * MINUTE_MS, 5, 22));
-    expect(contests.contestedControl(DEVICE, 47 * MINUTE_MS)?.count).toBe(4);
+  it('never counts a retry with no report from the device in between', () => {
+    const { contests, journalled } = controlContestsForTest();
+    contests.commandSent(sent(0, 5));
+    for (let retry = 1; retry <= 12; retry += 1) contests.commandSent(sent(retry * 15 * MINUTE_MS, 5));
+    expect(contests.contestedControl(DEVICE, 3 * 60 * MINUTE_MS)).toBeUndefined();
+    expect(journalled).toEqual([]);
   });
 
-  it('is no round when the device already reads the value, or reads nothing', () => {
-    const { contests } = contestRounds(3, () => 22);
-    contests.commandSent(sent(40 * MINUTE_MS, 5, 5));
-    contests.commandConfirmed(DEVICE, 'temperature', 5);
-    contests.commandSent(sent(41 * MINUTE_MS, 5, undefined));
+  it('counts a report only once, for the send after it', () => {
+    const { contests } = contestRounds(3);
+    contests.commandSent(sent(40 * MINUTE_MS, 5));
+    contests.commandSent(sent(42 * MINUTE_MS, 5));
+    contests.commandSent(sent(47 * MINUTE_MS, 5));
+    expect(contests.contestedControl(DEVICE, 47 * MINUTE_MS)).toBeUndefined();
+  });
+
+  it('takes no contradiction from a report of the value PELS set, or one from before PELS set it', () => {
+    const { contests } = contestRounds(3);
+    contests.controlReported(reported(39 * MINUTE_MS, 5));
+    contests.commandSent(sent(40 * MINUTE_MS, 5));
+    contests.controlReported(reported(39 * MINUTE_MS, 22));
+    contests.commandSent(sent(41 * MINUTE_MS, 5));
     expect(contests.contestedControl(DEVICE, 41 * MINUTE_MS)).toBeUndefined();
   });
 
+  it('keeps the latest report when the device reports more than once between sends', () => {
+    const { contests } = contestRounds(3);
+    contests.controlReported(reported(38 * MINUTE_MS, 22));
+    contests.controlReported(reported(39 * MINUTE_MS, 24));
+    contests.commandSent(sent(40 * MINUTE_MS, 5));
+    expect(contests.contestedControl(DEVICE, 40 * MINUTE_MS)).toMatchObject({ observed: 24, count: 4 });
+  });
+
+  it('counts on/off rounds with the value the device reported', () => {
+    const { contests } = controlContestsForTest();
+    contests.commandSent(sent(0, false, 'on_off'));
+    for (let round = 1; round <= 4; round += 1) {
+      contests.controlReported(reported(round * MINUTE_MS - 1_000, true, 'on_off'));
+      contests.commandSent(sent(round * MINUTE_MS, false, 'on_off'));
+    }
+    expect(contests.contestedControl(DEVICE, 4 * MINUTE_MS)).toEqual({
+      setting: 'on_off', commanded: false, observed: true, count: 4, sinceMs: MINUTE_MS,
+    });
+  });
+
+  it('is no round when PELS sends another value', () => {
+    const { contests } = contestRounds(3);
+    contests.controlReported(reported(39 * MINUTE_MS, 22));
+    contests.commandSent(sent(40 * MINUTE_MS, 6));
+    expect(contests.contestedControl(DEVICE, 40 * MINUTE_MS)).toBeUndefined();
+  });
+
   it('forgets a command the plan no longer asks for, so asking again is a new command', () => {
-    const { contests } = contestRounds(3, () => 22);
+    const { contests } = contestRounds(3);
     contests.retainPlanned(DEVICE, { temperature: 21, on_off: null, level: null });
-    contests.commandSent(sent(35 * MINUTE_MS, 5, 22));
+    contests.controlReported(reported(34 * MINUTE_MS, 22));
+    contests.commandSent(sent(35 * MINUTE_MS, 5));
     expect(contests.contestedControl(DEVICE, 35 * MINUTE_MS)).toBeUndefined();
   });
 
   it('keeps the command the plan still asks for', () => {
-    const { contests } = contestRounds(3, () => 22);
+    const { contests } = contestRounds(3);
     contests.retainPlanned(DEVICE, { temperature: 5, on_off: null, level: null });
-    contests.commandSent(sent(35 * MINUTE_MS, 5, 22));
+    contests.controlReported(reported(34 * MINUTE_MS, 22));
+    contests.commandSent(sent(35 * MINUTE_MS, 5));
     expect(contests.contestedControl(DEVICE, 35 * MINUTE_MS)?.count).toBe(4);
   });
 
   it('forgets a command whose session ended', () => {
     const { contests } = controlContestsForTest();
-    contests.commandSent(sent(0, 'max', 'low', 'level'));
-    contests.commandConfirmed(DEVICE, 'level', 'max');
+    contests.commandSent(sent(0, 'max', 'level'));
     contests.commandReleased(DEVICE, 'level');
-    for (let round = 1; round <= 4; round += 1) contests.commandSent(sent(round * MINUTE_MS, 'max', 'low', 'level'));
+    for (let round = 1; round <= 4; round += 1) {
+      contests.controlReported(reported(round * MINUTE_MS - 1_000, 'low', 'level'));
+      contests.commandSent(sent(round * MINUTE_MS, 'max', 'level'));
+    }
+    // The first send after the release is a new command, so four cycles make three rounds.
     expect(contests.contestedControl(DEVICE, 4 * MINUTE_MS)).toBeUndefined();
   });
 
   it('lets rounds older than the hour go', () => {
-    const { contests } = contestRounds(4, () => 22, 15 * MINUTE_MS);
+    const { contests } = contestRounds(4, 22, 15 * MINUTE_MS);
     expect(contests.contestedControl(DEVICE, 60 * MINUTE_MS)?.count).toBe(4);
     expect(contests.contestedControl(DEVICE, 15 * MINUTE_MS + CONTEST_WINDOW_MS)).toBeUndefined();
   });
 
   it('counts each setting on its own', () => {
     const { contests } = controlContestsForTest();
-    for (const setting of ['temperature', 'on_off'] as const) {
-      const value = setting === 'temperature' ? 5 : false;
-      contests.commandSent(sent(0, value, setting === 'temperature' ? 20 : true, setting));
-      contests.commandConfirmed(DEVICE, setting, value);
-    }
+    contests.commandSent(sent(0, 5));
+    contests.commandSent(sent(0, false, 'on_off'));
     for (let round = 1; round <= 2; round += 1) {
-      contests.commandSent(sent(round * MINUTE_MS, 5, 22));
-      contests.commandConfirmed(DEVICE, 'temperature', 5);
-      contests.commandSent(sent(round * MINUTE_MS, false, true, 'on_off'));
-      contests.commandConfirmed(DEVICE, 'on_off', false);
+      contests.controlReported(reported(round * MINUTE_MS - 1_000, 22));
+      contests.commandSent(sent(round * MINUTE_MS, 5));
+      contests.controlReported(reported(round * MINUTE_MS - 1_000, true, 'on_off'));
+      contests.commandSent(sent(round * MINUTE_MS, false, 'on_off'));
     }
     expect(contests.contestedControl(DEVICE, 3 * MINUTE_MS)).toBeUndefined();
   });

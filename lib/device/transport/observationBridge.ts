@@ -3,6 +3,7 @@ import { projectObservedState } from '../observedStateProjection';
 import { TransportObservationState } from './transportObservationState';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 import type { TemperatureAdjustmentObserver } from '../temperatureAdjustmentObserver';
+import type { ControlReported } from '../../ports/controlContest';
 import type {
   ObservedControlStateChangedEvent,
   ObservedStateChangedEvent,
@@ -65,6 +66,10 @@ export class ObservationBridge {
     );
     if (adjustment) this.dispatcher.externalTemperatureAdjusted(adjustment);
     this.dispatcher.observedControlStateChanged(event);
+  }
+
+  dispatchControlReported(report: ControlReported): void {
+    this.dispatcher.controlReported(report);
   }
 
   setGenerationW(watts: number | null, observedAtMs: number): void {
