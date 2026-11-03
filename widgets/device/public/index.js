@@ -413,7 +413,7 @@
     // The estimate coordinates against the current higher-priority roster, but
     // future prices, measurements, and task edits can still move it. Keep the
     // caveat short for the 320–480 px widget.
-    estimateCaveat: "Estimate \u2014 the actual run may differ as prices and other tasks change.",
+    estimateCaveat: "This is an estimate. The actual run may differ as prices and other tasks change.",
     createButton: "Create task",
     createAnywayButton: "Create anyway",
     chartPrice: "Price",
@@ -423,7 +423,7 @@
     // Shown when the preview can't be projected and the backend did not provide a
     // more specific missing-input reason. Distinct from a hard error. Avoids the
     // reserved "plan" noun (`feedback_terminology_plan_vs_deadline`).
-    previewUnavailable: "Can\u2019t preview this yet \u2014 PELS needs more current data for this window.",
+    previewUnavailable: "Can\u2019t preview this yet. PELS needs more current data for this window.",
     // Shown specifically when the device has no learned energy profile yet
     // (`unavailableReason === 'needs_observation'`): there is no temperature
     // bootstrap rate, so PELS can't estimate the run until it has watched the
@@ -436,7 +436,7 @@
     // → zero scheduled hours): there is nothing to schedule, so explain that
     // honestly rather than reusing the no-prices line. Uses the canonical "goal"
     // noun (matches `goalLabel`) and avoids the reserved "plan" noun.
-    previewSatisfied: "This goal is already met \u2014 nothing to schedule.",
+    previewSatisfied: "This goal is already met, so there is nothing to schedule.",
     // Pending state on the Create button while the /create round-trip is in
     // flight. Distinct from `created` (the confirmed-success label): the button
     // must read as work-in-progress, never as success, until a `{ ok: true }`
@@ -469,30 +469,31 @@
     // surface-neutral constant in `permissionsCopy.ts` — the smart-task editor shows the same
     // string, so it must not live under a create-widget-scoped name.
     extraPermissionsTitle: SMART_TASK_EXTRA_PERMISSIONS_TITLE,
-    extraPermissionsHint: "Off unless you turn them on \u2014 only used to hit this deadline.",
+    extraPermissionsHint: "Off unless you turn them on. PELS uses them only to meet this deadline.",
     // Shown in the preview when the coordinated projection returns a real planner
     // verdict that the deadline may not be met — `cannot_meet` (won't make it) or
     // `at_risk` (might not). Surfaced as a prominent warning so a user never
     // commits an unreachable ready-by believing it is fine. The estimate
     // can still change with future measurements and re-plans, so the copy is a
     // plain warning, not a soft hint. Distinct from `previewUnavailable`, which is a missing-price /
-    // projection gap rather than a feasibility verdict.
-    cannotMeet: "Cannot finish \u2014 not enough usable time before this ready-by time.",
-    atRisk: "At risk \u2014 this may need most of the available window."
+    // projection gap rather than a feasibility verdict. Every verdict line reads
+    // `{verdict}. {cause}` (`resolveSmartTaskPreviewStatusCopy`).
+    cannotMeet: "Cannot finish. Not enough usable time before this ready-by time.",
+    atRisk: "At risk. This may need most of the available window."
   };
   var PREVIEW_UNAVAILABLE_COPY_BY_REASON = {
     invalid_deadline: "Can\u2019t preview this ready-by time yet.",
-    invalid_session: "Can\u2019t preview this yet \u2014 plug the EV in to start.",
-    missing_capacity: "Can\u2019t preview this yet \u2014 PELS needs power readings from this device.",
-    missing_device: "Can\u2019t preview this yet \u2014 PELS can\u2019t find this device.",
-    device_unmanaged: "Can\u2019t preview this yet \u2014 turn \u201CManaged by PELS\u201D on for this device.",
+    invalid_session: "Can\u2019t preview this yet. Plug the EV in to start.",
+    missing_capacity: "Can\u2019t preview this yet. PELS needs power readings from this device.",
+    missing_device: "Can\u2019t preview this yet. PELS can\u2019t find this device.",
+    device_unmanaged: "Can\u2019t preview this yet. Turn \u201CManaged by PELS\u201D on for this device.",
     needs_observation: CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation,
-    missing_prices: "Can\u2019t preview this yet \u2014 prices through this window are not available yet.",
-    missing_reading: "Can\u2019t preview this yet \u2014 PELS needs a current device reading.",
-    price_feature_disabled: "Can\u2019t preview this yet \u2014 price-aware planning is off.",
+    missing_prices: "Can\u2019t preview this yet. Prices through this window are not available yet.",
+    missing_reading: "Can\u2019t preview this yet. PELS needs a current device reading.",
+    price_feature_disabled: "Can\u2019t preview this yet. Price-aware planning is off.",
     waiting_for_car: WAITING_FOR_CAR_ASSOCIATION,
-    progress_stale: "Can\u2019t preview this yet \u2014 PELS needs a fresher device reading.",
-    settings_unavailable: "Can\u2019t preview this yet \u2014 PELS couldn\u2019t read Smart tasks. Try again.",
+    progress_stale: "Can\u2019t preview this yet. PELS needs a fresher device reading.",
+    settings_unavailable: "Can\u2019t preview this yet. PELS couldn\u2019t read Smart tasks. Try again.",
     unknown: CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable
   };
   var resolveSmartTaskPreviewUnavailableCopy = (reason) => PREVIEW_UNAVAILABLE_COPY_BY_REASON[reason ?? "unknown"];
@@ -502,12 +503,12 @@
       case "unavailable":
         return resolveSmartTaskPreviewUnavailableCopy(estimate.unavailableReason);
       case "cannot_meet":
-        if (budgetRole === "sole") return `Cannot finish \u2014 ${WHY_CANNOT_MEET_BUDGET}`;
-        if (budgetRole === "contributing") return `Cannot finish \u2014 ${WHY_CANNOT_MEET_BUDGET_PARTIAL}`;
+        if (budgetRole === "sole") return `Cannot finish. ${WHY_CANNOT_MEET_BUDGET}`;
+        if (budgetRole === "contributing") return `Cannot finish. ${WHY_CANNOT_MEET_BUDGET_PARTIAL}`;
         return CREATE_SMART_TASK_WIDGET_COPY.cannotMeet;
       case "at_risk":
-        if (budgetRole === "sole") return `At risk \u2014 ${WHY_AT_RISK_BUDGET}`;
-        if (budgetRole === "contributing") return `At risk \u2014 ${WHY_AT_RISK_BUDGET_PARTIAL}`;
+        if (budgetRole === "sole") return `At risk. ${WHY_AT_RISK_BUDGET}`;
+        if (budgetRole === "contributing") return `At risk. ${WHY_AT_RISK_BUDGET_PARTIAL}`;
         if (estimate.floorShortfallCause === "higher_priority_load") {
           return `At risk. ${WHY_AT_RISK_HIGHER_PRIORITY_LOAD}`;
         }
@@ -553,7 +554,7 @@
     // is filed under Past tasks (where it wears the Abandoned chip) — said here
     // so the user who later scans history isn't surprised by a run they never
     // knowingly abandoned.
-    updated: "Smart task updated \u2014 the earlier run is now in Past tasks.",
+    updated: "Smart task updated. The earlier run is now in Past tasks.",
     // A permission-only save changes no goal, no ready-by, and no deadline, so
     // `objectivesMatch` holds and the recorder no-ops: the run continues and
     // NOTHING lands in Past tasks. Claiming otherwise would send the user looking
@@ -561,7 +562,7 @@
     // toggle had broken their task. Says "this run", not "re-planned": *plan* is
     // reserved for the planning layer on smart-task surfaces
     // (`notes/ui-terminology.md` § "Plan vs deadline").
-    updatedPermissionsOnly: "Smart task updated \u2014 the new permissions apply to this run.",
+    updatedPermissionsOnly: "Smart task updated. The new permissions apply to this run.",
     cleared: "Smart task cleared.",
     // The task ended (completed/expired/cleared elsewhere) while the editor was
     // open — the editor closes rather than offering a retry that would re-create
