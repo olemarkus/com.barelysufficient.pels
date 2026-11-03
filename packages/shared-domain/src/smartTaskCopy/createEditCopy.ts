@@ -131,9 +131,10 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   // commits an unreachable ready-by believing it is fine. The estimate
   // can still change with future measurements and re-plans, so the copy is a
   // plain warning, not a soft hint. Distinct from `previewUnavailable`, which is a missing-price /
-  // projection gap rather than a feasibility verdict.
-  cannotMeet: 'Cannot finish — not enough usable time before this ready-by time.',
-  atRisk: 'At risk — this may need most of the available window.',
+  // projection gap rather than a feasibility verdict. Every verdict line reads
+  // `{verdict}. {cause}` (`resolveSmartTaskPreviewStatusCopy`).
+  cannotMeet: 'Cannot finish. Not enough usable time before this ready-by time.',
+  atRisk: 'At risk. This may need most of the available window.',
 } as const;
 
 // The card a Smart task carries about its device for the time after the task:
@@ -204,12 +205,12 @@ export const resolveSmartTaskPreviewStatusCopy = (
     case 'unavailable':
       return resolveSmartTaskPreviewUnavailableCopy(estimate.unavailableReason);
     case 'cannot_meet':
-      if (budgetRole === 'sole') return `Cannot finish — ${WHY_CANNOT_MEET_BUDGET}`;
-      if (budgetRole === 'contributing') return `Cannot finish — ${WHY_CANNOT_MEET_BUDGET_PARTIAL}`;
+      if (budgetRole === 'sole') return `Cannot finish. ${WHY_CANNOT_MEET_BUDGET}`;
+      if (budgetRole === 'contributing') return `Cannot finish. ${WHY_CANNOT_MEET_BUDGET_PARTIAL}`;
       return CREATE_SMART_TASK_WIDGET_COPY.cannotMeet;
     case 'at_risk':
-      if (budgetRole === 'sole') return `At risk — ${WHY_AT_RISK_BUDGET}`;
-      if (budgetRole === 'contributing') return `At risk — ${WHY_AT_RISK_BUDGET_PARTIAL}`;
+      if (budgetRole === 'sole') return `At risk. ${WHY_AT_RISK_BUDGET}`;
+      if (budgetRole === 'contributing') return `At risk. ${WHY_AT_RISK_BUDGET_PARTIAL}`;
       // Room taken by higher-priority load is not a short window.
       if (estimate.floorShortfallCause === 'higher_priority_load') {
         return `At risk. ${WHY_AT_RISK_HIGHER_PRIORITY_LOAD}`;
