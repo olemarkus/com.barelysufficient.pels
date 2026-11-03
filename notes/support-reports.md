@@ -82,7 +82,8 @@ happened. Lines are written as they happen, because Homey exits the process befo
 opens, and a line logged while another store holds a transaction waits for the next
 write. A report carries the newest kept lines of its window that fit 448 KiB, read
 newest first so a day of log is never built in memory only to be cut, and says how
-many older ones it left out. A day's report about the whole app also leaves out each
+many older ones it left out. A daily report's heating observations
+(`notes/heating-shadow-diagnostics.md`) take their size out of those 448 KiB. A day's report about the whole app also leaves out each
 command PELS sent, its acknowledgement and a stepped device's reported level
 (`DAY_REPORT_OMITTED_LOG_EVENTS`): its activity already records the states they led
 to, and on a busy home those lines alone pushed the morning out of the daily report

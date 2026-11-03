@@ -50,36 +50,20 @@ const countToLeaveOut = (items: readonly unknown[], excessBytes: number): number
 };
 
 /**
- * The document with the oldest of its log lines and, in a report nobody pressed
- * Send for, of its activity left out, the fewest that make the message fit,
- * each saying how many; `null` when it is too large without them. An owner's
- * report keeps all its activity: the owner can choose one device or a shorter
- * window instead.
+ * The document with the oldest of its log lines and, when `activityToo`, of its
+ * activity left out, the fewest that make the message fit, each saying how
+ * many; `null` when it is too large without them.
  */
-const fitToSize = (document: SupportReportDocument): FittedMessage | null => {
-  const whole = toMessage(document);
-  if (whole.bytes <= SUPPORT_REPORT_MAX_BYTES) return { ...whole, document };
-  if (document.trigger === 'daily'
-    && document.sections.some((section) => section.title === HEATING_SHADOW_REPORT_TITLE)) {
-    // Optional profiling never displaces the ordinary daily report.
-    const ordinary = { ...document,
-      sections: document.sections.filter((section) => section.title !== HEATING_SHADOW_REPORT_TITLE),
-    };
-    const fitted = fitToSize(ordinary);
-    if (!fitted) return null;
-    const annotated = { ...fitted.document,
-      omissions: [...document.omissions, 'Daily heating observations was left out to fit the report size limit.'],
-    };
-    const message = toMessage(annotated);
-    return message.bytes <= SUPPORT_REPORT_MAX_BYTES ? { ...message, document: annotated } : fitted;
-  }
+const leaveOutOldest = (
+  document: SupportReportDocument, bytes: number, activityToo: boolean,
+): FittedMessage | null => {
   const { log, activity } = document;
   // Log lines are oldest first, activity newest first.
   const logLines = log.state === 'available' ? log.lines : [];
-  const logLeftOut = countToLeaveOut(logLines, whole.bytes - SUPPORT_REPORT_MAX_BYTES);
-  const stillExcess = whole.bytes - SUPPORT_REPORT_MAX_BYTES
+  const logLeftOut = countToLeaveOut(logLines, bytes - SUPPORT_REPORT_MAX_BYTES);
+  const stillExcess = bytes - SUPPORT_REPORT_MAX_BYTES
     - logLines.slice(0, logLeftOut).reduce((sum, line) => sum + jsonBytes(line), 0);
-  const activityLeftOut = document.trigger !== 'owner' && activity.state === 'available' && stillExcess > 0
+  const activityLeftOut = activityToo && activity.state === 'available' && stillExcess > 0
     ? countToLeaveOut([...activity.entries].reverse(), stillExcess) : 0;
   const trimmed: SupportReportDocument = {
     ...document,
@@ -93,6 +77,40 @@ const fitToSize = (document: SupportReportDocument): FittedMessage | null => {
   };
   const fitted = toMessage(trimmed);
   return fitted.bytes <= SUPPORT_REPORT_MAX_BYTES ? { ...fitted, document: trimmed } : null;
+};
+
+const isHeatingSection = (section: SupportReportDocument['sections'][number]): boolean => (
+  section.title === HEATING_SHADOW_REPORT_TITLE
+);
+
+/**
+ * The document fitted to the message limit, `null` when it cannot be. The
+ * oldest log lines go first, then, in a report nobody pressed Send for, the
+ * oldest activity: an owner's report keeps all its activity, since the owner
+ * can choose one device or a shorter window instead.
+ *
+ * A daily report's heating observations already took their size out of the
+ * log budget at capture (`readLog`), so they stay while log lines can make
+ * room, and give way before any activity does.
+ */
+const fitToSize = (document: SupportReportDocument): FittedMessage | null => {
+  const whole = toMessage(document);
+  if (whole.bytes <= SUPPORT_REPORT_MAX_BYTES) return { ...whole, document };
+  if (document.trigger !== 'daily' || !document.sections.some(isHeatingSection)) {
+    return leaveOutOldest(document, whole.bytes, document.trigger !== 'owner');
+  }
+  return leaveOutOldest(document, whole.bytes, false) ?? fitWithoutHeating(document);
+};
+
+const fitWithoutHeating = (document: SupportReportDocument): FittedMessage | null => {
+  const sections = document.sections.filter((section) => !isHeatingSection(section));
+  const fitted = fitToSize({ ...document, sections });
+  if (!fitted) return null;
+  const annotated = { ...fitted.document,
+    omissions: [...document.omissions, 'Daily heating observations was left out to fit the report size limit.'],
+  };
+  const message = toMessage(annotated);
+  return message.bytes <= SUPPORT_REPORT_MAX_BYTES ? { ...message, document: annotated } : fitted;
 };
 
 /**
