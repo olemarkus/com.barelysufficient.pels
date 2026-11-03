@@ -212,7 +212,7 @@ const setDeviceDetailControlStates = (deviceId: string, device: SettingsUiDevice
   const controlState = resolveDeviceDetailControlState(device, deviceId);
 
   setDeviceDetailNativeWiringState(device);
-  renderDeviceDetailControlContest(device);
+  renderDeviceDetailControlContest(device, controlState.isManaged);
   renderManagedControl(device, controlState);
   renderDeviceDetailBattery(device);
   setContinuousBatteryPlanDevice(device);

@@ -5,6 +5,7 @@ import type {
 import { getLogger } from '../logging/logger';
 import type {
   ControlCommandSent,
+  ControlContestReading,
   ControlContestRecording,
   ControlReported,
   ControlValue,
@@ -70,7 +71,7 @@ const settingKey = (deviceId: string, setting: ContestedSetting): string => `${d
  *
  * One record serves every home; device ids are globally unique.
  */
-export class ControlContestRecord implements ControlContestRecording {
+export class ControlContestRecord implements ControlContestRecording, ControlContestReading {
   private readonly commands = new Map<string, StandingCommand>();
   private readonly rounds = new Map<string, ContestRound[]>();
   private readonly reportedAtMs = new Map<string, number>();
@@ -95,11 +96,6 @@ export class ControlContestRecord implements ControlContestRecording {
 
   commandReleased(deviceId: string, setting: ContestedSetting): void {
     this.commands.delete(settingKey(deviceId, setting));
-  }
-
-  /** Whether PELS stands behind any command; with none, there is nothing to retain. */
-  hasStandingCommands(): boolean {
-    return this.commands.size > 0;
   }
 
   retainPlanned(deviceId: string, planned: PlannedControls): void {

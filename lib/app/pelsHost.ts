@@ -1,5 +1,5 @@
 import type { SchedulesResponse } from '../../packages/contracts/src/schedules';
-import type { ControlContestRecord } from '../executor/controlContest';
+import type { ControlContestReading } from '../ports/controlContest';
 import type { AppContext } from './appContext';
 import type { SupportReportService } from '../diagnostics/supportReportService';
 import type { SupportReportSection } from '../../packages/contracts/src/supportReport';
@@ -70,8 +70,8 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
 > & {
   readSchedules(): SchedulesResponse;
   readonly supportReports: Pick<SupportReportService, 'prepare' | 'get' | 'send'>;
-  /** Which managed devices keep moving away from what PELS set (`lib/executor/controlContest.ts`). */
-  readonly controlContests: Pick<ControlContestRecord, 'contestedControl'>;
+  /** Which devices keep reporting another value after PELS sets them (`lib/executor/controlContest.ts`). */
+  readonly controlContests: ControlContestReading;
   readHeatingShadowDaily(capturedAtMs: number): SupportReportSection | undefined;
   getModePrioritiesForUi(deviceIds: readonly string[]): ModePriorityOrder;
   getSettingsUiManagedDevices(): DecoratedDeviceSnapshot[];

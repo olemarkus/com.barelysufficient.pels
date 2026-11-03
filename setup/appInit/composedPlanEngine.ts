@@ -159,9 +159,6 @@ export class ComposedPlanEngine implements PlanEngine {
   }
 
   public retainContestedCommands(plan: DevicePlan): void {
-    // Like the stepped settle below: an empty record has nothing to retain, so
-    // it costs no execution projection.
-    if (!this.execution.controlContests.hasStandingCommands()) return;
     this.executor.retainContestedCommands(buildExecutionPlan(plan));
   }
 

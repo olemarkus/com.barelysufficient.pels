@@ -947,7 +947,7 @@ describe('settingsUiApi', () => {
     expect(getSettingsUiDevicesPayload({ homey: homey as never }).hasManagedSolarDevice).toBe(true);
   });
 
-  it('carries the executor\'s contest for a managed device that does not keep PELS\'s settings', () => {
+  it('carries the executor\'s contest for each device that does not keep PELS\'s settings', () => {
     const contest = { setting: 'temperature', commanded: 4.5, observed: 5, count: 5, sinceMs: 1_000 } as const;
     const homey = createHomey({
       latestDevicesOverride: [
@@ -962,8 +962,8 @@ describe('settingsUiApi', () => {
     const devices = getSettingsUiDevicesPayload({ homey: homey as never }).devices;
     expect(devices.find(({ id }) => id === 'mill')?.controlContest).toEqual(contest);
     expect(devices.find(({ id }) => id === 'calm')).not.toHaveProperty('controlContest');
-    // The owner let it go: it is no longer PELS's to contest.
-    expect(devices.find(({ id }) => id === 'let-go')).not.toHaveProperty('controlContest');
+    // The settings UI, not the route, leaves out a device the owner let go.
+    expect(devices.find(({ id }) => id === 'let-go')?.controlContest).toEqual(contest);
   });
 
   it('serves the observer projection\'s observed state, not the stored snapshot\'s', () => {

@@ -1,4 +1,6 @@
-import type { ContestedSetting, ContestedValue } from '../../packages/contracts/src/controlContest';
+import type {
+  ContestedControl, ContestedSetting, ContestedValue,
+} from '../../packages/contracts/src/controlContest';
 
 /** A setpoint, an on/off state or a step id. */
 export type ControlValue = ContestedValue;
@@ -39,5 +41,9 @@ export type ControlContestRecording = {
   controlReported(report: ControlReported): void;
   commandReleased(deviceId: string, setting: ContestedSetting): void;
   retainPlanned(deviceId: string, planned: PlannedControls): void;
-  hasStandingCommands(): boolean;
+};
+
+/** The record's answer for one device, as the settings UI reads it. */
+export type ControlContestReading = {
+  contestedControl(deviceId: string, nowMs: number): ContestedControl | undefined;
 };
