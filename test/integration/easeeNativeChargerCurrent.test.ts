@@ -25,6 +25,7 @@ import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { createEmptyEvCarLinkSnapshot } from '../../lib/device/evCarLinkSnapshot';
 import { EV_CAR_LINK_SELF_STOP_MIN_MS } from '../../lib/device/evCarLink';
 import type { EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 // Shapes are taken from a production Easee charger on the deployed Easee app
 // 2.0.5: `target_charger_current` is the setable dynamic charger current in amps,
@@ -452,7 +453,7 @@ describe('Easee native charger current', () => {
 
       expect(put).toHaveBeenCalledWith(
         `manager/devices/device/${EASEE_ID}/capability/target_charger_current`,
-        { value: 6 },
+        pelsCapabilityWrite(6),
       );
     } finally {
       restoreMockRestClient();
@@ -694,13 +695,13 @@ describe('Easee native charger current', () => {
     it('pauses a charging charger at 0 A instead of stopping its session', async () => {
       const put = await writeSwitch(true, {}, false);
 
-      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, { value: 0 }]]);
+      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, pelsCapabilityWrite(0)]]);
     });
 
     it('resumes its own 0 A pause at the lowest charging current, without starting a session', async () => {
       const put = await writeSwitch(true, pausedAtZeroCurrent, true);
 
-      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, { value: 6 }]]);
+      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, pelsCapabilityWrite(6)]]);
     });
 
     it('resumes a charger paused at a current too low to charge at by current, without starting a session', async () => {
@@ -709,7 +710,7 @@ describe('Easee native charger current', () => {
         target_charger_current: { value: 3, setable: true, min: 0, max: 40, lastUpdated: READ_AT },
       }, true);
 
-      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, { value: 6 }]]);
+      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, pelsCapabilityWrite(6)]]);
     });
 
     it('resumes at the lowest charging current while the plug state still trails the 0 A report', async () => {
@@ -718,7 +719,7 @@ describe('Easee native charger current', () => {
         evcharger_charging_state: { value: 'plugged_in_charging', lastUpdated: READ_AT },
       }, true);
 
-      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, { value: 6 }]]);
+      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, pelsCapabilityWrite(6)]]);
     });
 
     it('starts a session that was stopped outside PELS', async () => {
@@ -730,7 +731,7 @@ describe('Easee native charger current', () => {
         measure_power: { value: 0, lastUpdated: READ_AT },
       }, true);
 
-      expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, { value: true }]]);
+      expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, pelsCapabilityWrite(true)]]);
     });
 
     it('retries a resume during the Easee hold by current, without starting a session', async () => {
@@ -741,7 +742,7 @@ describe('Easee native charger current', () => {
         target_charger_current: { value: 6, setable: true, min: 0, max: 40, lastUpdated: READ_AT },
       }, true);
 
-      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, { value: 6 }]]);
+      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, pelsCapabilityWrite(6)]]);
     });
 
     // Homey applies a write and dates it just before the PUT returns; the app
@@ -796,7 +797,7 @@ describe('Easee native charger current', () => {
     it('leaves the switch to the charger while built-in control is off', async () => {
       const put = await writeSwitch(false, {}, false);
 
-      expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, { value: false }]]);
+      expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, pelsCapabilityWrite(false)]]);
     });
 
     it('resumes a charger paused at 0 A by current after built-in control was turned off', async () => {
@@ -804,7 +805,7 @@ describe('Easee native charger current', () => {
       // control nothing else would raise the current PELS left at 0 A.
       const put = await writeSwitch(false, pausedAtZeroCurrent, true);
 
-      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, { value: 6 }]]);
+      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, pelsCapabilityWrite(6)]]);
     });
 
     it('leaves a paused charger holding a charging current to the switch while built-in control is off', async () => {
@@ -813,7 +814,7 @@ describe('Easee native charger current', () => {
         target_charger_current: { value: 16, setable: true, min: 0, max: 40, lastUpdated: READ_AT },
       }, true);
 
-      expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, { value: true }]]);
+      expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, pelsCapabilityWrite(true)]]);
     });
   });
 
@@ -925,7 +926,7 @@ describe('Easee native charger current', () => {
 
       expect(put.mock.calls).toEqual([[
         `manager/devices/device/${EASEE_ID}/capability/target_charger_current`,
-        { value: 6 },
+        pelsCapabilityWrite(6),
       ]]);
     });
   });

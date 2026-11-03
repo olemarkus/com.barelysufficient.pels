@@ -22,6 +22,7 @@ import {
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainUntilCalledWith } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const EV_ID = 'ev-charger';
 const WATER_HEATER_ID = 'water-heater';
@@ -138,14 +139,14 @@ describe('inactive stepped EV and water-heater restore (SDK-boundary e2e)', () =
     await drainUntilCalledWith(
       putSpy,
       WATER_HEATER_ONOFF_PATH,
-      { value: true },
+      pelsCapabilityWrite(true),
     );
 
     expect(putSpy).toHaveBeenCalledWith(
       WATER_HEATER_ONOFF_PATH,
-      { value: true },
+      pelsCapabilityWrite(true),
     );
-    expect(putSpy).not.toHaveBeenCalledWith(EV_CHARGING_PATH, { value: true });
+    expect(putSpy).not.toHaveBeenCalledWith(EV_CHARGING_PATH, pelsCapabilityWrite(true));
   });
 
   it('falls through to the water heater when the connected EV rejects resume', async () => {
@@ -162,10 +163,10 @@ describe('inactive stepped EV and water-heater restore (SDK-boundary e2e)', () =
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, WATER_HEATER_ONOFF_PATH, { value: true });
+    await drainUntilCalledWith(putSpy, WATER_HEATER_ONOFF_PATH, pelsCapabilityWrite(true));
 
-    expect(putSpy).toHaveBeenCalledWith(EV_CHARGING_PATH, { value: true });
-    expect(putSpy).toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
+    expect(putSpy).toHaveBeenCalledWith(EV_CHARGING_PATH, pelsCapabilityWrite(true));
+    expect(putSpy).toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, pelsCapabilityWrite(true));
   });
 
   it('falls through after 90 seconds when the EV accepts resume without charging evidence', async () => {
@@ -190,13 +191,13 @@ describe('inactive stepped EV and water-heater restore (SDK-boundary e2e)', () =
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, EV_CHARGING_PATH, { value: true });
-    expect(putSpy).not.toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
+    await drainUntilCalledWith(putSpy, EV_CHARGING_PATH, pelsCapabilityWrite(true));
+    expect(putSpy).not.toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, pelsCapabilityWrite(true));
     await vi.advanceTimersByTimeAsync(79_999);
-    expect(putSpy).not.toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
+    expect(putSpy).not.toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, pelsCapabilityWrite(true));
     await vi.advanceTimersByTimeAsync(1);
-    await drainUntilCalledWith(putSpy, WATER_HEATER_ONOFF_PATH, { value: true });
+    await drainUntilCalledWith(putSpy, WATER_HEATER_ONOFF_PATH, pelsCapabilityWrite(true));
 
-    expect(putSpy).toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
+    expect(putSpy).toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, pelsCapabilityWrite(true));
   });
 });

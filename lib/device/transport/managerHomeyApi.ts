@@ -178,15 +178,21 @@ export async function getRawDevice(
   return data as RawHomeyDeviceLike;
 }
 
+/**
+ * `transactionId` comes back on Homey's capability event for this write, which
+ * is how the transport tells PELS's echo from any other report
+ * (`ownCapabilityWrites.ts`).
+ */
 export async function setRawCapabilityValue(
   deviceId: string,
   capabilityId: string,
   value: unknown,
+  transactionId: string,
 ): Promise<void> {
   if (!restClient) throw new Error('REST client not initialized — call initHomeyHttpClient first');
   const path = `${DEVICES_API_PATH}/${deviceId}/capability/${capabilityId}`;
   try {
-    await restClient.put(path, { value });
+    await restClient.put(path, { value, transactionId });
   } catch (error) {
     writeErrorToStderr(`setRawCapabilityValue PUT '${path}' failed`, error);
     throw error;

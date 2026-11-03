@@ -6,6 +6,7 @@ import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { emitCapability } from '../helpers/liveFeedSocketHarness';
 import { mockHomeyInstance } from '../mocks/homey';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const logger: Logger = { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('devices') };
 
@@ -73,7 +74,7 @@ test('uses native onoff commands and observed status for a KNX binary actuator',
     expect(device.class).toBe('light');
 
     await transport.requestBinaryControl(device.id, false, triggerFlow);
-    expect(put).toHaveBeenCalledWith('manager/devices/device/knx-actuator/capability/onoff', { value: false });
+    expect(put).toHaveBeenCalledWith('manager/devices/device/knx-actuator/capability/onoff', pelsCapabilityWrite(false));
     expect(triggerFlow).not.toHaveBeenCalled();
     expect(transport.getSnapshotByDeviceId(device.id)?.binaryControl).toEqual({ on: true });
 

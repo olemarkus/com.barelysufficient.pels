@@ -173,7 +173,7 @@ export class DeviceWriteService {
     }
     incPerfCounter('device_action_total');
     incPerfCounter(`device_action.capability.${capabilityId}`);
-    this.observationState.recordLocalCapabilityWrite(deviceId, capabilityId, normalizedValue);
+    const ownWrite = this.observationState.ownWrites.begin(deviceId, capabilityId, write.capabilityId, Date.now());
     emitCapabilityWriteDebug(
         'device_capability_write_requested',
         deviceId,
@@ -181,12 +181,7 @@ export class DeviceWriteService {
         normalizedValue,
         write,
     );
-    try {
-        await setRawCapabilityValue(deviceId, write.capabilityId, write.value);
-    } catch (error) {
-        this.observationState.clearLocalCapabilityWrite(deviceId, capabilityId);
-        throw error;
-    }
+    await setRawCapabilityValue(deviceId, write.capabilityId, write.value, ownWrite.transactionId);
     emitCapabilityWriteDebug(
         'device_capability_write_accepted',
         deviceId,

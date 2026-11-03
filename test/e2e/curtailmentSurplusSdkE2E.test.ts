@@ -34,6 +34,7 @@ import {
   PV_FORECAST_STATE,
 } from '../../lib/utils/settingsKeys';
 import { drainPending, drainUntilCalledWith } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
@@ -223,7 +224,7 @@ describe('Curtailment-inferred surplus (SDK-boundary e2e, zero-export home)', ()
     const { events } = await bootApp();
     // Past the 60 s startup stabilization + 90 s surplus settle window.
     await polls(20);
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'target_temperature'), { value: BOOSTED_C });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'target_temperature'), pelsCapabilityWrite(BOOSTED_C));
 
     // The inverter un-throttles to cover the element: production rises, net stays ~0.
     energy.generationW = 2500;
@@ -251,7 +252,7 @@ describe('Curtailment-inferred surplus (SDK-boundary e2e, zero-export home)', ()
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     const { events } = await bootApp();
     await polls(20);
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'target_temperature'), { value: BOOSTED_C });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'target_temperature'), pelsCapabilityWrite(BOOSTED_C));
 
     // The inference was wrong: generation stays flat, so the raised element pulls
     // its 2 kW straight from the grid.
@@ -259,7 +260,7 @@ describe('Curtailment-inferred surplus (SDK-boundary e2e, zero-export home)', ()
     // Producer latch + refute land on the next poll; the sustained import then
     // hard-offs the gate release after a settle window (~90 s) — no 5-min dwell.
     await polls(14);
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'target_temperature'), { value: MODE_C });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'target_temperature'), pelsCapabilityWrite(MODE_C));
 
     expect(eventNames(events)).toContain('curtailment_verify_refuted');
     expect(eventNames(events)).not.toContain('curtailment_verify_confirmed');
@@ -304,7 +305,7 @@ describe('Curtailment-inferred surplus (SDK-boundary e2e, zero-export home)', ()
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     const { events } = await bootApp();
     await polls(20);
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'target_temperature'), { value: BOOSTED_C });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'target_temperature'), pelsCapabilityWrite(BOOSTED_C));
 
     // The fit came from the clamp-aware quantile with forced-low confidence —
     // so the engage above cleared the bar through the 0.8 discount lane.
@@ -322,15 +323,15 @@ describe('Curtailment-inferred surplus (SDK-boundary e2e, zero-export home)', ()
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     await bootApp();
     await polls(20);
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'target_temperature'), { value: BOOSTED_C });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'target_temperature'), pelsCapabilityWrite(BOOSTED_C));
 
     // A big background load lands: 12 kW against the 10 kW hard cap. The lifted
     // device must remain an ordinary capacity-shed candidate — the untouched
     // capacity layer turns it off on the normal path (default shed = turn_off).
     energy.netW = 12_000;
     await polls(8);
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), { value: false });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), pelsCapabilityWrite(false));
 
-    expect(putSpy).toHaveBeenCalledWith(cap(DEVICE, 'onoff'), { value: false });
+    expect(putSpy).toHaveBeenCalledWith(cap(DEVICE, 'onoff'), pelsCapabilityWrite(false));
   });
 });

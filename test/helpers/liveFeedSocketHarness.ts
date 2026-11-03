@@ -218,9 +218,12 @@ export function publishDeviceUpdate(device: unknown): void {
   deliver(DEVICES_URI, 'device.update', device);
 }
 
-/** Homey pushing a `capability` frame; reaches only a feed subscribed to the device. */
-export function publishCapability(deviceId: string, capabilityId: string, value: unknown): void {
-  deliver(deviceUri(deviceId), 'capability', { capabilityId, value });
+/**
+ * Homey pushing a `capability` frame; reaches only a feed subscribed to the
+ * device. `transactionId` is the writer's when the frame echoes a write.
+ */
+export function publishCapability(deviceId: string, capabilityId: string, value: unknown, transactionId?: string): void {
+  deliver(deviceUri(deviceId), 'capability', { capabilityId, value, ...(transactionId ? { transactionId } : {}) });
 }
 
 /**
@@ -246,11 +249,14 @@ export function emitDeviceUpdate(device: unknown): void {
 
 /**
  * A `capability` frame for one device, after the feed's pending subscriptions
- * settle; throws unless the feed subscribed to that device.
+ * settle; throws unless the feed subscribed to that device. Pass the write's
+ * `transactionId` for Homey's echo of a write.
  */
-export async function emitCapability(deviceId: string, capabilityId: string, value: unknown): Promise<void> {
+export async function emitCapability(
+  deviceId: string, capabilityId: string, value: unknown, transactionId?: string,
+): Promise<void> {
   await settleLiveFeed();
-  if (!deliver(deviceUri(deviceId), 'capability', { capabilityId, value })) {
+  if (!deliver(deviceUri(deviceId), 'capability', { capabilityId, value, ...(transactionId ? { transactionId } : {}) })) {
     throw new Error(`No device live feed is subscribed to ${deviceUri(deviceId)}`);
   }
 }

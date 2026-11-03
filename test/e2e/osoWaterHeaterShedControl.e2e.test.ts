@@ -15,6 +15,7 @@ import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { connectLiveFeed } from '../helpers/liveFeedSocketHarness';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
 import { drainUntilCalledWith } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
@@ -101,7 +102,7 @@ describe('OSO water heater capacity control (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, cap('oso-a', 'target_temperature'), { value: 55 });
+    await drainUntilCalledWith(putSpy, cap('oso-a', 'target_temperature'), pelsCapabilityWrite(55));
 
     expect(writesTo(putSpy, 'oso-a', 'onoff')).toEqual([]);
   });
@@ -133,7 +134,7 @@ describe('OSO water heater capacity control (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, cap('oso-a', 'target_temperature'), { value: 20 });
+    await drainUntilCalledWith(putSpy, cap('oso-a', 'target_temperature'), pelsCapabilityWrite(20));
     expect(writesTo(putSpy, 'plug-a', 'onoff')).toEqual([]);
 
     // The 58 °C tank is above its 20 °C limit, so the element stops.
@@ -152,11 +153,11 @@ describe('OSO water heater capacity control (SDK-boundary e2e)', () => {
     await heater.setCapabilityValue('measure_power', 3000);
     setHomePower(5000);
     await vi.advanceTimersByTimeAsync(5 * 60_000);
-    await drainUntilCalledWith(putSpy, cap('plug-a', 'onoff'), { value: false });
+    await drainUntilCalledWith(putSpy, cap('plug-a', 'onoff'), pelsCapabilityWrite(false));
 
     expect(writesTo(putSpy, 'oso-a', 'onoff')).toEqual([]);
     expect(writesTo(putSpy, 'oso-a', 'target_temperature')).toEqual([
-      [cap('oso-a', 'target_temperature'), { value: 20 }],
+      [cap('oso-a', 'target_temperature'), pelsCapabilityWrite(20)],
     ]);
   });
 });

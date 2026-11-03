@@ -25,6 +25,7 @@ import {
   OVERSHOOT_BEHAVIORS,
 } from '../../lib/utils/settingsKeys';
 import { drainUntil, drainUntilCalledWith } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const POLL_MS = 10_000;
 const SOLAR_ID = 'solar1';
@@ -185,9 +186,9 @@ describe('Solar device as managed observe-only (SDK-boundary e2e)', () => {
     spyLogs(app);
     await app.onInit();
     await vi.advanceTimersByTimeAsync(POLL_MS);
-    await drainUntilCalledWith(putSpy, ONOFF_CAP(EV_ID), { value: false });
+    await drainUntilCalledWith(putSpy, ONOFF_CAP(EV_ID), pelsCapabilityWrite(false));
 
-    expect(putSpy).toHaveBeenCalledWith(ONOFF_CAP(EV_ID), { value: false });
+    expect(putSpy).toHaveBeenCalledWith(ONOFF_CAP(EV_ID), pelsCapabilityWrite(false));
     // The solar device is NEVER written to, by any capability.
     expect(solarWasActuated(putSpy)).toBe(false);
   });

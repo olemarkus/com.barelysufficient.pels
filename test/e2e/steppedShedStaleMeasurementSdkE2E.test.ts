@@ -29,6 +29,7 @@ import {
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainUntilCalledWith } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const HEATER_ID = 'connected-300';
 const HEATER_ONOFF_PATH = `manager/devices/device/${HEATER_ID}/capability/onoff`;
@@ -112,7 +113,7 @@ describe('stepped shed with a lagging power measurement (SDK-boundary e2e)', () 
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
 
-    await drainUntilCalledWith(putSpy, HEATER_ONOFF_PATH, { value: false });
-    expect(putSpy).toHaveBeenCalledWith(HEATER_ONOFF_PATH, { value: false });
+    await drainUntilCalledWith(putSpy, HEATER_ONOFF_PATH, pelsCapabilityWrite(false));
+    expect(putSpy).toHaveBeenCalledWith(HEATER_ONOFF_PATH, pelsCapabilityWrite(false));
   });
 });

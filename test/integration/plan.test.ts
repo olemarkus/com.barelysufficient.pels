@@ -28,6 +28,7 @@ import {
   swappedOutFor,
 } from '../utils/swapLedgerFixture';
 import { steerCapacityPace } from '../helpers/capacityPaceFixture';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
@@ -1324,7 +1325,7 @@ describe('Device plan snapshot', () => {
     await app.planEngine.applyPlanActions(plan);
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/dev-1/capability/onoff',
-      { value: true },
+      pelsCapabilityWrite(true),
     );
   });
 
@@ -1887,7 +1888,7 @@ describe('Device plan snapshot', () => {
 
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/dev-1/capability/onoff',
-      { value: true },
+      pelsCapabilityWrite(true),
     );
   });
 
@@ -1938,7 +1939,7 @@ describe('Device plan snapshot', () => {
 
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/dev-1/capability/onoff',
-      { value: true },
+      pelsCapabilityWrite(true),
     );
   });
 
@@ -2016,7 +2017,7 @@ describe('Device plan snapshot', () => {
     // Verify the device was turned off
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/hoiax-1/capability/onoff',
-      { value: false },
+      pelsCapabilityWrite(false),
     );
   });
 
@@ -2052,7 +2053,7 @@ describe('Device plan snapshot', () => {
 
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/hoiax-1/capability/target_temperature',
-      { value: 45 },
+      pelsCapabilityWrite(45),
     );
   });
 
@@ -3284,7 +3285,7 @@ describe('Dry run mode', () => {
 
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/dev-1/capability/onoff',
-      { value: true },
+      pelsCapabilityWrite(true),
     );
   });
 
@@ -3602,7 +3603,7 @@ describe('Dry run mode', () => {
     expect(putSpy).toHaveBeenCalledTimes(1);
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/dev-available/capability/target_temperature',
-      { value: 20 },
+      pelsCapabilityWrite(20),
     );
   });
 
@@ -3663,7 +3664,7 @@ describe('Dry run mode', () => {
     expect(putSpy).toHaveBeenCalledTimes(1);
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/dev-available/capability/target_temperature',
-      { value: 12 },
+      pelsCapabilityWrite(12),
     );
   });
 

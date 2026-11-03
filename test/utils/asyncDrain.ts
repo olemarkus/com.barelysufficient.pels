@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { vi, expect } from 'vitest';
 
 const nextTick = (): Promise<void> => new Promise((resolve) => process.nextTick(resolve));
 
@@ -61,8 +61,14 @@ type CallSpy = { mock: { calls: unknown[][] } };
  * to hold once this resolves.
  */
 export async function drainUntilCalledWith(spy: CallSpy, ...expectedArgs: unknown[]): Promise<void> {
-  const want = JSON.stringify(expectedArgs);
-  await drainUntil(() => spy.mock.calls.some(
-    (call) => JSON.stringify(call.slice(0, expectedArgs.length)) === want,
-  ));
+  // `toEqual`, so an expected argument may be an asymmetric matcher.
+  const matches = (call: readonly unknown[]): boolean => {
+    try {
+      expect(call.slice(0, expectedArgs.length)).toEqual(expectedArgs);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  await drainUntil(() => spy.mock.calls.some(matches));
 }

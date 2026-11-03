@@ -67,7 +67,7 @@ describe('Homey HTTP transport — answers that arrive after the caller gave up'
     };
 
     // The control path is told the outcome is unknown, promptly.
-    await expect(setRawCapabilityValue('dev-1', 'max_power_3000', '2')).rejects.toThrow(/timed out/);
+    await expect(setRawCapabilityValue('dev-1', 'max_power_3000', '2', 'pels-tx')).rejects.toThrow(/timed out/);
 
     // ...and the answer is still recorded when the hub finally produces it.
     await vi.waitFor(() => {
@@ -89,7 +89,7 @@ describe('Homey HTTP transport — answers that arrive after the caller gave up'
       }, 250);
     };
 
-    await expect(setRawCapabilityValue('dev-1', 'max_power_3000', '2')).rejects.toThrow(/timed out/);
+    await expect(setRawCapabilityValue('dev-1', 'max_power_3000', '2', 'pels-tx')).rejects.toThrow(/timed out/);
 
     // A late 2xx is the one fact an unknown outcome cannot otherwise learn: the
     // hub was slow, not refusing, and the device did move.
@@ -108,7 +108,7 @@ describe('Homey HTTP transport — answers that arrive after the caller gave up'
       res.end(JSON.stringify({ value: '2' }));
     };
 
-    await expect(setRawCapabilityValue('dev-1', 'max_power_3000', '2')).resolves.toBeUndefined();
+    await expect(setRawCapabilityValue('dev-1', 'max_power_3000', '2', 'pels-tx')).resolves.toBeUndefined();
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'homey_request_late_response',
     }));

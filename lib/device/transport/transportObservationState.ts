@@ -5,10 +5,7 @@
  */
 import type { BinaryControlObservation } from '../../../packages/contracts/src/types';
 import { createObservationState, type DeviceTransportObservationState } from './observationState';
-import type {
-  RecentLocalCapabilityWrite,
-  RecentLocalCapabilityWrites,
-} from './managerRealtimeSupport';
+import { OwnCapabilityWrites } from './ownCapabilityWrites';
 import { cloneBinaryControlObservation } from './transportTypes';
 
 /**
@@ -18,13 +15,13 @@ import { cloneBinaryControlObservation } from './transportTypes';
  */
 export type ObservationCursor = { observationSeq: number; observedAtMs: number };
 
-const LOCAL_CAPABILITY_ECHO_SUPPRESS_MS = 5_000;
 const DUPLICATE_EVENT_PRUNE_AFTER_MS = 10 * 60 * 1_000;
 
 export class TransportObservationState {
   private readonly observations = createObservationState();
+  /** PELS's writes awaiting Homey's echo (`ownCapabilityWrites.ts`). */
+  readonly ownWrites = new OwnCapabilityWrites();
   private readonly observationSeqByDeviceId = new Map<string, number>();
-  private readonly localCapabilityWrites: RecentLocalCapabilityWrites = new Map();
   private readonly realtimeCapabilityEventTimesByKey = new Map<string, number>();
   private readonly binarySettleEvidenceByDeviceId = new Map<string, BinaryControlObservation>();
   private readonly pendingTemperatureRecoveryDeviceIds = new Set<string>();
@@ -38,35 +35,6 @@ export class TransportObservationState {
     const observationSeq = (this.observationSeqByDeviceId.get(deviceId) ?? 0) + 1;
     this.observationSeqByDeviceId.set(deviceId, observationSeq);
     return { observationSeq, observedAtMs };
-  }
-
-  recordLocalCapabilityWrite(
-    deviceId: string,
-    capabilityId: string,
-    value: unknown,
-    recordedAtMs: number = Date.now(),
-  ): void {
-    this.localCapabilityWrites.set(capabilityWriteKey(deviceId, capabilityId), {
-      value,
-      expiresAt: recordedAtMs + LOCAL_CAPABILITY_ECHO_SUPPRESS_MS,
-    });
-  }
-
-  clearLocalCapabilityWrite(deviceId: string, capabilityId: string): void {
-    this.localCapabilityWrites.delete(capabilityWriteKey(deviceId, capabilityId));
-  }
-
-  getRecentLocalCapabilityWrite(
-    deviceId: string,
-    capabilityId: string,
-    nowMs: number = Date.now(),
-  ): RecentLocalCapabilityWrite | undefined {
-    const key = capabilityWriteKey(deviceId, capabilityId);
-    const entry = this.localCapabilityWrites.get(key);
-    if (entry === undefined) return undefined;
-    if (entry.expiresAt > nowMs) return entry;
-    this.localCapabilityWrites.delete(key);
-    return undefined;
   }
 
   shouldEmitRealtimeCapabilityEvent(key: string, nowMs: number, windowMs: number): boolean {
@@ -125,7 +93,7 @@ export class TransportObservationState {
     this.observations.debugObservedSourcesByDeviceId.clear();
     this.observations.capabilityObservations.clear();
     this.observationSeqByDeviceId.clear();
-    this.localCapabilityWrites.clear();
+    this.ownWrites.clear();
     this.realtimeCapabilityEventTimesByKey.clear();
     this.binarySettleEvidenceByDeviceId.clear();
     this.pendingTemperatureRecoveryDeviceIds.clear();
@@ -139,8 +107,4 @@ export class TransportObservationState {
       }
     }
   }
-}
-
-function capabilityWriteKey(deviceId: string, capabilityId: string): string {
-  return `${deviceId}:${capabilityId}`;
 }

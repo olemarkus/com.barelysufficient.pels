@@ -26,6 +26,7 @@ import {
   RESPECT_EXTERNAL_OFF_DEVICES,
 } from '../../lib/utils/settingsKeys';
 import { drainPending, drainUntilCalledWith } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
@@ -138,7 +139,7 @@ describe('Leave off until turned on again (SDK-boundary e2e)', () => {
 
     const putSpy = await startApp();
     await advancePolls(60);
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), { value: true });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), pelsCapabilityWrite(true));
 
     expect(onoffPuts(putSpy)).toContain(true);
   });
@@ -154,7 +155,7 @@ describe('Leave off until turned on again (SDK-boundary e2e)', () => {
     // The user turns "Leave off until turned on again" off in Settings.
     mockHomeyInstance.settings.set(RESPECT_EXTERNAL_OFF_DEVICES, {});
     await advancePolls(60);
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), { value: true });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), pelsCapabilityWrite(true));
 
     expect(onoffPuts(putSpy)).toContain(true);
     // The hold key is gone, and the migration consumed the legacy blob on boot.
@@ -200,7 +201,7 @@ describe('Leave off until turned on again (SDK-boundary e2e)', () => {
 
     const putSpy = await startApp();
     await advancePolls(60);
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), { value: true });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), pelsCapabilityWrite(true));
     await advancePolls(6);
     await drainPending();
 

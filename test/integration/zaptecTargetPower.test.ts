@@ -6,6 +6,7 @@ import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices } fro
 import { emitCapability } from '../helpers/liveFeedSocketHarness';
 import { buildZaptecTargetPowerDevice } from '../helpers/zaptecDeviceFixture';
 import { mockHomeyInstance } from '../mocks/homey';
+import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const logger = (): Logger => ({ log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test/zaptec') });
 
@@ -65,8 +66,8 @@ describe('Zaptec native target power', () => {
     })).resolves.toEqual({ requested: true, acknowledged: true, transport: 'native_capability' });
 
     expect(put.mock.calls).toEqual([
-      [`manager/devices/device/${device.id}/capability/target_power`, { value: 2530 }],
-      [`manager/devices/device/${device.id}/capability/target_power_mode`, { value: 'homey' }],
+      [`manager/devices/device/${device.id}/capability/target_power`, pelsCapabilityWrite(2530)],
+      [`manager/devices/device/${device.id}/capability/target_power_mode`, pelsCapabilityWrite('homey')],
     ]);
     // Homey may report the newer mode alongside the target held before the
     // successful write, before either capability's realtime echo arrives.
@@ -78,9 +79,11 @@ describe('Zaptec native target power', () => {
       },
     })]);
     expect(staleRead.reportedStepId).toBeUndefined();
-    await emitCapability(device.id, 'target_power', 2530);
-    await emitCapability(device.id, 'target_power_mode', 'homey');
-    // The matching watt echo is suppressed as our own write. A mode echo cannot
+    await emitCapability(device.id, 'target_power', 2530, ownWriteTransactionId(put, device.id, 'target_power'));
+    await emitCapability(
+      device.id, 'target_power_mode', 'homey', ownWriteTransactionId(put, device.id, 'target_power_mode'),
+    );
+    // The watt echo is PELS's own write, recognised by its transaction id. A mode echo cannot
     // resurrect the superseded 11,040 W target as a delivered step.
     expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBeUndefined();
     vi.setSystemTime(Date.now() + 1000);
@@ -100,7 +103,7 @@ describe('Zaptec native target power', () => {
       deviceId: device.id, profile, desiredStepId: '2760w', planningPowerW: 2760, planningCurrentA: 0,
     });
     expect(put.mock.calls).toEqual([
-      [`manager/devices/device/${device.id}/capability/target_power`, { value: 2760 }],
+      [`manager/devices/device/${device.id}/capability/target_power`, pelsCapabilityWrite(2760)],
     ]);
   });
 
@@ -117,7 +120,7 @@ describe('Zaptec native target power', () => {
       deviceId: device.id, profile, desiredStepId: '2530w', planningPowerW: 2530, planningCurrentA: 0,
     })).rejects.toThrow();
     expect(put.mock.calls).toEqual([
-      [`manager/devices/device/${device.id}/capability/target_power`, { value: 2530 }],
+      [`manager/devices/device/${device.id}/capability/target_power`, pelsCapabilityWrite(2530)],
     ]);
   });
 
@@ -156,8 +159,8 @@ describe('Zaptec native target power', () => {
       deviceId: device.id, profile, desiredStepId: '2530w', planningPowerW: 2530, planningCurrentA: 0,
     });
     expect(retryPut.mock.calls).toEqual([
-      [`manager/devices/device/${device.id}/capability/target_power`, { value: 2530 }],
-      [`manager/devices/device/${device.id}/capability/target_power_mode`, { value: 'homey' }],
+      [`manager/devices/device/${device.id}/capability/target_power`, pelsCapabilityWrite(2530)],
+      [`manager/devices/device/${device.id}/capability/target_power_mode`, pelsCapabilityWrite('homey')],
     ]);
     await emitCapability(device.id, 'target_power_mode', 'homey');
     // The retry reasserts the independently read saved value. Change-only
@@ -194,7 +197,7 @@ describe('Zaptec native target power', () => {
       deviceId: device.id, profile, desiredStepId: '2530w', planningPowerW: 2530, planningCurrentA: 0,
     });
     expect(put.mock.calls).toEqual([
-      [`manager/devices/device/${device.id}/capability/target_power`, { value: 2530 }],
+      [`manager/devices/device/${device.id}/capability/target_power`, pelsCapabilityWrite(2530)],
     ]);
     await emitCapability(device.id, 'target_power_mode', 'homey');
     expect(transport.getSnapshotByDeviceId(device.id)).toMatchObject({
@@ -316,7 +319,7 @@ describe('Zaptec native target power', () => {
         deviceId: device.id, profile, desiredStepId: `${watts}w`, planningPowerW: watts, planningCurrentA: 0,
       });
       expect(put).toHaveBeenLastCalledWith(
-        `manager/devices/device/${device.id}/capability/target_power`, { value: watts },
+        `manager/devices/device/${device.id}/capability/target_power`, pelsCapabilityWrite(watts),
       );
       await emitCapability(device.id, 'target_power', watts);
     }
@@ -324,13 +327,13 @@ describe('Zaptec native target power', () => {
       deviceId: device.id, profile, desiredStepId: 'off', planningPowerW: 0, planningCurrentA: 0,
     });
     expect(put).toHaveBeenLastCalledWith(
-      `manager/devices/device/${device.id}/capability/evcharger_charging`, { value: false },
+      `manager/devices/device/${device.id}/capability/evcharger_charging`, pelsCapabilityWrite(false),
     );
     await emitCapability(device.id, 'evcharger_charging', false);
     await emitCapability(device.id, 'evcharger_charging_state', 'plugged_in_paused');
     await transport.requestBinaryControl(device.id, true, vi.fn().mockRejectedValue(new Error('Unexpected Flow write')));
     expect(put).toHaveBeenLastCalledWith(
-      `manager/devices/device/${device.id}/capability/evcharger_charging`, { value: true },
+      `manager/devices/device/${device.id}/capability/evcharger_charging`, pelsCapabilityWrite(true),
     );
     await emitCapability(device.id, 'evcharger_charging', true);
     await emitCapability(device.id, 'evcharger_charging_state', 'plugged_in_charging');
@@ -356,7 +359,7 @@ describe('Zaptec native target power', () => {
     setRestClient({ get: vi.fn(), put });
     await transport.requestBinaryControl(device.id, false, vi.fn().mockRejectedValue(new Error('Unexpected Flow write')));
     expect(put).toHaveBeenLastCalledWith(
-      `manager/devices/device/${device.id}/capability/evcharger_charging`, { value: false },
+      `manager/devices/device/${device.id}/capability/evcharger_charging`, pelsCapabilityWrite(false),
     );
   });
 });

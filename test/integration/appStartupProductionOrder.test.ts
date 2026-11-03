@@ -24,6 +24,7 @@ import {
   CAPACITY_MARGIN_KW,
   PRICE_SCHEME,
 } from '../../lib/utils/settingsKeys';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 // `snapshotPlanBootstrapDelayMs` in `setup/appServiceWiring.ts`.
 const DEFERRED_BOOTSTRAP_DELAY_MS = 1200;
@@ -180,7 +181,7 @@ describe('app boot in production order (PELS_ASYNC_STARTUP=1)', () => {
     await vi.advanceTimersByTimeAsync(DEFERRED_BOOTSTRAP_DELAY_MS);
     // The held meter rebuild and the bootstrap's own rebuild both decide from
     // the committed snapshot, so the over-limit device is shed.
-    await drainUntilCalledWith(putSpy, ONOFF_CAPABILITY_PATH, { value: false });
+    await drainUntilCalledWith(putSpy, ONOFF_CAPABILITY_PATH, pelsCapabilityWrite(false));
     await drainPending();
 
     // Strict order: the observer has the snapshot, then the gate opens, then
@@ -196,7 +197,7 @@ describe('app boot in production order (PELS_ASYNC_STARTUP=1)', () => {
       'plan_built:startup_snapshot_bootstrap',
     ]));
     expect(latestPlanDeviceIds(app)).toEqual([DEVICE_ID]);
-    expect(putSpy).toHaveBeenCalledWith(ONOFF_CAPABILITY_PATH, { value: false });
+    expect(putSpy).toHaveBeenCalledWith(ONOFF_CAPABILITY_PATH, pelsCapabilityWrite(false));
   });
 
   it('fetches prices in the background: neither onInit nor the first plan waits for them', async () => {

@@ -26,6 +26,7 @@ import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrive
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainPending, drainUntil } from '../utils/asyncDrain';
 import api from '../../api';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const CHARGER_ID = 'easee-charger';
 const CHARGER_CURRENT_PATH = `manager/devices/device/${CHARGER_ID}/capability/target_charger_current`;
@@ -290,7 +291,7 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
 
     // The other load was actually limited: this exercises the same fairness
     // clamp that must leave the Manual charger's current alone.
-    expect(putSpy).toHaveBeenCalledWith(heaterPath, { value: false });
+    expect(putSpy).toHaveBeenCalledWith(heaterPath, pelsCapabilityWrite(false));
     expect(putSpy.mock.calls.filter(([path]) => path === CHARGER_CURRENT_PATH)).toEqual([]);
     expect(putSpy.mock.calls.filter(([path]) => path === SWITCH_PATH)).toEqual([]);
     expect(mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed ?? []).toEqual([]);

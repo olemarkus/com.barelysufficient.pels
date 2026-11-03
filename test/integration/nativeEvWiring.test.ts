@@ -9,6 +9,7 @@ import {
 } from '../../lib/device/nativeEvWiring';
 import type { Logger, HomeyDeviceLike } from '../../lib/utils/types';
 import { mockHomeyInstance } from '../mocks/homey';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const createLogger = () => ({
   log: vi.fn(),
@@ -686,7 +687,7 @@ describe('native EV wiring shim', () => {
 
     expect(restClient.put).toHaveBeenCalledWith(
       'manager/devices/device/zaptec-go-1/capability/charging_button',
-      { value: true },
+      pelsCapabilityWrite(true),
     );
   });
 

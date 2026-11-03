@@ -67,7 +67,7 @@ describe('mock Homey backend', () => {
     try {
       device.tapTile();
 
-      expect(onCapabilityUpdate).toHaveBeenCalledWith('dev-1', 'onoff', false);
+      expect(onCapabilityUpdate).toHaveBeenCalledWith('dev-1', 'onoff', false, undefined);
       expect(onDeviceUpdate).toHaveBeenCalledWith(expect.objectContaining({
         id: 'dev-1',
         capabilitiesObj: expect.objectContaining({

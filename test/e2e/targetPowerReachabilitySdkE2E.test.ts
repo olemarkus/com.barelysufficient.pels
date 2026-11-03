@@ -27,6 +27,7 @@ import type {
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainUntil, drainUntilCalledWith, drainPending } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const CHARGER_ID = 'ev-charger';
 const WATER_HEATER_ID = 'water-heater';
@@ -162,7 +163,7 @@ describe('EV target-power reachability (SDK-boundary e2e)', () => {
       await drainUntilCalledWith(
         putSpy,
         CHARGER_TARGET_POWER_PATH,
-        { value: PROBE_POWER_W },
+        pelsCapabilityWrite(PROBE_POWER_W),
       );
 
       // A second device turns off only after the exploratory command is already
@@ -178,7 +179,7 @@ describe('EV target-power reachability (SDK-boundary e2e)', () => {
       });
       mockHomeyInstance.settings.set('refresh_target_devices_snapshot', Date.now());
       await drainPending();
-      expect(putSpy).not.toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
+      expect(putSpy).not.toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, pelsCapabilityWrite(true));
 
       // The UI remains honest while the probe is outstanding: configured 32 A
       // is not exposed as reached, and the exact observed 25 A rung is retained.
@@ -209,10 +210,10 @@ describe('EV target-power reachability (SDK-boundary e2e)', () => {
       // The heater still gets its turn once that gate expires, even though the
       // charger never reaches 28 A.
       await vi.advanceTimersByTimeAsync(10_000);
-      expect(putSpy).not.toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
+      expect(putSpy).not.toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, pelsCapabilityWrite(true));
       await vi.advanceTimersByTimeAsync(210_000);
-      await drainUntilCalledWith(putSpy, WATER_HEATER_ONOFF_PATH, { value: true });
-      expect(putSpy).toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, { value: true });
+      await drainUntilCalledWith(putSpy, WATER_HEATER_ONOFF_PATH, pelsCapabilityWrite(true));
+      expect(putSpy).toHaveBeenCalledWith(WATER_HEATER_ONOFF_PATH, pelsCapabilityWrite(true));
 
       // The persisted due time drives a later background plan rebuild. The
       // planner still sees an ordinary next rung; no probe metadata crosses in.

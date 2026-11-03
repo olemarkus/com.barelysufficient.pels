@@ -31,6 +31,7 @@ import {
   OVERSHOOT_BEHAVIORS,
 } from '../../lib/utils/settingsKeys';
 import { drainUntil, drainUntilCalledWith } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const POLL_MS = 10_000;
 const BATTERY_ID = 'battery1';
@@ -200,9 +201,9 @@ describe('Home battery as managed observe-only (SDK-boundary e2e)', () => {
     await app.onInit();
     await vi.advanceTimersByTimeAsync(POLL_MS);
     // The EV IS shed (proves capacity pressure is real, not vacuous).
-    await drainUntilCalledWith(putSpy, ONOFF_CAP(EV_ID), { value: false });
+    await drainUntilCalledWith(putSpy, ONOFF_CAP(EV_ID), pelsCapabilityWrite(false));
 
-    expect(putSpy).toHaveBeenCalledWith(ONOFF_CAP(EV_ID), { value: false });
+    expect(putSpy).toHaveBeenCalledWith(ONOFF_CAP(EV_ID), pelsCapabilityWrite(false));
     // The battery is NEVER written to, by any capability.
     expect(batteryWasActuated(putSpy)).toBe(false);
   });

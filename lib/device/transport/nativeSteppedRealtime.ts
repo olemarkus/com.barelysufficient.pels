@@ -25,7 +25,6 @@ import { resolveTargetPowerPresetPhaseCount } from '../../../packages/shared-dom
 import {
   dispatchRealtimeObservation,
   emitCapabilityEventReceived,
-  hasMatchingRecentLocalWrite,
   normalizeRealtimeCapabilityEventValue,
   recordRealtimeObservation,
 } from './realtimeCapabilityShared';
@@ -204,11 +203,13 @@ function observeNativeTargetPowerMode(
     applyNativeSteppedLoadSnapshotUpdate(ingest, snapshot, 'target_power_mode', reportedStepId, false, undefined);
 }
 
+/** `pelsEcho`: Homey's echo of PELS's own write (`handleRealtimeCapabilityUpdate`). */
 export function handleNativeSteppedLoadCapabilityUpdate(
     ingest: RealtimeIngestService,
     snapshot: TransportDeviceSnapshot,
     capabilityId: string,
     value: unknown,
+    pelsEcho: boolean,
 ): boolean {
     const deviceId = snapshot.id;
     if (!isNativeSteppedLoadControlEnabled(snapshot)) return false;
@@ -227,13 +228,11 @@ export function handleNativeSteppedLoadCapabilityUpdate(
     // replace the adapter's last-good step or advance device freshness.
     if (isInvalidNativeNumericStep(capabilityId, value)) return true;
 
-    const normalizedValue = normalizeRealtimeCapabilityEventValue(capabilityId, value);
     // An Easee current echo is also the only source for its reported rung and
     // derived charging switch. Let the adapter consume it even though it echoes
     // PELS's write; suppressing it leaves the prior rung cached until refresh.
-    if (shouldSuppressOwnNativeStepEcho(ingest, deviceId, capabilityId, normalizedValue)) {
-        return isNativePowerStepUpdate;
-    }
+    if (isIgnoredOwnStepEcho(capabilityId, pelsEcho)) return isNativePowerStepUpdate;
+    const normalizedValue = normalizeRealtimeCapabilityEventValue(capabilityId, value);
 
     const adapters = ingest.reader.snapshotStore.nativeSteppedAdapters;
     adapters.observeCapabilityUpdate(deviceId, capabilityId, value);
@@ -243,8 +242,7 @@ export function handleNativeSteppedLoadCapabilityUpdate(
     if (reportedStepPowerW !== undefined && reportedStepPowerW < 0) return true;
     if (reportedStepPowerW !== undefined) extendLadderWithExactTargetPower(snapshot, reportedStepPowerW);
 
-    if (capabilityId === 'target_power' || getCapabilityAdapter([capabilityId]).nativeCurrentControls
-      .some((control) => control.capabilityId === capabilityId)) {
+    if (capabilityId === 'target_power' || isNativeCurrentControl(capabilityId)) {
         recordRealtimeObservation(ingest, deviceId, capabilityId, normalizedValue, true);
     }
 
@@ -269,20 +267,18 @@ export function handleNativeSteppedLoadCapabilityUpdate(
 }
 
 function isInvalidNativeNumericStep(capabilityId: string, value: unknown): boolean {
-    return (capabilityId === 'target_power' || getCapabilityAdapter([capabilityId]).nativeCurrentControls
-      .some((control) => control.capabilityId === capabilityId))
+    return (capabilityId === 'target_power' || isNativeCurrentControl(capabilityId))
         && (typeof value !== 'number' || !Number.isFinite(value) || value < 0);
 }
 
-function shouldSuppressOwnNativeStepEcho(
-    ingest: RealtimeIngestService,
-    deviceId: string,
-    capabilityId: string,
-    normalizedValue: unknown,
-): boolean {
-    return !getCapabilityAdapter([capabilityId]).nativeCurrentControls
-      .some((control) => control.capabilityId === capabilityId)
-        && hasMatchingRecentLocalWrite(ingest.observationBridge.state, deviceId, capabilityId, normalizedValue);
+/** PELS's own step echo adds nothing, except a native current's, which the adapter reads its rung from. */
+function isIgnoredOwnStepEcho(capabilityId: string, pelsEcho: boolean): boolean {
+    return pelsEcho && !isNativeCurrentControl(capabilityId);
+}
+
+function isNativeCurrentControl(capabilityId: string): boolean {
+    return getCapabilityAdapter([capabilityId]).nativeCurrentControls
+      .some((control) => control.capabilityId === capabilityId);
 }
 
 export function handleTargetPowerSourceCapabilityUpdate(

@@ -5,6 +5,7 @@ import {
 } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN } from '../../lib/utils/settingsKeys';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
@@ -126,7 +127,7 @@ describe('VThermo device integration', () => {
     await flushPromises();
     expect(setCapSpy).toHaveBeenCalledWith(
       'manager/devices/device/vthermo-1/capability/target_temperature',
-      { value: 19 },
+      pelsCapabilityWrite(19),
     );
   });
 
@@ -157,11 +158,11 @@ describe('VThermo device integration', () => {
     await flushPromises();
     expect(setCapSpy).toHaveBeenCalledWith(
       'manager/devices/device/vthermo-1/capability/target_temperature',
-      { value: 19 },
+      pelsCapabilityWrite(19),
     );
     expect(setCapSpy).not.toHaveBeenCalledWith(
       'manager/devices/device/vthermo-1/capability/onoff',
-      { value: true },
+      pelsCapabilityWrite(true),
     );
   });
 });

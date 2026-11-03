@@ -450,15 +450,15 @@ describe('device manager support helpers', () => {
     expect(uninitialized.hasRestClient()).toBe(true);
   });
 
-  it('setRawCapabilityValue calls PUT with correct path and payload', async () => {
+  it('setRawCapabilityValue calls PUT with correct path and payload, transaction id included', async () => {
     const mockPut = vi.fn().mockResolvedValue(undefined);
     setRestClient({ get: vi.fn(), put: mockPut });
 
-    await setRawCapabilityValue('dev-1', 'target_temperature', 22);
+    await setRawCapabilityValue('dev-1', 'target_temperature', 22, 'pels-tx-1');
 
     expect(mockPut).toHaveBeenCalledWith(
       'manager/devices/device/dev-1/capability/target_temperature',
-      { value: 22 },
+      { value: 22, transactionId: 'pels-tx-1' },
     );
   });
 
@@ -467,7 +467,7 @@ describe('device manager support helpers', () => {
     setRestClient({ get: vi.fn(), put: mockPut });
     const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
-    await expect(setRawCapabilityValue('dev-1', 'onoff', true)).rejects.toThrow('network error');
+    await expect(setRawCapabilityValue('dev-1', 'onoff', true, 'pels-tx-2')).rejects.toThrow('network error');
     expect(stderrWrite).toHaveBeenCalledWith(
       expect.stringContaining('setRawCapabilityValue PUT'),
     );
@@ -475,7 +475,7 @@ describe('device manager support helpers', () => {
 
   it('setRawCapabilityValue throws when REST client is not initialized', async () => {
     const uninitialized = await importUninitializedHomeyApi();
-    await expect(uninitialized.setRawCapabilityValue('dev-1', 'onoff', true))
+    await expect(uninitialized.setRawCapabilityValue('dev-1', 'onoff', true, 'pels-tx-3'))
       .rejects.toThrow('REST client not initialized');
   });
 

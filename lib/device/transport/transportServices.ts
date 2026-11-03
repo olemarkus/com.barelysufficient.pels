@@ -64,7 +64,7 @@ export class RealtimeIngestService {
       snapshot.available = available;
       const powerKw = resolved.measuredPowerKw;
       if (powerKw !== undefined && powerKw !== snapshot.measuredPowerKw) {
-        handleRealtimeCapabilityUpdateWithProbe(this, snapshot.id, 'measure_power', powerKw * 1000);
+        handleRealtimeCapabilityUpdateWithProbe(this, snapshot.id, 'measure_power', powerKw * 1000, false);
       }
       this.deviceConfiguration.set(snapshot);
       if (availabilityChanged) this.observationBridge.dispatchStateForDevice(snapshot.id);
@@ -78,7 +78,13 @@ export class RealtimeIngestService {
     else this.deviceConfiguration.remove(deviceId);
   }
 
-  handleCapabilityUpdate(deviceId: string, capabilityId: string, value: unknown): void {
+  handleCapabilityUpdate(
+    deviceId: string, capabilityId: string, value: unknown, transactionId: string | undefined,
+  ): void {
+    // Classified once per Homey event: whatever the adapter derives from PELS's
+    // echo is PELS's echo too.
+    const echoed = this.observationBridge.state.ownWrites.takeEcho(deviceId, capabilityId, transactionId);
+    const pelsEcho = echoed !== undefined;
     const session = this.reader.chargingCurrentControl.sessions;
     this.reader.chargingCurrentControl.synchronizeTrust();
     session.observeCapability(deviceId, capabilityId, value);
@@ -86,10 +92,10 @@ export class RealtimeIngestService {
     const snapshot = this.reader.snapshotStore.getSnapshotByDeviceId(deviceId);
     if (snapshot) {
       for (const event of this.reader.chargingCurrentControl.sessions.controlEvents(snapshot, capabilityId, value)) {
-        handleRealtimeCapabilityUpdateWithProbe(this, deviceId, event.capabilityId, event.value);
+        handleRealtimeCapabilityUpdateWithProbe(this, deviceId, event.capabilityId, event.value, pelsEcho);
       }
     } else {
-      handleRealtimeCapabilityUpdateWithProbe(this, deviceId, capabilityId, value);
+      handleRealtimeCapabilityUpdateWithProbe(this, deviceId, capabilityId, value, pelsEcho);
     }
     if (!this.reader.snapshotStore.getSnapshotByDeviceId(deviceId)) this.deviceConfiguration.remove(deviceId);
   }

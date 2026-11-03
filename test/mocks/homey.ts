@@ -172,14 +172,15 @@ export class MockDevice {
     return this.capabilityValues.get(capabilityId);
   }
 
-  async setCapabilityValue(capabilityId: string, value: unknown): Promise<void> {
+  /** `transactionId`: the writer's, which Homey's capability event for the write carries back. */
+  async setCapabilityValue(capabilityId: string, value: unknown, transactionId?: string): Promise<void> {
     this.lastRequestedCapabilityValues.set(capabilityId, value);
     const behavior = this.resolveApiWriteBehavior(capabilityId);
     if (!behavior.accept) {
       // As the Homey REST client surfaces a capability listener's throw: an answered HTTP error.
       throw new HomeyHttpStatusError(500, `Mock capability write rejected for ${this.name}:${capabilityId}`);
     }
-    this.applyCapabilityMutation(capabilityId, value, behavior);
+    this.applyCapabilityMutation(capabilityId, value, behavior, transactionId);
   }
 
   getSetCapabilityValue(capabilityId: string) {
@@ -340,6 +341,7 @@ export class MockDevice {
     capabilityId: string,
     value: unknown,
     behavior: MockCapabilityMutationBehavior,
+    transactionId?: string,
   ): void {
     const nowIso = new Date().toISOString();
     if (behavior.updateActual !== false) {
@@ -353,7 +355,7 @@ export class MockDevice {
     // Homey pushes both frames over its Web API socket; they reach PELS only
     // through a connected live feed (`test/helpers/liveFeedSocketHarness.ts`).
     if (behavior.emitCapabilityEvent) {
-      publishCapability(this.id, capabilityId, value);
+      publishCapability(this.id, capabilityId, value, transactionId);
     }
     if (behavior.emitDeviceUpdate) {
       publishDeviceUpdate(this.toHomeyApiDevice());
@@ -616,7 +618,8 @@ export const mockHomeyInstance = {
         if (device) {
           // The SDK's `api.put` body is arbitrary; this mock serves only the capability
           // write, so the shape is asserted here, where it is actually interpreted.
-          await device.setCapabilityValue(capabilityId, (body as { value?: unknown } | undefined)?.value);
+          const write = body as { value?: unknown; transactionId?: string } | undefined;
+          await device.setCapabilityValue(capabilityId, write?.value, write?.transactionId);
         }
         return;
       }

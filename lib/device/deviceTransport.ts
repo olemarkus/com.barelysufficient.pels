@@ -45,7 +45,7 @@ import {
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { createObservationProducers, type ObservationProducers } from './observationProducers';
 import { DeviceHomeySdk } from './transport/deviceHomeySdk';
-import type { LiveFeedHealth } from './liveFeed';
+import type { CapabilityUpdateCallback, LiveFeedHealth } from './liveFeed';
 import { ObservationBridge } from './transport/observationBridge';
 import { SnapshotCommit } from './transport/snapshotCommit';
 import {
@@ -154,10 +154,10 @@ export class DeviceTransport {
     private readonly refreshService: SnapshotRefreshService;
     private readonly realtimeIngest: RealtimeIngestService;
 
-    private readonly handleRealtimeCapabilityUpdate = (
-        deviceId: string, capabilityId: string, value: unknown,
+    private readonly handleRealtimeCapabilityUpdate: CapabilityUpdateCallback = (
+        deviceId, capabilityId, value, transactionId,
     ): void => {
-        this.realtimeIngest.handleCapabilityUpdate(deviceId, capabilityId, value);
+        this.realtimeIngest.handleCapabilityUpdate(deviceId, capabilityId, value, transactionId);
         this.carAssociationControl.observe(Date.now());
     };
 

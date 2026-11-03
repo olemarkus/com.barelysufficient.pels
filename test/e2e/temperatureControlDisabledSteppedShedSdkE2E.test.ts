@@ -29,6 +29,7 @@ import {
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainUntil } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const HEATER_ID = 'connected-300';
 const cap = (capability: string) => `manager/devices/device/${HEATER_ID}/capability/${capability}`;
@@ -125,7 +126,7 @@ describe('stepped shed with temperature control disabled (SDK-boundary e2e)', ()
     await drainUntil(() => writesTo(putSpy, STEP_PATH).length > 0);
 
     // A rung below `max`, and not the off rung (which writes `onoff:false`).
-    expect(writesTo(putSpy, STEP_PATH)).toEqual([{ value: '2' }]);
+    expect(writesTo(putSpy, STEP_PATH)).toEqual([pelsCapabilityWrite('2')]);
     // The whole point of the setting: PELS never touches the setpoint.
     expect(writesTo(putSpy, TEMPERATURE_PATH)).toEqual([]);
     await expect(heater.getCapabilityValue('target_temperature'))

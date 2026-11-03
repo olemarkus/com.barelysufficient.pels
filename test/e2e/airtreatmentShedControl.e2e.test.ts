@@ -13,6 +13,7 @@ import { mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/home
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
 import { drainUntilCalledWith } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
@@ -124,9 +125,9 @@ describe('Airtreatment capacity shedding (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, cap('airtreatment-1', 'target_temperature'), { value: 10 });
+    await drainUntilCalledWith(putSpy, cap('airtreatment-1', 'target_temperature'), pelsCapabilityWrite(10));
 
-    expect(putSpy).toHaveBeenCalledWith(cap('airtreatment-1', 'target_temperature'), { value: 10 });
+    expect(putSpy).toHaveBeenCalledWith(cap('airtreatment-1', 'target_temperature'), pelsCapabilityWrite(10));
     expect(onoffWrites(putSpy)).toHaveLength(0);
   });
 
@@ -146,9 +147,9 @@ describe('Airtreatment capacity shedding (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, cap('thermostat-1', 'target_temperature'), { value: 10 });
+    await drainUntilCalledWith(putSpy, cap('thermostat-1', 'target_temperature'), pelsCapabilityWrite(10));
 
-    expect(putSpy).toHaveBeenCalledWith(cap('thermostat-1', 'target_temperature'), { value: 10 });
+    expect(putSpy).toHaveBeenCalledWith(cap('thermostat-1', 'target_temperature'), pelsCapabilityWrite(10));
     expect(onoffWrites(putSpy)).toHaveLength(0);
   });
 
@@ -165,8 +166,8 @@ describe('Airtreatment capacity shedding (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, cap('water-heater', 'target_temperature'), { value: minimumTemperature });
-    expect(putSpy).toHaveBeenCalledWith(cap('water-heater', 'target_temperature'), { value: minimumTemperature });
+    await drainUntilCalledWith(putSpy, cap('water-heater', 'target_temperature'), pelsCapabilityWrite(minimumTemperature));
+    expect(putSpy).toHaveBeenCalledWith(cap('water-heater', 'target_temperature'), pelsCapabilityWrite(minimumTemperature));
     expect(onoffWrites(putSpy)).toHaveLength(0);
   });
 
@@ -186,9 +187,9 @@ describe('Airtreatment capacity shedding (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, cap('airtreatment-onoff-1', 'onoff'), { value: false });
+    await drainUntilCalledWith(putSpy, cap('airtreatment-onoff-1', 'onoff'), pelsCapabilityWrite(false));
 
-    expect(putSpy).toHaveBeenCalledWith(cap('airtreatment-onoff-1', 'onoff'), { value: false });
+    expect(putSpy).toHaveBeenCalledWith(cap('airtreatment-onoff-1', 'onoff'), pelsCapabilityWrite(false));
     expect(tempWrites(putSpy)).toHaveLength(0);
   });
 });

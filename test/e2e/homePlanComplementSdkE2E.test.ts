@@ -29,6 +29,7 @@ import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
 } from '../../lib/utils/settingsKeys';
 import { drainPending, drainUntilCalledWith } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
@@ -93,7 +94,7 @@ const bootAndOvershoot = async (configureHomes?: () => void) => {
   await vi.advanceTimersByTimeAsync(1000);
   reportHomePower(5000);
   await vi.advanceTimersByTimeAsync(10_000);
-  await drainUntilCalledWith(putSpy, ONOFF_CAP('device-main'), { value: false });
+  await drainUntilCalledWith(putSpy, ONOFF_CAP('device-main'), pelsCapabilityWrite(false));
   // Quiescence for the negative scan: a write queued on the final poll must
   // not land after the test reads `mock.calls`.
   await drainPending();
@@ -134,7 +135,7 @@ describe('Main plan is the membership complement (SDK-boundary e2e)', () => {
       });
     });
 
-    expect(putSpy).toHaveBeenCalledWith(ONOFF_CAP('device-main'), { value: false });
+    expect(putSpy).toHaveBeenCalledWith(ONOFF_CAP('device-main'), pelsCapabilityWrite(false));
     // The sub-home member is uncontrolled by main: NO write of any kind —
     // a single actuation here would be double-control.
     const subDeviceWrites = putSpy.mock.calls.filter(([path]) =>
@@ -153,9 +154,9 @@ describe('Main plan is the membership complement (SDK-boundary e2e)', () => {
     configureCapacity(1);
 
     const putSpy = await bootAndOvershoot();
-    await drainUntilCalledWith(putSpy, ONOFF_CAP('device-sub'), { value: false });
+    await drainUntilCalledWith(putSpy, ONOFF_CAP('device-sub'), pelsCapabilityWrite(false));
 
-    expect(putSpy).toHaveBeenCalledWith(ONOFF_CAP('device-main'), { value: false });
-    expect(putSpy).toHaveBeenCalledWith(ONOFF_CAP('device-sub'), { value: false });
+    expect(putSpy).toHaveBeenCalledWith(ONOFF_CAP('device-main'), pelsCapabilityWrite(false));
+    expect(putSpy).toHaveBeenCalledWith(ONOFF_CAP('device-sub'), pelsCapabilityWrite(false));
   });
 });
