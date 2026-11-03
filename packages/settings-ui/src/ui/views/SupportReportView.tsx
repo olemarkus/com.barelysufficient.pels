@@ -51,8 +51,9 @@ const ForumLinks = ({ forums }: { forums: readonly SupportForumTopic[] }) => <>
   </span>)}
 </>;
 
-// Homey carries no reply address. Keep the next step the same for every report;
-// email includes its reference so the owner need not copy a technical identifier.
+// Homey carries no reply address. Keep the next step the same for every report.
+// A forum post matches the report only by its reference, so that path asks for
+// it; the email link includes it, so the owner need not copy it there.
 const SupportContact = ({ forums, report }: {
   forums: readonly SupportForumTopic[]; report: PreparedSupportReport;
 }) => {
@@ -61,7 +62,7 @@ const SupportContact = ({ forums, report }: {
   const body = encodeURIComponent(`${report.document.request.problem}\n\nReport reference: ${reference || report.document.id}`);
   return (
     <p class="pels-text-supporting muted">
-      To hear back, post in the <ForumLinks forums={forums} /> (preferred) or email{' '}
+      To hear back, post in the <ForumLinks forums={forums} /> (preferred) and quote the reference, or email{' '}
       <a class="support-report__link" href={`mailto:${DEVELOPER_EMAIL}?subject=${subject}&body=${body}`}
         target="_blank" rel="noopener noreferrer">{DEVELOPER_EMAIL}</a>.
     </p>
