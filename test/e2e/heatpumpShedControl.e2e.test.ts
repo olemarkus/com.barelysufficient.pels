@@ -19,6 +19,7 @@ import {
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
 } from '../../lib/utils/settingsKeys';
 import { drainUntilCalledWith } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
@@ -97,9 +98,9 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), { value: 15 });
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), pelsCapabilityWrite(15));
 
-    expect(putSpy).toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), { value: 15 });
+    expect(putSpy).toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), pelsCapabilityWrite(15));
     const turnedOff = putSpy.mock.calls.some(
       ([path]) => typeof path === 'string' && path.endsWith('/capability/onoff'),
     );
@@ -126,10 +127,10 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), { value: 28 });
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), pelsCapabilityWrite(28));
 
-    expect(putSpy).not.toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), { value: 16 });
-    expect(putSpy).not.toHaveBeenCalledWith(cap('heatpump-a', 'onoff'), { value: false });
+    expect(putSpy).not.toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), pelsCapabilityWrite(16));
+    expect(putSpy).not.toHaveBeenCalledWith(cap('heatpump-a', 'onoff'), pelsCapabilityWrite(false));
     putSpy.mockClear();
 
     // Past the 60 s limit cooldown before relieving, as the heater scenario
@@ -140,7 +141,7 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
     await vi.advanceTimersByTimeAsync(90_000);
 
-    expect(putSpy).toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), { value: 22 });
+    expect(putSpy).toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), pelsCapabilityWrite(22));
     await expect(device.getCapabilityValue('target_temperature')).resolves.toBe(22);
   });
 
@@ -176,13 +177,13 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(putSpy).not.toHaveBeenCalledWith(cap('plug-a', 'onoff'), { value: false });
+    expect(putSpy).not.toHaveBeenCalledWith(cap('plug-a', 'onoff'), pelsCapabilityWrite(false));
 
     meterReports = false;
     await vi.advanceTimersByTimeAsync(11 * 60_000);
-    await drainUntilCalledWith(putSpy, cap('plug-a', 'onoff'), { value: false });
+    await drainUntilCalledWith(putSpy, cap('plug-a', 'onoff'), pelsCapabilityWrite(false));
 
-    expect(putSpy).not.toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), { value: 20 });
+    expect(putSpy).not.toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), pelsCapabilityWrite(20));
     await expect(device.getCapabilityValue('target_temperature')).resolves.toBe(24);
   });
 
@@ -198,9 +199,9 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
 
     const app = createApp();
     await app.onInit();
-    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), { value: 20 });
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), pelsCapabilityWrite(20));
 
-    expect(putSpy).toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), { value: 20 });
+    expect(putSpy).toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), pelsCapabilityWrite(20));
   });
 
   it('uses only on/off capacity control when temperature control is disabled', async () => {
@@ -218,7 +219,7 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'onoff'), { value: false });
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'onoff'), pelsCapabilityWrite(false));
 
     const targetWrites = putSpy.mock.calls.filter(
       ([path]) => typeof path === 'string' && path.includes('/capability/target_temperature'),
@@ -240,13 +241,13 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
 
     const app = createApp();
     await app.onInit();
-    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), { value: 20 });
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), pelsCapabilityWrite(20));
     putSpy.mockClear();
 
     mockHomeyInstance.settings.set(TEMPERATURE_CONTROL_DISABLED_DEVICES, { 'heatpump-a': true });
     setHomePower(5000);
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'onoff'), { value: false });
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'onoff'), pelsCapabilityWrite(false));
 
     expect(putSpy.mock.calls.some(
       ([path]) => typeof path === 'string' && path.includes('/capability/target_temperature'),
@@ -275,8 +276,8 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), { value: 16 });
-    expect(putSpy).not.toHaveBeenCalledWith(cap('heatpump-a', 'onoff'), { value: false });
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), pelsCapabilityWrite(16));
+    expect(putSpy).not.toHaveBeenCalledWith(cap('heatpump-a', 'onoff'), pelsCapabilityWrite(false));
     putSpy.mockClear();
 
     // The owner nudges the limited heater up. The change arrives the way it does
@@ -299,7 +300,7 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
       },
     });
     await vi.advanceTimersByTimeAsync(70_000);
-    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), { value: 16 });
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), pelsCapabilityWrite(16));
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({ Home: { 'heatpump-a': 24 } });
     putSpy.mockClear();
 
@@ -307,7 +308,7 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
     await vi.advanceTimersByTimeAsync(90_000);
 
-    expect(putSpy).toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), { value: 24 });
+    expect(putSpy).toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), pelsCapabilityWrite(24));
     await expect(device.getCapabilityValue('target_temperature')).resolves.toBe(24);
     expect(mockHomeyInstance.settings.get('mode_device_targets')).toEqual({ Home: { 'heatpump-a': 24 } });
   });

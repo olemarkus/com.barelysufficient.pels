@@ -14,6 +14,7 @@ import {
   NATIVE_EV_WIRING_DEVICES,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = Date.UTC(2026, 9, 2);
@@ -128,8 +129,8 @@ describe('smart-task hour boundary (SDK-boundary e2e)', () => {
       await drainPending();
       expect(pollTimes.map((time) => time % HOUR_MS)).toContain(HOUR_MS - 2000);
       expect(plans.some((plan) => plan.currentHourClaim === 'claimed')).toBe(true);
-      expect(writes).not.toHaveBeenCalledWith(cap('onoff'), { value: false });
-      expect(writes).not.toHaveBeenCalledWith(cap('target_temperature'), { value: 40 });
+      expect(writes).not.toHaveBeenCalledWith(cap('onoff'), pelsCapabilityWrite(false));
+      expect(writes).not.toHaveBeenCalledWith(cap('target_temperature'), pelsCapabilityWrite(40));
       await expect(heater.getCapabilityValue('onoff')).resolves.toBe(true);
       await expect(heater.getCapabilityValue('target_temperature')).resolves.toBe(TARGET_C);
     },
@@ -142,7 +143,7 @@ describe('smart-task hour boundary (SDK-boundary e2e)', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     await drainPending();
     expect(plans.some((plan) => plan.currentHourClaim === 'released')).toBe(true);
-    expect(writes).toHaveBeenCalledWith(cap('onoff'), { value: false });
+    expect(writes).toHaveBeenCalledWith(cap('onoff'), pelsCapabilityWrite(false));
   });
 
   it.each([
@@ -210,8 +211,8 @@ describe('smart-task hour boundary (SDK-boundary e2e)', () => {
     }));
     expect(plans.filter((entry) => entry.atMs >= deadlineAtMs
       && entry.event === 'deferred_objective_horizon_planned')).toEqual([]);
-    expect(writes).not.toHaveBeenCalledWith(cap('onoff'), { value: false });
-    expect(writes).not.toHaveBeenCalledWith(cap('target_temperature'), { value: 40 });
+    expect(writes).not.toHaveBeenCalledWith(cap('onoff'), pelsCapabilityWrite(false));
+    expect(writes).not.toHaveBeenCalledWith(cap('target_temperature'), pelsCapabilityWrite(40));
     await expect(heater.getCapabilityValue('onoff')).resolves.toBe(true);
     expect(mockHomeyInstance.settings.get(`deferred_objective.${HEATER_ID}`)).toMatchObject({ enabled: false });
   });

@@ -23,7 +23,10 @@
  *   data = { capabilityId, value, transactionId?, transactionTime? }.
  *   These fire on every API write — immediately when the user changes a device via
  *   the Homey app, without waiting for device hardware confirmation. This is how
- *   homey-api's makeCapabilityInstance() worked internally.
+ *   homey-api's makeCapabilityInstance() worked internally. A write's event carries
+ *   the transactionId its writer supplied; PELS supplies its own, so the transport
+ *   recognises PELS's echoes (`transport/ownCapabilityWrites.ts`). Homey gives every
+ *   other event a random id.
  *
  * Note: no targeted HTTP fetch is needed — the device.update payload carries the
  * whole device, capabilitiesObj with current values and lastUpdated timestamps.
@@ -83,9 +86,17 @@ export type DeviceLiveFeed = {
 
 type HandshakeResult = { namespace: string };
 
+/** One per-device `capability` event; `transactionId` is absent only when Homey sent none. */
+export type CapabilityUpdateCallback = (
+  deviceId: string,
+  capabilityId: string,
+  value: unknown,
+  transactionId: string | undefined,
+) => void;
+
 type FeedCallbacks = {
   onDeviceUpdate: (device: HomeyDeviceLike) => void;
-  onCapabilityUpdate?: (deviceId: string, capabilityId: string, value: unknown) => void;
+  onCapabilityUpdate?: CapabilityUpdateCallback;
 };
 
 type ConnectionDetails = {
@@ -468,7 +479,8 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
         if (!data || typeof data !== 'object') return;
         const payload = data as Record<string, unknown>;
         if (typeof payload.capabilityId !== 'string') return;
-        this.callbacks.onCapabilityUpdate?.(deviceId, payload.capabilityId, payload.value);
+        const transactionId = typeof payload.transactionId === 'string' ? payload.transactionId : undefined;
+        this.callbacks.onCapabilityUpdate?.(deviceId, payload.capabilityId, payload.value, transactionId);
       });
     } catch (error) {
       if (this.pendingDeviceSubscriptions.get(deviceId) !== attempt) return;
@@ -521,7 +533,7 @@ export function createDeviceLiveFeed(params: {
   logger: Logger;
   callbacks: {
     onDeviceUpdate: (device: HomeyDeviceLike) => void;
-    onCapabilityUpdate?: (deviceId: string, capabilityId: string, value: unknown) => void;
+    onCapabilityUpdate?: CapabilityUpdateCallback;
   };
 }): DeviceLiveFeed {
   return new DeviceLiveFeedImpl(params);

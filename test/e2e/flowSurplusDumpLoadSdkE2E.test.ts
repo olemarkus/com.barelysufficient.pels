@@ -31,6 +31,7 @@ import {
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
 import { drainPending, drainUntilCalledWith } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
@@ -124,7 +125,7 @@ describe('Solar dump-load posture on the flow power source (SDK-boundary e2e)', 
     const app = createApp({ preserveStartupRestoreStabilization: true });
     await app.onInit();
     await reportForPolls(1500, 6);
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), { value: false });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), pelsCapabilityWrite(false));
     expect(onoffPuts(putSpy)).toContain(false);
     expect(onoffPuts(putSpy)).not.toContain(true);
 
@@ -133,7 +134,7 @@ describe('Solar dump-load posture on the flow power source (SDK-boundary e2e)', 
     // hold lifts and the NORMAL restore lane turns the pump ON.
     putSpy.mockClear();
     await reportForPolls(-3000, 40); // ~400 s: settle + shed/restore cooldowns
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), { value: true });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), pelsCapabilityWrite(true));
     expect(onoffPuts(putSpy)).toContain(true);
 
     // Phase 3 — release: the export collapses to sustained 1.5 kW import (past
@@ -141,7 +142,7 @@ describe('Solar dump-load posture on the flow power source (SDK-boundary e2e)', 
     // hold re-enters, and the shed lane turns the pump OFF again.
     putSpy.mockClear();
     await reportForPolls(1500, 40);
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), { value: false });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), pelsCapabilityWrite(false));
     expect(onoffPuts(putSpy)).toContain(false);
   });
 
@@ -199,7 +200,7 @@ describe('Solar dump-load posture on the flow power source (SDK-boundary e2e)', 
     // known to be reachable, so the hold applies and the pump is turned off.
     await reportForPolls(-2000, 3);
     await reportForPolls(1500, 30);
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), { value: false });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), pelsCapabilityWrite(false));
     expect(onoffPuts(putSpy)).toContain(false);
   });
 

@@ -54,6 +54,7 @@ import {
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { withFixtureResidualKw } from '../utils/planTestUtils';
+import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const steppedProfile: SteppedLoadProfile = {
   steps: [
@@ -720,7 +721,7 @@ describe('native stepped-load wiring', () => {
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/target-power-1/capability/target_power',
-        { value: 1840 },
+        pelsCapabilityWrite(1840),
       );
     } finally {
       restoreMockRestClient();
@@ -759,7 +760,7 @@ describe('native stepped-load wiring', () => {
         })).resolves.toEqual({ requested: true, acknowledged: true, transport: 'native_capability' });
         expect(put).toHaveBeenLastCalledWith(
           'manager/devices/device/target-power-1/capability/target_power',
-          { value: planningPowerW },
+          pelsCapabilityWrite(planningPowerW),
         );
       }
     } finally {
@@ -1443,7 +1444,7 @@ describe('native stepped-load wiring', () => {
       expect(get).toHaveBeenCalledTimes(refreshGetCalls);
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
-        { value: '2' },
+        pelsCapabilityWrite('2'),
       );
       expect(logCapture.findEvent('device_capability_write_requested')).toMatchObject({
         event: 'device_capability_write_requested',
@@ -1484,7 +1485,7 @@ describe('native stepped-load wiring', () => {
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
-        { value: '2' },
+        pelsCapabilityWrite('2'),
       );
 
       const liveStateObserved = vi.fn();
@@ -1531,7 +1532,7 @@ describe('native stepped-load wiring', () => {
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
-        { value: '2' },
+        pelsCapabilityWrite('2'),
       );
     } finally {
       restoreMockRestClient();
@@ -1821,10 +1822,10 @@ describe('native stepped-load wiring', () => {
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
-        { value: '3' },
+        pelsCapabilityWrite('3'),
       );
 
-      await emitCapability('hoiax-1', 'max_power_3000', '3');
+      await emitCapability('hoiax-1', 'max_power_3000', '3', ownWriteTransactionId(put, 'hoiax-1', 'max_power_3000'));
 
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
         reportedStepId: 'medium',
@@ -1880,7 +1881,7 @@ describe('native stepped-load wiring', () => {
       })).resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'native_capability' });
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
-        { value: '3' },
+        pelsCapabilityWrite('3'),
       );
     } finally {
       restoreMockRestClient();
@@ -1982,7 +1983,7 @@ describe('native stepped-load wiring', () => {
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-mock/capability/max_power_3000',
-        { value: '2' },
+        pelsCapabilityWrite('2'),
       );
     } finally {
       setRestClient({

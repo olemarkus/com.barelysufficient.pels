@@ -4,6 +4,7 @@ import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { drainPending } from '../utils/asyncDrain';
 import { INVERTER_CURTAILMENT_DEVICES } from '../../packages/shared-domain/src/settings/inverterCurtailment';
 import { INVERTER_CLAIM_PREFIX } from '../../lib/executor/inverterClaimStore';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const NOW = Date.UTC(2026, 5, 19, 12);
 const CAP_PATH = 'manager/devices/device/pv/capability/target_power';
@@ -80,7 +81,7 @@ describe('native inverter curtailment through the Homey SDK', () => {
 
   it('caps only excess output and returns the original limit when the export price turns positive', async () => {
     const h = await boot(-0.05);
-    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: 2050 });
+    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, pelsCapabilityWrite(2050));
     expect(mockHomeyInstance.settings.get(`${INVERTER_CLAIM_PREFIX}pv`))
       .toMatchObject({ previousLimitW: 6000, previousMode: { kind: 'direct' } });
     // The inverter separately reports its physical output. A target write did
@@ -90,7 +91,7 @@ describe('native inverter curtailment through the Homey SDK', () => {
     mockHomeyInstance.settings.set('export_fixed', 0.08);
     for (let i = 0; i < 5; i += 1) await vi.advanceTimersByTimeAsync(10_000);
     await drainPending();
-    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: 6000 });
+    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, pelsCapabilityWrite(6000));
   });
 
   it('leaves production alone for positive export value even when import prices are negative', async () => {
@@ -128,7 +129,7 @@ describe('native inverter curtailment through the Homey SDK', () => {
 
   it('hands a held inverter back after a restart before limiting it again', async () => {
     const h = await boot(-0.05);
-    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: 2050 });
+    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, pelsCapabilityWrite(2050));
     await h.solar.setCapabilityValue('measure_power', 2050);
     await h.app.onUninit();
     h.puts.mockClear();
@@ -139,38 +140,38 @@ describe('native inverter curtailment through the Homey SDK', () => {
     const caps = h.puts.mock.calls.filter(([path]) => path === CAP_PATH).map(([, body]) => body);
     // The restarted executor recovers the saved claim and returns the prior
     // limit before it admits any new curtailment.
-    expect(caps[0]).toEqual({ value: 6000 });
+    expect(caps[0]).toEqual(pelsCapabilityWrite(6000));
   });
 
   it('hands a held inverter back when the meter stops reporting', async () => {
     const h = await boot(-0.05);
-    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: 2050 });
+    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, pelsCapabilityWrite(2050));
     h.puts.mockClear();
     h.silenceMeter();
     // Past the 10-minute silence, the power owner's fail-closed pass releases it.
     for (let i = 0; i < 70; i += 1) await vi.advanceTimersByTimeAsync(10_000);
     await drainPending();
-    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: 6000 });
-    expect(h.puts.mock.calls.filter(([path]) => path === CAP_PATH)).toEqual([[CAP_PATH, { value: 6000 }]]);
+    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, pelsCapabilityWrite(6000));
+    expect(h.puts.mock.calls.filter(([path]) => path === CAP_PATH)).toEqual([[CAP_PATH, pelsCapabilityWrite(6000)]]);
   });
 
   it('hands an already limited inverter back when Simulation mode is enabled', async () => {
     const h = await boot(-0.05);
-    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: 2050 });
+    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, pelsCapabilityWrite(2050));
     mockHomeyInstance.settings.set('capacity_dry_run', true);
     for (let i = 0; i < 5; i += 1) await vi.advanceTimersByTimeAsync(10_000);
     await drainPending();
-    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: 6000 });
+    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, pelsCapabilityWrite(6000));
   });
   it('hands an unavailable inverter back instead of dropping its held claim from the plan', async () => {
     const h = await boot(-0.05);
-    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: 2050 });
+    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, pelsCapabilityWrite(2050));
     h.puts.mockClear();
     h.solar.setAvailable(false);
     await h.app.refreshTargetDevicesSnapshot();
     for (let i = 0; i < 5; i += 1) await vi.advanceTimersByTimeAsync(10_000);
     await drainPending();
-    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: 6000 });
+    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, pelsCapabilityWrite(6000));
   });
 
   it('hands an inverter back to its own mode without writing its dormant zero cap', async () => {
@@ -181,7 +182,7 @@ describe('native inverter curtailment through the Homey SDK', () => {
     const realPut = mockHomeyInstance.api.put;
     const h = await boot(-0.05, true, false, undefined, solar);
     const modePath = 'manager/devices/device/pv/capability/target_power_mode';
-    expect(h.puts).toHaveBeenCalledWith(modePath, { value: 'homey' });
+    expect(h.puts).toHaveBeenCalledWith(modePath, pelsCapabilityWrite('homey'));
     h.puts.mockClear();
     let failModeWrites = true;
     h.puts.mockImplementation(async (path: string, body?: unknown) => {
@@ -196,7 +197,7 @@ describe('native inverter curtailment through the Homey SDK', () => {
     failModeWrites = false;
     for (let i = 0; i < 5; i += 1) await vi.advanceTimersByTimeAsync(10_000);
     await drainPending();
-    expect(h.puts).toHaveBeenCalledWith(modePath, { value: 'device' });
+    expect(h.puts).toHaveBeenCalledWith(modePath, pelsCapabilityWrite('device'));
     expect(h.puts.mock.calls.filter(([path]) => path === CAP_PATH)).toEqual([]);
     // The inverter's own mode report alone confirms the hand-back.
     expect(mockHomeyInstance.settings.get(`${INVERTER_CLAIM_PREFIX}pv`)).toBeFalsy();
@@ -216,7 +217,7 @@ describe('native inverter curtailment through the Homey SDK', () => {
     solar.setCapabilityMetadata('target_power_mode', { setable: true, values: [{ id: 'device' }, { id: 'homey' }] });
     const h = await boot(-0.05, true, false, undefined, solar);
     const modePath = 'manager/devices/device/pv/capability/target_power_mode';
-    expect(h.puts).toHaveBeenCalledWith(modePath, { value: 'homey' });
+    expect(h.puts).toHaveBeenCalledWith(modePath, pelsCapabilityWrite('homey'));
     h.puts.mockClear();
     if (change !== 'mode options') solar.setCapabilityMetadata('target_power', {
       min: 0, max: change === 'smaller range' ? 5000 : 7000, step: 1, setable: true,
@@ -225,7 +226,7 @@ describe('native inverter curtailment through the Homey SDK', () => {
     await h.app.refreshTargetDevicesSnapshot();
     for (let i = 0; i < 5; i += 1) await vi.advanceTimersByTimeAsync(10_000);
     await drainPending();
-    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, { value: change === 'smaller range' ? 5000 : 6000 });
+    expect(h.puts).toHaveBeenCalledWith(CAP_PATH, pelsCapabilityWrite(change === 'smaller range' ? 5000 : 6000));
     expect(h.puts.mock.calls.filter(([path]) => path === modePath)).toEqual([]);
   });
 

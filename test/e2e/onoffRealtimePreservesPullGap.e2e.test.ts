@@ -13,6 +13,7 @@ import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { drainUntil, drainUntilCalledWith } from '../utils/asyncDrain';
 import { connectLiveFeed, emitCapability } from '../helpers/liveFeedSocketHarness';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const DEVICE_ID = 'device-a';
 const FRESH_ISO = '2026-06-03T06:00:00.000Z';
@@ -122,7 +123,7 @@ describe('On/off realtime observation across pull gap (SDK-boundary e2e)', () =>
     // assertion with the cycle fully settled.
     await drainUntil(() => putSpy.mock.calls.length > 0, { rounds: 20 }).catch(() => {});
 
-    expect(putSpy).not.toHaveBeenCalledWith(onoffCap(DEVICE_ID), { value: false });
+    expect(putSpy).not.toHaveBeenCalledWith(onoffCap(DEVICE_ID), pelsCapabilityWrite(false));
   });
 
   it('preserves realtime onoff=true when a later pull omits the onoff value and is ignored', async () => {
@@ -160,8 +161,8 @@ describe('On/off realtime observation across pull gap (SDK-boundary e2e)', () =>
     // instead of a fixed flush, which flakes to zero calls under full-suite CPU
     // load (notes/testing-taxonomy.md). The toHaveBeenCalledWith below then gives
     // a readable diff and is guaranteed to hold once this resolves.
-    await drainUntilCalledWith(putSpy, onoffCap(DEVICE_ID), { value: false });
+    await drainUntilCalledWith(putSpy, onoffCap(DEVICE_ID), pelsCapabilityWrite(false));
 
-    expect(putSpy).toHaveBeenCalledWith(onoffCap(DEVICE_ID), { value: false });
+    expect(putSpy).toHaveBeenCalledWith(onoffCap(DEVICE_ID), pelsCapabilityWrite(false));
   });
 });

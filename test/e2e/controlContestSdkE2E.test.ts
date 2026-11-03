@@ -22,6 +22,7 @@ import { connectLiveFeed } from '../helpers/liveFeedSocketHarness';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainUntilCalledWith } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const DEVICE_ID = 'heatpump-a';
 const SETPOINT_PATH = `manager/devices/device/${DEVICE_ID}/capability/target_temperature`;
@@ -101,7 +102,7 @@ describe('Drift breaker (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, SETPOINT_PATH, { value: LIMITED_C });
+    await drainUntilCalledWith(putSpy, SETPOINT_PATH, pelsCapabilityWrite(LIMITED_C));
     // The thermostat took the limit; PELS confirms it from the live feed.
     await vi.advanceTimersByTimeAsync(MINUTE_MS);
 

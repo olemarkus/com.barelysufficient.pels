@@ -9,6 +9,7 @@ import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainPending } from '../utils/asyncDrain';
 import { connectLiveFeed } from '../helpers/liveFeedSocketHarness';
 import type { TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const ID = 'enua';
 const pathFor = (capability: string) => `manager/devices/device/${ID}/capability/${capability}`;
@@ -298,7 +299,7 @@ describe.each(GRIDS)('Enua $grid at the SDK boundary', ({ grid, wattsPerAmp }) =
       configureRuntime(1000 + 5 * wattsPerAmp);
       await createApp().onInit();
       await vi.advanceTimersByTimeAsync(185_000);
-      expect(simulation.writes()).toContainEqual([pathFor('evcharger_charging'), { value: false }]);
+      expect(simulation.writes()).toContainEqual([pathFor('evcharger_charging'), pelsCapabilityWrite(false)]);
       expect(charger.getActualCapabilityValue('evcharger_charging')).toBe(false);
       expect(charger.getActualCapabilityValue('target_power')).toBeCloseTo(6 * wattsPerAmp);
       expect(charger.getActualCapabilityValue('measure_power')).toBe(0);

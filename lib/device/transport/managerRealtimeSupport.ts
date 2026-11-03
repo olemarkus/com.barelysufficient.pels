@@ -1,10 +1,3 @@
-export type RecentLocalCapabilityWrite = {
-  value: unknown;
-  expiresAt: number;
-};
-
-export type RecentLocalCapabilityWrites = Map<string, RecentLocalCapabilityWrite>;
-
 export function formatBinaryState(value: boolean | undefined): string {
   if (value === true) return 'on';
   if (value === false) return 'off';

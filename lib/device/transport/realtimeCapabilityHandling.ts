@@ -12,7 +12,6 @@ import {
   dispatchRealtimeDrift,
   dispatchRealtimeObservation,
   emitCapabilityEventReceived,
-  hasMatchingRecentLocalWrite,
   isFreshnessOnlyCapability,
   normalizeRealtimeCapabilityEventValue,
   recordRealtimeObservation,
@@ -268,17 +267,23 @@ function handleSteppedSourceCapabilityUpdate(
     snapshot: TransportDeviceSnapshot,
     capabilityId: string,
     value: unknown,
+    pelsEcho: boolean,
 ): boolean {
     return handleAcknowledgedCurrentUpdate(ingest, snapshot, capabilityId, value)
-        || handleNativeSteppedLoadCapabilityUpdate(ingest, snapshot, capabilityId, value)
+        || handleNativeSteppedLoadCapabilityUpdate(ingest, snapshot, capabilityId, value, pelsEcho)
         || handleTargetPowerSourceCapabilityUpdate(ingest, snapshot, capabilityId, value);
 }
 
+/**
+ * `pelsEcho`: the event is Homey's echo of PELS's own write, recognised by its
+ * transaction id (`ownCapabilityWrites.ts`).
+ */
 export function handleRealtimeCapabilityUpdate(
     ingest: RealtimeIngestService,
     deviceId: string,
     capabilityId: string,
     value: unknown,
+    pelsEcho: boolean,
 ): void {
     if (!ingest.reader.shouldTrackRealtimeDevice(deviceId)) return;
     const snapshot = ingest.reader.snapshotStore.getSnapshot().find((entry) => entry.id === deviceId);
@@ -291,7 +296,7 @@ export function handleRealtimeCapabilityUpdate(
     const normalizedEvents = normalizeNativeEvCapabilityUpdate(snapshot, capabilityId, value);
     for (const normalizedEvent of normalizedEvents) {
         if (handleSteppedSourceCapabilityUpdate(
-            ingest, snapshot, normalizedEvent.capabilityId, normalizedEvent.value,
+            ingest, snapshot, normalizedEvent.capabilityId, normalizedEvent.value, pelsEcho,
         )) continue;
 
         const resolvedEvent = resolveRealtimeCapabilityEvent(
@@ -303,26 +308,10 @@ export function handleRealtimeCapabilityUpdate(
         const effectiveCapabilityId = resolvedEvent.capabilityId;
         const effectiveValue = resolvedEvent.value;
 
-        const normalizedValue = normalizeRealtimeCapabilityEventValue(
-            effectiveCapabilityId,
-            effectiveValue,
-        );
-        // A binary write is never observed optimistically. Its matching echo is
-        // therefore real observed truth and must pass through even when no
-        // pending consumer is currently attached. Target/step writes retain
-        // their duplicate-event suppression.
-        const isBinaryObservation = effectiveCapabilityId === snapshot.binaryCapabilityId;
-        if (
-            !isBinaryObservation
-            && hasMatchingRecentLocalWrite(
-                ingest.observationBridge.state,
-                deviceId,
-                effectiveCapabilityId,
-                normalizedValue,
-            )
-        ) {
-            continue;
-        }
+        // A binary write is never observed optimistically, so its echo settles
+        // the switch PELS asked for. A target write's value is already held as
+        // PELS's own write (`recordLocalWriteObservation`): its echo adds nothing.
+        if (pelsEcho && effectiveCapabilityId !== snapshot.binaryCapabilityId) continue;
 
         if (isFreshnessOnlyCapability(effectiveCapabilityId)) {
             handleFreshnessOnlyCapabilityUpdate(ingest, snapshot, effectiveCapabilityId, effectiveValue);
@@ -389,7 +378,8 @@ export function handleRealtimeCapabilityUpdateWithProbe(
     deviceId: string,
     capabilityId: string,
     value: unknown,
+    pelsEcho: boolean,
 ): void {
-    handleRealtimeCapabilityUpdate(ingest, deviceId, capabilityId, value);
+    handleRealtimeCapabilityUpdate(ingest, deviceId, capabilityId, value, pelsEcho);
     ingest.observationProducers.evCarLink.noteCapabilityUpdate(deviceId, capabilityId, value, Date.now());
 }

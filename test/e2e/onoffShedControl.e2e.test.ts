@@ -16,6 +16,7 @@ import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriv
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
 import { drainUntilCalledWith } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const ONOFF_CAP = (deviceId: string) => `manager/devices/device/${deviceId}/capability/onoff`;
 
@@ -85,9 +86,9 @@ describe('On/off capacity shedding (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, ONOFF_CAP('device-a'), { value: false });
+    await drainUntilCalledWith(putSpy, ONOFF_CAP('device-a'), pelsCapabilityWrite(false));
 
-    expect(putSpy).toHaveBeenCalledWith(ONOFF_CAP('device-a'), { value: false });
+    expect(putSpy).toHaveBeenCalledWith(ONOFF_CAP('device-a'), pelsCapabilityWrite(false));
   });
 
   it('sheds via turn_off only — never writes a temperature target — even when misconfigured with a set_temperature overshoot', async () => {
@@ -106,9 +107,9 @@ describe('On/off capacity shedding (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, ONOFF_CAP('device-a'), { value: false });
+    await drainUntilCalledWith(putSpy, ONOFF_CAP('device-a'), pelsCapabilityWrite(false));
 
-    expect(putSpy).toHaveBeenCalledWith(ONOFF_CAP('device-a'), { value: false });
+    expect(putSpy).toHaveBeenCalledWith(ONOFF_CAP('device-a'), pelsCapabilityWrite(false));
     const wroteTemperatureTarget = putSpy.mock.calls.some(([path]) =>
       typeof path === 'string' && path.includes('capability/target_temperature'),
     );

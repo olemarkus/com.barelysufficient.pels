@@ -2,7 +2,9 @@ import type Homey from 'homey';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import { getDebugEmitter } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
-import { createDeviceLiveFeed, type DeviceLiveFeed, type LiveFeedHealth } from '../liveFeed';
+import {
+  createDeviceLiveFeed, type CapabilityUpdateCallback, type DeviceLiveFeed, type LiveFeedHealth,
+} from '../liveFeed';
 import { initHomeyHttpClient, resolveHomeyInstance } from './managerHomeyApi';
 import {
   fetchDevicesByIds as fetchDevicesByIdsFromSdk,
@@ -22,11 +24,7 @@ export class DeviceHomeySdk {
     private readonly homey: Homey.App,
     private readonly logger: Logger,
     private readonly onDeviceUpdate: (device: HomeyDeviceLike) => void,
-    private readonly onCapabilityUpdate: (
-      deviceId: string,
-      capabilityId: string,
-      value: unknown,
-    ) => void,
+    private readonly onCapabilityUpdate: CapabilityUpdateCallback,
   ) {}
 
   get runtime(): Homey.App['homey'] { return resolveHomeyInstance(this.homey); }

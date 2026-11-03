@@ -20,6 +20,7 @@ import {
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
 import { drainPending, drainUntilCalledWith } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
@@ -111,9 +112,9 @@ describe('Surplus-absorb setpoint raise (SDK-boundary e2e)', () => {
     const app = createApp({ preserveStartupRestoreStabilization: true });
     await app.onInit();
     await advancePastSettle();
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'target_temperature'), { value: BOOSTED_C });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'target_temperature'), pelsCapabilityWrite(BOOSTED_C));
 
-    expect(putSpy).toHaveBeenCalledWith(cap(DEVICE, 'target_temperature'), { value: BOOSTED_C });
+    expect(putSpy).toHaveBeenCalledWith(cap(DEVICE, 'target_temperature'), pelsCapabilityWrite(BOOSTED_C));
   });
 
   it('never raises a non-willing thermostat, even while exporting', async () => {

@@ -146,9 +146,6 @@ export function reconcileRealtimeDeviceUpdate(params: {
     applyBinaryControlObservation(parsed, previous, preservedBinaryControlObservation);
   }
 
-  preserveRecentLocalBinaryState(
-    previous, parsed, deviceId, observationState, explicitBinaryValueAccepted === true,
-  );
   if (previous) {
     preserveNewerReportedStepObservation(previous, parsed);
     preserveNewerAcknowledgedStep(previous, parsed);
@@ -324,37 +321,6 @@ function getExplicitObservedBinaryObservation(
     ? { value: rawControlValue, observedCapabilityId: 'evcharger_charging' }
     : undefined;
 }
-
-/* eslint-disable functional/immutable-data, no-param-reassign --
-   In-place update avoids another state or accumulator copy. */
-function preserveRecentLocalBinaryState(
-  previous: TransportDeviceSnapshot | null,
-  parsed: TransportDeviceSnapshot,
-  deviceId: string,
-  observationState: TransportObservationState,
-  binaryValueExplicitlyObserved: boolean,
-): void {
-  if (!previous) return;
-  const capabilityId = parsed.binaryCapabilityId ?? previous.binaryCapabilityId;
-  if (capabilityId !== 'onoff' && capabilityId !== 'evcharger_charging') return;
-  // Without an explicit observation, parseDevice may synthesize a default that
-  // must not be treated as stronger than a recent local write. Once the payload
-  // carries an explicit binary value, that observed value wins.
-  if (binaryValueExplicitlyObserved) return;
-  const localWrite = observationState.getRecentLocalCapabilityWrite(deviceId, capabilityId);
-  if (!localWrite || typeof localWrite.value !== 'boolean') return;
-  const parsedBinary = parsed.binaryControl;
-  if (parsedBinary === undefined) return;
-  if (parsedBinary.on === localWrite.value) return;
-  const previousOn = isBinaryOnOrUnknown(previous);
-  if (previousOn !== localWrite.value) return;
-  parsed.binaryControl = { on: previousOn };
-  if (capabilityId === 'evcharger_charging') {
-    parsed.evCharging = previous.evCharging;
-    parsed.evChargingObservedAtMs = previous.evChargingObservedAtMs;
-  }
-}
-/* eslint-enable functional/immutable-data, no-param-reassign */
 
 function resolveBinaryReconcileChange(
   previous: TransportDeviceSnapshot,

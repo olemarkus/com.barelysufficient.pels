@@ -13,6 +13,7 @@ import { acknowledgedTeslaCurrent, confirmedTeslaCurrent } from '../../lib/devic
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowConflictStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const now = Date.parse('2026-10-13T10:00:00Z');
 const cap = <T>(value: T, time = Date.now()) => ({ value, lastUpdated: new Date(time).toISOString() });
@@ -544,7 +545,7 @@ test('a Flow setting the current holds the built-in route back for step requests
       .resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'native_capability' });
     expect(put).toHaveBeenCalledOnce();
     expect(put.mock.calls[0]![0]).toContain('measure_charge_current_max');
-    expect(put.mock.calls[0]![1]).toEqual({ value: 6 });
+    expect(put.mock.calls[0]![1]).toEqual(pelsCapabilityWrite(6));
     expect(trigger).toHaveBeenCalledOnce();
     expect(transport.reportSteppedLoadActualStep('battery', '6a', 4140)).toEqual({ kind: 'native_control' });
   } finally { mockHomeyInstance.settings.unset('charging_current_control'); }

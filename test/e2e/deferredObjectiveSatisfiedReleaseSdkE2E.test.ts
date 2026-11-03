@@ -22,6 +22,7 @@ import {
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainPending } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const CHARGER_ID = 'cap-off-charger';
 const CHARGING_PATH = `manager/devices/device/${CHARGER_ID}/capability/evcharger_charging`;
@@ -238,6 +239,6 @@ describe('satisfied smart-task release (SDK-boundary e2e)', () => {
     await vi.advanceTimersByTimeAsync(30_000);
     await drainPending();
 
-    expect(putSpy).toHaveBeenCalledWith(THERMOSTAT_TARGET_PATH, { value: 16 });
+    expect(putSpy).toHaveBeenCalledWith(THERMOSTAT_TARGET_PATH, pelsCapabilityWrite(16));
   });
 });

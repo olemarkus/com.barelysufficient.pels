@@ -134,20 +134,6 @@ export function resolveRealtimeCapabilityEvent(
     return null;
 }
 
-export function hasMatchingRecentLocalWrite(
-    observationState: TransportObservationState,
-    deviceId: string,
-    capabilityId: string,
-    normalizedValue: unknown,
-): boolean {
-    const recentWrite = observationState.getRecentLocalCapabilityWrite(deviceId, capabilityId);
-    if (!recentWrite) return false;
-    return Object.is(
-        normalizeRealtimeCapabilityEventValue(capabilityId, recentWrite.value),
-        normalizedValue,
-    );
-}
-
 export function emitCapabilityEventReceived(
     observationState: TransportObservationState,
     deviceId: string,

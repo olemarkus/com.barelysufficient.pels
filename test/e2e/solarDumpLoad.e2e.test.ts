@@ -22,6 +22,7 @@ import {
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
 import { drainPending, drainUntilCalledWith } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
@@ -119,7 +120,7 @@ describe('Solar dump-load posture (SDK-boundary e2e)', () => {
     const app = createApp({ preserveStartupRestoreStabilization: true });
     await app.onInit();
     await advancePolls(6);
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), { value: false });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), pelsCapabilityWrite(false));
     expect(onoffPuts(putSpy)).toContain(false);
     expect(onoffPuts(putSpy)).not.toContain(true);
 
@@ -129,7 +130,7 @@ describe('Solar dump-load posture (SDK-boundary e2e)', () => {
     putSpy.mockClear();
     homePowerW = -3000;
     await advancePolls(40); // ~400 s: settle + shed/restore cooldowns
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), { value: true });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), pelsCapabilityWrite(true));
     expect(onoffPuts(putSpy)).toContain(true);
 
     // Phase 3 — release: the export collapses to sustained 1.5 kW import (past
@@ -138,7 +139,7 @@ describe('Solar dump-load posture (SDK-boundary e2e)', () => {
     putSpy.mockClear();
     homePowerW = 1500;
     await advancePolls(40);
-    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), { value: false });
+    await drainUntilCalledWith(putSpy, cap(DEVICE, 'onoff'), pelsCapabilityWrite(false));
     expect(onoffPuts(putSpy)).toContain(false);
   });
 

@@ -1,3 +1,4 @@
+import type { Mock } from 'vitest';
 import { getTestExecutionFacts } from '../utils/planEngineStateFixture';
 import type { ComposedPlanEngine } from '../../setup/appInit/composedPlanEngine';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
@@ -54,6 +55,7 @@ import {
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { steerCapacityPace } from '../helpers/capacityPaceFixture';
+import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const flushPromises = () => new Promise<void>((resolve) => {
   if (typeof setImmediate === 'function') {
@@ -1981,7 +1983,7 @@ describe('MyApp initialization', () => {
     // Verify setCapabilityValue was called to apply the target
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/dev-1/capability/target_temperature',
-      { value: 16 },
+      pelsCapabilityWrite(16),
     );
   });
 
@@ -2071,7 +2073,7 @@ describe('MyApp initialization', () => {
       expect(putSpy).toHaveBeenCalledTimes(1);
       expect(putSpy).toHaveBeenLastCalledWith(
         'manager/devices/device/dev-1/capability/target_temperature',
-        { value: 20 },
+        pelsCapabilityWrite(20),
       );
       expect(heater.getActualCapabilityValue('target_temperature')).toBe(20);
 
@@ -2193,9 +2195,12 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'dev-1': 18 } });
 
     connectLiveFeed();
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
     const app = createApp();
     await initApp(app);
     await waitForSnapshot();
+    // PELS applies the mode target at boot; its echo carries PELS's transaction id.
+    const echoTransactionId = ownWriteTransactionId(putSpy as unknown as Mock, 'dev-1', 'target_temperature');
 
     const nowMs = new Date('2026-03-20T06:00:00.000Z').getTime();
     getTestExecutionFacts(app.planEngine.state).pendingTargetCommands['dev-1'] = {
@@ -2211,7 +2216,7 @@ describe('MyApp initialization', () => {
 
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
     try {
-      await emitCapability('dev-1', 'target_temperature', 18);
+      await emitCapability('dev-1', 'target_temperature', 18, echoTransactionId);
       expect(getTestExecutionFacts(app.planEngine.state).pendingTargetCommands['dev-1']).toBeDefined();
 
       heater.setApiCapabilityValue('target_temperature', 18);

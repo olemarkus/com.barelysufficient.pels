@@ -394,6 +394,16 @@ adapter converts (owner ruling 2026-10-16): it is withheld from the read, and
 nothing stands in for it until a read reports a value. Per-capability events (`homey:device:{id}`) carry one capability by
 design and are their own, narrower read.
 
+Homey's capability event for a write carries the transaction id its writer
+supplied. PELS sends its own with every capability write, so the transport
+recognises the echo of PELS's write exactly however late it comes
+(`lib/device/transport/ownCapabilityWrites.ts`); Homey answers a write only once
+the driver's listener returns, which takes tens of seconds for some cloud
+drivers. Any other event is not PELS's, including a device report of the value
+PELS just wrote. Homey does not say who else wrote a value: a write without an
+id and the driver's own reports get random ids. A driver that sets a value the
+capability already holds produces no event and leaves `lastUpdated` alone.
+
 Do not assume:
 
 - unchanged fields in the event are fresh

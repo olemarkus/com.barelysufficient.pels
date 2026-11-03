@@ -19,6 +19,7 @@ import {
   HOMEY_ENERGY_METER_DEVICE_ID,
 } from '../../lib/utils/settingsKeys';
 import { drainUntilCalledWith } from '../utils/asyncDrain';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
@@ -111,9 +112,9 @@ describe('Whole-home meter selection (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, cap('airtreatment-1', 'target_temperature'), { value: 10 });
+    await drainUntilCalledWith(putSpy, cap('airtreatment-1', 'target_temperature'), pelsCapabilityWrite(10));
 
-    expect(putSpy).toHaveBeenCalledWith(cap('airtreatment-1', 'target_temperature'), { value: 10 });
+    expect(putSpy).toHaveBeenCalledWith(cap('airtreatment-1', 'target_temperature'), pelsCapabilityWrite(10));
   });
 
   it('matches the selected id on a cumulative item (Homey-marked meter stays selectable)', async () => {
@@ -128,9 +129,9 @@ describe('Whole-home meter selection (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await drainUntilCalledWith(putSpy, cap('airtreatment-1', 'target_temperature'), { value: 10 });
+    await drainUntilCalledWith(putSpy, cap('airtreatment-1', 'target_temperature'), pelsCapabilityWrite(10));
 
-    expect(putSpy).toHaveBeenCalledWith(cap('airtreatment-1', 'target_temperature'), { value: 10 });
+    expect(putSpy).toHaveBeenCalledWith(cap('airtreatment-1', 'target_temperature'), pelsCapabilityWrite(10));
   });
 
   it('never falls back to the cumulative item when the selected meter is missing', async () => {

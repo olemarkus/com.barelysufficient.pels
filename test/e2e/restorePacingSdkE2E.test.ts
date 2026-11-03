@@ -10,6 +10,7 @@ import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrive
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainPending, drainUntilCalledWith } from '../utils/asyncDrain';
 import { connectLiveFeed, emitCapability } from '../helpers/liveFeedSocketHarness';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 async function buildHeater(id: string, load = 3200): Promise<MockDevice> {
   const device = new MockDevice(id, id, ['onoff', 'measure_power'], 'heater');
@@ -42,7 +43,7 @@ async function startPacing(limitKw: number, initialHomePowerW: number) {
   const secondPath = 'manager/devices/device/second/capability/onoff';
   const app = createApp();
   await app.onInit();
-  await drainUntilCalledWith(putSpy, firstPath, { value: true });
+  await drainUntilCalledWith(putSpy, firstPath, pelsCapabilityWrite(true));
   return { putSpy, secondPath, setHomePower: (watts: number) => { homePowerW = watts; } };
 }
 
@@ -70,18 +71,18 @@ describe('restore pacing at the SDK boundary', () => {
     const second = await buildHeater('second');
     setMockDrivers({ driverA: new MockDriver('driverA', [first, second]) });
     const { putSpy, secondPath } = await startPacing(5.1, 900);
-    expect(putSpy).not.toHaveBeenCalledWith(secondPath, { value: true });
+    expect(putSpy).not.toHaveBeenCalledWith(secondPath, pelsCapabilityWrite(true));
 
     // Confirmation of ON is immediate; drawing power is deliberately delayed.
     // Both devices fit individually, but not in one same-cycle restore batch.
     await vi.advanceTimersByTimeAsync(61_000);
-    expect(putSpy).not.toHaveBeenCalledWith(secondPath, { value: true });
+    expect(putSpy).not.toHaveBeenCalledWith(secondPath, pelsCapabilityWrite(true));
     await vi.advanceTimersByTimeAsync(189_000);
-    expect(putSpy).not.toHaveBeenCalledWith(secondPath, { value: true });
+    expect(putSpy).not.toHaveBeenCalledWith(secondPath, pelsCapabilityWrite(true));
 
     // A device that never draws must not hold the queue forever either.
     await vi.advanceTimersByTimeAsync(60_000);
-    await drainUntilCalledWith(putSpy, secondPath, { value: true });
+    await drainUntilCalledWith(putSpy, secondPath, pelsCapabilityWrite(true));
   });
 
   it.each(['poll', 'realtime'])('restores early after %s device draw and a later home reading', async (source) => {
@@ -90,25 +91,25 @@ describe('restore pacing at the SDK boundary', () => {
     const second = await buildHeater('second', 1500);
     setMockDrivers({ driverA: new MockDriver('driverA', [first, second]) });
     const { putSpy, secondPath, setHomePower } = await startPacing(4, 500);
-    expect(putSpy).not.toHaveBeenCalledWith(secondPath, { value: true });
+    expect(putSpy).not.toHaveBeenCalledWith(secondPath, pelsCapabilityWrite(true));
 
     // The first command has confirmed; the next meter poll has not arrived.
     await vi.advanceTimersByTimeAsync(1000);
     await first.setCapabilityValue('measure_power', 1500);
     if (source === 'realtime') await emitCapability('first', 'measure_power', 1500);
     await drainPending();
-    expect(putSpy).not.toHaveBeenCalledWith(secondPath, { value: true });
+    expect(putSpy).not.toHaveBeenCalledWith(secondPath, pelsCapabilityWrite(true));
 
     // The first changed home value after the draw arrived may have been measured before it.
     setHomePower(1950);
     await vi.advanceTimersByTimeAsync(10_000);
     await drainPending();
-    expect(putSpy).not.toHaveBeenCalledWith(secondPath, { value: true });
+    expect(putSpy).not.toHaveBeenCalledWith(secondPath, pelsCapabilityWrite(true));
 
     // The meter's next value was measured after that one reached PELS, so it includes the
     // first heater, and it still leaves room.
     setHomePower(2000);
     await vi.advanceTimersByTimeAsync(90_000);
-    await drainUntilCalledWith(putSpy, secondPath, { value: true });
+    await drainUntilCalledWith(putSpy, secondPath, pelsCapabilityWrite(true));
   });
 });
