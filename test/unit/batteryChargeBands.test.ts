@@ -2,8 +2,8 @@
 // (`lib/battery/batteryVerification.ts`): a charge that stops short near full
 // caps only its band and those above it; below 80 %, or at an unreported
 // level, it caps every level. Live control holds a band lesson for 30 min;
-// the plan keeps a taper for a week until it is re-taught or lifted, and never
-// keeps a stop (no charge taken at all).
+// the plan keeps a taper a second plateau confirmed for a week until it is
+// re-taught or lifted, and never keeps a stop (no charge taken at all).
 import { describe, expect, it } from 'vitest';
 import {
   BatteryVerificationLedger,
@@ -21,12 +21,19 @@ const charged = (signedW: number, at: ReturnType<typeof level> | undefined) => (
   { signedW, toleranceW: TOLERANCE_W, level: at }
 );
 const ceilingAt = (ledger: BatteryVerificationLedger, nowMs: number) => ledger.read(BATTERY, RANGE, nowMs).chargeCeiling;
+/** A band plateau taught twice, the second at `atMs`: the confirmation the plan keeps a taper on. */
+const teachTwice = (
+  ledger: BatteryVerificationLedger, signedW: number, at: ReturnType<typeof level>, atMs: number,
+) => {
+  ledger.recordChargeCeiling(BATTERY, charged(signedW, at), atMs - 1);
+  ledger.recordChargeCeiling(BATTERY, charged(signedW, at), atMs);
+};
 
 describe('battery charge ceiling by charge band', () => {
   it('places a lesson near full in its 5 % band and one below 80 % at every level', () => {
     const ledger = new BatteryVerificationLedger();
     ledger.recordChargeCeiling(BATTERY, charged(1800, level(60)), 0);
-    ledger.recordChargeCeiling(BATTERY, charged(1200, level(87)), 0);
+    teachTwice(ledger, 1200, level(87), 0);
     ledger.recordChargeCeiling(BATTERY, charged(0, level(100)), 0);
 
     expect(ceilingAt(ledger, 0)).toEqual({
@@ -34,6 +41,39 @@ describe('battery charge ceiling by charge band', () => {
       taper: [{ fromPercent: 85, ceilingW: 1200 }, { fromPercent: 95, ceilingW: 0 }],
       planningTaper: [{ fromPercent: 85, ceilingW: 1200 }],
     });
+  });
+
+  // A plateau is judged on one fresh reading 90 s after the step: a battery
+  // that ramps slower stops "short" once, and the plan must not cap charge
+  // from that band up for a week on it (nothing would lift it, since live
+  // control asks for no more than the plan does).
+  it('keeps a band lesson for the plan only once a second plateau confirms it', () => {
+    const ledger = new BatteryVerificationLedger();
+    ledger.recordChargeCeiling(BATTERY, charged(1000, level(82)), 0);
+    expect(ceilingAt(ledger, 0)).toEqual({
+      everyLevelW: 2500, taper: [{ fromPercent: 80, ceilingW: 1000 }], planningTaper: [],
+    });
+    expect(ceilingAt(ledger, DELIVERY_CEILING_TTL_MS)).toEqual({ everyLevelW: 2500, taper: [], planningTaper: [] });
+
+    // Asked for full power again, it ramped past the first plateau but still stopped short:
+    // a new first lesson, not a confirmation.
+    ledger.recordChargeCeiling(BATTERY, charged(1600, level(83)), DELIVERY_CEILING_TTL_MS);
+    expect(ceilingAt(ledger, DELIVERY_CEILING_TTL_MS).planningTaper).toEqual([]);
+
+    // The same plateau again, within the tolerance: the band's taper is confirmed.
+    ledger.recordChargeCeiling(BATTERY, charged(1600 + TOLERANCE_W, level(84)), 2 * DELIVERY_CEILING_TTL_MS);
+    expect(ceilingAt(ledger, 2 * DELIVERY_CEILING_TTL_MS).planningTaper)
+      .toEqual([{ fromPercent: 80, ceilingW: 1600 + TOLERANCE_W }]);
+  });
+
+  it('lifts a lesson still awaiting its confirmation once a charge passes it', () => {
+    const ledger = new BatteryVerificationLedger();
+    ledger.recordChargeCeiling(BATTERY, charged(1000, level(91)), 0);
+    const laterMs = 2 * DELIVERY_CEILING_TTL_MS;
+    ledger.recordResponding(BATTERY, { signedW: 2000, toleranceW: TOLERANCE_W, level: level(92) }, laterMs);
+    // The passed plateau confirms nothing: the next one is a first lesson again.
+    ledger.recordChargeCeiling(BATTERY, charged(1000, level(93)), laterMs + 1000);
+    expect(ceilingAt(ledger, laterMs + 1000).planningTaper).toEqual([]);
   });
 
   it('keeps a full battery\'s stop for live control only, so the plan can still charge near full', () => {
@@ -75,8 +115,8 @@ describe('battery charge ceiling by charge band', () => {
 
   it('lets live control ask full power again after 30 min while the plan keeps the taper', () => {
     const ledger = new BatteryVerificationLedger();
-    ledger.recordChargeCeiling(BATTERY, charged(1000, level(82)), 0);
-    ledger.recordChargeCeiling(BATTERY, charged(400, level(96)), DELIVERY_CEILING_TTL_MS / 2);
+    teachTwice(ledger, 1000, level(82), 0);
+    teachTwice(ledger, 400, level(96), DELIVERY_CEILING_TTL_MS / 2);
 
     expect(ceilingAt(ledger, DELIVERY_CEILING_TTL_MS)).toEqual({
       everyLevelW: 2500,
@@ -90,15 +130,15 @@ describe('battery charge ceiling by charge band', () => {
 
   it('replaces a band lesson when the band is taught again', () => {
     const ledger = new BatteryVerificationLedger();
-    ledger.recordChargeCeiling(BATTERY, charged(1000, level(91)), 0);
-    ledger.recordChargeCeiling(BATTERY, charged(1300, level(93)), 2 * DELIVERY_CEILING_TTL_MS);
-    expect(ceilingAt(ledger, 2 * DELIVERY_CEILING_TTL_MS).planningTaper).toEqual([{ fromPercent: 90, ceilingW: 1300 }]);
+    teachTwice(ledger, 1000, level(91), 0);
+    ledger.recordChargeCeiling(BATTERY, charged(900, level(93)), 2 * DELIVERY_CEILING_TTL_MS);
+    expect(ceilingAt(ledger, 2 * DELIVERY_CEILING_TTL_MS).planningTaper).toEqual([{ fromPercent: 90, ceilingW: 900 }]);
   });
 
   it('lifts a band from both live control and the plan once a charge passes it, even after live expiry', () => {
     const ledger = new BatteryVerificationLedger();
-    ledger.recordChargeCeiling(BATTERY, charged(1000, level(82)), 0);
-    ledger.recordChargeCeiling(BATTERY, charged(300, level(96)), 0);
+    teachTwice(ledger, 1000, level(82), 0);
+    teachTwice(ledger, 300, level(96), 0);
 
     const laterMs = 2 * DELIVERY_CEILING_TTL_MS;
     ledger.recordResponding(BATTERY, { signedW: 2000, toleranceW: 50, level: level(88) }, laterMs);
@@ -114,7 +154,7 @@ describe('battery charge ceiling by charge band', () => {
   it('lifts only the every-level lesson from a charge at an unreported level', () => {
     const ledger = new BatteryVerificationLedger();
     ledger.recordChargeCeiling(BATTERY, charged(1000, level(50)), 0);
-    ledger.recordChargeCeiling(BATTERY, charged(300, level(96)), 0);
+    teachTwice(ledger, 300, level(96), 0);
 
     ledger.recordResponding(BATTERY, { signedW: 2000, toleranceW: 50, level: undefined }, 1000);
     const taper = [{ fromPercent: 95, ceilingW: 300 }];

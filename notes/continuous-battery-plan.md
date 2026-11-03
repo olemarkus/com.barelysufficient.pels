@@ -18,13 +18,18 @@ Charge power follows the taper the battery has shown: the verification ledger
 (`batteryVerification.ts`) learns where a charge stopped short per 5 % band
 from 80 % up (below 80 %, or without a reported level, the lesson applies at
 every level). Live control caps charge by the band of the current level for 30
-minutes. The plan keeps each band's latest lesson for a week, until it is
-re-taught or a charge past it lifts it, since it charges hours ahead; the
-lessons are in memory and a restart relearns them. While the plan runs, live
-control asks for no more than the plan does, so a planned lesson is rarely
-lifted and mostly waits to be re-taught or to expire. A lesson where the
-battery took no charge at all (full, or at its own limit) is a stop, not a
-taper: live control holds it, and the plan never keeps it, or a battery that
+minutes. The plan keeps a band's lesson for a week, until it is re-taught or a
+charge past it lifts it, since it charges hours ahead; the lessons are in
+memory and a restart relearns them. While the plan runs, live control asks for
+no more than the plan does, so a planned lesson is rarely lifted and mostly
+waits to be re-taught or to expire. So the plan keeps a lesson only once a
+second plateau confirms it: the band taught again, no higher than before by the
+setpoint's tolerance, within the week. A plateau is judged on one fresh reading
+90 s after the step, and a battery that ramps slower than that stops short once
+without tapering; unconfirmed, live control asks for full charge again after
+its 30 minutes and the battery lifts the lesson or teaches it again. A lesson
+where the battery took no charge at all (full, or at its own limit) is a stop,
+not a taper: live control holds it, and the plan never keeps it, or a battery that
 stopped at 100 % would never be charged from 95 % again that week. The
 horizon carries these as stored-energy steps, and each transition's charge is
 capped by the steps at or below the energy it starts from, so a battery that

@@ -366,6 +366,27 @@ describe('battery storage lane', () => {
       .toEqual({ everyLevelW: 2500, taper: [{ fromPercent: 95, ceilingW: 0 }], planningTaper: [] });
   });
 
+  it('plans around a charge taper only once a second plateau confirms the first', async () => {
+    const { send, read, setLevel, ledger } = buildLane();
+    const ceiling = () => ledger.read(BATTERY, RANGE, Date.now()).chargeCeiling;
+
+    // One fresh reading after the confirmation window: a battery that ramps
+    // slower than that looks tapered, so live control holds it, the plan does not.
+    setLevel(86);
+    await send(2500, 0);
+    read(1200, 4200, CONTROL_COMMAND_CONFIRMATION_MS);
+    expect(ceiling()).toEqual({ everyLevelW: 2500, taper: [{ fromPercent: 85, ceilingW: 1200 }], planningTaper: [] });
+
+    // Asked for full charge again after the live hold, it stops at the same plateau.
+    const laterMs = DELIVERY_CEILING_TTL_MS + 60_000;
+    setLevel(88);
+    await send(0, laterMs - 30_000);
+    read(0, 3000, laterMs - 20_000);
+    await send(2500, laterMs);
+    read(1200, 4200, laterMs + CONTROL_COMMAND_CONFIRMATION_MS);
+    expect(ceiling().planningTaper).toEqual([{ fromPercent: 85, ceilingW: 1200 }]);
+  });
+
   it('marks a battery sign-inverted from charge steps too', async () => {
     const { send, read, verdict } = buildLane();
     const invertedStep = async (setpointW: number, meterW: number, atMs: number) => {
