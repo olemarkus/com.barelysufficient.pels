@@ -35,6 +35,8 @@ import { noHomeyWebApi, unknownHubMarket } from '../helpers/homeyWebApiStub';
 import { DEFAULT_SURPLUS_LIFT_C } from '../../packages/shared-domain/src/settings/priceOptimization';
 import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 import { testLogger } from '../utils/testLogger';
+import { refreshGridTariff } from '../../lib/price/gridTariffRefresh';
+import type { PriceServiceLoggingSinks } from '../../lib/price/priceServiceLoggingSinks';
 
 // Mock the https module
 vi.mock('https', () => ({
@@ -1261,6 +1263,49 @@ tariffer:
       expect(rows).toHaveLength(48);
       expect(rows.every((row) => row.source === 'fallback')).toBe(true);
       expect(feeAt(rows, '2026-11-02', 12)).toBeCloseTo(29.99, 5);
+    });
+
+    // The refresh as the price service runs it, on its own store, with what it
+    // logs recorded.
+    const createDirectRefresh = () => {
+      const store = createPriceDataStore(mockHomeyInstance.settings, createInMemoryPriceCache());
+      const warn = vi.fn();
+      const sinks = {
+        structuredLog: { info: vi.fn(), warn, error: vi.fn(), debug: vi.fn() },
+        errorLog: vi.fn(),
+      } as unknown as PriceServiceLoggingSinks;
+      const refresh = async (now: Date, respond: (url: string) => unknown, forceRefresh = false) => {
+        const originalDate = global.Date;
+        global.Date = mockDateAt(now);
+        (global.fetch as Mock).mockImplementation((url: string) => Promise.resolve(respond(url)));
+        try {
+          return await refreshGridTariff(
+            { countyCode: '03', organizationNumber: '980489698', tariffGroup: 'Husholdning' },
+            () => '980489698', store, 'Europe/Oslo', sinks, forceRefresh,
+          );
+        } finally {
+          global.Date = originalDate;
+        }
+      };
+      return { store, warn, refresh };
+    };
+
+    it('warns with the live file\'s failure each time it prices on the saved file', async () => {
+      const { warn, refresh } = createDirectRefresh();
+      await refresh(FRIDAY, liveFile);
+      await refresh(MONDAY, () => streamedTextResponse('tariffer: {flow: map}'));
+      // Stores nothing new: the saved rows already price Monday.
+      await refresh(MONDAY, () => ({ ok: false, status: 503 }));
+
+      expect(warn.mock.calls.map(([payload]) => payload)).toEqual([
+        expect.objectContaining({
+          event: 'grid_tariff_saved_file_used', source: 'fri-nettleie', file: 'elvia.yml',
+          organizationNumber: '980489698', reason: expect.stringContaining('unreadable'), stored: true,
+        }),
+        expect.objectContaining({
+          event: 'grid_tariff_saved_file_used', source: 'fri-nettleie', reason: 'HTTP 503', stored: false,
+        }),
+      ]);
     });
 
     it('keeps the rows fetched live today when a later fetch the same day fails', async () => {
