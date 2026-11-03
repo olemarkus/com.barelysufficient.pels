@@ -166,8 +166,9 @@ export function recordHeatingShadow(
   outdoorTemperatureC: number | undefined,
   timeZone: string,
 ): HeatingShadowState {
-  const previous = before?.timeZone === timeZone ? before : undefined;
-  if (previous && nowMs <= latestTimestamp(previous)) return previous;
+  // A corrected wall clock starts a new chronology; future-dated evidence must not freeze collection.
+  const previous = before?.timeZone === timeZone && nowMs >= latestTimestamp(before) ? before : undefined;
+  if (previous && nowMs === latestTimestamp(previous)) return previous;
   const dateKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
   const cutoff = shiftDateKey(dateKey, -HEATING_SHADOW_COMPLETED_DAYS);
   const retained = (previous?.days ?? []).filter((day) => day.dateKey >= cutoff && day.dateKey <= dateKey);

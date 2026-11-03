@@ -80,15 +80,24 @@ describe('passive heating shadow collection', () => {
     expect(collected.window?.start.atMs).toBe(START + 19 * MINUTE);
   });
 
-  it('continues a persisted declared-held window only across a bounded ordinary gap and ignores repeated/backwards time', () => {
+  it('continues a persisted declared-held window only across a bounded ordinary gap and ignores repeated time', () => {
     const before = sample(sample(undefined, 0), 5);
     const serialized = JSON.stringify(before);
     const restored: HeatingShadowState = JSON.parse(serialized);
     const resumed = sample(sample(restored, 10), 15);
     expect(resumed.days[0]!.devices.room!.intervals[0]!.inputKWh).toBeCloseTo(0.25);
     expect(sample(before, 5)).toBe(before);
-    expect(sample(before, 4)).toBe(before);
     expect(JSON.stringify(before)).toBe(serialized);
+  });
+
+  it('resumes chronological collection after a forward clock jump is corrected backward', () => {
+    const future = sample(undefined, 7 * 24 * 60);
+    let corrected = sample(future, 0);
+    for (let minute = 5; minute <= 15; minute += 5) corrected = sample(corrected, minute);
+    expect(corrected.days.map((day) => day.dateKey)).toEqual(['2026-11-02']);
+    expect(corrected.days[0]!.devices.room!.intervals[0]).toMatchObject({
+      startMs: START, endMs: START + 15 * MINUTE, inputKWh: 0.25,
+    });
   });
 
   it('closes the prior local day at the last actual observation without inventing a midnight endpoint', () => {

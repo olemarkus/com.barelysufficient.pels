@@ -113,9 +113,10 @@ function mergeOutdoor(current: HeatingShadowDay, stored: HeatingShadowDay): Heat
   const currentKeys = new Set(current.outdoor.map(outdoorKey));
   const older = stored.outdoor.filter((point) => point.atMs < firstCurrent && !currentKeys.has(outdoorKey(point)));
   const lastStored = lastDayObservation(stored);
-  const gap = lastStored < firstCurrent && firstCurrent !== Infinity && older.at(-1)?.state === 'available';
-  const prefix = gap ? [...older.filter((point) => point.atMs !== lastStored),
-    { atMs: lastStored, state: 'unavailable' as const }] : older;
+  // This is an availability boundary, not a weather measurement: the first millisecond after accepted evidence.
+  const gapStartMs = lastStored + 1;
+  const gap = gapStartMs < firstCurrent && firstCurrent !== Infinity && older.at(-1)?.state === 'available';
+  const prefix = gap ? [...older, { atMs: gapStartMs, state: 'unavailable' as const }] : older;
   const outdoor = [...prefix, ...current.outdoor].sort((left, right) => left.atMs - right.atMs)
     .slice(-HEATING_SHADOW_MAX_OUTDOOR_POINTS);
   const retained = new Set(outdoor.map(outdoorKey));

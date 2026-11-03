@@ -65,9 +65,13 @@ const fitToSize = (document: SupportReportDocument): FittedMessage | null => {
     const ordinary = { ...document,
       sections: document.sections.filter((section) => section.title !== HEATING_SHADOW_REPORT_TITLE),
     };
-    return fitToSize({ ...ordinary,
+    const fitted = fitToSize(ordinary);
+    if (!fitted) return null;
+    const annotated = { ...fitted.document,
       omissions: [...document.omissions, 'Daily heating observations was left out to fit the report size limit.'],
-    }) ?? fitToSize(ordinary);
+    };
+    const message = toMessage(annotated);
+    return message.bytes <= SUPPORT_REPORT_MAX_BYTES ? { ...message, document: annotated } : fitted;
   }
   const { log, activity } = document;
   // Log lines are oldest first, activity newest first.

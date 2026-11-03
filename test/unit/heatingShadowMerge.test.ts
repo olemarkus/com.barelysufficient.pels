@@ -64,7 +64,7 @@ describe('late hydration of heating shadow history', () => {
     expect(room.interruptions).toBe(1);
     expect(merged.days[1]!.outdoor).toEqual([
       { atMs: START, state: 'available', temperatureC: -4 },
-      { atMs: START + 20 * MINUTE, state: 'unavailable' },
+      { atMs: START + 20 * MINUTE + 1, state: 'unavailable' },
       { atMs: START + 60 * MINUTE, state: 'available', temperatureC: -4 },
     ]);
     expect(isHeatingShadowState(merged)).toBe(true);
@@ -79,6 +79,19 @@ describe('late hydration of heating shadow history', () => {
     expect(merged.days[0]!.devices.room!.intervals).toEqual(current.days[0]!.devices.room!.intervals);
     expect(merged.days[0]!.devices.room!.omittedIntervals).toBe(1);
     expect(mergeHeatingShadowHistory(merged, stored)).toEqual(merged);
+    expect(isHeatingShadowState(merged)).toBe(true);
+  });
+
+  it('preserves a real outdoor point at the end of stored observations before marking the restart gap', () => {
+    const stored = collect([START]);
+    const current = collect([START + 60 * MINUTE]);
+    const merged = mergeHeatingShadowHistory(current, stored);
+    expect(merged.days[0]!.outdoor).toEqual([
+      { atMs: START, state: 'available', temperatureC: -4 },
+      { atMs: START + 1, state: 'unavailable' },
+      { atMs: START + 60 * MINUTE, state: 'available', temperatureC: -4 },
+    ]);
+    expect(merged.days[0]!.omittedOutdoorPoints).toBe(0);
     expect(isHeatingShadowState(merged)).toBe(true);
   });
 

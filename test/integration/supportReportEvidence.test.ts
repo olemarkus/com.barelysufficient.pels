@@ -97,14 +97,14 @@ describe('daily heating observations', () => {
     expect(read).not.toHaveBeenCalled();
   });
 
-  it('records missing or failed passive reads as omissions without failing the report', async () => {
+  it('treats an empty passive history as normal and records only failed reads as omissions', async () => {
     const host = currentHost();
-    for (const read of [() => undefined, () => { throw new Error('private error'); }]) {
-      host.readHeatingShadowDaily = read;
-      const report = await source(host).capture(appRequest, now, 'daily');
-      expect(report.omissions).toContain('Daily heating observations is unavailable.');
-      expect(JSON.stringify(report)).not.toContain('private error');
-    }
+    expect((await source(host).capture(appRequest, now, 'daily')).omissions)
+      .not.toContain('Daily heating observations is unavailable.');
+    host.readHeatingShadowDaily = () => { throw new Error('private error'); };
+    const report = await source(host).capture(appRequest, now, 'daily');
+    expect(report.omissions).toContain('Daily heating observations is unavailable.');
+    expect(JSON.stringify(report)).not.toContain('private error');
   });
 });
 

@@ -15,6 +15,10 @@ of at least 0.1 kW and zero crossings are retained separately. Ingest timestamps
 describe held observations, not new sensor events. The temperature sensor role
 is unclassified. Outdoor context is shared and has explicit unavailable markers;
 original weather source timestamps are unresolved.
+After delayed hydration, a restart gap's unavailable marker starts one
+millisecond after the last accepted observation; it is an availability boundary,
+not a fabricated weather measurement. A backward clock correction starts a new
+chronological buffer so future-dated samples cannot stall collection.
 
 The per-home tracker retains the current and two completed local days, respecting
 DST. Calendar rotation selects at most 16 devices daily from a bounded pool of
@@ -38,7 +42,8 @@ section preserves precision and actual durations within 64 KiB of uncompressed
 JSON. Whole device-day blocks are selected in the collector's calendar order;
 omitted devices and local caps remain explicit. If the complete daily report
 would exceed its existing 512 KiB limit, the optional heating section is omitted
-with a reason before ordinary report evidence is trimmed. Manual and event
+before ordinary report evidence is trimmed. An omission note is added when it
+fits without displacing ordinary evidence. Manual and event
 reports do not include it. Collection introduces no new setting or consent path.
 
 The input integral is derived from reported power, not an independent energy

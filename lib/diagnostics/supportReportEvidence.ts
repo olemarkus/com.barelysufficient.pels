@@ -426,7 +426,12 @@ const readHeatingShadowSection = (
   host: SupportReportReads, request: SupportReportRequest, capturedAtMs: number, trigger: SupportReportTrigger,
 ): SectionRead[] => {
   if (trigger !== 'daily' || request.subject.kind !== 'app' || request.subject.homeId !== MAIN_HOME_ID) return [];
-  return [readSection('Daily heating observations', () => host.readHeatingShadowDaily(capturedAtMs) ?? null)];
+  try {
+    const section = host.readHeatingShadowDaily(capturedAtMs);
+    return section ? [{ state: 'available', section }] : [];
+  } catch {
+    return [{ state: 'unavailable', reason: 'Daily heating observations is unavailable.' }];
+  }
 };
 
 /** Captures existing owner readouts without refreshing devices, planning, or actuating. */
