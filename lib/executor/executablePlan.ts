@@ -29,10 +29,13 @@ export type ExecutorDeviceSnapshot = ObservedDeviceState
   & { currentOn?: boolean };
 
 /**
- * One device's commands for this cycle.
+ * One device's commands for this cycle are the planner's `PlannedDeviceCommands`,
+ * read as the plan emitted them: the executor attaches no command-session state
+ * to them, and reads that state from its own session where it is needed.
  *
  * **Each command axis is OMITTED unless the plan drives it**, and reached
- * through its guard below — the same discipline `DevicePlanDeviceBase` uses for
+ * through its guard below (the stepped axis through the contract's
+ * `hasPlannedStep`) — the same discipline `DevicePlanDeviceBase` uses for
  * `currentOn`, so an un-narrowed `intent.binary` read is a hard compile error
  * (TS2339). It replaces four `| null` slots whose absence meant nothing in
  * particular.
@@ -57,19 +60,16 @@ export type ExecutorDeviceSnapshot = ObservedDeviceState
  * upstream (`isSteppedLoadDevice`, `isBinaryPlanDevice`). Presence of a command
  * means the plan wants that axis DRIVEN this cycle, nothing more.
  */
-export type ExecutableDeviceIntent = PlannedDeviceCommands;
-
 export type ExecutableTargetCommandKind = { target: ExecutableTargetIntent };
 export type ExecutableBinaryCommandKind = { binary: ExecutableBinaryIntent };
 export type ExecutableReleaseCommandKind = { release: ExecutableReleaseIntent };
-export type ExecutableSteppedCommandKind = { steppedLoad: ExecutableSteppedLoadIntent };
 
 /**
  * Command guards. Presence-only, like the observed clusters in shared-domain:
  * the producer attaches a command exactly when the plan drives that axis, so
  * asking "is the key there" IS asking "does the plan drive this axis".
  *
- * Domain-constrained to `ExecutableDeviceIntent` on purpose, and the presence
+ * Domain-constrained to `PlannedDeviceCommands` on purpose, and the presence
  * test is `!= null` rather than `!== undefined`. `ExecutableObservedDeviceState`
  * in this same file declares `target` and `steppedLoad` with `| null` as its
  * "no axis" spelling, and an observed state sits beside an intent at every
@@ -77,25 +77,20 @@ export type ExecutableSteppedCommandKind = { steppedLoad: ExecutableSteppedLoadI
  * `hasTargetCommand(observed)`, return true on `target: null`, and narrow it to
  * a non-nullable command. One identifier's typo, invisible to the compiler.
  */
-export const hasTargetCommand = <T extends ExecutableDeviceIntent>(
+export const hasTargetCommand = <T extends PlannedDeviceCommands>(
   i: T,
 ): i is T & ExecutableTargetCommandKind => (
   'target' in i && (i as T & ExecutableTargetCommandKind).target != null
 );
-export const hasBinaryCommand = <T extends ExecutableDeviceIntent>(
+export const hasBinaryCommand = <T extends PlannedDeviceCommands>(
   i: T,
 ): i is T & ExecutableBinaryCommandKind => (
   'binary' in i && (i as T & ExecutableBinaryCommandKind).binary != null
 );
-export const hasReleaseCommand = <T extends ExecutableDeviceIntent>(
+export const hasReleaseCommand = <T extends PlannedDeviceCommands>(
   i: T,
 ): i is T & ExecutableReleaseCommandKind => (
   'release' in i && (i as T & ExecutableReleaseCommandKind).release != null
-);
-export const hasSteppedCommand = <T extends ExecutableDeviceIntent>(
-  i: T,
-): i is T & ExecutableSteppedCommandKind => (
-  'steppedLoad' in i && (i as T & ExecutableSteppedCommandKind).steppedLoad != null
 );
 
 export type ExecutableObservedDeviceState = {
@@ -238,29 +233,23 @@ export type ExecutableSteppedLoadCurrentState = ExecutableSteppedLoadState & {
 };
 
 
-export type ExecutableSteppedLoadIntent = PlannedSteppedCommand & {
-  /** Read by both the restore lane and the command lane: one attempt, one answer. */
-  matchingCommandAttempt: ExecutableSteppedCommandAttempt;
-  stepCommandRetryCount: number;
-  nextStepCommandRetryAtMs?: number;
-  // Step of the last issued step command when that command was confirmed by
-  // device-side feedback (`stepCommandStatus === 'success'`). Consumed as
-  // restore-preparation materialization evidence only while the device is
-  // observed off — see `ExecutableSteppedStepState.confirmedCommandStepId`.
-  confirmedCommandStepId?: string;
-};
+/** The planned step command as the executor dispatches it. */
+export type ExecutableSteppedLoadIntent = PlannedSteppedCommand;
 
 /**
  * One stepped device ready to command this cycle: the intent with this cycle's
  * resolved `desired` / `transition` (an unknown running step is seeded at the
- * lowest active rung), the current state it is commanded from, and whether the
- * requested step has materialized.
+ * lowest active rung), the current state it is commanded from, whether the
+ * requested step has materialized, and the executor's outstanding command for
+ * the planned step (`resolveSteppedCommandAttempt` against the command session),
+ * which the restore lane and the command lane both read: one attempt, one answer.
  */
 export type ExecutableSteppedLoadDevice = {
   intent: ExecutableSteppedLoadIntent;
   current: ExecutableSteppedLoadCurrentState;
   stepActuation: SteppedStepActuationState;
   stepNeedsAdjustment: boolean;
+  matchingCommandAttempt: ExecutableSteppedCommandAttempt;
 };
 
 /**

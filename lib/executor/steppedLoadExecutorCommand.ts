@@ -42,10 +42,12 @@ export const isSteppedLoadStepCommandRedundant = (
 };
 
 export const maybeLogSteppedLoadCommandPendingSkip = (
-  intent: ExecutableSteppedLoadIntent,
+  ctx: ExecutorCommandContext,
+  action: ExecutableSteppedLoadDevice,
   commandStepId: string,
 ): boolean => {
-  const sameDesiredStepPendingState = intent.matchingCommandAttempt;
+  const { intent } = action;
+  const sameDesiredStepPendingState = action.matchingCommandAttempt;
   if (sameDesiredStepPendingState?.status === 'awaiting_confirmation') {
     logSteppedLoadCommandSkip(
       intent,
@@ -56,14 +58,15 @@ export const maybeLogSteppedLoadCommandPendingSkip = (
     return true;
   }
   if (sameDesiredStepPendingState?.status === 'retry_backoff') {
+    const { command } = ctx.getSteppedLoadCommandSession(intent.id);
     logSteppedLoadCommandSkip(
       intent,
       'retry_backoff',
       `Capacity: skip stepped-load command for ${intent.name}, retry backoff for ${commandStepId} remains active`,
       {
         desiredStepId: commandStepId,
-        nextRetryAtMs: intent.nextStepCommandRetryAtMs ?? null,
-        retryCount: intent.stepCommandRetryCount,
+        nextRetryAtMs: command?.nextRetryAtMs ?? null,
+        retryCount: command?.retryCount ?? 0,
       },
     );
     return true;

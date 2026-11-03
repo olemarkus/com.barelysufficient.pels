@@ -85,18 +85,6 @@ export const splitPlanInputDevice = (
     ...(live.evChargingState !== undefined ? { evChargingState: live.evChargingState } : {}),
   } as ExecutorDeviceRead,
   command: {
-    session: {
-      command: live.lastDesiredStepId ? {
-        stepId: live.lastDesiredStepId,
-        status: live.stepCommandPending ? 'pending' : (live.stepCommandStatus ?? 'idle'),
-        retryCount: live.stepCommandRetryCount ?? 0,
-        nextRetryAtMs: live.nextStepCommandRetryAtMs,
-      } : undefined,
-      hasPriorStepCommand: live.lastDesiredStepId !== undefined,
-      reportedStepId: live.reportedStepId,
-      stepCommandPending: live.stepCommandPending === true,
-      unansweredStepCommands: { kind: 'none' },
-    },
     target: { kind: 'none' },
     binary: binaryCommand,
     step: live.stepCommandPending === true ? { kind: 'pending' } : { kind: 'none' },

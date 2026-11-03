@@ -4,7 +4,8 @@ import { buildExecutableObservedDeviceState } from '../../lib/executor/executabl
 import {
   buildExecutableTargetUpdate,
 } from '../../lib/executor/executableTargetProjection';
-import { hasReleaseCommand, hasSteppedCommand } from '../../lib/executor/executablePlan';
+import { hasReleaseCommand } from '../../lib/executor/executablePlan';
+import { hasPlannedStep } from '../../lib/planContract/executionPlan';
 import type { DevicePlan } from '../../lib/plan/planTypes';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
@@ -105,8 +106,8 @@ describe('planExecutablePlan', () => {
     // would: `toHaveProperty` throws on a null/undefined receiver and `.not` does
     // not invert a matcher error, so an absent `steppedLoad` would satisfy it.
     const steppedIntent = executablePlan.devices[0];
-    expect(steppedIntent !== undefined && hasSteppedCommand(steppedIntent)).toBe(true);
-    if (steppedIntent !== undefined && hasSteppedCommand(steppedIntent)) {
+    expect(steppedIntent !== undefined && hasPlannedStep(steppedIntent)).toBe(true);
+    if (steppedIntent !== undefined && hasPlannedStep(steppedIntent)) {
       expect(steppedIntent.steppedLoad).not.toHaveProperty('current');
     }
     // A stepped device gets no binary COMMAND this cycle: absence of the key is

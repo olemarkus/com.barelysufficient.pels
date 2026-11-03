@@ -8,6 +8,14 @@ import type { ExecutableObservedDeviceState, ExecutableObservedSteppedLoadState,
 import {
   getSteppedLoadLowestActiveStep, getSteppedLoadStep, isSteppedLoadOffStep,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
+import { resolveSteppedCommandAttempt } from './steppedCommandAttempt';
+
+/**
+ * The stepped device dispatch commands this cycle. The command session is the
+ * one source of the executor's own command state: the outstanding attempt for
+ * the planned step, and the confirmed step that counts as restore-preparation
+ * evidence.
+ */
 export function buildExecutableSteppedLoadDevice(
   intent: ExecutableSteppedLoadIntent | undefined,
   observed: ExecutableObservedDeviceState | undefined,
@@ -35,9 +43,14 @@ export function buildExecutableSteppedLoadDevice(
   // While on, observed reports keep sole materialization authority so clamped
   // devices still get adjusted. Requires a present observation: `current.on`
   // falls back to the plan-derived value when the device is absent from this
-  // cycle's snapshot, and a plan-derived 'off' is not trusted-off evidence.
+  // cycle's snapshot, and a plan-derived 'off' is not trusted-off evidence. The
+  // command's own step is read against the planner's profile, which also holds
+  // a planner-only EV probe rung: an acknowledged probe confirms the rung it
+  // commanded, as any rung's command does.
+  const { command } = commandSession;
   const confirmedCommandStepId = resolvedObserved !== undefined && current.on === false
-    ? intent.confirmedCommandStepId
+    && command?.status === 'success'
+    ? command.stepId
     : undefined;
   const stepActuation = resolveSteppedStepActuationState({
     step: intent.controlAdapter?.activationOrder === 'current_before_start'
@@ -52,6 +65,10 @@ export function buildExecutableSteppedLoadDevice(
     current,
     stepActuation,
     stepNeedsAdjustment: Boolean(desiredIsNonOff && stepActuation.materialization.kind !== 'materialized'),
+    // Judged against the planned step, before an unknown step is seeded.
+    matchingCommandAttempt: resolveSteppedCommandAttempt(
+      command, intent.steppedLoadProfile, intent.desired.stepId, Date.now(),
+    ),
   };
 }
 

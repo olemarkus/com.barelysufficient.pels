@@ -29,7 +29,9 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { SteppedLoadTransportError } from '../../lib/ports/steppedLoadWrite';
 import { buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
-import { buildExecutableSteppedLoadIntent, resolveSteppedLoadCurrentFallback } from '../utils/executionDecisionFixture';
+import {
+  buildExecutableSteppedLoadIntent, commandSessionForFixture, resolveSteppedLoadCurrentFallback,
+} from '../utils/executionDecisionFixture';
 import { buildExecutableSteppedLoadDevice } from '../../lib/executor/executableSteppedLoadProjection';
 import type {
   DevicePlanDevice,
@@ -109,7 +111,8 @@ const buildSteppedAction = (loose: SteppedActionInput) => {
     } as Parameters<typeof buildExecutableObservedDeviceState>[0], undefined),
     // The plan's step baseline, as dispatch passes it (`PlannedDeviceExecution.stepBaseline`).
     resolveSteppedLoadCurrentFallback(device),
-    PRIOR_STEP_COMMAND_SESSION,
+    // The fixture's own step command, in an on-session with a prior command.
+    { ...PRIOR_STEP_COMMAND_SESSION, command: commandSessionForFixture(device).command },
   );
 };
 

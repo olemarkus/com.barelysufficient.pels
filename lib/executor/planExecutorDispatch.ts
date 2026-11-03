@@ -1,16 +1,16 @@
-import type { ExecutionPlan, PlannedStepBaseline } from '../planContract/executionPlan';
+import {
+  hasPlannedStep, type ExecutionPlan, type PlannedDeviceCommands, type PlannedStepBaseline,
+} from '../planContract/executionPlan';
 import { isBinaryDrivenIntent } from './executableDesiredState';
 import {
   hasBinaryCommand,
   hasReleaseCommand,
-  hasSteppedCommand,
   hasTargetCommand,
 } from './executablePlan';
 import { shouldSkipUnavailable } from './executorSupport';
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import type {
   ExecutableBinaryIntent,
-  ExecutableDeviceIntent,
   ExecutableObservedDeviceState,
   ExecutableReleaseIntent,
   ExecutableSteppedLoadDevice,
@@ -33,10 +33,7 @@ import {
   applyUncontrolledBinaryRestore,
 } from './binaryExecutor';
 import { applyShedReleaseIntent } from './shedReleaseActuation';
-import {
-  buildExecutableObservedDeviceState,
-  materializeExecutableDeviceIntent,
-} from './executablePlanProjection';
+import { buildExecutableObservedDeviceState } from './executablePlanProjection';
 import {
   buildExecutableSteppedLoadDevice,
 } from './executableSteppedLoadProjection';
@@ -95,14 +92,14 @@ type ResolvedDeviceIntent = {
   steppedCommand: ExecutableSteppedLoadIntent | undefined;
 };
 
-const resolveDeviceCommands = (intent: ExecutableDeviceIntent): Pick<
+const resolveDeviceCommands = (intent: PlannedDeviceCommands): Pick<
   ResolvedDeviceIntent,
   'targetCommand' | 'binaryCommand' | 'releaseCommand' | 'steppedCommand'
 > => ({
   targetCommand: hasTargetCommand(intent) ? intent.target : undefined,
   binaryCommand: hasBinaryCommand(intent) ? intent.binary : undefined,
   releaseCommand: hasReleaseCommand(intent) ? intent.release : undefined,
-  steppedCommand: hasSteppedCommand(intent) ? intent.steppedLoad : undefined,
+  steppedCommand: hasPlannedStep(intent) ? intent.steppedLoad : undefined,
 });
 
 const resolveLatestObservedDevice = (
@@ -267,7 +264,7 @@ const applyDefaultBinaryIntent = async (
 
 const applyDeviceIntent = async (
   ctx: ExecutorCommandContext,
-  intent: ExecutableDeviceIntent,
+  intent: PlannedDeviceCommands,
   observed: ExecutableObservedDeviceState | undefined,
   hasShedDevices: boolean,
   steppedFallback: PlannedStepBaseline | undefined,
@@ -324,13 +321,10 @@ export const dispatchPlanActions = async (
   let deviceApplyFailureCount = 0;
   for (const device of plan.devices) {
     try {
-      const intent = materializeExecutableDeviceIntent(
-        device.commands, ctx.getSteppedLoadCommandSession(device.commands.id), Date.now(),
-      );
       const result = await applyDeviceIntent(
         ctx,
-        intent,
-        observedMap.get(intent.id),
+        device.commands,
+        observedMap.get(device.commands.id),
         plan.hasShedDevices,
         device.stepBaseline,
       );

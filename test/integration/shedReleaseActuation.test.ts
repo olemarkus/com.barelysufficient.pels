@@ -71,9 +71,19 @@ const buildSteppedLoadIntent = (
   steppedLoadProfile: buildSteppedLoadProfile(),
   desiredOn: true, desired: { stepId: 'high' }, stepDirection: 'any',
   transition: null,
-  matchingCommandAttempt: null,
-  stepCommandRetryCount: 0,
   ...overrides,
+});
+
+/** The executor's command session holding one command for `stepId`. */
+const sessionWithCommand = (
+  command: NonNullable<ReturnType<ExecutorCommandContext['getSteppedLoadCommandSession']>['command']>,
+): Partial<ExecutorCommandContext> => ({
+  getSteppedLoadCommandSession: () => ({
+    command,
+    hasPriorStepCommand: true,
+    stepCommandPending: command.status === 'pending',
+    unansweredStepCommands: { kind: 'none' },
+  }),
 });
 
 const buildCtx = (
@@ -406,17 +416,12 @@ describe('applyShedReleaseIntent', () => {
     expect(mockedApplySteppedLoadCommand).not.toHaveBeenCalled();
   });
 
-  it('skips stepped release when the planner has a step command awaiting confirmation', async () => {
-    const ctx = buildCtx();
+  it('skips stepped release when the executor has a step command awaiting confirmation', async () => {
+    const ctx = buildCtx(sessionWithCommand({ stepId: 'mid', status: 'pending', retryCount: 0 }));
     const result = await applyShedReleaseIntent(
       ctx,
       buildIntent({ posture: { kind: 'step', stepId: 'low' } }),
-      buildSteppedLoadIntent({
-        matchingCommandAttempt: {
-          status: 'awaiting_confirmation',
-          requestedStepId: 'mid',
-        },
-      }),
+      buildSteppedLoadIntent({ desired: { stepId: 'mid' } }),
       buildObserved({
         steppedLoad: { on: true, stepId: 'high', reportedStepId: 'high', currentDrawKw: 0 },
         snapshot: { id: 'dev-1' } as never,
@@ -427,13 +432,13 @@ describe('applyShedReleaseIntent', () => {
   });
 
   it('skips stepped release when a step-command retry is scheduled', async () => {
-    const ctx = buildCtx();
+    const ctx = buildCtx(sessionWithCommand({
+      stepId: 'low', status: 'stale', retryCount: 1, nextRetryAtMs: Date.now() + 60_000,
+    }));
     const result = await applyShedReleaseIntent(
       ctx,
       buildIntent({ posture: { kind: 'step', stepId: 'low' } }),
-      buildSteppedLoadIntent({
-        matchingCommandAttempt: { status: 'retry_backoff', requestedStepId: 'low' },
-      }),
+      buildSteppedLoadIntent({ desired: { stepId: 'low' } }),
       buildObserved({
         steppedLoad: { on: true, stepId: 'high', reportedStepId: 'high', currentDrawKw: 0 },
         snapshot: { id: 'dev-1' } as never,

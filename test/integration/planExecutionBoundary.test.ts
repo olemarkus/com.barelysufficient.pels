@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 import { hasPlannedStep } from '../../lib/planContract/executionPlan';
-import { materializeExecutableDeviceIntent } from '../../lib/executor/executablePlanProjection';
-import { hasSteppedCommand } from '../../lib/executor/executablePlan';
+import { buildExecutableSteppedLoadDevice } from '../../lib/executor/executableSteppedLoadProjection';
 import { buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
 
 /** A decision remains frozen while its executor-owned command session changes. */
@@ -26,14 +25,15 @@ describe('planner execution boundary', () => {
       hasPriorStepCommand: false, stepCommandPending: false,
       unansweredStepCommands: { kind: 'none' as const },
     };
-    const before = materializeExecutableDeviceIntent(decision.commands, ordinarySession, 1_000);
-    const during = materializeExecutableDeviceIntent(decision.commands, {
+    const step = decision.commands.steppedLoad;
+    const before = buildExecutableSteppedLoadDevice(step, undefined, decision.stepBaseline, ordinarySession);
+    const during = buildExecutableSteppedLoadDevice(step, undefined, decision.stepBaseline, {
       ...ordinarySession,
       stepCommandPending: true,
       command: { stepId: requestedStepId, status: 'pending', retryCount: 1 },
-    }, 1_000);
-    expect(hasSteppedCommand(before) && before.steppedLoad.matchingCommandAttempt).toBeNull();
-    expect(hasSteppedCommand(during) && during.steppedLoad.matchingCommandAttempt).toEqual({
+    });
+    expect(before?.matchingCommandAttempt).toBeNull();
+    expect(during?.matchingCommandAttempt).toEqual({
       status: 'awaiting_confirmation', requestedStepId,
     });
     expect(JSON.stringify(plan)).toBe(frozen);

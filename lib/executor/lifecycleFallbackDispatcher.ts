@@ -9,7 +9,6 @@ import type {
   MeasuredPowerObservedProbe,
   ObservedDeviceState,
   ReportedStepObservedProbe,
-  SteppedLoadDecoration,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import type {
@@ -49,13 +48,14 @@ export type LifecycleFallbackResult = { settled: boolean };
 
 export type LifecycleFallbackPort = Pick<LifecycleFallbackDispatcher, 'abandon' | 'converge'>;
 
+/**
+ * The device a lifecycle fallback drives. Its step command state is the
+ * executor's own command session, read where a step is dispatched, so none
+ * rides here.
+ */
 export type LifecycleFallbackDevice = Pick<
 DeviceDescriptor,
 'id' | 'name' | 'isEvCharger'
-> & Pick<
-SteppedLoadDecoration,
-  'stepCommandPending' | 'stepCommandRetryCount'
-| 'nextStepCommandRetryAtMs' | 'desiredStepId' | 'stepCommandStatus'
 > & {
   controlAdapter?: DeviceControlAdapterSnapshot;
   /** Producer-resolved write authority and complete descriptor for each axis. */

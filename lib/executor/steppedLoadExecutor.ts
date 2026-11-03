@@ -129,7 +129,7 @@ export const applySteppedLoadCommand = async (
     );
   }
   if (skipsHeldStepRaise(ctx, intent, desiredStep)) return false;
-  if (!forceCommand && maybeLogSteppedLoadCommandPendingSkip(intent, commandStepId)) return false;
+  if (!forceCommand && maybeLogSteppedLoadCommandPendingSkip(ctx, action, commandStepId)) return false;
   return executeSteppedLoadCommand(ctx, action, desiredStep, options);
 };
 
@@ -172,8 +172,8 @@ export const applySteppedLoadRestore = async (
   snapshot: ExecutorDeviceSnapshot | undefined,
   hasShedDevices: boolean,
 ): Promise<SteppedLoadRestoreResult> => {
-  const { intent, stepNeedsAdjustment } = action;
-  const { name, matchingCommandAttempt } = intent;
+  const { intent, stepNeedsAdjustment, matchingCommandAttempt } = action;
+  const { name } = intent;
   if (!isBinaryDrivenIntent(intent) || !intent.desiredOn) {
     return NOT_RESTORED;
   }
