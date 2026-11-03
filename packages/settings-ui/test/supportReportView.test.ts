@@ -101,7 +101,7 @@ describe('support report view', () => {
     const email = new URL(surface.querySelector<HTMLAnchorElement>('a[href^="mailto:"]')?.href ?? '');
     expect(email.searchParams.get('subject')).toBe('PELS: Hall heater');
     expect(email.searchParams.get('body')).toBe('The heater stayed off.\n\nReport reference: report-1');
-    expect(surface.textContent).not.toContain('quote the reference');
+    expect(surface.textContent).toContain('(preferred) and quote the reference, or email');
     expect(surface.querySelector('[data-report-action="done"]')?.getAttribute('data-settings-target')).toBe('activity');
     expect(surface.querySelector('[data-report-field="problem"]')).toBeNull();
   });
@@ -156,7 +156,7 @@ describe('support report view', () => {
     expect(links.slice(0, 2).map((link) => link.href)).toEqual(NORWAY_FORUMS.map((forum) => forum.url));
     const email = new URL(links[2].href);
     expect(email.searchParams.get('body')).toContain('Report reference: ref-9');
-    expect(surface.textContent).not.toContain('quote the reference');
+    expect(surface.textContent).toContain('(preferred) and quote the reference, or email');
     expect(surface.querySelector('[data-report-action="done"]')?.getAttribute('data-settings-target')).toBe('device-support');
   });
 });

@@ -225,7 +225,7 @@ at **Power-limit control**.
 
 ### Missing a device?
 
-**Missing a device?** is the last card on the Devices page. Its **Request support** button lists the devices in Homey that PELS does not support, by zone and with their device type, with a search field for name or zone. Tap a device to send a device support request: describe the device and what PELS should do with it, and PELS sends the request through Homey with what Homey reports about the device (its type, its app and its capabilities) and the app's logs. Support for a new device usually comes in an app update within 1–2 days, depending on how complex the device is. To hear back, post in the PELS forum thread or email the developer, and mention the device.
+**Missing a device?** is the last card on the Devices page. Its **Request support** button lists the devices in Homey that PELS does not support, by zone and with their device type, with a search field for name or zone. Tap a device to send a device support request: describe the device and what PELS should do with it, and PELS sends the request through Homey with what Homey reports about the device (its type, its app and its capabilities) and the app's logs. Support for a new device usually comes in an app update within 1–2 days, depending on how complex the device is. To hear back, post in the PELS forum thread and quote the reference PELS shows after sending, or email the developer.
 
 A search that finds no device to request but finds devices PELS already supports lists them instead: under **Already on Devices**, where a tap opens the device, and the meter PELS reads whole-home power from under **Whole-home meter**, where a tap opens **Power source**. The device step of the setup journey shows the same card.
 
@@ -343,7 +343,7 @@ Simulation mode covers your Main home. Each [meter area](/meter-areas) has its o
 
 Describe what happened and send the report. PELS adds relevant device activity and current state. Opening the form from a device, Smart task or Activity entry keeps that context; an Activity entry also sets the incident time.
 
-Problem reports and device-support requests use the same sending and follow-up flow. After sending, choose the PELS forum thread or email the developer to hear back. The email link includes your description and the report reference. Copying the diagnostic report is available if Homey cannot send it.
+Problem reports and device-support requests use the same sending and follow-up flow. After sending, post in the PELS forum thread and quote the report reference, or email the developer, to hear back. The email link includes your description and the report reference. Copying the diagnostic report is available if Homey cannot send it.
 
 ## Settings > Advanced
 

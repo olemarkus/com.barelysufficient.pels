@@ -2530,6 +2530,17 @@ and `scheduleActions.ts`:
   schedule condition.`
 - `Could not run. {reason}`, or `Could not run this schedule.` without one.
 
+## Report a problem: after sending
+
+A sent problem report and a sent device support request end the same way:
+`Reference: {reference}`, then `To hear back, post in the {forum thread}
+(preferred) and quote the reference, or email {address}.` (in Norway the
+Norwegian PELS thread comes first: `the Norwegian PELS thread or the PELS forum
+thread`). Homey delivers the report with no reply address, so a forum post is
+matched to it only by the reference it quotes; the email link carries the
+description and the reference in its body, so that path asks for nothing more.
+Source: `SupportContact` in `packages/settings-ui/src/ui/views/SupportReportView.tsx`.
+
 ## Mode label
 
 With one home, the Settings page renders one selector labelled `Current mode`.
