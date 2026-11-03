@@ -1,5 +1,4 @@
 import { TemperatureAdjustmentObserver } from './temperatureAdjustmentObserver';
-import { ControlContestObserver } from './controlContestObserver';
 /**
  * Construction seam for the device layer's read-only observation producers.
  *
@@ -13,7 +12,6 @@ import { ControlContestObserver } from './controlContestObserver';
  * - `solar` — PV production (`solarProductionProducer.ts`)
  * - `evCarLink` — EV car-to-charger correlation probe (`evCarLinkProducer.ts`)
  * - `temperature` — external target changes (`temperatureAdjustmentObserver.ts`)
- * - `controlContest` — settings changed outside PELS, again and again (`controlContestObserver.ts`)
  */
 import { BatteryStateProducer } from './batteryStateProducer';
 import { createObservationEmitGate } from './observationEmitGate';
@@ -30,7 +28,6 @@ import {
 
 export type ObservationProducers = {
     temperature: TemperatureAdjustmentObserver;
-    controlContest: ControlContestObserver;
     battery: BatteryStateProducer;
     solar: SolarProductionProducer;
     evCarLink: EvCarLinkProducer;
@@ -84,7 +81,6 @@ export const createObservationProducers = (
     const carLinkEvents = createCarLinkEventEmitter(emit, options.deviceJournal);
     return ({
     temperature: new TemperatureAdjustmentObserver(),
-    controlContest: new ControlContestObserver(emit, options.deviceJournal),
     battery: new BatteryStateProducer((payload) => observationEmit({ ...payload })),
     solar: new SolarProductionProducer((payload) => observationEmit({ ...payload })),
     evCarLink: createEvCarLinkProducer(

@@ -171,7 +171,6 @@ export class DeviceWriteService {
     if (capabilityId === 'target_temperature' && typeof normalizedValue === 'number') {
         this.observationProducers.temperature.recordCommand(deviceId, normalizedValue, Date.now());
     }
-    this.observationProducers.controlContest.recordCommand(deviceId, requested, snapshotBefore, Date.now());
     incPerfCounter('device_action_total');
     incPerfCounter(`device_action.capability.${capabilityId}`);
     this.observationState.recordLocalCapabilityWrite(deviceId, capabilityId, normalizedValue);

@@ -3,7 +3,6 @@ import { projectObservedState } from '../observedStateProjection';
 import { TransportObservationState } from './transportObservationState';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 import type { TemperatureAdjustmentObserver } from '../temperatureAdjustmentObserver';
-import type { ControlContestObserver } from '../controlContestObserver';
 import type {
   ObservedControlStateChangedEvent,
   ObservedStateChangedEvent,
@@ -19,7 +18,6 @@ export class ObservationBridge {
     private readonly snapshotStore: TransportSnapshotStore,
     private readonly dispatcher: ObservedStateEmitterDispatcher,
     private readonly temperatureAdjustments: TemperatureAdjustmentObserver,
-    private readonly controlContest: ControlContestObserver,
   ) {}
 
   nextCursor(deviceId: string, observedAtMs?: number) {
@@ -44,9 +42,7 @@ export class ObservationBridge {
   }
 
   dispatchStateRefresh(snapshot: readonly TargetDeviceSnapshot[], ignoredReadIds: ReadonlySet<string>): void {
-    const retained = new Set(snapshot.map((device) => device.id));
-    this.temperatureAdjustments.retainDevices(retained);
-    this.controlContest.retainDevices(retained);
+    this.temperatureAdjustments.retainDevices(new Set(snapshot.map((device) => device.id)));
     const observedAtMs = Date.now();
     const event: ObservedStateRefreshEvent = {
       entries: snapshot.map((device) => {
@@ -63,9 +59,10 @@ export class ObservationBridge {
   }
 
   dispatchControlStateChanged(event: ObservedControlStateChangedEvent): void {
-    const snapshot = this.snapshotStore.getSnapshotByDeviceId(event.deviceId);
-    const adjustment = this.temperatureAdjustments.observeControlChange(snapshot, event);
-    this.controlContest.observeControlChange(snapshot, event);
+    const adjustment = this.temperatureAdjustments.observeControlChange(
+      this.snapshotStore.getSnapshotByDeviceId(event.deviceId),
+      event,
+    );
     if (adjustment) this.dispatcher.externalTemperatureAdjusted(adjustment);
     this.dispatcher.observedControlStateChanged(event);
   }

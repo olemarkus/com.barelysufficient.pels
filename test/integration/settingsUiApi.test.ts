@@ -286,7 +286,7 @@ describe('settingsUiApi', () => {
         return latestDevices;
       },
       deviceManager: partialDouble<DeviceTransport>({
-        getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, getContestedControl: () => undefined, hasWarmSnapshot: () => true, readInverterControlOptions: () => [],
+        getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, hasWarmSnapshot: () => true, readInverterControlOptions: () => [],
       }),
       getSettingsUiManagedDevices: () => latestDevices,
       getUiPickerDevices: () => options.uiPickerDevices ?? [],
@@ -398,7 +398,7 @@ describe('settingsUiApi', () => {
     const homey = createHomey();
     Object.assign(homey.app, {
       deviceManager: partialDouble<DeviceTransport>({
-        getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, getContestedControl: () => undefined, hasWarmSnapshot: () => true,
+        getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, hasWarmSnapshot: () => true,
         readInverterControlOptions: () => [{ id: 'pv-main', name: 'Roof' }, { id: 'pv-area', name: 'Garage' }],
       }),
       homeMembership: {
@@ -944,22 +944,6 @@ describe('settingsUiApi', () => {
     // Although the PV device is excluded from `devices`, its presence is still reported as
     // the home-level solar flag so the UI can gate the per-device "Use solar surplus" control.
     expect(getSettingsUiDevicesPayload({ homey: homey as never }).hasManagedSolarDevice).toBe(true);
-  });
-
-  it('carries the contest the device transport reports for a device that does not keep PELS\'s settings', () => {
-    const contest = { capabilityId: 'target_temperature', kind: 'reverted', count: 5, sinceMs: 1_000 } as const;
-    const homey = createHomey({
-      latestDevicesOverride: [
-        { id: 'mill', name: 'Gang nede ovn', deviceType: 'temperature', available: true },
-        { id: 'calm', name: 'Bad nede', deviceType: 'temperature', available: true },
-      ],
-    });
-    Object.assign(homey.app.deviceManager, {
-      getContestedControl: (id: string) => (id === 'mill' ? contest : undefined),
-    });
-    const devices = getSettingsUiDevicesPayload({ homey: homey as never }).devices;
-    expect(devices.find(({ id }) => id === 'mill')?.controlContest).toEqual(contest);
-    expect(devices.find(({ id }) => id === 'calm')).not.toHaveProperty('controlContest');
   });
 
   it('serves the observer projection\'s observed state, not the stored snapshot\'s', () => {

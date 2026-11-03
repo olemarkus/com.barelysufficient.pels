@@ -261,7 +261,6 @@ const buildSettingsUiDeviceList = (
     const observed = host.observer.getObservedRecord(device.id);
     const associatedCar = host.deviceManager?.getAssociatedCar(device.id);
     const carConfirmation = host.deviceManager?.getCarConfirmation(device.id);
-    const controlContest = host.deviceManager?.getContestedControl(device.id);
     const stateOfCharge = resolveStateOfCharge(device, readObservedStateOfCharge(observed));
     return {
       ...device,
@@ -273,7 +272,6 @@ const buildSettingsUiDeviceList = (
       ...(observed ? pickLiveObservedFields(observed, resolveLiveObservedFields(device)) : {}),
       ...(associatedCar ? { associatedCar } : {}),
       ...(carConfirmation ? { carConfirmation } : {}),
-      ...(controlContest ? { controlContest } : {}),
       ...(stateOfCharge ? { stateOfCharge } : {}),
       ...readSettingsUiBatteryState(host, device),
       priority: priorities.getPriority(device.id),
