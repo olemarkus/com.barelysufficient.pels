@@ -1,6 +1,15 @@
+import type { Page } from './fixtures/test';
 import { expect, injectHomeyHostCss, test } from './fixtures/test';
-import { setMdValue } from './fixtures/materialWeb';
+import { readMdSelectHeadlineText, readMdValue, setMdValue } from './fixtures/materialWeb';
 import { installDeviceSupportReportStub, readDeviceSupportStub } from './fixtures/deviceSupportStub';
+
+const expectProblemReportForm = async (page: Page): Promise<void> => {
+  const panel = page.locator('#report-problem-panel');
+  await expect(panel.getByRole('heading', { name: 'Report a problem', exact: true })).toBeVisible();
+  await expect(panel.locator('[data-report-device-name]')).toHaveCount(0);
+  await expect.poll(() => readMdSelectHeadlineText(page, '[data-report-field="device"]')).toBe('App or several devices');
+  await expect.poll(() => readMdValue(page, '[data-report-field="problem"]')).toBe('');
+};
 
 test('finds an unsupported Homey device and sends a device support request for it', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 1100 });
@@ -55,6 +64,30 @@ test('finds an unsupported Homey device and sends a device support request for i
   await expect(picker.locator('[data-device-picker-id="dev_knx_relay"]')).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(/page=settings%2Fdevices|page=settings\/devices(&|$)/);
+
+  // Report a problem in Settings opens a problem report, not another request for the device.
+  await page.locator('.tab[data-tab="settings"]').click();
+  await page.locator('.settings-nav-card[data-settings-target="report-problem"]').click();
+  await expectProblemReportForm(page);
+});
+
+test('opens a problem report from Advanced after leaving a device support request unsent', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 1100 });
+  await installDeviceSupportReportStub(page);
+  await page.goto('/?page=settings/device-support');
+  await page.locator('#device-support-panel [data-device-picker-id="dev_knx_relay"]').click();
+  const panel = page.locator('#report-problem-panel');
+  await expect(panel.getByRole('heading', { name: 'Device support', exact: true })).toBeVisible();
+  await setMdValue(page, '[data-report-field="problem"]', 'KNX relay switching my water heater.');
+  await panel.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.locator('#device-support-panel')).toBeVisible();
+
+  await page.locator('.tab[data-tab="settings"]').click();
+  await page.locator('.settings-nav-card[data-settings-target="advanced"]').click();
+  await page.locator('#advanced-panel summary', { hasText: 'Diagnostics reports' }).click();
+  await page.locator('#advanced-report-problem-link').click();
+  await expectProblemReportForm(page);
+  expect((await readDeviceSupportStub(page)).requests).toHaveLength(0);
 });
 
 test('a search that finds a device already on Devices opens it instead of a support request', async ({ page }) => {

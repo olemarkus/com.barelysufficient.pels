@@ -7,7 +7,7 @@ import { getTargetDevices } from './devices.ts';
 import { getHomeIdForUiDevice, getHomeScope, readHomeMembership, refreshHomeScope } from './homeScope.ts';
 import { state } from './state.ts';
 import { SupportReportController } from './supportReportController.ts';
-import type { ReportDeviceOption, SupportReportViewState } from './supportReportModel.ts';
+import { isDeviceSupportRequest, type ReportDeviceOption, type SupportReportViewState } from './supportReportModel.ts';
 import { renderSupportReportView, type SupportForumTopic } from './views/SupportReportView.tsx';
 import { showToast } from './toast.ts';
 import { findHomeyDeviceName, loadHomeyDeviceList } from './homeyDeviceList.ts';
@@ -27,6 +27,8 @@ export const SUPPORT_REPORT_PANEL = 'report-problem';
 const SUPPORT_REPORT_PATH = '/support-report';
 let refreshSequence = 0;
 let contextInitialized = false;
+// Set when a device page or Find a device chose the report's subject just before opening the page.
+let contextJustSelected = false;
 // The device a shown device support request is for; only such a request needs Homey's device list.
 let supportRequestDeviceId: string | null = null;
 
@@ -94,10 +96,23 @@ const controller = new SupportReportController({
   focusReportStage(surface, previousStage);
 });
 
-export const setSupportReportContext = (subject: SupportReportSubject, atMs?: number): void => {
+const selectReportContext = (subject: SupportReportSubject, atMs?: number): void => {
   contextInitialized = true;
   controller.selectContext(subject, atMs);
 };
+
+/** The subject a device page or Find a device chose for the report it opens. */
+const selectEntryContext = (subject: SupportReportSubject, atMs?: number): void => {
+  contextJustSelected = true;
+  selectReportContext(subject, atMs);
+};
+
+// A device support request stays on screen only when Find a device just opened it or the URL
+// names it (reload, Back, Forward). Any other way in, such as Settings > Report a problem,
+// opens a problem report.
+const leavesDeviceSupportRequest = (params: URLSearchParams, justSelected: boolean): boolean => (
+  !justSelected && isDeviceSupportRequest(controller.subject) && params.get('reportKind') !== 'device_support'
+);
 
 export const refreshSupportReport = async (): Promise<void> => {
   const request = ++refreshSequence;
@@ -113,12 +128,14 @@ export const refreshSupportReport = async (): Promise<void> => {
     await refreshHomeScope();
   }
   if (request !== refreshSequence) return;
-  if (!contextInitialized && !reportId) {
+  const justSelected = contextJustSelected;
+  contextJustSelected = false;
+  if (!reportId && (!contextInitialized || leavesDeviceSupportRequest(params, justSelected))) {
     const homeId = params.get('reportHomeId') || getHomeScope().selectedHomeId;
     const deviceId = params.get('reportDeviceId');
     const atMs = params.has('reportAtMs') ? Number(params.get('reportAtMs')) : undefined;
     const kind = params.get('reportKind') === 'device_support' ? 'device_support' : 'device';
-    setSupportReportContext(deviceId ? { kind, deviceId, homeId } : { kind: 'app', homeId },
+    selectReportContext(deviceId ? { kind, deviceId, homeId } : { kind: 'app', homeId },
       atMs !== undefined && Number.isFinite(atMs) ? atMs : undefined);
   }
   controller.show();
@@ -183,7 +200,7 @@ const openDeviceReport = async (button: HTMLElement, openPanel: (panel: string) 
     homeId = getHomeIdForUiDevice(deviceId);
   }
   const atMs = button.dataset.reportAtMs === undefined ? undefined : Number(button.dataset.reportAtMs);
-  setSupportReportContext({ kind: 'device', homeId, deviceId },
+  selectEntryContext({ kind: 'device', homeId, deviceId },
     atMs !== undefined && Number.isFinite(atMs) ? atMs : undefined);
   closeDeviceDetail();
   openPanel(SUPPORT_REPORT_PANEL);
@@ -194,7 +211,7 @@ const openDeviceReport = async (button: HTMLElement, openPanel: (panel: string) 
  * Always Main: the request is about the app, not about a meter area's plan.
  */
 export const openDeviceSupportRequest = (deviceId: string, openPanel: (panel: string) => void): void => {
-  setSupportReportContext({ kind: 'device_support', homeId: MAIN_HOME_ID, deviceId });
+  selectEntryContext({ kind: 'device_support', homeId: MAIN_HOME_ID, deviceId });
   openPanel(SUPPORT_REPORT_PANEL);
 };
 
