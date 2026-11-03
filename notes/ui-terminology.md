@@ -1663,6 +1663,18 @@ never saw). On Electricity prices:
   prices` with a `Check prices` recourse, not `Waiting for tomorrow’s prices`
   (a Flow price source keeps its own Flow copy).
 
+### Budget tab Yesterday with no recorded budget
+
+A day that closed with no daily budget recorded for it (it ran without one, the
+budget was turned off before the day ended, or it closed before PELS kept each
+day's budget, as on the first day after updating from 3.28.0) has no budget to
+compare against. The Yesterday hero keeps the `Yesterday's total` eyebrow, shows
+the day's usage alone (`12.0 kWh`, no `/ N kWh` and no delta chip) and says
+`No daily budget was recorded for yesterday.` It never shows `Waiting for daily
+budget data` or `Yesterday history is not available yet.` for such a day: no
+budget data will arrive for it. The string is `YESTERDAY_NO_BUDGET_RECORDED` in
+`packages/shared-domain/src/dailyBudgetHeroStrings.ts`.
+
 ### Budget tab chart readout (pinned, one interaction grammar)
 
 The Budget chart (Progress + Hourly plan modes) reuses the same pinned-readout primitive. Vocabulary: `Budget` / `Actual` / `Projection` / `Price`. The dashed slate reference stroke is the **budget pace** (the daily budget spread across the day, cumulative) — it is labelled `Budget`, never `Plan` (the weather-blind "Plan" line was retired; "typical usage" lives on the Usage and Weather surfaces, not here). Stroke grammar: solid mint `Actual` up to a visible now dot, dotted ice-blue `Projection` after it, dashed slate `Budget` reference with a `Budget N kWh` pill at its end. Resolvers live in `packages/settings-ui/src/ui/budgetRedesignChartData.ts` + `chartTooltipFormat.ts`.

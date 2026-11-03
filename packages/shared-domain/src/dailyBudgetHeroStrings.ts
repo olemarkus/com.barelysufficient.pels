@@ -23,6 +23,9 @@ export type DailyBudgetHeroDominantCause = 'managed' | 'background';
 // hero decision line and the chart subtitle).
 export const YESTERDAY_FINISHED_OVER_BUDGET = 'Yesterday finished over budget.';
 export const YESTERDAY_FINISHED_WITHIN_BUDGET = 'Yesterday finished within budget.';
+// Yesterday closed with no daily budget recorded for it (it ran without one, or
+// closed before PELS kept each day's budget): the hero shows its usage alone.
+export const YESTERDAY_NO_BUDGET_RECORDED = 'No daily budget was recorded for yesterday.';
 
 // Finish-of-day chart-subtitle sentences for the yesterday view. Distinct from
 // the decision-line strings above because the chart subtitle drops the leading

@@ -13,6 +13,7 @@ import {
   resolveHeroData,
   resolvePlanPayload,
   resolveSplitData,
+  resolveStatus,
 } from '../src/ui/budgetRedesignResolvers.ts';
 import { resolveExportPriceNowLine } from '../src/ui/budgetExportPriceLine.ts';
 import { resolveAllocationWarning } from '../src/ui/dailyBudgetAllocationWarning.ts';
@@ -31,8 +32,10 @@ import {
   BUDGET_NO_PLAN_YESTERDAY_WAITING,
   BUDGET_TOMORROW_PLAN_READY,
   BUDGET_TOMORROW_PRICE_SHAPED,
+  DAILY_BUDGET_DISABLED_WAITING,
   YESTERDAY_FINISHED_OVER_BUDGET,
   YESTERDAY_FINISHED_WITHIN_BUDGET,
+  YESTERDAY_NO_BUDGET_RECORDED,
   composeBackgroundSplitLabel,
   composeBudgetHeroOverBy,
   composeManagedSplitLabel,
@@ -215,6 +218,24 @@ describe('resolveHeroData', () => {
     const payload = buildPayload();
     const hero = resolveHeroData({ viewPayload: payload, view: 'yesterday', costDisplay, status: 'within', budgetEnabled: true });
     expect(hero.headlineLabel).toBe("Yesterday's total");
+  });
+
+  it('shows yesterday\'s usage and says no budget was recorded, instead of waiting for data', () => {
+    // A day closed with no recorded budget (it ran without one, or closed
+    // before PELS kept the day's budget) arrives with the budget off.
+    const payload = buildPayload({ enabled: false, budgetKWh: 0, actualKWh: Array.from({ length: 24 }, () => 0.5) });
+    const status = resolveStatus(payload, 'yesterday');
+    const hero = resolveHeroData({ viewPayload: payload, view: 'yesterday', costDisplay, status, budgetEnabled: true });
+    expect(hero.headlineLabel).toBe("Yesterday's total");
+    expect(hero.comparison).toBe('12.0 kWh');
+    expect(hero.decision).toBe(YESTERDAY_NO_BUDGET_RECORDED);
+    expect(hero.delta).toBeNull();
+    expect(hero.heroTone).toBe('ok');
+    expect(hero.comparison).not.toBe(DAILY_BUDGET_DISABLED_WAITING);
+    expect(hero.decision).not.toBe(BUDGET_NO_PLAN_YESTERDAY_WAITING);
+    // Today without a plan still waits for it.
+    expect(resolveHeroData({ viewPayload: payload, view: 'today', costDisplay, status, budgetEnabled: true }).comparison)
+      .toBe(DAILY_BUDGET_DISABLED_WAITING);
   });
 
   it("labels tomorrow's headline as planned", () => {
