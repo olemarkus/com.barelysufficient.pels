@@ -279,14 +279,16 @@ const applyShedReleaseSteppedLoad = async (
   }
   // Never step up into the shed target. If we are already at or below it, nothing to do.
   if (!forceAgainstReleasedOpposing && currentStep.planningPowerW <= targetStep.planningPowerW) return false;
-  // In-flight gate: defer the release if the executor already has a step command for this
-  // intent's step awaiting confirmation or a retry scheduled, read from the command session as
-  // dispatch reads it. The synthesized release action carries `matchingCommandAttempt: null`,
-  // which would otherwise bypass `applySteppedLoadCommand`'s `awaiting_confirmation` /
-  // `retry_backoff` short-circuits and re-dispatch every cycle while the device has not
-  // reported back.
+  // In-flight gate: defer the release if the executor already has a command for the step this
+  // release sends (`targetStep`) awaiting confirmation or a retry scheduled, read from the
+  // command session as dispatch reads it. The synthesized release action carries
+  // `matchingCommandAttempt: null`, which would otherwise bypass `applySteppedLoadCommand`'s
+  // `awaiting_confirmation` / `retry_backoff` short-circuits and re-dispatch every cycle while
+  // the device has not reported back. Judged against the release's own step, not the plan's:
+  // an idle-task release targets its release rung while the plan's step stays where it was, so a
+  // gate on the plan's step never saw the release's own command and re-sent it each rebuild.
   if (!forceAgainstReleasedOpposing && resolveSteppedCommandAttempt(
-    ctx.getSteppedLoadCommandSession(intent.deviceId).command, profile, steppedLoadIntent.desired.stepId, Date.now(),
+    ctx.getSteppedLoadCommandSession(intent.deviceId).command, profile, targetStep.id, Date.now(),
   ) !== null) return false;
   const action = buildShedReleaseSteppedAction(intent, steppedLoadIntent, observed, targetStep, currentStepId);
   const wrote = await applySteppedLoadCommand(ctx, action, undefined, { force: forceAgainstReleasedOpposing });

@@ -2425,6 +2425,54 @@ describe('PlanExecutor stepped loads', () => {
     );
   });
 
+  it('does not re-send a stepped release while its own step command awaits confirmation', async () => {
+    // The release drives the device to its release rung (`low`) while the plan's
+    // own step decision stays at `max`. Once the release command is issued and
+    // awaiting confirmation, a rebuild before the device reports back must not
+    // send it again: the in-flight command is judged against the step the
+    // release sends.
+    const plan = steppedPlan({
+      controllable: false,
+      binaryCapabilityId: undefined,
+      selectedStepId: 'max',
+      reportedStepId: 'max',
+      desiredStepId: 'max',
+      releaseShedStepId: 'low',
+      deferredReleaseIntent: { kind: 'shed_release', posture: { kind: 'step', stepId: 'low' } },
+      reason: { code: PLAN_REASON_CODES.capacityControlOff },
+    });
+    // The executor's command session, written as the store records an issued command.
+    let command: NonNullable<ExecutableSteppedLoadCommandSession['command']> | undefined;
+    const { executor, desiredSteppedTrigger } = buildExecutor(
+      undefined,
+      steppedSnapshot({
+        binaryCapabilityId: undefined,
+        binaryControl: undefined,
+        reportedStepId: 'max',
+      }),
+      {
+        markSteppedLoadDesiredStepIssued: vi.fn((issued: { desiredStepId: string }) => {
+          command = { stepId: issued.desiredStepId, status: 'pending', retryCount: 0 };
+        }),
+        getSteppedLoadCommandSession: () => (command ? issuedStepSession(command) : {
+          hasPriorStepCommand: false,
+          stepCommandPending: false,
+          unansweredStepCommands: { kind: 'none' as const },
+        }),
+      },
+    );
+
+    await executor.applyPlanActions(buildExecutionPlan(plan));
+    expect(command).toEqual(expect.objectContaining({ stepId: 'low', status: 'pending' }));
+    await executor.applyPlanActions(buildExecutionPlan(plan));
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledTimes(1);
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      { deviceId: 'dev-1' },
+    );
+  });
+
   // A kept device's plan reason other than keep / restore need: a restore held
   // on headroom (not a restore-admission hold), and a restore-admission hold.
   const keptDeviceHoldReasons = [
