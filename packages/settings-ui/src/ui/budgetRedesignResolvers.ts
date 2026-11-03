@@ -39,6 +39,7 @@ import {
   DAILY_BUDGET_HEADLINE_LABEL_BY_VIEW,
   YESTERDAY_FINISHED_OVER_BUDGET,
   YESTERDAY_FINISHED_WITHIN_BUDGET,
+  YESTERDAY_NO_BUDGET_RECORDED,
   composeBudgetHeroOverBy,
   composeEstimatedCostHeadline,
   BUDGET_HERO_RECOURSE_ADJUST,
@@ -369,6 +370,22 @@ export const resolveDecisionLine = (
   return resolveTodayLine(payload, status);
 };
 
+// The hero parts that need a day's budget figures, left empty without them.
+const HERO_WITHOUT_BUDGET_FIGURES = {
+  delta: null, budgetRemainingLine: null, estimatedCost: null, split: null, priceTagline: null, recourse: null,
+  heroTone: 'ok',
+} as const satisfies Partial<BudgetHeroData>;
+
+// A closed day with no recorded budget has nothing to compare against, and no
+// budget data will arrive for it: the hero gives its usage and says so.
+const resolveYesterdayWithoutBudget = (payload: DailyBudgetDayPayload): BudgetHeroData => ({
+  ...HERO_WITHOUT_BUDGET_FIGURES,
+  headlineLabel: DAILY_BUDGET_HEADLINE_LABEL_BY_VIEW.yesterday,
+  comparison: `${formatComparisonKWh(sum(payload.buckets.actualKWh))} kWh`,
+  exportPriceLine: null,
+  decision: YESTERDAY_NO_BUDGET_RECORDED,
+});
+
 export const resolveHeroData = (params: {
   viewPayload: DailyBudgetDayPayload | null;
   view: BudgetDayView;
@@ -381,19 +398,16 @@ export const resolveHeroData = (params: {
   // "Now" is view-independent, but the hero is per-view: only the today view
   // carries the export subline so yesterday/tomorrow never show a live price.
   const exportPriceLine = view === 'today' ? exportPriceNowLine : null;
+  if (budgetEnabled && view === 'yesterday' && viewPayload && viewPayload.budget.enabled !== true) {
+    return resolveYesterdayWithoutBudget(viewPayload);
+  }
   if (!budgetEnabled || !viewPayload || viewPayload.budget.enabled !== true || status === 'noPlan') {
     return {
+      ...HERO_WITHOUT_BUDGET_FIGURES,
       headlineLabel: null,
       comparison: budgetEnabled ? DAILY_BUDGET_DISABLED_WAITING : DAILY_BUDGET_DISABLED_OFF,
-      delta: null,
-      budgetRemainingLine: null,
-      estimatedCost: null,
-      split: null,
-      priceTagline: null,
       exportPriceLine,
       decision: resolveSharedNoPlanLine(view, budgetEnabled),
-      recourse: null,
-      heroTone: 'ok',
     };
   }
   return {
