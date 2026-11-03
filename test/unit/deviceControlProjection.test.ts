@@ -16,6 +16,7 @@ const snapshot: RuntimeDeviceRead = {
   starvationSupported: false,
   setpointShedFloorC: 10,
   managed: true,
+  budgetExempt: false,
   controlModel: 'stepped_load',
   binaryControl: { on: false },
   expectedPowerKw: 1,

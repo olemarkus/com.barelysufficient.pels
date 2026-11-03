@@ -55,6 +55,7 @@ const charger = (params: {
   isBatteryOrSolar: false,
   binaryControllable: true,
   managed: true,
+  budgetExempt: false,
   binaryControl: { on: true },
   measuredPowerKw: params.measuredPowerKw,
   stateOfCharge: stateOfChargeFixture({

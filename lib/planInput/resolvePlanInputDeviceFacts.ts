@@ -159,10 +159,9 @@ export const resolvePlanInputDeviceFacts = (
     surplusTracking,
     hasStandingDemand,
     residualKw,
-    // The owner's exemption applies to loads only, never a battery or solar device
-    // (`resolveParsedDeviceSettings` answers the same on the sample path): every
-    // exempt sum counts an exempt device's draw with no gate of its own.
-    budgetExempt: !device.isBatteryOrSolar && source.deviceControl.isBudgetExempt(device.id),
+    // The parse's answer (`resolveParsedDeviceSettings`), the same one the power
+    // sample path reads: a smart task's claim is the only thing OR'd onto it.
+    budgetExempt: device.budgetExempt,
     ...resolveStorageCluster(source, device, options),
   };
 };

@@ -13,6 +13,7 @@ const battery = (fields: Partial<TransportDeviceSnapshot>): TransportDeviceSnaps
   targets: [],
   binaryControllable: false,
   managed: true,
+  budgetExempt: false,
   isEvCharger: false,
   isBatteryOrSolar: true,
   available: true,

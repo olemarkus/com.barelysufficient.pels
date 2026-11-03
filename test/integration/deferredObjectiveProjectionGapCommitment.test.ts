@@ -94,6 +94,7 @@ const buildDeviceReading = (
   isBatteryOrSolar: false,
   binaryControllable: true,
   managed: true,
+  budgetExempt: false,
   controlModel: 'stepped_load',
   temperature: {
     currentTemperature: tempC,

@@ -466,7 +466,14 @@ export type DeviceDescriptor = {
      * always), so "unset" is not a state a reader can observe or interpret.
      */
     managed: boolean;
-    budgetExempt?: boolean;
+    /**
+     * The owner's "exempt from daily budget" for this device. REQUIRED and resolved
+     * once, at parse (`resolveParsedDeviceSettings`): the owner's setting, never for
+     * a battery or solar device, to which it does not apply. Every reader takes this
+     * answer as is; the budget's exempt sums read it over managed devices only (the
+     * plan's population), with a smart task's claim for the hour OR'd onto it.
+     */
+    budgetExempt: boolean;
     priority?: number;
     /**
      * What this device draws while running — a planning input, NOT measured

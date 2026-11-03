@@ -1415,6 +1415,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       canSetControl: true,
       controllable: true,
       managed: true,
+      budgetExempt: false,
       binaryControl: { on: true },
       available: true,
       measuredPowerKw: 4,

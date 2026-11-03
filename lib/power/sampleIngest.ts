@@ -292,12 +292,12 @@ export async function recordPowerSampleForApp(params: {
   // Observer supplies measured readings; DeviceReads supplies class and
   // controllability metadata. `!== false` preserves the established rule that
   // an unpopulated controllable flag counts as managed usage. Exemption is the
-  // planner's set over the same devices: a managed device whose owner exempted
-  // it or whose smart task claims the hour (the parse already answers `false`
-  // for a battery or solar device). It does not depend on `countsAsManagedUsage`.
+  // planner's set over the planner's population: a managed device (only managed
+  // devices reach the plan) with the owner's exemption as the parse resolved it,
+  // or the hour's smart-task claim. It does not depend on `countsAsManagedUsage`.
   const usageDevices = devices.map((device) => ({
     ...device,
-    budgetExempt: device.managed && (device.budgetExempt === true || taskBudgetExemptDeviceIds.has(device.id)),
+    budgetExempt: device.managed && (device.budgetExempt || taskBudgetExemptDeviceIds.has(device.id)),
     currentDrawKw: normalizeMeasuredPowerKw(device.measuredPowerKw) ?? 0,
     countsAsManagedUsage: device.controllable !== false,
   }));

@@ -7,6 +7,7 @@ const snapshot = (id: string, overrides: Record<string, unknown> = {}): Transpor
   name: id,
   deviceClass: 'heater',
   capabilities: ['onoff'],
+  budgetExempt: false,
   expectedPowerKw: 2,
   expectedPowerSource: 'manual',
   targets: [],
@@ -28,7 +29,7 @@ describe('device reads', () => {
   it('serves inventory descriptors without runtime observations or transport fields', () => {
     const [device] = readsOver([snapshot('a')]).descriptors();
     expect(Object.keys(device!).sort()).toEqual([
-      'binaryControllable', 'capabilities', 'deviceClass', 'deviceType', 'expectedPowerKw',
+      'binaryControllable', 'budgetExempt', 'capabilities', 'deviceClass', 'deviceType', 'expectedPowerKw',
       'expectedPowerSource', 'id', 'isBatteryOrSolar', 'isEvCharger', 'managed', 'name',
     ]);
     expect(readsOver([snapshot('a')]).descriptor('a')).toEqual(device);

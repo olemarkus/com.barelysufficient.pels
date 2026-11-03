@@ -8,9 +8,13 @@ import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSn
 import { isBatteryOrSolarClassKey } from '../../packages/shared-domain/src/batteryOrSolarRole';
 
 type DescriptorIdentityKey =
-  | 'deviceClass' | 'deviceType' | 'isEvCharger' | 'binaryControllable' | 'isBatteryOrSolar' | 'managed';
+  | 'deviceClass' | 'deviceType' | 'isEvCharger' | 'binaryControllable' | 'isBatteryOrSolar' | 'managed'
+  | 'budgetExempt';
 
-/** The identity facts the parse producer resolves for every inventory device, and whether PELS manages it. */
+/**
+ * The identity facts the parse producer resolves for every inventory device,
+ * whether PELS manages it, and whether the owner's budget exemption is in force.
+ */
 export type DescriptorIdentity = Pick<DeviceDescriptor, DescriptorIdentityKey>;
 
 /** A snapshot fixture that may leave the identity facts for the helper to resolve. */
@@ -35,6 +39,8 @@ type DescriptorIdentityFixture<T extends DescriptorIdentity> = Omit<T, Descripto
  *   device; the flag used to be optional, and the readers that decide on it (the
  *   planned-device filter, a battery's control posture) read an unset one as
  *   managed, so such a fixture keeps the meaning it was written with.
+ * - `budgetExempt`: `false` unless stated, as the producer answers a device the
+ *   owner never exempted. It used to be optional and read `=== true`.
  */
 export const resolveFixtureDescriptorIdentity = (fixture: Partial<DescriptorIdentity> & {
   temperature?: unknown;
@@ -46,6 +52,7 @@ export const resolveFixtureDescriptorIdentity = (fixture: Partial<DescriptorIden
   isBatteryOrSolar: fixture.isBatteryOrSolar ?? isBatteryOrSolarClassKey(fixture.deviceClass ?? 'socket'),
   binaryControllable: fixture.binaryControllable ?? fixture.binaryControl !== undefined,
   managed: fixture.managed ?? true,
+  budgetExempt: fixture.budgetExempt ?? false,
 });
 
 const withDescriptorIdentity = <T extends DescriptorIdentity>(

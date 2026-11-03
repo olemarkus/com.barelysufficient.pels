@@ -323,6 +323,8 @@ function resolveParsedDeviceSettings(
     const base = {
         controllable: sources.management.isCapacityControlEnabled(deviceId),
         managed: sources.management.isManaged(deviceId),
+        // The owner's exemption, resolved once for every reader: plan input, the
+        // power sample path and the "is budget exempt" Flow condition take it as is.
         budgetExempt: sources.settings.isBudgetExempt(deviceId),
         flowConflict: sources.nativeWiring.getFlowConflict(deviceId),
     };

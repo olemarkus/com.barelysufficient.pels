@@ -16,6 +16,7 @@ const buildDevice = (
   isBatteryOrSolar: false,
   binaryControllable: false,
   managed: true,
+  budgetExempt: false,
   temperature: { currentTemperature: 20, target: { id: 'target_temperature', value: 20, unit: '°C' } },
   targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
   ...overrides,

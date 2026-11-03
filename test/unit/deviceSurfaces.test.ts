@@ -19,6 +19,7 @@ const descriptor = (id: string, name = id): DeviceDescriptorRead => ({
   isBatteryOrSolar: false,
   binaryControllable: true,
   managed: true,
+  budgetExempt: false,
   capabilities: ['onoff'],
   expectedPowerKw: 2,
   expectedPowerSource: 'manual',
@@ -51,6 +52,7 @@ describe('joinObservedDeviceDescriptors', () => {
       isBatteryOrSolar: false,
       binaryControllable: true,
       managed: true,
+      budgetExempt: false,
       capabilities: ['onoff'],
       expectedPowerKw: 2,
       expectedPowerSource: 'manual',
@@ -72,7 +74,7 @@ describe('projectDeviceSurfaces', () => {
     } as unknown as TransportDeviceSnapshot;
     const [surfaces] = projectDeviceSurfaces([parsed]);
     expect(Object.keys(surfaces!).sort()).toEqual([
-      'available', 'binaryControl', 'binaryControllable', 'capabilities', 'deviceClass', 'deviceType',
+      'available', 'binaryControl', 'binaryControllable', 'budgetExempt', 'capabilities', 'deviceClass', 'deviceType',
       'expectedPowerKw', 'expectedPowerSource', 'id', 'isBatteryOrSolar', 'isEvCharger', 'managed',
       'measuredPowerIsDirectMeasurement', 'measuredPowerKw', 'name', 'targets',
     ]);

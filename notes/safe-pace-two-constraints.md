@@ -439,9 +439,11 @@ background share in a second time would report more background than the meter
 read.
 
 Both axes read one exempt set. A device is exempt when it is a managed load the
-owner exempted (`budget_exempt_devices`, resolved `false` for a battery or solar
-device where it is read) or one a smart task's "may go over daily budget" claims
-for the current hour. Neither sum adds a gate of its own: not Power-limit
+owner exempted (`budget_exempt_devices`, resolved once at parse by
+`resolveParsedDeviceSettings`, never for a battery or solar device; every reader
+takes the descriptor's `budgetExempt` as is, over the plan's population of managed
+devices) or one a smart task's "may go over daily budget" claims for the current
+hour. Neither sum adds a gate of its own: not Power-limit
 control, not command authority. The power term at `lib/plan/planBuilder.ts`
 reads the PROJECTED sum (`sumBudgetExemptProjectedUsageKw`, `lib/plan/planUsage.ts`)
 over plan devices, whose `budgetExempt` the smart-task decoration completes. The
@@ -832,7 +834,7 @@ spend an off exempt device's projection), the exempt kWh integrated at
 `lib/power/sampleIngest.ts`, and, eventually, the hero's display value
 (§ "Overview hero").
 
-On the sample path a managed device is exempt when its own flag says so OR a
+On the sample path a managed device is exempt when its parsed flag says so OR a
 smart task claims it (`readTaskBudgetExemptDeviceIds`, answered by the smart-task
 controller that decides the claim, not read back off the plan). The claim
 belongs to the hour it was decided for, so the latest cycle's claims answer

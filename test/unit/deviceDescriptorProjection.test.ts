@@ -15,6 +15,7 @@ const snapshot = {
   capabilities: ['onoff', 'measure_power'],
   canSetControl: true,
   managed: true,
+  budgetExempt: false,
   expectedPowerKw: 2,
   expectedPowerSource: 'manual',
   steppedLoadProfile: { steps: [{ id: 'low', powerW: 500 }] },
@@ -32,6 +33,7 @@ describe('projectDeviceDescriptor', () => {
     const descriptor = projectDeviceDescriptor(snapshot);
     expect(Object.keys(descriptor).sort()).toEqual([
       'binaryControllable',
+      'budgetExempt',
       'canSetControl',
       'capabilities',
       'deviceClass',

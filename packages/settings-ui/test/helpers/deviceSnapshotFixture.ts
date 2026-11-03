@@ -3,7 +3,8 @@ import type { SettingsUiBatteryState } from '../../../contracts/src/settingsUi/d
 import { isBatteryOrSolarClassKey, isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 
 type DescriptorIdentityKey =
-  | 'deviceClass' | 'deviceType' | 'isEvCharger' | 'binaryControllable' | 'isBatteryOrSolar' | 'managed';
+  | 'deviceClass' | 'deviceType' | 'isEvCharger' | 'binaryControllable' | 'isBatteryOrSolar' | 'managed'
+  | 'budgetExempt';
 
 /** The identity facts the parse producer resolves for every inventory device, and whether PELS manages it. */
 type DescriptorIdentity = Pick<DeviceDescriptor, DescriptorIdentityKey>;
@@ -41,6 +42,8 @@ type DescriptorIdentityFixture<T extends DescriptorIdentity> = Omit<T, Descripto
  * - `managed`: `true` unless stated. `/ui_devices` carries the runtime's answer
  *   for every device; the flag used to be optional, and the one reader of it
  *   here (Overview membership) read an unset one as managed.
+ * - `budgetExempt`: `false` unless stated, as the runtime answers a device the
+ *   owner never exempted. It used to be optional and read `=== true`.
  */
 const resolveFixtureDescriptorIdentity = (fixture: Partial<DescriptorIdentity> & {
   targets?: readonly unknown[];
@@ -51,6 +54,7 @@ const resolveFixtureDescriptorIdentity = (fixture: Partial<DescriptorIdentity> &
   isBatteryOrSolar: fixture.isBatteryOrSolar ?? isBatteryOrSolarClassKey(fixture.deviceClass ?? 'other'),
   binaryControllable: fixture.binaryControllable ?? false,
   managed: fixture.managed ?? true,
+  budgetExempt: fixture.budgetExempt ?? false,
 });
 
 /**

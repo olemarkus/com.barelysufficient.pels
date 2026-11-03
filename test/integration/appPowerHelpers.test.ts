@@ -315,9 +315,10 @@ describe('recordPowerSampleForApp', () => {
     expect(tracker.uncontrolledExemptBuckets?.[bucketKey]).toBeCloseTo(0.5, 3);
   });
 
-  it('books no exemption for a device PELS does not manage, whatever claims it', async () => {
+  it('books no exemption for a device PELS does not manage, though the owner exempted it', async () => {
     // Only managed devices reach the plan, so only they can be exempt on its
-    // threshold; the energy side answers over the same set.
+    // threshold; the energy side counts the same population. The parsed flag still
+    // carries the owner's setting (the "is budget exempt" Flow condition reads it).
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
     const getDeviceSurfaces = () => deviceSurfacesFixtures([
@@ -341,7 +342,7 @@ describe('recordPowerSampleForApp', () => {
       timeZone: 'UTC',
       capacitySettings: { limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
       getDeviceSurfaces,
-      taskBudgetExemptDeviceIds: new Set(['dev-unmanaged']),
+      taskBudgetExemptDeviceIds: new Set(),
       powerTracker: tracker,
       updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),

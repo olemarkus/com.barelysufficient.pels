@@ -17,6 +17,7 @@ const configuration = (id: string): DeviceConfigurationRead => ({
   canSetControl: true,
   binaryControllable: true,
   managed: true,
+  budgetExempt: false,
   isBatteryOrSolar: false,
   isEvCharger: false,
   starvationSupported: false,

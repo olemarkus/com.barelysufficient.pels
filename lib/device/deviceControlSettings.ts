@@ -116,7 +116,6 @@ export type DeviceControlSettingsRead = Pick<DeviceControlSettings,
   | 'getEvChargeTargetConfig'
   | 'deviceStartPolicies'
   | 'controllableDevices'
-  | 'isBudgetExempt'
 >;
 
 /**
