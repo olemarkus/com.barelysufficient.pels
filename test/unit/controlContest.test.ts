@@ -186,6 +186,23 @@ describe('ControlContestRecord', () => {
     expect(contests.contestedControl(DEVICE, ROUND_MS + CONTEST_WINDOW_MS)).toBeUndefined();
   });
 
+  it('keeps when a contest began while it runs on, and a later contest begins anew', () => {
+    const { contests } = contestRounds(10, () => 22);
+    // Rounds every 20 minutes from 20 to 200: the window now holds 100 to 200.
+    expect(contests.contestedControl(DEVICE, 200 * MINUTE_MS)).toMatchObject({ count: 6, sinceMs: ROUND_MS });
+
+    // Quiet for 2 hours, so that contest ended; four more rounds make a new one.
+    const resumedAtMs = 200 * MINUTE_MS + CONTEST_WINDOW_MS;
+    for (let round = 0; round < 4; round += 1) {
+      contests.commandSent(sent(resumedAtMs + round * ROUND_MS, 5, 22));
+      contests.commandConfirmed(DEVICE, 'temperature', 5, resumedAtMs + round * ROUND_MS);
+      if (round < 3) expect(contests.contestedControl(DEVICE, resumedAtMs + round * ROUND_MS)).toBeUndefined();
+    }
+    expect(contests.contestedControl(DEVICE, resumedAtMs + 3 * ROUND_MS)).toMatchObject({
+      count: 4, sinceMs: resumedAtMs,
+    });
+  });
+
   it('needs the four rounds within 2 hours, not spread over a longer stretch', () => {
     const { contests, journalled } = contestRounds(6, () => 22, 45 * MINUTE_MS);
     expect(contests.contestedControl(DEVICE, 6 * 45 * MINUTE_MS)).toBeUndefined();

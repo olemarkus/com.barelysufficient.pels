@@ -235,6 +235,24 @@ describe('setup recommendations', () => {
     ]);
   });
 
+  it('hides a dismissed contest, and shows a later contest on the same device again', () => {
+    const contestOf = (sinceMs: number, count: number) => resolve([
+      device({
+        id: 'mill',
+        name: 'Gang nede ovn',
+        controlContest: { setting: 'temperature', kind: 'overridden', count, sinceMs },
+      }),
+    ]).filter(({ id }) => id.startsWith('control-contest:'));
+    const [dismissed] = contestOf(1_700_000_000_000, 4);
+    if (!dismissed) throw new Error('expected the contest recommendation');
+    const dismissals = { [dismissed.id]: dismissed.version };
+
+    // The same contest, still running with more rounds, stays dismissed.
+    expect(groupSetupRecommendations(contestOf(1_700_000_000_000, 6), dismissals).active).toEqual([]);
+    expect(groupSetupRecommendations(contestOf(1_700_000_000_000 + 4 * 60 * 60_000, 4), dismissals).active)
+      .toEqual([expect.objectContaining({ id: 'control-contest:mill' })]);
+  });
+
   it('names Keep the new temperature only for a temperature, which no other setting has', () => {
     const [recommendation] = resolve([device({
       id: 'plug', name: 'Panelovn', controlContest: { setting: 'on_off', kind: 'overridden', count: 4, sinceMs: 0 },

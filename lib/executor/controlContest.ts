@@ -114,6 +114,12 @@ const contestKind = (rounds: readonly ContestRound[]): ContestKind => (
 export class ControlContestRecord implements ControlContestRecording {
   private readonly commands = new Map<string, SettingCommand>();
   private readonly rounds = new Map<string, ContestRound[]>();
+  /**
+   * When each setting's latest contest began: the first of the rounds that
+   * reached the threshold. Rounds only age out between rounds, so a setting
+   * that already had the threshold before a round has been contested since.
+   */
+  private readonly contestSinceMs = new Map<string, number>();
   private readonly reportedAtMs = new Map<string, number>();
 
   constructor(private readonly journal: DeviceJournal) {}
@@ -169,16 +175,16 @@ export class ControlContestRecord implements ControlContestRecording {
 
   /**
    * The device's contest at `nowMs`: its setting with the most rounds in the
-   * window, while they reach the threshold.
+   * window, while they reach the threshold, and when that contest began.
    */
   contestedControl(deviceId: string, nowMs: number): ContestedControl | undefined {
     let contested: ContestedControl | undefined;
     for (const setting of SETTINGS) {
       const rounds = this.roundsWithin(deviceId, setting, nowMs);
-      const [first] = rounds;
-      if (!first || rounds.length < CONTEST_THRESHOLD) continue;
+      const sinceMs = this.contestSinceMs.get(settingKey(deviceId, setting));
+      if (rounds.length < CONTEST_THRESHOLD || sinceMs === undefined) continue;
       if (contested && contested.count >= rounds.length) continue;
-      contested = { setting, kind: contestKind(rounds), count: rounds.length, sinceMs: first.atMs };
+      contested = { setting, kind: contestKind(rounds), count: rounds.length, sinceMs };
     }
     return contested;
   }
@@ -198,9 +204,13 @@ export class ControlContestRecord implements ControlContestRecording {
       // nothing about what moved it: every such round is `overridden`.
       kind: sent.setting !== 'on_off' && Object.is(observed, standing.before) ? 'reverted' : 'overridden',
     };
+    const key = settingKey(sent.deviceId, sent.setting);
     const rounds = [...this.roundsWithin(sent.deviceId, sent.setting, sent.atMs), round];
-    this.rounds.set(settingKey(sent.deviceId, sent.setting), rounds);
+    this.rounds.set(key, rounds);
     if (rounds.length < CONTEST_THRESHOLD) return;
+    // `rounds` ends with `round`, so its head is always present.
+    const firstAtMs = (rounds[0] ?? round).atMs;
+    if (rounds.length === CONTEST_THRESHOLD) this.contestSinceMs.set(key, firstAtMs);
     const lastAtMs = this.reportedAtMs.get(sent.deviceId);
     if (lastAtMs !== undefined && sent.atMs - lastAtMs < CONTEST_WINDOW_MS) return;
     this.reportedAtMs.set(sent.deviceId, sent.atMs);
@@ -213,8 +223,7 @@ export class ControlContestRecord implements ControlContestRecording {
       kind: contestKind(rounds),
       windowMs: CONTEST_WINDOW_MS,
       count: rounds.length,
-      // `rounds` ends with `round`, so its head is always present.
-      firstAtMs: (rounds[0] ?? round).atMs,
+      firstAtMs,
       rounds: rounds.slice(-CONTEST_EVENT_MAX_ROUNDS),
     };
     logger.info(event);

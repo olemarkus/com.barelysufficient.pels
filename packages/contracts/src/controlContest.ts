@@ -19,7 +19,11 @@ export type ContestedControl = {
   kind: ContestKind;
   /** Rounds within the last 2 hours. */
   count: number;
-  /** The first of those rounds. */
+  /**
+   * When this contest began: the first of the rounds that reached the
+   * threshold. It stays while the device stays contested, so a later contest
+   * on the same device has a later one.
+   */
   sinceMs: number;
 };
 

@@ -2421,6 +2421,8 @@ runtime saw (`notes/support-reports.md`, `device_control_contested`):
 - Action `Open device`. The entry and the notice leave once the device keeps
   its settings for 2 hours. PELS keeps setting the device back; the copy never
   says PELS stopped.
+- Dismissal is remembered per contest, by when it began: a contest that runs
+  on stays dismissed, and a later contest on the same device shows again.
 
 ### Car battery recommendations
 
