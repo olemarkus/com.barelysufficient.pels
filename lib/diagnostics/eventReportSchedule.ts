@@ -17,7 +17,10 @@
  * that keeps failing, never sends the same report twice. One that could not go
  * out is tried again on a later check while its event is still in the lookback.
  */
-import { CONTESTED_SETTING_WORDS, isContestedSetting } from '../../packages/shared-domain/src/contestedSetting';
+import type { ContestedValue } from '../../packages/contracts/src/controlContest';
+import {
+  CONTESTED_SETTING_WORDS, formatContestedValue, isContestedSetting,
+} from '../../packages/shared-domain/src/contestedSetting';
 import type {
   SupportReportDeviceEvent, SupportReportErrorCode, SupportReportRequest, SupportReportResponse,
 } from '../../packages/contracts/src/supportReport';
@@ -56,6 +59,24 @@ type EventReport = {
 
 const text = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
 
+const isContestedValue = (value: unknown): value is ContestedValue => (
+  typeof value === 'number' || typeof value === 'boolean' || typeof value === 'string'
+);
+
+/**
+ * What PELS set and what the device then reported, from a journalled contest.
+ * An event journalled before the values were recorded names the setting only.
+ */
+const describeContestRound = (name: string, setting: unknown, commanded: unknown, observed: unknown): string => {
+  if (!isContestedSetting(setting)) return `${name} kept reporting another value after PELS set it`;
+  const word = CONTESTED_SETTING_WORDS[setting];
+  if (!isContestedValue(commanded) || !isContestedValue(observed)) {
+    return `${name} kept reporting another ${word} after PELS set it`;
+  }
+  return `PELS set the ${word} of ${name} to ${formatContestedValue(setting, commanded)} `
+    + `and it then reported ${formatContestedValue(setting, observed)}`;
+};
+
 /**
  * The events that send a report, each turning a kept event into the report
  * it asks for; an event without the fields its report needs asks for none.
@@ -85,15 +106,10 @@ export const REPORTED_EVENTS: ReadonlyMap<string, (event: SupportReportDeviceEve
   ['device_control_contested', (event: SupportReportDeviceEvent): EventReport[] => {
     const deviceId = text(event.details.deviceId);
     if (deviceId === undefined) return [];
-    const { count, firstAtMs, kind } = event.details;
+    const { count, firstAtMs } = event.details;
     const name = text(event.details.deviceName) ?? deviceId;
-    const setting = isContestedSetting(event.details.setting)
-      ? CONTESTED_SETTING_WORDS[event.details.setting]
-      : 'setting';
     const times = typeof count === 'number' ? ` ${count} times` : ' repeatedly';
-    const what = kind === 'reverted'
-      ? `changes PELS made to the ${setting} of ${name} did not stick: it went back to its earlier ${setting}`
-      : `something outside PELS changed the ${setting} of ${name} away from what PELS set`;
+    const what = describeContestRound(name, event.details.setting, event.details.commanded, event.details.observed);
     return [{
       key: `${event.event}|${deviceId}`,
       event: event.event,

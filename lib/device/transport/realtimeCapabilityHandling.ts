@@ -17,6 +17,7 @@ import {
   recordRealtimeObservation,
   resolveRealtimeCapabilityEvent,
 } from './realtimeCapabilityShared';
+import { resolveControlReport } from './controlReport';
 import {
   handleNativeSteppedLoadCapabilityUpdate,
   handleTargetPowerSourceCapabilityUpdate,
@@ -275,6 +276,27 @@ function handleSteppedSourceCapabilityUpdate(
 }
 
 /**
+ * Whether an event goes on to update the snapshot. A binary write is never
+ * observed optimistically, so its echo settles the switch PELS asked for. A
+ * target write's value is already held as PELS's own write
+ * (`recordLocalWriteObservation`): its echo adds nothing. Any other event is
+ * the device's own report, and its switch or setpoint goes to the control
+ * contest record.
+ */
+function admitControlEvent(
+    ingest: RealtimeIngestService,
+    snapshot: TransportDeviceSnapshot,
+    capabilityId: string,
+    value: unknown,
+    pelsEcho: boolean,
+): boolean {
+    if (pelsEcho) return capabilityId === snapshot.binaryCapabilityId;
+    const report = resolveControlReport(snapshot, capabilityId, value, Date.now());
+    if (report) ingest.observationBridge.dispatchControlReported(report);
+    return true;
+}
+
+/**
  * `pelsEcho`: the event is Homey's echo of PELS's own write, recognised by its
  * transaction id (`ownCapabilityWrites.ts`).
  */
@@ -308,10 +330,7 @@ export function handleRealtimeCapabilityUpdate(
         const effectiveCapabilityId = resolvedEvent.capabilityId;
         const effectiveValue = resolvedEvent.value;
 
-        // A binary write is never observed optimistically, so its echo settles
-        // the switch PELS asked for. A target write's value is already held as
-        // PELS's own write (`recordLocalWriteObservation`): its echo adds nothing.
-        if (pelsEcho && effectiveCapabilityId !== snapshot.binaryCapabilityId) continue;
+        if (!admitControlEvent(ingest, snapshot, effectiveCapabilityId, effectiveValue, pelsEcho)) continue;
 
         if (isFreshnessOnlyCapability(effectiveCapabilityId)) {
             handleFreshnessOnlyCapabilityUpdate(ingest, snapshot, effectiveCapabilityId, effectiveValue);

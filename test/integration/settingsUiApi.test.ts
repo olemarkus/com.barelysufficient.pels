@@ -948,7 +948,7 @@ describe('settingsUiApi', () => {
   });
 
   it('carries the executor\'s contest for a managed device that does not keep PELS\'s settings', () => {
-    const contest = { setting: 'temperature', kind: 'reverted', count: 5, sinceMs: 1_000 } as const;
+    const contest = { setting: 'temperature', commanded: 4.5, observed: 5, count: 5, sinceMs: 1_000 } as const;
     const homey = createHomey({
       latestDevicesOverride: [
         { id: 'mill', name: 'Gang nede ovn', deviceType: 'temperature', available: true, managed: true },

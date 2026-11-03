@@ -137,6 +137,7 @@ export const createTestObservedStateDispatcher = (
   observedStateRefresh: vi.fn(),
   observedControlStateChanged: vi.fn(),
   externalTemperatureAdjusted: vi.fn(),
+  controlReported: vi.fn(),
   setGenerationW: vi.fn(),
   ...overrides,
 });

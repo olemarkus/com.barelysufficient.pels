@@ -7,6 +7,7 @@ import type {
     ObservedStateRefreshEvent,
 } from '../ports/observedStateEvents';
 import type { ObservedHomePower } from './observedHomePower';
+import type { ControlReported } from '../ports/controlContest';
 
 /**
  * Observer-owned typed observation events.
@@ -58,6 +59,13 @@ export const OBSERVED_CONTROL_STATE_CHANGED_EVENT = 'observed_control_state_chan
 export const OBSERVED_STATE_REFRESH_EVENT = 'plan_live_state_observed_refresh';
 
 /**
+ * Emitted for the device's own report of its switch or setpoint from the live
+ * feed. Never Homey's echo of PELS's write, so it is what the device holds by
+ * its own account. Wiring hands it to the executor's control contest record.
+ */
+export const CONTROL_REPORTED_EVENT = 'control_reported';
+
+/**
  * Tiny typed EventEmitter wrapper owned by wiring (`setup/`) and consumed by
  * wiring listeners. Observer owns the emitter at this physical location so
  * transport can call into it via an injected dispatcher without any static
@@ -101,6 +109,10 @@ export class ObservedStateEmitter {
         this.emitter.on(OBSERVED_CONTROL_STATE_CHANGED_EVENT, listener);
     }
 
+    onControlReported(listener: (report: ControlReported) => void): void {
+        this.emitter.on(CONTROL_REPORTED_EVENT, listener);
+    }
+
     /**
      * Build a dispatcher bound to this emitter and the observer-owned
      * `ObservedHomePower` holder. Wiring passes the returned object into
@@ -116,6 +128,7 @@ export class ObservedStateEmitter {
             observedStateChanged: (event) => this.emitObservedStateChanged(event),
             observedStateRefresh: (event) => this.emitObservedStateRefresh(event),
             observedControlStateChanged: (event) => this.emitObservedControlStateChanged(event),
+            controlReported: (report) => { this.emitter.emit(CONTROL_REPORTED_EVENT, report); },
             setGenerationW: (w, observedAtMs) => homePower.setGenerationW(w, observedAtMs),
         };
     }

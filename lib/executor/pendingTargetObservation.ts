@@ -125,7 +125,6 @@ function handleConfirmedPendingTargetObservation(
 ): boolean {
   if (!Object.is(observedValue, pending.desired)) return false;
   delete state.pendingTargetCommands[liveDevice.id];
-  state.controlContests.commandConfirmed(liveDevice.id, 'temperature', pending.desired);
   emitPlanDebug({
     event: 'pending_target_command_confirmed',
     deviceId: liveDevice.id,

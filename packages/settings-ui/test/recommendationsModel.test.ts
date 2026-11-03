@@ -207,11 +207,18 @@ describe('setup recommendations', () => {
       + 'Set a higher limit if it should stay warmer while limited, or dismiss this to keep 10 °C.');
   });
 
-  it('warns about a device that keeps moving away from what PELS set, by what moves it', () => {
-    const contest = { setting: 'temperature', count: 6, sinceMs: 0 } as const;
+  it('warns about a device that keeps reporting another value after PELS sets it, with both values', () => {
     const recommendations = resolve([
-      device({ id: 'mill', name: 'Gang nede ovn', controlContest: { ...contest, kind: 'reverted' } }),
-      device({ id: 'flow', name: 'Ovn stue', controlContest: { ...contest, kind: 'overridden' } }),
+      device({
+        id: 'mill',
+        name: 'Gang nede ovn',
+        controlContest: { setting: 'temperature', commanded: 4.5, observed: 5, count: 6, sinceMs: 0 },
+      }),
+      device({
+        id: 'plug',
+        name: 'Ovn stue',
+        controlContest: { setting: 'on_off', commanded: false, observed: true, count: 4, sinceMs: 0 },
+      }),
       device({ id: 'calm', name: 'Bad nede' }),
     ]).filter(({ id }) => id.startsWith('control-contest:'));
     expect(recommendations).toEqual([
@@ -219,15 +226,19 @@ describe('setup recommendations', () => {
         id: 'control-contest:mill',
         category: 'recommendation',
         title: "Gang nede ovn doesn't keep PELS's changes",
-        body: '6 times in the last hour, Gang nede ovn went back to its earlier temperature after PELS '
-          + 'changed it. Check the app that controls Gang nede ovn, or turn off Managed by PELS for it.',
+        body: '6 times in the last hour, PELS set Gang nede ovn to 4.5 °C and Gang nede ovn then reported 5 °C. '
+          + 'The device may not accept 4.5 °C, or a Flow, another app or a schedule may set it. '
+          + 'Change the temperature PELS uses for Gang nede ovn, turn off what sets it, '
+          + 'or turn off Managed by PELS for it.',
         actionLabel: 'Open device',
         target: { kind: 'device', deviceId: 'mill' },
       }),
       expect.objectContaining({
-        id: 'control-contest:flow',
-        title: 'Something keeps changing Ovn stue',
-        body: expect.stringContaining('Look for a Flow, another app or a schedule that sets it'),
+        id: 'control-contest:plug',
+        title: "Ovn stue doesn't keep PELS's changes",
+        body: '4 times in the last hour, PELS turned Ovn stue off and Ovn stue then reported on. '
+          + "Check for a Flow, another app, a schedule or the device's own app that turns it on, "
+          + 'or turn off Managed by PELS for it.',
       }),
     ]);
   });

@@ -384,7 +384,6 @@ export const executeSteppedLoadCommand = async (
   )) return false;
   let accepted = false;
   try {
-    const observedStepId = ctx.getObservedState(intent.id)?.reportedStepId;
     const result = await ctx.actuator.apply({
       kind: 'step', deviceId: intent.id, profile: intent.steppedLoadProfile,
       desiredStepId: desiredStep.id, planningPowerW: desiredStep.planningPowerW,
@@ -407,8 +406,7 @@ export const executeSteppedLoadCommand = async (
     // asking the device to confirm it, so it is no command to contest.
     if (intent.transition?.effectiveTransition !== 'initialize_unknown_step_at_low') {
       ctx.execution.controlContests.commandSent({
-        deviceId: intent.id, deviceName: intent.name, setting: 'level', value: desiredStep.id,
-        observed: observedStepId, atMs: now,
+        deviceId: intent.id, deviceName: intent.name, setting: 'level', value: desiredStep.id, atMs: now,
       });
     }
     return accepted;

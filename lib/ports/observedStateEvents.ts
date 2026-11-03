@@ -1,6 +1,7 @@
 import type { ExternalTemperatureAdjustment } from '../../packages/contracts/src/temperatureAdjustment';
 import type { ObservedDeviceState } from '../../packages/contracts/src/types';
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
+import type { ControlReported } from './controlContest';
 
 /**
  * The observation events transport hands to observer, defined once for both.
@@ -58,6 +59,8 @@ export type ObservedStateEmitterDispatcher = {
     observedStateRefresh: (event: ObservedStateRefreshEvent) => void;
     observedControlStateChanged: (event: ObservedControlStateChangedEvent) => void;
     externalTemperatureAdjusted: (adjustment: ExternalTemperatureAdjustment) => void;
+    /** The device's own report of its switch or setpoint from the live feed, never PELS's echo. */
+    controlReported: (report: ControlReported) => void;
     /**
      * Push the gross PV generation reading (watts) into observer's
      * `ObservedHomePower` holder, or `null` when absent, stamped with its read

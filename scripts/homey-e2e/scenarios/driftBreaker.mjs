@@ -69,8 +69,9 @@ export const driftBreaker = {
     }
 
     const contest = (await readHeater())?.controlContest;
-    if (contest?.setting !== 'temperature' || contest.kind !== 'overridden' || contest.count !== 4) {
-      throw new Error(`expected a temperature contest overridden 4 times, got ${JSON.stringify(contest)}`);
+    if (contest?.setting !== 'temperature' || contest.commanded !== LIMITED_C || contest.observed !== OUTSIDE_C
+      || contest.count !== 4) {
+      throw new Error(`expected ${LIMITED_C} °C set and ${OUTSIDE_C} °C reported 4 times, got ${JSON.stringify(contest)}`);
     }
   },
 };

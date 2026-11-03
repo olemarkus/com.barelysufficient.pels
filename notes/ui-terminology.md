@@ -715,6 +715,18 @@ mode.` A unit that reports heating or cooling starts it with `While heating,
 PELS lowers its target to this instead of turning it off.` instead. Never describe this target as the device's current measured temperature
 or promise that it has stopped drawing.
 
+### A device that doesn't keep PELS's changes
+
+The device page notice above **Managed by PELS** and its recommendation share one
+title, `{device} doesn't keep PELS's changes`, and a body that states what PELS
+measured: `{count} times in the last hour, PELS set {device} to {value} and {device}
+then reported {value}.` (on/off: `PELS turned {device} off and {device} then reported
+on.`; a level names no values). Homey does not say who set a value, so the body
+never claims a cause: for a temperature it says `The device may not accept {value},
+or a Flow, another app or a schedule may set it.`, and it ends with what the owner
+can do, ending with turning off **Managed by PELS**. Never write "something outside
+PELS" or name one cause as fact. Source: `packages/settings-ui/src/ui/controlContestCopy.ts`.
+
 ### Device-page "Power when running" — one line about the present source
 
 The device's Setup section carries **Power when running** (watts, `suffix-text="W"`)
