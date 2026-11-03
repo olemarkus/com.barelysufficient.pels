@@ -200,7 +200,8 @@ export type DeadlinePlanPayload = {
     // those. Split out of the old combined meta line so a running task shows
     // stat pairs, not a reason paragraph.
     metaLine: string | null;
-    // `Delivered X of Y kWh · …` subline. Two visible branches collapse the
+    // `Delivered X kWh · …` subline (`Delivered X of Y kWh` for an energy
+    // task, whose target is energy). Two visible branches collapse the
     // planner status union: cannot-meet renders the `still {curr} of {target}`
     // stem (the alert chip + meta line already say "Cannot finish" / "Not
     // enough time …" so this line stays magnitude-only, per the 2026-05-16 live

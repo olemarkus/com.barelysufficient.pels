@@ -362,8 +362,14 @@ export const SMART_TASK_HERO_STAT_LABELS = {
 } as const;
 
 // Resolver for the "Delivered so far" hero subline. Branches by plan status:
-//   - `cannot_meet`            → `Delivered X of Y kWh · still {curr} of {target}`
-//   - on-track / at-risk / queued → `Delivered X of Y kWh · {start →} {curr} of {target}`
+//   - `cannot_meet`            → `Delivered X kWh · still {curr} of {target}`
+//   - on-track / at-risk / queued → `Delivered X kWh · {start →} {curr} of {target}`
+//
+// A battery-level or temperature task states the energy delivered alone, as the
+// history receipt does: it has no fixed energy total. What it still needs moves
+// with the reading in its steps (1 % of charge, 0.5 °C) and is the Needs stat;
+// a total built from it climbed with delivery and fell back at each step. Only
+// an energy task, whose target is energy, reads `Delivered X of Y kWh`.
 //
 // The "start → current" arrow is rendered only when `startProgress` is known
 // (caller resolves the back-calc from current − delivered × kWh-per-unit). When
@@ -378,15 +384,9 @@ export const SMART_TASK_HERO_STAT_LABELS = {
 // "still {curr} of {target}" stem (vs the on-track "now …") still tonally
 // pairs with the alert chip without re-asserting the failure.
 //
-// Y is the run's total as the latest revision set it, so between revisions the
-// delivered figure can pass it (a tank losing heat faster than estimated). The
-// line then states the bare `Delivered X kWh`, as the history receipt does,
-// instead of a ratio over 100 %.
-//
-// Returns `null` when planned energy is non-finite / zero (no allocation yet,
-// or revision predates the field) or when both delivered and progress data
-// are absent — the line has nothing concrete to say so the view suppresses it
-// rather than emit "Delivered 0 of 0 kWh".
+// Returns `null` when the energy still needed is non-finite / zero (target
+// reached, no allocation yet, or revision predates the field) or when progress
+// data is absent: the line has nothing concrete to say, so the view suppresses it.
 export type DeadlineDeliveredSoFarStatus =
   | 'cannot_meet'
   | 'on_track_or_queued';
@@ -394,13 +394,13 @@ export type DeadlineDeliveredSoFarStatus =
 export const formatDeadlineDeliveredSoFarLine = (
   status: DeadlineDeliveredSoFarStatus,
   deliveredKWh: number,
-  plannedTotalKWh: number,
+  stillNeededKWh: number,
   currentProgress: number,
   startProgress: number | null,
   targetValue: number,
   targetUnit: DeferredObjectiveUnit,
 ): string | null => {
-  if (!Number.isFinite(plannedTotalKWh) || plannedTotalKWh <= 0) return null;
+  if (!Number.isFinite(stillNeededKWh) || stillNeededKWh <= 0) return null;
   if (!Number.isFinite(currentProgress) || !Number.isFinite(targetValue)) return null;
   // An energy task's progress IS the energy delivered, counted by the task
   // itself: one figure, stated once, against the task's own target.
@@ -409,9 +409,7 @@ export const formatDeadlineDeliveredSoFarLine = (
   }
   const deliveredKWhSafe = Number.isFinite(deliveredKWh) && deliveredKWh > 0
     ? deliveredKWh : 0;
-  const energyPart = deliveredKWhSafe < plannedTotalKWh
-    ? `Delivered ${deliveredKWhSafe.toFixed(1)} of ${plannedTotalKWh.toFixed(1)} kWh`
-    : `Delivered ${deliveredKWhSafe.toFixed(1)} kWh`;
+  const energyPart = `Delivered ${deliveredKWhSafe.toFixed(1)} kWh`;
   const currentLabel = formatProgressValueForUnit(currentProgress, targetUnit);
   const targetLabel = formatProgressValueForUnit(targetValue, targetUnit);
   if (status === 'cannot_meet') {

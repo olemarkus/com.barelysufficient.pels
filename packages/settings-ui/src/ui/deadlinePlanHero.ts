@@ -295,29 +295,21 @@ export const resolveCannotMeetRecourse = (
 // planned kWh; the power tracker carries hourly actual kWh per device. We
 // scale `hour.price` by the cost-display divisor (same scaling the timeline
 // uses) so the cost reads in the user's display currency unit.
-// `deliveredAtRevisionKWh` is the part of `deliveredKWh` that went in before the
-// latest revision: the same measured energy, cut off at `latest.revisedAtMs`.
-type LiveCostAndDelivery = { plannedTotalCost: number; deliveredKWh: number; deliveredAtRevisionKWh: number };
-
 const resolveLiveCostAndDelivery = (
   input: ObjectivePayloadReady,
   currentChargeByStartMs: Map<number, number>,
-): LiveCostAndDelivery => {
+): { plannedTotalCost: number; deliveredKWh: number } => {
   const divisor = Math.max(1, input.costDisplay.divisor);
-  const { revisedAtMs } = input.ctx.activePlan.latest;
   let plannedTotalCost = 0;
   let deliveredKWh = 0;
-  let deliveredAtRevisionKWh = 0;
   for (const hour of input.hours) {
     const displayPrice = hour.price / divisor;
     const plannedKWh = currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
     if (plannedKWh > 0) plannedTotalCost += displayPrice * plannedKWh;
     const proratedKWh = (resolveActualPeriodKwh(input, hour) ?? 0);
     if (proratedKWh > 0) deliveredKWh += proratedKWh;
-    const beforeRevisionKWh = resolveActualPeriodKwh(input, { ...hour, endMs: Math.min(hour.endMs, revisedAtMs) }) ?? 0;
-    if (beforeRevisionKWh > 0) deliveredAtRevisionKWh += beforeRevisionKWh;
   }
-  return { plannedTotalCost, deliveredKWh, deliveredAtRevisionKWh };
+  return { plannedTotalCost, deliveredKWh };
 };
 
 // Producer-side price comparison feeding the queued hero's "Cheaper than now"
@@ -353,31 +345,28 @@ const resolveFiniteNumber = (value: number | null | undefined): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
 );
 
-// Resolves the "Delivered X of Y kWh · …" subline, Y being the run's total as the
-// latest revision put it: the energy delivered by that revision plus what it said
-// was still needed. Between revisions only X moves; the next revision sets Y again.
-// The live remaining (`resolveEnergyNeededKWh`) follows the reading, which moves in
-// steps (1 % of charge, 0.5 °C) while delivery rises continuously, so a total built
-// from it climbed until the next step and then fell back. The two visible branches
-// collapse the planner's status union to two phrasing shapes: the "still
-// {curr} of {target}" stem *only* on the physically-can't-deliver case
+// Resolves the "Delivered X kWh · …" subline: the energy delivered so far beside
+// the reading. A battery-level or temperature task states no energy total: what
+// is still needed is the Needs stat, which follows the reading, and a total built
+// from delivery plus that figure climbed with delivery and fell back at each step
+// of the reading (1 % of charge, 0.5 °C). An energy task states its own count
+// against its fixed target instead (`formatDeadlineDeliveredSoFarLine`). The two
+// visible branches collapse the planner's status union to two phrasing shapes:
+// the "still {curr} of {target}" stem *only* on the physically-can't-deliver case
 // (`cannot_meet`), while at-risk keeps the on-track-shaped phrasing ("now …")
 // so the line stays hopeful while the chip still warns. The cannot-meet branch
 // no longer appends "won't reach by HH:MM" — the chip + meta line already
-// announce the verdict; see `formatDeadlineDeliveredSoFarLine`.
+// announce the verdict.
 const resolveDeliveredSoFarLine = (
   input: ObjectivePayloadReady,
   planStatus: DeferredObjectiveActivePlanStatusV1,
-  { deliveredKWh, deliveredAtRevisionKWh }: LiveCostAndDelivery,
+  deliveredKWh: number,
 ): string | null => {
   const { progress, energy } = input;
-  // Nothing still needed (or no energy figure) suppresses the line.
-  const stillNeeded = (energy?.energyNeededKWh ?? 0) > 0;
-  const revisionNeededKWh = Math.max(0, input.ctx.activePlan.latest.energyNeededKWh);
   return formatDeadlineDeliveredSoFarLine(
     planStatus === 'cannot_meet' ? 'cannot_meet' : 'on_track_or_queued',
     deliveredKWh,
-    stillNeeded ? deliveredAtRevisionKWh + revisionNeededKWh : 0,
+    energy?.energyNeededKWh ?? 0,
     progress.currentValue,
     input.ctx.activePlan.startProgressValue ?? null,
     progress.targetValue,
@@ -487,7 +476,7 @@ export const buildHero = (
     subline,
     stats,
     metaLine,
-    deliveredSoFarLine: resolveDeliveredSoFarLine(input, planStatus, costAndDelivery),
+    deliveredSoFarLine: resolveDeliveredSoFarLine(input, planStatus, costAndDelivery.deliveredKWh),
     // Threads the active task's device id onto the device-side recourse so the
     // click dispatcher deep-links to the device-settings overlay rather than
     // dead-ending on the Overview tab (mirrors history-detail's "Review device").
