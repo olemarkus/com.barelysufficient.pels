@@ -35,6 +35,11 @@ test.describe('A device that does not keep what PELS sets', () => {
     await expect(notice).toBeVisible();
     await expect(notice).toContainText("Gang nede ovn doesn't keep PELS's changes");
     await expect(notice).toContainText('went back to its earlier temperature');
+    // The lighter choice the notice names sits in the same Setup section.
+    await expect(notice).toContainText(
+      'choose “Keep the new temperature” under “When the temperature changes outside PELS”',
+    );
+    await expect(page.locator('#device-detail-temperature-control-disabled-row')).toBeVisible();
     expect(await page.locator('#device-detail-panel').evaluate((panel) => (
       panel.scrollWidth <= panel.clientWidth
     ))).toBe(true);

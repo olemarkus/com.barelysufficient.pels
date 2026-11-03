@@ -220,16 +220,28 @@ describe('setup recommendations', () => {
         category: 'recommendation',
         title: "Gang nede ovn doesn't keep PELS's changes",
         body: '6 times in the last 2 hours, Gang nede ovn went back to its earlier temperature after PELS '
-          + 'changed it. Check the app that controls Gang nede ovn, or turn off Managed by PELS for it.',
+          + 'changed it. Check the app that controls Gang nede ovn. To leave the temperature to that app, '
+          + 'choose “Keep the new temperature” under “When the temperature changes outside PELS”, '
+          + 'or turn off Managed by PELS for Gang nede ovn.',
         actionLabel: 'Open device',
         target: { kind: 'device', deviceId: 'mill' },
       }),
       expect.objectContaining({
         id: 'control-contest:flow',
         title: 'Something keeps changing Ovn stue',
-        body: expect.stringContaining('Look for a Flow, another app or a schedule that sets it'),
+        body: expect.stringContaining('Look for a Flow, another app or a schedule that sets it, and turn that off. '
+          + 'To let it set the temperature, choose “Keep the new temperature”'),
       }),
     ]);
+  });
+
+  it('names Keep the new temperature only for a temperature, which no other setting has', () => {
+    const [recommendation] = resolve([device({
+      id: 'plug', name: 'Panelovn', controlContest: { setting: 'on_off', kind: 'overridden', count: 4, sinceMs: 0 },
+    })]).filter(({ id }) => id.startsWith('control-contest:'));
+    expect(recommendation?.body).toBe('4 times in the last 2 hours, something outside PELS changed the on/off '
+      + 'setting of Panelovn after PELS set it. Look for a Flow, another app or a schedule that sets it, '
+      + 'and turn that off, or turn off Managed by PELS for it.');
   });
 
   it('does not recommend built-in control for devices without an available switch', () => {

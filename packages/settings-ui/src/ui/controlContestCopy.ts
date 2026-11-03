@@ -2,6 +2,12 @@ import type { ContestedControl } from '../../../contracts/src/controlContest.ts'
 import { CONTESTED_SETTING_WORDS } from '../../../shared-domain/src/contestedSetting.ts';
 
 /**
+ * The lighter choice for a temperature, in the same Setup section as Managed
+ * by PELS: PELS stops setting the temperature and keeps the device managed.
+ */
+const KEEP_NEW_TEMPERATURE = 'choose “Keep the new temperature” under “When the temperature changes outside PELS”';
+
+/**
  * The warning for a device that keeps moving away from what PELS set: a write
  * that does not stick points at the device's own app, another value at
  * whatever else sets the device.
@@ -11,18 +17,25 @@ export const controlContestNotice = (
   contest: ContestedControl,
 ): { title: string; body: string } => {
   const what = CONTESTED_SETTING_WORDS[contest.setting];
+  const times = `${contest.count} times in the last 2 hours`;
+  const temperature = contest.setting === 'temperature';
   if (contest.kind === 'reverted') {
+    const remedy = temperature
+      ? `Check the app that controls ${name}. To leave the temperature to that app, ${KEEP_NEW_TEMPERATURE}, `
+        + `or turn off Managed by PELS for ${name}.`
+      : `Check the app that controls ${name}, or turn off Managed by PELS for it.`;
     return {
       title: `${name} doesn't keep PELS's changes`,
-      body: `${contest.count} times in the last 2 hours, ${name} went back to its earlier ${what} `
-        + `after PELS changed it. Check the app that controls ${name}, `
-        + 'or turn off Managed by PELS for it.',
+      body: `${times}, ${name} went back to its earlier ${what} after PELS changed it. ${remedy}`,
     };
   }
+  const remedy = temperature
+    ? 'Look for a Flow, another app or a schedule that sets it, and turn that off. '
+      + `To let it set the temperature, ${KEEP_NEW_TEMPERATURE}, or turn off Managed by PELS for ${name}.`
+    : 'Look for a Flow, another app or a schedule that sets it, and turn that off, '
+      + 'or turn off Managed by PELS for it.';
   return {
     title: `Something keeps changing ${name}`,
-    body: `${contest.count} times in the last 2 hours, something outside PELS changed the ${what} of ${name} `
-      + 'after PELS set it. Look for a Flow, another app or a schedule that sets it, '
-      + 'and turn that off, or turn off Managed by PELS for it.',
+    body: `${times}, something outside PELS changed the ${what} of ${name} after PELS set it. ${remedy}`,
   };
 };
