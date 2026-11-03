@@ -2522,11 +2522,14 @@ A schedule row names its last occurrence and what came of it on one line,
 (`Last: Mon 2 Nov, 21:00 · Skipped because the ready-by time had already passed.`).
 Never `Last run`: a skipped occurrence did not run. One colon per line, so a
 result never adds its own: a skip reads `Skipped because …` and a failure
-`Could not run. {reason}`. The results come from `lib/schedules/scheduleService.ts`
-and `scheduleActions.ts`:
+`Could not run. {reason}`. A result stored by an earlier version (`Skipped: …`,
+`Could not run: …`, `Mode changed` without a full stop) is read in this wording.
+The results come from `lib/schedules/scheduleService.ts` and `scheduleActions.ts`:
 
-- `Mode changed`, `Smart task created`, and `Trigger recorded.` when the action
-  went through but PELS could not confirm the schedule afterwards.
+- `Mode changed.` and `Smart task created.` when the action went through.
+- `Trigger recorded.` while the action is under way (PELS records the
+  occurrence before it acts, so it never runs twice), and afterwards when PELS
+  could not record how the action went.
 - `Waiting for the device's current Smart task to end.` while a scheduled task
   waits to replace one.
 - `Skipped because` `the ready-by time had already passed.`, `the ready-by time
