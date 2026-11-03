@@ -1515,6 +1515,8 @@ The live smart-task detail page renders two question-titled chart cards. All str
 
 **Queued "why" subline** (hero, below the headline): `Cheaper than now — starts at HH:MM.` may only render when the producer-verified comparison holds (planned-hours average price strictly below the current hour's price). Otherwise the non-comparative form `Scheduled for the cheapest times it can use — starts at HH:MM.` renders — the claim is true by construction (the planner fills cheapest-first among eligible periods) without comparing to now. Never state "cheaper than now" unverified — the schedule chart below would show the disproof.
 
+**Delivered-so-far subline** (hero): `Delivered X of Y kWh · {start →} {curr} of {target} target` (`still {curr}` on cannot-finish). Y is the run's total as the latest revision set it: the energy delivered by that revision plus what it said was still needed. Between revisions only X moves, so Y never climbs with delivery and drops back when the reading steps (1 % of charge, 0.5 °C). When X passes Y before the next revision, the line states delivery bare (`Delivered 4.3 kWh · 18.0 °C → 21.0 °C of 22.0 °C target`), as the history receipt does, never a ratio over 100 %. An energy task states its own count once: `Delivered 3.0 of 6.0 kWh`.
+
 ### Smart task history detail (receipt-first)
 
 The finalized-run detail page (chart-overhaul Phase 1B). All strings live in `packages/shared-domain/src/deferredPlanHistoryDetailInteraction.ts`, `deferredPlanHistoryChartLabels.ts` (`historyDetailChartLabels`), and `deferredPlanHistoryReceipt.ts` so the UI and runtime log breadcrumbs share one vocabulary.

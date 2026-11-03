@@ -27,6 +27,12 @@ export type LiveRemainingEnergy = {
  *   was built with (`latest.rateMean`), and the buffered figure keeps the
  *   revision's own needed-to-expected ratio.
  *
+ * A temperature or SoC figure moves only when the reading does, in its steps
+ * (0.5 °C, 1 % of charge), while delivered energy rises continuously. Adding
+ * the two does not give a steady run total: it climbs until the next step and
+ * then falls back. The run's total is the latest revision's, the energy
+ * delivered by then plus its `energyNeededKWh` (`deadlinePlanHero.ts`).
+ *
  * Null when there is no live answer: no revision, no live reading, an unknown
  * direction of travel, or no recorded rate. The caller then reads the
  * revision's figures as they are.
