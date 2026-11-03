@@ -133,6 +133,33 @@ describe('Zaptec native target power', () => {
       ]);
     });
 
+    it('keeps watt stepping on a charger an earlier build already claimed', async () => {
+      // Hiding the control would leave the installation at PELS's last, low
+      // watt target with nothing to hand the mode back.
+      const base = buildZaptecTargetPowerDevice();
+      const claimed = buildZaptecTargetPowerDevice({
+        capabilitiesObj: {
+          target_power: { ...base.capabilitiesObj?.target_power, value: 2530 },
+          target_power_mode: { ...base.capabilitiesObj?.target_power_mode, value: 'homey' },
+        },
+      });
+      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
+      await seedTransportDevices(transport, [claimed, onInstallation('zaptec-second', 'zaptec-installation')]);
+      const parsed = transport.getSnapshotByDeviceId(ZAPTEC_ID);
+      expect(parsed).toMatchObject({ nativeWriteCapabilities: ['target_power'], reportedStepId: '2530w' });
+      const profile = parsed?.steppedLoadProfile;
+      if (!profile) throw new Error('Expected native target-power control');
+      const put = vi.fn().mockResolvedValue(undefined);
+      setRestClient({ get: vi.fn(), put });
+
+      await transport.requestSteppedLoadStep({
+        deviceId: ZAPTEC_ID, profile, desiredStepId: '2760w', planningPowerW: 2760, planningCurrentA: 0,
+      });
+      expect(put.mock.calls).toEqual([
+        [`manager/devices/device/${ZAPTEC_ID}/capability/target_power`, { value: 2760 }],
+      ]);
+    });
+
     it('steps a saved EV preset through the Flow, never as watts', async () => {
       const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {
         settings: { getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase', max: 22080 }) },
