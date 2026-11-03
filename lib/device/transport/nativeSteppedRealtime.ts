@@ -93,8 +93,9 @@ function emitNativeSteppedLoadReportedStepChanged(
 /**
  * Apply a native step report to the held snapshot. A power-step report carries
  * the exact watts it reported (`reportedStepPowerW`, absent when the report has
- * no exact power) and is stamped observed now; a binary report only moves the
- * reported step.
+ * no exact power); a binary report only moves the reported step. Every report
+ * that moves, clears or re-reads the step with exact power is stamped observed
+ * now, so `reportedStepObservedAtMs` always dates the step the snapshot holds.
  */
 function applyNativeSteppedLoadSnapshotUpdate(
     ingest: RealtimeIngestService,
@@ -105,8 +106,9 @@ function applyNativeSteppedLoadSnapshotUpdate(
     reportedStepPowerW: number | undefined,
 ): void {
     const deviceId = currentSnapshot.id;
-    const reportedStepObservedAtMs = isNativePowerStepUpdate ? Date.now() : undefined;
     const previousReportedStepId = currentSnapshot.reportedStepId;
+    const reportedStepChanged = previousReportedStepId !== nextReportedStepId;
+    const reportedStepObservedAtMs = isNativePowerStepUpdate || reportedStepChanged ? Date.now() : undefined;
     const previousReportedStepPowerW = currentSnapshot.reportedStepPowerW;
     const previousReportedStepObservedAtMs = currentSnapshot.reportedStepObservedAtMs;
     if (nextReportedStepId) currentSnapshot.reportedStepId = nextReportedStepId;
@@ -124,7 +126,6 @@ function applyNativeSteppedLoadSnapshotUpdate(
         currentSnapshot.lastUpdated = currentSnapshot.lastFreshDataMs;
     }
     ingest.publishDeviceConfiguration(deviceId);
-    const reportedStepChanged = previousReportedStepId !== nextReportedStepId;
     if (reportedStepChanged) {
         emitNativeSteppedLoadReportedStepChanged(ingest, currentSnapshot, previousReportedStepId, nextReportedStepId);
     }

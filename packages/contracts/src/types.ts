@@ -917,7 +917,13 @@ export type ReportedStepObservedProbe = {
     reportedStepId?: string;
     /** Exact target-power observation retained before rung matching. */
     reportedStepPowerW?: number;
-    /** Timestamp of the exact step observation, not general snapshot freshness. */
+    /**
+     * When the device was seen at `reportedStepId`, not general snapshot
+     * freshness. Every producer sets it with the step: a realtime report that
+     * moves or re-reads the step at receipt, a read by the capability's own
+     * `lastUpdated`, a Flow report by its report time. With no step, it may
+     * date the step's removal.
+     */
     reportedStepObservedAtMs?: number;
     /**
      * The step the device echoes as its accepted setting, separate from the

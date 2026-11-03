@@ -1888,6 +1888,56 @@ describe('native stepped-load wiring', () => {
     }
   });
 
+  it('dates the reported step when a native on/off report moves it', async () => {
+    // The step and its time travel together: a reader asking when the device
+    // was seen at its step must not get the time of an earlier report.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.UTC(2026, 10, 3, 12, 0, 0));
+    // Running, with no power level reported: switching off reports the off step.
+    const runningDevice = {
+      ...buildHoiaxDevice(),
+      capabilitiesObj: {
+        ...buildHoiaxDevice().capabilitiesObj,
+        max_power_3000: { value: undefined, setable: true },
+      },
+    };
+    const get = vi.fn(async (path: string) => {
+      if (path === 'manager/devices/device') return { 'hoiax-1': runningDevice };
+      throw new Error(`unexpected device fetch: ${path}`);
+    });
+    setRestClient({ get, put: vi.fn().mockResolvedValue(undefined) });
+    try {
+      const deviceManager = createTestDeviceTransport(
+        mockHomeyInstance as unknown as Homey.App,
+        createLogger(),
+        {
+          settings: { getDeviceControlProfile: () => steppedProfile },
+          nativeWiring: { resolveNativeWiringEnabled: () => true },
+        },
+      );
+      await initWithLiveFeed(deviceManager);
+      await deviceManager.refreshSnapshot({ includeLivePower: false, meterDeviceIds: [] });
+      expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ reportedStepId: undefined }));
+
+      const turnedOffAtMs = Date.UTC(2026, 10, 3, 12, 20, 0);
+      vi.setSystemTime(turnedOffAtMs);
+      await emitCapability('hoiax-1', 'onoff', false);
+      expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+        reportedStepId: 'off', reportedStepObservedAtMs: turnedOffAtMs,
+      }));
+
+      // A repeat of the same step is no new observation of it, and keeps its time.
+      vi.setSystemTime(Date.UTC(2026, 10, 3, 12, 40, 0));
+      await emitCapability('hoiax-1', 'onoff', false);
+      expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+        reportedStepId: 'off', reportedStepObservedAtMs: turnedOffAtMs,
+      }));
+    } finally {
+      restoreMockRestClient();
+      vi.useRealTimers();
+    }
+  });
+
   it('clears fallback off-step reporting when native onoff turns back on', async () => {
     const offDevice = {
       ...buildHoiaxDevice(),
