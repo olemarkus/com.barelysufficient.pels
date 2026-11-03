@@ -192,6 +192,21 @@ full-suite CPU load. Wait for the observable effect instead: `test/utils/asyncDr
 advancement and microtask draining until the SDK write lands (or throw — a real regression
 never satisfies the predicate). Use these rather than a fixed flush + immediate assert.
 
+## The SHS suite: a real Homey, from a clean install
+
+`npm run shs:e2e` (`scripts/shs-e2e/`) runs scenarios on a Homey Self-Hosted Server rather
+than against the SDK mock. It installs test-devices and this checkout of PELS with
+`homey app install --clean`, pairs the test-devices mocks each scenario needs through the
+pair-session API, sets PELS up with the settings keys and routes the settings UI uses, and
+asserts on what PELS does to the devices and what it serves the UI. It is the place for
+behaviour that depends on Homey's own timing and echoes, which the runtime e2e can only
+model. CI does not run it, and running it is a Homey install, so it runs only when asked.
+
+A clean install deletes every paired mock and all PELS settings on the box, so run it only
+on a box set aside for it. `--scenario <name>` runs one scenario and `--skip-install` reuses
+the box as the last run left it. A new scenario is a module in `scripts/shs-e2e/scenarios/`
+listed in `run.mjs`; it pairs its own devices and never assumes any already exist.
+
 ## Classifying a spec
 
 When in doubt about a spec's tier, apply the two border-case rules above; if it still isn't
