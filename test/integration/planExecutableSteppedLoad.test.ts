@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   buildExecutableObservedDeviceState,
 } from '../../lib/executor/executablePlanProjection';
-import { buildExecutableSteppedLoadIntent, resolveSteppedLoadCurrentFallback } from '../utils/executionDecisionFixture';
+import {
+  buildExecutableSteppedLoadIntent, commandSessionForFixture, resolveSteppedLoadCurrentFallback,
+} from '../utils/executionDecisionFixture';
 import { buildExecutableSteppedLoadDevice } from '../../lib/executor/executableSteppedLoadProjection';
 import { resolveCommandPreviousStepId } from '../../lib/executor/executablePlan';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
@@ -56,7 +58,8 @@ const buildAction = (
   buildExecutableSteppedLoadIntent(device),
   buildObservedState(device, observedOverrides),
   undefined,
-  PRIOR_STEP_COMMAND_SESSION,
+  // The fixture's own step command, in an on-session with a prior command.
+  { ...PRIOR_STEP_COMMAND_SESSION, command: commandSessionForFixture(device).command },
 );
 
 describe('planExecutableSteppedLoad', () => {
@@ -191,7 +194,7 @@ describe('planExecutableSteppedLoad', () => {
   };
 
   it('holds a re-issue while the planner-only probe rung\'s command is in flight', () => {
-    const intent = buildExecutableSteppedLoadIntent(steppedPlanDevice({
+    const action = buildAction(steppedPlanDevice({
       steppedLoadProfile: PROBE_PROFILE,
       currentState: 'on',
       plannedState: 'keep',
@@ -201,7 +204,7 @@ describe('planExecutableSteppedLoad', () => {
       stepCommandPending: true,
     }));
 
-    expect(intent?.matchingCommandAttempt).toEqual({ status: 'awaiting_confirmation', requestedStepId: 'probe' });
+    expect(action?.matchingCommandAttempt).toEqual({ status: 'awaiting_confirmation', requestedStepId: 'probe' });
   });
 
   it('materializes an acknowledged planner-only probe rung while the device is off', () => {

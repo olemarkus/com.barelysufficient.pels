@@ -41,7 +41,6 @@ export const resolveLifecycleFallbackRequest = (params: {
   device: LifecycleFallbackDevice;
   observedState: LifecycleFallbackObservedState;
   configuredFallback: ShedBehavior;
-  nowMs?: number;
 }): LifecycleFallbackRequestResolution => {
   const {
     device, observedState, configuredFallback,
@@ -65,7 +64,7 @@ export const resolveLifecycleFallbackRequest = (params: {
       kind: 'step_fallback',
       observed,
       targetStepId: posture.stepId,
-      steppedLoad: buildSteppedIntent(device, posture, params.nowMs ?? Date.now()),
+      steppedLoad: buildSteppedIntent(device, posture),
     },
   };
 };
@@ -111,7 +110,6 @@ const resolveFallbackPosture = (
 const buildSteppedIntent = (
   device: LifecycleFallbackDevice,
   posture: Extract<LifecycleFallbackPosture, { kind: 'step' }>,
-  nowMs: number,
 ): Extract<LifecycleFallbackRequest, { kind: 'step_fallback' }>['steppedLoad'] => ({
   id: device.id,
   name: device.name,
@@ -127,34 +125,4 @@ const buildSteppedIntent = (
   desired: { stepId: posture.stepId, plannedStepId: posture.stepId },
   stepDirection: 'any',
   transition: null,
-  matchingCommandAttempt: resolveMatchingStepCommandAttempt(device, posture.stepId, nowMs),
-  stepCommandRetryCount: device.stepCommandRetryCount ?? 0,
-  nextStepCommandRetryAtMs: device.nextStepCommandRetryAtMs,
 });
-
-const resolveMatchingStepCommandAttempt = (
-  device: LifecycleFallbackDevice,
-  targetStepId: string,
-  nowMs: number,
-): Extract<
-  Extract<LifecycleFallbackRequest, { kind: 'step_fallback' }>['steppedLoad'],
-  object
->['matchingCommandAttempt'] => {
-  // The app-side decorator owns the accepted command-axis state, so this setup
-  // boundary classifies it before handing a trusted intent to the executor.
-  // An opposing accepted command is deliberately NOT a matching dampener: the
-  // lifecycle fallback supersedes it immediately and the accepted fallback
-  // replaces the command-axis state through markSteppedLoadDesiredStepIssued.
-  if (!device.desiredStepId || device.desiredStepId !== targetStepId) return null;
-  if (device.stepCommandPending === true) {
-    return { status: 'awaiting_confirmation', requestedStepId: targetStepId };
-  }
-  if (
-    device.stepCommandStatus === 'stale'
-    && typeof device.nextStepCommandRetryAtMs === 'number'
-    && nowMs < device.nextStepCommandRetryAtMs
-  ) {
-    return { status: 'retry_backoff', requestedStepId: targetStepId };
-  }
-  return null;
-};

@@ -1,12 +1,13 @@
 import { isBinaryDrivenIntent } from './executableDesiredState';
 import { hasBinaryCommand } from './executablePlan';
-import type { ExecutableDeviceIntent, ExecutableSteppedLoadIntent } from './executablePlan';
+import type { ExecutableSteppedLoadIntent } from './executablePlan';
+import type { PlannedDeviceCommands } from '../planContract/executionPlan';
 import type { DriftCommandRead } from './driftObservedDevice';
 import { isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 
 type BinaryState = 'on' | 'off';
 
-export function resolveExpectedBinaryStateForIntent(intent: ExecutableDeviceIntent): BinaryState | undefined {
+export function resolveExpectedBinaryStateForIntent(intent: PlannedDeviceCommands): BinaryState | undefined {
   if (!hasBinaryCommand(intent)) return undefined;
   // The managed -> unmanaged release is opportunistic: it undoes a prior shed
   // rather than demanding a state, so it sets no drift expectation.

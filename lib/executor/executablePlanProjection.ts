@@ -1,6 +1,3 @@
-import { hasPlannedStep, type PlannedDeviceCommands } from '../planContract/executionPlan';
-import type { ExecutableDeviceIntent, ExecutableSteppedLoadCommandSession } from './executablePlan';
-import { resolveSteppedCommandAttempt } from './steppedCommandAttempt';
 import { isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
 import { resolveCurrentOn, resolveSelectedStepId } from '../observer/observedState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
@@ -82,30 +79,3 @@ const buildObservedSteppedLoadState = (
     currentDrawKw,
   };
 };
-
-/** Attach runtime command state; no planner reason, admission or target selection is read here. */
-export function materializeExecutableDeviceIntent(
-  commands: PlannedDeviceCommands,
-  session: ExecutableSteppedLoadCommandSession,
-  nowMs: number,
-): ExecutableDeviceIntent {
-  if (!hasPlannedStep(commands)) return commands;
-  const step = commands.steppedLoad;
-  const command = session.command;
-  const materialized = {
-    ...commands,
-    steppedLoad: {
-      ...step,
-      matchingCommandAttempt: resolveSteppedCommandAttempt(
-        command, step.steppedLoadProfile, step.desired.stepId, nowMs,
-      ),
-      stepCommandRetryCount: command?.retryCount ?? 0,
-      nextStepCommandRetryAtMs: command?.nextRetryAtMs,
-      // The command's own step, read against the planner's profile, which also
-      // holds a planner-only EV probe rung: an acknowledged probe confirms the
-      // rung it commanded, as any rung's command does.
-      confirmedCommandStepId: command?.status === 'success' ? command.stepId : undefined,
-    },
-  };
-  return materialized;
-}

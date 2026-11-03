@@ -19,6 +19,7 @@ import {
   isSteppedLoadOffStep,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { resolveSteppedStepActuationState } from './steppedLoadActuation';
+import { resolveSteppedCommandAttempt } from './steppedCommandAttempt';
 import { getDebugEmitter } from '../logging/logger';
 
 /**
@@ -185,11 +186,11 @@ const buildShedReleaseSteppedAction = (
     },
     stepDirection: 'any',
     transition: null,
-    matchingCommandAttempt: null,
-    stepCommandRetryCount: 0,
   };
   return {
     intent: releaseIntent,
+    // The caller's in-flight gate has already judged the session's command.
+    matchingCommandAttempt: null,
     current: {
       // `observed` is always present here: the caller (`applyShedReleaseSteppedLoad`)
       // gates on `observed.steppedLoad.reportedStepId` before building this action, so
@@ -278,12 +279,15 @@ const applyShedReleaseSteppedLoad = async (
   }
   // Never step up into the shed target. If we are already at or below it, nothing to do.
   if (!forceAgainstReleasedOpposing && currentStep.planningPowerW <= targetStep.planningPowerW) return false;
-  // In-flight gate: defer the release if the planner already has a step command awaiting
-  // confirmation or a retry scheduled for this device. The synthesized release action carries
-  // `matchingCommandAttempt: null`, which would otherwise bypass `applySteppedLoadCommand`'s
-  // `awaiting_confirmation` / `retry_backoff` short-circuits and re-dispatch every cycle while
-  // the device has not reported back.
-  if (!forceAgainstReleasedOpposing && steppedLoadIntent.matchingCommandAttempt !== null) return false;
+  // In-flight gate: defer the release if the executor already has a step command for this
+  // intent's step awaiting confirmation or a retry scheduled, read from the command session as
+  // dispatch reads it. The synthesized release action carries `matchingCommandAttempt: null`,
+  // which would otherwise bypass `applySteppedLoadCommand`'s `awaiting_confirmation` /
+  // `retry_backoff` short-circuits and re-dispatch every cycle while the device has not
+  // reported back.
+  if (!forceAgainstReleasedOpposing && resolveSteppedCommandAttempt(
+    ctx.getSteppedLoadCommandSession(intent.deviceId).command, profile, steppedLoadIntent.desired.stepId, Date.now(),
+  ) !== null) return false;
   const action = buildShedReleaseSteppedAction(intent, steppedLoadIntent, observed, targetStep, currentStepId);
   const wrote = await applySteppedLoadCommand(ctx, action, undefined, { force: forceAgainstReleasedOpposing });
   if (wrote) {

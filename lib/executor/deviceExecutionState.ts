@@ -1,10 +1,9 @@
 import { isBinaryDrivenIntent } from './executableDesiredState';
 import { hasBinaryCommand } from './executablePlan';
 import type { DeviceExecutionState, AxisProgress } from '../planContract/deviceExecutionState';
-import type {
-  ExecutableDeviceIntent, ExecutableObservedDeviceState, UnansweredStepCommands,
-} from './executablePlan';
-import { hasSteppedCommand, hasTargetCommand, hasReleaseCommand } from './executablePlan';
+import type { ExecutableObservedDeviceState, UnansweredStepCommands } from './executablePlan';
+import { hasTargetCommand, hasReleaseCommand } from './executablePlan';
+import { hasPlannedStep, type PlannedDeviceCommands } from '../planContract/executionPlan';
 import type { DriftCommandRead } from './driftObservedDevice';
 import { getSteppedLoadStep, isSteppedLoadStepOff } from '../../packages/shared-domain/src/deviceControlProfiles';
 import {
@@ -33,25 +32,25 @@ function progress<T>(desired: T | null, observed: T | null, pending: boolean): A
   return Object.is(desired, observed) ? 'settled' : 'unmet';
 }
 
-function resolveDesiredBinary(intent: ExecutableDeviceIntent): DeviceExecutionState['desiredBinary'] {
+function resolveDesiredBinary(intent: PlannedDeviceCommands): DeviceExecutionState['desiredBinary'] {
   if (hasReleaseCommand(intent)) {
     if (intent.release.kind === 'binary_restore') return 'on';
     if (intent.release.kind === 'binary_release') return 'off';
   }
-  if (hasSteppedCommand(intent)) return resolveExpectedBinaryStateForSteppedIntent(intent.steppedLoad) ?? null;
+  if (hasPlannedStep(intent)) return resolveExpectedBinaryStateForSteppedIntent(intent.steppedLoad) ?? null;
   return resolveExpectedBinaryStateForIntent(intent) ?? null;
 }
 
-function resolveDesiredStep(intent: ExecutableDeviceIntent): string | null {
-  if (!hasSteppedCommand(intent)) return null;
+function resolveDesiredStep(intent: PlannedDeviceCommands): string | null {
+  if (!hasPlannedStep(intent)) return null;
   const stepped = intent.steppedLoad;
   if (stepped.plannedShedTarget?.kind === 'binary_off') return null;
   return stepped.desired.stepId ?? null;
 }
 
-function resolveDesiredTarget(intent: ExecutableDeviceIntent): number | null {
+function resolveDesiredTarget(intent: PlannedDeviceCommands): number | null {
   if (!hasTargetCommand(intent)) return null;
-  if (hasSteppedCommand(intent)) {
+  if (hasPlannedStep(intent)) {
     const shed = intent.steppedLoad.plannedShedTarget;
     if (shed !== undefined && shed.kind !== 'target_value') return null;
   }
@@ -67,27 +66,27 @@ function resolvePhysicalState(
 }
 
 function resolveBinaryProgress(
-  intent: ExecutableDeviceIntent,
+  intent: PlannedDeviceCommands,
   desired: DeviceExecutionState['desiredBinary'],
   observed: ExecutableObservedDeviceState | undefined,
   command: DriftCommandRead['binary'],
 ): AxisProgress {
   let actual: string | null = observed ? resolvePhysicalState(observed) : null;
   const drivesBinary = hasBinaryCommand(intent)
-    || (hasSteppedCommand(intent) && isBinaryDrivenIntent(intent.steppedLoad))
+    || (hasPlannedStep(intent) && isBinaryDrivenIntent(intent.steppedLoad))
     || (hasReleaseCommand(intent) && intent.release.kind !== 'shed_release');
   if (drivesBinary) actual = observed?.binaryControl ? observed.observedBinaryAxis : null;
   return progress(desired, actual, desired !== null && isPendingBinaryCommandMatchingExpected(command, desired));
 }
 
 function resolveResumeExpected(
-  intent: ExecutableDeviceIntent,
+  intent: PlannedDeviceCommands,
   desiredBinary: DeviceExecutionState['desiredBinary'],
   desiredStepId: string | null,
 ): boolean {
   if (desiredBinary === 'off') return false;
   if (desiredBinary === 'on') return true;
-  if (!hasSteppedCommand(intent)) return false;
+  if (!hasPlannedStep(intent)) return false;
   const step = getSteppedLoadStep(intent.steppedLoad.steppedLoadProfile, desiredStepId);
   return step !== null && !isSteppedLoadStepOff(step);
 }
@@ -119,7 +118,7 @@ function isStepCommandUnanswered(
 export type PlannedCommandValues = { on_off: boolean | null; level: string | null; temperature: number | null };
 
 export function resolvePlannedCommandValues(
-  intent: ExecutableDeviceIntent,
+  intent: PlannedDeviceCommands,
   externalOffHeld: boolean,
 ): PlannedCommandValues {
   if (externalOffHeld) return { on_off: null, level: null, temperature: null };
@@ -132,7 +131,7 @@ export function resolvePlannedCommandValues(
 }
 
 export function resolveDeviceExecutionState(
-  intent: ExecutableDeviceIntent,
+  intent: PlannedDeviceCommands,
   observed: ExecutableObservedDeviceState | undefined,
   command: ExecutionCommandState,
   externalOffHeld: boolean,
@@ -151,7 +150,7 @@ export function resolveDeviceExecutionState(
     desiredBinary, desiredStepId, binaryProgress, stepProgress,
     targetProgress: resolveTargetProgress(desiredTarget, observed, command.target),
     resumeExpected: physicalState === 'off' && resolveResumeExpected(intent, desiredBinary, desiredStepId),
-    steppedTransitionPending: hasSteppedCommand(intent) && (binaryProgress === 'pending' || stepProgress === 'pending'),
+    steppedTransitionPending: hasPlannedStep(intent) && (binaryProgress === 'pending' || stepProgress === 'pending'),
     stepCommandUnanswered: isStepCommandUnanswered(command.unansweredStepCommands, desiredStepId, stepProgress),
     externalOffHeld,
   };

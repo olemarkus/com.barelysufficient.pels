@@ -27,7 +27,7 @@ import {
   type LifecycleFallbackPort,
 } from './lifecycleFallbackDispatcher';
 import { createCommandClaim } from './commandClaim';
-import { materializeExecutableDeviceIntent, buildExecutableObservedDeviceState } from './executablePlanProjection';
+import { buildExecutableObservedDeviceState } from './executablePlanProjection';
 import type { DriftObservationDeps } from './driftObservedDevice';
 import { hasPlanExecutionDriftAgainstIntent } from './executorConvergence';
 import type { PlanActuationResult } from '../planContract/planActuationResult';
@@ -277,7 +277,6 @@ export class PlanExecutor {
     const session = this.deps.getSteppedLoadCommandSession(deviceId);
     const target = this.execution.pendingTargetCommands[deviceId];
     return {
-      session,
       target: target ? { kind: 'pending', desired: target.desired } : { kind: 'none' },
       binary: pendingBinary
         ? { kind: 'pending', desired: pendingBinary.desired }
@@ -305,9 +304,7 @@ export class PlanExecutor {
       if (this.deps.getDeviceConfiguration(device.id) === undefined) return [];
       const live = readExecutorDevice(this.deps, device.id);
       const observed = live ? buildExecutableObservedDeviceState(live, live.steppedLoadProfile) : undefined;
-      const execution = resolveDeviceExecutionState(materializeExecutableDeviceIntent(
-        device, this.deps.getSteppedLoadCommandSession(device.id), Date.now(),
-      ), observed, {
+      const execution = resolveDeviceExecutionState(device, observed, {
         ...this.resolveCommandState(device.id, this.deps.pendingBinaryCommandStore.peekActive(device.id)),
         target: this.execution.pendingTargetCommands[device.id] ?? null,
         unansweredStepCommands: this.deps.getSteppedLoadCommandSession(device.id).unansweredStepCommands,
@@ -327,12 +324,9 @@ export class PlanExecutor {
    * them, which is the value a send carries.
    */
   public retainContestedCommands(plan: ExecutionPlan): void {
-    const nowMs = Date.now();
     this.execution.controlContests.retainPlanned(this.deps.homeId, new Map(plan.devices.map((decision) => {
       const device = decision.commands;
-      const planned = resolvePlannedCommandValues(materializeExecutableDeviceIntent(
-        device, this.deps.getSteppedLoadCommandSession(device.id), nowMs,
-      ), this.feedback.isExternalOffHeld(device.id));
+      const planned = resolvePlannedCommandValues(device, this.feedback.isExternalOffHeld(device.id));
       return [device.id, {
         ...planned,
         temperature: this.resolvePlannedTemperature(device.id, planned.temperature),

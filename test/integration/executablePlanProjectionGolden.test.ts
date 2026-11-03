@@ -136,7 +136,6 @@ describe('executable plan projection (characterization)', () => {
           "id": "dev-1",
           "name": "Tank",
           "steppedLoad": {
-            "confirmedCommandStepId": undefined,
             "controlAdapter": undefined,
             "desired": {
               "plannedStepId": "low",
@@ -144,11 +143,8 @@ describe('executable plan projection (characterization)', () => {
             },
             "desiredOn": true,
             "id": "dev-1",
-            "matchingCommandAttempt": null,
             "name": "Tank",
-            "nextStepCommandRetryAtMs": undefined,
             "plannedShedTarget": undefined,
-            "stepCommandRetryCount": 0,
             "stepDirection": "any",
             "steppedLoadProfile": {
               "steps": [
@@ -192,20 +188,16 @@ describe('executable plan projection (characterization)', () => {
           "id": "dev-1",
           "name": "Tank",
           "steppedLoad": {
-            "confirmedCommandStepId": undefined,
             "controlAdapter": undefined,
             "desired": {
               "plannedStepId": "off",
               "stepId": "off",
             },
             "id": "dev-1",
-            "matchingCommandAttempt": null,
             "name": "Tank",
-            "nextStepCommandRetryAtMs": undefined,
             "plannedShedTarget": {
               "kind": "step",
             },
-            "stepCommandRetryCount": 0,
             "stepDirection": "any",
             "steppedLoadProfile": {
               "steps": [
@@ -249,7 +241,6 @@ describe('executable plan projection (characterization)', () => {
           "id": "dev-1",
           "name": "Tank",
           "steppedLoad": {
-            "confirmedCommandStepId": undefined,
             "controlAdapter": undefined,
             "desired": {
               "plannedStepId": "low",
@@ -257,11 +248,8 @@ describe('executable plan projection (characterization)', () => {
             },
             "desiredOn": true,
             "id": "dev-1",
-            "matchingCommandAttempt": null,
             "name": "Tank",
-            "nextStepCommandRetryAtMs": undefined,
             "plannedShedTarget": undefined,
-            "stepCommandRetryCount": 0,
             "stepDirection": "any",
             "steppedLoadProfile": {
               "steps": [

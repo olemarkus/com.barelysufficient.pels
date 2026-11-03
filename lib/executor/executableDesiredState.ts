@@ -12,7 +12,7 @@
  * **Membership is the answer, not a field.** The planner emits the set of
  * devices it is driving, and a device it is not driving is simply absent from
  * that set — an axis with no command has no command object, and a device with
- * no command for an axis has no key for it (`ExecutableDeviceIntent`). So there
+ * no command for an axis has no key for it (`PlannedDeviceCommands`). So there
  * is no probe, no regrouper, and no "not driven" sentinel anywhere in this
  * seam. That is why `desiredOn` is a strict `boolean` and never `boolean |
  * null`: the producer knows which is which, and a nullable would hand the

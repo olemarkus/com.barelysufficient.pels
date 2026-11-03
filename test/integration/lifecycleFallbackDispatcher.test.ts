@@ -220,6 +220,7 @@ const steppedAction = (
     materialization: { kind: 'not_materialized', reason: 'no_requested_step' },
   },
   stepNeedsAdjustment,
+  matchingCommandAttempt: null,
 });
 
 /**
@@ -304,8 +305,6 @@ const buildDryRunRequests = (): { axis: string; request: LifecycleFallbackReques
           steppedLoadProfile: profile,
           desiredOn: true, desired: { stepId: 'low' }, stepDirection: 'any',
           transition: null,
-          matchingCommandAttempt: null,
-          stepCommandRetryCount: 0,
         },
       },
     },
@@ -959,7 +958,7 @@ describe('LifecycleFallbackDispatcher', () => {
     }));
   });
 
-  it('suppresses a second stepped fallback tick from decorated command pending while raw telemetry lags', async () => {
+  it('suppresses a second stepped fallback tick from the pending step command while raw telemetry lags', async () => {
     const state = createPlanEngineState();
     let resolveStep: ((value: { requested: true; acknowledged: true; transport: 'native_capability' }) => void) | undefined;
     const requestSteppedLoadStep = vi.fn(() => new Promise<{
@@ -967,7 +966,8 @@ describe('LifecycleFallbackDispatcher', () => {
     }>(
       (resolve) => { resolveStep = resolve; },
     ));
-    let commandPending = false;
+    // The executor's command session, written as the store records the issued command.
+    let command: { stepId: string; status: 'pending'; retryCount: number } | undefined;
     const buildDevice = () => buildLifecycleSnapshot({
       binaryControllable: false,
       id: 'heater-1',
@@ -977,9 +977,6 @@ describe('LifecycleFallbackDispatcher', () => {
       targets: [],
       reportedStepId: 'high',
       selectedStepId: 'high',
-      desiredStepId: commandPending ? 'low' : undefined,
-      previousStepId: 'high',
-      stepCommandPending: commandPending,
       steppedLoadProfile: {
         steps: [
           { id: 'off', planningPowerW: 0 },
@@ -991,7 +988,15 @@ describe('LifecycleFallbackDispatcher', () => {
     const dispatcher = new LifecycleFallbackDispatcher({
       ctx: createTestExecutorCommandContext(state, {
         actuator: stepActuator(requestSteppedLoadStep),
-        markSteppedLoadDesiredStepIssued: () => { commandPending = true; },
+        markSteppedLoadDesiredStepIssued: (issued) => {
+          command = { stepId: issued.desiredStepId, status: 'pending', retryCount: 0 };
+        },
+        getSteppedLoadCommandSession: () => ({
+          command,
+          hasPriorStepCommand: command !== undefined,
+          stepCommandPending: command !== undefined,
+          unansweredStepCommands: { kind: 'none' },
+        }),
       }),
       getDevice: () => buildDevice(),
       getObservedState: () => observedFromDevice(buildDevice()),
@@ -1025,12 +1030,6 @@ describe('LifecycleFallbackDispatcher', () => {
       targets: [],
       reportedStepId: 'high',
       selectedStepId: 'high',
-      desiredStepId: 'high',
-      previousStepId: 'low',
-      stepCommandPending: true,
-      stepCommandStatus: 'pending',
-      stepCommandRetryCount: 2,
-      nextStepCommandRetryAtMs: Date.now() + 60_000,
       steppedLoadProfile: {
         steps: [
           { id: 'low', planningPowerW: 1_000 },
@@ -1042,20 +1041,23 @@ describe('LifecycleFallbackDispatcher', () => {
       device: withLifecycleAxes(device),
       observedState: observedFromDevice(device),
       configuredFallback: { action: 'set_step' },
-      nowMs: Date.now(),
     });
     expect(request).toMatchObject({
       kind: 'step_fallback',
       targetStepId: 'low',
-      steppedLoad: {
-        matchingCommandAttempt: null,
-        stepCommandRetryCount: 2,
-        nextStepCommandRetryAtMs: device.nextStepCommandRetryAtMs,
-      },
+      steppedLoad: { desired: { stepId: 'low' } },
     });
+    // The opposing attempt is the executor's own command session: an accepted
+    // command for `high`, still pending, which does not dampen a command for `low`.
     const dispatcher = new ExecutorLifecycleFallbackDispatcher(createTestExecutorCommandContext(state, {
       actuator: stepActuator(requestSteppedLoadStep),
       markSteppedLoadDesiredStepIssued: marked,
+      getSteppedLoadCommandSession: () => ({
+        command: { stepId: 'high', status: 'pending', retryCount: 2, nextRetryAtMs: Date.now() + 60_000 },
+        hasPriorStepCommand: true,
+        stepCommandPending: true,
+        unansweredStepCommands: { kind: 'none' },
+      }),
     }));
 
     expect(request).not.toBeNull();
@@ -1096,8 +1098,6 @@ describe('LifecycleFallbackDispatcher', () => {
       plannedShedTarget: { kind: 'step' },
       desiredOn: true, desired: { stepId: desiredStepId }, stepDirection: 'any',
       transition: null,
-      matchingCommandAttempt: null,
-      stepCommandRetryCount: 0,
     }, { on: true, stepId: 'high', stepIsOffStep: false }, true);
     const buildContext = (owner: 'lifecycle' | 'ordinary'): ExecutorCommandContext => (
       createTestExecutorCommandContext(state, {
@@ -1155,7 +1155,6 @@ describe('LifecycleFallbackDispatcher', () => {
     const action = steppedAction({
       id: device.id, name: device.name, steppedLoadProfile: profile,
       desiredOn: true, desired: { stepId: 'high' }, stepDirection: 'any', transition: null,
-      matchingCommandAttempt: null, stepCommandRetryCount: 0,
     }, { on: true, stepId: 'low', stepIsOffStep: false }, true);
     expect(await applySteppedLoadCommand(ordinaryContext, action)).toBe(false);
     expect(requestSteppedLoadStep).not.toHaveBeenCalled();
@@ -1924,7 +1923,6 @@ describe('LifecycleFallbackDispatcher', () => {
     const action = steppedAction({
       id: 'heater-1', name: 'Stepped heater', steppedLoadProfile: profile,
       desiredOn: true, desired: { stepId: 'low' }, stepDirection: 'any', transition: null,
-      matchingCommandAttempt: null, stepCommandRetryCount: 0,
     }, { on: false, stepId: 'low', stepIsOffStep: false }, false);
     const dispatcher = new ExecutorLifecycleFallbackDispatcher(ordinaryContext);
 
@@ -1972,7 +1970,6 @@ describe('LifecycleFallbackDispatcher', () => {
       id: 'heater-1', name: 'Stepped heater', steppedLoadProfile: profile,
       plannedShedTarget: { kind: 'binary_off' },
       desiredOn: false, desired: { stepId: 'off' }, stepDirection: 'any', transition: null,
-      matchingCommandAttempt: null, stepCommandRetryCount: 0,
     }, { on: true, stepId: 'low', stepIsOffStep: false }, false);
 
     expect(await applySteppedLoadShedOff(ordinaryContext, action, buildSnapshot())).toBe(false);
@@ -2056,7 +2053,6 @@ describe('LifecycleFallbackDispatcher', () => {
       id: 'heater-1', name: 'Heater', steppedLoadProfile: profile,
       plannedShedTarget: { kind: 'step' },
       desiredOn: true, desired: { stepId: 'high' }, stepDirection: 'any', transition: null,
-      matchingCommandAttempt: null, stepCommandRetryCount: 0,
     }, { on: true, stepId: 'low', stepIsOffStep: false }, true);
     let observedStepId = 'low';
     const buildObservedDevice = () => buildLifecycleSnapshot({
@@ -2082,8 +2078,6 @@ describe('LifecycleFallbackDispatcher', () => {
         steppedLoadProfile: profile,
         desiredOn: true, desired: { stepId: 'low' }, stepDirection: 'any',
         transition: null,
-        matchingCommandAttempt: null,
-        stepCommandRetryCount: 0,
       },
     })).toEqual({ settled: false });
     expect(requestSteppedLoadStep).toHaveBeenCalledTimes(1);
@@ -2107,7 +2101,6 @@ describe('LifecycleFallbackDispatcher', () => {
       steppedLoad: {
         id: action.intent.id, name: action.intent.name, plannedShedTarget: { kind: 'step' }, steppedLoadProfile: profile,
         desiredOn: true, desired: { stepId: 'low' }, stepDirection: 'any', transition: null,
-        matchingCommandAttempt: null, stepCommandRetryCount: 0,
       },
     })).toEqual({ settled: false });
     observedStepId = 'low';
@@ -2117,7 +2110,6 @@ describe('LifecycleFallbackDispatcher', () => {
       steppedLoad: {
         id: action.intent.id, name: action.intent.name, plannedShedTarget: { kind: 'step' }, steppedLoadProfile: profile,
         desiredOn: true, desired: { stepId: 'low' }, stepDirection: 'any', transition: null,
-        matchingCommandAttempt: null, stepCommandRetryCount: 0,
       },
     })).toEqual({ settled: true });
   });

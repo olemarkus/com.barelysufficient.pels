@@ -1,22 +1,19 @@
-import type { PlannedDeviceExecution } from '../planContract/executionPlan';
+import {
+  hasPlannedStep, type PlannedDeviceCommands, type PlannedDeviceExecution,
+} from '../planContract/executionPlan';
 import type { DriftCommandRead } from './driftObservedDevice';
 import type { ExecutorDeviceRead } from './executorDeviceRead';
 import {
   hasBinaryCommand,
   hasReleaseCommand,
-  hasSteppedCommand,
   hasTargetCommand,
 } from './executablePlan';
 import type {
-  ExecutableDeviceIntent,
   ExecutableObservedDeviceState,
   ExecutableReleaseIntent,
   ExecutableSteppedLoadIntent,
 } from './executablePlan';
-import {
-  materializeExecutableDeviceIntent,
-  buildExecutableObservedDeviceState,
-} from './executablePlanProjection';
+import { buildExecutableObservedDeviceState } from './executablePlanProjection';
 import {
   isPendingBinaryCommandMatchingExpected,
   resolveExpectedBinaryStateForIntent,
@@ -59,7 +56,7 @@ export function hasPlanDeviceExecutionDrift(
   // The hold is only ever set while the device is STILL observed off, so it is
   // a posture rather than a reading, and this layer never asks why.
   if (externalOffHeld) return false;
-  const intent = materializeExecutableDeviceIntent(device.commands, command.session, Date.now());
+  const intent = device.commands;
   // The observation comes from the observer and the ladder from the intent —
   // no plan decision passes through either. The one observed-state producer
   // resolves the rung, the on/off fold and the draw, so the comparison below
@@ -67,7 +64,7 @@ export function hasPlanDeviceExecutionDrift(
   // a rung.
   const observedState = buildExecutableObservedDeviceState(
     observed,
-    hasSteppedCommand(intent) ? intent.steppedLoad.steppedLoadProfile : undefined,
+    hasPlannedStep(intent) ? intent.steppedLoad.steppedLoadProfile : undefined,
   );
   const runtime = buildDriftRuntimeState(command);
   // The planned current step is the plan device's producer-resolved effective
@@ -105,7 +102,7 @@ function buildDriftRuntimeState(
 }
 
 function hasExecutableTargetExecutionDrift(
-  intent: ExecutableDeviceIntent,
+  intent: PlannedDeviceCommands,
   observed: ExecutableObservedDeviceState,
   runtime: DriftRuntimeState,
 ): boolean {
@@ -124,18 +121,18 @@ function isPendingTargetCommandMatchingExpected(
   return Object.is(pending.desired, expectedTarget);
 }
 
-function hasNonTemperatureShedIntent(intent: ExecutableDeviceIntent): boolean {
+function hasNonTemperatureShedIntent(intent: PlannedDeviceCommands): boolean {
   if (hasBinaryCommand(intent) && !intent.binary.desiredOn) return true;
-  return hasSteppedCommand(intent) && intent.steppedLoad.plannedShedTarget !== undefined;
+  return hasPlannedStep(intent) && intent.steppedLoad.plannedShedTarget !== undefined;
 }
 
 function hasExecutableBinaryExecutionDrift(
-  intent: ExecutableDeviceIntent,
+  intent: PlannedDeviceCommands,
   observed: ExecutableObservedDeviceState,
   runtime: DriftRuntimeState,
   plannedCurrentStepId: string | undefined,
 ): boolean {
-  if (hasSteppedCommand(intent)) {
+  if (hasPlannedStep(intent)) {
     return hasExecutableSteppedLoadExecutionDrift(intent.steppedLoad, observed, runtime, plannedCurrentStepId);
   }
   const release = hasReleaseCommand(intent) ? intent.release : undefined;
