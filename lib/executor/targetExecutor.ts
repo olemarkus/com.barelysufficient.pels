@@ -243,6 +243,7 @@ const reportTargetSent = (
   atMs: number,
 ): void => {
   ctx.execution.controlContests.commandSent({
+    homeId: ctx.homeId,
     deviceId: command.deviceId,
     deviceName: command.name,
     setting: 'temperature',

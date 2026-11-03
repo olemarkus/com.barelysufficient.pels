@@ -173,8 +173,10 @@ one, and what each report is about, are listed in `REPORTED_EVENTS` in
   stores the 5 °C over it and PELS reads its value back, which confirms it; the 7 °C comes
   back only with the thermostat's next poll, and when that poll comes within 15 minutes
   PELS's next 5 °C is a retry. A setpoint write Homey answers only after PELS stopped
-  waiting is a send as well, since it may land. A command the plan no longer asks for, or
-  whose command session ended, is forgotten, so a later send of it is a new command. The
+  waiting is a send as well, since it may land. A command the plan no longer asks for, one
+  for a device that left the plan of the home that sent it (a device the owner stopped
+  managing, say), and one whose command session ended are forgotten, so a later send of it
+  is a new command. The
   same record answers `/ui_devices`'s `controlContest` for each managed device while its
   rounds in the last 2 hours reach the threshold; the settings UI then lists a
   recommendation and shows a notice above Managed by PELS on the device page, worded by

@@ -14,7 +14,7 @@ const sent = (
   value: ControlValue,
   observed: ControlValue | undefined,
   setting: ContestedSetting = 'temperature',
-) => ({ deviceId: DEVICE, deviceName: 'Gang nede ovn', setting, value, observed, atMs });
+) => ({ homeId: 'main', deviceId: DEVICE, deviceName: 'Gang nede ovn', setting, value, observed, atMs });
 
 /**
  * PELS asks for 5 °C over 20 °C and the device confirms; then `moves` rounds of
@@ -140,16 +140,35 @@ describe('ControlContestRecord', () => {
 
   it('forgets a command the plan no longer asks for, so asking again is a new command', () => {
     const { contests } = contestRounds(3, () => 22);
-    contests.retainPlanned(DEVICE, { temperature: 21, on_off: null, level: null });
+    contests.retainPlanned('main', new Map([[DEVICE, { temperature: 21, on_off: null, level: null }]]));
     contests.commandSent(sent(80 * MINUTE_MS, 5, 22));
     expect(contests.contestedControl(DEVICE, 80 * MINUTE_MS)).toBeUndefined();
   });
 
   it('keeps the command the plan still asks for', () => {
     const { contests } = contestRounds(3, () => 22);
-    contests.retainPlanned(DEVICE, { temperature: 5, on_off: null, level: null });
+    contests.retainPlanned('main', new Map([[DEVICE, { temperature: 5, on_off: null, level: null }]]));
     contests.commandSent(sent(80 * MINUTE_MS, 5, 22));
     expect(contests.contestedControl(DEVICE, 80 * MINUTE_MS)?.count).toBe(4);
+  });
+
+  it('forgets the commands of a device that left its home\'s plan, and only that home\'s', () => {
+    const { contests } = contestRounds(3, () => 22);
+    // A meter area's device, which the Main home's plan never holds.
+    const areaHeater = { ...sent(0, 5, 20), homeId: 'area', deviceId: 'annex' };
+    contests.commandSent(areaHeater);
+    contests.commandConfirmed('annex', 'temperature', 5, 0);
+    for (let round = 1; round <= 3; round += 1) {
+      contests.commandSent({ ...areaHeater, observed: 22, atMs: round * ROUND_MS });
+      contests.commandConfirmed('annex', 'temperature', 5, round * ROUND_MS);
+    }
+
+    // Main's plan no longer holds the device (its owner stopped managing it).
+    contests.retainPlanned('main', new Map());
+    contests.commandSent(sent(80 * MINUTE_MS, 5, 22));
+    contests.commandSent({ ...areaHeater, observed: 22, atMs: 80 * MINUTE_MS });
+    expect(contests.contestedControl(DEVICE, 80 * MINUTE_MS)).toBeUndefined();
+    expect(contests.contestedControl('annex', 80 * MINUTE_MS)?.count).toBe(4);
   });
 
   it('forgets a command whose session ended', () => {

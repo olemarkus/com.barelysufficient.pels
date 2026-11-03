@@ -407,7 +407,7 @@ export const executeSteppedLoadCommand = async (
     // asking the device to confirm it, so it is no command to contest.
     if (intent.transition?.effectiveTransition !== 'initialize_unknown_step_at_low') {
       ctx.execution.controlContests.commandSent({
-        deviceId: intent.id, deviceName: intent.name, setting: 'level', value: desiredStep.id,
+        homeId: ctx.homeId, deviceId: intent.id, deviceName: intent.name, setting: 'level', value: desiredStep.id,
         observed: observedStepId, atMs: now,
       });
     }

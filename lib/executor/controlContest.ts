@@ -11,6 +11,7 @@ import type {
   PlannedControls,
 } from '../ports/controlContest';
 import type { DeviceJournal } from '../ports/deviceJournal';
+import type { HomeId } from '../utils/settingsKeys';
 
 /**
  * How many rounds on one setting, within {@link CONTEST_WINDOW_MS}, make a
@@ -40,11 +41,18 @@ const SETTINGS: readonly ContestedSetting[] = ['temperature', 'on_off', 'level']
  */
 type Command = { value: ControlValue; before?: ControlValue };
 /**
- * `sentAtMs`: PELS's latest send of the command. `confirmedAtMs`: the first
- * confirmation after it, never earlier than the send; absent while the
- * device has not confirmed that send.
+ * `homeId`: the home whose executor sent it latest. `sentAtMs`: PELS's latest
+ * send of the command. `confirmedAtMs`: the first confirmation after it, never
+ * earlier than the send; absent while the device has not confirmed that send.
  */
-type SettingCommand = { command: Command; sentAtMs: number; confirmedAtMs?: number };
+type SettingCommand = {
+  homeId: HomeId;
+  deviceId: string;
+  setting: ContestedSetting;
+  command: Command;
+  sentAtMs: number;
+  confirmedAtMs?: number;
+};
 type ContestRound = {
   atMs: number;
   setting: ContestedSetting;
@@ -87,8 +95,9 @@ const contestKind = (rounds: readonly ContestRound[]): ContestKind => (
  * - `commandConfirmed` notes when the device first confirmed the standing
  *   command after its latest send.
  * - `retainPlanned` drops a command the plan just built no longer asks for,
- *   and `commandReleased` one whose command session ended: a device that
- *   moves while PELS is not holding it is not contesting anything.
+ *   or whose device left that home's plan, and `commandReleased` one whose
+ *   command session ended: a device that moves while PELS is not holding it
+ *   is not contesting anything.
  *
  * When one setting has {@link CONTEST_THRESHOLD} rounds within
  * {@link CONTEST_WINDOW_MS}, the device is contested. The first time in a
@@ -97,7 +106,10 @@ const contestKind = (rounds: readonly ContestRound[]): ContestKind => (
  * (`lib/diagnostics/eventReportSchedule.ts`) can send a report while the
  * evidence is fresh. Correction keeps running: this only warns and reports.
  *
- * One record serves every home; device ids are globally unique.
+ * One record serves every home; device ids are globally unique. Each
+ * command carries the home that sent it, since a home's plan holds only its
+ * own devices: a device absent from it is released only by the home that
+ * sent its command.
  */
 export class ControlContestRecord implements ControlContestRecording {
   private readonly commands = new Map<string, SettingCommand>();
@@ -117,6 +129,9 @@ export class ControlContestRecord implements ControlContestRecording {
       this.noteRound(sent, observed, standing.command);
     }
     this.commands.set(key, {
+      homeId: sent.homeId,
+      deviceId: sent.deviceId,
+      setting: sent.setting,
       command: sameValue ? standing.command : {
         value: sent.value,
         ...(observed === undefined ? {} : { before: observed }),
@@ -142,11 +157,13 @@ export class ControlContestRecord implements ControlContestRecording {
     return this.commands.size > 0;
   }
 
-  retainPlanned(deviceId: string, planned: PlannedControls): void {
-    for (const setting of SETTINGS) {
-      const key = settingKey(deviceId, setting);
-      const standing = this.commands.get(key);
-      if (standing && !Object.is(standing.command.value, planned[setting])) this.commands.delete(key);
+  retainPlanned(homeId: HomeId, planned: ReadonlyMap<string, PlannedControls>): void {
+    for (const [key, standing] of this.commands) {
+      const controls = planned.get(standing.deviceId);
+      const released = controls === undefined
+        ? standing.homeId === homeId
+        : !Object.is(standing.command.value, controls[standing.setting]);
+      if (released) this.commands.delete(key);
     }
   }
 

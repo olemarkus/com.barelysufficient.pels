@@ -1,4 +1,5 @@
 import type { ContestedSetting } from '../../packages/contracts/src/controlContest';
+import type { HomeId } from '../utils/settingsKeys';
 
 /** A setpoint, an on/off state or a step id. */
 export type ControlValue = number | boolean | string;
@@ -8,6 +9,8 @@ export type PlannedControls = Readonly<Record<ContestedSetting, ControlValue | n
 
 /** One command PELS sent, with the device's value for that setting just before. */
 export type ControlCommandSent = {
+  /** The home whose executor sent it: only that home's plans let it go when the device leaves. */
+  homeId: HomeId;
   deviceId: string;
   deviceName: string;
   setting: ContestedSetting;
@@ -28,6 +31,7 @@ export type ControlContestRecording = {
   /** The device read `value` at `atMs`, on the clock the send's `atMs` uses. */
   commandConfirmed(deviceId: string, setting: ContestedSetting, value: ControlValue, atMs: number): void;
   commandReleased(deviceId: string, setting: ContestedSetting): void;
-  retainPlanned(deviceId: string, planned: PlannedControls): void;
+  /** `planned`: what `homeId`'s plan just built asks of each device it holds, by device id. */
+  retainPlanned(homeId: HomeId, planned: ReadonlyMap<string, PlannedControls>): void;
   hasStandingCommands(): boolean;
 };
