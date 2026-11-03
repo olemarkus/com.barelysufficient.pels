@@ -167,12 +167,14 @@ one, and what each report is about, are listed in `REPORTED_EVENTS` in
   records it, because the executor owns confirmation. A confirmation means only that Homey
   read PELS's value back: Homey publishes a capability only when its value changes, so PELS
   never hears that a device kept a value. A setting counts as kept once the device has read
-  PELS's value for 15 minutes (`CONTEST_SETTLE_MS`), and only a send after that is a round;
-  an earlier send is a retry. So a thermostat that clamps PELS's 5 °C to its own 7 °C
-  minimum is not reported. Its driver sets 7 °C while it handles PELS's write, then Homey
-  stores the 5 °C over it and PELS reads its value back, which confirms it; the 7 °C comes
-  back only with the thermostat's next poll, and when that poll comes within 15 minutes
-  PELS's next 5 °C is a retry. A setpoint write Homey answers only after PELS stopped
+  PELS's value for 15 minutes (`CONTEST_SETTLE_MS`): only a move away seen after that is a
+  round, and PELS's send for an earlier move is a retry. A level is seen when the device
+  reported it; the observer keeps no time of its own for a setpoint or on/off reading, so
+  there the move counts as seen when PELS sends. So a thermostat that clamps PELS's 5 °C to
+  its own 7 °C minimum is not reported. Its driver sets 7 °C while it handles PELS's write,
+  then Homey stores the 5 °C over it and PELS reads its value back, which confirms it; the
+  7 °C comes back only with the thermostat's next poll, and when PELS sends 5 °C again
+  within 15 minutes of that confirmation, the send is a retry. A setpoint write Homey answers only after PELS stopped
   waiting is a send as well, since it may land. A command the plan no longer asks for, one
   for a device that left the plan of the home that sent it (a device the owner stopped
   managing, say), and one whose command session ended are forgotten, so a later send of it

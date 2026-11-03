@@ -384,7 +384,8 @@ export const executeSteppedLoadCommand = async (
   )) return false;
   let accepted = false;
   try {
-    const observedStepId = ctx.getObservedState(intent.id)?.reportedStepId;
+    const observedDevice = ctx.getObservedState(intent.id);
+    const observedStepId = observedDevice?.reportedStepId;
     const result = await ctx.actuator.apply({
       kind: 'step', deviceId: intent.id, profile: intent.steppedLoadProfile,
       desiredStepId: desiredStep.id, planningPowerW: desiredStep.planningPowerW,
@@ -408,7 +409,11 @@ export const executeSteppedLoadCommand = async (
     if (intent.transition?.effectiveTransition !== 'initialize_unknown_step_at_low') {
       ctx.execution.controlContests.commandSent({
         homeId: ctx.homeId, deviceId: intent.id, deviceName: intent.name, setting: 'level', value: desiredStep.id,
-        observed: observedStepId, atMs: now,
+        // When the device reported its step; a report without its own time counts from the send.
+        observed: observedStepId === undefined ? undefined : {
+          value: observedStepId, atMs: observedDevice?.reportedStepObservedAtMs ?? now,
+        },
+        atMs: now,
       });
     }
     return accepted;

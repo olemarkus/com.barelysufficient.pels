@@ -964,7 +964,7 @@ describe('settingsUiApi', () => {
         const atMs = startMs + round * 20 * 60_000;
         contests.commandSent({
           homeId: MAIN_HOME_ID, deviceId, deviceName: deviceId, setting: 'temperature', value: 15,
-          observed: round === 0 ? 20 : 22, atMs,
+          observed: { value: round === 0 ? 20 : 22, atMs }, atMs,
         });
         contests.commandConfirmed(deviceId, 'temperature', 15, atMs);
       }

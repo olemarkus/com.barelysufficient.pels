@@ -155,7 +155,8 @@ describe('SteppedCommandStore', () => {
     // PELS asks for `low` while the device runs at `max`, as the executor reports its send.
     const send = (atMs: number, observed: string) => {
       contests.commandSent({
-        homeId: 'main', deviceId: 'dev-1', deviceName: 'Tank', setting: 'level', value: 'low', observed, atMs,
+        homeId: 'main', deviceId: 'dev-1', deviceName: 'Tank', setting: 'level', value: 'low',
+        observed: { value: observed, atMs }, atMs,
       });
       store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'low', issuedAtMs: atMs });
     };
@@ -176,7 +177,8 @@ describe('SteppedCommandStore', () => {
     // An on→off edge ends the session: a later send of the same step is a new command.
     const { store: fresh, contests: freshContests } = steppedStoresForTest();
     freshContests.commandSent({
-      homeId: 'main', deviceId: 'dev-1', deviceName: 'Tank', setting: 'level', value: 'low', observed: 'max', atMs: 0,
+      homeId: 'main', deviceId: 'dev-1', deviceName: 'Tank', setting: 'level', value: 'low',
+      observed: { value: 'max', atMs: 0 }, atMs: 0,
     });
     fresh.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'low', issuedAtMs: 0 });
     fresh.noteReportedStep('dev-1', 'low', 1_000);
@@ -184,8 +186,8 @@ describe('SteppedCommandStore', () => {
     fresh.expireConfirmedDesiredOnBinaryOff('dev-1', false);
     for (let round = 1; round <= 4; round += 1) {
       freshContests.commandSent({
-        homeId: 'main', deviceId: 'dev-1', deviceName: 'Tank', setting: 'level', value: 'low', observed: 'max',
-        atMs: round * roundMs,
+        homeId: 'main', deviceId: 'dev-1', deviceName: 'Tank', setting: 'level', value: 'low',
+        observed: { value: 'max', atMs: round * roundMs }, atMs: round * roundMs,
       });
     }
     expect(freshContests.contestedControl(tank, 4 * roundMs)).toBeUndefined();

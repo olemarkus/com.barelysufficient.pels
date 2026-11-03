@@ -248,7 +248,9 @@ const reportTargetSent = (
     deviceName: command.name,
     setting: 'temperature',
     value,
-    observed: typeof observed === 'number' && Number.isFinite(observed) ? observed : undefined,
+    // The observer keeps no time of its own for a setpoint reading, so the
+    // device counts as seen at it when PELS sends.
+    observed: typeof observed === 'number' && Number.isFinite(observed) ? { value: observed, atMs } : undefined,
     atMs,
   });
 };

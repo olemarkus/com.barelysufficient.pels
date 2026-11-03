@@ -7,7 +7,13 @@ export type ControlValue = number | boolean | string;
 /** What the plan just built asks of each setting; `null` where it asks nothing. */
 export type PlannedControls = Readonly<Record<ContestedSetting, ControlValue | null>>;
 
-/** One command PELS sent, with the device's value for that setting just before. */
+/**
+ * The device's reading of a setting and when the device was seen at it: the
+ * observation's own time where the observer keeps one, else the send's.
+ */
+export type ObservedControl = { value: ControlValue; atMs: number };
+
+/** One command PELS sent, with the device's reading of that setting just before. */
 export type ControlCommandSent = {
   /** The home whose executor sent it: only that home's plans let it go when the device leaves. */
   homeId: HomeId;
@@ -16,7 +22,7 @@ export type ControlCommandSent = {
   setting: ContestedSetting;
   value: ControlValue;
   /** `undefined` when the device had not reported the setting. */
-  observed: ControlValue | undefined;
+  observed: ObservedControl | undefined;
   atMs: number;
 };
 

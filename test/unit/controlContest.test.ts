@@ -10,12 +10,17 @@ const ROUND_MS = 20 * MINUTE_MS;
 const DEVICE = 'mill';
 const MILL = { id: DEVICE, managed: true };
 
+/** PELS sends `value` at `atMs`; the device was seen reading `observed` at `observedAtMs`. */
 const sent = (
   atMs: number,
   value: ControlValue,
   observed: ControlValue | undefined,
   setting: ContestedSetting = 'temperature',
-) => ({ homeId: 'main', deviceId: DEVICE, deviceName: 'Gang nede ovn', setting, value, observed, atMs });
+  observedAtMs = atMs,
+) => ({
+  homeId: 'main', deviceId: DEVICE, deviceName: 'Gang nede ovn', setting, value, atMs,
+  observed: observed === undefined ? undefined : { value: observed, atMs: observedAtMs },
+});
 
 /**
  * PELS asks for 5 °C over 20 °C and the device confirms; then `moves` rounds of
@@ -70,6 +75,36 @@ describe('ControlContestRecord', () => {
       expect(contests.contestedControl(MILL, 4 * 60 * MINUTE_MS)).toBeUndefined();
       expect(journalled).toEqual([]);
     }
+  });
+
+  it('never counts a device that polls every 15 minutes and reports its own value each time', () => {
+    // A thermostat whose minimum is 7 °C, polled every 15 minutes. PELS sets 5 °C
+    // on the next rebuild, here a minute after the poll or sometimes 5 seconds,
+    // and Homey confirms it 14 to 19 s later. The device has read 5 °C for less
+    // than 15 minutes each time its next poll reports 7 °C again.
+    const confirmDelaysMs = [14_000, 17_000, 19_000, 16_000];
+    for (const rebuildDelaysMs of [[60_000], [5_000, 60_000]]) {
+      const { contests, journalled } = controlContestsForTest();
+      for (let poll = 0; poll <= 16; poll += 1) {
+        const polledAtMs = poll * CONTEST_SETTLE_MS;
+        const sentAtMs = polledAtMs + (rebuildDelaysMs[poll % rebuildDelaysMs.length] ?? 0);
+        contests.commandSent(sent(sentAtMs, 5, poll === 0 ? 20 : 7, 'temperature', polledAtMs));
+        contests.commandConfirmed(DEVICE, 'temperature', 5, sentAtMs + (confirmDelaysMs[poll % 4] ?? 0));
+      }
+      expect(contests.contestedControl(MILL, 16 * CONTEST_SETTLE_MS)).toBeUndefined();
+      expect(journalled).toEqual([]);
+    }
+  });
+
+  it('measures the settle to when the move was seen, not to PELS\'s send', () => {
+    const { contests } = contestRounds(3, () => 22);
+    // Confirmed at 60 min; the move is seen 14 minutes later and sent back 2 minutes after that.
+    contests.commandSent(sent(76 * MINUTE_MS, 5, 22, 'temperature', 74 * MINUTE_MS));
+    contests.commandConfirmed(DEVICE, 'temperature', 5, 76 * MINUTE_MS);
+    expect(contests.contestedControl(MILL, 76 * MINUTE_MS)).toBeUndefined();
+    // Seen exactly 15 minutes after that confirmation: a round.
+    contests.commandSent(sent(92 * MINUTE_MS, 5, 22, 'temperature', 76 * MINUTE_MS + CONTEST_SETTLE_MS));
+    expect(contests.contestedControl(MILL, 92 * MINUTE_MS)?.count).toBe(4);
   });
 
   it('counts a move once the device has read the value for the settle', () => {
@@ -160,14 +195,14 @@ describe('ControlContestRecord', () => {
     contests.commandSent(areaHeater);
     contests.commandConfirmed('annex', 'temperature', 5, 0);
     for (let round = 1; round <= 3; round += 1) {
-      contests.commandSent({ ...areaHeater, observed: 22, atMs: round * ROUND_MS });
+      contests.commandSent({ ...areaHeater, observed: { value: 22, atMs: round * ROUND_MS }, atMs: round * ROUND_MS });
       contests.commandConfirmed('annex', 'temperature', 5, round * ROUND_MS);
     }
 
     // Main's plan no longer holds the device (its owner stopped managing it).
     contests.retainPlanned('main', new Map());
     contests.commandSent(sent(80 * MINUTE_MS, 5, 22));
-    contests.commandSent({ ...areaHeater, observed: 22, atMs: 80 * MINUTE_MS });
+    contests.commandSent({ ...areaHeater, observed: { value: 22, atMs: 80 * MINUTE_MS }, atMs: 80 * MINUTE_MS });
     expect(contests.contestedControl(MILL, 80 * MINUTE_MS)).toBeUndefined();
     expect(contests.contestedControl({ id: 'annex', managed: true }, 80 * MINUTE_MS)?.count).toBe(4);
   });

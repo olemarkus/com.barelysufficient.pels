@@ -22,7 +22,7 @@ import type { HomeId } from '../utils/settingsKeys';
 export const CONTEST_THRESHOLD = 4;
 export const CONTEST_WINDOW_MS = 2 * 60 * 60 * 1000;
 /**
- * How long the device must have read a command before PELS's next send of it
+ * How long the device must have read a command before a move away from it
  * can be a round. Homey publishes a capability only when its value changes,
  * so PELS never hears that a device kept a value, and "confirmed" means only
  * that Homey stored PELS's write. A device that clamps or rounds a setpoint
@@ -66,9 +66,9 @@ const logger = getLogger('executor/control-contest');
 
 const settingKey = (deviceId: string, setting: ContestedSetting): string => `${deviceId}\u0000${setting}`;
 
-/** Whether the device has read the command long enough for a move away from it to be a round. */
-const isSettled = (standing: SettingCommand, atMs: number): boolean => (
-  standing.confirmedAtMs !== undefined && atMs - standing.confirmedAtMs >= CONTEST_SETTLE_MS
+/** Whether the device had read the command long enough, when it was seen to move at `movedAtMs`. */
+const isSettled = (standing: SettingCommand, movedAtMs: number): boolean => (
+  standing.confirmedAtMs !== undefined && movedAtMs - standing.confirmedAtMs >= CONTEST_SETTLE_MS
 );
 
 /** Every round a revert means PELS's writes do not stick; any other is an outside actor. */
@@ -84,11 +84,12 @@ const contestKind = (rounds: readonly ContestRound[]): ContestKind => (
  *
  * Per device and setting it keeps the command PELS stands behind and when the
  * device confirmed it:
- * - `commandSent` with the same value as a command the device confirmed at
- *   least {@link CONTEST_SETTLE_MS} earlier, while the device reads another
- *   value, is a round. A command confirmed more recently is retried, not
+ * - `commandSent` with the same value as a confirmed command, while the
+ *   device reads another value it was seen at least {@link CONTEST_SETTLE_MS}
+ *   after the confirmation, is a round. A move seen sooner is retried, not
  *   counted: a device that clamps a setpoint reads PELS's value only until
- *   its next poll. Every send leaves the command unconfirmed, so a
+ *   its next poll. The reading's time is the observation's own where the
+ *   observer keeps one (a level), else the send's (a setpoint, on/off). Every send leaves the command unconfirmed, so a
  *   correction that does not stick in turn is retried, not counted again. A
  *   round is `reverted` when the device went back to its value from before
  *   PELS first asked; an on/off round is always `overridden`, since a
@@ -131,9 +132,10 @@ export class ControlContestRecord implements ControlContestRecording {
     const sameValue = standing !== undefined && Object.is(standing.command.value, sent.value);
     const { observed } = sent;
     if (
-      sameValue && isSettled(standing, sent.atMs) && observed !== undefined && !Object.is(observed, sent.value)
+      sameValue && observed !== undefined && isSettled(standing, observed.atMs)
+      && !Object.is(observed.value, sent.value)
     ) {
-      this.noteRound(sent, observed, standing.command);
+      this.noteRound(sent, observed.value, standing.command);
     }
     this.commands.set(key, {
       homeId: sent.homeId,
@@ -141,7 +143,7 @@ export class ControlContestRecord implements ControlContestRecording {
       setting: sent.setting,
       command: sameValue ? standing.command : {
         value: sent.value,
-        ...(observed === undefined ? {} : { before: observed }),
+        ...(observed === undefined ? {} : { before: observed.value }),
       },
       sentAtMs: sent.atMs,
     });

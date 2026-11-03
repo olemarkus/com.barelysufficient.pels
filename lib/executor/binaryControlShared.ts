@@ -76,9 +76,11 @@ export const runBinaryControl = async (
     const atMs = Date.now();
     outcome = await decideAndDispatchBinaryControl(ctx, command, snapshot, forceAgainstReleasedOpposing);
     if (outcome.applied) {
+      // The observer keeps no time of its own for an on/off reading, so the
+      // device counts as seen at it when PELS sends.
       ctx.execution.controlContests.commandSent({
         homeId: ctx.homeId, deviceId, deviceName: command.name, setting: 'on_off', value: desired,
-        observed: observedOn, atMs,
+        observed: observedOn === undefined ? undefined : { value: observedOn, atMs }, atMs,
       });
     }
     return outcome;

@@ -1433,8 +1433,8 @@ describe('PlanExecutor pending target commands', () => {
     expect(contests.hasStandingCommands()).toBe(true);
     // A meter area's heater, whose commands this home's plans never hold.
     contests.commandSent({
-      homeId: 'area', deviceId: 'annex', deviceName: 'Annex', setting: 'temperature', value: 5, observed: 20,
-      atMs: Date.now(),
+      homeId: 'area', deviceId: 'annex', deviceName: 'Annex', setting: 'temperature', value: 5,
+      observed: { value: 20, atMs: Date.now() }, atMs: Date.now(),
     });
 
     // The owner stopped managing the heater: this home's next plan does not hold it.
