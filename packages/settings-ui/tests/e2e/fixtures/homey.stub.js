@@ -1992,8 +1992,8 @@
       // (which filter on hasTemperature), and the whole-home meter picker
       // (which filters on hasPower + class 'sensor'). Mirrors the api.ts
       // homey_devices shape.
-      // Also backs "Missing a device?", which lists every device by zone; the
-      // relay and the fan are devices PELS does not list on Devices.
+      // Also backs "Request support", which lists the devices PELS does not
+      // list on Devices (the relay and the fan among them) by zone.
       return [
         { id: 'dev_outdoor', name: 'Outdoor sensor', class: 'sensor', zoneName: 'Garden', hasTemperature: true, hasPower: false },
         { id: 'dev_han', name: 'HAN power meter', class: 'sensor', zoneName: 'Hallway', hasTemperature: false, hasPower: true },

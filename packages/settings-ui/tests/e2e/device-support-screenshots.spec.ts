@@ -1,6 +1,7 @@
 /**
- * Captures "Missing a device?" in every theme context: the Devices link, the
- * device picker (all and filtered), a device support request, and its result.
+ * Captures "Missing a device?" in every theme context: the Devices card, the
+ * Request support list (and its search states), a device support request, and
+ * its result.
  * Local only:
  *   PELS_CAPTURE_DEVICE_SUPPORT=1 PELS_DEVICE_SUPPORT_OUT_DIR=/tmp \
  *     npx playwright test device-support-screenshots.spec.ts --project=chromium-mobile-width
@@ -34,22 +35,22 @@ test('captures device support surfaces', async ({ browser, browserName, baseURL 
 
   await captureThemes({ browser, baseURL, outDir, prepare, name: 'link', open: async (page) => {
     await page.goto('/?page=settings/devices');
-    const link = page.locator('#device-support-link');
-    await link.scrollIntoViewIfNeeded();
-    return page.locator('#devices-panel .list__footer');
+    const card = page.locator('#missing-device-card');
+    await card.scrollIntoViewIfNeeded();
+    return card;
   } });
   await captureThemes({ browser, baseURL, outDir, prepare, name: 'setup', open: async (page) => {
     await page.goto('/?page=settings/devices&setup=devices');
-    const prompt = page.locator('#devices-panel [data-setup-missing-device]');
+    const prompt = page.locator('#missing-device-card');
     await prompt.scrollIntoViewIfNeeded();
     return prompt;
   } });
   await captureThemes({ browser, baseURL, outDir, prepare, name: 'picker', open: async (page) => {
     await openPicker(page);
   } });
-  await captureThemes({ browser, baseURL, outDir, prepare, name: 'picker-unsupported', open: async (page) => {
-    const picker = await openPicker(page);
-    await picker.getByRole('button', { name: 'Not supported' }).click();
+  await captureThemes({ browser, baseURL, outDir, prepare, name: 'picker-on-devices', open: async (page) => {
+    await openPicker(page);
+    await setMdValue(page, '[data-device-picker-field="search"]', 'living');
   } });
   await captureThemes({ browser, baseURL, outDir, prepare, name: 'picker-no-match', open: async (page) => {
     await openPicker(page);

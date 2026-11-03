@@ -11,20 +11,17 @@ test('finds an unsupported Homey device and sends a device support request for i
 
   const picker = page.locator('#device-support-panel');
   await expect(picker.locator('[data-device-picker-id="dev_knx_relay"]')).toBeVisible();
-  await expect(picker.locator('[data-device-picker-id="dev_heatpump"]')).toBeVisible();
-
-  await picker.getByRole('button', { name: 'Not supported' }).click();
-  await expect(picker.locator('[data-device-picker-id="dev_heatpump"]')).toHaveCount(0);
   await expect(picker.locator('[data-device-picker-id="dev_bath_fan"]')).toBeVisible();
+  // Devices already on Devices are not offered for a request.
+  await expect(picker.locator('[data-device-picker-id="dev_heatpump"]')).toHaveCount(0);
 
   await setMdValue(page, '[data-device-picker-field="search"]', 'basement');
   await expect(picker.locator('[data-device-picker-id="dev_bath_fan"]')).toHaveCount(0);
   await expect(picker.locator('[data-device-picker-id="dev_knx_relay"]')).toBeVisible();
   await setMdValue(page, '[data-device-picker-field="search"]', 'no such device');
   await expect(picker).toContainText('No devices match.');
-  await picker.locator('[data-device-picker-action="show-all"]').click();
-  await expect(picker.locator('[data-device-picker-id="dev_heatpump"]')).toBeVisible();
-  await picker.getByRole('button', { name: 'Not supported' }).click();
+  await picker.locator('[data-device-picker-action="clear-search"]').click();
+  await expect(picker.locator('[data-device-picker-id="dev_bath_fan"]')).toBeVisible();
   await setMdValue(page, '[data-device-picker-field="search"]', 'relay');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
@@ -60,23 +57,26 @@ test('finds an unsupported Homey device and sends a device support request for i
   await expect(page).toHaveURL(/page=settings%2Fdevices|page=settings\/devices(&|$)/);
 });
 
-test('opens a supported device on Devices instead of a support request', async ({ page }) => {
+test('a search that finds a device already on Devices opens it instead of a support request', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 1100 });
   await installDeviceSupportReportStub(page);
   await page.goto('/?page=settings/device-support');
   const picker = page.locator('#device-support-panel');
-  await picker.locator('[data-device-picker-id="dev_heatpump"]').click();
+  await expect(picker.locator('[data-device-picker-id="dev_knx_relay"]')).toBeVisible();
+  await setMdValue(page, '[data-device-picker-field="search"]', 'living');
+  const supported = picker.getByRole('region', { name: 'Already on Devices' });
+  await supported.locator('[data-device-picker-id="dev_heatpump"]').click();
   await expect(page.locator('#device-detail-overlay')).toBeVisible();
   await expect(page.locator('#report-problem-panel')).toBeHidden();
   expect((await readDeviceSupportStub(page)).requests).toHaveLength(0);
 });
 
-test('setup points to Find a device under its device list, and Back returns to setup', async ({ page }) => {
+test('setup shows Missing a device? under its device list, and Back returns to setup', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 1100 });
   await page.goto('/?page=settings/devices&setup=devices');
-  const prompt = page.locator('#devices-panel [data-setup-missing-device]');
+  const prompt = page.locator('#missing-device-card');
   await expect(prompt).toContainText('Missing a device?');
-  await prompt.getByRole('button', { name: 'Find a device' }).click();
+  await prompt.getByRole('button', { name: 'Request support' }).click();
   const picker = page.locator('#device-support-panel');
   await expect(picker.locator('[data-device-picker-id="dev_knx_relay"]')).toBeVisible();
   await picker.getByRole('button', { name: 'Back to Devices' }).click();

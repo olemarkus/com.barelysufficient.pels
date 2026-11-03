@@ -1,5 +1,6 @@
 import type { HomeyDeviceListEntry } from '../../../contracts/src/settingsUi/homeyDevices.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
+import { resolveDeviceClassLabel } from './deviceClassLabels.ts';
 import { getTargetDevices } from './devices.ts';
 import { loadHomeyDeviceList } from './homeyDeviceList.ts';
 import { getChosenWholeHomeMeterId } from './homeyEnergyMeter.ts';
@@ -9,7 +10,6 @@ import { state } from './state.ts';
 import { openDeviceSupportRequest } from './supportReport.ts';
 import {
   renderDeviceSupportPicker,
-  type DevicePickerFilter,
   type DevicePickerRead,
   type DevicePickerRow,
 } from './views/DeviceSupportPicker.tsx';
@@ -22,7 +22,6 @@ type PickerNavigation = {
 let navigation: PickerNavigation | null = null;
 let read: DevicePickerRead = { state: 'loading' };
 let query = '';
-let filter: DevicePickerFilter = 'all';
 let refreshSequence = 0;
 
 /**
@@ -36,15 +35,15 @@ export const toDevicePickerRows = (
   pelsDevices: readonly SettingsUiDeviceListItem[],
   wholeHomeMeterId: string | null,
 ): DevicePickerRow[] => {
-  const listed = new Map(pelsDevices.map((device) => [device.id, device] as const));
+  const listed = new Set(pelsDevices.map((device) => device.id));
   return homeyDevices.map((device) => {
-    const pelsDevice = listed.get(device.id);
     let status: DevicePickerRow['status'] = device.id === wholeHomeMeterId ? 'power_source' : 'unsupported';
-    if (pelsDevice) status = pelsDevice.managed ? 'managed' : 'listed';
+    if (listed.has(device.id)) status = 'listed';
     return {
       id: device.id,
       name: device.name,
       zoneName: device.zoneName,
+      deviceType: device.class ? resolveDeviceClassLabel(device.class) : null,
       status,
     };
   });
@@ -70,12 +69,11 @@ const paint = (): void => {
   const surface = document.getElementById('device-support-root');
   if (!surface) return;
   renderDeviceSupportPicker(surface, {
-    read, query, filter,
+    read, query,
     onQuery: (next) => { query = next; paint(); },
-    onFilter: (next) => { filter = next; paint(); },
     onSelect: select,
     onRetry: () => { void refreshDeviceSupportPicker(); },
-    onShowAll: () => { query = ''; filter = 'all'; paint(); },
+    onClearSearch: () => { query = ''; paint(); },
   });
 };
 

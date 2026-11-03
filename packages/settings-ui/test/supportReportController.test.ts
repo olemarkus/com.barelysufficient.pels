@@ -64,7 +64,7 @@ describe('support report controller', () => {
     expect(current().notice).toBe('Could not prepare the request. Your description is kept. Try Send request again.');
     vi.mocked(api.prepare).mockResolvedValueOnce({ ok: false, code: 'invalid_subject' });
     await controller.submit();
-    expect(current().notice).toBe('Homey no longer has this device. Go back to Find a device and choose it again.');
+    expect(current().notice).toBe('Homey no longer has this device. Go back and choose it again.');
     vi.mocked(api.prepare).mockResolvedValueOnce({ ok: false, code: 'report_busy' });
     await controller.submit();
     expect(current().notice).toBe(
