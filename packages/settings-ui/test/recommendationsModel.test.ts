@@ -220,17 +220,17 @@ describe('setup recommendations', () => {
         category: 'recommendation',
         title: "Gang nede ovn doesn't keep PELS's changes",
         body: '6 times in the last 2 hours, Gang nede ovn went back to its earlier temperature after PELS '
-          + 'changed it. Check the app that controls Gang nede ovn. To leave the temperature to that app, '
-          + 'choose “Keep the new temperature” under “When the temperature changes outside PELS”, '
-          + 'or turn off Managed by PELS for Gang nede ovn.',
+          + 'changed it. Check the app that controls it, choose “Keep the new temperature” under '
+          + '“When the temperature changes outside PELS”, or turn off Managed by PELS for it.',
         actionLabel: 'Open device',
         target: { kind: 'device', deviceId: 'mill' },
       }),
       expect.objectContaining({
         id: 'control-contest:flow',
         title: 'Something keeps changing Ovn stue',
-        body: expect.stringContaining('Look for a Flow, another app or a schedule that sets it, and turn that off. '
-          + 'To let it set the temperature, choose “Keep the new temperature”'),
+        body: '6 times in the last 2 hours, something outside PELS changed the temperature of Ovn stue after '
+          + 'PELS set it. Turn off the Flow, app or schedule that sets it. Or choose “Keep the new temperature” '
+          + 'under “When the temperature changes outside PELS”, or turn off Managed by PELS for it.',
       }),
     ]);
   });

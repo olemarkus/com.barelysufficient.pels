@@ -22,8 +22,7 @@ export const controlContestNotice = (
   const temperature = contest.setting === 'temperature';
   if (contest.kind === 'reverted') {
     const remedy = temperature
-      ? `Check the app that controls ${name}. To leave the temperature to that app, ${KEEP_NEW_TEMPERATURE}, `
-        + `or turn off Managed by PELS for ${name}.`
+      ? `Check the app that controls it, ${KEEP_NEW_TEMPERATURE}, or turn off Managed by PELS for it.`
       : `Check the app that controls ${name}, or turn off Managed by PELS for it.`;
     return {
       title: `${name} doesn't keep PELS's changes`,
@@ -31,8 +30,8 @@ export const controlContestNotice = (
     };
   }
   const remedy = temperature
-    ? 'Look for a Flow, another app or a schedule that sets it, and turn that off. '
-      + `To let it set the temperature, ${KEEP_NEW_TEMPERATURE}, or turn off Managed by PELS for ${name}.`
+    ? `Turn off the Flow, app or schedule that sets it. Or ${KEEP_NEW_TEMPERATURE}, `
+      + 'or turn off Managed by PELS for it.'
     : 'Look for a Flow, another app or a schedule that sets it, and turn that off, '
       + 'or turn off Managed by PELS for it.';
   return {

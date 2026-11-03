@@ -2412,14 +2412,13 @@ runtime saw (`notes/support-reports.md`, `device_control_contested`):
 - `{setting}` is `temperature`, `on/off setting` or `level`. `{N} times` reads
   `Once` when one round is left in the 2 hours.
 - For a temperature, both bodies also name the lighter choice in the same Setup
-  section, which keeps the device managed: the reverted remedy reads `Check the
-  app that controls {device}. To leave the temperature to that app, choose “Keep
-  the new temperature” under “When the temperature changes outside PELS”, or
-  turn off Managed by PELS for {device}.`; the other reads `Look for a Flow,
-  another app or a schedule that sets it, and turn that off. To let it set the
-  temperature, choose “Keep the new temperature” under “When the temperature
-  changes outside PELS”, or turn off Managed by PELS for {device}.` The option
-  and the selector are quoted, as in the setup checklist's hint.
+  section, which keeps the device managed, and name the device only once: the
+  reverted remedy reads `Check the app that controls it, choose “Keep the new
+  temperature” under “When the temperature changes outside PELS”, or turn off
+  Managed by PELS for it.`; the other reads `Turn off the Flow, app or schedule
+  that sets it. Or choose “Keep the new temperature” under “When the temperature
+  changes outside PELS”, or turn off Managed by PELS for it.` The option and the
+  selector are quoted, as in the setup checklist's hint.
 - Action `Open device`. PELS keeps setting the device back; the copy never says
   PELS stopped.
 - Dismissal is remembered per contest, by when it began: a contest that runs
