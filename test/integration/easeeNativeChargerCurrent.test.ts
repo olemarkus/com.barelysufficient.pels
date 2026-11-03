@@ -823,10 +823,15 @@ describe('Easee native charger current', () => {
 
     // A charger PELS reads over REST and then hears about in realtime. `put` holds
     // what PELS writes, as Homey does, so a later refresh reads it back.
-    const createLiveEasee = async (capabilityOverrides: DeviceCapabilityMap = {}) => {
+    const createLiveEasee = async (
+      capabilityOverrides: DeviceCapabilityMap = {},
+      capabilities: string[] = EASEE_CAPABILITIES,
+    ) => {
       let capabilityObj = buildEaseeCapabilityObj(capabilityOverrides);
       const get = vi.fn(async (path: string) => {
-        if (path === 'manager/devices/device') return { [EASEE_ID]: { ...buildEaseeCharger(), capabilitiesObj: capabilityObj } };
+        if (path === 'manager/devices/device') {
+          return { [EASEE_ID]: { ...buildEaseeCharger(), capabilities, capabilitiesObj: capabilityObj } };
+        }
         throw new Error(`unexpected device fetch: ${path}`);
       });
       const put = vi.fn(async (path: string, body: unknown) => {
@@ -909,6 +914,72 @@ describe('Easee native charger current', () => {
       await report('evcharger_charging_state', 'plugged_in_charging');
       await report('evcharger_charging_state', 'plugged_in_paused');
       expect(switchOn()).toEqual({ on: true });
+    });
+
+    const CHARGER_CURRENT_PATH = `manager/devices/device/${EASEE_ID}/capability/target_charger_current`;
+    const CHARGING_SWITCH_PATH = `manager/devices/device/${EASEE_ID}/capability/evcharger_charging`;
+    const WITH_STATUS = [...EASEE_CAPABILITIES, 'charger_status'];
+    // A connected charger that is not charging, as the Easee app publishes it for
+    // `status`: its own plug state is `plugged_out` for `Completed`, `plugged_in` otherwise.
+    const notCharging = (status: string): DeviceCapabilityMap => ({
+      charger_status: { value: status, lastUpdated: READ_AT },
+      evcharger_charging: { value: false, setable: true, lastUpdated: READ_AT },
+      evcharger_charging_state: {
+        value: status === 'Completed' ? 'plugged_out' : 'plugged_in', lastUpdated: READ_AT,
+      },
+      measure_power: { value: 0, lastUpdated: READ_AT },
+    });
+
+    it('resumes a session the car completed by current, never by starting a new one', async () => {
+      // A start would open a new session at 32 A for a car that is full and
+      // still plugged in; the completed session is still open.
+      const { deviceManager, put, refresh } = await createLiveEasee(notCharging('Completed'), WITH_STATUS);
+      await refresh();
+      expect(deviceManager.getSnapshotByDeviceId(EASEE_ID)?.evChargingState).toBe('plugged_in');
+
+      await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
+
+      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, { value: 6 }]]);
+    });
+
+    it('resumes by current once Easee reports completion in realtime', async () => {
+      const { deviceManager, put, refresh, report } = await createLiveEasee({
+        charger_status: { value: 'Charging', lastUpdated: READ_AT },
+      }, WITH_STATUS);
+      await refresh();
+      await report('charger_status', 'Completed');
+      await report('evcharger_charging', false);
+      await report('evcharger_charging_state', 'plugged_out');
+      expect(deviceManager.getSnapshotByDeviceId(EASEE_ID)?.evChargingState).toBe('plugged_in');
+
+      await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
+
+      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, { value: 6 }]]);
+    });
+
+    it.each(['Car connected', 'Awaiting Authentication'])(
+      'starts a session stopped in %s, which no current reopens',
+      async (status) => {
+        const { deviceManager, put, refresh } = await createLiveEasee(notCharging(status), WITH_STATUS);
+        await refresh();
+
+        await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
+
+        expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, { value: true }]]);
+      },
+    );
+
+    it('starts a stopped session again after a completed one ends in a stop', async () => {
+      // The completion evidence belongs to the mode Easee last reported, not to
+      // the session for good.
+      const { deviceManager, put, refresh, report } = await createLiveEasee(notCharging('Completed'), WITH_STATUS);
+      await refresh();
+      await report('charger_status', 'Car connected');
+      await report('evcharger_charging_state', 'plugged_in');
+
+      await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
+
+      expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, { value: true }]]);
     });
 
     it('resumes by current when the plug state is not one PELS knows, never by starting a session', async () => {

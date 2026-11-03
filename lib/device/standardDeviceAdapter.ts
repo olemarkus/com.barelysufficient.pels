@@ -34,7 +34,9 @@ export const standardDeviceAdapter: Omit<DeviceAdapter, 'readsAsReported'> = {
     write: { ...request, capabilityId: snapshot.binaryWriteCapabilityId ?? request.capabilityId },
     readBackAsWritten: true,
   }),
-  recoverSwitchWrite: (snapshot, _raw, request) => standardDeviceAdapter.switchWrite(snapshot, request),
+  recoverSwitchWrite: (snapshot, _raw, request, sessions) => standardDeviceAdapter.switchWrite(
+    snapshot, request, sessions,
+  ),
   createSession: () => unrestrictedSession,
 };
 

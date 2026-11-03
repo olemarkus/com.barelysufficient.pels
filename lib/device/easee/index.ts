@@ -43,17 +43,17 @@ export const easeeAdapter: DeviceAdapter = {
   createSession: () => new EaseeChargingSession(),
   phaseReport: (device) => isEaseeDevice(device) ? resolveEaseePhaseReport(device.settings) : { kind: 'not_reported' },
   nativeCurrentControls: [currentControl],
-  switchWrite: (snapshot, request) => {
-    const plain = standardDeviceAdapter.switchWrite(snapshot, request);
+  switchWrite: (snapshot, request, sessions) => {
+    const plain = standardDeviceAdapter.switchWrite(snapshot, request, sessions);
     if (typeof request.value !== 'boolean') return plain;
-    const resolved = resolveEaseeSwitchWrite(snapshot, request.value);
+    const resolved = resolveEaseeSwitchWrite(snapshot, request.value, sessions);
     return { write: resolved.kind === 'current' ? resolved.write : plain.write,
       readBackAsWritten: !isEaseeUnderBuiltInControl(snapshot) };
   },
-  recoverSwitchWrite: (snapshot, raw, request) => {
-    const plain = easeeAdapter.switchWrite(snapshot, request);
+  recoverSwitchWrite: (snapshot, raw, request, sessions) => {
+    const plain = easeeAdapter.switchWrite(snapshot, request, sessions);
     if (typeof request.value !== 'boolean') return plain;
-    const resolved = recoverEaseeSwitchWrite(snapshot, raw, request.value);
+    const resolved = recoverEaseeSwitchWrite(snapshot, raw, request.value, sessions);
     return { ...plain, write: resolved.kind === 'current' ? resolved.write : plain.write };
   },
 };
