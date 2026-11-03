@@ -9,6 +9,11 @@ power tracker, and has no consumer in model fitting, planning or device control.
 It runs independently of price strategy and task activity; no device refresh or
 additional SDK read is performed.
 
+Only the Main home is collected, and always (owner decision, 2026-11-03): a
+meter area's heaters are not, since only the Main report carries the section,
+and collection does not wait for the daily report switch, so the first daily
+report after the owner turns it on carries the latest completed day.
+
 The collector targets 15-minute intervals with actual endpoint timestamps,
 temperature means and integrated electrical input. A held unchanged power level
 remains usable; a missing reading is never zero. Gaps over five minutes interrupt
