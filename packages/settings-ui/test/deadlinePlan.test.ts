@@ -3736,7 +3736,7 @@ describe('cost + delivered-so-far hero lines', () => {
     }));
     // 2 hours × 2 kWh × 1.50 kr/kWh = 6.00 kr planned, no delivery.
     expect(payload.hero.stats.find((stat) => stat.label === 'Estimated cost')?.value).toBe('≈ 6.00 kr');
-    expect(payload.hero.deliveredSoFarLine).toBe('Delivered 0.0 of 4.0 kWh · now 18.0 °C of 22.0 °C target');
+    expect(payload.hero.deliveredSoFarLine).toBe('Delivered 0.0 kWh · now 18.0 °C of 22.0 °C target');
   });
 
   it('on-track: partial delivery — cost line shows so-far + planned, delivered shows start → current', () => {
@@ -3775,7 +3775,7 @@ describe('cost + delivered-so-far hero lines', () => {
     // wall; the delivered-kWh line below still shows delivery progress.)
     expect(payload.hero.stats.find((stat) => stat.label === 'Estimated cost')?.value).toBe('≈ 8.00 kr');
     // The observed run start wins over a learned-rate reconstruction (18.25 °C).
-    expect(payload.hero.deliveredSoFarLine).toBe('Delivered 1.0 of 4.0 kWh · 17.0 °C → 19.0 °C of 22.0 °C target');
+    expect(payload.hero.deliveredSoFarLine).toBe('Delivered 1.0 kWh · 17.0 °C → 19.0 °C of 22.0 °C target');
     // Zero is also a real observed start, and must not be mistaken for absence.
     activePlan.startProgressValue = 0;
     const zeroStart = expectReady(resolveRenderInput({
@@ -3785,7 +3785,7 @@ describe('cost + delivered-so-far hero lines', () => {
       prices,
       nowMs: now.getTime(),
     }));
-    expect(zeroStart.hero.deliveredSoFarLine).toBe('Delivered 1.0 of 4.0 kWh · 0.0 °C → 19.0 °C of 22.0 °C target');
+    expect(zeroStart.hero.deliveredSoFarLine).toBe('Delivered 1.0 kWh · 0.0 °C → 19.0 °C of 22.0 °C target');
     // No trajectory is a real degraded-boot state, not an invitation to estimate.
     delete activePlan.startProgressValue;
     const withoutTrajectory = expectReady(resolveRenderInput({
@@ -3795,7 +3795,7 @@ describe('cost + delivered-so-far hero lines', () => {
       prices,
       nowMs: now.getTime(),
     }));
-    expect(withoutTrajectory.hero.deliveredSoFarLine).toBe('Delivered 1.0 of 4.0 kWh · now 19.0 °C of 22.0 °C target');
+    expect(withoutTrajectory.hero.deliveredSoFarLine).toBe('Delivered 1.0 kWh · now 19.0 °C of 22.0 °C target');
   });
 
   it('brings the revision\'s energy forward to the live reading between revisions', () => {
@@ -3824,18 +3824,18 @@ describe('cost + delivered-so-far hero lines', () => {
       nowMs: now.getTime(),
     }));
     expect(payload.hero.stats.find((stat) => stat.label === 'Needs')?.value).toBe('2.0 kWh');
-    // The run's total, not the remaining figure under the delivered one.
-    expect(payload.hero.deliveredSoFarLine).toBe('Delivered 2.0 of 4.0 kWh · now 20.0 °C of 22.0 °C target');
+    expect(payload.hero.deliveredSoFarLine).toBe('Delivered 2.0 kWh · now 20.0 °C of 22.0 °C target');
     // The staircase converts planned kWh at the live rate: the two booked hours
     // still ahead reach the target. At the revision's 4 kWh it read 0.5 °C per
     // kWh and drew a shortfall.
     expect(payload.trajectory.shortfall).toBeNull();
   });
 
-  it('keeps the run\'s total from the latest revision while delivery rises between reading steps', () => {
+  it('states delivered energy with no total beside the live Needs while the reading steps', () => {
     // The revision was recorded at 18 °C: 4 °C to go at 1 kWh/°C. The reading
-    // moves in 0.5 °C steps while the meter counts every Wh, so a total built
-    // from the live remaining climbed with delivery and fell back at each step.
+    // moves in 0.5 °C steps while the meter counts every Wh, so a total of
+    // delivered plus needed climbed with delivery and fell back at each step
+    // (4.4, then 4.1 kWh). What is still needed is the Needs stat alone.
     const planAnchor = new Date(2026, 0, 1, 12, 0, 0, 0);
     const deadline = atLocalHour(planAnchor, 6);
     const prices = buildStubPrices(planAnchor, 6, 200);
@@ -3849,48 +3849,20 @@ describe('cost + delivered-so-far hero lines', () => {
       planStatus: 'on_track',
       revisionReadingC: 18,
     });
-    const lineAt = (minutes: number, deliveredKWh: number, readingC: number) => expectReady(resolveRenderInput({
+    const heroAt = (minutes: number, deliveredKWh: number, readingC: number) => expectReady(resolveRenderInput({
       bootstrap: buildStubBootstrap(planAnchor, deadline, plan, 22, { [planAnchor.toISOString()]: deliveredKWh }),
       deviceId: 'heater',
       devices: buildHeaterDevice(readingC),
       prices,
       nowMs: planAnchor.getTime() + minutes * 60_000,
-    })).hero.deliveredSoFarLine;
-    // Just before the reading steps to 18.5 °C, just after, and further on.
-    // Built from the live remaining, these read 4.4, 4.1 and 4.5 kWh.
-    expect(lineAt(14, 0.4, 18)).toBe('Delivered 0.4 of 4.0 kWh · now 18.0 °C of 22.0 °C target');
-    expect(lineAt(16, 0.6, 18.5)).toBe('Delivered 0.6 of 4.0 kWh · now 18.5 °C of 22.0 °C target');
-    expect(lineAt(44, 1.5, 19)).toBe('Delivered 1.5 of 4.0 kWh · now 19.0 °C of 22.0 °C target');
-  });
-
-  it('sets the run\'s total again at each revision: delivered by then plus what it still needed', () => {
-    // A replan at 13:00, after 2 kWh went in, found 2.5 kWh still needed.
-    const planAnchor = new Date(2026, 0, 1, 12, 0, 0, 0);
-    const revisedAt = new Date(2026, 0, 1, 13, 0, 0, 0);
-    const now = new Date(2026, 0, 1, 13, 30, 0, 0);
-    const deadline = atLocalHour(planAnchor, 6);
-    const prices = buildStubPrices(planAnchor, 6, 200);
-    const plan = buildHeaterActivePlan({
-      now: planAnchor,
-      deadline,
-      plannedHourOffsets: [0, 1, 2],
-      plannedKWhPerHour: 2,
-      targetTemperatureC: 22,
-      energyNeededKWh: 4,
-      planStatus: 'on_track',
-      revisionReadingC: 18,
-    });
-    plan.latest = { ...plan.latest, revision: 2, revisedAtMs: revisedAt.getTime(), energyNeededKWh: 2.5, rateMean: 2.5 / 2 };
-    const payload = expectReady(resolveRenderInput({
-      bootstrap: buildStubBootstrap(planAnchor, deadline, plan, 22, {
-        [planAnchor.toISOString()]: 2, [revisedAt.toISOString()]: 1,
-      }),
-      deviceId: 'heater',
-      devices: buildHeaterDevice(20.5),
-      prices,
-      nowMs: now.getTime(),
-    }));
-    expect(payload.hero.deliveredSoFarLine).toBe('Delivered 3.0 of 4.5 kWh · now 20.5 °C of 22.0 °C target');
+    })).hero;
+    // Just before the reading steps to 18.5 °C, and just after.
+    const before = heroAt(14, 0.4, 18);
+    const after = heroAt(16, 0.6, 18.5);
+    expect(before.deliveredSoFarLine).toBe('Delivered 0.4 kWh · now 18.0 °C of 22.0 °C target');
+    expect(after.deliveredSoFarLine).toBe('Delivered 0.6 kWh · now 18.5 °C of 22.0 °C target');
+    expect(before.stats.find((stat) => stat.label === 'Needs')?.value).toBe('4.0 kWh');
+    expect(after.stats.find((stat) => stat.label === 'Needs')?.value).toBe('3.5 kWh');
   });
 
   it('prorates the plan-start hour bucket so pre-plan usage does not inflate delivered totals', () => {
@@ -3928,9 +3900,7 @@ describe('cost + delivered-so-far hero lines', () => {
     // Est. cost stat carries the planned total only (8.00 kr); the prorated
     // delivered figure is still verified via the delivered-kWh line below.
     expect(payload.hero.stats.find((stat) => stat.label === 'Estimated cost')?.value).toBe('≈ 8.00 kr');
-    // The run's total is the revision's: nothing had gone in at 12:30, and it
-    // still needed 4 kWh.
-    expect(payload.hero.deliveredSoFarLine).toMatch(/Delivered 0\.5 of 4\.0 kWh/);
+    expect(payload.hero.deliveredSoFarLine).toMatch(/Delivered 0\.5 kWh/);
   });
 
   it('at-risk: keeps on-track-shape delivered line — the chip warns, the line stays hopeful', () => {
@@ -4053,7 +4023,7 @@ describe('cost + delivered-so-far hero lines', () => {
     }));
     expect(payload.hero.tone).toBe('alert');
     expect(payload.hero.stats.find((stat) => stat.label === 'Estimated cost')?.value).toBe('≈ 4.00 kr'); // 2 hours × 2 kWh × 1.00 kr
-    expect(payload.hero.deliveredSoFarLine).toMatch(/Delivered 0\.0 of 16\.0 kWh/);
+    expect(payload.hero.deliveredSoFarLine).toMatch(/Delivered 0\.0 kWh/);
     expect(payload.hero.deliveredSoFarLine).toMatch(/still 40\.0 °C of 65\.0 °C target/);
     // No "won't reach by" tail — the chip + meta line already say the verdict;
     // repeating it on a third line read as alarm spam in the live walk.
@@ -4093,7 +4063,7 @@ describe('cost + delivered-so-far hero lines', () => {
     }));
     expect(payload.hero.stats.find((stat) => stat.label === 'Estimated cost')).toBeUndefined();
     // Delivered-so-far is independent of cost unit and still surfaces.
-    expect(payload.hero.deliveredSoFarLine).toMatch(/Delivered 0\.0 of 4\.0 kWh/);
+    expect(payload.hero.deliveredSoFarLine).toMatch(/Delivered 0\.0 kWh/);
   });
 });
 
@@ -4162,7 +4132,7 @@ describe('shared-domain hero-line formatters', () => {
       65,
       '°C',
     );
-    expect(out).toBe('Delivered 1.8 of 4.2 kWh · 35.0 °C → 42.0 °C of 65.0 °C target');
+    expect(out).toBe('Delivered 1.8 kWh · 35.0 °C → 42.0 °C of 65.0 °C target');
   });
 
   it('formatDeadlineDeliveredSoFarLine states an energy task once, from its own count', async () => {
@@ -4211,7 +4181,7 @@ describe('shared-domain hero-line formatters', () => {
       65,
       '°C',
     );
-    expect(out).toBe('Delivered 0.0 of 4.2 kWh · now 42.0 °C of 65.0 °C target');
+    expect(out).toBe('Delivered 0.0 kWh · now 42.0 °C of 65.0 °C target');
   });
 
   it('formatDeadlineDeliveredSoFarLine suppresses the redundant arrow when start and current round to the same label', async () => {
@@ -4231,7 +4201,7 @@ describe('shared-domain hero-line formatters', () => {
       80,
       '%',
     );
-    expect(out).toBe('Delivered 0.4 of 4.2 kWh · now 45% of 80% target');
+    expect(out).toBe('Delivered 0.4 kWh · now 45% of 80% target');
     expect(out).not.toMatch(/45%\s*→\s*45%/);
   });
 
@@ -4251,19 +4221,11 @@ describe('shared-domain hero-line formatters', () => {
       65,
       '°C',
     );
-    expect(out).toBe('Delivered 1.8 of 4.2 kWh · still 35.0 °C of 65.0 °C target');
+    expect(out).toBe('Delivered 1.8 kWh · still 35.0 °C of 65.0 °C target');
     expect(out).not.toMatch(/won.t reach/i);
   });
 
-  it('formatDeadlineDeliveredSoFarLine states delivery bare once it passes the revision\'s total', async () => {
-    // A tank losing heat faster than estimated takes more than the latest
-    // revision's total before the next revision sets a new one.
-    const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts');
-    expect(formatDeadlineDeliveredSoFarLine('on_track_or_queued', 4.3, 4, 21, 18, 22, '°C'))
-      .toBe('Delivered 4.3 kWh · 18.0 °C → 21.0 °C of 22.0 °C target');
-  });
-
-  it('formatDeadlineDeliveredSoFarLine returns null when planned kWh is zero', async () => {
+  it('formatDeadlineDeliveredSoFarLine returns null when nothing is still needed', async () => {
     const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/smartTaskCopy/liveDetailCopy.ts');
     expect(formatDeadlineDeliveredSoFarLine(
       'on_track_or_queued',
@@ -4287,7 +4249,7 @@ describe('shared-domain hero-line formatters', () => {
       80,
       '%',
     );
-    expect(out).toBe('Delivered 5.0 of 20.0 kWh · 30% → 46% of 80% target');
+    expect(out).toBe('Delivered 5.0 kWh · 30% → 46% of 80% target');
   });
 });
 
