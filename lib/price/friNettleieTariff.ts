@@ -4,7 +4,8 @@
  * periods PELS prices on. Shared by the live fetch (`friNettleieFetch.ts`) and
  * the file map's generator (`scripts/build-fri-nettleie-files.mjs`).
  *
- * Fees are øre/kWh ex VAT and without any other tax, the Enova fee included.
+ * Fees are øre/kWh ex VAT and carry no tax, the Enova fee among them
+ * (`gridTariffFallback.ts` adds it).
  */
 
 export type FriNettleieException = {
