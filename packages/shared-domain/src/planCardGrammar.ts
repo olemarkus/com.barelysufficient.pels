@@ -204,7 +204,8 @@ export const PLAN_CARD_BOOST_CHIP_LABEL = 'Boost';
 // (the device's own threshold and a smart-task forced boost), so naming a
 // per-device toggle would be wrong for the forced one — the owner would open the
 // device page and find that toggle switched off. What is true in both cases is
-// what the chip now says: this device is being given priority.
+// what the tooltip says: the device can take power from lower-priority devices,
+// and it yields to a limited device ranked above it.
 // Retired 2026-08-16: `Temperature boost is active`, `EV boost is active`.
 export const PLAN_CARD_BOOST_TOOLTIP = 'Can take power from lower-priority devices';
 // The chip states what the flag actually does — the device is exempt from the
