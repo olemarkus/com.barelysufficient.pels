@@ -46,14 +46,26 @@ Make three Flows:
 
 **Set a virtual sensor value** lists the virtual thermostat's values by their Homey names, so pick `measure_power` and `measure_temperature` there. The third Flow passes on every change PELS makes to the target.
 
-Change the temperature in PELS from now on, not in the device's own app: the virtual thermostat does not see changes made there.
+For the two measurement Flows, use the source device's own reading tag as the value. This lets you run each Flow once to copy its current reading, without waiting for the next change.
+
+## 3. Set the Initial Values
+
+Virtual Devices does not set initial values when you create the device. Before adding it to PELS:
+
+1. Open the virtual thermostat's tile in Homey and set its target to the temperature you want. The third Flow also sends this first setting to the real device.
+2. Run the power and measured-temperature Flows once to copy the source devices' current readings.
+3. Check that the virtual thermostat shows a target temperature, measured temperature and power reading. A power reading of 0 W is valid when the device is not drawing power.
+
+PELS needs both a target temperature and a measured temperature to recognize the virtual thermostat's temperature control.
 
 The smart plug and the virtual thermostat now report the same power, so Homey Energy counts it twice. To count it once, open the smart plug's settings in Homey and turn on **Exclude from Energy** under **Advanced Settings** > **Energy**. PELS still reads the power from the virtual thermostat.
 
-## 3. Add It to PELS
+## 4. Add It to PELS
 
-1. Open the virtual thermostat in PELS and turn on **Managed by PELS**. Leave the real device and the smart plug unmanaged.
+1. Open PELS's **Devices** page and select **Refresh devices**, then open the virtual thermostat and turn on **Managed by PELS**. Leave the real device and the smart plug unmanaged.
 2. Set its temperatures under **Temperature per mode**. PELS sends them through the third Flow.
 3. Under **Power limiting**, set **Limited temperature** to a temperature at which the heater stays off.
 
 PELS now sees the unit's real power. When it needs room under your limit, it lowers the target to the limited temperature, the heater switches off, and the plug's reading drops. When power allows, PELS sets the mode's temperature again.
+
+After setup, change the temperature in PELS: the virtual thermostat does not see changes made in the real device's own app.
