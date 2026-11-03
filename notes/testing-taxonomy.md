@@ -192,20 +192,23 @@ full-suite CPU load. Wait for the observable effect instead: `test/utils/asyncDr
 advancement and microtask draining until the SDK write lands (or throw — a real regression
 never satisfies the predicate). Use these rather than a fixed flush + immediate assert.
 
-## The SHS suite: a real Homey, from a clean install
+## The real-Homey suite: from a clean install
 
-`npm run shs:e2e` (`scripts/shs-e2e/`) runs scenarios on a Homey Self-Hosted Server rather
-than against the SDK mock. It installs test-devices and this checkout of PELS with
+`npm run e2e:homey` (`scripts/homey-e2e/`) runs scenarios on a real Homey rather than against
+the SDK mock. It installs test-devices and this checkout of PELS with
 `homey app install --clean`, pairs the test-devices mocks each scenario needs through the
 pair-session API, sets PELS up with the settings keys and routes the settings UI uses, and
 asserts on what PELS does to the devices and what it serves the UI. It is the place for
 behaviour that depends on Homey's own timing and echoes, which the runtime e2e can only
 model. CI does not run it, and running it is a Homey install, so it runs only when asked.
 
-A clean install deletes every paired mock and all PELS settings on the box, so run it only
-on a box set aside for it. `--scenario <name>` runs one scenario and `--skip-install` reuses
-the box as the last run left it. A new scenario is a module in `scripts/shs-e2e/scenarios/`
-listed in `run.mjs`; it pairs its own devices and never assumes any already exist.
+The Homey comes from the environment: `PELS_E2E_HOMEY_HOME` is the Homey CLI home whose
+active Homey it is, `PELS_E2E_HOMEY_URL` that Homey's local Web API, and
+`PELS_E2E_HOMEY_ID` must name the same Homey or the suite refuses to run. A clean install
+deletes every paired mock and all PELS settings on that Homey, so point it only at one set
+aside for it. `--scenario <name>` runs one scenario and `--skip-install` reuses the Homey as
+the last run left it. A new scenario is a module in `scripts/homey-e2e/scenarios/` listed in
+`run.mjs`; it pairs its own devices and never assumes any already exist.
 
 ## Classifying a spec
 
