@@ -360,12 +360,16 @@ export class PlanExecutor {
    * observed one), and covers an uncontrolled device's restore, for which drift
    * sets no expectation. The stepped checks read the stepped intent dispatch
    * carries out, so a device the projection holds is not reported as work.
+   *
+   * Only a pending turn-ON holds the binary operations back, as the plan
+   * device's `binaryCommandPending` did before the execution contract moved
+   * here; see `hasStableDeviceActuation`.
    */
   public hasStablePlanActuation(plan: ExecutionPlan): boolean {
     return plan.devices.some((device) => hasStableDeviceActuation(
       device,
       this.deps.getSteppedLoadCommandSession(device.commands.id),
-      this.deps.pendingBinaryCommandStore.hasActiveCommand(device.commands.id),
+      this.deps.pendingBinaryCommandStore.hasActiveTurnOn(device.commands.id),
       this.feedback.isStandingShed(device.commands.id),
     ));
   }

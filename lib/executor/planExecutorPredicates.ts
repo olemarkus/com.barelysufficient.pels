@@ -11,15 +11,22 @@ export function resolveConfirmedBinaryCommandReasonCode(pending: PendingBinaryCo
   return pending.logContext === 'capacity_control_off' ? 'capacity_control_off_restore' : 'activation';
 }
 
+/**
+ * `turnOnPending` is a pending turn-ON only, the question the plan device's
+ * `binaryCommandPending` (`hasActiveTurnOn`) answered before the stable work
+ * moved behind the execution contract. A pending turn-off does not hold the
+ * binary operations back, and binary dispatch skips a matching command already
+ * in flight on its own (`already_pending`, `binaryControlPreflight.ts`).
+ */
 export function hasStableDeviceActuation(
   device: PlannedDeviceExecution,
   session: ExecutableSteppedLoadCommandSession,
-  binaryPending: boolean,
+  turnOnPending: boolean,
   standingShed: boolean,
 ): boolean {
   const work = device.stableOperations;
   if (standingShed && work.includes('uncontrolled_restore')) return true;
-  if (!binaryPending && (work.includes('binary_release') || work.includes('binary_restore'))) return true;
+  if (!turnOnPending && (work.includes('binary_release') || work.includes('binary_restore'))) return true;
   if (!hasPlannedStep(device.commands)) return false;
   const step = device.commands.steppedLoad;
   if (work.includes('initialize_step') && !session.command
