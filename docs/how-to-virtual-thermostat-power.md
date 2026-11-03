@@ -48,6 +48,8 @@ Make three Flows:
 
 Change the temperature in PELS from now on, not in the device's own app: the virtual thermostat does not see changes made there.
 
+The smart plug and the virtual thermostat now report the same power, so Homey Energy counts it twice. To count it once, open the smart plug's settings in Homey and turn on **Exclude from Energy** under **Advanced Settings** > **Energy**. PELS still reads the power from the virtual thermostat.
+
 ## 3. Add It to PELS
 
 1. Open the virtual thermostat in PELS and turn on **Managed by PELS**. Leave the real device and the smart plug unmanaged.
