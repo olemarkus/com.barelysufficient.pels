@@ -1,6 +1,6 @@
 ---
 title: Limit a Temperature Device Through a Virtual Thermostat
-description: Give PELS a power reading for a heater or ventilation unit whose app reports none, by combining it with a smart plug or sub-meter in an Advanced Virtual Device.
+description: Give PELS a power reading for a heater or ventilation unit whose app reports none, by combining it with a smart plug or sub-meter in a virtual thermostat.
 ---
 
 # How-To: Limit a Temperature Device Through a Virtual Thermostat
@@ -15,27 +15,17 @@ Don't let PELS manage the smart plug itself. PELS would limit it by switching it
 
 - The device's Homey app, with a target temperature you can set from a Flow.
 - A smart plug or sub-meter that reports the device's power in Homey.
-- The [Device Capabilities](https://homey.app/a/nl.qluster-it.DeviceCapabilities) app, which makes the **Advanced Virtual Device** used below.
+- The [Virtual Devices](https://homey.app/a/com.arjankranenburg.virtual) app.
 
 ## 1. Create the Virtual Thermostat
 
-The quickest way is to import the template below. It creates a virtual thermostat with three fields:
+1. In Homey, add a device and choose **Virtual Devices** > **Device**.
+2. Give it a name, for example the name of the real unit, and pick an icon.
+3. Under **Device Class**, choose **Thermostat**.
+4. Under **Capabilities**, keep **Target temperature** and **Temperature**, and also select **Power**.
+5. Finish with **Add Device**.
 
-| Field | Range | What it holds |
-| --- | --- | --- |
-| **Target temperature** | 5 to 30 °C | The temperature PELS sets. A Flow passes it on to the real device. |
-| **Temperature** | -40 to 60 °C | The real device's measured temperature. |
-| **Power** | 0 to 10000 W | The meter's power reading. |
-
-1. In Homey, add a device and choose **Device Capabilities** > **Advanced Virtual Device**.
-2. Choose **Importing a TEF**, paste the template, and press **Read Device**.
-3. Give the device a name, for example the name of the real unit, and finish.
-
-```text
-[tef:AVD:"H4sIAAAAAAACA4XSXWrCQBAH8KvIPCew+dDqvrWhgtDagpY+lFImyagLSTZsJiqId+oZerKS0LhYU/sUZv5D5jewB0jqinU+S3RRgTwcHdBGrVWB2SwFCeNQ+Ihi5HpCjN1wMvLcySpJ3bGfejfDGMNhGIMDFTGrYt38AZKsAgm8IZPripHBgaLOYzJPq3n7nSrK0gpkYIMFI9dVFwgbLGnPPe07rTPCoi+pmdtTLno9wxHmZPAi8OaYE0hYolkTD5jykgxybeh0i7fY6N1te2g79NE79FIobma+PiPbfFQFyKEtcQ8ysLsjQ8g0zfQuQtOw2NRk11KJBpkiLDFWmWJFv0b8Dt8D8k/qnLCqDfWy/T6237LdUNhGAx/Z+irc/x8e/MCf9Y7MaW9wQS7P8w77alstVdiygXpCCNu6ag3+th4dSGmrEuqs9w+LwVYZrjEbnD15BPn2fvwGvPJQ2V8DAAA=":/tef]
-```
-
-To set it up by hand instead, give the Advanced Virtual Device the **Thermostat** class and three number fields shown as **Target temperature**, **Measured temperature** and **Power**. On each field, turn on **Create real field and Default Flowcards**: without it, Homey does not see the field as a real temperature or power value, and PELS cannot use it. Give every field a real range, as in the table. If the values do not update after you save the fields, restart the Device Capabilities app once.
+These settings cannot be changed afterwards. If you miss **Power**, delete the device and add it again.
 
 ## 2. Connect It With Flows
 
@@ -43,11 +33,11 @@ Make three Flows:
 
 | When | Then |
 | --- | --- |
-| The meter's power changes | Set the virtual thermostat's **Power** to the meter's power. |
-| The real device's temperature changes | Set the virtual thermostat's **Temperature** to that temperature. |
-| The virtual thermostat's **Target temperature** is set | Set the real device's target temperature to that value. |
+| The smart plug's **The power changed** | The virtual thermostat's **Set a virtual sensor value**: set `measure_power` to the plug's power. |
+| The real device's **The temperature changes** | The virtual thermostat's **Set a virtual sensor value**: set `measure_temperature` to the device's temperature. |
+| The virtual thermostat's **The target temperature changed** | The real device's **Set the temperature**, to the virtual thermostat's target temperature. |
 
-The first two use the **Set Number** action of the Advanced Virtual Device. The third starts from its **Number set** trigger for the **Target temperature** field, which fires every time PELS changes the target.
+**Set a virtual sensor value** lists the virtual thermostat's values by their Homey names, so pick `measure_power` and `measure_temperature` there. The third Flow passes on every change PELS makes to the target.
 
 Change the temperature in PELS from now on, not in the device's own app: the virtual thermostat does not see changes made there.
 
@@ -57,4 +47,4 @@ Change the temperature in PELS from now on, not in the device's own app: the vir
 2. Set its temperatures under **Temperature per mode**. PELS sends them through the third Flow.
 3. Under **Power limiting**, set **Limited temperature** to a temperature at which the heater stays off.
 
-PELS now sees the unit's real power. When it needs room under your limit, it lowers the target to the limited temperature, the heater switches off, and the meter's reading drops. When power allows, PELS sets the mode's temperature again.
+PELS now sees the unit's real power. When it needs room under your limit, it lowers the target to the limited temperature, the heater switches off, and the plug's reading drops. When power allows, PELS sets the mode's temperature again.
