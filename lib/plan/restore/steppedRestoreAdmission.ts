@@ -7,7 +7,7 @@ import { getSteppedLoadLowestActiveStep } from '../../../packages/shared-domain/
 import type { SteppedLoadStep } from '../../../packages/contracts/src/types';
 import { isOffSteppedRestoreCandidate } from './devices';
 import { emitRestoreDebugEventOnChange } from '../planDebugDedupe';
-import { countShedDevices } from './coordination';
+import { countFairnessLimitedDevices, countShedDevices } from './coordination';
 import {
   buildReserveAdmittedLogFields,
   buildReservedForStartReason,
@@ -144,16 +144,18 @@ export function blockSteppedRestoreForShedInvariant(
   nextStep: SteppedLoadStep,
 ): boolean {
   const { deviceMap, state, phase } = cycle;
-  // Boost is the user's priority override: it bypasses the fairness invariant.
-  // No draw-evidence consult here — `resolveBoostActive` already released the
-  // boost if the device is drawing nothing, so an active boost IS a device with
-  // demand. Re-asking would also break the staircase case a second time: a
-  // freshly-entered rung has no accepted calibration samples of its own (see the
-  // regression in planRestoreBoostShedInvariantBypass.test.ts).
-  if (dev.boostActive) return false;
+  // Boost is the user's priority override over LOWER-priority devices: it steps
+  // past the fairness invariant while only devices ranked below it are limited,
+  // and yields like any other device to one ranked above it
+  // (`countFairnessLimitedDevices`). No draw-evidence consult here —
+  // `resolveBoostActive` already released the boost if the device is drawing
+  // nothing, so an active boost IS a device with demand. Re-asking would also
+  // break the staircase case a second time: a freshly-entered rung has no
+  // accepted calibration samples of its own (see the regression in
+  // planRestoreBoostShedInvariantBypass.test.ts).
   const lowestNonZeroStep = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);
   if (!lowestNonZeroStep || nextStep.planningPowerW <= lowestNonZeroStep.planningPowerW) return false;
-  const shedDeviceCount = countShedDevices(deviceMap, dev.id, state.shedDecisions);
+  const shedDeviceCount = countFairnessLimitedDevices(deviceMap, dev, state.shedDecisions);
   if (shedDeviceCount === 0) return false;
   const reason = {
     code: PLAN_REASON_CODES.shedInvariant,

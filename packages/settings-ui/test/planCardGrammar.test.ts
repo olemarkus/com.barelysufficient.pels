@@ -184,7 +184,7 @@ describe('resolvePlanCardStatusChip — single-chip ladder', () => {
     // that toggle switched off. What is true for every cause is what it says now.
     const boost = resolvePlanCardStatusChip({ ...base, displayKind: 'active', boostActive: true });
     expect(boost).toMatchObject({
-      type: 'status', label: 'Boost', tooltip: 'Given priority over other devices',
+      type: 'status', label: 'Boost', tooltip: 'Can take power from lower-priority devices',
     });
   });
 });

@@ -429,9 +429,11 @@ rather than re-derives:
 | `claimed` | the task books the hour, with or without energy, and no release applies | driven: the task's setpoint floor, start-policy lift, budget exemption; in an hour with energy also the escalation permissions (limit and pause lower-priority devices). A satisfied task's booked hour is a top-up and gets none of the permissions |
 | `released` | the hour is not booked and the task can finish without it, OR a price release applies | held off: with standing authority (power limiting on, or "Only PELS starts this device"), turned OFF by the planner; with authority lent by the task, the configured release posture. The task's setpoint floor still rides the decision, so a lower mode target is not written over it; the shed posture carries its own limit |
 
-Escalation backs a promise, so a 0 kWh booking carries none: boost past the shed invariant and the
-startup reservation are priority-blind, and would let a task take an hour a higher-priority task
-reserved. A 0 kWh booking runs on capacity that turns out to be free.
+Escalation backs a promise, so a 0 kWh booking carries none: the startup reservation is
+priority-blind, and a boost past the shed invariant yields only to a higher-priority device that
+is already limited (since 2026-11-03), never to one that has merely reserved the hour. Either
+would let a task take an hour a higher-priority task reserved. A 0 kWh booking runs on capacity
+that turns out to be free.
 
 **During an active task the task decides whether the device runs, also with Power-limit control on**
 (owner ruling 2026-09-25). A task can aim higher than the mode would (a water heater at 65 °C where

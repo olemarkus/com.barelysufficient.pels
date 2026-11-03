@@ -111,7 +111,9 @@ const resolveDecision = (
   // power back from lower-priority admission) backs a promise, so it applies only
   // where the hour books energy. A hour booked at 0 kWh runs on capacity that turns
   // out to be free; escalating there would let a task take an hour a
-  // higher-priority task reserved, because the boost bypasses are priority-blind.
+  // higher-priority task reserved, because a boost yields only to a higher-priority
+  // device that is already limited (`countFairnessLimitedDevices`), never to one
+  // that has merely reserved the hour.
   const promisesEnergy = (horizonPlan.currentBucket?.plannedUsefulEnergyKWh ?? 0) > 0;
   return {
     kind: 'planned',

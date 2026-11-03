@@ -102,6 +102,37 @@ export function countShedDevices(
   excludeId: string,
   shedDecisions: ShedDecisions,
 ): number {
+  return countShedDevicesWhere(deviceMap, excludeId, shedDecisions, () => true);
+}
+
+/**
+ * The limited devices a stepped device yields its step-ups to under the fairness
+ * rule (`docs/technical.md`, stepped loads): every other limited device, or, for
+ * a boosted device, only those ranked above it. A boost takes power from
+ * lower-priority devices and never from one ranked above it (owner ruling
+ * 2026-11-03: a boosted priority-4 charger climbed to 12 A while priority-2 and -3
+ * thermostats were held). Priority 1 ranks highest.
+ *
+ * The one answer the restore gate (`blockSteppedRestoreForShedInvariant`), the
+ * keep-step clamp (`isFairnessLimited`) and the card's fairness hold
+ * (`stampSteppedFairnessHolds`) share, so the three cannot disagree.
+ */
+export function countFairnessLimitedDevices(
+  deviceMap: Map<string, DevicePlanDevice>,
+  device: Pick<DevicePlanDevice, 'id' | 'priority' | 'boostActive'>,
+  shedDecisions: ShedDecisions,
+): number {
+  return countShedDevicesWhere(deviceMap, device.id, shedDecisions, (other) => (
+    !device.boostActive || other.priority < device.priority
+  ));
+}
+
+function countShedDevicesWhere(
+  deviceMap: Map<string, DevicePlanDevice>,
+  excludeId: string,
+  shedDecisions: ShedDecisions,
+  counts: (device: DevicePlanDevice) => boolean,
+): number {
   let count = 0;
   for (const device of deviceMap.values()) {
     if (device.id === excludeId) continue;
@@ -111,6 +142,7 @@ export function countShedDevices(
     // is one ("Only PELS starts this device" and a deferred smart-task hour, owner
     // rulings 2026-09-10 and 2026-09-25). See `nonCapacityHoldShed`.
     if (device.nonCapacityHoldShed === true) continue;
+    if (!counts(device)) continue;
     // Base plan keep is provisional until this pass admits a previous-shed or
     // unplanned candidate. Keep those in the invariant's shed count meanwhile.
     if (device.plannedState === 'shed' || shedDecisions.wasShedOrUnplanned(device.id)) count += 1;

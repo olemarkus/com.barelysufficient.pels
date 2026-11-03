@@ -206,7 +206,7 @@ export const PLAN_CARD_BOOST_CHIP_LABEL = 'Boost';
 // device page and find that toggle switched off. What is true in both cases is
 // what the chip now says: this device is being given priority.
 // Retired 2026-08-16: `Temperature boost is active`, `EV boost is active`.
-export const PLAN_CARD_BOOST_TOOLTIP = 'Given priority over other devices';
+export const PLAN_CARD_BOOST_TOOLTIP = 'Can take power from lower-priority devices';
 // The chip states what the flag actually does — the device is exempt from the
 // daily budget — and matches what the same flag is called on the Devices list
 // and on its own detail toggle. The former "Always on" promised something the

@@ -222,7 +222,7 @@ const buildFor = (kind: Kind): Record<string, unknown> => {
     plannedTarget: kind.target,
     shedBehavior: kind.behavior ?? TURN_OFF,
     sheddingPlan,
-    anyOtherDeviceLimited: kind.otherLimited === true,
+    fairnessLimited: kind.otherLimited === true,
     boostActive: kind.boost === true,
     surplusHoldShed: false,
     surplusAbsorbActive: kind.surplus === true,

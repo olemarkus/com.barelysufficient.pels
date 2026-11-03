@@ -132,7 +132,7 @@ function resolvePlannedDeviceDecision(inputs: BasePlanDeviceInputs): PlannedDevi
     effectiveDesiredStepId: control.commandAuthority
       ? resolveSteppedKeepDesiredStepIdFor(
         dev, plannedState, shedDesiredStepId ?? runtimeDesiredStepId,
-        inputs.anyOtherDeviceLimited, boostActive, surplusCeilingStepId,
+        inputs.fairnessLimited, boostActive, surplusCeilingStepId,
       )
       : resolveSteppedLoadInitialDesiredStepId(dev),
     shedDesiredStepId,
@@ -172,7 +172,7 @@ export type BasePlanDeviceInputs = {
    * arrives as itself rather than as three of its members re-listed here.
    */
   sheddingPlan: SheddingPlan;
-  anyOtherDeviceLimited: boolean;
+  fairnessLimited: boolean;
   boostActive: boolean;
   /** The existing surplus-posture predicate's decision, excluding fresh capacity reasons. */
   surplusHoldShed: boolean;
@@ -337,10 +337,10 @@ function resolveHoldDecisions(
 }
 
 function isSurplusCeilingReduction(inputs: BasePlanDeviceInputs, decision: PlannedDeviceDecision): boolean {
-  const { dev, surplusCeilingStepId, boostActive, anyOtherDeviceLimited, sheddingPlan } = inputs;
+  const { dev, surplusCeilingStepId, boostActive, fairnessLimited, sheddingPlan } = inputs;
   return dev.surplusTracking
     && !boostActive
-    && !anyOtherDeviceLimited
+    && !fairnessLimited
     && decision.plannedState === 'keep'
     && !sheddingPlan.shedReasons.has(dev.id)
     && surplusCeilingStepId !== undefined

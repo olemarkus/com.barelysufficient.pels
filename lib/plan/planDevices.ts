@@ -2,7 +2,7 @@ import type { DevicePlanDevice, PlanInputDevice, ShedBehavior } from './planType
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import { resolveSurplusCeilingStepId, type PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
-import { buildEffectiveShedPosture, isAnyOtherDeviceLimited } from './keepInvariantPosture';
+import { buildEffectiveShedPosture, isFairnessLimited } from './keepInvariantPosture';
 import {
   resolveSteppedShedCurrentDesiredStepId,
   resolveSteppedShedHypotheticalStepId,
@@ -72,6 +72,8 @@ export function buildInitialPlanDevices(
       || isChargeTargetHoldShed(dev, shedReasons)
       || isDeferredHoldShed(dev, shedReasons),
   );
+  // The ranks the fairness clamp compares a boosted device against (`isFairnessLimited`).
+  const priorityById = new Map(context.devices.map((dev) => [dev.id, dev.priority]));
   // Per-stage accumulators (split inside the per-device loop). Emitted once
   // after the loop so the perf log shows where plan_devices_ms is going
   // without per-iteration log spam. Added during 2026-05-18 memory-regression
@@ -134,7 +136,7 @@ export function buildInitialPlanDevices(
       plannedTarget,
       shedBehavior,
       sheddingPlan,
-      anyOtherDeviceLimited: isAnyOtherDeviceLimited(effectiveShedSet, dev.id),
+      fairnessLimited: isFairnessLimited(effectiveShedSet, dev, boostActive, priorityById),
       boostActive,
       surplusHoldShed: isSurplusOnlyHoldShed(dev, state, shedReasons),
       // Set by resolvePlannedTarget above (read after it ran for this device).

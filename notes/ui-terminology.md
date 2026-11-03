@@ -279,14 +279,21 @@ status supplies any transition. A countdown the reason text does not name (the
 line says what a paused device still reports) shows only as the card's ring.
 
 **Boost names no kind.** The `Boost` chip's hover text is
-`Given priority over other devices`, and it is the only wording there is.
+`Can take power from lower-priority devices`, and it is the only wording there is.
+**Retired 2026-11-03: `Given priority over other devices`.** A boost takes power
+from lower-priority devices only and yields to a limited device ranked above it
+(owner ruling 2026-11-03); "other devices" promised priority over every device.
+The boost setting hints say the same: `Take power from lower-priority devices
+while the battery is below this level.` and `Step this load up when it is cold,
+drawing from lower-priority devices.`
 **Retired 2026-08-16: `Temperature boost is active`, `EV boost is active`.**
 Two spellings existed because the wire carried two per-axis flags, and both were
 wrong twice over: a tank's temperature and a car's battery percentage are the
 same quantity in different units, so there is no axis to report; and a boost can
 be forced by a smart task on a device whose owner configured no threshold, so
 naming a per-device toggle sent that owner to a page where the toggle is off.
-The chip says what is true of every boost — this device is being given priority.
+The chip says what is true of every boost: this device may take power from
+lower-priority devices.
 Do not reintroduce a per-kind spelling, and do not let a consumer derive one:
 the plan carries a single `boostActive` and nothing beside it.
 

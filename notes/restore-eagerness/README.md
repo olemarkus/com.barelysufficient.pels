@@ -24,10 +24,12 @@ These earlier issues have already been addressed and should not be re-triaged as
   activation-penalty ladder attributes a MEASURED overshoot to the restores that caused it and
   raises that device's bar exponentially. Admission is now `marginKw >= 0`
 - stepped keep-invariant restores are blocked above the lowest non-zero step while any device is
-  still shed — EXCEPT for a device with an ACTIVE boost, which bypasses the invariant (boost is
-  the user's priority override; 2026-07-05). The restore lane itself asks no further question
-  about that boost: it reads `boostActive` and nothing else, so the bypass is unconditional
-  *at this layer*. Whether the boost is active at all is decided one layer up, by
+  still shed — EXCEPT for a device with an ACTIVE boost while every shed device ranks below it,
+  which bypasses the invariant (boost is the user's priority override over lower-priority
+  devices; 2026-07-05, narrowed to lower priority by owner ruling 2026-11-03 after a boosted
+  priority-4 charger climbed to 12 A past held priority-2 and -3 thermostats). A shed device
+  ranked above it holds it like any other (`countFairnessLimitedDevices`). Beyond that rank the
+  restore lane asks no further question about the boost: it reads `boostActive`. Whether the boost is active at all is decided one layer up, by
   `resolveBoostActive` (`lib/plan/planBoost.ts`), which releases it when the producer confirms
   the device is drawing nothing — a fresh meter reading below the active floor, on a device PELS
   is not itself holding off, with no in-band draw at any rung inside the window. A mid-climb rung
@@ -90,8 +92,9 @@ Batching is intentionally narrow:
 - a previously-shed stepped load restoring from `off` to its lowest active step follows normal
   cross-device priority ordering and consumes one slot in the shared three-device cap; the
   conservative stepped gate still applies to later step-ups while other devices remain shed,
-  unless the device has an active boost (invariant bypass, 2026-07-05; headroom admission and
-  attempt-hold still gate each rung). "Active" is the upstream decision described above — a boost
+  unless the device has an active boost and every shed device ranks below it (invariant bypass,
+  2026-07-05, lower priority only since 2026-11-03; headroom admission and attempt-hold still
+  gate each rung). "Active" is the upstream decision described above — a boost
   released for confirmed no-draw is not active, and the device is then subject to the invariant
   like any other
 

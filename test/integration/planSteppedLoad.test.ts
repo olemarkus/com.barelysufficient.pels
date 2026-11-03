@@ -172,6 +172,8 @@ describe('planSteppedLoad', () => {
   });
 
   it('holds an admitted boosted step across rebuilds and releases it when boost ends', () => {
+    // `fairnessLimited` arrives already resolved per device (`isFairnessLimited`):
+    // for a boosted device, false while only lower-priority devices are limited.
     const boostedAtMedium = steppedPlanDevice({
       currentState: 'on',
       plannedState: 'keep',
@@ -180,7 +182,7 @@ describe('planSteppedLoad', () => {
     });
     expect(keepDesiredStepIdUnder(
       boostedAtMedium,
-      true, true,
+      false, true,
     )).toBe('medium');
 
     expect(keepDesiredStepIdUnder(steppedPlanDevice({
@@ -188,12 +190,24 @@ describe('planSteppedLoad', () => {
       plannedState: 'keep',
       selectedStepId: 'max',
       desiredStepId: 'low',
-    }), true, true)).toBe('max');
+    }), false, true)).toBe('max');
 
     expect(keepDesiredStepIdUnder(
       boostedAtMedium,
       true,
     )).toBe('low');
+  });
+
+  it('clamps a boosted device to its lowest active step while a device ranked above it is limited', () => {
+    // Prod 2026-11-02: a boosted priority-4 charger held 12 A while the priority-2
+    // and -3 thermostats were limited. A boost raises the step, never past a
+    // higher-priority device that is waiting.
+    expect(keepDesiredStepIdUnder(steppedPlanDevice({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'max',
+      desiredStepId: 'low',
+    }), true, true)).toBe('low');
   });
 
   it('leaves keep desired step unchanged when device is already at lowest non-zero step', () => {
