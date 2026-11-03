@@ -60,6 +60,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { DeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
 import type { SteppedCommandStore } from '../executor/steppedCommandStore';
+import type { ControlContestRecord } from '../executor/controlContest';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type { HomeMembershipPort } from '../home/membership';
 import type { HomeRuntimeReadPort } from '../home/homeRuntimeRead';
@@ -393,6 +394,8 @@ export type AppContext = {
   /** The stepped axis's two stores: what PELS commanded, and what the device attested. */
   readonly steppedCommandStore: SteppedCommandStore;
   readonly steppedReportedStore: SteppedReportedStepStore;
+  /** The executor's drift corrections, app-wide; every home's execution state feeds it. */
+  readonly controlContests: ControlContestRecord;
   readonly timers: TimerRegistry;
 };
 

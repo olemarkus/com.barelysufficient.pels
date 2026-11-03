@@ -44,6 +44,7 @@ import {
 } from './steppedCommandState';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
+import type { ControlContestRecord } from './controlContest';
 
 export class SteppedCommandStore {
   private readonly state: DeviceControlRuntimeState = createDeviceControlRuntimeState();
@@ -51,9 +52,13 @@ export class SteppedCommandStore {
   /**
    * The observer's record of what the device attested. Injected, not owned:
    * reconciling a command against a report is this layer's job, but the report
-   * itself belongs to `lib/observer/steppedReportedStep.ts`.
+   * itself belongs to `lib/observer/steppedReportedStep.ts`. The contest record
+   * hears each confirmation and each command session that ends here.
    */
-  constructor(private readonly reportedStore: SteppedReportedStepStore) {}
+  constructor(
+    private readonly reportedStore: SteppedReportedStepStore,
+    private readonly contests: ControlContestRecord,
+  ) {}
 
   // --- Commanded axis: reads -------------------------------------------------
 
@@ -168,7 +173,9 @@ export class SteppedCommandStore {
   }
 
   reportActualStep(observation: FlowSteppedLoadObservation): ReportSteppedLoadActualStepResult {
-    return reportSteppedLoadActualStep(this.state, this.reportedStore, observation);
+    const result = reportSteppedLoadActualStep(this.state, this.reportedStore, observation);
+    this.noteConfirmation(observation.deviceId);
+    return result;
   }
 
   /** Acknowledge or contradict the tracked command by the device's setting echo (`noteSteppedLoadAcknowledgedStep`). */
@@ -179,6 +186,7 @@ export class SteppedCommandStore {
   /** Settle the tracked command against the step the device reports (`noteSteppedLoadReportedStep`). */
   noteReportedStep(deviceId: string, stepId: string, reportedAtMs: number): void {
     noteSteppedLoadReportedStep(this.state, deviceId, stepId, reportedAtMs);
+    this.noteConfirmation(deviceId);
   }
 
   /**
@@ -191,16 +199,23 @@ export class SteppedCommandStore {
     this.state.steppedLoadInitializedAtLowestStepByDeviceId.delete(deviceId);
     this.state.steppedLoadDesiredByDeviceId.delete(deviceId);
     this.state.steppedLoadStepCommandIssuedByDeviceId.delete(deviceId);
+    this.contests.commandReleased(deviceId, 'level');
   }
 
   // --- Lifecycle ------------------------------------------------------------
 
   confirmDesired(deviceId: string, desired: SteppedLoadDesiredRuntimeState): void {
     confirmSteppedLoadDesiredStep(this.state, deviceId, desired);
+    this.noteConfirmation(deviceId);
   }
 
+  /** An on→off edge ends the command session, and with it the command PELS stood behind. */
   expireConfirmedDesiredOnBinaryOff(deviceId: string, observedOn: boolean): void {
+    const tracked = this.state.steppedLoadDesiredByDeviceId.has(deviceId);
     expireConfirmedDesiredStepOnBinaryOff(this.state, deviceId, observedOn);
+    if (tracked && !this.state.steppedLoadDesiredByDeviceId.has(deviceId)) {
+      this.contests.commandReleased(deviceId, 'level');
+    }
   }
 
   pruneStale(nowMs: number = Date.now()): boolean {
@@ -214,9 +229,16 @@ export class SteppedCommandStore {
    */
   deleteDesired(deviceId: string): void {
     this.state.steppedLoadDesiredByDeviceId.delete(deviceId);
+    this.contests.commandReleased(deviceId, 'level');
+  }
+
+  private noteConfirmation(deviceId: string): void {
+    const desired = this.state.steppedLoadDesiredByDeviceId.get(deviceId);
+    if (desired?.status === 'success') this.contests.commandConfirmed(deviceId, 'level', desired.stepId);
   }
 }
 
 export const createSteppedCommandStore = (
   reportedStore: SteppedReportedStepStore,
-): SteppedCommandStore => new SteppedCommandStore(reportedStore);
+  contests: ControlContestRecord,
+): SteppedCommandStore => new SteppedCommandStore(reportedStore, contests);

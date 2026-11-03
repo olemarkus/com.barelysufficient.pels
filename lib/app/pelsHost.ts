@@ -1,4 +1,5 @@
 import type { SchedulesResponse } from '../../packages/contracts/src/schedules';
+import type { ControlContestRecord } from '../executor/controlContest';
 import type { AppContext } from './appContext';
 import type { SupportReportService } from '../diagnostics/supportReportService';
 import type { Logger as PinoLogger } from '../logging/logger';
@@ -68,6 +69,8 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
 > & {
   readSchedules(): SchedulesResponse;
   readonly supportReports: Pick<SupportReportService, 'prepare' | 'get' | 'send'>;
+  /** Which managed devices keep moving away from what PELS set (`lib/executor/controlContest.ts`). */
+  readonly controlContests: Pick<ControlContestRecord, 'contestedControl'>;
   getModePrioritiesForUi(deviceIds: readonly string[]): ModePriorityOrder;
   getSettingsUiManagedDevices(): DecoratedDeviceSnapshot[];
   refreshFlowConflictsForUi(): Promise<FlowConflictRefreshResult>;

@@ -34,6 +34,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     error: vi.fn(),
     planStatuses: createPlanStatusRegistry(),
     deviceManager: undefined,
+    controlContests: { contestedControl: () => undefined },
     planService: undefined,
     priceCoordinator: undefined,
     batteryControl: undefined,

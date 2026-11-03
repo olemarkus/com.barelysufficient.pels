@@ -57,6 +57,12 @@ export type PlanEngine = {
     source: PendingTargetObservationSource,
   ) => boolean;
   prunePendingTargetCommands: (plan: DevicePlan) => boolean;
+  /**
+   * After each build: the executor forgets a command this plan no longer asks
+   * for, so a later send of it is a new command rather than a correction
+   * (`lib/executor/controlContest.ts`).
+   */
+  retainContestedCommands: (plan: DevicePlan) => void;
   syncPendingBinaryCommands: (
     devices: PendingBinaryLiveDevice[],
     source: PendingTargetObservationSource,

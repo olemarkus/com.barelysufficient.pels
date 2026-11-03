@@ -237,7 +237,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     now: () => Date.now(),
     error: vi.fn(),
   });
-  const steppedStores = steppedStoresForTest();
+  // Journals into the context's own database (opened below, read only once an event comes).
+  const steppedStores = steppedStoresForTest(() => userdataDatabase);
   const deviceControlHelpers = deviceControlHelpersOverride ?? createDeviceControlHelpersForTest(
     () => latestTargetSnapshot, steppedStores,
     (deviceId) => context.deviceControlSettings.getDeviceTargetPowerConfig(deviceId),
@@ -527,6 +528,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     deviceControlHelpers,
     steppedCommandStore: steppedStores.store,
     steppedReportedStore: steppedStores.reportedStore,
+    controlContests: steppedStores.contests,
     timers,
   };
 

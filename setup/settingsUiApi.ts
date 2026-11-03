@@ -261,6 +261,9 @@ const buildSettingsUiDeviceList = (
     const observed = host.observer.getObservedRecord(device.id);
     const associatedCar = host.deviceManager?.getAssociatedCar(device.id);
     const carConfirmation = host.deviceManager?.getCarConfirmation(device.id);
+    // The executor's record, for a device PELS still manages: one the owner has
+    // let go is no longer PELS's to contest.
+    const controlContest = device.managed ? host.controlContests.contestedControl(device.id, Date.now()) : undefined;
     const stateOfCharge = resolveStateOfCharge(device, readObservedStateOfCharge(observed));
     return {
       ...device,
@@ -272,6 +275,7 @@ const buildSettingsUiDeviceList = (
       ...(observed ? pickLiveObservedFields(observed, resolveLiveObservedFields(device)) : {}),
       ...(associatedCar ? { associatedCar } : {}),
       ...(carConfirmation ? { carConfirmation } : {}),
+      ...(controlContest ? { controlContest } : {}),
       ...(stateOfCharge ? { stateOfCharge } : {}),
       ...readSettingsUiBatteryState(host, device),
       priority: priorities.getPriority(device.id),

@@ -1,6 +1,7 @@
 import type { PendingBinaryCommand } from '../ports/pendingBinaryCommand';
 import { ActuationRecord } from './actuationRecord';
 import type { PendingTargetCommandRead } from '../ports/pendingTargetCommand';
+import type { ControlContestRecord } from './controlContest';
 
 /** Mutable records belong to execution; consumers receive PendingTargetCommandRead. */
 export type PendingTargetCommandState = {
@@ -13,6 +14,9 @@ export class ExecutionState {
   /** Mutated only by the observer-owned pending-binary store. */
   readonly pendingBinaryCommands: Record<string, PendingBinaryCommand> = {};
   readonly pendingTargetCommands: Record<string, PendingTargetCommandState> = {};
+
+  /** App-wide: every home's commands and confirmations feed the one record. */
+  constructor(readonly controlContests: ControlContestRecord) {}
 
   hasPendingTargetCommands(): boolean {
     return Object.keys(this.pendingTargetCommands).length > 0;

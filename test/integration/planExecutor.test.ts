@@ -1,6 +1,6 @@
 import type { ExecutableSteppedLoadCommandSession } from '../../lib/executor/executablePlan';
 import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
-import { createTestPlanExecutor } from '../utils/planEngineStateFixture';
+import { createTestPlanExecutor, getTestExecutionState } from '../utils/planEngineStateFixture';
 import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
 import { onTestFinished } from 'vitest';
 import { steppedPlanDevice } from '../utils/planTestUtils';
@@ -1383,6 +1383,35 @@ describe('PlanExecutor pending target commands', () => {
       reasonCode: 'retry_pending_confirmation',
       operatingMode: 'Home',
     }));
+  });
+
+  it('retries a setpoint the device never reports on its ladder, and counts no contest', async () => {
+    // A thermostat that clamps 23 °C keeps reporting 18 °C: every send after the
+    // first retries a command the device never confirmed, so none is a correction.
+    const state = createPlanEngineState();
+    const { executor, deviceManager } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        expectedPowerKw: 1,
+        name: 'Heater',
+        binaryCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        binaryControl: { on: true },
+        targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+      },
+    ]);
+    const plan = buildExecutionPlan(buildTargetPlan());
+    const startMs = Date.now();
+    while (Date.now() - startMs < 2 * 60 * 60_000) {
+      await executor.applyPlanActions(plan);
+      vi.advanceTimersByTime(60_000);
+    }
+
+    // 90 s, then 2, 5 and every 15 min.
+    expect(deviceManager.setCapability.mock.calls.length).toBeGreaterThanOrEqual(10);
+    expect(getTestExecutionState(state).controlContests.contestedControl('dev-1', Date.now())).toBeUndefined();
+    expect(logCapture.events.some((event) => event.event === 'device_control_contested')).toBe(false);
   });
 
   it('backs off failed target writes and marks the device temporarily unavailable', async () => {

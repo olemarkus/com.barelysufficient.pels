@@ -260,6 +260,16 @@ const executeTargetCommandDispatch = async (
     const pending = recordTargetCommandAttempt(
       ctx.targetCommands, deviceId, requestedValue, nowMs, 'waiting_confirmation', latestObservedValue ?? observedValue,
     );
+    ctx.execution.controlContests.commandSent({
+      deviceId,
+      deviceName: name,
+      setting: 'temperature',
+      value: requestedValue,
+      observed: typeof latestObservedValue === 'number' && Number.isFinite(latestObservedValue)
+        ? latestObservedValue
+        : undefined,
+      atMs: nowMs,
+    });
     const {
       latestObservedValueAfterActuation,
       pendingStillExists,

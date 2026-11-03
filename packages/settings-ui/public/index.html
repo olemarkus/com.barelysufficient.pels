@@ -824,7 +824,7 @@
             <md-switch id="advanced-event-reports" disabled aria-labelledby="advanced-event-reports-label"></md-switch>
             <span class="md-switch-row__content">
               <span class="md-switch-row__label pels-text-settings-label" id="advanced-event-reports-label">Send a report on specific events</span>
-              <small class="field__hint">When PELS sees something go wrong, such as a charger that could not identify the connected car, it sends the developer a report about it a few minutes later.</small>
+              <small class="field__hint">When PELS sees something go wrong, such as a charger that could not identify the connected car, or a Flow or another app that keeps changing a device back, it sends the developer a report about it a few minutes later.</small>
             </span>
           </div>
           <p class="muted">To send a report yourself and describe what you noticed:</p>
@@ -1401,6 +1401,17 @@
                     id="device-detail-flow-conflict-check"
                     class="detail-setup-notice__action"
                   >Check again</md-text-button>
+                </div>
+                <div
+                  class="detail-setup-notice detail-setup-notice--warning"
+                  id="device-detail-control-contest-notice"
+                  role="status"
+                  hidden
+                >
+                  <div class="detail-setup-notice__content">
+                    <span class="detail-setup-notice__title" id="device-detail-control-contest-title"></span>
+                    <small class="detail-setup-notice__body" id="device-detail-control-contest-body"></small>
+                  </div>
                 </div>
                 <div class="md-switch-row" id="device-detail-managed-row">
                   <md-switch id="device-detail-managed"></md-switch>

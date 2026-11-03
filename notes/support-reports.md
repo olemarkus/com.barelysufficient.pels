@@ -152,9 +152,25 @@ read again once the report is prepared, so turning it off meanwhile sends nothin
 A report about the device an event concerns, from an hour before the event through
 capture, saying what happened (`SupportReportService.sendOnEvent`). The events that send
 one, and what each report is about, are listed in `REPORTED_EVENTS` in
-`lib/diagnostics/eventReportSchedule.ts`; a new event is one entry there. Today that is
-`ev_car_link_unmatched`, a charger whose window closed with no car identified, reported
-about the charger as of its plug-in.
+`lib/diagnostics/eventReportSchedule.ts`; a new event is one entry there. Today they are:
+
+- `ev_car_link_unmatched`, a charger whose window closed with no car identified, reported
+  about the charger as of its plug-in.
+- `device_control_contested`, a device that confirmed a setting PELS set (its target
+  temperature, on/off state or stepped level), then moved away from it, and that PELS set
+  back, at least 4 times on one setting within an hour. It is reported about that device
+  as of the first of those rounds. Its `kind` is `reverted` when every time the device went
+  back to its value from before PELS first asked (the write did not stick, as with a device
+  app that reports a setting its cloud never took), and `overridden` otherwise (a Flow, app
+  or schedule setting its own value). `ControlContestRecord` (`lib/executor/controlContest.ts`)
+  records it, because the executor owns confirmation: a retry of a command the device never
+  confirmed is never a round, so a thermostat that clamps PELS's 5 °C to 7 °C is retried
+  without being reported. A command the plan no longer asks for, or whose command session
+  ended, is forgotten, so a later send of it is a new command. The same record answers
+  `/ui_devices`'s `controlContest` for each managed device while its rounds in the last hour
+  reach the threshold; the settings UI then lists a recommendation and shows a notice above
+  Managed by PELS on the device page, worded by `kind`. PELS keeps setting the device back:
+  the record only warns and reports.
 
 The schedule checks every 5 minutes from 17 minutes after start (two minutes off the daily
 report's hourly check), over the device events kept in the last 30 minutes, so a report
