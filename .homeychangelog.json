@@ -742,5 +742,8 @@
   },
   "3.28.4": {
     "en": "When Homey Energy has no prices for your Homey, Electricity prices now also suggests Power by the Hour, which covers most European bidding zones, and setup keeps Prices open until your home has prices. The help explains how to enter a fixed or day and night tariff in Power by the Hour.\n\nAn Easee charger that has finished charging no longer reads as unplugged, so its car keeps its battery level. To make room for a more important device, PELS now turns a charger or other stepped device down a step instead of off when that frees enough. A home battery's plan allows for charging slowing down near full, and the solar forecast learns which hours of the day your panels produce more or less. The Modes editor is more compact, Missing a device? says which devices you can request support for, and the automatic diagnostics report goes out at a different time each day with more detail on smart tasks."
+  },
+  "3.28.5": {
+    "en": "The smart task widget and the smart task page now keep the time and energy still needed current between plan updates, instead of trailing the charging by up to an hour. The smart task page shows the run's total in \"Delivered X of Y kWh\".\n\nBudget's Yesterday view now compares the day with the daily budget it ran with. Before, a day that ran under budget could read as much further under budget than it was.\n\nReport a problem and the automatic diagnostics reports in Advanced now link to each other, and problem reports and device support requests share the same follow-up."
   }
 }
