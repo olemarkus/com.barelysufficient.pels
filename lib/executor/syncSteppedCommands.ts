@@ -19,6 +19,7 @@
  */
 import type { SteppedCommandStore } from './steppedCommandStore';
 import type { SteppedSettleDevice } from '../observer/steppedSettleSnapshot';
+import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 
 
 export type SyncSteppedCommandsParams = {
@@ -71,4 +72,19 @@ export const syncSteppedCommands = (params: SyncSteppedCommandsParams): boolean 
   }
 
   return changed;
+};
+
+/**
+ * The sweep a rebuild or a live sync runs: only when a command is tracked or a
+ * rung has been reported, because with neither there is nothing to settle.
+ * The devices come as a thunk so an empty store costs nothing: resolving the
+ * settle devices decorates the snapshot.
+ */
+export const syncTrackedSteppedCommands = (
+  store: SteppedCommandStore,
+  reported: SteppedReportedStepStore,
+  getDevices: () => readonly SteppedSettleDevice[],
+): boolean => {
+  if (!store.hasTrackedState() && !reported.hasAny()) return false;
+  return syncSteppedCommands({ store, devices: getDevices() });
 };

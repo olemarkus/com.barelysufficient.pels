@@ -1,7 +1,7 @@
 import type { ExecutionState } from '../../lib/executor/executionState';
 import { syncPendingTargetCommands, prunePendingTargetCommands } from '../../lib/executor/pendingTargetObservation';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsService';
-import { syncSteppedCommands } from '../../lib/executor/syncSteppedCommands';
+import { syncTrackedSteppedCommands } from '../../lib/executor/syncSteppedCommands';
 import type { SteppedSettleDevice } from '../../lib/observer/steppedSettleSnapshot';
 import type { SteppedCommandStore } from '../../lib/executor/steppedCommandStore';
 import type { SteppedReportedStepStore } from '../../lib/observer/steppedReportedStep';
@@ -149,16 +149,7 @@ export class ComposedPlanEngine implements PlanEngine {
   }
 
   public syncSteppedCommands(getDevices: () => readonly SteppedSettleDevice[]): boolean {
-    // A thunk, so an empty store costs nothing: resolving the settle devices
-    // decorates the snapshot, and there is no point paying for that when
-    // nothing is tracked to settle.
-    if (!this.steppedCommandStore.hasTrackedState() && !this.steppedReportedStore.hasAny()) {
-      return false;
-    }
-    return syncSteppedCommands({
-      store: this.steppedCommandStore,
-      devices: getDevices(),
-    });
+    return syncTrackedSteppedCommands(this.steppedCommandStore, this.steppedReportedStore, getDevices);
   }
 
   public syncStorageCommands(): void {
