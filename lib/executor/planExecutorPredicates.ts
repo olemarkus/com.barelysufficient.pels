@@ -1,6 +1,6 @@
 import type { PlannedDeviceExecution } from '../planContract/executionPlan';
 import { hasPlannedStep } from '../planContract/executionPlan';
-import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes';
+import type { PendingBinaryCommand } from '../ports/pendingBinaryCommand';
 import type {
   ExecutableSteppedLoadCommandSession, ExecutableSteppedLoadDevice, ExecutableSteppedLoadIntent,
 } from './executablePlan';

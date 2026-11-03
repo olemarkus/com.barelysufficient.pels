@@ -56,7 +56,7 @@ describe('isPlanActivelyConverging', () => {
 
   it('returns true for pending target and binary commands', () => {
     const state = createPlanEngineState();
-    state.pendingTargetCommands = {
+    Object.assign(state.pendingTargetCommands, {
       dev1: {
         desired: 21,
         startedMs: Date.now(),
@@ -65,27 +65,27 @@ describe('isPlanActivelyConverging', () => {
         nextRetryAtMs: Date.now(),
         status: 'waiting_confirmation',
       },
-    };
+    });
 
     expect(isPlanActivelyConverging(state, { unactionable: false })).toBe(true);
 
-    state.pendingTargetCommands = {};
-    state.pendingBinaryCommands = {
+    for (const id of Object.keys(state.pendingTargetCommands)) delete state.pendingTargetCommands[id];
+    Object.assign(state.pendingBinaryCommands, {
       dev1: {
         dispatchState: 'accepted',
         desired: true,
         startedMs: Date.now(),
       },
-    };
+    });
 
     expect(isPlanActivelyConverging(state, { unactionable: false })).toBe(true);
   });
 
   it('stops bypassing rebuild guards exactly when the last binary command expires', () => {
     const state = createPlanEngineState();
-    state.pendingBinaryCommands = {
+    Object.assign(state.pendingBinaryCommands, {
       heater: { dispatchState: 'accepted', desired: true, startedMs: Date.now() },
-    };
+    });
     const summary = {
       ...buildEmptyCapacityStateSummary(),
       summarySource: 'plan_input' as const,
@@ -106,10 +106,10 @@ describe('isPlanActivelyConverging', () => {
 
   it('keeps overdue target retries actionable even when binary commands have expired', () => {
     const state = createPlanEngineState();
-    state.pendingBinaryCommands = {
+    Object.assign(state.pendingBinaryCommands, {
       heater: { dispatchState: 'accepted', desired: true, startedMs: Date.now() - CONTROL_COMMAND_CONFIRMATION_MS },
-    };
-    state.pendingTargetCommands = {
+    });
+    Object.assign(state.pendingTargetCommands, {
       thermostat: {
         desired: 21,
         startedMs: Date.now() - CONTROL_COMMAND_CONFIRMATION_MS,
@@ -118,7 +118,7 @@ describe('isPlanActivelyConverging', () => {
         nextRetryAtMs: Date.now() - 1,
         status: 'temporary_unavailable',
       },
-    };
+    });
     expect(isPlanActivelyConverging(state, { unactionable: true })).toBe(true);
   });
 

@@ -10,7 +10,7 @@ import type { ExecutionState } from './executionState';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import { getLogger } from '../logging/logger';
 import type { PendingBinaryCommandStore, PendingBinaryConfirmation } from '../observer/pendingBinaryCommands';
-import type { PendingBinaryCommand } from '../observer/pendingBinaryCommandTypes';
+import type { PendingBinaryCommand } from '../ports/pendingBinaryCommand';
 import type { Actuator } from '../actuator/deviceActuator';
 import type { ExecutorCommandContext } from './executorCommandContext';
 import type { MarkSteppedLoadDesiredStepIssuedParams } from '../ports/steppedCommand';
@@ -401,11 +401,6 @@ export class PlanExecutor {
   }
 
   public async applyPlanActions(plan: ExecutionPlan): Promise<PlanActuationResult> {
-    if (!plan || !Array.isArray(plan.devices)) {
-      return { deviceWriteCount: 0, commandRequestCount: 0,
-        deviceApplyFailureCount: 0, pendingInverterReleaseCount: 0 };
-    }
-
     if (this.deps.getCapacityDryRun()) {
       const release = await this.deps.inverterLane.apply(
         plan.inverterDecisions.filter((decision) => decision.kind === 'release'),

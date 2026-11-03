@@ -144,7 +144,7 @@ export function resolveDeviceExecutionState(
   const binaryProgress = resolveBinaryProgress(intent, desiredBinary, observed, command.binary);
   const stepProgress = progress(desiredStepId, observedStepId, command.step.kind === 'pending');
   return {
-    available: observed?.available === true && intent.projectionError === undefined,
+    available: observed?.available === true && intent.projection === 'decided',
     physicalState,
     observedStepId,
     desiredBinary, desiredStepId, binaryProgress, stepProgress,
