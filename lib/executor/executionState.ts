@@ -3,10 +3,13 @@ import { ActuationRecord } from './actuationRecord';
 import type { PendingTargetCommandRead } from '../ports/pendingTargetCommand';
 import type { ControlContestRecording } from '../ports/controlContest';
 
-/** Mutable records belong to execution; consumers receive PendingTargetCommandRead. */
+/**
+ * Mutable records belong to execution; consumers receive PendingTargetCommandRead.
+ * The waiting-log throttle is execution's own and never reaches planning.
+ */
 export type PendingTargetCommandState = {
   -readonly [Key in keyof PendingTargetCommandRead]: PendingTargetCommandRead[Key]
-};
+} & { lastWaitingLogAtMs?: number };
 
 /** One per home, shared by ordinary command materialization and its read projections. */
 export class ExecutionState {

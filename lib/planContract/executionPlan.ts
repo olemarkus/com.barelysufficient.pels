@@ -2,6 +2,7 @@ import type { DeviceControlAdapterSnapshot, SteppedLoadProfile } from '../../pac
 import type { PlannedReleaseIntent } from './releaseIntent';
 import type { StorageDecidedDevice, StorageReleaseIntent } from './storageDecision';
 import type { InverterDecision } from './inverterDecision';
+import type { PlannedTargetCommand } from './targetCommand';
 
 /** A selected end state. This is a decision, never a configured shed floor. */
 export type PlannedShedTarget =
@@ -40,12 +41,33 @@ export type PlannedSteppedCommand = {
   transition: PlannedStepTransition | null;
 };
 
+/**
+ * The binary axis a stepped command drives: attached only when this cycle's
+ * decision moves the on/off handle. Consumers reach it through
+ * `isBinaryDrivenIntent` (`lib/executor/executableDesiredState.ts`).
+ */
+export type PlannedBinaryDrive = { desiredOn: boolean };
+
 /** Axes are attached only when this decision drives them. */
 export type PlannedDeviceCommands = {
   id: string;
   name: string;
   commandAuthority: boolean;
+  /** Set only by the projection's failure path; the device carries no commands. */
   projectionError?: unknown;
+};
+
+/**
+ * The axes a decision may attach to `PlannedDeviceCommands`, typed for the
+ * producer (`buildExecutableDeviceIntent`) so each attached command is checked.
+ * `PlannedDeviceCommands` itself declares none: consumers reach an axis only
+ * through its guard, so an unguarded read stays a compile error.
+ */
+export type PlannedCommandAxes = {
+  target?: PlannedTargetCommand;
+  binary?: PlannedBinaryCommand;
+  release?: PlannedReleaseCommand;
+  steppedLoad?: PlannedSteppedCommand;
 };
 export type PlannedStepBaseline = {
   /** Historical effective state at decision time; never published as live observation. */

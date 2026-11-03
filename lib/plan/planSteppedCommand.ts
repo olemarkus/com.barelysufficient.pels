@@ -6,11 +6,12 @@ import {
   allowsSteppedLoadKeepInvariantRestore, isRestoreAdmissionHoldReason,
 } from '../planContract/planDecisionSemantics';
 import type {
-  PlannedSteppedCommand, PlannedStepBaseline, PlannedStepDesiredState, PlannedShedTarget,
+  PlannedBinaryDrive, PlannedSteppedCommand, PlannedStepBaseline, PlannedStepDesiredState, PlannedShedTarget,
 } from '../planContract/executionPlan';
 import { getSteppedLoadStep, isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 type PlanDevice = DevicePlan['devices'][number];
-type PlanningSteppedState = PlannedStepBaseline & {
+type PlanningSteppedState = {
+  stepId?: string;
   stepForShed?: { stepId: string; planningPowerW: number };
   stepIsOffStep: boolean;
 };
@@ -29,8 +30,7 @@ export function buildPlannedSteppedCommand(dev: PlanDevice): PlannedSteppedComma
   // A restore hold may allow lowering a controlled device; lack of authority
   // never does. Lifecycle release has its own explicit grant and dispatch path.
   if (!dev.control.commandAuthority && dev.deferredReleaseIntent === undefined) return undefined;
-  const planningCurrent = {
-    on: resolvePlanDeviceObservedOn(dev),
+  const planningCurrent: PlanningSteppedState = {
     stepId: dev.selectedStepId,
     stepForShed: resolveCurrentStepForShed(dev),
     stepIsOffStep: isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId),
@@ -52,7 +52,7 @@ export function buildPlannedSteppedCommand(dev: PlanDevice): PlannedSteppedComma
   const transition = desiredMatchesTransition(desired, desiredOn, plannedTransition)
     ? plannedTransition
     : null;
-  const intent: PlannedSteppedCommand = {
+  const intent: PlannedSteppedCommand & Partial<PlannedBinaryDrive> = {
     id: dev.id,
     name: dev.name,
     steppedLoadProfile: dev.steppedLoadProfile,
@@ -113,13 +113,13 @@ const isUnderspecifiedSetStepShedIntent = (
 );
 
 const resolveDesiredStepId = (
-  dev: PlanDevice,
+  dev: SteppedPlanDevice,
   current: PlanningSteppedState,
   plannedStepId: string | undefined,
   plannedTransition: ReturnType<typeof resolveSteppedLoadTransition>,
 ): string | undefined => {
   const desiredStepId = plannedTransition?.commandStepId ?? plannedStepId;
-  if (dev.plannedState !== 'shed' || !desiredStepId || !isSteppedLoadDevice(dev)) return desiredStepId;
+  if (dev.plannedState !== 'shed' || !desiredStepId) return desiredStepId;
 
   const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, desiredStepId);
   const currentPowerW = current.stepForShed?.planningPowerW ?? 0;
@@ -138,7 +138,7 @@ const desiredMatchesTransition = (
 };
 
 const resolveDesiredOn = (
-  dev: PlanDevice,
+  dev: SteppedPlanDevice,
   current: PlanningSteppedState,
   plannedTransition: ReturnType<typeof resolveSteppedLoadTransition>,
   desiredStepId: string | undefined,
@@ -148,7 +148,7 @@ const resolveDesiredOn = (
   }
   if (dev.plannedState === 'shed' && current.stepIsOffStep) return false;
   // A KEEP is a decision that the device should be running, so the binary axis
-  // is driven ON by that decision — exactly as `buildExecutableBinaryIntent`
+  // is driven ON by that decision — exactly as `buildPlannedBinaryCommand`
   // answers for a kept binary device. It must NOT be read off `current.on`: a
   // DESIRED-state field has to carry a decision, never an observation. The old
   // read made one field mean two things depending on which arm filled it, and
@@ -177,7 +177,7 @@ const resolveDesiredOn = (
     // push it through the binary restore lane it has no use for — which is a
     // behaviour change, not a rename.
     if (!isBinaryPlanDevice(dev)) return null;
-    if (desiredStepId === undefined || !isSteppedLoadDevice(dev)) return true;
+    if (desiredStepId === undefined) return true;
     return !isSteppedLoadOffStep(dev.steppedLoadProfile, desiredStepId);
   }
   // `null` = this cycle's decision does not move the binary axis. It must NOT
@@ -219,9 +219,8 @@ const isKeptStepDown = (
 };
 
 const resolveCurrentStepForShed = (
-  dev: PlanDevice,
+  dev: SteppedPlanDevice,
 ): PlanningSteppedState['stepForShed'] => {
-  if (!isSteppedLoadDevice(dev)) return undefined;
   // A `selectedStepId` outside the (possibly capped) planner profile is a real
   // domain state, not a presence gap — no measured-draw fallback lane exists
   // anymore: the producer guarantees the effective step for every stepped

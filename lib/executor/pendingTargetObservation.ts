@@ -108,7 +108,8 @@ function clearPendingTargetCommandForMissingDevice(
 }
 /* eslint-enable functional/immutable-data, no-param-reassign */
 
-function formatObservedTarget(value: unknown): string {
+/** An observed setpoint as the target logs print it. */
+export function formatObservedTarget(value: unknown): string {
   if (typeof value === 'number' && Number.isFinite(value)) return `${value}°C`;
   if (value === null || value === undefined) return 'unknown';
   return String(value);

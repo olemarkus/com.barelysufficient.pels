@@ -24,10 +24,10 @@
  * migration rather than sitting here unused.
  */
 
+import type { PlannedBinaryDrive } from '../planContract/executionPlan';
+
 /** The binary axis a command drives: what the plan wants the on/off handle to be. */
-export type DesiredBinaryKind = {
-  desiredOn: boolean;
-};
+export type DesiredBinaryKind = PlannedBinaryDrive;
 
 /**
  * Narrows to a command whose binary axis the plan DRIVES this cycle.
