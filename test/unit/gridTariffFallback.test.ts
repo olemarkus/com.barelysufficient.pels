@@ -174,9 +174,11 @@ describe('resolveGridTariffFallback', () => {
   const savedRows = savedFileRowsFor({
     organizationNumber: '111', tariffGroup: 'Husholdning', date, timeZone: 'UTC',
   });
-  const resolve = (existingData: Array<{ dateKey?: string; source?: unknown }> | null, entries = savedRows) => (
-    resolveGridTariffFallback(existingData, entries, date, 'UTC')
-  );
+  const resolve = (
+    existingData: Array<{ dateKey?: string; source?: unknown }> | null,
+    entries = savedRows,
+    forceRefresh = false,
+  ) => resolveGridTariffFallback(existingData, entries, date, 'UTC', forceRefresh);
 
   it('keeps an undated real cache when there is no saved file', () => {
     expect(resolve([{ energyFeeExVat: 11 } as { source?: unknown }], null).kind).toBe('keepCache');
@@ -204,9 +206,15 @@ describe('resolveGridTariffFallback', () => {
     expect(resolve(savedRows).kind).toBe('fallbackCurrent');
   });
 
-  it('clears stale fallback data when there is no saved file for the operator', () => {
+  it('clears fallback data on a forced refresh with no saved file for the operator', () => {
     // Fallback cached for one operator, org number switched to another.
-    expect(resolve([{ source: GRID_TARIFF_SOURCE_FALLBACK }], null).kind).toBe('clearStaleFallback');
+    expect(resolve([{ source: GRID_TARIFF_SOURCE_FALLBACK }], null, true).kind).toBe('clearStaleFallback');
+  });
+
+  it('keeps fallback data with no saved file until a fetch replaces it', () => {
+    // The rows the 3.28.0 snapshot left, on a first boot of a later version
+    // with every source down: prices keep the grid tariff meanwhile.
+    expect(resolve([{ source: GRID_TARIFF_SOURCE_FALLBACK }], null).kind).toBe('keepCache');
   });
 
   it('reports noData with nothing cached and no saved file', () => {

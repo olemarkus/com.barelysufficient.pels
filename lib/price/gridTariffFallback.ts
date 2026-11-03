@@ -183,15 +183,17 @@ export type GridTariffFallbackOutcome =
 //  - fallback entries already cached match → keep them (no redundant cache
 //    write while the sources stay down);
 //  - entries that differ → store them;
-//  - stale fallback data is cached but there are no entries now (e.g. the org
-//    number was changed to another operator) → clear it so we never serve
-//    another operator's tariff;
+//  - fallback data is cached but there are no entries now → on a forced
+//    refresh, which a change of grid company starts, clear it so we never
+//    serve another operator's tariff; otherwise keep serving it until a fetch
+//    replaces it, rather than leave prices without a grid tariff;
 //  - nothing cached and no entries → nothing to serve.
 export const resolveGridTariffFallback = (
   existingData: Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null,
   entries: GridTariffEntryWithSource[] | null,
   date: Date,
   timeZone: string,
+  forceRefresh: boolean,
 ): GridTariffFallbackOutcome => {
   const existingIsFallback = isGridTariffFallbackData(existingData);
   if (!existingIsFallback && Array.isArray(existingData) && existingData.length > 0) {
@@ -207,5 +209,6 @@ export const resolveGridTariffFallback = (
     }
     return { kind: 'store', entries };
   }
-  return existingIsFallback ? { kind: 'clearStaleFallback' } : { kind: 'noData' };
+  if (!existingIsFallback) return { kind: 'noData' };
+  return forceRefresh ? { kind: 'clearStaleFallback' } : { kind: 'keepCache' };
 };

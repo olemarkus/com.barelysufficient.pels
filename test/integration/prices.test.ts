@@ -1308,6 +1308,24 @@ tariffer:
       ]);
     });
 
+    it('keeps a stored fallback while every source is down and none is saved, until a forced refresh', async () => {
+      // An install that held the bundled tariff snapshot, on its first boot with
+      // Fri Nettleie down and nothing saved; NVE has nothing either.
+      const { store, refresh } = createDirectRefresh();
+      const fallback = Array.from({ length: 24 }, (_, time) => ({
+        time, energyFeeExVat: 30.99, energyFeeIncVat: 38.74, dateKey: '2026-11-02T00:00:00', source: 'fallback',
+      }));
+      store.writeNettleie(fallback);
+
+      await expect(refresh(MONDAY, () => failingNve)).resolves.toBe('unchanged');
+      expect(store.readNettleie()).toEqual(fallback);
+
+      // A change of grid company forces the refresh: the fallback may be the
+      // previous company's.
+      await expect(refresh(MONDAY, () => failingNve, true)).resolves.toBe('rebuild');
+      expect(store.readNettleie()).toEqual([]);
+    });
+
     it('keeps the rows fetched live today when a later fetch the same day fails', async () => {
       const rows = await refreshElvia(
         { now: MONDAY, respond: liveFile },

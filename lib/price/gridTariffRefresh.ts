@@ -103,7 +103,7 @@ export const refreshGridTariff = async (
     // stored a live tariff for today while this one waited on its fetch, and a
     // stale read would let this fallback replace it.
     const current = store.readNettleie() as Array<Record<string, unknown> & StoredGridTariffRow> | null;
-    const outcome = resolveGridTariffFallback(current, saved?.rows ?? null, todayDate, timeZone);
+    const outcome = resolveGridTariffFallback(current, saved?.rows ?? null, todayDate, timeZone, forceRefresh);
     if (outcome.kind === 'store' || outcome.kind === 'fallbackCurrent') {
       // Prices follow the saved file, so the live fetch's failure is logged
       // here or nowhere.
@@ -121,9 +121,9 @@ export const refreshGridTariff = async (
     if (outcome.kind === 'fallbackCurrent') return 'rebuild';
     sinks.errorLog?.(`Grid tariff: ${GRID_TARIFF_FAILURE_REASONS[outcome.kind]}`, { ...failure, ...request });
     if (outcome.kind !== 'clearStaleFallback') return 'unchanged';
-    // The cached data is a stale fallback for an operator we can no longer
-    // serve (e.g. the org number changed). Clear it so combined prices don't
-    // keep using another operator's tariff.
+    // A forced refresh, which a change of grid company starts, found no tariff
+    // for this company: the cached fallback may be the previous company's.
+    // Clear it so combined prices don't keep using another operator's tariff.
     store.writeNettleie([]);
     return 'rebuild';
   };
