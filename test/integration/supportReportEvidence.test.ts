@@ -13,7 +13,7 @@ import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import { buildPlanDevice, buildPlanMeta, buildSettingsUiPlanMeta } from '../utils/planTestUtils';
 import { createDeviceEventStore } from '../../lib/diagnostics/deviceEventStore';
 import {
-  DAY_REPORT_OMITTED_LOG_EVENTS, SUPPORT_REPORT_MAX_DEVICE_EVENTS,
+  DAY_REPORT_OMITTED_LOG_EVENTS, SUPPORT_REPORT_LOG_BUDGET_BYTES, SUPPORT_REPORT_MAX_DEVICE_EVENTS,
 } from '../../lib/diagnostics/supportReportEvidence';
 import { createLogTailStore } from '../../lib/diagnostics/logTailStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase, type UserdataDatabase } from '../../lib/store/userdataDatabase';
@@ -98,6 +98,19 @@ describe('daily heating observations', () => {
     const cabin = { ...appRequest, subject: { kind: 'app' as const, homeId: 'cabin' } };
     expect(values(await capture.capture(cabin, now, 'daily'), section.title)).toBeUndefined();
     expect(read).not.toHaveBeenCalled();
+  });
+
+  it('takes the heating observations\' size out of the daily report\'s log budget', async () => {
+    const section = { title: 'Daily heating observations', values: { text: 'x'.repeat(20_000) } };
+    const reads = createSupportReportReads(currentHost(), objectiveStore(), noCycle, { readDaily: () => section });
+    const readLogTail = vi.spyOn(reads, 'readLogTail').mockReturnValue({ lines: [], overflow: [], leftOut: 0 });
+    const capture = new SupportReportEvidenceSource(reads, { manifest: { version: '3.28.6' }, version: '12.4.1' });
+    await capture.capture(appRequest, now, 'daily');
+    await capture.capture(appRequest, now, 'owner');
+    expect(readLogTail.mock.calls.map(([, , maxBytes]) => maxBytes)).toEqual([
+      SUPPORT_REPORT_LOG_BUDGET_BYTES - Buffer.byteLength(JSON.stringify(section), 'utf8'),
+      SUPPORT_REPORT_LOG_BUDGET_BYTES,
+    ]);
   });
 
   it('treats an empty passive history as normal and records only failed reads as omissions', async () => {

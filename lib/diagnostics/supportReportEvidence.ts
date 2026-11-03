@@ -382,7 +382,8 @@ const readDeviceEvents = (
 /**
  * The most kept log one report reads, newest first: what the report's size
  * limit leaves beside a day of activity, so a day of log is never built in
- * memory only to be cut down.
+ * memory only to be cut down. A daily report's heating observations take
+ * their size out of it (`readLog`).
  */
 export const SUPPORT_REPORT_LOG_BUDGET_BYTES = 448 * 1024;
 
@@ -407,10 +408,17 @@ const omittedLogEvents = (request: SupportReportRequest): readonly string[] => (
   request.historyWindow === 'day' && request.subject.kind === 'app' ? DAY_REPORT_OMITTED_LOG_EVENTS : []
 );
 
-const readLog = (host: SupportReportReads, request: SupportReportRequest, capturedAtMs: number): SupportReportLog => {
+/** The kept log, within the log budget less what `beside` takes of the report. */
+const readLog = (
+  host: SupportReportReads, request: SupportReportRequest, capturedAtMs: number,
+  beside: readonly SectionRead[],
+): SupportReportLog => {
   const { fromMs, toMs } = supportReportWindow(request, capturedAtMs);
   const omittedEvents = omittedLogEvents(request);
-  const read = readOptional(() => host.readLogTail(fromMs, toMs, SUPPORT_REPORT_LOG_BUDGET_BYTES, omittedEvents));
+  const besideBytes = beside.reduce((sum, read) => (
+    read.state === 'available' ? sum + Buffer.byteLength(JSON.stringify(read.section), 'utf8') : sum), 0);
+  const maxBytes = Math.max(0, SUPPORT_REPORT_LOG_BUDGET_BYTES - besideBytes);
+  const read = readOptional(() => host.readLogTail(fromMs, toMs, maxBytes, omittedEvents));
   return read ? {
     state: 'available', lines: read.lines, overflow: read.overflow, fromMs, toMs, leftOutForSize: read.leftOut,
     omittedEvents,
@@ -452,12 +460,14 @@ export class SupportReportEvidenceSource {
     // Like the other current device details, only for a device still in the reported home.
     const carLink: CarLinkRead = subject.currentDevice
       ? readCarLink(host, request.subject) : { state: 'read', link: undefined };
+    // Read before the log, which gives up the room these take.
+    const heating = readHeatingShadowSection(host, request, capturedAtMs, trigger);
     const sectionReads: SectionRead[] = [
       ...(supportSubject?.sections ?? []).map((section): SectionRead => ({ state: 'available', section })),
       ...readDeviceSections(host, request.subject, subject.currentDevice, plan, capturedAtMs),
       ...readAppSmartTaskSections(host, request, deviceNames(host, history, capturedAtMs), capturedAtMs),
       ...readCarLinkSection(carLink),
-      ...readHeatingShadowSection(host, request, capturedAtMs, trigger),
+      ...heating,
       ...readHomeSections(host, request.subject.homeId, plan, area),
       ...readPriceSections(host, capturedAtMs),
     ];
@@ -471,7 +481,7 @@ export class SupportReportEvidenceSource {
           ? 'Retained device activity could not be read.' : 'Retained device activity is available only for Main.',
       },
       deviceEvents: readDeviceEvents(host, request, carLink, capturedAtMs),
-      log: readLog(host, request, capturedAtMs),
+      log: readLog(host, request, capturedAtMs, heating),
       sections: sectionReads.flatMap((read) => read.state === 'available' ? [read.section] : []),
       omissions: [
         ...subject.omissions,

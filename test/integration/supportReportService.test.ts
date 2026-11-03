@@ -141,28 +141,51 @@ describe('manual support reporting', () => {
     expect(delivery.send).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('"trigger":"daily"'));
   });
 
-  it('omits optional heating evidence before it can block an ordinary daily report', async () => {
+  // The capture took the heating section's size out of the log budget, so
+  // the log's oldest lines make room for it; it gives way before any activity.
+  const logLines = (count: number) => Array.from({ length: count }, (_, index) => ({
+    atMs: now - index, level: 'info' as const, entry: { event: 'ordinary-evidence', text: 'x'.repeat(1_000) },
+  }));
+
+  it('keeps a daily report\'s heating observations and leaves the oldest log lines out instead', async () => {
     const live = evidence();
+    if (live.log.state !== 'available') throw new Error('Expected the kept log');
+    live.log = { ...live.log, lines: logLines(40) };
+    live.sections = [
+      { title: 'Ordinary evidence', values: { text: 'x'.repeat(SUPPORT_REPORT_MAX_BYTES - 50_000) } },
+      { title: 'Daily heating observations', values: { text: 'x'.repeat(20_000) } },
+    ];
+    const sent = report(await new SupportReportService({ capture: async () => live }, transport()).sendDaily(() => true));
+    expect(sent.document.sections.map((section) => section.title))
+      .toEqual(['Ordinary evidence', 'Daily heating observations']);
+    expect(sent.document.omissions).toEqual([]);
+    expect(sent.document.log.state === 'available' && sent.document.log.leftOutForSize).toBeGreaterThan(0);
+    expect(Buffer.byteLength(sent.message, 'utf8')).toBeLessThanOrEqual(SUPPORT_REPORT_MAX_BYTES);
+  });
+
+  it('leaves the heating observations out before any activity once no log line can make room', async () => {
+    const live = evidence();
+    live.activity = {
+      state: 'available', fromMs: now - 3_600_000, toMs: now, retentionDays: 7, maxEntries: 1_000,
+      maxEntriesPerDevice: 100, persistence: 'stored', leftOutForSize: 0, recordingsStartedAtMs: [],
+      entries: [reportActivityFixture({ id: 'activity-0', atMs: now })],
+    };
     live.sections = [
       { title: 'Ordinary evidence', values: { text: 'x'.repeat(SUPPORT_REPORT_MAX_BYTES - 10_000) } },
       { title: 'Daily heating observations', values: { text: 'x'.repeat(20_000) } },
     ];
     const delivery = transport();
-    const service = new SupportReportService({ capture: async () => live }, delivery);
-    const sent = report(await service.sendDaily(() => true));
+    const sent = report(await new SupportReportService({ capture: async () => live }, delivery).sendDaily(() => true));
     expect(sent.document.sections.map((section) => section.title)).toEqual(['Ordinary evidence']);
     expect(sent.document.omissions).toContain('Daily heating observations was left out to fit the report size limit.');
+    expect(sent.document.activity).toEqual(live.activity);
     expect(Buffer.byteLength(sent.message, 'utf8')).toBeLessThanOrEqual(SUPPORT_REPORT_MAX_BYTES);
     expect(delivery.send).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps ordinary logs and the report deliverable when the new omission notice cannot fit', async () => {
+  it('keeps a daily report deliverable when the heating omission notice cannot fit', async () => {
     const live = evidence();
     live.sections = [{ title: 'Ordinary evidence', values: { text: '' } }];
-    if (live.log.state !== 'available') throw new Error('Expected the kept log');
-    const ordinaryLog = { ...live.log, lines: [{ atMs: now, level: 'info' as const,
-      entry: { event: 'ordinary-evidence', text: 'x'.repeat(150) } }] };
-    live.log = ordinaryLog;
     const baseline = report(await new SupportReportService({ capture: async () => live }, transport()).sendDaily(() => true));
     const freeBytes = SUPPORT_REPORT_MAX_BYTES - Buffer.byteLength(baseline.message, 'utf8') - 1;
     live.sections = [
@@ -171,7 +194,6 @@ describe('manual support reporting', () => {
     ];
     const sent = report(await new SupportReportService({ capture: async () => live }, transport()).sendDaily(() => true));
     expect(sent.document.sections).toHaveLength(1);
-    expect(sent.document.log).toEqual(ordinaryLog);
     expect(Buffer.byteLength(sent.message, 'utf8')).toBe(SUPPORT_REPORT_MAX_BYTES - 1);
     expect(sent.submission.state).toBe('sent');
   });
