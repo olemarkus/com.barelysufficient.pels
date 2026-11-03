@@ -369,9 +369,9 @@ export const resolveSetpointShedLimitRecommendations = (
 });
 
 /**
- * A managed device that keeps moving away from what PELS set and confirmed.
+ * A managed device that keeps moving away from what PELS set and it kept.
  * Present only while the runtime reports the contest, so it leaves once the
- * device keeps its settings for an hour.
+ * device keeps its settings for 2 hours.
  */
 export const resolveControlContestRecommendations = (
   devices: readonly SettingsUiDeviceDetailItem[],

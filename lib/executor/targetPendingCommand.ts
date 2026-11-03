@@ -39,7 +39,7 @@ export const syncPendingTargetCommandAfterActuation = async (
   let pendingStillExists = ctx.targetCommands.pendingTargetCommands[deviceId]?.desired === desired;
   if (pendingStillExists && Object.is(latestObservedValueAfterActuation, desired)) {
     ctx.targetCommands.deletePendingTargetCommand(deviceId);
-    ctx.execution.controlContests.commandConfirmed(deviceId, 'temperature', desired);
+    ctx.execution.controlContests.commandConfirmed(deviceId, 'temperature', desired, Date.now());
     pendingStillExists = false;
     ctx.syncLivePlanStateAfterTargetActuation('realtime_capability');
     emitExecutorDebug({

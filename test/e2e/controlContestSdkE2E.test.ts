@@ -1,7 +1,11 @@
 // SDK-boundary e2e for the drift breaker (`lib/executor/controlContest.ts`): a
-// device that keeps moving away from what PELS set and confirmed is reported
-// as contested. The retries of a value the device never took are not; that
-// half drives the retry ladder in `test/integration/planExecutor.test.ts`,
+// device that keeps moving away from what PELS set, after it kept it for the
+// settle, is reported as contested. A thermostat that clamps PELS's setpoint
+// is not. On a real Homey its driver's listener sets its own minimum while it
+// runs, Homey then stores PELS's value over it and answers the PUT, so PELS
+// confirms its value, and the driver reports its own value again only on its
+// next poll. The retries of a value Homey never stored are not counted either;
+// that half drives the retry ladder in `test/integration/planExecutor.test.ts`,
 // because a house whose plan does not change applies no plan to retry from.
 //
 // Nothing internal is mocked. Power enters through the Homey Energy poll, the
@@ -12,6 +16,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../../api';
 import { createDeviceEventStore } from '../../lib/diagnostics/deviceEventStore';
+import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -26,7 +31,17 @@ import { drainUntilCalledWith } from '../utils/asyncDrain';
 const DEVICE_ID = 'heatpump-a';
 const SETPOINT_PATH = `manager/devices/device/${DEVICE_ID}/capability/target_temperature`;
 const LIMITED_C = 15;
+/** The thermostat's own minimum, above PELS's limit. */
+const CLAMPED_C = 16;
 const MINUTE_MS = 60_000;
+/** How long the driver's listener takes, write after write: 14-19 s, as measured on a real Homey. */
+const LISTENER_MS = [14_000, 17_000, 19_000, 16_000] as const;
+/** When the driver sets its own minimum, inside the listener. */
+const CLAMP_IN_LISTENER_MS = 2_000;
+/** The REST client's socket-idle timeout (`managerHomeyApi.ts`): it stops waiting on a longer listener. */
+const HTTP_IDLE_TIMEOUT_MS = 15_000;
+
+const delay = (ms: number): Promise<void> => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 const buildThermostat = async (): Promise<MockDevice> => {
   const device = new MockDevice(
@@ -93,7 +108,7 @@ describe('Drift breaker (SDK-boundary e2e)', () => {
     vi.useRealTimers();
   });
 
-  it('reports a thermostat that something sets away from PELS\'s limit four times in an hour', async () => {
+  it('reports a thermostat set away from PELS\'s limit after it kept it, four times in 2 hours', async () => {
     const device = await buildThermostat();
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     limitTheHouse();
@@ -106,10 +121,11 @@ describe('Drift breaker (SDK-boundary e2e)', () => {
     await vi.advanceTimersByTimeAsync(MINUTE_MS);
 
     for (let round = 1; round <= 4; round += 1) {
-      await vi.advanceTimersByTimeAsync(10 * MINUTE_MS);
+      // The thermostat keeps PELS's limit past the settle, then something
+      // outside PELS (a Flow, an app, a schedule) sets its own value.
+      await vi.advanceTimersByTimeAsync(20 * MINUTE_MS);
       expect((await deviceFromUi()).controlContest).toBeUndefined();
       const before = setpointWrites(putSpy);
-      // Something outside PELS (a Flow, an app, a schedule) sets its own value.
       device.setActualCapabilityValue('target_temperature', 23);
       await vi.advanceTimersByTimeAsync(MINUTE_MS);
       expect(setpointWrites(putSpy)).toBe(before + 1);
@@ -127,4 +143,66 @@ describe('Drift breaker (SDK-boundary e2e)', () => {
       }),
     ]);
   });
+
+  it.each([5, 15])(
+    'never reports a thermostat that clamps PELS\'s limit, polled every %i minutes for 2.5 hours',
+    async (pollMinutes) => {
+      const device = await buildThermostat();
+      // Homey stores and publishes the setpoint PELS writes; the thermostat keeps its own.
+      device.configureCapabilityBehavior('target_temperature', {
+        onApiWrite: { updateActual: false, emitCapabilityEvent: true },
+      });
+      // The driver reports a value; Homey stores and publishes it only when it
+      // changes what Homey holds, so a repeat fires nothing and keeps its date.
+      const report = async (value: number): Promise<void> => {
+        const changed = await device.getCapabilityValue('target_temperature') !== value;
+        device.setActualCapabilityValue('target_temperature', value, {
+          updateApi: changed, emitCapabilityEvent: changed, emitDeviceUpdate: changed,
+        });
+      };
+      setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
+      limitTheHouse();
+      const originalPut = mockHomeyInstance.api.put.bind(mockHomeyInstance.api);
+      let writes = 0;
+      const putSpy = vi.spyOn(mockHomeyInstance.api, 'put').mockImplementation(async (path, body) => {
+        if (path !== SETPOINT_PATH) return originalPut(path, body);
+        const listenerMs = LISTENER_MS[writes % LISTENER_MS.length];
+        writes += 1;
+        // Inside the listener the driver sets its own minimum; once it returns,
+        // Homey stores PELS's value over it and answers the PUT.
+        const listener = (async () => {
+          await delay(CLAMP_IN_LISTENER_MS);
+          await report(CLAMPED_C);
+          await delay(listenerMs - CLAMP_IN_LISTENER_MS);
+          await originalPut(path, body);
+        })();
+        if (listenerMs <= HTTP_IDLE_TIMEOUT_MS) return listener;
+        // The REST client stops waiting; the listener runs on, and its write lands.
+        await delay(HTTP_IDLE_TIMEOUT_MS);
+        throw new HomeyRequestTimeoutError('PUT', path);
+      });
+      const app = createApp();
+      // Start-up may already wait on the first write, which waits on the listener's time.
+      const initialized = app.onInit();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await drainUntilCalledWith(putSpy, SETPOINT_PATH, { value: LIMITED_C });
+      await vi.advanceTimersByTimeAsync(MINUTE_MS);
+      await initialized;
+      const firstWrites = setpointWrites(putSpy);
+
+      // The driver's poll reports the value it holds: its minimum.
+      const polls = 150 / pollMinutes;
+      for (let poll = 1; poll <= polls; poll += 1) {
+        await vi.advanceTimersByTimeAsync(pollMinutes * MINUTE_MS);
+        await report(CLAMPED_C);
+      }
+      await vi.advanceTimersByTimeAsync(MINUTE_MS);
+
+      // PELS set its limit again after every poll, and Homey stored each write.
+      expect(setpointWrites(putSpy)).toBeGreaterThanOrEqual(firstWrites + polls);
+      expect((await deviceFromUi()).controlContest).toBeUndefined();
+      const journal = createDeviceEventStore(app.getUserdataDatabase()).read([DEVICE_ID], 0, Date.now());
+      expect(journal.filter(({ event }) => event === 'device_control_contested')).toEqual([]);
+    },
+  );
 });

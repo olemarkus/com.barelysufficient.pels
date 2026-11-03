@@ -5,6 +5,7 @@ import {
 } from './targetCommandRetry';
 import type { PendingTargetCommandStatus } from '../ports/pendingTargetCommand';
 import { getDebugEmitter, getLogger } from '../logging/logger';
+import { isHomeyRequestTimeout } from '../utils/errorUtils';
 import { isHeldByLifecycleLane, type ExecutorCommandContext } from './executorCommandContext';
 import {
   logPendingTargetRetry,
@@ -233,6 +234,24 @@ const handleTargetCommandPreflight = (
   return { type: 'skip', result: { applied: false, reason: 'skipped' } };
 };
 
+/** A setpoint PELS sent, as the contest record takes it (`controlContest.ts`). */
+const reportTargetSent = (
+  ctx: ExecutorCommandContext,
+  command: ExecutableTargetCommand,
+  value: number,
+  observed: unknown,
+  atMs: number,
+): void => {
+  ctx.execution.controlContests.commandSent({
+    deviceId: command.deviceId,
+    deviceName: command.name,
+    setting: 'temperature',
+    value,
+    observed: typeof observed === 'number' && Number.isFinite(observed) ? observed : undefined,
+    atMs,
+  });
+};
+
 const executeTargetCommandDispatch = async (
   ctx: ExecutorCommandContext,
   command: ExecutableTargetCommand,
@@ -260,16 +279,7 @@ const executeTargetCommandDispatch = async (
     const pending = recordTargetCommandAttempt(
       ctx.targetCommands, deviceId, requestedValue, nowMs, 'waiting_confirmation', latestObservedValue ?? observedValue,
     );
-    ctx.execution.controlContests.commandSent({
-      deviceId,
-      deviceName: name,
-      setting: 'temperature',
-      value: requestedValue,
-      observed: typeof latestObservedValue === 'number' && Number.isFinite(latestObservedValue)
-        ? latestObservedValue
-        : undefined,
-      atMs: nowMs,
-    });
+    reportTargetSent(ctx, command, requestedValue, latestObservedValue, nowMs);
     const {
       latestObservedValueAfterActuation,
       pendingStillExists,
@@ -293,6 +303,11 @@ const executeTargetCommandDispatch = async (
     const failedPending = recordTargetCommandAttempt(
       ctx.targetCommands, deviceId, desired, nowMs, 'temporary_unavailable', latestObservedValue ?? observedValue,
     );
+    // Homey can answer a setpoint write only once the driver's listener returns,
+    // after the request's own timeout; such a write may still land. It is a
+    // send, so the device's next read of PELS's value confirms it afresh and a
+    // confirmation from before it never counts towards a contest.
+    if (isHomeyRequestTimeout(error)) reportTargetSent(ctx, command, desired, latestObservedValue, nowMs);
     const retryDelaySec = Math.max(1, Math.ceil((failedPending.nextRetryAtMs - nowMs) / 1000));
     logger.error({
       event: 'target_command_failed',

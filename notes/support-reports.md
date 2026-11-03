@@ -156,22 +156,29 @@ one, and what each report is about, are listed in `REPORTED_EVENTS` in
 
 - `ev_car_link_unmatched`, a charger whose window closed with no car identified, reported
   about the charger as of its plug-in.
-- `device_control_contested`, a device that confirmed a setting PELS set (its target
+- `device_control_contested`, a device that kept a setting PELS set (its target
   temperature, on/off state or stepped level), then moved away from it, and that PELS set
-  back, at least 4 times on one setting within an hour. It is reported about that device
+  back, at least 4 times on one setting within 2 hours. It is reported about that device
   as of the first of those rounds. Its `kind` is `reverted` when every time the device went
   back to its value from before PELS first asked (the write did not stick, as with a device
   app that reports a setting its cloud never took), and `overridden` otherwise (a Flow, app
   or schedule setting its own value). An on/off setting has only two values, so its rounds
   are always `overridden`. `ControlContestRecord` (`lib/executor/controlContest.ts`)
-  records it, because the executor owns confirmation: a retry of a command the device never
-  confirmed is never a round, so a thermostat that clamps PELS's 5 °C to 7 °C is retried
-  without being reported. A command the plan no longer asks for, or whose command session
-  ended, is forgotten, so a later send of it is a new command. The same record answers
-  `/ui_devices`'s `controlContest` for each managed device while its rounds in the last hour
-  reach the threshold; the settings UI then lists a recommendation and shows a notice above
-  Managed by PELS on the device page, worded by `kind`. PELS keeps setting the device back:
-  the record only warns and reports.
+  records it, because the executor owns confirmation. A confirmation means only that Homey
+  read PELS's value back: Homey publishes a capability only when its value changes, so PELS
+  never hears that a device kept a value. A setting counts as kept once the device has read
+  PELS's value for 15 minutes (`CONTEST_SETTLE_MS`), and only a send after that is a round;
+  an earlier send is a retry. So a thermostat that clamps PELS's 5 °C to its own 7 °C
+  minimum is not reported. Its driver sets 7 °C while it handles PELS's write, then Homey
+  stores the 5 °C over it and PELS reads its value back, which confirms it; the 7 °C comes
+  back only with the thermostat's next poll, and when that poll comes within 15 minutes
+  PELS's next 5 °C is a retry. A setpoint write Homey answers only after PELS stopped
+  waiting is a send as well, since it may land. A command the plan no longer asks for, or
+  whose command session ended, is forgotten, so a later send of it is a new command. The
+  same record answers `/ui_devices`'s `controlContest` for each managed device while its
+  rounds in the last 2 hours reach the threshold; the settings UI then lists a
+  recommendation and shows a notice above Managed by PELS on the device page, worded by
+  `kind`. PELS keeps setting the device back: the record only warns and reports.
 
 The schedule checks every 5 minutes from 17 minutes after start (two minutes off the daily
 report's hourly check), over the device events kept in the last 30 minutes, so a report

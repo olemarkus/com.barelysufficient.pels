@@ -77,13 +77,13 @@ describe('reports on specific events the owner turned on', () => {
     vi.setSystemTime(NOW - 5 * MINUTE_MS);
     events.record(['stove'], {
       component: 'executor', event: 'device_control_contested', deviceId: 'stove', deviceName: 'Ovn stue',
-      setting: 'temperature', kind, windowMs: 60 * MINUTE_MS, count: 4, firstAtMs: NOW - 20 * MINUTE_MS, rounds: [],
+      setting: 'temperature', kind, windowMs: 120 * MINUTE_MS, count: 4, firstAtMs: NOW - 20 * MINUTE_MS, rounds: [],
     });
     await schedule().check(NOW);
     expect(sendOnEvent).toHaveBeenCalledTimes(1);
     expect(sendOnEvent.mock.calls[0][0]).toMatchObject({
       subject: { kind: 'device', homeId: 'main', deviceId: 'stove' },
-      problem: `Sent because ${what} 4 times within an hour. The owner turned on reports on specific events.`,
+      problem: `Sent because ${what} 4 times within 2 hours. The owner turned on reports on specific events.`,
       occurredAtMs: NOW - 20 * MINUTE_MS,
     });
   });

@@ -25,7 +25,8 @@ export type ControlCommandSent = {
  */
 export type ControlContestRecording = {
   commandSent(sent: ControlCommandSent): void;
-  commandConfirmed(deviceId: string, setting: ContestedSetting, value: ControlValue): void;
+  /** The device read `value` at `atMs`, on the clock the send's `atMs` uses. */
+  commandConfirmed(deviceId: string, setting: ContestedSetting, value: ControlValue, atMs: number): void;
   commandReleased(deviceId: string, setting: ContestedSetting): void;
   retainPlanned(deviceId: string, planned: PlannedControls): void;
   hasStandingCommands(): boolean;

@@ -111,7 +111,7 @@ export class TargetPowerCommandLifecycle {
     if (transition.kind === 'waiting') return false;
     this.owner.update(device.id, transition.reachability);
     if (transition.kind === 'confirmed') {
-      this.store.confirmDesired(device.id, desired);
+      this.store.confirmDesired(device.id, desired, nowMs);
       this.structuredLog.info({ event: 'target_power_reachability_raised', deviceId: device.id,
         deviceName: device.name, requestedPowerW: desired.planningPowerW,
         maxReachedPowerW: transition.reachability.maxReachedPowerW });

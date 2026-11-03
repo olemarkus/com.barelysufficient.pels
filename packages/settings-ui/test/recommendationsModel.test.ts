@@ -219,7 +219,7 @@ describe('setup recommendations', () => {
         id: 'control-contest:mill',
         category: 'recommendation',
         title: "Gang nede ovn doesn't keep PELS's changes",
-        body: '6 times in the last hour, Gang nede ovn went back to its earlier temperature after PELS '
+        body: '6 times in the last 2 hours, Gang nede ovn went back to its earlier temperature after PELS '
           + 'changed it. Check the app that controls Gang nede ovn, or turn off Managed by PELS for it.',
         actionLabel: 'Open device',
         target: { kind: 'device', deviceId: 'mill' },

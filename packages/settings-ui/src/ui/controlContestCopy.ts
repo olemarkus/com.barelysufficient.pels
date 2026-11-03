@@ -14,14 +14,14 @@ export const controlContestNotice = (
   if (contest.kind === 'reverted') {
     return {
       title: `${name} doesn't keep PELS's changes`,
-      body: `${contest.count} times in the last hour, ${name} went back to its earlier ${what} `
+      body: `${contest.count} times in the last 2 hours, ${name} went back to its earlier ${what} `
         + `after PELS changed it. Check the app that controls ${name}, `
         + 'or turn off Managed by PELS for it.',
     };
   }
   return {
     title: `Something keeps changing ${name}`,
-    body: `${contest.count} times in the last hour, something outside PELS changed the ${what} of ${name} `
+    body: `${contest.count} times in the last 2 hours, something outside PELS changed the ${what} of ${name} `
       + 'after PELS set it. Look for a Flow, another app or a schedule that sets it, '
       + 'and turn that off, or turn off Managed by PELS for it.',
   };

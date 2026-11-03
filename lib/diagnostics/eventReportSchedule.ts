@@ -99,7 +99,7 @@ export const REPORTED_EVENTS: ReadonlyMap<string, (event: SupportReportDeviceEve
       event: event.event,
       deviceId,
       occurredAtMs: typeof firstAtMs === 'number' ? firstAtMs : event.atMs,
-      problem: `Sent because ${what}${times} within an hour. The owner turned on reports on specific events.`,
+      problem: `Sent because ${what}${times} within 2 hours. The owner turned on reports on specific events.`,
     }];
   }],
 ]);

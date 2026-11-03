@@ -2391,6 +2391,28 @@ named `Set the limited temperature for {device name}`.
   as "nothing saved" only once fresh reads a moment apart agree. The field
   follows "Device-page limited temperature on a setpoint-only device" above.
 
+### A device that does not keep PELS's settings
+
+A managed device whose setting (temperature, on/off or level) moved away from
+what PELS set, after it had kept it for 15 minutes, 4 times within 2 hours, gets
+a Recommended entry and a notice above **Managed by PELS** on its device page,
+which opens Setup. `controlContestNotice` in
+`packages/settings-ui/src/ui/controlContestCopy.ts` words both, by what the
+runtime saw (`notes/support-reports.md`, `device_control_contested`):
+
+- The device went back to its earlier value every time: title `{device} doesn't
+  keep PELS's changes`; body `{N} times in the last 2 hours, {device} went back
+  to its earlier {setting} after PELS changed it. Check the app that controls
+  {device}, or turn off Managed by PELS for it.`
+- Anything else: title `Something keeps changing {device}`; body `{N} times in
+  the last 2 hours, something outside PELS changed the {setting} of {device}
+  after PELS set it. Look for a Flow, another app or a schedule that sets it, and
+  turn that off, or turn off Managed by PELS for it.`
+- `{setting}` is `temperature`, `on/off setting` or `level`.
+- Action `Open device`. The entry and the notice leave once the device keeps
+  its settings for 2 hours. PELS keeps setting the device back; the copy never
+  says PELS stopped.
+
 ### Car battery recommendations
 
 - The charger's Car section opens with `Select the cars that charge here. Once
