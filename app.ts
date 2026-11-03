@@ -9,6 +9,7 @@ import type {
 import { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } from './packages/shared-domain/src/settings/continuousBatteryPlan';
 import Homey from 'homey';
 import { createMainHeatingShadowCollector } from './lib/diagnostics/heatingShadowCollector';
+import { filterDevicesForHome } from './lib/home/homeMembershipService';
 import type { LearnedPeaksByDeviceId } from './lib/device/devicePowerPeak';
 import type { DeviceExpectedPowerOverrides } from './packages/contracts/src/types';
 import type CapacityGuard from './lib/power/capacityGuard';
@@ -300,15 +301,14 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     structuredLog: () => this.getStructuredLogger('power'),
   });
 
+  // Main's devices by the membership owner's rule: all of them until membership is wired, as the Main pipeline reads.
   public readonly batterySolarScope: BatterySolarScopeSource = {
-    mainDevices: () => (
-      this.context.homeMembership?.filterDevicesForHome(this.deviceReads.descriptors(), MAIN_HOME_ID) ?? []
-    ),
+    mainDevices: () => filterDevicesForHome(this.context.homeMembership, this.deviceReads.descriptors(), MAIN_HOME_ID),
     allDevices: () => this.deviceReads.descriptors(),
   };
 
   private readonly batteryDemandForecaster = new BatteryDemandForecaster(
-    () => this.context.homeMembership?.filterDevicesForHome(this.getDeviceSurfaces(), MAIN_HOME_ID) ?? [],
+    () => filterDevicesForHome(this.context.homeMembership, this.getDeviceSurfaces(), MAIN_HOME_ID),
     () => this.getTimeZone(),
     this.batterySolarScope,
     () => this.hasEnabledContinuousBatteryPlan(),

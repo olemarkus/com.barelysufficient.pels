@@ -205,10 +205,9 @@ const resolveChargeCeiling = (
  * confirmed taper, held or not, because the charge shows the plan's taper is
  * wrong as well as live control's.
  */
-const liftBand = (
-  band: ChargeBand, lessons: BandLessons, signedW: number, toleranceW: number, nowMs: number,
-): BandLessons => {
+const liftBand = (band: ChargeBand, lessons: BandLessons, delivery: BatteryDelivery, nowMs: number): BandLessons => {
   const { latest, planned } = lessons;
+  const { signedW, toleranceW } = delivery;
   const latestLifted = band === 0 ? isLifted(latest, signedW, toleranceW, nowMs)
     : (isCeilingHeld(latest, nowMs) || isRetainedTaper(latest, nowMs)) && signedW > latest.powerW + toleranceW;
   const plannedLifted = isPlanningRetained(planned, nowMs) && signedW > planned.powerW + toleranceW;
@@ -224,10 +223,9 @@ type LiftedBand = { band: ChargeBand; lessons: BandLessons; lifted: BandLessons 
 const liftBands = (
   bands: ReadonlyMap<ChargeBand, BandLessons>, delivery: BatteryDelivery, nowMs: number,
 ): { lifted: LiftedBand[]; remaining: ReadonlyMap<ChargeBand, BandLessons> } => {
-  const { signedW, toleranceW, level } = delivery;
   const lifted = [...bands].flatMap(([band, lessons]): LiftedBand[] => {
-    if (!bandApplies(band, level)) return [];
-    const after = liftBand(band, lessons, signedW, toleranceW, nowMs);
+    if (!bandApplies(band, delivery.level)) return [];
+    const after = liftBand(band, lessons, delivery, nowMs);
     const changed = after.latest !== lessons.latest || after.planned !== lessons.planned;
     return changed ? [{ band, lessons, lifted: after }] : [];
   });
