@@ -69,6 +69,7 @@ import type { AppPowerTracker } from './appPowerTracker';
 
 import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
 import type { SupportReportApp } from './appInit/createSupportReports';
+import type { HeatingShadowCollector } from '../lib/diagnostics/heatingShadowCollector';
 import { installMainFreshnessEscalation } from './appMainFreshnessEscalation';
 import {
   invalidateOwningHomeRebuildSuppression, syncOwningHomeLivePlanState, syncExternalOffHoldForObservation,
@@ -178,8 +179,8 @@ export class AppServiceWiring {
     );
   }
 
-  createSupportReports(app: SupportReportApp) {
-    return createSupportReports(this.deps.homeyApp.homey, app, this.mainHomeScope.readSmartTaskCycle);
+  createSupportReports(app: SupportReportApp, heatingShadow: Pick<HeatingShadowCollector, 'readDaily'>) {
+    return createSupportReports(this.deps.homeyApp.homey, app, this.mainHomeScope.readSmartTaskCycle, heatingShadow);
   }
 
   createObservedTemperatureModeUpdates() {

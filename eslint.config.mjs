@@ -791,8 +791,8 @@ export default tseslint.config(
   // Raised 36 -> 38 for the scheduled-action owner and its Flow registration.
   // Both are wired here after userdata/startup is ready; timed actions reuse
   // the existing task/mode command owners and drain before userdata closes.
-  // Raised 38 -> 39 for passive heating evidence: the composition root supplies
-  // its tracker and timezone to the report projection; setup only wires the read.
+  // Raised 38 -> 39 for passive heating evidence: the composition root builds
+  // Main's collector beside its other Main-meter taps.
   {
     files: ['app.ts'],
     plugins: { 'import-x': importX },

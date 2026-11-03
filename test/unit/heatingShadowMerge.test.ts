@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type {
   HeatingShadowDevice, HeatingShadowInterval, HeatingShadowState,
-} from '../../packages/contracts/src/heatingShadow';
+} from '../../lib/diagnostics/heatingShadowTypes';
 import {
   HEATING_SHADOW_MAX_CHANGES, HEATING_SHADOW_MAX_ELIGIBLE_DEVICES, HEATING_SHADOW_MAX_INTERVALS,
   HEATING_SHADOW_MAX_OUTDOOR_POINTS, HEATING_SHADOW_MAX_SELECTED_DEVICES, recordHeatingShadow,

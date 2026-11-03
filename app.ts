@@ -8,7 +8,7 @@ import type {
 } from './packages/contracts/src/continuousBatteryPlan';
 import { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } from './packages/shared-domain/src/settings/continuousBatteryPlan';
 import Homey from 'homey';
-import { readHeatingShadowDaily as projectHeatingShadowDaily } from './lib/diagnostics/heatingShadowReport';
+import { createMainHeatingShadowCollector } from './lib/diagnostics/heatingShadowCollector';
 import type { LearnedPeaksByDeviceId } from './lib/device/devicePowerPeak';
 import type { DeviceExpectedPowerOverrides } from './packages/contracts/src/types';
 import type CapacityGuard from './lib/power/capacityGuard';
@@ -116,9 +116,6 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   public startupBootstrap?: StartupBootstrapConfig;
   public get powerTracker(): PowerTrackerState { return this.mainTracker.getState(); }
   public set powerTracker(value: PowerTrackerState) { this.mainTracker.adopt(value); }
-  public readHeatingShadowDaily(capturedAtMs: number) {
-    return projectHeatingShadowDaily(this.powerTracker, capturedAtMs, this.getTimeZone());
-  }
   public resetMainPowerTrackerFreshness(): void { this.mainTracker.resetFreshness(); }
   public capacityGuard!: CapacityGuard;
   public readonly planStatuses: PlanStatusRegistry = createPlanStatusRegistry();
@@ -317,6 +314,12 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     () => this.hasEnabledContinuousBatteryPlan(),
   );
 
+  // Main's passive heating observations for the daily report; a meter area collects none.
+  private readonly heatingShadow = createMainHeatingShadowCollector(() => this.getUserdataDatabase(),
+    () => this.context.homeMembership?.filterDevicesForHome(this.getDeviceSurfaces(), MAIN_HOME_ID) ?? [],
+    (deviceId) => this.observer.getThermalDirection(deviceId), () => this.getTimeZone(),
+    () => this.runtime.backgroundCollectors?.weatherCollector.getCurrentOutdoorTemperatureC());
+
   public forecastBatteryBackgroundKWh(hourStartMs: number): number | undefined {
     return this.batteryDemandForecaster.forecast(hourStartMs);
   }
@@ -349,6 +352,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     // main-home tap only (sub-home pipelines omit it — see the pipeline factory).
     recordCurtailmentSample: (netW, genW, nowMs) => this.recordCurtailmentSample?.(netW, genW, nowMs),
     recordBatteryDemandSample: (netW, genW, nowMs) => this.batteryDemandForecaster.recordNetSample(netW, genW, nowMs),
+    recordHeatingObservations: (nowMs) => this.heatingShadow.record(nowMs),
     // Production for samples that do not carry their own; the factory bounds its
     // freshness. Main home only — a sub-home must not adopt this production.
     observedHomePower: this.observedHomePower,
@@ -661,7 +665,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   }
 
   public readonly observedTemperatureModeUpdates = this.serviceWiring.createObservedTemperatureModeUpdates();
-  public readonly supportReports = this.serviceWiring.createSupportReports(this);
+  public readonly supportReports = this.serviceWiring.createSupportReports(this, this.heatingShadow);
 }
 
 export = PelsApp;

@@ -2,7 +2,7 @@ import type {
   HeatingShadowDay, HeatingShadowDevice, HeatingShadowDeviceDay, HeatingShadowInterval,
   HeatingShadowOutdoorPoint, HeatingShadowReading, HeatingShadowSignal, HeatingShadowState,
   HeatingShadowWindow,
-} from '../../packages/contracts/src/heatingShadow';
+} from './heatingShadowTypes';
 import {
   getDateKeyInTimeZone, getDateKeyStartMs, shiftDateKey,
 } from '../../packages/shared-domain/src/utils/dateUtils';

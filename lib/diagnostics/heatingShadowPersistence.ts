@@ -1,17 +1,17 @@
-import type { HeatingShadowState } from '../../packages/contracts/src/heatingShadow';
+import type { HeatingShadowState } from './heatingShadowTypes';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import {
   isHeatingShadowState, isHeatingShadowInterval, isHeatingShadowReading,
   isHeatingShadowWindow, isHeatingShadowOutdoorPoint,
 } from './heatingShadowState';
 
-export const HEATING_SHADOW_ROW_PREFIX = 'heatingShadow/';
+const HEADER_KEY = 'header';
 const rowKey = (...parts: (string | number)[]): string => (
-  HEATING_SHADOW_ROW_PREFIX + parts.map((part) => encodeURIComponent(String(part))).join('/')
+  parts.map((part) => encodeURIComponent(String(part))).join('/')
 );
 
-/** Persist immutable observations separately; each ingest changes only small open-window rows. */
-export function heatingShadowRows(state: HeatingShadowState): Record<string, unknown> {
+/** Persist immutable observations separately; each checkpoint changes only small open-window rows. */
+export function heatingShadowRows(state: HeatingShadowState): Map<string, unknown> {
   const rows = state.days.flatMap((day) => [
     ...day.outdoor.map((point) => [rowKey(day.dateKey, 'outdoor', point.atMs), point] as const),
     ...Object.entries(day.devices).flatMap(([id, device]) => [
@@ -28,28 +28,29 @@ export function heatingShadowRows(state: HeatingShadowState): Record<string, unk
       return [id, { ...closed, intervals: [], changes: [] }];
     })),
   })) };
-  return Object.fromEntries([['heatingShadow', { layoutVersion: 1, header }], ...rows]);
+  return new Map<string, unknown>([[HEADER_KEY, { layoutVersion: 1, header }], ...rows]);
 }
 
 function pointRows<T>(
-  rows: Record<string, unknown>, prefix: string, accepts: (value: unknown) => value is T,
+  rows: ReadonlyMap<string, unknown>, prefix: string, accepts: (value: unknown) => value is T,
   order: (a: T, b: T) => number,
 ): T[] | undefined {
-  const values = Object.entries(rows).filter(([key]) => key.startsWith(prefix)).map(([, value]) => value);
+  const values = [...rows].filter(([key]) => key.startsWith(prefix)).map(([, value]) => value);
   return values.every(accepts) ? [...values].sort(order) : undefined;
 }
 
-/** Reconstruct at the persisted boundary; malformed evidence is quarantined separately from billing. */
-export function restoreHeatingShadowRows(rows: Record<string, unknown>): unknown {
-  const root = rows.heatingShadow;
-  if (!isUnknownRecord(root) || root.layoutVersion !== 1 || !isHeatingShadowState(root.header)) {
-    return { malformedHeatingShadow: true };
-  }
+/**
+ * Reconstruct at the persisted boundary: the state the rows hold, or
+ * `undefined` when they do not make one in the canonical layout.
+ */
+export function restoreHeatingShadowRows(rows: ReadonlyMap<string, unknown>): HeatingShadowState | undefined {
+  const root = rows.get(HEADER_KEY);
+  if (!isUnknownRecord(root) || root.layoutVersion !== 1 || !isHeatingShadowState(root.header)) return undefined;
   const restored = { ...root.header, days: root.header.days.map((day) => ({ ...day,
     outdoor: pointRows(rows, rowKey(day.dateKey, 'outdoor') + '/', isHeatingShadowOutdoorPoint,
       (a, b) => a.atMs - b.atMs),
     devices: Object.fromEntries(Object.entries(day.devices).map(([id, device]) => {
-      const window = rows[rowKey(day.dateKey, 'device', id, 'window')];
+      const window = rows.get(rowKey(day.dateKey, 'device', id, 'window'));
       return [id, { ...device,
         intervals: pointRows(rows, rowKey(day.dateKey, 'device', id, 'interval') + '/', isHeatingShadowInterval,
           (a, b) => a.startMs - b.startMs),
@@ -59,12 +60,8 @@ export function restoreHeatingShadowRows(rows: Record<string, unknown>): unknown
       }];
     })),
   })) };
-  if (isHeatingShadowState(restored)) {
-    const canonical = heatingShadowRows(restored);
-    const keys = Object.keys(rows);
-    if (keys.length !== Object.keys(canonical).length || keys.some((key) => !Object.hasOwn(canonical, key))) {
-      return { malformedHeatingShadow: true };
-    }
-  }
+  if (!isHeatingShadowState(restored)) return undefined;
+  const canonical = heatingShadowRows(restored);
+  if (rows.size !== canonical.size || [...rows.keys()].some((key) => !canonical.has(key))) return undefined;
   return restored;
 }

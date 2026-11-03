@@ -1,4 +1,3 @@
-import { isHeatingShadowState } from '../diagnostics/heatingShadowState';
 import type { PowerTrackerState } from './tracker';
 import { CAPACITY_QUARTER_MS } from '../../packages/shared-domain/src/settings/capacityPeriod';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
@@ -338,8 +337,7 @@ export function isPlausiblePowerTrackerState(value: unknown): value is PowerTrac
         && value.unreliablePeriods.every(isUnreliablePeriod)
       )
     )
-    && hasPlausibleObjectiveProfiles(value)
-    && (value.heatingShadow === undefined || isHeatingShadowState(value.heatingShadow));
+    && hasPlausibleObjectiveProfiles(value);
 }
 
 const hasPlausibleObjectiveProfiles = (value: Record<string, unknown>): boolean => (
@@ -440,7 +438,6 @@ const SALVAGE_STEPS: readonly SalvageStep[] = [
   salvageScalar('unreliablePeriods', isUnreliablePeriodList),
   salvageScalar('objectiveProfiles', isObjectiveProfileMap),
   salvageScalar('carObjectiveProfiles', isCarObjectiveProfileMap),
-  salvageScalar('heatingShadow', isHeatingShadowState),
 ];
 
 /**

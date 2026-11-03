@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { recordHeatingShadow } from '../../lib/diagnostics/heatingShadow';
 import { isHeatingShadowState } from '../../lib/diagnostics/heatingShadowState';
-import type { HeatingShadowDevice } from '../../packages/contracts/src/heatingShadow';
+import type { HeatingShadowDevice } from '../../lib/diagnostics/heatingShadowTypes';
 
 const START = Date.UTC(2026, 10, 2, 8);
 const device = (atMs: number): HeatingShadowDevice => ({ id: 'room', signal: {

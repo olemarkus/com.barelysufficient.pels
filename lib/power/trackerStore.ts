@@ -33,9 +33,6 @@ import { getLogger } from '../logging/logger';
 import type { HomeId } from '../utils/settingsKeys';
 import type { PowerTrackerState } from './trackerTypes';
 import {
-  HEATING_SHADOW_ROW_PREFIX, heatingShadowRows, restoreHeatingShadowRows,
-} from '../diagnostics/heatingShadowPersistence';
-import {
   isPlausiblePowerTrackerState,
   sanitizePowerTrackerSolarFields,
 } from './trackerStateGuards';
@@ -90,7 +87,6 @@ const SCALAR_KEYS = [
   'unreliablePeriods',
   'objectiveProfiles',
   'carObjectiveProfiles',
-  'heatingShadow',
   'capacityQuarter',
   'capacityMonthlyPeak',
 ] as const satisfies readonly (keyof PowerTrackerState)[];
@@ -306,20 +302,17 @@ const loadRows = (s: Statements, homeId: HomeId): LoadedRows => {
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
 const loadScalarRows = (s: Statements, homeId: HomeId) => {
   const values: Record<string, unknown> = {};
-  const shadow: Record<string, unknown> = {};
   const unparseable: string[] = [];
   let rows = 0;
   type ScalarRow = { key: string; value_json: string };
   for (const row of s.loadScalars.all(homeId) as ScalarRow[]) {
-    const shadowRow = row.key === 'heatingShadow' || row.key.startsWith(HEATING_SHADOW_ROW_PREFIX);
-    if (!SCALAR_KEY_SET.has(row.key) && !shadowRow) continue;
+    if (!SCALAR_KEY_SET.has(row.key)) continue;
     rows += 1;
     const parsed = parseScalar(row.value_json);
-    if (parsed.ok) (shadowRow ? shadow : values)[row.key] = parsed.value;
-    else unparseable.push(shadowRow ? 'heatingShadow' : row.key);
+    if (parsed.ok) values[row.key] = parsed.value;
+    else unparseable.push(row.key);
   }
-  if (Object.keys(shadow).length > 0) values.heatingShadow = restoreHeatingShadowRows(shadow);
-  return { values, rows, unparseable: [...new Set(unparseable)] };
+  return { values, rows, unparseable };
 };
 /* eslint-enable functional/immutable-data */
 
@@ -381,18 +374,15 @@ const readHome = (s: Statements, clearRows: (homeId: HomeId) => void, homeId: Ho
   storeLogger.error({
     event: 'power_tracker_rows_quarantined', homeId, scope: 'scalar_rows', keys: quarantine.keys,
   });
-  for (const key of quarantine.keys) {
-    s.deleteScalar.run(homeId, key);
-    if (key !== 'heatingShadow') continue;
-    for (const row of s.loadScalars.all(homeId) as { key: string }[]) {
-      if (row.key.startsWith(HEATING_SHADOW_ROW_PREFIX)) s.deleteScalar.run(homeId, row.key);
-    }
-  }
+  for (const key of quarantine.keys) s.deleteScalar.run(homeId, key);
   return quarantine.state;
 };
 
 export const createTrackerStore = (db: UserdataDatabase): TrackerRepository => {
   db.exec(SCHEMA);
+  // Test builds of 3.28 kept heating observations among these rows; they have
+  // their own store now (`lib/diagnostics/heatingShadowStore.ts`).
+  db.exec("DELETE FROM power_tracker_scalars WHERE key = 'heatingShadow' OR key LIKE 'heatingShadow/%'");
   const s = prepareStatements(db);
   /** What the store holds per home — the diff base of the next save. */
   const lastKnown = new Map<HomeId, PowerTrackerState>();
@@ -441,23 +431,12 @@ export const createTrackerStore = (db: UserdataDatabase): TrackerRepository => {
       for (const key of Object.keys(hours)) s.deleteDevice.run(homeId, deviceId, key);
     }
   };
-  const saveHeatingShadow = (homeId: HomeId, next: PowerTrackerState, previous: PowerTrackerState | null): void => {
-    diffRecord(next.heatingShadow ? heatingShadowRows(next.heatingShadow) : undefined,
-      previous?.heatingShadow ? heatingShadowRows(previous.heatingShadow) : undefined,
-      (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b),
-      (rowKey, row) => s.upsertScalar.run(homeId, rowKey, JSON.stringify(row)),
-      (rowKey) => s.deleteScalar.run(homeId, rowKey));
-  };
   const saveScalars = (homeId: HomeId, next: PowerTrackerState, previous: PowerTrackerState | null): void => {
     for (const key of SCALAR_KEYS) {
       const value = next[key];
       const before = previous?.[key];
       // Same reference, same bytes: the identity shortcut the families get.
       if (value === before) continue;
-      if (key === 'heatingShadow') {
-        saveHeatingShadow(homeId, next, previous);
-        continue;
-      }
       if (value === undefined) {
         s.deleteScalar.run(homeId, key);
         continue;

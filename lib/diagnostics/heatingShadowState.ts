@@ -1,7 +1,7 @@
 import type {
   HeatingShadowDay, HeatingShadowDeviceDay, HeatingShadowInterval, HeatingShadowOutdoorPoint,
   HeatingShadowReading, HeatingShadowSignal, HeatingShadowState, HeatingShadowWindow,
-} from '../../packages/contracts/src/heatingShadow';
+} from './heatingShadowTypes';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import {
@@ -120,7 +120,7 @@ function day(value: unknown, timeZone: string): value is HeatingShadowDay {
     && value.outdoor.every((row) => withinDay(row.atMs, startMs, endMs));
 }
 
-/** Persisted-boundary validation; a missing shadow field remains valid legacy tracker state. */
+/** Persisted-boundary validation of the stored observations (`heatingShadowStore.ts`). */
 export function isHeatingShadowState(value: unknown): value is HeatingShadowState {
   if (!isUnknownRecord(value) || value.version !== 1 || typeof value.timeZone !== 'string'
     || !Array.isArray(value.days) || value.days.length > HEATING_SHADOW_COMPLETED_DAYS + 1) return false;

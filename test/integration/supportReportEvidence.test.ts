@@ -26,6 +26,7 @@ import type {
 } from '../../lib/objectives/deferredObjectives/planHistory';
 import type { DeferredObjectivePlanHistoryRecord } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { ScheduleEntry, SchedulesSnapshot } from '../../packages/contracts/src/schedules';
+import type { HeatingShadowCollector } from '../../lib/diagnostics/heatingShadowCollector';
 
 const request: SupportReportRequest = {
   subject: { kind: 'device', homeId: 'main', deviceId: 'heater' },
@@ -67,9 +68,12 @@ const objectiveStore = (tasks: Record<string, unknown> = {}): ObjectiveSettingsS
   set: vi.fn(), unset: vi.fn(),
 });
 const noCycle = () => undefined;
+type HeatingObservations = Pick<HeatingShadowCollector, 'readDaily'>;
+const noHeating: HeatingObservations = { readDaily: () => undefined };
 const source = (
   app: SupportReportApp, objectives = objectiveStore(), readCycle: (deviceId: string) => SmartTaskCycleRecord | undefined = noCycle,
-) => new SupportReportEvidenceSource(createSupportReportReads(app, objectives, readCycle), {
+  heating: HeatingObservations = noHeating,
+) => new SupportReportEvidenceSource(createSupportReportReads(app, objectives, readCycle, heating), {
   manifest: { version: '9.8.7-running-build' }, version: '12.4.1-running-homey',
 });
 const values = (report: SupportReportEvidence, title: string) => (
@@ -83,8 +87,7 @@ describe('daily heating observations', () => {
     const section = { title: 'Daily heating observations', values: { schemaVersion: 1, dateKey: '2026-10-22' } };
     const host = currentHost();
     const read = vi.fn(() => section);
-    host.readHeatingShadowDaily = read;
-    const capture = source(host);
+    const capture = source(host, objectiveStore(), noCycle, { readDaily: read });
     expect(values(await capture.capture(appRequest, now, 'daily'), section.title)).toEqual(section.values);
     expect(read).toHaveBeenCalledExactlyOnceWith(now);
     read.mockClear();
@@ -101,8 +104,8 @@ describe('daily heating observations', () => {
     const host = currentHost();
     expect((await source(host).capture(appRequest, now, 'daily')).omissions)
       .not.toContain('Daily heating observations is unavailable.');
-    host.readHeatingShadowDaily = () => { throw new Error('private error'); };
-    const report = await source(host).capture(appRequest, now, 'daily');
+    const failing = { readDaily: () => { throw new Error('private error'); } };
+    const report = await source(host, objectiveStore(), noCycle, failing).capture(appRequest, now, 'daily');
     expect(report.omissions).toContain('Daily heating observations is unavailable.');
     expect(JSON.stringify(report)).not.toContain('private error');
   });
@@ -268,7 +271,7 @@ describe('support report evidence capture', () => {
     host.getDailyBudgetUiPayload = () => ({ kind: 'budget', payload: { todayKey: day.dateKey, days: { [day.dateKey]: day } } });
     const settings = { get: vi.fn(), getKeys: vi.fn(), set: vi.fn() };
     const homey = { app: host, manifest: { version: '3.21.0', apiKey: 'manifest-secret' }, version: '12.0.0', settings };
-    const report = await new SupportReportEvidenceSource(createSupportReportReads(host, objectiveStore(), noCycle), homey)
+    const report = await new SupportReportEvidenceSource(createSupportReportReads(host, objectiveStore(), noCycle, noHeating), homey)
       .capture(request, now);
     expect(values(report, 'Current app-wide prices')).toMatchObject({ importPrice: 42, level: 'cheap' });
     expect(values(report, 'Current app-wide price source')).toEqual({ scheme: 'norway', selection: 'chosen' });

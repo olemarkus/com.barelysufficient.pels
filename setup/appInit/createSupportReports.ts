@@ -8,6 +8,7 @@ import { SupportReportService } from '../../lib/diagnostics/supportReportService
 import { readSmartTaskDeviceIds, readSmartTaskRuns } from '../../lib/diagnostics/supportReportSmartTasks';
 import { createDeviceEventStore } from '../../lib/diagnostics/deviceEventStore';
 import { createLogTailStore } from '../../lib/diagnostics/logTailStore';
+import type { HeatingShadowCollector } from '../../lib/diagnostics/heatingShadowCollector';
 import {
   readObjectiveForDeviceState, type ObjectiveSettingsStore,
 } from '../../lib/objectives/deferredObjectives/objectiveStore';
@@ -18,7 +19,7 @@ import { requireDeviceManager, requireHomeMembership, requirePlanService } from 
 export type SupportReportApp = Pick<PelsHost,
   | 'deviceManager' | 'homeMembership' | 'planService' | 'homeRuntimeRead' | 'getDeviceLogUiPayload'
   | 'getLatestPlanSnapshotForUi' | 'getCapacityScalars' | 'getDailyBudgetUiPayload' | 'readPriceSetup'
-  | 'getPriceTimelineForUi' | 'getUserdataDatabase' | 'readSchedules' | 'readHeatingShadowDaily'>
+  | 'getPriceTimelineForUi' | 'getUserdataDatabase' | 'readSchedules'>
   & Pick<AppContext, 'deferredObjectiveActivePlanRecorder' | 'deferredObjectivePlanHistoryRecorder'>;
 
 // Each read reaches the app when a report is captured. A service that is not
@@ -27,6 +28,7 @@ export const createSupportReportReads = (
   app: SupportReportApp,
   objectiveSettings: ObjectiveSettingsStore,
   readSmartTaskCycle: (deviceId: string) => SmartTaskCycleRecord | undefined,
+  heatingShadow: Pick<HeatingShadowCollector, 'readDaily'>,
 ): SupportReportReads => ({
   getDeviceSnapshot: (deviceId) => requireDeviceManager(app).getSnapshotByDeviceId(deviceId),
   describeHomeyDeviceForSupport: (deviceId) => readHomeyDeviceForSupport(
@@ -61,7 +63,7 @@ export const createSupportReportReads = (
     if (!read.ok) throw new Error(read.error);
     return read.data;
   },
-  readHeatingShadowDaily: (capturedAtMs) => app.readHeatingShadowDaily(capturedAtMs),
+  readHeatingShadowDaily: (capturedAtMs) => heatingShadow.readDaily(capturedAtMs),
   // Built per capture: the database opens after the report service is constructed.
   readDeviceEvents: (deviceIds, fromMs, toMs) => (
     createDeviceEventStore(app.getUserdataDatabase()).read(deviceIds, fromMs, toMs)),
@@ -73,7 +75,10 @@ export const createSupportReports = (
   homey: SupportReportHomey & HomeyReportRuntime & { settings: ObjectiveSettingsStore },
   app: SupportReportApp,
   readSmartTaskCycle: (deviceId: string) => SmartTaskCycleRecord | undefined,
+  heatingShadow: Pick<HeatingShadowCollector, 'readDaily'>,
 ): SupportReportService => new SupportReportService(
-  new SupportReportEvidenceSource(createSupportReportReads(app, homey.settings, readSmartTaskCycle), homey),
+  new SupportReportEvidenceSource(
+    createSupportReportReads(app, homey.settings, readSmartTaskCycle, heatingShadow), homey,
+  ),
   new HomeyReportTransport(homey),
 );

@@ -279,7 +279,7 @@ module.exports = {
       comment: 'Power is a producer; only the established power <-> objectives type cycle is allowed. All other peer edges forbidden.',
       severity: 'error',
       from: { path: '^lib/power/' },
-      to: { path: '^lib/(battery|device|plan|price|dailyBudget|observer|executor|weather|home|thermostat)/' },
+      to: { path: '^lib/(battery|device|plan|price|dailyBudget|observer|executor|weather|home|thermostat|diagnostics)/' },
     },
     {
       name: 'no-device-to-peer-except-power',

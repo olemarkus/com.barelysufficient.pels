@@ -1,7 +1,6 @@
-import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import type {
-  HeatingShadowDay, HeatingShadowDeviceDay, HeatingShadowReading,
-} from '../../packages/contracts/src/heatingShadow';
+  HeatingShadowDay, HeatingShadowDeviceDay, HeatingShadowReading, HeatingShadowState,
+} from './heatingShadowTypes';
 import type { SupportReportSection } from '../../packages/contracts/src/supportReport';
 import { getDateKeyInTimeZone, shiftDateKey } from '../../packages/shared-domain/src/utils/dateUtils';
 import {
@@ -59,10 +58,9 @@ function deviceRows(id: string, device: HeatingShadowDeviceDay, day: HeatingShad
  * A report budget selects whole device-day blocks; no accepted row is shortened or rounded.
  */
 export function readHeatingShadowDaily(
-  state: PowerTrackerState, capturedAtMs: number, timeZone: string,
+  retained: HeatingShadowState, capturedAtMs: number, timeZone: string,
 ): SupportReportSection | undefined {
-  const retained = state.heatingShadow;
-  if (!retained || retained.timeZone !== timeZone) return undefined;
+  if (retained.timeZone !== timeZone) return undefined;
   const currentDateKey = getDateKeyInTimeZone(new Date(capturedAtMs), timeZone);
   const oldestDateKey = shiftDateKey(currentDateKey, -HEATING_SHADOW_COMPLETED_DAYS);
   const day = retained.days.filter((candidate) => candidate.dateKey >= oldestDateKey
