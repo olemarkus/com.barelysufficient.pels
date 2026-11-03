@@ -125,15 +125,32 @@ export function readHeatingShadowDaily(
       devices: selected.map((id) => blocks.get(id)!),
     },
   });
-  let selected: string[] = [];
-  if (Buffer.byteLength(JSON.stringify(section(selected)), 'utf8') > HEATING_SHADOW_REPORT_BUDGET_BYTES) {
-    return undefined;
-  }
+  // The section is serialized once without devices and each block once: what a
+  // selection adds is exact (`selectionGrowthBytes`), so the budget walk stays
+  // linear in the retained rows.
+  let bytes = jsonBytes(section([]));
+  if (bytes > HEATING_SHADOW_REPORT_BUDGET_BYTES) return undefined;
+  let selected: readonly string[] = [];
   for (const id of ordered) {
-    const candidate = [...selected, id];
-    if (Buffer.byteLength(JSON.stringify(section(candidate)), 'utf8') <= HEATING_SHADOW_REPORT_BUDGET_BYTES) {
-      selected = candidate;
-    }
+    const grown = bytes + selectionGrowthBytes(id, jsonBytes(blocks.get(id)), selected.length, ids.length);
+    if (grown > HEATING_SHADOW_REPORT_BUDGET_BYTES) continue;
+    selected = [...selected, id];
+    bytes = grown;
   }
   return section(selected);
+}
+
+const jsonBytes = (value: unknown): number => Buffer.byteLength(JSON.stringify(value), 'utf8');
+
+/**
+ * What selecting `id` adds to the section's JSON, given `selectedCount` of the
+ * `recordedCount` blocks already selected: its block joins `devices`, its id
+ * leaves `omittedWholeDevicesForBudget`, and `exportedDeviceCount` gains one.
+ * Each array pays a comma for every element after its first.
+ */
+function selectionGrowthBytes(id: string, blockBytes: number, selectedCount: number, recordedCount: number): number {
+  const omittedCount = recordedCount - selectedCount;
+  return blockBytes + (selectedCount > 0 ? 1 : 0)
+    - jsonBytes(id) - (omittedCount > 1 ? 1 : 0)
+    + String(selectedCount + 1).length - String(selectedCount).length;
 }
