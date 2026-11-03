@@ -98,12 +98,12 @@ export function attemptSwapRestore(
   // caller has already computed. The handshake gates above run first on
   // purpose: a device mid-swap is held by them even after its sources have
   // stopped drawing, which is exactly when this test goes false.
-  if (!hasSwappableDraw(onDevices, swapLedger, restoredThisCycle)) {
+  if (!hasSwappableDraw(dev, onDevices, swapLedger, deviceMap, restoredThisCycle)) {
     return { kind: 'no_source' };
   }
 
   const swap = buildSwapCandidates(
-    dev, onDevices, swapLedger, availableHeadroom, restoreNeed.needed, restoredThisCycle,
+    dev, onDevices, swapLedger, deviceMap, availableHeadroom, restoreNeed.needed, restoredThisCycle,
   );
   if (!swap.ready) {
     return rejectSwapRestoreWithCandidates(

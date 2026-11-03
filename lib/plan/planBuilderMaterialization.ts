@@ -146,6 +146,7 @@ export class PlanMaterializationStages {
       // swap surface the shortfall folds in is the one the next swap
       // decision reads, now by identity rather than by a refresh step.
       swapLedger: this.state.swapLedger,
+      deviceMap: new Map(planDevices.map((device) => [device.id, device])),
       restoredThisCycle: restoreResult.restoredThisCycle,
       // Same need the restore gate rejects on: it inflates a recently shed
       // device's requirement, and a card computed against the deflated

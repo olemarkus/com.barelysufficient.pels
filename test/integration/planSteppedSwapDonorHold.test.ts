@@ -6,8 +6,10 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
-import { steppedPlanDevice, applyRestorePlanForSpec } from '../utils/planTestUtils';
-import { hasReservation, swappedOutFor } from '../utils/swapLedgerFixture';
+import { buildPlanDevice, steppedPlanDevice, applyRestorePlanForSpec } from '../utils/planTestUtils';
+import { hasReservation, swapHoldersOf, swappedOutFor } from '../utils/swapLedgerFixture';
+import { buildSwapCandidates } from '../../lib/plan/swap';
+import type { MeteredDevicePlanDevice } from '../../lib/plan/planTypes';
 import { testLogger } from '../utils/testLogger';
 import { SWAP_RESERVATION_MAX_MS } from '../../lib/plan/planConstants';
 
@@ -349,5 +351,111 @@ describe('stepped swap donor step-down', () => {
       openedAtMs: lapsedAt,
       donors: new Map([['charger', { kind: 'step', stepId: 'low' }]]),
     });
+  });
+});
+
+/**
+ * A swap that steps a donor down leaves it drawing, and that draw is still
+ * the lowest-ranked power in the house. Production scenario, 2026-11-03: a
+ * water heater (priority 3) swaps a charger (priority 5) from 14 A to 6 A.
+ * While its swap is open, a device ranked above both (priority 1) needs room;
+ * before step-down swaps the charger was off and its draw already freed, but
+ * a donor was never a swap source again, so the charger's 6 A stayed out of
+ * reach while it outranked nothing.
+ */
+describe('a stepped-down swap donor and a higher-ranked target', () => {
+  const ranked = (device: DevicePlanDevice, priority: number): DevicePlanDevice => ({ ...device, priority });
+  const waterHeater = (reportedStepId: 'medium' | 'max') => ({ ...ranked(heater(reportedStepId), 3), name: 'Water heater' });
+  const charger = (stepId: 'medium' | 'max', drawKw: number) => ranked(chargerAt(stepId, drawKw), 5);
+  const chargerStopped = () => ranked(chargerOff(), 5);
+  const firstRanked = (on: boolean) => buildPlanDevice({
+    id: 'first', name: 'First', priority: 1, currentState: on ? 'on' : 'off',
+    expectedPowerKw: 2.5, measuredPowerKw: on ? 2.5 : 0,
+  });
+
+  it('takes the donor further down for a target ranked above the swap that stepped it down', () => {
+    const state = createPlanEngineState();
+
+    // Cycle 1: the heater's +1 kW step steps the charger from `max` to `medium`.
+    vi.setSystemTime(T0);
+    applyRestorePlanForSpec({
+      planDevices: [waterHeater('medium'), charger('max', 3)],
+      ...buildPlanCycle({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps: deps(T0),
+    });
+    expect(state.swapLedger.donorRelease('charger')).toEqual({ kind: 'step', stepId: 'medium' });
+
+    // Cycle 2: the charger reports `medium` (its freed kW is in the reading) and
+    // the first-ranked device needs 2.5 kW. Only the charger stopping makes room.
+    state.shedDecisions.lastPlannedShedIds = new Set(['charger', 'first']);
+    vi.setSystemTime(T0 + 40_000);
+    const taken = applyRestorePlanForSpec({
+      planDevices: [waterHeater('medium'), charger('medium', 2), firstRanked(false)],
+      ...buildPlanCycle({ headroomRaw: 1.5, headroom: 1.5 }),
+      state,
+      sheddingActive: false,
+      deps: deps(T0 + 40_000),
+    });
+    expect(swapHoldersOf(state, 'charger')).toEqual(['heater', 'first']);
+    // Both swaps hold it at the deeper release, and its card names the higher-ranked target.
+    expect(state.swapLedger.reservationFor('heater')?.donors.get('charger')).toEqual({ kind: 'off' });
+    expect(byId(taken.planDevices, 'charger')).toMatchObject({
+      plannedState: 'shed', reason: { code: PLAN_REASON_CODES.swappedOut, targetName: 'First' },
+    });
+    expect(byId(taken.planDevices, 'charger') && resolvePlannedShedTargetKind(byId(taken.planDevices, 'charger')!))
+      .toBe('binary_off');
+    // The heater does not step up on the power its swap freed while the charger is still drawing.
+    expect(byId(taken.planDevices, 'heater')).toMatchObject({
+      desiredStepId: 'medium', reason: { code: PLAN_REASON_CODES.swapPending },
+    });
+
+    // Cycle 3: the charger is off and the first-ranked device has come on, which keeps
+    // its swap's promise. The heater's swap still holds the charger off: no hold
+    // raises it back to `medium` under the device that took that power.
+    vi.setSystemTime(T0 + 60_000);
+    const settled = applyRestorePlanForSpec({
+      planDevices: [waterHeater('medium'), chargerStopped(), firstRanked(true)],
+      ...buildPlanCycle({ headroomRaw: 0.8, headroom: 0.8 }),
+      state,
+      sheddingActive: false,
+      deps: deps(T0 + 60_000),
+    });
+    expect(hasReservation(state, 'first')).toBe(false);
+    expect(swapHoldersOf(state, 'charger')).toEqual(['heater']);
+    expect(byId(settled.planDevices, 'charger')).toMatchObject({
+      plannedState: 'shed', desiredStepId: 'off',
+      reason: { code: PLAN_REASON_CODES.swapPending, targetName: 'Water heater' },
+    });
+  });
+
+  it('leaves a stepped-down donor to its swap for a target ranked at or below that swap\'s target', () => {
+    const state = createPlanEngineState();
+    vi.setSystemTime(T0);
+    applyRestorePlanForSpec({
+      planDevices: [waterHeater('medium'), charger('max', 3)],
+      ...buildPlanCycle({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps: deps(T0),
+    });
+    const donor = charger('medium', 2) as MeteredDevicePlanDevice;
+    const deviceMap = new Map([[waterHeater('medium').id, waterHeater('medium')], [donor.id, donor]]);
+    const search = (priority: number) => buildSwapCandidates(
+      buildPlanDevice({ id: 'wants-room', priority }), [donor], state.swapLedger, deviceMap, 1.5, 2.5, new Set(),
+    );
+    // Ranked below the heater (4), or level with it (3): the charger stays the heater's.
+    expect(search(4).toShed).toEqual([]);
+    expect(search(3).toShed).toEqual([]);
+    // Ranked above it: the charger can be stopped.
+    expect(search(2).toShed).toEqual([{ device: donor, release: { kind: 'off' } }]);
+    // A donor still reporting its old step is not taken further: what it frees
+    // past its step-down cannot be priced apart from what that step-down frees.
+    const lagging = charger('max', 3) as MeteredDevicePlanDevice;
+    expect(buildSwapCandidates(
+      buildPlanDevice({ id: 'wants-room', priority: 2 }), [lagging], state.swapLedger,
+      new Map([...deviceMap, [lagging.id, lagging]]), 0.5, 2.5, new Set(),
+    ).toShed).toEqual([]);
   });
 });

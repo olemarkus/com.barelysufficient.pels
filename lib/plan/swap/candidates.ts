@@ -4,7 +4,9 @@ import {
 } from '../planConstants';
 import { buildRestoreAdmissionMetrics, isRestoreAdmitted, type RestoreAdmissionMetrics } from '../admission';
 import { isSteppedLoadDevice, resolveStepChangeKw, resolveSteppedLoadPlanningKw } from '../planSteppedLoad';
-import { getSteppedLoadLowestActiveStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
+import {
+  getSteppedLoadLowestActiveStep, getSteppedLoadStep,
+} from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { getSteppedLoadNextLowerStep } from '../../utils/steppedLoadLadder';
 import type { SwapDonorRelease, SwapLedger } from './swapLedger';
 
@@ -14,50 +16,74 @@ export type SwapDonor = {
   release: SwapDonorRelease;
 };
 
-/**
- * The half of swap viability that does not depend on who wants the power: a
- * source has to be drawing something and not already be spoken for. Named
- * separately because it is also the answer to a question the search itself
- * cannot ask — *could a swap free anything at all?* — and that answer has to
- * come from the same predicate the search uses, or the two drift apart.
- */
-function canReleaseDrawForSwap(
-  onDev: MeteredDevicePlanDevice,
-  ledger: SwapLedger,
-  restoredThisCycle: ReadonlySet<string>,
-): boolean {
-  if (onDev.currentDrawKw <= 0) return false;
-  if (onDev.plannedState === 'shed') return false;
-  if (ledger.isDonor(onDev.id)) return false;
-  if (restoredThisCycle.has(onDev.id)) return false;
-  return true;
+/** Whether a stepped donor reports the step a swap lowered it to, or one below it. */
+function hasSteppedDownTo(onDev: MeteredDevicePlanDevice, stepId: string): boolean {
+  if (!isSteppedLoadDevice(onDev)) return false;
+  const held = getSteppedLoadStep(onDev.steppedLoadProfile, stepId);
+  const reported = getSteppedLoadStep(onDev.steppedLoadProfile, onDev.reportedStepId);
+  return held !== null && reported !== null && reported.planningPowerW <= held.planningPowerW;
 }
 
 /**
- * Whether any running device could be paused to fund a restore this cycle.
- * False means the swap avenue does not exist — `buildSwapCandidates` would walk
- * the whole list and come back with nothing to shed for every candidate — so
- * the caller's own rejection is already the decision.
+ * Whether `onDev` can give up draw to a swap for `dev`: it is drawing
+ * something, was not restored this cycle, and is not spoken for.
+ *
+ * A donor another swap stepped down (never one it switched off) is spoken for
+ * only by the targets that swap and any later one took it for. A target ranked
+ * above all of them (lower priority number) may take it further down, once it
+ * reports the step it was given: its further relief is then priced from what it
+ * draws there, and the watts its first step-down freed are already in the
+ * reading rather than counted again. A target ranked at or below one of them
+ * waits for that swap, as its restore does. Its `shed` plan is the swap's own
+ * hold, so it does not rule it out.
+ *
+ * Also the answer to a question the search itself cannot ask — *could a swap
+ * free anything at all?* — and that answer has to come from the same predicate
+ * the search uses, or the two drift apart.
+ */
+function canReleaseDrawForSwap(
+  onDev: MeteredDevicePlanDevice,
+  dev: DevicePlanDevice,
+  ledger: SwapLedger,
+  deviceMap: ReadonlyMap<string, DevicePlanDevice>,
+  restoredThisCycle: ReadonlySet<string>,
+): boolean {
+  if (onDev.currentDrawKw <= 0) return false;
+  if (restoredThisCycle.has(onDev.id)) return false;
+  const release = ledger.donorRelease(onDev.id);
+  if (release === undefined) return onDev.plannedState !== 'shed';
+  return release.kind === 'step' && hasSteppedDownTo(onDev, release.stepId)
+    && ledger.isHeldOnlyBelow(onDev.id, dev.priority, deviceMap);
+}
+
+/**
+ * Whether any running device could be paused to fund `dev`'s restore this
+ * cycle. False means the swap avenue does not exist — `buildSwapCandidates`
+ * would walk the whole list and come back with nothing to shed — so the
+ * caller's own rejection is already the decision.
  *
  * Evaluated per candidate rather than once per pass: `plannedState`,
  * the ledger's donor set and `restoredThisCycle` all move as the pass runs, and a
  * verdict cached before the first admission would be stale by the second.
  */
 export function hasSwappableDraw(
+  dev: DevicePlanDevice,
   onDevices: readonly MeteredDevicePlanDevice[],
   ledger: SwapLedger,
+  deviceMap: ReadonlyMap<string, DevicePlanDevice>,
   restoredThisCycle: ReadonlySet<string>,
 ): boolean {
-  return onDevices.some((onDev) => canReleaseDrawForSwap(onDev, ledger, restoredThisCycle));
+  return onDevices.some((onDev) => canReleaseDrawForSwap(onDev, dev, ledger, deviceMap, restoredThisCycle));
 }
 
 function isViableSwapCandidate(
   onDev: MeteredDevicePlanDevice,
   dev: DevicePlanDevice,
   ledger: SwapLedger,
+  deviceMap: ReadonlyMap<string, DevicePlanDevice>,
   restoredThisCycle: ReadonlySet<string>,
 ): boolean {
-  if (!canReleaseDrawForSwap(onDev, ledger, restoredThisCycle)) return false;
+  if (!canReleaseDrawForSwap(onDev, dev, ledger, deviceMap, restoredThisCycle)) return false;
   const onDevPriority = onDev.priority;
   const devPriority = dev.priority;
   if (onDevPriority <= devPriority) return false;
@@ -122,6 +148,8 @@ export function buildSwapCandidates(
   dev: DevicePlanDevice,
   onDevices: MeteredDevicePlanDevice[],
   ledger: SwapLedger,
+  /** The cycle's devices: the ranks of the targets a donor is already held for. */
+  deviceMap: ReadonlyMap<string, DevicePlanDevice>,
   availableHeadroom: number,
   needed: number,
   restoredThisCycle: ReadonlySet<string>,
@@ -145,7 +173,7 @@ export function buildSwapCandidates(
   let admission = buildRestoreAdmissionMetrics({ availableKw: effectiveHeadroom, neededKw: needed });
 
   for (const onDev of onDevices) {
-    if (!isViableSwapCandidate(onDev, dev, ledger, restoredThisCycle)) continue;
+    if (!isViableSwapCandidate(onDev, dev, ledger, deviceMap, restoredThisCycle)) continue;
 
     const { release, reliefKw } = resolveDonorRelease(onDev, currentPotential, needed);
     toShed.push({ device: onDev, release });

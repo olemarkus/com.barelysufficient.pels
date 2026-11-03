@@ -167,6 +167,8 @@ When a high-priority device is off and there isn't enough available power to res
 4. If limiting those lower-priority devices would free enough power, do the swap
 5. The lower-priority devices are tracked and will not resume until the high-priority device is back on
 
+A device with power steps, such as a charger, is lowered to the gentlest step that frees enough instead of being turned off. While PELS waits for the device it made room for to start, a device ranked above that one can lower the stepped device further, or turn it off; it then stays there until both have started.
+
 **Example**: Your kid's room heater (priority 1) is off, bathroom heater (priority 3) is on. If there's not enough available power for both, PELS will turn off the bathroom to heat the kid's room.
 
 ---

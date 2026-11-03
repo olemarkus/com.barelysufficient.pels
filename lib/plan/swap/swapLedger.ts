@@ -96,7 +96,12 @@ export function resolveSwapPromise(admittedUpdate: Partial<DevicePlanDevice>): S
 }
 
 export class SwapLedger {
-  /** Keyed by TARGET: at most one reservation per beneficiary. */
+  /**
+   * Keyed by TARGET: at most one reservation per beneficiary. A donor is held
+   * by more than one only when a target ranked above every target holding a
+   * stepped-down donor took it further down (`canReleaseDrawForSwap`); every
+   * reservation holding it then records the same, deepest release.
+   */
   private readonly reservations = new Map<string, SwapReservation>();
 
   /**
@@ -126,6 +131,12 @@ export class SwapLedger {
    * So the donors merge and `openedAtMs` is preserved. The serviceable
    * window and the plan watermark DO advance: a re-approval is fresh work
    * against a fresh reading, which is exactly what that clock measures.
+   *
+   * A donor another reservation already holds was taken further down than
+   * that swap left it, so that reservation now holds it at the new release
+   * too: it stays at the lowest step any open swap asked for until every one
+   * holding it settles, and is never raised back by a hold while the target
+   * that took it further is drawing that power.
    */
   open(
     targetId: string,
@@ -134,6 +145,11 @@ export class SwapLedger {
     planMeasurementTs: number,
     nowMs: number,
   ): void {
+    for (const [donorId, release] of donors) {
+      for (const held of this.reservationsHolding(donorId)) {
+        if (held.targetId !== targetId) this.reservations.set(held.targetId, withDonor(held, donorId, release));
+      }
+    }
     const existing = this.reservations.get(targetId);
     this.reservations.set(targetId, {
       targetId,
@@ -287,10 +303,12 @@ export class SwapLedger {
     dev: DevicePlanDevice,
     deviceMap: ReadonlyMap<string, DevicePlanDevice>,
   ): DevicePlanDevice | undefined {
-    const holder = this.reservationHolding(dev.id);
-    if (holder !== undefined && !this.settleIfKept(holder.targetId, deviceMap, undefined)) {
-      return deviceMap.get(holder.targetId);
-    }
+    // A donor held for several targets names the highest-ranked of them.
+    const funded = this.reservationsHolding(dev.id)
+      .filter((holder) => !this.settleIfKept(holder.targetId, deviceMap, undefined))
+      .flatMap((holder) => deviceMap.get(holder.targetId) ?? [])
+      .sort((left, right) => left.priority - right.priority)[0];
+    if (funded !== undefined) return funded;
     if (this.reservations.has(dev.id)) return undefined;
     const devPriority = dev.priority;
     for (const reservation of this.reservations.values()) {
@@ -309,21 +327,34 @@ export class SwapLedger {
     return this.reservations.get(targetId);
   }
 
-  /** The reservation `donorId` was paused to fund. */
-  reservationHolding(donorId: string): SwapReservation | undefined {
-    for (const reservation of this.reservations.values()) {
-      if (reservation.donors.has(donorId)) return reservation;
-    }
-    return undefined;
+  /** The reservations `donorId` was paused to fund. */
+  private reservationsHolding(donorId: string): SwapReservation[] {
+    return [...this.reservations.values()].filter((reservation) => reservation.donors.has(donorId));
   }
 
   isDonor(donorId: string): boolean {
-    return this.reservationHolding(donorId) !== undefined;
+    return this.reservationsHolding(donorId).length > 0;
   }
 
-  /** What `donorId` gave up for the reservation it funds, if it funds one. */
+  /**
+   * What `donorId` gave up for the reservations it funds, if it funds one:
+   * every one holding it records the same release (`open`).
+   */
   donorRelease(donorId: string): SwapDonorRelease | undefined {
-    return this.reservationHolding(donorId)?.donors.get(donorId);
+    return this.reservationsHolding(donorId)[0]?.donors.get(donorId);
+  }
+
+  /**
+   * Whether every reservation holding `donorId` is for a target ranked below
+   * `priority` (a higher priority number). A target missing from the cycle
+   * counts as ranked above: its reservation is settled at reconcile, and until
+   * then nothing may take its donor.
+   */
+  isHeldOnlyBelow(donorId: string, priority: number, deviceMap: ReadonlyMap<string, DevicePlanDevice>): boolean {
+    return this.reservationsHolding(donorId).every((holder) => {
+      const target = deviceMap.get(holder.targetId);
+      return target !== undefined && target.priority > priority;
+    });
   }
 
   /**
@@ -359,6 +390,18 @@ export class SwapLedger {
 function resolveWait(current: SwapWait, laneOpen: boolean, nowMs: number): SwapWait {
   if (!laneOpen) return current.kind === 'lane_shut' ? current : { kind: 'lane_shut' };
   return current.kind === 'serving' ? current : { kind: 'serving', sinceMs: nowMs };
+}
+
+/** The same reservation holding `donorId` at `release`. */
+function withDonor(reservation: SwapReservation, donorId: string, release: SwapDonorRelease): SwapReservation {
+  return {
+    targetId: reservation.targetId,
+    promise: reservation.promise,
+    donors: new Map(reservation.donors).set(donorId, release),
+    openedAtMs: reservation.openedAtMs,
+    wait: reservation.wait,
+    planMeasurementTs: reservation.planMeasurementTs,
+  };
 }
 
 /** The same reservation carrying a new wait state. */
