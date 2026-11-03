@@ -1,4 +1,3 @@
-import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 /**
  * Specs that exercise drift supply the fixtures the observer would have served.
  * Absent, the engine sees no observations at all — which the predicate skips,
@@ -14,6 +13,8 @@ import type { DriftCommandRead } from '../../lib/executor/driftObservedDevice';
 import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevice';
 import { executionStateFixture } from './deviceStatusFixture';
 import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';
+import type { ExecutionPlan } from '../../lib/planContract/executionPlan';
+import { resolveExecutionPlanSource } from './executionPlanSources';
 
 export type MockPlanEngineOptions = {
   getDriftDevices?: () => PlanInputDevice[];
@@ -80,12 +81,12 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
   // treating as agreement.
   getObservationRevision: vi.fn(() => options?.getObservationRevision?.() ?? 0),
   hasExecutionWorkOutstanding: vi.fn(
-    (plannedSnapshot: DevicePlan, observationRevisionAtBuild: number) => {
+    (plan: ExecutionPlan, observationRevisionAtBuild: number) => {
       // Mirrors the production gate: a plan decided against an older world is
       // not evidence about this one.
       if ((options?.getObservationRevision?.() ?? 0) !== observationRevisionAtBuild) return false;
       return hasPlanExecutionDriftAgainstIntent(
-        buildExecutionPlan(plannedSnapshot),
+        plan,
         driftDepsFromPlanInputs(
           options?.getDriftDevices ?? (() => []),
           options?.getDriftBinaryCommand ?? (() => ({ kind: 'none' })),
@@ -93,7 +94,11 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
       );
     },
   ),
-  getDeviceExecutionStates: vi.fn((plan: DevicePlan) => new Map(plan.devices.map((device) => {
+  // Answers from the plan device the execution plan was projected from
+  // (`executionPlanSources.ts`): a spec states its observations there.
+  getDeviceExecutionStates: vi.fn((executionPlan: ExecutionPlan) => new Map(resolveExecutionPlanSource(
+    executionPlan,
+  ).devices.map((device) => {
     const live = options?.getDriftDevices?.().find((candidate) => candidate.id === device.id);
     if (!live) return [device.id, executionStateFixture(device)];
     // Built the way the executor builds it: the observation from the live

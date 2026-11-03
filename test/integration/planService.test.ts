@@ -61,6 +61,17 @@ import { createTestDeviceActivityRecorder } from '../helpers/deviceActivityRecor
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { planServiceWiring } from '../helpers/planServiceWiring';
 import { testLogger } from '../utils/testLogger';
+import { recordExecutionPlanSource } from '../utils/executionPlanSources';
+
+// The mock executor answers from the plan each execution plan came from
+// (`executionPlanSources.ts`), so the real projection records it.
+vi.mock('../../lib/plan/planExecutionProjection', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/plan/planExecutionProjection')>();
+  return {
+    ...actual,
+    buildExecutionPlan: (plan: DevicePlan) => recordExecutionPlanSource(actual.buildExecutionPlan(plan), plan),
+  };
+});
 
 type PlanServiceDeps = ConstructorParameters<typeof PlanService>[0];
 
@@ -2307,11 +2318,10 @@ describe('PlanService', () => {
     expect(applyPlanActions).toHaveBeenCalledWith(expect.objectContaining({
       devices: [
         expect.objectContaining({
-          id: 'dev-1',
-          currentState: 'off' as const,
-          plannedState: 'keep',
-          boostActive: false,
-          plannedTarget: 20,
+          commands: expect.objectContaining({
+            id: 'dev-1',
+            binary: expect.objectContaining({ desiredOn: true }),
+          }),
         }),
       ],
     }));

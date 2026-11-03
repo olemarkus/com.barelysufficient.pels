@@ -2,8 +2,9 @@
  * Rebuild orchestration for `PlanService`. Extracted (slice: full builder
  * pipeline run) so the service file stays under the line ceiling while keeping
  * sync sequencing alongside the public surface. These functions own the
- * WHEN-to-actuate sequencing of a single rebuild: build → stamp → track
- * changes → snapshot/status update → conditional apply → pending-target
+ * WHEN-to-actuate sequencing of a single rebuild: build → execution
+ * projection → stamp → track changes → snapshot/status update → conditional
+ * apply → pending-target
  * decoration republish → completion metrics/log. They mutate `PlanService` state only through
  * the `PlanRebuildHost` seam so the service keeps its private fields. Behaviour
  * is identical to the former `PlanService.performPlanRebuild` and its private
@@ -18,6 +19,7 @@ import { normalizeError } from '../utils/errorUtils';
 import { getDebugEmitter, isDebugTopicEnabled, withRebuildContext } from '../logging/logger';
 import { buildPlanDetailSignature, buildPublishedPlanCapacityStateSummary } from './planLogging';
 import type { PublishedPlan } from './publishedPlan';
+import { buildExecutionPlan } from './planExecutionProjection';
 import { hasShedding } from './planServiceInternals';
 import {
   buildPlanHeadroomLogFields,
@@ -34,6 +36,7 @@ import type {
   StatusPlanChanges,
 } from './planTypes';
 import type { PlanRebuildOutcome } from '../planContract/planActuationResult';
+import type { ExecutionPlan } from '../planContract/executionPlan';
 import type { PendingBinaryLiveDevice } from '../ports/controlCommandConfirmation';
 
 const emitPlanDebug = getDebugEmitter('plan', 'plan');
@@ -126,7 +129,7 @@ async function executePlanRebuild(
   isDryRun: boolean,
   outcome: PlanRebuildOutcome,
 ): Promise<void> {
-  const { plan, buildMs, observationRevision } = await buildPlanForRebuild(host, trigger);
+  const { plan, executionPlan, buildMs, observationRevision } = await buildPlanForRebuild(host, trigger);
   const nowMs = Date.now();
   const stampedPlan = host.stampPlanGeneratedAt(plan, nowMs);
   host.publishPlan(stampedPlan, nowMs);
@@ -142,7 +145,7 @@ async function executePlanRebuild(
     });
   }
 
-  await maybeApplyPlanChanges(host, stampedPlan, changes, isDryRun, observationRevision, outcome);
+  await maybeApplyPlanChanges(host, executionPlan, changes, isDryRun, observationRevision, outcome);
   Object.assign(outcome, {
     buildMs,
     changeMs,
@@ -161,7 +164,7 @@ async function executePlanRebuild(
 async function buildPlanForRebuild(
   host: PlanRebuildHost,
   trigger: PlanRebuildTrigger,
-): Promise<{ plan: DevicePlan; buildMs: number; observationRevision: number }> {
+): Promise<{ plan: DevicePlan; executionPlan: ExecutionPlan; buildMs: number; observationRevision: number }> {
   const { planEngine } = host.deps;
   planEngine.syncPendingBinaryCommands(host.settleDevices(), 'rebuild');
   planEngine.syncSteppedCommands(() => host.steppedSettleDevices());
@@ -182,11 +185,16 @@ async function buildPlanForRebuild(
   } finally {
     planEngine.state.currentRebuildTrigger = null;
   }
+  // The one projection of this decision for the executor. The pending-target
+  // decoration below adds only `pendingTargetCommand`, which the projection does
+  // not read, and stamping changes only the meta's time.
+  const executionPlan = buildExecutionPlan(plan);
   planEngine.prunePendingTargetCommands(plan);
-  planEngine.retainContestedCommands(plan);
+  planEngine.retainContestedCommands(executionPlan);
   plan = planEngine.decoratePlanWithPendingTargetCommands(plan);
   return {
     plan,
+    executionPlan,
     buildMs: Date.now() - buildStart,
     observationRevision,
   };
@@ -268,7 +276,7 @@ function measureStatusUpdate(host: PlanRebuildHost, plan: DevicePlan, changes: P
  */
 function shouldApplyPlan(
   host: PlanRebuildHost,
-  plan: DevicePlan,
+  plan: ExecutionPlan,
   changes: PlanChangeSet,
   isDryRun: boolean,
   observationRevision: number,
@@ -288,7 +296,7 @@ function shouldApplyPlan(
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 async function maybeApplyPlanChanges(
   host: PlanRebuildHost,
-  plan: DevicePlan,
+  plan: ExecutionPlan,
   changes: PlanChangeSet,
   isDryRun: boolean,
   observationRevision: number,

@@ -1,5 +1,6 @@
 import { getTestExecutionFacts } from '../utils/planEngineStateFixture';
 import type { DevicePlan } from '../../lib/plan/planTypes';
+import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 import type MyApp from '../../app.ts';
 /**
  * @vitest-environment node
@@ -1104,7 +1105,7 @@ describe('Device plan snapshot', () => {
     const app = createApp();
     await app.onInit();
 
-    await app.planEngine.applyPlanActions(binaryShedPlan('dev-1', 'Heater A'));
+    await app.planEngine.applyPlanActions(buildExecutionPlan(binaryShedPlan('dev-1', 'Heater A')));
     expect(await dev1.getCapabilityValue('onoff')).toBe(false);
   });
 
@@ -1322,7 +1323,7 @@ describe('Device plan snapshot', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    await app.planEngine.applyPlanActions(plan);
+    await app.planEngine.applyPlanActions(buildExecutionPlan(plan));
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/dev-1/capability/onoff',
       pelsCapabilityWrite(true),
@@ -1520,10 +1521,10 @@ describe('Device plan snapshot', () => {
       onApiWrite: { accept: true, updateActual: true, updateApi: false },
     });
 
-    await app.planEngine.applyPlanActions(binaryShedPlan('dev-1', 'Heater A'));
+    await app.planEngine.applyPlanActions(buildExecutionPlan(binaryShedPlan('dev-1', 'Heater A')));
     await app.refreshTargetDevicesSnapshot();
     expect(app.deviceManager.getSnapshotByDeviceId('dev-1')?.binaryControl).toEqual({ on: true });
-    await app.planEngine.applyPlanActions(binaryShedPlan('dev-1', 'Heater A'));
+    await app.planEngine.applyPlanActions(buildExecutionPlan(binaryShedPlan('dev-1', 'Heater A')));
 
     expect(putSpy).toHaveBeenCalledTimes(1);
   });
@@ -1549,7 +1550,7 @@ describe('Device plan snapshot', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    await app.planEngine.applyPlanActions(binaryShedPlan('dev-1', 'No On/Off Device'));
+    await app.planEngine.applyPlanActions(buildExecutionPlan(binaryShedPlan('dev-1', 'No On/Off Device')));
 
     expect(putSpy).not.toHaveBeenCalled();
     const after = getTestExecutionFacts(app.planEngine.state).actuation.lastDeviceShedMs['dev-1'];
@@ -1884,7 +1885,7 @@ describe('Device plan snapshot', () => {
       storageReleases: [],
     };
 
-    await app.planEngine.applyPlanActions(plan);
+    await app.planEngine.applyPlanActions(buildExecutionPlan(plan));
 
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/dev-1/capability/onoff',
@@ -1935,7 +1936,7 @@ describe('Device plan snapshot', () => {
       storageReleases: [],
     };
 
-    await app.planEngine.applyPlanActions(plan);
+    await app.planEngine.applyPlanActions(buildExecutionPlan(plan));
 
     expect(putSpy).toHaveBeenCalledWith(
       'manager/devices/device/dev-1/capability/onoff',
@@ -2850,7 +2851,7 @@ describe('Dry run mode', () => {
     const app = createApp();
     await app.onInit();
 
-    await app.planEngine.applyPlanActions(binaryShedPlan('dev-1', 'Heater A'));
+    await app.planEngine.applyPlanActions(buildExecutionPlan(binaryShedPlan('dev-1', 'Heater A')));
 
     // Device should still be on (no actual shedding)
     expect(await dev1.getCapabilityValue('onoff')).toBe(true);
@@ -3185,7 +3186,7 @@ describe('Dry run mode', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    await app.planEngine.applyPlanActions(plan);
+    await app.planEngine.applyPlanActions(buildExecutionPlan(plan));
 
     expect(putSpy).not.toHaveBeenCalled();
   });
@@ -3544,7 +3545,7 @@ describe('Dry run mode', () => {
       storageReleases: [],
     };
 
-    await app.planEngine.applyPlanActions(plan);
+    await app.planEngine.applyPlanActions(buildExecutionPlan(plan));
 
     expect(putSpy).not.toHaveBeenCalled();
   });
@@ -3598,7 +3599,7 @@ describe('Dry run mode', () => {
       storageReleases: [],
     };
 
-    await app.planEngine.applyPlanActions(plan);
+    await app.planEngine.applyPlanActions(buildExecutionPlan(plan));
 
     expect(putSpy).toHaveBeenCalledTimes(1);
     expect(putSpy).toHaveBeenCalledWith(
@@ -3659,7 +3660,7 @@ describe('Dry run mode', () => {
       storageReleases: [],
     };
 
-    await app.planEngine.applyPlanActions(plan);
+    await app.planEngine.applyPlanActions(buildExecutionPlan(plan));
 
     expect(putSpy).toHaveBeenCalledTimes(1);
     expect(putSpy).toHaveBeenCalledWith(
@@ -3708,7 +3709,7 @@ describe('Dry run mode', () => {
       storageReleases: [],
     };
 
-    await expect(app.planEngine.applyPlanActions(plan)).resolves.toEqual(expect.objectContaining({
+    await expect(app.planEngine.applyPlanActions(buildExecutionPlan(plan))).resolves.toEqual(expect.objectContaining({
       deviceWriteCount: 1,
       commandRequestCount: 0,
     }));

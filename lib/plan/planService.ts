@@ -9,6 +9,7 @@ import { runWithContext } from '../logging/alsContext';
 import type { SettingsUiDeviceLogPayload } from '../../packages/contracts/src/settingsUi/devices';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUi/plan';
 import { buildSettingsOverviewReadModel } from './settingsOverviewReadModel';
+import { buildExecutionPlan } from './planExecutionProjection';
 import {
   createIdleClassifier,
   type IdleClassifier,
@@ -109,7 +110,7 @@ const buildOverviewPublication = (
   deps: PlanServiceDeps,
   idleClassifier: IdleClassifier,
 ): OverviewPublication | null => {
-  const execution = deps.planEngine.getDeviceExecutionStates(plan);
+  const execution = deps.planEngine.getDeviceExecutionStates(buildExecutionPlan(plan));
   // Present only the devices the executor still holds: one turned out of the
   // managed set since this plan was built is gone, not unavailable (its
   // activity log used to end on an `Unavailable` row).
@@ -213,7 +214,7 @@ export class PlanService {
     const plan = this.getLatestPlanSnapshot();
     const device = plan?.devices.find((candidate) => candidate.id === deviceId);
     if (!plan || !device) return { kind: 'no_decision' };
-    const execution = this.deps.planEngine.getDeviceExecutionStates(plan).get(deviceId);
+    const execution = this.deps.planEngine.getDeviceExecutionStates(buildExecutionPlan(plan)).get(deviceId);
     // No execution state: the device left the managed set after this plan.
     if (!execution) return { kind: 'no_decision' };
     return resolveTaskDeliveryControl(device, execution);
