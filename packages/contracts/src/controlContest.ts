@@ -10,14 +10,15 @@ export type ContestedSetting = 'temperature' | 'on_off' | 'level';
 
 /**
  * A device whose setting keeps moving away from what PELS set and the device
- * kept, as the executor's `ControlContestRecord` answers it while the rounds
- * within the last 2 hours reach its threshold.
+ * kept, as the executor's `ControlContestRecord` answers it: from the round
+ * that brings its rounds within 2 hours to the threshold until its latest
+ * round is 2 hours old.
  */
 export type ContestedControl = {
   setting: ContestedSetting;
   /** `reverted` when every round in the window was one, else `overridden`. */
   kind: ContestKind;
-  /** Rounds within the last 2 hours. */
+  /** Rounds within the last 2 hours: at least one, while the contest runs. */
   count: number;
   /**
    * When this contest began: the first of the rounds that reached the

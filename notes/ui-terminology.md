@@ -2396,7 +2396,8 @@ named `Set the limited temperature for {device name}`.
 A managed device whose setting (temperature, on/off or level) moved away from
 what PELS set, after it had kept it for 15 minutes, 4 times within 2 hours, gets
 a Recommended entry and a notice above **Managed by PELS** on its device page,
-which opens Setup. `controlContestNotice` in
+which opens Setup. Both stay until the device has kept its settings for 2
+hours, however the rounds fall in that time. `controlContestNotice` in
 `packages/settings-ui/src/ui/controlContestCopy.ts` words both, by what the
 runtime saw (`notes/support-reports.md`, `device_control_contested`):
 
@@ -2408,7 +2409,8 @@ runtime saw (`notes/support-reports.md`, `device_control_contested`):
   the last 2 hours, something outside PELS changed the {setting} of {device}
   after PELS set it. Look for a Flow, another app or a schedule that sets it, and
   turn that off, or turn off Managed by PELS for it.`
-- `{setting}` is `temperature`, `on/off setting` or `level`.
+- `{setting}` is `temperature`, `on/off setting` or `level`. `{N} times` reads
+  `Once` when one round is left in the 2 hours.
 - For a temperature, both bodies also name the lighter choice in the same Setup
   section, which keeps the device managed: the reverted remedy reads `Check the
   app that controls {device}. To leave the temperature to that app, choose “Keep
@@ -2418,9 +2420,8 @@ runtime saw (`notes/support-reports.md`, `device_control_contested`):
   temperature, choose “Keep the new temperature” under “When the temperature
   changes outside PELS”, or turn off Managed by PELS for {device}.` The option
   and the selector are quoted, as in the setup checklist's hint.
-- Action `Open device`. The entry and the notice leave once the device keeps
-  its settings for 2 hours. PELS keeps setting the device back; the copy never
-  says PELS stopped.
+- Action `Open device`. PELS keeps setting the device back; the copy never says
+  PELS stopped.
 - Dismissal is remembered per contest, by when it began: a contest that runs
   on stays dismissed, and a later contest on the same device shows again.
 

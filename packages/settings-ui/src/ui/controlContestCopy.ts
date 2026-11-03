@@ -17,7 +17,8 @@ export const controlContestNotice = (
   contest: ContestedControl,
 ): { title: string; body: string } => {
   const what = CONTESTED_SETTING_WORDS[contest.setting];
-  const times = `${contest.count} times in the last 2 hours`;
+  // A contest lasts until its latest round is 2 hours old, so it may be down to one.
+  const times = `${contest.count === 1 ? 'Once' : `${contest.count} times`} in the last 2 hours`;
   const temperature = contest.setting === 'temperature';
   if (contest.kind === 'reverted') {
     const remedy = temperature

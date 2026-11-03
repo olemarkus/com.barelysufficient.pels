@@ -179,10 +179,12 @@ one, and what each report is about, are listed in `REPORTED_EVENTS` in
   for a device that left the plan of the home that sent it (a device the owner stopped
   managing, say), and one whose command session ended are forgotten, so a later send of it
   is a new command. The
-  same record answers `/ui_devices`'s `controlContest` for each managed device while its
-  rounds in the last 2 hours reach the threshold; the settings UI then lists a
-  recommendation and shows a notice above Managed by PELS on the device page, worded by
-  `kind`. PELS keeps setting the device back: the record only warns and reports.
+  same record answers `/ui_devices`'s `controlContest` for each managed device from the
+  round that brings its rounds within 2 hours to the threshold until its latest round is 2
+  hours old, so a Flow that changes the device every 30 minutes keeps one contest; the
+  settings UI then lists a recommendation and shows a notice above Managed by PELS on the
+  device page, worded by `kind`. PELS keeps setting the device back: the record only warns
+  and reports.
 
 The schedule checks every 5 minutes from 17 minutes after start (two minutes off the daily
 report's hourly check), over the device events kept in the last 30 minutes, so a report

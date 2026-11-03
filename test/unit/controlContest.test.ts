@@ -222,10 +222,36 @@ describe('ControlContestRecord', () => {
     expect(contests.contestedControl(MILL, 4 * ROUND_MS)).toBeUndefined();
   });
 
-  it('lets rounds older than 2 hours go', () => {
+  it('keeps a contest until its latest round is 2 hours old', () => {
+    // Rounds at 20, 40, 60 and 80 minutes, then the device keeps its settings.
     const { contests } = contestRounds(4, () => 22);
     expect(contests.contestedControl(MILL, 2 * 60 * MINUTE_MS)?.count).toBe(4);
-    expect(contests.contestedControl(MILL, ROUND_MS + CONTEST_WINDOW_MS)).toBeUndefined();
+    expect(contests.contestedControl(MILL, ROUND_MS + CONTEST_WINDOW_MS)).toEqual({
+      setting: 'temperature', kind: 'overridden', count: 3, sinceMs: ROUND_MS,
+    });
+    expect(contests.contestedControl(MILL, 4 * ROUND_MS + CONTEST_WINDOW_MS - 1)?.count).toBe(1);
+    expect(contests.contestedControl(MILL, 4 * ROUND_MS + CONTEST_WINDOW_MS)).toBeUndefined();
+  });
+
+  it.each([30, 31])('keeps one contest, shown throughout, for a Flow that changes the device every %i minutes', (
+    minutes,
+  ) => {
+    // A round about every 30 minutes keeps 3 or 4 in the window: at exactly 30,
+    // the first round is exactly 2 hours old when the fifth lands.
+    const everyMs = minutes * MINUTE_MS;
+    const { contests } = controlContestsForTest();
+    contests.commandSent(sent(0, 5, 20));
+    contests.commandConfirmed(DEVICE, 'temperature', 5, 0);
+    const shownSinceMs = new Set<number | undefined>();
+    for (let round = 1; round <= 12; round += 1) {
+      for (let atMs = (round - 1) * everyMs; round > 4 && atMs < round * everyMs; atMs += MINUTE_MS) {
+        shownSinceMs.add(contests.contestedControl(MILL, atMs)?.sinceMs);
+      }
+      contests.commandSent(sent(round * everyMs, 5, 22));
+      contests.commandConfirmed(DEVICE, 'temperature', 5, round * everyMs);
+    }
+    // Shown at every minute from the fourth round on, with one start, so a dismissal sticks.
+    expect([...shownSinceMs]).toEqual([everyMs]);
   });
 
   it('keeps when a contest began while it runs on, and a later contest begins anew', () => {

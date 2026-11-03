@@ -262,6 +262,14 @@ describe('setup recommendations', () => {
       + 'and turn that off, or turn off Managed by PELS for it.');
   });
 
+  it('says once for a contest down to its last round in the window', () => {
+    const [recommendation] = resolve([device({
+      id: 'tank', name: 'Høiax', controlContest: { setting: 'level', kind: 'overridden', count: 1, sinceMs: 1 },
+    })]).filter(({ id }) => id.startsWith('control-contest:'));
+    expect(recommendation?.body)
+      .toMatch(/^Once in the last 2 hours, something outside PELS changed the level of Høiax /);
+  });
+
   it('does not recommend built-in control for devices without an available switch', () => {
     expect(resolve([device()])).toEqual([]);
     expect(resolve([device({
