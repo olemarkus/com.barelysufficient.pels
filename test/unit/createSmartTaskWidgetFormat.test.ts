@@ -2,7 +2,10 @@
  * @vitest-environment node
  */
 import { describe, expect, it } from 'vitest';
-import { CREATE_SMART_TASK_WIDGET_COPY } from '../../packages/shared-domain/src/smartTaskCopy/createEditCopy';
+import {
+  CREATE_SMART_TASK_WIDGET_COPY,
+  resolveSmartTaskPreviewStatusCopy,
+} from '../../packages/shared-domain/src/smartTaskCopy/createEditCopy';
 import {
   formatSmartTaskGoalValue,
   formatSmartTaskNowValueLine,
@@ -21,6 +24,24 @@ import {
 const UTC = 'UTC';
 const HOUR_MS = 60 * 60 * 1000;
 const at = (hour: number): number => Date.UTC(2026, 0, 1, hour, 0, 0);
+
+describe('resolveSmartTaskPreviewStatusCopy', () => {
+  it.each([
+    ['cannot_meet', 'none', undefined, 'Cannot finish. Not enough usable time before this ready-by time.'],
+    ['cannot_meet', 'sole', undefined, 'Cannot finish. Today’s daily budget runs out before the deadline.'],
+    ['cannot_meet', 'contributing', undefined, 'Cannot finish. Today’s daily budget is holding part of this back'],
+    ['at_risk', 'none', undefined, 'At risk. This may need most of the available window.'],
+    ['at_risk', 'sole', undefined, 'At risk. Today’s daily budget may run out before the deadline.'],
+    ['at_risk', 'contributing', undefined, 'At risk. Today’s daily budget may be holding part of this back'],
+    ['at_risk', 'none', 'higher_priority_load', 'At risk. Other devices use the power your limit allows before the deadline.'],
+  ] as const)('reads %s (%s budget, %s) as one verdict sentence, then its cause', (status, budgetRole, cause, line) => {
+    const copy = resolveSmartTaskPreviewStatusCopy({
+      status, budgetRole, unavailableReason: undefined, ...(cause ? { floorShortfallCause: cause } : {}),
+    });
+    expect(copy?.startsWith(line)).toBe(true);
+    expect(copy).not.toContain('—');
+  });
+});
 
 describe('pluralHour', () => {
   it('uses the singular only for exactly one', () => {

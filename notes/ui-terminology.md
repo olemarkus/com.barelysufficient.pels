@@ -1180,6 +1180,13 @@ or the contributing variant), because it names what to change on the Budget tab,
 Budget` opens; the widget's shorter row hedges it (`Today’s daily budget may run out before the
 deadline.`).
 
+Every create-preview verdict line reads `{verdict}. {cause}`, one separator for all of them and
+never a dash: `Cannot finish. Not enough usable time before this ready-by time.`, `At risk. This
+may need most of the available window.`, and with a budget cause `Cannot finish. Today’s daily
+budget runs out before the deadline.` or `At risk. Today’s daily budget may run out before the
+deadline.` (the contributing variants likewise). Source: `resolveSmartTaskPreviewStatusCopy` in
+`smartTaskCopy/createEditCopy.ts`.
+
 ### Smart task list status chips
 
 The smart-task list uses one chip per task. Source: `SMART_TASK_LIST_STATUS_LABELS` in `smartTaskCopy/listStatus.ts`.
