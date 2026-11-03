@@ -39,6 +39,20 @@
  * `meter_power` beside a reported `measure_power` leaves the device metered,
  * and a `null` temperature leaves it without its temperature facet. A vendor device an
  * adapter converts or reads more of stays all-or-nothing.
+ *
+ * Native Homey SHS checks (2026-11-03), using both the device-list and by-id REST
+ * reads, distinguish two shapes:
+ * - An unavailable, not-ready device declared `onoff` but returned
+ *   `capabilitiesObj: {}`. This is a missing capability entry,
+ *   not an observed off value; the read is ignored by the contract above.
+ * - A newly paired, available and ready SDK device with no initial value
+ *   returned an `onoff` entry with `value: null` and `lastUpdated: null`.
+ *   Setting it through Homey's capability API populated both fields. This is
+ *   the uninitialized-capability case handled by withholding, not a missing
+ *   entry or a value for PELS to invent.
+ * A healthy, initialized device transiently losing its capability entry on a
+ * PELS restart has not been reproduced. These observations do not justify
+ * restart-specific retry queues or recovery state for that hypothesis.
  */
 import type { HomeyDeviceLike } from '../../utils/types';
 import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
