@@ -43,6 +43,17 @@ export class DeviceAdapterSessions {
   retainDevices(devices: readonly HomeyDeviceLike[]): void {
     for (const session of this.sessions) session.retainDevices(devices);
   }
+  /** `device` as it is parsed: without the capabilities a session withholds from it. */
+  withholdCapabilities(device: HomeyDeviceLike): HomeyDeviceLike {
+    const withheld = new Set(this.sessions.flatMap((session) => session.withheldCapabilities(device)));
+    if (withheld.size === 0) return device;
+    return {
+      ...device,
+      capabilities: (device.capabilities ?? []).filter((capabilityId) => !withheld.has(capabilityId)),
+      capabilitiesObj: Object.fromEntries(Object.entries(device.capabilitiesObj ?? {})
+        .filter(([capabilityId]) => !withheld.has(capabilityId))),
+    };
+  }
   setTrustEpoch(epoch: string): void { for (const session of this.sessions) session.setTrustEpoch(epoch); }
   observedIds(): string[] { return this.sessions.flatMap((session) => session.observedIds()); }
   observes(id: string): boolean { return this.sessions.some((session) => session.observes(id)); }

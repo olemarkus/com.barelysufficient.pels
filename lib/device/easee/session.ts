@@ -51,6 +51,7 @@ export class EaseeChargingSession implements DeviceAdapterSession {
     for (const id of this.statuses.keys()) if (!ids.has(id)) this.statuses.delete(id);
   }
 
+  withheldCapabilities(): readonly string[] { return []; }
   setTrustEpoch(): void {}
   observedIds(): string[] { return []; }
   observes(): boolean { return false; }
