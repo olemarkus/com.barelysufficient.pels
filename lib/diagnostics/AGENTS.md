@@ -10,3 +10,13 @@
 - Keep the cumulative `budgetDeniedKwh` diagnostic counter separate from budget learning. Learning uses `budgetUnservedKwh`: daily-budget-attributed heater holds while physically short of the intended target, cleared by observed temperature recovery within that local day. A restore command is not recovery. Non-temperature demand is learned from finalized budget-caused task misses. See the governing note for cause and day-boundary details.
 
 Resource telemetry and memory-reclaim tasks remain observational and must not influence planning.
+
+## Passive heating evidence
+
+`heatingShadowIngest.ts` resolves eligibility from accepted device observations;
+the collector retains bounded chronological evidence independently of objective
+learning. Persistence and delayed-hydration merges preserve real timestamps and
+gaps. `heatingShadowReport.ts` projects whole device-days within its budget; the
+support-report owner gates inclusion on the actual daily trigger and existing
+consent. No fitting, planning or control consumes shadow evidence. See
+`notes/heating-shadow-diagnostics.md` for limits and source semantics.

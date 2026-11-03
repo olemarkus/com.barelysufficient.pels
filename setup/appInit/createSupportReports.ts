@@ -18,7 +18,7 @@ import { requireDeviceManager, requireHomeMembership, requirePlanService } from 
 export type SupportReportApp = Pick<PelsHost,
   | 'deviceManager' | 'homeMembership' | 'planService' | 'homeRuntimeRead' | 'getDeviceLogUiPayload'
   | 'getLatestPlanSnapshotForUi' | 'getCapacityScalars' | 'getDailyBudgetUiPayload' | 'readPriceSetup'
-  | 'getPriceTimelineForUi' | 'getUserdataDatabase' | 'readSchedules'>
+  | 'getPriceTimelineForUi' | 'getUserdataDatabase' | 'readSchedules' | 'readHeatingShadowDaily'>
   & Pick<AppContext, 'deferredObjectiveActivePlanRecorder' | 'deferredObjectivePlanHistoryRecorder'>;
 
 // Each read reaches the app when a report is captured. A service that is not
@@ -61,6 +61,7 @@ export const createSupportReportReads = (
     if (!read.ok) throw new Error(read.error);
     return read.data;
   },
+  readHeatingShadowDaily: (capturedAtMs) => app.readHeatingShadowDaily(capturedAtMs),
   // Built per capture: the database opens after the report service is constructed.
   readDeviceEvents: (deviceIds, fromMs, toMs) => (
     createDeviceEventStore(app.getUserdataDatabase()).read(deviceIds, fromMs, toMs)),

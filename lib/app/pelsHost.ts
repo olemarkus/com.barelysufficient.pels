@@ -2,6 +2,7 @@ import type { SchedulesResponse } from '../../packages/contracts/src/schedules';
 import type { ControlContestRecord } from '../executor/controlContest';
 import type { AppContext } from './appContext';
 import type { SupportReportService } from '../diagnostics/supportReportService';
+import type { SupportReportSection } from '../../packages/contracts/src/supportReport';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { FlowConflictRefreshResult } from '../flowApi/flowConflictRefreshCoordinator';
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
@@ -71,6 +72,7 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   readonly supportReports: Pick<SupportReportService, 'prepare' | 'get' | 'send'>;
   /** Which managed devices keep moving away from what PELS set (`lib/executor/controlContest.ts`). */
   readonly controlContests: Pick<ControlContestRecord, 'contestedControl'>;
+  readHeatingShadowDaily(capturedAtMs: number): SupportReportSection | undefined;
   getModePrioritiesForUi(deviceIds: readonly string[]): ModePriorityOrder;
   getSettingsUiManagedDevices(): DecoratedDeviceSnapshot[];
   refreshFlowConflictsForUi(): Promise<FlowConflictRefreshResult>;

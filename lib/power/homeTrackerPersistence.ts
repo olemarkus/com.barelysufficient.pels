@@ -36,6 +36,7 @@ import type { HomeId } from '../utils/settingsKeys';
 import { VOLATILE_WRITE_THROTTLE_MS } from '../utils/timingConstants';
 import type { TrackerStore } from './trackerStore';
 import { withHeldReadingAfterRestart } from './heldReading';
+import { mergeHeatingShadowHistory } from '../diagnostics/heatingShadowMerge';
 
 const TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
 const TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
@@ -51,9 +52,13 @@ export const withHistoryUnder = (current: PowerTrackerState, stored: PowerTracke
   for (const [key, storedValue] of Object.entries(stored)) {
     const currentValue: unknown = current[key as keyof PowerTrackerState];
     if (!isUnknownRecord(storedValue) || !isUnknownRecord(currentValue)) continue;
+    if (key === 'heatingShadow') continue;
     merged[key] = key === 'deviceBuckets'
       ? mergeDeviceBuckets(storedValue as DeviceBuckets, currentValue as DeviceBuckets)
       : Object.assign({}, storedValue, currentValue);
+  }
+  if (current.heatingShadow && stored.heatingShadow) {
+    merged.heatingShadow = mergeHeatingShadowHistory(current.heatingShadow, stored.heatingShadow);
   }
   return merged;
 };

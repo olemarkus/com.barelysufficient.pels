@@ -10,7 +10,7 @@ import type { PriceSetupRead } from '../../packages/contracts/src/settingsUi/pri
 import type { SchedulesSnapshot } from '../../packages/contracts/src/schedules';
 import type {
   SupportReportDeviceEvent, SupportReportDeviceEvents, SupportReportEvidence, SupportReportLog,
-  SupportReportRequest, SupportReportSection, SupportReportSubject,
+  SupportReportRequest, SupportReportSection, SupportReportSubject, SupportReportTrigger,
 } from '../../packages/contracts/src/supportReport';
 import type { CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
 import type { HomeyDeviceSupportDescription } from './homeyDeviceSupportSection';
@@ -76,6 +76,8 @@ export type SupportReportReads = {
   readDeviceEvents(deviceIds: readonly string[] | 'all', fromMs: number, toMs: number): SupportReportDeviceEvent[];
   /** PELS's kept log lines in the window, without lines of `omittedEvents` (`logTailStore.ts`). */
   readLogTail(fromMs: number, toMs: number, maxBytes: number, omittedEvents: readonly string[]): LogTailRead;
+  /** Retained passive completed-day evidence; no sampling or refresh. */
+  readHeatingShadowDaily(capturedAtMs: number): SupportReportSection | undefined;
 };
 
 type ReportSubject = {
@@ -420,11 +422,20 @@ const readCarLinkSection = (carLink: CarLinkRead): SectionRead[] => {
   return carLink.link ? [{ state: 'available', section: reportCarLink(carLink.link) }] : [];
 };
 
+const readHeatingShadowSection = (
+  host: SupportReportReads, request: SupportReportRequest, capturedAtMs: number, trigger: SupportReportTrigger,
+): SectionRead[] => {
+  if (trigger !== 'daily' || request.subject.kind !== 'app' || request.subject.homeId !== MAIN_HOME_ID) return [];
+  return [readSection('Daily heating observations', () => host.readHeatingShadowDaily(capturedAtMs) ?? null)];
+};
+
 /** Captures existing owner readouts without refreshing devices, planning, or actuating. */
 export class SupportReportEvidenceSource {
   constructor(private readonly host: SupportReportReads, private readonly homey: SupportReportHomey) {}
 
-  async capture(request: SupportReportRequest, capturedAtMs: number): Promise<SupportReportEvidence> {
+  async capture(
+    request: SupportReportRequest, capturedAtMs: number, trigger: SupportReportTrigger = 'owner',
+  ): Promise<SupportReportEvidence> {
     const { host } = this;
     const history = request.subject.homeId === MAIN_HOME_ID
       ? readOptional(() => host.getDeviceLogUiPayload()) : undefined;
@@ -441,6 +452,7 @@ export class SupportReportEvidenceSource {
       ...readDeviceSections(host, request.subject, subject.currentDevice, plan, capturedAtMs),
       ...readAppSmartTaskSections(host, request, deviceNames(host, history, capturedAtMs), capturedAtMs),
       ...readCarLinkSection(carLink),
+      ...readHeatingShadowSection(host, request, capturedAtMs, trigger),
       ...readHomeSections(host, request.subject.homeId, plan, area),
       ...readPriceSections(host, capturedAtMs),
     ];

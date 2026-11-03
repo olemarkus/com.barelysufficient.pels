@@ -10,6 +10,7 @@ import { requireLastTotalPowerKw } from '../lib/power/lastTotalPower';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
 import { resolveObjectiveSampleDevices } from '../lib/objectives/samples';
+import { recordHeatingShadowFromSnapshot } from '../lib/diagnostics/heatingShadowIngest';
 import { buildPublishedPlanCapacityStateSummary } from '../lib/plan/planLogging';
 import { resolvePublishedBudgetExemptDeviceIds } from '../lib/plan/publishedPlan';
 import { resolvePlanRebuildPosture } from '../lib/plan/planRebuildPosture';
@@ -196,8 +197,9 @@ export class PowerSamplePipeline {
   // at 0 W.
   // The objectives owner resolves its progress quantity and observer direction
   // from this power-scoped view. No observation time travels with the sample.
-  private readonly updateObjectiveProfiles: UpdateObjectiveProfiles = (params) => (
-    updateObjectiveProfilesFromSnapshot(
+  private readonly updateObjectiveProfiles: UpdateObjectiveProfiles = (params) => {
+    const outdoorTemperatureC = this.deps.getOutdoorTemperatureC?.();
+    const learned = updateObjectiveProfilesFromSnapshot(
       params.state,
       // Devices with nothing to sample are dropped here rather than passed with an
       // empty quantity: `ObjectiveSampleDevice` then means "a device with a reading"
@@ -209,9 +211,11 @@ export class PowerSamplePipeline {
         (deviceId) => this.deps.getThermalDirection(deviceId),
       ),
       params.nowMs,
-      this.deps.getOutdoorTemperatureC?.(),
-    )
-  );
+      outdoorTemperatureC,
+    );
+    return recordHeatingShadowFromSnapshot(learned, params.devices, params.nowMs,
+      outdoorTemperatureC, (deviceId) => this.deps.getThermalDirection(deviceId), this.deps.getTimeZone());
+  };
 
   constructor(private readonly deps: PowerSamplePipelineDeps) {}
 

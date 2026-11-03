@@ -80,6 +80,9 @@ const buildPipeline = (
       name: 'Water heater on a smart task',
       targets: [],
       measuredPowerKw: 2,
+      measuredPowerIsDirectMeasurement: true,
+      measuredPowerObservedAtMs: T0,
+      temperature: { currentTemperature: 20, target: { id: 'target_temperature', value: 22, unit: '°C' } },
       budgetExempt: false,
     }]),
     getThermalDirection: () => 'heating',
@@ -94,6 +97,21 @@ const buildPipeline = (
 };
 
 describe('PowerSamplePipeline plan budget exemptions', () => {
+  it('keeps passive heating observations beside the unchanged objective learning and capacity ingest', async () => {
+    const { pipeline, getTracker } = buildPipeline(null);
+    for (let minute = 0; minute <= 15; minute += 5) {
+      await pipeline.recordPowerSample(2_000, T0 + minute * 60_000);
+    }
+    const tracker = getTracker();
+    expect(tracker.lastTimestamp).toBe(T0 + 15 * 60_000);
+    expect(tracker.objectiveProfiles?.['dev-task']).toBeDefined();
+    expect(tracker.heatingShadow?.days[0]?.devices['dev-task']?.intervals).toMatchObject([
+      { startMs: T0, endMs: T0 + 15 * 60_000, inputKWh: 0.5,
+        startTemperatureC: 20, endTemperatureC: 20 },
+    ]);
+    expect(tracker.controlledBuckets?.[new Date(T0).toISOString()]).toBeCloseTo(0.5);
+  });
+
   it('books a device the published plan exempts as exempt energy', async () => {
     const { pipeline, getTracker } = buildPipeline(publishedExempting(T0));
     await pipeline.recordPowerSample(2_000, T0);
