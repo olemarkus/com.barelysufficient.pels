@@ -33,26 +33,40 @@ describe('plan logging helpers', () => {
   });
 
   it('keeps the action signature when only the observed setpoint behind a target command moves', () => {
-    const targetCommand = {
-      deviceId: 'dev-1', name: 'Heater', desired: 21, purpose: 'target_update' as const,
-      recordRestoreOnTargetApply: false, restoreFromTarget: 18,
+    const heater = {
+      id: 'dev-1', deviceType: 'temperature' as const, currentTarget: 18, currentTemperature: 18, plannedTarget: 21,
     };
-    // Set after the builder, which derives its own command from the fixture.
-    const device = { ...buildPlanDevice(), targetCommand };
+    const device = buildPlanDevice(heater);
     const plan: DevicePlan = { meta: buildPlanMeta(), devices: [device], inverterDecisions: [], storageReleases: [] };
     const observedMoved: DevicePlan = {
       ...plan,
-      devices: [{
-        ...device,
-        targetCommand: { ...targetCommand, restoreFromTarget: 19, recordRestoreOnTargetApply: true },
-      }],
+      devices: [buildPlanDevice({ ...heater, currentTarget: 19, recordRestoreOnTargetApply: true })],
     };
     const desiredMoved: DevicePlan = {
       ...plan,
-      devices: [{ ...device, targetCommand: { ...targetCommand, desired: 22 } }],
+      devices: [buildPlanDevice({ ...heater, plannedTarget: 22 })],
     };
     expect(buildPlanSignature(observedMoved)).toBe(buildPlanSignature(plan));
     expect(buildPlanSignature(desiredMoved)).not.toBe(buildPlanSignature(plan));
+  });
+
+  it('keeps the action signature when only the hold reason over the same planned setpoint changes', () => {
+    // A thermostat held at its shed setpoint: under a restore cooldown the planner
+    // emits no target command, under insufficient headroom it does, and nothing
+    // about the decision moved. Whether a lifted hold still has a drifted setpoint
+    // to correct is the drift predicate's question (`executorConvergence.test.ts`).
+    const heldAt = (reason: DevicePlan['devices'][number]['reason']) => buildPlanDevice({
+      id: 'dev-1', deviceType: 'temperature', currentTarget: 21, currentTemperature: 20, plannedTarget: 15,
+      plannedState: 'shed', shedAction: 'set_temperature', shedTemperature: 15, reason,
+    });
+    const cooldown = heldAt(r('cooldown (restore, 60s remaining)')!);
+    const headroom = heldAt(insufficientHeadroomFixtureReason({ needKw: 1, availableKw: 0.2 }));
+    expect(cooldown.targetCommand).toBeUndefined();
+    expect(headroom.targetCommand).toEqual(expect.objectContaining({ desired: 15 }));
+    const planWith = (device: DevicePlan['devices'][number]): DevicePlan => ({
+      meta: buildPlanMeta(), devices: [device], inverterDecisions: [], storageReleases: [],
+    });
+    expect(buildPlanSignature(planWith(headroom))).toBe(buildPlanSignature(planWith(cooldown)));
   });
 
   it('includes an absent battery release in both signatures even for an empty plan', () => {

@@ -31,6 +31,8 @@ import {
   type LooseOutputDevice,
 } from '../utils/planConvergenceFixtures';
 import { noStorageTransport } from '../helpers/storageTransportStub';
+import { insufficientHeadroomFixtureReason } from '../utils/deviceReasonTestUtils';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 
 // The executor's in-flight binary command is passed alongside the observed
 // device, not folded into it: it belongs to a different layer and does not ride
@@ -118,6 +120,34 @@ describe('executorConvergence stepped device drift', () => {
       })];
 
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
+    });
+
+    it('finds target drift once a hold over the same planned setpoint lifts', () => {
+      // The action signature does not move when a restore cooldown gives way to
+      // insufficient headroom over the same 15 °C (`planLogging.test.ts`), so this
+      // predicate is what applies the command that lifting the hold brings back.
+      const heldAt = (reason: DevicePlan['devices'][number]['reason']) => buildPlan([buildBinaryDevice({
+        deviceType: 'temperature',
+        currentState: 'not_applicable' as const,
+        plannedState: 'shed',
+        shedAction: 'set_temperature',
+        shedTemperature: 15,
+        binaryCapabilityId: undefined,
+        currentTarget: 21,
+        plannedTarget: 15,
+        reason,
+      })]);
+      const liveDevices: PlanInputDevice[] = [inputDevice({
+        id: 'dev-2',
+        name: 'Heater',
+        binaryCapabilityId: undefined,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      })];
+
+      const held = heldAt({ code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 60 });
+      const lifted = heldAt(insufficientHeadroomFixtureReason({ needKw: 1, availableKw: 0.2 }));
+      expect(hasPlanExecutionDriftForDevice(held, liveDevices, 'dev-2')).toBe(false);
+      expect(hasPlanExecutionDriftForDevice(lifted, liveDevices, 'dev-2')).toBe(true);
     });
 
     it('does not treat target divergence as drift while a matching target command is still pending', () => {

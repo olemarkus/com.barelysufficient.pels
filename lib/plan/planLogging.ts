@@ -265,13 +265,18 @@ function buildPlanSignatureDevice(device: DevicePlanDevice): Record<string, unkn
     desiredStepId: device.desiredStepId,
     shedAction: device.shedAction,
     deferredReleaseIntent: device.deferredReleaseIntent,
-    // The decision only: `restoreFromTarget` and the restore classification are
-    // read from the observed setpoint, so signing them would turn every reported
-    // setpoint change into an action change and bypass the observation-revision
-    // gate in `shouldApplyPlan`.
-    targetCommand: device.targetCommand
-      ? { desired: device.targetCommand.desired, purpose: device.targetCommand.purpose }
-      : undefined,
+    // No `targetCommand`: its `desired` is `plannedTarget` and its `purpose`
+    // follows from `plannedState` and `shedAction`, all signed above. What it adds
+    // is only whether the command exists, and `buildPlannedTargetCommand` leaves
+    // it out under a restore-admission hold or a swap waiting for its target. A
+    // device held at the same setpoint whose hold reason flips (restore cooldown,
+    // then insufficient headroom) made no new decision; signing the command's
+    // presence turned that into an action change, which bypasses the
+    // observation-revision gate in `shouldApplyPlan`. A lifted hold against a
+    // drifted setpoint is still applied: the target-drift predicate in
+    // `hasExecutionWorkOutstanding` sees the command and the observed setpoint.
+    // `restoreFromTarget` and the restore classification are read from the
+    // observed setpoint, so they never belonged here either.
     commandAuthority: device.control.commandAuthority,
     // A home battery's setpoint or hand-back is an action like any other: a
     // changed one must reach the executor (`lib/executor/batteryExecutor.ts`).
