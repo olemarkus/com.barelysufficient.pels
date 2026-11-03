@@ -1,4 +1,3 @@
-import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 import type { ExecutionState } from '../../lib/executor/executionState';
 import { syncPendingTargetCommands, prunePendingTargetCommands } from '../../lib/executor/pendingTargetObservation';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsService';
@@ -6,9 +5,9 @@ import { syncSteppedCommands } from '../../lib/executor/syncSteppedCommands';
 import type { SteppedSettleDevice } from '../../lib/observer/steppedSettleSnapshot';
 import type { SteppedCommandStore } from '../../lib/executor/steppedCommandStore';
 import type { SteppedReportedStepStore } from '../../lib/observer/steppedReportedStep';
-import { hasPlanExecutionDriftAgainstIntent } from '../../lib/executor/executorConvergence';
 import type { PlanExecutor } from '../../lib/executor/planExecutor';
 import type { PlanActuationResult } from '../../lib/planContract/planActuationResult';
+import type { ExecutionPlan } from '../../lib/planContract/executionPlan';
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import {
   syncPendingBinaryCommands,
@@ -50,12 +49,11 @@ export type PlanEngineComposition = {
     | 'handleShortfallCleared'
     | 'applyPlanActions'
     | 'hasStablePlanActuation'
-    | 'hasInverterWork'
+    | 'hasExecutionWorkOutstanding'
     | 'isInverterReleaseRecoveryReady'
     | 'getPendingInverterReleaseCount'
     | 'handleConfirmedBinaryCommand'
     | 'retainContestedCommands'
-    | 'driftObservationDeps'
     | 'getObservationRevision'
     | 'syncStorageCommands'>;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
@@ -113,36 +111,24 @@ export class ComposedPlanEngine implements PlanEngine {
     return this.executor.handleShortfallCleared();
   }
 
-  public async applyPlanActions(plan: DevicePlan): Promise<PlanActuationResult> {
-    return this.executor.applyPlanActions(buildExecutionPlan(plan));
+  public async applyPlanActions(plan: ExecutionPlan): Promise<PlanActuationResult> {
+    return this.executor.applyPlanActions(plan);
   }
 
-  public getDeviceExecutionStates(plan: DevicePlan) {
-    return this.executor.getDeviceExecutionStates(buildExecutionPlan(plan));
+  public getDeviceExecutionStates(plan: ExecutionPlan) {
+    return this.executor.getDeviceExecutionStates(plan);
   }
 
-  public shouldApplyStablePlanActions(plan: DevicePlan): boolean {
-    return this.executor.hasStablePlanActuation(buildExecutionPlan(plan));
+  public shouldApplyStablePlanActions(plan: ExecutionPlan): boolean {
+    return this.executor.hasStablePlanActuation(plan);
   }
 
   public getObservationRevision(): number {
     return this.executor.getObservationRevision();
   }
 
-  public hasExecutionWorkOutstanding(
-    plannedSnapshot: DevicePlan,
-    observationRevisionAtBuild: number,
-  ): boolean {
-    // The plan was decided against the observations as of
-    // `observationRevisionAtBuild`. If the observer has accepted a write since,
-    // this plan has not been decided against the world it would now be applied
-    // to — and acting anyway is an apply-without-decide, the shape that breached
-    // the hard cap (`inc_26449fb9`). Decline; the next whole-home reading
-    // re-decides against the observation that moved, which is the honest answer.
-    if (this.executor.getObservationRevision() !== observationRevisionAtBuild) return false;
-    const executionPlan = buildExecutionPlan(plannedSnapshot);
-    return this.executor.hasInverterWork(executionPlan)
-      || hasPlanExecutionDriftAgainstIntent(executionPlan, this.executor.driftObservationDeps());
+  public hasExecutionWorkOutstanding(plan: ExecutionPlan, observationRevisionAtBuild: number): boolean {
+    return this.executor.hasExecutionWorkOutstanding(plan, observationRevisionAtBuild);
   }
 
   public syncPendingTargetCommands(
@@ -158,8 +144,8 @@ export class ComposedPlanEngine implements PlanEngine {
     return prunePendingTargetCommands(this.execution, resolveWantedPendingTargetCommands(plan));
   }
 
-  public retainContestedCommands(plan: DevicePlan): void {
-    this.executor.retainContestedCommands(buildExecutionPlan(plan));
+  public retainContestedCommands(plan: ExecutionPlan): void {
+    this.executor.retainContestedCommands(plan);
   }
 
   public syncSteppedCommands(getDevices: () => readonly SteppedSettleDevice[]): boolean {
@@ -201,8 +187,8 @@ export class ComposedPlanEngine implements PlanEngine {
 
   public isInverterReleaseRecoveryReady(): boolean { return this.executor.isInverterReleaseRecoveryReady(); }
 
-  public getPendingInverterReleaseCount(plan: DevicePlan): number {
-    return this.executor.getPendingInverterReleaseCount(buildExecutionPlan(plan));
+  public getPendingInverterReleaseCount(plan: ExecutionPlan): number {
+    return this.executor.getPendingInverterReleaseCount(plan);
   }
 
   public hasPendingTargetCommandsOlderThan(thresholdMs: number): boolean {

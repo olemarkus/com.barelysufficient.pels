@@ -1,7 +1,9 @@
 /**
- * Narrow behavior exposed by the setup-composed planning runtime. Construction,
- * shared mutable state binding, and executor materialization belong in `setup/`;
- * planner consumers cannot construct or subclass this contract.
+ * Narrow behavior exposed by the setup-composed planning runtime. Construction
+ * and shared mutable state binding belong in `setup/`; planner consumers cannot
+ * construct or subclass this contract. The executor-facing methods take the
+ * `ExecutionPlan` the planner projected (`buildExecutionPlan`), which the
+ * composition passes through unchanged.
  */
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 import type { SteppedSettleDevice } from '../observer/steppedSettleSnapshot';
@@ -19,9 +21,10 @@ import type {
   PlanInputDevice,
 } from './planTypes';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
+import type { ExecutionPlan } from '../planContract/executionPlan';
 
 export type PlanEngine = {
-  getDeviceExecutionStates: (plan: DevicePlan) => ReadonlyMap<string, DeviceExecutionState>;
+  getDeviceExecutionStates: (plan: ExecutionPlan) => ReadonlyMap<string, DeviceExecutionState>;
   readonly state: PlanEngineState;
   readonly pendingBinaryCommandStore: PendingBinaryCommandStore;
   buildDevicePlanSnapshot: (devices: PlanInputDevice[]) => Promise<DevicePlan>;
@@ -30,10 +33,10 @@ export type PlanEngine = {
   computeShortfallThreshold: () => number | null;
   handleShortfall: (deficitKw: number) => Promise<void>;
   handleShortfallCleared: () => Promise<void>;
-  applyPlanActions: (plan: DevicePlan) => Promise<PlanActuationResult>;
+  applyPlanActions: (plan: ExecutionPlan) => Promise<PlanActuationResult>;
   isInverterReleaseRecoveryReady: () => boolean;
-  getPendingInverterReleaseCount: (plan: DevicePlan) => number;
-  shouldApplyStablePlanActions: (plan: DevicePlan) => boolean;
+  getPendingInverterReleaseCount: (plan: ExecutionPlan) => number;
+  shouldApplyStablePlanActions: (plan: ExecutionPlan) => boolean;
   /**
    * Does the executor still have work to do against this plan?
    *
@@ -43,7 +46,7 @@ export type PlanEngine = {
    * meaningful as of that instant — see `getObservationRevision`.
    */
   hasExecutionWorkOutstanding: (
-    plannedSnapshot: DevicePlan,
+    plan: ExecutionPlan,
     observationRevisionAtBuild: number,
   ) => boolean;
   /**
@@ -62,7 +65,7 @@ export type PlanEngine = {
    * for, so a later send of it is a new command rather than a correction
    * (`lib/executor/controlContest.ts`).
    */
-  retainContestedCommands: (plan: DevicePlan) => void;
+  retainContestedCommands: (plan: ExecutionPlan) => void;
   syncPendingBinaryCommands: (
     devices: PendingBinaryLiveDevice[],
     source: PendingTargetObservationSource,

@@ -29,6 +29,7 @@ import {
 import { createCommandClaim } from './commandClaim';
 import { materializeExecutableDeviceIntent, buildExecutableObservedDeviceState } from './executablePlanProjection';
 import type { DriftObservationDeps } from './driftObservedDevice';
+import { hasPlanExecutionDriftAgainstIntent } from './executorConvergence';
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
@@ -374,8 +375,21 @@ export class PlanExecutor {
     ));
   }
 
-  public hasInverterWork(plan: ExecutionPlan): boolean {
-    return this.deps.inverterLane.hasWork(plan.inverterDecisions);
+  /**
+   * Does the executor still have work to do against the plan just built? See
+   * `PlanEngine.hasExecutionWorkOutstanding`.
+   *
+   * The plan was decided against the observations as of
+   * `observationRevisionAtBuild`. If the observer has accepted a write since,
+   * this plan has not been decided against the world it would now be applied
+   * to, and acting anyway is an apply-without-decide, the shape that breached
+   * the hard cap (`inc_26449fb9`). Decline; the next whole-home reading
+   * re-decides against the observation that moved.
+   */
+  public hasExecutionWorkOutstanding(plan: ExecutionPlan, observationRevisionAtBuild: number): boolean {
+    if (this.getObservationRevision() !== observationRevisionAtBuild) return false;
+    return this.deps.inverterLane.hasWork(plan.inverterDecisions)
+      || hasPlanExecutionDriftAgainstIntent(plan, this.driftObservationDeps());
   }
 
   public isInverterReleaseRecoveryReady(): boolean { return this.deps.inverterLane.releaseRecoveryReady(); }
