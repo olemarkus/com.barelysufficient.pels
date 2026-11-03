@@ -19,11 +19,15 @@ Don't let PELS manage the smart plug itself. PELS would limit it by switching it
 
 ## 1. Create the Virtual Thermostat
 
-1. In Homey, add a device and choose **Virtual Devices** > **Device**.
+1. In Homey, add a new device, choose **Virtual Devices**, and select **Connect**.
 2. Give it a name, for example the name of the real unit, and pick an icon.
 3. Under **Device Class**, choose **Thermostat**.
-4. Under **Capabilities**, keep **Target temperature** and **Temperature**, and also select **Power**.
-5. Finish with **Add Device**.
+4. Under **Capabilities**, keep **Target temperature** and **Measure temperature**, and also select **Power (measure_power)** further down the list.
+5. Under **Target Temperature**, set **Minimum** at or below the limited temperature you will use in PELS. It starts at 12 °C.
+6. Select **Next** to add the device.
+
+![Virtual Devices capabilities step: Target temperature and Measure temperature selected with a 12 to 32 °C range, and Power (measure_power) selected further down](images/howto_virtual_thermostat_capabilities.png)
+*Figure 1. The capabilities step: the two temperature values are selected for a thermostat, and Power is selected by hand.*
 
 These settings cannot be changed afterwards. If you miss **Power**, delete the device and add it again.
 
@@ -36,6 +40,9 @@ Make three Flows:
 | The smart plug's **The power changed** | The virtual thermostat's **Set a virtual sensor value**: set `measure_power` to the plug's power. |
 | The real device's **The temperature changes** | The virtual thermostat's **Set a virtual sensor value**: set `measure_temperature` to the device's temperature. |
 | The virtual thermostat's **The target temperature changed** | The real device's **Set the temperature**, to the virtual thermostat's target temperature. |
+
+![The three Flows in the Homey Flow editor](images/howto_virtual_thermostat_flows.png)
+*Figure 2. The three Flows, in the order of the table, for a unit called Ventilation unit and a virtual thermostat called Ventilation (PELS).*
 
 **Set a virtual sensor value** lists the virtual thermostat's values by their Homey names, so pick `measure_power` and `measure_temperature` there. The third Flow passes on every change PELS makes to the target.
 
