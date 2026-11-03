@@ -72,9 +72,14 @@ alone cannot restore it. Only a newer independent target report or read can.
   from `transport/deviceWrites.ts`) writes `false` as 0 A, which Easee
   answers with `Paused` (`plugged_in_paused`), the session still open.
   `true` writes 6 A, the smallest current it charges at, except on a session
-  known to be stopped (`plugged_in`: stopped in the Easee app or by the car),
-  which still goes to the switch and starts a new one: the plan decided the
-  charger should run, and no current can restart a session that is gone.
+  known to be stopped (`plugged_in` in Easee's `Car connected` or `Awaiting
+  Authentication`: stopped in the Easee app), which still goes to the switch
+  and starts a new one: the plan decided the charger should run, and no current
+  can restart a session that is gone. A session the car has completed
+  (`Completed`, also `plugged_in`) is still open, and a start would open a new
+  one at 32 A for a full car, so it gets the current like any open session. The
+  Easee session holds the mode it last observed (`hasCarStopEvidence`), and the
+  transport hands its sessions to the switch write.
   Every other session gets current, never a start, even while the charger
   holds off: Easee waits about 5 minutes after a current is raised before
   it offers the car current again (production, 2026-09-25: 08:11:26 to

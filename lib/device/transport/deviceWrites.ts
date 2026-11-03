@@ -23,6 +23,7 @@ import { hasRestClient, setRawCapabilityValue } from './managerHomeyApi';
 import { recordLocalWriteObservation } from './managerObservation';
 import { isNativeSteppedLoadControlEnabled, type CapabilityWrite } from '../nativeSteppedLoadWiring';
 import { getDeviceAdapter, getSnapshotAdapter } from '../deviceAdapterRegistry';
+import type { SessionEvidence } from '../deviceAdapter';
 import type { SteppedLoadFlowTriggerCard } from './transportTypes';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
@@ -94,10 +95,11 @@ function resolveSwitchSdkWrite(
     snapshot: TransportDeviceSnapshot,
     trackedDevice: HomeyDeviceLike | undefined,
     requested: CapabilityWrite,
+    sessions: SessionEvidence,
 ): SdkWrite {
     return trackedDevice
-        ? getDeviceAdapter(trackedDevice).recoverSwitchWrite(snapshot, trackedDevice, requested)
-        : getSnapshotAdapter(snapshot).switchWrite(snapshot, requested);
+        ? getDeviceAdapter(trackedDevice).recoverSwitchWrite(snapshot, trackedDevice, requested, sessions)
+        : getSnapshotAdapter(snapshot).switchWrite(snapshot, requested, sessions);
 }
 
 /**
@@ -164,6 +166,7 @@ export class DeviceWriteService {
           snapshotBefore,
           this.snapshotStore.getTrackedRawDevice(deviceId),
           requested,
+          this.chargingCurrentControl.sessions,
         )
         : { write: requested, readBackAsWritten: true };
     logEvCapabilityRequest(deviceId, capabilityId, normalizedValue, snapshotBefore);

@@ -100,10 +100,16 @@ export type DeviceAdapter = {
   readsAsReported: boolean;
   /** Whether standard production-cap writes are suitable for repeated live control. */
   supportsProductionLimits: boolean;
-  switchWrite(snapshot: TransportDeviceSnapshot, request: CapabilityWrite): SwitchWrite;
-  recoverSwitchWrite(snapshot: TransportDeviceSnapshot, raw: HomeyDeviceLike, request: CapabilityWrite): SwitchWrite;
+  /** `sessions`: the transport's adapter sessions, for what they have observed of the device. */
+  switchWrite(snapshot: TransportDeviceSnapshot, request: CapabilityWrite, sessions: SessionEvidence): SwitchWrite;
+  recoverSwitchWrite(
+    snapshot: TransportDeviceSnapshot, raw: HomeyDeviceLike, request: CapabilityWrite, sessions: SessionEvidence,
+  ): SwitchWrite;
   createSession(home: HubHomeLocation): DeviceAdapterSession;
 };
+
+/** What a write resolution may read from the transport's adapter sessions. */
+export type SessionEvidence = Pick<DeviceAdapterSession, 'hasCarStopEvidence'>;
 
 /** Session details remain behind resolved eligibility. */
 export type DeviceAdapterSession = {
