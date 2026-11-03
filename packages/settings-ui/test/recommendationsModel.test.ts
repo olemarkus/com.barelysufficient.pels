@@ -243,6 +243,15 @@ describe('setup recommendations', () => {
     ]);
   });
 
+  it('says once for a contest down to its last round in the hour', () => {
+    const [recommendation] = resolve([device({
+      id: 'mill', name: 'Gang nede ovn',
+      controlContest: { setting: 'temperature', commanded: 4.5, observed: 5, count: 1, sinceMs: 1 },
+    })]).filter(({ id }) => id.startsWith('control-contest:'));
+    expect(recommendation?.body)
+      .toMatch(/^Once in the last hour, PELS set Gang nede ovn to 4.5 °C and Gang nede ovn then reported 5 °C\. /);
+  });
+
   it('does not recommend built-in control for devices without an available switch', () => {
     expect(resolve([device()])).toEqual([]);
     expect(resolve([device({

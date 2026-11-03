@@ -169,11 +169,12 @@ one, and what each report is about, are listed in `REPORTED_EVENTS` in
   (`lib/executor/controlContest.ts`) records it. A command the plan no longer asks for, one
   for a device that left the plan of the home that sent it (a device the owner stopped
   managing, say), and one whose command session ended are forgotten, so a later send of it
-  is a new command. The
-  same record answers `/ui_devices`'s `controlContest` for each managed device while its
-  rounds in the last hour reach the threshold; the settings UI then lists a recommendation
-  and shows a notice above Managed by PELS on the device page, with both values. PELS keeps
-  setting the device: the record only warns and reports.
+  is a new command. The same record answers `/ui_devices`'s `controlContest` for each
+  managed device from the round that brings its rounds in the last hour to the threshold
+  until its latest round is an hour old, so a device that reports another value every 15
+  minutes keeps one contest; the settings UI then lists a recommendation and shows a
+  notice above Managed by PELS on the device page, with both values. PELS keeps setting
+  the device: the record only warns and reports.
 
 The schedule checks every 5 minutes from 17 minutes after start (two minutes off the daily
 report's hourly check), over the device events kept in the last 30 minutes, so a report
