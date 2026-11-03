@@ -34,7 +34,7 @@ Check the selected meter in Homey and whether its reading changes. For a Fluvius
 
 Turn on **Managed by PELS** for one suitable device. For devices with power readings, this also enables **Power-limit control**. Open **Device settings** to review what PELS may change.
 
-If a device you want PELS to control is not listed, choose **Find a device** under **Missing a device?** below the list. It lists every device in Homey; tap the one PELS does not support to send a device support request. Support usually comes in an app update within 1–2 days, depending on how complex the device is. See [Missing a device?](/configuration#missing-a-device).
+If a device you want PELS to control is not listed, choose **Request support** on the **Missing a device?** card below the list. It lists the devices in Homey that PELS does not support; tap the one you want to send a device support request. Support usually comes in an app update within 1–2 days, depending on how complex the device is. See [Missing a device?](/configuration#missing-a-device).
 
 A dynamic-price contract, battery, daily budget, and Smart task are not required. Solar comes later, on **Choose what PELS does**.
 

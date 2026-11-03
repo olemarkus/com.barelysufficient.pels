@@ -9107,7 +9107,50 @@ md-switch {
   display: none;
 }
 
-/* "Missing a device?": every Homey device, grouped by zone. */
+/* "Missing a device?" closes the device list, in setup as on the normal page. */
+.pels-surface-card.missing-device-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-4);
+  margin-top: var(--spacing-3);
+  min-width: 0;
+}
+
+.missing-device-card__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.missing-device-card__icon svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.missing-device-card__body {
+  display: grid;
+  gap: var(--spacing-2);
+  justify-items: start;
+  min-width: 0;
+}
+
+.missing-device-card__body > h3,
+.missing-device-card__body > p {
+  margin: 0;
+}
+
+/* Restore the M3 lead/trail space Homey's host padding reset removes. */
+#device-support-link {
+  margin-top: var(--spacing-1);
+  padding-inline: var(--spacing-6);
+}
+
+/* "Request support": the Homey devices PELS does not support, grouped by zone. */
 .device-picker,
 .device-picker__zone {
   display: flex;
@@ -9176,8 +9219,9 @@ md-switch {
   display: none;
 }
 
-/* Refresh devices is the device list's action; `Choose what PELS does` lists choices, not devices. */
-#devices-panel[data-setup-journey-panel="goals"] .list__footer {
+/* Refresh devices and Missing a device? belong to the device list; `Choose what PELS does` lists choices, not devices. */
+#devices-panel[data-setup-journey-panel="goals"] .list__footer,
+#devices-panel[data-setup-journey-panel="goals"] .missing-device-card {
   display: none;
 }
 

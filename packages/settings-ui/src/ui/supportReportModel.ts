@@ -89,7 +89,7 @@ const REPORT_ERRORS: Record<SupportReportErrorCode, string> = {
 // A device support request has one field and a Send request button, so the
 // problem report's advice about devices, activity and Send report does not fit it.
 const DEVICE_SUPPORT_ERRORS: Partial<Record<SupportReportErrorCode, string>> = {
-  invalid_subject: 'Homey no longer has this device. Go back to Find a device and choose it again.',
+  invalid_subject: 'Homey no longer has this device. Go back and choose it again.',
   report_too_large:
     'The request is too large to send through Homey. Email the PELS developer instead, and mention the device.',
   capture_failed: 'Could not prepare the request. Your description is kept. Try Send request again.',
