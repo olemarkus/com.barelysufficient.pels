@@ -100,7 +100,7 @@ export function createPlanEngineComposition(
   // executor's restore carve-out a no-op for that home's devices. Same
   // resolution the producer applies, so plan and executor share one definition
   // of "held".
-  const execution = new ExecutionState();
+  const execution = new ExecutionState(ctx.controlContests);
   const state = createPlanEngineState(Date.now(), (deviceId) => isExternalOffHeldForObservedDevice(
     ctx.externalOffHold?.isHeld(deviceId) === true,
     ctx.observer.getObservedRecord(deviceId),

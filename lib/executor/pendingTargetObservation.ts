@@ -7,6 +7,7 @@ import type { PendingTargetCommandState, ExecutionState } from './executionState
 import { TARGET_WAITING_LOG_REPEAT_MS } from '../ports/controlCommandConfirmation';
 const emitPlanDebug = getDebugEmitter('plan', 'plan');
 type PendingTargetStore = Pick<ExecutionState, 'pendingTargetCommands'>;
+type ConfirmingTargetStore = Pick<ExecutionState, 'pendingTargetCommands' | 'controlContests'>;
 export type PendingTargetObservedDevice = { id: string; name: string; targets: TargetCapabilitySnapshot[] };
 
 /* eslint-disable functional/immutable-data, no-param-reassign --
@@ -34,7 +35,7 @@ export function prunePendingTargetCommands(
 /* eslint-enable functional/immutable-data, no-param-reassign */
 
 export function syncPendingTargetCommands(
-  state: PendingTargetStore,
+  state: ConfirmingTargetStore,
   liveDevices: PendingTargetObservedDevice[],
   source: PendingTargetObservationSource,
   structuredInfo: StructuredDebugEmitter,
@@ -115,7 +116,7 @@ function formatObservedTarget(value: unknown): string {
 
 /* eslint-disable functional/immutable-data, no-param-reassign -- Updates the pending command in place. */
 function handleConfirmedPendingTargetObservation(
-  state: PendingTargetStore,
+  state: ConfirmingTargetStore,
   liveDevice: PendingTargetObservedDevice,
   pending: PendingTargetCommandState,
   observedValue: unknown,
@@ -123,6 +124,7 @@ function handleConfirmedPendingTargetObservation(
 ): boolean {
   if (!Object.is(observedValue, pending.desired)) return false;
   delete state.pendingTargetCommands[liveDevice.id];
+  state.controlContests.commandConfirmed(liveDevice.id, 'temperature', pending.desired);
   emitPlanDebug({
     event: 'pending_target_command_confirmed',
     deviceId: liveDevice.id,

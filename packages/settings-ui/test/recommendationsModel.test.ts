@@ -207,6 +207,31 @@ describe('setup recommendations', () => {
       + 'Set a higher limit if it should stay warmer while limited, or dismiss this to keep 10 °C.');
   });
 
+  it('warns about a device that keeps moving away from what PELS set, by what moves it', () => {
+    const contest = { setting: 'temperature', count: 6, sinceMs: 0 } as const;
+    const recommendations = resolve([
+      device({ id: 'mill', name: 'Gang nede ovn', controlContest: { ...contest, kind: 'reverted' } }),
+      device({ id: 'flow', name: 'Ovn stue', controlContest: { ...contest, kind: 'overridden' } }),
+      device({ id: 'calm', name: 'Bad nede' }),
+    ]).filter(({ id }) => id.startsWith('control-contest:'));
+    expect(recommendations).toEqual([
+      expect.objectContaining({
+        id: 'control-contest:mill',
+        category: 'recommendation',
+        title: "Gang nede ovn doesn't keep PELS's changes",
+        body: '6 times in the last hour, Gang nede ovn went back to its earlier temperature after PELS '
+          + 'changed it. Check the app that controls Gang nede ovn, or turn off Managed by PELS for it.',
+        actionLabel: 'Open device',
+        target: { kind: 'device', deviceId: 'mill' },
+      }),
+      expect.objectContaining({
+        id: 'control-contest:flow',
+        title: 'Something keeps changing Ovn stue',
+        body: expect.stringContaining('Look for a Flow, another app or a schedule that sets it'),
+      }),
+    ]);
+  });
+
   it('does not recommend built-in control for devices without an available switch', () => {
     expect(resolve([device()])).toEqual([]);
     expect(resolve([device({

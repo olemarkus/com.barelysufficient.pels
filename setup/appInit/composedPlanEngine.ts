@@ -54,6 +54,7 @@ export type PlanEngineComposition = {
     | 'isInverterReleaseRecoveryReady'
     | 'getPendingInverterReleaseCount'
     | 'handleConfirmedBinaryCommand'
+    | 'retainContestedCommands'
     | 'driftObservationDeps'
     | 'getObservationRevision'
     | 'syncStorageCommands'>;
@@ -154,6 +155,10 @@ export class ComposedPlanEngine implements PlanEngine {
 
   public prunePendingTargetCommands(plan: DevicePlan): boolean {
     return prunePendingTargetCommands(this.execution, resolveWantedPendingTargetCommands(plan));
+  }
+
+  public retainContestedCommands(plan: DevicePlan): void {
+    this.executor.retainContestedCommands(buildExecutionPlan(plan));
   }
 
   public syncSteppedCommands(getDevices: () => readonly SteppedSettleDevice[]): boolean {

@@ -32,7 +32,7 @@ import type { DriftObservationDeps } from './driftObservedDevice';
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 import type { DeviceExecutionState } from '../planContract/deviceExecutionState';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
-import { resolveDeviceExecutionState } from './deviceExecutionState';
+import { resolveDeviceExecutionState, resolvePlannedCommandValues } from './deviceExecutionState';
 import { BatteryExecutor, NO_STORAGE_LANE, type StorageLane } from './batteryExecutor';
 import type { StorageLaneBinding } from '../ports/batteryControlOwner';
 
@@ -193,6 +193,7 @@ export class PlanExecutor {
   public handleConfirmedBinaryCommand(confirmation: PendingBinaryConfirmation): void {
     const { liveDevice, pending, confirmedAtMs: now } = confirmation;
     const deviceId = liveDevice.id;
+    this.execution.controlContests.commandConfirmed(deviceId, 'on_off', pending.desired);
     logger.info({
       event: 'binary_command_applied',
       deviceId,
@@ -315,6 +316,38 @@ export class PlanExecutor {
         ...(live && hasObservedMeasuredPower(live) ? { currentDrawKw: live.measuredPowerKw } : {}),
       }] as const];
     }));
+  }
+
+  /**
+   * The plan just built is what PELS now stands behind: a command it no longer
+   * asks for leaves the contest record, so a later send of the same value
+   * after the device moved is a new command, not a correction. Setpoints are
+   * compared as the actuator resolves them, which is the value a send carries.
+   */
+  public retainContestedCommands(plan: ExecutionPlan): void {
+    const reads = this.driftObservationDeps();
+    const nowMs = Date.now();
+    for (const decision of plan.devices) {
+      const device = decision.commands;
+      const planned = resolvePlannedCommandValues(materializeExecutableDeviceIntent(
+        device, this.deps.getSteppedLoadCommandSession(device.id), nowMs,
+      ), reads.isExternalOffHeld(device.id));
+      this.execution.controlContests.retainPlanned(device.id, {
+        on_off: planned.on,
+        level: planned.stepId,
+        temperature: this.resolvePlannedTemperature(device.id, planned.target),
+      });
+    }
+  }
+
+  /** A device with no setpoint the transport can resolve takes no temperature command. */
+  private resolvePlannedTemperature(deviceId: string, target: number | null): number | null {
+    if (target === null) return null;
+    try {
+      return this.deps.actuator.resolveTemperatureTarget(deviceId, target);
+    } catch {
+      return null;
+    }
   }
 
   /**

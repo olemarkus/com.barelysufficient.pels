@@ -112,6 +112,25 @@ function isStepCommandUnanswered(
     && stepProgress !== 'settled' && unanswered.count >= STEP_COMMAND_UNANSWERED_AFTER;
 }
 
+/**
+ * What the intent asks of each axis, in the values the executor sends; `null`
+ * where it asks nothing. A held external off asks nothing of any axis.
+ */
+export type PlannedCommandValues = { on: boolean | null; stepId: string | null; target: number | null };
+
+export function resolvePlannedCommandValues(
+  intent: ExecutableDeviceIntent,
+  externalOffHeld: boolean,
+): PlannedCommandValues {
+  if (externalOffHeld) return { on: null, stepId: null, target: null };
+  const desiredBinary = resolveDesiredBinary(intent);
+  return {
+    on: desiredBinary === null ? null : desiredBinary === 'on',
+    stepId: resolveDesiredStep(intent),
+    target: resolveDesiredTarget(intent),
+  };
+}
+
 export function resolveDeviceExecutionState(
   intent: ExecutableDeviceIntent,
   observed: ExecutableObservedDeviceState | undefined,

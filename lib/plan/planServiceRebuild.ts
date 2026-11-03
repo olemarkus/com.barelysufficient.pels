@@ -183,6 +183,7 @@ async function buildPlanForRebuild(
     planEngine.state.currentRebuildTrigger = null;
   }
   planEngine.prunePendingTargetCommands(plan);
+  planEngine.retainContestedCommands(plan);
   plan = planEngine.decoratePlanWithPendingTargetCommands(plan);
   return {
     plan,

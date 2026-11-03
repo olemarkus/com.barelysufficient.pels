@@ -2,6 +2,7 @@ import type { PendingBinaryCommand } from '../../lib/observer/pendingBinaryComma
 import { createPlanEngineState as createRealPlanEngineState, type PlanEngineState as RealPlanEngineState } from '../../lib/plan/planState';
 import { ExecutionState, type PendingTargetCommandState } from '../../lib/executor/executionState';
 import { ActuationRecord } from '../../lib/executor/actuationRecord';
+import { controlContestsForTest } from '../helpers/controlContests';
 import { PlanExecutionFeedback } from '../../lib/plan/planExecutionFeedback';
 import { PlanExecutor as RealPlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 
@@ -17,7 +18,7 @@ export const createPlanEngineState = (
   nowTs = Date.now(),
   isExternalOffHeld: (deviceId: string) => boolean = noDeviceExternallyHeld,
 ): PlanEngineState => {
-  const execution = new ExecutionState();
+  const execution = new ExecutionState(controlContestsForTest().contests);
   const state = createRealPlanEngineState(nowTs, isExternalOffHeld, execution) as PlanEngineState;
   executionByState.set(state, execution);
   return state;

@@ -510,11 +510,18 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
    * all. It is handed to the wiring that drives it and to the plan engine that
    * owns it — `lib/executor/steppedCommandStore.ts`.
    */
-  private readonly steppedStores: SteppedStores = createSteppedStores();
+  private readonly steppedStores: SteppedStores = createSteppedStores(() => this.getUserdataDatabase());
 
   public readonly steppedCommandStore = this.steppedStores.commandStore;
 
   public readonly steppedReportedStore = this.steppedStores.reportedStore;
+
+  /**
+   * The executor's record of drift corrections, for every home: which devices
+   * keep moving away from what PELS set and confirmed
+   * (`lib/executor/controlContest.ts`).
+   */
+  public readonly controlContests = this.steppedStores.controlContests;
   public readonly deviceControlHelpers = createDeviceControlHelpers(
     this, this.targetPowerReachabilityWiring.updateTargetPowerReachability,
     (dueAtMs) => this.snapshotHelpers.scheduleTargetPowerProbeSettlement(dueAtMs),

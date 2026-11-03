@@ -69,6 +69,7 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
   syncSteppedCommands: () => false,
   syncStorageCommands: () => undefined,
   prunePendingTargetCommands: vi.fn(() => false),
+  retainContestedCommands: vi.fn(),
   shouldApplyStablePlanActions: vi.fn(() => false),
   // Delegates to the REAL predicate rather than returning a canned value: a
   // `vi.fn(() => false)` default would silently switch every PlanService spec

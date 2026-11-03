@@ -288,6 +288,7 @@ describe('settingsUiApi', () => {
       deviceManager: partialDouble<DeviceTransport>({
         getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, hasWarmSnapshot: () => true, readInverterControlOptions: () => [],
       }),
+      controlContests: { contestedControl: () => undefined },
       getSettingsUiManagedDevices: () => latestDevices,
       getUiPickerDevices: () => options.uiPickerDevices ?? [],
       // The payload refresh reads the whole observed record through its own
@@ -944,6 +945,25 @@ describe('settingsUiApi', () => {
     // Although the PV device is excluded from `devices`, its presence is still reported as
     // the home-level solar flag so the UI can gate the per-device "Use solar surplus" control.
     expect(getSettingsUiDevicesPayload({ homey: homey as never }).hasManagedSolarDevice).toBe(true);
+  });
+
+  it('carries the executor\'s contest for a managed device that does not keep PELS\'s settings', () => {
+    const contest = { setting: 'temperature', kind: 'reverted', count: 5, sinceMs: 1_000 } as const;
+    const homey = createHomey({
+      latestDevicesOverride: [
+        { id: 'mill', name: 'Gang nede ovn', deviceType: 'temperature', available: true, managed: true },
+        { id: 'calm', name: 'Bad nede', deviceType: 'temperature', available: true, managed: true },
+        { id: 'let-go', name: 'Kjeller', deviceType: 'temperature', available: true, managed: false },
+      ],
+    });
+    Object.assign(homey.app, {
+      controlContests: { contestedControl: (id: string) => (id === 'calm' ? undefined : contest) },
+    });
+    const devices = getSettingsUiDevicesPayload({ homey: homey as never }).devices;
+    expect(devices.find(({ id }) => id === 'mill')?.controlContest).toEqual(contest);
+    expect(devices.find(({ id }) => id === 'calm')).not.toHaveProperty('controlContest');
+    // The owner let it go: it is no longer PELS's to contest.
+    expect(devices.find(({ id }) => id === 'let-go')).not.toHaveProperty('controlContest');
   });
 
   it('serves the observer projection\'s observed state, not the stored snapshot\'s', () => {
