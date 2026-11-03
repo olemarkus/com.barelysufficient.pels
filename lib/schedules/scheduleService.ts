@@ -24,7 +24,7 @@ const logger = getLogger('schedules');
 // refused meanwhile waits for that instead of losing the occurrence.
 const BUSY_RETRY_WINDOW_MS = 6 * 60_000;
 const WAITING_RESULT = "Waiting for the device's current Smart task to end.";
-const BUSY_RESULT = 'Skipped: this device already has a Smart task.';
+const BUSY_RESULT = 'Skipped because this device already has a Smart task.';
 
 /** A consumed occurrence whose create waits for the device's ended task to close. */
 type PendingRun = { schedule: Schedule; consumed: ScheduleReceipt; atMs: number };
@@ -426,13 +426,13 @@ export class ScheduleService {
     const invalid = this.eligibility(schedule);
     if (invalid) return invalid;
     if (scheduleConflictOnDate(schedule, [...this.schedules.values()], date)) {
-      return 'Skipped: another schedule has the same time and target.';
+      return 'Skipped because another schedule has the same time and target.';
     }
     const condition = this.resolveModes(schedule).condition;
     if (condition.type === 'any') return '';
     const selected = condition.modes.includes(this.port.currentMode());
     const matches = condition.type === 'include' ? selected : !selected;
-    return matches ? '' : 'Skipped: the current mode did not match the schedule condition.';
+    return matches ? '' : 'Skipped because the current mode did not match the schedule condition.';
   }
 
   /** The result to record, or undefined while a refused create may still be retried. */
@@ -452,7 +452,7 @@ export class ScheduleService {
     if (error instanceof ScheduleSkip) return error.message;
     logger.error({ event: 'schedule_run_failed', scheduleId: schedule.id, err: error });
     return error instanceof Error
-      ? `Could not run: ${error.message}`.slice(0, 240) : 'Could not run this schedule.';
+      ? `Could not run. ${error.message}`.slice(0, 240) : 'Could not run this schedule.';
   }
 
 }

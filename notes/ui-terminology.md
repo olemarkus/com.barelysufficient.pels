@@ -2502,6 +2502,27 @@ named `Set the limited temperature for {device name}`.
   selected cars have all been removed from Homey, shows none of this. Activity
   records the same reason. Matching or explicit confirmation ends this message.
 
+## Schedule rows: the last occurrence
+
+A schedule row names its last occurrence and what came of it on one line,
+`Last: {occurrence} · {result}`, beside `Next: {occurrence}`
+(`Last: Mon 2 Nov, 21:00 · Skipped because the ready-by time had already passed.`).
+Never `Last run`: a skipped occurrence did not run. One colon per line, so a
+result never adds its own: a skip reads `Skipped because …` and a failure
+`Could not run. {reason}`. The results come from `lib/schedules/scheduleService.ts`
+and `scheduleActions.ts`:
+
+- `Mode changed`, `Smart task created`, and `Trigger recorded.` when the action
+  went through but PELS could not confirm the schedule afterwards.
+- `Waiting for the device's current Smart task to end.` while a scheduled task
+  waits to replace one.
+- `Skipped because` `the ready-by time had already passed.`, `the ready-by time
+  does not exist on this date.`, `this device already has a Smart task.`,
+  `this device is not available for a scheduled Smart task.`, `another schedule
+  has the same time and target.`, or `the current mode did not match the
+  schedule condition.`
+- `Could not run. {reason}`, or `Could not run this schedule.` without one.
+
 ## Mode label
 
 With one home, the Settings page renders one selector labelled `Current mode`.

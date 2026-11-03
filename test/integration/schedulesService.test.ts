@@ -100,7 +100,7 @@ describe('schedule owner', () => {
     const f = fixture();
     f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
     f.values.set('schedule.charge', energySchedule());
-    const busy = new ScheduleSkip('Skipped: this device already has a Smart task.', true);
+    const busy = new ScheduleSkip('Skipped because this device already has a Smart task.', true);
     f.execute.mockRejectedValueOnce(busy).mockRejectedValueOnce(busy);
     const service = f.create(); service.start();
     f.setNow('2026-10-28T09:00:10Z'); await service.tick();
@@ -120,12 +120,12 @@ describe('schedule owner', () => {
     const f = fixture();
     f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
     f.values.set('schedule.charge', energySchedule());
-    f.execute.mockRejectedValue(new ScheduleSkip('Skipped: this device already has a Smart task.', true));
+    f.execute.mockRejectedValue(new ScheduleSkip('Skipped because this device already has a Smart task.', true));
     const service = f.create(); service.start();
     f.setNow('2026-10-28T09:00:10Z'); await service.tick();
     f.setNow('2026-10-28T09:05:50Z'); await service.tick();
     f.setNow('2026-10-28T09:06:05Z'); await service.tick();
-    expect(service.read().entries[0]?.lastResult).toBe('Skipped: this device already has a Smart task.');
+    expect(service.read().entries[0]?.lastResult).toBe('Skipped because this device already has a Smart task.');
     const calls = f.execute.mock.calls.length;
     f.setNow('2026-10-28T09:06:20Z'); await service.tick();
     expect(f.execute).toHaveBeenCalledTimes(calls);
@@ -135,7 +135,7 @@ describe('schedule owner', () => {
     const f = fixture();
     f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
     f.values.set('schedule.charge', energySchedule());
-    f.execute.mockRejectedValueOnce(new ScheduleSkip('Skipped: this device already has a Smart task.', true));
+    f.execute.mockRejectedValueOnce(new ScheduleSkip('Skipped because this device already has a Smart task.', true));
     const service = f.create(); service.start();
     f.setNow('2026-10-28T09:00:10Z'); await service.tick();
     f.values.set('schedule.charge', { ...energySchedule(), enabled: false });
@@ -148,7 +148,7 @@ describe('schedule owner', () => {
     const f = fixture();
     f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
     f.values.set('schedule.charge', energySchedule());
-    f.execute.mockRejectedValueOnce(new ScheduleSkip('Skipped: this device already has a Smart task.', true));
+    f.execute.mockRejectedValueOnce(new ScheduleSkip('Skipped because this device already has a Smart task.', true));
     const service = f.create(); service.start();
     f.setNow('2026-10-28T09:00:10Z'); await service.tick();
     f.values.set('schedule.charge', { ...energySchedule(), enabled: false });
@@ -163,26 +163,26 @@ describe('schedule owner', () => {
     const f = fixture();
     f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
     f.values.set('schedule.charge', energySchedule());
-    f.execute.mockRejectedValueOnce(new ScheduleSkip('Skipped: this device already has a Smart task.', true));
+    f.execute.mockRejectedValueOnce(new ScheduleSkip('Skipped because this device already has a Smart task.', true));
     const service = f.create(); service.start();
     f.setNow('2026-10-28T09:00:10Z'); await service.tick();
     f.setNow('2026-10-28T09:07:00Z'); await service.tick();
     expect(f.execute).toHaveBeenCalledTimes(1);
-    expect(f.receipts.get('charge')?.lastResult).toBe('Skipped: this device already has a Smart task.');
+    expect(f.receipts.get('charge')?.lastResult).toBe('Skipped because this device already has a Smart task.');
   });
 
   it('reads a waiting result left by a restart as the skip, without replaying it', async () => {
     const f = fixture();
     f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
     f.values.set('schedule.charge', energySchedule());
-    f.execute.mockRejectedValueOnce(new ScheduleSkip('Skipped: this device already has a Smart task.', true));
+    f.execute.mockRejectedValueOnce(new ScheduleSkip('Skipped because this device already has a Smart task.', true));
     const service = f.create(); service.start();
     f.setNow('2026-10-28T09:00:10Z'); await service.tick();
     await service.stop();
     service.start();
     f.setNow('2026-10-28T09:00:25Z'); await service.tick();
     expect(f.execute).toHaveBeenCalledTimes(1);
-    expect(service.read().entries[0]?.lastResult).toBe('Skipped: this device already has a Smart task.');
+    expect(service.read().entries[0]?.lastResult).toBe('Skipped because this device already has a Smart task.');
   });
 
   it('reads a store with no settings at all as no schedules', () => {
@@ -448,11 +448,11 @@ describe('schedule owner', () => {
     expect(f.execute).toHaveBeenCalledTimes(1);
     expect(f.execute.mock.calls[0]?.[0].id).toBe('mode');
     expect(f.receipts.get('charge')).toMatchObject({
-      localOccurrence: '2026-10-28|10:00', lastResult: 'Could not run: Unavailable devices',
+      localOccurrence: '2026-10-28|10:00', lastResult: 'Could not run. Unavailable devices',
     });
     f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
     expect(service.read().entries.find((entry) => entry.schedule.id === 'charge')).toMatchObject({
-      state: repeat === 'once' ? 'finished' : 'on', lastResult: 'Could not run: Unavailable devices',
+      state: repeat === 'once' ? 'finished' : 'on', lastResult: 'Could not run. Unavailable devices',
     });
     await service.stop();
     f.setNow('2026-10-28T08:59:45Z'); service.start();
@@ -505,7 +505,7 @@ describe('schedule owner', () => {
       const service = f.create(); service.start();
       f.setNow('2026-10-28T09:00:10Z'); await service.tick();
       const lastResult = failure === 'condition'
-        ? 'Skipped: the current mode did not match the schedule condition.' : 'Could not run: Unavailable devices';
+        ? 'Skipped because the current mode did not match the schedule condition.' : 'Could not run. Unavailable devices';
       expect([...f.receipts.values()][0]?.lastResult).toBe(lastResult);
       f.port.settings.getKeys = () => [...f.values.keys()];
       f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);

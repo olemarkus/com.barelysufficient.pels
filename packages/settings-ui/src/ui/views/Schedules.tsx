@@ -98,7 +98,7 @@ const ScheduleRow = ({ entry, view }: { entry: ScheduleEntry; view: View }) => {
         {entry.reason && <p>{entry.reason}</p>}
         {entry.nextAtMs !== null && <p>Next: {entry.nextLabel}</p>}
         {entry.lastResult && <p class="pels-card-supporting">
-          {entry.lastLabel ? `Last run ${entry.lastLabel}: ` : 'Last: '}{entry.lastResult}
+          Last: {entry.lastLabel ? `${entry.lastLabel} · ` : ''}{entry.lastResult}
         </p>}
         {grantedLine !== null && <p class="pels-card-supporting">
           {SMART_TASK_EXTRA_PERMISSIONS_TITLE}: {grantedLine}

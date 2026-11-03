@@ -89,6 +89,18 @@ describe('Schedule editor state', () => {
   });
 });
 
+describe('Schedule list rows', () => {
+  it('names the last occurrence and its result without saying a skipped one ran', () => {
+    const snapshot = snapshotFor({
+      ...savedEntry(), lastLabel: 'Mon 2 Nov, 21:00', lastResult: 'Skipped because the ready-by time had already passed.',
+    });
+    snapshot.editor = null;
+    const row = mountView(snapshot).querySelector('[data-schedule-id="water"]');
+    expect(row?.textContent).toContain('Last: Mon 2 Nov, 21:00 · Skipped because the ready-by time had already passed.');
+    expect(row?.textContent).not.toContain('Last run');
+  });
+});
+
 describe('Scheduled task permissions', () => {
   it('shows saved grants on list rows before the editor is opened', () => {
     const snapshot = snapshotFor(savedEntry());

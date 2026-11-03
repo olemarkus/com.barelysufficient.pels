@@ -36,15 +36,17 @@ export class ScheduleActionExecutor {
     const request = schedule.action.task;
     const scope = rejectForSmartTaskHomeScope(this.host.resolveSmartTaskHomeScope(request.deviceId));
     if (scope === 'unavailable') throw new Error('The device is temporarily unavailable.');
-    if (scope) throw new ScheduleSkip('Skipped: this device is not available for a scheduled Smart task.');
+    if (scope) throw new ScheduleSkip('Skipped because this device is not available for a scheduled Smart task.');
     // Resolve against the occurrence, not a late timer: a passed deadline never rolls a run into tomorrow.
     const timeZone = this.clock.getTimezone();
     const date = getDateKeyInTimeZone(new Date(scheduledAtMs), timeZone);
     const readyDate = request.readyByLocalTime <= schedule.at ? shiftDateKey(date, 1) : date;
     const deadlineAtMs = scheduleInstant(readyDate, request.readyByLocalTime, timeZone);
-    if (deadlineAtMs === undefined) throw new ScheduleSkip('Skipped: the ready-by time does not exist on this date.');
+    if (deadlineAtMs === undefined) {
+      throw new ScheduleSkip('Skipped because the ready-by time does not exist on this date.');
+    }
     const deadline = resolveSmartTaskWriteDeadline({ ...request, deadlineAtMs }, timeZone, Date.now());
-    if (!deadline.ok) throw new ScheduleSkip('Skipped: the ready-by time had already passed.');
+    if (!deadline.ok) throw new ScheduleSkip('Skipped because the ready-by time had already passed.');
     const candidate = buildValidSmartTaskCandidate(request, deadline.deadlineAtMs);
     if (!candidate) throw new Error('The task target is invalid.');
     const result = this.host.createNewDeferredObjective(request.deviceId, {
@@ -52,7 +54,7 @@ export class ScheduleActionExecutor {
     });
     if (!result.ok) {
       if (result.reason === 'task_exists') {
-        throw new ScheduleSkip('Skipped: this device already has a Smart task.', true);
+        throw new ScheduleSkip('Skipped because this device already has a Smart task.', true);
       }
       throw new Error(CREATE_FAILURES[result.reason]);
     }
