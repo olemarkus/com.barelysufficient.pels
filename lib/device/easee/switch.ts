@@ -55,13 +55,18 @@ import type { CapabilityWrite, SessionEvidence } from '../deviceAdapter';
  * A current is harmless on any session: a stopped one just does not start, and
  * the retry comes once the plug state says why.
  *
- * Without built-in control the switch is the app's, with one exception: a
+ * Without built-in control the switch is the app's, with two exceptions: a
  * session paused below 6 A (PELS's own 0 A pause, say, from before built-in
- * control was turned off) gets 6 A on, since no start command resumes it.
+ * control was turned off) gets 6 A on, since no start command resumes it; and
+ * **on** for a session the car has completed sends nothing. That session is
+ * open and the car is done: a start would open a new one, and PELS does not set
+ * the current of a charger it does not control. It charges again by itself
+ * when the car asks.
  */
-type EaseeSwitchWrite =
+export type EaseeSwitchWrite =
   | { kind: 'current'; write: CapabilityWrite }
-  | { kind: 'switch' };
+  | { kind: 'switch' }
+  | { kind: 'none' };
 
 const PAUSE: EaseeSwitchWrite = {
   kind: 'current',
@@ -72,6 +77,7 @@ const RESUME: EaseeSwitchWrite = {
   write: { capabilityId: EASEE_CHARGER_CURRENT_CAPABILITY_ID, value: EASEE_MIN_CHARGING_CURRENT_A },
 };
 const SWITCH: EaseeSwitchWrite = { kind: 'switch' };
+const NOTHING: EaseeSwitchWrite = { kind: 'none' };
 
 /**
  * `trackedDevice` is the device Homey last reported; without built-in
@@ -87,14 +93,15 @@ export function resolveEaseeSwitchWrite(
     if (!desired) return PAUSE;
     return isStoppedSession(snapshot, sessions) ? SWITCH : RESUME;
   }
-  return SWITCH;
+  return desired && isCompletedSession(snapshot, sessions) ? NOTHING : SWITCH;
 }
 
 export function recoverEaseeSwitchWrite(
   snapshot: TransportDeviceSnapshot, device: HomeyDeviceLike, desired: boolean, sessions: SessionEvidence,
 ): EaseeSwitchWrite {
-  if (isEaseeUnderBuiltInControl(snapshot)) return resolveEaseeSwitchWrite(snapshot, desired, sessions);
-  if (!desired || snapshot.evChargingState !== 'plugged_in_paused') return SWITCH;
+  if (isEaseeUnderBuiltInControl(snapshot) || !desired || snapshot.evChargingState !== 'plugged_in_paused') {
+    return resolveEaseeSwitchWrite(snapshot, desired, sessions);
+  }
   const capabilityObj = getCapabilityObj(device);
   if (!isEaseeChargerCurrentCandidate(device, capabilityObj)) return SWITCH;
   const currentA = readCurrentA(capabilityObj[EASEE_CHARGER_CURRENT_CAPABILITY_ID]?.value);
@@ -107,6 +114,11 @@ export function recoverEaseeSwitchWrite(
  */
 function isStoppedSession(snapshot: TransportDeviceSnapshot, sessions: SessionEvidence): boolean {
   return snapshot.evChargingState === 'plugged_in' && !sessions.hasCarStopEvidence(snapshot.id);
+}
+
+/** Plugged in, not charging, in an open session the car has completed (Easee `Completed`). */
+function isCompletedSession(snapshot: TransportDeviceSnapshot, sessions: SessionEvidence): boolean {
+  return snapshot.evChargingState === 'plugged_in' && sessions.hasCarStopEvidence(snapshot.id);
 }
 
 /** A current the charger charges at; below it (0-5 A) the charger pauses. */

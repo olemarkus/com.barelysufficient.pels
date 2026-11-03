@@ -23,7 +23,7 @@ import { hasRestClient, setRawCapabilityValue } from './managerHomeyApi';
 import { recordLocalWriteObservation } from './managerObservation';
 import { isNativeSteppedLoadControlEnabled, type CapabilityWrite } from '../nativeSteppedLoadWiring';
 import { getDeviceAdapter, getSnapshotAdapter } from '../deviceAdapterRegistry';
-import type { SessionEvidence } from '../deviceAdapter';
+import type { SessionEvidence, SwitchWrite } from '../deviceAdapter';
 import type { SteppedLoadFlowTriggerCard } from './transportTypes';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
@@ -72,16 +72,6 @@ function emitCapabilityWriteDebug(
 }
 
 /**
- * What reaches the SDK for a requested write, and whether PELS reads the
- * requested capability back as Homey holds it. Only then may the local write
- * stand in for a read that Homey dated before it.
- */
-type SdkWrite = {
-    write: CapabilityWrite;
-    readBackAsWritten: boolean;
-};
-
-/**
  * Where a write to a device's binary switch lands in the SDK: the switch, or the
  * capability the transport routes it to. An Easee may carry out its charging
  * switch through the charger current instead (`resolveEaseeSwitchWrite`).
@@ -89,14 +79,16 @@ type SdkWrite = {
  * the switch is recorded as PELS's own write: an Easee current's echo is always an
  * observation (`nativeSteppedRealtime.ts`). An Easee under built-in control reads
  * its switch from the plug state and the current, not from what Homey holds for
- * it, so PELS's own write to the switch is no observation of it either.
+ * it, so PELS's own write to the switch is no observation of it either. A
+ * request the device needs no command for (an Easee session the car completed,
+ * with built-in control off) sends nothing.
  */
 function resolveSwitchSdkWrite(
     snapshot: TransportDeviceSnapshot,
     trackedDevice: HomeyDeviceLike | undefined,
     requested: CapabilityWrite,
     sessions: SessionEvidence,
-): SdkWrite {
+): SwitchWrite {
     return trackedDevice
         ? getDeviceAdapter(trackedDevice).recoverSwitchWrite(snapshot, trackedDevice, requested, sessions)
         : getSnapshotAdapter(snapshot).switchWrite(snapshot, requested, sessions);
@@ -161,15 +153,24 @@ export class DeviceWriteService {
     const normalizedValue = normalizeCapabilityValue(this.snapshotStore, deviceId, capabilityId, value);
     const snapshotBefore = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     const requested: CapabilityWrite = { capabilityId, value: normalizedValue };
-    const { write, readBackAsWritten }: SdkWrite = snapshotBefore?.binaryCapabilityId === capabilityId
+    // `readBackAsWritten`: whether PELS reads the requested capability back as
+    // Homey holds it. Only then may the local write stand in for a read that
+    // Homey dated before it.
+    const sdkWrite: SwitchWrite = snapshotBefore?.binaryCapabilityId === capabilityId
         ? resolveSwitchSdkWrite(
           snapshotBefore,
           this.snapshotStore.getTrackedRawDevice(deviceId),
           requested,
           this.chargingCurrentControl.sessions,
         )
-        : { write: requested, readBackAsWritten: true };
+        : { kind: 'write', write: requested, readBackAsWritten: true };
     logEvCapabilityRequest(deviceId, capabilityId, normalizedValue, snapshotBefore);
+    if (sdkWrite.kind === 'none') {
+        emitTransportDebug({ event: 'device_capability_write_skipped', deviceId, capabilityId,
+            value: normalizedValue, reasonCode: 'no_device_command' });
+        return normalizedValue;
+    }
+    const { write, readBackAsWritten } = sdkWrite;
 
     if (capabilityId === 'target_temperature' && typeof normalizedValue === 'number') {
         this.observationProducers.temperature.recordCommand(deviceId, normalizedValue, Date.now());

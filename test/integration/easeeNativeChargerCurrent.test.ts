@@ -826,6 +826,7 @@ describe('Easee native charger current', () => {
     const createLiveEasee = async (
       capabilityOverrides: DeviceCapabilityMap = {},
       capabilities: string[] = EASEE_CAPABILITIES,
+      builtInControl = true,
     ) => {
       let capabilityObj = buildEaseeCapabilityObj(capabilityOverrides);
       const get = vi.fn(async (path: string) => {
@@ -840,7 +841,7 @@ describe('Easee native charger current', () => {
         capabilityObj = { ...capabilityObj, [capabilityId]: { ...capabilityObj[capabilityId], value, lastUpdated: new Date().toISOString() } };
       });
       setRestClient({ get, put });
-      const deviceManager = createEaseeTransport(true);
+      const deviceManager = createEaseeTransport(builtInControl);
       await initWithLiveFeed(deviceManager);
       const refresh = () => deviceManager.refreshSnapshot({
         includeLivePower: false,
@@ -981,6 +982,31 @@ describe('Easee native charger current', () => {
 
       expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, { value: true }]]);
     });
+
+    it('sends nothing to a session the car completed while built-in control is off', async () => {
+      // The session is open and the car is done: a start would open a new one,
+      // and PELS does not set the current of a charger it does not control.
+      const { deviceManager, put, refresh } = await createLiveEasee(notCharging('Completed'), WITH_STATUS, false);
+      await refresh();
+
+      await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
+      expect(put).not.toHaveBeenCalled();
+
+      await deviceManager.requestBinaryControl(EASEE_ID, false, triggerFlow);
+      expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, { value: false }]]);
+    });
+
+    it.each(['Car connected', 'Awaiting Authentication'])(
+      'starts a session stopped in %s while built-in control is off',
+      async (status) => {
+        const { deviceManager, put, refresh } = await createLiveEasee(notCharging(status), WITH_STATUS, false);
+        await refresh();
+
+        await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
+
+        expect(put.mock.calls).toEqual([[CHARGING_SWITCH_PATH, { value: true }]]);
+      },
+    );
 
     it('resumes by current when the plug state is not one PELS knows, never by starting a session', async () => {
       // A start on an open session begins a new one at 32 A. Only a session known

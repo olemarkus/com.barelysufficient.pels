@@ -45,7 +45,10 @@ export type DeviceEvOverlay = { capabilities: string[]; capabilityObj: DeviceCap
 export type BinaryTarget =
   | { kind: 'canonical' }
   | { kind: 'capability'; writeCapabilityId: string; observationCapabilityId: string };
-export type SwitchWrite = { write: CapabilityWrite; readBackAsWritten: boolean };
+/** What a switch request sends: a capability write, or no device command at all. */
+export type SwitchWrite =
+  | { kind: 'write'; write: CapabilityWrite; readBackAsWritten: boolean }
+  | { kind: 'none' };
 
 /**
  * Canonical amp observation an integration adds to its overlay and control

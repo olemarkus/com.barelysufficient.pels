@@ -1,10 +1,13 @@
-import type { DeviceAdapter, NativeCurrentControl, DeviceReadRules } from '../deviceAdapter';
+import type {
+  CapabilityWrite, DeviceAdapter, NativeCurrentControl, DeviceReadRules, SwitchWrite,
+} from '../deviceAdapter';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 import { isEaseeDevice, resolveEaseePhaseReport } from './phases';
 import { isEaseeChargerDevice, isEaseeChargerCurrentCandidate, EASEE_CHARGER_CURRENT_CAPABILITY_ID,
   EASEE_CHARGER_CURRENT_FLOW_CARD_ID, EASEE_MIN_CHARGING_CURRENT_A, resolveCurrentStep } from './current';
 import { isEaseeUnderBuiltInControl, resolveEaseeRealtimeUpdates, withEaseeObservedCharging,
-  resolveEaseeSwitchWrite, recoverEaseeSwitchWrite } from './switch';
+  resolveEaseeSwitchWrite, recoverEaseeSwitchWrite, type EaseeSwitchWrite } from './switch';
 import { EASEE_CHARGER_STATUS, withEaseeChargingState } from './chargingState';
 import { EaseeChargingSession } from './session';
 
@@ -17,6 +20,16 @@ const currentControl: NativeCurrentControl = {
     return step === undefined ? [] : [step];
   },
   accepts: isEaseeChargerCurrentCandidate,
+};
+
+// Under built-in control the switch is read from the plug state and the current,
+// so PELS's own write to it is no observation of it (`withEaseeObservedCharging`).
+const toSwitchWrite = (
+  snapshot: TransportDeviceSnapshot, resolved: EaseeSwitchWrite, plain: CapabilityWrite,
+): SwitchWrite => {
+  if (resolved.kind === 'none') return resolved;
+  return { kind: 'write', write: resolved.kind === 'current' ? resolved.write : plain,
+    readBackAsWritten: !isEaseeUnderBuiltInControl(snapshot) };
 };
 
 export const easeeAdapter: DeviceAdapter = {
@@ -45,15 +58,12 @@ export const easeeAdapter: DeviceAdapter = {
   nativeCurrentControls: [currentControl],
   switchWrite: (snapshot, request, sessions) => {
     const plain = standardDeviceAdapter.switchWrite(snapshot, request, sessions);
-    if (typeof request.value !== 'boolean') return plain;
-    const resolved = resolveEaseeSwitchWrite(snapshot, request.value, sessions);
-    return { write: resolved.kind === 'current' ? resolved.write : plain.write,
-      readBackAsWritten: !isEaseeUnderBuiltInControl(snapshot) };
+    if (typeof request.value !== 'boolean' || plain.kind === 'none') return plain;
+    return toSwitchWrite(snapshot, resolveEaseeSwitchWrite(snapshot, request.value, sessions), plain.write);
   },
   recoverSwitchWrite: (snapshot, raw, request, sessions) => {
-    const plain = easeeAdapter.switchWrite(snapshot, request, sessions);
-    if (typeof request.value !== 'boolean') return plain;
-    const resolved = recoverEaseeSwitchWrite(snapshot, raw, request.value, sessions);
-    return { ...plain, write: resolved.kind === 'current' ? resolved.write : plain.write };
+    const plain = standardDeviceAdapter.switchWrite(snapshot, request, sessions);
+    if (typeof request.value !== 'boolean' || plain.kind === 'none') return plain;
+    return toSwitchWrite(snapshot, recoverEaseeSwitchWrite(snapshot, raw, request.value, sessions), plain.write);
   },
 };
