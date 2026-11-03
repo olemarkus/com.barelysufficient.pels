@@ -98,24 +98,42 @@ export const parseScheduleCommand = (raw: unknown): ScheduleCommand => {
   throw new Error('Invalid schedule request');
 };
 
+/** Why a saved schedule cannot run as it stands. */
+export type ScheduleEligibilityIssue =
+  | 'condition_mode_missing' | 'mode_missing' | 'device_unavailable' | 'target_out_of_range';
+
+/** What the schedule row and a refused save say about each issue, in the present tense. */
+export const SCHEDULE_ELIGIBILITY_REASONS: Record<ScheduleEligibilityIssue, string> = {
+  condition_mode_missing: 'A mode in this condition is no longer available. Edit the schedule.',
+  mode_missing: 'This mode is no longer available. Edit the schedule.',
+  device_unavailable: 'This device is not available for this Smart task. Edit the schedule.',
+  target_out_of_range: 'The target is outside this device’s range.',
+};
+
+export const scheduleEligibilityIssue = (
+  schedule: Schedule,
+  modes: readonly string[],
+  devices: readonly SmartTaskCandidateDevice[],
+): ScheduleEligibilityIssue | null => {
+  if (schedule.condition.type !== 'any' && schedule.condition.modes.some((mode) => !modes.includes(mode))) {
+    return 'condition_mode_missing';
+  }
+  if (schedule.action.type === 'mode') return modes.includes(schedule.action.mode) ? null : 'mode_missing';
+  const { task } = schedule.action;
+  const device = devices.find((entry) => entry.deviceId === task.deviceId);
+  const goal = device ? resolveSmartTaskCandidateGoal(device, task.kind) : null;
+  if (!goal) return 'device_unavailable';
+  if (task.target < goal.goalMin || task.target > goal.goalMax) return 'target_out_of_range';
+  return null;
+};
+
 export const scheduleEligibilityReason = (
   schedule: Schedule,
   modes: readonly string[],
   devices: readonly SmartTaskCandidateDevice[],
 ): string => {
-  if (schedule.condition.type !== 'any' && schedule.condition.modes.some((mode) => !modes.includes(mode))) {
-    return 'A mode in this condition is no longer available. Edit the schedule.';
-  }
-  if (schedule.action.type === 'mode') {
-    return modes.includes(schedule.action.mode) ? '' : 'This mode is no longer available. Edit the schedule.';
-  }
-  const { task } = schedule.action;
-  const device = devices.find((entry) => entry.deviceId === task.deviceId);
-  if (!device) return 'This device is not available for this Smart task. Edit the schedule.';
-  const goal = resolveSmartTaskCandidateGoal(device, task.kind);
-  if (!goal) return 'This device is not available for this Smart task. Edit the schedule.';
-  if (task.target < goal.goalMin || task.target > goal.goalMax) return 'The target is outside this device’s range.';
-  return '';
+  const issue = scheduleEligibilityIssue(schedule, modes, devices);
+  return issue === null ? '' : SCHEDULE_ELIGIBILITY_REASONS[issue];
 };
 
 const repeatsOverlap = (left: Schedule['repeat'], right: Schedule['repeat']): boolean => {
