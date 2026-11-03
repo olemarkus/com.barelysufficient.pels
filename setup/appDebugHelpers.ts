@@ -3,7 +3,9 @@ import { nextDeviceDumpId } from '../lib/diagnostics/deviceDumpId';
 import type { AppContext } from '../lib/app/appContext';
 import type { DeviceTransportPort } from '../lib/device/deviceTransport';
 import { readHomeyEnergyMeters } from '../lib/device/homeyEnergyMeters';
+import { readHomeyDeviceList } from '../lib/device/homeyDeviceInventory';
 import type { HomeyEnergyMeterEntry } from '../packages/contracts/src/settingsUi/power';
+import type { HomeyDeviceListEntry } from '../packages/contracts/src/settingsUi/homeyDevices';
 import { DEVICES_API_PATH, getRawDevices } from '../lib/device/transport/managerHomeyApi';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import { isHomeyDeviceLike } from '../lib/utils/types';
@@ -60,12 +62,13 @@ export async function getHomeyDevicesForDebug(params: {
   return deviceManager.getDevicesForDebug();
 }
 
-export async function getHomeyDevicesForDebugFromApp(
+/** Every Homey device with its zone name, for the full-inventory pickers (`homey_devices`). */
+export async function listHomeyDevicesFromApp(
   app: Pick<AppContext, 'deviceManager' | 'error'>,
-): Promise<HomeyDeviceLike[]> {
+): Promise<HomeyDeviceListEntry[]> {
   if (!app.deviceManager) return [];
-  return getHomeyDevicesForDebug({ deviceManager: app.deviceManager }).catch((err) => {
-    app.error('Failed to get Homey devices for debug', normalizeError(err));
+  return readHomeyDeviceList(app.deviceManager).catch((err) => {
+    app.error('Failed to list Homey devices', normalizeError(err));
     return [];
   });
 }
