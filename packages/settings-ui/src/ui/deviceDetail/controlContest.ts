@@ -17,11 +17,15 @@ export const resetDeviceDetailControlContest = (): void => {
 };
 
 /**
- * The device page says why a device that keeps moving away from what PELS set
- * matters, next to Managed by PELS, the switch that ends it from PELS's side.
+ * The device page says why a device that keeps reporting another value after
+ * PELS sets it matters, next to Managed by PELS, the switch that ends it from
+ * PELS's side: turned off, the notice goes.
  */
-export const renderDeviceDetailControlContest = (device: SettingsUiDeviceDetailItem | null): void => {
-  const contest = device?.controlContest;
+export const renderDeviceDetailControlContest = (
+  device: SettingsUiDeviceDetailItem | null,
+  isManaged: boolean,
+): void => {
+  const contest = isManaged ? device?.controlContest : undefined;
   if (deviceDetailControlContestNotice) deviceDetailControlContestNotice.hidden = !contest;
   if (!device || !contest) return;
   const notice = controlContestNotice(formatDisplayDeviceName(device.name), contest);
