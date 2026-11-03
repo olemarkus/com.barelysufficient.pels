@@ -416,12 +416,12 @@ describe('applyShedReleaseIntent', () => {
     expect(mockedApplySteppedLoadCommand).not.toHaveBeenCalled();
   });
 
-  it('skips stepped release when the executor has a step command awaiting confirmation', async () => {
-    const ctx = buildCtx(sessionWithCommand({ stepId: 'mid', status: 'pending', retryCount: 0 }));
+  it('skips stepped release while its own step command awaits confirmation', async () => {
+    const ctx = buildCtx(sessionWithCommand({ stepId: 'low', status: 'pending', retryCount: 0 }));
     const result = await applyShedReleaseIntent(
       ctx,
       buildIntent({ posture: { kind: 'step', stepId: 'low' } }),
-      buildSteppedLoadIntent({ desired: { stepId: 'mid' } }),
+      buildSteppedLoadIntent(),
       buildObserved({
         steppedLoad: { on: true, stepId: 'high', reportedStepId: 'high', currentDrawKw: 0 },
         snapshot: { id: 'dev-1' } as never,
@@ -438,7 +438,7 @@ describe('applyShedReleaseIntent', () => {
     const result = await applyShedReleaseIntent(
       ctx,
       buildIntent({ posture: { kind: 'step', stepId: 'low' } }),
-      buildSteppedLoadIntent({ desired: { stepId: 'low' } }),
+      buildSteppedLoadIntent(),
       buildObserved({
         steppedLoad: { on: true, stepId: 'high', reportedStepId: 'high', currentDrawKw: 0 },
         snapshot: { id: 'dev-1' } as never,
@@ -446,5 +446,22 @@ describe('applyShedReleaseIntent', () => {
     );
     expect(result).toBe(false);
     expect(mockedApplySteppedLoadCommand).not.toHaveBeenCalled();
+  });
+
+  it('sends the release when the pending command is for a step the release does not send', async () => {
+    // The intent's own step (`high`) is the plan's, not the release's: a command for it
+    // is not the release's command in flight.
+    const ctx = buildCtx(sessionWithCommand({ stepId: 'high', status: 'pending', retryCount: 0 }));
+    const result = await applyShedReleaseIntent(
+      ctx,
+      buildIntent({ posture: { kind: 'step', stepId: 'low' } }),
+      buildSteppedLoadIntent(),
+      buildObserved({
+        steppedLoad: { on: true, stepId: 'high', reportedStepId: 'high', currentDrawKw: 0 },
+        snapshot: { id: 'dev-1' } as never,
+      }),
+    );
+    expect(result).toBe(true);
+    expect(mockedApplySteppedLoadCommand).toHaveBeenCalledTimes(1);
   });
 });
