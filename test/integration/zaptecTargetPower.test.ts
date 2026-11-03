@@ -129,7 +129,7 @@ describe('Zaptec native target power', () => {
       setRestClient({ get: vi.fn(), put });
       await transport.requestBinaryControl(ZAPTEC_ID, true, vi.fn());
       expect(put.mock.calls).toEqual([
-        [`manager/devices/device/${ZAPTEC_ID}/capability/evcharger_charging`, { value: true }],
+        [`manager/devices/device/${ZAPTEC_ID}/capability/evcharger_charging`, pelsCapabilityWrite(true)],
       ]);
     });
 
@@ -156,7 +156,7 @@ describe('Zaptec native target power', () => {
         deviceId: ZAPTEC_ID, profile, desiredStepId: '2760w', planningPowerW: 2760, planningCurrentA: 0,
       });
       expect(put.mock.calls).toEqual([
-        [`manager/devices/device/${ZAPTEC_ID}/capability/target_power`, { value: 2760 }],
+        [`manager/devices/device/${ZAPTEC_ID}/capability/target_power`, pelsCapabilityWrite(2760)],
       ]);
     });
 
