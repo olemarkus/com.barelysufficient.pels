@@ -57,13 +57,14 @@ export class DeviceSnapshotReader {
   }
 
   parseDevice(
-    device: HomeyDeviceLike,
+    read: HomeyDeviceLike,
     now: number,
     livePowerWByDeviceId: LiveDevicePowerWatts,
   ): TargetDeviceSnapshot | null {
-    if (getDeviceAdapter(device).retainsPlugObservation(device)) {
-      return this.retainBlockedDevice(device, 'runtime') ?? null;
+    if (getDeviceAdapter(read).retainsPlugObservation(read)) {
+      return this.retainBlockedDevice(read, 'runtime') ?? null;
     }
+    const device = this.chargingCurrentControl.sessions.withholdCapabilities(read);
     const parsed = parseDevice(
       device,
       now,
@@ -97,7 +98,8 @@ export class DeviceSnapshotReader {
     purpose: ParseDevicePurpose = 'runtime',
   ): TransportDeviceSnapshot[] {
     const parsed = parseDeviceList(
-      list.filter((device) => !getDeviceAdapter(device).retainsPlugObservation(device)),
+      list.filter((device) => !getDeviceAdapter(device).retainsPlugObservation(device))
+        .map((device) => this.chargingCurrentControl.sessions.withholdCapabilities(device)),
       livePowerWByDeviceId,
       this.snapshotStore.getSnapshotIndex(),
       this.parseDependencies(),

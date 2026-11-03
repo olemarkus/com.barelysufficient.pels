@@ -55,6 +55,7 @@ export class FuturehomeChargerSession implements DeviceAdapterSession {
     for (const id of this.limits.keys()) if (!ids.has(id)) this.limits.delete(id);
   }
 
+  withheldCapabilities(): readonly string[] { return []; }
   setTrustEpoch(): void {}
   observedIds(): string[] { return []; }
   observes(): boolean { return false; }

@@ -121,6 +121,8 @@ export class TeslaChargingSession implements DeviceAdapterSession {
 
   observedIds(): string[] { return [...this.devices.keys()]; }
 
+  withheldCapabilities(): readonly string[] { return []; }
+
   observes(deviceId: string): boolean { return this.devices.has(deviceId); }
 
   /** A reconnect requires location evidence obtained after that trust gap. */

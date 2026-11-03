@@ -116,7 +116,14 @@ export type DeviceAdapterSession = {
   /** `readAtMs`: when the read that produced `device` started. */
   observeDevice(device: HomeyDeviceLike, readAtMs: number): void;
   observeCapability(deviceId: string, capabilityId: string, value: unknown): void;
+  /** A full inventory: every device Homey lists, as last accepted. */
   retainDevices(devices: readonly HomeyDeviceLike[]): void;
+  /**
+   * The capabilities a read of `device` is parsed without, as if it did not
+   * declare them: a control it cannot hold alone, as the last full inventory
+   * (`retainDevices`) shows it.
+   */
+  withheldCapabilities(device: HomeyDeviceLike): readonly string[];
   setTrustEpoch(epoch: string): void;
   observedIds(): string[];
   observes(deviceId: string): boolean;

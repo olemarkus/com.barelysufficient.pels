@@ -3,7 +3,7 @@ import { getLogger } from '../../lib/logging/logger';
 import type { Logger } from '../../lib/utils/types';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices } from '../helpers/deviceTransportHarness';
-import { emitCapability } from '../helpers/liveFeedSocketHarness';
+import { emitCapability, emitDeviceUpdate, settleLiveFeed } from '../helpers/liveFeedSocketHarness';
 import { buildZaptecTargetPowerDevice } from '../helpers/zaptecDeviceFixture';
 import { mockHomeyInstance } from '../mocks/homey';
 import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
@@ -105,6 +105,73 @@ describe('Zaptec native target power', () => {
     expect(put.mock.calls).toEqual([
       [`manager/devices/device/${device.id}/capability/target_power`, pelsCapabilityWrite(2760)],
     ]);
+  });
+
+  describe('on an installation shared with another charger', () => {
+    // The app turns each watt target into the installation current, which every
+    // charger on the installation then takes, as the charging-current path does.
+    const onInstallation = (id: string, installationId: string) => buildZaptecTargetPowerDevice({
+      id, name: id, data: { id, installationId },
+    });
+    const ZAPTEC_ID = 'zaptec-target-power';
+    const shared = () => [buildZaptecTargetPowerDevice(), onInstallation('zaptec-second', 'zaptec-installation')];
+
+    it('is not offered watt stepping, so PELS neither claims its mode nor writes watts', async () => {
+      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
+      await seedTransportDevices(transport, shared());
+      const parsed = transport.getSnapshotByDeviceId(ZAPTEC_ID);
+
+      expect(parsed).toMatchObject({ binaryCapabilityId: 'evcharger_charging', isEvCharger: true });
+      expect(parsed?.steppedLoadProfile).toBeUndefined();
+      expect(parsed?.nativeWriteCapabilities).toBeUndefined();
+      expect(parsed?.capabilities).not.toContain('target_power');
+      const put = vi.fn().mockResolvedValue(undefined);
+      setRestClient({ get: vi.fn(), put });
+      await transport.requestBinaryControl(ZAPTEC_ID, true, vi.fn());
+      expect(put.mock.calls).toEqual([
+        [`manager/devices/device/${ZAPTEC_ID}/capability/evcharger_charging`, { value: true }],
+      ]);
+    });
+
+    it('steps a saved EV preset through the Flow, never as watts', async () => {
+      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {
+        settings: { getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase', max: 22080 }) },
+      });
+      await seedTransportDevices(transport, shared());
+      const profile = transport.getSnapshotByDeviceId(ZAPTEC_ID)?.steppedLoadProfile;
+      if (!profile) throw new Error('Expected the preset ladder');
+      const put = vi.fn().mockResolvedValue(undefined);
+      setRestClient({ get: vi.fn(), put });
+
+      await expect(transport.requestSteppedLoadStep({
+        deviceId: ZAPTEC_ID, profile, desiredStepId: '6a', planningPowerW: 4140, planningCurrentA: 6,
+      })).resolves.toEqual({ requested: false });
+      expect(put).not.toHaveBeenCalled();
+    });
+
+    it('keeps the full refresh\'s decision through a device update, until a refresh lists it alone', async () => {
+      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
+      await initWithLiveFeed(transport);
+      await seedTransportDevices(transport, shared());
+
+      emitDeviceUpdate(buildZaptecTargetPowerDevice());
+      await settleLiveFeed();
+      expect(transport.getSnapshotByDeviceId(ZAPTEC_ID)?.steppedLoadProfile).toBeUndefined();
+
+      await seedTransportDevices(transport, [buildZaptecTargetPowerDevice()]);
+      expect(transport.getSnapshotByDeviceId(ZAPTEC_ID)).toMatchObject({ nativeWriteCapabilities: ['target_power'] });
+    });
+
+    it('is offered watt stepping beside a charger on another installation', async () => {
+      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
+      await seedTransportDevices(transport, [
+        buildZaptecTargetPowerDevice(), onInstallation('zaptec-elsewhere', 'other-installation'),
+      ]);
+
+      expect(transport.getSnapshotByDeviceId(ZAPTEC_ID)).toMatchObject({
+        controlModel: 'stepped_load', nativeWriteCapabilities: ['target_power'],
+      });
+    });
   });
 
   it('does not claim Homey control when the requested watt limit fails', async () => {

@@ -15,7 +15,13 @@ capabilities instead of round-tripping through user-authored Flow cards.
   `target_power` and `target_power_mode`. PELS builds the native watt ladder
   from the device's runtime range, step and exclusion band. The driver owns
   phase selection and conversion to installation current; no PELS EV phase
-  preset is needed for this native watt path.
+  preset is needed for this native watt path. Because the app turns a watt
+  target into the installation current, a charger whose installation another
+  Zaptec shares is read without `target_power` and `target_power_mode`, as
+  built-in current control refuses such an installation: no mode takeover and
+  no watt steps, and the charger behaves as one without watt control. The
+  Zaptec session decides this from each full refresh's device list, and a
+  device update keeps the last decision (`lib/device/zaptec/session.ts`).
 - **Hoiax water heaters / generic `target_power` steppers**: native stepped
   control writes the step capability *directly*
   (`max_power_3000` / `max_power_2000` / `max_power`, plus `onoff` for the off

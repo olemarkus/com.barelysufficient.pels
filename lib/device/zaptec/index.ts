@@ -2,6 +2,7 @@ import type { DeviceAdapter } from '../deviceAdapter';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 import { applyNativeEvWiringOverlay, normalizeNativeEvCapabilityUpdate,
   buildNativeEvObservationCapabilityObj } from './charging';
+import { ZaptecInstallationSession, zaptecInstallationOf } from './session';
 
 export const zaptecAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
@@ -23,9 +24,9 @@ export const zaptecAdapter: DeviceAdapter = {
       appUri: 'homey:app:com.zaptec',
       actionId: match[1] === 'go' ? 'installation_current_control' : `${match[1]}_installation_current_control`,
       scope: { kind: 'installation', installationId },
-      sharesInstallation: (other) => other.driverId?.startsWith('homey:app:com.zaptec:') === true
-        && other.data?.installationId === installationId,
+      sharesInstallation: (other) => zaptecInstallationOf(other) === installationId,
       currentArguments: (currentA) => ({ current1: currentA, current2: currentA, current3: currentA }),
     }];
   },
+  createSession: () => new ZaptecInstallationSession(),
 };
