@@ -16,7 +16,10 @@
 // `publish` builds the settings UI and widgets, then runs `homey app publish`
 // headless (no version prompt, so no second bump) from a clean checkout of
 // origin/main whose version has its tag. The upload lands as a draft build in
-// the Homey developer dashboard, where it is promoted to Test and Live.
+// the Homey developer dashboard, where it is promoted to Test and Live. Athom
+// processes the upload after the CLI reports success and can still fail it
+// (build 251: `processing_failed`, "Bad Gateway"), so `publish` then waits for
+// the build to leave processing and fails unless it reached draft.
 //
 // `homey app version --commit` is not used: it builds its git commit through a
 // shell without escaping, so a straight double quote in the changelog breaks it.
@@ -26,14 +29,18 @@
 // rest; the hooks would only re-run checks origin/main has already passed.
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 
 const LEVELS = ["patch", "minor", "major"];
 const BUMP_FILES = ["app.json", ".homeycompose/app.json", ".homeychangelog.json"];
 const MERGE_POLL_MS = 30_000;
 const MERGE_TIMEOUT_MS = 90 * 60_000;
+const APP_ID = "com.barelysufficient.pels";
+const BUILD_POLL_MS = 10_000;
+const BUILD_TIMEOUT_MS = 10 * 60_000;
 
 const fail = (message) => {
   console.error(`release: ${message}`);
@@ -213,7 +220,7 @@ const finish = async () => {
   console.log(`\n${tag} is on origin/main and its tag is pushed. To publish: npm run release -- publish`);
 };
 
-const publish = () => {
+const publish = async () => {
   requireCleanTree();
   fetchOrigin();
   if (!succeeds("git", ["diff", "--quiet", "HEAD", "origin/main"])) fail("check out origin/main (or fast-forward main) before publishing");
@@ -228,7 +235,58 @@ const publish = () => {
   run("npm", ["run", "build:widgets"]);
   // Headless skips the version prompt (its default would bump again) and
   // fails rather than asking if the changelog entry is missing.
+  const uploadedAfterMs = Date.now();
   run("homey", ["app", "publish"], { env: { ...process.env, HOMEY_HEADLESS: "1" } });
+  await awaitBuildProcessed(version, uploadedAfterMs);
+};
+
+// The Homey CLI package, for its own login: Volta shims the binary, and the
+// package lives in Volta's image or beside the binary.
+const homeyCliDir = () => {
+  const bin = realpathSync(read("which", ["homey"]));
+  const candidates = [
+    join(homedir(), ".volta/tools/image/packages/homey/lib/node_modules/homey"),
+    resolve(dirname(bin), "..", "lib", "node_modules", "homey"),
+    resolve(dirname(bin), ".."),
+  ];
+  const found = candidates.find((dir) => existsSync(join(dir, "lib", "AthomApi.js")));
+  if (!found) fail(`the upload went through, but the Homey CLI package was not found from ${bin} to check its build`);
+  return found;
+};
+
+// Waits for Athom to finish processing the build this publish uploaded (the
+// newest build of `version` created after the upload began) and fails unless
+// it reached draft.
+const awaitBuildProcessed = async (version, uploadedAfterMs) => {
+  const cli = homeyCliDir();
+  const require = createRequire(join(cli, "package.json"));
+  const AthomApi = require(join(cli, "lib", "AthomApi.js"));
+  const { AthomAppsAPI } = require("homey-api");
+  const athom = typeof AthomApi === "function" ? new AthomApi() : AthomApi;
+  const apps = new AthomAppsAPI();
+  const deadline = Date.now() + BUILD_TIMEOUT_MS;
+  for (;;) {
+    const $token = await athom.createDelegationToken({ audience: "apps" });
+    const build = (await apps.getBuilds({ $token, appId: APP_ID }))
+      .filter((entry) => entry.version === version && Date.parse(entry.createdAt) >= uploadedAfterMs - 60_000)
+      .sort((a, b) => b.id - a.id)[0];
+    if (build && build.state !== "processing") {
+      if (build.state === "draft") {
+        console.log(`Build ${build.id} (${version}) processed and waits as a draft. Promote it at `
+          + `https://tools.developer.homey.app/apps/app/${APP_ID}/build/${build.id}`);
+        return;
+      }
+      fail(`build ${build.id} (${version}) ended ${build.state}${build.stateMeta ? ` (${build.stateMeta})` : ""}; `
+        + "run publish again to upload a new build");
+    }
+    if (Date.now() > deadline) {
+      fail(`build ${build ? build.id : "for " + version} is still ${build ? build.state : "not listed"} after `
+        + `${BUILD_TIMEOUT_MS / 60_000} min; check the developer dashboard`);
+    }
+    console.log(`${build ? `build ${build.id} is ${build.state}` : `no ${version} build listed yet`}; `
+      + `checking again in ${BUILD_POLL_MS / 1000} s`);
+    await sleep(BUILD_POLL_MS);
+  }
 };
 
 const [command, ...rest] = process.argv.slice(2);
@@ -238,7 +296,7 @@ if (command === "start") {
 } else if (command === "finish") {
   await finish();
 } else if (command === "publish") {
-  publish();
+  await publish();
 } else {
   fail("usage: npm run release -- start <patch|minor|major> <changelog-file> [--dry-run] | finish | publish");
 }
