@@ -1,19 +1,22 @@
 #!/usr/bin/env node
-// The SHS suite: PELS end to end on a Homey Self-Hosted Server, from a clean
-// install. Unlike the runtime e2e (`test/e2e/`), nothing here is a mock of
-// Homey: the scenarios pair test-devices mocks, set PELS up through the
-// settings keys and routes the settings UI uses, and read back what PELS does
-// to the devices and what it serves the UI.
+// PELS end to end on a real Homey, from a clean install. Unlike the runtime
+// e2e (`test/e2e/`), nothing here is a mock of Homey: the scenarios pair
+// test-devices mocks, set PELS up through the settings keys and routes the
+// settings UI uses, and read back what PELS does to the devices and what it
+// serves the UI.
 //
-//   npm run shs:e2e                        every scenario, after a clean install
-//   npm run shs:e2e -- --scenario drift-breaker
-//   npm run shs:e2e -- --skip-install      reuse the box as the last run left it
+//   npm run e2e:homey                        every scenario, after a clean install
+//   npm run e2e:homey -- --scenario drift-breaker
+//   npm run e2e:homey -- --skip-install      reuse the Homey as the last run left it
 //
-// It installs test-devices (`TEST_DEVICES_DIR`, default ~/dev/test-devices) and
-// then this checkout of PELS with `homey app install --clean`, so the box loses
-// every paired mock and all PELS settings: run it only on a box set aside for it.
-// `with-homey-shs2 npm run shs:e2e` targets the second box. A `homey app run` on
-// this machine that holds either app on the box is stopped first.
+// The Homey comes from the environment (`lab.mjs`, `resolveTarget`):
+// `PELS_E2E_HOMEY_HOME` is the Homey CLI home whose active Homey it is,
+// `PELS_E2E_HOMEY_URL` its local Web API, and `PELS_E2E_HOMEY_ID` must name
+// that same Homey. It installs test-devices (`TEST_DEVICES_DIR`, default
+// ~/dev/test-devices) and then this checkout of PELS with
+// `homey app install --clean`, so the Homey loses every paired mock and all
+// PELS settings: point it only at a Homey set aside for it. A `homey app run`
+// on this machine that holds either app on that Homey is stopped first.
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -25,8 +28,9 @@ import {
   createHomeyApi,
   createPels,
   installClean,
-  resolveBox,
+  resolveTarget,
   stopRunSessions,
+  verifyTarget,
 } from './lab.mjs';
 import { driftBreaker } from './scenarios/driftBreaker.mjs';
 
@@ -49,15 +53,16 @@ const main = async () => {
   if (scenarios.length === 0) {
     throw new Error(`No scenario "${args.scenario}"; known: ${SCENARIOS.map(({ name }) => name).join(', ')}`);
   }
-  const box = resolveBox();
+  const box = resolveTarget();
   const api = createHomeyApi(box);
+  await verifyTarget(box, api);
   const pels = createPels(api);
-  console.log(`SHS suite on ${box.name} (${box.id}), port ${box.port}`);
+  console.log(`e2e on ${box.name} (${box.id}) at ${box.url}`);
 
   if (!args.skipInstall) {
     for (const appId of [TEST_DEVICES_APP_ID, PELS_APP_ID]) {
       for (const { pid, cwd } of await stopRunSessions(box, appId)) {
-        console.log(`stopped homey app run ${pid} (${cwd}), which held ${appId} on this box`);
+        console.log(`stopped homey app run ${pid} (${cwd}), which held ${appId} on this Homey`);
       }
     }
     console.log(`installing test-devices ${commitOf(TEST_DEVICES_DIR)} with --clean`);

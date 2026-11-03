@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Resolves a short Homey identifier for log filenames so concurrent
 // `npm start` runs against different Homeys don't clobber each other.
-// Reads the same config the Homey CLI reads: $HOMEY_HOME if set
-// (the `with-homey-shs` wrapper sets this), else ~/.athom-cli.
+// Reads the same config the Homey CLI reads: $HOMEY_HOME if set, else
+// ~/.athom-cli.
 
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";

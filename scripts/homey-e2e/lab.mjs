@@ -1,15 +1,14 @@
-// The Homey Self-Hosted Server the SHS suite runs on, and what the suite does
-// to it: install PELS and test-devices from scratch, pair the mocks a scenario
-// needs, and set PELS up the way the settings UI does.
+// The Homey the e2e suite runs on, and what the suite does to it: install PELS
+// and test-devices from scratch, pair the mocks a scenario needs, and set PELS
+// up the way the settings UI does.
 //
-// Only a self-hosted server is ever touched. The box is the active Homey of the
-// SHS CLI store (`HOMEY_SHS_HOME`, default `~/.athom-cli-shs`; `with-homey-shs2`
-// selects the second box), and the suite refuses any Homey whose name does not
-// say it is self-hosted, so it cannot reach the production Homey Pro that the
-// default `~/.athom-cli` store points at.
+// The Homey comes from the environment, never from a default: a clean install
+// deletes every paired mock and all PELS settings, so the suite only touches a
+// Homey it was explicitly pointed at.
 import { execFileSync, spawn } from 'node:child_process';
-import { readFileSync, readdirSync, readlinkSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, readlinkSync } from 'node:fs';
 import http from 'node:http';
+import https from 'node:https';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -18,30 +17,54 @@ export const TEST_DEVICES_APP_ID = 'com.olemarkus.testdevices';
 
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
-/** The box from the SHS CLI store, or a refusal when the store's active Homey is not a self-hosted server. */
-export const resolveBox = () => {
-  const store = process.env.HOMEY_SHS_HOME || join(homedir(), '.athom-cli-shs');
-  const settings = JSON.parse(readFileSync(join(store, 'settings.json'), 'utf8'));
-  const active = settings.activeHomey ?? {};
-  const name = String(active.name ?? '');
-  if ((active.platform && active.platform !== 'local') || !/self[-\s]?hosted/i.test(name)) {
-    throw new Error(`Refusing: the active Homey in ${store} is "${name}" (${active.id}), not a self-hosted server.`);
-  }
-  const token = settings.homeyApi?.[`homey-${active.id}`]?.token;
-  if (!token) throw new Error(`No API token for ${active.id} in ${store}; log in to the box with the Homey CLI first.`);
-  return { store, id: active.id, name, token, port: Number(process.env.SHS_API_PORT) || 4859 };
+const requireEnv = (name, meaning) => {
+  const value = process.env[name];
+  if (!value) throw new Error(`Set ${name} to ${meaning}.`);
+  return value;
 };
 
-/** The Homey Web API on the box, over loopback. */
+/**
+ * The Homey to run on: the active Homey of the Homey CLI home in
+ * `PELS_E2E_HOMEY_HOME`, reached at `PELS_E2E_HOMEY_URL`. `PELS_E2E_HOMEY_ID`
+ * must name that same Homey, so a CLI home that has moved on to another Homey
+ * is refused rather than wiped.
+ */
+export const resolveTarget = () => {
+  const store = requireEnv('PELS_E2E_HOMEY_HOME', 'the Homey CLI home whose active Homey the suite may wipe');
+  const url = new URL(requireEnv('PELS_E2E_HOMEY_URL', "that Homey's local Web API, such as http://192.168.1.20"));
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`PELS_E2E_HOMEY_URL must be an http or https URL, not ${url.protocol}`);
+  }
+  const expectedId = requireEnv('PELS_E2E_HOMEY_ID', 'the id of the Homey the suite may wipe');
+  const settings = JSON.parse(readFileSync(join(store, 'settings.json'), 'utf8'));
+  const active = settings.activeHomey ?? {};
+  if (active.id !== expectedId) {
+    throw new Error(`Refusing: the active Homey in ${store} is "${active.name}" (${active.id}), not ${expectedId}.`);
+  }
+  const token = settings.homeyApi?.[`homey-${active.id}`]?.token;
+  if (!token) throw new Error(`No API token for ${active.id} in ${store}; log in to it with the Homey CLI first.`);
+  return { store, id: active.id, name: String(active.name ?? active.id), token, url };
+};
+
+/**
+ * Refuse unless the Web API at the target's URL is the CLI home's Homey: the
+ * clean install goes through the CLI, the scenarios through the Web API, and
+ * the two must be one Homey before anything is wiped.
+ */
+export const verifyTarget = async (box, api) => {
+  const { cloudId } = await api.get('/api/manager/system/');
+  if (cloudId !== box.id) {
+    throw new Error(`Refusing: ${box.url} is Homey ${cloudId}, not ${box.id} from PELS_E2E_HOMEY_HOME.`);
+  }
+};
+
+/** The Homey Web API at the target's URL. */
 export const createHomeyApi = (box) => {
+  const transport = box.url.protocol === 'https:' ? https : http;
   const request = (method, path, body) => new Promise((resolve, reject) => {
     const payload = body === undefined ? null : JSON.stringify(body);
-    const req = http.request({
-      host: '127.0.0.1',
-      port: box.port,
-      path,
+    const req = transport.request(new URL(path, box.url), {
       method,
-      family: 4,
       headers: {
         Authorization: `Bearer ${box.token}`,
         ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {}),
@@ -102,12 +125,15 @@ const appIdAt = (dir) => {
 };
 
 /**
- * Stop every `homey app run` on this machine that holds `appId` on this box.
+ * Stop every `homey app run` on this machine that holds `appId` on this Homey.
  * A run session uninstalls its app when it exits, so one left running would
  * pull the app out from under the suite whenever it ends. SIGINT is Ctrl-C:
  * the session uninstalls its app and exits.
  */
 export const stopRunSessions = async (box, appId) => {
+  if (!existsSync('/proc')) {
+    throw new Error('Finding `homey app run` sessions needs /proc (Linux); stop them by hand and pass --skip-install.');
+  }
   const stopped = [];
   for (const entry of readdirSync('/proc')) {
     if (!/^\d+$/.test(entry)) continue;
