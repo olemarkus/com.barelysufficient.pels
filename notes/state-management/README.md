@@ -107,15 +107,16 @@ Executor boundary:
 - `lib/executor` owns desired-state execution: compare observed current state with desired state,
   issue semantic requests through `lib/actuator/`, and handle pending, retry, wait, skip, and
   materialization behavior. The actuator is the sole managed-device write seam into transport.
-- `ExecutablePlan` is the executor-facing intent set. It contains `ExecutableDeviceIntent`
-  entries, not broad `DevicePlanDevice` wrappers and not current observed state.
+- `ExecutionPlan` (`lib/planContract/executionPlan.ts`) is the executor-facing decision set. Its
+  entries carry `PlannedDeviceCommands`, not broad `DevicePlanDevice` wrappers and not current
+  observed state.
 - Executable intents should be commandable, not partially inferred planner snapshots. For example,
   a stepped `set_step` intent should carry a concrete requested step or be represented as
   non-executable / blocked before it reaches drift or dispatch code.
 - `ExecutableObservedDeviceState` is the executor-facing observed state, one per device. One builder
   (`buildExecutableObservedDeviceState`) makes it from accepted Observer records joined with device
   configuration, not planner-carried current fields.
-- Executor dispatch reconciles `ExecutableDeviceIntent` with `ExecutableObservedDeviceState`.
+- Executor dispatch reconciles `PlannedDeviceCommands` with `ExecutableObservedDeviceState`.
   Re-reading observer state after awaited work is valid; carrying old current fields forward in
   executable intent is not.
 - Binary command de-duplication compares intent with one strict command-equivalence bit
