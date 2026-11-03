@@ -40,16 +40,18 @@ export class HeatingShadowCollector {
 
   constructor(
     private readonly store: HeatingShadowStore,
-    /** Main's devices, joined with their accepted observations. */
-    private readonly getDevices: () => readonly DeviceSurfaces[],
     private readonly getThermalDirection: (deviceId: string) => ThermalDirection,
     private readonly getTimeZone: () => string,
     /** The held outdoor temperature; `undefined` when unavailable or stale. */
     private readonly getOutdoorTemperatureC: () => number | undefined,
   ) {}
 
-  /** One accepted Main meter sample. Never throws: collection cannot interrupt ingest. */
-  record(nowMs: number): void {
+  /**
+   * One accepted Main meter sample, with Main's devices joined with their
+   * accepted observations as the sample pipeline resolved them. Never throws:
+   * collection cannot interrupt ingest.
+   */
+  record(devices: readonly DeviceSurfaces[], nowMs: number): void {
     // A clock set back is due at once, so it cannot hold checkpoints off until it catches up.
     const due = nowMs - this.checkpointAttemptAtMs >= HEATING_SHADOW_CHECKPOINT_MS
       || nowMs < this.checkpointAttemptAtMs;
@@ -57,7 +59,7 @@ export class HeatingShadowCollector {
       this.checkpointAttemptAtMs = nowMs;
       if (!this.hydrated) this.tryStore('heating_shadow_read_failed', () => this.hydrate());
     }
-    this.collect(nowMs);
+    this.collect(devices, nowMs);
     const { state } = this;
     if (due && this.hydrated && state) this.tryStore('heating_shadow_persist_failed', () => this.store.save(state));
   }
@@ -78,9 +80,9 @@ export class HeatingShadowCollector {
     this.state = this.state === undefined ? stored : mergeHeatingShadowHistory(this.state, stored);
   }
 
-  private collect(nowMs: number): void {
+  private collect(devices: readonly DeviceSurfaces[], nowMs: number): void {
     try {
-      const observed = observeHeatingShadowDevices(this.getDevices(), nowMs, this.getThermalDirection);
+      const observed = observeHeatingShadowDevices(devices, nowMs, this.getThermalDirection);
       if (observed.length === 0 && this.state === undefined) return;
       this.state = recordHeatingShadow(this.state, observed, nowMs, this.getOutdoorTemperatureC(), this.getTimeZone());
     } catch {
@@ -102,10 +104,9 @@ export class HeatingShadowCollector {
 /** Main's collector, on the userdata database once it is open; built before it opens. */
 export const createMainHeatingShadowCollector = (
   getDatabase: () => UserdataDatabase,
-  getDevices: () => readonly DeviceSurfaces[],
   getThermalDirection: (deviceId: string) => ThermalDirection,
   getTimeZone: () => string,
   getOutdoorTemperatureC: () => number | undefined,
 ): HeatingShadowCollector => new HeatingShadowCollector(
-  createDeferredHeatingShadowStore(getDatabase), getDevices, getThermalDirection, getTimeZone, getOutdoorTemperatureC,
+  createDeferredHeatingShadowStore(getDatabase), getThermalDirection, getTimeZone, getOutdoorTemperatureC,
 );

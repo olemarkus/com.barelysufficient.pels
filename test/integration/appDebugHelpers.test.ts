@@ -78,20 +78,18 @@ describe('appDebugHelpers', () => {
     capture.restore();
   });
 
-  it('routes Homey device list failures to app error', async () => {
+  it('logs a failed Homey device list as a structured event and answers none', async () => {
     const app = {
       deviceManager: {
         getDevicesForDebug: vi.fn().mockRejectedValue({ reason: 'boom' }),
         getZoneTree: vi.fn(() => null),
       },
-      error: vi.fn(),
-      log: vi.fn(),
     };
 
     await expect(listHomeyDevicesFromApp(app as never)).resolves.toEqual([]);
-    expect(app.error).toHaveBeenCalledWith('Failed to list Homey devices', expect.any(Error));
-    expect((app.error.mock.calls[0]?.[1] as Error).message).toBe('{"reason":"boom"}');
-    expect(app.log).not.toHaveBeenCalled();
+    expect(capture.findEvents('homey_device_list_failed')).toEqual([
+      expect.objectContaining({ level: 50, err: expect.objectContaining({ message: '{"reason":"boom"}' }) }),
+    ]);
   });
 
   it('keeps sensor-class meters of either item type, dropping appliances', async () => {

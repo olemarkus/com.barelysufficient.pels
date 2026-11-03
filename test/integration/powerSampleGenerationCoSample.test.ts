@@ -26,13 +26,14 @@ import { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import { OvershootIncident } from '../../lib/plan/overshootIncident';
 import type { GenerationSegment } from '../../lib/power/trackerTypes';
+import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 
 const T0 = Date.parse('2026-07-27T10:00:00Z');
 
 type Taps = {
   curtailment: ReturnType<typeof vi.fn<(netW: number, generationW: number | undefined, nowMs: number) => void>>;
   pvForecast: ReturnType<typeof vi.fn<(generationW: number | undefined, nowMs: number, netW?: number) => void>>;
-  heating: ReturnType<typeof vi.fn<(nowMs: number) => void>>;
+  heating: ReturnType<typeof vi.fn<(devices: readonly DeviceSurfaces[], nowMs: number) => void>>;
 };
 
 const buildPipeline = (
@@ -43,7 +44,7 @@ const buildPipeline = (
   const taps: Taps = {
     curtailment: vi.fn<(netW: number, generationW: number | undefined, nowMs: number) => void>(),
     pvForecast: vi.fn<(generationW: number | undefined, nowMs: number, netW?: number) => void>(),
-    heating: vi.fn<(nowMs: number) => void>(),
+    heating: vi.fn<(devices: readonly DeviceSurfaces[], nowMs: number) => void>(),
   };
   // The scheduler stub executes every accepted intent at once by calling back
   // into the throttle, so the ingest path settles like production.
@@ -188,12 +189,12 @@ describe('PowerSamplePipeline generation co-sampling', () => {
 });
 
 describe('PowerSamplePipeline heating observations tap', () => {
-  it('hands each ingested sample its own call, apart from the tracker and objective learning', async () => {
+  it('hands each ingested sample and the home\'s devices its own call, apart from the tracker', async () => {
     const { pipeline, taps, getTracker } = buildPipeline(undefined);
     await pipeline.recordPowerSample(1_500, T0);
     await pipeline.recordPowerSample(1_500, T0 + 10_000);
 
-    expect(taps.heating.mock.calls).toEqual([[T0], [T0 + 10_000]]);
+    expect(taps.heating.mock.calls).toEqual([[[], T0], [[], T0 + 10_000]]);
     expect(getTracker().lastTimestamp).toBe(T0 + 10_000);
   });
 });

@@ -35,6 +35,7 @@ import {
 } from './appDebugCompaction';
 
 const debugLogger = getLogger('devices/debug-dump');
+const inventoryLogger = getLogger('devices/inventory');
 
 const getRawManagerDeviceEntry = async (params: {
   deviceId: string;
@@ -64,11 +65,11 @@ export async function getHomeyDevicesForDebug(params: {
 
 /** Every Homey device with its zone name, for the full-inventory pickers (`homey_devices`). */
 export async function listHomeyDevicesFromApp(
-  app: Pick<AppContext, 'deviceManager' | 'error'>,
+  app: Pick<AppContext, 'deviceManager'>,
 ): Promise<HomeyDeviceListEntry[]> {
   if (!app.deviceManager) return [];
   return readHomeyDeviceList(app.deviceManager).catch((err) => {
-    app.error('Failed to list Homey devices', normalizeError(err));
+    inventoryLogger.error({ event: 'homey_device_list_failed', err: normalizeError(err) });
     return [];
   });
 }

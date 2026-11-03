@@ -85,9 +85,10 @@ export type PowerSamplePipelineDeps = {
   recordBatteryDemandSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
   /**
    * Main meter tap for the passive heating observations the daily report carries
-   * (`lib/diagnostics/heatingShadowCollector.ts`); meter areas omit it.
+   * (`lib/diagnostics/heatingShadowCollector.ts`), handed this home's devices as
+   * `getDeviceSurfaces` resolves them; meter areas omit it.
    */
-  recordHeatingObservations?: (nowMs: number) => void;
+  recordHeatingObservations?: (devices: readonly DeviceSurfaces[], nowMs: number) => void;
   /**
    * Publish the identity of the meter an INGESTED whole-home sample came from
    * (multi-home: membership's sampled-meter ownership fence). Called only after
@@ -286,7 +287,9 @@ export class PowerSamplePipeline {
     // contract (it trains on hourly buckets) and takes the merged value.
     this.deps.recordCurtailmentSample?.(currentPowerW, request.coTemporalGenerationW, nowMs);
     this.deps.recordBatteryDemandSample?.(currentPowerW, generationW, nowMs);
-    this.deps.recordHeatingObservations?.(nowMs);
+    if (this.deps.recordHeatingObservations) {
+      this.deps.recordHeatingObservations(this.deps.getDeviceSurfaces(), nowMs);
+    }
     const powerTracker = this.deps.getPowerTracker();
     const previousSampleTs = powerTracker.lastTimestamp;
     try {
