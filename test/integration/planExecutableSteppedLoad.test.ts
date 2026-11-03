@@ -10,7 +10,7 @@ import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';
 import { isBinaryDrivenIntent } from '../../lib/executor/executableDesiredState';
 import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import { steppedPlanDevice } from '../utils/planTestUtils';
+import { steppedPlanDevice, steppedProfile } from '../utils/planTestUtils';
 import { PRIOR_STEP_COMMAND_SESSION } from '../helpers/executorCommandContext';
 
 const buildObservedState = (
@@ -174,6 +174,51 @@ describe('planExecutableSteppedLoad', () => {
 
     expect(action?.current.on).toBe(false);
     expect(action?.stepActuation.materialization.kind).toBe('not_materialized');
+  });
+
+  // An EV target-power probe commands a rung that only the planner's profile
+  // holds (the producer's confirmed ladder excludes it). The executor reads the
+  // planner's profile, so the probe's own command is tracked like any rung's:
+  // in flight it suppresses a re-issue, and once acknowledged while the device
+  // is trusted off it is the restore-preparation evidence.
+  const PROBE_PROFILE = {
+    steps: [
+      { id: 'off', planningPowerW: 0 },
+      { id: 'probe', planningPowerW: 900 },
+      ...steppedProfile.steps.filter((step) => step.id !== 'off'),
+    ],
+  };
+
+  it('holds a re-issue while the planner-only probe rung\'s command is in flight', () => {
+    const intent = buildExecutableSteppedLoadIntent(steppedPlanDevice({
+      steppedLoadProfile: PROBE_PROFILE,
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'probe',
+      lastDesiredStepId: 'probe',
+      stepCommandPending: true,
+    }));
+
+    expect(intent?.matchingCommandAttempt).toEqual({ status: 'awaiting_confirmation', requestedStepId: 'probe' });
+  });
+
+  it('materializes an acknowledged planner-only probe rung while the device is off', () => {
+    const action = buildAction(steppedPlanDevice({
+      steppedLoadProfile: PROBE_PROFILE,
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'probe',
+      desiredStepId: 'probe',
+      lastDesiredStepId: 'probe',
+      stepCommandStatus: 'success',
+    }));
+
+    expect(action?.stepActuation).toEqual({
+      kind: 'requested',
+      requestedStepId: 'probe',
+      materialization: { kind: 'materialized', stepId: 'probe', source: 'confirmed_command' },
+    });
   });
 
   it('confirms nothing when a success cannot be tied to its commanded step', () => {

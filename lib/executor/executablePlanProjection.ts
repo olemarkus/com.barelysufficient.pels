@@ -101,6 +101,9 @@ export function materializeExecutableDeviceIntent(
       ),
       stepCommandRetryCount: command?.retryCount ?? 0,
       nextStepCommandRetryAtMs: command?.nextRetryAtMs,
+      // The command's own step, read against the planner's profile, which also
+      // holds a planner-only EV probe rung: an acknowledged probe confirms the
+      // rung it commanded, as any rung's command does.
       confirmedCommandStepId: command?.status === 'success' ? command.stepId : undefined,
     },
   };
