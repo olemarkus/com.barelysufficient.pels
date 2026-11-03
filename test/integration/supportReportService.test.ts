@@ -45,7 +45,7 @@ describe('manual support reporting', () => {
     expect(delivery.send).not.toHaveBeenCalled();
     const result = report(await service.send(preview.document.id, { consent: true }));
     expect(delivery.send).toHaveBeenCalledExactlyOnceWith(message);
-    expect(source.capture).toHaveBeenCalledTimes(1);
+    expect(source.capture).toHaveBeenCalledExactlyOnceWith(request, now, 'owner');
     expect(result.document.subjectName).toBe('Hall heater');
     expect(result.submission).toEqual({ state: 'sent', reference: 'homey-reference' });
     expect(message).toContain(`END PELS REPORT ${preview.document.id}`);
@@ -135,10 +135,40 @@ describe('manual support reporting', () => {
     const sent = report(await service.sendDaily(() => true));
     expect(source.capture).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       subject: { kind: 'app', homeId: 'main' }, historyWindow: 'day', occurredAtMs: now,
-    }), now);
+    }), now, 'daily');
     expect(sent.document.trigger).toBe('daily');
     expect(sent.submission).toEqual({ state: 'sent', reference: 'homey-reference' });
     expect(delivery.send).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('"trigger":"daily"'));
+  });
+
+  it('omits optional heating evidence before it can block an ordinary daily report', async () => {
+    const live = evidence();
+    live.sections = [
+      { title: 'Ordinary evidence', values: { text: 'x'.repeat(SUPPORT_REPORT_MAX_BYTES - 10_000) } },
+      { title: 'Daily heating observations', values: { text: 'x'.repeat(20_000) } },
+    ];
+    const delivery = transport();
+    const service = new SupportReportService({ capture: async () => live }, delivery);
+    const sent = report(await service.sendDaily(() => true));
+    expect(sent.document.sections.map((section) => section.title)).toEqual(['Ordinary evidence']);
+    expect(sent.document.omissions).toContain('Daily heating observations was left out to fit the report size limit.');
+    expect(Buffer.byteLength(sent.message, 'utf8')).toBeLessThanOrEqual(SUPPORT_REPORT_MAX_BYTES);
+    expect(delivery.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a daily report deliverable even when the new omission notice cannot fit', async () => {
+    const live = evidence();
+    live.sections = [{ title: 'Ordinary evidence', values: { text: '' } }];
+    const baseline = report(await new SupportReportService({ capture: async () => live }, transport()).sendDaily(() => true));
+    const freeBytes = SUPPORT_REPORT_MAX_BYTES - Buffer.byteLength(baseline.message, 'utf8') - 1;
+    live.sections = [
+      { title: 'Ordinary evidence', values: { text: 'x'.repeat(freeBytes) } },
+      { title: 'Daily heating observations', values: { text: 'optional' } },
+    ];
+    const sent = report(await new SupportReportService({ capture: async () => live }, transport()).sendDaily(() => true));
+    expect(sent.document.sections).toHaveLength(1);
+    expect(Buffer.byteLength(sent.message, 'utf8')).toBe(SUPPORT_REPORT_MAX_BYTES - 1);
+    expect(sent.submission.state).toBe('sent');
   });
 
   it('sends a report on an event as asked, named as such, and trims its activity like the daily one', async () => {
@@ -154,7 +184,7 @@ describe('manual support reporting', () => {
     const source = { capture: vi.fn(async () => live) };
     const service = new SupportReportService(source, delivery);
     const sent = report(await service.sendOnEvent(request, () => true));
-    expect(source.capture).toHaveBeenCalledExactlyOnceWith(request, now);
+    expect(source.capture).toHaveBeenCalledExactlyOnceWith(request, now, 'event');
     expect(sent.document.trigger).toBe('event');
     expect(sent.document.activity.state === 'available' && sent.document.activity.leftOutForSize).toBeGreaterThan(0);
     expect(delivery.send).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('"trigger":"event"'));

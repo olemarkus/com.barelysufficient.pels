@@ -8,9 +8,12 @@ import { getLogger } from '../logging/logger';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { SupportReportTransport } from './homeyReportTransport';
 import { readSupportReportRequest, SupportReportInputError } from './supportReportInput';
+import { HEATING_SHADOW_REPORT_TITLE } from './heatingShadowReport';
 
 type EvidenceSource = {
-  capture(request: SupportReportRequest, capturedAtMs: number): Promise<SupportReportEvidence>;
+  capture(
+    request: SupportReportRequest, capturedAtMs: number, trigger?: SupportReportTrigger,
+  ): Promise<SupportReportEvidence>;
 };
 
 const TTL_MS = 15 * 60_000;
@@ -56,6 +59,16 @@ const countToLeaveOut = (items: readonly unknown[], excessBytes: number): number
 const fitToSize = (document: SupportReportDocument): FittedMessage | null => {
   const whole = toMessage(document);
   if (whole.bytes <= SUPPORT_REPORT_MAX_BYTES) return { ...whole, document };
+  if (document.trigger === 'daily'
+    && document.sections.some((section) => section.title === HEATING_SHADOW_REPORT_TITLE)) {
+    // Optional profiling never displaces the ordinary daily report.
+    const ordinary = { ...document,
+      sections: document.sections.filter((section) => section.title !== HEATING_SHADOW_REPORT_TITLE),
+    };
+    return fitToSize({ ...ordinary,
+      omissions: [...document.omissions, 'Daily heating observations was left out to fit the report size limit.'],
+    }) ?? fitToSize(ordinary);
+  }
   const { log, activity } = document;
   // Log lines are oldest first, activity newest first.
   const logLines = log.state === 'available' ? log.lines : [];
@@ -146,7 +159,7 @@ export class SupportReportService {
     this.prune();
     try {
       const capturedAtMs = Date.now();
-      const evidence = await this.source.capture(request, capturedAtMs);
+      const evidence = await this.source.capture(request, capturedAtMs, trigger);
       const fitted = fitToSize({ ...evidence, version: 1, id: randomUUID(), capturedAtMs, request, trigger });
       if (!fitted) return { ok: false, code: 'report_too_large' };
       const { document, json, message, bytes } = fitted;

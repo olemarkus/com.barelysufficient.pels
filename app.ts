@@ -8,6 +8,7 @@ import type {
 } from './packages/contracts/src/continuousBatteryPlan';
 import { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } from './packages/shared-domain/src/settings/continuousBatteryPlan';
 import Homey from 'homey';
+import { readHeatingShadowDaily as projectHeatingShadowDaily } from './lib/diagnostics/heatingShadowReport';
 import type { LearnedPeaksByDeviceId } from './lib/device/devicePowerPeak';
 import type { DeviceExpectedPowerOverrides } from './packages/contracts/src/types';
 import type CapacityGuard from './lib/power/capacityGuard';
@@ -115,6 +116,9 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   public startupBootstrap?: StartupBootstrapConfig;
   public get powerTracker(): PowerTrackerState { return this.mainTracker.getState(); }
   public set powerTracker(value: PowerTrackerState) { this.mainTracker.adopt(value); }
+  public readHeatingShadowDaily(capturedAtMs: number) {
+    return projectHeatingShadowDaily(this.powerTracker, capturedAtMs, this.getTimeZone());
+  }
   public resetMainPowerTrackerFreshness(): void { this.mainTracker.resetFreshness(); }
   public capacityGuard!: CapacityGuard;
   public readonly planStatuses: PlanStatusRegistry = createPlanStatusRegistry();

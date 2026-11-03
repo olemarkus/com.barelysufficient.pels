@@ -76,6 +76,38 @@ const values = (report: SupportReportEvidence, title: string) => (
   report.sections.find((section) => section.title === title)?.values
 );
 
+describe('daily heating observations', () => {
+  const appRequest: SupportReportRequest = { ...request, subject: { kind: 'app', homeId: 'main' }, historyWindow: 'day' };
+
+  it('reads the section only for an actual daily Main app report', async () => {
+    const section = { title: 'Daily heating observations', values: { schemaVersion: 1, dateKey: '2026-10-22' } };
+    const host = currentHost();
+    const read = vi.fn(() => section);
+    host.readHeatingShadowDaily = read;
+    const capture = source(host);
+    expect(values(await capture.capture(appRequest, now, 'daily'), section.title)).toEqual(section.values);
+    expect(read).toHaveBeenCalledExactlyOnceWith(now);
+    read.mockClear();
+    for (const trigger of ['owner', 'event'] as const) {
+      expect(values(await capture.capture(appRequest, now, trigger), section.title)).toBeUndefined();
+    }
+    expect(values(await capture.capture(request, now, 'daily'), section.title)).toBeUndefined();
+    const cabin = { ...appRequest, subject: { kind: 'app' as const, homeId: 'cabin' } };
+    expect(values(await capture.capture(cabin, now, 'daily'), section.title)).toBeUndefined();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('records missing or failed passive reads as omissions without failing the report', async () => {
+    const host = currentHost();
+    for (const read of [() => undefined, () => { throw new Error('private error'); }]) {
+      host.readHeatingShadowDaily = read;
+      const report = await source(host).capture(appRequest, now, 'daily');
+      expect(report.omissions).toContain('Daily heating observations is unavailable.');
+      expect(JSON.stringify(report)).not.toContain('private error');
+    }
+  });
+});
+
 describe('support report evidence capture', () => {
   it('separates current observations, current plan, and retained incident activity without refreshes', async () => {
     const host = currentHost();
