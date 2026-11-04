@@ -85,12 +85,29 @@ describe.each(['full read', 'device.update'] as const)('Zaptec Automatic setting
     })).toEqual({ requested: false });
     expect(put).not.toHaveBeenCalled();
 
+    expect(await transport.requestSteppedLoadStep({
+      deviceId: ID, profile, desiredStepId: `${change.firstW}w`, planningPowerW: change.firstW, planningCurrentA: 0,
+    })).toEqual({ requested: false });
+    expect(put).toHaveBeenCalledExactlyOnceWith(
+      `manager/devices/device/${ID}/capability/evcharger_charging`, pelsCapabilityWrite(false),
+    );
+    put.mockClear();
+    vi.setSystemTime(Date.now() + 30_000);
+    const stopped = buildZaptecTargetPowerDevice({ ...updated, capabilitiesObj: {
+      ...updated.capabilitiesObj,
+      evcharger_charging: { value: false, setable: true, lastUpdated: new Date().toISOString() },
+      evcharger_charging_state: { value: 'plugged_in_paused', lastUpdated: new Date().toISOString() },
+      measure_power: { value: 0, lastUpdated: new Date().toISOString() },
+    } });
+    await seedTransportDevices(transport, [stopped]);
     await transport.requestSteppedLoadStep({
       deviceId: ID, profile, desiredStepId: `${change.firstW}w`, planningPowerW: change.firstW, planningCurrentA: 0,
     });
-    expect(put).toHaveBeenCalledExactlyOnceWith(
-      `manager/devices/device/${ID}/capability/target_power`, pelsCapabilityWrite(change.firstW),
-    );
+    expect(put.mock.calls).toEqual([
+      [`manager/devices/device/${ID}/capability/target_power_mode`, pelsCapabilityWrite('device')],
+      [`manager/devices/device/${ID}/capability/target_power`, pelsCapabilityWrite(change.firstW)],
+      [`manager/devices/device/${ID}/capability/target_power_mode`, pelsCapabilityWrite('homey')],
+    ]);
     vi.setSystemTime(Date.now() + 30_000);
     await emitCapability(ID, 'target_power', change.firstW);
     expect(transport.getSnapshotByDeviceId(ID)?.reportedStepId).toBe(`${change.firstW}w`);

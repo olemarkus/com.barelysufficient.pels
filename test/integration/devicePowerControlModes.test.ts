@@ -43,6 +43,16 @@ describe('device power-control choice', () => {
     expect(settings.resolveDevicePowerControlMode('charger', false)).toBe('manual');
   });
 
+  it('keeps a malformed authored entry Manual while adopting valid sibling configurations', () => {
+    const { settings } = fixture([[DEVICE_TARGET_POWER_CONFIGS, {
+      charger: { enabled: true, max: 4000, step: 0 },
+      ' other ': { enabled: true, preset: 'ev_charger_1_phase' },
+    }]]);
+    expect(settings.resolveDevicePowerControlMode('charger', false)).toBe('manual');
+    expect(settings.getDeviceTargetPowerConfig('other')?.preset).toBe('ev_charger_1_phase');
+    expect(settings.resolveDevicePowerControlMode('new-charger', false)).toBe('automatic');
+  });
+
   it.each([false, true])('preserves an existing native-control choice %s until Automatic is selected', (enabled) => {
     const { settings, values } = fixture([[NATIVE_EV_WIRING_DEVICES, { charger: enabled }]]);
     expect(settings.resolveDevicePowerControlMode('charger', false)).toBe('manual');

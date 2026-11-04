@@ -236,8 +236,7 @@ export class DeviceTransport {
                 const health = this.deviceSdk.getHealth();
                 return { connected: health?.subscriptionState === 'subscribed', revision: health?.reconnectCount ?? 0 };
             },
-            options.acceptedFlowWrites,
-            options.settings,
+            options.acceptedFlowWrites, options.settings,
         );
         // Roles and saved current choices are resolved by their owning services.
         this.sources = createDeviceParseSources(options, this, this.chargingCurrentControl);

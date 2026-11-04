@@ -20,6 +20,15 @@ function positiveSetting(value: unknown): number | undefined {
   return typeof number === 'number' && Number.isFinite(number) && number > 0 ? number : undefined;
 }
 
+function resolveCurrentMaximum(device: HomeyDeviceLike, declaredMax: number): number | undefined {
+  return ['maxChargerCurrent', 'circuitFuse'].reduce<number | undefined>((maximum, key) => {
+    const raw = device.settings?.[key];
+    if (raw === undefined || raw === null || raw === '') return maximum;
+    const limit = positiveSetting(raw);
+    return maximum === undefined || limit === undefined ? undefined : Math.min(maximum, limit);
+  }, declaredMax);
+}
+
 export function resolveEaseeAutomaticProfile(
   device: HomeyDeviceLike, values: DeviceCapabilityMap,
 ): SteppedLoadProfile | undefined {
@@ -28,15 +37,9 @@ export function resolveEaseeAutomaticProfile(
   const declaredMax = positiveSetting(current?.max);
   if (wattsPerAmp === undefined || declaredMax === undefined || current?.setable !== true) return undefined;
   if (typeof current.min === 'number' && current.min > 0) return undefined;
-  const limits = [declaredMax];
-  for (const key of ['maxChargerCurrent', 'circuitFuse']) {
-    const raw = device.settings?.[key];
-    if (raw === undefined || raw === null || raw === '') continue;
-    const limit = positiveSetting(raw);
-    if (limit === undefined) return undefined;
-    limits.push(limit);
-  }
-  const max = Math.floor(Math.min(...limits));
+  const maximum = resolveCurrentMaximum(device, declaredMax);
+  if (maximum === undefined) return undefined;
+  const max = Math.floor(maximum);
   const step = current.step === undefined ? 1 : positiveSetting(current.step);
   if (step === undefined || !Number.isInteger(step)) return undefined;
   const minimum = Math.ceil(EASEE_MIN_CHARGING_CURRENT_A / step) * step;

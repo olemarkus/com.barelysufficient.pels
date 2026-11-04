@@ -30,6 +30,10 @@ export type ChargingCurrentBinding = {
 
 export type CapabilityWrite = { capabilityId: string; value: unknown };
 export type CapabilityUpdate = CapabilityWrite;
+/** Preparation before reclaiming a native watt target: stop first, or safely reset its owner. */
+export type TargetPowerReassertionPreparation =
+  | { kind: 'stop'; write: CapabilityWrite }
+  | { kind: 'ready'; resetWrites: readonly CapabilityWrite[] };
 export type AdapterSnapshot = Pick<TransportDeviceSnapshot,
   'controlAdapter' | 'capabilities' | 'binaryControl' | 'evChargingState' | 'reportedStepId' | 'steppedLoadProfile'>;
 export type AdapterObservation = Pick<TransportDeviceSnapshot, 'controlAdapter' | 'capabilities'>;
@@ -83,6 +87,10 @@ export type DeviceAdapter = {
   /** Convert vendor target watts into the configured planning units. */
   targetPowerReading(device: HomeyDeviceLike, config: TargetPowerSteppedLoadConfig, value: number): number;
   stepCommand(device: HomeyDeviceLike, step: SteppedLoadStep, command: CapabilityWrite): CapabilityWrite;
+  /** Reads independent device observations newer than the reclaim epoch; never starts a device. */
+  prepareTargetPowerReassertion(
+    device: HomeyDeviceLike, afterMs: number, inventory: readonly HomeyDeviceLike[],
+  ): TargetPowerReassertionPreparation;
   normalize(snapshot: AdapterSnapshot, capabilityId: string, value: unknown): CapabilityUpdate[];
   observation(device: HomeyDeviceLike): DeviceCapabilityMap;
   finalizeObservation(

@@ -52,6 +52,12 @@ the mode change may immediately apply the saved target. A saved target in
 invalidate or restore that step evidence through the normal observation path.
 When taking control, successful watt requests invalidate superseded target evidence; mode changes
 alone cannot restore it. Only a newer independent target report or read can.
+Zaptec caches its last applied automatic current independently of legacy current
+writes. Reclaiming that control first stops charging and waits for fresh stopped
+and zero-power observations. Only then may an exclusive installation release
+the cached mode, receive the newly admitted watt target, and return to Homey
+control. Native watt limits are prepared before the planner resumes charging.
+A shared installation is not reset by this protocol.
 - **Easee EV charger current** (`no.easee`, charger driver): native stepped
   control writes the EV preset step's whole-amp current to the setable
   `target_charger_current` (0 A for the off step) and reads the step back from

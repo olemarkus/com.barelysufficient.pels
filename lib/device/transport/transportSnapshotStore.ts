@@ -15,7 +15,9 @@ export class TransportSnapshotStore {
   private latestRawDevices: HomeyDeviceLike[] = [];
   private homeyDeviceIds: ReadonlySet<string> | undefined;
   /** The tracked devices' native step channels, built from the raw devices above. */
-  readonly nativeSteppedAdapters = new NativeSteppedLoadCommandAdapters();
+  readonly nativeSteppedAdapters = new NativeSteppedLoadCommandAdapters(
+    () => [...this.getLastAcceptedRawDevicesById().values()],
+  );
 
   getSnapshot(): TransportDeviceSnapshot[] {
     return this.snapshot;

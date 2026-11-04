@@ -148,7 +148,7 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
     flow_backed_device_stop_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
   } as const;
   const state = createPlanEngineState();
-  const nativeSteppedAdapters = new NativeSteppedLoadCommandAdapters();
+  const nativeSteppedAdapters = new NativeSteppedLoadCommandAdapters(() => [device]);
   const deviceManager = withGetSnapshotByDeviceId({
     getSnapshot: vi.fn().mockReturnValue([snapshot]),
     setCapability: vi.fn().mockResolvedValue(undefined),
