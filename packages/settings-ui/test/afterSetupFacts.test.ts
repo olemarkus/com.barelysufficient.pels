@@ -5,7 +5,7 @@ import type {
   PriceSchemeSetting,
   SettingsUiPricesPayload,
 } from '../../contracts/src/settingsUi/prices.ts';
-import { offerPowerhour, resolvePriceSource } from '../src/ui/afterSetupFacts.ts';
+import { offerPowerhour, readExportPriced, resolvePriceSource } from '../src/ui/afterSetupFacts.ts';
 import { loadPriceSetupSuggestion } from '../src/ui/priceSetupOffer.ts';
 
 vi.mock('../src/ui/priceSetupOffer.ts', () => ({ loadPriceSetupSuggestion: vi.fn() }));
@@ -70,6 +70,19 @@ describe('where the price suggestion says prices come from', () => {
     };
     expect(resolvePriceSource(payload('norway', { kind: 'chosen' }, allChosen)))
       .toEqual({ kind: 'priced', scheme: 'norway', chosen: true });
+  });
+});
+
+describe('whether the home has an export price', () => {
+  const timeline = (hasExportPrice: boolean): Pick<SettingsUiPricesPayload, 'priceTimeline'> => ({ priceTimeline: {
+    state: 'ready', priceUnit: 'EUR/kWh', hasExportPrice, periods: [],
+    lines: { average: 1, cheapAtOrBelow: 0.8, expensiveFrom: 1.2 },
+  } });
+
+  it('takes the published prices\' word, and says nothing before they are ready', () => {
+    expect(readExportPriced(timeline(true))).toBe(true);
+    expect(readExportPriced(timeline(false))).toBe(false);
+    expect(readExportPriced({ priceTimeline: { state: 'unavailable', reason: 'no_prices' } })).toBeNull();
   });
 });
 

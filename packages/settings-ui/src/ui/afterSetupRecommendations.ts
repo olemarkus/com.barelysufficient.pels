@@ -59,6 +59,11 @@ export type AfterSetupFacts = {
    * tell them apart.
    */
   belgianHomeOnHourlyPeriod: boolean;
+  /**
+   * The home has solar (`resolveHomeExhibitsSolar`) and the published prices
+   * hold no export price for any period. `false` until both have been read.
+   */
+  solarExportUnpriced: boolean;
 };
 
 const VERSION = 1;
@@ -81,6 +86,31 @@ const FLANDERS_PERIOD: SetupRecommendation = {
   body: 'In Flanders? Use the 15-minute average for measured peaks.',
   actionLabel: 'Use 15-minute average',
   target: { kind: 'quarter-hour' },
+};
+
+const EXPORT_PRICE_QUESTION = 'Paid for power you send to the grid? Set your export price, so PELS can weigh '
+  + 'using your solar against exporting it. Without one, exported solar counts as worth nothing.';
+
+const DUTCH_NET_METERING_END = 'Net metering ends on 1 January 2027. ';
+
+/**
+ * A solar home without an export price plans as if exported solar were worth
+ * nothing. Like the Flanders question it appears during setup too, and it is
+ * deliberately a QUESTION: only the owner knows what they are paid. Dismiss is
+ * an owner saying they are not paid for export.
+ */
+const resolveExportPriceQuestion = (facts: AfterSetupFacts): SetupRecommendation[] => {
+  if (!facts.solarExportUnpriced) return [];
+  const dutch = facts.market.state === 'resolved' && facts.market.country === 'NL';
+  return [{
+    id: 'prices:export-price',
+    version: VERSION,
+    category: 'recommendation',
+    title: 'Set your export price',
+    body: `${dutch ? DUTCH_NET_METERING_END : ''}${EXPORT_PRICE_QUESTION}`,
+    actionLabel: 'Set export price',
+    target: { kind: 'panel', panelId: 'electricity-prices' },
+  }];
 };
 
 const PRICE_SOURCE_NAMES: Record<PriceSchemeSetting, string> = {
@@ -180,6 +210,7 @@ export const resolveAfterSetupRecommendations = (
   // No cap is in force, so none can be wrong, unless PELS may limit something.
   const flanders = facts.belgianHomeOnHourlyPeriod && facts.devices.some((device) => device.limitable)
     ? [FLANDERS_PERIOD] : [];
-  if (!facts.setupComplete) return flanders;
-  return [...flanders, ...resolveGoalsSuggestion(facts, dismissals)];
+  const questions = [...flanders, ...resolveExportPriceQuestion(facts)];
+  if (!facts.setupComplete) return questions;
+  return [...questions, ...resolveGoalsSuggestion(facts, dismissals)];
 };

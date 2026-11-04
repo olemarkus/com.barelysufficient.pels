@@ -150,6 +150,7 @@ beforeEach(() => {
       smartTaskConfigured: false,
       market: { state: 'unavailable' },
       belgianHomeOnHourlyPeriod: false,
+      solarExportUnpriced: false,
     },
   };
   publishHomeScopeChange = () => {
@@ -507,6 +508,7 @@ describe('recommendation loading', () => {
         smartTaskConfigured: true,
         market: { state: 'resolved', country: 'NL' },
         belgianHomeOnHourlyPeriod: false,
+        solarExportUnpriced: false,
       },
     };
 
@@ -552,6 +554,7 @@ describe('recommendation loading', () => {
         smartTaskConfigured: false,
         market: { state: 'unavailable' },
         belgianHomeOnHourlyPeriod: false,
+        solarExportUnpriced: false,
       },
     };
 
