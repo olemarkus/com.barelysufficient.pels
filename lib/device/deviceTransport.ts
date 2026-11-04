@@ -218,8 +218,6 @@ export class DeviceTransport {
     ) {
         this.logger = logger;
         this.getFlowTriggerCard = options.getFlowTriggerCard;
-        // Roles are this transport's own producers, asked only once a parse runs.
-        this.sources = createDeviceParseSources(options, this);
         // Late-bound: the refresh service is built below, and a zone change can
         // only arrive once the transport is running.
         this.notifications = new TransportNotifications(
@@ -239,7 +237,10 @@ export class DeviceTransport {
                 return { connected: health?.subscriptionState === 'subscribed', revision: health?.reconnectCount ?? 0 };
             },
             options.acceptedFlowWrites,
+            options.settings,
         );
+        // Roles and saved current choices are resolved by their owning services.
+        this.sources = createDeviceParseSources(options, this, this.chargingCurrentControl);
         this.observationProducers = createObservationProducers(
             (p) => this.logger.structuredLog.info(p),
             options,

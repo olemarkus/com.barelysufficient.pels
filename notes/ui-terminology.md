@@ -668,6 +668,16 @@ The EV page's **Charging card** holds the charging rules, when and how much to
 charge (Charge boost, `Charge on solar surplus`). The control model is set in
 Setup only; the readout that once repeated it at the top of the Charging card was
 removed (2026-10-18) because one choice shown in two places read as two settings.
+When PELS can derive usable power levels from the integration, **Control model**
+offers **Automatic** and **Manual**. Automatic says `PELS determines the power
+levels from your charger’s settings.` and shows **Charging range**; a non-charger
+says `the device’s settings` and **Power range**. This includes native watt ranges
+and integration-derived current levels. Charger-side settings and limits update
+the Automatic model on refresh. Manual keeps the saved phase, range and current setup,
+with the existing selector labelled **Manual model**. New devices use Automatic;
+existing manual setups keep their choice and get a dismissible recommendation
+to review Automatic. Switching reviews the inactive manual model and any saved
+maximum before saving; cancelling or dismissing never changes control.
 The **Power limiting** card gathers `Power-limit control`, `Only PELS starts this
 device`, what limiting does, and `Leave off until turned on again`, so the switch and what it governs read
 together. An unmanaged charger's page shows neither card: there is nothing to

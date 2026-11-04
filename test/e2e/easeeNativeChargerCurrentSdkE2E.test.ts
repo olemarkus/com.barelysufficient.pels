@@ -17,6 +17,7 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CONTROLLABLE_DEVICES,
+  DEVICE_POWER_CONTROL_MODES,
   DEVICE_TARGET_POWER_CONFIGS,
   MANAGED_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
@@ -25,6 +26,7 @@ import {
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainPending, drainUntil } from '../utils/asyncDrain';
+import { connectLiveFeed, emitDeviceUpdate, settleLiveFeed } from '../helpers/liveFeedSocketHarness';
 import api from '../../api';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
@@ -33,7 +35,7 @@ const CHARGER_CURRENT_PATH = `manager/devices/device/${CHARGER_ID}/capability/ta
 const RESET_CURRENT_A = 32;
 const RESET_POWER_W = RESET_CURRENT_A * 230;
 
-async function buildEaseeCharger(): Promise<MockDevice> {
+async function buildEaseeCharger(settings: Record<string, unknown> = {}): Promise<MockDevice> {
   const charger = new MockDevice(
     CHARGER_ID,
     'Elbillader',
@@ -41,6 +43,7 @@ async function buildEaseeCharger(): Promise<MockDevice> {
     'evcharger',
   );
   charger.setDriverIdentity({ ownerUri: 'homey:app:no.easee', driverId: 'homey:app:no.easee:charger' });
+  charger.setSettings(settings);
   charger.setCapabilityMetadata('target_charger_current', { units: 'A', min: 0, max: 40, step: 1, setable: true });
   await charger.setCapabilityValue('onoff', true);
   await charger.setCapabilityValue('target_charger_current', RESET_CURRENT_A);
@@ -245,6 +248,66 @@ describe('built-in Easee charger current (SDK-boundary e2e)', () => {
     await cleanupApps();
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  it.each([false, true])('uses Automatic native amps and refreshes charger limits with an existing preset %s', async (hasSavedPreset) => {
+    connectLiveFeed();
+    // The simulator models one-phase 230 V. These are decoded charger-app
+    // settings, independent of a phase model authored in PELS.
+    const wiring = { phaseMode: 'Locked to single phase', detectedPowerGridType: 'TN_3_PHASE' };
+    const charger = await buildEaseeCharger({ ...wiring, maxChargerCurrent: '16', circuitFuse: '16' });
+    await charger.setCapabilityValue('target_charger_current', 16);
+    await charger.setCapabilityValue('measure_power', 16 * 230);
+    setMockDrivers({ driverA: new MockDriver('driverA', [charger]) });
+    configureRuntime(true);
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 3);
+    // Opt in explicitly: the existing native-wiring selection is itself an
+    // authored Manual setup, even when it has no PELS power preset.
+    mockHomeyInstance.settings.set(DEVICE_POWER_CONTROL_MODES, { [CHARGER_ID]: 'automatic' });
+    const savedPreset = { enabled: true, preset: 'ev_charger_3_phase', max: 22_080 };
+    if (hasSavedPreset) {
+      mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, { [CHARGER_ID]: savedPreset });
+    } else {
+      mockHomeyInstance.settings.unset(DEVICE_TARGET_POWER_CONFIGS);
+    }
+    const simulator = simulateEasee(charger);
+    simulator.setBackgroundW(1_000);
+    const app = createApp();
+    await app.onInit();
+    await settleLiveFeed();
+
+    const initial = (await api.ui_devices({ homey: app.homey })).devices.find((device) => device.id === CHARGER_ID);
+    expect(initial?.automaticPowerControl?.mode).toBe('automatic');
+    expect(initial?.automaticPowerControl?.profile.steps[1])
+      .toEqual({ id: '6a', planningCurrentA: 6, planningPowerW: 1380 });
+    expect(initial?.automaticPowerControl?.profile.steps.at(-1))
+      .toEqual({ id: '16a', planningCurrentA: 16, planningPowerW: 3680 });
+    expect(initial?.steppedLoadProfile).toEqual(initial?.automaticPowerControl?.profile);
+    expect(initial?.targetPowerConfig).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainUntil(() => simulator.writesTo(CHARGER_CURRENT_PATH).some((value) => (
+      typeof value === 'number' && value >= 6 && value < 16
+    )));
+    expect(simulator.writesTo(CHARGER_CURRENT_PATH).every((value) => (
+      typeof value === 'number' && Number.isInteger(value) && value >= 6 && value <= 16
+    ))).toBe(true);
+    expect(mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed ?? []).toEqual([]);
+
+    // A Homey device.update carries changed charger settings and capability
+    // metadata. Automatic follows that source instead of the dormant preset.
+    charger.setSettings({ ...wiring, maxChargerCurrent: '8', circuitFuse: '8' });
+    charger.setCapabilityMetadata('target_charger_current', { units: 'A', min: 0, max: 12, step: 1, setable: true });
+    await simulator.setCurrentInApp(8);
+    emitDeviceUpdate(charger.toHomeyApiDevice());
+    await drainPending();
+    const refreshed = (await api.ui_devices({ homey: app.homey })).devices.find((device) => device.id === CHARGER_ID);
+    expect(refreshed?.automaticPowerControl?.profile.steps.at(-1))
+      .toEqual({ id: '8a', planningCurrentA: 8, planningPowerW: 1840 });
+    expect(refreshed?.steppedLoadProfile).toEqual(refreshed?.automaticPowerControl?.profile);
+    expect(refreshed?.reportedStepId).toBe('8a');
+    expect(mockHomeyInstance.settings.get(DEVICE_TARGET_POWER_CONFIGS))
+      .toEqual(hasSavedPreset ? { [CHARGER_ID]: savedPreset } : null);
   });
 
   it('lowers the charger current on target_charger_current without a bridge Flow', async () => {

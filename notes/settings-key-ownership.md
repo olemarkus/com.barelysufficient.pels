@@ -318,6 +318,24 @@ Charging setup is backend-owned: `charging_current_control` belongs to
 API endpoints and receives resolved setup/access status. The saved key is never
 returned by those endpoints or included in the settings bootstrap or diagnostics.
 
+`device_power_control_modes` belongs to
+`packages/shared-domain/src/settings/devicePowerControlModes.ts`. It is a map of
+device ids to `automatic` or `manual`, written by the settings UI. An unavailable
+or malformed runtime read retains the last accepted map. With no explicit entry,
+`DeviceControlSettings` keeps an authored target-power model, stepped profile,
+or saved charging-current/native-control setup manual; an unconfigured device uses
+automatic control. Automatic uses the integration-derived model: a usable published
+watt ladder or physical current levels derived from charger settings and limits.
+Switching mode retains the manual configuration and its saved current route.
+Before the first accepted map, a listed unreadable key or an unavailable key
+list keeps control manual. A nullish value authorizes the automatic default
+only when the SDK key list confirms that the key was never written. The owner
+retries an unresolved read when resolving control for a device.
+The legacy target-power, stepped-profile, and charging-current owners likewise
+must have accepted a map or confirmed key absence before their empty defaults
+can authorize automatic control. Listed unreadable legacy keys keep the device
+manual; a valid explicit mode choice still takes precedence.
+
 ## Inverter curtailment
 
 `inverter_curtailment_devices` is an explicit opt-in map owned by

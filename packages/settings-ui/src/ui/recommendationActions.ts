@@ -7,7 +7,7 @@ import { showToast } from './toast.ts';
 export type RecommendationNavigation = {
   openPanel: (panelId: string, setup?: SetupJourneyStep) => void;
   useQuarterHour: () => Promise<void>;
-  openDevice: (deviceId: string, focus: 'top' | 'start-policy' | 'shed-limit') => void;
+  openDevice: (deviceId: string, focus: 'top' | 'start-policy' | 'shed-limit' | 'control-model') => void;
 };
 
 type RecommendationTask = { run: () => Promise<void>; failureMessage: string };

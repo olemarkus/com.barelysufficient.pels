@@ -65,6 +65,7 @@ export const NATIVE_EV_WIRING_DEVICES = 'native_ev_wiring_devices';
 export const DEVICE_DRIVER_OVERRIDES = 'device_driver_overrides';
 export const DEVICE_CONTROL_PROFILES = 'device_control_profiles';
 export const DEVICE_TARGET_POWER_CONFIGS = 'device_target_power_configs';
+export const DEVICE_POWER_CONTROL_MODES = 'device_power_control_modes';
 // The owner's manual "Power when running" figures: `Record<deviceId, { kw, ts }>`
 // (absent entry = PELS resolves the figure itself).
 export const DEVICE_EXPECTED_POWER_OVERRIDES = 'device_expected_power_overrides';

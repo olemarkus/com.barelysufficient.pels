@@ -65,6 +65,8 @@ export type NativeCurrentControl = {
   writeCapabilities: readonly string[];
   minimumChargingA: number;
   accepts(device: HomeyDeviceLike, values: DeviceCapabilityMap): boolean;
+  /** Physical levels derived from the integration's settings and current limits. */
+  automaticProfile(device: HomeyDeviceLike, values: DeviceCapabilityMap): SteppedLoadProfile | undefined;
   stepObservations(profile: SteppedLoadProfile, capabilities: DeviceCapabilityMap): readonly string[];
 };
 

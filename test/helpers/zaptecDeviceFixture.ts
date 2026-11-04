@@ -2,6 +2,47 @@ import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { homeyDevice, setable } from './homeyDevicePayload';
 
 /**
+ * com.zaptec 1.10.4 Go 2, inspected from its cloud-verified live package.
+ * `drivers/go2/device.js` publishes the installation's lowest phase current
+ * read-only; `go2_installation_current_control` writes all three phase limits.
+ * The manifest uses charging_button/charge_mode and has no target_power pair.
+ */
+export function buildZaptecCurrentOnlyDevice(overrides: Partial<HomeyDeviceLike> = {}): HomeyDeviceLike {
+  const device = homeyDevice({
+    id: 'zaptec-current-only', name: 'Zaptec Go 2', class: 'evcharger',
+    driverId: 'homey:app:com.zaptec:go2', ownerUri: 'homey:app:com.zaptec',
+    data: { id: 'zaptec-current-only', installationId: 'zaptec-installation' },
+    available: true, ready: true,
+  }, {
+    'meter_power.current_session': 0,
+    meter_power: 100,
+    'meter_power.last_session': 10,
+    measure_power: 0,
+    charging_button: setable(false),
+    cable_permanent_lock: setable(false),
+    charge_mode: 'Connecting to car',
+    'alarm_generic.car_connected': true,
+    available_installation_current: { value: 16, setable: false },
+    'measure_current.phase1': 0,
+    'measure_current.phase2': 0,
+    'measure_current.phase3': 0,
+    'measure_voltage.phase1': 230,
+    'measure_voltage.phase2': 230,
+    'measure_voltage.phase3': 230,
+    measure_humidity: 40,
+    measure_temperature: 20,
+    'meter_power.signed_meter_value': 100,
+    measure_signal_strength: 90,
+    communication_method: 'WiFi',
+    charging_mode: '0',
+  }, new Date().toISOString());
+  return {
+    ...device, ...overrides,
+    capabilitiesObj: { ...device.capabilitiesObj, ...overrides.capabilitiesObj },
+  };
+}
+
+/**
  * com.zaptec 1.12.0's native EV surface, with runtime options for a 32 A IT
  * three-phase installation. The app replaces the broader manifest range with
  * these installation-specific options; PELS receives watts, not a phase preset.

@@ -378,11 +378,36 @@ function isHoiaxDevice(device: HomeyDeviceLike): boolean {
 
 export function isTargetPowerSteppedLoadCandidate(params: {
   capabilities: readonly string[];
-  capabilityObj?: DeviceCapabilityMap;
+  capabilityObj?: Partial<DeviceCapabilityMap>;
 }): boolean {
   const targetPower = params.capabilityObj?.[TARGET_POWER_CAPABILITY_ID];
   return params.capabilities.includes(TARGET_POWER_CAPABILITY_ID)
     && targetPower?.setable === true;
+}
+
+/** A published watt ladder can replace configuration only when it is usable. */
+export function hasNativeTargetPowerLadder(
+  capabilities: readonly string[], capabilityObj: Partial<DeviceCapabilityMap>,
+): boolean {
+  return resolveNativeTargetPowerLadder(capabilities, capabilityObj) !== undefined;
+}
+
+export function resolveNativeTargetPowerLadder(
+  capabilities: readonly string[], capabilityObj: Partial<DeviceCapabilityMap>,
+): SteppedLoadProfile | undefined {
+  return isTargetPowerSteppedLoadCandidate({ capabilities, capabilityObj })
+    ? withUsableLadder(buildCapabilityTargetPowerSteppedLoadProfile(capabilityObj.target_power)) : undefined;
+}
+
+/** Integrations can derive a ladder from native amps as well as native watts. */
+export function resolveAutomaticSteppedLoadProfile(
+  device: HomeyDeviceLike, capabilities: readonly string[], capabilityObj: DeviceCapabilityMap,
+): SteppedLoadProfile | undefined {
+  const nativeWatts = resolveNativeTargetPowerLadder(capabilities, capabilityObj);
+  if (nativeWatts) return nativeWatts;
+  const current = getDeviceAdapter(device).nativeCurrentControls
+    .find((control) => capabilities.includes(control.capabilityId) && control.accepts(device, capabilityObj));
+  return current ? withUsableLadder(current.automaticProfile(device, capabilityObj)) : undefined;
 }
 
 function resolveTargetPowerSteppedLoadProfileSuggestion(params: {
@@ -391,11 +416,13 @@ function resolveTargetPowerSteppedLoadProfileSuggestion(params: {
   capabilityObj?: DeviceCapabilityMap;
 }): SteppedLoadProfile | undefined {
   if (!isTargetPowerSteppedLoadCandidate(params)) return undefined;
+  const nativeProfile = buildCapabilityTargetPowerSteppedLoadProfile(params.capabilityObj?.target_power);
+  if (nativeProfile) return nativeProfile;
   const preset = resolveTargetPowerPreset(params.device);
   if (preset === 'ev_charger_1_phase' || preset === 'ev_charger_3_phase') {
     return buildEvTargetPowerCandidateProfile({ preset });
   }
-  return buildCapabilityTargetPowerSteppedLoadProfile(params.capabilityObj?.target_power);
+  return undefined;
 }
 
 function resolveTargetPowerPreset(device: HomeyDeviceLike): TargetPowerPreset | undefined {

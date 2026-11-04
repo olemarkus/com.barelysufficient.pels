@@ -268,6 +268,7 @@ export function assembleDeviceSnapshot(params: {
         steppedLoadProfile: overlay.steppedLoadProfile,
         nativeWriteCapabilities: overlay.nativeWriteCapabilities,
         targetPowerConfig: overlay.targetPowerConfig,
+        automaticPowerControl: overlay.automaticPowerControl,
         binaryCapabilityId: control.binaryCapabilityId,
         expectedPowerKw: powerEstimate.expectedPowerKw,
         expectedPowerSource: powerEstimate.expectedPowerSource,

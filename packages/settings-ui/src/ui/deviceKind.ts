@@ -1,6 +1,7 @@
 import {
   getEffectiveControlModel,
-  getStoredTargetPowerConfig,
+  getEffectiveTargetPowerConfig,
+  isAutomaticPowerControlActive,
 } from './deviceControlProfiles.ts';
 import {
   supportsTemperatureDevice,
@@ -31,13 +32,14 @@ export const hasEvChargingControl = (device: SettingsUiDeviceDetailItem | null |
 );
 
 export const isNativeEvWiringActive = (device: SettingsUiDeviceDetailItem | null | undefined): boolean => (
-  device?.controlAdapter?.kind === 'capability_adapter'
+  (!device?.automaticPowerControl || isAutomaticPowerControlActive(device))
+  && device?.controlAdapter?.kind === 'capability_adapter'
   && device.controlAdapter.activationEnabled === true
   && device.isEvCharger
 );
 
 export const hasEvTargetPowerPreset = (device: SettingsUiDeviceDetailItem | null | undefined): boolean => {
-  const targetPowerConfig = device ? getStoredTargetPowerConfig(device.id) ?? device.targetPowerConfig : undefined;
+  const targetPowerConfig = device ? getEffectiveTargetPowerConfig(device) : undefined;
   return targetPowerConfig?.enabled !== false
     && (
       targetPowerConfig?.preset === 'ev_charger_1_phase'
@@ -46,11 +48,13 @@ export const hasEvTargetPowerPreset = (device: SettingsUiDeviceDetailItem | null
 };
 
 export const canUseEvTargetPowerPreset = (device: SettingsUiDeviceDetailItem | null | undefined): boolean => (
-  isEvChargerDevice(device) || hasEvTargetPowerPreset(device)
+  !isAutomaticPowerControlActive(device)
+  && (isEvChargerDevice(device) || hasEvTargetPowerPreset(device))
 );
 
 export function resolveDeviceDetailControlMode(device: SettingsUiDeviceDetailItem): DeviceDetailControlMode {
-  const targetPowerConfig = getStoredTargetPowerConfig(device.id) ?? device.targetPowerConfig;
+  if (isAutomaticPowerControlActive(device)) return 'stepped_load';
+  const targetPowerConfig = getEffectiveTargetPowerConfig(device);
   if (targetPowerConfig?.enabled !== false) {
     if (targetPowerConfig?.preset === 'ev_charger_1_phase') return 'ev_charger_1_phase';
     if (targetPowerConfig?.preset === 'ev_charger_3_phase') return 'ev_charger_3_phase';

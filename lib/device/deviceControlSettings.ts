@@ -8,6 +8,8 @@ import {
 import type {
   DeviceControlProfile,
   DeviceControlProfiles,
+  DevicePowerControlMode,
+  DevicePowerControlModes,
   EvBoostConfig,
   EvBoostSettings,
   EvChargeTargetConfig,
@@ -24,6 +26,8 @@ import { normalizeEvChargeTargetSettings } from '../../packages/shared-domain/sr
 import { normalizeTemperatureBoostSettings } from '../../packages/shared-domain/src/settings/temperatureBoost';
 import { normalizeEvCarAssociations } from '../../packages/shared-domain/src/settings/evCarAssociations';
 import { normalizeDeviceControlProfiles } from '../../packages/shared-domain/src/deviceControlProfiles';
+import { isDevicePowerControlModes } from '../../packages/shared-domain/src/settings/devicePowerControlModes';
+import { readSettingsKeyList } from '../utils/settingsKeyList';
 import {
   normalizeCompleteTargetPowerReachabilityByDevice,
   normalizeDeviceTargetPowerConfigs,
@@ -44,6 +48,7 @@ import {
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_START_POLICIES,
   DEVICE_TARGET_POWER_CONFIGS,
+  DEVICE_POWER_CONTROL_MODES,
   DEVICE_TARGET_POWER_REACHABILITY,
   EV_BOOST_SETTINGS,
   EV_CHARGE_TARGET_SETTINGS,
@@ -84,16 +89,37 @@ type DeviceControlMaps = {
   readonly evBoost: EvBoostSettings;
   readonly evChargeTargets: EvChargeTargetSettings;
   readonly evCarAssociations: EvCarAssociations;
-  readonly nativeEvWiring: BooleanMap;
+  readonly nativeEvWiring: NativeWiringPolicy;
   readonly driverOverrides: Readonly<Record<string, string>>;
-  readonly controlProfiles: DeviceControlProfiles;
-  readonly targetPowerConfigs: DeviceTargetPowerConfigsWithReachability;
+  readonly controlProfiles: DeviceControlProfilesRead;
+  readonly targetPowerConfigs: DeviceTargetPowerConfigsRead;
+  readonly powerControlModes: PowerControlModePolicy;
   readonly shedBehaviors: Readonly<Record<string, ConfiguredShedBehavior>>;
 };
 
 type TemperatureControlPolicy = {
   devices: Record<string, boolean>;
   state: TemperatureControlPolicyState;
+};
+
+type PowerControlModePolicy = {
+  modes: DevicePowerControlModes;
+  state: 'unavailable' | 'resolved';
+};
+
+type NativeWiringPolicy = {
+  devices: BooleanMap;
+  state: 'unavailable' | 'resolved';
+};
+
+type DeviceControlProfilesRead = {
+  profiles: DeviceControlProfiles;
+  state: 'unavailable' | 'resolved';
+};
+
+type DeviceTargetPowerConfigsRead = {
+  configs: DeviceTargetPowerConfigsWithReachability;
+  state: 'unavailable' | 'resolved';
 };
 
 const keep = <T>(raw: unknown, accept: (value: unknown) => value is T, current: T): T => (
@@ -144,10 +170,11 @@ export class DeviceControlSettings {
     evBoost: {},
     evChargeTargets: {},
     evCarAssociations: {},
-    nativeEvWiring: {},
+    nativeEvWiring: { devices: {}, state: 'unavailable' },
     driverOverrides: {},
-    controlProfiles: {},
-    targetPowerConfigs: {},
+    controlProfiles: { profiles: {}, state: 'unavailable' },
+    targetPowerConfigs: { configs: {}, state: 'unavailable' },
+    powerControlModes: { modes: {}, state: 'unavailable' },
     shedBehaviors: {},
   };
 
@@ -159,8 +186,10 @@ export class DeviceControlSettings {
   /** Per-device start authority; absence reads as `'unrestricted'`. */
   get deviceStartPolicies(): Readonly<Record<string, DeviceStartPolicy>> { return this.maps.startPolicies; }
   /** Explicit native EV wiring choices; a device with no entry follows the automatic decision. */
-  get nativeEvWiringDevices(): BooleanMap { return this.maps.nativeEvWiring; }
-  get deviceTargetPowerConfigs(): DeviceTargetPowerConfigsWithReachability { return this.maps.targetPowerConfigs; }
+  get nativeEvWiringDevices(): BooleanMap { return this.maps.nativeEvWiring.devices; }
+  get deviceTargetPowerConfigs(): DeviceTargetPowerConfigsWithReachability {
+    return this.maps.targetPowerConfigs.configs;
+  }
   get temperatureControlPolicyState(): TemperatureControlPolicyState { return this.maps.temperatureControl.state; }
 
   /** The owner's Managed choice for an ordinary device; batteries and solar answer in `resolveDeviceManagedState`. */
@@ -185,10 +214,38 @@ export class DeviceControlSettings {
   }
   getEvCarAssociationCarIds(deviceId: string): string[] { return this.maps.evCarAssociations[deviceId]?.carIds ?? []; }
   getDeviceControlProfile(deviceId: string): DeviceControlProfile | undefined {
-    return this.maps.controlProfiles[deviceId];
+    return this.maps.controlProfiles.profiles[deviceId];
   }
   getDeviceTargetPowerConfig(deviceId: string): TargetPowerConfigWithReachability | undefined {
-    return this.maps.targetPowerConfigs[deviceId];
+    return this.maps.targetPowerConfigs.configs[deviceId];
+  }
+  getDevicePowerControlMode(deviceId: string): DevicePowerControlMode | undefined {
+    const { modes } = this.maps.powerControlModes;
+    return Object.hasOwn(modes, deviceId) ? modes[deviceId] : undefined;
+  }
+  resolveDevicePowerControlMode(deviceId: string, requiresManualCurrentControl: boolean): DevicePowerControlMode {
+    if (this.maps.powerControlModes.state === 'unavailable') {
+      this.maps = { ...this.maps, powerControlModes: this.readPowerControlModes() };
+    }
+    // An unreadable saved Manual choice must not authorize automatic takeover.
+    if (this.maps.powerControlModes.state === 'unavailable') return 'manual';
+    const configured = this.getDevicePowerControlMode(deviceId);
+    if (configured) return configured;
+    return this.requiresManualModel(deviceId) || requiresManualCurrentControl ? 'manual' : 'automatic';
+  }
+
+  private requiresManualModel(deviceId: string): boolean {
+    if (this.maps.controlProfiles.state === 'unavailable' || this.maps.targetPowerConfigs.state === 'unavailable'
+      || this.maps.nativeEvWiring.state === 'unavailable') {
+      this.maps = {
+        ...this.maps, controlProfiles: this.readControlProfiles(), targetPowerConfigs: this.readTargetPowerConfigs(),
+        nativeEvWiring: this.readNativeWiringPolicy(),
+      };
+    }
+    const { controlProfiles, targetPowerConfigs } = this.maps;
+    return controlProfiles.state === 'unavailable' || targetPowerConfigs.state === 'unavailable'
+      || Object.hasOwn(targetPowerConfigs.configs, deviceId) || Object.hasOwn(controlProfiles.profiles, deviceId)
+      || this.maps.nativeEvWiring.state === 'unavailable' || Object.hasOwn(this.maps.nativeEvWiring.devices, deviceId);
   }
   getConfiguredShedBehavior(deviceId: string): ConfiguredShedBehavior {
     return resolveShedBehavior(this.maps.shedBehaviors, deviceId);
@@ -228,7 +285,7 @@ export class DeviceControlSettings {
     deviceId: string,
     reachability: TargetPowerReachabilityState,
   ): TargetPowerReachabilityAdoption {
-    const config = this.maps.targetPowerConfigs[deviceId];
+    const config = this.maps.targetPowerConfigs.configs[deviceId];
     if (!config) return { state: 'invalid' };
     const resolved = resolveValidTargetPowerReachability({ ...config, reachability });
     if (!resolved) return { state: 'invalid' };
@@ -241,7 +298,8 @@ export class DeviceControlSettings {
     if (changed) {
       this.maps = {
         ...this.maps,
-        targetPowerConfigs: { ...this.maps.targetPowerConfigs, [deviceId]: { ...config, reachability: resolved } },
+        targetPowerConfigs: { ...this.maps.targetPowerConfigs,
+          configs: { ...this.maps.targetPowerConfigs.configs, [deviceId]: { ...config, reachability: resolved } } },
       };
     }
     return { state: changed ? 'adopted' : 'unchanged', config, reachability: resolved };
@@ -255,7 +313,6 @@ export class DeviceControlSettings {
   reload(): void {
     const { settings, maps: current } = this;
     const driverOverrides = settings.get(DEVICE_DRIVER_OVERRIDES);
-    const controlProfiles = settings.get(DEVICE_CONTROL_PROFILES);
     // A read that is not the map keeps the one already held: a transient miss is
     // not an owner who cleared every limit.
     const shedBehaviors = settings.get(OVERSHOOT_BEHAVIORS);
@@ -277,12 +334,11 @@ export class DeviceControlSettings {
       evCarAssociations: normalizeOrKeep(
         settings.get(EV_CAR_ASSOCIATIONS), normalizeEvCarAssociations, current.evCarAssociations,
       ),
-      nativeEvWiring: keep(settings.get(NATIVE_EV_WIRING_DEVICES), isBooleanMap, current.nativeEvWiring),
+      nativeEvWiring: this.readNativeWiringPolicy(),
       driverOverrides: isStringMap(driverOverrides) ? normalizeStringMap(driverOverrides) : current.driverOverrides,
-      controlProfiles: isDeviceControlProfiles(controlProfiles)
-        ? normalizeDeviceControlProfiles(controlProfiles) ?? current.controlProfiles
-        : current.controlProfiles,
+      controlProfiles: this.readControlProfiles(),
       targetPowerConfigs: this.readTargetPowerConfigs(),
+      powerControlModes: this.readPowerControlModes(),
       shedBehaviors: isShedBehaviorsSetting(shedBehaviors) ? readShedBehaviors(shedBehaviors) : current.shedBehaviors,
     };
   }
@@ -294,23 +350,67 @@ export class DeviceControlSettings {
     });
   }
 
-  private readTargetPowerConfigs(): DeviceTargetPowerConfigsWithReachability {
+  private readPowerControlModes(): PowerControlModePolicy {
+    const current = this.maps.powerControlModes;
+    try {
+      const raw = this.settings.get(DEVICE_POWER_CONTROL_MODES);
+      if (isDevicePowerControlModes(raw)) return { modes: raw, state: 'resolved' };
+      if (this.isAbsentSetting(DEVICE_POWER_CONTROL_MODES, raw)) return { modes: {}, state: 'resolved' };
+    } catch {
+      // A failed read keeps the accepted choice, including an unresolved boot.
+    }
+    return current;
+  }
+
+  private readNativeWiringPolicy(): NativeWiringPolicy {
+    try {
+      const raw = this.settings.get(NATIVE_EV_WIRING_DEVICES);
+      if (isBooleanMap(raw)) return { devices: raw, state: 'resolved' };
+      if (this.isAbsentSetting(NATIVE_EV_WIRING_DEVICES, raw)) return { devices: {}, state: 'resolved' };
+    } catch { /* An unread choice cannot authorize replacing the owner's manual model. */ }
+    return this.maps.nativeEvWiring;
+  }
+
+  private isAbsentSetting(key: string, raw: unknown): boolean {
+    if (raw !== null && raw !== undefined) return false;
+    const keys = readSettingsKeyList(this.settings);
+    return keys.status === 'resolved' && !keys.keys.includes(key);
+  }
+
+  private readControlProfiles(): DeviceControlProfilesRead {
+    const current = this.maps.controlProfiles;
+    try {
+      const raw = this.settings.get(DEVICE_CONTROL_PROFILES);
+      const profiles = isDeviceControlProfiles(raw) ? normalizeDeviceControlProfiles(raw) : undefined;
+      if (profiles) return { profiles, state: 'resolved' };
+      if (this.isAbsentSetting(DEVICE_CONTROL_PROFILES, raw)) return { profiles: {}, state: 'resolved' };
+    } catch { /* Keep the accepted legacy configuration while the read is unavailable. */ }
+    return current;
+  }
+
+  private readTargetPowerConfigs(): DeviceTargetPowerConfigsRead {
     const current = this.maps.targetPowerConfigs;
-    const configSetting = parseRecordSetting(this.settings.get(DEVICE_TARGET_POWER_CONFIGS));
-    if (!configSetting) return current;
-    const reachabilityByDevice = normalizeCompleteTargetPowerReachabilityByDevice(
-      this.settings.get(DEVICE_TARGET_POWER_REACHABILITY),
-    ) ?? {};
-    const currentReachabilityByDevice = Object.fromEntries(
-      Object.entries(current).flatMap(([deviceId, config]) => (
-        config.reachability ? [[deviceId, config.reachability]] : []
-      )),
-    );
-    return joinTargetPowerReachability(
-      normalizeDeviceTargetPowerConfigs(configSetting),
-      reachabilityByDevice,
-      currentReachabilityByDevice,
-    );
+    try {
+      const raw = this.settings.get(DEVICE_TARGET_POWER_CONFIGS);
+      const configSetting = parseRecordSetting(raw);
+      if (!configSetting) {
+        return this.isAbsentSetting(DEVICE_TARGET_POWER_CONFIGS, raw) ? { configs: {}, state: 'resolved' } : current;
+      }
+      const configs = normalizeDeviceTargetPowerConfigs(configSetting);
+      if (!Object.keys(configSetting).every((id) => id.trim() === id && Object.hasOwn(configs, id))) return current;
+      const reachabilityByDevice = normalizeCompleteTargetPowerReachabilityByDevice(
+        this.settings.get(DEVICE_TARGET_POWER_REACHABILITY),
+      ) ?? {};
+      const currentReachabilityByDevice = Object.fromEntries(
+        Object.entries(current.configs).flatMap(([deviceId, config]) => (
+          config.reachability ? [[deviceId, config.reachability]] : []
+        )),
+      );
+      return { configs: joinTargetPowerReachability(
+        configs, reachabilityByDevice, currentReachabilityByDevice,
+      ), state: 'resolved' };
+    } catch { /* Keep the accepted legacy configuration while the read is unavailable. */ }
+    return current;
   }
 }
 

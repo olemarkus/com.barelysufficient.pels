@@ -4,10 +4,12 @@ import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { emitCapability, emitDeviceUpdate, settleLiveFeed } from '../helpers/liveFeedSocketHarness';
-import { buildZaptecTargetPowerDevice } from '../helpers/zaptecDeviceFixture';
+import { buildZaptecCurrentOnlyDevice, buildZaptecTargetPowerDevice } from '../helpers/zaptecDeviceFixture';
 import { capabilityReadings } from '../helpers/homeyDevicePayload';
 import { mockHomeyInstance } from '../mocks/homey';
 import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { DeviceConfigurationStore } from '../../lib/device/deviceConfiguration';
+import { DeviceTargetPowerReachabilityOwner } from '../../lib/device/deviceTargetPowerReachabilityOwner';
 
 const logger = (): Logger => ({ log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test/zaptec') });
 
@@ -21,6 +23,177 @@ afterEach(() => {
 });
 
 describe('Zaptec native target power', () => {
+  it.each([undefined, 'automatic'] as const)(
+    'keeps the shipped current-only charger on its Flow route with saved mode %s', async (mode) => {
+      const config = { enabled: true, preset: 'ev_charger_3_phase' as const };
+      const device = buildZaptecCurrentOnlyDevice();
+      const trigger = vi.fn().mockResolvedValue(undefined);
+      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {
+        settings: { getDeviceTargetPowerConfig: () => config, getDevicePowerControlMode: () => mode },
+      }, undefined, { getFlowTriggerCard: () => ({ trigger }) });
+      await initWithLiveFeed(transport);
+      const [parsed] = await seedTransportDevices(transport, [device]);
+      expect(parsed.automaticPowerControl).toBeUndefined();
+      expect(parsed.targetPowerConfig).toEqual(config);
+      expect(parsed.binaryWriteCapabilityId).toBe('charging_button');
+      expect(parsed.reportedStepId).toBe('16a');
+      const profile = parsed.steppedLoadProfile;
+      if (!profile) throw new Error('Expected saved amp ladder');
+      const put = vi.fn();
+      setRestClient({ get: vi.fn(), put });
+      await transport.requestSteppedLoadStep({
+        deviceId: device.id, profile, desiredStepId: '10a', planningPowerW: 6900, planningCurrentA: 10,
+      });
+      expect(trigger).toHaveBeenCalledWith(expect.objectContaining({
+        step_id: '10a', planning_current_a: 10, planning_power_w: 6900,
+      }), { deviceId: device.id });
+      expect(put).not.toHaveBeenCalled();
+      await emitCapability(device.id, 'available_installation_current', 10);
+      expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBe('10a');
+    },
+  );
+
+  it.each([
+    ['missing maximum', { max: undefined }],
+    ['missing step', { step: undefined }],
+    ['zero maximum', { max: 0 }],
+    ['negative maximum', { max: -1 }],
+    ['non-finite maximum', { max: Number.POSITIVE_INFINITY }],
+    ['NaN maximum', { max: Number.NaN }],
+    ['zero step', { step: 0 }],
+    ['negative step', { step: -1 }],
+    ['non-finite step', { step: Number.POSITIVE_INFINITY }],
+    ['NaN step', { step: Number.NaN }],
+    ['excluded positive range', { excludeMax: 20_000 }],
+    ['read-only target', { setable: false }],
+  ] as const)('does not advertise Automatic with %s even when Automatic was saved', async (_case, options) => {
+    const device = buildZaptecTargetPowerDevice();
+    const config = { enabled: true, preset: 'ev_charger_3_phase' as const };
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {
+      settings: { getDeviceTargetPowerConfig: () => config, getDevicePowerControlMode: () => 'automatic' },
+    });
+    const [parsed] = await seedTransportDevices(transport, [buildZaptecTargetPowerDevice({
+      capabilitiesObj: {
+        target_power: { ...device.capabilitiesObj?.target_power, ...options },
+        target_power_mode: { ...device.capabilitiesObj?.target_power_mode, value: 'homey' },
+      },
+    })]);
+    expect(parsed.automaticPowerControl).toBeUndefined();
+    expect(parsed.targetPowerConfig).toEqual(config);
+    expect(parsed.steppedLoadProfile?.steps[1]?.id).toBe('6a');
+  });
+
+  it.each(['current-only', 'unusable range'] as const)(
+    'removes Automatic availability when the same charger later reports %s', async (surface) => {
+      const device = buildZaptecTargetPowerDevice();
+      const config = { enabled: true, preset: 'ev_charger_3_phase' as const };
+      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {
+        settings: { getDeviceTargetPowerConfig: () => config, getDevicePowerControlMode: () => 'automatic' },
+      });
+      const [native] = await seedTransportDevices(transport, [device]);
+      expect(native.automaticPowerControl?.mode).toBe('automatic');
+
+      const fallback = surface === 'current-only'
+        ? buildZaptecCurrentOnlyDevice({ id: device.id, data: device.data })
+        : buildZaptecTargetPowerDevice({
+          capabilitiesObj: { target_power: { ...device.capabilitiesObj?.target_power, step: undefined } },
+        });
+      const [updated] = await seedTransportDevices(transport, [fallback]);
+      expect(updated.automaticPowerControl).toBeUndefined();
+      expect(transport.getSnapshotByDeviceId(device.id)?.automaticPowerControl).toBeUndefined();
+      expect(updated.targetPowerConfig).toEqual(config);
+      expect(updated.steppedLoadProfile?.steps[1]?.id).toBe('6a');
+    },
+  );
+
+  it('keeps an existing phase model and Flow active until Automatic is selected', async () => {
+    const config = { enabled: true, preset: 'ev_charger_3_phase' as const, max: 11040 };
+    const device = buildZaptecTargetPowerDevice();
+    const trigger = vi.fn().mockResolvedValue(undefined);
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {
+      settings: { getDeviceTargetPowerConfig: () => config },
+    }, undefined, { getFlowTriggerCard: () => ({ trigger }) });
+    await initWithLiveFeed(transport);
+    const [parsed] = await seedTransportDevices(transport, [device]);
+    expect(parsed.automaticPowerControl).toMatchObject({ mode: 'manual' });
+    expect(parsed.automaticPowerControl?.profile.steps[1]?.id).toBe('2530w');
+    expect(parsed.targetPowerConfig).toEqual(config);
+    expect(parsed.reportedStepId).toBe('16a');
+    const profile = parsed.steppedLoadProfile;
+    if (!profile) throw new Error('Expected saved amp ladder');
+    const put = vi.fn();
+    setRestClient({ get: vi.fn(), put });
+    await transport.requestSteppedLoadStep({
+      deviceId: device.id, profile, desiredStepId: '10a', planningPowerW: 6900, planningCurrentA: 10,
+    });
+    expect(trigger).toHaveBeenCalledWith(expect.objectContaining({ planning_current_a: 10 }), { deviceId: device.id });
+    expect(put).not.toHaveBeenCalled();
+    await emitCapability(device.id, 'available_installation_current', 10);
+    expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBe('10a');
+    await emitCapability(device.id, 'target_power', 2530);
+    expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBe('10a');
+  });
+
+  it('retains a saved EV ladder when no usable native watt range is published', async () => {
+    const config = { enabled: true, preset: 'ev_charger_3_phase' as const };
+    const device = buildZaptecTargetPowerDevice();
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {
+      settings: { getDeviceTargetPowerConfig: () => config },
+    });
+    const [parsed] = await seedTransportDevices(transport, [buildZaptecTargetPowerDevice({
+      capabilitiesObj: {
+        target_power: { value: 11040, setable: true, lastUpdated: device.capabilitiesObj?.target_power?.lastUpdated },
+        target_power_mode: { ...device.capabilitiesObj?.target_power_mode, value: 'homey' },
+      },
+    })]);
+    expect(parsed.targetPowerConfig).toEqual(config);
+    expect(parsed.reportedStepId).toBe('16a');
+    expect(parsed.steppedLoadProfile?.steps[1]?.id).toBe('6a');
+  });
+
+  it.each([
+    { enabled: true, preset: 'ev_charger_3_phase' as const },
+    { enabled: true, min: 0, max: 22080, step: 1380, excludeMax: 4140 },
+  ])('uses native IT watts instead of the saved ladder %j', async (config) => {
+    const device = buildZaptecTargetPowerDevice();
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {
+      settings: { getDeviceTargetPowerConfig: () => config, getDevicePowerControlMode: () => 'automatic' },
+    });
+    await initWithLiveFeed(transport);
+    const [parsed] = await seedTransportDevices(transport, [device]);
+    const profile = parsed.steppedLoadProfile;
+    if (!profile) throw new Error('Expected native IT watt ladder');
+    expect(parsed.targetPowerConfig).toBeUndefined();
+    expect(profile.steps[1]).toEqual({ id: '2530w', planningPowerW: 2530 });
+    expect(profile.steps.at(-1)).toEqual({ id: '12650w', planningPowerW: 12650 });
+    const configuration = new DeviceConfigurationStore();
+    configuration.set(parsed);
+    const persist = vi.fn();
+    const reachability = new DeviceTargetPowerReachabilityOwner(
+      () => config, (id) => configuration.get(id), persist,
+    );
+    expect(reachability.readProbeConfiguration(device.id)).toEqual({ kind: 'unconfigured' });
+    reachability.observeMaximum(device.id, 6440);
+    expect(reachability.resolveIssuedStepPowers({
+      deviceId: device.id, desiredStepId: '6440w',
+    })).toEqual({});
+    expect(persist).not.toHaveBeenCalled();
+
+    const put = vi.fn().mockResolvedValue(undefined);
+    setRestClient({ get: vi.fn(), put });
+    await transport.requestSteppedLoadStep({
+      deviceId: device.id, profile, desiredStepId: '6440w', planningPowerW: 6440, planningCurrentA: 0,
+    });
+    expect(put.mock.calls).toEqual([
+      [`manager/devices/device/${device.id}/capability/target_power`, pelsCapabilityWrite(6440)],
+      [`manager/devices/device/${device.id}/capability/target_power_mode`, pelsCapabilityWrite('homey')],
+    ]);
+    await emitCapability(device.id, 'target_power_mode', 'homey');
+    await emitCapability(device.id, 'available_installation_current', 16);
+    expect(transport.getSnapshotByDeviceId(device.id)?.steppedLoadProfile).toEqual(profile);
+    expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBeUndefined();
+  });
+
   it.each([
     ['single-phase', 7360, 1380, 1380, 7360],
     ['TN three-phase', 22080, 4140, 4140, 22080],
@@ -38,6 +211,7 @@ describe('Zaptec native target power', () => {
       controlModel: 'stepped_load',
       binaryCapabilityId: 'evcharger_charging',
       nativeWriteCapabilities: ['target_power'],
+      automaticPowerControl: { mode: 'automatic' },
     });
     expect(parsed.reportedStepId).toBeUndefined();
     const steps = parsed.steppedLoadProfile?.steps ?? [];
@@ -369,7 +543,7 @@ describe('Zaptec native target power', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     const device = buildZaptecTargetPowerDevice();
     const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {
-      settings: { getDeviceTargetPowerConfig: () => config },
+      settings: { getDeviceTargetPowerConfig: () => config, getDevicePowerControlMode: () => 'automatic' },
     });
     await initWithLiveFeed(transport);
     const [claimed] = await seedTransportDevices(transport, [buildZaptecTargetPowerDevice({
@@ -378,7 +552,8 @@ describe('Zaptec native target power', () => {
         target_power_mode: { ...device.capabilitiesObj?.target_power_mode, value: 'homey' },
       },
     })]);
-    expect(claimed.reportedStepPowerW).toBeGreaterThan(0);
+    expect(claimed.reportedStepId).toBe('2530w');
+    expect(claimed.targetPowerConfig).toBeUndefined();
     expect(claimed.reportedStepObservedAtMs).toBe(Date.now());
 
     vi.setSystemTime(Date.now() + 1000);

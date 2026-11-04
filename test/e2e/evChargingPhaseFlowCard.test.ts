@@ -15,14 +15,18 @@ const buildCharger = async (id: string, name: string): Promise<MockDevice> => {
   const charger = new MockDevice(
     id,
     name,
-    ['measure_power', 'target_power', 'evcharger_charging', 'evcharger_charging_state'],
+    ['onoff', 'measure_power', 'target_charger_current', 'evcharger_charging', 'evcharger_charging_state'],
     'evcharger',
   );
-  charger.setCapabilityMetadata('target_power', {
-    units: 'W', min: 0, max: 7_360, step: 230, setable: true,
+  // Phase selection governs an amp-controlled charger; a published native watt
+  // ladder owns its conversion and deliberately has no PELS phase selection.
+  charger.setDriverIdentity({ ownerUri: 'homey:app:no.easee', driverId: 'homey:app:no.easee:charger' });
+  charger.setCapabilityMetadata('target_charger_current', {
+    units: 'A', min: 0, max: 40, step: 1, setable: true,
   });
+  await charger.setCapabilityValue('onoff', false);
   await charger.setCapabilityValue('measure_power', 0);
-  await charger.setCapabilityValue('target_power', 0);
+  await charger.setCapabilityValue('target_charger_current', 0);
   await charger.setCapabilityValue('evcharger_charging', false);
   await charger.setCapabilityValue('evcharger_charging_state', 'plugged_out');
   return charger;

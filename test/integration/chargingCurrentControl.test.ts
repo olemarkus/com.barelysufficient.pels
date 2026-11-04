@@ -7,6 +7,7 @@ import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowCon
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
+import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
 
 const selected: ChargingCurrentSetup = { method: 'built_in', confirmation: 'single_charger' };
 const zaptec = (writable = false): HomeyDeviceLike => ({ id: 'charger', name: 'Zaptec', class: 'evcharger',
@@ -24,7 +25,8 @@ function fixture(device = zaptec(), flowWritesStore = createChargingFlowWritesSt
   setRestClient({ get, put: vi.fn() });
   const control = new ChargingCurrentControl({ settings, api: { getLocalUrl: async () => 'http://homey.local' },
     cloud: { getHomeyId: async () => 'test' } },
-  { structuredLog: getLogger('test') }, () => inventory, () => ({ connected: true, revision: 0 }), flowWritesStore);
+  { structuredLog: getLogger('test') }, () => inventory, () => ({ connected: true, revision: 0 }), flowWritesStore,
+  deviceControlSettingsFixture({ devicePowerControlModes: { charger: 'automatic' } }));
   const access = control.access;
   return { inventory, control, access, get, values, flowWritesStore };
 }
@@ -44,6 +46,24 @@ test('key-only setup preserves the Flow route until explicitly selected', async 
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ intersectedScopes: ['homey.flow'] })));
   await access.save({ key: 'private-key' });
   expect(control.setup('charger').method).toBe('flow');
+});
+
+test.each([false, true])('native target power supersedes saved current control only with a usable ladder: %s', async (usable) => {
+  const { control, inventory } = fixture(zaptec(true));
+  await control.save('charger', selected);
+  expect(control.routesBuiltIn('charger')).toBe(true);
+  inventory[0] = {
+    ...zaptec(true),
+    capabilities: ['available_installation_current', 'target_power', 'target_power_mode'],
+    capabilitiesObj: {
+      ...zaptec(true).capabilitiesObj,
+      target_power: { value: 6440, setable: true, min: 0, max: 12747, step: usable ? 230 : undefined, excludeMax: 2391 },
+      target_power_mode: { value: 'homey', setable: true },
+    },
+  };
+  expect(control.routesBuiltIn('charger')).toBe(!usable);
+  expect(control.setup('charger')).toEqual(selected);
+  expect((await control.list())[0]?.currentRoute).toBe(usable ? 'flow' : 'built_in');
 });
 
 test('uses the exact installed app action and all three installation-current arguments', async () => {

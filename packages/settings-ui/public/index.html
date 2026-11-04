@@ -923,6 +923,18 @@
         <md-text-button form="temperature-control-confirm-form" value="confirm">Save choice</md-text-button>
       </div>
     </md-dialog>
+    <md-dialog id="power-control-confirm-dialog">
+      <div slot="headline">Use Automatic control?</div>
+      <form slot="content" id="power-control-confirm-form" method="dialog">
+        <p class="pels-text-body" id="power-control-confirm-message"></p>
+        <ul class="pels-text-body" id="power-control-confirm-consequences"></ul>
+        <p class="pels-text-body">Your saved manual setup is kept. You can switch back to Manual.</p>
+      </form>
+      <div slot="actions">
+        <md-text-button form="power-control-confirm-form" value="cancel">Cancel</md-text-button>
+        <md-text-button form="power-control-confirm-form" value="confirm">Use Automatic</md-text-button>
+      </div>
+    </md-dialog>
     <div id="device-detail-panel" class="slide-panel">
       <div class="slide-panel__header pels-appbar">
         <!-- "Close device details", not "Back to Devices": the overlay also
@@ -1107,7 +1119,7 @@
         <section class="detail-section" id="device-detail-stepped-section" hidden>
           <details class="settings-collapse detail-collapse" open>
             <summary>
-              <h3 class="section-title">Stepped load profile</h3>
+              <h3 class="section-title" id="device-detail-stepped-title">Stepped load profile</h3>
               <span class="section-hint" id="device-detail-stepped-hint">Steps and planning power</span>
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
@@ -1542,6 +1554,14 @@
                   </span>
                 </div>
 
+                <div class="md-field-row" id="device-detail-power-control-row" hidden>
+                  <md-filled-select id="device-detail-power-control-mode" label="Control model">
+                    <md-select-option value="automatic"><div slot="headline">Automatic</div></md-select-option>
+                    <md-select-option value="manual"><div slot="headline">Manual</div></md-select-option>
+                  </md-filled-select>
+                  <small class="field__hint" id="device-detail-power-control-hint"></small>
+                  <small class="field__hint" id="device-detail-power-control-range"></small>
+                </div>
                 <div id="device-detail-charging-current"></div>
                 <div class="md-switch-row" id="device-detail-native-wiring-row" hidden>
                   <md-switch id="device-detail-native-wiring"></md-switch>

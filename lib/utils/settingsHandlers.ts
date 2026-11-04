@@ -17,6 +17,7 @@ import {
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
+  DEVICE_POWER_CONTROL_MODES,
   DEVICE_TARGET_POWER_REACHABILITY,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
@@ -353,6 +354,7 @@ const SNAPSHOT_REPARSE_SETTINGS: readonly (readonly [string, string])[] = [
   [DEVICE_DRIVER_OVERRIDES, 'device_driver_override_change'],
   [DEVICE_CONTROL_PROFILES, 'device_control_profile_change'],
   [DEVICE_TARGET_POWER_CONFIGS, 'device_target_power_change'],
+  [DEVICE_POWER_CONTROL_MODES, 'device_power_control_mode_change'],
   [DEVICE_TARGET_POWER_REACHABILITY, 'device_target_power_reachability_change'],
   // A charger's battery-level source is chosen at parse: once a car is
   // selected, a battery capability on the charger device and the Flow card are ignored. Without

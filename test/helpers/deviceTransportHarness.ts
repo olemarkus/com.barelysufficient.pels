@@ -32,6 +32,7 @@ import { vi } from 'vitest';
 import { DeviceTransport } from '../../lib/device/deviceTransport';
 import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
 import { ObservedHomePower } from '../../lib/observer/observedHomePower';
+import type { ChargingCurrentControl } from '../../lib/device/chargingCurrentControl';
 import { DEVICES_API_PATH, setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import type { SnapshotRefreshOptions } from '../../lib/device/transport/transportTypes';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
@@ -68,6 +69,7 @@ export type TestTransportInputs = {
   nativeWiring?: Partial<NativeWiringRead>;
   flowBacked?: Partial<FlowBackedRead>;
   batteryManaged?: Partial<BatteryManagedRead>;
+  chargingCurrent?: Pick<ChargingCurrentControl, 'requiresManualControl'>;
 };
 
 /** Every device managed and controllable, the filter on, and no per-device configuration. */
@@ -79,6 +81,10 @@ export const testParseSettings = (settings: Partial<DeviceParseSettings> = {}): 
   getDeviceDriverIdOverride: () => undefined,
   getDeviceControlProfile: () => undefined,
   getDeviceTargetPowerConfig: () => undefined,
+  getDevicePowerControlMode: () => undefined,
+  resolveDevicePowerControlMode: (id, hasCurrent) => settings.getDevicePowerControlMode?.(id)
+    ?? (settings.getDeviceTargetPowerConfig?.(id) || settings.getDeviceControlProfile?.(id) || hasCurrent
+      ? 'manual' : 'automatic'),
   getEvCarAssociationCarIds: () => [],
   ...settings,
 });
@@ -97,6 +103,7 @@ const testTransportOwners = (inputs: TestTransportInputs) => ({
     ...inputs.flowBacked,
   },
   batteryManaged: { isManaged: () => true, ...inputs.batteryManaged },
+  chargingCurrent: inputs.chargingCurrent ?? { requiresManualControl: () => false },
 });
 
 /**
@@ -104,11 +111,12 @@ const testTransportOwners = (inputs: TestTransportInputs) => ({
  * above, with no device detected as a battery or solar device.
  */
 export const testParseSources = (inputs: TestTransportInputs = {}): DeviceParseSources => {
-  const { settings, nativeWiring, flowBacked, batteryManaged } = testTransportOwners(inputs);
+  const { settings, nativeWiring, flowBacked, batteryManaged, chargingCurrent } = testTransportOwners(inputs);
   return {
     settings,
     nativeWiring,
     flowBacked,
+    chargingCurrent,
     management: new DeviceManagement(
       { isBatteryDevice: () => false, isSolarDevice: () => false },
       batteryManaged,

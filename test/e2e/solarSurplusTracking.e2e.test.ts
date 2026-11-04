@@ -9,8 +9,8 @@
 // ceiling clamp → planner → executor. The only thing asserted is what PELS
 // writes back through the SDK: `api.put` of `target_power` in watts.
 //
-// The ladder is the real EV 1-phase preset, so its rungs are the real ones —
-// 6 A = 1380 W is the floor, and there is nothing between that and off. When the
+// The charger publishes a native watt ladder in 230 W increments with a
+// 6 A = 1380 W floor, and there is nothing between that and off. When the
 // export cannot fund that floor the charger STOPS, and where it parks is the
 // configured shed action's answer, not this feature's.
 //
@@ -33,6 +33,7 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CONTROLLABLE_DEVICES,
+  DEVICE_POWER_CONTROL_MODES,
   DEVICE_TARGET_POWER_CONFIGS,
   MANAGED_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
@@ -52,7 +53,7 @@ const buildCharger = async (drawW: number): Promise<MockDevice> => {
     'evcharger',
   );
   charger.setCapabilityMetadata('target_power', {
-    units: 'W', min: 0, max: 7_360, step: 230, setable: true,
+    units: 'W', min: 0, max: 7_360, step: 230, excludeMin: 0, excludeMax: 1380, setable: true,
   });
   await charger.setCapabilityValue('measure_power', drawW);
   await charger.setCapabilityValue('target_power', drawW);
@@ -87,6 +88,7 @@ const seedSettings = (params: { surplusWilling: boolean }) => {
   mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, {
     [CHARGER]: { enabled: true, preset: 'ev_charger_1_phase', max: 7_360 },
   });
+  mockHomeyInstance.settings.set(DEVICE_POWER_CONTROL_MODES, { [CHARGER]: 'automatic' });
   // The blob the settings UI writes for a tracking opt-in: price-response off,
   // zero deltas, only the surplus fields carrying meaning.
   mockHomeyInstance.settings.set('price_optimization_settings', {
@@ -144,8 +146,8 @@ describe('Solar surplus tracking (SDK-boundary e2e)', () => {
 
   it('never commands the charger above what the sun covers', async () => {
     // Exporting 2.5 kW while the charger idles. The pool buys at most the rung
-    // under 2.5 − 0.25 reserve = 2.25 kW, which on the real EV 1-phase ladder is
-    // 8 A (1840 W). Anything above that would be charging on grid power, which
+    // under 2.5 − 0.25 reserve = 2.25 kW, which on the native watt ladder is
+    // 2070 W. Anything above the funded ladder rung would be charging on grid power, which
     // is precisely what this feature exists to prevent.
     const charger = await buildCharger(0);
     setMockDrivers({ driverA: new MockDriver('driverA', [charger]) });
@@ -161,7 +163,7 @@ describe('Solar surplus tracking (SDK-boundary e2e)', () => {
 
     const commanded = targetPowerPuts(putSpy);
     expect(commanded).not.toHaveLength(0);
-    expect(commanded.every((watts) => watts <= 1840)).toBe(true);
+    expect(commanded.every((watts) => watts <= 2070)).toBe(true);
   });
 
   it('stops the charger when export cannot reach 6 A', async () => {
@@ -186,9 +188,8 @@ describe('Solar surplus tracking (SDK-boundary e2e)', () => {
 
     // WHERE it stops is the configured shed action's answer, not this feature's.
     // No shed behaviour is seeded, so the default `turn_off` applies — and for
-    // this charger that is its BINARY handle. The EV preset ladder deliberately
-    // carries no 0 W rung (its lowest is the 6 A step), so the current axis
-    // parks there and is inert while the charger is off.
+    // this charger that is its BINARY handle. Its retained watt target is inert
+    // while the charger is off; a positive target does not mean it resumed.
     //
     // This is the whole point of routing the stop through the shed action: the
     // solar path asks only THAT the device stop, and a device with an off

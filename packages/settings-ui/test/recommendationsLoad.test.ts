@@ -158,6 +158,98 @@ beforeEach(() => {
 });
 
 describe('recommendation loading', () => {
+  it('reviews and dismisses Automatic without changing the existing charger control', async () => {
+    const charger = device({
+      id: 'charger-1', name: 'Garage', isEvCharger: true,
+      targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },
+      automaticPowerControl: { mode: 'manual', profile: { steps: [
+        { id: 'off', planningPowerW: 0 }, { id: '2530w', planningPowerW: 2530 },
+      ] } },
+    });
+    const recommendations = await loadSubject([charger]);
+    const { state } = await import('../src/ui/state.ts');
+    state.devicePowerControlModes = {};
+    state.devicePowerControlModesLoaded = false;
+    getSetting.mockResolvedValue({});
+    getSettingFresh.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars());
+    chargingApi.mockResolvedValue([{
+      deviceId: charger.id, name: charger.name, setup: { method: 'flow', confirmation: 'none' },
+      capabilityWritable: false, scope: 'installation', sharedInstallation: false,
+      flowCheck: 'clear', flowNames: [], currentRoute: 'flow',
+    }]);
+    await recommendations.loadRecommendationData();
+    const surface = document.getElementById('setup-recommendations-root');
+    expect(surface?.textContent).not.toContain('Automatic charging control is available');
+
+    state.devicePowerControlModesLoaded = true;
+    recommendations.refreshRecommendationSurfaces();
+    expect(surface?.textContent).toContain('Automatic charging control is available for Garage');
+    expect(surface?.textContent).not.toContain('Set up charging-current control');
+    const openPanel = vi.fn();
+    const openDevice = vi.fn();
+    const listeners = vi.spyOn(document, 'addEventListener');
+    recommendations.initRecommendationSurfaces({ useQuarterHour: vi.fn(), openPanel, openDevice });
+    try {
+      const action = [...surface!.querySelectorAll('md-filled-tonal-button')]
+        .find((button) => button.textContent?.trim() === 'Review automatic control');
+      action?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(openPanel).toHaveBeenCalledWith('devices');
+      expect(openDevice).toHaveBeenCalledWith(charger.id, 'control-model');
+      expect(setSetting).not.toHaveBeenCalled();
+
+      const card = [...surface!.querySelectorAll('article')]
+        .find((entry) => entry.textContent?.includes('Automatic charging control is available for Garage'));
+      const dismiss = [...card!.querySelectorAll('md-text-button')]
+        .find((button) => button.textContent?.trim() === 'Dismiss');
+      dismiss?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await vi.waitFor(() => {
+        expect(setSetting).toHaveBeenCalledWith('setup_recommendation_dismissals', {
+          'automatic-charging-control:charger-1': 1,
+        });
+        const dismissedCard = [...surface!.querySelectorAll('article')]
+          .find((entry) => entry.textContent?.includes('Automatic charging control is available for Garage'));
+        expect(dismissedCard?.textContent).toContain('Dismissed');
+      });
+      expect(state.devicePowerControlModes).toEqual({});
+      expect(charger.automaticPowerControl?.mode).toBe('manual');
+      expect(charger.targetPowerConfig?.preset).toBe('ev_charger_3_phase');
+    } finally {
+      for (const [type, listener, options] of listeners.mock.calls) document.removeEventListener(type, listener, options);
+      listeners.mockRestore();
+    }
+  });
+
+  it('keeps a real paused-current warning in Manual and removes it while Automatic is active', async () => {
+    const charger = device({
+      id: 'charger-1', name: 'Garage', isEvCharger: true,
+      automaticPowerControl: { mode: 'manual', profile: { steps: [
+        { id: 'off', planningPowerW: 0 }, { id: '2530w', planningPowerW: 2530 },
+      ] } },
+    });
+    const recommendations = await loadSubject([charger]);
+    const { state } = await import('../src/ui/state.ts');
+    state.devicePowerControlModes = { [charger.id]: 'manual' };
+    state.devicePowerControlModesLoaded = true;
+    getSetting.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars());
+    chargingApi.mockResolvedValue([{
+      deviceId: charger.id, name: charger.name, setup: { method: 'built_in', confirmation: 'single_charger' },
+      capabilityWritable: false, scope: 'installation', sharedInstallation: false,
+      flowCheck: 'conflict', flowNames: ['Existing charging Flow'], currentRoute: 'flow',
+    }]);
+    await recommendations.loadRecommendationData();
+    const surface = document.getElementById('setup-recommendations-root');
+    expect(surface?.textContent).toContain('Built-in current control is paused for Garage');
+    expect(surface?.textContent).not.toContain('Automatic charging control is available');
+
+    charger.automaticPowerControl = { ...charger.automaticPowerControl!, mode: 'automatic' };
+    state.devicePowerControlModes = { [charger.id]: 'automatic' };
+    recommendations.refreshRecommendationSurfaces();
+    expect(surface?.textContent).not.toContain('Built-in current control is paused');
+    expect(surface?.textContent).not.toContain('Automatic charging control is available');
+  });
+
   it.each(['success', 'failure'] as const)(
     'ignores an older history %s after a newer read settles', async (olderResult) => {
       const recommendations = await loadSubject([]);
