@@ -19,17 +19,18 @@ The battery's Homey app must let Homey set how much the battery charges and disc
 
 A Sessy needs its local login in the Sessy Homey app, so PELS can switch it to API control.
 
-A Marstek Venus paired with the Marstek Battery Connector app (its local connection) and a Sigenergy system take commands only through their app's own Flow action cards. PELS runs those cards with a Homey API key with **Flow** permission, the same key built-in charger current uses:
+A Marstek Venus paired with the Marstek Battery Connector app (its local connection), a Sigenergy system, a Zendure SolarFlow paired with the local Zendure app, and a Huawei LUNA2000 paired with the FusionSolar app over Modbus take commands only through their app's own Flow action cards. PELS runs those cards with a Homey API key with **Flow** permission, the same key built-in charger current uses:
 
 1. Create the key with [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro).
 2. Open the battery's device page in PELS and save the key in its **Battery** section. One key works for every device on this Homey, and the same section lets you check, replace or remove it later.
 3. For Sigenergy, pair the plant device in the Sigenergy app too: PELS controls the battery through it.
+4. For a LUNA2000, add the battery with the app's Modbus connection. PELS uses the maximum charge and discharge power the app reads from the battery.
 
 Until a key is saved, the battery's card reads `PELS can only watch it: add a Homey API key to let PELS control it`. These apps report no control mode back to Homey, so a change you make in the battery's own app while PELS holds it is not seen, and PELS's next command replaces it. Turn off **Managed by PELS** or **Power-limit control** to take the battery back.
 
 ## Your battery keeps its own mode until PELS has a job for it
 
-Self-consumption, the battery's own price trading and its own schedule keep running as usual. PELS takes the battery over only while it has a job for it: sharing your solar in priority order, or holding your limit when its turn comes. When the job is done, PELS hands the battery back to the mode it was in.
+Self-consumption, the battery's own price trading and its own schedule keep running as usual. PELS takes the battery over only while it has a job for it: sharing your solar in priority order, or holding your limit when its turn comes. When the job is done, PELS hands the battery back to the mode it was in. A Zendure on its local app has no mode of its own in Homey: PELS hands it back at 0 W, and your own flows take it from there.
 
 The battery shows up like any other managed device: a card on the **Overview**, a row in the device list and its own device page.
 

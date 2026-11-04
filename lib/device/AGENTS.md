@@ -28,8 +28,9 @@ Realtime observations update the observed view before any convergence decision. 
 ## Integration adapters
 
 Tesla vehicle charging, Easee, Enua, Zaptec, Futurehome, OSO, SMA, KNX, Sessy, Anker SOLIX, Zinvolt,
-Marstek Venus (Connector app) and Sigenergy interpretation belongs in `tesla/`, `easee/`, `enua/`, `zaptec/`,
-`futurehome/`, `oso/`, `sma/`, `knx/`, `sessy/`, `anker/`, `zinvolt/`, `marstek/` and `sigenergy/`. A home
+Marstek Venus (Connector app), Sigenergy, Zendure (local app) and Huawei LUNA2000 (Modbus) interpretation
+belongs in `tesla/`, `easee/`, `enua/`, `zaptec/`, `futurehome/`, `oso/`, `sma/`, `knx/`, `sessy/`, `anker/`,
+`zinvolt/`, `marstek/`, `sigenergy/`, `zendure/` and `huawei/`. A home
 battery's control binding (claim, setpoint sign, range defaults, or its app's Flow actions) is the adapter's
 `homeBatteryBinding`; see `notes/battery-vendor-bindings.md`. Battery app actions run through the common host
 `homeBatteryAppActions.ts` on the shared Homey API key (`transport/homeyActionAccess.ts`).

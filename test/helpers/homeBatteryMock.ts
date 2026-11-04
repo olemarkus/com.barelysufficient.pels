@@ -179,3 +179,42 @@ export const buildSigenergyDevices = (params: {
   plant.setActualCapabilityValue('ems_work_mode', 'AI mode', quiet);
   return { battery, plant };
 };
+
+/**
+ * A Zendure SolarFlow as com.tweakers.zendure 1.0.16 declares its `zendure`
+ * driver: no `target_power` and no claim capability, only its readings. PELS
+ * drives it through the app's `set-power` Flow card.
+ */
+export const buildZendureLocalBatteryDevice = (params: { id: string }): MockDevice => {
+  const device = new MockDevice(params.id, 'Zendure', ['measure_battery', 'measure_power', 'measure_temperature'], 'battery');
+  device.setDriverIdentity({ driverId: 'homey:app:com.tweakers.zendure:zendure' });
+  const quiet = { emitCapabilityEvent: false, emitDeviceUpdate: false };
+  device.setActualCapabilityValue('measure_battery', 55, quiet);
+  device.setActualCapabilityValue('measure_power', 0, quiet);
+  device.setActualCapabilityValue('measure_temperature', 20, quiet);
+  return device;
+};
+
+/**
+ * A Huawei LUNA2000 as com.huawei.fusionsolar 1.3.9 declares its
+ * `luna2000_modbus` driver: no `target_power`, its max charge and discharge
+ * power (W) kept in the device settings by the app's poll. PELS drives it
+ * through the app's forced charge and discharge Flow cards.
+ */
+export const buildHuaweiLuna2000Device = (params: {
+  id: string;
+  maxChargePowerW?: number;
+  maxDischargePowerW?: number;
+}): MockDevice => {
+  const device = new MockDevice(params.id, 'LUNA2000', ['measure_power', 'measure_battery', 'storage_force_charge_discharge'], 'battery');
+  device.setDriverIdentity({ driverId: 'homey:app:com.huawei.fusionsolar:luna2000_modbus' });
+  device.setSettings({
+    max_charge_power: params.maxChargePowerW ?? 5000,
+    max_discharge_power: params.maxDischargePowerW ?? 5000,
+  });
+  const quiet = { emitCapabilityEvent: false, emitDeviceUpdate: false };
+  device.setActualCapabilityValue('measure_battery', 55, quiet);
+  device.setActualCapabilityValue('measure_power', 0, quiet);
+  device.setActualCapabilityValue('storage_force_charge_discharge', '0', quiet);
+  return device;
+};

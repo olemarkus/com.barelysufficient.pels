@@ -13,6 +13,8 @@ import { ankerSolixAdapter } from './anker';
 import { zinvoltAdapter } from './zinvolt';
 import { marstekConnectorAdapter } from './marstek';
 import { sigenergyAdapter } from './sigenergy';
+import { zendureLocalAdapter } from './zendure';
+import { huaweiLuna2000Adapter } from './huawei';
 import { plainDeviceAdapter } from './standardDeviceAdapter';
 import type { DeviceAdapter, AdapterObservation, AdapterControlTarget, DeviceAdapterSession } from './deviceAdapter';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
@@ -20,7 +22,8 @@ import type { HomeyDeviceLike } from '../utils/types';
 
 const adapters: readonly DeviceAdapter[] = [
   teslaAdapter, easeeAdapter, enuaAdapter, zaptecAdapter, futurehomeAdapter, osoAdapter, smaAdapter, knxAdapter,
-  sessyAdapter, ankerSolixAdapter, zinvoltAdapter, marstekConnectorAdapter, sigenergyAdapter,
+  sessyAdapter, ankerSolixAdapter, zinvoltAdapter, marstekConnectorAdapter, sigenergyAdapter, zendureLocalAdapter,
+  huaweiLuna2000Adapter,
 ];
 
 export function getDeviceAdapter(device: HomeyDeviceLike): DeviceAdapter {

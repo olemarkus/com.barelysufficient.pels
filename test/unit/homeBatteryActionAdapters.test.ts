@@ -101,3 +101,76 @@ describe('Sigenergy binding', () => {
     expect(actionBinding(battery).resolve(battery, devices)).toEqual({ kind: 'unavailable', reasonCode });
   });
 });
+
+describe('Zendure local binding', () => {
+  const zendure = device('zendure', 'homey:app:com.tweakers.zendure:zendure');
+
+  it('commands set-power with the app\'s sign, positive discharging, held until the next', () => {
+    const binding = actionBinding(zendure);
+    expect(binding.appUri).toBe('homey:app:com.tweakers.zendure');
+    expect(binding.commandLifetime).toEqual({ kind: 'persistent' });
+    const actions = resolved(zendure, [zendure]);
+    expect(actions.range).toEqual({ minW: -2400, maxW: 2400, stepW: 1, excludeMinW: 0, excludeMaxW: 0 });
+    expect(actions.command(1200)).toEqual([{ deviceId: 'zendure', actionId: 'set-power', args: { power: -1200 } }]);
+    expect(actions.command(-800)).toEqual([{ deviceId: 'zendure', actionId: 'set-power', args: { power: 800 } }]);
+    const [hold] = actions.command(0);
+    expect(Object.is(hold?.args.power, 0)).toBe(true);
+  });
+
+  it('hands back with the app\'s idle, set-power 0, its only control', () => {
+    expect(resolved(zendure, [zendure]).handBack).toEqual([
+      { deviceId: 'zendure', actionId: 'set-power', args: { power: 0 } },
+    ]);
+  });
+
+  it('leaves the Zendure cloud app, which reports no battery power, on Homey\'s standard binding', () => {
+    const cloud = device('hyper', 'homey:app:com.zendure.flow:hyper-2000');
+    expect(getDeviceAdapter(cloud).homeBatteryBinding(cloud).kind).toBe('capability');
+  });
+});
+
+describe('Huawei LUNA2000 Modbus binding', () => {
+  const luna = device('luna', 'homey:app:com.huawei.fusionsolar:luna2000_modbus', {
+    max_charge_power: 5000, max_discharge_power: 4550,
+  });
+
+  it('ranges by the battery\'s max powers on the cards\' 100 W grid, each run lasting 10 minutes', () => {
+    const binding = actionBinding(luna);
+    expect(binding.appUri).toBe('homey:app:com.huawei.fusionsolar');
+    expect(binding.commandLifetime).toEqual({ kind: 'expires', lifetimeMs: 600_000 });
+    expect(resolved(luna, [luna]).range).toEqual({ minW: -4500, maxW: 5000, stepW: 100, excludeMinW: 0, excludeMaxW: 0 });
+  });
+
+  it('charges, discharges and holds 0 W with forced runs in unsigned W for 10 minutes', () => {
+    const actions = resolved(luna, [luna]);
+    expect(actions.command(2300)).toEqual([
+      { deviceId: 'luna', actionId: 'luna2000_start_force_charge_duration', args: { power: 2300, duration: 10 } },
+    ]);
+    expect(actions.command(-1500)).toEqual([
+      { deviceId: 'luna', actionId: 'luna2000_start_force_discharge_duration', args: { power: 1500, duration: 10 } },
+    ]);
+    expect(actions.command(0)).toEqual([
+      { deviceId: 'luna', actionId: 'luna2000_start_force_charge_duration', args: { power: 0, duration: 10 } },
+    ]);
+  });
+
+  it('hands back by stopping the forced run', () => {
+    expect(resolved(luna, [luna]).handBack).toEqual([
+      { deviceId: 'luna', actionId: 'luna2000_stop_force_charge_discharge', args: {} },
+    ]);
+  });
+
+  it.each([
+    { name: 'no max powers read yet', settings: {} },
+    { name: 'charging blocked at 0 W', settings: { max_charge_power: 0, max_discharge_power: 5000 } },
+    { name: 'a max power below one step', settings: { max_charge_power: 5000, max_discharge_power: 50 } },
+  ])('is unavailable with $name', ({ settings }) => {
+    const battery = { ...luna, settings };
+    expect(actionBinding(battery).resolve(battery, [battery])).toEqual({ kind: 'unavailable', reasonCode: 'max_power_unknown' });
+  });
+
+  it.each(['luna2000_emma_modbus', 'luna2000_openapi_fusionsolar'])('leaves the %s driver on Homey\'s standard binding', (driver) => {
+    const other = device('other', `homey:app:com.huawei.fusionsolar:${driver}`);
+    expect(getDeviceAdapter(other).homeBatteryBinding(other).kind).toBe('capability');
+  });
+});
