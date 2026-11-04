@@ -430,6 +430,7 @@ export class DeviceWriteService {
       (capabilityId, value) => this.setNativeStepCapability(deviceId, capabilityId, value),
     );
     if (nativeRequested === 'binary_off_required') return { requested: false, preparation: 'binary_off' };
+    if (nativeRequested === 'preparation_issued') return { requested: false, preparation: 'issued' };
     return nativeRequested
       ? { requested: true, acknowledged: true, transport: 'native_capability' }
       : { requested: false };

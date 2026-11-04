@@ -15,7 +15,7 @@ import {
 } from './nativeSteppedLoadWiring';
 
 /** One device's native step channel: its step capability, as last read. */
-export type NativeSteppedLoadStepResult = boolean | 'binary_off_required';
+export type NativeSteppedLoadStepResult = boolean | 'binary_off_required' | 'preparation_issued';
 
 export type NativeSteppedLoadCommandAdapter = {
   syncDevice: (device: HomeyDeviceLike) => void;
@@ -98,9 +98,11 @@ export class CapabilityNativeSteppedLoadCommandAdapter implements NativeSteppedL
     const generation = this.powerControlModeGeneration;
     const reasserting = this.targetPowerReassertAfterMs !== undefined;
     const preparation = reasserting ? await this.prepareReassertion(generation, setCapability) : 'unchanged';
+    // A preparation write went out, even one a newer mode choice superseded.
+    // The step itself waits for the next decision.
+    if (preparation === 'issued') return 'preparation_issued';
     if (!this.ownsTargetPowerWrite(generation)) return false;
     if (preparation === 'binary_off_required') return preparation;
-    if (preparation === 'stopped') return false;
     const takingControl = preparation === 'reset' || needsTargetPowerTakeover(this.capabilities, this.capabilityObj);
     const requestedAtMs = Date.now();
     const reportRevision = this.targetPowerReportRevision;
@@ -122,21 +124,19 @@ export class CapabilityNativeSteppedLoadCommandAdapter implements NativeSteppedL
 
   private async prepareReassertion(
     generation: number, setCapability: (capabilityId: string, value: unknown) => Promise<unknown>,
-  ): Promise<'unchanged' | 'reset' | 'stopped' | 'binary_off_required'> {
+  ): Promise<'unchanged' | 'reset' | 'issued' | 'binary_off_required'> {
     if (this.targetPowerReassertAfterMs === undefined) return 'unchanged';
-    const preparation = getDeviceAdapter(this.raw).prepareTargetPowerReassertion(
-      this.raw, this.targetPowerReassertAfterMs, this.getInventory(),
-    );
+    const preparation = getDeviceAdapter(this.raw).prepareTargetPowerReassertion(this.raw, this.getInventory());
     if (preparation.kind === 'stop') {
       // Binary preparation belongs to the executor's ordinary binary dispatch:
       // it records pending provenance before the write and waits for telemetry.
       if (preparation.write.value === false) return 'binary_off_required';
       await setCapability(preparation.write.capabilityId, preparation.write.value);
-      return 'stopped';
+      return 'issued';
     }
     for (const reset of preparation.resetWrites) {
       await setCapability(reset.capabilityId, reset.value);
-      if (!this.ownsTargetPowerWrite(generation)) return 'stopped';
+      if (!this.ownsTargetPowerWrite(generation)) return 'issued';
     }
     return preparation.resetWrites.length > 0 ? 'reset' : 'unchanged';
   }
@@ -213,9 +213,7 @@ export class CapabilityNativeSteppedLoadCommandAdapter implements NativeSteppedL
     if (!isTargetPowerSteppedLoadCandidate({
       capabilities: this.capabilities, capabilityObj: this.capabilityObj,
     })) return;
-    const preparation = getDeviceAdapter(this.raw).prepareTargetPowerReassertion(
-      this.raw, Date.now(), this.getInventory(),
-    );
+    const preparation = getDeviceAdapter(this.raw).prepareTargetPowerReassertion(this.raw, this.getInventory());
     if (preparation.kind === 'stop' || preparation.resetWrites.length > 0) this.requireTargetPowerReassertion();
   }
 

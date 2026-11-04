@@ -112,6 +112,9 @@ boot `console.error` (`setup/api/defineRoutes.ts`) is the one exemption, by name
 - `stepped_load_command_requested`
 - `stepped_load_command_skipped`
 - `stepped_load_command_failed`
+- `stepped_load_preparation_issued` — a native reclaim wrote its preparation
+  (a watt-target stop or a control-mode reset) instead of the step. The step
+  waits for the next meter-driven decision.
 - `stepped_load_command_outcome_unknown` — the stepped twin of
   `binary_command_outcome_unknown`: the write was abandoned (native transport
   timeout) or the Flow trigger went unacknowledged, so the command stays pending

@@ -30,5 +30,7 @@ export type SteppedLoadStepRequestResult =
   | { requested: false }
   /** The step is not issued until its binary pause has been observed. */
   | { requested: false; preparation: 'binary_off' }
+  /** A preparation write went out instead of the step, which waits for the next decision. */
+  | { requested: false; preparation: 'issued' }
   | { requested: true; acknowledged: true; transport: SteppedLoadStepRequestTransport }
   | { requested: true; acknowledged: false; transport: 'flow'; reasonCode: 'flow_trigger_timeout' };

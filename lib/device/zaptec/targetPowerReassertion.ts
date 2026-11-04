@@ -5,7 +5,7 @@ import { zaptecInstallationOf } from './session';
 
 /** Zaptec caches the amp target until Homey releases its power control. */
 export function prepareZaptecTargetPowerReassertion(
-  device: HomeyDeviceLike, afterMs: number, inventory: readonly HomeyDeviceLike[],
+  device: HomeyDeviceLike, inventory: readonly HomeyDeviceLike[],
 ): TargetPowerReassertionPreparation {
   const accepted = inventory.find((entry) => entry.id === device.id);
   const capabilities = accepted?.capabilities ?? device.capabilities ?? [];
@@ -17,10 +17,12 @@ export function prepareZaptecTargetPowerReassertion(
   const mode = accepted.capabilitiesObj?.target_power_mode;
   // A reset restores pre-Homey installation current. A sibling, even unmanaged,
   // may be charging on it, so only an exclusive installation can be reset.
+  // Without a reset there is nothing to reclaim: the watt target is written as
+  // before, so a stop could never be followed by a resume.
   if (!hasExclusiveInstallation(accepted, inventory)
-    || !capabilities.includes('target_power_mode') || mode?.setable !== true) return stop;
+    || !capabilities.includes('target_power_mode') || mode?.setable !== true) return { kind: 'ready', resetWrites: [] };
   if (mode.value === 'device') return { kind: 'ready', resetWrites: [] };
-  if (mode.value === 'homey' && hasIndependentStopProof(accepted, stopCapabilityId, afterMs)) {
+  if (mode.value === 'homey' && isStopped(accepted, stop.write)) {
     return { kind: 'ready', resetWrites: [{ capabilityId: 'target_power_mode', value: 'device' }] };
   }
   return stop;
@@ -38,14 +40,17 @@ function hasExclusiveInstallation(device: HomeyDeviceLike, inventory: readonly H
     && zaptecInstallationOf(peer) === installationId);
 }
 
-function hasIndependentStopProof(device: HomeyDeviceLike, stopCapabilityId: string, afterMs: number): boolean {
-  const charging = device.capabilitiesObj?.[stopCapabilityId];
+/**
+ * The charger's own reports show it stopped and drawing nothing. Zero power is
+ * the device's independent evidence: a PELS pause can change the stop
+ * capability at once, but the power reading only follows the charger. A charger
+ * already stopped before the reclaim began proves it with its existing reports,
+ * because Homey republishes nothing for an unchanged value.
+ */
+function isStopped(device: HomeyDeviceLike, stopWrite: { capabilityId: string; value: unknown }): boolean {
+  const stopped = device.capabilitiesObj?.[stopWrite.capabilityId];
   const power = device.capabilitiesObj?.measure_power;
-  const chargingAtMs = toCapabilityTimestampMs(charging?.lastUpdated);
-  const powerAtMs = toCapabilityTimestampMs(power?.lastUpdated);
-  return device.capabilities?.includes(stopCapabilityId) === true
-    && device.capabilities.includes('measure_power')
-    && charging?.value === false && power?.value === 0
-    && chargingAtMs !== undefined && chargingAtMs > afterMs
-    && powerAtMs !== undefined && powerAtMs > afterMs;
+  return stopped !== undefined && Object.is(stopped.value, stopWrite.value) && power?.value === 0
+    && toCapabilityTimestampMs(stopped.lastUpdated) !== undefined
+    && toCapabilityTimestampMs(power.lastUpdated) !== undefined;
 }
