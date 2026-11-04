@@ -59,9 +59,12 @@ independent evidence; a charger already stopped when the reclaim begins proves
 it with its existing reports, since Homey republishes nothing unchanged. Only
 then may an exclusive installation release the cached mode, receive the newly
 admitted watt target, and return to Homey control. Native watt limits are
-prepared before the planner resumes charging. A shared installation, or one
-without a writable control mode, has nothing to reset: its watt target is
-written as before, without a reclaim stop.
+prepared before the planner resumes charging. Only `homey` mode caches a
+current. A shared installation, one without a writable control mode, and a mode
+in `device` or never set (Zaptec 1.12 declares `target_power_mode` in its
+manifest, so a paired or updated charger starts with no value) have nothing to
+reset: the watt target is written and Homey control claimed, without a reclaim
+stop.
 The pause uses the ordinary binary command lane, so pending confirmation, car
 stop attribution and external-off detection recognize it as PELS's request.
 Resumption follows the normal meter-driven admission and restore cooldown.

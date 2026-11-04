@@ -21,8 +21,10 @@ export function prepareZaptecTargetPowerReassertion(
   // before, so a stop could never be followed by a resume.
   if (!hasExclusiveInstallation(accepted, inventory)
     || !capabilities.includes('target_power_mode') || mode?.setable !== true) return { kind: 'ready', resetWrites: [] };
-  if (mode.value === 'device') return { kind: 'ready', resetWrites: [] };
-  if (mode.value === 'homey' && isStopped(accepted, stop.write)) {
+  // Only Homey control caches a current. A mode the app never set (null on a
+  // charger paired or updated under 1.12) or `device` has nothing to reset.
+  if (mode.value !== 'homey') return { kind: 'ready', resetWrites: [] };
+  if (isStopped(accepted, stop.write)) {
     return { kind: 'ready', resetWrites: [{ capabilityId: 'target_power_mode', value: 'device' }] };
   }
   return stop;
