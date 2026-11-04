@@ -21,7 +21,7 @@ for (const width of [320, 480]) {
             if (!config.enabled) return { status: 'disabled', config };
             const terminal = Math.max(3, config.usableCapacityKWh * config.minimumReservePercent / 100);
             const common = { durationMs: 3_600_000, gridExportKWh: 0, exportRevenue: 0, wearCost: 0 };
-            return { status: 'planned', config, generatedAtMs: startsAtMs, priceUnit: 'EUR', plan: {
+            return { status: 'planned', config, generatedAtMs: startsAtMs, priceUnit: 'EUR', unpricedSolarExport: false, plan: {
               status: 'planned', periods: [
                 { ...common, startsAtMs, batteryPowerKW: 2, energyBeforeKWh: 4, energyAfterKWh: 6,
                   gridImportKWh: 3.2, importCost: 0.32, reason: 'charge_grid' },

@@ -116,7 +116,7 @@ describe('continuous battery selling projection', () => {
     })
   );
   const selling = plannedSource({
-    status: 'planned', generatedAtMs: nowMs, priceUnit: 'EUR/kWh', plan,
+    status: 'planned', generatedAtMs: nowMs, priceUnit: 'EUR/kWh', unpricedSolarExport: false, plan,
     config: { ...base, exportPolicy: { kind: 'price_export', netExportCeilingKW: 3 } },
     exportDecision: { kind: 'selling', estimatedSavings: 0.4 },
   });
@@ -136,7 +136,7 @@ describe('continuous battery selling projection', () => {
 
   it('refuses a selling period on a household-only plan rather than quietly supplying the house', () => {
     const contradictory = plannedSource({
-      status: 'planned', generatedAtMs: nowMs, priceUnit: 'EUR/kWh', plan,
+      status: 'planned', generatedAtMs: nowMs, priceUnit: 'EUR/kWh', unpricedSolarExport: false, plan,
       config: { ...base, exportPolicy: { kind: 'household_only' } },
     });
     expect(() => resolveStorageCluster(contradictory, input, options(control))).toThrow('cannot sell');

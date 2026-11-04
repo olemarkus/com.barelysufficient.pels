@@ -50,6 +50,8 @@ type PlannedBatteryRead = {
   status: 'planned';
   generatedAtMs: number;
   priceUnit: string;
+  /** Some period with forecast solar has no export quote, so the plan values that solar's export at 0. */
+  unpricedSolarExport: boolean;
   plan: Extract<BatteryEnergyPlan, { status: 'planned' }>;
 };
 

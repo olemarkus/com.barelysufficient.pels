@@ -66,7 +66,7 @@ test('accepts a selling plan and refuses one whose selling decision is malformed
   };
   const selling = {
     status: 'planned', config: { ...config, exportPolicy: { kind: 'price_export', netExportCeilingKW: 3 } },
-    generatedAtMs: 0, priceUnit: 'EUR',
+    generatedAtMs: 0, priceUnit: 'EUR', unpricedSolarExport: false,
     plan: { status: 'planned', periods: [period], importCost: 0, exportRevenue: 2, wearCost: 0.06, energyCost: -1.94,
       terminalEnergyValue: 0, objectiveCost: -1.94, terminalEnergyKWh: 2, resolutionKWh: 0.05 },
     exportDecision: { kind: 'selling', estimatedSavings: 0.4 },

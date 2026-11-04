@@ -51,7 +51,7 @@ const period = {
   startsAtMs, durationMs: 3_600_000, batteryPowerKW: 1, energyBeforeKWh: 2, energyAfterKWh: 3,
   gridImportKWh: 2, gridExportKWh: 0, importCost: 0.2, exportRevenue: 0, wearCost: 0, reason: 'charge_grid' as const,
 };
-const read: ContinuousBatteryPlanRead = { status: 'planned', config, generatedAtMs: startsAtMs, priceUnit: 'EUR',
+const read: ContinuousBatteryPlanRead = { status: 'planned', config, generatedAtMs: startsAtMs, priceUnit: 'EUR', unpricedSolarExport: false,
   plan: { status: 'planned', periods: [period, { ...period, startsAtMs: startsAtMs + 3_600_000,
     energyBeforeKWh: 3, energyAfterKWh: 4 }],
   importCost: 0.4, exportRevenue: 0, wearCost: 0, energyCost: 0.4, terminalEnergyValue: 0,
@@ -321,9 +321,17 @@ test.each([
   expect(document.querySelector('.battery-plan-windows')?.textContent).toContain('Sell to grid');
 });
 
+test('says when the plan counts solar export without a price as worth nothing', async () => {
+  callApi.mockResolvedValue({ ...read, unpricedSolarExport: true });
+  await openBattery();
+  await vi.waitFor(() => expect(document.querySelector('.battery-plan-preview')?.textContent)
+    .toContain('No export price is set, so the plan counts solar sent to the grid as worth 0'));
+});
+
 test('shows no selling line while selling is off', async () => {
   await openBattery();
   const preview = document.querySelector('.battery-plan-preview')?.textContent ?? '';
   expect(preview).not.toContain('Selling');
+  expect(preview).not.toContain('No export price is set');
   expect(preview).toContain('Charge from grid');
 });
