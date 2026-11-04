@@ -99,7 +99,10 @@ function withBinaryDrive(
  * preparation from that draw without publishing a reported rung or starting it.
  */
 function resolveUnknownLimitPreparation(dev: SteppedPlanDevice): SteppedLoadTransition | null {
-  if (!dev.control.commandAuthority || (dev.plannedState !== 'keep' && dev.plannedShedTargetKind !== 'step')
+  // Only a hold or a decided step shed needs the lower limit. An unheld keep
+  // initializes its unknown step through the ordinary planned step.
+  const heldKeep = dev.plannedState === 'keep' && isHeldByPlanReason(dev);
+  if (!dev.control.commandAuthority || (!heldKeep && dev.plannedShedTargetKind !== 'step')
     || dev.controlAdapter?.activationOrder !== 'current_before_start'
     || !isPlanDeviceObservedOn(dev) || dev.reportedStepId !== undefined || !isMeteredPlanDevice(dev)) return null;
   const lowest = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);

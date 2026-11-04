@@ -42,6 +42,13 @@ describe('preparing an unknown native limit under capacity pressure', () => {
     expect(device.reportedStepId).toBeUndefined();
   });
 
+  it('leaves an unheld running keep at its planned step instead of preparing the lowest limit', () => {
+    const device = steppedPlanDevice({ ...unknownDevice('keep'), desiredStepId: 'max', reason: { code: 'keep', detail: null } });
+    const command = buildPlannedSteppedCommand(device);
+    expect(command?.transition?.transitionPhase).not.toBe('step_preparation');
+    expect(command?.desired.stepId).not.toBe('low');
+  });
+
   it.each([0, 0.5, 1.25])('keeps the hold when measured draw is only %s kW', (watts) => {
     expect(buildPlannedSteppedCommand(unknownDevice('keep', watts))).toBeUndefined();
   });
