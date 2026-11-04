@@ -15,6 +15,7 @@ import {
   DEVICE_POWER_CONTROL_MODES,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { normalizeDevicePowerControlModes } from '../../../shared-domain/src/settings/devicePowerControlModes.ts';
+import { chargingLadderCarriesCurrent } from '../../../shared-domain/src/settings/evChargingCurrentLimits.ts';
 import { resolveTargetPowerLadderIssue } from '../../../shared-domain/src/targetPowerLadder.ts';
 import { coldStartReadRetryDelays, getSetting } from './homey.ts';
 import { state, type SettingsUiDeviceView } from './state.ts';
@@ -85,6 +86,18 @@ export const getEffectiveTargetPowerConfig = (
     ? undefined
     : getStoredTargetPowerConfig(device.id) ?? device.targetPowerConfig
 );
+
+/**
+ * Whether a charging current range can bound this charger's active levels.
+ * Automatic watt levels come from the charger itself and are used as published.
+ */
+export const appliesChargingCurrentLimits = (device: SettingsUiDeviceView): boolean => {
+  const automatic = isAutomaticPowerControlActive(device);
+  const profile = automatic
+    ? device.automaticPowerControl?.profile
+    : getStoredDeviceControlProfile(device.id) ?? device.steppedLoadProfile;
+  return chargingLadderCarriesCurrent(profile, getEffectiveTargetPowerConfig(device)?.preset);
+};
 
 const hasResolvedSteppedLoadProfile = (device: SettingsUiDeviceView): boolean => (
   device.steppedLoadProfile !== undefined
