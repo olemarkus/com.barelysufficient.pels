@@ -27,7 +27,7 @@ export function selectBatteryExportPlan(
   policy: BatteryPriceExportPolicy,
   household: PlannedBatteryEnergy,
 ): BatteryExportSelection {
-  if (input.exportPricing === 'incomplete') {
+  if (input.exportPricing !== 'complete') {
     return { plan: household, decision: { kind: 'waiting', reason: 'export_prices_incomplete' } };
   }
   if (estimateBatteryEnergyTransitions(input.horizon) > MAX_EXPORT_COMPARISON_TRANSITIONS) {

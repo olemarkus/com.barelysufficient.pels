@@ -230,6 +230,32 @@ describe('continuous battery horizon projection', () => {
     expect(result.horizon.periods[0].maxChargeKW).toBe(1.5);
   });
 
+  it('plans forecast solar without an export price, valuing its export at 0 and never as a quote', () => {
+    const solarHome = (exportPrice?: number) => createContinuousBatteryPlanSource(sources({
+      solarScope: {
+        mainDevices: () => [{ id: 'pv', deviceClass: 'solarpanel' }],
+        allDevices: () => [{ id: 'pv', deviceClass: 'solarpanel' }],
+      },
+      getSolarForecast: () => ({ forecast: hours => hours.map(hourStartMs => ({
+        hourStartMs, generationKwh: hourStartMs === NOW ? 4 : 0,
+      })) }),
+      getPriceTimeline: () => ({
+        state: 'ready', priceUnit: 'EUR/kWh', hasExportPrice: exportPrice !== undefined,
+        lines: { average: 0.2, cheapAtOrBelow: 0.1, expensiveFrom: 0.3 },
+        // The sunny hour comes first; the dark hour after it must not hide its missing quote.
+        periods: [0, 1].map(hour => ({
+          startsAt: new Date(NOW + hour * HOUR_MS).toISOString(), durationMinutes: 60, importPrice: 0.2, level: 'normal' as const,
+          ...(exportPrice === undefined ? {} : { exportPrice }),
+        })),
+      }),
+    })).readHorizon('battery', config);
+    const unpriced = solarHome();
+    if (unpriced.kind !== 'ready') throw new Error('Expected a plan without an export price');
+    expect(unpriced.exportPricing).toBe('unpriced_solar');
+    expect(unpriced.horizon.periods.map(period => [period.solarKWh, period.exportPrice])).toEqual([[4, 0], [0, 0]]);
+    expect(solarHome(0)).toMatchObject({ kind: 'ready', exportPricing: 'complete' });
+  });
+
   it.each([
     ['background_unavailable', { getBackgroundKWh: () => undefined }],
     ['forecast_unavailable', { solarScope: {

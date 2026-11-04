@@ -44,6 +44,7 @@ const validExportOutcome = (read: Record<string, unknown>, config: ContinuousBat
 const validPlannedRead = (read: Record<string, unknown>, config: ContinuousBatteryPlanConfig): boolean => {
   const plan = asUnknownRecord(read.plan);
   return finiteFields(read, ['generatedAtMs']) && typeof read.priceUnit === 'string'
+    && typeof read.unpricedSolarExport === 'boolean'
     && validExportOutcome(read, config)
     && plan !== null && plan.status === 'planned' && Array.isArray(plan.periods) && plan.periods.every(validPeriod)
     && finiteFields(plan, [

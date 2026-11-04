@@ -10,7 +10,8 @@ import { planningPowerCeiling } from '../../packages/shared-domain/src/settings/
 import type { BatteryControlOwner } from '../ports/batteryControlOwner';
 import { resolveBatterySolarScope, type BatterySolarScopeSource } from './batterySolarScope';
 import type {
-  ContinuousBatteryEnergyHorizon, ContinuousBatteryHorizonRead, ContinuousBatteryPlanSource,
+  ContinuousBatteryEnergyHorizon, ContinuousBatteryExportPricing, ContinuousBatteryHorizonRead,
+  ContinuousBatteryPlanSource,
 } from '../ports/continuousBatteryPlan';
 import {
   reservationEnergy, reservationPowerKW, taskReservations, tasksForDevices, type BatteryTaskReservation,
@@ -110,7 +111,7 @@ function readHorizon(
 type PriceSpan = { price: PriceTimelinePeriod; startsAtMs: number; endsAtMs: number };
 type WaitingHorizon = Extract<ContinuousBatteryHorizonRead, { kind: 'waiting' }>;
 type PeriodRead = {
-  kind: 'ready'; periods: ContinuousBatteryEnergyHorizon['periods']; exportPricing: 'complete' | 'incomplete';
+  kind: 'ready'; periods: ContinuousBatteryEnergyHorizon['periods']; exportPricing: ContinuousBatteryExportPricing;
 } | WaitingHorizon;
 type HourRead = { kind: 'ready'; backgroundKWh: number; solarKWh: number } | WaitingHorizon;
 
@@ -184,15 +185,17 @@ function buildEnergyPeriods(
   const planningCeiling = planningPowerCeiling(sources.getPowerLimitSettings())?.kw ?? null;
   const solarByHour = new Map<number, number | undefined>();
   let periods: BatteryEnergyPeriod[] = [];
-  let exportPricing: 'complete' | 'incomplete' = 'complete';
+  let exportPricing: ContinuousBatteryExportPricing = 'complete';
   for (const span of priceSpans(prices.periods, nowMs, reservations)) {
     const hourStartMs = Math.floor(span.startsAtMs / HOUR_MS) * HOUR_MS;
     const hour = readHour(sources, hourStartMs, solarByHour, solarScope === 'main');
     if (hour.kind === 'waiting') return hour;
-    if (hour.solarKWh > 0 && span.price.exportPrice === undefined) {
-      return { kind: 'waiting', reason: 'prices_unavailable' };
+    // A home without an export price still gets a plan: its unquoted solar
+    // export is worth 0 to it, so the plan keeps solar it can store.
+    if (span.price.exportPrice === undefined) {
+      if (hour.solarKWh > 0) exportPricing = 'unpriced_solar';
+      else if (exportPricing === 'complete') exportPricing = 'incomplete';
     }
-    if (span.price.exportPrice === undefined) exportPricing = 'incomplete';
     const durationMs = span.endsAtMs - span.startsAtMs;
     const fraction = durationMs / HOUR_MS;
     const otherManagedDemandKWh = standingKW * fraction
@@ -204,9 +207,11 @@ function buildEnergyPeriods(
       startsAtMs: span.startsAtMs,
       durationMs,
       importPrice: span.price.importPrice,
-      // No quote and no solar: household planning exports nothing, so this zero
-      // cannot affect its objective. It never authorizes selling: an absent
-      // quote marks the horizon `incomplete`, and selling waits for complete quotes.
+      // No quote: household planning values this period's export at 0. Without
+      // solar it exports nothing, so the zero cannot affect its objective; with
+      // solar it stores what it can rather than export for nothing. It never
+      // authorizes selling: an absent quote leaves the horizon short of
+      // `complete`, and selling waits for complete quotes.
       exportPrice: span.price.exportPrice ?? 0,
       householdDemandKWh: hour.backgroundKWh * fraction,
       otherManagedDemandKWh,

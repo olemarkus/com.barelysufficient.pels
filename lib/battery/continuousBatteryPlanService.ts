@@ -238,7 +238,10 @@ export class ContinuousBatteryPlanService {
     household: HouseholdPlan,
     nowMs: number,
   ): PlannedContinuousBatteryRead {
-    const common = { status: 'planned' as const, generatedAtMs: nowMs, priceUnit: input.priceUnit };
+    const common = {
+      status: 'planned' as const, generatedAtMs: nowMs, priceUnit: input.priceUnit,
+      unpricedSolarExport: input.exportPricing === 'unpriced_solar',
+    };
     const policy = config.exportPolicy;
     if (policy.kind === 'household_only') {
       this.exportMemos.delete(deviceId);

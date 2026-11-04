@@ -83,6 +83,9 @@ const REASON_COPY: Record<BatteryEnergyPlanPeriod['reason'], string> = {
 /** The money unit of a price unit such as `EUR/kWh`: what an estimated cost reduction is counted in. */
 const moneyUnitOf = (priceUnit: string): string => priceUnit.replace(/\s*\/\s*kwh$/i, '').trim();
 
+/** Shown while forecast solar has no export price: the plan treats that export as worth nothing. */
+export const UNPRICED_SOLAR_EXPORT_LINE = 'No export price is set, so the plan counts solar sent to the grid as worth 0 and stores what the battery can take. Set an export price under Electricity prices.';
+
 /** What the selling choice decided for the plan shown. */
 export const batteryPlanSellingLine = (decision: ContinuousBatteryExportDecision, priceUnit: string): string => {
   switch (decision.kind) {
@@ -168,6 +171,8 @@ function BatteryPlanPreview(props: Pick<ContinuousBatteryPlanProps, 'read' | 'ti
     : 'Keeping stored energy for the periods where it lowers your bill.';
   return <div class="battery-plan-preview">
     <h4 class="pels-text-settings-label">Battery plan</h4><p class="pels-text-status-line">{summary}</p>
+    {read.unpricedSolarExport
+      && <p class="field__hint" role="status">{UNPRICED_SOLAR_EXPORT_LINE}</p>}
     {'exportDecision' in read
       && <p class="field__hint" role="status">{batteryPlanSellingLine(read.exportDecision, read.priceUnit)}</p>}
     <BatteryLevelChart periods={read.plan.periods} config={read.config} generatedAtMs={read.generatedAtMs} timeZone={timeZone} />

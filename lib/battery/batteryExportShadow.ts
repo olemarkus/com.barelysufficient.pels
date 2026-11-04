@@ -36,9 +36,9 @@ export class BatteryExportShadow {
         Math.max(endMs, period.startsAtMs + period.durationMs)
       ), input.horizon.periods[0].startsAtMs),
     };
-    if (input.exportPricing === 'incomplete' || netExportCeilingKW <= 0) {
+    if (input.exportPricing !== 'complete' || netExportCeilingKW <= 0) {
       emit({ event: 'battery_export_shadow_skipped', ...sample,
-        reason: input.exportPricing === 'incomplete' ? 'export_prices_incomplete' : 'discharge_unavailable' });
+        reason: input.exportPricing !== 'complete' ? 'export_prices_incomplete' : 'discharge_unavailable' });
       return;
     }
     const estimatedTransitions = estimateBatteryEnergyTransitions(input.horizon);
