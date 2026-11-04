@@ -1,3 +1,4 @@
+import { resolveCommandableNow } from '../../../packages/shared-domain/src/commandableNow';
 import type { ChargingCurrentControl } from '../chargingCurrentControl';
 import { resolveChargingCurrentAdapter } from '../chargingCurrentAdapter';
 /**
@@ -33,6 +34,7 @@ import { isCanSetControl } from '../deviceActionProjection';
 import { HOME_BATTERY_SETPOINT_CAPABILITY_ID, toTargetPowerCapabilityValue } from '../batteryControlWiring';
 import { isHomeBatterySnapshot } from './homeBatteryObservation';
 import { TransportSnapshotStore } from './transportSnapshotStore';
+import type { NativeWiringRead } from './managerParseDevice';
 import { TransportObservationState } from './transportObservationState';
 import { resolveInverterControl } from './solarInverterObservation';
 import { inverterBindingsMatch, inverterRestorationLimitW } from '../../planContract/inverterDecision';
@@ -115,11 +117,13 @@ function requireSetpointSurface(
 
 
 export class DeviceWriteService {
+  // eslint-disable-next-line max-params -- Direct transport owners and dispatch ports, not a parameter bundle.
   constructor(
     private readonly snapshotStore: TransportSnapshotStore,
     private readonly observationState: TransportObservationState,
     private readonly logger: Logger,
     private readonly chargingCurrentControl: ChargingCurrentControl,
+    private readonly nativeWiring: NativeWiringRead,
     private readonly observationProducers: ObservationProducers,
     private readonly getFlowTriggerCard: (cardId: string) => SteppedLoadFlowTriggerCard | undefined,
     private readonly dispatchObservedStateForDevice: (deviceId: string, capabilityId?: string) => void,
@@ -144,7 +148,43 @@ export class DeviceWriteService {
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     return snapshot !== undefined
       && snapshot.available !== false
-      && isCanSetControl(snapshot);
+      && isCanSetControl(snapshot)
+      && snapshot.binaryControlObservation !== undefined
+      && resolveCommandableNow(snapshot)
+      && !this.needsNativeControlReadBeforeStart(snapshot);
+  }
+
+  /** Missing native observations cannot turn a stepped start into a binary-only start. */
+  private needsNativeControlReadBeforeStart(snapshot: TransportDeviceSnapshot): boolean {
+    const raw = this.snapshotStore.getTrackedRawDevice(snapshot.id);
+    if (!raw) return false;
+    if (this.needsNativeWattReadBeforeStart(raw)) return true;
+    if (!this.nativeWiring.resolveNativeWiringEnabled(snapshot.id)) return false;
+    return getDeviceAdapter(raw).nativeCurrentControls.some(control => {
+      const current = raw.capabilitiesObj?.[control.capabilityId];
+      if (!raw.capabilities?.includes(control.capabilityId) || current?.setable === false) return false;
+      return current?.setable !== true || current.value === undefined;
+    });
+  }
+
+  private needsNativeWattReadBeforeStart(raw: HomeyDeviceLike): boolean {
+    const targetPower = raw.capabilitiesObj?.target_power;
+    if (!raw.capabilities?.includes('target_power') || targetPower?.setable === false) return false;
+    // A deliberately excluded ladder (for example on a shared installation)
+    // is independent of whether its source field can be read.
+    return targetPower?.setable !== true || targetPower.value === undefined
+      || (raw.capabilities.includes('target_power_mode')
+        && raw.capabilitiesObj?.target_power_mode?.value === undefined);
+  }
+
+  private assertNativeStartAllowed(snapshot: TransportDeviceSnapshot | undefined, requested: CapabilityWrite): void {
+    if (!snapshot || requested.value !== true || snapshot.binaryCapabilityId !== requested.capabilityId) return;
+    if (!resolveCommandableNow(snapshot) || snapshot.binaryControlObservation === undefined) {
+      throw new Error('Device is not ready to start.');
+    }
+    if (this.needsNativeControlReadBeforeStart(snapshot)) {
+      throw new Error('Native power control metadata is unavailable for starting this device.');
+    }
   }
 
   async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {
@@ -153,6 +193,7 @@ export class DeviceWriteService {
     const normalizedValue = normalizeCapabilityValue(this.snapshotStore, deviceId, capabilityId, value);
     const snapshotBefore = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     const requested: CapabilityWrite = { capabilityId, value: normalizedValue };
+    this.assertNativeStartAllowed(snapshotBefore, requested);
     // `readBackAsWritten`: whether PELS reads the requested capability back as
     // Homey holds it. Only then may the local write stand in for a read that
     // Homey dated before it.

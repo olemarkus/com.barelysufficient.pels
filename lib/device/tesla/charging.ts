@@ -33,20 +33,24 @@ export function teslaChargingCapabilities(
 ): DeviceCapabilityMap {
   if (!isTeslaChargingDevice(device)) return capabilityObj;
   const currentPower = capabilityObj.measure_charge_power;
+  const powerWatts = typeof currentPower?.value === 'number' ? currentPower.value * 1000 : undefined;
+  const charging = capabilityObj.charging_on;
+  const state = capabilityObj.charging_state;
+  const plugState = resolveTeslaChargingState(state?.value);
   const confirmedCurrent = confirmedTeslaCurrent(capabilityObj);
   const acknowledgedCurrent = acknowledgedTeslaCurrent(capabilityObj);
   return {
     ...capabilityObj,
     ...(confirmedCurrent ? { available_installation_current: confirmedCurrent } : {}),
     ...(acknowledgedCurrent ? { [ACKNOWLEDGED_CURRENT_CAPABILITY_ID]: acknowledgedCurrent } : {}),
-    evcharger_charging: { ...capabilityObj.charging_on, setable: true },
-    evcharger_charging_state: {
-      ...capabilityObj.charging_state, value: resolveTeslaChargingState(capabilityObj.charging_state?.value),
-    },
-    measure_power: {
-      ...currentPower,
-      value: typeof currentPower?.value === 'number' ? currentPower.value * 1000 : undefined,
-    },
+    ...(typeof charging?.value === 'boolean'
+      ? { evcharger_charging: { ...charging, setable: true } } : {}),
+    ...(plugState === undefined ? {} : {
+      evcharger_charging_state: { ...state, value: plugState },
+    }),
+    ...(typeof powerWatts === 'number' && Number.isFinite(powerWatts) ? {
+      measure_power: { ...currentPower, value: powerWatts },
+    } : {}),
   };
 }
 

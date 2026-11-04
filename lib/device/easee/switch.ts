@@ -162,8 +162,8 @@ export function isEaseeUnderBuiltInControl(
  * `capabilityObj` with its charging switch read the way `isChargingSwitchOn`
  * reads it, for a charger `isEaseeUnderBuiltInControl` admits. The switch is
  * dated by the facts it was read from: the plug state, and for a paused charger
- * the current too, whichever Homey updated last. The read contract admits no
- * Easee read without both (`transport/deviceReadContract.ts`), so both are here.
+ * the current too, whichever Homey updated last. A rejected current leaves
+ * the independently reported switch alone rather than implying a zero current.
  */
 export function withEaseeObservedCharging(capabilityObj: DeviceCapabilityMap): DeviceCapabilityMap {
   const charging = capabilityObj.evcharger_charging;
@@ -172,6 +172,7 @@ export function withEaseeObservedCharging(capabilityObj: DeviceCapabilityMap): D
   if (charging === undefined || state === undefined || !isEvChargingState(stateValue)) return capabilityObj;
   const current = capabilityObj[EASEE_CHARGER_CURRENT_CAPABILITY_ID];
   const currentA = readCurrentA(current?.value);
+  if (stateValue === 'plugged_in_paused' && currentA === undefined) return capabilityObj;
   const on = isChargingSwitchOn(stateValue, currentA !== undefined && holdsChargingCurrent(currentA));
   const datedBy = stateValue === 'plugged_in_paused' && current !== undefined ? latestOf(state, current) : state;
   return {

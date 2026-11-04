@@ -389,14 +389,18 @@ describe('Zaptec native target power', () => {
     expect(transport.getSnapshotByDeviceId(base.id)).toMatchObject({ reportedStepId: '7a', reportedStepPowerW: 4830 });
   });
 
-  it.each(['external', 42, undefined])('rejects a full read with an invalid target-power mode %s', async (value) => {
+  it.each(['external', 42, undefined])('withholds invalid watt control mode %s while keeping independent charger observations', async (value) => {
     const base = buildZaptecTargetPowerDevice();
     const device = buildZaptecTargetPowerDevice({
       capabilitiesObj: { target_power_mode: { ...base.capabilitiesObj?.target_power_mode, value } },
     });
     const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
 
-    expect(await seedTransportDevices(transport, [device])).toEqual([]);
+    const [snapshot] = await seedTransportDevices(transport, [device]);
+    expect(snapshot).toMatchObject({ id: device.id, evChargingState: 'plugged_in_paused', measuredPowerKw: 0 });
+    expect(snapshot.steppedLoadProfile).toBeDefined();
+    expect(snapshot.reportedStepId).toBeUndefined();
+    expect(snapshot.reportedStepPowerW).toBeUndefined();
   });
 
   it.each([-1, Number.NaN, undefined])('keeps the accepted watt target after invalid realtime power %s', async (value) => {

@@ -1008,9 +1008,9 @@ describe('Easee native charger current', () => {
       },
     );
 
-    it('resumes by current when the plug state is not one PELS knows, never by starting a session', async () => {
-      // A start on an open session begins a new one at 32 A. Only a session known
-      // to be stopped needs a start; a current is harmless on any other.
+    it('waits for a known plug state before resuming by current', async () => {
+      // A positive current is a start too. Neither command axis may resume an
+      // unknown session; a real connected observation restores permission.
       const { deviceManager, put, refresh } = await createLiveEasee({
         target_charger_current: { value: 0, setable: true, min: 0, max: 40, lastUpdated: READ_AT },
         evcharger_charging: { value: false, setable: true, lastUpdated: READ_AT },
@@ -1019,8 +1019,12 @@ describe('Easee native charger current', () => {
       await refresh();
       await emitCapability(EASEE_ID, 'evcharger_charging_state', 'unplugged');
 
-      await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
+      expect(deviceManager.getSnapshotByDeviceId(EASEE_ID)).toBeDefined();
+      await expect(deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow)).rejects.toThrow('not ready');
+      expect(put).not.toHaveBeenCalled();
 
+      await emitCapability(EASEE_ID, 'evcharger_charging_state', 'plugged_in_paused');
+      await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
       expect(put.mock.calls).toEqual([[
         `manager/devices/device/${EASEE_ID}/capability/target_charger_current`,
         pelsCapabilityWrite(6),

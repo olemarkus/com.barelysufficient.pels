@@ -73,6 +73,7 @@ type SnapshotEntry = {
   // DTO carries both as the assertions read them.
   binaryControl?: { on: boolean };
   evChargingState?: string;
+  measuredPowerKw?: number;
   expectedPowerSource?: string;
   expectedPowerKw?: number;
 };
@@ -344,28 +345,24 @@ describe('EV charger integration', { retry: 2 }, () => {
     },
   );
 
-  it('drops a charger whose vendor state is outside the enum instead of managing it half-blind', async () => {
-    // P0 resolution, at the boundary. `evcharger_charging_state` is a closed Homey
-    // enum; a charger reporting outside it does not implement the capability
-    // contract, so the producer drops the device exactly as it drops one missing
-    // the capability. PELS therefore never sheds it — which is what closes the
-    // one-way door: shed selection does not consult commandability, so a charger
-    // PELS could turn off but not classify was one it could turn off and never
-    // turn back on, parked `inactive` with its starvation clock paused (no card,
-    // no "Let it run now", no diagnostics entry).
+  it('keeps independent charger telemetry without starting when vendor plug state is outside the enum', async () => {
+    // A bad plug-state rejects only that observation. Keep the charger and
+    // its independent switch/power telemetry, without granting a session start.
     const charger = new EaseeMockCharger({ loadW: 7200 });
     await charger.seedState('mystery');
     const app = await createEvApp(charger);
 
     const plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
 
-    expect(plan.devices.some((device) => device.id === charger.idValue)).toBe(false);
+    expect(getPlanEntry(plan, charger.idValue).plannedState).toBe('inactive');
     expect(charger.getCommandSequence()).toEqual([]);
     // The unrecognised vendor value never reaches a consumer.
     expect(charger.commandLog.some((entry) => entry.value === 'mystery')).toBe(false);
 
     const snapshot = await refreshSnapshot(app);
-    expect(snapshot.some((entry) => entry.id === charger.idValue)).toBe(false);
+    const entry = getSnapshotEntry(snapshot, charger.idValue);
+    expect(entry).toMatchObject({ id: charger.idValue, binaryControl: { on: false }, measuredPowerKw: 0 });
+    expect(entry?.evChargingState).toBeUndefined();
   });
 
   it('resumes a paused plugged-in charger during a planned EV deadline bucket', async () => {

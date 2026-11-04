@@ -18,6 +18,10 @@ const charger = (overrides: Parameters<typeof steppedPlanDevice>[0] = {}) => ste
   selectedStepId: 'low',
   desiredStepId: 'low',
   currentDrawKw: 1.25,
+  // These recovery scenarios already have an accepted connected session.
+  ...(overrides.isEvCharger === false ? {} : {
+    evChargingState: overrides.currentState === 'off' ? 'plugged_in_paused' : 'plugged_in_charging',
+  }),
   ...overrides,
 });
 

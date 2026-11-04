@@ -70,23 +70,14 @@ function applyEvChargingStateObservation(
 ): boolean {
     const snapshot = nextSnapshot;
     if (typeof observation.value !== 'string') return false;
-    // A value outside the Homey enum is a capability-contract violation, and the
-    // contract is enforced by DROPPING the device at parse — an EV charger in the
-    // snapshot always has a valid plug-state (`EvObservedFields`). So this seam
-    // cannot write the violation inward: it ignores the event and lets the next
-    // parse drop the device, which strands the prior state until the next snapshot
-    // refresh, with the measured power axis contradicting a wrongly-retained
-    // "charging" belief meanwhile.
-    // This reverses the previous rule here ("normalise to `undefined` and apply it,
-    // never strand the stale state"), which could only be right while an EV device
-    // was allowed to carry no plug-state at all.
+    // A rejected state supplies no new plug observation; valid sibling
+    // capabilities and the last accepted state remain independent.
     if (!isEvChargingState(observation.value)) return false;
     const normalized = observation.value;
     snapshot.evChargingStateObservedAtMs = observation.observedAt;
     if (snapshot.evChargingState === normalized) return false;
     snapshot.evChargingState = normalized;
-    // Unconditional: the plug-state contract gate drops a device that reports a
-    // non-enum value, so a normalised state is always known here.
+    // Only an accepted plug state can advance a charging session boundary.
     updateStateOfChargeSessionBoundary(snapshot, normalized, observation.observedAt);
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
     snapshot.lastUpdated = snapshot.lastFreshDataMs;

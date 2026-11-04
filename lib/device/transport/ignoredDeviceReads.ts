@@ -16,19 +16,20 @@ import type { TransportSnapshotStore } from './transportSnapshotStore';
  * Split a fetched list by the read contract (`deviceReadContract.ts`). The
  * ignored devices are named once per violation in the log and contribute
  * nothing from this read; the others are kept as the contract resolved them,
- * with each `null` model capability withheld.
+ * with each rejected capability retained or withheld independently.
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function partitionConformingDeviceReads(
-    owner: object,
+    owner: TransportSnapshotStore,
     logger: Logger,
     list: readonly HomeyDeviceLike[],
 ): DeviceListRead {
     const devices: HomeyDeviceLike[] = [];
     const ignoredIds = new Set<string>();
     const emitter = logger.structuredLog;
+    const previousById = owner.getLastAcceptedRawDevicesById();
     for (const device of list) {
-        const read = resolveDeviceRead(owner, device, 'device_fetch', emitter);
+        const read = resolveDeviceRead(owner, device, 'device_fetch', emitter, previousById.get(getDeviceId(device)));
         if (read === null) ignoredIds.add(getDeviceId(device));
         else devices.push(read);
     }

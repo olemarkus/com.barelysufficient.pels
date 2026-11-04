@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveTargetPowerSteppedControl } from '../../lib/device/nativeSteppedLoadWiring';
+import { resolveTargetPowerSteppedControl, resolveTargetPowerModeInvalidationAtMs } from '../../lib/device/nativeSteppedLoadWiring';
 
 describe('resolveTargetPowerSteppedControl', () => {
   it('returns the config and its ladder together', () => {
@@ -41,5 +41,26 @@ describe('resolveTargetPowerSteppedControl', () => {
       .toBeUndefined();
     expect(resolveTargetPowerSteppedControl({ enabled: true }))
       .toBeUndefined();
+  });
+});
+
+
+describe('native watt mode invalidation evidence', () => {
+  const modeAt = '2026-10-01T12:00:00Z';
+  const wattsAt = '2026-10-01T12:02:00Z';
+  const capabilities = ['target_power', 'target_power_mode'];
+
+  it('does not turn an unreadable mode into a freshly dated invalidation', () => {
+    expect(resolveTargetPowerModeInvalidationAtMs({
+      target_power: { value: 3000, lastUpdated: wattsAt },
+      target_power_mode: { setable: true },
+    }, capabilities)).toBeUndefined();
+  });
+
+  it('dates a real hand-back from the mode report, independently of later watts', () => {
+    expect(resolveTargetPowerModeInvalidationAtMs({
+      target_power: { value: 3000, lastUpdated: wattsAt },
+      target_power_mode: { value: 'device', setable: true, lastUpdated: modeAt },
+    }, capabilities)).toBe(Date.parse(modeAt));
   });
 });

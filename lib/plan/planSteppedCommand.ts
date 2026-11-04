@@ -27,7 +27,7 @@ const isIdleTaskReleaseWithoutAuthority = (dev: PlanDevice): boolean => (
 );
 
 export function buildPlannedSteppedCommand(dev: PlanDevice): PlannedSteppedCommand | undefined {
-  if (!isSteppedLoadDevice(dev)) return undefined;
+  if (!isSteppedLoadDevice(dev) || dev.plannedState === 'inactive') return undefined;
   // A restore hold may allow lowering a controlled device; lack of authority
   // never does. Lifecycle release has its own explicit grant and dispatch path.
   if (!dev.control.commandAuthority && dev.deferredReleaseIntent === undefined) return undefined;
@@ -165,20 +165,6 @@ const resolveDesiredOn = (
   // shape, which was a LANE-wide exemption from retry suppression and cooldown
   // stamping — this was a field-level leak with no lane and no brake bypass.)
   // Same value in the common case, decided rather than inferred.
-  // `inactive` is the third `PlannedDeviceState`, and it must not fall through to
-  // "the plan does not move this axis". PELS is not driving this device AT ALL —
-  // `getInactiveReason` sets it when the device is not commandable this cycle, or
-  // is held off by something outside PELS. Letting `desiredOn` go absent here
-  // removes `isSettledAtPlannedOff`'s skip, so a step command reaches a device
-  // that cannot answer it and stamps a shed cooldown or opens an activation
-  // attempt on its behalf. That is what `commandableNow === false` exists to
-  // prevent. `false` reproduces the pre-cluster value exactly (`current.on` was
-  // false for every inactive producer, all of which run on off devices).
-  //
-  // The honest shape is no stepped intent at all for an inactive device — the
-  // binary projection already filters that way. That is a behaviour change, so
-  // it is filed rather than bundled here.
-  if (dev.plannedState === 'inactive') return false;
   if (dev.plannedState === 'keep') {
     // No binary handle means no binary axis to drive, so the plan drives none:
     // a step-only stepper's restore rides the step axis (see

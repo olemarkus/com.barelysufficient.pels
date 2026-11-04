@@ -5,7 +5,6 @@ import type {
   TargetPowerSteppedLoadConfig,
 } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
-import { getDebugEmitter } from '../logging/logger';
 import {
   augmentCapabilitiesWithFlowReports,
   getFlowEffectiveRequiredCapabilitiesForType,
@@ -47,8 +46,6 @@ import { withoutTargetPowerReachability } from './targetPowerReachability';
 import { hasUsableSteppedLoadLadder } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { resolveTargetPowerPresetPhaseCount } from '../../packages/shared-domain/src/targetPowerStepping';
 import { isBatteryOrSolarClassKey } from '../../packages/shared-domain/src/batteryOrSolarRole';
-
-const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 
 export type FlowEffectiveRequiredCapabilityId =
   'onoff'
@@ -347,9 +344,9 @@ function applySyntheticTargetPowerOverlay(
     capabilities,
     capabilityObj,
     steppedLoadProfile,
-    reportedStepId: resolveTargetPowerReportedStepId({ profile: steppedLoadProfile, capabilityObj }),
+    reportedStepId: resolveTargetPowerReportedStepId(steppedLoadProfile, capabilities, capabilityObj),
     reportedStepPowerW,
-    reportedStepObservedAtMs: resolveTargetPowerModeInvalidationAtMs(capabilityObj)
+    reportedStepObservedAtMs: resolveTargetPowerModeInvalidationAtMs(capabilityObj, capabilities)
       ?? toCapabilityTimestampMs(capabilityObj.target_power?.lastUpdated),
     acknowledgedStep: resolveAcknowledgedStepObservation(
       config, nativeEvOverlay.capabilityObj[ACKNOWLEDGED_CURRENT_CAPABILITY_ID],
@@ -364,7 +361,7 @@ function resolveActiveTargetPowerW(
   capabilityObj: DeviceCapabilityMap,
   observation: ReturnType<typeof resolveInstallationCurrentTargetPowerObservation>,
 ): number | undefined {
-  if (!isTargetPowerControlActive(capabilityObj)) return undefined;
+  if (!isTargetPowerControlActive(capabilityObj, device.capabilities ?? [])) return undefined;
   return observation?.value ?? resolveReportedTargetPowerW(device, config, capabilityObj);
 }
 
@@ -445,7 +442,7 @@ function resolveNativeSteppedLoadOverlay(
       activationAvailable: !targetPowerSteppedCandidate,
     }),
     reportedStepId,
-    reportedStepObservedAtMs: resolveTargetPowerModeInvalidationAtMs(capabilityObj) ?? (reportedStepId
+    reportedStepObservedAtMs: resolveTargetPowerModeInvalidationAtMs(capabilityObj, capabilities) ?? (reportedStepId
       ? resolveNativeSteppedLoadObservedAtMs(capabilities, capabilityObj)
       : undefined),
     suggestedSteppedLoadProfile,
@@ -479,40 +476,15 @@ export function resolveCandidateCapabilities(
 ): { targetCaps: string[]; hasPower: boolean } | null {
   const { deviceClassKey, deviceId, deviceLabel } = identity;
   const { capabilities, controlAdapter, steppedLoadProfile } = overlay;
-  // The plug-state capability is required of EVERY EV charger, ahead of both
-  // control-axis bypasses below. `target_power` / stepped-load is the amp/step
-  // axis; it says nothing about whether a car is connected, so a charger driven
-  // that way still reports `evcharger_charging_state` (Zaptec's native wiring
-  // synthesises it, and this runs on the overlaid capability list so that counts).
-  // Requiring it here is what lets `evChargingState` be REQUIRED on every EV
-  // device downstream — there is no such thing as an EV charger PELS manages
-  // without a plug-state.
-  if (deviceClassKey === 'evcharger' && !capabilities.includes('evcharger_charging_state')) {
-    emitDeviceDebug({
-      event: 'device_skipped_missing_capability',
-      deviceClass: deviceClassKey,
-      deviceId,
-      deviceName: deviceLabel,
-      missingCapability: 'evcharger_charging_state',
-      capabilities,
-    });
-    return null;
-  }
+  // Plug state is an independent observation, not a prerequisite for the
+  // charger's valid power/control facets. Session and start owners require
+  // an accepted plug observation separately.
   if (deviceClassKey === 'evcharger' && steppedLoadProfile !== undefined) {
-    return {
-      targetCaps: [],
-      hasPower: hasAnyPowerCapability(capabilities),
-    };
+    return { targetCaps: [], hasPower: hasAnyPowerCapability(capabilities) };
   }
-  if (
-    deviceClassKey === 'evcharger'
-    && isCapabilityAdapterEvCandidate(controlAdapter)
-    && !capabilities.includes('evcharger_charging')
-  ) {
-    return {
-      targetCaps: [],
-      hasPower: hasAnyPowerCapability(capabilities),
-    };
+  if (deviceClassKey === 'evcharger' && isCapabilityAdapterEvCandidate(controlAdapter)
+    && !capabilities.includes('evcharger_charging')) {
+    return { targetCaps: [], hasPower: hasAnyPowerCapability(capabilities) };
   }
   const resolved = resolveDeviceCapabilities({
     deviceClassKey,

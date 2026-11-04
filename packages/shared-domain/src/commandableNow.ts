@@ -9,16 +9,15 @@
  * owner-facing wording in `commandableNowReason.ts`.
  */
 import { isEvObserved } from './evObservedState';
-import { isEvPlugStateCommandable, type EvDeviceIdentity } from './evPlugState';
+import { isEvDevice, isEvPlugStateCommandable, type EvDeviceIdentity } from './evPlugState';
 import type { EvObservedProbe } from '../../contracts/src/types';
 
 export { isEvDevice } from './evPlugState';
 
 /**
- * The observed facts commandability is decided from. `evChargingState` is absent
- * for exactly one reason — the device is not an EV charger — because an EV
- * charger that cannot report a valid plug-state is dropped at the parse boundary
- * rather than admitted without one (see `evPlugState.ts`).
+ * The observed facts commandability is decided from. A charger's independent
+ * observations remain usable before its plug state is first reported, but
+ * without that state PELS cannot establish permission to start a session.
  */
 export type CommandableNowInput = EvDeviceIdentity & {
   available: boolean;
@@ -32,15 +31,10 @@ export type CommandableNowInput = EvDeviceIdentity & {
  * to explain the answer derive that from the same observed state, at the surface
  * that renders it (`resolveCommandabilityDetail`).
  *
- * `isEvObserved` is the narrowing seam. Its false arm for a device that IS an EV
- * charger is unreachable by producer contract; if one ever did reach here it
- * would read as commandable, which is the safe direction — refusing to command
- * is a one-way door, because shed selection does not consult commandability
- * while both restore paths do, so a charger PELS refuses to command is one it
- * can turn off and never turn back on.
+ * An EV without an accepted plug observation remains visible but cannot start.
  */
 export function resolveCommandableNow(dev: CommandableNowInput): boolean {
-  if (isEvObserved(dev) && !isEvPlugStateCommandable(dev.evChargingState)) return false;
+  if (isEvDevice(dev) && (!isEvObserved(dev) || !isEvPlugStateCommandable(dev.evChargingState))) return false;
   return dev.available;
 }
 

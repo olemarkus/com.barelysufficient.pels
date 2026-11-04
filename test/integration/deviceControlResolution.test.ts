@@ -378,17 +378,25 @@ describe('device owner control resolution', () => {
     expect(runtime).not.toHaveProperty('steppedLoadProfile');
   });
 
-  it('keeps configuration and observations unchanged when a whole-device SDK update is malformed', async () => {
+  it('retains accepted control while a malformed field does not block valid new power', async () => {
     const transport = transportForHeater(true);
     await initWithLiveFeed(transport);
     const [snapshot] = await seedTransportDevices(transport, [heater()]);
     const configuration = transport.deviceConfigurationStore.get('heater');
     const previous = projectObservedState(snapshot);
 
-    emitDeviceUpdate({ ...heater(), capabilitiesObj: { onoff: { value: true } } });
+    emitDeviceUpdate({ ...heater(), capabilitiesObj: {
+      ...heater().capabilitiesObj,
+      onoff: { value: true },
+      measure_power: { value: 2150, lastUpdated: '2026-09-30T08:10:00.000Z' },
+    } });
 
-    expect(transport.deviceConfigurationStore.get('heater')).toBe(configuration);
-    expect(projectObservedState(snapshot)).toEqual(previous);
+    expect(transport.deviceConfigurationStore.get('heater')).toEqual({ ...configuration, expectedPowerKw: 2.15 });
+    const next = transport.getSnapshotByDeviceId('heater')!;
+    expect(next.binaryControl).toEqual(snapshot.binaryControl);
+    expect(next.binaryControlObservation?.observedAtMs).toBe(snapshot.binaryControlObservation?.observedAtMs);
+    expect(next.measuredPowerKw).toBe(2.15);
+    expect(projectObservedState(next)).not.toEqual(previous);
   });
 
   it('keeps Easee native feedback authoritative over an alternate installation-current source', async () => {

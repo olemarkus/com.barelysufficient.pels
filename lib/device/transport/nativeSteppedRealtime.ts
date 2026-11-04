@@ -273,7 +273,7 @@ function isInvalidNativeNumericStep(capabilityId: string, value: unknown): boole
 }
 
 /** PELS's own step echo adds nothing, except a native current's, which the adapter reads its rung from. */
-function isIgnoredOwnStepEcho(capabilityId: string, pelsEcho: boolean): boolean {
+export function isIgnoredOwnStepEcho(capabilityId: string, pelsEcho: boolean): boolean {
     return pelsEcho && !isNativeCurrentControl(capabilityId);
 }
 
@@ -304,12 +304,11 @@ export function handleTargetPowerSourceCapabilityUpdate(
     const targetPowerW = Math.round(value * 230 * phaseCount);
     if (targetPowerW < 0) return true;
     extendLadderWithExactTargetPower(snapshot, targetPowerW);
-    const nextReportedStepId = resolveTargetPowerReportedStepId({
-        profile: snapshot.steppedLoadProfile ?? profile,
-        capabilityObj: {
-            target_power: { value: targetPowerW },
-        },
-    });
+    const nextReportedStepId = resolveTargetPowerReportedStepId(
+        snapshot.steppedLoadProfile ?? profile,
+        ['target_power'],
+        { target_power: { value: targetPowerW } },
+    );
     recordRealtimeObservation(ingest, snapshot.id, capabilityId, value, true);
     applyNativeSteppedLoadSnapshotUpdate(ingest, snapshot, capabilityId, nextReportedStepId, true, targetPowerW);
     return true;

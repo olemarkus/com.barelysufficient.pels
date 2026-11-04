@@ -104,21 +104,19 @@ function notifyDeviceZoneChangeContained(
 
 export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, device: HomeyDeviceLike): void {
     const deviceId = getDeviceId(device);
-    // The read contract (`deviceReadContract.ts`), before anything reads the
-    // payload: an update that does not conform is ignored whole. No producer,
-    // tracking entry, parse or settle evidence sees it, and the device's entry
-    // stands as it was — a no-op, never a partial merge. A `null` model
-    // capability is withheld from the read rather than ignoring the read.
+    // Resolve each field against the accepted read before producers see it.
+    // Rejected fields keep their original source dates; valid siblings advance.
     const contractEmitter = moduleLogger;
     const effectiveDevice = resolveDeviceRead(
         ingest.reader.snapshotStore,
         ingest.reader.applyDeviceDriverOverride(device),
         'device_update',
         contractEmitter,
+        ingest.reader.snapshotStore.getLastAcceptedRawDevicesById().get(deviceId),
     );
     if (effectiveDevice === null) return;
     ingest.observeChargingDevice(effectiveDevice);
-    if (deviceId && !ingest.reader.shouldTrackRealtimeDeviceRead(deviceId, device)) {
+    if (deviceId && !ingest.reader.shouldTrackRealtimeDeviceRead(deviceId, effectiveDevice)) {
         ingest.binaryEvidence.clearBinarySettleEvidence(deviceId);
         ingest.reader.snapshotStore.untrackRawDevice(deviceId);
     }

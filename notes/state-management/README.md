@@ -387,13 +387,19 @@ Use it for:
 - fast drift detection
 - clearing pending state when the update is trustworthy and matches the requested result
 
-A `device.update` carries the whole device. One that does not conform to the
-device-read contract (`lib/device/transport/deviceReadContract.ts`) is ignored
-whole; PELS never merges a partial payload with retained values (owner ruling
-2026-09-23). The one exception is a `null` model capability on a device no
-adapter converts (owner ruling 2026-10-16): it is withheld from the read, and
-nothing stands in for it until a read reports a value. Per-capability events (`homey:device:{id}`) carry one capability by
-design and are their own, narrower read.
+A `device.update` carries the whole device. The device-read contract
+(`lib/device/transport/deviceReadContract.ts`) resolves each capability
+independently: a null, malformed, missing, or undated field cannot reject the
+whole payload. Valid siblings still update. A rejected field keeps its last
+accepted observation with its original timestamp, or is withheld when none
+exists; it produces no new observation. A rejected native-limit reading keeps
+its declared surface and range metadata, so it cannot turn a stepped charger
+into a binary-only start at an unknown limit. The write owner gates start
+prerequisites without discarding observation or safe stop paths. The same rule applies before and after
+vendor conversion. Only an unreadable structural envelope, such as a missing
+capability list or map, makes the whole read a no-op. Per-capability events
+(`homey:device:{id}`) carry one capability by design and are their own, narrower
+read.
 
 Homey's capability event for a write carries the transaction id its writer
 supplied. PELS sends its own with every capability write, so the transport

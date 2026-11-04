@@ -4,7 +4,7 @@ import {
   resolveBoostRequested,
   resolveBoostSupported,
 } from '../device/deviceActionProjection';
-import { isEvSessionInactive } from '../../packages/shared-domain/src/evPlugState';
+import { isEvDevice, isEvSessionInactive } from '../../packages/shared-domain/src/evPlugState';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import { resolveResidualShedBehavior, type ResidualKwForPlanDeviceShedBehavior } from './residualKwForPlanDevice';
 import type {
@@ -318,10 +318,10 @@ export function resolvePlanCommandabilityReason(
 export function resolvePlanObjective(
   device: ToPlanDeviceInput & EvObservedProbe,
 ): Pick<PlanInputDevice, 'objectiveKind' | 'objectiveSessionInactive'> {
-  if (isEvObserved(device)) {
+  if (isEvDevice(device)) {
     return {
       objectiveKind: 'ev_soc',
-      objectiveSessionInactive: isEvSessionInactive(device.evChargingState),
+      objectiveSessionInactive: !isEvObserved(device) || isEvSessionInactive(device.evChargingState),
     };
   }
   return {

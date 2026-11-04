@@ -4,11 +4,6 @@ import type { HomeyDeviceLike } from '../../utils/types';
 import { isEvPlugStateConnected } from '../../../packages/shared-domain/src/evPlugState';
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerControl';
 
-const ZAPTEC_NATIVE_REQUIRED_CAPABILITIES = [
-  'charging_button',
-  'charge_mode',
-  'alarm_generic.car_connected',
-] as const;
 const ZAPTEC_NATIVE_DRIVER_IDS = new Set([
   'homey:app:com.zaptec:go',
   'homey:app:com.zaptec:go2',
@@ -36,10 +31,6 @@ const hasCapability = (capabilities: readonly string[], capabilityId: string): b
 const hasOfficialEvChargerCapabilities = (capabilities: readonly string[]): boolean => (
   hasCapability(capabilities, 'evcharger_charging')
   && hasCapability(capabilities, 'evcharger_charging_state')
-);
-
-const hasAllZaptecNativeCapabilities = (capabilities: readonly string[]): boolean => (
-  ZAPTEC_NATIVE_REQUIRED_CAPABILITIES.every((capabilityId) => hasCapability(capabilities, capabilityId))
 );
 
 const normalizeText = (value: unknown): string => (
@@ -106,9 +97,8 @@ function resolveZaptecChargingStateFromChargeMode(chargeMode: unknown): string |
 function isZaptecGoNativeWiringCandidate(device: HomeyDeviceLike): boolean {
   if (normalizeText(device.class) !== 'evcharger') return false;
 
-  const capabilities = Array.isArray(device.capabilities) ? device.capabilities : [];
-  if (!hasAllZaptecNativeCapabilities(capabilities)) return false;
-
+  // The driver identifies the integration even when one source observation
+  // was withheld. Its remaining sources may still resolve an independent facet.
   const driverId = normalizeText(device.driverId);
   return ZAPTEC_NATIVE_DRIVER_IDS.has(driverId);
 }
@@ -186,28 +176,39 @@ export function applyNativeEvWiringOverlay(
     };
   }
 
-  const nextCapabilities = [...capabilities];
+  // This integration's `onoff` is not a substitute for its charging switch.
+  const nextCapabilities = capabilities.filter(id => id !== 'onoff');
   const nextCapabilityObj: DeviceCapabilityMap = { ...capabilityObj };
-  let binaryTarget: BinaryTarget = { kind: 'canonical' };
+  const buttonDeclared = hasCapability(capabilities, 'charging_button');
+  const button = capabilityObj.charging_button;
+  const buttonWritable = buttonDeclared && button !== undefined && button.setable !== false;
+  // Writability and observation are independent. A declared button can retain
+  // its real writable metadata while its scalar read is withheld.
+  const binaryTarget: BinaryTarget = !hasCapability(capabilities, 'evcharger_charging') && buttonDeclared
+    ? { kind: 'capability', writeCapabilityId: 'charging_button', observationCapabilityId: 'evcharger_charging' }
+    : { kind: 'canonical' };
 
   if (!hasCapability(nextCapabilities, 'evcharger_charging')) {
-    nextCapabilities.push('evcharger_charging');
     const charging = resolveZaptecCharging(nextCapabilityObj);
-    nextCapabilityObj.evcharger_charging = {
-      value: charging.value,
-      setable: true,
-      lastUpdated: charging.lastUpdated,
-    };
-    binaryTarget = { kind: 'capability', writeCapabilityId: 'charging_button',
-      observationCapabilityId: 'evcharger_charging' };
+    if (charging.value !== undefined) {
+      nextCapabilities.push('evcharger_charging');
+      nextCapabilityObj.evcharger_charging = {
+        value: charging.value,
+        setable: buttonWritable,
+        lastUpdated: charging.lastUpdated,
+      };
+    }
   }
 
   if (!hasCapability(nextCapabilities, 'evcharger_charging_state')) {
-    nextCapabilities.push('evcharger_charging_state');
-    nextCapabilityObj.evcharger_charging_state = {
-      value: resolveZaptecChargingState(nextCapabilityObj),
-      lastUpdated: resolveZaptecChargingStateLastUpdated(nextCapabilityObj),
-    };
+    const state = resolveZaptecChargingState(nextCapabilityObj);
+    if (state !== undefined) {
+      nextCapabilities.push('evcharger_charging_state');
+      nextCapabilityObj.evcharger_charging_state = {
+        value: state,
+        lastUpdated: resolveZaptecChargingStateLastUpdated(nextCapabilityObj),
+      };
+    }
   }
 
   return {

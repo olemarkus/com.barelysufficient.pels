@@ -34,7 +34,6 @@ const toSwitchWrite = (
 
 export const easeeAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
-  readsAsReported: false,
   matches: (device) => isEaseeDevice(device) || isEaseeChargerDevice(device),
   matchesCapabilities: (capabilities) => capabilities.includes(EASEE_CHARGER_CURRENT_CAPABILITY_ID),
   overlay: (_device, capabilities, values) => ({
@@ -48,7 +47,9 @@ export const easeeAdapter: DeviceAdapter = {
     ? withEaseeObservedCharging(values) : values,
   readRules: (device): DeviceReadRules => isEaseeChargerDevice(device)
     ? {
-      [EASEE_CHARGER_CURRENT_CAPABILITY_ID]: 'number',
+      [EASEE_CHARGER_CURRENT_CAPABILITY_ID]: (value) => (
+        typeof value === 'number' && Number.isFinite(value) && value >= 0
+      ),
       ...(device.capabilities?.includes(EASEE_CHARGER_STATUS)
         // Any mode name: a full read with one this adapter does not know carries the app's own plug state.
         ? { [EASEE_CHARGER_STATUS]: 'string' } : {}),

@@ -1,59 +1,16 @@
 /**
- * The Homey device-read contract, checked at the SDK boundary before anything
- * reads the payload.
+ * Validate each Homey capability at the device transport boundary. A bad value,
+ * missing entry or source date rejects that field only. Keep its last accepted
+ * reading with its original date, or withhold it until its first valid reading;
+ * accept independent valid fields in the same payload. This applies to vendor
+ * sources before conversion as well as standard Homey capabilities.
  *
- * Owner ruling (2026-09-23): PELS never uses partial data from the SDK. A device
- * read — a full `manager/devices` fetch or a realtime `device.update` — must
- * carry the device's capability list and, for every capability of PELS's device
- * model it declares, a value of the model's type and the time Homey observed it
- * (`lastUpdated`). Every observation PELS keeps is dated by its source; a value
- * with no date cannot be ordered against the others, so it is not a reading.
- * A read that does not is IGNORED: nothing is parsed, nothing is emitted, and
- * the device's previous entry stands exactly as if the read had not happened.
- * There is no "incomplete" state downstream; a non-conforming read is a no-op,
- * the same treatment a transient read failure gets.
- *
- * The model is PELS's, not the vendor's, and the check runs on the model. A
- * vendor device PELS converts is converted first — Zaptec's `charge_mode`,
- * car-connected alarm and charging button become `evcharger_charging_state` and
- * `evcharger_charging` (`applyNativeEvWiringOverlay`) — and the converted values
- * are what must conform. A charger reporting `evcharger_charging_state` natively
- * must report a member of the Homey plug-state enum. The model is also scoped
- * by what PELS reads from the device's role: a car is read only for its plug
- * state and state of charge, state of charge only from a charger or a home
- * battery, temperature only from a device with both a measurement and a
- * target, and nothing at all from a class PELS does not admit. A driver may
- * declare capabilities that do not fit PELS's model of its device and never
- * report them (seen on a production hub); those are not PELS's business.
- * Capabilities outside the model — buttons, camera commands — are never read,
- * so their routine `null` values are none of this contract's business.
- *
- * Owner ruling (2026-10-16): a `null` value rejects that capability, not the
- * read. Device apps do set a model capability to `null` (Stiebel Eltron Heat
- * Pumps clears one whenever a Modbus register reads as unavailable, and adds
- * `measure_power` that stays `null` without its community registers), and
- * ignoring the whole read for it hid an otherwise readable heat pump. A `null`
- * is not a value, and PELS invents none for it: the capability is withheld
- * from that read (`withholdNullModelCapabilities`), so the device reads as if
- * it did not declare it, until a read reports a value again. A `null`
- * `meter_power` beside a reported `measure_power` leaves the device metered,
- * and a `null` temperature leaves it without its temperature facet. A vendor device an
- * adapter converts or reads more of stays all-or-nothing.
- *
- * Native Homey SHS checks (2026-11-03), using both the device-list and by-id REST
- * reads, distinguish two shapes:
- * - An unavailable, not-ready device declared `onoff` but returned
- *   `capabilitiesObj: {}`. This is a missing capability entry,
- *   not an observed off value; the read is ignored by the contract above.
- * - A newly paired, available and ready SDK device with no initial value
- *   returned an `onoff` entry with `value: null` and `lastUpdated: null`.
- *   Setting it through Homey's capability API populated both fields. This is
- *   the uninitialized-capability case handled by withholding, not a missing
- *   entry or a value for PELS to invent.
- * A healthy, initialized device transiently losing its capability entry on a
- * PELS restart has not been reproduced. These observations do not justify
- * restart-specific retry queues or recovery state for that hypothesis.
+ * Only an unreadable envelope (no capability list or value map) ignores the
+ * whole read. Never turn a field-validation failure into loss of device support.
+ * See lib/device/AGENTS.md for observation and dependent-control rules.
  */
+import { isReportedThermostatMode } from './thermostatModeRealtime';
+import { normalizeStateOfChargePercent } from './stateOfCharge';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
 import { isEvCarDeviceClass } from '../evCarDeviceClass';
@@ -80,11 +37,11 @@ const DEVICE_MODEL_CAPABILITY_TYPES: Readonly<Record<string, ModelValueType>> = 
     target_temperature: 'number',
     measure_power: 'number',
     meter_power: 'number',
-    measure_battery: 'number',
-    measure_soc_usable: 'number',
-    measure_soc_level: 'number',
-    thermostat_mode: 'string',
-    target_power: 'number',
+    measure_battery: (value) => normalizeStateOfChargePercent(value) !== undefined,
+    measure_soc_usable: (value) => normalizeStateOfChargePercent(value) !== undefined,
+    measure_soc_level: (value) => normalizeStateOfChargePercent(value) !== undefined,
+    thermostat_mode: isReportedThermostatMode,
+    target_power: (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0,
     target_power_mode: (value) => value === 'homey' || value === 'device',
 };
 
@@ -97,7 +54,7 @@ const DEVICE_MODEL_CAPABILITY_TYPES: Readonly<Record<string, ModelValueType>> = 
  */
 const CAR_MODEL_CAPABILITY_TYPES: Readonly<Record<string, ModelValueType>> = {
     ev_charging_state: 'string',
-    measure_battery: 'number',
+    measure_battery: (value) => normalizeStateOfChargePercent(value) !== undefined,
 };
 
 /**
@@ -137,7 +94,7 @@ const STATE_OF_CHARGE_CLASS_KEYS: ReadonlySet<string> = new Set(['evcharger', 'b
  * readable. A panel's production-cap reports are accepted separately by
  * `solarInverterObservation.ts`, retaining accepted reports on a missing read.
  *
- * Its claim capability is outside this all-or-nothing contract, though its
+ * Its claim capability is outside these field rules, though its
  * value and stamp ARE read: they are resolved at their own boundary
  * (`resolveParsedClaim`, `homeBatteryObservation.ts`), where a missing or
  * malformed claim keeps the last accepted one or reads as unreported. Failing
@@ -165,6 +122,7 @@ function resolveModelCapabilityTypes(
         (withTemperatureFacet || !TEMPERATURE_FACET_CAPABILITY_IDS.has(capabilityId))
         && (withStateOfCharge || !STATE_OF_CHARGE_CAPABILITY_IDS.has(capabilityId))
         && (withSteppedControl || !STEPPED_ONLY_CAPABILITY_IDS.has(capabilityId))
+        && (capabilityId !== 'target_power_mode' || capabilities.includes('target_power'))
     )));
     return modelTypes;
 }
@@ -188,95 +146,131 @@ const isModelValue = (capabilityId: string, value: unknown, type: ModelValueType
     PLUG_STATE_CAPABILITY_IDS.has(capabilityId) ? isEvChargingState(value) : hasModelType(value, type)
 );
 
-/**
- * The model capabilities `device` declares with a `null` value. Only a device
- * whose adapter reads it as Homey reports it (`readsAsReported`): one an
- * adapter converts or reads more of (Tesla, Easee, Zaptec, Futurehome) chooses
- * its control path from what it declares, so it stays all-or-nothing.
- */
-function findNullModelCapabilityIds(device: HomeyDeviceLike): ReadonlySet<string> {
-    const { capabilities, capabilitiesObj } = device;
-    if (!Array.isArray(capabilities) || !isUnknownRecord(capabilitiesObj)) return new Set();
-    if (!getDeviceAdapter(device).readsAsReported) return new Set();
-    const modelTypes = resolveModelCapabilityTypes(device, capabilities);
-    return new Set(capabilities.filter((capabilityId) => {
-        if (modelTypes[capabilityId] === undefined) return false;
-        const entry: unknown = capabilitiesObj[capabilityId];
-        return isUnknownRecord(entry) && entry.value === null;
-    }));
+type CapabilityViolation = Extract<DeviceReadContractViolation, { capabilityId: string }>;
+
+/** Keep a typed realtime source report in the same accepted raw read used by refresh. */
+export function withAcceptedCapabilityReport(
+    device: HomeyDeviceLike,
+    capabilityId: string,
+    value: unknown,
+    observedAtMs: number,
+): HomeyDeviceLike {
+    const types = {
+        ...resolveModelCapabilityTypes(device, device.capabilities ?? []),
+        ...getDeviceAdapter(device).readRules(device),
+    };
+    const type = types[capabilityId];
+    if (type === undefined || !isModelValue(capabilityId, value, type)) return device;
+    return {
+        ...device,
+        capabilitiesObj: {
+            ...device.capabilitiesObj,
+            [capabilityId]: { ...device.capabilitiesObj?.[capabilityId], value, lastUpdated: observedAtMs },
+        },
+    };
 }
 
-/**
- * The capabilities withheld beside the `null` ones. A charger's on/off handle is
- * `evcharger_charging` (`getControlCapabilityId`). Withholding it alone would
- * leave a declared `onoff` to be picked as the handle for this read, and on some
- * chargers `onoff` disables the charger rather than pausing the session. So the
- * charger has no on/off handle until `evcharger_charging` reports a value again.
- */
-function findCapabilityIdsWithheldWithNull(
-    device: HomeyDeviceLike,
-    nullCapabilityIds: ReadonlySet<string>,
-): ReadonlySet<string> {
-    return nullCapabilityIds.has('evcharger_charging')
-        && device.capabilities?.includes('onoff') === true
-        && resolveDeviceClassKey(device) === 'evcharger'
-        ? new Set(['onoff'])
-        : new Set();
+/** The raw source fields this device's model and adapter actually read. */
+function findRawCapabilityViolations(device: HomeyDeviceLike): CapabilityViolation[] {
+    const capabilities = device.capabilities ?? [];
+    const values = device.capabilitiesObj ?? {};
+    const integrationTypes = getDeviceAdapter(device).readRules(device);
+    const types = { ...resolveModelCapabilityTypes(device, capabilities), ...integrationTypes };
+    const readIds = new Set([...capabilities,
+        ...Object.keys(integrationTypes).filter((id) => Object.hasOwn(values, id))]);
+    return [...readIds].flatMap((capabilityId) => {
+        const type = types[capabilityId];
+        if (type === undefined) return [];
+        const violation = findEntryViolation(capabilityId, values[capabilityId], type);
+        return violation ? [violation] : [];
+    });
 }
 
-const withNullCompanions = (
-    device: HomeyDeviceLike,
-    nullCapabilityIds: ReadonlySet<string>,
-): ReadonlySet<string> => new Set([
-    ...nullCapabilityIds, ...findCapabilityIdsWithheldWithNull(device, nullCapabilityIds),
-]);
-
-export type NullModelCapabilityResolution = {
+export type DeviceCapabilityResolution = {
     device: HomeyDeviceLike;
-    /** Declared `null`: read as not declared. */
+    violations: readonly CapabilityViolation[];
+    retainedCapabilityIds: readonly string[];
     withheldCapabilityIds: readonly string[];
 };
 
-/**
- * `device` with each model capability it declares as `null` withheld: dropped
- * from both the capability list and the values, so everything downstream reads
- * the device as not declaring it. Nothing stands in for it; the capability is
- * back with the first read that reports a value.
- */
-export function withholdNullModelCapabilities(device: HomeyDeviceLike): NullModelCapabilityResolution {
-    return withholdCapabilities(device, withNullCompanions(device, findNullModelCapabilityIds(device)));
+/** A rejected scalar observation does not erase a real supported write operation. */
+function resolveReadDescriptorIds(device: HomeyDeviceLike): Set<string> {
+    const values = Object.fromEntries(Object.entries(device.capabilitiesObj ?? {}).flatMap(([id, entry]) => (
+        entry === undefined ? [] : [[id, entry]]
+    )));
+    const overlay = applyNativeEvWiringOverlay(device, device.capabilities ?? [], values);
+    return new Set([
+        'onoff', 'evcharger_charging', 'measure_temperature', 'target_temperature', 'target_power', 'target_power_mode',
+        ...getDeviceAdapter(device).nativeCurrentControls.map((control) => control.capabilityId),
+        ...(overlay.binaryWriteCapabilityId ? [overlay.binaryWriteCapabilityId] : []),
+    ]);
 }
 
-function withholdCapabilities(
+/**
+ * Reject fields independently, without refreshing retained observations. A
+ * rejected control prerequisite cannot enable an alternative control path.
+ */
+export function withholdInvalidModelCapabilities(
     device: HomeyDeviceLike,
-    withheld: ReadonlySet<string>,
-): NullModelCapabilityResolution {
-    if (withheld.size === 0) return { device, withheldCapabilityIds: [] };
+    previousRead?: HomeyDeviceLike,
+): DeviceCapabilityResolution {
+    const violations = findRawCapabilityViolations(device);
+    const types = {
+        ...resolveModelCapabilityTypes(device, device.capabilities ?? []),
+        ...getDeviceAdapter(device).readRules(device),
+    };
+    const retained = violations.flatMap(({ capabilityId }) => {
+        const entry = previousRead?.capabilitiesObj?.[capabilityId];
+        const type = types[capabilityId];
+        return entry && type !== undefined && findEntryViolation(capabilityId, entry, type) === null
+            ? [[capabilityId, entry] as const] : [];
+    });
+    const retainedCapabilityIds = retained.map(([id]) => id);
+    const rejected = new Set(violations.map(({ capabilityId }) => capabilityId));
+    const withheld = new Set([...rejected].filter((id) => !retainedCapabilityIds.includes(id)));
+    // A charger's onoff can disable the entire charger rather than pause it.
+    if (withheld.has('evcharger_charging') && resolveDeviceClassKey(device) === 'evcharger') withheld.add('onoff');
+    // A rejected native control READING does not erase its declared surface or
+    // range. Those descriptors let the owner keep the ladder and wait for a
+    // real step report, rather than fall back to a binary-only start.
+    const descriptorIds = resolveReadDescriptorIds(device);
+    if (withheld.has('evcharger_charging') && resolveDeviceClassKey(device) === 'evcharger') {
+        descriptorIds.delete('onoff');
+    }
+    const descriptors = [...withheld].flatMap((id) => {
+        const entry = device.capabilitiesObj?.[id];
+        if (!descriptorIds.has(id) || !isUnknownRecord(entry)) return [];
+        const { value: _value, lastUpdated: _lastUpdated, ...descriptor } = entry;
+        return [[id, descriptor] as const];
+    });
+    if (violations.length === 0) {
+        return { device, violations, retainedCapabilityIds: [], withheldCapabilityIds: [] };
+    }
     return {
         device: {
             ...device,
-            capabilities: (device.capabilities ?? []).filter((capabilityId) => !withheld.has(capabilityId)),
-            capabilitiesObj: Object.fromEntries(Object.entries(device.capabilitiesObj ?? {})
-                .filter(([capabilityId]) => !withheld.has(capabilityId))),
+            capabilities: device.capabilities?.filter((id) => !withheld.has(id) || descriptorIds.has(id)),
+            capabilitiesObj: Object.fromEntries([
+                ...Object.entries(device.capabilitiesObj ?? {})
+                    .filter(([id]) => !rejected.has(id) && !withheld.has(id)),
+                ...retained,
+                ...descriptors,
+            ]),
         },
+        violations,
+        retainedCapabilityIds,
         withheldCapabilityIds: [...withheld],
     };
 }
 
 /** The first way `device` breaks the contract, or `null` for a conforming read. */
 export function findDeviceReadContractViolation(device: HomeyDeviceLike): DeviceReadContractViolation | null {
-    return findViolation(device, new Set());
+    return findViolation(device);
 }
 
-/**
- * The contract check, with a `null` value tolerated on the capabilities
- * `withholdNullModelCapabilities` withholds. It runs on the read as declared, so
- * withholding one member of the temperature pair never takes the other out of
- * the model it is checked against.
- */
+/** Inspect the converted model for diagnostics; resolution rejects fields independently. */
 function findViolation(
     device: HomeyDeviceLike,
-    nullTolerated: ReadonlySet<string>,
 ): DeviceReadContractViolation | null {
     const { capabilities, capabilitiesObj } = device;
     if (!Array.isArray(capabilities) || !capabilities.every((id) => typeof id === 'string')) {
@@ -287,8 +281,8 @@ function findViolation(
     const model = applyNativeEvWiringOverlay(device, capabilities, capabilitiesObj as DeviceCapabilityMap);
     const integrationTypes = getDeviceAdapter(device).readRules(device);
     const modelTypes = { ...resolveModelCapabilityTypes(device, model.capabilities), ...integrationTypes };
-    // Session evidence also reads vendor entries present in capabilitiesObj;
-    // validate those before it can retain any part of this device read.
+    // Include the vendor source entries read by session owners, alongside
+    // capabilities converted into the shared model.
     const readCapabilities = new Set([...model.capabilities,
         ...Object.keys(integrationTypes).filter((id) => Object.hasOwn(capabilitiesObj, id))]);
     const noEvProjection = getDeviceAdapter(device).retainsPlugObservation(device);
@@ -298,7 +292,7 @@ function findViolation(
         if (noEvProjection && capabilityId === 'evcharger_charging_state') continue;
         const type = modelTypes[capabilityId];
         if (type === undefined) continue;
-        const violation = findEntryViolation(capabilityId, model.capabilityObj[capabilityId], type, nullTolerated);
+        const violation = findEntryViolation(capabilityId, model.capabilityObj[capabilityId], type);
         if (violation !== null) return violation;
     }
     return null;
@@ -309,10 +303,8 @@ function findEntryViolation(
     capabilityId: string,
     entry: unknown,
     type: ModelValueType,
-    nullTolerated: ReadonlySet<string>,
-): DeviceReadContractViolation | null {
+): CapabilityViolation | null {
     if (!isUnknownRecord(entry)) return { reason: 'missing_capability_entry', capabilityId };
-    if (entry.value === null && nullTolerated.has(capabilityId)) return null;
     if (!isModelValue(capabilityId, entry.value, type)) return { reason: 'unexpected_value', capabilityId };
     if (toCapabilityTimestampMs(entry.lastUpdated) === undefined) return { reason: 'missing_stamp', capabilityId };
     return null;
@@ -343,49 +335,45 @@ const violationSignatures = (owner: object): Map<string, string> => {
     return created;
 };
 
-/**
- * Check `device` against the contract and say so when it fails or a `null`
- * capability is withheld. `null` means the read is ignored: the caller must not
- * parse it, merge it, or let any of it reach state. Otherwise the caller reads
- * the returned device, never the payload it passed in.
- */
+/** Resolve a read before producers, parsing or tracking can consume any values. */
 export function resolveDeviceRead(
     owner: object,
     device: HomeyDeviceLike,
     source: DeviceReadSource,
     emitter: DeviceReadContractEmitter,
+    previousRead?: HomeyDeviceLike,
 ): HomeyDeviceLike | null {
     const deviceId = typeof device.id === 'string' ? device.id : '';
     const signatures = violationSignatures(owner);
-    const nullCapabilityIds = findNullModelCapabilityIds(device);
-    const violation = findViolation(device, nullCapabilityIds);
-    if (violation !== null) {
-        if (claimSignature(signatures, deviceId, { violation })) {
-            emitter.warn({ event: 'device_read_ignored', deviceId, deviceName: device.name, source, ...violation });
+    const envelope = findEnvelopeViolation(device);
+    if (envelope) {
+        if (claimSignature(signatures, deviceId, envelope)) {
+            emitter.warn({ event: 'device_read_ignored', deviceId, deviceName: device.name, source, ...envelope });
         }
         return null;
     }
-    const companionIds = [...findCapabilityIdsWithheldWithNull(device, nullCapabilityIds)];
-    const { device: read, withheldCapabilityIds } = withholdCapabilities(
-        device, withNullCompanions(device, nullCapabilityIds),
-    );
-    if (withheldCapabilityIds.length === 0) {
+    const resolution = withholdInvalidModelCapabilities(device, previousRead);
+    const { violations, retainedCapabilityIds, withheldCapabilityIds } = resolution;
+    if (violations.length === 0) {
         if (signatures.delete(deviceId)) {
             emitter.info({ event: 'device_read_conforming_again', deviceId, deviceName: device.name, source });
         }
-    } else if (claimSignature(signatures, deviceId, { withheldCapabilityIds })) {
+    } else if (claimSignature(signatures, deviceId, { violations, retainedCapabilityIds, withheldCapabilityIds })) {
         emitter.info({
-            event: 'device_capabilities_withheld',
-            deviceId,
-            deviceName: device.name,
-            source,
-            reason: 'null_value',
-            capabilityIds: [...nullCapabilityIds],
-            // Withheld with a null charging capability, though it holds a value.
-            ...(companionIds.length > 0 ? { withheldWithNullCapabilityIds: companionIds } : {}),
+            event: 'device_capabilities_withheld', deviceId, deviceName: device.name, source,
+            capabilityIds: violations.map(({ capabilityId }) => capabilityId),
+            violations, retainedCapabilityIds, withheldCapabilityIds,
         });
     }
-    return read;
+    return resolution.device;
+}
+
+function findEnvelopeViolation(device: HomeyDeviceLike): DeviceReadContractViolation | null {
+    if (!Array.isArray(device.capabilities) || !device.capabilities.every((id) => typeof id === 'string')) {
+        return { reason: 'missing_capability_list' };
+    }
+    if (!isUnknownRecord(device.capabilitiesObj)) return { reason: 'missing_capability_values' };
+    return null;
 }
 
 /** Record what is said about a device; true when it differs from what was said last. */

@@ -69,18 +69,15 @@ describe('resolveCommandableNow — availability', () => {
 });
 
 describe('resolveCommandableNow — no trusted plug state', () => {
-  it('stays commandable when an EV charger has no evChargingState', () => {
+  it('withholds start permission when an EV charger has no accepted plug state', () => {
     const commandableNow = resolveCommandableNow({
         isEvCharger: true,
         evChargingState: undefined,
         available: true,
     });
-    // Fails OPEN: an unclassifiable vendor value is permanent, shed does not
-    // consult commandability, and blocking would leave the charger off with no
-    // way back. A charger reporting outside the enum is dropped at the transport
-    // instead — see the device-read contract (`deviceReadContract.ts`)
-    // (`lib/device/transport/managerParse.ts`).
-    expect(commandableNow).toBe(true);
+    // Identity and independent telemetry survive an unreadable observation;
+    // starting still requires an accepted connected plug state.
+    expect(commandableNow).toBe(false);
   });
 });
 

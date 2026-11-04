@@ -323,10 +323,9 @@ describe('a null temperature member across a device.update', () => {
         vi.useRealTimers();
     });
 
-    // A `null` is not a reading, and nothing stands in for it: not the last
-    // full read, not a newer realtime event. The member is withheld, so the
-    // device reads without its temperature facet until it reports a value.
-    it('drops the temperature facet while a member is null, and takes it back with a value', async () => {
+    // A null member supplies no new observation. The accepted realtime reading
+    // stands at its original date while other fields in the payload are read.
+    it('retains the accepted temperature while a member is null, and takes a newer value', async () => {
         const transport = createTestDeviceTransport(
             mockHomeyInstance as unknown as Homey.App,
             buildTransportLogger() as unknown as Logger,
@@ -350,7 +349,7 @@ describe('a null temperature member across a device.update', () => {
                 },
             },
         });
-        expect(observedTemperature(transport)).toBeNull();
+        expect(observedTemperature(transport)).toEqual({ measured: 22, target: 20 });
 
         vi.setSystemTime(new Date('2026-04-01T12:03:00.000Z'));
         emitDeviceUpdate(binaryThermostat(pairAt(23, 20, '2026-04-01T12:03:00.000Z')));

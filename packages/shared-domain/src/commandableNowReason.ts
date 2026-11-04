@@ -69,7 +69,8 @@ export const EV_BOOST_BLOCK_REASONS: Record<EvBlockingChargingState, string> = {
  * Boost-panel copy for a charger, or `null` when the plug-state does not stand
  * in the way and the panel should fall through to its battery-level lines. The
  * `null` here is the panel's own "no line to show" — it is not standing in for
- * an unknown state, which cannot exist for a snapshotted charger.
+ * an unknown state. Start commandability is resolved separately and requires
+ * an accepted plug observation.
  */
 export const resolveEvBoostBlockReason = (dev: EvDeviceIdentity & EvObservedProbe): string | null => {
   if (!isEvObserved(dev) || !isEvPlugStateBlocked(dev.evChargingState)) return null;

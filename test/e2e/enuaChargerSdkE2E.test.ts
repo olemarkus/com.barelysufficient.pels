@@ -10,6 +10,7 @@ import { drainPending } from '../utils/asyncDrain';
 import { connectLiveFeed } from '../helpers/liveFeedSocketHarness';
 import type { TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 const ID = 'enua';
 const pathFor = (capability: string) => `manager/devices/device/${ID}/capability/${capability}`;
@@ -129,6 +130,21 @@ async function readCharger() {
   const device = response.devices.find((candidate) => candidate.id === ID);
   if (!device) throw new Error('Enua missing from /ui_devices');
   return device;
+}
+
+type UnreadableTargetPower = 'null' | 'wrong type' | 'missing entry' | 'undated';
+
+function withUnreadableTargetPower(payload: unknown, kind: UnreadableTargetPower): unknown {
+  const device = asUnknownRecord(payload);
+  const values = asUnknownRecord(device?.capabilitiesObj);
+  if (device?.id !== ID || !values) return payload;
+  const { target_power: target, ...siblings } = values;
+  if (kind === 'missing entry') return { ...device, capabilitiesObj: siblings };
+  const entry = asUnknownRecord(target);
+  const invalid = kind === 'undated'
+    ? { ...entry, lastUpdated: null }
+    : { ...entry, value: kind === 'null' ? null : 'unreadable' };
+  return { ...device, capabilitiesObj: { ...siblings, target_power: invalid } };
 }
 
 describe.each(GRIDS)('Enua $grid at the SDK boundary', ({ grid, wattsPerAmp }) => {
@@ -276,20 +292,34 @@ describe.each(GRIDS)('Enua $grid at the SDK boundary', ({ grid, wattsPerAmp }) =
     expect((await readCharger()).reportedStepId).toBe(`${Math.round(observedA)}a`);
   });
 
-  it('waits for a complete power read instead of starting at an unknown limit', async () => {
-    const charger = await buildCharger(grid, 32, false);
-    const simulation = simulateEnua(charger, wattsPerAmp);
-    charger.setApiCapabilityValue('target_power', null);
-    configureRuntime(1000 + 10.5 * wattsPerAmp);
-    await createApp().onInit();
-    await vi.advanceTimersByTimeAsync(20_000);
-    expect(simulation.startCurrents).toEqual([]);
-    // The next vendor poll supplies the full read; normal preparation and
-    // restore pacing can then resume without a binary-only fallback.
-    await vi.advanceTimersByTimeAsync(375_000);
-    expect(simulation.startCurrents.length).toBeGreaterThan(0);
-    expect(simulation.startCurrents.every((amps) => amps >= 6 && amps <= 10)).toBe(true);
-  });
+  it.each(['null', 'wrong type', 'missing entry', 'undated'] as const)(
+    'waits for a usable native power descriptor when the initial target is %s', async (kind) => {
+      const charger = await buildCharger(grid, 32, false);
+      const simulation = simulateEnua(charger, wattsPerAmp);
+      const get = vi.mocked(mockHomeyInstance.api.get);
+      const read = get.getMockImplementation();
+      if (!read) throw new Error('Expected Enua SDK simulation');
+      const readableAfterMs = Date.now() + 20_000;
+      get.mockImplementation(async (path: string) => {
+        const payload = await read(path);
+        if (Date.now() >= readableAfterMs) return payload;
+        if (path === `manager/devices/device/${ID}`) return withUnreadableTargetPower(payload, kind);
+        if (path !== 'manager/devices/device') return payload;
+        const inventory = asUnknownRecord(payload);
+        return inventory ? { ...inventory, [ID]: withUnreadableTargetPower(inventory[ID], kind) } : payload;
+      });
+      configureRuntime(1000 + 10.5 * wattsPerAmp);
+      await createApp().onInit();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(simulation.startCurrents).toEqual([]);
+      expect(await readCharger()).toMatchObject({ id: ID, available: true });
+      // A later vendor read supplies the observation and any missing metadata;
+      // preparation resumes without ever falling back to a 32 A binary start.
+      await vi.advanceTimersByTimeAsync(375_000);
+      expect(simulation.startCurrents.length).toBeGreaterThan(0);
+      expect(simulation.startCurrents.every((amps) => amps >= 6 && amps <= 10)).toBe(true);
+    },
+  );
 
   it.each(['device', 'homey'])(
     'stays stopped after a positive limit readback with stop mode %s (live/test app behavior)', async (stopMode) => {

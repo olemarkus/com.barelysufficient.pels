@@ -19,8 +19,8 @@ export class EaseeChargingSession implements DeviceAdapterSession {
     if (previous?.kind === 'retired' && readAtMs < previous.readAtMs) return;
     if (!isEaseeChargerDevice(device) || !device.capabilities?.includes(EASEE_CHARGER_STATUS)) {
       if (previous && readAtMs < previous.readAtMs) return;
-      // This method sees only conforming reads. Their capability inventory is
-      // authoritative: a removed status must relinquish realtime authority too.
+      // Rejected observations retain their accepted status at the read boundary.
+      // A status actually removed from the inventory relinquishes its authority.
       // Keep the accepted descriptor's ordering fence until inventory removal,
       // so an older delayed read cannot reclaim the capability it just retired.
       if (previous) this.statuses.set(device.id, { kind: 'retired', readAtMs });

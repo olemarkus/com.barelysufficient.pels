@@ -353,7 +353,7 @@ test('transient empty and targeted reads preserve accepted Tesla companion membe
 
 
 test.each(['device_update', 'device_fetch'] as const)(
-  '%s ignores malformed Tesla battery and companion reads without revoking accepted home control', async (source) => {
+  '%s retains malformed Tesla fields without revoking accepted home control', async (source) => {
     vi.useRealTimers();
     mockHomeyInstance.settings.set('charging_current_control', { battery: { method: 'flow', confirmation: 'vehicle' } });
     const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
@@ -367,7 +367,7 @@ test.each(['device_update', 'device_fetch'] as const)(
       const powerObservedAt = before.measuredPowerObservedAtMs;
       expect(Number.isFinite(powerObservedAt)).toBe(true);
       expect(before).toMatchObject({ available: true, measuredPowerKw: 4 });
-      const malformed = initial.map((device) => ({ ...device, available: false,
+      const malformed = initial.map((device) => ({ ...device, available: true,
         capabilitiesObj: { ...device.capabilitiesObj } }));
       delete malformed[0]!.capabilitiesObj.measure_soc_level;
       malformed[1]!.capabilitiesObj.measure_location_latitude = { value: 61 };
@@ -393,6 +393,31 @@ test.each(['device_update', 'device_fetch'] as const)(
   },
 );
 
+
+test.each(['device_update', 'device_fetch'] as const)(
+  '%s still accepts unavailability beside a malformed Tesla field', async (source) => {
+    vi.useRealTimers();
+    mockHomeyInstance.settings.set('charging_current_control', { battery: { method: 'flow', confirmation: 'vehicle' } });
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
+      { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') });
+    try {
+      await initWithLiveFeed(transport);
+      const initial = devices();
+      await seedTransportDevices(transport, initial);
+      expect(transport.getSnapshotByDeviceId('battery')).toMatchObject({ available: true, measuredPowerKw: 4 });
+      const partial = { ...initial[0]!, available: false,
+        capabilitiesObj: { ...initial[0]!.capabilitiesObj } };
+      delete partial.capabilitiesObj.measure_soc_level;
+      if (source === 'device_update') emitDeviceUpdate(partial);
+      else await seedTransportDevices(transport, [partial, ...initial.slice(1)]);
+      expect(transport.getSnapshotByDeviceId('battery')).toMatchObject({ available: false, measuredPowerKw: 0 });
+      await expect(transport.setCapability('battery', 'evcharger_charging', true)).rejects.toThrow('at home');
+    } finally {
+      transport.destroy();
+      mockHomeyInstance.settings.unset('charging_current_control');
+    }
+  },
+);
 
 test('fresh home evidence restores availability without restoring old power or overriding Homey unavailability', async () => {
   vi.useRealTimers();

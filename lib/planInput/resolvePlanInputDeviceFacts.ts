@@ -6,7 +6,7 @@ import { resolveObservedCurrentState } from '../observer/observedState';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { resolveCanSetControl } from '../device/deviceActionProjection';
 import type { BoostResolveInput } from '../device/deviceActionProjection';
-import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
+import { isEvDevice } from '../../packages/shared-domain/src/evPlugState';
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import {
@@ -115,7 +115,7 @@ export const resolvePlanInputDeviceFacts = (
   );
   const startPolicyInForce = resolveStartPolicyInForce(startPolicy, capacityControlEnabled);
   const externalOffHoldActive = source.isExternalOffHoldActive(device.id, device);
-  const hasStandingDemand = !isEvObserved(device);
+  const hasStandingDemand = !isEvDevice(device);
   const { surplusOnly, surplusTracking } = resolveSurplusPostureForDevice(
     source,
     device,

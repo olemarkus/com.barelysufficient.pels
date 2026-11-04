@@ -181,7 +181,7 @@ export class BinarySettleEvidenceService {
         !payload.present
         || typeof payload.value !== 'boolean'
         || payload.observedAtMs === undefined
-        || this.isOlderEvCommandObservation(payload, previousSnapshot)
+        || this.isRetainedBinaryObservation(payload, previousSnapshot)
     ) {
         this.applyCachedBinarySettleEvidenceToSnapshot(snapshot);
         return;
@@ -197,14 +197,17 @@ export class BinarySettleEvidenceService {
     this.applyBinarySettleEvidenceToSnapshot(snapshot, evidence);
 }
 
-private isOlderEvCommandObservation(
+private isRetainedBinaryObservation(
     payload: ReturnType<typeof resolveBinaryControlPayload>,
     previousSnapshot: TransportDeviceSnapshot | undefined,
 ): boolean {
-    return payload.capabilityId === 'evcharger_charging'
+    const previous = previousSnapshot?.binaryControlObservation;
+    return (payload.capabilityId === 'evcharger_charging'
         && payload.observedAtMs !== undefined
         && previousSnapshot?.evChargingObservedAtMs !== undefined
-        && payload.observedAtMs <= previousSnapshot.evChargingObservedAtMs;
+        && payload.observedAtMs <= previousSnapshot.evChargingObservedAtMs)
+        || (previous !== undefined && payload.capabilityId === previous.capabilityId
+            && payload.observedAtMs !== undefined && payload.observedAtMs <= previous.observedAtMs);
 }
 
     applyBinaryObservationToSnapshot(
