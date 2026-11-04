@@ -11,28 +11,29 @@ capabilities instead of round-tripping through user-authored Flow cards.
 
 - **Zaptec EV**: legacy app versions use `charging_button` for start/stop,
   with PELS exposing synthetic `evcharger_charging` / `evcharger_charging_state`.
-  App 1.12.0 exposes those standard EV capabilities itself, plus writable
-  `target_power` and `target_power_mode`. PELS builds the native watt ladder
-  from the device's runtime range, step and exclusion band. The driver owns
+  Newer app versions expose those standard EV capabilities themselves. PELS
+  offers Automatic and its recommendation only when the device publishes a
+  writable `target_power` with a usable runtime range, step and exclusion band;
+  the Zaptec model or app version alone grants no support. Current-only devices
+  keep their existing current/Flow setup without that option or recommendation.
+  For devices with the watt interface, the driver owns
   phase selection and conversion to installation current; no PELS EV phase
-  preset is needed for this native watt path. A saved preset still shapes the
-  ladder, but the step is read back from the charger's own `target_power`,
-  never from `available_installation_current` times the preset's phases: the
-  app converts watts its own way (√3 on an IT grid, a Go 2 switching from
-  three phases to one), so that product names another rung. Because the app
-  turns a watt target into the installation current, a charger whose
-  installation another Zaptec shares is read without `target_power` and
-  `target_power_mode`, as built-in current control refuses such an
-  installation: no mode takeover and no watt steps, and the charger behaves
-  as one without watt control. The Zaptec session decides this from each full
-  refresh's device list, and a device update keeps the last decision
-  (`lib/device/zaptec/session.ts`). A charger whose `target_power_mode`
-  already reads `homey` (claimed by an earlier build, or joined by a second
-  charger after PELS claimed it) keeps its watt control and is stepped as
-  before: hiding it would leave the installation at PELS's last watt target.
-  Open: such an installation keeps the shared last-written current until
-  PELS can hand the mode back to `device`, which needs a hand-back command and
-  an owner to issue it through the actuator seam.
+  preset is needed for this native watt path. In Automatic, a usable published
+  watt ladder takes precedence over saved EV presets, custom ladders and the
+  older built-in current route. Unconfigured devices default to Automatic;
+  existing models and current setups remain Manual until the owner switches.
+  The review names inactive manual limits before the choice is saved. Manual
+  settings are retained for switching back. Native watt steps do not use EV
+  reachability probes or calibration of the old amp-labelled steps.
+  The native step is read back from the charger's own `target_power`, not from
+  installation current times a PELS phase preset. Because the app applies watt
+  targets to the installation current, a charger sharing its installation with
+  another Zaptec is read without `target_power` and `target_power_mode`, as
+  built-in current control refuses that installation. The Zaptec session owns
+  that decision on full refresh, retaining it on device updates. A charger
+  already in `homey` mode keeps its existing watt control rather than being
+  left at PELS's last target. Handing that shared installation back to `device`
+  remains separate actuator-owned work (`lib/device/zaptec/session.ts`).
 - **Hoiax water heaters / generic `target_power` steppers**: native stepped
   control writes the step capability *directly*
   (`max_power_3000` / `max_power_2000` / `max_power`, plus `onoff` for the off
@@ -60,8 +61,12 @@ alone cannot restore it. Only a newer independent target report or read can.
   app's "Set dynamic charger current" card (`setDynamicChargerCurrent`) both
   call the same `setDynamicChargerCurrent` → `POST /chargers/<id>/settings
   { dynamicChargerCurrent }`, and the app publishes the cloud's value back on
-  `target_charger_current`. Needs the owner's EV 1-phase / 3-phase preset
-  (amps only become watts through it). Same opt-in gate and flow-conflict
+  `target_charger_current`. Automatic derives whole-amp levels from the published
+  current maximum, phase mode, detected grid and available charger/circuit limits;
+  IT three-phase uses √3 × 230 W/A. Those levels follow fresh charger settings.
+  Without enough integration data, the owner can use a Manual EV phase model.
+  Manual preserves an existing EV preset and native-control choice. The transport
+  keeps the same opt-in gate and flow-conflict
   auto-enable as Hoiax. The session-start reset to the charger maximum
   arrives as an observed step and is corrected by the ordinary stepped
   mismatch path, as it was with the Flow.

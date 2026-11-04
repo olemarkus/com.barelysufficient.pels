@@ -39,6 +39,7 @@ const DESCRIPTOR_KEY_RECORD: Record<keyof DeviceDescriptorRead, true> = {
     isEvCharger: true,
     isBatteryOrSolar: true,
     suggestedSteppedLoadProfile: true,
+    automaticPowerControl: true,
     nativeWriteCapabilities: true,
     flowConflict: true,
     flowBacked: true,

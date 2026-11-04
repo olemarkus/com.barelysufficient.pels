@@ -12,15 +12,18 @@ import type {
 import {
   DEVICE_CONTROL_PROFILES,
   DEVICE_TARGET_POWER_CONFIGS,
+  DEVICE_POWER_CONTROL_MODES,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
+import { normalizeDevicePowerControlModes } from '../../../shared-domain/src/settings/devicePowerControlModes.ts';
 import { resolveTargetPowerLadderIssue } from '../../../shared-domain/src/targetPowerLadder.ts';
-import { getSetting } from './homey.ts';
+import { coldStartReadRetryDelays, getSetting } from './homey.ts';
 import { state, type SettingsUiDeviceView } from './state.ts';
 import { supportsTemperatureDevice } from './deviceUtils.ts';
 import { logSettingsError } from './logging.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 const DEFAULT_MAX_PLANNING_POWER_W = 1500;
+let hasAcceptedPowerControlModes = false;
 const roundPowerW = (value: number): number => Math.max(0, Math.round(value / 50) * 50);
 
 const resolveEstimatedMaxPlanningPowerW = (
@@ -37,6 +40,9 @@ const resolveEstimatedMaxPlanningPowerW = (
 };
 
 export const createDefaultSteppedLoadProfile = (device: SettingsUiDeviceView): SteppedLoadProfile => {
+  if (isAutomaticPowerControlActive(device) && device.automaticPowerControl) {
+    return device.automaticPowerControl.profile;
+  }
   if (device.suggestedSteppedLoadProfile) {
     return device.suggestedSteppedLoadProfile;
   }
@@ -60,9 +66,24 @@ export const getStoredDeviceControlProfile = (deviceId: string) => state.deviceC
 export const getStoredTargetPowerConfig = (deviceId: string) => state.deviceTargetPowerConfigs[deviceId] ?? null;
 
 export const isNativeSteppedLoadProfileActive = (device?: SettingsUiDeviceView | null): boolean => (
-  device?.controlAdapter?.kind === 'capability_adapter'
+  (!device?.automaticPowerControl || isAutomaticPowerControlActive(device))
+  && device?.controlAdapter?.kind === 'capability_adapter'
   && device.controlAdapter.activationEnabled === true
   && device.suggestedSteppedLoadProfile !== undefined
+);
+
+/** Automatic uses the integration-derived model instead of the saved manual model. */
+export const isAutomaticPowerControlActive = (device?: SettingsUiDeviceView | null): boolean => (
+  device?.automaticPowerControl !== undefined
+  && (state.devicePowerControlModes[device.id] ?? device.automaticPowerControl.mode) === 'automatic'
+);
+
+export const getEffectiveTargetPowerConfig = (
+  device: SettingsUiDeviceView,
+): TargetPowerSteppedLoadConfig | undefined => (
+  isAutomaticPowerControlActive(device)
+    ? undefined
+    : getStoredTargetPowerConfig(device.id) ?? device.targetPowerConfig
 );
 
 const hasResolvedSteppedLoadProfile = (device: SettingsUiDeviceView): boolean => (
@@ -71,7 +92,7 @@ const hasResolvedSteppedLoadProfile = (device: SettingsUiDeviceView): boolean =>
 );
 
 const hasEnabledEvTargetPowerPreset = (device: SettingsUiDeviceView): boolean => {
-  const targetPowerConfig = getStoredTargetPowerConfig(device.id) ?? device.targetPowerConfig;
+  const targetPowerConfig = getEffectiveTargetPowerConfig(device);
   return targetPowerConfig?.enabled !== false
     && (targetPowerConfig?.preset === 'ev_charger_1_phase' || targetPowerConfig?.preset === 'ev_charger_3_phase');
 };
@@ -125,7 +146,26 @@ export const loadDeviceControlProfiles = async (): Promise<void> => {
   } catch (error) {
     state.deviceControlProfiles = {};
     state.deviceTargetPowerConfigs = {};
+    state.devicePowerControlModesLoaded = false;
     await logSettingsError('Failed to load device control profiles', error, 'loadDeviceControlProfiles');
+    return;
+  }
+  try {
+    const rawModes = await getSetting(DEVICE_POWER_CONTROL_MODES);
+    // Only bootstrap can establish absence on the first read. A WebView null
+    // can hide a saved map, so it cannot authorize writing from an empty base.
+    const bootstrapServedModes = coldStartReadRetryDelays(DEVICE_POWER_CONTROL_MODES, [0]).length === 0;
+    if (rawModes == null && !hasAcceptedPowerControlModes && !bootstrapServedModes) {
+      throw new Error('Could not read the device control choices.');
+    }
+    const modes = rawModes == null ? state.devicePowerControlModes : normalizeDevicePowerControlModes(rawModes);
+    if (modes === null) throw new Error('Could not read the device control choices.');
+    state.devicePowerControlModes = modes;
+    hasAcceptedPowerControlModes = true;
+    state.devicePowerControlModesLoaded = true;
+  } catch (error) {
+    state.devicePowerControlModesLoaded = false;
+    await logSettingsError('Failed to load device control choices', error, 'loadDeviceControlProfiles');
   }
 };
 

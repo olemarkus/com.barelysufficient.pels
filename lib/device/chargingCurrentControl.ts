@@ -16,8 +16,11 @@ import {
 import type { ChargingCurrentBinding } from './deviceAdapter';
 import { ChargingAccess, type ChargingAccessHomey } from './transport/chargingAccess';
 import type { Logger } from '../utils/types';
+import type { DeviceControlSettings } from './deviceControlSettings';
 import { getRawFromHomeyApi } from './transport/managerHomeyApi';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
+import { hasNativeTargetPowerLadder } from './nativeSteppedLoadWiring';
+import { readSettingsKeyList } from '../utils/settingsKeyList';
 
 const SETTINGS_KEY = 'charging_current_control';
 const DEFAULT_SETUP: ChargingCurrentSetup = { method: 'flow', confirmation: 'none' };
@@ -52,6 +55,7 @@ export class ChargingCurrentControl {
   readonly sessions: DeviceAdapterSessions;
   private readonly homeLocation = new HubHomeLocation();
   private readonly setups = new Map<string, ChargingCurrentSetup>();
+  private setupsReadState: 'unavailable' | 'resolved' = 'unavailable';
   // The last Flow list PELS accepted, seeded from the one saved before the
   // restart. Empty with nothing saved: nothing is held back, the same as a Flow
   // list with no writes.
@@ -67,6 +71,7 @@ export class ChargingCurrentControl {
     private readonly getDevices: () => readonly HomeyDeviceLike[],
     private readonly readTrust: () => { connected: boolean; revision: number },
     private readonly flowWritesStore: AcceptedFlowConflictSlice<FlowCapabilityWrites>,
+    private readonly deviceSettings: Pick<DeviceControlSettings, 'resolveDevicePowerControlMode'>,
   ) {
     this.settings = homey.settings;
     this.access = new ChargingAccess(homey, logger);
@@ -180,6 +185,14 @@ export class ChargingCurrentControl {
 
   private routesBuiltInFor(deviceId: string, setup: ChargingCurrentSetup): boolean {
     const device = this.findDevice(deviceId);
+    // Automatic watts own the route; an existing manual current choice stays in force.
+    if (device?.capabilities && device.capabilitiesObj
+      && hasNativeTargetPowerLadder(device.capabilities, device.capabilitiesObj)
+      && this.deviceSettings.resolveDevicePowerControlMode(
+        deviceId, this.requiresManualControl(deviceId),
+      ) === 'automatic') {
+      return false;
+    }
     const adapter = device && resolveChargingCurrentAdapter(device);
     return isBuiltInControlInEffect(
       setup.method === 'built_in',
@@ -201,10 +214,13 @@ export class ChargingCurrentControl {
   // A retained snapshot (one whose refresh read was rejected) is projected again
   // as it is, so a route that is now held back must lose the flag it carried.
   private withCurrentRoute(source: TransportDeviceSnapshot, setup: ChargingCurrentSetup): TransportDeviceSnapshot {
-    if (!source.controlAdapter) return source;
     if (this.routesBuiltInFor(source.id, setup)) {
-      return { ...source, controlAdapter: { ...source.controlAdapter, currentControl: 'built_in' } };
+      return { ...source, controlAdapter: {
+        kind: 'capability_adapter', activationRequired: false, activationEnabled: false,
+        ...source.controlAdapter, currentControl: 'built_in',
+      } };
     }
+    if (!source.controlAdapter) return source;
     if (source.controlAdapter.currentControl === undefined) return source;
     const { currentControl: _heldBack, ...controlAdapter } = source.controlAdapter;
     return { ...source, controlAdapter };
@@ -213,6 +229,12 @@ export class ChargingCurrentControl {
   setup(deviceId: string): ChargingCurrentSetup {
     this.sync();
     return this.setups.get(deviceId) ?? DEFAULT_SETUP;
+  }
+
+  /** An unread legacy route cannot authorize a new automatic takeover. */
+  requiresManualControl(deviceId: string): boolean {
+    this.sync();
+    return this.setupsReadState === 'unavailable' || this.setups.has(deviceId);
   }
 
   /** The Flows that set a current now, read fresh; nothing is accepted here. */
@@ -329,15 +351,20 @@ export class ChargingCurrentControl {
   private sync(): void {
     try {
       const raw = this.settings.get(SETTINGS_KEY);
-      if (raw == null && !this.settings.getKeys().includes(SETTINGS_KEY)) {
-        this.setups.clear();
-        return;
+      if (raw === null || raw === undefined) {
+        const keys = readSettingsKeyList(this.settings);
+        if (keys.status === 'resolved' && !keys.keys.includes(SETTINGS_KEY)) {
+          this.setups.clear();
+          this.setupsReadState = 'resolved';
+          return;
+        }
       }
       if (!isUnknownRecord(raw)) return;
       const entries = Object.entries(raw).map(([id, value]) => [id, readSetup(value)] as const);
       if (entries.some(([, value]) => !value)) return;
       this.setups.clear();
       for (const [id, value] of entries) if (value) this.setups.set(id, value);
+      this.setupsReadState = 'resolved';
     } catch { /* A transient read preserves accepted configuration. */ }
   }
 }

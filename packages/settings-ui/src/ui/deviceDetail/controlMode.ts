@@ -1,4 +1,4 @@
-import { isNativeSteppedLoadProfileActive } from '../deviceControlProfiles.ts';
+import { isNativeSteppedLoadProfileActive, isAutomaticPowerControlActive } from '../deviceControlProfiles.ts';
 import {
   canUseEvTargetPowerPreset,
   isNativeEvWiringActive,
@@ -19,6 +19,7 @@ export type DeviceDetailControlModeOption = {
 export function getDeviceDetailControlModeOptions(
   device: SettingsUiDeviceDetailItem | null,
 ): DeviceDetailControlModeOption[] {
+  if (isAutomaticPowerControlActive(device)) return [{ value: 'stepped_load', label: 'Stepped load' }];
   const options: DeviceDetailControlModeOption[] = [
     { value: 'default', label: 'Default' },
   ];
@@ -80,6 +81,7 @@ export function isControlModeAllowedForDevice(
   controlMode: DeviceDetailControlMode,
   device: SettingsUiDeviceDetailItem,
 ): boolean {
+  if (isAutomaticPowerControlActive(device)) return controlMode === 'stepped_load';
   const isEvPreset = controlMode === 'ev_charger_1_phase' || controlMode === 'ev_charger_3_phase';
   if (isEvPreset) return canUseEvTargetPowerPreset(device);
   if (!isNativeEvWiringActive(device)) return true;

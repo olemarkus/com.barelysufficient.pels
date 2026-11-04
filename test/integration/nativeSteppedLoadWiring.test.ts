@@ -57,6 +57,7 @@ import {
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { withFixtureResidualKw } from '../utils/planTestUtils';
 import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
 
 const steppedProfile: SteppedLoadProfile = {
   steps: [
@@ -322,7 +323,7 @@ describe('native stepped-load wiring', () => {
     });
   });
 
-  it('supports target_power EV charger phase presets', () => {
+  it('uses the published watt ladder ahead of an EV phase hint', () => {
     const device = buildTargetPowerDevice({
       settings: { pelsTargetPowerPreset: 'ev_charger_3_phase' },
     });
@@ -333,15 +334,14 @@ describe('native stepped-load wiring', () => {
       capabilityObj: device.capabilitiesObj as unknown as DeviceCapabilityMap,
     })).toEqual({
       steps: expect.arrayContaining([
-        { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
-        { id: '6a', planningPowerW: 4140, planningCurrentA: 6 },
-        { id: '16a', planningPowerW: 11040, planningCurrentA: 16 },
-        { id: '32a', planningPowerW: 22080, planningCurrentA: 32 },
+        { id: 'off', planningPowerW: 0 },
+        { id: '1380w', planningPowerW: 1380 },
+        { id: '3680w', planningPowerW: 3680 },
       ]),
     });
   });
 
-  it('supports target_power EV charger phase presets from snake-case settings', () => {
+  it('uses the published watt ladder ahead of a snake-case EV phase hint', () => {
     const device = buildTargetPowerDevice({
       settings: { pels_target_power_preset: 'ev_charger_1_phase' },
     });
@@ -352,24 +352,23 @@ describe('native stepped-load wiring', () => {
       capabilityObj: device.capabilitiesObj as unknown as DeviceCapabilityMap,
     })).toEqual({
       steps: expect.arrayContaining([
-        { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
-        { id: '6a', planningPowerW: 1380, planningCurrentA: 6 },
-        { id: '16a', planningPowerW: 3680, planningCurrentA: 16 },
-        { id: '32a', planningPowerW: 7360, planningCurrentA: 32 },
+        { id: 'off', planningPowerW: 0 },
+        { id: '1380w', planningPowerW: 1380 },
+        { id: '3680w', planningPowerW: 3680 },
       ]),
     });
   });
 
-  // Behaviour-preservation guard for the EV-preset current-stepping move: the
-  // producer now stamps `planningCurrentA` onto each step, and the executor reads
-  // it directly instead of dividing `planningPowerW` by the preset watts-per-amp.
-  // Assert the stamped current is byte-identical to the old derivation —
-  // `amps = planningPowerW / (230 * phaseCount)` — for both presets.
+  // Legacy compatibility hints still describe amps when no native watt range
+  // exists; they cannot override a published watt ladder.
   it.each([
     { preset: 'ev_charger_1_phase' as const, phaseCount: 1 },
     { preset: 'ev_charger_3_phase' as const, phaseCount: 3 },
-  ])('stamps planningCurrentA = planningPowerW / (230 * phaseCount) for $preset', ({ preset, phaseCount }) => {
-    const device = buildTargetPowerDevice({ settings: { pelsTargetPowerPreset: preset } });
+  ])('retains the $preset compatibility hint when no watt range is published', ({ preset, phaseCount }) => {
+    const device = buildTargetPowerDevice({
+      settings: { pelsTargetPowerPreset: preset },
+      capabilitiesObj: { target_power: { value: 1380, setable: true, lastUpdated: TARGET_POWER_READ_AT } },
+    });
 
     const profile = resolveNativeSteppedLoadProfileSuggestion({
       device,
@@ -494,12 +493,13 @@ describe('native stepped-load wiring', () => {
     expect(parsed.capabilities).not.toContain('target_power');
   });
 
-  it('applies saved target_power configs to devices that already expose target_power', async () => {
+  it('keeps the published target_power range ahead of saved EV configs', async () => {
     const deviceManager = createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
         settings: {
+          getDevicePowerControlMode: () => 'automatic',
           getDeviceTargetPowerConfig: (deviceId) => (
             deviceId === 'target-power-1'
               ? { enabled: true, preset: 'ev_charger_3_phase' }
@@ -527,20 +527,25 @@ describe('native stepped-load wiring', () => {
     expect(parsed).toEqual(expect.objectContaining({
       id: 'target-power-1',
       controlModel: 'stepped_load',
-      targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },
-      reportedStepId: '6a',
-      reportedStepPowerW: 4140,
+      targetPowerConfig: undefined,
+      reportedStepId: '3680w',
+      reportedStepPowerW: undefined,
       steppedLoadProfile: expect.objectContaining({
         steps: [
-          { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
-          { id: '6a', planningPowerW: 4140, planningCurrentA: 6 },
+          { id: 'off', planningPowerW: 0 },
+          { id: '1380w', planningPowerW: 1380 },
+          { id: '1840w', planningPowerW: 1840 },
+          { id: '2300w', planningPowerW: 2300 },
+          { id: '2760w', planningPowerW: 2760 },
+          { id: '3220w', planningPowerW: 3220 },
+          { id: '3680w', planningPowerW: 3680 },
         ],
       }),
     }));
     expect(parsed.capabilities).not.toContain('target_power');
   });
 
-  it('publishes exact target-power identity and freshness when a new rung is observed', async () => {
+  it('publishes native watt identity and freshness without extending an obsolete EV ladder', async () => {
     const baseConfig = {
       enabled: true,
       preset: 'ev_charger_1_phase' as const,
@@ -558,7 +563,7 @@ describe('native stepped-load wiring', () => {
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
-        settings: { getDeviceTargetPowerConfig: () => config },
+        settings: { getDeviceTargetPowerConfig: () => config, getDevicePowerControlMode: () => 'automatic' },
         nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
       undefined,
@@ -579,7 +584,7 @@ describe('native stepped-load wiring', () => {
         },
       },
     })]);
-    expect(parsed.targetPowerConfig).toEqual(baseConfig);
+    expect(parsed.targetPowerConfig).toBeUndefined();
     // The seeding refresh notifies too, with the same snapshot object the
     // update below mutates: only a notification from the update may count.
     onSnapshotMutated.mockClear();
@@ -589,8 +594,8 @@ describe('native stepped-load wiring', () => {
     await emitCapability('target-power-1', 'target_power', 5_750);
 
     expect(onSnapshotMutated).toHaveBeenCalledWith(expect.objectContaining({
-      reportedStepId: '25a',
-      reportedStepPowerW: 5_750,
+      reportedStepId: '5520w',
+      reportedStepPowerW: undefined,
     }), expect.any(Number));
     now.mockReturnValue(firstObservedAtMs + 1_000);
     onSnapshotMutated.mockClear();
@@ -598,7 +603,7 @@ describe('native stepped-load wiring', () => {
     await emitCapability('target-power-1', 'target_power', 5_750);
 
     expect(onSnapshotMutated).toHaveBeenCalledWith(expect.objectContaining({
-      reportedStepId: '25a', reportedStepPowerW: 5_750,
+      reportedStepId: '5520w', reportedStepPowerW: undefined,
       reportedStepObservedAtMs: firstObservedAtMs + 1_000,
     }), firstObservedAtMs + 1_000);
     now.mockRestore();
@@ -979,7 +984,7 @@ describe('native stepped-load wiring', () => {
     const control = new ChargingCurrentControl({ settings,
       api: { getLocalUrl: async () => 'http://homey.local' }, cloud: { getHomeyId: async () => 'test' },
     }, createLogger(), () => [device], () => ({ connected: true, revision: 0 }),
-    createChargingFlowWritesStore(openUserdataDatabase(IN_MEMORY_DATABASE)));
+    createChargingFlowWritesStore(openUserdataDatabase(IN_MEMORY_DATABASE)), deviceControlSettingsFixture());
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200,
       headers: { get: () => 'test' }, json: async () => ({ intersectedScopes: ['homey.flow'] }),
     }));
@@ -2053,7 +2058,10 @@ describe('native stepped-load wiring', () => {
         mockHomeyInstance as unknown as Homey.App,
         createLogger(),
         {
-          settings: { getDeviceTargetPowerConfig: () => ({ min: 1380, max: 3680, step: 460 }) },
+          settings: {
+            getDeviceTargetPowerConfig: () => ({ min: 1380, max: 3680, step: 460 }),
+            getDevicePowerControlMode: () => 'automatic',
+          },
         },
       );
       // Valid capability shape (range includes 0) so the device survives the

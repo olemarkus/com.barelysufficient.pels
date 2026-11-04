@@ -23,6 +23,7 @@ import {
   PER_DEVICE_OBJECTIVE_KEY_PREFIX,
   DEVICE_CONTROL_PROFILES,
   DEVICE_TARGET_POWER_CONFIGS,
+  DEVICE_POWER_CONTROL_MODES,
   DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_DRIVER_OVERRIDES,
   EV_BOOST_SETTINGS,
@@ -544,6 +545,10 @@ const DEVICE_SETTING_RELOADERS: Readonly<Record<string, { load: () => Promise<vo
   [DEVICE_TARGET_POWER_CONFIGS]: {
     load: loadDeviceControlProfiles,
     failure: 'Failed to load device control profiles',
+  },
+  [DEVICE_POWER_CONTROL_MODES]: {
+    load: () => loadDeviceControlProfiles().then(refreshRecommendationSurfaces),
+    failure: 'Failed to load device control choices',
   },
 };
 

@@ -3,6 +3,7 @@ import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/de
 import {
   groupSetupRecommendations,
   normalizeRecommendationDismissals,
+  resolveAutomaticChargingControlRecommendations,
   resolveSetpointShedLimitRecommendations,
   resolveSetupRecommendations,
   resolveSmartTaskStartPolicyRecommendations,
@@ -49,6 +50,74 @@ const resolve = (
 );
 
 describe('setup recommendations', () => {
+  it('offers Automatic for a legacy manual charger without changing its setup', () => {
+    const charger = device({
+      id: 'charger:garage', name: 'Garage', isEvCharger: true,
+      targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },
+      automaticPowerControl: { mode: 'manual', profile: { steps: [
+        { id: 'off', planningPowerW: 0 }, { id: '2530w', planningPowerW: 2530 },
+      ] } },
+    });
+    const before = structuredClone(charger);
+    const recommendations = resolveAutomaticChargingControlRecommendations([charger], {});
+
+    expect(recommendations).toEqual([{
+      id: 'automatic-charging-control:charger%3Agarage', version: 1, category: 'recommendation',
+      title: 'Automatic charging control is available for Garage',
+      body: 'PELS can determine the power levels from your charger’s settings.',
+      actionLabel: 'Review automatic control',
+      target: { kind: 'device-control-model', deviceId: charger.id },
+    }]);
+    expect(charger).toEqual(before);
+  });
+
+  it('does not recommend Automatic for an intentional mode choice, active Automatic, or unsupported devices', () => {
+    const profile = { steps: [{ id: 'off', planningPowerW: 0 }, { id: '1380w', planningPowerW: 1380 }] };
+    const legacy = device({ id: 'legacy', isEvCharger: true, automaticPowerControl: { mode: 'manual', profile } });
+    const devices = [
+      legacy,
+      device({ id: 'automatic', isEvCharger: true, automaticPowerControl: { mode: 'automatic', profile } }),
+      device({ id: 'unsupported', isEvCharger: true }),
+      device({ id: 'heater', isEvCharger: false, automaticPowerControl: { mode: 'manual', profile } }),
+    ];
+    expect(resolveAutomaticChargingControlRecommendations(devices, { legacy: 'manual' })).toEqual([]);
+    // A just-saved Automatic choice can precede the updated runtime descriptor.
+    expect(resolveAutomaticChargingControlRecommendations(devices, { legacy: 'automatic' })).toEqual([]);
+  });
+
+  it('recommends Automatic only for the Zaptec with a resolved native ladder', () => {
+    const manual = { enabled: true, preset: 'ev_charger_3_phase' as const };
+    const chargers = [
+      device({ id: 'old-zaptec', name: 'Zaptec Go', isEvCharger: true, targetPowerConfig: manual,
+        capabilities: ['available_installation_current'] }),
+      device({ id: 'invalid-range', name: 'Zaptec Go', isEvCharger: true, targetPowerConfig: manual,
+        capabilities: ['available_installation_current', 'target_power'] }),
+      device({ id: 'new-zaptec', name: 'Zaptec Go', isEvCharger: true, targetPowerConfig: manual,
+        automaticPowerControl: { mode: 'manual', profile: { steps: [
+          { id: 'off', planningPowerW: 0 }, { id: '2530w', planningPowerW: 2530 },
+        ] } } }),
+    ];
+
+    expect(resolveAutomaticChargingControlRecommendations(chargers, {}).map(({ target }) => target))
+      .toEqual([{ kind: 'device-control-model', deviceId: 'new-zaptec' }]);
+  });
+
+  it('keeps Automatic dismissals scoped to the charger and stable across mode changes', () => {
+    const profile = { steps: [{ id: 'off', planningPowerW: 0 }, { id: '1380w', planningPowerW: 1380 }] };
+    const chargers = ['garage', 'driveway'].map((id) => device({
+      id, name: id, isEvCharger: true, automaticPowerControl: { mode: 'manual', profile },
+    }));
+    const recommendations = resolveAutomaticChargingControlRecommendations(chargers, {});
+    const dismissals = { 'automatic-charging-control:garage': 1 };
+    expect(groupSetupRecommendations(recommendations, dismissals)).toEqual({
+      active: [recommendations[1]], dismissed: [recommendations[0]],
+    });
+    expect(resolveAutomaticChargingControlRecommendations(chargers, { garage: 'manual', driveway: 'manual' }))
+      .toEqual([]);
+    expect(groupSetupRecommendations(resolveAutomaticChargingControlRecommendations(chargers, {}), dismissals))
+      .toEqual({ active: [recommendations[1]], dismissed: [recommendations[0]] });
+  });
+
   it('offers the start policy only for switchable, managed task devices without power limiting', () => {
     const devices = [
       device({ id: 'eligible', binaryControllable: true, powerCapable: true }),

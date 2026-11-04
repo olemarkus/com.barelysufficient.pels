@@ -2,6 +2,7 @@ import { ModePriorityCatalog } from '../../../shared-domain/src/settings/modePri
 import { uiHomeMembership } from './homeScopeMembership.ts';
 import type { DeviceStartPolicy } from '../../../shared-domain/src/settings/deviceStartPolicy.ts';
 import type { TemperatureControlModes } from '../../../shared-domain/src/settings/temperatureControl.ts';
+import type { DevicePowerControlModes } from '../../../shared-domain/src/settings/devicePowerControlModes.ts';
 import {
   isBatteryControlEnabled,
   type BatteryControlDevices,
@@ -111,6 +112,8 @@ export type UiState = {
   nativeWiringMap: Record<string, boolean>;
   deviceControlProfiles: DeviceControlProfiles;
   deviceTargetPowerConfigs: DeviceTargetPowerConfigs;
+  devicePowerControlModes: DevicePowerControlModes;
+  devicePowerControlModesLoaded: boolean;
   // The owner's manual "Power when running" figures, as persisted (kW). Local
   // snapshot only — the device's own `expectedPowerKw` is what the field shows;
   // this is the merge base a write falls back to when the SDK read blips.
@@ -210,6 +213,8 @@ export const state: UiState = {
   nativeWiringMap: {},
   deviceControlProfiles: {},
   deviceTargetPowerConfigs: {},
+  devicePowerControlModes: {},
+  devicePowerControlModesLoaded: false,
   deviceExpectedPowerOverrides: {},
   modeAliases: {},
   shedBehaviors: {},

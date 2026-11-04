@@ -17,6 +17,31 @@ const ranked = <T extends object>(device: T): T & { priority: number } => ({ ...
 
 
 describe('toPlanDevice target-power reachability boundary', () => {
+  it('does not append saved EV probes to the active native watt ladder', () => {
+    const config = { enabled: true, preset: 'ev_charger_3_phase' as const, max: 22_080 };
+    const runtimeConfig = { ...config, reachability: buildTargetPowerReachabilityState({
+      config, maxReachedPowerW: 11_040,
+    }) };
+    const profile = { steps: [
+      { id: 'off', planningPowerW: 0 },
+      { id: '2530w', planningPowerW: 2530 },
+      { id: '12650w', planningPowerW: 12650 },
+    ] };
+    const device = decoratedSnapshotFixture({
+      id: 'charger', name: 'Zaptec', targets: [], available: true,
+      expectedPowerKw: 12.65, expectedPowerSource: 'default',
+      controlModel: 'stepped_load', steppedLoadProfile: profile,
+      selectedStepId: '2530w', targetPowerConfig: undefined,
+    });
+    const ctx = createAppContextMock({
+      deviceControlSettings: deviceControlSettingsFixture({ deviceTargetPowerConfigs: { charger: runtimeConfig } }),
+    });
+    const result = ranked(toPlanDevice(ctx, withDeviceConfiguration(device)));
+    if (!isSteppedLoadDevice(result)) throw new Error('expected native stepped plan device');
+    expect(result.steppedLoadProfile).toEqual(profile);
+    expect(result.targetPowerConfig).toBeUndefined();
+  });
+
   it('keeps the planner ladder capped until the runtime retry becomes due', () => {
     const baseConfig = {
       enabled: true,

@@ -29,6 +29,7 @@ export type SettingsUiBootstrapKey =
   | 'managed_devices'
   | 'device_control_profiles'
   | 'device_target_power_configs'
+  | 'device_power_control_modes'
   | 'budget_exempt_devices'
   | 'respect_external_off_devices'
   | 'device_start_policies'

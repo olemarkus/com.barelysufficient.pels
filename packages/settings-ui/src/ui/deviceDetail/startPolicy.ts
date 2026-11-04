@@ -145,7 +145,8 @@ export const revealDeviceDetailFocus = (focus: DeviceDetailFocus): void => {
   if (focus === 'power-limit') revealPowerLimitRow();
   if (focus === 'shed-limit') revealShedLimitRow();
   const prerequisiteControls: Partial<Record<DeviceDetailFocus, string>> = {
-    'control-model': 'device-detail-control-model',
+    'control-model': document.getElementById('device-detail-power-control-row')?.hidden === false
+      ? 'device-detail-power-control-mode' : 'device-detail-control-model',
     managed: 'device-detail-managed',
     'native-control': 'device-detail-native-wiring',
     'temperature-policy': 'device-detail-temperature-control-disabled',

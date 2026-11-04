@@ -116,6 +116,15 @@ export type TargetPowerSteppedLoadConfig = {
 
 export type DeviceTargetPowerConfigs = Record<string, TargetPowerSteppedLoadConfig>;
 
+export type DevicePowerControlMode = 'automatic' | 'manual';
+export type DevicePowerControlModes = Record<string, DevicePowerControlMode>;
+
+/** Integration-derived power levels, available even while the owner keeps a manual model. */
+export type AutomaticPowerControl = {
+  mode: DevicePowerControlMode;
+  profile: SteppedLoadProfile;
+};
+
 export type TemperatureBoostConfig = {
     enabled: boolean;
     boostBelowC: number;
@@ -449,6 +458,7 @@ export type DeviceDescriptor = {
     // CONFIGURE-stepping hint shown for NON-stepped (unconfigured) devices, so it is
     // not part of the stepped cluster.
     suggestedSteppedLoadProfile?: SteppedLoadProfile;
+    automaticPowerControl?: AutomaticPowerControl;
     // Capabilities PELS writes when it natively controls this stepped-load
     // device (max_power_* / onoff / target_power / an Easee's
     // target_charger_current, plus that app's equivalent Flow card id).

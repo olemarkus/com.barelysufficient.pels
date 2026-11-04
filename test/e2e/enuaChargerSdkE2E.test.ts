@@ -3,6 +3,7 @@ import api from '../../api';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CONTROLLABLE_DEVICES,
   DEVICE_TARGET_POWER_CONFIGS, MANAGED_DEVICES, OPERATING_MODE_SETTING,
+  DEVICE_POWER_CONTROL_MODES,
 } from '../../lib/utils/settingsKeys';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
@@ -25,11 +26,6 @@ const SAVED_CONFIGS: { mode: string; config: TargetPowerSteppedLoadConfig }[] = 
   { mode: 'legacy continuous range', config: { enabled: true, min: 0, max: 22080, step: 230 } },
 ];
 
-function planningWattsPerAmp(config: TargetPowerSteppedLoadConfig, gridWatts: number): number {
-  if (config.preset === 'ev_charger_1_phase') return 230;
-  return config.preset === 'ev_charger_3_phase' ? 690 : gridWatts;
-}
-
 async function buildCharger(grid: string, amps: number, charging: boolean): Promise<MockDevice> {
   const device = new MockDevice(ID, 'Enua Charge', [
     'measure_power', 'target_power', 'target_power_mode', 'evcharger_charging', 'evcharger_charging_state',
@@ -49,7 +45,7 @@ async function buildCharger(grid: string, amps: number, charging: boolean): Prom
 }
 
 /** External charger simulation, following Enua 3.2.x's shipped listeners and 30 s poll. */
-function simulateEnua(charger: MockDevice, wattsPerAmp: number, chargingWattsPerAmp = wattsPerAmp) {
+function simulateEnua(charger: MockDevice, wattsPerAmp: number) {
   let backgroundW = 1000;
   let limitA = Math.round(Number(charger.getActualCapabilityValue('target_power')) / wattsPerAmp);
   let enabled = charger.getActualCapabilityValue('evcharger_charging') === true;
@@ -67,7 +63,7 @@ function simulateEnua(charger: MockDevice, wattsPerAmp: number, chargingWattsPer
     charger.setActualCapabilityValue('target_power_mode', mode);
     charger.setActualCapabilityValue('evcharger_charging', enabled);
     charger.setActualCapabilityValue('evcharger_charging_state', enabled ? 'plugged_in_charging' : 'plugged_in_paused');
-    charger.setActualCapabilityValue('measure_power', enabled ? limitA * chargingWattsPerAmp : 0);
+    charger.setActualCapabilityValue('measure_power', enabled ? limitA * wattsPerAmp : 0);
   };
   setInterval(publish, 30_000);
   const originalPut = mockHomeyInstance.api.put.bind(mockHomeyInstance.api);
@@ -95,7 +91,7 @@ function simulateEnua(charger: MockDevice, wattsPerAmp: number, chargingWattsPer
   const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
   vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
     if (path === 'manager/energy/live') return {
-      items: [{ type: 'cumulative', id: 'meter-main', values: { W: backgroundW + (enabled ? limitA * chargingWattsPerAmp : 0) } }],
+      items: [{ type: 'cumulative', id: 'meter-main', values: { W: backgroundW + (enabled ? limitA * wattsPerAmp : 0) } }],
     };
     if (path === 'manager/flow/flow/' || path === 'manager/flow/advancedflow/') return {};
     return originalGet(path);
@@ -114,6 +110,7 @@ function simulateEnua(charger: MockDevice, wattsPerAmp: number, chargingWattsPer
 }
 
 function configureRuntime(limitW: number): void {
+  mockHomeyInstance.settings.set(DEVICE_POWER_CONTROL_MODES, { [ID]: 'automatic' });
   mockHomeyInstance.settings.set('power_source', 'homey_energy');
   mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
   mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, limitW / 1000);
@@ -218,14 +215,14 @@ describe.each(GRIDS)('Enua $grid at the SDK boundary', ({ grid, wattsPerAmp }) =
 
   it.each(SAVED_CONFIGS)('prepares the actual grid limit with a saved $mode', async ({ config }) => {
     const charger = await buildCharger(grid, 32, false);
-    const carWatts = planningWattsPerAmp(config, wattsPerAmp);
-    const simulation = simulateEnua(charger, wattsPerAmp, carWatts);
-    configureRuntime(1000 + 10.5 * carWatts);
+    const simulation = simulateEnua(charger, wattsPerAmp);
+    configureRuntime(1000 + 10.5 * wattsPerAmp);
     mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, { [ID]: config });
     await createApp().onInit();
     await vi.advanceTimersByTimeAsync(365_000);
     expect(simulation.startCurrents.length).toBeGreaterThan(0);
     expect(simulation.startCurrents.every((amps) => amps >= 6 && amps <= 10)).toBe(true);
+    expect((await readCharger()).targetPowerConfig).toBeUndefined();
     expect(mockHomeyInstance.settings.get(DEVICE_TARGET_POWER_CONFIGS)).toEqual({ [ID]: config });
   });
 
@@ -242,16 +239,17 @@ describe.each(GRIDS)('Enua $grid at the SDK boundary', ({ grid, wattsPerAmp }) =
     expect(charger.getActualCapabilityValue('measure_power')).toBe(0);
   });
 
-  describe.each(SAVED_CONFIGS)('saved $mode with a 6 A ceiling and a retained 32 A limit', ({ config }) => {
-    const ceilingConfig = (carWatts: number) => ({ ...config, max: 6 * carWatts });
+  describe.each(SAVED_CONFIGS)('native control supersedes a saved $mode ceiling with a retained 32 A limit', ({ config }) => {
+    const savedWattsPerAmp = config.preset
+      ? { ev_charger_1_phase: 230, ev_charger_3_phase: 690 }[config.preset] : wattsPerAmp;
+    const ceilingConfig = { ...config, max: 6 * savedWattsPerAmp };
 
     it('does not read the retained limit as the 6 A rung when the limit write is swallowed', async () => {
       const charger = await buildCharger(grid, 32, false);
-      const carWatts = planningWattsPerAmp(config, wattsPerAmp);
-      const simulation = simulateEnua(charger, wattsPerAmp, carWatts);
+      const simulation = simulateEnua(charger, wattsPerAmp);
       simulation.refuseLimits();
-      configureRuntime(1000 + 40 * carWatts);
-      mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, { [ID]: ceilingConfig(carWatts) });
+      configureRuntime(1000 + 6.5 * wattsPerAmp);
+      mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, { [ID]: ceilingConfig });
       await createApp().onInit();
       await vi.advanceTimersByTimeAsync(395_000);
       expect(simulation.powerWrites().some((watts) => watts > 0)).toBe(true);
@@ -262,11 +260,12 @@ describe.each(GRIDS)('Enua $grid at the SDK boundary', ({ grid, wattsPerAmp }) =
 
     it('prepares 6 A before starting when the limit write lands', async () => {
       const charger = await buildCharger(grid, 32, false);
-      const carWatts = planningWattsPerAmp(config, wattsPerAmp);
-      const simulation = simulateEnua(charger, wattsPerAmp, carWatts);
-      configureRuntime(1000 + 40 * carWatts);
-      mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, { [ID]: ceilingConfig(carWatts) });
+      const simulation = simulateEnua(charger, wattsPerAmp);
+      configureRuntime(1000 + 6.5 * wattsPerAmp);
+      mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, { [ID]: ceilingConfig });
       await createApp().onInit();
+      expect((await readCharger()).steppedLoadProfile?.steps.at(-1)?.planningPowerW)
+        .toBe(Math.round(32 * wattsPerAmp));
       await vi.advanceTimersByTimeAsync(395_000);
       expect(simulation.startCurrents.length).toBeGreaterThan(0);
       expect(simulation.startCurrents.every((amps) => amps === 6)).toBe(true);
@@ -275,21 +274,20 @@ describe.each(GRIDS)('Enua $grid at the SDK boundary', ({ grid, wattsPerAmp }) =
 
   it.each([12, 20, 28].flatMap((amps) => [
     { amps, rounded: false }, { amps, rounded: true },
-  ]))('matches full/realtime car-phase reads at $amps A (rounded=$rounded)', async ({ amps, rounded }) => {
+  ]))('matches full/realtime native watt reads at $amps A with a saved three-phase preset (rounded=$rounded)', async ({ amps, rounded }) => {
     const charger = await buildCharger(grid, amps, true);
-    await charger.setCapabilityValue('measure_power', amps * 690);
     if (rounded) await charger.setCapabilityValue('target_power', Math.round(amps * wattsPerAmp));
-    const simulation = simulateEnua(charger, wattsPerAmp, 690);
+    const simulation = simulateEnua(charger, wattsPerAmp);
     if (rounded) simulation.reportRoundedWatts();
-    configureRuntime(1000 + amps * 690);
+    configureRuntime(1000 + amps * wattsPerAmp);
     mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, {
       [ID]: { enabled: true, preset: 'ev_charger_3_phase' },
     });
     await createApp().onInit();
-    expect((await readCharger()).reportedStepId).toBe(`${amps}a`);
+    expect((await readCharger()).reportedStepId).toBe(`${Math.round(amps * wattsPerAmp)}w`);
     await vi.advanceTimersByTimeAsync(31_000);
-    const observedA = Number(charger.getActualCapabilityValue('target_power')) / wattsPerAmp;
-    expect((await readCharger()).reportedStepId).toBe(`${Math.round(observedA)}a`);
+    const observedW = Number(charger.getActualCapabilityValue('target_power'));
+    expect((await readCharger()).reportedStepId).toBe(`${Math.round(observedW)}w`);
   });
 
   it.each(['null', 'wrong type', 'missing entry', 'undated'] as const)(

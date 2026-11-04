@@ -1,6 +1,7 @@
 import type { SettingsUiRecommendationCar } from '../../../contracts/src/settingsUi/carLink.ts';
 import type { SettingsUiEvSocFlowReporter } from '../../../contracts/src/settingsUi/devices.ts';
 import type { EvCarAssociations } from '../../../contracts/src/types.ts';
+import type { DevicePowerControlModes } from '../../../shared-domain/src/settings/devicePowerControlModes.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { controlContestNotice } from './controlContestCopy.ts';
 import {
@@ -39,6 +40,7 @@ export type RecommendationTarget =
   | { kind: 'device-start-policy'; deviceId: string }
   // The device page at its "Limited temperature" field.
   | { kind: 'device-shed-limit'; deviceId: string }
+  | { kind: 'device-control-model'; deviceId: string }
   | { kind: 'flow-conflict-check'; deviceId: string }
   | { kind: 'ev-soc-flow-conflict-check'; deviceId: string }
   // A settings panel or top-level tab, by its `data-panel` / `data-tab` id.
@@ -93,6 +95,25 @@ export const normalizeRecommendationDismissals = (value: unknown): Recommendatio
     Number.isInteger(version) && (version as number) > 0 ? [[id, version as number]] : []
   )));
 };
+
+/** An existing manual setup stays in use until the owner reviews Automatic. */
+export const resolveAutomaticChargingControlRecommendations = (
+  devices: readonly SettingsUiDeviceDetailItem[],
+  powerControlModes: DevicePowerControlModes,
+): SetupRecommendation[] => devices.flatMap((device) => {
+  if (!device.isEvCharger
+    || device.automaticPowerControl?.mode !== 'manual'
+    || Object.hasOwn(powerControlModes, device.id)) return [];
+  return [{
+    id: recommendationId('automatic-charging-control', device.id),
+    version: RECOMMENDATION_VERSION,
+    category: 'recommendation',
+    title: `Automatic charging control is available for ${formatDisplayDeviceName(device.name)}`,
+    body: 'PELS can determine the power levels from your charger’s settings.',
+    actionLabel: 'Review automatic control',
+    target: { kind: 'device-control-model', deviceId: device.id },
+  }];
+});
 
 export const resolveNativeControlRecommendations = (
   devices: readonly SettingsUiDeviceDetailItem[],

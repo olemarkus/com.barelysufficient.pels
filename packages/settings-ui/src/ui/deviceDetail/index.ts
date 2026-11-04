@@ -17,7 +17,9 @@ import { refreshRecommendationSurfaces } from '../recommendations.ts';
 import {
   createDefaultSteppedLoadProfile,
   isNativeSteppedLoadProfileActive,
+  isAutomaticPowerControlActive,
 } from '../deviceControlProfiles.ts';
+import { renderAutomaticPowerControl, initAutomaticPowerControlHandlers } from './automaticPowerControl.ts';
 import { renderPriorities } from '../modes.ts';
 import { renderPriceConfigDevices } from '../priceConfig.ts';
 import { findLatestDevice, state, type SettingsUiDeviceView } from '../state.ts';
@@ -253,10 +255,11 @@ const setDeviceDetailControlStates = (deviceId: string, device: SettingsUiDevice
     // Not gated on "Disable temperature control": picking a control model is
     // configuration, not a `target_temperature` write, and locking the select
     // is what kept a flagged device from ever being given a step ladder.
-    deviceDetailControlModel.disabled = !controlState.canManageDevice
-      || nativeSteppedLoadLocked;
-    deviceDetailControlModelRow.hidden = !controlState.canManageDevice;
+    deviceDetailControlModel.disabled = !controlState.canManageDevice || nativeSteppedLoadLocked;
+    deviceDetailControlModel.setAttribute('label', device?.automaticPowerControl ? 'Manual model' : 'Control model');
+    deviceDetailControlModelRow.hidden = !controlState.canManageDevice || isAutomaticPowerControlActive(device);
   }
+  if (device) renderAutomaticPowerControl(device);
 
   setDeviceDetailChargingCardState(device, controlState);
   autoExpandSetupWhenBare({
@@ -391,7 +394,7 @@ const initDeviceDetailControlModelHandler = () => {
 
     const device = findLatestDevice(deviceId);
     if (!device) return;
-    if (isNativeSteppedLoadProfileActive(device)) {
+    if (isNativeSteppedLoadProfileActive(device) && !device.automaticPowerControl) {
       refreshOpenDeviceDetail();
       return;
     }
@@ -461,6 +464,11 @@ export const initDeviceDetailHandlers = () => {
     closeDeviceDetail();
   });
   initDeviceDetailControlModelHandler();
+  initAutomaticPowerControlHandlers(() => currentDetailDeviceId, () => {
+    refreshSharedDeviceViews();
+    refreshOpenDeviceDetail();
+    notifyDevicesUpdated();
+  });
   initDeviceDetailPriceOptHandlers({
     getCurrentDetailDeviceId,
   });

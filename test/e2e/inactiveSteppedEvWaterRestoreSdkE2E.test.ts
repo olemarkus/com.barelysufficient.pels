@@ -47,6 +47,10 @@ async function buildInactiveSteppedEv(
     min: 0,
     max: 11_040,
     step: 690,
+    // The native watt ladder must publish the physical 6 A charging floor;
+    // the saved PELS phase preset no longer supplies its operating range.
+    excludeMin: 0,
+    excludeMax: 4_140,
     setable: true,
   });
   await device.setCapabilityValue('measure_power', 0);

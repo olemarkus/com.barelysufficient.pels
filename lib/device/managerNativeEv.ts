@@ -1,5 +1,7 @@
 import type {
   AcknowledgedStepObservation,
+  AutomaticPowerControl,
+  ReportedStepObservedProbe,
   DeviceControlAdapterSnapshot,
   SteppedLoadProfile,
   TargetPowerSteppedLoadConfig,
@@ -25,6 +27,8 @@ import {
   buildNativeSteppedLoadControlAdapter,
   buildSyntheticTargetPowerCapabilityMap,
   hasTargetPowerCapability,
+  resolveAutomaticSteppedLoadProfile,
+  hasNativeTargetPowerLadder,
   isNativeSteppedLoadWiringCandidate,
   isTargetPowerSteppedLoadCandidate,
   isTargetPowerControlActive,
@@ -80,6 +84,7 @@ export function resolveFlowCapabilityOverlay(
   steppedLoadProfile?: SteppedLoadProfile;
   nativeWriteCapabilities?: string[];
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
+  automaticPowerControl?: AutomaticPowerControl;
   allReportedCapabilities: FlowReportedCapabilitiesForDevice;
 } {
   const { effectiveDevice: device, deviceClassKey, deviceId } = identity;
@@ -91,7 +96,7 @@ export function resolveFlowCapabilityOverlay(
   // native ladder (so no control adapter, which is what every later stepped
   // write and realtime path keys on), and its `target_power` is not stripped.
   const steppedLoad = !isBatteryOrSolarClassKey(deviceClassKey);
-  const { targetPowerOverlay, nativeSteppedOverlay }: SteppedLoadOverlays = steppedLoad
+  const { targetPowerOverlay, nativeSteppedOverlay, automaticPowerControl }: SteppedLoadOverlays = steppedLoad
     ? applySteppedLoadOverlays(device, deviceId, nativeEvOverlay, sources, logger)
     : { targetPowerOverlay: nativeEvOverlay, nativeSteppedOverlay: {} };
   const targetCapabilityIds = targetPowerOverlay.capabilities
@@ -153,6 +158,7 @@ export function resolveFlowCapabilityOverlay(
     steppedLoadProfile,
     nativeWriteCapabilities,
     targetPowerConfig: targetPowerOverlay.targetPowerConfig,
+    automaticPowerControl,
     allReportedCapabilities,
   };
 }
@@ -189,6 +195,7 @@ function resolveCandidateNativeWriteCapabilities(
 type SteppedLoadOverlays = {
   targetPowerOverlay: ReturnType<typeof applySyntheticTargetPowerOverlay>;
   nativeSteppedOverlay: ReturnType<typeof resolveNativeSteppedLoadOverlay>;
+  automaticPowerControl?: AutomaticPowerControl;
 };
 
 /**
@@ -208,15 +215,28 @@ function applySteppedLoadOverlays(
     capabilities: nativeEvOverlay.capabilities,
     capabilityObj: nativeEvOverlay.capabilityObj,
   });
+  const nativeProfile = resolveAutomaticSteppedLoadProfile(
+    device, nativeEvOverlay.capabilities, nativeEvOverlay.capabilityObj,
+  );
+  const automaticPowerControl: AutomaticPowerControl | undefined = nativeProfile ? {
+    mode: sources.settings.resolveDevicePowerControlMode(
+      deviceId, sources.chargingCurrent.requiresManualControl(deviceId),
+    ),
+    profile: nativeProfile,
+  } : undefined;
   const targetPowerOverlay = applySyntheticTargetPowerOverlay(
     device,
     deviceId,
     nativeEvOverlay,
     isNativeEvControlAdapterActive(nativeEvOverlay),
     sources,
+    automaticPowerControl,
   );
-  const nativeSteppedOverlay = resolveNativeSteppedLoadOverlay(device, deviceId, targetPowerOverlay, sources);
-  return { targetPowerOverlay, nativeSteppedOverlay };
+  const manualNativeWatts = usesManualCurrentControl(device, automaticPowerControl)
+    && hasNativeTargetPowerLadder(nativeEvOverlay.capabilities, nativeEvOverlay.capabilityObj);
+  const nativeSteppedOverlay = manualNativeWatts ? {}
+    : resolveNativeSteppedLoadOverlay(device, deviceId, targetPowerOverlay, sources, automaticPowerControl);
+  return { targetPowerOverlay, nativeSteppedOverlay, automaticPowerControl };
 }
 
 function shouldIgnoreFlowReports(params: {
@@ -284,6 +304,7 @@ function applySyntheticTargetPowerOverlay(
   nativeEvOverlay: Pick<ReturnType<typeof applyNativeEvWiringOverlay>, 'capabilities' | 'capabilityObj'>,
   evPresetOnly: boolean,
   sources: DeviceParseSources,
+  automaticPowerControl: AutomaticPowerControl | undefined,
 ): {
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
@@ -294,6 +315,10 @@ function applySyntheticTargetPowerOverlay(
   acknowledgedStep?: AcknowledgedStepObservation;
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
 } {
+  if (automaticPowerControl?.mode === 'automatic') {
+    return { ...nativeEvOverlay, steppedLoadProfile: automaticPowerControl.profile };
+  }
+  const manualControl = usesManualCurrentControl(device, automaticPowerControl);
   const savedConfig = sources.settings.getDeviceTargetPowerConfig(deviceId)
     ?? resolveDeviceCompatibilityTargetPowerConfig(device);
   const config = savedConfig && getDeviceAdapter(device).configureTargetPower(device, savedConfig);
@@ -310,7 +335,7 @@ function applySyntheticTargetPowerOverlay(
   // its driver turns into a current its own way (a Zaptec on an IT grid, or one
   // switching phases), so that target is the step it holds; the current times
   // the preset's phases would read another rung.
-  const installationCurrent = isTargetPowerSteppedLoadCandidate(nativeEvOverlay)
+  const installationCurrent = !manualControl && isTargetPowerSteppedLoadCandidate(nativeEvOverlay)
     ? undefined
     : nativeEvOverlay.capabilityObj[resolveInstallationCurrentCapabilityId(
       device,
@@ -322,6 +347,7 @@ function applySyntheticTargetPowerOverlay(
     && resolveInstallationCurrentTargetPowerObservation(config, installationCurrent);
   const reportedStepPowerW = resolveActiveTargetPowerW(
     device, config, nativeEvOverlay.capabilityObj, observedTargetPower,
+    manualControl,
   );
   // All-or-nothing: no ladder means no stepped control, so the synthetic
   // `target_power` capability is not injected either and the device is left to
@@ -344,14 +370,31 @@ function applySyntheticTargetPowerOverlay(
     capabilities,
     capabilityObj,
     steppedLoadProfile,
-    reportedStepId: resolveTargetPowerReportedStepId(steppedLoadProfile, capabilities, capabilityObj),
+    ...resolveSyntheticStepObservation(steppedLoadProfile, capabilities, capabilityObj, manualControl),
     reportedStepPowerW,
-    reportedStepObservedAtMs: resolveTargetPowerModeInvalidationAtMs(capabilityObj, capabilities)
-      ?? toCapabilityTimestampMs(capabilityObj.target_power?.lastUpdated),
     acknowledgedStep: resolveAcknowledgedStepObservation(
       config, nativeEvOverlay.capabilityObj[ACKNOWLEDGED_CURRENT_CAPABILITY_ID],
     ),
     targetPowerConfig: withoutTargetPowerReachability(config),
+  };
+}
+
+function usesManualCurrentControl(device: HomeyDeviceLike, automatic: AutomaticPowerControl | undefined): boolean {
+  return automatic?.mode === 'manual' && getDeviceAdapter(device).currentBindings(device).length > 0;
+}
+
+function resolveSyntheticStepObservation(
+  profile: SteppedLoadProfile, capabilityIds: readonly string[],
+  capabilities: DeviceCapabilityMap, manualControl: boolean,
+): Pick<ReportedStepObservedProbe, 'reportedStepId' | 'reportedStepObservedAtMs'> {
+  // A vendor watt target is dormant while the owner uses the manual current path.
+  const { target_power_mode: _mode, ...manualCapabilities } = capabilities;
+  const capabilityObj = manualControl ? manualCapabilities : capabilities;
+  const observedIds = manualControl ? capabilityIds.filter((id) => id !== 'target_power_mode') : capabilityIds;
+  return {
+    reportedStepId: resolveTargetPowerReportedStepId(profile, observedIds, capabilityObj),
+    reportedStepObservedAtMs: resolveTargetPowerModeInvalidationAtMs(capabilityObj, observedIds)
+      ?? toCapabilityTimestampMs(capabilityObj.target_power?.lastUpdated),
   };
 }
 
@@ -360,8 +403,9 @@ function resolveActiveTargetPowerW(
   config: TargetPowerSteppedLoadConfig,
   capabilityObj: DeviceCapabilityMap,
   observation: ReturnType<typeof resolveInstallationCurrentTargetPowerObservation>,
+  manualControl: boolean,
 ): number | undefined {
-  if (!isTargetPowerControlActive(capabilityObj, device.capabilities ?? [])) return undefined;
+  if (!manualControl && !isTargetPowerControlActive(capabilityObj, device.capabilities ?? [])) return undefined;
   return observation?.value ?? resolveReportedTargetPowerW(device, config, capabilityObj);
 }
 
@@ -395,15 +439,16 @@ function resolveInstallationCurrentTargetPowerObservation(
 }
 
 /**
- * The native stepped-load overlay on top of the target-power one: the
- * owner-configured target-power ladder, when there is one, overrides the native
- * profile suggestion.
+ * Native watt devices arrive with their published ladder intact. A configured
+ * fallback supplies the ladder for amp controls and devices without a usable
+ * published watt range.
  */
 function resolveNativeSteppedLoadOverlay(
   device: HomeyDeviceLike,
   deviceId: string,
   targetPowerOverlay: ReturnType<typeof applySyntheticTargetPowerOverlay>,
   sources: DeviceParseSources,
+  automaticPowerControl: AutomaticPowerControl | undefined,
 ): {
   controlAdapter?: DeviceControlAdapterSnapshot;
   reportedStepId?: string;
@@ -420,11 +465,12 @@ function resolveNativeSteppedLoadOverlay(
   const suggestedSteppedLoadProfile = targetPowerOverlay.steppedLoadProfile
     ?? resolveNativeSteppedLoadProfileSuggestion({ device, capabilities, capabilityObj });
   if (!nativeSteppedCandidate || !suggestedSteppedLoadProfile) return {};
-  // Easee's native capability accepts amps. Only an EV preset resolves every
-  // watt rung to an installation current; a continuous watt ladder must keep
-  // using the owner's Flow rather than claiming a native command it cannot
-  // express.
-  if (getDeviceAdapter(device).nativeCurrentControls.some((control) => control.accepts(device, capabilityObj))
+  // A derived current model and an EV preset both carry amp commands. A manual
+  // continuous watt ladder still needs its Flow to express that conversion.
+  const automatic = automaticPowerControl?.mode === 'automatic';
+  const currentControl = getDeviceAdapter(device).nativeCurrentControls
+    .some((control) => control.accepts(device, capabilityObj));
+  if (!automatic && currentControl
     && !isEvTargetPowerPresetConfig(targetPowerConfig)) return {};
 
   const nativeSteppedEnabled = targetPowerSteppedCandidate || sources.nativeWiring.resolveNativeWiringEnabled(deviceId);

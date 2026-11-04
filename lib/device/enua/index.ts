@@ -8,7 +8,6 @@ import { resolveTargetPowerPresetPhaseCount } from '../../../packages/shared-dom
 const MIN_CURRENT_A = 6;
 const MAX_CURRENT_A = 32;
 const PHASE_VOLTAGE = 230;
-const SHIPPED_MAX_POWER_W = 22080;
 
 function isEnuaCharger(device: HomeyDeviceLike): boolean {
   return device.driverId === 'homey:app:no.enua:enua-charger'
@@ -45,17 +44,20 @@ function chargerOverlay(
 ): DeviceEvOverlay {
   const target = values.target_power;
   if (!target || target.setable !== true) return { kind: 'standard', capabilities, capabilityObj: values };
-  // Enua 3.2.0 live / 3.2.1 test advertise the same 0..22080 W / 230 W
-  // range on every grid, but convert watts to whole amps clamped to 6..32 A.
-  // Repair only that shipped declaration; an upstream corrected range wins.
-  const shippedRange = target.min === 0 && target.max === SHIPPED_MAX_POWER_W
-    && target.step === PHASE_VOLTAGE && target.excludeMax === undefined;
+  // Enua 3.2.0 live / 3.2.1 test advertise 230 W steps without a charging
+  // minimum on every grid, but their commands use whole amps from 6 A up to
+  // the wallmount's current ceiling. A changed watt maximum still bounds
+  // these legacy declarations; corrected step/exclusion metadata wins.
+  const declaredMax = target.max;
+  const legacyRange = target.min === 0 && target.step === PHASE_VOLTAGE
+    && target.excludeMax === undefined
+    && typeof declaredMax === 'number' && Number.isFinite(declaredMax) && declaredMax > 0;
   const step = wattsPerAmp(device);
   return {
     kind: 'adapted', capabilities,
-    capabilityObj: shippedRange ? {
+    capabilityObj: legacyRange ? {
       ...values,
-      target_power: { ...target, max: MAX_CURRENT_A * step, step,
+      target_power: { ...target, max: Math.min(declaredMax, MAX_CURRENT_A * step), step,
         excludeMin: 0, excludeMax: MIN_CURRENT_A * step },
     } : values,
     // A positive target changes only the limit. Prepare and observe that

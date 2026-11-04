@@ -23,8 +23,13 @@ export class DeviceTargetPowerReachabilityOwner implements TargetPowerReachabili
     private readonly persist: (deviceId: string, reachability: TargetPowerReachabilityState) => boolean,
   ) {}
 
+  private activeConfig(deviceId: string): TargetPowerConfigWithReachability | undefined {
+    const effective = this.getConfiguration(deviceId)?.targetPowerConfig;
+    return isEvTargetPowerConfig(effective) ? this.getConfig(deviceId) ?? effective : undefined;
+  }
+
   readProbeConfiguration(deviceId: string): TargetPowerProbeConfiguration {
-    const config = this.getConfig(deviceId);
+    const config = this.activeConfig(deviceId);
     if (!isEvTargetPowerConfig(config)) return { kind: 'unconfigured' };
     const profileFingerprint = buildEvTargetPowerProfileFingerprint(config);
     const reachability = resolveValidTargetPowerReachability(config);
@@ -34,7 +39,7 @@ export class DeviceTargetPowerReachabilityOwner implements TargetPowerReachabili
   }
 
   observeMaximum(deviceId: string, planningPowerW: number): void {
-    const config = this.getConfig(deviceId);
+    const config = this.activeConfig(deviceId);
     if (!isEvTargetPowerConfig(config) || planningPowerW <= 0) return;
     const current = resolveValidTargetPowerReachability(config);
     if (current && current.maxReachedPowerW >= planningPowerW) return;
@@ -48,11 +53,11 @@ export class DeviceTargetPowerReachabilityOwner implements TargetPowerReachabili
   }
 
   update(deviceId: string, reachability: TargetPowerReachabilityState): boolean {
-    return this.persist(deviceId, reachability);
+    return this.activeConfig(deviceId) !== undefined && this.persist(deviceId, reachability);
   }
 
   resolveIssuedStepPowers(command: MarkSteppedLoadDesiredStepIssuedParams): IssuedTargetPowerStepPowers {
-    const config = this.getConfig(command.deviceId);
+    const config = this.activeConfig(command.deviceId);
     const configuration = this.getConfiguration(command.deviceId);
     if (!isEvTargetPowerConfig(config) || configuration?.controlModel !== 'stepped_load') return {};
     const confirmedProfile = configuration.steppedLoadProfile;

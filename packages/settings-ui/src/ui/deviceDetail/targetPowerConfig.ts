@@ -23,7 +23,11 @@ import {
   deviceDetailTargetPowerSave,
   deviceDetailTargetPowerStep,
 } from '../dom.ts';
-import { getStoredDeviceControlProfile, normalizeDeviceTargetPowerConfigs } from '../deviceControlProfiles.ts';
+import {
+  getEffectiveTargetPowerConfig,
+  getStoredDeviceControlProfile,
+  normalizeDeviceTargetPowerConfigs,
+} from '../deviceControlProfiles.ts';
 import { state, type SettingsUiDeviceView } from '../state.ts';
 import { showToastError } from '../toast.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
@@ -35,7 +39,7 @@ export { createEvTargetPowerConfig };
 export const createContinuousTargetPowerConfig = (
   device: SettingsUiDeviceDetailItem,
 ): TargetPowerSteppedLoadConfig => {
-  const existing = state.deviceTargetPowerConfigs[device.id] ?? device.targetPowerConfig;
+  const existing = getEffectiveTargetPowerConfig(device);
   // Carrying a previous range forward is a courtesy; carrying forward one that
   // produces no steps would hand the runtime a config it has to throw away, so
   // that case falls through to a freshly estimated range instead.
@@ -69,7 +73,7 @@ const resolveSeedStepW = (maxW: number): number => Math.max(
 
 export const renderTargetPowerConfig = (device: SettingsUiDeviceDetailItem) => {
   if (!deviceDetailTargetPowerConfig) return;
-  const config = state.deviceTargetPowerConfigs[device.id] ?? device.targetPowerConfig;
+  const config = getEffectiveTargetPowerConfig(device);
   // Same axis rule as the step editor: a power range generates rungs, and
   // "Disable temperature control" denies setpoint writes, not rungs.
   const showRange = config !== undefined && config !== null && !config.preset;

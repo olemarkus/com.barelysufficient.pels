@@ -21,9 +21,48 @@ describe('Enua shipped capability compatibility', () => {
     expect(values.target_power).toEqual({ value: 11040, min: 0, max: 22080, step: 230, setable: true });
   });
 
-  it('preserves corrected upstream metadata and a lower installation ceiling', () => {
+  it('preserves corrected upstream metadata and a lower published ceiling', () => {
     const device = charger('tn_3phase');
     const corrected = { target_power: { ...values.target_power, max: 11040, step: 690, excludeMin: 0, excludeMax: 4140 } };
+    expect(getDeviceAdapter(device).overlay(device, device.capabilities!, corrected).capabilityObj).toBe(corrected);
+  });
+
+  it.each([
+    ['1phase', 230], ['tn_3phase', 690], ['it_3phase', Math.sqrt(3) * 230],
+  ] as const)('retains the physical amp steps and charging floor after the legacy maximum changes on %s', (grid, gridWatts) => {
+    const device = charger(grid);
+    const declaredMax = 16 * gridWatts;
+    const changed = { target_power: { ...values.target_power, max: declaredMax } };
+    const overlay = getDeviceAdapter(device).overlay(device, device.capabilities!, changed);
+    expect(overlay.capabilityObj.target_power).toEqual({
+      ...changed.target_power, max: declaredMax, step: gridWatts, excludeMin: 0, excludeMax: 6 * gridWatts,
+    });
+    expect(changed.target_power.step).toBe(230);
+    expect(changed.target_power).not.toHaveProperty('excludeMax');
+  });
+
+  it('does not raise a declared maximum below the charging floor', () => {
+    const device = charger('tn_3phase');
+    const changed = { target_power: { ...values.target_power, max: 3000 } };
+    expect(getDeviceAdapter(device).overlay(device, device.capabilities!, changed).capabilityObj.target_power)
+      .toMatchObject({ max: 3000, step: 690, excludeMin: 0, excludeMax: 4140 });
+  });
+
+  it.each([undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    'does not invent an operating range for an invalid legacy maximum %s', (max) => {
+      const device = charger('it_3phase');
+      const changed = { target_power: { ...values.target_power, max } };
+      expect(getDeviceAdapter(device).overlay(device, device.capabilities!, changed).capabilityObj).toBe(changed);
+    },
+  );
+
+  it.each([
+    ['1phase', 230], ['tn_3phase', 690], ['it_3phase', Math.sqrt(3) * 230],
+  ] as const)('trusts an upstream corrected step and exclusion range on %s', (grid, gridWatts) => {
+    const device = charger(grid);
+    const corrected = { target_power: {
+      ...values.target_power, max: 16 * gridWatts, step: gridWatts, excludeMin: 0, excludeMax: 6 * gridWatts,
+    } };
     expect(getDeviceAdapter(device).overlay(device, device.capabilities!, corrected).capabilityObj).toBe(corrected);
   });
 

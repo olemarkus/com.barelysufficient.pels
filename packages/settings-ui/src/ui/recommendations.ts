@@ -11,6 +11,7 @@ import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 import {
   groupSetupRecommendations,
   normalizeRecommendationDismissals,
+  resolveAutomaticChargingControlRecommendations,
   resolveSetupRecommendations,
   type RecommendationDismissals,
   type SetupRecommendation,
@@ -176,12 +177,23 @@ const resolveCurrentRecommendations = (
   // devices, by name. A device PELS does not manage gets none: its wiring,
   // its car and its Flows are not PELS's to set up until the owner chooses it.
   const managed = state.latestDevices.filter((device) => state.managedMap[device.id] === true);
+  const automaticRecommendations = state.devicePowerControlModesLoaded
+    ? resolveAutomaticChargingControlRecommendations(managed, state.devicePowerControlModes)
+    : [];
+  const automaticReviewDeviceIds = new Set(automaticRecommendations.flatMap(({ target }) => (
+    target.kind === 'device-control-model' ? [target.deviceId] : []
+  )));
   return [
     ...(afterSetupRead.state === 'resolved'
       ? resolveAfterSetupRecommendations(afterSetupRead.facts, dismissals)
       : []),
-    ...currentChargingRecommendations.filter(({ target }) => target.kind === 'device'
-      && managed.some((device) => device.id === target.deviceId)),
+    ...currentChargingRecommendations.filter(({ id, target }) => target.kind === 'device'
+      && managed.some((device) => device.id === target.deviceId
+        && device.automaticPowerControl?.mode !== 'automatic')
+      // Manual still owns real Flow conflicts; only onboarding competes with
+      // the recommendation to review the replacement Automatic route.
+      && !(id.startsWith('charging-setup:') && automaticReviewDeviceIds.has(target.deviceId))),
+    ...automaticRecommendations,
     ...resolveSetupRecommendations(
       managed,
       cars,
@@ -300,6 +312,7 @@ const runRecommendationAction = (recommendation: SetupRecommendation): void => {
   if (target.kind === 'device') navigationRead.navigation.openDevice(target.deviceId, 'top');
   if (target.kind === 'device-start-policy') navigationRead.navigation.openDevice(target.deviceId, 'start-policy');
   if (target.kind === 'device-shed-limit') navigationRead.navigation.openDevice(target.deviceId, 'shed-limit');
+  if (target.kind === 'device-control-model') navigationRead.navigation.openDevice(target.deviceId, 'control-model');
 };
 
 const writeDismissal = async (recommendation: SetupRecommendation, dismissed: boolean): Promise<void> => {

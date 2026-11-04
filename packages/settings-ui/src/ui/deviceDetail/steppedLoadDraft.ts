@@ -23,6 +23,7 @@ import {
   createDefaultSteppedLoadProfile,
   getStoredDeviceControlProfile,
   isNativeSteppedLoadProfileActive,
+  isAutomaticPowerControlActive,
 } from '../deviceControlProfiles.ts';
 import { logSettingsError } from '../logging.ts';
 import { findLatestDevice, state } from '../state.ts';
@@ -85,7 +86,7 @@ const attachDraftSyncOnChange = (
 };
 
 const getDraftProfileFromCurrentDevice = (device: SettingsUiDeviceDetailItem): SteppedLoadProfile => (
-  isNativeSteppedLoadProfileActive(device)
+  isNativeSteppedLoadProfileActive(device) || isAutomaticPowerControlActive(device)
     ? createDefaultSteppedLoadProfile(device)
     : getSteppedLoadDraft(device.id)
       ?? resolveSavedSteppedLoadProfile(device)
@@ -93,6 +94,10 @@ const getDraftProfileFromCurrentDevice = (device: SettingsUiDeviceDetailItem): S
 );
 
 const canEditSteppedLoadProfile = (device: SettingsUiDeviceDetailItem): boolean => !hasEvTargetPowerPreset(device);
+
+const rememberManualProfile = (device: SettingsUiDeviceDetailItem, profile: SteppedLoadProfile): void => {
+  if (!isAutomaticPowerControlActive(device)) setSteppedLoadDraft(device.id, profile);
+};
 
 const collectSteppedLoadDraftFromDom = (): SteppedLoadProfile | null => {
   if (!deviceDetailSteppedSteps) return null;
@@ -248,7 +253,14 @@ const DEFAULT_STEPPED_SECTION_HINT = 'Steps and planning power';
 // An EV charger's step card opens collapsed (sectionLayout.ts), so its header
 // summarizes the ladder; every other kind keeps the card's subject.
 const renderSteppedSectionHint = (device: SettingsUiDeviceDetailItem, profile: SteppedLoadProfile): void => {
+  const automatic = isAutomaticPowerControlActive(device);
+  const title = document.getElementById('device-detail-stepped-title');
+  if (title) title.textContent = automatic ? 'Power levels' : 'Stepped load profile';
   if (!deviceDetailSteppedHint) return;
+  if (automatic) {
+    deviceDetailSteppedHint.textContent = device.isEvCharger ? 'From charger settings' : 'From device settings';
+    return;
+  }
   if (resolveDeviceDetailKind(device) !== 'ev_charger' || profile.steps.length === 0) {
     deviceDetailSteppedHint.textContent = DEFAULT_STEPPED_SECTION_HINT;
     return;
@@ -276,6 +288,21 @@ const applyStepEditorDisclosure = (device: SettingsUiDeviceDetailItem): void => 
   stepEditorDeviceId = device.id;
   const open = stepEditorOpenByDeviceId.get(device.id) ?? resolveDeviceDetailKind(device) !== 'ev_charger';
   if (disclosure.open !== open) disclosure.open = open;
+};
+
+const renderAutomaticPowerLevelRows = (profile: SteppedLoadProfile): HTMLElement[] => {
+  for (const control of [
+    deviceDetailSteppedHeader, deviceDetailSteppedIntro, deviceDetailSteppedClimbNote,
+    deviceDetailSteppedAddStep, deviceDetailSteppedReset, deviceDetailSteppedSave,
+  ]) {
+    if (control) control.hidden = true;
+  }
+  return sortSteppedLoadSteps(profile.steps).map((step) => {
+    const row = document.createElement('div');
+    row.className = 'device-row';
+    row.textContent = step.planningPowerW === 0 ? 'Off' : `${Math.round(step.planningPowerW)} W`;
+    return row;
+  });
 };
 
 export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
@@ -312,7 +339,7 @@ export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
     return;
   }
 
-  const nativeProfileLocked = isNativeSteppedLoadProfileActive(device);
+  const nativeProfileLocked = isNativeSteppedLoadProfileActive(device) || isAutomaticPowerControlActive(device);
   // A locked editor says WHY it is locked instead of presenting a wall of
   // dimmed fields and dead affordances.
   if (deviceDetailSteppedLockedNote) deviceDetailSteppedLockedNote.hidden = !nativeProfileLocked;
@@ -339,14 +366,14 @@ export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
   };
 
   const profile = getDraftProfileFromCurrentDevice(device);
-  setSteppedLoadDraft(device.id, profile);
+  rememberManualProfile(device, profile);
   updateSetStepOptionLabel(device, profile);
   renderSteppedSectionHint(device, profile);
-  const rows = sortSteppedLoadSteps(profile.steps).map((step) => buildSteppedLoadStepRow({
-    step,
-    onDraftChanged: syncSteppedLoadDraftState,
-    disabled: nativeProfileLocked,
-  }));
+  const rows = isAutomaticPowerControlActive(device)
+    ? renderAutomaticPowerLevelRows(profile)
+    : sortSteppedLoadSteps(profile.steps).map((step) => buildSteppedLoadStepRow({
+      step, onDraftChanged: syncSteppedLoadDraftState, disabled: nativeProfileLocked,
+    }));
   deviceDetailSteppedSteps.replaceChildren(...rows);
   refreshEditorDirtyState();
 };

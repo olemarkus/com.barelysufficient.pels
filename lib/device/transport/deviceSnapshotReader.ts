@@ -31,10 +31,12 @@ import type { DeviceTransportOptions } from './transportTypes';
 export function createDeviceParseSources(
   owners: Pick<DeviceTransportOptions, 'settings' | 'nativeWiring' | 'flowBacked' | 'batteryManaged'>,
   roles: DeviceRoleMembership,
+  chargingCurrent: Pick<ChargingCurrentControl, 'requiresManualControl'>,
 ): DeviceParseSources {
   return {
     settings: owners.settings,
     nativeWiring: owners.nativeWiring,
+    chargingCurrent,
     flowBacked: owners.flowBacked,
     management: new DeviceManagement(roles, owners.batteryManaged, owners.settings),
   };

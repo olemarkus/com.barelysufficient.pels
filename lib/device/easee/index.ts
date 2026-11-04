@@ -10,6 +10,7 @@ import { isEaseeUnderBuiltInControl, resolveEaseeRealtimeUpdates, withEaseeObser
   resolveEaseeSwitchWrite, recoverEaseeSwitchWrite, type EaseeSwitchWrite } from './switch';
 import { EASEE_CHARGER_STATUS, withEaseeChargingState } from './chargingState';
 import { EaseeChargingSession } from './session';
+import { resolveEaseeAutomaticProfile } from './automaticProfile';
 
 const currentControl: NativeCurrentControl = {
   capabilityId: EASEE_CHARGER_CURRENT_CAPABILITY_ID,
@@ -20,6 +21,7 @@ const currentControl: NativeCurrentControl = {
     return step === undefined ? [] : [step];
   },
   accepts: isEaseeChargerCurrentCandidate,
+  automaticProfile: resolveEaseeAutomaticProfile,
 };
 
 // Under built-in control the switch is read from the plug state and the current,

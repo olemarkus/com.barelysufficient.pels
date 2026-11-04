@@ -1,7 +1,7 @@
 /**
  * SDK-boundary e2e for EV target-power reachability.
  *
- * The charger is configured for 32 A and reports an exact 25 A target. PELS
+ * The amp-controlled Easee is configured for 32 A and reports an exact 25 A target. PELS
  * admits the ordinary next ladder rung (28 A), but the Homey device silently
  * refuses to materialize that write and keeps reporting 25 A. Nothing inside
  * PELS is mocked: inputs are Homey settings, capabilities, whole-home power and
@@ -31,33 +31,31 @@ import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const CHARGER_ID = 'ev-charger';
 const WATER_HEATER_ID = 'water-heater';
+const CONFIRMED_CURRENT_A = 25;
+const PROBE_CURRENT_A = 28;
 const CONFIRMED_POWER_W = 5_750; // exact 25 A at 230 V
-const PROBE_POWER_W = 6_440; // next candidate: 28 A
-const CHARGER_TARGET_POWER_PATH = `manager/devices/device/${CHARGER_ID}/capability/target_power`;
+const CHARGER_CURRENT_PATH = `manager/devices/device/${CHARGER_ID}/capability/target_charger_current`;
 const WATER_HEATER_ONOFF_PATH = `manager/devices/device/${WATER_HEATER_ID}/capability/onoff`;
 
-const buildCharger = async (switchableControl: boolean): Promise<MockDevice> => {
+const buildCharger = async (): Promise<MockDevice> => {
   const charger = new MockDevice(
     CHARGER_ID,
     'EV charger',
-    ['measure_power', 'target_power', 'evcharger_charging', 'evcharger_charging_state',
-      ...(switchableControl ? ['target_power_mode'] : [])],
+    ['onoff', 'measure_power', 'target_charger_current', 'evcharger_charging', 'evcharger_charging_state'],
     'evcharger',
   );
-  charger.setCapabilityMetadata('target_power', {
-    units: 'W', min: 0, max: 7_360, step: 230, setable: true,
+  charger.setDriverIdentity({ ownerUri: 'homey:app:no.easee', driverId: 'homey:app:no.easee:charger' });
+  charger.setCapabilityMetadata('target_charger_current', {
+    units: 'A', min: 0, max: 40, step: 1, setable: true,
   });
-  if (switchableControl) {
-    charger.setCapabilityMetadata('target_power_mode', { setable: true });
-    await charger.setCapabilityValue('target_power_mode', 'homey');
-  }
+  await charger.setCapabilityValue('onoff', true);
   await charger.setCapabilityValue('measure_power', CONFIRMED_POWER_W);
-  await charger.setCapabilityValue('target_power', CONFIRMED_POWER_W);
+  await charger.setCapabilityValue('target_charger_current', CONFIRMED_CURRENT_A);
   await charger.setCapabilityValue('evcharger_charging', true);
   await charger.setCapabilityValue('evcharger_charging_state', 'plugged_in_charging');
   // The command is accepted by Homey, but neither device truth nor the API
   // echo changes. This is the real-world "refuses to settle" behavior.
-  charger.configureCapabilityBehavior('target_power', {
+  charger.configureCapabilityBehavior('target_charger_current', {
     onApiWrite: {
       accept: true,
       updateActual: false,
@@ -148,10 +146,9 @@ describe('EV target-power reachability (SDK-boundary e2e)', () => {
     vi.useRealTimers();
   });
 
-  it.each([false, true])(
-    'learns 25 A after a refused 28 A probe and retries later (switchable control: %s)',
-    async (switchableControl) => {
-      const [charger, waterHeater] = await Promise.all([buildCharger(switchableControl), buildWaterHeater()]);
+  it('learns 25 A after an amp-controlled charger refuses a 28 A probe and retries later',
+    async () => {
+      const [charger, waterHeater] = await Promise.all([buildCharger(), buildWaterHeater()]);
       setMockDrivers({ driverA: new MockDriver('driverA', [charger, waterHeater]) });
       configureRuntime();
       reportHomePower(CONFIRMED_POWER_W + 700);
@@ -162,8 +159,8 @@ describe('EV target-power reachability (SDK-boundary e2e)', () => {
       await vi.advanceTimersByTimeAsync(10_000);
       await drainUntilCalledWith(
         putSpy,
-        CHARGER_TARGET_POWER_PATH,
-        pelsCapabilityWrite(PROBE_POWER_W),
+        CHARGER_CURRENT_PATH,
+        pelsCapabilityWrite(PROBE_CURRENT_A),
       );
 
       // A second device turns off only after the exploratory command is already
@@ -188,7 +185,7 @@ describe('EV target-power reachability (SDK-boundary e2e)', () => {
         id: '25a',
         planningPowerW: CONFIRMED_POWER_W,
       });
-      expect(await charger.getCapabilityValue('target_power')).toBe(CONFIRMED_POWER_W);
+      expect(await charger.getCapabilityValue('target_charger_current')).toBe(CONFIRMED_CURRENT_A);
 
       // Local target-power commands settle for 90 seconds. The refresh at that
       // deadline must classify silence as a failed probe and persist the proven
@@ -218,15 +215,15 @@ describe('EV target-power reachability (SDK-boundary e2e)', () => {
       // The persisted due time drives a later background plan rebuild. The
       // planner still sees an ordinary next rung; no probe metadata crosses in.
       const firstProbeCalls = putSpy.mock.calls.filter(
-        ([path, body]) => path === CHARGER_TARGET_POWER_PATH
-          && (body as { value?: unknown })?.value === PROBE_POWER_W,
+        ([path, body]) => path === CHARGER_CURRENT_PATH
+          && (body as { value?: unknown })?.value === PROBE_CURRENT_A,
       ).length;
       const retryAtMs = learned?.nextProbeAtMs;
       if (retryAtMs === undefined) throw new Error('probe retry was not scheduled');
       await vi.advanceTimersByTimeAsync(Math.max(0, retryAtMs - Date.now()));
       await drainUntil(() => putSpy.mock.calls.filter(
-        ([path, body]) => path === CHARGER_TARGET_POWER_PATH
-          && (body as { value?: unknown })?.value === PROBE_POWER_W,
+        ([path, body]) => path === CHARGER_CURRENT_PATH
+          && (body as { value?: unknown })?.value === PROBE_CURRENT_A,
       ).length > firstProbeCalls);
       await drainPending();
     },

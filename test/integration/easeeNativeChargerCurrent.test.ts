@@ -129,6 +129,140 @@ let logCapture: LoggerCapture;
 beforeEach(() => { logCapture = captureLogger(); });
 afterEach(() => { logCapture.restore(); });
 
+describe('Easee integration-derived Automatic profile', () => {
+  afterEach(restoreMockRestClient);
+
+  it.each([
+    ['Locked to single phase', 'TN_3_PHASE', 230],
+    ['Auto', 'TN_3_PHASE', 690],
+    ['Auto', 'IT_3_PHASE', Math.sqrt(3) * 230],
+  ] as const)('derives %s on %s without a PELS preset and keeps amp writes/readback', async (phaseMode, grid, wattsPerAmp) => {
+    const device = {
+      ...buildEaseeCharger({
+        target_charger_current: { value: 10, setable: true, min: 0, max: 16, step: 1, lastUpdated: READ_AT },
+        measure_power: { value: Math.round(10 * wattsPerAmp), lastUpdated: READ_AT },
+      }),
+      settings: { phaseMode, detectedPowerGridType: grid },
+    };
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, createLogger(), {
+      settings: { getDevicePowerControlMode: () => 'automatic' },
+      nativeWiring: { resolveNativeWiringEnabled: () => true },
+    });
+    try {
+      await initWithLiveFeed(transport);
+      const [parsed] = await seedTransportDevices(transport, [device]);
+      const profile = parsed.steppedLoadProfile;
+      if (!profile) throw new Error('Expected integration-derived Easee ladder');
+      expect(parsed.targetPowerConfig).toBeUndefined();
+      expect(parsed.automaticPowerControl).toEqual({ mode: 'automatic', profile });
+      expect(profile.steps[1]).toEqual({ id: '6a', planningCurrentA: 6, planningPowerW: Math.round(6 * wattsPerAmp) });
+      expect(profile.steps.at(-1)).toEqual({ id: '16a', planningCurrentA: 16, planningPowerW: Math.round(16 * wattsPerAmp) });
+      expect(parsed.reportedStepId).toBe('10a');
+      const put = vi.fn().mockResolvedValue(undefined);
+      setRestClient({ get: vi.fn(), put });
+      await transport.requestSteppedLoadStep({
+        deviceId: device.id, profile, desiredStepId: '8a', planningCurrentA: 8,
+        planningPowerW: Math.round(8 * wattsPerAmp),
+      });
+      expect(put.mock.calls).toEqual([[
+        `manager/devices/device/${device.id}/capability/target_charger_current`, pelsCapabilityWrite(8),
+      ]]);
+      await emitCapability(device.id, 'target_charger_current', 12);
+      expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBe('12a');
+    } finally {
+      transport.destroy();
+    }
+  });
+
+  it.each(['automatic', 'manual'] as const)('keeps the saved phase model stored when the chosen mode is %s', async (mode) => {
+    const saved = { enabled: true, preset: 'ev_charger_1_phase' as const, max: 7360 };
+    const device = {
+      ...buildEaseeCharger(),
+      settings: { phaseMode: 'Auto', detectedPowerGridType: 'IT_3_PHASE', maxChargerCurrent: '16' },
+    };
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, createLogger(), {
+      settings: { getDeviceTargetPowerConfig: () => saved, getDevicePowerControlMode: () => mode },
+      nativeWiring: { resolveNativeWiringEnabled: () => true },
+    });
+    try {
+      const [parsed] = await seedTransportDevices(transport, [device]);
+      expect(parsed.automaticPowerControl?.mode).toBe(mode);
+      expect(parsed.automaticPowerControl?.profile.steps[1]?.planningPowerW).toBe(Math.round(6 * Math.sqrt(3) * 230));
+      expect(parsed.targetPowerConfig).toEqual(mode === 'manual' ? saved : undefined);
+      expect(parsed.steppedLoadProfile?.steps[1]?.planningPowerW)
+        .toBe(mode === 'manual' ? 1380 : Math.round(6 * Math.sqrt(3) * 230));
+      expect(saved).toEqual({ enabled: true, preset: 'ev_charger_1_phase', max: 7360 });
+      const profile = parsed.steppedLoadProfile;
+      if (!profile) throw new Error('Expected Easee current ladder');
+      const step = profile.steps.find((entry) => entry.id === '8a');
+      if (!step) throw new Error('Expected 8 A on both control models');
+      const put = vi.fn().mockResolvedValue(undefined);
+      setRestClient({ get: vi.fn(), put });
+      await transport.requestSteppedLoadStep({
+        deviceId: device.id, profile, desiredStepId: step.id,
+        planningPowerW: step.planningPowerW, planningCurrentA: step.planningCurrentA!,
+      });
+      expect(put.mock.calls).toEqual([[
+        `manager/devices/device/${device.id}/capability/target_charger_current`, pelsCapabilityWrite(8),
+      ]]);
+    } finally {
+      transport.destroy();
+    }
+  });
+
+  it('refreshes Automatic power and current limits when the charger settings change', async () => {
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, createLogger(), {
+      settings: { getDevicePowerControlMode: () => 'automatic' },
+      nativeWiring: { resolveNativeWiringEnabled: () => true },
+    });
+    try {
+      const initial = { ...buildEaseeCharger(), settings: {
+        phaseMode: 'Auto', detectedPowerGridType: 'TN_3_PHASE', maxChargerCurrent: '32', circuitFuse: '32',
+      } };
+      const [tn] = await seedTransportDevices(transport, [initial]);
+      expect(tn.steppedLoadProfile?.steps.at(-1)).toEqual({ id: '32a', planningPowerW: 22080, planningCurrentA: 32 });
+      const changed = { ...buildEaseeCharger({
+        target_charger_current: { value: 10, setable: true, min: 0, max: 20, step: 1, lastUpdated: READ_AT },
+      }), settings: { phaseMode: 'Auto', detectedPowerGridType: 'IT_3_PHASE', maxChargerCurrent: '20', circuitFuse: '16' } };
+      const [it] = await seedTransportDevices(transport, [changed]);
+      expect(it.automaticPowerControl?.profile.steps.at(-1))
+        .toEqual({ id: '16a', planningPowerW: Math.round(16 * Math.sqrt(3) * 230), planningCurrentA: 16 });
+      expect(it.steppedLoadProfile).toEqual(it.automaticPowerControl?.profile);
+
+      const [single] = await seedTransportDevices(transport, [{ ...changed, settings: {
+        phaseMode: 'Locked to single phase', detectedPowerGridType: 'IT_3_PHASE', maxChargerCurrent: '8', circuitFuse: '16',
+      } }]);
+      expect(single.steppedLoadProfile?.steps[1]).toEqual({ id: '6a', planningPowerW: 1380, planningCurrentA: 6 });
+      expect(single.steppedLoadProfile?.steps.at(-1)).toEqual({ id: '8a', planningPowerW: 1840, planningCurrentA: 8 });
+    } finally {
+      transport.destroy();
+    }
+  });
+
+  it.each([
+    ['unknown wiring', {}, 16],
+    ['undetected grid', { phaseMode: 'Auto', detectedPowerGridType: 'NOT_YET_DETECTED' }, 16],
+    ['missing amp maximum', { phaseMode: 'Auto', detectedPowerGridType: 'IT_3_PHASE' }, undefined],
+    ['maximum below charging floor', { phaseMode: 'Auto', detectedPowerGridType: 'IT_3_PHASE' }, 5],
+    ['invalid amp maximum', { phaseMode: 'Auto', detectedPowerGridType: 'IT_3_PHASE' }, Number.NaN],
+  ] as const)('does not offer Automatic with %s', async (_case, settings, max) => {
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, createLogger(), {
+      settings: { getDevicePowerControlMode: () => 'automatic' },
+      nativeWiring: { resolveNativeWiringEnabled: () => true },
+    });
+    try {
+      const [parsed] = await seedTransportDevices(transport, [{
+        ...buildEaseeCharger({ target_charger_current: { value: 10, setable: true, min: 0, max, lastUpdated: READ_AT } }),
+        settings,
+      }]);
+      expect(parsed.automaticPowerControl).toBeUndefined();
+      expect(parsed.targetPowerConfig).toBeUndefined();
+    } finally {
+      transport.destroy();
+    }
+  });
+});
+
 describe('Easee native charger current', () => {
   it.each([false, true])('keeps a completed Easee physically connected with built-in control %s', async (builtIn) => {
     const device = buildEaseeCharger({

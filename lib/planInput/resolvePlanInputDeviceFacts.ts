@@ -71,7 +71,9 @@ export const resolvePlanInputDeviceFacts = (
   const isSteppedDevice = isSteppedLoadSnapshot(device);
   const plannerSteppedLoadProfile = isSteppedDevice
     ? resolveEvTargetPowerPlannerProfile({
-      config: source.deviceControl.getDeviceTargetPowerConfig(device.id) ?? device.targetPowerConfig,
+      config: device.targetPowerConfig?.preset
+        ? source.deviceControl.getDeviceTargetPowerConfig(device.id) ?? device.targetPowerConfig
+        : device.targetPowerConfig,
       confirmedProfile: device.steppedLoadProfile,
       nowMs: source.getNow().getTime(),
     })

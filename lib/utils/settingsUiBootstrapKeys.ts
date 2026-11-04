@@ -22,6 +22,7 @@ const BOOTSTRAP_KEYS: Record<SettingsUiBootstrapKey, true> = {
   managed_devices: true,
   device_control_profiles: true,
   device_target_power_configs: true,
+  device_power_control_modes: true,
   budget_exempt_devices: true,
   respect_external_off_devices: true,
   device_start_policies: true,

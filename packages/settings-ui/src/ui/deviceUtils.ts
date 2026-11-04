@@ -63,7 +63,7 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
 // stays structurally assignable, so callers pass unchanged.
 export type SettingsUiDeviceDetailItem = SettingsUiDeviceListItem
   & Pick<DeviceDescriptor,
-    'capabilities' | 'flowConflict'
+    'capabilities' | 'flowConflict' | 'automaticPowerControl'
   >
   // Present while the device keeps moving away from what PELS set.
   & ControlContestDecoration
