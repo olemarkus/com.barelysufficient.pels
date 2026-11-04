@@ -8,7 +8,6 @@ import type {
 } from '../../../packages/contracts/src/types';
 import type { MeasuredPowerSource, MeteredPowerReading, TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
-import { getDeviceId } from './managerHelpers';
 import type { ResolvedTransportPowerState } from './transportTypes';
 import { type DeviceCapabilityMap } from '../managerControl';
 import {
@@ -111,26 +110,6 @@ export type DeviceParseSources = Pick<
 >;
 
 export type ParseDevicePurpose = 'runtime' | 'ui_picker';
-
-export function parseDeviceList(
-    list: HomeyDeviceLike[],
-    livePowerWByDeviceId: LiveDevicePowerWatts,
-    previousSnapshotById: ReadonlyMap<string, TransportDeviceSnapshot>,
-    deps: DeviceTransportParseDeps,
-    purpose: ParseDevicePurpose,
-): TransportDeviceSnapshot[] {
-    const now = Date.now();
-    return list
-        .map((device) => parseDevice(
-            device,
-            now,
-            livePowerWByDeviceId,
-            previousSnapshotById.get(getDeviceId(device)),
-            deps,
-            purpose,
-        ))
-        .filter(Boolean) as TransportDeviceSnapshot[];
-}
 
 export function parseDevice(
     device: HomeyDeviceLike,

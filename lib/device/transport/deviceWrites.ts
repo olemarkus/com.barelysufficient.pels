@@ -411,18 +411,30 @@ export class DeviceWriteService {
       }
     }
     if (snapshot && isNativeSteppedLoadControlEnabled(snapshot)) {
-      const nativeRequested = await this.snapshotStore.nativeSteppedAdapters.setStep(
-        deviceId,
-        profile,
-        desiredStepId,
-        (capabilityId, value) => this.setCapability(deviceId, capabilityId, value),
-      );
-      return nativeRequested
-        ? { requested: true, acknowledged: true, transport: 'native_capability' }
-        : { requested: false };
+      return this.requestNativeSteppedLoadStep(params);
     }
 
     return this.triggerSteppedFlow(params, snapshot);
+  }
+
+  private async requestNativeSteppedLoadStep(request: SteppedLoadWrite): Promise<SteppedLoadStepRequestResult> {
+    const { deviceId, profile, desiredStepId } = request;
+    const nativeRequested = await this.snapshotStore.nativeSteppedAdapters.setStep(
+      deviceId, profile, desiredStepId,
+      (capabilityId, value) => this.setNativeStepCapability(deviceId, capabilityId, value),
+    );
+    if (nativeRequested === 'binary_off_required') return { requested: false, preparation: 'binary_off' };
+    return nativeRequested
+      ? { requested: true, acknowledged: true, transport: 'native_capability' }
+      : { requested: false };
+  }
+
+  private setNativeStepCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {
+    // A device without a binary pause can stop through its watt target.
+    if (capabilityId === 'target_power' && value === 0) {
+      this.observationProducers.evCarLink.noteStopCommand(deviceId, Date.now());
+    }
+    return this.setCapability(deviceId, capabilityId, value);
   }
 
   private async triggerSteppedFlow(

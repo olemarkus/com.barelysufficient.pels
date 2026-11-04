@@ -98,8 +98,8 @@ describe('native watt ownership after Manual control', () => {
     expect(adapters.projectObservation(snapshot('automatic')).reportedStepId).toBeUndefined();
     expect(adapters.getReportedStepId(ID, PROFILE, undefined)).toBeUndefined();
     const write = vi.fn().mockResolvedValue(undefined);
-    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe(false);
-    expect(write).toHaveBeenCalledExactlyOnceWith('evcharger_charging', false);
+    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe('binary_off_required');
+    expect(write).not.toHaveBeenCalled();
   });
 
   it('claims an exclusive Zaptec already in device mode without resetting or stopping it', async () => {
@@ -224,12 +224,14 @@ describe('native watt ownership after Manual control', () => {
         }
       }
     });
-    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe(false);
-    expect(write.mock.calls).toEqual([['evcharger_charging', false]]);
+    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe('binary_off_required');
+    expect(write).not.toHaveBeenCalled();
     expect(adapters.getReportedStepId(ID, PROFILE, undefined)).toBeUndefined();
     // A successful stop request alone cannot permit the release that restores 32 A.
-    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe(false);
-    expect(write.mock.calls).toEqual([['evcharger_charging', false], ['evcharger_charging', false]]);
+    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe('binary_off_required');
+    expect(write).not.toHaveBeenCalled();
+    // The binary dispatcher owns the actual pause and its pending provenance.
+    charging = false;
 
     vi.setSystemTime(Date.now() + 1000);
     adapters.observe(ID, rawDevice());
@@ -257,8 +259,8 @@ describe('native watt ownership after Manual control', () => {
           lastUpdated: evidence === 'undated power' ? undefined : Date.now() },
       } });
       const write = vi.fn().mockResolvedValue(undefined);
-      expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe(false);
-      expect(write).toHaveBeenCalledExactlyOnceWith('evcharger_charging', false);
+      expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe('binary_off_required');
+      expect(write).not.toHaveBeenCalled();
       expect(adapters.getReportedStepId(ID, PROFILE, undefined)).toBeUndefined();
     },
   );
@@ -287,8 +289,8 @@ describe('native watt ownership after Manual control', () => {
     // still exists in Homey's full inventory and shares the reset's current.
     adapters.observe(ID, rawDevice());
     const write = vi.fn().mockResolvedValue(undefined);
-    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe(false);
-    expect(write).toHaveBeenCalledExactlyOnceWith('evcharger_charging', false);
+    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe('binary_off_required');
+    expect(write).not.toHaveBeenCalled();
     expect(adapters.getReportedStepId(ID, PROFILE, undefined)).toBeUndefined();
   });
 
@@ -309,8 +311,8 @@ describe('native watt ownership after Manual control', () => {
     adapters.observe(ID, rawDevice());
     adapters.inventory.delete(ID);
     const write = vi.fn().mockResolvedValue(undefined);
-    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe(false);
-    expect(write).toHaveBeenCalledExactlyOnceWith('evcharger_charging', false);
+    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe('binary_off_required');
+    expect(write).not.toHaveBeenCalled();
   });
 
   it('stops and proves the declared legacy charging button before resetting control', async () => {
@@ -323,8 +325,8 @@ describe('native watt ownership after Manual control', () => {
     const adapters = manualThenAutomatic();
     adapters.observe(ID, device);
     const write = vi.fn().mockResolvedValue(undefined);
-    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe(false);
-    expect(write).toHaveBeenCalledExactlyOnceWith('charging_button', false);
+    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe('binary_off_required');
+    expect(write).not.toHaveBeenCalled();
     vi.setSystemTime(Date.now() + 1000);
     adapters.observe(ID, { ...device, capabilitiesObj: {
       ...device.capabilitiesObj,

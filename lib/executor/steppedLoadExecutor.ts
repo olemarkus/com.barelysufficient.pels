@@ -30,6 +30,8 @@ import {
 } from './steppedLoadExecutorRestore';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { ExecutorCommandContext } from './executorCommandContext';
+import { buildExecutableObservedDeviceState } from './executablePlanProjection';
+import type { ExecutorDeviceRead } from './executorDeviceRead';
 
 const logger = getLogger('executor/stepped-load');
 /**
@@ -137,9 +139,9 @@ export const applySteppedLoadCommand = async (
  * A `down_only` command (a step-down under a plan hold) may only lower the
  * device, judged against the observer's record as it stands at the write, not
  * the read this dispatch captured: an earlier device's write can keep the loop
- * waiting while a new report lands. The device must be on and report an active
- * step drawing more than `desiredStep`; otherwise the write is skipped. The
- * command session's reported step is this same record's field, so there is no
+ * waiting while a new report lands. A running device must report a higher rung,
+ * or need a decided native-limit preparation below its live measured draw.
+ * The command session's report is this same record's field, so there is no
  * second report to order against.
  */
 const skipsHeldStepRaise = (
@@ -157,6 +159,10 @@ const skipsHeldStepRaise = (
     && !isSteppedLoadOffStep(profile, reported.id)
     && desiredStep.planningPowerW < reported.planningPowerW
   ) return false;
+  // An unknown native limit was prepared from measured draw, never from its
+  // lowest-rung planning fallback. Recheck that decided descent against the
+  // live reading; an OFF or a lower draw cannot authorize this held write.
+  if (isUnknownNativeLimitDescent(intent, live, desiredStep)) return false;
   logSteppedLoadCommandSkip(
     intent,
     'not_below_reported_step',
@@ -164,6 +170,19 @@ const skipsHeldStepRaise = (
     { desiredStepId: desiredStep.id, reportedStepId: live?.reportedStepId ?? null, observedOn: liveOn },
   );
   return true;
+};
+
+const isUnknownNativeLimitDescent = (
+  intent: ExecutableSteppedLoadIntent, live: ExecutorDeviceRead | undefined,
+  desiredStep: SteppedLoadStep,
+): boolean => {
+  if (!live) return false;
+  const observed = buildExecutableObservedDeviceState(live, intent.steppedLoadProfile);
+  if (observed.observedBinaryAxis !== 'on' || !observed.steppedLoad
+    || observed.steppedLoad.reportedStepId !== undefined) return false;
+  return intent.controlAdapter?.activationOrder === 'current_before_start'
+    && intent.transition?.transitionPhase === 'step_preparation'
+    && observed.steppedLoad.currentDrawKw * 1000 > desiredStep.planningPowerW;
 };
 
 export const applySteppedLoadRestore = async (

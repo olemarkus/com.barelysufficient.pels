@@ -393,9 +393,11 @@ describe('Zaptec native target power', () => {
       const put = vi.fn().mockResolvedValue(undefined);
       setRestClient({ get: vi.fn(), put });
 
-      await transport.requestSteppedLoadStep({
+      expect(await transport.requestSteppedLoadStep({
         deviceId: ZAPTEC_ID, profile, desiredStepId: '2760w', planningPowerW: 2760, planningCurrentA: 0,
-      });
+      })).toEqual({ requested: false, preparation: 'binary_off' });
+      expect(put).not.toHaveBeenCalled();
+      await transport.requestBinaryControl(ZAPTEC_ID, false);
       expect(put.mock.calls).toEqual([
         [`manager/devices/device/${ZAPTEC_ID}/capability/evcharger_charging`, pelsCapabilityWrite(false)],
       ]);

@@ -16,6 +16,7 @@ export const standardDeviceAdapter: DeviceAdapter = {
   configureTargetPower: (_device, config) => config,
   targetPowerReading: (_device, _config, value) => value,
   stepCommand: (_device, _step, command) => command,
+  stepActivationOrder: 'start_before_current',
   prepareTargetPowerReassertion: () => ({ kind: 'ready', resetWrites: [] }),
   normalize: (_snapshot, capabilityId, value) => [{ capabilityId, value }],
   observation: (device) => Object.fromEntries(

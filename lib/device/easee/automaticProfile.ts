@@ -21,12 +21,15 @@ function positiveSetting(value: unknown): number | undefined {
 }
 
 function resolveCurrentMaximum(device: HomeyDeviceLike, declaredMax: number): number | undefined {
-  return ['maxChargerCurrent', 'circuitFuse'].reduce<number | undefined>((maximum, key) => {
+  let maximum = declaredMax;
+  for (const key of ['maxChargerCurrent', 'circuitFuse']) {
     const raw = device.settings?.[key];
-    if (raw === undefined || raw === null || raw === '') return maximum;
+    if (raw === undefined || raw === null || raw === '') continue;
     const limit = positiveSetting(raw);
-    return maximum === undefined || limit === undefined ? undefined : Math.min(maximum, limit);
-  }, declaredMax);
+    if (limit === undefined) return undefined;
+    maximum = Math.min(maximum, limit);
+  }
+  return maximum;
 }
 
 export function resolveEaseeAutomaticProfile(

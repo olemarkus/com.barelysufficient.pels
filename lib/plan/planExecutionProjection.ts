@@ -225,7 +225,8 @@ export function buildExecutionPlan(plan: DevicePlan): ExecutionPlan {
 }
 
 function qualifyStableOperations(device: PlanDevice, commands: PlannedDeviceCommands): StableExecutionOperation[] {
-  const step = hasPlannedStep(commands) && isSteppedLoadDevice(device) && device.plannedState === 'keep'
+  const step = hasPlannedStep(commands) && isSteppedLoadDevice(device)
+    && (device.plannedState === 'keep' || commands.steppedLoad.transition?.transitionPhase === 'step_preparation')
     ? commands.steppedLoad
     : undefined;
   const operations: (StableExecutionOperation | undefined)[] = [
@@ -255,7 +256,8 @@ function qualifyStableStepOperations(
   return [
     device.reportedStepId === undefined && isPlanDeviceObservedOn(device) && desired.planningPowerW > 0
       ? 'initialize_step' : undefined,
-    desired.id !== device.selectedStepId && selected && desired.planningPowerW !== selected.planningPowerW
+    step.transition?.transitionPhase === 'step_preparation'
+      || (desired.id !== device.selectedStepId && selected && desired.planningPowerW !== selected.planningPowerW)
       ? 'step_change' : undefined,
   ];
 }

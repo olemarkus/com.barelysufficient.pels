@@ -22,10 +22,13 @@ export class SteppedLoadTransportError extends Error {
 }
 
 /**
- * Whether the request was issued, and over which channel. Acceptance only:
- * the device's reported step reaches the executor through the observer.
+ * Whether the rung was issued, and over which channel, or needs an ordinary
+ * binary pause before retrying. Acceptance only: the device's reported step
+ * reaches the executor through the observer.
  */
 export type SteppedLoadStepRequestResult =
   | { requested: false }
+  /** The step is not issued until its binary pause has been observed. */
+  | { requested: false; preparation: 'binary_off' }
   | { requested: true; acknowledged: true; transport: SteppedLoadStepRequestTransport }
   | { requested: true; acknowledged: false; transport: 'flow'; reasonCode: 'flow_trigger_timeout' };

@@ -58,6 +58,9 @@ and zero-power observations. Only then may an exclusive installation release
 the cached mode, receive the newly admitted watt target, and return to Homey
 control. Native watt limits are prepared before the planner resumes charging.
 A shared installation is not reset by this protocol.
+The pause uses the ordinary binary command lane, so pending confirmation, car
+stop attribution and external-off detection recognize it as PELS's request.
+Resumption follows the normal meter-driven admission and restore cooldown.
 - **Easee EV charger current** (`no.easee`, charger driver): native stepped
   control writes the EV preset step's whole-amp current to the setable
   `target_charger_current` (0 A for the off step) and reads the step back from

@@ -1,5 +1,6 @@
 import type { DevicePlan, SteppedPlanDevice } from './planTypes';
 import { isBinaryPlanDevice } from './planBinaryDevice';
+import { isMeteredPlanDevice } from './planMeteredDevice';
 import { isPlanDeviceObservedOff, isPlanDeviceObservedOn, isSteppedLoadDevice,
   resolveSteppedKeepDesiredStepId, resolveSteppedLoadTransition, type SteppedLoadTransition } from './planSteppedLoad';
 import {
@@ -9,7 +10,9 @@ import type {
   PlannedBinaryDrive, PlannedSteppedCommand, PlannedStepBaseline, PlannedStepDesiredState, PlannedShedTarget,
   PlannedStepTransition,
 } from '../planContract/executionPlan';
-import { getSteppedLoadStep, isSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
+import {
+  getSteppedLoadLowestActiveStep, getSteppedLoadStep, isSteppedLoadOffStep,
+} from '../../packages/shared-domain/src/deviceControlProfiles';
 type PlanDevice = DevicePlan['devices'][number];
 type PlanningSteppedState = {
   stepId?: string;
@@ -27,22 +30,23 @@ const isIdleTaskReleaseWithoutAuthority = (dev: PlanDevice): boolean => (
 );
 
 export function buildPlannedSteppedCommand(dev: PlanDevice): PlannedSteppedCommand | undefined {
-  if (!isSteppedLoadDevice(dev) || dev.plannedState === 'inactive') return undefined;
+  if (!isSteppedLoadDevice(dev)) return undefined;
   // A restore hold may allow lowering a controlled device; lack of authority
   // never does. Lifecycle release has its own explicit grant and dispatch path.
-  if (!dev.control.commandAuthority && dev.deferredReleaseIntent === undefined) return undefined;
+  if (!canCommandSteppedDevice(dev)) return undefined;
   const planningCurrent: PlanningSteppedState = {
     stepId: dev.selectedStepId,
     stepForShed: resolveCurrentStepForShed(dev),
     stepIsOffStep: isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId),
   };
-  const plannedStepId = resolveSteppedKeepDesiredStepId(dev);
+  const unknownLimitPreparation = resolveUnknownLimitPreparation(dev);
+  const plannedStepId = unknownLimitPreparation?.commandStepId ?? resolveSteppedKeepDesiredStepId(dev);
   const held = isHeldByPlanReason(dev);
-  const releaseWithoutAuthority = isIdleTaskReleaseWithoutAuthority(dev);
   // The step-only lifecycle release needs the ladder even when the ordinary
   // plan leaves the rung alone. Its dispatcher resolves the release step.
-  if (held && !releaseWithoutAuthority && !isKeptStepDown(dev, planningCurrent, plannedStepId)) return undefined;
-  const plannedTransition = resolveSteppedLoadTransition(dev, plannedStepId);
+  if (held && !unknownLimitPreparation
+    && !permitsHeldStepCommand(dev, planningCurrent, plannedStepId)) return undefined;
+  const plannedTransition = unknownLimitPreparation ?? resolveSteppedLoadTransition(dev, plannedStepId);
   const desiredStepId = resolveDesiredStepId(dev, planningCurrent, plannedStepId, plannedTransition);
   const desired = { stepId: desiredStepId, plannedStepId };
   // A held step-down moves the step only, and only down (`stepDirection`): the
@@ -53,23 +57,57 @@ export function buildPlannedSteppedCommand(dev: PlanDevice): PlannedSteppedComma
   const transition = plannedTransition && desiredMatchesTransition(desired, desiredOn, plannedTransition)
     ? toPlannedStepTransition(plannedTransition)
     : null;
-  const intent: PlannedSteppedCommand & Partial<PlannedBinaryDrive> = {
+  const intent: PlannedSteppedCommand = {
     id: dev.id,
     name: dev.name,
     steppedLoadProfile: dev.steppedLoadProfile,
     controlAdapter: dev.controlAdapter,
     plannedShedTarget: toPlannedShedTarget(dev.plannedShedTargetKind),
     desired,
-    stepDirection: held ? 'down_only' : 'any',
+    stepDirection: held || unknownLimitPreparation ? 'down_only' : 'any',
     // The binary axis is attached ONLY when this cycle's decision moves it.
     // `resolveDesiredOn` answers `null` for the steady / step-up / step-down
     // transitions, where the plan has something to say about the step and
     // nothing about the on/off handle — previously that `null` travelled as a
     // third value every consumer re-interpreted through `!== true`.
-    ...(desiredOn !== null ? { desiredOn } : {}),
     transition,
   };
-  return intent;
+  return withBinaryDrive(intent, desiredOn);
+}
+
+function canCommandSteppedDevice(dev: SteppedPlanDevice): boolean {
+  return dev.plannedState !== 'inactive'
+    && (dev.control.commandAuthority || dev.deferredReleaseIntent !== undefined);
+}
+
+function permitsHeldStepCommand(
+  dev: SteppedPlanDevice, current: PlanningSteppedState, plannedStepId: string | undefined,
+): boolean {
+  return isIdleTaskReleaseWithoutAuthority(dev) || isKeptStepDown(dev, current, plannedStepId);
+}
+
+function withBinaryDrive(
+  intent: PlannedSteppedCommand, desiredOn: boolean | null,
+): PlannedSteppedCommand & Partial<PlannedBinaryDrive> {
+  return desiredOn === null ? intent : { ...intent, desiredOn };
+}
+
+/**
+ * A native limit can need preparation while its old target is withheld. Its
+ * lowest planning fallback is no evidence that the running device has reached
+ * that limit: the meter can still show a higher draw. Decide a downward limit
+ * preparation from that draw without publishing a reported rung or starting it.
+ */
+function resolveUnknownLimitPreparation(dev: SteppedPlanDevice): SteppedLoadTransition | null {
+  if (!dev.control.commandAuthority || (dev.plannedState !== 'keep' && dev.plannedShedTargetKind !== 'step')
+    || dev.controlAdapter?.activationOrder !== 'current_before_start'
+    || !isPlanDeviceObservedOn(dev) || dev.reportedStepId !== undefined || !isMeteredPlanDevice(dev)) return null;
+  const lowest = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);
+  if (!lowest || dev.currentDrawKw * 1000 <= lowest.planningPowerW) return null;
+  return {
+    effectiveTransition: 'step_down_while_on', stepPreparationPurpose: null, binaryTarget: null,
+    commandStepId: lowest.id, plannedDesiredStepId: lowest.id, transitionPhase: 'step_preparation',
+  };
 }
 
 /**
