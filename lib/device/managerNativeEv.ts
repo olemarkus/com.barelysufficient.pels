@@ -118,10 +118,7 @@ export function resolveFlowCapabilityOverlay(
     targetPowerOverlay.capabilityObj,
     reportedCapabilities,
   );
-  const controlAdapter = resolveOverlayControlAdapter({
-    nativeEvControlAdapter: nativeEvOverlay.controlAdapter,
-    nativeSteppedControlAdapter: nativeSteppedOverlay.controlAdapter,
-  });
+  const controlAdapter = resolveOverlayControlAdapter(nativeEvOverlay, nativeSteppedOverlay.controlAdapter);
   const activeNativeSteppedProfile = resolveActiveNativeSteppedProfile(nativeSteppedOverlay);
   const savedFlowProfile = sources.settings.getDeviceControlProfile(deviceId);
   const steppedLoadProfile = activeNativeSteppedProfile
@@ -231,12 +228,15 @@ function shouldIgnoreFlowReports(params: {
     || controlAdapter?.activationEnabled === true;
 }
 
-function resolveOverlayControlAdapter(params: {
-  nativeEvControlAdapter?: DeviceControlAdapterSnapshot;
-  nativeSteppedControlAdapter?: DeviceControlAdapterSnapshot;
-}): DeviceControlAdapterSnapshot | undefined {
-  if (params.nativeEvControlAdapter?.activationEnabled === true) return params.nativeEvControlAdapter;
-  return params.nativeSteppedControlAdapter ?? params.nativeEvControlAdapter;
+function resolveOverlayControlAdapter(
+  nativeEvOverlay: ReturnType<typeof applyNativeEvWiringOverlay>,
+  nativeSteppedControlAdapter: DeviceControlAdapterSnapshot | undefined,
+): DeviceControlAdapterSnapshot | undefined {
+  // An EV overlay without its binary facet cannot replace an independent native
+  // stepped channel merely because the integration still supplies telemetry.
+  if (nativeEvOverlay.capabilities.includes('evcharger_charging')
+      && nativeEvOverlay.controlAdapter?.activationEnabled === true) return nativeEvOverlay.controlAdapter;
+  return nativeSteppedControlAdapter ?? nativeEvOverlay.controlAdapter;
 }
 
 function isNativeEvControlAdapterActive(params: {

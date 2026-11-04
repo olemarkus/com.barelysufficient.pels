@@ -240,6 +240,9 @@ export function assembleDeviceSnapshot(params: {
         previousSnapshot, retainedReading, purpose, managedDecision,
     });
     if (!control) return null;
+    // A rejected member gates its temperature facet, not valid sibling controls.
+    if (capsStatus.targetCaps.length > 0 && !temperature
+        && !control.binaryCapabilityId && !overlay.steppedLoadProfile) return null;
     const lastFreshDataMs = resolveLastFreshDataMs(overlay, control, temperature !== undefined, measuredPower);
     const evChargingObservedAtMs = toCapabilityTimestampMs(overlay.capabilityObj.evcharger_charging?.lastUpdated);
     const evChargingStateObservedAtMs = toCapabilityTimestampMs(

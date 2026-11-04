@@ -95,7 +95,7 @@ describe('cold charger fields resolve independently', () => {
   );
 
   it.each(['null', 'wrong type', 'missing entry', 'undated'] as const)(
-    'keeps plug state and power when charging control is %s without adopting onoff', async kind => {
+    'omits a binary-only charger when its charging boolean is %s without adopting onoff', async kind => {
       const initial = charger(stamp(0));
       const charging = initial.capabilitiesObj.evcharger_charging;
       const { evcharger_charging: _unreadableControl, ...siblings } = initial.capabilitiesObj;
@@ -106,21 +106,17 @@ describe('cold charger fields resolve independently', () => {
           : { ...charging, value: kind === 'null' ? null : 'invalid' },
       };
       await seedTransportDevices(transport, [{ ...initial, capabilitiesObj: unreadable }]);
-      const snapshot = transport.getSnapshotByDeviceId(ID);
-      if (!snapshot) throw new Error('Expected independent plug and power observations');
-      expect(snapshot).toMatchObject({ id: ID, evChargingState: 'plugged_in_paused', measuredPowerKw: 7 });
-      expect(snapshot.binaryCapabilityId).toBe('evcharger_charging');
-      expect(snapshot.binaryControlObservation).toBeUndefined();
-      expect(snapshot.evCharging).toBeUndefined();
-      expect(snapshot.capabilities).not.toContain('onoff');
+      // This generic charger has no native or temperature control facet once
+      // the rejected command boolean is withheld. Its Homey inventory remains.
+      expect(transport.getSnapshotByDeviceId(ID)).toBeUndefined();
+      expect(transport.getHomeyDeviceIds().has(ID)).toBe(true);
       expect(transport.canTurnOnDevice(ID)).toBe(false);
       const put = sdkWrites();
-      await expect(transport.setCapability(ID, 'evcharger_charging', true)).rejects.toThrow('not ready');
+      await expect(transport.setCapability(ID, 'evcharger_charging', true))
+        .rejects.toThrow('Binary control is unavailable');
+      await expect(transport.setCapability(ID, 'evcharger_charging', false))
+        .rejects.toThrow('Binary control is unavailable');
       expect(put).not.toHaveBeenCalled();
-      await transport.setCapability(ID, 'evcharger_charging', false);
-      expect(put).toHaveBeenCalledWith(
-        `manager/devices/device/${ID}/capability/evcharger_charging`, pelsCapabilityWrite(false),
-      );
     },
   );
 

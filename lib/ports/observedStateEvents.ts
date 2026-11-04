@@ -23,17 +23,25 @@ export type ObservedCapabilityChange = {
 export type ObservedStateChangedEvent = {
     source: 'realtime_capability' | 'device_update';
     deviceId: string;
-    observationSeq?: number;
-    observedAtMs?: number;
     capabilityId?: string;
     observedCapabilityIds?: string[];
     measurePowerBecameSignificantlyPositive?: boolean;
+} & ({
+    observationSeq?: number;
+    observedAtMs?: number;
     // The decided observed value transport's fresher-wins merge produced for
     // this device, attached once at the dispatch funnel so the observer
     // projection records the merged value rather than re-merging (Stage 4a of
     // the snapshot decomposition).
     observed?: ObservedDeviceState;
-};
+    removed?: never;
+} | {
+    /** The committed read left no admitted device observation. */
+    removed: true;
+    observationSeq: number;
+    observedAtMs: number;
+    observed?: never;
+});
 
 /** Batch payload for a full snapshot refresh: one entry per committed device. */
 export type ObservedStateRefreshEvent = ObservedDeviceStateRefreshPayload;

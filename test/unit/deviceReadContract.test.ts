@@ -399,9 +399,19 @@ describe('independent capability resolution', () => {
         evcharger_charging_state: entry('plugged_in_charging'), measure_power: entry(7200) },
     });
     const resolved = withholdInvalidModelCapabilities(charger);
-    expect(resolved.device.capabilities).toEqual(['evcharger_charging', 'evcharger_charging_state', 'measure_power']);
-    expect(resolved.device.capabilitiesObj?.evcharger_charging).toEqual({});
+    expect(resolved.device.capabilities).toEqual(['evcharger_charging_state', 'measure_power']);
+    expect(resolved.device.capabilitiesObj).not.toHaveProperty('evcharger_charging');
     expect(resolved.withheldCapabilityIds).toEqual(['evcharger_charging', 'onoff']);
+  });
+
+  it.each([null, 'true', undefined])('does not restore rejected onoff=%s from a previous read', value => {
+    const previous = heater();
+    const read = heater({ capabilitiesObj: { ...HEATER_VALUES, onoff: entry(value) } });
+    const resolved = withholdInvalidModelCapabilities(read, previous);
+    expect(resolved.device.capabilities).not.toContain('onoff');
+    expect(resolved.device.capabilitiesObj).not.toHaveProperty('onoff');
+    expect(resolved.retainedCapabilityIds).not.toContain('onoff');
+    expect(resolved.device.capabilitiesObj?.measure_power).toEqual(HEATER_VALUES.measure_power);
   });
 
   it('does not grant native watt control when its mode is malformed, while keeping telemetry', () => {

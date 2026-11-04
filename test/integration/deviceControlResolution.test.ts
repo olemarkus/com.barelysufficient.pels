@@ -378,7 +378,7 @@ describe('device owner control resolution', () => {
     expect(runtime).not.toHaveProperty('steppedLoadProfile');
   });
 
-  it('retains accepted control while a malformed field does not block valid new power', async () => {
+  it('withholds rejected binary control while preserving the native ladder and valid new power', async () => {
     const transport = transportForHeater(true);
     await initWithLiveFeed(transport);
     const [snapshot] = await seedTransportDevices(transport, [heater()]);
@@ -391,11 +391,27 @@ describe('device owner control resolution', () => {
       measure_power: { value: 2150, lastUpdated: '2026-09-30T08:10:00.000Z' },
     } });
 
-    expect(transport.deviceConfigurationStore.get('heater')).toEqual({ ...configuration, expectedPowerKw: 2.15 });
+    expect(transport.deviceConfigurationStore.get('heater')).toEqual({
+      ...configuration,
+      binaryControllable: false,
+      canSetControl: undefined,
+      capabilities: configuration?.capabilities?.filter(id => id !== 'onoff'),
+      expectedPowerKw: 2.15,
+    });
     const next = transport.getSnapshotByDeviceId('heater')!;
-    expect(next.binaryControl).toEqual(snapshot.binaryControl);
-    expect(next.binaryControlObservation?.observedAtMs).toBe(snapshot.binaryControlObservation?.observedAtMs);
+    expect(next.binaryCapabilityId).toBeUndefined();
+    expect(next.binaryControl).toBeUndefined();
+    expect(next.binaryControlObservation).toBeUndefined();
+    expect(next.capabilities).not.toContain('onoff');
+    expect(next.steppedLoadProfile).toEqual(snapshot.steppedLoadProfile);
+    expect(next.reportedStepId).toBe(snapshot.reportedStepId);
     expect(next.measuredPowerKw).toBe(2.15);
+    expect(next.available).toBe(true);
+    expect(transport.canTurnOnDevice('heater')).toBe(false);
+    for (const desired of [true, false]) {
+      await expect(transport.requestBinaryControl('heater', desired, vi.fn()))
+        .rejects.toThrow('No binary control binding');
+    }
     expect(projectObservedState(next)).not.toEqual(previous);
   });
 

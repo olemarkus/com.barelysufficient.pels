@@ -388,18 +388,25 @@ Use it for:
 - clearing pending state when the update is trustworthy and matches the requested result
 
 A `device.update` carries the whole device. The device-read contract
-(`lib/device/transport/deviceReadContract.ts`) resolves each capability
-independently: a null, malformed, missing, or undated field cannot reject the
-whole payload. Valid siblings still update. A rejected field keeps its last
-accepted observation with its original timestamp, or is withheld when none
-exists; it produces no new observation. A rejected native-limit reading keeps
-its declared surface and range metadata, so it cannot turn a stepped charger
-into a binary-only start at an unknown limit. The write owner gates start
-prerequisites without discarding observation or safe stop paths. The same rule applies before and after
-vendor conversion. Only an unreadable structural envelope, such as a missing
-capability list or map, makes the whole read a no-op. Per-capability events
-(`homey:device:{id}`) carry one capability by design and are their own, narrower
-read.
+(`lib/device/transport/deviceReadContract.ts`) validates each capability
+independently, before and after vendor conversion. A null, malformed, missing,
+or undated field rejects only that field; valid siblings still update. A
+rejected binary control field such as `onoff` removes the binary facet even
+when a previous value was accepted. Its declaration, descriptor, or old value
+must not force binary admission. Other observation fields keep their last
+accepted value and original timestamp according to their owner's policy, or
+are withheld when none exists; no value or timestamp is invented.
+
+The device owner then applies its admission gates to the remaining semantic
+facets. Healthy facets remain usable; if all gates fail, the device is omitted
+rather than represented by a blank unsupported row. A rejected native-limit
+reading preserves independently usable native-control metadata and range, so
+it cannot turn a stepped charger into a binary-only start at an unknown limit.
+That metadata is neither an observed value nor binary authority. The write
+owner gates start prerequisites. An unreadable structural envelope, such as a
+missing capability list or map, instead makes the whole read a no-op.
+Per-capability events (`homey:device:{id}`) carry one capability by design and
+are their own, narrower read.
 
 Homey's capability event for a write carries the transaction id its writer
 supplied. PELS sends its own with every capability write, so the transport
@@ -560,7 +567,7 @@ This is why "just compare live vs plan" is too naive.
 
 ### A per-capability event is fresh for its one capability
 
-A realtime `onoff` capability event may be newer than the snapshot for `onoff`, while the target temperature or power field is still only known from the last full read. (A `device.update` is not partial: it carries the whole device, or it is ignored — see § 2.)
+A realtime `onoff` capability event may be newer than the snapshot for `onoff`, while the target temperature or power field is still only known from the last full read. (A `device.update` carries the whole device, with fields validated independently before admission — see § 2.)
 
 ### Snapshot refresh is broad but can roll state backward
 
