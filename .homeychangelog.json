@@ -748,5 +748,8 @@
   },
   "3.28.6": {
     "en": "A boost now takes power only from lower-priority devices: a boosted device waits while a device ranked above it is limited, and the boost chip and settings say so. A Tesla charging current the car has accepted is no longer sent again while PELS waits for the car to report the new current, and PELS keeps room for it in the meantime.\n\nThe device page and recommendations now warn when a device keeps moving away from a setting PELS gave it, such as its temperature. The automatic diagnostics report now includes the past day's heating observations."
+  },
+  "3.28.7": {
+    "en": "The warning that a device doesn't keep PELS's changes now tells PELS's own changes apart from what the device reports, so a device that is only slow to answer no longer triggers it. The warning now shows the value PELS set and the value the device reported. A device with one capability that reports an unexpected value, such as some heat pumps, now stays available in PELS with its other readings.\n\nAn Easee charger whose car is full no longer starts a new charging session at full current when PELS resumes it. PELS no longer takes over the power target of Zaptec chargers that share an installation, since every charger on it follows that target. Missing a device? is now a card at the end of Devices, and Request support lists the devices PELS does not support."
   }
 }
