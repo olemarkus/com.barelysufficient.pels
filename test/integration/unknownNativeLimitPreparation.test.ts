@@ -23,7 +23,7 @@ const unknownDevice = (plannedState: 'keep' | 'shed' = 'shed', currentDrawKw = 1
 
 const liveRead = (measuredPowerKw: number, on = true): ExecutorDeviceRead => ({
   id: 'charger', name: 'Charger', available: true, isEvCharger: true, targets: [],
-  binaryControl: { on }, measuredPowerKw, steppedLoadProfile: steppedProfile, controlModel: 'stepped_load',
+  binaryControl: { on }, measuredPowerKw, steppedLoadProfile: steppedProfile,
 });
 
 describe('preparing an unknown native limit under capacity pressure', () => {
