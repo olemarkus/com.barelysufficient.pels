@@ -93,7 +93,7 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
 
     syncExternalOffHoldForObservation(
       ctx,
-      { deviceId: 'sub-dev', capabilityId: 'onoff', changes: OUTSIDE_OFF },
+      { pelsEcho: false, deviceId: 'sub-dev', capabilityId: 'onoff', changes: OUTSIDE_OFF },
       routerFor({ 'sub-dev': { homeId: 'h_sub', hooks } }),
     );
 
@@ -113,7 +113,7 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
 
     syncExternalOffHoldForObservation(
       ctx,
-      { deviceId: 'main-dev', capabilityId: 'onoff', changes: OUTSIDE_OFF },
+      { pelsEcho: false, deviceId: 'main-dev', capabilityId: 'onoff', changes: OUTSIDE_OFF },
       routerFor({}),
     );
 
@@ -139,7 +139,7 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
 
       syncExternalOffHoldForObservation(
         ctx,
-        { deviceId: 'main-dev', capabilityId: 'onoff', changes: OUTSIDE_OFF },
+        { pelsEcho: false, deviceId: 'main-dev', capabilityId: 'onoff', changes: OUTSIDE_OFF },
         routerFor({}),
       );
 
@@ -159,7 +159,7 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
 
     syncExternalOffHoldForObservation(
       ctx,
-      { deviceId: 'sub-dev', capabilityId: 'onoff', changes: OUTSIDE_OFF },
+      { pelsEcho: false, deviceId: 'sub-dev', capabilityId: 'onoff', changes: OUTSIDE_OFF },
       routerFor({
         'sub-dev': {
           homeId: 'h_sub',
