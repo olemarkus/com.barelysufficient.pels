@@ -200,6 +200,7 @@ function observeNativeTargetPowerMode(
     snapshot: TransportDeviceSnapshot,
     profile: SteppedLoadProfile,
     value: unknown,
+    pelsEcho: boolean,
 ): void {
     if (value !== 'homey' && value !== 'device') return;
     recordRealtimeObservation(ingest, snapshot.id, 'target_power_mode', value, false);
@@ -207,7 +208,7 @@ function observeNativeTargetPowerMode(
     adapters.observeCapabilityUpdate(snapshot.id, 'target_power_mode', value);
     const reportedStepId = adapters.getReportedStepId(snapshot.id, profile, snapshot.targetPowerConfig);
     applyNativeSteppedLoadSnapshotUpdate(
-        ingest, snapshot, 'target_power_mode', reportedStepId, false, undefined, false,
+        ingest, snapshot, 'target_power_mode', reportedStepId, false, undefined, pelsEcho,
     );
 }
 
@@ -225,7 +226,7 @@ export function handleNativeSteppedLoadCapabilityUpdate(
     if (!profile) return false;
 
     if (capabilityId === 'target_power_mode') {
-        observeNativeTargetPowerMode(ingest, snapshot, profile, value);
+        observeNativeTargetPowerMode(ingest, snapshot, profile, value, pelsEcho);
         return true;
     }
 
