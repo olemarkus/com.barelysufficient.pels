@@ -106,7 +106,7 @@ describe('createDeviceActuator — intent → transport mapping', () => {
   it('passes a battery hand-back to transport', async () => {
     const releaseStorageControl = vi.fn(async () => undefined);
     const actuator = createDeviceActuator(buildTransport({ releaseStorageControl }));
-    const command = { kind: 'storage_release' as const, deviceId: 'b1', restoreClaimValue: 'anti_feed' };
+    const command = { kind: 'storage_release' as const, deviceId: 'b1', handBack: 'claim_capability' as const, restoreClaimValue: 'anti_feed' };
     const outcome = await actuator.apply(command);
     expect(releaseStorageControl).toHaveBeenCalledWith(command);
     expect(outcome).toEqual({ requested: true, kind: 'storage_release' });

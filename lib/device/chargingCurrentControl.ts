@@ -14,7 +14,7 @@ import {
   hasSharedChargingInstallation, resolveChargingCurrentAdapter, resolveChargingCurrentAction,
 } from './chargingCurrentAdapter';
 import type { ChargingCurrentBinding } from './deviceAdapter';
-import { HomeyActionAccess, type HomeyActionAccessHomey } from './transport/homeyActionAccess';
+import type { HomeyActionAccess } from './transport/homeyActionAccess';
 import { FLOW_ACTION_CARDS_API_PATH } from './flowActionCards';
 import type { Logger } from '../utils/types';
 import type { DeviceControlSettings } from './deviceControlSettings';
@@ -51,13 +51,6 @@ function readSetup(value: unknown): ChargingCurrentSetup | undefined {
 
 /** Owns current-route selection. Binary control remains independent of this choice. */
 export class ChargingCurrentControl {
-  /**
-   * The owner's Homey API key and the one runner of every app action card
-   * (`HomeyActionAccess`). Built here, where its routes first needed it; the
-   * home-battery action host shares this instance.
-   */
-  readonly access: HomeyActionAccess;
-  private readonly settings: SettingsPort;
   readonly sessions: DeviceAdapterSessions;
   private readonly homeLocation = new HubHomeLocation();
   private readonly setups = new Map<string, ChargingCurrentSetup>();
@@ -71,16 +64,20 @@ export class ChargingCurrentControl {
   // empty for the first refresh after a boot and lacks a device new in this read.
   private readonly observedDevices = new Map<string, HomeyDeviceLike>();
 
+  /**
+   * @param access The owner's Homey API key and the one runner of every app
+   *   action card (`HomeyActionAccess`), built by the device transport and
+   *   shared with the home-battery action host.
+   */
   constructor(
-    homey: HomeyActionAccessHomey,
+    private readonly settings: SettingsPort,
+    readonly access: HomeyActionAccess,
     private readonly logger: Pick<Logger, 'structuredLog'>,
     private readonly getDevices: () => readonly HomeyDeviceLike[],
     private readonly readTrust: () => { connected: boolean; revision: number },
     private readonly flowWritesStore: AcceptedFlowConflictSlice<FlowCapabilityWrites>,
     private readonly deviceSettings: Pick<DeviceControlSettings, 'resolveDevicePowerControlMode'>,
   ) {
-    this.settings = homey.settings;
-    this.access = new HomeyActionAccess(homey, logger);
     this.sessions = new DeviceAdapterSessions(this.homeLocation);
     // Unreadable, nothing is held back until the next scan; that scan's save
     // rewrites whatever rows the store still holds.

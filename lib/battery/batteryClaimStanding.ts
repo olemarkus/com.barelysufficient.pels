@@ -26,7 +26,16 @@ export const isDrivableBattery = (battery: BatteryControlRead): battery is Driva
 
 /** Whether PELS drives the battery through its app's actions, on the owner's Homey API key, usable or not. */
 export const runsOnHomeyApiKey = (battery: BatteryControlRead): boolean => (
-  battery.kind === 'app_actions' || battery.kind === 'homey_api_key_missing'
+  battery.kind === 'app_actions' || battery.kind === 'hand_back_only' || battery.kind === 'homey_api_key_missing'
+);
+
+/**
+ * Whether a hand-back of an app-actions record could run on the owner's Homey
+ * API key now: the battery's hand-back actions are installed and the key may
+ * run them, whether or not its command actions are.
+ */
+export const canRunAppActionHandBack = (battery: BatteryControlRead): boolean => (
+  battery.kind === 'app_actions' || battery.kind === 'hand_back_only'
 );
 
 /**
@@ -112,6 +121,8 @@ export const resolveTerminalFailure = (
   record: BatteryClaimRecord,
   battery: Exclude<BatteryControlRead, { kind: 'unobserved' }>,
 ): TerminalReleaseFailure | undefined => {
+  // Its command actions are gone, its hand-back actions are not.
+  if (battery.kind === 'hand_back_only') return record.kind === 'app_actions' ? undefined : 'capability_mismatch';
   if (!isDrivableBattery(battery)) return battery.kind;
   if (!isRecordOfBinding(record, battery)) return 'capability_mismatch';
   if (battery.kind === 'app_actions' || record.kind !== 'claim_capability') return undefined;

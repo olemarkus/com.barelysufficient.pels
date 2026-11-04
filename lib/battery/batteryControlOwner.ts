@@ -82,7 +82,12 @@
  *   overrides the change. The executor's verification still judges every
  *   command against the battery's own power. Without a usable Homey API key it
  *   is one PELS only watches (`needs_homey_api_key`); a hand-back owed then is
- *   stopped as terminal until a key is saved.
+ *   stopped as terminal until a key is saved. So the key is not removed under
+ *   a battery PELS holds: removal waits for each such battery's hand-back
+ *   (`handBackBeforeHomeyApiKeyRemoval`), and is refused while one whose
+ *   hand-back could run is still held. One whose command actions are gone but
+ *   whose hand-back actions are not (`hand_back_only`) is claimed no more,
+ *   and a hand-back it owes still runs.
  *
  * A leaf domain: it imports only `lib/ports`, `lib/utils`, `lib/logging` and
  * the shared packages.
@@ -103,7 +108,7 @@ import type {
   StorageReleaseReason,
 } from '../ports/batteryControlOwner';
 import type { SettingsPort } from '../ports/homeyRuntime';
-import type { StorageActuation, StorageClaimRejected } from '../ports/storageCommand';
+import type { StorageActuation } from '../ports/storageCommand';
 import { normalizeError } from '../utils/errorUtils';
 import { BATTERY_CONTROL_DEVICES } from '../utils/settingsKeys';
 import { BatteryClaimStore, type BatteryClaimRecord } from './batteryClaimStore';
@@ -112,6 +117,7 @@ import {
   describeHandBack,
   isClaimEngaged,
   isDrivableBattery,
+  canRunAppActionHandBack,
   isRecordOfBinding,
   runsOnHomeyApiKey,
   resolveTerminalFailure,
@@ -127,7 +133,7 @@ import { isBatteryControlEnabled } from '../../packages/shared-domain/src/settin
 import type { BatteryManagedSettings } from './batteryControlSettings';
 import { PendingHandBacks, type ReleaseReason } from './pendingHandBacks';
 import { BatteryVerificationLedger } from './batteryVerification';
-import { BATTERY_WATCH_ONLY_MS, BatteryWatchOnlyLedger } from './batteryWatchOnly';
+import { BatteryWatchOnlyLedger } from './batteryWatchOnly';
 
 const logger = getLogger('battery');
 
@@ -176,6 +182,8 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
   private readonly writes = new Map<string, Promise<void>>();
   /** PELS's own claim writes, which a battery's claim standing is read against. */
   private readonly claimWrites = new ClaimWriteLog();
+  /** Key removals waiting for their hand-backs (`handBackBeforeHomeyApiKeyRemoval`): no app-actions claim meanwhile. */
+  private homeyApiKeyRemovals = 0;
   readonly verification = new BatteryVerificationLedger();
 
   /**
@@ -234,7 +242,13 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
       if (battery.kind === 'setpoint' && !isClaimEngaged(battery)) this.claimWrites.noteWrite(deviceId, Date.now());
       const written = await write();
       if (typeof written === 'object') {
-        return this.judgeClaimRejected(deviceId, written, recordBefore === undefined ? 'recorded_now' : 'kept');
+        // The record this dispatch made names a claim the rejected write never
+        // took: nothing to hand back. One made before keeps its restore value.
+        return this.watchOnly.judgeClaimRejected(deviceId, this.getBattery(deviceId), written, () => {
+          const claims = this.loadClaims();
+          return recordBefore === undefined && claims.status === 'loaded'
+            && claims.records.has(deviceId) && this.forget(claims, deviceId);
+        });
       }
       return { status: 'dispatched', setpointW: written };
     });
@@ -260,44 +274,27 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
 
   usesHomeyApiKey(deviceId: string): boolean { return runsOnHomeyApiKey(this.getBattery(deviceId)); }
 
-  /**
-   * The battery's app rejected the claim write, so no setpoint went out. On a
-   * binding whose rejection means the app refuses control, PELS only watches
-   * the battery from now on (see the header); on any other, the storage lane
-   * judges the setpoint unanswered.
-   */
-  private judgeClaimRejected(
-    deviceId: string,
-    rejected: StorageClaimRejected,
-    record: 'recorded_now' | 'kept',
-  ): BatterySetpointOutcome {
-    const { errorMessage } = rejected;
-    const battery = this.getBattery(deviceId);
-    // A battery under Homey's claim may be one PELS is driving: leaving it
-    // watch-only would strand it at its last setpoint with no hand-back.
-    if (
-      battery.kind !== 'setpoint'
-      || battery.surface.claim.rejection !== 'app_refuses_control'
-      || isClaimEngaged(battery)
-    ) {
-      return { status: 'claim_rejected', effect: 'unanswered', errorMessage };
-    }
-    this.watchOnly.begin(deviceId, battery.surface, Date.now());
+  async handBackBeforeHomeyApiKeyRemoval(removeKey: () => void): Promise<'removed' | 'battery_held'> {
+    this.homeyApiKeyRemovals += 1;
+    try {
+      const held = this.readAppActionClaims();
+      await Promise.all((held ?? []).map((deviceId) => this.release(deviceId, 'homey_api_key_removed')));
+      // One whose hand-back cannot run on this key anyway (its actions gone, the key refused) loses nothing.
+      const left = held && this.readAppActionClaims()?.filter((id) => canRunAppActionHandBack(this.getBattery(id)));
+      if (left?.length !== 0) {
+        logger.warn({ event: 'homey_api_key_removal_refused', deviceIds: left ?? 'claim_records_unreadable' });
+        return 'battery_held';
+      }
+      removeKey();
+      return 'removed';
+    } finally { this.homeyApiKeyRemovals -= 1; }
+  }
+
+  /** The batteries PELS holds through their app's actions, `undefined` while the claim records cannot be read. */
+  private readAppActionClaims(): string[] | undefined {
     const claims = this.loadClaims();
-    // The record this dispatch made names a claim the rejected write never
-    // took: nothing to hand back. One made before keeps its restore value.
-    const recordRemoved = record === 'recorded_now' && claims.status === 'loaded'
-      && claims.records.has(deviceId) && this.forget(claims, deviceId);
-    logger.warn({
-      event: 'battery_control_claim_rejected_watch_only',
-      deviceId,
-      claimCapabilityId: battery.surface.claim.capabilityId,
-      errorMessage,
-      recordRemoved,
-      watchOnlyMs: BATTERY_WATCH_ONLY_MS,
-      msg: 'The battery app rejected control; PELS only watches the battery for 6 h, or until it restarts',
-    });
-    return { status: 'claim_rejected', effect: 'watch_only', errorMessage };
+    if (claims.status !== 'loaded') return undefined;
+    return [...claims.records].flatMap(([deviceId, record]) => (record.kind === 'app_actions' ? [deviceId] : []));
   }
 
   isManaged(deviceId: string): boolean {
@@ -375,7 +372,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
         || (record !== undefined && this.claimWrites.readStanding(deviceId, record, battery, nowMs) === 'taken_over'),
       // A claim-less battery reports no claim: PELS's record is its claim.
       claimEngaged: battery.kind === 'setpoint' ? isClaimEngaged(battery) : claimHeld,
-      keepAlive: battery.kind === 'setpoint' ? { kind: 'none' } : battery.keepAlive,
+      keepAlive: battery.keepAlive,
       // Main's write fence is a moment (a superseded apply, a teardown), not a
       // reason to hand the battery back: the fenced actuator already holds
       // every write while it lasts. A contested claim is one too: it ends at
@@ -526,10 +523,15 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     logger.info({ event: 'battery_control_reenabled_after_takeover', deviceId });
   }
 
+  /** Drivable, and not on a Homey API key being removed: the hand-back that runs first stays its last command. */
+  private isClaimable(battery: BatteryControlRead): battery is DrivableBatteryRead {
+    return isDrivableBattery(battery) && !(battery.kind === 'app_actions' && this.homeyApiKeyRemovals > 0);
+  }
+
   /** Every admission check, writing nothing. */
   private checkClaim(deviceId: string, holds: MomentaryHolds): BatteryClaimRefusal | ClaimCheck {
     const battery = this.getBattery(deviceId);
-    if (!isDrivableBattery(battery)) return 'not_drivable';
+    if (!this.isClaimable(battery)) return 'not_drivable';
     if (this.isWatchOnly(deviceId)) return 'watch_only';
     const control = this.managed.read();
     if (control.status !== 'resolved') return 'control_setting_unreadable';
@@ -676,7 +678,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     this.claimWrites.noteRestore(deviceId, Date.now());
     try {
       const outcome = await this.actuation.apply(record.kind === 'claim_capability'
-        ? { kind: 'storage_release', deviceId, restoreClaimValue: record.previousValue }
+        ? { kind: 'storage_release', deviceId, handBack: 'claim_capability', restoreClaimValue: record.previousValue }
         : { kind: 'storage_release', deviceId, handBack: 'app_actions' });
       if (!outcome.requested) {
         this.pending.scheduleRetry(deviceId, reason, { kind: 'not_requested' });

@@ -1,6 +1,7 @@
 import { SteppedLoadTransportError } from '../../lib/ports/steppedLoadWrite';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { ChargingCurrentControl } from '../../lib/device/chargingCurrentControl';
+import { HomeyActionAccess } from '../../lib/device/transport/homeyActionAccess';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { getLogger } from '../../lib/logging/logger';
 import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowConflictStore';
@@ -23,9 +24,10 @@ function fixture(device = zaptec(), flowWritesStore = createChargingFlowWritesSt
   const inventory = [device];
   const get = vi.fn(async (_path: string): Promise<unknown> => ({}));
   setRestClient({ get, put: vi.fn() });
-  const control = new ChargingCurrentControl({ settings, api: { getLocalUrl: async () => 'http://homey.local' },
-    cloud: { getHomeyId: async () => 'test' } },
-  { structuredLog: getLogger('test') }, () => inventory, () => ({ connected: true, revision: 0 }), flowWritesStore,
+  const logger = { structuredLog: getLogger('test') };
+  const homeyAccess = new HomeyActionAccess({ settings, api: { getLocalUrl: async () => 'http://homey.local' },
+    cloud: { getHomeyId: async () => 'test' } }, logger);
+  const control = new ChargingCurrentControl(settings, homeyAccess, logger, () => inventory, () => ({ connected: true, revision: 0 }), flowWritesStore,
   deviceControlSettingsFixture({ devicePowerControlModes: { charger: 'automatic' } }));
   const access = control.access;
   return { inventory, control, access, get, values, flowWritesStore };

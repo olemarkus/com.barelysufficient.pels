@@ -73,9 +73,19 @@ remove once the key is saved (`batteryUsesHomeyApiKey` on the device list).
   hand-back) is in the last inventory read, and the adapter resolved its
   actions. A missing or renamed card, an inventory not read yet, or actions
   the adapter cannot resolve make it one PELS only observes, logged once per
-  reason (`home_battery_actions_unavailable`). The inventory is read when a
-  full device read shows such a battery, again after an hour, and a minute
-  after a failed read or a failed run.
+  reason (`home_battery_actions_unavailable`). A hand-back needs only its own
+  cards: with a command card missing but the hand-back cards installed
+  (`hand_back_only`), PELS claims the battery no more and still hands it back.
+  The inventory is read when a full device read shows such a battery, again
+  after an hour, and a minute after a failed read, a failed run, or a read
+  that lacked one of a bound battery's cards.
+- **Removing the key.** The settings UI's Remove key first hands back every
+  battery PELS holds through its app's actions, on the key that is still
+  saved, and claims none of them meanwhile
+  (`BatteryControlOwner.handBackBeforeHomeyApiKeyRemoval`). If one whose
+  hand-back could run is still held, the key is kept and the page says so: a
+  battery whose app holds a command until the next would otherwise run PELS's
+  last command on with nothing left to hand it back.
 - **No claim to observe.** The app reports nothing PELS could read as a claim.
   The battery control owner treats PELS's own claim record
   (`{ handBack: 'app_actions', claimedAtMs }`) as the claim: written before the
@@ -88,8 +98,10 @@ remove once the key is saved (`batteryUsesHomeyApiKey` on the device list).
   battery's own `measure_power`, and the sign check against the whole-home
   meter marks a battery that moves the wrong way sign-inverted, which hands it
   back.
-- **Keep-alive.** A command that `expires` is sent again at half its lifetime
-  while the plan keeps deciding it (`BatteryLeverRead.keepAlive`, the storage
+- **Keep-alive.** A command that `expires` is sent again at a third of its
+  lifetime while the plan keeps deciding it, and a re-send that fails is tried
+  again 20 s later (`KEEP_ALIVE_RETRY_MS`), so one failure still leaves
+  several tries before the app's countdown runs out (`BatteryLeverRead.keepAlive`, the storage
   lane's drift in `lib/executor/batteryExecutor.ts`). It goes through the
   owner's admission and Main's fenced actuator like any setpoint, so nothing
   below the actuator seam keeps a battery PELS should release. When the meter
@@ -143,7 +155,7 @@ bundled Open API PDFs say only "Setting power, [W]"); the same app titles its
 Manual-mode power "Watt (negative = charge)", so the binding sends PELS's
 charge as a negative power. The executor's sign check is the safety net should
 a firmware read it the other way. PELS sends a 300 s countdown and sends the
-command again every 150 s. The hand-back is the app's Auto mode, the battery's
+command again every 100 s. The hand-back is the app's Auto mode, the battery's
 own self-consumption. The cloud driver offers no cards and stays watch-only.
 
 **Sigenergy.** The battery device reads the plant's ESS power; control is the
@@ -182,8 +194,8 @@ cannot verify, and the app's card handlers swallow a failure and return
 **Huawei LUNA2000 (Modbus).** The timed forced-run cards write the power, the
 minutes, the duration mode and the start in that order, starting nothing if a
 step fails, and the battery's own timer ends the run. PELS sends 10 minutes
-and declares that lifetime, so the storage lane renews the run every 5
-minutes, and a PELS that stops leaves the battery in its own working mode
+and declares that lifetime, so the storage lane renews the run every 200 s
+(a third of it), and a PELS that stops leaves the battery in its own working mode
 within 10 minutes. The cards take unsigned W and clamp to the battery's max
 charge or discharge power (registers 47075 and 47077, kept in the device
 settings by the app's poll); the range is those settings on the cards' 100 W

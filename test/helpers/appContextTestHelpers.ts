@@ -499,6 +499,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       isWatchOnly: vi.fn(() => false),
       readControlCapability: vi.fn(() => 'observe_only' as const),
       usesHomeyApiKey: vi.fn(() => false),
+      handBackBeforeHomeyApiKeyRemoval: vi.fn(async (removeKey: () => void) => { removeKey(); return 'removed' as const; }),
     },
     priceCoordinator: partialDouble<PriceCoordinator>({
       // The reader every combined-prices consumer takes from the coordinator,

@@ -2,7 +2,7 @@
 // no re-send while one is in flight, the verification lifecycle that keeps a
 // battery that does not follow (or follows backwards) from earning credit, and
 // the hand-back. The verdicts land in the real `BatteryVerificationLedger`.
-import { BatteryExecutor, VERIFICATION_MAX_WAIT_MS } from '../../lib/executor/batteryExecutor';
+import { BatteryExecutor, KEEP_ALIVE_RETRY_MS, VERIFICATION_MAX_WAIT_MS } from '../../lib/executor/batteryExecutor';
 import type { StorageDecidedDevice } from '../../lib/planContract/storageDecision';
 import { BatteryVerificationLedger, DELIVERY_CEILING_TTL_MS } from '../../lib/battery/batteryVerification';
 import type {
@@ -75,6 +75,7 @@ const buildLane = () => {
     isWatchOnly: vi.fn(() => false),
     readControlCapability: vi.fn(() => 'drivable' as const),
     usesHomeyApiKey: vi.fn(() => false),
+    handBackBeforeHomeyApiKeyRemoval: vi.fn(async (removeKey: () => void) => { removeKey(); return 'removed' as const; }),
   };
   const apply = vi.fn(async (command: DeviceCommand): Promise<ActuatorOutcome> => (
     command.kind === 'storage_power'
@@ -172,6 +173,22 @@ describe('battery storage lane', () => {
     read(-1500, 2500, 310_000);
     expect(owner.readControl(BATTERY)).toMatchObject({ verdict: 'responding' });
     expect(recordRestore).toHaveBeenCalledTimes(1);
+  });
+
+  it('tries a failed keep-alive again soon rather than a whole interval later', async () => {
+    const { apply, send, read, owned } = buildLane();
+    owned.keepAlive = { kind: 'resend', everyMs: 100_000 };
+    await send(-1500, 0);
+    read(-1500, 2500, 10_000);
+    apply.mockRejectedValueOnce(new Error('battery app busy'));
+
+    expect(await send(-1500, 100_000)).toBe(false);
+    expect(await send(-1500, 100_000 + KEEP_ALIVE_RETRY_MS - 1)).toBe(false);
+    expect(await send(-1500, 100_000 + KEEP_ALIVE_RETRY_MS)).toBe(true);
+    // A re-send that landed waits a whole interval again.
+    expect(await send(-1500, 199_999 + KEEP_ALIVE_RETRY_MS)).toBe(false);
+    expect(await send(-1500, 200_000 + KEEP_ALIVE_RETRY_MS)).toBe(true);
+    expect(apply).toHaveBeenCalledTimes(4);
   });
 
   it('never re-sends a command that holds until the next one', async () => {

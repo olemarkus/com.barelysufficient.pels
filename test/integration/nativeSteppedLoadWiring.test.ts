@@ -1,4 +1,5 @@
 import { ChargingCurrentControl } from '../../lib/device/chargingCurrentControl';
+import { HomeyActionAccess } from '../../lib/device/transport/homeyActionAccess';
 import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowConflictStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import Homey from 'homey';
@@ -981,9 +982,10 @@ describe('native stepped-load wiring', () => {
     };
     const get = vi.fn(async (): Promise<unknown> => ({}));
     setRestClient({ get, put: vi.fn() });
-    const control = new ChargingCurrentControl({ settings,
+    const logger = createLogger();
+    const control = new ChargingCurrentControl(settings, new HomeyActionAccess({ settings,
       api: { getLocalUrl: async () => 'http://homey.local' }, cloud: { getHomeyId: async () => 'test' },
-    }, createLogger(), () => [device], () => ({ connected: true, revision: 0 }),
+    }, logger), logger, () => [device], () => ({ connected: true, revision: 0 }),
     createChargingFlowWritesStore(openUserdataDatabase(IN_MEMORY_DATABASE)), deviceControlSettingsFixture());
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200,
       headers: { get: () => 'test' }, json: async () => ({ intersectedScopes: ['homey.flow'] }),

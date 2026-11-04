@@ -15,7 +15,11 @@ const logger = getLogger('battery');
 /** Wait before the next hand-back attempt after the 1st, 2nd, 3rd and every later failure. */
 export const BATTERY_RELEASE_RETRY_BACKOFF_MS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000] as const;
 
-export type ReleaseReason = 'opted_out' | 'boot_recovery' | 'retry' | StorageReleaseReason;
+/**
+ * Why the owner hands a battery back: a plan decision, or one of its own
+ * (`homey_api_key_removed`: before the key its hand-back runs on goes).
+ */
+export type ReleaseReason = 'opted_out' | 'boot_recovery' | 'retry' | 'homey_api_key_removed' | StorageReleaseReason;
 
 /** Why this hand-back attempt failed; a later one may succeed. */
 export type RetryableReleaseFailure =

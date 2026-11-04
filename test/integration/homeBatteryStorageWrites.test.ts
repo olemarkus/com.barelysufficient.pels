@@ -101,7 +101,7 @@ describe('home battery storage writes', () => {
     const device = buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'homey', targetPowerW: -2000 });
     const { transport, writes } = await setup(device);
 
-    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: BATTERY, restoreClaimValue: 'anti_feed' });
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: BATTERY, handBack: 'claim_capability', restoreClaimValue: 'anti_feed' });
 
     expect(writes()).toEqual([['target_power', 0], ['target_power_mode', 'anti_feed']]);
     expect(device.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
@@ -113,7 +113,7 @@ describe('home battery storage writes', () => {
     const { transport, writes } = await setup(device);
 
     await expect(transport.releaseStorageControl({
-      kind: 'storage_release', deviceId: BATTERY, restoreClaimValue: 'anti_feed',
+      kind: 'storage_release', deviceId: BATTERY, handBack: 'claim_capability', restoreClaimValue: 'anti_feed',
     })).rejects.toThrow();
 
     expect(writes()).toEqual([['target_power', 0], ['target_power_mode', 'anti_feed']]);
@@ -127,7 +127,7 @@ describe('home battery storage writes', () => {
     await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 2500 }))
       .resolves.toEqual({ kind: 'written', setpointW: 2200 });
     await transport.releaseStorageControl({
-      kind: 'storage_release', deviceId: BATTERY, restoreClaimValue: 'POWER_STRATEGY_NOM',
+      kind: 'storage_release', deviceId: BATTERY, handBack: 'claim_capability', restoreClaimValue: 'POWER_STRATEGY_NOM',
     });
 
     // 2500 W is clamped to the Sessy app's own 2200 W charge preset.
@@ -146,7 +146,7 @@ describe('home battery storage writes', () => {
     await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: -800 }))
       .resolves.toEqual({ kind: 'written', setpointW: -800 });
     await transport.releaseStorageControl({
-      kind: 'storage_release', deviceId: BATTERY, restoreClaimValue: 'self_consumption',
+      kind: 'storage_release', deviceId: BATTERY, handBack: 'claim_capability', restoreClaimValue: 'self_consumption',
     });
 
     // PELS's charge of 1.5 kW is -1500 to the app, its 800 W discharge +800; the hand-back's 0 is 0.
@@ -163,7 +163,7 @@ describe('home battery storage writes', () => {
     // The executor records PELS's own 0 W, so it does not re-send the hold.
     await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 0 }))
       .resolves.toEqual({ kind: 'written', setpointW: 0 });
-    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: BATTERY, restoreClaimValue: 'SELF_USE' });
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: BATTERY, handBack: 'claim_capability', restoreClaimValue: 'SELF_USE' });
 
     expect(writes()).toEqual([
       ['target_power_mode', 'homey'], ['target_power', 10],

@@ -31,10 +31,15 @@ export type BatteryCommandKeepAlive = { kind: 'none' } | { kind: 'resend'; every
  * drive through its setpoint surface, or one it drives through its app's Flow
  * actions.
  *
+ * - `setpoint` and `app_actions` are the two drivable reads. `keepAlive` says
+ *   how a command is kept in force: a setpoint surface always holds it
+ *   (`none`); an app's actions may let it run out on their own countdown.
  * - `app_actions` is claim-less: the battery reports no claim, so PELS's own
  *   claim record is the claim, and nothing it reports can show a takeover or a
- *   landed hand-back. `range` is the signed range in PELS's sign, `keepAlive`
- *   how its commands are kept in force.
+ *   landed hand-back. `range` is the signed range in PELS's sign.
+ * - `hand_back_only`: an app-actions battery whose hand-back actions are
+ *   installed but not all of its command actions. PELS claims and commands it
+ *   no more, but a hand-back it owes still runs.
  * - `homey_api_key_missing`: an `app_actions` battery whose actions need the
  *   owner's Homey API key, and no key that may run Flow actions is saved.
  *   PELS can neither command nor hand it back until one is.
@@ -44,10 +49,12 @@ export type BatteryControlRead =
   | { kind: 'not_battery' }
   | { kind: 'observe_only' }
   | { kind: 'homey_api_key_missing' }
+  | { kind: 'hand_back_only' }
   | {
     kind: 'setpoint';
     surface: Extract<HomeBatteryControlSurface, { kind: 'setpoint' }>;
     claim: HomeBatteryClaimRead;
+    keepAlive: BatteryCommandKeepAlive;
   }
   | { kind: 'app_actions'; range: HomeBatterySetpointRange; keepAlive: BatteryCommandKeepAlive };
 
@@ -324,10 +331,21 @@ export type BatteryControlOwner = {
   readControlCapability(deviceId: string): HomeBatteryControlCapability | 'not_battery';
   /**
    * Whether PELS drives this battery through its app's Flow actions, which
-   * run with the owner's Homey API key (`app_actions`, or
+   * run with the owner's Homey API key (`app_actions`, `hand_back_only` or
    * `homey_api_key_missing`): where its device page offers that key.
    */
   usesHomeyApiKey(deviceId: string): boolean;
+  /**
+   * The owner's Homey API key is about to be removed: hand back every battery
+   * PELS holds through its app's actions first, then call `removeKey`. A
+   * battery left under PELS's last command when the key goes could not be
+   * handed back until a key is saved again, and one whose app holds a command
+   * until the next would run it on. No such battery is claimed while this
+   * runs. Answers `removed` once `removeKey` ran, or `battery_held` (the key
+   * is kept) when a battery whose hand-back could run on the key is still
+   * held, or the claim records cannot be read.
+   */
+  handBackBeforeHomeyApiKeyRemoval(removeKey: () => void): Promise<'removed' | 'battery_held'>;
 };
 
 /**

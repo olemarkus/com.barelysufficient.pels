@@ -1,5 +1,7 @@
-import { ChargingCurrentControl } from './chargingCurrentControl';
+import type { ChargingCurrentControl } from './chargingCurrentControl';
 import type { HomeBatteryAppActions } from './homeBatteryAppActions';
+import type { HomeyActionAccess } from './transport/homeyActionAccess';
+import { createHomeyActionOwners } from './homeyActionOwners';
 import type { TaskDeviceConstraint } from '../../packages/contracts/src/taskDelivery';
 import type { CarIdentificationState } from '../../packages/contracts/src/evCarLink';
 /**
@@ -112,10 +114,11 @@ export type {
 export type DeviceTransportPort = Omit<DeviceTransport, 'getSnapshot'>;
 
 export class DeviceTransport {
-    get chargingAccess() { return this.chargingCurrentControl.access; }
+    /** The owner's Homey API key and the one runner of every app action card: charger current and battery actions. */
+    readonly chargingAccess: HomeyActionAccess;
     readonly chargingCurrentControl: ChargingCurrentControl;
     /** The host of every home battery driven through its app's Flow actions, on the shared API key. */
-    get batteryAppActions(): HomeBatteryAppActions { return this.reader.batteryAppActions; }
+    readonly batteryAppActions: HomeBatteryAppActions;
     private readonly deviceSdk: DeviceHomeySdk;
     private readonly logger: Logger;
     // Owner-side widened shape: these stored objects are mutated in place across
@@ -235,14 +238,11 @@ export class DeviceTransport {
             this.handleRealtimeDeviceUpdate,
             this.handleRealtimeCapabilityUpdate,
         );
-        this.chargingCurrentControl = new ChargingCurrentControl(
-            this.deviceSdk.runtime, logger, () => this.snapshotStore.getLatestRawDevices(),
-            () => {
-                const health = this.deviceSdk.getHealth();
-                return { connected: health?.subscriptionState === 'subscribed', revision: health?.reconnectCount ?? 0 };
-            },
-            options.acceptedFlowWrites, options.settings,
-        );
+        // One key owner, and the two owners that run actions on it, shared by the reads and writes below.
+        const actionOwners = createHomeyActionOwners(this.deviceSdk, this.snapshotStore, logger, options);
+        this.chargingAccess = actionOwners.access;
+        this.batteryAppActions = actionOwners.batteryAppActions;
+        this.chargingCurrentControl = actionOwners.chargingCurrentControl;
         // Roles and saved current choices are resolved by their owning services.
         this.sources = createDeviceParseSources(options, this, this.chargingCurrentControl);
         this.runtimeConfiguration = new RuntimeDeviceConfiguration(options.settings, this, this.snapshotStore);
@@ -276,6 +276,7 @@ export class DeviceTransport {
             options.observedStateDispatcher,
             this.observationProducers.temperature,
         );
+        this.writeService = this.createWriteService();
         this.powerState = {
             ...powerState,
             lastEstimateDecisionLogByDevice: createEstimateDecisionLogState(),
@@ -311,9 +312,8 @@ export class DeviceTransport {
             this.retainedPower,
             this.logger,
             this.chargingCurrentControl,
+            this.batteryAppActions,
         );
-        // After the reader: writes share its battery action host.
-        this.writeService = this.createWriteService();
         this.refreshService = new SnapshotRefreshService(
             this.refreshState,
             snapshotCommit,
