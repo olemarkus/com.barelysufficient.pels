@@ -754,5 +754,8 @@
   },
   "3.29.0": {
     "en": "Chargers can now use Automatic control, where PELS determines the charging levels from the charger's own settings: Zaptec from its published power range, Easee from its phase, grid and current limits, and Enua from its current range. Existing setups keep their manual model, and a recommendation lets you review Automatic. An Easee charger without a charging model now uses Automatic and steps its charging current.\n\nYou can now set default charging current limits for a charger, and limits for each car in the charger's Car section. A car's limits follow it to every charger where PELS identifies it, and a car without a Homey device uses the charger's default."
+  },
+  "3.29.1": {
+    "en": "A Zaptec charger added in Homey with Zaptec app 1.12 now charges under Automatic control. Before, PELS could leave it waiting to resume without setting its power level."
   }
 }
