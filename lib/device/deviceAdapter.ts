@@ -1,7 +1,7 @@
 import type { HubHomeLocation } from './hubHomeLocation';
 import type { ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
-import type { DeviceControlAdapterSnapshot, SteppedLoadProfile, SteppedLoadStep,
-  TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
+import type { DeviceControlAdapterSnapshot, HomeBatteryClaimCapabilityId, HomeBatteryClaimRejection,
+  SteppedLoadProfile, SteppedLoadStep, TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
 import type { TargetPowerConfigWithReachability } from './targetPowerReachability';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceCapabilityMap } from './managerControl';
@@ -74,6 +74,47 @@ export type NativeCurrentControl = {
   stepObservations(profile: SteppedLoadProfile, capabilities: DeviceCapabilityMap): readonly string[];
 };
 
+/**
+ * A claim capability a home battery's app offers: the value that hands the
+ * battery to Homey (and so to PELS), and what a write the app rejected means
+ * (`HomeBatteryControlSurface` claim `rejection`).
+ */
+export type HomeBatteryClaimBinding = {
+  capabilityId: HomeBatteryClaimCapabilityId;
+  homeyValue: string;
+  rejection: HomeBatteryClaimRejection;
+};
+
+/** The `target_power` edges a driver leaves out are read as these, W, in the app's own sign. */
+export type TargetPowerDefaults = { minW: number; maxW: number; stepW: number };
+
+/**
+ * How PELS drives a home battery, as its integration states it
+ * (`notes/battery-vendor-bindings.md`). Common transport resolves the control
+ * surface and the storage writes against it and names no app.
+ *
+ * `capability`: a writable signed `target_power`, taken over through the
+ * first claim capability in `claims` that the battery declares setable with
+ * its Homey value.
+ * - `setpointSign`: `1` when a positive `target_power` charges (Homey's sign),
+ *   `-1` when the app reads a positive value as discharge. PELS's own sign
+ *   (positive charges) is kept everywhere above the transport; the declared
+ *   range is flipped into it at parse and each setpoint back out at write.
+ *   `measure_power` is not part of the binding: Homey's sign (positive
+ *   charging) is what every battery app reports there.
+ * - `rangeDefaults`: the edges read for a driver that declares none.
+ * - `zeroSetpointW`: what PELS writes, in its own sign, for a 0 W setpoint:
+ *   `0`, unless the app reads an exact 0 as one of its own modes. A hand-back
+ *   still writes an exact 0.
+ */
+export type HomeBatteryBinding = {
+  kind: 'capability';
+  claims: readonly HomeBatteryClaimBinding[];
+  setpointSign: 1 | -1;
+  rangeDefaults: TargetPowerDefaults;
+  zeroSetpointW: number;
+};
+
 /** The host owns I/O; an integration owns the meaning of its reads and writes. */
 export type DeviceAdapter = {
   matches(device: HomeyDeviceLike): boolean;
@@ -104,6 +145,8 @@ export type DeviceAdapter = {
   phaseReport(device: HomeyDeviceLike): ChargerPhaseReport;
   currentBindings(device: HomeyDeviceLike): ChargingCurrentBinding[];
   nativeCurrentControls: readonly NativeCurrentControl[];
+  /** How PELS drives this device when it is a home battery; read only for a battery. */
+  homeBatteryBinding(device: HomeyDeviceLike): HomeBatteryBinding;
   readBackAfterWrite: boolean;
   /** Whether standard production-cap writes are suitable for repeated live control. */
   supportsProductionLimits: boolean;

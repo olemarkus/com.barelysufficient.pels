@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   resolveBatteryControlSurface,
+  toBatterySetpointCapabilityValue,
   toTargetPowerCapabilityValue,
 } from '../../lib/device/batteryControlWiring';
+import { getDeviceAdapter } from '../../lib/device/deviceAdapterRegistry';
 import type { HomeBatterySetpointRange } from '../../packages/contracts/src/types';
 import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
@@ -136,6 +138,47 @@ describe('resolveBatteryControlSurface', () => {
     );
 
     expect(surface).toEqual({ kind: 'observe_only', reason: 'no_claim_capability' });
+  });
+
+  it('reads an Anker SOLIX range in PELS\'s sign: its app\'s positive target_power discharges', () => {
+    const surface = resolveBatteryControlSurface(
+      device({ driverId: 'homey:app:com.anker.solix:battery' }),
+      ['measure_battery', 'measure_power', 'target_power', 'target_power_mode'],
+      capabilityMap({
+        // Asymmetric here (the app sets ±max(limits)) to show which edge is which.
+        target_power: { value: 0, setable: true, min: -5000, max: 3000, step: 100, excludeMin: -200, excludeMax: 100 },
+        target_power_mode: { value: 'self_consumption', setable: true, values: enumValues('homey', 'self_consumption') },
+      }),
+    );
+
+    expect(surface).toEqual({
+      kind: 'setpoint',
+      claim: {
+        capabilityId: 'target_power_mode',
+        homeyValue: 'homey',
+        values: ['homey', 'self_consumption'],
+        rejection: 'unanswered',
+      },
+      // App -5000 (charges 5 kW) is PELS +5000; app +3000 (discharges 3 kW) is PELS -3000.
+      range: { minW: -3000, maxW: 5000, stepW: 100, excludeMinW: -100, excludeMaxW: 200 },
+    });
+  });
+
+  it('classifies a Zinvolt as Homey\'s standard binding with its declared range', () => {
+    const surface = resolveBatteryControlSurface(
+      device({ driverId: 'homey:app:com.zinvolt:power' }),
+      ['measure_battery', 'measure_power', 'target_power', 'target_power_mode'],
+      capabilityMap({
+        target_power: { value: 0, setable: true, min: -800, max: 2000, step: 10 },
+        target_power_mode: { value: 'SELF_USE', setable: true, values: enumValues('homey', 'INACTIVE', 'SELF_USE') },
+      }),
+    );
+
+    expect(surface).toMatchObject({
+      kind: 'setpoint',
+      claim: { capabilityId: 'target_power_mode', homeyValue: 'homey', rejection: 'unanswered' },
+      range: { minW: -800, maxW: 2000, stepW: 10, excludeMinW: 0, excludeMaxW: 0 },
+    });
   });
 
   it('keeps a HomeWizard-like battery with no target_power observe-only', () => {
@@ -275,5 +318,31 @@ describe('toTargetPowerCapabilityValue', () => {
     setpointW, range: setpointRange, expected,
   }) => {
     expect(toTargetPowerCapabilityValue(setpointW, setpointRange)).toBe(expected);
+  });
+});
+
+describe('toBatterySetpointCapabilityValue', () => {
+  const bindingOf = (driverId: string) => {
+    const battery = device({ driverId });
+    return getDeviceAdapter(battery).homeBatteryBinding(battery);
+  };
+
+  it.each([
+    // Homey's sign: written as PELS asks.
+    { driverId: 'homey:app:com.marstek:venus', setpointW: 1500, expected: 1500 },
+    { driverId: 'homey:app:com.marstek:venus', setpointW: -800, expected: -800 },
+    { driverId: 'homey:app:com.marstek:venus', setpointW: 0, expected: 0 },
+    { driverId: 'homey:app:nl.sessy:sessy', setpointW: -1200, expected: -1200 },
+    { driverId: 'homey:app:nl.sessy:sessy', setpointW: 0, expected: 0 },
+    // Anker SOLIX: its positive target_power discharges, so PELS's charge is negative there.
+    { driverId: 'homey:app:com.anker.solix:battery', setpointW: 1500, expected: -1500 },
+    { driverId: 'homey:app:com.anker.solix:battery', setpointW: -800, expected: 800 },
+    { driverId: 'homey:app:com.anker.solix:battery', setpointW: 0, expected: 0 },
+    // Zinvolt: an exact 0 would switch it to its own Inactive mode, so a 0 W hold is its 10 W step.
+    { driverId: 'homey:app:com.zinvolt:power', setpointW: 0, expected: 10 },
+    { driverId: 'homey:app:com.zinvolt:base', setpointW: 600, expected: 600 },
+    { driverId: 'homey:app:com.zinvolt:power', setpointW: -400, expected: -400 },
+  ])('writes $setpointW W to $driverId as $expected', ({ driverId, setpointW, expected }) => {
+    expect(Object.is(toBatterySetpointCapabilityValue(bindingOf(driverId), setpointW), expected)).toBe(true);
   });
 });

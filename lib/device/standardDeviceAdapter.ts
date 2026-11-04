@@ -1,4 +1,5 @@
 import type { DeviceAdapter, DeviceAdapterSession, SwitchWrite } from './deviceAdapter';
+import { STANDARD_HOME_BATTERY_BINDING } from './homeBatteryBinding';
 
 const unrestrictedSession: DeviceAdapterSession = {
   observeDevice() {}, observeCapability() {}, retainDevices() {}, withheldCapabilities: () => [], setTrustEpoch() {},
@@ -27,7 +28,8 @@ export const standardDeviceAdapter: DeviceAdapter = {
   finalizeObservation: (_control, _capabilities, values) => values,
   readRules: () => ({}), retainsPlugObservation: () => false,
   phaseReport: () => ({ kind: 'not_reported' }), currentBindings: () => [],
-  nativeCurrentControls: [], readBackAfterWrite: true, supportsProductionLimits: true,
+  nativeCurrentControls: [], homeBatteryBinding: () => STANDARD_HOME_BATTERY_BINDING,
+  readBackAfterWrite: true, supportsProductionLimits: true,
   switchWrite: (snapshot, request): SwitchWrite => ({
     kind: 'write',
     write: { ...request, capabilityId: snapshot.binaryWriteCapabilityId ?? request.capabilityId },

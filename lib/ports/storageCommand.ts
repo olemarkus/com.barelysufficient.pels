@@ -5,9 +5,10 @@
  * may import no peer, can name what it dispatches; the actuator's
  * `DeviceCommand` union includes both.
  *
- * Neither names a capability: the claim capability, its Homey value and the
- * `target_power` range are the transport's private binding, resolved from the
- * battery's control surface.
+ * Neither names a capability: the claim capability, its Homey value, the
+ * `target_power` range and the app's own sign are the transport's private
+ * binding, resolved from the battery's integration (`homeBatteryBinding`) and
+ * its control surface. `setpointW` is always PELS's sign.
  */
 export type StoragePowerCommand = {
   kind: 'storage_power';
