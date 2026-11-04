@@ -751,5 +751,8 @@
   },
   "3.28.7": {
     "en": "The warning that a device doesn't keep PELS's changes now tells PELS's own changes apart from what the device reports, so a device that is only slow to answer no longer triggers it. The warning now shows the value PELS set and the value the device reported. A device with one capability that reports an unexpected value, such as some heat pumps, now stays available in PELS with its other readings.\n\nAn Easee charger whose car is full no longer starts a new charging session at full current when PELS resumes it. PELS no longer takes over the power target of Zaptec chargers that share an installation, since every charger on it follows that target. Missing a device? is now a card at the end of Devices, and Request support lists the devices PELS does not support."
+  },
+  "3.29.0": {
+    "en": "Chargers can now use Automatic control, where PELS determines the charging levels from the charger's own settings: Zaptec from its published power range, Easee from its phase, grid and current limits, and Enua from its current range. Existing setups keep their manual model, and a recommendation lets you review Automatic. An Easee charger without a charging model now uses Automatic and steps its charging current.\n\nYou can now set default charging current limits for a charger, and limits for each car in the charger's Car section. A car's limits follow it to every charger where PELS identifies it, and a car without a Homey device uses the charger's default."
   }
 }
