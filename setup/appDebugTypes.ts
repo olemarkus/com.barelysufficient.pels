@@ -133,9 +133,7 @@ export type PelsObservedSourceSummary = {
   fetchSource?: string;
   capabilityId?: string;
   value?: unknown;
-  localEcho?: boolean;
   observedControlStateChanged?: boolean;
-  preservedLocalState?: boolean;
   changes?: Array<{
     capabilityId: string;
     previousValue: string;

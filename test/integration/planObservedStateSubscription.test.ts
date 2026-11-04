@@ -77,7 +77,7 @@ describe('subscribePlanObservedState', () => {
     } as unknown as PlanService;
     subscribePlanObservedState({ ...deps, observedStateEmitter: deps.emitter });
 
-    deps.emitter.emitObservedControlStateChanged({ deviceId: 'heater-1' });
+    deps.emitter.emitObservedControlStateChanged({ pelsEcho: false, deviceId: 'heater-1' });
 
     expect(deps.syncExternalOffHold).toHaveBeenCalledTimes(1);
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
@@ -91,7 +91,7 @@ describe('subscribePlanObservedState', () => {
     deps.canDeviceChangeActionableLoad.mockReturnValue(true);
     subscribePlanObservedState({ ...deps, observedStateEmitter: deps.emitter });
 
-    deps.emitter.emitObservedControlStateChanged({ deviceId: 'heater-1' });
+    deps.emitter.emitObservedControlStateChanged({ pelsEcho: false, deviceId: 'heater-1' });
 
     expect(deps.canDeviceChangeActionableLoad).toHaveBeenCalledWith('heater-1');
     expect(deps.invalidateRebuildSuppression).toHaveBeenCalledWith('heater-1');
@@ -101,7 +101,7 @@ describe('subscribePlanObservedState', () => {
     const deps = buildDeps({ syncLivePlanState: vi.fn() } as unknown as PlanService);
     subscribePlanObservedState({ ...deps, observedStateEmitter: deps.emitter });
 
-    deps.emitter.emitObservedControlStateChanged({ deviceId: 'heater-1' });
+    deps.emitter.emitObservedControlStateChanged({ pelsEcho: false, deviceId: 'heater-1' });
     deps.emitter.emitObservedStateChanged({
       deviceId: 'heater-1', source: 'realtime_capability', measurePowerBecameSignificantlyPositive: true,
     });

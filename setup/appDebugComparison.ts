@@ -101,12 +101,8 @@ const buildObservedSourceSummary = (
     ...(source.fetchSource ? { fetchSource: source.fetchSource } : {}),
     ...(source.capabilityId ? { capabilityId: source.capabilityId } : {}),
     ...(Object.prototype.hasOwnProperty.call(source, 'value') ? { value: source.value } : {}),
-    ...(typeof source.localEcho === 'boolean' ? { localEcho: source.localEcho } : {}),
     ...(typeof source.observedControlStateChanged === 'boolean'
       ? { observedControlStateChanged: source.observedControlStateChanged }
-      : {}),
-    ...(typeof source.preservedLocalState === 'boolean'
-      ? { preservedLocalState: source.preservedLocalState }
       : {}),
     ...(source.changes ? { changes: source.changes.map((change) => ({ ...change })) } : {}),
   };

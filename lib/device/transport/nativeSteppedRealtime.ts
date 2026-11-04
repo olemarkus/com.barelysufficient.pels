@@ -57,6 +57,7 @@ function emitNativeSteppedLoadReportedStepChanged(
     snapshot: TransportDeviceSnapshot,
     previousReportedStepId: string | undefined,
     nextReportedStepId: string | undefined,
+    pelsEcho: boolean,
 ): void {
     const { id: deviceId, name: deviceName } = snapshot;
     const change = {
@@ -81,6 +82,7 @@ function emitNativeSteppedLoadReportedStepChanged(
     });
     const cursor = dispatchRealtimeObservation(ingest, deviceId, PELS_MEASURE_STEP_CAPABILITY_ID);
     ingest.observationBridge.dispatchControlStateChanged({
+        pelsEcho,
         deviceId,
         ...cursor,
         name: deviceName,
@@ -104,6 +106,7 @@ function applyNativeSteppedLoadSnapshotUpdate(
     nextReportedStepId: string | undefined,
     isNativePowerStepUpdate: boolean,
     reportedStepPowerW: number | undefined,
+    pelsEcho: boolean,
 ): void {
     const deviceId = currentSnapshot.id;
     const previousReportedStepId = currentSnapshot.reportedStepId;
@@ -127,7 +130,9 @@ function applyNativeSteppedLoadSnapshotUpdate(
     }
     ingest.publishDeviceConfiguration(deviceId);
     if (reportedStepChanged) {
-        emitNativeSteppedLoadReportedStepChanged(ingest, currentSnapshot, previousReportedStepId, nextReportedStepId);
+        emitNativeSteppedLoadReportedStepChanged(
+            ingest, currentSnapshot, previousReportedStepId, nextReportedStepId, pelsEcho,
+        );
     }
     const exactPowerObservationChanged = isNativePowerStepUpdate && (
         previousReportedStepPowerW !== reportedStepPowerW
@@ -201,7 +206,9 @@ function observeNativeTargetPowerMode(
     const adapters = ingest.reader.snapshotStore.nativeSteppedAdapters;
     adapters.observeCapabilityUpdate(snapshot.id, 'target_power_mode', value);
     const reportedStepId = adapters.getReportedStepId(snapshot.id, profile, snapshot.targetPowerConfig);
-    applyNativeSteppedLoadSnapshotUpdate(ingest, snapshot, 'target_power_mode', reportedStepId, false, undefined);
+    applyNativeSteppedLoadSnapshotUpdate(
+        ingest, snapshot, 'target_power_mode', reportedStepId, false, undefined, false,
+    );
 }
 
 /** `pelsEcho`: Homey's echo of PELS's own write (`handleRealtimeCapabilityUpdate`). */
@@ -262,7 +269,7 @@ export function handleNativeSteppedLoadCapabilityUpdate(
         ?? fallbackReportedStepId;
 
     applyNativeSteppedLoadSnapshotUpdate(
-        ingest, snapshot, capabilityId, nextReportedStepId, isNativePowerStepUpdate, reportedStepPowerW,
+        ingest, snapshot, capabilityId, nextReportedStepId, isNativePowerStepUpdate, reportedStepPowerW, pelsEcho,
     );
     return isNativePowerStepUpdate;
 }
@@ -310,7 +317,7 @@ export function handleTargetPowerSourceCapabilityUpdate(
         { target_power: { value: targetPowerW } },
     );
     recordRealtimeObservation(ingest, snapshot.id, capabilityId, value, true);
-    applyNativeSteppedLoadSnapshotUpdate(ingest, snapshot, capabilityId, nextReportedStepId, true, targetPowerW);
+    applyNativeSteppedLoadSnapshotUpdate(ingest, snapshot, capabilityId, nextReportedStepId, true, targetPowerW, false);
     return true;
 }
 

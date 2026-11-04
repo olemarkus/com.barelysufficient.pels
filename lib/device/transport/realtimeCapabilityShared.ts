@@ -1,7 +1,7 @@
 /**
  * Low-level shared helpers for the realtime capability-update pipeline:
- * value normalization, capability classification, echo-suppression lookup, the
- * windowed debug emission, and the record-and-dispatch steps every accepted
+ * value normalization, capability classification, windowed debug emission,
+ * and the record-and-dispatch steps every accepted
  * report ends with. Kept in their own module so the native stepped-load
  * handlers and the main capability handler can both depend on them without a
  * cyclic import.
@@ -66,6 +66,7 @@ export function dispatchRealtimeDrift(
     cursor: ObservationCursor,
     capabilityId: string,
     changes: NonNullable<ObservedControlStateChangedEvent['changes']>,
+    pelsEcho: boolean,
 ): void {
     moduleLogger.info({
         event: 'realtime_capability_drift',
@@ -74,6 +75,7 @@ export function dispatchRealtimeDrift(
         changes,
     });
     ingest.observationBridge.dispatchControlStateChanged({
+        pelsEcho,
         deviceId: snapshot.id,
         ...cursor,
         name: snapshot.name,

@@ -12,15 +12,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { connectLiveFeed, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
+import { connectLiveFeed, emitDeviceUpdate, emitCapability } from '../helpers/liveFeedSocketHarness';
 import {
   PER_DEVICE_EXTERNAL_OFF_HOLD_KEY_PREFIX,
   RESPECT_EXTERNAL_OFF_DEVICES,
 } from '../../lib/utils/settingsKeys';
 
+import type { DeviceTransport } from '../../lib/device/deviceTransport';
+
 const DEVICE = 'heater-1';
 
 type AppLike = {
+  deviceManager: DeviceTransport;
   onInit: () => Promise<void>;
   externalOffHold?: { isHeld: (deviceId: string) => boolean };
 };
@@ -101,6 +104,31 @@ describe('external-off hold — realtime lifecycle', () => {
 
     expect(app.externalOffHold?.isHeld(DEVICE)).toBe(true);
     expect(heldDeviceIds()).toEqual([DEVICE]);
+  });
+
+  it('observes a delayed PELS OFF echo without creating an outside-off hold', async () => {
+    const app = await startApp(true);
+    // Leave the observed switch ON until Homey's echo arrives. No executor
+    // pending record can attribute the late change on the detector's behalf.
+    const write = vi.spyOn(MockDevice.prototype, 'setCapabilityValue').mockResolvedValue(undefined);
+    await app.deviceManager.setCapability(DEVICE, 'onoff', false);
+    const transactionId = write.mock.calls.at(-1)?.[2];
+    expect(transactionId).toMatch(/^pels-/);
+    vi.setSystemTime(Date.now() + 120_000);
+    await emitCapability(DEVICE, 'onoff', false, transactionId);
+
+    expect(app.deviceManager.getSnapshotByDeviceId(DEVICE)?.binaryControl?.on).toBe(false);
+    expect(app.externalOffHold?.isHeld(DEVICE)).toBe(false);
+    expect(heldDeviceIds()).toEqual([]);
+
+    // A separate OFF still has its normal meaning after that echo.
+    await emitCapability(DEVICE, 'onoff', true);
+    await emitCapability(DEVICE, 'onoff', false);
+    expect(app.externalOffHold?.isHeld(DEVICE)).toBe(true);
+
+    await app.deviceManager.setCapability(DEVICE, 'onoff', true);
+    await emitCapability(DEVICE, 'onoff', true, write.mock.calls.at(-1)?.[2]);
+    expect(app.externalOffHold?.isHeld(DEVICE)).toBe(false);
   });
 
   it('starts no hold for a device that has not opted in', async () => {

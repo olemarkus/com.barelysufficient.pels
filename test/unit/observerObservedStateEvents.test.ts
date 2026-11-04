@@ -44,6 +44,7 @@ describe('ObservedStateEmitter', () => {
     emitter.onObservedControlStateChanged(listener);
 
     const event: ObservedControlStateChangedEvent = {
+      pelsEcho: false,
       deviceId: 'dev-2',
       observationSeq: 3,
       observedAtMs: 200,
@@ -71,7 +72,7 @@ describe('ObservedStateEmitter', () => {
       source: 'device_update',
       deviceId: 'dev-3',
     });
-    emitter.emitObservedControlStateChanged({
+    emitter.emitObservedControlStateChanged({ pelsEcho: false,
       deviceId: 'dev-3',
     });
 

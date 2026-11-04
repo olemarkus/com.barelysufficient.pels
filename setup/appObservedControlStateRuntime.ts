@@ -56,6 +56,7 @@ export function syncExternalOffHoldForObservation(
   if (!ctx.externalOffHold) return;
   const subHomeHooks = router?.getOwningHomeRouteForDevice(event.deviceId)?.hooks;
   syncExternalOffHoldForDevice({
+    pelsEcho: event.pelsEcho,
     deps: {
       policy: ctx.externalOffHold,
       ...buildExternalOffHoldHooks(ctx, subHomeHooks),

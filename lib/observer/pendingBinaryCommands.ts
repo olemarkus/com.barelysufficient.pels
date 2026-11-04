@@ -150,8 +150,8 @@ export class PendingBinaryCommandStore {
    * Preserve telemetry-confirmed PELS actuation provenance after pending is
    * cleared. This covers later duplicate/reordered OFF observations. It is
    * deliberately never created from request acceptance alone: after the
-   * pending window, an unconfirmed OFF is indistinguishable from a user's
-   * manual action and must remain eligible to start an external-off hold.
+   * pending window, an unconfirmed OFF without transaction attribution is
+   * indistinguishable from a user's manual action and must remain eligible to start an external-off hold.
    */
   recordConfirmedBinaryCommand(deviceId: string, desired: boolean, confirmedAtMs = Date.now()): void {
     const current = this.recentConfirmedOffByDevice.get(deviceId);

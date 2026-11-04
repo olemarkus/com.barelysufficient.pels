@@ -12,8 +12,6 @@ const OWN_WRITE_ECHO_WAIT_MS = 10 * 60 * 1000;
 export type OwnCapabilityWrite = {
   transactionId: string;
   deviceId: string;
-  /** The capability PELS was asked to set. */
-  requestedCapabilityId: string;
   /** The capability the write reached Homey on, which its echo carries. */
   writtenCapabilityId: string;
   sentAtMs: number;
@@ -31,7 +29,6 @@ export class OwnCapabilityWrites {
 
   begin(
     deviceId: string,
-    requestedCapabilityId: string,
     writtenCapabilityId: string,
     nowMs: number,
   ): OwnCapabilityWrite {
@@ -39,7 +36,6 @@ export class OwnCapabilityWrites {
     const write: OwnCapabilityWrite = {
       transactionId: `pels-${randomUUID()}`,
       deviceId,
-      requestedCapabilityId,
       writtenCapabilityId,
       sentAtMs: nowMs,
     };

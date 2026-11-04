@@ -232,7 +232,7 @@ export class DeviceWriteService {
     }
     incPerfCounter('device_action_total');
     incPerfCounter(`device_action.capability.${capabilityId}`);
-    const ownWrite = this.observationState.ownWrites.begin(deviceId, capabilityId, write.capabilityId, Date.now());
+    const ownWrite = this.observationState.ownWrites.begin(deviceId, write.capabilityId, Date.now());
     emitCapabilityWriteDebug(
         'device_capability_write_requested',
         deviceId,
@@ -256,7 +256,6 @@ export class DeviceWriteService {
             deviceId,
             capabilityId,
             value: normalizedValue,
-            preservedLocalState: false,
         });
     }
     // The accepted write publishes no observed value of its own. Publish the

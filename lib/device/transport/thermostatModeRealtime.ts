@@ -80,6 +80,7 @@ export function handleThermostatModeCapabilityUpdate(
         capabilityId,
     });
     dispatchObservedControlStateChanged({
+        pelsEcho: false,
         deviceId: snapshot.id,
         ...cursor,
         name: snapshot.name,

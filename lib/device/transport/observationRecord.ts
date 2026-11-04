@@ -26,7 +26,6 @@ export function recordLocalWriteObservation(params: {
     deviceId: string;
     capabilityId: string;
     value: unknown;
-    preservedLocalState: boolean;
 }): void {
     const {
         state,
@@ -34,7 +33,6 @@ export function recordLocalWriteObservation(params: {
         deviceId,
         capabilityId,
         value,
-        preservedLocalState,
     } = params;
     const observedAt = Date.now();
     const sources = getOrCreateDebugObservedSources(state, deviceId);
@@ -44,7 +42,6 @@ export function recordLocalWriteObservation(params: {
         snapshot: buildCurrentDebugSnapshot(latestSnapshot, deviceId),
         capabilityId,
         value,
-        preservedLocalState,
     };
     recordCapabilityObservation({
         state,
