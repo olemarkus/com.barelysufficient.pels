@@ -637,7 +637,7 @@ describe('external-off hold — real configuration and Observer reads', () => {
     const ctx = await buildParsedCtx();
     syncExternalOffHoldForObservation(
       ctx,
-      { deviceId: CHARGER_ID, capabilityId: 'evcharger_charging', changes: EV_STATE_OFF_TRANSITION },
+      { pelsEcho: false, deviceId: CHARGER_ID, capabilityId: 'evcharger_charging', changes: EV_STATE_OFF_TRANSITION },
       undefined,
     );
     expect(ctx.externalOffHold?.isHeld(CHARGER_ID)).toBe(false);
@@ -649,7 +649,7 @@ describe('external-off hold — real configuration and Observer reads', () => {
     const ctx = await buildParsedCtx();
     syncExternalOffHoldForObservation(
       ctx,
-      { deviceId: CHARGER_ID, capabilityId: 'evcharger_charging', changes: EV_OFF_TRANSITION },
+      { pelsEcho: false, deviceId: CHARGER_ID, capabilityId: 'evcharger_charging', changes: EV_OFF_TRANSITION },
       undefined,
     );
     expect(ctx.externalOffHold?.isHeld(CHARGER_ID)).toBe(true);
@@ -659,7 +659,7 @@ describe('external-off hold — real configuration and Observer reads', () => {
     const ctx = await buildParsedCtx();
     syncExternalOffHoldForObservation(
       ctx,
-      { deviceId: SOCKET_ID, capabilityId: 'onoff', changes: OFF_TRANSITION },
+      { pelsEcho: false, deviceId: SOCKET_ID, capabilityId: 'onoff', changes: OFF_TRANSITION },
       undefined,
     );
     expect(ctx.externalOffHold?.isHeld(SOCKET_ID)).toBe(true);
