@@ -7,7 +7,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Homey from 'homey';
 import { createTestDeviceTransport, seedTransportDevices } from '../helpers/deviceTransportHarness';
-import { buildMarstekConnectorBatteryDevice, buildSigenergyDevices } from '../helpers/homeBatteryMock';
+import {
+  buildHuaweiLuna2000Device, buildMarstekConnectorBatteryDevice, buildSigenergyDevices, buildZendureLocalBatteryDevice,
+} from '../helpers/homeBatteryMock';
 import { mockHomeyInstance, MockDriver, setMockDrivers, type MockDevice } from '../mocks/homey';
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
 import type { HomeyFlowAction } from '../../lib/device/transport/homeyActionAccess';
@@ -28,6 +30,12 @@ const SIGENERGY_CARDS = [
   'force_charge_from_grid', 'set_ess_max_discharge_power', 'set_remote_ems_control_mode', 'set_remote_ems',
   'remove_ess_charge_limit', 'remove_ess_discharge_limit',
 ].map((id) => `${SIGENERGY_APP}:${id}`);
+const ZENDURE_APP = 'homey:app:com.tweakers.zendure';
+const HUAWEI_APP = 'homey:app:com.huawei.fusionsolar';
+const HUAWEI_CARDS = [
+  'luna2000_start_force_charge_duration', 'luna2000_start_force_discharge_duration',
+  'luna2000_stop_force_charge_discharge',
+].map((id) => `${HUAWEI_APP}:${id}`);
 
 type Setup = { transport: DeviceTransport; runs: () => Array<[string, HomeyFlowAction]> };
 
@@ -171,5 +179,61 @@ describe('home battery app actions', () => {
     const { transport } = await setup([battery], SIGENERGY_CARDS);
 
     expect(transport.readBatteryControl('sigen')).toEqual({ kind: 'observe_only' });
+  });
+  it('drives a local Zendure through set-power in the app\'s sign, held until the next command', async () => {
+    const { transport, runs } = await setup([buildZendureLocalBatteryDevice({ id: 'zendure' })], [`${ZENDURE_APP}:set-power`]);
+
+    expect(transport.readBatteryControl('zendure')).toEqual({
+      kind: 'app_actions',
+      range: { minW: -2400, maxW: 2400, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
+      keepAlive: { kind: 'none' },
+    });
+    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'zendure', setpointW: 900 }))
+      .resolves.toEqual({ kind: 'written', setpointW: 900 });
+    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'zendure', setpointW: -3000 }))
+      .resolves.toEqual({ kind: 'written', setpointW: -2400 });
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'zendure', handBack: 'app_actions' });
+
+    const setPower = (power: number): [string, HomeyFlowAction] => [
+      'zendure', { ownerUri: ZENDURE_APP, cardId: `${ZENDURE_APP}:set-power`, args: { device: { id: 'zendure' }, power } },
+    ];
+    expect(runs()).toEqual([setPower(-900), setPower(2400), setPower(0)]);
+  });
+
+  it('drives a LUNA2000 through forced runs kept alive at half their 10 minutes, and stops them to hand back', async () => {
+    const battery = buildHuaweiLuna2000Device({ id: 'luna', maxChargePowerW: 5000, maxDischargePowerW: 4000 });
+    const { transport, runs } = await setup([battery], HUAWEI_CARDS);
+
+    expect(transport.readBatteryControl('luna')).toEqual({
+      kind: 'app_actions',
+      range: { minW: -4000, maxW: 5000, stepW: 100, excludeMinW: 0, excludeMaxW: 0 },
+      keepAlive: { kind: 'resend', everyMs: 300_000 },
+    });
+    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'luna', setpointW: -1234 }))
+      .resolves.toEqual({ kind: 'written', setpointW: -1200 });
+    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'luna', setpointW: 0 }))
+      .resolves.toEqual({ kind: 'written', setpointW: 0 });
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'luna', handBack: 'app_actions' });
+
+    const card = (actionId: string, args: Record<string, unknown> = {}): [string, HomeyFlowAction] => [
+      'luna', { ownerUri: HUAWEI_APP, cardId: `${HUAWEI_APP}:${actionId}`, args: { device: { id: 'luna' }, ...args } },
+    ];
+    expect(runs()).toEqual([
+      card('luna2000_start_force_discharge_duration', { power: 1200, duration: 10 }),
+      card('luna2000_start_force_charge_duration', { power: 0, duration: 10 }),
+      card('luna2000_stop_force_charge_discharge'),
+    ]);
+  });
+
+  it('only watches a LUNA2000 whose max powers the app has not read yet, or without its stop card', async () => {
+    const unread = await setup([buildHuaweiLuna2000Device({ id: 'luna', maxChargePowerW: 0 })], HUAWEI_CARDS);
+    expect(unread.transport.readBatteryControl('luna')).toEqual({ kind: 'observe_only' });
+    vi.restoreAllMocks();
+
+    const noStop = await setup([buildHuaweiLuna2000Device({ id: 'luna' })], HUAWEI_CARDS.slice(0, 2));
+    expect(noStop.transport.readBatteryControl('luna')).toEqual({ kind: 'observe_only' });
+    await expect(noStop.transport.requestStoragePower({ kind: 'storage_power', deviceId: 'luna', setpointW: 500 }))
+      .rejects.toThrow('unavailable');
+    expect(noStop.runs()).toEqual([]);
   });
 });

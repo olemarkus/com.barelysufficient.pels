@@ -285,8 +285,10 @@ Check these, in order:
   to its local login in that app; PELS tries again after six hours or when it
   restarts.
 - **No Homey API key for a battery controlled through its app's Flow cards.**
-  A Marstek Venus on the Marstek Battery Connector app and a Sigenergy system
-  take commands only through their app's Flow cards, which PELS runs with a
+  A Marstek Venus on the Marstek Battery Connector app, a Sigenergy system, a
+  Zendure SolarFlow on the local Zendure app and a Huawei LUNA2000 on the
+  FusionSolar app's Modbus connection take commands only through their app's
+  Flow cards, which PELS runs with a
   Homey API key with **Flow** permission. Its card then reads "PELS can only
   watch it: add a Homey API key to let PELS control it". Create the key with
   [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro) and save it in the **Battery** section of
@@ -294,13 +296,18 @@ Check these, in order:
   Sigenergy app. If the card instead reads "PELS can only watch it: its app
   does not give Homey control", the installed app version lacks a card PELS
   uses, or (Sigenergy) PELS finds no single plant, more than one Sigenergy
-  battery, or the plant has not reported its rated power yet.
+  battery, or the plant has not reported its rated power yet. A LUNA2000 also
+  reads this until the app has read its maximum charge and discharge power, and
+  while either is set to 0.
 - **The battery's app cannot take commands from Homey.** PELS needs an app that
   lets Homey set the battery's charge and discharge power, and offers a Homey or
   API mode. Sessy, Marstek Venus, Anker SOLIX, Zinvolt, AlphaESS, SOLARWATT and SolarEdge
   are examples of batteries whose apps do. Without one,
   the battery's card reads "PELS can only watch it: its app does not give
-  Homey control" and offers no Power-limit control.
+  Homey control" and offers no Power-limit control. A Zendure on the Zendure
+  cloud app reports no battery power, and a LUNA2000 through EMMA or the
+  FusionSolar cloud offers no charge or discharge power control, so PELS
+  watches these.
 
 The card reads `PELS takes over when your limit or solar needs it` when
 everything is set up and PELS simply has no job for the battery right now. Its
