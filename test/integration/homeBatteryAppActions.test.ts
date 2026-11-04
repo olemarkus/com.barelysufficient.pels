@@ -14,6 +14,7 @@ import { mockHomeyInstance, MockDriver, setMockDrivers, type MockDevice } from '
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
 import type { HomeyFlowAction } from '../../lib/device/transport/homeyActionAccess';
 import { HOMEY_FLOW_API_KEY } from '../../lib/device/transport/homeyActionAccess';
+import { CARD_INVENTORY_RETRY_MS } from '../../lib/device/homeBatteryAppActions';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 
 const homeyMock = mockHomeyInstance as unknown as Homey.App;
@@ -74,7 +75,8 @@ describe('home battery app actions', () => {
     expect(transport.readBatteryControl('venus')).toEqual({
       kind: 'app_actions',
       range: { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
-      keepAlive: { kind: 'resend', everyMs: 150_000 },
+      // A third of the app's 300 s passive countdown.
+      keepAlive: { kind: 'resend', everyMs: 100_000 },
     });
   });
 
@@ -117,6 +119,45 @@ describe('home battery app actions', () => {
     expect(runs()).toEqual([]);
   });
 
+  it('still hands back a battery whose command card is missing, and claims it no more', async () => {
+    const { transport, runs } = await setup(
+      [buildMarstekConnectorBatteryDevice({ id: 'venus' })], [`${MARSTEK_APP}:marstek_auto_mode`],
+    );
+
+    expect(transport.readBatteryControl('venus')).toEqual({ kind: 'hand_back_only' });
+    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'venus', setpointW: 500 }))
+      .rejects.toThrow('action_card_missing:marstek_passive_mode');
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'venus', handBack: 'app_actions' });
+
+    expect(runs()).toEqual([
+      ['venus', { ownerUri: MARSTEK_APP, cardId: `${MARSTEK_APP}:marstek_auto_mode`, args: { device: { id: 'venus' } } }],
+    ]);
+  });
+
+  it('reads the card inventory again a minute after a read that lacked a bound battery\'s card', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const cards = [`${MARSTEK_APP}:marstek_auto_mode`];
+      const battery = buildMarstekConnectorBatteryDevice({ id: 'venus' });
+      const { transport } = await setup([battery], cards);
+      const inventoryReads = () => vi.mocked(mockHomeyInstance.api.get).mock.calls
+        .filter(([path]) => path === 'manager/flow/flowcardaction').length;
+      expect(transport.readBatteryControl('venus')).toEqual({ kind: 'hand_back_only' });
+      const readsBefore = inventoryReads();
+      const raw = [battery.toHomeyApiDevice() as HomeyDeviceLike];
+
+      transport.batteryAppActions.observeDevices(raw, Date.now() + CARD_INVENTORY_RETRY_MS - 1);
+      expect(inventoryReads()).toBe(readsBefore);
+      // The app finished starting: its passive-mode card is installed now.
+      cards.push(`${MARSTEK_APP}:marstek_passive_mode`);
+      transport.batteryAppActions.observeDevices(raw, Date.now() + CARD_INVENTORY_RETRY_MS);
+      await vi.waitFor(() => expect(transport.readBatteryControl('venus')).toMatchObject({ kind: 'app_actions' }));
+      expect(inventoryReads()).toBe(readsBefore + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('reads a battery as not observed yet until the card inventory has been read', async () => {
     setMockDrivers({ batteries: new MockDriver('batteries', [buildMarstekConnectorBatteryDevice({ id: 'venus' })]) });
     const original = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
@@ -134,7 +175,7 @@ describe('home battery app actions', () => {
   it('refuses a claim-value hand-back for a battery driven through its app\'s actions', async () => {
     const { transport, runs } = await setup([buildMarstekConnectorBatteryDevice({ id: 'venus' })], MARSTEK_CARDS);
 
-    await expect(transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'venus', restoreClaimValue: 'x' }))
+    await expect(transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'venus', handBack: 'claim_capability', restoreClaimValue: 'x' }))
       .rejects.toThrow('does not match');
     expect(runs()).toEqual([]);
   });
@@ -200,14 +241,14 @@ describe('home battery app actions', () => {
     expect(runs()).toEqual([setPower(-900), setPower(2400), setPower(0)]);
   });
 
-  it('drives a LUNA2000 through forced runs kept alive at half their 10 minutes, and stops them to hand back', async () => {
+  it('drives a LUNA2000 through forced runs kept alive at a third of their 10 minutes, and stops them to hand back', async () => {
     const battery = buildHuaweiLuna2000Device({ id: 'luna', maxChargePowerW: 5000, maxDischargePowerW: 4000 });
     const { transport, runs } = await setup([battery], HUAWEI_CARDS);
 
     expect(transport.readBatteryControl('luna')).toEqual({
       kind: 'app_actions',
       range: { minW: -4000, maxW: 5000, stepW: 100, excludeMinW: 0, excludeMaxW: 0 },
-      keepAlive: { kind: 'resend', everyMs: 300_000 },
+      keepAlive: { kind: 'resend', everyMs: 200_000 },
     });
     await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'luna', setpointW: -1234 }))
       .resolves.toEqual({ kind: 'written', setpointW: -1200 });

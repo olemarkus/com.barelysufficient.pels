@@ -27,7 +27,10 @@
  *   silent the plan rebuilds no more, nothing is re-sent, and the app's own
  *   countdown hands the battery back even if PELS's hand-back cannot reach it.
  *   A re-send keeps the setpoint's verification where it is: it is the same
- *   command, not a new one to judge.
+ *   command, not a new one to judge. One that fails is tried again
+ *   `KEEP_ALIVE_RETRY_MS` later rather than a whole interval later, so with
+ *   re-sends at a third of the app's countdown, a failed one still has
+ *   several tries before the countdown runs out.
  * - **Release.** A release decision hands the battery back through its owner
  *   (`releaseClaim`), which restores the claim value it recorded. Capacity
  *   simulation dispatches nothing, and the planner decides nothing for a
@@ -65,7 +68,9 @@
 import type { Actuator } from '../actuator/deviceActuator';
 import { getLogger } from '../logging/logger';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
-import type { BatteryControlOwner, BatteryLeverRead, BatterySetpointOutcome } from '../ports/batteryControlOwner';
+import type {
+  BatteryCommandKeepAlive, BatteryControlOwner, BatteryLeverRead, BatterySetpointOutcome,
+} from '../ports/batteryControlOwner';
 import type { HomeBatteryPowerObservation } from '../../packages/contracts/src/types';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { resolveLatchedMeterReading, type LatchedMeterReading } from '../power/lastTotalPower';
@@ -129,8 +134,12 @@ type StorageCommandRecord = {
   setpointW: number;
   stepW: number;
   issuedAtMs: number;
-  /** When this setpoint was last sent, its first send or the latest keep-alive re-send. */
-  sentAtMs: number;
+  /**
+   * When this setpoint is next due to be sent again (`keepAlive: resend`): an
+   * interval after its last send, or `KEEP_ALIVE_RETRY_MS` after a re-send
+   * that failed. Never due for a battery that holds a setpoint until the next.
+   */
+  keepAliveDueAtMs: number;
   /** First unanswered send: replacement decisions cannot postpone failure forever. */
   unansweredSinceMs: number;
   /** The battery's own signed power when the setpoint went out, W. */
@@ -186,9 +195,19 @@ const isBlockedVerdict = (control: SetpointLever): boolean => (
   control.verdict === 'not_responding' || control.verdict === 'sign_inverted'
 );
 
+/** How soon a keep-alive re-send that failed is tried again, at most the battery's own re-send interval. */
+export const KEEP_ALIVE_RETRY_MS = 20_000;
+
 /** Whether the setpoint in force is due to be sent again before the battery's app lets it run out. */
 const isKeepAliveDue = (record: StorageCommandRecord, control: SetpointLever, nowMs: number): boolean => (
-  control.keepAlive.kind === 'resend' && nowMs - record.sentAtMs >= control.keepAlive.everyMs
+  control.keepAlive.kind === 'resend' && nowMs >= record.keepAliveDueAtMs
+);
+
+/** When a setpoint sent at `nowMs` is next due again, or after `afterMs` when its re-send failed. */
+const nextKeepAliveAtMs = (keepAlive: BatteryCommandKeepAlive, nowMs: number, afterMs?: number): number => (
+  keepAlive.kind === 'resend'
+    ? nowMs + Math.min(afterMs ?? keepAlive.everyMs, keepAlive.everyMs)
+    : Number.POSITIVE_INFINITY
 );
 
 const hasSetpointProgress = (record: StorageCommandRecord, power: HomeBatteryPowerObservation): boolean => (
@@ -327,8 +346,9 @@ export class BatteryExecutor {
       const outcome = await this.owner.dispatchSetpoint(device.id, async () => {
         const baseline = this.readBatteryPower(device.id);
         if (baseline === undefined) return 'skipped';
-        if (keepAlive) this.recordKeepAlive(device.id, Date.now());
-        else this.recordSent(device.id, decision, baseline, Date.now());
+        const sentAtMs = Date.now();
+        if (keepAlive) this.recordKeepAlive(device.id, nextKeepAliveAtMs(control.keepAlive, sentAtMs));
+        else this.recordSent(device.id, decision, baseline, sentAtMs, control.keepAlive);
         const sent = await this.actuator.apply({
           kind: 'storage_power', deviceId: device.id, setpointW: decision.setpointW,
         });
@@ -364,7 +384,11 @@ export class BatteryExecutor {
       return true;
     } catch (error) {
       // Keep a rejected send's baseline: verification bounds retries rather
-      // than issuing the same rejected write on every meter reading.
+      // than issuing the same rejected write on every meter reading. A failed
+      // keep-alive is tried again soon: the app's countdown keeps running.
+      if (keepAlive) {
+        this.recordKeepAlive(device.id, nextKeepAliveAtMs(control.keepAlive, Date.now(), KEEP_ALIVE_RETRY_MS));
+      }
       logger.warn({
         event: 'battery_storage_setpoint_failed', deviceId: device.id, deviceName: device.name,
         setpointW: decision.setpointW, err: normalizeError(error),
@@ -395,13 +419,14 @@ export class BatteryExecutor {
   }
 
   /**
-   * A keep-alive re-send of the setpoint in force: only its send time moves,
-   * stamped before the write so a failed re-send waits out the interval
-   * rather than going out again at every rebuild. Its verification stays.
+   * A keep-alive re-send of the setpoint in force: only when it is next due
+   * moves, set before the write so a re-send still running is not sent again
+   * at the next rebuild, and brought forward when it failed. Its verification
+   * stays.
    */
-  private recordKeepAlive(deviceId: string, nowMs: number): void {
+  private recordKeepAlive(deviceId: string, dueAtMs: number): void {
     const record = this.commands.get(deviceId);
-    if (record !== undefined) this.commands.set(deviceId, { ...record, sentAtMs: nowMs });
+    if (record !== undefined) this.commands.set(deviceId, { ...record, keepAliveDueAtMs: dueAtMs });
   }
 
   /** The whole-home meter's latched reading, or `unavailable` when none is latched. */
@@ -418,6 +443,7 @@ export class BatteryExecutor {
     decision: SetpointDecision,
     power: HomeBatteryPowerObservation,
     nowMs: number,
+    keepAlive: BatteryCommandKeepAlive,
   ): void {
     const meter = this.readMeter();
     const unanswered = this.commands.get(deviceId);
@@ -425,7 +451,7 @@ export class BatteryExecutor {
       setpointW: decision.setpointW,
       stepW: decision.stepW,
       issuedAtMs: nowMs,
-      sentAtMs: nowMs,
+      keepAliveDueAtMs: nextKeepAliveAtMs(keepAlive, nowMs),
       unansweredSinceMs: unanswered?.phase.kind === 'pending' && !hasSetpointProgress(unanswered, power)
         ? unanswered.unansweredSinceMs : nowMs,
       startSignedW: power.signedW,

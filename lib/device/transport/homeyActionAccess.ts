@@ -1,4 +1,4 @@
-import { ChargingAccessError } from './chargingAccessError';
+import { HomeyActionAccessError } from './homeyActionAccessError';
 import type { ChargingAccessStatus } from '../../../packages/contracts/src/chargingControl';
 import type { Logger } from '../../utils/types';
 import type { SettingsPort } from '../../ports/homeyRuntime';
@@ -38,7 +38,7 @@ export type HomeyActionAccessHomey = {
 
 function readKey(value: unknown): string {
   if (typeof value !== 'string' || value.length === 0 || value.length > 4096 || /\s/u.test(value)) {
-    throw new ChargingAccessError('unavailable');
+    throw new HomeyActionAccessError('unavailable');
   }
   return value;
 }
@@ -78,13 +78,13 @@ export class HomeyActionAccess {
   }
 
   async save(body: unknown): Promise<ChargingAccessStatus> {
-    if (!isUnknownRecord(body) || typeof body.key !== 'string') throw new ChargingAccessError('unavailable');
+    if (!isUnknownRecord(body) || typeof body.key !== 'string') throw new HomeyActionAccessError('unavailable');
     const candidate = readKey(body.key.trim());
     this.sync();
     const generation = ++this.generation;
     await this.verify(candidate);
     // Removal or replacement while validation was outstanding wins.
-    if (generation !== this.generation) throw new ChargingAccessError('unavailable');
+    if (generation !== this.generation) throw new HomeyActionAccessError('unavailable');
     this.homey.settings.set(HOMEY_FLOW_API_KEY, candidate);
     this.key = candidate;
     this.accessState = 'ready';
@@ -117,7 +117,7 @@ export class HomeyActionAccess {
     // recover. Recheck on the next planned command; never retry its POST.
     if (this.key && (this.accessState === 'not_checked' || this.accessState === 'unavailable')) await this.check();
     if (!this.key || this.accessState !== 'ready' || this.inFlight.has(deviceId)) {
-      throw new ChargingAccessError(this.accessState === 'permission_denied' ? 'permission_denied' : 'unavailable');
+      throw new HomeyActionAccessError(this.accessState === 'permission_denied' ? 'permission_denied' : 'unavailable');
     }
     const generation = this.generation;
     const path = `manager/flow/flowcardaction/${encodeURIComponent(action.ownerUri)}`
@@ -126,7 +126,7 @@ export class HomeyActionAccess {
       this.key, path, 'POST', { args: action.args }, generation, assertAuthorized,
     ).then((result) => {
       if (result === false || !isUnknownRecord(result) || result.error !== null) {
-        throw new ChargingAccessError('unavailable');
+        throw new HomeyActionAccessError('unavailable');
       }
     });
     this.inFlight.set(deviceId, operation);
@@ -136,11 +136,11 @@ export class HomeyActionAccess {
       // A vendor command failure says nothing about this Homey's verified key.
       // Keep other devices and normal executor retries usable; only an actual
       // authorization rejection invalidates shared access.
-      if (generation === this.generation && error instanceof ChargingAccessError
+      if (generation === this.generation && error instanceof HomeyActionAccessError
         && error.reason === 'permission_denied') this.noteFailure(error);
       this.logger.structuredLog.warn({
         event: ACTION_FAILED_EVENT[purpose], deviceId,
-        reasonCode: error instanceof ChargingAccessError ? error.reason : 'unavailable',
+        reasonCode: error instanceof HomeyActionAccessError ? error.reason : 'unavailable',
       });
     }).finally(() => {
       if (this.inFlight.get(deviceId) === operation) this.inFlight.delete(deviceId);
@@ -180,16 +180,16 @@ export class HomeyActionAccess {
   }
 
   private noteFailure(error: unknown): void {
-    this.accessState = error instanceof ChargingAccessError ? error.reason : 'unavailable';
+    this.accessState = error instanceof HomeyActionAccessError ? error.reason : 'unavailable';
   }
 
   private async verify(key: string): Promise<void> {
     const session = await this.request(key, 'manager/sessions/session/me', 'GET');
     if (!isUnknownRecord(session) || !Array.isArray(session.intersectedScopes)) {
-      throw new ChargingAccessError('unavailable');
+      throw new HomeyActionAccessError('unavailable');
     }
     if (!session.intersectedScopes.some((scope) => scope === 'homey.flow' || scope === 'homey')) {
-      throw new ChargingAccessError('permission_denied');
+      throw new HomeyActionAccessError('permission_denied');
     }
   }
 
@@ -199,7 +199,7 @@ export class HomeyActionAccess {
       return await Promise.race([
         Promise.all([this.homey.api.getLocalUrl(), this.homey.cloud.getHomeyId()]),
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new ChargingAccessError('unavailable')), READ_TIMEOUT_MS);
+          timer = setTimeout(() => reject(new HomeyActionAccessError('unavailable')), READ_TIMEOUT_MS);
         }),
       ]);
     } finally {
@@ -215,12 +215,12 @@ export class HomeyActionAccess {
       const [address, homeyId] = await this.resolveHomeyTarget();
       const url = new URL(address);
       if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || !homeyId) {
-        throw new ChargingAccessError('unavailable');
+        throw new HomeyActionAccessError('unavailable');
       }
       if (method === 'POST') {
         this.sync();
         if (generation !== this.generation || key !== this.key || this.accessState !== 'ready') {
-          throw new ChargingAccessError('unavailable');
+          throw new HomeyActionAccessError('unavailable');
         }
       }
       assertAuthorized?.();
@@ -233,15 +233,15 @@ export class HomeyActionAccess {
       });
       return await readResponse(response, homeyId);
     } catch (error) {
-      if (error instanceof ChargingAccessError) throw error;
-      throw new ChargingAccessError('unavailable');
+      if (error instanceof HomeyActionAccessError) throw error;
+      throw new HomeyActionAccessError('unavailable');
     }
   }
 }
 
 async function readResponse(response: Awaited<ReturnType<typeof fetch>>, homeyId: string): Promise<unknown> {
-  if (response.headers.get('X-Homey-ID') !== homeyId) throw new ChargingAccessError('unavailable');
-  if (response.status === 401 || response.status === 403) throw new ChargingAccessError('permission_denied');
-  if (!response.ok) throw new ChargingAccessError('unavailable');
+  if (response.headers.get('X-Homey-ID') !== homeyId) throw new HomeyActionAccessError('unavailable');
+  if (response.status === 401 || response.status === 403) throw new HomeyActionAccessError('permission_denied');
+  if (!response.ok) throw new HomeyActionAccessError('unavailable');
   return response.json();
 }

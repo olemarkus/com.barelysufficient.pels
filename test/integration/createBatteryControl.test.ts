@@ -34,6 +34,7 @@ const battery: BatteryControlRead = {
     range: { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
   },
   claim: { value: 'anti_feed', observedAtMs: Date.now() - 60_000 },
+  keepAlive: { kind: 'none' },
 };
 
 describe('createMainBatteryControl', () => {

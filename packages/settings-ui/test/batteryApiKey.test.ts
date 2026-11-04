@@ -69,6 +69,25 @@ test('keeps the key manageable on a battery PELS drives with it, and offers to r
   expect(callApi).toHaveBeenCalledWith('DELETE', '/ui_charging_access');
 });
 
+test('keeps the key and says why when PELS could not hand the battery back first', async () => {
+  access = { configured: true, state: 'ready' };
+  const listChanged = vi.fn();
+  document.addEventListener('battery-api-key-changed', listChanged);
+  callApi.mockImplementation(async (method: string) => {
+    if (method === 'DELETE') throw new Error('PELS could not hand a battery back to its app, so the key was kept. Try again in a minute.');
+    return access;
+  });
+  await act(async () => setBatteryApiKeyDevice(battery({ batteryControl: 'drivable', batteryUsesHomeyApiKey: true })));
+  await vi.waitFor(() => expect(container().textContent).toContain('API key verified.'));
+  await act(async () => button('Remove key').click());
+
+  await vi.waitFor(() => expect(container().querySelector('[role="alert"]')?.textContent)
+    .toBe('PELS could not hand a battery back to its app, so the key was kept. Try again in a minute.'));
+  expect(container().textContent).toContain('API key verified.');
+  expect(listChanged).toHaveBeenCalled();
+  document.removeEventListener('battery-api-key-changed', listChanged);
+});
+
 test('offers a check for a saved key Homey could not confirm', async () => {
   access = { configured: true, state: 'unavailable' };
   await act(async () => setBatteryApiKeyDevice(battery({

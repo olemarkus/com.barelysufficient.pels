@@ -41,7 +41,7 @@ import { standardDeviceAdapter } from '../standardDeviceAdapter';
  * for 10 minutes, which the card accepts (power min 0, `_forcePowerW` keeps
  * 0), rather than the stop, which would hand the battery back to its own
  * mode. A command expires after its minutes, so the storage lane sends it
- * again every 5 minutes; when PELS stops, the battery's timer returns it to
+ * again every 200 s (a third of it); when PELS stops, the battery's timer returns it to
  * its own mode within 10 minutes.
  *
  * Range: the battery's own max charge and discharge power (registers 47075,

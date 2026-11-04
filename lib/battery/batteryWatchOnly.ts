@@ -7,7 +7,9 @@
  */
 import type { HomeBatteryControlSurface } from '../../packages/contracts/src/types';
 import { getLogger } from '../logging/logger';
-import type { BatteryControlRead } from '../ports/batteryControlOwner';
+import type { BatteryControlRead, BatterySetpointOutcome } from '../ports/batteryControlOwner';
+import type { StorageClaimRejected } from '../ports/storageCommand';
+import { isClaimEngaged } from './batteryClaimStanding';
 
 const logger = getLogger('battery');
 
@@ -54,6 +56,43 @@ export class BatteryWatchOnlyLedger {
   /** The battery's app refused control on this surface now. */
   begin(deviceId: string, surface: SetpointSurface, nowMs: number): void {
     this.entries.set(deviceId, { surface, sinceMs: nowMs });
+  }
+
+  /**
+   * The battery's app rejected the claim write, so no setpoint went out. On a
+   * binding whose rejection means the app refuses control, PELS only watches
+   * the battery from now on (the owner's header says why), and
+   * `forgetNewRecord` drops a claim record the rejected dispatch made; on any
+   * other, the storage lane judges the setpoint unanswered.
+   */
+  judgeClaimRejected(
+    deviceId: string,
+    battery: BatteryControlRead,
+    rejected: StorageClaimRejected,
+    forgetNewRecord: () => boolean,
+  ): BatterySetpointOutcome {
+    const { errorMessage } = rejected;
+    // A battery under Homey's claim may be one PELS is driving: leaving it
+    // watch-only would strand it at its last setpoint with no hand-back.
+    if (
+      battery.kind !== 'setpoint'
+      || battery.surface.claim.rejection !== 'app_refuses_control'
+      || isClaimEngaged(battery)
+    ) {
+      return { status: 'claim_rejected', effect: 'unanswered', errorMessage };
+    }
+    this.begin(deviceId, battery.surface, Date.now());
+    const recordRemoved = forgetNewRecord();
+    logger.warn({
+      event: 'battery_control_claim_rejected_watch_only',
+      deviceId,
+      claimCapabilityId: battery.surface.claim.capabilityId,
+      errorMessage,
+      recordRemoved,
+      watchOnlyMs: BATTERY_WATCH_ONLY_MS,
+      msg: 'The battery app rejected control; PELS only watches the battery for 6 h, or until it restarts',
+    });
+    return { status: 'claim_rejected', effect: 'watch_only', errorMessage };
   }
 
   /** Whether the battery is still watch-only against its surface as read now; an ended one is forgotten and logged. */

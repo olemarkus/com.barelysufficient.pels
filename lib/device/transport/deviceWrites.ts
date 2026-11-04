@@ -421,12 +421,12 @@ export class DeviceWriteService {
   async releaseStorageControl(command: StorageReleaseCommand): Promise<void> {
     const { deviceId } = command;
     const surface = requireDrivableSurface(this.snapshotStore.getSnapshotByDeviceId(deviceId), deviceId);
-    if ('handBack' in command || surface.kind === 'app_actions') {
-      if (!('handBack' in command) || surface.kind !== 'app_actions') {
-        throw new Error(`Home battery ${deviceId} hand-back does not match its control binding`);
-      }
+    if (command.handBack === 'app_actions' && surface.kind === 'app_actions') {
       await this.batteryAppActions.handBack(deviceId);
       return;
+    }
+    if (command.handBack !== 'claim_capability' || surface.kind !== 'setpoint') {
+      throw new Error(`Home battery ${deviceId} hand-back does not match its control binding`);
     }
     const { restoreClaimValue } = command;
     const zeroed = await this.setCapability(deviceId, HOME_BATTERY_SETPOINT_CAPABILITY_ID, 0).then(

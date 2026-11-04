@@ -2,6 +2,10 @@ import { readPelsHost } from '../../lib/app/pelsHost';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import { API_STARTING_MESSAGE, defineRoutes, type ApiContext } from './defineRoutes';
 
+/** Why the key was kept: a battery PELS drives with it could not be handed back to its app first. */
+export const HOMEY_API_KEY_HOLDS_BATTERY_MESSAGE
+  = 'PELS could not hand a battery back to its app, so the key was kept. Try again in a minute.';
+
 function chargingAccess(homey: ApiContext['homey']) {
   const transport = readPelsHost(homey)?.deviceManager;
   if (!transport) throw new Error(API_STARTING_MESSAGE);
@@ -35,5 +39,14 @@ export const chargingControlRoutes = defineRoutes({
   ui_charging_access: ({ homey }: ApiContext) => chargingAccess(homey).status(),
   ui_charging_access_check: ({ homey }: ApiContext) => chargingAccess(homey).check(),
   ui_charging_access_save: ({ homey, body }: ApiContext & { body?: unknown }) => chargingAccess(homey).save(body),
-  ui_charging_access_remove: ({ homey }: ApiContext) => chargingAccess(homey).remove(),
+  // A battery PELS drives through its app's actions is handed back while the
+  // key it runs on is still there (`handBackBeforeHomeyApiKeyRemoval`).
+  ui_charging_access_remove: async ({ homey }: ApiContext) => {
+    const access = chargingAccess(homey);
+    const batteryControl = readPelsHost(homey)?.batteryControl;
+    if (!batteryControl) throw new Error(API_STARTING_MESSAGE);
+    const removal = await batteryControl.handBackBeforeHomeyApiKeyRemoval(() => { access.remove(); });
+    if (removal === 'battery_held') throw new Error(HOMEY_API_KEY_HOLDS_BATTERY_MESSAGE);
+    return access.status();
+  },
 });
