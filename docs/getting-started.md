@@ -77,7 +77,7 @@ For eligible Flemish digital-meter households, the **2.5 kW billing minimum** is
 
 The page names where your prices come from. Turning on Price-based control or saving a smart task here keeps that price source.
 
-With solar in Homey that has not yet produced more than the home is using, the page and the review say solar control is on its way. If your meter is a Flow, it must send net import, negative when exporting. [Solar setup details](/solar).
+With solar in Homey that has not yet produced more than the home is using, the page, the review and the device page say solar control is on its way. If your meter is a Flow, it must send net import, negative when exporting. [Solar setup details](/solar).
 
 After setup, **PELS can do more for this home** offers **Choose what PELS does** once, naming what applies and is not in use yet. Dismiss it if none of it is for you.
 

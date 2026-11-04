@@ -235,6 +235,7 @@ export const deviceDetailDumpLoadOpt = document.querySelector('#device-detail-du
 export const deviceDetailDumpLoadDisabledHint = qs('#device-detail-dump-load-disabled-hint');
 export const deviceDetailDumpLoadPowerLimitHint = qs('#device-detail-dump-load-power-limit-hint');
 export const deviceDetailSurplusTrackRow = qs('#device-detail-surplus-track-row');
+export const deviceDetailSolarPendingHint = qs('#device-detail-solar-pending-hint');
 export const deviceDetailSurplusTrackOpt = document.querySelector(
   '#device-detail-surplus-track-opt',
 ) as MdSwitchElement;
