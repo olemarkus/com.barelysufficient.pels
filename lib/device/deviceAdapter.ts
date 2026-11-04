@@ -87,6 +87,7 @@ export type DeviceAdapter = {
   /** Convert vendor target watts into the configured planning units. */
   targetPowerReading(device: HomeyDeviceLike, config: TargetPowerSteppedLoadConfig, value: number): number;
   stepCommand(device: HomeyDeviceLike, step: SteppedLoadStep, command: CapabilityWrite): CapabilityWrite;
+  stepActivationOrder: 'current_before_start' | 'start_before_current';
   /** Reads independent device observations newer than the reclaim epoch; never starts a device. */
   prepareTargetPowerReassertion(
     device: HomeyDeviceLike, afterMs: number, inventory: readonly HomeyDeviceLike[],

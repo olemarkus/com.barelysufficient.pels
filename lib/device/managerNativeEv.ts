@@ -384,7 +384,8 @@ function resolveInstallationCurrent(
   sources: DeviceParseSources, manualControl: boolean,
 ): DeviceCapabilityMap[string] | undefined {
   if (!manualControl && isTargetPowerSteppedLoadCandidate(overlay)) return undefined;
-  return overlay.capabilityObj[resolveInstallationCurrentCapabilityId(device, deviceId, overlay.capabilityObj, sources)];
+  const capabilityId = resolveInstallationCurrentCapabilityId(device, deviceId, overlay.capabilityObj, sources);
+  return overlay.capabilityObj[capabilityId];
 }
 
 function resolveSyntheticStepObservation(
@@ -492,7 +493,8 @@ function resolveNativeSteppedLoadOverlay(
         nativeWiringEnabled: nativeSteppedEnabled,
         activationAvailable: !targetPowerSteppedCandidate,
       }),
-      ...(targetPowerSteppedCandidate ? { activationOrder: 'current_before_start' as const } : {}),
+      ...(getDeviceAdapter(device).stepActivationOrder === 'current_before_start'
+        ? { activationOrder: 'current_before_start' as const } : {}),
     },
     reportedStepId,
     reportedStepObservedAtMs: resolveTargetPowerModeInvalidationAtMs(capabilityObj, capabilities) ?? (reportedStepId

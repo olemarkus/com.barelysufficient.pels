@@ -7,6 +7,7 @@ import { prepareZaptecTargetPowerReassertion } from './targetPowerReassertion';
 
 export const zaptecAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
+  stepActivationOrder: 'current_before_start',
   matches: (device) => /^homey:app:com\.zaptec:(go|go2|home|pro)$/u.test(device.driverId?.trim().toLowerCase() ?? ''),
   matchesCapabilities: (capabilities) => capabilities.includes('charging_button')
     || capabilities.includes('charge_mode'),

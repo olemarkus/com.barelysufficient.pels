@@ -3,7 +3,7 @@ import api from '../../api';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CONTROLLABLE_DEVICES,
   DEVICE_TARGET_POWER_CONFIGS, DEVICE_TARGET_POWER_REACHABILITY, MANAGED_DEVICES, OPERATING_MODE_SETTING,
-  DEVICE_POWER_CONTROL_MODES,
+  DEVICE_POWER_CONTROL_MODES, RESPECT_EXTERNAL_OFF_DEVICES,
 } from '../../lib/utils/settingsKeys';
 import { buildZaptecCurrentOnlyDevice, buildZaptecTargetPowerDevice } from '../helpers/zaptecDeviceFixture';
 import { connectLiveFeed, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
@@ -16,6 +16,14 @@ const GRID_WATTS_PER_AMP = Math.sqrt(3) * 230;
 const BACKGROUND_W = 1000;
 const HOUSE_LIMIT_W = 7000;
 const pathFor = (capability: string) => `manager/devices/device/${ID}/capability/${capability}`;
+
+// Reclaim can wait for the previous restore cooldown before pausing, then a new cooldown before resuming.
+async function advanceMeterDecisionsUntil(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 45 && !predicate(); attempt += 1) {
+    await vi.advanceTimersByTimeAsync(30_000);
+  }
+  expect(predicate(), 'charger should converge through preparation and normal restore cooldowns').toBe(true);
+}
 
 async function buildCharger(source = buildZaptecTargetPowerDevice()): Promise<MockDevice> {
   const charger = new MockDevice(ID, 'Zaptec Go 2', source.capabilities ?? [], 'evcharger');
@@ -270,6 +278,7 @@ describe('Zaptec legacy current and native watt control at the SDK boundary', ()
     mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, structuredClone(savedConfig));
     mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_REACHABILITY, structuredClone(savedReachability));
     mockHomeyInstance.settings.set('charging_current_control', structuredClone(savedCurrentControl));
+    mockHomeyInstance.settings.set(RESPECT_EXTERNAL_OFF_DEVICES, { [ID]: true });
     mockHomeyInstance.settings.set(DEVICE_POWER_CONTROL_MODES, { [ID]: 'automatic' });
 
     await createApp().onInit();
@@ -280,7 +289,8 @@ describe('Zaptec legacy current and native watt control at the SDK boundary', ()
       managed: true,
     });
     await vi.advanceTimersByTimeAsync(125_000);
-    await drainUntil(() => simulation.powerWrites().some((watts) => watts > 0));
+    await advanceMeterDecisionsUntil(() => simulation.powerWrites().some((watts) => watts > 0)
+      && simulation.housePowerW() > BACKGROUND_W);
     await drainPending();
     // Zaptec floors watt limits to whole amps. The measured house draw is the
     // budget authority; a watt target can sit above that draw by less than 1 A.
@@ -314,8 +324,9 @@ describe('Zaptec legacy current and native watt control at the SDK boundary', ()
       expect(Number(charger.getActualCapabilityValue('target_power'))).toBe(retainedWatts);
       const previousWrites = simulation.powerWrites().length;
       mockHomeyInstance.settings.set(DEVICE_POWER_CONTROL_MODES, { [ID]: 'automatic' });
-      await vi.advanceTimersByTimeAsync(240_000);
-      await drainUntil(() => simulation.powerWrites().length > previousWrites);
+      await vi.advanceTimersByTimeAsync(125_000);
+      await advanceMeterDecisionsUntil(() => simulation.powerWrites().length > previousWrites
+        && simulation.housePowerW() > BACKGROUND_W);
       expect(simulation.housePowerW()).toBeLessThanOrEqual(HOUSE_LIMIT_W);
       expect(simulation.housePowerW()).toBeGreaterThan(BACKGROUND_W);
       expect(simulation.resetHousePowers.length).toBeGreaterThan(0);
@@ -345,6 +356,8 @@ describe('Zaptec legacy current and native watt control at the SDK boundary', ()
     mockHomeyInstance.settings.set(DEVICE_POWER_CONTROL_MODES, { [ID]: 'automatic' });
     await createApp().onInit();
     await vi.advanceTimersByTimeAsync(125_000);
+    await advanceMeterDecisionsUntil(() => simulation.powerWrites().some((watts) => watts > 0)
+      && simulation.housePowerW() > BACKGROUND_W);
     await drainPending();
     const previousWrites = simulation.powerWrites().length;
     expect(previousWrites).toBeGreaterThan(0);
@@ -364,7 +377,8 @@ describe('Zaptec legacy current and native watt control at the SDK boundary', ()
     expect(device?.reportedStepId).toBeUndefined();
 
     await vi.advanceTimersByTimeAsync(125_000);
-    await drainUntil(() => simulation.powerWrites().length > previousWrites);
+    await advanceMeterDecisionsUntil(() => simulation.powerWrites().length > previousWrites
+      && simulation.housePowerW() > BACKGROUND_W);
     for (const watts of simulation.powerWrites().slice(previousWrites).filter((value) => value > 0)) {
       expect(watts % 230).toBe(0);
       expect(watts).toBeGreaterThanOrEqual(change.firstW);

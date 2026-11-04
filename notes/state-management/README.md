@@ -231,6 +231,14 @@ This is a deliberate optimistic execution policy, not a weakening of observed-st
 prevents an unknown fallback from suppressing the first step request while avoiding a confirmation
 retry loop for the idempotent lowest-step initialization.
 
+A device that prepares its native limit before starting can also lose its accepted
+target while it is running. Under a hold or a decided step shed, measured draw
+above the lowest active level authorizes preparation of that lower limit. This
+is a downward command, not a reported level or permission to start. Dispatch
+rechecks the current observation and refuses it after an off report or when draw
+has fallen to that level. Preparation remains executable when the planning
+fallback already names the lowest level or an earlier command exists.
+
 ## Generic Device-State Assumptions
 
 These rules are intentionally generic. They apply across vendors, transports, and device models.

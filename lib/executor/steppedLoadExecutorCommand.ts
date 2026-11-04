@@ -16,6 +16,7 @@ import type { SteppedLoadStepRequestTransport } from '../ports/steppedLoadWrite'
 import type { ActuatorOutcome } from '../actuator/deviceCommand';
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import { isHeldByLifecycleLane, type ExecutorCommandContext } from './executorCommandContext';
+import { runBinaryControl } from './binaryControlShared';
 
 const logger = getLogger('executor/stepped-load');
 /**
@@ -398,6 +399,12 @@ export const executeSteppedLoadCommand = async (
       planningCurrentA: resolvePlanningCurrentA(desiredStep), previousStepId: resolveCommandPreviousStepId(action),
     });
     if (!result.requested) {
+      if ('preparation' in result && result.preparation === 'binary_off') {
+        const stopped = await runBinaryControl(ctx, {
+          deviceId: intent.id, name: intent.name, desired: false, logContext: 'capacity',
+        }, ctx.readDevice(intent.id));
+        return stopped.applied;
+      }
       return logSteppedLoadCommandSkip(
         intent, 'command_unavailable',
         `Capacity: skip stepped-load command for ${intent.name}, `
