@@ -19,7 +19,6 @@ import type { ObservedStateRefreshEvent } from '../../lib/ports/observedStateEve
 import type { MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe, ThermostatModeObservedProbe } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
-import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import {
     mockHomeyInstance,
 } from '../mocks/homey';
@@ -425,7 +424,10 @@ describe('DeviceTransport', () => {
             expect(parsed[0]?.id).toBe('thermo-2');
             if (violation.capabilityId === 'onoff') {
                 expect(hasObservedTemperature(parsed[0])).toBe(true);
-                expect(parsed[0]?.capabilities).toContain('onoff');
+                expect(parsed[0]?.capabilities).not.toContain('onoff');
+                expect(parsed[0]?.binaryCapabilityId).toBeUndefined();
+                expect(parsed[0]?.binaryControl).toBeUndefined();
+                expect(parsed[0]?.binaryControllable).toBe(false);
                 expect(parsed[0]?.binaryControlObservation).toBeUndefined();
                 expect(deviceManager.canTurnOnDevice('thermo-2')).toBe(false);
             } else {
@@ -484,16 +486,13 @@ describe('DeviceTransport', () => {
             expect(hasObservedTemperature(parsed)).toBe(false);
         });
 
-        it('keeps a temperature device descriptor without inventing a rejected temperature facet', async () => {
+        it('omits a temperature-only device when its temperature facet is rejected', async () => {
             const parsed = await seedTransportDevices(deviceManager, [homeyDevice(
                 { id: 'temp-only-broken', name: 'Broken Tank', class: 'thermostat' },
                 { measure_temperature: Number.NaN, target_temperature: celsius(60) },
             )]);
 
-            expect(parsed).toHaveLength(1);
-            expect(parsed[0]?.id).toBe('temp-only-broken');
-            expect(hasObservedTemperature(parsed[0])).toBe(false);
-            expect(parsed[0]?.binaryCapabilityId).toBeUndefined();
+            expect(parsed).toEqual([]);
             expect(deviceManager.canTurnOnDevice('temp-only-broken')).toBe(false);
         });
     });
@@ -558,7 +557,7 @@ describe('DeviceTransport', () => {
             onoff: { value: capValue },
         }, stampedNow());
 
-        it('keeps managed and picker device descriptors visible while their control observation is unreadable', async () => {
+        it('omits managed and picker devices when their only control facet is unreadable', async () => {
             const dm = createTestDeviceTransport(homeyMock, loggerMock, {
               settings: {
                 isManaged: (deviceId) => deviceId === 'dev1' || deviceId === 'neverConformingManaged',
@@ -582,14 +581,13 @@ describe('DeviceTransport', () => {
             onObservedStateRefresh(dm, (event) => refreshes.push(event));
             await dm.refreshSnapshot({ meterDeviceIds: [] });
 
-            // A cold heater keeps its descriptor and valid power while its
-            // rejected switch contributes no observed control or start permission.
-            expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1', 'neverConformingManaged']);
-            expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2', 'neverConformingUnmanaged']);
+            // Power telemetry alone cannot supply the rejected binary control facet.
+            expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']);
+            expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
             expect(dm.canTurnOnDevice('neverConformingManaged')).toBe(false);
             expect(dm.getSnapshotByDeviceId('neverConformingManaged')?.binaryControlObservation).toBeUndefined();
             // Field rejection does not classify the whole device read as ignored.
-            expect(refreshes.at(-1)?.entries.map((entry) => entry.observed.id)).toEqual(['dev1', 'neverConformingManaged']);
+            expect(refreshes.at(-1)?.entries.map((entry) => entry.observed.id)).toEqual(['dev1']);
             expect(refreshes.at(-1)?.ignoredReadIds).toEqual([]);
             // Every device Homey listed is still Homey's, read or not: nothing
             // learned about one is pruned because PELS could not read it.
@@ -723,7 +721,7 @@ describe('DeviceTransport', () => {
             dm.destroy();
         });
 
-        it('retains a known managed device and its switch observation through a null control reading', async () => {
+        it('omits a known managed device through a rejected sole control facet and restores it on a valid read', async () => {
             const dm = createTestDeviceTransport(homeyMock, loggerMock, {
               settings: { isManaged: (deviceId) => deviceId === 'dev1' },
             });
@@ -733,12 +731,11 @@ describe('DeviceTransport', () => {
             expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']);
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual([]);
 
-            // The known switch keeps its last accepted observation, so a null
-            // cannot remove the device or move it into the unmanaged picker.
+            // A previous switch report cannot keep a currently rejected binary facet usable.
             mockApiGet.mockResolvedValue({ dev1: buildDevice('dev1', null) });
             await dm.refreshSnapshot({ meterDeviceIds: [] });
-            expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']);
-            expect(dm.getSnapshot()[0]?.binaryControl?.on).toBe(true);
+            expect(dm.getSnapshot()).toEqual([]);
+            expect(dm.canTurnOnDevice('dev1')).toBe(false);
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual([]);
             expect([...dm.getHomeyDeviceIds()]).toEqual(['dev1']);
             expect(dm.isDeviceConfirmedRemoved('dev1')).toBe(false);
@@ -832,8 +829,8 @@ describe('DeviceTransport', () => {
                 expect(observedMode()).toBe('heat');
             });
 
-            // Cold null fields are withheld; once observed, a later null keeps the accepted value.
-            it('withholds a cold null capability and retains it through later null reads', async () => {
+            // Binary rejection removes its facet while thermostat-mode observations retain independently.
+            it('withholds null binary control while retaining an accepted thermostat mode', async () => {
                 await deviceManager.init();
                 const unreported = heatPump({
                     onoff: { value: null, id: 'onoff', lastUpdated: stampedNow() },
@@ -843,7 +840,8 @@ describe('DeviceTransport', () => {
                 });
                 mockApiGet.mockResolvedValue({ dev1: unreported });
                 await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
-                expect(deviceManager.getSnapshot()[0]?.capabilities).toContain('onoff');
+                expect(deviceManager.getSnapshot()[0]?.capabilities).not.toContain('onoff');
+                expect(deviceManager.getSnapshot()[0]?.binaryControl).toBeUndefined();
                 expect(deviceManager.getSnapshot()[0]?.binaryControlObservation).toBeUndefined();
                 expect(deviceManager.canTurnOnDevice('dev1')).toBe(false);
                 expect(observedMode()).toBeUndefined();
@@ -854,8 +852,9 @@ describe('DeviceTransport', () => {
 
                 mockApiGet.mockResolvedValue({ dev1: unreported });
                 await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
-                // A later null is no new observation and cannot erase accepted state.
-                expect(deviceManager.getSnapshot()[0]?.capabilities).toContain('onoff');
+                // A rejected binary facet does not erase the accepted thermostat mode.
+                expect(deviceManager.getSnapshot()[0]?.capabilities).not.toContain('onoff');
+                expect(deviceManager.getSnapshot()[0]?.binaryControl).toBeUndefined();
                 expect(observedMode()).toBe('cooling');
             });
 
@@ -1290,9 +1289,9 @@ describe('DeviceTransport', () => {
         it.each([
             'evcharger_charging',
             'evcharger_charging_state',
-        ] as const)('keeps independent charger observations when declared %s reports no value', async (valuelessCapabilityId) => {
-            // A valueless field rejects only its observation. The charger and
-            // its valid sibling telemetry remain visible without a fabricated value.
+        ] as const)('admits a generic charger only with usable control when declared %s reports no value', async (valuelessCapabilityId) => {
+            // Missing plug telemetry leaves the valid command usable; missing
+            // command state leaves this generic charger with no usable control facet.
             const evDeviceManager = createTestDeviceTransport(homeyMock, loggerMock);
             await evDeviceManager.init();
             const capabilitiesObj = {
@@ -1313,13 +1312,14 @@ describe('DeviceTransport', () => {
 
             await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
-            expect(evDeviceManager.getSnapshot()).toHaveLength(1);
-            expect(evDeviceManager.getSnapshot()[0]).toMatchObject({ id: 'ev1', measuredPowerKw: 0 });
             if (valuelessCapabilityId === 'evcharger_charging_state') {
+                expect(evDeviceManager.getSnapshot()).toHaveLength(1);
+                expect(evDeviceManager.getSnapshot()[0]).toMatchObject({
+                    id: 'ev1', measuredPowerKw: 0, binaryCapabilityId: 'evcharger_charging', binaryControl: { on: false },
+                });
                 expect(evDeviceManager.getSnapshotByDeviceId('ev1')?.evChargingState).toBeUndefined();
             } else {
-                expect(evDeviceManager.getSnapshotByDeviceId('ev1')?.evCharging).toBeUndefined();
-                expect(evDeviceManager.getSnapshotByDeviceId('ev1')?.binaryControlObservation).toBeUndefined();
+                expect(evDeviceManager.getSnapshot()).toEqual([]);
             }
             expect(evDeviceManager.canTurnOnDevice('ev1')).toBe(false);
 
@@ -2071,7 +2071,7 @@ describe('DeviceTransport', () => {
             }));
         });
 
-        it('retains omitted onoff evidence while accepting valid target and power updates', async () => {
+        it('removes omitted binary control while accepting valid target and power updates', async () => {
             await deviceManager.init();
             await seedTransportDevices(deviceManager, [homeyDevice(
                 { id: 'dev1', name: 'Hall Thermostat', class: 'thermostat' },
@@ -2089,7 +2089,8 @@ describe('DeviceTransport', () => {
             onObservedState(deviceManager, liveStateListener);
             onObservedControlState(deviceManager, reconcileListener);
 
-            // Only the missing switch reading is retained. Valid target and power continue updating.
+            // Missing binary control removes only that facet; valid target and power continue updating.
+            const updateStamp = stampedNow(1_000);
             emitDeviceUpdate(homeyDevice(
                 {
                     id: 'dev1',
@@ -2098,24 +2099,29 @@ describe('DeviceTransport', () => {
                     class: 'thermostat',
                 },
                 { measure_temperature: celsius(20), target_temperature: celsius(19), measure_power: 500 },
-                stampedNow(1_000),
+                updateStamp,
             ));
 
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toMatchObject({
-                binaryControl: { on: true }, measuredPowerKw: 0.5,
+                binaryCapabilityId: undefined, binaryControl: undefined,
+                measuredPowerKw: 0.5, measuredPowerObservedAtMs: Date.parse(updateStamp),
+                temperature: { currentTemperature: 20, target: { value: 19 } },
                 targets: [expect.objectContaining({ id: 'target_temperature', value: 19 })],
             });
-            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(trustedOnEvidence);
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation).toBeUndefined();
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.capabilities).not.toContain('onoff');
             expect(liveStateListener).toHaveBeenCalled();
             expect(reconcileListener).toHaveBeenCalled();
         });
 
-        it('keeps realtime binary evidence through target-only and power-only device.update payloads', async () => {
+        it('keeps healthy temperature and power through binary-rejecting partial device.update payloads', async () => {
             await deviceManager.init();
+            const baselineStamp = stampedNow(BASELINE_OFFSET_MS);
             await seedTransportDevices(deviceManager, [homeyDevice(
                 { id: 'dev1', name: 'Hall Thermostat', class: 'thermostat' },
                 { onoff: true, measure_temperature: celsius(20), target_temperature: celsius(20), measure_power: 500 },
-                stampedNow(BASELINE_OFFSET_MS),
+                baselineStamp,
             )]);
 
             await emitCapability('dev1', 'onoff', false);
@@ -2127,6 +2133,7 @@ describe('DeviceTransport', () => {
             }));
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(false);
 
+            const targetStamp = stampedNow(1_000);
             emitDeviceUpdate(homeyDevice(
                 {
                     id: 'dev1',
@@ -2135,10 +2142,19 @@ describe('DeviceTransport', () => {
                     class: 'thermostat',
                 },
                 { measure_temperature: celsius(20), target_temperature: celsius(19) },
+                targetStamp,
             ));
-            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(realtimeEvidence);
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(false);
+            const afterTarget = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
+            expect(afterTarget).toMatchObject({
+                binaryCapabilityId: undefined, binaryControl: undefined,
+                temperature: { currentTemperature: 20, target: { value: 19 } }, measuredPowerKw: 0.5,
+                measuredPowerObservedAtMs: Date.parse(baselineStamp), lastFreshDataMs: Date.parse(targetStamp),
+            });
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
+            expect(afterTarget?.capabilities).not.toContain('onoff');
+            expect(afterTarget?.binaryControlObservation).toBeUndefined();
 
+            const powerStamp = stampedNow(2_000);
             emitDeviceUpdate(homeyDevice(
                 {
                     id: 'dev1',
@@ -2146,15 +2162,19 @@ describe('DeviceTransport', () => {
                     capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'measure_power'],
                     class: 'thermostat',
                 },
-                { measure_temperature: celsius(20), target_temperature: celsius(19), measure_power: 500 },
+                { measure_temperature: celsius(20), target_temperature: celsius(19), measure_power: 600 },
+                powerStamp,
             ));
-            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(realtimeEvidence);
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(false);
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation)
-                .toEqual(realtimeEvidence);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toMatchObject({
+                binaryCapabilityId: undefined, binaryControl: undefined,
+                temperature: { currentTemperature: 20, target: { value: 19 } }, measuredPowerKw: 0.6,
+                measuredPowerObservedAtMs: Date.parse(powerStamp), lastFreshDataMs: Date.parse(powerStamp),
+            });
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation).toBeUndefined();
         });
 
-        it('keeps the trusted realtime-off observation when a later pull omits onoff (two-source reconcile)', async () => {
+        it('omits a binary-only device when a later pull omits onoff despite prior realtime evidence', async () => {
             // 1. Pull with a trusted onoff=true → currentOn:true.
             mockApiGet.mockResolvedValue({
                 dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
@@ -2171,8 +2191,7 @@ describe('DeviceTransport', () => {
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(false);
 
             // 3. Pull where Homey serves a device object that declares onoff but
-            //    OMITS its value: the read breaks the device-read contract and is
-            //    ignored, so the entry it would have replaced stands.
+            //    OMITS its value: its sole control facet is rejected.
             mockApiGet.mockResolvedValue({
                 dev1: homeyDevice(
                     { id: 'dev1', name: 'Heater', class: 'heater', capabilities: ['measure_power', 'onoff'] },
@@ -2182,10 +2201,9 @@ describe('DeviceTransport', () => {
             });
             await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
-            // The observed truth remains the trusted realtime OFF.
-            const dev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
-            expect(dev1?.binaryControlObservation?.observedValue).toBe(false);
-            expect(dev1?.binaryControl?.on).toBe(false);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toBeUndefined();
+            expect(deviceManager.canTurnOnDevice('dev1')).toBe(false);
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
         });
 
         it('logs the binary observation consolidated from pull + retained realtime sources', async () => {
@@ -2254,12 +2272,9 @@ describe('DeviceTransport', () => {
             expect(dev1?.binaryControl?.on).toBe(false);
         });
 
-        it('ignores a later pull whose onoff=true carries no stamp, keeping the realtime-off observation', async () => {
-            // The morning two-source divergence: a realtime push said OFF, then
-            // Homey serves a device object on the next pull whose onoff is
-            // boolean `true` but carries NO lastUpdated. A value with no date
-            // cannot be ordered against the push, so only that field is rejected:
-            // currentOn stays OFF while the power reading is accepted.
+        it('omits an unstamped sole binary facet and recovers on a valid full read', async () => {
+            // An undated boolean cannot retain a device's sole binary facet,
+            // even when an earlier realtime observation was accepted.
             mockApiGet.mockResolvedValue({
                 dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
                     measure_power: 1000,
@@ -2282,27 +2297,28 @@ describe('DeviceTransport', () => {
             expect(loggerMock.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_capabilities_withheld', deviceId: 'dev1', source: 'device_fetch',
                 violations: [{ reason: 'missing_stamp', capabilityId: 'onoff' }],
-                retainedCapabilityIds: ['onoff'],
+                retainedCapabilityIds: [], withheldCapabilityIds: ['onoff'],
             }));
-            const heldDev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
-            expect(heldDev1?.binaryControl?.on).toBe(false);
-            expect(heldDev1?.binaryControlObservation?.observedValue).toBe(false);
-            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')?.observedValue).toBe(false);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toBeUndefined();
+            expect(deviceManager.canTurnOnDevice('dev1')).toBe(false);
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
 
-            // The rejected field is not stuck: a newer trusted observation still
-            // supersedes the OFF. A realtime push (stamped fresh) observing onoff=true
-            // reconciles currentOn back to ON.
-            await emitCapability('dev1', 'onoff', true);
+            const recoveryStamp = stampedNow(1_000);
+            emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
+                measure_power: 1000, onoff: true,
+            }, recoveryStamp));
 
             const recoveredDev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
             expect(recoveredDev1?.binaryControl?.on).toBe(true);
-            expect(recoveredDev1?.binaryControlObservation?.observedValue).toBe(true);
+            expect(recoveredDev1?.binaryControlObservation).toMatchObject({
+                source: 'device_update', observedValue: true, observedAtMs: Date.parse(recoveryStamp),
+            });
         });
 
-        it('ignores an unstamped device.update push that contradicts prior realtime evidence; a stamped one flips it', async () => {
+        it('omits a binary-only device on an unstamped device.update and restores it with a stamped read', async () => {
             // A physical toggle delivered as a device.update flips currentOn only
             // with the time Homey observed it. The same push without a stamp
-            // cannot be ordered against the realtime OFF, so that field is retained.
+            // cannot be ordered against the realtime OFF, so the binary facet is rejected.
             await deviceManager.init();
             await seedTransportDevices(deviceManager, Object.values(buildRealtimeDevices()));
             await emitCapability('dev1', 'onoff', false);
@@ -2326,17 +2342,15 @@ describe('DeviceTransport', () => {
 
             pushOn({ value: true, id: 'onoff' });
 
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toEqual(expect.objectContaining({
-                binaryControl: { on: false },
-                binaryControlObservation: realtimeOff,
-                measuredPowerKw: 0.5,
-            }));
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toBeUndefined();
+            expect(deviceManager.canTurnOnDevice('dev1')).toBe(false);
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
 
             const pushedAt = stampedNow(1_000);
             pushOn({ value: true, id: 'onoff', lastUpdated: pushedAt });
 
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toEqual(expect.objectContaining({
-                binaryControl: { on: true },
+                binaryControl: { on: true }, measuredPowerKw: 0.5,
                 binaryControlObservation: expect.objectContaining({
                     source: 'device_update',
                     observedValue: true,
@@ -2485,7 +2499,7 @@ describe('DeviceTransport', () => {
             expect(reconcileListener).not.toHaveBeenCalled();
         });
 
-        it('retains malformed onoff evidence while valid telemetry and target update', async () => {
+        it('rejects malformed binary control while valid telemetry and target update', async () => {
             vi.useFakeTimers();
             try {
                 vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
@@ -2500,7 +2514,6 @@ describe('DeviceTransport', () => {
                 await deviceManager.init();
                 await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 const snapshotBefore = structuredClone(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1'));
-                const evidenceBefore = deviceManager.getBinarySettleEvidenceByDeviceId('dev1');
                 expect(snapshotBefore?.binaryControl?.on).toBe(false);
 
                 vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
@@ -2518,11 +2531,15 @@ describe('DeviceTransport', () => {
                 }, '2026-04-01T12:01:00.000Z'));
 
                 expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toMatchObject({
-                    binaryControl: { on: false }, measuredPowerKw: 0.5,
+                    binaryCapabilityId: undefined, binaryControl: undefined,
+                    measuredPowerKw: 0.5, measuredPowerObservedAtMs: Date.parse('2026-04-01T12:01:00.000Z'),
+                    temperature: { currentTemperature: 20, target: { value: 19 } },
                     lastFreshDataMs: Date.parse('2026-04-01T12:01:00.000Z'),
                     targets: [expect.objectContaining({ id: 'target_temperature', value: 19 })],
                 });
-                expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(evidenceBefore);
+                expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
+                expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation).toBeUndefined();
+                expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.capabilities).not.toContain('onoff');
                 expect(liveStateListener).toHaveBeenCalled();
                 expect(reconcileListener).toHaveBeenCalled();
                 expect(loggerMock.structuredLog.error).not.toHaveBeenCalledWith(expect.objectContaining({
@@ -2565,7 +2582,7 @@ describe('DeviceTransport', () => {
                     await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                 },
             },
-        ])('ignores a $seam whose contradicting onoff carries no stamp: state and evidence stand', async ({ deliver }) => {
+        ])('omits a binary-only device when $seam reports an undated boolean', async ({ deliver }) => {
             const cachedEvidence = {
                 valid: true as const,
                 capabilityId: 'onoff' as const,
@@ -2586,10 +2603,9 @@ describe('DeviceTransport', () => {
                 measure_power: { value: 500, lastUpdated: stampedNow() },
             }));
 
-            const dev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
-            expect(dev1?.binaryControl?.on).toBe(false);
-            expect(dev1?.binaryControlObservation).toEqual(cachedEvidence);
-            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(cachedEvidence);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toBeUndefined();
+            expect(deviceManager.canTurnOnDevice('dev1')).toBe(false);
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
         });
 
         it('keeps currentOn aligned with newer cached evidence when device.update carries stale binary evidence', async () => {
@@ -2818,7 +2834,7 @@ describe('DeviceTransport', () => {
             }
         });
 
-        it('keeps raw EV command evidence through unknown and missing EV fields while accepting valid power', async () => {
+        it('keeps command evidence through unknown plug telemetry but omits a missing sole EV control facet', async () => {
             vi.useFakeTimers();
             try {
                 vi.setSystemTime(new Date('2026-04-01T11:45:00.000Z'));
@@ -2850,8 +2866,8 @@ describe('DeviceTransport', () => {
                 expect(findSnapshotDevice(evDeviceManager.getSnapshot(), 'ev1')?.binaryControlObservation)
                     .toEqual(previousEvidence);
 
-                // Missing EV fields cannot resurrect the older plug state that
-                // the unknown realtime report revoked; valid power still advances.
+                // A missing command field removes this generic charger's only
+                // control facet, even with accepted command evidence and valid power.
                 emitDeviceUpdate(homeyDevice(
                     {
                         id: 'ev1',
@@ -2863,12 +2879,8 @@ describe('DeviceTransport', () => {
                     '2026-04-01T12:00:00.000Z',
                 ));
 
-                expect(evDeviceManager.getBinarySettleEvidenceByDeviceId('ev1')).toEqual(previousEvidence);
-                expect(findSnapshotDevice(evDeviceManager.getSnapshot(), 'ev1')).toMatchObject({
-                    binaryControlObservation: previousEvidence, measuredPowerKw: 0.1,
-                });
-                expect((findSnapshotDevice(evDeviceManager.getSnapshot(), 'ev1') as TransportDeviceSnapshot)?.evChargingState)
-                    .toBeUndefined();
+                expect(evDeviceManager.getSnapshotByDeviceId('ev1')).toBeUndefined();
+                expect(evDeviceManager.canTurnOnDevice('ev1')).toBe(false);
 
                 evDeviceManager.destroy();
             } finally {
@@ -3653,7 +3665,7 @@ describe('DeviceTransport', () => {
             }));
         });
 
-        it('does not trust optimistic local off when a later pull omits onoff', async () => {
+        it('omits a binary-only device on a missing control read despite an accepted local off write', async () => {
             mockApiGet.mockResolvedValue({
                 dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
                     measure_power: 1000,
@@ -3681,15 +3693,9 @@ describe('DeviceTransport', () => {
 
             await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
-            const snapshotDevice = deviceManager.getSnapshot()[0];
-            expect(snapshotDevice).toEqual(expect.objectContaining({
-                binaryControl: { on: true },
-                available: true,
-                binaryControlObservation: expect.objectContaining({
-                    observedValue: true,
-                }),
-            }));
-            expect(resolveCommandableNow(snapshotDevice)).toBe(true);
+            expect(deviceManager.getSnapshot()).toEqual([]);
+            expect(deviceManager.canTurnOnDevice('dev1')).toBe(false);
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
         });
 
         it('emits reconcile event when target temperature changes via device.update', async () => {
@@ -6360,7 +6366,7 @@ describe('DeviceTransport', () => {
                 }
             });
 
-            it('retains unreadable switch and power fields with their original freshness', async () => {
+            it('omits a warm binary-only device when its switch field becomes unreadable', async () => {
                 vi.useFakeTimers();
                 try {
                     await deviceManager.init();
@@ -6374,12 +6380,9 @@ describe('DeviceTransport', () => {
                     await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
                     const before = deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe;
                     expect(before.binaryControl?.on).toBe(true);
-                    const freshnessBefore = before.lastFreshDataMs;
-                    const observationBefore = before.binaryControlObservation;
 
-                    // The read declares onoff and measure_power but answers neither:
-                    // both fields retain their accepted readings. The fresh-looking
-                    // timestamp on the valueless switch does not refresh either field.
+                    // A retained power report and a fresh-looking timestamp cannot
+                    // make the rejected sole binary facet usable.
                     vi.setSystemTime(new Date('2026-04-01T12:10:00.000Z'));
                     mockApiGet.mockResolvedValue({
                         dev1: {
@@ -6397,11 +6400,8 @@ describe('DeviceTransport', () => {
                     });
                     await deviceManager.refreshSnapshot({ targetedRefresh: true, meterDeviceIds: [] });
 
-                    const snapshot = deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe;
-                    expect(snapshot.binaryControl?.on).toBe(true);
-                    expect(snapshot.binaryControlObservation).toEqual(observationBefore);
-                    expect(snapshot.measuredPowerKw).toBe(1);
-                    expect(snapshot.lastFreshDataMs).toBe(freshnessBefore);
+                    expect(deviceManager.getSnapshot()).toEqual([]);
+                    expect(deviceManager.canTurnOnDevice('dev1')).toBe(false);
                     expect(loggerMock.structuredLog.error).not.toHaveBeenCalledWith(expect.objectContaining({
                         event: 'device_snapshot_control_state_dropped',
                     }));

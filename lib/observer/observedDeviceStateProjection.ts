@@ -282,10 +282,13 @@ export type DrawEvidenceReads = Pick<
     ObservedDeviceReads, 'hasStartedDrawingSince' | 'getLiveDrawAt' | 'hasDrawnAtLeastSince'
 >;
 
-type ProjectionEntry = {
-    value: ProjectedObservedDeviceState;
+type ProjectionCursor = {
     seq?: number;
     observedAtMs?: number;
+};
+
+type ProjectionEntry = ProjectionCursor & {
+    value: ProjectedObservedDeviceState;
     drawLevels?: readonly DrawLevel[];
 };
 
@@ -382,6 +385,9 @@ function freezeObserved(value: ProjectedObservedDeviceState): ProjectedObservedD
 export class ObservedDeviceStateProjection implements ObservedDeviceReads {
     private byId: Map<string, ProjectionEntry> = new Map();
 
+    /** Removal ordering survives after the observed record and draw history are gone. */
+    private removalCursors = new Map<string, Required<ProjectionCursor>>();
+
     private revision = 0;
 
     /**
@@ -404,12 +410,27 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
     }
 
     /**
-     * Record a per-capability delta. Defensive: a delta with no decided value
-     * attached is ignored (nothing to record).
+     * Record a decided value or an explicit removal. A metadata-only delta
+     * with neither is ignored.
      */
     applyDelta(event: ObservedStateChangedEvent): void {
+        if (event.removed === true) {
+            this.applyRemoval(event);
+            return;
+        }
         if (event.observed === undefined) return;
         this.apply(event.observed, event.observationSeq, event.observedAtMs);
+    }
+
+    private applyRemoval(event: Extract<ObservedStateChangedEvent, { removed: true }>): void {
+        const previous = this.byId.get(event.deviceId) ?? this.removalCursors.get(event.deviceId);
+        if (previous && this.shouldDrop(previous, event.observationSeq, event.observedAtMs)) return;
+        this.byId.delete(event.deviceId);
+        this.removalCursors.set(event.deviceId, {
+            seq: event.observationSeq,
+            observedAtMs: event.observedAtMs,
+        });
+        this.revision += 1;
     }
 
     /**
@@ -540,7 +561,9 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
         observedAtMs: number | undefined,
     ): void {
         const prev = this.byId.get(value.id);
-        if (prev && this.shouldDrop(prev, seq, observedAtMs)) return;
+        const previousCursor = prev ?? this.removalCursors.get(value.id);
+        if (previousCursor && this.shouldDrop(previousCursor, seq, observedAtMs)) return;
+        this.removalCursors.delete(value.id);
         this.byId.set(value.id, {
             value: freezeObserved(value), seq, observedAtMs,
             drawLevels: trackDrawLevels(prev, value, observedAtMs),
@@ -548,7 +571,7 @@ export class ObservedDeviceStateProjection implements ObservedDeviceReads {
         this.revision += 1;
     }
 
-    private shouldDrop(prev: ProjectionEntry, seq: number | undefined, observedAtMs: number | undefined): boolean {
+    private shouldDrop(prev: ProjectionCursor, seq: number | undefined, observedAtMs: number | undefined): boolean {
         if (typeof prev.seq === 'number' && typeof seq === 'number') {
             // Primary ordering: drop dupes and out-of-order seqs.
             return seq <= prev.seq;

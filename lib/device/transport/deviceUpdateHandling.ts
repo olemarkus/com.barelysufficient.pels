@@ -218,7 +218,7 @@ export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, d
 
 /** The facets a whole-device update can change with no capability event of their own. */
 type ObservedFlushFacets = Pick<TransportDeviceSnapshot,
-    'available' | 'reportedStepId' | 'reportedStepObservedAtMs' | 'acknowledgedStep'>;
+    'available' | 'binaryCapabilityId' | 'reportedStepId' | 'reportedStepObservedAtMs' | 'acknowledgedStep'>;
 
 // Dispatch the reconcile's deferred observed-state events — and when it emitted
 // none, still dispatch for an availability flip or a reported-step change. Availability is not a
@@ -233,6 +233,8 @@ type ObservedFlushFacets = Pick<TransportDeviceSnapshot,
 // A reported step read from a device setting (Futurehome's current limit) has
 // the same problem: a settings change arrives only as a whole-device update, and
 // so does an acknowledged step read from one.
+// Binary admission can change without a new boolean observation. Publish that
+// facet change too, so Observer cannot retain a rejected binary axis.
 // Called AFTER the commit, like every dispatch on this path.
 function flushDeferredObservedState(
     ingest: RealtimeIngestService,
@@ -242,11 +244,28 @@ function flushDeferredObservedState(
     currentSnapshot: ObservedFlushFacets | null,
 ): void {
     for (const event of events) ingest.observationBridge.dispatchStateChanged(event);
-    if (events.length > 0 || !currentSnapshot) return;
-    if (previousSnapshot?.available === currentSnapshot.available
-        && previousSnapshot.reportedStepId === currentSnapshot.reportedStepId
-        && previousSnapshot.reportedStepObservedAtMs === currentSnapshot.reportedStepObservedAtMs
-        && previousSnapshot.acknowledgedStep?.stepId === currentSnapshot.acknowledgedStep?.stepId
-        && previousSnapshot.acknowledgedStep?.observedAtMs === currentSnapshot.acknowledgedStep?.observedAtMs) return;
+    if (!currentSnapshot) {
+        // An untracked update is a no-op. Only committed absence withdraws
+        // Observer's record; the transport may still hold the previous row.
+        if (previousSnapshot && !ingest.reader.snapshotStore.getSnapshotByDeviceId(deviceId)) {
+            ingest.observationBridge.dispatchStateRemoved(deviceId);
+        }
+        return;
+    }
+    if (events.length > 0) return;
+    if (observedFlushFacetsUnchanged(previousSnapshot, currentSnapshot)) return;
     ingest.observationBridge.dispatchStateForDevice(deviceId);
+}
+
+function observedFlushFacetsUnchanged(
+    previous: ObservedFlushFacets | undefined,
+    current: ObservedFlushFacets,
+): boolean {
+    if (!previous) return false;
+    return previous.available === current.available
+        && previous.binaryCapabilityId === current.binaryCapabilityId
+        && previous.reportedStepId === current.reportedStepId
+        && previous.reportedStepObservedAtMs === current.reportedStepObservedAtMs
+        && previous.acknowledgedStep?.stepId === current.acknowledgedStep?.stepId
+        && previous.acknowledgedStep?.observedAtMs === current.acknowledgedStep?.observedAtMs;
 }

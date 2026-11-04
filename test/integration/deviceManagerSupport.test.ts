@@ -101,6 +101,8 @@ describe('device manager support helpers', () => {
 
     expect(getControlCapabilityId({ deviceClassKey: 'evcharger', capabilities: ['onoff', 'evcharger_charging'] })).toBe('evcharger_charging');
     expect(getControlCapabilityId({ deviceClassKey: 'socket', capabilities: ['onoff'] })).toBe('onoff');
+    expect(getControlCapabilityId({ deviceClassKey: 'evcharger', capabilities: ['onoff'] })).toBeUndefined();
+    expect(getCurrentOn(capabilityObj, undefined)).toBeUndefined();
     expect(getCurrentOn(capabilityObj, 'evcharger_charging')).toBe(false);
     expect(getCurrentOn(
       { evcharger_charging_state: { value: 'plugged_in_paused' } },

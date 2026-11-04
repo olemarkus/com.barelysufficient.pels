@@ -16,8 +16,8 @@ export function getControlCapabilityId(params: {
   capabilities: string[];
 }): TransportDeviceSnapshot['binaryCapabilityId'] {
   const { deviceClassKey, capabilities } = params;
-  if (deviceClassKey === 'evcharger' && capabilities.includes('evcharger_charging')) {
-    return 'evcharger_charging';
+  if (deviceClassKey === 'evcharger') {
+    return capabilities.includes('evcharger_charging') ? 'evcharger_charging' : undefined;
   }
   if (capabilities.includes('onoff')) {
     return 'onoff';
@@ -25,18 +25,7 @@ export function getControlCapabilityId(params: {
   return undefined;
 }
 
-/**
- * Reads the device's observed binary control state ("may it draw power?").
- *
- * Returns `undefined` only when there is no trusted boolean to read. At runtime
- * that means the device simply has no binary control. A device that HAS `onoff`
- * (or `evcharger_charging`) always reports a value, so the `undefined` return for
- * a binary device is a *type-level* possibility only — `capabilitiesObj[id].value`
- * is typed `unknown` and the entry is optional in the Homey SDK types, not a real
- * "binary device went unobserved" state. Callers must not treat `undefined` as an
- * observed "off"; the contractual non-optional `currentOn` is synthesized from
- * this at the parse boundary — see `resolveUnobservedControlFallback`.
- */
+/** Read an admitted binary facet; unrelated or rejected fields are not binary truth. */
 export function getCurrentOn(
   capabilityObj: DeviceCapabilityMap,
   binaryCapabilityId: TransportDeviceSnapshot['binaryCapabilityId'],
@@ -46,7 +35,7 @@ export function getCurrentOn(
       evchargerCharging: getEvCharging(capabilityObj),
     });
   }
-  if (typeof capabilityObj.onoff?.value === 'boolean') {
+  if (binaryCapabilityId === 'onoff' && typeof capabilityObj.onoff?.value === 'boolean') {
     return capabilityObj.onoff.value;
   }
   return undefined;

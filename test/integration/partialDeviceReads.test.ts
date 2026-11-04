@@ -35,19 +35,19 @@ afterEach(() => {
 });
 
 describe('cold reads with one unreadable control observation', () => {
-  it('keeps a binary device and its measured power before the first switch reading', async () => {
+  it('omits a binary-only device when its rejected switch leaves no admitted control facet', async () => {
     const initial = homeyDevice({ id: 'heater', name: 'Heater', class: 'heater' }, {
       onoff: setable(null), measure_power: 900,
     }, stamp(0));
     await seedTransportDevices(transport, [initial]);
-
-    expect(transport.getSnapshotByDeviceId(initial.id)).toMatchObject({
-      id: initial.id, available: true, measuredPowerKw: 0.9,
-    });
+    expect(transport.getSnapshotByDeviceId(initial.id)).toBeUndefined();
+    expect(transport.getHomeyDeviceIds().has(initial.id)).toBe(true);
     expect(transport.canTurnOnDevice(initial.id)).toBe(false);
 
     vi.setSystemTime(at(1));
-    await emitCapability(initial.id, 'onoff', true);
+    await seedTransportDevices(transport, [homeyDevice({ id: 'heater', name: 'Heater', class: 'heater' }, {
+      onoff: setable(true), measure_power: 900,
+    }, stamp(1))]);
     expect(transport.getSnapshotByDeviceId(initial.id)?.binaryControl?.on).toBe(true);
   });
 
@@ -62,7 +62,8 @@ describe('cold reads with one unreadable control observation', () => {
     expect(transport.canTurnOnDevice(initial.id)).toBe(false);
     const put = vi.fn().mockResolvedValue(undefined);
     setRestClient({ get: path => mockHomeyInstance.api.get(path), put });
-    await expect(transport.setCapability(initial.id, 'onoff', true)).rejects.toThrow('not ready');
+    expect(transport.getSnapshotByDeviceId(initial.id)?.binaryControl).toBeUndefined();
+    await expect(transport.setCapability(initial.id, 'onoff', true)).rejects.toThrow('Binary control is unavailable');
     expect(put).not.toHaveBeenCalled();
     await transport.setCapability(initial.id, 'target_temperature', 23);
     expect(put).toHaveBeenCalledWith(
@@ -71,7 +72,7 @@ describe('cold reads with one unreadable control observation', () => {
   });
 
   it.each(['measure_temperature', 'target_temperature'])(
-    'keeps thermostat power when %s has no first observation', async capabilityId => {
+    'omits a thermostat when %s gates its only usable control facet', async capabilityId => {
       const initial = homeyDevice({ id: 'thermostat', name: 'Thermostat', class: 'thermostat' }, {
         measure_temperature: celsius(20), target_temperature: celsius(21), measure_power: 900,
       }, stamp(0));
@@ -80,8 +81,8 @@ describe('cold reads with one unreadable control observation', () => {
         [capabilityId]: { ...initial.capabilitiesObj?.[capabilityId], value: null },
       } }]);
 
-      expect(transport.getSnapshotByDeviceId(initial.id)).toMatchObject({ id: initial.id, measuredPowerKw: 0.9 });
-      expect(transport.getSnapshotByDeviceId(initial.id)?.temperature).toBeUndefined();
+      expect(transport.getSnapshotByDeviceId(initial.id)).toBeUndefined();
+      expect(transport.getHomeyDeviceIds().has(initial.id)).toBe(true);
       expect(transport.canTurnOnDevice(initial.id)).toBe(false);
 
       await seedTransportDevices(transport, [initial]);

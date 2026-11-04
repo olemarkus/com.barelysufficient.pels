@@ -26,10 +26,21 @@ export class ObservationBridge {
   }
 
   dispatchStateChanged(event: ObservedStateChangedEvent): void {
+    if (event.removed === true) {
+      this.dispatcher.observedStateChanged(event);
+      return;
+    }
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(event.deviceId);
     this.dispatcher.observedStateChanged(
       snapshot ? { ...event, observed: projectObservedState(snapshot) } : event,
     );
+  }
+
+  /** Admission withdrew the device; no fabricated observation replaces it. */
+  dispatchStateRemoved(deviceId: string): void {
+    this.dispatchStateChanged({
+      source: 'device_update', deviceId, removed: true, ...this.nextCursor(deviceId),
+    });
   }
 
   dispatchStateForDevice(deviceId: string, capabilityId?: string): void {

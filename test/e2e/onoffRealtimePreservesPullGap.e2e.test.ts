@@ -1,16 +1,11 @@
-// SDK-boundary e2e for the onoff pull-gap case.
-//
-// The test keeps PELS internals real. The Homey API pull path is stubbed with a
-// device whose onoff capability is advertised but whose value is missing — a
-// read that breaks the device-read contract and is ignored outright
-// (`lib/device/transport/deviceReadContract.ts`). The realtime push enters
-// through the real socket live-feed adapter, and the final assertion is the SDK
-// write PELS emits under capacity pressure after trusted realtime evidence
-// survives the ignored pull.
+// SDK-boundary e2e for binary admission across an unreadable pull.
+// PELS internals remain real: Homey's API and live feed supply the readings,
+// and capacity pressure must produce no binary SDK write while the sole
+// control facet is rejected. A later valid pull restores normal shedding.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { drainUntil, drainUntilCalledWith } from '../utils/asyncDrain';
+import { drainPending, drainUntil, drainUntilCalledWith } from '../utils/asyncDrain';
 import { connectLiveFeed, emitCapability } from '../helpers/liveFeedSocketHarness';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
@@ -96,8 +91,7 @@ describe('On/off realtime observation across pull gap (SDK-boundary e2e)', () =>
     vi.useRealTimers();
   });
 
-  // Every pull omits the onoff value, so every read is ignored and the device
-  // never enters the snapshot: nothing PELS could command.
+  // Every pull rejects the sole control facet, so the device is not admitted.
   it('does not control a cold-start missing onoff value before realtime arrives', async () => {
     let totalW = 500;
     const device = new MockDevice(DEVICE_ID, 'On/Off Socket', ['onoff', 'measure_power'], 'socket');
@@ -114,19 +108,14 @@ describe('On/off realtime observation across pull gap (SDK-boundary e2e)', () =>
 
     totalW = 10_000;
     await vi.advanceTimersByTimeAsync(10_000);
-    // Negative assertion: drive the detached poll→plan→execute chain to
-    // quiescence before asserting absence. A fixed flush could assert before a
-    // late write lands, so a "missing onoff is wrongly controllable" regression
-    // could slip past. Drain bounded rounds waiting for any write: a buggy off
-    // write lands within them (and fails the assert); the correct no-write case
-    // exhausts the rounds and drainUntil throws — swallowed so we reach the
-    // assertion with the cycle fully settled.
-    await drainUntil(() => putSpy.mock.calls.length > 0, { rounds: 20 }).catch(() => {});
+    // Settle the detached meter → plan → executor chain before asserting no SDK write.
+    await drainPending();
 
-    expect(putSpy).not.toHaveBeenCalledWith(onoffCap(DEVICE_ID), pelsCapabilityWrite(false));
+    expect(app.getPlanInputSnapshot().some(device => device.id === DEVICE_ID)).toBe(false);
+    expect(putSpy.mock.calls.some(([path]) => path === onoffCap(DEVICE_ID))).toBe(false);
   });
 
-  it('preserves realtime onoff=true when a later pull omits the onoff value and is ignored', async () => {
+  it('withholds sole binary control after an unreadable pull and recovers on a valid pull', async () => {
     let totalW = 500;
     // Seen off by a conforming pull at boot; every later pull omits the value.
     let pullOnoff: boolean | undefined = false;
@@ -148,21 +137,27 @@ describe('On/off realtime observation across pull gap (SDK-boundary e2e)', () =>
     const pullsBeforeRefresh = countDeviceListPulls(getSpy);
     mockHomeyInstance.settings.set('refresh_target_devices_snapshot', Date.now());
     await waitForDeviceListPullAfter(getSpy, pullsBeforeRefresh);
+    await drainUntil(() => !app.getPlanInputSnapshot().some(device => device.id === DEVICE_ID));
     putSpy.mockClear();
 
     totalW = 10_000;
-    // 20 s, not 10: the shed comes from the POLL now. The realtime observation
-    // used to request a rebuild directly, bypassing the scheduler and with it
-    // `TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS` — the 15 s execution floor
-    // that applies to every other load switching on. Removing that bypass is the
-    // point (`lib/plan/planRebuildTrigger.ts`); what is asserted is unchanged.
     await vi.advanceTimersByTimeAsync(20_000);
-    // Wait for the detached poll→plan→execute chain to reach the SDK write
-    // instead of a fixed flush, which flakes to zero calls under full-suite CPU
-    // load (notes/testing-taxonomy.md). The toHaveBeenCalledWith below then gives
-    // a readable diff and is guaranteed to hold once this resolves.
-    await drainUntilCalledWith(putSpy, onoffCap(DEVICE_ID), pelsCapabilityWrite(false));
+    await drainPending();
+    expect(app.getPlanInputSnapshot().some(device => device.id === DEVICE_ID)).toBe(false);
+    expect(putSpy.mock.calls.some(([path]) => path === onoffCap(DEVICE_ID))).toBe(false);
 
+    // A real, valid control report re-admits the device. The next meter cycle
+    // can then shed it through the SDK under the same capacity pressure.
+    pullOnoff = true;
+    const pullsBeforeRecovery = countDeviceListPulls(getSpy);
+    mockHomeyInstance.settings.set('refresh_target_devices_snapshot', Date.now());
+    await waitForDeviceListPullAfter(getSpy, pullsBeforeRecovery);
+    await drainUntil(() => app.getPlanInputSnapshot().some(device => device.id === DEVICE_ID));
+    // A refresh changes planner input without invalidating the empty plan's
+    // unactionable verdict. Steady meter readings recheck it after the 30 s
+    // maximum rebuild interval; include the following meter poll as well.
+    await vi.advanceTimersByTimeAsync(40_000);
+    await drainUntilCalledWith(putSpy, onoffCap(DEVICE_ID), pelsCapabilityWrite(false));
     expect(putSpy).toHaveBeenCalledWith(onoffCap(DEVICE_ID), pelsCapabilityWrite(false));
   });
 });

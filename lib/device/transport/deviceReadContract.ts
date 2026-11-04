@@ -1,13 +1,12 @@
 /**
- * Validate each Homey capability at the device transport boundary. A bad value,
- * missing entry or source date rejects that field only. Keep its last accepted
- * reading with its original date, or withhold it until its first valid reading;
- * accept independent valid fields in the same payload. This applies to vendor
- * sources before conversion as well as standard Homey capabilities.
+ * Validate Homey fields independently, then let each feature's admission gate
+ * consume the resolved values. Rejected binary readings supply no binary
+ * facet, including after an earlier accepted read. Other observation owners
+ * may retain accepted readings at their original source dates.
  *
- * Only an unreadable envelope (no capability list or value map) ignores the
- * whole read. Never turn a field-validation failure into loss of device support.
- * See lib/device/AGENTS.md for observation and dependent-control rules.
+ * Native control metadata is independent of its rejected scalar reading. An
+ * unreadable envelope ignores the whole read; otherwise normal admission may
+ * omit a device only when none of its supported features remains usable.
  */
 import { isReportedThermostatMode } from './thermostatModeRealtime';
 import { normalizeStateOfChargePercent } from './stateOfCharge';
@@ -199,11 +198,15 @@ function resolveReadDescriptorIds(device: HomeyDeviceLike): Set<string> {
         entry === undefined ? [] : [[id, entry]]
     )));
     const overlay = applyNativeEvWiringOverlay(device, device.capabilities ?? [], values);
-    return new Set([
-        'onoff', 'evcharger_charging', 'measure_temperature', 'target_temperature', 'target_power', 'target_power_mode',
+    const descriptors = new Set([
+        'measure_temperature', 'target_temperature', 'target_power', 'target_power_mode',
         ...getDeviceAdapter(device).nativeCurrentControls.map((control) => control.capabilityId),
         ...(overlay.binaryWriteCapabilityId ? [overlay.binaryWriteCapabilityId] : []),
     ]);
+    // A real write descriptor is not an observed binary facet.
+    descriptors.delete('onoff');
+    descriptors.delete('evcharger_charging');
+    return descriptors;
 }
 
 /**
@@ -219,7 +222,12 @@ export function withholdInvalidModelCapabilities(
         ...resolveModelCapabilityTypes(device, device.capabilities ?? []),
         ...getDeviceAdapter(device).readRules(device),
     };
+    const descriptorIds = resolveReadDescriptorIds(device);
     const retained = violations.flatMap(({ capabilityId }) => {
+        // Binary admission requires the current read's accepted boolean. Native
+        // limits retain their own readings/metadata independently of this axis.
+        if (capabilityId === 'onoff' || capabilityId === 'evcharger_charging'
+            || (types[capabilityId] === 'boolean' && descriptorIds.has(capabilityId))) return [];
         const entry = previousRead?.capabilitiesObj?.[capabilityId];
         const type = types[capabilityId];
         return entry && type !== undefined && findEntryViolation(capabilityId, entry, type) === null
@@ -233,10 +241,6 @@ export function withholdInvalidModelCapabilities(
     // A rejected native control READING does not erase its declared surface or
     // range. Those descriptors let the owner keep the ladder and wait for a
     // real step report, rather than fall back to a binary-only start.
-    const descriptorIds = resolveReadDescriptorIds(device);
-    if (withheld.has('evcharger_charging') && resolveDeviceClassKey(device) === 'evcharger') {
-        descriptorIds.delete('onoff');
-    }
     const descriptors = [...withheld].flatMap((id) => {
         const entry = device.capabilitiesObj?.[id];
         if (!descriptorIds.has(id) || !isUnknownRecord(entry)) return [];

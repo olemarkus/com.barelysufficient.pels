@@ -219,7 +219,7 @@ function resolveExplicitControlObservation(
   parsed: TransportDeviceSnapshot,
   previous: TransportDeviceSnapshot | null,
 ): ExplicitControlObservation | null {
-  const binaryCapabilityId = parsed.binaryCapabilityId ?? previous?.binaryCapabilityId;
+  const binaryCapabilityId = parsed.binaryCapabilityId;
   if (typeof binaryCapabilityId !== 'string') return null;
   if (!isRealtimeControlCapability(binaryCapabilityId)) return null;
   const observation = getExplicitObservedBinaryObservation(

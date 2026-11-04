@@ -177,8 +177,12 @@ export class DeviceWriteService {
         && raw.capabilitiesObj?.target_power_mode?.value === undefined);
   }
 
-  private assertNativeStartAllowed(snapshot: TransportDeviceSnapshot | undefined, requested: CapabilityWrite): void {
-    if (!snapshot || requested.value !== true || snapshot.binaryCapabilityId !== requested.capabilityId) return;
+  private assertBinaryWriteAllowed(snapshot: TransportDeviceSnapshot | undefined, requested: CapabilityWrite): void {
+    if (requested.capabilityId !== 'onoff' && requested.capabilityId !== 'evcharger_charging') return;
+    if (!snapshot || snapshot.binaryCapabilityId !== requested.capabilityId) {
+      throw new Error('Binary control is unavailable for this device.');
+    }
+    if (requested.value !== true) return;
     if (!resolveCommandableNow(snapshot) || snapshot.binaryControlObservation === undefined) {
       throw new Error('Device is not ready to start.');
     }
@@ -193,7 +197,7 @@ export class DeviceWriteService {
     const normalizedValue = normalizeCapabilityValue(this.snapshotStore, deviceId, capabilityId, value);
     const snapshotBefore = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     const requested: CapabilityWrite = { capabilityId, value: normalizedValue };
-    this.assertNativeStartAllowed(snapshotBefore, requested);
+    this.assertBinaryWriteAllowed(snapshotBefore, requested);
     // `readBackAsWritten`: whether PELS reads the requested capability back as
     // Homey holds it. Only then may the local write stand in for a read that
     // Homey dated before it.
