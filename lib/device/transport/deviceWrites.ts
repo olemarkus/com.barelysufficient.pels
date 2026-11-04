@@ -154,10 +154,17 @@ export class DeviceWriteService {
       && !this.needsNativeControlReadBeforeStart(snapshot);
   }
 
-  /** Missing native observations cannot turn a stepped start into a binary-only start. */
+  /**
+   * Missing native observations cannot turn a stepped start into a binary-only
+   * start. The device is judged as it is parsed, without the capabilities an
+   * integration session withholds: a Zaptec on a shared installation keeps
+   * declaring `target_power`, which PELS then never writes, and its app sets no
+   * value there by itself, so waiting for one would leave the charger off.
+   */
   private needsNativeControlReadBeforeStart(snapshot: TransportDeviceSnapshot): boolean {
-    const raw = this.snapshotStore.getTrackedRawDevice(snapshot.id);
-    if (!raw) return false;
+    const tracked = this.snapshotStore.getTrackedRawDevice(snapshot.id);
+    if (!tracked) return false;
+    const raw = this.chargingCurrentControl.sessions.withholdCapabilities(tracked);
     if (this.needsNativeWattReadBeforeStart(raw)) return true;
     if (!this.nativeWiring.resolveNativeWiringEnabled(snapshot.id)) return false;
     return getDeviceAdapter(raw).nativeCurrentControls.some(control => {
@@ -170,8 +177,6 @@ export class DeviceWriteService {
   private needsNativeWattReadBeforeStart(raw: HomeyDeviceLike): boolean {
     const targetPower = raw.capabilitiesObj?.target_power;
     if (!raw.capabilities?.includes('target_power') || targetPower?.setable === false) return false;
-    // A deliberately excluded ladder (for example on a shared installation)
-    // is independent of whether its source field can be read.
     return targetPower?.setable !== true || targetPower.value === undefined
       || (raw.capabilities.includes('target_power_mode')
         && raw.capabilitiesObj?.target_power_mode?.value === undefined);

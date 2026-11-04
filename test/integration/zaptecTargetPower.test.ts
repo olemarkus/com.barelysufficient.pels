@@ -1,10 +1,11 @@
 import Homey from 'homey';
 import { getLogger } from '../../lib/logging/logger';
-import type { Logger } from '../../lib/utils/types';
+import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { emitCapability, emitDeviceUpdate, settleLiveFeed } from '../helpers/liveFeedSocketHarness';
 import { buildZaptecTargetPowerDevice } from '../helpers/zaptecDeviceFixture';
+import { capabilityReadings } from '../helpers/homeyDevicePayload';
 import { mockHomeyInstance } from '../mocks/homey';
 import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
@@ -129,6 +130,38 @@ describe('Zaptec native target power', () => {
       setRestClient({ get: vi.fn(), put });
       await transport.requestBinaryControl(ZAPTEC_ID, true, vi.fn());
       expect(put.mock.calls).toEqual([
+        [`manager/devices/device/${ZAPTEC_ID}/capability/evcharger_charging`, pelsCapabilityWrite(true)],
+      ]);
+    });
+
+    it('starts again after a stop while the app has never set its watt target', async () => {
+      // The app adds both capabilities but sets neither value itself, so Homey
+      // reports them null until someone writes them; on a shared installation
+      // PELS never does.
+      const neverWritten = (device: HomeyDeviceLike): HomeyDeviceLike => {
+        const { target_power: power, target_power_mode: mode } = device.capabilitiesObj ?? {};
+        return {
+          ...device,
+          capabilitiesObj: {
+            ...device.capabilitiesObj,
+            ...capabilityReadings({
+              target_power: { ...power, value: null, lastUpdated: null },
+              target_power_mode: { ...mode, value: null, lastUpdated: null },
+            }),
+          },
+        };
+      };
+      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
+      await seedTransportDevices(transport, shared().map(neverWritten));
+      expect(transport.getSnapshotByDeviceId(ZAPTEC_ID)?.nativeWriteCapabilities).toBeUndefined();
+      const put = vi.fn().mockResolvedValue(undefined);
+      setRestClient({ get: vi.fn(), put });
+
+      await transport.requestBinaryControl(ZAPTEC_ID, false, vi.fn());
+      expect(transport.canTurnOnDevice(ZAPTEC_ID)).toBe(true);
+      await transport.requestBinaryControl(ZAPTEC_ID, true, vi.fn());
+      expect(put.mock.calls).toEqual([
+        [`manager/devices/device/${ZAPTEC_ID}/capability/evcharger_charging`, pelsCapabilityWrite(false)],
         [`manager/devices/device/${ZAPTEC_ID}/capability/evcharger_charging`, pelsCapabilityWrite(true)],
       ]);
     });
