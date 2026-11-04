@@ -46,7 +46,7 @@ const findSnapshotDevice = <T extends { id: string }>(
 };
 
 // Homey dates every capability value it reports (`lastUpdated`), and PELS
-// ignores a read that carries a model value without one. A fixture with no
+// withholds a model value without one, retaining valid siblings. A fixture with no
 // time of its own reads as observed when the payload is built. A read only
 // supersedes an earlier one when its stamp is newer, so a test whose reads
 // follow each other within the same millisecond orders them by offset:
@@ -300,6 +300,61 @@ describe('DeviceTransport', () => {
             }));
         });
 
+        it.each(['device_fetch', 'device_update'] as const)(
+            'discovers Toshiba control and cumulative-power support and preserves it through a warm %s',
+            async (source) => {
+                const cold = homeyDevice(
+                    {
+                        id: 'toshiba-ac', name: 'Toshiba heat pump', class: 'airconditioning',
+                        driverUri: 'homey:app:com.toshiba', driverId: 'ac', available: true,
+                    },
+                    {
+                        onoff: setable(true), measure_temperature: celsius(20),
+                        target_temperature: { ...celsius(22), setable: true, min: 5, max: 35 },
+                        meter_power: { value: 1000, units: 'kWh' },
+                        target_power_mode: { value: 'Power 100%', setable: true },
+                    },
+                    '2026-04-01T11:00:00.000Z',
+                );
+                await deviceManager.init();
+                await seedTransportDevices(deviceManager, [cold]);
+                expect(deviceManager.getSnapshot()[0]).toMatchObject({
+                    id: 'toshiba-ac', deviceType: 'temperature', powerCapable: true,
+                    binaryControl: { on: true }, temperature: { currentTemperature: 20, target: { value: 22 } },
+                });
+
+                const warm = {
+                    ...cold,
+                    capabilitiesObj: {
+                        ...cold.capabilitiesObj,
+                        ...capabilityReadings({
+                            onoff: setable(false), measure_temperature: celsius(21),
+                            target_temperature: { ...celsius(23), setable: true, min: 5, max: 35 },
+                            meter_power: { value: 1000.1, units: 'kWh' },
+                        }, '2026-04-01T11:10:00.000Z'),
+                    },
+                };
+                if (source === 'device_fetch') {
+                    mockApiGet.mockResolvedValue({ 'toshiba-ac': warm });
+                    await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+                } else {
+                    emitDeviceUpdate(warm);
+                }
+
+                expect(deviceManager.getSnapshot()[0]).toMatchObject({
+                    id: 'toshiba-ac', powerCapable: true, binaryControl: { on: false },
+                    temperature: { currentTemperature: 21, target: { value: 23 } },
+                    measuredPowerKw: expect.closeTo(0.6),
+                });
+                if (source === 'device_fetch') {
+                    expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(Date.parse('2026-04-01T11:10:00.000Z'));
+                }
+                expect(loggerMock.structuredLog.warn).not.toHaveBeenCalledWith(expect.objectContaining({
+                    event: 'device_read_ignored', deviceId: 'toshiba-ac',
+                }));
+            },
+        );
+
         it('reads a device with a null meter_power as metered by its measure_power', async () => {
             const [parsed] = await seedTransportDevices(deviceManager, [homeyDevice(
                 { id: 'heater-1', name: 'Heater', class: 'heater' },
@@ -330,8 +385,7 @@ describe('DeviceTransport', () => {
             expect(parsed.available).toBe(true);
         });
 
-        // The read is ignored whole: the parse never sees it, so no facet of it
-        // (a binary facet beside a malformed target included) is kept.
+        // A malformed field cannot hide independently usable temperature or binary control.
         it.each([
             {
                 label: 'a non-boolean onoff',
@@ -352,26 +406,35 @@ describe('DeviceTransport', () => {
                 },
                 violation: { reason: 'unexpected_value', capabilityId: 'target_temperature' },
             },
-        ])('ignores a read carrying $label, so a device never seen conforming stays out', async ({ entries, violation }) => {
+        ])('keeps independent controls on a cold read carrying $label', async ({ entries, violation }) => {
             const parsed = await seedTransportDevices(deviceManager, [{
                 id: 'thermo-2',
                 name: 'Bedroom Thermostat',
                 class: 'thermostat',
-                capabilities: ['onoff', 'measure_temperature', 'target_temperature'],
+                capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'measure_power'],
                 capabilitiesObj: {
                     onoff: { value: true, id: 'onoff', lastUpdated: stampedNow() },
                     measure_temperature: { value: 20, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
                     target_temperature: { value: 22, id: 'target_temperature', units: '°C', lastUpdated: stampedNow() },
+                    measure_power: { value: 1000, id: 'measure_power', lastUpdated: stampedNow() },
                     ...entries,
                 },
             }]);
 
-            expect(parsed).toEqual([]);
-            expect(loggerMock.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
-                event: 'device_read_ignored',
-                deviceId: 'thermo-2',
-                source: 'device_fetch',
-                ...violation,
+            expect(parsed).toHaveLength(1);
+            expect(parsed[0]?.id).toBe('thermo-2');
+            if (violation.capabilityId === 'onoff') {
+                expect(hasObservedTemperature(parsed[0])).toBe(true);
+                expect(parsed[0]?.capabilities).toContain('onoff');
+                expect(parsed[0]?.binaryControlObservation).toBeUndefined();
+                expect(deviceManager.canTurnOnDevice('thermo-2')).toBe(false);
+            } else {
+                expect(parsed[0]?.binaryControl?.on).toBe(true);
+                expect(hasObservedTemperature(parsed[0])).toBe(false);
+            }
+            expect(loggerMock.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_capabilities_withheld', deviceId: 'thermo-2', source: 'device_fetch',
+                violations: [violation], withheldCapabilityIds: [violation.capabilityId],
             }));
         });
 
@@ -421,13 +484,17 @@ describe('DeviceTransport', () => {
             expect(hasObservedTemperature(parsed)).toBe(false);
         });
 
-        it('drops a temperature-only device when either member of the pair is malformed', async () => {
+        it('keeps a temperature device descriptor without inventing a rejected temperature facet', async () => {
             const parsed = await seedTransportDevices(deviceManager, [homeyDevice(
                 { id: 'temp-only-broken', name: 'Broken Tank', class: 'thermostat' },
                 { measure_temperature: Number.NaN, target_temperature: celsius(60) },
             )]);
 
-            expect(parsed).toEqual([]);
+            expect(parsed).toHaveLength(1);
+            expect(parsed[0]?.id).toBe('temp-only-broken');
+            expect(hasObservedTemperature(parsed[0])).toBe(false);
+            expect(parsed[0]?.binaryCapabilityId).toBeUndefined();
+            expect(deviceManager.canTurnOnDevice('temp-only-broken')).toBe(false);
         });
     });
 
@@ -491,7 +558,7 @@ describe('DeviceTransport', () => {
             onoff: { value: capValue },
         }, stampedNow());
 
-        it('returns only unmanaged-eligible devices, leaving out any device whose read never conformed or lost its only control', async () => {
+        it('keeps managed and picker device descriptors visible while their control observation is unreadable', async () => {
             const dm = createTestDeviceTransport(homeyMock, loggerMock, {
               settings: {
                 isManaged: (deviceId) => deviceId === 'dev1' || deviceId === 'neverConformingManaged',
@@ -515,17 +582,15 @@ describe('DeviceTransport', () => {
             onObservedStateRefresh(dm, (event) => refreshes.push(event));
             await dm.refreshSnapshot({ meterDeviceIds: [] });
 
-            // A read that breaks the device-read contract is ignored whole. With
-            // no earlier conforming read to stand in for it, the device appears
-            // nowhere: not in the snapshot, not in the picker. A never-reported
-            // (`null`) `onoff` is withheld instead, which leaves that heater
-            // nothing PELS controls, so it appears nowhere either.
-            expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']);
-            expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
-            // The refresh still names the ignored one as listed: present, but
-            // unread, so a consumer tracking membership never counts it as removed.
-            expect(refreshes.at(-1)?.entries.map((entry) => entry.observed.id)).toEqual(['dev1']);
-            expect(refreshes.at(-1)?.ignoredReadIds).toEqual(['neverConformingUnmanaged']);
+            // A cold heater keeps its descriptor and valid power while its
+            // rejected switch contributes no observed control or start permission.
+            expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1', 'neverConformingManaged']);
+            expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2', 'neverConformingUnmanaged']);
+            expect(dm.canTurnOnDevice('neverConformingManaged')).toBe(false);
+            expect(dm.getSnapshotByDeviceId('neverConformingManaged')?.binaryControlObservation).toBeUndefined();
+            // Field rejection does not classify the whole device read as ignored.
+            expect(refreshes.at(-1)?.entries.map((entry) => entry.observed.id)).toEqual(['dev1', 'neverConformingManaged']);
+            expect(refreshes.at(-1)?.ignoredReadIds).toEqual([]);
             // Every device Homey listed is still Homey's, read or not: nothing
             // learned about one is pruned because PELS could not read it.
             expect([...dm.getHomeyDeviceIds()].sort())
@@ -539,12 +604,10 @@ describe('DeviceTransport', () => {
                 source: 'device_fetch',
                 capabilityIds: ['onoff'],
             }));
-            expect(loggerMock.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
-                event: 'device_read_ignored',
-                deviceId: 'neverConformingUnmanaged',
-                source: 'device_fetch',
-                reason: 'unexpected_value',
-                capabilityId: 'onoff',
+            expect(loggerMock.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_capabilities_withheld', deviceId: 'neverConformingUnmanaged', source: 'device_fetch',
+                violations: [{ reason: 'unexpected_value', capabilityId: 'onoff' }],
+                withheldCapabilityIds: ['onoff'],
             }));
             dm.destroy();
         });
@@ -660,7 +723,7 @@ describe('DeviceTransport', () => {
             dm.destroy();
         });
 
-        it('drops a managed device whose only control is null, without offering it in the picker', async () => {
+        it('retains a known managed device and its switch observation through a null control reading', async () => {
             const dm = createTestDeviceTransport(homeyMock, loggerMock, {
               settings: { isManaged: (deviceId) => deviceId === 'dev1' },
             });
@@ -670,13 +733,12 @@ describe('DeviceTransport', () => {
             expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']);
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual([]);
 
-            // A `null` onoff is withheld, which leaves this heater nothing PELS
-            // controls: it is out of the snapshot until onoff reports again,
-            // and never offered in the picker meanwhile. It is still in Homey's
-            // device list, so nothing learned about it is pruned.
+            // The known switch keeps its last accepted observation, so a null
+            // cannot remove the device or move it into the unmanaged picker.
             mockApiGet.mockResolvedValue({ dev1: buildDevice('dev1', null) });
             await dm.refreshSnapshot({ meterDeviceIds: [] });
-            expect(dm.getSnapshot().map((d) => d.id)).toEqual([]);
+            expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']);
+            expect(dm.getSnapshot()[0]?.binaryControl?.on).toBe(true);
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual([]);
             expect([...dm.getHomeyDeviceIds()]).toEqual(['dev1']);
             expect(dm.isDeviceConfirmedRemoved('dev1')).toBe(false);
@@ -714,8 +776,8 @@ describe('DeviceTransport', () => {
          * The reported mode across `device.update`.
          *
          * An update that declares `thermostat_mode` but leaves it out of
-         * `capabilitiesObj` breaks the device-read contract and is ignored
-         * whole, so the mode it did not carry is never read as "no mode":
+         * `capabilitiesObj` keeps its last accepted mode while valid siblings
+         * update, so the omitted mode is never read as "no mode":
          * that would send a cooling unit's price shift the wrong way.
          */
         describe('reported thermostat mode across device.update', () => {
@@ -747,29 +809,31 @@ describe('DeviceTransport', () => {
                 expect(observedMode()).toBe('cooling');
             };
 
-            it('keeps it through an update that omits the mode, which is ignored whole', async () => {
+            it('keeps an omitted mode while accepting a newer temperature', async () => {
                 await seedCooling();
 
                 emitDeviceUpdate(heatPump({
-                    measure_temperature: { value: 26, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow() },
+                    measure_temperature: { value: 26, id: 'measure_temperature', units: '°C', lastUpdated: stampedNow(1_000) },
                 }));
 
                 expect(observedMode()).toBe('cooling');
+                const current = deviceManager.getSnapshot()[0] as TransportDeviceSnapshot;
+                expect(hasObservedTemperature(current)).toBe(true);
+                if (!hasObservedTemperature(current)) throw new Error('expected temperature');
+                expect(current.temperature.currentTemperature).toBe(26);
             });
 
             it('still lets an update that DOES carry the mode replace it', async () => {
                 await seedCooling();
 
-                // Proves the mode kept above is an ignored read rather than a
-                // stuck value.
+                // A later valid mode still supersedes the retained value.
                 emitDeviceUpdate(fullRead('heat'));
 
                 expect(observedMode()).toBe('heat');
             });
 
-            // A capability withheld for a `null` is not stuck: the next read
-            // that carries a value restores it, and the next `null` drops it.
-            it('drops a capability while it is null and restores it with the next value', async () => {
+            // Cold null fields are withheld; once observed, a later null keeps the accepted value.
+            it('withholds a cold null capability and retains it through later null reads', async () => {
                 await deviceManager.init();
                 const unreported = heatPump({
                     onoff: { value: null, id: 'onoff', lastUpdated: stampedNow() },
@@ -779,7 +843,9 @@ describe('DeviceTransport', () => {
                 });
                 mockApiGet.mockResolvedValue({ dev1: unreported });
                 await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
-                expect(deviceManager.getSnapshot()[0]?.capabilities).not.toContain('onoff');
+                expect(deviceManager.getSnapshot()[0]?.capabilities).toContain('onoff');
+                expect(deviceManager.getSnapshot()[0]?.binaryControlObservation).toBeUndefined();
+                expect(deviceManager.canTurnOnDevice('dev1')).toBe(false);
                 expect(observedMode()).toBeUndefined();
 
                 emitDeviceUpdate(fullRead('cooling'));
@@ -788,9 +854,9 @@ describe('DeviceTransport', () => {
 
                 mockApiGet.mockResolvedValue({ dev1: unreported });
                 await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
-                // A null again drops them again: nothing stands in for a null.
-                expect(deviceManager.getSnapshot()[0]?.capabilities).not.toContain('onoff');
-                expect(observedMode()).toBeUndefined();
+                // A later null is no new observation and cannot erase accepted state.
+                expect(deviceManager.getSnapshot()[0]?.capabilities).toContain('onoff');
+                expect(observedMode()).toBe('cooling');
             });
 
             it('takes a live mode event, publishes the change, and counts it as no freshness', async () => {
@@ -1224,11 +1290,9 @@ describe('DeviceTransport', () => {
         it.each([
             'evcharger_charging',
             'evcharger_charging_state',
-        ] as const)('drops a charger that declares %s but reports no value', async (valuelessCapabilityId) => {
-            // Device-read contract: a declared model capability must carry a value
-            // of the model's type. A charger that never answered one is never
-            // admitted, rather than admitted with a command or plug state every
-            // consumer would have to re-handle as unknown.
+        ] as const)('keeps independent charger observations when declared %s reports no value', async (valuelessCapabilityId) => {
+            // A valueless field rejects only its observation. The charger and
+            // its valid sibling telemetry remain visible without a fabricated value.
             const evDeviceManager = createTestDeviceTransport(homeyMock, loggerMock);
             await evDeviceManager.init();
             const capabilitiesObj = {
@@ -1249,12 +1313,20 @@ describe('DeviceTransport', () => {
 
             await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
-            expect(evDeviceManager.getSnapshot()).toEqual([]);
+            expect(evDeviceManager.getSnapshot()).toHaveLength(1);
+            expect(evDeviceManager.getSnapshot()[0]).toMatchObject({ id: 'ev1', measuredPowerKw: 0 });
+            if (valuelessCapabilityId === 'evcharger_charging_state') {
+                expect(evDeviceManager.getSnapshotByDeviceId('ev1')?.evChargingState).toBeUndefined();
+            } else {
+                expect(evDeviceManager.getSnapshotByDeviceId('ev1')?.evCharging).toBeUndefined();
+                expect(evDeviceManager.getSnapshotByDeviceId('ev1')?.binaryControlObservation).toBeUndefined();
+            }
+            expect(evDeviceManager.canTurnOnDevice('ev1')).toBe(false);
 
             evDeviceManager.destroy();
         });
 
-        it('drops a charger whose plug-state value is outside the Homey enum', async () => {
+        it('keeps charger telemetry when its plug-state value is outside the Homey enum', async () => {
             const evDeviceManager = createTestDeviceTransport(homeyMock, loggerMock);
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -1267,7 +1339,10 @@ describe('DeviceTransport', () => {
 
             await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
-            expect(evDeviceManager.getSnapshot()).toEqual([]);
+            expect(evDeviceManager.getSnapshot()).toHaveLength(1);
+            expect(evDeviceManager.getSnapshot()[0]).toMatchObject({ id: 'ev1', measuredPowerKw: 0 });
+            expect(evDeviceManager.getSnapshotByDeviceId('ev1')?.evChargingState).toBeUndefined();
+            expect(evDeviceManager.canTurnOnDevice('ev1')).toBe(false);
 
             evDeviceManager.destroy();
         });
@@ -1285,17 +1360,16 @@ describe('DeviceTransport', () => {
             await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
             expect(evDeviceManager.getSnapshot()).toHaveLength(0);
-            // Both official capabilities are required; the plug-state one is checked
-            // first because it is required of EVERY charger, including those that
-            // control on the amp/step axis and never expose `evcharger_charging`.
+            // This device declares no charging control and has no adapted or
+            // stepped control surface; an ordinary onoff is not a charging handle.
             expect(logCapture.findEvent('device_skipped_missing_capability')).toMatchObject({
                 event: 'device_skipped_missing_capability',
                 deviceId: 'ev1',
-                missingCapability: 'evcharger_charging_state',
+                missingCapability: 'evcharger_charging',
             });
         });
 
-        it('excludes EV chargers without the official charging state capability', async () => {
+        it('keeps independent EV control and power while the official plug-state is unreported', async () => {
             const evDeviceManager = createTestDeviceTransport(homeyMock, loggerMock);
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -1307,12 +1381,12 @@ describe('DeviceTransport', () => {
 
             await evDeviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
-            expect(evDeviceManager.getSnapshot()).toHaveLength(0);
-            expect(logCapture.findEvent('device_skipped_missing_capability')).toMatchObject({
-                event: 'device_skipped_missing_capability',
-                deviceId: 'ev1',
-                missingCapability: 'evcharger_charging_state',
+            expect(evDeviceManager.getSnapshot()).toHaveLength(1);
+            expect(evDeviceManager.getSnapshot()[0]).toMatchObject({
+                id: 'ev1', measuredPowerKw: 1.2, binaryCapabilityId: 'evcharger_charging',
             });
+            expect(evDeviceManager.getSnapshotByDeviceId('ev1')?.evChargingState).toBeUndefined();
+            expect(evDeviceManager.canTurnOnDevice('ev1')).toBe(false);
         });
 
         it('propagates Homey availability state into snapshot entries', async () => {
@@ -1997,7 +2071,7 @@ describe('DeviceTransport', () => {
             }));
         });
 
-        it('ignores a device.update that omits the declared onoff value: evidence, snapshot and events stand', async () => {
+        it('retains omitted onoff evidence while accepting valid target and power updates', async () => {
             await deviceManager.init();
             await seedTransportDevices(deviceManager, [homeyDevice(
                 { id: 'dev1', name: 'Hall Thermostat', class: 'thermostat' },
@@ -2010,15 +2084,12 @@ describe('DeviceTransport', () => {
                 source: 'realtime_capability',
                 observedValue: true,
             }));
-            const snapshotBefore = structuredClone(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1'));
             const liveStateListener = vi.fn();
             const reconcileListener = vi.fn();
             onObservedState(deviceManager, liveStateListener);
             onObservedControlState(deviceManager, reconcileListener);
 
-            // A changed target and power arrive, but onoff is declared without a
-            // value: the read breaks the device-read contract, so it is neither
-            // read as "off" nor merged around the gap. None of it is taken.
+            // Only the missing switch reading is retained. Valid target and power continue updating.
             emitDeviceUpdate(homeyDevice(
                 {
                     id: 'dev1',
@@ -2027,12 +2098,16 @@ describe('DeviceTransport', () => {
                     class: 'thermostat',
                 },
                 { measure_temperature: celsius(20), target_temperature: celsius(19), measure_power: 500 },
+                stampedNow(1_000),
             ));
 
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toEqual(snapshotBefore);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toMatchObject({
+                binaryControl: { on: true }, measuredPowerKw: 0.5,
+                targets: [expect.objectContaining({ id: 'target_temperature', value: 19 })],
+            });
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(trustedOnEvidence);
-            expect(liveStateListener).not.toHaveBeenCalled();
-            expect(reconcileListener).not.toHaveBeenCalled();
+            expect(liveStateListener).toHaveBeenCalled();
+            expect(reconcileListener).toHaveBeenCalled();
         });
 
         it('keeps realtime binary evidence through target-only and power-only device.update payloads', async () => {
@@ -2183,8 +2258,8 @@ describe('DeviceTransport', () => {
             // The morning two-source divergence: a realtime push said OFF, then
             // Homey serves a device object on the next pull whose onoff is
             // boolean `true` but carries NO lastUpdated. A value with no date
-            // cannot be ordered against the push, so the read breaks the
-            // device-read contract and is ignored whole: currentOn stays OFF.
+            // cannot be ordered against the push, so only that field is rejected:
+            // currentOn stays OFF while the power reading is accepted.
             mockApiGet.mockResolvedValue({
                 dev1: homeyDevice({ id: 'dev1', name: 'Heater', class: 'heater' }, {
                     measure_power: 1000,
@@ -2204,19 +2279,17 @@ describe('DeviceTransport', () => {
             });
             await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
-            expect(loggerMock.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
-                event: 'device_read_ignored',
-                deviceId: 'dev1',
-                source: 'device_fetch',
-                reason: 'missing_stamp',
-                capabilityId: 'onoff',
+            expect(loggerMock.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_capabilities_withheld', deviceId: 'dev1', source: 'device_fetch',
+                violations: [{ reason: 'missing_stamp', capabilityId: 'onoff' }],
+                retainedCapabilityIds: ['onoff'],
             }));
             const heldDev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
             expect(heldDev1?.binaryControl?.on).toBe(false);
             expect(heldDev1?.binaryControlObservation?.observedValue).toBe(false);
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')?.observedValue).toBe(false);
 
-            // The ignored read holds nothing: a newer trusted observation still
+            // The rejected field is not stuck: a newer trusted observation still
             // supersedes the OFF. A realtime push (stamped fresh) observing onoff=true
             // reconciles currentOn back to ON.
             await emitCapability('dev1', 'onoff', true);
@@ -2229,7 +2302,7 @@ describe('DeviceTransport', () => {
         it('ignores an unstamped device.update push that contradicts prior realtime evidence; a stamped one flips it', async () => {
             // A physical toggle delivered as a device.update flips currentOn only
             // with the time Homey observed it. The same push without a stamp
-            // cannot be ordered against the realtime OFF, so it is ignored whole.
+            // cannot be ordered against the realtime OFF, so that field is retained.
             await deviceManager.init();
             await seedTransportDevices(deviceManager, Object.values(buildRealtimeDevices()));
             await emitCapability('dev1', 'onoff', false);
@@ -2256,6 +2329,7 @@ describe('DeviceTransport', () => {
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toEqual(expect.objectContaining({
                 binaryControl: { on: false },
                 binaryControlObservation: realtimeOff,
+                measuredPowerKw: 0.5,
             }));
 
             const pushedAt = stampedNow(1_000);
@@ -2411,7 +2485,7 @@ describe('DeviceTransport', () => {
             expect(reconcileListener).not.toHaveBeenCalled();
         });
 
-        it("ignores a device.update whose onoff is malformed: evidence, telemetry, freshness and events stand", async () => {
+        it('retains malformed onoff evidence while valid telemetry and target update', async () => {
             vi.useFakeTimers();
             try {
                 vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
@@ -2435,20 +2509,22 @@ describe('DeviceTransport', () => {
                 onObservedState(deviceManager, liveStateListener);
                 onObservedControlState(deviceManager, reconcileListener);
 
-                // The power and target readings are well-formed and changed, but
-                // the read as a whole breaks the device-read contract, so none of
-                // it is taken.
+                // The malformed switch cannot suppress valid changed power and target readings.
                 emitDeviceUpdate(homeyDevice({ id: 'dev1', name: 'Hall Thermostat', class: 'thermostat' }, {
                     onoff: 'unknown' as unknown as boolean,
                     measure_temperature: celsius(20),
                     measure_power: 500,
                     target_temperature: celsius(19),
-                }));
+                }, '2026-04-01T12:01:00.000Z'));
 
-                expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toEqual(snapshotBefore);
+                expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')).toMatchObject({
+                    binaryControl: { on: false }, measuredPowerKw: 0.5,
+                    lastFreshDataMs: Date.parse('2026-04-01T12:01:00.000Z'),
+                    targets: [expect.objectContaining({ id: 'target_temperature', value: 19 })],
+                });
                 expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(evidenceBefore);
-                expect(liveStateListener).not.toHaveBeenCalled();
-                expect(reconcileListener).not.toHaveBeenCalled();
+                expect(liveStateListener).toHaveBeenCalled();
+                expect(reconcileListener).toHaveBeenCalled();
                 expect(loggerMock.structuredLog.error).not.toHaveBeenCalledWith(expect.objectContaining({
                     event: 'binary_settle_evidence_cleared',
                 }));
@@ -2742,7 +2818,7 @@ describe('DeviceTransport', () => {
             }
         });
 
-        it('keeps raw EV command evidence through an unknown realtime charging state and an ignored partial device.update', async () => {
+        it('keeps raw EV command evidence through unknown and missing EV fields while accepting valid power', async () => {
             vi.useFakeTimers();
             try {
                 vi.setSystemTime(new Date('2026-04-01T11:45:00.000Z'));
@@ -2774,11 +2850,8 @@ describe('DeviceTransport', () => {
                 expect(findSnapshotDevice(evDeviceManager.getSnapshot(), 'ev1')?.binaryControlObservation)
                     .toEqual(previousEvidence);
 
-                const snapshotBeforeUpdate = structuredClone(findSnapshotDevice(evDeviceManager.getSnapshot(), 'ev1'));
-
-                // Declares both EV axes but answers neither: the read breaks the
-                // device-read contract, so it is ignored whole and the entry and
-                // evidence stand as they were.
+                // Missing EV fields cannot resurrect the older plug state that
+                // the unknown realtime report revoked; valid power still advances.
                 emitDeviceUpdate(homeyDevice(
                     {
                         id: 'ev1',
@@ -2786,11 +2859,16 @@ describe('DeviceTransport', () => {
                         class: 'evcharger',
                         capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                     },
-                    { measure_power: 0 },
+                    { measure_power: 100 },
+                    '2026-04-01T12:00:00.000Z',
                 ));
 
                 expect(evDeviceManager.getBinarySettleEvidenceByDeviceId('ev1')).toEqual(previousEvidence);
-                expect(findSnapshotDevice(evDeviceManager.getSnapshot(), 'ev1')).toEqual(snapshotBeforeUpdate);
+                expect(findSnapshotDevice(evDeviceManager.getSnapshot(), 'ev1')).toMatchObject({
+                    binaryControlObservation: previousEvidence, measuredPowerKw: 0.1,
+                });
+                expect((findSnapshotDevice(evDeviceManager.getSnapshot(), 'ev1') as TransportDeviceSnapshot)?.evChargingState)
+                    .toBeUndefined();
 
                 evDeviceManager.destroy();
             } finally {
@@ -5853,7 +5931,7 @@ describe('DeviceTransport', () => {
                 },
             );
 
-            it('keeps a temperature recovery pending while its recovery pulls are ignored, until a conforming refresh', async () => {
+            it('recovers temperature from a valid realtime field retained through a malformed targeted read', async () => {
                 vi.useFakeTimers();
                 try {
                     await deviceManager.init();
@@ -5868,9 +5946,9 @@ describe('DeviceTransport', () => {
                         deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
                     )).toBe(false);
 
-                    // The recovery pulls answer measure_temperature with a non-finite
-                    // value. That breaks the device-read contract, so each is ignored
-                    // and the entry without the facet stands: recovery stays pending.
+                    // The targeted pull still has an invalid measurement. The
+                    // valid realtime field arriving below is retained with its
+                    // original timestamp and can recover the temperature pair.
                     const nonConformingDevice = {
                         ...validDevices.dev1,
                         capabilitiesObj: {
@@ -5885,7 +5963,7 @@ describe('DeviceTransport', () => {
                                 ...validDevices.dev1.capabilitiesObj,
                                 measure_temperature: {
                                     ...validDevices.dev1.capabilitiesObj.measure_temperature,
-                                    value: 21,
+                                    value: 22,
                                     lastUpdated: '2026-04-01T12:03:00.000Z',
                                 },
                             },
@@ -5915,21 +5993,18 @@ describe('DeviceTransport', () => {
                     const firstRefresh = refreshSpy.mock.results[0];
                     if (!firstRefresh) throw new Error('Expected an opportunistic recovery refresh');
                     await firstRefresh.value;
-                    expect(hasObservedTemperature(
-                        deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
-                    )).toBe(false);
-                    await deviceManager.refreshSnapshot({ targetedRefresh: true, meterDeviceIds: [] });
-                    expect(targetedReadCount).toBe(2);
-                    expect(hasObservedTemperature(
-                        deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
-                    )).toBe(false);
+                    expect(targetedReadCount).toBe(1);
+                    expect(deviceManager.getSnapshot()[0]).toMatchObject({
+                        temperature: { currentTemperature: 21, target: { value: 20 } },
+                    });
 
                     vi.setSystemTime(new Date('2026-04-01T12:04:00.000Z'));
                     await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
-                    expect(hasObservedTemperature(
-                        deviceManager.getSnapshot()[0] as TransportDeviceSnapshot,
-                    )).toBe(true);
+                    expect(deviceManager.getSnapshot()[0]).toMatchObject({
+                        temperature: { currentTemperature: 22, target: { value: 20 } },
+                    });
+                    expect(targetedReadCount).toBe(1);
                     expect(reconcileListener).toHaveBeenCalledOnce();
                 } finally {
                     vi.useRealTimers();
@@ -6167,7 +6242,7 @@ describe('DeviceTransport', () => {
                 }
             });
 
-            it('ignores a device.update with a malformed target: target and freshness stand, and a later refresh reads normally', async () => {
+            it('retains a malformed target while newer telemetry advances and a later valid refresh reads normally', async () => {
                 vi.useFakeTimers();
                 try {
                     await deviceManager.init();
@@ -6176,13 +6251,9 @@ describe('DeviceTransport', () => {
                     await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
                     expect(deviceManager.getSnapshot()[0].targets.find((t) => t.id === 'target_temperature')?.value).toBe(20);
-                    const freshnessBefore = deviceManager.getSnapshot()[0].lastFreshDataMs;
-                    const liveStateListener = vi.fn();
-                    onObservedState(deviceManager, liveStateListener);
 
-                    // Every other capability carries a fresh 12:01 reading, but the
-                    // target is not a number: the read breaks the device-read
-                    // contract and none of it is taken.
+                    // The malformed target retains its old observation; independent
+                    // valid capability readings still advance at 12:01.
                     vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
                     emitDeviceUpdate(homeyDevice(
                         { id: 'dev1', name: 'Thermostat', class: 'thermostat' },
@@ -6195,8 +6266,8 @@ describe('DeviceTransport', () => {
                     ));
 
                     expect(deviceManager.getSnapshot()[0].targets.find((t) => t.id === 'target_temperature')?.value).toBe(20);
-                    expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(freshnessBefore);
-                    expect(liveStateListener).not.toHaveBeenCalled();
+                    expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(Date.parse('2026-04-01T12:01:00.000Z'));
+                    expect(deviceManager.getSnapshot()[0]).toMatchObject({ measuredPowerKw: 0.36 });
 
                     vi.setSystemTime(new Date('2026-04-01T12:10:00.000Z'));
                     mockApiGet.mockResolvedValue({
@@ -6289,7 +6360,7 @@ describe('DeviceTransport', () => {
                 }
             });
 
-            it('ignores a refresh read whose onoff carries no value: currentOn and freshness stand', async () => {
+            it('retains unreadable switch and power fields with their original freshness', async () => {
                 vi.useFakeTimers();
                 try {
                     await deviceManager.init();
@@ -6307,8 +6378,8 @@ describe('DeviceTransport', () => {
                     const observationBefore = before.binaryControlObservation;
 
                     // The read declares onoff and measure_power but answers neither:
-                    // it breaks the device-read contract, so its fresh-looking
-                    // timestamp is never read and the entry stands as it was.
+                    // both fields retain their accepted readings. The fresh-looking
+                    // timestamp on the valueless switch does not refresh either field.
                     vi.setSystemTime(new Date('2026-04-01T12:10:00.000Z'));
                     mockApiGet.mockResolvedValue({
                         dev1: {

@@ -87,6 +87,13 @@ export class TransportSnapshotStore {
     ]);
   }
 
+  /** Replace an existing accepted raw read after an independent capability report. */
+  updateAcceptedRawDevice(device: HomeyDeviceLike): void {
+    if (this.trackedRawDeviceById.has(device.id)) this.trackedRawDeviceById.set(device.id, device);
+    const index = this.latestRawDevices.findIndex((entry) => entry.id === device.id);
+    if (index !== -1) this.latestRawDevices[index] = device;
+  }
+
   /**
    * Every device in Homey's last full device list, readable or not: the
    * inventory a device is truly gone from. Empty before the first full list.

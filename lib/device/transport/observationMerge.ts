@@ -89,6 +89,16 @@ export function mergeFresherCapabilityObservations(params: {
 }
 /* eslint-enable functional/immutable-data */
 
+/** Apply the same fresher-observation rule before comparing a pushed whole-device read. */
+export function mergeDeviceUpdateObservations(
+    state: DeviceTransportObservationState,
+    previous: TransportDeviceSnapshot,
+    snapshot: TransportDeviceSnapshot,
+    sourceDevice: HomeyDeviceLike,
+): void {
+    mergeSnapshotObservationsForDevice(state, previous, snapshot, sourceDevice, 'device_update');
+}
+
 /**
  * Owner: the transport observation merge. Holds a whole-device `device.update`
  * read to the temperature rejections retained for its device, by the rule a
@@ -96,8 +106,8 @@ export function mergeFresherCapabilityObservations(params: {
  * rejection retires it, and an older one has the rejection reapplied, which
  * strips the read's temperature facet.
  *
- * A malformed read after the rejection is ignored outright by the read contract
- * (`deviceReadContract.ts`), and a `null` member is withheld. Otherwise a read
+ * The read contract resolves malformed fields against accepted readings or
+ * withholds them (`deviceReadContract.ts`). Otherwise a read
  * carrying a pair older than the rejection is a race: a delayed or reordered frame. Without this, such a frame
  * would re-admit a device the rejection evicted, on the very pair it
  * superseded, and the next refresh would evict it again.
@@ -193,7 +203,19 @@ function mergeSnapshotObservationsForDevice(
     previous: TransportDeviceSnapshot,
     snapshot: TransportDeviceSnapshot,
     sourceDevice: HomeyDeviceLike,
+    readPath: MergedReadPath = 'snapshot_refresh',
 ): void {
+    const mergeReading = (capabilityId: string): void => {
+        const observation = state.capabilityObservations.get(buildCapabilityObservationKey(snapshot.id, capabilityId));
+        // Device updates retire temperature rejections in the dedicated merge
+        // below, which retains the admitted pair at its source dates. Retiring
+        // one here would lose that transition and re-stamp the pair at delivery.
+        if (readPath === 'device_update' && observation
+            && isRejectedTemperatureObservation(capabilityId, observation)) {
+            return;
+        }
+        mergeCapabilityObservation(state, snapshot, sourceDevice, capabilityId, readPath);
+    };
     snapshot.lastFreshDataMs = Math.max(
         snapshot.lastFreshDataMs ?? 0,
         previous.lastFreshDataMs ?? 0,
@@ -209,18 +231,18 @@ function mergeSnapshotObservationsForDevice(
     preserveNewerHomeBatteryReadings(previous, snapshot);
 
     if (snapshot.binaryCapabilityId) {
-        mergeCapabilityObservation(state, snapshot, sourceDevice, snapshot.binaryCapabilityId, 'snapshot_refresh');
+        mergeReading(snapshot.binaryCapabilityId);
     }
 
     for (const target of snapshot.targets) {
-        mergeCapabilityObservation(state, snapshot, sourceDevice, target.id, 'snapshot_refresh');
+        mergeReading(target.id);
     }
 
     for (const capabilityId of [
         'measure_temperature',
         'evcharger_charging_state',
     ]) {
-        mergeCapabilityObservation(state, snapshot, sourceDevice, capabilityId, 'snapshot_refresh');
+        mergeReading(capabilityId);
     }
     mergeStateOfChargeObservationsForDevice(state, snapshot, sourceDevice);
     const maxRetainedMs = getMaxRetainedObservationTimeMs(state, snapshot);

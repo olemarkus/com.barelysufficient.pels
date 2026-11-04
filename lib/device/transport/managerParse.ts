@@ -47,9 +47,8 @@ export function resolveDeviceCapabilities(params: {
       });
       return null;
     }
-    // `evcharger_charging_state` is required of every EV charger and is checked
-    // ahead of this, in `resolveCandidateCapabilities` — including for the chargers
-    // that bypass this function entirely on the control axis.
+    // Plug state is independent: this control and measured power remain usable
+    // while the session owner waits for its first accepted plug observation.
     return { targetCaps: [], hasPower };
   }
   // Temperature is an additive facet, not the device's exclusive kind. An

@@ -68,7 +68,6 @@ function chargerOverlay(
 
 export const enuaAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
-  readsAsReported: false,
   matches: isEnuaCharger,
   overlay: chargerOverlay,
   configureTargetPower,

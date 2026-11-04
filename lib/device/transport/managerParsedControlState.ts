@@ -19,7 +19,6 @@ export type ParsedControlStateResult = {
   binaryControl?: { on: boolean };
   canSetControl: boolean | undefined;
   observedCurrentOn?: boolean;
-  hasTrustedControlState: boolean;
 };
 
 type ResolvedControlFallback = {
@@ -53,7 +52,9 @@ export function resolveDeviceParsedControlState(
   const canSetControl = binaryCapabilityId && flowBackedCapabilityIds.some((id) => id === binaryCapabilityId)
     ? true
     : getCanSetControl(binaryCapabilityId, binaryWriteCapabilityId, capabilityObj);
-  if (!suppressDropLog && binaryCapabilityId && (observedCurrentOn === undefined || invalidControlPayload)) {
+  // An observation withheld at the read boundary is expected here and already
+  // reported there. It is not another malformed payload or a dropped device.
+  if (!suppressDropLog && binaryCapabilityId && invalidControlPayload) {
     logDroppedControlState(logger, identity, deviceName, binaryCapabilityId, capabilityObj);
   }
   return {
@@ -63,7 +64,6 @@ export function resolveDeviceParsedControlState(
     binaryControl: resolveBinaryControl(resolvedCurrentOn.currentOn, binaryCapabilityId, previousSnapshot),
     canSetControl,
     observedCurrentOn,
-    hasTrustedControlState: resolvedCurrentOn.trusted,
   };
 }
 

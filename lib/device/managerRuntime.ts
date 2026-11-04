@@ -17,6 +17,7 @@ import {
 } from './transport/managerExplicitBinaryObservation';
 import { preserveNewerReportedStepObservation } from './transport/reportedStepObservation';
 import { preserveNewerAcknowledgedStep } from './acknowledgedStep';
+import { mergeDeviceUpdateObservations } from './transport/observationMerge';
 import { mergeTemperatureRejectionsIntoDeviceUpdate } from './transport/managerObservation';
 import { nextLearnedPeak, type LearnedPeaksByDeviceId } from './devicePowerPeak';
 import type { ObservedCapabilityChange } from '../ports/observedStateEvents';
@@ -127,6 +128,9 @@ export function reconcileRealtimeDeviceUpdate(params: {
   const snapshotIndex = latestSnapshot.findIndex((entry) => entry.id === deviceId);
   const previous = latestSnapshot[snapshotIndex] ?? null;
   if (!parsed) return dropSnapshotEntry(latestSnapshot, snapshotIndex);
+  if (previous) {
+    mergeDeviceUpdateObservations(observationState.getObservationState(), previous, parsed, device);
+  }
   // A temperature rejection retained for this device holds the read to the
   // refresh merge's rule: a pair older than the rejection does not bring the
   // temperature facet back, and a device left with no other control facet
@@ -150,10 +154,8 @@ export function reconcileRealtimeDeviceUpdate(params: {
     preserveNewerReportedStepObservation(previous, parsed);
     preserveNewerAcknowledgedStep(previous, parsed);
   }
-  // No temperature is carried over from the previous entry: a read that reaches
-  // here conformed to the device-read contract (`deviceReadContract.ts`), so a
-  // declared temperature pair came with both values. A `null` member was
-  // already withheld there.
+  // The read boundary has already retained or withheld rejected fields. A
+  // usable temperature pair carries its accepted source dates into this merge.
   if (snapshotIndex >= 0) {
     latestSnapshot[snapshotIndex] = parsed;
   } else {

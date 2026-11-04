@@ -501,10 +501,8 @@ export class SnapshotRefreshService {
         if (shouldDeferEmptySnapshotCommit(this, previousSnapshot, list.length === 0, start)) {
             return meterReadings;
         }
-        // The read contract, before anything reads a payload: a device whose read
-        // does not conform is ignored — its previous snapshot entry and raw entry
-        // stand, none of its values reach a producer, the parse or tracking, and
-        // the producers see it as present but unread.
+        // Reject individual fields before conversion or observation. Only an
+        // unreadable envelope retains the whole previous device entry.
         const read = partitionConformingDeviceReads(
             this.reader.snapshotStore,
             this.reader.logger,

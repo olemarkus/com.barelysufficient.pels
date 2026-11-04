@@ -1,9 +1,11 @@
-import type { DeviceAdapter, DeviceReadRule } from '../deviceAdapter';
+import type { DeviceAdapter, DeviceReadRule, DeviceEvOverlay } from '../deviceAdapter';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 import { isTeslaChargingDevice } from './identity';
 import { teslaChargingCapabilities, normalizeTeslaChargingUpdate,
   hasTeslaChargingStateWithoutEvProjection, isTeslaChargingState } from './charging';
 import { TeslaChargingSession } from './session';
+import type { HomeyDeviceLike } from '../../utils/types';
+import type { DeviceCapabilityMap } from '../managerControl';
 
 const TESLA_MODEL_CAPABILITY_TYPES: Readonly<Record<string, Readonly<Record<string, DeviceReadRule>>>> = {
     'homey:app:com.tesla.car:battery': {
@@ -20,20 +22,11 @@ const TESLA_MODEL_CAPABILITY_TYPES: Readonly<Record<string, Readonly<Record<stri
 };
 export const teslaAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
-  readsAsReported: false,
   matches: (device) => device.driverId?.startsWith('homey:app:com.tesla.car:') === true,
   matchesCapabilities: (capabilities) => capabilities.includes('charging_on'),
   identity: (device) => isTeslaChargingDevice(device)
     ? { ...device, class: 'evcharger', virtualClass: 'evcharger' } : device,
-  overlay: (device, capabilities, capabilityObj) => isTeslaChargingDevice(device) ? {
-    kind: 'adapted',
-    capabilities: [...new Set([...capabilities, 'evcharger_charging', 'evcharger_charging_state', 'measure_power'])],
-    capabilityObj: teslaChargingCapabilities(device, capabilityObj),
-    controlAdapter: { kind: 'capability_adapter', activationRequired: false, activationEnabled: true,
-      activationOrder: 'current_before_start' },
-    binaryTarget: { kind: 'capability', writeCapabilityId: 'charging_on',
-      observationCapabilityId: 'evcharger_charging' },
-  } : { kind: 'standard', capabilities, capabilityObj },
+  overlay: chargingOverlay,
   normalize: (_snapshot, capabilityId, value) => normalizeTeslaChargingUpdate(capabilityId, value),
   observation: (device) => teslaChargingCapabilities(device, standardDeviceAdapter.observation(device)),
   readRules: (device) => TESLA_MODEL_CAPABILITY_TYPES[device.driverId ?? ''] ?? {},
@@ -49,3 +42,21 @@ export const teslaAdapter: DeviceAdapter = {
   readBackAfterWrite: false,
   createSession: (home) => new TeslaChargingSession(home),
 };
+
+function chargingOverlay(
+  device: HomeyDeviceLike, capabilities: string[], capabilityObj: DeviceCapabilityMap,
+): DeviceEvOverlay {
+  if (!isTeslaChargingDevice(device)) return { kind: 'standard', capabilities, capabilityObj };
+  const values = teslaChargingCapabilities(device, capabilityObj);
+  const derived = ['evcharger_charging', 'evcharger_charging_state', 'measure_power']
+    .filter(id => values[id] !== undefined);
+  return {
+    kind: 'adapted',
+    capabilities: [...new Set([...capabilities, ...derived])],
+    capabilityObj: values,
+    controlAdapter: { kind: 'capability_adapter', activationRequired: false, activationEnabled: true,
+      activationOrder: 'current_before_start' },
+    binaryTarget: { kind: 'capability', writeCapabilityId: 'charging_on',
+      observationCapabilityId: 'evcharger_charging' },
+  };
+}

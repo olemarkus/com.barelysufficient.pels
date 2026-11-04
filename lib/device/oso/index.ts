@@ -24,7 +24,6 @@ const withoutHeatingFlag = (capabilityObj: DeviceCapabilityMap): DeviceCapabilit
 
 export const osoAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
-  readsAsReported: true,
   matches: isOsoWaterHeater,
   identity: (device) => ({ ...device, class: 'heater' }),
   overlay: (_device, capabilities, capabilityObj) => ({

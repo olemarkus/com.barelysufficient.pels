@@ -111,7 +111,7 @@ export function getCanSetControl(
     ? binaryWriteCapabilityIdOrCapabilityObj
     : undefined;
   const capability = resolvedCapabilityObj[resolvedControlWriteCapabilityId ?? binaryCapabilityId];
-  if (!capability) return undefined;
+  if (!capability) return resolvedControlWriteCapabilityId ? false : undefined;
   if (typeof capability.setable === 'boolean') {
     return capability.setable;
   }

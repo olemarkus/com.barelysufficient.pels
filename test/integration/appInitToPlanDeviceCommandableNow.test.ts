@@ -79,15 +79,14 @@ describe('toPlanDevice — commandableNow producer wiring', () => {
     expect(result.commandabilityReason).toBe('binary_command_retry');
   });
 
-  it('carries no plug-state for a charger that has no plug-state capability, and leaves it commandable', () => {
-    // The `target_power` / stepped-load charger population: `evcharger` by class,
-    // no EV capabilities, so no plug state to ask about. Commandability falls
-    // through to availability. (A charger that CLAIMS the capability and reports
-    // outside the enum never gets this far — it is dropped at parse.)
+  it('keeps charger identity without inventing plug state or granting start permission', () => {
     const ctx = ctxAtFixedNow();
     const result = toPlanDevice(ctx, withDeviceConfiguration(buildEvSnapshot({ evChargingState: undefined })));
     expect(result).not.toHaveProperty('evChargingState');
-    expect(result.commandableNow).toBe(true);
+    expect(result.commandableNow).toBe(false);
+    expect(result.objectiveKind).toBe('ev_soc');
+    expect(result.objectiveSessionInactive).toBe(true);
+    expect(result.hasStandingDemand).toBe(false);
   });
 
   it('does not write back into live AppContext state (pure projection)', () => {

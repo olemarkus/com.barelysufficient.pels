@@ -13,17 +13,13 @@ describe('resolveCommandableNow', () => {
   });
 
   it('asks the plug-state question only of EV devices', () => {
-    // A non-EV device carries no plug-state at all — absence here means exactly
-    // "not an EV charger", never "an EV charger we could not read".
+    // A non-EV device needs no plug-state observation to be commandable.
     expect(resolveCommandableNow({ isEvCharger: false, available: true })).toBe(true);
   });
 
-  it('leaves an EV device with no plug-state commandable', () => {
-    // Invariant-impossible: such a charger is dropped at the parse boundary. If
-    // one ever reached here it reads as commandable, which is the safe direction —
-    // refusing to command is a one-way door, since shed selection does not consult
-    // commandability while both restore paths do.
-    expect(resolveCommandableNow(EV)).toBe(true);
+  it('keeps an EV with no accepted plug-state from starting', () => {
+    // Independent observations stay visible, but no session fact is invented.
+    expect(resolveCommandableNow(EV)).toBe(false);
   });
 });
 

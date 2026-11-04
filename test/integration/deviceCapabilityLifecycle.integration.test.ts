@@ -32,6 +32,8 @@ type SnapshotEntry = {
   deviceType?: string;
   binaryCapabilityId?: string;
   powerCapable?: boolean;
+  measuredPowerKw?: number;
+  evChargingState?: string;
   binaryControl?: { on: boolean };
   steppedLoadProfile?: unknown;
   targets?: unknown[];
@@ -175,7 +177,7 @@ describe('Device capability lifecycle across SDK pulls', () => {
     expect(entry?.steppedLoadProfile).toBeUndefined();
   });
 
-  it('drops an EV charger entirely when one of its required EV capabilities goes missing', async () => {
+  it('keeps independent EV telemetry when its plug-state capability goes missing', async () => {
     const evId = 'charger-1';
     mockHomeyInstance.settings.set('managed_devices', { [evId]: true });
     mockHomeyInstance.settings.set('controllable_devices', { [evId]: true });
@@ -183,7 +185,7 @@ describe('Device capability lifecycle across SDK pulls', () => {
     const app = createApp();
     await app.onInit();
 
-    // Pull 1 — a well-formed charger with both required EV capabilities is admitted
+    // Pull 1 — a well-formed charger with switch and plug-state observations is admitted
     // and controlled through `evcharger_charging`.
     deviceList = {
       [evId]: {
@@ -205,9 +207,8 @@ describe('Device capability lifecycle across SDK pulls', () => {
     expect(charger).toBeDefined();
     expect(charger?.binaryCapabilityId).toBe('evcharger_charging');
 
-    // Pull 2 — loses `evcharger_charging_state`. An EV charger requires BOTH EV
-    // capabilities; without one it is no longer a recognised charger and drops out
-    // of the snapshot entirely.
+    // Pull 2 — loses its plug-state capability. Independent power and control
+    // remain visible; no connected/disconnected state or start may be invented.
     deviceList = {
       [evId]: {
         id: evId,
@@ -222,8 +223,14 @@ describe('Device capability lifecycle across SDK pulls', () => {
         settings: {},
       },
     };
+    const put = vi.spyOn(mockHomeyInstance.api, 'put');
     await pull(app);
-    expect(findEntry(evId)).toBeUndefined();
+    expect(findEntry(evId)).toMatchObject({
+      id: evId, binaryCapabilityId: 'evcharger_charging', binaryControl: { on: true }, measuredPowerKw: 7,
+    });
+    expect(findEntry(evId)?.evChargingState).toBeUndefined();
+    expect(put.mock.calls.some(([path, body]) => path === `manager/devices/device/${evId}/capability/evcharger_charging`
+      && typeof body === 'object' && body !== null && 'value' in body && body.value === true)).toBe(false);
   });
 
   it('drops a step-only charger whose target-power range stops yielding a ladder', async () => {

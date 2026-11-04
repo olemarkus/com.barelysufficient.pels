@@ -94,13 +94,6 @@ export type DeviceAdapter = {
   currentBindings(device: HomeyDeviceLike): ChargingCurrentBinding[];
   nativeCurrentControls: readonly NativeCurrentControl[];
   readBackAfterWrite: boolean;
-  /**
-   * Whether a read withholds just a `null` model capability (owner ruling
-   * 2026-10-16) rather than refusing the whole read. An integration that
-   * converts or reads more of the device chooses its control path from what it
-   * declares, so it reads all-or-nothing.
-   */
-  readsAsReported: boolean;
   /** Whether standard production-cap writes are suitable for repeated live control. */
   supportsProductionLimits: boolean;
   /** `sessions`: the transport's adapter sessions, for what they have observed of the device. */

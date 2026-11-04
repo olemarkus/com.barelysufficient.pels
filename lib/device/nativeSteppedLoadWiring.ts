@@ -281,7 +281,7 @@ export function resolveNativeSteppedLoadReportedStepId(params: {
   if (current) return current.stepObservations(profile, capabilityObj)[0];
   const capabilityId = resolveNativeSteppedLoadCapabilityId(capabilities);
   if (!capabilityId && isTargetPowerSteppedLoadCandidate({ capabilities, capabilityObj })) {
-    return resolveTargetPowerReportedStepId({ profile, capabilityObj });
+    return resolveTargetPowerReportedStepId(profile, capabilities, capabilityObj);
   }
   const rank = capabilityId
     ? normalizeNativeStepRank(capabilityObj[capabilityId]?.value)
@@ -415,18 +415,19 @@ function buildCapabilityTargetPowerSteppedLoadProfile(
   return steps ? { steps } : undefined;
 }
 
-export function resolveTargetPowerReportedStepId(params: {
-  profile: SteppedLoadProfile;
-  capabilityObj: DeviceCapabilityMap;
-}): string | undefined {
+export function resolveTargetPowerReportedStepId(
+  profile: SteppedLoadProfile,
+  capabilities: readonly string[],
+  capabilityObj: DeviceCapabilityMap,
+): string | undefined {
   // A switchable device's saved watt target is dormant under device control.
   // It cannot confirm that PELS's requested step has been applied.
-  if (!isTargetPowerControlActive(params.capabilityObj)) return undefined;
-  const targetPowerValue = params.capabilityObj.target_power?.value;
+  if (!isTargetPowerControlActive(capabilityObj, capabilities)) return undefined;
+  const targetPowerValue = capabilityObj.target_power?.value;
   if (typeof targetPowerValue !== 'number' || !Number.isFinite(targetPowerValue)) return undefined;
-  const sortedSteps = sortSteppedLoadSteps(params.profile.steps);
+  const sortedSteps = sortSteppedLoadSteps(profile.steps);
   if (targetPowerValue <= 0) {
-    return sortedSteps.find((step) => isSteppedLoadOffStep(params.profile, step.id))?.id;
+    return sortedSteps.find((step) => isSteppedLoadOffStep(profile, step.id))?.id;
   }
   let nearestStep: SteppedLoadStep | undefined;
   let nearestDistance = Number.POSITIVE_INFINITY;
@@ -440,18 +441,23 @@ export function resolveTargetPowerReportedStepId(params: {
   return nearestStep?.id;
 }
 
-export function isTargetPowerControlActive(capabilityObj: DeviceCapabilityMap): boolean {
+export function isTargetPowerControlActive(
+  capabilityObj: DeviceCapabilityMap, capabilities: readonly string[],
+): boolean {
+  if (!capabilities.includes('target_power_mode')) return true;
   const mode = capabilityObj.target_power_mode;
-  return mode?.setable !== true || mode.value === 'homey';
+  if (mode?.value !== 'homey' && mode?.value !== 'device') return false;
+  return mode.setable !== true || mode.value === 'homey';
 }
 
 /** A source-dated invalidation of the saved target, never fresh watt evidence. */
-export function resolveTargetPowerModeInvalidationAtMs(capabilityObj: DeviceCapabilityMap): number | undefined {
-  if (isTargetPowerControlActive(capabilityObj)) return undefined;
-  return Math.max(
-    toCapabilityTimestampMs(capabilityObj.target_power_mode?.lastUpdated) ?? 0,
-    toCapabilityTimestampMs(capabilityObj.target_power?.lastUpdated) ?? 0,
-  ) || undefined;
+export function resolveTargetPowerModeInvalidationAtMs(
+  capabilityObj: DeviceCapabilityMap, capabilities: readonly string[],
+): number | undefined {
+  if (isTargetPowerControlActive(capabilityObj, capabilities)) return undefined;
+  const mode = capabilityObj.target_power_mode;
+  if (mode?.value !== 'device') return undefined;
+  return toCapabilityTimestampMs(mode.lastUpdated);
 }
 
 function normalizeText(value: unknown): string {

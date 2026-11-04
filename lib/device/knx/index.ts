@@ -9,7 +9,6 @@ const KNX_BINARY_ACTUATOR_DRIVER_ID = 'homey:app:org.knx:knx_light';
 
 export const knxAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
-  readsAsReported: true,
   matches: (device) => device.driverId === KNX_BINARY_ACTUATOR_DRIVER_ID
     && device.capabilities?.includes('onoff') === true,
   identity: (device) => ({ ...device, class: 'socket' }),

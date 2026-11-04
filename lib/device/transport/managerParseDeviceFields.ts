@@ -12,6 +12,7 @@ import {
 import type { HomeyDeviceLike } from '../../utils/types';
 import {
     getCapabilities,
+    getIsAvailable,
     isBatteryOrSolarClassKey,
     resolveZoneId,
     resolveZoneLabel,
@@ -45,7 +46,6 @@ import {
     withRetainedEvSessionState,
     } from './stateOfCharge';
 import { resolveDeviceParsedControlState } from './managerParsedControlState';
-import { resolveAvailable as resolveAvail } from './managerParsedAvailability';
 import type { ParsedDeviceIdentity } from './managerParseIdentity';
 import {
     shouldDropAfterControlState,
@@ -170,7 +170,7 @@ function resolveDeviceSnapshotControl(params: {
     const { effectiveDevice, deviceClassKey } = identity;
     const { logger, isPowerCapable } = deps;
     const {
-        resolvedOn, binaryControl, canSetControl, observedCurrentOn, hasTrustedControlState,
+        resolvedOn, binaryControl, canSetControl, observedCurrentOn,
         evCharging, evChargingState,
     } = resolveDeviceParsedControlState(
         identity, logger, overlay, binaryCapabilityId, previousSnapshot, purpose === 'ui_picker',
@@ -180,9 +180,7 @@ function resolveDeviceSnapshotControl(params: {
     })) {
         return null;
     }
-    const available = resolveAvail(
-        binaryCapabilityId, hasTrustedControlState, overlay.steppedLoadProfile, effectiveDevice,
-    );
+    const available = getIsAvailable(effectiveDevice);
     const powerCapable = isPowerCapable(effectiveDevice, capsStatus, measuredPower, retainedReading);
     if (shouldSkipFlowBackedCandidate({
         flowAugmentedDeviceType: overlay.flowAugmentedDeviceType,
@@ -242,12 +240,6 @@ export function assembleDeviceSnapshot(params: {
         previousSnapshot, retainedReading, purpose, managedDecision,
     });
     if (!control) return null;
-    if (
-        capsStatus.targetCaps.length > 0
-        && !temperature
-        && !control.binaryCapabilityId
-        && !overlay.steppedLoadProfile
-    ) return null;
     const lastFreshDataMs = resolveLastFreshDataMs(overlay, control, temperature !== undefined, measuredPower);
     const evChargingObservedAtMs = toCapabilityTimestampMs(overlay.capabilityObj.evcharger_charging?.lastUpdated);
     const evChargingStateObservedAtMs = toCapabilityTimestampMs(

@@ -6,12 +6,16 @@ import { ZaptecInstallationSession, zaptecInstallationOf } from './session';
 
 export const zaptecAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
-  readsAsReported: false,
   matches: (device) => /^homey:app:com\.zaptec:(go|go2|home|pro)$/u.test(device.driverId?.trim().toLowerCase() ?? ''),
   matchesCapabilities: (capabilities) => capabilities.includes('charging_button')
     || capabilities.includes('charge_mode'),
   overlay: applyNativeEvWiringOverlay,
   normalize: normalizeNativeEvCapabilityUpdate,
+  readRules: () => ({
+    charging_button: 'boolean',
+    charge_mode: 'string',
+    'alarm_generic.car_connected': 'boolean',
+  }),
   finalizeObservation: (control, _capabilities, values) => control.activationEnabled
     ? buildNativeEvObservationCapabilityObj(values) : values,
   currentBindings: (device) => {
@@ -27,6 +31,22 @@ export const zaptecAdapter: DeviceAdapter = {
       sharesInstallation: (other) => zaptecInstallationOf(other) === installationId,
       currentArguments: (currentA) => ({ current1: currentA, current2: currentA, current3: currentA }),
     }];
+  },
+  switchWrite: (snapshot, request, sessions) => {
+    if (request.capabilityId === snapshot.binaryCapabilityId && snapshot.canSetControl === false) {
+      return { kind: 'none' };
+    }
+    return standardDeviceAdapter.switchWrite(snapshot, request, sessions);
+  },
+  recoverSwitchWrite: (snapshot, raw, request, sessions) => {
+    if (request.capabilityId === snapshot.binaryCapabilityId) {
+      const writeId = snapshot.binaryWriteCapabilityId ?? request.capabilityId;
+      const descriptor = raw.capabilitiesObj?.[writeId];
+      if (!raw.capabilities?.includes(writeId) || !descriptor || descriptor.setable === false) {
+        return { kind: 'none' };
+      }
+    }
+    return zaptecAdapter.switchWrite(snapshot, request, sessions);
   },
   createSession: () => new ZaptecInstallationSession(),
 };

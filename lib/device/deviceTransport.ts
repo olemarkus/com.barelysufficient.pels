@@ -275,6 +275,7 @@ export class DeviceTransport {
             this.observationBridge.state,
             this.logger,
             this.chargingCurrentControl,
+            this.sources.nativeWiring,
             this.observationProducers,
             (cardId) => this.getFlowTriggerCard?.(cardId),
             (deviceId, capabilityId) => this.dispatchObservedStateForDevice(deviceId, capabilityId),
@@ -560,6 +561,9 @@ export class DeviceTransport {
         // PELS stop is PELS's, not the car's.
         if (!desired) this.observationProducers.evCarLink.noteStopCommand(deviceId, Date.now());
         if (snapshot.flowBackedCapabilityIds?.includes(capabilityId) === true) {
+            if (desired && !this.writeService.canTurnOnDevice(deviceId)) {
+                throw new Error('Device is not ready to start.');
+            }
             await triggerFlow(deviceId, capabilityId, desired);
             return;
         }

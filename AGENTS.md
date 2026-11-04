@@ -30,7 +30,7 @@ Use this file for project-wide rules. Read a nested `AGENTS.md` when doing subst
 
 ## Clean and trusted interfaces between layers
 
-Resolve untrusted Homey, network, API, settings, persisted, flow-card, and clock inputs at their owning boundary. Validate shape and finite numbers, then pass a typed semantic result inward. Distinguish genuine domain absence from an unavailable or malformed external read. Consumers trust resolved in-process values; they do not revalidate them or invent stand-ins. A transient missing sample leaves the last accepted observation in place. See `docs/architecture.md` § "Clean and trusted interfaces between layers" and `notes/persisted-settings-state.md`.
+Resolve untrusted Homey, network, API, settings, persisted, flow-card, and clock inputs at their owning boundary. Validate shape and finite numbers, then pass a typed semantic result inward. Distinguish genuine domain absence from an unavailable or malformed external read. Consumers trust resolved in-process values; they do not revalidate them or invent stand-ins. A transient missing sample leaves the last accepted observation in place. For device payloads, validate each capability independently: one null, malformed, missing, or undated field must never reject the whole device or discard valid siblings. Retain that field's last accepted observation with its original timestamp, or withhold only that field when none exists. This also applies to vendor adapters; only an unreadable structural envelope can reject the whole read. See `docs/architecture.md` § "Clean and trusted interfaces between layers" and `notes/persisted-settings-state.md`.
 
 ## Control Flow
 

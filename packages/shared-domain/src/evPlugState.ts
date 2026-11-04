@@ -5,23 +5,14 @@
  * Bottom of the EV stack — `commandableNow.ts` and `evObservedState.ts` build on
  * it, so nothing here may import them.
  *
- * **Every function here is total over `EvChargingState`, and none of them takes
- * or returns an absent value.** That is a statement about the functions, not a
- * guarantee about their call sites: a caller that reads the plug-state off a
- * carrier the producer stripped it from passes `undefined` through a parameter
- * typed as required, and every predicate here then answers `false` for a state
- * it was never shown. Call these on observed state or on an `isEvObserved`
- * narrowing of it — never on a plan device. See `evObservedState.ts` for the
- * production failure that made the distinction.
+ * These functions classify an accepted `EvChargingState`, never an absent
+ * observation. Call them on observed state narrowed by `isEvObserved`, never
+ * on a plan carrier whose producer already resolved the observation to facts.
  *
- * Totality is possible because the plug-state is a
- * capability contract, enforced where the contract is read: an `evcharger`
- * device must expose `evcharger_charging` AND `evcharger_charging_state`
- * (`transport/managerParse.ts`) AND that capability must carry a member of the
- * Homey enum (`transport/managerParseDeviceFields.ts`) — a device failing either
- * is dropped from the snapshot, exactly as a device with no control capability
- * is. So "EV device with an unknown plug-state" is not a state PELS represents;
- * it is a device PELS does not manage.
+ * Charger identity can exist before a valid plug-state observation. Those
+ * devices keep their independent observations, but callers must narrow through
+ * `isEvObserved` before using this vocabulary. Missing state is never a
+ * fabricated plug-in, plug-out or command grant.
  *
  * That is why nothing downstream carries a derived plug-state bit any more. The
  * state itself is carried (required on `EvObservedFields`, observer-side) and every

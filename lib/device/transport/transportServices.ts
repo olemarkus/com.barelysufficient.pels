@@ -1,3 +1,5 @@
+import { isIgnoredOwnStepEcho } from './nativeSteppedRealtime';
+import { withAcceptedCapabilityReport } from './deviceReadContract';
 import { isEvObserved } from '../../../packages/shared-domain/src/evObservedState';
 import { isEvPlugStateConnected } from '../../../packages/shared-domain/src/evPlugState';
 import type { EvCarLinkEventEmitter, EvCarLinkProducer } from '../evCarLinkProducer';
@@ -85,6 +87,15 @@ export class RealtimeIngestService {
     // echo is PELS's echo too.
     const echoed = this.observationBridge.state.ownWrites.takeEcho(deviceId, capabilityId, transactionId);
     const pelsEcho = echoed !== undefined;
+    // Keep accepted source fields current before a later whole-device read can
+    // retain them. Follow the step lane's echo policy: native current echoes
+    // are accepted observations; other local writes are not.
+    const raw = this.reader.snapshotStore.getLastAcceptedRawDevicesById().get(deviceId);
+    if (!isIgnoredOwnStepEcho(capabilityId, pelsEcho) && raw) {
+      this.reader.snapshotStore.updateAcceptedRawDevice(
+        withAcceptedCapabilityReport(raw, capabilityId, value, Date.now()),
+      );
+    }
     const session = this.reader.chargingCurrentControl.sessions;
     this.reader.chargingCurrentControl.synchronizeTrust();
     session.observeCapability(deviceId, capabilityId, value);
@@ -248,7 +259,7 @@ export function createEvCarAssociationControl(
 
 function connectionEnded(snapshots: TransportSnapshotStore, chargerId: string): boolean {
     const charger = snapshots.getSnapshotByDeviceId(chargerId);
-    return charger !== undefined && (!isEvObserved(charger) || !isEvPlugStateConnected(charger.evChargingState));
+    return charger !== undefined && isEvObserved(charger) && !isEvPlugStateConnected(charger.evChargingState);
 }
 
 /** The association and confirmation for a charger, as the transport narrows them to its selected cars. */

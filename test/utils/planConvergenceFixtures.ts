@@ -130,6 +130,10 @@ export const inputDevice = (
   const materialized = withMaterializedEvPlugState(loose);
   return {
     ...materialized,
+    // This test carrier is later split into planner facts and observer input.
+    // Preserve only the explicitly supplied raw observation for that split;
+    // production planner input itself still carries no plug-state.
+    ...(loose.evChargingState === undefined ? {} : { evChargingState: loose.evChargingState }),
     // Resolved by device configuration and the temperature facet, REQUIRED on
     // planner input; a fixture that says nothing is an ordinary on/off load.
     deviceType: materialized.deviceType ?? 'onoff',

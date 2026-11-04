@@ -24,11 +24,11 @@ import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
 
-const buildHeatpumpDevice = async (targetTemperature: number, powerW: number) => {
+const buildHeatpumpDevice = async (targetTemperature: number, powerW: number, extraCapabilities: string[] = []) => {
   const device = new MockDevice(
     'heatpump-a',
     'Hallway Heatpump',
-    ['onoff', 'target_temperature', 'measure_temperature', 'measure_power', 'meter_power', 'thermostat_mode'],
+    ['onoff', 'target_temperature', 'measure_temperature', 'measure_power', 'meter_power', 'thermostat_mode', ...extraCapabilities],
     'heatpump',
   );
   await device.setCapabilityValue('onoff', true);
@@ -84,8 +84,14 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     vi.useRealTimers();
   });
 
-  it('sheds by lowering target_temperature — never turning the device off — when home power exceeds the limit', async () => {
-    const device = await buildHeatpumpDevice(22, 2000);
+  it.each(['ordinary', 'custom power mode', 'malformed meter'] as const)(
+    'keeps temperature capacity control with %s fields when home power exceeds the limit', async (shape) => {
+    const device = await buildHeatpumpDevice(22, 2000, shape === 'custom power mode' ? ['target_power_mode'] : []);
+    if (shape === 'custom power mode') {
+      device.setDriverIdentity({ driverUri: 'homey:app:com.toshiba', driverId: 'ac' });
+      await device.setCapabilityValue('target_power_mode', 'Power 100%');
+    }
+    if (shape === 'malformed meter') await device.setCapabilityValue('meter_power', 'invalid');
     setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
     enableCapacity(1);
     mockHomeyInstance.settings.set('overshoot_behaviors', {

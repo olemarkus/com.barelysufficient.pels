@@ -14,7 +14,11 @@ const PROFILE = {
 const runningDevice = (overrides: Parameters<typeof steppedPlanDevice>[0] = {}) => steppedPlanDevice({
   id: 'stepper', name: 'Stepper', currentState: 'on', currentOn: true,
   selectedStepId: '1', desiredStepId: '1', currentDrawKw: 1,
-  steppedLoadProfile: PROFILE, priority: 10, ...overrides,
+  steppedLoadProfile: PROFILE, priority: 10,
+  ...(overrides.isEvCharger ? {
+    evChargingState: overrides.currentState === 'off' ? 'plugged_in_paused' : 'plugged_in_charging',
+  } : {}),
+  ...overrides,
 });
 
 function cycleFor(dev: ReturnType<typeof runningDevice>, availableKw: number): RestoreCycle {
