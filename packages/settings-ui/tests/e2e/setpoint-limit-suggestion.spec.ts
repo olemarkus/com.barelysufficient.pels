@@ -28,6 +28,8 @@ test.describe('Limited temperature suggestion', () => {
           }],
           managed_devices: { dev_oso: true },
           controllable_devices: { dev_oso: true },
+          // Priced export, so the export price question stays out of this one.
+          export_price_enabled: true, export_fixed: 0.1,
           budget_exempt_devices: {},
           capacity_priorities: { Home: { dev_oso: 1 } },
           mode_device_targets: { Home: { dev_oso: 65 }, Away: { dev_oso: 50 } },
