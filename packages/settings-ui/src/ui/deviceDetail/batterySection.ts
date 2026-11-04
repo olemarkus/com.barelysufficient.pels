@@ -2,6 +2,7 @@ import { MAIN_HOME_ID } from '../../../../shared-domain/src/settings/settingsKey
 import { isHomeBatteryClassKey } from '../../../../shared-domain/src/batteryOrSolarRole.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
+import { setBatteryApiKeyDevice } from './batteryApiKey.tsx';
 import { getHomeIdForUiDevice } from '../homeScopeMembership.ts';
 import {
   isHomeBatteryDeviceId, resolveBatteryPowerLimitOn, resolveManagedState, state,
@@ -52,13 +53,16 @@ const syncDrivableRows = (drivable: boolean): void => {
  * A battery PELS cannot drive has no Power-limit control and its place
  * protects nothing, so both rows are hidden; its status card already says
  * why (`resolveBatteryUndrivableLine`). Every other page gets the switch row
- * back.
+ * back. A battery PELS drives through its app's Flow actions also offers the
+ * owner's Homey API key here (`batteryApiKey.tsx`).
  */
 export const renderDeviceDetailBattery = (device: SettingsUiDeviceDetailItem | null): void => {
   const isHomeBattery = isHomeBatteryClassKey(device?.deviceClass);
   syncPowerLimitHint(isHomeBattery);
   const drivable = !device || !isHomeBattery || device.batteryControl === 'drivable';
   syncDrivableRows(drivable);
+  // Its own gate: only a battery PELS drives through its app's actions offers the key.
+  setBatteryApiKeyDevice(device);
   if (!device || !isHomeBattery) return;
   const managed = resolveManagedState(device.id);
   const notice = document.getElementById('device-detail-battery-takeover-notice');

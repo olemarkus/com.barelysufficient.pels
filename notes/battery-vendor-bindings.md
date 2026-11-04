@@ -56,7 +56,11 @@ one owner of the owner's Homey API key, `HomeyActionAccess`
 (`lib/device/transport/homeyActionAccess.ts`). Charger current shares that
 owner: one key (setting `_homey_flow_api_key`, entered where charger current
 asks for it), one key generation, one action in flight per device, the same
-timeouts, and a permission refusal that invalidates the key for both.
+timeouts, and a permission refusal that invalidates the key for both. The
+battery's device page offers the same key block as a charger's page
+(`HomeyApiKeySetup`, the existing `ui_charging_access*` routes) while its
+control reads `needs_homey_api_key`, and keeps it there to check, replace or
+remove once the key is saved (`batteryUsesHomeyApiKey` on the device list).
 
 - **API key.** With no key saved, or one Homey refused Flow permission, the
   battery is one PELS only watches: its card, device page and device-list row

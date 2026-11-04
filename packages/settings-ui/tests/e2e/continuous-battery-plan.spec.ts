@@ -12,7 +12,7 @@ for (const width of [320, 480]) {
           const initialConfig = { enabled: true, usableCapacityKWh: 10, minimumReservePercent: 20, roundTripEfficiency: 0.9, wearCostPerKWh: 0.03, priceUnit: 'EUR' };
           const startsAtMs = Date.parse('2026-10-27T01:00:00Z');
           const battery = { id: 'battery-plan-test', name: 'Sessy battery', available: true,
-            deviceClass: 'battery', isBatteryOrSolar: true, batteryControl: 'drivable', batteryTakenOver: false,
+            deviceClass: 'battery', isBatteryOrSolar: true, batteryControl: 'drivable', batteryTakenOver: false, batteryUsesHomeyApiKey: false,
             capabilities: ['measure_power', 'measure_battery'], targets: [], canSetControl: true,
             powerCapable: true, expectedPowerKw: 2.5, expectedPowerSource: 'default' };
           const read = () => {

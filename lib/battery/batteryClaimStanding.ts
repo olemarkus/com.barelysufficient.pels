@@ -24,6 +24,11 @@ export const isDrivableBattery = (battery: BatteryControlRead): battery is Driva
   battery.kind === 'setpoint' || battery.kind === 'app_actions'
 );
 
+/** Whether PELS drives the battery through its app's actions, on the owner's Homey API key, usable or not. */
+export const runsOnHomeyApiKey = (battery: BatteryControlRead): boolean => (
+  battery.kind === 'app_actions' || battery.kind === 'homey_api_key_missing'
+);
+
 /**
  * Why a hand-back can never succeed against the battery as it is now. An
  * app-action battery with no usable Homey API key (`homey_api_key_missing`)

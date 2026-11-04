@@ -1953,6 +1953,7 @@
     deviceType: (device.targets?.length ?? 0) > 0 ? 'temperature' : 'onoff',
     batteryControl: device.deviceClass === 'battery' ? 'drivable' : 'not_battery',
     batteryTakenOver: false,
+    batteryUsesHomeyApiKey: false,
     ...device,
   });
 

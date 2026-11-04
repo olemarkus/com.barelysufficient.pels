@@ -289,9 +289,8 @@ Check these, in order:
   take commands only through their app's Flow cards, which PELS runs with a
   Homey API key with **Flow** permission. Its card then reads "PELS can only
   watch it: add a Homey API key to let PELS control it". Create the key with
-  [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro) and save it under **Setup → Charging
-  current** on the device page of a supported car or charger; one key serves
-  every device. A Sigenergy battery also needs its plant device paired in the
+  [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro) and save it in the **Battery** section of
+  the battery's device page; one key serves every device. A Sigenergy battery also needs its plant device paired in the
   Sigenergy app. If the card instead reads "PELS can only watch it: its app
   does not give Homey control", the installed app version lacks a card PELS
   uses, or (Sigenergy) PELS finds no single plant, more than one Sigenergy

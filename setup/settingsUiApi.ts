@@ -296,6 +296,7 @@ const readSettingsUiBatteryState = (
   return {
     batteryControl: owner.readControlCapability(device.id),
     batteryTakenOver: owner.wasTakenOver(device.id),
+    batteryUsesHomeyApiKey: owner.usesHomeyApiKey(device.id),
   };
 };
 

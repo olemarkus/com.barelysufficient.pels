@@ -224,6 +224,9 @@ export const initRealtimeListeners = () => {
   homey.on('settings.set', withSettingsKey('settings.set', createSettingsSetHandler()));
   homey.on('settings.unset', withSettingsKey('settings.unset', createSettingsUnsetHandler()));
 
+  // A saved or removed Homey API key changes what PELS can do with a battery
+  // driven through its app's actions, which the device list says.
+  document.addEventListener('charging-control-changed', () => { refreshDevicesForUi(); });
   document.addEventListener('request-load-devices', () => {
     if (!state.devicesLoaded && !state.devicesLoading) {
       loadDevicesOnce();

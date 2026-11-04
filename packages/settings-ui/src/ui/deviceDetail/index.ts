@@ -1,6 +1,7 @@
 import { renderChargerCurrentLimits } from './chargingCurrentLimits.tsx';
 import { hideDeviceDetailLiveStatus, renderDeviceDetailLiveStatus } from './liveStatus.ts';
 import { initContinuousBatteryPlanRefresh, setContinuousBatteryPlanDevice } from './continuousBatteryPlan.tsx';
+import { setBatteryApiKeyDevice } from './batteryApiKey.tsx';
 import { hideDeviceSmartTaskBox, renderDeviceSmartTaskBox } from './smartTaskBox.ts';
 import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
 import {
@@ -372,6 +373,7 @@ export const openDeviceDetail = (deviceId: string) => {
 
 export const closeDeviceDetail = () => {
   setContinuousBatteryPlanDevice(null);
+  setBatteryApiKeyDevice(null);
   resetDeviceDetailDiagnosticsRequests();
   resetDeviceDetailDiagnosticsView();
   resetDeviceDetailActivityLogRequests();

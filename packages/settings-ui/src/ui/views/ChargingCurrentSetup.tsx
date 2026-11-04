@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import type { ChargingAccessStatus, ChargingCurrentRead, ChargingCurrentSetup } from '../../../../contracts/src/chargingControl.ts';
-import { MdFilledButton, MdOutlinedButton, MdFilledTextField, MdSwitch, readSwitchSelected } from './materialWebJSX.tsx';
+import { MdFilledButton, MdOutlinedButton, MdSwitch, readSwitchSelected } from './materialWebJSX.tsx';
+import { HomeyApiKeySetup, resolveHomeyApiKeySaveLabel, type HomeyApiKeyCopy } from './HomeyApiKeySetup.tsx';
 
 export type ChargingCurrentSetupProps = {
   device: ChargingCurrentRead;
@@ -24,13 +25,15 @@ export function ChargingCurrentLoadView(props: { busy: boolean; onRetry: () => P
   </section>;
 }
 
-const GUIDE = 'https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro';
-const ACCESS_COPY: Record<ChargingAccessStatus['state'], string> = {
-  not_configured: 'A Homey API key is needed for built-in control.',
-  not_checked: 'Check the saved key to enable charging-current control.',
-  ready: 'API key verified.',
-  permission_denied: 'The key needs Flow permission. Replace it with a key that has this permission.',
-  unavailable: 'Homey charging access is unavailable. Check the key and try again.',
+const KEY_COPY: HomeyApiKeyCopy = {
+  states: {
+    not_configured: 'A Homey API key is needed for built-in control.',
+    not_checked: 'Check the saved key to enable charging-current control.',
+    ready: 'API key verified.',
+    permission_denied: 'The key needs Flow permission. Replace it with a key that has this permission.',
+    unavailable: 'Homey charging access is unavailable. Check the key and try again.',
+  },
+  hint: 'In the Homey Web App → Settings → API Keys, create a key with Flow permission. One key works for all supported cars and chargers.',
 };
 
 /** Why a selected built-in route is held back, and how the owner clears it. */
@@ -45,7 +48,6 @@ function pausedHint(flowNames: readonly string[]): string {
 
 export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
   const { device, access, busy } = props;
-  const [key, setKey] = useState('');
   const [singleCharger, setSingleCharger] = useState(device.setup.confirmation === 'single_charger');
   const [vehicleControl, setVehicleControl] = useState(device.setup.confirmation === 'vehicle');
   // A charger-scoped command reaches only this charger, so it needs no confirmation.
@@ -64,7 +66,6 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
   const flowNames = device.flowNames.filter(Boolean);
   const needsKey = !device.capabilityWritable && access.state !== 'ready';
   const enableWithKey = !builtIn && needsKey && !access.configured;
-  const KeyContainer = access.state === 'ready' ? 'details' : 'div';
   const activationGuidance = <div role="status">
     {!builtIn && device.flowCheck === 'conflict' && <p class="field__hint">
       Remove the current-setting action from your Flow before using built-in control. Then select “Check again”.
@@ -113,24 +114,16 @@ export function ChargingCurrentSetupView(props: ChargingCurrentSetupProps) {
       <MdSwitch aria-label="This installation has only one charger" selected={singleCharger} disabled={busy}
         onChange={(event: Event) => setSingleCharger(readSwitchSelected(event))} />
     </label>}
-    {((!device.capabilityWritable && !device.sharedInstallation) || access.configured) && <KeyContainer>
-      {access.state === 'ready' && <summary>Manage API key</summary>}
-      <p class="field__hint">{ACCESS_COPY[access.state]}</p>
-      <p class="field__hint">In the Homey Web App → Settings → API Keys, create a key with Flow permission. One key works for all supported cars and chargers. <a href={GUIDE} target="_blank" rel="noopener noreferrer">Create an API key</a></p>
-      <MdFilledTextField label={access.configured ? 'Replacement API key' : 'API key'} type="password"
-        autocomplete="off" value={key} disabled={busy}
-        onInput={(event: Event) => setKey((event.currentTarget as HTMLInputElement).value)} />
+    {((!device.capabilityWritable && !device.sharedInstallation) || access.configured) && <HomeyApiKeySetup
+      access={access} busy={busy} copy={KEY_COPY}
+      saveLabel={enableWithKey ? 'Save key and enable' : resolveHomeyApiKeySaveLabel(access)}
+      saveBlocked={enableWithKey && !scopeAllowed}
+      onSave={(key) => (enableWithKey
+        ? props.onEnableWithKey(key, { method: 'built_in', confirmation: chosenConfirmation })
+        : props.onSaveKey(key))}
+      onRemove={props.onRemove}>
       {enableWithKey && activationGuidance}
-      <div class="form__actions">
-        <MdFilledButton disabled={busy || !key.trim() || (enableWithKey && !scopeAllowed)} onClick={async () => {
-          const saved = enableWithKey
-            ? await props.onEnableWithKey(key, { method: 'built_in', confirmation: chosenConfirmation })
-            : await props.onSaveKey(key);
-          if (saved) setKey('');
-        }}>{enableWithKey ? 'Save key and enable' : access.configured ? 'Replace key' : 'Save key'}</MdFilledButton>
-        {access.configured && <MdOutlinedButton disabled={busy} onClick={props.onRemove}>Remove key</MdOutlinedButton>}
-      </div>
-    </KeyContainer>}
+    </HomeyApiKeySetup>}
     {!enableWithKey && activationGuidance}
     <div class="form__actions">
       {!builtIn && !device.sharedInstallation && !needsKey && <MdFilledButton disabled={busy || !canEnable} onClick={() => props.onSaveMethod({ method: 'built_in', confirmation: chosenConfirmation })}>Use built-in control</MdFilledButton>}
