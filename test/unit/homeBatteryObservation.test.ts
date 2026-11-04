@@ -4,6 +4,7 @@ import {
   toBatteryControlRead,
 } from '../../lib/device/transport/homeBatteryObservation';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
+import type { BatteryControlRead } from '../../lib/ports/batteryControlOwner';
 
 const battery = (fields: Partial<TransportDeviceSnapshot>): TransportDeviceSnapshot => ({
   id: 'battery-1',
@@ -60,6 +61,7 @@ describe('preserveNewerHomeBatteryReadings', () => {
 });
 
 describe('toBatteryControlRead', () => {
+  const readAppActions = (): BatteryControlRead => ({ kind: 'homey_api_key_missing' });
   const surface = {
     kind: 'setpoint',
     claim: { capabilityId: 'target_power_mode', homeyValue: 'homey', values: ['homey', 'anti_feed'], rejection: 'unanswered' },
@@ -67,23 +69,29 @@ describe('toBatteryControlRead', () => {
   } as const;
 
   it('reads a device not observed yet as unobserved', () => {
-    expect(toBatteryControlRead(undefined)).toEqual({ kind: 'unobserved' });
+    expect(toBatteryControlRead(undefined, readAppActions)).toEqual({ kind: 'unobserved' });
   });
 
   it('reads a device without the home-battery cluster as no battery, not as an observe-only one', () => {
-    expect(toBatteryControlRead(battery({ homeBattery: undefined, deviceClass: 'heater' })))
+    expect(toBatteryControlRead(battery({ homeBattery: undefined, deviceClass: 'heater' }), readAppActions))
       .toEqual({ kind: 'not_battery' });
   });
 
   it('reads a battery without a setpoint surface as observe-only', () => {
-    expect(toBatteryControlRead(battery({}))).toEqual({ kind: 'observe_only' });
+    expect(toBatteryControlRead(battery({}), readAppActions)).toEqual({ kind: 'observe_only' });
   });
 
   it('reads a setpoint battery with its claim, or as unreported before it reports one', () => {
     const claim = { value: 'anti_feed', observedAtMs: 1_000 };
-    expect(toBatteryControlRead(battery({ homeBattery: { controlSurface: surface }, batteryClaim: claim })))
-      .toEqual({ kind: 'setpoint', surface, claim });
-    expect(toBatteryControlRead(battery({ homeBattery: { controlSurface: surface } })))
+    expect(toBatteryControlRead(
+      battery({ homeBattery: { controlSurface: surface }, batteryClaim: claim }), readAppActions,
+    )).toEqual({ kind: 'setpoint', surface, claim });
+    expect(toBatteryControlRead(battery({ homeBattery: { controlSurface: surface } }), readAppActions))
       .toEqual({ kind: 'setpoint', surface, claim: { kind: 'unreported' } });
+  });
+
+  it('reads a battery driven through its app\'s actions as their host reads it now', () => {
+    expect(toBatteryControlRead(battery({ homeBattery: { controlSurface: { kind: 'app_actions' } } }), readAppActions))
+      .toEqual({ kind: 'homey_api_key_missing' });
   });
 });

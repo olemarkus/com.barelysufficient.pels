@@ -26,11 +26,71 @@ A `capability` binding states:
 - **zeroSetpointW**: what PELS writes for a 0 W setpoint, `0` unless the app
   reads an exact 0 as one of its own modes. A hand-back always writes an exact 0.
 
+An `app_actions` binding is for a battery whose Homey app offers control only
+through its own Flow action cards. PELS runs those cards with the owner's
+Homey API key (see "App-action bindings" below). It states:
+
+- **appUri**: the battery's app (`homey:app:<id>`); its app-level cards are
+  `<appUri>:<actionId>`.
+- **commandLifetime**: `persistent` (a command holds until the next) or
+  `expires` after `lifetimeMs` (the app's own countdown hands the battery back).
+- **resolve(device, devices)**: the battery's actions, from the host's last
+  full device inventory, or why there are none (`reasonCode`, logged only).
+  The actions are the signed range in PELS's sign, `command(setpointW)` (the
+  ordered cards for a charge, a discharge or a 0 W hold) and `handBack` (the
+  ordered cards that return the battery to its own mode). Each step names a
+  card id within the app, the device it runs on and its own arguments.
+
 The transport resolves the control surface from the binding at parse
 (`lib/device/transport/homeBatteryObservation.ts`) and the storage writes at
 write time (`requestStoragePower`, `releaseStorageControl` in
 `lib/device/transport/deviceWrites.ts`). Planner, executor and UI read only the
 resolved `HomeBatteryControlSurface`, in PELS's sign.
+
+## App-action bindings
+
+The common host is `lib/device/homeBatteryAppActions.ts`; the adapter only
+builds card ids and arguments. All I/O stays with the host: the card inventory
+(`manager/flow/flowcardaction`), the device reads, and the runs, through the
+one owner of the owner's Homey API key, `HomeyActionAccess`
+(`lib/device/transport/homeyActionAccess.ts`). Charger current shares that
+owner: one key (setting `_homey_flow_api_key`, entered where charger current
+asks for it), one key generation, one action in flight per device, the same
+timeouts, and a permission refusal that invalidates the key for both.
+
+- **API key.** With no key saved, or one Homey refused Flow permission, the
+  battery is one PELS only watches: its card, device page and device-list row
+  read `PELS can only watch it: add a Homey API key to let PELS control it`
+  (`needs_homey_api_key`). A saved key not yet checked, or one whose last check
+  could not reach Homey, still counts: the runner checks it before its next
+  action.
+- **Fail closed.** The battery is drivable only while every card its commands
+  and its hand-back could run (a full charge, a full discharge, a 0 W hold, the
+  hand-back) is in the last inventory read, and the adapter resolved its
+  actions. A missing or renamed card, an inventory not read yet, or actions
+  the adapter cannot resolve make it one PELS only observes, logged once per
+  reason (`home_battery_actions_unavailable`). The inventory is read when a
+  full device read shows such a battery, again after an hour, and a minute
+  after a failed read or a failed run.
+- **No claim to observe.** The app reports nothing PELS could read as a claim.
+  The battery control owner treats PELS's own claim record
+  (`{ handBack: 'app_actions', claimedAtMs }`) as the claim: written before the
+  first command, removed after the hand-back, recovered at boot, retried with
+  back-off, like any other. Its standing is always held. **A takeover cannot
+  be detected**: an owner who changes the battery's mode in its own app while
+  PELS holds it is not seen, and PELS's next command overrides the change. To
+  take the battery back, turn its Managed or Power-limit control off in PELS.
+- **Verification** is unchanged: every command is judged against the
+  battery's own `measure_power`, and the sign check against the whole-home
+  meter marks a battery that moves the wrong way sign-inverted, which hands it
+  back.
+- **Keep-alive.** A command that `expires` is sent again at half its lifetime
+  while the plan keeps deciding it (`BatteryLeverRead.keepAlive`, the storage
+  lane's drift in `lib/executor/batteryExecutor.ts`). It goes through the
+  owner's admission and Main's fenced actuator like any setpoint, so nothing
+  below the actuator seam keeps a battery PELS should release. When the meter
+  goes silent the plan stops, nothing is re-sent, and the app's countdown
+  returns the battery to its own mode.
 
 ## Batteries and their bindings
 

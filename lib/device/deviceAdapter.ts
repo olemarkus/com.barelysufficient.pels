@@ -1,7 +1,9 @@
 import type { HubHomeLocation } from './hubHomeLocation';
 import type { ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
 import type { DeviceControlAdapterSnapshot, HomeBatteryClaimCapabilityId, HomeBatteryClaimRejection,
-  SteppedLoadProfile, SteppedLoadStep, TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
+  HomeBatterySetpointRange, SteppedLoadProfile, SteppedLoadStep,
+  TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
+import type { DeviceActionStep } from './flowActionCards';
 import type { TargetPowerConfigWithReachability } from './targetPowerReachability';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceCapabilityMap } from './managerControl';
@@ -107,13 +109,68 @@ export type TargetPowerDefaults = { minW: number; maxW: number; stepW: number };
  *   `0`, unless the app reads an exact 0 as one of its own modes. A hand-back
  *   still writes an exact 0.
  */
-export type HomeBatteryBinding = {
+export type HomeBatteryCapabilityBinding = {
   kind: 'capability';
   claims: readonly HomeBatteryClaimBinding[];
   setpointSign: 1 | -1;
   rangeDefaults: TargetPowerDefaults;
   zeroSetpointW: number;
 };
+
+/**
+ * How long one command lasts in the battery's app: until the next one
+ * (`persistent`), or `lifetimeMs` after it was sent, when the app's own
+ * countdown hands the battery back to its own mode (`expires`). PELS sends an
+ * expiring command again well before it runs out
+ * (`lib/executor/batteryExecutor.ts`).
+ */
+export type HomeBatteryCommandLifetime = { kind: 'persistent' } | { kind: 'expires'; lifetimeMs: number };
+
+/**
+ * A battery's app actions, resolved for one battery: the signed range PELS
+ * may command, in PELS's sign, and the cards that carry each command out, in
+ * order. `command` takes a setpoint already on the range's grid: positive
+ * charges, negative discharges, 0 holds the battery idle under PELS. `handBack`
+ * returns the battery to its own mode. Every step names a card id within the
+ * binding's app and the device it runs on; the host checks each against the
+ * installed cards before PELS may drive the battery.
+ */
+export type HomeBatteryActions = {
+  range: HomeBatterySetpointRange;
+  command(setpointW: number): readonly DeviceActionStep[];
+  handBack: readonly DeviceActionStep[];
+};
+
+/**
+ * The actions an integration resolved for a battery, or why it has none
+ * (`reasonCode`: the integration's own words, logged, never matched).
+ */
+export type HomeBatteryActionsResolution =
+  | { kind: 'resolved'; actions: HomeBatteryActions }
+  | { kind: 'unavailable'; reasonCode: string };
+
+/**
+ * `app_actions`: a battery whose app offers control only through its own Flow
+ * action cards. PELS runs them with the owner's Homey API key
+ * (`HomeyActionAccess`), so the battery is drivable only while that key may
+ * run Flow actions. The app reports no claim PELS could observe: PELS's own
+ * claim record is the claim, and a takeover in the battery's app cannot be
+ * seen.
+ * - `appUri`: the battery's Homey app (`homey:app:<id>`), whose app-level
+ *   cards are `<appUri>:<actionId>`.
+ * - `commandLifetime`: how long one command lasts.
+ * - `resolve`: the actions for `device`, from the host's last full device
+ *   inventory (`devices`, every device Homey lists, for an app whose control
+ *   sits on a sibling device), or why there are none.
+ */
+export type HomeBatteryActionBinding = {
+  kind: 'app_actions';
+  appUri: string;
+  commandLifetime: HomeBatteryCommandLifetime;
+  resolve(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryActionsResolution;
+};
+
+export type HomeBatteryBinding = HomeBatteryCapabilityBinding | HomeBatteryActionBinding;
 
 /** The host owns I/O; an integration owns the meaning of its reads and writes. */
 export type DeviceAdapter = {

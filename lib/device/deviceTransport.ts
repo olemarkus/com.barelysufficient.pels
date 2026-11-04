@@ -1,4 +1,5 @@
 import { ChargingCurrentControl } from './chargingCurrentControl';
+import type { HomeBatteryAppActions } from './homeBatteryAppActions';
 import type { TaskDeviceConstraint } from '../../packages/contracts/src/taskDelivery';
 import type { CarIdentificationState } from '../../packages/contracts/src/evCarLink';
 /**
@@ -113,6 +114,8 @@ export type DeviceTransportPort = Omit<DeviceTransport, 'getSnapshot'>;
 export class DeviceTransport {
     get chargingAccess() { return this.chargingCurrentControl.access; }
     readonly chargingCurrentControl: ChargingCurrentControl;
+    /** The host of every home battery driven through its app's Flow actions, on the shared API key. */
+    get batteryAppActions(): HomeBatteryAppActions { return this.reader.batteryAppActions; }
     private readonly deviceSdk: DeviceHomeySdk;
     private readonly logger: Logger;
     // Owner-side widened shape: these stored objects are mutated in place across
@@ -273,7 +276,6 @@ export class DeviceTransport {
             options.observedStateDispatcher,
             this.observationProducers.temperature,
         );
-        this.writeService = this.createWriteService();
         this.powerState = {
             ...powerState,
             lastEstimateDecisionLogByDevice: createEstimateDecisionLogState(),
@@ -310,6 +312,8 @@ export class DeviceTransport {
             this.logger,
             this.chargingCurrentControl,
         );
+        // After the reader: writes share its battery action host.
+        this.writeService = this.createWriteService();
         this.refreshService = new SnapshotRefreshService(
             this.refreshState,
             snapshotCommit,
@@ -337,6 +341,7 @@ export class DeviceTransport {
             this.observationBridge.state,
             this.logger,
             this.chargingCurrentControl,
+            this.batteryAppActions,
             this.sources.nativeWiring,
             this.runtimeConfiguration.currentLimits,
             this.observationProducers,

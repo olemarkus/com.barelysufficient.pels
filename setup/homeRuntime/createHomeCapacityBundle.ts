@@ -192,8 +192,8 @@ function buildSubHomeScope(
         pruneCommandability: binaryCommandReachability.prune,
       });
     },
-    // Home-battery control is Main only (v1): no battery here is watched for control.
-    isBatteryWatchOnly: () => false,
+    // Home-battery control is Main only (v1): this home drives no battery.
+    readBatteryControlCapability: () => 'not_battery',
     binaryCommandLifecycle: binaryCommandReachability.lifecycle,
     disposeBinaryCommandReachability: binaryCommandReachability.dispose,
     // Teardown fence: a post-teardown continuation cannot persist a suffixed key.

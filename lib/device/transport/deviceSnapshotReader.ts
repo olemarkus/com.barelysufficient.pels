@@ -1,5 +1,6 @@
 import { getDeviceAdapter } from '../deviceAdapterRegistry';
 import type { ChargingCurrentControl } from '../chargingCurrentControl';
+import { HomeBatteryAppActions } from '../homeBatteryAppActions';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import type { LiveDevicePowerWatts } from '../managerEnergy';
@@ -43,6 +44,14 @@ export function createDeviceParseSources(
 
 /** Parses Homey device reads and maintains the raw-device tracking indexes. */
 export class DeviceSnapshotReader {
+  /**
+   * The host of every battery driven through its app's Flow actions
+   * (`homeBatteryAppActions.ts`), on the key owner the charging-current control
+   * holds. Built here, beside the battery control read it answers; the write
+   * service shares it.
+   */
+  readonly batteryAppActions: HomeBatteryAppActions;
+
   constructor(
     readonly snapshotStore: TransportSnapshotStore,
     readonly sources: DeviceParseSources,
@@ -50,11 +59,24 @@ export class DeviceSnapshotReader {
     readonly retainedPower: RetainedPowerPersistence,
     readonly logger: Logger,
     readonly chargingCurrentControl: ChargingCurrentControl,
-  ) {}
+  ) {
+    this.batteryAppActions = new HomeBatteryAppActions(
+      chargingCurrentControl.access,
+      (deviceId) => snapshotStore.getTrackedRawDevice(deviceId),
+      () => snapshotStore.getLatestRawDevices(),
+      logger,
+    );
+  }
 
-  /** The device as the battery control owner reads it (`toBatteryControlRead`). */
+  /**
+   * The device as the battery control owner reads it (`toBatteryControlRead`);
+   * a battery driven through its app's actions as their host reads it now.
+   */
   readBatteryControl(deviceId: string): BatteryControlRead {
-    return toBatteryControlRead(this.snapshotStore.getSnapshotByDeviceId(deviceId));
+    return toBatteryControlRead(
+      this.snapshotStore.getSnapshotByDeviceId(deviceId),
+      (id) => this.batteryAppActions.readControl(id),
+    );
   }
 
   parseDevice(
@@ -90,6 +112,7 @@ export class DeviceSnapshotReader {
     livePowerWByDeviceId: LiveDevicePowerWatts,
   ): TransportDeviceSnapshot[] {
     this.chargingCurrentControl.observeDevices(list, readAtMs);
+    this.batteryAppActions.observeDevices(list, readAtMs);
     return this.parseDeviceList(list, livePowerWByDeviceId);
   }
 

@@ -324,7 +324,9 @@ describe('toTargetPowerCapabilityValue', () => {
 describe('toBatterySetpointCapabilityValue', () => {
   const bindingOf = (driverId: string) => {
     const battery = device({ driverId });
-    return getDeviceAdapter(battery).homeBatteryBinding(battery);
+    const binding = getDeviceAdapter(battery).homeBatteryBinding(battery);
+    if (binding.kind !== 'capability') throw new Error(`${driverId} has no capability binding`);
+    return binding;
   };
 
   it.each([

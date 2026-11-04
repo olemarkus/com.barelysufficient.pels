@@ -2,7 +2,7 @@ import type { HomeBatteryControlSurface, HomeBatterySetpointRange } from '../../
 import type { HomeyDeviceLike } from '../utils/types';
 import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { DeviceCapabilityMap } from './managerControl';
-import type { HomeBatteryBinding, TargetPowerDefaults } from './deviceAdapter';
+import type { HomeBatteryCapabilityBinding, TargetPowerDefaults } from './deviceAdapter';
 import { getDeviceAdapter } from './deviceAdapterRegistry';
 
 /**
@@ -56,7 +56,10 @@ const toPelsSign = (range: HomeBatterySetpointRange, sign: 1 | -1): HomeBatteryS
  * write against. The options are read in the app's sign, the binding's
  * defaults filling the edges it leaves out; every check holds in both signs.
  */
-const resolveSignedRange = (entry: CapabilityEntry, binding: HomeBatteryBinding): HomeBatterySetpointRange | null => {
+const resolveSignedRange = (
+  entry: CapabilityEntry,
+  binding: HomeBatteryCapabilityBinding,
+): HomeBatterySetpointRange | null => {
   const defaults: TargetPowerDefaults = binding.rangeDefaults;
   const minW = readNumericOption(entry, 'min', defaults.minW);
   const maxW = readNumericOption(entry, 'max', defaults.maxW);
@@ -89,18 +92,24 @@ const readEnumValueIds = (entry: CapabilityEntry): string[] => {
  * way `buildSyntheticTargetPowerCapabilityMap` reads them, and an enum claim
  * capability's `values` are read as `[{ id }]`. A claim capability must be
  * setable and declare its claim value.
+ *
+ * A battery whose binding is the app's own actions has no capability to
+ * classify: its surface is `app_actions`, and whether those actions can run
+ * now (the cards installed, the owner's API key) is the transport's read at
+ * the moment it is asked (`homeBatteryAppActions.ts`), not a parse fact.
  */
 export function resolveBatteryControlSurface(
   device: HomeyDeviceLike,
   capabilities: readonly string[],
   capabilityObj: DeviceCapabilityMap,
 ): HomeBatteryControlSurface {
+  const binding = getDeviceAdapter(device).homeBatteryBinding(device);
+  if (binding.kind === 'app_actions') return { kind: 'app_actions' };
   const targetPower = capabilities.includes(HOME_BATTERY_SETPOINT_CAPABILITY_ID)
     ? asUnknownRecord(capabilityObj[HOME_BATTERY_SETPOINT_CAPABILITY_ID])
     : null;
   if (targetPower === null) return { kind: 'observe_only', reason: 'no_target_power' };
   if (targetPower.setable !== true) return { kind: 'observe_only', reason: 'target_power_not_setable' };
-  const binding = getDeviceAdapter(device).homeBatteryBinding(device);
   const range = resolveSignedRange(targetPower, binding);
   if (range === null) return { kind: 'observe_only', reason: 'not_signed_range' };
 
@@ -121,7 +130,7 @@ export { toTargetPowerCapabilityValue } from '../utils/storageSetpoint';
  * The app's `target_power` value for a setpoint already mapped onto the range,
  * in PELS's sign: the binding's 0 W value for 0, then the app's sign.
  */
-export function toBatterySetpointCapabilityValue(binding: HomeBatteryBinding, setpointW: number): number {
+export function toBatterySetpointCapabilityValue(binding: HomeBatteryCapabilityBinding, setpointW: number): number {
   const valueW = setpointW === 0 ? binding.zeroSetpointW : setpointW;
   return valueW === 0 ? 0 : binding.setpointSign * valueW;
 }

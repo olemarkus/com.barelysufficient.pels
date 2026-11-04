@@ -39,6 +39,7 @@ import type { PlanBuilderDeps } from '../../lib/plan/planBuilder';
 import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
 import type { DeviceDiagnosticsService } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { AppContext } from '../../lib/app/appContext';
+import type { HomeBatteryControlCapability } from '../../packages/contracts/src/types';
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import type { BinaryCommandLifecycleListener } from '../../lib/observer/pendingBinaryCommands';
 // Direct file imports (not the `setup/appInit.ts` barrel): the barrel also
@@ -98,11 +99,12 @@ export type HomeScope = {
   /** Active planned devices with a unique, gap-free relative priority in this home. */
   getPlanDevices: () => PlanInputDevice[];
   /**
-   * Whether PELS can only watch this home battery for now, for its card
-   * (`BatteryControlOwner.isWatchOnly`). Main binds its battery control owner;
-   * a meter area controls no battery, so it binds false.
+   * Whether PELS can drive this home battery now, for its card
+   * (`BatteryControlOwner.readControlCapability`). Main binds its battery
+   * control owner; a meter area controls no battery, so it answers
+   * `not_battery`.
    */
-  isBatteryWatchOnly: (deviceId: string) => boolean;
+  readBatteryControlCapability: (deviceId: string) => HomeBatteryControlCapability | 'not_battery';
   binaryCommandLifecycle: BinaryCommandLifecycleListener;
   disposeBinaryCommandReachability: () => void;
   // Signal writers. The two settings keys are this home's
@@ -275,7 +277,7 @@ export function buildMainHomeScope(
       });
     },
     // Built by its startup step before the plan stack reads a card.
-    isBatteryWatchOnly: (deviceId) => requireBatteryControl(ctx).isWatchOnly(deviceId),
+    readBatteryControlCapability: (deviceId) => requireBatteryControl(ctx).readControlCapability(deviceId),
     binaryCommandLifecycle: binaryCommandReachability.lifecycle,
     disposeBinaryCommandReachability: binaryCommandReachability.dispose,
     // Main has a teardown edge like any other home: `runUninit` trips the

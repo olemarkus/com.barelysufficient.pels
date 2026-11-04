@@ -282,6 +282,12 @@ describe('battery device list row', () => {
     expect(reasons).toEqual(['PELS can only watch it: its app does not accept control']);
   });
 
+  it('says a battery whose app actions need a Homey API key needs one, in place of its Limit switch', async () => {
+    const { limit, reasons } = await renderRow({}, {}, { ...battery, batteryControl: 'needs_homey_api_key' as const });
+    expect(limit.getAttribute('aria-disabled')).toBe('true');
+    expect(reasons).toEqual(['PELS can only watch it: add a Homey API key to let PELS control it']);
+  });
+
   it('shows the takeover notice on the row of a battery PELS turned Managed off for', async () => {
     const { reasons } = await renderRow({ 'battery-1': false }, {}, { ...battery, batteryTakenOver: true });
     expect(reasons).toEqual([

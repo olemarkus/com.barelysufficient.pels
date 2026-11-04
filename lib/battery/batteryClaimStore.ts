@@ -29,6 +29,13 @@
  * payload (the value to restore), so a listed key whose value does not parse is
  * a failed read of that one battery's record, never an absent record, and never
  * a reason to stop handing back any other battery.
+ *
+ * ## A claim-less battery's record
+ *
+ * A battery driven through its app's actions has no claim capability and no
+ * value to restore: its record says only that PELS holds it, and since when
+ * (`{ handBack: 'app_actions', claimedAtMs }`). It is written and removed at
+ * the same moments, and boot recovery runs its hand-back actions.
  */
 import type { HomeBatteryClaimCapabilityId } from '../../packages/contracts/src/types';
 import type { SettingsPort } from '../ports/homeyRuntime';
@@ -37,15 +44,30 @@ import { PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../utils/settingsKeys';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 /**
- * What PELS owes a battery it claimed: the claim capability, the value to
- * restore, and when PELS admitted the claim. A claim value observed after that
- * moment, other than Homey's, is someone else taking the battery over.
+ * What PELS owes a battery it claimed, and when PELS admitted the claim:
+ *
+ * - `claim_capability`: the claim capability and the value to restore. A claim
+ *   value observed after the claim, other than Homey's, is someone else taking
+ *   the battery over.
+ * - `app_actions`: a claim-less battery driven through its app's actions. It
+ *   is owed its integration's hand-back actions; nothing it reports can show a
+ *   takeover.
  */
-export type BatteryClaimRecord = {
-  capabilityId: HomeBatteryClaimCapabilityId;
-  previousValue: string;
-  claimedAtMs: number;
-};
+export type BatteryClaimRecord =
+  | {
+    kind: 'claim_capability';
+    capabilityId: HomeBatteryClaimCapabilityId;
+    previousValue: string;
+    claimedAtMs: number;
+  }
+  | { kind: 'app_actions'; claimedAtMs: number };
+
+/** A record's stored form: the claim capability's unchanged since records were first stored. */
+const toStoredRecord = (record: BatteryClaimRecord): Record<string, unknown> => (
+  record.kind === 'app_actions'
+    ? { handBack: 'app_actions', claimedAtMs: record.claimedAtMs }
+    : { capabilityId: record.capabilityId, previousValue: record.previousValue, claimedAtMs: record.claimedAtMs }
+);
 
 /**
  * Stored records. The owner retries unresolved entries on later snapshots. `unavailable` is a key list the SDK
@@ -68,12 +90,15 @@ const isClaimCapabilityId = (value: unknown): value is HomeBatteryClaimCapabilit
 
 const parseClaimRecord = (value: unknown): BatteryClaimRecord | null => {
   if (!isUnknownRecord(value)) return null;
-  const { capabilityId, previousValue, claimedAtMs } = value;
+  const { capabilityId, previousValue, claimedAtMs, handBack } = value;
+  if (typeof claimedAtMs !== 'number' || !Number.isFinite(claimedAtMs)) return null;
+  if (handBack === 'app_actions') {
+    return capabilityId === undefined && previousValue === undefined ? { kind: 'app_actions', claimedAtMs } : null;
+  }
   if (!isClaimCapabilityId(capabilityId) || typeof previousValue !== 'string' || previousValue.length === 0) {
     return null;
   }
-  if (typeof claimedAtMs !== 'number' || !Number.isFinite(claimedAtMs)) return null;
-  return { capabilityId, previousValue, claimedAtMs };
+  return { kind: 'claim_capability', capabilityId, previousValue, claimedAtMs };
 };
 
 const claimKey = (deviceId: string): string => `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}${deviceId}`;
@@ -105,7 +130,7 @@ export class BatteryClaimStore {
   /** Store a record. `false` when the write threw: the caller must not claim. */
   write(deviceId: string, record: BatteryClaimRecord): boolean {
     try {
-      this.settings.set(claimKey(deviceId), { ...record });
+      this.settings.set(claimKey(deviceId), toStoredRecord(record));
       return true;
     } catch {
       return false;

@@ -1,5 +1,6 @@
 import { resolveCommandableNow } from '../../../packages/shared-domain/src/commandableNow';
 import type { ChargingCurrentControl } from '../chargingCurrentControl';
+import type { HomeBatteryAppActions } from '../homeBatteryAppActions';
 import type { EvChargingCurrentLimitPolicy } from '../evChargingCurrentLimitPolicy';
 import { resolveChargingCurrentAdapter } from '../chargingCurrentAdapter';
 /**
@@ -25,7 +26,7 @@ import { hasRestClient, setRawCapabilityValue } from './managerHomeyApi';
 import { recordLocalWriteObservation } from './managerObservation';
 import { isNativeSteppedLoadControlEnabled, type CapabilityWrite } from '../nativeSteppedLoadWiring';
 import { getDeviceAdapter, getSnapshotAdapter } from '../deviceAdapterRegistry';
-import type { HomeBatteryBinding, SessionEvidence, SwitchWrite } from '../deviceAdapter';
+import type { HomeBatteryCapabilityBinding, SessionEvidence, SwitchWrite } from '../deviceAdapter';
 import type { SteppedLoadFlowTriggerCard } from './transportTypes';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
@@ -101,20 +102,20 @@ function resolveSwitchSdkWrite(
         : getSnapshotAdapter(snapshot).switchWrite(snapshot, requested, sessions);
 }
 
+type DrivableSurface = Extract<HomeBatteryControlSurface, { kind: 'setpoint' } | { kind: 'app_actions' }>;
+
 /**
- * The setpoint surface a storage intent's writes are resolved from. A device
- * that is not a home battery, or one PELS can only observe, has no storage
- * binding: the intent is refused, never improvised.
+ * The surface a storage intent's writes are resolved from: a setpoint
+ * surface, or the app's actions. A device that is not a home battery, or one
+ * PELS can only observe, has no storage binding: the intent is refused, never
+ * improvised.
  */
-function requireSetpointSurface(
-    snapshot: TransportDeviceSnapshot | undefined,
-    deviceId: string,
-): Extract<HomeBatteryControlSurface, { kind: 'setpoint' }> {
+function requireDrivableSurface(snapshot: TransportDeviceSnapshot | undefined, deviceId: string): DrivableSurface {
     if (snapshot === undefined || !isHomeBatterySnapshot(snapshot)) {
         throw new Error(`No home battery binding for device ${deviceId}`);
     }
     const surface = snapshot.homeBattery.controlSurface;
-    if (surface.kind !== 'setpoint') {
+    if (surface.kind === 'observe_only') {
         throw new Error(`Home battery ${deviceId} is observe-only (${surface.reason})`);
     }
     return surface;
@@ -126,10 +127,15 @@ function requireSetpointSurface(
  * (`isRuntimeTrackedDevice`), so a missing raw read is metadata lost, and the
  * intent is refused rather than written in a sign nobody resolved.
  */
-function requireHomeBatteryBinding(snapshotStore: TransportSnapshotStore, deviceId: string): HomeBatteryBinding {
+function requireHomeBatteryBinding(
+    snapshotStore: TransportSnapshotStore,
+    deviceId: string,
+): HomeBatteryCapabilityBinding {
     const raw = snapshotStore.getTrackedRawDevice(deviceId);
     if (raw === undefined) throw new Error(`Home battery ${deviceId} control metadata is unavailable`);
-    return getDeviceAdapter(raw).homeBatteryBinding(raw);
+    const binding = getDeviceAdapter(raw).homeBatteryBinding(raw);
+    if (binding.kind !== 'capability') throw new Error(`Home battery ${deviceId} control binding changed`);
+    return binding;
 }
 
 export class DeviceWriteService {
@@ -139,6 +145,7 @@ export class DeviceWriteService {
     private readonly observationState: TransportObservationState,
     private readonly logger: Logger,
     private readonly chargingCurrentControl: ChargingCurrentControl,
+    private readonly batteryAppActions: HomeBatteryAppActions,
     private readonly nativeWiring: NativeWiringRead,
     private readonly currentLimitPolicy: EvChargingCurrentLimitPolicy,
     private readonly observationProducers: ObservationProducers,
@@ -305,11 +312,18 @@ export class DeviceWriteService {
    * claim write with no answer (a timeout, a connection reset, an unreadable
    * 2xx: its outcome unknown), a refused setpoint and a missing REST client
    * throw.
+   *
+   * A battery driven through its app's actions has no claim to write: its
+   * integration's command actions run (`HomeBatteryAppActions.command`), and
+   * any failure throws.
    */
   async requestStoragePower(command: StoragePowerCommand): Promise<StoragePowerWrite> {
     const { deviceId } = command;
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
-    const surface = requireSetpointSurface(snapshot, deviceId);
+    const surface = requireDrivableSurface(snapshot, deviceId);
+    if (surface.kind === 'app_actions') {
+      return { kind: 'written', setpointW: await this.batteryAppActions.command(deviceId, command.setpointW) };
+    }
     const binding = requireHomeBatteryBinding(this.snapshotStore, deviceId);
     // Checked here as well as in `setCapability`, so a write that never left
     // PELS is not mistaken for one the battery's app rejected.
@@ -398,10 +412,23 @@ export class DeviceWriteService {
    * first. Whether the battery is still PELS's to hand back, and whether its
    * claim capability declares that value, is the battery owner's call, made
    * against its claim record; this writes unconditionally.
+   *
+   * A battery driven through its app's actions is handed back by its
+   * integration's hand-back actions (`HomeBatteryAppActions.handBack`). A
+   * command for the other kind of binding than the battery has now is refused:
+   * the owner's record and the battery no longer describe the same control.
    */
   async releaseStorageControl(command: StorageReleaseCommand): Promise<void> {
-    const { deviceId, restoreClaimValue } = command;
-    const surface = requireSetpointSurface(this.snapshotStore.getSnapshotByDeviceId(deviceId), deviceId);
+    const { deviceId } = command;
+    const surface = requireDrivableSurface(this.snapshotStore.getSnapshotByDeviceId(deviceId), deviceId);
+    if ('handBack' in command || surface.kind === 'app_actions') {
+      if (!('handBack' in command) || surface.kind !== 'app_actions') {
+        throw new Error(`Home battery ${deviceId} hand-back does not match its control binding`);
+      }
+      await this.batteryAppActions.handBack(deviceId);
+      return;
+    }
+    const { restoreClaimValue } = command;
     const zeroed = await this.setCapability(deviceId, HOME_BATTERY_SETPOINT_CAPABILITY_ID, 0).then(
       () => ({ failed: false as const }),
       (error: unknown) => ({ failed: true as const, error }),

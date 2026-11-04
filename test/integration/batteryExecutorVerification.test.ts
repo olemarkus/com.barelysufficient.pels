@@ -6,6 +6,7 @@ import { BatteryExecutor, VERIFICATION_MAX_WAIT_MS } from '../../lib/executor/ba
 import type { StorageDecidedDevice } from '../../lib/planContract/storageDecision';
 import { BatteryVerificationLedger, DELIVERY_CEILING_TTL_MS } from '../../lib/battery/batteryVerification';
 import type {
+  BatteryCommandKeepAlive,
   BatteryControlOwner,
   BatteryHandBackOutcome,
   BatteryLeverRead,
@@ -37,7 +38,10 @@ const setpoint = (setpointW: number): StorageDecidedDevice => decided({ kind: 's
 
 const buildLane = () => {
   const ledger = new BatteryVerificationLedger();
-  const owned = { held: false, takenOver: false, deferred: false, releaseOutcome: 'released' as BatteryHandBackOutcome };
+  const owned = {
+    held: false, takenOver: false, deferred: false, releaseOutcome: 'released' as BatteryHandBackOutcome,
+    keepAlive: { kind: 'none' } as BatteryCommandKeepAlive,
+  };
   let lastActionAtMs = Number.NEGATIVE_INFINITY;
   const owner: BatteryControlOwner = {
     admitClaim: vi.fn(() => {
@@ -55,6 +59,7 @@ const buildLane = () => {
       claimHeld: owned.held,
       handBackDeferred: owned.deferred,
       claimEngaged: owned.held && !owned.takenOver,
+      keepAlive: owned.keepAlive,
       admissible: true,
       ...ledger.read(BATTERY, RANGE, Date.now()),
     })),
@@ -139,6 +144,40 @@ describe('battery storage lane', () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('sends the setpoint in force again before a command that expires runs out, keeping its verdict', async () => {
+    const { lane, apply, send, read, owner, owned, recordRestore } = buildLane();
+    owned.keepAlive = { kind: 'resend', everyMs: 150_000 };
+    const restored = (setpointW: number) => decided({ kind: 'setpoint', setpointW, stepW: 5, restored: true });
+    await lane.apply(restored(-1500));
+    read(-1500, 2500, 10_000);
+    expect(owner.readControl(BATTERY)).toMatchObject({ verdict: 'responding' });
+
+    expect(lane.hasDrift(setpoint(-1500))).toBe(false);
+    expect(await send(-1500, 149_000)).toBe(false);
+    vi.setSystemTime(new Date(START_MS + 150_000));
+    expect(lane.hasDrift(restored(-1500))).toBe(true);
+    expect(await lane.apply(restored(-1500))).toBe(true);
+    expect(await send(-1500, 160_000)).toBe(false);
+    expect(await send(-1500, 300_000)).toBe(true);
+
+    expect(apply.mock.calls.map(([command]) => command)).toEqual([
+      { kind: 'storage_power', deviceId: BATTERY, setpointW: -1500 },
+      { kind: 'storage_power', deviceId: BATTERY, setpointW: -1500 },
+      { kind: 'storage_power', deviceId: BATTERY, setpointW: -1500 },
+    ]);
+    // The same command, not a new one: its verdict stands and the restore is not stamped again.
+    read(-1500, 2500, 310_000);
+    expect(owner.readControl(BATTERY)).toMatchObject({ verdict: 'responding' });
+    expect(recordRestore).toHaveBeenCalledTimes(1);
+  });
+
+  it('never re-sends a command that holds until the next one', async () => {
+    const { apply, send } = buildLane();
+    await send(-1500, 0);
+    expect(await send(-1500, 60 * 60_000)).toBe(false);
+    expect(apply).toHaveBeenCalledTimes(1);
   });
 
   it('counts a battery report received before the write promise resolves', async () => {
