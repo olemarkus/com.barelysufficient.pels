@@ -3588,7 +3588,6 @@ describe('DeviceTransport', () => {
                 path: 'local_write',
                 capabilityId: 'onoff',
                 value: true,
-                preservedLocalState: false,
                 snapshot: expect.objectContaining({
                     id: 'dev1',
                     binaryControl: { on: false },
@@ -3624,7 +3623,6 @@ describe('DeviceTransport', () => {
                     path: 'local_write',
                     capabilityId: 'target_temperature',
                     value: 18,
-                    preservedLocalState: false,
                 }),
             );
         });

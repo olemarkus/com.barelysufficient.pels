@@ -47,6 +47,8 @@ export type ObservedStateChangedEvent = {
 export type ObservedStateRefreshEvent = ObservedDeviceStateRefreshPayload;
 
 export type ObservedControlStateChangedEvent = {
+    /** Transport matched this event to a capability write PELS sent. */
+    pelsEcho: boolean;
     deviceId: string;
     observationSeq?: number;
     observedAtMs?: number;

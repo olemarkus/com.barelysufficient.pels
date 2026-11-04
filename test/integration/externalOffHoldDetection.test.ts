@@ -172,6 +172,7 @@ const sync = (
   }[]
     = OFF_TRANSITION,
 ): ReturnType<typeof syncExternalOffHoldForDevice> => syncExternalOffHoldForDevice({
+  pelsEcho: false,
   deps: harness.deps,
   deviceId: DEVICE_ID,
   observedDevice,

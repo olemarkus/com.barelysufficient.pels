@@ -19,7 +19,8 @@
  * requires an observed ON→OFF transition on the control capability, which PELS's
  * unconfirmed ON can never produce.
  *
- * PROVENANCE. The observer-owned pending-command store answers "was this OFF
+ * PROVENANCE. A transaction-matched PELS OFF never starts a hold. For reads
+ * and Flow reports without that attribution, the observer-owned store answers "was this OFF
  * ours?" for native and Flow-backed control alike. It is consulted for a
  * pending command in EITHER direction: mid-command is mid-command, and a
  * pending ON is precisely the slow-restore case above. A recently confirmed
@@ -198,6 +199,7 @@ function shouldStartHold(params: {
  * while the hold was active.
  */
 export function syncExternalOffHoldForDevice(params: {
+  pelsEcho: boolean;
   deps: ExternalOffHoldSyncDeps;
   deviceId: string;
   observedDevice: ExternalOffHoldObservedDevice | undefined;
@@ -230,6 +232,9 @@ export function syncExternalOffHoldForDevice(params: {
     });
     return 'cleared';
   }
+
+  // A matched PELS OFF is never an outside action, even after pending expiry.
+  if (params.pelsEcho) return 'none';
 
   // Note the ordering: the device is off, and we go straight to the start gates
   // WITHOUT first asking `isHeld`. While the persisted state is unavailable

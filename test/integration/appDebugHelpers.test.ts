@@ -495,7 +495,6 @@ describe('appDebugHelpers', () => {
             path: 'local_write',
             capabilityId: 'target_temperature',
             value: 21,
-            preservedLocalState: false,
             snapshot: {
               id: 'dev-1',
               name: 'Kitchen Socket',
@@ -631,7 +630,6 @@ describe('appDebugHelpers', () => {
             path: 'local_write',
             capabilityId: 'target_temperature',
             value: 21,
-            preservedLocalState: false,
             state: {
               sourceState: 'off',
               target: 20.5,

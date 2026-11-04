@@ -185,6 +185,7 @@ function emitDeviceObservationEvents(params: {
   });
   if (!observedControlStateChanged) return;
   emitObservedControlStateChanged({
+        pelsEcho: false,
     deviceId,
     ...eventCursor,
     name: label,

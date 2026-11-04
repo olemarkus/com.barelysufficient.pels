@@ -54,6 +54,7 @@ export class TemperatureRecoveryService {
   private dispatchRecoveredTemperature(deviceId: string, deviceName: string): void {
     const cursor = this.nextCursor(deviceId);
     this.dispatchControlStateChanged({
+      pelsEcho: false,
       deviceId,
       ...cursor,
       name: deviceName,

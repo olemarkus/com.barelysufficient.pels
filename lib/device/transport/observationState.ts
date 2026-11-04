@@ -17,9 +17,7 @@ export type DeviceDebugObservedSource = {
     fetchSource?: DeviceFetchSource;
     capabilityId?: string;
     value?: unknown;
-    localEcho?: boolean;
     observedControlStateChanged?: boolean;
-    preservedLocalState?: boolean;
     changes?: Array<{
         capabilityId: string;
         previousValue: string;

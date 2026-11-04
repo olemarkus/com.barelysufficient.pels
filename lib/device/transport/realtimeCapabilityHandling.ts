@@ -123,7 +123,7 @@ function handleFreshnessOnlyCapabilityUpdate(
             ),
     });
     if (reconcileChange) {
-        dispatchRealtimeDrift(ingest, snapshot, cursor, reconcileChange.capabilityId, [reconcileChange]);
+        dispatchRealtimeDrift(ingest, snapshot, cursor, reconcileChange.capabilityId, [reconcileChange], false);
     }
 }
 
@@ -158,7 +158,7 @@ function dropTemperatureFacet(
         capabilityId: TARGET_TEMPERATURE_CAPABILITY_ID,
         previousValue: 'present',
         nextValue: 'absent',
-    }]);
+    }], false);
 }
 
 // Event changes and the held target update belong to this accepted report.
@@ -218,6 +218,7 @@ function handleReconcileCapabilityUpdate(
     snapshot: TransportDeviceSnapshot,
     capabilityId: string,
     value: unknown,
+    pelsEcho: boolean,
 ): void {
     const deviceId = snapshot.id;
     const changes: ObservedControlStateChangedEvent['changes'] = [];
@@ -258,7 +259,7 @@ function handleReconcileCapabilityUpdate(
     );
     ingest.binaryEvidence.recordRealtimeCapabilityObservation(deviceId, [capabilityId]);
     const cursor = dispatchRealtimeObservation(ingest, deviceId, capabilityId);
-    dispatchRealtimeDrift(ingest, snapshot, cursor, capabilityId, changes);
+    dispatchRealtimeDrift(ingest, snapshot, cursor, capabilityId, changes, pelsEcho);
 }
 /* eslint-enable functional/immutable-data */
 
@@ -337,7 +338,7 @@ export function handleRealtimeCapabilityUpdate(
             continue;
         }
 
-        handleReconcileCapabilityUpdate(ingest, snapshot, effectiveCapabilityId, effectiveValue);
+        handleReconcileCapabilityUpdate(ingest, snapshot, effectiveCapabilityId, effectiveValue, pelsEcho);
     }
 }
 
