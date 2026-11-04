@@ -36,6 +36,12 @@ export type SettingsUiBatteryState = {
    * changed its mode in the battery's own app. False for every other device.
    */
   batteryTakenOver: boolean;
+  /**
+   * PELS drives this home battery through its app's Flow actions, which need
+   * the owner's Homey API key, so its device page offers that key. False for
+   * every other device.
+   */
+  batteryUsesHomeyApiKey: boolean;
 };
 
 /**

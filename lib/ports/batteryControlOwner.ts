@@ -322,6 +322,12 @@ export type BatteryControlOwner = {
    * offering a battery's Power-limit control.
    */
   readControlCapability(deviceId: string): HomeBatteryControlCapability | 'not_battery';
+  /**
+   * Whether PELS drives this battery through its app's Flow actions, which
+   * run with the owner's Homey API key (`app_actions`, or
+   * `homey_api_key_missing`): where its device page offers that key.
+   */
+  usesHomeyApiKey(deviceId: string): boolean;
 };
 
 /**

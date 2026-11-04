@@ -22,7 +22,7 @@ A Sessy needs its local login in the Sessy Homey app, so PELS can switch it to A
 A Marstek Venus paired with the Marstek Battery Connector app (its local connection) and a Sigenergy system take commands only through their app's own Flow action cards. PELS runs those cards with a Homey API key with **Flow** permission, the same key built-in charger current uses:
 
 1. Create the key with [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro).
-2. Save it in PELS under **Setup → Charging current** on the device page of a supported car or charger. One key works for every device on this Homey.
+2. Open the battery's device page in PELS and save the key in its **Battery** section. One key works for every device on this Homey, and the same section lets you check, replace or remove it later.
 3. For Sigenergy, pair the plant device in the Sigenergy app too: PELS controls the battery through it.
 
 Until a key is saved, the battery's card reads `PELS can only watch it: add a Homey API key to let PELS control it`. These apps report no control mode back to Homey, so a change you make in the battery's own app while PELS holds it is not seen, and PELS's next command replaces it. Turn off **Managed by PELS** or **Power-limit control** to take the battery back.

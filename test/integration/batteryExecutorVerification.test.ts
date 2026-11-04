@@ -74,6 +74,7 @@ const buildLane = () => {
     wasTakenOver: vi.fn(() => false),
     isWatchOnly: vi.fn(() => false),
     readControlCapability: vi.fn(() => 'drivable' as const),
+    usesHomeyApiKey: vi.fn(() => false),
   };
   const apply = vi.fn(async (command: DeviceCommand): Promise<ActuatorOutcome> => (
     command.kind === 'storage_power'

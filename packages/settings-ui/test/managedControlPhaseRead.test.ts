@@ -53,6 +53,7 @@ it('does not persist a new EV Managed opt-in while charger wiring is unavailable
     targets: [],
     batteryControl: 'not_battery',
     batteryTakenOver: false,
+    batteryUsesHomeyApiKey: false,
   } as SettingsUiDeviceView];
 
   initDeviceDetailManagedControlHandlers(
@@ -100,6 +101,7 @@ it('drops a delayed EV opt-in after a newer opt-out intent', async () => {
     targets: [],
     batteryControl: 'not_battery',
     batteryTakenOver: false,
+    batteryUsesHomeyApiKey: false,
   } as SettingsUiDeviceView];
 
   initDeviceDetailManagedControlHandlers(

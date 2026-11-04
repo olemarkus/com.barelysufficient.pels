@@ -113,6 +113,7 @@ import {
   isClaimEngaged,
   isDrivableBattery,
   isRecordOfBinding,
+  runsOnHomeyApiKey,
   resolveTerminalFailure,
   resolveValueToRecord,
   toClaimRecord,
@@ -253,10 +254,11 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     const battery = this.getBattery(deviceId);
     if (battery.kind === 'not_battery') return 'not_battery';
     if (battery.kind === 'homey_api_key_missing') return 'needs_homey_api_key';
-    if (battery.kind === 'app_actions') return 'drivable';
-    if (battery.kind !== 'setpoint') return 'observe_only';
+    if (battery.kind !== 'setpoint') return battery.kind === 'app_actions' ? 'drivable' : 'observe_only';
     return this.watchOnly.isWatchOnly(deviceId, battery.surface, Date.now()) ? 'watch_only' : 'drivable';
   }
+
+  usesHomeyApiKey(deviceId: string): boolean { return runsOnHomeyApiKey(this.getBattery(deviceId)); }
 
   /**
    * The battery's app rejected the claim write, so no setpoint went out. On a

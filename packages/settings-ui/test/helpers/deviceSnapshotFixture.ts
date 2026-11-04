@@ -63,6 +63,7 @@ const resolveFixtureBatteryState = (fixture: Partial<SettingsUiBatteryState> & {
 }): SettingsUiBatteryState => ({
   batteryControl: fixture.batteryControl ?? (isHomeBatteryClassKey(fixture.deviceClass) ? 'drivable' : 'not_battery'),
   batteryTakenOver: fixture.batteryTakenOver ?? false,
+  batteryUsesHomeyApiKey: fixture.batteryUsesHomeyApiKey ?? false,
 });
 
 /** A snapshot fixture of type `T` with its identity facts and battery facts resolved, as `/ui_devices` serves it. */

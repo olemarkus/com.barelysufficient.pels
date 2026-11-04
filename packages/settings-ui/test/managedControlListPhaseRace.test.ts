@@ -58,6 +58,7 @@ it('drops a delayed list opt-in after the owner switches the charger back off', 
     targets: [],
     batteryControl: 'not_battery',
     batteryTakenOver: false,
+    batteryUsesHomeyApiKey: false,
   };
   state.initialLoadComplete = true;
   state.latestDevices = [charger];
