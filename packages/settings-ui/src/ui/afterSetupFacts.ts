@@ -9,12 +9,16 @@ import { isSmartTaskCapable, readMainHomeManagedDevices } from './mainHomeDevice
 import { loadPriceSetupSuggestion } from './priceSetupOffer.ts';
 import { getPricesReadModel } from './prices.ts';
 import { isBelgianHomeOnHourlyPeriod, readSetupMarket, readSetupPath } from './setupPathFacts.ts';
-import { resolveSurplusControlAvailable, state } from './state.ts';
+import { resolveHomeExhibitsSolar, resolveSurplusControlAvailable, state } from './state.ts';
 
 type PriceSetupState =
   | { state: 'loading' }
   | { state: 'unavailable' }
-  | { state: 'ready'; setup: PriceOptimizationSetup; priceSource: AfterSetupPriceSource };
+  | {
+    state: 'ready'; setup: PriceOptimizationSetup; priceSource: AfterSetupPriceSource;
+    /** Whether the published prices hold an export price; `null` while they are not ready. */
+    exportPriced: boolean | null;
+  };
 
 // Prices PELS can show are prices it can classify, so a ready level summary is
 // the producer's own word that the source in force has delivered some. A source
@@ -48,6 +52,15 @@ export const offerPowerhour = async (source: AfterSetupPriceSource): Promise<Aft
   return suggestion.powerhour.kind === 'has_price_device' ? { kind: 'powerhour_offered' } : source;
 };
 
+/**
+ * Whether the published prices hold an export price for any period: the
+ * runtime's own answer, so an export price switched on whose source publishes
+ * none still counts as missing. `null` while prices are not ready.
+ */
+export const readExportPriced = (payload: Pick<SettingsUiPricesPayload, 'priceTimeline'>): boolean | null => (
+  payload.priceTimeline.state === 'ready' ? payload.priceTimeline.hasExportPrice : null
+);
+
 export type AfterSetupFactsRead =
   | { state: 'loading' }
   | { state: 'unavailable' }
@@ -70,7 +83,9 @@ export const loadAfterSetupFacts = async (): Promise<void> => {
     if (read.state === 'resolved') {
       const priceSource = await offerPowerhour(resolvePriceSource(payload));
       if (generation !== priceSetupLoadGeneration) return;
-      priceSetupState = { state: 'ready', setup: read.setup, priceSource };
+      priceSetupState = {
+        state: 'ready', setup: read.setup, priceSource, exportPriced: readExportPriced(payload),
+      };
     }
     else if (priceSetupState.state !== 'ready') priceSetupState = { state: 'unavailable' };
   } catch (error) {
@@ -113,6 +128,7 @@ export const readAfterSetupFacts = (): AfterSetupFactsRead => {
       solarSurplusAvailable: resolveSurplusControlAvailable(),
       market: readSetupMarket(),
       belgianHomeOnHourlyPeriod: isBelgianHomeOnHourlyPeriod(),
+      solarExportUnpriced: resolveHomeExhibitsSolar() && priceSetupState.exportPriced === false,
       smartTaskConfigured: Object.keys(state.deferredObjectiveSettings.objectivesByDeviceId).length > 0,
     },
   };

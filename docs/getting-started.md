@@ -81,6 +81,8 @@ With solar in Homey that has not yet produced more than the home is using, the p
 
 After setup, **PELS can do more for this home** offers **Choose what PELS does** once, naming what applies and is not in use yet. Dismiss it if none of it is for you.
 
+A home with solar and no export price also gets **Set your export price**, during setup as well. Without one, PELS counts solar you export as worth nothing. Dismiss it if you are not paid for export.
+
 ## Step 4: Preview and activate
 
 Open **Review setup**. It lists what PELS will do with each device, such as **Price-based control on** or **Smart task set**, and the limits that apply. **Power-limit control on** shows only while a limit is in force; a device with nothing to do yet says so, and **Choose what PELS does** takes you back to the page above.

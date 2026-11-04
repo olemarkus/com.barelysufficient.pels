@@ -24,6 +24,7 @@ const everythingApplies: AfterSetupFacts = {
   smartTaskConfigured: false,
   market: { state: 'unavailable' },
   belgianHomeOnHourlyPeriod: false,
+  solarExportUnpriced: false,
 };
 
 const ids = (facts: AfterSetupFacts) => resolveAfterSetupRecommendations(facts, {}).map((entry) => entry.id);
@@ -131,6 +132,32 @@ describe('after-setup suggestions', () => {
       expect(first?.category).toBe('recommendation');
       expect(first?.body).toBe('In Flanders? Use the 15-minute average for measured peaks.');
       expect(first?.target).toEqual({ kind: 'quarter-hour' });
+    });
+
+    it('asks a solar home without an export price what it is paid, during setup too', () => {
+      const facts = { ...everythingApplies, setupComplete: false, solarExportUnpriced: true };
+      const question = resolveAfterSetupRecommendations(facts, {})
+        .find((entry) => entry.id === 'prices:export-price');
+      // A question only the owner can answer: dismissing it says they are not paid.
+      expect(question).toMatchObject({
+        category: 'recommendation',
+        title: 'Set your export price',
+        body: 'Paid for power you send to the grid? Set your export price, so PELS can weigh using your solar '
+          + 'against exporting it. Without one, exported solar counts as worth nothing.',
+        target: { kind: 'panel', panelId: 'electricity-prices' },
+      });
+      expect(ids(everythingApplies)).not.toContain('prices:export-price');
+    });
+
+    it('tells a Dutch home that net metering ends', () => {
+      const [question] = resolveAfterSetupRecommendations({
+        ...everythingApplies, solarExportUnpriced: true, market: { state: 'resolved', country: 'NL' },
+      }, {});
+      expect(question?.body).toMatch(/^Net metering ends on 1 January 2027\. Paid for power you send to the grid\?/);
+      const [elsewhere] = resolveAfterSetupRecommendations({
+        ...everythingApplies, solarExportUnpriced: true, market: { state: 'resolved', country: 'NO' },
+      }, {});
+      expect(elsewhere?.body).not.toContain('Net metering');
     });
 
     it('does not ask when PELS may limit nothing: no cap is in force to be wrong', () => {
