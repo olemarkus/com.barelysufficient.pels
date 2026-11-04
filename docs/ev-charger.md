@@ -55,7 +55,9 @@ Under **Setup → Default charging current limits**, save the minimum and maximu
 
 In the charger's **Car** section, select the cars that charge there. Each selected car can have its own **Charging current limits**. When that car is matched or confirmed, its saved range replaces the charger default. The same car range follows it to other chargers. Selecting a car alone does not identify which car is connected. Clearing a car's range returns it to the charger default.
 
-The minimum is the lowest current PELS requests while charging; PELS can still pause charging. The maximum also bounds attempts to raise the current, including an exact 25 A ceiling. The charger's physical limits always apply. If no supported level fits the active range, PELS pauses charging. Changing the charger's phase configuration keeps the saved amp limits.
+The minimum is the lowest current PELS requests while charging; PELS can still pause charging. The maximum also bounds attempts to raise the current. The charger's physical limits always apply. If no supported level fits the active range, PELS pauses charging. Changing the charger's phase configuration keeps the saved amp limits.
+
+A charger whose **Automatic** model uses power levels in watts from its own settings, such as Zaptec, charges within those levels. Current limits do not apply to it, so its Setup has no default limits, and a car's limits apply when that car charges on another charger. An on/off charger also has no current for limits to set.
 
 ## Step 3: Create the Charger Current Flow
 

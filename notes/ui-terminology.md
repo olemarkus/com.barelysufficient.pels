@@ -678,6 +678,10 @@ with the existing selector labelled **Manual model**. New devices use Automatic;
 existing manual setups keep their choice and get a dismissible recommendation
 to review Automatic. Switching reviews the inactive manual model and any saved
 maximum before saving; cancelling or dismissing never changes control.
+**Default charging current limits** is offered only where the active levels carry
+current. On a charger using its own watt levels, a car's limits editor adds
+`This charger uses the power levels from its own settings, so these limits apply
+only on other chargers.`
 The **Power limiting** card gathers `Power-limit control`, `Only PELS starts this
 device`, what limiting does, and `Leave off until turned on again`, so the switch and what it governs read
 together. An unmanaged charger's page shows neither card: there is nothing to

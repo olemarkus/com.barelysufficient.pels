@@ -14,6 +14,7 @@ import {
 import {
   hasUsableSteppedLoadLadder, isSteppedLoadOffStep,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
+import { chargingLadderCarriesCurrent } from '../../packages/shared-domain/src/settings/evChargingCurrentLimits';
 
 /** Live identity belongs to the existing car-matching owner, never to a copied snapshot. */
 export type ChargingCarIdentity = {
@@ -41,12 +42,15 @@ export class EvChargingCurrentLimitPolicy {
   }
 
   projectConfiguration(configuration: DeviceConfigurationRead): DeviceConfigurationRead {
-    if (!configuration.isEvCharger) return configuration;
+    // An on/off charger or a published watt ladder has no current to bound,
+    // so a range never holds it.
+    if (!configuration.isEvCharger || configuration.controlModel !== 'stepped_load'
+      || !chargingLadderCarriesCurrent(configuration.steppedLoadProfile, configuration.targetPowerConfig?.preset)) {
+      return configuration;
+    }
     const policy = this.resolve(configuration.id);
     if (policy.kind === 'unrestricted') return configuration;
-    if (policy.kind === 'hold' || configuration.controlModel !== 'stepped_load') {
-      return { ...configuration, carCurrentRangeUnavailable: true };
-    }
+    if (policy.kind === 'hold') return { ...configuration, carCurrentRangeUnavailable: true };
     const targetPowerConfig = this.effectiveConfig(configuration.id, configuration.targetPowerConfig, policy.limits);
     if (!this.hasPhysicalCurrentRange(configuration.id, targetPowerConfig)) {
       return { ...configuration, targetPowerConfig, carCurrentRangeUnavailable: true };
@@ -72,6 +76,7 @@ export class EvChargingCurrentLimitPolicy {
   }
 
   assertStartAllowed(snapshot: TransportDeviceSnapshot): void {
+    if (!boundsChargingCurrent(snapshot)) return;
     const policy = this.resolve(snapshot.id);
     if (policy.kind === 'unrestricted') return;
     if (policy.kind === 'hold') throw new Error('The charging current limits are unavailable.');
@@ -86,12 +91,19 @@ export class EvChargingCurrentLimitPolicy {
   /** A previously decided command must still fit the car identified at delivery. */
   assertStepAllowed(request: SteppedLoadWrite): void {
     if (isSteppedLoadOffStep(request.profile, request.desiredStepId)) return;
+    const snapshot = this.snapshots.getSnapshotByDeviceId(request.deviceId);
+    if (snapshot && !boundsChargingCurrent(snapshot)) return;
     const policy = this.resolve(request.deviceId);
     if (policy.kind === 'unrestricted') return;
     if (policy.kind === 'hold') throw new Error('The charging current limits are unavailable.');
-    const snapshot = this.snapshots.getSnapshotByDeviceId(request.deviceId);
     if (!snapshot) throw new Error('The charger’s current-control configuration is unavailable.');
-    const config = this.effectiveConfig(request.deviceId, snapshot.targetPowerConfig, policy.limits);
+    this.assertStepWithinRange(request, snapshot, policy.limits);
+  }
+
+  private assertStepWithinRange(
+    request: SteppedLoadWrite, snapshot: TransportDeviceSnapshot, limits: EvChargingCurrentLimits,
+  ): void {
+    const config = this.effectiveConfig(request.deviceId, snapshot.targetPowerConfig, limits);
     if (request.planningCurrentA < config.currentLimits.minA || request.planningCurrentA > config.currentLimits.maxA
       || (config.max !== undefined && request.planningPowerW > config.max)
       || !this.hasPhysicalCurrentRange(request.deviceId, config)) {
@@ -145,4 +157,10 @@ export class EvChargingCurrentLimitPolicy {
     return { ...effective, max: effective.max === undefined
       ? physicalMaximumW : Math.min(effective.max, physicalMaximumW) };
   }
+}
+
+/** Charging current ranges bound only a stepped EV charger whose levels carry current. */
+function boundsChargingCurrent(snapshot: TransportDeviceSnapshot): boolean {
+  return snapshot.isEvCharger && snapshot.controlModel === 'stepped_load'
+    && chargingLadderCarriesCurrent(snapshot.steppedLoadProfile, snapshot.targetPowerConfig?.preset);
 }

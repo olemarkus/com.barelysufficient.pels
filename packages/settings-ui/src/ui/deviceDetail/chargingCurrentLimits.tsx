@@ -10,7 +10,7 @@ import { getSetting, getSettingFresh, coldStartReadRetryDelays, sleep } from '..
 import { logSettingsError } from '../logging.ts';
 import { state } from '../state.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
-import { getEffectiveControlModel } from '../deviceControlProfiles.ts';
+import { appliesChargingCurrentLimits, getEffectiveControlModel } from '../deviceControlProfiles.ts';
 import { isEvChargerDevice } from '../deviceKind.ts';
 import { ChargingCurrentLimitsView } from '../views/ChargingCurrentLimits.tsx';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
@@ -91,7 +91,7 @@ export function renderCarCurrentLimits(
   const limits = saved ?? state.evChargerCurrentLimits[charger.id] ?? { minA: 6, maxA: 32 };
   render(<ChargingCurrentLimitsView key={`car:${car.id}:${saved ? 'saved' : 'default'}:${limits.minA}:${limits.maxA}`}
     scope="car" subjectId={car.id} subjectName={formatDisplayDeviceName(car.name)} limits={limits}
-    hasSavedLimits={saved !== undefined}
+    hasSavedLimits={saved !== undefined} appliesHere={appliesChargingCurrentLimits(charger)}
     onSave={(next) => persistCurrentLimits(EV_CAR_CURRENT_LIMITS, car.id, next, refresh)}
     onReset={() => persistCurrentLimits(EV_CAR_CURRENT_LIMITS, car.id, null, refresh)} />, container);
 }
@@ -100,7 +100,7 @@ export function renderChargerCurrentLimits(device: SettingsUiDeviceDetailItem, r
   const container = document.getElementById('device-detail-charger-current-limits');
   if (!container) return;
   const visible = isEvChargerDevice(device) && state.managedMap[device.id] === true
-    && getEffectiveControlModel(device) === 'stepped_load';
+    && getEffectiveControlModel(device) === 'stepped_load' && appliesChargingCurrentLimits(device);
   container.hidden = !visible;
   if (!visible) { render(null, container); return; }
   if (showLoading(container, EV_CHARGER_CURRENT_LIMITS)) return;

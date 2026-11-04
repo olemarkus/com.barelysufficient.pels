@@ -193,7 +193,7 @@ describe('car charging current limits', () => {
     expect(runtime.configurations.get('charger')?.targetPowerConfig?.currentLimits).toBeUndefined();
   });
 
-  it('filters Automatic amp rungs and refuses an Automatic watt ladder without an amp mapping', () => {
+  it('filters Automatic amp rungs and uses an Automatic watt ladder as the charger publishes it', () => {
     const runtime = setup({ a: { minA: 9, maxA: 25 } });
     const snapshot = { ...charger(), targetPowerConfig: undefined, steppedLoadProfile: amps([6, 8, 10, 16, 32]) };
     runtime.configurations.set(snapshot);
@@ -202,7 +202,27 @@ describe('car charging current limits', () => {
     runtime.configurations.set({ ...snapshot, steppedLoadProfile: {
       steps: [{ id: 'off', planningPowerW: 0 }, { id: '2000w', planningPowerW: 2000 }],
     } });
-    expect(runtime.planned().steps.map((step) => step.id)).toEqual(['off']);
+    // The charger's published watts are its configured range; amps cannot hold it off.
+    expect(runtime.planned().steps.map((step) => step.id)).toEqual(['off', '2000w']);
+    expect(runtime.configurations.get('charger')?.carCurrentRangeUnavailable).toBeUndefined();
+    expect(runtime.configurations.get('charger')?.targetPowerConfig?.currentLimits).toBeUndefined();
+  });
+
+  it('starts and steps a watt-ladder charger when a car range follows its car there', () => {
+    const runtime = setup({ a: { minA: 10, maxA: 16 } });
+    const watts: SteppedLoadProfile = { steps: [
+      { id: 'off', planningPowerW: 0 }, { id: '2530w', planningPowerW: 2530 }, { id: '11040w', planningPowerW: 11040 },
+    ] };
+    const zaptec = { ...charger(), targetPowerConfig: undefined, steppedLoadProfile: watts,
+      automaticPowerControl: { mode: 'automatic' as const, profile: watts } };
+    runtime.snapshots.replaceSnapshot([zaptec]);
+    runtime.configurations.set(zaptec);
+    runtime.links.set('charger', associated('a'));
+    expect(runtime.planned().steps.map((step) => step.id)).toEqual(['off', '2530w', '11040w']);
+    expect(() => runtime.owner.assertStartAllowed(zaptec)).not.toThrow();
+    expect(() => runtime.owner.assertStepAllowed({
+      deviceId: 'charger', profile: watts, desiredStepId: '11040w', planningPowerW: 11040, planningCurrentA: 0,
+    })).not.toThrow();
   });
 
   it('does not lower the car minimum when the physical charger cannot provide it', () => {
@@ -269,6 +289,34 @@ describe('car charging current limits', () => {
       expect(() => runtime.owner.assertStartAllowed(charger())).not.toThrow();
     },
   );
+
+  it('never lets an unreadable range block a device that is not a stepped EV charger', () => {
+    // A listed charger-default key that cannot be read holds every device id.
+    const runtime = persistedPolicies({}, null);
+    expect(runtime.owner.resolve('heater')).toEqual({ kind: 'hold' });
+    const heater = transportSnapshotFixture({
+      id: 'heater', name: 'Water heater', deviceClass: 'heater', available: true, targets: [],
+      expectedPowerKw: 3, expectedPowerSource: 'default', controlModel: 'stepped_load',
+      steppedLoadProfile: amps([6, 13]),
+    });
+    runtime.snapshots.replaceSnapshot([heater]);
+    expect(() => runtime.owner.assertStartAllowed(heater)).not.toThrow();
+    expect(() => runtime.owner.assertStepAllowed({
+      deviceId: 'heater', profile: amps([6, 13]), desiredStepId: '13a', planningPowerW: 13 * 230, planningCurrentA: 13,
+    })).not.toThrow();
+  });
+
+  it('never holds an on/off charger for a matched car range it has no current to apply', () => {
+    const runtime = setup({ a: { minA: 10, maxA: 16 } });
+    const binary = transportSnapshotFixture({
+      id: 'charger', name: 'charger', deviceClass: 'evcharger', available: true, targets: [],
+      expectedPowerKw: 7.36, expectedPowerSource: 'default', controlModel: 'binary_power',
+    });
+    runtime.links.set('charger', associated('a'));
+    runtime.configurations.set(binary);
+    expect(runtime.configurations.get('charger')?.carCurrentRangeUnavailable).toBeUndefined();
+    expect(() => runtime.owner.assertStartAllowed(binary)).not.toThrow();
+  });
 
   it('authorizes the ordinary range only when the key list confirms no car ranges were saved', () => {
     const runtime = persistedPolicy(null, false);

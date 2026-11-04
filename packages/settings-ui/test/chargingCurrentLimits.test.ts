@@ -219,3 +219,19 @@ test('clearing a charger default preserves the car override', async () => {
   await vi.waitFor(() => expect(setSetting).toHaveBeenCalledWith('ev_charger_current_limits', {}));
   expect(state.evCarCurrentLimits['car-1']).toEqual({ minA: 12, maxA: 25 });
 });
+
+test('a charger using its own published watt levels offers no charger default and says the car range applies elsewhere', async () => {
+  const watts = { steps: [
+    { id: 'off', planningPowerW: 0 }, { id: '2530w', planningPowerW: 2530 }, { id: '11040w', planningPowerW: 11040 },
+  ] };
+  const zaptec = withDescriptorIdentity<SettingsUiDeviceView>({
+    ...charger, targetPowerConfig: undefined, steppedLoadProfile: watts,
+    automaticPowerControl: { mode: 'automatic', profile: watts },
+  });
+  await act(async () => renderChargerCurrentLimits(zaptec, vi.fn()));
+  expect(document.getElementById('device-detail-charger-current-limits')!.hidden).toBe(true);
+  await act(async () => renderCarCurrentLimits(container(), car, zaptec, refresh));
+  expect(container().textContent).toContain('these limits apply only on other chargers');
+  await act(async () => renderCarCurrentLimits(container(), car, charger, refresh));
+  expect(container().textContent).not.toContain('apply only on other chargers');
+});

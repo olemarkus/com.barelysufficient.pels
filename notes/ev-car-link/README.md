@@ -211,7 +211,12 @@ later failed reads retain its accepted range. The device owner intersects the
 active range with its current-capable charger model. Manual EV presets supply
 the configured phase conversion; Automatic current models supply their
 integration-resolved amps. No supported level in that range means charging stays
-off. A car override never widens physical capabilities.
+off. A car override never widens physical capabilities. A range applies only to a
+stepped charger whose levels carry current (`chargingLadderCarriesCurrent`). An
+on/off charger, and a ladder of charger-published watts such as an Automatic
+Zaptec, has no current to bound: the range never holds it, the charger-default
+editor is not offered there, and the car editor says its range applies on other
+chargers. Any other device ignores ranges, including an unreadable range.
 
 Raw snapshots and observations remain unchanged, including current above a newly
 lowered maximum. Normal meter-driven planning chooses the next command;
