@@ -240,6 +240,8 @@ test.describe('Onboarding links', () => {
       (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
         settings: {
           price_optimization_settings: {},
+          // Priced export, so the export price question stays out of this one.
+          export_price_enabled: true, export_fixed: 0.1,
         },
         unsetSettings: ['deferred_objective.dev_connected300'],
       };
@@ -272,7 +274,7 @@ test.describe('Onboarding links', () => {
   test('a dismissed suggestion stays away: the owner has seen the offer', async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
-        settings: { price_optimization_settings: {} },
+        settings: { price_optimization_settings: {}, export_price_enabled: true, export_fixed: 0.1 },
         unsetSettings: ['deferred_objective.dev_connected300'],
       };
     });
@@ -294,6 +296,7 @@ test.describe('Onboarding links', () => {
           ui_devices_has_managed_solar: seededSolarDevice,
           ui_devices_has_exhibited_export: false,
           ui_devices_surplus_pool_reachable: seededPool,
+          export_price_enabled: true, export_fixed: 0.1,
         },
         unsetSettings: ['deferred_objective.dev_connected300'],
       };
@@ -325,7 +328,13 @@ test.describe('Onboarding links', () => {
   });
 
   test('nothing is suggested while setup is still open, or to a home already using it all', async ({ page }) => {
-    // The default fixture follows prices, uses its solar and has a Smart task.
+    // The default fixture follows prices, uses its solar and has a Smart task;
+    // with an export price it leaves nothing to ask.
+    await page.addInitScript(() => {
+      (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+        settings: { export_price_enabled: true, export_fixed: 0.1 },
+      };
+    });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#plan-cards .plan-card').first()).toBeVisible();
     await expect(page.locator('#setup-recommendations-banner-root .banner')).toHaveCount(0);
@@ -336,7 +345,7 @@ test.describe('Onboarding links', () => {
     // The default fixture holds an hourly cap and limits devices.
     await page.addInitScript(() => {
       (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
-        settings: { ui_hub_market_country: 'BE' },
+        settings: { ui_hub_market_country: 'BE', export_price_enabled: true, export_fixed: 0.1 },
       };
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -358,7 +367,7 @@ test.describe('Onboarding links', () => {
   test('a Belgian hub already on the 15-minute average is asked nothing', async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
-        settings: { ui_hub_market_country: 'BE', capacity_period_minutes: 15 },
+        settings: { ui_hub_market_country: 'BE', capacity_period_minutes: 15, export_price_enabled: true, export_fixed: 0.1 },
       };
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -373,6 +382,7 @@ test.describe('Onboarding links', () => {
           settings: {
             ui_hub_market_country: seeded,
             price_optimization_settings: {},
+            export_price_enabled: true, export_fixed: 0.1,
           },
           unsetSettings: ['deferred_objective.dev_connected300'],
         };
@@ -390,6 +400,37 @@ test.describe('Onboarding links', () => {
       'PELS can heat in cheap hours, use more of your own solar or have something ready by a set time. '
         + 'Choose for each device.',
     );
+  });
+
+  test('a solar home without an export price is asked what it is paid', async ({ page }) => {
+    // The default fixture uses its solar and has no export price.
+    await page.addInitScript(() => {
+      (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+        settings: { ui_hub_market_country: 'NL' },
+      };
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+
+    // A real recommendation: only the owner knows what they are paid.
+    const banner = page.locator('#setup-recommendations-banner-root');
+    await expect(banner).toContainText('1 recommendation');
+    await banner.getByText('Review').click();
+    const card = page.locator('.setup-recommendation-card', { hasText: 'Set your export price' });
+    await expect(card).toContainText('Net metering ends on 1 January 2027. Paid for power you send to the grid?');
+    await expect(card.locator('.plan-chip')).toHaveText('Recommended');
+
+    await card.getByText('Set export price').click();
+    await expect(page.locator('#electricity-prices-export-section')).toBeVisible();
+  });
+
+  test('dismissing the export price question says the owner is not paid for export', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.locator('#setup-recommendations-banner-root').getByText('Review').click();
+    const card = page.locator('.setup-recommendation-card', { hasText: 'Set your export price' });
+    await card.getByText('Dismiss').click();
+    await expect.poll(() => page.evaluate(() => (
+      window as unknown as { Homey: { __stub: { getSetting: (key: string) => unknown } } }
+    ).Homey.__stub.getSetting('setup_recommendation_dismissals'))).toEqual({ 'prices:export-price': 1 });
   });
 
   test('overview keeps managed devices when an empty plan arrives', async ({ page }) => {
