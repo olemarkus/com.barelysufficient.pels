@@ -226,7 +226,7 @@ export function buildExecutionPlan(plan: DevicePlan): ExecutionPlan {
 
 function qualifyStableOperations(device: PlanDevice, commands: PlannedDeviceCommands): StableExecutionOperation[] {
   const step = hasPlannedStep(commands) && isSteppedLoadDevice(device)
-    && (device.plannedState === 'keep' || commands.steppedLoad.transition?.transitionPhase === 'step_preparation')
+    && (device.plannedState === 'keep' || isRunningLimitPreparation(device, commands.steppedLoad))
     ? commands.steppedLoad
     : undefined;
   const operations: (StableExecutionOperation | undefined)[] = [
@@ -256,10 +256,16 @@ function qualifyStableStepOperations(
   return [
     device.reportedStepId === undefined && isPlanDeviceObservedOn(device) && desired.planningPowerW > 0
       ? 'initialize_step' : undefined,
-    step.transition?.transitionPhase === 'step_preparation'
+    isRunningLimitPreparation(device, step)
       || (desired.id !== device.selectedStepId && selected && desired.planningPowerW !== selected.planningPowerW)
       ? 'step_change' : undefined,
   ];
+}
+
+function isRunningLimitPreparation(device: PlanDevice, step: PlannedSteppedCommand): boolean {
+  return isPlanDeviceObservedOn(device)
+    && step.transition?.effectiveTransition === 'step_down_while_on'
+    && step.transition.transitionPhase === 'step_preparation';
 }
 
 function hasStableSteppedBinaryRestore(device: PlanDevice, step: PlannedSteppedCommand): boolean {
