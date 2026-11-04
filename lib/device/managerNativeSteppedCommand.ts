@@ -41,6 +41,8 @@ export class NativeSteppedLoadCommandAdapters {
   private readonly adapters = new Map<string, NativeSteppedLoadCommandAdapter>();
   private readonly powerControlModes = new Map<string, DevicePowerControlMode>();
 
+  constructor(private readonly getInventory: () => readonly HomeyDeviceLike[]) {}
+
   /** Keep a device's adapter in step with a fresh read of it. */
   observe(deviceId: string, device: HomeyDeviceLike): void {
     if (!Array.isArray(device.capabilities) || !isNativeSteppedLoadWiringCandidate({
@@ -56,7 +58,7 @@ export class NativeSteppedLoadCommandAdapters {
     if (existing) existing.syncDevice(device);
     else {
       const initialMode = this.powerControlModes.get(deviceId);
-      this.adapters.set(deviceId, buildCapabilityNativeSteppedLoadCommandAdapter(device, initialMode));
+      this.adapters.set(deviceId, new CapabilityNativeSteppedLoadCommandAdapter(device, initialMode, this.getInventory));
     }
   }
 
@@ -94,12 +96,15 @@ export class NativeSteppedLoadCommandAdapters {
   }
 
   /** Keep superseded targets out of fresh parses as well as mode-event reads. */
-  projectObservation(snapshot: TransportDeviceSnapshot): TransportDeviceSnapshot {
-    const adapter = this.adapters.get(snapshot.id);
+  projectObservation(snapshot: TransportDeviceSnapshot, device: HomeyDeviceLike): TransportDeviceSnapshot {
     const mode = snapshot.automaticPowerControl?.mode;
     if (mode !== undefined) {
       this.powerControlModes.set(snapshot.id, mode);
     } else this.powerControlModes.delete(snapshot.id);
+    // The first parse precedes post-commit tracking adoption. Construct only
+    // the published Automatic channel so its first observation is gated too.
+    if (mode === 'automatic' && !this.adapters.has(snapshot.id)) this.observe(snapshot.id, device);
+    const adapter = this.adapters.get(snapshot.id);
     adapter?.observePowerControlMode(mode);
     return adapter?.projectObservation(snapshot) ?? snapshot;
   }
@@ -111,137 +116,189 @@ export class NativeSteppedLoadCommandAdapters {
   }
 }
 
-function buildCapabilityNativeSteppedLoadCommandAdapter(
-  device: HomeyDeviceLike,
-  initialPowerControlMode: DevicePowerControlMode | undefined,
-): NativeSteppedLoadCommandAdapter {
-  let raw = device;
-  let capabilities = Array.isArray(device.capabilities) ? [...device.capabilities] : [];
-  let capabilityObj = getCapabilityObj(device);
-  let automaticProfile = resolveDeviceAutomaticProfile(device);
-  let targetPowerInvalidatedAtMs: number | undefined;
-  let targetPowerReportRevision = 0;
-  let powerControlMode = initialPowerControlMode;
-  let powerControlModeGeneration = 0;
-  let requiresTargetPowerReassertion = false;
-  const invalidateTargetPower = (atMs: number): void => {
-    targetPowerInvalidatedAtMs = Math.max(targetPowerInvalidatedAtMs ?? 0, atMs);
-    capabilityObj = retainTargetPowerEvidence(capabilityObj, capabilityObj, targetPowerInvalidatedAtMs);
-  };
-  const invalidateSupersededTarget = (write: CapabilityWrite, reportRevision: number, requestedAtMs: number): void => {
-    const target = capabilityObj.target_power;
-    // A driver can publish its actual bounded target during dispatch. That
-    // report already replaced the old cap, even in the same millisecond.
-    if (reportRevision === targetPowerReportRevision && !Object.is(target?.value, write.value)
-        && (toCapabilityTimestampMs(target?.lastUpdated) ?? 0) <= requestedAtMs) invalidateTargetPower(requestedAtMs);
-  };
-  const usesManualCurrentRoute = (): boolean => powerControlMode === 'manual'
-    && getDeviceAdapter(raw).currentBindings(raw).length > 0;
-  const ownsTargetPowerWrite = (generation: number): boolean => !usesManualCurrentRoute()
-    && generation === powerControlModeGeneration;
-  const observeAutomaticProfile = (next: SteppedLoadProfile | undefined): void => {
-    if (powerControlMode === 'automatic' && isTargetPowerSteppedLoadCandidate({
-      capabilities, capabilityObj: getCapabilityObj(raw),
-    }) && !sameAutomaticProfile(automaticProfile, next)) {
-      powerControlModeGeneration += 1;
-      requiresTargetPowerReassertion = true;
-      targetPowerInvalidatedAtMs = Math.max(targetPowerInvalidatedAtMs ?? 0, Date.now());
+class CapabilityNativeSteppedLoadCommandAdapter implements NativeSteppedLoadCommandAdapter {
+  private raw: HomeyDeviceLike;
+  private capabilities: string[];
+  private capabilityObj: DeviceCapabilityMap;
+  private automaticProfile: SteppedLoadProfile | undefined;
+  private targetPowerInvalidatedAtMs: number | undefined;
+  private targetPowerReportRevision = 0;
+  private powerControlMode: DevicePowerControlMode | undefined;
+  private powerControlModeGeneration = 0;
+  private targetPowerReassertAfterMs: number | undefined;
+
+  constructor(
+    device: HomeyDeviceLike,
+    initialPowerControlMode: DevicePowerControlMode | undefined,
+    private readonly getInventory: () => readonly HomeyDeviceLike[],
+  ) {
+    this.raw = device;
+    this.capabilities = Array.isArray(device.capabilities) ? [...device.capabilities] : [];
+    this.capabilityObj = getCapabilityObj(device);
+    this.automaticProfile = resolveDeviceAutomaticProfile(device);
+    this.powerControlMode = initialPowerControlMode;
+    if (initialPowerControlMode === 'automatic') this.observeInitialAutomaticPower();
+  }
+
+  syncDevice(nextDevice: HomeyDeviceLike): void {
+    const hadNativeWatts = isTargetPowerSteppedLoadCandidate({
+      capabilities: this.capabilities, capabilityObj: this.capabilityObj,
+    });
+    this.raw = nextDevice;
+    this.capabilities = Array.isArray(nextDevice.capabilities) ? [...nextDevice.capabilities] : [];
+    this.observeAutomaticProfile(resolveDeviceAutomaticProfile(nextDevice));
+    if (!isTargetPowerSteppedLoadCandidate({ capabilities: this.capabilities, capabilityObj: getCapabilityObj(nextDevice) })) {
+      if (hadNativeWatts) this.powerControlModeGeneration += 1;
+      this.targetPowerReassertAfterMs = undefined;
+      this.targetPowerInvalidatedAtMs = undefined;
     }
-    automaticProfile = next;
-  };
-  return {
-    syncDevice(nextDevice) {
-      const hadNativeWatts = isTargetPowerSteppedLoadCandidate({ capabilities, capabilityObj });
-      raw = nextDevice;
-      capabilities = Array.isArray(nextDevice.capabilities) ? [...nextDevice.capabilities] : [];
-      observeAutomaticProfile(resolveDeviceAutomaticProfile(nextDevice));
-      if (!isTargetPowerSteppedLoadCandidate({ capabilities, capabilityObj: getCapabilityObj(nextDevice) })) {
-        if (hadNativeWatts) powerControlModeGeneration += 1;
-        requiresTargetPowerReassertion = false;
-        targetPowerInvalidatedAtMs = undefined;
-      }
-      capabilityObj = retainTargetPowerEvidence(
-        getCapabilityObj(nextDevice), capabilityObj, targetPowerInvalidatedAtMs,
-      );
-    },
-    async setStep(profile, desiredStepId, setCapability) {
-      const command = resolveNativeSteppedLoadCommand({
-        profile,
-        desiredStepId,
-        capabilities,
-        capabilityObj,
-      });
-      const step = getSteppedLoadStep(profile, desiredStepId);
-      if (!command || !step) return false;
-      if (usesManualCurrentRoute() && command.capabilityId === 'target_power') return false;
-      const write = getDeviceAdapter(raw).stepCommand(raw, step, command);
-      if (powerControlMode === 'automatic' && !supportsAutomaticStep(automaticProfile, step)) return false;
-      const takingControl = needsTargetPowerTakeover(capabilities, capabilityObj);
-      const reassertingTargetPower = write.capabilityId === 'target_power' && requiresTargetPowerReassertion;
-      const requestedAtMs = Date.now();
-      const reportRevision = targetPowerReportRevision;
-      const controlGeneration = powerControlModeGeneration;
-      await setCapability(write.capabilityId, write.value);
-      // An already issued write may finish after the owner changed control.
-      // It cannot take over the mode or release a newer reassertion latch.
-      if (write.capabilityId === 'target_power' && !ownsTargetPowerWrite(controlGeneration)) return true;
-      // Store the admitted watt ceiling before handing control to Homey: a
-      // driver may immediately apply its saved target when the mode changes.
-      if (write.capabilityId === 'target_power' && takingControl) {
-        invalidateSupersededTarget(write, reportRevision, requestedAtMs);
-        await setCapability('target_power_mode', 'homey');
-      }
-      if (reassertingTargetPower && ownsTargetPowerWrite(controlGeneration)) {
-        requiresTargetPowerReassertion = false;
-        // A retained target may have kept receiving fresh poll timestamps
-        // during Manual control. Only this newly issued target reclaims it.
-        if (reportRevision === targetPowerReportRevision) {
-          invalidateTargetPower(requestedAtMs);
-        }
-      }
-      return true;
-    },
-    observeCapabilityUpdate(capabilityId, value) {
-      if (!capabilities.includes(capabilityId)) return;
-      if (capabilityId === 'target_power') targetPowerReportRevision += 1;
-      capabilityObj = withNativeCapabilityObservation(capabilityObj, capabilityId, value);
-    },
-    observePowerControlMode(mode) {
-      if (powerControlMode !== mode) powerControlModeGeneration += 1;
-      if (mode === undefined && powerControlMode !== undefined) {
-        requiresTargetPowerReassertion = false;
-        targetPowerInvalidatedAtMs = undefined;
-      }
-      if (powerControlMode === 'manual' && mode === 'automatic'
-          && isTargetPowerSteppedLoadCandidate({ capabilities, capabilityObj })) {
-        requiresTargetPowerReassertion = true;
-        targetPowerInvalidatedAtMs = Math.max(targetPowerInvalidatedAtMs ?? 0, Date.now());
-      }
-      powerControlMode = mode;
-    },
-    projectObservation(snapshot) {
-      if (usesManualCurrentRoute()) return snapshot;
-      if (snapshot.automaticPowerControl?.mode === 'automatic') {
-        observeAutomaticProfile(snapshot.automaticPowerControl.profile);
-      }
-      if (!requiresTargetPowerReassertion && (targetPowerInvalidatedAtMs === undefined
-          || (snapshot.reportedStepObservedAtMs !== undefined
-            && snapshot.reportedStepObservedAtMs > targetPowerInvalidatedAtMs))) return snapshot;
-      const {
-        reportedStepId: _supersededStep,
-        reportedStepPowerW: _supersededPower,
-        reportedStepObservedAtMs: _supersededAt,
-        ...retained
-      } = snapshot;
-      // This is a dated invalidation, never a new watt reading. Carrying its
-      // epoch keeps the refresh merge from restoring the superseded rung.
-      return { ...retained, reportedStepObservedAtMs: targetPowerInvalidatedAtMs };
-    },
-    getReportedStepId(profile, config) {
-      if (requiresTargetPowerReassertion) return undefined;
-      return resolveAdapterReportedStep(raw, capabilityObj, profile, config);
-    },
-  };
+    this.capabilityObj = retainTargetPowerEvidence(
+      getCapabilityObj(nextDevice), this.capabilityObj, this.targetPowerInvalidatedAtMs,
+    );
+  }
+
+  async setStep(
+    profile: SteppedLoadProfile, desiredStepId: string,
+    setCapability: (capabilityId: string, value: unknown) => Promise<unknown>,
+  ): Promise<boolean> {
+    const command = resolveNativeSteppedLoadCommand({
+      profile, desiredStepId, capabilities: this.capabilities, capabilityObj: this.capabilityObj,
+    });
+    const step = getSteppedLoadStep(profile, desiredStepId);
+    if (!command || !step) return false;
+    if (this.usesManualCurrentRoute() && command.capabilityId === 'target_power') return false;
+    const write = getDeviceAdapter(this.raw).stepCommand(this.raw, step, command);
+    if (this.powerControlMode === 'automatic' && !supportsAutomaticStep(this.automaticProfile, step)) return false;
+    if (write.capabilityId === 'target_power') return this.writeTargetPower(write, setCapability);
+    await setCapability(write.capabilityId, write.value);
+    return true;
+  }
+
+  private async writeTargetPower(
+    write: CapabilityWrite, setCapability: (capabilityId: string, value: unknown) => Promise<unknown>,
+  ): Promise<boolean> {
+    const generation = this.powerControlModeGeneration;
+    const reasserting = this.targetPowerReassertAfterMs !== undefined;
+    const preparation = reasserting ? await this.prepareReassertion(generation, setCapability) : 'unchanged';
+    if (preparation === 'stopped' || !this.ownsTargetPowerWrite(generation)) return false;
+    const takingControl = preparation === 'reset' || needsTargetPowerTakeover(this.capabilities, this.capabilityObj);
+    const requestedAtMs = Date.now();
+    const reportRevision = this.targetPowerReportRevision;
+    await setCapability(write.capabilityId, write.value);
+    // An older issued write cannot take over or release a newer reclaim latch.
+    if (!this.ownsTargetPowerWrite(generation)) return true;
+    if (takingControl) {
+      this.invalidateSupersededTarget(write, reportRevision, requestedAtMs);
+      // Store the admitted ceiling first: claiming can immediately apply it.
+      await setCapability('target_power_mode', 'homey');
+    }
+    if (reasserting && this.ownsTargetPowerWrite(generation)) {
+      this.targetPowerReassertAfterMs = undefined;
+      // Only independent readback of this request can reclaim retained polls.
+      if (reportRevision === this.targetPowerReportRevision) this.invalidateTargetPower(requestedAtMs);
+    }
+    return true;
+  }
+
+  private async prepareReassertion(
+    generation: number, setCapability: (capabilityId: string, value: unknown) => Promise<unknown>,
+  ): Promise<'unchanged' | 'reset' | 'stopped'> {
+    if (this.targetPowerReassertAfterMs === undefined) return 'unchanged';
+    const preparation = getDeviceAdapter(this.raw).prepareTargetPowerReassertion(
+      this.raw, this.targetPowerReassertAfterMs, this.getInventory(),
+    );
+    if (preparation.kind === 'stop') {
+      await setCapability(preparation.write.capabilityId, preparation.write.value);
+      return 'stopped';
+    }
+    for (const reset of preparation.resetWrites) {
+      await setCapability(reset.capabilityId, reset.value);
+      if (!this.ownsTargetPowerWrite(generation)) return 'stopped';
+    }
+    return preparation.resetWrites.length > 0 ? 'reset' : 'unchanged';
+  }
+
+  observeCapabilityUpdate(capabilityId: string, value: unknown): void {
+    if (!this.capabilities.includes(capabilityId)) return;
+    if (capabilityId === 'target_power') this.targetPowerReportRevision += 1;
+    this.capabilityObj = withNativeCapabilityObservation(this.capabilityObj, capabilityId, value);
+  }
+
+  observePowerControlMode(mode: DevicePowerControlMode | undefined): void {
+    if (this.powerControlMode !== mode) this.powerControlModeGeneration += 1;
+    if (this.powerControlMode === undefined && mode === 'automatic') this.observeInitialAutomaticPower();
+    if (mode === undefined && this.powerControlMode !== undefined) {
+      this.targetPowerReassertAfterMs = undefined;
+      this.targetPowerInvalidatedAtMs = undefined;
+    }
+    if (this.powerControlMode === 'manual' && mode === 'automatic'
+      && isTargetPowerSteppedLoadCandidate({ capabilities: this.capabilities, capabilityObj: this.capabilityObj })) {
+      this.requireTargetPowerReassertion();
+    }
+    this.powerControlMode = mode;
+  }
+
+  projectObservation(snapshot: TransportDeviceSnapshot): TransportDeviceSnapshot {
+    if (this.usesManualCurrentRoute()) return snapshot;
+    if (snapshot.automaticPowerControl?.mode === 'automatic') {
+      this.observeAutomaticProfile(snapshot.automaticPowerControl.profile);
+    }
+    if (this.targetPowerReassertAfterMs === undefined && (this.targetPowerInvalidatedAtMs === undefined
+      || (snapshot.reportedStepObservedAtMs !== undefined
+        && snapshot.reportedStepObservedAtMs > this.targetPowerInvalidatedAtMs))) return snapshot;
+    const {
+      reportedStepId: _supersededStep, reportedStepPowerW: _supersededPower,
+      reportedStepObservedAtMs: _supersededAt, ...retained
+    } = snapshot;
+    // A dated invalidation keeps refresh merge from restoring the superseded rung.
+    return { ...retained, reportedStepObservedAtMs: this.targetPowerInvalidatedAtMs };
+  }
+
+  getReportedStepId(profile: SteppedLoadProfile, config: TargetPowerSteppedLoadConfig | undefined): string | undefined {
+    if (this.targetPowerReassertAfterMs !== undefined) return undefined;
+    return resolveAdapterReportedStep(this.raw, this.capabilityObj, profile, config);
+  }
+
+  private usesManualCurrentRoute(): boolean {
+    return this.powerControlMode === 'manual' && getDeviceAdapter(this.raw).currentBindings(this.raw).length > 0;
+  }
+
+  private ownsTargetPowerWrite(generation: number): boolean {
+    return !this.usesManualCurrentRoute() && generation === this.powerControlModeGeneration;
+  }
+
+  private observeAutomaticProfile(next: SteppedLoadProfile | undefined): void {
+    if (this.powerControlMode === 'automatic' && isTargetPowerSteppedLoadCandidate({
+      capabilities: this.capabilities, capabilityObj: getCapabilityObj(this.raw),
+    }) && !sameAutomaticProfile(this.automaticProfile, next)) {
+      this.powerControlModeGeneration += 1;
+      this.requireTargetPowerReassertion();
+    }
+    this.automaticProfile = next;
+  }
+
+  private requireTargetPowerReassertion(): void {
+    this.targetPowerReassertAfterMs = Date.now();
+    this.targetPowerInvalidatedAtMs = Math.max(this.targetPowerInvalidatedAtMs ?? 0, this.targetPowerReassertAfterMs);
+  }
+
+  private observeInitialAutomaticPower(): void {
+    if (!isTargetPowerSteppedLoadCandidate({ capabilities: this.capabilities, capabilityObj: this.capabilityObj })) return;
+    const preparation = getDeviceAdapter(this.raw).prepareTargetPowerReassertion(this.raw, Date.now(), this.getInventory());
+    if (preparation.kind === 'stop' || preparation.resetWrites.length > 0) this.requireTargetPowerReassertion();
+  }
+
+  private invalidateTargetPower(atMs: number): void {
+    this.targetPowerInvalidatedAtMs = Math.max(this.targetPowerInvalidatedAtMs ?? 0, atMs);
+    this.capabilityObj = retainTargetPowerEvidence(this.capabilityObj, this.capabilityObj, this.targetPowerInvalidatedAtMs);
+  }
+
+  private invalidateSupersededTarget(write: CapabilityWrite, reportRevision: number, requestedAtMs: number): void {
+    const target = this.capabilityObj.target_power;
+    // A driver can publish its bounded target during dispatch, in the same ms.
+    if (reportRevision === this.targetPowerReportRevision && !Object.is(target?.value, write.value)
+      && (toCapabilityTimestampMs(target?.lastUpdated) ?? 0) <= requestedAtMs) this.invalidateTargetPower(requestedAtMs);
+  }
 }
 
 function withNativeCapabilityObservation(

@@ -46,11 +46,11 @@ describe.each(['homey', 'device'] as const)('Enua Manual native target with init
       await initWithLiveFeed(transport);
       const [parsed] = await seedTransportDevices(transport, [device]);
       expect(parsed.automaticPowerControl?.mode).toBe('manual');
-      const desiredPowerW = Math.round(10 * GRID_WATTS_PER_AMP);
+      const desiredPowerW = Math.round(6 * GRID_WATTS_PER_AMP);
       const profile = parsed.steppedLoadProfile;
       const step = profile?.steps.find((candidate) => config.preset
-        ? candidate.id === '10a' : candidate.planningPowerW === desiredPowerW);
-      if (!profile || !step) throw new Error('Expected the saved Manual ladder to contain a 10 A step');
+        ? candidate.id === '6a' : candidate.planningPowerW === desiredPowerW);
+      if (!profile || !step) throw new Error('Expected the saved Manual ladder to contain its 6 A minimum');
       const put = vi.fn().mockResolvedValue(undefined);
       setRestClient({ get: async () => device, put });
 

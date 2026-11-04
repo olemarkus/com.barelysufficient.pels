@@ -335,14 +335,9 @@ function applySyntheticTargetPowerOverlay(
   // its driver turns into a current its own way (a Zaptec on an IT grid, or one
   // switching phases), so that target is the step it holds; the current times
   // the preset's phases would read another rung.
-  const installationCurrent = !manualControl && isTargetPowerSteppedLoadCandidate(nativeEvOverlay)
-    ? undefined
-    : nativeEvOverlay.capabilityObj[resolveInstallationCurrentCapabilityId(
-      device,
-      deviceId,
-      nativeEvOverlay.capabilityObj,
-      sources,
-    )];
+  const installationCurrent = resolveInstallationCurrent(
+    device, deviceId, nativeEvOverlay, sources, manualControl,
+  );
   const observedTargetPower = installationCurrent
     && resolveInstallationCurrentTargetPowerObservation(config, installationCurrent);
   const reportedStepPowerW = resolveActiveTargetPowerW(
@@ -381,6 +376,15 @@ function applySyntheticTargetPowerOverlay(
 
 function usesManualCurrentControl(device: HomeyDeviceLike, automatic: AutomaticPowerControl | undefined): boolean {
   return automatic?.mode === 'manual' && getDeviceAdapter(device).currentBindings(device).length > 0;
+}
+
+function resolveInstallationCurrent(
+  device: HomeyDeviceLike, deviceId: string,
+  overlay: Pick<ReturnType<typeof applyNativeEvWiringOverlay>, 'capabilities' | 'capabilityObj'>,
+  sources: DeviceParseSources, manualControl: boolean,
+): DeviceCapabilityMap[string] | undefined {
+  if (!manualControl && isTargetPowerSteppedLoadCandidate(overlay)) return undefined;
+  return overlay.capabilityObj[resolveInstallationCurrentCapabilityId(device, deviceId, overlay.capabilityObj, sources)];
 }
 
 function resolveSyntheticStepObservation(
@@ -483,10 +487,13 @@ function resolveNativeSteppedLoadOverlay(
     });
   }
   return {
-    controlAdapter: buildNativeSteppedLoadControlAdapter({
-      nativeWiringEnabled: nativeSteppedEnabled,
-      activationAvailable: !targetPowerSteppedCandidate,
-    }),
+    controlAdapter: {
+      ...buildNativeSteppedLoadControlAdapter({
+        nativeWiringEnabled: nativeSteppedEnabled,
+        activationAvailable: !targetPowerSteppedCandidate,
+      }),
+      ...(targetPowerSteppedCandidate ? { activationOrder: 'current_before_start' as const } : {}),
+    },
     reportedStepId,
     reportedStepObservedAtMs: resolveTargetPowerModeInvalidationAtMs(capabilityObj, capabilities) ?? (reportedStepId
       ? resolveNativeSteppedLoadObservedAtMs(capabilities, capabilityObj)

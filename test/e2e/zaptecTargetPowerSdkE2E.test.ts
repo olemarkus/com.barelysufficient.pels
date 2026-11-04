@@ -50,7 +50,19 @@ function simulateZaptec(charger: MockDevice) {
   let targetW = Math.floor(limitA * GRID_WATTS_PER_AMP);
   let mode = 'homey';
   let charging = true;
+  let targetCurrentA: number | undefined = 32;
+  let currentBeforeHomey: number | undefined;
+  const resetHousePowers: number[] = [];
   const drawW = () => charging ? limitA * wattsPerAmp : 0;
+  const applyTargetPower = () => {
+    const amps = Math.min(maximumA, Math.floor(targetW / wattsPerAmp));
+    if (amps < 6) { charging = false; return; }
+    // Zaptec 1.12 caches this independently of legacy installation writes.
+    if (amps === targetCurrentA) return;
+    currentBeforeHomey ??= limitA;
+    limitA = amps;
+    targetCurrentA = amps;
+  };
   const report = (capability: string, value: unknown) => {
     charger.setActualCapabilityValue(capability, value, { emitDeviceUpdate: false });
   };
@@ -68,10 +80,17 @@ function simulateZaptec(charger: MockDevice) {
     await originalPut(path, body);
     const value = body && typeof body === 'object' && 'value' in body ? body.value : undefined;
     if (path === pathFor('target_power') && typeof value === 'number') targetW = value;
-    if (path === pathFor('target_power_mode') && typeof value === 'string') mode = value;
+    if (path === pathFor('target_power_mode') && typeof value === 'string') {
+      mode = value;
+      if (mode === 'device') {
+        targetCurrentA = undefined;
+        limitA = currentBeforeHomey ?? limitA;
+        currentBeforeHomey = undefined;
+        resetHousePowers.push(BACKGROUND_W + drawW());
+      }
+    }
     if ((path === pathFor('target_power') || path === pathFor('target_power_mode')) && mode === 'homey') {
-      limitA = Math.min(maximumA, Math.floor(targetW / wattsPerAmp));
-      if (limitA < 6) charging = false;
+      applyTargetPower();
     }
     if (path === pathFor('evcharger_charging') && typeof value === 'boolean') charging = value;
     // As in the vendor app, the cloud current changes before its next poll
@@ -91,7 +110,7 @@ function simulateZaptec(charger: MockDevice) {
     return originalGet(path);
   });
   return {
-    get, put,
+    get, put, resetHousePowers,
     setManualCurrent: (amps: number) => { limitA = amps; publish(); },
     setInstallation: (nextWattsPerAmp: number, maxCurrentA: number) => {
       wattsPerAmp = nextWattsPerAmp;
@@ -288,16 +307,19 @@ describe('Zaptec legacy current and native watt control at the SDK boundary', ()
       const retainedWatts = Number(charger.getActualCapabilityValue('target_power'));
       mockHomeyInstance.settings.set(DEVICE_POWER_CONTROL_MODES, { [ID]: 'manual' });
       await vi.advanceTimersByTimeAsync(31_000);
-      simulation.setManualCurrent(6);
+      simulation.setManualCurrent(20);
       await vi.advanceTimersByTimeAsync(1_000);
       const manual = await api.ui_devices({ homey: mockHomeyInstance as never });
       expect(manual.devices.find((entry) => entry.id === ID)?.automaticPowerControl?.mode).toBe('manual');
       expect(Number(charger.getActualCapabilityValue('target_power'))).toBe(retainedWatts);
       const previousWrites = simulation.powerWrites().length;
       mockHomeyInstance.settings.set(DEVICE_POWER_CONTROL_MODES, { [ID]: 'automatic' });
-      await vi.advanceTimersByTimeAsync(125_000);
+      await vi.advanceTimersByTimeAsync(240_000);
       await drainUntil(() => simulation.powerWrites().length > previousWrites);
       expect(simulation.housePowerW()).toBeLessThanOrEqual(HOUSE_LIMIT_W);
+      expect(simulation.housePowerW()).toBeGreaterThan(BACKGROUND_W);
+      expect(simulation.resetHousePowers.length).toBeGreaterThan(0);
+      expect(simulation.resetHousePowers.every((watts) => watts === BACKGROUND_W)).toBe(true);
       expect(mockHomeyInstance.settings.get(DEVICE_TARGET_POWER_CONFIGS)).toEqual(savedConfig);
     }
   });

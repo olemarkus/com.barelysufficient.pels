@@ -252,7 +252,7 @@ const buildExecutor = (
     flow_backed_device_start_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
     flow_backed_device_stop_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
   } as const;
-  const nativeSteppedAdapters = new NativeSteppedLoadCommandAdapters();
+  const nativeSteppedAdapters = new NativeSteppedLoadCommandAdapters(() => []);
   const deviceManager = withGetSnapshotByDeviceId({
     getSnapshot: vi.fn().mockReturnValue(snapshot),
     setCapability: vi.fn().mockResolvedValue(undefined),

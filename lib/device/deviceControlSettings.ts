@@ -119,6 +119,7 @@ type DeviceControlProfilesRead = {
 
 type DeviceTargetPowerConfigsRead = {
   configs: DeviceTargetPowerConfigsWithReachability;
+  authoredDeviceIds: ReadonlySet<string>;
   state: 'unavailable' | 'resolved';
 };
 
@@ -173,7 +174,7 @@ export class DeviceControlSettings {
     nativeEvWiring: { devices: {}, state: 'unavailable' },
     driverOverrides: {},
     controlProfiles: { profiles: {}, state: 'unavailable' },
-    targetPowerConfigs: { configs: {}, state: 'unavailable' },
+    targetPowerConfigs: { configs: {}, authoredDeviceIds: new Set(), state: 'unavailable' },
     powerControlModes: { modes: {}, state: 'unavailable' },
     shedBehaviors: {},
   };
@@ -244,7 +245,7 @@ export class DeviceControlSettings {
     }
     const { controlProfiles, targetPowerConfigs } = this.maps;
     return controlProfiles.state === 'unavailable' || targetPowerConfigs.state === 'unavailable'
-      || Object.hasOwn(targetPowerConfigs.configs, deviceId) || Object.hasOwn(controlProfiles.profiles, deviceId)
+      || targetPowerConfigs.authoredDeviceIds.has(deviceId) || Object.hasOwn(controlProfiles.profiles, deviceId)
       || this.maps.nativeEvWiring.state === 'unavailable' || Object.hasOwn(this.maps.nativeEvWiring.devices, deviceId);
   }
   getConfiguredShedBehavior(deviceId: string): ConfiguredShedBehavior {
@@ -394,10 +395,11 @@ export class DeviceControlSettings {
       const raw = this.settings.get(DEVICE_TARGET_POWER_CONFIGS);
       const configSetting = parseRecordSetting(raw);
       if (!configSetting) {
-        return this.isAbsentSetting(DEVICE_TARGET_POWER_CONFIGS, raw) ? { configs: {}, state: 'resolved' } : current;
+        return this.isAbsentSetting(DEVICE_TARGET_POWER_CONFIGS, raw)
+          ? { configs: {}, authoredDeviceIds: new Set(), state: 'resolved' } : current;
       }
       const configs = normalizeDeviceTargetPowerConfigs(configSetting);
-      if (!Object.keys(configSetting).every((id) => id.trim() === id && Object.hasOwn(configs, id))) return current;
+      const authoredDeviceIds = new Set(Object.keys(configSetting).map((id) => id.trim()).filter(Boolean));
       const reachabilityByDevice = normalizeCompleteTargetPowerReachabilityByDevice(
         this.settings.get(DEVICE_TARGET_POWER_REACHABILITY),
       ) ?? {};
@@ -408,7 +410,7 @@ export class DeviceControlSettings {
       );
       return { configs: joinTargetPowerReachability(
         configs, reachabilityByDevice, currentReachabilityByDevice,
-      ), state: 'resolved' };
+      ), authoredDeviceIds, state: 'resolved' };
     } catch { /* Keep the accepted legacy configuration while the read is unavailable. */ }
     return current;
   }

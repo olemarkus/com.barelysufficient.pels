@@ -8,7 +8,6 @@ import {
   applyDeviceDriverOverride,
   isDevicePowerCapable,
   parseDevice,
-  parseDeviceList,
   type DeviceParseSources,
   type ParseDevicePurpose,
 } from './managerParseDevice';
@@ -76,7 +75,7 @@ export class DeviceSnapshotReader {
       'runtime',
     );
     return parsed && this.snapshotStore.nativeSteppedAdapters.projectObservation(
-      this.chargingCurrentControl.projectControl(parsed),
+      this.chargingCurrentControl.projectControl(parsed), device,
     );
   }
 
@@ -99,16 +98,17 @@ export class DeviceSnapshotReader {
     livePowerWByDeviceId: LiveDevicePowerWatts = {},
     purpose: ParseDevicePurpose = 'runtime',
   ): TransportDeviceSnapshot[] {
-    const parsed = parseDeviceList(
-      list.filter((device) => !getDeviceAdapter(device).retainsPlugObservation(device))
-        .map((device) => this.chargingCurrentControl.sessions.withholdCapabilities(device)),
-      livePowerWByDeviceId,
-      this.snapshotStore.getSnapshotIndex(),
-      this.parseDependencies(),
-      purpose,
-    ).map((snapshot) => this.snapshotStore.nativeSteppedAdapters.projectObservation(
-      this.chargingCurrentControl.projectControl(snapshot),
-    ));
+    const now = Date.now();
+    const deps = this.parseDependencies();
+    const previous = this.snapshotStore.getSnapshotIndex();
+    const parsed = list.flatMap((read) => {
+      if (getDeviceAdapter(read).retainsPlugObservation(read)) return [];
+      const device = this.chargingCurrentControl.sessions.withholdCapabilities(read);
+      const snapshot = parseDevice(device, now, livePowerWByDeviceId, previous.get(getDeviceId(device)), deps, purpose);
+      return snapshot ? [this.snapshotStore.nativeSteppedAdapters.projectObservation(
+        this.chargingCurrentControl.projectControl(snapshot), device,
+      )] : [];
+    });
     for (const device of list) {
       if (!getDeviceAdapter(device).retainsPlugObservation(device)) continue;
       const retained = this.retainBlockedDevice(device, purpose);
