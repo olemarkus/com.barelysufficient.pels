@@ -88,9 +88,9 @@ export type DeviceAdapter = {
   targetPowerReading(device: HomeyDeviceLike, config: TargetPowerSteppedLoadConfig, value: number): number;
   stepCommand(device: HomeyDeviceLike, step: SteppedLoadStep, command: CapabilityWrite): CapabilityWrite;
   stepActivationOrder: 'current_before_start' | 'start_before_current';
-  /** Reads independent device observations newer than the reclaim epoch; never starts a device. */
+  /** Reads the device's own stop evidence from the accepted inventory; never starts a device. */
   prepareTargetPowerReassertion(
-    device: HomeyDeviceLike, afterMs: number, inventory: readonly HomeyDeviceLike[],
+    device: HomeyDeviceLike, inventory: readonly HomeyDeviceLike[],
   ): TargetPowerReassertionPreparation;
   normalize(snapshot: AdapterSnapshot, capabilityId: string, value: unknown): CapabilityUpdate[];
   observation(device: HomeyDeviceLike): DeviceCapabilityMap;

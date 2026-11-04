@@ -48,12 +48,17 @@ const easeeDevice = (max = 32): HomeyDeviceLike => ({
   capabilitiesObj: { target_charger_current: { value: 16, min: 0, max, step: 1, setable: true } },
 });
 
-function rawDevice(mode: 'homey' | 'device' = 'homey') {
+function rawDevice(mode: 'homey' | 'device' = 'homey', charging = false) {
   const device = buildZaptecTargetPowerDevice();
   return buildZaptecTargetPowerDevice({ capabilitiesObj: {
     target_power: { ...device.capabilitiesObj?.target_power, value: 6440, lastUpdated: new Date().toISOString() },
     target_power_mode: { ...device.capabilitiesObj?.target_power_mode,
       value: mode, lastUpdated: new Date().toISOString() },
+    ...(charging ? {
+      evcharger_charging: { ...device.capabilitiesObj?.evcharger_charging,
+        value: true, lastUpdated: new Date().toISOString() },
+      measure_power: { ...device.capabilitiesObj?.measure_power, value: 6440, lastUpdated: new Date().toISOString() },
+    } : {}),
   } });
 }
 
@@ -66,12 +71,12 @@ const snapshot = (mode: DevicePowerControlMode) => transportSnapshotFixture({
 });
 
 function manualThenAutomatic(
-  mode: 'homey' | 'device' = 'homey', inventory: readonly HomeyDeviceLike[] = [],
+  mode: 'homey' | 'device' = 'homey', inventory: readonly HomeyDeviceLike[] = [], charging = false,
 ) {
   const adapters = new NativeAdaptersFixture(inventory);
   // The first parse can precede construction of the raw-device command adapter.
   adapters.projectObservation(snapshot('manual'));
-  adapters.observe(ID, rawDevice(mode));
+  adapters.observe(ID, rawDevice(mode, charging));
   vi.setSystemTime(Date.now() + 1000);
   expect(adapters.projectObservation(snapshot('automatic')).reportedStepId).toBeUndefined();
   return adapters;
@@ -94,12 +99,27 @@ describe('native watt ownership after Manual control', () => {
   it('requires a cold Zaptec reclaim even when Automatic was saved before the restart', async () => {
     const adapters = new NativeAdaptersFixture();
     adapters.projectObservation(snapshot('automatic'));
-    adapters.observe(ID, rawDevice());
+    adapters.observe(ID, rawDevice('homey', true));
     expect(adapters.projectObservation(snapshot('automatic')).reportedStepId).toBeUndefined();
     expect(adapters.getReportedStepId(ID, PROFILE, undefined)).toBeUndefined();
     const write = vi.fn().mockResolvedValue(undefined);
     expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe('binary_off_required');
     expect(write).not.toHaveBeenCalled();
+  });
+
+  it('completes a cold reclaim of a charger already stopped at boot without any new report', async () => {
+    // Homey republishes nothing unchanged: the stopped reports predate the boot.
+    const stopped = rawDevice();
+    vi.setSystemTime(Date.now() + 60_000);
+    const adapters = new NativeAdaptersFixture();
+    adapters.projectObservation(snapshot('automatic'));
+    adapters.observe(ID, stopped);
+    expect(adapters.getReportedStepId(ID, PROFILE, undefined)).toBeUndefined();
+    const write = vi.fn().mockResolvedValue(undefined);
+    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe(true);
+    expect(write.mock.calls).toEqual([
+      ['target_power_mode', 'device'], ['target_power', 6440], ['target_power_mode', 'homey'],
+    ]);
   });
 
   it('claims an exclusive Zaptec already in device mode without resetting or stopping it', async () => {
@@ -200,7 +220,7 @@ describe('native watt ownership after Manual control', () => {
   );
 
   it('stops before resetting the cached native target and never starts charging during reclaim', async () => {
-    const adapters = manualThenAutomatic();
+    const adapters = manualThenAutomatic('homey', [], true);
     let charging = true;
     let currentA = 32;
     let cachedTargetA: number | undefined = 16;
@@ -227,7 +247,11 @@ describe('native watt ownership after Manual control', () => {
     expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe('binary_off_required');
     expect(write).not.toHaveBeenCalled();
     expect(adapters.getReportedStepId(ID, PROFILE, undefined)).toBeUndefined();
-    // A successful stop request alone cannot permit the release that restores 32 A.
+    // A successful stop request alone cannot permit the release that restores 32 A:
+    // the pause's own echo arrives while the charger still draws power.
+    const echoed = rawDevice('homey', true);
+    adapters.observe(ID, { ...echoed, capabilitiesObj: { ...echoed.capabilitiesObj,
+      evcharger_charging: { ...echoed.capabilitiesObj?.evcharger_charging, value: false } } });
     expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe('binary_off_required');
     expect(write).not.toHaveBeenCalled();
     // The binary dispatcher owns the actual pause and its pending provenance.
@@ -272,11 +296,12 @@ describe('native watt ownership after Manual control', () => {
     const write = vi.fn(async (capability: string, value: unknown) => {
       if (capability === 'target_power_mode' && value === 'device') adapters.projectObservation(snapshot('manual'));
     });
-    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe(false);
+    // The reset went out, so it is reported as an issued preparation, not as no command.
+    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe('preparation_issued');
     expect(write).toHaveBeenCalledExactlyOnceWith('target_power_mode', 'device');
   });
 
-  it('refuses an installation reset when an unmanaged active peer exists in the full inventory', async () => {
+  it('steps a shared installation as before, never stopping or resetting it for a reclaim', async () => {
     const source = rawDevice();
     const peer = { ...source, id: 'unmanaged-peer', capabilitiesObj: {
       ...source.capabilitiesObj,
@@ -289,9 +314,12 @@ describe('native watt ownership after Manual control', () => {
     // still exists in Homey's full inventory and shares the reset's current.
     adapters.observe(ID, rawDevice());
     const write = vi.fn().mockResolvedValue(undefined);
-    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe('binary_off_required');
-    expect(write).not.toHaveBeenCalled();
-    expect(adapters.getReportedStepId(ID, PROFILE, undefined)).toBeUndefined();
+    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe(true);
+    expect(write.mock.calls).toEqual([['target_power', 6440]]);
+    // The reclaim is over, so a later step is an ordinary watt write.
+    write.mockClear();
+    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe(true);
+    expect(write.mock.calls).toEqual([['target_power', 6440]]);
   });
 
   it('uses fresh independent inventory reports even before the command adapter receives another full read', async () => {
@@ -320,6 +348,8 @@ describe('native watt ownership after Manual control', () => {
     const legacy = buildZaptecCurrentOnlyDevice({ id: ID, capabilitiesObj: {
       target_power: source.capabilitiesObj?.target_power,
       target_power_mode: source.capabilitiesObj?.target_power_mode,
+      charging_button: { value: true, setable: true, lastUpdated: new Date().toISOString() },
+      measure_power: { value: 6440, lastUpdated: new Date().toISOString() },
     } });
     const device = { ...legacy, capabilities: [...(legacy.capabilities ?? []), 'target_power', 'target_power_mode'] };
     const adapters = manualThenAutomatic();
@@ -332,6 +362,28 @@ describe('native watt ownership after Manual control', () => {
       ...device.capabilitiesObj,
       charging_button: { ...device.capabilitiesObj?.charging_button, value: false, lastUpdated: Date.now() },
       measure_power: { ...device.capabilitiesObj?.measure_power, value: 0, lastUpdated: Date.now() },
+    } });
+    write.mockClear();
+    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe(true);
+    expect(write.mock.calls).toEqual([
+      ['target_power_mode', 'device'], ['target_power', 6440], ['target_power_mode', 'homey'],
+    ]);
+  });
+
+  it('reports a watt-target reclaim stop as issued and resets once the charger draws nothing', async () => {
+    const source = rawDevice('homey', true);
+    const { evcharger_charging: _charging, ...values } = source.capabilitiesObj ?? {};
+    const device = { ...source, capabilities: (source.capabilities ?? []).filter((id) => id !== 'evcharger_charging'),
+      capabilitiesObj: values };
+    const adapters = manualThenAutomatic();
+    adapters.observe(ID, device);
+    const write = vi.fn().mockResolvedValue(undefined);
+    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe('preparation_issued');
+    expect(write.mock.calls).toEqual([['target_power', 0]]);
+    vi.setSystemTime(Date.now() + 1000);
+    adapters.observe(ID, { ...device, capabilitiesObj: { ...device.capabilitiesObj,
+      target_power: { ...device.capabilitiesObj.target_power, value: 0, lastUpdated: new Date().toISOString() },
+      measure_power: { ...device.capabilitiesObj.measure_power, value: 0, lastUpdated: new Date().toISOString() },
     } });
     write.mockClear();
     expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe(true);

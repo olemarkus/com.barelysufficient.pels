@@ -70,6 +70,23 @@ describe('preparing an unknown native limit under capacity pressure', () => {
     expect(context.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
   });
 
+  it('counts an issued native preparation as a write, without a binary stop or a step record', async () => {
+    const initial = liveRead(12.75);
+    const action = buildExecutableSteppedLoadDevice(buildPlannedSteppedCommand(unknownDevice()),
+      buildExecutableObservedDeviceState(initial, steppedProfile), undefined, PRIOR_STEP_COMMAND_SESSION);
+    if (!action) throw new Error('Expected executable preparation');
+    const apply = vi.fn(async (_command: DeviceCommand): Promise<ActuatorOutcome> => ({
+      requested: false, preparation: 'issued',
+    }));
+    const context = createTestExecutorCommandContext(createPlanEngineState(), {
+      readDevice: () => initial, getObservedState: () => initial,
+      actuator: { canTurnOnDevice: () => true, resolveTemperatureTarget: (_id, desired) => desired, apply },
+    });
+    expect(await applySteppedLoadCommand(context, action, initial)).toBe(true);
+    expect(apply.mock.calls.map(([command]) => command.kind)).toEqual(['step']);
+    expect(context.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
+  });
+
   it.each(['accepted', 'timed out', 'rejected'] as const)(
     'attributes its binary preparation before dispatch when the stop is %s', async (outcome) => {
       const initial = liveRead(12.75);

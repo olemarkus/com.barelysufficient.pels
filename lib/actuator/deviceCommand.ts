@@ -75,7 +75,8 @@ export type ActuatorTransport = {
  * Outcome of applying a command. `requested` is `false` only when the command
  * could not be issued (e.g. a `step` command on a transport without a
  * stepped-load surface). A binary preparation requests its ordinary pause
- * before the step is retried. It is **not** an idempotency signal — callers own
+ * before the step is retried; an issued preparation already wrote to the device
+ * instead of the step. It is **not** an idempotency signal — callers own
  * "already in posture" skips and never call the actuator in that case.
  */
 export type ActuatorOutcome =
@@ -83,7 +84,7 @@ export type ActuatorOutcome =
   | {
     requested: false;
   }
-  | { requested: false; preparation: 'binary_off' }
+  | { requested: false; preparation: 'binary_off' | 'issued' }
   | {
     requested: false;
     /**

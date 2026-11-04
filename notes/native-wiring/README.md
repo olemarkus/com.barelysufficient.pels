@@ -53,11 +53,15 @@ invalidate or restore that step evidence through the normal observation path.
 When taking control, successful watt requests invalidate superseded target evidence; mode changes
 alone cannot restore it. Only a newer independent target report or read can.
 Zaptec caches its last applied automatic current independently of legacy current
-writes. Reclaiming that control first stops charging and waits for fresh stopped
-and zero-power observations. Only then may an exclusive installation release
-the cached mode, receive the newly admitted watt target, and return to Homey
-control. Native watt limits are prepared before the planner resumes charging.
-A shared installation is not reset by this protocol.
+writes. Reclaiming that control first stops charging and waits until the
+charger's own reports show it stopped and drawing nothing. Zero power is the
+independent evidence; a charger already stopped when the reclaim begins proves
+it with its existing reports, since Homey republishes nothing unchanged. Only
+then may an exclusive installation release the cached mode, receive the newly
+admitted watt target, and return to Homey control. Native watt limits are
+prepared before the planner resumes charging. A shared installation, or one
+without a writable control mode, has nothing to reset: its watt target is
+written as before, without a reclaim stop.
 The pause uses the ordinary binary command lane, so pending confirmation, car
 stop attribution and external-off detection recognize it as PELS's request.
 Resumption follows the normal meter-driven admission and restore cooldown.

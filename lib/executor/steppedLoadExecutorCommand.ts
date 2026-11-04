@@ -405,6 +405,15 @@ export const executeSteppedLoadCommand = async (
         }, ctx.readDevice(intent.id));
         return stopped.applied;
       }
+      if ('preparation' in result && result.preparation === 'issued') {
+        logger.info({
+          event: 'stepped_load_preparation_issued',
+          deviceId: intent.id,
+          deviceName: intent.name,
+          desiredStepId: desiredStep.id,
+        });
+        return true;
+      }
       return logSteppedLoadCommandSkip(
         intent, 'command_unavailable',
         `Capacity: skip stepped-load command for ${intent.name}, `

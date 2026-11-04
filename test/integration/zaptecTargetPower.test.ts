@@ -373,7 +373,7 @@ describe('Zaptec native target power', () => {
       ]);
     });
 
-    it('keeps the native channel but refuses to reset an already claimed shared installation', async () => {
+    it('keeps the native channel and steps an already claimed shared installation without a reset', async () => {
       // Hiding the control would leave the installation at PELS's last, low
       // watt target with nothing to hand the mode back.
       const base = buildZaptecTargetPowerDevice();
@@ -393,13 +393,13 @@ describe('Zaptec native target power', () => {
       const put = vi.fn().mockResolvedValue(undefined);
       setRestClient({ get: vi.fn(), put });
 
+      // A shared installation cannot be reset, so a reclaim stop could never be
+      // followed by a resume: the watt target is written as before.
       expect(await transport.requestSteppedLoadStep({
         deviceId: ZAPTEC_ID, profile, desiredStepId: '2760w', planningPowerW: 2760, planningCurrentA: 0,
-      })).toEqual({ requested: false, preparation: 'binary_off' });
-      expect(put).not.toHaveBeenCalled();
-      await transport.requestBinaryControl(ZAPTEC_ID, false, vi.fn());
-      expect(put.mock.calls).toEqual([
-        [`manager/devices/device/${ZAPTEC_ID}/capability/evcharger_charging`, pelsCapabilityWrite(false)],
+      })).toMatchObject({ requested: true });
+      expect(put.mock.calls.map(([path]) => path)).toEqual([
+        `manager/devices/device/${ZAPTEC_ID}/capability/target_power`,
       ]);
     });
 
