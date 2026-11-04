@@ -13,8 +13,12 @@ import { BATTERY_CONTROL_DEVICES, PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '..
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { emitCapability } from '../helpers/liveFeedSocketHarness';
-import { buildSetpointBatteryDevice } from '../helpers/homeBatteryMock';
-import { mockHomeyInstance, resetMockHomey, MockDriver, setMockDrivers } from '../mocks/homey';
+import {
+  buildAnkerSolixBatteryDevice,
+  buildSetpointBatteryDevice,
+  buildZinvoltBatteryDevice,
+} from '../helpers/homeBatteryMock';
+import { mockHomeyInstance, resetMockHomey, MockDriver, setMockDrivers, type MockDevice } from '../mocks/homey';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandConfirmation';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
 import { captureLogger } from '../utils/loggerCapture';
@@ -31,8 +35,9 @@ const CLAIM_KEY = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}${BATTERY}`;
 
 const unusedWrite = (): Promise<never> => Promise.reject(new Error('Only storage intents in this spec'));
 
-const setup = async () => {
-  const device = buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'anti_feed', targetPowerW: 0 });
+const setup = async (
+  device: MockDevice = buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'anti_feed', targetPowerW: 0 }),
+) => {
   setMockDrivers({ batteries: new MockDriver('batteries', [device]) });
   const settings = mockHomeyInstance.settings;
   const managed = new BatteryManagedSettings(settings);
@@ -216,5 +221,48 @@ describe('home battery claim and hand-back through the real transport', () => {
       deviceId: BATTERY, restoredClaimValue: 'anti_feed', recordRemoved: true,
     });
     logs.restore();
+  });
+
+  it('claims an Anker SOLIX and writes PELS\'s setpoints in its app\'s sign, where positive discharges', async () => {
+    const { owner, settings, writes, command } = await setup(
+      buildAnkerSolixBatteryDevice({ id: BATTERY, mode: 'self_consumption' }),
+    );
+
+    await command(1500);
+    await command(-800);
+    expect(settings.get(CLAIM_KEY)).toMatchObject({ capabilityId: 'target_power_mode', previousValue: 'self_consumption' });
+    expect(await owner.releaseClaim(BATTERY, 'idle')).toBe('released');
+
+    expect(writes()).toEqual([
+      ['target_power_mode', 'homey'], ['target_power', -1500],
+      ['target_power_mode', 'homey'], ['target_power', 800],
+      ['target_power', 0], ['target_power_mode', 'self_consumption'],
+    ]);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it('holds a Zinvolt at 0 W without its app reading Inactive, and still reads an owner\'s Inactive as a takeover', async () => {
+    const { owner, writes, command } = await setup(buildZinvoltBatteryDevice({ id: BATTERY, mode: 'SELF_USE' }));
+
+    await command(0);
+    expect(writes()).toEqual([['target_power_mode', 'homey'], ['target_power', 10]]);
+
+    // The Zinvolt app's next poll: an exact 0 W would report its own INACTIVE
+    // mode; the 10 W it was written keeps it under Homey.
+    const reportedMode = (targetPowerW: unknown) => (targetPowerW === 0 ? 'INACTIVE' : 'homey');
+    vi.setSystemTime(Date.now() + 5_000);
+    await emitCapability(BATTERY, 'target_power_mode', reportedMode(writes().at(-1)?.[1]));
+    vi.setSystemTime(Date.now() + CONTROL_COMMAND_CONFIRMATION_MS);
+    owner.onSnapshotCommitted({ entries: [], ignoredReadIds: [] });
+    expect(owner.wasTakenOver(BATTERY)).toBe(false);
+    expect(owner.isManaged(BATTERY)).toBe(true);
+
+    // The owner picks Inactive in the Zinvolt app while PELS holds the battery.
+    await emitCapability(BATTERY, 'target_power_mode', 'INACTIVE');
+    vi.setSystemTime(Date.now() + CONTROL_COMMAND_CONFIRMATION_MS);
+    owner.onSnapshotCommitted({ entries: [], ignoredReadIds: [] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(owner.wasTakenOver(BATTERY)).toBe(true);
+    expect(owner.isManaged(BATTERY)).toBe(false);
   });
 });

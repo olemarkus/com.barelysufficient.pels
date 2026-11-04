@@ -158,7 +158,7 @@ PELS makes your home battery part of your priority list. Your sun goes to your d
   <figcaption>The Overview while the battery holds your limit.</figcaption>
 </figure>
 
-**What it works with.** PELS works with a home battery whose Homey app lets Homey set how much it charges or discharges, and offers a Homey or API control mode. Sessy and Marstek Venus are examples. A Sessy needs its local login in the Sessy Homey app, so PELS can switch it to API control.
+**What it works with.** PELS works with a home battery whose Homey app lets Homey set how much it charges or discharges, and offers a Homey or API control mode. Sessy, Marstek Venus, Anker SOLIX, Zinvolt, AlphaESS, SOLARWATT and SolarEdge (through its Modbus app) are examples. A Sessy needs its local login in the Sessy Homey app, so PELS can switch it to API control.
 
 **A managed device like any other.** The battery has a card on the Overview, a row in the device list and its own device page. The card leads with what the battery is doing (`Supplying`, `Selling to grid`, `Charging`, `Limited · Charging` or `Own mode`), shows how full it is, and gives one reason line, such as `Holding your limit so your devices keep running`. While the battery holds your limit, the Overview hero says so: `Sessy battery is supplying 2.4 kW to hold your limit.`
 

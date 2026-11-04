@@ -15,7 +15,7 @@ Use this setup when you have solar panels and a home battery paired with Homey, 
 
 ## What PELS needs from your battery
 
-The battery's Homey app must let Homey set how much the battery charges and discharges, and offer a Homey or API control mode. Sessy and Marstek Venus are examples of batteries whose apps work this way.
+The battery's Homey app must let Homey set how much the battery charges and discharges, and offer a Homey or API control mode. Sessy, Marstek Venus, Anker SOLIX, Zinvolt, AlphaESS, SOLARWATT and SolarEdge (through its Modbus app) are examples of batteries whose apps work this way.
 
 A Sessy needs its local login in the Sessy Homey app, so PELS can switch it to API control.
 

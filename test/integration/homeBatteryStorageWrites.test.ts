@@ -4,7 +4,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Homey from 'homey';
 import { createTestDeviceTransport, seedTransportDevices } from '../helpers/deviceTransportHarness';
-import { buildSetpointBatteryDevice } from '../helpers/homeBatteryMock';
+import {
+  buildAnkerSolixBatteryDevice,
+  buildSessyBatteryDevice,
+  buildSetpointBatteryDevice,
+  buildZinvoltBatteryDevice,
+} from '../helpers/homeBatteryMock';
 import { mockHomeyInstance, MockDriver, setMockDrivers, type MockDevice } from '../mocks/homey';
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
@@ -113,6 +118,57 @@ describe('home battery storage writes', () => {
 
     expect(writes()).toEqual([['target_power', 0], ['target_power_mode', 'anti_feed']]);
     expect(device.getActualCapabilityValue('target_power_mode')).toBe('anti_feed');
+  });
+
+  it('claims a Sessy through control_strategy and writes the setpoint in Homey\'s sign', async () => {
+    const device = buildSessyBatteryDevice({ id: BATTERY, strategy: 'POWER_STRATEGY_NOM' });
+    const { transport, writes } = await setup(device);
+
+    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 2500 }))
+      .resolves.toEqual({ kind: 'written', setpointW: 2200 });
+    await transport.releaseStorageControl({
+      kind: 'storage_release', deviceId: BATTERY, restoreClaimValue: 'POWER_STRATEGY_NOM',
+    });
+
+    // 2500 W is clamped to the Sessy app's own 2200 W charge preset.
+    expect(writes()).toEqual([
+      ['control_strategy', 'POWER_STRATEGY_API'], ['target_power', 2200],
+      ['target_power', 0], ['control_strategy', 'POWER_STRATEGY_NOM'],
+    ]);
+  });
+
+  it('writes an Anker SOLIX setpoint in its app\'s sign, where positive discharges', async () => {
+    const device = buildAnkerSolixBatteryDevice({ id: BATTERY, mode: 'homey' });
+    const { transport, writes } = await setup(device);
+
+    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 1540 }))
+      .resolves.toEqual({ kind: 'written', setpointW: 1500 });
+    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: -800 }))
+      .resolves.toEqual({ kind: 'written', setpointW: -800 });
+    await transport.releaseStorageControl({
+      kind: 'storage_release', deviceId: BATTERY, restoreClaimValue: 'self_consumption',
+    });
+
+    // PELS's charge of 1.5 kW is -1500 to the app, its 800 W discharge +800; the hand-back's 0 is 0.
+    expect(writes()).toEqual([
+      ['target_power', -1500], ['target_power', 800],
+      ['target_power', 0], ['target_power_mode', 'self_consumption'],
+    ]);
+  });
+
+  it('holds a Zinvolt at its 10 W step for a 0 W setpoint, and hands it back with an exact 0', async () => {
+    const device = buildZinvoltBatteryDevice({ id: BATTERY, mode: 'SELF_USE' });
+    const { transport, writes } = await setup(device);
+
+    // The executor records PELS's own 0 W, so it does not re-send the hold.
+    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 0 }))
+      .resolves.toEqual({ kind: 'written', setpointW: 0 });
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: BATTERY, restoreClaimValue: 'SELF_USE' });
+
+    expect(writes()).toEqual([
+      ['target_power_mode', 'homey'], ['target_power', 10],
+      ['target_power', 0], ['target_power_mode', 'SELF_USE'],
+    ]);
   });
 
   it('refuses a storage intent for a battery PELS can only observe', async () => {

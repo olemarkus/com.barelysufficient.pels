@@ -25,14 +25,18 @@ import { hasRestClient, setRawCapabilityValue } from './managerHomeyApi';
 import { recordLocalWriteObservation } from './managerObservation';
 import { isNativeSteppedLoadControlEnabled, type CapabilityWrite } from '../nativeSteppedLoadWiring';
 import { getDeviceAdapter, getSnapshotAdapter } from '../deviceAdapterRegistry';
-import type { SessionEvidence, SwitchWrite } from '../deviceAdapter';
+import type { HomeBatteryBinding, SessionEvidence, SwitchWrite } from '../deviceAdapter';
 import type { SteppedLoadFlowTriggerCard } from './transportTypes';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { Logger } from '../../utils/types';
 import type { ObservationProducers } from '../observationProducers';
 import { isCanSetControl } from '../deviceActionProjection';
-import { HOME_BATTERY_SETPOINT_CAPABILITY_ID, toTargetPowerCapabilityValue } from '../batteryControlWiring';
+import {
+  HOME_BATTERY_SETPOINT_CAPABILITY_ID,
+  toBatterySetpointCapabilityValue,
+  toTargetPowerCapabilityValue,
+} from '../batteryControlWiring';
 import { isHomeBatterySnapshot } from './homeBatteryObservation';
 import { TransportSnapshotStore } from './transportSnapshotStore';
 import type { NativeWiringRead } from './managerParseDevice';
@@ -116,6 +120,17 @@ function requireSetpointSurface(
     return surface;
 }
 
+/**
+ * The battery's binding, from its integration, read off the raw device the
+ * surface was parsed from. A home battery is always tracked
+ * (`isRuntimeTrackedDevice`), so a missing raw read is metadata lost, and the
+ * intent is refused rather than written in a sign nobody resolved.
+ */
+function requireHomeBatteryBinding(snapshotStore: TransportSnapshotStore, deviceId: string): HomeBatteryBinding {
+    const raw = snapshotStore.getTrackedRawDevice(deviceId);
+    if (raw === undefined) throw new Error(`Home battery ${deviceId} control metadata is unavailable`);
+    return getDeviceAdapter(raw).homeBatteryBinding(raw);
+}
 
 export class DeviceWriteService {
   // eslint-disable-next-line max-params -- Direct transport owners and dispatch ports, not a parameter bundle.
@@ -277,8 +292,10 @@ export class DeviceWriteService {
   /**
    * A home battery's signed setpoint: the claim capability is written to its
    * Homey value first, unless the battery already reports that value, then
-   * `target_power` takes the setpoint mapped onto the battery's declared range.
-   * Returns the watts written. A battery that reports Homey's value while it
+   * `target_power` takes the setpoint mapped onto the battery's declared range,
+   * in the app's own value (`toBatterySetpointCapabilityValue`: its sign, and
+   * its 0 W value). Returns the watts written in PELS's sign, the setpoint
+   * the executor records. A battery that reports Homey's value while it
    * no longer holds it is caught by the storage lane's claim check, as any
    * other claim lost after a setpoint is.
    *
@@ -293,6 +310,7 @@ export class DeviceWriteService {
     const { deviceId } = command;
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     const surface = requireSetpointSurface(snapshot, deviceId);
+    const binding = requireHomeBatteryBinding(this.snapshotStore, deviceId);
     // Checked here as well as in `setCapability`, so a write that never left
     // PELS is not mistaken for one the battery's app rejected.
     if (!hasRestClient()) throw new Error('REST client not ready');
@@ -310,7 +328,9 @@ export class DeviceWriteService {
       }
     }
     const setpointW = toTargetPowerCapabilityValue(command.setpointW, surface.range);
-    await this.setCapability(deviceId, HOME_BATTERY_SETPOINT_CAPABILITY_ID, setpointW);
+    await this.setCapability(
+      deviceId, HOME_BATTERY_SETPOINT_CAPABILITY_ID, toBatterySetpointCapabilityValue(binding, setpointW),
+    );
     return { kind: 'written', setpointW };
   }
 
@@ -368,7 +388,9 @@ export class DeviceWriteService {
 
   /**
    * Hand a battery back: `target_power` 0 first, so the battery is idle before
-   * anyone else holds it, then the claim capability is restored to the value
+   * anyone else holds it (an exact 0 in every app's sign, never the binding's
+   * 0 W hold value: an app that reads 0 as its own idle mode is handed back
+   * in it), then the claim capability is restored to the value
    * recorded before PELS claimed it. The restore is written even when the 0 W
    * write failed: a battery back under its own mode no longer follows the
    * setpoint, while one left under Homey's claim would hold its last setpoint

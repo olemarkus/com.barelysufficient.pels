@@ -286,7 +286,8 @@ Check these, in order:
   restarts.
 - **The battery's app cannot take commands from Homey.** PELS needs an app that
   lets Homey set the battery's charge and discharge power, and offers a Homey or
-  API mode. Sessy and Marstek Venus are examples of apps that do. Without one,
+  API mode. Sessy, Marstek Venus, Anker SOLIX, Zinvolt, AlphaESS, SOLARWATT and SolarEdge
+  are examples of batteries whose apps do. Without one,
   the battery's card reads "PELS can only watch it: its app does not give
   Homey control" and offers no Power-limit control.
 

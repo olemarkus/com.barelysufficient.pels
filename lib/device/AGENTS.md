@@ -27,8 +27,10 @@ Realtime observations update the observed view before any convergence decision. 
 
 ## Integration adapters
 
-Tesla vehicle charging, Easee, Enua, Zaptec, Futurehome, OSO, SMA and KNX interpretation belongs in
-`tesla/`, `easee/`, `enua/`, `zaptec/`, `futurehome/`, `oso/`, `sma/` and `knx/`.
+Tesla vehicle charging, Easee, Enua, Zaptec, Futurehome, OSO, SMA, KNX, Sessy, Anker SOLIX and Zinvolt
+interpretation belongs in `tesla/`, `easee/`, `enua/`, `zaptec/`, `futurehome/`, `oso/`, `sma/`, `knx/`,
+`sessy/`, `anker/` and `zinvolt/`. A home battery's control binding (claim, setpoint sign, range defaults)
+is the adapter's `homeBatteryBinding`; see `notes/battery-vendor-bindings.md`.
 Each implements the common `DeviceAdapter` interface;
 only `deviceAdapterRegistry.ts` imports their entrypoints. Integrations do not
 import each other. Common transport dispatches adapter operations and publishes
