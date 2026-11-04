@@ -148,12 +148,12 @@ test.each([false, true])('current timeout preserves its actual writable=%s route
   await control.save('charger', selected);
   get.mockResolvedValue([{ id: 'homey:app:com.zaptec:go2_installation_current_control' }]);
   const timeout = new HomeyRequestTimeoutError('POST', '/api/manager/flow/flowcardaction/current/run');
-  vi.spyOn(access, 'runCurrentAction').mockRejectedValue(timeout);
+  vi.spyOn(access, 'runAction').mockRejectedValue(timeout);
   const capabilityWrite = vi.fn().mockRejectedValue(timeout);
   const command = control.writeCurrent(zaptec(writable), 10, capabilityWrite);
   if (writable) {
     await expect(command).rejects.toBe(timeout);
-    expect(access.runCurrentAction).not.toHaveBeenCalled();
+    expect(access.runAction).not.toHaveBeenCalled();
   } else {
     await expect(command).rejects.toBeInstanceOf(SteppedLoadTransportError);
     await expect(command).rejects.toMatchObject({ transport: 'homey_action', cause: timeout });

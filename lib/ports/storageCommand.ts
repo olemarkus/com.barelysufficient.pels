@@ -17,17 +17,18 @@ export type StoragePowerCommand = {
   setpointW: number;
 };
 
-export type StorageReleaseCommand = {
-  kind: 'storage_release';
-  deviceId: string;
-  /**
-   * The claim value the battery held before PELS first claimed it, from the
-   * owner's durable claim record. Whether the battery is still PELS's to hand
-   * back, and whether its claim capability declares this value, is the owner's
-   * decision (it holds the claim time); transport writes unconditionally.
-   */
-  restoreClaimValue: string;
-};
+/**
+ * Hand a battery back. A battery taken over through a claim capability gets
+ * `restoreClaimValue`: the claim value it held before PELS first claimed it,
+ * from the owner's durable claim record. Whether the battery is still PELS's
+ * to hand back, and whether its claim capability declares this value, is the
+ * owner's decision (it holds the claim time); transport writes
+ * unconditionally. A claim-less battery driven through its app's actions gets
+ * `handBack: 'app_actions'`: its integration's own hand-back actions.
+ */
+export type StorageReleaseCommand =
+  | { kind: 'storage_release'; deviceId: string; restoreClaimValue: string }
+  | { kind: 'storage_release'; deviceId: string; handBack: 'app_actions' };
 
 export type StorageCommand = StoragePowerCommand | StorageReleaseCommand;
 

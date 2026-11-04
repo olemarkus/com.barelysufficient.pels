@@ -17,26 +17,45 @@ export type { StorageReleaseReason } from '../planContract/storageDecision';
 export type HomeBatteryClaimRead = { kind: 'unreported' } | HomeBatteryClaimObservation;
 
 /**
+ * Whether a command PELS sent holds until PELS sends another (`none`), or
+ * must be sent again every `everyMs` while it holds, because the battery's app
+ * lets a command run out on its own countdown.
+ */
+export type BatteryCommandKeepAlive = { kind: 'none' } | { kind: 'resend'; everyMs: number };
+
+/**
  * A device as the battery control owner reads it, resolved by the device
  * transport from its snapshot (`readBatteryControl` on `DeviceTransport`): not
  * observed (yet), not a home battery at all, a battery PELS can only observe
- * (no setpoint surface), or one it can drive through its setpoint surface.
+ * (no setpoint surface, or app actions its app does not offer), one it can
+ * drive through its setpoint surface, or one it drives through its app's Flow
+ * actions.
+ *
+ * - `app_actions` is claim-less: the battery reports no claim, so PELS's own
+ *   claim record is the claim, and nothing it reports can show a takeover or a
+ *   landed hand-back. `range` is the signed range in PELS's sign, `keepAlive`
+ *   how its commands are kept in force.
+ * - `homey_api_key_missing`: an `app_actions` battery whose actions need the
+ *   owner's Homey API key, and no key that may run Flow actions is saved.
+ *   PELS can neither command nor hand it back until one is.
  */
 export type BatteryControlRead =
   | { kind: 'unobserved' }
   | { kind: 'not_battery' }
   | { kind: 'observe_only' }
+  | { kind: 'homey_api_key_missing' }
   | {
     kind: 'setpoint';
     surface: Extract<HomeBatteryControlSurface, { kind: 'setpoint' }>;
     claim: HomeBatteryClaimRead;
-  };
+  }
+  | { kind: 'app_actions'; range: HomeBatterySetpointRange; keepAlive: BatteryCommandKeepAlive };
 
 /**
  * Why PELS may not claim a battery now:
  *
- * - `not_drivable` — the device is not observed, is no home battery, or its
- *   control surface is not `setpoint`.
+ * - `not_drivable` — the device is not observed, is no home battery, or PELS
+ *   cannot drive it now (no `setpoint` surface, or no runnable app actions).
  * - `watch_only` — its app rejected PELS's claim and refuses control as it is
  *   set up (`isWatchOnly`).
  * - `control_disabled` — the owner turned PELS's control of this battery off.
@@ -58,7 +77,7 @@ export type BatteryControlRead =
  *   cannot tell whether it already owes this battery a hand-back.
  * - `claim_record_unreadable` — this battery's stored record does not parse.
  * - `claim_record_mismatch` — the stored record names a claim capability the
- *   battery no longer claims through.
+ *   battery no longer claims through (or app actions it no longer has).
  * - `claim_unobserved` — the battery has not reported its claim value, so there
  *   is nothing to record to hand back to.
  * - `held_by_other` — the battery is already under Homey's claim and PELS has
@@ -139,8 +158,14 @@ export type BatteryLeverRead =
      * stopped for good: asking for another now would do nothing.
      */
     handBackDeferred: boolean;
-    /** The battery reports Homey's claim value, so a setpoint written now steers it. */
+    /**
+     * The battery reports Homey's claim value, so a setpoint written now steers
+     * it. A claim-less battery (`app_actions`) reports none: engaged while PELS
+     * holds its record.
+     */
     claimEngaged: boolean;
+    /** How a setpoint PELS sent is kept in force (`BatteryCommandKeepAlive`). */
+    keepAlive: BatteryCommandKeepAlive;
     /**
      * PELS may hold the battery: `admitClaim` would admit it now, Main's write
      * fence and a contested claim aside (each holds writes for a moment; neither
@@ -291,8 +316,9 @@ export type BatteryControlOwner = {
   isWatchOnly(deviceId: string): boolean;
   /**
    * Whether PELS can drive this home battery now: `drivable`, `watch_only`
-   * (`isWatchOnly`), or `observe_only` (no setpoint surface, or not observed
-   * yet). What the settings UI and the capacity-control Flow cards ask before
+   * (`isWatchOnly`), `needs_homey_api_key` (its app actions need the owner's
+   * Homey API key), or `observe_only` (no setpoint surface or runnable app
+   * actions, or not observed yet). What the settings UI and the capacity-control Flow cards ask before
    * offering a battery's Power-limit control.
    */
   readControlCapability(deviceId: string): HomeBatteryControlCapability | 'not_battery';

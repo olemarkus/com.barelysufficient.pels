@@ -155,12 +155,18 @@ const resolveParsedClaim = (
  * (`BatteryControlRead`): `undefined` is a device not observed (yet), a
  * snapshot without the home-battery cluster is no battery, and a battery
  * without a setpoint surface is one PELS can only observe. A setpoint battery
- * that has not reported its claim value reads `unreported`.
+ * that has not reported its claim value reads `unreported`. A battery driven
+ * through its app's actions reads as `readAppActions` reads it now: whether
+ * its actions can run is no parse fact.
  */
-export const toBatteryControlRead = (snapshot: TransportDeviceSnapshot | undefined): BatteryControlRead => {
+export const toBatteryControlRead = (
+    snapshot: TransportDeviceSnapshot | undefined,
+    readAppActions: (deviceId: string) => BatteryControlRead,
+): BatteryControlRead => {
     if (snapshot === undefined) return { kind: 'unobserved' };
     if (!isHomeBatterySnapshot(snapshot)) return { kind: 'not_battery' };
     const surface = snapshot.homeBattery.controlSurface;
+    if (surface.kind === 'app_actions') return readAppActions(snapshot.id);
     if (surface.kind !== 'setpoint') return { kind: 'observe_only' };
     // No claim cluster is a battery that has reported no claim value yet.
     const claim: HomeBatteryClaimRead = snapshot.batteryClaim === undefined

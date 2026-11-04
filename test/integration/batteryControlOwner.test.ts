@@ -574,6 +574,7 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
       claimHeld: false,
       handBackDeferred: false,
       claimEngaged: false,
+      keepAlive: { kind: 'none' },
       admissible: true,
       verdict: 'unverified',
     });
@@ -661,5 +662,81 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
 
     expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, restoreClaimValue: 'anti_feed' }]);
     expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+});
+
+describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
+  const RANGE = { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 };
+  const appActions = (): BatteryControlRead => ({
+    kind: 'app_actions', range: RANGE, keepAlive: { kind: 'resend', everyMs: 150_000 },
+  });
+
+  it('records a claim of its own before the first command, and holds it from that record alone', async () => {
+    const { owner, settings } = buildOwner({ batteries: { [BATTERY]: appActions() } });
+    expect(owner.readControlCapability(BATTERY)).toBe('drivable');
+    expect(owner.readControl(BATTERY)).toMatchObject({
+      kind: 'setpoint', range: RANGE, claimHeld: false, claimEngaged: false, admissible: true,
+      keepAlive: { kind: 'resend', everyMs: 150_000 },
+    });
+
+    await expect(owner.dispatchSetpoint(BATTERY, async () => 1200))
+      .resolves.toEqual({ status: 'dispatched', setpointW: 1200 });
+
+    expect(settings.get(CLAIM_KEY)).toEqual({ handBack: 'app_actions', claimedAtMs: T0 });
+    // Long after the confirmation window nothing can read as a takeover: there is no claim to observe.
+    vi.setSystemTime(WINDOW_OVER + 60 * 60_000);
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    expect(owner.readControl(BATTERY)).toMatchObject({ claimHeld: true, claimEngaged: true, handBackDeferred: false });
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'admitted' });
+    expect(owner.isManaged(BATTERY)).toBe(true);
+  });
+
+  it('hands back through its app\'s hand-back actions and drops the record', async () => {
+    const { owner, settings, commands } = buildOwner({ batteries: { [BATTERY]: appActions() } });
+    await owner.dispatchSetpoint(BATTERY, async () => -800);
+
+    await expect(owner.releaseClaim(BATTERY, 'idle')).resolves.toBe('released');
+
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions' }]);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it('recovers a record a previous run left with the hand-back actions', async () => {
+    const settings = settingsStore({ [CLAIM_KEY]: { handBack: 'app_actions', claimedAtMs: T0 - 60_000 } });
+    const { owner, commands } = buildOwner({ settings, batteries: { [BATTERY]: appActions() } });
+
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions' }]);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it('only watches it without a usable Homey API key, and hands back once a key is saved', async () => {
+    const batteries: Record<string, BatteryControlRead> = { [BATTERY]: appActions() };
+    const { owner, settings, commands } = buildOwner({ batteries });
+    await owner.dispatchSetpoint(BATTERY, async () => 500);
+    batteries[BATTERY] = { kind: 'homey_api_key_missing' };
+
+    expect(owner.readControlCapability(BATTERY)).toBe('needs_homey_api_key');
+    expect(owner.readControl(BATTERY)).toEqual({ kind: 'none' });
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'not_drivable' });
+    await expect(owner.releaseClaim(BATTERY, 'not_admissible')).resolves.toBe('not_released');
+    expect(commands).toEqual([]);
+    expect(settings.get(CLAIM_KEY)).toEqual({ handBack: 'app_actions', claimedAtMs: T0 });
+
+    batteries[BATTERY] = appActions();
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions' }]);
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it('refuses a record that names a claim capability the battery no longer claims through', () => {
+    const settings = settingsStore({ [CLAIM_KEY]: record('anti_feed', T0 - 60_000) });
+    const { owner } = buildOwner({ settings, batteries: { [BATTERY]: appActions() } });
+
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'claim_record_mismatch' });
   });
 });

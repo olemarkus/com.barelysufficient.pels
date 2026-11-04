@@ -5,20 +5,32 @@ import type { SettingsPort } from '../../ports/homeyRuntime';
 import { HomeyRequestTimeoutError } from '../../utils/errorUtils';
 import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
 
-/** An adapter-resolved Homey action, never supplied by the settings UI. */
-export type ChargingCurrentAction = {
+/** An adapter-resolved Homey Flow action card run, never supplied by the settings UI. */
+export type HomeyFlowAction = {
   ownerUri: string;
   cardId: string;
   args: Readonly<Record<string, unknown>>;
 };
 
+/**
+ * What an action is run for: a charger's current (`chargingCurrentControl.ts`)
+ * or a home battery's command or hand-back (`homeBatteryAppActions.ts`). It
+ * names the failure event only; every run follows the same rules.
+ */
+export type HomeyActionPurpose = 'charging_current' | 'home_battery';
+
+const ACTION_FAILED_EVENT: Record<HomeyActionPurpose, string> = {
+  charging_current: 'charging_current_action_failed',
+  home_battery: 'home_battery_action_failed',
+};
+
 /** Configuration, not a cache. Only this backend owner reads or writes it. */
-export const CHARGING_ACCESS_KEY = '_homey_flow_api_key';
+export const HOMEY_FLOW_API_KEY = '_homey_flow_api_key';
 const READ_TIMEOUT_MS = 10_000;
 const WRITE_TIMEOUT_MS = 15_000;
 const LATE_RESPONSE_TIMEOUT_MS = 120_000;
 
-export type ChargingAccessHomey = {
+export type HomeyActionAccessHomey = {
   settings: SettingsPort;
   api: { getLocalUrl(): Promise<string> };
   cloud: { getHomeyId(): Promise<string> };
@@ -32,16 +44,20 @@ function readKey(value: unknown): string {
 }
 
 /**
- * Owns one Homey's optional user key. App credentials continue to own ordinary
- * reads and capability writes. Checking or saving access sends no device command.
+ * Owns one Homey's optional user key, the owner's Homey API key with Flow
+ * permission, and runs the device-owned Flow action cards that only it may run:
+ * a charger's current and a home battery's command, whichever integration
+ * resolved them. One key, one generation and one in-flight guard per device
+ * serve both. App credentials continue to own ordinary reads and capability
+ * writes. Checking or saving access sends no device command.
  */
-export class ChargingAccess {
+export class HomeyActionAccess {
   private key = '';
   private generation = 0;
   private accessState: ChargingAccessStatus['state'] = 'not_configured';
   private readonly inFlight = new Map<string, Promise<unknown>>();
 
-  constructor(private readonly homey: ChargingAccessHomey, private readonly logger: Pick<Logger, 'structuredLog'>) {}
+  constructor(private readonly homey: HomeyActionAccessHomey, private readonly logger: Pick<Logger, 'structuredLog'>) {}
 
   status(): ChargingAccessStatus {
     this.sync();
@@ -69,22 +85,33 @@ export class ChargingAccess {
     await this.verify(candidate);
     // Removal or replacement while validation was outstanding wins.
     if (generation !== this.generation) throw new ChargingAccessError('unavailable');
-    this.homey.settings.set(CHARGING_ACCESS_KEY, candidate);
+    this.homey.settings.set(HOMEY_FLOW_API_KEY, candidate);
     this.key = candidate;
     this.accessState = 'ready';
     return this.status();
   }
 
   remove(): ChargingAccessStatus {
-    this.homey.settings.unset(CHARGING_ACCESS_KEY);
+    this.homey.settings.unset(HOMEY_FLOW_API_KEY);
     this.generation++;
     this.key = '';
     this.accessState = 'not_configured';
     return this.status();
   }
 
-  /** Called only by device transport under the actuator's current command. */
-  async runCurrentAction(deviceId: string, action: ChargingCurrentAction, assertAuthorized: () => void): Promise<void> {
+  /**
+   * Run one action card for `deviceId`. Called only by device transport under
+   * the actuator's current command. One action per device runs at a time: a
+   * second while one is outstanding (even past its caller's timeout) is
+   * refused, never queued. `assertAuthorized` is checked again just before the
+   * POST, after the Homey target resolved.
+   */
+  async runAction(
+    deviceId: string,
+    action: HomeyFlowAction,
+    purpose: HomeyActionPurpose,
+    assertAuthorized: () => void,
+  ): Promise<void> {
     this.sync();
     // A transient scope-check failure must not require a settings visit to
     // recover. Recheck on the next planned command; never retry its POST.
@@ -112,7 +139,7 @@ export class ChargingAccess {
       if (generation === this.generation && error instanceof ChargingAccessError
         && error.reason === 'permission_denied') this.noteFailure(error);
       this.logger.structuredLog.warn({
-        event: 'charging_current_action_failed', deviceId,
+        event: ACTION_FAILED_EVENT[purpose], deviceId,
         reasonCode: error instanceof ChargingAccessError ? error.reason : 'unavailable',
       });
     }).finally(() => {
@@ -133,8 +160,8 @@ export class ChargingAccess {
 
   private sync(): void {
     try {
-      const listed = this.homey.settings.getKeys().includes(CHARGING_ACCESS_KEY);
-      const raw: unknown = this.homey.settings.get(CHARGING_ACCESS_KEY);
+      const listed = this.homey.settings.getKeys().includes(HOMEY_FLOW_API_KEY);
+      const raw: unknown = this.homey.settings.get(HOMEY_FLOW_API_KEY);
       if (!listed && (raw === null || raw === undefined)) {
         if (this.key) this.generation++;
         this.key = '';

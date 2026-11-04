@@ -993,7 +993,7 @@ describe('native stepped-load wiring', () => {
       await control.save('charger', { method: 'built_in', confirmation: 'single_charger' });
       const timeout = new HomeyRequestTimeoutError('GET', '/api/manager/flow/flowcardaction');
       get.mockRejectedValue(timeout);
-      const actionWrite = vi.spyOn(control.access, 'runCurrentAction');
+      const actionWrite = vi.spyOn(control.access, 'runAction');
       const capabilityWrite = vi.fn();
       let metadataFailure: unknown;
       const ctx = steppedCommandContext(async () => {

@@ -68,7 +68,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     getHomeBatteryCard: (deviceId) => readHomeBatteryCard(
       deviceManager.getSnapshotByDeviceId(deviceId),
       ctx.observer.getObservedRecord(deviceId),
-      scope.isBatteryWatchOnly(deviceId),
+      scope.readBatteryControlCapability(deviceId),
     ),
     getSteppedLoadProfileById: () => {
       const map = new Map<string, SteppedLoadProfile>();

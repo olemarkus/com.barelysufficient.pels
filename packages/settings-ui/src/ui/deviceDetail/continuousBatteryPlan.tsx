@@ -121,6 +121,7 @@ const save = (current: BatteryPlanSession, config: ContinuousBatteryPlanConfig):
 
 const blockedReasonFor = (device: SettingsUiDeviceDetailItem): string => {
   if (getHomeIdForUiDevice(device.id) !== MAIN_HOME_ID) return 'Continuous battery planning is available in the main home.';
+  if (device.batteryControl === 'needs_homey_api_key') return 'Add a Homey API key with Flow permission to let PELS execute the battery plan.';
   if (device.batteryControl !== 'drivable') return 'The battery app must give Homey a power setting and a Homey or API control mode.';
   if (!resolveManagedState(device.id)) return 'Turn on Managed by PELS to let PELS plan battery use.';
   if (!resolveBatteryPowerLimitOn(device.id)) return 'Turn on Power-limit control to let PELS execute the battery plan.';

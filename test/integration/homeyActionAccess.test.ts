@@ -1,11 +1,11 @@
-import { ChargingAccess, CHARGING_ACCESS_KEY, type ChargingAccessHomey } from '../../lib/device/transport/chargingAccess';
+import { HomeyActionAccess, HOMEY_FLOW_API_KEY, type HomeyActionAccessHomey } from '../../lib/device/transport/homeyActionAccess';
 import { getLogger } from '../../lib/logging/logger';
 
 const KEY = 'private-test-credential';
 const action = { ownerUri: 'homey:device:charger', cardId: 'homey:device:charger:charge_current', args: { current: 6 } };
 function fixture() {
   const values = new Map<string, unknown>();
-  const homey: ChargingAccessHomey = {
+  const homey: HomeyActionAccessHomey = {
     settings: {
       get: (key) => values.get(key), getKeys: () => [...values.keys()],
       set: (key, value) => { values.set(key, value); }, unset: (key) => { values.delete(key); },
@@ -13,7 +13,7 @@ function fixture() {
     api: { getLocalUrl: async () => 'http://homey.local' },
     cloud: { getHomeyId: async () => 'test-homey' },
   };
-  return { values, homey, access: new ChargingAccess(homey, { structuredLog: getLogger('test') }) };
+  return { values, homey, access: new HomeyActionAccess(homey, { structuredLog: getLogger('test') }) };
 }
 function response(body: unknown, status = 200) {
   return { status, ok: status < 400, headers: { get: () => 'test-homey' }, json: async () => body };
@@ -26,7 +26,7 @@ test('checks effective Flow scope before saving; exposes no credential', async (
   vi.stubGlobal('fetch', fetchMock);
   const { access, values } = fixture();
   expect(await access.save({ key: KEY })).toEqual({ configured: true, state: 'ready' });
-  expect(values.get(CHARGING_ACCESS_KEY)).toBe(KEY);
+  expect(values.get(HOMEY_FLOW_API_KEY)).toBe(KEY);
   expect(JSON.stringify(access.status())).not.toContain(KEY);
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(fetchMock.mock.calls[0][1].method).toBe('GET');
@@ -36,7 +36,7 @@ test('rejects readonly scope without replacing a saved key', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ intersectedScopes: ['homey.flow.readonly'] })));
   const { access, values } = fixture();
   await expect(access.save({ key: KEY })).rejects.toThrow('Flow permission');
-  expect(values.has(CHARGING_ACCESS_KEY)).toBe(false);
+  expect(values.has(HOMEY_FLOW_API_KEY)).toBe(false);
 });
 
 test('executes one adapter action, without retry or app-token fallback', async () => {
@@ -46,7 +46,7 @@ test('executes one adapter action, without retry or app-token fallback', async (
   vi.stubGlobal('fetch', fetchMock);
   const { access } = fixture();
   await access.save({ key: KEY });
-  await access.runCurrentAction('charger', action, () => {});
+  await access.runAction('charger', action, 'charging_current', () => {});
   expect(fetchMock).toHaveBeenCalledTimes(2);
   const [url, options] = fetchMock.mock.calls[1];
   expect(String(url)).toContain('homey%3Adevice%3Acharger%3Acharge_current/run');
@@ -60,7 +60,7 @@ test('removal while resolving the Homey address prevents a stale command', async
   await access.save({ key: KEY });
   let resolveAddress!: (value: string) => void;
   homey.api.getLocalUrl = () => new Promise((resolve) => { resolveAddress = resolve; });
-  const pending = access.runCurrentAction('charger', action, () => {});
+  const pending = access.runAction('charger', action, 'charging_current', () => {});
   access.remove();
   resolveAddress('http://homey.local');
   await expect(pending).rejects.toThrow('unavailable');
@@ -75,11 +75,11 @@ test('caller timeout retains the per-device lock until the remote request comple
   vi.stubGlobal('fetch', fetchMock);
   const { access } = fixture();
   await access.save({ key: KEY });
-  const pending = access.runCurrentAction('charger', action, () => {});
+  const pending = access.runAction('charger', action, 'charging_current', () => {});
   const rejected = expect(pending).rejects.toThrow();
   await vi.advanceTimersByTimeAsync(15_000);
   await rejected;
-  await expect(access.runCurrentAction('charger', action, () => {})).rejects.toThrow('unavailable');
+  await expect(access.runAction('charger', action, 'charging_current', () => {})).rejects.toThrow('unavailable');
   expect(fetchMock).toHaveBeenCalledTimes(2);
   resolveWrite(response({ error: null }));
   await vi.advanceTimersByTimeAsync(0);
@@ -100,10 +100,10 @@ test.each(['vendor', 'server', 'network'])('a %s command failure preserves acces
   vi.stubGlobal('fetch', fetchMock);
   const { access } = fixture();
   await access.save({ key: KEY });
-  await expect(access.runCurrentAction('charger', action, () => {})).rejects.toThrow('unavailable');
+  await expect(access.runAction('charger', action, 'charging_current', () => {})).rejects.toThrow('unavailable');
   expect(access.status()).toEqual({ configured: true, state: 'ready' });
-  await access.runCurrentAction('other-charger', action, () => {});
-  await access.runCurrentAction('charger', action, () => {});
+  await access.runAction('other-charger', action, 'charging_current', () => {});
+  await access.runAction('charger', action, 'charging_current', () => {});
   expect(fetchMock).toHaveBeenCalledTimes(4);
 });
 
@@ -113,9 +113,9 @@ test.each([401, 403])('an HTTP %i command rejection blocks all further actions u
   vi.stubGlobal('fetch', fetchMock);
   const { access } = fixture();
   await access.save({ key: KEY });
-  await expect(access.runCurrentAction('charger', action, () => {})).rejects.toThrow('Flow permission');
+  await expect(access.runAction('charger', action, 'charging_current', () => {})).rejects.toThrow('Flow permission');
   expect(access.status().state).toBe('permission_denied');
-  await expect(access.runCurrentAction('other-charger', action, () => {})).rejects.toThrow('Flow permission');
+  await expect(access.runAction('other-charger', action, 'charging_current', () => {})).rejects.toThrow('Flow permission');
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
 
@@ -128,7 +128,7 @@ test('a planned command rechecks access after a transient scope-check failure wi
   const { access } = fixture();
   await access.save({ key: KEY });
   expect((await access.check()).state).toBe('unavailable');
-  await access.runCurrentAction('charger', action, () => {});
+  await access.runAction('charger', action, 'charging_current', () => {});
   expect(access.status().state).toBe('ready');
   expect(fetchMock.mock.calls.map(([, options]) => options.method)).toEqual(['GET', 'GET', 'GET', 'POST']);
 });
@@ -137,8 +137,8 @@ test('failed automatic access revalidation sends no device command', async () =>
   const fetchMock = vi.fn().mockRejectedValue(new Error('Connection closed'));
   vi.stubGlobal('fetch', fetchMock);
   const { access, values } = fixture();
-  values.set(CHARGING_ACCESS_KEY, KEY);
-  await expect(access.runCurrentAction('charger', action, () => {})).rejects.toThrow('unavailable');
+  values.set(HOMEY_FLOW_API_KEY, KEY);
+  await expect(access.runAction('charger', action, 'charging_current', () => {})).rejects.toThrow('unavailable');
   expect(fetchMock.mock.calls.map(([, options]) => options.method)).toEqual(['GET']);
 });
 
@@ -147,7 +147,7 @@ test.each(['address', 'identity'])('bounds a stalled Homey %s lookup before maki
   const fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
   const { access, homey, values } = fixture();
-  values.set(CHARGING_ACCESS_KEY, KEY);
+  values.set(HOMEY_FLOW_API_KEY, KEY);
   let resolveLookup!: (value: string) => void;
   const stalled = () => new Promise<string>((resolve) => { resolveLookup = resolve; });
   if (lookup === 'address') homey.api.getLocalUrl = stalled;

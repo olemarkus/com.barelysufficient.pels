@@ -14,7 +14,8 @@ import {
   hasSharedChargingInstallation, resolveChargingCurrentAdapter, resolveChargingCurrentAction,
 } from './chargingCurrentAdapter';
 import type { ChargingCurrentBinding } from './deviceAdapter';
-import { ChargingAccess, type ChargingAccessHomey } from './transport/chargingAccess';
+import { HomeyActionAccess, type HomeyActionAccessHomey } from './transport/homeyActionAccess';
+import { FLOW_ACTION_CARDS_API_PATH } from './flowActionCards';
 import type { Logger } from '../utils/types';
 import type { DeviceControlSettings } from './deviceControlSettings';
 import { getRawFromHomeyApi } from './transport/managerHomeyApi';
@@ -50,7 +51,12 @@ function readSetup(value: unknown): ChargingCurrentSetup | undefined {
 
 /** Owns current-route selection. Binary control remains independent of this choice. */
 export class ChargingCurrentControl {
-  readonly access: ChargingAccess;
+  /**
+   * The owner's Homey API key and the one runner of every app action card
+   * (`HomeyActionAccess`). Built here, where its routes first needed it; the
+   * home-battery action host shares this instance.
+   */
+  readonly access: HomeyActionAccess;
   private readonly settings: SettingsPort;
   readonly sessions: DeviceAdapterSessions;
   private readonly homeLocation = new HubHomeLocation();
@@ -66,7 +72,7 @@ export class ChargingCurrentControl {
   private readonly observedDevices = new Map<string, HomeyDeviceLike>();
 
   constructor(
-    homey: ChargingAccessHomey,
+    homey: HomeyActionAccessHomey,
     private readonly logger: Pick<Logger, 'structuredLog'>,
     private readonly getDevices: () => readonly HomeyDeviceLike[],
     private readonly readTrust: () => { connected: boolean; revision: number },
@@ -74,7 +80,7 @@ export class ChargingCurrentControl {
     private readonly deviceSettings: Pick<DeviceControlSettings, 'resolveDevicePowerControlMode'>,
   ) {
     this.settings = homey.settings;
-    this.access = new ChargingAccess(homey, logger);
+    this.access = new HomeyActionAccess(homey, logger);
     this.sessions = new DeviceAdapterSessions(this.homeLocation);
     // Unreadable, nothing is held back until the next scan; that scan's save
     // rewrites whatever rows the store still holds.
@@ -324,14 +330,15 @@ export class ChargingCurrentControl {
       await setCapability(adapter.current.capabilityId, currentA);
       return 'native_capability';
     }
-    const inventory = await getRawFromHomeyApi('manager/flow/flowcardaction').catch((cause: unknown) => {
+    const inventory = await getRawFromHomeyApi(FLOW_ACTION_CARDS_API_PATH).catch((cause: unknown) => {
       throw new Error('Unable to read charging-current action metadata', { cause });
     });
     // Selection can change while Homey is answering the metadata read.
     if (!this.routesBuiltIn(device.id)) throw new Error('Charging-current control changed.');
     this.assertInstallation(adapter);
     this.assertControlAllowed(device);
-    await this.access.runCurrentAction(device.id, resolveChargingCurrentAction(adapter, inventory, currentA), () => {
+    const action = resolveChargingCurrentAction(adapter, inventory, currentA);
+    await this.access.runAction(device.id, action, 'charging_current', () => {
       if (!this.routesBuiltIn(device.id)) throw new Error('Charging-current control changed.');
       this.assertControlAllowed(device);
       this.assertInstallation(adapter);

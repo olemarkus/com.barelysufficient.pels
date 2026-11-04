@@ -1,6 +1,7 @@
 import { getDeviceAdapter } from './deviceAdapterRegistry';
 import type { HomeyDeviceLike } from '../utils/types';
-import type { ChargingCurrentAction } from './transport/chargingAccess';
+import type { HomeyFlowAction } from './transport/homeyActionAccess';
+import { readFlowActionCardIds, resolveDeviceActionCard } from './flowActionCards';
 
 import type { ChargingCurrentBinding } from './deviceAdapter';
 
@@ -13,25 +14,13 @@ export function resolveChargingCurrentAction(
   adapter: ChargingCurrentBinding,
   inventory: unknown,
   currentA: number,
-): ChargingCurrentAction {
+): HomeyFlowAction {
   if (!Number.isInteger(currentA) || currentA < 6 || currentA > 32) throw new Error('Charging current must be 6–32 A.');
-  const ownerUri = `homey:device:${adapter.deviceId}`;
-  const cardId = `${ownerUri}:${adapter.actionId}`;
-  const cards = actionCards(inventory);
-  const card = cards.find((entry) => typeof entry === 'object' && entry !== null
-    && 'id' in entry && entry.id === cardId);
-  if (card) return {
-    ownerUri, cardId,
-    args: adapter.currentArguments(currentA),
-  };
-  const appCardId = `${adapter.appUri}:${adapter.actionId}`;
-  const appCard = cards.find((entry) => typeof entry === 'object' && entry !== null
-    && 'id' in entry && entry.id === appCardId);
-  if (!appCard) throw new Error('The charging-current action is unavailable in Homey.');
-  return {
-    ownerUri: adapter.appUri, cardId: appCardId,
-    args: { device: { id: adapter.deviceId }, ...adapter.currentArguments(currentA) },
-  };
+  const action = resolveDeviceActionCard(readFlowActionCardIds(inventory), adapter.appUri, {
+    deviceId: adapter.deviceId, actionId: adapter.actionId, args: adapter.currentArguments(currentA),
+  });
+  if (!action) throw new Error('The charging-current action is unavailable in Homey.');
+  return action;
 }
 
 export function hasSharedChargingInstallation(
@@ -41,10 +30,4 @@ export function hasSharedChargingInstallation(
   const { scope } = adapter;
   return scope.kind === 'installation' && devices.some((device) => device.id !== adapter.deviceId
     && adapter.sharesInstallation(device));
-}
-
-function actionCards(inventory: unknown): unknown[] {
-  if (Array.isArray(inventory)) return inventory;
-  if (typeof inventory === 'object' && inventory !== null) return Object.values(inventory);
-  return [];
 }

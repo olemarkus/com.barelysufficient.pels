@@ -1,4 +1,4 @@
-import type { HomeBatteryClaimBinding, HomeBatteryBinding, TargetPowerDefaults } from './deviceAdapter';
+import type { HomeBatteryCapabilityBinding, HomeBatteryClaimBinding, TargetPowerDefaults } from './deviceAdapter';
 import type { HomeyDeviceLike } from '../utils/types';
 
 /**
@@ -25,7 +25,7 @@ export const STANDARD_HOME_BATTERY_CLAIM: HomeBatteryClaimBinding = {
  */
 export const HOMEY_TARGET_POWER_DEFAULTS: TargetPowerDefaults = { minW: -25000, maxW: 25000, stepW: 1 };
 
-export const STANDARD_HOME_BATTERY_BINDING: HomeBatteryBinding = {
+export const STANDARD_HOME_BATTERY_BINDING: HomeBatteryCapabilityBinding = {
   kind: 'capability',
   claims: [STANDARD_HOME_BATTERY_CLAIM],
   setpointSign: 1,
@@ -49,4 +49,15 @@ export const isDeviceOfApp = (device: HomeyDeviceLike, appId: string): boolean =
   if (normalizeText(device.driverUri ?? device.driver?.uri) === ownerUri) return true;
   const driverId = normalizeText(device.driverId ?? device.driver?.id);
   return driverId.startsWith(`${ownerUri}:`) || driverId.startsWith(`${appId}:`);
+};
+
+/**
+ * Whether `device` is one of app `appId`'s `driverId` driver (such as
+ * `com.sigenergy` and `plant`), by its driver id with or without the
+ * `homey:app:` prefix. An integration passes its own ids; common code never
+ * calls this with one.
+ */
+export const isDeviceOfAppDriver = (device: HomeyDeviceLike, appId: string, driverId: string): boolean => {
+  const id = normalizeText(device.driverId ?? device.driver?.id);
+  return id === `homey:app:${appId}:${driverId}` || id === `${appId}:${driverId}`;
 };

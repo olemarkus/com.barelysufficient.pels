@@ -58,9 +58,10 @@ describe('BatteryClaimStore', () => {
   it('stores, reads back and removes one record per battery', () => {
     const settings = settingsStore({ other: 1 });
     const store = new BatteryClaimStore(settings);
-    const record = { capabilityId: 'target_power_mode', previousValue: 'anti_feed', claimedAtMs: 1_000 } as const;
+    const stored = { capabilityId: 'target_power_mode', previousValue: 'anti_feed', claimedAtMs: 1_000 } as const;
+    const record = { kind: 'claim_capability', ...stored } as const;
     expect(store.write('battery-1', record)).toBe(true);
-    expect(settings.get(key)).toEqual(record);
+    expect(settings.get(key)).toEqual(stored);
     const read = store.readAll();
     expect(read.status === 'resolved' ? Object.fromEntries(read.records) : read).toEqual({ 'battery-1': record });
     expect(store.remove('battery-1')).toBe(true);
@@ -78,10 +79,24 @@ describe('BatteryClaimStore', () => {
       })).readAll();
       expect(read.status === 'resolved'
         ? { records: Object.fromEntries(read.records), unreadable: read.unreadableDeviceIds }
-        : read).toEqual({ records: { 'battery-2': good }, unreadable: ['battery-1'] });
+        : read).toEqual({ records: { 'battery-2': { kind: 'claim_capability', ...good } }, unreadable: ['battery-1'] });
     }
     expect(new BatteryClaimStore(settingsStore({ other: 1 }, { keyListThrows: true })).readAll())
       .toEqual({ status: 'unavailable' });
+  });
+
+  it('stores a claim-less battery\'s record as its app\'s hand-back, and reads it back', () => {
+    const settings = settingsStore({});
+    const store = new BatteryClaimStore(settings);
+    expect(store.write('battery-1', { kind: 'app_actions', claimedAtMs: 7 })).toBe(true);
+    expect(settings.get(key)).toEqual({ handBack: 'app_actions', claimedAtMs: 7 });
+    const read = store.readAll();
+    expect(read.status === 'resolved' ? Object.fromEntries(read.records) : read)
+      .toEqual({ 'battery-1': { kind: 'app_actions', claimedAtMs: 7 } });
+    for (const junk of [{ handBack: 'app_actions' }, { handBack: 'app_actions', claimedAtMs: 1, previousValue: 'x' }]) {
+      const junkRead = new BatteryClaimStore(settingsStore({ [key]: junk })).readAll();
+      expect(junkRead.status === 'resolved' ? junkRead.unreadableDeviceIds : junkRead).toEqual(['battery-1']);
+    }
   });
 
   it('reads an empty store as no records', () => {
@@ -92,6 +107,7 @@ describe('BatteryClaimStore', () => {
   it('reports a write the store refused, so the battery is not claimed', () => {
     const settings: SettingsPort = { ...settingsStore({}), set: () => { throw new Error('busy'); } };
     expect(new BatteryClaimStore(settings).write('battery-1', {
+      kind: 'claim_capability',
       capabilityId: 'control_strategy',
       previousValue: 'POWER_STRATEGY_NOM',
       claimedAtMs: 1,

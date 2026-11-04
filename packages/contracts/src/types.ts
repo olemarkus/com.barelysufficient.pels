@@ -1000,8 +1000,12 @@ export type HomeBatteryObserveOnlyReason =
  * How PELS could drive a home battery, resolved once at parse from its declared
  * capabilities (`resolveBatteryControlSurface`, `lib/device/batteryControlWiring.ts`).
  * `setpoint` names the claim capability and the signed range; `observe_only`
- * says why there is none. The transport resolves the actuator's storage intents
- * against it; a battery that is `observe_only` refuses them.
+ * says why there is none. `app_actions`: its integration drives it through the
+ * app's own Flow action cards with the owner's Homey API key; there is no claim
+ * capability, and whether the actions can run now is read when asked
+ * (`lib/device/homeBatteryAppActions.ts`). The transport resolves the
+ * actuator's storage intents against it; a battery that is `observe_only`
+ * refuses them.
  */
 export type HomeBatteryControlSurface =
     | {
@@ -1025,6 +1029,7 @@ export type HomeBatteryControlSurface =
         };
         range: HomeBatterySetpointRange;
     }
+    | { kind: 'app_actions' }
     | { kind: 'observe_only'; reason: HomeBatteryObserveOnlyReason };
 
 /**
@@ -1034,13 +1039,17 @@ export type HomeBatteryControlSurface =
  * - `drivable`: a `setpoint` control surface PELS may claim.
  * - `watch_only`: a `setpoint` surface whose app refused PELS's claim for now
  *   (the battery control owner's `isWatchOnly`, a Sessy on its cloud login).
- * - `observe_only`: no setpoint surface (mode-only or on/off): PELS reads the
- *   battery and never commands it.
+ * - `observe_only`: no setpoint surface (mode-only or on/off), or app actions
+ *   the installed app does not offer: PELS reads the battery and never
+ *   commands it.
+ * - `needs_homey_api_key`: PELS drives it through its app's Flow action cards,
+ *   which need the owner's Homey API key with Flow permission, and none that
+ *   may run Flow actions is saved. PELS only watches it until one is.
  *
  * Only a `drivable` battery has a Power-limit control and a place in the
  * priority order that protects anything.
  */
-export type HomeBatteryControlCapability = 'drivable' | 'watch_only' | 'observe_only';
+export type HomeBatteryControlCapability = 'drivable' | 'watch_only' | 'observe_only' | 'needs_homey_api_key';
 
 /**
  * Home-battery descriptor cluster. Present exactly on a device whose class key

@@ -848,6 +848,7 @@ keeps the word for what PELS holds it to do.
 | Reason in its own mode, Power-limit control off (PELS never takes it over: no charge cap, no discharge, no surplus claim) | `Power-limit control is off: its own app is in charge` |
 | Reason in its own mode, its app rejected PELS's claim (a Sessy on its cloud login), for 6 h, or until PELS restarts or its controls change | `PELS can only watch it: its app does not accept control` |
 | Reason in its own mode, a battery PELS cannot claim (no usable signed power setpoint, or no Homey/API mode to switch to) | `PELS can only watch it: its app does not give Homey control` |
+| Reason in its own mode, a battery PELS drives through its app's Flow actions while no Homey API key with Flow permission is saved | `PELS can only watch it: add a Homey API key to let PELS control it` |
 | Battery section subtitle on the device page: drivable / one PELS can only watch | `Control and priority` / `What PELS sees` |
 | Device-list row, a battery PELS cannot drive (watch-only or no setpoint): stands in for the Power-limit control switch, which is not shown | the card's reason line above |
 | Fact line | `64 % charged`; in its own mode also `· supplying` / `· charging` |
