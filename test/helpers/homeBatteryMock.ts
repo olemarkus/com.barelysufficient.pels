@@ -131,3 +131,51 @@ export const buildZinvoltBatteryDevice = (params: { id: string; mode: string }):
   device.setActualCapabilityValue('target_power_mode', params.mode, quiet);
   return device;
 };
+
+/**
+ * A Marstek Venus as com.niewold.marstek 0.9.1 declares its local
+ * `marstek-venus` driver: no `target_power` and no claim capability, only its
+ * readings. PELS drives it through the app's Flow action cards.
+ */
+export const buildMarstekConnectorBatteryDevice = (params: { id: string; measurePowerW?: number }): MockDevice => {
+  const device = new MockDevice(
+    params.id,
+    'Marstek Venus',
+    ['battery_charging_state', 'measure_power', 'measure_battery'],
+    'battery',
+  );
+  device.setDriverIdentity({ driverId: 'homey:app:com.niewold.marstek:marstek-venus' });
+  const quiet = { emitCapabilityEvent: false, emitDeviceUpdate: false };
+  device.setActualCapabilityValue('measure_battery', 55, quiet);
+  device.setActualCapabilityValue('measure_power', params.measurePowerW ?? 0, quiet);
+  device.setActualCapabilityValue('battery_charging_state', 'idle', quiet);
+  return device;
+};
+
+/**
+ * A Sigenergy system as com.sigenergy 0.6.6 declares it: the `battery`
+ * device PELS manages (its `measure_power` is the plant's ESS power) and the
+ * `plant` device (class `other`) whose Flow cards control it, with the rated
+ * powers the app shows as plant settings.
+ */
+export const buildSigenergyDevices = (params: {
+  batteryId: string;
+  plantId: string;
+  ratedChargingPower?: string;
+  ratedDischargingPower?: string;
+}): { battery: MockDevice; plant: MockDevice } => {
+  const quiet = { emitCapabilityEvent: false, emitDeviceUpdate: false };
+  const battery = new MockDevice(params.batteryId, 'Sigenergy battery', ['measure_battery', 'measure_power'], 'battery');
+  battery.setDriverIdentity({ driverId: 'homey:app:com.sigenergy:battery' });
+  battery.setActualCapabilityValue('measure_battery', 55, quiet);
+  battery.setActualCapabilityValue('measure_power', 0, quiet);
+  const plant = new MockDevice(params.plantId, 'Sigenergy plant', ['measure_power.battery', 'ems_work_mode'], 'other');
+  plant.setDriverIdentity({ driverId: 'homey:app:com.sigenergy:plant' });
+  plant.setSettings({
+    ratedChargingPower: params.ratedChargingPower ?? '5 kW',
+    ratedDischargingPower: params.ratedDischargingPower ?? '5 kW',
+  });
+  plant.setActualCapabilityValue('measure_power.battery', 0, quiet);
+  plant.setActualCapabilityValue('ems_work_mode', 'AI mode', quiet);
+  return { battery, plant };
+};

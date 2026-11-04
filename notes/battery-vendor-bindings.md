@@ -102,6 +102,8 @@ Read from the shipped app packages.
 | Sessy (`nl.sessy`) | claim `control_strategy` = `POWER_STRATEGY_API`, rejection = `app_refuses_control`; range defaults -1800/+2200 W | `lib/device/sessy/` |
 | Anker SOLIX (`com.anker.solix` 1.1.0, driver `battery`) | standard claim; `setpointSign` -1 | `lib/device/anker/` |
 | Zinvolt (`com.zinvolt` 1.1.0, drivers `base`, `power`) | standard claim; `zeroSetpointW` 10 | `lib/device/zinvolt/` |
+| Marstek Venus (Marstek Battery Connector, `com.niewold.marstek` 0.9.1, driver `marstek-venus`) | app actions: `marstek_passive_mode` (`power` W, negative charges; `seconds` 300) to command, `marstek_auto_mode` to hand back; expires after 300 s; ±2500 W | `lib/device/marstek/` |
+| Sigenergy (`com.sigenergy` 0.6.6, driver `battery`, cards on the `plant`) | app actions on the plant, kW: charge `force_charge_from_grid`; discharge `set_ess_max_discharge_power` then mode 6; hold mode 1 (Standby); hand back `set_remote_ems` off, then both limits removed; persistent; range from the plant's rated powers | `lib/device/sigenergy/` |
 
 ## What each adapter does and why
 
@@ -126,3 +128,25 @@ someone other than PELS chose it. Counting `INACTIVE` as engaged instead would
 hide an owner who picks Inactive while PELS holds the battery, and would make
 PELS refuse a battery left Inactive. The cost is a 10 W trickle charge during a
 0 W hold.
+
+**Marstek Venus (Connector app).** The local driver declares no
+`target_power`, only readings; its passive-mode card sets a power for a
+countdown (`cd_time`). The package documents the power's sign nowhere (the
+bundled Open API PDFs say only "Setting power, [W]"); the same app titles its
+Manual-mode power "Watt (negative = charge)", so the binding sends PELS's
+charge as a negative power. The executor's sign check is the safety net should
+a firmware read it the other way. PELS sends a 300 s countdown and sends the
+command again every 150 s. The hand-back is the app's Auto mode, the battery's
+own self-consumption. The cloud driver offers no cards and stays watch-only.
+
+**Sigenergy.** The battery device reads the plant's ESS power; control is the
+plant device's cards. The adapter resolves the one `plant` device of the app
+from the device inventory, and the battery is unavailable with none, with two
+(two systems), or with a second `battery` device (both read the same plant, so
+PELS would drive it twice). The range is the plant's rated charge and discharge
+power from its settings; while either is unknown the plant also refuses to
+remove a limit, so PELS does not drive it. The hand-back turns remote EMS off
+first, so the plant runs its own EMS even if removing a limit then fails, and
+then writes both limits back to the rated power. Some firmware returns to Max
+self consumption rather than the mode chosen in mySigen, and a limit the owner
+had set before PELS is not restored; neither is readable through the app.
