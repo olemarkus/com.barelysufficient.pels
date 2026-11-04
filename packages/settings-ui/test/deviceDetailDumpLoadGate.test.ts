@@ -35,6 +35,7 @@ const buildDom = () => {
           <small class="field__hint" id="device-detail-dump-load-disabled-hint" hidden>Unavailable while this device has an active smart task — the task's schedule decides when it runs.</small>
           <small class="field__hint" id="device-detail-dump-load-power-limit-hint" hidden>Turn on Power-limit control above first — PELS needs it to switch this device on and off.</small>
         </div>
+        <small class="field__hint" id="device-detail-solar-pending-hint" hidden></small>
         <section id="device-detail-surplus-section" style="display:none">
           <md-filled-text-field id="device-detail-surplus-delta"></md-filled-text-field>
         </section>
@@ -110,6 +111,7 @@ const openPanel = async (params: OpenPanelParams) => {
 
   const deviceId = params.device.id;
   state.latestDevices = [params.device];
+  state.devicesLoaded = true;
   state.managedMap = { [deviceId]: params.managed ?? true };
   state.controllableMap = { [deviceId]: params.controllable ?? true };
   state.budgetExemptMap = {};
@@ -173,6 +175,24 @@ describe('device detail "Run on solar surplus" (dump-load) gating', () => {
   it('hides the row when the home has no tracked solar device', async () => {
     await openPanel({ hasManagedSolarDevice: false, device: buildBinaryDevice() });
     expect(dumpLoadRow()?.hidden).toBe(true);
+  });
+
+  it('says solar control is on its way, in place of the row, before the first surplus', async () => {
+    const pendingHint = () => document.querySelector('#device-detail-solar-pending-hint') as HTMLElement | null;
+    await openPanel({ hasManagedSolarDevice: true, surplusPoolReachable: false, device: buildBinaryDevice() });
+    expect(dumpLoadRow()?.hidden).toBe(true);
+    expect(pendingHint()?.hidden).toBe(false);
+    expect(pendingHint()?.textContent)
+      .toBe('Solar control appears once PELS sees your solar produce more than the home is using.');
+  });
+
+  it('says nothing about solar in a home without any, or once the row is offered', async () => {
+    const pendingHint = () => document.querySelector('#device-detail-solar-pending-hint') as HTMLElement | null;
+    await openPanel({ hasManagedSolarDevice: false, device: buildBinaryDevice() });
+    expect(pendingHint()?.hidden).toBe(true);
+    await openPanel({ hasManagedSolarDevice: true, device: buildBinaryDevice() });
+    expect(dumpLoadRow()?.hidden).toBe(false);
+    expect(pendingHint()?.hidden).toBe(true);
   });
 
   it('shows the row on a managed plain binary device when solar is present', async () => {

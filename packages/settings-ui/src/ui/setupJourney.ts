@@ -1,7 +1,9 @@
 import { getChosenWholeHomeMeterName } from './homeyEnergyMeter.ts';
 import { settingsPowerSourceSelect } from './dom.ts';
 import { h, render } from 'preact';
-import { hasOpenSmartTask, resolveHomeHasSolar, state } from './state.ts';
+import {
+  hasOpenSmartTask, resolveHomeHasSolar, resolveSolarSurplusPending, SOLAR_SURPLUS_PENDING, state,
+} from './state.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { showTab } from './tabNavigation.ts';
 import { selectHomeScope, subscribeToHomeScope, getHomeScope } from './homeScope.ts';
@@ -155,23 +157,14 @@ const readReviewDevices = (): SetupReviewDevice[] => {
     }));
 };
 
-// Before PELS has seen its first surplus, solar control is waiting, not broken:
-// an evening or winter install simply has not had one yet. Worded like the solar
-// suggestion so it holds for a home that curtails instead of exporting.
-const SOLAR_SURPLUS_PENDING = 'Solar control appears once PELS sees your solar produce more than '
-  + 'the home is using.';
-
 // The known way surplus stays hidden for good is a Flow that reports import
 // without its sign (`resolveSurplusControlAvailable`): the home never shows
 // producing more than it uses. So only a Flow home gets the meter check while
 // solar is still waiting. Worded as the getting-started guide's meter step.
 const FLOW_SIGN_NOTE = 'Your Flow must send net import, negative when exporting.';
 
-// A home with solar that has not shown its first surplus: solar control is on
-// its way, and the review and `Choose what PELS does` say so.
-const solarPending = (): boolean => (
-  state.devicesLoaded && resolveHomeHasSolar() && !state.surplusPoolReachable
-);
+// Solar control on its way: the review and `Choose what PELS does` say so.
+const solarPending = (): boolean => resolveSolarSurplusPending();
 
 const solarPendingNote = (): string => (
   usesFlowMeter() ? `${SOLAR_SURPLUS_PENDING} ${FLOW_SIGN_NOTE}` : SOLAR_SURPLUS_PENDING

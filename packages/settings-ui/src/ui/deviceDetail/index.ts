@@ -42,15 +42,12 @@ import {
 } from './priceOpt.ts';
 import {
   initDeviceDetailSurplusOptHandlers,
-  setDeviceDetailDumpLoadControl,
   setDeviceDetailSurplusValues,
   surplusControlVisibleFor,
   updateSurplusSectionVisibility,
 } from './solarSurplus.ts';
-import {
-  initDeviceDetailSurplusTrackingHandlers,
-  setDeviceDetailSurplusTrackingControl,
-} from './solarSurplusTracking.ts';
+import { initDeviceDetailSurplusTrackingHandlers } from './solarSurplusTracking.ts';
+import { syncDeviceDetailSolarRows } from './solarPendingHint.ts';
 import {
   initDeviceDetailShedHandlers,
   setDeviceDetailShedBehavior,
@@ -242,8 +239,7 @@ const setDeviceDetailControlStates = (deviceId: string, device: SettingsUiDevice
   }
   // Binary sibling: the "Run on solar surplus" dump-load posture row (solarSurplus.ts
   // owns the gate — managed binary device, solar present, not temperature/stepped/EV).
-  setDeviceDetailDumpLoadControl(deviceId, device);
-  setDeviceDetailSurplusTrackingControl(deviceId, device);
+  syncDeviceDetailSolarRows(deviceId, device);
   syncDevicePolicyRows(deviceId, device);
   syncTemperatureControlDisabledRow(device);
 

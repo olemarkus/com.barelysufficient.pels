@@ -339,3 +339,14 @@ export const resolveSurplusControlAvailable = (): boolean => (
 export const resolveHomeHasSolar = (): boolean => (
   resolveHomeExhibitsSolar() || resolveSurplusControlAvailable()
 );
+
+// A home with solar that has not shown its first surplus: solar control is on
+// its way, not broken. An evening or winter install simply has not had one yet.
+export const resolveSolarSurplusPending = (): boolean => (
+  state.devicesLoaded && resolveHomeHasSolar() && !state.surplusPoolReachable
+);
+
+// Worded like the solar suggestion, so it holds for a home that curtails instead
+// of exporting. Setup and the device page both say it.
+export const SOLAR_SURPLUS_PENDING = 'Solar control appears once PELS sees your solar produce more than '
+  + 'the home is using.';
