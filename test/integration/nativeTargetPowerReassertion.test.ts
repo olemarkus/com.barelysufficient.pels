@@ -122,6 +122,20 @@ describe('native watt ownership after Manual control', () => {
     ]);
   });
 
+  it('claims a Zaptec whose mode the app never set without stopping it for a reclaim', async () => {
+    // Zaptec 1.12 declares target_power_mode in its manifest, so a charger paired
+    // or updated under it has the capability with no value until it is written.
+    const device = rawDevice('device', true);
+    const unset = { ...device, capabilitiesObj: { ...device.capabilitiesObj,
+      target_power_mode: { ...device.capabilitiesObj?.target_power_mode, value: null } } };
+    const adapters = new NativeAdaptersFixture();
+    adapters.projectObservation(snapshot('automatic'));
+    adapters.observe(ID, unset);
+    const write = vi.fn().mockResolvedValue(undefined);
+    expect(await adapters.setStep(ID, PROFILE, '6440w', write)).toBe(true);
+    expect(write.mock.calls).toEqual([['target_power', 6440], ['target_power_mode', 'homey']]);
+  });
+
   it('claims an exclusive Zaptec already in device mode without resetting or stopping it', async () => {
     const adapters = new NativeAdaptersFixture();
     adapters.observe(ID, rawDevice('device'));
