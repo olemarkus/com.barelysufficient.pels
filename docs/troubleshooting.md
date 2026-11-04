@@ -284,6 +284,18 @@ Check these, in order:
   "PELS can only watch it: its app does not accept control". Switch the battery
   to its local login in that app; PELS tries again after six hours or when it
   restarts.
+- **No Homey API key for a battery controlled through its app's Flow cards.**
+  A Marstek Venus on the Marstek Battery Connector app and a Sigenergy system
+  take commands only through their app's Flow cards, which PELS runs with a
+  Homey API key with **Flow** permission. Its card then reads "PELS can only
+  watch it: add a Homey API key to let PELS control it". Create the key with
+  [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro) and save it under **Setup → Charging
+  current** on the device page of a supported car or charger; one key serves
+  every device. A Sigenergy battery also needs its plant device paired in the
+  Sigenergy app. If the card instead reads "PELS can only watch it: its app
+  does not give Homey control", the installed app version lacks a card PELS
+  uses, or (Sigenergy) PELS finds no single plant, more than one Sigenergy
+  battery, or the plant has not reported its rated power yet.
 - **The battery's app cannot take commands from Homey.** PELS needs an app that
   lets Homey set the battery's charge and discharge power, and offers a Homey or
   API mode. Sessy, Marstek Venus, Anker SOLIX, Zinvolt, AlphaESS, SOLARWATT and SolarEdge

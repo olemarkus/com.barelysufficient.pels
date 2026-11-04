@@ -19,6 +19,14 @@ The battery's Homey app must let Homey set how much the battery charges and disc
 
 A Sessy needs its local login in the Sessy Homey app, so PELS can switch it to API control.
 
+A Marstek Venus paired with the Marstek Battery Connector app (its local connection) and a Sigenergy system take commands only through their app's own Flow action cards. PELS runs those cards with a Homey API key with **Flow** permission, the same key built-in charger current uses:
+
+1. Create the key with [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro).
+2. Save it in PELS under **Setup → Charging current** on the device page of a supported car or charger. One key works for every device on this Homey.
+3. For Sigenergy, pair the plant device in the Sigenergy app too: PELS controls the battery through it.
+
+Until a key is saved, the battery's card reads `PELS can only watch it: add a Homey API key to let PELS control it`. These apps report no control mode back to Homey, so a change you make in the battery's own app while PELS holds it is not seen, and PELS's next command replaces it. Turn off **Managed by PELS** or **Power-limit control** to take the battery back.
+
 ## Your battery keeps its own mode until PELS has a job for it
 
 Self-consumption, the battery's own price trading and its own schedule keep running as usual. PELS takes the battery over only while it has a job for it: sharing your solar in priority order, or holding your limit when its turn comes. When the job is done, PELS hands the battery back to the mode it was in.
