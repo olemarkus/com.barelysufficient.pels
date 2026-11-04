@@ -2,7 +2,7 @@ import Homey from 'homey';
 import { getLogger } from '../../lib/logging/logger';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
-import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices } from '../helpers/deviceTransportHarness';
+import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices, onObservedControlState } from '../helpers/deviceTransportHarness';
 import { emitCapability, emitDeviceUpdate, settleLiveFeed } from '../helpers/liveFeedSocketHarness';
 import { buildZaptecCurrentOnlyDevice, buildZaptecTargetPowerDevice } from '../helpers/zaptecDeviceFixture';
 import { capabilityReadings } from '../helpers/homeyDevicePayload';
@@ -504,9 +504,19 @@ describe('Zaptec native target power', () => {
     vi.setSystemTime(Date.now() + 1000);
     await emitCapability(device.id, 'target_power', 2530);
     expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBe('2530w');
-    await emitCapability(device.id, 'target_power_mode', 'device');
+
+    const controlChanged = vi.fn();
+    onObservedControlState(transport, controlChanged);
+    await transport.setCapability(device.id, 'target_power_mode', 'device');
+    await emitCapability(
+      device.id, 'target_power_mode', 'device', ownWriteTransactionId(retryPut, device.id, 'target_power_mode'),
+    );
+    expect(controlChanged).toHaveBeenCalledWith(expect.objectContaining({ pelsEcho: true }));
     expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBeUndefined();
+
+    controlChanged.mockClear();
     await emitCapability(device.id, 'target_power_mode', 'homey');
+    expect(controlChanged).toHaveBeenCalledWith(expect.objectContaining({ pelsEcho: false }));
     expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBe('2530w');
   });
 
