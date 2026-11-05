@@ -2706,6 +2706,16 @@ md-filled-button.is-busy {
   min-width: 0;
 }
 
+/* A calm hero has no status chip, and the info button alone would hold an
+   empty row above "Power now". It sits in the section label's row instead:
+   the row pulls the next section up by its own height and the grid gap. */
+.plan-hero__chips--icon-only {
+  justify-content: flex-end;
+  margin-bottom: calc(-1 * (var(--spacing-6) + var(--pels-hero-gap)));
+  position: relative;
+  z-index: 1;
+}
+
 .plan-hero__chip-rail {
   display: flex;
   flex-wrap: wrap;

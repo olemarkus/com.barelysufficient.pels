@@ -14,7 +14,7 @@ import { isFiniteNumber } from '../numberGuards';
  * Minimum live generation (W) worth talking about. Below this the panels are
  * effectively asleep and the line is noise, so the resolver returns `null`.
  * Also reused as the "exporting is negligible" threshold for the
- * "— all used at home" phrasing.
+ * "· all used at home" phrasing.
  */
 export const SOLAR_NOW_MIN_W = 50;
 
@@ -79,8 +79,8 @@ const formatKw = (watts: number): string => `${(watts / 1000).toFixed(1)}\u00A0k
  */
 export const formatSolarNowSubline = (solarNow: SolarNow): string => {
   if (solarNow.exportingW < SOLAR_NOW_MIN_W) {
-    return `Solar now ${formatKw(solarNow.producingW)} — all used at home`;
+    return `Solar now ${formatKw(solarNow.producingW)} · all used at home`;
   }
-  return `Solar now ${formatKw(solarNow.producingW)} — ${formatKw(solarNow.selfUsingW)} at home, `
+  return `Solar now ${formatKw(solarNow.producingW)} · ${formatKw(solarNow.selfUsingW)} at home, `
     + `${formatKw(solarNow.exportingW)} exported`;
 };

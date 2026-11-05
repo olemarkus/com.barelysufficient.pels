@@ -69,7 +69,7 @@ describe('Overview "Solar now" across status-only power pushes', () => {
 
   it('keeps the subline on an Overview refresh after a status-only push', async () => {
     await refreshPlan();
-    expect(solarSubline()?.textContent).toBe('Solar now 3.2\u00A0kW — 1.1\u00A0kW at home, 2.1\u00A0kW exported');
+    expect(solarSubline()?.textContent).toBe('Solar now 3.2\u00A0kW · 1.1\u00A0kW at home, 2.1\u00A0kW exported');
 
     // Runtime-shaped status-only push: no tracker property at all — the
     // emitter omits it and the WebView preserves its cached one.
@@ -85,6 +85,6 @@ describe('Overview "Solar now" across status-only power pushes', () => {
     // must still resolve the solar input from the preserved cached tracker.
     await refreshOverviewPlan();
     await flushAsync();
-    expect(solarSubline()?.textContent).toBe('Solar now 3.2\u00A0kW — 1.1\u00A0kW at home, 2.1\u00A0kW exported');
+    expect(solarSubline()?.textContent).toBe('Solar now 3.2\u00A0kW · 1.1\u00A0kW at home, 2.1\u00A0kW exported');
   });
 });

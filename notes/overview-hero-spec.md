@@ -162,13 +162,13 @@ production is going (`packages/shared-domain/src/solar/solarNow.ts`, gates:
 fresh sample within 60 s, production ≥ 50 W):
 
 ```
-Solar now 3.2 kW — 1.1 kW at home, 2.1 kW exported
+Solar now 3.2 kW · 1.1 kW at home, 2.1 kW exported
 ```
 
 or, when export is under 50 W:
 
 ```
-Solar now 3.2 kW — all used at home
+Solar now 3.2 kW · all used at home
 ```
 
 One line, terse noun phrases (never verb-y clauses that wrap mid-thought).

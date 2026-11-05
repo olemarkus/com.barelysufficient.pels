@@ -101,9 +101,9 @@ export {
 } from '../../../shared-domain/src/settings/exportPriceSchemeChange.ts';
 import type { ExportSchemeChangePlan } from '../../../shared-domain/src/settings/exportPriceSchemeChange.ts';
 
-export const EXPORT_DISABLED_ON_SCHEME_CHANGE_TOAST = 'Price settings saved. Export price turned off — '
-  + 'its units differ between price sources; re-enter it under Electricity prices.';
-export const EXPORT_SHARE_NORMALIZED_TOAST = 'Price settings saved. Export share of spot set to 0 — '
+export const EXPORT_DISABLED_ON_SCHEME_CHANGE_TOAST = 'Price settings saved. Export price turned off, because '
+  + 'its units differ between price sources. Re-enter it under Electricity prices.';
+export const EXPORT_SHARE_NORMALIZED_TOAST = 'Price settings saved. Export share of spot set to 0, because '
   + 'this price source has no spot price.';
 
 export const applyExportSchemeChangePlan = async (
