@@ -760,5 +760,8 @@
   },
   "3.30.0": {
     "en": "PELS can now control Zendure, Huawei LUNA2000, Marstek Venus Connector and Sigenergy home batteries through their apps' Flow cards, using a Homey API key you add on the battery page. If you turn it on, PELS can also sell stored energy when that lowers your cost, and the battery page shows the battery's measured round-trip efficiency. A solar home without an export price now gets a battery plan that stores surplus solar, and setup counts a managed home battery and offers its plan.\n\nAnker SOLIX batteries now charge and discharge in the right direction, and a Zinvolt battery held at 0 W no longer looks taken over by its app. A one-phase charger with no power limit on now climbs to full current in minutes instead of one amp at a time. Electricity prices can now use Power by the Hour for export prices."
+  },
+  "3.30.1": {
+    "en": "Fixed power-level control for Høiax water heaters. Improved home-battery recovery after restarts and upgrades, including returning Sigenergy batteries to automatic control. Battery discharge is no longer counted as spare solar power, and battery-plan setup now asks for the country settings it needs."
   }
 }
