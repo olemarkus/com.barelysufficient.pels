@@ -316,7 +316,7 @@ const HeroChipRow = ({ heroStatus, meta }: { heroStatus: HeroStatus; meta: PlanM
   const statusLabel = gridBinding && heroStatus === 'above-safe-pace'
     ? 'Grid import pressure' : HERO_STATUS_LABEL[heroStatus] ?? null;
   return (
-    <div class="plan-hero__chips">
+    <div class={statusLabel ? 'plan-hero__chips' : 'plan-hero__chips plan-hero__chips--icon-only'}>
       <div class="plan-hero__chip-rail">
         {statusLabel && <Chip label={statusLabel} tone={HERO_STATUS_CHIP_TONE[heroStatus]} />}
       </div>

@@ -64,11 +64,11 @@ describe('resolveSolarNow', () => {
 describe('formatSolarNowSubline', () => {
   it('names the split while exporting materially (terse one-line form)', () => {
     expect(formatSolarNowSubline({ producingW: 3200, exportingW: 2100, selfUsingW: 1100 }))
-      .toBe('Solar now 3.2\u00A0kW — 1.1\u00A0kW at home, 2.1\u00A0kW exported');
+      .toBe('Solar now 3.2\u00A0kW · 1.1\u00A0kW at home, 2.1\u00A0kW exported');
   });
 
   it('collapses to "all used at home" under the 50 W export threshold', () => {
     expect(formatSolarNowSubline({ producingW: 3200, exportingW: 30, selfUsingW: 3170 }))
-      .toBe('Solar now 3.2\u00A0kW — all used at home');
+      .toBe('Solar now 3.2\u00A0kW · all used at home');
   });
 });

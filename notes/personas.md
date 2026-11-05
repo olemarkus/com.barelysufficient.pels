@@ -237,7 +237,7 @@ NL (net-metering phase-out) and DE; nascent in NO.
 
 | Surface | Need (the spec) | Today |
 |---|---|---|
-| Overview | Self-consumption rate + "surplus going to the EV/tank now." | ◐ — the "Solar now" hero subline shows live production split (`3.2 kW — 1.1 kW at home, 2.1 kW exported`); no self-consumption-*rate* figure on the hero yet. |
+| Overview | Self-consumption rate + "surplus going to the EV/tank now." | ◐ — the "Solar now" hero subline shows live production split (`3.2 kW · 1.1 kW at home, 2.1 kW exported`); no self-consumption-*rate* figure on the hero yet. |
 | Budget | Solar-aware budget (own production isn't "spend"). | ✅ — net-import budget, `Before solar:` split, `Export price now` subline, and planning-price scheduling that steers flexible load into sunny hours. |
 | Usage | kWh self-consumed vs exported. | ✅ — the Solar card shows Produced · Used at home (kWh + %) · Exported, plus `Grid cost avoided` / `Earned from export` (today-only). |
 | Smart tasks | "Charge from your own surplus by deadline." | ✅ — the planning price steers deadline EV/heat load into surplus hours, and the create-task preview draws its price curve at that same price. A charger can also match surplus directly (`Charge on solar surplus`); while a smart task is active, the task decides when the device runs (owner ruling 2026-09-25). |

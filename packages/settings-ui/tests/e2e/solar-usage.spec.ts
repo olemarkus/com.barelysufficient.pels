@@ -174,14 +174,14 @@ test.describe('Overview "Solar now" subline', () => {
 
     const subline = page.locator('#plan-hero-solar-now');
     await expect(subline).toBeVisible();
-    await expect(subline).toHaveText('Solar now 3.2 kW — 1.1 kW at home, 2.1 kW exported');
+    await expect(subline).toHaveText('Solar now 3.2 kW · 1.1 kW at home, 2.1 kW exported');
   });
 
   test('says "all used at home" when export is negligible', async ({ page }) => {
     await installSolarStub(page, { lastPowerW: 400 }, ALL_USED_PLAN_META_PATCH);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
-    await expect(page.locator('#plan-hero-solar-now')).toHaveText('Solar now 3.2 kW — all used at home');
+    await expect(page.locator('#plan-hero-solar-now')).toHaveText('Solar now 3.2 kW · all used at home');
   });
 
   test('stays absent for a stale generation sample', async ({ page }) => {
