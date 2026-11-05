@@ -34,7 +34,7 @@ vi.mock('../src/ui/state.ts', () => ({
   state: { dryRun: false }, resolveManagedState: () => managed, resolveBatteryPowerLimitOn: () => powerLimit,
 }));
 vi.mock('../src/ui/homeScopeMembership.ts', () => ({ getHomeIdForUiDevice: () => 'main' }));
-vi.mock('../src/ui/deviceDetail/batterySection.ts', () => ({ BATTERY_MANAGED_HINT: 'Its own schedule remains in use.' }));
+vi.mock('../src/ui/deviceDetail/batterySection.ts', () => ({ resolveBatteryManagedHint: () => 'Its own schedule remains in use.' }));
 vi.mock('../src/ui/deviceDetail/settingsWrite.ts', () => ({
   createSerializedAsyncRunner: () => <T>(operation: () => Promise<T>) => operation(),
 }));

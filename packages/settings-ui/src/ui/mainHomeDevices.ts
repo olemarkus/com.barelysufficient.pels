@@ -4,9 +4,13 @@ import { supportsTemperatureControlDevice, type SettingsUiDeviceListItem } from 
 import type { MainHomeJobs } from './planHeroSummary.ts';
 import { readHomeMembership } from './homeScope.ts';
 import { readSetupRespondsToPrices } from './setupPathFacts.ts';
-import { hasOpenSmartTask, state } from './state.ts';
+import { hasOpenSmartTask, resolveManagedState, state } from './state.ts';
 
-/** The devices PELS manages in the Main home: the ones setup configures and the Overview counts. */
+/**
+ * The devices PELS manages in the Main home: the ones setup configures and the
+ * Overview counts. A home battery counts by its own Managed setting
+ * (`battery_control_devices`, absent = on), not `managed_devices`.
+ */
 export type MainHomeManagedDevices =
   | { state: 'loading' | 'unavailable' }
   | { state: 'ready'; devices: readonly SettingsUiDeviceListItem[] };
@@ -17,7 +21,7 @@ export const readMainHomeManagedDevices = (): MainHomeManagedDevices => {
   if (membership.state === 'unavailable') return { state: 'unavailable' };
   return {
     state: 'ready',
-    devices: state.latestDevices.filter((device) => state.managedMap[device.id] === true
+    devices: state.latestDevices.filter((device) => resolveManagedState(device.id)
       && (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID),
   };
 };

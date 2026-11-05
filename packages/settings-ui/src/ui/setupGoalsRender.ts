@@ -4,6 +4,7 @@ import { buildDeadlineHref, followDeadlineHref } from './deadlineUrls.ts';
 import { refreshHomeScopeAndNotify } from './homeScope.ts';
 import { saveDevicePriceEnabled } from './priceOptimization.ts';
 import { keepAssumedPriceSource, resolveSetupGoalChoices } from './setupGoals.ts';
+import { saveSetupBatteryPlan } from './setupBatteryPlan.ts';
 import { setupSavePending, trackSetupSave } from './setupJourneyState.ts';
 import { notifySetupPathChange } from './setupPathFacts.ts';
 import { dispatchOpenSmartTaskCreateFromSetup } from './smartTaskCreate.ts';
@@ -34,6 +35,16 @@ export const renderSetupGoals = (target: HTMLElement, rerender: () => void): voi
         if (enabled) await keepAssumedPriceSource();
       })
         .catch((error) => showToastError(error, 'Failed to update price optimization settings.'))
+        .finally(() => { rerender(); notifySetupPathChange(); });
+    },
+    onBatteryPlan: (id, enabled, capacityKWh) => {
+      // A plan runs on prices, so turning one on keeps an assumed source as
+      // Price-based control does.
+      void trackSetupSave(`battery-plan:${id}`, async () => {
+        await saveSetupBatteryPlan(id, enabled, capacityKWh);
+        if (enabled) await keepAssumedPriceSource();
+      })
+        .catch((error) => showToastError(error, 'Battery plan could not be saved. Try again.'))
         .finally(() => { rerender(); notifySetupPathChange(); });
     },
     onNewSmartTask: dispatchOpenSmartTaskCreateFromSetup,

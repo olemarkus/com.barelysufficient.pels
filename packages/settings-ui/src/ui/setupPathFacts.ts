@@ -16,7 +16,9 @@ import {
 import type { ResolvedPriceSetupStatus } from './priceSetupStatus.ts';
 import { supportsTemperatureDevice } from './deviceUtils.ts';
 import { readHomeMembership, subscribeToHomeScope } from './homeScope.ts';
-import { hasActiveDeadlineObjective, state } from './state.ts';
+import {
+  hasActiveDeadlineObjective, isHomeBatteryDeviceId, resolveBatteryPowerLimitOn, resolveManagedState, state,
+} from './state.ts';
 import { currentSetupJourney } from './setupJourneyState.ts';
 
 /**
@@ -200,6 +202,17 @@ const resolveSetupPrices = (managedIds: readonly string[]): SetupPrices => {
   return { state: 'used', complete: status.state === 'complete', summary: status.summary };
 };
 
+/**
+ * Whether PELS may turn this managed device down. A home battery counts by its
+ * own gate (absent = on) and only while PELS can drive it; a load by its
+ * Power-limit control switch.
+ */
+export const isSetupDeviceLimitable = (deviceId: string): boolean => {
+  if (!isHomeBatteryDeviceId(deviceId)) return state.controllableMap[deviceId] === true;
+  const device = state.latestDevices.find((candidate) => candidate.id === deviceId);
+  return device?.batteryControl === 'drivable' && resolveBatteryPowerLimitOn(deviceId);
+};
+
 /** `loading` until every fact has arrived once, so no step is judged on a guess. */
 const readSetupFacts = (): SetupFactsRead<SetupPathFacts> => {
   const membership = readHomeMembership();
@@ -210,8 +223,8 @@ const readSetupFacts = (): SetupFactsRead<SetupPathFacts> => {
   const knownIds = new Set(state.latestDevices
     .filter((device) => (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID)
     .map((device) => device.id));
-  const managedIds = [...knownIds].filter((id) => state.managedMap[id] === true);
-  const limitableIds = managedIds.filter((id) => state.controllableMap[id] === true);
+  const managedIds = [...knownIds].filter(resolveManagedState);
+  const limitableIds = managedIds.filter(isSetupDeviceLimitable);
   return { state: 'ready', value: {
     power: power.value,
     hardCap: hardCap.value,

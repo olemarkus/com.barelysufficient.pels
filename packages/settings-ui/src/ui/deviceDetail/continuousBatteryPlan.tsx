@@ -6,14 +6,14 @@ import { SETTINGS_UI_DEVICES_PATH } from '../../../../contracts/src/settingsUi/p
 import { isHomeBatteryClassKey } from '../../../../shared-domain/src/batteryOrSolarRole.ts';
 import { MAIN_HOME_ID } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import { isUnknownRecord } from '../../../../shared-domain/src/recordGuards.ts';
-import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
+import type { SettingsUiDeviceDetailItem, SettingsUiDeviceListItem } from '../deviceUtils.ts';
 import { getHomeyTimezone, invalidateApiCache } from '../homey.ts';
 import { getPricesReadModel } from '../prices.ts';
 import { getHomeIdForUiDevice } from '../homeScopeMembership.ts';
 import { resolveBatteryPowerLimitOn, resolveManagedState, state } from '../state.ts';
 import { formatSettingsError } from '../toast.ts';
 import { createSerializedAsyncRunner } from './settingsWrite.ts';
-import { BATTERY_MANAGED_HINT } from './batterySection.ts';
+import { resolveBatteryManagedHint } from './batterySection.ts';
 import { ContinuousBatteryPlanLoading, ContinuousBatteryPlanView } from '../views/ContinuousBatteryPlan.tsx';
 import {
   loadBatteryEfficiencyMeasurement, loadContinuousBatteryPlan, saveContinuousBatteryPlanConfig,
@@ -48,7 +48,7 @@ function display(current: BatteryPlanSession): void {
     // A blocked or waiting plan says so below; the hint claims planning only while a plan runs.
     managedHint.textContent = current.read.status === 'planned' && current.blockedReason === ''
       ? 'PELS plans charging and household supply, and holds your power limit. Turn off battery planning to return to its own schedule.'
-      : BATTERY_MANAGED_HINT;
+      : resolveBatteryManagedHint();
   }
   if (current.read === null || current.config === null) {
     render(<ContinuousBatteryPlanLoading failed={current.error !== ''} onRetry={() => refresh(current)} />, mount);
@@ -119,12 +119,23 @@ const save = (current: BatteryPlanSession, config: ContinuousBatteryPlanConfig):
   }
 });
 
-const blockedReasonFor = (device: SettingsUiDeviceDetailItem): string => {
+/**
+ * What stops PELS from running this battery's plan, apart from Simulation
+ * mode, or `''` when nothing does. Setup's battery row reads it too: there
+ * Simulation mode is the journey's own posture, ended by Start managing.
+ */
+export const resolveBatteryPlanControlBlock = (device: Pick<SettingsUiDeviceListItem, 'id' | 'batteryControl'>): string => {
   if (getHomeIdForUiDevice(device.id) !== MAIN_HOME_ID) return 'Continuous battery planning is available in the main home.';
   if (device.batteryControl === 'needs_homey_api_key') return 'Add a Homey API key with Flow permission to let PELS execute the battery plan.';
   if (device.batteryControl !== 'drivable') return 'The battery app must give Homey a power setting and a Homey or API control mode.';
   if (!resolveManagedState(device.id)) return 'Turn on Managed by PELS to let PELS plan battery use.';
   if (!resolveBatteryPowerLimitOn(device.id)) return 'Turn on Power-limit control to let PELS execute the battery plan.';
+  return '';
+};
+
+const blockedReasonFor = (device: SettingsUiDeviceDetailItem): string => {
+  const block = resolveBatteryPlanControlBlock(device);
+  if (block !== '') return block;
   if (state.dryRun) return 'Simulation mode sends no battery commands. Turn it off to execute the battery plan.';
   return '';
 };

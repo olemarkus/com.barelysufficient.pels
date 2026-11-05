@@ -1,10 +1,18 @@
 // The model reads `state`, the home roster and the setup facts, so each test
 // loads fresh copies and publishes what it needs.
+const savedPlans = vi.fn<() => Promise<Record<string, unknown>>>(async () => ({}));
+const savePlan = vi.fn(async (_deviceId: string, config: unknown) => config);
+
 const load = async (membershipByDeviceId: Readonly<Record<string, string>> = {}) => {
   vi.resetModules();
   vi.doMock('../src/ui/homeScope.ts', () => ({
     readHomeMembership: () => ({ state: 'resolved', membershipByDeviceId }),
     subscribeToHomeScope: () => undefined,
+  }));
+  vi.doMock('../src/ui/deviceDetail/continuousBatteryPlanTransport.ts', () => ({
+    loadSavedContinuousBatteryPlanConfigs: () => savedPlans(),
+    saveContinuousBatteryPlanConfig: (deviceId: string, config: unknown) => savePlan(deviceId, config),
+    loadBatteryPlanPriceUnit: async () => 'EUR/kWh',
   }));
   const goals = await import('../src/ui/setupGoals.ts');
   const facts = await import('../src/ui/setupPathFacts.ts');
@@ -55,8 +63,9 @@ describe('Choose what PELS does', () => {
     expect(ready(goals.resolveSetupGoalChoices())).toEqual([
       {
         id: 'pump', name: 'Heat pump', price: { enabled: false }, smartTask: { state: 'none', charger: false }, solar: null,
+        battery: null,
       },
-      { id: 'charger', name: 'Easee', price: null, smartTask: { state: 'none', charger: true }, solar: null },
+      { id: 'charger', name: 'Easee', price: null, smartTask: { state: 'none', charger: true }, solar: null, battery: null },
     ]);
     expect(goals.offersSetupGoals()).toBe(true);
   });
@@ -87,8 +96,8 @@ describe('Choose what PELS does', () => {
     respondToPrices(facts, false);
     expect(ready(goals.resolveSetupGoalChoices()))
       .toEqual([
-        { id: 'pump', name: 'Heat pump', price: null, smartTask: { state: 'none', charger: false }, solar: null },
-        { id: 'charger', name: 'Easee', price: null, smartTask: { state: 'none', charger: true }, solar: null },
+        { id: 'pump', name: 'Heat pump', price: null, smartTask: { state: 'none', charger: false }, solar: null, battery: null },
+        { id: 'charger', name: 'Easee', price: null, smartTask: { state: 'none', charger: true }, solar: null, battery: null },
       ]);
   });
 
@@ -106,6 +115,96 @@ describe('Choose what PELS does', () => {
     expect(ready(goals.resolveSetupGoalChoices())).toEqual([]);
     state.surplusPoolReachable = true;
     expect(ready(goals.resolveSetupGoalChoices()).map((device) => device.solar?.label)).toEqual(['Run on solar surplus']);
+  });
+
+  describe('a home battery', () => {
+    const battery = {
+      id: 'battery', name: 'Thuisbatterij', deviceType: 'onoff', targets: [], deviceClass: 'battery',
+      isEvCharger: false, isBatteryOrSolar: true, powerCapable: true, batteryControl: 'drivable',
+      capabilities: ['measure_power', 'measure_battery'],
+    } as unknown as Device;
+    const manageBattery = (state: Loaded['state'], device: Device = battery) => {
+      state.latestDevices = [device];
+      state.managedMap = {};
+      state.controllableMap = {};
+      state.batteryControl = { status: 'resolved', devices: {} };
+    };
+    const batteryGoal = (goals: Loaded['goals']) => ready(goals.resolveSetupGoalChoices())[0]?.battery;
+
+    beforeEach(() => {
+      savedPlans.mockReset().mockResolvedValue({});
+      savePlan.mockClear();
+    });
+
+    it('is offered by its own Managed setting, and waits for the saved plans', async () => {
+      const { goals, state } = await load();
+      manageBattery(state);
+      expect(batteryGoal(goals)).toEqual({ state: 'loading' });
+      expect(goals.offersSetupGoals()).toBe(true);
+    });
+
+    it('asks for a usable capacity a battery never saved, instead of assuming one', async () => {
+      const { goals, state } = await load();
+      manageBattery(state);
+      const plans = await import('../src/ui/setupBatteryPlan.ts');
+      await plans.loadSetupBatteryPlans();
+      expect(batteryGoal(goals)).toEqual({ state: 'ready', enabled: false, capacityKWh: null, simulating: state.dryRun });
+    });
+
+    it('fills in the capacity the owner saved, and whether the plan is on', async () => {
+      const { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } = await import('../../shared-domain/src/settings/continuousBatteryPlan.ts');
+      savedPlans.mockResolvedValue({
+        battery: { ...DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, enabled: true, usableCapacityKWh: 5.12, priceUnit: 'EUR/kWh' },
+      });
+      const { goals, state } = await load();
+      manageBattery(state);
+      const plans = await import('../src/ui/setupBatteryPlan.ts');
+      await plans.loadSetupBatteryPlans();
+      expect(batteryGoal(goals)).toMatchObject({ state: 'ready', enabled: true, capacityKWh: 5.12 });
+      expect(plans.isSetupBatteryPlanOn('battery')).toBe(true);
+    });
+
+    it('says why PELS cannot plan a battery it cannot drive', async () => {
+      const { goals, state } = await load();
+      manageBattery(state, { ...battery, batteryControl: 'needs_homey_api_key' } as Device);
+      expect(batteryGoal(goals)).toEqual({
+        state: 'blocked',
+        reason: 'Add a Homey API key with Flow permission to let PELS execute the battery plan.',
+      });
+    });
+
+    it('is left out once the owner turned its Managed off', async () => {
+      const { goals, state } = await load();
+      manageBattery(state);
+      state.batteryControl = { status: 'resolved', devices: { battery: false } };
+      expect(ready(goals.resolveSetupGoalChoices())).toEqual([]);
+    });
+
+    it('saves the plan on with the entered capacity, in the current price unit and with no wear allowance', async () => {
+      const { state } = await load();
+      manageBattery(state);
+      const plans = await import('../src/ui/setupBatteryPlan.ts');
+      await plans.loadSetupBatteryPlans();
+      await expect(plans.saveSetupBatteryPlan('battery', true, null)).rejects.toThrow('usable capacity');
+      await plans.saveSetupBatteryPlan('battery', true, 5.12);
+      expect(savePlan).toHaveBeenCalledWith('battery', expect.objectContaining({
+        enabled: true, usableCapacityKWh: 5.12, priceUnit: 'EUR/kWh', wearCostPerKWh: 0,
+        exportPolicy: { kind: 'household_only' },
+      }));
+      // The saved map is read again, so the row shows what was stored.
+      expect(savedPlans).toHaveBeenCalledTimes(2);
+    });
+
+    it('refuses to carry a wear allowance saved in another price unit', async () => {
+      const { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } = await import('../../shared-domain/src/settings/continuousBatteryPlan.ts');
+      savedPlans.mockResolvedValue({ battery: { ...DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, priceUnit: 'NOK/kWh' } });
+      const { state } = await load();
+      manageBattery(state);
+      const plans = await import('../src/ui/setupBatteryPlan.ts');
+      await plans.loadSetupBatteryPlans();
+      await expect(plans.saveSetupBatteryPlan('battery', true, 10)).rejects.toThrow('price unit changed');
+      expect(savePlan).not.toHaveBeenCalled();
+    });
   });
 
   it('decides nothing while the device list is still loading', async () => {

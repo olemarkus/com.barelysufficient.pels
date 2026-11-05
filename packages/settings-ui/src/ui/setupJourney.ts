@@ -10,6 +10,7 @@ import { selectHomeScope, subscribeToHomeScope, getHomeScope } from './homeScope
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   readSetupReview, readSetupMarket, onSetupPathChange, notifySetupPathChange, readSetupLimitsInForce,
+  isSetupDeviceLimitable,
 } from './setupPathFacts.ts';
 import { formatSetupProgress, type SetupStep, type SetupPath } from './setupPathModel.ts';
 import {
@@ -36,6 +37,7 @@ import { readActiveRecommendation, dismissSetupRecommendation } from './recommen
 import { offersSetupGoals, resolveSetupGoalChoices } from './setupGoals.ts';
 import { followsPrices, readMainHomeManagedDevices } from './mainHomeDevices.ts';
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
+import { isSetupBatteryPlanOn, loadSetupBatteryPlans, onSetupBatteryPlansChange } from './setupBatteryPlan.ts';
 
 let actionBusy = false;
 let error: string | null = null;
@@ -138,7 +140,8 @@ const limitControlActs = (device: SettingsUiDeviceListItem): boolean => (
 const describeDeviceJobs = (device: SettingsUiDeviceListItem): string => {
   const solar = resolveSolarSetupAction(device);
   const jobs = [
-    state.controllableMap[device.id] === true && limitControlActs(device) ? 'Power-limit control on' : null,
+    isSetupDeviceLimitable(device.id) && limitControlActs(device) ? 'Power-limit control on' : null,
+    isSetupBatteryPlanOn(device.id) ? 'Plan charging with PELS on' : null,
     followsPrices(device) ? 'Price-based control on' : null,
     hasOpenSmartTask(device.id) ? 'Smart task set' : null,
     solar?.configured ? solar.label : null,
@@ -250,6 +253,12 @@ const headerProgress = (step: SetupJourneyStep, path: SetupPath | null): string 
   return path ? formatSetupProgress(path) : 'Loading…';
 };
 
+// Every step done and managing started: the after-setup suggestion opens
+// `Choose what PELS does` on its own, with no journey around it.
+const setupFinished = (path: SetupPath | null): boolean => (
+  path !== null && path.doneCount === path.steps.length && !path.simulating
+);
+
 const continueLabel = (path: SetupPath | null): string => (
   path !== null && path.doneCount === path.steps.length && !goalsComeNext() ? 'Review setup' : 'Continue'
 );
@@ -269,6 +278,7 @@ const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourn
     meterHelp: step === 'goals' && solarPending() && usesFlowMeter(),
     fluviusHelp: step === 'power' && fact?.status !== 'done' && market.state === 'resolved' && market.country === 'BE',
     continueLabel: continueLabel(path),
+    journeyActions: step !== 'goals' || !setupFinished(path),
     onContinue: continueSetup,
     onCheckMeter: () => showTab('limits', 'power'),
     quarterHourAdvice: advice !== null,
@@ -332,9 +342,11 @@ const refreshLivePreview = async (): Promise<void> => {
 export const initSetupJourney = (): void => {
   document.addEventListener('pels:tab-shown', () => {
     error = null;
-    if (currentStep()) {
+    const step = currentStep();
+    if (step) {
       selectHomeScope(MAIN_HOME_ID);
       window.scrollTo(0, 0);
+      if (step === 'goals' || step === 'review') void loadSetupBatteryPlans();
     } else acknowledgeSetupSaveFailures();
     paintJourney();
     if (state.devicesLoaded) renderDevices(state.latestDevices);
@@ -357,6 +369,12 @@ export const initSetupJourney = (): void => {
     if (currentStep() === 'goals') renderDevices(state.latestDevices);
   });
   onSetupPathChange(repaintJourney);
+  // The battery row and the review read the saved battery plans; a save on the
+  // battery's own page changes them too.
+  onSetupBatteryPlansChange(repaintJourney);
+  document.addEventListener('continuous-battery-plan-changed', () => {
+    if (currentStep() === 'goals' || currentStep() === 'review') void loadSetupBatteryPlans();
+  });
   subscribeToHomeScope(() => {
     const step = currentStep();
     // Choosing an area leaves the Main-home journey and opens its ordinary settings.

@@ -121,7 +121,7 @@ import {
   syncTemperatureControlDisabledRow,
 } from './temperatureControlDisabled.ts';
 import { initDeviceDetailManagedControlHandlers } from './managedControl.ts';
-import { BATTERY_MANAGED_HINT, BATTERY_WATCH_MANAGED_HINT, renderDeviceDetailBattery } from './batterySection.ts';
+import { resolveBatteryManagedHint, BATTERY_WATCH_MANAGED_HINT, renderDeviceDetailBattery } from './batterySection.ts';
 import {
   initDeviceDetailOverlayChrome,
   initDeviceDetailOverlaySubscriptions,
@@ -198,7 +198,7 @@ const resolveManagedHint = (
   controlState: ReturnType<typeof resolveDeviceDetailControlState>,
 ): string => {
   if (controlState.isHomeBattery) {
-    return controlState.isDrivableBattery ? BATTERY_MANAGED_HINT : BATTERY_WATCH_MANAGED_HINT;
+    return controlState.isDrivableBattery ? resolveBatteryManagedHint() : BATTERY_WATCH_MANAGED_HINT;
   }
   if (!controlState.supportsPower && !controlState.supportsTemperature) return DEVICE_POWER_SUPPORT_HINT;
   // An unmanaged charger's page hides its Charging and Power limiting cards
