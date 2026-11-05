@@ -19,7 +19,8 @@ import type { ExportPriceSourceSetting } from '../../../shared-domain/src/settin
 export type PriceScheme = PriceSchemeSetting;
 export type NorwayPriceModel = 'stromstotte' | 'norgespris';
 
-export type StatusTone = 'ok' | 'warn';
+/** `neutral` states a fact that needs no attention, such as tomorrow's prices not published yet. */
+export type StatusTone = 'ok' | 'warn' | 'neutral';
 
 export type StatusValue = { text: string; tone: StatusTone };
 

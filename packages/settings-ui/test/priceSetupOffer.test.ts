@@ -57,19 +57,19 @@ describe('parsePriceSetupSuggestion', () => {
 });
 
 describe('priceSetupNeedsSuggestion', () => {
-  it('asks on Norway while the grid company or price area is missing, and on Homey Energy without prices', () => {
-    expect(priceSetupNeedsSuggestion(norwayRead(), true)).toBe(true);
+  it('asks on Norway while the grid company or price area is missing, and on any Homey Energy setup', () => {
+    expect(priceSetupNeedsSuggestion(norwayRead())).toBe(true);
     expect(priceSetupNeedsSuggestion(norwayRead({
       gridCompany: { kind: 'chosen', organizationNumber: '978631029' },
-    }), true)).toBe(true);
+    }))).toBe(true);
     expect(priceSetupNeedsSuggestion(norwayRead({
       gridCompany: { kind: 'chosen', organizationNumber: '978631029' },
       priceArea: { value: 'NO3', chosen: true },
-    }), true)).toBe(false);
-    expect(priceSetupNeedsSuggestion(norwayRead({}, 'homey'), true)).toBe(false);
-    // Homey Energy without prices: Power by the Hour may have them.
-    expect(priceSetupNeedsSuggestion(norwayRead({}, 'homey'), false)).toBe(true);
-    expect(priceSetupNeedsSuggestion({ state: 'unavailable' }, true)).toBe(false);
+    }))).toBe(false);
+    // Homey Energy, chosen and priced: Power by the Hour may still price export
+    // from the market price.
+    expect(priceSetupNeedsSuggestion(norwayRead({}, 'homey'))).toBe(true);
+    expect(priceSetupNeedsSuggestion({ state: 'unavailable' })).toBe(false);
   });
 
   it('asks on a Homey Energy source PELS assumed, where Power by the Hour may be the better one', () => {
@@ -80,7 +80,7 @@ describe('priceSetupNeedsSuggestion', () => {
         norway: NOTHING_CHOSEN,
       },
     };
-    expect(priceSetupNeedsSuggestion(assumedHomey, true)).toBe(true);
+    expect(priceSetupNeedsSuggestion(assumedHomey)).toBe(true);
   });
 });
 

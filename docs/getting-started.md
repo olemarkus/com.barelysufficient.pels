@@ -52,9 +52,7 @@ Review the choices PELS shows for this home:
 In Flanders, use **15-minute average** if your bill uses measured quarter-hour peaks. **Use 15-minute average** changes only the period; confirm your hard cap separately. Advice can be dismissed and never changes settings automatically.
 
 <details>
-<summary>Dutch solar contracts and Flemish peak billing</summary>
-
-Dutch net metering ends on **1 January 2027**. Export still receives compensation; the benefit of using more solar at home depends on your contract. [Dutch government guidance](https://www.rijksoverheid.nl/themas/klimaat-milieu-en-natuur/energie-thuis/salderingsregeling).
+<summary>Dutch connection tariffs and Flemish peak billing</summary>
 
 Dutch bills also use “capacity tariff” for connection-capacity charges. PELS's **Capacity limit** concerns measured average peaks. [ACM guidance](https://consument.acm.nl/elektriciteit-en-gas/wat-betaal-ik-voor-mijn-energie/wat-zijn-netwerkkosten-capaciteitstarief-aansluittarief-meettarief).
 
@@ -81,7 +79,7 @@ With solar in Homey that has not yet produced more than the home is using, the p
 
 After setup, **PELS can do more for this home** offers **Choose what PELS does** once, naming what applies and is not in use yet. Dismiss it if none of it is for you.
 
-A home with solar and no export price also gets **Set your export price**, during setup as well. Without one, PELS counts solar you export as worth nothing. Dismiss it if you are not paid for export.
+A home with solar and no export price also gets **Set your export price**, during setup as well: tell PELS what export pays, so its solar and battery plans can use it. Dismiss it if you are not paid for export.
 
 ## Step 4: Preview and activate
 

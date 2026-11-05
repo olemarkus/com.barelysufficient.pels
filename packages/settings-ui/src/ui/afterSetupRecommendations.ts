@@ -16,6 +16,8 @@ export type AfterSetupDevice = {
   limitable: boolean;
   /** Could take a temperature, charging or supported relay energy task. */
   taskCapable: boolean;
+  /** A water heater, or a relay that takes an energy task: the overnight water-heater guide is for it. */
+  heatsWaterOnTask: boolean;
   /** The owner made an explicit per-device Price choice, including Off. */
   priceConfigured: boolean;
   usesSolarSurplus: boolean;
@@ -88,26 +90,23 @@ const FLANDERS_PERIOD: SetupRecommendation = {
   target: { kind: 'quarter-hour' },
 };
 
-const EXPORT_PRICE_QUESTION = 'Paid for power you send to the grid? Set your export price, so PELS can weigh '
-  + 'using your solar against exporting it. Without one, exported solar counts as worth nothing.';
-
-const DUTCH_NET_METERING_END = 'Net metering ends on 1 January 2027. ';
+const EXPORT_PRICE_QUESTION = 'Paid for power you send to the grid? Tell PELS what export pays, so its solar '
+  + 'and battery plans can use it.';
 
 /**
- * A solar home without an export price plans as if exported solar were worth
- * nothing. Like the Flanders question it appears during setup too, and it is
+ * A solar home without an export price: an offer to tell PELS what export
+ * pays. Like the Flanders question it appears during setup too, and it is
  * deliberately a QUESTION: only the owner knows what they are paid. Dismiss is
  * an owner saying they are not paid for export.
  */
 const resolveExportPriceQuestion = (facts: AfterSetupFacts): SetupRecommendation[] => {
   if (!facts.solarExportUnpriced) return [];
-  const dutch = facts.market.state === 'resolved' && facts.market.country === 'NL';
   return [{
     id: 'prices:export-price',
     version: VERSION,
     category: 'recommendation',
     title: 'Set your export price',
-    body: `${dutch ? DUTCH_NET_METERING_END : ''}${EXPORT_PRICE_QUESTION}`,
+    body: EXPORT_PRICE_QUESTION,
     actionLabel: 'Set export price',
     target: { kind: 'panel', panelId: 'electricity-prices' },
   }];
@@ -165,6 +164,8 @@ const OFFER_APPLIES: Record<Offer, (facts: AfterSetupFacts) => boolean> = {
 };
 
 // What the page offers that is not in use yet, in the order the card names it.
+// Dutch households pay no measured-peak tariff, so solar self-consumption is
+// what they come to PELS for, and solar leads there.
 const resolveGoalOffers = (facts: AfterSetupFacts, dismissals: RecommendationDismissals): Offer[] => {
   const solarFirst = facts.market.state === 'resolved' && facts.market.country === 'NL';
   const order: Offer[] = solarFirst ? ['solar', 'prices', 'smartTasks'] : ['prices', 'solar', 'smartTasks'];
@@ -175,9 +176,8 @@ const resolveGoalOffers = (facts: AfterSetupFacts, dismissals: RecommendationDis
  * One card for everything `Choose what PELS does` offers. Price-based control,
  * solar surplus and Smart tasks were a card each, offering again what the setup
  * page offers, so an owner who skipped the page met the same offer twice more.
- * The body names only what applies and is not in use yet; in the Netherlands,
- * where net metering is ending, solar leads. Dismissed, it stays away: the
- * owner has seen the offer.
+ * The body names only what applies and is not in use yet; in the Netherlands
+ * solar leads. Dismissed, it stays away: the owner has seen the offer.
  */
 const resolveGoalsSuggestion = (
   facts: AfterSetupFacts,
@@ -193,7 +193,8 @@ const resolveGoalsSuggestion = (
     body: `PELS can ${joinOutcomes(offers.map((offer) => OUTCOMES[offer]))}. Choose for each device.`,
     actionLabel: 'Choose',
     target: { kind: 'setup-goals' },
-    ...(offers.includes('smartTasks') ? {
+    ...(offers.includes('smartTasks')
+      && facts.devices.some((device) => device.heatsWaterOnTask && device.taskCapable) ? {
       guideLink: {
         label: 'Heat a water heater overnight',
         href: 'https://pels.barelysufficient.org/smart-tasks#heat-a-water-heater-on-a-relay-overnight',

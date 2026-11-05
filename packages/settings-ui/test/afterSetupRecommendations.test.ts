@@ -8,6 +8,7 @@ const device = (overrides: Partial<AfterSetupDevice> = {}): AfterSetupDevice => 
   temperature: false,
   limitable: true,
   taskCapable: false,
+  heatsWaterOnTask: false,
   priceConfigured: false,
   usesSolarSurplus: false,
   ...overrides,
@@ -17,7 +18,7 @@ const device = (overrides: Partial<AfterSetupDevice> = {}): AfterSetupDevice => 
 // solar, and none of the three features is in use.
 const everythingApplies: AfterSetupFacts = {
   setupComplete: true,
-  devices: [device({ temperature: true, taskCapable: true }), device({ taskCapable: true })],
+  devices: [device({ temperature: true, taskCapable: true, heatsWaterOnTask: true }), device({ taskCapable: true })],
   priceOptimizationEnabled: true,
   priceSource: { kind: 'needs_setup' },
   solarSurplusAvailable: true,
@@ -45,6 +46,12 @@ describe('after-setup suggestions', () => {
       target: { kind: 'setup-goals' },
       guideLink: { label: 'Heat a water heater overnight' },
     });
+  });
+
+  it('links the overnight water-heater guide only in a home with a water heater that takes a task', () => {
+    const noWaterHeater = { ...everythingApplies, devices: [device({ temperature: true, taskCapable: true })] };
+    expect(goals(noWaterHeater)?.body).toContain('ready by a set time');
+    expect(goals(noWaterHeater)).not.toHaveProperty('guideLink');
   });
 
   it('keeps one id and version whatever it names, so a dismissal holds', () => {
@@ -112,7 +119,7 @@ describe('after-setup suggestions', () => {
   });
 
   describe('tailored by where the hub is', () => {
-    it('names an owner\'s own solar first in the Netherlands, where net metering is ending', () => {
+    it('names an owner\'s own solar first in the Netherlands, where homes come to PELS for their solar', () => {
       expect(goals({ ...everythingApplies, market: { state: 'resolved', country: 'NL' } })?.body).toBe(
         'PELS can use more of your own solar, heat in cheap hours or have something ready by a set time. '
           + 'Choose for each device.',
@@ -142,22 +149,22 @@ describe('after-setup suggestions', () => {
       expect(question).toMatchObject({
         category: 'recommendation',
         title: 'Set your export price',
-        body: 'Paid for power you send to the grid? Set your export price, so PELS can weigh using your solar '
-          + 'against exporting it. Without one, exported solar counts as worth nothing.',
+        body: 'Paid for power you send to the grid? Tell PELS what export pays, so its solar and battery plans '
+          + 'can use it.',
         target: { kind: 'panel', panelId: 'electricity-prices' },
       });
       expect(ids(everythingApplies)).not.toContain('prices:export-price');
     });
 
-    it('tells a Dutch home that net metering ends', () => {
-      const [question] = resolveAfterSetupRecommendations({
+    it('asks a Dutch home the same question, with no deadline and no warning', () => {
+      const [dutch] = resolveAfterSetupRecommendations({
         ...everythingApplies, solarExportUnpriced: true, market: { state: 'resolved', country: 'NL' },
       }, {});
-      expect(question?.body).toMatch(/^Net metering ends on 1 January 2027\. Paid for power you send to the grid\?/);
       const [elsewhere] = resolveAfterSetupRecommendations({
         ...everythingApplies, solarExportUnpriced: true, market: { state: 'resolved', country: 'NO' },
       }, {});
-      expect(elsewhere?.body).not.toContain('Net metering');
+      expect(dutch?.body).toBe(elsewhere?.body);
+      expect(dutch?.body).not.toMatch(/net metering|2027|worth nothing/i);
     });
 
     it('does not ask when PELS may limit nothing: no cap is in force to be wrong', () => {

@@ -102,13 +102,16 @@ const NO_OFFER: PriceSetupOffer = { kind: 'none' };
 
 /**
  * Whether the page should ask for a suggestion: a Norway setup still missing
- * its grid company or price area, or Homey Energy with no prices or not
- * chosen, where Power by the Hour may have prices to use instead.
+ * its grid company or price area, or any Homey Energy setup, where Power by
+ * the Hour may have prices to use instead: import prices when Homey Energy has
+ * none or was only assumed, and an export price that follows the market price
+ * (the export section offers it). On Homey Energy the answer is a local
+ * app-to-app read, so asking costs nothing outside the Homey.
  */
-export const priceSetupNeedsSuggestion = (read: PriceSetupRead, homeyHasPrices: boolean): boolean => {
+export const priceSetupNeedsSuggestion = (read: PriceSetupRead): boolean => {
   if (read.state !== 'resolved') return false;
   const { source } = read.setup;
-  if (source.scheme === 'homey') return !homeyHasPrices || source.basis.kind !== 'chosen';
+  if (source.scheme === 'homey') return true;
   if (read.setup.source.scheme !== 'norway') return false;
   const { norway } = read.setup;
   return norway.gridCompany.kind === 'none' || !norway.priceArea.chosen;

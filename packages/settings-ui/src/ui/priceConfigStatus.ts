@@ -7,10 +7,10 @@ import {
   getMissingFlowHours,
 } from '../../../shared-domain/src/price/flowPriceUtils.ts';
 import type { SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
-import type { FlowStatus, HomeyStatus, PowerhourStatus } from './priceConfigTypes.ts';
+import type { FlowStatus, HomeyStatus, PowerhourStatus, StatusTone } from './priceConfigTypes.ts';
 import { homeyEnergyHasPrices } from './priceSetupStatus.ts';
 
-type FlowStatusTone = 'ok' | 'warn';
+type FlowStatusTone = StatusTone;
 
 const getFlowPayloadStatus = (
   payload: ReturnType<typeof getFlowPricePayload> | null,
@@ -59,12 +59,33 @@ const getFlowPayloadStatus = (
   };
 };
 
+// Tomorrow's day-ahead prices are published around 13:00 CET, and Homey, its
+// apps and Flows carry them some time after. Before 14:00 on the Homey's clock
+// a tomorrow with no prices is the normal state of the day, not a fault.
+const TOMORROW_EXPECTED_BY_HOUR = 14;
+
+const getTomorrowPayloadStatus = (
+  payload: ReturnType<typeof getFlowPricePayload> | null,
+  tomorrowKey: string,
+  timeZone: string,
+  now: Date,
+  countableHours?: (dateKey: string) => number[],
+): { text: string; tone: FlowStatusTone } => {
+  if (!payload && getZonedParts(now, timeZone).hour < TOMORROW_EXPECTED_BY_HOUR) {
+    return { text: 'Prices come later today', tone: 'neutral' };
+  }
+  return getFlowPayloadStatus(payload, tomorrowKey, timeZone, countableHours);
+};
+
 export const buildFlowStatus = (pricesPayload: SettingsUiPricesPayload): FlowStatus => {
   const timeZone = getHomeyTimezone();
-  const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
+  const now = new Date();
+  const todayKey = getDateKeyInTimeZone(now, timeZone);
   const tomorrowKey = shiftDateKey(todayKey, 1);
   const todayStatus = getFlowPayloadStatus(getFlowPricePayload(pricesPayload.flowToday), todayKey, timeZone);
-  const tomorrowStatus = getFlowPayloadStatus(getFlowPricePayload(pricesPayload.flowTomorrow), tomorrowKey, timeZone);
+  const tomorrowStatus = getTomorrowPayloadStatus(
+    getFlowPricePayload(pricesPayload.flowTomorrow), tomorrowKey, timeZone, now,
+  );
   return { today: todayStatus, tomorrow: tomorrowStatus };
 };
 
@@ -108,11 +129,14 @@ const buildPriceSetupIssue = (
 
 export const buildHomeyStatus = (pricesPayload: SettingsUiPricesPayload): HomeyStatus => {
   const timeZone = getHomeyTimezone();
-  const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
+  const now = new Date();
+  const todayKey = getDateKeyInTimeZone(now, timeZone);
   const tomorrowKey = shiftDateKey(todayKey, 1);
   const currency = pricesPayload.homeyCurrency || 'Unknown';
   const todayStatus = getFlowPayloadStatus(getFlowPricePayload(pricesPayload.homeyToday), todayKey, timeZone);
-  const tomorrowStatus = getFlowPayloadStatus(getFlowPricePayload(pricesPayload.homeyTomorrow), tomorrowKey, timeZone);
+  const tomorrowStatus = getTomorrowPayloadStatus(
+    getFlowPricePayload(pricesPayload.homeyTomorrow), tomorrowKey, timeZone, now,
+  );
   return {
     hasPrices: homeyEnergyHasPrices(pricesPayload),
     currency,
@@ -158,7 +182,7 @@ export const buildPowerhourStatus = (pricesPayload: SettingsUiPricesPayload): Po
     currency,
     currencyTone: currency === 'Unknown' ? 'warn' : 'ok',
     today: getFlowPayloadStatus(today, todayKey, timeZone, countable),
-    tomorrow: getFlowPayloadStatus(tomorrow, tomorrowKey, timeZone, countable),
+    tomorrow: getTomorrowPayloadStatus(tomorrow, tomorrowKey, timeZone, now, countable),
     hasStoredDays: today !== null || tomorrow !== null,
   };
 };
