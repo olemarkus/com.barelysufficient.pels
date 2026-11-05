@@ -36,7 +36,7 @@ class GraceHome {
       capacityQuarter: { startMs: quarterStartMs, energyKWh: this.usedKWh, trackedMs: atMs - quarterStartMs },
     };
     const daily = this.dailyPaceKw === null ? null : {
-      dailySoftLimitKw: this.dailyPaceKw, budgetPaceKw: this.dailyPaceKw, projectedExemptKw: 0,
+      budgetPaceKw: this.dailyPaceKw, projectedExemptKw: 0,
     };
     const drain = new CapacityDrainStart();
     const pace = computeDynamicSoftLimit(this.settings, tracker, atMs, drain.startFor(this.settings, tracker, atMs));

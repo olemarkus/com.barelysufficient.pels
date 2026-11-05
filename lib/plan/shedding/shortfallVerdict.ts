@@ -72,11 +72,12 @@ function buildShortfallCapacityStateSummary(
     devices: toMeteredUsageDevices(devices),
     totalKw: power.drawKw,
   }, (device) => device.control.commandAuthority);
+  const bindingSource = context.binding.kind === 'bound' ? context.binding.source : null;
   const remainingReducibleControlledLoadW = roundPowerW(sumRemainingSheddableLoadKw(
     // Only a device with a power axis has reducible load to count.
     devices.filter(isMeteredPlanDevice).map(toInputRemainingSheddableDevice),
     (device) => shedSet.has(device.id),
-    state.capacityPeriodSpentFor(context) ? 'daily' : context.softLimitSource,
+    state.capacityPeriodSpentFor(context) ? 'daily' : bindingSource,
     // Capacity only: the hard-cap incident is a capacity question.
     power.capacityBreached,
   ));

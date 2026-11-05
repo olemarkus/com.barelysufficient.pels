@@ -1,7 +1,7 @@
+import type { PlanLimitSource } from '../planContext';
 import type CapacityGuard from '../../power/capacityGuard';
 import type { PowerTrackerState } from '../../power/tracker';
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
-import type { PlanContext } from '../planContext';
 import type { PlanEngineState, SheddingOutcome, StorageLeverState } from '../planState';
 import type { MeteredPlanInputDevice, PlanInputDevice, ShedBehavior } from '../planTypes';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
@@ -161,7 +161,7 @@ export type ShedCandidateParams = {
    * candidate's turn, not against this — see `selectShedDevices`.
    */
   deficitKw: number;
-  limitSource: PlanContext['softLimitSource'];
+  limitSource: PlanLimitSource | 'none';
   /**
    * Producer-resolved: measured above an enabled capacity or grid threshold
    * (`MeasuredPower.physicalLimitBreached`). Copied once in

@@ -1,3 +1,4 @@
+import { planLimitsFixture } from '../utils/planContextPowerFixture';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { resolvePowerCycleReading } from '../../lib/power/powerCycleReading';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
@@ -69,9 +70,7 @@ describe('power sample freshness policy', () => {
     budgetPaceKw?: number | null;
     projectedExemptKw?: number | null;
     softLimitSource?: 'capacity' | 'daily';
-  }): PlanLimits => ({
-    gridImportLimitKw: null,
-    gridImportTargetKw: null,
+  }): PlanLimits => planLimitsFixture({
     softLimit: params.softLimit ?? 5,
     capacitySoftLimit: params.capacitySoftLimit ?? 5,
     dailySoftLimit: params.dailySoftLimit ?? null,

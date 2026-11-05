@@ -492,13 +492,13 @@ export class PlanEngineState {
   /**
    * Whether the spent period acts on this cycle: the stamped fact
    * (`hourlyBudgetExhausted`) while the cycle has a capacity pace
-   * (`PlanLimits.capacitySoftLimit`, `null` with Capacity limit off). Every stage
+   * (`PlanLimits.capacity.kind` is `on`). Every stage
    * that acts on an exhausted period — shedding everything, the shedding latch,
    * holding restores, the spent-period reason, the clean-sample stamp and the
    * published flag — asks this, never the bare fact.
    */
-  capacityPeriodSpentFor(limits: Pick<PlanLimits, 'capacitySoftLimit'>): boolean {
-    return limits.capacitySoftLimit !== null && this.hourlyBudgetExhausted;
+  capacityPeriodSpentFor(limits: Pick<PlanLimits, 'capacity'>): boolean {
+    return limits.capacity.kind === 'on' && this.hourlyBudgetExhausted;
   }
 
   /** The overshoot incident in progress, if any — see `OvershootIncident`. */

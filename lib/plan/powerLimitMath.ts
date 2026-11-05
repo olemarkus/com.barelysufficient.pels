@@ -19,7 +19,7 @@ export const spendPowerHeadroom = (availableKw: number | null, neededKw: number)
 
 /** The shared recovery band remains attainable even on a small grid connection. */
 export const resolveSheddingClearThresholdKw = (context: PlanContext): number => (
-  context.gridImportTargetKw === null
+  context.grid.kind === 'off'
     ? SHEDDING_CLEAR_THRESHOLD_KW
-    : Math.min(SHEDDING_CLEAR_THRESHOLD_KW, context.gridImportTargetKw * 0.1)
+    : Math.min(SHEDDING_CLEAR_THRESHOLD_KW, context.grid.targetKw * 0.1)
 );

@@ -1,4 +1,4 @@
-import type { MeasuredPower, PlanContext } from '../../lib/plan/planContext';
+import type { MeasuredPower, PlanContext, PlanLimits, PlanLimitSource } from '../../lib/plan/planContext';
 import type { TemperatureIntentReads } from '../../lib/thermostat/temperatureSetpoints';
 import { resolveFixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
@@ -32,33 +32,66 @@ export const buildMeasuredPower = (overrides: Partial<MeasuredPower> = {}): Meas
  * `temperatureSetpoints` itself. Absent, every device is a heater kept at its
  * own setpoint with no price shift — the frame a spec not about setpoints wants.
  */
-export type PlanContextFixtureOverrides = Partial<PlanContext> & { intent?: Partial<TemperatureIntentReads> };
+export type PlanLimitFixtureOverrides = {
+  softLimit?: number | null;
+  capacitySoftLimit?: number | null;
+  gridImportLimitKw?: number | null;
+  gridImportTargetKw?: number | null;
+  dailySoftLimit?: number | null;
+  budgetPaceKw?: number | null;
+  projectedExemptKw?: number | null;
+  softLimitSource?: PlanLimitSource | null;
+};
+
+export type PlanContextFixtureOverrides = Partial<PlanContext> & PlanLimitFixtureOverrides & {
+  intent?: Partial<TemperatureIntentReads>;
+};
+
+/** Legacy scenario shorthand is resolved only at this test boundary. */
+export const planLimitsFixture = (overrides: PlanLimitFixtureOverrides = {}): PlanLimits => {
+  const {
+    softLimit = 0, capacitySoftLimit = 0, gridImportLimitKw = null, gridImportTargetKw = null,
+    dailySoftLimit = null, budgetPaceKw = null, projectedExemptKw = null, softLimitSource = 'capacity',
+  } = overrides;
+  const gridTargetKw = gridImportTargetKw ?? (gridImportLimitKw === null ? null : gridImportLimitKw * 0.95);
+  return {
+    capacity: capacitySoftLimit === null ? { kind: 'off' } : { kind: 'on', paceKw: capacitySoftLimit },
+    grid: gridTargetKw === null ? { kind: 'off' }
+      : { kind: 'on', limitKw: gridImportLimitKw ?? gridTargetKw / 0.95, targetKw: gridTargetKw },
+    daily: dailySoftLimit === null ? { kind: 'off' }
+      : { kind: 'on', budgetPaceKw: budgetPaceKw ?? dailySoftLimit, projectedExemptKw: projectedExemptKw ?? 0 },
+    binding: softLimit === null || softLimitSource === null ? { kind: 'none' }
+      : { kind: 'bound', source: softLimitSource, kw: softLimit },
+  };
+};
 
 /**
  * The frame every planner-stage spec starts from: no devices, zero limits,
  * capacity-bound, an unremarkable hour. A spec overrides what it is about.
  */
-export const buildPlanContextFixture = ({ intent = {}, ...overrides }: PlanContextFixtureOverrides = {}): PlanContext => ({
-  nowTs: Date.now(),
-  gridImportLimitKw: null,
-  gridImportTargetKw: null,
-  devices: [],
-  temperatureSetpoints: resolveFixtureTemperatureSetpoints(overrides.devices ?? [], intent),
-  softLimit: 0,
-  capacitySoftLimit: 0,
-  dailySoftLimit: null,
-  budgetPaceKw: null,
-  projectedExemptKw: null,
-  softLimitSource: 'capacity',
-  hourBucketKey: '2024-01-01T00',
-  hourUsedKWh: 0,
-  capacityPeriodMinutes: 60,
-  capacityPeriodCoverageComplete: true,
-  budgetKWh: 0,
-  usedKWh: 0,
-  minutesRemaining: 60,
-  ...overrides,
-});
+export const buildPlanContextFixture = (spec: PlanContextFixtureOverrides = {}): PlanContext => {
+  const {
+    intent = {}, softLimit, capacitySoftLimit, gridImportLimitKw, gridImportTargetKw,
+    dailySoftLimit, budgetPaceKw, projectedExemptKw, softLimitSource, ...overrides
+  } = spec;
+  return {
+    ...planLimitsFixture({
+      softLimit, capacitySoftLimit, gridImportLimitKw, gridImportTargetKw,
+      dailySoftLimit, budgetPaceKw, projectedExemptKw, softLimitSource,
+    }),
+    nowTs: Date.now(),
+    devices: [],
+    temperatureSetpoints: resolveFixtureTemperatureSetpoints(overrides.devices ?? [], intent),
+    hourBucketKey: '2024-01-01T00',
+    hourUsedKWh: 0,
+    capacityPeriodMinutes: 60,
+    capacityPeriodCoverageComplete: true,
+    budgetKWh: 0,
+    usedKWh: 0,
+    minutesRemaining: 60,
+    ...overrides,
+  };
+};
 
 /**
  * The old fixtures spelled the frame and the measurement as one object. This
@@ -82,7 +115,7 @@ export const buildPlanCycle = (spec: PlanCycleSpec = {}): { context: PlanContext
   const context = buildPlanContextFixture(contextOverrides);
   const draw = drawKw ?? total ?? 3;
   const binding = headroomKw === undefined ? headroom ?? headroomRaw ?? 0 : headroomKw;
-  const gridHeadroom = context.gridImportTargetKw === null ? null : context.gridImportTargetKw - draw;
+  const gridHeadroom = context.grid.kind === 'off' ? null : context.grid.targetKw - draw;
   return {
     context,
     power: buildMeasuredPower({
@@ -92,7 +125,7 @@ export const buildPlanCycle = (spec: PlanCycleSpec = {}): { context: PlanContext
       headroomKw: binding,
       capacityHeadroomKw: capacityHeadroomKw === undefined ? binding : capacityHeadroomKw,
       budgetHeadroomKw: budgetHeadroomKw ?? null,
-      capacityBreached: capacityBreached ?? (context.capacitySoftLimit !== null && draw > context.capacitySoftLimit),
+      capacityBreached: capacityBreached ?? (context.capacity.kind === 'on' && draw > context.capacity.paceKw),
       ...(physicalLimitBreached === undefined ? {} : { physicalLimitBreached }),
     }),
   };

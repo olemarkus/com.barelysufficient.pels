@@ -1,3 +1,4 @@
+import type { PlanLimitBinding } from '../../lib/plan/planContext';
 import { SwapLedger } from '../../lib/plan/swap';
 import { fixtureLimitedSetpoints, fixtureSetpointLimit, fixtureTemperatureSetpointsEntry } from '../helpers/temperatureSetpointsFixture';
 import { finalizePlanDevices, normalizeShedReasons } from '../../lib/plan/planReasons';
@@ -176,7 +177,7 @@ describe('normalizeShedReasons', () => {
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-      softLimitSource: 'daily',
+      binding: { kind: 'bound', source: 'daily', kw: 0 },
     }));
 
     expect(reasonText(device?.reason)).toBe('shed due to daily budget');
@@ -200,7 +201,7 @@ describe('normalizeShedReasons', () => {
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-      softLimitSource: 'daily',
+      binding: { kind: 'bound', source: 'daily', kw: 0 },
       physicalLimitBreached: true,
     }));
 
@@ -223,7 +224,7 @@ describe('normalizeShedReasons', () => {
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-      softLimitSource: 'daily',
+      binding: { kind: 'bound', source: 'daily', kw: 0 },
       physicalLimitBreached,
     }))[0];
 
@@ -245,7 +246,7 @@ describe('normalizeShedReasons', () => {
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-      softLimitSource: 'capacity',
+      binding: { kind: 'bound', source: 'capacity', kw: 0 },
     }));
 
     expect(reasonText(device?.reason)).toBe('shed due to capacity');
@@ -266,7 +267,7 @@ describe('normalizeShedReasons', () => {
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-      softLimitSource: 'daily',
+      binding: { kind: 'bound', source: 'daily', kw: 0 },
     }));
 
     expect(reasonText(device?.reason)).toBe('shed due to capacity');
@@ -318,7 +319,7 @@ describe('normalizeShedReasons', () => {
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-      softLimitSource: 'daily',
+      binding: { kind: 'bound', source: 'daily', kw: 0 },
       deferredHoldCauseByDeviceId: new Map([['dev-smart-task-on-daily', 'cheaper_hours']]),
     }));
 
@@ -496,7 +497,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     budgetAvailableKw?: number | null;
     headroomReserves?: readonly { deviceId: string; deviceName: string; priority: number; kw: number }[];
     hourlyBudgetExhausted?: boolean;
-    softLimitSource?: 'capacity' | 'daily' | null;
+    binding?: PlanLimitBinding;
     physicalLimitBreached?: boolean;
     lastDeviceShedMsById?: Readonly<Record<string, number>>;
     guardInShortfall?: boolean;
@@ -525,7 +526,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       inCooldown: false,
       activeOvershoot: false,
       shedCooldownRemainingSec: null,
-      softLimitSource: params.softLimitSource ?? null,
+      binding: params.binding ?? { kind: 'none' },
       physicalLimitBreached,
       // Resolved from the same inputs, as the materialization stage does.
       budgetHeldDeviceIds: resolveBudgetHeldDeviceIds(params.devices, admissionInputs, physicalLimitBreached),
@@ -554,7 +555,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       // while the measured budget axis is the one holding this device.
       for (const softLimitSource of ['daily', 'capacity'] as const) {
         const [device] = normalize({
-          devices: [headroomHold()], capacityAvailableKw: 5, budgetAvailableKw: 0.2, softLimitSource,
+          devices: [headroomHold()], capacityAvailableKw: 5, budgetAvailableKw: 0.2, binding: { kind: 'bound', source: softLimitSource, kw: 0 },
         });
         expect(device?.reason.code).toBe('daily_budget');
       }
@@ -563,7 +564,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     it('stays a headroom hold when capacity would turn the device down as well', () => {
       // Releasing the budget would leave it held: capacity has 0.9 kW of the 1.2 it needs.
       const [device] = normalize({
-        devices: [headroomHold()], capacityAvailableKw: 0.9, budgetAvailableKw: 0.2, softLimitSource: 'daily',
+        devices: [headroomHold()], capacityAvailableKw: 0.9, budgetAvailableKw: 0.2, binding: { kind: 'bound', source: 'daily', kw: 0 },
       });
       expect(device?.reason.code).toBe('insufficient_headroom');
     });
@@ -571,7 +572,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     it('stays a headroom hold while a physical limit is breached', () => {
       const [device] = normalize({
         devices: [headroomHold()], capacityAvailableKw: 5, budgetAvailableKw: 0.2,
-        softLimitSource: 'daily', physicalLimitBreached: true,
+        binding: { kind: 'bound', source: 'daily', kw: 0 }, physicalLimitBreached: true,
       });
       expect(device?.reason.code).toBe('insufficient_headroom');
     });
@@ -581,7 +582,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     it('never folds a budget-exempt device\'s hold', () => {
       const [device] = normalize({
         devices: [headroomHold({ budgetExempt: true })], capacityAvailableKw: 5, budgetAvailableKw: 0.2,
-        softLimitSource: 'daily',
+        binding: { kind: 'bound', source: 'daily', kw: 0 },
       });
       expect(device?.reason.code).toBe('insufficient_headroom');
     });
@@ -888,7 +889,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       })),
       capacityAvailableKw: 20.27 - 1.54,
       budgetAvailableKw: -0.99,
-      softLimitSource: 'daily',
+      binding: { kind: 'bound', source: 'daily', kw: 0 },
     });
     for (const device of devices) {
       // gap = 0.25 − (−0.99 − 1.2 − 0.25) = 2.69 → 2.7 kW on the display grid.
@@ -921,7 +922,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
     // fresh gap attached — or the "next hour" line outlives its hour.
     it('re-attributes a stale hourlyBudget hold once the hour rolls over', () => {
       const roll = (params: {
-        softLimitSource: 'capacity' | 'daily';
+        binding: PlanLimitBinding;
         physicalLimitBreached?: boolean;
         budgetExempt?: boolean;
       }) => normalize({
@@ -930,19 +931,19 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
           budgetExempt: params.budgetExempt ?? false,
         })],
         capacityAvailableKw: 0.5,
-        softLimitSource: params.softLimitSource,
+        binding: params.binding,
         physicalLimitBreached: params.physicalLimitBreached ?? false,
       })[0];
 
-      expect(roll({ softLimitSource: 'daily' })?.reason)
+      expect(roll({ binding: { kind: 'bound', source: 'daily', kw: 0 } })?.reason)
         .toEqual({ code: 'daily_budget', shortfallKw: 0.7 });
-      expect(roll({ softLimitSource: 'daily', physicalLimitBreached: true })?.reason)
+      expect(roll({ binding: { kind: 'bound', source: 'daily', kw: 0 }, physicalLimitBreached: true })?.reason)
         .toEqual({ code: 'capacity', shortfallKw: 0.7 });
       // Per-axis admission evaluates an exempt candidate on capacity, so its
       // hold is a capacity hold — never a budget label next to a "Budget exempt" chip.
-      expect(roll({ softLimitSource: 'daily', budgetExempt: true })?.reason)
+      expect(roll({ binding: { kind: 'bound', source: 'daily', kw: 0 }, budgetExempt: true })?.reason)
         .toEqual({ code: 'capacity', shortfallKw: 0.7 });
-      expect(roll({ softLimitSource: 'capacity' })?.reason)
+      expect(roll({ binding: { kind: 'bound', source: 'capacity', kw: 0 } })?.reason)
         .toEqual({ code: 'capacity', shortfallKw: 0.7 });
     });
   });

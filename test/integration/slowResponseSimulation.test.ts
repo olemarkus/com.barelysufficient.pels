@@ -32,7 +32,7 @@ const RUNTIME_CANDIDATE: SimulatedPressurePolicyFactory = () => {
       },
     };
     const daily = reading.dailyPaceKw === null ? null : {
-      dailySoftLimitKw: reading.dailyPaceKw, budgetPaceKw: reading.dailyPaceKw, projectedExemptKw: 0,
+      budgetPaceKw: reading.dailyPaceKw, projectedExemptKw: 0,
     };
     const context = buildPlanContext(
       devices, settings, tracker, buildPlanLimits(settings, reading.capacityPaceKw, daily), new Map(), reading.atMs,

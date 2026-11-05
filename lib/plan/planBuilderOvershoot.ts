@@ -35,6 +35,7 @@ import type { SoftOvershootDecision } from './planOvershoot';
 import {
   buildPlanContextHeadroomLogFields,
   resolveMeasuredMetaFields,
+  projectPlanLimits,
   type PlanMetaCycleFacts,
 } from './planBuilderMeta';
 
@@ -127,9 +128,7 @@ export class OvershootTracker {
         ...buildPlanCapacityStateSummary({
           meta: {
             totalKw: reading.totalKw,
-            softLimitKw: context.softLimit,
-            capacitySoftLimitKw: context.capacitySoftLimit,
-            softLimitSource: context.softLimitSource,
+            ...projectPlanLimits(context),
             // The same constructor the plan meta uses, so the summary's
             // managed/background split cannot drift from the published one.
             ...resolveMeasuredMetaFields(power, reading, planDevices, capacityLimitKw, shortfallBudgetThresholdKw),
