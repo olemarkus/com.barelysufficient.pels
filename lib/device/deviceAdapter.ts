@@ -174,8 +174,8 @@ export type HomeBatteryActionBinding = {
   resolve(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryActionsResolution;
   /** Hand-back is independent of the command range and admission gates. */
   resolveTarget(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryTargetResolution;
-  /** Only integrations whose historical hand-back always addressed the battery itself can resolve this. */
-  resolveLegacyTarget(device: HomeyDeviceLike): HomeBatteryTargetResolution;
+  /** The adapter's upgrade policy for claims written before target identities were persisted. */
+  resolveLegacyTarget(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryTargetResolution;
   handBack(target: AppActionControlTarget): readonly DeviceActionStep[];
 };
 

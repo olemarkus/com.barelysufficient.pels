@@ -2,6 +2,7 @@ import type { HomeBatterySetpointRange } from '../../../packages/contracts/src/t
 import type { HomeyDeviceLike } from '../../utils/types';
 import type {
   DeviceAdapter, HomeBatteryActionBinding, HomeBatteryActions, HomeBatteryActionsResolution,
+  HomeBatteryTargetResolution,
 } from '../deviceAdapter';
 import type { DeviceActionStep } from '../flowActionCards';
 import { isDeviceOfAppDriver } from '../homeBatteryBinding';
@@ -119,24 +120,33 @@ const resolveSigenergy = (
   return { kind: 'resolved', actions: sigenergyActions(plant.id, range) };
 };
 
+const resolvePlantTarget = (devices: readonly HomeyDeviceLike[]): HomeBatteryTargetResolution => {
+  const plants = devices.filter((other) => isDeviceOfAppDriver(other, SIGENERGY_APP_ID, PLANT_DRIVER_ID));
+  const [plant] = plants;
+  if (plant === undefined) return { kind: 'unavailable', reasonCode: 'plant_not_found' };
+  if (plants.length > 1) return { kind: 'unavailable', reasonCode: 'plant_ambiguous' };
+  return { kind: 'resolved', target: { appUri: `homey:app:${SIGENERGY_APP_ID}`, deviceId: plant.id } };
+};
+
 const SIGENERGY_BINDING: HomeBatteryActionBinding = {
   kind: 'app_actions',
   appUri: `homey:app:${SIGENERGY_APP_ID}`,
   commandLifetime: () => ({ kind: 'persistent' }),
   resolve: resolveSigenergy,
-  resolveLegacyTarget: () => ({ kind: 'unavailable', reasonCode: 'legacy_target_unknown' }),
+  // Releases before target identities were persisted used the sole plant in
+  // the inventory. Retain that upgrade policy for those records only, including
+  // a replacement sole plant; current-schema claims keep their recorded target.
+  resolveLegacyTarget: (device, devices) => {
+    const batteries = devices.filter((other) => isDeviceOfAppDriver(other, SIGENERGY_APP_ID, BATTERY_DRIVER_ID));
+    if (batteries.some((other) => other.id !== device.id)) return { kind: 'unavailable', reasonCode: 'shared_plant' };
+    return resolvePlantTarget(devices);
+  },
   handBack: (target) => [
     { deviceId: target.deviceId, actionId: 'set_remote_ems', args: { state: 'off' } },
     { deviceId: target.deviceId, actionId: 'remove_ess_charge_limit', args: {} },
     { deviceId: target.deviceId, actionId: 'remove_ess_discharge_limit', args: {} },
   ],
-  resolveTarget: (_device, devices) => {
-    const plants = devices.filter((other) => isDeviceOfAppDriver(other, SIGENERGY_APP_ID, PLANT_DRIVER_ID));
-    const [plant] = plants;
-    if (plant === undefined) return { kind: 'unavailable', reasonCode: 'plant_not_found' };
-    if (plants.length > 1) return { kind: 'unavailable', reasonCode: 'plant_ambiguous' };
-    return { kind: 'resolved', target: { appUri: `homey:app:${SIGENERGY_APP_ID}`, deviceId: plant.id } };
-  },
+  resolveTarget: (_device, devices) => resolvePlantTarget(devices),
 };
 
 export const sigenergyAdapter: DeviceAdapter = {

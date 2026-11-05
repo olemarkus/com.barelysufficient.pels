@@ -1,4 +1,4 @@
-import { logHomeyDeviceRequest } from '../../lib/app/deviceDebugRequest';
+import { logHomeyDeviceRequest } from '../../lib/diagnostics/deviceDebugRequest';
 import { readPelsHost, requirePelsHost } from '../../lib/app/pelsHost';
 import type { HomeyDeviceListEntry } from '../../packages/contracts/src/settingsUi/homeyDevices';
 import type { HomeyEnergyMeterEntry } from '../../packages/contracts/src/settingsUi/power';

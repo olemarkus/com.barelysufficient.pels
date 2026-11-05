@@ -36,8 +36,7 @@
  * value to restore: its record names the app and exact controlled device,
  * and when PELS took control. Boot recovery uses that durable identity, never
  * a newly paired companion. Older records lacking identity are retained as
- * legacy claims; only an adapter whose historical target was the battery
- * itself can safely hand them back.
+ * legacy claims and handed back through their adapter's upgrade policy.
  */
 import { getLogger } from '../logging/logger';
 import { describeHandBack, toClaimRecord, type ClaimToRecord } from './batteryClaimStanding';

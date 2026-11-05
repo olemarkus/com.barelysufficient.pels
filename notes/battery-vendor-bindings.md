@@ -43,18 +43,23 @@ Homey API key (see "App-action bindings" below). It states:
 - **resolveTarget(device, devices)**: the app and controlled device identity,
   independent of command range and admission.
 - **handBack(target)**: cards that return that recorded target to its own mode.
-- **resolveLegacyTarget(device)**: only a historical self-target can be
-  recovered without a recorded identity. Unknown companion identity is refused.
+- **resolveLegacyTarget(device, devices)**: the adapter's upgrade policy for
+  claims written before target identities were persisted.
 
 The battery owner stores the target in `battery_control_claim.<deviceId>`
 before the first write and carries it through the actuator on commands and
 hand-back. Transport checks command identity again before each action POST.
 Retries and restart recovery always use that stored target. Records contain
 identity, never executable card IDs or arguments. Legacy self-target claims
-can be released by their adapter; legacy Sigenergy claims lack the old plant
-identity and remain pending with `legacy_target_unknown`. The original plant
-must be returned to its own EMS manually; PELS never guesses it from newly
-paired devices. Such a record is retained and blocks new control.
+can be released by their adapter. Legacy Sigenergy claims lack the old plant
+identity, so their upgrade recovery uses the sole current plant, including
+a replacement, when the inventory has only one Sigenergy battery. Missing or
+multiple plants and multiple batteries keep recovery pending. This is the
+compatibility policy for old records only; a record with a target always
+returns that exact plant to its own EMS. Legacy hand-back is resolved without
+requiring rated powers, so remote EMS can be turned off before a failed
+limit-cleanup action is retried. The legacy record stays until all hand-back
+actions succeed.
 
 The transport resolves the control surface from the binding at parse
 (`lib/device/transport/homeBatteryObservation.ts`) and the storage writes at

@@ -1,10 +1,8 @@
-import type { PelsHost } from './pelsHost';
-
 /** Validate the debug request before invoking the existing dump operation. */
-export async function logHomeyDeviceRequest(
-  host: PelsHost | null,
+export async function logHomeyDeviceRequest<Host extends { error(message: string): void }>(
+  host: Host | null,
   body: unknown,
-  logDevice: (host: PelsHost, deviceId: string) => Promise<boolean>,
+  logDevice: (host: Host, deviceId: string) => Promise<boolean>,
 ): Promise<{ ok: boolean; error?: string }> {
   if (host === null) return { ok: false, error: 'LOGGING_NOT_AVAILABLE' };
   const deviceId = body !== null && typeof body === 'object' && 'id' in body && typeof body.id === 'string'
