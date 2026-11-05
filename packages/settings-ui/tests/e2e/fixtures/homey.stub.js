@@ -1464,6 +1464,8 @@
   };
 
   const buildBootstrapSettings = () => ({
+    continuous_battery_plan: Object.hasOwn(settings, 'continuous_battery_plan')
+      ? settings.continuous_battery_plan : {},
     inverter_curtailment_devices: Object.hasOwn(settings, 'inverter_curtailment_devices')
       ? settings.inverter_curtailment_devices : {},
     capacity_enabled: settings.capacity_enabled,
