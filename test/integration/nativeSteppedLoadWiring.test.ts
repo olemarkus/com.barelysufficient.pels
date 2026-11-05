@@ -1863,7 +1863,7 @@ describe('native stepped-load wiring', () => {
         pelsCapabilityWrite('high_power'),
       );
 
-      await emitCapability('hoiax-1', 'max_power_3000', '3', ownWriteTransactionId(put, 'hoiax-1', 'max_power_3000'));
+      await emitCapability('hoiax-1', 'max_power_3000', 'high_power', ownWriteTransactionId(put, 'hoiax-1', 'max_power_3000'));
 
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
         reportedStepId: 'medium',
