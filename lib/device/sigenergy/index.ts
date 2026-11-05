@@ -36,9 +36,9 @@ import { standardDeviceAdapter } from '../standardDeviceAdapter';
  * PELS's commands: charge W = `force_charge_from_grid` at W in kW (the app's
  * own "charge at N kW" pairing of limit and mode); discharge W =
  * `set_ess_max_discharge_power` at W in kW, then mode 6, "Discharge, battery
- * first"; hold 0 W = mode 1, Standby. Hand-back = remote EMS off first, so the
- * plant is under its own EMS even if a later step fails, then both limits
- * removed. A limit the owner had set before PELS is not restored: the app
+ * first"; hold 0 W = mode 1, Standby. Hand-back = remote EMS off, so the
+ * plant is under its own EMS without needing rated power. A limit the owner
+ * had set before PELS is not restored: the app
  * reads the limit registers back unreliably and offers no card to read them.
  * Remote EMS stays on until it is turned off, so a command lasts until the
  * next (`persistent`).
@@ -46,8 +46,8 @@ import { standardDeviceAdapter } from '../standardDeviceAdapter';
  * Range: the plant's rated charging and discharging power, which the app
  * shows as its `ratedChargingPower` and `ratedDischargingPower` settings
  * (`"<n> kW"`, `device.js:63`). While either is unknown the plant also
- * refuses to remove a limit, so the battery is unavailable rather than
- * handed back with a limit left in place.
+ * refuses to remove a limit. New commands wait, but remote EMS off remains
+ * available to hand back the plant.
  *
  * The plant is the one `plant` device of the app. With none, or more than one
  * (two systems), or more than one `battery` device (each reads the same plant
@@ -94,11 +94,6 @@ const sigenergyActions = (plantId: string, range: HomeBatterySetpointRange): Hom
       }
       return [step('set_remote_ems_control_mode', { mode: REMOTE_EMS_STANDBY })];
     },
-    handBack: [
-      step('set_remote_ems', { state: 'off' }),
-      step('remove_ess_charge_limit'),
-      step('remove_ess_discharge_limit'),
-    ],
   };
 };
 
@@ -126,6 +121,13 @@ const SIGENERGY_BINDING: HomeBatteryActionBinding = {
   appUri: `homey:app:${SIGENERGY_APP_ID}`,
   commandLifetime: () => ({ kind: 'persistent' }),
   resolve: resolveSigenergy,
+  resolveHandBack: (_device, devices) => {
+    const plants = devices.filter((other) => isDeviceOfAppDriver(other, SIGENERGY_APP_ID, PLANT_DRIVER_ID));
+    const [plant] = plants;
+    if (plant === undefined) return { kind: 'unavailable', reasonCode: 'plant_not_found' };
+    if (plants.length > 1) return { kind: 'unavailable', reasonCode: 'plant_ambiguous' };
+    return { kind: 'resolved', steps: [{ deviceId: plant.id, actionId: 'set_remote_ems', args: { state: 'off' } }] };
+  },
 };
 
 export const sigenergyAdapter: DeviceAdapter = {

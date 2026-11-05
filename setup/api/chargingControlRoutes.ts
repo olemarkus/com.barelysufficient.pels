@@ -6,6 +6,9 @@ import { API_STARTING_MESSAGE, defineRoutes, type ApiContext } from './defineRou
 export const HOMEY_API_KEY_HOLDS_BATTERY_MESSAGE
   = 'PELS could not hand a battery back to its app, so the key was kept. Try again in a minute.';
 
+export const HOMEY_API_KEY_CLAIMS_UNREADABLE_MESSAGE
+  = 'PELS could not check whether any batteries still need the key, so it was kept. Try again in a minute.';
+
 function chargingAccess(homey: ApiContext['homey']) {
   const transport = readPelsHost(homey)?.deviceManager;
   if (!transport) throw new Error(API_STARTING_MESSAGE);
@@ -46,6 +49,7 @@ export const chargingControlRoutes = defineRoutes({
     const batteryControl = readPelsHost(homey)?.batteryControl;
     if (!batteryControl) throw new Error(API_STARTING_MESSAGE);
     const removal = await batteryControl.handBackBeforeHomeyApiKeyRemoval(() => { access.remove(); });
+    if (removal === 'claim_records_unreadable') throw new Error(HOMEY_API_KEY_CLAIMS_UNREADABLE_MESSAGE);
     if (removal === 'battery_held') throw new Error(HOMEY_API_KEY_HOLDS_BATTERY_MESSAGE);
     return access.status();
   },

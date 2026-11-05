@@ -67,7 +67,11 @@ export function setChargingCurrentDevice(deviceId: string): void {
       error = formatSettingsError(failure, 'Charging setup could not be saved. Try again.');
       return false;
     }
-    finally { busy = false; display(); }
+    finally {
+      busy = false;
+      display();
+      document.dispatchEvent(new Event('homey-api-key-changed'));
+    }
   };
   const loadInitial = async (): Promise<void> => {
     if (version !== loadVersion) return;

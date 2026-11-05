@@ -107,16 +107,31 @@ test.each(['vendor', 'server', 'network'])('a %s command failure preserves acces
   expect(fetchMock).toHaveBeenCalledTimes(4);
 });
 
-test.each([401, 403])('an HTTP %i command rejection blocks all further actions until access is checked', async (status) => {
+test.each([401, 403])('an HTTP %i rejection is rechecked before a later hand-back', async (status) => {
   const fetchMock = vi.fn().mockResolvedValueOnce(response({ intersectedScopes: ['homey.flow'] }))
-    .mockResolvedValueOnce(response({}, status));
+    .mockResolvedValueOnce(response({}, status))
+    .mockResolvedValueOnce(response({ intersectedScopes: ['homey.flow'] }))
+    .mockResolvedValueOnce(response({ error: null }));
   vi.stubGlobal('fetch', fetchMock);
   const { access } = fixture();
   await access.save({ key: KEY });
   await expect(access.runAction('charger', action, 'charging_current', () => {})).rejects.toThrow('Flow permission');
   expect(access.status().state).toBe('permission_denied');
-  await expect(access.runAction('other-charger', action, 'charging_current', () => {})).rejects.toThrow('Flow permission');
-  expect(fetchMock).toHaveBeenCalledTimes(2);
+  await access.runAction('battery', action, 'home_battery', () => {});
+  expect(access.status().state).toBe('ready');
+  expect(fetchMock.mock.calls.map(([, options]) => options.method)).toEqual(['GET', 'POST', 'GET', 'POST']);
+});
+
+test('a denied key that still lacks Flow permission is rechecked without another POST', async () => {
+  const fetchMock = vi.fn().mockResolvedValueOnce(response({ intersectedScopes: ['homey.flow'] }))
+    .mockResolvedValueOnce(response({}, 403))
+    .mockResolvedValueOnce(response({ intersectedScopes: [] }));
+  vi.stubGlobal('fetch', fetchMock);
+  const { access } = fixture();
+  await access.save({ key: KEY });
+  await expect(access.runAction('battery', action, 'home_battery', () => {})).rejects.toThrow('Flow permission');
+  await expect(access.runAction('battery', action, 'home_battery', () => {})).rejects.toThrow('Flow permission');
+  expect(fetchMock.mock.calls.map(([, options]) => options.method)).toEqual(['GET', 'POST', 'GET']);
 });
 
 test('a planned command rechecks access after a transient scope-check failure without replaying a POST', async () => {

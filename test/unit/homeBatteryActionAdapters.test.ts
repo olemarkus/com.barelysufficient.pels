@@ -44,7 +44,7 @@ describe('Marstek Venus Connector binding', () => {
   });
 
   it('hands back to the battery\'s own Auto mode', () => {
-    expect(resolved(venus, [venus]).handBack).toEqual([{ deviceId: 'venus', actionId: 'marstek_auto_mode', args: {} }]);
+    expect(actionBinding(venus).resolveHandBack(venus, [venus])).toEqual({ kind: 'resolved', steps: [{ deviceId: 'venus', actionId: 'marstek_auto_mode', args: {} }] });
   });
 
   it('leaves the cloud driver on Homey\'s standard binding', () => {
@@ -80,16 +80,14 @@ describe('Sigenergy binding', () => {
     ]);
   });
 
-  it('holds at 0 W in Standby, and hands back with remote EMS off first, then both limits removed', () => {
+  it('holds at 0 W in Standby, and hands back with remote EMS off', () => {
     const actions = resolved(battery, [battery, plant]);
     expect(actions.command(0)).toEqual([
       { deviceId: 'sigen-plant', actionId: 'set_remote_ems_control_mode', args: { mode: '1' } },
     ]);
-    expect(actions.handBack).toEqual([
+    expect(actionBinding(battery).resolveHandBack(battery, [battery, plant])).toEqual({ kind: 'resolved', steps: [
       { deviceId: 'sigen-plant', actionId: 'set_remote_ems', args: { state: 'off' } },
-      { deviceId: 'sigen-plant', actionId: 'remove_ess_charge_limit', args: {} },
-      { deviceId: 'sigen-plant', actionId: 'remove_ess_discharge_limit', args: {} },
-    ]);
+    ] });
   });
 
   it.each([
@@ -130,9 +128,9 @@ describe('Zendure local binding', () => {
   });
 
   it('hands back with the app\'s idle, set-power 0, its only control', () => {
-    expect(resolved(zendure, [zendure]).handBack).toEqual([
+    expect(actionBinding(zendure).resolveHandBack(zendure, [zendure])).toEqual({ kind: 'resolved', steps: [
       { deviceId: 'zendure', actionId: 'set-power', args: { power: 0 } },
-    ]);
+    ] });
   });
 
   it('leaves the Zendure cloud app, which reports no battery power, on Homey\'s standard binding', () => {
@@ -169,9 +167,9 @@ describe('Huawei LUNA2000 Modbus binding', () => {
   });
 
   it('hands back by stopping the forced run', () => {
-    expect(resolved(luna, [luna]).handBack).toEqual([
+    expect(actionBinding(luna).resolveHandBack(luna, [luna])).toEqual({ kind: 'resolved', steps: [
       { deviceId: 'luna', actionId: 'luna2000_stop_force_charge_discharge', args: {} },
-    ]);
+    ] });
   });
 
   it.each([

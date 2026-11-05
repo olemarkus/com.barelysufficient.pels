@@ -4,16 +4,17 @@ import type { HomeyFlowAction } from './transport/homeyActionAccess';
  * The Flow action cards Homey lists (`manager/flow/flowcardaction`), by card
  * id: the installed metadata a device's app actions are resolved against, so
  * PELS runs only a card that really exists. Entries without a string id are
- * skipped; an unreadable inventory lists no card.
+ * skipped; an unreadable inventory throws so its owner retains the last read.
  */
 export type FlowActionCardIds = ReadonlySet<string>;
 
 export const FLOW_ACTION_CARDS_API_PATH = 'manager/flow/flowcardaction';
 
 export function readFlowActionCardIds(inventory: unknown): FlowActionCardIds {
-  let entries: unknown[] = [];
+  let entries: unknown[];
   if (Array.isArray(inventory)) entries = inventory;
   else if (typeof inventory === 'object' && inventory !== null) entries = Object.values(inventory);
+  else throw new Error('Unreadable Flow action card inventory.');
   return new Set(entries.flatMap((entry) => (
     typeof entry === 'object' && entry !== null && 'id' in entry && typeof entry.id === 'string' ? [entry.id] : []
   )));

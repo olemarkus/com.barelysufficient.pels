@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
@@ -98,6 +98,13 @@ const steppedCharger = (controllable = true): PlanInputDevice => inputDevice({
 });
 
 describe('a smart task’s deferred hour', () => {
+  beforeEach(() => {
+    // Shape an ordinary capacity hour, independent of the wall clock's drain window.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-05T12:30:00Z'));
+  });
+  afterEach(() => vi.useRealTimers());
+
   it('turns a running stepped device off, not down to its limiting floor', async () => {
     const plan = await buildBuilder(idleDecision).buildDevicePlanSnapshot([steppedCharger()]);
 

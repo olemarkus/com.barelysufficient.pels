@@ -65,6 +65,8 @@ test('keeps the key manageable on a battery PELS drives with it, and offers to r
   await act(async () => setBatteryApiKeyDevice(battery({ batteryControl: 'drivable', batteryUsesHomeyApiKey: true })));
   await vi.waitFor(() => expect(container().textContent).toContain('API key verified.'));
   await act(async () => button('Remove key').click());
+  expect(callApi).not.toHaveBeenCalledWith('DELETE', '/ui_charging_access');
+  await act(async () => button('Confirm removal').click());
   await vi.waitFor(() => expect(container().textContent).toContain('A Homey API key is needed'));
   expect(callApi).toHaveBeenCalledWith('DELETE', '/ui_charging_access');
 });
@@ -72,7 +74,7 @@ test('keeps the key manageable on a battery PELS drives with it, and offers to r
 test('keeps the key and says why when PELS could not hand the battery back first', async () => {
   access = { configured: true, state: 'ready' };
   const listChanged = vi.fn();
-  document.addEventListener('battery-api-key-changed', listChanged);
+  document.addEventListener('homey-api-key-changed', listChanged);
   callApi.mockImplementation(async (method: string) => {
     if (method === 'DELETE') throw new Error('PELS could not hand a battery back to its app, so the key was kept. Try again in a minute.');
     return access;
@@ -80,12 +82,14 @@ test('keeps the key and says why when PELS could not hand the battery back first
   await act(async () => setBatteryApiKeyDevice(battery({ batteryControl: 'drivable', batteryUsesHomeyApiKey: true })));
   await vi.waitFor(() => expect(container().textContent).toContain('API key verified.'));
   await act(async () => button('Remove key').click());
+  expect(callApi).not.toHaveBeenCalledWith('DELETE', '/ui_charging_access');
+  await act(async () => button('Confirm removal').click());
 
   await vi.waitFor(() => expect(container().querySelector('[role="alert"]')?.textContent)
     .toBe('PELS could not hand a battery back to its app, so the key was kept. Try again in a minute.'));
   expect(container().textContent).toContain('API key verified.');
   expect(listChanged).toHaveBeenCalled();
-  document.removeEventListener('battery-api-key-changed', listChanged);
+  document.removeEventListener('homey-api-key-changed', listChanged);
 });
 
 test('offers a check for a saved key Homey could not confirm', async () => {
@@ -102,4 +106,16 @@ test('shows nothing for a battery that needs no key', async () => {
   await act(async () => setBatteryApiKeyDevice(battery({ batteryControl: 'drivable', batteryUsesHomeyApiKey: false })));
   expect(container().textContent).toBe('');
   expect(callApi).not.toHaveBeenCalled();
+});
+
+
+test('cancels key removal without changing access', async () => {
+  access = { configured: true, state: 'ready' };
+  await act(async () => setBatteryApiKeyDevice(battery({ batteryControl: 'drivable', batteryUsesHomeyApiKey: true })));
+  await vi.waitFor(() => expect(container().textContent).toContain('API key verified.'));
+  await act(async () => button('Remove key').click());
+  expect(container().textContent).toContain('batteries, cars and chargers that use it');
+  await act(async () => button('Cancel').click());
+  expect(callApi).not.toHaveBeenCalledWith('DELETE', '/ui_charging_access');
+  expect(container().querySelector('[aria-label="Remove API key"]')).toBeNull();
 });

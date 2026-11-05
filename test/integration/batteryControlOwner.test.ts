@@ -783,6 +783,52 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
     expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'release_in_flight' });
   });
 
+  it('keeps the key at boot until a held battery is observed and handed back', async () => {
+    const removeKey = vi.fn();
+    const settings = settingsStore({ [CLAIM_KEY]: { handBack: 'app_actions', claimedAtMs: T0 - 60_000 } });
+    const { owner, batteries, commands } = buildOwner({ settings, batteries: {} });
+
+    await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('battery_held');
+    expect(removeKey).not.toHaveBeenCalled();
+    expect(commands).toEqual([]);
+    expect(settings.get(CLAIM_KEY)).toMatchObject({ handBack: 'app_actions' });
+
+    batteries[BATTERY] = appActions();
+    await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('removed');
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions' }]);
+    expect(removeKey).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports an unreadable claim list without claiming an EV-only home holds a battery', async () => {
+    const removeKey = vi.fn();
+    const settings = settingsStore();
+    const getKeys = settings.getKeys;
+    settings.getKeys = () => { throw new Error('settings temporarily unavailable'); };
+    const { owner } = buildOwner({ settings, batteries: {} });
+
+    await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('claim_records_unreadable');
+    expect(removeKey).not.toHaveBeenCalled();
+
+    settings.getKeys = getKeys;
+    await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('removed');
+    expect(removeKey).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the key while an individual claim is unreadable and retries that record on removal', async () => {
+    const removeKey = vi.fn();
+    const settings = settingsStore({ [CLAIM_KEY]: 'unreadable' });
+    const { owner, commands } = buildOwner({ settings, batteries: { [BATTERY]: appActions() } });
+
+    await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('claim_records_unreadable');
+    expect(removeKey).not.toHaveBeenCalled();
+    expect(commands).toEqual([]);
+
+    settings.set(CLAIM_KEY, { handBack: 'app_actions', claimedAtMs: T0 - 60_000 });
+    await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('removed');
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions' }]);
+    expect(removeKey).toHaveBeenCalledTimes(1);
+  });
+
   it('removes the key at once when no battery runs on it, or none could be handed back on it anyway', async () => {
     const removeKey = vi.fn();
     const claimed = buildOwner();

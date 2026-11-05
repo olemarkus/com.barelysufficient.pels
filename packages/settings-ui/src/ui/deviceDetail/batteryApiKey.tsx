@@ -30,7 +30,7 @@ let loadVersion = 0;
  * its app's Flow actions (`batteryUsesHomeyApiKey`), on the same routes and
  * key as charger current. Hidden for every other device. A saved or removed
  * key changes what PELS can do with the battery, so the device list is read
- * again after each change (`battery-api-key-changed`, which `realtime.ts` answers); the key is
+ * again after each change (`homey-api-key-changed`, which `realtime.ts` answers); the key is
  * shared, so the charging pages are told too (`charging-control-changed`).
  */
 export function setBatteryApiKeyDevice(device: SettingsUiDeviceDetailItem | null): void {
@@ -93,7 +93,7 @@ export function setBatteryApiKeyDevice(device: SettingsUiDeviceDetailItem | null
     } finally {
       busy = false;
       display();
-      document.dispatchEvent(new Event('battery-api-key-changed'));
+      document.dispatchEvent(new Event('homey-api-key-changed'));
       document.dispatchEvent(new Event('charging-control-changed'));
     }
   };

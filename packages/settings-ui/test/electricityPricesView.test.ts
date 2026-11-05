@@ -330,7 +330,7 @@ describe('ElectricityPricesView', () => {
         expect(mount.querySelector('#electricity-prices-export-powerhour')?.textContent)
           .toContain('export price that follows the market price');
         const button = [...mount.querySelectorAll('md-outlined-button')]
-          .find((entry) => entry.textContent?.includes('Use Power by the Hour')) as HTMLElement;
+          .find((entry) => entry.textContent?.includes('Use for import and export')) as HTMLElement;
         button.click();
         expect(onUsePowerhourForExport).toHaveBeenCalledTimes(1);
       });

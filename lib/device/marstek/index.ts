@@ -59,13 +59,15 @@ const marstekActions = (deviceId: string): HomeBatteryActions => ({
     actionId: 'marstek_passive_mode',
     args: { power: setpointW === 0 ? 0 : -setpointW, seconds: MARSTEK_PASSIVE_SECONDS },
   }],
-  handBack: [{ deviceId, actionId: 'marstek_auto_mode', args: {} }],
 });
 
 const MARSTEK_BINDING: HomeBatteryActionBinding = {
   kind: 'app_actions',
   appUri: `homey:app:${MARSTEK_CONNECTOR_APP_ID}`,
   commandLifetime: () => ({ kind: 'expires', lifetimeMs: MARSTEK_PASSIVE_SECONDS * 1000 }),
+  resolveHandBack: (device) => ({
+    kind: 'resolved', steps: [{ deviceId: device.id, actionId: 'marstek_auto_mode', args: {} }],
+  }),
   resolve: (device) => ({ kind: 'resolved', actions: marstekActions(device.id) }),
 };
 

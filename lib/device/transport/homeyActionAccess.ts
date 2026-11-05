@@ -115,7 +115,7 @@ export class HomeyActionAccess {
     this.sync();
     // A transient scope-check failure must not require a settings visit to
     // recover. Recheck on the next planned command; never retry its POST.
-    if (this.key && (this.accessState === 'not_checked' || this.accessState === 'unavailable')) await this.check();
+    if (this.key && this.accessState !== 'ready') await this.check();
     if (!this.key || this.accessState !== 'ready' || this.inFlight.has(deviceId)) {
       throw new HomeyActionAccessError(this.accessState === 'permission_denied' ? 'permission_denied' : 'unavailable');
     }

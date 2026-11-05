@@ -116,6 +116,15 @@ describe('home battery app actions', () => {
     expect(runs()).toEqual([]);
   });
 
+  it('keeps hand-back retryable after the saved key is denied permission', async () => {
+    const { transport, runs } = await setup([buildMarstekConnectorBatteryDevice({ id: 'venus' })], MARSTEK_CARDS);
+    await transport.requestStoragePower({ kind: 'storage_power', deviceId: 'venus', setpointW: 500 });
+    vi.spyOn(transport.chargingAccess, 'status').mockReturnValue({ configured: true, state: 'permission_denied' });
+    expect(transport.readBatteryControl('venus')).toEqual({ kind: 'hand_back_only' });
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'venus', handBack: 'app_actions' });
+    expect(runs().at(-1)?.[1].cardId).toBe(`${MARSTEK_APP}:marstek_auto_mode`);
+  });
+
   it('fails closed on a missing card: the battery is observe-only and no card runs', async () => {
     const { transport, runs } = await setup(
       [buildMarstekConnectorBatteryDevice({ id: 'venus' })], [`${MARSTEK_APP}:marstek_passive_mode`],
@@ -211,9 +220,41 @@ describe('home battery app actions', () => {
       plantCard('set_ess_max_discharge_power', { power: 1.2 }),
       plantCard('set_remote_ems_control_mode', { mode: '6' }),
       plantCard('set_remote_ems', { state: 'off' }),
-      plantCard('remove_ess_charge_limit'),
-      plantCard('remove_ess_discharge_limit'),
     ]);
+  });
+
+  it.each(['ratings', 'shared', 'ambiguous', 'missing', 'replacement'])('hands back the original Sigenergy plant after %s resolution degrades', async (failure) => {
+    const { battery, plant } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'plant' });
+    const { transport, runs } = await setup([battery, plant], SIGENERGY_CARDS);
+    await transport.requestStoragePower({ kind: 'storage_power', deviceId: 'sigen', setpointW: -1000 });
+    const batteryRaw = battery.toHomeyApiDevice() as HomeyDeviceLike;
+    const plantRaw = plant.toHomeyApiDevice() as HomeyDeviceLike;
+    const devices = [batteryRaw, plantRaw];
+    if (failure === 'ratings') plantRaw.settings = {};
+    if (failure === 'shared') devices.push({ ...batteryRaw, id: 'second-battery' });
+    if (failure === 'ambiguous') devices.push({ ...plantRaw, id: 'second-plant' });
+    if (failure === 'missing') devices.pop();
+    if (failure === 'replacement') devices[1] = { ...plantRaw, id: 'replacement-plant' };
+    await seedTransportDevices(transport, devices);
+
+    expect(transport.readBatteryControl('sigen')).toEqual({ kind: 'hand_back_only' });
+    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'sigen', setpointW: 1000 }))
+      .rejects.toThrow();
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'sigen', handBack: 'app_actions' });
+    expect(runs().at(-1)).toEqual(['sigen', {
+      ownerUri: SIGENERGY_APP, cardId: `${SIGENERGY_APP}:set_remote_ems`,
+      args: { device: { id: 'plant' }, state: 'off' },
+    }]);
+  });
+
+  it.each([null, undefined, 'unreadable', 42])('retains the last card inventory after a malformed envelope: %s', async (raw) => {
+    const { transport, runs } = await setup([buildMarstekConnectorBatteryDevice({ id: 'venus' })], MARSTEK_CARDS);
+    await transport.requestStoragePower({ kind: 'storage_power', deviceId: 'venus', setpointW: 500 });
+    vi.mocked(mockHomeyInstance.api.get).mockResolvedValueOnce(raw);
+    await transport.batteryAppActions.refreshCards();
+    expect(transport.readBatteryControl('venus').kind).toBe('app_actions');
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'venus', handBack: 'app_actions' });
+    expect(runs().at(-1)?.[1].cardId).toBe(`${MARSTEK_APP}:marstek_auto_mode`);
   });
 
   it('stops a sequence at the step that failed', async () => {
@@ -226,11 +267,11 @@ describe('home battery app actions', () => {
     expect(runs().map(([, action]) => action.cardId)).toEqual([`${SIGENERGY_APP}:set_ess_max_discharge_power`]);
   });
 
-  it('only watches a Sigenergy battery whose plant is not in Homey', async () => {
+  it('waits to resolve a Sigenergy hand-back while its plant is not in Homey', async () => {
     const { battery } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'plant' });
     const { transport } = await setup([battery], SIGENERGY_CARDS);
 
-    expect(transport.readBatteryControl('sigen')).toEqual({ kind: 'observe_only' });
+    expect(transport.readBatteryControl('sigen')).toEqual({ kind: 'unobserved' });
   });
   it('drives a local Zendure through set-power in the app\'s sign, keeping only a charge alive', async () => {
     const { transport, runs } = await setup([buildZendureLocalBatteryDevice({ id: 'zendure' })], [`${ZENDURE_APP}:set-power`]);
@@ -285,7 +326,7 @@ describe('home battery app actions', () => {
 
   it('only watches a LUNA2000 whose max powers the app has not read yet, or without its stop card', async () => {
     const unread = await setup([buildHuaweiLuna2000Device({ id: 'luna', maxChargePowerW: 0 })], HUAWEI_CARDS);
-    expect(unread.transport.readBatteryControl('luna')).toEqual({ kind: 'observe_only' });
+    expect(unread.transport.readBatteryControl('luna')).toEqual({ kind: 'hand_back_only' });
     vi.restoreAllMocks();
 
     const noStop = await setup([buildHuaweiLuna2000Device({ id: 'luna' })], HUAWEI_CARDS.slice(0, 2));

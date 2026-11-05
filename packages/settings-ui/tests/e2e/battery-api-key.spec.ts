@@ -39,6 +39,11 @@ for (const width of [320, 480]) {
         await section.locator('summary').click();
         await expect(section).toContainText('API key verified.');
         await section.screenshot({ path: testInfo.outputPath('battery-api-key-saved.png') });
+        await section.getByRole('button', { name: 'Remove key', exact: true }).click();
+        const confirmation = section.getByRole('group', { name: 'Remove API key', exact: true });
+        await expect(confirmation).toBeVisible();
+        await expect(confirmation).toContainText('batteries, cars and chargers that use it');
+        await section.screenshot({ path: testInfo.outputPath('battery-api-key-remove-confirmation.png') });
         const layout = await section.evaluate((element) => {
           const right = element.getBoundingClientRect().right;
           return { width: element.clientWidth, scrollWidth: element.scrollWidth,
@@ -46,6 +51,12 @@ for (const width of [320, 480]) {
               .map((child) => ({ tag: child.tagName, class: child.className, right: child.getBoundingClientRect().right })) };
         });
         expect(layout.scrollWidth, JSON.stringify(layout)).toBeLessThanOrEqual(layout.width);
+        await confirmation.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(confirmation).toBeHidden();
+        await expect(section).toContainText('API key verified.');
+        await section.getByRole('button', { name: 'Remove key', exact: true }).click();
+        await confirmation.getByRole('button', { name: 'Confirm removal', exact: true }).click();
+        await expect(section).toContainText('A Homey API key is needed for PELS to control this battery.');
       });
     });
   }

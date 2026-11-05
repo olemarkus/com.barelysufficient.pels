@@ -343,7 +343,7 @@ const PowerhourDeviceSelect = ({
       </MdFilledSelect>
       <small class="field__hint">
         PELS takes your prices from the device you pick here. The same zone paired twice
-        works either way — the 15-minute one just follows prices four times an hour.
+        works either way. The 15-minute one follows prices four times an hour.
       </small>
     </div>
   );
@@ -364,7 +364,7 @@ const powerhourSourceRow = (
     return {
       value: { text: 'Not read yet', tone: 'warn' },
       detail: 'PELS hasn’t asked Power by the Hour for prices yet. It tries again '
-        + 'every few hours — or press Refresh prices.',
+        + 'every few hours, or press Refresh prices.',
     };
   }
   if (status.kind === 'not_permitted') {
@@ -471,7 +471,7 @@ const schemeNote = (scheme: PriceScheme, hasGridCompany: boolean): string | null
     return 'Flow source uses values as provided (currency/tax may vary). '
       + 'Use this outside Norway when your prices come from somewhere PELS has no '
       + 'source for; feed today and tomorrow prices via PELS flow actions. If they '
-      + 'come from Power by the Hour, pick that source instead — it needs no flow.';
+      + 'come from Power by the Hour, pick that source instead. It needs no Flow.';
   }
   if (scheme === 'homey') {
     return 'Uses the prices Homey Energy shows, including any fees you added there.';
@@ -508,11 +508,11 @@ const NotChosenHint = ({ text }: { text: string }) => (
 );
 
 const PRICE_AREAS: ReadonlyArray<{ code: string; label: string }> = [
-  { code: 'NO1', label: 'NO1 — Oslo / East Norway' },
-  { code: 'NO2', label: 'NO2 — Kristiansand / South Norway' },
-  { code: 'NO3', label: 'NO3 — Trondheim / Central Norway' },
-  { code: 'NO4', label: 'NO4 — Tromsø / North Norway (no VAT)' },
-  { code: 'NO5', label: 'NO5 — Bergen / West Norway' },
+  { code: 'NO1', label: 'NO1: Oslo / East Norway' },
+  { code: 'NO2', label: 'NO2: Kristiansand / South Norway' },
+  { code: 'NO3', label: 'NO3: Trondheim / Central Norway' },
+  { code: 'NO4', label: 'NO4: Tromsø / North Norway (no VAT)' },
+  { code: 'NO5', label: 'NO5: Bergen / West Norway' },
 ];
 
 const countyName = (code: string): string => COUNTIES.find((county) => county.code === code)?.name ?? code;
@@ -1058,7 +1058,7 @@ const ExportPriceForm = ({ config, handlers, inverterControl }: ElectricityPrice
           </p>
           <div class="form__actions">
             <MdOutlinedButton type="button" onClick={handlers.onUsePowerhourForExport}>
-              Use Power by the Hour
+              Use for import and export
             </MdOutlinedButton>
           </div>
         </>

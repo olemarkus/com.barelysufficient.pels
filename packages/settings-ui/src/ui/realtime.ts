@@ -224,9 +224,8 @@ export const initRealtimeListeners = () => {
   homey.on('settings.set', withSettingsKey('settings.set', createSettingsSetHandler()));
   homey.on('settings.unset', withSettingsKey('settings.unset', createSettingsUnsetHandler()));
 
-  // A saved or removed Homey API key on a battery's page changes what PELS can
-  // do with that battery, which the device list says.
-  document.addEventListener('battery-api-key-changed', () => { refreshDevicesForUi(); });
+  // The shared key changes battery availability from either setup page.
+  document.addEventListener('homey-api-key-changed', () => { refreshDevicesForUi(); });
   document.addEventListener('request-load-devices', () => {
     if (!state.devicesLoaded && !state.devicesLoading) {
       loadDevicesOnce();

@@ -17,8 +17,8 @@
  *   PELS owes it still runs. Before the first inventory read the battery
  *   reads as not observed yet. Nothing is guessed and nothing crashes.
  * - **The key.** The actions need the owner's Homey API key with Flow
- *   permission. With none saved, or one Homey refused Flow permission, the
- *   battery reads `homey_api_key_missing`: PELS only watches it. A saved key
+ *   permission. With none saved the battery reads `homey_api_key_missing`.
+ *   Refused permission blocks new commands but leaves hand-back retryable. A saved key
  *   not checked yet, or one whose last check could not reach Homey, is not a
  *   missing key: the runner checks it again before its next action.
  * - **The inventory** is read when a full device read shows a battery bound to
@@ -36,7 +36,9 @@ import type { BatteryCommandKeepAlive, BatteryControlRead } from '../ports/batte
 import { normalizeError } from '../utils/errorUtils';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { toTargetPowerCapabilityValue } from '../utils/storageSetpoint';
-import type { HomeBatteryActionBinding, HomeBatteryActions, HomeBatteryCommandLifetime } from './deviceAdapter';
+import type {
+  HomeBatteryActionBinding, HomeBatteryActions, HomeBatteryActionsResolution, HomeBatteryCommandLifetime,
+} from './deviceAdapter';
 import { getDeviceAdapter } from './deviceAdapterRegistry';
 import {
   FLOW_ACTION_CARDS_API_PATH,
@@ -70,19 +72,19 @@ type CardInventory =
 
 /**
  * A battery's actions against the installed cards: its hand-back cards are
- * all installed; `commandBlocked` is why its commands cannot run (a command
- * card missing, or a range PELS cannot command), `undefined` when they can.
+ * all installed; commands are resolved independently so losing their range
+ * or admission never prevents handing back a command already delivered.
  */
 type ResolvedActions = {
   binding: HomeBatteryActionBinding;
-  actions: HomeBatteryActions;
+  commands: { kind: 'ready'; actions: HomeBatteryActions } | { kind: 'blocked'; reasonCode: string };
+  handBack: readonly DeviceActionStep[];
   cards: FlowActionCardIds;
-  commandBlocked: string | undefined;
 };
 
 type Resolution =
   | { kind: 'resolved'; resolved: ResolvedActions }
-  | { kind: 'cards_unread' }
+  | { kind: 'unobserved' }
   | { kind: 'unavailable'; reasonCode: string };
 
 type RunPurpose = 'command' | 'hand_back';
@@ -105,15 +107,17 @@ const everyCommandStep = (actions: HomeBatteryActions): readonly DeviceActionSte
 
 const CARD_MISSING_PREFIX = 'action_card_missing:';
 
-/** Whether the key lets no action run at all: none saved, or Homey refused it Flow permission. */
+/** No saved key can run a hand-back. A configured key is rechecked by the runner. */
 const isKeyMissing = (access: HomeyActionAccess): boolean => {
   const { state } = access.status();
-  return state === 'not_configured' || state === 'permission_denied';
+  return state === 'not_configured';
 };
 
 export class HomeBatteryAppActions {
   private inventory: CardInventory = { kind: 'unread', retryAtMs: 0 };
   private inventoryRead: Promise<void> | undefined;
+  /** The hand-back target of commands we may have delivered, retained until released. */
+  private readonly commandedHandBacks = new Map<string, readonly DeviceActionStep[]>();
   /** The reason each battery was last logged unavailable, so each change is logged once. */
   private readonly unavailable = new Map<string, string>();
 
@@ -144,29 +148,31 @@ export class HomeBatteryAppActions {
           kind: 'read', cards: readFlowActionCardIds(raw), refreshAtMs: Date.now() + CARD_INVENTORY_MAX_AGE_MS,
         };
       },
-      (error: unknown) => {
-        // A failed read keeps the cards last read: they were installed then.
-        if (this.inventory.kind === 'read') this.inventory = { ...this.inventory, refreshAtMs: this.retryAt() };
-        else this.inventory = { kind: 'unread', retryAtMs: this.retryAt() };
-        this.logger.structuredLog.warn({ event: 'home_battery_action_cards_read_failed', err: normalizeError(error) });
-      },
-    ).finally(() => { this.inventoryRead = undefined; });
+    ).catch((error: unknown) => {
+      // A failed read keeps the cards last read: they were installed then.
+      if (this.inventory.kind === 'read') this.inventory = { ...this.inventory, refreshAtMs: this.retryAt() };
+      else this.inventory = { kind: 'unread', retryAtMs: this.retryAt() };
+      this.logger.structuredLog.warn({ event: 'home_battery_action_cards_read_failed', err: normalizeError(error) });
+    }).finally(() => { this.inventoryRead = undefined; });
     return this.inventoryRead;
   }
 
   /** The battery as the owner reads it (`BatteryControlRead`). */
   readControl(deviceId: string): AppActionBatteryControl {
     const resolution = this.resolve(deviceId);
-    if (resolution.kind === 'cards_unread') return { kind: 'unobserved' };
+    if (resolution.kind === 'unobserved') return { kind: 'unobserved' };
     if (resolution.kind === 'unavailable') {
       this.noteUnavailable(deviceId, resolution.reasonCode);
       return { kind: 'observe_only' };
     }
-    const { binding, actions, commandBlocked } = resolution.resolved;
-    if (commandBlocked === undefined) this.unavailable.delete(deviceId);
-    else this.noteUnavailable(deviceId, commandBlocked);
+    const { binding, commands } = resolution.resolved;
+    if (commands.kind === 'ready') this.unavailable.delete(deviceId);
+    else this.noteUnavailable(deviceId, commands.reasonCode);
     if (isKeyMissing(this.access)) return { kind: 'homey_api_key_missing' };
-    if (commandBlocked !== undefined) return { kind: 'hand_back_only' };
+    if (commands.kind === 'blocked' || this.access.status().state === 'permission_denied') {
+      return { kind: 'hand_back_only' };
+    }
+    const { actions } = commands;
     return {
       kind: 'app_actions',
       range: actions.range,
@@ -183,8 +189,10 @@ export class HomeBatteryAppActions {
    */
   async command(deviceId: string, setpointW: number): Promise<number> {
     const resolved = this.requireRunnable(deviceId, 'command');
-    const commandedW = toTargetPowerCapabilityValue(setpointW, resolved.actions.range);
-    await this.runSteps(deviceId, resolved, resolved.actions.command(commandedW));
+    if (resolved.commands.kind !== 'ready') throw new Error(resolved.commands.reasonCode);
+    const commandedW = toTargetPowerCapabilityValue(setpointW, resolved.commands.actions.range);
+    this.commandedHandBacks.set(deviceId, resolved.handBack);
+    await this.runSteps(deviceId, resolved, resolved.commands.actions.command(commandedW));
     return commandedW;
   }
 
@@ -194,7 +202,8 @@ export class HomeBatteryAppActions {
    */
   async handBack(deviceId: string): Promise<void> {
     const resolved = this.requireRunnable(deviceId, 'hand_back');
-    await this.runSteps(deviceId, resolved, resolved.actions.handBack);
+    await this.runSteps(deviceId, resolved, resolved.handBack);
+    this.commandedHandBacks.delete(deviceId);
   }
 
   /**
@@ -233,10 +242,10 @@ export class HomeBatteryAppActions {
       new Error(`Home battery ${deviceId} app actions are unavailable (${reasonCode}).`)
     );
     const resolution = this.resolve(deviceId);
-    if (resolution.kind === 'cards_unread') throw unavailable('action_cards_unread');
+    if (resolution.kind === 'unobserved') throw unavailable('actions_unobserved');
     if (resolution.kind === 'unavailable') throw unavailable(resolution.reasonCode);
-    const { commandBlocked } = resolution.resolved;
-    if (purpose === 'command' && commandBlocked !== undefined) throw unavailable(commandBlocked);
+    const { commands } = resolution.resolved;
+    if (purpose === 'command' && commands.kind === 'blocked') throw unavailable(commands.reasonCode);
     if (isKeyMissing(this.access)) throw unavailable('homey_api_key_missing');
     return resolution.resolved;
   }
@@ -251,23 +260,31 @@ export class HomeBatteryAppActions {
     if (device === undefined) return { kind: 'unavailable', reasonCode: 'battery_unread' };
     const binding = this.bindingOf(device);
     if (binding === undefined) return { kind: 'unavailable', reasonCode: 'not_app_actions' };
-    const resolution = binding.resolve(device, this.getDevices());
-    if (resolution.kind === 'unavailable') return resolution;
-    if (this.inventory.kind !== 'read') return { kind: 'cards_unread' };
+    if (this.inventory.kind !== 'read') return { kind: 'unobserved' };
+    const devices = this.getDevices();
+    const handBackResolution = binding.resolveHandBack(device, devices);
+    // Never redirect an owed hand-back to a newly paired sibling plant.
+    const retainedHandBack = this.commandedHandBacks.get(deviceId);
+    const release = retainedHandBack === undefined ? handBackResolution
+      : { kind: 'resolved' as const, steps: retainedHandBack };
+    if (release.kind === 'unavailable') {
+      this.noteUnavailable(deviceId, release.reasonCode);
+      return { kind: 'unobserved' };
+    }
+    const handBack = release.steps;
     const { cards } = this.inventory;
-    const { actions } = resolution;
-    const missingIn = (steps: readonly DeviceActionStep[]): string | undefined => {
-      const missing = steps.find((step) => resolveDeviceActionCard(cards, binding.appUri, step) === undefined);
-      return missing === undefined ? undefined : `${CARD_MISSING_PREFIX}${missing.actionId}`;
-    };
-    const handBackMissing = missingIn(actions.handBack);
-    const commandBlocked = handBackMissing ?? missingIn(everyCommandStep(actions))
-      ?? (isUsableRange(actions.range) ? undefined : 'not_signed_range');
-    // A missing card may be an app still starting or just updated: read the
-    // inventory again soon rather than leave the battery waiting out its age.
-    if (commandBlocked?.startsWith(CARD_MISSING_PREFIX) === true) this.retryInventorySoon();
-    if (handBackMissing !== undefined) return { kind: 'unavailable', reasonCode: handBackMissing };
-    return { kind: 'resolved', resolved: { binding, actions, cards, commandBlocked } };
+    const handBackMissing = missingCard(cards, binding.appUri, handBack);
+    if (handBackMissing !== undefined) {
+      this.retryInventorySoon();
+      return { kind: 'unavailable', reasonCode: handBackMissing };
+    }
+    let commands = resolveCommands(binding.resolve(device, devices), cards, binding.appUri);
+    if (retainedHandBack !== undefined && handBackResolution.kind === 'resolved'
+      && !sameTargets(retainedHandBack, handBackResolution.steps)) {
+      commands = { kind: 'blocked', reasonCode: 'hand_back_target_changed' };
+    }
+    if (commands.kind === 'blocked' && commands.reasonCode.startsWith(CARD_MISSING_PREFIX)) this.retryInventorySoon();
+    return { kind: 'resolved', resolved: { binding, commands, handBack, cards } };
   }
 
   private noteUnavailable(deviceId: string, reasonCode: string): void {
@@ -297,3 +314,29 @@ const isUsableRange = (range: HomeBatterySetpointRange): boolean => (
   && range.minW < 0 && range.maxW > 0 && range.stepW > 0
   && range.excludeMinW <= 0 && range.excludeMaxW >= 0
 );
+
+const missingCard = (
+  cards: FlowActionCardIds,
+  appUri: string,
+  steps: readonly DeviceActionStep[],
+): string | undefined => {
+  const missing = steps.find((step) => resolveDeviceActionCard(cards, appUri, step) === undefined);
+  return missing === undefined ? undefined : `${CARD_MISSING_PREFIX}${missing.actionId}`;
+};
+
+const sameTargets = (left: readonly DeviceActionStep[], right: readonly DeviceActionStep[]): boolean => (
+  left.length === right.length && left.every((step, index) => step.deviceId === right[index]?.deviceId)
+);
+
+const resolveCommands = (
+  resolution: HomeBatteryActionsResolution,
+  cards: FlowActionCardIds,
+  appUri: string,
+): ResolvedActions['commands'] => {
+  if (resolution.kind === 'unavailable') return { kind: 'blocked', reasonCode: resolution.reasonCode };
+  const { actions } = resolution;
+  const missing = missingCard(cards, appUri, everyCommandStep(actions));
+  if (missing !== undefined) return { kind: 'blocked', reasonCode: missing };
+  if (!isUsableRange(actions.range)) return { kind: 'blocked', reasonCode: 'not_signed_range' };
+  return { kind: 'ready', actions };
+};

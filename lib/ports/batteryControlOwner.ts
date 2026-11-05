@@ -273,6 +273,9 @@ export type BatteryManagedRead = {
   isManaged(deviceId: string): boolean;
 };
 
+/** Result of removing the shared Homey API key after settling battery claims. */
+export type BatteryKeyRemovalOutcome = 'removed' | 'battery_held' | 'claim_records_unreadable';
+
 /**
  * The Main home's battery control owner (`lib/battery/batteryControlOwner.ts`):
  * claim admission, the durable claim record, and the hand-back. It issues no
@@ -349,9 +352,10 @@ export type BatteryControlOwner = {
    * until the next would run it on. No such battery is claimed while this
    * runs. Answers `removed` once `removeKey` ran, or `battery_held` (the key
    * is kept) when a battery whose hand-back could run on the key is still
-   * held, or the claim records cannot be read.
+   * held or not observed yet. `claim_records_unreadable` keeps the key when
+   * the stored claims cannot be checked.
    */
-  handBackBeforeHomeyApiKeyRemoval(removeKey: () => void): Promise<'removed' | 'battery_held'>;
+  handBackBeforeHomeyApiKeyRemoval(removeKey: () => void): Promise<BatteryKeyRemovalOutcome>;
 };
 
 /**

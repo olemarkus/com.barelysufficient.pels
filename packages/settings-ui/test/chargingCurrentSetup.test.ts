@@ -114,6 +114,8 @@ test.each(['conflict', 'unavailable'] as const)('does not enable built-in contro
 
 
 test('allows replacing an existing key without enabling control when a Flow conflicts', async () => {
+  const changed = vi.fn();
+  document.addEventListener('homey-api-key-changed', changed);
   callApi.mockImplementation(async (_method: string, path: string) => path === '/ui_charging_current'
     ? [{ ...charger, flowCheck: 'conflict' }]
     : { configured: true, state: 'permission_denied' });
@@ -125,6 +127,8 @@ test('allows replacing an existing key without enabling control when a Flow conf
   await vi.waitFor(() => expect(field.value).toBe(''));
   expect(callApi).toHaveBeenCalledWith('PUT', '/ui_charging_access', { key: 'replacement-key' });
   expect(callApi.mock.calls.filter(([method]) => method === 'PUT')).toHaveLength(1);
+  expect(changed).toHaveBeenCalledTimes(1);
+  document.removeEventListener('homey-api-key-changed', changed);
 });
 
 
