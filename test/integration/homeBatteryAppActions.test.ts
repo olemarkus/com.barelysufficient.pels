@@ -159,6 +159,32 @@ describe('home battery app actions', () => {
     expect(runs().at(-1)?.[1].cardId).toBe(`${MARSTEK_APP}:marstek_auto_mode`);
   });
 
+  it('rechecks denied access on device observations before admitting a normal command', async () => {
+    const battery = buildMarstekConnectorBatteryDevice({ id: 'venus' });
+    const { transport, runs } = await setup([battery], MARSTEK_CARDS);
+    const status = vi.spyOn(transport.chargingAccess, 'status')
+      .mockReturnValue({ configured: true, state: 'permission_denied' });
+    let finish!: () => void;
+    const check = vi.spyOn(transport.chargingAccess, 'check').mockImplementation(async () => {
+      await new Promise<void>((resolve) => { finish = resolve; });
+      const ready = { configured: true, state: 'ready' as const };
+      status.mockReturnValue(ready);
+      return ready;
+    });
+    const { owner } = claimOwner(transport);
+    transport.batteryAppActions.observeDevices([battery.toHomeyApiDevice() as HomeyDeviceLike], 1000);
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(owner.admitClaim('venus')).toEqual({ status: 'refused', reason: 'not_drivable' });
+    expect(runs()).toEqual([]);
+
+    const pending = transport.chargingAccess.retryDeniedAccess(1000);
+    finish();
+    await pending;
+    expect(transport.readBatteryControl('venus').kind).toBe('app_actions');
+    expect(owner.admitClaim('venus')).toEqual({ status: 'admitted' });
+    expect(runs()).toEqual([]);
+  });
+
   it('fails closed on a missing card: the battery is observe-only and no card runs', async () => {
     const { transport, runs } = await setup(
       [buildMarstekConnectorBatteryDevice({ id: 'venus' })], [`${MARSTEK_APP}:marstek_passive_mode`],
@@ -255,6 +281,8 @@ describe('home battery app actions', () => {
       plantCard('set_ess_max_discharge_power', { power: 1.2 }),
       plantCard('set_remote_ems_control_mode', { mode: '6' }),
       plantCard('set_remote_ems', { state: 'off' }),
+      plantCard('remove_ess_charge_limit'),
+      plantCard('remove_ess_discharge_limit'),
     ]);
   });
 
@@ -275,7 +303,7 @@ describe('home battery app actions', () => {
     await expect(transport.requestStoragePower({ kind: 'storage_power', control: SIGENERGY_CONTROL, deviceId: 'sigen', setpointW: 1000 }))
       .rejects.toThrow();
     await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'sigen', handBack: 'app_actions', target: SIGENERGY_CONTROL.target });
-    expect(runs().at(-1)).toEqual(['sigen', {
+    expect(runs().at(-3)).toEqual(['sigen', {
       ownerUri: SIGENERGY_APP, cardId: `${SIGENERGY_APP}:set_remote_ems`,
       args: { device: { id: 'plant' }, state: 'off' },
     }]);
@@ -306,12 +334,53 @@ describe('home battery app actions', () => {
     const restarted = await setup([replacement.battery, replacement.plant], SIGENERGY_CARDS);
     const recovered = claimOwner(restarted.transport).owner;
     recovered.onSnapshotCommitted({ entries: [], ignoredReadIds: ['sigen'] });
-    await vi.waitFor(() => expect(restarted.runs()).toHaveLength(1));
+    await vi.waitFor(() => expect(restarted.runs()).toHaveLength(3));
     expect(restarted.runs()[0]?.[1]).toEqual({
       ownerUri: SIGENERGY_APP, cardId: `${SIGENERGY_APP}:set_remote_ems`,
       args: { device: { id: 'plant' }, state: 'off' },
     });
     await vi.waitFor(() => expect(mockHomeyInstance.settings.get(`${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`)).toBeNull());
+  });
+
+  it.each(['unknown vendor rating', 'missing cleanup card'])('turns remote EMS off and retains cleanup for retry after %s', async (failure) => {
+    const { battery, plant } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'plant' });
+    const cards = [...SIGENERGY_CARDS];
+    const { transport, runs } = await setup([battery, plant], cards);
+    const { owner, actuator } = claimOwner(transport);
+    const key = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`;
+    await owner.dispatchSetpoint('sigen', async (control) => {
+      const result = await actuator.apply({ kind: 'storage_power', deviceId: 'sigen', setpointW: -1000, control });
+      return result.requested && result.kind === 'storage_power' ? result.requestedSetpointW : 'skipped';
+    });
+    const plantRaw = plant.toHomeyApiDevice() as HomeyDeviceLike;
+    await seedTransportDevices(transport, [battery.toHomeyApiDevice() as HomeyDeviceLike, { ...plantRaw, settings: {} }]);
+    if (failure === 'missing cleanup card') {
+      cards.splice(cards.indexOf(`${SIGENERGY_APP}:remove_ess_charge_limit`), 1);
+      await transport.batteryAppActions.refreshCards();
+    } else {
+      vi.mocked(transport.chargingAccess.runAction).mockImplementation(async (_id, action) => {
+        if (action.cardId.endsWith(':remove_ess_charge_limit')) throw new Error('Rated charging power not known yet');
+      });
+    }
+    expect(transport.readBatteryControl('sigen')).toEqual({ kind: 'hand_back_only' });
+    await expect(owner.releaseClaim('sigen', 'idle')).resolves.toBe('not_released');
+    expect(runs()[2]?.[1]).toEqual({
+      ownerUri: SIGENERGY_APP, cardId: `${SIGENERGY_APP}:set_remote_ems`,
+      args: { device: { id: 'plant' }, state: 'off' },
+    });
+    expect(mockHomeyInstance.settings.get(key)).toMatchObject({ target: SIGENERGY_CONTROL.target });
+
+    cards.splice(0, cards.length, ...SIGENERGY_CARDS);
+    await transport.batteryAppActions.refreshCards();
+    vi.mocked(transport.chargingAccess.runAction).mockResolvedValue(undefined);
+    const removeKey = vi.fn();
+    await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('removed');
+    expect(runs().slice(-3).map(([, action]) => action.cardId)).toEqual([
+      `${SIGENERGY_APP}:set_remote_ems`, `${SIGENERGY_APP}:remove_ess_charge_limit`,
+      `${SIGENERGY_APP}:remove_ess_discharge_limit`,
+    ]);
+    expect(mockHomeyInstance.settings.get(key)).toBeNull();
+    expect(removeKey).toHaveBeenCalledTimes(1);
   });
 
   it('retains a legacy companion claim without guessing the plant from the current inventory', async () => {

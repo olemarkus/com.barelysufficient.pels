@@ -80,13 +80,15 @@ describe('Sigenergy binding', () => {
     ]);
   });
 
-  it('holds at 0 W in Standby, and hands back with remote EMS off', () => {
+  it('holds at 0 W in Standby, and hands back with remote EMS off before clearing both limits', () => {
     const actions = resolved(battery, [battery, plant]);
     expect(actions.command(0)).toEqual([
       { deviceId: 'sigen-plant', actionId: 'set_remote_ems_control_mode', args: { mode: '1' } },
     ]);
     expect(actionBinding(battery).handBack(resolved(battery, [battery, plant]).target)).toEqual([
       { deviceId: 'sigen-plant', actionId: 'set_remote_ems', args: { state: 'off' } },
+      { deviceId: 'sigen-plant', actionId: 'remove_ess_charge_limit', args: {} },
+      { deviceId: 'sigen-plant', actionId: 'remove_ess_discharge_limit', args: {} },
     ]);
   });
 

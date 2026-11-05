@@ -331,6 +331,7 @@ describe('ElectricityPricesView', () => {
           .toContain('export price that follows the market price');
         const button = [...mount.querySelectorAll('md-outlined-button')]
           .find((entry) => entry.textContent?.includes('Use for import and export')) as HTMLElement;
+        expect(button.getAttribute('aria-label')).toBe('Use Power by the Hour for import and export');
         button.click();
         expect(onUsePowerhourForExport).toHaveBeenCalledTimes(1);
       });

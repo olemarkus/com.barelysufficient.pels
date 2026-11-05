@@ -36,9 +36,11 @@ import { standardDeviceAdapter } from '../standardDeviceAdapter';
  * PELS's commands: charge W = `force_charge_from_grid` at W in kW (the app's
  * own "charge at N kW" pairing of limit and mode); discharge W =
  * `set_ess_max_discharge_power` at W in kW, then mode 6, "Discharge, battery
- * first"; hold 0 W = mode 1, Standby. Hand-back = remote EMS off, so the
- * plant is under its own EMS without needing rated power. A limit the owner
- * had set before PELS is not restored: the app
+ * first"; hold 0 W = mode 1, Standby. Hand-back turns remote EMS off first,
+ * then removes both power limits, which apply even under the plant's own EMS.
+ * The removal cards use the app's persisted rated powers. If those are unknown,
+ * remote EMS is still off and the owed cleanup retries without guessing a power.
+ * A limit the owner had set before PELS is not restored: the app
  * reads the limit registers back unreliably and offers no card to read them.
  * Remote EMS stays on until it is turned off, so a command lasts until the
  * next (`persistent`).
@@ -123,7 +125,11 @@ const SIGENERGY_BINDING: HomeBatteryActionBinding = {
   commandLifetime: () => ({ kind: 'persistent' }),
   resolve: resolveSigenergy,
   resolveLegacyTarget: () => ({ kind: 'unavailable', reasonCode: 'legacy_target_unknown' }),
-  handBack: (target) => [{ deviceId: target.deviceId, actionId: 'set_remote_ems', args: { state: 'off' } }],
+  handBack: (target) => [
+    { deviceId: target.deviceId, actionId: 'set_remote_ems', args: { state: 'off' } },
+    { deviceId: target.deviceId, actionId: 'remove_ess_charge_limit', args: {} },
+    { deviceId: target.deviceId, actionId: 'remove_ess_discharge_limit', args: {} },
+  ],
   resolveTarget: (_device, devices) => {
     const plants = devices.filter((other) => isDeviceOfAppDriver(other, SIGENERGY_APP_ID, PLANT_DRIVER_ID));
     const [plant] = plants;

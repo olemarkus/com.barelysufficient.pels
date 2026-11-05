@@ -72,9 +72,8 @@ type CardInventory =
   | { kind: 'read'; cards: FlowActionCardIds; refreshAtMs: number };
 
 /**
- * A battery's actions against the installed cards: its hand-back cards are
- * all installed; commands are resolved independently so losing their range
- * or admission never prevents handing back a command already delivered.
+ * A battery's actions against the installed cards. Hand-back can start even
+ * when a later cleanup card is missing; new commands require every step.
  */
 type ActionCards = { binding: HomeBatteryActionBinding; cards: FlowActionCardIds };
 
@@ -133,6 +132,7 @@ export class HomeBatteryAppActions {
   /** A full device read: read the card inventory when a battery there needs it and it is due. */
   observeDevices(devices: readonly HomeyDeviceLike[], nowMs: number): void {
     if (!devices.some((device) => this.bindingOf(device) !== undefined)) return;
+    void this.access.retryDeniedAccess(nowMs);
     if (this.isInventoryDue(nowMs)) void this.refreshCards();
   }
 
@@ -206,8 +206,8 @@ export class HomeBatteryAppActions {
     if (isKeyMissing(this.access)) throw new Error('Home battery Homey API key is missing.');
     const cards = this.inventory.cards;
     const steps = binding.handBack(target);
-    const missing = missingCard(cards, binding.appUri, steps);
-    if (missing !== undefined) throw new Error(`Home battery hand-back unavailable (${missing}).`);
+    // Bind each step only when it runs: an available first release step must
+    // still land when a later cleanup card disappeared. The owed claim stays.
     await this.runSteps(deviceId, { binding, cards }, steps, () => undefined);
   }
 
@@ -247,8 +247,8 @@ export class HomeBatteryAppActions {
     assertAuthorized: () => void,
   ): Promise<void> {
     for (const step of steps) {
-      const action = this.bindStep(resolved, step);
       try {
+        const action = this.bindStep(resolved, step);
         await this.access.runAction(deviceId, action, 'home_battery', assertAuthorized);
       } catch (error) {
         // A card that went missing after the inventory was read fails its run:
@@ -301,7 +301,11 @@ export class HomeBatteryAppActions {
     const handBackMissing = missingCard(cards, binding.appUri, handBack);
     if (handBackMissing !== undefined) {
       this.retryInventorySoon();
-      return { kind: 'unavailable', reasonCode: handBackMissing };
+      if (missingCard(cards, binding.appUri, handBack.slice(0, 1)) !== undefined) {
+        return { kind: 'unavailable', reasonCode: handBackMissing };
+      }
+      const commands: ResolvedActions['commands'] = { kind: 'blocked', reasonCode: handBackMissing };
+      return { kind: 'resolved', resolved: { binding, commands, cards } };
     }
     const commands = resolveCommands(binding.resolve(device, devices), cards, binding.appUri);
     if (commands.kind === 'blocked' && commands.reasonCode.startsWith(CARD_MISSING_PREFIX)) this.retryInventorySoon();

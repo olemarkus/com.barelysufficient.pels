@@ -177,8 +177,11 @@ from the device inventory, and the battery is unavailable with none, with two
 (two systems), or with a second `battery` device (both read the same plant, so
 PELS would drive it twice). The range is the plant's rated charge and discharge
 power from its settings; while either is unknown the plant also refuses to
-remove a limit, so PELS does not drive it. The hand-back turns remote EMS off,
-which works independently of rated power. The durable claim retains the plant
+remove a limit, so PELS does not drive it. The hand-back turns remote EMS off
+first, then removes both charge and discharge limits through the app's cards.
+These limits apply independently of EMS mode. The app uses its persisted rated
+powers to clear them; if those are unknown or a cleanup card fails, remote EMS
+is already off and the claim remains pending for cleanup retries. The durable claim retains the plant
 target until hand-back succeeds; pairing another plant, including across a
 restart, does not redirect that hand-back or authorize commands on the replacement. Some firmware returns to Max
 self consumption rather than the mode chosen in mySigen, and a limit the owner

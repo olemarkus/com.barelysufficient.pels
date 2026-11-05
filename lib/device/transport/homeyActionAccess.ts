@@ -27,6 +27,7 @@ const ACTION_FAILED_EVENT: Record<HomeyActionPurpose, string> = {
 /** Configuration, not a cache. Only this backend owner reads or writes it. */
 export const HOMEY_FLOW_API_KEY = '_homey_flow_api_key';
 const READ_TIMEOUT_MS = 10_000;
+const DENIED_ACCESS_RETRY_MS = 60_000;
 const WRITE_TIMEOUT_MS = 15_000;
 const LATE_RESPONSE_TIMEOUT_MS = 120_000;
 
@@ -56,6 +57,8 @@ export class HomeyActionAccess {
   private generation = 0;
   private accessState: ChargingAccessStatus['state'] = 'not_configured';
   private readonly inFlight = new Map<string, Promise<unknown>>();
+  private deniedRetryAtMs = 0;
+  private deniedCheck: Promise<void> | undefined;
 
   constructor(private readonly homey: HomeyActionAccessHomey, private readonly logger: Pick<Logger, 'structuredLog'>) {}
 
@@ -75,6 +78,15 @@ export class HomeyActionAccess {
       if (generation === this.generation) this.noteFailure(error);
     }
     return this.status();
+  }
+
+  /** Full device observations recover denied access even when no command can be admitted. */
+  retryDeniedAccess(nowMs: number): Promise<void> {
+    if (this.deniedCheck !== undefined) return this.deniedCheck;
+    if (this.status().state !== 'permission_denied' || nowMs < this.deniedRetryAtMs) return Promise.resolve();
+    this.deniedRetryAtMs = nowMs + DENIED_ACCESS_RETRY_MS;
+    this.deniedCheck = this.check().then(() => undefined).finally(() => { this.deniedCheck = undefined; });
+    return this.deniedCheck;
   }
 
   async save(body: unknown): Promise<ChargingAccessStatus> {

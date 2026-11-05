@@ -39,6 +39,6 @@ const setDeviceDetailSolarPendingHint = (
     .some((row) => row !== null && !row.hidden);
   const pending = candidate && !rowShown && resolveSolarSurplusPending();
   deviceDetailSolarPendingHint.textContent = pending
-    ? resolveSolarSurplusPendingNote(settingsPowerSourceSelect?.value === 'flow') : '';
+    ? resolveSolarSurplusPendingNote(settingsPowerSourceSelect?.value !== 'homey_energy') : '';
   deviceDetailSolarPendingHint.hidden = !pending;
 };

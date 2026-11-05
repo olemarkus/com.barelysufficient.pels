@@ -134,6 +134,27 @@ test('a denied key that still lacks Flow permission is rechecked without another
   expect(fetchMock.mock.calls.map(([, options]) => options.method)).toEqual(['GET', 'POST', 'GET']);
 });
 
+test('device observations recover denied access with bounded checks and no command', async () => {
+  const fetchMock = vi.fn().mockResolvedValueOnce(response({ intersectedScopes: [] }))
+    .mockResolvedValueOnce(response({ intersectedScopes: [] }))
+    .mockResolvedValueOnce(response({ intersectedScopes: ['homey.flow'] }));
+  vi.stubGlobal('fetch', fetchMock);
+  const { access, values } = fixture();
+  values.set(HOMEY_FLOW_API_KEY, KEY);
+  expect((await access.check()).state).toBe('permission_denied');
+
+  const retry = access.retryDeniedAccess(1000);
+  expect(access.retryDeniedAccess(1000)).toBe(retry);
+  await retry;
+  expect(access.status().state).toBe('permission_denied');
+  await access.retryDeniedAccess(60_999);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+
+  await access.retryDeniedAccess(61_000);
+  expect(access.status().state).toBe('ready');
+  expect(fetchMock.mock.calls.map(([, options]) => options.method)).toEqual(['GET', 'GET', 'GET']);
+});
+
 test('a planned command rechecks access after a transient scope-check failure without replaying a POST', async () => {
   const fetchMock = vi.fn().mockResolvedValueOnce(response({ intersectedScopes: ['homey.flow'] }))
     .mockRejectedValueOnce(new Error('Connection closed'))
