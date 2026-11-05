@@ -1,8 +1,8 @@
+import { createPlanHistoryPersistence } from '../../lib/objectives/deferredObjectives/planHistoryPersistence';
 import { createCurrentTaskEvaluationReader } from '../../lib/objectives/deferredObjectives/currentTaskEvaluation';
 import {
   DeferredObjectiveActivePlanRecorder,
   DeferredObjectivePlanHistoryRecorder,
-  normalizeDeferredObjectivePlanHistory,
   readAllObjectives,
   readObjectiveForDevice,
   writeObjectiveForDevice,
@@ -28,13 +28,7 @@ import {
 import { assembleActivePlansUiView } from '../../lib/objectives/deferredObjectives/activePlansUiView';
 import { emitDeferredObjectiveActivePlansUpdatedForApp } from '../settingsUiAppRuntime';
 
-// How long the deferred-objective observation watermark can be stale before we advance it
-// during normal observe ticks. Without this idle advance the watermark only moves forward
-// when a deadline finalizes — so a user enabling a new objective during a long quiet period
-// followed by a crash would cause startup back-fill to enumerate that objective's deadlines
-// back to a far-stale watermark, fabricating "unknown" entries for periods when the objective
-// wasn't yet enabled. Five minutes keeps watermark drift small without spamming settings I/O.
-export const WATERMARK_IDLE_REFRESH_MS = 5 * 60 * 1000;
+export { WATERMARK_IDLE_REFRESH_MS } from '../../lib/objectives/deferredObjectives/planHistoryObservation';
 
 const toBackfillConfig = (
   deviceId: string,
@@ -87,51 +81,8 @@ export function createDeferredObjectivePlanHistoryRecorder(
   ctx: AppContext,
 ): DeferredObjectivePlanHistoryRecorder {
   const store = createPlanHistoryStoreForApp(ctx);
-  let loadUnavailable = false;
   const recorder = new DeferredObjectivePlanHistoryRecorder({
-    // The store either answers or throws (I/O). A throw keeps the recorder's
-    // persistence closed until a later load succeeds, so an empty in-memory
-    // history can never be written over one the process failed to read.
-    load: () => {
-      let snapshot: ReturnType<typeof normalizeDeferredObjectivePlanHistory>;
-      let meteredDeliveryStates: ReturnType<typeof store.readMeteredDelivery>;
-      try {
-        snapshot = store.read() ?? normalizeDeferredObjectivePlanHistory(null);
-        meteredDeliveryStates = store.readMeteredDelivery();
-      } catch (error) {
-        if (!loadUnavailable) {
-          loadUnavailable = true;
-          ctx.getStructuredLogger('deferred_objectives').warn({
-            event: 'deferred_objective_plan_history_load_unavailable', err: normalizeError(error),
-          });
-        }
-        return {
-          snapshot: normalizeDeferredObjectivePlanHistory(null),
-          persistenceSafe: false,
-          meteredDeliveryStates: [],
-        };
-      }
-      if (loadUnavailable) {
-        loadUnavailable = false;
-        ctx.getStructuredLogger('deferred_objectives').info({
-          event: 'deferred_objective_plan_history_load_recovered',
-        });
-      }
-      return { snapshot, persistenceSafe: true, meteredDeliveryStates };
-    },
-    save: (next, meteredDeliveryStates) => {
-      try {
-        store.write(next);
-        store.writeMeteredDelivery(meteredDeliveryStates);
-        return true;
-      } catch (error) {
-        ctx.getStructuredLogger('deferred_objectives').error({
-          event: 'deferred_objective_plan_history_persist_failed',
-          err: normalizeError(error),
-        });
-        return false;
-      }
-    },
+    ...createPlanHistoryPersistence(store, ctx.getStructuredLogger('deferred_objectives')),
     endedBus: ctx.deferredObjectiveEndedBus,
     getMeteredPricePeriods: (startMs, endMs) => requirePriceCoordinator(ctx).getMeteredPricePeriods(startMs, endMs),
     // Read lazily on the lifecycle clock, after the plan service exists.

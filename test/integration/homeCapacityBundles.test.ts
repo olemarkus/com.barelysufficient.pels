@@ -21,7 +21,7 @@
 // their REAL plan engine/service/guard/pipeline.
 import { controlContestsForTest } from '../helpers/controlContests';
 import { createModeOwnershipTransfer } from '../../setup/homeRuntime/createModeOwnershipTransfer';
-import { createExternalOffHoldPolicy } from '../../setup/externalOffHoldAdapter';
+import { createExternalOffHoldPolicy } from '../../lib/observer/externalOffHoldSettings';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import type { AppContext } from '../../lib/app/appContext';

@@ -1,25 +1,11 @@
-// Persistence boundary for "Leave off until turned on again" over
-// `homey.settings`. All behaviour lives in the domain
-// (`lib/observer/externalOffHold.ts`); this adapter only knows Homey, matching
-// the port-in-domain / adapter-in-setup split used by
-// `setup/curtailmentHoldStateAdapter.ts`.
-//
-// The hold state itself needs no adapting: it is one key per held device whose
-// presence is the fact, so `homey.settings` already IS the store port and is
-// passed straight through. What is left here is the opt-in map
-// (`respect_external_off_devices`), whose absent / malformed / throwing reads
-// mean genuinely different things and must be classified before the domain sees
-// them — per `feedback_homey_sdk_unreliable`, a transient read failure must not
-// release a user's hold or drop their configuration.
-
 import {
   createExternalOffHoldPolicy as createPolicy,
   type ExternalOffHoldOptInRead,
   type ExternalOffHoldPolicy,
   type ExternalOffHoldSettingsStore,
-} from '../lib/observer/externalOffHold';
-import { RESPECT_EXTERNAL_OFF_DEVICES } from '../lib/utils/settingsKeys';
-import { isBooleanMap } from '../lib/utils/appTypeGuards';
+} from './externalOffHold';
+import { RESPECT_EXTERNAL_OFF_DEVICES } from '../utils/settingsKeys';
+import { isBooleanMap } from '../utils/appTypeGuards';
 
 /**
  * Reads the opt-in map, classifying every outcome here so the domain never has

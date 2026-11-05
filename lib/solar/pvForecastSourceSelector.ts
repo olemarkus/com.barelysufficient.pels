@@ -1,19 +1,12 @@
-// Wiring for the PV-forecast source selection: one closure both forecast
-// consumers (`wireBudgetPrice`, `wireCurtailmentSurplus`) share, so the same
-// selected source answers them by construction. The setting is read live per
-// call (the price-scheme precedent) and the policy itself is pure
-// (`lib/solar/pvForecastSourceSelection.ts`); this file only adapts the two
-// controllers onto the shared port and logs source transitions.
-
-import { selectPvForecastSource } from '../../lib/solar/pvForecastSourceSelection';
+import { selectPvForecastSource } from './pvForecastSourceSelection';
 import type {
   PvForecastSourceId,
   PvForecastSourceSetting,
   SelectedPvForecast,
-} from '../../lib/solar/pvForecastSource';
-import type { HomeyEnergySolarForecastSource } from '../../lib/solar/homeyEnergySolarForecast';
-import type { PvForecastService } from '../../lib/solar/pvForecastService';
-import type { PvForecastLogger } from './createPvForecastService';
+} from './pvForecastSource';
+import type { HomeyEnergySolarForecastSource } from './homeyEnergySolarForecast';
+import type { PvForecastService } from './pvForecastService';
+import type { PvForecastLogger } from './pvForecastController';
 
 // Structural subsets of the two controllers — the selector needs only the
 // forecast surface, and the narrow shapes let tests inject real domain

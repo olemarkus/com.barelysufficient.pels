@@ -16,7 +16,7 @@ import type { ObservedStateEmitterDispatcher } from '../../lib/ports/observedSta
 import type { ObservedDeviceStateProjection } from '../../lib/observer/observedDeviceStateProjection';
 import { createCalibrationSnapshotMutationHook } from '../../lib/device/devicePowerCalibrationStore';
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
-import { createExternalOffHoldPolicy } from '../externalOffHoldAdapter';
+import { createExternalOffHoldPolicy } from '../../lib/observer/externalOffHoldSettings';
 import { createEvCarLinkAccessForApp } from './evCarLinkAccess';
 import { createDeviceEventStore } from '../../lib/diagnostics/deviceEventStore';
 import type { AppContext } from '../../lib/app/appContext';

@@ -4,8 +4,6 @@ import { normalizeError } from '../../lib/utils/errorUtils';
 import type { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { BackgroundTasksController } from '../backgroundTasksController';
 import type { AppRuntimeHandles } from '../appRuntimeHandles';
-import { createPvForecastSourceSelector } from './createPvForecastSourceSelector';
-import { getLogger } from '../../lib/logging/logger';
 import { createDeferredObjectiveLifecycleEmitter } from './deferredObjectiveLifecycle';
 import { startBackgroundCollectors } from './startBackgroundCollectors';
 import { wireBudgetPrice } from './wireBudgetPrice';
@@ -50,17 +48,8 @@ export const startPostStartupBackgroundTasks = (
   subscribeDeviceSnapshotCommitted(
     () => { void collectors.homeySolarForecast.refreshEligibility(); },
   );
-  // ONE selector closure feeds both forecast consumers, so the budget price and
-  // the curtailment potential always read the same selected source.
-  // Both controllers are in hand HERE, so the selector takes them by value and
-  // answers a selected source on every call — no "not wired yet" state travels
-  // to the consumers below.
-  const getSelectedPvForecast = createPvForecastSourceSelector({
-    learned: collectors.pvForecast,
-    homey: collectors.homeySolarForecast,
-    getNowMs: () => Date.now(),
-    logger: getLogger('solar'),
-  });
+  // The collector factory constructs one live selector for all forecast consumers.
+  const { getSelectedPvForecast } = collectors;
   wireBudgetPrice(ctx, (ms) => getSelectedPvForecast().forecast([ms])[0]?.generationKwh);
   wireContinuousBatteryPlan(ctx, () => taskEvaluationSource.getDeferredObjectiveActivePlans(), getSelectedPvForecast);
   // Provenance for the settings UI's Solar forecast section — read from the

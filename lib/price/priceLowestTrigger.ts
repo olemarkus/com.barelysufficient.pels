@@ -1,8 +1,8 @@
-import { resolveCurrentPriceFromCombined } from '../lib/price/priceLowestFlowEvaluator';
-import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
-import { getHourStartInTimeZone } from '../lib/utils/hourBuckets';
-import { normalizeError } from '../lib/utils/errorUtils';
-import { getDebugEmitter } from '../lib/logging/logger';
+import { resolveCurrentPriceFromCombined } from './priceLowestFlowEvaluator';
+import type { CombinedHourlyPrice } from './priceTypes';
+import { getHourStartInTimeZone } from '../utils/hourBuckets';
+import { normalizeError } from '../utils/errorUtils';
+import { getDebugEmitter } from '../logging/logger';
 
 type LowestPriceTriggerCardId = 'price_lowest_before' | 'price_lowest_today';
 
@@ -27,13 +27,12 @@ const getCurrentLocalHourKey = (now: Date, timeZone: string): string | undefined
   return `${timeZone}:${new Date(hourStartMs).toISOString()}`;
 };
 
-const triggerLowestPriceCards = async (params: {
-  deps: PriceLowestTriggerCheckerDeps;
-  now: Date;
-  timeZone: string;
-  hourKey: string;
-}): Promise<void> => {
-  const { deps, now, timeZone, hourKey } = params;
+const triggerLowestPriceCards = async (
+  deps: PriceLowestTriggerCheckerDeps,
+  now: Date,
+  timeZone: string,
+  hourKey: string,
+): Promise<void> => {
   const currentPriceResult = resolveCurrentPriceFromCombined({
     combinedPrices: deps.getCombinedHourlyPrices(),
     timeZone,
@@ -67,7 +66,7 @@ export const startPriceLowestTriggerChecker = (deps: PriceLowestTriggerCheckerDe
     const hourKey = getCurrentLocalHourKey(now, timeZone);
     if (!hourKey || hourKey === lastTriggeredHourKey) return;
     lastTriggeredHourKey = hourKey;
-    triggerLowestPriceCards({ deps, now, timeZone, hourKey })
+    triggerLowestPriceCards(deps, now, timeZone, hourKey)
       .catch((error: unknown) => deps.error('Failed to run lowest-price trigger checker', normalizeError(error)));
   }, PRICE_LOWEST_TRIGGER_CHECK_INTERVAL_MS);
 

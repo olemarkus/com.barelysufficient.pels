@@ -4,6 +4,9 @@
 // generation forecast, and Homey Energy's own solar forecast. All are pure
 // data — none touches shed/capacity decisions.
 
+import { createPvForecastSourceSelector } from '../../lib/solar/pvForecastSourceSelector';
+import type { SelectedPvForecast } from '../../lib/solar/pvForecastSource';
+import { getLogger } from '../../lib/logging/logger';
 import { createWeatherCollector } from './createWeatherCollector';
 import { createPvForecastController, type PvForecastController } from './createPvForecastService';
 import { createHomeySolarForecastController } from './createHomeySolarForecastController';
@@ -15,6 +18,7 @@ export type BackgroundCollectors = {
   weatherCollector: WeatherCollector;
   pvForecast: PvForecastController;
   homeySolarForecast: HomeySolarForecastController;
+  getSelectedPvForecast: () => SelectedPvForecast;
 };
 
 export function startBackgroundCollectors(
@@ -25,5 +29,13 @@ export function startBackgroundCollectors(
   startWeatherCollector(weatherCollector);
   const pvForecast = createPvForecastController(ctx);
   const homeySolarForecast = createHomeySolarForecastController(ctx, () => pvForecast.isActive());
-  return { weatherCollector, pvForecast, homeySolarForecast };
+  // Both forecast consumers share this selector and its source-transition latch.
+  // The controllers exist before construction, so the selector needs no startup fallback.
+  const getSelectedPvForecast = createPvForecastSourceSelector({
+    learned: pvForecast,
+    homey: homeySolarForecast,
+    getNowMs: () => Date.now(),
+    logger: getLogger('solar'),
+  });
+  return { weatherCollector, pvForecast, homeySolarForecast, getSelectedPvForecast };
 }

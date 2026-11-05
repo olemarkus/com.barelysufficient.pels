@@ -1,3 +1,4 @@
+import type { StableSampleRevision } from '../ports/sampleRevision';
 import { incPerfCounter } from '../utils/perfCounters';
 import { createSingleFlightLoop } from '../utils/singleFlightLoop';
 import { PreparedReconcileFence } from './preparedReconcileFence';
@@ -33,10 +34,7 @@ export type SampleAdmission =
   | { state: 'admitted'; revision: number }
   | { state: 'superseded'; revision: number; latestRevision: number };
 
-/** Whether every requested sample has finished, or one is still in flight. */
-export type StableSampleRevision =
-  | { state: 'stable'; revision: number }
-  | { state: 'pending' };
+export type { StableSampleRevision } from '../ports/sampleRevision';
 
 export type SampleIngestQueue<TRequest> = {
   /**
