@@ -5,6 +5,7 @@ import {
   readObservedTemperatureState,
   type DrawEvidenceReads,
   type ObservedDeviceReads,
+  type PlanServiceObservedReads,
 } from '../../lib/observer/observedDeviceStateProjection';
 import { resolveThermalDirection } from '../../lib/observer/thermalDirection';
 import { hasLiveMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
@@ -15,6 +16,19 @@ export const noDrawEvidence: DrawEvidenceReads = {
   hasStartedDrawingSince: () => false,
   getLiveDrawAt: () => null,
   hasDrawnAtLeastSince: () => false,
+};
+
+/**
+ * The plan service's observer reads for a fixture with nothing observed: no
+ * record, every named read absent, and every device heating. A spec about one
+ * read spreads this and replaces that read.
+ */
+export const noPlanServiceObservedReads: PlanServiceObservedReads = {
+  getObservedRecord: () => undefined,
+  getObservedEvChargingState: () => ({ kind: 'absent' }),
+  getObservedStateOfCharge: () => ({ kind: 'absent' }),
+  getObservedTemperature: () => ({ kind: 'absent' }),
+  getThermalDirection: () => 'heating',
 };
 
 /**

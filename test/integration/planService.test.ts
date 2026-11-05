@@ -60,6 +60,7 @@ import {
 import { createTestDeviceActivityRecorder } from '../helpers/deviceActivityRecorder';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { planServiceWiring } from '../helpers/planServiceWiring';
+import { noPlanServiceObservedReads } from '../helpers/observedDeviceReadsDouble';
 import { testLogger } from '../utils/testLogger';
 import { recordExecutionPlanSource } from '../utils/executionPlanSources';
 
@@ -205,11 +206,7 @@ const buildPlan = (
 // engine, Homey, device reads and whatever it overrides.
 const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServiceDeps,
   | 'hasStandingCommandGrant'
-  | 'getObservedStateOfCharge'
   | 'getHomeBatteryCard'
-  | 'getObservedEvChargingState'
-  | 'getObservedTemperature'
-  | 'getThermalDirection'
   | 'planBuildGate'
   | 'getSteppedSettleDevices'
   | 'homeId'
@@ -220,11 +217,7 @@ const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServ
   | 'getLastPowerUpdate'> => ({
   ...planServiceWiring(),
   hasStandingCommandGrant: () => false,
-  getObservedStateOfCharge: () => ({ kind: 'absent' }),
   getHomeBatteryCard: () => ({ kind: 'none' }),
-  getObservedEvChargingState: () => ({ kind: 'absent' }),
-  getThermalDirection: () => 'heating' as const,
-  getObservedTemperature: () => ({ kind: 'absent' }),
   planBuildGate: openPlanBuildGate(),
   getSteppedSettleDevices: () => [],
   homeId: 'main',
@@ -345,13 +338,16 @@ describe('PlanService', () => {
       const getPlanDevices = vi.fn(() => [liveHeaterInput(live)]);
       const { service } = createPlanService({ planEngine: engine,
         getPlanDevices,
-        getObservedRecord: () => ({ id: 'dev-1', name: 'Heater', targets: [], available: true,
-          measuredPowerKw: live.currentDrawKw, measuredPowerIsDirectMeasurement: true,
-          temperature: { currentTemperature: live.currentTemperature, target: { id: 'target_temperature', value: live.setpointC, unit: '°C' } },
-        }),
-        getObservedTemperature: () => ({ kind: 'observed', value: {
-          currentTemperature: live.currentTemperature, currentTarget: live.setpointC,
-        } }),
+        observed: {
+          ...noPlanServiceObservedReads,
+          getObservedRecord: () => ({ id: 'dev-1', name: 'Heater', targets: [], available: true,
+            measuredPowerKw: live.currentDrawKw, measuredPowerIsDirectMeasurement: true,
+            temperature: { currentTemperature: live.currentTemperature, target: { id: 'target_temperature', value: live.setpointC, unit: '°C' } },
+          }),
+          getObservedTemperature: () => ({ kind: 'observed', value: {
+            currentTemperature: live.currentTemperature, currentTarget: live.setpointC,
+          } }),
+        },
       });
       service['rebuildHost'].publishPlan(plan, 1_000_000);
       const idle = { id: 'dev-1', name: 'Heater', currentState: 'on' as const, currentDrawKw: 0,
@@ -400,8 +396,7 @@ describe('PlanService', () => {
           [device.id, executionStateFixture(device)]
         )))) };
       const { service } = createPlanService({ planEngine: engine,
-        getObservedRecord: projection.getObservedRecord.bind(projection),
-        getObservedTemperature: projection.getObservedTemperature.bind(projection),
+        observed: projection,
       });
       service['rebuildHost'].publishPlan(plan, Date.now());
       const ctx = createAppContextMock({ planService: service });
@@ -514,9 +509,12 @@ describe('PlanService', () => {
     const realtime = vi.fn().mockResolvedValue(undefined);
     const { service } = createPlanService({ planEngine: engine, deviceOverviewLogRecorder: recorder,
       homey: stubDepsHomey({ realtime }),
-      getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in_charging' } as const),
-      getObservedStateOfCharge: () => ({ kind: 'observed' as const,
-        value: { level: stateOfChargeFixture({ percent, observedAtMs: 1_000 }).level } }) });
+      observed: {
+        ...noPlanServiceObservedReads,
+        getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in_charging' } as const),
+        getObservedStateOfCharge: () => ({ kind: 'observed' as const,
+          value: { level: stateOfChargeFixture({ percent, observedAtMs: 1_000 }).level } }),
+      } });
     service['rebuildHost'].publishPlan(plan, 456);
     await service.syncLivePlanState('realtime_capability');
     realtime.mockClear();
@@ -650,11 +648,13 @@ describe('PlanService', () => {
 
     const service = new PlanService({
       ...planServiceDeps(),
-      getThermalDirection: () => 'heating' as const,
-      getObservedTemperature: () => ({
-        kind: 'observed',
-        value: { currentTarget: observedTarget, currentTemperature: 21 },
-      }),
+      observed: {
+        ...noPlanServiceObservedReads,
+        getObservedTemperature: () => ({
+          kind: 'observed',
+          value: { currentTarget: observedTarget, currentTemperature: 21 },
+        }),
+      },
       homey: stubDepsHomey({ set: settingsSet, realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>(planEngine),
       getPlanDevices: () => [],
@@ -1191,14 +1191,14 @@ describe('PlanService', () => {
 
   it('serializes enriched UI plan fields without changing the runtime snapshot', () => {
     const { service } = createPlanService({
-      getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
-      getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-      getThermalDirection: () => 'heating' as const,
-      getObservedTemperature: () => ({
-        kind: 'observed',
-        value: { currentTarget: 18, currentTemperature: 16 },
-      }),
+      observed: {
+        ...noPlanServiceObservedReads,
+        getObservedTemperature: () => ({
+          kind: 'observed',
+          value: { currentTarget: 18, currentTemperature: 16 },
+        }),
+      },
       deviceDiagnostics: {
         getOverviewStarvation: vi.fn(() => ({
           isStarved: true,
@@ -1535,11 +1535,13 @@ describe('PlanService', () => {
     })];
     const service = new PlanService({
       ...planServiceDeps(),
-      getThermalDirection: () => 'heating' as const,
-      getObservedTemperature: () => ({
-        kind: 'observed',
-        value: { currentTarget: 18, currentTemperature: 21 },
-      }),
+      observed: {
+        ...noPlanServiceObservedReads,
+        getObservedTemperature: () => ({
+          kind: 'observed',
+          value: { currentTarget: 18, currentTemperature: 21 },
+        }),
+      },
       homey: stubDepsHomey({ set: settingsSet, realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
@@ -1603,11 +1605,13 @@ describe('PlanService', () => {
     })];
     const service = new PlanService({
       ...planServiceDeps(),
-      getThermalDirection: () => 'heating' as const,
-      getObservedTemperature: () => ({
-        kind: 'observed',
-        value: { currentTarget: 20, currentTemperature: 21 },
-      }),
+      observed: {
+        ...noPlanServiceObservedReads,
+        getObservedTemperature: () => ({
+          kind: 'observed',
+          value: { currentTarget: 20, currentTemperature: 21 },
+        }),
+      },
       homey: stubDepsHomey({ set: settingsSet, realtime }),
       planEngine: partialDouble<PlanServiceDeps['planEngine']>({
         ...createMockPlanEngine(),
