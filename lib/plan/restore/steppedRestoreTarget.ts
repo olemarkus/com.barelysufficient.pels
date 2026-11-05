@@ -21,7 +21,9 @@ import type { RestoreCycle, RestoreLoopState, SteppedRestoreNeed } from './types
  * room) bounds what a second or third device may add in the same cycle, when
  * several loads would arrive together. A charger at its lowest current with
  * room for its highest therefore climbs in one step and one restore cooldown,
- * not one rung per cooldown.
+ * not one rung per cooldown. With no limit on there is no room to share, so
+ * there is no batch either, and the one increase the pass admits may jump to
+ * the top of the ladder.
  */
 export type SteppedRestoreTarget = {
   step: SteppedLoadStep;
@@ -42,9 +44,7 @@ export function resolveSteppedRestoreTarget(
   const fallback = admitStepUnderSurplusCeiling(dev, cycle.state, adjacent);
   if (!fallback) return null;
   const batch = cycle.batchState;
-  if (isOff || !batch.enabled || batch.admittedCount >= batch.maxDevices) {
-    return buildTarget(cycle, dev, fallback, adjacent);
-  }
+  if (isOff || !canConsiderJump(batch, loop)) return buildTarget(cycle, dev, fallback, adjacent);
 
   const steps = sortSteppedLoadSteps(dev.steppedLoadProfile.steps);
   const adjacentIndex = steps.findIndex((step) => step.id === fallback.id);
@@ -52,7 +52,7 @@ export function resolveSteppedRestoreTarget(
     const target = admitStepUnderSurplusCeiling(dev, cycle.state, step);
     if (!target) continue;
     const need = resolveSteppedRestoreNeed(cycle, dev, target);
-    if (need.deltaKw <= 0 || !canAdmitJump(batch, need.neededKw)) continue;
+    if (need.deltaKw <= 0 || !canAdmitJump(batch, loop, need.neededKw)) continue;
     if (isReserveAdmitted(resolveReserveAdmission(
       dev, loop.availableHeadroom, need.neededKw, cycle.headroomReserves,
     ))) return { step: target, need, kind: 'jump' };
@@ -60,10 +60,19 @@ export function resolveSteppedRestoreTarget(
   return buildTarget(cycle, dev, fallback, adjacent);
 }
 
+// No headroom figure means no limit on any axis this device answers to, so the
+// increase is bounded by nothing, as the first one under a limit is bounded by
+// the full room. Without a batch the pass admits only that one increase. A batch
+// disabled under a limit (grid import control, the exempt lane, a setpoint
+// resume) keeps increases to the adjacent rung.
+function canConsiderJump(batch: RestoreCycle['batchState'], loop: RestoreLoopState): boolean {
+  return loop.availableHeadroom === null || (batch.enabled && batch.admittedCount < batch.maxDevices);
+}
+
 // The first admission of the cycle is bounded by the room itself (reserve
 // admission below); later ones also by the shared batch allowance.
-function canAdmitJump(batch: RestoreCycle['batchState'], neededKw: number): boolean {
-  return batch.admittedCount === 0 || canAdmitWithinBatch(batch, neededKw);
+function canAdmitJump(batch: RestoreCycle['batchState'], loop: RestoreLoopState, neededKw: number): boolean {
+  return loop.availableHeadroom === null || batch.admittedCount === 0 || canAdmitWithinBatch(batch, neededKw);
 }
 
 function buildTarget(

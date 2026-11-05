@@ -3,8 +3,9 @@ import type { RestoreBackoff, RestoreCooldownState } from '../restoreBackoff';
 import type { PlanContext, MeasuredPower } from '../planContext';
 import { resolveSheddingClearThresholdKw } from '../powerLimitMath';
 import type { RestoreDeps } from './types';
-import type { DevicePlanDevice } from '../planTypes';
+import type { DevicePlanDevice, SteppedPlanDevice } from '../planTypes';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
+import { sortSteppedLoadSteps } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { MIN_ACTIVE_MEASURED_POWER_KW } from '../../observer/observedPower';
 import { resolveReadingMeasuredAfterMs } from '../../power/heldReading';
 import {
@@ -106,8 +107,10 @@ export const buildRestoreTiming = (
 /** How much of its expected draw a restored device must reach before the next increase is admitted. */
 const STARTED_DRAW_FRACTION = 0.5;
 /**
- * The smallest rise that counts as a running stepped device's step-up landing,
- * well clear of a running charger's ordinary fluctuation.
+ * The rise that counts as a running stepped device's step-up landing, well
+ * clear of a running charger's ordinary fluctuation. A ladder whose rungs are
+ * closer than this (a one-phase charger's 1 A is 230 W) needs half its own
+ * rung instead, or its step-ups could never show their draw arriving.
  */
 const MIN_STEP_UP_RISE_KW = 0.3;
 
@@ -119,7 +122,8 @@ const MIN_STEP_UP_RISE_KW = 0.3;
  * idle must have started drawing after the restore and reached half its expected
  * draw. A stepped device that was already running when it stepped up must have
  * risen above its draw at the step-up by half the way to its new step's planning
- * power, and at least `MIN_STEP_UP_RISE_KW`. A running device whose setpoint was
+ * power, and at least `MIN_STEP_UP_RISE_KW` or half the rung it climbed onto,
+ * whichever is smaller. A running device whose setpoint was
  * raised keeps the timer, as does a restore whose own step or target command is
  * unconfirmed, or any in-flight or pending on/off command.
  */
@@ -155,8 +159,26 @@ function hasRestoredDrawArrived(
   if (!isSteppedLoadDevice(device)) return false;
   const drawAtStepUpKw = deps.drawEvidence.getLiveDrawAt(device.id, restoredAtMs);
   if (drawAtStepUpKw === null || drawAtStepUpKw < MIN_ACTIVE_MEASURED_POWER_KW) return false;
-  const riseKw = Math.max(MIN_STEP_UP_RISE_KW, (device.planningPowerKw - drawAtStepUpKw) * STARTED_DRAW_FRACTION);
+  const riseKw = Math.max(
+    resolveMinStepUpRiseKw(device),
+    (device.planningPowerKw - drawAtStepUpKw) * STARTED_DRAW_FRACTION,
+  );
   return deps.drawEvidence.hasDrawnAtLeastSince(device.id, restoredAtMs, measuredAfterMs, drawAtStepUpKw + riseKw);
+}
+
+/**
+ * The fluctuation floor, lowered to half the rated rise onto the rung the device
+ * runs at from the rung below it: the smallest step-up that lands there. Off the
+ * ladder (an EV target-power rung the planner profile lacks) or on its bottom
+ * rung there is no such step, and the floor stands.
+ */
+function resolveMinStepUpRiseKw(device: SteppedPlanDevice): number {
+  const steps = sortSteppedLoadSteps(device.steppedLoadProfile.steps);
+  const index = steps.findIndex((step) => step.id === device.selectedStepId);
+  const [below, current] = index > 0 ? steps.slice(index - 1, index + 1) : [];
+  if (below === undefined || current === undefined) return MIN_STEP_UP_RISE_KW;
+  const rungKw = (current.planningPowerW - below.planningPowerW) / 1000;
+  return rungKw > 0 ? Math.min(MIN_STEP_UP_RISE_KW, rungKw * STARTED_DRAW_FRACTION) : MIN_STEP_UP_RISE_KW;
 }
 
 /** The step it runs at for a stepped load, its running draw otherwise. */
