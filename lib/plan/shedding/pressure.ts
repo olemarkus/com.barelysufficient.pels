@@ -12,11 +12,11 @@ export function resolveShedPressure(
 ): ShedPressure {
   const hardCapDeficitKw = shortfallThresholdKw !== null && isOverShortfallThreshold(power.drawKw, shortfallThresholdKw)
     ? power.drawKw - shortfallThresholdKw : 0;
-  const gridDeficitKw = power.gridHeadroomKw === null ? 0 : Math.max(0, -power.gridHeadroomKw);
+  const gridDeficitKw = power.gridHeadroom.kind === 'off' ? 0 : Math.max(0, -power.gridHeadroom.kw);
   // Urgency is classified against the actual cap, but cuts must preserve the
   // capacity pace's response margin. The actual projection can also be more
   // conservative at the period boundary, so keep the strongest physical need.
-  const capacityDeficitKw = power.capacityHeadroomKw === null ? 0 : Math.max(0, -power.capacityHeadroomKw);
+  const capacityDeficitKw = power.capacityHeadroom.kind === 'off' ? 0 : Math.max(0, -power.capacityHeadroom.kw);
   const deficitKw = Math.max(0, capacityDeficitKw, hardCapDeficitKw, gridDeficitKw) - storage.netCreditKw;
   if (gridDeficitKw > 0) return { kind: 'grid', deficitKw: Math.max(0, deficitKw) };
   if (hardCapDeficitKw > 0) return { kind: 'hard_cap', deficitKw: Math.max(0, deficitKw) };

@@ -660,8 +660,8 @@ export function decideStorageRelief(
   nowTs: number,
 ): StorageRelief {
   const cycle = new StorageReliefCycle({
-    deficitW: power.headroomKw === null ? 0 : Math.max(0, -power.headroomKw * 1000),
-    headroomW: power.headroomKw === null ? null : Math.max(0, power.headroomKw * 1000),
+    deficitW: power.headroom.kind === 'off' ? 0 : Math.max(0, -power.headroom.kw * 1000),
+    headroomW: power.headroom.kind === 'off' ? null : Math.max(0, power.headroom.kw * 1000),
     netImportW: power.drawKw * 1000,
     sampledAtMs: power.sampledAtMs,
   }, offers, nowTs);

@@ -61,8 +61,8 @@ export class PacingGrace {
     const fresh = observation !== previous;
     // Settle the previous waiting interval before every clear or urgent exit.
     if (power.gridBreached) return this.finishImmediate(true, observation);
-    if (power.headroomKw === null) return this.finishImmediate(false, observation);
-    const headroomKw = power.headroomKw + storage.netCreditKw;
+    if (power.headroom.kind === 'off') return this.finishImmediate(false, observation);
+    const headroomKw = power.headroom.kw + storage.netCreditKw;
     if (headroomKw >= 0) return this.finishImmediate(false, observation);
     const urgent = shortfallThresholdKw !== null && isOverShortfallThreshold(power.drawKw, shortfallThresholdKw);
     // A known battery hand-back is an incoming load step, not a background

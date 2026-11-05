@@ -1,16 +1,16 @@
 import type { DevicePlanDevice } from '../planTypes';
-import { minPowerLimit } from '../powerLimitMath';
+import { minLimitHeadroom, spendLimitHeadroom, type LimitHeadroom } from '../planContext';
 
 /**
- * The room left on each admission axis at the start of a restore pass, `null`
- * for an axis whose limit is off (`MeasuredPower.capacityHeadroomKw`,
- * `gridHeadroomKw`, `budgetHeadroomKw`). Every increase spends both physical
+ * The room left on each admission axis at the start of a restore pass, `off`
+ * for an axis whose limit is off (`MeasuredPower.capacityHeadroom`,
+ * `gridHeadroom`, `budgetHeadroom`). Every increase spends both physical
  * axes; a budget exemption only bypasses the budget axis.
  */
 export type RestoreHeadroomAxes = {
-  capacityAvailableKw: number | null;
-  gridAvailableKw: number | null;
-  budgetAvailableKw: number | null;
+  capacity: LimitHeadroom;
+  grid: LimitHeadroom;
+  budget: LimitHeadroom;
 };
 
 /**
@@ -56,28 +56,30 @@ export type RestoreHeadroomLedger = {
 };
 
 export function buildRestoreHeadroomLedger(axes: RestoreHeadroomAxes): RestoreHeadroomLedger {
-  let capacityKw = axes.capacityAvailableKw;
-  let gridKw = axes.gridAvailableKw;
-  let budgetKw = axes.budgetAvailableKw;
+  let capacity = axes.capacity;
+  let grid = axes.grid;
+  let budget = axes.budget;
+  const availableKw = (...limits: LimitHeadroom[]): number | null => {
+    const headroom = minLimitHeadroom(...limits);
+    return headroom.kind === 'on' ? headroom.kw : null;
+  };
   return {
     availableFor(dev) {
-      return minPowerLimit(capacityKw, gridKw, dev.budgetExempt ? null : budgetKw);
+      return availableKw(capacity, grid, dev.budgetExempt ? { kind: 'off' } : budget);
     },
     commit(dev, spentKw) {
-      // Finite-positive gate: a NaN delta from an upstream regression must not
-      // poison the axes, and negative deltas (a swap freeing more than the
-      // target needs) are deliberately dropped — conservative within the
-      // cycle; the next rebuild reads the meter.
+      // Negative swaps free no room until the next meter sample; keep the existing
+      // admission-delta boundary's finite-positive gate.
       if (!Number.isFinite(spentKw) || spentKw <= 0) return;
-      if (capacityKw !== null) capacityKw -= spentKw;
-      if (gridKw !== null) gridKw -= spentKw;
-      if (!dev.budgetExempt && budgetKw !== null) budgetKw -= spentKw;
+      capacity = spendLimitHeadroom(capacity, spentKw);
+      grid = spendLimitHeadroom(grid, spentKw);
+      if (!dev.budgetExempt) budget = spendLimitHeadroom(budget, spentKw);
     },
     summaryAvailableKw() {
-      return minPowerLimit(capacityKw, gridKw, budgetKw);
+      return availableKw(capacity, grid, budget);
     },
     axes() {
-      return { capacityAvailableKw: capacityKw, gridAvailableKw: gridKw, budgetAvailableKw: budgetKw };
+      return { capacity, grid, budget };
     },
   };
 }

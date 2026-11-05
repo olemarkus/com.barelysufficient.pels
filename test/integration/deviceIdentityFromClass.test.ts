@@ -139,14 +139,12 @@ const BATTERY_ID = RAW_DEVICES.battery!.id;
 const FIXTURE_NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 
 const emptyRestoreResult: RestorePlanResult = {
-  gridAvailableKw: null,
+  headroomAxes: { grid: { kind: 'off' }, capacity: { kind: 'on', kw: 8 }, budget: { kind: 'off' } },
   planDevices: [],
   restoredThisCycle: new Set<string>(),
   storageHandedBack: new Set<string>(),
   headroomReserves: [],
   availableHeadroom: 8,
-  capacityAvailableKw: 8,
-  budgetAvailableKw: null,
   restoredOneThisCycle: false,
   timing: restoreTimingFixture({ nowTs: FIXTURE_NOW_MS, restoreCooldownMs: 60 * 1000 }),
 };

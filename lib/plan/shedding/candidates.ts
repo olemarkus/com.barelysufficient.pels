@@ -41,7 +41,7 @@ import { resolveShedNeedKw, resolveShedPressure } from './pressure';
  * relief counts against it (`StorageShedTerm`), which a hand-back can raise.
  */
 export function resolveStorageAdjustedDeficitKw(power: MeasuredPower, storage: StorageShedTerm): number {
-  return power.headroomKw === null ? 0 : Math.max(0, -power.headroomKw - storage.netCreditKw);
+  return power.headroom.kind === 'off' ? 0 : Math.max(0, -power.headroom.kw - storage.netCreditKw);
 }
 
 /**

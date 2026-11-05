@@ -642,7 +642,8 @@ describe('storage discharge as restore sees it', () => {
     const relief = cycle(battery({ signedPowerW: -1500 }), 1, { battery: lever() });
 
     expect(withoutStorageWithheld(power, relief)).toEqual({
-      ...power, headroomKw: -0.5, capacityHeadroomKw: -0.5, gridHeadroomKw: -0.7, budgetHeadroomKw: -1,
+      ...power, headroom: { kind: 'on', kw: -0.5 }, capacityHeadroom: { kind: 'on', kw: -0.5 },
+      gridHeadroom: { kind: 'on', kw: -0.7 }, budgetHeadroom: { kind: 'on', kw: -1 },
     });
   });
 });

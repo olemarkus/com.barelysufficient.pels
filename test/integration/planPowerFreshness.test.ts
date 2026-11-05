@@ -94,7 +94,7 @@ describe('power sample freshness policy', () => {
       powerTracker: { lastTimestamp: Date.now() - (POWER_SAMPLE_STALE_THRESHOLD_MS - 1), lastPowerW: 3.2 * 1000 },
     });
 
-    expect(power?.headroomKw).toBeCloseTo(1.8, 6);
+    expect((power?.headroom.kind === 'on' ? power.headroom.kw : null)).toBeCloseTo(1.8, 6);
     expect(power?.drawKw).toBeCloseTo(3.2, 6);
   });
 
@@ -105,7 +105,7 @@ describe('power sample freshness policy', () => {
       powerTracker: { lastTimestamp: Date.now() - (2 * 60 * 1000), lastPowerW: 4.4 * 1000 },
     });
 
-    expect(carried?.headroomKw).toBeCloseTo(0.6, 6);
+    expect((carried?.headroom.kind === 'on' ? carried.headroom.kw : null)).toBeCloseTo(0.6, 6);
 
     // Startup with NO sample is the measurement gate's case, not a reading
     // state: a build with an unsampled tracker is a gate violation and fails
@@ -153,9 +153,9 @@ describe('power sample freshness policy', () => {
         powerTracker: { lastTimestamp: Date.now() - 1000, lastPowerW: 1.85 * 1000 },
       });
 
-      expect(power?.capacityHeadroomKw).toBeCloseTo(10 - 1.85, 6);
+      expect((power?.capacityHeadroom.kind === 'on' ? power.capacityHeadroom.kw : null)).toBeCloseTo(10 - 1.85, 6);
       // budget pace (0.9) + measured exempt (1.25) - total (1.85)
-      expect(power?.budgetHeadroomKw).toBeCloseTo(0.3, 6);
+      expect((power?.budgetHeadroom.kind === 'on' ? power.budgetHeadroom.kw : null)).toBeCloseTo(0.3, 6);
       expect(power?.capacityBreached).toBe(false);
     });
 
@@ -168,7 +168,7 @@ describe('power sample freshness policy', () => {
         powerTracker: { lastTimestamp: Date.now() - 1000, lastPowerW: 1.85 * 1000 },
       });
 
-      expect(power?.budgetHeadroomKw).toBeNull();
+      expect((power?.budgetHeadroom.kind === 'on' ? power.budgetHeadroom.kw : null)).toBeNull();
     });
 
     it('reports a capacity breach from the measured draw, which closes the budget release', () => {

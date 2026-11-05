@@ -51,7 +51,7 @@ import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './restor
 import { isReserveAdmitted, resolveReserveAdmission, type HeadroomReserve } from './admission';
 import { computeRestoreRequirementKw, estimateRestorePower } from './restore/accounting';
 import { buildSwapCandidates, type SwapLedger } from './swap';
-import { minPowerLimit } from './powerLimitMath';
+import { minLimitHeadroom } from './planContext';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { ceilToDisplayKw, PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 
@@ -178,18 +178,18 @@ export function isBudgetReleasableHold(params: {
 }): boolean {
   const { dev, inputs } = params;
   const axes = inputs.ledger.axes();
-  if (dev.budgetExempt || axes.budgetAvailableKw === null) return false;
+  if (dev.budgetExempt || axes.budget.kind === 'off') return false;
   // A running stepped device denied a step-up would be priced here at its whole
   // draw rather than the step it would climb (see the header), wrong both ways,
   // so its own gate's need decides: the kW it had to find on its axes,
   // reserves included, against what the physical axes hold.
   const { reason } = dev;
   if (isSteppedLoadDevice(dev) && dev.currentState === 'on' && reason.code === PLAN_REASON_CODES.insufficientHeadroom) {
-    const physicalKw = minPowerLimit(axes.capacityAvailableKw, axes.gridAvailableKw);
-    return physicalKw === null || physicalKw >= reason.availableKw - reason.admissionMarginKw;
+    const physical = minLimitHeadroom(axes.capacity, axes.grid);
+    return physical.kind === 'off' || physical.kw >= reason.availableKw - reason.admissionMarginKw;
   }
   if (resolveCeilingShortfall({ dev, inputs }).kind !== 'gap') return false;
-  const physicalOnly = { ...inputs, ledger: buildRestoreHeadroomLedger({ ...axes, budgetAvailableKw: null }) };
+  const physicalOnly = { ...inputs, ledger: buildRestoreHeadroomLedger({ ...axes, budget: { kind: 'off' } }) };
   return resolveCeilingShortfall({ dev, inputs: physicalOnly }).kind === 'no_gap';
 }
 
@@ -206,9 +206,9 @@ export function isDrainReleasableHold(
   drainCutKw: number,
 ): boolean {
   const axes = inputs.ledger.axes();
-  if (drainCutKw <= 0 || axes.capacityAvailableKw === null) return false;
+  if (drainCutKw <= 0 || axes.capacity.kind === 'off') return false;
   const withoutCut = buildRestoreHeadroomLedger({
-    ...axes, capacityAvailableKw: axes.capacityAvailableKw + drainCutKw,
+    ...axes, capacity: { kind: 'on', kw: axes.capacity.kw + drainCutKw },
   });
   // A running stepped device denied a step-up: its own gate's need decides,
   // as in `isBudgetReleasableHold`.

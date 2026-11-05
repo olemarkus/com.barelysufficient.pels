@@ -7,7 +7,7 @@
  * hold (`StorageLeverState`) and its `StorageDecision`, which the executor's
  * storage lane carries out unchanged.
  */
-import { spendPowerHeadroom } from '../powerLimitMath';
+import { spendLimitHeadroom } from '../planContext';
 import type { MeasuredPower } from '../planContext';
 import type { StorageDecision } from '../../planContract/storageDecision';
 import type { StorageLeverState } from '../planState';
@@ -128,10 +128,10 @@ export function withoutStorageWithheld(power: MeasuredPower, relief: StorageReli
   if (withheldKw <= 0) return power;
   return {
     ...power,
-    headroomKw: spendPowerHeadroom(power.headroomKw, withheldKw),
-    capacityHeadroomKw: spendPowerHeadroom(power.capacityHeadroomKw, withheldKw),
-    gridHeadroomKw: spendPowerHeadroom(power.gridHeadroomKw, withheldKw),
-    budgetHeadroomKw: spendPowerHeadroom(power.budgetHeadroomKw, withheldKw),
+    headroom: spendLimitHeadroom(power.headroom, withheldKw),
+    capacityHeadroom: spendLimitHeadroom(power.capacityHeadroom, withheldKw),
+    gridHeadroom: spendLimitHeadroom(power.gridHeadroom, withheldKw),
+    budgetHeadroom: spendLimitHeadroom(power.budgetHeadroom, withheldKw),
   };
 }
 

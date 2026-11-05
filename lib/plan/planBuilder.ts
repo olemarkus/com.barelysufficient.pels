@@ -463,7 +463,7 @@ export class PlanBuilder {
     );
     // A clean whole-home sample: the house is under its pace, and the hour is
     // not spent (an exhausted hour admits nothing, however the draw reads).
-    if ((power.headroomKw === null || power.headroomKw >= 0) && !this.state.capacityPeriodSpentFor(context)) {
+    if ((power.headroom.kind === 'off' || power.headroom.kw >= 0) && !this.state.capacityPeriodSpentFor(context)) {
       this.recordCleanWholeHomeSample(context.devices, this.powerTracker.lastTimestamp);
     }
 
@@ -527,12 +527,12 @@ export class PlanBuilder {
     surplusOffers: ReadonlyMap<string, StorageSurplusOffer>,
   ): void {
     const { netCreditKw } = relief.shed;
-    if (power.headroomKw !== null && netCreditKw !== 0 && (power.headroomKw < 0 || netCreditKw < 0)) {
+    if (power.headroom.kind === 'on' && netCreditKw !== 0 && (power.headroom.kw < 0 || netCreditKw < 0)) {
       this.deps.structuredLog.info({
         event: 'storage_relief_shed_term',
         netCreditKw,
-        measuredDeficitKw: Math.max(0, -power.headroomKw),
-        neededKw: Math.max(0, -power.headroomKw - netCreditKw),
+        measuredDeficitKw: Math.max(0, -power.headroom.kw),
+        neededKw: Math.max(0, -power.headroom.kw - netCreditKw),
         relieving: relief.shed.relieving,
       });
     }

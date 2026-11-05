@@ -1,3 +1,4 @@
+import type { LimitHeadroom } from '../planContext';
 import type { PlanEngineState } from '../planState';
 import type { RestoreBackoff, RestoreCooldownState } from '../restoreBackoff';
 import type { PlanContext, MeasuredPower } from '../planContext';
@@ -49,7 +50,7 @@ const ceilSecondsOrNull = (ms: number | null): number | null =>
 
 export const buildRestoreTiming = (
   state: PlanEngineState,
-  headroomRaw: number | null,
+  headroom: LimitHeadroom,
   deps: RestoreDeps,
   planDevices: readonly DevicePlanDevice[],
   nowTs: number,
@@ -66,7 +67,7 @@ export const buildRestoreTiming = (
     && !releasedByPower;
   const startupBlockRemainingMs = state.restoreBackoff.startupBlockRemainingMs(nowTs);
   const inStartupStabilization = startupBlockRemainingMs !== null && startupBlockRemainingMs > 0;
-  const activeOvershoot = headroomRaw !== null && headroomRaw < 0;
+  const activeOvershoot = headroom.kind === 'on' && headroom.kw < 0;
   const restoreRemainingMs = inRestoreCooldown && sinceRestore !== null
     ? cooldownState.restoreCooldownMs - sinceRestore : 0;
   const restoreCooldownSeconds = sinceRestore !== null
@@ -233,10 +234,10 @@ export const shouldPlanBudgetExemptRestores = (
 ): boolean => (
   sheddingActive
   && (context.binding.kind === 'bound' && context.binding.source === 'daily')
-  && (power.capacityHeadroomKw === null || (
-    power.capacityHeadroomKw > 0 && power.capacityHeadroomKw >= resolveSheddingClearThresholdKw(context)
+  && (power.capacityHeadroom.kind === 'off' || (
+    power.capacityHeadroom.kw > 0 && power.capacityHeadroom.kw >= resolveSheddingClearThresholdKw(context)
   ))
-  && (power.gridHeadroomKw === null || power.gridHeadroomKw >= resolveSheddingClearThresholdKw(context))
+  && (power.gridHeadroom.kind === 'off' || power.gridHeadroom.kw >= resolveSheddingClearThresholdKw(context))
   && !state.capacityPeriodSpentFor(context)
   && !timing.inCooldown
   && !timing.inRestoreCooldown

@@ -16,7 +16,7 @@ export const buildSheddingPlanForSpec = (
   state: PlanEngineState,
   deps: SheddingDeps,
   overshoot: SheddingOvershootInput = {
-    actionable: power.headroomKw !== null && power.headroomKw < 0,
-    shedActionable: power.headroomKw !== null && power.headroomKw < 0,
+    actionable: power.headroom.kind === 'on' && power.headroom.kw < 0,
+    shedActionable: power.headroom.kind === 'on' && power.headroom.kw < 0,
   },
 ): Promise<SheddingPlan> => buildSheddingPlan(context, power, state, deps, overshoot, NO_STORAGE_RELIEF);

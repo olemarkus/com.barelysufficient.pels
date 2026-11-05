@@ -1,3 +1,4 @@
+import { headroomFixture } from '../utils/planContextPowerFixture';
 import { SwapLedger } from '../../lib/plan/swap';
 import { describe, it, expect } from 'vitest';
 import { resolveCeilingShortfall, type CeilingShortfallInputs } from '../../lib/plan/planReasonShortfall';
@@ -35,9 +36,9 @@ const inputs = (params: {
   nowMs?: number;
 }): CeilingShortfallInputs => ({
   ledger: buildRestoreHeadroomLedger({
-    gridAvailableKw: null,
-    capacityAvailableKw: params.capacityAvailableKw,
-    budgetAvailableKw: params.budgetAvailableKw ?? null,
+    grid: { kind: 'off' },
+    capacity: headroomFixture(params.capacityAvailableKw),
+    budget: headroomFixture(params.budgetAvailableKw ?? null),
   }),
   headroomReserves: params.headroomReserves ?? [],
   onDevices: params.onDevices ?? [],

@@ -19,7 +19,7 @@ import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { PowerTrackerState } from '../power/tracker';
 import type { CapacityPeriodMinutes, CapacitySettings } from '../../packages/contracts/src/capacitySettings';
-import type { PlanContext } from './planContext';
+import { spendLimitHeadroom, type LimitHeadroom, type PlanContext } from './planContext';
 import {
   resolveHardCapacityKWh, resolvePlanningCeilingKw, resolveUsableCapacityKWh, resolveUsableCapacityKw,
 } from '../power/capacityModel';
@@ -151,23 +151,23 @@ export function computeDynamicSoftLimit(
 
 /**
  * The capacity headroom an increase (a restore or a step up) may spend, given
- * the cycle's `capacityHeadroomKw`. Inside the end-of-hour drain that is the
+ * the cycle's `capacityHeadroom`. Inside the end-of-hour drain that is the
  * room under the lower of the pace and the sustainable rate: a device turned
  * on then keeps running into the next hour, so it has to fit that hour's
  * target, and anything more would be limited again before :00. Shedding keeps
- * reading the drain pace itself. `null` with Capacity limit off. The window is
+ * reading the drain pace itself. `off` with Capacity limit off. The window is
  * hourly only, so `budgetKWh` is the sustainable rate in kW.
  */
-export function resolveCapacityAdmissionHeadroomKw(
+export function resolveCapacityAdmissionHeadroom(
   context: Pick<PlanContext, 'capacity' | 'capacityPeriodMinutes' | 'minutesRemaining' | 'budgetKWh'>,
-  capacityHeadroomKw: number | null,
-): number | null {
-  return capacityHeadroomKw === null ? null : capacityHeadroomKw - resolveCapacityAdmissionCutKw(context);
+  headroom: LimitHeadroom,
+): LimitHeadroom {
+  return spendLimitHeadroom(headroom, resolveCapacityAdmissionCutKw(context));
 }
 
 /**
  * The capacity room the end-of-hour drain withholds from an increase
- * (`resolveCapacityAdmissionHeadroomKw`): the pace above the sustainable rate
+ * (`resolveCapacityAdmissionHeadroom`): the pace above the sustainable rate
  * inside the window, 0 outside it, in a quarter and with Capacity limit off.
  * A hold that this room alone would lift reads `endOfHourDrain`
  * (`isDrainReleasableHold`).

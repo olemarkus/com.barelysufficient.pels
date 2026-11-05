@@ -157,7 +157,7 @@ export function resolveMeasuredMetaFields(
   return {
     powerIsMeasured: true,
     physicalLimitBreached: power.physicalLimitBreached,
-    headroomKw: power.headroomKw,
+    headroomKw: power.headroom.kind === 'on' ? power.headroom.kw : null,
     ...resolveCapacityLineDistances(reading, capacityLimitKw, shortfallBudgetThresholdKw),
     ...splitControlledUsageKwFor({
       devices: toMeteredUsageDevices(planDevices),
@@ -179,7 +179,7 @@ export function buildPlanContextHeadroomLogFields(
   return {
     totalKw: reading.totalKw,
     softLimitKw: projectPlanLimits(context).softLimitKw,
-    softHeadroomKw: power.headroomKw,
+    softHeadroomKw: power.headroom.kind === 'on' ? power.headroom.kw : null,
     // Log continuity: saved queries read `powerNowKw` as "the measured draw".
     // A LOG field, not a seam.
     powerNowKw: reading.totalKw,

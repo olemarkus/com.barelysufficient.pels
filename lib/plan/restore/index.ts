@@ -22,7 +22,7 @@ import { resolveHeadroomReserves, resolveRestoreDecisionPhase } from '../admissi
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './headroomLedger';
 import { buildDisabledRestoreBatchState, buildRestoreBatchState } from './batch';
 import { resolveAcknowledgedStepUpReservationKw } from '../planSteppedRestorePending';
-import { resolveCapacityAdmissionHeadroomKw } from '../planBudget';
+import { resolveCapacityAdmissionHeadroom } from '../planBudget';
 import {
   markOffDevicesStayOff,
   markRestoreCandidatesHeld,
@@ -55,7 +55,7 @@ export function applyRestorePlan(
   const { sheddingActive, guardInShortfall } = sheddingPlan;
   const deviceMap = new Map(planDevices.map((dev) => [dev.id, dev]));
   const swapLedger = state.swapLedger;
-  const timing = buildRestoreTiming(state, power.headroomKw, deps, planDevices, context.nowTs);
+  const timing = buildRestoreTiming(state, power.headroom, deps, planDevices, context.nowTs);
   const effectiveTiming = resolveEffectiveTiming(timing, context);
   // Resolved BEFORE the ledger reconcile and reused by the branch below, so the
   // one thing that decides whether restores happen this cycle also decides
@@ -137,7 +137,7 @@ export function applyRestorePlan(
     restoredThisCycle,
     storageHandedBack,
     availableHeadroom: ledger.summaryAvailableKw(),
-    ...ledger.axes(),
+    headroomAxes: ledger.axes(),
     headroomReserves,
     restoredOneThisCycle,
     timing: effectiveTiming,
@@ -165,7 +165,7 @@ function resolveEffectiveTiming(timing: RestoreTiming, context: PlanContext): Re
 // equally (the shortfall guard skips the reservation exactly as it skipped the
 // old binding-scalar path).
 // Inside the end-of-hour drain the capacity axis is the room under the next
-// hour's target only (`resolveCapacityAdmissionHeadroomKw`): an increase then
+// hour's target only (`resolveCapacityAdmissionHeadroom`): an increase then
 // runs into the next hour, and shedding keeps the drain pace itself.
 function buildCycleHeadroomLedger(power: MeasuredPower, context: PlanContext): RestoreHeadroomLedger {
   // No pending-restore reservation. It existed to hold back headroom for a restore
@@ -177,9 +177,9 @@ function buildCycleHeadroomLedger(power: MeasuredPower, context: PlanContext): R
   // `maxNeedKw`. OWNER RULING 2026-08-28: assume new plan = new power sample and
   // drop it (`notes/state-management/actuation-clocks-and-settle.md`).
   return buildRestoreHeadroomLedger({
-    capacityAvailableKw: resolveCapacityAdmissionHeadroomKw(context, power.capacityHeadroomKw),
-    gridAvailableKw: power.gridHeadroomKw,
-    budgetAvailableKw: power.budgetHeadroomKw,
+    capacity: resolveCapacityAdmissionHeadroom(context, power.capacityHeadroom),
+    grid: power.gridHeadroom,
+    budget: power.budgetHeadroom,
   });
 }
 

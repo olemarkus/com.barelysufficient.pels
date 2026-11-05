@@ -160,7 +160,7 @@ export function applyShedTemperatureHold(
   const { planDevices } = restoreResult;
   const normalizedShedFloorCByDevice = resolveNormalizedShedFloors(temperatureSetpoints);
 
-  const ledger = buildRestoreHeadroomLedger(restoreResult);
+  const ledger = buildRestoreHeadroomLedger(restoreResult.headroomAxes);
   let restoredOne = restoreResult.restoredOneThisCycle;
   const nextDevices: DevicePlanDevice[] = [];
   const pendingRestoreDelay = getPendingRestoreDelay(

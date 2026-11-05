@@ -169,7 +169,7 @@ describe('buildSheddingPlan', () => {
       softLimitSource: 'capacity',
     });
 
-    const overshootDecision = resolveSoftOvershootDecision(power.headroomKw ?? 0, false, null, Date.now());
+    const overshootDecision = resolveSoftOvershootDecision(power.headroom.kind === 'on' ? power.headroom.kw : 0, false, null, Date.now());
 
     const result = await buildSheddingPlanForSpec(
       context,
@@ -261,7 +261,7 @@ describe('buildSheddingPlan', () => {
 
     const nowTs = Date.now();
     const overshootDecision = resolveSoftOvershootDecision(
-      power.headroomKw ?? 0, false, nowTs - SOFT_OVERSHOOT_PERSIST_MS, nowTs,
+      power.headroom.kind === 'on' ? power.headroom.kw : 0, false, nowTs - SOFT_OVERSHOOT_PERSIST_MS, nowTs,
     );
 
     const result = await buildSheddingPlanForSpec(
@@ -301,7 +301,7 @@ describe('buildSheddingPlan', () => {
       softLimitSource: 'capacity',
     });
 
-    const overshootDecision = resolveSoftOvershootDecision(power.headroomKw ?? 0, false, null, Date.now());
+    const overshootDecision = resolveSoftOvershootDecision(power.headroom.kind === 'on' ? power.headroom.kw : 0, false, null, Date.now());
 
     const result = await buildSheddingPlanForSpec(
       context,
