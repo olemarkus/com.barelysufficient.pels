@@ -9,7 +9,7 @@ export type ApiContext = {
 };
 
 /** The answer a route gives while the runtime it reads is not wired yet. */
-export const API_STARTING_MESSAGE = 'PELS is starting. Try again shortly.';
+export { API_STARTING_MESSAGE } from '../../lib/app/pelsHost';
 
 type RouteHandler<Ctx extends ApiContext> = (ctx: Ctx) => unknown;
 

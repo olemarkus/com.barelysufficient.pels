@@ -1,4 +1,5 @@
-import { readPelsHost } from '../../lib/app/pelsHost';
+import { logHomeyDeviceRequest } from '../../lib/app/deviceDebugRequest';
+import { readPelsHost, requirePelsHost } from '../../lib/app/pelsHost';
 import type { HomeyDeviceListEntry } from '../../packages/contracts/src/settingsUi/homeyDevices';
 import type { HomeyEnergyMeterEntry } from '../../packages/contracts/src/settingsUi/power';
 import {
@@ -10,9 +11,7 @@ import { defineRoutes, type ApiContext } from './defineRoutes';
 
 export const diagnosticsDebugRoutes = defineRoutes({
   homey_devices: async ({ homey }: ApiContext): Promise<HomeyDeviceListEntry[]> => {
-    const host = readPelsHost(homey);
-    if (!host) return [];
-    return listHomeyDevicesFromApp(host);
+    return listHomeyDevicesFromApp(requirePelsHost(homey));
   },
   // Backs both whole-home meter pickers: the meters the Homey Energy live report
   // actually exposes (the same seam a selection is read against), so every pick
@@ -20,26 +19,9 @@ export const diagnosticsDebugRoutes = defineRoutes({
   // An unreadable report rejects instead of answering empty, so the pickers can
   // trust an empty list as "this home has no meters".
   homey_energy_meters: async ({ homey }: ApiContext): Promise<HomeyEnergyMeterEntry[]> => {
-    const host = readPelsHost(homey);
-    if (!host) throw new Error('PELS app not available');
-    return getHomeyEnergyMetersFromApp(host);
+    return getHomeyEnergyMetersFromApp(requirePelsHost(homey));
   },
-  log_homey_device: async (
-    { homey, body }: ApiContext & { body?: { id?: string } },
-  ): Promise<{ ok: boolean; error?: string }> => {
-    const host = readPelsHost(homey);
-    if (!host) {
-      return { ok: false, error: 'LOGGING_NOT_AVAILABLE' };
-    }
-    const deviceId = typeof body?.id === 'string' ? body.id.trim() : '';
-    if (!deviceId) {
-      host.error('Homey device log API called without valid device id');
-      return { ok: false, error: 'INVALID_DEVICE_ID' };
-    }
-    const ok = await logHomeyDeviceForDebugFromApp(host, deviceId);
-    if (!ok) {
-      return { ok: false, error: 'DEVICE_NOT_FOUND' };
-    }
-    return { ok: true };
-  },
+  log_homey_device: ({ homey, body }: ApiContext & { body?: unknown }) => (
+    logHomeyDeviceRequest(readPelsHost(homey), body, logHomeyDeviceForDebugFromApp)
+  ),
 });

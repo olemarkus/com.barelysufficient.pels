@@ -1,5 +1,4 @@
 import type { HomeyRuntime } from '../ports/homeyRuntime';
-import type { DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
 import {
   BATTERY_CONTROL_DEVICES,
   BUDGET_EXEMPT_DEVICES,
@@ -19,12 +18,6 @@ import {
   DEVICE_TARGET_POWER_CONFIGS,
   DEVICE_POWER_CONTROL_MODES,
   DEVICE_TARGET_POWER_REACHABILITY,
-  DAILY_BUDGET_ENABLED,
-  DAILY_BUDGET_KWH,
-  DAILY_BUDGET_PRICE_SHAPING_ENABLED,
-  DAILY_BUDGET_CONTROLLED_WEIGHT,
-  DAILY_BUDGET_PRICE_FLEX_SHARE,
-  DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
   DEVICE_HOME_ASSIGNMENTS,
   EV_BOOST_SETTINGS,
@@ -57,13 +50,9 @@ import {
   PV_FORECAST_SOURCE,
   WEATHER_ADVISOR_SETTINGS,
 } from './settingsKeys';
-import { incPerfCounters } from './perfCounters';
+import { recordSettingsRebuildRequest } from './settingsRebuildRequest';
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import { normalizeError } from './errorUtils';
-import {
-  createDebouncedSyncScheduler,
-  type DebouncedSyncScheduler,
-} from './settingsHandlerDebounce';
 import { createSettingsWriteDedupe } from './settingsWriteDedupe';
 import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 
@@ -104,9 +93,7 @@ export type SettingsHandlerDeps = {
   rebuildPlanFromCache: (settingsSource: string) => Promise<void>;
   refreshTargetDevicesSnapshot: () => Promise<void>;
   getCapacitySettings: () => CapacitySettings;
-  loadDailyBudgetSettings: () => void;
-  updateDailyBudgetState: (options?: DailyBudgetUpdateStateOptions) => void;
-  resetDailyBudgetLearning: () => void;
+  dailyBudget: BudgetSettingsReactions;
   priceService: PriceServiceLike;
   updateOverheadToken: (value?: number) => Promise<void>;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
@@ -196,31 +183,16 @@ export type SettingsHandlerDeps = {
   rebuildAllHomeRuntimePlansForDeviceControlChange: () => void;
 };
 
-const DAILY_BUDGET_SETTINGS_REBUILD_DEBOUNCE_MS = 500;
-const FORCE_DAILY_BUDGET_STATE_PERSIST: DailyBudgetUpdateStateOptions = {
-  forcePlanRebuild: true,
-  persistReason: 'manual',
+/** The daily-budget owner's settings reactions; dispatch does not choose its persistence policy. */
+export type BudgetSettingsReactions = {
+  readonly handlers: Record<string, () => Promise<void>>;
+  refresh(): void;
+  stop(): void;
 };
 
 export type SettingsHandler = ((key: string) => Promise<void>) & {
   stop: () => void;
 };
-
-const createDailyBudgetSettingsSyncScheduler = (deps: SettingsHandlerDeps): DebouncedSyncScheduler => (
-  createDebouncedSyncScheduler({
-    debounceMs: DAILY_BUDGET_SETTINGS_REBUILD_DEBOUNCE_MS,
-    rerunAfterRun: 'immediate',
-    run: async () => {
-      deps.loadDailyBudgetSettings();
-      deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
-      await rebuildPlanFromSettings(deps, 'daily_budget_settings');
-    },
-    onError: (error) => settingsLogger.error({
-      event: 'daily_budget_settings_sync_failed',
-      err: normalizeError(error),
-    }),
-  })
-);
 
 const refreshPriceDerivedState = async (deps: SettingsHandlerDeps): Promise<void> => {
   deps.priceService.updateCombinedPrices();
@@ -228,25 +200,6 @@ const refreshPriceDerivedState = async (deps: SettingsHandlerDeps): Promise<void
 };
 
 type SettingsHandlerMap = Record<string, () => Promise<void>>;
-const DAILY_BUDGET_SETTING_KEYS = [
-  DAILY_BUDGET_ENABLED,
-  DAILY_BUDGET_KWH,
-  DAILY_BUDGET_PRICE_SHAPING_ENABLED,
-  DAILY_BUDGET_CONTROLLED_WEIGHT,
-  DAILY_BUDGET_PRICE_FLEX_SHARE,
-] as const;
-
-const buildDailyBudgetSettingsHandlers = (
-  scheduleDailyBudgetSettingsSync: () => Promise<void>,
-): Pick<SettingsHandlerMap,
-  typeof DAILY_BUDGET_SETTING_KEYS[number]
-> => Object.fromEntries(DAILY_BUDGET_SETTING_KEYS.map((key) => [
-  key,
-  async () => {
-    void scheduleDailyBudgetSettingsSync();
-  },
-])) as Pick<SettingsHandlerMap, typeof DAILY_BUDGET_SETTING_KEYS[number]>;
-
 // A colon key whose base IS home-scopable but whose suffix the parser rejected
 // (`capacity_limit_kw:`, `capacity_limit_kw:main`) dispatches as an ordinary
 // exact key — almost certainly an emitter bug, so leave a debug trace first.
@@ -257,11 +210,7 @@ const logMalformedHomeSuffix = (key: string): void => {
 };
 
 export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandler {
-  const dailyBudgetSettingsSyncScheduler = createDailyBudgetSettingsSyncScheduler(deps);
-  const handlers = buildSettingsHandlers(
-    deps,
-    () => dailyBudgetSettingsSyncScheduler.schedule(),
-  );
+  const handlers = buildSettingsHandlers(deps);
 
   const runIfChanged = createSettingsWriteDedupe(
     (key) => deps.homey.settings.get(key),
@@ -322,17 +271,14 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
   // eslint-disable-next-line functional/immutable-data
   return Object.assign(handler, {
     stop: (): void => {
-      dailyBudgetSettingsSyncScheduler.stop();
+      deps.dailyBudget.stop();
     },
   });
 }
 
-function buildSettingsHandlers(
-  deps: SettingsHandlerDeps,
-  scheduleDailyBudgetSettingsSync: () => Promise<void>,
-): SettingsHandlerMap {
+function buildSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMap {
   return {
-    ...buildDailyBudgetSettingsHandlers(scheduleDailyBudgetSettingsSync),
+    ...deps.dailyBudget.handlers,
     ...buildCapacitySettingsHandlers(deps),
     ...buildPriceSettingsHandlers(deps),
     ...buildMiscSettingsHandlers(deps),
@@ -413,7 +359,7 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
     [BUDGET_EXEMPT_DEVICES]: async () => {
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'budget_exemption_change');
-      deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
+      deps.dailyBudget.refresh();
       await rebuildPlanFromSettings(deps, BUDGET_EXEMPT_DEVICES);
     },
     [RESPECT_EXTERNAL_OFF_DEVICES]: async () => {
@@ -583,7 +529,7 @@ function buildPriceSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerM
     [HOMEY_ENERGY_METER_DEVICE_ID]: async () => handleHomeyEnergyMeterChange(deps),
     [PRICE_OPTIMIZATION_ENABLED]: async () => {
       deps.priceService.updatePriceOptimizationEnabled(true);
-      deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
+      deps.dailyBudget.refresh();
       await rebuildPlanFromSettings(deps, 'price_optimization_enabled');
     },
   };
@@ -607,12 +553,6 @@ function buildMiscSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMa
     },
     [DEVICE_HOME_ASSIGNMENTS]: async () => {
       deps.recomputeHomeMembership();
-    },
-    [DAILY_BUDGET_RESET]: async () => {
-      deps.resetDailyBudgetLearning();
-      deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
-      deps.homey.settings.set(DAILY_BUDGET_RESET, null);
-      await rebuildPlanFromSettings(deps, 'daily_budget_reset');
     },
     debug_logging_enabled: async () => deps.updateDebugLoggingEnabled(true),
     [DEBUG_LOGGING_TOPICS]: async () => deps.updateDebugLoggingEnabled(true),
@@ -642,7 +582,7 @@ async function handlePowerLimitsChange(deps: SettingsHandlerDeps): Promise<void>
   deps.loadCapacitySettings();
   // The daily budget's hours are capped by the planning ceiling, which these
   // switches move, so the day is replanned now rather than at its next rebuild.
-  deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
+  deps.dailyBudget.refresh();
   await rebuildPlanFromSettings(deps, 'power_limits');
 }
 
@@ -650,12 +590,12 @@ async function handleCapacityLimitChange(deps: SettingsHandlerDeps): Promise<voi
   deps.loadCapacitySettings();
   const { marginKw } = deps.getCapacitySettings();
   await deps.updateOverheadToken(marginKw);
-  deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
+  deps.dailyBudget.refresh();
   await rebuildPlanFromSettings(deps, 'capacity_limit_or_margin');
 }
 
 async function handleDailyBudgetPriceChange(deps: SettingsHandlerDeps): Promise<void> {
-  deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
+  deps.dailyBudget.refresh();
   await rebuildPlanFromSettings(deps, 'daily_budget_price');
 }
 
@@ -684,14 +624,6 @@ async function handlePowerSourceChange(deps: SettingsHandlerDeps): Promise<void>
   deps.reloadWeatherAdvisor();
   await refreshSnapshotWithLog(deps, 'power_source_change');
   await rebuildPlanFromSettings(deps, 'power_source');
-}
-
-function recordSettingsRebuildRequest(source: string): void {
-  incPerfCounters([
-    'plan_rebuild_requested_total',
-    'plan_rebuild_requested.settings_total',
-    `plan_rebuild_requested.settings.${source}_total`,
-  ]);
 }
 
 async function rebuildPlanFromSettings(deps: SettingsHandlerDeps, source: string): Promise<void> {

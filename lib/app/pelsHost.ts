@@ -112,3 +112,12 @@ export const readPelsHost = (homey: { readonly app?: unknown } | undefined): Pel
   const app = homey?.app;
   return typeof app === 'object' && app !== null ? app as PelsHost : null;
 };
+
+/** The HTTP API cannot answer a domain read before its runtime exists. */
+export const API_STARTING_MESSAGE = 'PELS is starting. Try again shortly.';
+
+export const requirePelsHost = (homey: { readonly app?: unknown }): PelsHost => {
+  const host = readPelsHost(homey);
+  if (host === null) throw new Error(API_STARTING_MESSAGE);
+  return host;
+};

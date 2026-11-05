@@ -1,3 +1,4 @@
+import { DailyBudgetSettingsReactions } from '../../lib/dailyBudget/dailyBudgetSettingsReactions';
 import type { AppContext } from '../../lib/app/appContext';
 import { createSettingsHandler } from '../../lib/utils/settingsHandlers';
 import { attachSettingsHandler } from '../../lib/utils/settingsHandlerListeners';
@@ -65,9 +66,10 @@ export const registerSettingsHandler = (
     },
     refreshTargetDevicesSnapshot: () => ctx.refreshTargetDevicesSnapshot(),
     getCapacitySettings: () => ctx.capacitySettings,
-    loadDailyBudgetSettings: () => dailyBudgetService.loadSettings(),
-    updateDailyBudgetState: (options) => ctx.updateDailyBudgetState(options),
-    resetDailyBudgetLearning: () => dailyBudgetService.resetLearning(),
+    dailyBudget: new DailyBudgetSettingsReactions(
+      dailyBudgetService, (options) => ctx.updateDailyBudgetState(options), ctx.homey.settings,
+      async (settingsSource) => { await planService.rebuildPlanFromCache('settings', { detail: settingsSource }); },
+    ),
     priceService: requirePriceCoordinator(ctx),
     updateOverheadToken: ctx.updateOverheadToken,
     updateDebugLoggingEnabled: ctx.updateDebugLoggingEnabled,

@@ -1,3 +1,4 @@
+import type { AppSnapshotControl } from '../lib/app/runtimeHelpers';
 import type { PowerSource } from '../lib/power/powerSource';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
 import type { DeviceTransportPort } from '../lib/device/deviceTransport';
@@ -30,7 +31,7 @@ const sameMainMeterSelection = (
   )
 );
 
-export class AppSnapshotHelpers {
+export class AppSnapshotHelpers implements AppSnapshotControl {
   private readonly targetPowerProbeScheduler: TargetPowerProbeScheduler;
   private readonly refreshScheduler: SnapshotRefreshScheduler;
 

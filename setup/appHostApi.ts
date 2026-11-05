@@ -144,10 +144,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
 
   public suggestPriceSetup = async (): Promise<PriceSetupSuggestion> => {
     const coordinator = this.context.priceCoordinator;
-    // Before the price coordinator is wired there is nothing to suggest yet.
-    if (!coordinator) {
-      return { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'none' } };
-    }
+    if (!coordinator) throw new Error('Price setup suggestions are unavailable during startup.');
     return coordinator.suggestPriceSetup();
   };
 

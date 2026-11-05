@@ -67,7 +67,7 @@ export async function getHomeyDevicesForDebug(params: {
 export async function listHomeyDevicesFromApp(
   app: Pick<AppContext, 'deviceManager'>,
 ): Promise<HomeyDeviceListEntry[]> {
-  if (!app.deviceManager) return [];
+  if (!app.deviceManager) throw new Error('DeviceTransport must be initialized before use.');
   return readHomeyDeviceList(app.deviceManager).catch((err) => {
     inventoryLogger.error({ event: 'homey_device_list_failed', err: normalizeError(err) });
     return [];

@@ -110,3 +110,13 @@ export type ApiPort = {
    */
   getApiApp(appId: string): ApiAppPort;
 };
+
+/** Bootstrap identity reads used before the PELS runtime has started. */
+export type WebAppRuntime = HomeyRuntime & {
+  manifest: { version?: unknown };
+  clock: { getTimezone(): string };
+  cloud: {
+    getHomeyId(): Promise<string>;
+    getLocalAddress(): Promise<string>;
+  };
+};
