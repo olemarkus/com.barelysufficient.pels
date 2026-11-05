@@ -4,6 +4,7 @@ import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDe
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { setBatteryApiKeyDevice } from './batteryApiKey.tsx';
 import { getHomeIdForUiDevice } from '../homeScopeMembership.ts';
+import { readSetupLimitsInForce } from '../setupPathFacts.ts';
 import {
   isHomeBatteryDeviceId, resolveBatteryPowerLimitOn, resolveManagedState, state,
 } from '../state.ts';
@@ -123,8 +124,17 @@ export const renderPriorityBatteryNote = (note: HTMLElement | null, orderedDevic
   /* eslint-enable no-param-reassign */
 };
 
-/** The Managed switch's hint, for a battery PELS can drive: what turning it on lets PELS do. */
-export const BATTERY_MANAGED_HINT = 'PELS takes it over to hold your limit or store spare solar, then hands it back.';
+/**
+ * The Managed switch's hint, for a battery PELS can drive: what turning it on
+ * lets PELS do. With no power limit in force there is no limit to hold, so it
+ * names the job it still has: sharing spare solar between the battery and the
+ * devices. Until the limits have been read it names the limit too.
+ */
+export const resolveBatteryManagedHint = (): string => (
+  readSetupLimitsInForce() === false
+    ? 'PELS shares spare solar between it and your devices, then hands it back.'
+    : 'PELS takes it over to hold your limit or store spare solar, then hands it back.'
+);
 
 /** The Managed switch's hint, for a battery PELS can only watch. */
 export const BATTERY_WATCH_MANAGED_HINT = 'PELS reads its power and charge level and shows it on the Overview.';

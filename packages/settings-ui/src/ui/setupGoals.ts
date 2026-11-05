@@ -6,6 +6,7 @@ import { isSmartTaskCapable, readMainHomeManagedDevices } from './mainHomeDevice
 import { keepPriceSchemeInForce } from './priceSettingsPersistence.ts';
 import { readSetupRespondsToPrices } from './setupPathFacts.ts';
 import { resolveSolarSetupAction, type SolarSetupAction } from './setupDevices.ts';
+import { resolveSetupBatteryGoal, type SetupBatteryGoal } from './setupBatteryPlan.ts';
 import { formatOpenSmartTaskLine } from './smartTaskSummary.ts';
 import { hasOpenSmartTask, resolveSurplusControlAvailable, state } from './state.ts';
 
@@ -21,6 +22,8 @@ import { hasOpenSmartTask, resolveSurplusControlAvailable, state } from './state
  * - A Smart task for a device that can carry one: a goal by a ready-by time in
  *   the cheapest hours, which for a car is its price behaviour.
  * - The device's solar action, once surplus can reach it.
+ * - A home battery's plan (Plan charging with PELS), with the usable capacity
+ *   it needs (`setupBatteryPlan.ts`).
  *
  * It is the one place for these: the after-setup suggestion and Review lead
  * here rather than offering them again.
@@ -35,6 +38,8 @@ export type SetupGoalChoice = {
   /** The open task in one line, or none yet (`charger` picks the copy); `null` for a device that takes no task. */
   smartTask: { state: 'open'; summary: string } | { state: 'none'; charger: boolean } | null;
   solar: SolarSetupAction | null;
+  /** A home battery's plan; `null` for any other device. */
+  battery: SetupBatteryGoal | null;
 };
 
 export type SetupGoalChoices =
@@ -70,8 +75,9 @@ export const resolveSetupGoalChoices = (): SetupGoalChoices => {
         : null;
       const smartTask = resolveSmartTask(device);
       const solar = solarReady ? resolveSolarSetupAction(device) : null;
-      if (price === null && smartTask === null && solar === null) return [];
-      return [{ id: device.id, name: formatDisplayDeviceName(device.name), price, smartTask, solar }];
+      const battery = resolveSetupBatteryGoal(device);
+      if (price === null && smartTask === null && solar === null && battery === null) return [];
+      return [{ id: device.id, name: formatDisplayDeviceName(device.name), price, smartTask, solar, battery }];
     }),
   };
 };

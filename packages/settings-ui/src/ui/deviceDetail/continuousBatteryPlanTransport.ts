@@ -103,7 +103,12 @@ export async function loadBatteryEfficiencyMeasurement(deviceId: string): Promis
     ? asUnknownRecord(measurements[deviceId]) : null);
 }
 
-async function readFreshConfigs(): Promise<ContinuousBatteryPlanConfigs> {
+/**
+ * Every battery's saved plan settings, read fresh. A battery with no entry has
+ * never had its plan saved, so nothing about it (its capacity included) is
+ * known yet; an unreadable map throws rather than reading as empty.
+ */
+export async function loadSavedContinuousBatteryPlanConfigs(): Promise<ContinuousBatteryPlanConfigs> {
   const raw = await getSettingFresh(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY);
   if (raw != null) {
     const configs = parseContinuousBatteryPlanConfigs(raw);
@@ -120,22 +125,31 @@ async function readFreshConfigs(): Promise<ContinuousBatteryPlanConfigs> {
   return configs;
 }
 
+/**
+ * The price unit the runtime plans in now, read fresh: an enabled plan is saved
+ * in it. Throws while the prices are not ready.
+ */
+export async function loadBatteryPlanPriceUnit(): Promise<string> {
+  const prices = asUnknownRecord(await callApi<unknown>('GET', SETTINGS_UI_PRICES_PATH));
+  const timeline = asUnknownRecord(prices?.priceTimeline);
+  if (timeline?.state !== 'ready' || typeof timeline.priceUnit !== 'string' || timeline.priceUnit.trim() === '') {
+    throw new Error('Waiting for electricity prices. Try again when prices are available.');
+  }
+  return timeline.priceUnit;
+}
+
 export async function saveContinuousBatteryPlanConfig(
   deviceId: string,
   raw: ContinuousBatteryPlanConfig,
 ): Promise<ContinuousBatteryPlanConfig> {
   const config = parseContinuousBatteryPlanConfig(raw);
   if (!deviceId || config === null) throw new Error('Enter valid battery settings before saving.');
-  const current = await readFreshConfigs();
+  const current = await loadSavedContinuousBatteryPlanConfigs();
   const next = parseContinuousBatteryPlanConfigs({ ...current, [deviceId]: config });
   if (next === null) throw new Error('Turn off the other battery plan before enabling this battery.');
   if (config.enabled) {
-    const prices = asUnknownRecord(await callApi<unknown>('GET', SETTINGS_UI_PRICES_PATH));
-    const timeline = asUnknownRecord(prices?.priceTimeline);
-    if (timeline?.state !== 'ready' || typeof timeline.priceUnit !== 'string') {
-      throw new Error('Waiting for electricity prices. Try again when prices are available.');
-    }
-    if (timeline.priceUnit.trim().toLowerCase() !== config.priceUnit.trim().toLowerCase()) {
+    const priceUnit = await loadBatteryPlanPriceUnit();
+    if (priceUnit.trim().toLowerCase() !== config.priceUnit.trim().toLowerCase()) {
       throw new Error('The electricity price unit changed. Review the wear allowance and save again.');
     }
   }

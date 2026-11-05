@@ -219,6 +219,54 @@ describe('setup path facts', () => {
     expect(devices?.detail).toBe('1 device managed');
   });
 
+  describe('a home battery', () => {
+    const battery = { id: 'battery', deviceClass: 'battery', batteryControl: 'drivable' };
+    const devicesStep = (facts: Awaited<ReturnType<typeof load>>['facts']) => {
+      const read = facts.readSetupReview();
+      return read?.steps.find((step) => step.id === 'devices');
+    };
+
+    it('counts as managed by its own setting, absent = on, with nothing in managed_devices', async () => {
+      const { facts, state } = await load();
+      state.devicesLoaded = true;
+      state.latestDevices = [battery] as typeof state.latestDevices;
+      state.managedMap = {};
+      state.controllableMap = {};
+      state.batteryControl = { status: 'resolved', devices: {} };
+      facts.publishSetupPower(RECEIVED);
+      facts.publishSetupHardCapRead(false, { ...running, capacityEnabled: false });
+      expect(devicesStep(facts)).toMatchObject({ status: 'done', detail: '1 device PELS may limit' });
+      // A P1 + solar + battery home with no limit finishes setup on the battery alone.
+      expect(facts.readSetupPath()).toEqual({ state: 'complete' });
+    });
+
+    it('does not count once the owner turned it off, or while its setting cannot be read', async () => {
+      const { facts, state } = await load();
+      state.devicesLoaded = true;
+      state.latestDevices = [battery] as typeof state.latestDevices;
+      state.managedMap = { battery: true };
+      state.batteryControl = { status: 'resolved', devices: { battery: false } };
+      facts.publishSetupPower(RECEIVED);
+      facts.publishSetupHardCapRead(false, running);
+      expect(devicesStep(facts)?.status).toBe('next');
+      state.batteryControl = { status: 'unreadable' };
+      expect(devicesStep(facts)?.status).toBe('next');
+    });
+
+    it('is limitable only while PELS can drive it and its Power-limit control is on', async () => {
+      const { facts, state } = await load();
+      state.devicesLoaded = true;
+      state.latestDevices = [{ ...battery, batteryControl: 'watch_only' }] as typeof state.latestDevices;
+      state.batteryControl = { status: 'resolved', devices: {} };
+      facts.publishSetupPower(RECEIVED);
+      facts.publishSetupHardCapRead(false, running);
+      expect(devicesStep(facts)?.detail).toBe('1 device managed');
+      state.latestDevices = [battery] as typeof state.latestDevices;
+      state.controllableMap = { battery: false };
+      expect(devicesStep(facts)?.detail).toBe('1 device managed');
+    });
+  });
+
   it('counts only Main-home devices when meter areas are active', async () => {
     const { facts, state } = await load({ areaHeater: 'area-1' });
     state.devicesLoaded = true;
