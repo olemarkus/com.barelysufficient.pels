@@ -1,5 +1,6 @@
+import { storageSurplusFixture as resolveStorageSurplus } from '../helpers/storageSurplusFixture';
 import { describe, expect, it } from 'vitest';
-import { decideStorageRelief, resolveStorageSurplus, resumeContinuousStorage } from '../../lib/plan/battery/storageRelief';
+import { decideStorageRelief, resumeContinuousStorage } from '../../lib/plan/battery/storageRelief';
 import { applyStorageHandBacks, applyStorageLimits } from '../../lib/plan/battery/storageLimit';
 import { buildStorageCandidate, resolveStorageSpend } from '../../lib/plan/shedding/storageCandidate';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';

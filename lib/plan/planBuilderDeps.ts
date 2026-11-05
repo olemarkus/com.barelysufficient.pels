@@ -37,6 +37,8 @@ export type PlanBuilderDeps = {
   // allocator (zero-export homes); forwarded untouched to the per-device prep
   // pass. 0 is the whole of "nothing inferred" — see `homeScope`.
   getInferredSurplusKw: () => number;
+  /** Observed signed battery power across this home, including unmanaged batteries; never command authority. */
+  getObservedBatteryPowerW: () => ReadonlyMap<string, number>;
   /**
    * "Leave off until turned on again", asked at the one moment PELS releases a
    * standing posture of its own on a device that is still observed off

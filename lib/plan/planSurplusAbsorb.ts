@@ -300,7 +300,7 @@ const DEMAND_RANK: Readonly<Record<SurplusDemand, number>> = { none: 0, running:
 /**
  * A home battery as the allocator ranks it: an ordinary surplus consumer at
  * its own place in the priority order (owner ruling, 2026-10-06). Resolved by
- * the builder (`resolveStorageSurplus`, `battery/storageRelief.ts`), so this
+ * the builder (`resolveStorageSurplusClaimants`, `battery/storageRelief.ts`), so this
  * allocator reads no battery. Only a battery PELS may claim is one: Managed
  * and Power-limit control on, readable, and holdable.
  */
@@ -724,7 +724,7 @@ export function resolveSurplusEligibility(
   // and reports no export — a positive inferred term is precisely what opens
   // the pool. It only ever adds.
   inferredSurplusKw: number,
-  // The home batteries (`resolveStorageSurplus`): resolved by the builder, so
+  // The home batteries (`resolveStorageSurplusClaimants`): resolved by the builder, so
   // this allocator never reads a battery.
   storage: StorageSurplus,
   // One timestamp for the whole admission pass, so a single plan build cannot

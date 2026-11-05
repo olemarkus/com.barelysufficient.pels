@@ -62,7 +62,9 @@ B, C — starving them. The **fit-test** forecloses this:
   ruling, 2026-10-06; last, the default, is devices, then the battery, then
   export). The pool counts the solar a battery stores that PELS can free (its
   own mode's charge less any import, or the charge PELS holds it at) and never
-  its discharge (`resolveStorageSurplus`, `lib/plan/battery/storageRelief.ts`),
+  its discharge. Claimants come from `resolveStorageSurplusClaimants` in
+  `lib/plan/battery/storageRelief.ts`; discharge comes from the whole-home
+  observation input, including unmanaged batteries,
   so a battery never hides surplus from a device ranked above it and stored
   energy never boosts one. At its turn the battery reserves that charge, as far
   as the consumers above it left it, so a device ranked below it never claims
