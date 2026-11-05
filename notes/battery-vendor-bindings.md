@@ -32,8 +32,10 @@ Homey API key (see "App-action bindings" below). It states:
 
 - **appUri**: the battery's app (`homey:app:<id>`); its app-level cards are
   `<appUri>:<actionId>`.
-- **commandLifetime**: `persistent` (a command holds until the next) or
-  `expires` after `lifetimeMs` (the app's own countdown hands the battery back).
+- **commandLifetime(setpointW)**: per command, in PELS's sign: `persistent`
+  (it holds until the next) or `expires` after `lifetimeMs` (the app's own
+  countdown, or its own policy, drops it). An app may keep some commands and
+  drop others.
 - **resolve(device, devices)**: the battery's actions, from the host's last
   full device inventory, or why there are none (`reasonCode`, logged only).
   The actions are the signed range in PELS's sign, `command(setpointW)` (the
@@ -98,10 +100,10 @@ remove once the key is saved (`batteryUsesHomeyApiKey` on the device list).
   battery's own `measure_power`, and the sign check against the whole-home
   meter marks a battery that moves the wrong way sign-inverted, which hands it
   back.
-- **Keep-alive.** A command that `expires` is sent again at a third of its
+- **Keep-alive.** A setpoint whose command `expires` is sent again at a third of its
   lifetime while the plan keeps deciding it, and a re-send that fails is tried
   again 20 s later (`KEEP_ALIVE_RETRY_MS`), so one failure still leaves
-  several tries before the app's countdown runs out (`BatteryLeverRead.keepAlive`, the storage
+  several tries before the app's countdown runs out (`BatteryLeverRead.keepAliveFor`, the storage
   lane's drift in `lib/executor/batteryExecutor.ts`). It goes through the
   owner's admission and Main's fenced actuator like any setpoint, so nothing
   below the actuator seam keeps a battery PELS should release. When the meter
@@ -120,7 +122,7 @@ Read from the shipped app packages.
 | Zinvolt (`com.zinvolt` 1.1.0, drivers `base`, `power`) | standard claim; `zeroSetpointW` 10 | `lib/device/zinvolt/` |
 | Marstek Venus (Marstek Battery Connector, `com.niewold.marstek` 0.9.1, driver `marstek-venus`) | app actions: `marstek_passive_mode` (`power` W, negative charges; `seconds` 300) to command, `marstek_auto_mode` to hand back; expires after 300 s; ±2500 W | `lib/device/marstek/` |
 | Sigenergy (`com.sigenergy` 0.6.6, driver `battery`, cards on the `plant`) | app actions on the plant, kW: charge `force_charge_from_grid`; discharge `set_ess_max_discharge_power` then mode 6; hold mode 1 (Standby); hand back `set_remote_ems` off, then both limits removed; persistent; range from the plant's rated powers | `lib/device/sigenergy/` |
-| Zendure SolarFlow 2400 AC / 800 Pro (local Zendure app, `com.tweakers.zendure` 1.0.16, driver `zendure`) | app actions: `set-power` (`power` W, ±2400, positive discharges) to command and hold 0 W; hand back `set-power` 0 (the app's idle; it has no own mode); persistent | `lib/device/zendure/` |
+| Zendure SolarFlow 2400 AC / 800 Pro (local Zendure app, `com.tweakers.zendure` 1.0.16, driver `zendure`) | app actions: `set-power` (`power` W, ±2400, positive discharges) to command and hold 0 W; hand back `set-power` 0 (the app's idle; it has no own mode); a charge expires (90 s), a discharge and the hold persist | `lib/device/zendure/` |
 | Huawei LUNA2000 (`com.huawei.fusionsolar` 1.3.9, driver `luna2000_modbus`) | app actions, unsigned W on a 100 W grid: charge and 0 W hold `luna2000_start_force_charge_duration`, discharge `luna2000_start_force_discharge_duration`, each for 10 minutes; hand back `luna2000_stop_force_charge_discharge`; expires after 10 min; range from the battery's max charge and discharge power settings | `lib/device/huawei/` |
 | Zendure cloud app (`com.zendure.flow` 1.0.25: SolarFlow 800, 800 Plus, 800 Pro, 1600 AC+, 2400 AC, 2400 AC+, 2400 Pro, 4000 Mix AC+, 4000 Mix Pro, Hyper 2000); Huawei `luna2000_emma_modbus` and the FusionSolar OpenAPI drivers | standard (no `target_power`): watch-only | none |
 
@@ -177,10 +179,16 @@ battery's idle. The app has no card that returns the battery to a mode of its
 own, so the hand-back is that idle: the battery stays at 0 W until the owner's
 own flows set it again. A 0 W hold is the same card; that is safe for an
 app-action binding, which reads no claim back, so the hold cannot look like a
-takeover (the Zinvolt problem). The app's 15 s poll writes `smartMode` alone
-(0 when the battery reads idle, 1 when it moves) and never a limit or
-`acMode`, so it does not undo a held setpoint, and the app sets no countdown:
-a command lasts until the next. A write that fails twice is logged and the
+takeover (the Zinvolt problem). The app's 15 s poll writes `smartMode` alone:
+0 when the battery reads idle (`outputLimit` 0 and both powers 0), 1 when it
+moves. A charge always has `outputLimit` 0, so a charge on a full battery, or
+one still ramping, gets `smartMode` 0 within one or two polls, and the
+battery drops the charge set in RAM for the values in its flash. So a charge
+expires: PELS declares 90 s and the storage lane sends it again every 30 s, a
+`smartMode` 1 write to RAM only. A discharge (`outputLimit` > 0) never reads
+idle and holds until the next command. The 0 W hold is the app's idle itself,
+a flash write, and holds until the next command; PELS never repeats it on a
+timer. A write that fails twice is logged and the
 card still succeeds, so only the executor's verification against
 `measure_power` (grid input while charging, minus home output otherwise,
 Homey's sign) sees it.

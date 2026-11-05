@@ -19,7 +19,8 @@ export type HomeBatteryClaimRead = { kind: 'unreported' } | HomeBatteryClaimObse
 /**
  * Whether a command PELS sent holds until PELS sends another (`none`), or
  * must be sent again every `everyMs` while it holds, because the battery's app
- * lets a command run out on its own countdown.
+ * lets that command run out on its own countdown or policy. Read per setpoint
+ * (`keepAliveFor`): an app may keep some commands and drop others.
  */
 export type BatteryCommandKeepAlive = { kind: 'none' } | { kind: 'resend'; everyMs: number };
 
@@ -31,9 +32,10 @@ export type BatteryCommandKeepAlive = { kind: 'none' } | { kind: 'resend'; every
  * drive through its setpoint surface, or one it drives through its app's Flow
  * actions.
  *
- * - `setpoint` and `app_actions` are the two drivable reads. `keepAlive` says
- *   how a command is kept in force: a setpoint surface always holds it
- *   (`none`); an app's actions may let it run out on their own countdown.
+ * - `setpoint` and `app_actions` are the two drivable reads. `keepAliveFor`
+ *   says how the command for a setpoint (PELS's sign) is kept in force: a
+ *   setpoint surface always holds it (`none`); an app's actions may let it run
+ *   out on their own countdown or policy.
  * - `app_actions` is claim-less: the battery reports no claim, so PELS's own
  *   claim record is the claim, and nothing it reports can show a takeover or a
  *   landed hand-back. `range` is the signed range in PELS's sign.
@@ -54,9 +56,13 @@ export type BatteryControlRead =
     kind: 'setpoint';
     surface: Extract<HomeBatteryControlSurface, { kind: 'setpoint' }>;
     claim: HomeBatteryClaimRead;
-    keepAlive: BatteryCommandKeepAlive;
+    keepAliveFor(setpointW: number): BatteryCommandKeepAlive;
   }
-  | { kind: 'app_actions'; range: HomeBatterySetpointRange; keepAlive: BatteryCommandKeepAlive };
+  | {
+    kind: 'app_actions';
+    range: HomeBatterySetpointRange;
+    keepAliveFor(setpointW: number): BatteryCommandKeepAlive;
+  };
 
 /**
  * Why PELS may not claim a battery now:
@@ -172,7 +178,7 @@ export type BatteryLeverRead =
      */
     claimEngaged: boolean;
     /** How a setpoint PELS sent is kept in force (`BatteryCommandKeepAlive`). */
-    keepAlive: BatteryCommandKeepAlive;
+    keepAliveFor(setpointW: number): BatteryCommandKeepAlive;
     /**
      * PELS may hold the battery: `admitClaim` would admit it now, Main's write
      * fence and a contested claim aside (each holds writes for a moment; neither

@@ -28,7 +28,9 @@ describe('Marstek Venus Connector binding', () => {
   it('commands passive mode with the app\'s sign, negative charging, for the 300 s it declares', () => {
     const binding = actionBinding(venus);
     expect(binding.appUri).toBe('homey:app:com.niewold.marstek');
-    expect(binding.commandLifetime).toEqual({ kind: 'expires', lifetimeMs: 300_000 });
+    for (const setpointW of [1200, -800, 0]) {
+      expect(binding.commandLifetime(setpointW)).toEqual({ kind: 'expires', lifetimeMs: 300_000 });
+    }
     const actions = resolved(venus, [venus]);
     expect(actions.range).toEqual({ minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 });
     expect(actions.command(1200)).toEqual([
@@ -59,7 +61,9 @@ describe('Sigenergy binding', () => {
 
   it('runs every card on the plant, ranged by its rated powers on the cards\' 0.1 kW grid', () => {
     const actions = resolved(battery, [battery, plant]);
-    expect(actionBinding(battery).commandLifetime).toEqual({ kind: 'persistent' });
+    for (const setpointW of [2300, -1500, 0]) {
+      expect(actionBinding(battery).commandLifetime(setpointW)).toEqual({ kind: 'persistent' });
+    }
     expect(actions.range).toEqual({ minW: -6200, maxW: 8000, stepW: 100, excludeMinW: 0, excludeMaxW: 0 });
   });
 
@@ -105,16 +109,24 @@ describe('Sigenergy binding', () => {
 describe('Zendure local binding', () => {
   const zendure = device('zendure', 'homey:app:com.tweakers.zendure:zendure');
 
-  it('commands set-power with the app\'s sign, positive discharging, held until the next', () => {
+  it('commands set-power with the app\'s sign, positive discharging', () => {
     const binding = actionBinding(zendure);
     expect(binding.appUri).toBe('homey:app:com.tweakers.zendure');
-    expect(binding.commandLifetime).toEqual({ kind: 'persistent' });
     const actions = resolved(zendure, [zendure]);
     expect(actions.range).toEqual({ minW: -2400, maxW: 2400, stepW: 1, excludeMinW: 0, excludeMaxW: 0 });
     expect(actions.command(1200)).toEqual([{ deviceId: 'zendure', actionId: 'set-power', args: { power: -1200 } }]);
     expect(actions.command(-800)).toEqual([{ deviceId: 'zendure', actionId: 'set-power', args: { power: 800 } }]);
     const [hold] = actions.command(0);
     expect(Object.is(hold?.args.power, 0)).toBe(true);
+  });
+
+  it('lets a charge expire, which the app\'s idle poll drops, and holds a discharge and the 0 W hold', () => {
+    const binding = actionBinding(zendure);
+    expect(binding.commandLifetime(1200)).toEqual({ kind: 'expires', lifetimeMs: 90_000 });
+    expect(binding.commandLifetime(1)).toEqual({ kind: 'expires', lifetimeMs: 90_000 });
+    // The hold writes smartMode 0, a flash write: never repeated on a timer.
+    expect(binding.commandLifetime(0)).toEqual({ kind: 'persistent' });
+    expect(binding.commandLifetime(-800)).toEqual({ kind: 'persistent' });
   });
 
   it('hands back with the app\'s idle, set-power 0, its only control', () => {
@@ -137,7 +149,9 @@ describe('Huawei LUNA2000 Modbus binding', () => {
   it('ranges by the battery\'s max powers on the cards\' 100 W grid, each run lasting 10 minutes', () => {
     const binding = actionBinding(luna);
     expect(binding.appUri).toBe('homey:app:com.huawei.fusionsolar');
-    expect(binding.commandLifetime).toEqual({ kind: 'expires', lifetimeMs: 600_000 });
+    for (const setpointW of [2300, -1500, 0]) {
+      expect(binding.commandLifetime(setpointW)).toEqual({ kind: 'expires', lifetimeMs: 600_000 });
+    }
     expect(resolved(luna, [luna]).range).toEqual({ minW: -4500, maxW: 5000, stepW: 100, excludeMinW: 0, excludeMaxW: 0 });
   });
 

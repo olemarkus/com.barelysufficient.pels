@@ -16,6 +16,7 @@ import type { HomeyFlowAction } from '../../lib/device/transport/homeyActionAcce
 import { HOMEY_FLOW_API_KEY } from '../../lib/device/transport/homeyActionAccess';
 import { CARD_INVENTORY_RETRY_MS } from '../../lib/device/homeBatteryAppActions';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
+import type { BatteryCommandKeepAlive } from '../../lib/ports/batteryControlOwner';
 
 const homeyMock = mockHomeyInstance as unknown as Homey.App;
 const noop = (): void => undefined;
@@ -39,6 +40,13 @@ const HUAWEI_CARDS = [
 ].map((id) => `${HUAWEI_APP}:${id}`);
 
 type Setup = { transport: DeviceTransport; runs: () => Array<[string, HomeyFlowAction]> };
+
+/** How a battery's charge, discharge and 0 W hold are each kept in force, in that order. */
+const keepAlives = (transport: DeviceTransport, deviceId: string): BatteryCommandKeepAlive[] => {
+  const control = transport.readBatteryControl(deviceId);
+  if (control.kind !== 'app_actions') throw new Error(`${deviceId} reads ${control.kind}`);
+  return [1000, -1000, 0].map((setpointW) => control.keepAliveFor(setpointW));
+};
 
 const setup = async (devices: MockDevice[], cards: readonly string[]): Promise<Setup> => {
   setMockDrivers({ batteries: new MockDriver('batteries', devices) });
@@ -75,9 +83,11 @@ describe('home battery app actions', () => {
     expect(transport.readBatteryControl('venus')).toEqual({
       kind: 'app_actions',
       range: { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
-      // A third of the app's 300 s passive countdown.
-      keepAlive: { kind: 'resend', everyMs: 100_000 },
+      keepAliveFor: expect.any(Function),
     });
+    // A third of the app's 300 s passive countdown, whatever the command.
+    const resend = { kind: 'resend', everyMs: 100_000 };
+    expect(keepAlives(transport, 'venus')).toEqual([resend, resend, resend]);
   });
 
   it('commands and hands back a Marstek through its app cards, in the app\'s sign', async () => {
@@ -187,8 +197,9 @@ describe('home battery app actions', () => {
     expect(transport.readBatteryControl('sigen')).toEqual({
       kind: 'app_actions',
       range: { minW: -5000, maxW: 5000, stepW: 100, excludeMinW: 0, excludeMaxW: 0 },
-      keepAlive: { kind: 'none' },
+      keepAliveFor: expect.any(Function),
     });
+    expect(keepAlives(transport, 'sigen')).toEqual([{ kind: 'none' }, { kind: 'none' }, { kind: 'none' }]);
     await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'sigen', setpointW: -1234 }))
       .resolves.toEqual({ kind: 'written', setpointW: -1200 });
     await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'sigen', handBack: 'app_actions' });
@@ -221,14 +232,18 @@ describe('home battery app actions', () => {
 
     expect(transport.readBatteryControl('sigen')).toEqual({ kind: 'observe_only' });
   });
-  it('drives a local Zendure through set-power in the app\'s sign, held until the next command', async () => {
+  it('drives a local Zendure through set-power in the app\'s sign, keeping only a charge alive', async () => {
     const { transport, runs } = await setup([buildZendureLocalBatteryDevice({ id: 'zendure' })], [`${ZENDURE_APP}:set-power`]);
 
     expect(transport.readBatteryControl('zendure')).toEqual({
       kind: 'app_actions',
       range: { minW: -2400, maxW: 2400, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
-      keepAlive: { kind: 'none' },
+      keepAliveFor: expect.any(Function),
     });
+    // The app's idle poll drops a charge; a discharge and the 0 W hold stand until the next command.
+    expect(keepAlives(transport, 'zendure')).toEqual([
+      { kind: 'resend', everyMs: 30_000 }, { kind: 'none' }, { kind: 'none' },
+    ]);
     await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'zendure', setpointW: 900 }))
       .resolves.toEqual({ kind: 'written', setpointW: 900 });
     await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'zendure', setpointW: -3000 }))
@@ -248,8 +263,10 @@ describe('home battery app actions', () => {
     expect(transport.readBatteryControl('luna')).toEqual({
       kind: 'app_actions',
       range: { minW: -4000, maxW: 5000, stepW: 100, excludeMinW: 0, excludeMaxW: 0 },
-      keepAlive: { kind: 'resend', everyMs: 200_000 },
+      keepAliveFor: expect.any(Function),
     });
+    const resend = { kind: 'resend', everyMs: 200_000 };
+    expect(keepAlives(transport, 'luna')).toEqual([resend, resend, resend]);
     await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'luna', setpointW: -1234 }))
       .resolves.toEqual({ kind: 'written', setpointW: -1200 });
     await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'luna', setpointW: 0 }))

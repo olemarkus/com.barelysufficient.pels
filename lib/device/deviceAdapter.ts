@@ -120,9 +120,8 @@ export type HomeBatteryCapabilityBinding = {
 /**
  * How long one command lasts in the battery's app: until the next one
  * (`persistent`), or `lifetimeMs` after it was sent, when the app's own
- * countdown hands the battery back to its own mode (`expires`). PELS sends an
- * expiring command again well before it runs out
- * (`lib/executor/batteryExecutor.ts`).
+ * countdown, or its own policy, drops it (`expires`). PELS sends an expiring
+ * command again well before it runs out (`lib/executor/batteryExecutor.ts`).
  */
 export type HomeBatteryCommandLifetime = { kind: 'persistent' } | { kind: 'expires'; lifetimeMs: number };
 
@@ -158,7 +157,8 @@ export type HomeBatteryActionsResolution =
  * seen.
  * - `appUri`: the battery's Homey app (`homey:app:<id>`), whose app-level
  *   cards are `<appUri>:<actionId>`.
- * - `commandLifetime`: how long one command lasts.
+ * - `commandLifetime`: how long the command for `setpointW` (PELS's sign, on
+ *   the range's grid) lasts. An app may keep some commands and drop others.
  * - `resolve`: the actions for `device`, from the host's last full device
  *   inventory (`devices`, every device Homey lists, for an app whose control
  *   sits on a sibling device), or why there are none.
@@ -166,7 +166,7 @@ export type HomeBatteryActionsResolution =
 export type HomeBatteryActionBinding = {
   kind: 'app_actions';
   appUri: string;
-  commandLifetime: HomeBatteryCommandLifetime;
+  commandLifetime(setpointW: number): HomeBatteryCommandLifetime;
   resolve(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryActionsResolution;
 };
 

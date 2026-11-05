@@ -40,7 +40,7 @@ const buildLane = () => {
   const ledger = new BatteryVerificationLedger();
   const owned = {
     held: false, takenOver: false, deferred: false, releaseOutcome: 'released' as BatteryHandBackOutcome,
-    keepAlive: { kind: 'none' } as BatteryCommandKeepAlive,
+    keepAliveFor: (_setpointW: number): BatteryCommandKeepAlive => ({ kind: 'none' }),
   };
   let lastActionAtMs = Number.NEGATIVE_INFINITY;
   const owner: BatteryControlOwner = {
@@ -59,7 +59,7 @@ const buildLane = () => {
       claimHeld: owned.held,
       handBackDeferred: owned.deferred,
       claimEngaged: owned.held && !owned.takenOver,
-      keepAlive: owned.keepAlive,
+      keepAliveFor: owned.keepAliveFor,
       admissible: true,
       ...ledger.read(BATTERY, RANGE, Date.now()),
     })),
@@ -150,7 +150,7 @@ describe('battery storage lane', () => {
 
   it('sends the setpoint in force again before a command that expires runs out, keeping its verdict', async () => {
     const { lane, apply, send, read, owner, owned, recordRestore } = buildLane();
-    owned.keepAlive = { kind: 'resend', everyMs: 150_000 };
+    owned.keepAliveFor = () => ({ kind: 'resend', everyMs: 150_000 });
     const restored = (setpointW: number) => decided({ kind: 'setpoint', setpointW, stepW: 5, restored: true });
     await lane.apply(restored(-1500));
     read(-1500, 2500, 10_000);
@@ -177,7 +177,7 @@ describe('battery storage lane', () => {
 
   it('tries a failed keep-alive again soon rather than a whole interval later', async () => {
     const { apply, send, read, owned } = buildLane();
-    owned.keepAlive = { kind: 'resend', everyMs: 100_000 };
+    owned.keepAliveFor = () => ({ kind: 'resend', everyMs: 100_000 });
     await send(-1500, 0);
     read(-1500, 2500, 10_000);
     apply.mockRejectedValueOnce(new Error('battery app busy'));
@@ -189,6 +189,26 @@ describe('battery storage lane', () => {
     expect(await send(-1500, 199_999 + KEEP_ALIVE_RETRY_MS)).toBe(false);
     expect(await send(-1500, 200_000 + KEEP_ALIVE_RETRY_MS)).toBe(true);
     expect(apply).toHaveBeenCalledTimes(4);
+  });
+
+  it('keeps alive only the setpoints whose command expires', async () => {
+    const { apply, send, read, owned } = buildLane();
+    // An app that drops a charge on its own but holds a discharge and a 0 W hold.
+    owned.keepAliveFor = (setpointW) => (setpointW > 0 ? { kind: 'resend', everyMs: 30_000 } : { kind: 'none' });
+    await send(1500, 0);
+    read(1500, 2500, 10_000);
+    expect(await send(1500, 29_999)).toBe(false);
+    expect(await send(1500, 30_000)).toBe(true);
+    expect(await send(1500, 60_000)).toBe(true);
+
+    await send(0, 61_000);
+    expect(await send(0, 60 * 60_000)).toBe(false);
+    await send(-1500, 60 * 60_000 + 1000);
+    expect(await send(-1500, 2 * 60 * 60_000)).toBe(false);
+
+    expect(apply.mock.calls.map(([command]) => command.kind === 'storage_power' && command.setpointW)).toEqual([
+      1500, 1500, 1500, 0, -1500,
+    ]);
   });
 
   it('never re-sends a command that holds until the next one', async () => {

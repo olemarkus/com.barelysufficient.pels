@@ -124,7 +124,7 @@ const resolveSigenergy = (
 const SIGENERGY_BINDING: HomeBatteryActionBinding = {
   kind: 'app_actions',
   appUri: `homey:app:${SIGENERGY_APP_ID}`,
-  commandLifetime: { kind: 'persistent' },
+  commandLifetime: () => ({ kind: 'persistent' }),
   resolve: resolveSigenergy,
 };
 

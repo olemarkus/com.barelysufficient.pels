@@ -30,14 +30,20 @@ import { standardDeviceAdapter } from '../standardDeviceAdapter';
  * reports no claim PELS reads back, so a hold that looks like a hand-back is
  * never taken for the owner taking the battery back.
  *
- * The 15 s poll (`device.js:91-98`) does not fight a held setpoint. Its
- * `smartMode` policy (`:194-205`) writes `{ smartMode }` alone, 0 when the
- * battery reads idle and 1 when it moves, and never `acMode` or either limit,
- * so a charge PELS holds on a full battery stays in force and resumes when
- * the battery can take it.
+ * The 15 s poll (`device.js:91-98`) drops a charge that has not moved yet.
+ * Its `smartMode` policy (`:194-205`) writes `{ smartMode: 0 }` alone when
+ * the battery reads idle: `outputLimit` 0 and both powers 0. A charge always
+ * has `outputLimit` 0, so a charge on a full battery, or one still ramping,
+ * gets `smartMode` 0 within one or two polls. The battery then runs from the
+ * values in its flash and the charge PELS set in RAM (`smartMode` 1) is gone.
+ * So a charge expires: PELS declares `CHARGE_LIFETIME_MS` and the storage
+ * lane sends it again at a third of that, a `smartMode` 1 write to RAM only,
+ * which puts a dropped charge back in force within 30 s.
  *
- * The command holds until the next: the app sets no countdown and the poll
- * never resets the limits (`persistent`).
+ * A discharge has `outputLimit` > 0, never reads idle, and holds until the
+ * next command (`persistent`). So does the 0 W hold, which is itself the
+ * app's idle (`smartMode` 0, both limits 0): a flash write, which PELS must
+ * not repeat on a timer.
  *
  * The card cannot fail on a battery that did not take the command: a write
  * that fails twice is logged and the run resolves (`device.js:136-141`). Only
@@ -50,6 +56,12 @@ const ZENDURE_LOCAL_APP_ID = 'com.tweakers.zendure';
 const ZENDURE_LOCAL_DRIVER_ID = 'zendure';
 
 const ZENDURE_RANGE_W = 2400;
+
+/**
+ * How long PELS counts on a charge, ms. The app's poll drops one that reads
+ * idle within two 15 s polls; a re-send every 30 s (a third) restores it.
+ */
+const CHARGE_LIFETIME_MS = 90_000;
 
 const setPower = (deviceId: string, power: number): DeviceActionStep => (
   { deviceId, actionId: 'set-power', args: { power } }
@@ -65,7 +77,10 @@ const zendureActions = (deviceId: string): HomeBatteryActions => ({
 const ZENDURE_LOCAL_BINDING: HomeBatteryActionBinding = {
   kind: 'app_actions',
   appUri: `homey:app:${ZENDURE_LOCAL_APP_ID}`,
-  commandLifetime: { kind: 'persistent' },
+  // PELS's sign: a positive setpoint charges.
+  commandLifetime: (setpointW) => (setpointW > 0
+    ? { kind: 'expires', lifetimeMs: CHARGE_LIFETIME_MS }
+    : { kind: 'persistent' }),
   resolve: (device) => ({ kind: 'resolved', actions: zendureActions(device.id) }),
 };
 

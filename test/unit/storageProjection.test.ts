@@ -63,7 +63,7 @@ describe('continuous battery reserve projection', () => {
   const control: BatteryLeverRead = {
     kind: 'setpoint', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
     deliveryCeilingW: 2500, chargeCeiling: { everyLevelW: 2500, taper: [], planningTaper: [] }, claimHeld: true,
-    handBackDeferred: false, claimEngaged: true, keepAlive: { kind: 'none' }, admissible: true, verdict: 'responding',
+    handBackDeferred: false, claimEngaged: true, keepAliveFor: () => ({ kind: 'none' }), admissible: true, verdict: 'responding',
   };
 
   it('keeps an accepted unchanged charge level usable after hours of waiting', () => {
@@ -123,7 +123,7 @@ describe('continuous battery selling projection', () => {
   const control: BatteryLeverRead = {
     kind: 'setpoint', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
     deliveryCeilingW: 2500, chargeCeiling: { everyLevelW: 2500, taper: [], planningTaper: [] }, claimHeld: true,
-    handBackDeferred: false, claimEngaged: true, keepAlive: { kind: 'none' }, admissible: true, verdict: 'responding',
+    handBackDeferred: false, claimEngaged: true, keepAliveFor: () => ({ kind: 'none' }), admissible: true, verdict: 'responding',
   };
   const input = device({ batteryPower: { signedW: 0, observedAtMs: nowMs }, batteryLevel: { percent: 60, observedAtMs: nowMs } });
 

@@ -167,7 +167,13 @@ export class HomeBatteryAppActions {
     else this.noteUnavailable(deviceId, commandBlocked);
     if (isKeyMissing(this.access)) return { kind: 'homey_api_key_missing' };
     if (commandBlocked !== undefined) return { kind: 'hand_back_only' };
-    return { kind: 'app_actions', range: actions.range, keepAlive: toKeepAlive(binding.commandLifetime) };
+    return {
+      kind: 'app_actions',
+      range: actions.range,
+      keepAliveFor: (setpointW) => toKeepAlive(
+        binding.commandLifetime(toTargetPowerCapabilityValue(setpointW, actions.range)),
+      ),
+    };
   }
 
   /**
