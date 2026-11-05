@@ -214,7 +214,7 @@ export class HomeBatteryAppActions {
   async handBackLegacy(deviceId: string): Promise<void> {
     const device = this.getBattery(deviceId);
     if (device === undefined) throw new Error('Home battery is unread.');
-    const target = this.requireBinding(deviceId).resolveLegacyTarget(device);
+    const target = this.requireBinding(deviceId).resolveLegacyTarget(device, this.getDevices());
     if (target.kind === 'unavailable') throw new Error(`Home battery hand-back unavailable (${target.reasonCode}).`);
     await this.handBack(deviceId, target.target);
   }

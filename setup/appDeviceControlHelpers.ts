@@ -1,4 +1,4 @@
-import type { DeviceControlHelpers } from '../lib/app/runtimeHelpers';
+import type { DeviceControlHelpers } from '../lib/ports/applicationRuntime';
 import type { AppContext } from '../lib/app/appContext';
 import { DeviceTargetPowerReachabilityOwner } from '../lib/device/deviceTargetPowerReachabilityOwner';
 import { SteppedDeviceControl } from '../lib/executor/steppedDeviceControl';

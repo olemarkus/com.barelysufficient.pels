@@ -58,7 +58,7 @@ import type {
   DeviceExpectedPowerOverrides,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
-import type { DeviceControlHelpers, AppSnapshotControl } from './runtimeHelpers';
+import type { DeviceControlHelpers, AppSnapshotControl } from '../ports/applicationRuntime';
 import type { SteppedCommandStore } from '../executor/steppedCommandStore';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type { HomeMembershipPort } from '../home/membership';

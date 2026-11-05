@@ -14,3 +14,6 @@ export class ApiRequestError extends Error {
     this.name = 'ApiRequestError';
   }
 }
+
+/** The HTTP API cannot answer a domain read before its runtime exists. */
+export const API_STARTING_MESSAGE = 'PELS is starting. Try again shortly.';

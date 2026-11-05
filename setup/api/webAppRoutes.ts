@@ -1,5 +1,5 @@
 import { readHubMarket } from '../../lib/home/hubMarket';
-import { readWebAppVersion } from '../../lib/app/webAppVersion';
+import { readWebAppVersion } from '../../lib/home/webAppVersion';
 import { createHomeyWebApiGet } from '../homeyWebApi';
 import { defineRoutes, type ApiContext } from './defineRoutes';
 

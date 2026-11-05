@@ -1,3 +1,4 @@
+import { API_STARTING_MESSAGE } from '../utils/apiRequestError';
 import type { SchedulesResponse } from '../../packages/contracts/src/schedules';
 import type { BatteryEfficiencyMeasurement } from '../../packages/contracts/src/continuousBatteryPlan';
 import type { ControlContestReading } from '../ports/controlContest';
@@ -26,6 +27,8 @@ import type {
 import type { WeatherAdvisorReadout } from '../../packages/contracts/src/weatherAdvisorTypes';
 import type { PelsWidgetHostApi, WidgetObjectiveWriteResult } from '../../packages/contracts/src/widgetHostApi';
 import type { NewSmartTaskWriteResult, SmartTaskCancelResult } from '../../packages/contracts/src/smartTaskEdit';
+
+export { API_STARTING_MESSAGE } from '../utils/apiRequestError';
 
 /** The settings UI's clear of a device's smart task, as the app answers it. */
 export type CancelDeferredObjectiveOutcome = SmartTaskCancelResult;
@@ -112,9 +115,6 @@ export const readPelsHost = (homey: { readonly app?: unknown } | undefined): Pel
   const app = homey?.app;
   return typeof app === 'object' && app !== null ? app as PelsHost : null;
 };
-
-/** The HTTP API cannot answer a domain read before its runtime exists. */
-export const API_STARTING_MESSAGE = 'PELS is starting. Try again shortly.';
 
 export const requirePelsHost = (homey: { readonly app?: unknown }): PelsHost => {
   const host = readPelsHost(homey);
