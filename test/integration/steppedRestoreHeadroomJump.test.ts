@@ -181,8 +181,9 @@ describe('running stepped loads jump on the full room, and later devices on the 
     { label: 'grid import enabled', headroom: 12, grid: true, budget: null, target: '2' },
     { label: 'budget binds', headroom: 12, grid: false, budget: 4.6, target: '5' },
     { label: 'no limits', headroom: null, grid: false, budget: null, target: '6' },
-  ])('uses real restore-pass eligibility and axes: $label', ({ headroom, grid, budget, target }) => {
-    const dev = runningDevice();
+    { label: 'budget-exempt with only daily budget on', headroom: null, grid: false, budget: 1, exempt: true, target: '6' },
+  ])('uses real restore-pass eligibility and axes: $label', ({ headroom, grid, budget, target, exempt }) => {
+    const dev = runningDevice({ budgetExempt: exempt ?? false });
     const state = createPlanEngineState();
     const result = applyRestorePlanForSpec({
       planDevices: [dev], state, sheddingActive: false,

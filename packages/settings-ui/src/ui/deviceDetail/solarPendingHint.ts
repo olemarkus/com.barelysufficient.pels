@@ -1,8 +1,9 @@
 import {
-  deviceDetailDumpLoadRow, deviceDetailSolarPendingHint, deviceDetailSurplusOptRow, deviceDetailSurplusTrackRow,
+  deviceDetailDumpLoadRow, deviceDetailSolarPendingHint, deviceDetailSurplusOptRow,
+  deviceDetailSurplusTrackRow, settingsPowerSourceSelect,
 } from '../dom.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
-import { resolveSolarSurplusPending, SOLAR_SURPLUS_PENDING } from '../state.ts';
+import { resolveSolarSurplusPending, resolveSolarSurplusPendingNote } from '../state.ts';
 import { resolveDeviceDetailControlState } from './controlState.ts';
 import { isDumpLoadDeviceShape, setDeviceDetailDumpLoadControl } from './solarSurplus.ts';
 import { isSurplusTrackingDeviceShape, setDeviceDetailSurplusTrackingControl } from './solarSurplusTracking.ts';
@@ -37,6 +38,7 @@ const setDeviceDetailSolarPendingHint = (
   const rowShown = [deviceDetailSurplusOptRow, deviceDetailDumpLoadRow, deviceDetailSurplusTrackRow]
     .some((row) => row !== null && !row.hidden);
   const pending = candidate && !rowShown && resolveSolarSurplusPending();
-  deviceDetailSolarPendingHint.textContent = pending ? SOLAR_SURPLUS_PENDING : '';
+  deviceDetailSolarPendingHint.textContent = pending
+    ? resolveSolarSurplusPendingNote(settingsPowerSourceSelect?.value === 'flow') : '';
   deviceDetailSolarPendingHint.hidden = !pending;
 };

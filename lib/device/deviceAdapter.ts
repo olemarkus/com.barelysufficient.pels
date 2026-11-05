@@ -129,21 +129,23 @@ export type HomeBatteryCommandLifetime = { kind: 'persistent' } | { kind: 'expir
  * A battery's app actions, resolved for one battery: the signed range PELS
  * may command, in PELS's sign, and the cards that carry each command out, in
  * order. `command` takes a setpoint already on the range's grid: positive
- * charges, negative discharges, 0 holds the battery idle under PELS. `handBack`
- * returns the battery to its own mode. Every step names a card id within the
- * binding's app and the device it runs on; the host checks each against the
+ * charges, negative discharges, 0 holds the battery idle under PELS. Every step
+ * names a card id within the binding's app and the device it runs on; the host checks each against the
  * installed cards before PELS may drive the battery.
  */
 export type HomeBatteryActions = {
   range: HomeBatterySetpointRange;
   command(setpointW: number): readonly DeviceActionStep[];
-  handBack: readonly DeviceActionStep[];
 };
 
 /**
  * The actions an integration resolved for a battery, or why it has none
  * (`reasonCode`: the integration's own words, logged, never matched).
  */
+export type HomeBatteryHandBackResolution =
+  | { kind: 'resolved'; steps: readonly DeviceActionStep[] }
+  | { kind: 'unavailable'; reasonCode: string };
+
 export type HomeBatteryActionsResolution =
   | { kind: 'resolved'; actions: HomeBatteryActions }
   | { kind: 'unavailable'; reasonCode: string };
@@ -168,6 +170,8 @@ export type HomeBatteryActionBinding = {
   appUri: string;
   commandLifetime(setpointW: number): HomeBatteryCommandLifetime;
   resolve(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryActionsResolution;
+  /** Hand-back is independent of the command range and admission gates. */
+  resolveHandBack(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryHandBackResolution;
 };
 
 export type HomeBatteryBinding = HomeBatteryCapabilityBinding | HomeBatteryActionBinding;

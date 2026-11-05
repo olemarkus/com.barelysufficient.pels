@@ -40,6 +40,7 @@ export const resolveHomeyApiKeySaveLabel = (access: ChargingAccessStatus): strin
 export function HomeyApiKeySetup(props: HomeyApiKeySetupProps) {
   const { access, busy } = props;
   const [key, setKey] = useState('');
+  const [confirmRemoval, setConfirmRemoval] = useState(false);
   const KeyContainer = access.state === 'ready' ? 'details' : 'div';
   return <KeyContainer>
     {access.state === 'ready' && <summary>Manage API key</summary>}
@@ -53,7 +54,19 @@ export function HomeyApiKeySetup(props: HomeyApiKeySetupProps) {
       <MdFilledButton disabled={busy || !key.trim() || props.saveBlocked} onClick={async () => {
         if (await props.onSave(key)) setKey('');
       }}>{props.saveLabel}</MdFilledButton>
-      {access.configured && <MdOutlinedButton disabled={busy} onClick={props.onRemove}>Remove key</MdOutlinedButton>}
+      {access.configured && !confirmRemoval && <MdOutlinedButton disabled={busy}
+        onClick={() => setConfirmRemoval(true)}>Remove key</MdOutlinedButton>}
     </div>
+    {access.configured && confirmRemoval && <div class="pels-notice-warning" role="group" aria-label="Remove API key">
+      <p>Removing this key stops PELS from controlling the batteries, cars and chargers that use it.
+        PELS first tries to hand batteries back to their app.</p>
+      <div class="form__actions">
+        <MdOutlinedButton disabled={busy} onClick={() => setConfirmRemoval(false)}>Cancel</MdOutlinedButton>
+        <MdFilledButton disabled={busy} onClick={async () => {
+          await props.onRemove();
+          setConfirmRemoval(false);
+        }}>Confirm removal</MdFilledButton>
+      </div>
+    </div>}
   </KeyContainer>;
 }

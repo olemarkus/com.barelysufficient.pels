@@ -79,7 +79,6 @@ const luna2000Actions = (deviceId: string, chargeW: number, dischargeW: number):
     command: (setpointW) => (setpointW < 0
       ? [force('luna2000_start_force_discharge_duration', -setpointW)]
       : [force('luna2000_start_force_charge_duration', setpointW)]),
-    handBack: [{ deviceId, actionId: 'luna2000_stop_force_charge_discharge', args: {} }],
   };
 };
 
@@ -96,6 +95,9 @@ const LUNA2000_BINDING: HomeBatteryActionBinding = {
   kind: 'app_actions',
   appUri: `homey:app:${HUAWEI_APP_ID}`,
   commandLifetime: () => ({ kind: 'expires', lifetimeMs: LUNA2000_FORCE_MINUTES * 60_000 }),
+  resolveHandBack: (device) => ({
+    kind: 'resolved', steps: [{ deviceId: device.id, actionId: 'luna2000_stop_force_charge_discharge', args: {} }],
+  }),
   resolve: resolveLuna2000,
 };
 

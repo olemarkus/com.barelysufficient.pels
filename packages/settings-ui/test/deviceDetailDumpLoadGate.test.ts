@@ -17,6 +17,7 @@ const flushPromises = () => new Promise<void>((resolve) => {
 const buildDom = () => {
   document.body.innerHTML = `
     <div id="toast"></div>
+    <select id="settings-power-source"><option value="device">Device</option><option value="flow">Flow</option></select>
     <div id="device-detail-overlay" hidden>
       <div id="device-detail-panel">
         <div id="device-detail-title"></div>
@@ -184,6 +185,13 @@ describe('device detail "Run on solar surplus" (dump-load) gating', () => {
     expect(pendingHint()?.hidden).toBe(false);
     expect(pendingHint()?.textContent)
       .toBe('Solar control appears once PELS sees your solar produce more than the home is using.');
+  });
+
+  it('explains the meter sign needed for solar control with a Flow meter', async () => {
+    (document.querySelector('#settings-power-source') as HTMLSelectElement).value = 'flow';
+    await openPanel({ hasManagedSolarDevice: true, surplusPoolReachable: false, device: buildBinaryDevice() });
+    expect(document.querySelector('#device-detail-solar-pending-hint')?.textContent)
+      .toContain('Your Flow must send net import, negative when exporting.');
   });
 
   it('says nothing about solar in a home without any, or once the row is offered', async () => {

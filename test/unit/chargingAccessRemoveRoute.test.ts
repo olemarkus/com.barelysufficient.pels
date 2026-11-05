@@ -1,10 +1,12 @@
 // The settings UI's key removal: a battery PELS drives with the owner's Homey
 // API key is handed back before the key goes, and a refusal keeps the key and
 // says why.
-import { HOMEY_API_KEY_HOLDS_BATTERY_MESSAGE, chargingControlRoutes } from '../../setup/api/chargingControlRoutes';
+import {
+  HOMEY_API_KEY_HOLDS_BATTERY_MESSAGE, HOMEY_API_KEY_CLAIMS_UNREADABLE_MESSAGE, chargingControlRoutes,
+} from '../../setup/api/chargingControlRoutes';
 import type { ApiContext } from '../../setup/api/defineRoutes';
 
-const buildHomey = (removal: 'removed' | 'battery_held') => {
+const buildHomey = (removal: 'removed' | 'battery_held' | 'claim_records_unreadable') => {
   const order: string[] = [];
   const access = {
     remove: vi.fn(() => { order.push('key_removed'); }),
@@ -31,6 +33,15 @@ describe('ui_charging_access_remove', () => {
 
     expect(order).toEqual(['hand_back', 'key_removed']);
     expect(access.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports an unreadable battery check separately from a battery still held', async () => {
+    const { homey, access } = buildHomey('claim_records_unreadable');
+
+    await expect(chargingControlRoutes.ui_charging_access_remove({ homey }))
+      .rejects.toThrow(HOMEY_API_KEY_CLAIMS_UNREADABLE_MESSAGE);
+
+    expect(access.remove).not.toHaveBeenCalled();
   });
 
   it('keeps the key and says why while a battery is still held', async () => {

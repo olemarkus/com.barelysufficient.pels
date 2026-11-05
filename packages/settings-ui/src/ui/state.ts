@@ -350,3 +350,10 @@ export const resolveSolarSurplusPending = (): boolean => (
 // of exporting. Setup and the device page both say it.
 export const SOLAR_SURPLUS_PENDING = 'Solar control appears once PELS sees your solar produce more than '
   + 'the home is using.';
+
+// Flow meters must preserve the export sign for the first surplus to be seen.
+export const resolveSolarSurplusPendingNote = (usesFlowMeter: boolean): string => (
+  usesFlowMeter
+    ? `${SOLAR_SURPLUS_PENDING} Your Flow must send net import, negative when exporting.`
+    : SOLAR_SURPLUS_PENDING
+);

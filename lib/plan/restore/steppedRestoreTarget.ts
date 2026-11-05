@@ -21,7 +21,7 @@ import type { RestoreCycle, RestoreLoopState, SteppedRestoreNeed } from './types
  * room) bounds what a second or third device may add in the same cycle, when
  * several loads would arrive together. A charger at its lowest current with
  * room for its highest therefore climbs in one step and one restore cooldown,
- * not one rung per cooldown. With no limit on there is no room to share, so
+ * not one rung per cooldown. With no limit applying to the device there is no room to share, so
  * there is no batch either, and the one increase the pass admits may jump to
  * the top of the ladder.
  */
@@ -63,8 +63,8 @@ export function resolveSteppedRestoreTarget(
 // No headroom figure means no limit on any axis this device answers to, so the
 // increase is bounded by nothing, as the first one under a limit is bounded by
 // the full room. Without a batch the pass admits only that one increase. A batch
-// disabled under a limit (grid import control, the exempt lane, a setpoint
-// resume) keeps increases to the adjacent rung.
+// disabled with a finite device headroom (grid import control, the exempt lane
+// under a capacity limit, a setpoint resume) keeps increases to the adjacent rung.
 function canConsiderJump(batch: RestoreCycle['batchState'], loop: RestoreLoopState): boolean {
   return loop.availableHeadroom === null || (batch.enabled && batch.admittedCount < batch.maxDevices);
 }

@@ -2,7 +2,7 @@ import { getChosenWholeHomeMeterName } from './homeyEnergyMeter.ts';
 import { settingsPowerSourceSelect } from './dom.ts';
 import { h, render } from 'preact';
 import {
-  hasOpenSmartTask, resolveHomeHasSolar, resolveSolarSurplusPending, SOLAR_SURPLUS_PENDING, state,
+  hasOpenSmartTask, resolveHomeHasSolar, resolveSolarSurplusPending, resolveSolarSurplusPendingNote, state,
 } from './state.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { showTab } from './tabNavigation.ts';
@@ -160,17 +160,11 @@ const readReviewDevices = (): SetupReviewDevice[] => {
     }));
 };
 
-// The known way surplus stays hidden for good is a Flow that reports import
-// without its sign (`resolveSurplusControlAvailable`): the home never shows
-// producing more than it uses. So only a Flow home gets the meter check while
-// solar is still waiting. Worded as the getting-started guide's meter step.
-const FLOW_SIGN_NOTE = 'Your Flow must send net import, negative when exporting.';
-
 // Solar control on its way: the review and `Choose what PELS does` say so.
 const solarPending = (): boolean => resolveSolarSurplusPending();
 
 const solarPendingNote = (): string => (
-  usesFlowMeter() ? `${SOLAR_SURPLUS_PENDING} ${FLOW_SIGN_NOTE}` : SOLAR_SURPLUS_PENDING
+  resolveSolarSurplusPendingNote(usesFlowMeter())
 );
 
 const resolveReviewSolarNote = (devices: readonly SetupReviewDevice[]): string | null => {

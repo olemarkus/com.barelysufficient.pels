@@ -96,12 +96,14 @@ import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts
 import type { HomeBatteryControlCapability } from '../../packages/contracts/src/types';
 import { getLogger } from '../logging/logger';
 import { AbsentBatteries } from './absentBatteries';
+import { handBackBeforeKeyRemoval } from './batteryKeyRemoval';
 import type {
   BatteryClaimAdmission,
   BatteryClaimRefusal,
   BatteryControlOwner,
   BatteryControlRead,
   BatteryHandBackOutcome,
+  BatteryKeyRemovalOutcome,
   BatteryLeverRead,
   BatterySetpointOutcome,
   BatterySetpointWrite,
@@ -117,7 +119,6 @@ import {
   describeHandBack,
   isClaimEngaged,
   isDrivableBattery,
-  canRunAppActionHandBack,
   isRecordOfBinding,
   runsOnHomeyApiKey,
   resolveTerminalFailure,
@@ -274,26 +275,25 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
 
   usesHomeyApiKey(deviceId: string): boolean { return runsOnHomeyApiKey(this.getBattery(deviceId)); }
 
-  async handBackBeforeHomeyApiKeyRemoval(removeKey: () => void): Promise<'removed' | 'battery_held'> {
+  async handBackBeforeHomeyApiKeyRemoval(removeKey: () => void): Promise<BatteryKeyRemovalOutcome> {
     this.homeyApiKeyRemovals += 1;
     try {
-      const held = this.readAppActionClaims();
-      await Promise.all((held ?? []).map((deviceId) => this.release(deviceId, 'homey_api_key_removed')));
-      // One whose hand-back cannot run on this key anyway (its actions gone, the key refused) loses nothing.
-      const left = held && this.readAppActionClaims()?.filter((id) => canRunAppActionHandBack(this.getBattery(id)));
-      if (left?.length !== 0) {
-        logger.warn({ event: 'homey_api_key_removal_refused', deviceIds: left ?? 'claim_records_unreadable' });
-        return 'battery_held';
-      }
-      removeKey();
-      return 'removed';
+      return await handBackBeforeKeyRemoval(
+        () => this.readAppActionClaims(),
+        (deviceId) => this.release(deviceId, 'homey_api_key_removed'),
+        this.getBattery,
+        removeKey,
+      );
     } finally { this.homeyApiKeyRemovals -= 1; }
   }
 
   /** The batteries PELS holds through their app's actions, `undefined` while the claim records cannot be read. */
   private readAppActionClaims(): string[] | undefined {
+    const loaded = this.loadClaims();
+    if (loaded.status !== 'loaded') return undefined;
+    this.retryUnreadableClaims(loaded);
     const claims = this.loadClaims();
-    if (claims.status !== 'loaded') return undefined;
+    if (claims.status !== 'loaded' || claims.unreadable.size > 0) return undefined;
     return [...claims.records].flatMap(([deviceId, record]) => (record.kind === 'app_actions' ? [deviceId] : []));
   }
 

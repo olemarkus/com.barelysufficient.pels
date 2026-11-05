@@ -164,9 +164,11 @@ from the device inventory, and the battery is unavailable with none, with two
 (two systems), or with a second `battery` device (both read the same plant, so
 PELS would drive it twice). The range is the plant's rated charge and discharge
 power from its settings; while either is unknown the plant also refuses to
-remove a limit, so PELS does not drive it. The hand-back turns remote EMS off
-first, so the plant runs its own EMS even if removing a limit then fails, and
-then writes both limits back to the rated power. Some firmware returns to Max
+remove a limit, so PELS does not drive it. The hand-back turns remote EMS off,
+which works independently of rated power. The transport retains the plant
+target of an issued command until hand-back succeeds; pairing another plant
+does not redirect that hand-back or allow commands on the replacement. After
+a restart, an unresolved plant identity keeps the hand-back pending. Some firmware returns to Max
 self consumption rather than the mode chosen in mySigen, and a limit the owner
 had set before PELS is not restored; neither is readable through the app.
 
