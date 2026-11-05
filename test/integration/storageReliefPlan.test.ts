@@ -1,4 +1,4 @@
-import { observedBatteryPowerFixture } from '../helpers/storageSurplusFixture';
+import { storageDischargeObservationsFixture } from '../helpers/storageSurplusFixture';
 // Planner-layer cover for the home battery as a ranked limiting candidate
 // (owner ruling, 2026-10-06): its charge is capped and then it discharges at
 // its own place in the priority order, it is handed back by the restore lane
@@ -226,7 +226,7 @@ const buildHarness = (scenario: Scenario) => {
   } as const;
   const builder = new PlanBuilder({
     ...planBuilderWiring(),
-    getObservedBatteryPowerW: () => observedBatteryPowerFixture(observedDevices),
+    getStorageDischargeObservations: () => storageDischargeObservationsFixture(observedDevices),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => capacitySettings,
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getPriceOptimizationSettings: () => SURPLUS_SETTINGS }),

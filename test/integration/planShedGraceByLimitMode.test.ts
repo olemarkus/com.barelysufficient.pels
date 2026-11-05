@@ -83,7 +83,7 @@ const buildHarness = (scenario: Scenario) => {
     structuredLog: testLogger,
     leaveOffOnRelease: () => 'released',
     getInferredSurplusKw: () => 0,
-    getObservedBatteryPowerW: () => new Map(),
+    getStorageDischargeObservations: () => new Map(),
   inverterCurtailment: NO_INVERTER_PLANNER,
     getCapacityDryRun: () => false,
     setCapacityInShortfall: vi.fn(),

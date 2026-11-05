@@ -417,7 +417,9 @@ export class PlanBuilder {
   ): ReadonlyMap<string, StorageSurplusOffer> {
     const storage = {
       claimants: resolveStorageSurplusClaimants(context.devices, this.state.storageLeverByDevice, power.drawKw * 1000),
-      dischargeW: resolveStorageDischargeW(this.deps.getObservedBatteryPowerW(), this.state.storageLeverByDevice),
+      dischargeW: resolveStorageDischargeW(
+        this.deps.getStorageDischargeObservations(), this.state.storageLeverByDevice,
+      ),
     };
     return trackPlanStage('plan_surplus_eligibility_ms', () => resolveSurplusEligibility(
       selectSurplusCandidates(

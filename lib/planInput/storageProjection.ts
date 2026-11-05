@@ -48,7 +48,7 @@ const resolveContinuousStoragePlan = (
  * alone, so its discharge counts against surplus devices. Managed is not
  * asked here: a Managed-off battery, of either kind, is dropped by the plan's
  * managed filter (`isRuntimePlannedPlanDevice`) and never reaches the plan.
- * Its discharge still reaches surplus through `projectObservedBatteryPowerW`,
+ * Its discharge still reaches surplus through `projectStorageDischargeObservations`,
  * independently of this control roster.
  *
  * The delivery and charge ceilings are the owner's resolved ones, so the

@@ -207,6 +207,19 @@ describe('home battery charging from surplus (SDK-boundary e2e)', () => {
     expect(writesTo(home.put, BATTERY)).toEqual([]);
   });
 
+  it('keeps unavailable unmanaged battery export out of solar surplus', async () => {
+    const home = await startHome(0, true, 'exporting');
+    await home.advance(12);
+    mockHomeyInstance.settings.set('battery_control_devices', { [BATTERY]: false });
+    home.battery.setAvailable(false);
+    mockHomeyInstance.settings.set('refresh_target_devices_snapshot', Date.now());
+    await home.advance(24);
+
+    expect(home.netW()).toBeLessThan(-PUMP_W);
+    expect(writesTo(home.put, PUMP)).not.toContainEqual(['onoff', true]);
+    expect(writesTo(home.put, BATTERY)).toEqual([]);
+  });
+
   it('gives the pump the solar the battery\'s own mode stored, caps the battery to the rest, then hands it back', async () => {
     // 2.6 kW of solar on a 300 W base load: 2.3 kW to spare, which the battery's own mode stores.
     const home = await startHome(2600);
