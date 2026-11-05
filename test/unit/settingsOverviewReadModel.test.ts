@@ -1,4 +1,5 @@
 import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
+import { noPlanServiceObservedReads } from '../helpers/observedDeviceReadsDouble';
 import { buildSettingsOverviewReadModel as buildPlan } from '../../lib/plan/settingsOverviewReadModel';
 import { buildOverviewDeviceCard, overviewReadModelWiring } from '../utils/settingsOverviewFixture';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -32,28 +33,24 @@ const buildSettingsOverviewReadModel = (
   return executionStateFixture(device);
 }, dryRun: false, nowMs: plan?.generatedAtMs ?? 0 });
 
-// Both observer reads are REQUIRED deps, so every double states both. A test that
-// cares about only one still has to say the other is absent — which is the point:
-// an un-wired accessor stopped being a third way of saying "no reading".
-const absentStateOfCharge = {
-  getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
-  getHomeBatteryCard: () => ({ kind: 'none' } as const),
-  getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-};
-
+// The observer reads and the battery card are REQUIRED deps, so every double
+// states them all. A test that cares about only one still has to say the others
+// are absent — which is the point: an un-wired accessor stopped being a third way
+// of saying "no reading".
 const absentTemperature = {
-  ...absentStateOfCharge,
-  getThermalDirection: () => 'heating' as const,
-  getObservedTemperature: () => ({ kind: 'absent' } as const),
+  observed: noPlanServiceObservedReads,
+  getHomeBatteryCard: () => ({ kind: 'none' } as const),
 };
 
 const observedTemperature = (currentTarget: number, currentTemperature: number) => ({
-  ...absentStateOfCharge,
-  getThermalDirection: () => 'heating' as const,
-  getObservedTemperature: () => ({
-    kind: 'observed' as const,
-    value: { currentTarget, currentTemperature },
-  }),
+  ...absentTemperature,
+  observed: {
+    ...noPlanServiceObservedReads,
+    getObservedTemperature: () => ({
+      kind: 'observed' as const,
+      value: { currentTarget, currentTemperature },
+    }),
+  },
 });
 
 describe('settingsOverviewReadModel', () => {
@@ -328,7 +325,7 @@ describe('settingsOverviewReadModel', () => {
     });
     const wire = buildDeviceCard(device, {
       ...absentTemperature,
-      getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in' }),
+      observed: { ...noPlanServiceObservedReads, getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in' }) },
     });
 
     expect(wire.status.reason?.text).toBe('Waiting to resume');
@@ -429,7 +426,7 @@ describe('settingsOverviewReadModel', () => {
     const device = buildPlanDevice({ id: 'heater-1' });
     expect(buildDeviceCard(device, {
       ...absentTemperature,
-      getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in' } as const),
+      observed: { ...noPlanServiceObservedReads, getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in' } as const) },
     }).isEvCharger).toBe(false);
   });
 
@@ -443,15 +440,17 @@ describe('settingsOverviewReadModel', () => {
     // the producer's fixture so this cannot drift from a shape it can emit.
     expect(buildDeviceCard(device, {
       ...absentTemperature,
-      getObservedStateOfCharge: () => ({
-      getHomeBatteryCard: () => ({ kind: 'none' } as const),
-        kind: 'observed' as const,
-        value: {
-          level: stateOfChargeFixture({
-            percent: 64, observedAtMs: 1_000, sessionStartedAtMs: 500,
-          }).level,
-        },
-      }),
+      observed: {
+        ...noPlanServiceObservedReads,
+        getObservedStateOfCharge: () => ({
+          kind: 'observed' as const,
+          value: {
+            level: stateOfChargeFixture({
+              percent: 64, observedAtMs: 1_000, sessionStartedAtMs: 500,
+            }).level,
+          },
+        }),
+      },
     }).stateOfCharge).toEqual({ level: { kind: 'known', percent: 64, observedAtMs: 1_000, carId: null } });
 
     // An ABSENT read shows nothing. Distinct from a present read whose `level`
@@ -472,8 +471,11 @@ describe('settingsOverviewReadModel', () => {
     const getObservedStateOfCharge = vi.fn(() => ({ kind: 'observed' as const,
       value: { level: stateOfChargeFixture({ percent: 64, observedAtMs: 1_000 }).level } }));
     const wire = buildDeviceCard(device, {
-      ...absentTemperature, getObservedStateOfCharge,
-      getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in_charging' } as const),
+      ...absentTemperature,
+      observed: {
+        ...noPlanServiceObservedReads, getObservedStateOfCharge,
+        getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in_charging' } as const),
+      },
     });
     expect(wire.status.factText).toBe('Charging · 64 % · level Low');
     expect(getObservedStateOfCharge).toHaveBeenCalledTimes(1);
@@ -491,7 +493,7 @@ describe('settingsOverviewReadModel', () => {
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', ...overrides });
     const wire = buildDeviceCard(device, {
       ...absentTemperature,
-      getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_out' } as const),
+      observed: { ...noPlanServiceObservedReads, getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_out' } as const) },
     });
     expect(wire.status.factText).toBe(factText);
     expect(wire.status.reason?.text ?? null).toBe(reasonText);
@@ -508,7 +510,7 @@ describe('settingsOverviewReadModel', () => {
       plannedState: 'inactive', reportedStepId: 'off', selectedStepId: 'off', desiredStepId: 'off', ...overrides });
     const wire = buildDeviceCard(device, {
       ...absentTemperature,
-      getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in' } as const),
+      observed: { ...noPlanServiceObservedReads, getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in' } as const) },
     });
     expect(wire.status.kind).toBe(kind);
     expect(wire.status.factText).toBe(factText);
@@ -527,7 +529,7 @@ describe('settingsOverviewReadModel', () => {
       ...(off ? { plannedState: 'inactive' as const, selectedStepId: 'off', desiredStepId: 'off' } : {}) });
     const wire = buildDeviceCard(device, {
       ...absentTemperature,
-      getObservedEvChargingState: () => ({ kind: 'observed', value: evChargingState } as const),
+      observed: { ...noPlanServiceObservedReads, getObservedEvChargingState: () => ({ kind: 'observed', value: evChargingState } as const) },
       getCarIdentificationState: () => 'waiting',
     });
     expect(wire.status.factText).toBe(factText);
@@ -567,7 +569,7 @@ describe('settingsOverviewReadModel', () => {
       reason: { code: PLAN_REASON_CODES.capacity } });
     const wire = buildDeviceCard(device, {
       ...absentTemperature,
-      getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_out' } as const),
+      observed: { ...noPlanServiceObservedReads, getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_out' } as const) },
     });
     expect(wire.status.label).toBe('Limited · Low');
     expect(wire.status.factText).toBe('Unplugged');
@@ -712,7 +714,7 @@ describe('settingsOverviewReadModel', () => {
     it('carries the boost decision through for a charger', () => {
       const deps = {
         ...absentTemperature,
-        getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in_charging' } as const),
+        observed: { ...noPlanServiceObservedReads, getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in_charging' } as const) },
       };
       expect(buildDeviceCard(boosting(), deps).boostActive).toBe(true);
     });

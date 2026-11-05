@@ -187,11 +187,7 @@ const createGatedPlanService = async (
   return new PlanService({
     ...planServiceWiring(),
     hasStandingCommandGrant: () => false,
-    getObservedStateOfCharge: () => ({ kind: 'absent' } as const),
     getHomeBatteryCard: () => ({ kind: 'none' } as const),
-    getObservedEvChargingState: () => ({ kind: 'absent' } as const),
-    getThermalDirection: () => 'heating' as const,
-    getObservedTemperature: () => ({ kind: 'absent' }),
     planBuildGate: openPlanBuildGate(),
     homeId: 'main',
     publishPelsStatus: vi.fn(),

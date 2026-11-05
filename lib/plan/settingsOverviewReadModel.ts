@@ -45,9 +45,8 @@ import type { PlanServiceDeps } from './planServiceDeps';
  * ladder (`buildOverviewSteppedLoad`).
  */
 export type SettingsOverviewReadModelDeps = Pick<PlanServiceDeps,
-  | 'homeId' | 'getObservedEvChargingState' | 'getAssociatedCarChargingState' | 'getCarIdentificationState'
-  | 'getObservedStateOfCharge'
-  | 'getObservedTemperature' | 'getThermalDirection' | 'getHomeBatteryCard' | 'getSteppedLoadProfileById'
+  | 'homeId' | 'observed' | 'getAssociatedCarChargingState' | 'getCarIdentificationState'
+  | 'getHomeBatteryCard' | 'getSteppedLoadProfileById'
   | 'readStarvationRescuableDeviceIds'> & {
   getDeviceExecutionState: (deviceId: string) => DeviceExecutionState;
   dryRun: boolean;
@@ -162,7 +161,7 @@ function resolveOverviewStateOfCharge(
   deviceId: string,
   deps: SettingsOverviewReadModelDeps,
 ): ObservedStateOfCharge | undefined {
-  const read = deps.getObservedStateOfCharge(deviceId);
+  const read = deps.observed.getObservedStateOfCharge(deviceId);
   return read.kind === 'observed' ? read.value : undefined;
 }
 
@@ -175,7 +174,7 @@ function resolveOverviewEvChargingState(
   deviceId: string,
   deps: SettingsOverviewReadModelDeps,
 ): EvChargingState | undefined {
-  const read = deps.getObservedEvChargingState(deviceId);
+  const read = deps.observed.getObservedEvChargingState(deviceId);
   return read.kind === 'observed' ? read.value : undefined;
 }
 
@@ -215,8 +214,8 @@ function buildLoadOverviewDevice(
   // settings store directly and are not on this wire at all.
   const temperature = resolveOverviewTemperatureFacet(
     device,
-    deps.getObservedTemperature(device.id),
-    deps.getThermalDirection(device.id),
+    deps.observed.getObservedTemperature(device.id),
+    deps.observed.getThermalDirection(device.id),
   );
   const temperatureFields = temperature.kind === 'present'
     ? { temperature: temperature.value }

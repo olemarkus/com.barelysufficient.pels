@@ -19,17 +19,15 @@ import { partialDouble } from '../helpers/partialDouble';
 import { insufficientHeadroomFixtureReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
+import { noPlanServiceObservedReads } from '../helpers/observedDeviceReadsDouble';
 
 // The log seam receives the same resolved presentation as the UI.
 // Keep the decision anchor and display clock fixed; these tests do not advance time.
 const asOverviewLogDevice = (device: DevicePlanDevice): OverviewLogDevice => buildOverviewDeviceCard(device, {
   ...overviewReadModelWiring(),
   getDeviceExecutionState: () => executionStateFixture(device), dryRun: false, nowMs: 0,
-  getThermalDirection: () => 'heating' as const,
-  getObservedTemperature: () => ({ kind: 'absent' }),
-  getObservedStateOfCharge: () => ({ kind: 'absent' }),
+  observed: noPlanServiceObservedReads,
   getHomeBatteryCard: () => ({ kind: 'none' } as const),
-  getObservedEvChargingState: () => ({ kind: 'absent' }),
 });
 
 const overviewLogDevice = (
