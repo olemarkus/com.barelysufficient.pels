@@ -1,3 +1,4 @@
+import { observedBatteryPowerFixture } from '../helpers/storageSurplusFixture';
 // Planner-layer cover for the home battery as a ranked limiting candidate
 // (owner ruling, 2026-10-06): its charge is capped and then it discharges at
 // its own place in the priority order, it is handed back by the restore lane
@@ -205,6 +206,7 @@ type Scenario = {
 };
 
 const buildHarness = (scenario: Scenario) => {
+  let observedDevices: PlanInputDevice[] = [];
   const state = createPlanEngineState();
   const info = vi.fn();
   /** The storage term shedding counted, kW, as the last build logged it (0 when it logged none). */
@@ -224,6 +226,7 @@ const buildHarness = (scenario: Scenario) => {
   } as const;
   const builder = new PlanBuilder({
     ...planBuilderWiring(),
+    getObservedBatteryPowerW: () => observedBatteryPowerFixture(observedDevices),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => capacitySettings,
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getPriceOptimizationSettings: () => SURPLUS_SETTINGS }),
@@ -240,6 +243,7 @@ const buildHarness = (scenario: Scenario) => {
     tracker.lastTimestamp = START_MS + afterMs;
     tracker.lastPowerW = houseW;
     info.mockClear();
+    observedDevices = devices;
     return builder.buildDevicePlanSnapshot(devices);
   };
   return { build, state, lastShedTermKw };

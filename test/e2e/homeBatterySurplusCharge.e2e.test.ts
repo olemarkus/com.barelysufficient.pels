@@ -94,8 +94,8 @@ const readW = (device: MockDevice): number => {
   return typeof value === 'number' ? value : 0;
 };
 
-/** How the battery starts: able to store, or full (its own mode can then only discharge). */
-type BatteryCharge = 'room' | 'full';
+/** Its own mode: self-consumption with room/full storage, or autonomous export. */
+type BatteryCharge = 'room' | 'full' | 'exporting';
 
 const startHome = async (solarW: number, surplusWilling = true, charge: BatteryCharge = 'room'): Promise<Home> => {
   const battery = buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'anti_feed', stepW: 5 });
@@ -132,6 +132,7 @@ const startHome = async (solarW: number, surplusWilling = true, charge: BatteryC
       const target = battery.getActualCapabilityValue('target_power');
       return typeof target === 'number' ? target : 0;
     }
+    if (charge === 'exporting') return -BATTERY_MAX_W;
     const chargeLimitW = charge === 'full' ? 0 : BATTERY_MAX_W;
     return Math.max(-BATTERY_MAX_W, Math.min(chargeLimitW, readW(battery) - netW()));
   };
@@ -185,6 +186,25 @@ describe('home battery charging from surplus (SDK-boundary e2e)', () => {
     await cleanupApps();
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  it('keeps autonomous battery export out of solar surplus after Managed is turned off', async () => {
+    const home = await startHome(0, true, 'exporting');
+    await home.advance(12);
+    expect(home.netW()).toBeLessThan(-PUMP_W);
+    expect(home.pump.getActualCapabilityValue('onoff')).toBe(false);
+
+    mockHomeyInstance.settings.set('battery_control_devices', { [BATTERY]: false });
+    await home.advance(24);
+    expect(writesTo(home.put, BATTERY)).toEqual([]);
+    expect(writesTo(home.put, PUMP).filter(([capability, value]) => capability === 'onoff' && value === true)).toEqual([]);
+    expect(home.pump.getActualCapabilityValue('onoff')).toBe(false);
+
+    // Real solar remains usable alongside the same unmanaged battery export.
+    home.setSolarW(4000);
+    await home.advance(24);
+    expect(home.pump.getActualCapabilityValue('onoff')).toBe(true);
+    expect(writesTo(home.put, BATTERY)).toEqual([]);
   });
 
   it('gives the pump the solar the battery\'s own mode stored, caps the battery to the rest, then hands it back', async () => {

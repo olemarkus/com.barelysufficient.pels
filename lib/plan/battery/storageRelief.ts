@@ -31,7 +31,8 @@
  * (owner ruling, 2026-10-06): no charge cap, no discharge and no surplus
  * claim. Any hold it has is handed back at once (`limit_off`), and the
  * battery is no surplus claimant: its charge is household load, while its
- * discharge still stays out of the surplus pool (`resolveStorageSurplus`).
+ * discharge still stays out of the surplus pool through the home's separate
+ * observed-discharge input.
  *
  * **Surplus.** Surplus goes to the consumers in priority order, and the
  * battery is one of them, at its own place (owner ruling, 2026-10-06; last,
@@ -40,7 +41,8 @@
  * own mode would otherwise take; in every other situation the battery runs its
  * own mode, so its self-consumption, trading and evening discharge keep
  * working. The surplus pool counts the solar a battery stores that PELS can
- * free and never a battery's discharge (`resolveStorageSurplus`). The
+ * free (`resolveStorageSurplusClaimants`) and subtracts the home's observed
+ * discharge independently of its control roster. The
  * allocator hands this stage each battery's offer (`StorageSurplusOffer`):
  * what the consumers ranked above it left, and the strongest demand those
  * devices put on it. The devices already running are in the measurement, so
@@ -103,7 +105,6 @@ import { SURPLUS_TRACK_STEP_MIN_INTERVAL_MS } from '../admission';
 import type { MeasuredPower } from '../planContext';
 import type { StorageLeverState } from '../planState';
 import type {
-  StorageSurplus,
   StorageSurplusClaimant,
   StorageSurplusOffer,
   SurplusDemand,
@@ -209,34 +210,23 @@ const storageChargeAddBackW = (
 );
 
 /**
- * The home batteries as the surplus allocator ranks them (owner ruling,
- * 2026-10-06: surplus by priority): every battery PELS may claim, at its
- * priority, with the charge PELS can free (`storageChargeAddBackW`), and every
- * battery's own discharge, which is stored energy and never surplus (a battery
- * exporting in the evening, or a held discharge stepping down). A held battery
- * keeps at its turn the setpoint PELS holds it at, or the charge its own mode
- * takes once handed back if that is more: a raise it has not followed yet, or
- * the charge a limit hold keeps from its own mode while restore waits to hand
- * it back, is its place in the order, not surplus for the consumers below it.
- * A battery PELS
- * may not hold (`resolveStorageHoldBlock`: Managed or Power-limit control off,
- * not responding, sign-inverted) is no claimant: its charge is ordinary
- * household load, and its discharge still counts. So does the discharge of a
- * battery PELS only watches (`WatchedStorageInput`), which is never a
- * claimant. Capacity simulation makes no battery
- * claimable, so it then carries only their discharge. Resolved by the builder
- * and handed to the allocator, which reads no battery.
+ * Claimable batteries in priority order, with the solar charge PELS can free.
+ * A held battery reserves its setpoint or own-mode charge, whichever is larger,
+ * so consumers below it see only what it leaves. An unholdable battery has no
+ * claimant: its charge remains household load. The builder receives discharge
+ * separately from whole-home observations, including batteries outside this
+ * planned roster, so Managed off never turns stored energy into solar surplus.
  */
-export function resolveStorageSurplus(
+export function resolveStorageSurplusClaimants(
   devices: readonly PlanInputDevice[],
   levers: Readonly<Record<string, StorageLeverState>>,
   signedNetW: number,
-): StorageSurplus {
+): StorageSurplusClaimant[] {
   const observed = devices.flatMap((device) => (
     hasStorageInput(device) && device.storage.reading === 'observed' ? [{ device, storage: device.storage }] : []
   ));
 
-  const claimants = observed
+  return observed
     .filter(({ storage }) => resolveStorageHoldBlock(storage) === 'holdable')
     .map(({ device, storage }): StorageSurplusClaimant => {
       const lever = levers[device.id];
@@ -248,20 +238,21 @@ export function resolveStorageSurplus(
         reservedW: lever === undefined ? chargeW : Math.max(chargeW, lever.setpointW, lever.ownModeChargeW),
       };
     });
-  // Every battery read this cycle: one PELS only watches is never a claimant,
-  // but its discharge is stored energy all the same.
-  const read = devices.flatMap((device) => (
-    hasStorageInput(device) && device.storage.reading !== 'missing' ? [{ id: device.id, storage: device.storage }] : []
-  ));
-  const readIds = new Set(read.map(({ id }) => id));
+}
+
+/** Stored energy never becomes solar surplus, including an unread held discharge. */
+export function resolveStorageDischargeW(
+  observedPowerW: ReadonlyMap<string, number>,
+  levers: Readonly<Record<string, StorageLeverState>>,
+): number {
   let dischargeW = 0;
-  for (const { storage } of read) dischargeW += ownDischargeWOf(storage);
-  // A held battery not read this cycle may still deliver what PELS last held it
-  // to: that discharge, a sale included, is stored energy too, never surplus.
+  for (const signedW of observedPowerW.values()) dischargeW += Math.max(0, -signedW);
+  // A missing reading does not prove that a held discharge (including a sale)
+  // stopped. Reserve it until observed again or its hold is released.
   for (const [deviceId, lever] of Object.entries(levers)) {
-    if (!readIds.has(deviceId)) dischargeW += Math.max(0, -lever.setpointW);
+    if (!observedPowerW.has(deviceId)) dischargeW += Math.max(0, -lever.setpointW);
   }
-  return { claimants, dischargeW };
+  return dischargeW;
 }
 
 /**
@@ -577,7 +568,7 @@ class StorageReliefCycle {
 
   /**
    * What the allocator offered a battery this stage may hold. The allocator
-   * ranks every such battery (`resolveStorageSurplus`), so a missing offer is
+   * ranks every such battery (`resolveStorageSurplusClaimants`), so a missing offer is
    * a broken producer, never a battery to decide on nothing.
    */
   private offerFor(deviceId: string): StorageSurplusOffer {

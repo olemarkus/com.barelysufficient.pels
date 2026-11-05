@@ -54,7 +54,8 @@ import {
   attachStorageDecisions,
   collectAbsentStorageReleases,
   decideStorageRelief,
-  resolveStorageSurplus,
+  resolveStorageSurplusClaimants,
+  resolveStorageDischargeW,
   resumeContinuousStorage,
   type StorageRelief,
 } from './battery/storageRelief';
@@ -414,7 +415,10 @@ export class PlanBuilder {
     excludeIds: ReadonlySet<string>,
     nowTs: number,
   ): ReadonlyMap<string, StorageSurplusOffer> {
-    const storage = resolveStorageSurplus(context.devices, this.state.storageLeverByDevice, power.drawKw * 1000);
+    const storage = {
+      claimants: resolveStorageSurplusClaimants(context.devices, this.state.storageLeverByDevice, power.drawKw * 1000),
+      dischargeW: resolveStorageDischargeW(this.deps.getObservedBatteryPowerW(), this.state.storageLeverByDevice),
+    };
     return trackPlanStage('plan_surplus_eligibility_ms', () => resolveSurplusEligibility(
       selectSurplusCandidates(
         context.devices, this.state,

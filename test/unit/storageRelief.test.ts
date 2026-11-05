@@ -1,3 +1,4 @@
+import { storageSurplusFixture as resolveStorageSurplus } from '../helpers/storageSurplusFixture';
 import { withoutStorageWithheld } from '../../lib/plan/battery/storageLimit';
 import {
   STORAGE_DECREASE_MIN_INTERVAL_MS,
@@ -5,7 +6,6 @@ import {
   STORAGE_SURPLUS_RELEASE_DWELL_MS,
   decideStorageRelief,
   releaseStorageOnSilentMeter,
-  resolveStorageSurplus,
   sumWithheldKw,
   attachStorageDecisions,
   type StorageRelief,

@@ -3699,6 +3699,48 @@ describe('buildSheddingPlan', () => {
       expect(capture.events).not.toContainEqual(expect.objectContaining(credited));
     });
 
+    it('retires delivered relief on a quiet cycle without batteries before a deficit returns within 30 seconds', async () => {
+      const devices = (heaterOn: boolean) => [
+        buildDevice({
+          id: 'heater', name: 'Water heater', priority: 5,
+          currentDrawKw: heaterOn ? 2 : 0, binaryControl: { on: heaterOn }, controllable: true,
+        }),
+        buildDevice({
+          id: 'hall', name: 'Hall heater', priority: 3,
+          currentDrawKw: 1.5, binaryControl: { on: true }, controllable: true,
+        }),
+      ];
+      const state = createPlanEngineState();
+      state.overshoot.enter(Date.now());
+      const shedAtMs = Date.now();
+      const cycle = async (afterMs: number, heaterOn: boolean, overKw: number) => {
+        vi.setSystemTime(new Date(shedAtMs + afterMs));
+        const totalKw = SOFT_LIMIT_KW + overKw;
+        const result = await buildSheddingPlanForSpec(
+          ...chargingCycle(devices(heaterOn), totalKw),
+          state,
+          chargingDeps(state, { ts: 1_000 + afterMs, powerW: Math.round(totalKw * 1000) }),
+        );
+        state.applySheddingOutcome(result.outcome, result.recoveredAtMs);
+        return result;
+      };
+
+      expect([...(await cycle(0, true, 1.8)).shedSet]).toEqual(['heater']);
+      // Its full 2 kW has landed: the home is now below the limit. Retirement
+      // must persist even though this cycle selects no new shedding.
+      const quiet = await cycle(5_000, false, -0.2);
+      expect(quiet.shedSet.size).toBe(0);
+      expect(state.shedPlanLatch?.decisions.has('heater')).toBe(false);
+
+      // New background demand arrives inside the old credit's window. Against
+      // the original sample the fall is only 0.6 kW, which would incorrectly
+      // revive the 2 kW credit and conceal this deficit if the quiet pass had
+      // left the old latch untouched. The remaining heater must answer it.
+      const renewed = await cycle(10_000, false, 1.2);
+      expect([...renewed.shedSet]).toEqual(['hall']);
+      expect(state.storageLeverByDevice).toEqual({});
+    });
+
     it('holds a decision in its window on a rebuild of the same sample, adding nothing', async () => {
       const state = await stepChargerTo14a();
       vi.setSystemTime(new Date(Date.now() + 2_000));

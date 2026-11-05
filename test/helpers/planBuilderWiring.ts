@@ -24,6 +24,7 @@ export const planBuilderWiring = (): PlanBuilderWiring => ({
   setCapacityInShortfall: vi.fn(),
   getCapacityDryRun: () => false,
   getInferredSurplusKw: () => 0,
+  getObservedBatteryPowerW: () => new Map(),
   inverterCurtailment: NO_INVERTER_PLANNER,
   leaveOffOnRelease: () => 'released',
   getPriceOptimizationSettings: () => ({}),
