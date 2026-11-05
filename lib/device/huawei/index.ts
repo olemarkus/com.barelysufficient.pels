@@ -95,7 +95,7 @@ const resolveLuna2000 = (device: HomeyDeviceLike): HomeBatteryActionsResolution 
 const LUNA2000_BINDING: HomeBatteryActionBinding = {
   kind: 'app_actions',
   appUri: `homey:app:${HUAWEI_APP_ID}`,
-  commandLifetime: { kind: 'expires', lifetimeMs: LUNA2000_FORCE_MINUTES * 60_000 },
+  commandLifetime: () => ({ kind: 'expires', lifetimeMs: LUNA2000_FORCE_MINUTES * 60_000 }),
   resolve: resolveLuna2000,
 };
 

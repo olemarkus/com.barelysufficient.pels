@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HomeBatteryControlOwner } from '../../lib/battery/batteryControlOwner';
 import { BATTERY_RELEASE_RETRY_BACKOFF_MS } from '../../lib/battery/pendingHandBacks';
 import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings';
-import type { BatteryControlRead } from '../../lib/ports/batteryControlOwner';
+import type { BatteryCommandKeepAlive, BatteryControlRead } from '../../lib/ports/batteryControlOwner';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
 import type { StorageCommand } from '../../lib/ports/storageCommand';
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
@@ -33,6 +33,9 @@ const settingsStore = (initial: Record<string, unknown> = {}): SettingsPort => {
   };
 };
 
+/** A setpoint surface holds each setpoint until the next. */
+const HOLDS_UNTIL_NEXT = (): BatteryCommandKeepAlive => ({ kind: 'none' });
+
 const setpointBattery = (claimValue: string, observedAtMs = T0 - 60_000): BatteryControlRead => ({
   kind: 'setpoint',
   surface: {
@@ -46,7 +49,7 @@ const setpointBattery = (claimValue: string, observedAtMs = T0 - 60_000): Batter
     range: { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
   },
   claim: { value: claimValue, observedAtMs },
-  keepAlive: { kind: 'none' },
+  keepAliveFor: HOLDS_UNTIL_NEXT,
 });
 
 const record = (previousValue: string, claimedAtMs = T0 - 3_600_000) => ({
@@ -575,7 +578,7 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
       claimHeld: false,
       handBackDeferred: false,
       claimEngaged: false,
-      keepAlive: { kind: 'none' },
+      keepAliveFor: HOLDS_UNTIL_NEXT,
       admissible: true,
       verdict: 'unverified',
     });
@@ -668,16 +671,15 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
 
 describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
   const RANGE = { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 };
-  const appActions = (): BatteryControlRead => ({
-    kind: 'app_actions', range: RANGE, keepAlive: { kind: 'resend', everyMs: 150_000 },
-  });
+  const resendsEvery150s = (): BatteryCommandKeepAlive => ({ kind: 'resend', everyMs: 150_000 });
+  const appActions = (): BatteryControlRead => ({ kind: 'app_actions', range: RANGE, keepAliveFor: resendsEvery150s });
 
   it('records a claim of its own before the first command, and holds it from that record alone', async () => {
     const { owner, settings } = buildOwner({ batteries: { [BATTERY]: appActions() } });
     expect(owner.readControlCapability(BATTERY)).toBe('drivable');
     expect(owner.readControl(BATTERY)).toMatchObject({
       kind: 'setpoint', range: RANGE, claimHeld: false, claimEngaged: false, admissible: true,
-      keepAlive: { kind: 'resend', everyMs: 150_000 },
+      keepAliveFor: resendsEvery150s,
     });
 
     await expect(owner.dispatchSetpoint(BATTERY, async () => 1200))

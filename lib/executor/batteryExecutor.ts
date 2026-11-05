@@ -15,9 +15,9 @@
  *   never resent every rebuild, unless the owner reads a rejected claim as the
  *   battery's app refusing control: then it only watches the battery, and the
  *   lane has no lever on it.
- * - **Keep-alive.** A battery whose app lets a command run out on its own
- *   countdown (`keepAlive: resend`, a battery driven through its app's
- *   actions) has the setpoint in force sent again every `everyMs` while the
+ * - **Keep-alive.** A setpoint the battery's app lets run out on its own
+ *   countdown or policy (`keepAliveFor` it reads `resend`, a battery driven
+ *   through its app's actions) is sent again every `everyMs` while the
  *   plan keeps deciding it: a re-send is drift like an unsent setpoint. It
  *   lives here rather than in a transport timer on purpose. A re-send is a
  *   control write, so it goes through the owner's admission and Main's fenced
@@ -135,7 +135,7 @@ type StorageCommandRecord = {
   stepW: number;
   issuedAtMs: number;
   /**
-   * When this setpoint is next due to be sent again (`keepAlive: resend`): an
+   * When this setpoint is next due to be sent again (`keepAliveFor` it is `resend`): an
    * interval after its last send, or `KEEP_ALIVE_RETRY_MS` after a re-send
    * that failed. Never due for a battery that holds a setpoint until the next.
    */
@@ -200,7 +200,7 @@ export const KEEP_ALIVE_RETRY_MS = 20_000;
 
 /** Whether the setpoint in force is due to be sent again before the battery's app lets it run out. */
 const isKeepAliveDue = (record: StorageCommandRecord, control: SetpointLever, nowMs: number): boolean => (
-  control.keepAlive.kind === 'resend' && nowMs >= record.keepAliveDueAtMs
+  control.keepAliveFor(record.setpointW).kind === 'resend' && nowMs >= record.keepAliveDueAtMs
 );
 
 /** When a setpoint sent at `nowMs` is next due again, or after `afterMs` when its re-send failed. */
@@ -347,8 +347,9 @@ export class BatteryExecutor {
         const baseline = this.readBatteryPower(device.id);
         if (baseline === undefined) return 'skipped';
         const sentAtMs = Date.now();
-        if (keepAlive) this.recordKeepAlive(device.id, nextKeepAliveAtMs(control.keepAlive, sentAtMs));
-        else this.recordSent(device.id, decision, baseline, sentAtMs, control.keepAlive);
+        const commandKeepAlive = control.keepAliveFor(decision.setpointW);
+        if (keepAlive) this.recordKeepAlive(device.id, nextKeepAliveAtMs(commandKeepAlive, sentAtMs));
+        else this.recordSent(device.id, decision, baseline, sentAtMs, commandKeepAlive);
         const sent = await this.actuator.apply({
           kind: 'storage_power', deviceId: device.id, setpointW: decision.setpointW,
         });
@@ -387,7 +388,9 @@ export class BatteryExecutor {
       // than issuing the same rejected write on every meter reading. A failed
       // keep-alive is tried again soon: the app's countdown keeps running.
       if (keepAlive) {
-        this.recordKeepAlive(device.id, nextKeepAliveAtMs(control.keepAlive, Date.now(), KEEP_ALIVE_RETRY_MS));
+        this.recordKeepAlive(
+          device.id, nextKeepAliveAtMs(control.keepAliveFor(decision.setpointW), Date.now(), KEEP_ALIVE_RETRY_MS),
+        );
       }
       logger.warn({
         event: 'battery_storage_setpoint_failed', deviceId: device.id, deviceName: device.name,
