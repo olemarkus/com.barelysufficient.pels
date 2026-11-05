@@ -77,7 +77,7 @@ export const validateSmartTaskWrite = <Device extends SmartTaskWriteDevice>(
   candidate: DeferredObjectivePlanPreviewCandidate,
 ): ValidatedSmartTaskWrite<Device> => {
   // Persist ONLY against the runtime-planned snapshot — see PLANNED-SET
-  // HONESTY on `AppSmartTaskApi.createDeferredObjective`. A device that exists
+  // HONESTY in the request service. A device that exists
   // in the picker but not here, OR that is in the runtime snapshot but
   // `managed: false` (so the planner's `isRuntimePlannedDevice` filter drops
   // it — possible when the managed filter is inactive), is reported as

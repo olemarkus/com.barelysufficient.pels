@@ -281,6 +281,15 @@ describe('createStarvationRescue', () => {
     expect(received!.rescue).toEqual(allThree);
   });
 
+  it('keeps a not-yet-started write retryable instead of blaming the candidate', async () => {
+    const rescueDeviceWithBudgetExemption = vi.fn(() => ({ ok: false as const, reason: 'unavailable' }));
+    const result = await createStarvationRescue({
+      ...buildContext({ getStarvedRescueDevices: vi.fn(() => [budgetDevice]), rescueDeviceWithBudgetExemption }),
+      body: { deviceId: 'heater-1', deadlineAtMs: NOW_MS + RESCUE_HORIZON_MS },
+    });
+    expect(result).toEqual({ ok: false, reason: 'unavailable' });
+  });
+
   it('maps a refused write to the retryable write_conflict reason (no false success)', async () => {
     // The app refused to persist on a transient un-confirmable migration /
     // untrustworthy read. The widget must surface the retryable write_conflict

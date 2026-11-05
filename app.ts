@@ -73,7 +73,7 @@ import { createHomeyEnergyPollSource, resolveMainMeterRead } from './setup/appIn
 import type { SubHomeMeters } from './lib/home/homeMeters';
 import { AppSnapshotHelpers, createTargetPowerReachabilityAppWiring } from './setup/appSnapshotHelpers';
 import { createFlowBackedDeviceState } from './setup/flowBackedCardAccess';
-import { AppSmartTaskApi } from './setup/appSmartTaskApi';
+import { createAppSmartTaskApi } from './setup/appSmartTaskApi';
 import { AppSmartTaskPayloads } from './setup/appSmartTaskPayloads';
 import {
   createHomeRebuildRuntime,
@@ -617,7 +617,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   // Smart-task (deferred-objective) preview/create/cancel/rescue + history
   // payload bodies. Declared after `serviceWiring`, which builds the main
   // home's evaluation source the preview shares with the live lanes.
-  protected readonly smartTaskApi = new AppSmartTaskApi(this.ctx, this.serviceWiring.taskEvaluationSource);
+  protected readonly smartTaskApi = createAppSmartTaskApi(this.ctx, this.serviceWiring.taskEvaluationSource);
 
   private scheduleService?: ScheduleService;
 

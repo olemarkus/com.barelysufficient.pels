@@ -582,3 +582,28 @@ describe('settings UI smart task creation', () => {
     expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
   });
 });
+
+
+describe('shared smart-task host availability', () => {
+  it.each([
+    previewSettingsUiNewSmartTask, createSettingsUiSmartTask,
+    previewSettingsUiSmartTask, updateSettingsUiSmartTask, cancelSettingsUiSmartTask,
+  ])('returns unavailable from every lane before reading settings when the app is absent', (handler) => {
+    const settings = new MockSettings();
+    const getKeys = vi.spyOn(settings, 'getKeys');
+    const homey = { settings, clock: { getTimezone: () => TIME_ZONE } };
+    expect(handler({ homey, body: updateBody() })).toEqual({ ok: false, reason: 'unavailable' });
+    expect(getKeys).not.toHaveBeenCalled();
+  });
+
+  it('preserves the retryable startup reason from both create and edit writes', () => {
+    const { homey } = buildContext({
+      createNewDeferredObjective: () => ({ ok: false, reason: 'unavailable' }),
+      createDeferredObjective: () => ({ ok: false, reason: 'unavailable' }),
+    });
+    expect(createSettingsUiSmartTask({ homey, body: updateBody() }))
+      .toEqual({ ok: false, reason: 'unavailable' });
+    expect(updateSettingsUiSmartTask({ homey, body: updateBody() }))
+      .toEqual({ ok: false, reason: 'unavailable' });
+  });
+});

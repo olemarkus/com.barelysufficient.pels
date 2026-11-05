@@ -1,9 +1,10 @@
+import type { CreateSmartTaskHostApi } from '../../../packages/contracts/src/widgetHostApi';
 import type {
   DeferredObjectivePlanPreviewCandidate,
-  DeferredObjectivePlanPreviewEstimate,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
+import type { NewSmartTaskWriteResult } from '../../../packages/contracts/src/smartTaskEdit';
+import type { SmartTaskLanePorts } from './smartTaskLanePorts';
 import type {
-  NewSmartTaskWriteResult,
   SettingsUiSmartTaskPreviewResponse,
   SettingsUiSmartTaskRejectReason,
   SettingsUiSmartTaskUpdateResponse,
@@ -29,23 +30,17 @@ import {
 // exactly the previewed deadline. `setup/` binds the ports and forwards.
 
 /** The app as the create lane uses it. Called as methods: they rely on `this`. */
-export type SmartTaskCreateLaneHost = {
-  resolveSmartTaskHomeScope(deviceId: string): SmartTaskHomeScope;
-  previewDeferredObjectivePlan(
-    deviceId: string,
-    candidate: DeferredObjectivePlanPreviewCandidate,
-  ): DeferredObjectivePlanPreviewEstimate;
+export type SmartTaskCreateLaneHost = Pick<
+  CreateSmartTaskHostApi, 'resolveSmartTaskHomeScope' | 'previewDeferredObjectivePlan'
+> & {
   createNewDeferredObjective(
-    deviceId: string,
-    candidate: DeferredObjectivePlanPreviewCandidate,
+    deviceId: string, candidate: DeferredObjectivePlanPreviewCandidate,
   ): NewSmartTaskWriteResult;
 };
 
-/** What the lane reads and calls: the app, the stored tasks, and the Homey clock. */
-export type SmartTaskCreateLanePorts = {
-  host: SmartTaskCreateLaneHost;
+/** The app, stored tasks and Homey clock for a create request. */
+export type SmartTaskCreateLanePorts = SmartTaskLanePorts<SmartTaskCreateLaneHost> & {
   store: ObjectiveSettingsStore;
-  clock: { getTimezone(): string };
 };
 
 const previewReject = (reason: SettingsUiSmartTaskRejectReason): SettingsUiSmartTaskPreviewResponse => ({
@@ -82,11 +77,13 @@ export const previewNewSmartTask = (
 ): SettingsUiSmartTaskPreviewResponse => {
   const request = parseSmartTaskCandidateRequest(body);
   if (!request) return previewReject('invalid_request');
+  const { host } = ports;
+  if (!host) return previewReject('unavailable');
   const nowMs = Date.now();
   const open = readSmartTaskOpen(ports.store, request.deviceId, nowMs);
   if (open === 'open') return previewReject('task_exists');
   if (open === 'unavailable') return previewReject('write_conflict');
-  const scopeReject = rejectForSmartTaskHomeScope(ports.host.resolveSmartTaskHomeScope(request.deviceId));
+  const scopeReject = rejectForSmartTaskHomeScope(host.resolveSmartTaskHomeScope(request.deviceId));
   if (scopeReject !== null) return previewReject(scopeReject);
 
   const timeZone = ports.clock.getTimezone();
@@ -94,7 +91,7 @@ export const previewNewSmartTask = (
   if (deadlineAtMs === null) return previewReject('invalid_ready_by');
   const candidate = buildValidSmartTaskCandidate(request, deadlineAtMs);
   if (!candidate) return previewReject('invalid_candidate');
-  const estimate = ports.host.previewDeferredObjectivePlan(request.deviceId, candidate);
+  const estimate = host.previewDeferredObjectivePlan(request.deviceId, candidate);
   return {
     ok: true,
     deadlineAtMs,
@@ -115,14 +112,16 @@ export const createNewSmartTask = (
 ): SettingsUiSmartTaskUpdateResponse => {
   const request = parseSmartTaskCandidateRequest(body);
   if (!request) return createReject('invalid_request');
-  const scopeReject = rejectForSmartTaskHomeScope(ports.host.resolveSmartTaskHomeScope(request.deviceId));
+  const { host } = ports;
+  if (!host) return createReject('unavailable');
+  const scopeReject = rejectForSmartTaskHomeScope(host.resolveSmartTaskHomeScope(request.deviceId));
   if (scopeReject !== null) return createReject(scopeReject);
 
   const deadline = resolveSmartTaskWriteDeadline(request, ports.clock.getTimezone(), Date.now());
   if (!deadline.ok) return createReject(deadline.reason);
   const candidate = buildValidSmartTaskCandidate(request, deadline.deadlineAtMs);
   if (!candidate) return createReject('invalid_candidate');
-  const result = ports.host.createNewDeferredObjective(request.deviceId, candidate);
+  const result = host.createNewDeferredObjective(request.deviceId, candidate);
   if (result.ok) return { ok: true };
   if (result.reason === 'task_exists') return createReject('task_exists');
   return createReject(mapSmartTaskAppReason(result.reason));

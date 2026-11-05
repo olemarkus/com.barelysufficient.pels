@@ -14,6 +14,7 @@ import {
   resolveSmartTaskRequestDeadline,
   resolveSmartTaskWriteDeadline,
 } from './smartTaskCandidateRequest';
+import type { SmartTaskLanePorts } from './smartTaskLanePorts';
 import { rejectForSmartTaskHomeScope } from './smartTaskCreateLane';
 
 // The widget create lane (the Create smart task and Device widgets): preview a
@@ -35,10 +36,7 @@ export type SmartTaskWidgetCreateHost = Pick<
 >;
 
 /** What the lane reads and calls: the app and the Homey clock. */
-export type SmartTaskWidgetLanePorts<Host> = {
-  host: Host | null;
-  clock: { getTimezone(): string };
-};
+export type SmartTaskWidgetLanePorts<Host> = SmartTaskLanePorts<Host>;
 
 export type SmartTaskWidgetPreviewResult =
   | Extract<SettingsUiSmartTaskPreviewResponse, { ok: true }>

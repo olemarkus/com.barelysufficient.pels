@@ -243,6 +243,7 @@ export const buildValidSmartTaskCandidate = (
 // read) maps onto the retryable `write_conflict` lane so
 // the user gets the "try again" copy rather than a false success.
 export const mapSmartTaskAppReason = (reason: string): SmartTaskWriteRejectReason => {
+  if (reason === 'unavailable') return 'unavailable';
   if (reason === 'device_not_found') return 'device_not_found';
   if (reason === 'device_not_planned') return 'device_not_planned';
   if (reason === 'device_not_eligible') return 'device_not_eligible';

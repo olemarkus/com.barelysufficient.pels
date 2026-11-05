@@ -188,6 +188,8 @@ export type SettingsUiSmartTaskCancelRequest = {
   deviceId: string;
 };
 
+export type SmartTaskCancelResult = { ok: true } | { ok: false; reason: 'task_not_found' | 'unavailable' };
+
 export type SettingsUiSmartTaskCancelResponse = {
   ok: true;
 } | {

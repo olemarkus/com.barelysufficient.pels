@@ -25,10 +25,10 @@ import type {
 } from '../../packages/contracts/src/settingsUi/prices';
 import type { WeatherAdvisorReadout } from '../../packages/contracts/src/weatherAdvisorTypes';
 import type { PelsWidgetHostApi, WidgetObjectiveWriteResult } from '../../packages/contracts/src/widgetHostApi';
-import type { NewSmartTaskWriteResult } from '../../packages/contracts/src/smartTaskEdit';
+import type { NewSmartTaskWriteResult, SmartTaskCancelResult } from '../../packages/contracts/src/smartTaskEdit';
 
 /** The settings UI's clear of a device's smart task, as the app answers it. */
-export type CancelDeferredObjectiveOutcome = { ok: true } | { ok: false; reason: 'task_not_found' };
+export type CancelDeferredObjectiveOutcome = SmartTaskCancelResult;
 
 /**
  * The running app as the settings-UI and app API handlers reach it through
