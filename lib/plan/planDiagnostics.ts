@@ -46,7 +46,8 @@ export const buildDeviceDiagnosticsObservations = (
 ): DeviceDiagnosticsPlanObservation[] => {
   const inputDeviceById = new Map(context.devices.map((device) => [device.id, device]));
   // Over a physical limit, that limit holds every device whatever its reason says.
-  const budgetPacesHouse = context.softLimitSource === 'daily' && !power.physicalLimitBreached;
+  const budgetPacesHouse = context.binding.kind === 'bound' && context.binding.source === 'daily'
+    && !power.physicalLimitBreached;
   return planDevices.map((device) => buildDiagnosticsObservation(
     context,
     restoreResult,

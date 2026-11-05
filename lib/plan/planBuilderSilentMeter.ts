@@ -225,7 +225,7 @@ export class SilentMeterPlanBuilder {
       needed: Number.POSITIVE_INFINITY,
       deficitKw: Number.POSITIVE_INFINITY,
       // The directive, not a pace (`directiveReason`): every device is a candidate.
-      limitSource: null,
+      limitSource: 'none',
       physicalLimitBreached: false,
       temperatureSetpoints: context.temperatureSetpoints,
       // No measurement to bound a battery's discharge by: every battery is handed back instead.

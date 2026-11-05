@@ -594,7 +594,6 @@ export class PlanBuilder {
     return {
       budgetPaceKw,
       projectedExemptKw,
-      dailySoftLimitKw: budgetPaceKw + projectedExemptKw,
     };
   }
 

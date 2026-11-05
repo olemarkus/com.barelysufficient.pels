@@ -33,7 +33,7 @@ export const reasonContext = (
     }),
     deferredHoldCauseByDeviceId: new Map(),
     postureHoldReasonById: new Map<string, DeviceReason>(),
-    softLimitSource: null,
+    binding: { kind: 'none' },
     physicalLimitBreached: false,
     budgetHeldDeviceIds: new Set<string>(),
     drainHeldDeviceIds: new Set<string>(),

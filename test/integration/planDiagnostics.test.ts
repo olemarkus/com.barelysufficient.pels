@@ -1,6 +1,6 @@
 import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
 import { buildDeviceDiagnosticsObservations } from '../../lib/plan/planDiagnostics';
-import type { PlanContext } from '../../lib/plan/planContext';
+import type { PlanLimitSource } from '../../lib/plan/planContext';
 import type { RestorePlanResult } from '../../lib/plan/restore';
 import type { RestoreTiming } from '../../lib/plan/restore/timing';
 import type {
@@ -32,7 +32,7 @@ const r = (reason: string) => fixtureDeviceReason(reason)!;
 const buildContext = (
   device: PlanInputDevice,
   intent: Partial<TemperatureIntentReads>,
-  softLimitSource: PlanContext['softLimitSource'] = 'capacity',
+  softLimitSource: PlanLimitSource | null = 'capacity',
   fixtureTotalKw = 4,
 ): PlanCycle => buildPlanCycleObject({
   gridImportLimitKw: null,
@@ -104,7 +104,7 @@ const buildObservation = (params: {
   planDevice: PlanDeviceFixture;
   restoreResult?: RestoreResultOverrides;
   modeTargets?: Record<string, number>;
-  softLimitSource?: PlanContext['softLimitSource'];
+  softLimitSource?: PlanLimitSource | null;
   fixtureTotalKw?: number;
   priceOptimizationEnabled?: boolean;
   priceOptimizationSettings?: Record<string, {

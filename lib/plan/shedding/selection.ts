@@ -1,6 +1,6 @@
+import type { PlanLimitSource } from '../planContext';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { getDebugEmitter } from '../../logging/logger';
-import type { PlanContext } from '../planContext';
 import { chooseShedRung } from './steppedCandidates';
 import { resolveStorageSpend } from './storageCandidate';
 import type { LoadShedCandidate, ShedCandidate, StorageSetpoint, StorageShedCandidate } from './types';
@@ -195,7 +195,7 @@ function logSelectedCandidate(
 }
 
 export function resolveShedReason(
-  limitSource: PlanContext['softLimitSource'],
+  limitSource: PlanLimitSource | 'none',
   physicalLimitBreached: boolean,
   hourlyBudgetExhausted = false,
 ): DeviceReason {

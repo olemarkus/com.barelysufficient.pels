@@ -37,13 +37,12 @@ import { deviceSurfacesFixture } from '../utils/deviceSnapshotFixture';
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { testLogger } from '../utils/testLogger';
 
-const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => ({
+const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => buildPlanContextFixture({
   nowTs: Date.UTC(2025, 0, 1, 0, 0, 0),
   gridImportLimitKw: null,
   gridImportTargetKw: null,
   devices,
   temperatureSetpoints: new Map(),
-  total: 1.25,
   hourBucketKey: '2025-01-01T00',
   hourUsedKWh: 0,
   capacityPeriodMinutes: 60 as const,
@@ -54,13 +53,9 @@ const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) 
   budgetPaceKw: null,
   projectedExemptKw: null,
   softLimitSource: 'capacity' as const,
-  capacityHeadroomKw: 1,
-  budgetHeadroomKw: null,
   budgetKWh: 0,
   usedKWh: 0,
   minutesRemaining: 60,
-  headroomRaw: 1,
-  headroom: 1,
 });
 
 const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {

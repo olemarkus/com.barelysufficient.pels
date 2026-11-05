@@ -1,3 +1,4 @@
+import type { PlanLimitSource } from '../planContext';
 import type { PlanEngineState } from '../planState';
 import type { MeasuredPower, PlanContext } from '../planContext';
 import type { MeteredPlanInputDevice, PlanInputDevice } from '../planTypes';
@@ -340,6 +341,7 @@ function comparePriority(a: ShedCandidate, b: ShedCandidate): number {
   return compareDeviceIdAsc(a, b);
 }
 
-function resolveShedLimitSource(context: PlanContext, hourlyBudgetExhausted: boolean): PlanContext['softLimitSource'] {
-  return hourlyBudgetExhausted ? 'daily' : context.softLimitSource;
+function resolveShedLimitSource(context: PlanContext, hourlyBudgetExhausted: boolean): PlanLimitSource | 'none' {
+  if (hourlyBudgetExhausted) return 'daily';
+  return context.binding.kind === 'bound' ? context.binding.source : 'none';
 }

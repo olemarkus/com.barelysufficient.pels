@@ -89,7 +89,7 @@ export function applyRestorePlan(
   const ledger = buildCycleHeadroomLedger(power, context);
   reserveAcknowledgedStepUps(ledger, planDevices);
   let restoredOneThisCycle = false;
-  const batchState = context.gridImportLimitKw !== null ? buildDisabledRestoreBatchState() : buildRestoreBatchState({
+  const batchState = context.grid.kind === 'on' ? buildDisabledRestoreBatchState() : buildRestoreBatchState({
     timing: effectiveTiming,
     availableHeadroom: ledger.summaryAvailableKw(),
   });
@@ -149,7 +149,8 @@ export function applyRestorePlan(
  * Otherwise rebuild the shed window from the remaining timing gates.
  */
 function resolveEffectiveTiming(timing: RestoreTiming, context: PlanContext): RestoreTiming {
-  const hasPhysicalLimit = context.softLimitSource === 'capacity' || context.gridImportLimitKw !== null;
+  const hasPhysicalLimit = (context.binding.kind === 'bound' && context.binding.source === 'capacity')
+    || context.grid.kind === 'on';
   if (timing.inStartupStabilization && hasPhysicalLimit) return timing;
   return {
     ...timing,

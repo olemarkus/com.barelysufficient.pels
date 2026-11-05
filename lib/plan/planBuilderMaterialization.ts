@@ -172,7 +172,7 @@ export class PlanMaterializationStages {
         guardInShortfall: sheddingPlan.guardInShortfall,
         timing: restoreResult.timing,
         ...holds,
-        softLimitSource: context.softLimitSource,
+        binding: context.binding,
         // The one resolved breach answer: this used to read the RAW total, which
         // survives a meter dropout, so a stale cached figure could claim a breach
         // PELS could not observe.

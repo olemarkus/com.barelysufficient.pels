@@ -1,6 +1,6 @@
 import type { DeferredHoldCause } from '../../packages/planner-types/src/deferredDecoration';
 import type { DevicePlanDevice } from './planTypes';
-import type { SoftLimitSource } from '../../packages/contracts/src/settingsUi/plan';
+import type { PlanLimitBinding } from './planContext';
 import {
   PLAN_REASON_CODES,
   resolveRestoreShortfallKw,
@@ -91,7 +91,7 @@ export type ReasonContext = {
    */
   readonly postureHoldReasonById: ReadonlyMap<string, DeviceReason>;
   /** Plan-level binding constraint; `'daily'` re-attributes carried `capacity` reasons. */
-  readonly softLimitSource: SoftLimitSource;
+  readonly binding: PlanLimitBinding;
   /** Over an enabled capacity or grid threshold (`MeasuredPower.physicalLimitBreached`). Producer-resolved. */
   readonly physicalLimitBreached: boolean;
   /** Devices whose headroom hold the budget alone holds (`resolveBudgetHeldDeviceIds`). Producer-resolved. */
@@ -296,7 +296,7 @@ function resolveHourlyFold(
   dev: DevicePlanDevice,
   shedReasonFresh: boolean,
 ): DeviceReason {
-  const { hourlyBudgetExhausted, softLimitSource, physicalLimitBreached } = ctx;
+  const { hourlyBudgetExhausted, binding, physicalLimitBreached } = ctx;
   if (hourlyBudgetExhausted) {
     if (dev.reason.code === PLAN_REASON_CODES.hourlyBudget) return dev.reason;
     if (HOURLY_FOLD_REASON_CODES.has(dev.reason.code)) {
@@ -306,8 +306,8 @@ function resolveHourlyFold(
   }
   if (dev.reason.code !== PLAN_REASON_CODES.hourlyBudget) return dev.reason;
   if (shedReasonFresh) return dev.reason;
-  if (softLimitSource === 'grid') return { code: PLAN_REASON_CODES.gridImport };
-  const daily = softLimitSource === 'daily' && !physicalLimitBreached && !dev.budgetExempt;
+  if (binding.kind === 'bound' && binding.source === 'grid') return { code: PLAN_REASON_CODES.gridImport };
+  const daily = binding.kind === 'bound' && binding.source === 'daily' && !physicalLimitBreached && !dev.budgetExempt;
   return daily
     ? { code: PLAN_REASON_CODES.dailyBudget }
     : { code: PLAN_REASON_CODES.capacity };
@@ -419,11 +419,11 @@ function normalizeDeviceReason(ctx: ReasonContext, dev: DevicePlanDevice): Devic
 // Two shapes:
 //
 // - Carry-forward `capacity` reasons: a device shed in an earlier cycle (capacity
-//   binding) keeps a stale capacity reason after `softLimitSource` flips to daily —
+//   binding) keeps a stale capacity reason after the binding source flips to daily —
 //   without this the card reads "Limited by the hard cap" while the hero safe-pace
 //   number is the daily-budget pacing. A fresh-this-cycle `shedReasons` entry is
 //   left alone — the shedding selector set it with the already-correct source.
-//   Guarded by `!physicalLimitBreached`: `softLimitSource` names the BINDING (lower)
+//   Guarded by `!physicalLimitBreached`: the binding names the BINDING (lower)
 //   limit, not the one the draw has crossed; when total is over the capacity or
 //   grid limit too, that limit is the constraint doing the work and the daily
 //   budget is not a lever that can help. Prod 2026-07-25: a budget-exempt EV charger — shed only
@@ -473,7 +473,7 @@ function resolveDailyBindingReattribution(
   sourceShortfallKw: number | null,
   shedReasonFresh: boolean,
 ): DeviceReason | null {
-  const { softLimitSource, physicalLimitBreached, budgetHeldDeviceIds } = ctx;
+  const { binding, physicalLimitBreached, budgetHeldDeviceIds } = ctx;
   if (physicalLimitBreached) return null;
   // Never fold a budget-exempt device's hold to `dailyBudget`: per-axis restore
   // admission evaluates exempt candidates on the CAPACITY axis, so their holds
@@ -483,7 +483,7 @@ function resolveDailyBindingReattribution(
   // had "no exemption carve-out"; it does now.)
   if (dev.budgetExempt) return null;
   const physicalHold = reasonCode === PLAN_REASON_CODES.capacity || reasonCode === PLAN_REASON_CODES.gridImport;
-  const reattribute = (softLimitSource === 'daily' && physicalHold && !shedReasonFresh)
+  const reattribute = (binding.kind === 'bound' && binding.source === 'daily' && physicalHold && !shedReasonFresh)
     || (reasonCode === PLAN_REASON_CODES.insufficientHeadroom && budgetHeldDeviceIds.has(dev.id));
   if (!reattribute) return null;
   // Absence is the missing KEY, not a `null` value: `shortfallKw` is `?: number`

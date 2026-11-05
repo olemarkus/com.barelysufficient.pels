@@ -53,7 +53,7 @@ export type RemainingSheddableDevice = RemainingSheddableResidualFields & {
 export type RemainingSheddableLoadParams = {
   device: RemainingSheddableDevice;
   alreadyShed: boolean;
-  limitSource: SoftLimitSource;
+  limitSource: SoftLimitSource | 'none';
   /**
    * A breach a budget release cannot help — so under a daily source it still
    * makes a budget-exempt device's load reducible, as shedding treats it
@@ -71,10 +71,6 @@ type RemainingSheddableSourceDevice = RemainingSheddableResidualFields & {
   currentOn?: boolean;
   budgetExempt: boolean;
 };
-
-export function isCapacityBreached(totalKw: number, capacitySoftLimitKw: number | null): boolean {
-  return capacitySoftLimitKw !== null && totalKw > capacitySoftLimitKw;
-}
 
 export function toInputRemainingSheddableDevice(device: PlanInputDevice): RemainingSheddableDevice {
   return toRemainingSheddableDevice(device);
@@ -167,7 +163,7 @@ export function resolveRemainingSheddableLoadKw(params: RemainingSheddableLoadPa
 export function sumRemainingSheddableLoadKw(
   devices: RemainingSheddableDevice[],
   isAlreadyShed: (device: RemainingSheddableDevice) => boolean,
-  limitSource: SoftLimitSource,
+  limitSource: SoftLimitSource | 'none',
   breachOverridesExemption: boolean,
 ): number {
   let totalKw = 0;

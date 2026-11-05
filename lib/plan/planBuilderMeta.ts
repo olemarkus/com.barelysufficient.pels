@@ -13,7 +13,7 @@ import type {
   PlanMeasuredMetaFields,
   PlanMetaBase,
 } from './planTypes';
-import type { MeasuredPower, PlanContext } from './planContext';
+import type { MeasuredPower, PlanContext, PlanLimits } from './planContext';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { splitControlledUsageKwFor } from '../power/usageAttribution';
 import { toMeteredUsageDevices } from './planUsage';
@@ -49,6 +49,23 @@ export type PlanMetaCycleFacts = {
   shortfallBudgetThresholdKw: number | null;
 };
 
+/** Nullable scalar fields belong to the published meta and logs, never the planner's policy. */
+export function projectPlanLimits(limits: PlanLimits): Pick<PlanMetaBase,
+  'softLimitKw' | 'softLimitSource' | 'capacitySoftLimitKw' | 'gridImportLimitKw' | 'gridImportTargetKw'
+  | 'dailySoftLimitKw' | 'budgetPaceKw' | 'projectedExemptKw'> {
+  const { capacity, grid, daily, binding } = limits;
+  return {
+    softLimitKw: binding.kind === 'bound' ? binding.kw : null,
+    softLimitSource: binding.kind === 'bound' ? binding.source : null,
+    capacitySoftLimitKw: capacity.kind === 'on' ? capacity.paceKw : null,
+    gridImportLimitKw: grid.kind === 'on' ? grid.limitKw : null,
+    gridImportTargetKw: grid.kind === 'on' ? grid.targetKw : null,
+    dailySoftLimitKw: daily.kind === 'on' ? daily.budgetPaceKw + daily.projectedExemptKw : null,
+    budgetPaceKw: daily.kind === 'on' ? daily.budgetPaceKw : null,
+    projectedExemptKw: daily.kind === 'on' ? daily.projectedExemptKw : null,
+  };
+}
+
 export function buildPlanMetaBase(facts: PlanMetaCycleFacts): PlanMetaBase {
   const {
     context, reading, dailyBudgetSnapshot, powerTracker, capacityGuard,
@@ -58,14 +75,7 @@ export function buildPlanMetaBase(facts: PlanMetaCycleFacts): PlanMetaBase {
   const today = dailyBudgetSnapshot?.days[dailyBudgetSnapshot.todayKey] ?? null;
   return {
     totalKw: reading.totalKw,
-    softLimitKw: context.softLimit,
-    capacitySoftLimitKw: context.capacitySoftLimit,
-    gridImportLimitKw: context.gridImportLimitKw,
-    gridImportTargetKw: context.gridImportTargetKw,
-    dailySoftLimitKw: context.dailySoftLimit,
-    budgetPaceKw: context.budgetPaceKw,
-    projectedExemptKw: context.projectedExemptKw,
-    softLimitSource: context.softLimitSource,
+    ...projectPlanLimits(context),
     // As it stands: a build with Capacity limit off cleared the incident before
     // anything read the guard (`PlanBuilder.buildPlanSnapshotWithTimings`).
     capacityShortfall: capacityGuard.isInShortfall(),
@@ -168,7 +178,7 @@ export function buildPlanContextHeadroomLogFields(
   );
   return {
     totalKw: reading.totalKw,
-    softLimitKw: context.softLimit,
+    softLimitKw: projectPlanLimits(context).softLimitKw,
     softHeadroomKw: power.headroomKw,
     // Log continuity: saved queries read `powerNowKw` as "the measured draw".
     // A LOG field, not a seam.

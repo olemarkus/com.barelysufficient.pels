@@ -159,7 +159,7 @@ export function computeDynamicSoftLimit(
  * hourly only, so `budgetKWh` is the sustainable rate in kW.
  */
 export function resolveCapacityAdmissionHeadroomKw(
-  context: Pick<PlanContext, 'capacitySoftLimit' | 'capacityPeriodMinutes' | 'minutesRemaining' | 'budgetKWh'>,
+  context: Pick<PlanContext, 'capacity' | 'capacityPeriodMinutes' | 'minutesRemaining' | 'budgetKWh'>,
   capacityHeadroomKw: number | null,
 ): number | null {
   return capacityHeadroomKw === null ? null : capacityHeadroomKw - resolveCapacityAdmissionCutKw(context);
@@ -173,11 +173,11 @@ export function resolveCapacityAdmissionHeadroomKw(
  * (`isDrainReleasableHold`).
  */
 export function resolveCapacityAdmissionCutKw(
-  context: Pick<PlanContext, 'capacitySoftLimit' | 'capacityPeriodMinutes' | 'minutesRemaining' | 'budgetKWh'>,
+  context: Pick<PlanContext, 'capacity' | 'capacityPeriodMinutes' | 'minutesRemaining' | 'budgetKWh'>,
 ): number {
-  if (context.capacitySoftLimit === null) return 0;
+  if (context.capacity.kind === 'off') return 0;
   if (!isInEndOfHourDrain(context.capacityPeriodMinutes, context.minutesRemaining)) return 0;
-  return Math.max(0, context.capacitySoftLimit - context.budgetKWh);
+  return Math.max(0, context.capacity.paceKw - context.budgetKWh);
 }
 
 /**

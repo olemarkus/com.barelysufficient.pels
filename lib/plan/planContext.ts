@@ -1,4 +1,5 @@
 import { minPowerLimit, resolveGridImportTargetKw } from './powerLimitMath';
+import { gridImportTargetKw } from '../../packages/shared-domain/src/settings/powerLimits';
 import type {
   CapacityPeriodMinutes, CapacitySettings, PowerLimitSettings,
 } from '../../packages/contracts/src/capacitySettings';
@@ -8,33 +9,37 @@ import type { MeasuredPowerReading } from '../power/powerCycleReading';
 import { getCurrentCapacityPeriodContext, getCurrentHourContext } from './planHourContext';
 import { sumBudgetExemptMeasuredUsageKwFor } from '../power/usageAttribution';
 import { toMeteredUsageDevices } from './planUsage';
-import { isCapacityBreached } from './planRemainingSheddableLoad';
 import type { PlanInputDevice } from './planTypes';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
-import type { SoftLimitSource } from '../../packages/contracts/src/settingsUi/plan';
 
 /**
  * The limits one plan cycle is decided against — resolved ONCE per build by
  * the builder (`PlanBuilder.resolvePlanLimits`) and held by both the ordinary
  * pipeline and the silent-meter pass.
  */
+export type PlanLimitSource = 'capacity' | 'grid' | 'daily';
+
+export type PlanLimitBinding =
+  | { kind: 'none' }
+  | { kind: 'bound'; source: PlanLimitSource; kw: number };
+
+export type CapacityPlanLimit = { kind: 'off' } | { kind: 'on'; paceKw: number };
+export type GridPlanLimit = { kind: 'off' } | { kind: 'on'; limitKw: number; targetKw: number };
+export type DailyPlanLimit = { kind: 'off' } | {
+  kind: 'on';
+  budgetPaceKw: number;
+  projectedExemptKw: number;
+};
+
+/** Each enabled axis holds its complete policy; binding names the lowest import pace. */
 export type PlanLimits = {
-  /** The binding pace: minimum enabled capacity, budget and grid threshold. */
-  softLimit: number | null;
-  capacitySoftLimit: number | null;
-  gridImportLimitKw: number | null;
-  gridImportTargetKw: number | null;
-  /** `null` = no daily budget axis this cycle (a real state, always written). */
-  dailySoftLimit: number | null;
-  budgetPaceKw: number | null;
-  projectedExemptKw: number | null;
-  // One binding source. Grid wins an exact tie; capacity wins a near tie with
-  // daily pacing, preserving the existing period-control attribution.
-  softLimitSource: SoftLimitSource;
+  capacity: CapacityPlanLimit;
+  grid: GridPlanLimit;
+  daily: DailyPlanLimit;
+  binding: PlanLimitBinding;
 };
 
 export type DailySoftLimitResolution = {
-  dailySoftLimitKw: number;
   budgetPaceKw: number;
   projectedExemptKw: number;
 };
@@ -47,31 +52,35 @@ export function resolvePhysicalPowerLimit(settings: PowerLimitSettings, capacity
   return minPowerLimit(capacityPaceKw, gridTargetKw);
 }
 
-/** Resolve the enabled axes once; the builder owns period state and supplies its accepted pacing facts. */
+/** Resolve enabled axes once from the owners' accepted settings and pacing facts. */
 export function buildPlanLimits(
   settings: PowerLimitSettings,
-  capacitySoftLimit: number | null,
-  daily: DailySoftLimitResolution | null,
+  capacityPaceKw: number | null,
+  dailyPace: DailySoftLimitResolution | null,
 ): PlanLimits {
-  const gridTargetKw = resolveGridImportTargetKw(settings.gridImportLimitKw);
-  const dailySoftLimit = daily?.dailySoftLimitKw ?? null;
-  return {
-    softLimit: minPowerLimit(capacitySoftLimit, dailySoftLimit, gridTargetKw),
-    capacitySoftLimit,
-    gridImportLimitKw: settings.gridImportLimitKw,
-    gridImportTargetKw: gridTargetKw,
-    dailySoftLimit,
-    budgetPaceKw: daily?.budgetPaceKw ?? null,
-    projectedExemptKw: daily?.projectedExemptKw ?? null,
-    softLimitSource: resolveSoftLimitSource(capacitySoftLimit, dailySoftLimit, gridTargetKw),
-  };
+  const capacity: CapacityPlanLimit = capacityPaceKw === null
+    ? { kind: 'off' } : { kind: 'on', paceKw: capacityPaceKw };
+  const grid: GridPlanLimit = settings.gridImportLimitKw === null
+    ? { kind: 'off' }
+    : { kind: 'on', limitKw: settings.gridImportLimitKw, targetKw: gridImportTargetKw(settings.gridImportLimitKw) };
+  const daily: DailyPlanLimit = dailyPace === null ? { kind: 'off' } : { kind: 'on', ...dailyPace };
+  return { capacity, grid, daily, binding: resolveLimitBinding(capacity, grid, daily) };
 }
 
-function resolveSoftLimitSource(capacity: number | null, daily: number | null, grid: number | null): SoftLimitSource {
-  const binding = minPowerLimit(capacity, daily, grid);
-  if (binding === null) return null;
-  if (grid === binding) return 'grid';
-  return capacity !== null && Math.abs(capacity - binding) <= SOFT_LIMIT_EPSILON ? 'capacity' : 'daily';
+/** Grid wins an exact tie; capacity wins a near tie with daily pacing. */
+function resolveLimitBinding(
+  capacity: CapacityPlanLimit, grid: GridPlanLimit, daily: DailyPlanLimit,
+): PlanLimitBinding {
+  const paces = [
+    ...(capacity.kind === 'on' ? [capacity.paceKw] : []),
+    ...(grid.kind === 'on' ? [grid.targetKw] : []),
+    ...(daily.kind === 'on' ? [daily.budgetPaceKw + daily.projectedExemptKw] : []),
+  ];
+  if (paces.length === 0) return { kind: 'none' };
+  const kw = Math.min(...paces);
+  if (grid.kind === 'on' && grid.targetKw === kw) return { kind: 'bound', source: 'grid', kw };
+  const source = capacity.kind === 'on' && Math.abs(capacity.paceKw - kw) <= SOFT_LIMIT_EPSILON ? 'capacity' : 'daily';
+  return { kind: 'bound', source, kw };
 }
 
 /**
@@ -125,7 +134,7 @@ export type MeasuredPower = {
   /** When the meter took this reading, ms. */
   sampledAtMs: number;
   /**
-   * The spare room before the BINDING pace (`limits.softLimit`), kW — negative
+   * The spare room before the BINDING pace (`limits.binding`), kW — negative
    * when above it. Drives shedding and the full restore pass's gate.
    */
   headroomKw: number | null;
@@ -221,24 +230,21 @@ export function resolveMeasuredPower(
   limits: PlanLimits,
   devices: PlanInputDevice[],
 ): MeasuredPower {
-  const { softLimit, capacitySoftLimit, dailySoftLimit, budgetPaceKw } = limits;
+  const { capacity, grid, daily, binding } = limits;
   const drawKw = reading.totalKw;
-  // Budget axis with the MEASURED exempt sum (see the field doc): only exists
-  // when the daily pace resolved this cycle.
-  const hasBudgetAxis = dailySoftLimit !== null && typeof budgetPaceKw === 'number' && Number.isFinite(budgetPaceKw);
-  const capacityBreached = isCapacityBreached(drawKw, capacitySoftLimit);
-  const gridHeadroomKw = limits.gridImportTargetKw === null ? null : reading.headroomKw(limits.gridImportTargetKw);
+  const capacityBreached = capacity.kind === 'on' && drawKw > capacity.paceKw;
+  const gridHeadroomKw = grid.kind === 'off' ? null : reading.headroomKw(grid.targetKw);
   const gridBreached = gridHeadroomKw !== null && gridHeadroomKw < 0;
   const physicalLimitBreached = capacityBreached || gridBreached;
   return {
     drawKw,
     sampledAtMs: reading.lastPowerUpdateMs,
-    headroomKw: softLimit === null ? null : reading.headroomKw(softLimit),
-    capacityHeadroomKw: capacitySoftLimit === null ? null : reading.headroomKw(capacitySoftLimit),
+    headroomKw: binding.kind === 'none' ? null : reading.headroomKw(binding.kw),
+    capacityHeadroomKw: capacity.kind === 'off' ? null : reading.headroomKw(capacity.paceKw),
     gridHeadroomKw,
     gridBreached,
-    budgetHeadroomKw: hasBudgetAxis
-      ? reading.headroomKw(budgetPaceKw + sumBudgetExemptMeasuredUsageKwFor(
+    budgetHeadroomKw: daily.kind === 'on'
+      ? reading.headroomKw(daily.budgetPaceKw + sumBudgetExemptMeasuredUsageKwFor(
         toMeteredUsageDevices(devices),
         (device) => device.control.commandAuthority,
       ))

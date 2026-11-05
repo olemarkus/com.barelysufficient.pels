@@ -232,7 +232,7 @@ export const shouldPlanBudgetExemptRestores = (
   sheddingActive: boolean,
 ): boolean => (
   sheddingActive
-  && context.softLimitSource === 'daily'
+  && (context.binding.kind === 'bound' && context.binding.source === 'daily')
   && (power.capacityHeadroomKw === null || (
     power.capacityHeadroomKw > 0 && power.capacityHeadroomKw >= resolveSheddingClearThresholdKw(context)
   ))
