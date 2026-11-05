@@ -28,7 +28,7 @@ function cycleFor(dev: ReturnType<typeof runningDevice>, availableKw: number): R
   return { ...cycle, batchState: buildRestoreBatchState({ timing: cycle.timing, availableHeadroom: availableKw }) };
 }
 
-function restore(cycle: RestoreCycle, dev: ReturnType<typeof runningDevice>, availableKw: number) {
+function restore(cycle: RestoreCycle, dev: ReturnType<typeof runningDevice>, availableKw: number | null) {
   return planRestoreForSteppedDevice(cycle, { onDevices: [] }, dev, {
     availableHeadroom: availableKw, restoredOneThisCycle: false,
   });
@@ -180,7 +180,7 @@ describe('running stepped loads jump on the full room, and later devices on the 
     { label: 'ordinary', headroom: 12, grid: false, budget: null, target: '6' },
     { label: 'grid import enabled', headroom: 12, grid: true, budget: null, target: '2' },
     { label: 'budget binds', headroom: 12, grid: false, budget: 4.6, target: '5' },
-    { label: 'no limits', headroom: null, grid: false, budget: null, target: '2' },
+    { label: 'no limits', headroom: null, grid: false, budget: null, target: '6' },
   ])('uses real restore-pass eligibility and axes: $label', ({ headroom, grid, budget, target }) => {
     const dev = runningDevice();
     const state = createPlanEngineState();
@@ -193,5 +193,30 @@ describe('running stepped loads jump on the full room, and later devices on the 
       deps: cycleFor(dev, 12).deps,
     });
     expect(result.planDevices.find((device) => device.id === dev.id)?.desiredStepId).toBe(target);
+  });
+
+  // Lab, 2026-11-05: with every power limit off, a one-phase charger climbed one amp
+  // per five-minute cooldown, 6 to 8 A in 11 minutes, toward a 16 A top.
+  it('takes a one-phase EV charger from 6 A to 16 A in one step with no limit on', () => {
+    const amps = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+    const dev = runningDevice({
+      isEvCharger: true, selectedStepId: '6a', desiredStepId: '6a', currentDrawKw: 1.38,
+      steppedLoadProfile: { steps: [{ id: 'off', planningPowerW: 0 }, ...amps.map((a) => ({ id: `${a}a`, planningPowerW: a * 230 }))] },
+    });
+    const state = createPlanEngineState();
+    const result = applyRestorePlanForSpec({
+      planDevices: [dev], state, sheddingActive: false,
+      ...buildPlanCycle({ headroomKw: null, capacityHeadroomKw: null, budgetHeadroomKw: null, capacitySoftLimit: 30 }),
+      deps: cycleFor(dev, 12).deps,
+    });
+    expect(result.planDevices.find((device) => device.id === dev.id)?.desiredStepId).toBe('16a');
+  });
+
+  it('with no limit on, still respects the solar ceiling', () => {
+    const dev = runningDevice({ surplusTracking: true });
+    const cycle = cycleFor(dev, 12);
+    cycle.state.surplusTrackingByDevice[dev.id] = { kind: 'rung', stepId: '3', funded: true };
+    restore(cycle, dev, null);
+    expect(cycle.deviceMap.get(dev.id)?.desiredStepId).toBe('3');
   });
 });

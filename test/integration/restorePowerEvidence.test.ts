@@ -422,3 +422,49 @@ describe('restore cooldown early release for a running stepped step-up', () => {
     expect(buildRestoreTiming(state, 8, deps, pending, nowTs).inRestoreCooldown).toBe(true);
   });
 });
+
+// An amp ladder, 6 to 16 A, at `wattsPerAmp` (230 W on one phase, 690 W on three).
+const ampLadder = (wattsPerAmp: number) => ({
+  steps: [{ id: 'off', planningPowerW: 0 }, ...Array.from({ length: 11 }, (_, index) => (
+    { id: `${index + 6}a`, planningPowerW: (index + 6) * wattsPerAmp }
+  ))],
+});
+
+// A charger at 6 A stepped up to 7 A at 1000; its reading moved at 2000 (received 2100),
+// before the home value changed at 2300.
+function ampStepUp(wattsPerAmp: number, risenKw: number) {
+  const observer = new ObservedDeviceStateProjection();
+  const state = createPlanEngineState(1);
+  state.restoreBackoff.clearStartupBlock(1);
+  state.actuation.markRestore('charger', 1000);
+  observe(observer, reading('charger', 6 * wattsPerAmp / 1000, 500), 500);
+  observe(observer, reading('charger', risenKw, 2000), 2100);
+  const deps: RestoreDeps = {
+    powerTracker: homeReading(2300, 2500, 3000),
+    drawEvidence: observer,
+    getShedBehavior: () => ({ action: 'turn_off' }),
+    temperatureSetpoints: new Map(), structuredLog: testLogger,
+  };
+  const devices = [steppedPlanDevice({
+    id: 'charger', isEvCharger: true, steppedLoadProfile: ampLadder(wattsPerAmp), selectedStepId: '7a',
+  })];
+  return buildRestoreTiming(state, 8, deps, devices, 4000).inRestoreCooldown;
+}
+
+describe('restore cooldown early release for a step smaller than the fluctuation floor', () => {
+  // Lab, 2026-11-05: a one-phase charger climbed 6 to 8 A in 11 minutes, each 230 W
+  // step short of the 0.3 kW floor and so waiting out the whole five minutes.
+  it('releases a one-phase 1 A step once it rose by half its rung', () => {
+    expect(ampStepUp(230, 1.61)).toBe(false);
+    expect(ampStepUp(230, 1.52)).toBe(false);
+  });
+
+  it('keeps the timer for a one-phase step that rose less than half its rung', () => {
+    expect(ampStepUp(230, 1.48)).toBe(true);
+  });
+
+  it('keeps the 0.3 kW floor for a three-phase 1 A step', () => {
+    expect(ampStepUp(690, 4.14 + 0.23)).toBe(true);
+    expect(ampStepUp(690, 4.14 + 0.35)).toBe(false);
+  });
+});
