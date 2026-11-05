@@ -63,6 +63,7 @@ test('accepts a selling plan and refuses one whose selling decision is malformed
   const period = {
     startsAtMs: 0, durationMs: 3_600_000, batteryPowerKW: -2, energyBeforeKWh: 4, energyAfterKWh: 2,
     gridImportKWh: 0, gridExportKWh: 2, importCost: 0, exportRevenue: 2, wearCost: 0.06, reason: 'export_energy',
+    storesSurplus: false,
   };
   const selling = {
     status: 'planned', config: { ...config, exportPolicy: { kind: 'price_export', netExportCeilingKW: 3 } },

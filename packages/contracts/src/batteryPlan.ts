@@ -77,6 +77,14 @@ export type BatteryEnergyPlanPeriod = {
   exportRevenue: number;
   wearCost: number;
   reason: BatteryEnergyReason;
+  /**
+   * Whether solar the forecast did not expect is worth storing in this period:
+   * its export earns nothing, or less than the plan's value of the energy it
+   * would store (`BatteryEnergyModel.terminalValuePerKWh` after charging
+   * loss). Live control charges measured export into the battery in a supply
+   * or hold period only when this holds.
+   */
+  storesSurplus: boolean;
 };
 
 export type BatteryEnergyPlan =
