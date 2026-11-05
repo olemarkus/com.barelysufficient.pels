@@ -11,6 +11,7 @@ import {
   loadBatteryPlanPriceUnit, loadSavedContinuousBatteryPlanConfigs, saveContinuousBatteryPlanConfig,
 } from './deviceDetail/continuousBatteryPlanTransport.ts';
 import { state } from './state.ts';
+import { publishSetupBatteryPlans, publishSetupBatteryPlansUnavailable } from './setupPathFacts.ts';
 
 /**
  * The battery plan as `Choose what PELS does` offers it: the same
@@ -40,18 +41,33 @@ export const onSetupBatteryPlansChange = (listener: () => void): (() => void) =>
 
 const publish = (next: SavedBatteryPlans): void => {
   saved = next;
+  if (next.state === 'ready') publishSetupBatteryPlans(next.configs);
+  else if (next.state === 'unavailable') publishSetupBatteryPlansUnavailable();
   for (const listener of listeners) listener();
 };
 
-/** Read the saved map again; a failed read is `unavailable`, never an empty map. */
+/** A complete map accepted by the save transport supersedes pending reads. */
+export const acceptSetupBatteryPlans = (configs: ContinuousBatteryPlanConfigs): void => {
+  generation += 1;
+  publish({ state: 'ready', configs });
+};
+
+/** Read again, preserving an accepted map on failure; an initial failure is unavailable. */
 export const loadSetupBatteryPlans = async (): Promise<void> => {
   const current = ++generation;
   try {
     const configs = await loadSavedContinuousBatteryPlanConfigs();
     if (current === generation) publish({ state: 'ready', configs });
   } catch {
-    if (current === generation) publish({ state: 'unavailable' });
+    if (current === generation && saved.state !== 'ready') publish({ state: 'unavailable' });
   }
+};
+
+// Device refresh is also the recovery action when setup has no accepted plan read.
+export const retrySetupBatteryPlans = async (): Promise<void> => {
+  if (saved.state !== 'unavailable') return;
+  publish({ state: 'loading' });
+  await loadSetupBatteryPlans();
 };
 
 /** The battery's saved plan settings, or `null` while none were ever saved (or the map is unread). */
@@ -99,10 +115,12 @@ export const saveSetupBatteryPlan = async (
   capacityKWh: number | null,
 ): Promise<void> => {
   if (saved.state !== 'ready') throw new Error('Battery settings could not be read. Try again.');
+  const configs = saved.configs;
   const current = readSavedConfig(deviceId);
+  let accepted: ContinuousBatteryPlanConfig | null = null;
   const base = current ?? DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG;
   if (!enabled) {
-    if (current !== null) await saveContinuousBatteryPlanConfig(deviceId, { ...current, enabled: false });
+    if (current !== null) accepted = await saveContinuousBatteryPlanConfig(deviceId, { ...current, enabled: false });
   } else {
     if (capacityKWh === null) throw new Error('Enter the battery’s usable capacity first.');
     const priceUnit = await loadBatteryPlanPriceUnit();
@@ -110,13 +128,18 @@ export const saveSetupBatteryPlan = async (
     if (!unitless && base.priceUnit.trim().toLowerCase() !== priceUnit.trim().toLowerCase()) {
       throw new Error('The electricity price unit changed. Review the wear allowance on the battery’s device page.');
     }
-    await saveContinuousBatteryPlanConfig(deviceId, {
+    accepted = await saveContinuousBatteryPlanConfig(deviceId, {
       ...base,
       enabled: true,
       usableCapacityKWh: capacityKWh,
       priceUnit,
       wearCostPerKWh: unitless ? 0 : base.wearCostPerKWh,
     });
+  }
+  if (accepted !== null) {
+    // A successful save supersedes any earlier read, even if the follow-up fails.
+    const latest = saved.state === 'ready' ? saved.configs : configs;
+    acceptSetupBatteryPlans({ ...latest, [deviceId]: accepted });
   }
   await loadSetupBatteryPlans();
 };

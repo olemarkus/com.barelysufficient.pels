@@ -110,6 +110,25 @@ test('preserves invisible settings entries and invalidates the existing device c
   expect(invalidateApiCache).toHaveBeenCalledWith('/ui_devices');
 });
 
+test('publishes the complete accepted plan map immediately after saving, without another read', async () => {
+  const hidden = { ...defaults, usableCapacityKWh: 17, priceUnit: 'øre' };
+  getSettingFresh.mockResolvedValueOnce({ invisible: hidden }).mockRejectedValue(new Error('later reads fail'));
+  const accepted = vi.fn();
+  document.addEventListener('continuous-battery-plan-changed', accepted);
+  try {
+    await saveContinuousBatteryPlanConfig('battery', config);
+    expect(accepted).toHaveBeenCalledTimes(1);
+    expect((accepted.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({ invisible: hidden, battery: config });
+    expect(getSettingFresh).toHaveBeenCalledTimes(1);
+    setSetting.mockRejectedValueOnce(new Error('save failed'));
+    getSettingFresh.mockResolvedValueOnce({ invisible: hidden });
+    await expect(saveContinuousBatteryPlanConfig('battery', config)).rejects.toThrow('save failed');
+    expect(accepted).toHaveBeenCalledTimes(1);
+  } finally {
+    document.removeEventListener('continuous-battery-plan-changed', accepted);
+  }
+});
+
 test('confirms a null first read with uncached owner bootstrap before the first save', async () => {
   getSettingFresh.mockResolvedValue(null);
   callApi.mockImplementation(async (_method: string, path: string) => path === '/ui_bootstrap'

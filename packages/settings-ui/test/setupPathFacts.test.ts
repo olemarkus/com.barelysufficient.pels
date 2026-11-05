@@ -1,3 +1,4 @@
+import { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } from '../../shared-domain/src/settings/continuousBatteryPlan.ts';
 import type { CapacityScalarSettings } from '../../contracts/src/capacitySettings.ts';
 
 // The module holds the facts between publishes, so each test loads a fresh copy
@@ -24,6 +25,7 @@ const loadUnpublished = async (membershipByDeviceId: Readonly<Record<string, str
 const load = async (membershipByDeviceId: Readonly<Record<string, string>> = {}) => {
   const loaded = await loadUnpublished(membershipByDeviceId);
   loaded.facts.publishSetupPrices(NO_PRICE_USE);
+  loaded.facts.publishSetupBatteryPlans({});
   return loaded;
 };
 
@@ -160,6 +162,33 @@ describe('setup path facts', () => {
       expect(facts.readSetupPath()).toEqual({ state: 'complete' });
     });
 
+    it('requires prices for a battery-only home, even with Respond to prices off', async () => {
+      const { facts, state } = await configuredHome();
+      state.latestDevices = [{ id: 'battery', deviceClass: 'battery', batteryControl: 'drivable' }] as typeof state.latestDevices;
+      state.managedMap = {};
+      state.controllableMap = {};
+      state.batteryControl = { status: 'resolved', devices: {} };
+      facts.publishSetupPrices({ respondToPrices: false, budgetShapesByPrice: false, status: OPEN_NORWAY });
+      expect(facts.readSetupPath()).toEqual({ state: 'complete' });
+
+      const plan = { ...DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, enabled: true };
+      facts.publishSetupBatteryPlans({ battery: plan });
+      expect(pricesStep(facts)).toMatchObject({ status: 'next', detail: OPEN_NORWAY.summary });
+      expect(facts.readSetupReview()?.steps.find((step) => step.id === 'prices')?.status).toBe('next');
+
+      facts.publishSetupPrices({
+        respondToPrices: false, budgetShapesByPrice: false,
+        status: { state: 'complete', summary: 'Norway · ARVA AS · NO4 · Norgespris' },
+      });
+      expect(facts.readSetupPath()).toEqual({ state: 'complete' });
+
+      facts.publishSetupPrices({ respondToPrices: false, budgetShapesByPrice: false, status: OPEN_NORWAY });
+      facts.publishSetupBatteryPlans({ battery: { ...plan, enabled: false } });
+      expect(facts.readSetupPath()).toEqual({ state: 'complete' });
+      facts.publishSetupBatteryPlans({ removedBattery: plan });
+      expect(facts.readSetupPath()).toEqual({ state: 'complete' });
+    });
+
     it('is done once the owner has set prices up', async () => {
       const { facts } = await configuredHome();
       facts.publishSetupPrices({
@@ -225,6 +254,39 @@ describe('setup path facts', () => {
       const read = facts.readSetupReview();
       return read?.steps.find((step) => step.id === 'devices');
     };
+
+    it('waits for saved battery plans before offering review and preserves an accepted read', async () => {
+      const { facts, state } = await loadUnpublished();
+      state.devicesLoaded = true;
+      state.latestDevices = [battery] as typeof state.latestDevices;
+      state.batteryControl = { status: 'resolved', devices: {} };
+      facts.publishSetupPower(RECEIVED);
+      facts.publishSetupHardCapRead(true, running);
+      facts.publishSetupPrices(NO_PRICE_USE);
+      expect(facts.readSetupPath()).toEqual({ state: 'loading' });
+      expect(facts.readSetupReview()).toBeNull();
+      facts.publishSetupBatteryPlansUnavailable();
+      expect(facts.readSetupPath()).toEqual({ state: 'unavailable' });
+      facts.publishSetupBatteryPlans({});
+      expect(facts.readSetupPath()).toEqual({ state: 'complete' });
+      facts.publishSetupBatteryPlansUnavailable();
+      expect(facts.readSetupPath()).toEqual({ state: 'complete' });
+    });
+
+    it('stops waiting for battery plans when the battery is removed or unmanaged', async () => {
+      const { facts, state } = await loadUnpublished();
+      state.devicesLoaded = true;
+      state.latestDevices = [battery] as typeof state.latestDevices;
+      state.batteryControl = { status: 'resolved', devices: {} };
+      facts.publishSetupPower(RECEIVED);
+      facts.publishSetupHardCapRead(true, running);
+      facts.publishSetupPrices(NO_PRICE_USE);
+      expect(facts.readSetupPath()).toEqual({ state: 'loading' });
+      state.batteryControl = { status: 'resolved', devices: { battery: false } };
+      expect(devicesStep(facts)?.status).toBe('next');
+      state.latestDevices = [];
+      expect(devicesStep(facts)?.status).toBe('next');
+    });
 
     it('counts as managed by its own setting, absent = on, with nothing in managed_devices', async () => {
       const { facts, state } = await load();

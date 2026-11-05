@@ -108,7 +108,6 @@ const save = (current: BatteryPlanSession, config: ContinuousBatteryPlanConfig):
     current.previewAvailable = false;
     await load(current);
     if (current.error) current.error = `Battery plan saved. ${current.error}`;
-    document.dispatchEvent(new Event('continuous-battery-plan-changed'));
     return true;
   } catch (error) {
     current.error = formatSettingsError(error, 'Battery plan could not be saved. Try again.');
