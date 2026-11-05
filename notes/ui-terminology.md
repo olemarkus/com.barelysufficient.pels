@@ -856,7 +856,8 @@ keeps the word for what PELS holds it to do.
 | Overview hero, one battery supplying while PELS holds it for the limit (only while it supplies: a capped charge holds nothing) | `Sessy battery is supplying 2.4 kW to hold your limit.` |
 | Overview hero, several | `2 batteries are supplying 4.2 kW to hold your limit.` |
 | Overview hero, a battery supplying while devices are also limited | `Sessy battery is supplying 2.4 kW to hold your limit. Holding back 2 devices…` |
-| Device page, Managed hint | `PELS takes it over to hold your limit or store spare solar, then hands it back.` |
+| Device page, Managed hint | `PELS takes it over to hold your limit or store spare solar, then hands it back.`; with Power limits off, `PELS shares spare solar between it and your devices, then hands it back.` |
+| Setup, `Choose what PELS does`, battery row | Switch `Plan charging with PELS` (the device page's), `PELS plans charging and household supply around your prices and solar. The battery’s own schedule resumes when you turn this off.`; while off, a `Usable capacity (kWh)` field (`From your battery’s specification. PELS needs it to plan.`), empty until a capacity was saved, and the switch waits for it; while on, `Planned for 10 kWh usable capacity.` (+ ` The plan runs once you start managing.` in Simulation mode). Review lists `Plan charging with PELS on`. |
 | Device page, Managed hint, a battery PELS cannot drive | `PELS reads its power and charge level and shows it on the Overview.` |
 | Device page, Power-limit control hint (greyed out while Managed is off) | `PELS may cap its charge, call on it to hold your limit and share your solar between it and your devices, each at its turn in your priority order.` |
 | Device page, takeover notice (amber) | `You changed its mode in the battery app` / `PELS has stepped back and leaves it alone. Turn on Managed when you want PELS to use it again.` |
@@ -1653,6 +1654,17 @@ never saw). On Electricity prices:
   which a flat or day/night tariff does not pay. With no answer from Homey about
   the app: `Or choose another source above.` Its status row reads `Prices found` / `No prices`: whether PELS can
   use them is the `Price setup` row's to say.
+- Export price on Homey Energy while Power by the Hour has a price device and
+  the home has no export price or only amounts the owner entered: `Power by the
+  Hour can give PELS an export price that follows the market price, after the
+  export markups you set in that app. Using it makes Power by the Hour your
+  price source for import and export.` with a `Use Power by the Hour` button
+  (source, export source and export price in one tap). The disabled `Share of
+  spot price` hint then reads `Needs a spot price. For an export price that
+  follows the market price, use Power by the Hour above.`
+- Tomorrow's status row before 14:00 on the Homey's clock with no prices yet:
+  `Prices come later today`, uncoloured. Day-ahead prices publish around 13:00
+  CET; only after that is a missing tomorrow a warning (`No data received`).
 - Norway settings: `Not chosen yet. PELS uses NO1.` / `… Strømstøtte.` under a
   `Select price area` / `Select pricing model` placeholder, so picking the value
   PELS was using is a choice. No grid company: `Not chosen yet, so your prices
@@ -1832,8 +1844,8 @@ Fixed line and heading forms:
 
 - Overview hero subline (inventoried in `notes/overview-hero-spec.md`), one
   line, terse noun phrases so it never wraps mid-clause:
-  `Solar now 3.2 kW — 1.1 kW at home, 2.1 kW exported`, or
-  `Solar now 3.2 kW — all used at home` when export is under 50 W.
+  `Solar now 3.2 kW · 1.1 kW at home, 2.1 kW exported`, or
+  `Solar now 3.2 kW · all used at home` when export is under 50 W.
 - Usage hero reconciliation line, shown only when the Solar card shows
   measured production: `+ 1.5 kWh of your own solar` — it names the energy
   the NET-import headline never saw, so the hero and the card's `Used at
@@ -2368,8 +2380,11 @@ English-only.
   offers `Turn off Capacity limit` beside that detail. Like `Use 15-minute
   average`, it writes only its own setting, so the built-in hard cap stays
   unchosen. Keep the running default visible until the owner makes a choice.
-- Dutch solar setup needs no dynamic contract or price configuration. Contract
-  context and the end of net metering belong in optional background guidance.
+- Dutch solar setup needs no dynamic contract or price configuration. Never
+  mention the end of Dutch net metering (salderingsregeling) or its date in the
+  UI, docs, recommendations or store copy, and never warn that exported solar
+  is worth nothing or costs money (owner ruling 2026-11-05). Offer the features
+  (export price, solar use, battery plan) on what they do.
 - Belgian advice stays conditional: `In Flanders? Use the 15-minute average for
   measured peaks.` The action is `Use 15-minute average`. It saves only the
   period, never confirms the built-in hard cap, and preserves completed setup.
@@ -2401,8 +2416,8 @@ setup.
   that curtails as well as one that exports: `while your solar produces more
   than the home is using`.
 - Outcomes, not features: `heat in cheap hours`, `use more of your own solar`,
-  `have something ready by a set time`. In the Netherlands, where net metering
-  is ending, solar leads.
+  `have something ready by a set time`. In the Netherlands, where households
+  pay no measured-peak tariff and come to PELS for their solar, solar leads.
 
 The page lists this suggestion before any device fix (owner ruling
 2026-10-29): right after setup, what PELS can do for the home matters more than

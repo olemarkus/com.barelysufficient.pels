@@ -145,7 +145,7 @@ describe('Norway price handlers', () => {
       expect(getState().priceSetupSuggestion).toMatchObject({ gridCompany: { kind: 'found', countyCode: '50' } });
     });
 
-    it('asks on Homey Energy without prices, and not while Homey Energy has them', async () => {
+    it('asks on Homey Energy with or without prices: Power by the Hour may price import or export', async () => {
       const norway = norwaySetup({}) as Extract<PriceSetupRead, { state: 'resolved' }>;
       const homeySetup: PriceSetupRead = {
         state: 'resolved',
@@ -153,10 +153,6 @@ describe('Norway price handlers', () => {
       };
       const withPrices = createHandlers({ priceSetup: homeySetup, homeyStatus: { hasPrices: true } as PriceConfigState['homeyStatus'] });
       await withPrices.handlers.askForPriceSetupSuggestion();
-      expect(homeyMocks.callApi).not.toHaveBeenCalled();
-
-      const without = createHandlers({ priceSetup: homeySetup, homeyStatus: { hasPrices: false } as PriceConfigState['homeyStatus'] });
-      await without.handlers.askForPriceSetupSuggestion();
       expect(homeyMocks.callApi).toHaveBeenCalledWith('GET', SETTINGS_UI_PRICE_SETUP_SUGGESTION_PATH);
     });
 

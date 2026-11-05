@@ -55,6 +55,7 @@ const buildHandlers = (overrides: Partial<ElectricityPricesHandlers> = {}): Elec
   onRefreshGridTariff: vi.fn(),
   onExportEnabledChange: vi.fn(),
   onExportSourceChange: vi.fn(),
+  onUsePowerhourForExport: vi.fn(),
   onExportSpotFactorChange: vi.fn(),
   onExportFixedChange: vi.fn(),
   onPvForecastSourceChange: vi.fn(),
@@ -307,6 +308,50 @@ describe('ElectricityPricesView', () => {
       const select = mount.querySelector('#electricity-prices-export-source') as HTMLElement & { value: string };
       expect(select.value).toBe('manual');
       expect(mount.querySelector('#electricity-prices-export-fixed')).not.toBeNull();
+    });
+
+    describe('with Power by the Hour installed on Homey Energy', () => {
+      const POWERHOUR_READY = {
+        priceScheme: 'homey' as const,
+        priceSetupSuggestion: {
+          gridCompany: { kind: 'none' as const }, priceArea: { kind: 'none' as const },
+          powerhour: { kind: 'has_price_device' as const },
+        },
+      };
+
+      it('offers its market-following export price while export is off, and switches in one tap', () => {
+        const onUsePowerhourForExport = vi.fn();
+        const mount = document.createElement('div');
+        document.body.appendChild(mount);
+        renderElectricityPricesView(mount, buildProps(
+          { ...POWERHOUR_READY, exportPriceEnabled: false },
+          { showExportSection: true, handlers: buildHandlers({ onUsePowerhourForExport }) },
+        ));
+        expect(mount.querySelector('#electricity-prices-export-powerhour')?.textContent)
+          .toContain('export price that follows the market price');
+        const button = [...mount.querySelectorAll('md-outlined-button')]
+          .find((entry) => entry.textContent?.includes('Use Power by the Hour')) as HTMLElement;
+        button.click();
+        expect(onUsePowerhourForExport).toHaveBeenCalledTimes(1);
+      });
+
+      it('points the disabled share of spot price at it instead of the Norway source', () => {
+        const mount = mountView({ ...POWERHOUR_READY, exportPriceEnabled: true, exportPriceSource: 'manual' });
+        expect(mount.querySelector('#electricity-prices-export-powerhour')).not.toBeNull();
+        expect(mount.textContent).toContain('Needs a spot price. For an export price that follows the market price, '
+          + 'use Power by the Hour above.');
+        expect(mount.textContent).not.toContain('only the Norway price source');
+      });
+
+      it('leaves a home on Homey Energy\'s own export terms alone: they may already follow the market', () => {
+        const mount = mountView({ ...POWERHOUR_READY, exportPriceEnabled: true, exportPriceSource: 'homey_energy' });
+        expect(mount.querySelector('#electricity-prices-export-powerhour')).toBeNull();
+      });
+
+      it('is not offered without a price device in Power by the Hour', () => {
+        const mount = mountView({ priceScheme: 'homey', exportPriceEnabled: false });
+        expect(mount.querySelector('#electricity-prices-export-powerhour')).toBeNull();
+      });
     });
 
     it('shows only the toggle while export pricing is off', () => {

@@ -1,3 +1,4 @@
+import { supportsSmartTaskKind } from '../../../shared-domain/src/smartTaskDeviceKind.ts';
 import type { PriceOptimizationSetup } from '../../../contracts/src/priceOptimizationSettings.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import type { NorwayPriceSetup, SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
@@ -106,6 +107,7 @@ const resolveDevices = (
     temperature: supportsTemperatureControlDevice(device),
     limitable: supportsPowerDevice(device) && state.controllableMap[device.id] === true,
     taskCapable: isSmartTaskCapable(device),
+    heatsWaterOnTask: device.deviceClass === 'waterheater' || supportsSmartTaskKind(device, 'energy'),
     priceConfigured: configuredDeviceIds.has(device.id),
     usesSolarSurplus: solarSurplusDeviceIds.has(device.id),
   }));

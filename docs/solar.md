@@ -104,7 +104,7 @@ The **Usage tab** shows a Solar card with today's numbers so far — **Produced*
 
 The Usage hero's headline still counts what you drew **from the grid**, so on a sunny day it can look surprisingly small next to the Solar card. The hero adds a "+ 1.5 kWh of your own solar" line naming the energy your panels covered locally — the grid never saw it, so it is not in the headline number.
 
-While the sun is up, the **Overview** hero adds a live line under Power now — for example *"Solar now 3.2 kW — 1.1 kW at home, 2.1 kW exported"* — so you can see at a glance where your production is going right now. While you export, "Power now" (your net grid power) can legitimately read negative; this line is what makes that reading make sense.
+While the sun is up, the **Overview** hero adds a live line under Power now — for example *"Solar now 3.2 kW · 1.1 kW at home, 2.1 kW exported"* — so you can see at a glance where your production is going right now. While you export, "Power now" (your net grid power) can legitimately read negative; this line is what makes that reading make sense.
 
 Three honest edges to know about:
 
@@ -144,9 +144,9 @@ controls directly; no Flows are needed. Inverters whose app offers only
 proprietary actions are not listed. The SMA Modbus app's persistent power
 setting is excluded from live control.
 
-This follows the **export price**, not the spot price or import price. Annual
-net metering and export-fee bands can change the value of an extra exported kWh;
-use the value your contract actually settles. Control follows meter readings
+This follows the **export price**, not the spot price or import price. Use the
+value your contract actually settles for an extra exported kWh, including any
+feed-in fee. Control follows meter readings
 and inverter response, so brief export can occur.
 
 ### Home batteries
@@ -199,14 +199,14 @@ PELS also hands the battery back at once if your meter stops reporting or the ba
 
 ## Export pricing
 
-Exported solar is often worth far less than the power you would otherwise buy, and on some contracts it costs you: when net metering ends or your supplier charges a fee for feeding in, every kilowatt-hour you export can cost money, so using your own solar becomes a direct saving rather than a smaller return.
-
-PELS lets you tell it what exported power is worth to you. Under **Settings > Electricity prices**, turn on **"Use an export price"** (the section appears once PELS can see your solar, meaning a managed solar device reports production or your meter has recorded about a kilowatt-hour of grid export, or once you have a home battery PELS can drive, and stays visible if you already have an export price configured).
+PELS lets you tell it what exported power is worth to you, so its solar and battery plans weigh using your solar at home against sending it to the grid. Under **Settings > Electricity prices**, turn on **"Use an export price"** (the section appears once PELS can see your solar, meaning a managed solar device reports production or your meter has recorded about a kilowatt-hour of grid export, or once you have a home battery PELS can drive, and stays visible if you already have an export price configured).
 
 If your electricity prices come from **Homey Energy** or **Power by the Hour**, you can then set **Where the price comes from**:
 
 - **Homey Energy**: PELS uses the feed-in price you already set up in Homey under **Energy > Electricity**. That can be a fixed amount, or a formula that follows the hourly price, which is how most dynamic contracts pay for exported power. Nothing to retype. See [Getting paid for solar you export](/homey-energy#getting-paid-for-solar-you-export).
 - **Power by the Hour**: PELS uses the feed-in price that app publishes for each period, after the export markups you set on its price device. Without any export markup there, it equals the import price.
+
+On Homey Energy with Power by the Hour installed and a price device in it, the export section offers **Use Power by the Hour** while you have no export price or only amounts you entered: it makes Power by the Hour your price source for import and export, so your export price follows the market price.
 - **Amounts I enter here**: the two amounts below. This is the default.
 
 On the other price sources, or with **Amounts I enter here**, enter what your power company pays you:

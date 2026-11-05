@@ -33,6 +33,20 @@ const buildPayload = (today: Record<string, unknown>): SettingsUiPricesPayload =
 } as unknown as SettingsUiPricesPayload);
 
 describe('price config status', () => {
+  it('says tomorrow\'s prices come later today before they are published, uncoloured', () => {
+    // 11:00 in Oslo: day-ahead prices publish around 13:00 CET.
+    vi.setSystemTime(new Date('2026-01-19T10:00:00.000Z'));
+    expect(buildHomeyStatus(buildPayload(hourlyPayload())).tomorrow)
+      .toEqual({ text: 'Prices come later today', tone: 'neutral' });
+  });
+
+  it('warns about a missing tomorrow once prices should have arrived', () => {
+    // 15:00 in Oslo.
+    vi.setSystemTime(new Date('2026-01-19T14:00:00.000Z'));
+    expect(buildHomeyStatus(buildPayload(hourlyPayload())).tomorrow)
+      .toEqual({ text: 'No data received', tone: 'warn' });
+  });
+
   it('counts a full day as 24 hours whether the zone sends hours or quarters', () => {
     vi.setSystemTime(new Date('2026-01-19T10:00:00.000Z'));
 

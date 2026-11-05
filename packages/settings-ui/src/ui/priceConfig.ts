@@ -454,6 +454,16 @@ const handleRefreshGridTariff = async () => {
   }
 };
 
+// The export section's offer: Power by the Hour as the price source, with its
+// feed-in price as the export price, turned on. Each step is the page's own
+// handler, so a failed source change stops before export is touched.
+const handleUsePowerhourForExport = async () => {
+  await handleSchemeChange('powerhour');
+  if (configState.priceScheme !== 'powerhour') return;
+  await exportSourceHandler('power_by_the_hour');
+  if (!configState.exportPriceEnabled) await exportPriceHandlers.onEnabledChange(true);
+};
+
 const electricityPricesHandlers: ElectricityPricesHandlers = {
   onSchemeChange: handleSchemeChange,
   onPowerhourDeviceChange: handlePowerhourDeviceChange,
@@ -472,6 +482,7 @@ const electricityPricesHandlers: ElectricityPricesHandlers = {
   onPvForecastSourceChange: handlePvForecastSourceChange,
   onExportEnabledChange: exportPriceHandlers.onEnabledChange,
   onExportSourceChange: exportSourceHandler,
+  onUsePowerhourForExport: () => { void handleUsePowerhourForExport(); },
   onExportSpotFactorChange: exportPriceHandlers.onSpotFactorChange,
   onExportFixedChange: exportPriceHandlers.onFixedChange,
 };

@@ -416,7 +416,10 @@ test.describe('Onboarding links', () => {
     await expect(banner).toContainText('1 recommendation');
     await banner.getByText('Review').click();
     const card = page.locator('.setup-recommendation-card', { hasText: 'Set your export price' });
-    await expect(card).toContainText('Net metering ends on 1 January 2027. Paid for power you send to the grid?');
+    // No deadline and no warning: the card offers what PELS does with the price.
+    await expect(card).toContainText('Paid for power you send to the grid? Tell PELS what export pays, '
+      + 'so its solar and battery plans can use it.');
+    await expect(card).not.toContainText('2027');
     await expect(card.locator('.plan-chip')).toHaveText('Recommended');
 
     await card.getByText('Set export price').click();

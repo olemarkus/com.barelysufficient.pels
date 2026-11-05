@@ -6,6 +6,7 @@ import type {
   FlowStatus,
   HomeyStatus,
   PowerhourStatus,
+  StatusTone,
   StatusValue,
   GridCompanyOption,
   PvForecastSourceSetting,
@@ -97,6 +98,8 @@ export type ElectricityPricesHandlers = {
   onPvForecastSourceChange: (source: PvForecastSourceSetting) => void;
   onExportEnabledChange: (enabled: boolean) => void;
   onExportSourceChange: (source: ExportPriceSourceSetting) => void;
+  /** Switch the price source to Power by the Hour and price export from its feed-in price. */
+  onUsePowerhourForExport: () => void;
   // Numeric export handlers also receive the field element so a rejected or
   // unsaved value can be snapped back to the stored one (see ExportPriceForm).
   onExportSpotFactorChange: (val: number, field: { value: string }) => void;
@@ -132,10 +135,10 @@ const Header = () => (
   />
 );
 
-const StatusRow = ({ label, value, tone }: { label: string; value: string; tone?: 'ok' | 'warn' }) => (
+const StatusRow = ({ label, value, tone }: { label: string; value: string; tone?: StatusTone }) => (
   <div class="price-config-status-row">
     <span class="price-config-status-label">{label}</span>
-    <span class={['price-config-status-value', tone].filter(Boolean).join(' ')}>{value}</span>
+    <span class={['price-config-status-value', tone === 'neutral' ? undefined : tone].filter(Boolean).join(' ')}>{value}</span>
   </div>
 );
 
@@ -963,16 +966,20 @@ const SolarForecastForm = ({ config, handlers }: {
 //     the share is 0 — name the repair.
 //   • Spot-less scheme, share settled at 0: the fixed amount is the whole
 //     export price.
-const spotShareHint = (hasSpotPrice: boolean, staleSpotShare: boolean): string => {
+// Where a spot-linked share would come from: the Norway source, or on Homey
+// Energy, Power by the Hour when it has a price device (its feed-in price
+// follows the market price, and the section offers it above).
+const spotShareHint = (hasSpotPrice: boolean, staleSpotShare: boolean, powerhourOffered: boolean): string => {
   if (hasSpotPrice) {
     return 'Share of the hourly spot price (incl. VAT) you’re paid per exported kWh. '
       + 'If your contract pays the raw spot price, enter 80. 0 means the fixed amount only.';
   }
-  if (staleSpotShare) {
-    return 'Needs a spot price, which only the Norway price source provides. '
-      + 'Set the share to 0 to use the fixed amount only.';
-  }
-  return 'Needs a spot price, which only the Norway price source provides. Only the fixed amount applies.';
+  const source = powerhourOffered
+    ? 'Needs a spot price. For an export price that follows the market price, use Power by the Hour above.'
+    : 'Needs a spot price, which only the Norway price source provides.';
+  return staleSpotShare
+    ? `${source} Set the share to 0 to use the fixed amount only.`
+    : `${source} Only the fixed amount applies.`;
 };
 
 /**
@@ -1025,6 +1032,13 @@ const ExportPriceForm = ({ config, handlers, inverterControl }: ElectricityPrice
   // amounts here, as it does in the runtime, and is kept for a return.
   const sourceOption = resolveSourceExportOption(priceScheme);
   const usesSourcePrice = sourceOption !== null && exportPriceSource === sourceOption.value;
+  // On Homey Energy, with no export price or only fixed amounts, Power by the
+  // Hour (installed, with a price device) can price export from the market
+  // price. Homey Energy's own export terms may already be dynamic, so a home
+  // using them is not offered the move.
+  const powerhourOffered = priceScheme === 'homey'
+    && config.priceSetupSuggestion.powerhour.kind === 'has_price_device'
+    && (!exportPriceEnabled || !usesSourcePrice);
   return (
     <form
       id="electricity-prices-export-section"
@@ -1033,9 +1047,22 @@ const ExportPriceForm = ({ config, handlers, inverterControl }: ElectricityPrice
     >
       <h3 class="section-title">{EXPORT_PRICE_LABEL}</h3>
       <p class="muted">
-        What you’re paid for power you send to the grid — check what your power company pays you.
-        The Budget tab shows the current export price while this is on.
+        What you’re paid for power you send to the grid. Check what your power company pays you.
+        PELS uses it to plan your solar and battery, and the Budget tab shows it while this is on.
       </p>
+      {powerhourOffered && (
+        <>
+          <p class="pels-card-supporting" id="electricity-prices-export-powerhour">
+            Power by the Hour can give PELS an export price that follows the market price, after the export
+            markups you set in that app. Using it makes Power by the Hour your price source for import and export.
+          </p>
+          <div class="form__actions">
+            <MdOutlinedButton type="button" onClick={handlers.onUsePowerhourForExport}>
+              Use Power by the Hour
+            </MdOutlinedButton>
+          </div>
+        </>
+      )}
       <label class="md-switch-row">
         <MdSwitch
           id="electricity-prices-export-enabled"
@@ -1096,7 +1123,7 @@ const ExportPriceForm = ({ config, handlers, inverterControl }: ElectricityPrice
               }}
             />
             <small class="field__hint">
-              {spotShareHint(hasSpotPrice, staleSpotShare)}
+              {spotShareHint(hasSpotPrice, staleSpotShare, powerhourOffered)}
             </small>
           </label>
           <label class="field">

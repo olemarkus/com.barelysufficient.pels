@@ -51,9 +51,8 @@ const createPriceSetupSuggestionAsker = (ctx: NorwayPriceHandlersContext) => {
   // the page's suggestion, so switching back to Norway shows this one again.
   let locationAnswer: PriceSetupSuggestion | null = null;
   return async (): Promise<void> => {
-    const { priceSetup, homeyStatus, priceScheme } = ctx.getState();
-    // No Homey status yet reads as having prices: nothing is asked on a guess.
-    if (!priceSetupNeedsSuggestion(priceSetup, homeyStatus?.hasPrices ?? true)) return;
+    const { priceSetup, priceScheme } = ctx.getState();
+    if (!priceSetupNeedsSuggestion(priceSetup)) return;
     if (priceScheme === 'homey') {
       ctx.patchState({ priceSetupSuggestion: await loadPriceSetupSuggestion() });
     } else {
