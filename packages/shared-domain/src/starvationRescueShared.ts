@@ -140,5 +140,7 @@ export const mapAppRescueReason = (reason: string): StarvationRescueRejectReason
   // typed rather than collapsed to `invalid_candidate`.
   if (reason === 'device_in_sub_home') return 'device_in_sub_home';
   if (reason === 'write_conflict' || reason === 'write_refused') return 'write_conflict';
+  // The app has not finished starting: retryable, never a bad request.
+  if (reason === 'unavailable') return 'unavailable';
   return 'invalid_candidate';
 };

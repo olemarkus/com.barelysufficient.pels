@@ -13,6 +13,7 @@ import {
   parseSmartTaskCandidateRequest,
   resolveSmartTaskRequestDeadline,
   resolveSmartTaskWriteDeadline,
+  type SmartTaskLanePorts,
 } from './smartTaskCandidateRequest';
 import { rejectForSmartTaskHomeScope } from './smartTaskCreateLane';
 
@@ -22,23 +23,17 @@ import { rejectForSmartTaskHomeScope } from './smartTaskCreateLane';
 // user selects is granted outright (`'always'`) over the device's standing
 // set. The widget API binds the ports and forwards.
 
-/** The app as the preview uses it; `null` while the app is not wired. Called as methods: they rely on `this`. */
+/** The app as the preview uses it. */
 export type SmartTaskWidgetPreviewHost = Pick<
   CreateSmartTaskHostApi,
   'resolveSmartTaskHomeScope' | 'previewDeferredObjectivePlan' | 'getCreateSmartTaskCandidateDevices'
 >;
 
-/** The app as the create uses it; `null` while the app is not wired. Called as methods: they rely on `this`. */
+/** The app as the create uses it. */
 export type SmartTaskWidgetCreateHost = Pick<
   CreateSmartTaskHostApi,
   'resolveSmartTaskHomeScope' | 'createDeferredObjective' | 'getCreateSmartTaskCandidateDevices'
 >;
-
-/** What the lane reads and calls: the app and the Homey clock. */
-export type SmartTaskWidgetLanePorts<Host> = {
-  host: Host | null;
-  clock: { getTimezone(): string };
-};
 
 export type SmartTaskWidgetPreviewResult =
   | Extract<SettingsUiSmartTaskPreviewResponse, { ok: true }>
@@ -55,7 +50,7 @@ const reject = (reason: SmartTaskWriteRejectReason): { ok: false; reason: SmartT
 
 /** Preview a widget task. Read-only. */
 export const previewWidgetSmartTask = (
-  ports: SmartTaskWidgetLanePorts<SmartTaskWidgetPreviewHost>,
+  ports: SmartTaskLanePorts<SmartTaskWidgetPreviewHost>,
   body: unknown,
 ): SmartTaskWidgetPreviewResult => {
   const request = parseSmartTaskCandidateRequest(body);
@@ -90,7 +85,7 @@ export const previewWidgetSmartTask = (
 
 /** Create a widget task, replacing an open one, with the permissions the request selects granted. */
 export const createWidgetSmartTask = (
-  ports: SmartTaskWidgetLanePorts<SmartTaskWidgetCreateHost>,
+  ports: SmartTaskLanePorts<SmartTaskWidgetCreateHost>,
   body: unknown,
 ): SmartTaskWidgetCreateResult => {
   const request = parseSmartTaskCandidateRequest(body);

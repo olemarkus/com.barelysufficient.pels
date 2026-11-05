@@ -26,6 +26,17 @@ import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuard
  * source of truth for projection and persistence.
  */
 
+/**
+ * How every smart-task request lane receives the app and the Homey clock. The
+ * host is `null` while the app is not wired (the boot window), and each lane
+ * answers that `unavailable`. Host methods are called as methods: they rely on
+ * `this`.
+ */
+export type SmartTaskLanePorts<Host> = {
+  host: Host | null;
+  clock: { getTimezone(): string };
+};
+
 const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 // Outer bound for a client-echoed previewed deadline. The "Ready by" resolver
@@ -250,5 +261,7 @@ export const mapSmartTaskAppReason = (reason: string): SmartTaskWriteRejectReaso
   // the dedicated "separate meter" copy, never the retry framing.
   if (reason === 'device_in_sub_home') return 'device_in_sub_home';
   if (reason === 'write_conflict' || reason === 'write_refused') return 'write_conflict';
+  // The app has not finished starting: retryable, never a bad request.
+  if (reason === 'unavailable') return 'unavailable';
   return 'invalid_candidate';
 };

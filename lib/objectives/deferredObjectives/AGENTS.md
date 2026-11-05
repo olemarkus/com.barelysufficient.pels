@@ -20,7 +20,7 @@ The task governs until its deadline, also once satisfied (owner ruling 2026-10-1
 
 ## Smart-task requests are decided here
 
-The request lanes own every smart-task write decision: `smartTaskCreateLane.ts` (settings UI create, refuses an open task), `smartTaskEditLane.ts` (edit and clear, requires an open task, keeps unmentioned permissions and a left-on permission's mode) and `smartTaskWidgetCreateLane.ts` (widget create, may replace an open task, grants selected permissions outright). `smartTaskWriteValidation.ts` is the final check before persistence. The settings-UI handlers and widget routes bind ports and forward; change a rule here, not in a request adapter.
+The request lanes own every smart-task write decision: `smartTaskCreateLane.ts` (settings UI create, refuses an open task), `smartTaskEditLane.ts` (edit and clear, requires an open task, keeps unmentioned permissions and a left-on permission's mode), `smartTaskWidgetCreateLane.ts` (widget create, may replace an open task, grants selected permissions outright) and `smartTaskRescueCreateLane.ts` (budget-exempt rescue, requires the exemption, refuses an open task). The request lanes take the app as `SmartTaskLanePorts` (`null` before it is wired answers `unavailable`). `smartTaskWrite.ts` is the app side of every write: `smartTaskWriteValidation.ts` is the final check, a write before the plan recorders are wired answers the retryable `unavailable`, and it maps the write op's refusals. The settings-UI handlers, widget routes and `setup/appSmartTaskApi.ts` bind ports and forward; change a rule here, not in a request adapter.
 
 ## Testing and review
 

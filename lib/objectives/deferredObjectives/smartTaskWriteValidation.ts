@@ -76,8 +76,12 @@ export const validateSmartTaskWrite = <Device extends SmartTaskWriteDevice>(
   deviceId: string,
   candidate: DeferredObjectivePlanPreviewCandidate,
 ): ValidatedSmartTaskWrite<Device> => {
-  // Persist ONLY against the runtime-planned snapshot — see PLANNED-SET
-  // HONESTY on `AppSmartTaskApi.createDeferredObjective`. A device that exists
+  // PLANNED-SET HONESTY: persist ONLY against the runtime-planned snapshot. The
+  // planner only evaluates objectives whose device is in it (a missing device
+  // yields `objective_missing_device` and is never planned), so a task on a
+  // picker-only device would never plan or control anything. The Flow-card
+  // create is honest the same way (its autocomplete reads the same snapshot),
+  // and the preview reads it too. A device that exists
   // in the picker but not here, OR that is in the runtime snapshot but
   // `managed: false` (so the planner's `isRuntimePlannedDevice` filter drops
   // it — possible when the managed filter is inactive), is reported as

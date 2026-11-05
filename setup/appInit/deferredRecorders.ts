@@ -316,6 +316,19 @@ export const buildDeferredObjectiveDeviceWriteDeps = (
   };
 };
 
+/**
+ * The write deps once startup has wired the plan recorders, or `null` before
+ * then. The smart-task write decides what a write without them answers.
+ */
+export const resolveDeferredObjectiveDeviceWriteDeps = (
+  ctx: AppContext,
+  nowMs: number,
+): DeferredObjectiveDeviceWriteDeps | null => (
+  ctx.deferredObjectivePlanHistoryRecorder && ctx.deferredObjectiveActivePlanRecorder
+    ? buildDeferredObjectiveDeviceWriteDeps(ctx, nowMs)
+    : null
+);
+
 export const disableDeferredObjectiveInSettings = (ctx: AppContext, deviceId: string): void => {
   // Per-device key: read THIS device's entry, flip its `enabled` flag, and
   // write it back under its own key. A missing or malformed read of this one
