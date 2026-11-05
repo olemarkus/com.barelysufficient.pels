@@ -1,15 +1,19 @@
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
+import type { StorageDischargeObservation } from '../../packages/planner-types/src/storageDischarge';
 
 /**
- * Accepted signed battery power in one home, independent of control permission.
- * Membership scopes the roster first. An unavailable/unread battery is omitted
- * so the planner can still reserve a held discharge it has not seen stop.
- * Only batteries carry `batteryPower`; charging remains an explicit observation
- * rather than cancelling another battery's discharge or looking unread.
+ * Discharge in one home, independent of control permission. Unavailability
+ * cannot prove that a battery stopped: retain its accepted discharge until
+ * replaced or removed from the roster, without releasing any larger held debit.
  */
-export function projectObservedBatteryPowerW(devices: readonly DeviceSurfaces[]): ReadonlyMap<string, number> {
+export function projectStorageDischargeObservations(
+  devices: readonly DeviceSurfaces[],
+): ReadonlyMap<string, StorageDischargeObservation> {
   return new Map(devices.flatMap((device) => (
-    device.available && device.batteryPower !== undefined
-      ? [[device.id, device.batteryPower.signedW] as const] : []
+    device.batteryPower !== undefined
+      ? [[device.id, {
+        dischargeW: Math.max(0, -device.batteryPower.signedW),
+        heldDischarge: device.available ? 'releasable' as const : 'reserved' as const,
+      }] as const] : []
   )));
 }

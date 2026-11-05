@@ -89,6 +89,7 @@
  * battery then (`NO_STORAGE_RELIEF`); the battery's owner hands a held one
  * back itself.
  */
+import type { StorageDischargeObservation } from '../../../packages/planner-types/src/storageDischarge';
 import type {
   MissingStorageInput,
   ObservedStorageInput,
@@ -242,15 +243,18 @@ export function resolveStorageSurplusClaimants(
 
 /** Stored energy never becomes solar surplus, including an unread held discharge. */
 export function resolveStorageDischargeW(
-  observedPowerW: ReadonlyMap<string, number>,
+  observations: ReadonlyMap<string, StorageDischargeObservation>,
   levers: Readonly<Record<string, StorageLeverState>>,
 ): number {
   let dischargeW = 0;
-  for (const signedW of observedPowerW.values()) dischargeW += Math.max(0, -signedW);
+  for (const [deviceId, observation] of observations) {
+    const heldW = observation.heldDischarge === 'reserved' ? -(levers[deviceId]?.setpointW ?? 0) : 0;
+    dischargeW += Math.max(observation.dischargeW, heldW);
+  }
   // A missing reading does not prove that a held discharge (including a sale)
   // stopped. Reserve it until observed again or its hold is released.
   for (const [deviceId, lever] of Object.entries(levers)) {
-    if (!observedPowerW.has(deviceId)) dischargeW += Math.max(0, -lever.setpointW);
+    if (!observations.has(deviceId)) dischargeW += Math.max(0, -lever.setpointW);
   }
   return dischargeW;
 }

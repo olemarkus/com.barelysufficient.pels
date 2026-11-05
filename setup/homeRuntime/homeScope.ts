@@ -31,7 +31,7 @@
 import {
   requireBatteryControl, requireHomeMembership, requirePlanService, requirePriceCoordinator,
 } from '../appInit/contextGuards';
-import { projectObservedBatteryPowerW } from '../../lib/planInput/storageObservation';
+import { projectStorageDischargeObservations } from '../../lib/planInput/storageObservation';
 import { mainStorageLane } from '../appInit/createBatteryControl';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
 import type { MeterSilenceMonitor } from '../../lib/power/meterSilence';
@@ -127,7 +127,7 @@ export type HomeScope = {
    *  the whole of "nothing to absorb": a home with no estimator, an estimator
    *  declining to claim, and a measured nothing spare are one answer here. */
   getInferredSurplusKw: PlanBuilderDeps['getInferredSurplusKw'];
-  getObservedBatteryPowerW: PlanBuilderDeps['getObservedBatteryPowerW'];
+  getStorageDischargeObservations: PlanBuilderDeps['getStorageDischargeObservations'];
   // Policy stragglers lifted onto the scope so a sub-home's capacity-only engine
   // no longer inherits MAIN's raw ctx reads. Main binds the identical current
   // reads (byte-identical); sub-home scopes bind neutral constants for the
@@ -300,7 +300,7 @@ export function buildMainHomeScope(
     // the same fail-closed nothing the estimator itself reports when it
     // declines to claim a term.
     getInferredSurplusKw: () => ctx.getCurtailedSurplusKw?.() ?? 0,
-    getObservedBatteryPowerW: () => projectObservedBatteryPowerW(
+    getStorageDischargeObservations: () => projectStorageDischargeObservations(
       requireHomeMembership(ctx).filterDevicesForHome(ctx.getDeviceSurfaces(), homeId),
     ),
     // Policy stragglers — the EXACT ctx reads `createPlanEngine`/`toPlanDevice`

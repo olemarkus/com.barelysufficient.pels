@@ -133,7 +133,7 @@ export function createPlanEngineComposition(
     getCapacitySettings: scope.getCapacitySettings,
     getPriceOptimizationSettings: scope.getPriceOptimizationSettings,
     getInferredSurplusKw: scope.getInferredSurplusKw,
-    getObservedBatteryPowerW: scope.getObservedBatteryPowerW,
+    getStorageDischargeObservations: scope.getStorageDischargeObservations,
     // The same hold, recorded at the one moment PELS releases a standing
     // posture of its own on an observed-off device.
     leaveOffOnRelease: (deviceId) => ctx.externalOffHold?.holdOnRelease(deviceId) ?? 'unavailable',

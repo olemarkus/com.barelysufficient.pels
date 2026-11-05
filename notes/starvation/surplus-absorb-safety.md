@@ -64,8 +64,10 @@ B, C — starving them. The **fit-test** forecloses this:
   own mode's charge less any import, or the charge PELS holds it at) and never
   its discharge. Claimants come from `resolveStorageSurplusClaimants` in
   `lib/plan/battery/storageRelief.ts`; discharge comes from the whole-home
-  observation input, including unmanaged batteries,
-  so a battery never hides surplus from a device ranked above it and stored
+  observation input, including unmanaged batteries. An unavailable battery retains
+  its accepted discharge until replaced or removed from the home roster; it cannot
+  release a larger held-discharge reservation. No silence-based expiry applies.
+  A battery never hides surplus from a device ranked above it and stored
   energy never boosts one. At its turn the battery reserves that charge, as far
   as the consumers above it left it, so a device ranked below it never claims
   the same watts. PELS claims the battery only to cap that charge for a device
