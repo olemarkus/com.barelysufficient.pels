@@ -160,7 +160,6 @@ setup/appSnapshotHelpers.ts 1
 setup/externalOffHoldDetection.ts 3
 setup/homeRuntime/homeModeOwnershipStore.ts 1
 setup/homeRuntime/homeTrackerConfigSafety.ts 4
-setup/lifecycleFallbackRequest.ts 1
 setup/steppedProfileRepair.ts 1
 setup/targetPowerReachabilitySettings.ts 1
 widgets/_shared/widgetClientLog.ts 1

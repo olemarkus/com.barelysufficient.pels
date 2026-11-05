@@ -13,7 +13,9 @@ read the same owner-resolved device control the planner input does:
 axis and command state (planner input, runtime UI reads), and
 `lifecycleFallbackDeviceProjection.ts` narrows that decorated carrier into the
 executor's `LifecycleFallbackDevice` (the executor may not read `lib/device`
-itself). Besides the external-off hold projection above, these are the only
+itself). `lifecycleFallbackPosture.ts` resolves the configured lifecycle fallback
+against those writable axes; executor materializes the selected posture.
+Besides the external-off hold projection above, these are the only
 executor-input exceptions; anything that reads the
 plan's own output (a planned step, a decision) belongs to `lib/plan` and reaches
 the executor through a setup-wired port.
