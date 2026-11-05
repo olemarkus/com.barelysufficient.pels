@@ -267,12 +267,39 @@ describe('native stepped-load wiring', () => {
     })).toBe('off');
   });
 
+  it('writes the enum ids the Høiax capability declares', () => {
+    // no.hoiax rejects '1' with HTTP 400: "Expected: low_power,medium_power,high_power".
+    const named = {
+      value: undefined,
+      values: [{ id: 'low_power', title: 'Low' }, { id: 'medium_power', title: 'Medium' }, { id: 'high_power', title: 'High' }],
+    };
+    const numeric = { value: 'high_power', values: [{ id: '1' }, { id: '2' }, { id: '3' }] };
+    expect(resolveNativeSteppedLoadCommand({
+      profile: steppedProfile,
+      desiredStepId: 'low',
+      capabilities: ['onoff', 'max_power_3000'],
+      capabilityObj: { max_power_3000: named },
+    })).toEqual({ capabilityId: 'max_power_3000', value: 'low_power' });
+    expect(resolveNativeSteppedLoadCommand({
+      profile: steppedProfile,
+      desiredStepId: 'max',
+      capabilities: ['onoff', 'max_power_3000'],
+      capabilityObj: { max_power_3000: numeric },
+    })).toEqual({ capabilityId: 'max_power_3000', value: '3' });
+  });
+
   it('maps desired stepped-load steps to native Høiax writes', () => {
     expect(resolveNativeSteppedLoadCommand({
       profile: steppedProfile,
       desiredStepId: 'medium',
       capabilities: ['onoff', 'max_power_3000'],
       capabilityObj: { max_power_3000: { value: 'high_power' } },
+    })).toEqual({ capabilityId: 'max_power_3000', value: 'medium_power' });
+    expect(resolveNativeSteppedLoadCommand({
+      profile: steppedProfile,
+      desiredStepId: 'medium',
+      capabilities: ['onoff', 'max_power_3000'],
+      capabilityObj: { max_power_3000: { value: '3' } },
     })).toEqual({ capabilityId: 'max_power_3000', value: '2' });
     expect(resolveNativeSteppedLoadCommand({
       profile: steppedProfile,
@@ -301,7 +328,7 @@ describe('native stepped-load wiring', () => {
       desiredStepId: 'max',
       capabilities: ['onoff', 'max_power_3000'],
       capabilityObj: { max_power_3000: { value: 'medium_power' } },
-    })).toEqual({ capabilityId: 'max_power_3000', value: '3' });
+    })).toEqual({ capabilityId: 'max_power_3000', value: 'high_power' });
   });
 
   it('builds a stepped-load profile from setable target_power capability options', () => {
@@ -1455,25 +1482,25 @@ describe('native stepped-load wiring', () => {
       expect(get).toHaveBeenCalledTimes(refreshGetCalls);
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
-        pelsCapabilityWrite('2'),
+        pelsCapabilityWrite('medium_power'),
       );
       expect(logCapture.findEvent('device_capability_write_requested')).toMatchObject({
         event: 'device_capability_write_requested',
         deviceId: 'hoiax-1',
         capabilityId: 'max_power_3000',
         writeCapabilityId: 'max_power_3000',
-        value: '2',
+        value: 'medium_power',
         valueType: 'string',
-        writeValue: '2',
+        writeValue: 'medium_power',
       });
       expect(logCapture.findEvent('device_capability_write_accepted')).toMatchObject({
         event: 'device_capability_write_accepted',
         deviceId: 'hoiax-1',
         capabilityId: 'max_power_3000',
         writeCapabilityId: 'max_power_3000',
-        value: '2',
+        value: 'medium_power',
         valueType: 'string',
-        writeValue: '2',
+        writeValue: 'medium_power',
       });
 
       put.mockClear();
@@ -1833,7 +1860,7 @@ describe('native stepped-load wiring', () => {
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
-        pelsCapabilityWrite('3'),
+        pelsCapabilityWrite('high_power'),
       );
 
       await emitCapability('hoiax-1', 'max_power_3000', '3', ownWriteTransactionId(put, 'hoiax-1', 'max_power_3000'));
@@ -1892,7 +1919,7 @@ describe('native stepped-load wiring', () => {
       })).resolves.toEqual({ requested: true, acknowledged: true as const, transport: 'native_capability' });
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
-        pelsCapabilityWrite('3'),
+        pelsCapabilityWrite('high_power'),
       );
     } finally {
       restoreMockRestClient();
@@ -2044,7 +2071,7 @@ describe('native stepped-load wiring', () => {
 
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-mock/capability/max_power_3000',
-        pelsCapabilityWrite('2'),
+        pelsCapabilityWrite('medium_power'),
       );
     } finally {
       setRestClient({

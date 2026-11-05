@@ -59,10 +59,13 @@ const NATIVE_VALUES_BY_RANK = {
   high: ['high_power', '3', 3],
 } as const;
 
-const NATIVE_WRITE_VALUE_BY_RANK = {
-  low: '1',
-  medium: '2',
-  high: '3',
+// Høiax apps disagree on the enum ids of `max_power_*`: some declare
+// `'1' | '2' | '3'`, the `no.hoiax` app declares `low_power | medium_power |
+// high_power` and rejects anything else with HTTP 400.
+const NATIVE_WRITE_VALUES_BY_RANK = {
+  low: { numeric: '1', named: 'low_power' },
+  medium: { numeric: '2', named: 'medium_power' },
+  high: { numeric: '3', named: 'high_power' },
 } as const;
 
 export const CONNECTED_300_STEPPED_LOAD_PROFILE: SteppedLoadProfile = {
@@ -331,7 +334,7 @@ export function resolveNativeSteppedLoadCommand(params: {
   if (rank === 'off') return null;
   return {
     capabilityId,
-    value: resolveNativeValueForRank(rank),
+    value: resolveNativeValueForRank(rank, params.capabilityObj?.[capabilityId]),
   };
 }
 
@@ -530,8 +533,37 @@ function normalizeNativeStepRank(value: unknown): Exclude<NativeStepRank, 'off'>
   return undefined;
 }
 
+/**
+ * The enum id the device itself uses for `rank`: its declared enum ids first,
+ * then the convention of the value it reports, then the numeric ids.
+ */
 function resolveNativeValueForRank(
   rank: Exclude<NativeStepRank, 'off'>,
-): unknown {
-  return NATIVE_WRITE_VALUE_BY_RANK[rank];
+  capability: unknown,
+): string {
+  const { numeric, named } = NATIVE_WRITE_VALUES_BY_RANK[rank];
+  const declaredIds = readDeclaredEnumIds(capability);
+  if (declaredIds.has(named)) return named;
+  if (declaredIds.has(numeric)) return numeric;
+  if (declaredIds.size === 0 && isNamedNativeValue(readCapabilityValue(capability))) return named;
+  return numeric;
+}
+
+function readDeclaredEnumIds(capability: unknown): Set<string> {
+  if (!isRecord(capability) || !Array.isArray(capability.values)) return new Set();
+  return new Set(capability.values
+    .map((entry: unknown) => (isRecord(entry) && typeof entry.id === 'string' ? entry.id : undefined))
+    .filter((id): id is string => id !== undefined));
+}
+
+function readCapabilityValue(capability: unknown): unknown {
+  return isRecord(capability) ? capability.value : undefined;
+}
+
+function isNamedNativeValue(value: unknown): boolean {
+  return Object.values(NATIVE_WRITE_VALUES_BY_RANK).some(({ named }) => named === value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
