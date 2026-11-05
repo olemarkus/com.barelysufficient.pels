@@ -24,16 +24,11 @@ import { standardDeviceAdapter } from '../standardDeviceAdapter';
  *   positive while charging (`:199`): Homey's sign, so the executor's
  *   verification and sign check read it unchanged.
  *
- * The sign of `passive_cfg.power` is documented nowhere in the package: the
- * bundled Open API PDFs (Rev 1.0 and rev 2.0, `passive_cfg`) say only
- * "Setting power, [W]" and "Power countdown, [s]", and the app passes the
- * value through. The same app titles the `power` of its Manual-mode card,
- * the device's other `power` setting, "Watt (negative = charge)" (`app.json`
- * `flow.actions[marstek_manual_mode]`), and allowed negative passive power
- * from 0.8.13 on (`README.txt:52`). So negative charges and positive
- * discharges, the opposite of PELS's sign. Should a firmware read it the
- * other way, the executor's sign check against the whole-home meter marks the
- * battery sign-inverted after three inverted steps and the plan hands it back.
+ * `passive_cfg.power` is negative to charge and positive to discharge, the
+ * opposite of PELS's sign: the device's convention, as the same app titles its
+ * Manual-mode `power` "Watt (negative = charge)" (`app.json`
+ * `flow.actions[marstek_manual_mode]`) and accepts negative passive power
+ * (`README.txt:52`). The app passes the value through unchanged.
  *
  * `cd_time` is a countdown: the command lasts that long. PELS sends 300 s
  * (the Open API's own example) and declares that lifetime, so the storage

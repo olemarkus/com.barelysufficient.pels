@@ -152,11 +152,9 @@ PELS refuse a battery left Inactive. The cost is a 10 W trickle charge during a
 
 **Marstek Venus (Connector app).** The local driver declares no
 `target_power`, only readings; its passive-mode card sets a power for a
-countdown (`cd_time`). The package documents the power's sign nowhere (the
-bundled Open API PDFs say only "Setting power, [W]"); the same app titles its
-Manual-mode power "Watt (negative = charge)", so the binding sends PELS's
-charge as a negative power. The executor's sign check is the safety net should
-a firmware read it the other way. PELS sends a 300 s countdown and sends the
+countdown (`cd_time`). The power is negative to charge and positive to
+discharge, the device's convention, so the binding sends PELS's charge as a
+negative power. PELS sends a 300 s countdown and sends the
 command again every 100 s. The hand-back is the app's Auto mode, the battery's
 own self-consumption. The cloud driver offers no cards and stays watch-only.
 
