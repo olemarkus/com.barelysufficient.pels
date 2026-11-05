@@ -67,11 +67,11 @@ const convergeLifecycleFallback = (
   if (commandState.state === 'unavailable') return 'unavailable';
   // Resolved BEFORE the executor port is required: answering "there is nothing
   // on this device to command" needs no dispatcher, and must not depend on one.
-  const resolution = resolveLifecycleFallbackRequest({
-    device: commandState.device,
-    observedState: commandState.observedState,
-    configuredFallback: ctx.getShedBehavior(deviceId),
-  });
+  const resolution = resolveLifecycleFallbackRequest(
+    commandState.device,
+    commandState.observedState,
+    ctx.getShedBehavior(deviceId),
+  );
   if (resolution.state === 'no_writable_axis') {
     // The one thing the old `'unsupported'` arm never did: say so. A device with
     // no commandable axis (a temperature-control-disabled thermostat with no

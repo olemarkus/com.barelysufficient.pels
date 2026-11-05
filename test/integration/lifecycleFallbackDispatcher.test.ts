@@ -35,10 +35,19 @@ import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { createTestExecutorCommandContext } from '../helpers/executorCommandContext';
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
-import { resolveLifecycleFallbackRequest } from '../../setup/lifecycleFallbackRequest';
+import { buildLifecycleFallbackRequest } from '../../lib/executor/lifecycleFallbackRequest';
+import { resolveFallbackPosture } from '../../lib/planInput/lifecycleFallbackPosture';
 import type { ShedBehavior } from '../../lib/plan/planTypes';
 import { projectLifecycleFallbackDevice } from '../../lib/planInput/lifecycleFallbackDeviceProjection';
 import type { PlanInputSnapshotDevice } from '../../lib/planInput/runtimeDeviceRead';
+
+const resolveLifecycleFallbackRequest = (params: {
+  device: Parameters<typeof buildLifecycleFallbackRequest>[0];
+  observedState: Parameters<typeof buildLifecycleFallbackRequest>[1];
+  configuredFallback: ShedBehavior;
+}) => buildLifecycleFallbackRequest(
+  params.device, params.observedState, resolveFallbackPosture(params.device, params.configuredFallback),
+);
 
 /**
  * Unwraps the seam's per-device result for the cases under test that expect a

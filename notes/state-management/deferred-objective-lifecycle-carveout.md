@@ -91,7 +91,7 @@ The smart-task (deferred-objective) lifecycle comes off the planner on **both en
   objective is over", not "we are short of power". Read "fully off = disable" above as the
   lifecycle reading only.
 - **Which** posture that is, is decided by `resolveLifecycleFallbackRequest`
-  (`setup/lifecycleFallbackRequest.ts`) and is not simply the configured one: it honours
+  (`lib/planInput/lifecycleFallbackPosture.ts`) and is not simply the configured one: it honours
   `set_temperature` only when the target axis is writable, then prefers a **writable binary axis
   over the configured action**, and reaches `set_step` only for a device with no binary handle.
   So a stepped device that exposes both controls and is configured to stop at its lowest active
