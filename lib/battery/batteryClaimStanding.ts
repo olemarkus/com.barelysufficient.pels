@@ -6,9 +6,14 @@
  * writes they are read against.
  */
 import type { HomeBatteryClaimCapabilityId, HomeBatteryClaimObservation } from '../../packages/contracts/src/types';
-import type { BatteryClaimRefusal, BatteryControlRead } from '../ports/batteryControlOwner';
+import type { BatteryClaimAdmission, BatteryClaimRefusal, BatteryControlRead } from '../ports/batteryControlOwner';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
+import type { AppActionControlTarget, StorageReleaseCommand, StorageControlBinding } from '../ports/storageCommand';
 import type { BatteryClaimRecord } from './batteryClaimStore';
+
+/** Complete write authority after durable claim admission. */
+export type WriteAdmission = { status: 'admitted'; control: StorageControlBinding }
+  | Extract<BatteryClaimAdmission, { status: 'refused' }>;
 
 export type SetpointBatteryRead = Extract<BatteryControlRead, { kind: 'setpoint' }>;
 
@@ -30,15 +35,6 @@ export const runsOnHomeyApiKey = (battery: BatteryControlRead): boolean => (
 );
 
 /**
- * Whether a hand-back of an app-actions record could run on the owner's Homey
- * API key now: the battery's hand-back actions are installed and the key may
- * run them, whether or not its command actions are.
- */
-export const canRunAppActionHandBack = (battery: BatteryControlRead): boolean => (
-  battery.kind === 'app_actions' || battery.kind === 'hand_back_only'
-);
-
-/**
  * Why a hand-back can never succeed against the battery as it is now. An
  * app-action battery with no usable Homey API key (`homey_api_key_missing`)
  * is one until a key is saved: its hand-back actions cannot run before.
@@ -57,7 +53,7 @@ export type TerminalReleaseFailure =
  */
 export type ClaimToRecord =
   | { kind: 'claim_capability'; claim: HomeBatteryClaimObservation; capabilityId: HomeBatteryClaimCapabilityId }
-  | { kind: 'app_actions' };
+  | { kind: 'app_actions'; target: AppActionControlTarget };
 
 /**
  * What a hand-back attempt would do to the battery as it is now: the write
@@ -94,7 +90,7 @@ export const isClaimEngaged = (battery: SetpointBatteryRead): boolean => (
 export const resolveValueToRecord = (
   battery: DrivableBatteryRead,
 ): BatteryClaimRefusal | ClaimToRecord => {
-  if (battery.kind === 'app_actions') return { kind: 'app_actions' };
+  if (battery.kind === 'app_actions') return { kind: 'app_actions', target: battery.target };
   const { surface, claim } = battery;
   if ('kind' in claim) return 'claim_unobserved';
   if (claim.value === surface.claim.homeyValue) return 'held_by_other';
@@ -103,16 +99,19 @@ export const resolveValueToRecord = (
 };
 
 /** The record of a claim admitted at `claimedAtMs`. */
-export const toClaimRecord = (value: ClaimToRecord, claimedAtMs: number): BatteryClaimRecord => (
+export const toClaimRecord = (
+  value: ClaimToRecord, claimedAtMs: number,
+): Exclude<BatteryClaimRecord, { kind: 'legacy_app_actions' }> => (
   value.kind === 'app_actions'
-    ? { kind: 'app_actions', claimedAtMs }
+    ? { kind: 'app_actions', target: value.target, claimedAtMs }
     : { kind: 'claim_capability', capabilityId: value.capabilityId, previousValue: value.claim.value, claimedAtMs }
 );
 
 /** Whether the record describes the binding the battery has now: the same claim capability, or app actions. */
 export const isRecordOfBinding = (record: BatteryClaimRecord, battery: DrivableBatteryRead): boolean => (
   battery.kind === 'app_actions'
-    ? record.kind === 'app_actions'
+    ? record.kind === 'app_actions' && record.target.appUri === battery.target.appUri
+      && record.target.deviceId === battery.target.deviceId
     : record.kind === 'claim_capability' && record.capabilityId === battery.surface.claim.capabilityId
 );
 
@@ -122,7 +121,8 @@ export const resolveTerminalFailure = (
   battery: Exclude<BatteryControlRead, { kind: 'unobserved' }>,
 ): TerminalReleaseFailure | undefined => {
   // Its command actions are gone, its hand-back actions are not.
-  if (battery.kind === 'hand_back_only') return record.kind === 'app_actions' ? undefined : 'capability_mismatch';
+  if (battery.kind === 'hand_back_only') return record.kind !== 'claim_capability' ? undefined : 'capability_mismatch';
+  if (battery.kind === 'app_actions' && record.kind !== 'claim_capability') return undefined;
   if (!isDrivableBattery(battery)) return battery.kind;
   if (!isRecordOfBinding(record, battery)) return 'capability_mismatch';
   if (battery.kind === 'app_actions' || record.kind !== 'claim_capability') return undefined;
@@ -198,3 +198,20 @@ export class ClaimWriteLog {
     return nowMs - lastWriteMs < CONTROL_COMMAND_CONFIRMATION_MS ? 'contested' : 'taken_over';
   }
 }
+
+export const toReleaseCommand = (deviceId: string, record: BatteryClaimRecord): StorageReleaseCommand => {
+  if (record.kind === 'claim_capability') {
+    return { kind: 'storage_release', deviceId, handBack: 'claim_capability', restoreClaimValue: record.previousValue };
+  }
+  if (record.kind === 'legacy_app_actions') {
+    return { kind: 'storage_release', deviceId, handBack: 'legacy_app_actions' };
+  }
+  return { kind: 'storage_release', deviceId, handBack: 'app_actions', target: record.target };
+};
+
+/** The write authority of an accepted current-schema claim. */
+export const toControlBinding = (
+  record: Exclude<BatteryClaimRecord, { kind: 'legacy_app_actions' }>,
+): StorageControlBinding => (
+  record.kind === 'app_actions' ? { kind: 'app_actions', target: record.target } : { kind: 'capability' }
+);

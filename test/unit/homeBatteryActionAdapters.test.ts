@@ -44,7 +44,7 @@ describe('Marstek Venus Connector binding', () => {
   });
 
   it('hands back to the battery\'s own Auto mode', () => {
-    expect(actionBinding(venus).resolveHandBack(venus, [venus])).toEqual({ kind: 'resolved', steps: [{ deviceId: 'venus', actionId: 'marstek_auto_mode', args: {} }] });
+    expect(actionBinding(venus).handBack(resolved(venus, [venus]).target)).toEqual([{ deviceId: 'venus', actionId: 'marstek_auto_mode', args: {} }]);
   });
 
   it('leaves the cloud driver on Homey\'s standard binding', () => {
@@ -85,9 +85,9 @@ describe('Sigenergy binding', () => {
     expect(actions.command(0)).toEqual([
       { deviceId: 'sigen-plant', actionId: 'set_remote_ems_control_mode', args: { mode: '1' } },
     ]);
-    expect(actionBinding(battery).resolveHandBack(battery, [battery, plant])).toEqual({ kind: 'resolved', steps: [
+    expect(actionBinding(battery).handBack(resolved(battery, [battery, plant]).target)).toEqual([
       { deviceId: 'sigen-plant', actionId: 'set_remote_ems', args: { state: 'off' } },
-    ] });
+    ]);
   });
 
   it.each([
@@ -128,9 +128,9 @@ describe('Zendure local binding', () => {
   });
 
   it('hands back with the app\'s idle, set-power 0, its only control', () => {
-    expect(actionBinding(zendure).resolveHandBack(zendure, [zendure])).toEqual({ kind: 'resolved', steps: [
+    expect(actionBinding(zendure).handBack(resolved(zendure, [zendure]).target)).toEqual([
       { deviceId: 'zendure', actionId: 'set-power', args: { power: 0 } },
-    ] });
+    ]);
   });
 
   it('leaves the Zendure cloud app, which reports no battery power, on Homey\'s standard binding', () => {
@@ -167,9 +167,9 @@ describe('Huawei LUNA2000 Modbus binding', () => {
   });
 
   it('hands back by stopping the forced run', () => {
-    expect(actionBinding(luna).resolveHandBack(luna, [luna])).toEqual({ kind: 'resolved', steps: [
+    expect(actionBinding(luna).handBack(resolved(luna, [luna]).target)).toEqual([
       { deviceId: 'luna', actionId: 'luna2000_stop_force_charge_discharge', args: {} },
-    ] });
+    ]);
   });
 
   it.each([

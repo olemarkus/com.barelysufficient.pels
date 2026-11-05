@@ -322,7 +322,14 @@ export class DeviceWriteService {
     const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
     const surface = requireDrivableSurface(snapshot, deviceId);
     if (surface.kind === 'app_actions') {
-      return { kind: 'written', setpointW: await this.batteryAppActions.command(deviceId, command.setpointW) };
+      if (command.control.kind !== 'app_actions') throw new Error('Home battery command lacks app-action authority.');
+      return {
+        kind: 'written',
+        setpointW: await this.batteryAppActions.command(deviceId, command.setpointW, command.control.target),
+      };
+    }
+    if (command.control.kind !== 'capability') {
+      throw new Error('Home battery command authority does not match binding.');
     }
     const binding = requireHomeBatteryBinding(this.snapshotStore, deviceId);
     // Checked here as well as in `setCapability`, so a write that never left
@@ -422,7 +429,11 @@ export class DeviceWriteService {
     const { deviceId } = command;
     const surface = requireDrivableSurface(this.snapshotStore.getSnapshotByDeviceId(deviceId), deviceId);
     if (command.handBack === 'app_actions' && surface.kind === 'app_actions') {
-      await this.batteryAppActions.handBack(deviceId);
+      await this.batteryAppActions.handBack(deviceId, command.target);
+      return;
+    }
+    if (command.handBack === 'legacy_app_actions' && surface.kind === 'app_actions') {
+      await this.batteryAppActions.handBackLegacy(deviceId);
       return;
     }
     if (command.handBack !== 'claim_capability' || surface.kind !== 'setpoint') {

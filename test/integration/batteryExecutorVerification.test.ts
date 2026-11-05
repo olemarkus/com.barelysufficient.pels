@@ -51,7 +51,7 @@ const buildLane = () => {
     dispatchSetpoint: vi.fn(async (_id, write) => {
       const admission = owner.admitClaim(BATTERY);
       if (admission.status === 'refused') return admission;
-      return { status: 'dispatched' as const, setpointW: await write() };
+      return { status: 'dispatched' as const, setpointW: await write({ kind: 'capability' }) };
     }),
     readControl: vi.fn((): BatteryLeverRead => ({
       kind: 'setpoint',
@@ -165,9 +165,9 @@ describe('battery storage lane', () => {
     expect(await send(-1500, 300_000)).toBe(true);
 
     expect(apply.mock.calls.map(([command]) => command)).toEqual([
-      { kind: 'storage_power', deviceId: BATTERY, setpointW: -1500 },
-      { kind: 'storage_power', deviceId: BATTERY, setpointW: -1500 },
-      { kind: 'storage_power', deviceId: BATTERY, setpointW: -1500 },
+      { kind: 'storage_power', control: { kind: 'capability' }, deviceId: BATTERY, setpointW: -1500 },
+      { kind: 'storage_power', control: { kind: 'capability' }, deviceId: BATTERY, setpointW: -1500 },
+      { kind: 'storage_power', control: { kind: 'capability' }, deviceId: BATTERY, setpointW: -1500 },
     ]);
     // The same command, not a new one: its verdict stands and the restore is not stamped again.
     read(-1500, 2500, 310_000);
@@ -288,7 +288,7 @@ describe('battery storage lane', () => {
 
     expect(await send(-1500, 0)).toBe(true);
     expect(owner.admitClaim).toHaveBeenCalledBefore(apply);
-    expect(apply).toHaveBeenCalledWith({ kind: 'storage_power', deviceId: BATTERY, setpointW: -1500 });
+    expect(apply).toHaveBeenCalledWith({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: BATTERY, setpointW: -1500 });
 
     expect(await send(-1500, 1_000)).toBe(false);
     expect(apply).toHaveBeenCalledTimes(1);

@@ -52,6 +52,7 @@ export const MARSTEK_PASSIVE_SECONDS = 300;
 const MARSTEK_RANGE_W = 2500;
 
 const marstekActions = (deviceId: string): HomeBatteryActions => ({
+  target: { appUri: `homey:app:${MARSTEK_CONNECTOR_APP_ID}`, deviceId },
   range: { minW: -MARSTEK_RANGE_W, maxW: MARSTEK_RANGE_W, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
   // PELS's charge is the app's negative power.
   command: (setpointW) => [{
@@ -65,9 +66,13 @@ const MARSTEK_BINDING: HomeBatteryActionBinding = {
   kind: 'app_actions',
   appUri: `homey:app:${MARSTEK_CONNECTOR_APP_ID}`,
   commandLifetime: () => ({ kind: 'expires', lifetimeMs: MARSTEK_PASSIVE_SECONDS * 1000 }),
-  resolveHandBack: (device) => ({
-    kind: 'resolved', steps: [{ deviceId: device.id, actionId: 'marstek_auto_mode', args: {} }],
+  resolveTarget: (device) => ({
+    kind: 'resolved', target: { appUri: `homey:app:${MARSTEK_CONNECTOR_APP_ID}`, deviceId: device.id },
   }),
+  resolveLegacyTarget: (device) => ({
+    kind: 'resolved', target: { appUri: `homey:app:${MARSTEK_CONNECTOR_APP_ID}`, deviceId: device.id },
+  }),
+  handBack: (target) => [{ deviceId: target.deviceId, actionId: 'marstek_auto_mode', args: {} }],
   resolve: (device) => ({ kind: 'resolved', actions: marstekActions(device.id) }),
 };
 

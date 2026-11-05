@@ -1,7 +1,6 @@
 /** The battery owner's hand-back gate before removing the shared Homey API key. */
 import type { BatteryControlRead, BatteryKeyRemovalOutcome } from '../ports/batteryControlOwner';
 import { getLogger } from '../logging/logger';
-import { canRunAppActionHandBack } from './batteryClaimStanding';
 
 const logger = getLogger('battery');
 
@@ -18,13 +17,14 @@ export async function handBackBeforeKeyRemoval(
     return 'claim_records_unreadable';
   }
   await Promise.all(held.map(release));
-  // An unobserved battery may still need this key once its first read arrives.
-  // Only a resolved inability to use the key makes removal lose nothing.
+  // An unresolved recorded target may recover independently of the current
+  // inventory. Keep its key until release succeeds; an already missing key
+  // is the only case where removing it loses nothing.
   const remaining = readClaims();
   if (remaining === undefined) return 'claim_records_unreadable';
   const left = remaining.filter((id) => {
     const battery = getBattery(id);
-    return battery.kind === 'unobserved' || canRunAppActionHandBack(battery);
+    return battery.kind !== 'homey_api_key_missing';
   });
   if (left.length !== 0) {
     logger.warn({ event: 'homey_api_key_removal_refused', deviceIds: left });

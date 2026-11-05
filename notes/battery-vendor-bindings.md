@@ -38,10 +38,23 @@ Homey API key (see "App-action bindings" below). It states:
   drop others.
 - **resolve(device, devices)**: the battery's actions, from the host's last
   full device inventory, or why there are none (`reasonCode`, logged only).
-  The actions are the signed range in PELS's sign, `command(setpointW)` (the
-  ordered cards for a charge, a discharge or a 0 W hold) and `handBack` (the
-  ordered cards that return the battery to its own mode). Each step names a
-  card id within the app, the device it runs on and its own arguments.
+  The actions carry the exact target, the signed range in PELS's sign, and
+  `command(setpointW)` (the ordered cards for a charge, discharge or 0 W hold).
+- **resolveTarget(device, devices)**: the app and controlled device identity,
+  independent of command range and admission.
+- **handBack(target)**: cards that return that recorded target to its own mode.
+- **resolveLegacyTarget(device)**: only a historical self-target can be
+  recovered without a recorded identity. Unknown companion identity is refused.
+
+The battery owner stores the target in `battery_control_claim.<deviceId>`
+before the first write and carries it through the actuator on commands and
+hand-back. Transport checks command identity again before each action POST.
+Retries and restart recovery always use that stored target. Records contain
+identity, never executable card IDs or arguments. Legacy self-target claims
+can be released by their adapter; legacy Sigenergy claims lack the old plant
+identity and remain pending with `legacy_target_unknown`. The original plant
+must be returned to its own EMS manually; PELS never guesses it from newly
+paired devices. Such a record is retained and blocks new control.
 
 The transport resolves the control surface from the binding at parse
 (`lib/device/transport/homeBatteryObservation.ts`) and the storage writes at
@@ -90,7 +103,7 @@ remove once the key is saved (`batteryUsesHomeyApiKey` on the device list).
   last command on with nothing left to hand it back.
 - **No claim to observe.** The app reports nothing PELS could read as a claim.
   The battery control owner treats PELS's own claim record
-  (`{ handBack: 'app_actions', claimedAtMs }`) as the claim: written before the
+  (`{ handBack: 'app_actions', target, claimedAtMs }`) as the claim: written before the
   first command, removed after the hand-back, recovered at boot, retried with
   back-off, like any other. Its standing is always held. **A takeover cannot
   be detected**: an owner who changes the battery's mode in its own app while
@@ -165,10 +178,9 @@ from the device inventory, and the battery is unavailable with none, with two
 PELS would drive it twice). The range is the plant's rated charge and discharge
 power from its settings; while either is unknown the plant also refuses to
 remove a limit, so PELS does not drive it. The hand-back turns remote EMS off,
-which works independently of rated power. The transport retains the plant
-target of an issued command until hand-back succeeds; pairing another plant
-does not redirect that hand-back or allow commands on the replacement. After
-a restart, an unresolved plant identity keeps the hand-back pending. Some firmware returns to Max
+which works independently of rated power. The durable claim retains the plant
+target until hand-back succeeds; pairing another plant, including across a
+restart, does not redirect that hand-back or authorize commands on the replacement. Some firmware returns to Max
 self consumption rather than the mode chosen in mySigen, and a limit the owner
 had set before PELS is not restored; neither is readable through the app.
 

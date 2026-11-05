@@ -343,7 +343,7 @@ export class BatteryExecutor {
     if (power === undefined) return false;
     const keepAlive = this.commands.get(device.id)?.setpointW === decision.setpointW;
     try {
-      const outcome = await this.owner.dispatchSetpoint(device.id, async () => {
+      const outcome = await this.owner.dispatchSetpoint(device.id, async (controlBinding) => {
         const baseline = this.readBatteryPower(device.id);
         if (baseline === undefined) return 'skipped';
         const sentAtMs = Date.now();
@@ -351,7 +351,7 @@ export class BatteryExecutor {
         if (keepAlive) this.recordKeepAlive(device.id, nextKeepAliveAtMs(commandKeepAlive, sentAtMs));
         else this.recordSent(device.id, decision, baseline, sentAtMs, commandKeepAlive);
         const sent = await this.actuator.apply({
-          kind: 'storage_power', deviceId: device.id, setpointW: decision.setpointW,
+          kind: 'storage_power', deviceId: device.id, setpointW: decision.setpointW, control: controlBinding,
         });
         if (!sent.requested && 'reason' in sent && sent.reason === 'claim_rejected') {
           return { kind: sent.reason, errorMessage: sent.errorMessage };

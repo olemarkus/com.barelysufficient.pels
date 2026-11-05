@@ -51,7 +51,7 @@ describe('home battery storage writes', () => {
     const device = buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'anti_feed', excludeW: 1000 });
     const { transport, writes } = await setup(device);
 
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 990 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: BATTERY, setpointW: 990 }))
       .resolves.toEqual({ kind: 'written', setpointW: 1000 });
 
     expect(writes()).toEqual([['target_power_mode', 'homey'], ['target_power', 1000]]);
@@ -61,8 +61,8 @@ describe('home battery storage writes', () => {
   it('writes only the setpoint to a battery that already reports Homey\'s claim', async () => {
     const { transport, writes } = await setup(buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'homey', stepW: 100 }));
 
-    await transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: -250 });
-    await transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 600 });
+    await transport.requestStoragePower({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: BATTERY, setpointW: -250 });
+    await transport.requestStoragePower({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: BATTERY, setpointW: 600 });
 
     expect(writes()).toEqual([['target_power', -300], ['target_power', 600]]);
   });
@@ -72,7 +72,7 @@ describe('home battery storage writes', () => {
     device.configureCapabilityBehavior('target_power_mode', { onApiWrite: { accept: false } });
     const { transport, writes } = await setup(device);
 
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 1500 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: BATTERY, setpointW: 1500 }))
       .resolves.toEqual({ kind: 'claim_rejected', errorMessage: expect.stringContaining('rejected') });
 
     expect(writes()).toEqual([['target_power_mode', 'homey']]);
@@ -83,7 +83,7 @@ describe('home battery storage writes', () => {
     const { transport } = await setup(buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'anti_feed' }));
     vi.spyOn(mockHomeyInstance.api, 'put').mockRejectedValueOnce(new HomeyRequestTimeoutError('PUT', '/capability'));
 
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 1500 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: BATTERY, setpointW: 1500 }))
       .rejects.toThrow('timed out');
   });
 
@@ -93,7 +93,7 @@ describe('home battery storage writes', () => {
       Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }),
     );
 
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 1500 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: BATTERY, setpointW: 1500 }))
       .rejects.toThrow('socket hang up');
   });
 
@@ -124,7 +124,7 @@ describe('home battery storage writes', () => {
     const device = buildSessyBatteryDevice({ id: BATTERY, strategy: 'POWER_STRATEGY_NOM' });
     const { transport, writes } = await setup(device);
 
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 2500 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: BATTERY, setpointW: 2500 }))
       .resolves.toEqual({ kind: 'written', setpointW: 2200 });
     await transport.releaseStorageControl({
       kind: 'storage_release', deviceId: BATTERY, handBack: 'claim_capability', restoreClaimValue: 'POWER_STRATEGY_NOM',
@@ -141,9 +141,9 @@ describe('home battery storage writes', () => {
     const device = buildAnkerSolixBatteryDevice({ id: BATTERY, mode: 'homey' });
     const { transport, writes } = await setup(device);
 
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 1540 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: BATTERY, setpointW: 1540 }))
       .resolves.toEqual({ kind: 'written', setpointW: 1500 });
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: -800 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: BATTERY, setpointW: -800 }))
       .resolves.toEqual({ kind: 'written', setpointW: -800 });
     await transport.releaseStorageControl({
       kind: 'storage_release', deviceId: BATTERY, handBack: 'claim_capability', restoreClaimValue: 'self_consumption',
@@ -161,7 +161,7 @@ describe('home battery storage writes', () => {
     const { transport, writes } = await setup(device);
 
     // The executor records PELS's own 0 W, so it does not re-send the hold.
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 0 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: BATTERY, setpointW: 0 }))
       .resolves.toEqual({ kind: 'written', setpointW: 0 });
     await transport.releaseStorageControl({ kind: 'storage_release', deviceId: BATTERY, handBack: 'claim_capability', restoreClaimValue: 'SELF_USE' });
 
@@ -176,7 +176,7 @@ describe('home battery storage writes', () => {
     device.setCapabilityMetadata('target_power', { setable: false, min: -2500, max: 2500, step: 1 });
     const { transport, writes } = await setup(device);
 
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: BATTERY, setpointW: 500 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: BATTERY, setpointW: 500 }))
       .rejects.toThrow('observe-only (target_power_not_setable)');
     expect(writes()).toEqual([]);
   });
