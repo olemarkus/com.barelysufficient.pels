@@ -9,7 +9,9 @@ import { logSettingsError } from './logging.ts';
 import { isSmartTaskCapable, readMainHomeManagedDevices } from './mainHomeDevices.ts';
 import { loadPriceSetupSuggestion } from './priceSetupOffer.ts';
 import { getPricesReadModel } from './prices.ts';
-import { isBelgianHomeOnHourlyPeriod, readSetupMarket, readSetupPath } from './setupPathFacts.ts';
+import {
+  isBelgianHomeOnHourlyPeriod, isSetupDeviceLimitable, readSetupMarket, readSetupPath,
+} from './setupPathFacts.ts';
 import { resolveHomeExhibitsSolar, resolveSurplusControlAvailable, state } from './state.ts';
 
 type PriceSetupState =
@@ -105,7 +107,7 @@ const resolveDevices = (
   const solarSurplusDeviceIds = new Set(setup.solarSurplusDeviceIds);
   return managed.map((device) => ({
     temperature: supportsTemperatureControlDevice(device),
-    limitable: supportsPowerDevice(device) && state.controllableMap[device.id] === true,
+    limitable: supportsPowerDevice(device) && isSetupDeviceLimitable(device.id),
     taskCapable: isSmartTaskCapable(device),
     heatsWaterOnTask: device.deviceClass === 'waterheater' || supportsSmartTaskKind(device, 'energy'),
     priceConfigured: configuredDeviceIds.has(device.id),

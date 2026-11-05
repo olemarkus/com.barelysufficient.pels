@@ -1,3 +1,4 @@
+import type { ContinuousBatteryPlanConfigs } from '../../../contracts/src/continuousBatteryPlan.ts';
 import { getChosenWholeHomeMeterName } from './homeyEnergyMeter.ts';
 import { settingsPowerSourceSelect } from './dom.ts';
 import { h, render } from 'preact';
@@ -37,7 +38,10 @@ import { readActiveRecommendation, dismissSetupRecommendation } from './recommen
 import { offersSetupGoals, resolveSetupGoalChoices } from './setupGoals.ts';
 import { followsPrices, readMainHomeManagedDevices } from './mainHomeDevices.ts';
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
-import { isSetupBatteryPlanOn, loadSetupBatteryPlans, onSetupBatteryPlansChange } from './setupBatteryPlan.ts';
+import {
+  acceptSetupBatteryPlans, isSetupBatteryPlanOn, loadSetupBatteryPlans,
+  onSetupBatteryPlansChange, retrySetupBatteryPlans,
+} from './setupBatteryPlan.ts';
 
 let actionBusy = false;
 let error: string | null = null;
@@ -334,6 +338,7 @@ const refreshLivePreview = async (): Promise<void> => {
 };
 
 export const initSetupJourney = (): void => {
+  void loadSetupBatteryPlans();
   document.addEventListener('pels:tab-shown', () => {
     error = null;
     const step = currentStep();
@@ -350,7 +355,11 @@ export const initSetupJourney = (): void => {
   // offers and whether its controls are busy, not only its header.
   document.addEventListener('pels:setup-save', repaintJourney);
   document.addEventListener('pels:recommendations-updated', paintJourney);
-  document.addEventListener('devices-updated', () => { paintJourney(); notifySetupPathChange(); });
+  document.addEventListener('devices-updated', () => {
+    void retrySetupBatteryPlans();
+    paintJourney();
+    notifySetupPathChange();
+  });
   document.addEventListener('device-detail-closed', () => {
     if (state.devicesLoaded) renderDevices(state.latestDevices);
     paintJourney();
@@ -366,8 +375,8 @@ export const initSetupJourney = (): void => {
   // The battery row and the review read the saved battery plans; a save on the
   // battery's own page changes them too.
   onSetupBatteryPlansChange(repaintJourney);
-  document.addEventListener('continuous-battery-plan-changed', () => {
-    if (currentStep() === 'goals' || currentStep() === 'review') void loadSetupBatteryPlans();
+  document.addEventListener('continuous-battery-plan-changed', (event) => {
+    acceptSetupBatteryPlans((event as CustomEvent<ContinuousBatteryPlanConfigs>).detail);
   });
   subscribeToHomeScope(() => {
     const step = currentStep();

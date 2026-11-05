@@ -164,6 +164,84 @@ describe('Choose what PELS does', () => {
       expect(plans.isSetupBatteryPlanOn('battery')).toBe(true);
     });
 
+    it('publishes a loaded battery plan into the required Prices step', async () => {
+      const { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } = await import('../../shared-domain/src/settings/continuousBatteryPlan.ts');
+      savedPlans.mockResolvedValue({ battery: { ...DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, enabled: true } });
+      const { facts, state } = await load();
+      manageBattery(state);
+      facts.publishSetupPower({ state: 'received' });
+      facts.publishSetupHardCapRead(true, {
+        capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2,
+        dryRun: true, periodMinutes: 60,
+      });
+      facts.publishSetupPrices({
+        respondToPrices: true, budgetShapesByPrice: false,
+        status: { state: 'open', summary: 'Choose your Norway price settings.' },
+      });
+      const plans = await import('../src/ui/setupBatteryPlan.ts');
+      await plans.loadSetupBatteryPlans();
+      expect(facts.readSetupReview()?.steps.find((step) => step.id === 'prices'))
+        .toMatchObject({ status: 'next', detail: 'Choose your Norway price settings.' });
+    });
+
+    it('recovers the first battery read through the device-refresh retry', async () => {
+      const { goals, state } = await load();
+      manageBattery(state);
+      const plans = await import('../src/ui/setupBatteryPlan.ts');
+      savedPlans.mockRejectedValueOnce(new Error('temporarily unavailable'));
+      await plans.loadSetupBatteryPlans();
+      expect(batteryGoal(goals)).toEqual({ state: 'unavailable' });
+      await plans.retrySetupBatteryPlans();
+      expect(batteryGoal(goals)).toMatchObject({ state: 'ready', enabled: false });
+      expect(savedPlans).toHaveBeenCalledTimes(2);
+      await plans.retrySetupBatteryPlans();
+      expect(savedPlans).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps an accepted enable when its follow-up read fails, including the required Prices step', async () => {
+      const { goals, facts, state } = await load();
+      manageBattery(state);
+      facts.publishSetupPower({ state: 'received' });
+      facts.publishSetupHardCapRead(true, {
+        capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2,
+        dryRun: true, periodMinutes: 60,
+      });
+      facts.publishSetupPrices({
+        respondToPrices: true, budgetShapesByPrice: false,
+        status: { state: 'open', summary: 'Choose your Norway price settings.' },
+      });
+      const plans = await import('../src/ui/setupBatteryPlan.ts');
+      await plans.loadSetupBatteryPlans();
+      savedPlans.mockRejectedValueOnce(new Error('read failed after accepted save'));
+      await plans.saveSetupBatteryPlan('battery', true, 5.12);
+      expect(batteryGoal(goals)).toMatchObject({ state: 'ready', enabled: true, capacityKWh: 5.12 });
+      expect(plans.isSetupBatteryPlanOn('battery')).toBe(true);
+      expect(facts.readSetupReview()?.steps.find((step) => step.id === 'prices')?.status).toBe('next');
+    });
+
+    it('accepts a device-page save without losing its Prices requirement to a failed read', async () => {
+      const { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } = await import('../../shared-domain/src/settings/continuousBatteryPlan.ts');
+      const { goals, facts, state } = await load();
+      manageBattery(state);
+      facts.publishSetupPower({ state: 'received' });
+      facts.publishSetupHardCapRead(true, {
+        capacityEnabled: false, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2,
+        dryRun: true, periodMinutes: 60,
+      });
+      facts.publishSetupPrices({
+        respondToPrices: true, budgetShapesByPrice: false,
+        status: { state: 'open', summary: 'Choose your Norway price settings.' },
+      });
+      const plans = await import('../src/ui/setupBatteryPlan.ts');
+      await plans.loadSetupBatteryPlans();
+      expect(facts.readSetupPath()).toEqual({ state: 'complete' });
+      plans.acceptSetupBatteryPlans({ battery: { ...DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, enabled: true } });
+      savedPlans.mockRejectedValueOnce(new Error('later read unavailable'));
+      await plans.loadSetupBatteryPlans();
+      expect(batteryGoal(goals)).toMatchObject({ state: 'ready', enabled: true });
+      expect(facts.readSetupReview()?.steps.find((step) => step.id === 'prices')?.status).toBe('next');
+    });
+
     it('says why PELS cannot plan a battery it cannot drive', async () => {
       const { goals, state } = await load();
       manageBattery(state, { ...battery, batteryControl: 'needs_homey_api_key' } as Device);

@@ -155,5 +155,8 @@ export async function saveContinuousBatteryPlanConfig(
   }
   await setSetting(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, next);
   invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
+  document.dispatchEvent(new CustomEvent<ContinuousBatteryPlanConfigs>(
+    'continuous-battery-plan-changed', { detail: next },
+  ));
   return config;
 }

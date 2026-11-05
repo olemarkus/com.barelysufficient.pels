@@ -111,3 +111,55 @@ describe('offering Power by the Hour in place of an assumed Homey Energy', () =>
     expect(loadPriceSetupSuggestion).not.toHaveBeenCalled();
   });
 });
+
+describe('Belgian battery-only setup', () => {
+  it('offers the Flemish period choice for a drivable battery with its default power-limit control', async () => {
+    vi.resetModules();
+    vi.doMock('../src/ui/homeScope.ts', () => ({
+      readHomeMembership: () => ({ state: 'resolved', membershipByDeviceId: {} }),
+      subscribeToHomeScope: () => undefined,
+    }));
+    vi.doMock('../src/ui/deferredObjectiveSettings.ts', () => ({ hasLoadedDeferredObjectiveSettings: () => true }));
+    vi.doMock('../src/ui/prices.ts', () => ({
+      getPricesReadModel: async () => ({
+        ...payload('homey', { kind: 'chosen' }),
+        priceOptimizationSetup: {
+          state: 'resolved', setup: { enabled: true, configuredDeviceIds: [], solarSurplusDeviceIds: [] },
+        },
+        priceTimeline: { state: 'unavailable', reason: 'no_prices' },
+      }),
+    }));
+    const after = await import('../src/ui/afterSetupFacts.ts');
+    const setup = await import('../src/ui/setupPathFacts.ts');
+    const { resolveAfterSetupRecommendations } = await import('../src/ui/afterSetupRecommendations.ts');
+    const { state } = await import('../src/ui/state.ts');
+    state.devicesLoaded = true;
+    state.latestDevices = [{
+      id: 'battery', deviceClass: 'battery', batteryControl: 'drivable', powerCapable: true,
+    }] as typeof state.latestDevices;
+    state.batteryControl = { status: 'resolved', devices: {} };
+    state.managedMap = {};
+    state.controllableMap = {};
+    setup.publishSetupMarket({ state: 'resolved', country: 'BE' });
+    setup.publishSetupPower({ state: 'received' });
+    setup.publishSetupHardCapRead(false, {
+      capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, dryRun: true, periodMinutes: 60,
+    });
+    setup.publishSetupPrices({
+      respondToPrices: false, budgetShapesByPrice: false, status: { state: 'complete', summary: 'Homey Energy' },
+    });
+    setup.publishSetupBatteryPlans({});
+    await after.loadAfterSetupFacts();
+    const recommendations = () => {
+      const read = after.readAfterSetupFacts();
+      if (read.state !== 'resolved') throw new Error(`Facts are ${read.state}`);
+      return resolveAfterSetupRecommendations(read.facts, {}).map((recommendation) => recommendation.id);
+    };
+    expect(recommendations()).toContain('market:flanders-capacity-period');
+    state.controllableMap = { battery: false };
+    expect(recommendations()).not.toContain('market:flanders-capacity-period');
+    state.controllableMap = {};
+    state.latestDevices[0]!.batteryControl = 'needs_homey_api_key';
+    expect(recommendations()).not.toContain('market:flanders-capacity-period');
+  });
+});

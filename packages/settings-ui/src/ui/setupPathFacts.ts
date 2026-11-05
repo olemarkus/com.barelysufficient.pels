@@ -1,3 +1,4 @@
+import type { ContinuousBatteryPlanConfigs } from '../../../contracts/src/continuousBatteryPlan.ts';
 import type { CapacityScalarSettings } from '../../../contracts/src/capacitySettings.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUi/webApp.ts';
@@ -61,6 +62,7 @@ export type SetupPriceUse = {
 };
 
 let prices: SetupFactsRead<SetupPriceUse> = { state: 'loading' };
+let batteryPlans: SetupFactsRead<ContinuousBatteryPlanConfigs> = { state: 'loading' };
 const listeners = new Set<() => void>();
 
 // Several callers report "something the path reads may have moved" (a device
@@ -110,6 +112,18 @@ export const publishSetupPrices = (next: SetupPriceUse): void => {
 export const publishSetupPricesUnavailable = (): void => {
   if (prices.state === 'ready') return;
   prices = { state: 'unavailable' };
+  notify();
+};
+
+// The saved-plan owner publishes here, so the facts module stays a leaf.
+export const publishSetupBatteryPlans = (configs: ContinuousBatteryPlanConfigs): void => {
+  batteryPlans = { state: 'ready', value: configs };
+  notify();
+};
+
+export const publishSetupBatteryPlansUnavailable = (): void => {
+  if (batteryPlans.state === 'ready') return;
+  batteryPlans = { state: 'unavailable' };
   notify();
 };
 
@@ -185,7 +199,8 @@ export type SetupPathRead =
 /**
  * The Prices step applies once something uses prices: a managed device with
  * Price-based control on or a Smart task, or a daily budget that shapes toward
- * cheaper hours, all behind Respond to prices. A read that failed asks for
+ * cheaper hours, all behind Respond to prices. Continuous battery plans use
+ * prices independently of that switch. A read that failed asks for
  * nothing: the step is never judged on a guess.
  */
 const usesPrices = (deviceId: string): boolean => {
@@ -197,7 +212,9 @@ const usesPrices = (deviceId: string): boolean => {
 const resolveSetupPrices = (managedIds: readonly string[]): SetupPrices => {
   if (prices.state !== 'ready') return { state: 'unused' };
   const { respondToPrices, budgetShapesByPrice, status } = prices.value;
-  const used = respondToPrices && (budgetShapesByPrice || managedIds.some(usesPrices));
+  const configs = batteryPlans.state === 'ready' ? batteryPlans.value : null;
+  const batteryUsesPrices = managedIds.some((id) => isHomeBatteryDeviceId(id) && configs?.[id]?.enabled === true);
+  const used = batteryUsesPrices || (respondToPrices && (budgetShapesByPrice || managedIds.some(usesPrices)));
   if (!used) return { state: 'unused' };
   return { state: 'used', complete: status.state === 'complete', summary: status.summary };
 };
@@ -224,6 +241,8 @@ const readSetupFacts = (): SetupFactsRead<SetupPathFacts> => {
     .filter((device) => (membership.membershipByDeviceId[device.id] ?? MAIN_HOME_ID) === MAIN_HOME_ID)
     .map((device) => device.id));
   const managedIds = [...knownIds].filter(resolveManagedState);
+  // An unread battery plan must not let Review offer activation without its Prices step.
+  if (managedIds.some(isHomeBatteryDeviceId) && batteryPlans.state !== 'ready') return { state: batteryPlans.state };
   const limitableIds = managedIds.filter(isSetupDeviceLimitable);
   return { state: 'ready', value: {
     power: power.value,
