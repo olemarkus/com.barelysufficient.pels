@@ -58,7 +58,7 @@ import type {
   DeviceExpectedPowerOverrides,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
-import type { DeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
+import type { DeviceControlHelpers, AppSnapshotControl } from './runtimeHelpers';
 import type { SteppedCommandStore } from '../executor/steppedCommandStore';
 import type { SteppedReportedStepStore } from '../observer/steppedReportedStep';
 import type { HomeMembershipPort } from '../home/membership';
@@ -68,7 +68,6 @@ import type { LastControlledStore } from '../plan/lastControlledStore';
 import type { GenerationPollSource } from '../power/sources/generationPoll';
 import type { HomeyEnergyPollSource } from '../power/sources/homeyEnergyPoll';
 import type { PlanRebuildThrottle } from '../plan/rebuildScheduler/throttle';
-import type { AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
 import type { SnapshotRefreshOptions } from '../device/snapshotRefreshScheduler';
 import type { TimerRegistry } from '../utils/timerRegistry';
 import type { FlowBackedDeviceState } from '../device/flowBackedDeviceState';
@@ -382,7 +381,7 @@ export type AppContext = {
    * clock drives its one shed pass. Sub-homes carry their own on the bundle.
    */
   meterSilenceMonitor: MeterSilenceMonitor;
-  readonly snapshotHelpers: AppSnapshotHelpers;
+  readonly snapshotHelpers: AppSnapshotControl;
   readonly homeyEnergyHelpers: HomeyEnergyPollSource;
   /**
    * Production companion poll. Active only on the flow source, where net comes

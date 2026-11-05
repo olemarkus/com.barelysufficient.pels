@@ -1,3 +1,4 @@
+import type { DeviceControlHelpers } from '../lib/app/runtimeHelpers';
 import type { AppContext } from '../lib/app/appContext';
 import { DeviceTargetPowerReachabilityOwner } from '../lib/device/deviceTargetPowerReachabilityOwner';
 import { SteppedDeviceControl } from '../lib/executor/steppedDeviceControl';
@@ -11,7 +12,7 @@ export const createDeviceControlHelpers = (
   ctx: AppContext,
   updateReachability: DeviceTargetPowerReachabilityOwner['update'],
   scheduleSettlement: (dueAtMs: number) => void,
-) => {
+): DeviceControlHelpers => {
   const structuredLog = getLogger('devices');
   const reachabilityOwner = new DeviceTargetPowerReachabilityOwner(
     (deviceId) => ctx.deviceControlSettings.getDeviceTargetPowerConfig(deviceId),
@@ -41,5 +42,3 @@ export const createDeviceControlHelpers = (
     getLifecycleFallbackDevice: projection.getLifecycleFallbackDevice.bind(projection),
   };
 };
-
-export type DeviceControlHelpers = ReturnType<typeof createDeviceControlHelpers>;

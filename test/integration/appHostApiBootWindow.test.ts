@@ -73,6 +73,11 @@ describe('AppHostApi boot window', () => {
     expect(getUiPayload).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects price setup suggestions before their owner is wired', async () => {
+    await expect(createHostApi(undefined).suggestPriceSetup())
+      .rejects.toThrow('Price setup suggestions are unavailable during startup.');
+  });
+
   it('reports price-optimization setup as unavailable before its owner is wired', () => {
     expect(createHostApi(undefined).readPriceOptimizationSetup()).toEqual({ state: 'unavailable' });
   });
