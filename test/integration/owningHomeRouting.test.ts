@@ -4,7 +4,7 @@ import type { OwningHomeHooks } from '../../setup/homeRuntime/createHomeCapacity
 import type { AppContext } from '../../lib/app/appContext';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
-import { createExternalOffHoldPolicy } from '../../setup/externalOffHoldAdapter';
+import { createExternalOffHoldPolicy } from '../../lib/observer/externalOffHoldSettings';
 import { RESPECT_EXTERNAL_OFF_DEVICES } from '../../lib/utils/settingsKeys';
 import type { PlanService } from '../../lib/plan/planService';
 import {

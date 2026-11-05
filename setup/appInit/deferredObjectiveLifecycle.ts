@@ -1,3 +1,4 @@
+import { createPlanHistoryObservation } from '../../lib/objectives/deferredObjectives/planHistoryObservation';
 import type { AppContext } from '../../lib/app/appContext';
 import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import {
@@ -15,7 +16,6 @@ import {
   disableDeferredObjectiveInSettings,
   requireDeferredObjectiveActivePlanRecorder,
   requireDeferredObjectivePlanHistoryRecorder,
-  WATERMARK_IDLE_REFRESH_MS,
   writeWatermark,
   requireDeferredObjectiveEnergyDelivery,
 } from './deferredRecorders';
@@ -158,7 +158,7 @@ export const handleDeferredDeadlineReached = (
  * "lift the lifecycle onto its own clock" step — the planner no longer emits
  * or records smart-task state. The `observe*` closures (including the watermark
  * persistence bookkeeping) are moved verbatim from `createPlanEngine`; the
- * emitter owns the `lastWatermarkPersistMs` state via the closure below.
+ * history observation owner retains its watermark throttle.
  *
  * INVARIANT: this emitter is the sole WRITER to BOTH the plan-history recorder
  * AND the active-plan commitment recorder (`observeDeferredObjectiveActivePlans`
@@ -177,7 +177,6 @@ export function createDeferredObjectiveLifecycleEmitter(
   ctx: AppContext,
   taskEvaluationSource: TaskEvaluationSource,
 ): DeferredObjectiveLifecycleEmitter {
-  let lastWatermarkPersistMs = 0;
   const readTrustedObjectiveSettings = createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings);
   return new DeferredObjectiveLifecycleEmitter({
     source: taskEvaluationSource,
@@ -191,21 +190,9 @@ export function createDeferredObjectiveLifecycleEmitter(
     onDeadlineReached: (deviceId, deadlineAtMs, nowMs) => (
       handleDeferredDeadlineReached(ctx, deviceId, deadlineAtMs, nowMs)
     ),
-    observeDeferredObjectivePlanHistory: (diagnostics, nowMs, activePlans) => {
-      const recorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
-      recorder.observe(diagnostics, nowMs, activePlans);
-      // Advance the watermark only once the recorder is clean: a failed save leaves it
-      // dirty, and the watermark stays put so the next restart re-tries the persistence.
-      // Otherwise advance it on its own throttle — never per flush. An open run's
-      // metered delivery accrues on every tick, and a settings write per tick is the
-      // allocation churn `settings.set` must never see. A watermark up to one throttle
-      // behind costs nothing: back-fill skips any deadline that already has an entry.
-      recorder.flushIfDirty();
-      if (recorder.isDirty()) return;
-      if (nowMs - lastWatermarkPersistMs < WATERMARK_IDLE_REFRESH_MS) return;
-      writeWatermark(ctx, nowMs);
-      lastWatermarkPersistMs = nowMs;
-    },
+    observeDeferredObjectivePlanHistory: createPlanHistoryObservation(
+      () => requireDeferredObjectivePlanHistoryRecorder(ctx), (nowMs) => writeWatermark(ctx, nowMs),
+    ),
     // Active-plan commitment WRITE, on the clock. The recorder gates replan
     // revisions to once per hour at :58 (first revision immediate); the planner
     // READS the committed plan every power cycle for its decoration. Driving the

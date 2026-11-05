@@ -1,7 +1,7 @@
 // The LOAD side of `respect_external_off_devices`.
 //
 // The runtime validates this map as a whole (`isBooleanMap` in
-// `setup/externalOffHoldAdapter.ts`) and rejects it outright on a single
+// `lib/observer/externalOffHoldSettings.ts`) and rejects it outright on a single
 // non-boolean entry. A shape-only cast here would render a device as opted in
 // while PELS honoured no opt-in at all — the switch asserting behaviour that is
 // not happening. The write path repairs the stored map on the next toggle.

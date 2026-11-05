@@ -2,7 +2,7 @@
 // controllers. Outward seams (the controllers, the setting read, the clock)
 // are faked structurally; the real selection policy + transition logging run.
 import { describe, expect, it, vi } from 'vitest';
-import { createPvForecastSourceSelector } from '../../setup/appInit/createPvForecastSourceSelector';
+import { createPvForecastSourceSelector } from '../../lib/solar/pvForecastSourceSelector';
 import { HomeyEnergySolarForecastSource } from '../../lib/solar/homeyEnergySolarForecast';
 import { emptyPvForecastServiceState, PvForecastService } from '../../lib/solar/pvForecastService';
 import type { PvForecastSourceSetting } from '../../lib/solar/pvForecastSource';

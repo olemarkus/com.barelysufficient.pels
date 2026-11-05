@@ -2,9 +2,8 @@ import type { Logger as PinoLogger } from 'pino';
 import { startPerfLogger } from '../lib/diagnostics/perfLogging';
 import { startResourceWarningListeners as startResourceWarnings } from '../lib/diagnostics/resourceWarnings';
 import { installHeapSnapshotHandler } from '../lib/diagnostics/heapSnapshotHandler';
-import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './appPriceLowestTrigger';
+import { wirePriceLowestTrigger } from './wirePriceLowestTrigger';
 import type { AppContext } from '../lib/app/appContext';
-import { requirePriceCoordinator } from './appInit/contextGuards';
 import { startDeferredObjectiveLifecycleClock } from './deferredObjectiveLifecycleClock';
 import type { DeferredObjectiveLifecycleEmitter } from '../lib/objectives/deferredObjectives/lifecycleEmitter';
 import type { WeatherCollector } from '../lib/weather/weatherCollector';
@@ -33,7 +32,7 @@ type TeardownKey = (typeof TEARDOWN_ORDER)[number];
  * is `app.ts`'s — remembering those callbacks was the only state this wiring
  * held, so it belongs to the composition root (`createBackgroundTasks`). The
  * tasks themselves live with their respective concerns (`lib/diagnostics/**`,
- * `setup/appPriceLowestTrigger`).
+ * `lib/price/priceLowestTrigger`).
  *
  * It used to hold six `stop*?: () => void` fields, which was the only state it
  * had. Those live in an injected `TeardownRegistry` now
@@ -95,13 +94,7 @@ export class BackgroundTasksController {
   }
 
   startPriceLowestTriggerChecker(): void {
-    this.restart('priceLowestTrigger', () => startPriceLowestTriggers({
-      getNow: () => this.ctx.getNow(),
-      getTimeZone: () => this.ctx.getTimeZone(),
-      getCombinedHourlyPrices: () => requirePriceCoordinator(this.ctx).getCombinedHourlyPrices(),
-      getTriggerCard: (id) => this.ctx.homey.flow.getTriggerCard(id),
-      error: (message, error) => this.ctx.error(message, error),
-    }));
+    this.restart('priceLowestTrigger', () => wirePriceLowestTrigger(this.ctx));
   }
 
   startDeferredObjectiveLifecycleClock(emitter: DeferredObjectiveLifecycleEmitter): void {

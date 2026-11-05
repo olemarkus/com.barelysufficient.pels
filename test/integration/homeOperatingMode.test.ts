@@ -1,6 +1,6 @@
 import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 import { controlContestsForTest } from '../helpers/controlContests';
-import { createExternalOffHoldPolicy } from '../../setup/externalOffHoldAdapter';
+import { createExternalOffHoldPolicy } from '../../lib/observer/externalOffHoldSettings';
 // Integration coverage for the per-home operating mode (multi-home):
 // - the settings→bundle seam: an `operating_mode:<homeId>` write routes
 //   through the REAL settings handler to ONE bundle's mode rebuild — never to

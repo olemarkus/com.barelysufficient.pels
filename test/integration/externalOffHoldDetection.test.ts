@@ -17,7 +17,7 @@ import {
   syncExternalOffHoldForDevice,
   toExternalOffHoldObservedDevice,
 } from '../../setup/externalOffHoldDetection';
-import { createExternalOffHoldPolicy } from '../../setup/externalOffHoldAdapter';
+import { createExternalOffHoldPolicy } from '../../lib/observer/externalOffHoldSettings';
 import type { ExternalOffHoldSyncDeps } from '../../setup/externalOffHoldDetection';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';

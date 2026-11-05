@@ -16,12 +16,14 @@ type FreshConfigsRead =
   | { state: 'resolved'; reachabilityByDevice: Record<string, TargetPowerReachabilityState> }
   | { state: 'unavailable' };
 
-export type TargetPowerReachabilityPersistenceResult = 'persisted' | 'unchanged' | 'unavailable';
-
-export type TargetPowerReachabilityApplyResult = {
-  applied: boolean;
-  persistence: TargetPowerReachabilityPersistenceResult | 'invalid';
-};
+import type {
+  TargetPowerReachabilityPersistenceResult,
+  TargetPowerReachabilityApplyResult,
+} from '../lib/device/targetPowerReachabilityPersistence';
+export type {
+  TargetPowerReachabilityPersistenceResult,
+  TargetPowerReachabilityApplyResult,
+} from '../lib/device/targetPowerReachabilityPersistence';
 
 const readFreshConfigs = (
   settings: Homey.App['homey']['settings'],

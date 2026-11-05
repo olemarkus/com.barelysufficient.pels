@@ -5,7 +5,7 @@ import {
   type ExternalOffHoldOptInRead,
   type ExternalOffHoldSettingsStore,
 } from '../../lib/observer/externalOffHold';
-import { createExternalOffHoldPolicy as createSettingsExternalOffHoldPolicy } from '../../setup/externalOffHoldAdapter';
+import { createExternalOffHoldPolicy as createSettingsExternalOffHoldPolicy } from '../../lib/observer/externalOffHoldSettings';
 import {
   EXTERNAL_OFF_HOLDS,
   EXTERNAL_OFF_HOLDS_INITIALIZED,

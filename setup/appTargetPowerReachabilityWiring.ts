@@ -1,12 +1,10 @@
 import type { AppContext } from '../lib/app/appContext';
 import { resolveValidTargetPowerReachability } from '../lib/device/targetPowerReachability';
 import { normalizeError } from '../lib/utils/errorUtils';
-import type { TargetPowerReachabilityState } from '../packages/contracts/src/types';
+import { createTargetPowerReachabilityPersistence } from '../lib/device/targetPowerReachabilityPersistence';
 import { writeTargetPowerReachabilityForApp } from './targetPowerReachabilitySettings';
 import { resolvePlanService } from './appInit/contextGuards';
 import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
-
-const PERSISTENCE_RETRY_MS = 60 * 1000;
 
 /** Connect runtime reachability feedback and clocks without expanding app.ts. */
 export const createTargetPowerReachabilityAppWiring = (
@@ -26,48 +24,17 @@ export const createTargetPowerReachabilityAppWiring = (
     return resolved.planService.rebuildPlanFromCache(trigger);
   },
 ) => {
-  const pendingPersistenceByDevice = new Map<string, TargetPowerReachabilityState>();
-  let persistenceTimer: ReturnType<typeof setTimeout> | undefined;
-
-  const schedulePersistenceRetry = (): void => {
-    if (persistenceTimer || pendingPersistenceByDevice.size === 0) return;
-    const timer = setTimeout(() => {
-      if (persistenceTimer !== timer) return;
-      ctx.timers.clear('targetPowerReachabilityPersistence');
-      persistenceTimer = undefined;
-      for (const [deviceId, reachability] of pendingPersistenceByDevice) {
-        const result = writeTargetPowerReachabilityForApp(ctx, deviceId, reachability);
-        if (result.persistence !== 'unavailable') {
-          pendingPersistenceByDevice.delete(deviceId);
-        }
-      }
-      schedulePersistenceRetry();
-    }, PERSISTENCE_RETRY_MS);
-    persistenceTimer = ctx.timers.registerTimeout('targetPowerReachabilityPersistence', timer);
-  };
-
-  const updateTargetPowerReachability = (
-    deviceId: string,
-    state: TargetPowerReachabilityState,
-  ): boolean => {
-    const result = writeTargetPowerReachabilityForApp(ctx, deviceId, state);
-    if (result.persistence === 'unavailable') {
-      pendingPersistenceByDevice.set(deviceId, state);
-      schedulePersistenceRetry();
-    } else {
-      pendingPersistenceByDevice.delete(deviceId);
-    }
-    if (result.applied) {
+  const updateTargetPowerReachability = createTargetPowerReachabilityPersistence(
+    ctx.timers,
+    (deviceId, state) => writeTargetPowerReachabilityForApp(ctx, deviceId, state),
+    (deviceId) => {
       ctx.snapshotHelpers.scheduleTargetPowerProbe();
       void rebuildOwningHomePlanForDevice(deviceId, 'target_power_reachability_updated')
         .catch((error: unknown) => ctx.getStructuredLogger('devices').error({
-          event: 'target_power_reachability_rebuild_failed',
-          deviceId,
-          err: normalizeError(error),
+          event: 'target_power_reachability_rebuild_failed', deviceId, err: normalizeError(error),
         }));
-    }
-    return result.applied;
-  };
+    },
+  );
 
   return {
     snapshotDeps: {

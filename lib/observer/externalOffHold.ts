@@ -8,8 +8,8 @@
  *    a pure observer leaf (`no-observer-to-peer`): it imports only the settings
  *    key registry and key-list reader, so `lib/device`, `lib/plan`,
  *    `lib/executor`, and `setup` may all depend on it.
- *  - **`setup/externalOffHoldAdapter.ts`** binds `homey.settings` to the store
- *    port below and resolves the opt-in read. It knows Homey; this module does not.
+ *  - **`lib/observer/externalOffHoldSettings.ts`** resolves the opt-in read over
+ *    the settings store port; setup passes that port from Homey.
  *  - **`setup/externalOffHoldDetection.ts`** owns the provenance question ("was
  *    this OFF ours?") — the actually hard part of this feature, since PELS turns
  *    devices off all the time. This module never asks why a device is off.
