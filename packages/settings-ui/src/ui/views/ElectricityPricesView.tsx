@@ -1057,7 +1057,8 @@ const ExportPriceForm = ({ config, handlers, inverterControl }: ElectricityPrice
             markups you set in that app. Using it makes Power by the Hour your price source for import and export.
           </p>
           <div class="form__actions">
-            <MdOutlinedButton type="button" onClick={handlers.onUsePowerhourForExport}>
+            <MdOutlinedButton type="button" aria-label="Use Power by the Hour for import and export"
+              onClick={handlers.onUsePowerhourForExport}>
               Use for import and export
             </MdOutlinedButton>
           </div>
