@@ -1,4 +1,4 @@
-import type { MeasuredPower, PlanContext, PlanLimits, PlanLimitSource } from '../../lib/plan/planContext';
+import type { MeasuredPower, PlanContext, PlanLimits, PlanLimitSource, LimitHeadroom } from '../../lib/plan/planContext';
 import type { TemperatureIntentReads } from '../../lib/thermostat/temperatureSetpoints';
 import { resolveFixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 
@@ -10,16 +10,29 @@ import { resolveFixtureTemperatureSetpoints } from '../helpers/temperatureSetpoi
  * derived from the two breach flags exactly as `resolveMeasuredPower` derives
  * it, unless the spec pins it.
  */
-export const buildMeasuredPower = (overrides: Partial<MeasuredPower> = {}): MeasuredPower => {
-  const { physicalLimitBreached, ...rest } = overrides;
+export type MeasuredPowerFixtureOverrides = Partial<MeasuredPower> & {
+  headroomKw?: number | null;
+  capacityHeadroomKw?: number | null;
+  gridHeadroomKw?: number | null;
+  budgetHeadroomKw?: number | null;
+};
+
+export const headroomFixture = (kw: number | null): LimitHeadroom => kw === null
+  ? { kind: 'off' } : { kind: 'on', kw };
+
+export const buildMeasuredPower = (overrides: MeasuredPowerFixtureOverrides = {}): MeasuredPower => {
+  const {
+    physicalLimitBreached, headroomKw = 1, capacityHeadroomKw = 1, gridHeadroomKw = null,
+    budgetHeadroomKw = null, ...rest
+  } = overrides;
   const power = {
-    gridHeadroomKw: null,
+    gridHeadroom: headroomFixture(gridHeadroomKw),
     gridBreached: false,
     drawKw: 3,
     sampledAtMs: 0,
-    headroomKw: 1,
-    capacityHeadroomKw: 1,
-    budgetHeadroomKw: null,
+    headroom: headroomFixture(headroomKw),
+    capacityHeadroom: headroomFixture(capacityHeadroomKw),
+    budgetHeadroom: headroomFixture(budgetHeadroomKw),
     capacityBreached: false,
     ...rest,
   };
@@ -100,7 +113,7 @@ export const buildPlanContextFixture = (spec: PlanContextFixtureOverrides = {}):
  * the `PlanContext`. `capacityBreached` defaults to the derived answer — the
  * draw above the capacity pace — exactly as the producer resolves it.
  */
-export type PlanCycleSpec = PlanContextFixtureOverrides & Partial<MeasuredPower> & {
+export type PlanCycleSpec = Omit<PlanContextFixtureOverrides, 'headroom'> & Omit<MeasuredPowerFixtureOverrides, 'headroom'> & {
   total?: number;
   headroom?: number;
   headroomRaw?: number;
@@ -110,6 +123,7 @@ export const buildPlanCycle = (spec: PlanCycleSpec = {}): { context: PlanContext
   const {
     total, headroom, headroomRaw, drawKw, headroomKw, capacityHeadroomKw, budgetHeadroomKw,
     capacityBreached, physicalLimitBreached, gridHeadroomKw, gridBreached,
+    capacityHeadroom, gridHeadroom: explicitGridHeadroom, budgetHeadroom, sampledAtMs,
     ...contextOverrides
   } = spec;
   const context = buildPlanContextFixture(contextOverrides);
@@ -126,6 +140,10 @@ export const buildPlanCycle = (spec: PlanCycleSpec = {}): { context: PlanContext
       capacityHeadroomKw: capacityHeadroomKw === undefined ? binding : capacityHeadroomKw,
       budgetHeadroomKw: budgetHeadroomKw ?? null,
       capacityBreached: capacityBreached ?? (context.capacity.kind === 'on' && draw > context.capacity.paceKw),
+      ...(capacityHeadroom === undefined ? {} : { capacityHeadroom }),
+      ...(explicitGridHeadroom === undefined ? {} : { gridHeadroom: explicitGridHeadroom }),
+      ...(budgetHeadroom === undefined ? {} : { budgetHeadroom }),
+      ...(sampledAtMs === undefined ? {} : { sampledAtMs }),
       ...(physicalLimitBreached === undefined ? {} : { physicalLimitBreached }),
     }),
   };

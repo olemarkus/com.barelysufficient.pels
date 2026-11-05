@@ -117,11 +117,25 @@ export type PlanContext = PlanLimits & {
   minutesRemaining: number;
 };
 
+/** Room on an enabled constraint; an off axis imposes no admission ceiling. */
+export type LimitHeadroom = { kind: 'off' } | { kind: 'on'; kw: number };
+
+/** Debit a constraint without enabling an axis that is off. Negative debits release room. */
+export const spendLimitHeadroom = (headroom: LimitHeadroom, kw: number): LimitHeadroom => (
+  headroom.kind === 'off' ? headroom : { kind: 'on', kw: headroom.kw - kw }
+);
+
+/** The strongest enabled constraint, keeping the unconstrained case explicit. */
+export function minLimitHeadroom(...axes: readonly LimitHeadroom[]): LimitHeadroom {
+  const enabled = axes.flatMap(axis => axis.kind === 'on' ? [axis.kw] : []);
+  return enabled.length === 0 ? { kind: 'off' } : { kind: 'on', kw: Math.min(...enabled) };
+}
+
 /**
  * The measurement one plan cycle is decided against. Exists ONLY on a measured
  * cycle — there is no unmeasured variant, no sentinel, no flag: a stage that
  * holds one of these holds a real measurement. `drawKw` and the breach flags
- * are always answered; a headroom is `null` only when its limit is off (no
+ * are always answered; a headroom is `off` only when its limit is off (no
  * binding limit, Capacity limit off, no grid limit, no daily budget axis),
  * never because the reading is missing.
  *
@@ -137,7 +151,7 @@ export type MeasuredPower = {
    * The spare room before the BINDING pace (`limits.binding`), kW — negative
    * when above it. Drives shedding and the full restore pass's gate.
    */
-  headroomKw: number | null;
+  headroom: LimitHeadroom;
   // Per-axis restore-admission inputs (notes/safe-pace-two-constraints.md
   // § "Proposed model", restore-admission-scoped). A budget-driven shedding
   // latch no longer blocks exempt candidates (`shouldPlanBudgetExemptRestores`
@@ -148,8 +162,8 @@ export type MeasuredPower = {
   // unusable by construction, prod 2026-08-01), and a non-exempt candidate must
   // also fit the budget pace with a MEASURED exempt sum, so it cannot spend
   // headroom that exists only as an off exempt device's projection.
-  capacityHeadroomKw: number | null;
-  gridHeadroomKw: number | null;
+  capacityHeadroom: LimitHeadroom;
+  gridHeadroom: LimitHeadroom;
   /**
    * The draw is above the grid import target. Read where grid pressure has its
    * own policy: no shed grace (`PlanBuilder.decideOvershoot`), no recent-restore
@@ -157,8 +171,8 @@ export type MeasuredPower = {
    * relief retired on the next reading (`resolveSameMeasurementSheddingDecision`).
    */
   gridBreached: boolean;
-  /** `null` when no daily budget applies (sub-homes, budget disabled). */
-  budgetHeadroomKw: number | null;
+  /** Off when no daily budget applies (sub-homes, budget disabled). */
+  budgetHeadroom: LimitHeadroom;
   /**
    * The draw is above the capacity pace — capacity ONLY, `false` with Capacity
    * limit off. Read where only the capacity period is meant: the hard-cap
@@ -233,22 +247,24 @@ export function resolveMeasuredPower(
   const { capacity, grid, daily, binding } = limits;
   const drawKw = reading.totalKw;
   const capacityBreached = capacity.kind === 'on' && drawKw > capacity.paceKw;
-  const gridHeadroomKw = grid.kind === 'off' ? null : reading.headroomKw(grid.targetKw);
-  const gridBreached = gridHeadroomKw !== null && gridHeadroomKw < 0;
+  const gridHeadroom: LimitHeadroom = grid.kind === 'off'
+    ? { kind: 'off' } : { kind: 'on', kw: reading.headroomKw(grid.targetKw) };
+  const gridBreached = gridHeadroom.kind === 'on' && gridHeadroom.kw < 0;
   const physicalLimitBreached = capacityBreached || gridBreached;
   return {
     drawKw,
     sampledAtMs: reading.lastPowerUpdateMs,
-    headroomKw: binding.kind === 'none' ? null : reading.headroomKw(binding.kw),
-    capacityHeadroomKw: capacity.kind === 'off' ? null : reading.headroomKw(capacity.paceKw),
-    gridHeadroomKw,
+    headroom: binding.kind === 'none' ? { kind: 'off' } : { kind: 'on', kw: reading.headroomKw(binding.kw) },
+    capacityHeadroom: capacity.kind === 'off'
+      ? { kind: 'off' } : { kind: 'on', kw: reading.headroomKw(capacity.paceKw) },
+    gridHeadroom,
     gridBreached,
-    budgetHeadroomKw: daily.kind === 'on'
-      ? reading.headroomKw(daily.budgetPaceKw + sumBudgetExemptMeasuredUsageKwFor(
+    budgetHeadroom: daily.kind === 'on'
+      ? { kind: 'on', kw: reading.headroomKw(daily.budgetPaceKw + sumBudgetExemptMeasuredUsageKwFor(
         toMeteredUsageDevices(devices),
         (device) => device.control.commandAuthority,
-      ))
-      : null,
+      )) }
+      : { kind: 'off' },
     capacityBreached,
     physicalLimitBreached,
   };

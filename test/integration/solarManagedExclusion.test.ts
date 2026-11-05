@@ -11,7 +11,7 @@
 // (`buildDeviceDiagnosticsObservations`), and the REAL whole-home sample ingest
 // (`recordPowerSampleForApp`) with a synthetic solar fixture (class:'solarpanel',
 // managed:true, controllable:false). Nothing internal is mocked.
-import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
+import { buildPlanCycleObject, type PlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { describe, expect, it, vi } from 'vitest';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
@@ -68,7 +68,7 @@ const heaterInputDevice = (): MeteredPlanInputDevice =>
     targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
   });
 
-const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanCycle> = {}): PlanCycle => buildPlanCycleObject({
+const buildContext = (devices: PlanInputDevice[], overrides: PlanCycleSpec = {}): PlanCycle => buildPlanCycleObject({
   gridImportLimitKw: null,
   gridImportTargetKw: null,
   devices,
@@ -96,14 +96,12 @@ const buildContext = (devices: PlanInputDevice[], overrides: Partial<PlanCycle> 
 const FIXTURE_NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 
 const emptyRestoreResult: RestorePlanResult = {
-  gridAvailableKw: null,
+  headroomAxes: { grid: { kind: 'off' }, capacity: { kind: 'on', kw: 1 }, budget: { kind: 'off' } },
   planDevices: [],
   restoredThisCycle: new Set<string>(),
   storageHandedBack: new Set<string>(),
   headroomReserves: [],
   availableHeadroom: 1,
-  capacityAvailableKw: 1,
-  budgetAvailableKw: null,
   restoredOneThisCycle: false,
   timing: restoreTimingFixture({ nowTs: FIXTURE_NOW_MS, restoreCooldownMs: 60 * 1000 }),
 };

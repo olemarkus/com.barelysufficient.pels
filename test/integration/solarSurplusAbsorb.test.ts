@@ -18,7 +18,7 @@ import { resolvePriceOptimizationConfig } from '../../lib/price/priceOptimizer';
 // lift when export cannot cover the device's expected draw (so a raise never tips
 // the home into import); (3) the lift releases back to baseline once export is
 // gone past the min dwell; (4) a non-willing device never lifts.
-import { buildPlanCycleObject, type PlanCycle } from '../utils/planContextPowerFixture';
+import { buildPlanCycleObject, type PlanCycle, type PlanCycleSpec } from '../utils/planContextPowerFixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { captureDebugTopic } from '../utils/loggerCapture';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
@@ -93,7 +93,12 @@ const buildContext = (
   headroom: 12,
 });
 
-const withoutSetpoints = ({ temperatureSetpoints: _resolvedForOtherDevices, ...rest }: PlanCycle) => rest;
+const withoutSetpoints = ({
+  temperatureSetpoints: _resolvedForOtherDevices, headroom, ...rest
+}: PlanCycle): PlanCycleSpec => ({
+  ...rest,
+  headroomKw: headroom.kind === 'on' ? headroom.kw : null,
+});
 
 const deps = (surplusWilling: boolean, surplusDelta = SURPLUS_DELTA_C): PlanDevicesDeps => ({
   getInferredSurplusKw: () => 0,

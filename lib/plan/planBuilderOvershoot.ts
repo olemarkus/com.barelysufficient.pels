@@ -118,7 +118,7 @@ export class OvershootTracker {
       this.deps.structuredLog.info({
         event: 'overshoot_entered',
         reasonCode: 'active_overshoot',
-        headroomKw: power.headroomKw,
+        headroomKw: power.headroom.kind === 'on' ? power.headroom.kw : null,
         ...overshootTimingFields,
         ...buildPlanContextHeadroomLogFields(context, power, reading, capacityLimitKw, shortfallBudgetThresholdKw),
         // Supplies exactly the meta the summary reads. It used to pass

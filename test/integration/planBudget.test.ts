@@ -4,7 +4,7 @@ import {
   computeDynamicSoftLimit,
   computeShortfallThreshold,
   isDailyBudgetBelowPlanningCeiling,
-  resolveCapacityAdmissionHeadroomKw,
+  resolveCapacityAdmissionHeadroom,
 } from '../../lib/plan/planBudget';
 import { CapacityDrainStart, type DrainStart } from '../../lib/plan/capacityDrainStart';
 import { capacityOnlyPowerLimits, powerLimits } from '../helpers/powerLimitSettings';
@@ -483,32 +483,34 @@ describe('planBudget', () => {
     });
   });
 
-  describe('resolveCapacityAdmissionHeadroomKw', () => {
-    // An hour's 5 kWh allowance is a 5 kW sustainable rate.
+  describe('resolveCapacityAdmissionHeadroom', () => {
     const hour = { capacityPeriodMinutes: 60 as const, budgetKWh: 5 };
 
     it('lets an increase in the drain spend only the room under the next hour\'s target', () => {
-      // Drain pace 7.3 kW, house at 6 kW: 1.3 kW left to shed against, but an
-      // increase would run into the next hour, which allows 5 kW.
-      expect(resolveCapacityAdmissionHeadroomKw(
-        { ...hour, capacity: { kind: 'on', paceKw: 7.3 }, minutesRemaining: 5 }, 1.3,
-      )).toBeCloseTo(-1, 6);
-      expect(resolveCapacityAdmissionHeadroomKw(
-        { ...hour, capacity: { kind: 'on', paceKw: 7.3 }, minutesRemaining: 5 }, 3.3,
-      )).toBeCloseTo(1, 6);
+      const frame = { ...hour, capacity: { kind: 'on' as const, paceKw: 7.3 }, minutesRemaining: 5 };
+      expect(resolveCapacityAdmissionHeadroom(frame, { kind: 'on', kw: 1.3 }))
+        .toEqual({ kind: 'on', kw: expect.closeTo(-1, 6) });
+      expect(resolveCapacityAdmissionHeadroom(frame, { kind: 'on', kw: 3.3 }))
+        .toEqual({ kind: 'on', kw: expect.closeTo(1, 6) });
     });
 
     it('leaves headroom as it is before the window, in a quarter, and with Capacity limit off', () => {
-      expect(resolveCapacityAdmissionHeadroomKw({ ...hour, capacity: { kind: 'on', paceKw: 20 }, minutesRemaining: 11 }, 4)).toBe(4);
-      expect(resolveCapacityAdmissionHeadroomKw(
-        { capacityPeriodMinutes: 15, budgetKWh: 1.25, capacity: { kind: 'on', paceKw: 5 }, minutesRemaining: 2 }, 1,
-      )).toBe(1);
-      expect(resolveCapacityAdmissionHeadroomKw({ ...hour, capacity: { kind: 'off' }, minutesRemaining: 5 }, null)).toBeNull();
+      expect(resolveCapacityAdmissionHeadroom(
+        { ...hour, capacity: { kind: 'on', paceKw: 20 }, minutesRemaining: 11 }, { kind: 'on', kw: 4 },
+      )).toEqual({ kind: 'on', kw: 4 });
+      expect(resolveCapacityAdmissionHeadroom(
+        { capacityPeriodMinutes: 15, budgetKWh: 1.25, capacity: { kind: 'on', paceKw: 5 }, minutesRemaining: 2 },
+        { kind: 'on', kw: 1 },
+      )).toEqual({ kind: 'on', kw: 1 });
+      expect(resolveCapacityAdmissionHeadroom(
+        { ...hour, capacity: { kind: 'off' }, minutesRemaining: 5 }, { kind: 'off' },
+      )).toEqual({ kind: 'off' });
     });
 
     it('never adds room when the drain pace is already below the target', () => {
-      // A nearly spent hour: the remaining budget binds at 3 kW, below 5 kW.
-      expect(resolveCapacityAdmissionHeadroomKw({ ...hour, capacity: { kind: 'on', paceKw: 3 }, minutesRemaining: 1 }, 0.5)).toBe(0.5);
+      expect(resolveCapacityAdmissionHeadroom(
+        { ...hour, capacity: { kind: 'on', paceKw: 3 }, minutesRemaining: 1 }, { kind: 'on', kw: 0.5 },
+      )).toEqual({ kind: 'on', kw: 0.5 });
     });
   });
 

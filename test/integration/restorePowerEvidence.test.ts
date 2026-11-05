@@ -167,12 +167,12 @@ describe('restore cooldown early release', () => {
     // The first value after the draw arrived may have been measured before it, as may one
     // repeated since; a value with nothing before it says nothing.
     for (const unchanged of [homeReading(2000, 2500, 3000), homeReading(400, 900, 3900), homeReading(null, 2500, 3000)]) {
-      expect(buildRestoreTiming(state, 8, { ...deps, powerTracker: unchanged }, devices, nowTs).inRestoreCooldown)
+      expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, { ...deps, powerTracker: unchanged }, devices, nowTs).inRestoreCooldown)
         .toBe(true);
     }
     const reset: PowerTrackerState = { lastTimestamp: 3000, lastPowerW: 2000 };
-    expect(buildRestoreTiming(state, 8, { ...deps, powerTracker: reset }, devices, nowTs).inRestoreCooldown).toBe(true);
-    const timing = buildRestoreTiming(state, 8, deps, devices, nowTs);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, { ...deps, powerTracker: reset }, devices, nowTs).inRestoreCooldown).toBe(true);
+    const timing = buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs);
     expect(timing.inRestoreCooldown).toBe(false);
     expect(timing.restoreCooldownRemainingSec).toBe(0);
     expect(shouldPlanRestores(false, timing, false)).toBe(true);
@@ -182,19 +182,19 @@ describe('restore cooldown early release', () => {
   it('keeps the timer until the device reaches half its expected draw', () => {
     const { state, deps, nowTs } = poweredRestore();
     const larger = [buildPlanDevice({ id: 'first', expectedPowerKw: 3.1 })];
-    expect(buildRestoreTiming(state, 8, deps, larger, nowTs).inRestoreCooldown).toBe(true);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, larger, nowTs).inRestoreCooldown).toBe(true);
   });
 
   it('judges a stepped load against the step it runs at', () => {
     const { state, deps, nowTs } = poweredRestore();
     const atStep = (planningPowerKw: number) => [steppedPlanDevice({ id: 'first', planningPowerKw })];
-    expect(buildRestoreTiming(state, 8, deps, atStep(2.9), nowTs).inRestoreCooldown).toBe(false);
-    expect(buildRestoreTiming(state, 8, deps, atStep(3.1), nowTs).inRestoreCooldown).toBe(true);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, atStep(2.9), nowTs).inRestoreCooldown).toBe(false);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, atStep(3.1), nowTs).inRestoreCooldown).toBe(true);
   });
 
   it('keeps the timer for a restore whose device is not in the plan', () => {
     const { state, deps, nowTs } = poweredRestore();
-    expect(buildRestoreTiming(state, 8, deps, [], nowTs).inRestoreCooldown).toBe(true);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, [], nowTs).inRestoreCooldown).toBe(true);
   });
 
   it('keeps the timer for a running device whose draw only rose after its restore', () => {
@@ -202,7 +202,7 @@ describe('restore cooldown early release', () => {
     state.actuation.markRestore('running', 1100);
     observe(observer, reading('running', 1, 500), 500);
     observe(observer, reading('running', 2.5, 2000), 2100);
-    expect(buildRestoreTiming(state, 8, deps, [...devices, restoredHeater('running')], nowTs).inRestoreCooldown)
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, [...devices, restoredHeater('running')], nowTs).inRestoreCooldown)
       .toBe(true);
   });
 
@@ -210,31 +210,31 @@ describe('restore cooldown early release', () => {
     const { observer, state, deps, nowTs, devices } = poweredRestore();
     state.actuation.markRestore('second', 1100);
     const batch = [...devices, restoredHeater('second')];
-    expect(buildRestoreTiming(state, 8, deps, batch, nowTs).inRestoreCooldown).toBe(true);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, batch, nowTs).inRestoreCooldown).toBe(true);
     observe(observer, reading('second', 0, 500), 500);
     observe(observer, reading('second', 1, 2000), 2100);
-    expect(buildRestoreTiming(state, 8, deps, batch, nowTs).inRestoreCooldown).toBe(false);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, batch, nowTs).inRestoreCooldown).toBe(false);
   });
 
   it('requires new evidence after a retry and expires the normal timer without it', () => {
     const { state, deps, nowTs, devices } = poweredRestore();
     state.actuation.markRestore('first', 2500);
-    expect(buildRestoreTiming(state, 8, deps, devices, nowTs).inRestoreCooldown).toBe(true);
-    expect(buildRestoreTiming(state, 8, deps, devices, 302500).inRestoreCooldown).toBe(false);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs).inRestoreCooldown).toBe(true);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, 302500).inRestoreCooldown).toBe(false);
   });
 
   it('ignores expired restores but still requires evidence for the latest one', () => {
     const { observer, state, deps, devices } = poweredRestore();
     const batch = [...devices, restoredHeater('second')];
     state.actuation.lastDeviceRestoreMs = {};
-    expect(buildRestoreTiming(state, 8, deps, batch, 4000).inRestoreCooldown).toBe(true);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, batch, 4000).inRestoreCooldown).toBe(true);
     state.actuation.markRestore('second', 302000);
     state.actuation.lastDeviceRestoreMs.first = 1000;
     deps.powerTracker = homeReading(302700, 302800);
-    expect(buildRestoreTiming(state, 8, deps, batch, 303000).inRestoreCooldown).toBe(true);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, batch, 303000).inRestoreCooldown).toBe(true);
     observe(observer, reading('second', 0, 301000), 301000);
     observe(observer, reading('second', 1, 302500), 302600);
-    expect(buildRestoreTiming(state, 8, deps, batch, 303000).inRestoreCooldown).toBe(false);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, batch, 303000).inRestoreCooldown).toBe(false);
   });
 
   const pendingTarget = {
@@ -253,25 +253,25 @@ describe('restore cooldown early release', () => {
     if (pending === 'target') state.pendingTargetCommands.first = pendingTarget;
     const restored = buildPlanDevice({ id: 'first', expectedPowerKw: 1.5, stepCommandPending: pending === 'step' });
     const other = buildPlanDevice({ id: 'other', binaryCommandPending: pending === 'binary' });
-    expect(buildRestoreTiming(state, 8, deps, [restored, other], nowTs).inRestoreCooldown).toBe(true);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, [restored, other], nowTs).inRestoreCooldown).toBe(true);
   });
 
   it('lets a device that was not restored keep an unconfirmed step or target without holding the others', () => {
     const { state, deps, nowTs, devices } = poweredRestore();
     state.pendingTargetCommands.other = pendingTarget;
     const other = buildPlanDevice({ id: 'other', stepCommandPending: true });
-    expect(buildRestoreTiming(state, 8, deps, [...devices, other], nowTs).inRestoreCooldown).toBe(false);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, [...devices, other], nowTs).inRestoreCooldown).toBe(false);
   });
 
   it('preserves instability backoff even when every device has evidence', () => {
     const { state, deps, nowTs, devices } = poweredRestore();
     state.restoreBackoff.noteInstability(1500);
-    const timing = buildRestoreTiming(state, 8, deps, devices, nowTs);
+    const timing = buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs);
     expect(timing.restoreCooldownMs).toBe(600000);
     expect(timing.inRestoreCooldown).toBe(true);
     state.restoreBackoff.commitCooldown(timing);
     state.actuation.markRestore('first', 1800);
-    expect(buildRestoreTiming(state, 8, deps, devices, nowTs).inRestoreCooldown).toBe(true);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs).inRestoreCooldown).toBe(true);
   });
 
   it('keeps the timer for a restore made before instability that a later restore left at the base window', () => {
@@ -281,19 +281,19 @@ describe('restore cooldown early release', () => {
     observe(observer, reading('second', 0, 1700), 1700);
     observe(observer, reading('second', 1.5, 2000), 2100);
     const batch = [...devices, restoredHeater('second')];
-    const timing = buildRestoreTiming(state, 8, deps, batch, nowTs);
+    const timing = buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, batch, nowTs);
     expect(timing.restoreCooldownMs).toBe(300000);
     expect(timing.inRestoreCooldown).toBe(true);
     delete state.actuation.lastDeviceRestoreMs.first;
-    expect(buildRestoreTiming(state, 8, deps, batch, nowTs).inRestoreCooldown).toBe(false);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, batch, nowTs).inRestoreCooldown).toBe(false);
   });
 
   it('preserves startup, shedding and spent-budget holds', () => {
     const { state, deps, nowTs, devices } = poweredRestore();
     state.restoreBackoff.beginStartupBlock(nowTs - 1000);
-    expect(shouldPlanRestores(false, buildRestoreTiming(state, 8, deps, devices, nowTs), false)).toBe(false);
+    expect(shouldPlanRestores(false, buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs), false)).toBe(false);
     state.restoreBackoff.clearStartupBlock(nowTs);
-    const timing = buildRestoreTiming(state, 8, deps, devices, nowTs);
+    const timing = buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs);
     expect(shouldPlanRestores(true, timing, false)).toBe(false);
     expect(shouldPlanRestores(false, timing, true)).toBe(false);
   });
@@ -376,7 +376,7 @@ describe('observer draw levels', () => {
 describe('restore cooldown early release for a running stepped step-up', () => {
   it('releases once the rise arrived before the home value was measured', () => {
     const { state, deps, nowTs, devices } = steppedUp();
-    expect(buildRestoreTiming(state, 8, deps, devices, nowTs).inRestoreCooldown).toBe(false);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs).inRestoreCooldown).toBe(false);
   });
 
   it.each([
@@ -385,12 +385,12 @@ describe('restore cooldown early release for a running stepped step-up', () => {
     ['a small step rose less than the floor', { planningPowerKw: 3.9, risenKw: 3.95 }],
   ])('keeps the timer when %s', (_label, options) => {
     const { state, deps, nowTs, devices } = steppedUp(options);
-    expect(buildRestoreTiming(state, 8, deps, devices, nowTs).inRestoreCooldown).toBe(true);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs).inRestoreCooldown).toBe(true);
   });
 
   it('releases a small step once it rose by the floor', () => {
     const { state, deps, nowTs, devices } = steppedUp({ planningPowerKw: 3.9, risenKw: 4.05 });
-    expect(buildRestoreTiming(state, 8, deps, devices, nowTs).inRestoreCooldown).toBe(false);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs).inRestoreCooldown).toBe(false);
   });
 
   it('does not count a higher draw reached before the step-up', () => {
@@ -398,20 +398,20 @@ describe('restore cooldown early release for a running stepped step-up', () => {
     const { state, deps, nowTs, devices } = steppedUp();
     observe(observer, reading('charger', 4.6, 200), 200);
     observe(observer, reading('charger', 3.7, 500), 500);
-    expect(buildRestoreTiming(state, 8, { ...deps, drawEvidence: observer }, devices, nowTs).inRestoreCooldown)
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, { ...deps, drawEvidence: observer }, devices, nowTs).inRestoreCooldown)
       .toBe(true);
   });
 
   it('keeps the timer when the draw before the step-up is unknown', () => {
     const { state, deps, nowTs, devices } = steppedUp();
     state.actuation.markRestore('charger', 400);
-    expect(buildRestoreTiming(state, 8, deps, devices, nowTs).inRestoreCooldown).toBe(true);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs).inRestoreCooldown).toBe(true);
   });
 
   it('keeps the doubled cooldown after instability', () => {
     const { state, deps, nowTs, devices } = steppedUp();
     state.restoreBackoff.noteInstability(1500);
-    const timing = buildRestoreTiming(state, 8, deps, devices, nowTs);
+    const timing = buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs);
     expect(timing.restoreCooldownMs).toBe(600000);
     expect(timing.inRestoreCooldown).toBe(true);
   });
@@ -419,7 +419,7 @@ describe('restore cooldown early release for a running stepped step-up', () => {
   it('keeps the timer while the step command is unconfirmed', () => {
     const { state, deps, nowTs } = steppedUp();
     const pending = [steppedPlanDevice({ id: 'charger', planningPowerKw: 4.6, stepCommandPending: true })];
-    expect(buildRestoreTiming(state, 8, deps, pending, nowTs).inRestoreCooldown).toBe(true);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, pending, nowTs).inRestoreCooldown).toBe(true);
   });
 });
 
@@ -448,7 +448,7 @@ function ampStepUp(wattsPerAmp: number, risenKw: number) {
   const devices = [steppedPlanDevice({
     id: 'charger', isEvCharger: true, steppedLoadProfile: ampLadder(wattsPerAmp), selectedStepId: '7a',
   })];
-  return buildRestoreTiming(state, 8, deps, devices, 4000).inRestoreCooldown;
+  return buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, 4000).inRestoreCooldown;
 }
 
 describe('restore cooldown early release for a step smaller than the fluctuation floor', () => {

@@ -719,7 +719,7 @@ describe('buildInitialPlanDevices', () => {
     });
 
     const context = buildContext([steppedDevice]);
-    context.headroomKw = -1; // Shortfall
+    context.headroom = { kind: 'on', kw: -1 }; // Shortfall
 
     const [planDevice] = buildInitialPlanDevicesForSpec({
       context,

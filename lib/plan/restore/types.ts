@@ -1,3 +1,4 @@
+import type { RestoreHeadroomAxes } from './headroomLedger';
 import type { DrawEvidenceReads } from '../../observer/observedDeviceStateProjection';
 import type { Logger as PinoLogger } from '../../logging/logger';
 import type { HeadroomReserve, resolveRestoreDecisionPhase } from '../admission';
@@ -123,9 +124,7 @@ export type RestorePlanResult = {
   availableHeadroom: number | null;
   // The underlying per-axis values (see headroomLedger.ts) — the hold lane
   // rebuilds a ledger from these so setpoint-shed devices admit per axis too.
-  capacityAvailableKw: number | null;
-  gridAvailableKw: number | null;
-  budgetAvailableKw: number | null;
+  headroomAxes: RestoreHeadroomAxes;
   // This cycle's startup reservations, resolved ONCE by the restore pass (the
   // resolver advances arming state, so it must not run twice per cycle). The
   // hold lane admits setpoint-shed restores against the same reservations the

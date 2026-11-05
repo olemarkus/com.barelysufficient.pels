@@ -31,8 +31,8 @@ export function resolveSheddingLatch(
 ): boolean {
   const hourlyBudgetExhausted = state.capacityPeriodSpentFor(context);
   const inOvershoot = overshoot.actionable || hourlyBudgetExhausted;
-  const remainsOverLimit = power.headroomKw !== null && power.headroomKw < 0;
+  const remainsOverLimit = power.headroom.kind === 'on' && power.headroom.kw < 0;
   if (inOvershoot && (shedSet.size > 0 || hourlyBudgetExhausted || remainsOverLimit)) return true;
   const clearThresholdKw = resolveSheddingClearThresholdKw(context);
-  return power.headroomKw === null || power.headroomKw >= clearThresholdKw ? false : state.sheddingActive;
+  return power.headroom.kind === 'off' || power.headroom.kw >= clearThresholdKw ? false : state.sheddingActive;
 }

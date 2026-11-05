@@ -66,14 +66,12 @@ const FIXTURE_NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 type RestoreResultOverrides = Partial<Omit<RestorePlanResult, 'timing'>> & { timing?: Partial<RestoreTiming> };
 
 const buildRestoreResult = ({ timing, ...overrides }: RestoreResultOverrides = {}): RestorePlanResult => ({
-  gridAvailableKw: null,
+  headroomAxes: { grid: { kind: 'off' }, capacity: { kind: 'on', kw: 1 }, budget: { kind: 'off' } },
   planDevices: [],
   restoredThisCycle: new Set<string>(),
   storageHandedBack: new Set<string>(),
   headroomReserves: [],
   availableHeadroom: 1,
-  capacityAvailableKw: 1,
-  budgetAvailableKw: null,
   restoredOneThisCycle: false,
   timing: restoreTimingFixture({ nowTs: FIXTURE_NOW_MS, ...timing }),
   ...overrides,

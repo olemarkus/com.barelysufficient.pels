@@ -1,3 +1,4 @@
+import { spendLimitHeadroom, type LimitHeadroom } from '../planContext';
 import { getDebugEmitter } from '../../logging/logger';
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { NO_SHEDDING_OUTCOME, type PlanEngineState, type SheddingOutcome } from '../planState';
@@ -93,8 +94,8 @@ export async function buildSheddingPlan(
 }
 /* eslint-enable functional/immutable-data */
 
-function shouldPlanShedding(headroom: number | null): boolean {
-  return headroom !== null && headroom < 0;
+function shouldPlanShedding(headroom: LimitHeadroom): boolean {
+  return headroom.kind === 'on' && headroom.kw < 0;
 }
 
 function emptySheddingResult(outcome: SheddingOutcome): PlanSheddingResult {
@@ -214,8 +215,8 @@ function resolveShedEntry(
     const shedsEverything = hour.kind === 'shed_everything';
     return { kind: 'select', hourlyBudgetExhausted: true, shedsEverything, leadingStorageOnly: false };
   }
-  const adjustedHeadroomKw = power.headroomKw === null ? null : power.headroomKw + storage.netCreditKw;
-  if (!shouldPlanShedding(adjustedHeadroomKw)) return { kind: 'none' };
+  const adjustedHeadroom = spendLimitHeadroom(power.headroom, -storage.netCreditKw);
+  if (!shouldPlanShedding(adjustedHeadroom)) return { kind: 'none' };
   if (overshoot.shedActionable) {
     return { kind: 'select', hourlyBudgetExhausted: false, shedsEverything: false, leadingStorageOnly: false };
   }
