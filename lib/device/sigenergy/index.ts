@@ -83,6 +83,7 @@ const sigenergyActions = (plantId: string, range: HomeBatterySetpointRange): Hom
     { deviceId: plantId, actionId, args }
   );
   return {
+    target: { appUri: `homey:app:${SIGENERGY_APP_ID}`, deviceId: plantId },
     range,
     command: (setpointW) => {
       if (setpointW > 0) return [step('force_charge_from_grid', { power: toKw(setpointW) })];
@@ -121,12 +122,14 @@ const SIGENERGY_BINDING: HomeBatteryActionBinding = {
   appUri: `homey:app:${SIGENERGY_APP_ID}`,
   commandLifetime: () => ({ kind: 'persistent' }),
   resolve: resolveSigenergy,
-  resolveHandBack: (_device, devices) => {
+  resolveLegacyTarget: () => ({ kind: 'unavailable', reasonCode: 'legacy_target_unknown' }),
+  handBack: (target) => [{ deviceId: target.deviceId, actionId: 'set_remote_ems', args: { state: 'off' } }],
+  resolveTarget: (_device, devices) => {
     const plants = devices.filter((other) => isDeviceOfAppDriver(other, SIGENERGY_APP_ID, PLANT_DRIVER_ID));
     const [plant] = plants;
     if (plant === undefined) return { kind: 'unavailable', reasonCode: 'plant_not_found' };
     if (plants.length > 1) return { kind: 'unavailable', reasonCode: 'plant_ambiguous' };
-    return { kind: 'resolved', steps: [{ deviceId: plant.id, actionId: 'set_remote_ems', args: { state: 'off' } }] };
+    return { kind: 'resolved', target: { appUri: `homey:app:${SIGENERGY_APP_ID}`, deviceId: plant.id } };
   },
 };
 

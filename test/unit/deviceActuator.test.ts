@@ -91,15 +91,15 @@ describe('createDeviceActuator — intent → transport mapping', () => {
   it('passes a battery setpoint to transport and surfaces the watts it sent', async () => {
     const requestStoragePower = vi.fn(async () => ({ kind: 'written' as const, setpointW: 1000 }));
     const actuator = createDeviceActuator(buildTransport({ requestStoragePower }));
-    const outcome = await actuator.apply({ kind: 'storage_power', deviceId: 'b1', setpointW: 990 });
-    expect(requestStoragePower).toHaveBeenCalledWith({ kind: 'storage_power', deviceId: 'b1', setpointW: 990 });
+    const outcome = await actuator.apply({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: 'b1', setpointW: 990 });
+    expect(requestStoragePower).toHaveBeenCalledWith({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: 'b1', setpointW: 990 });
     expect(outcome).toEqual({ requested: true, kind: 'storage_power', requestedSetpointW: 1000 });
   });
 
   it('carries a claim the battery app rejected as a setpoint not sent, with the app\'s message', async () => {
     const requestStoragePower = vi.fn(async () => ({ kind: 'claim_rejected' as const, errorMessage: 'not in control' }));
     const actuator = createDeviceActuator(buildTransport({ requestStoragePower }));
-    const outcome = await actuator.apply({ kind: 'storage_power', deviceId: 'b1', setpointW: 990 });
+    const outcome = await actuator.apply({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: 'b1', setpointW: 990 });
     expect(outcome).toEqual({ requested: false, reason: 'claim_rejected', errorMessage: 'not in control' });
   });
 
@@ -142,7 +142,7 @@ it('resolves binary timeouts without changing target or storage failures', async
   });
   await expect(actuator.apply({ kind: 'target', deviceId: 's1', target: 'temperature', value: 20 }))
     .rejects.toBe(timeout);
-  await expect(actuator.apply({ kind: 'storage_power', deviceId: 's1', setpointW: 1000 })).rejects.toBe(timeout);
+  await expect(actuator.apply({ kind: 'storage_power', control: { kind: 'capability' }, deviceId: 's1', setpointW: 1000 })).rejects.toBe(timeout);
 });
 
 it.each(['metadata', 'action'] as const)('preserves definite %s failures without recursive cause guessing', async (kind) => {

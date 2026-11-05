@@ -8,7 +8,7 @@ import type {
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
 import type { StorageVerdict } from '../../packages/planner-types/src/planInputDevice';
 import type { StorageReleaseReason } from '../planContract/storageDecision';
-import type { StorageClaimRejected } from './storageCommand';
+import type { AppActionControlTarget, StorageControlBinding, StorageClaimRejected } from './storageCommand';
 
 /** Re-exported so `lib/battery`, a leaf domain, names the plan's hand-back reasons through its port. */
 export type { StorageReleaseReason } from '../planContract/storageDecision';
@@ -60,6 +60,7 @@ export type BatteryControlRead =
   }
   | {
     kind: 'app_actions';
+    target: AppActionControlTarget;
     range: HomeBatterySetpointRange;
     keepAliveFor(setpointW: number): BatteryCommandKeepAlive;
   };
@@ -290,7 +291,9 @@ export type BatteryControlOwner = {
    */
   admitClaim(deviceId: string): BatteryClaimAdmission;
   /** Serialize admission and the complete setpoint write with this battery's hand-backs. */
-  dispatchSetpoint(deviceId: string, write: () => Promise<BatterySetpointWrite>): Promise<BatterySetpointOutcome>;
+  dispatchSetpoint(
+    deviceId: string, write: (control: StorageControlBinding) => Promise<BatterySetpointWrite>,
+  ): Promise<BatterySetpointOutcome>;
   /** The battery's lever as of now. */
   readControl(deviceId: string): BatteryLeverRead;
   /**

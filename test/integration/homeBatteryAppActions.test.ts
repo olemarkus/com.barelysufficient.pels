@@ -6,6 +6,11 @@
 // HTTP leaves the test.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Homey from 'homey';
+import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
+import { HomeBatteryControlOwner } from '../../lib/battery/batteryControlOwner';
+import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings';
+import { PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKeys';
+
 import { createTestDeviceTransport, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import {
   buildHuaweiLuna2000Device, buildMarstekConnectorBatteryDevice, buildSigenergyDevices, buildZendureLocalBatteryDevice,
@@ -39,6 +44,11 @@ const HUAWEI_CARDS = [
   'luna2000_stop_force_charge_discharge',
 ].map((id) => `${HUAWEI_APP}:${id}`);
 
+const MARSTEK_CONTROL = { kind: 'app_actions' as const, target: { appUri: MARSTEK_APP, deviceId: 'venus' } };
+const SIGENERGY_CONTROL = { kind: 'app_actions' as const, target: { appUri: SIGENERGY_APP, deviceId: 'plant' } };
+const ZENDURE_CONTROL = { kind: 'app_actions' as const, target: { appUri: ZENDURE_APP, deviceId: 'zendure' } };
+const HUAWEI_CONTROL = { kind: 'app_actions' as const, target: { appUri: HUAWEI_APP, deviceId: 'luna' } };
+
 type Setup = { transport: DeviceTransport; runs: () => Array<[string, HomeyFlowAction]> };
 
 /** How a battery's charge, discharge and 0 W hold are each kept in force, in that order. */
@@ -67,10 +77,33 @@ const setup = async (devices: MockDevice[], cards: readonly string[]): Promise<S
   };
 };
 
+const claimOwner = (transport: DeviceTransport) => {
+  const settings = mockHomeyInstance.settings;
+  const actuator = createDeviceActuator({
+    requestProductionControl: (command) => transport.requestProductionControl(command),
+    canTurnOnDevice: (id) => transport.canTurnOnDevice(id),
+    requestBinaryControl: (id, desired) => transport.requestBinaryControl(id, desired, async () => {
+      throw new Error('Unexpected binary Flow in battery test');
+    }),
+    requestTemperatureTarget: (id, desired) => transport.requestTemperatureTarget(id, desired),
+    resolveTemperatureTarget: (id, desired) => transport.resolveTemperatureTarget(id, desired),
+    requestSteppedLoadStep: (command) => transport.requestSteppedLoadStep(command),
+    requestStoragePower: (command) => transport.requestStoragePower(command),
+    releaseStorageControl: (command) => transport.releaseStorageControl(command),
+  });
+  const owner = new HomeBatteryControlOwner(
+    settings, new BatteryManagedSettings(settings), actuator,
+    (id) => transport.readBatteryControl(id), () => true, () => false, () => false,
+  );
+  return { owner, actuator };
+};
+
 describe('home battery app actions', () => {
   beforeEach(() => {
     setMockDrivers({});
     mockHomeyInstance.settings.set(HOMEY_FLOW_API_KEY, 'saved-key');
+    mockHomeyInstance.settings.unset(`${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`);
+    mockHomeyInstance.settings.unset(`${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}venus`);
   });
 
   afterEach(() => {
@@ -82,6 +115,7 @@ describe('home battery app actions', () => {
 
     expect(transport.readBatteryControl('venus')).toEqual({
       kind: 'app_actions',
+      target: MARSTEK_CONTROL.target,
       range: { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
       keepAliveFor: expect.any(Function),
     });
@@ -93,9 +127,9 @@ describe('home battery app actions', () => {
   it('commands and hands back a Marstek through its app cards, in the app\'s sign', async () => {
     const { transport, runs } = await setup([buildMarstekConnectorBatteryDevice({ id: 'venus' })], MARSTEK_CARDS);
 
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'venus', setpointW: 1500.4 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: MARSTEK_CONTROL, deviceId: 'venus', setpointW: 1500.4 }))
       .resolves.toEqual({ kind: 'written', setpointW: 1500 });
-    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'venus', handBack: 'app_actions' });
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'venus', handBack: 'app_actions', target: MARSTEK_CONTROL.target });
 
     expect(runs()).toEqual([
       ['venus', {
@@ -111,17 +145,17 @@ describe('home battery app actions', () => {
     const { transport, runs } = await setup([buildMarstekConnectorBatteryDevice({ id: 'venus' })], MARSTEK_CARDS);
 
     expect(transport.readBatteryControl('venus')).toEqual({ kind: 'homey_api_key_missing' });
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'venus', setpointW: 500 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: MARSTEK_CONTROL, deviceId: 'venus', setpointW: 500 }))
       .rejects.toThrow();
     expect(runs()).toEqual([]);
   });
 
   it('keeps hand-back retryable after the saved key is denied permission', async () => {
     const { transport, runs } = await setup([buildMarstekConnectorBatteryDevice({ id: 'venus' })], MARSTEK_CARDS);
-    await transport.requestStoragePower({ kind: 'storage_power', deviceId: 'venus', setpointW: 500 });
+    await transport.requestStoragePower({ kind: 'storage_power', control: MARSTEK_CONTROL, deviceId: 'venus', setpointW: 500 });
     vi.spyOn(transport.chargingAccess, 'status').mockReturnValue({ configured: true, state: 'permission_denied' });
     expect(transport.readBatteryControl('venus')).toEqual({ kind: 'hand_back_only' });
-    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'venus', handBack: 'app_actions' });
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'venus', handBack: 'app_actions', target: MARSTEK_CONTROL.target });
     expect(runs().at(-1)?.[1].cardId).toBe(`${MARSTEK_APP}:marstek_auto_mode`);
   });
 
@@ -131,9 +165,9 @@ describe('home battery app actions', () => {
     );
 
     expect(transport.readBatteryControl('venus')).toEqual({ kind: 'observe_only' });
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'venus', setpointW: 500 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: MARSTEK_CONTROL, deviceId: 'venus', setpointW: 500 }))
       .rejects.toThrow('unavailable');
-    await expect(transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'venus', handBack: 'app_actions' }))
+    await expect(transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'venus', handBack: 'app_actions', target: MARSTEK_CONTROL.target }))
       .rejects.toThrow('unavailable');
     expect(runs()).toEqual([]);
   });
@@ -144,9 +178,9 @@ describe('home battery app actions', () => {
     );
 
     expect(transport.readBatteryControl('venus')).toEqual({ kind: 'hand_back_only' });
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'venus', setpointW: 500 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: MARSTEK_CONTROL, deviceId: 'venus', setpointW: 500 }))
       .rejects.toThrow('action_card_missing:marstek_passive_mode');
-    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'venus', handBack: 'app_actions' });
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'venus', handBack: 'app_actions', target: MARSTEK_CONTROL.target });
 
     expect(runs()).toEqual([
       ['venus', { ownerUri: MARSTEK_APP, cardId: `${MARSTEK_APP}:marstek_auto_mode`, args: { device: { id: 'venus' } } }],
@@ -205,13 +239,14 @@ describe('home battery app actions', () => {
 
     expect(transport.readBatteryControl('sigen')).toEqual({
       kind: 'app_actions',
+      target: SIGENERGY_CONTROL.target,
       range: { minW: -5000, maxW: 5000, stepW: 100, excludeMinW: 0, excludeMaxW: 0 },
       keepAliveFor: expect.any(Function),
     });
     expect(keepAlives(transport, 'sigen')).toEqual([{ kind: 'none' }, { kind: 'none' }, { kind: 'none' }]);
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'sigen', setpointW: -1234 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: SIGENERGY_CONTROL, deviceId: 'sigen', setpointW: -1234 }))
       .resolves.toEqual({ kind: 'written', setpointW: -1200 });
-    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'sigen', handBack: 'app_actions' });
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'sigen', handBack: 'app_actions', target: SIGENERGY_CONTROL.target });
 
     const plantCard = (actionId: string, args: Record<string, unknown> = {}): [string, HomeyFlowAction] => [
       'sigen', { ownerUri: SIGENERGY_APP, cardId: `${SIGENERGY_APP}:${actionId}`, args: { device: { id: 'plant' }, ...args } },
@@ -226,7 +261,7 @@ describe('home battery app actions', () => {
   it.each(['ratings', 'shared', 'ambiguous', 'missing', 'replacement'])('hands back the original Sigenergy plant after %s resolution degrades', async (failure) => {
     const { battery, plant } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'plant' });
     const { transport, runs } = await setup([battery, plant], SIGENERGY_CARDS);
-    await transport.requestStoragePower({ kind: 'storage_power', deviceId: 'sigen', setpointW: -1000 });
+    await transport.requestStoragePower({ kind: 'storage_power', control: SIGENERGY_CONTROL, deviceId: 'sigen', setpointW: -1000 });
     const batteryRaw = battery.toHomeyApiDevice() as HomeyDeviceLike;
     const plantRaw = plant.toHomeyApiDevice() as HomeyDeviceLike;
     const devices = [batteryRaw, plantRaw];
@@ -237,10 +272,9 @@ describe('home battery app actions', () => {
     if (failure === 'replacement') devices[1] = { ...plantRaw, id: 'replacement-plant' };
     await seedTransportDevices(transport, devices);
 
-    expect(transport.readBatteryControl('sigen')).toEqual({ kind: 'hand_back_only' });
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'sigen', setpointW: 1000 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: SIGENERGY_CONTROL, deviceId: 'sigen', setpointW: 1000 }))
       .rejects.toThrow();
-    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'sigen', handBack: 'app_actions' });
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'sigen', handBack: 'app_actions', target: SIGENERGY_CONTROL.target });
     expect(runs().at(-1)).toEqual(['sigen', {
       ownerUri: SIGENERGY_APP, cardId: `${SIGENERGY_APP}:set_remote_ems`,
       args: { device: { id: 'plant' }, state: 'off' },
@@ -249,12 +283,58 @@ describe('home battery app actions', () => {
 
   it.each([null, undefined, 'unreadable', 42])('retains the last card inventory after a malformed envelope: %s', async (raw) => {
     const { transport, runs } = await setup([buildMarstekConnectorBatteryDevice({ id: 'venus' })], MARSTEK_CARDS);
-    await transport.requestStoragePower({ kind: 'storage_power', deviceId: 'venus', setpointW: 500 });
+    await transport.requestStoragePower({ kind: 'storage_power', control: MARSTEK_CONTROL, deviceId: 'venus', setpointW: 500 });
     vi.mocked(mockHomeyInstance.api.get).mockResolvedValueOnce(raw);
     await transport.batteryAppActions.refreshCards();
     expect(transport.readBatteryControl('venus').kind).toBe('app_actions');
-    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'venus', handBack: 'app_actions' });
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'venus', handBack: 'app_actions', target: MARSTEK_CONTROL.target });
     expect(runs().at(-1)?.[1].cardId).toBe(`${MARSTEK_APP}:marstek_auto_mode`);
+  });
+
+  it('hands back the recorded Sigenergy plant after a full owner and transport restart with only a replacement plant', async () => {
+    const { battery, plant } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'plant' });
+    const first = await setup([battery, plant], SIGENERGY_CARDS);
+    const { owner, actuator } = claimOwner(first.transport);
+    await owner.dispatchSetpoint('sigen', async (control) => {
+      expect(mockHomeyInstance.settings.get(`${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`))
+        .toMatchObject({ target: SIGENERGY_CONTROL.target });
+      const result = await actuator.apply({ kind: 'storage_power', deviceId: 'sigen', setpointW: -1000, control });
+      return result.requested && result.kind === 'storage_power' ? result.requestedSetpointW : 'skipped';
+    });
+    vi.restoreAllMocks();
+    const replacement = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'replacement' });
+    const restarted = await setup([replacement.battery, replacement.plant], SIGENERGY_CARDS);
+    const recovered = claimOwner(restarted.transport).owner;
+    recovered.onSnapshotCommitted({ entries: [], ignoredReadIds: ['sigen'] });
+    await vi.waitFor(() => expect(restarted.runs()).toHaveLength(1));
+    expect(restarted.runs()[0]?.[1]).toEqual({
+      ownerUri: SIGENERGY_APP, cardId: `${SIGENERGY_APP}:set_remote_ems`,
+      args: { device: { id: 'plant' }, state: 'off' },
+    });
+    await vi.waitFor(() => expect(mockHomeyInstance.settings.get(`${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`)).toBeNull());
+  });
+
+  it('retains a legacy companion claim without guessing the plant from the current inventory', async () => {
+    const { battery, plant } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'replacement' });
+    const { transport, runs } = await setup([battery, plant], SIGENERGY_CARDS);
+    const key = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`;
+    mockHomeyInstance.settings.set(key, { handBack: 'app_actions', claimedAtMs: 1 });
+    const { owner } = claimOwner(transport);
+    const removeKey = vi.fn();
+    await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('battery_held');
+    expect(runs()).toEqual([]);
+    expect(removeKey).not.toHaveBeenCalled();
+    expect(mockHomeyInstance.settings.get(key)).toEqual({ handBack: 'app_actions', claimedAtMs: 1 });
+  });
+
+  it('hands back a legacy self-target claim through the adapter explicit legacy resolution', async () => {
+    const { transport, runs } = await setup([buildMarstekConnectorBatteryDevice({ id: 'venus' })], MARSTEK_CARDS);
+    const key = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}venus`;
+    mockHomeyInstance.settings.set(key, { handBack: 'app_actions', claimedAtMs: 1 });
+    const { owner } = claimOwner(transport);
+    owner.onSnapshotCommitted({ entries: [], ignoredReadIds: ['venus'] });
+    await vi.waitFor(() => expect(mockHomeyInstance.settings.get(key)).toBeNull());
+    expect(runs()[0]?.[1].cardId).toBe(`${MARSTEK_APP}:marstek_auto_mode`);
   });
 
   it('stops a sequence at the step that failed', async () => {
@@ -262,7 +342,7 @@ describe('home battery app actions', () => {
     const { transport, runs } = await setup([battery, plant], SIGENERGY_CARDS);
     vi.mocked(transport.chargingAccess.runAction).mockRejectedValueOnce(new Error('plant offline'));
 
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'sigen', setpointW: -1000 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: SIGENERGY_CONTROL, deviceId: 'sigen', setpointW: -1000 }))
       .rejects.toThrow('plant offline');
     expect(runs().map(([, action]) => action.cardId)).toEqual([`${SIGENERGY_APP}:set_ess_max_discharge_power`]);
   });
@@ -278,6 +358,7 @@ describe('home battery app actions', () => {
 
     expect(transport.readBatteryControl('zendure')).toEqual({
       kind: 'app_actions',
+      target: ZENDURE_CONTROL.target,
       range: { minW: -2400, maxW: 2400, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
       keepAliveFor: expect.any(Function),
     });
@@ -285,11 +366,11 @@ describe('home battery app actions', () => {
     expect(keepAlives(transport, 'zendure')).toEqual([
       { kind: 'resend', everyMs: 30_000 }, { kind: 'none' }, { kind: 'none' },
     ]);
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'zendure', setpointW: 900 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: ZENDURE_CONTROL, deviceId: 'zendure', setpointW: 900 }))
       .resolves.toEqual({ kind: 'written', setpointW: 900 });
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'zendure', setpointW: -3000 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: ZENDURE_CONTROL, deviceId: 'zendure', setpointW: -3000 }))
       .resolves.toEqual({ kind: 'written', setpointW: -2400 });
-    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'zendure', handBack: 'app_actions' });
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'zendure', handBack: 'app_actions', target: ZENDURE_CONTROL.target });
 
     const setPower = (power: number): [string, HomeyFlowAction] => [
       'zendure', { ownerUri: ZENDURE_APP, cardId: `${ZENDURE_APP}:set-power`, args: { device: { id: 'zendure' }, power } },
@@ -303,16 +384,17 @@ describe('home battery app actions', () => {
 
     expect(transport.readBatteryControl('luna')).toEqual({
       kind: 'app_actions',
+      target: HUAWEI_CONTROL.target,
       range: { minW: -4000, maxW: 5000, stepW: 100, excludeMinW: 0, excludeMaxW: 0 },
       keepAliveFor: expect.any(Function),
     });
     const resend = { kind: 'resend', everyMs: 200_000 };
     expect(keepAlives(transport, 'luna')).toEqual([resend, resend, resend]);
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'luna', setpointW: -1234 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: HUAWEI_CONTROL, deviceId: 'luna', setpointW: -1234 }))
       .resolves.toEqual({ kind: 'written', setpointW: -1200 });
-    await expect(transport.requestStoragePower({ kind: 'storage_power', deviceId: 'luna', setpointW: 0 }))
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: HUAWEI_CONTROL, deviceId: 'luna', setpointW: 0 }))
       .resolves.toEqual({ kind: 'written', setpointW: 0 });
-    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'luna', handBack: 'app_actions' });
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'luna', handBack: 'app_actions', target: HUAWEI_CONTROL.target });
 
     const card = (actionId: string, args: Record<string, unknown> = {}): [string, HomeyFlowAction] => [
       'luna', { ownerUri: HUAWEI_APP, cardId: `${HUAWEI_APP}:${actionId}`, args: { device: { id: 'luna' }, ...args } },
@@ -331,7 +413,7 @@ describe('home battery app actions', () => {
 
     const noStop = await setup([buildHuaweiLuna2000Device({ id: 'luna' })], HUAWEI_CARDS.slice(0, 2));
     expect(noStop.transport.readBatteryControl('luna')).toEqual({ kind: 'observe_only' });
-    await expect(noStop.transport.requestStoragePower({ kind: 'storage_power', deviceId: 'luna', setpointW: 500 }))
+    await expect(noStop.transport.requestStoragePower({ kind: 'storage_power', control: HUAWEI_CONTROL, deviceId: 'luna', setpointW: 500 }))
       .rejects.toThrow('unavailable');
     expect(noStop.runs()).toEqual([]);
   });

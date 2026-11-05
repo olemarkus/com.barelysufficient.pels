@@ -1,3 +1,4 @@
+import type { AppActionControlTarget } from '../ports/storageCommand';
 import type { HubHomeLocation } from './hubHomeLocation';
 import type { ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
 import type { DeviceControlAdapterSnapshot, HomeBatteryClaimCapabilityId, HomeBatteryClaimRejection,
@@ -134,6 +135,7 @@ export type HomeBatteryCommandLifetime = { kind: 'persistent' } | { kind: 'expir
  * installed cards before PELS may drive the battery.
  */
 export type HomeBatteryActions = {
+  target: AppActionControlTarget;
   range: HomeBatterySetpointRange;
   command(setpointW: number): readonly DeviceActionStep[];
 };
@@ -142,8 +144,8 @@ export type HomeBatteryActions = {
  * The actions an integration resolved for a battery, or why it has none
  * (`reasonCode`: the integration's own words, logged, never matched).
  */
-export type HomeBatteryHandBackResolution =
-  | { kind: 'resolved'; steps: readonly DeviceActionStep[] }
+export type HomeBatteryTargetResolution =
+  | { kind: 'resolved'; target: AppActionControlTarget }
   | { kind: 'unavailable'; reasonCode: string };
 
 export type HomeBatteryActionsResolution =
@@ -171,7 +173,10 @@ export type HomeBatteryActionBinding = {
   commandLifetime(setpointW: number): HomeBatteryCommandLifetime;
   resolve(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryActionsResolution;
   /** Hand-back is independent of the command range and admission gates. */
-  resolveHandBack(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryHandBackResolution;
+  resolveTarget(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryTargetResolution;
+  /** Only integrations whose historical hand-back always addressed the battery itself can resolve this. */
+  resolveLegacyTarget(device: HomeyDeviceLike): HomeBatteryTargetResolution;
+  handBack(target: AppActionControlTarget): readonly DeviceActionStep[];
 };
 
 export type HomeBatteryBinding = HomeBatteryCapabilityBinding | HomeBatteryActionBinding;

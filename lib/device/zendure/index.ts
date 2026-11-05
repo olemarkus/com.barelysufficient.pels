@@ -68,6 +68,7 @@ const setPower = (deviceId: string, power: number): DeviceActionStep => (
 );
 
 const zendureActions = (deviceId: string): HomeBatteryActions => ({
+  target: { appUri: `homey:app:${ZENDURE_LOCAL_APP_ID}`, deviceId },
   range: { minW: -ZENDURE_RANGE_W, maxW: ZENDURE_RANGE_W, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
   // PELS's charge is the app's negative power.
   command: (setpointW) => [setPower(deviceId, setpointW === 0 ? 0 : -setpointW)],
@@ -80,7 +81,13 @@ const ZENDURE_LOCAL_BINDING: HomeBatteryActionBinding = {
   commandLifetime: (setpointW) => (setpointW > 0
     ? { kind: 'expires', lifetimeMs: CHARGE_LIFETIME_MS }
     : { kind: 'persistent' }),
-  resolveHandBack: (device) => ({ kind: 'resolved', steps: [setPower(device.id, 0)] }),
+  resolveTarget: (device) => ({
+    kind: 'resolved', target: { appUri: `homey:app:${ZENDURE_LOCAL_APP_ID}`, deviceId: device.id },
+  }),
+  resolveLegacyTarget: (device) => ({
+    kind: 'resolved', target: { appUri: `homey:app:${ZENDURE_LOCAL_APP_ID}`, deviceId: device.id },
+  }),
+  handBack: (target) => [setPower(target.deviceId, 0)],
   resolve: (device) => ({ kind: 'resolved', actions: zendureActions(device.id) }),
 };
 

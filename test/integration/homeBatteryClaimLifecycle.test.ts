@@ -78,8 +78,8 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
   /** The executor's serialized claim-and-write path through the real actuator. */
   const command = async (setpointW: number) => {
     expect(owner.admitClaim(BATTERY)).toEqual({ status: 'admitted' });
-    await owner.dispatchSetpoint(BATTERY, async () => {
-      const outcome = await actuator.apply({ kind: 'storage_power', deviceId: BATTERY, setpointW });
+    await owner.dispatchSetpoint(BATTERY, async (control) => {
+      const outcome = await actuator.apply({ kind: 'storage_power', deviceId: BATTERY, setpointW, control });
       return outcome.requested && outcome.kind === 'storage_power' ? outcome.requestedSetpointW : 'skipped';
     });
   };

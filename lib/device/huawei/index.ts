@@ -75,6 +75,7 @@ const luna2000Actions = (deviceId: string, chargeW: number, dischargeW: number):
     { deviceId, actionId, args: { power, duration: LUNA2000_FORCE_MINUTES } }
   );
   return {
+    target: { appUri: `homey:app:${HUAWEI_APP_ID}`, deviceId },
     range: { minW: -dischargeW, maxW: chargeW, stepW: STEP_W, excludeMinW: 0, excludeMaxW: 0 },
     command: (setpointW) => (setpointW < 0
       ? [force('luna2000_start_force_discharge_duration', -setpointW)]
@@ -95,9 +96,13 @@ const LUNA2000_BINDING: HomeBatteryActionBinding = {
   kind: 'app_actions',
   appUri: `homey:app:${HUAWEI_APP_ID}`,
   commandLifetime: () => ({ kind: 'expires', lifetimeMs: LUNA2000_FORCE_MINUTES * 60_000 }),
-  resolveHandBack: (device) => ({
-    kind: 'resolved', steps: [{ deviceId: device.id, actionId: 'luna2000_stop_force_charge_discharge', args: {} }],
+  resolveTarget: (device) => ({
+    kind: 'resolved', target: { appUri: `homey:app:${HUAWEI_APP_ID}`, deviceId: device.id },
   }),
+  resolveLegacyTarget: (device) => ({
+    kind: 'resolved', target: { appUri: `homey:app:${HUAWEI_APP_ID}`, deviceId: device.id },
+  }),
+  handBack: (target) => [{ deviceId: target.deviceId, actionId: 'luna2000_stop_force_charge_discharge', args: {} }],
   resolve: resolveLuna2000,
 };
 

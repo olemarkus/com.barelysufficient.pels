@@ -85,17 +85,28 @@ describe('BatteryClaimStore', () => {
       .toEqual({ status: 'unavailable' });
   });
 
-  it('stores a claim-less battery\'s record as its app\'s hand-back, and reads it back', () => {
+  it('stores a claim-less battery target with its claim and reads it back after restart', () => {
     const settings = settingsStore({});
     const store = new BatteryClaimStore(settings);
-    expect(store.write('battery-1', { kind: 'app_actions', claimedAtMs: 7 })).toBe(true);
-    expect(settings.get(key)).toEqual({ handBack: 'app_actions', claimedAtMs: 7 });
-    const read = store.readAll();
+    const target = { appUri: 'homey:app:com.sigenergy', deviceId: 'plant-1' };
+    expect(store.write('battery-1', { kind: 'app_actions', target, claimedAtMs: 7 })).toBe(true);
+    expect(settings.get(key)).toEqual({ handBack: 'app_actions', target, claimedAtMs: 7 });
+    const read = new BatteryClaimStore(settings).readAll();
     expect(read.status === 'resolved' ? Object.fromEntries(read.records) : read)
-      .toEqual({ 'battery-1': { kind: 'app_actions', claimedAtMs: 7 } });
-    for (const junk of [{ handBack: 'app_actions' }, { handBack: 'app_actions', claimedAtMs: 1, previousValue: 'x' }]) {
-      const junkRead = new BatteryClaimStore(settingsStore({ [key]: junk })).readAll();
-      expect(junkRead.status === 'resolved' ? junkRead.unreadableDeviceIds : junkRead).toEqual(['battery-1']);
+      .toEqual({ 'battery-1': { kind: 'app_actions', target, claimedAtMs: 7 } });
+  });
+
+  it('distinguishes legacy claims from malformed recorded targets', () => {
+    const legacy = new BatteryClaimStore(settingsStore({ [key]: { handBack: 'app_actions', claimedAtMs: 7 } })).readAll();
+    expect(legacy.status === 'resolved' ? Object.fromEntries(legacy.records) : legacy)
+      .toEqual({ 'battery-1': { kind: 'legacy_app_actions', claimedAtMs: 7 } });
+    for (const target of [null, {}, { appUri: 'x', deviceId: 'plant' }, {
+      appUri: 'homey:app:com.sigenergy', deviceId: '',
+    }]) {
+      const read = new BatteryClaimStore(settingsStore({
+        [key]: { handBack: 'app_actions', claimedAtMs: 7, target },
+      })).readAll();
+      expect(read.status === 'resolved' ? read.unreadableDeviceIds : read).toEqual(['battery-1']);
     }
   });
 

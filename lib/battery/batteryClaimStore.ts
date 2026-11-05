@@ -33,11 +33,16 @@
  * ## A claim-less battery's record
  *
  * A battery driven through its app's actions has no claim capability and no
- * value to restore: its record says only that PELS holds it, and since when
- * (`{ handBack: 'app_actions', claimedAtMs }`). It is written and removed at
- * the same moments, and boot recovery runs its hand-back actions.
+ * value to restore: its record names the app and exact controlled device,
+ * and when PELS took control. Boot recovery uses that durable identity, never
+ * a newly paired companion. Older records lacking identity are retained as
+ * legacy claims; only an adapter whose historical target was the battery
+ * itself can safely hand them back.
  */
+import { getLogger } from '../logging/logger';
+import { describeHandBack, toClaimRecord, type ClaimToRecord } from './batteryClaimStanding';
 import type { HomeBatteryClaimCapabilityId } from '../../packages/contracts/src/types';
+import type { AppActionControlTarget } from '../ports/storageCommand';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { readSettingsKeyList } from '../utils/settingsKeyList';
 import { PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../utils/settingsKeys';
@@ -60,14 +65,17 @@ export type BatteryClaimRecord =
     previousValue: string;
     claimedAtMs: number;
   }
-  | { kind: 'app_actions'; claimedAtMs: number };
+  | { kind: 'app_actions'; target: AppActionControlTarget; claimedAtMs: number }
+  | { kind: 'legacy_app_actions'; claimedAtMs: number };
 
 /** A record's stored form: the claim capability's unchanged since records were first stored. */
-const toStoredRecord = (record: BatteryClaimRecord): Record<string, unknown> => (
-  record.kind === 'app_actions'
-    ? { handBack: 'app_actions', claimedAtMs: record.claimedAtMs }
-    : { capabilityId: record.capabilityId, previousValue: record.previousValue, claimedAtMs: record.claimedAtMs }
-);
+const toStoredRecord = (record: BatteryClaimRecord): Record<string, unknown> => {
+  if (record.kind === 'app_actions') {
+    return { handBack: 'app_actions', target: record.target, claimedAtMs: record.claimedAtMs };
+  }
+  if (record.kind === 'legacy_app_actions') return { handBack: 'app_actions', claimedAtMs: record.claimedAtMs };
+  return { capabilityId: record.capabilityId, previousValue: record.previousValue, claimedAtMs: record.claimedAtMs };
+};
 
 /**
  * Stored records. The owner retries unresolved entries on later snapshots. `unavailable` is a key list the SDK
@@ -88,12 +96,23 @@ const isClaimCapabilityId = (value: unknown): value is HomeBatteryClaimCapabilit
   value === 'target_power_mode' || value === 'control_strategy'
 );
 
+const parseActionTarget = (value: unknown): AppActionControlTarget | null => {
+  if (!isUnknownRecord(value)) return null;
+  const { appUri, deviceId } = value;
+  if (typeof appUri !== 'string' || !/^homey:app:[^\s:]+$/u.test(appUri)
+    || typeof deviceId !== 'string' || deviceId.length === 0 || /\s/u.test(deviceId)) return null;
+  return { appUri, deviceId };
+};
+
 const parseClaimRecord = (value: unknown): BatteryClaimRecord | null => {
   if (!isUnknownRecord(value)) return null;
   const { capabilityId, previousValue, claimedAtMs, handBack } = value;
   if (typeof claimedAtMs !== 'number' || !Number.isFinite(claimedAtMs)) return null;
   if (handBack === 'app_actions') {
-    return capabilityId === undefined && previousValue === undefined ? { kind: 'app_actions', claimedAtMs } : null;
+    if (capabilityId !== undefined || previousValue !== undefined) return null;
+    if (!('target' in value)) return { kind: 'legacy_app_actions', claimedAtMs };
+    const target = parseActionTarget(value.target);
+    return target === null ? null : { kind: 'app_actions', target, claimedAtMs };
   }
   if (!isClaimCapabilityId(capabilityId) || typeof previousValue !== 'string' || previousValue.length === 0) {
     return null;
@@ -102,6 +121,8 @@ const parseClaimRecord = (value: unknown): BatteryClaimRecord | null => {
 };
 
 const claimKey = (deviceId: string): string => `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}${deviceId}`;
+
+const logger = getLogger('battery');
 
 export class BatteryClaimStore {
   constructor(private readonly settings: SettingsPort) {}
@@ -125,6 +146,21 @@ export class BatteryClaimStore {
       else records.set(deviceId, record);
     }
     return { status: 'resolved', records, unreadableDeviceIds };
+  }
+
+  /** Persist the first claim before its writer receives authority; no record is admitted on failure. */
+  claim(deviceId: string, value: ClaimToRecord): Exclude<BatteryClaimRecord, { kind: 'legacy_app_actions' }> | false {
+    const record = toClaimRecord(value, Date.now());
+    if (!this.write(deviceId, record)) {
+      logger.warn({ event: 'battery_control_claim_record_failed', deviceId });
+      return false;
+    }
+    logger.info({
+      event: 'battery_control_claimed', deviceId,
+      claimCapabilityId: record.kind === 'claim_capability' ? record.capabilityId : 'app_actions',
+      previousClaimValue: describeHandBack(record),
+    });
+    return record;
   }
 
   /** Store a record. `false` when the write threw: the caller must not claim. */

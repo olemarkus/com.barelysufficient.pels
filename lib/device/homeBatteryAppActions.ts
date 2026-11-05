@@ -32,6 +32,7 @@
  * that fails stops the sequence and throws, as any refused write does.
  */
 import type { HomeBatterySetpointRange } from '../../packages/contracts/src/types';
+import type { AppActionControlTarget } from '../ports/storageCommand';
 import type { BatteryCommandKeepAlive, BatteryControlRead } from '../ports/batteryControlOwner';
 import { normalizeError } from '../utils/errorUtils';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
@@ -75,19 +76,16 @@ type CardInventory =
  * all installed; commands are resolved independently so losing their range
  * or admission never prevents handing back a command already delivered.
  */
-type ResolvedActions = {
-  binding: HomeBatteryActionBinding;
+type ActionCards = { binding: HomeBatteryActionBinding; cards: FlowActionCardIds };
+
+type ResolvedActions = ActionCards & {
   commands: { kind: 'ready'; actions: HomeBatteryActions } | { kind: 'blocked'; reasonCode: string };
-  handBack: readonly DeviceActionStep[];
-  cards: FlowActionCardIds;
 };
 
 type Resolution =
   | { kind: 'resolved'; resolved: ResolvedActions }
   | { kind: 'unobserved' }
   | { kind: 'unavailable'; reasonCode: string };
-
-type RunPurpose = 'command' | 'hand_back';
 
 /**
  * How a command is kept in force: an expiring one is sent again at a third of
@@ -116,8 +114,6 @@ const isKeyMissing = (access: HomeyActionAccess): boolean => {
 export class HomeBatteryAppActions {
   private inventory: CardInventory = { kind: 'unread', retryAtMs: 0 };
   private inventoryRead: Promise<void> | undefined;
-  /** The hand-back target of commands we may have delivered, retained until released. */
-  private readonly commandedHandBacks = new Map<string, readonly DeviceActionStep[]>();
   /** The reason each battery was last logged unavailable, so each change is logged once. */
   private readonly unavailable = new Map<string, string>();
 
@@ -175,6 +171,7 @@ export class HomeBatteryAppActions {
     const { actions } = commands;
     return {
       kind: 'app_actions',
+      target: actions.target,
       range: actions.range,
       keepAliveFor: (setpointW) => toKeepAlive(
         binding.commandLifetime(toTargetPowerCapabilityValue(setpointW, actions.range)),
@@ -187,12 +184,14 @@ export class HomeBatteryAppActions {
    * the watts commanded. Throws when the battery's commands cannot run, or a
    * step failed.
    */
-  async command(deviceId: string, setpointW: number): Promise<number> {
-    const resolved = this.requireRunnable(deviceId, 'command');
+  async command(deviceId: string, setpointW: number, target: AppActionControlTarget): Promise<number> {
+    const resolved = this.requireRunnable(deviceId);
     if (resolved.commands.kind !== 'ready') throw new Error(resolved.commands.reasonCode);
     const commandedW = toTargetPowerCapabilityValue(setpointW, resolved.commands.actions.range);
-    this.commandedHandBacks.set(deviceId, resolved.handBack);
-    await this.runSteps(deviceId, resolved, resolved.commands.actions.command(commandedW));
+    this.assertTarget(deviceId, target);
+    await this.runSteps(
+      deviceId, resolved, resolved.commands.actions.command(commandedW), () => this.assertTarget(deviceId, target),
+    );
     return commandedW;
   }
 
@@ -200,10 +199,39 @@ export class HomeBatteryAppActions {
    * Hand the battery back to its own mode, on its hand-back cards alone.
    * Throws when its hand-back cannot run, or a step failed.
    */
-  async handBack(deviceId: string): Promise<void> {
-    const resolved = this.requireRunnable(deviceId, 'hand_back');
-    await this.runSteps(deviceId, resolved, resolved.handBack);
-    this.commandedHandBacks.delete(deviceId);
+  async handBack(deviceId: string, target: AppActionControlTarget): Promise<void> {
+    const binding = this.requireBinding(deviceId);
+    if (binding.appUri !== target.appUri) throw new Error('Home battery hand-back app does not match recorded target.');
+    if (this.inventory.kind !== 'read') throw new Error('Home battery action cards are unread.');
+    if (isKeyMissing(this.access)) throw new Error('Home battery Homey API key is missing.');
+    const cards = this.inventory.cards;
+    const steps = binding.handBack(target);
+    const missing = missingCard(cards, binding.appUri, steps);
+    if (missing !== undefined) throw new Error(`Home battery hand-back unavailable (${missing}).`);
+    await this.runSteps(deviceId, { binding, cards }, steps, () => undefined);
+  }
+
+  async handBackLegacy(deviceId: string): Promise<void> {
+    const device = this.getBattery(deviceId);
+    if (device === undefined) throw new Error('Home battery is unread.');
+    const target = this.requireBinding(deviceId).resolveLegacyTarget(device);
+    if (target.kind === 'unavailable') throw new Error(`Home battery hand-back unavailable (${target.reasonCode}).`);
+    await this.handBack(deviceId, target.target);
+  }
+
+  private requireBinding(deviceId: string): HomeBatteryActionBinding {
+    const device = this.getBattery(deviceId);
+    const binding = device === undefined ? undefined : this.bindingOf(device);
+    if (binding === undefined) throw new Error('Home battery app-action binding is unavailable.');
+    return binding;
+  }
+
+  private assertTarget(deviceId: string, target: AppActionControlTarget): void {
+    const device = this.getBattery(deviceId);
+    if (device === undefined) throw new Error('Home battery is unread.');
+    const current = this.requireBinding(deviceId).resolveTarget(device, this.getDevices());
+    if (current.kind !== 'resolved' || current.target.appUri !== target.appUri
+      || current.target.deviceId !== target.deviceId) throw new Error('Home battery control target changed.');
   }
 
   /**
@@ -214,13 +242,14 @@ export class HomeBatteryAppActions {
    */
   private async runSteps(
     deviceId: string,
-    resolved: ResolvedActions,
+    resolved: ActionCards,
     steps: readonly DeviceActionStep[],
+    assertAuthorized: () => void,
   ): Promise<void> {
     for (const step of steps) {
       const action = this.bindStep(resolved, step);
       try {
-        await this.access.runAction(deviceId, action, 'home_battery', () => undefined);
+        await this.access.runAction(deviceId, action, 'home_battery', assertAuthorized);
       } catch (error) {
         // A card that went missing after the inventory was read fails its run:
         // read the inventory again soon rather than wait out its age.
@@ -230,14 +259,14 @@ export class HomeBatteryAppActions {
     }
   }
 
-  private bindStep(resolved: ResolvedActions, step: DeviceActionStep): HomeyFlowAction {
+  private bindStep(resolved: ActionCards, step: DeviceActionStep): HomeyFlowAction {
     const action = resolveDeviceActionCard(resolved.cards, resolved.binding.appUri, step);
     if (action === undefined) throw new Error(`The battery app's action ${step.actionId} is unavailable in Homey.`);
     return action;
   }
 
-  /** The battery's actions when `purpose` can run on them now; throws, naming why, when it cannot. */
-  private requireRunnable(deviceId: string, purpose: RunPurpose): ResolvedActions {
+  /** The battery's runnable commands, or an error naming why they cannot run now. */
+  private requireRunnable(deviceId: string): ResolvedActions {
     const unavailable = (reasonCode: string): Error => (
       new Error(`Home battery ${deviceId} app actions are unavailable (${reasonCode}).`)
     );
@@ -245,7 +274,7 @@ export class HomeBatteryAppActions {
     if (resolution.kind === 'unobserved') throw unavailable('actions_unobserved');
     if (resolution.kind === 'unavailable') throw unavailable(resolution.reasonCode);
     const { commands } = resolution.resolved;
-    if (purpose === 'command' && commands.kind === 'blocked') throw unavailable(commands.reasonCode);
+    if (commands.kind === 'blocked') throw unavailable(commands.reasonCode);
     if (isKeyMissing(this.access)) throw unavailable('homey_api_key_missing');
     return resolution.resolved;
   }
@@ -262,29 +291,21 @@ export class HomeBatteryAppActions {
     if (binding === undefined) return { kind: 'unavailable', reasonCode: 'not_app_actions' };
     if (this.inventory.kind !== 'read') return { kind: 'unobserved' };
     const devices = this.getDevices();
-    const handBackResolution = binding.resolveHandBack(device, devices);
-    // Never redirect an owed hand-back to a newly paired sibling plant.
-    const retainedHandBack = this.commandedHandBacks.get(deviceId);
-    const release = retainedHandBack === undefined ? handBackResolution
-      : { kind: 'resolved' as const, steps: retainedHandBack };
-    if (release.kind === 'unavailable') {
-      this.noteUnavailable(deviceId, release.reasonCode);
+    const target = binding.resolveTarget(device, devices);
+    if (target.kind === 'unavailable') {
+      this.noteUnavailable(deviceId, target.reasonCode);
       return { kind: 'unobserved' };
     }
-    const handBack = release.steps;
+    const handBack = binding.handBack(target.target);
     const { cards } = this.inventory;
     const handBackMissing = missingCard(cards, binding.appUri, handBack);
     if (handBackMissing !== undefined) {
       this.retryInventorySoon();
       return { kind: 'unavailable', reasonCode: handBackMissing };
     }
-    let commands = resolveCommands(binding.resolve(device, devices), cards, binding.appUri);
-    if (retainedHandBack !== undefined && handBackResolution.kind === 'resolved'
-      && !sameTargets(retainedHandBack, handBackResolution.steps)) {
-      commands = { kind: 'blocked', reasonCode: 'hand_back_target_changed' };
-    }
+    const commands = resolveCommands(binding.resolve(device, devices), cards, binding.appUri);
     if (commands.kind === 'blocked' && commands.reasonCode.startsWith(CARD_MISSING_PREFIX)) this.retryInventorySoon();
-    return { kind: 'resolved', resolved: { binding, commands, handBack, cards } };
+    return { kind: 'resolved', resolved: { binding, commands, cards } };
   }
 
   private noteUnavailable(deviceId: string, reasonCode: string): void {
@@ -323,10 +344,6 @@ const missingCard = (
   const missing = steps.find((step) => resolveDeviceActionCard(cards, appUri, step) === undefined);
   return missing === undefined ? undefined : `${CARD_MISSING_PREFIX}${missing.actionId}`;
 };
-
-const sameTargets = (left: readonly DeviceActionStep[], right: readonly DeviceActionStep[]): boolean => (
-  left.length === right.length && left.every((step, index) => step.deviceId === right[index]?.deviceId)
-);
 
 const resolveCommands = (
   resolution: HomeBatteryActionsResolution,

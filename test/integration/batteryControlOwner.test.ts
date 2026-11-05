@@ -9,7 +9,7 @@ import { BATTERY_RELEASE_RETRY_BACKOFF_MS } from '../../lib/battery/pendingHandB
 import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings';
 import type { BatteryCommandKeepAlive, BatteryControlRead } from '../../lib/ports/batteryControlOwner';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
-import type { StorageCommand } from '../../lib/ports/storageCommand';
+import type { StorageCommand, StorageControlBinding } from '../../lib/ports/storageCommand';
 import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
 import type { ObservedDeviceState } from '../../packages/contracts/src/types';
 import { BATTERY_CONTROL_DEVICES, PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKeys';
@@ -670,9 +670,10 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
 });
 
 describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
+  const TARGET = { appUri: 'homey:app:com.niewold.marstek', deviceId: BATTERY };
   const RANGE = { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 };
   const resendsEvery150s = (): BatteryCommandKeepAlive => ({ kind: 'resend', everyMs: 150_000 });
-  const appActions = (): BatteryControlRead => ({ kind: 'app_actions', range: RANGE, keepAliveFor: resendsEvery150s });
+  const appActions = (): BatteryControlRead => ({ kind: 'app_actions', target: TARGET, range: RANGE, keepAliveFor: resendsEvery150s });
 
   it('records a claim of its own before the first command, and holds it from that record alone', async () => {
     const { owner, settings } = buildOwner({ batteries: { [BATTERY]: appActions() } });
@@ -685,7 +686,7 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
     await expect(owner.dispatchSetpoint(BATTERY, async () => 1200))
       .resolves.toEqual({ status: 'dispatched', setpointW: 1200 });
 
-    expect(settings.get(CLAIM_KEY)).toEqual({ handBack: 'app_actions', claimedAtMs: T0 });
+    expect(settings.get(CLAIM_KEY)).toEqual({ handBack: 'app_actions', target: TARGET, claimedAtMs: T0 });
     // Long after the confirmation window nothing can read as a takeover: there is no claim to observe.
     vi.setSystemTime(WINDOW_OVER + 60 * 60_000);
     owner.onSnapshotCommitted(refresh(BATTERY));
@@ -694,24 +695,69 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
     expect(owner.isManaged(BATTERY)).toBe(true);
   });
 
+  it('persists the target before calling the writer and refuses a later target replacement', async () => {
+    const batteries: Record<string, BatteryControlRead> = { [BATTERY]: appActions() };
+    const { owner, settings } = buildOwner({ batteries });
+    const write = vi.fn(async (control: StorageControlBinding) => {
+      expect(settings.get(CLAIM_KEY)).toEqual({ handBack: 'app_actions', target: TARGET, claimedAtMs: T0 });
+      expect(control).toEqual({ kind: 'app_actions', target: TARGET });
+      return 500;
+    });
+    await owner.dispatchSetpoint(BATTERY, write);
+    batteries[BATTERY] = { kind: 'app_actions', target: { ...TARGET, deviceId: 'replacement' },
+      range: RANGE, keepAliveFor: resendsEvery150s };
+    await expect(owner.dispatchSetpoint(BATTERY, write))
+      .resolves.toEqual({ status: 'refused', reason: 'claim_record_mismatch' });
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call an app-action writer if its target cannot be persisted', async () => {
+    const settings = settingsStore();
+    settings.set = () => { throw new Error('settings unavailable'); };
+    const { owner } = buildOwner({ settings, batteries: { [BATTERY]: appActions() } });
+    const write = vi.fn(async () => 500);
+    await expect(owner.dispatchSetpoint(BATTERY, write))
+      .resolves.toEqual({ status: 'refused', reason: 'claim_record_unwritable' });
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('keeps the stored target through restart and failed hand-back retries despite a replacement', async () => {
+    const settings = settingsStore({ [CLAIM_KEY]: { handBack: 'app_actions', target: TARGET, claimedAtMs: T0 - 60_000 } });
+    const replacement: BatteryControlRead = {
+      kind: 'app_actions', target: { ...TARGET, deviceId: 'replacement' }, range: RANGE, keepAliveFor: resendsEvery150s,
+    };
+    const { owner, commands } = buildOwner({ settings, batteries: { [BATTERY]: replacement },
+      apply: async () => { throw new Error('original target unavailable'); } });
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    vi.setSystemTime(T0 + BATTERY_RELEASE_RETRY_BACKOFF_MS[0]);
+    owner.onSnapshotCommitted(refresh(BATTERY));
+    await settle();
+    expect(commands).toEqual([
+      { kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions', target: TARGET },
+      { kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions', target: TARGET },
+    ]);
+    expect(settings.get(CLAIM_KEY)).toMatchObject({ target: TARGET });
+  });
+
   it('hands back through its app\'s hand-back actions and drops the record', async () => {
     const { owner, settings, commands } = buildOwner({ batteries: { [BATTERY]: appActions() } });
     await owner.dispatchSetpoint(BATTERY, async () => -800);
 
     await expect(owner.releaseClaim(BATTERY, 'idle')).resolves.toBe('released');
 
-    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions' }]);
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions', target: TARGET }]);
     expect(settings.get(CLAIM_KEY)).toBeNull();
   });
 
   it('recovers a record a previous run left with the hand-back actions', async () => {
-    const settings = settingsStore({ [CLAIM_KEY]: { handBack: 'app_actions', claimedAtMs: T0 - 60_000 } });
+    const settings = settingsStore({ [CLAIM_KEY]: { handBack: 'app_actions', target: TARGET, claimedAtMs: T0 - 60_000 } });
     const { owner, commands } = buildOwner({ settings, batteries: { [BATTERY]: appActions() } });
 
     owner.onSnapshotCommitted(refresh(BATTERY));
     await settle();
 
-    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions' }]);
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions', target: TARGET }]);
     expect(settings.get(CLAIM_KEY)).toBeNull();
   });
 
@@ -726,13 +772,13 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
     expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'not_drivable' });
     await expect(owner.releaseClaim(BATTERY, 'not_admissible')).resolves.toBe('not_released');
     expect(commands).toEqual([]);
-    expect(settings.get(CLAIM_KEY)).toEqual({ handBack: 'app_actions', claimedAtMs: T0 });
+    expect(settings.get(CLAIM_KEY)).toEqual({ handBack: 'app_actions', target: TARGET, claimedAtMs: T0 });
 
     batteries[BATTERY] = appActions();
     owner.onSnapshotCommitted(refresh(BATTERY));
     await settle();
 
-    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions' }]);
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions', target: TARGET }]);
     expect(settings.get(CLAIM_KEY)).toBeNull();
   });
 
@@ -763,7 +809,7 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
 
     await expect(removal).resolves.toBe('removed');
     expect(order).toEqual(['hand_back', 'key_removed']);
-    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions' }]);
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions', target: TARGET }]);
     expect(settings.get(CLAIM_KEY)).toBeNull();
   });
 
@@ -778,12 +824,21 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
     await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('battery_held');
 
     expect(removeKey).not.toHaveBeenCalled();
-    expect(settings.get(CLAIM_KEY)).toEqual({ handBack: 'app_actions', claimedAtMs: T0 });
+    expect(settings.get(CLAIM_KEY)).toEqual({ handBack: 'app_actions', target: TARGET, claimedAtMs: T0 });
     // The hand-back is still owed, and retried as any failed one.
     expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'release_in_flight' });
   });
 
-  it('keeps the key at boot until a held battery is observed and handed back', async () => {
+  it('keeps the key while a recorded app target is unresolved by the current inventory', async () => {
+    const settings = settingsStore({ [CLAIM_KEY]: { handBack: 'app_actions', target: TARGET, claimedAtMs: T0 - 60_000 } });
+    const removeKey = vi.fn();
+    const { owner } = buildOwner({ settings, batteries: { [BATTERY]: { kind: 'observe_only' } } });
+    await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('battery_held');
+    expect(removeKey).not.toHaveBeenCalled();
+    expect(settings.get(CLAIM_KEY)).toMatchObject({ target: TARGET });
+  });
+
+  it('keeps the key at boot until a legacy held battery is observed and handed back', async () => {
     const removeKey = vi.fn();
     const settings = settingsStore({ [CLAIM_KEY]: { handBack: 'app_actions', claimedAtMs: T0 - 60_000 } });
     const { owner, batteries, commands } = buildOwner({ settings, batteries: {} });
@@ -795,7 +850,7 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
 
     batteries[BATTERY] = appActions();
     await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('removed');
-    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions' }]);
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'legacy_app_actions' }]);
     expect(removeKey).toHaveBeenCalledTimes(1);
   });
 
@@ -823,9 +878,9 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
     expect(removeKey).not.toHaveBeenCalled();
     expect(commands).toEqual([]);
 
-    settings.set(CLAIM_KEY, { handBack: 'app_actions', claimedAtMs: T0 - 60_000 });
+    settings.set(CLAIM_KEY, { handBack: 'app_actions', target: TARGET, claimedAtMs: T0 - 60_000 });
     await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('removed');
-    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions' }]);
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions', target: TARGET }]);
     expect(removeKey).toHaveBeenCalledTimes(1);
   });
 
@@ -836,7 +891,7 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
     await expect(claimed.owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('removed');
     expect(claimed.commands).toEqual([]);
 
-    const settings = settingsStore({ [CLAIM_KEY]: { handBack: 'app_actions', claimedAtMs: T0 - 60_000 } });
+    const settings = settingsStore({ [CLAIM_KEY]: { handBack: 'app_actions', target: TARGET, claimedAtMs: T0 - 60_000 } });
     const refused = buildOwner({ settings, batteries: { [BATTERY]: { kind: 'homey_api_key_missing' } } });
     await expect(refused.owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('removed');
     expect(refused.commands).toEqual([]);
@@ -853,7 +908,7 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
     expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'not_drivable' });
     await expect(owner.releaseClaim(BATTERY, 'not_admissible')).resolves.toBe('released');
 
-    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions' }]);
+    expect(commands).toEqual([{ kind: 'storage_release', deviceId: BATTERY, handBack: 'app_actions', target: TARGET }]);
     expect(settings.get(CLAIM_KEY)).toBeNull();
   });
 });

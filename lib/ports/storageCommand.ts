@@ -1,3 +1,11 @@
+/** The exact Homey app and device an app-action claim controls; no executable card payload. */
+export type AppActionControlTarget = { appUri: string; deviceId: string };
+
+/** Claim authority supplied by the battery owner only after its recovery record is stored. */
+export type StorageControlBinding =
+  | { kind: 'capability' }
+  | { kind: 'app_actions'; target: AppActionControlTarget };
+
 /**
  * The two control intents for a home battery, in the actuator's vocabulary: a
  * signed setpoint, and handing the battery back. Declared here rather than in
@@ -12,6 +20,7 @@
  */
 export type StoragePowerCommand = {
   kind: 'storage_power';
+  control: StorageControlBinding;
   deviceId: string;
   /** Finite signed watts: positive charges, negative discharges. */
   setpointW: number;
@@ -25,11 +34,14 @@ export type StoragePowerCommand = {
  * to hand back, and whether its claim capability declares this value, is the
  * owner's decision (it holds the claim time); transport writes
  * unconditionally. A claim-less battery driven through its app's actions
- * (`app_actions`) runs its integration's own hand-back actions.
+ * (`app_actions`) runs its integration's own hand-back actions on the exact
+ * recorded target. A legacy claim has no target: the adapter may resolve
+ * only a historical self-target; an unknown companion remains pending.
  */
 export type StorageReleaseCommand =
   | { kind: 'storage_release'; deviceId: string; handBack: 'claim_capability'; restoreClaimValue: string }
-  | { kind: 'storage_release'; deviceId: string; handBack: 'app_actions' };
+  | { kind: 'storage_release'; deviceId: string; handBack: 'app_actions'; target: AppActionControlTarget }
+  | { kind: 'storage_release'; deviceId: string; handBack: 'legacy_app_actions' };
 
 export type StorageCommand = StoragePowerCommand | StorageReleaseCommand;
 
