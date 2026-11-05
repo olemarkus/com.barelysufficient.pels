@@ -13,7 +13,7 @@ import type {
   PlanMeasuredMetaFields,
   PlanMetaBase,
 } from './planTypes';
-import type { MeasuredPower, PlanContext, PlanLimits } from './planContext';
+import type { CapacityPlanLimit, MeasuredPower, PlanContext, PlanLimits } from './planContext';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { splitControlledUsageKwFor } from '../power/usageAttribution';
 import { toMeteredUsageDevices } from './planUsage';
@@ -45,19 +45,18 @@ export type PlanMetaCycleFacts = {
   capacityGuard: CapacityGuard;
   capacityLimitKw: number;
   hourlyBudgetExhausted: boolean;
-  /** Producer-resolved `computeShortfallThreshold` for this build. */
-  shortfallBudgetThresholdKw: number | null;
 };
 
 /** Nullable scalar fields belong to the published meta and logs, never the planner's policy. */
 export function projectPlanLimits(limits: PlanLimits): Pick<PlanMetaBase,
   'softLimitKw' | 'softLimitSource' | 'capacitySoftLimitKw' | 'gridImportLimitKw' | 'gridImportTargetKw'
-  | 'dailySoftLimitKw' | 'budgetPaceKw' | 'projectedExemptKw'> {
+  | 'dailySoftLimitKw' | 'budgetPaceKw' | 'projectedExemptKw' | 'shortfallBudgetThresholdKw'> {
   const { capacity, grid, daily, binding } = limits;
   return {
     softLimitKw: binding.kind === 'bound' ? binding.kw : null,
     softLimitSource: binding.kind === 'bound' ? binding.source : null,
     capacitySoftLimitKw: capacity.kind === 'on' ? capacity.paceKw : null,
+    shortfallBudgetThresholdKw: capacity.kind === 'on' ? capacity.shortfallThresholdKw : null,
     gridImportLimitKw: grid.kind === 'on' ? grid.limitKw : null,
     gridImportTargetKw: grid.kind === 'on' ? grid.targetKw : null,
     dailySoftLimitKw: daily.kind === 'on' ? daily.budgetPaceKw + daily.projectedExemptKw : null,
@@ -69,7 +68,7 @@ export function projectPlanLimits(limits: PlanLimits): Pick<PlanMetaBase,
 export function buildPlanMetaBase(facts: PlanMetaCycleFacts): PlanMetaBase {
   const {
     context, reading, dailyBudgetSnapshot, powerTracker, capacityGuard,
-    capacityLimitKw, hourlyBudgetExhausted, shortfallBudgetThresholdKw,
+    capacityLimitKw, hourlyBudgetExhausted,
   } = facts;
   const currentHourUsageSplit = getHourUsageSplit(powerTracker, context.hourBucketKey);
   const today = dailyBudgetSnapshot?.days[dailyBudgetSnapshot.todayKey] ?? null;
@@ -79,7 +78,6 @@ export function buildPlanMetaBase(facts: PlanMetaCycleFacts): PlanMetaBase {
     // As it stands: a build with Capacity limit off cleared the incident before
     // anything read the guard (`PlanBuilder.buildPlanSnapshotWithTimings`).
     capacityShortfall: capacityGuard.isInShortfall(),
-    shortfallBudgetThresholdKw,
     hardCapLimitKw: capacityLimitKw,
     capacityPeriodMinutes: context.capacityPeriodMinutes,
     capacityPeriodCoverageComplete: context.capacityPeriodCoverageComplete,
@@ -106,7 +104,7 @@ export function buildPlanMeta(facts: PlanMetaCycleFacts, power: MeasuredPower): 
   return {
     ...buildPlanMetaBase(facts),
     ...resolveMeasuredMetaFields(
-      power, facts.reading, facts.planDevices, facts.capacityLimitKw, facts.shortfallBudgetThresholdKw,
+      power, facts.reading, facts.planDevices, facts.capacityLimitKw, facts.context.capacity,
     ),
   };
 }
@@ -124,20 +122,19 @@ export function buildUnmeasuredPlanMeta(facts: PlanMetaCycleFacts): DevicePlan['
 /**
  * The reading's distance to the capacity period's two lines: the shortfall
  * threshold and the hard cap. Both exist only while Capacity limit is on, and
- * the threshold is the one predicate that says so: the build resolves it and
- * the capacity pace from its one settings read, `null` together with Capacity
- * limit off (`PlanBuilder.resolveCapacityCycle`). The published meta and the
+ * the build resolves both from its one settings read into the enabled capacity
+ * axis (`PlanBuilder.resolveCapacityCycle`). The published meta and the
  * overshoot log take their figures from here, so they cannot disagree on
  * whether the cap applies.
  */
 function resolveCapacityLineDistances(
   reading: PowerCycleDisplay,
   hardCapLimitKw: number,
-  shortfallBudgetThresholdKw: number | null,
+  capacity: CapacityPlanLimit,
 ): Pick<PlanMeasuredMetaFields, 'shortfallBudgetHeadroomKw' | 'hardCapHeadroomKw'> {
-  if (shortfallBudgetThresholdKw === null) return { shortfallBudgetHeadroomKw: null, hardCapHeadroomKw: null };
+  if (capacity.kind === 'off') return { shortfallBudgetHeadroomKw: null, hardCapHeadroomKw: null };
   return {
-    shortfallBudgetHeadroomKw: shortfallBudgetThresholdKw - reading.totalKw,
+    shortfallBudgetHeadroomKw: capacity.shortfallThresholdKw - reading.totalKw,
     hardCapHeadroomKw: hardCapLimitKw - reading.totalKw,
   };
 }
@@ -152,13 +149,13 @@ export function resolveMeasuredMetaFields(
   reading: PowerCycleDisplay,
   planDevices: DevicePlanDevice[],
   capacityLimitKw: number,
-  shortfallBudgetThresholdKw: number | null,
+  capacity: CapacityPlanLimit,
 ): PlanMeasuredMetaFields {
   return {
     powerIsMeasured: true,
     physicalLimitBreached: power.physicalLimitBreached,
     headroomKw: power.headroom.kind === 'on' ? power.headroom.kw : null,
-    ...resolveCapacityLineDistances(reading, capacityLimitKw, shortfallBudgetThresholdKw),
+    ...resolveCapacityLineDistances(reading, capacityLimitKw, capacity),
     ...splitControlledUsageKwFor({
       devices: toMeteredUsageDevices(planDevices),
       totalKw: reading.totalKw,
@@ -171,10 +168,9 @@ export function buildPlanContextHeadroomLogFields(
   power: MeasuredPower,
   reading: PowerCycleDisplay,
   hardCapLimitKw: number,
-  shortfallBudgetThresholdKw: number | null,
 ): Record<string, number | boolean | string | null> {
   const { shortfallBudgetHeadroomKw, hardCapHeadroomKw } = resolveCapacityLineDistances(
-    reading, hardCapLimitKw, shortfallBudgetThresholdKw,
+    reading, hardCapLimitKw, context.capacity,
   );
   return {
     totalKw: reading.totalKw,
@@ -183,7 +179,7 @@ export function buildPlanContextHeadroomLogFields(
     // Log continuity: saved queries read `powerNowKw` as "the measured draw".
     // A LOG field, not a seam.
     powerNowKw: reading.totalKw,
-    shortfallBudgetThresholdKw,
+    shortfallBudgetThresholdKw: projectPlanLimits(context).shortfallBudgetThresholdKw,
     shortfallBudgetHeadroomKw,
     hardCapHeadroomKw,
     hardCapBreached: hardCapHeadroomKw !== null && hardCapHeadroomKw < 0,

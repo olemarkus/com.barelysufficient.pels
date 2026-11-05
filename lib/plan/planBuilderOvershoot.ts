@@ -84,7 +84,6 @@ export class OvershootTracker {
       context,
       reading,
       capacityLimitKw,
-      shortfallBudgetThresholdKw,
       planDevices,
     } = facts;
     const overshootActive = overshootDecision.actionable;
@@ -120,7 +119,7 @@ export class OvershootTracker {
         reasonCode: 'active_overshoot',
         headroomKw: power.headroom.kind === 'on' ? power.headroom.kw : null,
         ...overshootTimingFields,
-        ...buildPlanContextHeadroomLogFields(context, power, reading, capacityLimitKw, shortfallBudgetThresholdKw),
+        ...buildPlanContextHeadroomLogFields(context, power, reading, capacityLimitKw),
         // Supplies exactly the meta the summary reads. It used to pass
         // `headroomKw` (never read) while omitting the managed/background
         // split (always read), so this log's `controlledPowerW` /
@@ -131,7 +130,7 @@ export class OvershootTracker {
             ...projectPlanLimits(context),
             // The same constructor the plan meta uses, so the summary's
             // managed/background split cannot drift from the published one.
-            ...resolveMeasuredMetaFields(power, reading, planDevices, capacityLimitKw, shortfallBudgetThresholdKw),
+            ...resolveMeasuredMetaFields(power, reading, planDevices, capacityLimitKw, context.capacity),
           },
           devices: planDevices,
         }, { summarySource: 'plan_build', summarySourceAtMs: nowTs }),
@@ -150,7 +149,7 @@ export class OvershootTracker {
         reasonCode: 'overshoot_cleared',
         durationMs,
         ...overshootTimingFields,
-        ...buildPlanContextHeadroomLogFields(context, power, reading, capacityLimitKw, shortfallBudgetThresholdKw),
+        ...buildPlanContextHeadroomLogFields(context, power, reading, capacityLimitKw),
       });
     }
     this.lastPlan = { totalKw: reading.totalKw, builtAtMs: nowTs, devicesById: trackedPlanDevicesById };

@@ -38,12 +38,14 @@ import {
   computeDynamicSoftLimit,
   isDailyBudgetBelowPlanningCeiling,
   resolveShortfallThresholdKw,
+  computeShortfallThreshold,
 } from './planBudget';
 import {
   buildPlanContext,
   buildPlanLimits,
   resolvePhysicalPowerLimit,
   type DailySoftLimitResolution,
+  type CapacityPlanLimit,
   resolveMeasuredPower,
   type MeasuredPower,
   type PlanContext,
@@ -224,9 +226,8 @@ export class PlanBuilder {
   /**
    * The capacity axis this build decides against, resolved first and from the
    * settings the build read once: the stamped pace (`stampCapacityPace`) and
-   * the shortfall threshold (`resolveShortfallThresholdKw`), both `null` when
-   * Capacity limit is off. The pace is the value the limits carry as
-   * `capacitySoftLimit`.
+   * the shortfall threshold, together in the enabled capacity axis.
+   * Capacity limit off has neither.
    *
    * Capacity limit off also cancels any incident it left open, before anything
    * in the build reads the guard. With builds serialized (`PlanService`) this
@@ -239,10 +240,13 @@ export class PlanBuilder {
   private async resolveCapacityCycle(
     settings: PowerLimitSettings,
     nowTs: number,
-  ): Promise<{ paceKw: number | null; shortfallThresholdKw: number | null }> {
+  ): Promise<CapacityPlanLimit> {
     const paceKw = this.stampCapacityPace(settings, nowTs);
-    if (paceKw === null) await this.capacityGuard.recordCapacityDisabled();
-    return { paceKw, shortfallThresholdKw: resolveShortfallThresholdKw(settings, this.powerTracker, nowTs) };
+    if (paceKw === null) {
+      await this.capacityGuard.recordCapacityDisabled();
+      return { kind: 'off' };
+    }
+    return { kind: 'on', paceKw, shortfallThresholdKw: computeShortfallThreshold(settings, this.powerTracker, nowTs) };
   }
 
   public async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
@@ -255,9 +259,7 @@ export class PlanBuilder {
     // overshoot log and the meta all answer to this one object, so a settings
     // write landing mid-build cannot split the cycle across two postures.
     const settings = this.capacitySettings;
-    const {
-      paceKw: capacityPaceKw, shortfallThresholdKw: shortfallBudgetThresholdKw,
-    } = await this.resolveCapacityCycle(settings, nowTs);
+    const capacity = await this.resolveCapacityCycle(settings, nowTs);
     // Evaluate deferred objectives at the planner boundary and translate active objectives
     // into a plain managed-device shape: a device PELS has no standing authority over
     // gains `commandAuthority` for the cycle (so it participates in shed/restore) without
@@ -290,7 +292,7 @@ export class PlanBuilder {
       // The limits this cycle is decided against — one resolution, held by the
       // frame both passes build.
       buildPlanLimits(
-        settings, capacityPaceKw, this.computeDailySoftLimit(dailyBudgetSnapshot, admittedDevices, nowTs),
+        settings, capacity, this.computeDailySoftLimit(dailyBudgetSnapshot, admittedDevices, nowTs),
       ),
       // After the decoration, which is what stamps a smart task's deadline floor.
       this.deps.resolveTemperatureSetpoints(admittedDevices),
@@ -301,7 +303,7 @@ export class PlanBuilder {
     // build — the silent-meter fail-closed pass — takes its directive here and
     // never constructs a `MeasuredPower` (owner ruling 2026-09-02).
     if (!reading.isMeasured) {
-      return this.silentMeter.build(context, reading, decoration, settings, shortfallBudgetThresholdKw, nowTs);
+      return this.silentMeter.build(context, reading, decoration, settings, nowTs);
     }
     // The first measured build inside this hour's drain keeps what the house
     // drew as the level the drain falls from (`CapacityDrainStart`). Before
@@ -317,7 +319,7 @@ export class PlanBuilder {
     // is running, it does not make room for more.
     const {
       sheddingPlan, overshootDecision, storageRelief: limitedStorage, admissionPower,
-    } = await this.decideShedding(context, power, surplusOffers, shortfallBudgetThresholdKw, settings);
+    } = await this.decideShedding(context, power, surplusOffers, settings);
     // The "Run on solar surplus" dump-load hold + the post-shedding hold
     // merges; returns the dump-load reason map for reason normalization.
     const postureHolds = trackPlanStage('plan_posture_holds_ms', () => runStandingPostureHolds(
@@ -372,7 +374,6 @@ export class PlanBuilder {
       powerTracker: this.powerTracker,
       capacityGuard: this.capacityGuard,
       capacityLimitKw: settings.limitKw,
-      shortfallBudgetThresholdKw,
       hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(heldContext),
     };
     trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState(
@@ -439,7 +440,6 @@ export class PlanBuilder {
     context: PlanContext,
     power: MeasuredPower,
     surplusOffers: ReadonlyMap<string, StorageSurplusOffer>,
-    shortfallBudgetThresholdKw: number | null,
     settings: PowerLimitSettings,
   ): Promise<{
     sheddingPlan: SheddingPlan;
@@ -458,7 +458,7 @@ export class PlanBuilder {
       ? NO_STORAGE_RELIEF
       : decideStorageRelief(context.devices, power, this.state.storageLeverByDevice, surplusOffers, nowTs);
     const overshootDecision = this.state.overshoot.decidePacing(
-      context, power, settings, heldStorage.shed, shortfallBudgetThresholdKw,
+      context, power, settings, heldStorage.shed,
       requireLatchedMeterReading(this.powerTracker),
     );
     // A clean whole-home sample: the house is under its pace, and the hour is
@@ -474,7 +474,7 @@ export class PlanBuilder {
     const sheddingPlan = await trackPlanStageAsync(
       'plan_shedding_ms',
       () => buildSheddingPlan(
-        context, power, this.state, buildSheddingDeps(this.deps, shortfallBudgetThresholdKw),
+        context, power, this.state, buildSheddingDeps(this.deps),
         // Shedding prices a held battery from its hold (`heldStorage.levers`).
         overshootDecision, heldStorage,
       ),

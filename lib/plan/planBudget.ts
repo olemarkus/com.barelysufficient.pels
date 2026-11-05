@@ -235,11 +235,9 @@ export function computeShortfallThreshold(
  * limit is off: with no capacity period in force there is no hard-cap breach to
  * project, so no threshold exists (genuine absence, not a missing read).
  *
- * The ONE owner of "is the capacity shortfall question asked at all". The plan
- * build (once per build, from the settings it read once), the silent-meter pass,
- * the rebuild throttle's reading, the periodic status log and the Flow alert
- * condition all take the threshold from here and treat `null` as "capacity
- * control is off"; none of them re-asks `capacityEnabled` beside it.
+ * Outside a plan cycle, the rebuild throttle, periodic status log and Flow
+ * alert resolve the live threshold here. Plan builds resolve it once into
+ * their enabled capacity axis and consumers use that cycle-owned value.
  */
 export function resolveShortfallThresholdKw(
   settings: PowerLimitSettings,

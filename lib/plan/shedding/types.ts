@@ -111,8 +111,6 @@ export const NO_STORAGE_SHED_TERM: StorageShedTerm = Object.freeze({
 
 export type SheddingDeps = {
   capacityGuard: CapacityGuard;
-  /** Producer-resolved `computeShortfallThreshold` for this build. */
-  shortfallThresholdKw: number | null;
   powerTracker: PowerTrackerState;
   getShedBehavior: (deviceId: string) => ShedBehavior;
   // Observer-owned pending-binary-command store; candidate builders read

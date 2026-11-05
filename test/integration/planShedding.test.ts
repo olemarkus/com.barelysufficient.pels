@@ -19,7 +19,7 @@ import type {
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { buildSheddingPlanForSpec } from '../helpers/sheddingPlanForSpec';
-import type { SheddingDeps } from '../../lib/plan/shedding/types';
+import type { SheddingFixtureDeps as SheddingDeps } from '../helpers/sheddingPlanForSpec';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 import {
   fixtureControlPosture,

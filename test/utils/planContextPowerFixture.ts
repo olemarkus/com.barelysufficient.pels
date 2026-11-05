@@ -48,6 +48,7 @@ export const buildMeasuredPower = (overrides: MeasuredPowerFixtureOverrides = {}
 export type PlanLimitFixtureOverrides = {
   softLimit?: number | null;
   capacitySoftLimit?: number | null;
+  shortfallThresholdKw?: number;
   gridImportLimitKw?: number | null;
   gridImportTargetKw?: number | null;
   dailySoftLimit?: number | null;
@@ -65,10 +66,11 @@ export const planLimitsFixture = (overrides: PlanLimitFixtureOverrides = {}): Pl
   const {
     softLimit = 0, capacitySoftLimit = 0, gridImportLimitKw = null, gridImportTargetKw = null,
     dailySoftLimit = null, budgetPaceKw = null, projectedExemptKw = null, softLimitSource = 'capacity',
+    shortfallThresholdKw = capacitySoftLimit ?? 0,
   } = overrides;
   const gridTargetKw = gridImportTargetKw ?? (gridImportLimitKw === null ? null : gridImportLimitKw * 0.95);
   return {
-    capacity: capacitySoftLimit === null ? { kind: 'off' } : { kind: 'on', paceKw: capacitySoftLimit },
+    capacity: capacitySoftLimit === null ? { kind: 'off' } : { kind: 'on', paceKw: capacitySoftLimit, shortfallThresholdKw },
     grid: gridTargetKw === null ? { kind: 'off' }
       : { kind: 'on', limitKw: gridImportLimitKw ?? gridTargetKw / 0.95, targetKw: gridTargetKw },
     daily: dailySoftLimit === null ? { kind: 'off' }
@@ -85,12 +87,12 @@ export const planLimitsFixture = (overrides: PlanLimitFixtureOverrides = {}): Pl
 export const buildPlanContextFixture = (spec: PlanContextFixtureOverrides = {}): PlanContext => {
   const {
     intent = {}, softLimit, capacitySoftLimit, gridImportLimitKw, gridImportTargetKw,
-    dailySoftLimit, budgetPaceKw, projectedExemptKw, softLimitSource, ...overrides
+    dailySoftLimit, budgetPaceKw, projectedExemptKw, softLimitSource, shortfallThresholdKw, ...overrides
   } = spec;
   return {
     ...planLimitsFixture({
       softLimit, capacitySoftLimit, gridImportLimitKw, gridImportTargetKw,
-      dailySoftLimit, budgetPaceKw, projectedExemptKw, softLimitSource,
+      dailySoftLimit, budgetPaceKw, projectedExemptKw, softLimitSource, shortfallThresholdKw,
     }),
     nowTs: Date.now(),
     devices: [],

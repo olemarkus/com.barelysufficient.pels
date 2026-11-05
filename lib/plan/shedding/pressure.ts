@@ -1,5 +1,5 @@
 import { isOverShortfallThreshold } from '../../power/capacityGuard';
-import type { MeasuredPower } from '../planContext';
+import type { CapacityPlanLimit, MeasuredPower } from '../planContext';
 import type { StorageShedTerm } from './types';
 
 /** Ordinary pacing may give a demand restriction a bounded opportunity to respond. */
@@ -8,10 +8,11 @@ export type ShedPressure =
   | { kind: 'hard_cap' | 'grid'; deficitKw: number };
 
 export function resolveShedPressure(
-  power: MeasuredPower, shortfallThresholdKw: number | null, storage: StorageShedTerm,
+  power: MeasuredPower, capacity: CapacityPlanLimit, storage: StorageShedTerm,
 ): ShedPressure {
-  const hardCapDeficitKw = shortfallThresholdKw !== null && isOverShortfallThreshold(power.drawKw, shortfallThresholdKw)
-    ? power.drawKw - shortfallThresholdKw : 0;
+  const hardCapDeficitKw = capacity.kind === 'on'
+    && isOverShortfallThreshold(power.drawKw, capacity.shortfallThresholdKw)
+    ? power.drawKw - capacity.shortfallThresholdKw : 0;
   const gridDeficitKw = power.gridHeadroom.kind === 'off' ? 0 : Math.max(0, -power.gridHeadroom.kw);
   // Urgency is classified against the actual cap, but cuts must preserve the
   // capacity pace's response margin. The actual projection can also be more

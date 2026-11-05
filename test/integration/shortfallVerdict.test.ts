@@ -35,7 +35,7 @@ describe('reportShortfallToGuard', () => {
     const capacityGuard = guardDouble();
 
     await reportShortfallToGuard(
-      buildPlanContextFixture({
+      buildPlanContextFixture({ shortfallThresholdKw: 0,
         capacityPeriodMinutes: 15,
         capacityPeriodCoverageComplete: false,
         devices: [],
@@ -46,7 +46,6 @@ describe('reportShortfallToGuard', () => {
       {
         structuredLog: testLogger,
         capacityGuard,
-        shortfallThresholdKw: 0,
         powerTracker: {},
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off' }),
@@ -64,14 +63,13 @@ describe('reportShortfallToGuard', () => {
     const capacityGuard = guardDouble();
 
     await reportShortfallToGuard(
-      buildPlanContextFixture({ devices: [] }),
+      buildPlanContextFixture({ shortfallThresholdKw: 5, devices: [] }),
       buildMeasuredPower({ drawKw: 4, headroomKw: 1, capacityBreached: false }),
       state,
       heldSelection('missing'),
       {
         structuredLog: testLogger,
         capacityGuard,
-        shortfallThresholdKw: 5,
         powerTracker: {},
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off' }),
@@ -89,7 +87,7 @@ describe('reportShortfallToGuard', () => {
     const capacityGuard = guardDouble();
 
     await reportShortfallToGuard(
-      buildPlanContextFixture({
+      buildPlanContextFixture({ shortfallThresholdKw: 5,
         devices: [buildPlanInputDevice({ id: 'heater', currentDrawKw: 2, binaryControl: { on: true }, controllable: true })],
       }),
       buildMeasuredPower({ drawKw: 7, headroomKw: -2, capacityBreached: true }),
@@ -98,7 +96,6 @@ describe('reportShortfallToGuard', () => {
       {
         structuredLog: testLogger,
         capacityGuard,
-        shortfallThresholdKw: 5,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off' }),
@@ -117,7 +114,7 @@ describe('reportShortfallToGuard', () => {
     const capacityGuard = guardDouble();
 
     await reportShortfallToGuard(
-      buildPlanContextFixture({
+      buildPlanContextFixture({ shortfallThresholdKw: 5,
         devices: [buildPlanInputDevice({ id: 'heater', currentDrawKw: 0, binaryControl: { on: false }, controllable: true })],
       }),
       buildMeasuredPower({ drawKw: 7, headroomKw: -2, capacityBreached: true }),
@@ -126,7 +123,6 @@ describe('reportShortfallToGuard', () => {
       {
         structuredLog: testLogger,
         capacityGuard,
-        shortfallThresholdKw: 5,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off' }),
@@ -145,7 +141,7 @@ describe('reportShortfallToGuard', () => {
     const capacityGuard = guardDouble();
 
     await reportShortfallToGuard(
-      buildPlanContextFixture({
+      buildPlanContextFixture({ shortfallThresholdKw: 5,
         devices: [buildPlanInputDevice({ id: 'heater', currentDrawKw: 0, binaryControl: { on: false }, controllable: true })],
       }),
       buildMeasuredPower({ drawKw: 7, headroomKw: -2, capacityBreached: true }),
@@ -155,7 +151,6 @@ describe('reportShortfallToGuard', () => {
       {
         structuredLog: testLogger,
         capacityGuard,
-        shortfallThresholdKw: 5,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off' }),

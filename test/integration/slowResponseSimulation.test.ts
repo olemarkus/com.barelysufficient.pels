@@ -35,13 +35,15 @@ const RUNTIME_CANDIDATE: SimulatedPressurePolicyFactory = () => {
       budgetPaceKw: reading.dailyPaceKw, projectedExemptKw: 0,
     };
     const context = buildPlanContext(
-      devices, settings, tracker, buildPlanLimits(settings, reading.capacityPaceKw, daily), new Map(), reading.atMs,
+      devices, settings, tracker, buildPlanLimits(settings, {
+        kind: 'on', paceKw: reading.capacityPaceKw, shortfallThresholdKw: reading.shortfallThresholdKw,
+      }, daily), new Map(), reading.atMs,
     );
     const power = resolveMeasuredPower({
       isMeasured: true, totalKw: reading.powerKw, lastPowerUpdateMs: reading.atMs,
       headroomKw: (limitKw) => limitKw - reading.powerKw,
     }, context, devices);
-    return incident.decidePacing(context, power, settings, NO_STORAGE_SHED_TERM, reading.shortfallThresholdKw, {
+    return incident.decidePacing(context, power, settings, NO_STORAGE_SHED_TERM, {
       atMs: reading.atMs, powerW: reading.powerKw * 1000,
     });
   };

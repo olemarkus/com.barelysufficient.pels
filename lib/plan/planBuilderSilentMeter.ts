@@ -83,10 +83,9 @@ function holdShortOfDemandSideLimit(
  * The shedding module's dependencies, from the builder's. Shared with the
  * ordinary pipeline so the two passes price candidates identically.
  */
-export function buildSheddingDeps(deps: PlanBuilderDeps, shortfallThresholdKw: number | null): SheddingDeps {
+export function buildSheddingDeps(deps: PlanBuilderDeps): SheddingDeps {
   return {
     capacityGuard: deps.capacityGuard,
-    shortfallThresholdKw,
     powerTracker: deps.getPowerTracker(),
     getShedBehavior: (deviceId) => deps.getShedBehavior(deviceId),
     pendingBinaryCommandStore: deps.pendingBinaryCommandStore,
@@ -102,7 +101,7 @@ export class SilentMeterPlanBuilder {
   ) { }
 
   /**
-   * `settings` and `shortfallBudgetThresholdKw` are the build's own — read and
+   * `settings` and the context’s capacity axis are the build's own — read and
    * resolved once by `PlanBuilder` for the whole cycle — never a second read
    * here that a settings write could have moved.
    */
@@ -111,11 +110,10 @@ export class SilentMeterPlanBuilder {
     reading: SilentMeterReading,
     decoration: DeferredDecorationBundle,
     settings: PowerLimitSettings,
-    shortfallBudgetThresholdKw: number | null,
     nowTs: number,
   ): DevicePlan {
     const powerTracker = this.deps.getPowerTracker();
-    const sheddingPlan = this.shedEverything(context, shortfallBudgetThresholdKw, nowTs);
+    const sheddingPlan = this.shedEverything(context, nowTs);
     // No measurement means no surplus: every surplus-only load is held, with
     // its own reason, exactly as a collapsed surplus would hold it.
     const surplusHoldReasonById = runSilentMeterSurplusHold(
@@ -173,7 +171,6 @@ export class SilentMeterPlanBuilder {
         powerTracker,
         capacityGuard: this.deps.capacityGuard,
         capacityLimitKw: settings.limitKw,
-        shortfallBudgetThresholdKw,
         hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(context),
       }),
       devices: decidedDevices,
@@ -217,8 +214,8 @@ export class SilentMeterPlanBuilder {
     return { code: PLAN_REASON_CODES.meterSilent };
   }
 
-  private shedEverything(context: PlanContext, shortfallThresholdKw: number | null, nowTs: number): SheddingPlan {
-    const deps = buildSheddingDeps(this.deps, shortfallThresholdKw);
+  private shedEverything(context: PlanContext, nowTs: number): SheddingPlan {
+    const deps = buildSheddingDeps(this.deps);
     const { candidates, diagnostics } = buildSheddingCandidates({
       bypassRecentRestore: false,
       devices: context.devices,

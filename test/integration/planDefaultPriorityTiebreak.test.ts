@@ -55,7 +55,6 @@ const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
   deps: {
     structuredLog: testLogger,
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    shortfallThresholdKw: Number.POSITIVE_INFINITY,
     powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
     getShedBehavior: () => ({ action: 'turn_off' }),
     // No stored priority for any device → caller-side default for the whole bucket.

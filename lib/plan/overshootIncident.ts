@@ -42,10 +42,9 @@ export class OvershootIncident {
     power: MeasuredPower,
     settings: PowerLimitSettings,
     storage: StorageShedTerm,
-    shortfallThresholdKw: number | null,
     reading: LatchedMeterReading,
   ): SoftOvershootDecision {
-    return this.pacingGrace.decide(context, power, settings, storage, shortfallThresholdKw, reading);
+    return this.pacingGrace.decide(context, power, settings, storage, reading);
   }
 
   /** Open the incident: the house just went over. */

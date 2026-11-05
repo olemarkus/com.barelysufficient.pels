@@ -1,6 +1,6 @@
 import { NO_STORAGE_SHED_TERM, type StorageShedTerm } from '../../lib/plan/shedding/types';
 import { CapacityDrainStart } from '../../lib/plan/capacityDrainStart';
-import { computeDynamicSoftLimit, resolveShortfallThresholdKw } from '../../lib/plan/planBudget';
+import { computeDynamicSoftLimit, computeShortfallThreshold } from '../../lib/plan/planBudget';
 import { PacingGrace } from '../../lib/plan/pacingGrace';
 import { buildPlanContext, buildPlanLimits, resolveMeasuredPower } from '../../lib/plan/planContext';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
@@ -42,15 +42,16 @@ class GraceHome {
     const pace = computeDynamicSoftLimit(this.settings, tracker, atMs, drain.startFor(this.settings, tracker, atMs));
     const context = buildPlanContext(
       devices, this.settings, tracker,
-      buildPlanLimits(this.settings, this.settings.capacityEnabled ? pace.allowedKw : null, daily),
+      buildPlanLimits(this.settings, this.settings.capacityEnabled ? {
+        kind: 'on', paceKw: pace.allowedKw, shortfallThresholdKw: computeShortfallThreshold(this.settings, tracker, atMs),
+      } : { kind: 'off' }, daily),
       new Map(), atMs,
     );
     const power = resolveMeasuredPower({
       isMeasured: true, totalKw: this.powerKw, lastPowerUpdateMs: readingAtMs,
       headroomKw: (limitKw) => limitKw - this.powerKw,
     }, context, devices);
-    return this.grace.decide(context, power, this.settings, this.storage,
-      resolveShortfallThresholdKw(this.settings, tracker, atMs), {
+    return this.grace.decide(context, power, this.settings, this.storage, {
       atMs: readingAtMs, powerW: this.powerKw * 1000,
     });
   }

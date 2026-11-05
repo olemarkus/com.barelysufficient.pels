@@ -39,18 +39,18 @@ export async function reportShortfallToGuard(
   /** This cycle's storage stage: the holds a battery's candidate is priced from. */
   storage: StorageRelief,
 ): Promise<void> {
-  // No threshold is Capacity limit off (`resolveShortfallThresholdKw`, from the
-  // same settings read the build's `capacitySoftLimit` came from): there is no
-  // hard-cap question to ask.
-  if (deps.shortfallThresholdKw === null) return;
+  // The capacity axis owns both its pace and shortfall threshold. An off axis
+  // has no hard-cap question to ask.
+  if (context.capacity.kind === 'off') return;
+  const { shortfallThresholdKw } = context.capacity;
   if (!applyShortfallPeriodCoverage(deps.capacityGuard, context.capacityPeriodCoverageComplete)) return;
-  if (!isOverShortfallThreshold(power.drawKw, deps.shortfallThresholdKw)) {
-    await deps.capacityGuard.recordCompletePeriodReading(power.drawKw, deps.shortfallThresholdKw);
+  if (!isOverShortfallThreshold(power.drawKw, shortfallThresholdKw)) {
+    await deps.capacityGuard.recordCompletePeriodReading(power.drawKw, shortfallThresholdKw);
     return;
   }
   await deps.capacityGuard.recordPlanVerdict(
     power.drawKw,
-    deps.shortfallThresholdKw,
+    shortfallThresholdKw,
     // Walked only over the threshold, not on every rebuild.
     buildShortfallCapacityStateSummary(context, power, state, selection, deps, storage),
   );
@@ -72,7 +72,7 @@ function buildShortfallCapacityStateSummary(
     devices: toMeteredUsageDevices(devices),
     totalKw: power.drawKw,
   }, (device) => device.control.commandAuthority);
-  const bindingSource = context.binding.kind === 'bound' ? context.binding.source : null;
+  const bindingSource = context.binding.kind === 'bound' ? context.binding.source : 'none';
   const remainingReducibleControlledLoadW = roundPowerW(sumRemainingSheddableLoadKw(
     // Only a device with a power axis has reducible load to count.
     devices.filter(isMeteredPlanDevice).map(toInputRemainingSheddableDevice),
