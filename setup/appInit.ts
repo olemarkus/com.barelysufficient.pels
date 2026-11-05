@@ -19,7 +19,6 @@ export {
   createDeferredObjectivePlanHistoryRecorder,
   persistDeferredObjectiveObservationWatermark,
 } from './appInit/deferredRecorders';
-export { cancelDeferredObjectiveForContext } from './appInit/deferredObjectiveCancel';
 export { createDeferredObjectiveLifecycleEmitter } from './appInit/deferredObjectiveLifecycle';
 export { subscribePlanObservedState } from './appInit/planObservedStateSubscription';
 export {

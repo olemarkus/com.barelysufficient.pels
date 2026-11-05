@@ -5,7 +5,7 @@ import { createInertEnergyDelivery, noReservationSuppression } from '../helpers/
 /**
  * The smart-task surface `PelsApp` exposes to the widget host API and the
  * settings-UI handlers is a set of thin stubs delegating to two collaborators
- * (`setup/appSmartTaskApi.ts` for the write/preview lanes,
+ * (`lib/objectives/deferredObjectives/smartTaskRequests.ts` for write/preview lanes,
  * `setup/appSmartTaskPayloads.ts` for the read payloads). A stub wired to the
  * wrong collaborator, or to the wrong method, would compile and fail silently —
  * these assert each one reaches the intended body through the real app object.
@@ -171,6 +171,28 @@ describe('AppSmartTaskApi boot-window invariants', () => {
     dailyBudgetService: { getSnapshot: () => null },
     planService: { getPlanDevices: () => [], getStallEvidence: () => undefined },
   });
+
+  it.each(['deferredObjectiveActivePlanRecorder', 'deferredObjectivePlanHistoryRecorder'] as const)(
+    'rejects writes as retryable unavailable while %s is not wired',
+    (recorder) => {
+      const app = buildAppWithRecorders();
+      Object.assign(app, { [recorder]: undefined });
+      const writes: string[] = [];
+      app.homey.settings.on('set', (key: string) => writes.push(`set:${key}`));
+      app.homey.settings.on('unset', (key: string) => writes.push(`unset:${key}`));
+      const candidate = {
+        kind: 'temperature' as const, enforcement: 'soft' as const,
+        targetTemperatureC: 65, deadlineAtMs: Date.now() + 60_000,
+      };
+      expect(app.createDeferredObjective(DEVICE_ID, candidate)).toEqual({ ok: false, reason: 'unavailable' });
+      expect(app.createNewDeferredObjective(DEVICE_ID, candidate)).toEqual({ ok: false, reason: 'unavailable' });
+      expect(app.rescueDeviceWithBudgetExemption(DEVICE_ID, {
+        ...candidate, rescue: { exemptFromBudget: 'always' },
+      })).toEqual({ ok: false, reason: 'unavailable' });
+      expect(app.cancelDeferredObjective(DEVICE_ID)).toEqual({ ok: false, reason: 'unavailable' });
+      expect(writes).toEqual([]);
+    },
+  );
 
   // `AppContext` types `dailyBudgetService` optional while `PelsApp` declares it
   // definite, so the `?.getSnapshot() ?? null` that came across from `app.ts`

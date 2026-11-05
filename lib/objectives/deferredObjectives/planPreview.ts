@@ -228,7 +228,7 @@ const buildEstimateFromDiagnostic = (
   const { nowMs } = snapshot;
   const { deadlineAtMs } = candidate;
   // The candidate handed to this producer is ALREADY gated by the caller
-  // (`AppSmartTaskApi.gateCandidateExtraPermissions` runs before this), so its `rescue`
+  // (the request service gates extra permissions before this), so its `rescue`
   // is the surviving permission set — reflect it onto the estimate verbatim.
   const grantedRescuePermissions = resolveGrantedRescuePermissions(candidate.rescue);
   const granted = grantedRescuePermissions ? { grantedRescuePermissions } : {};

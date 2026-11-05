@@ -1,6 +1,8 @@
-import type { CreateSmartTaskCandidateDevice } from '../../../packages/contracts/src/widgetHostApi';
 import type {
-  SmartTaskCandidateDevice, SmartTaskCandidateGoal,
+  CreateSmartTaskCandidateDevice, CreateSmartTaskHostApi,
+} from '../../../packages/contracts/src/widgetHostApi';
+import type {
+  SmartTaskCandidateDevice, SmartTaskCandidateGoal, SettingsUiSmartTaskDevicesResponse,
 } from '../../../packages/contracts/src/smartTaskEdit';
 import {
   resolveSmartTaskCurrentValue,
@@ -82,3 +84,14 @@ export const buildSmartTaskCandidateDevices = (
     { group: a.group, deviceName: a.deviceName },
     { group: b.group, deviceName: b.deviceName },
   ));
+
+/** Resolve the create picker's startup/read state before projecting its rows. */
+export const readSmartTaskCandidateDevices = (
+  host: Pick<CreateSmartTaskHostApi, 'getCreateSmartTaskCandidateDevices'> | null,
+): SettingsUiSmartTaskDevicesResponse => {
+  if (!host) return { state: 'unavailable' };
+  const read = host.getCreateSmartTaskCandidateDevices();
+  return read.state === 'ready'
+    ? { state: 'ready', devices: buildSmartTaskCandidateDevices(read.devices) }
+    : { state: 'unavailable' };
+};

@@ -133,6 +133,7 @@ export const buildRescueCandidate = (
 // untrustworthy settings read) → map onto the
 // retryable `write_conflict` lane so the user gets the "try again" copy.
 export const mapAppRescueReason = (reason: string): StarvationRescueRejectReason => {
+  if (reason === 'unavailable') return 'unavailable';
   if (reason === 'device_not_found') return 'device_not_found';
   if (reason === 'device_not_planned') return 'device_not_planned';
   if (reason === 'device_not_eligible') return 'device_not_eligible';

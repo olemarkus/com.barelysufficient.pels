@@ -42,7 +42,6 @@ export {
   applyDeferredObjectiveChange,
 } from './objectiveChange';
 export {
-  createObjectiveForDevice,
   upsertObjectiveForDevice,
   clearObjectiveForDevice,
   type DeferredObjectiveDeviceWriteDeps,
@@ -51,7 +50,6 @@ export {
 export {
   createTrustedDeferredObjectiveSettingsReader,
   hasOpenDeferredObjective,
-  readDeferredObjectiveRoster,
   readAllObjectives,
   readObjectiveForDevice,
   readSmartTaskInProgress,
@@ -72,13 +70,10 @@ export {
 } from './smartTaskCandidateRequest';
 export { buildDeferredObjectivePolicyHorizon } from './policyHorizon';
 export {
-  buildUnavailableDeferredObjectivePlanEstimate,
   previewDeferredObjectivePlan,
 } from './planPreview';
 export {
   estimateSmartTaskQuickTargets,
-  previewSmartTaskQuickTargetsForDevice,
-  type SmartTaskQuickTargetPreview,
 } from './smartTaskQuickTargets';
 export type {
   DeferredObjectivePlanPreviewCandidate,

@@ -22,6 +22,7 @@ import {
   resolveSmartTaskRequestDeadline,
   resolveSmartTaskWriteDeadline,
 } from './smartTaskCandidateRequest';
+import type { SmartTaskLanePorts } from './smartTaskLanePorts';
 import { rejectForSmartTaskHomeScope } from './smartTaskCreateLane';
 
 // The settings UI's edit lane (the task's detail page: edit end time/target,
@@ -47,10 +48,8 @@ export type SmartTaskEditLaneHost = Pick<
  * What the lane reads and calls: the app (`null` while it is not wired, during
  * the boot window), the stored tasks, and the Homey clock.
  */
-export type SmartTaskEditLanePorts = {
-  host: SmartTaskEditLaneHost | null;
+export type SmartTaskEditLanePorts = SmartTaskLanePorts<SmartTaskEditLaneHost> & {
   store: ObjectiveSettingsStore;
-  clock: { getTimezone(): string };
 };
 
 const previewReject = (reason: SettingsUiSmartTaskRejectReason): SettingsUiSmartTaskPreviewResponse => ({
