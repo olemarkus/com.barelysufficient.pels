@@ -194,7 +194,6 @@ describe('home battery as managed observe-only — control-path exclusion lock',
       deps: {
         structuredLog: testLogger,
         capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-        shortfallThresholdKw: Number.POSITIVE_INFINITY,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' }),
         pendingBinaryCommandStore: createPendingBinaryCommandStore({}),

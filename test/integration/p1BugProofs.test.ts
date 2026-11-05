@@ -160,6 +160,7 @@ describe('P1 bug proofs', () => {
     } as unknown as CapacityGuard;
     const state = createPlanEngineState();
     const context = buildPlanContextFixture({
+      shortfallThresholdKw: 5,
       devices: [
         withBinaryDiscriminant(withFixtureResidualKw({
           available: true,
@@ -226,7 +227,6 @@ describe('P1 bug proofs', () => {
       {
         structuredLog: testLogger,
         capacityGuard,
-        shortfallThresholdKw: 5,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off' }),
         // In flight per the executor's command store, not per a field on the

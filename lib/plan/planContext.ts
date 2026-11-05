@@ -23,7 +23,11 @@ export type PlanLimitBinding =
   | { kind: 'none' }
   | { kind: 'bound'; source: PlanLimitSource; kw: number };
 
-export type CapacityPlanLimit = { kind: 'off' } | { kind: 'on'; paceKw: number };
+export type CapacityPlanLimit = { kind: 'off' } | {
+  kind: 'on';
+  paceKw: number;
+  shortfallThresholdKw: number;
+};
 export type GridPlanLimit = { kind: 'off' } | { kind: 'on'; limitKw: number; targetKw: number };
 export type DailyPlanLimit = { kind: 'off' } | {
   kind: 'on';
@@ -55,11 +59,9 @@ export function resolvePhysicalPowerLimit(settings: PowerLimitSettings, capacity
 /** Resolve enabled axes once from the owners' accepted settings and pacing facts. */
 export function buildPlanLimits(
   settings: PowerLimitSettings,
-  capacityPaceKw: number | null,
+  capacity: CapacityPlanLimit,
   dailyPace: DailySoftLimitResolution | null,
 ): PlanLimits {
-  const capacity: CapacityPlanLimit = capacityPaceKw === null
-    ? { kind: 'off' } : { kind: 'on', paceKw: capacityPaceKw };
   const grid: GridPlanLimit = settings.gridImportLimitKw === null
     ? { kind: 'off' }
     : { kind: 'on', limitKw: settings.gridImportLimitKw, targetKw: gridImportTargetKw(settings.gridImportLimitKw) };

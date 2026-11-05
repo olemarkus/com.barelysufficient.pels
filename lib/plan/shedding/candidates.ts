@@ -105,7 +105,7 @@ export function buildShedCandidateParams(
   const bindingDeficitKw = hour.kind === 'import_target'
     ? hour.importKw : resolveStorageAdjustedDeficitKw(power, storage.shed);
   const needed = hourlyBudgetExhausted ? bindingDeficitKw : resolveShedNeedKw(
-    resolveShedPressure(power, deps.shortfallThresholdKw, storage.shed), bindingDeficitKw,
+    resolveShedPressure(power, context.capacity, storage.shed), bindingDeficitKw,
   );
   return {
     devices: context.devices,

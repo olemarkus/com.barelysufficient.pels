@@ -119,7 +119,7 @@ function planShedding(
 ): PlanSheddingResult {
   const { nowTs } = context;
   const measurement = requireLatchedMeterReading(deps.powerTracker);
-  const pressure = resolveShedPressure(power, deps.shortfallThresholdKw, storage.shed);
+  const pressure = resolveShedPressure(power, context.capacity, storage.shed);
   const pendingCharge = resolveContinuousChargeRelief(state, context.devices, storage, pressure, measurement, nowTs);
   const entry = resolveShedEntry(context, power, state, overshoot, storage.shed);
   if (entry.kind === 'none') return emptySheddingResult(retainPendingLatch(pendingCharge));

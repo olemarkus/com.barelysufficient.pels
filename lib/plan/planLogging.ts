@@ -1,3 +1,4 @@
+import type { PlanLimitSource } from './planContext';
 import { hasStorageDecision } from '../planContract/storageDecision';
 import { isMeteredPlanDevice } from './planMeteredDevice';
 import {
@@ -233,7 +234,7 @@ function roundPowerW(powerKw: number): number {
 }
 
 type RemainingSheddableContext = {
-  limitSource: SoftLimitSource;
+  limitSource: PlanLimitSource | 'none';
   physicalLimitBreached: boolean;
 };
 
@@ -245,7 +246,7 @@ function resolvePlanRemainingSheddableContext(
   // produce — and the `softLimitSource` one silently answered "capacity" for a
   // budget-bound cycle if it ever had fired.
   return {
-    limitSource: plan.meta.softLimitSource,
+    limitSource: plan.meta.softLimitSource ?? 'none',
     // The producer's own answer (`MeasuredPower.physicalLimitBreached`, published
     // on the measured meta): over the capacity pace or the grid import target,
     // the same breach that let shedding spend a budget-exempt device. Re-deriving

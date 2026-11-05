@@ -52,7 +52,6 @@ export class PacingGrace {
     power: MeasuredPower,
     settings: PowerLimitSettings,
     storage: StorageShedTerm,
-    shortfallThresholdKw: number | null,
     reading: LatchedMeterReading,
   ): SoftOvershootDecision {
     const priceKw = resolveGracePriceKw(context, power);
@@ -64,12 +63,13 @@ export class PacingGrace {
     if (power.headroom.kind === 'off') return this.finishImmediate(false, observation);
     const headroomKw = power.headroom.kw + storage.netCreditKw;
     if (headroomKw >= 0) return this.finishImmediate(false, observation);
-    const urgent = shortfallThresholdKw !== null && isOverShortfallThreshold(power.drawKw, shortfallThresholdKw);
+    const urgent = context.capacity.kind === 'on'
+      && isOverShortfallThreshold(power.drawKw, context.capacity.shortfallThresholdKw);
     // A known battery hand-back is an incoming load step, not a background
     // transient whose unchanged measured draw can price a discretionary wait.
     const graceAllowed = storage.netCreditKw >= 0 && !urgent && !this.episodeActed
       && (fresh || observation.canRepeatWait)
-      && this.canFundWait(context, power, settings, priceKw, shortfallThresholdKw);
+      && this.canFundWait(context, power, settings, priceKw);
     const decision = resolveSoftOvershootDecision(headroomKw, graceAllowed, this.pendingSinceMs, context.nowTs);
     this.pendingSinceMs = decision.pendingSinceMs;
     this.episodeActed ||= decision.shedActionable;
@@ -128,11 +128,10 @@ export class PacingGrace {
     power: MeasuredPower,
     settings: PowerLimitSettings,
     priceKw: number,
-    shortfallThresholdKw: number | null,
   ): boolean {
     // With capacity disabled this only defers soft daily pacing. Grid pressure
     // already took the immediate branch; no capacity cushion is being spent.
-    if (shortfallThresholdKw === null) return true;
+    if (context.capacity.kind === 'off') return true;
     const { period, cadenceMs } = this;
     if (period === null || !period.available || cadenceMs === null || cadenceMs > SHED_GRACE_MAX_MS) return false;
     if (period.durationMs !== settings.periodMinutes * 60_000) return false;
@@ -146,7 +145,8 @@ export class PacingGrace {
     const nextIntervalKWh = priceKw * cadenceMs / HOUR_MS;
     // The measured trajectory may already occupy some of the cushion. Do not
     // spend those watt-hours again merely because its projection is still below the cap.
-    const projectionSpareKWh = Math.max(0, shortfallThresholdKw - power.drawKw) * context.minutesRemaining / 60;
+    const projectionSpareKWh = Math.max(0, context.capacity.shortfallThresholdKw - power.drawKw)
+      * context.minutesRemaining / 60;
     return allowanceKWh > 0
       && period.spentKWh + nextIntervalKWh <= allowanceKWh + ENERGY_EPSILON_KWH
       && nextIntervalKWh + responseReserveKWh <= projectionSpareKWh + ENERGY_EPSILON_KWH;

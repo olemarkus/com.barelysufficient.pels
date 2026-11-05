@@ -487,7 +487,9 @@ describe('planBudget', () => {
     const hour = { capacityPeriodMinutes: 60 as const, budgetKWh: 5 };
 
     it('lets an increase in the drain spend only the room under the next hour\'s target', () => {
-      const frame = { ...hour, capacity: { kind: 'on' as const, paceKw: 7.3 }, minutesRemaining: 5 };
+      const frame = {
+        ...hour, capacity: { kind: 'on' as const, paceKw: 7.3, shortfallThresholdKw: 10 }, minutesRemaining: 5,
+      };
       expect(resolveCapacityAdmissionHeadroom(frame, { kind: 'on', kw: 1.3 }))
         .toEqual({ kind: 'on', kw: expect.closeTo(-1, 6) });
       expect(resolveCapacityAdmissionHeadroom(frame, { kind: 'on', kw: 3.3 }))
@@ -496,10 +498,13 @@ describe('planBudget', () => {
 
     it('leaves headroom as it is before the window, in a quarter, and with Capacity limit off', () => {
       expect(resolveCapacityAdmissionHeadroom(
-        { ...hour, capacity: { kind: 'on', paceKw: 20 }, minutesRemaining: 11 }, { kind: 'on', kw: 4 },
+        { ...hour, capacity: { kind: 'on', paceKw: 20, shortfallThresholdKw: 10 }, minutesRemaining: 11 }, { kind: 'on', kw: 4 },
       )).toEqual({ kind: 'on', kw: 4 });
       expect(resolveCapacityAdmissionHeadroom(
-        { capacityPeriodMinutes: 15, budgetKWh: 1.25, capacity: { kind: 'on', paceKw: 5 }, minutesRemaining: 2 },
+        {
+          capacityPeriodMinutes: 15, budgetKWh: 1.25,
+          capacity: { kind: 'on', paceKw: 5, shortfallThresholdKw: 10 }, minutesRemaining: 2,
+        },
         { kind: 'on', kw: 1 },
       )).toEqual({ kind: 'on', kw: 1 });
       expect(resolveCapacityAdmissionHeadroom(
@@ -509,7 +514,7 @@ describe('planBudget', () => {
 
     it('never adds room when the drain pace is already below the target', () => {
       expect(resolveCapacityAdmissionHeadroom(
-        { ...hour, capacity: { kind: 'on', paceKw: 3 }, minutesRemaining: 1 }, { kind: 'on', kw: 0.5 },
+        { ...hour, capacity: { kind: 'on', paceKw: 3, shortfallThresholdKw: 10 }, minutesRemaining: 1 }, { kind: 'on', kw: 0.5 },
       )).toEqual({ kind: 'on', kw: 0.5 });
     });
   });
