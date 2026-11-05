@@ -107,7 +107,23 @@ offer. Extra capacity relief is selected in the existing priority walk. The
 configured reserve also bounds capacity discharge. Economic discharge is bounded
 by the house's measured demand and is withheld from admission, so it never creates
 room for unrelated restores. A selling period (`export_energy`) may add Main
-export up to the owner's ceiling and earns no settling credit. A capacity hold returns directly to continuous
+export up to the owner's ceiling and earns no settling credit.
+
+The plan follows the solar forecast, not the meter, so a supply or hold period
+can meet solar it did not expect. Each plan period carries the battery owner's
+answer to whether such solar is worth storing (`storesSurplus`): its export
+earns nothing (unpriced or negative), or less than the plan's value of the
+energy it would store (the terminal value per usable kWh after charging loss).
+When it is, live control charges the battery from the measured export its
+priority offer leaves, after what the devices ranked below it take, within its
+charge ceiling and the measured headroom, and under the deadband it waits
+(`absorbedExportW`, `lib/plan/battery/storageContinuous.ts`). This only ever
+adds charge: the house's own import is still supplied first, and a supply or
+hold period never discharges into the export. Otherwise the battery waits and
+the solar is exported. The stored energy shows up in the next reading of the
+battery's level, from which the plan is made again.
+
+A capacity hold returns directly to continuous
 planning after its ordinary resume admission, without a native-mode pulse.
 
 Inverter curtailment waits while a newly planned battery charge has not reached

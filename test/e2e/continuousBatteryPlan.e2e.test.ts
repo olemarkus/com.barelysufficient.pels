@@ -187,14 +187,15 @@ describe('continuous battery plan through the Homey SDK', () => {
     expect((await api.ui_devices(context())).continuousBatteryPlans[BATTERY]).toMatchObject({ status: 'waiting', reason: 'control_unavailable' });
   });
 
-  it('stops economic discharge when the house starts exporting', async () => {
+  it('stops economic discharge and stores the unpriced export when the house starts exporting', async () => {
     const home = await startHome(true, 80);
     await home.advance(8);
     expect(setpoints(home).some(watts => watts < 0)).toBe(true);
     home.put.mockClear();
     home.setHouseW(-1000);
     await home.advance(5);
-    expect(setpoints(home)).toContain(0);
+    // The 1 kW export, less the draw margin, is worth more stored than exported for nothing.
+    expect(setpoints(home)).toContain(900);
     expect(setpoints(home).every(watts => watts >= 0)).toBe(true);
   });
 

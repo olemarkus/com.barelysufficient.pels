@@ -7,7 +7,7 @@ import { floorStorageSetpointW } from '../../utils/storageSetpoint';
 import { storageSetpointToleranceW } from '../../planContract/storageDecision';
 import { claimSurplusLever, summarizeHold } from './storageHold';
 import {
-  STORAGE_RELIEF_SETTLE_WINDOW_MS, drawMarginWFor, hasStorageLeverInput, ownChargeWOf,
+  STORAGE_RELIEF_SETTLE_WINDOW_MS, deadbandWFor, drawMarginWFor, hasStorageLeverInput, ownChargeWOf,
   ownDischargeWOf, resolveStorageHoldBlock,
 } from './storageLadder';
 import type { StorageBalance, StorageRelief, StorageStateSummary } from './storageReliefTypes';
@@ -69,6 +69,38 @@ const laggingDischargeCeilingW = (
   return atHeldSetpoint ? Number.POSITIVE_INFINITY : ownDischargeWOf(storage);
 };
 
+/**
+ * What the battery's offer leaves for its charge, W: what the consumers ranked
+ * above it left, less what the pool already counted of its own charge, plus
+ * that charge, less the draw margin.
+ */
+const offeredChargeW = (storage: ObservedStorageInput, offer: StorageSurplusOffer, marginW: number): number => (
+  Math.max(0, offer.availableW - offer.addedBackW + ownChargeWOf(storage) - marginW)
+);
+
+/**
+ * The measured export a supply or hold period stores instead of exporting, W.
+ * The plan follows the solar forecast, so solar it did not expect would
+ * otherwise leave the house while the battery waits or holds. Only when the
+ * battery owner judged storing worth more than the export
+ * (`storesSurplus`), and only a charge: it is a raise past the plan's own
+ * (none in these periods), so it comes out of what the consumers ranked below
+ * the battery do not take (`StorageSurplusOffer.belowW`), like any surplus
+ * raise. Under the deadband it is 0 W, too little to tell from noise. The next
+ * plan replans from the level the battery reaches.
+ */
+const absorbedExportW = (
+  storage: ObservedStorageInput,
+  plan: ContinuousStoragePlan,
+  offer: StorageSurplusOffer,
+  marginW: number,
+): number => {
+  if (plan.reason !== 'supply_house' && plan.reason !== 'hold_energy') return 0;
+  if (!plan.storesSurplus) return 0;
+  const absorbW = Math.min(storage.chargeCeilingW, offeredChargeW(storage, offer, marginW) - offer.belowW);
+  return absorbW < deadbandWFor(storage) ? 0 : absorbW;
+};
+
 export const continuousLever = (
   storage: ObservedStorageInput,
   previous: StorageLeverState | undefined,
@@ -84,16 +116,20 @@ export const continuousLever = (
     Math.max(0, importWithoutBatteryW + exportAllowanceW(plan) - marginW),
     laggingDischargeCeilingW(storage, previous, balance),
   );
-  const desiredW = plan.setpointW < 0
+  const plannedW = plan.setpointW < 0
     ? -Math.min(-plan.setpointW, storage.deliveryCeilingW, dischargeRoomW)
     : Math.min(plan.setpointW, storage.chargeCeilingW);
+  // The offer counts the battery's own discharge out of the export, so there
+  // is something to store only once the house needs no supply.
+  const absorbW = plannedW <= 0 ? absorbedExportW(storage, plan, offer, marginW) : 0;
+  const desiredW = absorbW > 0 ? absorbW : plannedW;
   // Replacing a discharge with charge must first pay back that discharge;
   // it is not measured room for a new charging load.
   const roomCeilingW = balance.headroomW === null
     ? desiredW
     : Math.max(0, storage.signedPowerW + balance.headroomW - marginW);
   const solarCeilingW = plan.reason === 'store_solar' || offer.demandAbove === 'waiting'
-    ? Math.max(0, offer.availableW - offer.addedBackW + ownChargeWOf(storage) - marginW)
+    ? offeredChargeW(storage, offer, marginW)
     : storage.chargeCeilingW;
   const boundedW = desiredW > 0
     ? Math.min(desiredW, roomCeilingW, solarCeilingW)

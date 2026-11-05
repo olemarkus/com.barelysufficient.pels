@@ -102,6 +102,7 @@ describe('continuous battery selling projection', () => {
   const period = {
     startsAtMs: nowMs - 60_000, durationMs: 3_600_000, batteryPowerKW: -2, energyBeforeKWh: 6, energyAfterKWh: 4,
     gridImportKWh: 0, gridExportKWh: 1.5, importCost: 0, exportRevenue: 1.5, wearCost: 0.06, reason: 'export_energy' as const,
+    storesSurplus: false,
   };
   const plan = {
     status: 'planned' as const, periods: [period], importCost: 0, exportRevenue: 1.5, wearCost: 0.06, energyCost: -1.44,
@@ -131,6 +132,18 @@ describe('continuous battery selling projection', () => {
     const cluster = resolveStorageCluster(selling, input, options(control));
     expect(cluster).toMatchObject({ storage: { continuousPlan: {
       setpointW: -2000, validUntilMs: period.startsAtMs + period.durationMs, reason: 'export_energy', netExportCeilingW: 3000,
+    } } });
+  });
+
+  it('carries the owner\'s answer to storing unforecast export with a supply period', () => {
+    const supply = { ...period, batteryPowerKW: -1, gridExportKWh: 0, exportRevenue: 0, reason: 'supply_house' as const,
+      storesSurplus: true };
+    const household = plannedSource({
+      status: 'planned', generatedAtMs: nowMs, priceUnit: 'EUR/kWh', unpricedSolarExport: true,
+      plan: { ...plan, periods: [supply] }, config: { ...base, exportPolicy: { kind: 'household_only' } },
+    });
+    expect(resolveStorageCluster(household, input, options(control))).toMatchObject({ storage: { continuousPlan: {
+      setpointW: -1000, reason: 'supply_house', storesSurplus: true,
     } } });
   });
 

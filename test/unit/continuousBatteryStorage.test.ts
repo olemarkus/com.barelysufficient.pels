@@ -15,7 +15,7 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}, id = 'battery'):
     reading: 'observed', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
     handBackDeferred: false, signedPowerW: 0, observedAtMs: 0, claimHeld: true, admissible: true,
     verdict: 'responding', deliveryCeilingW: 2500, chargeCeilingW: 2500, powerLimitControl: true,
-    continuousPlan: { setpointW: 0, validUntilMs: NOW + 60_000, reason: 'hold_energy' },
+    continuousPlan: { setpointW: 0, validUntilMs: NOW + 60_000, reason: 'hold_energy', storesSurplus: true },
     ...overrides,
   },
 });
@@ -31,7 +31,7 @@ describe('continuous battery execution decisions', () => {
     const limited = applyStorageLimits(original,
       new Map([['battery', { setpointW: -1000, banked: true, storage: native.storage }]]), NOW);
     const supplying = battery({ signedPowerW: -1000,
-      continuousPlan: { setpointW: -1000, validUntilMs: NOW + 60_000, reason: 'supply_house' },
+      continuousPlan: { setpointW: -1000, validUntilMs: NOW + 60_000, reason: 'supply_house', storesSurplus: true },
     });
     const resumed = resumeContinuousStorage(applyStorageHandBacks(limited, new Set(['battery'])),
       limited, [supplying], power, offers(), NOW + 1000);
@@ -44,7 +44,7 @@ describe('continuous battery execution decisions', () => {
   });
 
   it('opens a fresh discharge credit after a long zero hold without extending an unanswered window', () => {
-    const plan = (setpointW: number) => ({ setpointW, validUntilMs: NOW + 600_000, reason: 'supply_house' as const });
+    const plan = (setpointW: number) => ({ setpointW, validUntilMs: NOW + 600_000, reason: 'supply_house' as const, storesSurplus: true });
     const idle = decideStorageRelief([battery({ continuousPlan: plan(0) })], buildMeasuredPower(), {}, offers(), NOW);
     const supplying = decideStorageRelief([battery({ continuousPlan: plan(-1000) })],
       buildMeasuredPower({ drawKw: 3 }), idle.levers, offers(), NOW + 60_000);
@@ -76,14 +76,67 @@ describe('continuous battery execution decisions', () => {
   });
 
   it('bounds economic discharge to actual house import and the configured reserve ceiling', () => {
-    const input = battery({ continuousPlan: { setpointW: -2500, validUntilMs: NOW + 60_000, reason: 'supply_house' } });
+    const input = battery({ continuousPlan: { setpointW: -2500, validUntilMs: NOW + 60_000, reason: 'supply_house', storesSurplus: true } });
     const power = buildMeasuredPower({ drawKw: 0.5 });
     expect(decideStorageRelief([input], power, {}, offers(), NOW).batteries[0].setpointW).toBe(-400);
     const reserved = battery({
       deliveryCeilingW: 0,
-      continuousPlan: { setpointW: -2500, validUntilMs: NOW + 60_000, reason: 'supply_house' },
+      continuousPlan: { setpointW: -2500, validUntilMs: NOW + 60_000, reason: 'supply_house', storesSurplus: true },
     });
     expect(decideStorageRelief([reserved], power, {}, offers(), NOW).batteries[0].setpointW).toBe(0);
+  });
+
+  describe('measured export in a supply or hold period', () => {
+    const supply = (storesSurplus: boolean, setpointW = -2500) => (
+      { setpointW, validUntilMs: NOW + 60_000, reason: 'supply_house' as const, storesSurplus }
+    );
+    const exporting = buildMeasuredPower({ drawKw: -1, headroomKw: 10 });
+    const offer = (availableW: number, belowW = 0) => new Map([['battery', {
+      availableW, addedBackW: 0, belowW, demandAbove: 'none' as const,
+    }]]);
+
+    it('stores the export its offer leaves instead of waiting at 0 W, less the draw margin', () => {
+      const result = decideStorageRelief([battery({ continuousPlan: supply(true) })], exporting, {}, offer(1000), NOW);
+      expect(result.batteries[0]).toMatchObject({ setpointW: 900, claim: 'plan_solar' });
+      expect(result.levers.battery.continuousReason).toBe('supply_house');
+      const hold = battery({ continuousPlan: { setpointW: 0, validUntilMs: NOW + 60_000, reason: 'hold_energy', storesSurplus: true } });
+      expect(decideStorageRelief([hold], exporting, {}, offer(1000), NOW).batteries[0].setpointW).toBe(900);
+    });
+
+    it('keeps storing what it already charges once the meter no longer shows it', () => {
+      // Charging 900 W: the pool counts that charge back, so the meter's last 100 W does not shrink it.
+      const charging = battery({ signedPowerW: 900, continuousPlan: supply(true) });
+      const steady = new Map([['battery', { availableW: 1000, addedBackW: 900, belowW: 0, demandAbove: 'none' as const }]]);
+      expect(decideStorageRelief([charging], buildMeasuredPower({ drawKw: -0.1, headroomKw: 10 }), {}, steady, NOW)
+        .batteries[0].setpointW).toBe(900);
+    });
+
+    it('leaves what the devices ranked below it take, and stays within its charge ceiling', () => {
+      expect(decideStorageRelief([battery({ continuousPlan: supply(true) })], exporting, {}, offer(1000, 400), NOW)
+        .batteries[0].setpointW).toBe(500);
+      expect(decideStorageRelief([battery({ chargeCeilingW: 300, continuousPlan: supply(true) })], exporting, {},
+        offer(1000), NOW).batteries[0].setpointW).toBe(300);
+      // Under the deadband the battery waits rather than chase noise.
+      expect(decideStorageRelief([battery({ continuousPlan: supply(true) })], exporting, {}, offer(120), NOW)
+        .batteries[0].setpointW).toBe(0);
+    });
+
+    it('exports when the export is worth more than storing it, and never discharges into the export', () => {
+      const result = decideStorageRelief([battery({ continuousPlan: supply(false) })], exporting, {}, offer(1000), NOW);
+      expect(result.batteries[0]).toMatchObject({ setpointW: 0, claim: 'plan_wait' });
+    });
+
+    it('still supplies the house, not storage, when the house imports', () => {
+      const importing = buildMeasuredPower({ drawKw: 0.5 });
+      expect(decideStorageRelief([battery({ continuousPlan: supply(true) })], importing, {}, offer(0), NOW)
+        .batteries[0].setpointW).toBe(-400);
+    });
+
+    it('never stores export in a selling period', () => {
+      const sale = { setpointW: -2000, validUntilMs: NOW + 60_000, reason: 'export_energy' as const, netExportCeilingW: 1500 };
+      expect(decideStorageRelief([battery({ continuousPlan: sale })], exporting, {}, offer(1000), NOW)
+        .batteries[0].setpointW).toBeLessThan(0);
+    });
   });
 
   it('lets a selling period export up to the owner ceiling on top of the house, never past the plan or reserve', () => {
@@ -157,7 +210,7 @@ describe('continuous battery execution decisions', () => {
   });
 
   it('holds but never raises a discharge while the battery reading lags the meter sample', () => {
-    const supply = { setpointW: -2500, validUntilMs: NOW + 60_000, reason: 'supply_house' as const };
+    const supply = { setpointW: -2500, validUntilMs: NOW + 60_000, reason: 'supply_house' as const, storesSurplus: true };
     const sale = { setpointW: -2500, validUntilMs: NOW + 600_000, reason: 'export_energy' as const, netExportCeilingW: 1500 };
     const meter = (sampledAtMs: number) => buildMeasuredPower({ drawKw: 0.2, sampledAtMs });
     const lagging = (plan: typeof supply | typeof sale) => battery({ signedPowerW: -300, observedAtMs: NOW - 20_000, continuousPlan: plan });
@@ -199,7 +252,7 @@ describe('continuous battery execution decisions', () => {
 
   it('releases the routine hold when its plan ends or the owner disables control', () => {
     const previous: Record<string, StorageLeverState> = decideStorageRelief([battery()], buildMeasuredPower(), {}, offers(), NOW).levers;
-    const expired = battery({ continuousPlan: { setpointW: 0, validUntilMs: NOW, reason: 'hold_energy' } });
+    const expired = battery({ continuousPlan: { setpointW: 0, validUntilMs: NOW, reason: 'hold_energy', storesSurplus: true } });
     expect(decideStorageRelief([expired], buildMeasuredPower(), previous, offers(), NOW).batteries[0].decision)
       .toEqual({ kind: 'release', reason: 'idle' });
     expect(decideStorageRelief([battery({ powerLimitControl: false })], buildMeasuredPower(), previous, offers(), NOW).batteries[0].decision)

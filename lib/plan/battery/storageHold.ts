@@ -49,7 +49,9 @@ export const resolveClaimReason = (lever: StorageLeverState): StorageClaimReason
   if (lever.purpose === 'continuous') {
     if (lever.setpointW < 0) return lever.continuousReason === 'export_energy' ? 'plan_export' : 'plan_supply';
     if (lever.setpointW <= 0) return 'plan_wait';
-    return lever.continuousReason === 'store_solar' ? 'plan_solar' : 'plan_charge';
+    // Only a grid-charging period buys; a supply or hold period charges only
+    // from measured export (`absorbedExportW`).
+    return lever.continuousReason === 'charge_grid' ? 'plan_charge' : 'plan_solar';
   }
   return lever.setpointW < Math.max(0, lever.preClaimSignedW) ? 'cap_for_device' : 'raise_charge';
 };

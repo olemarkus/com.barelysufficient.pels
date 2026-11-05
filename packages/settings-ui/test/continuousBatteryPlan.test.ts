@@ -50,6 +50,7 @@ const startsAtMs = Date.parse('2026-10-27T01:00:00Z');
 const period = {
   startsAtMs, durationMs: 3_600_000, batteryPowerKW: 1, energyBeforeKWh: 2, energyAfterKWh: 3,
   gridImportKWh: 2, gridExportKWh: 0, importCost: 0.2, exportRevenue: 0, wearCost: 0, reason: 'charge_grid' as const,
+  storesSurplus: false,
 };
 const read: ContinuousBatteryPlanRead = { status: 'planned', config, generatedAtMs: startsAtMs, priceUnit: 'EUR', unpricedSolarExport: false,
   plan: { status: 'planned', periods: [period, { ...period, startsAtMs: startsAtMs + 3_600_000,

@@ -272,7 +272,7 @@ describe('storage relief in the plan build', () => {
   it('credits new economic discharge after an established zero hold before limiting another device', async () => {
     const { build } = buildHarness({ paceKw: null, capacityEnabled: false, gridImportLimitKw: 4 });
     const continuousPlan = (setpointW: number) => ({
-      setpointW, validUntilMs: START_MS + HOUR_MS, reason: 'supply_house' as const,
+      setpointW, validUntilMs: START_MS + HOUR_MS, reason: 'supply_house' as const, storesSurplus: true,
     });
     await build(3000, [heater(true, 3), battery({ continuousPlan: continuousPlan(0) })]);
     const plan = await build(5000, [heater(true, 5), battery({
@@ -960,6 +960,42 @@ describe('storage charge from surplus in the plan build', () => {
     }
     expect(plannedState(plan, 'pump')).toBe('shed');
     expect(plan.devices.find(device => device.id === 'battery')?.storageHold).toEqual({ kind: 'plan_export' });
+  });
+
+  describe('a battery plan in a supply hour, with solar the forecast did not expect', () => {
+    const continuousPlan = (storesSurplus: boolean) => ({
+      setpointW: -2000, validUntilMs: START_MS + HOUR_MS, reason: 'supply_house' as const, storesSurplus,
+    });
+
+    it('stores the measured export instead of waiting at 0 W, and keeps storing it once the meter is at 0', async () => {
+      const { build } = buildHarness({ paceKw: 10 });
+      // 1 kW of solar left over after the house: the meter exports it while the plan waits.
+      let batteryW = 0;
+      let plan: DevicePlan | undefined;
+      for (let reading = 0; reading < 6; reading += 1) {
+        plan = await build(-1000 + batteryW, [battery({ signedPowerW: batteryW, claimHeld: true, continuousPlan: continuousPlan(true) })],
+          reading * 10_000);
+        batteryW = setpointOf(plan);
+        expect(batteryW).toBeGreaterThanOrEqual(0);
+      }
+      expect(batteryW).toBeGreaterThanOrEqual(800);
+      expect(batteryW).toBeLessThanOrEqual(1000);
+    });
+
+    it('lets a waiting device ranked above the battery have the export first', async () => {
+      const { build } = buildHarness({ paceKw: 10 });
+      // 1.5 kW exported, a 1 kW surplus heater ranked above the battery waiting for it.
+      const plan = await build(-1500, [pump(false, 1), battery({ claimHeld: true, continuousPlan: continuousPlan(true) })]);
+      const setpointW = setpointOf(plan);
+      expect(setpointW).toBeGreaterThan(0);
+      expect(setpointW).toBeLessThanOrEqual(500);
+    });
+
+    it('exports the solar when exporting it is worth more than storing it', async () => {
+      const { build } = buildHarness({ paceKw: 10 });
+      const plan = await build(-1000, [battery({ claimHeld: true, continuousPlan: continuousPlan(false) })]);
+      expect(storageDecision(plan)).toMatchObject({ kind: 'setpoint', setpointW: 0 });
+    });
   });
 
   it('offers the devices nothing of a battery PELS can only watch, discharging 2 kW into the export', async () => {

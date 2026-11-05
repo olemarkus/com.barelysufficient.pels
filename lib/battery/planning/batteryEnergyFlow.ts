@@ -23,6 +23,17 @@ const reasonFor = (batteryEnergyKWh: number, gridImportKWh: number, gridExportKW
 };
 
 /**
+ * Whether an AC kWh of unforecast surplus stored in this period is worth more
+ * than exporting it. Stored, it is worth the plan's value of usable stored
+ * energy after charging loss; exported, the period's export price. An export
+ * that earns nothing (unpriced, or a negative price) is never preferred.
+ */
+const storesSurplus = (battery: BatteryEnergyModel, period: BatteryEnergyPeriod): boolean => (
+  period.exportPrice <= 0
+  || period.exportPrice < battery.terminalValuePerKWh * Math.sqrt(battery.roundTripEfficiency)
+);
+
+/**
  * The most AC charge, kW, a transition starting at `beforeKWh` may take: the
  * battery and period ceilings, and every taper step at or below that energy.
  * A period's charge is capped by the energy it starts from, not its path.
@@ -81,5 +92,6 @@ export function batteryEnergyFlow(
     exportRevenue: gridExportKWh * period.exportPrice,
     wearCost: Math.max(0, -acEnergyKWh) * battery.wearCostPerKWh,
     reason: reasonFor(acEnergyKWh, gridImportKWh, gridExportKWh),
+    storesSurplus: storesSurplus(battery, period),
   };
 }

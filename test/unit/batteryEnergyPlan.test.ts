@@ -276,4 +276,18 @@ describe('continuous battery energy planning', () => {
     };
     expect(planned({ battery: model, periods }).objectiveCost).toBeCloseTo(exhaustive(0, 0.5));
   });
+
+  it('stores unforecast surplus only when its export earns less than the stored energy is worth', () => {
+    // Stored, an AC kWh is worth the terminal value after charging loss: 0.5 * sqrt(0.81) = 0.45.
+    const store = battery({ terminalValuePerKWh: 0.5, roundTripEfficiency: 0.81 });
+    const storesAt = (exportPrice: number): boolean[] => planned({ battery: store, periods: [period(0, { exportPrice })] })
+      .periods.map(entry => entry.storesSurplus);
+    expect(storesAt(0)).toEqual([true]);
+    expect(storesAt(-0.1)).toEqual([true]);
+    expect(storesAt(0.4)).toEqual([true]);
+    expect(storesAt(0.45)).toEqual([false]);
+    expect(storesAt(0.6)).toEqual([false]);
+    // Nothing worth storing still exports nothing worth more: an unpriced export stores.
+    expect(planned({ battery: battery(), periods: [period(0)] }).periods[0].storesSurplus).toBe(true);
+  });
 });

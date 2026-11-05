@@ -13,7 +13,8 @@ const NO_STORAGE_CLUSTER: StorageClusterFields = {};
 /**
  * The current period as the planner's storage intent. A selling period carries
  * the owner's export ceiling with its reason, so permission and bound travel
- * together. Only a price-export read can plan a selling period: the plan and
+ * together, and a supply or hold period its answer to storing unforecast
+ * export. Only a price-export read can plan a selling period: the plan and
  * its policy come from one battery-owner read.
  */
 const resolveContinuousStoragePlan = (
@@ -22,6 +23,9 @@ const resolveContinuousStoragePlan = (
 ): ContinuousStoragePlan => {
   const setpointW = period.batteryPowerKW * 1000;
   const validUntilMs = period.startsAtMs + period.durationMs;
+  if (period.reason === 'supply_house' || period.reason === 'hold_energy') {
+    return { setpointW, validUntilMs, reason: period.reason, storesSurplus: period.storesSurplus };
+  }
   if (period.reason !== 'export_energy') return { setpointW, validUntilMs, reason: period.reason };
   if (!('exportDecision' in read)) throw new Error('A household-only battery plan cannot sell');
   const netExportCeilingW = read.config.exportPolicy.netExportCeilingKW * 1000;

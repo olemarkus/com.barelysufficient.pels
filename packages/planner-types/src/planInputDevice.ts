@@ -225,14 +225,13 @@ export type ObservedStorageInput = {
  * The battery owner's current continuous-plan period. Only `export_energy`
  * carries permission to discharge beyond household demand: the owner-entered
  * Main-meter net-export ceiling, W. Every other reason supplies at most what the
- * house draws.
+ * house draws. A supply or hold period carries the owner's answer to whether
+ * measured export the forecast did not expect is worth storing
+ * (`BatteryEnergyPlanPeriod.storesSurplus`).
  */
 export type ContinuousStoragePlan =
-  | {
-    setpointW: number;
-    validUntilMs: number;
-    reason: 'charge_grid' | 'store_solar' | 'supply_house' | 'hold_energy';
-  }
+  | { setpointW: number; validUntilMs: number; reason: 'charge_grid' | 'store_solar' }
+  | { setpointW: number; validUntilMs: number; reason: 'supply_house' | 'hold_energy'; storesSurplus: boolean }
   | { setpointW: number; validUntilMs: number; reason: 'export_energy'; netExportCeilingW: number };
 
 /**
