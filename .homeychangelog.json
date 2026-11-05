@@ -757,5 +757,8 @@
   },
   "3.29.1": {
     "en": "A Zaptec charger added in Homey with Zaptec app 1.12 now charges under Automatic control. Before, PELS could leave it waiting to resume without setting its power level."
+  },
+  "3.30.0": {
+    "en": "PELS can now control Zendure, Huawei LUNA2000, Marstek Venus Connector and Sigenergy home batteries through their apps' Flow cards, using a Homey API key you add on the battery page. If you turn it on, PELS can also sell stored energy when that lowers your cost, and the battery page shows the battery's measured round-trip efficiency. A solar home without an export price now gets a battery plan that stores surplus solar, and setup counts a managed home battery and offers its plan.\n\nAnker SOLIX batteries now charge and discharge in the right direction, and a Zinvolt battery held at 0 W no longer looks taken over by its app. A one-phase charger with no power limit on now climbs to full current in minutes instead of one amp at a time. Electricity prices can now use Power by the Hour for export prices."
   }
 }
