@@ -182,7 +182,21 @@ export class SupportReportService {
     try {
       const capturedAtMs = Date.now();
       const evidence = await this.source.capture(request, capturedAtMs, trigger);
-      const fitted = fitToSize({ ...evidence, version: 1, id: randomUUID(), capturedAtMs, request, trigger });
+      // Keep the report's origin and description ahead of potentially large evidence arrays.
+      const fitted = fitToSize({
+        trigger,
+        request: {
+          problem: request.problem,
+          expected: request.expected,
+          subject: request.subject,
+          occurredAtMs: request.occurredAtMs,
+          historyWindow: request.historyWindow,
+        },
+        version: 1,
+        id: randomUUID(),
+        capturedAtMs,
+        ...evidence,
+      });
       if (!fitted) return { ok: false, code: 'report_too_large' };
       const { document, json, message, bytes } = fitted;
       const availability = await this.transport.availability();
