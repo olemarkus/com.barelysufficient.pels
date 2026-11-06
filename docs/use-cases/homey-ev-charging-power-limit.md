@@ -19,7 +19,7 @@ Use this setup when you want to:
 - use peak shaving to keep short high-load periods below the hard cap
 - keep EV charging from competing blindly with heating or hot water
 - let higher-priority devices win when available power is limited
-- control an Easee, Zaptec or Futurehome charger or a Tesla directly, or use Homey Flows to connect PELS to another charger integration
+- control an Easee, Alfen, Peblar, Zaptec, Futurehome or Wallbox charger or a Tesla directly, or use Homey Flows to connect PELS to another charger integration
 
 PELS plays the brain role and lets your charger app keep doing what it does best: PELS decides the desired charging current or available power based on price, total power, and priorities; the charger app delivers it to the charger.
 

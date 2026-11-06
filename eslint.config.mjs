@@ -803,6 +803,16 @@ export default tseslint.config(
       'import-x/max-dependencies': ['error', { max: 40, ignoreTypeImports: true }],
     },
   },
+  // The device adapter registry is, by design, the only module that imports
+  // integration entrypoints (`npm run device:adapters` enforces it), so it
+  // grows with each supported integration and nothing else.
+  {
+    files: ['lib/device/deviceAdapterRegistry.ts'],
+    plugins: { 'import-x': importX },
+    rules: {
+      'import-x/max-dependencies': ['error', { max: 30, ignoreTypeImports: true }],
+    },
+  },
   // lib/store is the one place `node:sqlite` is named (dependency-cruiser's
   // `no-sqlite-outside-store` keeps it that way). The builtin is still marked
   // experimental in Node 22 but ships unflagged in the app runner's 22.23, and
