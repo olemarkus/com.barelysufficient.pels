@@ -73,8 +73,9 @@ test('coarse pointers drive the pinned readout instead of a floating tooltip', a
   await expect(readoutPrimary).toHaveText(/^\d{2}:00–\d{2}:00$/);
   const defaultText = await readoutPrimary.textContent();
 
-  // The default selection already carries the visible select border.
-  expect(await countSelectBorders(page, '#hourly-pattern')).toBeGreaterThanOrEqual(1);
+  // The readout updates synchronously, while ECharts paints selection on its
+  // next frame. Wait for the visible border rather than sampling before paint.
+  await expect.poll(() => countSelectBorders(page, '#hourly-pattern')).toBeGreaterThanOrEqual(1);
 
   // Tap two distinct columns: the readout follows the tapped hour.
   await tapChart(page, '#hourly-pattern', 0.3, 0.6);
@@ -85,7 +86,7 @@ test('coarse pointers drive the pinned readout instead of a floating tooltip', a
   await expect(readoutPrimary).toHaveText(/^\d{2}:00–\d{2}:00$/);
   const secondTapText = await readoutPrimary.textContent();
   expect(secondTapText).not.toBe(firstTapText);
-  expect(await countSelectBorders(page, '#hourly-pattern')).toBe(1);
+  await expect.poll(() => countSelectBorders(page, '#hourly-pattern')).toBe(1);
 
   // No floating tooltip materialises on tap — the readout row (outside the
   // chart container) is the only surface carrying the values.
