@@ -75,6 +75,9 @@
     --color-surface-4: #dddee2;        /* Homey mono-10 / line */
     --color-surface-5: #c4c5c8;        /* Homey mono-20 */
     --color-surface-elevated: #ffffff;
+    --pels-field-container: var(--pels-surface-container-lowest);
+    --pels-field-outline: var(--color-border-medium);
+    --pels-field-color-scheme: light;
     --color-border-default: #dddee2;   /* Homey line (mono-10) */
     --color-border-medium: #c4c5c8;    /* Homey line-hover/active (mono-20) */
     --color-border-strong: #939496;    /* Homey mono-40 */
@@ -136,6 +139,7 @@ md-filled-select,
 md-checkbox,
 md-switch,
 md-filled-button,
+md-filled-tonal-button,
 md-outlined-button,
 md-text-button,
 md-icon-button,
@@ -280,7 +284,7 @@ md-filled-select {
   width: 100%;
   min-width: 0;
   min-height: var(--pels-touch-target-min);
-  --md-filled-text-field-container-color: var(--color-surface-4);
+  --md-filled-text-field-container-color: var(--pels-field-container);
   --md-filled-text-field-container-shape: var(--radius-md);
   --md-filled-text-field-input-text-color: var(--text);
   --md-filled-text-field-input-text-placeholder-color: var(--muted);
@@ -291,7 +295,7 @@ md-filled-select {
      container grey — visually identical to the disabled skin — and hover is
      noise in a touch-first WebView anyway. */
   --md-filled-text-field-hover-state-layer-opacity: 0;
-  --md-filled-select-text-field-container-color: var(--color-surface-4);
+  --md-filled-select-text-field-container-color: var(--pels-field-container);
   --md-filled-select-text-field-container-shape: var(--radius-md);
   --md-filled-select-text-field-input-text-color: var(--text);
   --md-filled-select-text-field-focus-active-indicator-color: var(--accent);
@@ -330,35 +334,83 @@ md-checkbox {
 }
 
 md-filled-button,
+md-filled-tonal-button,
 md-outlined-button,
 md-text-button {
   min-height: var(--pels-touch-target-min);
   font-weight: var(--font-weight-bold);
 }
 
+/* Homey's universal padding reset overrides Material's shadow-host padding.
+   Restore the shared control defaults once, honoring the public component
+   tokens used by compact variants such as the schedule-day buttons. */
+md-filled-button {
+  padding-inline: var(--md-filled-button-leading-space, var(--spacing-6))
+    var(--md-filled-button-trailing-space, var(--spacing-6));
+}
+
+md-filled-tonal-button {
+  padding-inline: var(--md-filled-tonal-button-leading-space, var(--spacing-6))
+    var(--md-filled-tonal-button-trailing-space, var(--spacing-6));
+}
+
+md-outlined-button {
+  padding-inline: var(--md-outlined-button-leading-space, var(--spacing-6))
+    var(--md-outlined-button-trailing-space, var(--spacing-6));
+}
+
+md-text-button {
+  padding-inline: var(--md-text-button-leading-space, var(--spacing-3))
+    var(--md-text-button-trailing-space, var(--spacing-3));
+}
+
+/* Match Material icon-side insets without outranking compact page decorators. */
+
+md-filled-button:where([has-icon]:not([trailing-icon])) {
+  padding-inline: var(--md-filled-button-with-leading-icon-leading-space, var(--spacing-4))
+    var(--md-filled-button-with-leading-icon-trailing-space, var(--spacing-6));
+}
+
+md-filled-button:where([has-icon][trailing-icon]) {
+  padding-inline: var(--md-filled-button-with-trailing-icon-leading-space, var(--spacing-6))
+    var(--md-filled-button-with-trailing-icon-trailing-space, var(--spacing-4));
+}
+
+md-filled-tonal-button:where([has-icon]:not([trailing-icon])) {
+  padding-inline: var(--md-filled-tonal-button-with-leading-icon-leading-space, var(--spacing-4))
+    var(--md-filled-tonal-button-with-leading-icon-trailing-space, var(--spacing-6));
+}
+
+md-filled-tonal-button:where([has-icon][trailing-icon]) {
+  padding-inline: var(--md-filled-tonal-button-with-trailing-icon-leading-space, var(--spacing-6))
+    var(--md-filled-tonal-button-with-trailing-icon-trailing-space, var(--spacing-4));
+}
+
+md-outlined-button:where([has-icon]:not([trailing-icon])) {
+  padding-inline: var(--md-outlined-button-with-leading-icon-leading-space, var(--spacing-4))
+    var(--md-outlined-button-with-leading-icon-trailing-space, var(--spacing-6));
+}
+
+md-outlined-button:where([has-icon][trailing-icon]) {
+  padding-inline: var(--md-outlined-button-with-trailing-icon-leading-space, var(--spacing-6))
+    var(--md-outlined-button-with-trailing-icon-trailing-space, var(--spacing-4));
+}
+
+md-text-button:where([has-icon]:not([trailing-icon])) {
+  padding-inline: var(--md-text-button-with-leading-icon-leading-space, var(--spacing-3))
+    var(--md-text-button-with-leading-icon-trailing-space, var(--spacing-4));
+}
+
+md-text-button:where([has-icon][trailing-icon]) {
+  padding-inline: var(--md-text-button-with-trailing-icon-leading-space, var(--spacing-4))
+    var(--md-text-button-with-trailing-icon-trailing-space, var(--spacing-3));
+}
+
 :where(md-dialog > [slot="actions"]) md-text-button {
   --md-sys-color-primary: var(--pels-text-primary);
 }
 
-/* Shared settings surfaces: restore the M3 lead/trail padding on the host
-   boxes — Homey's host stylesheet opens with a universal `* { padding: 0 }`
-   reset that beats the components' own :host padding, collapsing labels to
-   the container edges (same idiom as .dry-run-banner__action /
-   .budget-page-header__action). Placed up here with the base button rules so
-   stylelint's no-descending-specificity ordering holds against the
-   id-scoped button rules further down. */
-.homes-settings md-filled-button,
-.setup-journey md-filled-button {
-  padding-inline: var(--spacing-6);
-}
-
-.homes-settings md-text-button,
-.setup-journey md-text-button {
-  padding-inline: var(--spacing-3);
-}
-
 .setup-journey__device md-text-button {
-  padding-inline: var(--spacing-3);
   justify-self: start;
 }
 
@@ -1378,7 +1430,8 @@ md-dialog > [slot="actions"] {
  * consumer elsewhere doesn't inherit the busy affordance by accident. */
 md-outlined-button.is-busy,
 md-text-button.is-busy,
-md-filled-button.is-busy {
+md-filled-button.is-busy,
+md-filled-tonal-button.is-busy {
   cursor: progress;
   opacity: 0.8;
 }
@@ -3023,12 +3076,9 @@ md-filled-button.is-busy {
   margin-left: auto;
 }
 
-/* Homey's host stylesheet resets every element's padding, which collapses the
- * label onto the pill's edges; restore the M3 lead/trail space (same idiom as
- * `.homes-settings md-filled-button`) and never shrink it beside Clear. */
+/* Keep the filled action from shrinking beside Clear. */
 .smart-task-actions > md-filled-tonal-button {
   flex: none;
-  padding-inline: var(--spacing-6);
 }
 
 .smart-task-edit {
@@ -3037,46 +3087,42 @@ md-filled-button.is-busy {
   gap: var(--spacing-3);
 }
 
-/* Native time input, bound to the SAME container tokens the MD filled text
- * field beside it resolves to (`--color-surface-4` container, `--radius-md`
- * corner — see the `--md-filled-text-field-*` bindings at :root) so the two
- * fields in this one form speak one field language. `appearance: none` +
- * explicit disabled state keep UA chrome out; `color-scheme` follows the
- * app's dark scheme so the picker glyph / spinners stay visible on the dark
- * production theme. */
+/* Native fields share the Material field surface and typography. Keep native
+   select arrows, date/time pickers and input events; only time/date fields
+   suppress the outer platform appearance. */
+.pels-select,
+.pels-input,
 .smart-task-edit__time-input {
-  /* The MD field defines this on its own element, so a native input next to it
-   * inherits nothing; set the same token here (and the light-canvas override
-   * with the MD fields below). */
-  --md-filled-text-field-container-color: var(--color-surface-4);
+  width: 100%;
+  min-width: 0;
   min-height: var(--pels-touch-target-min);
   padding: var(--spacing-2) var(--spacing-3);
-  appearance: none;
-  -webkit-appearance: none;
-  background: var(--md-filled-text-field-container-color);
-  color: var(--text);
-  color-scheme: dark;
-  border: none;
+  background: var(--pels-field-container);
+  color: var(--pels-text-primary);
+  color-scheme: var(--pels-field-color-scheme);
+  border: 1px solid var(--pels-field-outline);
   border-radius: var(--radius-md);
   font-family: var(--font-sans);
   font-size: var(--font-size-md);
+  line-height: var(--font-line-height-normal);
 }
 
+.smart-task-edit__time-input {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.pels-select:focus-visible,
+.pels-input:focus-visible,
 .smart-task-edit__time-input:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-focus-ring);
   outline-offset: 1px;
 }
 
+.pels-select:disabled,
+.pels-input:disabled,
 .smart-task-edit__time-input:disabled {
-  opacity: 0.38; /* mirrors MD's disabled-content opacity */
-}
-
-/* Desktop ships the light canvas (Homey's shell invert produces dark — see
- * the theme header comment); the UA time-control internals must follow it. */
-@media (hover: hover) and (pointer: fine) {
-  .smart-task-edit__time-input {
-    color-scheme: light;
-  }
+  opacity: var(--opacity-disabled-content);
 }
 
 /* "Extra permissions" disclosure inside the open editor. Same `<details>` +
@@ -3214,18 +3260,9 @@ md-filled-button.is-busy {
   gap: var(--spacing-2);
 }
 
-/* Homey's host stylesheet resets every element's padding, which collapses the
- * labels onto the buttons' edges; restore the M3 lead/trail space (same idiom
- * as `.smart-task-actions > md-filled-tonal-button`). The buttons wrap rather
- * than shrink. */
-.deadlines-list-create-action > md-filled-tonal-button {
-  flex: none;
-  padding-inline: var(--spacing-6);
-}
-
+.deadlines-list-create-action > md-filled-tonal-button,
 .deadlines-list-create-action > md-text-button {
   flex: none;
-  padding-inline: var(--spacing-3);
 }
 
 .smart-task-create,
@@ -4910,14 +4947,10 @@ details[open] > summary .disclosure-chevron {
   font-weight: var(--font-weight-semibold);
 }
 
-/* The trailing text button (Change, Reorder): restore the M3 lead/trail
-   padding Homey's universal `* { padding: 0 }` reset strips from the host box
-   (the `.homes-settings md-text-button` idiom), so the label sits inside the
-   button's shape rather than spilling past it, and never let the row shrink
-   the button below its label: the value wraps instead. */
+/* Keep the trailing action intrinsic-width; the readout value wraps first.
+   Host padding comes from the shared Material button bridge. */
 .device-detail-readout__trailing md-text-button {
   flex: none;
-  padding-inline: var(--spacing-3);
 }
 
 /* Canonical M3 outlined segmented buttons. Used everywhere a view filter
@@ -5211,12 +5244,6 @@ details[open] > summary .disclosure-chevron {
 .activity-history__content md-filled-select {
   width: 100%;
   min-width: 0;
-}
-
-/* Restore Material's button padding after Homey's host reset. */
-.activity-history__actions md-outlined-button,
-.activity-history__content > md-outlined-button {
-  padding-inline: var(--spacing-6);
 }
 
 .activity-history__actions {
@@ -7896,7 +7923,7 @@ md-switch {
 }
 
 .md-switch-row--disabled .md-switch-row__content {
-  opacity: 0.38;
+  opacity: var(--opacity-disabled-content);
 }
 
 /* `.md-switch-row__label` composes `.pels-text-settings-label` in markup. */
@@ -8136,15 +8163,10 @@ md-switch {
   margin-top: var(--spacing-1);
 }
 
-/* Restore Material host padding after Homey's universal padding reset. */
+/* Compact tonal actions keep mode editing comfortable in a narrow row. */
 #modes-panel md-filled-tonal-button {
-  min-height: var(--pels-touch-target-min);
   padding-inline: var(--spacing-4);
   --md-filled-tonal-button-container-color: var(--pels-surface-container-highest);
-}
-
-#modes-panel md-text-button {
-  padding-inline: var(--spacing-3);
 }
 
 #modes-panel .pels-appbar md-text-button {
@@ -8396,11 +8418,8 @@ md-switch {
      `#dddee2` which reads as a heavy gray slab. Use white container with a
      visible hairline border, matching Homey's own input pattern. */
   md-filled-text-field,
-  md-filled-select,
-  .smart-task-edit__time-input {
-    --md-filled-text-field-container-color: var(--color-surface-1);
-    --md-filled-select-text-field-container-color: var(--color-surface-1);
-    border: 1px solid var(--color-border-medium);
+  md-filled-select {
+    border: 1px solid var(--pels-field-outline);
     border-radius: var(--radius-md);
   }
 
@@ -8613,24 +8632,6 @@ md-switch {
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-2);
-}
-
-/* Native select/input primitive for device pickers and text fields
-   (form-styling rule: native input/select + .field, never md-outlined-*).
-   Padding is restated because Homey's host stylesheet opens with a universal
-   `* { padding: 0 }` reset. Native dropdown arrow is kept (no
-   `appearance: none`). `.pels-input` is the text-input twin (Multiple meters
-   name field) so both share one primitive. */
-.pels-select,
-.pels-input {
-  width: 100%;
-  min-height: var(--pels-touch-target-min);
-  padding: var(--spacing-2) var(--spacing-3);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  background: var(--pels-surface-container-high);
-  color: var(--text);
-  font: inherit;
 }
 
 .weather-settings-section {
@@ -9150,16 +9151,6 @@ md-switch {
 
 #schedules-panel .schedules .pels-appbar {
   margin-bottom: 0;
-}
-
-/* Restore the M3 lead/trail padding that Homey's host `* { padding: 0 }` reset
-   removes (see `.homes-settings md-filled-button`). */
-#schedules-panel .schedules md-filled-button {
-  padding-inline: var(--spacing-6);
-}
-
-#schedules-panel .schedules md-text-button {
-  padding-inline: var(--spacing-3);
 }
 
 #schedules-panel .schedules-toolbar,

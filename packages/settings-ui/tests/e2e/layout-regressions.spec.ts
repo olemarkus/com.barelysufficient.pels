@@ -161,6 +161,55 @@ test.describe('settings shell layout regressions', () => {
     });
   }
 
+  for (const width of [320, 480]) {
+    test(`keeps settings action labels inset and tappable under Homey CSS at ${width}px`, async ({ browser, browserName, baseURL }) => {
+      test.skip(browserName !== 'chromium', 'Touch-theme emulation requires Chromium.');
+      for (const mobile of [false, true]) {
+        const context = await browser.newContext({
+          baseURL,
+          viewport: { width, height: 900 },
+          ...(mobile ? { isMobile: true, hasTouch: true } : {}),
+        });
+        try {
+          const page = await context.newPage();
+          await injectHomeyHostCss(page);
+          await page.goto('/', { waitUntil: 'domcontentloaded' });
+          for (const target of ['devices', 'modes', 'electricity-prices', 'homes']) {
+            await openSettingsSection(page, target);
+            const actions = page.locator(`#${target}-panel`).locator(
+              'md-filled-button:visible, md-filled-tonal-button:visible, md-outlined-button:visible, md-text-button:visible',
+            );
+            await expect(actions.first(), `${target} actions are loaded`).toBeVisible();
+            for (const action of await actions.all()) {
+              const metrics = await action.evaluate((element) => {
+                const style = getComputedStyle(element);
+                const box = element.getBoundingClientRect();
+                return { label: element.textContent?.trim(), height: box.height,
+                  leadingIcon: element.hasAttribute('has-icon') && !element.hasAttribute('trailing-icon'),
+                  leading: parseFloat(style.paddingInlineStart), trailing: parseFloat(style.paddingInlineEnd) };
+              });
+              expect(metrics.height, `${target}: ${metrics.label} touch target`).toBeGreaterThanOrEqual(48);
+              expect(metrics.leading, `${target}: ${metrics.label} leading inset`).toBeGreaterThanOrEqual(8);
+              expect(metrics.trailing, `${target}: ${metrics.label} trailing inset`).toBeGreaterThanOrEqual(8);
+              if (metrics.leadingIcon) {
+                expect(metrics.trailing, `${target}: ${metrics.label} icon-side inset`).toBeGreaterThan(metrics.leading);
+              }
+            }
+            await expectNoHorizontalOverflow(page, target);
+          }
+          await page.locator('#homes-add-button').click();
+          const name = page.locator('#homes-name-input');
+          await name.focus();
+          await expect(name).toHaveCSS('outline-style', 'solid');
+          await expect(page.locator('#homes-meter-select')).not.toHaveCSS('appearance', 'none');
+          await expectNoHorizontalOverflow(page, 'Homes editor');
+        } finally {
+          await context.close();
+        }
+      }
+    });
+  }
+
   test('lets touch gestures scroll Modes outside its drag handles', async ({ browser, browserName, baseURL }) => {
     test.skip(browserName !== 'chromium', 'Touch emulation needs chromium.');
     const context = await browser.newContext({

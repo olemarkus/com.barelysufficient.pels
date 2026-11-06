@@ -51,6 +51,7 @@
   --transition-emphasized: 0.2s cubic-bezier(0.2, 0, 0, 1);
   --transition-panel: 0.3s cubic-bezier(0.32, 0.72, 0, 1);
   --opacity-disabled: 0.5;
+  --opacity-disabled-content: 0.38; /** Material disabled content opacity for fields and their supporting labels. */
   --color-base-black: #0c111b;
   --color-base-black-rgb: 12, 17, 27;
   --color-base-white: #ffffff;
@@ -91,6 +92,7 @@
   --pels-shell-max-width: 480px; /** Shared content and overlay width, including standalone Homey chrome. CSS media queries retain literal breakpoints. */
   --pels-touch-target-min: 48px;
   --pels-motion-pulse-duration: 1.5s; /** Canonical loop duration for `.device-loading-notice`, `.plan-card__stepped-direction`, and `.plan-card__stepped-seg[data-pulse="true"]` opacity/transform pulses in style.css. Replaces three near-identical literals (1.4s / 1.5s / 1.6s) that produced perceptually indistinguishable cadence — single source of truth for any future tuning. Literal duration (not an alias) — pulse cadence is a perceptual constant, not theme-relative. */
+  --pels-field-color-scheme: dark;
   --pels-shell-nav-tab-selected-indicator-height: 3px; /** M3 primary-tab active-indicator thickness (3 px is the Material 3 spec value). Literal px — there is no 3 px spacing step and the indicator is a fixed hairline bar, not layout spacing, so it is encoded directly at the token layer. */
   --pels-shell-nav-tab-selected-background: transparent; /** The selected nav tab no longer fills a pill — it uses the M3 underline indicator (`selected-indicator-color`) plus a primary-text label, so the tab container stays transparent (the base `.tabs` rule already paints no container fill). Retained as the documented selected-state anchor for the strip; the layout test pins it to `transparent` to guard against a pill regression, and the `selected-hover-background` sibling is still consumed by `.plan-chip--link` hover. */
   --pels-control-track-3x: 144px; /** Three touch-target slots wide. Encoded as the absolute px value because Style Dictionary cannot resolve a calc against another token at build time; keep in sync with pels.touch-target.min (currently 48 px) so this stays equal to 3 * pels.touch-target.min. */
@@ -242,6 +244,8 @@
   --pels-on-surface-variant: var(--color-semantic-text-secondary);
   --pels-on-surface-muted: var(--color-semantic-text-muted);
   --pels-on-surface-disabled: var(--color-semantic-text-disabled); /** The reserved dim grey (#6b7280) for genuinely disabled controls/text only — no longer used for helper/caption copy after the muted tier was raised. */
+  --pels-field-container: var(--pels-surface-container-high);
+  --pels-field-outline: var(--pels-surface-outline);
   --pels-segmented-container-background: var(--pels-surface-container-low);
   --pels-segmented-container-border: var(--pels-surface-outline);
   --pels-shell-nav-container-background: var(--pels-surface-container-low);
