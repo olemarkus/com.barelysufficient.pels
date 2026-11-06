@@ -118,8 +118,8 @@ const capture = async (browser) => {
 
   console.log('Smart tasks (smart_tasks)');
   {
-    // Leave room for both recently-ended examples in the documentation card.
-    const page = await openWidget(context, 'smart_tasks', { height: 420 });
+    // Manifest height "100%": a square card at the 360 px card width.
+    const page = await openWidget(context, 'smart_tasks', { height: 360 });
     // List view: active rows ranked by attention + the "Recently ended" section.
     await shoot(page, 'smart-tasks.png');
     // Tap an on-going task that carries a chart (the at-risk Hot water row;
