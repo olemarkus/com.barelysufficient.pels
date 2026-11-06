@@ -1,6 +1,7 @@
 import { getDebugEmitter } from '../logging/logger';
 import type { PowerTrackerState } from './tracker';
-import type { GenerationSegment, ManagedLoadDraw } from './trackerTypes';
+import type { GenerationSegment, ManagedLoadDraw, RecordPowerSampleParams } from './trackerTypes';
+import { resolveTrackedSample } from './trackerEnergy';
 import { resolveManagedLoadKey } from './heldReading';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from './tracker';
 import { resolveUsableCapacityKw } from './capacityModel';
@@ -242,6 +243,25 @@ export type UpdateObjectiveProfiles = (params: {
   nowMs: number;
 }) => PowerTrackerState;
 
+// Measured draw only: an off exempt device books nothing. The planner's
+// projected demand is a control threshold, never energy.
+const resolveSampleExemption = (
+  devices: readonly (UsageDevice & { id: string })[],
+  taskExemptDeviceIds: ReadonlySet<string>,
+): Pick<RecordPowerSampleParams, 'exemptPowerW' | 'uncontrolledExemptPowerW'> => {
+  if (devices.length === 0) return {};
+  const exemptDevices = devices.map((device) => ({
+    ...device,
+    budgetExempt: device.budgetExempt === true || taskExemptDeviceIds.has(device.id),
+  }));
+  return {
+    exemptPowerW: sumBudgetExemptMeasuredUsageKwFor(exemptDevices, () => true) * 1000,
+    uncontrolledExemptPowerW: sumBudgetExemptMeasuredUsageKwFor(
+      exemptDevices, (device) => !device.countsAsManagedUsage,
+    ) * 1000,
+  };
+};
+
 export async function recordPowerSampleForApp(params: {
   currentPowerW: number;
   /**
@@ -266,8 +286,8 @@ export async function recordPowerSampleForApp(params: {
    * static flag (the owner's effective smart-task claim).
    * Their measured draw books as exempt energy, as the threshold already treats it.
    */
-  taskBudgetExemptDeviceIds: ReadonlySet<string>;
-  powerTracker: PowerTrackerState;
+  readTaskBudgetExemptDeviceIds: (nowMs: number) => ReadonlySet<string>;
+  getPowerTracker: () => PowerTrackerState;
   schedulePlanRebuild: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
   updateObjectiveProfiles: UpdateObjectiveProfiles;
@@ -280,8 +300,8 @@ export async function recordPowerSampleForApp(params: {
     timeZone,
     capacitySettings,
     getDeviceSurfaces,
-    taskBudgetExemptDeviceIds,
-    powerTracker,
+    readTaskBudgetExemptDeviceIds,
+    getPowerTracker,
     schedulePlanRebuild,
     saveState,
     updateObjectiveProfiles,
@@ -293,7 +313,6 @@ export async function recordPowerSampleForApp(params: {
   // an unpopulated controllable flag counts as managed usage.
   const usageDevices = devices.map((device) => ({
     ...device,
-    budgetExempt: device.budgetExempt === true || taskBudgetExemptDeviceIds.has(device.id),
     currentDrawKw: normalizeMeasuredPowerKw(device.measuredPowerKw) ?? 0,
     countsAsManagedUsage: device.controllable !== false,
   }));
@@ -315,24 +334,16 @@ export async function recordPowerSampleForApp(params: {
       totalKw: grossConsumptionW / 1000,
     })
     : { controlledKw: null };
-  // MEASURED exempt draw: this feeds a persisted kWh integral, so an off exempt
-  // device books nothing. The planner's projection (an off device claiming its
-  // configured demand) is a control threshold, never energy
-  // (`notes/safe-pace-two-constraints.md`).
-  const exemptKw = devices.length ? sumBudgetExemptMeasuredUsageKwFor(usageDevices, () => true) : null;
-  const uncontrolledExemptKw = devices.length
-    ? sumBudgetExemptMeasuredUsageKwFor(usageDevices, (device) => !device.countsAsManagedUsage) : null;
   const controlledPowerW = controlledKw !== null ? Math.max(0, controlledKw * 1000) : undefined;
   const managedDraw = resolveManagedLoadDraw(devices, generationW);
-  const exemptPowerW = exemptKw !== null ? Math.max(0, exemptKw * 1000) : undefined;
   const currentDevicePowerWById = buildMeasuredDevicePowerWById({ devices });
   const profilingState = updateObjectiveProfiles({
-    state: powerTracker,
+    state: getPowerTracker(),
     devices,
     nowMs,
   });
   addPerfDuration('power_sample_snapshot_ms', Date.now() - snapshotStart);
-  await recordPowerSampleCore({
+  const sample: RecordPowerSampleParams = {
     state: profilingState,
     currentPowerW,
     grossConsumptionW,
@@ -341,8 +352,7 @@ export async function recordPowerSampleForApp(params: {
     generationW,
     generationSegments: params.generationSegments,
     controlledPowerW,
-    exemptPowerW,
-    uncontrolledExemptPowerW: uncontrolledExemptKw !== null ? uncontrolledExemptKw * 1000 : undefined,
+    ...resolveSampleExemption(usageDevices, readTaskBudgetExemptDeviceIds(nowMs)),
     currentDevicePowerWById,
     managedDraw,
     nowMs,
@@ -350,6 +360,24 @@ export async function recordPowerSampleForApp(params: {
     timeZone,
     rebuildPlanFromCache: schedulePlanRebuild,
     saveState,
+  };
+  await recordPowerSampleCore(sample);
+  // Accrual precedes planning so the decision sees current usage. The decision
+  // can renew a claim that expired at this sample's native interval boundary.
+  // Refresh only the held exemption for the NEXT accrual, using the captured
+  // measurement, never fresh device watts or another energy integration.
+  const renewed = resolveTrackedSample({
+    ...sample,
+    ...resolveSampleExemption(usageDevices, readTaskBudgetExemptDeviceIds(Date.now())),
+  });
+  const current = getPowerTracker();
+  if (current.lastTimestamp !== nowMs
+    || (current.lastExemptPowerW === renewed.exemptPowerW
+      && current.lastUncontrolledExemptPowerW === renewed.uncontrolledExemptPowerW)) return;
+  saveState({
+    ...current,
+    lastExemptPowerW: renewed.exemptPowerW,
+    lastUncontrolledExemptPowerW: renewed.uncontrolledExemptPowerW,
   });
 }
 
