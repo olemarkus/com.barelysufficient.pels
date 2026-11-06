@@ -290,6 +290,7 @@ test.describe('settings shell layout regressions', () => {
   });
 
   test('renders the identical app-bar back row on every sub-page', async ({ page }) => {
+    await injectHomeyHostCss(page);
     await openApp(page, 480);
     const readAppbar = async () => {
       const raw = await page.evaluate(() => {
@@ -321,12 +322,35 @@ test.describe('settings shell layout regressions', () => {
       return { ...rest, carded: !isTransparent(barBackground) };
     };
 
-    // Three different sub-page families: a static settings section, a
-    // Preact-rendered settings section, and the smart-task detail panel.
+    // Static and dynamically mounted settings pages share an unframed shell.
+    // New pages must not retain the old outer card around their app bar.
     await openSettingsSection(page, 'limits');
     const limits = await readAppbar();
-    await openSettingsSection(page, 'electricity-prices');
-    const prices = await readAppbar();
+    const limitsLabel = await page.locator('#settings-capacity-period-label').evaluate((element) => {
+      const style = getComputedStyle(element);
+      return [style.fontSize, style.fontWeight, style.lineHeight, style.color];
+    });
+    await openSettingsSection(page, 'modes');
+    const modesLabel = await page.locator('label[for="mode-select"]').evaluate((element) => {
+      const style = getComputedStyle(element);
+      return [style.fontSize, style.fontWeight, style.lineHeight, style.color];
+    });
+    expect(modesLabel, 'direct labels and span labels share the same text role').toEqual(limitsLabel);
+    expect(limits, 'limits app bar must render').not.toBeNull();
+    for (const target of ['electricity-prices', 'homes', 'web-app', 'weather', 'report-problem', 'activity', 'schedules']) {
+      await openSettingsSection(page, target);
+      await expect(page.locator(`#${target}-panel .pels-appbar`)).toBeVisible();
+      expect(await readAppbar(), `${target} app bar`).toEqual(limits);
+      if (target === 'weather') {
+        const cards = page.locator('#weather-insight-settings-body > .settings-form-card');
+        await expect(cards).toHaveCount(2);
+        const first = await cards.nth(0).boundingBox();
+        const second = await cards.nth(1).boundingBox();
+        expect(first).not.toBeNull();
+        expect(second).not.toBeNull();
+        expect(second!.y - (first!.y + first!.height), 'weather cards have the shared section gap').toBeGreaterThanOrEqual(8);
+      }
+    }
     await page.goto('/?page=deadline-plan&deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('#deadline-plan-panel .pels-appbar')).toBeVisible();
     const smartTask = await readAppbar();
@@ -334,7 +358,6 @@ test.describe('settings shell layout regressions', () => {
     expect(limits, 'limits app bar must render').not.toBeNull();
     // One geometry everywhere: same bar height, same un-carded chrome, same
     // 48 px back control, same title slot and type.
-    expect(prices).toEqual(limits);
     expect(smartTask).toEqual(limits);
     expect(limits!.backWidth).toBeGreaterThanOrEqual(48);
     expect(limits!.backHeight).toBeGreaterThanOrEqual(48);
