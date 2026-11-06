@@ -802,7 +802,8 @@ const resolveSourceStatusLines = (props: ElectricityPricesViewProps): SourceStat
             {POWERHOUR_INSTEAD_OF_HOMEY[powerhour]}
           </p>
           <p class="pels-card-supporting">
-            For another tariff, use a Flow to send today’s and tomorrow’s hourly prices to PELS.
+            For another tariff, use a Flow to send today’s or tomorrow’s hourly prices to PELS.
+            Send both days when available to plan further ahead.
             You need to supply the prices for your own contract.
           </p>
           <div class="form__actions">

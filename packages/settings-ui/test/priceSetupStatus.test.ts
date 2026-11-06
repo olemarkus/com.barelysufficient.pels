@@ -44,7 +44,7 @@ const statusOf = (
 ) => (
   resolvePriceSetupStatus({
     priceSetup, homeyToday, homeyTomorrow: null, homeyPriceFormula, powerhourToday, powerhourTomorrow: null,
-    flowToday: null, flowTomorrow: null,
+    flowToday: null, flowTomorrow: null, combinedPrices: null,
   })
 );
 
@@ -162,7 +162,7 @@ describe('resolvePriceSetupStatus', () => {
       ]) {
         expect(resolvePriceSetupStatus({
           priceSetup, homeyToday: HOMEY_DAY, homeyTomorrow: null, homeyPriceFormula: { kind: 'none' },
-          powerhourToday: HOMEY_DAY, powerhourTomorrow: null, flowToday, flowTomorrow: null,
+          powerhourToday: HOMEY_DAY, powerhourTomorrow: null, flowToday, flowTomorrow: null, combinedPrices: null,
         })).toEqual(missing);
       }
     } finally {
@@ -180,8 +180,36 @@ describe('resolvePriceSetupStatus', () => {
         expect(resolvePriceSetupStatus({
           priceSetup: readOf({ scheme: 'flow', basis: CHOSEN }),
           homeyToday: null, homeyTomorrow: null, homeyPriceFormula: { kind: 'none' },
-          powerhourToday: null, powerhourTomorrow: null, flowToday, flowTomorrow,
+          powerhourToday: null, powerhourTomorrow: null, flowToday, flowTomorrow, combinedPrices: null,
         })).toEqual({ state: 'complete', summary: 'Flow' });
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps Flow setup complete while the runtime retains current Flow prices', () => {
+    vi.useFakeTimers({ now: new Date('2026-10-11T12:00:00Z') });
+    try {
+      const statusWith = (combinedPrices: unknown) => resolvePriceSetupStatus({
+        priceSetup: readOf({ scheme: 'flow', basis: CHOSEN }),
+        homeyToday: null, homeyTomorrow: null, homeyPriceFormula: { kind: 'none' },
+        powerhourToday: null, powerhourTomorrow: null, flowToday: null, flowTomorrow: null, combinedPrices,
+      });
+      const retained = { priceScheme: 'flow', prices: [{ startsAt: '2026-10-11T12:00:00Z', total: 0 }] };
+      expect(statusWith(retained)).toEqual({ state: 'complete', summary: 'Flow' });
+      expect(statusWith({ priceScheme: 'flow', days: { '2026-10-12': {
+        hours: [{ startsAt: '2026-10-12T12:00:00Z', total: -0.2 }],
+      } } })).toEqual({ state: 'complete', summary: 'Flow' });
+      for (const combined of [
+        { ...retained, priceScheme: 'homey' },
+        { ...retained, prices: [{ startsAt: '2026-10-10T12:00:00Z', total: 0.2 }] },
+        { ...retained, prices: [{ startsAt: 'invalid', total: 0.2 }] },
+        { ...retained, prices: [{ startsAt: '2026-10-11T12:00:00Z', total: 'invalid' }] },
+      ]) {
+        expect(statusWith(combined)).toEqual({
+          state: 'open', summary: 'Send today’s or tomorrow’s prices through a Flow.',
+        });
       }
     } finally {
       vi.useRealTimers();

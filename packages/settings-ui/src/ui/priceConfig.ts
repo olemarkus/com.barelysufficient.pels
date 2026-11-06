@@ -507,7 +507,7 @@ const refreshStatusInfo = async () => {
     configState = {
       ...configState,
       priceSetup,
-      priceSetupStatus: resolvePriceSetupStatus({ ...payload, priceSetup }),
+      priceSetupStatus: resolvePriceSetupStatus(payload),
       priceLevelSummary: payload.priceLevelSummary,
       flowStatus: configState.priceScheme === 'flow' ? buildFlowStatus(payload) : null,
       homeyStatus: configState.priceScheme === 'homey' ? buildHomeyStatus(payload) : null,
@@ -581,6 +581,7 @@ export const refreshPriceConfigView = async () => {
  * the Hour on a Homey Energy home without prices.
  */
 export const openElectricityPricesView = async () => {
+  renderElectricityPrices();
   await refreshPriceConfigView();
   await norwayPriceHandlers.askForPriceSetupSuggestion();
 };
