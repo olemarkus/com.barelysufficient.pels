@@ -19,6 +19,7 @@ import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import { createExternalOffHoldPolicy } from '../../lib/observer/externalOffHoldSettings';
 import { createEvCarLinkAccessForApp } from './evCarLinkAccess';
 import { createDeviceEventStore } from '../../lib/diagnostics/deviceEventStore';
+import { emitSettingsUiDevicesUpdatedForApp } from '../settingsUiAppRuntime';
 import type { AppContext } from '../../lib/app/appContext';
 
 // The probe's decisions are time-based; mirrors the pre-extraction constant in
@@ -89,6 +90,7 @@ export function buildDeviceTransport(
     lastKnownPowerKw: ctx.lastKnownPowerKw,
   }, {
     getFlowTriggerCard: (cardId) => ctx.homey.flow?.getTriggerCard?.(cardId),
+    onDeviceInventoryRefreshed: () => emitSettingsUiDevicesUpdatedForApp(ctx.homey, ctx.error.bind(ctx)),
     onSnapshotMutated: (snapshot, nowMs) => {
       observeCalibrationSnapshotMutation(snapshot, nowMs);
       ctx.deviceControlHelpers.reconcileTargetPowerReachability([snapshot], nowMs);

@@ -16,15 +16,17 @@ describe('device live feed subscriptions', () => {
   let feed: DeviceLiveFeed;
   const onCapabilityUpdate = vi.fn();
   const onDeviceUpdate = vi.fn();
+  const onDeviceInventoryChanged = vi.fn<() => Promise<void>>();
 
   beforeEach(async () => {
     vi.useFakeTimers();
+    onDeviceInventoryChanged.mockReset().mockResolvedValue(undefined);
     sockets = createLiveFeedSocketHarness();
     vi.mocked(io).mockReturnValue(sockets.root);
     feed = createDeviceLiveFeed({
       homey: new Homey.App(),
       logger: { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('live-feed-test') },
-      callbacks: { onDeviceUpdate, onCapabilityUpdate },
+      callbacks: { onDeviceUpdate, onCapabilityUpdate, onDeviceInventoryChanged },
     });
     await feed.start();
   });
@@ -47,6 +49,54 @@ describe('device live feed subscriptions', () => {
 
     expect(onDeviceUpdate).toHaveBeenCalledTimes(1);
     expect(onDeviceUpdate).toHaveBeenCalledWith(expect.objectContaining({ id: 'car-2' }));
+  });
+
+  it('coalesces create/delete bursts into one inventory read, without refreshing for updates', async () => {
+    await settle();
+    sockets.namespace.deliver('homey:manager:devices', 'device.update', { id: 'heater' });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onDeviceInventoryChanged).not.toHaveBeenCalled();
+    sockets.namespace.deliver('homey:manager:devices', 'device.create', { id: 'heater' });
+    await vi.advanceTimersByTimeAsync(300);
+    // Deletion needs no capability payload: REST supplies the new inventory.
+    sockets.namespace.deliver('homey:manager:devices', 'device.delete', { id: 'old-heater' });
+    await vi.advanceTimersByTimeAsync(499);
+    expect(onDeviceInventoryChanged).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(onDeviceInventoryChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads again for an event during an in-flight read, without overlapping reads', async () => {
+    let finishRead!: () => void;
+    onDeviceInventoryChanged.mockImplementationOnce(() => new Promise<void>((resolve) => { finishRead = resolve; }));
+    await settle();
+    sockets.namespace.deliver('homey:manager:devices', 'device.create', { id: 'heater' });
+    await vi.advanceTimersByTimeAsync(500);
+    sockets.namespace.deliver('homey:manager:devices', 'device.delete', { id: 'heater' });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(onDeviceInventoryChanged).toHaveBeenCalledTimes(1);
+    finishRead();
+    await settle();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(onDeviceInventoryChanged).toHaveBeenCalledTimes(2);
+  });
+
+  it('cancels a pending inventory read on stop', async () => {
+    await settle();
+    sockets.namespace.deliver('homey:manager:devices', 'device.delete', { id: 'heater' });
+    await feed.stop();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onDeviceInventoryChanged).not.toHaveBeenCalled();
+  });
+
+  it('accepts later inventory events after a failed read', async () => {
+    onDeviceInventoryChanged.mockRejectedValueOnce(new Error('offline'));
+    await settle();
+    sockets.namespace.deliver('homey:manager:devices', 'device.delete', { id: 'heater' });
+    await vi.advanceTimersByTimeAsync(500);
+    sockets.namespace.deliver('homey:manager:devices', 'device.create', { id: 'heater' });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(onDeviceInventoryChanged).toHaveBeenCalledTimes(2);
   });
 
   it('subscribes once when tracked-device updates overlap before acknowledgement', async () => {

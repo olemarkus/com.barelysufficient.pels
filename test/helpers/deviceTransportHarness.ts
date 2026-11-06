@@ -178,6 +178,7 @@ export function createTestDeviceTransport(
   const {
     observedStateDispatcher: injected, retainedPowerStore, acceptedFlowWrites, deviceJournal, ...rest
   } = options ?? {};
+  const onDeviceInventoryRefreshed = options?.onDeviceInventoryRefreshed ?? (() => undefined);
   const onSnapshotMutated = options?.onSnapshotMutated ?? (() => undefined);
   // A fresh in-memory store per transport unless the spec passes one: a spec
   // that restarts a transport on the same store is how a restart is modelled.
@@ -192,6 +193,7 @@ export function createTestDeviceTransport(
       ...rest,
       ...owners,
       onSnapshotMutated,
+      onDeviceInventoryRefreshed,
       observedStateDispatcher: injected,
       retainedPowerStore: store,
       acceptedFlowWrites: flowWrites,
@@ -203,6 +205,7 @@ export function createTestDeviceTransport(
     ...rest,
     ...owners,
     onSnapshotMutated,
+    onDeviceInventoryRefreshed,
     observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
     retainedPowerStore: store,
     acceptedFlowWrites: flowWrites,

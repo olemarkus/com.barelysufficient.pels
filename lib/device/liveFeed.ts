@@ -45,14 +45,9 @@ import { getDebugEmitter } from '../logging/logger';
 
 const DEVICES_URI = 'homey:manager:devices';
 const DEVICE_UPDATE_EVENT = 'device.update';
-/**
- * A device added to Homey after boot. Its payload is a full device like an
- * update's, and it takes the update path: periodic refreshes re-read only known
- * ids, so without it a car app installed later stayed invisible to the car-link
- * probe until a full refresh or a restart. A device outside the snapshot is
- * already the common case on that path, since the feed carries every device.
- */
 const DEVICE_CREATE_EVENT = 'device.create';
+const DEVICE_DELETE_EVENT = 'device.delete';
+const INVENTORY_REFRESH_DEBOUNCE_MS = 500;
 const DEVICE_CAPABILITY_EVENT = 'capability';
 const DEVICE_URI_PREFIX = 'homey:device:';
 const HANDSHAKE_TIMEOUT_MS = 15_000;
@@ -95,6 +90,7 @@ export type CapabilityUpdateCallback = (
 
 type FeedCallbacks = {
   onDeviceUpdate: (device: HomeyDeviceLike) => void;
+  onDeviceInventoryChanged: () => Promise<void>;
   onCapabilityUpdate?: CapabilityUpdateCallback;
 };
 
@@ -112,6 +108,9 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
   private rootSocket: SocketIOSocket | null = null;
   private namespacedSocket: SocketIOSocket | null = null;
   private stopped = false;
+  private inventoryRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private inventoryRefreshPending = false;
+  private inventoryRefreshRunning = false;
   private quietCheckTimer: ReturnType<typeof setInterval> | null = null;
   private quietEmittedAt: number | null = null;
   private trackedDeviceIds: ReadonlySet<string> = new Set();
@@ -155,6 +154,9 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
 
   async stop(): Promise<void> {
     this.stopped = true;
+    if (this.inventoryRefreshTimer) clearTimeout(this.inventoryRefreshTimer);
+    this.inventoryRefreshTimer = null;
+    this.inventoryRefreshPending = false;
     if (this.quietCheckTimer) {
       clearInterval(this.quietCheckTimer);
       this.quietCheckTimer = null;
@@ -405,6 +407,14 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
       // Liveness counts every frame, whatever it carries.
       this.health.lastLiveEventMs = Date.now();
       this.quietEmittedAt = null;
+      if (eventName === DEVICE_CREATE_EVENT || eventName === DEVICE_DELETE_EVENT) {
+        // The event invalidates inventory; the REST read validates its contents.
+        this.scheduleInventoryRefresh();
+        if (eventName === DEVICE_DELETE_EVENT) {
+          this.health.liveEventCount += 1;
+          return;
+        }
+      }
       // Cheapest discriminator first.
       if (eventName !== DEVICE_UPDATE_EVENT && eventName !== DEVICE_CREATE_EVENT) {
         this.health.ignoredLiveEventCount += 1;
@@ -448,6 +458,34 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
       this.health.liveEventCount += 1;
       this.callbacks.onDeviceUpdate(data);
     });
+  }
+
+  private scheduleInventoryRefresh(): void {
+    if (this.stopped) return;
+    this.inventoryRefreshPending = true;
+    if (this.inventoryRefreshTimer) clearTimeout(this.inventoryRefreshTimer);
+    this.inventoryRefreshTimer = setTimeout(() => {
+      this.inventoryRefreshTimer = null;
+      void this.refreshInventory();
+    }, INVENTORY_REFRESH_DEBOUNCE_MS);
+  }
+
+  private async refreshInventory(): Promise<void> {
+    if (this.stopped || this.inventoryRefreshRunning) return;
+    this.inventoryRefreshPending = false;
+    this.inventoryRefreshRunning = true;
+    try {
+      await this.callbacks.onDeviceInventoryChanged();
+    } catch (error) {
+      this.logger.structuredLog.error({
+        component: 'devices', source: 'web_api_subscription',
+        event: 'device_inventory_refresh_failed', err: normalizeError(error),
+      });
+    } finally {
+      this.inventoryRefreshRunning = false;
+      // An event received during the read needs another read, not a dropped notification.
+      if (this.inventoryRefreshPending) this.scheduleInventoryRefresh();
+    }
   }
 
   private async syncDeviceSubscriptions(targetIds: ReadonlySet<string>): Promise<void> {
@@ -530,10 +568,7 @@ class DeviceLiveFeedImpl implements DeviceLiveFeed {
 export function createDeviceLiveFeed(params: {
   homey: Homey.App;
   logger: Logger;
-  callbacks: {
-    onDeviceUpdate: (device: HomeyDeviceLike) => void;
-    onCapabilityUpdate?: CapabilityUpdateCallback;
-  };
+  callbacks: FeedCallbacks;
 }): DeviceLiveFeed {
   return new DeviceLiveFeedImpl(params);
 }

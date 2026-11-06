@@ -443,6 +443,8 @@ async function resolveLivePowerForRefresh(
 
 /** Owns device snapshot acquisition, parsing, refresh lifecycle and commit. */
 export class SnapshotRefreshService {
+  private refreshTail: Promise<unknown> = Promise.resolve();
+
   // eslint-disable-next-line max-params -- Direct owner collaborators, not an argument bag.
   constructor(
     readonly refreshState: SnapshotRefreshState,
@@ -465,7 +467,10 @@ export class SnapshotRefreshService {
   }
 
   refresh(options: SnapshotRefreshOptions): Promise<LiveMeterReadings | null> {
-    return this.runRefresh(options);
+    // Inventory events and scheduled reads must commit in acquisition order.
+    const refresh = this.refreshTail.then(() => this.runRefresh(options));
+    this.refreshTail = refresh.catch(() => undefined);
+    return refresh;
   }
 
   /**

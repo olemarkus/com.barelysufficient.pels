@@ -237,6 +237,10 @@ export class DeviceTransport {
             this.logger,
             this.handleRealtimeDeviceUpdate,
             this.handleRealtimeCapabilityUpdate,
+            async () => {
+                await this.refreshSnapshot({ includeLivePower: false, targetedRefresh: false, meterDeviceIds: [] });
+                options.onDeviceInventoryRefreshed();
+            },
         );
         // One key owner, and the two owners that run actions on it, shared by the reads and writes below.
         const actionOwners = createHomeyActionOwners(this.deviceSdk, this.snapshotStore, logger, options);

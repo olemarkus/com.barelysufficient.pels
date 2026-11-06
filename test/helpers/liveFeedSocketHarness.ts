@@ -260,3 +260,10 @@ export async function emitCapability(
     throw new Error(`No device live feed is subscribed to ${deviceUri(deviceId)}`);
   }
 }
+
+/** Homey invalidating the device inventory after pairing or removal. */
+export function emitDeviceInventoryChange(event: 'device.create' | 'device.delete', deviceId: string): void {
+  if (!deliver(DEVICES_URI, event, { id: deviceId })) {
+    throw new Error('No device live feed is subscribed to inventory changes');
+  }
+}
