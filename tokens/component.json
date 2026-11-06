@@ -152,6 +152,11 @@
       "gap": { "value": "{spacing.2}" },
       "radius": { "value": "{radius.lg}" }
     },
+    "field": {
+      "container": { "value": "{pels.surface-container-high}" },
+      "outline": { "value": "{pels.surface-outline}" },
+      "color-scheme": { "value": "dark" }
+    },
     "form-card": {
       "padding": { "value": "{spacing.4}" },
       "gap": { "value": "{spacing.3}" },

@@ -69,6 +69,7 @@
     "panel": { "value": "0.3s cubic-bezier(0.32, 0.72, 0, 1)" }
   },
   "opacity": {
-    "disabled": { "value": "0.5" }
+    "disabled": { "value": "0.5" },
+    "disabled-content": { "value": "0.38", "comment": "Material disabled content opacity for fields and their supporting labels." }
   }
 }
