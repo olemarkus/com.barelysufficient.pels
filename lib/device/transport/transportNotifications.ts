@@ -13,6 +13,7 @@ export class TransportNotifications {
      * than waiting for the next refresh's tail fetch.
      */
     private readonly zoneEntered: (zoneId: string) => void,
+    readonly inventoryRefreshed: () => void,
   ) {}
 
   snapshotChanged(snapshot: TargetDeviceSnapshot, nowMs: number): void {
