@@ -63,7 +63,7 @@ For eligible Flemish digital-meter households, the **2.5 kW billing minimum** is
 **Choose what PELS does** follows when a managed device has more to offer. It is the one place setup offers prices, solar and smart tasks. Each choice is optional and can be changed later on the device's page:
 
 - **Price-based control** for heating and hot water: PELS raises the temperature a little in cheap hours and lowers it in expensive ones.
-- **New smart task** for a device that can carry one: reach the goal you set, such as a battery level or a water temperature, by a ready-by time, in the cheapest hours. Setup returns to this page once the task is saved.
+- **New smart task** for a device that can carry one: reach the goal you set, such as a battery level or a water temperature, by a ready-by time, in the cheapest available periods. Setup returns to this page once the task is saved.
 - The device's solar action, once PELS has seen your solar produce more than the home is using:
 
 | Device control | Setting |
@@ -118,7 +118,7 @@ Choose a source under **Settings > Electricity prices**, then enable **Price-bas
 
 ### Smart tasks
 
-Open **Smart tasks > New smart task**, choose a device and goal, then preview its ready-by time. Use Flows for repeating tasks. [Smart tasks guide](/smart-tasks).
+Open **Smart tasks > New smart task**, choose a device and goal, then preview its ready-by time. Use **Settings > Schedules** for tasks created at fixed times on selected days, or Flows for events such as plugging in a car. [Smart tasks guide](/smart-tasks).
 
 ### Daily budget
 

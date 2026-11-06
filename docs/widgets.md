@@ -64,7 +64,7 @@ If you have more than three active Smart tasks, a small `+N in Smart tasks` line
 
 ### Tap a task to see its progress
 
-Tap any row to open a compact **progress trajectory**: the planned line (where PELS expects the device to be heading toward its target) overlaid with the measured line (where it actually is so far), against a dashed target reference, with the hours PELS scheduled shaded behind them. A colour-coded legend names each line and the target value, so you can see at a glance whether a task is keeping up with its plan or falling behind.
+Tap any row to open a compact **progress trajectory**: the planned line (where PELS expects the device to be heading toward its target) overlaid with the measured line (where it actually is so far), against a dashed target reference, with the periods PELS scheduled shaded behind them. A colour-coded legend names each line and the target value, so you can see at a glance whether a task is keeping up with its plan or falling behind.
 
 ![Smart task list widget detail: a planned-vs-measured progress trajectory for an at-risk task, with the measured line tracking below the plan toward a dashed target line](/screenshots/widgets/smart-tasks-detail.png)
 
@@ -84,7 +84,7 @@ Pick the device in the widget's **Device** setting. The tile shows what the devi
 
 Tap the tile:
 
-- With an open Smart task, including one waiting for its hours or still building its plan, the tap opens that task's progress trajectory, the same view as tapping the task in **Smart task list**.
+- With an open Smart task, including one waiting for its scheduled periods or still building its plan, the tap opens that task's progress trajectory, the same view as tapping the task in **Smart task list**.
 - With no open task, the tap starts one for this device, the same steps as **Create smart task** without choosing a device.
 
 A device that cannot take a Smart task shows its status only. The tile grows and shrinks with what it has to show, and refreshes about every 60 seconds.
@@ -93,16 +93,23 @@ A device that cannot take a Smart task shows its status only. The tile grows and
 
 Answers **"get this device ready by a time — without building a Flow."**
 
-An interactive widget that creates a Smart task in a few taps: pick an eligible device (thermostat, water heater, EV charger, or an on/off device with a power reading), then tap one of the quick targets, each timed to finish soon after the earliest possible time, or **Customize** to set the goal and a specific **Ready by** time, then preview and confirm. The resolved day is shown so you can check whether the time is today or tomorrow. The preview shows the hours PELS would pick, the estimated cost, and a price curve with the chosen hours highlighted. An optional **Extra permissions** section lets a task go over the daily budget, limit lower-priority devices (on devices with power levels), or reserve power so it can start sooner. All of them still stay within the hard cap.
+An interactive widget for managed temperature devices and EV chargers. Select a quick target to see its ready-by time and cost, then choose **Start**. Choose **Customize** instead to set a particular goal and **Ready by** time, preview the plan and confirm. The resolved day is shown so you can check whether the time is today or tomorrow.
+
+A plugged-in charger with live power readings and no battery percentage offers energy targets in kWh. Plain on/off devices, such as a water heater on a relay, use **New smart task** on the Smart tasks page or the **Add energy task** Flow card instead.
+
+The custom preview shows the periods PELS would pick, the estimated cost, and a price curve with the scheduled periods highlighted. Periods can be hourly or 15-minute, depending on the price source. **Extra permissions** lets a task go over the daily budget, limit lower-priority devices (on devices with power levels), or reserve power so it can start sooner. All permissions still respect the enabled house power limits.
 
 ![Create smart task widget, step 1: choosing an eligible device](/screenshots/widgets/new-smart-task-1-pick-device.png)
-*Step 1 — pick an eligible device.*
+*Step 1 — pick a temperature device or EV charger.*
 
-![Create smart task widget, step 2: setting the goal temperature and a ready-by time](/screenshots/widgets/new-smart-task-2-set-goal.png)
-*Step 2 — set the goal and a **Ready by** time (with optional **Extra permissions**).*
+![Create smart task widget, step 2: quick targets with ready-by times, estimated cost, Start and Customize](/screenshots/widgets/new-smart-task-2-quick-targets.png)
+*Step 2 — choose a quick target and **Start**, or choose **Customize** for a particular goal and time.*
 
-![Create smart task widget, step 3: the preview with estimated cost and a price curve highlighting the chosen hours](/screenshots/widgets/new-smart-task-3-preview.png)
-*Step 3 — preview the cost and chosen hours, then confirm.*
+![Create smart task widget, step 3: customizing the goal temperature and ready-by time](/screenshots/widgets/new-smart-task-2-set-goal.png)
+*Step 3 — customize the goal and **Ready by** time, with optional **Extra permissions**, then choose **Preview**.*
+
+![Create smart task widget, step 4: preview with estimated cost and scheduled periods highlighted on a price curve](/screenshots/widgets/new-smart-task-3-preview.png)
+*Step 4 — review the cost and scheduled periods, then choose **Create task**.*
 
 The preview is honest about whether the task can be created:
 
