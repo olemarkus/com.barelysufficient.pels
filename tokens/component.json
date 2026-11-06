@@ -1,5 +1,8 @@
 {
   "pels": {
+    "shell": {
+      "max-width": { "value": "480px", "comment": "Shared content and overlay width, including standalone Homey chrome. CSS media queries retain literal breakpoints." }
+    },
     "touch-target": {
       "min": { "value": "48px" }
     },

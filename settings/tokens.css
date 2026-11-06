@@ -9,6 +9,8 @@
   --spacing-4: 16px;
   --spacing-6: 24px;
   --spacing-8: 32px;
+  --spacing-half: 2px; /** Half-step for compact supporting-text stacks and inset padding. */
+  --spacing-compact: 6px; /** Intermediate gap for compact field and chip groups. */
   --radius-xs: 2px;
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -86,6 +88,7 @@
   --color-border-medium: #3a4555;
   --color-border-strong: #56627a;
   --color-overlay-backdrop: rgba(0, 0, 0, 0.6);
+  --pels-shell-max-width: 480px; /** Shared content and overlay width, including standalone Homey chrome. CSS media queries retain literal breakpoints. */
   --pels-touch-target-min: 48px;
   --pels-motion-pulse-duration: 1.5s; /** Canonical loop duration for `.device-loading-notice`, `.plan-card__stepped-direction`, and `.plan-card__stepped-seg[data-pulse="true"]` opacity/transform pulses in style.css. Replaces three near-identical literals (1.4s / 1.5s / 1.6s) that produced perceptually indistinguishable cadence — single source of truth for any future tuning. Literal duration (not an alias) — pulse cadence is a perceptual constant, not theme-relative. */
   --pels-shell-nav-tab-selected-indicator-height: 3px; /** M3 primary-tab active-indicator thickness (3 px is the Material 3 spec value). Literal px — there is no 3 px spacing step and the indicator is a fixed hairline bar, not layout spacing, so it is encoded directly at the token layer. */
