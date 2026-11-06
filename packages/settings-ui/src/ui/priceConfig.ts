@@ -1,3 +1,4 @@
+import { currentSetupJourney } from './setupJourneyState.ts';
 import { InverterCurtailmentSettingsController } from './inverterCurtailmentSettings.ts';
 import {
   encodePriceAdjustment,
@@ -141,6 +142,7 @@ const renderElectricityPrices = () => {
   if (configState.exportPriceEnabled) inverterControl.ensureLoaded();
   const props: ElectricityPricesViewProps = {
     inverterControl: inverterControl.props(),
+    showSetupGoals: currentSetupJourney() === 'prices',
     config: configState,
     market: readSetupMarket(),
     handlers: electricityPricesHandlers,

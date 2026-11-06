@@ -108,6 +108,8 @@ export type ElectricityPricesHandlers = {
 
 export type ElectricityPricesViewProps = {
   inverterControl: InverterCurtailmentSettingsProps;
+  /** Return to device choices while the Prices setup step is open. */
+  showSetupGoals: boolean;
   market: SettingsUiHubMarketRead;
   config: PriceConfigState;
   handlers: ElectricityPricesHandlers;
@@ -764,17 +766,13 @@ type SourceStatusLines = { hint: ComponentChildren; followUp: ComponentChildren 
 // Homey's store page for Power by the Hour, in the owner's own store locale.
 const POWERHOUR_STORE_URL = 'https://homey.app/a/com.gruijter.powerhour';
 
-// Homey Energy prices only the countries it covers, so beside turning it on the
-// page names the way to prices everywhere else: Power by the Hour, at whatever
-// step this Homey has reached with it. Homey cannot say whether that app is
-// missing or only stopped, so the copy says "use", not "install". A price device
-// left as it comes prices the home on spot, which an owner on a flat or
-// day/night tariff does not pay, so the copy asks for their tariff there.
+// Neither feed covers every country or contract. Offer an existing price
+// device, or explain the coverage before asking the owner to get another app.
 const POWERHOUR_INSTEAD_OF_HOMEY: Record<PriceSetupSuggestion['powerhour']['kind'], string> = {
   has_price_device: ' Or use Power by the Hour, which already has a price device.',
-  no_price_device: ' Or add a price device with your tariff in Power by the Hour.',
-  app_unavailable: ' Otherwise, use Power by the Hour with your tariff.',
-  none: ' Or choose another source above.',
+  no_price_device: ' Power by the Hour offers European market prices. Add a price device only if it can represent your tariff.',
+  app_unavailable: ' Power by the Hour offers European market prices with your own markups. Check that it covers your tariff before adding it.',
+  none: ' You can also supply prices from another source with a Flow.',
 };
 
 /**
@@ -803,6 +801,18 @@ const resolveSourceStatusLines = (props: ElectricityPricesViewProps): SourceStat
             Energy &gt; Electricity.
             {POWERHOUR_INSTEAD_OF_HOMEY[powerhour]}
           </p>
+          <p class="pels-card-supporting">
+            For another tariff, use a Flow to send today’s and tomorrow’s hourly prices to PELS.
+            You need to supply the prices for your own contract.
+          </p>
+          <div class="form__actions">
+            <MdOutlinedButton type="button" onClick={() => handlers.onSchemeChange('flow')}>
+              Use Flow prices
+            </MdOutlinedButton>
+            <MdOutlinedButton href="https://pels.barelysufficient.org/configuration#settings-electricity-prices" target="_blank">
+              Set up Flow prices
+            </MdOutlinedButton>
+          </div>
           {powerhourReady && (
             <div class="form__actions">
               <MdOutlinedButton type="button" onClick={() => handlers.onSchemeChange('powerhour')}>
@@ -887,6 +897,19 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
         {sourceStatus.hint}
       </div>
       {sourceStatus.followUp}
+      {props.showSetupGoals && (
+        <>
+          <p class="pels-card-supporting">
+            You can use power limits and solar control without prices. Return to your device choices
+            to turn off price-based features while you set up a price source.
+          </p>
+          <div class="form__actions">
+            <MdOutlinedButton type="button" data-settings-target="devices" data-setup-journey="goals">
+              Choose what PELS does
+            </MdOutlinedButton>
+          </div>
+        </>
+      )}
 
       {note && <p class="muted">{note}</p>}
       {isFlow && config.flowStatus && <FlowStatusBlock status={config.flowStatus} />}

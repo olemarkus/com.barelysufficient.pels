@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NorwayPriceSetup, PriceSetupRead } from '../../contracts/src/settingsUi/prices.ts';
+import { getDateKeyInTimeZone } from '../../shared-domain/src/utils/dateUtils.ts';
 
-const pricesRead = vi.hoisted(() => ({ priceSetup: { state: 'unavailable' } as PriceSetupRead }));
+const pricesRead = vi.hoisted(() => ({
+  priceSetup: { state: 'unavailable' } as PriceSetupRead,
+  flowToday: null as unknown,
+}));
 
 const NOTHING_CHOSEN: NorwayPriceSetup = {
   county: { value: '03', chosen: false },
@@ -29,6 +33,7 @@ const load = async () => {
   vi.doMock('../src/ui/prices.ts', () => ({
     getPricesReadModel: async () => ({
       priceSetup: pricesRead.priceSetup, homeyToday: null, homeyTomorrow: null, homeyPriceFormula: { kind: 'none' },
+      flowToday: pricesRead.flowToday, flowTomorrow: null,
     }),
   }));
   return import('../src/ui/deviceDetail/priceSourceHint.ts');
@@ -40,6 +45,7 @@ const action = () => document.querySelector<HTMLElement>('#device-detail-price-s
 describe('device detail price source line', () => {
   beforeEach(() => {
     pricesRead.priceSetup = { state: 'unavailable' };
+    pricesRead.flowToday = null;
   });
 
   it('says prices are not set up, with the way to set them up, beside Price-based control', async () => {
@@ -63,6 +69,10 @@ describe('device detail price source line', () => {
         source: { scheme: 'flow', basis: { kind: 'chosen' } },
         norway: NOTHING_CHOSEN,
       },
+    };
+    pricesRead.flowToday = {
+      dateKey: getDateKeyInTimeZone(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone),
+      pricesByHour: { 0: 0.2 },
     };
     const { syncPriceOptRow } = await load();
 

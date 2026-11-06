@@ -61,7 +61,7 @@ type SetupGoalPickerProps = {
   onNewSmartTask: (id: string) => void;
   onOpenSmartTask: (id: string) => void;
   /** Turn a battery's plan on with this usable capacity (kWh), or off (`null`). */
-  onBatteryPlan: (id: string, enabled: boolean, capacityKWh: number | null) => void;
+  onBatteryPlan: (id: string, enabled: boolean, capacityKWh: number | null) => Promise<void>;
   onOpen: (id: string, focus: DeviceDetailFocus) => void;
   onRetry: () => void;
 };
@@ -105,15 +105,21 @@ type BatteryGoalProps = {
  */
 const BatteryGoal = ({ id, name, goal, busy, onBatteryPlan, onOpen }: BatteryGoalProps) => {
   const [draft, setDraft] = useState(goal.capacityKWh === null ? '' : String(goal.capacityKWh));
+  const [error, setError] = useState<string | null>(null);
   const capacity = parseCapacity(draft);
   const invalid = draft.trim() !== '' && capacity === null;
   return <>
     <label class="md-switch-row">
-      <MdSwitch selected={goal.enabled} disabled={busy || (!goal.enabled && capacity === null)}
+      {/* Material owns the checkbox state. Remount after a failed save so its
+          native checkbox also returns to the unchanged accepted value. */}
+      <MdSwitch key={error ?? 'saved'} selected={goal.enabled} disabled={busy || (!goal.enabled && capacity === null)}
         aria-label={`Plan charging with PELS for ${name}`}
         onChange={(event: Event) => {
           const enabled = readSwitchSelected(event);
-          onBatteryPlan(id, enabled, enabled ? capacity : null);
+          setError(null);
+          void onBatteryPlan(id, enabled, enabled ? capacity : null).catch((caught: unknown) => {
+            setError(caught instanceof Error ? caught.message : 'Battery plan could not be saved. Try again.');
+          });
         }} />
       <span class="md-switch-row__label pels-text-settings-label">Plan charging with PELS</span>
     </label>
@@ -135,6 +141,8 @@ const BatteryGoal = ({ id, name, goal, busy, onBatteryPlan, onOpen }: BatteryGoa
         {goal.simulating ? ' The plan runs once you start managing.' : ''}
       </p>
     )}
+    {error && <p role="alert" class="pels-notice-warning">{error}</p>}
+    {error && <MdTextButton type="button" data-settings-target="electricity-prices" data-setup-journey="prices">Electricity prices</MdTextButton>}
     <MdTextButton type="button" aria-label={`Device settings for ${name}`} onClick={() => onOpen(id, 'top')}>
       Device settings
     </MdTextButton>

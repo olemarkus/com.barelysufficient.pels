@@ -72,16 +72,14 @@ export const homeyEnergyHasPrices = (
 );
 
 /**
- * Whether Power by the Hour has given PELS prices for today or tomorrow. PELS
- * keeps the days it last read, so a day left from before the app stopped, or
- * lost its price device, does not count.
+ * Whether a payload-fed source has given PELS prices for today or tomorrow.
+ * PELS keeps the days it last read, so a day left from a stopped source does
+ * not count as configured prices.
  */
-const powerhourHasPrices = (
-  payload: Pick<SettingsUiPricesPayload, 'powerhourToday' | 'powerhourTomorrow'>,
-): boolean => {
+const hasCurrentPriceDay = (days: readonly unknown[]): boolean => {
   const todayKey = getDateKeyInTimeZone(new Date(), getHomeyTimezone());
   const current = new Set([todayKey, shiftDateKey(todayKey, 1)]);
-  return [payload.powerhourToday, payload.powerhourTomorrow].some((raw) => {
+  return days.some((raw) => {
     const day = getFlowPricePayload(raw);
     return day !== null && current.has(day.dateKey);
   });
@@ -132,13 +130,14 @@ const SOURCE_NAMES: Record<Exclude<PriceSchemeSetting, 'norway'>, string> = {
  * Prices are set up when the owner chose the source and the source can price
  * the home: on Norway's own source that takes the grid company, the price area
  * and the pricing model; Homey Energy must have prices for this hub in a
- * price setup PELS can work out; and Power by the Hour must have given PELS
- * prices, which it cannot while it is not running or has no price device.
+ * price setup PELS can work out; Power by the Hour and Flow must have given
+ * PELS prices for today or tomorrow.
  */
 export const resolvePriceSetupStatus = (
   payload: Pick<
     SettingsUiPricesPayload,
-    'priceSetup' | 'homeyToday' | 'homeyTomorrow' | 'homeyPriceFormula' | 'powerhourToday' | 'powerhourTomorrow'
+    'priceSetup' | 'homeyToday' | 'homeyTomorrow' | 'homeyPriceFormula'
+    | 'powerhourToday' | 'powerhourTomorrow' | 'flowToday' | 'flowTomorrow'
   >,
 ): PriceSetupStatus => {
   const read = payload.priceSetup;
@@ -163,8 +162,11 @@ export const resolvePriceSetupStatus = (
       return { state: 'open', summary: 'PELS can’t use the price setup in Homey Energy.' };
     }
   }
-  if (source.scheme === 'powerhour' && !powerhourHasPrices(payload)) {
+  if (source.scheme === 'powerhour' && !hasCurrentPriceDay([payload.powerhourToday, payload.powerhourTomorrow])) {
     return { state: 'open', summary: 'Power by the Hour has no prices yet.' };
+  }
+  if (source.scheme === 'flow' && !hasCurrentPriceDay([payload.flowToday, payload.flowTomorrow])) {
+    return { state: 'open', summary: 'Send today’s or tomorrow’s prices through a Flow.' };
   }
   const name = SOURCE_NAMES[source.scheme];
   return source.basis.kind === 'chosen'
