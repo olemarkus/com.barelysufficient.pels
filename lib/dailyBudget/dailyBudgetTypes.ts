@@ -46,8 +46,6 @@ export type DailyBudgetState = Partial<ObservedHourlyStats> & {
   profileSampleCount?: number;
   profileSplitSampleCount?: number;
   profileObservedStatsConfigKey?: string;
-  /** Accounting semantics used by the persisted learned profiles and observed statistics. */
-  profileAccountingBasis?: string;
 };
 
 // The daily-budget UI payload contract is owned by packages/contracts (the

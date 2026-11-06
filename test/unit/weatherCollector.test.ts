@@ -1544,7 +1544,7 @@ describe('weather feedback upgrade', () => {
     const { collector, persisted } = buildHarness({ recomputeDerived, applySuggestedDailyBudget });
     persisted.value = {
       records: [], meterScopeSignature: DEFAULT_METER_SCOPE_SIGNATURE,
-      latestFit: { energyBasis: 'budget_counted', recentResidualQ80: 4 },
+      latestFit: { recentResidualQ80: 4 },
       latestSuggestion: { ...suggestion, budgetPressureKwh: 10, suggestedBudgetKwh: 50 },
       budgetPressure: { algorithmVersion: 2, kwh: 10, throughDateKey: '2026-01-09' },
     };
@@ -1568,7 +1568,7 @@ describe('weather feedback upgrade', () => {
     persisted.value = { records: [], meterScopeSignature: DEFAULT_METER_SCOPE_SIGNATURE,
       backfilledDeviceId: 'out-1', backfillVersion: TEMP_BACKFILL_VERSION,
       meterKwhBackfillDone: true, controlledBackfillVersion: CONTROLLED_BACKFILL_VERSION,
-      latestFit: { energyBasis: 'budget_counted', recentSuppressionSuspected: true },
+      latestFit: { recentSuppressionSuspected: true },
       latestSuggestion: { budgetPressureKwh: 56 },
       budgetPressure: { kwh: 56, throughDateKey: '2026-01-09' } };
     store.read.mockImplementationOnce(() => { throw new Error('temporarily unreadable'); });
@@ -1590,7 +1590,7 @@ describe('weather feedback upgrade', () => {
     const applySuggestedDailyBudget = vi.fn(() => true);
     const { collector, persisted } = buildHarness({ recomputeDerived, applySuggestedDailyBudget });
     persisted.value = { records: [], meterScopeSignature: DEFAULT_METER_SCOPE_SIGNATURE,
-      latestFit: { energyBasis: 'budget_counted', recentSuppressionSuspected: true },
+      latestFit: { recentSuppressionSuspected: true },
       budgetPressure: { kwh: 56, throughDateKey: '2026-01-09' } };
     collector.start();
     expect(recomputeDerived).toHaveBeenCalledOnce();

@@ -763,5 +763,8 @@
   },
   "3.30.1": {
     "en": "Fixed power-level control for Høiax water heaters. Improved home-battery recovery after restarts and upgrades, including returning Sigenergy batteries to automatic control. Battery discharge is no longer counted as spare solar power, and battery-plan setup now asks for the country settings it needs."
+  },
+  "3.30.2": {
+    "en": "Devices you add in Homey now appear in PELS right away, and deleted devices disappear, without restarting the app. Energy from a budget-exempt device or smart task no longer counts toward the daily budget, also when Power-limit control is off, and it stays exempt for the whole smart task.\n\nSetup no longer stalls when electricity prices are unavailable, and it shows how to send prices through a Flow instead. The settings pages also have a more consistent look."
   }
 }

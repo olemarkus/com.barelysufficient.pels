@@ -349,11 +349,11 @@ const SummaryCard = ({ readout, fit }: { readout: WeatherAdvisorReadoutPayload; 
         </div>
       )}
       <p class="plan-hero__decision weather-summary__headline">{summaryHeadline(fit, readout.outlookDateKey)}</p>
-      <p class="pels-card-supporting">{composeBasedOnDays(fit.usableDays)} Energy counted toward the daily budget.</p>
+      <p class="pels-card-supporting">{composeBasedOnDays(fit.usableDays)}</p>
       {readout.yesterday !== null && (
         <p class="pels-card-supporting">
           {composeYesterdayLine({
-            kwhTotal: readout.yesterday.kwhBudgetCounted,
+            kwhTotal: readout.yesterday.kwhTotal,
             tempMeanC: readout.yesterday.tempMeanC,
             deviationKwh: readout.yesterday.deviationKwh,
             typicalLowDeviation: fit.residualQ10,

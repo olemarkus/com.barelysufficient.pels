@@ -34,8 +34,8 @@ const MIN_USABLE_DAYS = 21;
 /**
  * Fit on the trailing usable-day year. A full seasonal cycle is what makes
  * the balance point identifiable at all — a summer-only window has no heating
- * regime. Insights supplies temperature history; the accounting owner supplies
- * counted-energy evidence. Occupancy/equipment changes inside the window are
+ * regime — and the Insights backfills exist precisely to hand a new install a
+ * year of pairs on day one. Occupancy/equipment changes inside the window are
  * surfaced by the drift detector rather than by truncating the window.
  */
 const FIT_WINDOW_DAYS = 365;
@@ -133,7 +133,7 @@ export function fitEnergySignature(records: WeatherDailyRecord[], nowMs: number)
   if (selection.records.length < MIN_USABLE_DAYS) return null;
   const usable: FitDay[] = selection.records.map((record) => ({
     tempC: record.tempMeanC,
-    kwh: record.kwhBudgetCounted as number,
+    kwh: record.kwhTotal as number,
     season: seasonIndexForDateKey(record.dateKey),
   }));
 
@@ -160,7 +160,6 @@ export function fitEnergySignature(records: WeatherDailyRecord[], nowMs: number)
   const recentSuppressionSuspected = detectRecentSuppression(records);
 
   return {
-    energyBasis: 'budget_counted',
     model,
     ...(model === 'changepoint' ? { baseLoadKwhPerDay: line.intercept, balancePointC } : {}),
     ...(model === 'linear' ? { interceptKwhAtZeroC: line.intercept } : {}),
@@ -228,8 +227,7 @@ export function predictDailyKwh(fit: EnergySignatureFit, tempMeanC: number, date
  * Quality gate for a day to count toward the signature: clean temp + kWh,
  * reliable power, positive total. Net-export (PV) days carry no readable
  * heating signal; excluding them keeps negative totals from bending the
- * slope. Historical totals without counted-energy evidence cannot establish
- * that no exempt load ran and are excluded. Shared with the
+ * slope. Backfilled days are admitted — they are good data. Shared with the
  * settings-UI readout builder so the scatter/coverage decimation and the fit
  * judge days by the same gate.
  */
@@ -240,10 +238,7 @@ export function isUsableSignatureDay(record: WeatherDailyRecord): boolean {
     && Number.isFinite(record.tempMeanC)
     && typeof record.kwhTotal === 'number'
     && Number.isFinite(record.kwhTotal)
-    && record.kwhTotal > 0
-    && typeof record.kwhBudgetCounted === 'number'
-    && Number.isFinite(record.kwhBudgetCounted)
-    && record.kwhBudgetCounted > 0;
+    && record.kwhTotal > 0;
 }
 
 /** Days currently counting toward the fit (same gates + window the fit uses). */

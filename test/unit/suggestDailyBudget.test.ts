@@ -4,7 +4,6 @@ import { suggestDailyBudgetKwh } from '../../lib/weather/suggestDailyBudget';
 const TARGET_DATE_KEY = '2026-01-15';
 
 const baseFit: EnergySignatureFit = {
-  energyBasis: 'budget_counted',
   model: 'changepoint',
   baseLoadKwhPerDay: 20,
   balancePointC: 15,

@@ -46,13 +46,12 @@ export function defaultStoredSuggestion(raw: Record<string, unknown>): WeatherHi
   } as WeatherHistoryState['latestSuggestion'];
 }
 
-/** Persisted advice is reusable only on the current counted-energy basis. */
+/** Persisted advice; a budget-pressure term on the old whole-home axis also drops its suggestion. */
 export function normalizeStoredAdvice(raw: Record<string, unknown>): Pick<
   WeatherHistoryState, 'latestFit' | 'latestSuggestion' | 'budgetPressure'
 > {
   const budgetPressure = normalizeBudgetPressure(raw.budgetPressure);
-  const currentFit = isUnknownRecord(raw.latestFit) && raw.latestFit.energyBasis === 'budget_counted'
-    ? defaultStoredFit(raw.latestFit) : undefined;
+  const currentFit = isUnknownRecord(raw.latestFit) ? defaultStoredFit(raw.latestFit) : undefined;
   return {
     ...(currentFit ? { latestFit: currentFit } : {}),
     ...(currentFit && budgetPressure.kind !== 'incompatible' && isUnknownRecord(raw.latestSuggestion)

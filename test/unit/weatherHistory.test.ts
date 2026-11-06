@@ -715,7 +715,7 @@ describe('normalizeWeatherHistoryState', () => {
     expect(normalized?.records.map((record) => record.appliedBudgetKwh)).toEqual([44, undefined, undefined, 44]);
   });
 
-  it('discards a cached whole-home fit and suggestion but preserves recorded energy', () => {
+  it('retains a cached whole-home fit and suggestion', () => {
     const records = [liveRecord('2026-01-09', { kwhTotal: 60, kwhBudgetCounted: 40 })];
     const normalized = normalizeWeatherHistoryState({
       records,
@@ -723,18 +723,8 @@ describe('normalizeWeatherHistoryState', () => {
       latestSuggestion: { suggestedBudgetKwh: 60 },
     });
     expect(normalized?.records).toEqual(records);
-    expect(normalized?.latestFit).toBeUndefined();
-    expect(normalized?.latestSuggestion).toBeUndefined();
-  });
-
-  it('retains a cached fit on the counted-energy basis', () => {
-    const normalized = normalizeWeatherHistoryState({
-      records: [],
-      latestFit: { energyBasis: 'budget_counted', model: 'linear', slopeKwhPerDegree: 2 },
-      latestSuggestion: { suggestedBudgetKwh: 40 },
-    });
-    expect(normalized?.latestFit).toMatchObject({ energyBasis: 'budget_counted' });
-    expect(normalized?.latestSuggestion).toMatchObject({ suggestedBudgetKwh: 40 });
+    expect(normalized?.latestFit).toMatchObject({ model: 'linear', slopeKwhPerDegree: 2 });
+    expect(normalized?.latestSuggestion).toMatchObject({ suggestedBudgetKwh: 60 });
   });
 
   it('round-trips a valid state and drops malformed entries', () => {
