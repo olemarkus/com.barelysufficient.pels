@@ -1,8 +1,8 @@
-// The plan cycle's budget exemptions reach the exempt kWh integral
-// (`PowerSamplePipeline` → `recordPowerSampleForApp`). A smart task's "may go
-// over daily budget" exempts its device on the plan only, and the daily
-// threshold already treats it so; its measured energy must book as exempt too,
-// or the task's kWh counts as used and squeezes the rest of the day.
+import { EnergyAccounting } from '../../lib/power/energyAccounting';
+import { buildBucketUsageSplit } from '../../lib/dailyBudget/dailyBudgetLearning';
+import { buildObservedHourlyStatsFromWindow } from '../../lib/dailyBudget/dailyBudgetObservedStats';
+// The task owner supplies effective exemptions directly to measured accounting;
+// publication of a planner snapshot is not an accounting precondition.
 import { createSampleIngestQueue } from '../../lib/power/sampleIngestQueue';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { describe, expect, it, vi } from 'vitest';
@@ -28,6 +28,9 @@ const publishedExempting = (publishedAtMs: number): PublishedPlan => ({
 
 const buildPipeline = (
   published: PublishedPlan | null,
+  taskExemptDeviceIds: ReadonlySet<string>,
+  controllable = true,
+  measuredPowerKw = 2,
 ): { pipeline: PowerSamplePipeline; getTracker: () => PowerTrackerState } => {
   let powerTracker: PowerTrackerState = {};
   // The scheduler stub executes every accepted intent at once by calling back
@@ -72,6 +75,7 @@ const buildPipeline = (
       computePhysicalPowerLimit: () => 9.5,
     } as unknown as PlanService),
     planRebuildThrottle: throttle,
+    readTaskBudgetExemptDeviceIds: () => taskExemptDeviceIds,
     getDeviceSurfaces: () => deviceSurfacesFixtures([{
       available: true,
       id: 'dev-task',
@@ -79,7 +83,8 @@ const buildPipeline = (
       expectedPowerSource: 'default' as const,
       name: 'Water heater on a smart task',
       targets: [],
-      measuredPowerKw: 2,
+      measuredPowerKw,
+      controllable,
       budgetExempt: false,
     }]),
     getThermalDirection: () => 'heating',
@@ -93,20 +98,41 @@ const buildPipeline = (
   return { pipeline, getTracker: () => powerTracker };
 };
 
-describe('PowerSamplePipeline plan budget exemptions', () => {
-  it('books a device the published plan exempts as exempt energy', async () => {
-    const { pipeline, getTracker } = buildPipeline(publishedExempting(T0));
+describe('PowerSamplePipeline task budget exemptions', () => {
+  it('books the task owner exemption without a published plan', async () => {
+    const { pipeline, getTracker } = buildPipeline(null, new Set(['dev-task']));
     await pipeline.recordPowerSample(2_000, T0);
     await pipeline.recordPowerSample(2_000, T0 + HALF_HOUR_MS);
 
     expect(getTracker().exemptBuckets?.[new Date(T0).toISOString()]).toBeCloseTo(1, 3);
   });
 
-  it('books nothing as exempt from a plan published in an earlier hour', async () => {
-    const { pipeline, getTracker } = buildPipeline(publishedExempting(T0 - 2 * HALF_HOUR_MS));
+  it('ignores a published exemption that the task owner no longer holds', async () => {
+    const { pipeline, getTracker } = buildPipeline(publishedExempting(T0), new Set());
     await pipeline.recordPowerSample(2_000, T0);
     await pipeline.recordPowerSample(2_000, T0 + HALF_HOUR_MS);
 
     expect(getTracker().exemptBuckets?.[new Date(T0).toISOString()] ?? 0).toBe(0);
   });
+});
+
+it('books a capacity-off charger exemption consistently for pacing and learned demand', async () => {
+  const { pipeline, getTracker } = buildPipeline(null, new Set(['dev-task']), false, 3.06);
+  await pipeline.recordPowerSample(4_400, T0);
+  await pipeline.recordPowerSample(4_400, T0 + 60 * 60_000);
+  const tracker = getTracker();
+  const key = new Date(T0).toISOString();
+  expect(tracker.controlledBuckets?.[key]).toBe(0);
+  expect(tracker.uncontrolledBuckets?.[key]).toBeCloseTo(4.4);
+  expect(tracker.exemptBuckets?.[key]).toBeCloseTo(3.06);
+  expect(tracker.uncontrolledExemptBuckets?.[key]).toBeCloseTo(3.06);
+  expect(new EnergyAccounting(tracker).bucket(key).budgetCountedKwh).toBeCloseTo(1.34);
+  const learned = buildBucketUsageSplit({ bucketStartUtcMs: [T0], powerTracker: tracker });
+  expect(learned.bucketUsageControlled).toEqual([0]);
+  expect(learned.bucketUsageUncontrolled[0]).toBeCloseTo(1.34);
+  const { stats } = buildObservedHourlyStatsFromWindow({
+    powerTracker: tracker, timeZone: 'UTC', windowStartUtcMs: T0, windowEndUtcMs: T0 + 60 * 60_000,
+  });
+  expect(stats.profileObservedMaxUncontrolledKWh[10]).toBeCloseTo(1.34);
+  expect(stats.profileObservedP50GrossUncontrolledKWh[10]).toBeCloseTo(1.34);
 });

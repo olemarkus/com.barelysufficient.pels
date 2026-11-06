@@ -41,6 +41,7 @@ const heatingHistory = (): WeatherDailyRecord[] => Array.from({ length: 80 }, (_
   return {
     dateKey,
     kwhTotal: 20 + 2 * Math.max(0, 15 - tempC) + (index % 2 === 0 ? 1 : -1),
+    kwhBudgetCounted: 20 + 2 * Math.max(0, 15 - tempC) + (index % 2 === 0 ? 1 : -1),
     tempMeanC: tempC,
     tempMinC: tempC - 2,
     tempMaxC: tempC + 2,
@@ -120,7 +121,6 @@ describe('weather MET forecast integration (MET HTTP boundary mocked)', () => {
       getDailyKwh: () => ({}),
       getDaySuppression: () => ({}),
       getAppliedDailyBudgetKwh: () => 50,
-      getBudgetCountedKwh: () => undefined,
       applySuggestedDailyBudget: () => false,
       onDailyBudgetAutoApplied: () => undefined,
       recordBudgetDecision: () => undefined,
@@ -208,7 +208,6 @@ describe('weather MET forecast integration (MET HTTP boundary mocked)', () => {
       getDailyKwh: () => ({}),
       getDaySuppression: () => ({}),
       getAppliedDailyBudgetKwh: () => 50,
-      getBudgetCountedKwh: () => undefined,
       applySuggestedDailyBudget: () => false,
       onDailyBudgetAutoApplied: () => undefined,
       recordBudgetDecision: () => undefined,

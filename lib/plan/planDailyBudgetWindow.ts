@@ -1,7 +1,6 @@
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../power/tracker';
-import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
-import { resolveAttributionSplit } from '../../packages/shared-domain/src/dailyBudget/attributionSplit';
+import { EnergyAccounting } from '../power/energyAccounting';
 
 export type CurrentHourUsageSplit = {
   totalKWh?: number;
@@ -23,47 +22,8 @@ type DailySoftLimitInput = {
   nextBucketStartIso?: string;
 };
 
-export function resolveHourlyUsageSplit(
-  totalRaw: unknown,
-  controlledRaw: unknown,
-  uncontrolledRaw: unknown,
-): CurrentHourUsageSplit {
-  const hasTotal = isFiniteNumber(totalRaw);
-  const hasControlled = isFiniteNumber(controlledRaw);
-  const hasUncontrolled = isFiniteNumber(uncontrolledRaw);
-
-  if (hasTotal) {
-    const totalKWh = Math.max(0, totalRaw);
-    // plan.meta DISPLAY split (hourControlledKWh/hourUncontrolledKWh) via the shared
-    // gross-preferring resolver, consistent with the Power view and daily-budget view.
-    const { controlled, uncontrolled } = resolveAttributionSplit({
-      totalNet: totalKWh,
-      controlledGross: hasControlled ? controlledRaw : undefined,
-      uncontrolledGross: hasUncontrolled ? uncontrolledRaw : undefined,
-    });
-    return {
-      totalKWh,
-      controlledKWh: controlled ?? undefined,
-      uncontrolledKWh: uncontrolled ?? undefined,
-    };
-  }
-
-  if (hasControlled || hasUncontrolled) {
-    return {
-      controlledKWh: hasControlled ? Math.max(0, controlledRaw) : undefined,
-      uncontrolledKWh: hasUncontrolled ? Math.max(0, uncontrolledRaw) : undefined,
-    };
-  }
-
-  return {};
-}
-
 export function getHourUsageSplit(powerTracker: PowerTrackerState, bucketKey: string): CurrentHourUsageSplit {
-  return resolveHourlyUsageSplit(
-    powerTracker.buckets?.[bucketKey],
-    powerTracker.controlledBuckets?.[bucketKey],
-    powerTracker.uncontrolledBuckets?.[bucketKey],
-  );
+  return new EnergyAccounting(powerTracker).hourUsage(bucketKey);
 }
 
 /**
@@ -83,14 +43,10 @@ export function resolveDailySoftLimitBucket(
   if (!input) return null;
   const window = resolveDailySoftLimitWindow(input);
   if (!window || nowMs >= window.bucketEndMs) return null;
-  // Floor metered usage (a persisted solar-export hour can be negative) and clamp exempt to
-  // it — exempt is grossed up at the tracker, so bound it by the net metered total here, matching
-  // the other budget-control consumers (dailyBudgetState/Learning/ObservedStats).
-  const meteredUsedKWh = Math.max(0, powerTracker.buckets?.[input.bucketStartIso] ?? 0);
-  const exemptUsedKWh = Math.max(0, Math.min(meteredUsedKWh, powerTracker.exemptBuckets?.[input.bucketStartIso] ?? 0));
+  const usage = new EnergyAccounting(powerTracker).bucket(input.bucketStartIso);
   return {
     plannedKWh: input.plannedKWh,
-    usedKWh: Math.max(0, meteredUsedKWh - exemptUsedKWh),
+    usedKWh: usage.budgetCountedKwh,
     ...window,
   };
 }

@@ -29,6 +29,7 @@ import { MeterSilenceMonitor, type MeterSilenceMonitorDeps } from '../../lib/pow
 export type HomePowerPipelineDeps = Pick<PowerSamplePipelineDeps,
   | 'getPlanEngine'
   | 'getPlanService'
+  | 'readTaskBudgetExemptDeviceIds'
   | 'savePowerTracker'
   | 'planRebuildThrottle'
   | 'getPowerTracker'
@@ -73,6 +74,7 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
     getCapacityGuard: deps.getCapacityGuard,
     getPlanEngine: deps.getPlanEngine,
     getPlanService: deps.getPlanService,
+    readTaskBudgetExemptDeviceIds: deps.readTaskBudgetExemptDeviceIds,
     planRebuildThrottle: deps.planRebuildThrottle,
     getThermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
     // Power attribution needs inventory class and Observer measurements. Use

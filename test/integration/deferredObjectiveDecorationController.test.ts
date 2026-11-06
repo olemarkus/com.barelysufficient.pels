@@ -213,3 +213,80 @@ describe('DeferredObjectiveDecorationController latest cycle', () => {
     expect(controller.readLatestCycle('dev')).toBeUndefined();
   });
 });
+
+
+describe('DeferredObjectiveDecorationController measured budget exemption', () => {
+  const startMs = Date.UTC(2026, 9, 2, 0);
+  const quarterMs = 15 * 60_000;
+  const deadlineAtMs = startMs + 4 * quarterMs;
+  const buildExemptController = () => {
+    const settings: DeferredObjectiveRoster = {
+      objectivesByDeviceId: {
+        dev: {
+          enabled: true, kind: 'energy', enforcement: 'soft', targetEnergyKWh: 6, deadlineAtMs,
+          rescue: { exemptFromBudget: 'always' },
+        },
+      },
+    };
+    const buildPriceHorizon = vi.fn(() => Array.from({ length: 4 }, (_, index) => ({
+      startMs: startMs + index * quarterMs,
+      endMs: startMs + (index + 1) * quarterMs,
+      price: 1,
+      moneyPrice: 1,
+    })));
+    const controller = new DeferredObjectiveDecorationController({
+      hasSolarProduction: () => false,
+      getThermalDirection: () => 'heating',
+      getPrioritiesForDevices: createFixturePriorityQuery(),
+      getTimeZone: () => 'UTC',
+      getPowerTracker: buildPowerTracker,
+      getPriceOptimizationEnabled: () => true,
+      buildPriceHorizon,
+      getCapacitySettings: () => capacityOnlyPowerLimits(10),
+      getDeferredObjectiveActivePlans: createEmptyActivePlans,
+      resolveDeviceExclusion: noDeviceExclusion,
+      getStallClassification: noStallEvidence,
+      hasObservedTask: () => false,
+      isReservationSuppressed: noReservationSuppression,
+      getDeliveredEnergyKWh: noDeliveredEnergy,
+    }, () => settings);
+    const device = {
+      ...buildDevice(), controlModel: 'binary_power' as const,
+      control: fixtureControlPosture({ controllable: false }),
+    };
+    return { controller, settings, device, buildPriceHorizon };
+  };
+
+  it('serves a capacity-off task claim without reevaluating or publishing a plan', () => {
+    const { controller, device, buildPriceHorizon } = buildExemptController();
+    expect(controller.readBudgetExemptDeviceIds(startMs)).toEqual(new Set());
+    const result = controller.decorate({ devices: [device], dailyBudgetSnapshot: null, nowTs: startMs });
+    expect(result.admittedDevices[0].budgetExempt).toBe(true);
+    const evaluations = buildPriceHorizon.mock.calls.length;
+
+    expect(controller.readBudgetExemptDeviceIds(startMs + quarterMs - 1)).toEqual(new Set(['dev']));
+    expect(buildPriceHorizon).toHaveBeenCalledTimes(evaluations);
+    expect(controller.readBudgetExemptDeviceIds(startMs - 1)).toEqual(new Set());
+    expect(controller.readBudgetExemptDeviceIds(startMs + quarterMs)).toEqual(new Set());
+  });
+
+  it.each(['clear', 'disable', 'replace', 'permission'] as const)(
+    'invalidates the cached exemption after a task %s before another decoration', (change) => {
+      const { controller, settings, device } = buildExemptController();
+      controller.decorate({ devices: [device], dailyBudgetSnapshot: null, nowTs: startMs });
+      expect(controller.readBudgetExemptDeviceIds(startMs + 1)).toEqual(new Set(['dev']));
+      if (change === 'clear') delete settings.objectivesByDeviceId.dev;
+      if (change === 'disable') settings.objectivesByDeviceId.dev.enabled = false;
+      if (change === 'replace') settings.objectivesByDeviceId.dev.deadlineAtMs += quarterMs;
+      if (change === 'permission') settings.objectivesByDeviceId.dev.rescue = {};
+      expect(controller.readBudgetExemptDeviceIds(startMs + 2)).toEqual(new Set());
+    },
+  );
+
+  it('never carries the last interval claim beyond the task deadline', () => {
+    const { controller, device } = buildExemptController();
+    controller.decorate({ devices: [device], dailyBudgetSnapshot: null, nowTs: deadlineAtMs - 60_000 });
+    expect(controller.readBudgetExemptDeviceIds(deadlineAtMs - 1)).toEqual(new Set(['dev']));
+    expect(controller.readBudgetExemptDeviceIds(deadlineAtMs)).toEqual(new Set());
+  });
+});

@@ -471,6 +471,7 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
       homeId: MAIN_HOME_ID,
       planRebuildThrottle: throttle,
       getPlanEngine: () => planEngine,
+      readTaskBudgetExemptDeviceIds: () => new Set(),
       getPlanService: () => planService,
       getPowerTracker: () => ctx.powerTracker,
       getCapacitySettings: () => ctx.capacitySettings,

@@ -1,7 +1,7 @@
+import { resolveHourlyUsageSplit } from '../../lib/power/energyAccounting';
 import {
   getHourUsageSplit,
   resolveDailySoftLimitBucket,
-  resolveHourlyUsageSplit,
 } from '../../lib/plan/planDailyBudgetWindow';
 import type { DailyBudgetUiPayload } from '../../packages/contracts/src/dailyBudgetTypes';
 

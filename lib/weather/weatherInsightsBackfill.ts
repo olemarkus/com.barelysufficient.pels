@@ -1,3 +1,4 @@
+import type { DailyKwhTotals } from './weatherMeterScope';
 import { parseInsightsTimestamp } from './insightsTimestamp';
 import type { WeatherDailyRecord } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
@@ -7,8 +8,8 @@ import { isPlausibleOutdoorTemperature } from './weatherHistory';
 /**
  * One-shot reconstruction of historical daily outdoor temperatures from the
  * selected device's Homey Insights log, joined with the power tracker's daily
- * kWh totals. This is what removes the feature's cold start: a year of
- * (usage, temperature) pairs exists the moment a device is picked.
+ * kWh totals. Temperature history is retained even when counted-energy
+ * evidence is unavailable; only complete accounting days train the signature.
  *
  * Endpoint quirk (verified): entries live at
  * `manager/insights/log/{ownerUri}/{FULL log id}/entry?resolution=R` — the
@@ -37,7 +38,7 @@ export type InsightsBackfillDeps = {
   deviceId: string;
   /** Read-only GET against the Homey Web API (path without leading slash). */
   fetchInsights: (path: string) => Promise<unknown>;
-  getDailyKwh: (dateKey: string) => { total?: number; controlled?: number };
+  getDailyKwh: (dateKey: string) => DailyKwhTotals;
   timeZone: string;
   nowMs: number;
 };
@@ -110,12 +111,13 @@ function groupPointsByLocalDay(
 function buildBackfillRecord(
   dateKey: string,
   temps: number[],
-  kwh: { total?: number; controlled?: number },
+  kwh: DailyKwhTotals,
 ): WeatherDailyRecord {
   return {
     dateKey,
     ...(kwh.total !== undefined ? { kwhTotal: kwh.total } : {}),
     ...(kwh.controlled !== undefined ? { kwhControlled: kwh.controlled } : {}),
+    ...(kwh.budgetCounted !== undefined ? { kwhBudgetCounted: kwh.budgetCounted } : {}),
     tempMeanC: temps.reduce((sum, value) => sum + value, 0) / temps.length,
     tempMinC: Math.min(...temps),
     tempMaxC: Math.max(...temps),

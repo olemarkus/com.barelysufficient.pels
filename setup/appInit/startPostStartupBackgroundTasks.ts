@@ -10,8 +10,7 @@ import { wireBudgetPrice } from './wireBudgetPrice';
 import { wireContinuousBatteryPlan } from './wireContinuousBatteryPlan';
 import { wireCurtailmentSurplus } from './wireCurtailmentSurplus';
 import { startSoleMeterAdoption } from '../soleMeterAdoption';
-import { startCapacityMarketDefault } from '../capacityMarketDefault';
-import type { InstallAtBoot } from '../../lib/utils/settingsKeyList';
+export { startCapacityMarketDefault } from '../capacityMarketDefault';
 
 const NATIVE_WIRING_REQUERY_INTERVAL_MS = 30 * 60 * 1000;
 
@@ -27,18 +26,16 @@ export const startPostStartupBackgroundTasks = (
   timers: TimerRegistry,
   handles: AppRuntimeHandles,
   subscribeDeviceSnapshotCommitted: (listener: () => void) => void,
-  installAtBoot: InstallAtBoot,
+  getDailyKwh: Parameters<typeof startBackgroundCollectors>[2],
 ): void => {
   // Name the whole-home meter for an install that has none chosen, when Homey
   // Energy lists exactly one. Self-delaying, so it runs after the settings
   // handlers are wired and reacts like an owner's pick would.
   startSoleMeterAdoption(ctx.homey, timers, ctx.getTrackerStore(), () => ctx.powerTracker.lastTimestamp);
-  // A new install outside the markets that bill a measured peak starts with
-  // Capacity limit off. After the settings handlers too, for the same reason.
-  startCapacityMarketDefault(ctx.homey.settings, timers, installAtBoot);
   const collectors = startBackgroundCollectors(
     ctx,
     (collectorCtx) => backgroundTasks.startWeatherCollector(collectorCtx),
+    getDailyKwh,
   );
   // eslint-disable-next-line functional/immutable-data, no-param-reassign -- the composition root's handles
   handles.backgroundCollectors = collectors;

@@ -19,6 +19,7 @@ const OSLO = 'Europe/Oslo';
 const day = (index: number, tempC: number, kwh: number): WeatherDailyRecord => ({
   dateKey: new Date(Date.UTC(2026, 0, 1) + index * 86_400_000).toISOString().slice(0, 10),
   kwhTotal: kwh,
+  kwhBudgetCounted: kwh,
   tempMeanC: tempC,
   tempMinC: tempC - 2,
   tempMaxC: tempC + 2,

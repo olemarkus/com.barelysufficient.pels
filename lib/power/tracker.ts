@@ -14,7 +14,8 @@ import {
   accrueTrackedSampleFamilies,
   calculateEnergyAcrossBoundaries,
   foldAgedHourIntoDay,
-  normalizeDevicePowerWById,
+  buildUncontrolledExemptAggregatePatch,
+  resolveTrackedSample,
   pruneHourlyBucketsOnly,
   serializeDeviceBuckets,
 } from './trackerEnergy';
@@ -27,10 +28,6 @@ export const DAILY_RETENTION_DAYS = 365;
 export type { PowerTrackerState, RecordPowerSampleParams } from './trackerTypes';
 const MIN_VALID_TIMESTAMP_MS = 100000000000;
 
-type ControlledSample = {
-  controlledPowerW?: number;
-  uncontrolledPowerW?: number;
-};
 function shouldResetSampling(previousTs: number, nowMs: number): boolean {
   const elapsedMs = nowMs - previousTs;
   return previousTs < MIN_VALID_TIMESTAMP_MS || elapsedMs < 0 || elapsedMs > MAX_POWER_SAMPLE_GAP_MS;
@@ -50,6 +47,7 @@ function buildNextPowerState(params: {
   nextControlledBuckets?: Map<string, number>;
   nextUncontrolledBuckets?: Map<string, number>;
   nextExemptBuckets?: Map<string, number>;
+  nextUncontrolledExemptBuckets?: Map<string, number>;
   nextGenerationBuckets: Map<string, number>;
   nextExportBuckets: Map<string, number>;
   nextDeviceBuckets: Map<string, Map<string, number>>;
@@ -58,6 +56,7 @@ function buildNextPowerState(params: {
   currentControlledPowerW?: number;
   currentUncontrolledPowerW?: number;
   currentExemptPowerW?: number;
+  currentUncontrolledExemptPowerW?: number;
   currentGenerationW?: number;
   currentDevicePowerWById?: Record<string, number>;
   heldReading: HeldReading;
@@ -73,6 +72,7 @@ function buildNextPowerState(params: {
     nextControlledBuckets,
     nextUncontrolledBuckets,
     nextExemptBuckets,
+    nextUncontrolledExemptBuckets,
     nextGenerationBuckets,
     nextExportBuckets,
     nextDeviceBuckets,
@@ -81,6 +81,7 @@ function buildNextPowerState(params: {
     currentControlledPowerW,
     currentUncontrolledPowerW,
     currentExemptPowerW,
+    currentUncontrolledExemptPowerW,
     currentGenerationW,
     currentDevicePowerWById,
     heldReading,
@@ -107,6 +108,10 @@ function buildNextPowerState(params: {
       ? addToHourlyBuckets(state.uncontrolledBuckets, nextUncontrolledBuckets)
       : state.uncontrolledBuckets,
     exemptBuckets: nextExemptBuckets ? addToHourlyBuckets(state.exemptBuckets, nextExemptBuckets) : state.exemptBuckets,
+    ...(nextUncontrolledExemptBuckets && nextUncontrolledExemptBuckets.size > 0
+      ? {
+        uncontrolledExemptBuckets: addToHourlyBuckets(state.uncontrolledExemptBuckets, nextUncontrolledExemptBuckets),
+      } : {}),
     // Sparse solar families: serialize only when non-empty so a non-solar home
     // never gains the keys and its persisted state stays deep-equal (merge gate).
     ...(nextGenerationBuckets.size > 0
@@ -122,6 +127,7 @@ function buildNextPowerState(params: {
     lastControlledPowerW: currentControlledPowerW,
     lastUncontrolledPowerW: currentUncontrolledPowerW,
     lastExemptPowerW: currentExemptPowerW,
+    lastUncontrolledExemptPowerW: currentUncontrolledExemptPowerW,
     unreliablePeriods: unreliablePeriods || state.unreliablePeriods,
   };
 }
@@ -154,28 +160,6 @@ async function persistPowerSample(params: {
   }
 }
 
-function resolveControlledSample(params: {
-  currentPowerW: number;
-  controlledPowerW?: number;
-}): ControlledSample {
-  const { currentPowerW, controlledPowerW } = params;
-  const boundedControlled = resolveBoundedTrackedPowerW(currentPowerW, controlledPowerW);
-  if (typeof boundedControlled !== 'number') {
-    return {};
-  }
-  return {
-    controlledPowerW: boundedControlled,
-    uncontrolledPowerW: Math.max(0, currentPowerW - boundedControlled),
-  };
-}
-
-function resolveBoundedTrackedPowerW(currentPowerW: number, trackedPowerW?: number): number | undefined {
-  if (typeof trackedPowerW !== 'number' || !Number.isFinite(trackedPowerW)) {
-    return undefined;
-  }
-  return Math.max(0, Math.min(trackedPowerW, currentPowerW));
-}
-
 // These maps hold ONLY this sample's increments (budgets hold replacement values).
 // The retained histories stay in state; materialization copies a dictionary only
 // when a value changes, preserving the snapshots held by the SQLite diff base.
@@ -187,6 +171,7 @@ function createSampleBucketChanges() {
     nextControlledBuckets: new Map<string, number>(),
     nextUncontrolledBuckets: new Map<string, number>(),
     nextExemptBuckets: new Map<string, number>(),
+    nextUncontrolledExemptBuckets: new Map<string, number>(),
     nextGenerationBuckets: new Map<string, number>(),
     nextExportBuckets: new Map<string, number>(),
     nextDeviceBuckets: new Map<string, Map<string, number>>(),
@@ -372,6 +357,7 @@ export function aggregateAndPruneHistory(
     state.exemptDailyTotals,
     state.exemptHourlyAverages,
   );
+  const uncontrolledExemptPatch = buildUncontrolledExemptAggregatePatch(state, aggregateForType);
   // Solar families: gate + averages-discard rules live in trackerSolar.ts.
   const solarAggregatePatch = buildSolarAggregatePatch(state, aggregateForType);
   const deviceBucketEntries = (
@@ -408,6 +394,7 @@ export function aggregateAndPruneHistory(
     controlledHourlyAverages: controlledAggregate.hourlyAverages,
     uncontrolledHourlyAverages: uncontrolledAggregate.hourlyAverages,
     exemptHourlyAverages: exemptAggregate.hourlyAverages,
+    ...uncontrolledExemptPatch,
     ...solarAggregatePatch,
     deviceBuckets,
     unreliablePeriods: (state.unreliablePeriods || []).filter((p) => p.end >= hourlyThreshold),
@@ -417,13 +404,9 @@ export function aggregateAndPruneHistory(
 export async function recordPowerSample(params: RecordPowerSampleParams): Promise<void> {
   const bookkeepingStart = Date.now();
   const {
-    state, currentPowerW, controlledPowerW, exemptPowerW, currentDevicePowerWById, nowMs = Date.now(),
+    state, currentPowerW, nowMs = Date.now(),
     hourBudgetKWh, rebuildPlanFromCache, saveState,
   } = params;
-  // Whole-home actual consumption (net import + generation) bounds the managed/unmanaged
-  // split so solar-fed managed load is not clamped to the smaller net total. It defaults
-  // to net for non-solar callers; energy accounting and the guard retain net import.
-  const grossConsumptionW = Math.max(0, params.grossConsumptionW ?? currentPowerW);
   // Producer-resolved gross generation for THIS sample; `undefined` = no
   // generation signal (boundary/absence rules live in trackerSolar.ts).
   const currentGenerationW = resolveSampleGenerationW(params.generationW);
@@ -435,28 +418,14 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     nextControlledBuckets,
     nextUncontrolledBuckets,
     nextExemptBuckets,
+    nextUncontrolledExemptBuckets,
     nextGenerationBuckets,
     nextExportBuckets,
     nextDeviceBuckets,
   } = createSampleBucketChanges();
   const budgetKWh = applyCurrentHourSample({ nextHourlySampleCounts, nextBudgets, nowMs, hourBudgetKWh });
 
-  const {
-    controlledPowerW: boundedControlledPowerW,
-    uncontrolledPowerW: boundedUncontrolledPowerW,
-  } = resolveControlledSample({
-    // Split is bounded by gross consumption, not net import, so managed load that
-    // runs off self-consumed solar is attributed in full and the unmanaged
-    // residual (gross − managed) reflects true background load.
-    currentPowerW: grossConsumptionW,
-    controlledPowerW,
-  });
-  // Exempt is a managed-device draw (gross at the appliance); bound it by GROSS
-  // consumption like controlled, so under solar self-consumption it isn't clamped to
-  // the smaller net total (which would leak exempt load back into the managed bucket).
-  // Billing stays correct: every budget consumer re-clamps exempt against the net total.
-  const boundedExemptPowerW = resolveBoundedTrackedPowerW(grossConsumptionW, exemptPowerW);
-  const normalizedDevicePowerWById = normalizeDevicePowerWById(currentDevicePowerWById);
+  const sample = resolveTrackedSample(params);
   const resetSampling = shouldResetSamplingState(state, nowMs);
   const heldReading = resolveNextHeldReading(state, currentPowerW, params.managedDraw, nowMs, resetSampling);
   // Shared next-state args for both the reset path (no accrual — the current
@@ -470,16 +439,18 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     nextControlledBuckets,
     nextUncontrolledBuckets,
     nextExemptBuckets,
+    nextUncontrolledExemptBuckets,
     nextGenerationBuckets,
     nextExportBuckets,
     nextDeviceBuckets,
     nowMs,
     currentPowerW,
-    currentControlledPowerW: boundedControlledPowerW,
-    currentUncontrolledPowerW: boundedUncontrolledPowerW,
-    currentExemptPowerW: boundedExemptPowerW,
+    currentControlledPowerW: sample.controlledPowerW,
+    currentUncontrolledPowerW: sample.uncontrolledPowerW,
+    currentExemptPowerW: sample.exemptPowerW,
+    currentUncontrolledExemptPowerW: sample.uncontrolledExemptPowerW,
     currentGenerationW,
-    currentDevicePowerWById: normalizedDevicePowerWById,
+    currentDevicePowerWById: sample.devicePowerWById,
     heldReading,
   };
 
@@ -532,19 +503,16 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
       controlledPowerW: state.lastControlledPowerW,
       uncontrolledPowerW: state.lastUncontrolledPowerW,
       exemptPowerW: state.lastExemptPowerW,
+      uncontrolledExemptPowerW: state.lastUncontrolledExemptPowerW,
       devicePowerWById: state.lastDevicePowerWById,
     },
-    next: {
-      controlledPowerW: boundedControlledPowerW,
-      uncontrolledPowerW: boundedUncontrolledPowerW,
-      exemptPowerW: boundedExemptPowerW,
-      devicePowerWById: normalizedDevicePowerWById,
-    },
+    next: sample,
     startTs: previousTs,
     endTs: nowMs,
     controlledBuckets: nextControlledBuckets,
     uncontrolledBuckets: nextUncontrolledBuckets,
     exemptBuckets: nextExemptBuckets,
+    uncontrolledExemptBuckets: nextUncontrolledExemptBuckets,
     deviceBuckets: nextDeviceBuckets,
   });
 

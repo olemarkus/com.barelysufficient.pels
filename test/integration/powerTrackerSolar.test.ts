@@ -64,7 +64,7 @@ const ingestForApp = async (
     timeZone: 'UTC',
     capacitySettings: { limitKw: 10, marginKw: 0.5, periodMinutes: 60 },
     getDeviceSurfaces: () => [],
-    planBudgetExemptDeviceIds: new Set(),
+    taskBudgetExemptDeviceIds: new Set(),
     powerTracker: tracker,
     updateObjectiveProfiles: ({ state }) => state,
     schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),

@@ -9,6 +9,7 @@ import type {
 } from '../../packages/contracts/src/weatherAdvisorTypes';
 import type { RawHomeyDeviceLike } from '../utils/types';
 import type { WeatherHistoryStore } from './weatherHistoryStore';
+import type { DailyKwhTotals } from './weatherMeterScope';
 import type { MetForecastFetchResult } from './metForecast';
 
 /**
@@ -23,7 +24,7 @@ export type WeatherCollectorDeps = {
   /** Read-only GET against the Homey Web API (Insights backfills + meter discovery). */
   fetchInsights: (path: string) => Promise<unknown>;
   /** Flat kWh totals for a local day, sourced from the power tracker by the factory. */
-  getDailyKwh: (dateKey: string) => { total?: number; controlled?: number; uncontrolled?: number };
+  getDailyKwh: (dateKey: string) => DailyKwhTotals;
   /** Whether PELS manages (controls) a device — drives the historical controlled-split backfill. */
   isManagedDevice: (deviceId: string) => boolean;
   getUnreliablePeriods: () => Array<{ start: number; end: number }>;
@@ -40,13 +41,6 @@ export type WeatherCollectorDeps = {
    * budget-pressure loop pairs it with the day's measured kWh to size its step.
    */
   getAppliedDailyBudgetKwh: () => number | undefined;
-  /**
-   * The local day's usage as the daily budget counted it (metered less
-   * budget-exempt), or `undefined` when there is no hourly usage to count.
-   * Stamped next to the applied budget so the pressure loop measures overshoot
-   * and unused allowance on the axis the budget actually paced.
-   */
-  getBudgetCountedKwh: (dateKey: string) => number | undefined;
   /**
    * The live power-limit settings. The planning ceiling the budget-pressure loop
    * carries under is resolved from them in this domain

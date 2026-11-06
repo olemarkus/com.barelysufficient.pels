@@ -2,7 +2,7 @@ import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAd
 import { isCanonicalHomeyDeviceId } from '../utils/homeyDeviceId';
 import { isCalendarDateKey } from '../../packages/shared-domain/src/utils/dateUtils';
 
-type DailyKwhTotals = { total?: number; controlled?: number; uncontrolled?: number };
+export type DailyKwhTotals = { total?: number; controlled?: number; uncontrolled?: number; budgetCounted?: number };
 type MeterScopeMarkers = Pick<WeatherHistoryState, 'meterScopeSignature' | 'meterScopeSinceDateKey'>;
 
 const FLOW_SIGNATURE = 'source:flow';

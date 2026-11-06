@@ -1,3 +1,5 @@
+import { resolveBudgetCountedDayKwh } from './energyAccounting';
+import type { PowerTrackerState } from './trackerTypes';
 import {
   getDateKeyStartMs,
   shiftDateKey,
@@ -10,21 +12,11 @@ import {
  * exist solely as UTC-hour buckets — sum those over the local-day window and
  * fall back to `dailyTotals` for older days (the Insights backfill path).
  */
-export type DailyKwhSource = {
-  buckets?: Record<string, number>;
-  controlledBuckets?: Record<string, number>;
-  uncontrolledBuckets?: Record<string, number>;
-  dailyTotals?: Record<string, number>;
-  controlledDailyTotals?: Record<string, number>;
-  uncontrolledDailyTotals?: Record<string, number>;
-};
-
-export function resolveDailyKwh(params: {
-  dateKey: string;
-  timeZone: string;
-  source: DailyKwhSource;
-}): { total?: number; controlled?: number; uncontrolled?: number } {
-  const { dateKey, timeZone, source } = params;
+export function resolveDailyKwh(
+  source: PowerTrackerState,
+  dateKey: string,
+  timeZone: string,
+): { total?: number; controlled?: number; uncontrolled?: number; budgetCounted?: number } {
   const dayStartMs = getDateKeyStartMs(dateKey, timeZone);
   const nextDayStartMs = getDateKeyStartMs(shiftDateKey(dateKey, 1), timeZone);
   const total = combineDisjointSums(
@@ -39,7 +31,9 @@ export function resolveDailyKwh(params: {
     sumBucketsInWindow(source.uncontrolledBuckets, dayStartMs, nextDayStartMs),
     source.uncontrolledDailyTotals?.[dateKey],
   );
+  const budgetCounted = resolveBudgetCountedDayKwh(source, dateKey, timeZone);
   return {
+    ...(budgetCounted !== undefined ? { budgetCounted } : {}),
     ...(total !== undefined ? { total } : {}),
     ...(controlled !== undefined ? { controlled } : {}),
     ...(uncontrolled !== undefined ? { uncontrolled } : {}),

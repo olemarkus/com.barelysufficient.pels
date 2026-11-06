@@ -1,6 +1,6 @@
 import { truncateToUtcHour } from '../utils/hourBuckets';
 import { addToHourlyBuckets } from './trackerBucketChanges';
-import type { PowerTrackerState } from './trackerTypes';
+import type { PowerTrackerState, RecordPowerSampleParams } from './trackerTypes';
 
 export const calculateEnergyAcrossBoundaries = (params: {
   startTs: number;
@@ -124,23 +124,14 @@ function accumulatePowerIfAvailable(params: {
  * `recordPowerSample`).
  */
 export function accrueTrackedSampleFamilies(params: {
-  previous: {
-    controlledPowerW?: number;
-    uncontrolledPowerW?: number;
-    exemptPowerW?: number;
-    devicePowerWById?: Record<string, number>;
-  };
-  next: {
-    controlledPowerW?: number;
-    uncontrolledPowerW?: number;
-    exemptPowerW?: number;
-    devicePowerWById?: Record<string, number>;
-  };
+  previous: TrackedSample;
+  next: TrackedSample;
   startTs: number;
   endTs: number;
   controlledBuckets: Map<string, number>;
   uncontrolledBuckets: Map<string, number>;
   exemptBuckets: Map<string, number>;
+  uncontrolledExemptBuckets: Map<string, number>;
   deviceBuckets: Map<string, Map<string, number>>;
 }): void {
   const { previous, next, startTs, endTs } = params;
@@ -164,6 +155,14 @@ export function accrueTrackedSampleFamilies(params: {
     startTs,
     endTs,
     buckets: params.exemptBuckets,
+  });
+  accumulatePowerIfAvailable({
+    // Before this share existed, every recorded exempt watt belonged to managed load.
+    previousPowerW: previous.exemptPowerW === undefined ? undefined : previous.uncontrolledExemptPowerW ?? 0,
+    nextPowerW: next.exemptPowerW === undefined ? undefined : next.uncontrolledExemptPowerW ?? 0,
+    startTs,
+    endTs,
+    buckets: params.uncontrolledExemptBuckets,
   });
   accumulateDevicePowerIfAvailable({
     previousPowerWById: previous.devicePowerWById,
@@ -200,4 +199,89 @@ export function accumulateDevicePowerIfAvailable(params: {
       budgetKWh: null,
     });
   }
+}
+
+/** The measured attribution families held between two whole-home readings. */
+type TrackedSample = {
+  controlledPowerW?: number;
+  uncontrolledPowerW?: number;
+  exemptPowerW?: number;
+  uncontrolledExemptPowerW?: number;
+  devicePowerWById?: Record<string, number>;
+};
+
+/**
+ * Attribution is bounded by gross consumption, independently of net import.
+ * A solar-fed appliance's exempt draw belongs to its own managed/background side.
+ */
+export function resolveTrackedSample(sample: RecordPowerSampleParams): TrackedSample {
+  const grossPowerW = Math.max(0, sample.grossConsumptionW ?? sample.currentPowerW);
+  const controlledPowerW = resolveBoundedTrackedPowerW(grossPowerW, sample.controlledPowerW);
+  const uncontrolledPowerW = controlledPowerW === undefined ? undefined : Math.max(0, grossPowerW - controlledPowerW);
+  return {
+    controlledPowerW,
+    uncontrolledPowerW,
+    ...resolveExemptSample(
+      grossPowerW, controlledPowerW, uncontrolledPowerW, sample.exemptPowerW, sample.uncontrolledExemptPowerW,
+    ),
+    devicePowerWById: normalizeDevicePowerWById(sample.currentDevicePowerWById),
+  };
+}
+
+function resolveBoundedTrackedPowerW(currentPowerW: number, trackedPowerW?: number): number | undefined {
+  if (typeof trackedPowerW !== 'number' || !Number.isFinite(trackedPowerW)) return undefined;
+  return Math.max(0, Math.min(trackedPowerW, currentPowerW));
+}
+
+/** Bounds the portions separately so a clipped background reading cannot become managed energy. */
+function resolveExemptSample(
+  grossPowerW: number,
+  controlledPowerW: number | undefined,
+  uncontrolledPowerW: number | undefined,
+  exemptPowerW: number | undefined,
+  uncontrolledExemptPowerW: number | undefined,
+): Pick<TrackedSample, 'exemptPowerW' | 'uncontrolledExemptPowerW'> {
+  if (typeof exemptPowerW !== 'number' || !Number.isFinite(exemptPowerW)) return {};
+  const total = Math.max(0, exemptPowerW);
+  // Split device evidence before capping to the meter: an oversized background
+  // reading must not consume the managed device's exemption.
+  const background = Math.max(0, Math.min(total, uncontrolledExemptPowerW ?? 0));
+  const boundedBackground = Math.min(background, uncontrolledPowerW ?? grossPowerW);
+  const managed = Math.min(total - background, controlledPowerW ?? grossPowerW);
+  return {
+    exemptPowerW: Math.min(grossPowerW, managed + boundedBackground),
+    uncontrolledExemptPowerW: boundedBackground,
+  };
+}
+
+type ExemptFamilyAggregate = {
+  buckets?: Record<string, number>;
+  dailyTotals: Record<string, number>;
+  hourlyAverages: Record<string, { sum: number; count: number }>;
+};
+
+type ExemptAggregateForType = (
+  buckets?: Record<string, number>,
+  dailyTotals?: Record<string, number>,
+  hourlyAverages?: Record<string, { sum: number; count: number }>,
+) => ExemptFamilyAggregate;
+
+/** Preserve absence on pre-attribution histories; otherwise fold the share with the owning retention policy. */
+export function buildUncontrolledExemptAggregatePatch(
+  state: PowerTrackerState,
+  aggregateForType: ExemptAggregateForType,
+): Partial<PowerTrackerState> {
+  if (!state.uncontrolledExemptBuckets
+    && !state.uncontrolledExemptDailyTotals
+    && !state.uncontrolledExemptHourlyAverages) {
+    return {};
+  }
+  const aggregate = aggregateForType(
+    state.uncontrolledExemptBuckets, state.uncontrolledExemptDailyTotals, state.uncontrolledExemptHourlyAverages,
+  );
+  return {
+    uncontrolledExemptBuckets: aggregate.buckets,
+    uncontrolledExemptDailyTotals: aggregate.dailyTotals,
+    uncontrolledExemptHourlyAverages: aggregate.hourlyAverages,
+  };
 }

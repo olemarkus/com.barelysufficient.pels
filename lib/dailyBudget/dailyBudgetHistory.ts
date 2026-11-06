@@ -1,3 +1,4 @@
+import { EnergyAccounting } from '../power/energyAccounting';
 import type { PowerLimitCeiling } from '../../packages/contracts/src/capacitySettings';
 import type { PowerTrackerState } from '../power/tracker';
 import {
@@ -8,8 +9,6 @@ import {
 import { sumArray, type CombinedPriceData } from './dailyBudgetMath';
 import { buildPriceData } from './dailyBudgetPrices';
 import {
-  buildBucketUsage,
-  buildBudgetUsageViews,
   buildDailyBudgetSnapshot,
   computeBudgetState,
   resolvePlannedSplit,
@@ -54,13 +53,14 @@ export const buildDailyBudgetHistory = (params: {
     nextDayStartUtcMs,
     timeZone,
   });
+  const usage = new EnergyAccounting(powerTracker).window(bucketStartUtcMs);
   const {
     bucketKeys,
     bucketUsage,
     bucketUsageControlled,
     bucketUsageUncontrolled,
     bucketUsageExempt,
-  } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
+  } = usage;
   // Each hour's cap is its share of the budget as that hour closed. On a day that
   // runs under budget, the unused share is offered again to later hours, so the
   // caps sum to more than the budget. They give the day's shape, scaled to the
@@ -80,10 +80,7 @@ export const buildDailyBudgetHistory = (params: {
     meteredUsedNowKWh,
     exemptUsedNowKWh,
     usedNowKWh,
-  } = buildBudgetUsageViews({
-    bucketUsage,
-    bucketUsageExempt,
-  });
+  } = usage;
   const enabled = dailyBudgetKWh > 0;
 
   const currentBucketIndex = bucketStartUtcMs.length;

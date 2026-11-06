@@ -101,7 +101,7 @@ const buildRecentDayData = (
     const partial = isPartialQuality(day);
     const opacity = partial ? QUALITY_DIMMED_OPACITY : (isRecent ? 1 : 0.35);
     return {
-      value: [day.tempMeanC, day.kwhTotal],
+      value: [day.tempMeanC, day.kwhBudgetCounted],
       dateKey: day.dateKey,
       partial,
       symbolSize: isYesterday ? 9 : 5,
@@ -150,7 +150,7 @@ export const buildWeatherChartOption = (input: WeatherChartOptionInput): ECharts
   ];
   const kwhs = [
     ...scatter.map((bin) => bin.kwhMedian),
-    ...recentDays.map((day) => day.kwhTotal),
+    ...recentDays.map((day) => day.kwhBudgetCounted),
     ...fitLine.map(([, kwh]) => kwh),
     ...(prediction ? [prediction.highKwh] : []),
   ];

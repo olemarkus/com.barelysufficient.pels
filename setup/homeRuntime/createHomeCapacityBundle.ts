@@ -266,6 +266,8 @@ function createBundleSamplePipeline(
     planRebuildThrottle: throttle,
     getPlanEngine: () => planEngine,
     getPlanService: () => planService,
+    // Meter areas have no smart tasks.
+    readTaskBudgetExemptDeviceIds: () => new Set(),
     savePowerTracker: tracker.save,
     getPowerTracker: tracker.getState,
     getCapacitySettings: scope.getCapacitySettings,

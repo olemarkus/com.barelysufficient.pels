@@ -817,11 +817,24 @@ spend an off exempt device's projection), the exempt kWh integrated at
 `lib/power/sampleIngest.ts`, and, eventually, the hero's display value
 (§ "Overview hero").
 
-On the sample path a device is exempt when its own flag says so OR the plan in
-force exempts it (`resolvePublishedBudgetExemptDeviceIds`), because a smart
-task's "may go over daily budget" exempts its device on the plan only. A plan
-published in an earlier tracker hour answers nothing, since a task's claim is
-per hour.
+On the sample path a device is exempt when its own flag says so or the
+smart-task owner holds an effective exemption. The decoration controller
+serves its resolved admission decision directly through
+`readBudgetExemptDeviceIds`; accounting does not infer permission from a
+published plan. The claim lasts only through its native scheduling interval
+and task deadline, and a disabled, cleared or edited task invalidates it before
+the next decoration. Reading this decision does not evaluate or allocate tasks.
+
+`lib/power/energyAccounting.ts` owns the historical accounting views consumed
+by daily-budget pacing, learning, observed reserves, planner usage and weather
+history. `exemptBuckets` records total measured exemption independently of
+Power-limit control; `uncontrolledExemptBuckets` records its background share.
+The latter is zero for legacy buckets, whose recorded exemptions were all
+managed. Actual attribution retains both groups in full. Counted gross demand
+subtracts each group's own exempt share; net budget usage subtracts total exempt
+energy, bounded by net import for each hour. Consumers do not repeat these
+calculations. Complete local days feed the weather fit on that same counted
+axis; actual metered history remains separate.
 
 The alternative policy, allocating solar pro-rata across exempt and non-exempt
 load instead of to non-exempt first, was considered and rejected: it would let an

@@ -2,7 +2,7 @@ import { createBudgetAdviceHistoryStore } from '../../lib/weather/budgetAdviceHi
 import type { AppContext } from '../../lib/app/appContext';
 import { WeatherCollector } from '../../lib/weather/weatherCollector';
 import { buildWeatherAdvisorSettings } from '../../lib/weather/weatherSettings';
-import { resolveDailyKwh } from '../../lib/weather/dailyKwhResolve';
+import type { WeatherCollectorDeps } from '../../lib/weather/weatherCollectorDeps';
 import { computeEnergySignatureUpdate } from '../../lib/weather/energySignatureService';
 import { fetchMetForecast, type MetForecastFetchResult } from '../../lib/weather/metForecast';
 import { getRawDevice, getRawFromHomeyApi } from '../../lib/device/transport/managerHomeyApi';
@@ -66,6 +66,7 @@ export function createWeatherCollector(
     | 'deviceDiagnosticsService' | 'deferredObjectivePlanHistoryRecorder' | 'resolveManagedState'
     | 'dailyBudgetService' | 'getUserdataDatabase'
   >,
+  getDailyKwh: WeatherCollectorDeps['getDailyKwh'],
 ): WeatherCollector {
   const logger = getLogger('weather');
   const adviceHistory = createBudgetAdviceHistoryStore(ctx.getUserdataDatabase());
@@ -75,11 +76,7 @@ export function createWeatherCollector(
     readBudgetDecisions: () => adviceHistory.read(),
     readDevice: (deviceId) => getRawDevice(deviceId),
     fetchInsights: (path) => getRawFromHomeyApi(path),
-    getDailyKwh: (dateKey) => resolveDailyKwh({
-      dateKey,
-      timeZone: ctx.getTimeZone(),
-      source: ctx.powerTracker,
-    }),
+    getDailyKwh,
     // PELS-managed = the controlled set the historical split is summed from.
     isManagedDevice: (deviceId) => ctx.resolveManagedState(deviceId),
     // Composed from two planner-orthogonal sources so lib/weather sees only
@@ -107,9 +104,6 @@ export function createWeatherCollector(
     // day that just closed, so the value it reads still describes that day (the
     // midnight rollup runs before auto-apply writes the new one).
     getAppliedDailyBudgetKwh: () => ctx.dailyBudgetService?.getAppliedBudgetKwh(),
-    // The same day on the budget's own axis (metered less exempt), from the
-    // budget owner, so an exempt device's energy is not read as an overshoot.
-    getBudgetCountedKwh: (dateKey) => ctx.dailyBudgetService?.getBudgetCountedKwh(dateKey),
     getPowerLimitSettings: () => ctx.capacitySettings,
     getSettings: () => buildWeatherAdvisorSettings({ settings: ctx.homey.settings }),
     // Meter-scope fingerprint for the start()-time invalidation reconcile —

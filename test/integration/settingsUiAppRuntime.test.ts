@@ -70,6 +70,9 @@ describe('settings UI app runtime helpers', () => {
         [previousHourKey]: 0.4,
         [currentHourKey]: 0.1,
       },
+      uncontrolledExemptBuckets: { [currentHourKey]: 0.05, [previousHourKey]: 0.2 },
+      uncontrolledExemptDailyTotals: { '2026-03-01': 2 },
+      uncontrolledExemptHourlyAverages: { '1_10': { sum: 2, count: 1 } },
       hourlyBudgets: {
         [previousHourKey]: 2.4,
         [currentHourKey]: 2.2,
@@ -117,6 +120,9 @@ describe('settings UI app runtime helpers', () => {
     expect(result.hourlyAverages).toEqual({});
     expect(result.exemptDailyTotals).toEqual({});
     expect(result.exemptHourlyAverages).toEqual({});
+    expect(result.uncontrolledExemptBuckets).toEqual({ [currentHourKey]: 0.05 });
+    expect(result.uncontrolledExemptDailyTotals).toEqual({});
+    expect(result.uncontrolledExemptHourlyAverages).toEqual({});
     expect(result.unreliablePeriods).toEqual([]);
     expect(result.capacityMonthlyPeak).toBeUndefined();
     expect(result.capacityQuarter).toEqual({

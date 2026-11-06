@@ -1,3 +1,4 @@
+import { EnergyAccounting } from '../power/energyAccounting';
 // Backtested daily-budget confidence scoring.
 //
 // The per-update cache in front of the backtest lives in
@@ -215,21 +216,16 @@ function aggregateHourlyBins(
   const planned = zeroHourProfile();
   let planBucketCount = 0;
 
-  const totalBuckets = powerTracker.buckets ?? {};
-  const controlledBuckets = powerTracker.controlledBuckets ?? {};
+  const accounting = new EnergyAccounting(powerTracker);
   const dailyBudgetCaps = powerTracker.dailyBudgetCaps ?? {};
 
   for (const ts of bucketStartUtcMs) {
     const isoKey = new Date(ts).toISOString();
     const hour = getZonedParts(new Date(ts), timeZone).hour;
-    const totalVal = totalBuckets[isoKey];
-    if (typeof totalVal === 'number' && Number.isFinite(totalVal)) {
-      const boundedTotalVal = Math.max(0, totalVal);
-      total[hour] += boundedTotalVal;
-      const controlledVal = controlledBuckets[isoKey];
-      if (typeof controlledVal === 'number' && Number.isFinite(controlledVal)) {
-        controlled[hour] += clamp(controlledVal, 0, boundedTotalVal);
-      }
+    const usage = accounting.bucket(isoKey);
+    if (usage.measurement === 'recorded') {
+      total[hour] += usage.budgetCountedKwh;
+      controlled[hour] += usage.counted.controlled;
     }
     const cap = dailyBudgetCaps[isoKey];
     if (typeof cap === 'number' && Number.isFinite(cap)) {

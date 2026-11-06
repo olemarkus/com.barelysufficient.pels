@@ -1,3 +1,4 @@
+import { EnergyAccounting } from '../../lib/power/energyAccounting';
 import {
   buildBucketUsageSplit,
   finalizePreviousDayLearning,
@@ -171,7 +172,7 @@ describe('daily budget learning utilities', () => {
     expect(result.hasTotalData).toBe(true);
   });
 
-  it('buildBucketUsageSplit moves exempt usage into the uncontrolled learning bucket', () => {
+  it('buildBucketUsageSplit excludes exempt usage from both learning buckets', () => {
     const timeZone = 'UTC';
     const dateKey = '2024-01-14';
     const dayStart = getDateKeyStartMs(dateKey, timeZone);
@@ -197,7 +198,7 @@ describe('daily budget learning utilities', () => {
     });
 
     expect(result.bucketUsageControlled).toEqual([1.5, 1.5]);
-    expect(result.bucketUsageUncontrolled).toEqual([2.5, 1.5]);
+    expect(result.bucketUsageUncontrolled).toEqual([1, 1]);
   });
 
   it('keeps exempt managed load out of physical gross background reserve learning', () => {
@@ -206,20 +207,17 @@ describe('daily budget learning utilities', () => {
     const dayStart = getDateKeyStartMs(dateKey, timeZone);
     const key = new Date(dayStart).toISOString();
 
-    const result = resolveWindowBucketUsage({
-      key,
-      totalRaw: 4,
+    const energy = new EnergyAccounting({
+      buckets: { [key]: 4 },
       controlledBuckets: { [key]: 3 },
       uncontrolledBuckets: { [key]: 2 },
       exemptBuckets: { [key]: 1.5 },
-      timeZone,
-      windowStartUtcMs: dayStart,
-      windowEndUtcMs: dayStart + 60 * 60 * 1000,
-    });
+    }).bucket(key);
+    const result = resolveWindowBucketUsage(key, energy, timeZone, dayStart, dayStart + 60 * 60 * 1000);
 
     expect(result).toMatchObject({
       controlled: 1.5,
-      uncontrolled: 2.5,
+      uncontrolled: 1,
       grossUncontrolled: 2,
     });
   });
@@ -389,7 +387,7 @@ describe('daily budget learning utilities', () => {
     expect(result.nextState.profileObservedMinControlledKWh?.[22]).toBeCloseTo(2, 6);
   });
 
-  it('counts exempt controlled usage as uncontrolled observed reserve usage', () => {
+  it('excludes exempt controlled usage from observed background reserves', () => {
     const timeZone = 'UTC';
     const nowMs = Date.UTC(2024, 0, 20, 0, 0, 0);
     const targetHour = 22;
@@ -413,11 +411,11 @@ describe('daily budget learning utilities', () => {
 
     expect(result.changed).toBe(true);
     expect(result.nextState.profileObservedMaxControlledKWh?.[targetHour]).toBeCloseTo(3, 6);
-    expect(result.nextState.profileObservedMaxUncontrolledKWh?.[targetHour]).toBeCloseTo(2, 6);
-    expect(result.nextState.profileObservedP50UncontrolledKWh?.[targetHour]).toBeCloseTo(2, 6);
-    expect(result.nextState.profileObservedP75UncontrolledKWh?.[targetHour]).toBeCloseTo(2, 6);
-    expect(result.nextState.profileObservedP90UncontrolledKWh?.[targetHour]).toBeCloseTo(2, 6);
-    expect(result.nextState.profileObservedUncontrolledSampleCounts?.[targetHour]).toBe(1);
+    expect(result.nextState.profileObservedMaxUncontrolledKWh?.[targetHour]).toBeCloseTo(0, 6);
+    expect(result.nextState.profileObservedP50UncontrolledKWh?.[targetHour]).toBeCloseTo(0, 6);
+    expect(result.nextState.profileObservedP75UncontrolledKWh?.[targetHour]).toBeCloseTo(0, 6);
+    expect(result.nextState.profileObservedP90UncontrolledKWh?.[targetHour]).toBeCloseTo(0, 6);
+    expect(result.nextState.profileObservedUncontrolledSampleCounts?.[targetHour]).toBe(0);
   });
 
   it('preserves legacy observed minimums when reserve backfill has no bucket data', () => {

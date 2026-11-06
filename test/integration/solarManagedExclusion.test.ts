@@ -239,7 +239,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
         capacitySettings: { limitKw: 10, marginKw: 0, periodMinutes: 60 },
         // The harness type expects a no-arg getter; close over the per-call nowMs.
         getDeviceSurfaces: () => getDeviceSurfaces(nowMs) as never,
-        planBudgetExemptDeviceIds: new Set(),
+        taskBudgetExemptDeviceIds: new Set(),
         powerTracker: tracker,
         updateObjectiveProfiles: ({ state }) => state,
         schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
