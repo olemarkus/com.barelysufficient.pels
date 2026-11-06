@@ -10,6 +10,11 @@ it('uses its own budget on partial-temperature days before folding the next day'
     const history = JSON.parse(
       readFileSync(resolve('test/fixtures/weatherHistoryProduction.json'), 'utf8'),
     ) as { records: WeatherDailyRecord[] };
+    // The archive predates counted-energy observations. This counterfactual
+    // explicitly models no exempt load, so its actual and counted axes agree.
+    history.records = history.records.map((record) => (
+      record.kwhTotal === undefined ? record : { ...record, kwhBudgetCounted: record.kwhTotal }
+    ));
     const partialDay = history.records.at(-1)!;
     partialDay.quality.partialTemp = true;
     history.records.push({

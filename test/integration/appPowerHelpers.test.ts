@@ -283,7 +283,7 @@ describe('recordPowerSampleForApp', () => {
     expect(tracker.exemptBuckets?.[bucketKey]).toBe(0);
   });
 
-  it('does not record budget-exempt buckets for devices with capacity control disabled', async () => {
+  it('records budget exemption as background exemption when capacity control is disabled', async () => {
     let tracker: PowerTrackerState = {};
     const start = Date.UTC(2025, 0, 1, 0, 0, 0);
     const getDeviceSurfaces = () => deviceSurfacesFixtures([
@@ -335,7 +335,10 @@ describe('recordPowerSampleForApp', () => {
     });
 
     const bucketKey = new Date(start).toISOString();
-    expect(tracker.exemptBuckets?.[bucketKey]).toBe(0);
+    expect(tracker.exemptBuckets?.[bucketKey]).toBeCloseTo(0.4);
+    expect(tracker.uncontrolledExemptBuckets?.[bucketKey]).toBeCloseTo(0.4);
+    expect(tracker.uncontrolledBuckets?.[bucketKey]).toBeCloseTo(0.4);
+    expect(tracker.controlledBuckets?.[bucketKey]).toBe(0);
   });
 
   // Membership in the per-device buckets is a PRESENCE question and nothing
