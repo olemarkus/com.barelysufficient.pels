@@ -17,6 +17,8 @@
  * all read the NET total directly and never go through this split (split-by-purpose:
  * attribution gross, billing + reserve net). Keeping the rule in one place stops the
  * former copies from drifting (and from re-clamping gross data back to net).
+ * Budget exemption is resolved by the internal power accounting service; actual
+ * consumption retains its managed/background identity regardless of exemption.
  */
 export const resolveAttributionSplit = (params: {
   /** Net grid total for the bucket (kWh). Negative inputs are floored to 0. */
@@ -25,32 +27,22 @@ export const resolveAttributionSplit = (params: {
   controlledGross?: number;
   /** Gross background (kWh), or undefined when no uncontrolled bucket exists. */
   uncontrolledGross?: number;
-  /** Budget-exempt managed draw (kWh), subtracted from the controlled side. */
-  exemptGross?: number;
 }): { controlled: number | null; uncontrolled: number | null } => {
-  const { totalNet, controlledGross, uncontrolledGross, exemptGross } = params;
+  const { totalNet, controlledGross, uncontrolledGross } = params;
   const total = Number.isFinite(totalNet) ? Math.max(0, totalNet) : 0;
   const hasControlled = typeof controlledGross === 'number' && Number.isFinite(controlledGross);
   const hasUncontrolled = typeof uncontrolledGross === 'number' && Number.isFinite(uncontrolledGross);
   if (!hasControlled && !hasUncontrolled) return { controlled: null, uncontrolled: null };
-  const exempt = typeof exemptGross === 'number' && Number.isFinite(exemptGross)
-    ? Math.max(0, exemptGross)
-    : 0;
-
   if (hasUncontrolled) {
-    // Exempt load (budget-exempt managed draw) is reserved on the uncontrolled/background
-    // side of the budget breakdown — matching the legacy net split — so it is removed from
-    // controlled and folded into uncontrolled rather than dropped.
-    const uncontrolled = Math.max(0, uncontrolledGross) + exempt;
+    const uncontrolled = Math.max(0, uncontrolledGross);
     const controlled = hasControlled
-      ? Math.max(0, controlledGross - exempt)
+      ? Math.max(0, controlledGross)
       : Math.max(0, total - uncontrolled);
     return { controlled, uncontrolled };
   }
 
   // No persisted gross uncontrolled bucket for this hour: derive from the net total.
   // Reachable on current state, not just on pre-2026-06-22 buckets — see the header.
-  const boundedExempt = Math.min(exempt, total);
-  const controlled = Math.max(0, Math.min((controlledGross as number) - boundedExempt, total));
+  const controlled = Math.max(0, Math.min(controlledGross as number, total));
   return { controlled, uncontrolled: Math.max(0, total - controlled) };
 };

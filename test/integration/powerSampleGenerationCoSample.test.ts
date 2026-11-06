@@ -81,6 +81,7 @@ const buildPipeline = (
       },
       clearStartupRestoreStabilization: vi.fn(),
     } as unknown as PlanEngine),
+    readTaskBudgetExemptDeviceIds: () => new Set(),
     getPlanService: () => ({
       getLatestPlanSnapshot: () => null,
       getLatestPublishedPlan: () => null,

@@ -24,8 +24,9 @@ export type BackgroundCollectors = {
 export function startBackgroundCollectors(
   ctx: AppContext,
   startWeatherCollector: (collector: WeatherCollector) => void,
+  getDailyKwh: Parameters<typeof createWeatherCollector>[1],
 ): BackgroundCollectors {
-  const weatherCollector = createWeatherCollector(ctx);
+  const weatherCollector = createWeatherCollector(ctx, getDailyKwh);
   startWeatherCollector(weatherCollector);
   const pvForecast = createPvForecastController(ctx);
   const homeySolarForecast = createHomeySolarForecastController(ctx, () => pvForecast.isActive());

@@ -3,25 +3,21 @@
 // negative kWh corrupt billed/usage/cost figures, and exempt attribution must use
 // gross (not net) so it doesn't leak into the managed bucket.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { resolveDailyKwh } from '../../lib/weather/dailyKwhResolve';
+import { resolveDailyKwh } from '../../lib/power/dailyKwhResolve';
 import { getCurrentMonthUsageKwh } from '../../lib/price/priceServiceNorgespris';
 import { getCurrentHourContext } from '../../lib/plan/planHourContext';
 import { recordPowerSample } from '../../lib/power/tracker';
-import { buildBucketUsage } from '../../lib/dailyBudget/dailyBudgetState';
+import { EnergyAccounting } from '../../lib/power/energyAccounting';
 import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 
 describe('solar-export calculation floors', () => {
   it('resolveDailyKwh floors negative export hours out of the day total', () => {
     const out = resolveDailyKwh({
-      dateKey: '2026-01-15',
-      timeZone: 'UTC',
-      source: {
-        buckets: {
-          '2026-01-15T12:00:00.000Z': -0.5, // export hour
-          '2026-01-15T13:00:00.000Z': 1.0,
-        },
+      buckets: {
+        '2026-01-15T12:00:00.000Z': -0.5, // export hour
+        '2026-01-15T13:00:00.000Z': 1.0,
       },
-    });
+    }, '2026-01-15', 'UTC');
     // RED today: -0.5 + 1.0 = 0.5. GREEN: export hour floored -> 1.0.
     expect(out.total).toBe(1.0);
   });
@@ -44,10 +40,7 @@ describe('solar-export calculation floors', () => {
   it('buildBucketUsage floors a negative export hour out of the metered reporting figures', () => {
     const ts = Date.UTC(2026, 0, 15, 12, 0, 0);
     const iso = new Date(ts).toISOString();
-    const res = buildBucketUsage({
-      bucketStartUtcMs: [ts],
-      powerTracker: { buckets: { [iso]: -0.5 } } as unknown as PowerTrackerState,
-    });
+    const res = new EnergyAccounting({ buckets: { [iso]: -0.5 } }).window([ts]);
     expect(res.bucketUsage[0]).toBe(0); // RED: -0.5 deflates metered/remaining/exceeded/projection
   });
 

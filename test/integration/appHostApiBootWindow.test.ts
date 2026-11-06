@@ -100,7 +100,7 @@ describe('budget history app API wiring', () => {
       });
       // The production wiring, constructed but never started: the diagnostics
       // read goes through the collector's own store instances.
-      const host = createHostApi(undefined, context, createWeatherCollector(context));
+      const host = createHostApi(undefined, context, createWeatherCollector(context, () => ({})));
       const homey = partialDouble<Homey.App['homey']>({ app: host });
       const query = { from: '2026-10-01', to: '2026-10-02' };
       const days = await api.diagnostics_budget_days({ homey, query });

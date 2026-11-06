@@ -21,6 +21,7 @@ import {
   stripMeterScopeDerivedState,
 } from './weatherHistory';
 import { readMeterScopeDailyKwh } from './weatherMeterScope';
+import { refreshAccountingHistory } from './weatherCountedHistory';
 import { WeatherBackfillChain } from './weatherBackfillChain';
 import { performBudgetAutoApply } from './weatherAutoApply';
 import { budgetEvidenceLogFields } from './weatherRollupLog';
@@ -144,6 +145,7 @@ export class WeatherCollector {
     }
     this.loadState();
     const meterScope = this.reconcileMeterScope();
+    if (meterScope.resolved) this.refreshAccountingHistory();
     this.running = true;
     // Persist either a newly adopted stamp or a forgetting on the restart edge
     // itself, not the 30 s debounce. Without the adoption write, a crash can
@@ -280,7 +282,6 @@ export class WeatherCollector {
     const normalized = read.readable ? normalizeWeatherHistoryState(raw, this.getCurrentDateKey()) : null;
     if (normalized) {
       this.state = normalized;
-      this.refreshCachedAdvice();
       this.loadedImplausibleAtMs = undefined;
       return;
     }
@@ -294,11 +295,8 @@ export class WeatherCollector {
     }
   }
 
-  /** Refit legacy or discarded advice without applying a budget merely because state loaded. */
-  private refreshCachedAdvice(): void {
-    if (!this.state.latestFit) return;
-    if (this.state.latestFit.recentResidualQ80 !== undefined && this.state.latestSuggestion) return;
-    const refreshed = this.deps.recomputeDerived(this.state);
+  private refreshAccountingHistory(): void {
+    const refreshed = refreshAccountingHistory(this.state, this.deps);
     if (refreshed !== this.state) this.markDirty();
     this.state = refreshed;
   }
@@ -392,6 +390,7 @@ export class WeatherCollector {
         this.scheduleMeterScopeRetry();
         return;
       }
+      this.refreshAccountingHistory();
       if (outcome.persistImmediately) this.flushScopeTransitionWithRetry();
       // Boot catch-up stays pending while the scope is unknown: rolling an
       // accumulator without its tracker kWh would permanently consume it as a
@@ -466,7 +465,7 @@ export class WeatherCollector {
     // wholesale; if the arrangement changed while the store was unreadable,
     // forget them again before the caller persists the merged state.
     const meterScope = this.reconcileMeterScope();
-    this.refreshCachedAdvice();
+    if (meterScope.resolved) this.refreshAccountingHistory();
     if (!meterScope.resolved) this.scheduleMeterScopeRetry();
     if (meterScope.resolved) {
       this.backfillChain.startMeterKwhBackfill();
@@ -717,9 +716,7 @@ export class WeatherCollector {
       appliedBudgetKwh,
       // Read under the same meter-scope gate as the total: a day the scope
       // does not vouch for has no measured usage on either axis.
-      kwhBudgetCounted: appliedBudgetKwh !== undefined && kwh.total !== undefined
-        ? this.deps.getBudgetCountedKwh(dateKey)
-        : undefined,
+      kwhBudgetCounted: kwh.budgetCounted,
     });
     const record = this.state.records.find((entry) => entry.dateKey === dateKey);
     if (record) this.foldClosedDayIntoBudgetPressure(record);

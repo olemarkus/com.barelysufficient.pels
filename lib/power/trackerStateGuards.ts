@@ -218,9 +218,11 @@ const NUMBER_MAP_FIELDS = [
   'controlledBuckets',
   'uncontrolledBuckets',
   'exemptBuckets',
+  'uncontrolledExemptBuckets',
   'controlledDailyTotals',
   'uncontrolledDailyTotals',
   'exemptDailyTotals',
+  'uncontrolledExemptDailyTotals',
   'lastDevicePowerWById',
   'generationBuckets',
   'exportBuckets',
@@ -305,6 +307,7 @@ const HOURLY_AVERAGE_MAP_FIELDS = [
   'controlledHourlyAverages',
   'uncontrolledHourlyAverages',
   'exemptHourlyAverages',
+  'uncontrolledExemptHourlyAverages',
 ] as const;
 
 const FINITE_NUMBER_FIELDS = [
@@ -313,6 +316,7 @@ const FINITE_NUMBER_FIELDS = [
   'lastControlledPowerW',
   'lastUncontrolledPowerW',
   'lastExemptPowerW',
+  'lastUncontrolledExemptPowerW',
   'lastTimestamp',
 ] as const;
 

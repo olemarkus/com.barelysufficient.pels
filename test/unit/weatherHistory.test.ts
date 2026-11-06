@@ -158,7 +158,7 @@ describe('rollupDay', () => {
     expect(state.records[0].suppression).toEqual({ deadlineMissedToBudget: true });
   });
 
-  it('stamps budget-counted usage only next to the budget it was counted against', () => {
+  it('stamps counted usage independently of an applied budget', () => {
     const withBudget = rollupDay(baseState(), {
       dateKey: '2026-01-10', dayLengthHours: 24, kwhTotal: 42.5, unreliablePower: false,
       appliedBudgetKwh: 40, kwhBudgetCounted: 37,
@@ -167,7 +167,7 @@ describe('rollupDay', () => {
     const withoutBudget = rollupDay(baseState(), {
       dateKey: '2026-01-10', dayLengthHours: 24, kwhTotal: 42.5, unreliablePower: false, kwhBudgetCounted: 37,
     });
-    expect(withoutBudget.records[0].kwhBudgetCounted).toBeUndefined();
+    expect(withoutBudget.records[0].kwhBudgetCounted).toBe(37);
   });
 
   it('omits an all-empty suppression object so absent stays "unknown"', () => {
@@ -283,6 +283,23 @@ describe('reconcileKwhSources', () => {
     expect(state.records[0]).toMatchObject({
       kwhTotal: 44, kwhControlled: 12, kwhUncontrolled: 31, suppression: { targetDeficitMs: 3_600_000 },
     });
+  });
+
+  it('recovers counted energy from the power accounting read without inferring it from a meter total', () => {
+    const record = liveRecord('2026-03-05', { kwhTotal: 60 });
+    const recovered = reconcileKwhSources({ records: [record] }, {
+      getDailyKwh: () => ({ total: 60, budgetCounted: 40 }), meterDailyKwh: {}, allowStrip: true,
+    }).state.records[0];
+    expect(recovered).toMatchObject({ kwhTotal: 60, kwhBudgetCounted: 40 });
+    const replaced = reconcileKwhSources({ records: [recovered] }, {
+      getDailyKwh: () => ({}), meterDailyKwh: { '2026-03-05': 65 }, allowStrip: true,
+    }).state.records[0];
+    // Live records keep their accepted accounting observation when no tracker read replaces it.
+    expect(replaced).toMatchObject({ kwhTotal: 60, kwhBudgetCounted: 40 });
+    const refreshed = reconcileKwhSources({ records: [recovered] }, {
+      getDailyKwh: () => ({ total: 65 }), meterDailyKwh: {}, allowStrip: true,
+    }).state.records[0];
+    expect(refreshed.kwhBudgetCounted).toBeUndefined();
   });
 
   it('drops a stale controlled/uncontrolled split when the tracker total has no fresh split', () => {
@@ -685,7 +702,7 @@ describe('normalizeWeatherHistoryState', () => {
     expect(normalizeWeatherHistoryState({ records: 'nope' })).toBeNull();
   });
 
-  it('keeps budget-counted usage only beside the applied budget it was counted against', () => {
+  it('keeps counted usage independently of the applied budget', () => {
     const normalized = normalizeWeatherHistoryState({
       records: [
         liveRecord('2026-01-07', { appliedBudgetKwh: 44, kwhBudgetCounted: 40 }),
@@ -694,8 +711,30 @@ describe('normalizeWeatherHistoryState', () => {
         liveRecord('2026-01-10', { appliedBudgetKwh: 44, kwhBudgetCounted: -1 }),
       ],
     });
-    expect(normalized?.records.map((record) => record.kwhBudgetCounted)).toEqual([40, undefined, undefined, undefined]);
+    expect(normalized?.records.map((record) => record.kwhBudgetCounted)).toEqual([40, 40, 40, undefined]);
     expect(normalized?.records.map((record) => record.appliedBudgetKwh)).toEqual([44, undefined, undefined, 44]);
+  });
+
+  it('discards a cached whole-home fit and suggestion but preserves recorded energy', () => {
+    const records = [liveRecord('2026-01-09', { kwhTotal: 60, kwhBudgetCounted: 40 })];
+    const normalized = normalizeWeatherHistoryState({
+      records,
+      latestFit: { model: 'linear', slopeKwhPerDegree: 2 },
+      latestSuggestion: { suggestedBudgetKwh: 60 },
+    });
+    expect(normalized?.records).toEqual(records);
+    expect(normalized?.latestFit).toBeUndefined();
+    expect(normalized?.latestSuggestion).toBeUndefined();
+  });
+
+  it('retains a cached fit on the counted-energy basis', () => {
+    const normalized = normalizeWeatherHistoryState({
+      records: [],
+      latestFit: { energyBasis: 'budget_counted', model: 'linear', slopeKwhPerDegree: 2 },
+      latestSuggestion: { suggestedBudgetKwh: 40 },
+    });
+    expect(normalized?.latestFit).toMatchObject({ energyBasis: 'budget_counted' });
+    expect(normalized?.latestSuggestion).toMatchObject({ suggestedBudgetKwh: 40 });
   });
 
   it('round-trips a valid state and drops malformed entries', () => {

@@ -59,7 +59,7 @@ const learnedHistory = (overrides: Partial<WeatherHistoryState> = {}): WeatherHi
   meterKwhDeviceId: MAIN_METER,
   kwhPurgeVersion: 1,
   controlledBackfillVersion: 2,
-  latestFit: { model: 'linear', slopeKwhPerDegree: 1.2 } as WeatherHistoryState['latestFit'],
+  latestFit: { energyBasis: 'budget_counted', model: 'linear', slopeKwhPerDegree: 1.2 } as WeatherHistoryState['latestFit'],
   meterScopeSignature: STAMPED_SIGNATURE,
   ...overrides,
 });
@@ -118,12 +118,11 @@ const buildHarness = (
     // Never resolves: keeps the re-armed meter backfill observably in flight
     // instead of racing the assertions with its no-source completion.
     fetchInsights: () => new Promise(() => {}),
-    getDailyKwh: () => ({ total: 18 }),
+    getDailyKwh: () => ({ total: 18, budgetCounted: 18 }),
     isManagedDevice: () => false,
     getUnreliablePeriods: () => [],
     getDaySuppression: () => ({}),
     getAppliedDailyBudgetKwh: () => 50,
-    getBudgetCountedKwh: () => 18,
     recomputeDerived: (state) => state,
     applySuggestedDailyBudget: () => false,
     onDailyBudgetAutoApplied: () => undefined,
@@ -232,6 +231,9 @@ describe('weather meter-scope invalidation through the settings-change seam', ()
     });
     await vi.advanceTimersByTimeAsync(0);
 
+    // Startup may recover counted history from the original meter. The scope
+    // switch must fence every subsequent read of that old history.
+    trackerRead.mockClear();
     harness.homey.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main-2');
     await harness.handle(HOMEY_ENERGY_METER_DEVICE_ID);
     await vi.advanceTimersByTimeAsync(0);

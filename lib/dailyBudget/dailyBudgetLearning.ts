@@ -1,3 +1,4 @@
+import { EnergyAccounting } from '../power/energyAccounting';
 import type { PowerTrackerState } from '../power/tracker';
 import {
   buildLocalDayBuckets,
@@ -21,46 +22,13 @@ export function buildBucketUsageSplit(params: {
   hasTotalData: boolean;
 } {
   const { bucketStartUtcMs, powerTracker } = params;
-  const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
-  const totalBuckets = powerTracker.buckets || {};
-  const controlledBuckets = powerTracker.controlledBuckets || {};
-  const exemptBuckets = powerTracker.exemptBuckets || {};
-  const entries = bucketKeys.map((key) => {
-    const total = totalBuckets[key];
-    const controlled = controlledBuckets[key];
-    const exempt = exemptBuckets[key];
-    const hasTotal = typeof total === 'number' && Number.isFinite(total);
-    const hasControlled = typeof controlled === 'number' && Number.isFinite(controlled);
-    let nextUncontrolled = 0;
-    let nextControlled = 0;
-
-    if (hasTotal) {
-      const safeTotal = Math.max(0, total);
-      if (hasControlled) {
-        const boundedExempt = typeof exempt === 'number' && Number.isFinite(exempt)
-          ? Math.max(0, Math.min(exempt, safeTotal))
-          : 0;
-        const boundedControlled = Math.max(0, Math.min(controlled - boundedExempt, safeTotal));
-        nextUncontrolled = Math.max(0, safeTotal - boundedControlled);
-        nextControlled = boundedControlled;
-      } else {
-        nextUncontrolled = safeTotal;
-      }
-    }
-
-    return {
-      uncontrolled: nextUncontrolled,
-      controlled: nextControlled,
-      usedControlledData: hasTotal && hasControlled,
-      hasTotalData: hasTotal,
-    };
-  });
-
+  const accounting = new EnergyAccounting(powerTracker);
+  const entries = bucketStartUtcMs.map((ts) => accounting.bucket(new Date(ts).toISOString()));
   return {
-    bucketUsageUncontrolled: entries.map((entry) => entry.uncontrolled),
-    bucketUsageControlled: entries.map((entry) => entry.controlled),
-    usedControlledData: entries.some((entry) => entry.usedControlledData),
-    hasTotalData: entries.some((entry) => entry.hasTotalData),
+    bucketUsageUncontrolled: entries.map((entry) => entry.counted.background),
+    bucketUsageControlled: entries.map((entry) => entry.counted.controlled),
+    usedControlledData: entries.some((entry) => entry.measurement === 'recorded' && entry.attribution === 'controlled'),
+    hasTotalData: entries.some((entry) => entry.measurement === 'recorded'),
   };
 }
 

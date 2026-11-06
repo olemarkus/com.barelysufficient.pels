@@ -12,16 +12,14 @@ import {
   shiftDateKey,
 } from '../../packages/shared-domain/src/utils/dateUtils';
 import {
-  defaultStoredFit,
-  defaultStoredSuggestion,
   isPositiveFinite,
-  normalizeBudgetPressure,
+  normalizeStoredAdvice,
   normalizeLastAutoApply,
   normalizeMetForecast,
   normalizeSuppression,
   sanitizeRecordOptionalFields,
 } from './weatherHistoryNormalize';
-import { normalizeMeterScopeMarkers } from './weatherMeterScope';
+import { normalizeMeterScopeMarkers, type DailyKwhTotals } from './weatherMeterScope';
 
 /** Two years of daily records ≈ 90 KB JSON — well inside the persisted-state budget. */
 export const WEATHER_HISTORY_RETENTION_DAYS = 730;
@@ -174,8 +172,8 @@ function buildRollupRecord(params: {
       backfilled: false,
     },
     ...(isPositiveFinite(appliedBudgetKwh) ? { appliedBudgetKwh } : {}),
-    // Only meaningful against the budget it was counted for.
-    ...(isPositiveFinite(appliedBudgetKwh) && kwhBudgetCounted !== undefined ? { kwhBudgetCounted } : {}),
+    // Counted usage also trains the signature while the daily budget is off.
+    ...(kwhBudgetCounted !== undefined ? { kwhBudgetCounted } : {}),
     ...(cleanSuppression !== undefined ? { suppression: cleanSuppression } : {}),
   };
 }
@@ -382,7 +380,7 @@ function mergeBackfillMarkers(
 export function reconcileKwhSources(
   state: WeatherHistoryState,
   params: {
-    getDailyKwh: (dateKey: string) => { total?: number; controlled?: number; uncontrolled?: number };
+    getDailyKwh: (dateKey: string) => DailyKwhTotals;
     meterDailyKwh: Record<string, number>;
     allowStrip: boolean;
   },
@@ -405,7 +403,7 @@ export function reconcileKwhSources(
 function reconcileRecordKwh(
   record: WeatherDailyRecord,
   params: {
-    getDailyKwh: (dateKey: string) => { total?: number; controlled?: number; uncontrolled?: number };
+    getDailyKwh: (dateKey: string) => DailyKwhTotals;
     meterDailyKwh: Record<string, number>;
     allowStrip: boolean;
   },
@@ -422,7 +420,8 @@ function reconcileRecordKwh(
   if (meterKwh !== undefined && (record.kwhTotal === undefined || meterValidated || record.quality.backfilled)) {
     // The meter is whole-home with no managed/background split — a stale
     // controlled/uncontrolled split paired with a fresh total is incoherent.
-    const { kwhControlled: _droppedControlled, kwhUncontrolled: _droppedUncontrolled, ...rest } = record;
+    const { kwhControlled: _droppedControlled, kwhUncontrolled: _droppedUncontrolled,
+      kwhBudgetCounted: _droppedCounted, ...rest } = record;
     const next: WeatherDailyRecord = {
       ...rest,
       kwhTotal: meterKwh,
@@ -433,7 +432,8 @@ function reconcileRecordKwh(
   const legacyUnvalidated = !meterValidated && record.quality.backfilled && record.kwhTotal !== undefined;
   if (params.allowStrip && legacyUnvalidated && meterKwh === undefined) {
     const {
-      kwhTotal: _droppedTotal, kwhControlled: _droppedControlled, kwhUncontrolled: _droppedUncontrolled, ...rest
+      kwhTotal: _droppedTotal, kwhControlled: _droppedControlled, kwhUncontrolled: _droppedUncontrolled,
+      kwhBudgetCounted: _droppedCounted, ...rest
     } = record;
     const { kwhBackfilled: _droppedFlag, ...quality } = record.quality;
     return { ...rest, quality: { ...quality, missingKwh: true } };
@@ -444,18 +444,24 @@ function reconcileRecordKwh(
 /** The tracker holds a real total — adopt it and refresh the controlled/uncontrolled split from it. */
 function trackerWinRecord(
   record: WeatherDailyRecord,
-  tracker: { total?: number; controlled?: number; uncontrolled?: number },
+  tracker: DailyKwhTotals,
 ): WeatherDailyRecord {
   const { kwhBackfilled: _droppedFlag, ...quality } = record.quality;
   // Drop BOTH stale split fields: this branch refreshes the split from the
   // tracker, so a previous controlled/uncontrolled value must not survive next
   // to the fresh total when the tracker can't supply that side for the day.
-  const { kwhControlled: _droppedControlled, kwhUncontrolled: _droppedUncontrolled, ...recordRest } = record;
+  const { kwhControlled: _droppedControlled, kwhUncontrolled: _droppedUncontrolled,
+    kwhBudgetCounted: _droppedCounted, ...recordRest } = record;
+  // Preserve a complete historical observation after its hourly buckets age out,
+  // but never pair it with a replacement total from a different accounting read.
+  const counted = tracker.budgetCounted
+    ?? (tracker.total === record.kwhTotal ? record.kwhBudgetCounted : undefined);
   return {
     ...recordRest,
     kwhTotal: tracker.total,
     ...(tracker.controlled !== undefined ? { kwhControlled: tracker.controlled } : {}),
     ...(tracker.uncontrolled !== undefined ? { kwhUncontrolled: tracker.uncontrolled } : {}),
+    ...(counted !== undefined ? { kwhBudgetCounted: counted } : {}),
     quality: { ...quality, missingKwh: false },
   };
 }
@@ -464,6 +470,7 @@ function recordKwhEquals(before: WeatherDailyRecord, after: WeatherDailyRecord):
   return before.kwhTotal === after.kwhTotal
     && before.kwhControlled === after.kwhControlled
     && before.kwhUncontrolled === after.kwhUncontrolled
+    && before.kwhBudgetCounted === after.kwhBudgetCounted
     && before.quality.missingKwh === after.quality.missingKwh
     && before.quality.kwhBackfilled === after.quality.kwhBackfilled;
 }
@@ -557,7 +564,6 @@ export function normalizeWeatherHistoryState(raw: unknown, currentDateKey?: stri
     ? normalizeForecastHourly(raw.forecastHourly)
     : {};
   const lastAutoApply = normalizeLastAutoApply(raw.lastAutoApply);
-  const budgetPressure = normalizeBudgetPressure(raw.budgetPressure);
   const metForecast = normalizeMetForecast(raw.metForecast);
   return {
     // Core fields gate via isPlausibleRecord (reject-and-drop); the optional
@@ -569,17 +575,8 @@ export function normalizeWeatherHistoryState(raw: unknown, currentDateKey?: stri
     ...(Object.keys(forecastHourly).length > 0 ? { forecastHourly } : {}),
     ...(metForecast ? { metForecast } : {}),
     ...normalizeBackfillMarkers(raw, currentDateKey),
-    // Derived fields: producer-written and recomputed after every records
-    // change, so a shallow shape check suffices — corruption self-heals at
-    // the next rollup/backfill. The new suppression fields are defaulted so a
-    // fit/suggestion persisted by a PRE-suppression version still satisfies the
-    // contract when served to the readout before the first recompute.
-    ...(isUnknownRecord(raw.latestFit) ? { latestFit: defaultStoredFit(raw.latestFit) } : {}),
-    ...(budgetPressure.kind !== 'incompatible' && isUnknownRecord(raw.latestSuggestion)
-      ? { latestSuggestion: defaultStoredSuggestion(raw.latestSuggestion) }
-      : {}),
+    ...normalizeStoredAdvice(raw),
     ...(lastAutoApply ? { lastAutoApply } : {}),
-    ...(budgetPressure.kind === 'current' ? { budgetPressure: budgetPressure.pressure } : {}),
   };
 }
 
@@ -672,6 +669,7 @@ function mergeKwhLayer(existing: WeatherDailyRecord, incoming: WeatherDailyRecor
     kwhTotal: existing.kwhTotal,
     ...(existing.kwhControlled !== undefined ? { kwhControlled: existing.kwhControlled } : {}),
     ...(existing.kwhUncontrolled !== undefined ? { kwhUncontrolled: existing.kwhUncontrolled } : {}),
+    ...(existing.kwhBudgetCounted !== undefined ? { kwhBudgetCounted: existing.kwhBudgetCounted } : {}),
     quality: {
       ...incoming.quality,
       missingKwh: false,

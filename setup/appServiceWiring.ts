@@ -62,7 +62,9 @@ import {
   buildAppHomeMembershipOptions,
 } from './appInit/appHomeMembershipOptions';
 import { registerSettingsHandler } from './appInit/registerSettingsHandler';
-import { startPostStartupBackgroundTasks } from './appInit/startPostStartupBackgroundTasks';
+import {
+  startPostStartupBackgroundTasks, startCapacityMarketDefault,
+} from './appInit/startPostStartupBackgroundTasks';
 import { classifyInstallAtBoot, type InstallAtBoot } from '../lib/utils/settingsKeyList';
 import type { BackgroundTasksController } from './backgroundTasksController';
 import type { AppPowerTracker } from './appPowerTracker';
@@ -116,6 +118,7 @@ const SETTINGS_HANDLER_TEARDOWN_KEY = 'settingsHandler';
 
 export type AppServiceWiringDeps = {
   ctx: AppContext;
+  getDailyKwh: Parameters<typeof startPostStartupBackgroundTasks>[6];
   getHomeOperatingMode: () => string;
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder;
   getModeDeviceTargets: () => Record<string, Record<string, number>>;
@@ -177,6 +180,10 @@ export class AppServiceWiring {
     ctx.rebuildOwningHomePlanForDevice = (deviceId, trigger) => (
       this.rebuildOwningHomePlanForDevice(deviceId, trigger)
     );
+  }
+
+  readTaskBudgetExemptDeviceIds(nowMs: number): ReadonlySet<string> {
+    return this.mainHomeScope.readTaskBudgetExemptDeviceIds(nowMs);
   }
 
   createSupportReports(app: SupportReportApp, heatingShadow: Pick<HeatingShadowCollector, 'readDaily'>) {
@@ -289,6 +296,8 @@ export class AppServiceWiring {
     const { ctx } = this.deps;
     requireInitializedAppContext(ctx);
     this.deps.powerTrackerHelpers.startPowerTrackerPruning();
+    // Run after settings handlers: only a new install adopts its capacity-market default.
+    startCapacityMarketDefault(ctx.homey.settings, this.deps.timers, installAtBoot);
     startPostStartupBackgroundTasks(
       ctx,
       this.taskEvaluationSource,
@@ -296,7 +305,7 @@ export class AppServiceWiring {
       this.deps.timers,
       this.deps.handles,
       (listener) => { this.deps.observedStateEmitter.onObservedStateRefresh(listener); },
-      installAtBoot,
+      this.deps.getDailyKwh,
     );
   }
 

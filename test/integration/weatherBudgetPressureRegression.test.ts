@@ -66,7 +66,7 @@ describe('2026-08-01 under-budget regression (real production history)', () => {
       getNowMs: () => NOW_MS, getTimeZone: () => 'Europe/Oslo',
       getPowerLimitSettings: () => capacityOnlyPowerLimits(10), logger,
     };
-    const original = computeEnergySignatureUpdate({ records }, deps);
+    const original = computeEnergySignatureUpdate({ records: records.map(withoutExemptLoad) }, deps);
     const suggestion = original.latestSuggestion;
     if (!suggestion) throw new Error('expected production history to yield advice');
     const migrated = normalizeWeatherHistoryState({
@@ -97,7 +97,7 @@ describe('2026-08-01 under-budget regression (real production history)', () => {
   });
 
   it('reproduces the model that under-predicted the day', () => {
-    const fit = fitEnergySignature(records, NOW_MS);
+    const fit = fitEnergySignature(records.map(withoutExemptLoad), NOW_MS);
     if (!fit) throw new Error('expected a fit');
     // The day's warm-regime prediction, ~10 kWh under what the home used on the
     // two comparable days that bracket the decision (51.6 and 50.0). The season
@@ -111,14 +111,14 @@ describe('2026-08-01 under-budget regression (real production history)', () => {
   });
 
   it('does not infer unresolved budget damage from legacy hold durations', () => {
-    const fit = fitEnergySignature(records, NOW_MS);
+    const fit = fitEnergySignature(records.map(withoutExemptLoad), NOW_MS);
     // The archived fields cannot establish cause or subsequent recovery.
     expect(fit?.recentSuppressionSuspected).toBe(false);
     expect(fit?.recentResidualQ80).toBeGreaterThan(fit?.residualQ80 ?? 0);
   });
 
   it('suggests at least what the home actually used, instead of the 44.1 kWh that starved it', () => {
-    const fit = fitEnergySignature(records, NOW_MS);
+    const fit = fitEnergySignature(records.map(withoutExemptLoad), NOW_MS);
     if (!fit) throw new Error('expected a fit');
     const result = suggestDailyBudgetKwh({
       fit,
@@ -139,7 +139,7 @@ describe('2026-08-01 under-budget regression (real production history)', () => {
   it('recent headroom alone covers the recorded demand where annual headroom fell short', () => {
     // Disable recent calibration to get annual-only advice: 44.1 kWh as shipped
     // that day, 47.6 kWh with the season term, both short of the demand.
-    const fit = fitEnergySignature(records, NOW_MS);
+    const fit = fitEnergySignature(records.map(withoutExemptLoad), NOW_MS);
     if (!fit) throw new Error('expected a fit');
     const asShipped = suggestDailyBudgetKwh({
       fit: { ...fit, recentSuppressionSuspected: false,
@@ -154,7 +154,7 @@ describe('2026-08-01 under-budget regression (real production history)', () => {
   });
 
   it('releases the pressure term once the home stops running past its budget', () => {
-    const fit = fitEnergySignature(records, NOW_MS);
+    const fit = fitEnergySignature(records.map(withoutExemptLoad), NOW_MS);
     if (!fit) throw new Error('expected a fit');
     let pressure = foldClosedDays('2026-07-24');
     const budgets: number[] = [];

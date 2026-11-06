@@ -1,3 +1,4 @@
+import { EnergyAccounting } from '../power/energyAccounting';
 import type { PowerTrackerState } from '../power/tracker';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import {
@@ -139,24 +140,15 @@ export const buildObservedHourlyStatsFromWindow = (params: {
     windowEndUtcMs,
   } = params;
   const totalBuckets = powerTracker.buckets || {};
-  const controlledBuckets = powerTracker.controlledBuckets || {};
-  const uncontrolledBuckets = powerTracker.uncontrolledBuckets || {};
-  const exemptBuckets = powerTracker.exemptBuckets || {};
+  const accounting = new EnergyAccounting(powerTracker);
   const hourlyUncontrolled = createHourlyBuckets();
   const hourlyControlled = createHourlyBuckets();
   const hourlyGrossUncontrolled = createHourlyBuckets();
   let windowBucketCount = 0;
-  for (const [key, totalRaw] of Object.entries(totalBuckets)) {
-    const usage = resolveWindowBucketUsage({
-      key,
-      totalRaw,
-      controlledBuckets,
-      uncontrolledBuckets,
-      exemptBuckets,
-      timeZone,
-      windowStartUtcMs,
-      windowEndUtcMs,
-    });
+  for (const key of Object.keys(totalBuckets)) {
+    const usage = resolveWindowBucketUsage(
+      key, accounting.bucket(key), timeZone, windowStartUtcMs, windowEndUtcMs,
+    );
     if (!usage) continue;
     // `usage.hour` is 0-23 by construction, so all three slots exist; naming
     // them is what lets the compiler see it without a per-push default.

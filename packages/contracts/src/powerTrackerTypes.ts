@@ -17,7 +17,10 @@ export type PowerTrackerState = {
   lastPowerW?: number;
   lastControlledPowerW?: number;
   lastUncontrolledPowerW?: number;
+  /** Total budget-exempt draw, independently of control authority. */
   lastExemptPowerW?: number;
+  /** Background share of exempt draw; absent legacy samples recorded managed exemption only. */
+  lastUncontrolledExemptPowerW?: number;
   /**
    * Gross PV generation (W) carried by the LAST sample, present only when that
    * sample carried a finite generation reading. A generation-less sample drops
@@ -34,13 +37,18 @@ export type PowerTrackerState = {
   hourlyAverages?: Record<string, { sum: number; count: number }>;
   controlledBuckets?: Record<string, number>;
   uncontrolledBuckets?: Record<string, number>;
+  /** Total exempt energy, including the uncontrolled share below. */
   exemptBuckets?: Record<string, number>;
+  /** Subset of exemptBuckets attributed to background draw. Absent legacy shares are zero. */
+  uncontrolledExemptBuckets?: Record<string, number>;
   controlledDailyTotals?: Record<string, number>;
   uncontrolledDailyTotals?: Record<string, number>;
   exemptDailyTotals?: Record<string, number>;
+  uncontrolledExemptDailyTotals?: Record<string, number>;
   controlledHourlyAverages?: Record<string, { sum: number; count: number }>;
   uncontrolledHourlyAverages?: Record<string, { sum: number; count: number }>;
   exemptHourlyAverages?: Record<string, { sum: number; count: number }>;
+  uncontrolledExemptHourlyAverages?: Record<string, { sum: number; count: number }>;
   deviceBuckets?: Record<string, Record<string, number>>;
   lastDevicePowerWById?: Record<string, number>;
   // Solar accounting families (sparse — only ever written in homes with a

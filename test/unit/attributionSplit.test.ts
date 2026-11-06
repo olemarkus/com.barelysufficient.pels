@@ -8,11 +8,6 @@ describe('resolveAttributionSplit', () => {
       .toEqual({ controlled: 4, uncontrolled: 4 });
   });
 
-  it('moves exempt load from controlled to the background (uncontrolled) side', () => {
-    expect(resolveAttributionSplit({ totalNet: 5, controlledGross: 4, uncontrolledGross: 3, exemptGross: 1.5 }))
-      .toEqual({ controlled: 2.5, uncontrolled: 4.5 });
-  });
-
   it('treats a non-finite total as zero (no NaN propagation)', () => {
     expect(resolveAttributionSplit({ totalNet: Number.NaN, controlledGross: 2, uncontrolledGross: 1 }))
       .toEqual({ controlled: 2, uncontrolled: 1 });
@@ -27,8 +22,7 @@ describe('resolveAttributionSplit', () => {
     // No gross uncontrolled bucket -> derive from net total (controlled clamped to total).
     expect(resolveAttributionSplit({ totalNet: 3, controlledGross: 5 }))
       .toEqual({ controlled: 3, uncontrolled: 0 });
-    expect(resolveAttributionSplit({ totalNet: 4, controlledGross: 3, exemptGross: 1 }))
-      .toEqual({ controlled: 2, uncontrolled: 2 });
+
   });
 
   it('returns nulls when neither bucket is present', () => {

@@ -13,7 +13,7 @@ import {
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import {
   splitControlledUsageKw,
-  sumBudgetExemptMeasuredUsageKw,
+  sumBudgetExemptMeasuredUsageKwFor,
   sumControlledUsageKw,
   type UsageDevice,
 } from './usageAttribution';
@@ -262,11 +262,11 @@ export async function recordPowerSampleForApp(params: {
   /** Inventory metadata joined with accepted Observer state for attribution. */
   getDeviceSurfaces: () => DeviceSurfaces[];
   /**
-   * Devices the plan in force exempts from the daily budget beyond their own
-   * static flag (a smart task's claim; `resolvePublishedBudgetExemptDeviceIds`).
+   * Devices the smart-task owner currently exempts from the daily budget beyond their own
+   * static flag (the owner's effective smart-task claim).
    * Their measured draw books as exempt energy, as the threshold already treats it.
    */
-  planBudgetExemptDeviceIds: ReadonlySet<string>;
+  taskBudgetExemptDeviceIds: ReadonlySet<string>;
   powerTracker: PowerTrackerState;
   schedulePlanRebuild: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
@@ -280,7 +280,7 @@ export async function recordPowerSampleForApp(params: {
     timeZone,
     capacitySettings,
     getDeviceSurfaces,
-    planBudgetExemptDeviceIds,
+    taskBudgetExemptDeviceIds,
     powerTracker,
     schedulePlanRebuild,
     saveState,
@@ -293,7 +293,7 @@ export async function recordPowerSampleForApp(params: {
   // an unpopulated controllable flag counts as managed usage.
   const usageDevices = devices.map((device) => ({
     ...device,
-    budgetExempt: device.budgetExempt === true || planBudgetExemptDeviceIds.has(device.id),
+    budgetExempt: device.budgetExempt === true || taskBudgetExemptDeviceIds.has(device.id),
     currentDrawKw: normalizeMeasuredPowerKw(device.measuredPowerKw) ?? 0,
     countsAsManagedUsage: device.controllable !== false,
   }));
@@ -319,7 +319,9 @@ export async function recordPowerSampleForApp(params: {
   // device books nothing. The planner's projection (an off device claiming its
   // configured demand) is a control threshold, never energy
   // (`notes/safe-pace-two-constraints.md`).
-  const exemptKw = devices.length ? sumBudgetExemptMeasuredUsageKw(usageDevices) : null;
+  const exemptKw = devices.length ? sumBudgetExemptMeasuredUsageKwFor(usageDevices, () => true) : null;
+  const uncontrolledExemptKw = devices.length
+    ? sumBudgetExemptMeasuredUsageKwFor(usageDevices, (device) => !device.countsAsManagedUsage) : null;
   const controlledPowerW = controlledKw !== null ? Math.max(0, controlledKw * 1000) : undefined;
   const managedDraw = resolveManagedLoadDraw(devices, generationW);
   const exemptPowerW = exemptKw !== null ? Math.max(0, exemptKw * 1000) : undefined;
@@ -340,6 +342,7 @@ export async function recordPowerSampleForApp(params: {
     generationSegments: params.generationSegments,
     controlledPowerW,
     exemptPowerW,
+    uncontrolledExemptPowerW: uncontrolledExemptKw !== null ? uncontrolledExemptKw * 1000 : undefined,
     currentDevicePowerWById,
     managedDraw,
     nowMs,

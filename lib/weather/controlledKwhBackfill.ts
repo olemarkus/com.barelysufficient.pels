@@ -178,7 +178,7 @@ export function applyControlledOutcome(params: {
     return { state, dirty: false };
   }
   const applied = applyControlledBackfill(state, result.controlledDailyKwh);
-  // No recomputeDerived: the energy-signature fit reads kwhTotal + temp only,
+  // No recomputeDerived: the signature reads counted energy + temperature,
   // never the controlled/uncontrolled split, so a split-only patch cannot move
   // any derived field. Re-running the O(n²) fit here would only emit a
   // duplicate, identical `weather_advisor_fit` line. (Re-add if a future fit

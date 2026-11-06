@@ -132,7 +132,10 @@ export type RecordPowerSampleParams = {
    */
   generationSegments: readonly GenerationSegment[];
   controlledPowerW?: number;
+  /** Total measured budget-exempt draw, regardless of control authority. */
   exemptPowerW?: number;
+  /** Background portion of exemptPowerW. Legacy callers omit it for managed-only exemption. */
+  uncontrolledExemptPowerW?: number;
   currentDevicePowerWById?: Record<string, number>;
   /** The evidence a held reading is checked against (`lib/power/heldReading.ts`). */
   managedDraw: ManagedLoadDraw;

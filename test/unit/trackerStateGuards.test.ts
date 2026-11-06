@@ -46,6 +46,19 @@ describe('isPlausiblePowerTrackerState — solar family shapes', () => {
 });
 
 describe('isPlausiblePowerTrackerState — persisted core shape', () => {
+  it('validates background-exempt history and its held sample', () => {
+    expect(isPlausiblePowerTrackerState({
+      lastUncontrolledExemptPowerW: 3060,
+      uncontrolledExemptBuckets: { '2026-11-02T21:00:00.000Z': 3.06 },
+      uncontrolledExemptDailyTotals: { '2026-11-02': 3.06 },
+      uncontrolledExemptHourlyAverages: { '1_21': { sum: 3.06, count: 1 } },
+    })).toBe(true);
+    expect(isPlausiblePowerTrackerState({ lastUncontrolledExemptPowerW: Number.NaN })).toBe(false);
+    expect(isPlausiblePowerTrackerState({ uncontrolledExemptBuckets: { hour: '3' } })).toBe(false);
+    expect(isPlausiblePowerTrackerState({ uncontrolledExemptDailyTotals: [] })).toBe(false);
+    expect(isPlausiblePowerTrackerState({ uncontrolledExemptHourlyAverages: { hour: { sum: 3 } } })).toBe(false);
+  });
+
   it('accepts omitted optional fields and fully shaped nested accounting/profile data', () => {
     expect(isPlausiblePowerTrackerState({})).toBe(true);
     expect(isPlausiblePowerTrackerState({

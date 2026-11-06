@@ -41,7 +41,7 @@ For each local hour `h` (0-23), PELS works with:
 
 ## 2) How daily learning updates profiles
 
-At day rollover, PELS splits each bucket into background and managed-device kWh when split data exists, then builds daily hour weights:
+At day rollover, the power accounting service supplies each bucket’s budget-counted background and managed-device kWh. Exempt energy is excluded from both groups. PELS then builds daily hour weights:
 
 - `dayU[h] = hourlyUncontrolled[h] / totalUncontrolled`
 - `dayC[h] = hourlyControlled[h] / totalControlled`

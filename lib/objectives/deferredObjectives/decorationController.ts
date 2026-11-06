@@ -23,6 +23,13 @@ import {
 import { buildSmartTaskCycleRecord, type SmartTaskCycleRecord } from './smartTaskCycleRecord';
 import type { DeferredObjectiveRoster } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { PriorityAllocationTracker } from './priorityAllocation';
+import { buildObjectiveSignatureForEntry } from './activePlanSignature';
+
+type BudgetExemptClaim = {
+  taskSignature: string;
+  startsAtMs: number;
+  endsAtMs: number;
+};
 
 /**
  * Smart-task (deferred-objective) controller decoration stage. Owns the
@@ -45,6 +52,7 @@ export class DeferredObjectiveDecorationController {
   // The latest cycle's decision per live task, for diagnostics reports only.
   // Replaced whole each cycle, so an ended task drops out with it.
   private latestCycles: ReadonlyMap<string, SmartTaskCycleRecord> = new Map();
+  private budgetExemptClaims: ReadonlyMap<string, BudgetExemptClaim> = new Map();
 
   constructor(
     private readonly source: TaskEvaluationSource,
@@ -53,7 +61,8 @@ export class DeferredObjectiveDecorationController {
 
   public decorate(input: DeferredDecorationInput): DeferredDecorationBundle {
     const { devices, dailyBudgetSnapshot, nowTs } = input;
-    const reports = this.evaluate(devices, dailyBudgetSnapshot, nowTs);
+    const settings = this.getDeferredObjectiveSettings();
+    const reports = this.evaluate(devices, dailyBudgetSnapshot, nowTs, settings);
     const evaluations = reports.map((report) => report.evaluation);
     // The active-plan RECORD (revisions) is written on the lifecycle clock
     // (`DeferredObjectiveLifecycleEmitter`), not here. This stage only READS the
@@ -63,6 +72,7 @@ export class DeferredObjectiveDecorationController {
     const decisions = applyDeferredObjectiveAdmission(evaluations, devices);
     const admission = applyDeferredAdmissionToInput(devices, decisions);
     this.latestCycles = recordCycles(reports, decisions, nowTs);
+    this.budgetExemptClaims = recordBudgetExemptClaims(reports, decisions, settings, nowTs);
     return {
       admittedDevices: admission.devices,
       forceShedSet: admission.forceShedSet,
@@ -80,10 +90,29 @@ export class DeferredObjectiveDecorationController {
     return this.latestCycles.get(deviceId);
   }
 
+  /**
+   * Effective task exemptions for measured-energy accounting. The admission
+   * decision lasts only for the native interval it resolved and the same live
+   * task. This read neither evaluates tasks nor depends on plan publication.
+   */
+  public readBudgetExemptDeviceIds(nowMs: number): ReadonlySet<string> {
+    const settings = this.getDeferredObjectiveSettings();
+    const exempt = new Set<string>();
+    for (const [deviceId, claim] of this.budgetExemptClaims) {
+      if (nowMs < claim.startsAtMs || nowMs >= claim.endsAtMs) continue;
+      const task = settings?.objectivesByDeviceId[deviceId];
+      if (task?.enabled && buildObjectiveSignatureForEntry(task, 'unknown') === claim.taskSignature) {
+        exempt.add(deviceId);
+      }
+    }
+    return exempt;
+  }
+
   private evaluate(
     devices: DeferredDecorationInput['devices'],
     dailyBudgetSnapshot: DailyBudgetUiPayload | null,
     nowTs: number,
+    settings: DeferredObjectiveRoster | undefined,
   ): TaskEvaluationReport[] {
     // Mirrors the planner's `trackPlanStage` (duration + per-op RSS delta) so the
     // `evaluate_deferred_objectives_ms` telemetry is unchanged by the relocation;
@@ -91,7 +120,6 @@ export class DeferredObjectiveDecorationController {
     const start = Date.now();
     const rssBefore = safeRss();
     try {
-      const settings = this.getDeferredObjectiveSettings();
       if (!settings) return [];
       // The lifecycle clock may not have disarmed an elapsed task yet. Its
       // terminal fallback belongs to that clock; it has no admission claims.
@@ -105,6 +133,28 @@ export class DeferredObjectiveDecorationController {
     }
   }
 }
+
+const recordBudgetExemptClaims = (
+  reports: readonly TaskEvaluationReport[],
+  decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
+  settings: DeferredObjectiveRoster | undefined,
+  nowMs: number,
+): ReadonlyMap<string, BudgetExemptClaim> => {
+  const claims = new Map<string, BudgetExemptClaim>();
+  for (const { evaluation } of reports) {
+    if (decisions.get(evaluation.deviceId)?.budgetExempt !== true || evaluation.planning.kind !== 'allocated') continue;
+    const task = settings?.objectivesByDeviceId[evaluation.deviceId];
+    const { plan } = evaluation.planning;
+    const interval = plan.plannedBuckets.find((bucket) => bucket.id === plan.currentBucket?.bucketId);
+    if (!task || !interval) continue;
+    claims.set(evaluation.deviceId, {
+      taskSignature: buildObjectiveSignatureForEntry(task, 'unknown'),
+      startsAtMs: nowMs,
+      endsAtMs: Math.min(interval.endMs, evaluation.deadlineAtMs),
+    });
+  }
+  return claims;
+};
 
 const recordCycles = (
   reports: readonly TaskEvaluationReport[],

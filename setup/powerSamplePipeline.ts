@@ -11,7 +11,6 @@ import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
 import { resolveObjectiveSampleDevices } from '../lib/objectives/samples';
 import { buildPublishedPlanCapacityStateSummary } from '../lib/plan/planLogging';
-import { resolvePublishedBudgetExemptDeviceIds } from '../lib/plan/publishedPlan';
 import { resolvePlanRebuildPosture } from '../lib/plan/planRebuildPosture';
 import { addPerfDuration, incPerfCounter } from '../lib/utils/perfCounters';
 import type { PreparedReconcileFence } from '../lib/power/preparedReconcileFence';
@@ -48,6 +47,7 @@ export type PowerSamplePipelineDeps = {
   // fields carry.
   getPlanEngine: () => PlanEngine;
   getPlanService: () => PlanService;
+  readTaskBudgetExemptDeviceIds: (nowMs: number) => ReadonlySet<string>;
   /** This home's rebuild throttle — the admitted sample's one exit into the planner. */
   planRebuildThrottle: PlanRebuildThrottle;
   getDeviceSurfaces: () => DeviceSurfaces[];
@@ -309,7 +309,7 @@ export class PowerSamplePipeline {
         capacitySettings,
         timeZone: this.deps.getTimeZone(),
         getDeviceSurfaces: () => this.deps.getDeviceSurfaces(),
-        planBudgetExemptDeviceIds: resolvePublishedBudgetExemptDeviceIds(latestPublishedPlan, nowMs),
+        taskBudgetExemptDeviceIds: this.deps.readTaskBudgetExemptDeviceIds(nowMs),
         powerTracker,
         updateObjectiveProfiles: this.updateObjectiveProfiles,
         schedulePlanRebuild: async () => {

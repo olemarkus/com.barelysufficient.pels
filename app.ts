@@ -330,6 +330,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     planRebuildThrottle: this.planRebuildThrottle,
     getPlanEngine: () => this.planEngine,
     getPlanService: () => this.planService,
+    readTaskBudgetExemptDeviceIds: (nowMs) => this.serviceWiring.readTaskBudgetExemptDeviceIds(nowMs),
     // The Main home's capacity state, named the same way a meter area names its
     // own. These reads are ambient on the app context, which is why the factory
     // used to default to them; the pipeline is a per-home component either way,
@@ -587,6 +588,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   // Boot/teardown orchestration + per-service construction.
   protected readonly serviceWiring = new AppServiceWiring({
     ctx: this.ctx,
+    getDailyKwh: (dateKey) => this.powerTrackerHelpers.readDailyKwh(dateKey, this.getTimeZone()),
     getHomeOperatingMode: this.getHomeOperatingMode,
     getPrioritiesForDevices: (deviceIds) => this.homeModeCatalog.getPrioritiesForDevices(deviceIds),
     getModeDeviceTargets: () => this.homeModeCatalog.getModeDeviceTargets(),

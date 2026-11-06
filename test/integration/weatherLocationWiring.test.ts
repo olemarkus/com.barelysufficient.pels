@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AppContext } from '../../lib/app/appContext';
 import { WEATHER_ADVISOR_SETTINGS } from '../../lib/utils/settingsKeys';
 import { createWeatherCollector } from '../../setup/appInit/createWeatherCollector';
+import { resolveDailyKwh } from '../../lib/power/dailyKwhResolve';
 import { HOMEY_LOCATION_API_PATH } from '../../lib/device/transport/managerHomeyApi';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { mockHomeyInstance, resetMockHomey, setMockGeolocation } from '../mocks/homey';
@@ -23,9 +24,12 @@ const createEnabledCollector = () => {
     enabled: true,
     outdoorDeviceId: OUTDOOR_DEVICE_ID,
   });
-  return createWeatherCollector(createAppContextMock({
+  const context = createAppContextMock({
     homey: mockHomeyInstance as unknown as AppContext['homey'],
-  }));
+  });
+  return createWeatherCollector(context, (dateKey) => (
+    resolveDailyKwh(context.powerTracker, dateKey, context.getTimeZone())
+  ));
 };
 
 describe('weather location Web API wiring', () => {

@@ -8,13 +8,12 @@ import {
   getNextLocalDayStartUtcMs,
 } from '../../packages/shared-domain/src/utils/dateUtils';
 import { clamp } from '../../packages/shared-domain/src/utils/math';
-import { resolveAttributionSplit } from '../../packages/shared-domain/src/dailyBudget/attributionSplit';
+import { EnergyAccounting } from '../power/energyAccounting';
 import {
   buildAllowedCumKWh,
   buildWeightsFromPlan,
   getProfileBlendConfidence,
   resolveCurrentBucketIndex,
-  sumArray,
 } from './dailyBudgetMath';
 import type { PriceData } from './dailyBudgetPrices';
 import { alignWeightsToBuckets, buildBudgetProjection } from './dailyBudgetProjection';
@@ -71,13 +70,14 @@ export const buildDayContext = (nowMs: number, timeZone: string, powerTracker: P
     nextDayStartUtcMs,
     timeZone,
   });
+  const usage = new EnergyAccounting(powerTracker).window(bucketStartUtcMs);
   const {
     bucketKeys,
     bucketUsage,
     bucketUsageControlled,
     bucketUsageUncontrolled,
     bucketUsageExempt,
-  } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
+  } = usage;
   const currentBucketIndex = resolveCurrentBucketIndex(dayStartUtcMs, bucketStartUtcMs.length, nowMs);
   const currentBucketProgress = resolveBucketProgress(nowMs, bucketStartUtcMs, currentBucketIndex, nextDayStartUtcMs);
   const {
@@ -86,10 +86,7 @@ export const buildDayContext = (nowMs: number, timeZone: string, powerTracker: P
     meteredUsedNowKWh,
     exemptUsedNowKWh,
     usedNowKWh,
-  } = buildBudgetUsageViews({
-    bucketUsage,
-    bucketUsageExempt,
-  });
+  } = usage;
   return {
     nowMs,
     timeZone,
@@ -110,112 +107,6 @@ export const buildDayContext = (nowMs: number, timeZone: string, powerTracker: P
     meteredUsedNowKWh,
     exemptUsedNowKWh,
   };
-};
-
-export const buildBudgetUsageViews = (params: {
-  bucketUsage: number[];
-  bucketUsageExempt?: number[];
-}): {
-  budgetControlBucketUsage: number[];
-  budgetControlUsedNowKWh: number;
-  meteredUsedNowKWh: number;
-  exemptUsedNowKWh: number;
-  usedNowKWh: number;
-} => {
-  const { bucketUsage, bucketUsageExempt } = params;
-  const budgetControlBucketUsage = bucketUsage.map((value, index) => {
-    const total = Math.max(0, value);
-    const exempt = clamp(bucketUsageExempt?.[index] ?? 0, 0, total);
-    return Math.max(0, total - exempt);
-  });
-  const meteredUsedNowKWh = sumArray(bucketUsage);
-  const exemptUsedNowKWh = sumArray(bucketUsage.map((value, index) => (
-    clamp(bucketUsageExempt?.[index] ?? 0, 0, Math.max(0, value))
-  )));
-  const budgetControlUsedNowKWh = sumArray(budgetControlBucketUsage);
-
-  return {
-    budgetControlBucketUsage,
-    budgetControlUsedNowKWh,
-    meteredUsedNowKWh,
-    exemptUsedNowKWh,
-    usedNowKWh: meteredUsedNowKWh,
-  };
-};
-
-export const buildBucketUsage = (params: {
-  bucketStartUtcMs: number[];
-  powerTracker: PowerTrackerState;
-}): {
-  bucketKeys: string[];
-  bucketUsage: number[];
-  bucketUsageControlled: Array<number | null>;
-  bucketUsageUncontrolled: Array<number | null>;
-  bucketUsageExempt?: number[];
-} => {
-  const { bucketStartUtcMs, powerTracker } = params;
-  const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
-  // Floor at 0: a legacy solar-export hour can persist a negative kWh, which would otherwise
-  // deflate the metered/remaining/exceeded/projection reporting figures derived from this.
-  const bucketUsage = bucketKeys.map((key) => Math.max(0, powerTracker.buckets?.[key] ?? 0));
-  const controlledRaw = powerTracker.controlledBuckets ?? {};
-  const uncontrolledRaw = powerTracker.uncontrolledBuckets ?? {};
-  const exemptRaw = powerTracker.exemptBuckets ?? {};
-  // ATTRIBUTION split (managed vs background of ACTUAL consumption) via the shared
-  // gross-preferring resolver. Budget PACING is unaffected — it uses `bucketUsage` (net
-  // total) minus exempt, not this split.
-  const splitUsage = bucketKeys.map((key, index) => resolveAttributionSplit({
-    totalNet: bucketUsage[index] ?? 0,
-    controlledGross: controlledRaw[key],
-    uncontrolledGross: uncontrolledRaw[key],
-    exemptGross: exemptRaw[key],
-  }));
-  const bucketUsageControlled = splitUsage.map((entry) => entry.controlled);
-  const bucketUsageUncontrolled = splitUsage.map((entry) => entry.uncontrolled);
-  const bucketUsageExempt = bucketKeys.map((key, index) => {
-    const rawExempt = exemptRaw[key];
-    const exempt = typeof rawExempt === 'number' && Number.isFinite(rawExempt) ? rawExempt : 0;
-    return clamp(exempt, 0, Math.max(0, bucketUsage[index] ?? 0));
-  });
-  const hasExempt = bucketUsageExempt.some((value) => value > 0);
-  return {
-    bucketKeys,
-    bucketUsage,
-    bucketUsageControlled,
-    bucketUsageUncontrolled,
-    bucketUsageExempt: hasExempt ? bucketUsageExempt : undefined,
-  };
-};
-
-/**
- * A local day's usage on the budget's own pacing axis: metered kWh less
- * budget-exempt kWh, hour by hour, exactly as `buildBudgetUsageViews` paces it.
- * This is the figure a day's applied budget actually governed, so it is the one
- * an overshoot or unused allowance must be measured against; whole-home kWh
- * also counts exempt load the budget never paced.
- *
- * `undefined` unless the tracker holds a finite metered bucket for EVERY hour
- * of the local day (23, 24 or 25 per `buildLocalDayBuckets`). A missing hour is
- * unmeasured, not zero: summing a partially recovered tracker would understate
- * the day and read the gap as unused allowance. An hour with metered usage but
- * no exempt bucket counts as fully budget-counted, which is how the pacer
- * treats it.
- */
-export const resolveBudgetCountedDayKwh = (
-  powerTracker: PowerTrackerState,
-  dateKey: string,
-  timeZone: string,
-): number | undefined => {
-  const dayStartUtcMs = getDateKeyStartMs(dateKey, timeZone);
-  const nextDayStartUtcMs = getNextLocalDayStartUtcMs(dayStartUtcMs, timeZone);
-  const { bucketStartUtcMs } = buildLocalDayBuckets({ dayStartUtcMs, nextDayStartUtcMs, timeZone });
-  const everyHourMeasured = bucketStartUtcMs.length > 0 && bucketStartUtcMs.every((ts) => {
-    const value = powerTracker.buckets?.[new Date(ts).toISOString()];
-    return typeof value === 'number' && Number.isFinite(value);
-  });
-  if (!everyHourMeasured) return undefined;
-  const { bucketUsage, bucketUsageExempt } = buildBucketUsage({ bucketStartUtcMs, powerTracker });
-  return buildBudgetUsageViews({ bucketUsage, bucketUsageExempt }).budgetControlUsedNowKWh;
 };
 
 /** How far `usedNowKWh` runs ahead of the plan's allowance at this point of the day. */

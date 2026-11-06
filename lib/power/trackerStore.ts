@@ -51,6 +51,7 @@ const HOURLY_FAMILIES = [
   'controlledBuckets',
   'uncontrolledBuckets',
   'exemptBuckets',
+  'uncontrolledExemptBuckets',
   'generationBuckets',
   'exportBuckets',
 ] as const satisfies readonly (keyof PowerTrackerState)[];
@@ -61,6 +62,7 @@ const DAILY_FAMILIES = [
   'controlledDailyTotals',
   'uncontrolledDailyTotals',
   'exemptDailyTotals',
+  'uncontrolledExemptDailyTotals',
   'generationDailyTotals',
   'exportDailyTotals',
 ] as const satisfies readonly (keyof PowerTrackerState)[];
@@ -71,6 +73,7 @@ const AVERAGE_FAMILIES = [
   'controlledHourlyAverages',
   'uncontrolledHourlyAverages',
   'exemptHourlyAverages',
+  'uncontrolledExemptHourlyAverages',
 ] as const satisfies readonly (keyof PowerTrackerState)[];
 
 /** Everything else is small and stored as one JSON value per key. */
@@ -80,6 +83,7 @@ const SCALAR_KEYS = [
   'lastControlledPowerW',
   'lastUncontrolledPowerW',
   'lastExemptPowerW',
+  'lastUncontrolledExemptPowerW',
   'lastGenerationW',
   'lastTimestamp',
   'heldReading',

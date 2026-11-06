@@ -2,7 +2,7 @@ import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
 } from '../../packages/shared-domain/src/utils/dateUtils';
-import { resolveDailyKwh } from '../../lib/weather/dailyKwhResolve';
+import { resolveDailyKwh } from '../../lib/power/dailyKwhResolve';
 import { getLocalHourKey, rollupDay } from '../../lib/weather/weatherHistory';
 import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 
@@ -67,17 +67,9 @@ describe('weather history across DST transitions (Europe/Oslo)', () => {
       }
       return Object.fromEntries(entries);
     };
-    const spring = resolveDailyKwh({
-      dateKey: '2026-03-29',
-      timeZone: OSLO,
-      source: { buckets: bucketsForDay('2026-03-29', '2026-03-30') },
-    });
+    const spring = resolveDailyKwh({ buckets: bucketsForDay('2026-03-29', '2026-03-30') }, '2026-03-29', OSLO);
     expect(spring.total).toBe(23);
-    const fall = resolveDailyKwh({
-      dateKey: '2026-10-25',
-      timeZone: OSLO,
-      source: { buckets: bucketsForDay('2026-10-25', '2026-10-26') },
-    });
+    const fall = resolveDailyKwh({ buckets: bucketsForDay('2026-10-25', '2026-10-26') }, '2026-10-25', OSLO);
     expect(fall.total).toBe(25);
   });
 

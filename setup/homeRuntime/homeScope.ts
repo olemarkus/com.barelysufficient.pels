@@ -210,11 +210,12 @@ export type HomeScope = {
  * membership and source-epoch gates into `SubHomeRuntime.isEffectiveDryRunForExecution`.
  */
 /**
- * Main's scope plus the one smart-task read only Main has: the controller's
- * latest decision for a device's task, for diagnostics reports.
+ * Main's scope plus its smart-task owner reads: effective budget exemptions
+ * for accounting and the latest cycle decision for diagnostics reports.
  */
 export type MainHomeScope = HomeScope & {
   readSmartTaskCycle: (deviceId: string) => SmartTaskCycleRecord | undefined;
+  readTaskBudgetExemptDeviceIds: (nowMs: number) => ReadonlySet<string>;
 };
 
 export function buildMainHomeScope(
@@ -310,6 +311,7 @@ export function buildMainHomeScope(
     getModeDeviceTargets,
     decorateDeferredObjectives: (input) => deferredObjectiveController.decorate(input),
     readSmartTaskCycle: (deviceId) => deferredObjectiveController.readLatestCycle(deviceId),
+    readTaskBudgetExemptDeviceIds: (nowMs) => deferredObjectiveController.readBudgetExemptDeviceIds(nowMs),
     syncLivePlanStateAfterTargetActuation: (source) => ctx.syncLivePlanStateAfterTargetActuation(source),
     // UI / side-effect singletons — the EXACT ctx reads `createPlanService`
     // hardwired. Byte-identical for the main home.

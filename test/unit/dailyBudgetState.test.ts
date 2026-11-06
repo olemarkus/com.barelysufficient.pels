@@ -1,13 +1,16 @@
+import { EnergyAccounting, resolveBudgetCountedDayKwh } from '../../lib/power/energyAccounting';
+import type { PowerTrackerState } from '../../lib/power/tracker';
 import {
-  buildBucketUsage,
-  buildBudgetUsageViews,
   buildDailyBudgetSnapshot,
   buildDayContext,
-  resolveBudgetCountedDayKwh,
 } from '../../lib/dailyBudget/dailyBudgetState';
 import type { BudgetState, DayContext } from '../../lib/dailyBudget/dailyBudgetState';
 import { NO_PRICE_DATA } from '../../lib/dailyBudget/dailyBudgetPrices';
 import type { DailyBudgetSettings } from '../../lib/dailyBudget/dailyBudgetTypes';
+
+const buildBucketUsage = (params: { bucketStartUtcMs: number[]; powerTracker: PowerTrackerState }) => (
+  new EnergyAccounting(params.powerTracker).window(params.bucketStartUtcMs)
+);
 
 describe('daily budget state helpers', () => {
   it('buildBucketUsage keeps the gross split (managed+background can exceed the net total under solar)', () => {
@@ -46,7 +49,7 @@ describe('daily budget state helpers', () => {
     expect(result.bucketUsageUncontrolled).toEqual([4, 0, 5]);
   });
 
-  it('buildBucketUsage treats exempt usage as uncontrolled for budget breakdowns', () => {
+  it('buildBucketUsage keeps actual attribution independent of budget exemptions', () => {
     const hourMs = 60 * 60 * 1000;
     const dayStart = Date.UTC(2024, 0, 1, 0, 0, 0);
     const bucketStartUtcMs = [dayStart, dayStart + hourMs];
@@ -72,12 +75,8 @@ describe('daily budget state helpers', () => {
       },
     });
 
-    // bucket[0]: no gross uncontrolled bucket -> legacy net-derive, exempt(1) folded into
-    // the uncontrolled side (controlled 3-1=2, uncontrolled 4-2=2). bucket[1]: gross
-    // uncontrolled bucket(1) + exempt(1.5) on the background side (2.5); controlled is the
-    // net-total remainder (4-2.5=1.5).
-    expect(result.bucketUsageControlled).toEqual([2, 1.5]);
-    expect(result.bucketUsageUncontrolled).toEqual([2, 2.5]);
+    expect(result.bucketUsageControlled).toEqual([3, 3]);
+    expect(result.bucketUsageUncontrolled).toEqual([1, 1]);
     expect(result.bucketUsageExempt).toEqual([1, 1.5]);
   });
 
@@ -101,10 +100,8 @@ describe('daily budget state helpers', () => {
       },
     });
 
-    // Gross uncontrolled bucket (1) + exempt(1.5) on the background side (2.5); controlled
-    // is the net-total remainder (4 - 2.5 = 1.5).
-    expect(result.bucketUsageControlled).toEqual([1.5]);
-    expect(result.bucketUsageUncontrolled).toEqual([2.5]);
+    expect(result.bucketUsageControlled).toEqual([3]);
+    expect(result.bucketUsageUncontrolled).toEqual([1]);
     expect(result.bucketUsageExempt).toEqual([1.5]);
   });
 
@@ -126,19 +123,6 @@ describe('daily budget state helpers', () => {
 
     expect(result.bucketUsageControlled).toEqual([null, null]);
     expect(result.bucketUsageUncontrolled).toEqual([null, null]);
-  });
-
-  it('buildBudgetUsageViews clamps exempt reductions for budget control math', () => {
-    const result = buildBudgetUsageViews({
-      bucketUsage: [2, 1, 0],
-      bucketUsageExempt: [0.5, 2, 1],
-    });
-
-    expect(result.budgetControlBucketUsage).toEqual([1.5, 0, 0]);
-    expect(result.meteredUsedNowKWh).toBeCloseTo(3, 6);
-    expect(result.exemptUsedNowKWh).toBeCloseTo(1.5, 6);
-    expect(result.usedNowKWh).toBeCloseTo(3, 6);
-    expect(result.budgetControlUsedNowKWh).toBeCloseTo(1.5, 6);
   });
 
   it('buildDayContext keeps reported usage real while using exempt-adjusted values for budget control', () => {

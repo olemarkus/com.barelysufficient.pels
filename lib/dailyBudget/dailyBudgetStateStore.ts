@@ -34,6 +34,7 @@ import type { UserdataDatabase } from '../store/userdataDatabase';
 import { normalizeError } from '../utils/errorUtils';
 import { DAILY_BUDGET_STATE } from '../utils/settingsKeys';
 import { resolveProfileSampleCount } from './dailyBudgetLearning';
+import { DAILY_BUDGET_ACCOUNTING_BASIS, migrateDailyBudgetAccountingBasis } from './dailyBudgetLearningReset';
 import { isDailyBudgetState } from './dailyBudgetManagerTypes';
 import type { DailyBudgetState } from './dailyBudgetTypes';
 
@@ -122,15 +123,27 @@ export const createDailyBudgetStateStore = (db: UserdataDatabase): DailyBudgetSt
   };
 
   return {
-    read: () => db.transaction(() => {
-      const fields = load();
-      held = fields === null ? null : heldOf(fields);
-      if (fields === null || isDailyBudgetState(fields)) return fields;
-      storeLogger.error({ event: 'daily_budget_state_rejected', fields: Object.keys(fields) });
-      return null;
-    }),
+    read: () => {
+      const loaded = db.transaction(() => {
+        const fields = load();
+        const previous = fields === null ? null : heldOf(fields);
+        if (fields === null) return { state: null, held: previous };
+        if (!isDailyBudgetState(fields)) {
+          storeLogger.error({ event: 'daily_budget_state_rejected', fields: Object.keys(fields) });
+          return { state: null, held: previous };
+        }
+        const state = migrateDailyBudgetAccountingBasis(fields);
+        const next = heldOf(state);
+        if (state !== fields) writeDiff(next, previous);
+        return { state, held: next };
+      });
+      // A failed read or migration leaves the previous diff base intact. The
+      // migrated basis and deletion of incompatible derived rows commit together.
+      held = loaded.held;
+      return loaded.state;
+    },
     write: (state) => {
-      held = db.transaction(() => writeRows(state));
+      held = db.transaction(() => writeRows({ ...state, profileAccountingBasis: DAILY_BUDGET_ACCOUNTING_BASIS }));
     },
     hasImportedLegacy: () => hasLegacyImportMark(db, DAILY_BUDGET_STATE),
     writeLegacyImport: (state) => {
@@ -166,10 +179,14 @@ const fieldsWhere = (state: DailyBudgetState, learned: boolean): DailyBudgetStat
  * completed): the import brings the blob's profile back, and the reset has to
  * be made again.
  */
-const withLegacyUnder = (stored: DailyBudgetState, legacy: DailyBudgetState): DailyBudgetState => ({
-  ...fieldsWhere(stored, false),
-  ...fieldsWhere(resolveProfileSampleCount(legacy) > resolveProfileSampleCount(stored) ? legacy : stored, true),
-});
+const withLegacyUnder = (stored: DailyBudgetState, legacy: DailyBudgetState): DailyBudgetState => {
+  // Old accounting averages cannot displace a current-basis profile, even if
+  // an interrupted legacy import carries more days than the new learner.
+  const comparable = legacy.profileAccountingBasis === stored.profileAccountingBasis;
+  const learned = comparable && resolveProfileSampleCount(legacy) > resolveProfileSampleCount(stored)
+    ? legacy : stored;
+  return { ...fieldsWhere(stored, false), ...fieldsWhere(learned, true) };
+};
 
 /**
  * The one-shot import of the legacy `daily_budget_state` settings blob into

@@ -46,6 +46,21 @@ export function defaultStoredSuggestion(raw: Record<string, unknown>): WeatherHi
   } as WeatherHistoryState['latestSuggestion'];
 }
 
+/** Persisted advice is reusable only on the current counted-energy basis. */
+export function normalizeStoredAdvice(raw: Record<string, unknown>): Pick<
+  WeatherHistoryState, 'latestFit' | 'latestSuggestion' | 'budgetPressure'
+> {
+  const budgetPressure = normalizeBudgetPressure(raw.budgetPressure);
+  const currentFit = isUnknownRecord(raw.latestFit) && raw.latestFit.energyBasis === 'budget_counted'
+    ? defaultStoredFit(raw.latestFit) : undefined;
+  return {
+    ...(currentFit ? { latestFit: currentFit } : {}),
+    ...(currentFit && budgetPressure.kind !== 'incompatible' && isUnknownRecord(raw.latestSuggestion)
+      ? { latestSuggestion: defaultStoredSuggestion(raw.latestSuggestion) } : {}),
+    ...(budgetPressure.kind === 'current' ? { budgetPressure: budgetPressure.pressure } : {}),
+  };
+}
+
 /** The persistence owner distinguishes no correction from advice requiring migration. */
 type PersistedBudgetPressure =
   | { kind: 'absent' }
@@ -189,8 +204,8 @@ export function sanitizeRecordOptionalFields(record: WeatherDailyRecord): Weathe
   const suppression = normalizeSuppression(record.suppression);
   const kwhUncontrolled = isFiniteNumber(record.kwhUncontrolled) ? record.kwhUncontrolled : undefined;
   const appliedBudgetKwh = isPositiveFinite(record.appliedBudgetKwh) ? record.appliedBudgetKwh : undefined;
-  // Paired by contract: budget-counted usage means nothing without the budget it was counted against.
-  const kwhBudgetCounted = appliedBudgetKwh !== undefined && isNonNegativeFinite(record.kwhBudgetCounted)
+  // The accounting observation exists independently of an enabled budget.
+  const kwhBudgetCounted = isNonNegativeFinite(record.kwhBudgetCounted)
     ? record.kwhBudgetCounted : undefined;
   const {
     suppression: _suppression,

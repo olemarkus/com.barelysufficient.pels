@@ -42,10 +42,9 @@ const buildHarness = (overrides: Partial<WeatherCollectorDeps> = {}): Harness =>
       capabilitiesObj: { measure_temperature: { value: deviceId === 'fc-1' ? -7 : 3.5 } },
     })),
     fetchInsights: vi.fn(async () => ({ step: 6 * HOUR_MS, values: [] })),
-    getDailyKwh: vi.fn(() => ({ total: 42.5, controlled: 10, uncontrolled: 32.5 })),
+    getDailyKwh: vi.fn(() => ({ total: 42.5, controlled: 10, uncontrolled: 32.5, budgetCounted: 42.5 })),
     getDaySuppression: vi.fn(() => ({})),
     getAppliedDailyBudgetKwh: vi.fn(() => 50),
-    getBudgetCountedKwh: vi.fn((): number | undefined => 42.5),
     readBudgetDecisions: vi.fn(() => []),
     recomputeDerived: (state) => state,
     applySuggestedDailyBudget: () => false,
@@ -367,27 +366,39 @@ describe('WeatherCollector', () => {
 
   it('stamps the budget-counted usage next to the applied budget for the day that closed', async () => {
     vi.setSystemTime(Date.UTC(2026, 0, 10, 22, 30, 0)); // Oslo 23:30
-    const getBudgetCountedKwh = vi.fn((): number | undefined => 38);
-    const { collector, store } = buildHarness({ getBudgetCountedKwh });
+    const getDailyKwh = vi.fn(() => ({ total: 42.5, budgetCounted: 38 }));
+    const { collector, store } = buildHarness({ getDailyKwh });
     collector.start();
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(36 * 60 * 1000);
     collector.stop();
-    expect(getBudgetCountedKwh).toHaveBeenCalledWith('2026-01-10');
+    expect(getDailyKwh).toHaveBeenCalledWith('2026-01-10');
     expect(lastWritten(store).records[0]).toMatchObject({
       kwhTotal: 42.5, appliedBudgetKwh: 50, kwhBudgetCounted: 38,
     });
   });
 
-  it('does not read budget-counted usage for a day with no measured total', async () => {
-    vi.setSystemTime(Date.UTC(2026, 0, 10, 22, 30, 0)); // Oslo 23:30
-    const getBudgetCountedKwh = vi.fn((): number | undefined => 38);
-    const { collector, store } = buildHarness({ getBudgetCountedKwh, getDailyKwh: vi.fn(() => ({})) });
+  it('records counted energy while the daily budget is disabled', async () => {
+    vi.setSystemTime(Date.UTC(2026, 0, 10, 22, 30, 0));
+    const { collector, store } = buildHarness({
+      getDailyKwh: vi.fn(() => ({ total: 42.5, budgetCounted: 38 })),
+      getAppliedDailyBudgetKwh: vi.fn(() => undefined),
+    });
     collector.start();
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(36 * 60 * 1000);
     collector.stop();
-    expect(getBudgetCountedKwh).not.toHaveBeenCalled();
+    expect(lastWritten(store).records[0]).toMatchObject({ kwhTotal: 42.5, kwhBudgetCounted: 38 });
+    expect(lastWritten(store).records[0].appliedBudgetKwh).toBeUndefined();
+  });
+
+  it('does not record counted usage for a day with no measured total', async () => {
+    vi.setSystemTime(Date.UTC(2026, 0, 10, 22, 30, 0)); // Oslo 23:30
+    const { collector, store } = buildHarness({ getDailyKwh: vi.fn(() => ({})) });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(36 * 60 * 1000);
+    collector.stop();
     expect(lastWritten(store).records[0].kwhBudgetCounted).toBeUndefined();
   });
 
@@ -397,7 +408,7 @@ describe('WeatherCollector', () => {
       targetDeficitMs: 7_200_000, deadlineMissedToBudget: true, deadlineMissDeniedKwh: 2.4,
     }));
     const { collector, store, deps } = buildHarness({
-      getDailyKwh: vi.fn(() => ({ total: 42.5, controlled: 10, uncontrolled: 32.5 })),
+      getDailyKwh: vi.fn(() => ({ total: 42.5, controlled: 10, uncontrolled: 32.5, budgetCounted: 42.5 })),
       getDaySuppression,
     });
     collector.start();
@@ -1533,7 +1544,7 @@ describe('weather feedback upgrade', () => {
     const { collector, persisted } = buildHarness({ recomputeDerived, applySuggestedDailyBudget });
     persisted.value = {
       records: [], meterScopeSignature: DEFAULT_METER_SCOPE_SIGNATURE,
-      latestFit: { recentResidualQ80: 4 },
+      latestFit: { energyBasis: 'budget_counted', recentResidualQ80: 4 },
       latestSuggestion: { ...suggestion, budgetPressureKwh: 10, suggestedBudgetKwh: 50 },
       budgetPressure: { algorithmVersion: 2, kwh: 10, throughDateKey: '2026-01-09' },
     };
@@ -1557,7 +1568,7 @@ describe('weather feedback upgrade', () => {
     persisted.value = { records: [], meterScopeSignature: DEFAULT_METER_SCOPE_SIGNATURE,
       backfilledDeviceId: 'out-1', backfillVersion: TEMP_BACKFILL_VERSION,
       meterKwhBackfillDone: true, controlledBackfillVersion: CONTROLLED_BACKFILL_VERSION,
-      latestFit: { recentSuppressionSuspected: true },
+      latestFit: { energyBasis: 'budget_counted', recentSuppressionSuspected: true },
       latestSuggestion: { budgetPressureKwh: 56 },
       budgetPressure: { kwh: 56, throughDateKey: '2026-01-09' } };
     store.read.mockImplementationOnce(() => { throw new Error('temporarily unreadable'); });
@@ -1579,7 +1590,7 @@ describe('weather feedback upgrade', () => {
     const applySuggestedDailyBudget = vi.fn(() => true);
     const { collector, persisted } = buildHarness({ recomputeDerived, applySuggestedDailyBudget });
     persisted.value = { records: [], meterScopeSignature: DEFAULT_METER_SCOPE_SIGNATURE,
-      latestFit: { recentSuppressionSuspected: true },
+      latestFit: { energyBasis: 'budget_counted', recentSuppressionSuspected: true },
       budgetPressure: { kwh: 56, throughDateKey: '2026-01-09' } };
     collector.start();
     expect(recomputeDerived).toHaveBeenCalledOnce();

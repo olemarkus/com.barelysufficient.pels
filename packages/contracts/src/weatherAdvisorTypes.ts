@@ -119,7 +119,7 @@ export type WeatherDailyRecord = {
   quality: WeatherDailyQuality;
   /**
    * The daily budget (kWh) that was in force when this day closed. Paired with
-   * `kwhTotal` it gives the budget-pressure loop a measured overshoot — how far
+   * `kwhBudgetCounted` it gives the budget-pressure loop a measured overshoot — how far
    * under the budget was actually set — instead of a guess. Absent on backfilled
    * days and whenever the daily budget was disabled.
    */
@@ -129,10 +129,10 @@ export type WeatherDailyRecord = {
    * budget-exempt kWh, hour by hour (`resolveBudgetCountedDayKwh`). The budget
    * paces on this axis, so the budget-pressure loop measures overshoot and
    * unused allowance against it rather than `kwhTotal`, which also counts
-   * exempt load the budget never governed. Stamped only alongside
-   * `appliedBudgetKwh`. ABSENT on records rolled up before the field existed and
-   * whenever the tracker held no hourly usage for the day; absent is not zero,
-   * and the loop then measures no balance for that day.
+   * exempt load the budget never governed. Recorded even when no daily budget
+   * is enabled; the energy signature also fits this axis. Absent on historical
+   * days without counted-energy evidence or an incomplete tracker day. Such
+   * days retain actual totals but do not train the budget-demand signature.
    */
   kwhBudgetCounted?: number;
   /** Producer-internal censoring evidence; consumers must not branch on it. See WeatherDaySuppression. */
@@ -293,6 +293,8 @@ export type EnergySignatureModel = 'changepoint' | 'linear' | 'uncorrelated';
 export type EnergySignatureConfidence = 'learning' | 'low' | 'medium' | 'high';
 
 export type EnergySignatureFit = {
+  /** Persisted fits on the old whole-home axis are discarded at ingestion. */
+  energyBasis: 'budget_counted';
   model: EnergySignatureModel;
   /** Flat-segment usage (kWh/day) above the balance point; `changepoint` only. */
   baseLoadKwhPerDay?: number;
@@ -425,6 +427,7 @@ export type WeatherRecentDay = {
   dateKey: string;
   tempMeanC: number;
   kwhTotal: number;
+  kwhBudgetCounted: number;
   quality: WeatherDailyQuality;
 };
 
@@ -495,6 +498,7 @@ export type WeatherAdvisorYesterday = {
   dateKey: string;
   tempMeanC: number;
   kwhTotal: number;
+  kwhBudgetCounted: number;
   /** kWh above (+) / below (−) typical for the day's temperature; null when no anchor. */
   deviationKwh: number | null;
 };

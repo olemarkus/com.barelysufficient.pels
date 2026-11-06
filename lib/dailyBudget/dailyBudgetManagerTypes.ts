@@ -145,6 +145,7 @@ export const isDailyBudgetState = (value: unknown): value is DailyBudgetState =>
     , isNonNegativeNumberOrUndefined(state.profileSplitSampleCount)
     , OBSERVED_HOURLY_STATS_FIELDS.every((field) => isHourlyArrayOrUndefined(state[field]))
     , isNullableStringOrUndefined(state.profileObservedStatsConfigKey)
+    , (state.profileAccountingBasis === undefined || typeof state.profileAccountingBasis === 'string')
     , isFiniteNumberArrayOrUndefined(state.plannedKWh)
     , isFiniteNumberArrayOrUndefined(state.plannedUncontrolledKWh)
     , isFiniteNumberArrayOrUndefined(state.plannedGrossUncontrolledKWh)

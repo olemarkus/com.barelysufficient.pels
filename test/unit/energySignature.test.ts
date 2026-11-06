@@ -10,6 +10,7 @@ const NOW_MS = Date.UTC(2026, 5, 1, 0, 0, 0);
 const day = (index: number, tempC: number, kwh: number, overrides: Partial<WeatherDailyRecord> = {}): WeatherDailyRecord => ({
   dateKey: new Date(Date.UTC(2026, 0, 1) + index * 86_400_000).toISOString().slice(0, 10),
   kwhTotal: kwh,
+  kwhBudgetCounted: kwh,
   tempMeanC: tempC,
   tempMinC: tempC - 3,
   tempMaxC: tempC + 3,
@@ -29,6 +30,20 @@ const heatingDays = (count: number): WeatherDailyRecord[] => Array.from({ length
 });
 
 describe('fitEnergySignature', () => {
+  it('fits counted demand without learning exempt charging as background demand', () => {
+    const baseline = heatingDays(60);
+    const withExemptCharging = baseline.map((record) => ({
+      ...record,
+      kwhTotal: (record.kwhTotal as number) + 20,
+    }));
+    expect(fitEnergySignature(withExemptCharging, NOW_MS)).toEqual(fitEnergySignature(baseline, NOW_MS));
+  });
+
+  it('keeps old total-only days out of the counted-demand fit', () => {
+    const legacy = heatingDays(60).map(({ kwhBudgetCounted: _counted, ...record }) => record);
+    expect(fitEnergySignature(legacy, NOW_MS)).toBeNull();
+  });
+
   it('recovers base load, slope, and balance point from a clean heating signature', () => {
     const fit = fitEnergySignature(heatingDays(60), NOW_MS);
     expect(fit).not.toBeNull();
@@ -49,7 +64,7 @@ describe('fitEnergySignature', () => {
 
   it('shrugs off 20% contaminated days (vacations) without losing the slope', () => {
     const days = heatingDays(60).map((record, index) => (
-      index % 5 === 0 ? { ...record, kwhTotal: 6 } : record
+      index % 5 === 0 ? { ...record, kwhTotal: 6, kwhBudgetCounted: 6 } : record
     ));
     const fit = fitEnergySignature(days, NOW_MS);
     expect(fit?.slopeKwhPerDegree).toBeGreaterThan(1.6);
@@ -98,7 +113,7 @@ describe('fitEnergySignature', () => {
 
   it('detects drift even at the minimum data gate (baseline excludes the recent window)', () => {
     const days = heatingDays(28).map((record, index) => (
-      index >= 14 ? { ...record, kwhTotal: (record.kwhTotal ?? 0) + 9 } : record
+      index >= 14 ? { ...record, kwhTotal: (record.kwhTotal ?? 0) + 9, kwhBudgetCounted: (record.kwhBudgetCounted ?? 0) + 9 } : record
     ));
     const fit = fitEnergySignature(days, NOW_MS);
     expect(fit?.driftSuspected).toBe(true);
@@ -122,7 +137,7 @@ describe('fitEnergySignature', () => {
 
   it('flags drift when recent days run above what is typical for their temperature', () => {
     const days = heatingDays(60).map((record, index) => (
-      index >= 46 ? { ...record, kwhTotal: (record.kwhTotal ?? 0) + 9 } : record
+      index >= 46 ? { ...record, kwhTotal: (record.kwhTotal ?? 0) + 9, kwhBudgetCounted: (record.kwhBudgetCounted ?? 0) + 9 } : record
     ));
     const fit = fitEnergySignature(days, NOW_MS);
     expect(fit?.driftSuspected).toBe(true);
@@ -147,7 +162,7 @@ describe('fitEnergySignature — suppression awareness', () => {
       [...days].sort((a, b) => a.tempMeanC - b.tempMeanC).slice(0, 6).map((entry) => entry.dateKey),
     );
     return days.map((record) => (coldestKeys.has(record.dateKey)
-      ? { ...record, kwhTotal: 1, ...(flag ? { suppression: { deadlineMissedToBudget: true } } : {}) }
+      ? { ...record, kwhTotal: 1, kwhBudgetCounted: 1, ...(flag ? { suppression: { deadlineMissedToBudget: true } } : {}) }
       : record));
   };
 
@@ -211,7 +226,7 @@ describe('fitEnergySignature — suppression awareness', () => {
     expect(fitEnergySignature(recentLimited, NOW_MS)?.recentSuppressionSuspected).toBe(true);
     // Control: same recent cold day, no suppression recorded.
     const control = heatingDays(60).map((record, index) => (
-      index === 59 ? { ...record, tempMeanC: 0, kwhTotal: 50 } : record
+      index === 59 ? { ...record, tempMeanC: 0, kwhTotal: 50, kwhBudgetCounted: 50 } : record
     ));
     expect(fitEnergySignature(control, NOW_MS)?.recentSuppressionSuspected).toBe(false);
   });
@@ -227,7 +242,7 @@ describe('fitEnergySignature — suppression awareness', () => {
         ? {
           ...record,
           tempMeanC: 0,
-          kwhTotal: 50,
+          kwhTotal: 50, kwhBudgetCounted: 50,
           suppression: { budgetDeniedKwh: 0, deadlineMissDeniedKwh },
         }
         : record),
@@ -268,7 +283,7 @@ const seasonalYear = (seasonKwh: number, keep: (index: number) => boolean = () =
     const tempC = 6 - 10 * Math.cos((2 * Math.PI * (index - 15)) / 365) + 4 * Math.sin(index * 1.7);
     const record = day(index, tempC, 0);
     const kwh = 30 + 3 * Math.max(0, 14 - tempC) + seasonKwh * seasonIndexForDateKey(record.dateKey) + noise(index);
-    return { ...record, kwhTotal: kwh };
+    return { ...record, kwhTotal: kwh, kwhBudgetCounted: kwh };
   })
 );
 const YEAR_END_MS = Date.UTC(2027, 0, 1, 0, 5, 0);
@@ -344,6 +359,7 @@ describe('recent usage calibration', () => {
   it('captures a changed household load in recent residuals while retaining the seasonal model', () => {
     const records = heatingDays(120).map((record, index) => ({
       ...record, kwhTotal: (record.kwhTotal as number) + (index >= 106 ? 20 : 0),
+      kwhBudgetCounted: (record.kwhBudgetCounted as number) + (index >= 106 ? 20 : 0),
     }));
     const fit = fitEnergySignature(records, NOW_MS);
     expect(fit?.recentResidualQ80).toBeGreaterThan((fit?.residualQ80 ?? 0) + 10);

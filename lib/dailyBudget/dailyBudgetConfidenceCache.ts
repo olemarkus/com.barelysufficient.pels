@@ -81,6 +81,9 @@ function buildConfidenceInputKey(powerTracker: PowerTrackerState, context: DayCo
   hash = appendHashString(hash, dateKey);
   hash = appendRecordFingerprint(hash, 'b', powerTracker.buckets, windowStartUtcMs, dayStartUtcMs);
   hash = appendRecordFingerprint(hash, 'c', powerTracker.controlledBuckets, windowStartUtcMs, dayStartUtcMs);
+  hash = appendRecordFingerprint(hash, 'e', powerTracker.exemptBuckets, windowStartUtcMs, dayStartUtcMs);
+  hash = appendRecordFingerprint(hash, 'ue', powerTracker.uncontrolledExemptBuckets, windowStartUtcMs, dayStartUtcMs);
+  hash = appendRecordFingerprint(hash, 'uc', powerTracker.uncontrolledBuckets, windowStartUtcMs, dayStartUtcMs);
   hash = appendRecordFingerprint(hash, 'p', powerTracker.dailyBudgetCaps, windowStartUtcMs, dayStartUtcMs);
   hash = appendUnreliablePeriodsFingerprint(hash, powerTracker.unreliablePeriods, windowStartUtcMs, dayStartUtcMs);
   return hash.toString(16);
