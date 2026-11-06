@@ -1,7 +1,8 @@
 import { h, type ComponentChildren } from 'preact';
 import { useRef, useLayoutEffect, useState } from 'preact/hooks';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
-import { chipModifierForTone } from './chipModifier.ts';
+import { Chip } from './components/Chip.tsx';
+import { chipToneForState } from './components/chipTone.ts';
 import {
   isDimmedDisplayStateKind,
   resolvePlanCardStatusChip,
@@ -399,8 +400,8 @@ export const PlanGenericCard = ({
       // cannot show.
       leadingChip={hasTimer && (
         <span class="plan-state-chip-wrap">
-          <span
-            class={`plan-chip plan-chip--${chipModifierForTone(presentation.tone)}`}
+          <Chip
+            tone={chipToneForState(presentation.tone)}
             data-state-kind={presentation.kind}
             data-state-tone={presentation.tone}
             role="img"
@@ -408,7 +409,7 @@ export const PlanGenericCard = ({
             data-tooltip={presentation.label}
           >
             {presentation.label}
-          </span>
+          </Chip>
           <CooldownProgress remainingSec={remainingSec} baseSec={baseSec} tone={presentation.tone} />
         </span>
       )}

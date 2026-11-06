@@ -1,3 +1,4 @@
+import { CHIP_TONE_CLASSES } from './views/components/chipTone.ts';
 import {
   usageHero,
   usageHeroHeadline,
@@ -26,13 +27,6 @@ export type PowerStatsLike = {
 };
 
 type ChipTone = 'ok' | 'warn' | 'alert' | 'muted';
-
-const CHIP_TONE_CLASSES: readonly string[] = [
-  'plan-chip--ok',
-  'plan-chip--warn',
-  'plan-chip--alert',
-  'plan-chip--muted',
-];
 
 // Pace evaluation thresholds (kWh and ratios). Named to make the hero behavior
 // auditable without re-reading the implementation.
@@ -73,7 +67,7 @@ const setHeroChip = (chip: HTMLElement | null, label: string, tone: ChipTone) =>
   const target = chip;
   target.textContent = label;
   target.classList.remove(...CHIP_TONE_CLASSES);
-  target.classList.add(`plan-chip--${tone}`);
+  target.classList.add(`plan-chip--${tone === 'ok' ? 'good' : tone}`);
   target.hidden = false;
 };
 
