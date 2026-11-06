@@ -294,6 +294,13 @@ describe('post-refresh recompute through the transport seam', () => {
     });
     const { transport, service } = buildTransportChain();
 
+    const read = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
+    let releaseZones!: (zones: ZoneTree) => void;
+    const zonesRead = new Promise<ZoneTree>((resolve) => { releaseZones = resolve; });
+    vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation((path) => (
+      path === 'manager/zones/zone' ? zonesRead : read(path)
+    ));
+
     // At the refresh-dispatch instant the detached tree fetch has not landed:
     // no tree seen yet, so the device fail-safes to main, visibly.
     await transport.refreshSnapshot({ meterDeviceIds: [] });
@@ -301,6 +308,7 @@ describe('post-refresh recompute through the transport seam', () => {
     expect(service.getDiagnostics().membershipByDeviceId.dev1.source).toBe('fallback');
 
     // The tree COMMIT itself triggers recompute — no second refresh needed.
+    releaseZones(ZONES);
     await settleDetachedZoneFetch();
     expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
     expect(service.getDiagnostics().membershipByDeviceId.dev1.source).toBe('zone');
