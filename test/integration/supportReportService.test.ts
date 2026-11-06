@@ -32,6 +32,29 @@ describe('manual support reporting', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); });
   afterEach(() => { vi.useRealTimers(); });
 
+  it.each(['owner', 'daily', 'event'] as const)(
+    'puts the %s trigger and description before evidence in the serialized report', async (trigger) => {
+      const delivery = transport();
+      const service = new SupportReportService({ capture: async () => evidence() }, delivery);
+      const prepare = {
+        owner: () => service.prepare(request),
+        daily: () => service.sendDaily(() => true),
+        event: () => service.sendOnEvent(request, () => true),
+      };
+      const prepared = report(await prepare[trigger]());
+      const json = prepared.message.split('\n')[1];
+      expect(json).toBeDefined();
+      expect(json!.startsWith(`{"trigger":"${trigger}","request":{"problem":`)).toBe(true);
+      expect(Object.keys(prepared.document).slice(0, 5))
+        .toEqual(['trigger', 'request', 'version', 'id', 'capturedAtMs']);
+      expect(Object.keys(prepared.document.request).slice(0, 2)).toEqual(['problem', 'expected']);
+      expect(JSON.parse(json!)).toEqual(prepared.document);
+      if (trigger !== 'daily') {
+        expect(prepared.document.request).toEqual(request);
+      }
+    },
+  );
+
   it('sends the frozen preview even after live state and returned preview objects change', async () => {
     const live = evidence();
     const delivery = transport();
