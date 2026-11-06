@@ -1,3 +1,5 @@
+import { chipToneForOutcome } from './components/chipTone.ts';
+import { Chip } from './components/Chip.tsx';
 import { render } from 'preact';
 import {
   composeHomeLimitsSimulationNotice,
@@ -192,7 +194,7 @@ const StatusCard = ({ status, areaName }: {
     <section class="settings-form-card home-limits__status" id="home-limits-status">
       <div class="home-limits__status-head">
         <h3 class="pels-text-card-title">{composeHomeScopedTitle(HOME_LIMITS_STATUS_TITLE, areaName)}</h3>
-        <span class={`plan-chip plan-chip--${chip.tone}`} id="home-limits-status-chip">{chip.label}</span>
+        <Chip tone={chipToneForOutcome(chip.tone)} id="home-limits-status-chip">{chip.label}</Chip>
       </div>
       <div class="deadline-hero-stats">
         <div class="deadline-hero-stats__pair">

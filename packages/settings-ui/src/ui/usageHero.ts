@@ -1,4 +1,4 @@
-import { CHIP_TONE_CLASSES } from './views/components/chipTone.ts';
+import { CHIP_TONE_CLASSES, chipToneForOutcome } from './views/components/chipTone.ts';
 import {
   usageHero,
   usageHeroHeadline,
@@ -67,7 +67,7 @@ const setHeroChip = (chip: HTMLElement | null, label: string, tone: ChipTone) =>
   const target = chip;
   target.textContent = label;
   target.classList.remove(...CHIP_TONE_CLASSES);
-  target.classList.add(`plan-chip--${tone === 'ok' ? 'good' : tone}`);
+  target.classList.add(`plan-chip--${chipToneForOutcome(tone)}`);
   target.hidden = false;
 };
 

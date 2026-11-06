@@ -47,7 +47,7 @@ const mountIntoBody = (vnode: ComponentChild): HTMLElement => {
 describe('PlanHistoryCard', () => {
   it('renders a succeeded entry with an ok chip and a reached-at line', () => {
     const mount = mountIntoBody(h(PlanHistoryCard, { entry: buildEntry(), timeZone: 'UTC' }));
-    const chip = mount.querySelector('.plan-chip--ok');
+    const chip = mount.querySelector('.plan-chip--good');
     expect(chip?.textContent).toBe('Succeeded');
     // Time formatting uses the system default locale via shared dateUtils helpers, so match
     // the leading HH:mm rather than a fully-rendered locale string.
@@ -183,7 +183,7 @@ describe('PlanHistoryCard', () => {
     }));
     // The card and the outcome chip still render.
     expect(mount.querySelector('.plan-history-card')).not.toBeNull();
-    expect(mount.querySelector('.plan-chip--ok')?.textContent).toBe('Succeeded');
+    expect(mount.querySelector('.plan-chip--good')?.textContent).toBe('Succeeded');
     expect(mount.querySelector('.plan-history-card__coverage')).toBeNull();
   });
 

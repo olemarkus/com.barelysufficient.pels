@@ -55,7 +55,7 @@ const setUsageDayStatus = (text: string, tone?: 'ok' | 'warn') => {
   if (!usageDayStatusPill) return;
   if (tone === 'warn') {
     usageDayStatusPill.textContent = text;
-    usageDayStatusPill.classList.remove('plan-chip--muted', 'plan-chip--ok');
+    usageDayStatusPill.classList.remove('plan-chip--muted', 'plan-chip--good');
     usageDayStatusPill.classList.add('plan-chip--warn');
     usageDayStatusPill.hidden = false;
   } else {

@@ -1,3 +1,5 @@
+import { Chip } from './components/Chip.tsx';
+import { chipToneForOutcome } from './components/chipTone.ts';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import {
@@ -81,7 +83,7 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
       <MdRipple aria-hidden="true" />
       <header class="plan-history-card__header">
         <span class="plan-history-card__deadline">{deadlineLine}</span>
-        <span class={`plan-chip plan-chip--${tone}`}>{outcomeLabel}</span>
+        <Chip tone={chipToneForOutcome(tone)}>{outcomeLabel}</Chip>
       </header>
       {displayDeviceName !== '' && <div class="plan-history-card__device">{displayDeviceName}</div>}
       {progressLine && (

@@ -1,3 +1,5 @@
+import { Chip } from './components/Chip.tsx';
+import { chipToneForOutcome } from './components/chipTone.ts';
 import { buildChargeByStartMs } from '../deadlinePlanHourMaps.ts';
 import { renderDeadlineIntervalBar } from '../deadlineIntervalBar.ts';
 import { useEffect, useRef, useState } from 'preact/hooks';
@@ -890,7 +892,7 @@ const HistoryDetailHero = ({
       * directly above this hero; repeating the same words inside the card
       * stacked chrome three-deep. The outcome chip opens the hero. */}
     <p class="plan-history-detail__outcome">
-      <span class={`plan-chip plan-chip--${hero.chip.tone} plan-history-detail__outcome-chip`}>{hero.chip.text}</span>
+      <Chip tone={chipToneForOutcome(hero.chip.tone)} class="plan-history-detail__outcome-chip">{hero.chip.text}</Chip>
     </p>
     <header class="plan-history-detail__hero-header">
       <h1 class="plan-card__title plan-history-detail__heading">

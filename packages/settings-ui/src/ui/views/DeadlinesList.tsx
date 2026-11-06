@@ -1,3 +1,5 @@
+import { Chip } from './components/Chip.tsx';
+import { chipToneForOutcome } from './components/chipTone.ts';
 import { render, type ComponentChildren } from 'preact';
 import { MdElevation, MdFilledTonalButton, MdRipple, MdTextButton } from './materialWebJSX.tsx';
 import { ChevronRightIcon } from './icons.tsx';
@@ -134,7 +136,7 @@ const StatusChip = ({ statusId }: { statusId: SmartTaskListStatusId }) => {
   // `.plan-chip[data-pulse="true"]`) lights both surfaces uniformly.
   const pulse = statusId === 'building_plan' ? 'true' : undefined;
   return (
-    <span class={`plan-chip plan-chip--${variant}`} data-pulse={pulse}>{label}</span>
+    <Chip tone={chipToneForOutcome(variant)} data-pulse={pulse}>{label}</Chip>
   );
 };
 
