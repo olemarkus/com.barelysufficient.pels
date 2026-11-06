@@ -3,6 +3,11 @@ import type { HubHomeLocation } from './hubHomeLocation';
 import { teslaAdapter } from './tesla';
 import { easeeAdapter } from './easee';
 import { enuaAdapter } from './enua';
+import { alfenAdapter } from './alfen';
+import { alfenProlineAdapter } from './alfenProline';
+import { peblarAdapter } from './peblar';
+import { zappiAdapter } from './myenergi';
+import { wallboxAdapter } from './wallbox';
 import { zaptecAdapter } from './zaptec';
 import { futurehomeAdapter } from './futurehome';
 import { smaAdapter } from './sma';
@@ -21,7 +26,8 @@ import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../utils/types';
 
 const adapters: readonly DeviceAdapter[] = [
-  teslaAdapter, easeeAdapter, enuaAdapter, zaptecAdapter, futurehomeAdapter, osoAdapter, smaAdapter, knxAdapter,
+  teslaAdapter, easeeAdapter, enuaAdapter, alfenAdapter, alfenProlineAdapter, peblarAdapter, zappiAdapter,
+  wallboxAdapter, zaptecAdapter, futurehomeAdapter, osoAdapter, smaAdapter, knxAdapter,
   sessyAdapter, ankerSolixAdapter, zinvoltAdapter, marstekConnectorAdapter, sigenergyAdapter, zendureLocalAdapter,
   huaweiLuna2000Adapter,
 ];

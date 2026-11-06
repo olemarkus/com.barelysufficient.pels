@@ -1,0 +1,150 @@
+/**
+ * The official Alfen app (`com.alfen`, `chargepoint` driver) at the SDK seam.
+ * See `notes/native-wiring/alfen.md`.
+ *
+ * Its `target_power` is the charger's external charging limit, and the only
+ * control PELS uses: a positive limit lets the car charge at it, 0 W stops it.
+ * The app's own `evcharger_charging` is never written or read. Writing it
+ * replaces that same limit, with the station maximum (32 A) for `true`, and the
+ * app publishes it as "is charging now", which a full car or one waiting to
+ * start never is. So the charging switch is the limit: on while it lets a car
+ * charge (6 A per phase or more), off otherwise.
+ */
+import type {
+  CapabilityWrite, DeviceAdapter, DeviceEvOverlay, SwitchWrite,
+} from '../deviceAdapter';
+import type { DeviceCapabilityMap } from '../managerControl';
+import type { HomeyDeviceLike } from '../../utils/types';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import type { TargetPowerConfigWithReachability } from '../targetPowerReachability';
+import { standardDeviceAdapter } from '../standardDeviceAdapter';
+import { resolveTargetPowerPresetPhaseCount } from '../../../packages/shared-domain/src/targetPowerStepping';
+
+const MIN_CURRENT_A = 6;
+const MAX_CURRENT_A = 32;
+const PHASE_VOLTAGE = 230;
+/** The app reads a station as three-phase when L2 or L3 carries more than this. */
+const LIVE_PHASE_VOLTAGE = 50;
+const DRIVER_IDS = new Set(['homey:app:com.alfen:chargepoint', 'com.alfen:chargepoint']);
+/** Declared by every `chargepoint` device and by no other driver PELS knows. */
+const SIGNATURE_CAPABILITY = 'measure_current.stationlimit';
+
+function isAlfenChargepoint(device: HomeyDeviceLike): boolean {
+  return DRIVER_IDS.has(device.driverId?.trim().toLowerCase() ?? '');
+}
+
+function readVolts(values: DeviceCapabilityMap | undefined, capabilityId: string): number {
+  const volts = values?.[capabilityId]?.value;
+  return typeof volts === 'number' && Number.isFinite(volts) ? volts : 0;
+}
+
+/**
+ * Watts per amp the app converts the limit with: three phases when L2 or L3 is
+ * live, otherwise one, exactly as its `detectActivePhases` decides, since
+ * that is what turns PELS's watts into the charger's amps.
+ */
+function wattsPerAmp(values: DeviceCapabilityMap | undefined): number {
+  const threePhase = readVolts(values, 'measure_voltage.l2') > LIVE_PHASE_VOLTAGE
+    || readVolts(values, 'measure_voltage.l3') > LIVE_PHASE_VOLTAGE;
+  return (threePhase ? 3 : 1) * PHASE_VOLTAGE;
+}
+
+const deviceWattsPerAmp = (device: HomeyDeviceLike): number => (
+  wattsPerAmp(device.capabilitiesObj as DeviceCapabilityMap | undefined)
+);
+
+/** Whether a limit, in the app's watts, lets a car charge: 6 A per phase or more. */
+function allowsCharging(limitW: number, gridWattsPerAmp: number): boolean {
+  return limitW / gridWattsPerAmp >= MIN_CURRENT_A - 0.05;
+}
+
+function chargerOverlay(
+  _device: HomeyDeviceLike, capabilities: string[], values: DeviceCapabilityMap,
+): DeviceEvOverlay {
+  const target = values.target_power;
+  if (target?.setable !== true) return { kind: 'standard', capabilities, capabilityObj: values };
+  // The app declares 230 W steps and a 1380 W charging floor on every station.
+  // On three phases those are a third of an amp and 2 A per phase, which no
+  // car charges at, so the ladder is rebuilt in the station's own whole amps.
+  const step = wattsPerAmp(values);
+  const declaredMax = typeof target.max === 'number' && Number.isFinite(target.max) && target.max > 0
+    ? Math.floor(target.max / step) * step : MAX_CURRENT_A * step;
+  return {
+    kind: 'adapted', capabilities,
+    capabilityObj: {
+      ...values,
+      target_power: { ...target, min: 0, max: Math.min(declaredMax, MAX_CURRENT_A * step), step,
+        excludeMin: 0, excludeMax: MIN_CURRENT_A * step },
+    },
+    controlAdapter: { kind: 'capability_adapter', activationRequired: false,
+      activationAvailable: false, activationEnabled: true },
+    binaryTarget: { kind: 'canonical' },
+  };
+}
+
+/** The charging switch read from the limit, dated by it; the app's own switch otherwise stays. */
+function withLimitSwitch(values: DeviceCapabilityMap): DeviceCapabilityMap {
+  const limit = values.target_power;
+  const charging = values.evcharger_charging;
+  if (charging === undefined || typeof limit?.value !== 'number' || !Number.isFinite(limit.value)) return values;
+  return {
+    ...values,
+    evcharger_charging: { ...charging, value: allowsCharging(limit.value, wattsPerAmp(values)),
+      lastUpdated: limit.lastUpdated },
+  };
+}
+
+/** The lowest charging rung of the ladder PELS steps, in the app's watts. */
+function resumeWatts(snapshot: Pick<TransportDeviceSnapshot, 'steppedLoadProfile'>): number | undefined {
+  const rungs = (snapshot.steppedLoadProfile?.steps ?? [])
+    .map((step) => step.planningPowerW).filter((watts) => watts > 0);
+  return rungs.length > 0 ? Math.min(...rungs) : undefined;
+}
+
+function switchWrite(snapshot: TransportDeviceSnapshot, request: CapabilityWrite): SwitchWrite {
+  if (typeof request.value !== 'boolean' || request.capabilityId !== 'evcharger_charging') {
+    return standardDeviceAdapter.switchWrite(snapshot, request, { hasCarStopEvidence: () => false });
+  }
+  const watts = request.value ? resumeWatts(snapshot) : 0;
+  // Without a ladder there is no safe current to start at, and the app's switch would start at 32 A.
+  if (watts === undefined) return { kind: 'none' };
+  return { kind: 'write', write: { capabilityId: 'target_power', value: watts }, readBackAsWritten: false };
+}
+
+function configureTargetPower(
+  device: HomeyDeviceLike, config: TargetPowerConfigWithReachability,
+): TargetPowerConfigWithReachability {
+  if (config.enabled === false || resolveTargetPowerPresetPhaseCount(config.preset)) return config;
+  const gridW = deviceWattsPerAmp(device);
+  const max = Math.min(config.max ?? MAX_CURRENT_A * gridW, MAX_CURRENT_A * gridW);
+  const minimumA = Math.max(MIN_CURRENT_A, Math.ceil((config.excludeMax ?? 0) / gridW));
+  return { ...config, min: 0, max, step: gridW, excludeMin: 0, excludeMax: minimumA * gridW };
+}
+
+export const alfenAdapter: DeviceAdapter = {
+  ...standardDeviceAdapter,
+  matches: isAlfenChargepoint,
+  matchesCapabilities: (capabilities) => capabilities.includes(SIGNATURE_CAPABILITY),
+  overlay: chargerOverlay,
+  configureTargetPower,
+  targetPowerReading: (device, config, value) => {
+    const phases = resolveTargetPowerPresetPhaseCount(config.preset);
+    return phases ? Math.round((value / deviceWattsPerAmp(device)) * PHASE_VOLTAGE * phases) : value;
+  },
+  stepCommand: (device, step, command) => command.capabilityId === 'target_power' && step.planningCurrentA !== undefined
+    ? { ...command, value: Math.round(step.planningCurrentA * deviceWattsPerAmp(device)) } : command,
+  finalizeObservation: (control, _capabilities, values) => control.activationEnabled === true
+    ? withLimitSwitch(values) : values,
+  normalize: (snapshot, capabilityId, value) => {
+    // The app's switch says "charging now", not whether PELS lets it charge.
+    if (capabilityId === 'evcharger_charging') return [];
+    if (capabilityId !== 'target_power' || typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      return [{ capabilityId, value }];
+    }
+    const floorW = resumeWatts(snapshot);
+    if (floorW === undefined) return [{ capabilityId, value }];
+    return [{ capabilityId, value }, { capabilityId: 'evcharger_charging', value: value >= floorW - 0.5 }];
+  },
+  switchWrite: (snapshot, request) => switchWrite(snapshot, request),
+  recoverSwitchWrite: (snapshot, _raw, request) => switchWrite(snapshot, request),
+};
