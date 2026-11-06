@@ -25,6 +25,7 @@ export class DeviceHomeySdk {
     private readonly logger: Logger,
     private readonly onDeviceUpdate: (device: HomeyDeviceLike) => void,
     private readonly onCapabilityUpdate: CapabilityUpdateCallback,
+    private readonly onDeviceInventoryChanged: () => Promise<void>,
   ) {}
 
   get runtime(): Homey.App['homey'] { return resolveHomeyInstance(this.homey); }
@@ -70,6 +71,7 @@ export class DeviceHomeySdk {
       logger: this.logger,
       callbacks: {
         onDeviceUpdate: this.onDeviceUpdate,
+        onDeviceInventoryChanged: this.onDeviceInventoryChanged,
         onCapabilityUpdate: this.onCapabilityUpdate,
       },
     });

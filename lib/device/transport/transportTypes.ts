@@ -99,6 +99,8 @@ export type DeviceTransportOptions = {
      */
     deviceJournal: DeviceJournal;
     getFlowTriggerCard?: (cardId: string) => SteppedLoadFlowTriggerCard | undefined;
+    /** Notify device-list consumers after an inventory event has refreshed the full roster. */
+    onDeviceInventoryRefreshed: () => void;
     /**
      * Fired after a snapshot mutation that may yield a new calibration sample
      * for a stepped-load device (measure_power value changed, or reportedStepId

@@ -58,7 +58,7 @@ describe('mock Homey backend', () => {
     const feed = createDeviceLiveFeed({
       homey: new Homey.App(),
       logger: { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('mock-backend-test') },
-      callbacks: { onDeviceUpdate, onCapabilityUpdate },
+      callbacks: { onDeviceUpdate, onCapabilityUpdate, onDeviceInventoryChanged: vi.fn().mockResolvedValue(undefined) },
     });
     await feed.start();
     feed.updateTrackedDevices(['dev-1']);
