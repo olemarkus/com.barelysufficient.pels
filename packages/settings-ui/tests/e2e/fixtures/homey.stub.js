@@ -1593,7 +1593,6 @@
         dateKey: dateKeyUtc(nowMs - i * 24 * 3600 * 1000),
         tempMeanC: Number(tempC.toFixed(1)),
         kwhTotal: Number(Math.max(8, kwh).toFixed(1)),
-        kwhBudgetCounted: Number(Math.max(8, kwh).toFixed(1)),
         quality: {
           partialTemp: i === 9,
           missingKwh: false,
@@ -1622,7 +1621,6 @@
       lastAutoApply,
       outlookDateKey,
       fit: {
-        energyBasis: 'budget_counted',
         model: 'changepoint',
         baseLoadKwhPerDay: baseLoad,
         slopeKwhPerDegree: slope,
@@ -1675,7 +1673,6 @@
         dateKey: yesterdayDay.dateKey,
         tempMeanC: yesterdayDay.tempMeanC,
         kwhTotal: yesterdayDay.kwhTotal,
-        kwhBudgetCounted: yesterdayDay.kwhBudgetCounted,
         deviationKwh: 1.2,
       },
       usableDays: 287,

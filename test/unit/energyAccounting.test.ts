@@ -3,7 +3,7 @@ import { EnergyAccounting } from '../../lib/power/energyAccounting';
 const key = '2026-11-02T21:00:00.000Z';
 
 describe('energy accounting', () => {
-  it('excludes a capacity-off task from budget usage and both background learning views', () => {
+  it('excludes a capacity-off task from budget usage but learns it as background', () => {
     const accounting = new EnergyAccounting({
       buckets: { [key]: 4.4 },
       controlledBuckets: { [key]: 0.4 },
@@ -17,14 +17,15 @@ describe('energy accounting', () => {
     expect(hour.budgetCountedKwh).toBeCloseTo(1.34);
     expect(hour.counted.controlled).toBeCloseTo(0.4);
     expect(hour.counted.background).toBeCloseTo(0.94);
-    expect(hour.countedGross.background).toBeCloseTo(0.94);
+    expect(hour.learned).toEqual({ controlled: 0.4, background: 4 });
+    expect(hour.learnedGross).toEqual({ controlled: 0.4, background: 4 });
     const window = accounting.window([Date.parse(key)]);
     expect(window.budgetControlUsedNowKWh).toBeCloseTo(1.34);
     expect(window.meteredUsedNowKWh).toBe(4.4);
     expect(window.exemptUsedNowKWh).toBe(3.06);
   });
 
-  it('removes the managed and background exempt portions from their own gross sides under PV', () => {
+  it('removes exempt portions from the budget axis only, keeping learning on the whole meter under PV', () => {
     const hour = new EnergyAccounting({
       buckets: { [key]: 2 },
       controlledBuckets: { [key]: 3 },
@@ -33,20 +34,21 @@ describe('energy accounting', () => {
       uncontrolledExemptBuckets: { [key]: 3 },
     }).bucket(key);
     expect(hour.actual).toEqual({ controlled: 3, background: 4 });
-    expect(hour.countedGross).toEqual({ controlled: 2, background: 1 });
+    expect(hour.learned).toEqual({ controlled: 2, background: 0 });
+    expect(hour.learnedGross).toEqual({ controlled: 3, background: 4 });
     expect(hour.exemptKwh).toBe(2);
     expect(hour.budgetCountedKwh).toBe(0);
     expect(hour.counted).toEqual({ controlled: 0, background: 0 });
   });
 
-  it('interprets legacy recorded exemption as managed-only without moving it to background', () => {
+  it('interprets legacy recorded exemption as managed-only, and learns it as managed', () => {
     const hour = new EnergyAccounting({
       buckets: { [key]: 4 },
       controlledBuckets: { [key]: 3 },
       exemptBuckets: { [key]: 1.5 },
     }).bucket(key);
     expect(hour.counted).toEqual({ controlled: 1.5, background: 1 });
-    expect(hour.countedGross).toEqual({ controlled: 1.5, background: 1 });
+    expect(hour.learned).toEqual({ controlled: 3, background: 1 });
   });
 
   it('does not call an unmeasured day complete or confuse a measured zero with absence', () => {

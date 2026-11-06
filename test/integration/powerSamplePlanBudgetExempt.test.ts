@@ -116,7 +116,7 @@ describe('PowerSamplePipeline task budget exemptions', () => {
   });
 });
 
-it('books a capacity-off charger exemption consistently for pacing and learned demand', async () => {
+it('paces a capacity-off charger as exempt and learns it as background', async () => {
   const { pipeline, getTracker } = buildPipeline(null, new Set(['dev-task']), false, 3.06);
   await pipeline.recordPowerSample(4_400, T0);
   await pipeline.recordPowerSample(4_400, T0 + 60 * 60_000);
@@ -129,10 +129,10 @@ it('books a capacity-off charger exemption consistently for pacing and learned d
   expect(new EnergyAccounting(tracker).bucket(key).budgetCountedKwh).toBeCloseTo(1.34);
   const learned = buildBucketUsageSplit({ bucketStartUtcMs: [T0], powerTracker: tracker });
   expect(learned.bucketUsageControlled).toEqual([0]);
-  expect(learned.bucketUsageUncontrolled[0]).toBeCloseTo(1.34);
+  expect(learned.bucketUsageUncontrolled[0]).toBeCloseTo(4.4);
   const { stats } = buildObservedHourlyStatsFromWindow({
     powerTracker: tracker, timeZone: 'UTC', windowStartUtcMs: T0, windowEndUtcMs: T0 + 60 * 60_000,
   });
-  expect(stats.profileObservedMaxUncontrolledKWh[10]).toBeCloseTo(1.34);
-  expect(stats.profileObservedP50GrossUncontrolledKWh[10]).toBeCloseTo(1.34);
+  expect(stats.profileObservedMaxUncontrolledKWh[10]).toBeCloseTo(4.4);
+  expect(stats.profileObservedP50GrossUncontrolledKWh[10]).toBeCloseTo(4.4);
 });

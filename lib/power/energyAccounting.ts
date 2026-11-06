@@ -12,9 +12,13 @@ type EnergySplit = { controlled: number; background: number };
 
 /**
  * Power-owned accounting for one UTC hour. Actual attribution is gross appliance
- * consumption; counted is the NET budget axis. countedGross is used for the
- * background reserve's gross-demand model. Exemption never becomes background.
- * `measurement` and `attribution` describe the historical evidence, not device state.
+ * consumption. `learned` splits the whole metered energy by control authority:
+ * power-limited (managed) devices and background, summing to `meteredKwh`.
+ * Budget exemption does not move energy between them; budget learning and the
+ * observed statistics read this split, with `learnedGross` for the background
+ * reserve's gross-demand model. `counted` is the NET budget axis, with exempt
+ * energy removed. `measurement` and `attribution` describe the historical
+ * evidence, not device state.
  */
 export type EnergyBucket = {
   measurement: 'recorded' | 'unrecorded';
@@ -23,8 +27,9 @@ export type EnergyBucket = {
   exemptKwh: number;
   budgetCountedKwh: number;
   actual: EnergySplit;
+  learned: EnergySplit;
+  learnedGross: EnergySplit;
   counted: EnergySplit;
-  countedGross: EnergySplit;
 };
 
 type EnergyWindow = {
@@ -71,7 +76,6 @@ export class EnergyAccounting {
       background: Math.max(0, actual.background - backgroundExempt),
     };
     const attribution = resolveAttributionSource(controlled, background);
-    const counted = resolveCountedSplit(attribution, countedGross, budgetCountedKwh);
     return {
       measurement: finite(total) ? 'recorded' : 'unrecorded',
       attribution,
@@ -79,9 +83,9 @@ export class EnergyAccounting {
       exemptKwh,
       budgetCountedKwh,
       actual,
-      counted,
-      countedGross: finite(controlled) || finite(background)
-        ? countedGross : { controlled: 0, background: budgetCountedKwh },
+      learned: resolveNetSplit(attribution, actual, meteredKwh),
+      learnedGross: attribution === 'meter' ? { controlled: 0, background: meteredKwh } : actual,
+      counted: resolveNetSplit(attribution, countedGross, budgetCountedKwh),
     };
   }
 
@@ -176,18 +180,18 @@ const resolveAttributionSource = (controlled: unknown, background: unknown): Ene
   return finite(background) ? 'background' : 'meter';
 };
 
-const resolveCountedSplit = (
+const resolveNetSplit = (
   attribution: EnergyBucket['attribution'],
-  countedGross: EnergySplit,
-  budgetCountedKwh: number,
+  gross: EnergySplit,
+  netKwh: number,
 ): EnergySplit => {
   // Net allocation keeps the established managed-first attribution under PV.
   // With only background evidence, resolve that side first instead.
   if (attribution === 'controlled') {
-    const controlled = Math.min(budgetCountedKwh, countedGross.controlled);
-    return { controlled, background: budgetCountedKwh - controlled };
+    const controlled = Math.min(netKwh, gross.controlled);
+    return { controlled, background: netKwh - controlled };
   }
   const background = attribution === 'background'
-    ? Math.min(budgetCountedKwh, countedGross.background) : budgetCountedKwh;
-  return { controlled: budgetCountedKwh - background, background };
+    ? Math.min(netKwh, gross.background) : netKwh;
+  return { controlled: netKwh - background, background };
 };

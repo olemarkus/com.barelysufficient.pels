@@ -25,8 +25,8 @@ export function buildBucketUsageSplit(params: {
   const accounting = new EnergyAccounting(powerTracker);
   const entries = bucketStartUtcMs.map((ts) => accounting.bucket(new Date(ts).toISOString()));
   return {
-    bucketUsageUncontrolled: entries.map((entry) => entry.counted.background),
-    bucketUsageControlled: entries.map((entry) => entry.counted.controlled),
+    bucketUsageUncontrolled: entries.map((entry) => entry.learned.background),
+    bucketUsageControlled: entries.map((entry) => entry.learned.controlled),
     usedControlledData: entries.some((entry) => entry.measurement === 'recorded' && entry.attribution === 'controlled'),
     hasTotalData: entries.some((entry) => entry.measurement === 'recorded'),
   };

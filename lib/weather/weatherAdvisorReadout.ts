@@ -423,7 +423,7 @@ function buildScatterBins(usableRecords: WeatherDailyRecord[]): WeatherScatterBi
   const byBin = new Map<number, number[]>();
   for (const record of usableRecords) {
     const bin = Math.round(record.tempMeanC);
-    byBin.set(bin, [...(byBin.get(bin) ?? []), record.kwhBudgetCounted as number]);
+    byBin.set(bin, [...(byBin.get(bin) ?? []), record.kwhTotal as number]);
   }
   return [...byBin.entries()]
     .sort(([a], [b]) => a - b)
@@ -471,16 +471,12 @@ function buildRecentDays(yearRecords: WeatherDailyRecord[]): WeatherRecentDay[] 
       && typeof record.kwhTotal === 'number'
       && Number.isFinite(record.kwhTotal)
       && record.kwhTotal > 0
-      && typeof record.kwhBudgetCounted === 'number'
-      && Number.isFinite(record.kwhBudgetCounted)
-      && record.kwhBudgetCounted >= 0
     ))
     .slice(-RECENT_RAW_DAYS)
     .map((record) => ({
       dateKey: record.dateKey,
       tempMeanC: record.tempMeanC,
       kwhTotal: record.kwhTotal as number,
-      kwhBudgetCounted: record.kwhBudgetCounted as number,
       quality: record.quality,
     }));
 }
@@ -494,13 +490,11 @@ function buildYesterday(
   const record = records.find((entry) => entry.dateKey === yesterdayKey);
   if (!record || !isUsableSignatureDay(record)) return null;
   const kwhTotal = record.kwhTotal as number;
-  const kwhBudgetCounted = record.kwhBudgetCounted as number;
   return {
     dateKey: record.dateKey,
     tempMeanC: record.tempMeanC,
     kwhTotal,
-    kwhBudgetCounted,
-    deviationKwh: fit ? kwhBudgetCounted - typicalKwhFor(fit, record) : null,
+    deviationKwh: fit ? kwhTotal - typicalKwhFor(fit, record) : null,
   };
 }
 
@@ -508,7 +502,7 @@ function buildYesterday(
 function computeDriftDeviationKwh(usableRecords: WeatherDailyRecord[], fit: EnergySignatureFit): number {
   const residuals = usableRecords
     .slice(-DRIFT_RECENT_DAYS)
-    .map((record) => (record.kwhBudgetCounted as number) - typicalKwhFor(fit, record));
+    .map((record) => (record.kwhTotal as number) - typicalKwhFor(fit, record));
   return quantile(residuals, 0.5);
 }
 

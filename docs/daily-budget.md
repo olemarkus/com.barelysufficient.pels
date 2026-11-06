@@ -58,7 +58,7 @@ Budget exemption is a control rule, not a meter rewrite:
 
 - Exempt devices are ignored by daily budget control.
 - Their real usage still counts in `used`, `remaining`, `deviation`, and budget overrun reporting.
-- Their energy is excluded when PELS learns budget demand and builds the daily budget plan, including the weather-based budget suggestion. This also applies to an exempt smart task whose device has Power-limit control off.
+- Exemption does not change how PELS learns your home's usage. A device under Power-limit control is learned as a managed device, and everything else as background, so the two always add up to the home's metered usage. A smart task with Power-limit control off leaves its device unmanaged, so its energy is background that the plan leaves room for.
 - They still count toward selected-period capacity protection, including hard-cap and safety-margin limiting.
 
 This means a budget-exempt device can leave the household over the daily budget without causing other devices to be limited just to compensate for that exempt load.
