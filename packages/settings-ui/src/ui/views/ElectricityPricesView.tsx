@@ -183,7 +183,7 @@ const LiveSummaryCard = ({ config }: { config: PriceConfigState }) => {
           "Current price" label doubled it, so it was dropped (legibility
           item: every caption must add information its label doesn't). */}
       <div class="price-config-status-row">
-        <h3 class="section-title">Right now</h3>
+        <h3 class="pels-text-card-title">Right now</h3>
         {chip ? (
           <span class={`plan-chip ${chipToneCls}`} data-price-level={chip.priceLevel}>
             {chip.label}
@@ -881,7 +881,7 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
 
   return (
     <form class="form-grid settings-form-card" onSubmit={(e) => e.preventDefault()}>
-      <h3 class="section-title">Price source</h3>
+      <h3 class="pels-text-card-title">Price source</h3>
       <div class="field">
         <MdFilledSelect
           id="price-source-select"
@@ -945,7 +945,7 @@ const SolarForecastForm = ({ config, handlers }: {
   handlers: ElectricityPricesHandlers;
 }) => (
   <form class="form-grid settings-form-card" onSubmit={(e) => e.preventDefault()}>
-    <h3 class="section-title">Solar forecast</h3>
+    <h3 class="pels-text-card-title">Solar forecast</h3>
     <div class="field">
       <MdFilledSelect
         id="solar-forecast-source-select"
@@ -1069,7 +1069,7 @@ const ExportPriceForm = ({ config, handlers, inverterControl }: ElectricityPrice
       class="form-grid settings-form-card"
       onSubmit={(e) => e.preventDefault()}
     >
-      <h3 class="section-title">{EXPORT_PRICE_LABEL}</h3>
+      <h3 class="pels-text-card-title">{EXPORT_PRICE_LABEL}</h3>
       <p class="muted">
         What you’re paid for power you send to the grid. Check what your power company pays you.
         PELS uses it to plan your solar and battery, and the Budget tab shows it while this is on.
@@ -1266,7 +1266,7 @@ const ThresholdForm = ({ config, handlers }: {
   handlers: ElectricityPricesHandlers;
 }) => (
   <form class="form-grid settings-form-card" onSubmit={(e) => e.preventDefault()}>
-    <h3 class="section-title">Cheap and expensive prices</h3>
+    <h3 class="pels-text-card-title">Cheap and expensive prices</h3>
     <p class="muted">Defines what counts as cheap or expensive.</p>
     <PriceLevelLines summary={config.priceLevelSummary} handlers={handlers} />
     <label class="field">

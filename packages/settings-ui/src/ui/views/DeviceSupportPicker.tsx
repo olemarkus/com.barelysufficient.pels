@@ -110,7 +110,7 @@ const Chevron = () => (
 
 const PickerSection = ({ section, onSelect }: { section: DevicePickerSection; onSelect(row: DevicePickerRow): void }) => (
   <section class="device-picker__zone" aria-label={section.title}>
-    <h3 class="pels-text-section-title device-picker__zone-title">{section.title}</h3>
+    <h3 class="pels-text-title device-picker__zone-title">{section.title}</h3>
     <MdList class="device-picker__list">
       {section.rows.map((row) => {
         const detail = section.rowDetail === 'device_type' ? row.deviceType : row.zoneName;

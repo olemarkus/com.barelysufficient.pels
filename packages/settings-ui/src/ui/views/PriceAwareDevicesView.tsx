@@ -137,7 +137,7 @@ const PriceSourceCard = ({ status }: { status: PriceSetupStatus }) => {
   return (
     <section class="settings-form-card" id="price-aware-devices-source">
       <div class="price-config-status-row">
-        <h3 class="section-title">Prices from</h3>
+        <h3 class="pels-text-card-title">Prices from</h3>
         {open && <span class="plan-chip plan-chip--warn">Not set up</span>}
       </div>
       <p class="pels-card-supporting">{status.summary}</p>
@@ -229,7 +229,7 @@ const DevicesSection = ({ devices, handlers }: { devices: PriceOptDevice[]; hand
   if (devices.length === 0) {
     return (
       <div class="settings-form-card">
-        <h3 class="section-title">Devices</h3>
+        <h3 class="pels-text-card-title">Devices</h3>
         <p class="muted">
           No eligible devices. Mark a temperature device as managed in Settings &rsaquo; Devices, then return here.
         </p>
@@ -244,7 +244,7 @@ const DevicesSection = ({ devices, handlers }: { devices: PriceOptDevice[]; hand
 
   return (
     <div class="settings-form-card">
-      <h3 class="section-title">Devices</h3>
+      <h3 class="pels-text-card-title">Devices</h3>
       <p class="muted">
         Adjusts the current mode&apos;s target temperature: higher while power is cheap, lower while it is expensive.
       </p>

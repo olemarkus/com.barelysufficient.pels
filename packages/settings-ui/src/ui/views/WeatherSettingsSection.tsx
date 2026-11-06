@@ -184,7 +184,7 @@ const DisabledPitch = () => (
 // body renders the master switch, then either the off-state pitch or the device
 // pickers depending on whether the feature is on.
 const WeatherSettingsSectionView = (props: WeatherSettingsSectionProps) => (
-  <div id="weather-insight-settings-body">
+  <div id="weather-insight-settings-body" class="settings-detail-panel">
     <MasterSwitch enabled={props.enabled} onEnabledChange={props.onEnabledChange} />
     {props.enabled && props.pickers !== null
       ? (

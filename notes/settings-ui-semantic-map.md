@@ -30,7 +30,9 @@ font/colour/transform is deleted.
 | field / metric / step / cell label | `caption` | `.metric-label` |
 | summary text | `body` (or `supporting` when secondary) | `.pels-text-body` |
 | status line | `status-line` | `.pels-text-status-line` |
-| hint | `caption` | `.pels-text-caption` |
+| compact hint | `caption` | `.pels-text-caption` |
+| form help | `card-supporting` size/line-height + muted text | `.field__hint` |
+| compact list-group heading (such as device-picker zones) | `title` | `.pels-text-title` |
 | subline | `supporting` | `.pels-text-supporting` |
 | settings row label | `settings-label` | `.pels-text-settings-label` |
 | settings row trailing value | `settings-trailing` | `.pels-text-settings-trailing` |
@@ -39,6 +41,10 @@ The "Shared class" column is the **live, defined** selector for each atom.
 `.entity-name` and `.metric-label` are the two dedicated semantic aliases that
 exist today (each composes its `--pels-text-{role}` token bundle); the rest apply
 the `.pels-text-{role}` role utility directly until a dedicated alias is added.
+Settings labels include body-size text and tight line-height so their typography does not depend
+on whether the host element is a heading, paragraph, label, or span. Form help uses the
+13px supporting-text size and normal line-height for readable multi-line guidance.
+
 Refine as surfaces hit edge cases; record the decision here so it stays
 one-per-kind.
 

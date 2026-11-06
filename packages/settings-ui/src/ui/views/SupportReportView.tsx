@@ -73,7 +73,7 @@ const DeviceSupportFields = ({ state, actions, supportDevice }: SupportReportVie
   supportDevice: SupportDevice;
 }) => (
   <>
-    <h3 class="pels-text-section-title" data-report-device-name>{supportDevice.name ?? 'Selected device'}</h3>
+    <h3 class="entity-name" data-report-device-name>{supportDevice.name ?? 'Selected device'}</h3>
     <MdFilledTextField type="textarea" rows="4" label="Describe the device" required
       value={state.draft.problem} maxlength={SUPPORT_REPORT_PROBLEM_MAX_LENGTH} disabled={reportIsLocked(state)}
       supporting-text="What it is and what PELS should do with it, such as a water heater on a relay to turn off when power is short."
@@ -224,7 +224,7 @@ const ReportResult = ({ state, actions, backTarget, supportDevice, forums }: Sup
     const title = supportDevice ? 'Request sent' : 'Report sent';
     return (
       <section class="support-report__result" aria-label={title}>
-        <h3 class="pels-text-section-title">{title}</h3>
+        <h3 class="pels-text-section-headline">{title}</h3>
         <p class="support-report__reference">Reference: {submission.reference || report.document.id}</p>
         {supportDevice && <p class="pels-text-supporting">
           Support for a new device usually comes in an app update within 1–2 days, depending on how complex the device is.
@@ -236,7 +236,7 @@ const ReportResult = ({ state, actions, backTarget, supportDevice, forums }: Sup
   }
   return (
     <section class="support-report__result" aria-label="Submission not confirmed">
-      <h3 class="pels-text-section-title">
+      <h3 class="pels-text-section-headline">
         {submission.state === 'sending' ? 'Sending report…' : 'Submission not confirmed'}
       </h3>
       <p class="support-report__reference">PELS reference: {report.document.id}</p>

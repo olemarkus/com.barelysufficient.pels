@@ -54,7 +54,7 @@
          home. -->
     <div id="home-scope-bar" hidden></div>
 
-    <section class="card panel hidden" id="devices-panel" data-panel="devices" aria-labelledby="devices-title">
+    <section class="card panel hidden settings-detail-panel" id="devices-panel" data-panel="devices" aria-labelledby="devices-title">
       <div class="pels-appbar">
         <md-icon-button type="button" class="pels-appbar__back" data-settings-target="settings" aria-label="Back to Settings">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
@@ -162,11 +162,11 @@
       </div>
     </section>
 
-    <section class="card panel hidden" id="schedules-panel" data-panel="schedules" aria-label="Schedules">
+    <section class="card panel hidden settings-detail-panel" id="schedules-panel" data-panel="schedules" aria-label="Schedules">
       <div id="schedules-root"></div>
     </section>
 
-    <section class="card panel hidden" id="modes-panel" data-panel="modes" aria-labelledby="modes-title">
+    <section class="card panel hidden settings-detail-panel" id="modes-panel" data-panel="modes" aria-labelledby="modes-title">
       <div class="pels-appbar">
         <md-icon-button type="button" class="pels-appbar__back" data-settings-target="settings" aria-label="Back to Settings">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
@@ -228,7 +228,7 @@
       </div>
     </section>
 
-    <section class="card panel hidden" id="usage-panel" data-panel="usage" data-loading="true" aria-labelledby="usage-hero-headline">
+    <section class="card panel hidden settings-detail-panel" id="usage-panel" data-panel="usage" data-loading="true" aria-labelledby="usage-hero-headline">
       <!-- Visually-hidden panel landmark heading. The visible eyebrow
            ("Energy history") plus the dynamic kWh `<h2>` inside `.usage-hero`
            carry the on-screen identity; this `<h2>` exists purely so the
@@ -423,7 +423,7 @@
       </footer>
     </section>
 
-    <section class="card panel hidden" id="deadlines-panel" data-panel="deadlines" aria-label="Smart tasks">
+    <section class="card panel hidden settings-detail-panel" id="deadlines-panel" data-panel="deadlines" aria-label="Smart tasks">
       <!-- `DeadlinesList.tsx` owns the header inside #deadlines-list-root:
            the populated-state hero renders eyebrow+headline when cards are
            present, and a baseline `.pels-hero` (eyebrow + `<h2>Smart tasks</h2>`)
@@ -795,7 +795,7 @@
       </div>
     </section>
 
-    <section class="card panel hidden" id="advanced-panel" data-panel="advanced" aria-labelledby="advanced-title">
+    <section class="card panel hidden settings-detail-panel" id="advanced-panel" data-panel="advanced" aria-labelledby="advanced-title">
       <div class="pels-appbar">
         <md-icon-button type="button" class="pels-appbar__back" data-settings-target="settings" aria-label="Back to Settings">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>

@@ -128,6 +128,8 @@
       "settings-label": {
         "color": { "value": "{pels.text.primary}" },
         "font": {
+          "size": { "value": "{font.size.md}" },
+          "line-height": { "value": "{font.lineHeight.tight}" },
           "weight": { "value": "{font.weight.semibold}" }
         }
       },
@@ -149,6 +151,11 @@
       "padding": { "value": "{spacing.3}" },
       "gap": { "value": "{spacing.2}" },
       "radius": { "value": "{radius.lg}" }
+    },
+    "form-card": {
+      "padding": { "value": "{spacing.4}" },
+      "gap": { "value": "{spacing.3}" },
+      "radius": { "value": "{radius.md}" }
     },
     "segmented": {
       "container": {
