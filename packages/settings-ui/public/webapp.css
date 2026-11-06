@@ -62,7 +62,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-2);
-  width: min(100%, 480px);
+  width: min(100%, var(--pels-shell-max-width));
   margin: 0 auto;
   box-sizing: border-box;
   padding: var(--spacing-2) var(--spacing-3) 0;
@@ -70,7 +70,7 @@
 }
 
 .webapp-homey-bar__busy {
-  width: min(100%, 480px);
+  width: min(100%, var(--pels-shell-max-width));
   margin: 0 auto;
   box-sizing: border-box;
   padding: 0 var(--spacing-3);

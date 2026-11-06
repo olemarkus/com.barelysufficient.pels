@@ -371,8 +371,8 @@ md-text-button.md-text-button--destructive {
 }
 
 .screen {
-  width: min(100%, 480px);
-  max-width: 480px;
+  width: min(100%, var(--pels-shell-max-width));
+  max-width: var(--pels-shell-max-width);
   margin: 0 auto;
   box-sizing: border-box;
   display: grid;
@@ -537,7 +537,7 @@ md-primary-tab.tab[active] {
      vertical padding keeps the whole banner to that single ~48 px row instead
      of stacking the old three-row card. `min-height` matches the button so the
      value and the comment agree. */
-  min-height: 48px;
+  min-height: var(--pels-touch-target-min);
   padding-block: 0;
   padding-inline: var(--spacing-3);
 }
@@ -3310,50 +3310,12 @@ md-filled-button.is-busy {
  * Shape (padding, border, background, radius, touch-target floor, focus
  * ring, disabled state) lives on the bare `.pels-button` selector so the
  * class carries its full visual contract on any surface. The doubled-class
- * + panel-scoped block below repeats the same declarations to beat Homey's
+ * + panel-scoped selector shares those declarations to beat Homey's
  * host `button { ... }` stylesheet (and any `.homey-app button` scoped rule)
  * without `!important`, matching the segmented-control cascade strategy.
- * Kept byte-equivalent so future shape edits stay in sync; new consumer
- * panels can add their own scoped duplicate or move to a shared
- * `.<panel-id> button.pels-button.pels-button` list. */
-.pels-button {
-  appearance: none;
-  -webkit-appearance: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  min-height: var(--pels-touch-target-min);
-  height: auto;
-  margin: 0;
-  padding: var(--spacing-2) var(--spacing-4);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--pels-surface-outline);
-  background: var(--pels-surface-container-high);
-  color: var(--pels-text-primary);
-  font-family: inherit;
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
-  cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-
-.pels-button:hover,
-.pels-button:focus-visible {
-  background: var(--pels-surface-container-highest);
-  border-color: var(--accent);
-}
-
-.pels-button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.pels-button:disabled {
-  opacity: var(--opacity-disabled);
-  cursor: not-allowed;
-}
-
+ * Keep both selectors in one rule so future shape edits cannot drift.
+ * New consumer panels can extend the same selector list when needed. */
+.pels-button,
 #deadline-plan-panel button.pels-button.pels-button {
   appearance: none;
   -webkit-appearance: none;
@@ -3376,17 +3338,21 @@ md-filled-button.is-busy {
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
+.pels-button:hover,
+.pels-button:focus-visible,
 #deadline-plan-panel button.pels-button.pels-button:hover,
 #deadline-plan-panel button.pels-button.pels-button:focus-visible {
   background: var(--pels-surface-container-highest);
   border-color: var(--accent);
 }
 
+.pels-button:focus-visible,
 #deadline-plan-panel button.pels-button.pels-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
+.pels-button:disabled,
 #deadline-plan-panel button.pels-button.pels-button:disabled {
   opacity: var(--opacity-disabled);
   cursor: not-allowed;
@@ -3427,27 +3393,7 @@ md-filled-button.is-busy {
  * ((0,2,0) bare / (1,2,1) panel-scoped, both > the media-query rule's
  * (0,1,0)) holds the toggle to its intrinsic content width so the title
  * keeps its flex-grow space. */
-.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle {
-  align-self: flex-start;
-  width: auto;
-  flex: 0 0 auto;
-  padding: var(--spacing-1) var(--spacing-3);
-  border-color: var(--color-border-default);
-  background: transparent;
-  font-weight: inherit;
-}
-
-.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:hover,
-.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:focus-visible {
-  background: color-mix(in srgb, var(--pels-surface-container) 92%, var(--color-base-white) 8%);
-  border-color: var(--color-border-default);
-}
-
-.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:focus-visible {
-  outline: 2px solid var(--color-state-info-border);
-  outline-offset: 2px;
-}
-
+.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle,
 #deadline-plan-panel button.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle {
   align-self: flex-start;
   width: auto;
@@ -3458,12 +3404,15 @@ md-filled-button.is-busy {
   font-weight: inherit;
 }
 
+.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:hover,
+.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:focus-visible,
 #deadline-plan-panel button.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:hover,
 #deadline-plan-panel button.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:focus-visible {
   background: color-mix(in srgb, var(--pels-surface-container) 92%, var(--color-base-white) 8%);
   border-color: var(--color-border-default);
 }
 
+.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:focus-visible,
 #deadline-plan-panel button.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:focus-visible {
   outline: 2px solid var(--color-state-info-border);
   outline-offset: 2px;
@@ -4532,16 +4481,22 @@ md-filled-button.is-busy {
    in the normal tone; the original `.price-notice-info` alias retains its
    info-toned text + bottom margin for the existing price surfaces. */
 .pels-notice-info,
-.price-notice-info {
+.price-notice-info,
+.pels-notice-warning,
+.price-notice-warning {
   font-style: normal;
   font-size: var(--font-size-sm);
   padding: var(--spacing-3);
   background: var(--pels-surface-container-low);
   border-width: 1px 1px 1px var(--spacing-1);
   border-style: solid;
+  border-radius: var(--radius-md);
+}
+
+.pels-notice-info,
+.price-notice-info {
   border-color: var(--color-border-default) var(--color-border-default)
     var(--color-border-default) var(--color-state-info-border);
-  border-radius: var(--radius-md);
 }
 
 .pels-notice-info {
@@ -4555,15 +4510,8 @@ md-filled-button.is-busy {
    surfaces. */
 .pels-notice-warning,
 .price-notice-warning {
-  font-style: normal;
-  font-size: var(--font-size-sm);
-  padding: var(--spacing-3);
-  background: var(--pels-surface-container-low);
-  border-width: 1px 1px 1px var(--spacing-1);
-  border-style: solid;
   border-color: var(--color-border-default) var(--color-border-default)
     var(--color-border-default) var(--color-state-warning-border);
-  border-radius: var(--radius-md);
 }
 
 .pels-notice-warning {
@@ -4765,7 +4713,7 @@ details[open] > summary .disclosure-chevron {
   right: 0;
   bottom: 0;
   width: 100%;
-  max-width: 480px;
+  max-width: var(--pels-shell-max-width);
   background: var(--pels-surface-container-high);
   display: flex;
   flex-direction: column;
@@ -8282,7 +8230,7 @@ md-switch {
 }
 
 #device-detail-panel.slide-panel {
-  max-width: 480px;
+  max-width: var(--pels-shell-max-width);
   background: var(--bg);
 }
 
@@ -8613,7 +8561,7 @@ md-switch {
   display: flex;
   align-items: center;
   gap: var(--spacing-1);
-  min-height: 48px;
+  min-height: var(--pels-touch-target-min);
   cursor: pointer;
   list-style: none;
 }
@@ -8730,7 +8678,7 @@ md-switch {
 .pels-select,
 .pels-input {
   width: 100%;
-  min-height: 48px;
+  min-height: var(--pels-touch-target-min);
   padding: var(--spacing-2) var(--spacing-3);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);

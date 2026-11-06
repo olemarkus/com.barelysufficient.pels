@@ -1,5 +1,7 @@
 {
   "spacing": {
+    "half": { "value": "2px", "comment": "Half-step for compact supporting-text stacks and inset padding." },
+    "compact": { "value": "6px", "comment": "Intermediate gap for compact field and chip groups." },
     "1": { "value": "4px" },
     "2": { "value": "8px" },
     "3": { "value": "12px" },
