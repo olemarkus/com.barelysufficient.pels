@@ -10,3 +10,6 @@ const STATE_TONES: Record<string, ChipTone> = {
 };
 
 export const chipToneForState = (tone: string): ChipTone => STATE_TONES[tone] ?? 'muted';
+
+/** Map resolved outcome vocabulary onto the display primitive's tone. */
+export const chipToneForOutcome = (tone: ChipTone | 'ok'): ChipTone => tone === 'ok' ? 'good' : tone;

@@ -1,3 +1,5 @@
+import { Chip } from './components/Chip.tsx';
+import type { ChipTone } from './components/chipTone.ts';
 import type { CapacityPeriodMinutes } from '../../../../contracts/src/capacitySettings.ts';
 import { capacityPeriodEnergyKWh } from '../../../../shared-domain/src/settings/capacityPeriod.ts';
 import { capacityPeriodNoun } from '../capacityPeriodCopy.ts';
@@ -46,7 +48,7 @@ const HERO_STATUS_LABEL: Partial<Record<HeroStatus, string>> = {
   'dry-run': 'Simulation mode',
 };
 
-const HERO_STATUS_CHIP_TONE: Record<HeroStatus, string> = {
+const HERO_STATUS_CHIP_TONE: Record<HeroStatus, ChipTone> = {
   'on-track': 'muted',
   'above-safe-pace': 'warn',
   'projected-over-budget': 'warn',
@@ -277,10 +279,6 @@ const resolveProjectionTone = (scale: EnergyBarScale): ProjectionTone => {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-const Chip = ({ label, tone }: { label: string; tone: string }) => (
-  <span class={`plan-chip plan-chip--${tone}`}>{label}</span>
-);
-
 // The settings webview does not load Material Symbols font, so the info icon
 // is an inline SVG. `currentColor` keeps it tracking the icon-button text token.
 const InfoIcon = () => (
@@ -318,7 +316,7 @@ const HeroChipRow = ({ heroStatus, meta }: { heroStatus: HeroStatus; meta: PlanM
   return (
     <div class={statusLabel ? 'plan-hero__chips' : 'plan-hero__chips plan-hero__chips--icon-only'}>
       <div class="plan-hero__chip-rail">
-        {statusLabel && <Chip label={statusLabel} tone={HERO_STATUS_CHIP_TONE[heroStatus]} />}
+        {statusLabel && <Chip tone={HERO_STATUS_CHIP_TONE[heroStatus]}>{statusLabel}</Chip>}
       </div>
       <MdIconButton
         class="plan-hero__info-button"

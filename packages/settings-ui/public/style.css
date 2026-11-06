@@ -1663,9 +1663,7 @@ md-filled-button.is-busy {
   cursor: help;
 }
 
-.plan-chip--ok,
 .plan-chip--good,
-.plan-chip[data-tone="ok"],
 .plan-chip[data-tone="good"] {
   background: var(--pels-status-good-container);
   border-color: var(--pels-status-good-border);
@@ -4354,7 +4352,7 @@ md-filled-button.is-busy {
 /* Legacy `.chip` primitive removed 2026-05-24 (chip primitive consolidation).
    `.plan-chip` is now the single canonical chip across every settings-UI
    surface; the `chip--neutral` / `chip--ok` / `chip--boost` / `chip--alert`
-   tonal variants map onto `plan-chip--muted` / `plan-chip--ok` /
+   tonal variants map onto `plan-chip--muted` / `plan-chip--good` /
    `plan-chip--warn` / `plan-chip--alert` respectively. `.chip[data-tooltip]`
    help cursor moved to `.plan-chip[data-tooltip]` above; `.chip strong` text
    colour moved to `.plan-chip strong`. */

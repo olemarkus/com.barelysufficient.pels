@@ -2,7 +2,7 @@ import { h, type ComponentChildren } from 'preact';
 import { useRef, useLayoutEffect, useState } from 'preact/hooks';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import { Chip } from './components/Chip.tsx';
-import { chipToneForState } from './components/chipTone.ts';
+import { chipToneForState, chipToneForOutcome } from './components/chipTone.ts';
 import {
   isDimmedDisplayStateKind,
   resolvePlanCardStatusChip,
@@ -266,9 +266,9 @@ const PlanCardStatusChipView = ({
   if (chip === null) return null;
   if (chip.type === 'rescue') return <BudgetExemptChip dev={dev} />;
   return (
-    <span class={`plan-chip plan-chip--${chip.tone}`} data-tooltip={chip.tooltip}>
+    <Chip tone={chipToneForOutcome(chip.tone)} data-tooltip={chip.tooltip}>
       {chip.label}
-    </span>
+    </Chip>
   );
 };
 

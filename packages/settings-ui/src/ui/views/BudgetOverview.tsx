@@ -1,3 +1,4 @@
+import { chipToneForOutcome } from './components/chipTone.ts';
 import { Chip } from './components/Chip.tsx';
 import { render, type ComponentChildren } from 'preact';
 import { useEffect, useRef, useLayoutEffect, useState } from 'preact/hooks';
@@ -294,7 +295,7 @@ const BudgetHero = ({ hero, onRecourse }: { hero: BudgetHeroData; onRecourse: (a
           </span>
         )}
         {hero.delta && (
-          <Chip id="budget-redesign-delta" tone={hero.delta.tone === 'ok' ? 'good' : hero.delta.tone}>
+          <Chip id="budget-redesign-delta" tone={chipToneForOutcome(hero.delta.tone)}>
             {hero.delta.label}
           </Chip>
         )}

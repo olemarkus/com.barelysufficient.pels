@@ -335,7 +335,7 @@ test.describe('Deadline recorder → history UI round-trip', () => {
     await expect(list).toBeVisible();
     const cards = list.locator('.plan-history-card');
     await expect(cards).toHaveCount(1);
-    await expect(cards.first().locator('.plan-chip--ok')).toHaveText('Succeeded');
+    await expect(cards.first().locator('.plan-chip--good')).toHaveText('Succeeded');
   });
 
   test('runs through a missed deadline and renders the Missed card', async ({ page }) => {

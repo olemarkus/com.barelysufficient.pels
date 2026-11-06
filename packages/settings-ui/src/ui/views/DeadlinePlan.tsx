@@ -1,3 +1,5 @@
+import { Chip } from './components/Chip.tsx';
+import { chipToneForOutcome } from './components/chipTone.ts';
 import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
@@ -386,19 +388,17 @@ export type DeadlinePlanLoadState =
     history?: DeadlinePlanHistoryView;
   };
 
-const chipClass = (tone: DeadlinePlanChipTone): string => `plan-chip plan-chip--${tone}`;
-
 const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
   <section class="plan-hero pels-hero" data-tone={payload.hero.tone} aria-labelledby="deadline-plan-title">
     <div class="plan-hero__chips">
       {payload.hero.chips.map((chip) => (
-        <span
+        <Chip
           key={chip.text}
-          class={chipClass(chip.tone)}
+          tone={chipToneForOutcome(chip.tone)}
           data-pulse={chip.pulse ? 'true' : undefined}
         >
           {chip.text}
-        </span>
+        </Chip>
       ))}
     </div>
     <div class="plan-hero__section">
@@ -1164,13 +1164,13 @@ const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
   <section class="plan-hero pels-hero" data-tone="info" aria-labelledby="deadline-plan-pending-title">
     <div class="plan-hero__chips">
       {pending.hero.chips.map((chip) => (
-        <span
+        <Chip
           key={chip.text}
-          class={chipClass(chip.tone)}
+          tone={chipToneForOutcome(chip.tone)}
           data-pulse={chip.pulse ? 'true' : undefined}
         >
           {chip.text}
-        </span>
+        </Chip>
       ))}
     </div>
     <div class="plan-hero__section">
@@ -1604,7 +1604,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
         <section class="pels-surface-card budget-redesign-card">
           {loadState.statusChip !== undefined && (
             <div class="plan-hero__chips">
-              <span class={chipClass(loadState.statusChip.tone)}>{loadState.statusChip.text}</span>
+              <Chip tone={chipToneForOutcome(loadState.statusChip.tone)}>{loadState.statusChip.text}</Chip>
             </div>
           )}
           <h1 class="plan-card__title">{loadState.headline ?? copy.headline}</h1>
