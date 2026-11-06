@@ -7,8 +7,8 @@ import { setMdValue } from './fixtures/materialWeb';
 // `Choose what PELS does` offers its plan.
 const SCREENSHOT_DIR = process.env.PELS_SETUP_BATTERY_SCREENSHOT_DIR;
 
-const seedBatteryHome = async (page: Page) => {
-  await page.addInitScript(() => {
+const seedBatteryHome = async (page: Page, hasPrices = true) => {
+  await page.addInitScript(({ hasPrices }) => {
     const battery = {
       id: 'setup-battery', name: 'Thuisbatterij', zone: 'Garage', available: true,
       deviceClass: 'battery', deviceType: 'onoff', isEvCharger: false, isBatteryOrSolar: true,
@@ -39,10 +39,15 @@ const seedBatteryHome = async (page: Page) => {
       },
       continuousBatteryPlans: () => ({ [battery.id]: planRead() }),
       apiHandlers: {
-        'GET /ui_prices': () => ({ combinedPrices: { priceUnit: 'EUR/kWh' }, priceTimeline: { state: 'ready', priceUnit: 'EUR/kWh' } }),
+        'GET /ui_prices': () => ({
+          combinedPrices: { priceUnit: 'EUR/kWh' },
+          priceTimeline: hasPrices
+            ? { state: 'ready', priceUnit: 'EUR/kWh' }
+            : { state: 'unavailable', reason: 'no_prices' },
+        }),
       },
     };
-  });
+  }, { hasPrices });
 };
 
 const stored = (page: Page, key: string) => page.evaluate((key) => (
@@ -100,6 +105,29 @@ for (const width of [320, 360, 480]) {
       await page.locator('#devices-panel .setup-journey').getByRole('button', { name: 'Review setup', exact: true }).click();
       await expect(page.locator('#setup-review-root')).toContainText('Plan charging with PELS on');
       await expectNoSideScroll(page);
+    });
+  });
+}
+
+for (const width of [320, 480]) {
+  test.describe(`missing prices at ${width}px`, () => {
+    test.use({ viewport: { width, height: 900 } });
+
+    test('failed battery setup restores the switch and offers price setup', async ({ page }, testInfo) => {
+      await seedBatteryHome(page, false);
+      await page.goto('/?page=settings/devices&setup=goals');
+      const card = page.locator('#device-card-list [data-device-id="setup-battery"]');
+      const toggle = card.getByRole('switch', { name: 'Plan charging with PELS for Thuisbatterij', exact: true });
+      await setMdValue(page, '#device-card-list [data-device-id="setup-battery"] md-filled-text-field', '10');
+      await toggle.click();
+      await expect(toggle).not.toBeChecked();
+      await expect(card.getByRole('alert')).toContainText('Waiting for electricity prices');
+      expect(await stored(page, 'continuous_battery_plan')).toEqual({});
+      await expectNoSideScroll(page);
+      await page.screenshot({ path: testInfo.outputPath('battery-prices-missing.png'), scale: 'css', fullPage: true });
+      await card.getByRole('button', { name: 'Electricity prices', exact: true }).click();
+      await expect(page).toHaveURL(/setup=prices/);
+      await expect(page.locator('#electricity-prices-panel')).toBeVisible();
     });
   });
 }

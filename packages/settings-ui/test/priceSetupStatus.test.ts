@@ -44,6 +44,7 @@ const statusOf = (
 ) => (
   resolvePriceSetupStatus({
     priceSetup, homeyToday, homeyTomorrow: null, homeyPriceFormula, powerhourToday, powerhourTomorrow: null,
+    flowToday: null, flowTomorrow: null,
   })
 );
 
@@ -146,7 +147,45 @@ describe('resolvePriceSetupStatus', () => {
       .toEqual({ state: 'open', summary: 'PELS uses Homey Energy until you choose a source.' });
     expect(statusOf(readOf({ scheme: 'homey', basis: CHOSEN }), HOMEY_DAY))
       .toEqual({ state: 'complete', summary: 'Homey Energy' });
-    expect(statusOf(readOf({ scheme: 'flow', basis: CHOSEN }))).toEqual({ state: 'complete', summary: 'Flow' });
+  });
+
+  it('keeps Flow setup open without a usable current day, even after choosing the source', () => {
+    vi.useFakeTimers({ now: new Date('2026-10-11T12:00:00Z') });
+    try {
+      const priceSetup = readOf({ scheme: 'flow', basis: CHOSEN });
+      const missing = { state: 'open', summary: 'Send today’s or tomorrow’s prices through a Flow.' };
+      expect(statusOf(priceSetup)).toEqual(missing);
+      for (const flowToday of [
+        { ...HOMEY_DAY, pricesByHour: {} },
+        { ...HOMEY_DAY, pricesByHour: { 0: 'not a price' } },
+        { ...HOMEY_DAY, dateKey: '2026-10-10' },
+      ]) {
+        expect(resolvePriceSetupStatus({
+          priceSetup, homeyToday: HOMEY_DAY, homeyTomorrow: null, homeyPriceFormula: { kind: 'none' },
+          powerhourToday: HOMEY_DAY, powerhourTomorrow: null, flowToday, flowTomorrow: null,
+        })).toEqual(missing);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('completes Flow setup with prices for either today or tomorrow without requiring both', () => {
+    vi.useFakeTimers({ now: new Date('2026-10-11T12:00:00Z') });
+    try {
+      for (const [flowToday, flowTomorrow] of [
+        [{ ...HOMEY_DAY, pricesByHour: { 0: 0 } }, null],
+        [null, { ...HOMEY_DAY, dateKey: '2026-10-12', pricesByHour: { 0: -0.2 } }],
+      ]) {
+        expect(resolvePriceSetupStatus({
+          priceSetup: readOf({ scheme: 'flow', basis: CHOSEN }),
+          homeyToday: null, homeyTomorrow: null, homeyPriceFormula: { kind: 'none' },
+          powerhourToday: null, powerhourTomorrow: null, flowToday, flowTomorrow,
+        })).toEqual({ state: 'complete', summary: 'Flow' });
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('claims nothing without the read', () => {

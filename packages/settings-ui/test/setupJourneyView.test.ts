@@ -28,7 +28,7 @@ const battery = (overrides: Partial<SetupGoalChoice> = {}): SetupGoalChoice => (
   ...overrides,
 });
 
-const renderPicker = (devices: SetupGoalChoice[], onBatteryPlan = vi.fn()) => {
+const renderPicker = (devices: SetupGoalChoice[], onBatteryPlan = vi.fn(async () => {})) => {
   const root = mount();
   act(() => {
     render(h(() => SetupGoalPicker({
@@ -66,6 +66,24 @@ describe('Choose what PELS does, battery row', () => {
       current.dispatchEvent(new Event('change'));
     });
     expect(onBatteryPlan).toHaveBeenCalledWith('battery', true, 5.12);
+  });
+
+  it('restores the accepted switch and keeps the save error and price action visible', async () => {
+    const onBatteryPlan = vi.fn(async () => { throw new Error('Waiting for electricity prices.'); });
+    const { root } = renderPicker([battery({
+      battery: { state: 'ready', enabled: false, capacityKWh: 10, simulating: true },
+    })], onBatteryPlan);
+    await act(async () => {
+      const toggle = root.querySelector<Switch>('md-switch')!;
+      toggle.selected = true;
+      toggle.dispatchEvent(new Event('change'));
+    });
+    expect(root.querySelector<Switch>('md-switch')!.selected).toBe(false);
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain('Waiting for electricity prices.');
+    const prices = Array.from(root.querySelectorAll<HTMLElement>('md-text-button'))
+      .find((button) => button.textContent === 'Electricity prices')!;
+    expect(prices.dataset.settingsTarget).toBe('electricity-prices');
+    expect(prices.dataset.setupJourney).toBe('prices');
   });
 
   it('flags a capacity out of range and keeps the switch off', () => {

@@ -67,6 +67,7 @@ const buildProps = (
   config: Partial<PriceConfigState> = {},
   overrides: Partial<ElectricityPricesViewProps> = {},
 ): ElectricityPricesViewProps => ({
+  showSetupGoals: false,
   inverterControl: { read: null, busy: false, error: '', onEnabledChange: () => {}, onRetry: () => {} },
   config: buildConfig(config),
   handlers: buildHandlers(),
@@ -1104,14 +1105,12 @@ describe('ElectricityPricesView, Homey Energy without prices', () => {
     document.body.appendChild(mount);
     renderElectricityPricesView(mount, buildProps({ priceScheme: 'homey', homeyStatus: noPricesStatus }));
 
-    expect(mount.textContent).toContain('Or choose another source above.');
+    expect(mount.textContent).toContain('You can also supply prices from another source with a Flow.');
     expect(mount.textContent).not.toContain('Use Power by the Hour');
     expect(mount.textContent).not.toContain('Get Power by the Hour');
   });
 
-  it('recommends getting Power by the Hour beside Homey Energy when that app is not running', () => {
-    // A Polish hub: Homey Energy has no prices for Poland, so turning it on
-    // cannot help there, and Power by the Hour is the way to market prices.
+  it('explains Power by the Hour coverage before offering it when the app is not running', () => {
     const mount = document.createElement('div');
     document.body.appendChild(mount);
     renderElectricityPricesView(mount, buildProps({
@@ -1121,12 +1120,50 @@ describe('ElectricityPricesView, Homey Energy without prices', () => {
     }));
 
     expect(mount.textContent).toContain('If Homey Energy covers your country, turn on dynamic prices');
-    expect(mount.textContent).toContain('Otherwise, use Power by the Hour with your tariff.');
+    expect(mount.textContent).toContain('Check that it covers your tariff before adding it.');
     const get = Array.from(mount.querySelectorAll('md-outlined-button'))
       .find((button) => button.textContent?.trim() === 'Get Power by the Hour') as (HTMLElement & { href?: string; target?: string }) | undefined;
     expect(get?.href).toBe('https://homey.app/a/com.gruijter.powerhour');
     expect(get?.target).toBe('_blank');
     expect(mount.textContent).not.toContain('Use Power by the Hour');
+  });
+
+  it('gives a Korean home a custom Flow route and a return to device choices without changing its settings', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    const onSchemeChange = vi.fn();
+    renderElectricityPricesView(mount, buildProps({
+      priceScheme: 'homey',
+      homeyStatus: noPricesStatus,
+      priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'app_unavailable' } },
+    }, {
+      market: { state: 'resolved', country: 'KR' },
+      handlers: buildHandlers({ onSchemeChange }),
+      showSetupGoals: true,
+    }));
+
+    expect(mount.textContent).toContain('Power by the Hour offers European market prices');
+    expect(mount.textContent).toContain('You need to supply the prices for your own contract.');
+    const buttons = Array.from(mount.querySelectorAll('md-outlined-button'));
+    const flow = buttons.find((button) => button.textContent?.trim() === 'Use Flow prices') as HTMLElement;
+    const goals = buttons.find((button) => button.textContent?.trim() === 'Choose what PELS does') as HTMLElement;
+    expect(onSchemeChange).not.toHaveBeenCalled();
+    goals.click();
+    expect(goals.dataset.settingsTarget).toBe('devices');
+    expect(goals.dataset.setupJourney).toBe('goals');
+    expect(onSchemeChange).not.toHaveBeenCalled();
+    flow.click();
+    expect(onSchemeChange).toHaveBeenCalledWith('flow');
+    expect(mount.querySelector('md-outlined-button[href="https://pels.barelysufficient.org/configuration#settings-electricity-prices"]'))
+      .not.toBeNull();
+  });
+
+  it('keeps the setup return out of the ordinary prices page', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    renderElectricityPricesView(mount, buildProps({ priceScheme: 'homey', homeyStatus: noPricesStatus }));
+
+    expect(mount.textContent).not.toContain('Choose what PELS does');
   });
 
   it('asks for a price device when Power by the Hour runs without one', () => {
@@ -1138,7 +1175,7 @@ describe('ElectricityPricesView, Homey Energy without prices', () => {
       priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'no_price_device' } },
     }));
 
-    expect(mount.textContent).toContain('Or add a price device with your tariff in Power by the Hour.');
+    expect(mount.textContent).toContain('Add a price device only if it can represent your tariff.');
     expect(mount.textContent).not.toContain('Get Power by the Hour');
   });
 });

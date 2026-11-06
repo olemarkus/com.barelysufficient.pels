@@ -40,11 +40,10 @@ export const renderSetupGoals = (target: HTMLElement, rerender: () => void): voi
     onBatteryPlan: (id, enabled, capacityKWh) => {
       // A plan runs on prices, so turning one on keeps an assumed source as
       // Price-based control does.
-      void trackSetupSave(`battery-plan:${id}`, async () => {
+      return trackSetupSave(`battery-plan:${id}`, async () => {
         await saveSetupBatteryPlan(id, enabled, capacityKWh);
         if (enabled) await keepAssumedPriceSource();
       })
-        .catch((error) => showToastError(error, 'Battery plan could not be saved. Try again.'))
         .finally(() => { rerender(); notifySetupPathChange(); });
     },
     onNewSmartTask: dispatchOpenSmartTaskCreateFromSetup,
