@@ -309,8 +309,8 @@ export class PowerSamplePipeline {
         capacitySettings,
         timeZone: this.deps.getTimeZone(),
         getDeviceSurfaces: () => this.deps.getDeviceSurfaces(),
-        taskBudgetExemptDeviceIds: this.deps.readTaskBudgetExemptDeviceIds(nowMs),
-        powerTracker,
+        readTaskBudgetExemptDeviceIds: (atMs) => this.deps.readTaskBudgetExemptDeviceIds(atMs),
+        getPowerTracker: () => this.deps.getPowerTracker(),
         updateObjectiveProfiles: this.updateObjectiveProfiles,
         schedulePlanRebuild: async () => {
           // Fence ordering: the tracker core invokes this callback after

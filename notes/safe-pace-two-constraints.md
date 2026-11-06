@@ -824,6 +824,11 @@ serves its resolved admission decision directly through
 published plan. The claim lasts only through its native scheduling interval
 and task deadline, and a disabled, cleared or edited task invalidates it before
 the next decoration. Reading this decision does not evaluate or allocate tasks.
+After a meter sample accrues the previously held reading and its triggered
+decision finishes, accounting refreshes the new held reading's exemption from
+that decision. It reuses the captured measured draw without accruing energy
+again, so a claim renewed at a native interval boundary applies to the next
+sample interval. Tracker changes made during planning remain intact.
 
 `lib/power/energyAccounting.ts` owns the historical accounting views consumed
 by daily-budget pacing, learning, observed reserves, planner usage and weather
