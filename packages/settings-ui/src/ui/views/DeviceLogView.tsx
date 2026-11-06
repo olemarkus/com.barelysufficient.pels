@@ -1,7 +1,8 @@
 import { Fragment, render } from 'preact';
 import type { SettingsUiDeviceActivityEntry } from '../../../../contracts/src/settingsUi/devices.ts';
 import { HOME_SCOPE_ACTIVITY_NOT_RECORDED } from '../homeScopeCopy.ts';
-import { chipModifierForTone } from './chipModifier.ts';
+import { Chip } from './components/Chip.tsx';
+import { chipToneForState } from './components/chipTone.ts';
 import { MdTextButton } from './materialWebJSX.tsx';
 import {
   collapseRepeatedLogEntries,
@@ -58,12 +59,12 @@ const DeviceLogEntryRow = ({ item, formatTimestamp, showDeviceNames }: DeviceLog
     <li class="device-log__entry">
       {showDeviceNames && <p class="pels-text-card-title device-log__line entity-name">{entry.deviceName}</p>}
       <div class="device-log__entry-head">
-        <span
-          class={`plan-chip plan-chip--${chipModifierForTone(entry.stateTone)}`}
+        <Chip
+          tone={chipToneForState(entry.stateTone)}
           data-state-tone={entry.stateTone}
         >
           {entry.stateMsg}
-        </span>
+        </Chip>
         <time class="pels-text-caption muted device-log__time">{formatTimestamp(entry.atMs)}</time>
       </div>
       {entry.powerMsg ? (

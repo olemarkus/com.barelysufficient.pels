@@ -1,3 +1,4 @@
+import { Chip } from './components/Chip.tsx';
 import { render, type ComponentChildren } from 'preact';
 import { useEffect, useRef, useLayoutEffect, useState } from 'preact/hooks';
 import {
@@ -201,12 +202,6 @@ export type BudgetOverviewProps = {
 
 // ─── Budget Hero ──────────────────────────────────────────────────────────────
 
-const deltaChipClass = (tone: BudgetDeltaTone): string => {
-  if (tone === 'alert') return 'plan-chip plan-chip--alert';
-  if (tone === 'warn') return 'plan-chip plan-chip--warn';
-  return 'plan-chip plan-chip--ok';
-};
-
 // Compact labeled stacked bar for today's managed/background split — the
 // glanceable replacement for the former dim "Managed … · Background …" meta
 // text. Track reuses the shared `.pels-meter-track`/`.pels-meter-segments`
@@ -299,9 +294,9 @@ const BudgetHero = ({ hero, onRecourse }: { hero: BudgetHeroData; onRecourse: (a
           </span>
         )}
         {hero.delta && (
-          <span id="budget-redesign-delta" class={deltaChipClass(hero.delta.tone)}>
+          <Chip id="budget-redesign-delta" tone={hero.delta.tone === 'ok' ? 'good' : hero.delta.tone}>
             {hero.delta.label}
-          </span>
+          </Chip>
         )}
       </div>
       {/* Role tier 1 — the running-total fact ("52.3 kWh used so far
