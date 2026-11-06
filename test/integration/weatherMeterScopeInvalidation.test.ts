@@ -59,7 +59,7 @@ const learnedHistory = (overrides: Partial<WeatherHistoryState> = {}): WeatherHi
   meterKwhDeviceId: MAIN_METER,
   kwhPurgeVersion: 1,
   controlledBackfillVersion: 2,
-  latestFit: { energyBasis: 'budget_counted', model: 'linear', slopeKwhPerDegree: 1.2 } as WeatherHistoryState['latestFit'],
+  latestFit: { model: 'linear', slopeKwhPerDegree: 1.2 } as WeatherHistoryState['latestFit'],
   meterScopeSignature: STAMPED_SIGNATURE,
   ...overrides,
 });

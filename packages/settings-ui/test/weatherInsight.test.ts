@@ -48,7 +48,6 @@ import {
  * -------------------------------------------------------------------------- */
 
 const buildFit = (overrides: Partial<EnergySignatureFit> = {}): EnergySignatureFit => ({
-  energyBasis: 'budget_counted',
   model: 'changepoint',
   baseLoadKwhPerDay: 23,
   slopeKwhPerDegree: 1.8,
@@ -117,10 +116,10 @@ const buildReadout = (
   recentDays: [{
     dateKey: '2026-06-10',
     tempMeanC: 3,
-    kwhTotal: 47, kwhBudgetCounted: 47,
+    kwhTotal: 47,
     quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false },
   }],
-  yesterday: { dateKey: '2026-06-10', tempMeanC: 3, kwhTotal: 47, kwhBudgetCounted: 47, deviationKwh: 1.2 },
+  yesterday: { dateKey: '2026-06-10', tempMeanC: 3, kwhTotal: 47, deviationKwh: 1.2 },
   usableDays: 287,
   backfilledDays: 240,
   suppressedDaysExcluded: 0,

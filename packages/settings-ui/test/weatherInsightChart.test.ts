@@ -24,7 +24,6 @@ const palette: WeatherChartPalette = {
 };
 
 const fit = (overrides: Partial<EnergySignatureFit> = {}): EnergySignatureFit => ({
-  energyBasis: 'budget_counted',
   model: 'changepoint',
   baseLoadKwhPerDay: 23,
   slopeKwhPerDegree: 1.8,
@@ -58,7 +57,7 @@ const baseInput = (overrides: Partial<WeatherChartOptionInput> = {}): WeatherCha
     {
       dateKey: '2026-06-10',
       tempMeanC: 3,
-      kwhTotal: 47, kwhBudgetCounted: 47,
+      kwhTotal: 47,
       quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false },
     },
   ],
@@ -148,13 +147,13 @@ describe('buildWeatherChartOption', () => {
         {
           dateKey: '2026-06-01',
           tempMeanC: 6,
-          kwhTotal: 35, kwhBudgetCounted: 35,
+          kwhTotal: 35,
           quality: { partialTemp: true, missingKwh: false, unreliablePower: false, backfilled: false },
         },
         {
           dateKey: '2026-06-10',
           tempMeanC: 3,
-          kwhTotal: 47, kwhBudgetCounted: 47,
+          kwhTotal: 47,
           quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false },
         },
       ],

@@ -2,8 +2,7 @@ import {
   createDailyBudgetStateStore,
   importLegacyDailyBudgetState,
 } from '../../lib/dailyBudget/dailyBudgetStateStore';
-import { DAILY_BUDGET_ACCOUNTING_BASIS, resetDailyBudgetLearningState }
-  from '../../lib/dailyBudget/dailyBudgetLearningReset';
+import { resetDailyBudgetLearningState } from '../../lib/dailyBudget/dailyBudgetLearningReset';
 import type { DailyBudgetState } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { DAILY_BUDGET_STATE } from '../../lib/utils/settingsKeys';
@@ -21,7 +20,6 @@ const totalChanges = (db: ReturnType<typeof open>['db']): number => (
 const hourly = (value: number): number[] => Array.from({ length: 24 }, () => value);
 
 const TODAY_PLAN: DailyBudgetState = {
-  profileAccountingBasis: DAILY_BUDGET_ACCOUNTING_BASIS,
   dateKey: '2026-09-28',
   dayStartUtcMs: Date.UTC(2026, 8, 27, 22),
   plannedKWh: hourly(1),
@@ -30,7 +28,6 @@ const TODAY_PLAN: DailyBudgetState = {
 };
 
 const learned = (days: number, weight: number): DailyBudgetState => ({
-  profileAccountingBasis: DAILY_BUDGET_ACCOUNTING_BASIS,
   profileUncontrolled: { weights: hourly(weight), sampleCount: days },
   profileControlled: { weights: hourly(weight), sampleCount: days },
   profileControlledShare: 0.4,
@@ -176,82 +173,5 @@ describe('importLegacyDailyBudgetState', () => {
     importLegacyDailyBudgetState(settings, store);
     expect(totalChanges(db)).toBe(changes);
     expect(store.read()).toBeNull();
-  });
-});
-
-
-describe('daily-budget accounting basis migration', () => {
-  const seedOldState = (db: ReturnType<typeof open>['db']): DailyBudgetState => {
-    const state: DailyBudgetState = {
-      ...TODAY_PLAN,
-      ...learned(200, 0.04),
-      profileAccountingBasis: undefined,
-      profileObservedStatsConfigKey: 'old-statistics',
-      profileObservedMaxUncontrolledKWh: hourly(12),
-      profileObservedP90GrossUncontrolledKWh: hourly(15),
-      plannedUncontrolledKWh: hourly(0.8),
-      plannedGrossUncontrolledKWh: hourly(0.9),
-      plannedControlledKWh: hourly(0.2),
-      lastPlanBucketStartUtcMs: TODAY_PLAN.dayStartUtcMs,
-      frozen: true,
-      dayBudgetKWh: 40,
-      closedDayBudget: { dateKey: '2026-09-27', dailyBudgetKWh: 35 },
-    };
-    const insert = db.prepare('INSERT INTO daily_budget_state_fields (key, value_json) VALUES (?, ?)');
-    for (const [key, value] of Object.entries(state)) {
-      if (value !== undefined) insert.run(key, JSON.stringify(value));
-    }
-    return state;
-  };
-
-  it('discards incompatible derived profiles once while preserving day and budget history', () => {
-    const { db, store } = open();
-    const old = seedOldState(db);
-    const migrated = store.read();
-    expect(migrated).toEqual({
-      profileAccountingBasis: DAILY_BUDGET_ACCOUNTING_BASIS,
-      dateKey: old.dateKey,
-      dayStartUtcMs: old.dayStartUtcMs,
-      frozen: false,
-      lastUsedNowKWh: old.lastUsedNowKWh,
-      dayBudgetKWh: old.dayBudgetKWh,
-      closedDayBudget: old.closedDayBudget,
-    });
-    const changes = totalChanges(db);
-    expect(createDailyBudgetStateStore(db).read()).toEqual(migrated);
-    expect(totalChanges(db)).toBe(changes);
-
-    const relearned = { ...migrated, ...learned(1, 1 / 24) };
-    store.write(relearned);
-    expect(createDailyBudgetStateStore(db).read()).toEqual(relearned);
-  });
-
-  it('retains old rows and retries when the migration cannot commit', () => {
-    const { db, store } = open();
-    seedOldState(db);
-    db.exec("CREATE TRIGGER refuse_basis BEFORE INSERT ON daily_budget_state_fields "
-      + "WHEN NEW.key = 'profileAccountingBasis' BEGIN SELECT RAISE(ABORT, 'disk full'); END");
-    expect(() => store.read()).toThrow('disk full');
-    expect(db.prepare("SELECT value_json FROM daily_budget_state_fields WHERE key = 'profileSampleCount'").get())
-      .toEqual({ value_json: '200' });
-    expect(db.prepare("SELECT value_json FROM daily_budget_state_fields WHERE key = 'profileAccountingBasis'").get())
-      .toBeUndefined();
-
-    db.exec('DROP TRIGGER refuse_basis');
-    expect(store.read()?.profileAccountingBasis).toBe(DAILY_BUDGET_ACCOUNTING_BASIS);
-    expect(store.read()?.profileSampleCount).toBeUndefined();
-  });
-
-  it('does not import more old-basis samples over current-basis learning', () => {
-    const { store } = open();
-    const settings = new MockSettings();
-    const current = { ...TODAY_PLAN, ...learned(1, 1 / 24) };
-    store.write(current);
-    settings.set(DAILY_BUDGET_STATE, {
-      ...TODAY_PLAN, ...learned(200, 0.04), profileAccountingBasis: undefined,
-    });
-    importLegacyDailyBudgetState(settings, store);
-    expect(store.read()).toEqual(current);
-    expect(settings.getKeys()).not.toContain(DAILY_BUDGET_STATE);
   });
 });

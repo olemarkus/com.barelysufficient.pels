@@ -172,7 +172,7 @@ describe('daily budget learning utilities', () => {
     expect(result.hasTotalData).toBe(true);
   });
 
-  it('buildBucketUsageSplit excludes exempt usage from both learning buckets', () => {
+  it('buildBucketUsageSplit splits metered usage by control authority, regardless of exemption', () => {
     const timeZone = 'UTC';
     const dateKey = '2024-01-14';
     const dayStart = getDateKeyStartMs(dateKey, timeZone);
@@ -197,11 +197,11 @@ describe('daily budget learning utilities', () => {
       },
     });
 
-    expect(result.bucketUsageControlled).toEqual([1.5, 1.5]);
+    expect(result.bucketUsageControlled).toEqual([3, 2]);
     expect(result.bucketUsageUncontrolled).toEqual([1, 1]);
   });
 
-  it('keeps exempt managed load out of physical gross background reserve learning', () => {
+  it('learns exempt managed load as managed, leaving gross background unchanged', () => {
     const timeZone = 'UTC';
     const dateKey = '2024-01-14';
     const dayStart = getDateKeyStartMs(dateKey, timeZone);
@@ -216,7 +216,7 @@ describe('daily budget learning utilities', () => {
     const result = resolveWindowBucketUsage(key, energy, timeZone, dayStart, dayStart + 60 * 60 * 1000);
 
     expect(result).toMatchObject({
-      controlled: 1.5,
+      controlled: 3,
       uncontrolled: 1,
       grossUncontrolled: 2,
     });
@@ -387,7 +387,7 @@ describe('daily budget learning utilities', () => {
     expect(result.nextState.profileObservedMinControlledKWh?.[22]).toBeCloseTo(2, 6);
   });
 
-  it('excludes exempt controlled usage from observed background reserves', () => {
+  it('keeps exempt controlled usage managed in observed statistics', () => {
     const timeZone = 'UTC';
     const nowMs = Date.UTC(2024, 0, 20, 0, 0, 0);
     const targetHour = 22;
@@ -410,7 +410,7 @@ describe('daily budget learning utilities', () => {
     });
 
     expect(result.changed).toBe(true);
-    expect(result.nextState.profileObservedMaxControlledKWh?.[targetHour]).toBeCloseTo(3, 6);
+    expect(result.nextState.profileObservedMaxControlledKWh?.[targetHour]).toBeCloseTo(5, 6);
     expect(result.nextState.profileObservedMaxUncontrolledKWh?.[targetHour]).toBeCloseTo(0, 6);
     expect(result.nextState.profileObservedP50UncontrolledKWh?.[targetHour]).toBeCloseTo(0, 6);
     expect(result.nextState.profileObservedP75UncontrolledKWh?.[targetHour]).toBeCloseTo(0, 6);

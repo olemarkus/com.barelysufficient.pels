@@ -21,7 +21,6 @@ const TOMORROW = '2026-06-12';
 const record = (dateKey: string, overrides: Partial<WeatherDailyRecord> = {}): WeatherDailyRecord => ({
   dateKey,
   kwhTotal: 40,
-  kwhBudgetCounted: overrides.kwhTotal ?? 40,
   tempMeanC: 5,
   tempMinC: 2,
   tempMaxC: 8,
@@ -31,7 +30,6 @@ const record = (dateKey: string, overrides: Partial<WeatherDailyRecord> = {}): W
 });
 
 const fit = (overrides: Partial<EnergySignatureFit> = {}): EnergySignatureFit => ({
-  energyBasis: 'budget_counted',
   model: 'changepoint',
   baseLoadKwhPerDay: 23,
   slopeKwhPerDegree: 1.8,
@@ -98,18 +96,6 @@ const payloadFor = (input: WeatherAdvisorReadoutInput): WeatherAdvisorReadoutPay
   const read = buildWeatherAdvisorReadout(input);
   return read.kind === 'readout' ? read.payload : null;
 };
-
-describe('counted-energy readout', () => {
-  it('compares counted usage with the fit while preserving the actual total', () => {
-    const records = recentDays(30).map((entry) => ({
-      ...entry, kwhTotal: 60, kwhBudgetCounted: 40,
-    }));
-    const payload = payloadFor(withState({ records, latestFit: fit() }));
-    expect(payload?.scatter.every((bin) => bin.kwhMedian === 40)).toBe(true);
-    expect(payload?.recentDays.at(-1)).toMatchObject({ kwhTotal: 60, kwhBudgetCounted: 40 });
-    expect(payload?.yesterday).toMatchObject({ kwhTotal: 60, kwhBudgetCounted: 40 });
-  });
-});
 
 describe('buildWeatherAdvisorReadout', () => {
   it('answers inactive when the flag is off (structural absence)', () => {
@@ -505,7 +491,7 @@ describe('buildWeatherAdvisorReadout', () => {
     expect(calm?.driftSuspected).toBe(false);
     expect(calm?.driftDeviationKwh).toBeNull();
 
-    const driftRecords = recentDays(30).map((entry) => ({ ...entry, tempMeanC: 13, kwhTotal: 28, kwhBudgetCounted: 28 }));
+    const driftRecords = recentDays(30).map((entry) => ({ ...entry, tempMeanC: 13, kwhTotal: 28 }));
     const drifted = payloadFor(withState({
       records: driftRecords,
       latestFit: fit({ driftSuspected: true }),

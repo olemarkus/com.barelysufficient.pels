@@ -835,11 +835,14 @@ by daily-budget pacing, learning, observed reserves, planner usage and weather
 history. `exemptBuckets` records total measured exemption independently of
 Power-limit control; `uncontrolledExemptBuckets` records its background share.
 The latter is zero for legacy buckets, whose recorded exemptions were all
-managed. Actual attribution retains both groups in full. Counted gross demand
-subtracts each group's own exempt share; net budget usage subtracts total exempt
-energy, bounded by net import for each hour. Consumers do not repeat these
-calculations. Complete local days feed the weather fit on that same counted
-axis; actual metered history remains separate.
+managed. Actual attribution retains both groups in full. Learning (`learned`,
+`learnedGross`) splits the whole metered energy by control authority, so a
+Power-limit-off exempt task is background and managed plus background equals
+the meter; exemption never moves energy between them. Net budget usage
+(`counted`, `budgetCountedKwh`) subtracts total exempt energy, bounded by net
+import for each hour. Consumers do not repeat these calculations. The weather
+fit uses whole-home daily totals; budget-counted days feed only the
+budget-pressure loop.
 
 The alternative policy, allocating solar pro-rata across exempt and non-exempt
 load instead of to non-exempt first, was considered and rejected: it would let an
