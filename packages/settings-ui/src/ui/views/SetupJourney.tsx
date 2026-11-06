@@ -118,7 +118,7 @@ const BatteryGoal = ({ id, name, goal, busy, onBatteryPlan, onOpen }: BatteryGoa
           const enabled = readSwitchSelected(event);
           setError(null);
           void onBatteryPlan(id, enabled, enabled ? capacity : null).catch((caught: unknown) => {
-            setError(caught instanceof Error ? caught.message : 'Battery plan could not be saved. Try again.');
+            setError(caught instanceof Error && caught.message ? caught.message : 'Battery plan could not be saved. Try again.');
           });
         }} />
       <span class="md-switch-row__label pels-text-settings-label">Plan charging with PELS</span>

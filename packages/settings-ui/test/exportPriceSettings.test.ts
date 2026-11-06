@@ -387,6 +387,23 @@ describe('handleSchemeChange export transition (via priceConfig)', () => {
     select.dispatchEvent(new Event('change', { bubbles: true }));
   };
 
+  it('updates the setup return action before a navigation status read finishes', async () => {
+    const originalUrl = window.location.href;
+    window.history.replaceState({}, '', '?page=settings/electricity-prices');
+    const surface = await bootPricesView({ price_scheme: 'homey' });
+    expect(surface.textContent).not.toContain('Choose what PELS does');
+    const finishReads: Array<(value: null) => void> = [];
+    getApiReadModelMock.mockImplementation(() => new Promise<null>((resolve) => { finishReads.push(resolve); }));
+    window.history.replaceState({}, '', '?page=settings/electricity-prices&setup=prices');
+    const { openElectricityPricesView } = await import('../src/ui/priceConfig.ts');
+    const opening = openElectricityPricesView();
+    expect(surface.textContent).toContain('Choose what PELS does');
+    getApiReadModelMock.mockResolvedValue(null);
+    finishReads.forEach((finishRead) => finishRead(null));
+    await opening;
+    window.history.replaceState({}, '', originalUrl);
+  });
+
   it('a failed scheme save leaves the export config untouched (no premature writes or state)', async () => {
     // Stored config: Norway scheme, export enabled, share + fixed set.
     const surface = await bootPricesView({

@@ -68,8 +68,11 @@ describe('Choose what PELS does, battery row', () => {
     expect(onBatteryPlan).toHaveBeenCalledWith('battery', true, 5.12);
   });
 
-  it('restores the accepted switch and keeps the save error and price action visible', async () => {
-    const onBatteryPlan = vi.fn(async () => { throw new Error('Waiting for electricity prices.'); });
+  it.each([
+    ['Waiting for electricity prices.', 'Waiting for electricity prices.'],
+    ['', 'Battery plan could not be saved. Try again.'],
+  ])('restores the accepted switch and keeps the save error and price action visible (%s)', async (message, expected) => {
+    const onBatteryPlan = vi.fn(async () => { throw new Error(message); });
     const { root } = renderPicker([battery({
       battery: { state: 'ready', enabled: false, capacityKWh: 10, simulating: true },
     })], onBatteryPlan);
@@ -79,7 +82,7 @@ describe('Choose what PELS does, battery row', () => {
       toggle.dispatchEvent(new Event('change'));
     });
     expect(root.querySelector<Switch>('md-switch')!.selected).toBe(false);
-    expect(root.querySelector('[role="alert"]')?.textContent).toContain('Waiting for electricity prices.');
+    expect(root.querySelector('[role="alert"]')?.textContent).toContain(expected);
     const prices = Array.from(root.querySelectorAll<HTMLElement>('md-text-button'))
       .find((button) => button.textContent === 'Electricity prices')!;
     expect(prices.dataset.settingsTarget).toBe('electricity-prices');

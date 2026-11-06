@@ -6,6 +6,8 @@ import type {
 } from '../../../contracts/src/settingsUi/prices.ts';
 import { getFlowPricePayload } from '../../../shared-domain/src/price/flowPriceUtils.ts';
 import { getDateKeyInTimeZone, shiftDateKey } from '../../../shared-domain/src/utils/dateUtils.ts';
+import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
+import { normalizeCombinedPrices } from './combinedPrices.ts';
 import { getHomeyTimezone } from './homey.ts';
 import { gridCompanyNameOf } from './gridCompanies.ts';
 
@@ -85,6 +87,18 @@ const hasCurrentPriceDay = (days: readonly unknown[]): boolean => {
   });
 };
 
+/** A transient source-day read can leave the runtime serving its accepted Flow prices. */
+const hasRetainedFlowPrices = (combined: unknown): boolean => {
+  if (!isUnknownRecord(combined) || combined.priceScheme !== 'flow') return false;
+  const timeZone = getHomeyTimezone();
+  const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
+  const current = new Set([todayKey, shiftDateKey(todayKey, 1)]);
+  return normalizeCombinedPrices(combined).some(({ startsAt }) => {
+    const date = new Date(startsAt);
+    return Number.isFinite(date.getTime()) && current.has(getDateKeyInTimeZone(date, timeZone));
+  });
+};
+
 export const NORWAY_PRICE_MODEL_NAMES: Record<NorwayPriceModelSetting, string> = {
   stromstotte: 'Strømstøtte',
   norgespris: 'Norgespris',
@@ -137,7 +151,7 @@ export const resolvePriceSetupStatus = (
   payload: Pick<
     SettingsUiPricesPayload,
     'priceSetup' | 'homeyToday' | 'homeyTomorrow' | 'homeyPriceFormula'
-    | 'powerhourToday' | 'powerhourTomorrow' | 'flowToday' | 'flowTomorrow'
+    | 'powerhourToday' | 'powerhourTomorrow' | 'flowToday' | 'flowTomorrow' | 'combinedPrices'
   >,
 ): PriceSetupStatus => {
   const read = payload.priceSetup;
@@ -165,7 +179,9 @@ export const resolvePriceSetupStatus = (
   if (source.scheme === 'powerhour' && !hasCurrentPriceDay([payload.powerhourToday, payload.powerhourTomorrow])) {
     return { state: 'open', summary: 'Power by the Hour has no prices yet.' };
   }
-  if (source.scheme === 'flow' && !hasCurrentPriceDay([payload.flowToday, payload.flowTomorrow])) {
+  if (source.scheme === 'flow'
+    && !hasCurrentPriceDay([payload.flowToday, payload.flowTomorrow])
+    && !hasRetainedFlowPrices(payload.combinedPrices)) {
     return { state: 'open', summary: 'Send today’s or tomorrow’s prices through a Flow.' };
   }
   const name = SOURCE_NAMES[source.scheme];

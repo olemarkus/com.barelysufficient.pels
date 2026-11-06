@@ -44,6 +44,11 @@ export const renderSetupGoals = (target: HTMLElement, rerender: () => void): voi
         await saveSetupBatteryPlan(id, enabled, capacityKWh);
         if (enabled) await keepAssumedPriceSource();
       })
+        .catch((error: unknown) => {
+          // The row can remount after capacity saves, or disappear on navigation.
+          void showToastError(error, 'Battery plan could not be saved. Try again.');
+          throw error;
+        })
         .finally(() => { rerender(); notifySetupPathChange(); });
     },
     onNewSmartTask: dispatchOpenSmartTaskCreateFromSetup,
