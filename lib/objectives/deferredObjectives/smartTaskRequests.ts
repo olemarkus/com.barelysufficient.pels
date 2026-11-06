@@ -133,6 +133,7 @@ export class SmartTaskRequests<Device extends SmartTaskWriteDevice> {
     const devices = previewDevices.map((entry) => ({ ...entry, priority: priorities.getPriority(entry.id) }));
     const snapshot = buildTaskEvaluationSnapshot(
       this.evaluation, this.source.getNow().getTime(), devices, roster.settings, dailyBudgetSnapshot,
+      { kind: 'preview', candidateDeviceId: deviceId },
     );
     const priceRateLabel = price.getPriceUnitLabel();
     return {

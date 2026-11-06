@@ -1,3 +1,4 @@
+import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
 import { captureDebugTopic } from '../utils/loggerCapture';
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { noDeliveryEvidence } from '../helpers/deferredObjectiveWiringFixtures';
@@ -79,6 +80,7 @@ type LifecycleFixture = Partial<Omit<DeferredObjectiveLifecycleEmitterDeps, 'sou
 
 const buildDeps = (overrides: LifecycleFixture = {}): DeferredObjectiveLifecycleEmitterDeps => {
   const {
+    allocationRoster = new TaskAllocationRoster(() => new Date(NOW_MS)),
     hasSolarProduction = () => false,
     getTimeZone = () => 'UTC',
     getThermalDirection = () => 'heating',
@@ -99,6 +101,7 @@ const buildDeps = (overrides: LifecycleFixture = {}): DeferredObjectiveLifecycle
   } = overrides;
   return {
     source: {
+      allocationRoster,
       hasSolarProduction,
       getTimeZone,
       getThermalDirection,

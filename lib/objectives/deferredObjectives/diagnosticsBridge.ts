@@ -15,7 +15,6 @@ export {
   type TaskEvaluationSnapshot,
   type TaskEvaluationSource,
 } from './taskEvaluationCoordinator';
-import type { PriorityAllocationTracker } from './priorityAllocation';
 import type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 
 export type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
@@ -28,7 +27,6 @@ export { emitDeferredObjectiveDiagnostics, type DeferredObjectiveAnnounce } from
 export const buildDeferredObjectiveDiagnostics = (
   snapshot: TaskEvaluationSnapshot,
   readers: TaskEvaluationReaders,
-  tracker: PriorityAllocationTracker,
   lane: TaskEvaluationLane,
-): DeferredObjectiveDiagnostic[] => buildDeferredObjectiveTaskResults(snapshot, readers, tracker, lane)
+): DeferredObjectiveDiagnostic[] => buildDeferredObjectiveTaskResults(snapshot, readers, lane)
   .map((result) => result.diagnostic);

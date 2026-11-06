@@ -1,3 +1,4 @@
+import type { TaskAllocationRoster, TaskAllocationRosterSnapshot } from './taskAllocationRoster';
 import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
 import { buildUnallocatedTaskEvaluation, taskPermissionsForObjective } from './taskEvaluationProducer';
 import {
@@ -49,7 +50,6 @@ import {
   orderDeferredObjectives,
   type CoordinatedDeferredObjective,
   type OrderedDeferredObjective,
-  type PriorityAllocationTracker,
 } from './priorityAllocation';
 import {
   buildObjectiveDeviceExclusionPredicate,
@@ -99,6 +99,7 @@ const holdsHigherPriorityLoad = (
 
 // What one evaluation cycle observed, shared by every task evaluated in it.
 export type TaskEvaluationSnapshot = {
+  allocationRoster: TaskAllocationRosterSnapshot;
   nowMs: number;
   timeZone: string;
   devices: ObjectiveDeviceInput[];
@@ -145,6 +146,7 @@ export type TaskEvaluationReaders = {
 // create-task preview all evaluate through it, so they differ only in the
 // per-cycle inputs they hand `buildTaskEvaluationSnapshot`.
 export type TaskEvaluationSource = TaskEvaluationReaders & {
+  allocationRoster: TaskAllocationRoster;
   getTimeZone: () => string;
   getThermalDirection: (deviceId: string) => ThermalDirection;
   getPowerTracker: () => PowerTrackerState;
@@ -169,18 +171,29 @@ export const buildTaskEvaluationSnapshot = (
   devices: readonly ObjectiveDeviceSource[],
   settings: DeferredObjectiveRoster,
   dailyBudgetSnapshot: DailyBudgetUiPayload | null,
-): TaskEvaluationSnapshot => ({
-  nowMs,
-  timeZone: source.getTimeZone(),
-  devices: resolveObjectiveDeviceInputs(devices, source.getThermalDirection),
-  settings,
-  powerTracker: source.getPowerTracker(),
-  dailyBudgetSnapshot,
-  priceOptimizationEnabled: source.getPriceOptimizationEnabled(),
-  activePlans: source.getDeferredObjectiveActivePlans(),
-  powerLimits: source.getCapacitySettings(),
-  hasSolarProduction: source.hasSolarProduction(),
-});
+  lane: TaskEvaluationLane,
+): TaskEvaluationSnapshot => {
+  const objectiveDevices = resolveObjectiveDeviceInputs(devices, source.getThermalDirection);
+  if (lane.kind === 'live') {
+    source.allocationRoster.observe(
+      objectiveDevices, nowMs, buildObjectiveDeviceExclusionPredicate(source.resolveDeviceExclusion),
+    );
+    source.allocationRoster.retainObjectiveDeviceIds(new Set(Object.keys(settings.objectivesByDeviceId)));
+  }
+  return {
+    allocationRoster: source.allocationRoster.read(nowMs),
+    nowMs,
+    timeZone: source.getTimeZone(),
+    devices: objectiveDevices,
+    settings,
+    powerTracker: source.getPowerTracker(),
+    dailyBudgetSnapshot,
+    priceOptimizationEnabled: source.getPriceOptimizationEnabled(),
+    activePlans: source.getDeferredObjectiveActivePlans(),
+    powerLimits: source.getCapacitySettings(),
+    hasSolarProduction: source.hasSolarProduction(),
+  };
+};
 
 // Which lane evaluates. The live lanes (lifecycle emitter, decoration) serve
 // settled commitments between settles. A preview solves its candidate fresh while
@@ -259,20 +272,17 @@ const governsItsDevice = (
 export const buildDeferredObjectiveTaskResults = (
   snapshot: TaskEvaluationSnapshot,
   readers: TaskEvaluationReaders,
-  tracker: PriorityAllocationTracker,
   lane: TaskEvaluationLane,
 ): TaskEvaluationReport[] => {
   const { nowMs, activePlans } = snapshot;
   const deviceById = new Map(snapshot.devices.map((device) => [device.id, device]));
   const isDeviceExcluded = buildObjectiveDeviceExclusionPredicate(readers.resolveDeviceExclusion);
-  tracker.observe(snapshot.devices, nowMs, isDeviceExcluded);
   const ordered = orderDeferredObjectives(
     snapshot.settings,
     deviceById,
     isDeviceExcluded,
-    tracker,
+    snapshot.allocationRoster,
     activePlans,
-    nowMs,
     readers.getPrioritiesForDevices,
   );
   const reservations: DeferredObjectivePriorityReservation[] = [];

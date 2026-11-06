@@ -1,3 +1,4 @@
+import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
@@ -199,6 +200,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
   // only soft constraint and any shed is a daily-budget shed.
   const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
   const deferredController = new DeferredObjectiveDecorationController({
+    allocationRoster: new TaskAllocationRoster(() => new Date()),
     hasSolarProduction: () => false,
     getThermalDirection: () => 'heating',
     getPrioritiesForDevices: createFixturePriorityQuery(),

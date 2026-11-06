@@ -168,8 +168,8 @@ export const handleDeferredDeadlineReached = (
  * (a first revision is immediate). The clock also CLEARS an ended task's plan via
  * `onDeadlineReached → disableDeferredObjectiveInSettings`. Do not reintroduce a
  * second active-plan WRITER on the decoration side. Lifecycle and decoration
- * intentionally keep separate `PriorityAllocationTracker` caches because each
- * evaluator owns its own SDK-snapshot grace state.
+ * update one shared allocation roster from accepted live inputs. Preview only
+ * reads that roster and cannot extend missing-device grace.
  *
  * See notes/state-management/deferred-objective-lifecycle-carveout.md.
  */

@@ -23,7 +23,6 @@ import type { DeferredObjectiveHoursRemainingBus } from './hoursRemainingBus';
 import type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCrossings';
 import type { DeferredObjectiveRoster } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { isDeferredObjectiveExpired } from './diagnosticTypes';
-import { PriorityAllocationTracker } from './priorityAllocation';
 
 const emitObjectiveDebug = getDebugEmitter('deferred_objectives', 'deferred_objectives');
 
@@ -117,7 +116,6 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
 };
 
 export class DeferredObjectiveLifecycleEmitter {
-  private readonly priorityAllocationTracker = new PriorityAllocationTracker();
   private lifecycleDeviceIds: ReadonlySet<string> = new Set();
 
   // objectiveId -> the state already announced for it, so an unchanged task
@@ -141,13 +139,13 @@ export class DeferredObjectiveLifecycleEmitter {
     // SDK call).
     const { source } = this.deps;
     const snapshot = buildTaskEvaluationSnapshot(
-      source, nowMs, this.deps.getDevices(), settings, this.deps.getDailyBudgetSnapshot(),
+      source, nowMs, this.deps.getDevices(), settings, this.deps.getDailyBudgetSnapshot(), LIVE_LANE,
     );
     const { activePlans } = snapshot;
     this.deps.energyDelivery.observe(snapshot.devices, settings, nowMs);
     // Reporting projects the evaluator's completion without re-reading evidence.
     let diagnostics = buildDeferredObjectiveDiagnostics(
-      snapshot, source, this.priorityAllocationTracker, LIVE_LANE,
+      snapshot, source, LIVE_LANE,
     ).map(reportTaskCompletionDiagnostic);
 
     // Plan-history record, using this tick's (pre-write) snapshot.

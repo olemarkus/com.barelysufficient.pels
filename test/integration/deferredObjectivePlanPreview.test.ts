@@ -1,3 +1,4 @@
+import { ELIGIBILITY_ABANDON_GRACE_MS, TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { buildFixtureDiagnostics, type TaskEvaluationFixture } from '../helpers/taskEvaluationFixture';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
@@ -310,6 +311,8 @@ const buildSettings = (params: {
 });
 
 type PreviewContext = {
+  nowMs?: number;
+  allocationRoster?: TaskAllocationRoster;
   device: MeteredPlanInputDevice | undefined;
   devices?: MeteredPlanInputDevice[];
   settings?: DeferredObjectiveRoster;
@@ -350,6 +353,7 @@ const runPreview = (params: {
   // when the device is in neither snapshot) and no other smart task.
   const devices = params.ctx.devices ?? (params.ctx.device ? [params.ctx.device] : []);
   const source: TaskEvaluationSource = {
+    allocationRoster: params.ctx.allocationRoster ?? new TaskAllocationRoster(() => new Date(NOW_MS)),
     hasSolarProduction: () => params.ctx.hasSolarProduction ?? false,
     getTimeZone: () => 'UTC',
     getThermalDirection: () => 'heating',
@@ -367,10 +371,11 @@ const runPreview = (params: {
   };
   const snapshot = buildTaskEvaluationSnapshot(
     source,
-    NOW_MS,
+    params.ctx.nowMs ?? NOW_MS,
     devices,
     params.ctx.settings ?? { objectivesByDeviceId: {} },
     params.ctx.dailyBudgetSnapshot,
+    { kind: 'preview', candidateDeviceId: params.deviceId },
   );
   return previewDeferredObjectivePlan(
     snapshot, source, params.deviceId, params.candidate, params.ctx.priceRateLabel ?? 'øre/kWh',
@@ -655,6 +660,36 @@ describe('previewDeferredObjectivePlan', () => {
     });
 
     expect(estimate.scheduledHours.every((hour) => !highHours.has(hour.startsAtMs))).toBe(true);
+
+    // Live evaluation has observed the device disappear and its grace expire.
+    // Repeated previews consume that same history instead of starting a new grace.
+    const allocationRoster = new TaskAllocationRoster(() => new Date(NOW_MS));
+    allocationRoster.observe([highDevice, compactedLow], NOW_MS, () => false);
+    allocationRoster.observe([compactedLow], NOW_MS + 30_000, () => false);
+    const afterGrace: PreviewContext = {
+      device: compactedLow,
+      devices: [compactedLow],
+      nowMs: NOW_MS + ELIGIBILITY_ABANDON_GRACE_MS + 1,
+      allocationRoster,
+      settings,
+      activePlans,
+      getPrioritiesForDevices: createFixturePriorityQuery([
+        { id: 'z-high', priority: 1 }, { id: 'a-low', priority: 2 },
+      ]),
+      powerTracker,
+      dailyBudgetSnapshot,
+      priceOptimizationEnabled: true,
+      capacitySettings: { limitKw: 1.5, marginKw: 0 },
+    };
+    const withoutHigherTask = runPreview({
+      deviceId: 'a-low', candidate,
+      ctx: { ...afterGrace, settings: { objectivesByDeviceId: {} }, activePlans: createEmptyActivePlans() },
+    });
+    expect(withoutHigherTask.scheduledHours.length).toBeGreaterThan(0);
+    for (let index = 0; index < 2; index += 1) {
+      const released = runPreview({ deviceId: 'a-low', candidate, ctx: afterGrace });
+      expect(released.scheduledHours).toEqual(withoutHigherTask.scheduledHours);
+    }
   });
 
   it('projects an on-track EV candidate with scheduled hours, finish, energy, and cost', () => {
