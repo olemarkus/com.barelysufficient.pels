@@ -1,3 +1,4 @@
+import { orderDeferredObjectives } from '../../lib/objectives/deferredObjectives/priorityAllocation';
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { observedDeviceReadsDouble } from '../helpers/observedDeviceReadsDouble';
@@ -24,9 +25,8 @@ import { objectiveRosterFor } from '../utils/objectiveRoster';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import {
   ELIGIBILITY_ABANDON_GRACE_MS,
-  orderDeferredObjectives,
-  PriorityAllocationTracker,
-} from '../../lib/objectives/deferredObjectives/priorityAllocation';
+  TaskAllocationRoster,
+} from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
 import { resolvePendingReason } from '../../lib/objectives/deferredObjectives/activePlanRevisionBuild';
 import { resolveDiagnosticReasonCode } from '../../lib/objectives/deferredObjectives/activePlanDiagnosticReason';
 import type { ResolveObjectiveDeviceExclusion } from '../../lib/objectives/deferredObjectives/deviceExclusion';
@@ -164,7 +164,7 @@ describe('smart task on an un-managed device', () => {
     const catalog = new ModePriorityCatalog();
     const missing = buildHeaterDevice('a-missing');
     const survivor = { ...buildHeaterDevice('z-survivor'), priority: 1 };
-    const tracker = new PriorityAllocationTracker();
+    const tracker = new TaskAllocationRoster(() => new Date(NOW_MS));
     tracker.observe([missing, survivor], NOW_MS, () => false);
     tracker.observe([survivor], NOW_MS + 30_000, () => false);
     const settings = objectiveRosterFor({
@@ -174,9 +174,8 @@ describe('smart task on an un-managed device', () => {
       settings,
       new Map([[survivor.id, survivor]]),
       () => false,
-      tracker,
+      tracker.read(nowMs),
       createEmptyActivePlans(),
-      nowMs,
       (deviceIds) => catalog.getOrder('Home', deviceIds, () => false),
     ).map(({ deviceId, priority, reservationEligible }) => ({ deviceId, priority, reservationEligible }));
 
@@ -191,7 +190,7 @@ describe('smart task on an un-managed device', () => {
   });
 
   it('takes no allocation share while paused, so a sibling task is not under-booked', () => {
-    const tracker = new PriorityAllocationTracker();
+    const tracker = new TaskAllocationRoster(() => new Date(NOW_MS));
     const running = buildHeaterDevice('heater-running');
     // Both devices are managed and seen once...
     tracker.observe([running, buildHeaterDevice('heater-1')], NOW_MS, () => false);
@@ -204,9 +203,8 @@ describe('smart task on an un-managed device', () => {
       }),
       new Map([[running.id, running]]),
       (deviceId) => deviceId === 'heater-1',
-      tracker,
+      tracker.read(NOW_MS + 30_000),
       createEmptyActivePlans(),
-      NOW_MS + 30_000,
       createFixturePriorityQuery(),
     );
     expect(ordered.map((entry) => entry.deviceId)).toEqual(['heater-running']);

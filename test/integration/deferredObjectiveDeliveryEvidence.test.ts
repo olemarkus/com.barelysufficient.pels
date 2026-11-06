@@ -1,3 +1,4 @@
+import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
 import { resolveTaskDeliveryControl } from '../../lib/plan/taskDeliveryControl';
 import { resolveDeviceExecutionState } from '../../lib/executor/deviceExecutionState';
 import { buildExecutableDeviceIntent } from '../utils/executionDecisionFixture';
@@ -180,6 +181,7 @@ const createScenario = (settings: DeferredObjectiveRoster) => {
     });
     lifecycle = new DeferredObjectiveLifecycleEmitter({
       source: {
+        allocationRoster: new TaskAllocationRoster(() => new Date(START_MS)),
         hasSolarProduction: () => false,
         getThermalDirection: () => 'heating',
         getTimeZone: () => 'UTC',

@@ -14,7 +14,7 @@ import {
   buildDeferredObjectiveDiagnostics as buildDeferredObjectiveDiagnosticsRaw,
   buildDeferredObjectivePolicyHorizon as buildDeferredObjectivePolicyHorizonRaw,
   ELIGIBILITY_ABANDON_GRACE_MS,
-  PriorityAllocationTracker,
+  TaskAllocationRoster,
   resolveDeferredObjectiveDeadline,
 } from '../../lib/objectives/deferredObjectives';
 import { objectiveRosterFor } from '../utils/objectiveRoster';
@@ -918,18 +918,18 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
 
 });
 
-describe('PriorityAllocationTracker', () => {
+describe('TaskAllocationRoster', () => {
   it('keeps a missing device reservation-eligible during the SDK grace window', () => {
-    const tracker = new PriorityAllocationTracker();
+    const tracker = new TaskAllocationRoster(() => new Date(NOW_MS));
     const high = buildDevice({ id: 'high', priority: 1 });
     const low = buildDevice({ id: 'low', priority: 2 });
     tracker.observe([high, low], NOW_MS, () => false);
 
     tracker.observe([low], NOW_MS + 30_000, () => false);
-    expect(tracker.shouldReserveMissingDevice('high', NOW_MS + 30_000, false)).toBe(true);
+    expect(tracker.read(NOW_MS + 30_000).shouldReserveMissingDevice('high', false)).toBe(true);
 
     tracker.observe([low], NOW_MS + ELIGIBILITY_ABANDON_GRACE_MS, () => false);
-    expect(tracker.shouldReserveMissingDevice('high', NOW_MS + ELIGIBILITY_ABANDON_GRACE_MS, false)).toBe(false);
+    expect(tracker.read(NOW_MS + ELIGIBILITY_ABANDON_GRACE_MS).shouldReserveMissingDevice('high', false)).toBe(false);
   });
 
   it('drops a relocated device IMMEDIATELY — membership is authoritative, no abandon grace', () => {
@@ -939,7 +939,7 @@ describe('PriorityAllocationTracker', () => {
     // a share of MAIN's headroom on the very next cycle, not up to an hour
     // later. Pins the difference between the two reasons a device can vanish
     // from `params.devices`.
-    const tracker = new PriorityAllocationTracker();
+    const tracker = new TaskAllocationRoster(() => new Date(NOW_MS));
     const relocated = buildDevice({ id: 'relocated', priority: 1 });
     const stays = buildDevice({ id: 'stays', priority: 1 });
     tracker.observe([relocated, stays], NOW_MS, () => false);
@@ -949,10 +949,10 @@ describe('PriorityAllocationTracker', () => {
     // treated differently.
     tracker.observe([stays], NOW_MS + 30_000, (deviceId) => deviceId === 'relocated');
 
-    expect(tracker.shouldReserveMissingDevice('relocated', NOW_MS + 30_000, false)).toBe(false);
+    expect(tracker.read(NOW_MS + 30_000).shouldReserveMissingDevice('relocated', false)).toBe(false);
     // A device that merely went missing in the same cycle still gets its grace.
     tracker.observe([], NOW_MS + 60_000, () => false);
-    expect(tracker.shouldReserveMissingDevice('stays', NOW_MS + 60_000, false)).toBe(true);
+    expect(tracker.read(NOW_MS + 60_000).shouldReserveMissingDevice('stays', false)).toBe(true);
   });
 });
 
@@ -1235,7 +1235,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // roster must still put the grace-retained higher task first, despite the
     // lower device id sorting lexically before it.
     const low = buildDevice({ id: 'a-low', name: 'Lower EV', priority: 1 });
-    const tracker = new PriorityAllocationTracker();
+    const tracker = new TaskAllocationRoster(() => new Date(NOW_MS));
     tracker.observe([high, { ...low, priority: 2 }], NOW_MS - 30_000, () => false);
     const profile = buildPowerTracker().objectiveProfiles?.['ev-1'];
     const diagnostics = buildDeferredObjectiveDiagnostics({
@@ -1248,7 +1248,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       }),
       activePlans,
       powerLimits: capacityOnlyPowerLimits(1.5),
-      priorityAllocationTracker: tracker,
+      allocationRosterOwner: tracker,
       getPrioritiesForDevices: createFixturePriorityQuery([
         { id: 'z-high', priority: 1 }, { id: 'a-low', priority: 2 },
       ]),
@@ -1277,7 +1277,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       }),
       activePlans,
       powerLimits: capacityOnlyPowerLimits(1.5),
-      priorityAllocationTracker: tracker,
+      allocationRosterOwner: tracker,
       getPrioritiesForDevices: createFixturePriorityQuery([
         { id: 'z-high', priority: 1 }, { id: 'a-low', priority: 2 },
       ]),
@@ -1344,7 +1344,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     };
     const high = buildDevice({ priority: 1 });
     const low = buildDevice({ id: 'ev-2', name: 'Second EV', priority: 2 });
-    const tracker = new PriorityAllocationTracker();
+    const tracker = new TaskAllocationRoster(() => new Date(NOW_MS));
     tracker.observe([high, low], NOW_MS, () => false);
     const profile = buildPowerTracker().objectiveProfiles?.['ev-1'];
     const diagnostics = buildDeferredObjectiveDiagnostics({
@@ -1354,7 +1354,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       powerTracker: buildPowerTracker({ objectiveProfiles: { 'ev-1': profile!, 'ev-2': profile! } }),
       dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
       powerLimits: capacityOnlyPowerLimits(1.5),
-      priorityAllocationTracker: tracker,
+      allocationRosterOwner: tracker,
       activePlans: {
         version: 2,
         plansByDeviceId: {

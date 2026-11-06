@@ -1,3 +1,4 @@
+import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
 import { captureDebugTopic } from '../utils/loggerCapture';
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { inactiveTaskEvaluation } from '../../lib/objectives/deferredObjectives/taskEvaluation';
@@ -816,6 +817,7 @@ describe('decoration controller: resolveDeviceExclusion dep threading', () => {
       (deviceId: string) => (deviceId === 'heater-sub' ? 'sub_home' as const : null),
     );
     const controller = new DeferredObjectiveDecorationController({
+      allocationRoster: new TaskAllocationRoster(() => new Date()),
       hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),

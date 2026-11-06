@@ -1,6 +1,6 @@
 import type { AppContext } from '../../lib/app/appContext';
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
-import type { TaskEvaluationSource } from '../../lib/objectives/deferredObjectives';
+import { TaskAllocationRoster, type TaskEvaluationSource } from '../../lib/objectives/deferredObjectives';
 import { requirePlanService, requirePriceCoordinator } from './contextGuards';
 import {
   requireDeferredObjectiveActivePlanRecorder,
@@ -22,6 +22,7 @@ export const buildTaskEvaluationSource = (
   ctx: AppContext,
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder,
 ): TaskEvaluationSource => ({
+  allocationRoster: new TaskAllocationRoster(() => ctx.getNow()),
   getTimeZone: () => ctx.getTimeZone(),
   getThermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
   getPowerTracker: () => ctx.powerTracker,

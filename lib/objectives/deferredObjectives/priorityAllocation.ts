@@ -1,3 +1,4 @@
+import type { TaskAllocationRosterSnapshot } from './taskAllocationRoster';
 import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
 import type {
   DeferredObjectivePlanInterval,
@@ -32,96 +33,6 @@ const HOUR_MS = 60 * 60 * 1000;
 const EPSILON_KWH = 0.001;
 const POWER_EPSILON_KW = 0.001;
 
-// Survive one full cooldown window of transient SDK misses before a device
-// stops holding a reservation. Without this window, a single Homey SDK
-// snapshot eviction (`feedback_homey_sdk_unreliable`) drops the device from
-// `params.devices` for one plan cycle, its reserved energy is released to
-// lower-priority tasks, and diagnostic verdicts oscillate `on_track` ↔
-// `at_risk: feasible_above_floor` across adjacent cycles. Capacity guard still
-// holds regardless, so this is verdict-flicker hardening only.
-//
-// It governs two maps with different lifetimes: `lastSeenAtMsByDeviceId` (the
-// roster, pruned here in `observe`) and `missingReservationSinceByDeviceId`
-// (the reservation decision, read by `shouldReserveMissingDevice`, which also
-// seeds one window from a persisted commitment after a restart).
-//
-// Picked to align with the abandon-grace pattern in `planHistory.ts`
-// (`ABANDON_GRACE_MS = 60 min`): both want "tolerate a long-ish gap before
-// reclassifying state derived from a possibly-flaky SDK read." A shorter
-// window leaves the flicker visible on slow-recovering devices; a longer
-// window keeps reserving for a genuinely-removed device past the point it can
-// return — harmless, because over-reserving only under-books lower-priority
-// tasks, the strictly conservative direction.
-export const ELIGIBILITY_ABANDON_GRACE_MS = 60 * 60 * 1000;
-
-// Keeps the allocation roster stable across a transient SDK device-snapshot
-// miss. It deliberately stores presence timestamps only: the mode catalog is
-// the durable priority source, and `orderDeferredObjectives` derives a fresh
-// unique order from that source every time the roster is read.
-export class PriorityAllocationTracker {
-  private readonly lastSeenAtMsByDeviceId = new Map<string, number>();
-
-  private readonly missingReservationSinceByDeviceId = new Map<string, number>();
-
-  public observe(
-    devices: readonly ObjectiveDeviceInput[],
-    nowMs: number,
-    /**
-     * Durably out of the main planning lane (separately-metered home, or not
-     * managed by PELS). Such a device is purged from the roster outright rather
-     * than aged through the missing-device grace: the grace exists for a device
-     * that should be here and briefly is not, and neither exclusion is that.
-     */
-    isDeviceExcluded: (deviceId: string) => boolean,
-  ): void {
-    const observedDeviceIds = new Set<string>();
-    for (const device of devices) {
-      if (isDeviceExcluded(device.id)) {
-        this.lastSeenAtMsByDeviceId.delete(device.id);
-        this.missingReservationSinceByDeviceId.delete(device.id);
-        continue;
-      }
-      observedDeviceIds.add(device.id);
-      this.lastSeenAtMsByDeviceId.set(device.id, nowMs);
-      this.missingReservationSinceByDeviceId.delete(device.id);
-    }
-    for (const [deviceId, lastSeenAtMs] of this.lastSeenAtMsByDeviceId) {
-      if (isDeviceExcluded(deviceId)) {
-        this.lastSeenAtMsByDeviceId.delete(deviceId);
-        this.missingReservationSinceByDeviceId.delete(deviceId);
-        continue;
-      }
-      if (observedDeviceIds.has(deviceId)) continue;
-      if (!this.missingReservationSinceByDeviceId.has(deviceId)) {
-        this.missingReservationSinceByDeviceId.set(deviceId, lastSeenAtMs);
-      }
-      if (nowMs - lastSeenAtMs >= ELIGIBILITY_ABANDON_GRACE_MS) {
-        this.lastSeenAtMsByDeviceId.delete(deviceId);
-      }
-    }
-  }
-
-  public retainObjectiveDeviceIds(deviceIds: ReadonlySet<string>): void {
-    for (const deviceId of this.missingReservationSinceByDeviceId.keys()) {
-      if (!deviceIds.has(deviceId)) this.missingReservationSinceByDeviceId.delete(deviceId);
-    }
-  }
-
-  public shouldReserveMissingDevice(deviceId: string, nowMs: number, hasPersistedCommitment: boolean): boolean {
-    const missingSinceMs = this.missingReservationSinceByDeviceId.get(deviceId);
-    if (missingSinceMs !== undefined) {
-      return nowMs - missingSinceMs < ELIGIBILITY_ABANDON_GRACE_MS;
-    }
-    if (!hasPersistedCommitment) return false;
-    // A fresh runtime has no device-observation history. Seed one conservative
-    // grace window from the persisted commitment so the first post-restart
-    // cycle cannot overbook a temporarily missing higher-priority task.
-    this.missingReservationSinceByDeviceId.set(deviceId, nowMs);
-    return true;
-  }
-
-}
-
 export type OrderedDeferredObjective = {
   deviceId: string;
   objective: DeferredObjectiveSettingsEntry;
@@ -154,16 +65,14 @@ const compareDeviceIdAsc = (left: string, right: string): number => {
 export const orderDeferredObjectives = (
   settings: DeferredObjectiveRoster,
   deviceById: ReadonlyMap<string, ObjectiveDeviceInput>,
-  /** See `PriorityAllocationTracker.observe`: durably out of the main lane. */
+  /** See `TaskAllocationRoster.observe`: durably out of the main lane. */
   isDeviceExcluded: (deviceId: string) => boolean,
-  tracker: PriorityAllocationTracker,
+  allocationRoster: TaskAllocationRosterSnapshot,
   activePlans: DeferredObjectiveActivePlansV2,
-  nowMs: number,
   // The catalog owner orders the complete visible-plus-grace roster; callers
   // receive only resolved ranks, including temporarily missing devices.
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder,
 ): OrderedDeferredObjective[] => {
-  tracker.retainObjectiveDeviceIds(new Set(Object.keys(settings.objectivesByDeviceId)));
   const entries = Object.entries(settings.objectivesByDeviceId).flatMap(([deviceId, objective]) => {
     if (!objective.enabled || isDeviceExcluded(deviceId)) return [];
     const device = deviceById.get(deviceId);
@@ -176,9 +85,8 @@ export const orderDeferredObjectives = (
       }),
       activePlans,
     );
-    const reservationEligible = device !== undefined || tracker.shouldReserveMissingDevice(
+    const reservationEligible = device !== undefined || allocationRoster.shouldReserveMissingDevice(
       deviceId,
-      nowMs,
       activePlan !== undefined,
     );
     return [{ deviceId, objective, device, reservationEligible }];

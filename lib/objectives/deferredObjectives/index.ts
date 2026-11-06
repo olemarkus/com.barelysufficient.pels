@@ -80,8 +80,8 @@ export type {
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 export {
   ELIGIBILITY_ABANDON_GRACE_MS,
-  PriorityAllocationTracker,
-} from './priorityAllocation';
+  TaskAllocationRoster,
+} from './taskAllocationRoster';
 export type {
   DeferredObjectiveDiagnostic,
   TaskEvaluationSource,

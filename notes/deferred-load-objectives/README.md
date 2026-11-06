@@ -58,6 +58,9 @@ equal-duration moves and energy-only changes stay quiet. UI schedules, previews 
 actual time spans. The worked hourly examples below remain examples of this interval model;
 `currentHourClaim` and similar internal names retain their existing identifiers.
 
+Device-presence evidence and the shared reservation-grace policy are described in
+[Device presence and task reservations](device-presence.md).
+
 ## Current Baseline
 
 As of this note, PELS already has internal/native EV state-of-charge plumbing:

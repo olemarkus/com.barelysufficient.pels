@@ -1,3 +1,4 @@
+import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/taskAllocationRoster';
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
@@ -206,6 +207,7 @@ const buildBuilder = (
   const capacityGuard = overrides.capacityGuard ?? createTestCapacityGuard({ homeId: 'main' });
   const capacitySettings = overrides.capacitySettings ?? { capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 };
   const deferredController = new DeferredObjectiveDecorationController({
+    allocationRoster: new TaskAllocationRoster(() => new Date()),
     hasSolarProduction: () => false,
     getThermalDirection: () => 'heating',
     getPrioritiesForDevices: (deviceIds) => new ModePriorityCatalog(overrides.priorityByModeRef?.current)
@@ -351,6 +353,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     const powerTrackerRef = { current: buildPowerTracker(DAY_START_UTC) };
     const modeRef = { current: 'Home' };
     const deferredController = new DeferredObjectiveDecorationController({
+      allocationRoster: new TaskAllocationRoster(() => new Date()),
       hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),
@@ -601,6 +604,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
 
     const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
     const deferredController = new DeferredObjectiveDecorationController({
+      allocationRoster: new TaskAllocationRoster(() => new Date()),
       hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
       getPrioritiesForDevices: createFixturePriorityQuery(),

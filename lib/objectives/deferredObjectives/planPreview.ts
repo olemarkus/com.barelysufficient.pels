@@ -26,7 +26,6 @@ import {
 import type { PriceHorizonEntry } from '../../../packages/planner-types/src/priceHorizon';
 import type { BuildPriceHorizon } from './diagnosticTypes';
 import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
-import { PriorityAllocationTracker } from './priorityAllocation';
 
 /**
  * Instant estimate of the plan the planner WOULD produce for a candidate that
@@ -78,9 +77,6 @@ export const previewDeferredObjectivePlan = (
       },
     },
   }, readers,
-  // A preview keeps no device history between requests: a tracker that has seen
-  // nothing reserves a missing device only on its persisted commitment.
-  new PriorityAllocationTracker(),
   { kind: 'preview', candidateDeviceId: deviceId },
   ).find((diagnostic) => diagnostic.deviceId === deviceId);
   if (!diag) throw new Error(`Preview candidate ${deviceId} missing from its own roster`);

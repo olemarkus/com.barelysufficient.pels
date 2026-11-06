@@ -11,6 +11,11 @@ This document is now a historical design record + the home for the remaining fol
 "clock-driven producer whose flat facts the planner consumes") — both wrong about the planner's
 role; the inversion model is what shipped.
 
+The historical `PriorityAllocationTracker` ownership described below has been superseded:
+`TaskAllocationRoster` is shared by lifecycle, decoration, and preview through the evaluation
+source. Live inputs update it; preview only reads it. See
+[device presence and task reservations](../deferred-load-objectives/device-presence.md).
+
 ## The invariant (achieved + enforced)
 
 **The planner knows nothing about smart tasks.** Concretely and testably: **`lib/plan/**` imports

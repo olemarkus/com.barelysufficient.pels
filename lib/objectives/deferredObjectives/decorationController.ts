@@ -22,7 +22,6 @@ import {
 } from './diagnosticsBridge';
 import { buildSmartTaskCycleRecord, type SmartTaskCycleRecord } from './smartTaskCycleRecord';
 import type { DeferredObjectiveRoster } from '../../../packages/contracts/src/deferredObjectiveSettings';
-import { PriorityAllocationTracker } from './priorityAllocation';
 import { buildObjectiveSignatureForEntry } from './activePlanSignature';
 
 type BudgetExemptClaim = {
@@ -32,8 +31,7 @@ type BudgetExemptClaim = {
 };
 
 /**
- * Smart-task (deferred-objective) controller decoration stage. Owns the
- * concurrent-eligibility tracker and turns the raw planner input into a
+ * Smart-task (deferred-objective) controller decoration stage. Turns the raw planner input into a
  * `DeferredDecorationBundle` the planner consumes while staying
  * smart-task-agnostic. This is the input-mutation half of the controller
  * extraction: it evaluates objectives and applies admission / target-overrides /
@@ -48,7 +46,6 @@ type BudgetExemptClaim = {
  * snapshot arrives with `decorate(input)` and is only the budget overlay.
  */
 export class DeferredObjectiveDecorationController {
-  private readonly priorityAllocationTracker = new PriorityAllocationTracker();
   // The latest cycle's decision per live task, for diagnostics reports only.
   // Replaced whole each cycle, so an ended task drops out with it.
   private latestCycles: ReadonlyMap<string, SmartTaskCycleRecord> = new Map();
@@ -124,8 +121,8 @@ export class DeferredObjectiveDecorationController {
       // The lifecycle clock may not have disarmed an elapsed task yet. Its
       // terminal fallback belongs to that clock; it has no admission claims.
       return buildDeferredObjectiveTaskResults(
-        buildTaskEvaluationSnapshot(this.source, nowTs, devices, settings, dailyBudgetSnapshot),
-        this.source, this.priorityAllocationTracker, LIVE_LANE,
+        buildTaskEvaluationSnapshot(this.source, nowTs, devices, settings, dailyBudgetSnapshot, LIVE_LANE),
+        this.source, LIVE_LANE,
       ).filter((report) => report.evaluation.deadlineAtMs > nowTs);
     } finally {
       addPerfDuration('evaluate_deferred_objectives_ms', Date.now() - start);
