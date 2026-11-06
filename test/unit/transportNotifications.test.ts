@@ -10,7 +10,7 @@ const noSnapshotListener = (): void => undefined;
 describe('TransportNotifications.notifyDeviceZoneChanged', () => {
   it('recomputes membership before refetching the zone tree', () => {
     const calls: string[] = [];
-    const notifications = new TransportNotifications(noSnapshotListener, (zoneId) => calls.push(`refetch:${zoneId}`));
+    const notifications = new TransportNotifications(noSnapshotListener, (zoneId) => calls.push(`refetch:${zoneId}`), noSnapshotListener);
     notifications.setDeviceZoneChanged(() => calls.push('recompute'));
 
     notifications.notifyDeviceZoneChanged('z-new');
@@ -22,7 +22,7 @@ describe('TransportNotifications.notifyDeviceZoneChanged', () => {
     const calls: string[] = [];
     const notifications = new TransportNotifications(noSnapshotListener, () => {
       throw new Error('zone tree refetch failed');
-    });
+    }, noSnapshotListener);
     notifications.setDeviceZoneChanged(() => calls.push('recompute'));
 
     expect(() => notifications.notifyDeviceZoneChanged('z-new')).toThrow('zone tree refetch failed');
@@ -31,7 +31,7 @@ describe('TransportNotifications.notifyDeviceZoneChanged', () => {
 
   it('recomputes without a refetch when the device reports no zone', () => {
     const calls: string[] = [];
-    const notifications = new TransportNotifications(noSnapshotListener, (zoneId) => calls.push(`refetch:${zoneId}`));
+    const notifications = new TransportNotifications(noSnapshotListener, (zoneId) => calls.push(`refetch:${zoneId}`), noSnapshotListener);
     notifications.setDeviceZoneChanged(() => calls.push('recompute'));
 
     notifications.notifyDeviceZoneChanged(null);

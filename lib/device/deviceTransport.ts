@@ -231,16 +231,14 @@ export class DeviceTransport {
         this.notifications = new TransportNotifications(
             options.onSnapshotMutated,
             (zoneId) => this.refreshService.refreshZoneTreeIfUnknown(zoneId),
+            options.onDeviceInventoryRefreshed,
         );
         this.deviceSdk = new DeviceHomeySdk(
             homey,
             this.logger,
             this.handleRealtimeDeviceUpdate,
             this.handleRealtimeCapabilityUpdate,
-            async () => {
-                await this.refreshSnapshot({ includeLivePower: false, targetedRefresh: false, meterDeviceIds: [] });
-                options.onDeviceInventoryRefreshed();
-            },
+            () => this.refreshService.refreshInventory(),
         );
         // One key owner, and the two owners that run actions on it, shared by the reads and writes below.
         const actionOwners = createHomeyActionOwners(this.deviceSdk, this.snapshotStore, logger, options);
@@ -629,6 +627,7 @@ export class DeviceTransport {
     }
 
     public destroy(): void {
+        this.refreshService.stop();
         this.deviceSdk.stop();
         this.observationBridge.state.clear();
         this.snapshotStore.clearTrackedRawDevices();
