@@ -378,7 +378,7 @@ md-text-button.md-text-button--destructive {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--spacing-4);
-  padding: clamp(6px, 2vw, 10px);
+  padding: clamp(var(--spacing-compact), 2vw, 10px);
 }
 
 .screen > * {
@@ -442,7 +442,7 @@ md-text-button.md-text-button--destructive {
 }
 
 #shell-nav > md-primary-tab:not(:last-child) {
-  margin-inline-end: 2px;
+  margin-inline-end: var(--spacing-half);
 }
 
 .device-loading-notice {
@@ -750,7 +750,7 @@ md-primary-tab.tab[active] {
 .pels-device-card__reasons {
   flex: 1 0 100%;
   display: grid;
-  gap: 2px;
+  gap: var(--spacing-half);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1140,7 +1140,7 @@ md-primary-tab.tab[active] {
 
 .field {
   display: grid;
-  gap: 6px;
+  gap: var(--spacing-compact);
 }
 
 /* `.field__label` composes `.pels-text-settings-label` in markup. */
@@ -1985,7 +1985,7 @@ md-filled-button.is-busy {
 
 .plan-history-card__coverage {
   font-size: var(--font-size-xs);
-  color: var(--pels-text-tertiary, var(--pels-text-secondary));
+  color: var(--pels-text-secondary);
   font-style: italic;
 }
 
@@ -3467,7 +3467,7 @@ md-filled-button.is-busy {
   block-size: var(--spacing-2);
   border-radius: var(--radius-full);
   flex-shrink: 0;
-  background: var(--pels-status-positive, var(--accent));
+  background: var(--accent);
 }
 
 .plan-smart-task-row[data-tone="warn"] .plan-smart-task-row__dot {
@@ -3518,7 +3518,7 @@ md-filled-button.is-busy {
 .plan-smart-task-row__chevron {
   color: var(--text-secondary);
   font-size: var(--font-size-lg);
-  line-height: 1;
+  line-height: var(--font-line-height-flat);
   flex-shrink: 0;
 }
 
@@ -3842,7 +3842,7 @@ md-filled-button.is-busy {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: var(--spacing-compact);
   flex-wrap: wrap;
   /* Let the chip block shrink within the header flex row so its own
      `flex-wrap` can fold chips onto a second line at narrow widths. Without a
@@ -3858,7 +3858,7 @@ md-filled-button.is-busy {
 .plan-state-chip-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--spacing-compact);
 }
 
 .plan-state-chip__timer {
@@ -4173,7 +4173,7 @@ md-filled-button.is-busy {
 @media (max-width: 360px) {
   #shell-nav[data-shell-nav-compact] {
     gap: 0;
-    padding: 2px;
+    padding: var(--spacing-half);
   }
 
   #shell-nav[data-shell-nav-compact] > md-primary-tab {
@@ -4290,7 +4290,7 @@ md-filled-button.is-busy {
    Only padding + line-height tighten — the chip primitive already lands
    `--chip-font-size` (xs) / `--chip-font-weight` (semibold). */
 .device-row__state-chip {
-  padding: 2px var(--spacing-2);
+  padding: var(--spacing-half) var(--spacing-2);
   line-height: var(--font-line-height-compact);
 }
 
@@ -4786,7 +4786,7 @@ details[open] > summary .disclosure-chevron {
 
 .detail-mode-row__name {
   display: grid;
-  gap: 2px;
+  gap: var(--spacing-half);
   align-items: start;
   min-width: 0;
   margin-bottom: 0;
@@ -5133,7 +5133,7 @@ details[open] > summary .disclosure-chevron {
 
 .detail-diagnostics-list div {
   display: grid;
-  gap: 2px;
+  gap: var(--spacing-half);
 }
 
 .detail-diagnostics-list dt {
@@ -5567,7 +5567,7 @@ details[open] > summary .disclosure-chevron {
   align-items: baseline;
   gap: var(--spacing-2);
   justify-self: end;
-  padding: 2px var(--spacing-2);
+  padding: var(--spacing-half) var(--spacing-2);
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--pels-surface-container-highest) 62%, transparent);
   color: var(--pels-text-settings-trailing-color);
@@ -6027,7 +6027,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   justify-self: end;
   width: fit-content;
   max-width: 100%;
-  padding: 2px var(--spacing-2);
+  padding: var(--spacing-half) var(--spacing-2);
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--pels-surface-container-highest) 62%, transparent);
   white-space: nowrap;
@@ -6362,7 +6362,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
    * dominating the chart card. */
   height: 64px;
   width: 100%;
-  gap: 2px;
+  gap: var(--spacing-half);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -6376,7 +6376,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   display: flex;
   flex-direction: row;
   width: 100%;
-  gap: 2px;
+  gap: var(--spacing-half);
   margin-top: var(--spacing-1);
 }
 
@@ -6881,7 +6881,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   background: var(--pels-surface-container-lowest);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-full);
-  padding: 2px;
+  padding: var(--spacing-half);
   gap: 0;
   transition: border-color var(--transition-fast), background-color var(--transition-fast);
 }
@@ -7028,7 +7028,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 .deadlines-list-hero__nav-target-chevron {
   color: var(--muted);
   font-size: var(--font-size-md);
-  line-height: 1;
+  line-height: var(--font-line-height-flat);
   /* Real Material chevron (SVG at 1em) rather than a raw glyph, matching the
      list cards. Center it against the (possibly multi-line) subline text and
      keep it from shrinking so it always terminates the tappable row. */
@@ -7862,7 +7862,7 @@ md-switch {
   order: 1;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--spacing-half);
   min-width: 0;
   flex: 1;
 }
@@ -8110,7 +8110,7 @@ md-switch {
   flex: 0 0 auto;
   width: 20px !important;
   height: 20px !important;
-  margin-top: 2px;
+  margin-top: var(--spacing-half);
 }
 
 :where(
