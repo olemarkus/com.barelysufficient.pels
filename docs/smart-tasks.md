@@ -1,13 +1,13 @@
 ---
 title: "Smart Tasks: Schedule EV Charging & Heating by a Deadline"
-description: Use PELS Smart tasks to charge, heat, or prepare a managed device by a specific time using the best available hours.
+description: Use PELS Smart tasks to charge, heat, or prepare a managed device by a specific time using the best available times.
 ---
 
 # Smart Tasks
 
 Smart tasks tell PELS that one device should reach a target by a ready-by time.
 
-PELS picks the best hours before the ready-by time — the cheapest hours when prices are available — and lines them up against the device priority, daily budget, power-limit control, and hard cap settings already configured. The task lands on time, on the right hours, without anyone watching prices.
+PELS plans the cheapest available times before the ready-by time, using the device priority, daily budget, power-limit control, and house power limits already configured. The plan shows when the device should run and whether PELS expects it to reach the goal in time.
 
 ## What Smart Tasks Are For
 
@@ -22,11 +22,13 @@ If you only want the whole home to spend more energy during cheap hours, use [Da
 
 ## How a Task Is Created
 
-The quickest way is **New smart task** on the **Smart tasks** page: choose a managed device, set the goal and ready-by time, and PELS previews the hours it plans to use and the estimated cost before you create the task. A device's own page offers the same as **Add smart task**, and shows the device's current task with a link to it once there is one. A device carries one task at a time, so choosing a device that already has one opens that task instead.
+The quickest way is **New smart task** on the **Smart tasks** page: choose a managed device, set the goal and ready-by time, and PELS previews the times it plans to use and the estimated cost before you create the task. A device's own page offers the same as **Add smart task**, and shows the device's current task with a link to it once there is one. A device carries one task at a time, so choosing a device that already has one opens that task instead.
 
 The preview also says what happens to the device **When the task is done**, from the device's own settings (see [Power-Limit Control and Tasks](#power-limit-control-and-tasks)). **Change** opens those settings without losing what you have typed.
 
-Smart tasks can also be created from Homey Flow action cards, for a task that should be set up on a schedule, or from the **Create smart task** dashboard widget:
+For tasks at fixed times, open **Settings → Schedules → New schedule**, choose **Create Smart task**, and set the device, goal, creation time and ready-by time. Run it once or repeat it on the days you choose. Switching a schedule off stops future creations; a task it already created stays active.
+
+Use Homey Flow action cards for event-based creation, such as plugging in a car, or when other Flow conditions should decide whether to create the task:
 
 | Action card | Use for |
 | --- | --- |
@@ -37,7 +39,7 @@ Smart tasks can also be created from Homey Flow action cards, for a task that sh
 
 The ready-by value is written as local time, for example `07:00`. PELS stores the next matching future time when the Flow runs. It does not automatically repeat the same task every day unless your Flow runs again.
 
-The **Create smart task** widget is for one-off dashboard creation without a Flow. It offers managed heating devices and EV chargers (energy tasks for on/off devices are created from the Smart tasks page or the Flow card), previews the scheduled hours and cost estimate, then creates the task. If the preview says **Cannot finish**, the widget warns that the goal may not be reached in time. You can edit the task or choose **Create anyway**; the task still respects your power limits. See [Dashboard Widgets](/widgets) for the full widget set.
+The **Create smart task** widget is for one-off dashboard creation without a Flow. It offers managed heating devices and EV chargers, with quick targets and ready-by times. Energy tasks for on/off devices are created from the Smart tasks page or the Flow card. Choose a target and **Start**, or choose **Customize** to set your own goal and ready-by time, preview the scheduled periods and cost estimate, then create the task. If the preview says **Cannot finish**, the widget warns that the goal may not be reached in time. You can edit the task or choose **Create anyway**; the task still respects your power limits. See [Dashboard Widgets](/widgets) for the full widget set.
 
 ## What PELS Plans
 
@@ -46,17 +48,27 @@ For each active task, PELS evaluates:
 - the target
 - the current observed progress, when available
 - the ready-by time
-- hourly prices through the ready-by time
+- price periods through the ready-by time
 - the device's expected or learned energy delivery
-- the daily budget and hard cap
+- the daily budget and enabled house power limits
 - the device priority and normal admission rules
 
-The Smart task plan chooses hours before the ready-by time. If prices are available for the whole window, cheaper hours are preferred. If tomorrow's prices are needed but not available yet, the task can remain pending until the price window is complete.
+The Smart task plan uses the price source’s periods: whole hours or individual 15-minute periods. If prices are available for the whole window, cheaper periods are preferred. If tomorrow's prices are needed but not available yet, the task can remain pending until the price window is complete.
 
-When several Smart tasks want the same hour, PELS plans the highest-priority device first. The next task uses only the power and hourly budget still available: it may share the hour when both devices fit, move to another hour, or warn that it cannot finish. Give the devices different priorities when their order matters.
+When several Smart tasks want the same period, PELS plans the highest-priority device first. The next task uses only the power and budget still available: it may share the period when both devices fit, move to another period, or warn that it cannot finish. Give the devices different priorities when their order matters.
 
-![Smart task plan showing selected hours before a ready-by time](screenshots/deadline-plan/480.png)
-*Figure 1. A Smart task plan answers two questions on two charts: when the device will run and at what price, and whether it will reach its target in time. Tap or drag across the hours for a per-hour readout.*
+![Smart task plan showing scheduled periods, expected progress and the power guarantee](screenshots/deadline-plan/480.png)
+*Figure 1. A Smart task plan answers two questions on two charts: when the device will run and at what price, and whether it will reach its target in time. Tap or drag across the chart for each period’s readout.*
+
+## Understanding the estimate
+
+**About this estimate** separates the power reserved for the task from the energy it is expected to need:
+
+- **Guaranteed power** is the minimum planning power for scheduled operation. Individual periods may reserve more. It depends on background usage and higher-priority devices following their forecasts; house power limits still apply.
+- **Latest power reading** is what the device last reported, not the power promised for a future period.
+- The priority explanation shows which devices are ahead of this task. **Learning details** describes the energy estimate used to predict progress. Energy tasks count delivery directly and show **Measurement details** instead.
+
+A power guarantee is not a guarantee that the device reaches its target: the outcome also depends on how much energy it needs and whether it accepts the planned power. Extra available power can help it finish sooner. **Review power guarantee** lets you preview the effect of permissions before saving; **Change target or deadline** changes what the task needs to achieve.
 
 ## Why the Plan Changed
 
@@ -69,20 +81,20 @@ The panel collapses itself when every revision came from a Flow card (the user a
 
 ## Power-Limit Control and Tasks
 
-While a task is active, an hour outside its plotted plan can mean two different things: the task can finish without that hour, or the task keeps the hour even though the forecast left no room for energy there. A task keeps such an hour when it is cheaper than the hours it plans to use, or when it cannot reach its target otherwise. It promises nothing for that hour, but the device runs if power turns out to be available.
+While a task is active, a period outside its plotted plan can mean two different things: the task can finish without that period, or the task keeps the period even though the forecast left no room for energy there. A task keeps such a period when it is cheaper than the periods it plans to use, or when it cannot reach its target otherwise. It promises nothing for that period, but the device runs if power turns out to be available.
 
-| Device setup | The task defers this hour | The task keeps this hour without planned energy | The task planned this hour |
+| Device setup | The task defers this period | The task keeps this period without planned energy | The task planned this period |
 | --- | --- | --- | --- |
-| **Power-limit control on** | PELS holds the device off, even if power is available. | The device runs when power turns out to be available, under the hard cap. | PELS gives the task an opportunity to run under the hard cap and normal admission rules. |
-| **Power-limit control off** | PELS does what **Power limiting** is set to (for example, turns it off), unless another automation controls it. | The task makes the device available; it runs when power turns out to be available. | PELS makes the device available for the planned task hour. |
+| **Power-limit control on** | PELS holds the device off, even if power is available. | The device runs when power turns out to be available, within enabled house power limits. | PELS gives the task an opportunity to run within enabled house power limits and normal admission rules. |
+| **Power-limit control off** | PELS does what **Power limiting** is set to (for example, turns it off), unless another automation controls it. | The task makes the device available; it runs when power turns out to be available. | PELS makes the device available for the planned task period. |
 
-In an hour kept without planned energy the task does not limit or pause lower-priority devices to make room. It uses only power that is actually free.
+In a period kept without planned energy the task does not limit or pause lower-priority devices to make room. It uses only power that is actually free.
 
-For EV charging, a common setup is to keep the charger managed by PELS but turn power-limit control off. This prevents ordinary run-when-power-is-available behavior when no active task controls the charger. An active task can still charge in an hour it keeps without planned energy when power is available; turning power-limit control off does not restrict charging to only the hours shown in the plotted plan. A deferred hour is different: PELS keeps the device off during that hour.
+For EV charging, a common setup is to keep the charger managed by PELS but turn power-limit control off. This prevents ordinary run-when-power-is-available behavior when no active task controls the charger. An active task can still charge in a period it keeps without planned energy when power is available; turning power-limit control off does not restrict charging to only the periods shown in the plotted plan. A deferred period is different: PELS keeps the device off during that period.
 
 ### When the task is done
 
-A task is done at its ready-by time. Until then the task decides what the device does, also once it has reached its goal: it holds the device back in the hours it does not plan to use, and a mode change never sets a less demanding target than the task's, while a more demanding mode target still applies. If the device moves away from the target again, the task plans to top it up in its cheapest remaining hours.
+A task is done at its ready-by time. Until then the task decides what the device does, also once it has reached its goal: it holds the device back in the periods it does not plan to use, and a mode change never sets a less demanding target than the task's, while a more demanding mode target still applies. If the device moves away from the target again, the task plans to top it up in its cheapest remaining periods.
 
 After the ready-by time, the device's own settings decide again: the task page's **When the task is done** card says what they do.
 
@@ -100,7 +112,8 @@ The device page states the same rule under **Power-limit control**, beginning wi
 
 Smart tasks compose with the rest of PELS — every layer keeps working underneath the task:
 
-- The **hard cap** stays the hourly boundary PELS protects.
+- **Capacity limit**, when enabled, protects the **hard cap** over the selected hourly or 15-minute averaging period.
+- **Grid import limit**, when enabled, limits current grid import. Either limit can be used on its own, both can apply, or both can be off. Price-period length and capacity averaging period are separate settings.
 - **Daily budget** holds the task to a sensible pace when the day is already running hot.
 - **Priority** decides which devices get room first when something has to wait.
 - **Price-based temperature shift** keeps adjusting normal targets; a heating task target becomes the readiness target for that task.
@@ -113,14 +126,14 @@ Four places set these permissions:
 
 | Where | Use for |
 | --- | --- |
-| **Smart task page → Edit task → Extra permissions** | Turning a permission on **or off** for an existing task, with the estimate re-priced under the change before you save. |
+| **Smart task page → Review power guarantee** | Turning a permission on **or off** for an existing task, with the estimate re-priced under the change before you save. |
 | **Smart tasks page → New smart task → Extra permissions** | Granting any of the three while creating the task (**limit lower-priority devices** only for devices with power levels). The preview is priced with them. |
 | **Create smart task** widget | Granting any of the three while creating the task (**limit lower-priority devices** only for devices with power levels). |
 | **Set what a smart task may do** action card | Granting a permission from a Flow — for example only once a task reports **At risk**. |
 
 | Permission | What it allows |
 | --- | --- |
-| **go over today's budget** | The device may keep running during its planned hours even when the daily budget would normally pace it down. The daily budget is a soft, price-shaped target, so this lets the task run past it. |
+| **go over today's budget** | The device may keep running during its planned periods even when the daily budget would normally pace it down. The daily budget is a soft, price-shaped target, so this lets the task run past it. |
 | **limit lower-priority devices** | The task may limit lower-priority devices that are **currently drawing power**, turning them down or off, so it gets the power it needs. Devices at the same or higher priority are never touched. The cost is that devices you ranked lower can be held back longer, whether or not they have a smart task. |
 | **reserve power so this task can start sooner** | PELS reserves the power the task needs to start, so it can start sooner. A device that needs a clear block of power to begin, such as an EV charger or a water heater, cannot start on scraps, so lower-priority devices are not turned back on until it has started. Nothing is switched off to make room, and devices at the same or higher priority are never affected. The cost is that devices you ranked lower can be held back longer, whether or not they have a smart task of their own, so use it for a task that matters more than they do. |
 
@@ -129,30 +142,30 @@ The Flow card also asks when the permission applies:
 | When | Effect |
 | --- | --- |
 | **At no time** | The permission is off. |
-| **While it's scheduled to run** | The permission applies during the task's planned hours, and stays set until you change it or clear the task. |
+| **While it's scheduled to run** | The permission applies during the task's planned periods, and stays set until you change it or clear the task. |
 
-The **Edit task** toggles and the **Create smart task** widget set the same thing as **While it's scheduled to run**; switching a toggle off is the same as **At no time**.
+The task editor’s **Extra permissions** toggles and the **Create smart task** widget set the same thing as **While it's scheduled to run**; switching a toggle off is the same as **At no time**.
 
-**limit lower-priority devices** is offered only for devices with power levels, such as a water heater with several heating steps. It works on its own: it makes room by turning down lower-priority devices, within both the hard cap and today's budget. To let the task use more than today's budget allows, also turn on **go over today's budget**. Editing a task only changes the permissions the page shows you — with one exception: a permission that can have no effect on the device may be dropped when you save.
+**limit lower-priority devices** is offered only for devices with power levels, such as a water heater with several heating steps. It works on its own: it makes room by turning down lower-priority devices, within enabled house power limits and today's budget. To let the task use more than today's budget allows, also turn on **go over today's budget**. Editing a task only changes the permissions the page shows you — with one exception: a permission that can have no effect on the device may be dropped when you save.
 
-Changing only the permissions re-plans the task and keeps the current run going. Changing the goal or the ready-by time starts a new run, and the run so far moves to **Past tasks**.
+Use **Review power guarantee** to preview permission changes before saving. If no plan inputs are available yet, the action is labelled **Edit task**. Changing only the permissions re-plans the task and keeps the current run going. Use **Change target or deadline** to change the goal or ready-by time; that starts a new run, and the run so far moves to **Past tasks**.
 
 Two things stay true no matter what you grant:
 
-- All three permissions stay inside the **hard cap**. PELS never pushes the selected capacity period's average over your limit to rescue a task. If a task still cannot finish within the hard cap, the fix is a lower daily budget or fewer competing devices — not a higher cap.
-- Permissions persist once you grant them, but they have no effect until the planned hours or the rescue gate apply — so a task already on track stays on its normal plan.
+- All three permissions respect the enabled house power limits. They do not raise the **hard cap** or **Grid import limit**. If a task still cannot finish, review its target, ready-by time, competing loads and the reason PELS gives.
+- Permissions persist once you grant them and can affect scheduled operation even while the task is **On track**. Limiting lower-priority devices and reserving startup power apply in periods with planned energy. A period kept without planned energy uses free power only; it does not take power from lower-priority devices.
 
 ### Example: a water heater that must be ready
 
-A water heater is set to reach 65 °C by 07:00 with cheap overnight hours booked. Someone showers at 21:00 and the tank drops well below target, leaving the morning short. To keep mornings covered, grant the task any of its permissions:
+A water heater is set to reach 65 °C by 07:00 with cheap overnight periods scheduled. Someone showers at 21:00 and the tank drops well below target, leaving the morning short. To keep mornings covered, grant the task any of its permissions:
 
-- **go over today's budget** so the heater can reheat during its planned hours even if the day's budget is tight.
+- **go over today's budget** so the heater can reheat during its planned periods even if the day's budget is tight.
 - **limit lower-priority devices** so it can claim power from loads you care about less.
 - **reserve power so this task can start sooner** so PELS reserves the power the heater needs to start, instead of letting smaller loads take it a slice at a time.
 
-You can grant the leeway as a standing setting once the task exists — open the task and use **Edit task** — or only when time is short. Pair **Smart task time is running low** (for example, 2 hours left) with **Smart task status is At risk** so a Flow grants the permission late — only when a task actually needs the help.
+You can grant the leeway as a standing setting once the task exists — open the task and use **Review power guarantee** — or only when time is short. Pair **Smart task time is running low** (for example, 2 hours left) with **Smart task status is At risk** so a Flow grants the permission late — only when a task actually needs the help.
 
-The **Held-back devices** dashboard widget uses the same create engine for a narrower case: a device PELS has kept below its target temperature or battery level for 15 minutes can get **Let it run now**, which creates a short Smart task with budget leeway and permission to take room from lower-priority devices. It never raises your hard cap. A device that already has its own Smart task does not get the button: that task is what brings it back.
+The **Held-back devices** dashboard widget uses the same create engine for a narrower case: a device PELS has kept below its target temperature or battery level for 15 minutes can get **Let it run now**, which creates a short Smart task with budget leeway and permission to take room from lower-priority devices. It never raises your house power limits. A device that already has its own Smart task does not get the button: that task is what brings it back.
 
 ## Different Targets Can Be Useful
 
@@ -168,7 +181,7 @@ That separation is often useful. For example, a room can normally sit at 18 °C 
 
 For many homes, this is the useful combination:
 
-1. Power limiting protects the hard cap.
+1. Power limiting respects the house power limits you enable.
 2. Daily budget shifts whole-home usage toward cheaper hours.
 3. Smart tasks reserve attention for specific devices that must be ready.
 
@@ -176,15 +189,15 @@ For many homes, this is the useful combination:
 
 An energy task asks PELS to deliver an amount of energy to a device before the ready-by time, for example `6 kWh` by `06:00`. It works with plain on/off devices such as a water heater switched by a relay, and with EV chargers. For an EV charger, you can choose an energy target whether or not you have a linked car or battery reading. The target counts electricity supplied through the charger, including charging losses; it does not promise a final battery percentage.
 
-Progress is the energy the device takes after the task starts, counted from its power readings. PELS then plans exactly like any other Smart task: it spreads the remaining energy over the cheapest hours before the ready-by time, within the hard cap and, unless you allow more, the daily budget, and switches the device off once the energy has been delivered.
+Progress is the energy the device takes after the task starts, counted from its power readings. PELS then plans exactly like any other Smart task: it spreads the remaining energy over the cheapest periods before the ready-by time, within enabled house power limits and, unless you allow more, the daily budget, and switches the device off once the energy has been delivered.
 
 Which devices can take one: plain on/off devices and EV chargers, including chargers with current control. Other stepped loads, thermostats and other devices with a target temperature are not eligible. The device also needs a live power reading, its own power measurement or Homey Energy's live figure for it. A device that only reports a cumulative energy meter is not offered, because its power figure lags behind switching it on and off.
 
 **For an EV charger**, use the **Add energy task** Flow card, select the charger, and set an amount such as `20 kWh` by `07:00`. While a charger is plugged in and PELS has no battery level for the car, **New smart task**, the device page's **Add smart task** and the **Create smart task** widget offer an energy task instead of a battery target, and the widget offers `10 kWh` to `40 kWh` as one-tap choices. Otherwise they create battery-target tasks. Existing energy tasks can be viewed and edited in the settings UI. If the car stops accepting charge before the requested energy is delivered, the energy task can end as missed even if the car is full.
 
-A task starts when it is created, so the window runs from the moment the Flow fires until the ready-by time. To heat a water heater every night between 22:00 and 06:00, run **Add energy task** from a Flow that fires at 22:00 with ready-by `06:00`. Running the card again for the same ready-by time keeps the energy already delivered; a new night starts from zero.
+A task starts when it is created. For a nightly task, use **Settings → Schedules** to create it at 22:00 with ready-by `06:00`. A Flow running **Add energy task** at 22:00 works too. Running that card again for the same ready-by time keeps the energy already delivered; a new night starts from zero.
 
-A device that switches itself off when it is done stops taking energy. A water heater's own thermostat does this once the tank is hot. When the device takes no power for about 15 minutes of a scheduled hour in which PELS lets it run, the task shows **At risk** with the reason "Device stopped taking power", and it can end as missed even though the tank is full. Pick an amount the heater actually takes on a normal night, or treat that outcome as "the tank was already hot". From then on the task stops holding its scheduled hours for itself, so other Smart tasks can take them at the next hourly re-plan. It holds them again when the device draws power, and also after an hour the task does not book or a moment PELS holds the device back: the next time PELS lets it run, the device gets another 15 minutes before they are freed again. The task stays **At risk** for that reason until the device draws power again; PELS limiting the device in the meantime does not change it back to **On track**.
+A device that switches itself off when it is done stops taking energy. A water heater's own thermostat does this once the tank is hot. When the device takes no power for about 15 minutes while its task is scheduled and PELS lets it run, the task shows **At risk** with the reason "Device stopped taking power", and it can end as missed even though the tank is full. Pick an amount the heater actually takes on a normal night, or treat that outcome as "the tank was already hot". From then on the task stops holding its scheduled periods for itself, so other Smart tasks can take them at the next hourly re-plan. It holds them again when the device draws power, and also after a period the task does not keep or a moment PELS holds the device back: the next time PELS lets it run, the device gets another 15 minutes before they are freed again. The task stays **At risk** for that reason until the device draws power again; PELS limiting the device in the meantime does not change it back to **On track**.
 
 ## Status and History
 
@@ -192,11 +205,11 @@ The Smart tasks view shows current tasks and past tasks. Flow cards can also rea
 
 | Status | Meaning |
 | --- | --- |
-| **Building plan…** | A task is stored but PELS has not allocated hours yet — usually because prices through the ready-by time are not available. |
+| **Building plan…** | A task is stored but PELS has not scheduled operation yet — usually because prices through the ready-by time are not available. |
 | **Paused — unplugged** | EV only: the charging task is paused because the car is unplugged or the session ended. The plan resumes when the car is plugged back in. |
 | **Paused — not managed** | **Managed by PELS** is off for the device, so PELS is not planning anything for it. The task is kept, not deleted: turn **Managed by PELS** back on and the plan resumes on the next cycle. |
-| **On track** | PELS currently expects the task to reach the target — including when the plan is ready but the first scheduled hour is still in the future. |
-| **At risk** | PELS has a plan, but there is limited time or room left, or the device itself is holding delivery back: it stopped taking power while PELS let it run, or (EV) the car's own charge limit is below the target, or the car is delaying charging on its own schedule. PELS limiting the device for the hard cap, the daily budget or a higher-priority device does not change the status on its own: the plan already accounts for it. |
+| **On track** | PELS currently expects the task to reach the target — including when the plan is ready but the first scheduled period is still in the future. |
+| **At risk** | PELS has a plan, but there is limited time or room left, or the device itself is holding delivery back: it stopped taking power while PELS let it run, or (EV) the car's own charge limit is below the target, or the car is delaying charging on its own schedule. PELS limiting the device for a house power limit, the daily budget or a higher-priority device does not change the status on its own: the plan already accounts for it. |
 | **Cannot finish** | PELS does not currently see enough usable time or energy delivery before the ready-by time. |
 | **Satisfied** | The observed target is already met. For a heating or charging task, if a later reading drops below the target before the ready-by time, PELS returns to tracking it; delivered energy only ever goes up. |
 
@@ -230,7 +243,7 @@ When the **History** view shows a missed entry, PELS surfaces at most one recour
 
 | Recourse button | What happened | What to do |
 | --- | --- | --- |
-| **Lower daily budget** | The daily energy budget ran out before the ready-by time. PELS had hours scheduled but the budget cap closed those hours down. | Lower the daily budget so future days reserve usable power earlier — in the **Budget** tab or via the **Set daily budget** Flow card. Raising the **hard cap** is not the right answer: the hard cap reflects your grid tariff step, not a tuning knob. |
+| **Lower daily budget** | The daily energy budget ran out before the ready-by time. PELS had periods scheduled but the budget cap closed those periods down. | Lower the daily budget so future days reserve usable power earlier — in the **Budget** tab or via the **Set daily budget** Flow card. Raising the **hard cap** is not the right answer: the hard cap reflects your grid tariff step, not a tuning knob. |
 | **Review device** | Any other last blocker: the device stopped taking power, not enough available power was left, a higher-priority device took the room, or the plan did not leave enough time. | The button deep-links you to the device-settings overlay. Check stepped-load planning power, target temperature, priority, **What PELS does when limiting this device**, and the Flow wiring that reports state back to PELS. |
 | (no button) | The car stopped at its own charge limit, or delayed charging on its own schedule or smart charging. | Raise the car's charge limit, or turn off its own charging schedule, in the car. |
 
@@ -240,7 +253,7 @@ If the same device misses repeatedly, treat it as a tuning loop:
 2. Apply the recommended recourse.
 3. Compare the next run.
 
-If the task needs more room only on the run before the deadline, **Set what a smart task may do** can grant *go over today's budget* or *limit lower-priority devices* permission for the scheduled hours — see [Letting a Task Push Harder](#letting-a-task-push-harder).
+If the task needs more room only on the run before the deadline, **Set what a smart task may do** can grant *go over today's budget* or *limit lower-priority devices* permission for the scheduled periods — see [Letting a Task Push Harder](#letting-a-task-push-harder).
 
 For **abandoned** runs, the usual answer is that there is nothing to fix. Only investigate if the abandonment was unexpected — for example, a Flow you didn't expect ran **Clear smart task**, or an EV unplug event fired when the car was still connected.
 
@@ -260,32 +273,18 @@ Set the target battery percentage and ready-by time, for example `80 %` by `07:0
 Recommended charger setup:
 
 - **Managed by PELS** on
-- **Power-limit control** off by default to prevent ordinary run-when-power-is-available behavior when no active task controls the charger. An active task may still charge in an hour it keeps without planned energy; see [Smart Tasks](/smart-tasks#power-limit-control-and-tasks).
-- **Only PELS starts this device** on, if the charger should charge only for a task. A charger that starts a session by itself when the car is plugged in is turned off again, so the car charges only in the hours the task picks. It appears on the device page, under **Power-limit control**, once the charger has had its first smart task.
+- **Power-limit control** off by default to prevent ordinary run-when-power-is-available behavior when no active task controls the charger. An active task may still charge in a period it keeps without planned energy; see [Smart Tasks](/smart-tasks#power-limit-control-and-tasks).
+- **Only PELS starts this device** on, if the charger should charge only for a task. A charger that starts a session by itself when the car is plugged in is turned off again, so the car charges only in the periods the task keeps. It appears on the device page, under **Power-limit control**, once the charger has had its first smart task.
 - Current control configured as described in [Configure an EV Charger](/ev-charger). A new Easee setup uses built-in device control; an existing Easee current-control Flow remains supported.
 - Battery reporting Flow configured when your car or charger app can provide it
 
 ### Heat a water heater on a relay overnight
 
-Create a scheduled Flow:
-
-| Flow part | Card |
-| --- | --- |
-| **When** | Time is 22:00 |
-| **Then** | PELS: **Add energy task** |
-
-Set the energy and ready-by time, for example `6 kWh` by `06:00`. PELS runs the relay in the cheapest hours before 06:00 until the heater has taken 6 kWh. As with a charger, keep **Power-limit control** off for the relay so PELS does not run it on available power between tasks; while a task is active, the task decides when it runs either way. See [Power-Limit Control and Tasks](#power-limit-control-and-tasks).
+Under **Settings → Schedules**, create a Smart task schedule for the relay at `22:00`, repeating on the nights you need it. Choose an energy target, for example `6 kWh`, and ready-by `06:00`. A time-triggered Flow using **Add energy task** is another option. PELS runs the relay in the cheapest periods before 06:00 until the heater has taken 6 kWh. As with a charger, keep **Power-limit control** off for the relay so PELS does not run it on available power between tasks; while a task is active, the task decides when it runs either way. See [Power-Limit Control and Tasks](#power-limit-control-and-tasks).
 
 ### Heat before a known time
 
-Create a scheduled Flow:
-
-| Flow part | Card |
-| --- | --- |
-| **When** | Time is 20:00 |
-| **Then** | PELS: **Add heating task** |
-
-Set the target temperature and ready-by time, for example `21 °C` by `06:30`.
+Under **Settings → Schedules**, create a Smart task schedule for the temperature device at `20:00`. Set the target temperature and ready-by time, for example `21 °C` by `06:30`, and choose the days it repeats. Use the **Add heating task** Flow card instead when a Homey event or condition should create it.
 
 This is useful for rooms or water heaters where the exact ready time matters more than simply reacting to the current price level.
 
@@ -294,8 +293,8 @@ This is useful for rooms or water heaters where the exact ready time matters mor
 | Problem | What to check |
 | --- | --- |
 | The task stays pending | Check that **Respond to prices** is on under **Price-aware devices** and that prices are available through the ready-by time. |
-| The EV task does not change charger current | Confirm the charger is configured as EV 1-phase or EV 3-phase. For Easee, check the path you chose: **Use built-in device control**, or the existing current-control Flow. For other chargers, check the Flow using **EV charger current (A)**. |
-| The device starts in an hour outside the plotted task plan | The task keeps that hour without planned energy, because it is cheaper than the planned hours or the task cannot finish otherwise, and runs there when power is available. A deferred hour is held off. With no active task controlling the device, **Power-limit control** on allows normal run-when-power-is-available behavior. |
+| The EV task does not change charger current | Confirm the charger is configured as EV 1-phase or EV 3-phase. Check the control method selected for the charger: built-in device control, or a current-control Flow using **EV charger current (A)**. See [Configure an EV Charger](/ev-charger). |
+| The device starts in a period outside the plotted task plan | The task keeps that period without planned energy, because it is cheaper than the planned periods or the task cannot finish otherwise, and runs there when power is available. A deferred period is held off. With no active task controlling the device, **Power-limit control** on allows normal run-when-power-is-available behavior. |
 | The task cannot meet the target | Check target size, ready-by time, planning power/current, daily budget, and device priority. |
 | A completed task starts tracking again | This is expected if a fresh reading drops below the target before the ready-by time. |
 

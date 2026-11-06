@@ -97,7 +97,9 @@ const capture = async (browser) => {
   // at the 360-px card width keeps the intrinsic image within mobile support
   // (≤ 480 px, matching the docs landing screenshots) instead of emitting an
   // oversized 2× asset.
-  const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+  const context = await browser.newContext({
+    viewport: VIEWPORT, deviceScaleFactor: 1, locale: 'en-GB', timezoneId: 'Europe/Oslo',
+  });
 
   // --- Static widgets: one screenshot each ---
   console.log('Available power (headroom)');
@@ -116,8 +118,8 @@ const capture = async (browser) => {
 
   console.log('Smart tasks (smart_tasks)');
   {
-    // Manifest height "100%": a square card at the 360 px card width.
-    const page = await openWidget(context, 'smart_tasks', { height: 360 });
+    // Leave room for both recently-ended examples in the documentation card.
+    const page = await openWidget(context, 'smart_tasks', { height: 420 });
     // List view: active rows ranked by attention + the "Recently ended" section.
     await shoot(page, 'smart-tasks.png');
     // Tap an on-going task that carries a chart (the at-risk Hot water row;
@@ -140,6 +142,9 @@ const capture = async (browser) => {
     const page = await openWidget(context, 'create_smart_task');
     await shoot(page, 'new-smart-task-1-pick-device.png');
     await page.locator('[data-device-button]').first().click();
+    await page.locator('[data-quick-customize]').waitFor({ state: 'visible' });
+    await shoot(page, 'new-smart-task-2-quick-targets.png');
+    await page.locator('[data-quick-customize]').click();
     // Wait for the compose step's primary control rather than a fixed delay.
     await page.locator('[data-preview-btn]').waitFor({ state: 'visible' });
     await shoot(page, 'new-smart-task-2-set-goal.png');

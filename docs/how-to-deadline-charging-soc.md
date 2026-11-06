@@ -9,9 +9,9 @@ Use this setup when the real question is:
 
 > "Will the car be at 80% by 07:00?"
 
-That is different from "run the charger for five cheap hours." Deadline charging starts with the outcome you care about: a target battery level and a ready-by time. PELS then chooses useful charging hours before that time, checks prices, protects the hard cap, and keeps watching the car's state of charge.
+That is different from "run the charger for five cheap hours." Deadline charging starts with the outcome you care about: a target battery level and a ready-by time. PELS then chooses charging periods before that time, checks prices, respects the enabled house power limits, and keeps watching the car's state of charge. Periods follow the price source: hourly or 15-minute prices.
 
-State of charge, or SoC, is the battery percentage Homey receives from the car or charger. With SoC, PELS can see whether charging is actually moving toward the target. Without it, any schedule is still a guess.
+State of charge, or SoC, is the battery percentage Homey receives from the car or charger. With SoC, PELS can see whether charging is actually moving toward the target. Without it, PELS can instead track an energy task in kWh from live charger power readings; that task does not promise a final battery percentage.
 
 ## Why This Is the Gold Standard
 
@@ -22,14 +22,14 @@ SoC-based deadline charging is the best EV charging pattern in PELS because it c
 | Pick a number of cheap hours. | Pick the battery target and ready-by time. |
 | Hope the chosen hours are enough. | PELS tracks progress against the target. |
 | Manually adjust after cold weather, slow charging, or a half-full battery. | PELS learns the charger and replans when the estimate changes. |
-| Cheap hours are the goal. | Readiness is the goal; cheap hours are used when they still fit. |
-| Hard-cap handling is separate from the schedule. | The same plan still respects the hard cap and priorities. |
+| Cheap hours are the goal. | Readiness is the goal; cheaper periods are used when they still fit. |
+| Hard-cap handling is separate from the schedule. | The same plan still respects enabled house power limits and priorities. |
 
 The result is calmer:
 
 - If you only want confirmation, the **Smart task list** widget tells you whether the car is on track.
 - If this is your first charging setup, the **Create smart task** widget lets you create the task without learning modes.
-- If you optimize every run, the plan view shows which hours were selected and why.
+- If you optimize every run, the plan view shows which periods were selected and why.
 - If a previous run missed, the next run gives you an early **At risk** or **Cannot finish** signal.
 - If a notification sends you here, the active EV smart task is the one thing to check first.
 
@@ -81,11 +81,11 @@ For deadline charging, many homes use this default:
 
 - **Managed by PELS**: on.
 - **Power-limit control**: off by default.
-- A Smart task makes the charger available during planned charging hours.
+- A Smart task makes the charger available during planned charging periods.
 
-That prevents ordinary run-when-power-is-available behavior when no active task controls the charger. During planned task hours, PELS can make room for it while staying under the hard cap. An active task can also charge in an hour it keeps without planned energy, when power turns out to be available; a deferred hour is held off whether power-limit control is on or off.
+That prevents ordinary run-when-power-is-available behavior when no active task controls the charger. During planned task periods, PELS can make room for it within the enabled house power limits. An active task can also charge in a period it keeps without planned energy, when power turns out to be available; a deferred period is held off whether power-limit control is on or off.
 
-If you also want normal "charge when there is room" behavior when no active Smart task controls the charger, leave **Power-limit control** on. During an active task, hours the task defers stay off; an hour the task keeps without planned energy may run when power turns out to be available.
+If you also want normal "charge when there is room" behavior when no active Smart task controls the charger, leave **Power-limit control** on. During an active task, periods the task defers stay off; a period the task keeps without planned energy may run when power turns out to be available.
 
 ## Step 2: Give PELS The Battery Percentage
 
@@ -133,7 +133,7 @@ Create an EV charging dashboard and add these PELS widgets:
 | --- | --- |
 | **Create smart task** | Create the charging task from the dashboard. |
 | **Smart task list** | Watch whether the EV task is **On track**, **At risk**, or **Cannot finish**. |
-| **Available power** | See whether the home is close to the hard cap right now. |
+| **Available power** | See the power available to managed devices and whether devices are being limited. |
 | **Budget and Price** | See today's budget, price shape, and whether the day is tracking to plan. |
 | **Held-back devices** | Optional: see devices PELS has kept below their target, including a charger below its battery level, and let one run when you deliberately want it sooner. |
 
@@ -144,12 +144,14 @@ Put **Create smart task** near **Smart task list**. The first creates the task; 
 From the **Create smart task** widget:
 
 1. Pick the EV charger.
-2. Set the target, for example `80%`.
-3. Set **Ready by**, for example `07:00`.
-4. Preview the plan.
-5. Confirm the task.
+2. Choose **Customize** on the quick-target screen to set a specific goal and time. If PELS cannot offer quick targets, it opens the goal form directly.
+3. Set the target, for example `80%`.
+4. Set **Ready by**, for example `07:00`, and check the displayed day.
+5. Choose **Preview**, review the plan and cost, then choose **Create task**.
 
-Leave **Extra permissions** off for the first run. A normal EV deadline should prove itself inside the daily budget and hard cap before you give it more leeway.
+For a quick task, select one of the suggested targets and choose **Start** instead.
+
+Leave **Extra permissions** off for the first run to see how the task fits within the daily budget and enabled house power limits. You can review its power guarantee on the task page later.
 
 After confirmation, the **Smart task list** widget and the PELS **Smart tasks** page show the active charging task.
 
@@ -159,18 +161,20 @@ Use the widgets in this order.
 
 | What you see | What it means |
 | --- | --- |
-| **On track** | PELS expects the task to reach the target — either charging hours are selected for later, or charging is already progressing. The task detail may also say **Charging now** during an active charging hour. |
+| **On track** | PELS expects the task to reach the target — either charging periods are selected for later, or charging is already progressing. The task detail may also say **Charging now** during an active charging period. |
 | **Paused — unplugged** | The EV task is paused because the car is unplugged or the session ended. Plug the car back in if the deadline still matters. |
 | **At risk** | The target may still be possible, but time or available power is getting tight. |
 | **Cannot finish** | PELS does not currently see enough usable charging before the ready-by time. |
 
-Open the task in the PELS **Smart tasks** page when you want more detail. The plan view shows selected hours, price context, expected charging work, background usage, and target progress.
+Open the task in the PELS **Smart tasks** page when you want more detail. The plan view shows selected periods, prices, target progress and **About this estimate**. That card explains the planned power guarantee and the energy estimate. **Review power guarantee** previews changes to the task's permissions; **Change target or deadline** changes its goal or ready-by time.
 
-The important distinction: cheap hours are preferred, but readiness wins. If the car needs energy soon, PELS may choose a normal or expensive hour rather than miss the deadline.
+Cheaper periods are preferred, but readiness wins. If the car needs energy soon, PELS may choose a normal or expensive period to reach the target on time.
 
 ## Step 6: Make It Automatic After The First Good Run
 
-The widget is the easiest way to create a one-off task. Once the first run behaves correctly, you can automate task creation with a simple Homey Flow. Homey's Flow basics are here: [Create your first Flow](https://support.homey.app/hc/en-us/articles/360009669174-Create-your-first-Flow).
+For a fixed routine, open **Settings → Schedules**, choose **Create Smart task**, and set the creation time, repeat days, charger, target and ready-by time.
+
+For an event such as plugging in the car, automate task creation with a Homey Flow. Homey's Flow basics are here: [Create your first Flow](https://support.homey.app/hc/en-us/articles/360009669174-Create-your-first-Flow).
 
 Typical repeating Flow:
 
@@ -183,15 +187,18 @@ Use the same target and ready-by time you tested in the widget, for example `80%
 
 Keep the battery source you set up in Step 2 working: the selected car, the battery percentage on the charger device, or the battery-reporting Flow. The charging task is only as good as the battery percentage PELS receives.
 
+## Charging Without Battery Percentage
+
+A plugged-in charger with live power readings and no battery percentage is offered an energy task in **New smart task** and the **Create smart task** widget. Choose an amount such as `20 kWh` by `07:00`. PELS tracks electricity delivered through the charger, including charging losses. Use the **Add energy task** Flow card if you want to request a kWh target even when battery percentage is available. See [Energy tasks](/smart-tasks#energy-tasks).
+
+Use battery-target charging when the car's final battery level matters.
+
 ## When To Use Flow-Booked Cheap Hours Instead
 
 Use [Book Cheap Hours With Flows](/how-to-book-cheap-hours-with-flows) instead when:
 
-- You do not have a battery percentage source.
 - You only care about a fixed number of cheap hours.
 - You want the schedule to live entirely in Homey Flow logic.
-
-Use deadline charging when the car's final battery level matters.
 
 ## Troubleshooting
 
@@ -200,11 +207,11 @@ Use deadline charging when the car's final battery level matters.
 | The charger is not offered in **Create smart task** | Confirm it is paired in Homey, visible in PELS, **Managed by PELS**, and configured as **EV 1-phase** or **EV 3-phase**. |
 | Battery percentage does not appear | Check whether the value is on the charger or on a separate car device. If it is on the car device, select the car in the charger's **Car** section (Path A) and wait for PELS to match it. If the car is not listed there, report its battery percentage with **Report battery level for charger** (Path C). |
 | The task stays at **Building plan…** | Check that price data is available through the ready-by time. Tomorrow's prices may not be published yet. |
-| The charger starts in an hour outside the plotted task plan | The task keeps that hour without planned energy, because it is cheaper than the planned hours or the task cannot finish otherwise, and charges there when power is available. A deferred hour is held off. Turn **Power-limit control** off to prevent normal run-when-power-is-available behavior when no active task controls the charger. |
-| The task is **At risk** | Check that the car is plugged in, the charger current is correct, and the target is realistic for the time left. If other devices take the room, grant the task permission to limit lower-priority devices. If the reason names the car's own schedule or smart charging, turn that off in the car. |
+| The charger starts in a period outside the plotted task plan | The task keeps that period without planned energy, because it is cheaper than the planned periods or the task cannot finish otherwise, and charges there when power is available. A deferred period is held off. Turn **Power-limit control** off to prevent normal run-when-power-is-available behavior when no active task controls the charger. |
+| The task is **At risk** | Check that the car is plugged in, the charger current is correct, and the target is realistic for the time left. If other devices take the room, open **Review power guarantee** to preview what the task needs and the effect of extra permissions. If the reason names the car's own schedule or smart charging, turn that off in the car. |
 | The car's own charge limit is below the target | The task keeps your target. As soon as PELS knows the car's limit is lower, the task shows **At risk** (or **Cannot finish**) with the limit as the reason, and it ends as missed if the car stops there. Raise the charge limit in the car, or lower the task's target to the car's limit. While the car is still below its limit, the daily budget is named instead when it is what holds the task back. A car unplugged before it reaches the limit shows **Paused — unplugged**; plug it in. |
-| The task is **Cannot finish** | Lower the target, move the ready-by time later, plug in earlier, reduce competing load, or review the charger setup. Raising the hard cap is only correct if your grid tariff step is actually higher. |
-| Charging current does not change | For Easee, check the path you chose: **Use built-in device control**, or the existing current-control Flow. For other chargers, recheck the Flow from [Configure an EV Charger](/ev-charger) and use **EV charger current (A)**. |
+| The task is **Cannot finish** | Lower the target, move the ready-by time later, plug in earlier, reduce competing load, or review the charger setup. Keep the configured house power limits matched to your home. |
+| Charging current does not change | Check the control method selected under **Setup → Charging current**. Easee, Zaptec, Futurehome and Tesla can use built-in control. If you selected Flow control, recheck the current-control Flow and its **EV charger current (A)** tag. See [Configure an EV Charger](/ev-charger). |
 
 For problems beyond charging — budget, capacity, or a missed task — see the full [Troubleshooting guide](/troubleshooting).
 

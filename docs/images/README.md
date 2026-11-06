@@ -33,6 +33,6 @@ These screenshots are kept for older setup paths or future docs, but are not cur
 
 ## Generated UI screenshots
 
-Public screenshots live under `docs/public/screenshots/`. They are currently useful as layout examples, but should be refreshed after the new color/theme direction is final.
+Public screenshots live under `docs/public/screenshots/`. Smart-task widget images are captured from the built widgets with example data by `npm run docs:widget-screenshots`. The creation sequence covers device selection, quick targets, the custom goal form, and the preview. Captures use an English 24-hour locale so chart labels fit the mobile card.
 
-Smart-task plan screenshots live under `docs/screenshots/deadline-plan/` and are referenced by `docs/smart-tasks.md`.
+Smart-task plan screenshots live under `docs/screenshots/deadline-plan/` and are referenced by `docs/smart-tasks.md`. Refresh them with `PELS_TEST_WORKERS=1 PELS_PLAYWRIGHT_WORKERS=1 PELS_CAPTURE_SCREENSHOTS=1 npm run test:e2e:capture -- deadline-plan-screenshots.spec.ts`. The capture includes task actions, the power guarantee and estimate, and what happens when the task is done.
