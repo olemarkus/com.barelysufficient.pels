@@ -20,6 +20,8 @@ const seedRelay = async (page: Page, measurement: 'live' | 'derived' | 'missing'
         managed_devices: { 'relay-heater': true },
         controllable_devices: { 'relay-heater': false },
         price_optimization_settings: {}, daily_budget_enabled: false,
+        // Already sending daily reports, so that suggestion stays out of these.
+        daily_diagnostics_report: true,
         ui_devices_has_managed_solar: false,
         ui_devices_has_exhibited_export: false,
         ui_devices_surplus_pool_reachable: false,
