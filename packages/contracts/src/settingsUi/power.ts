@@ -3,6 +3,16 @@ import type { DailyBudgetUiRead } from '../dailyBudgetTypes.js';
 import type { SettingsUiHomeScope } from '../homeScopedRead.js';
 import type { SettingsUiPowerTracker } from '../powerTrackerTypes.js';
 
+/**
+ * Which limit is holding a home's devices back (`lib/plan/pelsStatus.ts`).
+ * `hourly` names the capacity limit, `daily` the daily budget and `grid` the
+ * grid import limit; `both` means more than one of them at once. The ids are
+ * published as the Insights device's Limit reason, which Flows compare as
+ * text, so they never change; `hourly` keeps its name from before the
+ * 15-minute capacity period.
+ */
+export type PelsLimitReason = 'none' | 'hourly' | 'daily' | 'grid' | 'both';
+
 /** One pickable whole-home meter (id + display name); the producer already narrowed to meters. */
 export type HomeyEnergyMeterEntry = { id: string; name: string };
 
@@ -17,8 +27,8 @@ export type SettingsUiPowerStatus = {
   dryRunEffective?: boolean;
   /** Devices the plan currently holds off; the Limits card's count. */
   devicesOff?: number;
-  /** Which ceiling is limiting the home right now; the Limits card's status line. */
-  limitReason?: 'none' | 'hourly' | 'daily' | 'both';
+  /** Which limit is holding the home's devices back; the Limits card's status line. */
+  limitReason?: PelsLimitReason;
   capacityShortfall?: boolean;
   shortfallBudgetThresholdKw?: number | null;
   shortfallBudgetHeadroomKw?: number | null;

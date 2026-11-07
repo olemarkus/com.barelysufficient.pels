@@ -655,8 +655,8 @@ Two further consequences:
   `packages/settings-ui/src/ui/planHeroTooltips.ts`) is two-member. `notes/ui-terminology.md` rules there are exactly two, never a third.
 
   Do not build a second fold for it. `resolveLimitReason`
-  (`lib/plan/pelsStatus.ts`) already computes a three-way
-  `'none' | 'hourly' | 'daily' | 'both'` for the separate `limitReason` field on
+  (`lib/plan/pelsStatus.ts`) already computes
+  `'none' | 'hourly' | 'daily' | 'grid' | 'both'` (`PelsLimitReason`) for the separate `limitReason` field on
   PelsStatus, the insights device, and `packages/settings-ui/src/ui/homeLimitsStatus.ts`,
   and it does return `'both'`. It derives that from `softLimitSource` plus shed
   state and headroom sign, which is a downstream proxy for exactly the breach

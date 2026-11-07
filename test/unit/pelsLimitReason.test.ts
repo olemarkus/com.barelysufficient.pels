@@ -34,7 +34,7 @@ describe('pels status limit reason', () => {
   } as const;
 
   const buildPlan = (params: {
-    softLimitSource: 'capacity' | 'daily';
+    softLimitSource: 'capacity' | 'daily' | 'grid';
     reason: string | DeviceReason;
     headroomKw?: number;
     /** The producer-resolved flag; false = the unmeasured fail-closed build, which carries no headroom. */
@@ -64,6 +64,7 @@ describe('pels status limit reason', () => {
   it.each([
     ['capacity', 'hourly'],
     ['daily', 'daily'],
+    ['grid', 'grid'],
   ] as const)('reports %s limit when a device is still shed in cooldown', (softLimitSource, expected) => {
     const plan = buildPlan({
       softLimitSource,
@@ -108,6 +109,34 @@ describe('pels status limit reason', () => {
     // attribute to the cap (see homeLimitsStatus composeHomeLimitsStateLine).
     expect(status.limitReason).toBe('none');
     expect(status.devicesOff).toBe(1);
+  });
+
+  const statusOf = (plan: DevicePlan) => buildPelsStatus(plan, PriceLevel.NORMAL, Date.UTC(2026, 1, 7, 12, 0, 0), false);
+
+  it.each([
+    ['capacity', PLAN_REASON_CODES.gridImport, 'grid'],
+    ['capacity', PLAN_REASON_CODES.dailyBudget, 'daily'],
+    ['daily', PLAN_REASON_CODES.capacity, 'hourly'],
+    ['grid', PLAN_REASON_CODES.dailyBudget, 'daily'],
+  ] as const)('under the %s pace, a hold naming %s reports only that limit', (softLimitSource, code, expected) => {
+    // The pace-setting limit holds nothing here: the one held device names its own limit.
+    expect(statusOf(buildPlan({ softLimitSource, reason: { code } })).limitReason).toBe(expected);
+  });
+
+  it('names the grid import limit when it sets the pace and the house is over it', () => {
+    expect(statusOf(buildPlan({ softLimitSource: 'grid', reason: 'keep', headroomKw: -0.4 })).limitReason)
+      .toBe('grid');
+  });
+
+  it.each([
+    ['the capacity limit and the daily budget', PLAN_REASON_CODES.capacity, PLAN_REASON_CODES.dailyBudget],
+    ['the daily budget and the grid import limit', PLAN_REASON_CODES.dailyBudget, PLAN_REASON_CODES.gridImport],
+    ['the capacity limit and the grid import limit', PLAN_REASON_CODES.capacity, PLAN_REASON_CODES.gridImport],
+  ] as const)('reports both when %s each hold a device back', (_label, firstCode, secondCode) => {
+    const plan = buildPlan({ softLimitSource: 'capacity', reason: { code: firstCode } });
+    plan.devices.push({ ...plan.devices[0], id: 'dev-2', name: 'Hall Heater', reason: { code: secondCode } });
+
+    expect(statusOf(plan).limitReason).toBe('both');
   });
 
   it('reports none when the only shed device is held off by its smart task or start policy', () => {

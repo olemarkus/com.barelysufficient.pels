@@ -23,18 +23,11 @@
 
 import { formatHomeDeviceCount } from './homesManagementCopy';
 import { asUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
+import type { PelsLimitReason } from '../../../contracts/src/settingsUi/power.ts';
 
 export type HomeLimitsPosture = 'simulating' | 'active';
 
 export type HomeLimitsChipTone = 'ok' | 'warn';
-
-/**
- * Why the plan is holding devices back this cycle — mirrors the producer's
- * `limitReason` (`lib/plan/pelsStatus.ts`). Crucially, transient restore/
- * settling holds count in `devicesOff` but resolve to `'none'`, so the state
- * line must NOT attribute a `'none'` hold to the cap.
- */
-export type HomeLimitsLimitReason = 'none' | 'hourly' | 'daily' | 'both';
 
 export type HomeLimitsStatus = {
   /**
@@ -49,8 +42,12 @@ export type HomeLimitsStatus = {
   hardCapKw: number | null;
   /** Controllable devices the plan is holding back; null when the blob omits it. */
   limitedDeviceCount: number | null;
-  /** Why devices are held — governs whether the state line names the cap. */
-  limitReason: HomeLimitsLimitReason;
+  /**
+   * Why devices are held — governs whether the state line names the cap.
+   * Transient restore/settling holds count in `devicesOff` but resolve to
+   * `'none'`, so the line must NOT attribute a `'none'` hold to the cap.
+   */
+  limitReason: PelsLimitReason;
   /** Every managed device is already limited and the area is still over the cap. */
   shortfall: boolean;
   /** Whether any status blob was found at all (false = area hasn't planned yet). */
@@ -90,18 +87,22 @@ const toSafeCount = (value: unknown): number | null => (
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
 );
 
-const LIMIT_REASONS: ReadonlySet<string> = new Set(['none', 'hourly', 'daily', 'both']);
+// Keyed by the contract's union, so a reason the producer adds fails to compile
+// here until the card handles it.
+const LIMIT_REASONS: Record<PelsLimitReason, true> = { none: true, hourly: true, daily: true, grid: true, both: true };
 
 /** Discriminate the untrusted `limitReason` into the recognized enum, else null. */
-const toLimitReason = (value: unknown): HomeLimitsLimitReason | null => (
-  typeof value === 'string' && LIMIT_REASONS.has(value) ? (value as HomeLimitsLimitReason) : null
+const toLimitReason = (value: unknown): PelsLimitReason | null => (
+  typeof value === 'string' && Object.hasOwn(LIMIT_REASONS, value) ? (value as PelsLimitReason) : null
 );
 
-const isCapLimitReason = (reason: HomeLimitsLimitReason): boolean => (
+// The grid import limit is Main's alone, and this card shows meter areas, so an
+// area's `'both'` is the capacity limit with the daily budget.
+const isCapLimitReason = (reason: PelsLimitReason): boolean => (
   reason === 'hourly' || reason === 'both'
 );
 
-const isRealLimitReason = (reason: HomeLimitsLimitReason): boolean => (
+const isRealLimitReason = (reason: PelsLimitReason): boolean => (
   reason !== 'none'
 );
 
@@ -193,7 +194,7 @@ export const resolveHomeLimitsPostureChip = (
  * meter-settling, restore-throttled/-pending, startup) as well as real cap
  * limits, but the producer marks those transient holds `limitReason: 'none'`.
  * So the line names the cap ONLY for a capacity-driven reason ('hourly'/'both'),
- * a daily-budget reason names the budget, and a 'none' hold reads as a momentary
+ * a daily-budget or grid reason names that limit, and a 'none' hold reads as a momentary
  * "resuming shortly" — never a false "Limiting … to stay under the cap."
  */
 export const composeHomeLimitsStateLine = (status: HomeLimitsStatus): string => {
@@ -218,6 +219,9 @@ export const composeHomeLimitsStateLine = (status: HomeLimitsStatus): string => 
   }
   if (status.limitReason === 'daily') {
     return `Limiting ${formatHomeDeviceCount(count)} to stay within today’s daily budget.`;
+  }
+  if (status.limitReason === 'grid') {
+    return `Limiting ${formatHomeDeviceCount(count)} to stay under the grid import limit.`;
   }
   return `Holding ${formatHomeDeviceCount(count)} for a moment — resuming shortly.`;
 };

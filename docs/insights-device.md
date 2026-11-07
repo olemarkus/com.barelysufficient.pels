@@ -27,7 +27,7 @@ The Insights device exposes these readings. The labels below match the capabilit
 | **Used this hour** | Energy consumed so far in the current hour |
 | **Daily budget remaining** | Remaining daily budget, when daily pacing is enabled |
 | **Daily budget exceeded** | Whether the daily plan is currently over target |
-| **Limit reason** | Why devices are currently constrained or why limiting is active |
+| **Limit reason** | Which limit is holding devices back: `hourly` for the capacity limit, `daily` for the daily budget, `grid` for the grid import limit, `both` for more than one, or `none` |
 | **Managed device usage** | Power currently being drawn by managed devices |
 | **Background usage** | Power currently being drawn outside managed devices |
 | **Price level** | Current price bucket relative to the day average |
