@@ -772,5 +772,8 @@
   },
   "3.30.4": {
     "en": "When a smart task lets a charger limit lower-priority devices, PELS no longer drops the charger to its lowest current just because a lower-priority device is waiting to turn back on. It lowers the current only as far as the power limit needs."
+  },
+  "3.30.5": {
+    "en": "After PELS lowers an EV charger's current, it raises it again as soon as there is enough room, like other devices, instead of always waiting three minutes."
   }
 }
