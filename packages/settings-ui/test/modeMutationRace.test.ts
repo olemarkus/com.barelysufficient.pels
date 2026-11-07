@@ -78,7 +78,56 @@ describe('mode mutations stay bound to their starting meter area', () => {
   beforeEach(() => {
     vi.resetModules();
     selectedHomeId = AREA_A;
+    window.history.replaceState(null, '', '/');
     setupDom();
+  });
+
+  it('edits the active mode when priority setup reloads a previously edited mode', async () => {
+    const { state } = await install();
+    state.editingMode = 'Away';
+    window.history.replaceState(null, '', '/?setup=priorities');
+    const { loadModeAndPriorities } = await import('../src/ui/modes.ts');
+    await loadModeAndPriorities();
+    expect(state.activeMode).toBe('Home');
+    expect(state.editingMode).toBe('Home');
+  });
+
+  it('does not save an inactive mode from priority setup while the mode reload is pending', async () => {
+    const { homey, state } = await install();
+    state.editingMode = 'Away';
+    window.history.replaceState(null, '', '/?setup=priorities');
+    const row = document.createElement('li');
+    row.className = 'device-row';
+    row.dataset.deviceId = 'device-a';
+    document.querySelector('#priority-list')?.append(row);
+    const { savePriorities } = await import('../src/ui/modePrioritySave.ts');
+    const saves = await import('../src/ui/setupJourneyState.ts');
+    await expect(savePriorities()).resolves.toEqual({ status: 'not-saved' });
+    expect(homey.set).not.toHaveBeenCalled();
+    await expect(saves.waitForSetupSaves()).rejects.toThrow('could not be saved');
+  });
+
+  it.each([false, true])('waits for a setup reorder and retains a failed save gate (failure=%s)', async (fail) => {
+    const { homey } = await install();
+    window.history.replaceState(null, '', '/?setup=priorities');
+    const row = document.createElement('li');
+    row.className = 'device-row';
+    row.dataset.deviceId = 'device-a';
+    document.querySelector('#priority-list')?.append(row);
+    let finish!: () => void;
+    homey.set.mockImplementation((_key, _value, callback) => {
+      finish = () => callback?.(fail ? new Error('offline') : null);
+    });
+    const { savePriorities } = await import('../src/ui/modePrioritySave.ts');
+    const saves = await import('../src/ui/setupJourneyState.ts');
+    const pending = savePriorities();
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    expect(saves.setupSavePending()).toBe(true);
+    finish();
+    await expect(pending).resolves.toMatchObject({ status: fail ? 'not-saved' : 'saved' });
+    expect(saves.setupSavePending()).toBe(false);
+    if (fail) await expect(saves.waitForSetupSaves()).rejects.toThrow('could not be saved');
+    else await expect(saves.waitForSetupSaves()).resolves.toBeUndefined();
   });
 
   it('renames from an immutable catalog after Showing changes mid-write', async () => {

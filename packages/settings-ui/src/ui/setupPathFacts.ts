@@ -210,7 +210,7 @@ const usesPrices = (deviceId: string): boolean => {
 };
 
 const resolveSetupPrices = (managedIds: readonly string[]): SetupPrices => {
-  if (prices.state !== 'ready') return { state: 'unused' };
+  if (prices.state !== 'ready') return { state: 'unread' };
   const { respondToPrices, budgetShapesByPrice, status } = prices.value;
   const configs = batteryPlans.state === 'ready' ? batteryPlans.value : null;
   const batteryUsesPrices = managedIds.some((id) => isHomeBatteryDeviceId(id) && configs?.[id]?.enabled === true);

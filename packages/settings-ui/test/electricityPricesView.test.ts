@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act } from 'preact/test-utils';
 import {
   renderElectricityPricesView,
   type ElectricityPricesHandlers,
   type ElectricityPricesViewProps,
 } from '../src/ui/views/ElectricityPricesView.tsx';
 import type { HomeyStatus, PowerhourStatus, PriceConfigState } from '../src/ui/priceConfigTypes.ts';
-import type { LiveSummarySignals } from '../src/ui/livePriceSignals.ts';
+import { resolveLiveSummarySignals, type LiveSummarySignals } from '../src/ui/livePriceSignals.ts';
 import type { PriceLevelSummaryRead } from '../../contracts/src/settingsUi/prices.ts';
 import type { PowerhourSourceUiStatus } from '../../contracts/src/settingsUi/prices.ts';
 
@@ -1195,5 +1196,212 @@ describe('ElectricityPricesView, source order by hub location', () => {
     expect(Array.from(select.querySelectorAll<HTMLElement & { value: string }>('md-select-option')).map((option) => option.value))
       .toEqual(expected);
     expect(select.value).toBe('flow');
+  });
+});
+
+
+describe('ElectricityPricesView, focused setup', () => {
+  const unchosen: ElectricityPricesViewProps['norwayChoices'] = {
+    kind: 'resolved',
+    choices: {
+      county: { value: '03', chosen: false },
+      pricingModel: { value: 'stromstotte', chosen: false },
+      priceArea: { value: 'NO1', chosen: false },
+    },
+  };
+  const offer: ElectricityPricesViewProps['priceSetupOffer'] = {
+    kind: 'grid_company_and_area',
+    gridCompany: { organizationNumber: '978631029', name: 'TENSIO TS AS', county: { kind: 'set', code: '50' } },
+    priceArea: 'NO3',
+  };
+  const mountSetup = (overrides: Partial<ElectricityPricesViewProps> = {}) => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+    renderElectricityPricesView(mount, buildProps({
+      organizationNumber: '',
+      liveSummary: liveSummary({ priceText: '0.85 kr/kWh' }),
+    }, {
+      showSetupGoals: true,
+      sourceAssumption: { kind: 'assumed', reason: 'in_norway' },
+      norwayChoices: unchosen,
+      priceSetupOffer: offer,
+      showExportSection: true,
+      showSolarForecastSection: true,
+      ...overrides,
+    }));
+    return mount;
+  };
+
+  it('leads with the location offer and keeps price tuning out of setup', () => {
+    const onUsePriceSetupOffer = vi.fn();
+    const mount = mountSetup({ handlers: buildHandlers({ onUsePriceSetupOffer }) });
+    const form = mount.querySelector('form')!;
+    const suggestion = form.querySelector('#electricity-prices-location-suggestion')!;
+    const source = form.querySelector('#price-source-select')!;
+    expect(suggestion.compareDocumentPosition(source) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(mount.querySelectorAll('#electricity-prices-location-suggestion')).toHaveLength(1);
+    expect(suggestion.textContent).toContain('NO3');
+    expect(mount.querySelectorAll('.field__hint--alert')).toHaveLength(0);
+    expect(mount.textContent).not.toContain('Not chosen yet');
+    expect(mount.querySelector('[aria-labelledby="electricity-prices-provider-surcharge-label"]')).toBeNull();
+    expect(mount.querySelector('[data-settings-target="price-aware-devices"]')).toBeNull();
+    expect(mount.querySelector('[aria-labelledby="electricity-prices-threshold-label"]')).toBeNull();
+    expect(mount.textContent).not.toContain('Export price source');
+    expect(mount.textContent).not.toContain('Solar forecast source');
+    const use = Array.from(mount.querySelectorAll('md-outlined-button'))
+      .find((button) => button.textContent === 'Use these') as HTMLElement;
+    use.click();
+    expect(onUsePriceSetupOffer).toHaveBeenCalledWith(offer);
+  });
+
+  it('puts the pricing model before a compact location disclosure and leaves normal settings in their original order', () => {
+    const mount = mountSetup();
+    const model = mount.querySelector('[aria-labelledby="electricity-prices-norway-model-label"]')!;
+    const details = mount.querySelector('details')!;
+    expect(model.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(details.open).toBe(false);
+    expect(details.querySelector('summary')?.textContent).toContain('TENSIO TS AS · Trøndelag · NO3');
+    renderElectricityPricesView(mount, buildProps());
+    expect(mount.querySelector('details')).toBeNull();
+    const county = mount.querySelector('[aria-labelledby="electricity-prices-county-label"]')!;
+    const normalModel = mount.querySelector('[aria-labelledby="electricity-prices-norway-model-label"]')!;
+    const area = mount.querySelector('[aria-labelledby="electricity-prices-price-area-label"]')!;
+    expect(county.compareDocumentPosition(normalModel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(normalModel.compareDocumentPosition(area) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it.each([
+    { kind: 'none' },
+    { kind: 'grid_company', gridCompany: offer.gridCompany },
+    { kind: 'price_area', priceArea: 'NO3' },
+  ] as ElectricityPricesViewProps['priceSetupOffer'][])(
+    'keeps missing location fields visible when the offer is $kind', (priceSetupOffer) => {
+      const mount = mountSetup({ priceSetupOffer });
+      const details = mount.querySelector('details')!;
+      expect(details.open).toBe(true);
+      expect(details.querySelector('[aria-labelledby="electricity-prices-county-label"]')).not.toBeNull();
+      expect(details.querySelector('[aria-labelledby="electricity-prices-grid-company-label"]')).not.toBeNull();
+      expect(details.querySelector('[aria-labelledby="electricity-prices-price-area-label"]')).not.toBeNull();
+    },
+  );
+
+  it('settles the initial lookup without expanding a complete offer, and opens manual choices when none arrives', async () => {
+    const mount = mountSetup({ priceSetupSuggestionPending: true, priceSetupOffer: { kind: 'none' } });
+    expect(mount.querySelector('details')?.open).toBe(false);
+    expect(mount.textContent).toContain('Finding settings for your Homey’s location');
+    await act(() => renderElectricityPricesView(mount, buildProps({ organizationNumber: '' }, {
+      showSetupGoals: true, norwayChoices: unchosen, priceSetupOffer: offer, priceSetupSuggestionPending: false,
+    })));
+    expect(mount.querySelector('details')?.open).toBe(false);
+    await act(() => renderElectricityPricesView(mount, buildProps({ organizationNumber: '' }, {
+      showSetupGoals: true, norwayChoices: unchosen, priceSetupOffer: { kind: 'none' }, priceSetupSuggestionPending: false,
+    })));
+    expect(mount.querySelector('details')?.open).toBe(true);
+  });
+
+  it('keeps a manually opened location panel open after an offer is saved', async () => {
+    const mount = mountSetup();
+    const details = mount.querySelector('details')!;
+    await act(() => {
+      details.open = true;
+      details.dispatchEvent(new Event('toggle'));
+    });
+    await act(() => renderElectricityPricesView(mount, buildProps({
+      countyCode: '50', organizationNumber: '978631029', priceArea: 'NO3',
+    }, {
+      showSetupGoals: true,
+      norwayChoices: {
+        kind: 'resolved', choices: {
+          county: { value: '50', chosen: true },
+          pricingModel: { value: 'stromstotte', chosen: false },
+          priceArea: { value: 'NO3', chosen: true },
+        },
+      },
+      gridCompanyOptions: [{ organizationNumber: '978631029', name: 'TENSIO TS AS' }],
+    })));
+    expect(mount.querySelector('details')?.open).toBe(true);
+    expect(mount.querySelector('summary')?.textContent).toContain('TENSIO TS AS · Trøndelag · NO3');
+  });
+
+  it('resets a manually closed location panel on a new page visit while preserving it within the visit', async () => {
+    const mount = mountSetup({ priceSetupVisit: 1, priceSetupOffer: { kind: 'none' } });
+    const details = mount.querySelector('details')!;
+    expect(details.open).toBe(true);
+    await act(() => {
+      details.open = false;
+      details.dispatchEvent(new Event('toggle'));
+    });
+    const renderVisit = (priceSetupVisit: number) => renderElectricityPricesView(mount, buildProps({
+      organizationNumber: '',
+    }, {
+      showSetupGoals: true, norwayChoices: unchosen, priceSetupOffer: { kind: 'none' }, priceSetupVisit,
+    }));
+    await act(() => renderVisit(1));
+    expect(mount.querySelector('details')?.open).toBe(false);
+    await act(() => renderVisit(2));
+    expect(mount.querySelector('details')?.open).toBe(true);
+  });
+
+  it('withholds the unrelated NO1 total until the owner confirms the area', () => {
+    const mount = mountSetup();
+    expect(mount.querySelector('.electricity-prices-live-summary')).toBeNull();
+    expect(mount.textContent).not.toContain('0.85 kr/kWh');
+    renderElectricityPricesView(mount, buildProps({
+      priceArea: 'NO3', organizationNumber: '978631029',
+      liveSummary: liveSummary({ priceText: '1.37 kr/kWh' }),
+    }, {
+      showSetupGoals: true,
+      norwayChoices: {
+        kind: 'resolved',
+        choices: {
+          county: { value: '50', chosen: true },
+          pricingModel: { value: 'stromstotte', chosen: true },
+          priceArea: { value: 'NO3', chosen: true },
+        },
+      },
+    }));
+    expect(mount.querySelector('.electricity-prices-live-summary')?.textContent).toContain('1.37 kr/kWh');
+  });
+
+  it('does not revive a stale combined total when the live timeline has no prices for the chosen area', () => {
+    const now = Date.parse('2026-01-15T10:05:00.000Z');
+    const staleCombined = {
+      priceScheme: 'norway', lastFetched: '2026-01-15T10:00:00.000Z',
+      prices: [{ startsAt: '2026-01-15T10:00:00.000Z', total: 85 }],
+    };
+    const mount = mountSetup({
+      config: buildConfig({
+        priceArea: 'NO3', currentPriceLevel: 'normal',
+        liveSummary: resolveLiveSummarySignals(staleCombined, { state: 'unavailable', reason: 'no_prices' }, now),
+      }),
+      norwayChoices: {
+        kind: 'resolved',
+        choices: {
+          county: { value: '50', chosen: true },
+          pricingModel: { value: 'stromstotte', chosen: true },
+          priceArea: { value: 'NO3', chosen: true },
+        },
+      },
+    });
+    expect(mount.querySelector('.electricity-prices-live-summary')?.textContent).toContain('Awaiting prices');
+    expect(mount.textContent).not.toContain('0.85 kr/kWh');
+  });
+
+  it('supplies closed-field labels and still lets the owner choose the default pricing model', () => {
+    const onNorwayModelChange = vi.fn();
+    const mount = mountSetup({ handlers: buildHandlers({ onNorwayModelChange }) });
+    const model = mount.querySelector(
+      'md-filled-select[aria-labelledby="electricity-prices-norway-model-label"]',
+    ) as HTMLElement & { value: string };
+    expect(model.value).toBe('__not_chosen__');
+    const labels = Array.from(model.querySelectorAll('md-select-option'))
+      .map((option) => (option as HTMLElement & { displayText: string }).displayText);
+    expect(labels).toEqual(['Select pricing model', 'Strømstøtte', 'Norgespris']);
+    const area = mount.querySelector('md-filled-select[aria-labelledby="electricity-prices-price-area-label"]')!;
+    expect((area.querySelector('md-select-option') as HTMLElement & { displayText: string }).displayText)
+      .toBe('Select price area');
+    model.value = 'stromstotte';
+    model.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(onNorwayModelChange).toHaveBeenCalledWith('stromstotte');
   });
 });

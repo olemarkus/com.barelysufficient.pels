@@ -1,7 +1,10 @@
+import { partialDouble } from '../helpers/partialDouble';
+import type { PlanMetaSnapshot } from '../../packages/settings-ui/src/ui/planTypes';
 import {
   HERO_INFO_TOOLTIP_TEXT,
   SAFE_PACE_TOOLTIP_BY_SOURCE,
   formatHeroInfoTooltip,
+  formatHourlyPaceExplanation,
   formatSafePaceComposition,
   formatSafePaceTooltip,
 } from '../../packages/settings-ui/src/ui/planHeroTooltips';
@@ -113,5 +116,25 @@ describe('planHeroTooltips', () => {
       expect(formatSafePaceComposition(6, 'daily', { budgetPaceKw: -1, projectedExemptKw: 7 })).toBeNull();
       expect(formatSafePaceComposition(13, 'daily', { budgetPaceKw: 5, projectedExemptKw: 7 })).toBeNull();
     });
+  });
+});
+
+describe('hourly pace explanation', () => {
+  const meta = partialDouble<PlanMetaSnapshot>({
+    softLimitSource: 'capacity', capacityPeriodMinutes: 60, softLimitKw: 52.1, hardCapLimitKw: 10,
+  });
+  it('explains a capacity pace higher than the hourly hard cap', () => {
+    expect(formatHourlyPaceExplanation(meta)).toContain('hard cap applies to the hourly average');
+  });
+  it('does not explain catch-up for daily, grid or quarter-hour pacing', () => {
+    for (const softLimitSource of ['daily', 'grid', null] as const) {
+      expect(formatHourlyPaceExplanation({ ...meta, softLimitSource })).toBeNull();
+    }
+    expect(formatHourlyPaceExplanation({ ...meta, capacityPeriodMinutes: 15 })).toBeNull();
+  });
+  it('compares the displayed precision and handles a missing pace', () => {
+    expect(formatHourlyPaceExplanation({ ...meta, softLimitKw: 10.04 })).toBeNull();
+    expect(formatHourlyPaceExplanation({ ...meta, softLimitKw: 9 })).toBeNull();
+    expect(formatHourlyPaceExplanation({ ...meta, softLimitKw: null })).toBeNull();
   });
 });

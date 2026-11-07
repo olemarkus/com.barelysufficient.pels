@@ -2,6 +2,7 @@ import {
   formatSetupProgress,
   isSetupStepOpen,
   resolveSetupPath,
+  resolveSetupSteps,
   type SetupPathFacts,
 } from '../src/ui/setupPathModel.ts';
 
@@ -67,36 +68,36 @@ describe('setup path', () => {
     expect(resolveSetupPath({ ...configured, hardCap: { state: 'grid', limitKw: 3.3, capacity: { state: 'off' } } })).toEqual({ state: 'complete' });
     expect(resolveSetupPath({ ...configured, hardCap: { state: 'disabled' } })).toEqual({ state: 'complete' });
   });
-  it('asks a fresh install for the two things every home needs, and nothing else', () => {
-    // No hard cap row: nothing may be limited yet, so no cap is in force.
-    expect(statuses(freshInstall)).toEqual(['power:next', 'devices:later']);
+  it('shows all four stages before device choices make limits and prices applicable', () => {
+    // Later stages keep their place while the owner chooses devices.
+    expect(statuses(freshInstall)).toEqual(['power:next', 'devices:later', 'hardCap:later', 'prices:later']);
     const path = pathOf(freshInstall);
-    expect(path && formatSetupProgress(path)).toBe('0 of 2');
+    expect(path && formatSetupProgress(path)).toBe('0 of 4');
   });
 
-  describe('a step appears only when what it configures is in force', () => {
-    it('never shows the hard cap to an owner PELS may not limit anything for', () => {
+  describe('a stage only asks for settings that apply', () => {
+    it('completes the limits stage for an owner PELS may not limit anything for', () => {
       // Asking them to set a capacity cap would be asking for something that
       // never touches their home. Their setup is complete.
       expect(resolveSetupPath(priceOnlyOwner)).toEqual({ state: 'complete' });
     });
 
     it('never keeps the path open over an unsaved cap that is not in force', () => {
-      expect(statuses({ ...priceOnlyOwner, power: NEVER })).toEqual(['power:next', 'devices:done']);
+      expect(statuses({ ...priceOnlyOwner, power: NEVER })).toEqual(['power:next', 'devices:done', 'hardCap:done', 'prices:done']);
     });
 
     it('shows the hard cap once a device may be limited, naming the number it is running on', () => {
       // Now the cap IS in force, tariff or no tariff: every home runs one, and
       // this device will be held to 10 kW until the owner says otherwise.
       const facts = { ...priceOnlyOwner, limitableDeviceCount: 1 };
-      expect(statuses(facts)).toEqual(['power:done', 'devices:done', 'hardCap:next']);
+      expect(statuses(facts)).toEqual(['power:done', 'devices:done', 'hardCap:next', 'prices:done']);
       expect(detailOf(facts, 'hardCap')).toContain('10 kW hard cap (hourly average) until you set yours');
     });
 
     it('puts Devices before Hard cap: what may be limited, then to what', () => {
       const path = pathOf({ ...freshInstall, managedDeviceCount: 1, limitableDeviceCount: 1 });
-      expect(path?.steps.map((step) => step.id)).toEqual(['power', 'devices', 'hardCap']);
-      expect(path && formatSetupProgress(path)).toBe('1 of 3');
+      expect(path?.steps.map((step) => step.id)).toEqual(['power', 'devices', 'hardCap', 'prices']);
+      expect(path && formatSetupProgress(path)).toBe('2 of 4');
     });
   });
 
@@ -179,9 +180,25 @@ describe('setup path', () => {
     expect(resolveSetupPath(configuredAndSimulating)).toEqual({ state: 'complete' });
   });
 
+  it('keeps the denominator fixed as devices activate limits and prices', () => {
+    const choices = [freshInstall,
+      { ...freshInstall, managedDeviceCount: 1, limitableDeviceCount: 1 },
+      { ...configuredAndSimulating, prices: { state: 'used' as const, complete: false, summary: 'Choose prices' } },
+    ];
+    for (const facts of choices) {
+      expect(resolveSetupSteps(facts).steps.map((step) => step.id)).toEqual(['power', 'devices', 'hardCap', 'prices']);
+    }
+  });
+
+  it('distinguishes an unread price setup from one the devices do not use', () => {
+    const path = resolveSetupSteps({ ...configuredAndSimulating, prices: { state: 'unread' } });
+    expect(path.steps[3]).toMatchObject({ status: 'done', detail: 'Price settings could not be read. Check Electricity prices.' });
+    expect(resolveSetupSteps(configuredAndSimulating).steps[3].detail).toBe('Not needed for your devices');
+  });
+
   it('moves the next step past whatever is already done, in any order', () => {
     // Devices chosen before the meter is connected: the meter still leads.
-    expect(statuses({ ...freshInstall, managedDeviceCount: 2 })).toEqual(['power:next', 'devices:done']);
+    expect(statuses({ ...freshInstall, managedDeviceCount: 2 })).toEqual(['power:next', 'devices:done', 'hardCap:done', 'prices:done']);
   });
 
   it('keeps the power step done once a reading has ever arrived', () => {
@@ -215,7 +232,7 @@ describe('setup path', () => {
     });
     expect(resolved.state === 'open'
       ? resolved.path.steps.map((step) => `${step.id}:${step.status}`)
-      : []).toEqual(['power:done', 'devices:next']);
+      : []).toEqual(['power:done', 'devices:next', 'hardCap:later', 'prices:later']);
     expect(isSetupStepOpen(resolved, 'devices')).toBe(true);
     expect(isSetupStepOpen(resolved, 'power')).toBe(false);
     expect(isSetupStepOpen({ state: 'complete' }, 'devices')).toBe(false);

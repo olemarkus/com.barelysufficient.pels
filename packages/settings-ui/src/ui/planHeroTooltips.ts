@@ -4,6 +4,7 @@
 // `notes/ui-terminology.md` § "Safe pace now — one label, two possible
 // sources" and § "Hero bar vocabulary".
 
+import type { PlanMetaSnapshot } from './planTypes.ts';
 import type { CapacityPeriodMinutes } from '../../../contracts/src/capacitySettings.ts';
 import { capacityPeriodNoun } from './capacityPeriodCopy.ts';
 
@@ -180,4 +181,12 @@ export const formatHardCapEnergyTooltip = (
 ): string => {
   const period = capacityPeriodNoun(periodMinutes);
   return `Hard cap this ${period} ${hardCapKWh.toFixed(1)} kWh — landing past this raises the measured peak.`;
+};
+
+/** Explain the hourly catch-up pace only when its displayed value exceeds the displayed cap. */
+export const formatHourlyPaceExplanation = (meta: PlanMetaSnapshot): string | null => {
+  if (meta.softLimitSource !== 'capacity' || meta.capacityPeriodMinutes !== 60
+    || meta.softLimitKw === null
+    || Number(meta.softLimitKw.toFixed(1)) <= Number(meta.hardCapLimitKw.toFixed(1))) return null;
+  return 'Unused energy this hour allows a higher pace now. The hard cap applies to the hourly average.';
 };

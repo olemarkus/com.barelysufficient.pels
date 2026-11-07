@@ -189,6 +189,20 @@ describe('setup path facts', () => {
       expect(facts.readSetupPath()).toEqual({ state: 'complete' });
     });
 
+    it('reports unread settings without calling prices unused or blocking setup', async () => {
+      // A first price read failed; there is no accepted fact to retain.
+      const loaded = await loadUnpublished();
+      loaded.state.devicesLoaded = true;
+      loaded.state.latestDevices = [{ id: 'heater' }] as typeof loaded.state.latestDevices;
+      loaded.state.managedMap = { heater: true };
+      loaded.facts.publishSetupPower(NEVER);
+      loaded.facts.publishSetupHardCapRead(true, running);
+      loaded.facts.publishSetupBatteryPlans({});
+      loaded.facts.publishSetupPricesUnavailable();
+      const step = loaded.facts.readSetupReview()?.steps.find((candidate) => candidate.id === 'prices');
+      expect(step).toMatchObject({ status: 'done', detail: 'Price settings could not be read. Check Electricity prices.' });
+    });
+
     it('is done once the owner has set prices up', async () => {
       const { facts } = await configuredHome();
       facts.publishSetupPrices({
@@ -342,7 +356,7 @@ describe('setup path facts', () => {
       ? read.path.steps.find((step) => step.id === 'devices')
       : undefined;
     expect(devices?.detail).toBe('1 device managed');
-    expect(read.state === 'open' && read.path.steps.some((step) => step.id === 'hardCap')).toBe(false);
+    expect(read.state === 'open' && read.path.steps.find((step) => step.id === 'hardCap')?.status).toBe('done');
   });
 
   it('keeps setup complete when a newly managed device has no saved priority', async () => {

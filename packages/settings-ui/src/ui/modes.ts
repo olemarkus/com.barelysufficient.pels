@@ -1,4 +1,5 @@
 import Sortable from 'sortablejs';
+import { currentSetupJourney } from './setupJourneyState.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import {
   getPrimaryTargetCapability,
@@ -117,7 +118,7 @@ const applyModeSettings = (homeId: string, read: ModeSettingsRead): void => {
   state.activeMode = typeof read.mode === 'string' && read.mode.trim()
     ? read.mode
     : DEFAULT_MODE_NAME;
-  state.editingMode = keepEditingMode
+  state.editingMode = currentSetupJourney() !== 'priorities' && keepEditingMode
     && (state.modePriorityCatalog.modes().includes(editingMode) || Object.hasOwn(targets, editingMode))
     ? editingMode
     : state.activeMode;
@@ -145,6 +146,7 @@ export const loadModeAndPriorities = async () => {
     const read = await readModeSettings(homeId);
     if (generation !== modeLoadGeneration || homeId !== getHomeScope().selectedHomeId) return;
     applyModeSettings(homeId, read);
+    document.dispatchEvent(new Event('modes-loaded'));
   } catch (error) {
     if (generation === modeLoadGeneration && homeId === getHomeScope().selectedHomeId) {
       showModeCatalogUnavailable();
@@ -282,8 +284,7 @@ export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
 };
 
 export const setEditingMode = (mode: string) => {
-  const next = resolveModeName(mode);
-  state.editingMode = next;
+  state.editingMode = resolveModeName(mode);
   renderModeOptions();
   renderPriorities(state.latestDevices);
 };

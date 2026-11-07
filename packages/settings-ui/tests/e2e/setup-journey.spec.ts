@@ -131,7 +131,7 @@ test('one solar device can be configured without prices and the action reaches i
   await page.locator('#device-detail-close').click();
   await page.locator('#devices-panel .setup-journey').getByRole('button', { name: 'Review setup', exact: true }).click();
   await expect(page.locator('#setup-review-root')).toContainText('Run on solar surplus');
-  await expect(page.locator('#setup-review-root')).not.toContainText('Prices');
+  await expect(page.locator('#setup-review-root')).toContainText('PricesNot needed for your devices');
   await page.getByText('Keep simulating', { exact: true }).click();
   expect(await stored(page, 'capacity_dry_run')).toBe(true);
   await page.locator('#simulation-disable-button').click();
@@ -176,7 +176,8 @@ const seedHeatPumpAndCharger = async (page: Page, managedAtStart = false) => {
       unsetSettings: ['capacity_limit_kw', 'capacity_margin_kw'],
       apiHandlers: {
         'GET /ui_devices': () => ({
-          devices: devices.map((device) => ({ ...device, managed: managed()[device.id] === true })),
+          devices: devices.map((device) => ({ ...device, managed: managed()[device.id] === true }))
+            .sort((a, b) => Number(b.managed) - Number(a.managed)),
           chargerPhasePresets: { state: 'resolved', presets: {} },
           hasManagedSolarDevice: false, hasExhibitedExport: false, surplusPoolReachable: false,
         }),
@@ -188,7 +189,11 @@ const seedHeatPumpAndCharger = async (page: Page, managedAtStart = false) => {
 test('setup offers what PELS can do before the review, and the review names it', async ({ page }, testInfo) => {
   await seedHeatPumpAndCharger(page);
   await page.goto('/?page=settings/devices&setup=devices');
+  await expect(page.locator('#devices-panel .setup-journey')).toContainText('Step 2 of 4');
+  const deviceCards = page.locator('#device-card-list .setup-journey__device');
+  await expect(deviceCards).toHaveText([/Car charger.*EV Charger · Garage · 0 kW/, /Heat pump.*Heater · Hall · 0 kW/]);
   await page.getByRole('switch', { name: 'Manage Heat pump', exact: true }).click();
+  await expect(deviceCards).toHaveText([/Car charger/, /Heat pump/]);
   await page.getByRole('switch', { name: 'Manage Car charger', exact: true }).click();
   await expect.poll(() => stored(page, 'managed_devices')).toEqual({ 'setup-heatpump': true, 'setup-charger': true });
   const devicesHeader = page.locator('#devices-panel .setup-journey');
@@ -197,7 +202,7 @@ test('setup offers what PELS can do before the review, and the review names it',
   await expect(page).toHaveURL(/setup=goals/);
   const header = page.locator('#devices-panel .setup-journey');
   await expect(header).toContainText('Choose what PELS does');
-  await expect(header.getByRole('button', { name: 'Review setup', exact: true })).toBeEnabled();
+  await expect(header.getByRole('button', { name: 'Continue', exact: true })).toBeEnabled();
   const picker = page.locator('#device-card-list');
   await expect(picker.locator('[data-device-id="setup-charger"]').getByText('New smart task', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -208,7 +213,15 @@ test('setup offers what PELS can do before the review, and the review names it',
     return map['setup-heatpump']?.enabled;
   }).toBe(true);
 
-  await header.getByRole('button', { name: 'Review setup', exact: true }).click();
+  await header.getByRole('button', { name: 'Continue', exact: true }).click();
+  await expect(page).toHaveURL(/setup=priorities/);
+  const priorityHeader = page.locator('#modes-panel .setup-journey');
+  await expect(priorityHeader).toContainText('Choose what stays on longest');
+  await expect(page.locator('#priority-list .device-row')).toHaveCount(2);
+  await expect(page.locator('#mode-select')).toBeHidden();
+  await expect(page.locator('#priority-list .mode-target-input')).toBeHidden();
+  await page.screenshot({ path: testInfo.outputPath('priorities.png'), scale: 'css', fullPage: true });
+  await priorityHeader.getByRole('button', { name: 'Review setup', exact: true }).click();
   const review = page.locator('#setup-review-root');
   await expect(review).toContainText('Power limits off');
   await expect(review).toContainText('Price-based control on');

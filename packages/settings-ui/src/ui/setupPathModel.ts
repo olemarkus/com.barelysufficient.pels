@@ -10,28 +10,13 @@ import type { SettingsUiHubMarketRead } from '../../../contracts/src/settingsUi/
  * step that is already done. A returning owner who unmanages their last device
  * gets the Devices step back; nothing is remembered about having "finished".
  *
- * **A step appears only when what it configures is in force for this home.**
- * Asking an owner to configure something that does not apply to them tells them
- * the app was built for somebody else. A power meter and managed devices apply
- * to everyone: there is no plan without the first and nothing to plan for
- * without the second. The limits do not. They are enforced only on devices
- * PELS may limit, so an owner who manages thermostats for their price response
- * alone is never held to them, and is never shown the step. Once something may
- * be limited the step appears, because a home that has never chosen still runs
- * the capacity limit on a built-in 10 kW, and the step names the number it is
- * running on. A saved grid import limit, a saved hard cap, or an explicit choice
- * to turn both limits off completes it. Hence Devices before Limits: what may be
- * limited, then to what. A new install outside Norway and Belgium starts with
- * Capacity limit off (`lib/power/capacityMarketDefault.ts`), so its step is
- * already done.
+ * The four stages stay visible from the start: meter, devices, limits, prices.
+ * Limits and prices depend on the devices chosen. Once that choice is known,
+ * an unused stage completes without asking for settings that do not apply.
+ * Limits still name the running default until the owner saves a choice.
+ * Prices remain open while a source or Norway setting in use is unchosen.
  *
- * Prices follow the same rule. They apply once something in the home uses
- * them (see `SetupPrices`), and then the step stays open while PELS prices with
- * a source or a Norway setting the owner never chose, naming what it uses in
- * the meantime, the way Limits names the 10 kW it runs on.
- *
- * Priority is automatic, so confirming or customising the order is not a setup
- * requirement. Owners can change it in Modes whenever they want.
+ * Priority is automatic; an optional page offers the order before review.
  *
  * Simulation is not a completion requirement. The explicit review surface
  * offers activation; a configured home may remain simulating indefinitely.
@@ -91,6 +76,7 @@ export type SetupPowerReadings =
  */
 export type SetupPrices =
   | { state: 'unused' }
+  | { state: 'unread' }
   | { state: 'used'; complete: boolean; summary: string };
 
 /** What the settings UI knows about how far setup has come, for the Main home. */
@@ -215,9 +201,21 @@ const resolveDevicesDetail = (facts: SetupPathFacts): string => {
     : `${countDevices(facts.managedDeviceCount)} managed`;
 };
 
+const resolveLimitsStageDetail = (facts: SetupPathFacts): string => {
+  if (facts.managedDeviceCount === 0) return 'Depends on the devices you choose';
+  return facts.limitableDeviceCount > 0 ? resolveHardCapDetail(facts) : 'Not needed for your devices';
+};
+
+const resolvePricesStageDetail = (facts: SetupPathFacts): string => {
+  if (facts.managedDeviceCount === 0) return 'Depends on the devices you choose';
+  if (facts.prices.state === 'used') return facts.prices.summary;
+  if (facts.prices.state === 'unread') return 'Price settings could not be read. Check Electricity prices.';
+  return 'Not needed for your devices';
+};
+
 /** Keep the resolved steps available for the explicit review, even after setup closes. */
 export const resolveSetupSteps = (facts: SetupPathFacts): SetupPath => {
-  // In force only once some managed device may be limited; see the header.
+  const devicesChosen = facts.managedDeviceCount > 0;
   const hardCapApplies = facts.limitableDeviceCount > 0;
   const candidates: Array<Omit<SetupStep, 'status'> & { done: boolean }> = [
     {
@@ -234,20 +232,20 @@ export const resolveSetupSteps = (facts: SetupPathFacts): SetupPath => {
       detail: resolveDevicesDetail(facts),
       target: { panel: 'devices' },
     },
-    ...(hardCapApplies ? [{
-      id: 'hardCap' as const,
-      done: facts.hardCap.state !== 'unset',
+    {
+      id: 'hardCap',
+      done: devicesChosen && (!hardCapApplies || facts.hardCap.state !== 'unset'),
       title: 'Limits',
-      detail: resolveHardCapDetail(facts),
+      detail: resolveLimitsStageDetail(facts),
       target: { panel: 'limits' },
-    }] : []),
-    ...(facts.prices.state === 'used' ? [{
-      id: 'prices' as const,
-      done: facts.prices.complete,
+    },
+    {
+      id: 'prices',
+      done: devicesChosen && (facts.prices.state !== 'used' || facts.prices.complete),
       title: 'Prices',
-      detail: facts.prices.summary,
+      detail: resolvePricesStageDetail(facts),
       target: { panel: 'electricity-prices', anchor: '#price-source-select' },
-    }] : []),
+    },
   ];
 
   const nextIndex = candidates.findIndex((step) => !step.done);
@@ -278,7 +276,7 @@ export const isSetupStepOpen = (read: SetupPathVisibility, id: SetupStepId): boo
   read.state === 'open' && read.path.steps.some((step) => step.id === id && step.status !== 'done')
 );
 
-/** Compact progress for a chip: `1 of 2`. */
+/** Completed stages out of the fixed four-stage path. */
 export const formatSetupProgress = (path: SetupPath): string => (
   `${path.doneCount} of ${path.steps.length}`
 );

@@ -13,7 +13,7 @@ import {
   readSetupReview, readSetupMarket, onSetupPathChange, notifySetupPathChange, readSetupLimitsInForce,
   isSetupDeviceLimitable,
 } from './setupPathFacts.ts';
-import { formatSetupProgress, type SetupStep, type SetupPath } from './setupPathModel.ts';
+import type { SetupStep, SetupPath } from './setupPathModel.ts';
 import {
   currentSetupJourney, setupSavePending, waitForSetupSaves, type SetupJourneyStep,
   acknowledgeSetupSaveFailures,
@@ -22,6 +22,7 @@ import {
   SetupJourneyHeader, SetupReview, type SetupReviewDevice, type SetupJourneyHeaderProps,
 } from './views/SetupJourney.tsx';
 import { renderDevices } from './devices.ts';
+import { setEditingMode } from './modes.ts';
 import {
   loadCapacitySettings, saveSimulationModeSettings, saveCapacityPeriodSettings, saveCapacityOffSettings,
 } from './capacity.ts';
@@ -51,6 +52,7 @@ let meterLine: string | null = null;
 // step the page reopens (Prices, once a device follows them) does not lead
 // back to it. Never persisted.
 let goalsShown = false;
+let prioritiesShown = false;
 
 const usesFlowMeter = (): boolean => settingsPowerSourceSelect?.value === 'flow';
 
@@ -63,7 +65,7 @@ let liveReadGeneration = 0;
 
 const PANEL_BY_STEP: Record<SetupJourneyStep, string> = {
   power: 'limits', devices: 'devices', hardCap: 'limits',
-  prices: 'electricity-prices', goals: 'devices', review: 'setup-review',
+  prices: 'electricity-prices', goals: 'devices', priorities: 'modes', review: 'setup-review',
 };
 
 const currentStep = (): SetupJourneyStep | null => {
@@ -106,8 +108,13 @@ const openSetupGoals = (): void => {
   showTab('devices', 'goals');
 };
 
-// Once the required steps are done, the optional page comes before the review.
+// Once the required steps are done, optional choices come before the review.
 const goalsComeNext = (): boolean => !goalsShown && offersSetupGoals();
+
+const prioritiesComeNext = (): boolean => {
+  const managed = readMainHomeManagedDevices();
+  return !prioritiesShown && managed.state === 'ready' && managed.devices.length >= 2;
+};
 
 const continueSetup = (): void => {
   void runAction(async () => {
@@ -116,6 +123,7 @@ const continueSetup = (): void => {
     const next = review.steps.find((step) => step.status !== 'done');
     if (next) navigateStep(next);
     else if (goalsComeNext()) openSetupGoals();
+    else if (prioritiesComeNext()) showTab('modes', 'priorities');
     else showTab('setup-review', 'review');
   });
 };
@@ -200,6 +208,7 @@ const headerTitle = (step: SetupJourneyStep): string => {
   if (step === 'devices') return 'Choose one device to start';
   if (step === 'hardCap') return 'Confirm your limits';
   if (step === 'goals') return 'Choose what PELS does';
+  if (step === 'priorities') return 'Choose what stays on longest';
   return 'Confirm your price source';
 };
 
@@ -231,6 +240,8 @@ const headerDetail = (step: SetupJourneyStep, fact: SetupStep | undefined): stri
     return reading ?? fact?.detail ?? 'Reading meter settings…';
   }
   if (step === 'goals') return goalsHeaderDetail();
+  if (step === 'priorities') return `Optional. In ${state.activeMode}, the top device keeps running longest. `
+    + 'Drag to change the order, or continue with the current order. You can change it later in Modes.';
   if (step === 'devices') return null;
   return fact?.detail ?? null;
 };
@@ -245,10 +256,12 @@ const offersCapacityOff = (step: SetupJourneyStep, fact: SetupStep | undefined):
   return market.state === 'resolved' && market.country === 'NL';
 };
 
-// The optional page is not one of the counted steps, so it shows no count.
+// Optional choices are outside the four setup stages, so they show no count.
 const headerProgress = (step: SetupJourneyStep, path: SetupPath | null): string | null => {
-  if (step === 'goals') return null;
-  return path ? formatSetupProgress(path) : 'Loading…';
+  if (step === 'goals' || step === 'priorities') return null;
+  if (!path) return 'Loading…';
+  const index = path.steps.findIndex((candidate) => candidate.id === step);
+  return index < 0 ? null : `Step ${index + 1} of ${path.steps.length}`;
 };
 
 // Every step done and managing started: the after-setup suggestion opens
@@ -258,7 +271,8 @@ const setupFinished = (path: SetupPath | null): boolean => (
 );
 
 const continueLabel = (path: SetupPath | null): string => (
-  path !== null && path.doneCount === path.steps.length && !goalsComeNext() ? 'Review setup' : 'Continue'
+  path !== null && path.doneCount === path.steps.length && !goalsComeNext() && !prioritiesComeNext()
+    ? 'Review setup' : 'Continue'
 );
 
 const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourneyHeaderProps => {
@@ -271,7 +285,7 @@ const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourn
     detail: headerDetail(step, fact),
     busy: actionBusy || setupSavePending(),
     // The optional page never holds the journey back.
-    canContinue: step === 'goals' || fact?.status === 'done',
+    canContinue: step === 'goals' || step === 'priorities' || fact?.status === 'done',
     error,
     meterHelp: step === 'goals' && solarPending() && usesFlowMeter(),
     fluviusHelp: step === 'power' && fact?.status !== 'done' && market.state === 'resolved' && market.country === 'BE',
@@ -298,6 +312,11 @@ const paintJourney = (): void => {
   if (!step) return;
   if (step === 'review') { paintReview(); return; }
   if (step === 'goals') goalsShown = true;
+  if (step === 'priorities') {
+    prioritiesShown = true;
+    // A prior Modes visit may still show another mode until its reload lands.
+    if (state.editingMode !== state.activeMode) setEditingMode(state.activeMode);
+  }
   const root = mountHeader(PANEL_BY_STEP[step]);
   if (!root) return;
   root.hidden = false;
@@ -355,6 +374,7 @@ export const initSetupJourney = (): void => {
   // offers and whether its controls are busy, not only its header.
   document.addEventListener('pels:setup-save', repaintJourney);
   document.addEventListener('pels:recommendations-updated', paintJourney);
+  document.addEventListener('modes-loaded', paintJourney);
   document.addEventListener('devices-updated', () => {
     void retrySetupBatteryPlans();
     paintJourney();
