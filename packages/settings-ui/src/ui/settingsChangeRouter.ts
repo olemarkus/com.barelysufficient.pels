@@ -65,6 +65,7 @@ import {
   CONTROLLABLE_DEVICES,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
+  DAILY_DIAGNOSTICS_REPORT,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { refreshCurrentModes } from './currentModes.ts';
 import { loadSetupPrices } from './setupPricesLoad.ts';
@@ -592,6 +593,10 @@ export const createSettingsSetHandler = () => (key: string) => {
   const reportSwitch = DIAGNOSTICS_REPORT_SWITCHES.find((entry) => entry.settingKey === key);
   if (reportSwitch) {
     runLoggedTask(loadDiagnosticsReportSwitch(reportSwitch), `Failed to load the ${key} setting`, 'settings.set');
+  }
+  // Turning the daily report on retires the suggestion to send one.
+  if (key === DAILY_DIAGNOSTICS_REPORT) {
+    runLoggedTask(refreshAfterSetupRecommendations(), 'Failed to refresh suggestions', 'settings.set');
   }
   refreshModeCatalogSurfaces(key, 'settings.set');
   if (PLAN_REFRESH_KEYS.has(key) || DEVICE_CONTROL_KEYS.has(key)) {

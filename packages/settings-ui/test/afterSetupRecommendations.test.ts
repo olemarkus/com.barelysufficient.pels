@@ -26,6 +26,7 @@ const everythingApplies: AfterSetupFacts = {
   market: { state: 'unavailable' },
   belgianHomeOnHourlyPeriod: false,
   solarExportUnpriced: false,
+  dailyDiagnosticsReportOff: false,
 };
 
 const ids = (facts: AfterSetupFacts) => resolveAfterSetupRecommendations(facts, {}).map((entry) => entry.id);
@@ -35,6 +36,26 @@ const goals = (facts: AfterSetupFacts, dismissals: Record<string, number> = {}) 
 ).find((entry) => entry.id === 'after-setup:goals');
 
 describe('after-setup suggestions', () => {
+  describe('diagnostics reports', () => {
+    const reportsOff = { ...everythingApplies, dailyDiagnosticsReportOff: true };
+
+    it('offers a finished setup the daily report after what PELS can do, waiting on the page', () => {
+      expect(ids(reportsOff)).toEqual(['after-setup:goals', 'after-setup:diagnostics-reports']);
+      expect(resolveAfterSetupRecommendations(reportsOff, {})[1]).toMatchObject({
+        category: 'optional',
+        title: 'Send a daily report',
+        actionLabel: 'Send daily reports',
+        target: { kind: 'daily-report' },
+        waitsOnPage: true,
+      });
+    });
+
+    it('stays away while setup is open, once the daily report is on, or before it is read', () => {
+      expect(ids({ ...reportsOff, setupComplete: false })).toEqual([]);
+      expect(ids(everythingApplies)).toEqual(['after-setup:goals']);
+    });
+  });
+
   it('offers prices, solar and Smart tasks as one card that opens Choose what PELS does', () => {
     expect(ids(everythingApplies)).toEqual(['after-setup:goals']);
     expect(goals(everythingApplies)).toMatchObject({

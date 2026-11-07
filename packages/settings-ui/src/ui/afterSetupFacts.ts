@@ -1,10 +1,13 @@
 import { supportsSmartTaskKind } from '../../../shared-domain/src/smartTaskDeviceKind.ts';
+import { readDailyDiagnosticsReportEnabled } from '../../../shared-domain/src/settings/dailyDiagnosticsReport.ts';
+import { DAILY_DIAGNOSTICS_REPORT } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import type { PriceOptimizationSetup } from '../../../contracts/src/priceOptimizationSettings.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import type { NorwayPriceSetup, SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
 import type { AfterSetupDevice, AfterSetupFacts, AfterSetupPriceSource } from './afterSetupRecommendations.ts';
 import { hasLoadedDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { supportsPowerDevice, supportsTemperatureControlDevice } from './deviceUtils.ts';
+import { getSetting } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { isSmartTaskCapable, readMainHomeManagedDevices } from './mainHomeDevices.ts';
 import { loadPriceSetupSuggestion } from './priceSetupOffer.ts';
@@ -71,12 +74,26 @@ export type AfterSetupFactsRead =
 
 let priceSetupState: PriceSetupState = { state: 'loading' };
 let priceSetupLoadGeneration = 0;
+/** `null` until the setting has been read; a failed read keeps the last value. */
+let dailyDiagnosticsReportEnabled: boolean | null = null;
+
+const loadDailyDiagnosticsReport = async (): Promise<void> => {
+  try {
+    dailyDiagnosticsReportEnabled = readDailyDiagnosticsReportEnabled(await getSetting(DAILY_DIAGNOSTICS_REPORT));
+  } catch (error) {
+    await logSettingsError('Failed to read the daily report setting for suggestions', error, 'setup recommendations');
+  }
+};
 
 /**
  * Load producer-classified price facts. An unavailable response is a no-op:
  * keep the last good value, or keep waiting if none has ever arrived.
  */
 export const loadAfterSetupFacts = async (): Promise<void> => {
+  await Promise.all([loadPriceSetupFacts(), loadDailyDiagnosticsReport()]);
+};
+
+const loadPriceSetupFacts = async (): Promise<void> => {
   priceSetupLoadGeneration += 1;
   const generation = priceSetupLoadGeneration;
   try {
@@ -134,6 +151,7 @@ export const readAfterSetupFacts = (): AfterSetupFactsRead => {
       belgianHomeOnHourlyPeriod: isBelgianHomeOnHourlyPeriod(),
       solarExportUnpriced: resolveHomeExhibitsSolar() && priceSetupState.exportPriced === false,
       smartTaskConfigured: Object.keys(state.deferredObjectiveSettings.objectivesByDeviceId).length > 0,
+      dailyDiagnosticsReportOff: dailyDiagnosticsReportEnabled === false,
     },
   };
 };

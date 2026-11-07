@@ -66,6 +66,8 @@ export type AfterSetupFacts = {
    * hold no export price for any period. `false` until both have been read.
    */
   solarExportUnpriced: boolean;
+  /** The owner's daily diagnostics report is off. `false` until the setting has been read. */
+  dailyDiagnosticsReportOff: boolean;
 };
 
 const VERSION = 1;
@@ -203,6 +205,25 @@ const resolveGoalsSuggestion = (
   }];
 };
 
+/**
+ * After setup, the daily report and where Report a problem lives. The button
+ * names exactly what it turns on, so pressing it is the owner's consent; the
+ * switch in Settings → Advanced turns it off again. It asks something of the
+ * owner rather than offering their home anything, so it waits on the page.
+ * Dismissed, or with the daily report on, it stays away.
+ */
+const DIAGNOSTICS_REPORTS: SetupRecommendation = {
+  id: 'after-setup:diagnostics-reports',
+  version: VERSION,
+  category: 'optional',
+  title: 'Send a daily report',
+  body: 'Once a day, PELS sends the developer a diagnostics report, so problems with your devices are '
+    + 'found and fixed sooner. If something looks wrong, use Report a problem in Settings.',
+  actionLabel: 'Send daily reports',
+  target: { kind: 'daily-report' },
+  waitsOnPage: true,
+};
+
 /** `dismissals` are the owner's, read for the cards the one suggestion replaced. */
 export const resolveAfterSetupRecommendations = (
   facts: AfterSetupFacts,
@@ -213,5 +234,6 @@ export const resolveAfterSetupRecommendations = (
     ? [FLANDERS_PERIOD] : [];
   const questions = [...flanders, ...resolveExportPriceQuestion(facts)];
   if (!facts.setupComplete) return questions;
-  return [...questions, ...resolveGoalsSuggestion(facts, dismissals)];
+  const reports = facts.dailyDiagnosticsReportOff ? [DIAGNOSTICS_REPORTS] : [];
+  return [...questions, ...resolveGoalsSuggestion(facts, dismissals), ...reports];
 };

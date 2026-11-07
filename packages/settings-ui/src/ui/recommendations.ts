@@ -347,9 +347,10 @@ export const refreshRecommendationSurfaces = (): void => {
   const readiness = resolveRecommendationReadiness(afterSetupRead);
   const dismissals = hasLoadedDismissals(dismissalRead) ? dismissalRead.dismissals : {};
   const groups = groupSetupRecommendations(resolveCurrentRecommendations(afterSetupRead, dismissals), dismissals);
+  const attention = coreLoaded ? groups.active.filter((recommendation) => !recommendation.waitsOnPage) : [];
   if (banner) {
     renderSetupRecommendationsBanner(banner, {
-      active: coreLoaded ? groups.active : [],
+      active: attention,
       onOpen: () => {
         if (navigationRead.state === 'resolved') navigationRead.navigation.openPanel('recommendations');
       },
@@ -360,10 +361,10 @@ export const refreshRecommendationSurfaces = (): void => {
   if (chip) {
     // Open setup outranks the suggestion count: it is what the row is for until
     // it is done, and one chip cannot carry both numbers.
-    const hasSuggestions = coreLoaded && groups.active.length > 0;
+    const hasSuggestions = attention.length > 0;
     chip.hidden = setupRead.state !== 'open' && !hasSuggestions;
     if (setupRead.state === 'open') chip.textContent = formatSetupProgress(setupRead.path);
-    else if (hasSuggestions) chip.textContent = String(groups.active.length);
+    else if (hasSuggestions) chip.textContent = String(attention.length);
   }
   if (page) {
     renderSetupRecommendationsView(page, {

@@ -151,6 +151,7 @@ beforeEach(() => {
       market: { state: 'unavailable' },
       belgianHomeOnHourlyPeriod: false,
       solarExportUnpriced: false,
+      dailyDiagnosticsReportOff: false,
     },
   };
   publishHomeScopeChange = () => {
@@ -215,6 +216,34 @@ describe('recommendation loading', () => {
       expect(state.devicePowerControlModes).toEqual({});
       expect(charger.automaticPowerControl?.mode).toBe('manual');
       expect(charger.targetPowerConfig?.preset).toBe('ev_charger_3_phase');
+    } finally {
+      for (const [type, listener, options] of listeners.mock.calls) document.removeEventListener(type, listener, options);
+      listeners.mockRestore();
+    }
+  });
+
+  it('turns on the daily report from its card without raising the banner or the Settings chip', async () => {
+    if (afterSetupRead.state !== 'resolved') throw new Error('Expected resolved after-setup facts.');
+    afterSetupRead = { state: 'resolved', facts: { ...afterSetupRead.facts, dailyDiagnosticsReportOff: true } };
+    const recommendations = await loadSubject([]);
+    getSetting.mockResolvedValue({});
+    getSettingFresh.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars());
+    await recommendations.loadRecommendationData();
+    const openPanel = vi.fn();
+    const listeners = vi.spyOn(document, 'addEventListener');
+    recommendations.initRecommendationSurfaces({ useQuarterHour: vi.fn(), openPanel, openDevice: vi.fn() });
+    try {
+      const surface = document.getElementById('setup-recommendations-root');
+      expect(surface?.textContent).toContain('Send a daily report');
+      expect(document.getElementById('setup-recommendations-banner-root')?.textContent).toBe('');
+      expect(document.getElementById('settings-nav-chip-recommendations')?.hidden).toBe(true);
+
+      const action = [...surface!.querySelectorAll('md-filled-tonal-button')]
+        .find((button) => button.textContent?.trim() === 'Send daily reports');
+      action?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await vi.waitFor(() => expect(setSetting).toHaveBeenCalledWith('daily_diagnostics_report', true));
+      expect(openPanel).not.toHaveBeenCalled();
     } finally {
       for (const [type, listener, options] of listeners.mock.calls) document.removeEventListener(type, listener, options);
       listeners.mockRestore();
@@ -510,6 +539,7 @@ describe('recommendation loading', () => {
         market: { state: 'resolved', country: 'NL' },
         belgianHomeOnHourlyPeriod: false,
         solarExportUnpriced: false,
+        dailyDiagnosticsReportOff: false,
       },
     };
 
@@ -557,6 +587,7 @@ describe('recommendation loading', () => {
         market: { state: 'unavailable' },
         belgianHomeOnHourlyPeriod: false,
         solarExportUnpriced: false,
+        dailyDiagnosticsReportOff: false,
       },
     };
 
