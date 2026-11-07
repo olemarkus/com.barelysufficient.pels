@@ -13,7 +13,7 @@ import { isOffSteppedRestoreCandidate } from './devices';
 import { buildOffSteppedRestoreHoldUpdate, setRestorePlanDevice as setDevice } from './planDeviceUpdates';
 import type { RestoreNeed } from './support';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
-import { getSteppedLoadStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
+import { hasReportedStepAtOrBelow } from '../swap/donorRelease';
 import { buildRestoreAdmissionMetrics } from '../admission';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
@@ -161,11 +161,7 @@ function hasUnreleasedSwapDonors(
  * has released once it reports that step or lower.
  */
 function hasDonorReleased(device: DevicePlanDevice, release: SwapDonorRelease): boolean {
-  if (release.kind === 'step' && isSteppedLoadDevice(device)) {
-    const held = getSteppedLoadStep(device.steppedLoadProfile, release.stepId);
-    const reported = getSteppedLoadStep(device.steppedLoadProfile, device.reportedStepId);
-    if (held && reported && reported.planningPowerW <= held.planningPowerW) return true;
-  }
+  if (release.kind === 'step' && hasReportedStepAtOrBelow(device, release.stepId)) return true;
   return isBinaryPlanDevice(device) ? !device.currentOn : isOffSteppedRestoreCandidate(device);
 }
 

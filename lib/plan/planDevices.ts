@@ -3,10 +3,7 @@ import { isBinaryPlanDevice } from './planBinaryDevice';
 import { resolveSurplusCeilingStepId, type PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
 import { buildEffectiveShedPosture, isFairnessLimited } from './keepInvariantPosture';
-import {
-  resolveSteppedShedCurrentDesiredStepId,
-  resolveSteppedShedHypotheticalStepId,
-} from './planSteppedShedResolution';
+import { resolveSteppedShedHypotheticalStepId } from './planSteppedShedResolution';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isSurplusLiftEngaged } from './planSurplusAbsorb';
 import { resolvePriceOptimizationConfig } from '../price/priceOptimizer';
@@ -225,7 +222,7 @@ function isPhantomSetStepShed(
   const behavior = deps.getShedBehavior(dev.id);
   if (behavior.action !== 'set_step') return false;
   const directStepId = resolveSteppedShedHypotheticalStepId(
-    dev, devices, state, behavior, resolveSteppedShedCurrentDesiredStepId(dev),
+    dev, devices, state, behavior,
   );
   return directStepId === undefined || directStepId === dev.selectedStepId;
 }

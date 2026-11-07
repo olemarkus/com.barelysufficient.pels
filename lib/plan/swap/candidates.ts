@@ -4,25 +4,16 @@ import {
 } from '../planConstants';
 import { buildRestoreAdmissionMetrics, isRestoreAdmitted, type RestoreAdmissionMetrics } from '../admission';
 import { isSteppedLoadDevice, resolveStepChangeKw, resolveSteppedLoadPlanningKw } from '../planSteppedLoad';
-import {
-  getSteppedLoadLowestActiveStep, getSteppedLoadStep,
-} from '../../../packages/shared-domain/src/deviceControlProfiles';
+import { getSteppedLoadLowestActiveStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { getSteppedLoadNextLowerStep } from '../../utils/steppedLoadLadder';
 import type { SwapDonorRelease, SwapLedger } from './swapLedger';
+import { hasReportedStepAtOrBelow } from './donorRelease';
 
 /** A running device the swap pauses, and what it gives up. */
 export type SwapDonor = {
   device: MeteredDevicePlanDevice;
   release: SwapDonorRelease;
 };
-
-/** Whether a stepped donor reports the step a swap lowered it to, or one below it. */
-function hasSteppedDownTo(onDev: MeteredDevicePlanDevice, stepId: string): boolean {
-  if (!isSteppedLoadDevice(onDev)) return false;
-  const held = getSteppedLoadStep(onDev.steppedLoadProfile, stepId);
-  const reported = getSteppedLoadStep(onDev.steppedLoadProfile, onDev.reportedStepId);
-  return held !== null && reported !== null && reported.planningPowerW <= held.planningPowerW;
-}
 
 /**
  * Whether `onDev` can give up draw to a swap for `dev`: it is drawing
@@ -52,7 +43,7 @@ function canReleaseDrawForSwap(
   if (restoredThisCycle.has(onDev.id)) return false;
   const release = ledger.donorRelease(onDev.id);
   if (release === undefined) return onDev.plannedState !== 'shed';
-  return release.kind === 'step' && hasSteppedDownTo(onDev, release.stepId)
+  return release.kind === 'step' && hasReportedStepAtOrBelow(onDev, release.stepId)
     && ledger.isHeldOnlyBelow(onDev.id, dev.priority, deviceMap);
 }
 

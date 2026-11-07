@@ -168,6 +168,21 @@ function resolveHeldMs(
   return clock.heldMs + Math.min(Math.max(0, nowTs - clock.lastTickMs), MAX_HELD_STEP_MS);
 }
 
+/** Account for the preceding cycle, then stop charging while no reserve is offered. */
+function pauseReserveClock(
+  clock: HeadroomReserveClock | null,
+  context: Pick<PlanContext, 'nowTs' | 'hourBucketKey'>,
+): HeadroomReserveClock | null {
+  if (clock?.kind !== 'holding') return clock;
+  return {
+    kind: 'holding',
+    heldMs: resolveHeldMs(clock, context),
+    lastTickMs: context.nowTs,
+    heldLastCycle: false,
+    hourBucketKey: context.hourBucketKey,
+  };
+}
+
 function resolveReserveForDevice(
   device: MeteredDevicePlanDevice,
   clock: HeadroomReserveClock | null,
@@ -180,15 +195,19 @@ function resolveReserveForDevice(
 
   // Both of the next two gates read fields a flaky Homey poll can flip for a single cycle
   // (`steppedLoadProfile`, `available`, `commandableNow`). They withhold the reserve for that
-  // cycle but KEEP the clock: dropping it would restart the 15-minute bound on every blip, and
+  // cycle and PAUSE the clock: dropping it would restart the 15-minute bound on every blip, and
   // the bound is the only protection against a reserve that can never be satisfied. Only a
   // genuine start (`satisfied`) or a withdrawn permission clears the clock.
   const startupKw = resolveStartupPowerKw(device);
   // Cannot reason about its draw → no reserve.
-  if (startupKw === null) return { outcome: 'unknown_device_power', clock, reserve: null };
+  if (startupKw === null) {
+    return { outcome: 'unknown_device_power', clock: pauseReserveClock(clock, context), reserve: null };
+  }
 
   // The device will never start, so reserving on its behalf is pure cost to everyone else.
-  if (!isStartable(device)) return { outcome: 'not_startable', clock, reserve: null };
+  if (!isStartable(device)) {
+    return { outcome: 'not_startable', clock: pauseReserveClock(clock, context), reserve: null };
+  }
 
   if (isStartupSatisfied(device, startupKw)) {
     return { outcome: 'satisfied', clock: { kind: 'released' }, reserve: null };

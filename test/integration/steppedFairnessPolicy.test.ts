@@ -65,7 +65,7 @@ it.each([30, 1, 60].flatMap((minutesRemaining) => scenarios.map((scenario) => ({
   const pendingBinaryCommandStore = createPendingBinaryCommandStore(state.pendingBinaryCommands);
   const getShedBehavior = () => ({ action: 'set_step' as const });
   expect(resolveSteppedShedHypotheticalStepId(charger, context.devices, state,
-    getShedBehavior(), '14a')).toBe(scenario.selectedStep);
+    getShedBehavior())).toBe(scenario.selectedStep);
   const sheddingPlan = await buildSheddingPlanForSpec(context, context, state, {
     capacityGuard: capacityGuardSpy(), powerTracker: { lastTimestamp: Date.now(), lastPowerW: 5350 },
     structuredLog: testLogger, shortfallThresholdKw: 20, getShedBehavior, pendingBinaryCommandStore,
