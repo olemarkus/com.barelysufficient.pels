@@ -45,7 +45,7 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
   & ObservedStateOfChargeProbe
   & MeasuredPowerObservedProbe
   & Pick<DeviceDescriptor,
-    | 'deviceClass' | 'deviceType' | 'budgetExempt' | 'flowBacked'
+    | 'deviceClass' | 'deviceType' | 'zone' | 'budgetExempt' | 'flowBacked'
     | 'powerCapable' | 'expectedPowerKw' | 'expectedPowerSource'
     | 'controlAdapter' | 'binaryControllable' | 'isEvCharger' | 'isBatteryOrSolar' | 'managed'
   >

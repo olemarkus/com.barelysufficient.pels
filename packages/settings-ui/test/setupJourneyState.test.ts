@@ -16,6 +16,7 @@ describe('setup navigation', () => {
     expect(setupJourneyFromSearch('?setup=anything')).toBeNull();
     expect(setupJourneyFromSearch('?setup=solar')).toBeNull();
     expect(setupJourneyFromSearch('?setup=goals')).toBe('goals');
+    expect(setupJourneyFromSearch('?setup=priorities')).toBe('priorities');
   });
 });
 

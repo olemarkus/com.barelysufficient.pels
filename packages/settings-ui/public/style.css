@@ -9359,3 +9359,14 @@ md-switch {
     grid-template-columns: repeat(7, minmax(0, 1fr));
   }
 }
+
+/* Setup reuses the active mode's priority order without its mode/target editor. */
+#modes-panel[data-setup-journey-panel="priorities"] :where(#priority-form) > .field,
+#modes-panel[data-setup-journey-panel="priorities"] .mode-target-input,
+#modes-panel[data-setup-journey-panel="priorities"] .mode-target-placeholder {
+  display: none;
+}
+
+#modes-panel[data-setup-journey-panel="priorities"] .mode-row {
+  grid-template-areas: "handle name rank";
+}

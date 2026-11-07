@@ -1,4 +1,5 @@
 import Sortable from 'sortablejs';
+import { currentSetupJourney } from './setupJourneyState.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import {
   getPrimaryTargetCapability,
@@ -50,7 +51,7 @@ import {
   applyTemperatureControlSettings, applyDeviceStartPolicySettings, applyBatteryControlSettings,
   readStrictBooleanSettingMap, type ModeSettingsRead,
 } from './modeSettingsRead.ts';
-import { prepareModeHomeLoad, showModeCatalogUnavailable } from './modeLoadSurface.ts';
+import { EMPTY_MODE_COPY, prepareModeHomeLoad, showModeCatalogUnavailable } from './modeLoadSurface.ts';
 import {
   isPriorityContextCurrent,
   savePriorities,
@@ -114,10 +115,8 @@ const applyModeSettings = (homeId: string, read: ModeSettingsRead): void => {
     ?? (state.loadedModeHomeId === homeId ? state.modePriorityCatalog : new ModePriorityCatalog());
   state.loadedModeHomeId = homeId;
   if (modeSelect) modeSelect.disabled = false;
-  state.activeMode = typeof read.mode === 'string' && read.mode.trim()
-    ? read.mode
-    : DEFAULT_MODE_NAME;
-  state.editingMode = keepEditingMode
+  state.activeMode = resolveModeName(typeof read.mode === 'string' ? read.mode : DEFAULT_MODE_NAME);
+  state.editingMode = currentSetupJourney() !== 'priorities' && keepEditingMode
     && (state.modePriorityCatalog.modes().includes(editingMode) || Object.hasOwn(targets, editingMode))
     ? editingMode
     : state.activeMode;
@@ -145,6 +144,7 @@ export const loadModeAndPriorities = async () => {
     const read = await readModeSettings(homeId);
     if (generation !== modeLoadGeneration || homeId !== getHomeScope().selectedHomeId) return;
     applyModeSettings(homeId, read);
+    document.dispatchEvent(new Event('modes-loaded'));
   } catch (error) {
     if (generation === modeLoadGeneration && homeId === getHomeScope().selectedHomeId) {
       showModeCatalogUnavailable();
@@ -262,6 +262,7 @@ export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
     && getHomeIdForUiDevice(device.id) === selectedHomeId
   ));
   if (!managedDevices.length) {
+    priorityEmpty.textContent = EMPTY_MODE_COPY;
     priorityEmpty.hidden = false;
     renderPriorityBatteryNote(priorityBatteryNote, []);
     return;
@@ -282,8 +283,7 @@ export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
 };
 
 export const setEditingMode = (mode: string) => {
-  const next = resolveModeName(mode);
-  state.editingMode = next;
+  state.editingMode = resolveModeName(mode);
   renderModeOptions();
   renderPriorities(state.latestDevices);
 };

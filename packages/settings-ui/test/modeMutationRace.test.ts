@@ -78,7 +78,97 @@ describe('mode mutations stay bound to their starting meter area', () => {
   beforeEach(() => {
     vi.resetModules();
     selectedHomeId = AREA_A;
+    window.history.replaceState(null, '', '/');
     setupDom();
+  });
+
+  it.each(['Home', ' Home '])('edits the resolved active mode during priority setup (%s)', async (mode) => {
+    const { homey, state } = await install();
+    homey.__settingsStore[`operating_mode:${AREA_A}`] = mode;
+    state.editingMode = 'Away';
+    window.history.replaceState(null, '', '/?setup=priorities');
+    const { loadModeAndPriorities } = await import('../src/ui/modes.ts');
+    await loadModeAndPriorities();
+    expect(state.activeMode).toBe('Home');
+    expect(state.editingMode).toBe('Home');
+  });
+
+  it('does not save an inactive mode from priority setup while the mode reload is pending', async () => {
+    const { homey, state } = await install();
+    state.editingMode = 'Away';
+    window.history.replaceState(null, '', '/?setup=priorities');
+    const row = document.createElement('li');
+    row.className = 'device-row';
+    row.dataset.deviceId = 'device-a';
+    document.querySelector('#priority-list')?.append(row);
+    const toast = await import('../src/ui/toast.ts');
+    const warning = vi.spyOn(toast, 'showToast').mockResolvedValue(undefined);
+    const writeError = vi.spyOn(toast, 'showToastError').mockResolvedValue(undefined);
+    const { savePriorities } = await import('../src/ui/modePrioritySave.ts');
+    const saves = await import('../src/ui/setupJourneyState.ts');
+    await expect(savePriorities()).resolves.toEqual({ status: 'not-saved' });
+    expect(homey.set).not.toHaveBeenCalled();
+    expect(warning).toHaveBeenCalledExactlyOnceWith(
+      'The active mode changed. Check the priority order before continuing.', 'warn',
+    );
+    expect(writeError).not.toHaveBeenCalled();
+    warning.mockRestore();
+    writeError.mockRestore();
+    await expect(saves.waitForSetupSaves()).rejects.toThrow('could not be saved');
+  });
+
+  it('shows pending priorities during a first catalog load, then hides the message when ready', async () => {
+    const { homey, state } = await install();
+    state.loadedModeHomeId = null;
+    let finish!: () => void;
+    const get = homey.get.getMockImplementation()!;
+    homey.get.mockImplementation((key, callback) => {
+      if (key === `capacity_priorities:${AREA_A}`) {
+        finish = () => get(key, callback);
+        return;
+      }
+      get(key, callback);
+    });
+    const { loadModeAndPriorities, renderPriorities } = await import('../src/ui/modes.ts');
+    const pending = loadModeAndPriorities();
+    expect(document.querySelector('#priority-empty')?.textContent).toBe('Loading priorities…');
+    expect(document.querySelector('#priority-empty')?.hasAttribute('hidden')).toBe(false);
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    finish();
+    await pending;
+    state.managedMap = { 'device-a': true };
+    renderPriorities([{
+      id: 'device-a', name: 'Heater', available: true, targets: [], deviceType: 'onoff', deviceClass: 'heater',
+      managed: true, binaryControllable: true, powerCapable: true, expectedPowerKw: 1, expectedPowerSource: 'default',
+      isEvCharger: false, isBatteryOrSolar: false, batteryControl: 'not_battery',
+      batteryTakenOver: false, batteryUsesHomeyApiKey: false,
+    }]);
+    expect(document.querySelector('#priority-empty')?.hasAttribute('hidden')).toBe(true);
+    renderPriorities([]);
+    expect(document.querySelector('#priority-empty')?.textContent).toContain('No managed devices.');
+  });
+
+  it.each([false, true])('waits for a setup reorder and retains a failed save gate (failure=%s)', async (fail) => {
+    const { homey } = await install();
+    window.history.replaceState(null, '', '/?setup=priorities');
+    const row = document.createElement('li');
+    row.className = 'device-row';
+    row.dataset.deviceId = 'device-a';
+    document.querySelector('#priority-list')?.append(row);
+    let finish!: () => void;
+    homey.set.mockImplementation((_key, _value, callback) => {
+      finish = () => callback?.(fail ? new Error('offline') : null);
+    });
+    const { savePriorities } = await import('../src/ui/modePrioritySave.ts');
+    const saves = await import('../src/ui/setupJourneyState.ts');
+    const pending = savePriorities();
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    expect(saves.setupSavePending()).toBe(true);
+    finish();
+    await expect(pending).resolves.toMatchObject({ status: fail ? 'not-saved' : 'saved' });
+    expect(saves.setupSavePending()).toBe(false);
+    if (fail) await expect(saves.waitForSetupSaves()).rejects.toThrow('could not be saved');
+    else await expect(saves.waitForSetupSaves()).resolves.toBeUndefined();
   });
 
   it('renames from an immutable catalog after Showing changes mid-write', async () => {

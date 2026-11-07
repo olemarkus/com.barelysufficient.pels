@@ -1,7 +1,7 @@
 import { h, render } from 'preact';
 import { act } from 'preact/test-utils';
 import {
-  SetupGoalPicker, SetupJourneyHeader, type SetupJourneyHeaderProps,
+  SetupDevicePicker, SetupGoalPicker, SetupJourneyHeader, type SetupJourneyHeaderProps,
 } from '../src/ui/views/SetupJourney.tsx';
 import type { SetupGoalChoice } from '../src/ui/setupGoals.ts';
 
@@ -158,5 +158,21 @@ describe('setup journey header', () => {
     expect(root.textContent).not.toContain('Back to setup');
     expect(root.textContent).not.toContain('Review setup');
     expect(root.textContent).toContain('Choose what PELS does');
+  });
+});
+
+
+describe('Setup device picker', () => {
+  it('shows identifying metadata beside each device', () => {
+    const root = mount();
+    act(() => render(h(SetupDevicePicker, {
+      choices: { state: 'ready', devices: [{
+        id: 'heater', name: 'Mill', detail: 'Heater · Living room · 0 kW',
+        managed: false, disabled: false, hint: 'PELS may lower or pause this device.',
+      }] },
+      onManaged: vi.fn(), onOpen: vi.fn(), onRetry: vi.fn(),
+    }), root));
+    expect(root.textContent).toContain('Heater · Living room · 0 kW');
+    expect(root.querySelector('md-switch')?.getAttribute('aria-label')).toBe('Manage Mill');
   });
 });

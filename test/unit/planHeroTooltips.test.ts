@@ -1,7 +1,10 @@
+import { partialDouble } from '../helpers/partialDouble';
+import type { PlanMetaSnapshot } from '../../packages/settings-ui/src/ui/planTypes';
 import {
   HERO_INFO_TOOLTIP_TEXT,
   SAFE_PACE_TOOLTIP_BY_SOURCE,
   formatHeroInfoTooltip,
+  formatHourlyPaceExplanation,
   formatSafePaceComposition,
   formatSafePaceTooltip,
 } from '../../packages/settings-ui/src/ui/planHeroTooltips';
@@ -113,5 +116,33 @@ describe('planHeroTooltips', () => {
       expect(formatSafePaceComposition(6, 'daily', { budgetPaceKw: -1, projectedExemptKw: 7 })).toBeNull();
       expect(formatSafePaceComposition(13, 'daily', { budgetPaceKw: 5, projectedExemptKw: 7 })).toBeNull();
     });
+  });
+});
+
+describe('hourly pace explanation', () => {
+  const meta = partialDouble<PlanMetaSnapshot>({
+    softLimitSource: 'capacity', capacityPeriodMinutes: 60, softLimitKw: 52.1, hardCapLimitKw: 10,
+    capacitySoftLimitKw: 52.1,
+  });
+  it('explains a capacity pace higher than the hourly hard cap', () => {
+    expect(formatHourlyPaceExplanation(meta)).toBe(
+      'The hard cap applies to the hourly average, so Safe pace can be higher for the rest of the hour.',
+    );
+  });
+  it('explains daily pacing above the hard cap while hourly capacity control is active', () => {
+    const daily = { ...meta, softLimitSource: 'daily' as const, softLimitKw: 20 };
+    expect(formatHourlyPaceExplanation(daily)).toBe(formatHourlyPaceExplanation(meta));
+    expect(formatHourlyPaceExplanation({ ...daily, capacitySoftLimitKw: null })).toBeNull();
+  });
+  it('does not explain grid, disabled or quarter-hour pacing', () => {
+    for (const softLimitSource of ['grid', null] as const) {
+      expect(formatHourlyPaceExplanation({ ...meta, softLimitSource })).toBeNull();
+    }
+    expect(formatHourlyPaceExplanation({ ...meta, capacityPeriodMinutes: 15 })).toBeNull();
+  });
+  it('compares the displayed precision and handles a missing pace', () => {
+    expect(formatHourlyPaceExplanation({ ...meta, softLimitKw: 10.04 })).toBeNull();
+    expect(formatHourlyPaceExplanation({ ...meta, softLimitKw: 9 })).toBeNull();
+    expect(formatHourlyPaceExplanation({ ...meta, softLimitKw: null })).toBeNull();
   });
 });

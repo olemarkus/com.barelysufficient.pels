@@ -244,6 +244,7 @@ export default class PriceService {
       this.sinks.structuredLog.info({ event: 'spot_prices_no_data' });
       return;
     }
+    if (this.norwaySchemeSettings.priceArea !== priceArea) return;
     this.priceDataStore.writeSpotPrices(allPrices);
     this.priceDataStore.writeSpotPriceArea(priceArea);
     this.sinks.structuredLog.info({ event: 'spot_prices_stored', priceCount: allPrices.length, priceArea });
@@ -472,8 +473,7 @@ export default class PriceService {
 
   private getCombinedHourlyPricesNorway(): CombinedHourlyPrice[] {
     return resolveNorwayHourlyPrices(
-      this.norwaySchemeSettings,
-      this.priceDataStore,
+      this.norwaySchemeSettings, this.priceDataStore,
       this.getNumberSetting('provider_surcharge', 0),
       this.getPowerTracker(),
       this.getTimeZone(),
