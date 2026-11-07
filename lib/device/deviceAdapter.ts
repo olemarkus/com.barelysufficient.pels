@@ -106,7 +106,8 @@ export type TargetPowerDefaults = { minW: number; maxW: number; stepW: number };
  *   range is flipped into it at parse and each setpoint back out at write.
  *   `measure_power` is not part of the binding: Homey's sign (positive
  *   charging) is what every battery app reports there.
- * - `rangeDefaults`: the edges read for a driver that declares none.
+ * - `rangeDefaults`: the edges read for a driver that declares none. Homey
+ *   fills an undeclared edge with its own default, which reads as undeclared.
  * - `zeroSetpointW`: what PELS writes, in its own sign, for a 0 W setpoint:
  *   `0`, unless the app reads an exact 0 as one of its own modes. A hand-back
  *   still writes an exact 0.

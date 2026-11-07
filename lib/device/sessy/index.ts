@@ -24,8 +24,10 @@ import { standardDeviceAdapter } from '../standardDeviceAdapter';
  *   the app's own charge-mode presets, `setChargeMode` (`CHARGE` sets
  *   `power_setpoint` -2200, `DISCHARGE` +1800, and `target_power` is
  *   `-power_setpoint`). Homey's ±25 kW would let PELS credit a whole deficit
- *   to a 2.2 kW battery until it learned a plateau. An edge the driver declares
- *   always wins.
+ *   to a 2.2 kW battery until it learned a plateau. Homey fills the missing
+ *   edges with that ±25 kW itself, so PELS reads Homey's own default as left
+ *   out (`batteryControlWiring.ts`). Any other edge the driver declares always
+ *   wins.
  */
 const SESSY_APP_ID = 'nl.sessy';
 

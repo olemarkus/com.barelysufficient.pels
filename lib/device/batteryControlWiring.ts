@@ -4,6 +4,7 @@ import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { DeviceCapabilityMap } from './managerControl';
 import type { HomeBatteryCapabilityBinding, TargetPowerDefaults } from './deviceAdapter';
 import { getDeviceAdapter } from './deviceAdapterRegistry';
+import { HOMEY_TARGET_POWER_DEFAULTS } from './homeBatteryBinding';
 
 /**
  * How PELS could drive a home battery: a writable signed `target_power`, taken
@@ -37,6 +38,19 @@ const readNumericOption = (entry: CapabilityEntry, key: string, fallback: number
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 };
 
+/**
+ * A `target_power` range edge: the binding's default when the driver leaves it
+ * out. Homey fills an edge a driver does not declare with its own capability
+ * default (±25 kW, step 1) before PELS reads `capabilitiesObj`, so that value
+ * reads as left out too. Without that, a binding's own defaults (Sessy's
+ * charge-mode presets) would never apply on a real Homey. For a binding whose
+ * defaults are Homey's, nothing changes.
+ */
+const readRangeEdge = (entry: CapabilityEntry, key: string, homeyDefault: number, fallback: number): number | null => {
+  const value = readNumericOption(entry, key, fallback);
+  return value === homeyDefault ? fallback : value;
+};
+
 /** The app's range in PELS's sign: a flipped binding swaps and negates each pair of edges. */
 const toPelsSign = (range: HomeBatterySetpointRange, sign: 1 | -1): HomeBatterySetpointRange => (
   sign === 1 ? range : {
@@ -61,9 +75,9 @@ const resolveSignedRange = (
   binding: HomeBatteryCapabilityBinding,
 ): HomeBatterySetpointRange | null => {
   const defaults: TargetPowerDefaults = binding.rangeDefaults;
-  const minW = readNumericOption(entry, 'min', defaults.minW);
-  const maxW = readNumericOption(entry, 'max', defaults.maxW);
-  const stepW = readNumericOption(entry, 'step', defaults.stepW);
+  const minW = readRangeEdge(entry, 'min', HOMEY_TARGET_POWER_DEFAULTS.minW, defaults.minW);
+  const maxW = readRangeEdge(entry, 'max', HOMEY_TARGET_POWER_DEFAULTS.maxW, defaults.maxW);
+  const stepW = readRangeEdge(entry, 'step', HOMEY_TARGET_POWER_DEFAULTS.stepW, defaults.stepW);
   // Homey reads a missing exclude edge as 0 (homey-lib `lib/App/index.js`), so
   // a device with no band resolves to the empty band (0, 0).
   const excludeMinW = readNumericOption(entry, 'excludeMin', 0);
