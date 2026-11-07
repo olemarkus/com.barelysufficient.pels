@@ -53,6 +53,7 @@ import { type SettingsUiPowerPayload } from '../../../contracts/src/settingsUi/p
 import { type SettingsUiPricesPayload } from '../../../contracts/src/settingsUi/prices.ts';
 import { buildFlowStatus, buildHomeyStatus, buildPowerhourStatus } from './priceConfigStatus.ts';
 import { onSetupPathChange, readSetupMarket } from './setupPathFacts.ts';
+import { loadSetupPrices } from './setupPricesLoad.ts';
 import { resolveLiveSummarySignals } from './livePriceSignals.ts';
 import {
   renderElectricityPricesView,
@@ -544,7 +545,12 @@ const refreshStatusInfo = async () => {
     };
   } catch (error) {
     await logSettingsError('Failed to refresh price status', error, 'priceConfig');
+    return;
   }
+  // The setup path's Prices step decides by this same read, now cached. Its
+  // header follows the page here rather than waiting for the save's
+  // `settings.set` echo, which a web app without its realtime socket never gets.
+  await loadSetupPrices();
 };
 
 let settingsLoadGeneration = 0;
