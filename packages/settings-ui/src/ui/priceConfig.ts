@@ -108,6 +108,8 @@ let configState: PriceConfigState = {
 };
 
 let currentPrices: SettingsUiPricesPayload | null = null;
+let priceSetupSuggestionPending = true;
+let priceSetupVisit = 0;
 
 let electricityPricesSurface: HTMLElement | null = null;
 let priceAwareDevicesSurface: HTMLElement | null = null;
@@ -143,6 +145,8 @@ const renderElectricityPrices = () => {
   const props: ElectricityPricesViewProps = {
     inverterControl: inverterControl.props(),
     showSetupGoals: currentSetupJourney() === 'prices',
+    priceSetupSuggestionPending,
+    priceSetupVisit,
     config: configState,
     market: readSetupMarket(),
     handlers: electricityPricesHandlers,
@@ -333,7 +337,7 @@ const handleSchemeChange = async (scheme: PriceScheme) => {
   // The page asks for a suggestion for the source it shows, so a source picked
   // here is asked about now, not only the next time the page opens. Outside
   // the save above: an advisory read must never roll a saved source back.
-  await norwayPriceHandlers.askForPriceSetupSuggestion();
+  await askForPriceSetupSuggestion();
 };
 
 const handleProviderSurchargeChange = async (val: number) => {
@@ -399,6 +403,16 @@ const norwayPriceHandlers = createNorwayPriceHandlers({
     renderAll();
   },
 });
+const askForPriceSetupSuggestion = async (): Promise<void> => {
+  priceSetupSuggestionPending = true;
+  renderElectricityPrices();
+  try {
+    await norwayPriceHandlers.askForPriceSetupSuggestion();
+  } finally {
+    priceSetupSuggestionPending = false;
+    renderElectricityPrices();
+  }
+};
 const exportSourceHandler = createExportSourceHandler(exportPriceHandlersContext);
 
 const handleDevicePriceAdjustmentChange = async (deviceId: string, kind: PriceAdjustmentKind, sizeC: number) => {
@@ -442,7 +456,7 @@ const handleRefreshPrices = async () => {
     await showToastError(error, 'Failed to refresh spot prices. If this keeps happening, send a diagnostics report.');
     return;
   }
-  await norwayPriceHandlers.askForPriceSetupSuggestion();
+  await askForPriceSetupSuggestion();
 };
 
 const handleRefreshGridTariff = async () => {
@@ -581,9 +595,11 @@ export const refreshPriceConfigView = async () => {
  * the Hour on a Homey Energy home without prices.
  */
 export const openElectricityPricesView = async () => {
+  priceSetupVisit += 1;
+  priceSetupSuggestionPending = true;
   renderElectricityPrices();
   await refreshPriceConfigView();
-  await norwayPriceHandlers.askForPriceSetupSuggestion();
+  await askForPriceSetupSuggestion();
 };
 
 export const reloadPriceConfigSettings = async () => {

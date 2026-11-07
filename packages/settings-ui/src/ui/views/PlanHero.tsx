@@ -23,6 +23,7 @@ import {
 } from '../planHeroSummary.ts';
 import {
   formatHeroInfoTooltip,
+  formatHourlyPaceExplanation,
   formatHardCapEnergyTooltip,
   formatSafePaceComposition,
   formatSafePaceTooltip,
@@ -508,6 +509,7 @@ const PowerSection = ({
   hasControllableDevice: boolean;
 }) => {
   const scale = computePowerBarScale(headline, meta);
+  const hourlyPaceExplanation = formatHourlyPaceExplanation(meta);
   const safePaceComposition = scale === null || scale.softLimitSource === 'grid' ? null : formatSafePaceComposition(
     scale.safePaceKw,
     scale.softLimitSource,
@@ -529,6 +531,7 @@ const PowerSection = ({
       <div class="plan-hero__subline">
         {resolvePowerSubline(headline, meta)}
       </div>
+      {hourlyPaceExplanation && <p class="pels-card-supporting">{hourlyPaceExplanation}</p>}
       {solarNowText !== null && (
         <div class="plan-hero__subline plan-hero__subline--muted" id="plan-hero-solar-now">
           {solarNowText}

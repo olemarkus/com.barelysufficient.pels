@@ -14,6 +14,7 @@ import {
   getHourlyUsageEstimateKwh,
   type PowerTrackerReadout,
 } from './priceServiceNorgespris';
+import type { PriceDataStore } from './priceDataStore';
 import type { CombinedHourlyPrice } from './priceTypes';
 import type { NorwayPriceModelSetting } from '../../packages/contracts/src/settingsUi/prices';
 
@@ -384,11 +385,14 @@ export const buildCombinedHourlyPricesNorway = (params: {
  */
 export const resolveNorwayHourlyPrices = (
   settings: NorwaySchemeSettings,
-  store: { readSpotPrices(): unknown; readNettleie(): unknown },
+  store: Pick<PriceDataStore, 'readSpotPrices' | 'readSpotPriceArea' | 'readNettleie'>,
   providerSurchargeIncVat: number,
   powerTracker: PowerTrackerReadout,
   timeZone: string,
 ): CombinedHourlyPrice[] => {
+  const cachedArea = store.readSpotPriceArea();
+  // A new area is chosen before its fetch finishes. Keep legacy unmarked caches usable.
+  if (typeof cachedArea === 'string' && cachedArea !== settings.priceArea) return [];
   const { norwayPriceModel } = settings;
   const now = new Date();
   return buildCombinedHourlyPricesNorway({

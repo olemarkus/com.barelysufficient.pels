@@ -1,5 +1,5 @@
 /** Browser navigation and pending setup saves; never persisted as completion. */
-export const SETUP_JOURNEY_STEPS = ['power', 'devices', 'hardCap', 'prices', 'goals', 'review'] as const;
+export const SETUP_JOURNEY_STEPS = ['power', 'devices', 'hardCap', 'prices', 'goals', 'priorities', 'review'] as const;
 export type SetupJourneyStep = typeof SETUP_JOURNEY_STEPS[number];
 
 export const setupJourneyFromSearch = (search: string): SetupJourneyStep | null => {
