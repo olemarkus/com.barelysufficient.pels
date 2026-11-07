@@ -95,6 +95,7 @@ import {
   clearRecommendationDismissals,
   loadRecommendationDismissals,
   refreshAfterSetupRecommendations,
+  refreshDailyReportSuggestion,
   refreshRecommendationSurfaces,
   SETUP_RECOMMENDATION_DISMISSALS,
 } from './recommendations.ts';
@@ -463,6 +464,12 @@ const reloadRecommendationsIfKey = (key: string, context: string): void => {
       context,
     );
   }
+  // Turning the daily report on retires the suggestion to send one; clearing it
+  // brings the suggestion back. Only that fact is re-read, so a slow price read
+  // never holds the card.
+  if (key === DAILY_DIAGNOSTICS_REPORT) {
+    runLoggedTask(refreshDailyReportSuggestion(), 'Failed to refresh the daily report suggestion', context);
+  }
 };
 
 /**
@@ -593,10 +600,6 @@ export const createSettingsSetHandler = () => (key: string) => {
   const reportSwitch = DIAGNOSTICS_REPORT_SWITCHES.find((entry) => entry.settingKey === key);
   if (reportSwitch) {
     runLoggedTask(loadDiagnosticsReportSwitch(reportSwitch), `Failed to load the ${key} setting`, 'settings.set');
-  }
-  // Turning the daily report on retires the suggestion to send one.
-  if (key === DAILY_DIAGNOSTICS_REPORT) {
-    runLoggedTask(refreshAfterSetupRecommendations(), 'Failed to refresh suggestions', 'settings.set');
   }
   refreshModeCatalogSurfaces(key, 'settings.set');
   if (PLAN_REFRESH_KEYS.has(key) || DEVICE_CONTROL_KEYS.has(key)) {

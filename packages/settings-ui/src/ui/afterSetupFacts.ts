@@ -77,7 +77,7 @@ let priceSetupLoadGeneration = 0;
 /** `null` until the setting has been read; a failed read keeps the last value. */
 let dailyDiagnosticsReportEnabled: boolean | null = null;
 
-const loadDailyDiagnosticsReport = async (): Promise<void> => {
+export const loadDailyDiagnosticsReport = async (): Promise<void> => {
   try {
     dailyDiagnosticsReportEnabled = readDailyDiagnosticsReportEnabled(await getSetting(DAILY_DIAGNOSTICS_REPORT));
   } catch (error) {
