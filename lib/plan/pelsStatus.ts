@@ -7,6 +7,7 @@ import {
   isProjectedOverHardCap,
 } from '../../packages/shared-domain/src/hourEnergyProjection';
 import type { SoftLimitSource } from '../../packages/contracts/src/settingsUi/plan';
+import type { PelsLimitReason } from '../../packages/contracts/src/settingsUi/power';
 import type { DevicePlan, PlanMeta } from './planTypes';
 import { NEUTRAL_STARTUP_HOLD_REASON } from './restore/devices';
 
@@ -39,7 +40,7 @@ export type PelsStatus = {
   hourlyUsageKwh: number;
   dailyBudgetRemainingKwh?: number;
   dailyBudgetExceeded?: boolean;
-  limitReason?: 'none' | 'hourly' | 'daily' | 'both';
+  limitReason?: PelsLimitReason;
   capacityShortfall?: boolean;
   /**
    * `null` when Capacity limit is off: no capacity period, no threshold
@@ -221,40 +222,29 @@ function resolveProjectedOverHardCap(meta: PlanMeta): boolean | undefined {
   });
 }
 
-type SharedLimitParams = {
-  plan: DevicePlan;
-  summary: PlanStatusSummary;
-  hasLimitDrivenShedDevices: boolean;
-  headroomNegative: boolean;
-};
-
-type HourlyLimitParams = SharedLimitParams & {
-  limitSource: SoftLimitSource;
-  capacitySourceActive: boolean;
-};
-
-type DailyLimitParams = SharedLimitParams & {
-  dailySourceActive: boolean;
-};
-
 type PlanStatusSummary = {
   devicesOn: number;
   devicesOff: number;
-  hasLimitDrivenShedDevices: boolean;
+  hasUnattributedShedDevices: boolean;
   hasHourlyReason: boolean;
   hasDailyReason: boolean;
+  hasGridReason: boolean;
 };
 
 // The `|| limitSource === 'both'` arms these used to carry were dead: the
 // producer (`resolveSoftLimitSource`) answers `'capacity'` when the two paces
 // coincide, never a third "both" state. Not to be confused with `limitReason`
-// below, whose four-member union DOES include a real `'both'`.
+// below, whose `'both'` is real: more than one limit at once.
 function isDailySourceActive(limitSource: SoftLimitSource): boolean {
   return limitSource === 'daily';
 }
 
 function isCapacitySourceActive(limitSource: SoftLimitSource): boolean {
   return limitSource === 'capacity';
+}
+
+function isGridSourceActive(limitSource: SoftLimitSource): boolean {
+  return limitSource === 'grid';
 }
 
 function isRestoreHoldShedReason(reason: DeviceReason): boolean {
@@ -268,11 +258,13 @@ function isRestoreHoldShedReason(reason: DeviceReason): boolean {
 function resolveReasonFlags(reason: DeviceReason): {
   hasHourlyReason: boolean;
   hasDailyReason: boolean;
+  hasGridReason: boolean;
 } {
   if (reason.code === NEUTRAL_STARTUP_HOLD_REASON.code) {
     return {
       hasHourlyReason: false,
       hasDailyReason: false,
+      hasGridReason: false,
     };
   }
   return {
@@ -286,6 +278,7 @@ function resolveReasonFlags(reason: DeviceReason): {
       || reason.code === PLAN_REASON_CODES.capacity
       || reason.code === PLAN_REASON_CODES.meterSilent,
     hasDailyReason: reason.code === PLAN_REASON_CODES.dailyBudget,
+    hasGridReason: reason.code === PLAN_REASON_CODES.gridImport,
   };
 }
 
@@ -294,9 +287,10 @@ function summarizePlanForStatus(plan: DevicePlan): PlanStatusSummary {
   const summary: PlanStatusSummary = {
     devicesOn: 0,
     devicesOff: 0,
-    hasLimitDrivenShedDevices: false,
+    hasUnattributedShedDevices: false,
     hasHourlyReason: false,
     hasDailyReason: false,
+    hasGridReason: false,
   };
 
   for (const device of plan.devices) {
@@ -322,67 +316,62 @@ function summarizePlanForStatus(plan: DevicePlan): PlanStatusSummary {
     const reasonFlags = resolveReasonFlags(device.reason);
     summary.hasHourlyReason = summary.hasHourlyReason || reasonFlags.hasHourlyReason;
     summary.hasDailyReason = summary.hasDailyReason || reasonFlags.hasDailyReason;
-    summary.hasLimitDrivenShedDevices = summary.hasLimitDrivenShedDevices || !isRestoreHoldShedReason(device.reason);
+    summary.hasGridReason = summary.hasGridReason || reasonFlags.hasGridReason;
+    // A hold that names its limit counts for that limit alone. One that names
+    // none (a shedding cooldown, say) is put down to whichever limit sets the
+    // pace.
+    const namesLimit = reasonFlags.hasHourlyReason || reasonFlags.hasDailyReason || reasonFlags.hasGridReason;
+    summary.hasUnattributedShedDevices = summary.hasUnattributedShedDevices
+      || (!namesLimit && !isRestoreHoldShedReason(device.reason));
   }
 
   return summary;
 }
 /* eslint-enable functional/immutable-data */
 
-function resolveHourlyLimited(params: HourlyLimitParams): boolean {
-  const {
-    plan,
-    summary,
-    hasLimitDrivenShedDevices,
-    headroomNegative,
-    limitSource,
-    capacitySourceActive,
-  } = params;
-  if (plan.meta.capacitySoftLimitKw === null) return false;
-  const hourlyLimitedByReason = summary.hasHourlyReason;
-  const hourlyLimitedByShedState = hasLimitDrivenShedDevices && capacitySourceActive;
-  const hourlyLimitedByNegativeHeadroom = headroomNegative && (limitSource ? capacitySourceActive : true);
-  return Boolean(plan.meta.hourlyBudgetExhausted)
-    || hourlyLimitedByReason
-    || hourlyLimitedByShedState
-    || hourlyLimitedByNegativeHeadroom;
+// A limit holds devices back when a held device names it, or when it sets the
+// pace while held devices name no limit or the house is over the pace.
+function isPaceLimitHolding(
+  hasReason: boolean,
+  sourceActive: boolean,
+  hasUnattributedShedDevices: boolean,
+  headroomNegative: boolean,
+): boolean {
+  return hasReason || (sourceActive && (hasUnattributedShedDevices || headroomNegative));
 }
 
-function resolveDailyLimited(params: DailyLimitParams): boolean {
-  const { summary, hasLimitDrivenShedDevices, headroomNegative, dailySourceActive } = params;
-  const dailyLimitedByReason = summary.hasDailyReason;
-  const dailyLimitedByShedState = hasLimitDrivenShedDevices && dailySourceActive;
-  const dailyLimitedByNegativeHeadroom = headroomNegative && dailySourceActive;
-  return dailyLimitedByReason || dailyLimitedByShedState || dailyLimitedByNegativeHeadroom;
+function isCapacityLimitHolding(
+  meta: PlanMeta,
+  summary: PlanStatusSummary,
+  hasUnattributedShedDevices: boolean,
+  headroomNegative: boolean,
+): boolean {
+  if (meta.capacitySoftLimitKw === null) return false;
+  const sourceActive = isCapacitySourceActive(meta.softLimitSource);
+  return Boolean(meta.hourlyBudgetExhausted)
+    || isPaceLimitHolding(summary.hasHourlyReason, sourceActive, hasUnattributedShedDevices, headroomNegative)
+    // With no pace source resolved, a house over its headroom is put down to
+    // the capacity limit.
+    || (headroomNegative && meta.softLimitSource === null);
 }
 
-function resolveLimitReason(plan: DevicePlan, summary: PlanStatusSummary): 'none' | 'hourly' | 'daily' | 'both' {
+function resolveLimitReason(plan: DevicePlan, summary: PlanStatusSummary): PelsLimitReason {
+  const { meta } = plan;
   // Both claims require a MEASUREMENT this cycle: `headroomKw` exists only on
   // the measured meta, so the narrowing is also what makes it readable.
-  const hasShedDevices = plan.meta.powerIsMeasured && summary.hasLimitDrivenShedDevices;
-  const headroomNegative = plan.meta.powerIsMeasured && plan.meta.headroomKw !== null && plan.meta.headroomKw < 0;
-  const limitSource = plan.meta.softLimitSource;
-  const dailySourceActive = isDailySourceActive(limitSource);
-  const capacitySourceActive = isCapacitySourceActive(limitSource);
-  const hourlyLimited = resolveHourlyLimited({
-    plan,
-    summary,
-    hasLimitDrivenShedDevices: hasShedDevices,
-    headroomNegative,
-    limitSource,
-    capacitySourceActive,
-  });
-  const dailyLimitedResolved = resolveDailyLimited({
-    plan,
-    summary,
-    hasLimitDrivenShedDevices: hasShedDevices,
-    headroomNegative,
-    dailySourceActive,
-  });
-
-  // When both limits are active, show 'both' for clarity, but capacity always wins for shedding decisions
-  if (dailyLimitedResolved && hourlyLimited) return 'both';
-  if (dailyLimitedResolved) return 'daily';
-  if (hourlyLimited) return 'hourly';
-  return 'none';
+  const unattributedShed = meta.powerIsMeasured && summary.hasUnattributedShedDevices;
+  const headroomNegative = meta.powerIsMeasured && meta.headroomKw !== null && meta.headroomKw < 0;
+  const source = meta.softLimitSource;
+  const paceHolding = (hasReason: boolean, sourceActive: boolean) => (
+    isPaceLimitHolding(hasReason, sourceActive, unattributedShed, headroomNegative)
+  );
+  const dailyHolding = paceHolding(summary.hasDailyReason, isDailySourceActive(source));
+  const gridHolding = paceHolding(summary.hasGridReason, isGridSourceActive(source));
+  const holding: PelsLimitReason[] = [
+    ...(isCapacityLimitHolding(meta, summary, unattributedShed, headroomNegative) ? ['hourly' as const] : []),
+    ...(dailyHolding ? ['daily' as const] : []),
+    ...(gridHolding ? ['grid' as const] : []),
+  ];
+  if (holding.length > 1) return 'both';
+  return holding[0] ?? 'none';
 }
