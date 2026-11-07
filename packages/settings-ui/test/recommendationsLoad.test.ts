@@ -64,8 +64,10 @@ vi.mock('../src/ui/setupPricesLoad.ts', () => ({
   loadSetupPrices: () => Promise.resolve(),
 }));
 
+const loadAfterSetupFacts = vi.fn(() => Promise.resolve());
 vi.mock('../src/ui/afterSetupFacts.ts', () => ({
-  loadAfterSetupFacts: () => Promise.resolve(),
+  loadAfterSetupFacts: () => loadAfterSetupFacts(),
+  loadDailyDiagnosticsReport: () => Promise.resolve(),
   readAfterSetupFacts: () => afterSetupRead,
 }));
 
@@ -248,6 +250,24 @@ describe('recommendation loading', () => {
       for (const [type, listener, options] of listeners.mock.calls) document.removeEventListener(type, listener, options);
       listeners.mockRestore();
     }
+  });
+
+  it('redraws the daily report suggestion without waiting on the price read', async () => {
+    const recommendations = await loadSubject([]);
+    getSetting.mockResolvedValue({});
+    getSettingFresh.mockResolvedValue({});
+    callApi.mockResolvedValue(resolvedCars());
+    await recommendations.loadRecommendationData();
+    const surface = document.getElementById('setup-recommendations-root');
+    expect(surface?.textContent).not.toContain('Send a daily report');
+
+    // The owner cleared the setting elsewhere; only that fact is re-read.
+    if (afterSetupRead.state !== 'resolved') throw new Error('Expected resolved after-setup facts.');
+    afterSetupRead = { state: 'resolved', facts: { ...afterSetupRead.facts, dailyDiagnosticsReportOff: true } };
+    loadAfterSetupFacts.mockClear();
+    await recommendations.refreshDailyReportSuggestion();
+    expect(loadAfterSetupFacts).not.toHaveBeenCalled();
+    expect(surface?.textContent).toContain('Send a daily report');
   });
 
   it('keeps a real paused-current warning in Manual and removes it while Automatic is active', async () => {

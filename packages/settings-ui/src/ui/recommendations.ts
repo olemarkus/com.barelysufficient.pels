@@ -24,6 +24,7 @@ import { resolveDeviceSettingRecommendations } from './deviceSettingRecommendati
 import { notifySetupPathChange, onSetupPathChange, readSetupPath } from './setupPathFacts.ts';
 import {
   loadAfterSetupFacts,
+  loadDailyDiagnosticsReport,
   readAfterSetupFacts,
   type AfterSetupFactsRead,
 } from './afterSetupFacts.ts';
@@ -393,6 +394,12 @@ export const refreshAfterSetupRecommendations = async (): Promise<void> => {
   // The setup path's Prices step reads the same price settings; it publishes
   // to the path, which redraws these surfaces on a change.
   await Promise.all([loadAfterSetupFacts(), loadSetupPrices()]);
+  refreshRecommendationSurfaces();
+};
+
+/** The daily report setting changed: re-read only it, so no price read holds the card. */
+export const refreshDailyReportSuggestion = async (): Promise<void> => {
+  await loadDailyDiagnosticsReport();
   refreshRecommendationSurfaces();
 };
 
