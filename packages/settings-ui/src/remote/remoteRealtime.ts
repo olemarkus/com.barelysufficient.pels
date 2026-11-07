@@ -1,14 +1,17 @@
 import { PELS_APP_ID, type RemoteConnection } from './remoteConnection.ts';
 
-// The slice of a socket.io v2 client this module drives. Homey's Web API
-// still speaks socket.io v2, so the bundle pins `socket.io-client@2`.
+// The slice of a socket.io client this module drives. Homey's Web API accepts
+// the v4 client, locally and through the cloud host, as the runtime's live
+// feed does.
+// Methods, not function properties: the client types each listener by event,
+// and only method parameters compare both ways.
 export type RealtimeSocket = {
-  on: (event: string, listener: (...args: never[]) => void) => unknown;
-  off: (event: string) => unknown;
-  emit: (event: string, ...args: unknown[]) => unknown;
-  open: () => unknown;
-  close: () => unknown;
-  io: { socket: (namespace: string) => RealtimeSocket };
+  on(event: string, listener: (...args: never[]) => void): unknown;
+  off(event: string): unknown;
+  emit(event: string, ...args: unknown[]): unknown;
+  open(): unknown;
+  close(): unknown;
+  io: { socket(namespace: string): RealtimeSocket };
 };
 
 export type RealtimeStatus = 'connecting' | 'live' | 'offline';
