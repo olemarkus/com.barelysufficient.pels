@@ -20,7 +20,7 @@ For Tesla, explicitly choose the vehicle as the control point and disable Power-
 
 ## Vehicle location and observations
 
-The adapter pairs the battery, location and car devices through their raw vehicle identity. It requires a unique pair of siblings, an online parked vehicle, an AC cable and a connected charging state. Home authorization starts with coordinate samples from the preceding ten minutes within 100 m of Homey's configured location. The generic location-update capability is not evidence of a new coordinate sample.
+The adapter pairs the battery, location and car devices through their raw vehicle identity. It requires a unique pair of siblings, an online vehicle at 0 km/h, an AC cable and a connected charging state. A reported shift state must be P; an unreported one does not block, because Tesla Car & Energy sets it only from a Fleet API poll and a car followed by telemetry can leave it unset, while a connected AC cable already rules out driving. Home authorization starts with coordinate samples from the preceding ten minutes within 100 m of Homey's configured location. The generic location-update capability is not evidence of a new coordinate sample.
 
 An accepted stationary charging session does not expire merely because its values stay quiet. Away coordinates, motion, disconnection, unavailability, changed identity or a Homey live-feed trust gap revoke authorization. A new session needs fresh coordinate evidence; restart revalidates it. All Tesla writes use this owner. Charging outside that authorization is excluded from home power attribution. This remains dependent on the Tesla app publishing truthful vehicle and connection state; cloud control cannot provide fast overload protection.
 

@@ -114,6 +114,23 @@ test('admits a home AC session and retains it while stationary telemetry stays q
   expect(owner.isAllowed('battery')).toBe(true);
 });
 
+test('admits a home AC session while telemetry leaves the shift state unreported, until a gear is reported', () => {
+  const initial = devices();
+  initial[2]!.capabilitiesObj!.car_shift_state = { value: null, lastUpdated: null };
+  const owner = session(); owner.observeDevices(initial);
+  expect(owner.isAllowed('battery')).toBe(true);
+  owner.observeCapability('car', 'car_shift_state', 'D');
+  expect(owner.isAllowed('battery')).toBe(false);
+});
+
+test('keeps an unreported shift state from admitting a car whose cable is not on AC', () => {
+  const initial = devices();
+  initial[2]!.capabilitiesObj!.car_shift_state = { value: null, lastUpdated: null };
+  initial[0]!.capabilitiesObj!.charging_port_cable = cap('CCS');
+  const owner = session(); owner.observeDevices(initial);
+  expect(owner.isAllowed('battery')).toBe(false);
+});
+
 test('rejects antipodal coordinates despite floating-point distance rounding', () => {
   const owner = new TeslaChargingSession({ coordinates: () => ({ latitude: 2.5, longitude: 0 }) });
   const initial = devices();
@@ -318,6 +335,26 @@ test.each(identityShapes)('transport discovers %s Tesla, permits home start/stop
       desiredStepId: '6a', planningPowerW: 4140, planningCurrentA: 6 })).rejects.toThrow('at home');
     expect(trigger).toHaveBeenCalledTimes(1);
     expect(put).toHaveBeenCalledTimes(1);
+  } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
+});
+
+test('transport permits home start/stop for a split Tesla whose shift state telemetry never reported', async () => {
+  vi.useRealTimers();
+  mockHomeyInstance.settings.set('charging_current_control', { battery: { method: 'flow', confirmation: 'vehicle' } });
+  try {
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
+      { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') },
+      { settings: { getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase' }) } });
+    await initWithLiveFeed(transport);
+    const initial = devicesWithIdentity('split');
+    initial[2]!.capabilitiesObj!.car_shift_state = { value: null, lastUpdated: null };
+    const [battery] = await seedTransportDevices(transport, initial);
+    expect(battery).toMatchObject({ id: 'battery', isEvCharger: true, available: true });
+    const put = vi.fn().mockResolvedValue(undefined);
+    setRestClient({ get: vi.fn(), put });
+    await transport.setCapability('battery', 'evcharger_charging', false);
+    expect(put).toHaveBeenCalledTimes(1);
+    expect(put.mock.calls[0]![0]).toContain('charging_on');
   } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
 });
 

@@ -17,12 +17,19 @@ function distanceM(point: Coordinates, home: Coordinates): number {
   return 6_371_000 * 2 * Math.atan2(Math.sqrt(boundedA), Math.sqrt(1 - boundedA));
 }
 
+/**
+ * Called only for a car whose battery reports a connected AC cable, which a
+ * Tesla cannot drive with. The app sets the shift state from a Fleet API poll
+ * only; a car followed by telemetry can leave it unreported. An unreported
+ * shift state therefore does not block home evidence, while a reported R, N
+ * or D does.
+ */
 function isStationaryOnlineCar(car: HomeyDeviceLike): boolean {
   if (car.available === false) return false;
   const caps = car.capabilitiesObj;
   const shift = caps?.car_shift_state?.value;
   return caps?.car_state?.value === 'online' && caps.measure_car_drive_speed?.value === 0
-    && (shift === 'P' || shift === '');
+    && (shift === 'P' || shift === '' || shift == null);
 }
 
 function isConnectedAcBattery(battery: HomeyDeviceLike): boolean {
