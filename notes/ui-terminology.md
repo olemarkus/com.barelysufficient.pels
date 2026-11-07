@@ -486,7 +486,8 @@ that reached its target holds its device in the hours it did not book until the
 ready-by time, owner ruling 2026-10-17; never `Waiting for cheaper hours`, which
 would say the task still needs energy), `Waiting for solar surplus`, `Waiting for a smart task` (held off by `Only PELS starts this
 device`, `PLAN_STATE_AWAITING_PELS_START_STATUS`; owner ruling 2026-10-29 replaced the
-earlier bare `Off`, which read as a fault), `Reached its battery
+earlier bare `Off`, which read as a fault; a device whose smart task holds it for a cheaper hour reads that
+task's `Waiting for cheaper hours` instead, on/off and stepped devices alike), `Reached its battery
 target (80%)` and `Waiting for battery level` (a charger's target battery level,
 `formatChargeTargetReachedStatus` and `PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS`;
 they name the target, never the car), `Turned off elsewhere — turn

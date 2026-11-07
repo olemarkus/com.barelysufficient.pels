@@ -642,6 +642,15 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
   /** This cycle keeps the charger off because its identified car has no permitted charging level. */
   carCurrentRangeHeld?: true;
   /**
+   * The device's own smart task holds it off THIS CYCLE: it released this hour,
+   * typically for a cheaper one (`PlanInputDevice.deferredHold`). Stamped once in
+   * `buildBasePlanDevice`, whatever else holds the device, so the one output-side
+   * reader can tell whose hold explains an off device: `getInactiveReason` leaves
+   * such a device shed under its task, with the task's reason, rather than
+   * parking it `inactive` with the start policy's.
+   */
+  deferredHoldActive?: true;
+  /**
    * This cycle's reduction is NOT capacity pressure: "Only PELS starts this
    * device", a smart task's deferred hour, a solar hold, or a keep step lowered
    * solely by its solar-tracking ceiling, with no fresh capacity reason. A device

@@ -317,6 +317,8 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
  *   knows the smart-task lift.
  * - `chargeTargetHeld`: the same question for the charge target, answered with
  *   the held target so `getInactiveReason` can name it.
+ * - `deferredHoldActive`: the device's own smart task holds it off, so
+ *   `getInactiveReason` leaves its explanation to the task.
  * - `nonCapacityHoldShed`: this cycle's reduction is a standing hold or solar
  *   tracking alone, with no fresh capacity reason, for fairness and actuation clocks.
  *   `shedSet` membership is part of the question, not a hedge: a start-policy
@@ -326,7 +328,7 @@ function resolveHoldDecisions(
   inputs: BasePlanDeviceInputs,
   decision: PlannedDeviceDecision,
 ): Pick<LooseDevicePlanDevice,
-  'startPolicyHoldActive' | 'chargeTargetHeld' | 'carCurrentRangeHeld' | 'nonCapacityHoldShed'> {
+  'startPolicyHoldActive' | 'chargeTargetHeld' | 'carCurrentRangeHeld' | 'deferredHoldActive' | 'nonCapacityHoldShed'> {
   const { dev, sheddingPlan, surplusHoldShed } = inputs;
   const { shedSet, shedReasons } = sheddingPlan;
   // Keys only when true: absence is the one spelling of "not held".
@@ -340,6 +342,7 @@ function resolveHoldDecisions(
     ...(isStartPolicyHeldDevice(dev) ? { startPolicyHoldActive: true as const } : {}),
     ...(chargeTargetHeld ? { chargeTargetHeld } : {}),
     ...(isCarCurrentRangeHeldDevice(dev) ? { carCurrentRangeHeld: true as const } : {}),
+    ...(dev.deferredHold !== undefined ? { deferredHoldActive: true as const } : {}),
     ...(holdOnly ? { nonCapacityHoldShed: true as const } : {}),
   };
 }
