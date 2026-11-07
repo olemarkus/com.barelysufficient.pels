@@ -329,15 +329,30 @@ describe('setup path facts', () => {
       expect(devicesStep(facts)?.status).toBe('next');
     });
 
-    it('is limitable only while PELS can drive it and its Power-limit control is on', async () => {
+    it('does not finish the Devices step while PELS can only watch it', async () => {
       const { facts, state } = await load();
       state.devicesLoaded = true;
-      state.latestDevices = [{ ...battery, batteryControl: 'watch_only' }] as typeof state.latestDevices;
+      // Managed by default, as a fresh install leaves a battery PELS cannot drive.
+      state.latestDevices = [
+        { ...battery, batteryControl: 'watch_only' },
+        { id: 'heat-pump' },
+      ] as typeof state.latestDevices;
       state.batteryControl = { status: 'resolved', devices: {} };
       facts.publishSetupPower(RECEIVED);
       facts.publishSetupHardCapRead(false, running);
-      expect(devicesStep(facts)?.detail).toBe('1 device managed');
+      expect(devicesStep(facts)).toMatchObject({ status: 'next', detail: 'Choose one device to start' });
+      state.managedMap = { 'heat-pump': true };
+      expect(devicesStep(facts)).toMatchObject({ status: 'done', detail: '1 device managed' });
+    });
+
+    it('is limitable only while PELS can drive it and its Power-limit control is on', async () => {
+      const { facts, state } = await load();
+      state.devicesLoaded = true;
       state.latestDevices = [battery] as typeof state.latestDevices;
+      state.batteryControl = { status: 'resolved', devices: {} };
+      facts.publishSetupPower(RECEIVED);
+      facts.publishSetupHardCapRead(false, running);
+      expect(devicesStep(facts)?.detail).toBe('1 device PELS may limit');
       state.controllableMap = { battery: false };
       expect(devicesStep(facts)?.detail).toBe('1 device managed');
     });

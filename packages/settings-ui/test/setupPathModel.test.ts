@@ -17,7 +17,7 @@ const NEVER = {
 const freshInstall: SetupPathFacts = {
   power: NEVER,
   hardCap: { state: 'unset', runningLimitKw: 10, periodMinutes: 60 },
-  managedDeviceCount: 0,
+  actionableDeviceCount: 0,
   limitableDeviceCount: 0,
   simulating: true,
   market: { state: 'unavailable' },
@@ -29,7 +29,7 @@ const freshInstall: SetupPathFacts = {
 const configuredAndSimulating: SetupPathFacts = {
   power: { state: 'received' },
   hardCap: { state: 'saved', limitKw: 8, marginKw: 0.4, periodMinutes: 60 },
-  managedDeviceCount: 3,
+  actionableDeviceCount: 3,
   limitableDeviceCount: 1,
   simulating: true,
   market: { state: 'unavailable' },
@@ -41,7 +41,7 @@ const configuredAndSimulating: SetupPathFacts = {
 const priceOnlyOwner: SetupPathFacts = {
   power: { state: 'received' },
   hardCap: { state: 'unset', runningLimitKw: 10, periodMinutes: 60 },
-  managedDeviceCount: 2,
+  actionableDeviceCount: 2,
   limitableDeviceCount: 0,
   simulating: false,
   market: { state: 'unavailable' },
@@ -64,7 +64,7 @@ const pathOf = (facts: SetupPathFacts) => {
 describe('setup path', () => {
 
   it('completes Limits with grid control or an explicit choice to turn both off', () => {
-    const configured = { ...freshInstall, power: { state: 'received' as const }, managedDeviceCount: 1, limitableDeviceCount: 1 };
+    const configured = { ...freshInstall, power: { state: 'received' as const }, actionableDeviceCount: 1, limitableDeviceCount: 1 };
     expect(resolveSetupPath({ ...configured, hardCap: { state: 'grid', limitKw: 3.3, capacity: { state: 'off' } } })).toEqual({ state: 'complete' });
     expect(resolveSetupPath({ ...configured, hardCap: { state: 'disabled' } })).toEqual({ state: 'complete' });
   });
@@ -95,7 +95,7 @@ describe('setup path', () => {
     });
 
     it('puts Devices before Hard cap: what may be limited, then to what', () => {
-      const path = pathOf({ ...freshInstall, managedDeviceCount: 1, limitableDeviceCount: 1 });
+      const path = pathOf({ ...freshInstall, actionableDeviceCount: 1, limitableDeviceCount: 1 });
       expect(path?.steps.map((step) => step.id)).toEqual(['power', 'devices', 'hardCap', 'prices']);
       expect(path && formatSetupProgress(path)).toBe('2 of 4');
     });
@@ -114,7 +114,7 @@ describe('setup path', () => {
     // named beside the number shows it.
     const saved = (periodMinutes: 15 | 60): SetupPathFacts => ({
       ...freshInstall,
-      managedDeviceCount: 1,
+      actionableDeviceCount: 1,
       limitableDeviceCount: 1,
       hardCap: { state: 'saved', limitKw: 2.5, marginKw: 0.2, periodMinutes },
     });
@@ -123,7 +123,7 @@ describe('setup path', () => {
   });
 
   it.each(['BE', 'SE', 'DE'])('asks about measured peaks in %s without choosing a target', (country) => {
-    const facts = { ...freshInstall, managedDeviceCount: 1, limitableDeviceCount: 1,
+    const facts = { ...freshInstall, actionableDeviceCount: 1, limitableDeviceCount: 1,
       market: { state: 'resolved' as const, country } };
     expect(detailOf(facts, 'hardCap')).toContain('Charged for your highest hourly or 15-minute average grid import?');
     expect(detailOf(facts, 'hardCap')).toContain('10 kW hard cap (hourly average) until you set yours');
@@ -131,20 +131,20 @@ describe('setup path', () => {
   });
 
   it('names the running default in Norway without asking, since every household pays for measured peaks', () => {
-    const facts: SetupPathFacts = { ...freshInstall, managedDeviceCount: 1, limitableDeviceCount: 1,
+    const facts: SetupPathFacts = { ...freshInstall, actionableDeviceCount: 1, limitableDeviceCount: 1,
       market: { state: 'resolved', country: 'NO' } };
     expect(detailOf(facts, 'hardCap')).toBe('10 kW hard cap (hourly average) until you set yours');
     expect(statuses(facts)).toContain('hardCap:later');
   });
 
   it('asks about measured peaks while the market is unknown', () => {
-    const facts: SetupPathFacts = { ...freshInstall, managedDeviceCount: 1, limitableDeviceCount: 1,
+    const facts: SetupPathFacts = { ...freshInstall, actionableDeviceCount: 1, limitableDeviceCount: 1,
       market: { state: 'unavailable' } };
     expect(detailOf(facts, 'hardCap')).toContain('Charged for your highest hourly or 15-minute average grid import?');
   });
 
   it('explains the Dutch connection tariff while preserving the explicit limits choice', () => {
-    const facts: SetupPathFacts = { ...freshInstall, managedDeviceCount: 1, limitableDeviceCount: 1,
+    const facts: SetupPathFacts = { ...freshInstall, actionableDeviceCount: 1, limitableDeviceCount: 1,
       market: { state: 'resolved', country: 'NL' } };
     expect(detailOf(facts, 'hardCap')).toContain('Dutch household grid charges depend on connection size');
     expect(detailOf(facts, 'hardCap')).toContain('turn off Capacity limit and still use prices and solar');
@@ -182,7 +182,7 @@ describe('setup path', () => {
 
   it('keeps the denominator fixed as devices activate limits and prices', () => {
     const choices = [freshInstall,
-      { ...freshInstall, managedDeviceCount: 1, limitableDeviceCount: 1 },
+      { ...freshInstall, actionableDeviceCount: 1, limitableDeviceCount: 1 },
       { ...configuredAndSimulating, prices: { state: 'used' as const, complete: false, summary: 'Choose prices' } },
     ];
     for (const facts of choices) {
@@ -198,7 +198,7 @@ describe('setup path', () => {
 
   it('moves the next step past whatever is already done, in any order', () => {
     // Devices chosen before the meter is connected: the meter still leads.
-    expect(statuses({ ...freshInstall, managedDeviceCount: 2 })).toEqual(['power:next', 'devices:done', 'hardCap:done', 'prices:done']);
+    expect(statuses({ ...freshInstall, actionableDeviceCount: 2 })).toEqual(['power:next', 'devices:done', 'hardCap:done', 'prices:done']);
   });
 
   it('keeps the power step done once a reading has ever arrived', () => {
@@ -228,7 +228,7 @@ describe('setup path', () => {
 
   it('comes back when a returning owner unmanages their last device', () => {
     const resolved = resolveSetupPath({
-      ...configuredAndSimulating, managedDeviceCount: 0, limitableDeviceCount: 0, simulating: false,
+      ...configuredAndSimulating, actionableDeviceCount: 0, limitableDeviceCount: 0, simulating: false,
     });
     expect(resolved.state === 'open'
       ? resolved.path.steps.map((step) => `${step.id}:${step.status}`)
