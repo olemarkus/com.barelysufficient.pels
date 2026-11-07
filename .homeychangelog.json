@@ -778,5 +778,8 @@
   },
   "3.30.6": {
     "en": "Alfen chargers resume at 6 A in the station's own phase count, also when the car is set up with a different number of phases. Home batteries get back charging room as soon as a smart task has finished drawing its planned energy, and a schedule that hits a brief read error is retried within its time window instead of being skipped."
+  },
+  "3.30.7": {
+    "en": "Tesla Car & Energy's Battery & charging device now appears in PELS on Homeys that report its driver in a different form. PELS also lets a parked Tesla charging at home be controlled when the Tesla app has not reported its gear."
   }
 }
