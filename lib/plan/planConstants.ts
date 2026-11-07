@@ -10,8 +10,6 @@ export const STARTUP_RESTORE_BLOCK_MS = 60 * 1000;
 // reached p90 129.7 s and max 250 s; five minutes covers that tail with 50 s
 // margin. This is policy, not proof that a device started drawing.
 export const RESTORE_COOLDOWN_MS = 5 * 60 * 1000;
-// Hold an active EV charger's increases after its own capacity-driven reduction.
-export const CHARGER_STEP_RECOVERY_HOLD_MS = 180_000;
 
 /**
  * Headroom a build must see before it releases the shedding latch

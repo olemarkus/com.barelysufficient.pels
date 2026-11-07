@@ -1,9 +1,5 @@
 import type { DevicePlanDevice, MeteredKind, SteppedPlanDevice } from '../planTypes';
-import { CHARGER_STEP_RECOVERY_HOLD_MS } from '../planConstants';
-import { resolveStepChangeKw } from '../planSteppedLoad';
-import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import {
-  buildCountdownTiming,
   inCycleRestoreWait,
   otherRecoveryWait,
   resolveCapacityRestoreBlockReason,
@@ -17,26 +13,6 @@ import {
   setRestorePlanDevice,
 } from './planDeviceUpdates';
 import type { RestoreCycle, RestoreLoopState } from './types';
-
-function resolveChargerStepRecoveryReason(
-  cycle: RestoreCycle,
-  dev: SteppedPlanDevice & MeteredKind,
-  requestedStepId: string | null,
-): DevicePlanDevice['reason'] | null {
-  if (!dev.isEvCharger || !isActiveSteppedRestoreCandidate(dev) || requestedStepId === null) return null;
-  const stepChange = resolveStepChangeKw(dev, dev.selectedStepId, requestedStepId);
-  if (stepChange.direction !== 'up' || stepChange.deltaKw <= 0) return null;
-  const { state, timing } = cycle;
-  const lastShedMs = state.actuation.lastDeviceShedMs[dev.id];
-  if (lastShedMs === undefined) return null;
-  const remainingMs = lastShedMs + CHARGER_STEP_RECOVERY_HOLD_MS - timing.nowTs;
-  if (remainingMs <= 0) return null;
-  return {
-    code: PLAN_REASON_CODES.cooldownRestore,
-    remainingSec: Math.ceil(remainingMs / 1000),
-    ...buildCountdownTiming(lastShedMs, CHARGER_STEP_RECOVERY_HOLD_MS / 1000),
-  };
-}
 
 // Returns true if a gate fired and planRestoreForSteppedDevice should return early.
 // Every load increase shares the home-wide admission gate. Per-device meter
@@ -57,7 +33,7 @@ export function applySteppedDeviceGates(
   // with the gate's reason, an off one is held at its off step.
   const reject = (
     reason: DevicePlanDevice['reason'],
-    rejectionReason: 'meter_settling' | 'restore_gate' | 'waiting_for_other_recovery' | 'recent_step_down',
+    rejectionReason: 'meter_settling' | 'restore_gate' | 'waiting_for_other_recovery',
   ): true => {
     setRestorePlanDevice(deviceMap, dev.id,
       deviceIsActive ? { reason } : buildOffSteppedRestoreHoldUpdate(dev, reason),
@@ -89,7 +65,5 @@ export function applySteppedDeviceGates(
     && hasOtherDevicesBlockingSteppedRestore(deviceMap, dev.id, state.shedDecisions);
   const waitingReason = resolveCapacityRestoreBlockReason(timing, otherRecoveryWait(waitingForOtherRecovery), true);
   if (waitingReason) return reject(waitingReason, 'waiting_for_other_recovery');
-  const recoveryReason = resolveChargerStepRecoveryReason(cycle, dev, requestedStepId);
-  if (recoveryReason) return reject(recoveryReason, 'recent_step_down');
   return false;
 }

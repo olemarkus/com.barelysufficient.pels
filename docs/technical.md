@@ -124,6 +124,8 @@ To prevent rapid on/off cycling that could damage equipment or annoy occupants, 
 
 - After limiting any device, wait 60 seconds before considering whether devices can resume
 - Also applies after detecting overshoot conditions
+- Applies to binary starts and increases on running stepped loads alike; the wait starts again when pressure returns or clears
+- Recovery also requires sufficient available power, including an extra margin for a recently limited device
 - Prevents oscillation when power measurements fluctuate
 
 ### Resume Cooldown (base 5 minutes)
@@ -134,15 +136,6 @@ To prevent rapid on/off cycling that could damage equipment or annoy occupants, 
 - When grid import control is off, previously limited devices, binary or stepped, may resume in a bounded batch (up to three) when fresh measurements show ample available power; running stepped devices may also jump several levels: the first increase in a pass may use all the available power, including its buffer, and a later one in the same batch at most half of it, including the earlier admissions. When no enabled power limit applies to a device, one increase per pass may jump straight to the highest level. This also applies to a device excluded from the daily budget when grid import and capacity limits are off
 - While the cooldown applies, every held device waits; the one that resumes first (turned-off devices before stepped increases before thermostat raises, by priority within each) shows the countdown and the rest show that other devices are ahead
 - Allows slow-starting devices time to draw power before another increase is admitted
-
-### EV Charger Step Recovery Hold (3 minutes)
-
-- An active EV charger waits three minutes after its own latest capacity- or budget-driven reduction before PELS admits a current increase
-- A further reduction restarts the window; the hold also applies after a capacity-driven turn-off once the charger is running again
-- Reductions made solely to follow solar surplus do not start this hold
-- The device card shows **Waiting to increase** with a countdown; Boost does not bypass this hold
-- Initial activation, necessary reductions and other devices retain their existing timing. Global cooldowns and admission checks still apply, and an increase is reconsidered on the next meter-driven plan after the hold expires
-- The hold uses in-memory actuation history, so restarting PELS clears it
 
 ### Available-Power Flow Card Cooldowns
 

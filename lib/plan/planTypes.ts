@@ -654,7 +654,7 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
    * which runs before reason normalization, so it cannot key on a reason code)
    * and the executor's `hasExecutableShedDevices`. Non-capacity holds may not
    * clamp unrelated stepped loads, and their reductions must not stamp capacity
-   * actuation clocks, including the EV charger recovery hold.
+   * actuation clocks used by shared recovery timing and admission.
    *
    * Distinct from `startPolicyHoldActive` above, which answers "is the policy
    * holding this device" whatever capacity does — the question for starvation
