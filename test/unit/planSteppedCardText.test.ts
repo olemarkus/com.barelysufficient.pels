@@ -7,6 +7,9 @@ import {
   resolveSteppedTemperatureText,
 } from '../../lib/plan/planSteppedCardText';
 import {
+  formatChargeTargetReachedStatus,
+  PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS,
+  PLAN_STATE_AWAITING_PELS_START_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
   PLAN_STATE_HELD_FALLBACK_STATUS,
@@ -262,6 +265,21 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       )).toBe(PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS);
+    });
+
+    // The owner's own settings keep these devices off; the line says what each
+    // needs, as the on/off card does. Prod 2026-11-07: a stepped charger under
+    // "Only PELS starts this device" read a bare "Off".
+    it.each([
+      [{ code: 'awaiting_pels_start' as const }, PLAN_STATE_AWAITING_PELS_START_STATUS],
+      [{ code: 'charge_target_reached' as const, targetPercent: 80 }, formatChargeTargetReachedStatus(80)],
+      [{ code: 'awaiting_battery_level' as const }, PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS],
+    ])('states what an off device held by its owner\u2019s setting needs (%o)', (reason, line) => {
+      expect(resolveSteppedStatusLine(
+        { ...baseDevice, currentState: 'off' as const, plannedState: 'inactive', reason },
+        profile,
+        NOW_MS,
+      )).toBe(line);
     });
 
     it('suppresses stale external-off guidance when the device is unavailable', () => {

@@ -197,6 +197,19 @@ const resolveBlockedStatusLine = (device: SteppedDevice, profile: SteppedLoadPro
   return null;
 };
 
+// The owner's standing settings that keep a device off (`getInactiveReason`):
+// "Only PELS starts this device" and the charger's battery target. PELS is not
+// holding the device back, so these are not hold reasons and the card reads
+// `Off`, but each line says what the device needs, which a bare `Off` cannot
+// (owner ruling 2026-10-29). The on/off card states them through its general
+// reason line; this card is otherwise quiet when off, so it names them here.
+const OFF_POSTURE_REASON_CODES: ReadonlySet<string> = new Set([
+  PLAN_REASON_CODES.awaitingPelsStart,
+  PLAN_REASON_CODES.chargeTargetReached,
+  PLAN_REASON_CODES.awaitingBatteryLevel,
+  PLAN_REASON_CODES.carCurrentRangeUnavailable,
+]);
+
 const resolveOffStatusLine = (
   device: SteppedDevice,
   showExternalOffReason: boolean,
@@ -204,12 +217,13 @@ const resolveOffStatusLine = (
   if (showExternalOffReason) {
     return PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS;
   }
-  // Still null-able on purpose: an off device the plan is NOT holding back (no
-  // hold reason, no starvation) gets no status line at all. `external_off_hold`
-  // is deliberately absent from `isHoldReasonCode`, so a stale off-hold on an
-  // unavailable device stays silent rather than telling the owner to flip a
-  // switch PELS cannot currently observe — the `showExternalOffReason` gate
-  // above owns the case where that guidance IS honest.
+  if (OFF_POSTURE_REASON_CODES.has(device.reason.code)) return formatDeviceReasonUserFacing(device.reason);
+  // Still null-able on purpose: any other off device the plan is NOT holding
+  // back (no hold reason, no starvation) gets no status line at all.
+  // `external_off_hold` is deliberately absent from `isHoldReasonCode`, so a
+  // stale off-hold on an unavailable device stays silent rather than telling the
+  // owner to flip a switch PELS cannot currently observe — the
+  // `showExternalOffReason` gate above owns the case where that guidance IS honest.
   if (!isHoldReasonCode(device.reason.code) && device.starvation?.isStarved !== true) return null;
   return resolveHeldCardReasonLine(device.reason, device.starvation);
 };

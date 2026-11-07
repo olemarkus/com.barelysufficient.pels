@@ -8,6 +8,7 @@ import {
   buildDeferredReleaseIntents,
   type DeferredAdmissionDecision,
 } from '../../lib/objectives/deferredObjectives/admission';
+import { resolveDeferredHoldCauses } from '../../lib/objectives/deferredObjectives/decorationController';
 import { buildExecutableDeviceIntent } from '../utils/executionDecisionFixture';
 import { hasBinaryCommand } from '../../lib/executor/executablePlan';
 import { resolvePlannedShedTargetKind } from '../../lib/plan/planActionMaterialization';
@@ -55,6 +56,7 @@ const decorateWithDecision = (
   return {
     ...buildIdentityDecorationBundle(admission.devices),
     forceShedSet: admission.forceShedSet,
+    deferredHoldCauseByDeviceId: resolveDeferredHoldCauses(decisions),
     deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(decisions),
     admittedDeviceIds: new Set([deviceId]),
     drivingDeviceIds: new Set([deviceId]),
@@ -115,17 +117,17 @@ const charger = (
 });
 
 /** The Aug-31 production shape: a stepped charger with a configured `set_step` floor. */
-const steppedCharger = (startPolicy: 'unrestricted' | 'pels_only'): PlanInputDevice => inputDevice({
+const steppedCharger = (startPolicy: 'unrestricted' | 'pels_only', on = true): PlanInputDevice => inputDevice({
   id: 'charger',
   name: 'Charger',
   binaryCapabilityId: 'onoff',
-  binaryControl: { on: true },
-  currentState: 'on',
-  currentDrawKw: 3,
+  binaryControl: { on },
+  currentState: on ? 'on' : 'off',
+  currentDrawKw: on ? 3 : 0,
   expectedPowerKw: 3,
   steppedLoadProfile: steppedProfile,
-  selectedStepId: 'max',
-  desiredStepId: 'max',
+  selectedStepId: on ? 'max' : 'off',
+  desiredStepId: on ? 'max' : 'off',
   controllable: false,
   managed: true,
   commandAuthority: startPolicy === 'pels_only',
@@ -201,19 +203,29 @@ describe('start policy through a whole plan build', () => {
       .toMatchObject({ deviceId: 'charger', desiredOn: true });
   });
 
-  it('keeps holding a device whose own task left this hour idle', async () => {
-    // The owner ruling the lift is deliberately narrow for: `idle` means the task
-    // is on track with nothing booked this hour. It GOVERNS the device without
-    // driving it, and a baseline of off must survive that — lifting here would let
-    // the ordinary restore lane start a device its own task just decided to leave
-    // alone.
-    const plan = await buildBuilder({
-      decorateDeferredObjectives: decorateWithDecision('charger', idleDecision),
-    }).buildDevicePlanSnapshot([charger('pels_only', { on: false })]);
+  describe('a device whose own task released this hour', () => {
+    // The lift is deliberately narrow: `idle` means the task can finish without
+    // this hour, typically waiting for a cheaper one. It GOVERNS the device without
+    // driving it, so the device must stay off — but held by its task, whose reason
+    // says what it waits for. Prod 2026-11-07: an already-off stepped charger read
+    // a bare "Off" while its task waited for cheaper hours, because the posture
+    // parked it `inactive` with its own reason.
+    it.each([
+      ['an on/off charger', () => charger('pels_only', { on: false })],
+      ['a stepped charger', () => steppedCharger('pels_only', false)],
+    ])('keeps %s off with the task\u2019s reason once it is off', async (_label, device) => {
+      const plan = await buildBuilder({
+        decorateDeferredObjectives: decorateWithDecision('charger', idleDecision),
+      }).buildDevicePlanSnapshot([device()]);
 
-    const device = plan.devices.find((entry) => entry.id === 'charger');
-    expect(device?.plannedState).toBe('inactive');
-    expect(device?.reason?.code).toBe(PLAN_REASON_CODES.awaitingPelsStart);
+      const planned = plan.devices.find((entry) => entry.id === 'charger');
+      expect(planned?.plannedState).toBe('shed');
+      expect(planned?.reason?.code).toBe(PLAN_REASON_CODES.deferredObjectiveAvoid);
+      expect(planned?.deferredHoldActive).toBe(true);
+      expect(planned?.nonCapacityHoldShed).toBe(true);
+      const intent = buildExecutableDeviceIntent(planned!, plan.meta);
+      expect(hasBinaryCommand(intent) && intent.binary.desiredOn).not.toBe(true);
+    });
   });
 
   it('takes a stepped device to OFF rather than the owner\u2019s configured rung', async () => {
@@ -493,6 +505,24 @@ describe('start policy through a whole plan build', () => {
     const device = plan.devices.find((entry) => entry.id === 'charger');
     expect(device?.plannedState).toBe('shed');
     expect(device?.reason?.code).toBe(PLAN_REASON_CODES.awaitingPelsStart);
+    expect(resolvePlannedShedTargetKind(device!)).toBe('binary_off');
+  });
+
+  it('sheds a device its own task holds to OFF when the meter has gone silent', async () => {
+    // The task holds the device instead of the policy. The pass must still take
+    // it OFF, not to the owner's limiting rung, where it would keep charging in
+    // an hour its task released for the whole outage.
+    const plan = await buildBuilder({
+      getShedBehavior: () => ({ action: 'set_step' as const }),
+      getPowerTracker: () => ({
+        lastTimestamp: Date.now() - POWER_SAMPLE_STALE_SHED_TIMEOUT_MS - 60_000,
+        lastPowerW: 4_400,
+      }),
+      decorateDeferredObjectives: decorateWithDecision('charger', idleDecision),
+    }).buildDevicePlanSnapshot([steppedCharger('pels_only')]);
+
+    const device = plan.devices.find((entry) => entry.id === 'charger');
+    expect(device?.plannedState).toBe('shed');
     expect(resolvePlannedShedTargetKind(device!)).toBe('binary_off');
   });
 

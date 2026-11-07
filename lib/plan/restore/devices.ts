@@ -276,7 +276,15 @@ export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
   // writes the same precedence for the cycle it is still running).
   if (dev.carCurrentRangeHeld === true) return { code: PLAN_REASON_CODES.carCurrentRangeUnavailable };
   if (dev.chargeTargetHeld) return buildChargeTargetHoldReason(dev.chargeTargetHeld);
-  if (dev.startPolicyHoldActive === true) return { code: PLAN_REASON_CODES.awaitingPelsStart };
+  // A device whose own smart task holds it off this hour stays shed under the
+  // task, so it keeps the task's reason ("Waiting for cheaper hours") once it is
+  // off, as it did while it still ran. The start policy still holds it, and
+  // still decides how it is shed; only the explanation is the task's (owner
+  // ruling 2026-09-09: the task's own framing wins over a posture). Prod
+  // 2026-11-07: parked `inactive` here, a stepped charger read a bare "Off".
+  if (dev.startPolicyHoldActive === true && dev.deferredHoldActive !== true) {
+    return { code: PLAN_REASON_CODES.awaitingPelsStart };
+  }
 
   return null;
 }

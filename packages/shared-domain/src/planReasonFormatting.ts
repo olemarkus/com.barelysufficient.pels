@@ -477,11 +477,10 @@ const STATIC_REASON_USER_TEXT: Record<StaticReason['code'], string> = {
   [PLAN_REASON_CODES.deferredObjectiveAvoid]: PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   [PLAN_REASON_CODES.deferredObjectiveSatisfied]: PLAN_STATE_DEFERRED_OBJECTIVE_SATISFIED_STATUS,
   [PLAN_REASON_CODES.awaitingSolarSurplus]: PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
-  // States what the device needs: a smart task to start it. The task's own
-  // reason never reaches an already-off device (`normalizeDeviceReason` keeps a
-  // non-shed reason), so without this line a missing task, a task waiting for a
-  // cheaper hour and a task that cannot run all read as a bare `Off`. Shared with
-  // the card and device-detail diagnostics.
+  // States what the device needs: a smart task to start it. A task holding the
+  // device for a cheaper hour gives it that task's reason instead
+  // (`getInactiveReason`), so this line covers a missing task and one that
+  // cannot run. Shared with the card and device-detail diagnostics.
   [PLAN_REASON_CODES.awaitingPelsStart]: PLAN_STATE_AWAITING_PELS_START_STATUS,
   // States what the charger needs: a battery level. Shared with the card.
   [PLAN_REASON_CODES.awaitingBatteryLevel]: PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS,
