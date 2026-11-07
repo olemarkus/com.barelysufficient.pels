@@ -122,7 +122,9 @@ PELS fetches today's and tomorrow's prices and uses them for price-based optimiz
 
 Homey keeps your prices in two parts: the hourly market price, and the costs you entered yourself under **Energy > Electricity > Price** — grid tariff, taxes and VAT, stored as a formula. PELS reads both and combines them, so it plans against what you actually pay per kWh, not the bare market price.
 
-If you change that formula in Homey, PELS picks the change up at its next price refresh (within three hours, and immediately on restart).
+If you chose a fixed price under **Energy > Electricity > Price** and entered it, PELS uses that price for every hour, as Homey does. With the same price every hour there are no cheap or expensive hours to move load to, so price-based control leaves your devices as they are.
+
+If you change that formula or price in Homey, PELS picks the change up at its next price refresh (within three hours, and immediately on restart).
 
 Homey lets you write a free-form formula as well as using its guided fields. PELS understands the guided fields, ordinary arithmetic (`+ - * / ^` and brackets), and the functions `min`, `max`, `abs`, `floor`, `ceil` and `round` — so a formula like `max(0, [[price]] * 0.9)` works.
 

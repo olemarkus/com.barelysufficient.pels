@@ -4,7 +4,7 @@ import {
   EXPORT_TYPE_API_PATH,
   EXPORT_USER_COSTS_API_PATH,
   fetchHomeyExportTerms,
-  sumExportCostComponents,
+  sumHomeyCostComponents,
 } from '../../lib/price/homeyExportPrice';
 import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
 
@@ -16,31 +16,31 @@ const serve = (bodies: Record<string, unknown>) => async (path: string) => {
   return body;
 };
 
-describe('sumExportCostComponents', () => {
+describe('sumHomeyCostComponents', () => {
   it('sums the named components the way Homey does', () => {
     // The shape the test Homey actually returns for a 0.30 NOK/kWh tariff.
-    expect(sumExportCostComponents({ costs: { user_fixed_base: { value: 0.3 } } })).toBeCloseTo(0.3, 10);
-    expect(sumExportCostComponents({ costs: { a: { value: 0.2 }, b: { value: 0.05 } } })).toBeCloseTo(0.25, 10);
+    expect(sumHomeyCostComponents({ costs: { user_fixed_base: { value: 0.3 } } })).toBeCloseTo(0.3, 10);
+    expect(sumHomeyCostComponents({ costs: { a: { value: 0.2 }, b: { value: 0.05 } } })).toBeCloseTo(0.25, 10);
   });
 
   it('keeps a negative amount, which is a market that charges for export', () => {
-    expect(sumExportCostComponents({ costs: { fee: { value: -0.11 } } })).toBeCloseTo(-0.11, 10);
+    expect(sumHomeyCostComponents({ costs: { fee: { value: -0.11 } } })).toBeCloseTo(-0.11, 10);
   });
 
   it('refuses an amount it cannot total exactly', () => {
     // Skipping a component would quietly understate what the owner is paid.
-    expect(sumExportCostComponents({ costs: { a: { value: 0.2 }, b: { value: 'x' } } })).toBeNull();
-    expect(sumExportCostComponents({ costs: {} })).toBeNull();
-    expect(sumExportCostComponents({})).toBeNull();
-    expect(sumExportCostComponents(null)).toBeNull();
+    expect(sumHomeyCostComponents({ costs: { a: { value: 0.2 }, b: { value: 'x' } } })).toBeNull();
+    expect(sumHomeyCostComponents({ costs: {} })).toBeNull();
+    expect(sumHomeyCostComponents({})).toBeNull();
+    expect(sumHomeyCostComponents(null)).toBeNull();
   });
 
   it('refuses components that arrive as a list rather than by name', () => {
     // Homey keys each component by its name (`user_fixed_base` above). A list
     // names none, so it is not Homey's shape, and totalling its entries anyway
     // would mirror an amount Homey never stated.
-    expect(sumExportCostComponents({ costs: [{ value: 0.2 }, { value: 0.05 }] })).toBeNull();
-    expect(sumExportCostComponents([{ costs: { user_fixed_base: { value: 0.3 } } }])).toBeNull();
+    expect(sumHomeyCostComponents({ costs: [{ value: 0.2 }, { value: 0.05 }] })).toBeNull();
+    expect(sumHomeyCostComponents([{ costs: { user_fixed_base: { value: 0.3 } } }])).toBeNull();
   });
 });
 

@@ -18,6 +18,8 @@ import type { HomeyWebApiGet } from './homeyWebApiPort';
 import { HOMEY_PRICE_FORMULA } from '../utils/settingsKeys';
 import { resolveHomeyHttpStatusCode } from '../utils/homeyHttpStatusError';
 import { compilePriceFormula, type CompiledPriceFormula } from './priceFormula';
+import { sumHomeyCostComponents } from './homeyExportPrice';
+import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { PriceServiceLoggingSinks } from './priceServiceLoggingSinks';
 
 const emitPriceDebug = getDebugEmitter('price', 'price');
@@ -34,12 +36,15 @@ const emitPriceDebug = getDebugEmitter('price', 'price');
  *   there are no user costs to apply and raw spot is likewise the price. Kept
  *   apart from `none` so a log can say which, and so the branch can go when the
  *   supported firmware floor rises.
+ * - `fixed` — the owner chose a fixed import price in Homey and entered it, so
+ *   every period costs that amount, whatever the spot.
  * - `failed` — the read did not produce an answer. Says nothing about the
  *   owner's configuration, so the mirror is left exactly as it was
  *   (`AGENTS.md` → a transient external failure is a no-op, not an event).
  */
 export type HomeyPriceFormulaRead =
   | { kind: 'configured'; expression: string }
+  | { kind: 'fixed'; amount: number }
   | { kind: 'none' }
   | { kind: 'unavailable' }
   | { kind: 'failed'; reasonCode: 'read_threw' | 'unrecognised_body' };
@@ -47,6 +52,27 @@ export type HomeyPriceFormulaRead =
 export type { HomeyWebApiGet } from './homeyWebApiPort';
 
 export const PRICE_USER_COSTS_API_PATH = 'manager/energy/price/electricity/dynamic/user-costs';
+export const PRICE_TYPE_API_PATH = 'manager/energy/price/electricity/type';
+export const PRICE_FIXED_OPTION_API_PATH = 'manager/energy/option/electricityPriceFixed';
+
+/**
+ * The fixed import price, when the owner has chosen one in Homey. `null` when
+ * the tariff is not fixed, when it is fixed but no price was entered, or on
+ * firmware without the routes (404): the dynamic series and its formula then
+ * price the home as before. A fixed type with no price is left on the dynamic
+ * series until Homey's default for an untouched hub is known. A read that
+ * throws otherwise is `failed`.
+ */
+const fetchHomeyFixedImportPrice = async (
+  webApiGet: HomeyWebApiGet,
+): Promise<number | null | 'failed'> => {
+  try {
+    if (await webApiGet(PRICE_TYPE_API_PATH) !== 'fixed') return null;
+    return sumHomeyCostComponents(asUnknownRecord(await webApiGet(PRICE_FIXED_OPTION_API_PATH))?.value);
+  } catch (error) {
+    return resolveHomeyHttpStatusCode(error) === 404 ? null : 'failed';
+  }
+};
 
 /**
  * Read the owner's formula from Homey, and classify the answer completely
@@ -64,6 +90,9 @@ export const PRICE_USER_COSTS_API_PATH = 'manager/energy/price/electricity/dynam
 export const fetchHomeyPriceFormula = async (
   webApiGet: HomeyWebApiGet,
 ): Promise<HomeyPriceFormulaRead> => {
+  const fixedAmount = await fetchHomeyFixedImportPrice(webApiGet);
+  if (fixedAmount === 'failed') return { kind: 'failed', reasonCode: 'read_threw' };
+  if (fixedAmount !== null) return { kind: 'fixed', amount: fixedAmount };
   try {
     const body = await webApiGet(PRICE_USER_COSTS_API_PATH);
     if (body === null) return { kind: 'none' };
@@ -92,8 +121,15 @@ export const fetchHomeyPriceFormula = async (
  * the same fact as the key being absent — that one means we have never had an
  * answer. The distinction is the whole point of storing an object rather than
  * the bare expression: only a recorded `null` makes raw spot the right price.
+ * `fixedAmount` is a recorded fixed import price, which replaces both.
  */
-type MirroredFormula = { mathExpression: string | null };
+type MirroredFormula = { mathExpression: string | null } | { fixedAmount: number };
+
+const sameMirror = (left: MirroredFormula, right: MirroredFormula): boolean => (
+  'fixedAmount' in left
+    ? 'fixedAmount' in right && left.fixedAmount === right.fixedAmount
+    : 'mathExpression' in right && left.mathExpression === right.mathExpression
+);
 
 /**
  * What the mirror currently says, including the case where it will not say.
@@ -117,7 +153,10 @@ const readMirror = (settings: SettingsPort): MirrorRead => {
     return settings.getKeys().includes(HOMEY_PRICE_FORMULA) ? { kind: 'suspect' } : { kind: 'absent' };
   }
   if (typeof stored !== 'object') return { kind: 'suspect' };
-  const { mathExpression } = stored as { mathExpression?: unknown };
+  const { mathExpression, fixedAmount } = stored as { mathExpression?: unknown; fixedAmount?: unknown };
+  if (typeof fixedAmount === 'number' && Number.isFinite(fixedAmount)) {
+    return { kind: 'stored', value: { fixedAmount } };
+  }
   if (mathExpression === null) return { kind: 'stored', value: { mathExpression: null } };
   if (typeof mathExpression === 'string' && mathExpression.trim()) {
     return { kind: 'stored', value: { mathExpression } };
@@ -137,11 +176,10 @@ export const persistHomeyPriceFormula = (
   read: HomeyPriceFormulaRead,
 ): boolean => {
   if (read.kind === 'failed') return false;
-  const next: MirroredFormula = read.kind === 'configured'
-    ? { mathExpression: read.expression }
-    : { mathExpression: null };
+  const next: MirroredFormula = read.kind === 'fixed' ? { fixedAmount: read.amount }
+    : { mathExpression: read.kind === 'configured' ? read.expression : null };
   const stored = readMirror(settings);
-  if (stored.kind === 'stored' && stored.value.mathExpression === next.mathExpression) return false;
+  if (stored.kind === 'stored' && sameMirror(stored.value, next)) return false;
   settings.set(HOMEY_PRICE_FORMULA, next);
   return true;
 };
@@ -167,6 +205,7 @@ export const persistHomeyPriceFormula = (
  */
 export type StoredPriceFormula =
   | { kind: 'none' }
+  | { kind: 'fixed'; amount: number }
   | { kind: 'unknown' }
   | { kind: 'unreadable' }
   | { kind: 'compiled'; formula: CompiledPriceFormula }
@@ -176,6 +215,7 @@ export const readStoredPriceFormula = (settings: SettingsPort): StoredPriceFormu
   const mirror = readMirror(settings);
   if (mirror.kind === 'absent') return { kind: 'unknown' };
   if (mirror.kind === 'suspect') return { kind: 'unreadable' };
+  if ('fixedAmount' in mirror.value) return { kind: 'fixed', amount: mirror.value.fixedAmount };
   if (mirror.value.mathExpression === null) return { kind: 'none' };
   const formula = compilePriceFormula(mirror.value.mathExpression);
   return formula
@@ -212,7 +252,7 @@ export type HomeyPriceResolution = {
    * `undecided` — a read did not settle it; change nothing.
    */
   verdict: 'priced' | 'unpriceable' | 'undecided';
-  reasonCode: 'formula_applied' | 'no_formula' | 'never_read' | 'unreadable_mirror'
+  reasonCode: 'formula_applied' | 'fixed_price' | 'no_formula' | 'never_read' | 'unreadable_mirror'
     | 'cannot_evaluate' | 'nothing_priced' | 'unreadable_export_terms';
 };
 
@@ -248,6 +288,17 @@ export const resolveHomeyPriceSeries = (
       periods: periods.map((entry) => withExportPrice(entry, entry.totalPrice, entry.totalPrice, priceExport)),
       verdict: 'priced',
       reasonCode: 'no_formula',
+    };
+  }
+  if (stored.kind === 'fixed') {
+    // A fixed import price: every period costs the same, and the raw value is
+    // still the spot an export tariff prices against.
+    return {
+      periods: periods.map((entry) => withExportPrice(
+        { ...entry, totalPrice: stored.amount }, entry.totalPrice, stored.amount, priceExport,
+      )),
+      verdict: 'priced',
+      reasonCode: 'fixed_price',
     };
   }
   if (stored.kind === 'unknown') {
@@ -322,6 +373,7 @@ export const syncHomeyPriceFormula = async (
     event: 'homey_price_formula_changed',
     kind: read.kind,
     expression: read.kind === 'configured' ? read.expression : null,
+    fixedAmount: read.kind === 'fixed' ? read.amount : null,
   });
   return true;
 };
