@@ -23,7 +23,9 @@ import {
   getDateKeyStartMs,
   shiftDateKey,
 } from '../../packages/shared-domain/src/utils/dateUtils';
-import { PRICE_USER_COSTS_API_PATH, type HomeyWebApiGet } from '../../lib/price/homeyPriceFormula';
+import {
+  PRICE_FIXED_OPTION_API_PATH, PRICE_TYPE_API_PATH, PRICE_USER_COSTS_API_PATH, type HomeyWebApiGet,
+} from '../../lib/price/homeyPriceFormula';
 import { HOMEY_EXPORT_PRICE_TERMS } from '../../lib/utils/settingsKeys';
 import {
   EXPORT_FIXED_OPTION_API_PATH,
@@ -639,17 +641,27 @@ describe('Homey price service', () => {
      * `null` when the owner has configured no formula. A throw stands in for
      * every failure — the transport surfaces no status this read can use.
      */
-    type FormulaAnswer = { expression: string } | 'none' | 'fails' | 'missing-route' | 'malformed';
+    type FormulaAnswer = { expression: string } | { fixed: unknown } | 'none' | 'fails' | 'missing-route' | 'malformed';
 
     const serveFormula = (answer: FormulaAnswer): HomeyWebApiGet => (
       async (path: string) => {
+        // The import tariff type: fixed for a fixed answer, dynamic otherwise.
+        // The formula answers below stand for the whole read, so a failing
+        // read fails here too.
+        if (path === PRICE_TYPE_API_PATH) {
+          if (answer === 'fails') throw new HomeyHttpStatusError(500, 'Internal Server Error');
+          return typeof answer === 'object' && 'fixed' in answer ? 'fixed' : 'dynamic';
+        }
+        if (path === PRICE_FIXED_OPTION_API_PATH && typeof answer === 'object' && 'fixed' in answer) {
+          return answer.fixed;
+        }
         if (path !== PRICE_USER_COSTS_API_PATH) throw new Error(`unexpected path ${path}`);
         // A transient failure and a 404 arrive the same way and are told apart
         // by status alone, exactly as the REST client surfaces them.
         if (answer === 'fails') throw new HomeyHttpStatusError(500, 'Internal Server Error');
         if (answer === 'missing-route') throw new HomeyHttpStatusError(404, 'Cannot GET');
         if (answer === 'malformed') return { error: 'partial response' };
-        if (answer === 'none') return null;
+        if (answer === 'none' || 'fixed' in answer) return null;
         return { mathExpression: answer.expression, type: 'tariff_and_tax_math_expression' };
       }
     );
@@ -676,6 +688,39 @@ describe('Homey price service', () => {
 
       const prices = service.getCombinedHourlyPrices();
       expect(prices.map((price) => price.totalPrice)).toEqual([1.75, 3]);
+    });
+
+    it('prices every hour at the fixed import price the owner entered in Homey', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1, '14': 2 });
+      const service = createService(serveFormula({ fixed: { value: { costs: { user_fixed_base: { value: 0.3 } } } } }));
+
+      await service.refreshSpotPrices(true);
+
+      expect(service.getCombinedHourlyPrices().map((price) => price.totalPrice)).toEqual([0.3, 0.3]);
+      expect(mockHomeyInstance.settings.get(HOMEY_PRICE_FORMULA)).toEqual({ fixedAmount: 0.3 });
+    });
+
+    it('keeps the dynamic series when the tariff is fixed but no price was entered', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1, '14': 2 });
+      const service = createService(serveFormula({ fixed: { value: null } }));
+
+      await service.refreshSpotPrices(true);
+
+      expect(service.getCombinedHourlyPrices().map((price) => price.totalPrice)).toEqual([1, 2]);
+    });
+
+    it('goes back to the formula once the owner switches Homey to dynamic prices', async () => {
+      vi.useFakeTimers().setSystemTime(fixedNow);
+      storeTodayPrices({ '13': 1, '14': 2 });
+      await createService(serveFormula({ fixed: { value: { costs: { user_fixed_base: { value: 0.3 } } } } }))
+        .refreshSpotPrices(true);
+      const service = createService(serveFormula({ expression: '{{ (0.4 + [[price]]) * 1.25 }}' }));
+
+      await service.refreshSpotPrices(true);
+
+      expect(service.getCombinedHourlyPrices().map((price) => price.totalPrice)).toEqual([1.75, 3]);
     });
 
     it('leaves raw spot alone when the owner has configured no formula', async () => {
@@ -879,6 +924,7 @@ describe('Homey price service', () => {
     const serveExport = (type: string, body?: unknown): HomeyWebApiGet => (
       async (path: string) => {
         if (path === PRICE_USER_COSTS_API_PATH) return null;
+        if (path === PRICE_TYPE_API_PATH) return 'dynamic';
         if (path === EXPORT_TYPE_API_PATH) return type;
         if (path === EXPORT_FIXED_OPTION_API_PATH || path === EXPORT_USER_COSTS_API_PATH) return body;
         throw new Error(`unexpected path ${path}`);

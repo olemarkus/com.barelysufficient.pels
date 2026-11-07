@@ -56,14 +56,15 @@ export type HomeyExportTerms =
   | { kind: 'failed'; reasonCode: 'read_threw' | 'unrecognised_body' };
 
 /**
- * Sum Homey's named cost components, the way Homey sums them itself.
+ * Sum Homey's named cost components, the way Homey sums them itself. Its fixed
+ * import and export prices share this shape.
  *
  * The shape is `{ costs: { <name>: { value: number } } }`. A component whose
  * value is not a finite number makes the whole amount untrustworthy rather than
  * merely smaller, so the sum refuses instead of skipping it — a feed-in price
  * that silently omits one of its parts is worse than none.
  */
-export const sumExportCostComponents = (value: unknown): number | null => {
+export const sumHomeyCostComponents = (value: unknown): number | null => {
   const option = asUnknownRecord(value);
   const costs = asUnknownRecord(option?.costs);
   if (!costs) return null;
@@ -91,7 +92,7 @@ export const fetchHomeyExportTerms = async (
     const type = await webApiGet(EXPORT_TYPE_API_PATH);
     if (type === 'disabled' || type === null) return { kind: 'disabled' };
     if (type === 'fixed') {
-      const amount = sumExportCostComponents(asUnknownRecord(await webApiGet(EXPORT_FIXED_OPTION_API_PATH))?.value);
+      const amount = sumHomeyCostComponents(asUnknownRecord(await webApiGet(EXPORT_FIXED_OPTION_API_PATH))?.value);
       // A `fixed` type whose amount has never been entered prices nothing, and
       // is the owner's configuration half-done rather than a read failure.
       return amount === null
