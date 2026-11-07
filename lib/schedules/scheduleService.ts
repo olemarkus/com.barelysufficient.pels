@@ -96,6 +96,7 @@ export class ScheduleService {
   private readonly armedAt = new Map<string, number>();
   private readonly pending = new Map<string, PendingRun>();
   private lastCheckAt = 0;
+  private latestTickAt = 0;
   private ticking = false;
   private running = false;
   private loading = false;
@@ -107,6 +108,7 @@ export class ScheduleService {
     if (this.running) return;
     this.running = true;
     this.lastCheckAt = this.port.getNowMs();
+    this.latestTickAt = this.lastCheckAt;
     try { this.load(); } catch (error) { logger.error({ event: 'schedule_load_failed', err: error }); }
     this.port.timers.registerInterval('scheduleTriggers', setInterval(() => {
       void this.tick().catch((error: unknown) => logger.error({ event: 'schedule_tick_failed', err: error }));
@@ -120,6 +122,7 @@ export class ScheduleService {
       logger.error({ event: 'schedule_stop_drain_failed', err: error });
     }
     this.lastCheckAt = 0;
+    this.latestTickAt = 0;
     this.pending.clear();
   }
 
@@ -353,16 +356,23 @@ export class ScheduleService {
   private async runTick(): Promise<void> {
     const now = this.port.getNowMs();
     const after = this.lastCheckAt;
-    this.lastCheckAt = Math.max(after, now);
-    if (after === 0 || now < after) return;
+    const latestTickAt = this.latestTickAt;
+    this.latestTickAt = Math.max(latestTickAt, now);
+    if (after === 0) { this.lastCheckAt = now; return; }
+    if (now < latestTickAt) return;
     this.load();
     if (this.pending.size > 0) await this.retryPending();
+    let inspectedAll = true;
     for (const schedule of this.dueSchedules(after, now)) {
       if (!this.running) break;
       try { await this.runDue(schedule, after); } catch (error) {
+        inspectedAll = false;
         logger.error({ event: 'schedule_run_failed', scheduleId: schedule.id, err: error });
       }
     }
+    // Keep unconsumed occurrences in the bounded catch-up window after a read
+    // or receipt failure. Durable receipts prevent replay of inspected peers.
+    if (inspectedAll) this.lastCheckAt = Math.max(this.lastCheckAt, now);
   }
 
   private dueSchedules(after: number, now: number): Schedule[] {
@@ -410,14 +420,19 @@ export class ScheduleService {
     for (const pending of [...this.pending.values()]) {
       if (!this.running) return;
       const { schedule, consumed } = pending;
-      this.pending.delete(schedule.id);
-      if (this.port.receipts.read(schedule.id)?.localOccurrence !== consumed.localOccurrence) continue;
-      // A late tick never creates after the window; the device kept its task throughout it.
-      if (this.port.getNowMs() >= pending.atMs + BUSY_RETRY_WINDOW_MS) {
-        this.finalize(schedule, consumed, BUSY_RESULT);
-        continue;
-      }
-      try { await this.run(pending); } catch (error) {
+      try {
+        // A late tick never creates after the window; even an unreadable
+        // receipt must not keep a pending retry alive beyond it.
+        if (this.port.getNowMs() >= pending.atMs + BUSY_RETRY_WINDOW_MS) {
+          this.pending.delete(schedule.id);
+          this.finalize(schedule, consumed, BUSY_RESULT);
+          continue;
+        }
+        const receipt = this.port.receipts.read(schedule.id);
+        this.pending.delete(schedule.id);
+        if (receipt?.localOccurrence !== consumed.localOccurrence) continue;
+        await this.run(pending);
+      } catch (error) {
         logger.error({ event: 'schedule_run_failed', scheduleId: schedule.id, err: error });
       }
     }

@@ -341,6 +341,97 @@ describe('schedule owner', () => {
     expect(f.execute).not.toHaveBeenCalled();
   });
 
+  it.each(['key list', 'listed value'] as const)('retries an unconsumed trigger after a failed %s read', async (failure) => {
+    const f = fixture(); f.values.set('schedule.morning', modeSchedule());
+    const service = f.create(); service.start();
+    const { get, getKeys } = f.port.settings;
+    if (failure === 'key list') f.port.settings.getKeys = () => { throw new Error('Unavailable'); };
+    else f.port.settings.get = () => undefined;
+    f.setNow('2026-10-28T09:00:05Z');
+    await expect(service.tick()).rejects.toThrow();
+    expect(f.receipts.has('morning')).toBe(false);
+    f.port.settings.get = get; f.port.settings.getKeys = getKeys;
+    f.setNow('2026-10-28T09:00:20Z'); await service.tick();
+    expect(f.execute).toHaveBeenCalledExactlyOnceWith(modeSchedule(), Date.parse('2026-10-28T09:00:00Z'));
+  });
+
+  it('does not replay a consumed peer when a later configuration read fails', async () => {
+    const f = fixture();
+    f.values.set('schedule.earlier', modeSchedule('earlier'));
+    const later = { ...modeSchedule('later'), at: '10:01' };
+    f.values.set('schedule.later', later);
+    const service = f.create(); service.start();
+    const { get } = f.port.settings;
+    f.execute.mockImplementation(async (schedule) => {
+      if (schedule.id === 'earlier') f.port.settings.get = (key) => {
+        if (key === 'schedule.later') throw new Error('Unavailable');
+        return get(key);
+      };
+    });
+    f.setNow('2026-10-28T09:01:05Z'); await service.tick();
+    expect(f.execute.mock.calls.map(([schedule]) => schedule.id)).toEqual(['earlier']);
+    expect(f.receipts.has('later')).toBe(false);
+    f.port.settings.get = get;
+    f.setNow('2026-10-28T09:01:20Z'); await service.tick();
+    expect(f.execute.mock.calls.map(([schedule]) => schedule.id)).toEqual(['earlier', 'later']);
+  });
+
+  it('retries a trigger whose consumption receipt could not be written', async () => {
+    const f = fixture(); f.values.set('schedule.morning', modeSchedule());
+    const service = f.create(); service.start();
+    const { write } = f.port.receipts;
+    f.port.receipts.write = () => { throw new Error('Unavailable'); };
+    f.setNow('2026-10-28T09:00:05Z'); await service.tick();
+    expect(f.execute).not.toHaveBeenCalled();
+    f.port.receipts.write = write;
+    f.setNow('2026-10-28T09:00:20Z'); await service.tick();
+    expect(f.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the two-minute catch-up bound after an unavailable configuration read', async () => {
+    const f = fixture(); f.values.set('schedule.morning', modeSchedule());
+    const service = f.create(); service.start();
+    const { get } = f.port.settings;
+    f.port.settings.get = () => undefined;
+    f.setNow('2026-10-28T09:00:05Z'); await expect(service.tick()).rejects.toThrow();
+    f.port.settings.get = get;
+    f.setNow('2026-10-28T09:02:01Z'); await service.tick();
+    expect(f.execute).not.toHaveBeenCalled();
+  });
+
+  it('waits out a backwards clock jump while a failed inspection remains unconsumed', async () => {
+    const f = fixture(); f.values.set('schedule.morning', modeSchedule());
+    const service = f.create(); service.start();
+    const { get } = f.port.settings;
+    f.port.settings.get = () => undefined;
+    f.setNow('2026-10-28T09:00:30Z'); await expect(service.tick()).rejects.toThrow();
+    f.port.settings.get = get;
+    f.setNow('2026-10-28T09:00:15Z'); await service.tick();
+    expect(f.execute).not.toHaveBeenCalled();
+    f.setNow('2026-10-28T09:00:45Z'); await service.tick();
+    expect(f.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('isolates an unreadable pending receipt from a new trigger and retains the retry', async () => {
+    const f = fixture();
+    f.values.set('schedule.charge', energySchedule());
+    f.values.set('schedule.mode', { ...modeSchedule('mode'), at: '10:01' });
+    f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
+    f.execute.mockRejectedValueOnce(new ScheduleSkip('Busy', true));
+    const service = f.create(); service.start();
+    f.setNow('2026-10-28T09:00:05Z'); await service.tick();
+    const { read } = f.port.receipts;
+    f.port.receipts.read = (id) => {
+      if (id === 'charge') throw new Error('Unavailable');
+      return read(id);
+    };
+    f.setNow('2026-10-28T09:01:05Z'); await expect(service.tick()).resolves.toBeUndefined();
+    expect(f.execute.mock.calls.map(([schedule]) => schedule.id)).toEqual(['charge', 'mode']);
+    f.port.receipts.read = read;
+    f.setNow('2026-10-28T09:01:20Z'); await service.tick();
+    expect(f.execute.mock.calls.map(([schedule]) => schedule.id)).toEqual(['charge', 'mode', 'charge']);
+  });
+
   it('consumes explicit deletion while leaving listed null as an unavailable read', () => {
     const f = fixture(); f.values.set('schedule.morning', modeSchedule());
     const service = f.create(); service.read();
