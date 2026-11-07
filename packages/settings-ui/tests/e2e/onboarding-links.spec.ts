@@ -243,6 +243,8 @@ test.describe('Onboarding links', () => {
           price_optimization_settings: {},
           // Priced export, so the export price question stays out of this one.
           export_price_enabled: true, export_fixed: 0.1,
+          // Already sending daily reports, so that suggestion stays out too.
+          daily_diagnostics_report: true,
         },
         unsetSettings: ['deferred_objective.dev_connected300'],
       };
@@ -298,6 +300,7 @@ test.describe('Onboarding links', () => {
           ui_devices_has_exhibited_export: false,
           ui_devices_surplus_pool_reachable: seededPool,
           export_price_enabled: true, export_fixed: 0.1,
+          daily_diagnostics_report: true,
         },
         unsetSettings: ['deferred_objective.dev_connected300'],
       };
