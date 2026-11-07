@@ -230,6 +230,17 @@ export const isSetupDeviceLimitable = (deviceId: string): boolean => {
   return device?.batteryControl === 'drivable' && resolveBatteryPowerLimitOn(deviceId);
 };
 
+/**
+ * Whether this managed device gives PELS something to do. A battery PELS can
+ * only watch is managed by default so PELS reads it, but a home with only that
+ * battery has still to choose a device PELS can act on.
+ */
+const isSetupDeviceActionable = (deviceId: string): boolean => {
+  if (!isHomeBatteryDeviceId(deviceId)) return true;
+  const device = state.latestDevices.find((candidate) => candidate.id === deviceId);
+  return device?.batteryControl === 'drivable';
+};
+
 /** `loading` until every fact has arrived once, so no step is judged on a guess. */
 const readSetupFacts = (): SetupFactsRead<SetupPathFacts> => {
   const membership = readHomeMembership();
@@ -248,7 +259,7 @@ const readSetupFacts = (): SetupFactsRead<SetupPathFacts> => {
     power: power.value,
     hardCap: hardCap.value,
     market,
-    managedDeviceCount: managedIds.length,
+    actionableDeviceCount: managedIds.filter(isSetupDeviceActionable).length,
     limitableDeviceCount: limitableIds.length,
     simulating: state.dryRun,
     prices: resolveSetupPrices(managedIds),

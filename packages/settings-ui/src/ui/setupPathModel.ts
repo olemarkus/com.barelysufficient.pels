@@ -83,7 +83,12 @@ export type SetupPrices =
 export type SetupPathFacts = {
   power: SetupPowerReadings;
   hardCap: SetupHardCap;
-  managedDeviceCount: number;
+  /**
+   * Managed devices PELS can act on: every managed load, and a home battery
+   * only while PELS can drive it. A battery PELS can only watch stays managed
+   * but does not finish the Devices step on its own.
+   */
+  actionableDeviceCount: number;
   /** Managed devices that also have Limit on: the ones PELS may actually turn down. */
   limitableDeviceCount: number;
   simulating: boolean;
@@ -195,19 +200,19 @@ const resolveHardCapDetail = (facts: SetupPathFacts): string => {
 // reading) or that the owner chose not to limit are a finished choice; telling
 // that owner to go turn Limit on asks for something they did not come for.
 const resolveDevicesDetail = (facts: SetupPathFacts): string => {
-  if (facts.managedDeviceCount === 0) return 'Choose one device to start';
+  if (facts.actionableDeviceCount === 0) return 'Choose one device to start';
   return facts.limitableDeviceCount > 0
     ? `${countDevices(facts.limitableDeviceCount)} PELS may limit`
-    : `${countDevices(facts.managedDeviceCount)} managed`;
+    : `${countDevices(facts.actionableDeviceCount)} managed`;
 };
 
 const resolveLimitsStageDetail = (facts: SetupPathFacts): string => {
-  if (facts.managedDeviceCount === 0) return 'Depends on the devices you choose';
+  if (facts.actionableDeviceCount === 0) return 'Depends on the devices you choose';
   return facts.limitableDeviceCount > 0 ? resolveHardCapDetail(facts) : 'Not needed for your devices';
 };
 
 const resolvePricesStageDetail = (facts: SetupPathFacts): string => {
-  if (facts.managedDeviceCount === 0) return 'Depends on the devices you choose';
+  if (facts.actionableDeviceCount === 0) return 'Depends on the devices you choose';
   if (facts.prices.state === 'used') return facts.prices.summary;
   if (facts.prices.state === 'unread') return 'Price settings could not be read. Check Electricity prices.';
   return 'Not needed for your devices';
@@ -215,7 +220,7 @@ const resolvePricesStageDetail = (facts: SetupPathFacts): string => {
 
 /** Keep the resolved steps available for the explicit review, even after setup closes. */
 export const resolveSetupSteps = (facts: SetupPathFacts): SetupPath => {
-  const devicesChosen = facts.managedDeviceCount > 0;
+  const devicesChosen = facts.actionableDeviceCount > 0;
   const hardCapApplies = facts.limitableDeviceCount > 0;
   const candidates: Array<Omit<SetupStep, 'status'> & { done: boolean }> = [
     {
@@ -227,7 +232,7 @@ export const resolveSetupSteps = (facts: SetupPathFacts): SetupPath => {
     },
     {
       id: 'devices',
-      done: facts.managedDeviceCount > 0,
+      done: facts.actionableDeviceCount > 0,
       title: 'Devices',
       detail: resolveDevicesDetail(facts),
       target: { panel: 'devices' },
