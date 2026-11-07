@@ -587,6 +587,10 @@ export const mockHomeyInstance = {
       if (path === 'manager/energy/price/electricity/dynamic/user-costs') {
         return mockHomeyInstance.api._priceUserCosts;
       }
+      // The import tariff type: dynamic, so the formula above prices the home.
+      if (path === 'manager/energy/price/electricity/type') {
+        return 'dynamic';
+      }
       const dynamicPricesMatch = path.match(/^manager\/energy\/price\/electricity\/dynamic\?date=([0-9-]+)$/);
       if (dynamicPricesMatch) {
         return mockHomeyInstance.api._dynamicElectricityPrices({ date: dynamicPricesMatch[1] });
