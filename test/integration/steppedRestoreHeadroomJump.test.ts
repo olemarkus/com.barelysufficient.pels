@@ -159,21 +159,14 @@ describe('running stepped loads jump on the full room, and later devices on the 
     expect(cycle.deviceMap.get(dev.id)?.desiredStepId).toBe(target);
   });
 
-  it('holds a recently reduced EV charger even with room for a large jump', () => {
-    const dev = runningDevice({ isEvCharger: true });
-    const cycle = cycleFor(dev, 12);
-    getTestExecutionFacts(cycle.state).actuation.lastDeviceShedMs[dev.id] = Date.now() - 120_000;
-    restore(cycle, dev, 12);
-    expect(cycle.deviceMap.get(dev.id)).toMatchObject({ desiredStepId: '1', reason: { code: PLAN_REASON_CODES.cooldownRestore } });
-  });
-
-  it('shows a recently reduced EV charger its recovery hold while the solar ceiling also holds it', () => {
-    const dev = runningDevice({ isEvCharger: true, surplusTracking: true, selectedStepId: '3', desiredStepId: '3' });
+  it.each([false, true])('shows the shared recovery gate while the solar ceiling holds, EV=%s', (isEvCharger) => {
+    const dev = runningDevice({ isEvCharger, surplusTracking: true, selectedStepId: '3', desiredStepId: '3' });
     const cycle = cycleFor(dev, 12);
     cycle.state.surplusTrackingByDevice[dev.id] = { kind: 'rung', stepId: '3', funded: true };
-    getTestExecutionFacts(cycle.state).actuation.lastDeviceShedMs[dev.id] = Date.now() - 120_000;
-    restore(cycle, dev, 12);
-    expect(cycle.deviceMap.get(dev.id)).toMatchObject({ desiredStepId: '3', reason: { code: PLAN_REASON_CODES.cooldownRestore } });
+    restore({ ...cycle, timing: { ...cycle.timing, inCooldown: true, shedCooldownRemainingSec: 30 } }, dev, 12);
+    expect(cycle.deviceMap.get(dev.id)).toMatchObject({
+      desiredStepId: '3', reason: { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30 },
+    });
   });
 
   it.each([

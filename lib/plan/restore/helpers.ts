@@ -138,8 +138,7 @@ export function planRestoreForSteppedDevice(
     target?.need.neededKw ?? 0,
   );
   // The gates see the step the ladder WANTED when the surplus ceiling holds it
-  // back, so a held device still shows the gate's reason (a charger's recovery
-  // hold among them) rather than none.
+  // back, so a held device still shows the shared gate's reason rather than none.
   const requestedStepId = target?.step.id ?? getSteppedLoadNextRestoreStep(dev)?.id ?? null;
   if (applySteppedDeviceGates(cycle, dev, loop, batchContinuation, requestedStepId)) return loop;
 
