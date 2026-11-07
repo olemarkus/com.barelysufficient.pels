@@ -4,12 +4,13 @@ const TESLA_APP_URI = 'homey:app:com.tesla.car';
 
 /** Homey supplies either a qualified driver ID or an app URI and local ID. */
 export function teslaDriver(device: HomeyDeviceLike): string | undefined {
-  const id = device.driverId ?? device.driver?.id;
+  const id = device.driverId || device.driver?.id;
   if (!id) return undefined;
   if (id.includes(':')) {
     return id.startsWith(`${TESLA_APP_URI}:`) ? id.slice(TESLA_APP_URI.length + 1) : undefined;
   }
-  return (device.driverUri ?? device.driver?.uri) === TESLA_APP_URI ? id : undefined;
+  const appUri = device.driverUri ?? device.driver?.uri ?? device.ownerUri ?? device.driver?.owner_uri;
+  return appUri === TESLA_APP_URI ? id : undefined;
 }
 
 export function isTeslaChargingDevice(device: HomeyDeviceLike): boolean {
