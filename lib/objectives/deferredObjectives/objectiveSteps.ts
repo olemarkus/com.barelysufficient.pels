@@ -1,8 +1,7 @@
 import { sortSteppedLoadSteps } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { isEvDevice } from '../../../packages/shared-domain/src/commandableNow';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
-import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
-import { drawWhenActivelyDrawingKw } from './planningSpeed';
+import { drawWhenActivelyDrawingKw, resolveStepDeliveryUsefulKw } from './objectiveStepPower';
 import type { DeferredObjectiveStep } from './types';
 
 // Grid draw for a step: the step's NAMEPLATE, never its learned power. `null` when
@@ -102,9 +101,7 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
   // survive restart without feedback. The defensive frozen-serving behavior is
   // covered by `test/integration/deferredObjectiveProjectionGapCommitment.test.ts`.
   //
-  // MOVES WITH `resolvePlanningSpeedKw` in `planningSpeed.ts` — the two are
-  // mirrors, and a divergence means the diagnostic and the hero copy disagree
-  // about the same device in the same cycle.
+  // Diagnostic planning speed consumes these resolved rungs directly.
   if (device.steppedLadderMissing === true) return [];
   if (isEvDevice(device)) {
     return withResolvedAdmission([buildSyntheticChargeStep(device, device.expectedPowerKw)]);
@@ -129,8 +126,7 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
   // running is the one thing it can do: a plain on/off device (a relay-switched
   // water heater carrying an energy task), and equally an on/off device with a
   // settable target that a heating Flow card gave a task, which used to stay at
-  // `missing_capacity` for want of a rung. MOVES WITH the mirror in
-  // `planningSpeed.ts`.
+  // `missing_capacity` for want of a rung.
   const activeDrawKw = drawWhenActivelyDrawingKw(device.currentDrawKw);
   return withResolvedAdmission([
     buildSyntheticChargeStep(device, activeDrawKw ?? device.expectedPowerKw),

@@ -2,6 +2,7 @@ import type { TaskAllocationRosterSnapshot } from './taskAllocationRoster';
 import type { ModePriorityOrder } from '../../../packages/shared-domain/src/settings/modePriorities';
 import type {
   DeferredObjectivePlanInterval,
+  DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanReservationSegmentV1,
   DeferredObjectiveActivePlansV2,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
@@ -272,18 +273,15 @@ const narrowToDrawWindow = (
   };
 };
 
-export const buildPriorityReservations = (
-  evaluation: TaskEvaluation,
-  objective: DeferredObjectiveSettingsEntry,
+/** Current ladder and useful delivery bound every consumer's physical reservation. */
+export const narrowPriorityReservations = (
+  reservations: DeferredObjectivePriorityReservation[],
   device: ObjectiveDeviceInput | undefined,
-  activePlans: DeferredObjectiveActivePlansV2,
-  powerLimits: PowerLimitSettings,
   nowMs: number,
 ): DeferredObjectivePriorityReservation[] => {
-  if (isTaskSatisfied(evaluation.completion)) return [];
   const steps = device ? resolveObjectiveSteps(device) : [];
   const maxStepPowerKw = device ? resolveHighestObjectiveAdmissionPowerKw(device) : null;
-  const narrow = (reservations: DeferredObjectivePriorityReservation[]): DeferredObjectivePriorityReservation[] => (
+  return (
     reservations.map((reservation) => narrowToDrawWindow(
       maxStepPowerKw === null ? reservation : {
         ...reservation,
@@ -293,6 +291,40 @@ export const buildPriorityReservations = (
       nowMs,
     ))
   );
+};
+
+/** Original committed coverage and energy, before projecting physical draw windows. */
+export const committedPriorityReservations = (
+  deviceId: string,
+  latest: DeferredObjectiveActivePlanRevisionV1,
+  device: ObjectiveDeviceInput | undefined,
+  powerLimits: PowerLimitSettings,
+  deadlineAtMs: number,
+  exemptFromBudget: boolean,
+): DeferredObjectivePriorityReservation[] => {
+  if (latest.reservationSegments !== undefined) {
+    return reservationsFromSegments(deviceId, latest.reservationSegments, exemptFromBudget);
+  }
+  const persistedHours = latest.hours.flatMap((hour): ReservationHour[] => {
+    const startMs = hour.coversFromMs ?? hour.startsAtMs;
+    const endMs = Math.min(hour.endsAtMs, deadlineAtMs);
+    if (endMs <= startMs) return [];
+    return [{ ...hour, energySegments: [{ startMs, endMs, plannedKWh: hour.plannedKWh }] }];
+  });
+  return reservationsFromHours(
+    deviceId, persistedHours, device, resolvePlanningCeilingKw(powerLimits), exemptFromBudget, deadlineAtMs,
+  );
+};
+
+export const buildPriorityReservations = (
+  evaluation: TaskEvaluation,
+  objective: DeferredObjectiveSettingsEntry,
+  device: ObjectiveDeviceInput | undefined,
+  activePlans: DeferredObjectiveActivePlansV2,
+  powerLimits: PowerLimitSettings,
+  nowMs: number,
+): DeferredObjectivePriorityReservation[] => {
+  if (isTaskSatisfied(evaluation.completion)) return [];
   const activePlan = resolveActiveCommittedPlan(
     evaluation.deviceId,
     objective,
@@ -304,45 +336,18 @@ export const buildPriorityReservations = (
       }),
     activePlans,
   );
-  const persistedHours = (activePlan?.latest.hours ?? []).flatMap((hour): ReservationHour[] => {
-    const startMs = hour.coversFromMs ?? hour.startsAtMs;
-    const endMs = Math.min(hour.endsAtMs, objective.deadlineAtMs);
-    if (endMs <= startMs) return [];
-    return [{
-    ...hour,
-    energySegments: [{
-      startMs,
-      endMs,
-      plannedKWh: hour.plannedKWh,
-    }],
-    }];
-  });
   const exemptFromBudget = evaluation.permissions.budgetExempt;
   if (evaluation.planning.kind === 'allocated' && evaluation.planning.plan.frozenRead !== true) {
-    return narrow(reservationsFromSegments(
+    return narrowPriorityReservations(reservationsFromSegments(
       evaluation.deviceId,
       buildLiveReservationSegments(evaluation.planning.plan),
       exemptFromBudget,
-    ));
+    ), device, nowMs);
   }
-  if (activePlan?.latest.reservationSegments !== undefined) {
-    return narrow(reservationsFromSegments(
-      evaluation.deviceId,
-      activePlan.latest.reservationSegments,
-      exemptFromBudget,
-    ));
-  }
-  return narrow(reservationsFromHours(
-    evaluation.deviceId,
-    // A fresh allocator result is authoritative even when it books nothing.
-    // Frozen plans fabricate epoch-hour buckets for control only. An inactive
-    // evaluation may retain a missing device through grace; both reserve from the
-    // settled latest revision (exact segments when available, clipped legacy
-    // hours otherwise).
-    persistedHours,
-    device,
-    resolvePlanningCeilingKw(powerLimits),
-    exemptFromBudget,
-    objective.deadlineAtMs,
-  ));
+  // Fresh allocation is authoritative even when empty; frozen/inactive reads
+  // retain the coherent settled revision's exact segments or legacy coverage.
+  if (activePlan === undefined) return [];
+  return narrowPriorityReservations(committedPriorityReservations(
+    evaluation.deviceId, activePlan.latest, device, powerLimits, objective.deadlineAtMs, exemptFromBudget,
+  ), device, nowMs);
 };

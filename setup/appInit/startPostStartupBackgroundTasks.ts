@@ -8,6 +8,7 @@ import { createDeferredObjectiveLifecycleEmitter } from './deferredObjectiveLife
 import { startBackgroundCollectors } from './startBackgroundCollectors';
 import { wireBudgetPrice } from './wireBudgetPrice';
 import { wireContinuousBatteryPlan } from './wireContinuousBatteryPlan';
+import { createTaskReservationSource } from './createTaskReservationSource';
 import { wireCurtailmentSurplus } from './wireCurtailmentSurplus';
 import { startSoleMeterAdoption } from '../soleMeterAdoption';
 export { startCapacityMarketDefault } from '../capacityMarketDefault';
@@ -48,7 +49,7 @@ export const startPostStartupBackgroundTasks = (
   // The collector factory constructs one live selector for all forecast consumers.
   const { getSelectedPvForecast } = collectors;
   wireBudgetPrice(ctx, (ms) => getSelectedPvForecast().forecast([ms])[0]?.generationKwh);
-  wireContinuousBatteryPlan(ctx, () => taskEvaluationSource.getDeferredObjectiveActivePlans(), getSelectedPvForecast);
+  wireContinuousBatteryPlan(ctx, createTaskReservationSource(ctx, taskEvaluationSource), getSelectedPvForecast);
   // Provenance for the settings UI's Solar forecast section — read from the
   // live selector so the UI can never disagree with what planning consumes.
   // Both availability flags ask the producer whether it can answer for the

@@ -4,12 +4,13 @@ import { ContinuousBatteryPlanService } from '../../lib/battery/continuousBatter
 import {
   createContinuousBatteryPlanSource, type ContinuousBatteryHorizonSources,
 } from '../../lib/battery/continuousBatteryHorizon';
+import type { TaskReservationSource } from '../../lib/ports/taskReservations';
 import { requireBatteryControl, requireHomeMembership } from './contextGuards';
 
 /** The selector is ready here; setup only connects the source and owner. */
 export function wireContinuousBatteryPlan(
   ctx: InitializedAppContext,
-  getActiveTasks: ContinuousBatteryHorizonSources['getActiveTasks'],
+  taskReservations: TaskReservationSource,
   getSolarForecast: ContinuousBatteryHorizonSources['getSolarForecast'],
 ): void {
   requireHomeMembership(ctx);
@@ -22,7 +23,7 @@ export function wireContinuousBatteryPlan(
     getControllableDevices: () => ctx.deviceControlSettings.controllableDevices,
     getPriceTimeline: () => ctx.priceCoordinator.getPriceTimeline(),
     getPowerLimitSettings: () => ctx.capacitySettings,
-    getActiveTasks,
+    taskReservations,
     solarScope: ctx.batterySolarScope,
     getSolarForecast,
     getBackgroundKWh: (hourStartMs) => ctx.forecastBatteryBackgroundKWh(hourStartMs),

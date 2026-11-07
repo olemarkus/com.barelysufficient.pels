@@ -14,9 +14,9 @@ A `released` interval stands the task's device down even when Power-limit contro
 
 The task governs until its deadline, also once satisfied (owner ruling 2026-10-17). Satisfaction strips the rescue permissions; it does not hand the device back to normal running, and it has no lifecycle fallback of its own. A temperature task's setpoint rides every decision as `deadlineFloorTargetC`, so neither satisfaction nor a mode change writes a mode target below the task's mid-task (a more demanding one still wins, as the floor has always worked); a released interval's shed posture carries its own limit.
 
-## The step-ladder gap is the producer's answer, and its two readers are mirrors
+## The step-ladder gap is the producer's answer
 
-`steppedLadderMissing` is resolved by the producer. `resolveObjectiveSteps` and `resolvePlanningSpeedKw` read that same fact for frozen serving and user-facing diagnostics. Change both together; do not re-derive the gap from profile presence or a missing power value.
+`steppedLadderMissing` is resolved by the producer. `resolveObjectiveSteps` reads that fact for frozen serving; diagnostics derive planning speed from those same resolved rungs. Do not re-derive the gap from profile presence or a missing power value.
 
 ## Smart-task requests are decided here
 
