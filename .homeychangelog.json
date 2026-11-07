@@ -781,5 +781,8 @@
   },
   "3.30.7": {
     "en": "Tesla Car & Energy's Battery & charging device now appears in PELS on Homeys that report its driver in a different form. PELS also lets a parked Tesla charging at home be controlled when the Tesla app has not reported its gear."
+  },
+  "3.30.8": {
+    "en": "Setup shows all four steps from the start, lists devices with their type, zone and power, and lets you choose which devices stay on longest before the review. Norway price setup is simpler, and a new price area no longer mixes in prices from the old one. PELS now uses a fixed electricity price set in Homey Energy, and Sessy batteries are controlled within their own charge and discharge power. After setup, PELS offers to send a daily diagnostics report."
   }
 }
