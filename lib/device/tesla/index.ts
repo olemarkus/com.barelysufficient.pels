@@ -1,6 +1,6 @@
 import type { DeviceAdapter, DeviceReadRule, DeviceEvOverlay } from '../deviceAdapter';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
-import { isTeslaChargingDevice } from './identity';
+import { isTeslaChargingDevice, teslaDriver } from './identity';
 import { teslaChargingCapabilities, normalizeTeslaChargingUpdate,
   hasTeslaChargingStateWithoutEvProjection, isTeslaChargingState } from './charging';
 import { TeslaChargingSession } from './session';
@@ -8,28 +8,28 @@ import type { HomeyDeviceLike } from '../../utils/types';
 import type { DeviceCapabilityMap } from '../managerControl';
 
 const TESLA_MODEL_CAPABILITY_TYPES: Readonly<Record<string, Readonly<Record<string, DeviceReadRule>>>> = {
-    'homey:app:com.tesla.car:battery': {
+    battery: {
         charging_on: 'boolean', charging_state: isTeslaChargingState, charging_port_cable: 'string',
         measure_charge_current_max: 'number', measure_charge_current: 'number',
         measure_charge_power: 'number', measure_charge_power_dc: 'number',
     },
-    'homey:app:com.tesla.car:location': {
+    location: {
         measure_location_latitude: 'number', measure_location_longitude: 'number',
     },
-    'homey:app:com.tesla.car:car': {
+    car: {
         car_state: 'string', car_shift_state: 'string', measure_car_drive_speed: 'number',
     },
 };
 export const teslaAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
-  matches: (device) => device.driverId?.startsWith('homey:app:com.tesla.car:') === true,
+  matches: (device) => teslaDriver(device) !== undefined,
   matchesCapabilities: (capabilities) => capabilities.includes('charging_on'),
   identity: (device) => isTeslaChargingDevice(device)
     ? { ...device, class: 'evcharger', virtualClass: 'evcharger' } : device,
   overlay: chargingOverlay,
   normalize: (_snapshot, capabilityId, value) => normalizeTeslaChargingUpdate(capabilityId, value),
   observation: (device) => teslaChargingCapabilities(device, standardDeviceAdapter.observation(device)),
-  readRules: (device) => TESLA_MODEL_CAPABILITY_TYPES[device.driverId ?? ''] ?? {},
+  readRules: (device) => TESLA_MODEL_CAPABILITY_TYPES[teslaDriver(device) ?? ''] ?? {},
   retainsPlugObservation: hasTeslaChargingStateWithoutEvProjection,
   currentBindings: (device) => isTeslaChargingDevice(device) ? [{
     deviceId: device.id,

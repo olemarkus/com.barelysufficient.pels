@@ -1,3 +1,4 @@
+import { teslaDriver } from './identity';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { toCapabilityTimestampMs } from '../managerControl';
 
@@ -56,8 +57,8 @@ export function readTeslaHomeEvidence(
   const vehicleId = battery.data?.id;
   if (!vehicleId || !isConnectedAcBattery(battery)) return undefined;
   const siblings = devices.filter((device) => device.data?.id === vehicleId);
-  const locations = siblings.filter((device) => device.driverId === 'homey:app:com.tesla.car:location');
-  const cars = siblings.filter((device) => device.driverId === 'homey:app:com.tesla.car:car');
+  const locations = siblings.filter((device) => teslaDriver(device) === 'location');
+  const cars = siblings.filter((device) => teslaDriver(device) === 'car');
   const location = locations.length === 1 ? locations[0] : undefined;
   const car = cars.length === 1 ? cars[0] : undefined;
   if (!location || !car || !isStationaryOnlineCar(car)) return undefined;
