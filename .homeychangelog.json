@@ -769,5 +769,8 @@
   },
   "3.30.3": {
     "en": "PELS now controls Alfen, Peblar, Wallbox and Zappi chargers. Alfen (the Alfen app or the Alfen Pro-line/ACE app) and Peblar get built-in current control in whole amps from 6 A, with no Flow or key needed. Wallbox gets built-in current control with a Homey API key. PELS starts and stops a Zappi, which charges in the charge mode you chose in the myenergi app."
+  },
+  "3.30.4": {
+    "en": "When a smart task lets a charger limit lower-priority devices, PELS no longer drops the charger to its lowest current just because a lower-priority device is waiting to turn back on. It lowers the current only as far as the power limit needs."
   }
 }
