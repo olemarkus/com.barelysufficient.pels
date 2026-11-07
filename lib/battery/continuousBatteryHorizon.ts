@@ -2,7 +2,7 @@ import type { BatteryEnergyPeriod } from '../../packages/contracts/src/batteryPl
 import type { ContinuousBatteryPlanConfig } from '../../packages/contracts/src/continuousBatteryPlan';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
-import type { DeferredObjectiveActivePlansV2 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { TaskReservationSource } from '../ports/taskReservations';
 import type { PriceTimeline, PriceTimelinePeriod, PriceTimelineRead } from '../../packages/contracts/src/priceTimeline';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { isBatteryPowerLimitEnabled } from '../../packages/shared-domain/src/settings/batteryPowerLimit';
@@ -13,9 +13,7 @@ import type {
   ContinuousBatteryEnergyHorizon, ContinuousBatteryExportPricing, ContinuousBatteryHorizonRead,
   ContinuousBatteryPlanSource,
 } from '../ports/continuousBatteryPlan';
-import {
-  reservationEnergy, reservationPowerKW, taskReservations, tasksForDevices, type BatteryTaskReservation,
-} from './batteryTaskReservations';
+import { reservationEnergy, reservationPowerKW } from './batteryTaskReservations';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -28,7 +26,7 @@ export type ContinuousBatteryHorizonSources = {
   getControllableDevices(): Readonly<Record<string, boolean>>;
   getPriceTimeline(): PriceTimelineRead;
   getPowerLimitSettings(): PowerLimitSettings;
-  getActiveTasks(): DeferredObjectiveActivePlansV2;
+  taskReservations: TaskReservationSource;
   solarScope: BatterySolarScopeSource;
   /** The selected solar forecast source's hourly generation. */
   getSolarForecast(): { forecast(hourStarts: readonly number[]): readonly { generationKwh: number }[] };
@@ -40,12 +38,8 @@ export type ContinuousBatteryHorizonSources = {
  * their exact committed reservations instead. Missing reads never become zero demand. */
 function standingManagedKW(
   devices: readonly DeviceSurfaces[],
-  tasks: DeferredObjectiveActivePlansV2,
-  nowMs: number,
+  activeTaskIds: ReadonlySet<string>,
 ): number {
-  const activeTaskIds = new Set(Object.values(tasks.plansByDeviceId)
-    .filter(task => task.deadlineAtMs > nowMs && task.liveCompletion.kind !== 'satisfied')
-    .map(task => task.deviceId));
   return devices.reduce((total, device) => (
     device.managed && !device.isBatteryOrSolar && !activeTaskIds.has(device.id) && hasObservedMeasuredPower(device)
       ? total + Math.max(0, device.measuredPowerKw)
@@ -115,7 +109,11 @@ type PeriodRead = {
 } | WaitingHorizon;
 type HourRead = { kind: 'ready'; backgroundKWh: number; solarKWh: number } | WaitingHorizon;
 
-function priceCuts(startMs: number, endMs: number, reservations: readonly BatteryTaskReservation[]): number[] {
+function priceCuts(
+  startMs: number,
+  endMs: number,
+  reservations: readonly { startMs: number; endMs: number }[],
+): number[] {
   const boundaries = new Set([startMs, endMs]);
   for (let hour = (Math.floor(startMs / HOUR_MS) + 1) * HOUR_MS; hour < endMs; hour += HOUR_MS) {
     boundaries.add(hour);
@@ -130,7 +128,7 @@ function priceCuts(startMs: number, endMs: number, reservations: readonly Batter
 function* priceSpans(
   prices: readonly PriceTimelinePeriod[],
   nowMs: number,
-  reservations: readonly BatteryTaskReservation[],
+  reservations: readonly { startMs: number; endMs: number }[],
 ): Generator<PriceSpan> {
   let cursor = nowMs;
   let count = 0;
@@ -175,18 +173,19 @@ function buildEnergyPeriods(
   hardwareChargeKW: number,
 ): PeriodRead {
   const nowMs = sources.getNowMs();
-  const tasks = tasksForDevices(sources.getActiveTasks(), devices);
+  const managedDeviceIds = new Set(devices.filter(device => device.managed).map(device => device.id));
+  const tasks = sources.taskReservations.read(nowMs, managedDeviceIds);
   const solarScope = resolveBatterySolarScope(sources.solarScope);
   if (solarScope === 'shared') return { kind: 'waiting', reason: 'solar_scope_shared' };
-  const reservations = taskReservations(tasks, nowMs);
-  if (reservations === 'waiting') return { kind: 'waiting', reason: 'smart_tasks_planning' };
-  const standingKW = standingManagedKW(devices, tasks, nowMs);
+  if (tasks.kind === 'waiting') return { kind: 'waiting', reason: 'smart_tasks_planning' };
+  const standingKW = standingManagedKW(devices, tasks.taskDeviceIds);
+  const reservationBounds = [...tasks.energy, ...tasks.admission];
   // The power owner's shared arithmetic (`resolvePlanningCeilingKw`): the lower enabled limit, null when none is.
   const planningCeiling = planningPowerCeiling(sources.getPowerLimitSettings())?.kw ?? null;
   const solarByHour = new Map<number, number | undefined>();
   let periods: BatteryEnergyPeriod[] = [];
   let exportPricing: ContinuousBatteryExportPricing = 'complete';
-  for (const span of priceSpans(prices.periods, nowMs, reservations)) {
+  for (const span of priceSpans(prices.periods, nowMs, reservationBounds)) {
     const hourStartMs = Math.floor(span.startsAtMs / HOUR_MS) * HOUR_MS;
     const hour = readHour(sources, hourStartMs, solarByHour, solarScope === 'main');
     if (hour.kind === 'waiting') return hour;
@@ -199,8 +198,8 @@ function buildEnergyPeriods(
     const durationMs = span.endsAtMs - span.startsAtMs;
     const fraction = durationMs / HOUR_MS;
     const otherManagedDemandKWh = standingKW * fraction
-      + reservationEnergy(reservations, span.startsAtMs, span.endsAtMs);
-    const reservedKW = reservationPowerKW(reservations, span.startsAtMs, span.endsAtMs);
+      + reservationEnergy(tasks.energy, span.startsAtMs, span.endsAtMs);
+    const reservedKW = reservationPowerKW(tasks.admission, span.startsAtMs, span.endsAtMs);
     const chargeRoomKW = planningCeiling === null ? hardwareChargeKW
       : planningCeiling + hour.solarKWh - hour.backgroundKWh - standingKW - reservedKW;
     periods = periods.concat({

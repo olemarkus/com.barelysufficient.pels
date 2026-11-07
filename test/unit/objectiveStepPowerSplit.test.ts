@@ -42,6 +42,20 @@ const elbillader: ObjectiveDeviceInput = {
 };
 
 describe('smart-task step power: learned for energy, nameplate for room', () => {
+  it.each<[string, Partial<ObjectiveDeviceInput>, number | null]>([
+    ['EV planning rate', { steppedLoadProfile: undefined, planningPowerKw: 2.3 }, 2.3],
+    ['EV expected rate', { steppedLoadProfile: undefined }, 1.38],
+    ['active relay draw', { steppedLoadProfile: undefined, isEvCharger: false, currentDrawKw: 3 }, 3],
+    ['idle relay expected rate', { steppedLoadProfile: undefined, isEvCharger: false, currentDrawKw: 0.003 }, 1.38],
+    ['missing ladder', { steppedLoadProfile: undefined, steppedLadderMissing: true as const }, null],
+    ['empty configured ladder', { steppedLoadProfile: { steps: [] }, planningPowerKw: 3 }, null],
+  ])('uses the allocator rungs for %s diagnostics', (_label, override, expected) => {
+    const device: ObjectiveDeviceInput = { ...elbillader, stepPowerCalibration: {}, ...override };
+    expect(resolvePlanningSpeedKw(device)).toBe(expected);
+    if (expected === null) expect(resolveObjectiveSteps(device)).toEqual([]);
+    else expect(resolveObjectiveSteps(device).some((step) => step.usefulPowerKw === expected)).toBe(true);
+  });
+
   it('resolves useful power from the learned figure and admission power from the nameplate', () => {
     expect(resolveObjectiveSteps(elbillader)).toEqual([
       { id: 'off', usefulPowerKw: 0, admissionPowerKw: 0 },

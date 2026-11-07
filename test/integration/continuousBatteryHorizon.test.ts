@@ -3,7 +3,11 @@ import { createContinuousBatteryPlanSource, type ContinuousBatteryHorizonSources
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import type { BatteryControlOwner, BatteryLeverRead } from '../../lib/ports/batteryControlOwner';
 import type { ContinuousBatteryPlanConfig } from '../../packages/contracts/src/continuousBatteryPlan';
-import type { DeferredObjectiveActivePlanV1, DeferredObjectiveActivePlanRevisionV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectiveActivePlansV2, DeferredObjectiveActivePlanV1, DeferredObjectiveActivePlanRevisionV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
+import { ObjectiveTaskReservationSource } from '../../lib/objectives/deferredObjectives/taskReservationSource';
+import { buildObjectiveSignatureForEntry } from '../../lib/objectives/deferredObjectives/activePlanSignature';
+import type { ObjectiveDeviceSource } from '../../lib/objectives/types';
 import { partialDouble } from '../helpers/partialDouble';
 
 const NOW = Date.parse('2026-10-27T00:00:00Z');
@@ -19,7 +23,13 @@ const control: BatteryLeverRead = {
   claimEngaged: false, keepAliveFor: () => ({ kind: 'none' }), admissible: true, verdict: 'responding',
 };
 
-const sources = (overrides: Partial<ContinuousBatteryHorizonSources> = {}): ContinuousBatteryHorizonSources => ({
+const taskObjective = (deadlineAtMs: number): DeferredObjectiveSettingsEntry => ({
+  kind: 'energy', enabled: true, targetEnergyKWh: 1, enforcement: 'soft', deadlineAtMs,
+});
+
+const sources = (overrides: Partial<ContinuousBatteryHorizonSources> & {
+  getActiveTasks?: () => DeferredObjectiveActivePlansV2;
+} = {}): ContinuousBatteryHorizonSources => ({
   getNowMs: () => NOW,
   getDevices: () => [partialDouble<DeviceSurfaces>({
     id: 'battery', managed: true, available: true, isBatteryOrSolar: true,
@@ -33,7 +43,14 @@ const sources = (overrides: Partial<ContinuousBatteryHorizonSources> = {}): Cont
     periods: [{ startsAt: new Date(NOW).toISOString(), durationMinutes: 60, importPrice: 0.2, level: 'normal' }],
   }),
   getPowerLimitSettings: () => ({ limitKw: 5, marginKw: 0, periodMinutes: 60, capacityEnabled: true, gridImportLimitKw: null }),
-  getActiveTasks: () => ({ version: 2, plansByDeviceId: {} }),
+  taskReservations: new ObjectiveTaskReservationSource({
+    getDeferredObjectiveActivePlans: () => overrides.getActiveTasks?.() ?? { version: 2, plansByDeviceId: {} },
+    getCapacitySettings: () => ({ limitKw: 5, marginKw: 0, periodMinutes: 60, capacityEnabled: true, gridImportLimitKw: null }),
+    getThermalDirection: () => 'heating',
+  }, () => ({
+    objectivesByDeviceId: Object.fromEntries(Object.entries(overrides.getActiveTasks?.().plansByDeviceId ?? {})
+      .map(([deviceId, plan]) => [deviceId, taskObjective(plan.deadlineAtMs)])),
+  }), () => [], (device: ObjectiveDeviceSource) => device),
   solarScope: { mainDevices: () => [], allDevices: () => [] },
   getSolarForecast: () => ({ forecast: () => [] }),
   getBackgroundKWh: () => 0.5,
@@ -42,7 +59,9 @@ const sources = (overrides: Partial<ContinuousBatteryHorizonSources> = {}): Cont
 
 const task = (plannedKWh: number, startMs = NOW, endMs = NOW + HOUR_MS): DeferredObjectiveActivePlanV1 => (
   partialDouble<DeferredObjectiveActivePlanV1>({
-    deviceId: 'ev', deadlineAtMs: endMs, pending: false,
+    deviceId: 'ev', deadlineAtMs: endMs, pending: false, objectiveKind: 'energy',
+    objectiveSignature: buildObjectiveSignatureForEntry(taskObjective(endMs), 'increasing'),
+    commitment: { committedAtMs: NOW, hours: [] },
     liveCompletion: { kind: 'unmet', status: 'on_track' },
     latest: partialDouble<DeferredObjectiveActivePlanRevisionV1>({
       hours: [], reservationSegments: [{ startMs, endMs, plannedKWh, plannedAdmissionPowerKw: 7 }],
