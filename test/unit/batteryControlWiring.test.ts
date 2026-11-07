@@ -77,6 +77,23 @@ describe('resolveBatteryControlSurface', () => {
     });
   });
 
+  it('reads the default range Homey fills in for a Sessy as no range, keeping its preset range', () => {
+    // A real Homey's `capabilitiesObj` for a driver that declares no options.
+    const surface = resolveBatteryControlSurface(
+      device({ driverId: 'homey:app:nl.sessy:sessy' }),
+      ['target_power', 'control_strategy'],
+      capabilityMap({
+        target_power: { setable: true, min: -25000, max: 25000, step: 1, value: null },
+        control_strategy: { setable: true, values: enumValues('POWER_STRATEGY_API') },
+      }),
+    );
+
+    expect(surface).toMatchObject({
+      kind: 'setpoint',
+      range: { minW: -1800, maxW: 2200, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
+    });
+  });
+
   it('keeps a range a Sessy declares over its preset range', () => {
     const surface = resolveBatteryControlSurface(
       device({ driverId: 'homey:app:nl.sessy:sessy' }),

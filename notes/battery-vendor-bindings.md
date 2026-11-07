@@ -22,7 +22,7 @@ A `capability` binding states:
   (`toBatterySetpointCapabilityValue`). `measure_power` is Homey's sign
   (positive charging) in every app below, so it is never flipped and the
   executor's sign check compares like with like.
-- **rangeDefaults**: the `target_power` edges for a driver that declares none.
+- **rangeDefaults**: the `target_power` edges for a driver that declares none. Homey fills an undeclared edge with its own default (±25 kW, step 1), so PELS reads that value as undeclared.
 - **zeroSetpointW**: what PELS writes for a 0 W setpoint, `0` unless the app
   reads an exact 0 as one of its own modes. A hand-back always writes an exact 0.
 
