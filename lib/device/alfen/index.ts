@@ -19,6 +19,7 @@ import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { TargetPowerConfigWithReachability } from '../targetPowerReachability';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 import { resolveTargetPowerPresetPhaseCount } from '../../../packages/shared-domain/src/targetPowerStepping';
+import { getSteppedLoadLowestActiveStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 
 const MIN_CURRENT_A = 6;
 const MAX_CURRENT_A = 32;
@@ -53,6 +54,23 @@ const deviceWattsPerAmp = (device: HomeyDeviceLike): number => (
   wattsPerAmp(device.capabilitiesObj as DeviceCapabilityMap | undefined)
 );
 
+const currentToNativeWatts = (currentA: number, stationWattsPerAmp: number): number => (
+  Math.round(currentA * stationWattsPerAmp)
+);
+
+/**
+ * The complete native ladder starts at 6 A even in Manual. Its watts retain
+ * the station phase conversion from the last full read, independently of the
+ * owner's planning model. A phase change is picked up at the next full read.
+ */
+function stationWattsPerAmp(
+  snapshot: Pick<TransportDeviceSnapshot, 'automaticPowerControl'>,
+): number | undefined {
+  const physical = snapshot.automaticPowerControl?.profile;
+  const floor = physical && getSteppedLoadLowestActiveStep(physical);
+  return floor ? floor.planningPowerW / MIN_CURRENT_A : undefined;
+}
+
 /** Whether a limit, in the app's watts, lets a car charge: 6 A per phase or more. */
 function allowsCharging(limitW: number, gridWattsPerAmp: number): boolean {
   return limitW / gridWattsPerAmp >= MIN_CURRENT_A - 0.05;
@@ -72,7 +90,7 @@ function chargerOverlay(
   return {
     kind: 'adapted', capabilities,
     capabilityObj: {
-      ...values,
+      ...withLimitSwitch(values),
       target_power: { ...target, min: 0, max: Math.min(declaredMax, MAX_CURRENT_A * step), step,
         excludeMin: 0, excludeMax: MIN_CURRENT_A * step },
     },
@@ -86,7 +104,13 @@ function chargerOverlay(
 function withLimitSwitch(values: DeviceCapabilityMap): DeviceCapabilityMap {
   const limit = values.target_power;
   const charging = values.evcharger_charging;
-  if (charging === undefined || typeof limit?.value !== 'number' || !Number.isFinite(limit.value)) return values;
+  if (limit?.setable !== true || charging === undefined) return values;
+  if (typeof limit.value !== 'number' || !Number.isFinite(limit.value)) {
+    // A native write descriptor proves no switch reading. The app's own
+    // "charging now" value cannot replace the missing accepted limit.
+    const { evcharger_charging: _charging, ...withoutSwitch } = values;
+    return withoutSwitch;
+  }
   return {
     ...values,
     evcharger_charging: { ...charging, value: allowsCharging(limit.value, wattsPerAmp(values)),
@@ -94,11 +118,13 @@ function withLimitSwitch(values: DeviceCapabilityMap): DeviceCapabilityMap {
   };
 }
 
-/** The lowest charging rung of the ladder PELS steps, in the app's watts. */
-function resumeWatts(snapshot: Pick<TransportDeviceSnapshot, 'steppedLoadProfile'>): number | undefined {
-  const rungs = (snapshot.steppedLoadProfile?.steps ?? [])
-    .map((step) => step.planningPowerW).filter((watts) => watts > 0);
-  return rungs.length > 0 ? Math.min(...rungs) : undefined;
+/** The lowest planned charging rung, translated to the station's own watts. */
+function resumeWatts(snapshot: TransportDeviceSnapshot): number | undefined {
+  const gridWattsPerAmp = stationWattsPerAmp(snapshot);
+  const step = snapshot.steppedLoadProfile && getSteppedLoadLowestActiveStep(snapshot.steppedLoadProfile);
+  if (!step || gridWattsPerAmp === undefined) return undefined;
+  return step.planningCurrentA === undefined ? step.planningPowerW
+    : currentToNativeWatts(step.planningCurrentA, gridWattsPerAmp);
 }
 
 function switchWrite(snapshot: TransportDeviceSnapshot, request: CapabilityWrite): SwitchWrite {
@@ -126,24 +152,26 @@ export const alfenAdapter: DeviceAdapter = {
   matches: isAlfenChargepoint,
   matchesCapabilities: (capabilities) => capabilities.includes(SIGNATURE_CAPABILITY),
   overlay: chargerOverlay,
+  // Derive the switch while target_power is still in the station's raw units.
+  // Later preset projection rewrites that value into the car's planning watts.
+  observation: (device) => withLimitSwitch(standardDeviceAdapter.observation(device)),
   configureTargetPower,
   targetPowerReading: (device, config, value) => {
     const phases = resolveTargetPowerPresetPhaseCount(config.preset);
     return phases ? Math.round((value / deviceWattsPerAmp(device)) * PHASE_VOLTAGE * phases) : value;
   },
   stepCommand: (device, step, command) => command.capabilityId === 'target_power' && step.planningCurrentA !== undefined
-    ? { ...command, value: Math.round(step.planningCurrentA * deviceWattsPerAmp(device)) } : command,
-  finalizeObservation: (control, _capabilities, values) => control.activationEnabled === true
-    ? withLimitSwitch(values) : values,
+    ? { ...command, value: currentToNativeWatts(step.planningCurrentA, deviceWattsPerAmp(device)) } : command,
   normalize: (snapshot, capabilityId, value) => {
     // The app's switch says "charging now", not whether PELS lets it charge.
     if (capabilityId === 'evcharger_charging') return [];
     if (capabilityId !== 'target_power' || typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
       return [{ capabilityId, value }];
     }
-    const floorW = resumeWatts(snapshot);
-    if (floorW === undefined) return [{ capabilityId, value }];
-    return [{ capabilityId, value }, { capabilityId: 'evcharger_charging', value: value >= floorW - 0.5 }];
+    const gridWattsPerAmp = stationWattsPerAmp(snapshot);
+    if (gridWattsPerAmp === undefined) return [{ capabilityId, value }];
+    return [{ capabilityId, value },
+      { capabilityId: 'evcharger_charging', value: allowsCharging(value, gridWattsPerAmp) }];
   },
   switchWrite: (snapshot, request) => switchWrite(snapshot, request),
   recoverSwitchWrite: (snapshot, _raw, request) => switchWrite(snapshot, request),

@@ -29,15 +29,16 @@ describe('Alfen official app (com.alfen)', () => {
     });
   });
 
-  it('reads the switch from the limit, and leaves the app\'s switch when the limit is unreadable', () => {
+  it('reads the raw limit before projection and withholds the switch when that limit is unreadable', () => {
     const charger = device('homey:app:com.alfen:chargepoint', values(230));
     const adapter = getDeviceAdapter(charger);
-    const read = adapter.finalizeObservation(control, charger.capabilities!, {
-      ...values(230), target_power: { value: 4140, lastUpdated: later },
-    });
+    const raw = { ...values(230), target_power: { ...values(230).target_power, value: 4140, lastUpdated: later } };
+    const overlay = adapter.overlay(charger, charger.capabilities!, raw);
+    const read = adapter.finalizeObservation(control, charger.capabilities!, overlay.capabilityObj);
     expect(read.evcharger_charging).toMatchObject({ value: true, lastUpdated: later });
-    const unreadable = { ...values(230), target_power: { value: null } };
-    expect(adapter.finalizeObservation(control, charger.capabilities!, unreadable)).toBe(unreadable);
+    const unreadable = { ...raw, target_power: { ...raw.target_power, value: null } };
+    expect(adapter.overlay(charger, charger.capabilities!, unreadable).capabilityObj.evcharger_charging)
+      .toBeUndefined();
   });
 
   it('leaves other drivers alone', () => {

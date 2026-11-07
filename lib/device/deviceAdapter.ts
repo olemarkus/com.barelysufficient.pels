@@ -38,7 +38,8 @@ export type TargetPowerReassertionPreparation =
   | { kind: 'stop'; write: CapabilityWrite }
   | { kind: 'ready'; resetWrites: readonly CapabilityWrite[] };
 export type AdapterSnapshot = Pick<TransportDeviceSnapshot,
-  'controlAdapter' | 'capabilities' | 'binaryControl' | 'evChargingState' | 'reportedStepId' | 'steppedLoadProfile'>;
+  'controlAdapter' | 'capabilities' | 'binaryControl' | 'evChargingState' | 'reportedStepId' | 'steppedLoadProfile'
+  | 'automaticPowerControl'>;
 export type AdapterObservation = Pick<TransportDeviceSnapshot, 'controlAdapter' | 'capabilities'>;
 /** A parsed device a session may claim, by its surface or by the identity it has observed. */
 export type AdapterControlTarget = AdapterObservation & Pick<TransportDeviceSnapshot, 'id'>;

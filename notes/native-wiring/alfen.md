@@ -30,9 +30,17 @@ never is. So PELS neither writes nor reads it:
   its planned level from there with ordinary step commands.
 - **off** writes 0 W.
 - The switch is read from the limit: on at 6 A per phase or more. On a full
-  read it is dated by the limit (`finalizeObservation`). Realtime limit reports
-  carry the switch they imply, and the app's own switch events are dropped
+  read it is dated by the limit before conversion to planning watts (`overlay`).
+  Realtime limit reports carry the switch they imply, and the app's own switch events are dropped
   (`normalize`).
+
+An owner's EV phase model describes the car's draw, while the station's own
+phase count converts its watt limit to amps. Resume and ordinary step commands
+both translate the chosen current into the station's watts. Snapshot and
+realtime switches use the station's 6 A floor, including when the owner's
+minimum is higher. Realtime and resume read that conversion from the complete
+native ladder retained by the last full read, even in Manual mode; a missing
+native ladder grants no resume command or inferred realtime switch.
 
 The app refreshes the device after every write, so Homey's echo of PELS's
 write confirms the command within seconds.
@@ -44,7 +52,8 @@ behaviour on one and three phases. It covers:
 - whole-amp reductions;
 - a pause and a resume that never use the app's full-power switch;
 - a stopped session started at a safe current;
-- a stopped session kept off when 6 A does not fit.
+- a stopped session kept off when 6 A does not fit;
+- a resume at the station's own 6 A under a saved EV model with the other phase count.
 
 Without the adapter, PELS steps a three-phase station in thirds of an amp and
 starts it at 32 A through the app's switch.
