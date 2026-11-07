@@ -1,6 +1,6 @@
 import type { PlanEngineState } from './planState';
 import type { PlanInputDevice, ShedAction, ShedBehavior } from './planTypes';
-import { isNonSteppedDeviceRecovering } from './planShedRecovery';
+import { isSteppedRecoveryLimited } from './planShedRecovery';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import {
   getSteppedLoadShedTargetStep,
@@ -102,7 +102,7 @@ export function resolveSteppedShedHypotheticalStepId(
 ): string | undefined {
   if (!isSteppedLoadDevice(dev)) return undefined;
   if (shedBehavior.action !== 'set_step') return undefined;
-  if (shouldForceLowestActiveStep(dev, devices, state)) {
+  if (isSteppedRecoveryLimited(dev, devices, state)) {
     return getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)?.id;
   }
   const targetStep = getSteppedLoadShedTargetStep(dev, 'set_step', currentDesiredStepId);
@@ -115,14 +115,4 @@ export function resolveSteppedShedCurrentDesiredStepId(dev: PlanInputDevice): st
   const desiredKw = resolveSteppedLoadPlanningKw(dev, dev.desiredStepId);
   const selectedKw = resolveSteppedLoadPlanningKw(dev, dev.selectedStepId);
   return desiredKw < selectedKw ? dev.desiredStepId : dev.selectedStepId;
-}
-
-// Only a `set_step` shed reaches here (`resolveSteppedShedHypotheticalStepId`
-// returns before it for any other behaviour).
-function shouldForceLowestActiveStep(
-  dev: PlanInputDevice,
-  devices: PlanInputDevice[],
-  state: PlanEngineState,
-): boolean {
-  return devices.some((candidate) => candidate.id !== dev.id && isNonSteppedDeviceRecovering(candidate, state));
 }

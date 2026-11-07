@@ -5,6 +5,19 @@ import { isSteppedLoadDevice } from './planSteppedLoad';
 import { isStartPolicyHeldDevice } from './shedding/startPolicyHold';
 import { isChargeTargetHeldDevice } from './shedding/chargeTargetHold';
 import { isCarCurrentRangeHeldDevice } from './shedding/carCurrentRangeHold';
+import { resolveBoostActive } from './planBoost';
+import { yieldsToLimitedDevice } from './steppedFairness';
+
+/** Recovery witnesses for both actual and hypothetical stepped shed targets. */
+export function isSteppedRecoveryLimited(
+  device: PlanInputDevice,
+  devices: readonly PlanInputDevice[],
+  state: PlanEngineState,
+): boolean {
+  const boostActive = resolveBoostActive(device);
+  return devices.some((candidate) => yieldsToLimitedDevice(device, boostActive, candidate)
+    && isNonSteppedDeviceRecovering(candidate, state));
+}
 
 /**
  * A non-stepped device counts as "recovering" when it is currently observed off

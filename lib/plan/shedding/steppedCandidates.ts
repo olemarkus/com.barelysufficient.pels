@@ -49,7 +49,7 @@ import {
 } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { getSteppedLoadNextLowerStep } from '../../utils/steppedLoadLadder';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
-import { isNonSteppedDeviceRecovering } from '../planShedRecovery';
+import { isSteppedRecoveryLimited } from '../planShedRecovery';
 import { buildTemperatureCandidate } from './candidateBuilders';
 import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
@@ -469,7 +469,7 @@ function resolveSteppedShedTargetStep(
   effectiveCurrentStepId: string | undefined,
 ): SteppedLoadStep | null {
   const forceLowestActiveStep = shedBehaviorAction === 'set_step'
-    && devices.some((candidate) => candidate.id !== device.id && isNonSteppedDeviceRecovering(candidate, state));
+    && isSteppedRecoveryLimited(device, devices, state);
   if (forceLowestActiveStep) {
     if (!isSteppedLoadDevice(device)) return null;
     return getSteppedLoadLowestActiveStep(device.steppedLoadProfile);
