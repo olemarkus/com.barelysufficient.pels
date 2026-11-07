@@ -31,12 +31,14 @@ function devices(): HomeyDeviceLike[] {
       capabilitiesObj: { car_state: cap('online'), measure_car_drive_speed: cap(0), car_shift_state: cap('P') } },
   ];
 }
-const identityShapes = ['qualified', 'split', 'nested'] as const;
+const identityShapes = ['qualified', 'split', 'nested', 'owner', 'empty'] as const;
 type IdentityShape = typeof identityShapes[number];
 function devicesWithIdentity(shape: IdentityShape): HomeyDeviceLike[] {
   return devices().map(device => {
     if (shape === 'qualified') return device;
     const driverId = device.driverId!.split(':').at(-1)!;
+    if (shape === 'owner') return { ...device, driverId, ownerUri: 'homey:app:com.tesla.car' };
+    if (shape === 'empty') return { ...device, driverId: '', ownerUri: 'homey:app:com.tesla.car', driver: { id: driverId } };
     return shape === 'split'
       ? { ...device, driverId, driverUri: 'homey:app:com.tesla.car' }
       : { ...device, driverId: undefined, driver: { id: driverId, uri: 'homey:app:com.tesla.car' } };
@@ -81,6 +83,7 @@ test.each(['split', 'nested'] as const)('matches %s companions with a qualified 
 test.each([
   { driverId: 'battery', driverUri: 'homey:app:foreign' },
   { driverId: 'battery' },
+  { driverId: 'battery', driverUri: 'homey:app:foreign', ownerUri: 'homey:app:com.tesla.car' },
   { driverId: 'homey:app:foreign:battery', driverUri: 'homey:app:com.tesla.car' },
 ])('rejects non-Tesla battery identity %j', (identity) => {
   const battery = { ...devices()[0]!, ...identity };
