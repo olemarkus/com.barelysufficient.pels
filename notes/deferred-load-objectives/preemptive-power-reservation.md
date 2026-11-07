@@ -88,6 +88,7 @@ several devices sum, because two devices each waiting for their own block each n
 
 **No reserve for a device that cannot start.** An external off-hold, an unavailable device, or one
 that is not commandable gets none: the cost lands entirely on other devices and buys nothing.
+The clock keeps its accrued held time and pauses while the reserve is withheld.
 
 ## Why this shape and not the original one
 

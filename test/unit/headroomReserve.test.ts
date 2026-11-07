@@ -180,6 +180,33 @@ describe('resolveHeadroomReserves', () => {
     }
   });
 
+  it.each([
+    { plannedState: 'shed' as const, restoresRun: false },
+    { available: false, restoresRun: true },
+  ])('pauses withheld reservation time through recovery: %j', ({ restoresRun, ...blocker }) => {
+    const holder = waiting({ id: 'heater', priority: 1, reservesStartupPower: true, expectedPowerKw: 1.19 });
+    // The ten seconds before the blocked cycle belong to the preceding held plan.
+    const blocked = run([{ ...holder, ...blocker }], {
+      clocks: { heater: holding(6 * 60_000) }, restoresRun,
+    });
+    expect(blocked.reserves).toEqual([]);
+    expect(blocked.clocks.heater).toEqual(tickedAt(6 * 60_000 + 10_000, false));
+    const stillBlocked = run([{ ...holder, ...blocker }], {
+      clocks: blocked.clocks, nowTs: NOW + 5 * 60_000, restoresRun,
+    });
+    expect(stillBlocked.reserves).toEqual([]);
+    const recovered = run([holder], { clocks: stillBlocked.clocks, nowTs: NOW + 10 * 60_000 });
+    expect(recovered.reserves).toHaveLength(1);
+    expect(recovered.clocks.heater).toEqual({
+      kind: 'holding', heldMs: 6 * 60_000 + 10_000, lastTickMs: NOW + 10 * 60_000,
+      heldLastCycle: true, hourBucketKey: HOUR,
+    });
+    // Nine more minutes actually holding now take it past the fifteen-minute bound.
+    const expired = run([holder], { clocks: recovered.clocks, nowTs: NOW + 19 * 60_000 });
+    expect(expired.reserves).toEqual([]);
+    expect(expired.clocks.heater).toEqual({ kind: 'expired', hourBucketKey: HOUR });
+  });
+
   it('lapses the reserve once it has been held longer than the bound', () => {
     const { reserves, clocks } = run(
       [waiting({ id: 'heater', priority: 1, reservesStartupPower: true, expectedPowerKw: 1.19 })],

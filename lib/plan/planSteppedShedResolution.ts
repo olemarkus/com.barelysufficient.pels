@@ -1,5 +1,6 @@
 import type { PlanEngineState } from './planState';
 import type { PlanInputDevice, ShedAction, ShedBehavior } from './planTypes';
+import type { SteppedLoadStep } from '../../packages/contracts/src/types';
 import { isSteppedRecoveryLimited } from './planShedRecovery';
 import { isBinaryPlanDevice } from './planBinaryDevice';
 import {
@@ -91,25 +92,33 @@ function resolveShedBehaviorFloorStepId(
  * has decided anything, and asks a hypothetical: would shedding this device
  * actually move it? So it has no planner answer to honour and must derive one —
  * including the forced-lowest-active clamp and the pending-lower-step clamp,
- * which the candidate builder applies on the real path.
+ * through the same resolver the candidate builder uses on the real path.
  */
 export function resolveSteppedShedHypotheticalStepId(
   dev: PlanInputDevice,
   devices: PlanInputDevice[],
   state: PlanEngineState,
   shedBehavior: ShedBehavior,
-  currentDesiredStepId: string | undefined,
 ): string | undefined {
-  if (!isSteppedLoadDevice(dev)) return undefined;
   if (shedBehavior.action !== 'set_step') return undefined;
-  if (isSteppedRecoveryLimited(dev, devices, state)) {
-    return getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)?.id;
-  }
-  const targetStep = getSteppedLoadShedTargetStep(dev, 'set_step', currentDesiredStepId);
-  return targetStep?.id;
+  return resolveSteppedShedTargetStep(dev, devices, state, 'set_step')?.id;
 }
 
-export function resolveSteppedShedCurrentDesiredStepId(dev: PlanInputDevice): string | undefined {
+/** The same initial shed target for actual candidate pricing and hypothetical posture checks. */
+export function resolveSteppedShedTargetStep(
+  device: PlanInputDevice,
+  devices: PlanInputDevice[],
+  state: PlanEngineState,
+  shedAction: 'turn_off' | 'set_step',
+): SteppedLoadStep | null {
+  if (!isSteppedLoadDevice(device)) return null;
+  if (shedAction === 'set_step' && isSteppedRecoveryLimited(device, devices, state)) {
+    return getSteppedLoadLowestActiveStep(device.steppedLoadProfile);
+  }
+  return getSteppedLoadShedTargetStep(device, shedAction, resolveSteppedShedCurrentDesiredStepId(device));
+}
+
+function resolveSteppedShedCurrentDesiredStepId(dev: PlanInputDevice): string | undefined {
   if (!isSteppedLoadDevice(dev)) return undefined;
   if (!dev.stepCommandPending || !dev.desiredStepId) return dev.selectedStepId;
   const desiredKw = resolveSteppedLoadPlanningKw(dev, dev.desiredStepId);

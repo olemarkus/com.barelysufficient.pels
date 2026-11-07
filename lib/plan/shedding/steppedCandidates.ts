@@ -30,14 +30,13 @@
  */
 import type { SteppedLoadProfile, SteppedLoadStep } from '../../../packages/contracts/src/types';
 import type { PlanEngineState } from '../planState';
-import type { MeteredPlanInputDevice, PlanInputDevice, ShedAction, SteppedPlanInputDevice } from '../planTypes';
+import type { MeteredPlanInputDevice, PlanInputDevice, SteppedPlanInputDevice } from '../planTypes';
 import type { MeteredPlanInputKind } from '../../../packages/planner-types/src/planInputDevice';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
 import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
   resolveStepChangeKw,
-  resolveSteppedLoadPlanningKw,
   resolveSteppedLoadSheddingTarget,
 } from '../planSteppedLoad';
 import {
@@ -49,7 +48,7 @@ import {
 } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { getSteppedLoadNextLowerStep } from '../../utils/steppedLoadLadder';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
-import { isSteppedRecoveryLimited } from '../planShedRecovery';
+import { resolveSteppedShedTargetStep } from '../planSteppedShedResolution';
 import { buildTemperatureCandidate } from './candidateBuilders';
 import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
@@ -294,7 +293,7 @@ function buildSteppedStepDownCandidate(
   if (!isSteppedLoadDevice(device)) return null;
   const profile = device.steppedLoadProfile;
   const targetStep = resolveSteppedShedTargetStep(
-    device, devices, state, shedAction, resolveEffectiveCurrentStepIdForSteppedShedding(device),
+    device, devices, state, shedAction,
   );
   // Price the whole ladder rather than only the next rung down: a measurement
   // that lags a step-up prices the adjacent rung at exactly zero relief, which
@@ -385,17 +384,6 @@ function buildSteppedNoRungFallbackCandidate(
   return null;
 }
 
-function resolveEffectiveCurrentStepIdForSteppedShedding(device: SteppedPlanInputDevice): string | undefined {
-  // Advance past a pending step-down rather than re-issuing the same command.
-  // Only use the pending step when it is lower (a shed, not a restore).
-  const pendingIsLower = device.stepCommandPending
-    && device.desiredStepId
-    && device.desiredStepId !== device.selectedStepId
-    && resolveSteppedLoadPlanningKw(device, device.desiredStepId)
-      < resolveSteppedLoadPlanningKw(device, device.selectedStepId);
-  return pendingIsLower ? device.desiredStepId : device.selectedStepId;
-}
-
 function buildPreparedSteppedBinaryOffCandidate(
   params: SteppedCandidateParams,
   /** `params.device`, narrowed to its ladder. */
@@ -459,22 +447,4 @@ function buildSteppedBinaryOffCandidate(
     rungs: [],
     preemptiveStepDown: false,
   };
-}
-
-function resolveSteppedShedTargetStep(
-  device: PlanInputDevice,
-  devices: PlanInputDevice[],
-  state: PlanEngineState,
-  shedBehaviorAction: ShedAction,
-  effectiveCurrentStepId: string | undefined,
-): SteppedLoadStep | null {
-  const forceLowestActiveStep = shedBehaviorAction === 'set_step'
-    && isSteppedRecoveryLimited(device, devices, state);
-  if (forceLowestActiveStep) {
-    if (!isSteppedLoadDevice(device)) return null;
-    return getSteppedLoadLowestActiveStep(device.steppedLoadProfile);
-  }
-  return getSteppedLoadShedTargetStep(
-    device, shedBehaviorAction === 'set_step' ? 'set_step' : 'turn_off', effectiveCurrentStepId,
-  );
 }

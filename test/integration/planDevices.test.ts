@@ -501,7 +501,7 @@ describe('buildInitialPlanDevices', () => {
     // The device's own fields point elsewhere — a stale `desiredStepId` of `low`
     // with no pending command — and materialization must not answer from them.
     // Whether to advance past that stale step was decided when the shed was
-    // priced (`resolveEffectiveCurrentStepIdForSteppedShedding`); re-deriving it
+    // priced (`resolveSteppedShedTargetStep`); re-deriving it
     // here is how the credited rung and the delivered rung came apart.
     const steppedDevice = steppedInput({
       id: 'dev-1',

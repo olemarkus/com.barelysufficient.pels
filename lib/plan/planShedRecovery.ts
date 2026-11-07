@@ -25,8 +25,8 @@ export function isSteppedRecoveryLimited(
  * plan still held it shed. Stepped-load devices and uncontrollable devices are
  * excluded.
  *
- * Shared by the stepped-shed resolution paths in `shedding/steppedCandidates.ts`
- * and `planSteppedShedResolution.ts` so the recovery rule has a single definition.
+ * Used by the shared stepped-shed target resolver in
+ * `planSteppedShedResolution.ts` for candidacy and hypothetical posture checks.
  */
 export function isNonSteppedDeviceRecovering(
   candidate: PlanInputDevice,
