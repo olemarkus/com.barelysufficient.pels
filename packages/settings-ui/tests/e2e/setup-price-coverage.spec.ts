@@ -163,3 +163,58 @@ for (const phase of ['status refresh', 'suggestion'] as const) {
     await expect(panel.locator('details.settings-collapse')).toHaveAttribute('open');
   });
 }
+
+// A web app without its realtime socket never hears the `settings.set` echo of
+// its own save; the Prices step's header follows the page's own read instead.
+test('keeping the assumed source opens Continue without the save echo', async ({ page }) => {
+  await page.addInitScript(() => {
+    const now = new Date();
+    const dateKey = [now.getFullYear(), now.getMonth() + 1, now.getDate()]
+      .map((part) => String(part).padStart(2, '0')).join('-');
+    const heater = {
+      id: 'setup-heatpump', name: 'Heat pump', zone: 'Hall', available: true,
+      deviceClass: 'heater', deviceType: 'temperature', isEvCharger: false,
+      isBatteryOrSolar: false, binaryControllable: true, canSetControl: true,
+      powerCapable: true, capabilities: ['onoff', 'target_temperature', 'measure_power'],
+      targets: [{ name: 'target_temperature', value: 21 }],
+      measuredPowerKw: 0, expectedPowerKw: 2, expectedPowerSource: 'measured-peak', managed: true,
+    };
+    (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+      settings: {
+        target_devices_snapshot: [heater],
+        managed_devices: { [heater.id]: true }, controllable_devices: { [heater.id]: true },
+        price_optimization_settings: {
+          [heater.id]: { enabled: true, priceConfigured: true, cheapDelta: 1, expensiveDelta: -1 },
+        },
+        capacity_enabled: false, capacity_dry_run: true, daily_budget_enabled: false,
+        homey_prices_today: { dateKey, pricesByHour: { 0: 0.21, 1: 0.2 } },
+        ui_hub_market_country: 'SE',
+        ui_devices_has_managed_solar: false, ui_devices_has_exhibited_export: false,
+        ui_devices_surplus_pool_reachable: false,
+      },
+      unsetSettings: ['price_scheme', 'price_area', 'nettleie_fylke', 'nettleie_orgnr',
+        'nettleie_tariffgruppe', 'norway_price_model', 'provider_surcharge'],
+      priceSetupSuggestion: { gridCompany: { kind: 'none' }, priceArea: { kind: 'none' }, powerhour: { kind: 'none' } },
+    };
+  });
+  await page.goto('/?page=settings/electricity-prices&setup=prices');
+  const panel = page.locator('#electricity-prices-panel');
+  const journey = panel.locator('.setup-journey');
+  await expect(journey).toContainText('PELS uses Homey Energy until you choose a source.');
+  await expect(journey.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
+  await page.evaluate(() => {
+    type Callback = (error: Error | null) => void;
+    const w = window as unknown as {
+      Homey: { set: (key: string, value: unknown, callback: Callback) => void;
+        __stub: { setSetting: (key: string, value: unknown) => void } };
+    };
+    w.Homey.set = (key, value, callback) => {
+      w.Homey.__stub.setSetting(key, value);
+      setTimeout(() => callback(null), 5);
+    };
+  });
+  await panel.getByRole('button', { name: 'Keep Homey Energy', exact: true }).click();
+  await expect(journey).toContainText('Homey Energy');
+  await expect(journey).not.toContainText('until you choose');
+  await expect(journey.getByRole('button', { name: 'Continue', exact: true })).toBeEnabled();
+});
