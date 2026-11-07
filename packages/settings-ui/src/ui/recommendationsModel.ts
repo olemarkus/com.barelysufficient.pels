@@ -45,6 +45,8 @@ export type RecommendationTarget =
   | { kind: 'ev-soc-flow-conflict-check'; deviceId: string }
   // A settings panel or top-level tab, by its `data-panel` / `data-tab` id.
   | { kind: 'panel'; panelId: string }
+  // Turns on the daily diagnostics report (Settings → Advanced holds the switch).
+  | { kind: 'daily-report' }
   | { kind: 'quarter-hour' }
   // `Choose what PELS does`: setup's page for prices, solar and Smart tasks.
   | { kind: 'setup-goals' };
@@ -62,6 +64,12 @@ export type SetupRecommendation = {
   target: RecommendationTarget;
   /** Optional supporting documentation; the primary action stays in settings. */
   guideLink?: { label: string; href: string };
+  /**
+   * Waits on the Recommendations page: it never raises the Overview banner or
+   * the Settings chip on its own, because it asks something of the owner rather
+   * than offering their home anything.
+   */
+  waitsOnPage?: true;
 };
 
 export type RecommendationGroups = {

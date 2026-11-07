@@ -42,7 +42,7 @@ const CATEGORY_CHIP: Record<SetupRecommendation['category'], string> = {
 const busyActionLabel = (recommendation: SetupRecommendation): string | null => {
   const { kind } = recommendation.target;
   if (kind === 'flow-conflict-check' || kind === 'ev-soc-flow-conflict-check') return 'Checking…';
-  return kind === 'quarter-hour' ? 'Saving…' : null;
+  return kind === 'quarter-hour' || kind === 'daily-report' ? 'Saving…' : null;
 };
 
 const RecommendationCard = (props: RecommendationCardProps) => {

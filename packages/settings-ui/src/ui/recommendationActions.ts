@@ -1,5 +1,6 @@
 import type { RecommendationTarget } from './recommendationsModel.ts';
 import type { SetupJourneyStep } from './setupJourneyState.ts';
+import { turnOnDailyDiagnosticsReport } from './diagnosticsReportSwitches.ts';
 import { checkFlowConflictNow, hasEvSocFlowReporter, refreshFlowConflictFactsExplicit } from './flowConflictRefresh.ts';
 import { state } from './state.ts';
 import { showToast } from './toast.ts';
@@ -18,6 +19,9 @@ export const resolveRecommendationTask = (
 ): RecommendationTask | null => {
   if (target.kind === 'quarter-hour' && navigation) {
     return { run: navigation.useQuarterHour, failureMessage: 'Could not save the capacity period.' };
+  }
+  if (target.kind === 'daily-report') {
+    return { run: turnOnDailyDiagnosticsReport, failureMessage: 'Could not turn on the daily report.' };
   }
   if (target.kind === 'flow-conflict-check') {
     return {

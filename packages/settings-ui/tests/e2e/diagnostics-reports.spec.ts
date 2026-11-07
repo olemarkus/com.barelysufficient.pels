@@ -55,3 +55,20 @@ test('links the automatic reports and Report a problem to each other', async ({ 
   await expect(page.locator('#advanced-daily-report')).toBeInViewport();
   await page.screenshot({ path: testInfo.outputPath('advanced-opened.png') });
 });
+
+test('offers the daily report on Recommendations once setup is done, and turns it on there', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  // It asks something of the owner, so it never raises the Overview banner.
+  await expect(page.locator('#setup-recommendations-banner-root')).not.toContainText('PELS can do more');
+  await page.getByRole('tab', { name: 'Settings' }).click();
+  await page.locator('.settings-nav-card[data-settings-target="recommendations"]').click();
+  const card = page.locator('#setup-recommendations-root article', { hasText: 'Send a daily report' });
+  await expect(card).toBeVisible();
+  await card.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('daily-report-card.png'), fullPage: true });
+
+  await card.getByRole('button', { name: 'Send daily reports' }).click();
+  await expect.poll(() => readSetting(page, 'daily_diagnostics_report')).toBe(true);
+  await expect(card).toHaveCount(0);
+});

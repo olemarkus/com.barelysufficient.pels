@@ -17,11 +17,13 @@ type DiagnosticsReportSwitch = {
   name: string;
 };
 
+const DAILY_REPORT_SWITCH: DiagnosticsReportSwitch = {
+  elementId: 'advanced-daily-report', settingKey: DAILY_DIAGNOSTICS_REPORT,
+  readEnabled: readDailyDiagnosticsReportEnabled, name: 'Daily report',
+};
+
 export const DIAGNOSTICS_REPORT_SWITCHES: readonly DiagnosticsReportSwitch[] = [
-  {
-    elementId: 'advanced-daily-report', settingKey: DAILY_DIAGNOSTICS_REPORT,
-    readEnabled: readDailyDiagnosticsReportEnabled, name: 'Daily report',
-  },
+  DAILY_REPORT_SWITCH,
   {
     elementId: 'advanced-event-reports', settingKey: EVENT_DIAGNOSTICS_REPORTS,
     readEnabled: readEventDiagnosticsReportsEnabled, name: 'Reports on specific events',
@@ -49,6 +51,14 @@ export const loadDiagnosticsReportSwitch = async (entry: DiagnosticsReportSwitch
   }
 };
 
+const saveSwitchSetting = async (entry: DiagnosticsReportSwitch, enabled: boolean): Promise<void> => {
+  await setSetting(entry.settingKey, enabled);
+  await showToast(`${entry.name} turned ${enabled ? 'on' : 'off'}.`, 'ok');
+};
+
+/** The daily report's suggestion: the same write and toast as its switch. */
+export const turnOnDailyDiagnosticsReport = (): Promise<void> => saveSwitchSetting(DAILY_REPORT_SWITCH, true);
+
 const initSwitch = async (entry: DiagnosticsReportSwitch): Promise<void> => {
   const toggle = findSwitch(entry);
   if (!toggle) return;
@@ -56,8 +66,7 @@ const initSwitch = async (entry: DiagnosticsReportSwitch): Promise<void> => {
   await loadDiagnosticsReportSwitch(entry);
   toggle.addEventListener('change', () => {
     const enabled = toggle.selected;
-    void setSetting(entry.settingKey, enabled)
-      .then(() => showToast(`${entry.name} turned ${enabled ? 'on' : 'off'}.`, 'ok'))
+    void saveSwitchSetting(entry, enabled)
       .catch(async (error: unknown) => {
         toggle.selected = !enabled;
         await logSettingsError(`Failed to save the ${entry.settingKey} setting`, error, 'diagnosticsReports');
