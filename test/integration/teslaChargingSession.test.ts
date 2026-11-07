@@ -1,4 +1,6 @@
 import type Homey from 'homey';
+import { getDeviceAdapter } from '../../lib/device/deviceAdapterRegistry';
+import { findDeviceReadContractViolation } from '../../lib/device/transport/deviceReadContract';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices, onObservedState, onObservedStateRefresh } from '../helpers/deviceTransportHarness';
@@ -29,6 +31,17 @@ function devices(): HomeyDeviceLike[] {
       capabilitiesObj: { car_state: cap('online'), measure_car_drive_speed: cap(0), car_shift_state: cap('P') } },
   ];
 }
+const identityShapes = ['qualified', 'split', 'nested'] as const;
+type IdentityShape = typeof identityShapes[number];
+function devicesWithIdentity(shape: IdentityShape): HomeyDeviceLike[] {
+  return devices().map(device => {
+    if (shape === 'qualified') return device;
+    const driverId = device.driverId!.split(':').at(-1)!;
+    return shape === 'split'
+      ? { ...device, driverId, driverUri: 'homey:app:com.tesla.car' }
+      : { ...device, driverId: undefined, driver: { id: driverId, uri: 'homey:app:com.tesla.car' } };
+  });
+}
 function session() { return new TeslaChargingSession({ coordinates: () => ({ latitude: 60, longitude: 10 }) }); }
 beforeEach(() => {
   vi.useFakeTimers(); vi.setSystemTime(now);
@@ -40,13 +53,55 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); setMockGeolocation(59.91, 10.75); });
 
-test('normalizes the charging sensor into EV capabilities, watts and state without becoming a home battery', () => {
-  const battery = devices()[0]!;
+test.each(identityShapes)('normalizes the %s charging sensor into EV capabilities, watts and state without becoming a home battery', (shape) => {
+  const battery = devicesWithIdentity(shape)[0]!;
   expect(resolveDeviceClassKey(battery)).toBe('evcharger');
   const result = applyNativeEvWiringOverlay(battery, battery.capabilities!, battery.capabilitiesObj as import('../../lib/device/managerControl').DeviceCapabilityMap);
   expect(result.binaryWriteCapabilityId).toBe('charging_on');
   expect(result.capabilityObj.measure_power?.value).toBe(4000);
   expect(result.capabilityObj.evcharger_charging_state?.value).toBe('plugged_in_charging');
+});
+
+test.each(identityShapes)('validates %s Tesla vendor observations before admission', (shape) => {
+  const battery = devicesWithIdentity(shape)[0]!;
+  expect(findDeviceReadContractViolation({ ...battery, capabilitiesObj: {
+    ...battery.capabilitiesObj, charging_state: cap('invalid'),
+  } })).toEqual({ reason: 'unexpected_value', capabilityId: 'charging_state' });
+});
+
+test.each(['split', 'nested'] as const)('matches %s companions with a qualified battery and vice versa', (shape) => {
+  const split = devicesWithIdentity(shape);
+  const qualified = devices();
+  for (const initial of [[split[0]!, ...qualified.slice(1)], [qualified[0]!, ...split.slice(1)]]) {
+    const owner = session(); owner.observeDevices(initial);
+    expect(owner.isAllowed('battery')).toBe(true);
+  }
+});
+
+test.each([
+  { driverId: 'battery', driverUri: 'homey:app:foreign' },
+  { driverId: 'battery' },
+  { driverId: 'homey:app:foreign:battery', driverUri: 'homey:app:com.tesla.car' },
+])('rejects non-Tesla battery identity %j', (identity) => {
+  const battery = { ...devices()[0]!, ...identity };
+  expect(resolveDeviceClassKey(battery)).toBeNull();
+  const owner = session(); owner.observeDevices([battery, ...devices().slice(1)]);
+  expect(owner.isAllowed('battery')).toBe(false);
+});
+
+test('rejects a foreign split companion even with matching vehicle data', () => {
+  const initial = devicesWithIdentity('split');
+  initial[1]!.driverUri = 'homey:app:foreign';
+  const owner = session(); owner.observeDevices(initial);
+  expect(owner.isAllowed('battery')).toBe(false);
+});
+
+test('keeps a split Tesla energy device distinct from vehicle charging', () => {
+  const device = { ...devicesWithIdentity('split')[0]!, driverId: 'energy_battery', class: 'battery' };
+  const adapter = getDeviceAdapter(device);
+  expect(adapter).toBe(getDeviceAdapter({ ...device, driverId: 'homey:app:com.tesla.car:energy_battery' }));
+  expect(resolveDeviceClassKey(device)).toBe('battery');
+  expect(adapter.currentBindings(device)).toEqual([]);
 });
 
 test('admits a home AC session and retains it while stationary telemetry stays quiet', () => {
@@ -224,7 +279,7 @@ test('a realtime limit echo while charging publishes an acknowledged step, not a
   } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
 });
 
-test('transport discovers Tesla, permits home start/stop without a key, and blocks new commands and revokes power when away', async () => {
+test.each(identityShapes)('transport discovers %s Tesla, permits home start/stop without a key, and blocks new commands and revokes power when away', async (shape) => {
   vi.useRealTimers();
   mockHomeyInstance.settings.set('charging_current_control', { battery: {
     method: 'flow', confirmation: 'vehicle',
@@ -238,7 +293,7 @@ test('transport discovers Tesla, permits home start/stop without a key, and bloc
     { getFlowTriggerCard: () => ({ trigger }) });
   try {
     await initWithLiveFeed(transport);
-    const [battery] = await seedTransportDevices(transport, devices());
+    const [battery] = await seedTransportDevices(transport, devicesWithIdentity(shape));
     expect(battery).toMatchObject({ id: 'battery', isEvCharger: true, deviceClass: 'evcharger', available: true,
       measuredPowerKw: 4, binaryWriteCapabilityId: 'charging_on' });
     const put = vi.fn().mockResolvedValue(undefined);

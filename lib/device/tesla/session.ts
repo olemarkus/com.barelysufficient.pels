@@ -7,7 +7,7 @@ import {
 import { ACKNOWLEDGED_CURRENT_CAPABILITY_ID } from '../deviceAdapter';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { toCapabilityTimestampMs } from '../managerControl';
-import { isTeslaChargingDevice } from './identity';
+import { isTeslaChargingDevice, teslaDriver } from './identity';
 
 import { readTeslaHomeEvidence, type HomeLocation, type HomeSessionIdentity } from './evidence';
 type HomeSession = { identity: HomeSessionIdentity };
@@ -85,7 +85,7 @@ export class TeslaChargingSession implements DeviceAdapterSession {
   }
 
   observeDevice(device: HomeyDeviceLike): void {
-    if (!device.driverId?.startsWith('homey:app:com.tesla.car:')) return;
+    if (teslaDriver(device) === undefined) return;
     const previous = this.devices.get(device.id);
     const capabilities = mergeCapabilities(previous, device);
     if (isTeslaChargingDevice(device) && capabilities.charging_state?.value === 'Disconnected'
