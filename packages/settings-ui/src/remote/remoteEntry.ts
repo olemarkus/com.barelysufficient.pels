@@ -1,4 +1,4 @@
-import io from 'socket.io-client';
+import { io } from 'socket.io-client';
 import '../ui/materialWeb.ts';
 import { boot } from '../ui/boot.ts';
 import type { HomeySettingsClient } from '../ui/homey.ts';
