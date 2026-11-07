@@ -381,7 +381,7 @@ export class PlanEngineState {
    * the solar dump-load hold and the decoration seam's deferred force-sheds
    * into. Re-asserting from it would hand a solar-held dump load a capacity
    * shed reason, which mislabels it for the user and makes
-   * `isAnyOtherDeviceLimited` clamp unrelated stepped loads. Each decision's
+   * `isFairnessLimited` clamp unrelated stepped loads. Each decision's
    * `decidedAtMs` is its credit window's own anchor, deliberately NOT the
    * incident's mitigation clock (`OvershootIncident`): `PlanBuilder` runs the
    * shedding pass BEFORE `OvershootTracker.updateOvershootState`, whose entry

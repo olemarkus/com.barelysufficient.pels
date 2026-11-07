@@ -1,4 +1,5 @@
 import type { PlanInputDevice } from './planTypes';
+import { yieldsToLimitedDevice } from './steppedFairness';
 
 // Builds the effective shed posture used by the keep-invariant clamp on the shed side
 // (docs/technical.md:222). Mirrors hasExecutableShedDevices in lib/plan/planExecutionProjection.ts
@@ -24,31 +25,19 @@ export function buildEffectiveShedPosture(
   return result;
 }
 
-export function isAnyOtherDeviceLimited(shedSet: Set<string>, deviceId: string): boolean {
-  if (shedSet.size === 0) return false;
-  if (!shedSet.has(deviceId)) return true;
-  return shedSet.size > 1;
-}
-
 /**
- * The keep-step twin of `countFairnessLimitedDevices` (`lib/plan/restore/coordination.ts`):
- * is a device this one yields to limited this cycle? Any other limited device,
- * or, for a boosted device, only one ranked above it: a boost takes power from
- * lower-priority devices and never from one ranked above it (owner ruling
- * 2026-11-03). Priority 1 ranks highest. `priorityById` is the cycle's planned
- * devices' ranks, built once per cycle by the caller.
+ * Apply the shared priority rule to this cycle's effective limited posture.
+ * The device map contains the actual inputs, built once per cycle by the caller.
  */
 export function isFairnessLimited(
   shedSet: Set<string>,
   device: Pick<PlanInputDevice, 'id' | 'priority'>,
   boostActive: boolean,
-  priorityById: ReadonlyMap<string, number>,
+  devicesById: ReadonlyMap<string, Pick<PlanInputDevice, 'id' | 'priority'>>,
 ): boolean {
-  if (!boostActive) return isAnyOtherDeviceLimited(shedSet, device.id);
   for (const id of shedSet) {
-    if (id === device.id) continue;
-    const priority = priorityById.get(id);
-    if (priority !== undefined && priority < device.priority) return true;
+    const limitedDevice = devicesById.get(id);
+    if (limitedDevice && yieldsToLimitedDevice(device, boostActive, limitedDevice)) return true;
   }
   return false;
 }

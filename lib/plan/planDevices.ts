@@ -74,8 +74,7 @@ export function buildInitialPlanDevices(
       || isCarCurrentRangeHoldShed(dev, shedReasons)
       || isDeferredHoldShed(dev, shedReasons),
   );
-  // The ranks the fairness clamp compares a boosted device against (`isFairnessLimited`).
-  const priorityById = new Map(context.devices.map((dev) => [dev.id, dev.priority]));
+  const devicesById = new Map(context.devices.map((dev) => [dev.id, dev]));
   // Per-stage accumulators (split inside the per-device loop). Emitted once
   // after the loop so the perf log shows where plan_devices_ms is going
   // without per-iteration log spam. Added during 2026-05-18 memory-regression
@@ -138,7 +137,7 @@ export function buildInitialPlanDevices(
       plannedTarget,
       shedBehavior,
       sheddingPlan,
-      fairnessLimited: isFairnessLimited(effectiveShedSet, dev, boostActive, priorityById),
+      fairnessLimited: isFairnessLimited(effectiveShedSet, dev, boostActive, devicesById),
       boostActive,
       surplusHoldShed: isSurplusOnlyHoldShed(dev, state, shedReasons),
       // Set by resolvePlannedTarget above (read after it ran for this device).

@@ -3204,7 +3204,7 @@ describe('buildSheddingPlan', () => {
       // The FINAL plan's shed set also carries holds merged in after this module
       // ran — a solar-surplus dump load, a deferred force-shed. Re-asserting from
       // that set would hand them a capacity shed reason, which mislabels them and
-      // makes `isAnyOtherDeviceLimited` clamp unrelated stepped loads.
+      // makes `isFairnessLimited` clamp unrelated stepped loads.
       state.shedDecisions.lastPlannedShedIds = new Set(['vvb', 'kontor-vk']);
 
       vi.setSystemTime(new Date(Date.now() + 10_000));

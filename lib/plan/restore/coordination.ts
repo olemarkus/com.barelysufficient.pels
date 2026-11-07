@@ -5,6 +5,7 @@ import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 import { getSteppedLoadStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { ShedDecisions } from '../shedDecisions';
+import { yieldsToLimitedDevice } from '../steppedFairness';
 
 function isTargetRestorePending(device: DevicePlanDevice): boolean {
   if (!isTemperaturePlanDevice(device)) return false;
@@ -113,9 +114,8 @@ export function countShedDevices(
  * 2026-11-03: a boosted priority-4 charger climbed to 12 A while priority-2 and -3
  * thermostats were held). Priority 1 ranks highest.
  *
- * The one answer the restore gate (`blockSteppedRestoreForShedInvariant`), the
- * keep-step clamp (`isFairnessLimited`) and the card's fairness hold
- * (`stampSteppedFairnessHolds`) share, so the three cannot disagree.
+ * Restore admission and the card's hold use the current plan's limited peers;
+ * selection and keep use the same priority policy in `steppedFairness.ts`.
  */
 export function countFairnessLimitedDevices(
   deviceMap: Map<string, DevicePlanDevice>,
@@ -123,7 +123,7 @@ export function countFairnessLimitedDevices(
   shedDecisions: ShedDecisions,
 ): number {
   return countShedDevicesWhere(deviceMap, device.id, shedDecisions, (other) => (
-    !device.boostActive || other.priority < device.priority
+    yieldsToLimitedDevice(device, device.boostActive, other)
   ));
 }
 
