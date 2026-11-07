@@ -1,3 +1,4 @@
+import { currentSetupJourney, trackSetupSave } from './setupJourneyState.ts';
 import { ModePriorityCatalog } from '../../../shared-domain/src/settings/modePriorities.ts';
 import {
   CAPACITY_PRIORITIES,
@@ -60,7 +61,7 @@ export const isPriorityContextCurrent = (
   && isShownDeviceOrder(deviceIds)
 );
 
-export const savePriorities = async (): Promise<PrioritySaveOutcome> => {
+const persistPriorities = async (): Promise<PrioritySaveOutcome> => {
   const homeId = getHomeScope().selectedHomeId;
   if (state.loadedModeHomeId !== homeId || isModeMutationLocked(homeId)) return NOT_SAVED;
   const mode = resolveModeName(state.editingMode);
@@ -97,4 +98,23 @@ export const savePriorities = async (): Promise<PrioritySaveOutcome> => {
   state.modePriorityCatalog = savedCatalog;
   void showToast(`Priorities saved for ${mode}.`, 'ok');
   return outcome;
+};
+
+// Setup must wait for a drag save and keep failed writes on the current step.
+export const savePriorities = async (): Promise<PrioritySaveOutcome> => {
+  if (currentSetupJourney() !== 'priorities') return persistPriorities();
+  try {
+    return await trackSetupSave(CAPACITY_PRIORITIES, async () => {
+      if (state.editingMode !== state.activeMode) {
+        const message = 'The active mode changed. Check the priority order before continuing.';
+        void showToast(message, 'warn');
+        throw new Error(message);
+      }
+      const outcome = await persistPriorities();
+      if (outcome.status !== 'saved') throw new Error('Could not save the priority order. Try again.');
+      return outcome;
+    });
+  } catch {
+    return NOT_SAVED;
+  }
 };

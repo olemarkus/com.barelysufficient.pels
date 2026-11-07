@@ -1,3 +1,5 @@
+import { hasObservedMeasuredPower } from '../../../shared-domain/src/measuredPowerObservedState.ts';
+import { resolveDeviceClassLabel } from './deviceClassLabels.ts';
 import type { DeviceDetailFocus } from './cardActivation.ts';
 import { readHomeMembership } from './homeScope.ts';
 import { setupSavePending } from './setupJourneyState.ts';
@@ -91,6 +93,10 @@ export const resolveSolarSetupAction = (device: SettingsUiDeviceListItem): Solar
   };
 };
 
+const formatSetupPower = (kw: number): string => (
+  kw < 2 ? `${kw.toFixed(2).replace(/\.?0+$/, '')} kW` : `${kw.toFixed(1)} kW`
+);
+
 const setupDeviceHint = (
   device: SettingsUiDeviceListItem,
   manageability: ReturnType<typeof resolveDeviceManageability>,
@@ -109,12 +115,18 @@ export const readSetupDeviceChoices = (devices: SettingsUiDeviceListItem[]): Set
   if (membership.state === 'unavailable') return { state: 'unavailable' };
   return { state: 'ready', devices: devices
     .filter((device) => (membership.membershipByDeviceId[device.id] ?? 'main') === 'main')
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
     .flatMap((device) => {
       const manageability = resolveDeviceManageability(device);
       if (!manageability.supportsManage) return [];
       return [{
         id: device.id,
         name: formatDisplayDeviceName(device.name),
+        detail: [
+          resolveDeviceClassLabel(device.deviceClass),
+          device.zone,
+          hasObservedMeasuredPower(device) ? formatSetupPower(device.measuredPowerKw) : null,
+        ].filter(Boolean).join(' · '),
         managed: manageability.isManaged,
         disabled: !state.initialLoadComplete || !manageability.canManage || setupSavePending(),
         hint: setupDeviceHint(device, manageability),

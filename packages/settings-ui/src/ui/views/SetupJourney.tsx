@@ -12,6 +12,7 @@ import {
 export type SetupDeviceChoice = {
   id: string;
   name: string;
+  detail: string;
   managed: boolean;
   disabled: boolean;
   hint: string | null;
@@ -38,6 +39,7 @@ export const SetupDevicePicker = (props: SetupDevicePickerProps) => (
     {props.choices.state === 'ready' && props.choices.devices.map((device) => (
       <section class="pels-surface-card setup-journey__device" key={device.id} data-device-id={device.id}>
         <h3 class="plan-card__title">{device.name}</h3>
+        <p class="pels-card-supporting">{device.detail}</p>
         <label class="md-switch-row">
           <MdSwitch selected={device.managed} disabled={device.disabled}
             aria-label={`Manage ${device.name}`}
@@ -288,6 +290,9 @@ export const SetupReview = (props: SetupReviewProps) => {
       {props.path === null ? <p>Setup could not be read yet. Return to setup to check your settings.</p> : (
         <section class="pels-surface-card setup-journey">
           <h3 class="plan-card__title">{props.path.simulating ? 'Simulation mode is on' : 'Simulation mode is off'}</h3>
+          {props.path.simulating && <p class="pels-card-supporting">
+            PELS shows what it would do without changing your devices. Start managing lets it act on the controls you set.
+          </p>}
           <dl class="setup-journey__summary">
             {props.path.steps.filter((step) => step.id !== 'devices').map((step) => (
               <div key={step.id}><dt>{step.title}</dt><dd>{step.id === 'power' && step.status === 'done' ? props.meterSummary ?? step.detail : step.detail}</dd></div>

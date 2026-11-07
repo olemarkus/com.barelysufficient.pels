@@ -86,7 +86,7 @@ export const SetupPathCard = ({ path, surface }: SetupPathCardProps) => (
       {path.steps.map((step) => <StepRow key={step.id} step={step} />)}
     </MdList>
     {path.simulating && (
-      <p class="pels-card-supporting">Simulation mode is on.</p>
+      <p class="pels-card-supporting">Simulation mode is on. PELS shows what it would do without changing your devices.</p>
     )}
   </section>
 );

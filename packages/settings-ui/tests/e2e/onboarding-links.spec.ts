@@ -101,12 +101,13 @@ test.describe('Onboarding links', () => {
 
     const card = page.locator('#overview-setup-path');
     await expect(card).toBeVisible();
-    await expect(card).toContainText('0 of 2 done');
+    await expect(card).toContainText('0 of 4 done');
     await expect(card.locator('[data-setup-step="power"]')).toHaveAttribute('data-setup-status', 'next');
     await expect(card.locator('[data-setup-step="devices"]')).toHaveAttribute('data-setup-status', 'later');
-    // No Hard cap row: nothing may be limited yet, so no cap is in force, and
-    // the path asks only for what applies to every home.
-    await expect(card.locator('[data-setup-step="hardCap"]')).toHaveCount(0);
+    // Later stages keep their place while the owner chooses devices.
+    await expect(card.locator('[data-setup-step="hardCap"]')).toHaveAttribute('data-setup-status', 'later');
+    await expect(card.locator('[data-setup-step="prices"]')).toHaveAttribute('data-setup-status', 'later');
+    await expect(card.locator('[data-setup-step="hardCap"]')).toContainText('Depends on the devices you choose');
 
     // A home with no plan has nothing on its way: the hero skeleton would be a
     // loading state that never resolves.
@@ -123,7 +124,7 @@ test.describe('Onboarding links', () => {
 
     // The Settings hub carries the same progress, and the Setup page the same path.
     await page.getByRole('tab', { name: 'Settings' }).click();
-    await expect(page.locator('#settings-nav-chip-recommendations')).toHaveText('0 of 2');
+    await expect(page.locator('#settings-nav-chip-recommendations')).toHaveText('0 of 4');
     await page.locator('.settings-nav-card[data-settings-target="recommendations"]').click();
     await expect(page.locator('#setup-setup-path')).toBeVisible();
     await expect(page.locator('#setup-recommendations-root')).not.toContainText('No setup suggestions');
@@ -134,7 +135,7 @@ test.describe('Onboarding links', () => {
     await expect(page.locator('#settings-power-source')).toBeInViewport();
   });
 
-  test('the Hard cap step appears once a device may be limited, and never before', async ({ page }) => {
+  test('the Limits stage asks for a hard cap once a device may be limited', async ({ page }) => {
     // Readings arriving, devices managed and limitable (the default fixture),
     // but no hard cap ever saved: the built-in 10 kW is now being enforced on
     // those devices, so this is the moment the owner needs to see it.

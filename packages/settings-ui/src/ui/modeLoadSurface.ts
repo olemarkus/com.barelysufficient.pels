@@ -8,7 +8,7 @@ import { state } from './state.ts';
 // This state means no MANAGED device, not no device: the list is filtered to
 // managed devices, so "refresh devices" sent owners to a remedy that changed
 // nothing. No "yet": an owner who unmanages their last device lands here too.
-const EMPTY_MODE_COPY = 'No managed devices. Turn on Managed for a device under Devices to see it here.';
+export const EMPTY_MODE_COPY = 'No managed devices. Turn on Managed for a device under Devices to see it here.';
 
 const resetModeSurface = (message?: string): void => {
   state.loadedModeHomeId = null;
@@ -22,7 +22,7 @@ const resetModeSurface = (message?: string): void => {
 };
 
 export const prepareModeHomeLoad = (homeId: string): void => {
-  if (state.loadedModeHomeId !== homeId) resetModeSurface();
+  if (state.loadedModeHomeId !== homeId) resetModeSurface('Loading priorities…');
 };
 
 export const showModeCatalogUnavailable = (): void => {

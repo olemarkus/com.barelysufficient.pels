@@ -4,6 +4,7 @@
 // `notes/ui-terminology.md` § "Safe pace now — one label, two possible
 // sources" and § "Hero bar vocabulary".
 
+import type { PlanMetaSnapshot } from './planTypes.ts';
 import type { CapacityPeriodMinutes } from '../../../contracts/src/capacitySettings.ts';
 import { capacityPeriodNoun } from './capacityPeriodCopy.ts';
 
@@ -180,4 +181,14 @@ export const formatHardCapEnergyTooltip = (
 ): string => {
   const period = capacityPeriodNoun(periodMinutes);
   return `Hard cap this ${period} ${hardCapKWh.toFixed(1)} kWh — landing past this raises the measured peak.`;
+};
+
+/** Explain an above-cap pace while an hourly capacity limit is active. */
+export const formatHourlyPaceExplanation = (meta: PlanMetaSnapshot): string | null => {
+  const hasHourlyCapacityPace = meta.softLimitSource === 'capacity'
+    || (meta.softLimitSource === 'daily' && meta.capacitySoftLimitKw !== null);
+  if (!hasHourlyCapacityPace || meta.capacityPeriodMinutes !== 60
+    || meta.softLimitKw === null
+    || Number(meta.softLimitKw.toFixed(1)) <= Number(meta.hardCapLimitKw.toFixed(1))) return null;
+  return 'The hard cap applies to the hourly average, so Safe pace can be higher for the rest of the hour.';
 };

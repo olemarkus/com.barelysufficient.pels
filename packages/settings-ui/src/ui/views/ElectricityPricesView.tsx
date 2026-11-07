@@ -1,4 +1,5 @@
 import { render, type ComponentChildren } from 'preact';
+import { useState } from 'preact/hooks';
 import type {
   PriceConfigState,
   PriceScheme,
@@ -31,6 +32,7 @@ import {
 } from './materialWebJSX.tsx';
 import { InverterCurtailmentSettings, type InverterCurtailmentSettingsProps } from './InverterCurtailmentSettings.tsx';
 import { AppBar } from './AppBar.tsx';
+import { ExpandMoreIcon } from './icons.tsx';
 import {
   NORWAY_PRICE_MODEL_NAMES,
   type NorwayChoices,
@@ -108,8 +110,12 @@ export type ElectricityPricesHandlers = {
 
 export type ElectricityPricesViewProps = {
   inverterControl: InverterCurtailmentSettingsProps;
-  /** Return to device choices while the Prices setup step is open. */
+  /** Show the focused Prices setup step, with a return to device choices. */
   showSetupGoals: boolean;
+  /** Advisory location lookup; manual settings remain available while it runs. */
+  priceSetupSuggestionPending?: boolean;
+  /** Remount local disclosure state when the owner opens this page again. */
+  priceSetupVisit?: number;
   market: SettingsUiHubMarketRead;
   config: PriceConfigState;
   handlers: ElectricityPricesHandlers;
@@ -557,20 +563,34 @@ const PriceSetupOfferBlock = ({ offer, onUse }: {
 };
 
 const NorwaySection = ({
-  config, handlers, gridCompanyOptions, norwayChoices, priceSetupOffer,
+  config, handlers, gridCompanyOptions, norwayChoices, priceSetupOffer, showSetupGoals, priceSetupSuggestionPending,
 }: ElectricityPricesViewProps) => {
   // What PELS prices with in place of each setting the owner never chose.
   const choices = norwayChoices.kind === 'resolved' ? norwayChoices.choices : null;
   const assumedCounty = choices && !choices.county.chosen ? choices.county.value : null;
   const assumedModel = choices && !choices.pricingModel.chosen ? choices.pricingModel.value : null;
   const assumedArea = choices && !choices.priceArea.chosen ? choices.priceArea.value : null;
-  return (
-    <>
-      <p class="eyebrow eyebrow--inline">Grid tariff</p>
-      {/* A price area on its own is a spot price setting, so it is offered there. */}
-      {priceSetupOffer.kind !== 'price_area' && (
-        <PriceSetupOfferBlock offer={priceSetupOffer} onUse={handlers.onUsePriceSetupOffer} />
-      )}
+  const offeredGrid = priceSetupOffer.kind === 'grid_company' || priceSetupOffer.kind === 'grid_company_and_area'
+    ? priceSetupOffer.gridCompany : null;
+  const offeredArea = priceSetupOffer.kind === 'price_area' || priceSetupOffer.kind === 'grid_company_and_area'
+    ? priceSetupOffer.priceArea : null;
+  const locationComplete = (choices?.county.chosen === true || offeredGrid !== null)
+    && (config.organizationNumber !== '' || offeredGrid !== null)
+    && (choices?.priceArea.chosen === true || offeredArea !== null);
+  // An untouched panel follows the initial lookup. Native user toggles and
+  // field edits take ownership of its open state for the rest of this visit.
+  const [locationOpenChoice, setLocationOpenChoice] = useState<boolean | null>(null);
+  const locationOpen = locationOpenChoice ?? (!priceSetupSuggestionPending && !locationComplete);
+  const company = config.organizationNumber !== ''
+    ? gridCompanyOptions.find((option) => option.organizationNumber === config.organizationNumber)?.name ?? 'Grid company chosen'
+    : offeredGrid?.name;
+  const county = choices?.county.chosen
+    ? countyName(choices.county.value)
+    : offeredGrid ? countyName(offeredGrid.county.kind === 'set' ? offeredGrid.county.code : config.countyCode) : null;
+  const area = choices?.priceArea.chosen ? choices.priceArea.value : offeredArea;
+  const locationSummary = [company, county, area].filter(Boolean).join(' · ')
+    || 'Choose your county, grid company and price area';
+  const gridFields = <>
       <div class="field">
         <span class="field__label pels-text-settings-label" id="electricity-prices-county-label">County</span>
         <MdFilledSelect
@@ -587,7 +607,7 @@ const NorwaySection = ({
         {/* Only while there is no grid company: once there is one, the county is
             simply where that company operates. Plain, not alert: on its own the
             county changes no price. */}
-        {!config.organizationNumber && assumedCounty !== null && (
+        {!showSetupGoals && !config.organizationNumber && assumedCounty !== null && (
           <small class="field__hint">
             {`Not chosen yet. Showing grid companies in ${countyName(assumedCounty)}.`}
           </small>
@@ -603,7 +623,9 @@ const NorwaySection = ({
             handlers.onOrganizationChange(next === GRID_COMPANY_NONE ? '' : next);
           }}
         >
-          <MdSelectOption value={GRID_COMPANY_NONE}><div slot="headline">Select grid company</div></MdSelectOption>
+          <MdSelectOption value={GRID_COMPANY_NONE} displayText="Select grid company" typeaheadText="Select grid company">
+            <div slot="headline">Select grid company</div>
+          </MdSelectOption>
           {/* The list is rebuilt when the saved county arrives, while the select
               already holds the saved company, and md-select reads a new option's
               label before the option has rendered it: given up front, the field
@@ -619,7 +641,7 @@ const NorwaySection = ({
             </MdSelectOption>
           ))}
         </MdFilledSelect>
-        {!config.organizationNumber && (
+        {!showSetupGoals && !config.organizationNumber && (
           <NotChosenHint text="Not chosen yet, so your prices leave out the grid tariff." />
         )}
         {/* Dependency hint, not a label restatement: the list only shows the
@@ -644,11 +666,8 @@ const NorwaySection = ({
           Refresh tariffs
         </MdOutlinedButton>
       </div>
-
-      <p class="eyebrow eyebrow--inline">Spot price</p>
-      {priceSetupOffer.kind === 'price_area' && (
-        <PriceSetupOfferBlock offer={priceSetupOffer} onUse={handlers.onUsePriceSetupOffer} />
-      )}
+  </>;
+  const modelFields = <>
       <div class="field">
         <span class="field__label pels-text-settings-label" id="electricity-prices-norway-model-label">Norway pricing model</span>
         <MdFilledSelect
@@ -660,16 +679,18 @@ const NorwaySection = ({
           }}
         >
           {assumedModel !== null && (
-            <MdSelectOption value={NOT_CHOSEN}><div slot="headline">Select pricing model</div></MdSelectOption>
+            <MdSelectOption value={NOT_CHOSEN} displayText="Select pricing model" typeaheadText="Select pricing model">
+              <div slot="headline">Select pricing model</div>
+            </MdSelectOption>
           )}
-          <MdSelectOption value="stromstotte">
+          <MdSelectOption value="stromstotte" displayText="Strømstøtte" typeaheadText="Strømstøtte">
             <div slot="headline">Electricity Subsidy Scheme (Strømstøtte)</div>
           </MdSelectOption>
-          <MdSelectOption value="norgespris">
+          <MdSelectOption value="norgespris" displayText="Norgespris" typeaheadText="Norgespris">
             <div slot="headline">Norway Price (Norgespris)</div>
           </MdSelectOption>
         </MdFilledSelect>
-        {assumedModel !== null && (
+        {!showSetupGoals && assumedModel !== null && (
           <NotChosenHint text={`Not chosen yet. PELS uses ${NORWAY_PRICE_MODEL_NAMES[assumedModel]}.`} />
         )}
         {/* The consequence of the choice, not the option names again. */}
@@ -683,6 +704,9 @@ const NorwaySection = ({
           Monthly cap: household 5000 kWh, cabin 1000 kWh.
         </p>
       )}
+
+  </>;
+  const areaFields = <>
       <div class="field">
         <span class="field__label pels-text-settings-label" id="electricity-prices-price-area-label">Price area</span>
         <MdFilledSelect
@@ -694,19 +718,26 @@ const NorwaySection = ({
           }}
         >
           {assumedArea !== null && (
-            <MdSelectOption value={NOT_CHOSEN}><div slot="headline">Select price area</div></MdSelectOption>
+            <MdSelectOption value={NOT_CHOSEN} displayText="Select price area" typeaheadText="Select price area">
+              <div slot="headline">Select price area</div>
+            </MdSelectOption>
           )}
           {PRICE_AREAS.map((area) => (
-            <MdSelectOption key={area.code} value={area.code}><div slot="headline">{area.label}</div></MdSelectOption>
+            <MdSelectOption key={area.code} value={area.code} displayText={area.label} typeaheadText={area.label}>
+              <div slot="headline">{area.label}</div>
+            </MdSelectOption>
           ))}
         </MdFilledSelect>
-        {assumedArea !== null && <NotChosenHint text={`Not chosen yet. PELS uses ${assumedArea}.`} />}
+        {!showSetupGoals && assumedArea !== null && <NotChosenHint text={`Not chosen yet. PELS uses ${assumedArea}.`} />}
         <small class="field__hint">
           {'Your electricity price area ('}
           <a href="https://www.hvakosterstrommen.no/" target="_blank" rel="noopener noreferrer">hvakosterstrommen.no</a>
           {').'}
         </small>
       </div>
+
+  </>;
+  const surchargeField = (
       <label class="field">
         <span class="field__label pels-text-settings-label" id="electricity-prices-provider-surcharge-label">Provider surcharge</span>
         <MdFilledTextField
@@ -724,8 +755,42 @@ const NorwaySection = ({
         />
         <small class="field__hint">Provider surcharge on top of spot price, incl. VAT. Can be negative.</small>
       </label>
-    </>
   );
+  if (showSetupGoals) return <>
+    {modelFields}
+    <details class="settings-collapse" open={locationOpen}
+      onToggle={(event) => {
+        const open = (event.currentTarget as HTMLDetailsElement).open;
+        if (open !== locationOpen) setLocationOpenChoice(open);
+      }}
+      onChange={() => setLocationOpenChoice(true)}>
+      <summary class="smart-task-edit__permissions-summary">
+        <div>
+          <span class="plan-card__title">Location and grid tariff</span>
+          <p class="pels-card-supporting">{locationSummary}</p>
+        </div>
+        <ExpandMoreIcon class="disclosure-chevron" />
+      </summary>
+      <div class="collapse-content form-grid">
+        {gridFields}
+        {areaFields}
+      </div>
+    </details>
+  </>;
+  return <>
+    <p class="eyebrow eyebrow--inline">Grid tariff</p>
+    {priceSetupOffer.kind !== 'price_area' && (
+      <PriceSetupOfferBlock offer={priceSetupOffer} onUse={handlers.onUsePriceSetupOffer} />
+    )}
+    {gridFields}
+    <p class="eyebrow eyebrow--inline">Spot price</p>
+    {priceSetupOffer.kind === 'price_area' && (
+      <PriceSetupOfferBlock offer={priceSetupOffer} onUse={handlers.onUsePriceSetupOffer} />
+    )}
+    {modelFields}
+    {areaFields}
+    {surchargeField}
+  </>;
 };
 
 // The source as the Keep button names it, and as the hint above it does.
@@ -881,6 +946,13 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
 
   return (
     <form class="form-grid settings-form-card" onSubmit={(e) => e.preventDefault()}>
+      {props.showSetupGoals && isNorway && <>
+        {props.priceSetupSuggestionPending && <p class="pels-card-supporting">Finding settings for your Homey’s location…</p>}
+        <PriceSetupOfferBlock offer={props.priceSetupOffer} onUse={handlers.onUsePriceSetupOffer} />
+        <p class="pels-card-supporting">
+          Choose your grid company, price area and pricing model. You can adjust supplier fees and price thresholds later in Settings.
+        </p>
+      </>}
       <h3 class="pels-text-card-title">Price source</h3>
       <div class="field">
         <MdFilledSelect
@@ -890,15 +962,15 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
           onChange={(e) => handlers.onSchemeChange(normalizePriceSchemeSelection(readValue(e)))}
         >
           {orderedPriceSources(props.market).map((source) => (
-            <MdSelectOption key={source.value} value={source.value}>
+            <MdSelectOption key={source.value} value={source.value} displayText={source.label} typeaheadText={source.label}>
               <div slot="headline">{source.label}</div>
             </MdSelectOption>
           ))}
         </MdFilledSelect>
-        {sourceStatus.hint}
+        {!(props.showSetupGoals && isNorway) && sourceStatus.hint}
       </div>
       {sourceStatus.followUp}
-      {props.showSetupGoals && (
+      {props.showSetupGoals && !isNorway && (
         <>
           <p class="pels-card-supporting">
             You can use power limits and solar control without prices. Return to your device choices
@@ -912,7 +984,7 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
         </>
       )}
 
-      {note && <p class="muted">{note}</p>}
+      {note && !(props.showSetupGoals && isNorway) && <p class="muted">{note}</p>}
       {isFlow && config.flowStatus && <FlowStatusBlock status={config.flowStatus} />}
       {isHomey && config.homeyStatus && <HomeyStatusBlock status={config.homeyStatus} />}
       {isPowerhour && config.powerhourStatus && (
@@ -923,7 +995,7 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
         />
       )}
 
-      {isNorway && <NorwaySection {...props} />}
+      {isNorway && <NorwaySection key={props.priceSetupVisit} {...props} />}
 
       {!isFlow && (
         <div class="form__actions">
@@ -1317,17 +1389,28 @@ const PriceAwareDevicesLink = () => (
   </div>
 );
 
-const ElectricityPricesRoot = (props: ElectricityPricesViewProps) => (
-  <>
-    <Header />
-    <LiveSummaryCard config={props.config} />
+const ElectricityPricesRoot = (props: ElectricityPricesViewProps) => {
+  const setup = props.showSetupGoals;
+  // A fresh Norway install prices with NO1 until an area is chosen. Keep that
+  // unrelated total out of setup, even while another area is being offered.
+  const showSetupPrice = props.config.priceScheme !== 'norway'
+    || (props.norwayChoices.kind === 'resolved' && props.norwayChoices.choices.priceArea.chosen);
+  // The power read can still carry the previous area's level during a fetch.
+  const setupPriceConfig = props.config.liveSummary.priceText === null
+    ? { ...props.config, currentPriceLevel: null } : props.config;
+  return <>
+    {!setup && <Header />}
+    {!setup && <LiveSummaryCard config={props.config} />}
     <SourceForm {...props} />
-    {props.showSolarForecastSection && <SolarForecastForm config={props.config} handlers={props.handlers} />}
-    {props.showExportSection && <ExportPriceForm {...props} />}
-    <ThresholdForm config={props.config} handlers={props.handlers} />
-    <PriceAwareDevicesLink />
-  </>
-);
+    {setup && showSetupPrice && <LiveSummaryCard config={setupPriceConfig} />}
+    {!setup && <>
+      {props.showSolarForecastSection && <SolarForecastForm config={props.config} handlers={props.handlers} />}
+      {props.showExportSection && <ExportPriceForm {...props} />}
+      <ThresholdForm config={props.config} handlers={props.handlers} />
+      <PriceAwareDevicesLink />
+    </>}
+  </>;
+};
 
 export const renderElectricityPricesView = (
   surface: HTMLElement,

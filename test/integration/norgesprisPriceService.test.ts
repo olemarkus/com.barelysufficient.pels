@@ -1,6 +1,7 @@
 import type { PowerTrackerReadout } from '../../lib/price/priceServiceNorgespris';
 import type Homey from 'homey';
 import PriceService from '../../lib/price/priceService';
+import * as spotPriceFetch from '../../lib/price/spotPriceFetch';
 import { createPriceDataStore } from '../../lib/price/priceDataStore';
 import { createInMemoryPriceCache } from '../helpers/priceCacheForTests';
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
@@ -112,6 +113,121 @@ describe('Norway norgespris pricing', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it.each(['stromstotte', 'norgespris'] as const)(
+    'withholds old-area prices immediately after the area changes under %s, then recovers',
+    (norwayPriceModel) => {
+      const now = new Date('2026-01-15T10:00:00.000Z');
+      vi.useFakeTimers().setSystemTime(now);
+      setNorwayNorgesprisSettings({ now, monthUsageKwh: 0, norwayPriceModel, priceArea: 'NO1' });
+      priceCache.write('spot_price_area', 'NO1');
+      const service = createService();
+      expect(service.getPriceTimeline().state).toBe('ready');
+
+      mockHomeyInstance.settings.set('price_area', 'NO3');
+
+      expect(service.getCombinedHourlyPrices()).toEqual([]);
+      expect(service.getCombinedPricePeriods()).toEqual([]);
+      expect(service.getPriceTimeline()).toEqual({ state: 'unavailable', reason: 'no_prices' });
+      expect(service.getTaskPricePeriodsForUi()).toEqual([]);
+      priceCache.write('spot_prices', [{ startsAt: now.toISOString(), spotPriceExVat: 60, currency: 'NOK' }]);
+      priceCache.write('spot_price_area', 'NO3');
+      expect(service.getCombinedHourlyPrices()).toHaveLength(1);
+      expect(service.getPriceTimeline().state).toBe('ready');
+    },
+  );
+
+  it('keeps legacy spot prices without an area marker usable', () => {
+    const now = new Date('2026-01-15T10:00:00.000Z');
+    vi.useFakeTimers().setSystemTime(now);
+    setNorwayNorgesprisSettings({ now, monthUsageKwh: 0, priceArea: 'NO3' });
+
+    expect(priceCache.read('spot_price_area')).toBeNull();
+    expect(createService().getPriceTimeline().state).toBe('ready');
+  });
+
+  it('keeps old-area prices withheld after a no-data refresh and recovers on the next successful refresh', async () => {
+    const now = new Date('2026-01-15T10:00:00.000Z');
+    vi.useFakeTimers().setSystemTime(now);
+    setNorwayNorgesprisSettings({ now, monthUsageKwh: 0, priceArea: 'NO1' });
+    priceCache.write('spot_price_area', 'NO1');
+    const matchingPrices = [{ startsAt: now.toISOString(), spotPriceExVat: 60, currency: 'NOK' }];
+    const fetch = vi.spyOn(spotPriceFetch, 'fetchSpotPricesForDate')
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(matchingPrices)
+      .mockResolvedValueOnce([]);
+    const service = createService();
+    mockHomeyInstance.settings.set('price_area', 'NO3');
+
+    await service.refreshSpotPrices(true);
+
+    expect(priceCache.read('spot_price_area')).toBe('NO1');
+    expect(service.getCombinedHourlyPrices()).toEqual([]);
+    expect(service.getPriceTimeline()).toEqual({ state: 'unavailable', reason: 'no_prices' });
+
+    await service.refreshSpotPrices(true);
+
+    expect(fetch.mock.calls.map(([request]) => request.priceArea)).toEqual(['NO3', 'NO3', 'NO3', 'NO3']);
+    expect(priceCache.read('spot_price_area')).toBe('NO3');
+    expect(service.getCombinedHourlyPrices()).toHaveLength(1);
+    expect(service.getPriceTimeline().state).toBe('ready');
+  });
+
+  it('withholds an old-area fetch that completes after the owner chooses a new area', async () => {
+    const now = new Date('2026-01-15T10:00:00.000Z');
+    vi.useFakeTimers().setSystemTime(now);
+    setNorwayNorgesprisSettings({ now, monthUsageKwh: 0, priceArea: 'NO1' });
+    priceCache.write('spot_price_area', 'NO1');
+    const oldPrices = [{ startsAt: now.toISOString(), spotPriceExVat: 160, currency: 'NOK' }];
+    let finishFetch: (prices: spotPriceFetch.SpotPriceEntry[]) => void = () => undefined;
+    const fetch = vi.spyOn(spotPriceFetch, 'fetchSpotPricesForDate')
+      .mockReturnValueOnce(new Promise((resolve) => { finishFetch = resolve; }))
+      .mockResolvedValueOnce([]);
+    const service = createService();
+    const pending = service.refreshSpotPrices(true);
+    expect(fetch).toHaveBeenCalledWith(expect.objectContaining({ priceArea: 'NO1' }));
+
+    mockHomeyInstance.settings.set('price_area', 'NO3');
+    finishFetch(oldPrices);
+    await pending;
+
+    expect(priceCache.read('spot_price_area')).toBe('NO1');
+    expect(service.getCombinedHourlyPrices()).toEqual([]);
+    expect(service.getPriceTimeline()).toEqual({ state: 'unavailable', reason: 'no_prices' });
+  });
+
+  it('discards an old-area refresh that finishes after the new area has already refreshed', async () => {
+    const now = new Date('2026-01-15T10:00:00.000Z');
+    vi.useFakeTimers().setSystemTime(now);
+    setNorwayNorgesprisSettings({ now, monthUsageKwh: 0, priceArea: 'NO1' });
+    priceCache.write('spot_price_area', 'NO1');
+    const oldPrices = [{ startsAt: now.toISOString(), spotPriceExVat: 160, currency: 'NOK' }];
+    const newPrices = [{ startsAt: now.toISOString(), spotPriceExVat: 60, currency: 'NOK' }];
+    let finishOldFetch: (prices: spotPriceFetch.SpotPriceEntry[]) => void = () => undefined;
+    const fetch = vi.spyOn(spotPriceFetch, 'fetchSpotPricesForDate')
+      .mockReturnValueOnce(new Promise((resolve) => { finishOldFetch = resolve; }))
+      .mockResolvedValueOnce(newPrices)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const service = createService();
+    const oldRefresh = service.refreshSpotPrices(true);
+    mockHomeyInstance.settings.set('price_area', 'NO3');
+
+    await service.refreshSpotPrices(true);
+    const newAreaTimeline = service.getPriceTimeline();
+    expect(newAreaTimeline.state).toBe('ready');
+    expect(priceCache.read('spot_price_area')).toBe('NO3');
+
+    finishOldFetch(oldPrices);
+    await oldRefresh;
+
+    expect(fetch.mock.calls.map(([request]) => request.priceArea)).toEqual(['NO1', 'NO3', 'NO3', 'NO1']);
+    expect(priceCache.read('spot_prices')).toEqual(newPrices);
+    expect(priceCache.read('spot_price_area')).toBe('NO3');
+    expect(service.getPriceTimeline()).toEqual(newAreaTimeline);
   });
 
   it('applies full norgespris adjustment below household cap', () => {
