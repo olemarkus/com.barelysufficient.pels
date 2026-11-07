@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '../../api';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CONTROLLABLE_DEVICES,
-  MANAGED_DEVICES, OPERATING_MODE_SETTING, DEVICE_POWER_CONTROL_MODES,
+  MANAGED_DEVICES, OPERATING_MODE_SETTING, DEVICE_POWER_CONTROL_MODES, DEVICE_TARGET_POWER_CONFIGS,
 } from '../../lib/utils/settingsKeys';
 import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
@@ -84,7 +84,7 @@ async function buildAlfen(phases: Phases, ampsPerPhase: number, plugged = true):
   const device = new MockDevice(ID, 'Alfen Eve', [
     'operatingmode', 'measure_current', 'measure_power', 'target_power', 'evcharger_charging',
     'evcharger_charging_state', 'meter_power', 'measure_voltage.l1', 'measure_voltage.l2', 'measure_voltage.l3',
-    'measure_current.limit',
+    'measure_current.limit', 'measure_current.stationlimit',
   ], 'evcharger');
   device.setDriverIdentity({ ownerUri: 'homey:app:com.alfen', driverId: 'homey:app:com.alfen:chargepoint' });
   device.setCapabilityMetadata('target_power', {
@@ -96,6 +96,7 @@ async function buildAlfen(phases: Phases, ampsPerPhase: number, plugged = true):
   const charging = plugged && ampsPerPhase >= 6;
   await device.setCapabilityValue('target_power', watts);
   await device.setCapabilityValue('measure_current.limit', STATION_LIMIT_A);
+  await device.setCapabilityValue('measure_current.stationlimit', STATION_LIMIT_A);
   await device.setCapabilityValue('measure_voltage.l1', 231);
   await device.setCapabilityValue('measure_voltage.l2', phases === 3 ? 230 : 0);
   await device.setCapabilityValue('measure_voltage.l3', phases === 3 ? 229 : 0);
@@ -228,5 +229,26 @@ describe.each([1, 3] as const)('Alfen (com.alfen) on %i phase(s) at the SDK boun
     await vi.advanceTimersByTimeAsync(400_000);
     expect(simulation.chargingW()).toBe(0);
     expect(simulation.startWrites.filter((value) => value)).toEqual([]);
+  });
+
+  it('resumes at the station\'s 6 A with a saved EV model using the other phase count', async () => {
+    const charger = await buildAlfen(phases, 0);
+    const simulation = simulateAlfen(charger, phases, 0);
+    // Both planning models have room for their first rung; the station still
+    // receives its own native 6 A watts rather than the planning model's watts.
+    configureRuntime(1000 + 10.5 * 3 * 230);
+    mockHomeyInstance.settings.set(DEVICE_POWER_CONTROL_MODES, { [ID]: 'manual' });
+    mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, {
+      [ID]: { enabled: true, preset: phases === 3 ? 'ev_charger_1_phase' : 'ev_charger_3_phase' },
+    });
+    const app = createApp();
+    const loggedEvents: LoggedEvent[] = [];
+    app.log = recordingLog(loggedEvents, app.log.bind(app));
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(400_000);
+    expect(simulation.powerWrites().find((watts) => watts > 0)).toBe(6 * wattsPerAmp);
+    expect(simulation.chargingW()).toBeGreaterThan(0);
+    expect(simulation.startWrites).toEqual([]);
+    expect(loggedEvents.map(({ event }) => event)).toContain('binary_command_succeeded');
   });
 });
