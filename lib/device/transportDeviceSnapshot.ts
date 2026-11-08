@@ -1,6 +1,7 @@
 import type {
   BinaryControlCapabilityId,
   BinaryControlObservation,
+  ChargerPhaseCurrentsObservedProbe,
   EvObservedProbe,
   HomeBatteryDescriptorProbe,
   HomeBatteryObservedProbe,
@@ -88,4 +89,5 @@ export type TransportDeviceSnapshot =
   & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
   & HomeBatteryDescriptorProbe & HomeBatteryObservedProbe
   & TransportControlBindingProbe
+  & ChargerPhaseCurrentsObservedProbe
   & { inverterObservation?: import('../../packages/contracts/src/inverterControl').InverterObservation };

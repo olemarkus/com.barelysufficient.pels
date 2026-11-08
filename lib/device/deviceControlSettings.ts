@@ -46,10 +46,15 @@ import {
   type DeviceStartPolicy,
 } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
 import {
+  isDevicePhaseConnectionMap,
+  type DevicePhaseConnection,
+} from '../../packages/shared-domain/src/settings/devicePhaseConnections';
+import {
   BUDGET_EXEMPT_DEVICES,
   CONTROLLABLE_DEVICES,
   DEVICE_CONTROL_PROFILES,
   DEVICE_DRIVER_OVERRIDES,
+  DEVICE_PHASE_CONNECTIONS,
   DEVICE_START_POLICIES,
   DEVICE_TARGET_POWER_CONFIGS,
   DEVICE_POWER_CONTROL_MODES,
@@ -89,6 +94,7 @@ type DeviceControlMaps = {
   readonly controllable: BooleanMap;
   readonly managed: BooleanMap;
   readonly budgetExempt: BooleanMap;
+  readonly phaseConnections: Readonly<Record<string, DevicePhaseConnection>>;
   readonly startPolicies: Readonly<Record<string, DeviceStartPolicy>>;
   readonly temperatureControl: TemperatureControlPolicy;
   readonly temperatureBoost: TemperatureBoostSettings;
@@ -131,6 +137,16 @@ type DeviceTargetPowerConfigsRead = {
   state: 'unavailable' | 'resolved';
 };
 
+// A never-written key is no connection set; a malformed read keeps the last good
+// map, because a transient miss is not an owner who cleared every connection.
+const readPhaseConnections = (
+  raw: unknown,
+  current: Readonly<Record<string, DevicePhaseConnection>>,
+): Readonly<Record<string, DevicePhaseConnection>> => {
+  if (raw === undefined || raw === null) return {};
+  return isDevicePhaseConnectionMap(raw) ? raw : current;
+};
+
 const keep = <T>(raw: unknown, accept: (value: unknown) => value is T, current: T): T => (
   accept(raw) ? raw : current
 );
@@ -152,6 +168,7 @@ export type DeviceControlSettingsRead = Pick<DeviceControlSettings,
   | 'deviceStartPolicies'
   | 'controllableDevices'
   | 'isBudgetExempt'
+  | 'getDevicePhaseConnection'
 >;
 
 /**
@@ -173,6 +190,7 @@ export class DeviceControlSettings {
     controllable: {},
     managed: {},
     budgetExempt: {},
+    phaseConnections: {},
     startPolicies: {},
     temperatureControl: { devices: {}, state: 'unavailable' },
     temperatureBoost: {},
@@ -215,6 +233,10 @@ export class DeviceControlSettings {
    */
   isManagedFilterActive(): boolean { return Object.values(this.maps.managed).some((value) => value === true); }
   isBudgetExempt(deviceId: string): boolean { return this.maps.budgetExempt[deviceId] === true; }
+  /** The owner's Electrical connection; `undefined` is Automatic, an answer rather than a gap. */
+  getDevicePhaseConnection(deviceId: string): DevicePhaseConnection | undefined {
+    return this.maps.phaseConnections[deviceId];
+  }
   getTemperatureBoostConfig(deviceId: string): TemperatureBoostConfig | undefined {
     return this.maps.temperatureBoost[deviceId];
   }
@@ -349,6 +371,7 @@ export class DeviceControlSettings {
       controllable: keep(settings.get(CONTROLLABLE_DEVICES), isBooleanMap, current.controllable),
       managed: keep(settings.get(MANAGED_DEVICES), isBooleanMap, current.managed),
       budgetExempt: keep(settings.get(BUDGET_EXEMPT_DEVICES), isBooleanMap, current.budgetExempt),
+      phaseConnections: readPhaseConnections(settings.get(DEVICE_PHASE_CONNECTIONS), current.phaseConnections),
       // All-or-nothing, and a rejected read keeps the last good map: a transient
       // SDK miss must never look like an owner who just cleared every policy.
       startPolicies: keep(settings.get(DEVICE_START_POLICIES), isDeviceStartPolicyMap, current.startPolicies),

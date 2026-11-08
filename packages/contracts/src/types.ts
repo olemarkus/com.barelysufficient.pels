@@ -682,6 +682,11 @@ export type TargetDeviceSnapshot = DeviceDescriptor & ObservedDeviceState;
  * proves the plug-state has been observed, so a narrowed consumer branches on a
  * known `EvChargingState` value without re-handling the absent case.
  */
+export type ChargerPhaseCurrentsObservedProbe = {
+    /** An EV charger's own per-phase current, A, when it reports all three phases. */
+    chargerPhaseCurrentsA?: readonly [number, number, number];
+};
+
 export type EvObservedFields = {
     evChargingState: EvChargingState;
     /** Timestamp of the `evcharger_charging_state` observation. */
@@ -1102,6 +1107,7 @@ export type HomeBatteryObservedProbe = {
 /** Observer-maintained value after transport has projected every observed cluster. */
 export type ProjectedObservedDeviceState = ObservedDeviceState
     & { inverterObservation?: import('./inverterControl.js').InverterObservation }
+    & ChargerPhaseCurrentsObservedProbe
     & EvObservedProbe
     & ThermostatModeObservedProbe
     & TemperatureObservedProbe

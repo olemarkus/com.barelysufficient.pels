@@ -1,5 +1,6 @@
 import { buildPlannedTargetCommand } from '../../lib/plan/planTargetCommand';
 import type { ChargeTargetHold, DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
+import type { PhaseFootprint } from '../../packages/planner-types/src/phaseFootprint';
 import { NO_SHEDDING_OUTCOME } from '../../lib/plan/planState';
 import type { SheddingPlan } from '../../lib/plan/shedding/types';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -748,8 +749,10 @@ export const withFixtureResidualKw = <T extends object>(
   chargeTargetHold: ChargeTargetHold;
   currentState: ObservedCurrentState;
   budgetExempt: boolean;
+  phaseFootprint: PhaseFootprint;
 } => {
   const priority = (fields as { priority?: number }).priority ?? 1;
+  const phaseFootprint = (fields as { phaseFootprint?: PhaseFootprint }).phaseFootprint ?? { kind: 'unknown' };
   // Both REQUIRED on the input contract, and resolved by the producer for every
   // device; a literal passed straight through gets what the producer would stamp.
   const currentState = resolveFixtureCurrentState(fields as Parameters<typeof resolveFixtureCurrentState>[0]);
@@ -784,6 +787,7 @@ export const withFixtureResidualKw = <T extends object>(
       chargeTargetHold,
       currentState,
       budgetExempt,
+      phaseFootprint,
       residualKw: { shed: declared.shed, restore: declared.restore },
     };
   }
@@ -797,6 +801,7 @@ export const withFixtureResidualKw = <T extends object>(
     chargeTargetHold,
     currentState,
     budgetExempt,
+    phaseFootprint,
     residualKw: {
       shed: declared?.shed ?? resolved.shed,
       restore: declared?.restore ?? resolved.restore,

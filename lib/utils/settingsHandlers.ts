@@ -3,6 +3,7 @@ import {
   BATTERY_CONTROL_DEVICES,
   BUDGET_EXEMPT_DEVICES,
   RESPECT_EXTERNAL_OFF_DEVICES,
+  DEVICE_PHASE_CONNECTIONS,
   DEVICE_START_POLICIES,
   CAPACITY_DRY_RUN,
   CAPACITY_ENABLED,
@@ -362,6 +363,10 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       await refreshSnapshotWithLog(deps, 'budget_exemption_change');
       deps.dailyBudget.refresh();
       await rebuildPlanFromSettings(deps, BUDGET_EXEMPT_DEVICES);
+    },
+    [DEVICE_PHASE_CONNECTIONS]: async () => {
+      deps.loadCapacitySettings();
+      await rebuildPlanFromSettings(deps, DEVICE_PHASE_CONNECTIONS);
     },
     [RESPECT_EXTERNAL_OFF_DEVICES]: async () => {
       // Clear holds for de-opted devices BEFORE the rebuild, so the same rebuild

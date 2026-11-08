@@ -18,6 +18,8 @@ const withoutNonPlanInputFields = (device: ToPlanDeviceInput) => {
     carCurrentRangeUnavailable: _carCurrentRangeUnavailable,
     measuredPowerKw: _measuredPowerKw,
     measuredPowerIsDirectMeasurement: _measuredPowerIsDirectMeasurement,
+    // Read once by the footprint producer; the planner receives the footprint.
+    chargerPhaseCurrentsA: _chargerPhaseCurrentsA,
     binaryControl: _binaryControl,
     binaryControlObservation: _binaryControlObservation,
     evChargingState: _evChargingState,

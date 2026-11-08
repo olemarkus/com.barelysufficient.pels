@@ -49,7 +49,7 @@ import { assertWritableModeDeviceTargets, readModeCatalogPair } from './modeCata
 import {
   readBooleanSettingMap, readModeAliases, readModeSettings,
   applyTemperatureControlSettings, applyDeviceStartPolicySettings, applyBatteryControlSettings,
-  readStrictBooleanSettingMap, type ModeSettingsRead,
+  readStrictBooleanSettingMap, applyDevicePhaseSettings, type ModeSettingsRead,
 } from './modeSettingsRead.ts';
 import { EMPTY_MODE_COPY, prepareModeHomeLoad, showModeCatalogUnavailable } from './modeLoadSurface.ts';
 import {
@@ -126,6 +126,7 @@ const applyModeSettings = (homeId: string, read: ModeSettingsRead): void => {
   state.budgetExemptMap = readBooleanSettingMap(read.budgetExempt);
   state.respectExternalOffMap = readStrictBooleanSettingMap(read.respectExternalOff)
     ?? state.respectExternalOffMap;
+  applyDevicePhaseSettings(read);
   applyDeviceStartPolicySettings(read);
   applyTemperatureControlSettings(read);
   applyBatteryControlSettings(read);

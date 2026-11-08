@@ -78,7 +78,8 @@ Keys with owners so far include `mode_aliases`, `mode_device_targets`, `pv_forec
 `ev_charge_target_settings`,
 `homey_price_formula`, `price_scheme` + `powerhour_device_id`, `web_app_cloud_host`,
 `daily_diagnostics_report`, `event_diagnostics_reports`, `device_start_policies`
-(`deviceStartPolicy.ts`), `ev_car_associations` (`evCarAssociations.ts`),
+(`deviceStartPolicy.ts`), `device_phase_connections` (`devicePhaseConnections.ts`, read by
+`lib/device/deviceControlSettings.ts` and resolved in `lib/phaseFootprint/`), `ev_car_associations` (`evCarAssociations.ts`),
 `export_price_source` (`exportPriceSource.ts`), `overshoot_behaviors`
 (`shedBehaviors.ts`), and the daily-budget option and switch keys
 (`dailyBudgetSettings.ts`), all in `packages/shared-domain/src/settings/`, plus

@@ -45,6 +45,10 @@ export const BATTERY_CONTROL_DEVICES = 'battery_control_devices';
 // Opt-in for "Leave off until turned on again": `Record<deviceId, true>` (absent
 // = off).
 export const RESPECT_EXTERNAL_OFF_DEVICES = 'respect_external_off_devices';
+// The owner's Electrical connection per device: `Record<deviceId, 'L1' | 'L2' |
+// 'L3' | 'all' | 'self_balancing'>` (absent = Automatic). Guard:
+// `./devicePhaseConnections.ts`; resolved by `lib/phaseFootprint/`.
+export const DEVICE_PHASE_CONNECTIONS = 'device_phase_connections';
 // Per-device start authority: `Record<deviceId, 'unrestricted' | 'pels_only'>`
 // (absent entry = 'unrestricted'). Read and write policy live with the key's
 // owner, `packages/shared-domain/src/settings/deviceStartPolicy.ts`.
