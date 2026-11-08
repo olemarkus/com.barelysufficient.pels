@@ -96,6 +96,13 @@ describe('parseLearnedPeaks', () => {
     })).toEqual({ good: { kw: 2, observedAtMs: NOW } });
   });
 
+  it('drops a stored peak no device can reach and keeps the rest', () => {
+    expect(parseLearnedPeaks({
+      ceiling: { kw: 100, observedAtMs: NOW },
+      corrupt: { kw: 524.288, observedAtMs: NOW },
+    })).toEqual({ ceiling: { kw: 100, observedAtMs: NOW } });
+  });
+
   it('answers an empty record for a missing or malformed setting', () => {
     expect(parseLearnedPeaks(undefined)).toEqual({});
     expect(parseLearnedPeaks(null)).toEqual({});

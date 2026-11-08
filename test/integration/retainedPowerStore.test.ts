@@ -51,6 +51,19 @@ describe('retained power store', () => {
     expect(restored.meterAnchors.get('plug-1')).toEqual(anchor);
   });
 
+  it('does not restore a retained reading no device can draw', () => {
+    createRetainedPowerStore(db).save(
+      state([['heater-1', { measuredPowerKw: 524.288, observedAtMs: T0 }], ['plug-1', reading]]),
+      present('heater-1', 'plug-1'),
+      T0,
+    );
+
+    const restored = createRetainedPowerStore(db).load(T0 + DAY_MS);
+
+    expect(restored.readings.has('heater-1')).toBe(false);
+    expect(restored.readings.get('plug-1')).toEqual(reading);
+  });
+
   it('keeps a device absent from a later save: one cycle without it is not its removal', () => {
     const store = createRetainedPowerStore(db);
     store.save(state([['plug-1', reading]], [['plug-1', anchor]]), present('plug-1'), T0);

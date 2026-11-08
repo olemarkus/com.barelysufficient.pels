@@ -31,6 +31,14 @@ export const hasObservedMeasuredPower = <T extends MeasuredPowerObservedProbe>(
 );
 
 /**
+ * The most one device can plausibly draw, in kW. A home on a 3 × 125 A, 400 V
+ * supply draws under 90 kW in total, so no single device in it reaches this.
+ * One corrupt reading above it would otherwise become the device's learned peak
+ * and hold it off for a month, because no restore can fit that much power.
+ */
+export const MAX_PLAUSIBLE_DEVICE_POWER_KW = 100;
+
+/**
  * The ONE rule for what counts as a device's measured power reading, applied by
  * every seam that can write `measuredPowerKw`: the parse-time resolver
  * (`DeviceMeasuredPowerResolver.resolveDirectWatts`), the realtime capability
@@ -44,8 +52,10 @@ export const hasObservedMeasuredPower = <T extends MeasuredPowerObservedProbe>(
  * conflating them is what let a device measuring a true 0 W be credited its
  * nameplate.
  *
- * Two things are rejected:
+ * Three things are rejected:
  *  - non-finite (`NaN`/`Infinity`), which is junk from the SDK boundary;
+ *  - above {@link MAX_PLAUSIBLE_DEVICE_POWER_KW}, which is a corrupt frame or a
+ *    scaling fault, never a draw;
  *  - NEGATIVE, which on a device-draw path is malformed. A thermostat, charger or
  *    heater never reports one. Negative watts DO mean something — production —
  *    but that is a different question answered on a different path by a different
@@ -54,7 +64,7 @@ export const hasObservedMeasuredPower = <T extends MeasuredPowerObservedProbe>(
  *    nothing real.
  */
 export const normalizeMeasuredPowerKw = (kw: unknown): number | null => (
-  typeof kw === 'number' && Number.isFinite(kw) && kw >= 0 ? kw : null
+  typeof kw === 'number' && Number.isFinite(kw) && kw >= 0 && kw <= MAX_PLAUSIBLE_DEVICE_POWER_KW ? kw : null
 );
 
 /**

@@ -36,6 +36,7 @@
  */
 import { getLogger } from '../logging/logger';
 import type { UserdataDatabase } from '../store/userdataDatabase';
+import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
 import type { MeterEnergyReading } from './measuredPowerReader';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
@@ -122,12 +123,9 @@ const parseRetainedPowerReading = (json: string): RetainedPowerReading | null =>
   } catch {
     return null;
   }
-  if (
-    !isUnknownRecord(raw)
-    || !isNonNegativeFinite(raw.measuredPowerKw)
-    || !isFiniteNumber(raw.observedAtMs)
-  ) return null;
-  return { measuredPowerKw: raw.measuredPowerKw, observedAtMs: raw.observedAtMs };
+  if (!isUnknownRecord(raw) || !isFiniteNumber(raw.observedAtMs)) return null;
+  const measuredPowerKw = normalizeMeasuredPowerKw(raw.measuredPowerKw);
+  return measuredPowerKw === null ? null : { measuredPowerKw, observedAtMs: raw.observedAtMs };
 };
 
 const sameReading = (a: RetainedPowerReading, b: RetainedPowerReading): boolean => (

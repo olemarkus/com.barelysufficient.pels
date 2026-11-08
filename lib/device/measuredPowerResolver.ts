@@ -5,7 +5,10 @@ import type {
   DirectPowerReading,
   MeterEnergyReading,
 } from './measuredPowerReader';
-import { normalizeMeasuredPowerKw } from '../../packages/shared-domain/src/measuredPowerObservedState';
+import {
+  MAX_PLAUSIBLE_DEVICE_POWER_KW,
+  normalizeMeasuredPowerKw,
+} from '../../packages/shared-domain/src/measuredPowerObservedState';
 import type { MeasuredPowerSource, MeteredPowerReading } from './transportDeviceSnapshot';
 
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
@@ -85,7 +88,7 @@ export class DeviceMeasuredPowerResolver {
   }
 
   // `normalizeMeasuredPowerKw` is the shared rule every write seam applies:
-  // finite and non-negative. A rejected reading is ABSENT, never 0 — "no
+  // finite, non-negative and plausible. A rejected reading is ABSENT, never 0 — "no
   // reading" and "drawing nothing" are different facts, and conflating them is
   // what let a device measuring a true 0 W be credited its nameplate.
   //
@@ -107,6 +110,7 @@ export class DeviceMeasuredPowerResolver {
     const { watts, observedAtMs } = selected.reading;
     const normalized = normalizeMeasuredPowerKw(watts / 1000);
     if (normalized === null) {
+      noteImplausibleReading(deviceId, selected.source, watts / 1000);
       return { observedAtMs };
     }
     // Every accepted reading resolves to its own value, including a few watts of
@@ -139,10 +143,10 @@ export class DeviceMeasuredPowerResolver {
    * cloud poll can be minutes apart — while this resolver runs on the snapshot
    * refresh, seconds apart. Dividing a poll interval's energy by a refresh
    * interval overstates the rate by the ratio of the two, which is how a ~3.8 kW
-   * air conditioner came to report 226 kW in production. `nextLearnedPeak` has
-   * no ceiling and holds that figure for thirty days, so it also becomes the
-   * expected power the restore axis sizes against and the `≈ … kW when active`
-   * the owner reads.
+   * air conditioner came to report 226 kW in production. `nextLearnedPeak` holds
+   * any accepted figure for thirty days, so it also becomes the expected power
+   * the restore axis sizes against and the `≈ … kW when active` the owner reads.
+   * A rate no device can draw is therefore no reading at all.
    *
    * THE SAME MISMATCH HAD A QUIETER HALF. Between two pushes the cumulative
    * value has not moved, so the delta was zero over real elapsed time and the
@@ -207,6 +211,11 @@ export class DeviceMeasuredPowerResolver {
       };
     }
 
+    if (normalizeMeasuredPowerKw(measuredPowerKw) === null) {
+      noteImplausibleReading(deviceId, 'meter_power', measuredPowerKw);
+      return { observedAtMs };
+    }
+
     // As in `resolveDirectWatts`: a small but real delta is reported, not
     // dropped. Dropping it produced absence, and absence is what licenses a
     // consumer to substitute rated power.
@@ -243,6 +252,13 @@ export class DeviceMeasuredPowerResolver {
       deviceName: deviceLabel,
       source: source ?? undefined,
     });
+  }
+}
+
+/** Records a dropped reading above the ceiling; a negative or non-finite one is routine and stays quiet. */
+function noteImplausibleReading(deviceId: string, source: MeasuredPowerSource, kw: number): void {
+  if (kw > MAX_PLAUSIBLE_DEVICE_POWER_KW) {
+    emitDeviceDebug({ event: 'device_power_reading_implausible', deviceId, source, kw });
   }
 }
 
