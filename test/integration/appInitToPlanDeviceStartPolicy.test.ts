@@ -52,3 +52,23 @@ describe('toPlanDevice — start policy in force', () => {
     expect(device.control.commandAuthority).toBe(true);
   });
 });
+
+describe('toPlanDevice: phase footprint', () => {
+  const planDeviceOn = (fixture: Parameters<typeof deviceControlSettingsFixture>[0], snapshot = charger()) => (
+    toPlanDevice(
+      createAppContextMock({ deviceControlSettings: deviceControlSettingsFixture(fixture) }),
+      withDeviceConfiguration(snapshot),
+    )
+  );
+
+  it("carries the owner's Electrical connection", () => {
+    expect(planDeviceOn({ phaseConnections: { charger: 'L3' } }).phaseFootprint)
+      .toEqual({ kind: 'single', phase: 'L3' });
+  });
+
+  it('is unknown without an owner choice or a charger reading, and does not carry the raw currents', () => {
+    const device = planDeviceOn({});
+    expect(device.phaseFootprint).toEqual({ kind: 'unknown' });
+    expect(device).not.toHaveProperty('chargerPhaseCurrentsA');
+  });
+});

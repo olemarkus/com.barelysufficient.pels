@@ -30,6 +30,7 @@ import {
   MANAGED_DEVICES,
   PRICE_OPTIMIZATION_SETTINGS,
   RESPECT_EXTERNAL_OFF_DEVICES,
+  DEVICE_PHASE_CONNECTIONS,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import { SETTINGS_UI_SMART_TASK_CANCEL_PATH } from '../../../contracts/src/settingsUi/paths.ts';
 import type {
@@ -42,7 +43,7 @@ import type { EvCarAssociations } from '../../../contracts/src/types.ts';
 import { assertWritableModeDeviceTargets, readModeDeviceTargetsSetting } from './modeCatalogMaps.ts';
 import { isShedBehaviorsSetting, readShedBehaviors } from '../../../shared-domain/src/settings/shedBehaviors.ts';
 import { classifyPriceOptimizationConfigMap } from '../../../shared-domain/src/settings/priceOptimization.ts';
-import { readStrictBooleanSettingMap } from './modeSettingsRead.ts';
+import { readDevicePhaseConnections, readStrictBooleanSettingMap } from './modeSettingsRead.ts';
 
 /**
  * "Clear device data" on the Advanced page: which device ids the settings store
@@ -92,6 +93,7 @@ const collectDeviceIdsFromSettings = (): Set<string> => {
     ...Object.keys(state.temperatureControlDisabledMap),
     ...Object.keys(state.temperatureControlModes),
     ...Object.keys(state.respectExternalOffMap),
+    ...Object.keys(state.devicePhaseConnectionMap),
     // A task whose device has no other setting left is still the device's data.
     ...Object.keys(state.deferredObjectiveSettings.objectivesByDeviceId),
   ];
@@ -318,6 +320,13 @@ const PURGED_MAPS: readonly PurgedMap[] = [
     readStrictBooleanSettingMap,
     () => state.respectExternalOffMap,
     (map) => { state.respectExternalOffMap = map; },
+    removeDeviceIdsFromRecord,
+  ),
+  purgedMap(
+    DEVICE_PHASE_CONNECTIONS,
+    readDevicePhaseConnections,
+    () => state.devicePhaseConnectionMap,
+    (map) => { state.devicePhaseConnectionMap = map; },
     removeDeviceIdsFromRecord,
   ),
 ];

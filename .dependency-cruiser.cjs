@@ -9,6 +9,14 @@ module.exports = {
       to: { path: '^(setup/|app\\.ts|lib/(app|plan|planInput|observer|device|executor|actuator|power|home)/)' },
     },
     {
+      name: 'phase-footprint-is-a-leaf',
+      comment: 'Device phase footprint resolution is a pure rule over facts the producer reads from their owners; '
+        + 'it must not reach device, observer, power or planner modules.',
+      severity: 'error',
+      from: { path: '^lib/phaseFootprint/' },
+      to: { pathNot: '^(lib/phaseFootprint/|packages/(contracts|shared-domain|planner-types)/src/)' },
+    },
+    {
       name: 'no-circular',
       comment: 'Prevent circular dependencies.',
       severity: 'error',

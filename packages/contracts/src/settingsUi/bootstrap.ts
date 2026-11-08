@@ -34,6 +34,7 @@ export type SettingsUiBootstrapKey =
   | 'device_power_control_modes'
   | 'budget_exempt_devices'
   | 'respect_external_off_devices'
+  | 'device_phase_connections'
   | 'device_start_policies'
   | 'temperature_control_disabled_devices'
   | 'temperature_control_modes'

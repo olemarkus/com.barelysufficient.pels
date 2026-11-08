@@ -1,9 +1,11 @@
 import { DeviceControlSettings } from '../../lib/device/deviceControlSettings';
 import type { DeviceTargetPowerConfigsWithReachability } from '../../lib/device/targetPowerReachability';
 import type { DeviceStartPolicy } from '../../packages/shared-domain/src/settings/deviceStartPolicy';
+import type { DevicePhaseConnection } from '../../packages/shared-domain/src/settings/devicePhaseConnections';
 import type { DevicePowerControlModes } from '../../packages/contracts/src/types';
 import {
   CONTROLLABLE_DEVICES,
+  DEVICE_PHASE_CONNECTIONS,
   DEVICE_START_POLICIES,
   DEVICE_TARGET_POWER_CONFIGS,
   DEVICE_POWER_CONTROL_MODES,
@@ -16,6 +18,7 @@ type DeviceControlSettingsFixture = {
   controllableDevices?: Record<string, boolean>;
   managedDevices?: Record<string, boolean>;
   deviceStartPolicies?: Record<string, DeviceStartPolicy>;
+  phaseConnections?: Record<string, DevicePhaseConnection>;
   deviceTargetPowerConfigs?: DeviceTargetPowerConfigsWithReachability;
   devicePowerControlModes?: DevicePowerControlModes;
 };
@@ -30,6 +33,7 @@ export const deviceControlSettingsFixture = (maps: DeviceControlSettingsFixture 
   if (maps.controllableDevices) values.set(CONTROLLABLE_DEVICES, maps.controllableDevices);
   if (maps.managedDevices) values.set(MANAGED_DEVICES, maps.managedDevices);
   if (maps.deviceStartPolicies) values.set(DEVICE_START_POLICIES, maps.deviceStartPolicies);
+  if (maps.phaseConnections) values.set(DEVICE_PHASE_CONNECTIONS, maps.phaseConnections);
   if (maps.devicePowerControlModes) values.set(DEVICE_POWER_CONTROL_MODES, maps.devicePowerControlModes);
   if (maps.deviceTargetPowerConfigs) {
     // Stored as the settings UI and the probe store them: the candidate configs

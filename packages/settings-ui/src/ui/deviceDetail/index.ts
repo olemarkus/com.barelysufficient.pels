@@ -115,6 +115,7 @@ import {
   setDeviceDetailBudgetExemptState,
 } from './budgetExempt.ts';
 import { initRespectExternalOffHandler } from './respectExternalOff.ts';
+import { initElectricalConnectionHandler, syncElectricalConnectionRow } from './electricalConnection.ts';
 import { initStartPolicyHandler, revealDeviceDetailFocus, syncDevicePolicyRows } from './startPolicy.ts';
 import {
   initTemperatureControlDisabledHandler,
@@ -241,6 +242,7 @@ const setDeviceDetailControlStates = (deviceId: string, device: SettingsUiDevice
   // owns the gate — managed binary device, solar present, not temperature/stepped/EV).
   syncDeviceDetailSolarRows(deviceId, device);
   syncDevicePolicyRows(deviceId, device);
+  syncElectricalConnectionRow(deviceId, device);
   syncTemperatureControlDisabledRow(device);
 
   setDeviceDetailBudgetExemptState(device);
@@ -486,6 +488,7 @@ export const initDeviceDetailHandlers = () => {
     refreshSharedDeviceViews,
     refreshOpenDeviceDetail,
   });
+  initElectricalConnectionHandler({ getCurrentDetailDeviceId, refreshOpenDeviceDetail });
   initRespectExternalOffHandler({ getCurrentDetailDeviceId, refreshSharedDeviceViews, refreshOpenDeviceDetail });
   initStartPolicyHandler({ getCurrentDetailDeviceId, refreshSharedDeviceViews, refreshOpenDeviceDetail });
   initTemperatureControlDisabledHandler({

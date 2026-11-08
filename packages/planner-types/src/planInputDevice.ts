@@ -11,6 +11,7 @@ import type {
   TargetCapabilitySnapshot,
   TargetPowerSteppedLoadConfig,
 } from '../../contracts/src/types.js';
+import type { PhaseFootprint } from './phaseFootprint.js';
 
 
 /**
@@ -311,6 +312,8 @@ export type PlanInputDeviceBase = {
    * charger" everywhere.
    */
   isEvCharger: boolean;
+  /** Which phases this device loads (`lib/phaseFootprint/`). Required: unknown is its own answer. */
+  phaseFootprint: PhaseFootprint;
   /**
    * Resolved by device configuration from the inventory class: a home battery
    * or solar device, never a load the generic shed/restore lanes command (a
@@ -930,6 +933,7 @@ export type PlanDeviceCarriedKey =
 export type PlanDeviceStrippedKey =
   'acknowledgedStep' | 'batteryClaim' | 'batteryLevel' | 'batteryPower' | 'inverterControl' | 'inverterObservation'
   | 'binaryControl' | 'binaryControlObservation' | 'carConfirmation' | 'carCurrentRangeUnavailable'
+  | 'chargerPhaseCurrentsA'
   | 'evChargingState' | 'measuredPowerKw'
   | 'measuredPowerIsDirectMeasurement' | 'setpointShedFloorC' | 'steppedLoadProfile' | 'targetPowerConfig'
   | 'temperature' | 'temperatureAdjustmentsDisabled' | 'temperatureControlDisabled' | 'thermostatMode';

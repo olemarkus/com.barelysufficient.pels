@@ -35,6 +35,7 @@ import {
 } from './planInputDeviceHelpers';
 import { resolveEvTargetPowerPlannerProfile } from '../device/targetPowerReachability';
 import { resolveStorageCluster } from './storageProjection';
+import { resolvePhaseFootprint } from '../phaseFootprint/resolvePhaseFootprint';
 import { projectChargeTargetHold } from './chargeTargetHold';
 import { hasUsableSteppedLoadLadder } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { SteppedClusterFields } from '../plan/planTypes';
@@ -183,6 +184,12 @@ export const resolvePlanInputDeviceFacts = (
     hasStandingDemand,
     residualKw,
     budgetExempt: source.deviceControl.isBudgetExempt(device.id),
+    phaseFootprint: resolvePhaseFootprint({
+      ownerConnection: source.deviceControl.getDevicePhaseConnection(device.id),
+      isEvCharger: device.isEvCharger,
+      chargerPhaseCurrentsA: device.chargerPhaseCurrentsA,
+      evPreset: device.targetPowerConfig?.preset,
+    }),
     ...resolveStorageCluster(source, device, options),
   };
 };

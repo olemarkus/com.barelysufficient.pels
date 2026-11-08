@@ -32,6 +32,7 @@ import {
     type LiveDevicePowerWatts,
 } from '../managerEnergy';
 import { resolveMeasuredPowerKw } from '../managerMeasuredPower';
+import { resolveChargerPhaseCurrentsA } from '../chargerPhaseCurrents';
 import {
     resolveCandidateCapabilities,
     resolveFlowCapabilityOverlay,
@@ -264,6 +265,7 @@ export function assembleDeviceSnapshot(params: {
         controlModel: overlay.controlModel,
         binaryControllable: control.binaryControl !== undefined,
         isEvCharger: deviceClassKey === 'evcharger',
+        ...resolveParsedChargerPhaseCurrents(deviceClassKey, effectiveDevice, previousSnapshot),
         isBatteryOrSolar: isBatteryOrSolarClassKey(deviceClassKey),
         steppedLoadProfile: overlay.steppedLoadProfile,
         nativeWriteCapabilities: overlay.nativeWriteCapabilities,
@@ -310,6 +312,16 @@ export function assembleDeviceSnapshot(params: {
         withHomeBatteryParseFields(parsed, effectiveDevice, deviceClassKey, overlay, previousSnapshot),
         effectiveDevice, overlay.capabilityObj, previousSnapshot,
     );
+}
+
+function resolveParsedChargerPhaseCurrents(
+    deviceClassKey: string,
+    device: HomeyDeviceLike,
+    previousSnapshot: TransportDeviceSnapshot | undefined,
+): Pick<TransportDeviceSnapshot, 'chargerPhaseCurrentsA'> {
+    if (deviceClassKey !== 'evcharger') return {};
+    const chargerPhaseCurrentsA = resolveChargerPhaseCurrentsA(device, previousSnapshot?.chargerPhaseCurrentsA);
+    return chargerPhaseCurrentsA ? { chargerPhaseCurrentsA } : {};
 }
 
 function resolveParsedDeviceSettings(

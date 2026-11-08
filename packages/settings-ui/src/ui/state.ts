@@ -1,6 +1,7 @@
 import { ModePriorityCatalog } from '../../../shared-domain/src/settings/modePriorities.ts';
 import { uiHomeMembership } from './homeScopeMembership.ts';
 import type { DeviceStartPolicy } from '../../../shared-domain/src/settings/deviceStartPolicy.ts';
+import type { DevicePhaseConnection } from '../../../shared-domain/src/settings/devicePhaseConnections.ts';
 import type { TemperatureControlModes } from '../../../shared-domain/src/settings/temperatureControl.ts';
 import type { DevicePowerControlModes } from '../../../shared-domain/src/settings/devicePowerControlModes.ts';
 import {
@@ -108,6 +109,8 @@ export type UiState = {
   batteryControl: BatteryControlUiRead;
   budgetExemptMap: Record<string, boolean>;
   respectExternalOffMap: Record<string, boolean>;
+  devicePhaseConnectionMap: Record<string, DevicePhaseConnection>;
+  mainFuseSupply: unknown;
   deviceStartPolicyMap: Record<string, DeviceStartPolicy>;
   temperatureControlModes: TemperatureControlModes;
   temperatureControlDisabledMap: Record<string, boolean>;
@@ -213,6 +216,8 @@ export const state: UiState = {
   batteryControl: { status: 'resolved', devices: {} },
   budgetExemptMap: {},
   respectExternalOffMap: {},
+  devicePhaseConnectionMap: {},
+  mainFuseSupply: null,
   deviceStartPolicyMap: {},
   temperatureControlModes: {},
   temperatureControlDisabledMap: {},

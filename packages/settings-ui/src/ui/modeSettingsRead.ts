@@ -4,6 +4,10 @@ import { readModeAliases as readSharedModeAliases } from '../../../shared-domain
 import {
   readTemperatureControlModes, temperatureControlDisabledDevices,
 } from '../../../shared-domain/src/settings/temperatureControl.ts';
+import {
+  isDevicePhaseConnectionMap,
+  type DevicePhaseConnection,
+} from '../../../shared-domain/src/settings/devicePhaseConnections.ts';
 import { state } from './state.ts';
 import {
   BATTERY_CONTROL_DEVICES,
@@ -14,6 +18,8 @@ import {
   NATIVE_EV_WIRING_DEVICES,
   OPERATING_MODE_SETTING,
   RESPECT_EXTERNAL_OFF_DEVICES,
+  DEVICE_PHASE_CONNECTIONS,
+  MAIN_FUSE_SUPPLY,
   DEVICE_START_POLICIES,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
   TEMPERATURE_CONTROL_MODES,
@@ -32,6 +38,8 @@ export type ModeSettingsRead = {
   managed: unknown;
   budgetExempt: unknown;
   respectExternalOff: unknown;
+  devicePhaseConnections: unknown;
+  mainFuseSupply: unknown;
   deviceStartPolicies: unknown;
   temperatureControlDisabled: unknown;
   temperatureControlModes: unknown;
@@ -56,6 +64,11 @@ export const readStrictBooleanSettingMap = (
   return Object.fromEntries(entries.filter(([, entry]) => entry === true));
 };
 
+export const readDevicePhaseConnections = (value: unknown): Record<string, DevicePhaseConnection> | null => {
+  if (value === undefined || value === null) return {};
+  return isDevicePhaseConnectionMap(value) ? { ...value } : null;
+};
+
 export const readModeAliases = (value: unknown): Record<string, string> | null => (
   readSharedModeAliases(value)
 );
@@ -69,6 +82,8 @@ export const readModeSettings = async (homeId: string): Promise<ModeSettingsRead
     getSetting(MANAGED_DEVICES),
     getSetting(BUDGET_EXEMPT_DEVICES),
     getSetting(RESPECT_EXTERNAL_OFF_DEVICES),
+    getSetting(DEVICE_PHASE_CONNECTIONS),
+    getSetting(MAIN_FUSE_SUPPLY),
     getSetting(DEVICE_START_POLICIES),
     getSetting(TEMPERATURE_CONTROL_DISABLED_DEVICES),
     getSetting(TEMPERATURE_CONTROL_MODES),
@@ -78,12 +93,12 @@ export const readModeSettings = async (homeId: string): Promise<ModeSettingsRead
   ]);
   const [
     mode, priorities, targets, controllables, managed,
-    budgetExempt, respectExternalOff, deviceStartPolicies,
+    budgetExempt, respectExternalOff, devicePhaseConnections, mainFuseSupply, deviceStartPolicies,
     temperatureControlDisabled, temperatureControlModes, nativeWiring, aliases, batteryControl,
   ] = values;
   return {
     mode, priorities, targets, controllables, managed,
-    budgetExempt, respectExternalOff, deviceStartPolicies,
+    budgetExempt, respectExternalOff, devicePhaseConnections, mainFuseSupply, deviceStartPolicies,
     temperatureControlDisabled, temperatureControlModes, nativeWiring, aliases, batteryControl,
   };
 };
@@ -116,6 +131,12 @@ export function applyDeviceStartPolicySettings(read: ModeSettingsRead): void {
   state.deviceStartPolicyMap = isDeviceStartPolicyMap(read.deviceStartPolicies)
     ? read.deviceStartPolicies
     : state.deviceStartPolicyMap;
+}
+
+export function applyDevicePhaseSettings(read: ModeSettingsRead): void {
+  state.devicePhaseConnectionMap = readDevicePhaseConnections(read.devicePhaseConnections)
+    ?? state.devicePhaseConnectionMap;
+  state.mainFuseSupply = read.mainFuseSupply;
 }
 
 export function applyTemperatureControlSettings(read: ModeSettingsRead): void {
