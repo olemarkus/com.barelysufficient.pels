@@ -45,7 +45,7 @@ describe('inverter input hand-back eligibility', () => {
       const inputs = readInverterPlanInputs(h);
       expect(inputs).toEqual([{ kind: 'hand_back', deviceId: 'pv' }]);
       const planner = new InverterCurtailmentPlanner({ inputs: () => inputs, exportCostly: () => true });
-      expect(planner.decide(-3000, 10_000)).toEqual([{ kind: 'release', deviceId: 'pv' }]);
+      expect(planner.decide(-3000, 10_000, 0, null)).toEqual([{ kind: 'release', deviceId: 'pv' }]);
       expect(planner.releaseAll()).toEqual([{ kind: 'release', deviceId: 'pv' }]);
     },
   );

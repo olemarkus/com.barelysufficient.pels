@@ -261,6 +261,8 @@ export type DecisionSentenceInput = {
   gridImportHigh: boolean;
   /** A phase over its share of the main fuse with nothing left to limit on it. */
   unrelievedPhase?: 'L1' | 'L2' | 'L3';
+  /** A phase exporting past its target: PELS turns solar and battery output down. */
+  exportPhase?: 'L1' | 'L2' | 'L3';
   // `null` when no limit is in force (no grid import limit, Capacity limit or
   // budget pace): the snapshot parser accepts a safe pace only with its source.
   // Then no hour is quiet against a limit, and the on-track rung says instead
@@ -496,11 +498,9 @@ const resolveGridImportDecisionSentence = (input: DecisionSentenceInput): Decisi
   };
 };
 
-export const buildDecisionSentence = (
-  input: DecisionSentenceInput,
-): DecisionSentenceResult => {
-  // A phase at the main fuse with nothing managed left to ease off leads: the
-  // owner is the only one who can act, and the net figure can look fine.
+// A phase at the main fuse with nothing left to ease off, or exporting past it,
+// leads: the net figure can look fine while one phase is the problem.
+const resolvePhaseSentence = (input: DecisionSentenceInput): DecisionSentenceResult | null => {
   if (input.unrelievedPhase !== undefined) {
     return {
       text: `${input.unrelievedPhase} is close to your main fuse and PELS has no more devices to ease off. `
@@ -508,6 +508,20 @@ export const buildDecisionSentence = (
       positive: false,
     };
   }
+  if (input.exportPhase !== undefined) {
+    return {
+      text: `${input.exportPhase} is exporting close to your main fuse. PELS is easing back battery and solar output.`,
+      positive: false,
+    };
+  }
+  return null;
+};
+
+export const buildDecisionSentence = (
+  input: DecisionSentenceInput,
+): DecisionSentenceResult => {
+  const phaseSentence = resolvePhaseSentence(input);
+  if (phaseSentence !== null) return phaseSentence;
 
   // 0. Grid import is above the grid import limit's working target: the one
   // instantaneous limit, so it leads.

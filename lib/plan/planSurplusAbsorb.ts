@@ -1,4 +1,6 @@
-import { phaseBoundedPoolKw, resolvePhaseRoomAxis, spendPhaseRoom } from './phase/phaseRoom';
+import {
+  phaseBoundedPoolKw, phaseExportPoolKw, resolvePhaseBudget, spendPhaseBudget,
+} from './phase/phaseRoom';
 import type { PhasePower } from './phase/phasePower';
 import { resolveSurplusCeilingStepId, type PlanEngineState } from './planState';
 import type { ResolvedPriceOptimizationConfig } from '../price/priceOptimizer';
@@ -743,7 +745,7 @@ export function resolveSurplusEligibility(
   // device's measured draw is already out of the export.
   let storageKw = pool.poolKw - pool.deviceAddBackKw;
   let demandAbove: SurplusDemand = 'none';
-  let phaseRoom = resolvePhaseRoomAxis(phasePower);
+  let phaseBudget = resolvePhaseBudget(phasePower);
   // What every consumer so far takes of a battery's share, kW, and each
   // battery's offer at its turn with that running total: what the consumers
   // after it take is the difference at the end.
@@ -769,12 +771,15 @@ export function resolveSurplusEligibility(
     }
     const { dev } = consumer;
     const measuredKw = pool.addedBackIds.has(dev.id) ? positiveOrZero(dev.currentDrawKw) : 0;
-    const devicePoolKw = phaseBoundedPoolKw(phaseRoom, dev.phaseFootprint, poolKw, measuredKw);
+    const devicePoolKw = Math.max(
+      phaseBoundedPoolKw(phaseBudget.room, dev.phaseFootprint, poolKw, measuredKw),
+      phaseExportPoolKw(phaseBudget.exportRemainder, dev.phaseFootprint, phaseBudget.room),
+    );
     const claim = dev.surplusTracking
       ? claimForTrackingDevice(dev, state, devicePoolKw, nowTs)
       : claimForFixedDevice(dev, state, devicePoolKw, hardOff, nowTs);
     poolKw -= claim.claimKw;
-    phaseRoom = spendPhaseRoom(phaseRoom, dev.phaseFootprint, Math.max(0, claim.claimKw - measuredKw));
+    phaseBudget = spendPhaseBudget(phaseBudget, dev.phaseFootprint, Math.max(0, claim.claimKw - measuredKw));
     if (claim.want.kind === 'waiting') storageKw -= claim.want.runKw;
     if (DEMAND_RANK[claim.want.kind] > DEMAND_RANK[demandAbove]) demandAbove = claim.want.kind;
     // What it takes of a battery's share above it: its smallest step while it

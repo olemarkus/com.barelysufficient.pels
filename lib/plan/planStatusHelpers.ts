@@ -92,6 +92,7 @@ const normalizeMeasuredMetaFields = (
       physicalLimitBreached: meta.physicalLimitBreached,
       phase: roundPhasePower(meta.phase),
       unrelievedPhase: meta.unrelievedPhase,
+      exportPhase: meta.exportPhase ?? null,
       headroomKw: roundTo(meta.headroomKw, PLAN_META_KW_STEP),
       shortfallBudgetHeadroomKw: roundTo(meta.shortfallBudgetHeadroomKw, PLAN_META_KW_STEP),
       hardCapHeadroomKw: roundTo(meta.hardCapHeadroomKw, PLAN_META_KW_STEP),

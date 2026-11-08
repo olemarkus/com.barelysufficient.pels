@@ -56,7 +56,18 @@ export type InverterCommand = {
 };
 
 export type InverterPlanner = {
-  decide(netImportW: number, nowMs: number): InverterDecision[];
+  /**
+   * `phaseExportExcessW` is export past a phase's target the batteries did not
+   * answer: it allows curtailment whatever the price says. `phaseExportRoomW` is
+   * the lowest phase's export room less its clear band, `null` without phase
+   * protection: a held inverter stays held until there is room for what it holds back.
+   */
+  decide(
+    netImportW: number,
+    nowMs: number,
+    phaseExportExcessW: number,
+    phaseExportRoomW: number | null,
+  ): InverterDecision[];
   releaseAll(): InverterDecision[];
 };
 

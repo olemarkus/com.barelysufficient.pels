@@ -1,3 +1,4 @@
+import type { PhaseName } from '../../../packages/planner-types/src/phaseFootprint';
 import type { PhaseRoomAxis } from '../phase/phaseRoom';
 import type { RestoreHeadroomAxes } from './headroomLedger';
 import type { DrawEvidenceReads } from '../../observer/observedDeviceStateProjection';
@@ -81,6 +82,8 @@ export type RestoreCycle = {
   readonly headroomReserves: readonly HeadroomReserve[];
   /** The phases' room as the pass has spent it: a swap counts a donor only for what it frees on them. */
   readonly readPhaseRoom: () => PhaseRoomAxis;
+  /** The export room left on a phase before its target, kW; `null` while phases are not protected. */
+  readonly readPhaseExportRoomKw: (phase: PhaseName) => number | null;
   readonly batchState: RestoreBatchState;
   /**
    * Startup or runtime, resolved once from this cycle's rebuild trigger. It was

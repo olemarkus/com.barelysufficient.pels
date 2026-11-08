@@ -1,3 +1,5 @@
+import { phaseRoomFor, resolvePhaseRoomAxis, type PhaseRoomAxis } from '../phase/phaseRoom';
+import type { PhaseFootprint } from '../../../packages/planner-types/src/phaseFootprint';
 /**
  * The home-battery stage that runs before shedding selection, every measured
  * cycle: it keeps, steps down or hands back the holds PELS already has, decides
@@ -388,6 +390,13 @@ const keepLimitLever = (
   const reading = readLever(storage, lever);
   const heldDischargeW = -lever.setpointW;
   if (heldDischargeW <= 0) return { kind: 'hold', lever: reading };
+  // A hold easing discharge for an exporting phase sits below the battery's own
+  // mode on purpose: only the restore lane ends it, once the phase has room. Its
+  // delivery ceiling still applies, so it can never hold discharge past reserve.
+  if (lever.exportPhase !== undefined) {
+    const heldW = Math.min(heldDischargeW, storage.deliveryCeilingW);
+    return { kind: 'hold', lever: { ...reading, setpointW: toSetpointW(heldW) } };
+  }
   const keptW = balance.deficitW > 0 ? heldDischargeW : resolveLoweredDischargeW(storage, lever, balance, nowTs);
   const dischargeW = Math.min(keptW, storage.deliveryCeilingW);
   const ownModeDischargeW = storage.continuousPlan === undefined ? Math.max(0, -lever.preClaimSignedW) : 0;
@@ -463,6 +472,7 @@ class StorageReliefCycle {
     /** What the allocator offered each battery at its place in the priority order. */
     private readonly offers: ReadonlyMap<string, StorageSurplusOffer>,
     private readonly nowTs: number,
+    private readonly phaseRoom: PhaseRoomAxis,
   ) {}
 
   release(
@@ -474,14 +484,24 @@ class StorageReliefCycle {
     return { decision: { kind: 'release', reason }, withheldW: Math.max(0, dischargeW) };
   }
 
+  /** A held discharge may only step down within what its phases can take back as import. */
+  private balanceWithinPhases(footprint: PhaseFootprint): StorageBalance {
+    const room = phaseRoomFor(this.phaseRoom, footprint);
+    if (room.kind === 'off') return this.balance;
+    const roomW = Math.max(0, room.kw * 1000);
+    const headroomW = this.balance.headroomW === null ? roomW : Math.min(this.balance.headroomW, roomW);
+    return { ...this.balance, headroomW };
+  }
+
   decideObserved(
     deviceId: string,
     storage: ObservedStorageInput,
     previous: StorageLeverState | undefined,
+    footprint: PhaseFootprint,
   ): StorageStateSummary {
     const { nowTs } = this;
     const observedDischargeW = ownDischargeWOf(storage);
-    const step = this.resolveObservedStep(deviceId, storage, previous);
+    const step = this.resolveObservedStep(deviceId, storage, previous, footprint);
     if (step.kind === 'release') {
       const summary = {
         deviceId, reading: 'observed' as const, claimHeld: storage.claimHeld, powerLimitOff: !storage.powerLimitControl,
@@ -607,11 +627,14 @@ class StorageReliefCycle {
     deviceId: string,
     storage: ObservedStorageInput,
     previous: StorageLeverState | undefined,
+    footprint: PhaseFootprint,
   ): ObservedStep {
     const blocked = resolveStorageHoldBlock(storage);
     if (blocked !== 'holdable') return { kind: 'release', reason: blocked };
     const offer = this.offerFor(deviceId);
-    if (previous?.purpose === 'limit') return keepLimitLever(storage, previous, this.balance, this.nowTs);
+    if (previous?.purpose === 'limit') {
+      return keepLimitLever(storage, previous, this.balanceWithinPhases(footprint), this.nowTs);
+    }
     if (storage.continuousPlan !== undefined && storage.continuousPlan.validUntilMs > this.nowTs) {
       return { kind: 'hold', lever: continuousLever(storage, previous, this.balance, offer, this.nowTs) };
     }
@@ -664,7 +687,7 @@ export function decideStorageRelief(
     headroomW: power.headroom.kind === 'off' ? null : Math.max(0, power.headroom.kw * 1000),
     netImportW: power.drawKw * 1000,
     sampledAtMs: power.sampledAtMs,
-  }, offers, nowTs);
+  }, offers, nowTs, resolvePhaseRoomAxis(power.phase));
   const seen = new Set<string>();
   for (const device of devices) {
     // A battery PELS only watches is decided like one without a cluster: it
@@ -674,7 +697,7 @@ export function decideStorageRelief(
     const { storage } = device;
     const previous = levers[device.id];
     cycle.record(storage.reading === 'observed'
-      ? cycle.decideObserved(device.id, storage, previous)
+      ? cycle.decideObserved(device.id, storage, previous, device.phaseFootprint)
       : cycle.decideUnread(device.id, storage, previous));
   }
   for (const [deviceId, previous] of Object.entries(levers)) {
@@ -747,7 +770,15 @@ export function attachStorageDecisions(
 const toStorageHold = (battery: StorageStateSummary): StorageHold => {
   switch (battery.claim) {
     case 'none': return battery.powerLimitOff ? { kind: 'power_limit_off' } : { kind: 'none' };
-    case 'charge_limit': return { kind: 'charge_limit', heldBackKw: battery.heldBackChargeW / 1000 };
+    case 'charge_limit': return {
+      kind: 'charge_limit',
+      heldBackKw: battery.heldBackChargeW / 1000,
+      ...(battery.exportPhase === undefined ? {} : { exportPhase: battery.exportPhase }),
+    };
+    case 'relief': return {
+      kind: 'relief',
+      ...(battery.exportPhase === undefined ? {} : { exportPhase: battery.exportPhase }),
+    };
     case 'raise_charge': return { kind: 'surplus' };
     default: return { kind: battery.claim };
   }

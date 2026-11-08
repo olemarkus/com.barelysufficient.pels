@@ -39,6 +39,7 @@ import { resolveSheddingLatch } from './sheddingLatch';
 import { reportShortfallToGuard } from './shortfallVerdict';
 import { resolveShedPressure, type ShedPressure } from './pressure';
 import { runPhaseShedPass } from '../phase/phaseShedPass';
+import { runPhaseExportPass } from '../phase/phaseExportPass';
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const debug = getDebugEmitter('plan', 'plan');
@@ -63,7 +64,14 @@ export async function buildSheddingPlan(
     decidedIds: new Set([...scalar.shedSet, ...scalar.storageSetpoints.keys()]),
     undeliveredKw: resolveScalarInFlightRelief(context, state, scalar, storage),
   });
-  const merged = mergeShedDecisions(scalar, { ...phase, reliefByDevice: new Map() });
+  const phaseMerged = mergeShedDecisions(scalar, { ...phase, reliefByDevice: new Map() });
+  const exportPass = runPhaseExportPass(context, power.phase, new Set([
+    ...phaseMerged.shedSet, ...phaseMerged.storageSetpoints.keys(),
+  ]));
+  const merged = {
+    ...phaseMerged,
+    storageSetpoints: new Map([...phaseMerged.storageSetpoints, ...exportPass.storageSetpoints]),
+  };
   const selection = { ...scalar, ...merged };
   const { shedSet, shedReasons, shedStepTargets, storageSetpoints, outcome } = selection;
   const wasSheddingActive = state.sheddingActive;
@@ -93,6 +101,8 @@ export async function buildSheddingPlan(
     outcome,
     recoveredAtMs: recoveredFromShedding ? nowTs : null,
     unrelievedPhase: phase.unrelievedPhase,
+    phaseExportExcessKw: exportPass.remainingExcessKw,
+    exportPhase: exportPass.exportPhase,
   };
 }
 /* eslint-enable functional/immutable-data */

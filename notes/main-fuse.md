@@ -84,8 +84,27 @@ no credit, so one still responding also holds the next unknown back.
 The Overview's "no more devices" line is set only for a phase with nothing limited on it this cycle, no live credit,
 and no candidate left.
 
-A battery is only asked to stop charging (`chargeOnly`, bounded by the phase's own draw), never to discharge
-for a phase.
+A battery with a known footprint may discharge to cover its phase, after cutting its charge, bounded by the phase's
+import (three times the lowest phase's for a three-phase battery) and by its own ladder and reserve rules. A battery
+on an unknown phase only cuts its charge. The pass credits a battery's whole change against the phase; between
+cycles its stopped charge and its promised discharge stay separate credits for the scalar side (pending relief and
+`StorageShedTerm`). A held discharge steps down only within what its phases can take back, and the hand-back does
+not spend it on the phase axis.
+
+## Export overload
+
+A phase exporting past its target is breached in the export direction when the meter reports direction. Loads are
+never limited for it. The remedies run in order: a battery discharging on that phase is asked to discharge less
+(`phase/phaseExportPass.ts`); what is left goes to a PELS-controlled inverter, past the price-only eligibility, by the
+excess (repeated each reading, so a three-phase inverter converges); and surplus loads on that phase see the excess
+in the pool, spent between consumers, and held to the import room of the device's other phases. The card and the
+Overview name the phase.
+
+Inverter footprints are out of scope, so production is bounded instead: it never drops past three times the excess
+from where the breach began, and lowering stops once a real drop did nothing for the phase, because that inverter
+does not feed it. A held inverter stays held until the phase has room for what it holds back plus a clear band, and
+a battery hand-back from an export hold is gated the same way, by its share of the returning discharge (from the
+live continuous plan when there is one).
 
 ## Credit
 
@@ -115,3 +134,10 @@ escalation, and a phase with nothing left to limit counts as unactionable while 
 
 Import direction only: an exporting phase is never breached, and a current-only meter acts only while the
 home as a whole imports.
+
+## Forecasting scope
+
+The battery plan and smart tasks plan against the effective ceiling (`planningPowerCeiling`,
+`resolvePlanningCeilingKw`), which includes the fuse total through the grid import limit, so the car and batteries
+share a cheap hour in priority order under what the connection carries. Neither forecasts per phase; phases are held
+live by the shed pass, the phase room and the export pass above.

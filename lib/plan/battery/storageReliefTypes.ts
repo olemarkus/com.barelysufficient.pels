@@ -1,3 +1,4 @@
+import type { PhaseName } from '../../../packages/planner-types/src/phaseFootprint';
 import type { StorageDecision } from '../../planContract/storageDecision';
 import type { StorageLeverState } from '../planState';
 import type { StorageShedTerm } from '../shedding/types';
@@ -20,6 +21,8 @@ export type StorageClaimReason = 'none' | 'relief' | 'charge_limit' | 'cap_for_d
 /** One battery as this cycle left it, for the state log. */
 export type StorageStateSummary = {
   deviceId: string;
+  /** The hold exists to bring this exporting phase back under its target. */
+  exportPhase?: PhaseName;
   reading: 'observed' | 'missing' | 'absent';
   claimHeld: boolean;
   /**

@@ -4,7 +4,7 @@ import { resolvePhasePower, withholdPhaseRoom } from '../../lib/plan/phase/phase
 import type { PhaseReading } from '../../lib/power/phaseReading';
 import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';
 import {
-  phaseBoundedPoolKw, phaseRoomFor, resolvePhaseRoomAxis, spendPhaseRoom, swapDonorPhaseShare,
+  phaseBoundedPoolKw, phaseExportPoolKw, phaseRoomFor, resolvePhaseRoomAxis, spendPhaseExport, spendPhaseRoom, swapDonorPhaseShare,
 } from '../../lib/plan/phase/phaseRoom';
 
 const FUSE = { kind: 'on', supply: 'three_phase_neutral', amps: 25 } as const;
@@ -135,9 +135,41 @@ describe('surplus within phase room', () => {
 describe('published phase figures', () => {
   it('are rounded so a few watts do not change the plan signature', () => {
     const meta = buildPlanMeta({
-      phase: { kind: 'on', phases: [{ phase: 'L1', drawKw: 5.2049, targetKw: 5.175, roomKw: -0.0299, breached: true }] },
+      phase: { kind: 'on', phases: [{ phase: 'L1', drawKw: 5.2049, targetKw: 5.175, roomKw: -0.0299, breached: true, exportBreached: false, exportExcessKw: 0 }] },
     });
     const normalized = normalizePlanMeta(meta);
     expect(normalized.powerIsMeasured && normalized.phase.kind === 'on' && normalized.phase.phases[0]!.drawKw).toBe(5.2);
+  });
+});
+
+describe('an exporting phase past its target', () => {
+  it('is an export breach only with signed readings', () => {
+    const power = resolvePhasePower(FUSE, healthy([-6.2, 1, 1]), -4.2);
+    expect(power.kind === 'on' && power.phases[0]).toMatchObject({ exportBreached: true, breached: false });
+    const unsigned = resolvePhasePower(FUSE, healthy([6.2, 1, 1], { signed: false, current: [27, 4, 4] }), 8);
+    expect(unsigned.kind === 'on' && unsigned.phases[0]?.exportBreached).toBe(false);
+  });
+});
+
+describe('surplus on a phase exporting past its target', () => {
+  const remainder = (leftKw: number) => new Map([['L1', leftKw] as const]);
+
+  it('offers what is left of the export to a device on that phase', () => {
+    expect(phaseExportPoolKw(remainder(1), { kind: 'single', phase: 'L1' }, { kind: 'off' })).toBe(1);
+    expect(phaseExportPoolKw(remainder(1), { kind: 'single', phase: 'L2' }, { kind: 'off' })).toBe(0);
+    expect(phaseExportPoolKw(remainder(1), { kind: 'unknown' }, { kind: 'off' })).toBe(0);
+  });
+
+  it('holds a three-phase device to the import room of its other phases', () => {
+    const room = { kind: 'on', roomKw: { L1: 9, L2: 0.5, L3: 4 } } as const;
+    expect(phaseExportPoolKw(remainder(1), { kind: 'all_three' }, room)).toBeCloseTo(1.5);
+    expect(phaseExportPoolKw(remainder(1), { kind: 'all_three' }, { kind: 'off' })).toBe(3);
+  });
+
+  it('spends the export between consumers', () => {
+    const after = spendPhaseExport(remainder(1), { kind: 'single', phase: 'L1' }, 0.7);
+    expect(after.get('L1')).toBeCloseTo(0.3);
+    expect(spendPhaseExport(after, { kind: 'single', phase: 'L1' }, 1).size).toBe(0);
+    expect(spendPhaseExport(remainder(1), { kind: 'all_three' }, 1.5).get('L1')).toBeCloseTo(0.5);
   });
 });

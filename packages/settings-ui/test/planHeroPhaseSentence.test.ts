@@ -27,3 +27,9 @@ describe('decision sentence for a phase at the main fuse', () => {
     expect(buildDecisionSentence(base).text).not.toContain('main fuse');
   });
 });
+
+describe('decision sentence for a phase exporting past its target', () => {
+  it('names the phase', () => {
+    expect(buildDecisionSentence({ ...base, exportPhase: 'L3' }).text).toContain('L3 is exporting');
+  });
+});

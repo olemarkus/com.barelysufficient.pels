@@ -173,6 +173,7 @@ export class SilentMeterPlanBuilder {
         capacityLimitKw: settings.limitKw,
         hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(context),
         unrelievedPhase: null,
+        exportPhase: null,
       }),
       devices: decidedDevices,
       inverterDecisions: this.deps.inverterCurtailment.releaseAll(),
@@ -262,6 +263,8 @@ export class SilentMeterPlanBuilder {
       outcome: NO_SHEDDING_OUTCOME,
       recoveredAtMs: null,
       unrelievedPhase: null,
+      phaseExportExcessKw: 0,
+      exportPhase: null,
     };
   }
 }

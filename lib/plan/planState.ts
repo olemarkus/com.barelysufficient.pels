@@ -1,3 +1,4 @@
+import type { PhaseName } from '../../packages/planner-types/src/phaseFootprint';
 import type { ContinuousStoragePlan } from '../../packages/planner-types/src/planInputDevice';
 import type { PendingBinaryCommandRead } from '../ports/pendingBinaryCommand';
 import type { PlanRebuildTrigger } from './planRebuildTrigger';
@@ -188,6 +189,10 @@ export const NO_SHEDDING_OUTCOME: SheddingOutcome = Object.freeze({ kind: 'none'
  * battery back, and the next limit or surplus claims it afresh.
  */
 export type StorageLeverState = {
+  /** Set while this limit hold exists to bring an exporting phase back under its target. */
+  exportPhase?: PhaseName;
+  /** The continuous plan's setpoint this hold displaced: what a hand-back resumes while that plan is live. */
+  resumePlan?: { setpointW: number; validUntilMs: number };
   /**
    * The signed power this plan holds the battery at, W: negative discharges,
    * positive charges. Under a `limit` hold it is the battery's place on its

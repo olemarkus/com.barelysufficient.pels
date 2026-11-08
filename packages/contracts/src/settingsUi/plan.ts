@@ -91,6 +91,8 @@ export type SettingsUiPlanMetaMeasuredFields = {
   uncontrolledKw: number;
   /** The worst phase still breached with nothing left to limit on it; absent otherwise. */
   unrelievedPhase?: 'L1' | 'L2' | 'L3';
+  /** The worst phase exporting past its target; absent otherwise. */
+  exportPhase?: 'L1' | 'L2' | 'L3';
 };
 
 export type SettingsUiPlanMetaUnmeasuredFields = {

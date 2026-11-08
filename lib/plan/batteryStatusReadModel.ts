@@ -177,6 +177,9 @@ const resolveReason = (battery: HomeBatteryCard, hold: StorageHold, dryRun: bool
     // One PELS is only simulating has nothing more to say than its own reading.
     if (dryRun) return null;
   }
+  if ((hold.kind === 'relief' || hold.kind === 'charge_limit') && hold.exportPhase !== undefined) {
+    return { text: `Discharging less so ${hold.exportPhase} stays under your main fuse` };
+  }
   if (hold.kind === 'charge_limit' && hold.heldBackKw >= HELD_BACK_MIN_KW) {
     return { text: `${BATTERY_REASON_LINES.charge_limit} · ${hold.heldBackKw.toFixed(1)} kW more needed` };
   }

@@ -48,6 +48,8 @@ export type PlanMetaCycleFacts = {
   hourlyBudgetExhausted: boolean;
   /** The worst phase still breached with nothing left to limit on it. */
   unrelievedPhase: PhaseName | null;
+  /** The worst phase exporting past its target this cycle. */
+  exportPhase: PhaseName | null;
 };
 
 /** Nullable scalar fields belong to the published meta and logs, never the planner's policy. */
@@ -109,6 +111,7 @@ export function buildPlanMeta(facts: PlanMetaCycleFacts, power: MeasuredPower): 
     ...resolveMeasuredMetaFields(
       power, facts.reading, facts.planDevices, facts.capacityLimitKw, facts.context.capacity, facts.unrelievedPhase,
     ),
+    exportPhase: facts.exportPhase,
   };
 }
 

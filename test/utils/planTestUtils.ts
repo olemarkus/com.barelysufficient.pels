@@ -1480,6 +1480,7 @@ export const restoreCycleFixture = (
   headroomReserves: [],
   batchState: buildDisabledRestoreBatchState(),
   readPhaseRoom: () => ({ kind: 'off' }),
+  readPhaseExportRoomKw: () => null,
   phase: resolveRestoreDecisionPhase(state.currentRebuildTrigger),
 });
 
@@ -1534,6 +1535,8 @@ export const sheddingPlanFixture = (overrides: Partial<SheddingPlan> = {}): Shed
   shedStepTargets: new Map<string, string>(),
   storageSetpoints: new Map(),
   unrelievedPhase: null,
+  phaseExportExcessKw: 0,
+  exportPhase: null,
   sheddingActive: false,
   guardInShortfall: false,
   outcome: NO_SHEDDING_OUTCOME,

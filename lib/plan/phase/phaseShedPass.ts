@@ -104,6 +104,7 @@ function holdDecision(
 type PassCycle = {
   context: PlanContext;
   baseParams: ShedCandidateParams;
+  phases: readonly PhaseMeasurement[];
   /** Open deficit per phase, kW; only breached phases have an entry. */
   deficits: Map<PhaseName, number>;
   excluded: Set<string>;
@@ -117,11 +118,30 @@ type PassCycle = {
   spentOnPhases: Set<PhaseName>;
 };
 
+/**
+ * What a battery may do for this phase. Its discharge stays within the import it
+ * covers: the phase's, or for a three-phase battery three times the lowest
+ * phase's. A battery on an unknown phase, or a three-phase one with a phase not
+ * importing, only cuts its charge.
+ */
+function resolveBatteryBound(
+  cycle: PassCycle,
+  phase: PhaseMeasurement,
+  device: PlanInputDevice,
+): { drawKw: number; chargeOnly: boolean } {
+  if (device.phaseFootprint.kind === 'single') return { drawKw: phase.drawKw, chargeOnly: false };
+  const lowestImportKw = Math.min(...cycle.phases.map((entry) => entry.drawKw));
+  if (device.phaseFootprint.kind === 'all_three' && lowestImportKw > 0) {
+    return { drawKw: lowestImportKw * 3, chargeOnly: false };
+  }
+  return { drawKw: Math.max(phase.drawKw, 0) * 3, chargeOnly: true };
+}
+
 function candidatesFor(cycle: PassCycle, phase: PhaseMeasurement): ShedCandidate[] {
   const { baseParams, nowTs, excluded, footprintById } = cycle;
   const deficitKw = cycle.deficits.get(phase.phase) ?? 0;
   const storageLimit = baseParams.storageLimit.kind === 'measured'
-    ? { ...baseParams.storageLimit, drawKw: phase.drawKw, chargeOnly: true as const }
+    ? { ...baseParams.storageLimit, boundFor: (device: PlanInputDevice) => resolveBatteryBound(cycle, phase, device) }
     : baseParams.storageLimit;
   const { candidates } = buildSheddingCandidates({
     ...baseParams, needed: deficitKw, deficitKw, storageLimit,
@@ -147,7 +167,8 @@ function recordSpend(
   nextDecisions.set(candidate.id, {
     atMs: nowTs,
     reliefKw,
-    drawAtDecisionKw: drawById.get(candidate.id) ?? 0,
+    // A battery's relief lands on its setpoint: the measure of delivery is reaching it.
+    drawAtDecisionKw: setpoint === undefined ? drawById.get(candidate.id) ?? 0 : reliefKw + setpoint.setpointW / 1000,
     footprint,
     reason,
     ...(stepId === undefined ? {} : { stepId }),
@@ -160,6 +181,13 @@ function recordSpend(
   outcome.shedStepTargets = merged.shedStepTargets;
   outcome.storageSetpoints = merged.storageSetpoints;
 }
+
+/** A battery's relief on the phase is its whole change, discharge included, where the scalar credit is its charge. */
+const resolveCreditedKw = (candidate: ShedCandidate, selection: ShedSelection, chargeCreditKw: number): number => {
+  if (candidate.kind !== 'storage') return chargeCreditKw;
+  const setpoint = selection.storageSetpoints.get(candidate.id);
+  return setpoint === undefined || !setpoint.banked ? chargeCreditKw : (candidate.baseW - setpoint.setpointW) / 1000;
+};
 
 const deductRelief = (cycle: PassCycle, footprint: PhaseFootprint, reliefKw: number): void => {
   for (const [name, openKw] of cycle.deficits) {
@@ -179,8 +207,9 @@ function spendCandidate(
   const selection = selectShedDevices([candidate], deficitKw / share, reason, false, { kind: 'grid', deficitKw });
   const relief = selection.reliefByDevice.get(candidate.id);
   if (relief === undefined) return;
-  recordSpend(cycle, candidate, footprint, selection, reason, relief.creditedKw);
-  deductRelief(cycle, footprint, relief.creditedKw);
+  const creditedKw = resolveCreditedKw(candidate, selection, relief.creditedKw);
+  recordSpend(cycle, candidate, footprint, selection, reason, creditedKw);
+  deductRelief(cycle, footprint, creditedKw);
   cycle.spentOnPhases.add(phase);
   for (const [name] of cycle.deficits) {
     if (phaseShare(footprint, name) > 0) cycle.spentOnPhases.add(name);
@@ -295,6 +324,7 @@ export function runPhaseShedPass(
       limitSource: 'grid',
       physicalLimitBreached: true,
     },
+    phases,
     deficits,
     excluded: new Set([...scalar.decidedIds, ...live.map((entry) => entry.deviceId)]),
     outcome,
