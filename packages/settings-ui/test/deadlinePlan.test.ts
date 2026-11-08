@@ -189,6 +189,7 @@ const buildBootstrap = (
   power: {
     tracker: {},
     status: { state: 'unavailable', reason: 'no_status_recorded' },
+    phaseLoad: { state: 'none' },
     capacityPeak: { state: 'unavailable' },
     capacityScalars: { state: 'unavailable' },
     hardCapConfiguration: { state: 'unavailable' },

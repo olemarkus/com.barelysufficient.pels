@@ -175,6 +175,7 @@ const handlePowerUpdated = (power: unknown) => {
     }, {
       tracker: {},
       readings: { state: 'never' },
+      phaseLoad: { state: 'none' },
       capacityPeak: { state: 'unavailable' },
       capacityScalars: { state: 'unavailable' },
       hardCapConfiguration: { state: 'unavailable' },

@@ -9370,3 +9370,9 @@ md-switch {
 #modes-panel[data-setup-journey-panel="priorities"] .mode-row {
   grid-template-areas: "handle name rank";
 }
+
+.plan-phase-load {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}

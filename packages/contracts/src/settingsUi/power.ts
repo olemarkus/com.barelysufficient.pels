@@ -119,6 +119,15 @@ export type SettingsUiHardCapConfigurationRead =
   | { readonly state: 'resolved'; readonly configured: boolean }
   | { readonly state: 'unavailable' };
 
+/** Each phase's load against the main fuse; `none` when PELS has no trusted phases to show. */
+export type SettingsUiPhaseLoad =
+  | { readonly state: 'none' }
+  | {
+    readonly state: 'phases';
+    readonly fuseAmps: number;
+    readonly phases: readonly { readonly phase: string; readonly amps: number }[];
+  };
+
 export type SettingsUiPowerPayload = {
   /**
    * Usage HISTORY (buckets, daily totals, solar families) — always an object;
@@ -129,6 +138,7 @@ export type SettingsUiPowerPayload = {
   /** Producer-resolved readings fact; see `SettingsUiPowerReadings`. */
   readings: SettingsUiPowerReadings;
   status: SettingsUiPowerStatusRead;
+  phaseLoad: SettingsUiPhaseLoad;
   /**
    * The running app's own capacity scalars for the home this payload
    * describes. The running app retains its last-good values when a persisted

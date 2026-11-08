@@ -220,6 +220,8 @@ export type CapacitySettingsStore = {
    */
   noteWrite(baseKey: string): boolean;
   readHardCapConfiguration(): SettingsUiHardCapConfigurationRead;
+  /** The main fuse this store last accepted; off before any read. */
+  mainFuse(): MainFuse;
 };
 
 const CAPACITY_SCALAR_KEYS: ReadonlySet<string> = new Set([
@@ -253,6 +255,7 @@ export function createCapacitySettingsStore(
   // reads well-formed, or after an explicit write until the next malformed read.
   let malformedSinceMs: number | null = null;
   return {
+    mainFuse: () => (accepted.mainFuse.state === 'accepted' ? accepted.mainFuse.value : { kind: 'off' }),
     readHardCapConfiguration(): SettingsUiHardCapConfigurationRead {
       try {
         const keys = settings.getKeys();

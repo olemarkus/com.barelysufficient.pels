@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MeterPhasesRead, PhaseTriple } from '../../lib/ports/homeMeterReadings';
-import { PhaseReadingTracker } from '../../lib/power/phaseReading';
+import { PhaseReadingTracker, projectPhaseLoadForUi, type PhaseReading } from '../../lib/power/phaseReading';
 import { resolveMeterPhases } from '../../lib/device/meterPhases';
 
 const power = (powerW: PhaseTriple): MeterPhasesRead => ({ state: 'read', capabilityIds: [], powerW });
@@ -74,5 +74,28 @@ describe('PhaseReadingTracker', () => {
     const impossible = new PhaseReadingTracker();
     impossible.admit({ state: 'read', capabilityIds: [], currentA: [1, 1, 1] }, 9000, 1);
     expect(impossible.current()).toEqual({ kind: 'degraded' });
+  });
+});
+
+describe('projectPhaseLoadForUi', () => {
+  const fuse = { kind: 'on', supply: 'three_phase_neutral', amps: 25 } as const;
+  const healthy = (): PhaseReading => {
+    const tracker = new PhaseReadingTracker();
+    tracker.admit({ state: 'read', capabilityIds: [], powerW: [4600, -2300, 0], currentA: [20, 10, 0] }, 2300, 1);
+    return tracker.current();
+  };
+
+  it('shows measured amps against the fuse', () => {
+    expect(projectPhaseLoadForUi(healthy(), fuse)).toEqual({
+      state: 'phases',
+      fuseAmps: 25,
+      phases: [{ phase: 'L1', amps: 20 }, { phase: 'L2', amps: 10 }, { phase: 'L3', amps: 0 }],
+    });
+  });
+
+  it('shows nothing without a fuse, on other supplies, or without trusted phases', () => {
+    expect(projectPhaseLoadForUi(healthy(), { kind: 'off' })).toEqual({ state: 'none' });
+    expect(projectPhaseLoadForUi(healthy(), { ...fuse, supply: 'three_phase_no_neutral' })).toEqual({ state: 'none' });
+    expect(projectPhaseLoadForUi({ kind: 'degraded' }, fuse)).toEqual({ state: 'none' });
   });
 });

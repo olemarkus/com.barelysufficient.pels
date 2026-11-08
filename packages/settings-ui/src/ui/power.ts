@@ -1,3 +1,4 @@
+import { classifyPhaseLoad } from './phaseLoadRead.ts';
 import {
   powerList,
   powerEmpty,
@@ -132,6 +133,7 @@ const getPowerReadModel = async (): Promise<SettingsUiPowerPayload> => {
   if (payload) {
     return {
       ...payload,
+      phaseLoad: classifyPhaseLoad(payload.phaseLoad),
       capacityPeak: classifyCapacityPeak(payload.capacityPeak),
       capacityScalars: classifyCapacityScalarsRead(payload.capacityScalars),
       hardCapConfiguration: classifyHardCapConfigurationRead(payload.hardCapConfiguration),
@@ -141,6 +143,7 @@ const getPowerReadModel = async (): Promise<SettingsUiPowerPayload> => {
     tracker: {},
     readings: { state: 'never' },
     status: { state: 'unavailable', reason: 'read_failed' },
+    phaseLoad: { state: 'none' },
     capacityPeak: { state: 'unavailable' },
     capacityScalars: { state: 'unavailable' },
     hardCapConfiguration: { state: 'unavailable' },

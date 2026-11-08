@@ -20,6 +20,7 @@ const scriptedStore = (reads: CapacityScalarSettingsRead[]) => {
     read: vi.fn(() => (queue.length > 1 ? queue.shift() : queue[0]) as CapacityScalarSettingsRead),
     noteWrite: vi.fn((key: string) => key === 'grid_import_limit_kw'),
     readHardCapConfiguration: () => ({ state: 'resolved', configured: true }),
+    mainFuse: () => ({ kind: 'off' }),
   };
   return store;
 };

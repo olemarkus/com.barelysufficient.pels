@@ -391,6 +391,7 @@ const SCENARIO_FACTORIES: Record<AuditScenarioName, () => BootstrapAuditScenario
     power: {
       tracker: {},
       readings: { state: 'received', lastPowerUpdateMs: Date.UTC(2026, 3, 18, 10, 0, 0) },
+      phaseLoad: { state: 'none' },
       capacityPeak: { state: 'unavailable' },
       capacityScalars: { state: 'unavailable' },
       hardCapConfiguration: { state: 'unavailable' },

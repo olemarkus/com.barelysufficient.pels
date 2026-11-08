@@ -394,6 +394,7 @@ describe('Plan sorting', () => {
       tracker: {},
       readings: freshPower.readings,
       status: freshPower.status,
+      phaseLoad: { state: 'none' },
       capacityPeak: { state: 'unavailable' },
       capacityScalars: { state: 'unavailable' },
       hardCapConfiguration: { state: 'unavailable' },

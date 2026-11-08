@@ -258,7 +258,7 @@ describe('Limits & safety inline validation', () => {
       capacity_enabled: null, grid_import_enabled: true, grid_import_limit_kw: 3.3, capacity_period_minutes: 60,
     });
     const power = await import('../src/ui/power.ts');
-    vi.mocked(power.getPowerReadModel).mockResolvedValue({
+    vi.mocked(power.getPowerReadModel).mockResolvedValue({ phaseLoad: { state: 'none' },
       tracker: {}, readings: { state: 'never' },
       status: { state: 'unavailable', reason: 'no_measurement' },
       capacityPeak: { state: 'recorded', peakKw: 4.75 },
@@ -378,7 +378,7 @@ describe('Limits & safety inline validation', () => {
       capacity_enabled: false, grid_import_enabled: true, grid_import_limit_kw: undefined,
     });
     const power = await import('../src/ui/power.ts');
-    vi.mocked(power.getPowerReadModel).mockResolvedValue({
+    vi.mocked(power.getPowerReadModel).mockResolvedValue({ phaseLoad: { state: 'none' },
       tracker: {}, readings: { state: 'never' },
       status: { state: 'unavailable', reason: 'no_measurement' },
       capacityPeak: { state: 'recorded', peakKw: 4.75 },

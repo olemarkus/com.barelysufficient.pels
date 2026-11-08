@@ -340,6 +340,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       }),
       readHardCapConfiguration: () => ({ state: 'resolved', configured: true }),
       noteWrite: () => false,
+      mainFuse: () => ({ kind: 'off' }),
     },
     getCapacityScalars: () => ({ ...capacitySettings, dryRun: capacityDryRun }),
     getCurrentMonthCapacityPeakKw: () => null,

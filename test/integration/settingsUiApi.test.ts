@@ -353,6 +353,7 @@ describe('settingsUiApi', () => {
       readings: { state: 'received', lastPowerUpdateMs: 123 },
       status: { state: 'live', status: { lastPowerUpdate: 123, priceLevel: 'cheap' } },
       // The fixture app has recorded no completed quarter this month.
+      phaseLoad: { state: 'none' },
       capacityPeak: { state: 'no_completed_quarter' },
       capacityScalars: {
         state: 'resolved',
@@ -698,6 +699,7 @@ describe('settingsUiApi', () => {
       readings: { state: 'received', lastPowerUpdateMs: 123 },
       status: { state: 'live', status: { lastPowerUpdate: 123, priceLevel: 'cheap' } },
       // The fixture app has recorded no completed quarter this month.
+      phaseLoad: { state: 'none' },
       capacityPeak: { state: 'no_completed_quarter' },
       capacityScalars: {
         state: 'resolved',

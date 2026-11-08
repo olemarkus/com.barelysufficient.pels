@@ -53,6 +53,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     refreshTargetDevicesSnapshot: async () => undefined,
     getCapacityScalars: notWired('getCapacityScalars'),
     capacityGuard: { phaseReadings: new PhaseReadingTracker() } as unknown as PelsHost['capacityGuard'],
+    capacitySettingsStore: { mainFuse: () => ({ kind: 'off' }) } as unknown as PelsHost['capacitySettingsStore'],
     getCurrentMonthCapacityPeakKw: () => null,
     getPriceSourcePayloadsForUi: () => NO_PRICE_SOURCE_PAYLOADS,
     getPvForecastSourceUiStatus: () => ({ kind: 'unknown' }),

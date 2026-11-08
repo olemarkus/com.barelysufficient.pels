@@ -1,3 +1,5 @@
+import type { MainFuse } from '../../packages/contracts/src/capacitySettings';
+import type { SettingsUiPhaseLoad } from '../../packages/contracts/src/settingsUi/power';
 import type { MeterPhasesRead, PhaseTriple } from '../ports/homeMeterReadings';
 
 export type PhaseLoad = {
@@ -115,4 +117,19 @@ export class PhaseReadingTracker {
       this.reading = { kind: 'degraded' };
     }
   }
+}
+
+/** A phase's load in amps: measured when the meter reports it, derived at nominal voltage otherwise. */
+const phaseAmps = (load: PhaseLoad): number => load.currentA ?? Math.abs(load.kw) * 1000 / NOMINAL_VOLTAGE_V;
+
+/** The settings UI's view: only a three-phase fuse with trusted phases has anything to show. */
+export function projectPhaseLoadForUi(reading: PhaseReading, fuse: MainFuse): SettingsUiPhaseLoad {
+  if (reading.kind !== 'healthy' || fuse.kind !== 'on' || fuse.supply !== 'three_phase_neutral') {
+    return { state: 'none' };
+  }
+  return {
+    state: 'phases',
+    fuseAmps: fuse.amps,
+    phases: reading.phases.map((load) => ({ phase: load.phase, amps: phaseAmps(load) })),
+  };
 }
