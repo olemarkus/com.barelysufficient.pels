@@ -55,9 +55,6 @@ const MIN_EXCURSION_PERCENT = 20;
 const MAX_SPAN_MS = 72 * 60 * 60 * 1000;
 /** A longer gap between meter samples leaves the integral unknown. */
 const MAX_SAMPLE_GAP_MS = 5 * 60 * 1000;
-/** A nonzero power reading older than this is no longer evidence of what flows now. */
-const MAX_POWER_READING_AGE_MS = 15 * 60 * 1000;
-const IDLE_POWER_W = 50;
 const MS_PER_HOUR = 3_600_000;
 
 type Span = {
@@ -80,11 +77,10 @@ const median = (values: readonly [number, ...number[]]): number => {
   return sorted[Math.floor(sorted.length / 2)] ?? values[0];
 };
 
-const readingOf = (device: DeviceSurfaces, nowMs: number): Reading | null => {
+const readingOf = (device: DeviceSurfaces): Reading | null => {
   const power = device.batteryPower;
   const level = device.batteryLevel;
   if (!device.available || power === undefined || level === undefined) return null;
-  if (Math.abs(power.signedW) > IDLE_POWER_W && nowMs - power.observedAtMs > MAX_POWER_READING_AGE_MS) return null;
   return { percent: Math.round(level.percent), signedW: power.signedW };
 };
 
@@ -108,7 +104,7 @@ export class BatteryEfficiencyLearner {
     for (const device of this.getBatteries()) {
       if (device.deviceClass !== 'battery' || !device.managed) continue;
       seen.add(device.id);
-      this.step(device.id, readingOf(device, nowMs), nowMs);
+      this.step(device.id, readingOf(device), nowMs);
     }
     for (const deviceId of this.tracking.keys()) {
       if (!seen.has(deviceId)) this.tracking.delete(deviceId);
