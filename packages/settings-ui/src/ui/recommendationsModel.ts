@@ -398,6 +398,28 @@ export const resolveSetpointShedLimitRecommendations = (
 });
 
 /**
+ * A managed battery that PELS can only watch until a Homey API key is saved.
+ * The setup path closes once a home is configured, so this is what reaches a
+ * home that has finished setup. The caller passes managed devices only.
+ */
+export const resolveBatteryApiKeyRecommendations = (
+  devices: readonly SettingsUiDeviceDetailItem[],
+): SetupRecommendation[] => devices.flatMap((device) => {
+  if (device.batteryControl !== 'needs_homey_api_key') return [];
+  return [{
+    id: recommendationId('battery-api-key', device.id),
+    version: RECOMMENDATION_VERSION,
+    category: 'recommendation',
+    title: `Let PELS control ${formatDisplayDeviceName(device.name)}`,
+    body: 'PELS can only watch this battery until you add a Homey API key with Flow permission. '
+      + 'With the key, PELS can use it to hold your limit and store spare solar. '
+      + 'Add the key in the Battery section of its device page.',
+    actionLabel: 'Review device',
+    target: { kind: 'device', deviceId: device.id },
+  }];
+});
+
+/**
  * A managed device that keeps reporting another value after PELS sets it.
  * Present only while the runtime reports the contest, so it leaves once the
  * device keeps its settings for an hour. The caller passes managed devices

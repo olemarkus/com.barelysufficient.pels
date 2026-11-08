@@ -849,7 +849,7 @@ keeps the word for what PELS holds it to do.
 | Reason in its own mode, Power-limit control off (PELS never takes it over: no charge cap, no discharge, no surplus claim) | `Power-limit control is off: its own app is in charge` |
 | Reason in its own mode, its app rejected PELS's claim (a Sessy on its cloud login), for 6 h, or until PELS restarts or its controls change | `PELS can only watch it: its app does not accept control` |
 | Reason in its own mode, a battery PELS cannot claim (no usable signed power setpoint, or no Homey/API mode to switch to) | `PELS can only watch it: its app does not give Homey control` |
-| Reason in its own mode, a battery PELS drives through its app's Flow actions while no Homey API key with Flow permission is saved | `PELS can only watch it: add a Homey API key to let PELS control it` |
+| Reason in its own mode, a battery PELS drives through its app's Flow actions while no Homey API key with Flow permission is saved | `PELS can only watch it: add a Homey API key so it can help with your limit and solar` |
 | Battery section, Homey API key block: no key / saved key not checked yet / Homey unreachable / how-to (the charger block's other lines and buttons unchanged) | `A Homey API key is needed for PELS to control this battery.` / `Check the saved key to let PELS control this battery.` / `Homey access is unavailable. Check the key and try again.` / `… One key works for all supported batteries, cars and chargers.` |
 | Battery section subtitle on the device page: drivable / one PELS can only watch | `Control and priority` / `What PELS sees` |
 | Device-list row, a battery PELS cannot drive (watch-only or no setpoint): stands in for the Power-limit control switch, which is not shown | the card's reason line above |
@@ -2471,6 +2471,21 @@ named `Set the limited temperature for {device name}`.
   Nothing shows until the saved limits are read; a key that reads absent counts
   as "nothing saved" only once fresh reads a moment apart agree. The field
   follows "Device-page limited temperature on a setpoint-only device" above.
+
+### Add a Homey API key for a battery
+
+A managed battery that reads `PELS can only watch it: add a Homey API key so it
+can help with your limit and solar` gets a recommendation, because the setup path
+has closed for most homes that reach this state.
+`resolveBatteryApiKeyRecommendations` in
+`packages/settings-ui/src/ui/recommendationsModel.ts` names it `Let PELS control
+{device name}`.
+
+- Body: `PELS can only watch this battery until you add a Homey API key with Flow
+  permission. With the key, PELS can use it to hold your limit and store spare
+  solar. Add the key in the Battery section of its device page.`
+- Action: `Review device`, opening the device page.
+- Saving a usable key removes the recommendation; dismissing it is retained.
 
 ### Car battery recommendations
 

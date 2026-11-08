@@ -290,7 +290,7 @@ Check these, in order:
   FusionSolar app's Modbus connection take commands only through their app's
   Flow cards, which PELS runs with a
   Homey API key with **Flow** permission. Its card then reads "PELS can only
-  watch it: add a Homey API key to let PELS control it". Create the key with
+  watch it: add a Homey API key so it can help with your limit and solar". Create the key with
   [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro) and save it in the **Battery** section of
   the battery's device page; one key serves every device. A Sigenergy battery also needs its plant device paired in the
   Sigenergy app. If the card instead reads "PELS can only watch it: its app
