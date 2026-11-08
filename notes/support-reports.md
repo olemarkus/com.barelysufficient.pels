@@ -80,10 +80,9 @@ the hour ends, so a flood costs a handful of writes and a report still says the 
 happened. Lines are written as they happen, because Homey exits the process before
 `onUninit` runs; lines from the start of a boot wait in memory until the database
 opens, and a line logged while another store holds a transaction waits for the next
-write. A report carries the newest kept lines of its window that fit 448 KiB, read
-newest first so a day of log is never built in memory only to be cut, and says how
-many older ones it left out. A daily report's heating observations
-(`notes/heating-shadow-diagnostics.md`) take their size out of those 448 KiB. A day's report about the whole app also leaves out each
+write. A report carries the kept lines of its window, read newest first up to 2 MiB
+so the app never builds more in memory than that, and says how many older ones it
+left out. A busy home's day is about 1 MiB. A day's report about the whole app also leaves out each
 command PELS sent, its acknowledgement and a stepped device's reported level
 (`DAY_REPORT_OMITTED_LOG_EVENTS`): its activity already records the states they led
 to, and on a busy home those lines alone pushed the morning out of the daily report
@@ -103,18 +102,35 @@ email) as its destination. It shows the text only when the clipboard is unavaila
 documents the optional `message` string, without a size limit.
 
 The description is limited to 1,500 characters and expected behavior to 800.
-The message limit is 512 KiB of UTF-8 bytes. Homey documents no limit, but on
-2026-10-24 it delivered 256 KiB and 512 KiB reports intact while a 1 MiB report got
-a log id and was never delivered, so a larger report would look sent and be lost.
-The largest realistic report, an app report with 1,000 activity entries, is about
-400 KiB. A device report carries at most 100 activity entries and 300 kept events,
-together about 190 KiB. The kept log comes on top. A report that would
-outgrow the limit leaves out the oldest log lines first and says how many. An owner's
-report still too large without any log is rejected, and no other evidence is cut: the
-owner can choose one device or a shorter window. Nobody can do that for the daily
-report or a report on an event, so they then leave out their oldest activity too, and
-say how many. A versioned opening marker and a closing
-marker containing the report identifier let received content be checked for truncation.
+The message is a plain-text header a person can read, then the evidence, then a
+closing marker:
+
+```
+PELS PROBLEM REPORT V2
+Type: daily, app
+Description: <what the owner wrote>
+Expected: <when given>
+Data (gzip, base64):
+<the report document as gzipped JSON, base64, on one line>
+END PELS REPORT <id>
+```
+
+What the owner wrote can span lines, so a reader takes the data from the line before
+the closing marker. That marker holds the report identifier, and gzip's checksum
+shows a cut.
+
+The message limit is 512 KiB of UTF-8 bytes, measured after compression. Homey
+documents no limit, but on 2026-10-24 it delivered 256 KiB and 512 KiB reports intact
+while a 1 MiB report got a log id and was never delivered, so a larger report would
+look sent and be lost. A day of evidence compresses to well under the limit. A report
+that would still outgrow it leaves out its oldest ordinary log lines first, then its
+oldest warnings and errors, and says how many. An owner's report still too large
+without any log is rejected, and no other evidence is cut: the owner can choose one
+device or a shorter window. Nobody can do that for the daily report or a report on an
+event, so they then leave out their oldest activity too, and say how many.
+
+Only the message keeps the evidence. The settings page gets the report's id,
+description and subject name, and the message for Copy report.
 
 At most four reports are retained in memory for 15 minutes. Preparing another
 report can evict an older draft or finished report, but never an in-flight or

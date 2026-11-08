@@ -380,12 +380,11 @@ const readDeviceEvents = (
 };
 
 /**
- * The most kept log one report reads, newest first: what the report's size
- * limit leaves beside a day of activity, so a day of log is never built in
- * memory only to be cut down. A daily report's heating observations take
- * their size out of it (`readLog`).
+ * The most kept log one report reads, newest first, so the app never builds more
+ * in memory than this. A busy home's day is about 1 MiB, and compressed it fits
+ * the report's size limit with the rest of the evidence.
  */
-export const SUPPORT_REPORT_LOG_BUDGET_BYTES = 448 * 1024;
+export const SUPPORT_REPORT_LOG_BUDGET_BYTES = 2 * 1024 * 1024;
 
 /**
  * What a day's report about the whole app leaves out of its log: each command
@@ -408,17 +407,13 @@ const omittedLogEvents = (request: SupportReportRequest): readonly string[] => (
   request.historyWindow === 'day' && request.subject.kind === 'app' ? DAY_REPORT_OMITTED_LOG_EVENTS : []
 );
 
-/** The kept log, within the log budget less what `beside` takes of the report. */
+/** The kept log, within the log budget. */
 const readLog = (
   host: SupportReportReads, request: SupportReportRequest, capturedAtMs: number,
-  beside: readonly SectionRead[],
 ): SupportReportLog => {
   const { fromMs, toMs } = supportReportWindow(request, capturedAtMs);
   const omittedEvents = omittedLogEvents(request);
-  const besideBytes = beside.reduce((sum, read) => (
-    read.state === 'available' ? sum + Buffer.byteLength(JSON.stringify(read.section), 'utf8') : sum), 0);
-  const maxBytes = Math.max(0, SUPPORT_REPORT_LOG_BUDGET_BYTES - besideBytes);
-  const read = readOptional(() => host.readLogTail(fromMs, toMs, maxBytes, omittedEvents));
+  const read = readOptional(() => host.readLogTail(fromMs, toMs, SUPPORT_REPORT_LOG_BUDGET_BYTES, omittedEvents));
   return read ? {
     state: 'available', lines: read.lines, overflow: read.overflow, fromMs, toMs, leftOutForSize: read.leftOut,
     omittedEvents,
@@ -481,7 +476,7 @@ export class SupportReportEvidenceSource {
           ? 'Retained device activity could not be read.' : 'Retained device activity is available only for Main.',
       },
       deviceEvents: readDeviceEvents(host, request, carLink, capturedAtMs),
-      log: readLog(host, request, capturedAtMs, heating),
+      log: readLog(host, request, capturedAtMs),
       sections: sectionReads.flatMap((read) => read.state === 'available' ? [read.section] : []),
       omissions: [
         ...subject.omissions,

@@ -21,22 +21,21 @@ const installReportStub = async (page: Page, uncertain = false, expired = false)
     let report: PreparedSupportReport = template;
     stub.__PELS_HOMEY_STUB__ = { apiHandlers: {
       // The stored rows behind the report's activity: a report row leaves out the id, session and tone.
-      'GET /ui_device_log': () => {
-        const { activity } = template.document;
-        return {
-          version: 2,
-          entries: activity.state === 'available' ? activity.entries.map((entry, index) => ({
-            ...entry, id: `activity-${index + 1}`, stateTone: 'held',
-            recordingStartedAtMs: activity.recordingsStartedAtMs[0] ?? entry.atMs,
-          })) : [],
-          retentionDays: 7, maxEntries: 1000, maxEntriesPerDevice: 100, persistence: 'stored',
-        };
-      },
+      'GET /ui_device_log': () => ({
+        version: 2,
+        entries: [{
+          id: 'activity-1', deviceId: 'heater', deviceName: 'Hall heater', atMs: 1700000000000,
+          stateMsg: 'Limited', stateKind: 'held', stateTone: 'held', powerMsg: null,
+          usageMsg: '18 °C · target 22 °C', statusMsg: 'Waiting for capacity',
+          recordingStartedAtMs: 1699990000000,
+        }],
+        retentionDays: 7, maxEntries: 1000, maxEntriesPerDevice: 100, persistence: 'stored',
+      }),
       'POST /support-report/prepare': (body) => {
         const request = body as SupportReportRequest;
         stub.reportRequests.push(request);
         report = { ...template, document: { ...template.document, request },
-          message: `PELS PROBLEM REPORT V1\n${JSON.stringify(request)}\nEND PELS REPORT report-1` };
+          message: `PELS PROBLEM REPORT V2\n${JSON.stringify(request)}\nEND PELS REPORT report-1` };
         return { ok: true, report };
       },
       'POST /support-report/report-1/send': (body) => {

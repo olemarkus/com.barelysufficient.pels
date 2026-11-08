@@ -15,6 +15,7 @@ import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, DAILY_DIAGNOSTICS_REPORT, HOMEY_ENERGY_METER_DEVICE_ID,
 } from '../../lib/utils/settingsKeys';
 import { httpResponse } from '../helpers/httpResponse';
+import { decodeReportMessage } from '../helpers/supportReportEvidenceFixtures';
 import type { SupportReportDocument } from '../../packages/contracts/src/supportReport';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
@@ -97,7 +98,7 @@ describe('passive heating observations (SDK-boundary e2e)', () => {
     await vi.advanceTimersByTimeAsync(60 * MINUTE_MS);
     expect(posts()).toHaveLength(1);
     const { message } = JSON.parse(String(posts()[0]?.[1]?.body)) as { message: string };
-    const document = JSON.parse(message.split('\n')[1] ?? '{}') as SupportReportDocument;
+    const document = decodeReportMessage(message);
     expect(document.trigger).toBe('daily');
     expect(reportedHeaterIds(document)).toEqual(['heater-main']);
   });

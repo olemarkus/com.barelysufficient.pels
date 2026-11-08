@@ -1,7 +1,10 @@
+import { randomBytes } from 'node:crypto';
+import { gunzipSync } from 'node:zlib';
 import type {
   SettingsUiDeviceActivityEntry,
   SettingsUiDeviceLogPayload,
 } from '../../packages/contracts/src/settingsUi/devices';
+import type { SupportReportDocument } from '../../packages/contracts/src/supportReport';
 
 export const REPORT_HOUR_MS = 60 * 60 * 1000;
 export const REPORT_CAPTURE_MS = Date.UTC(2026, 9, 23, 12);
@@ -22,3 +25,12 @@ export const reportHistoryFixture = (
 ): SettingsUiDeviceLogPayload => ({
   version: 2, entries, retentionDays: 7, maxEntries: 1000, maxEntriesPerDevice: 100, persistence: 'stored',
 });
+
+/** The document a report message carries, read the way its recipient reads it. */
+export const decodeReportMessage = (message: string): SupportReportDocument => {
+  const lines = message.trimEnd().split('\n');
+  return JSON.parse(gunzipSync(Buffer.from(lines.at(-2) ?? '', 'base64')).toString('utf8')) as SupportReportDocument;
+};
+
+/** Text that barely compresses: one byte of it costs about one byte of the encoded report. */
+export const incompressibleText = (bytes: number): string => randomBytes(bytes).toString('base64').slice(0, bytes);

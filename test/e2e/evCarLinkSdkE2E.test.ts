@@ -33,7 +33,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import api from '../../api';
 import { httpResponse } from '../helpers/httpResponse';
-import type { SupportReportDocument } from '../../packages/contracts/src/supportReport';
+import { decodeReportMessage } from '../helpers/supportReportEvidenceFixtures';
 import { createEvCarLinkRepository } from '../../lib/device/evCarLinkStore';
 import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
 import { drainUntil } from '../utils/asyncDrain';
@@ -595,7 +595,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
       problem: 'The car was never linked.', expected: 'Link the car.', occurredAtMs: pluggedInAtMs, historyWindow: 'day',
     } });
     if (!prepared.ok) throw new Error(prepared.code);
-    const { document } = prepared.report;
+    const document = decodeReportMessage(prepared.report.message);
     if (document.activity.state !== 'available') throw new Error('activity unavailable');
     expect(document.activity.entries).toEqual(expect.arrayContaining([expect.objectContaining({
       deviceId: CHARGER_ID,
@@ -637,7 +637,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     expect(of('ev_car_link_unmatched')).toHaveLength(1);
     expect(posts()).toHaveLength(1);
     const { message } = JSON.parse(String(posts()[0]?.[1]?.body)) as { message: string };
-    const document = JSON.parse(message.split('\n')[1] ?? '{}') as SupportReportDocument;
+    const document = decodeReportMessage(message);
     expect(document.trigger).toBe('event');
     expect(document.request.subject).toEqual({ kind: 'device', homeId: 'main', deviceId: CHARGER_ID });
     if (document.deviceEvents.state !== 'available') throw new Error('kept device events unavailable');
