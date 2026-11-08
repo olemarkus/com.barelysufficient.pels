@@ -207,7 +207,7 @@ export const HOMEY_PRICES_TODAY = 'homey_prices_today';
 export const HOMEY_PRICES_TOMORROW = 'homey_prices_tomorrow';
 export const HOMEY_PRICES_CURRENCY = 'homey_prices_currency';
 // Power by the Hour's prices, mirrored per local day from the app's
-// `/dap-prices` app-to-app route. Same shape and same rotation as the flow and
+// app-to-app price route (`/prices`, `/dap-prices` before its 9.0). Same shape and same rotation as the flow and
 // Homey slot pairs; owned by lib/price/powerhourScheme.ts.
 export const POWERHOUR_PRICES_TODAY = 'powerhour_prices_today';
 export const POWERHOUR_PRICES_TOMORROW = 'powerhour_prices_tomorrow';

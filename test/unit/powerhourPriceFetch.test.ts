@@ -1,5 +1,6 @@
 import {
   DAP_PRICES_PATH,
+  PRICES_PATH,
   fetchPowerhourPrices,
   resolvePowerhourPayload,
 } from '../../lib/price/powerhourPriceFetch';
@@ -73,6 +74,40 @@ describe('Power by the Hour payload resolution', () => {
   // plausible electricity price and be entirely wrong.
   it('drops the gas driver', () => {
     const read = resolvePowerhourPayload({ prices: [device({ driverType: 'dapg' })] });
+    expect(read).toEqual({ kind: 'resolved', devices: [] });
+  });
+
+  // Version 9's Energy Price driver prices power, gas or water under one
+  // driver type, so its stated commodity decides.
+  it('keeps a 9.x Energy Price device that prices power, at any interval it states', () => {
+    const read = resolvePowerhourPayload({
+      prices: [device({ driverType: 'price', commodity: 'power', tariffType: 'fixed', priceInterval: 30 })],
+    });
+    expect(read.kind === 'resolved' && read.devices.map((d) => d.priceIntervalMinutes)).toEqual([30]);
+  });
+
+  it('drops a 9.x Energy Price device that prices gas or water', () => {
+    const read = resolvePowerhourPayload({
+      prices: [
+        device({ driverType: 'price', commodity: 'gas' }),
+        device({ driverType: 'price', commodity: 'water' }),
+      ],
+    });
+    expect(read).toEqual({ kind: 'resolved', devices: [] });
+  });
+
+  it('lets a stated commodity decide over the old driver type', () => {
+    const read = resolvePowerhourPayload({
+      prices: [
+        device({ deviceId: 'old-hourly', driverType: 'dap', commodity: 'power' }),
+        device({ deviceId: 'old-gas', driverType: 'dapg', commodity: 'gas' }),
+      ],
+    });
+    expect(read.kind === 'resolved' && read.devices.map((d) => d.deviceId)).toEqual(['old-hourly']);
+  });
+
+  it('drops a device of the 9.x driver that states no commodity', () => {
+    const read = resolvePowerhourPayload({ prices: [device({ driverType: 'price' })] });
     expect(read).toEqual({ kind: 'resolved', devices: [] });
   });
 
@@ -201,11 +236,33 @@ describe('Power by the Hour read', () => {
     expect(read).toEqual({ kind: 'unavailable', reason: 'read_failed' });
   });
 
-  it('asks the documented route and resolves what it answers', async () => {
-    const get = vi.fn(async () => ({ prices: [device()] }));
+  it('asks the 9.x route and resolves what it answers', async () => {
+    const get = vi.fn(async () => ({ prices: [device({ driverType: 'price', commodity: 'power' })] }));
     const read = await fetchPowerhourPrices(apiWith({ getInstalled: async () => true, get }));
 
-    expect(get).toHaveBeenCalledWith(DAP_PRICES_PATH);
+    expect(get.mock.calls).toEqual([[PRICES_PATH]]);
     expect(read.kind === 'resolved' && read.devices).toHaveLength(1);
+  });
+
+  // An app older than 9 has only the old route and refuses the new one.
+  it('falls back to the route before 9 when the 9.x route is refused', async () => {
+    const get = vi.fn(async (path: string) => {
+      if (path === PRICES_PATH) throw new Error('Not Found');
+      return { prices: [device()] };
+    });
+    const read = await fetchPowerhourPrices(apiWith({ getInstalled: async () => true, get }));
+
+    expect(get.mock.calls).toEqual([[PRICES_PATH], [DAP_PRICES_PATH]]);
+    expect(read.kind === 'resolved' && read.devices).toHaveLength(1);
+  });
+
+  // A malformed answer from the route that exists is not a reason to ask a
+  // route the app does not have.
+  it('reports a malformed 9.x answer without asking the old route', async () => {
+    const get = vi.fn(async () => ({ nope: true }));
+    const read = await fetchPowerhourPrices(apiWith({ getInstalled: async () => true, get }));
+
+    expect(get.mock.calls).toEqual([[PRICES_PATH]]);
+    expect(read).toEqual({ kind: 'unavailable', reason: 'malformed' });
   });
 });
