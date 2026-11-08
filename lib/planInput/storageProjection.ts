@@ -27,8 +27,11 @@ const resolveContinuousStoragePlan = (
     return { setpointW, validUntilMs, reason: period.reason, storesSurplus: period.storesSurplus };
   }
   if (period.reason !== 'export_energy') return { setpointW, validUntilMs, reason: period.reason };
-  if (!('exportDecision' in read)) throw new Error('A household-only battery plan cannot sell');
-  const netExportCeilingW = read.config.exportPolicy.netExportCeilingKW * 1000;
+  if (!('exportDecision' in read) || read.exportDecision.kind !== 'selling') {
+    throw new Error('Only a selling battery plan can sell');
+  }
+  // The ceiling the sale was planned within: the strictest any selling battery's owner set.
+  const netExportCeilingW = read.exportDecision.netExportCeilingKW * 1000;
   return { setpointW, validUntilMs, reason: 'export_energy', netExportCeilingW };
 };
 

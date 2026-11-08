@@ -39,7 +39,12 @@ export type ContinuousBatteryPlanWaitReason =
 export type ContinuousBatteryExportDecision =
   | { kind: 'waiting'; reason: 'export_prices_incomplete' | 'evaluation_budget_exceeded' }
   | { kind: 'kept_household' }
-  | { kind: 'selling'; estimatedSavings: number };
+  /**
+   * `netExportCeilingKW`: the Main-meter export the sale stays within, the
+   * lowest any selling battery's owner set, so batteries that sell together
+   * never exceed the strictest limit an owner entered.
+   */
+  | { kind: 'selling'; estimatedSavings: number; netExportCeilingKW: number };
 
 /** A config whose owner has not authorized selling. */
 export type HouseholdOnlyBatteryPlanConfig = ContinuousBatteryPlanConfig & { exportPolicy: { kind: 'household_only' } };

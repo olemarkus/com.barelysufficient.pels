@@ -15,7 +15,7 @@ import { readContinuousBatteryPlanConfigs } from './continuousBatteryPlanSetting
 import { planBatteryEnergy } from './planning/planBatteryEnergy';
 import { ENERGY_EPSILON_KWH } from './planning/batteryEnergyFlow';
 import { BatteryExportShadow } from './batteryExportShadow';
-import { selectBatteryExportPlan, type BatteryExportSelection } from './batteryExportSelection';
+import { FleetExportTerms, selectBatteryExportPlan, type BatteryExportSelection } from './batteryExportSelection';
 
 type SettingsRead = { kind: 'resolved'; configs: ContinuousBatteryPlanConfigs } | { kind: 'unavailable' };
 type HouseholdPlan = Extract<BatteryEnergyPlan, { status: 'planned' }>;
@@ -317,6 +317,10 @@ export class ContinuousBatteryPlanService {
     );
     // The most import any battery may have left above the limit for others.
     const deferrableKW = supplyKW(ready.slice(1));
+    const ceilings = ready.flatMap(({ config }) => (
+      config.exportPolicy.kind === 'price_export' ? [config.exportPolicy.netExportCeilingKW] : []
+    ));
+    const exportTerms = new FleetExportTerms(ceilings.length === 0 ? 0 : Math.min(...ceilings));
     const periodCount = ready[0]?.input.horizon.periods.length ?? 0;
     const otherStorageKWh = new Array<number>(periodCount).fill(0);
     const otherChargeKW = new Array<number>(periodCount).fill(0);
@@ -331,7 +335,7 @@ export class ContinuousBatteryPlanService {
         reads.set(deviceId, { status: 'waiting', config, reason: 'horizon_infeasible' });
         return;
       }
-      const read = this.plannedRead(deviceId, following, config, household, nowMs);
+      const read = this.plannedRead(deviceId, following, config, household, nowMs, exportTerms);
       reads.set(deviceId, read);
       read.plan.periods.forEach((period, periodIndex) => {
         const energyKWh = period.batteryPowerKW * period.durationMs / 3_600_000;
@@ -353,6 +357,7 @@ export class ContinuousBatteryPlanService {
     config: ContinuousBatteryPlanConfig,
     household: HouseholdPlan,
     nowMs: number,
+    exportTerms: FleetExportTerms,
   ): PlannedContinuousBatteryRead {
     const common = {
       status: 'planned' as const, generatedAtMs: nowMs, priceUnit: input.priceUnit,
@@ -364,7 +369,7 @@ export class ContinuousBatteryPlanService {
       this.exportShadow.observe(deviceId, input, household, nowMs);
       return { ...common, config: { ...config, exportPolicy: policy }, plan: household };
     }
-    const selection = this.selectExport(deviceId, input, policy, household, nowMs);
+    const selection = this.selectExport(deviceId, input, household, nowMs, exportTerms);
     return {
       ...common, config: { ...config, exportPolicy: policy }, plan: selection.plan, exportDecision: selection.decision,
     };
@@ -382,18 +387,18 @@ export class ContinuousBatteryPlanService {
   private selectExport(
     deviceId: string,
     input: ReadyHorizon,
-    policy: BatteryPriceExportPolicy,
     household: HouseholdPlan,
     nowMs: number,
+    exportTerms: FleetExportTerms,
   ): BatteryExportSelection {
-    const key = exportEconomicsKey(input, policy);
+    const key = exportEconomicsKey(input, exportTerms.policy);
     const kept = this.exportMemos.get(deviceId);
     if (kept !== undefined && kept.key === key && nowMs >= kept.atMs && nowMs < kept.validUntilMs) {
       return kept.selection.decision.kind === 'selling'
         ? kept.selection
         : { plan: household, decision: kept.selection.decision };
     }
-    const selection = selectBatteryExportPlan(input, policy, household);
+    const selection = selectBatteryExportPlan(input, household, exportTerms);
     const first = input.horizon.periods[0];
     this.exportMemos.set(deviceId, { key, atMs: nowMs, validUntilMs: first.startsAtMs + first.durationMs, selection });
     return selection;

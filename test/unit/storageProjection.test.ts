@@ -119,7 +119,8 @@ describe('continuous battery selling projection', () => {
   const selling = plannedSource({
     status: 'planned', generatedAtMs: nowMs, priceUnit: 'EUR/kWh', unpricedSolarExport: false, plan,
     config: { ...base, exportPolicy: { kind: 'price_export', netExportCeilingKW: 3 } },
-    exportDecision: { kind: 'selling', estimatedSavings: 0.4 },
+    // Another selling battery's owner set 2 kW: the sale carries the stricter ceiling.
+    exportDecision: { kind: 'selling', estimatedSavings: 0.4, netExportCeilingKW: 2 },
   });
   const control: BatteryLeverRead = {
     kind: 'setpoint', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
@@ -128,10 +129,10 @@ describe('continuous battery selling projection', () => {
   };
   const input = device({ batteryPower: { signedW: 0, observedAtMs: nowMs }, batteryLevel: { percent: 60, observedAtMs: nowMs } });
 
-  it('carries the owner export ceiling with a selling period', () => {
+  it('carries the export ceiling the sale was planned within with a selling period', () => {
     const cluster = resolveStorageCluster(selling, input, options(control));
     expect(cluster).toMatchObject({ storage: { continuousPlan: {
-      setpointW: -2000, validUntilMs: period.startsAtMs + period.durationMs, reason: 'export_energy', netExportCeilingW: 3000,
+      setpointW: -2000, validUntilMs: period.startsAtMs + period.durationMs, reason: 'export_energy', netExportCeilingW: 2000,
     } } });
   });
 
@@ -152,6 +153,6 @@ describe('continuous battery selling projection', () => {
       status: 'planned', generatedAtMs: nowMs, priceUnit: 'EUR/kWh', unpricedSolarExport: false, plan,
       config: { ...base, exportPolicy: { kind: 'household_only' } },
     });
-    expect(() => resolveStorageCluster(contradictory, input, options(control))).toThrow('cannot sell');
+    expect(() => resolveStorageCluster(contradictory, input, options(control))).toThrow('Only a selling battery plan can sell');
   });
 });

@@ -129,9 +129,13 @@ it depends on:
   any period changes (`exportEconomicsKey`). Within a direction it keeps its
   plan while their amounts move, as it does for live device draw; the storage
   lane bounds each command by measurement.
-- Each seller's sale is bounded by its own Main-meter export ceiling against
-  the house the earlier batteries left, so with different ceilings the last
-  seller's applies.
+- Batteries that sell share `FleetExportTerms`: the Main-meter export
+  ceiling is the lowest any selling battery's owner set, in the plan and in
+  live control (the sale carries it in its `selling` decision; each owner's
+  saved value is unchanged), and the export comparison's work bound
+  (`MAX_EXPORT_COMPARISON_TRANSITIONS`) is shared, so several selling
+  batteries cost no more comparison work than one. A battery past it keeps
+  its household plan and says selling waits (`evaluation_budget_exceeded`).
 
 The order is a heuristic, not a joint optimum: the earlier battery takes the
 first opportunities, and identical batteries do not share work evenly.

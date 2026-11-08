@@ -29,7 +29,7 @@ const validExportDecision = (raw: unknown): boolean => {
   const decision = asUnknownRecord(raw);
   if (decision === null) return false;
   if (decision.kind === 'kept_household') return true;
-  if (decision.kind === 'selling') return finiteFields(decision, ['estimatedSavings']);
+  if (decision.kind === 'selling') return finiteFields(decision, ['estimatedSavings', 'netExportCeilingKW']);
   return decision.kind === 'waiting'
     && ['export_prices_incomplete', 'evaluation_budget_exceeded'].includes(String(decision.reason));
 };
