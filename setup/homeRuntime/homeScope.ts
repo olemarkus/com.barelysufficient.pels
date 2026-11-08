@@ -110,10 +110,8 @@ export type HomeScope = {
   readBatteryControlCapability: (deviceId: string) => HomeBatteryControlCapability | 'not_battery';
   binaryCommandLifecycle: BinaryCommandLifecycleListener;
   disposeBinaryCommandReachability: () => void;
-  // Signal writers. The two settings keys are this home's
-  // (`homeScopedSettingsKey(base, homeId)` — the bare key for the main home);
-  // the status goes to the in-memory registry under this home's id.
-  setCapacityInShortfall: PlanBuilderDeps['setCapacityInShortfall'];
+  // Signal writers: this home's rows in the last-controlled store, and its
+  // status in the in-memory registry under this home's id.
   persistLastControlledMs: (lastControlledMs: Record<string, number>) => void;
   publishPelsStatus: (status: PelsStatus) => void;
   // ---- Policy block (R7b) ----

@@ -1,16 +1,14 @@
 import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import type { PowerTrackerState } from '../power/tracker';
-import type { PlannerExecutionFeedback } from '../ports/plannerExecutionFeedback';
 import { getLogger } from '../logging/logger';
-import { incPerfCounter } from '../utils/perfCounters';
 import type { HomeId } from '../utils/settingsKeys';
 
 const logger = getLogger('executor/plan');
 
 /**
- * Executor-facing dependencies for immediate hard-cap state transitions.
- * Setup owns the separately delayed user Flow alert; this executor owns only
- * durable PELS state materialization.
+ * Executor-facing dependencies for the hard-cap shortfall's log lines. Setup
+ * owns the separately delayed user Flow alert, and the published status
+ * carries the shortfall itself (`capacityShortfall`, from the capacity guard).
  */
 export type ShortfallExecutorDeps = {
   /**
@@ -20,7 +18,6 @@ export type ShortfallExecutorDeps = {
   getHomeDisplayName: () => string;
   /** Stable home id used to correlate structured enter, alert, and clear logs. */
   homeId: HomeId;
-  setCapacityInShortfall: (inShortfall: boolean) => void;
   getPowerTracker: () => PowerTrackerState;
   /** `capacityPaceKw` — the planner's live hourly threshold, for the log line. */
   getCapacityPaceKw: () => number | null;
@@ -36,13 +33,13 @@ export type ShortfallExecutorDeps = {
 };
 
 export class ShortfallExecutor {
-  // Distinct from `state.inShortfall`: the builder can synchronize that shared
-  // planner/persistence latch before a temporarily fenced enter callback lands.
-  private stateSideEffectActive = false;
-  constructor(private deps: ShortfallExecutorDeps, private feedback: PlannerExecutionFeedback) {}
+  // Whether this incident's enter line was written, so the guard's repeated
+  // callbacks log it once and the cleared line follows only an enter.
+  private shortfallLogged = false;
+  constructor(private deps: ShortfallExecutorDeps) {}
 
   public async handleShortfall(deficitKw: number): Promise<void> {
-    if (this.stateSideEffectActive) return;
+    if (this.shortfallLogged) return;
 
     const shortfallThreshold = this.deps.getShortfallThresholdKw();
     const softLimit = this.deps.getCapacityPaceKw();
@@ -62,19 +59,11 @@ export class ShortfallExecutor {
         + `soft ${softLimit.toFixed(2)}kW)`,
     });
 
-    if (!this.feedback.isInShortfall()) {
-      // Persist first, then commit the in-memory latch. A failed durable write
-      // must leave the immediate semantic transition retryable.
-      this.deps.setCapacityInShortfall(true);
-      this.feedback.commitShortfall(true);
-      incPerfCounter('settings_set.capacity_in_shortfall');
-    }
-
-    this.stateSideEffectActive = true;
+    this.shortfallLogged = true;
   }
 
   public async handleShortfallCleared(): Promise<void> {
-    if (!this.feedback.isInShortfall() && !this.stateSideEffectActive) return;
+    if (!this.shortfallLogged) return;
 
     logger.info({
       event: 'executor_plan_log',
@@ -82,13 +71,6 @@ export class ShortfallExecutor {
       homeId: this.deps.homeId,
       msg: 'Capacity shortfall resolved',
     });
-    if (this.feedback.isInShortfall()) {
-      // Same commit ordering as enter: a failed durable write must leave the
-      // in-memory latch retryable so a deferred clear is not silently consumed.
-      this.deps.setCapacityInShortfall(false);
-      this.feedback.commitShortfall(false);
-      incPerfCounter('settings_set.capacity_in_shortfall');
-    }
-    this.stateSideEffectActive = false;
+    this.shortfallLogged = false;
   }
 }

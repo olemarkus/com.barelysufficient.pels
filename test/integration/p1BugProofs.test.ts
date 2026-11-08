@@ -67,7 +67,6 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
   const deps: PlanExecutorDeps = {
     getHomeDisplayName: () => 'Main home',
     homeId: 'main',
-    setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
     getDeviceConfiguration: (id) => {
       const device = deviceManager.getSnapshotByDeviceId(id);

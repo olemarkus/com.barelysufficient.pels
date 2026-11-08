@@ -145,6 +145,29 @@ export const normalizeLastPowerUpdate = (
 
 const resolveDryRunKey = (dryRunEffective: boolean): string => (dryRunEffective ? 'sim' : 'live');
 
+/**
+ * The facts whose change publishes a status at once, inside the volatile
+ * throttle. Each is something a reader acts on as soon as it flips:
+ *
+ * - `dryRunEffective`: the effective (membership-gated) dry-run. Control
+ *   activating from an already-planned dry-run shed, or the membership gate
+ *   opening, must reach the Limits card promptly, not still read "Simulating".
+ * - `powerIsMeasured`: whether the plan was measured (`powerKnown` on the
+ *   blob). The one unmeasured build, the silent-meter fail-closed pass, omits
+ *   every measured figure, and after it the silence block stops rebuilding; a
+ *   swallowed write would leave the widget and the Insights capabilities
+ *   asserting a measured headroom for the whole outage.
+ * - `capacityShortfall`: the capacity guard's shortfall. The Insights device's
+ *   Manual action needed and the Limits card's shortfall line mirror it, and a
+ *   shortfall usually starts with every device already held, when no action
+ *   changes to force the write.
+ */
+export type StatusPublishFacts = {
+  dryRunEffective: boolean;
+  powerIsMeasured: boolean;
+  capacityShortfall: boolean;
+};
+
 export const buildPelsStatusInputKey = (
   changes: PlanStatusInputChanges | undefined,
   // The RESOLVED level, which is what the status actually depends on. Keying on
@@ -152,8 +175,7 @@ export const buildPelsStatusInputKey = (
   // in a second copy of the precedence the status itself applied.
   priceLevel: PriceLevel,
   lastPowerUpdate: number,
-  powerIsMeasured: boolean,
-  dryRunEffective: boolean,
+  facts: StatusPublishFacts,
 ): string => {
   const actionSignature = changes?.actionSignature ?? '';
   const detailSignature = changes?.detailSignature ?? '';
@@ -162,10 +184,12 @@ export const buildPelsStatusInputKey = (
   // The FLAG, not the figure: the figure moves every sample and would bust
   // the status cache on each one. What must bust it is the transition between
   // having a measurement and not.
-  const powerNowKey = powerIsMeasured ? 'known' : 'unknown';
+  const powerNowKey = facts.powerIsMeasured ? 'known' : 'unknown';
   // Fold the effective dry-run in so a posture flip (membership becoming ready,
   // or the persisted flag toggled) busts the cache and forces a status write.
-  const dryRunKey = resolveDryRunKey(dryRunEffective);
+  const dryRunKey = resolveDryRunKey(facts.dryRunEffective);
+  // And the shortfall, which a publish forced by its change must carry.
+  const shortfallKey = facts.capacityShortfall ? 'shortfall' : 'ok';
   return [
     actionSignature,
     detailSignature,
@@ -174,5 +198,6 @@ export const buildPelsStatusInputKey = (
     lastPowerUpdateKey,
     powerNowKey,
     dryRunKey,
+    shortfallKey,
   ].join('|');
 };

@@ -143,6 +143,26 @@ describe('PlanStatusWriter posture-flip persist', () => {
     expect(h.writeSpy.mock.calls[2][0]).toMatchObject({ powerKnown: true, headroomKw: 3 });
   });
 
+  it('forces a publish when the capacity shortfall starts or ends inside the window', () => {
+    // A shortfall usually starts with every device already held, so no action
+    // changes to force the write; the Insights device's Manual action needed and
+    // the Limits card's shortfall line mirror the status and must not wait out
+    // the throttle.
+    const h = makeWriter(false);
+    const withShortfall = (capacityShortfall: boolean): DevicePlan => ({
+      ...plan(3), meta: buildPlanMeta({ totalKw: 3, softLimitKw: 6, headroomKw: 3, capacityShortfall }),
+    });
+
+    nowSpy.mockReturnValue(BASE_MS);
+    h.writer.update(withShortfall(false), CHANGES);
+    nowSpy.mockReturnValue(BASE_MS + 5000);
+    h.writer.update(withShortfall(true), CHANGES);
+    nowSpy.mockReturnValue(BASE_MS + 10_000);
+    h.writer.update(withShortfall(false), CHANGES);
+
+    expect(h.writeSpy.mock.calls.map(([status]) => status.capacityShortfall)).toEqual([false, true, false]);
+  });
+
   it('still throttles a non-posture volatile change inside the window', () => {
     const h = makeWriter(false);
 

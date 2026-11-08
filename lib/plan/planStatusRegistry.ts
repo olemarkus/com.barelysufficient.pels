@@ -26,8 +26,10 @@ import type { PelsStatus } from './pelsStatus';
 
 const logger = getLogger('plan/status');
 
-/** The settings key the status lived under before it was held in memory. */
-const LEGACY_PLAN_STATUS_KEY = 'pels_status';
+// The keys the status was persisted under before it moved to memory: the
+// whole blob, and the shortfall the Insights device's Manual action needed
+// read on its own. Each was written bare for Main and suffixed per meter area.
+const LEGACY_PLAN_STATUS_KEY_BASES = ['pels_status', 'capacity_in_shortfall'] as const;
 
 export type PlanStatusRead =
   | Readonly<{ state: 'resolved'; status: PelsStatus }>
@@ -90,7 +92,8 @@ export const planStatusRegistryOf = (app: unknown): PlanStatusRegistry | null =>
 
 /**
  * One-shot boot cleanup: the keys the status used to be persisted under, for
- * every home. Nothing is imported — a status is a fact of the run that
+ * every home. A stored shortfall would otherwise sit in diagnostics reports,
+ * possibly `true` from an incident the app restarted out of. Nothing is imported — a status is a fact of the run that
  * publishes it, and the previous run's blob is exactly what must not be served
  * as current. A key list that cannot be read, or an unset the SDK rejects,
  * leaves the keys for the next boot, like every other legacy family
@@ -98,9 +101,9 @@ export const planStatusRegistryOf = (app: unknown): PlanStatusRegistry | null =>
  * boot step this runs in.
  */
 export const retireLegacyPlanStatusKeys = (settings: SettingsPort): void => {
-  const keys = listLegacySettingsKeys(settings, (key) => (
-    key === LEGACY_PLAN_STATUS_KEY || key.startsWith(`${LEGACY_PLAN_STATUS_KEY}:`)
-  ));
+  const keys = listLegacySettingsKeys(settings, (key) => LEGACY_PLAN_STATUS_KEY_BASES.some((base) => (
+    key === base || key.startsWith(`${base}:`)
+  )));
   if (keys === null || keys.length === 0) return;
   try {
     for (const key of keys) settings.unset(key);

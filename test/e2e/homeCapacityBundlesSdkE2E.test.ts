@@ -11,8 +11,8 @@
 //
 // Scenarios:
 // 1. Independence — a sub-home meter overshoot sheds ONLY sub-home devices;
-//    a main overshoot sheds ONLY main devices; the area's own published status +
-//    `capacity_in_shortfall:<id>` are written.
+//    a main overshoot sheds ONLY main devices; the area's own published status
+//    carries its shortfall.
 // 2. Boot-window double-control guards — neither a PINNED member nor ordinary
 //    zone-rule membership can be actuated by the wrong home while the zone-tree
 //    fetch fails; control resumes under the correct owners after commit.
@@ -194,6 +194,13 @@ const wasCalledWith = (
   callPath === path && (body as { value?: unknown } | undefined)?.value === value
 ));
 
+// The capacity shortfall a home's published status carries, or `undefined`
+// while it has published none.
+const publishedShortfall = (app: { planStatuses: PlanStatusRegistry }, homeId: string): boolean | undefined => {
+  const read = app.planStatuses.read(homeId);
+  return read.state === 'resolved' ? read.status.capacityShortfall : undefined;
+};
+
 // The `dryRunEffective` a home's published status carries, or `undefined`
 // while it has published none.
 const publishedDryRunEffective = (app: { planStatuses: PlanStatusRegistry }, homeId: string): boolean | undefined => {
@@ -248,11 +255,10 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     expect(callsFor(putSpy, 'device-main')).toEqual([]);
 
     // Sustained overshoot with nothing left to shed → the sub-home's OWN
-    // shortfall signal; its status is published under its own home id. Main's
-    // unsuffixed shortfall signal stays untouched (never true).
-    await advancePollsUntil(() => mockHomeyInstance.settings.get('capacity_in_shortfall:h_sub') === true);
-    expect(app.planStatuses.read('h_sub').state).toBe('resolved');
-    expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).not.toBe(true);
+    // shortfall, in the status it publishes under its own home id. Main's
+    // status never carries it.
+    await advancePollsUntil(() => publishedShortfall(app, 'h_sub') === true);
+    expect(publishedShortfall(app, MAIN_HOME_ID)).not.toBe(true);
 
     // Now the MAIN meter overshoots (sub recovers): only main's device sheds.
     const mainPhaseStart = putSpy.mock.calls.length;

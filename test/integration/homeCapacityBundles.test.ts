@@ -1356,13 +1356,14 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     await vi.advanceTimersByTimeAsync(1_000);
     await drainPending();
 
+    const status = rig.ctx.planStatuses.read('h_a');
     expect({
       triggerCount: capacityShortfallTrigger.mock.calls.length,
-      persisted: mockHomeyInstance.settings.get('capacity_in_shortfall:h_a'),
+      published: status.state === 'resolved' ? status.status.capacityShortfall : undefined,
       retryScheduled: rig.ctx.timers.has('home:h_a:shortfallSideEffectRetry'),
     }).toEqual({
       triggerCount: 1,
-      persisted: true,
+      published: true,
       retryScheduled: false,
     });
     // The global card is shared with the Main home, so the area has to name

@@ -1,5 +1,4 @@
 import { NO_INVERTER_PLANNER } from '../../lib/ports/inverterControl';
-import { vi } from 'vitest';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import type { PlanBuilderDeps } from '../../lib/plan/planBuilderDeps';
@@ -21,7 +20,6 @@ type PlanBuilderWiring = Omit<PlanBuilderDeps,
  * the guard, capacity settings and power tracker, and overrides the rest.
  */
 export const planBuilderWiring = (): PlanBuilderWiring => ({
-  setCapacityInShortfall: vi.fn(),
   getCapacityDryRun: () => false,
   getInferredSurplusKw: () => 0,
   getStorageDischargeObservations: () => new Map(),

@@ -37,6 +37,7 @@ const STATUS_CAPABILITY_MAP: CapabilityEntry[] = [
   { key: 'dailyBudgetRemainingKwh', id: 'pels_daily_budget_remaining_kwh', type: 'number' },
   { key: 'dailyBudgetExceeded', id: 'pels_daily_budget_exceeded', type: 'boolean' },
   { key: 'limitReason', id: 'pels_limit_reason', type: 'string' },
+  { key: 'capacityShortfall', id: 'pels_shortfall', type: 'boolean' },
   { key: 'controlledKw', id: 'pels_controlled_power', type: 'number' },
   { key: 'uncontrolledKw', id: 'pels_uncontrolled_power', type: 'number' },
   { key: 'priceLevel', id: 'pels_price_level', type: 'string' },
@@ -166,7 +167,6 @@ class PelsInsightsDevice extends Homey.Device {
     }
 
     await this.refreshModeOptions();
-    await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
     // `homey.app` is the running PELS app; a shell without the registry (a
     // torn-down app) leaves the capabilities at their last values, like a
     // status that has not been published yet. Subscribed BEFORE the initial
@@ -194,10 +194,6 @@ class PelsInsightsDevice extends Homey.Device {
         // A single priority reorder can fire many `set` events in one tick;
         // coalesce them into one refresh instead of one SDK roundtrip each.
         this.scheduleModeOptionsRefresh();
-      }
-
-      if (key === 'capacity_in_shortfall') {
-        await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
       }
     });
   }
@@ -348,21 +344,12 @@ class PelsInsightsDevice extends Homey.Device {
     }
   }
 
-  async updateShortfall(inShortfall: boolean): Promise<void> {
-    try {
-      await this.setCapabilityValue('pels_shortfall', Boolean(inShortfall));
-    } catch (error) {
-      deviceLogger.error({
-        event: 'pels_insights_update_shortfall_failed',
-        err: normalizeError(error),
-      });
-    }
-  }
-
   async updateFromStatus(status: PelsStatus): Promise<void> {
-    try {
-      for (const { key, id, type } of STATUS_CAPABILITY_MAP) {
-        const value = status[key];
+    for (const { key, id, type } of STATUS_CAPABILITY_MAP) {
+      const value = status[key];
+      // Each write stands alone: one rejected capability must not leave the
+      // rest, Manual action needed among them, showing an older status.
+      try {
         if (shouldSetCapability(value, type)) {
           await this.setCapabilityValue(id, value);
         } else if (shouldClearCapability(status, id)) {
@@ -372,12 +359,13 @@ class PelsInsightsDevice extends Homey.Device {
           // last enabled limit.
           await this.setCapabilityValue(id, null);
         }
+      } catch (error) {
+        deviceLogger.error({
+          event: 'pels_insights_update_status_capabilities_failed',
+          capability: id,
+          err: normalizeError(error),
+        });
       }
-    } catch (error) {
-      deviceLogger.error({
-        event: 'pels_insights_update_status_capabilities_failed',
-        err: normalizeError(error),
-      });
     }
   }
 }

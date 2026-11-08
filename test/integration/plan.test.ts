@@ -30,11 +30,19 @@ import {
 } from '../utils/swapLedgerFixture';
 import { steerCapacityPace } from '../helpers/capacityPaceFixture';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
 
 const flushPromises = (): Promise<void> => new Promise((resolve) => { setImmediate(resolve); });
+
+// The shortfall Main's published status carries, which the Insights device's
+// Manual action needed mirrors; `undefined` while it has published none.
+const publishedMainShortfall = (app: MyApp): boolean | undefined => {
+  const read = app.planStatuses.read(MAIN_HOME_ID);
+  return read.state === 'resolved' ? read.status.capacityShortfall : undefined;
+};
 // A 0.2 kWh margin leaves 6 kW between pace and the actual-cap projection
 // with two minutes remaining. These scenarios exercise ordinary pacing,
 // rather than opening a shortfall incident with its own recovery hysteresis.
@@ -722,7 +730,6 @@ describe('Device plan snapshot', () => {
 
     // Force shortfall state and an overshoot so shedding occurs.
     app.capacityGuard.isInShortfall = () => true;
-    app.planEngine.state.inShortfall = true;
     steerCapacityPace(app, 0.5);
     await app['powerSamplePipeline'].recordPowerSample(1200);
 
@@ -1708,7 +1715,7 @@ describe('Device plan snapshot', () => {
     // Use very high power to ensure it exceeds any threshold.
     // Threshold is clamped with a minimum remaining time of 0.01h, so max threshold is 500kW.
     await app['powerSamplePipeline'].recordPowerSample(600000); // 600kW definitely exceeds threshold
-    expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
+    expect(publishedMainShortfall(app)).toBe(true);
     // Shortfall is detected by the plan build's verdict (`recordPlanVerdict`) - no need for tick()
     // The payload names the home: this app is the Main home, and every home
     // fires the same global card.
@@ -1822,7 +1829,7 @@ describe('Device plan snapshot', () => {
 
     await app['powerSamplePipeline'].recordPowerSample(500000);
     expect(triggerSpy).toHaveBeenCalledTimes(1);
-    expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
+    expect(publishedMainShortfall(app)).toBe(true);
 
     // The shed-everything plan is unactionable, so the throttle holds recovery
     // readings to the max-interval cadence and hands the guard the reading
@@ -1830,13 +1837,13 @@ describe('Device plan snapshot', () => {
     await advanceTimeAndRecordPower(app, 1000, 1000);
     await advanceTimeAndRecordPower(app, 30000, 1000);
     await advanceTimeAndRecordPower(app, 31000, 1000);
-    expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
+    expect(publishedMainShortfall(app)).toBe(false);
     expect(app.timers.has('shortfallAlertSustained')).toBe(false);
 
     // Nothing is actionable, so a fresh breach also rides the max-interval refresh.
     await advanceTimeAndRecordPower(app, 30_000, 500000);
     expect(triggerSpy).toHaveBeenCalledTimes(2);
-    expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
+    expect(publishedMainShortfall(app)).toBe(true);
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
     vi.useRealTimers();
@@ -3173,7 +3180,6 @@ describe('Dry run mode', () => {
     if (app.capacityGuard) {
       app.capacityGuard.isInShortfall = () => true;
     }
-    app.planEngine.state.inShortfall = true;
 
     // Report low power - plenty of headroom mathematically, but we're in shortfall.
     await app['powerSamplePipeline'].recordPowerSample(2000); // 2 kW, headroom = 6 kW
@@ -3225,7 +3231,6 @@ describe('Dry run mode', () => {
       app.capacityGuard['inShortfall'] = false;
       app.planEngine.state.sheddingActive = false;
     }
-    app.planEngine.state.inShortfall = false;
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
 

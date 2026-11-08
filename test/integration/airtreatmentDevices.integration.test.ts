@@ -214,7 +214,6 @@ describe('Airtreatment device integration', () => {
     app.planEngine.state.restoreBackoff.lastInstabilityMs = Date.now() - 180000;
     app.planEngine.state.restoreBackoff.lastRecoveryMs = Date.now() - 180000;
     app.capacityGuard.isInShortfall = () => false;
-    app.planEngine.state.inShortfall = false;
     app.planEngine.state.sheddingActive = false;
 
     await app.refreshTargetDevicesSnapshot();
