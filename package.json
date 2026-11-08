@@ -134,7 +134,7 @@
     "lint-staged": "^17.6.0",
     "sortablejs": "^1.15.7",
     "style-dictionary": "^5.7.1",
-    "stylelint": "^17.16.0",
+    "stylelint": "^18.0.0",
     "stylelint-config-recommended": "^18.0.0",
     "stylelint-declaration-strict-value": "^1.12.1",
     "stylelint-value-no-unknown-custom-properties": "^6.1.1",
