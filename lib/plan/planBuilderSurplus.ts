@@ -408,8 +408,10 @@ export function retainSolarWhileDemandSettles(
   decisions: InverterDecision[], state: PlanEngineState, devices: DevicePlanDevice[],
   restoredThisCycle: ReadonlySet<string>,
   storage: StorageRelief,
+  // A phase past its export target opens the very settle window this waits on, so it is not held back by it.
+  phaseExportExcessKw: number,
 ): InverterDecision[] {
-  if (decisions.length === 0) return decisions;
+  if (decisions.length === 0 || phaseExportExcessKw > 0) return decisions;
   const settling = restoredThisCycle.size > 0
     || Object.values(state.surplusEligibilityByDevice).some((entry) => (
       entry.eligible !== true && entry.pendingSinceMs !== undefined

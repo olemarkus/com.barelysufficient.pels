@@ -87,6 +87,7 @@ export const summarizeHold = (
   claim: resolveClaimReason(lever),
   decision: toSetpointDecision(lever),
   setpointW: lever.setpointW,
+  ...(lever.exportPhase === undefined ? {} : { exportPhase: lever.exportPhase }),
   heldBackChargeW: resolveHeldBackChargeW(lever),
   creditW,
   withheldW: resolveWithheldW(storage, lever.setpointW),

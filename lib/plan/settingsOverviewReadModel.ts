@@ -101,6 +101,7 @@ function resolveWireMeasuredFields(
     controlledKw: meta.controlledKw,
     uncontrolledKw: meta.uncontrolledKw,
     ...(meta.unrelievedPhase === null ? {} : { unrelievedPhase: meta.unrelievedPhase }),
+    ...(meta.exportPhase ? { exportPhase: meta.exportPhase } : {}),
   };
 }
 

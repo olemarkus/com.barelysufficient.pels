@@ -206,7 +206,7 @@ const buildFor = (kind: Kind): Record<string, unknown> => {
   const shedStepTargets = new Map<string, string>();
   if (kind.stepTarget !== undefined) shedStepTargets.set(kind.dev.id, kind.stepTarget);
   const sheddingPlan: SheddingPlan = {
-    unrelievedPhase: null, shedSet: new Set<string>(kind.shed === true ? [kind.dev.id] : []),
+    unrelievedPhase: null, phaseExportExcessKw: 0, exportPhase: null, shedSet: new Set<string>(kind.shed === true ? [kind.dev.id] : []),
     shedReasons,
     shedStepTargets,
     storageSetpoints: new Map(),

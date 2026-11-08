@@ -50,7 +50,7 @@ import {
   type MeasuredPower,
   type PlanContext,
 } from './planContext';
-import { resolvePhasePower, worstPhaseDeficitKw } from './phase/phasePower';
+import { lowestPhaseExportRoomKw, resolvePhasePower, worstPhaseDeficitKw } from './phase/phasePower';
 import { buildSheddingPlan, type SheddingPlan } from './shedding';
 import {
   NO_STORAGE_RELIEF,
@@ -385,6 +385,7 @@ export class PlanBuilder {
       capacityLimitKw: settings.limitKw,
       hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(heldContext),
       unrelievedPhase: sheddingPlan.unrelievedPhase,
+      exportPhase: sheddingPlan.exportPhase,
     };
     trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState(
       metaFacts, power, overshootDecision, nowTs,
@@ -403,12 +404,27 @@ export class PlanBuilder {
     return {
       meta,
       devices: decidedDevices,
-      inverterDecisions: retainSolarWhileDemandSettles(
-        this.deps.inverterCurtailment.decide(power.drawKw * 1000, nowTs),
-        this.state, decidedDevices, restoreResult.restoredThisCycle, storageRelief,
-      ),
+      inverterDecisions: this.decideInverters(power, sheddingPlan, decidedDevices, restoreResult, storageRelief, nowTs),
       storageReleases: collectAbsentStorageReleases(decidedDevices, storageRelief),
     };
+  }
+
+  private decideInverters(
+    power: MeasuredPower,
+    sheddingPlan: SheddingPlan,
+    decidedDevices: DevicePlan['devices'],
+    restoreResult: RestorePlanResult,
+    storageRelief: StorageRelief,
+    nowTs: number,
+  ): DevicePlan['inverterDecisions'] {
+    const excessKw = sheddingPlan.phaseExportExcessKw;
+    const roomKw = lowestPhaseExportRoomKw(power.phase);
+    return retainSolarWhileDemandSettles(
+      this.deps.inverterCurtailment.decide(
+        power.drawKw * 1000, nowTs, excessKw * 1000, roomKw === null ? null : roomKw * 1000,
+      ),
+      this.state, decidedDevices, restoreResult.restoredThisCycle, storageRelief, excessKw,
+    );
   }
 
   /**

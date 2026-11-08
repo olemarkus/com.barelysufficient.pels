@@ -226,13 +226,14 @@ function addStorageCandidate(
     ? { recentlyRestored: false }
     : resolveRecentRestoreState(device, state, nowTs, needed);
   if (restore.recentlyRestored) recorder.recordRecentRestore(device, restore.sinceRestoreMs, needed);
+  const bound = storageLimit.boundFor?.(device) ?? { drawKw: storageLimit.drawKw, chargeOnly: false };
   const candidate = buildStorageCandidate(
     device,
     storageLimit.levers[device.id],
-    storageLimit.drawKw,
+    bound.drawKw,
     restore.recentlyRestored,
     nowTs,
-    storageLimit.chargeOnly === true,
+    bound.chargeOnly,
   );
   if (typeof candidate !== 'string') return candidate;
   recorder.recordStorage({ device, batterySignedPowerW: device.storage.signedPowerW, reasonCode: candidate });

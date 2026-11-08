@@ -95,3 +95,56 @@ export function bindingPhaseFor(axis: Extract<PhaseRoomAxis, { kind: 'on' }>, fo
   if (footprint.kind === 'single') return footprint.phase;
   return [...PHASE_NAMES].sort((a, b) => axis.roomKw[a] - axis.roomKw[b])[0] ?? 'L1';
 }
+
+/** Export past each phase's target still to be soaked up this cycle, kW. */
+export type PhaseExportRemainder = ReadonlyMap<PhaseName, number>;
+
+export const resolvePhaseExportRemainder = (power: PhasePower): PhaseExportRemainder => (
+  new Map(power.kind === 'off' ? [] : power.phases.flatMap((phase) => (
+    phase.exportExcessKw > 0 ? [[phase.phase, phase.exportExcessKw] as const] : []
+  )))
+);
+
+/**
+ * What this device could soak up of the export left on its phases, kW. A
+ * three-phase device also loads the phases that are not exporting, so what it
+ * can take is held to their import room.
+ */
+export function phaseExportPoolKw(
+  remainder: PhaseExportRemainder,
+  footprint: PhaseFootprint,
+  room: PhaseRoomAxis,
+): number {
+  if (remainder.size === 0) return 0;
+  if (footprint.kind === 'single') return remainder.get(footprint.phase) ?? 0;
+  if (footprint.kind !== 'all_three') return 0;
+  const exportKw = Math.max(0, ...remainder.values()) * 3;
+  if (room.kind === 'off') return exportKw;
+  const otherRoomKw = PHASE_NAMES.filter((phase) => !remainder.has(phase)).map((phase) => room.roomKw[phase] * 3);
+  return Math.max(0, Math.min(exportKw, ...otherRoomKw));
+}
+
+/** The remainder after a device on this footprint claims `kw` of it. */
+export function spendPhaseExport(
+  remainder: PhaseExportRemainder,
+  footprint: PhaseFootprint,
+  kw: number,
+): PhaseExportRemainder {
+  if (kw <= 0 || remainder.size === 0) return remainder;
+  return new Map([...remainder].map(([phase, leftKw]) => (
+    [phase, Math.max(0, leftKw - kw * phaseShare(footprint, phase))] as const
+  )).filter(([, leftKw]) => leftKw > 0));
+}
+
+/** What surplus claimants may still use of the phases this cycle. */
+export type PhaseBudget = { room: PhaseRoomAxis; exportRemainder: PhaseExportRemainder };
+
+export const resolvePhaseBudget = (power: PhasePower): PhaseBudget => ({
+  room: resolvePhaseRoomAxis(power),
+  exportRemainder: resolvePhaseExportRemainder(power),
+});
+
+export const spendPhaseBudget = (budget: PhaseBudget, footprint: PhaseFootprint, kw: number): PhaseBudget => ({
+  room: spendPhaseRoom(budget.room, footprint, kw),
+  exportRemainder: spendPhaseExport(budget.exportRemainder, footprint, kw),
+});

@@ -28,6 +28,7 @@
  * the lane admits joins `storageHandedBack`, and the battery stage releases
  * the hold (`applyStorageHandBacks`, reason `restored`).
  */
+import { phaseShare } from '../phase/phaseRoom';
 import { spendPowerHeadroom } from '../powerLimitMath';
 import type { DevicePlanDevice } from '../planTypes';
 import type { StorageLeverState } from '../planState';
@@ -70,6 +71,17 @@ export function planStorageHandBack(
     });
     return loop;
   };
+
+  // Handed back, it discharges again: not onto a phase with no export room for it.
+  if (lever.exportPhase !== undefined) {
+    const roomKw = cycle.readPhaseExportRoomKw(lever.exportPhase);
+    const resumesAtW = lever.resumePlan !== undefined && lever.resumePlan.validUntilMs > timing.nowTs
+      ? lever.resumePlan.setpointW : lever.preClaimSignedW;
+    const resumedKw = Math.max(0, lever.setpointW - resumesAtW) / 1000;
+    if (roomKw !== null && roomKw < resumedKw * phaseShare(dev.phaseFootprint, lever.exportPhase)) {
+      return reject('phase_export');
+    }
+  }
 
   const batchContinuation = restoredOneThisCycle && canAttemptBatchContinuation(batchState);
   const blockedByInCycleRestore = restoredOneThisCycle && !batchContinuation;

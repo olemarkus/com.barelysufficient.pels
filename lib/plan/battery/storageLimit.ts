@@ -57,6 +57,10 @@ const toLimitLever = (
     ownModeChargeW: resolveOwnModeChargeW(storage, preClaimSignedW),
     stepW: storage.range.stepW,
     reading: { kind: 'read' },
+    ...(chosen.exportPhase === undefined ? {} : { exportPhase: chosen.exportPhase }),
+    ...(storage.continuousPlan === undefined ? {} : {
+      resumePlan: { setpointW: storage.continuousPlan.setpointW, validUntilMs: storage.continuousPlan.validUntilMs },
+    }),
   };
 };
 

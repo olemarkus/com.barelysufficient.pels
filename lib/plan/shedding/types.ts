@@ -48,13 +48,23 @@ export type SheddingPlan = {
   recoveredAtMs: number | null;
   /** The worst phase still breached with nothing left to limit on it (`phase/phaseShedPass.ts`). */
   unrelievedPhase: PhaseName | null;
+  /** Export past a phase's target that batteries did not answer, kW (`phase/phaseExportPass.ts`). */
+  phaseExportExcessKw: number;
+  /** The worst phase exporting past its target this cycle. */
+  exportPhase: PhaseName | null;
 };
 
 /**
  * The setpoint a battery's limit was spent at, W, whether its relief was
  * banked, and the battery as its candidate read it this cycle.
  */
-export type StorageSetpoint = { setpointW: number; banked: boolean; storage: ObservedStorageInput };
+export type StorageSetpoint = {
+  setpointW: number;
+  banked: boolean;
+  storage: ObservedStorageInput;
+  /** Asked to discharge less because this phase is exporting past its target. */
+  exportPhase?: PhaseName;
+};
 
 /**
  * The two overshoot questions `resolveSoftOvershootDecision` keeps apart
@@ -190,8 +200,8 @@ export type StorageLimitInput =
     kind: 'measured';
     drawKw: number;
     levers: Readonly<Record<string, StorageLeverState>>;
-    /** Limit charge only, no discharge: the phase pass. */
-    chargeOnly?: true;
+    /** The phase pass's bound per battery: its phase's import, and whether it may discharge at all. */
+    boundFor?: (device: PlanInputDevice) => { drawKw: number; chargeOnly: boolean };
   }
   | { kind: 'unmeasured' };
 

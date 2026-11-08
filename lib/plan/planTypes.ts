@@ -248,8 +248,8 @@ export type NonSteppedPlanDevice = DevicePlanDeviceBase & NonSteppedLoadKind;
 export type StorageHold =
   | { kind: 'none' }
   | { kind: 'power_limit_off' }
-  | { kind: 'relief' }
-  | { kind: 'charge_limit'; heldBackKw: number }
+  | { kind: 'relief'; exportPhase?: PhaseName }
+  | { kind: 'charge_limit'; heldBackKw: number; exportPhase?: PhaseName }
   | { kind: 'cap_for_device' }
   | { kind: 'surplus' }
   | { kind: 'plan_charge' }
@@ -860,6 +860,8 @@ export type PlanMeasuredMetaFields = {
   phase: PhasePower;
   /** The worst phase still breached with nothing left to limit on it. */
   unrelievedPhase: PhaseName | null;
+  /** The worst phase exporting past its target this cycle. */
+  exportPhase?: PhaseName | null;
   headroomKw: number | null;
   shortfallBudgetHeadroomKw: number | null;
   hardCapHeadroomKw: number | null;
