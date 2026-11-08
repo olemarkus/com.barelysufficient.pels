@@ -89,6 +89,16 @@ describe('continuous battery horizon projection', () => {
       .toEqual({ kind: 'waiting', reason: 'control_unavailable' });
   });
 
+  it.each(['not_responding', 'sign_inverted'] as const)(
+    'leaves a battery out of the plan once its control is judged %s, so the others plan for the house',
+    (verdict) => {
+      const judged: BatteryLeverRead = { ...control, verdict };
+      expect(horizonSource(sources({
+        getControl: () => partialDouble<BatteryControlOwner>({ readControl: () => judged }),
+      })).readHorizon('battery', config)).toEqual({ kind: 'waiting', reason: 'control_unavailable' });
+    },
+  );
+
   it('plans a home without solar from resolved absence, without inventing a solar forecast', () => {
     const result = horizonSource(sources()).readHorizon('battery', config);
     expect(result.kind).toBe('ready');
