@@ -8,6 +8,7 @@ import { getSteppedLoadLowestActiveStep } from '../../../packages/shared-domain/
 import { getSteppedLoadNextLowerStep } from '../../utils/steppedLoadLadder';
 import type { SwapDonorRelease, SwapLedger } from './swapLedger';
 import { hasReportedStepAtOrBelow } from './donorRelease';
+import { swapDonorPhaseShare, type PhaseRoomAxis } from '../phase/phaseRoom';
 
 /** A running device the swap pauses, and what it gives up. */
 export type SwapDonor = {
@@ -110,6 +111,8 @@ function resolveDonorRelease(
   onDev: MeteredDevicePlanDevice,
   potentialKw: number,
   neededKw: number,
+  /** The fraction of this donor's relief that reaches the target (`swapDonorPhaseShare`). */
+  share: number,
 ): { release: SwapDonorRelease; reliefKw: number } {
   const stop = { release: { kind: 'off' } as const, reliefKw: onDev.currentDrawKw };
   if (!isSteppedLoadDevice(onDev)) return stop;
@@ -126,13 +129,20 @@ function resolveDonorRelease(
     const reliefKw = onDev.isEvCharger
       ? Math.max(0, Math.min(change.deltaKw, onDev.currentDrawKw - resolveSteppedLoadPlanningKw(onDev, step.id)))
       : change.deltaKw;
-    const availableKw = Math.max(0, potentialKw + reliefKw - SWAP_RESTORE_RESERVE_KW);
+    const availableKw = Math.max(0, potentialKw + reliefKw * share - SWAP_RESTORE_RESERVE_KW);
     if (isRestoreAdmitted(buildRestoreAdmissionMetrics({ availableKw, neededKw }))) {
       return { release: { kind: 'step', stepId: step.id }, reliefKw };
     }
   }
   return stop;
 }
+
+/** What a swap's target already has: its available kW, and the phases' room at this point of the pass. */
+export type SwapRoom = {
+  availableKw: number;
+  /** A donor counts only for what it frees on these. */
+  phaseRoom: PhaseRoomAxis;
+};
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function buildSwapCandidates(
@@ -141,7 +151,7 @@ export function buildSwapCandidates(
   ledger: SwapLedger,
   /** The cycle's devices: the ranks of the targets a donor is already held for. */
   deviceMap: ReadonlyMap<string, DevicePlanDevice>,
-  availableHeadroom: number,
+  room: SwapRoom,
   needed: number,
   restoredThisCycle: ReadonlySet<string>,
 ): {
@@ -158,6 +168,7 @@ export function buildSwapCandidates(
   admission: RestoreAdmissionMetrics;
   reserveKw: number;
 } {
+  const { availableKw: availableHeadroom, phaseRoom } = room;
   const toShed: SwapDonor[] = [];
   let currentPotential = availableHeadroom;
   let effectiveHeadroom = Math.max(0, currentPotential - SWAP_RESTORE_RESERVE_KW);
@@ -166,9 +177,13 @@ export function buildSwapCandidates(
   for (const onDev of onDevices) {
     if (!isViableSwapCandidate(onDev, dev, ledger, deviceMap, restoredThisCycle)) continue;
 
-    const { release, reliefKw } = resolveDonorRelease(onDev, currentPotential, needed);
+    const share = swapDonorPhaseShare(
+      phaseRoom, dev.phaseFootprint, onDev.phaseFootprint, needed + SWAP_RESTORE_RESERVE_KW,
+    );
+    if (share <= 0) continue;
+    const { release, reliefKw } = resolveDonorRelease(onDev, currentPotential, needed, share);
     toShed.push({ device: onDev, release });
-    currentPotential += reliefKw;
+    currentPotential += reliefKw * share;
     effectiveHeadroom = Math.max(0, currentPotential - SWAP_RESTORE_RESERVE_KW);
     admission = buildRestoreAdmissionMetrics({ availableKw: effectiveHeadroom, neededKw: needed });
 

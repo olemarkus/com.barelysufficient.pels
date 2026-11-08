@@ -165,6 +165,7 @@ function buildSubHomeScope(
     // shares — without it an area's alert reads as the Main home's.
     // Live read: a rename lands via `updateHomeConfig` without a teardown.
     getHomeDisplayName: () => resolveHomeAreaDisplayName(runtime.getHomeConfig().name),
+    getMainFuse: () => ({ kind: 'off' }),
     getCapacitySettings: () => {
       const { dryRun: _dryRun, ...capacitySettings } = runtime.getCapacityScalars();
       return capacitySettings;

@@ -20,6 +20,7 @@ import {
 import { applyBudgetExemptRestorePass } from './exemptRestoreLane';
 import { resolveHeadroomReserves, resolveRestoreDecisionPhase } from '../admission';
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './headroomLedger';
+import { resolvePhaseRoomAxis } from '../phase/phaseRoom';
 import { buildDisabledRestoreBatchState, buildRestoreBatchState } from './batch';
 import { resolveAcknowledgedStepUpReservationKw } from '../planSteppedRestorePending';
 import { resolveCapacityAdmissionHeadroom } from '../planBudget';
@@ -109,6 +110,7 @@ export function applyRestorePlan(
     headroomReserves,
     batchState,
     phase: resolveRestoreDecisionPhase(state.currentRebuildTrigger),
+    readPhaseRoom: () => ledger.axes().phase,
   };
 
   if (guardInShortfall) {
@@ -180,6 +182,7 @@ function buildCycleHeadroomLedger(power: MeasuredPower, context: PlanContext): R
     capacity: resolveCapacityAdmissionHeadroom(context, power.capacityHeadroom),
     grid: power.gridHeadroom,
     budget: power.budgetHeadroom,
+    phase: resolvePhaseRoomAxis(power.phase),
   });
 }
 

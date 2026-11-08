@@ -137,6 +137,7 @@ describe('capacity shortfall alert dispatch', () => {
         handleShortfall,
         handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
         computeShortfallThreshold: () => 5,
+        computePhaseDeficitKw: () => 0,
         getLatestPlanSnapshot: () => null,
         getLatestPublishedPlan: () => null,
       },

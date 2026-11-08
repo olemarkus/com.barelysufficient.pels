@@ -93,6 +93,8 @@ export function buildStorageCandidate(
   drawKw: number,
   recentlyRestored: boolean,
   nowTs: number,
+  /** Bound relief to its charge: the ladder stops at 0 W and never discharges. */
+  chargeOnly = false,
 ): StorageShedCandidate | StorageCandidateSkip {
   const { storage } = device;
   if (!isStorageDrivable(storage)) return 'storage_not_drivable';
@@ -104,7 +106,8 @@ export function buildStorageCandidate(
   const baseW = storageBaseW(storage, lever);
   // The draw once the held part lands, less the margin the limit leaves under it.
   const drawAfterHeldW = drawKw * 1000 - (storage.signedPowerW - baseW);
-  const maxReliefW = Math.max(0, Math.min(baseW + storage.deliveryCeilingW, drawAfterHeldW - drawMarginWFor(storage)));
+  const ceilingW = chargeOnly ? Math.max(0, baseW) : baseW + storage.deliveryCeilingW;
+  const maxReliefW = Math.max(0, Math.min(ceilingW, drawAfterHeldW - drawMarginWFor(storage)));
   if (!isLowerVisible(storage, baseW, baseW - maxReliefW)) return 'storage_nothing_to_release';
   return {
     kind: 'storage',

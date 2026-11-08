@@ -31,6 +31,7 @@ export type PlanEngine = {
   computePhysicalPowerLimit: () => number | null;
   computeCapacityPace: () => number | null;
   computeShortfallThreshold: () => number | null;
+  computePhaseDeficitKw: (netKw: number) => number;
   handleShortfall: (deficitKw: number) => Promise<void>;
   handleShortfallCleared: () => Promise<void>;
   applyPlanActions: (plan: ExecutionPlan) => Promise<PlanActuationResult>;

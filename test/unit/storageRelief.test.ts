@@ -641,7 +641,7 @@ describe('storage discharge as restore sees it', () => {
     const power = buildMeasuredPower({ drawKw: 2, headroomKw: 1, capacityHeadroomKw: 1, gridHeadroomKw: 0.8, budgetHeadroomKw: 0.5 });
     const relief = cycle(battery({ signedPowerW: -1500 }), 1, { battery: lever() });
 
-    expect(withoutStorageWithheld(power, relief)).toEqual({
+    expect(withoutStorageWithheld(power, relief, [])).toEqual({
       ...power, headroom: { kind: 'on', kw: -0.5 }, capacityHeadroom: { kind: 'on', kw: -0.5 },
       gridHeadroom: { kind: 'on', kw: -0.7 }, budgetHeadroom: { kind: 'on', kw: -1 },
     });

@@ -27,6 +27,7 @@ import type { PlanRebuildPosture } from './rebuildScheduler/rebuildSignal';
 export function resolvePlanRebuildPosture(
   summary: PlanCapacityStateSummary | null,
   planState: PlanConvergenceState,
+  phaseNothingToLimit: boolean,
 ): PlanRebuildPosture {
   // An unwinnable overshoot must not count as "converging": convergence bypasses
   // the throttle's anti-storm gates, and that bypass is what let a persistent
@@ -37,5 +38,6 @@ export function resolvePlanRebuildPosture(
     planConvergenceActive: isPlanActivelyConverging(planState, { unactionable }),
     unactionable,
     shortfallUnrecoverable: summary !== null && !summary.remainingActionableControlledLoad,
+    phaseNothingToLimit,
   };
 }

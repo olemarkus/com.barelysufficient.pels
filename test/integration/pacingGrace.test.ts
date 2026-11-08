@@ -50,7 +50,8 @@ class GraceHome {
     const power = resolveMeasuredPower({
       isMeasured: true, totalKw: this.powerKw, lastPowerUpdateMs: readingAtMs,
       headroomKw: (limitKw) => limitKw - this.powerKw,
-    }, context, devices);
+      phaseReading: { kind: 'none' },
+    }, context, devices, { kind: 'off' });
     return this.grace.decide(context, power, this.settings, this.storage, {
       atMs: readingAtMs, powerW: this.powerKw * 1000,
     });

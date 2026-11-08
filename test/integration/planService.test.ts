@@ -2219,6 +2219,7 @@ describe('PlanService', () => {
         }),
       computePhysicalPowerLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
+      computePhaseDeficitKw: () => 0,
       handleShortfall: vi.fn().mockResolvedValue(undefined),
       handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
       applyPlanActions,

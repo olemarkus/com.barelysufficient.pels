@@ -6,6 +6,7 @@ import type { DevicePlanDevice } from './planTypes';
 const RESTRICTIONS: Record<DevicePlanDevice['reason']['code'], TaskDeliveryControl> = {
   daily_budget: { kind: 'restricted', cause: 'budget_limited' },
   grid_import: { kind: 'restricted', cause: 'capacity_limited' },
+  phase_limit: { kind: 'restricted', cause: 'capacity_limited' },
   capacity: { kind: 'restricted', cause: 'capacity_limited' },
   // PELS's own fail-closed decision with no measured room to admit anything:
   // the same restriction a `capacity` hold recorded before the meter outage had

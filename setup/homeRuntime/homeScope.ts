@@ -83,6 +83,8 @@ export type HomeScope = {
   // snapshot (settings-handler maintained); sub-home scopes (R7b) back them
   // with a per-home `CapacitySettingsStore` as their ONLY capacity source.
   getCapacitySettings: PlanBuilderDeps['getCapacitySettings'];
+  /** Main's fuse from its settings store; a meter area has none (`capacitySettingsStore`). */
+  getMainFuse: PlanBuilderDeps['getMainFuse'];
   getCapacityDryRun: PlanBuilderDeps['getCapacityDryRun'];
   /**
    * The owner's Simulation setting for this home, for presentation: what the
@@ -247,6 +249,7 @@ export function buildMainHomeScope(
     // Live snapshot reads — NOT re-reads through the settings store. The
     // snapshot is the in-memory truth kept current by the settings handler.
     getCapacitySettings: () => ctx.capacitySettings,
+    getMainFuse: () => ctx.capacitySettingsStore.mainFuse(),
     // The EFFECTIVE dry-run, the same composition a meter area makes: the
     // owner's persisted intent OR a home-wide fence that holds for the whole
     // cycle (torn down, ownership not yet trustworthy). Main used to publish

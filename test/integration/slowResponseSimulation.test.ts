@@ -42,7 +42,8 @@ const RUNTIME_CANDIDATE: SimulatedPressurePolicyFactory = () => {
     const power = resolveMeasuredPower({
       isMeasured: true, totalKw: reading.powerKw, lastPowerUpdateMs: reading.atMs,
       headroomKw: (limitKw) => limitKw - reading.powerKw,
-    }, context, devices);
+      phaseReading: { kind: 'none' },
+    }, context, devices, { kind: 'off' });
     return incident.decidePacing(context, power, settings, NO_STORAGE_SHED_TERM, {
       atMs: reading.atMs, powerW: reading.powerKw * 1000,
     });

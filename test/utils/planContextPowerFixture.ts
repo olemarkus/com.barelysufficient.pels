@@ -34,6 +34,7 @@ export const buildMeasuredPower = (overrides: MeasuredPowerFixtureOverrides = {}
     capacityHeadroom: headroomFixture(capacityHeadroomKw),
     budgetHeadroom: headroomFixture(budgetHeadroomKw),
     capacityBreached: false,
+    phase: { kind: 'off' } as const,
     ...rest,
   };
   return { ...power, physicalLimitBreached: physicalLimitBreached ?? (power.capacityBreached || power.gridBreached) };

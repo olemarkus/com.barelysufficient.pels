@@ -56,6 +56,7 @@ export const createHomeyEnergyPollSource = (
   );
   return new HomeyEnergyPollSource({
     getPowerSource: () => host.getPowerSource(),
+    onInactive: () => host.capacityGuard?.phaseReadings.reset(),
     timers: host.timers,
     requestHomeMeters: () => homeMeters.request(),
     readMeters: async (meterDeviceIds) => (await host.deviceManager?.readMeters(meterDeviceIds)) ?? null,

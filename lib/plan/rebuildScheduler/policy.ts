@@ -62,6 +62,8 @@ export const resolvePlanningPeriod = (wallMs: number): number => Math.floor(wall
 const MIN_REBUILD_DELTA_W = 100;
 const MIN_REBUILD_DELTA_RATIO = 0.005; // 0.5% of limit
 const MIN_LIMIT_DEFICIT_DELTA_KW = 0.001;
+// A phase reading moves a little every sample, so a rise this small says nothing new.
+const MIN_PHASE_DEFICIT_RISE_KW = 0.1;
 const TIGHT_NOOP_BACKOFF_MS = [15_000, 30_000, 60_000];
 const TIGHT_NOOP_BACKOFF_MAX_MS = 120_000;
 export const TIGHT_MITIGATION_HOLDOFF_MS = 15_000;
@@ -109,7 +111,7 @@ const resolveTightUnactionable = (
   headroomTight: boolean,
   hardCapBreachActive: boolean,
 ): boolean => {
-  const boundaryActive = headroomTight || signal.isInShortfall || hardCapBreachActive;
+  const boundaryActive = headroomTight || signal.isInShortfall || hardCapBreachActive || signal.phaseBreach.breached;
   return signal.unactionable && !signal.planConvergenceActive && boundaryActive;
 };
 
@@ -119,10 +121,14 @@ const resolveTightUnactionable = (
  * `MIN_LIMIT_DEFICIT_DELTA_KW`. One rule, and one tolerance, for the
  * hard-cap breach and the grid breach.
  */
-const isBreachEscalated = (breach: LimitBreach, previous: LimitBreach): boolean => (
+const isBreachEscalated = (
+  breach: LimitBreach,
+  previous: LimitBreach,
+  minRiseKw = MIN_LIMIT_DEFICIT_DELTA_KW,
+): boolean => (
   breach.breached && (
     !previous.breached
-    || breach.deficitKw > previous.deficitKw + MIN_LIMIT_DEFICIT_DELTA_KW
+    || breach.deficitKw > previous.deficitKw + minRiseKw
   )
 );
 
@@ -143,6 +149,7 @@ export const shouldRebuildFromDecision = (
   // verdict, which was taken against a house under (or less over) its grid
   // target — the one physical breach allowed past the unactionable throttle.
   if (isBreachEscalated(signal.gridBreach, lastRebuild.gridBreach)) return true;
+  if (isBreachEscalated(signal.phaseBreach, lastRebuild.phaseBreach, MIN_PHASE_DEFICIT_RISE_KW)) return true;
   if (isUnactionableThrottleActive(signal, memory.suppressionInvalidated)) return maxIntervalExceeded;
   // A breach of either physical limit earns a rebuild past the tight-noop
   // backoff when the hard-cap breach escalated (the grid one returned above),
@@ -150,7 +157,7 @@ export const shouldRebuildFromDecision = (
   // falls through to the backoff like any tight boundary: the reading is what
   // triggers a rebuild, and one that repeats a breach the last rebuild already
   // answered changes nothing that rebuild did not see.
-  const breached = signal.hardCapBreach.breached || signal.gridBreach.breached;
+  const breached = signal.hardCapBreach.breached || signal.gridBreach.breached || signal.phaseBreach.breached;
   if (
     isBreachEscalated(signal.hardCapBreach, lastRebuild.hardCapBreach)
     || (breached && (deltaMeaningful || maxIntervalExceeded))
@@ -175,7 +182,7 @@ export const resolveRebuildDecision = (
 ): RebuildDecision => {
   const { lastRebuild } = memory;
   const headroomTight = resolveHeadroomTight(signal.headroomKw);
-  const controlBoundaryActive = headroomTight || signal.isInShortfall;
+  const controlBoundaryActive = headroomTight || signal.isInShortfall || signal.phaseBreach.breached;
   const hardCapBreachActive = signal.hardCapBreach.breached;
   const { deltaW, deltaMeaningful } = resolvePowerDelta(signal, lastRebuild);
   const maxIntervalExceeded = maxIntervalMs > 0
@@ -223,6 +230,7 @@ export const resolveRebuildReason = (
 ): PowerSampleRebuildTrigger => {
   if (memory.lastRebuild === null) return 'initial';
   if (signal.gridBreach.breached) return 'grid_import_pressure';
+  if (signal.phaseBreach.breached) return 'phase_pressure';
   if (signal.isInShortfall) return 'shortfall';
   if (signal.hardCapBreach.breached) return 'hard_cap_breach';
   if (decision.headroomTight) return 'headroom_tight';
@@ -238,7 +246,7 @@ export const resolveRebuildIntentKind = (hardCapBreach: LimitBreach): RebuildInt
 );
 
 export const isTightReason = (reason: PlanRebuildTrigger): boolean => (
-  reason === 'grid_import_pressure' || reason === 'headroom_tight'
+  reason === 'grid_import_pressure' || reason === 'phase_pressure' || reason === 'headroom_tight'
   || reason === 'shortfall' || reason === 'hard_cap_breach'
 );
 
@@ -249,7 +257,7 @@ export function isTightNoopBackoffActive(
   headroomTight: boolean,
   deltaMeaningful: boolean,
 ): boolean {
-  if (!headroomTight && !signal.isInShortfall) return false;
+  if (!headroomTight && !signal.isInShortfall && !signal.phaseBreach.breached) return false;
   if (deltaMeaningful) return false;
   return holdoff !== null && nowMs < holdoff.untilMs;
 }

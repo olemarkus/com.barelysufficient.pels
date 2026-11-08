@@ -36,7 +36,7 @@ const charger = (currentOn = true): PlanInputDevice => inputDevice({
 const buildHeld = (device: PlanInputDevice) => {
   const hold = resolveCarCurrentRangeHold([device]);
   const sheddingPlan: SheddingPlan = {
-    shedSet: hold.holdIds, shedReasons: hold.reasonById, shedStepTargets: new Map(), storageSetpoints: new Map(),
+    unrelievedPhase: null, shedSet: hold.holdIds, shedReasons: hold.reasonById, shedStepTargets: new Map(), storageSetpoints: new Map(),
     sheddingActive: false, guardInShortfall: false, outcome: NO_SHEDDING_OUTCOME, recoveredAtMs: null,
   };
   const built = buildBasePlanDevice({

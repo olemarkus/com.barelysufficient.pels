@@ -35,6 +35,12 @@ export {
 
 const NO_BREACH: LimitBreach = { breached: false, deficitKw: 0 };
 
+/** The breach that sets how urgently the rebuild is scheduled: the instantaneous limits before the hard cap. */
+const resolveUrgentBreach = (signal: PowerRebuildSignal): LimitBreach => {
+  if (signal.gridBreach.breached) return signal.gridBreach;
+  return signal.phaseBreach.breached ? signal.phaseBreach : signal.hardCapBreach;
+};
+
 type RebuildDeferred = {
   promise: Promise<void | string>;
   resolve: (value: string | undefined) => void;
@@ -136,6 +142,12 @@ export class PlanRebuildThrottle {
    */
   onSample(reading: AdmittedPowerReading, posture: PlanRebuildPosture): Promise<void | string> {
     const rebuildStart = Date.now();
+    const phaseBreach: LimitBreach = { breached: reading.phaseDeficitKw > 0, deficitKw: reading.phaseDeficitKw };
+    const gridBreach = resolveLimitBreach(reading.totalKw, resolveGridImportTargetKw(reading.gridImportLimitKw));
+    const hardCapBreach = resolveLimitBreach(reading.totalKw, reading.shortfallThresholdKw);
+    // Only the phase has nothing left: a home over another limit may still have work to do.
+    const onlyPhaseStuck = posture.phaseNothingToLimit && phaseBreach.breached
+      && !gridBreach.breached && !hardCapBreach.breached;
     const signal: PowerRebuildSignal = {
       currentPowerW: reading.currentPowerW,
       totalKw: reading.totalKw,
@@ -147,10 +159,11 @@ export class PlanRebuildThrottle {
       // can arrive between a settings write that turns Capacity limit off and
       // the build that clears the latched incident.
       isInShortfall: reading.shortfallThresholdKw !== null && this.deps.getCapacityGuard().isInShortfall(),
-      hardCapBreach: resolveLimitBreach(reading.totalKw, reading.shortfallThresholdKw),
-      gridBreach: resolveLimitBreach(reading.totalKw, resolveGridImportTargetKw(reading.gridImportLimitKw)),
+      hardCapBreach,
+      gridBreach,
+      phaseBreach,
       planConvergenceActive: posture.planConvergenceActive,
-      unactionable: posture.unactionable,
+      unactionable: posture.unactionable || onlyPhaseStuck,
     };
     // The latch is not spent here. Only a rebuild that read the observed device
     // spends it (`execute`): a reading that rebuilds nothing leaves the
@@ -182,6 +195,7 @@ export class PlanRebuildThrottle {
     this.lastRebuild = {
       atMs: dispatchedAtMs, planningPeriod, powerW: signal.currentPowerW,
       hardCapBreach: previousBreach, gridBreach: this.lastRebuild?.gridBreach ?? NO_BREACH,
+      phaseBreach: this.lastRebuild?.phaseBreach ?? NO_BREACH,
     };
     this.inFlight = deferred.promise;
     incPerfCounters(['plan_rebuild_execute_total', 'plan_rebuild_execute.power_sample_total']);
@@ -198,7 +212,7 @@ export class PlanRebuildThrottle {
         // reducible.
         this.lastRebuild = {
           atMs: dispatchedAtMs, planningPeriod, powerW: signal.currentPowerW,
-          hardCapBreach: signal.hardCapBreach, gridBreach: signal.gridBreach,
+          hardCapBreach: signal.hardCapBreach, gridBreach: signal.gridBreach, phaseBreach: signal.phaseBreach,
         };
         if (this.observedDuringFlight(observationSeqAtDispatch)) {
           this.settleAfterOvertakenRebuild(trigger, outcome);
@@ -346,6 +360,9 @@ export class PlanRebuildThrottle {
     if (!signal.gridBreach.breached && this.lastRebuild.gridBreach.breached) {
       this.lastRebuild = { ...this.lastRebuild, gridBreach: NO_BREACH };
     }
+    if (!signal.phaseBreach.breached && this.lastRebuild.phaseBreach.breached) {
+      this.lastRebuild = { ...this.lastRebuild, phaseBreach: NO_BREACH };
+    }
   }
 
   private request(
@@ -361,7 +378,7 @@ export class PlanRebuildThrottle {
     const holdoffBefore = this.holdoff;
     const lastDecisionUnactionableBefore = this.lastDecisionUnactionable;
     if (decision.deltaMeaningful && this.hasBackoffState()) this.resetBackoff();
-    const intentKind = resolveRebuildIntentKind(signal.gridBreach.breached ? signal.gridBreach : signal.hardCapBreach);
+    const intentKind = resolveRebuildIntentKind(resolveUrgentBreach(signal));
     const earliestMs = this.lastRebuild === null
       ? nowMs
       : this.lastRebuild.atMs + POWER_SAMPLE_REBUILD_CADENCE.minIntervalMs;

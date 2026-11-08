@@ -98,6 +98,21 @@ const heater = (priority: number, kw: number, id = `heater-${priority}`): ShedCa
 
 const CAPACITY = { code: PLAN_REASON_CODES.capacity };
 
+describe('phase pass battery relief', () => {
+  it('limits only the charge when asked, whatever the discharge could add', () => {
+    const device = battery({ signedPowerW: 1500 });
+    const built = buildStorageCandidate(device, undefined, 6, false, NOW, true);
+    expect(built).toMatchObject({ kind: 'storage', effectivePower: 1.5 });
+    const full = buildStorageCandidate(device, undefined, 6, false, NOW);
+    expect(typeof full !== 'string' && full.effectivePower).toBeGreaterThan(1.5);
+  });
+
+  it('offers nothing charge-only from a battery that is already discharging', () => {
+    expect(buildStorageCandidate(battery({ signedPowerW: -500 }), undefined, 6, false, NOW, true))
+      .toBe('storage_nothing_to_release');
+  });
+});
+
 describe('the battery candidate', () => {
   it('prices its whole ladder: its charge, then its discharge, bounded by the draw less half the deadband', () => {
     // Charging 2 kW in a house drawing 6 kW: 2 kW of charge and 2.5 kW of discharge.

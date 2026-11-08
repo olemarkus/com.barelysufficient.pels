@@ -48,6 +48,7 @@ const KEEP_REASON_RULES: readonly ReasonCodeRule[] = [
 
 const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.gridImport },
+  { code: PLAN_REASON_CODES.phaseLimit },
   { code: PLAN_REASON_CODES.capacity },
   // The silent-meter fail-closed pass's directive: `shed` and nothing else.
   { code: PLAN_REASON_CODES.meterSilent },

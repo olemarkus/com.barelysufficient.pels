@@ -42,6 +42,7 @@ describe('HomeyEnergyPollSource', () => {
     const deviceDebug = captureDebugTopic('devices');
     const source = new HomeyEnergyPollSource({
       getPowerSource: mockPowerSource,
+      onInactive: () => undefined,
       timers: new TimerRegistry(),
       readMeters,
       requestHomeMeters: mainMeterRequests(recordPowerSample),
@@ -75,6 +76,7 @@ describe('HomeyEnergyPollSource', () => {
     const readMeters = vi.fn().mockResolvedValue(null);
     const source = new HomeyEnergyPollSource({
       getPowerSource: mockPowerSource,
+      onInactive: () => undefined,
       timers: new TimerRegistry(),
       readMeters,
       requestHomeMeters: mainMeterRequests(vi.fn().mockResolvedValue(undefined)),
@@ -99,6 +101,7 @@ describe('HomeyEnergyPollSource', () => {
     const error = vi.fn();
     let sourceReads = 0;
     const source = new HomeyEnergyPollSource({
+      onInactive: () => undefined,
       getPowerSource: () => {
         sourceReads += 1;
         if (sourceReads <= 2) throw new Error('transient settings read');
@@ -142,6 +145,7 @@ describe('HomeyEnergyPollSource', () => {
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
     const source = new HomeyEnergyPollSource({
       getPowerSource: mockPowerSource,
+      onInactive: () => undefined,
       timers: new TimerRegistry(),
       readMeters,
       requestHomeMeters: mainMeterRequests(recordPowerSample),
@@ -167,6 +171,7 @@ describe('HomeyEnergyPollSource', () => {
     const readMeters = vi.fn().mockResolvedValue(null);
     const source = new HomeyEnergyPollSource({
       getPowerSource: () => { throw new Error('settings unavailable'); },
+      onInactive: () => undefined,
       timers: new TimerRegistry(),
       readMeters,
       requestHomeMeters: mainMeterRequests(vi.fn().mockResolvedValue(undefined)),
@@ -195,6 +200,7 @@ describe('HomeyEnergyPollSource', () => {
     const deviceDebug = captureDebugTopic('devices');
     const source = new HomeyEnergyPollSource({
       getPowerSource: mockPowerSource,
+      onInactive: () => undefined,
       timers: new TimerRegistry(),
       readMeters,
       requestHomeMeters: mainMeterRequests(recordPowerSample),
@@ -229,6 +235,7 @@ describe('HomeyEnergyPollSource', () => {
     const deviceDebug = captureDebugTopic('devices');
     const source = new HomeyEnergyPollSource({
       getPowerSource: mockPowerSource,
+      onInactive: () => undefined,
       timers: new TimerRegistry(),
       readMeters,
       requestHomeMeters: mainMeterRequests(recordPowerSample),
@@ -256,6 +263,7 @@ describe('HomeyEnergyPollSource', () => {
     }));
     const source = new HomeyEnergyPollSource({
       getPowerSource: mockPowerSource,
+      onInactive: () => undefined,
       timers: new TimerRegistry(),
       readMeters,
       requestHomeMeters: () => ({
@@ -286,6 +294,7 @@ describe('HomeyEnergyPollSource', () => {
     const recordPowerSample = vi.fn().mockResolvedValue(undefined);
     const source = new HomeyEnergyPollSource({
       getPowerSource: mockPowerSource,
+      onInactive: () => undefined,
       timers: new TimerRegistry(),
       readMeters,
       requestHomeMeters: mainMeterRequests(recordPowerSample),
@@ -333,5 +342,21 @@ describe('HomeyEnergyPollSource', () => {
       generationW: 300,
       meterDeviceId: 'meter-main',
     });
+  });
+});
+
+describe('phases under another power source', () => {
+  it('tells the owner of the phases that the poll is not feeding them', () => {
+    const onInactive = vi.fn();
+    const source = new HomeyEnergyPollSource({
+      getPowerSource: () => 'flow',
+      onInactive,
+      timers: new TimerRegistry(),
+      requestHomeMeters: () => ({ meterDeviceIds: [], record: async () => undefined }),
+      readMeters: async () => null,
+      error: vi.fn(),
+    });
+    source.start();
+    expect(onInactive).toHaveBeenCalledOnce();
   });
 });

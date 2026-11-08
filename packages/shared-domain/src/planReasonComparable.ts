@@ -27,6 +27,7 @@ type ComparablePlanReasonBase = {
 export type ComparablePlanReason =
   | ComparablePlanReasonBase
   | (ComparablePlanReasonBase & { detail: string | null })
+  | (ComparablePlanReasonBase & { phase: 'L1' | 'L2' | 'L3' })
   | (ComparablePlanReasonBase & { reserveHolderName?: string })
   | (ComparablePlanReasonBase & { targetName: string | null; reserveHolderName?: string })
   | (ComparablePlanReasonBase & {
@@ -208,6 +209,8 @@ export function buildComparableDeviceReason(reason: DeviceReason | undefined): C
       return withReserveHolder({ code: reason.code, targetName: reason.targetName }, reason);
     case PLAN_REASON_CODES.chargeTargetReached:
       return { code: reason.code, targetPercent: reason.targetPercent };
+    case PLAN_REASON_CODES.phaseLimit:
+      return { code: reason.code, phase: reason.phase };
     case PLAN_REASON_CODES.restoreNeed:
       return {
         code: reason.code,

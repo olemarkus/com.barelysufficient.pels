@@ -94,9 +94,9 @@ describe('isPlanActivelyConverging', () => {
       remainingReducibleControlledLoad: false,
     };
     vi.advanceTimersByTime(CONTROL_COMMAND_CONFIRMATION_MS - 1);
-    expect(resolvePlanRebuildPosture(summary, state).planConvergenceActive).toBe(true);
+    expect(resolvePlanRebuildPosture(summary, state, false).planConvergenceActive).toBe(true);
     vi.advanceTimersByTime(1);
-    expect(resolvePlanRebuildPosture(summary, state)).toMatchObject({
+    expect(resolvePlanRebuildPosture(summary, state, false)).toMatchObject({
       planConvergenceActive: false,
       unactionable: true,
       shortfallUnrecoverable: true,

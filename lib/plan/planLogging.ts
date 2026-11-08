@@ -404,11 +404,31 @@ export type PlanDebugSummaryEvent = {
   dailySoftLimitKw: number | null;
   softLimitSource: SoftLimitSource;
   headroomKw: number | null;
+  phase: PhaseStateSummary;
   restoreBlockedCount: number;
   restoreBlockedReasons: PlanReasonGroup[];
   inactiveCount: number;
   inactiveReasons: PlanReasonGroup[];
 };
+
+type PhaseStateSummary =
+  | { kind: 'off' }
+  | {
+    kind: 'on';
+    phases: { phase: string; drawKw: number | null; roomKw: number | null; breached: boolean }[];
+    unrelievedPhase: string | null;
+  };
+
+function summarizePhaseState(plan: DevicePlan): PhaseStateSummary {
+  if (!plan.meta.powerIsMeasured || plan.meta.phase.kind === 'off') return { kind: 'off' };
+  return {
+    kind: 'on',
+    phases: plan.meta.phase.phases.map(({ phase, drawKw, roomKw, breached }) => ({
+      phase, drawKw: roundPlanDebugNumber(drawKw), roomKw: roundPlanDebugNumber(roomKw), breached,
+    })),
+    unrelievedPhase: plan.meta.unrelievedPhase,
+  };
+}
 
 export function buildPlanDebugSummaryEvent(plan: DevicePlan): PlanDebugSummaryEvent {
   const categories = categorizePlanDebugDevices(plan.devices);
@@ -420,6 +440,7 @@ export function buildPlanDebugSummaryEvent(plan: DevicePlan): PlanDebugSummaryEv
     dailySoftLimitKw: roundPlanDebugNumber(plan.meta.dailySoftLimitKw),
     softLimitSource: plan.meta.softLimitSource,
     headroomKw: plan.meta.powerIsMeasured ? roundPlanDebugNumber(plan.meta.headroomKw) : null,
+    phase: summarizePhaseState(plan),
     restoreBlockedCount: categories.restoreBlockedCount,
     restoreBlockedReasons: categories.restoreBlockedReasons,
     inactiveCount: categories.inactiveCount,

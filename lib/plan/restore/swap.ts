@@ -103,7 +103,9 @@ export function attemptSwapRestore(
   }
 
   const swap = buildSwapCandidates(
-    dev, onDevices, swapLedger, deviceMap, availableHeadroom, restoreNeed.needed, restoredThisCycle,
+    dev, onDevices, swapLedger, deviceMap,
+    { availableKw: availableHeadroom, phaseRoom: cycle.readPhaseRoom() },
+    restoreNeed.needed, restoredThisCycle,
   );
   if (!swap.ready) {
     return rejectSwapRestoreWithCandidates(

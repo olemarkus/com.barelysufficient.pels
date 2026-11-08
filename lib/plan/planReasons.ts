@@ -570,6 +570,7 @@ const DEFERRED_HOLD_REASON_CODE = {
 const DEFERRED_FRAMING_POWER_HOLD_CODES: ReadonlySet<string> = new Set([
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.gridImport,
+  PLAN_REASON_CODES.phaseLimit,
   PLAN_REASON_CODES.dailyBudget,
   PLAN_REASON_CODES.hourlyBudget,
 ]);

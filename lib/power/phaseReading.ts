@@ -87,10 +87,29 @@ export class PhaseReadingTracker {
     return this.capabilityIds;
   }
 
+  /** No meter feeds this home's phases any more: nothing is known about them. */
+  reset(): void {
+    this.reading = { kind: 'none' };
+    this.previous = null;
+    this.rejections = 0;
+    this.capabilityIds = [];
+  }
+
+  private noteUnconfirmedRead(): void {
+    this.rejections += 1;
+    if (this.reading.kind === 'healthy' && this.rejections >= REJECTIONS_BEFORE_DEGRADED) {
+      this.reading = { kind: 'degraded' };
+    }
+  }
+
   /** One meter read, taken with the net sample it is judged against. */
   admit(read: MeterPhasesRead, netW: number, nowMs: number): void {
-    // A failed read is no evidence about the meter: the last picture stands.
-    if (read.state === 'unavailable') return;
+    // One failed read leaves the last picture standing, but a meter that keeps
+    // failing has stopped confirming it.
+    if (read.state === 'unavailable') {
+      this.noteUnconfirmedRead();
+      return;
+    }
     this.capabilityIds = read.capabilityIds;
     if (read.state === 'none') {
       this.reading = { kind: 'none' };

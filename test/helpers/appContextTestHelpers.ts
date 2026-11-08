@@ -222,6 +222,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
   } as unknown as ConstructorParameters<typeof AppSnapshotHelpers>[0]);
   const homeyEnergyHelpers = homeyEnergyHelpersOverride ?? new HomeyEnergyPollSource({
     getPowerSource: () => normalizePowerSource(homey.settings.get('power_source')),
+    onInactive: () => undefined,
     timers,
     requestHomeMeters: () => ({ meterDeviceIds: [], record: async () => undefined }),
     readMeters: async () => null,

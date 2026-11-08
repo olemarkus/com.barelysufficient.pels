@@ -45,7 +45,7 @@ const buildRuntime = (overrides: { homeId?: 'main' | 'h_annex'; rebuild?: () => 
   return { ...runtime, timers };
 };
 
-const CALM_POSTURE = { planConvergenceActive: false, unactionable: false, shortfallUnrecoverable: false };
+const CALM_POSTURE = { planConvergenceActive: false, unactionable: false, shortfallUnrecoverable: false, phaseNothingToLimit: false };
 
 /** A whole-home reading against a 10 kW limit; tight once it passes 9 kW. */
 const reading = (currentPowerW: number, shortfallThresholdKw = 20) => ({
@@ -55,6 +55,7 @@ const reading = (currentPowerW: number, shortfallThresholdKw = 20) => ({
   limitKw: 10,
   powerLimitKw: 9,
   shortfallThresholdKw,
+  phaseDeficitKw: 0,
 });
 
 describe('createHomeRebuildRuntime', () => {

@@ -99,6 +99,10 @@ export class ComposedPlanEngine implements PlanEngine {
     return this.builder.computePhysicalPowerLimit();
   }
 
+  public computePhaseDeficitKw(netKw: number): number {
+    return this.builder.computePhaseDeficitKw(netKw);
+  }
+
   public computeShortfallThreshold(): number | null {
     return this.builder.computeShortfallThreshold();
   }

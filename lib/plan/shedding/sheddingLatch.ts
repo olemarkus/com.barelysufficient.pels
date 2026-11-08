@@ -2,6 +2,7 @@ import type { MeasuredPower, PlanContext } from '../planContext';
 import { resolveSheddingClearThresholdKw } from '../powerLimitMath';
 import type { PlanEngineState } from '../planState';
 import type { SheddingOvershootInput } from './types';
+import { isPhaseBreached } from '../phase/phasePower';
 
 /**
  * The shedding latch this build leaves behind (`PlanEngineState.sheddingActive`).
@@ -30,8 +31,9 @@ export function resolveSheddingLatch(
   shedSet: ReadonlySet<string>,
 ): boolean {
   const hourlyBudgetExhausted = state.capacityPeriodSpentFor(context);
-  const inOvershoot = overshoot.actionable || hourlyBudgetExhausted;
-  const remainsOverLimit = power.headroom.kind === 'on' && power.headroom.kw < 0;
+  const phaseBreached = isPhaseBreached(power.phase);
+  const inOvershoot = overshoot.actionable || hourlyBudgetExhausted || phaseBreached;
+  const remainsOverLimit = (power.headroom.kind === 'on' && power.headroom.kw < 0) || phaseBreached;
   if (inOvershoot && (shedSet.size > 0 || hourlyBudgetExhausted || remainsOverLimit)) return true;
   const clearThresholdKw = resolveSheddingClearThresholdKw(context);
   return power.headroom.kind === 'off' || power.headroom.kw >= clearThresholdKw ? false : state.sheddingActive;

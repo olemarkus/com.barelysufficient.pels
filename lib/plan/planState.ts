@@ -1,6 +1,7 @@
 import type { ContinuousStoragePlan } from '../../packages/planner-types/src/planInputDevice';
 import type { PendingBinaryCommandRead } from '../ports/pendingBinaryCommand';
 import type { PlanRebuildTrigger } from './planRebuildTrigger';
+import { NO_PHASE_SHED_STATE, type PhaseShedState } from './phase/phaseShedState';
 import type { PlanLimits } from './planContext';
 import { OvershootIncident } from './overshootIncident';
 import { CapacityDrainStart } from './capacityDrainStart';
@@ -447,6 +448,8 @@ export class PlanEngineState {
    * the guard to discover what its own request had done.
    */
   sheddingActive: boolean = false;
+  /** The phase shed pass's memory between builds (`phase/phaseShedPass.ts`). */
+  phaseShed: PhaseShedState = NO_PHASE_SHED_STATE;
 
   currentRebuildTrigger: PlanRebuildTrigger | null = null;
 

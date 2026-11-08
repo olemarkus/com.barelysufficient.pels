@@ -115,7 +115,7 @@ type StorageLevers = Readonly<Record<string, StorageLeverState>>;
  * `OVERSHOOT_ESCALATION_INTERVAL_MS`, so a shed that achieved nothing escalates
  * on the same cadence as a stuck reading always has.
  */
-const PENDING_SHED_RELIEF_WINDOW_MS = 30 * 1000;
+export const PENDING_SHED_RELIEF_WINDOW_MS = 30 * 1000;
 
 /** How far the reading must fall, as a share of the delivered relief, to have seen it. */
 const DELIVERED_RELIEF_SEEN_FRACTION = 0.5;
@@ -288,11 +288,42 @@ export function resolvePendingShedRelief(
  */
 function resolveStorageUndeliveredKw(
   device: PlanInputDevice | undefined,
-  lever: StorageLeverState | undefined,
+  lever: Pick<StorageLeverState, 'setpointW'> | undefined,
 ): number | 'gone' | 'not_storage' {
   if (device === undefined || !hasStorageInput(device)) return 'not_storage';
   if (lever === undefined || device.storage.reading !== 'observed') return 'gone';
   return Math.max(0, device.storage.signedPowerW - Math.max(0, lever.setpointW)) / 1000;
+}
+
+/**
+ * Per device, the relief its in-window scalar decisions banked that its own
+ * meter has not delivered yet: how far this cycle's and earlier scalar sheds
+ * will still lower the phases they sit on. A read for the phase pass.
+ */
+export function resolveUndeliveredScalarReliefKw(
+  latch: ShedPlanLatch | null,
+  devices: readonly PlanInputDevice[],
+  storageSetpointWByDevice: ReadonlyMap<string, number>,
+  nowTs: number,
+): Map<string, number> {
+  const relief = new Map<string, number>();
+  if (latch === null) return relief;
+  const devicesById = new Map(devices.map((device) => [device.id, device]));
+  for (const [deviceId, decisions] of latch.decisions) {
+    const creditedKw = sumKw(decisions
+      .filter((decision) => decision.kind === 'electrical' && isWithinWindow(decision, nowTs))
+      .map((decision) => Math.max(0, decision.creditedKw)));
+    if (creditedKw <= 0) continue;
+    const device = devicesById.get(deviceId);
+    const setpointW = storageSetpointWByDevice.get(deviceId);
+    const storageKw = resolveStorageUndeliveredKw(device, setpointW === undefined ? undefined : { setpointW });
+    const stepTarget = latch.stepTargets.get(deviceId);
+    const meterKw = storageKw !== 'not_storage' || !isStillDecidable(device, stepTarget?.stepId)
+      ? 0 : resolveUndeliveredReliefKw(device, stepTarget);
+    const undeliveredKw = typeof storageKw === 'number' ? storageKw : meterKw;
+    if (undeliveredKw > 0) relief.set(deviceId, Math.min(creditedKw, undeliveredKw));
+  }
+  return relief;
 }
 
 function isWithinWindow(decision: ShedLatchDecision, nowTs: number): boolean {

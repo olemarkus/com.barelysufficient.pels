@@ -36,6 +36,7 @@ const inputs = (params: {
   nowMs?: number;
 }): CeilingShortfallInputs => ({
   ledger: buildRestoreHeadroomLedger({
+    phase: { kind: 'off' },
     grid: { kind: 'off' },
     capacity: headroomFixture(params.capacityAvailableKw),
     budget: headroomFixture(params.budgetAvailableKw ?? null),
@@ -109,12 +110,12 @@ describe('resolveCeilingShortfall', () => {
   it('reads the capacity axis for a budget-exempt device and the min for others', () => {
     const axes = { gridAvailableKw: null, capacityAvailableKw: 2.0, budgetAvailableKw: 0.1 };
     expect(gapKw({
-      dev: heldDevice({ budgetExempt: true }),
+      dev: heldDevice({ budgetExempt: true, phaseFootprint: { kind: 'unknown' } }),
       inputs: inputs(axes),
     })).toBeNull();
     // gap = needed 1.2 − available 0.1 = 1.1 kW
     expect(gapKw({
-      dev: heldDevice({ budgetExempt: false }),
+      dev: heldDevice({ budgetExempt: false, phaseFootprint: { kind: 'unknown' } }),
       inputs: inputs(axes),
     })).toBe(1.1);
   });
@@ -159,8 +160,8 @@ describe('resolveCeilingShortfall', () => {
 
     it('ignores a budget-exempt victim for a non-exempt device (axis mismatch rule)', () => {
       expect(gapKw({
-        dev: heldDevice({ budgetExempt: false }),
-        inputs: inputs({ capacityAvailableKw: 0.5, onDevices: [victim({ budgetExempt: true })] }),
+        dev: heldDevice({ budgetExempt: false, phaseFootprint: { kind: 'unknown' } }),
+        inputs: inputs({ capacityAvailableKw: 0.5, onDevices: [victim({ budgetExempt: true, phaseFootprint: { kind: 'unknown' } })] }),
       })).toBe(0.7);
     });
   });

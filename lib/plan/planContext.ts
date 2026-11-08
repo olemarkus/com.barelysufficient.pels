@@ -1,7 +1,7 @@
 import { minPowerLimit, resolveGridImportTargetKw } from './powerLimitMath';
 import { gridImportTargetKw } from '../../packages/shared-domain/src/settings/powerLimits';
 import type {
-  CapacityPeriodMinutes, CapacitySettings, PowerLimitSettings,
+  CapacityPeriodMinutes, CapacitySettings, MainFuse, PowerLimitSettings,
 } from '../../packages/contracts/src/capacitySettings';
 import { resolveUsableCapacityKWh } from '../power/capacityModel';
 import type { PowerTrackerState } from '../power/tracker';
@@ -11,6 +11,7 @@ import { sumBudgetExemptMeasuredUsageKwFor } from '../power/usageAttribution';
 import { toMeteredUsageDevices } from './planUsage';
 import type { PlanInputDevice } from './planTypes';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
+import { resolvePhasePower, type PhasePower } from './phase/phasePower';
 
 /**
  * The limits one plan cycle is decided against — resolved ONCE per build by
@@ -193,6 +194,12 @@ export type MeasuredPower = {
    * it from the two axes.
    */
   physicalLimitBreached: boolean;
+  /**
+   * Each phase against the main fuse (`lib/plan/phase/phasePower.ts`), on only
+   * for a three-phase supply with neutral and a trusted reading. Deliberately
+   * apart from `physicalLimitBreached`: a phase breach changes no scalar decision.
+   */
+  phase: PhasePower;
 };
 
 /**
@@ -245,6 +252,7 @@ export function resolveMeasuredPower(
   reading: MeasuredPowerReading,
   limits: PlanLimits,
   devices: PlanInputDevice[],
+  mainFuse: MainFuse,
 ): MeasuredPower {
   const { capacity, grid, daily, binding } = limits;
   const drawKw = reading.totalKw;
@@ -252,6 +260,7 @@ export function resolveMeasuredPower(
   const gridHeadroom: LimitHeadroom = grid.kind === 'off'
     ? { kind: 'off' } : { kind: 'on', kw: reading.headroomKw(grid.targetKw) };
   const gridBreached = gridHeadroom.kind === 'on' && gridHeadroom.kw < 0;
+  const phase = resolvePhasePower(mainFuse, reading.phaseReading, drawKw);
   const physicalLimitBreached = capacityBreached || gridBreached;
   return {
     drawKw,
@@ -269,5 +278,6 @@ export function resolveMeasuredPower(
       : { kind: 'off' },
     capacityBreached,
     physicalLimitBreached,
+    phase,
   };
 }

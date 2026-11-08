@@ -439,3 +439,9 @@ describe('isCeilingHoldReasonCode', () => {
     expect(isCeilingHoldReasonCode(PLAN_REASON_CODES.externalOffHold)).toBe(false);
   });
 });
+
+describe('phase limit reason line', () => {
+  it('states what the device needs and names the phase', () => {
+    expect(resolveHeldCardReasonLine({ code: 'phase_limit', phase: 'L2' })).toBe('Waiting for room on L2');
+  });
+});

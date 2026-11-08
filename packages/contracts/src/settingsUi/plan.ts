@@ -89,6 +89,8 @@ export type SettingsUiPlanMetaMeasuredFields = {
   powerIsMeasured: true;
   controlledKw: number;
   uncontrolledKw: number;
+  /** The worst phase still breached with nothing left to limit on it; absent otherwise. */
+  unrelievedPhase?: 'L1' | 'L2' | 'L3';
 };
 
 export type SettingsUiPlanMetaUnmeasuredFields = {

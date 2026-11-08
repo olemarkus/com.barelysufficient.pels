@@ -1,3 +1,5 @@
+import type { PhasePower } from './phase/phasePower';
+import type { PhaseName } from '../../packages/planner-types/src/phaseFootprint';
 import type { PlannedTargetCommand } from '../planContract/targetCommand';
 import type { PlannedReleaseIntent } from '../planContract/releaseIntent';
 import type { CapacityPeriodMinutes } from '../../packages/contracts/src/capacitySettings';
@@ -554,7 +556,7 @@ type CarriedInputKey =
   | 'nextStepCommandRetryAtMs' | 'stepCommandPending' | 'stepCommandStatus' | 'controlAdapter'
   | 'commandableNow' | 'commandabilityReason' | 'objectiveKind' | 'hasStandingDemand'
   | 'priority' | 'expectedPowerSource' | 'control' | 'budgetExempt' | 'available'
-  | 'surplusOnly' | 'surplusTracking' | 'externalOffHoldActive' | 'residualKw';
+  | 'surplusOnly' | 'surplusTracking' | 'externalOffHoldActive' | 'residualKw' | 'phaseFootprint';
 
 type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
   // Why PELS holds a home battery this cycle (`StorageHold`). `none` while it
@@ -854,6 +856,10 @@ export type PlanMeasuredMetaFields = {
    * (`resolvePlanRemainingSheddableContext`).
    */
   physicalLimitBreached: boolean;
+  /** Each phase against the main fuse this cycle (`MeasuredPower.phase`). */
+  phase: PhasePower;
+  /** The worst phase still breached with nothing left to limit on it. */
+  unrelievedPhase: PhaseName | null;
   headroomKw: number | null;
   shortfallBudgetHeadroomKw: number | null;
   hardCapHeadroomKw: number | null;

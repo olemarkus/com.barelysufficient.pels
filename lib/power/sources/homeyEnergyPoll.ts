@@ -35,6 +35,8 @@ export class HomeyEnergyPollSource {
 
   constructor(private readonly deps: {
     getPowerSource: () => PowerSource;
+    /** Another source now feeds the home; only this poll reads the meter's phases. */
+    onInactive: () => void;
     timers: TimerRegistry;
     /** This poll's meters, and where their readings go (`HomeMeters.request`). */
     requestHomeMeters: () => HomeMeterRequest;
@@ -59,7 +61,10 @@ export class HomeyEnergyPollSource {
       return;
     }
     this.restartRetryAttempt = 0;
-    if (powerSource !== 'homey_energy') return;
+    if (powerSource !== 'homey_energy') {
+      this.deps.onInactive();
+      return;
+    }
 
     this.pollNow()
       .catch((error) => this.deps.error('Homey Energy initial poll failed', error));

@@ -63,6 +63,7 @@ const buildPipeline = (
     getTimeZone: () => 'UTC',
     getPlanEngine: () => ({
       computeShortfallThreshold: () => 10,
+      computePhaseDeficitKw: () => 0,
       state: {
         actuation: { hasInFlight: () => false },
         pendingTargetCommands: {},

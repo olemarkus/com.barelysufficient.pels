@@ -90,6 +90,27 @@ export function selectShedDevices(
   return selection;
 }
 
+/**
+ * The held decision with this cycle's additions laid over it. A device chosen
+ * again goes where the new choice puts it — including no rung at all, for a
+ * held stepped device whose next relief is its binary off.
+ */
+export function mergeShedDecisions(
+  held: Omit<ShedSelection, 'reliefByDevice'>,
+  beyond: ShedSelection,
+): Omit<ShedSelection, 'reliefByDevice'> {
+  const shedSet = new Set([...held.shedSet, ...beyond.shedSet]);
+  const shedReasons = new Map([...held.shedReasons, ...beyond.shedReasons]);
+  const shedStepTargets = new Map(held.shedStepTargets);
+  for (const deviceId of beyond.shedSet) {
+    const stepId = beyond.shedStepTargets.get(deviceId);
+    if (stepId === undefined) shedStepTargets.delete(deviceId);
+    else shedStepTargets.set(deviceId, stepId);
+  }
+  const storageSetpoints = new Map([...held.storageSetpoints, ...beyond.storageSetpoints]);
+  return { shedSet, shedReasons, shedStepTargets, storageSetpoints };
+}
+
 /** One selection's decision — see `selectShedDevices` for what each map carries. */
 export type ShedSelection = {
   shedSet: Set<string>;

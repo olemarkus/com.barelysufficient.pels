@@ -443,8 +443,7 @@ describe('a stepped-down swap donor and a higher-ranked target', () => {
     const donor = charger('medium', 2) as MeteredDevicePlanDevice;
     const deviceMap = new Map([[waterHeater('medium').id, waterHeater('medium')], [donor.id, donor]]);
     const search = (priority: number) => buildSwapCandidates(
-      buildPlanDevice({ id: 'wants-room', priority }), [donor], state.swapLedger, deviceMap, 1.5, 2.5, new Set(),
-    );
+      buildPlanDevice({ id: 'wants-room', priority }), [donor], state.swapLedger, deviceMap, { availableKw: 1.5, phaseRoom: { kind: 'off' } }, 2.5, new Set());
     // Ranked below the heater (4), or level with it (3): the charger stays the heater's.
     expect(search(4).toShed).toEqual([]);
     expect(search(3).toShed).toEqual([]);
@@ -455,7 +454,6 @@ describe('a stepped-down swap donor and a higher-ranked target', () => {
     const lagging = charger('max', 3) as MeteredDevicePlanDevice;
     expect(buildSwapCandidates(
       buildPlanDevice({ id: 'wants-room', priority: 2 }), [lagging], state.swapLedger,
-      new Map([...deviceMap, [lagging.id, lagging]]), 0.5, 2.5, new Set(),
-    ).toShed).toEqual([]);
+      new Map([...deviceMap, [lagging.id, lagging]]), { availableKw: 0.5, phaseRoom: { kind: 'off' } }, 2.5, new Set()).toShed).toEqual([]);
   });
 });

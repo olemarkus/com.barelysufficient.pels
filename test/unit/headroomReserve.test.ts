@@ -103,7 +103,7 @@ describe('resolveHeadroomReserves', () => {
       stepPowerCalibration: { '6a': 0.7878, '10a': 1.9 },
     });
     const noShedding: SheddingPlan = {
-      shedSet: new Set<string>(),
+      unrelievedPhase: null, shedSet: new Set<string>(),
       shedReasons: new Map(),
       shedStepTargets: new Map(),
       storageSetpoints: new Map(),
