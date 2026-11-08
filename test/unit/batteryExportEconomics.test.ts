@@ -16,7 +16,7 @@ const period = (index: number, changes: Partial<BatteryEnergyPeriod> = {}): Batt
   startsAtMs: index * HOUR_MS, durationMs: HOUR_MS,
   importPrice: 1, exportPrice: 0, householdDemandKWh: 0,
   otherManagedDemandKWh: 0, solarKWh: 0, gridImportLimitKW: 2,
-  maxChargeKW: 2, ...changes,
+  maxChargeKW: 2, otherStorageKWh: 0, laterSupplyKW: 0, ...changes,
 });
 const compare = (horizon: BatteryEnergyHorizon, exportPolicy = policy) => {
   const baseline = planBatteryEnergy(horizon);

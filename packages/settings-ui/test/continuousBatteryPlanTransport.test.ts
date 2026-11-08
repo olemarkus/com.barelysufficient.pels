@@ -164,10 +164,10 @@ test('a malformed fresh map does not fall back to bootstrap or an earlier accept
   expect(setSetting).not.toHaveBeenCalled();
 });
 
-test('refuses a second enabled battery without changing the complete map', async () => {
+test('saves a second enabled battery beside the first, keeping the complete map', async () => {
   getSettingFresh.mockResolvedValue({ invisible: config });
-  await expect(saveContinuousBatteryPlanConfig('battery', config)).rejects.toThrow('other battery plan');
-  expect(setSetting).not.toHaveBeenCalled();
+  await saveContinuousBatteryPlanConfig('battery', config);
+  expect(setSetting).toHaveBeenCalledWith(key, { invisible: config, battery: config });
 });
 
 test('checks the live unit before enabling and preserves old economics when disabling', async () => {

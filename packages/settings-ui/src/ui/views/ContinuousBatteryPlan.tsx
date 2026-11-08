@@ -12,6 +12,8 @@ import { MdFilledButton, MdFilledTextField, MdOutlinedButton, MdSwitch, MdTextBu
 export type ContinuousBatteryPlanProps = {
   read: ContinuousBatteryPlanRead;
   efficiency: BatteryEfficiencyMeasurement;
+  /** Other batteries with the plan on. */
+  otherEnabledPlans: number;
   /**
    * The saved settings the form edits: the read's own config, or what was just
    * saved while the plan for it is still loading.
@@ -79,6 +81,9 @@ const REASON_COPY: Record<BatteryEnergyPlanPeriod['reason'], string> = {
   hold_energy: 'Keep energy for later',
   export_energy: 'Sell to grid',
 };
+
+/** Shown while other batteries also have the plan on: they plan together, in priority order. */
+export const BATTERY_PLAN_ORDER_LINE = 'PELS plans your batteries together, in priority order: a battery higher in the list goes first, and the next covers what it leaves. No battery charges from another.';
 
 /** The money unit of a price unit such as `EUR/kWh`: what an estimated cost reduction is counted in. */
 const moneyUnitOf = (priceUnit: string): string => priceUnit.replace(/\s*\/\s*kwh$/i, '').trim();
@@ -251,6 +256,7 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
         onInput={(event: Event) => update('reserve', (event.currentTarget as HTMLInputElement).value)} />
     </div>}
     {draft.enabled && <p class="field__hint">Check usable capacity against your battery’s specification before saving. PELS also respects the battery’s own limits.</p>}
+    {draft.enabled && props.otherEnabledPlans > 0 && <p class="field__hint">{BATTERY_PLAN_ORDER_LINE}</p>}
     {draft.enabled && <label class="md-switch-row">
       <span class="md-switch-row__content"><span class="md-switch-row__label pels-text-settings-label">Sell stored energy when profitable</span></span>
       <MdSwitch aria-label="Sell stored energy when profitable" selected={draft.sell} disabled={props.busy}

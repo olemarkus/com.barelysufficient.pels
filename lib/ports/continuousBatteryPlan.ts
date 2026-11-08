@@ -30,5 +30,14 @@ export type ContinuousBatteryHorizonRead =
 
 export type ContinuousBatteryPlanSource = {
   getNowMs(): number;
-  readHorizon(deviceId: string, config: ContinuousBatteryPlanConfig): ContinuousBatteryHorizonRead;
+  /** These batteries in the owner's priority order, highest priority first. */
+  orderByPriority(deviceIds: readonly string[]): readonly string[];
+  /**
+   * Each battery's horizon from one set of reads at `nowMs`. Every ready
+   * horizon has the same periods, before any battery's plan is applied.
+   */
+  readHorizons(
+    nowMs: number,
+    batteries: readonly { deviceId: string; config: ContinuousBatteryPlanConfig }[],
+  ): ReadonlyMap<string, ContinuousBatteryHorizonRead>;
 };

@@ -136,7 +136,7 @@ cards write it.
 `continuous_battery_plan` is owned by `lib/battery/continuousBatteryPlanService.ts`.
 `lib/battery/continuousBatteryPlanSettings.ts` resolves genuine absence and
 unavailable settings reads; the existing bootstrap uses that same boundary.
-The shared schema validates the complete map and permits one enabled battery.
+The shared schema validates the complete map; any number of batteries may be enabled.
 Each entry carries an `exportPolicy` (household-only, or price export with a
 0.1 to 100 kW Main-meter ceiling); an entry written before selling existed has
 none and resolves to household-only. A present but malformed policy refuses the

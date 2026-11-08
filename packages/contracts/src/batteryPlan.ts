@@ -44,8 +44,27 @@ export type BatteryEnergyPeriod = {
   otherManagedDemandKWh: number;
   solarKWh: number;
   gridImportLimitKW: number;
-  /** AC charging room after physical managed-power reservations, distinct from their energy forecast. */
+  /**
+   * AC charging room after physical managed-power reservations, distinct from
+   * their energy forecast, and after what the batteries planned before this one
+   * charge. The battery's own ceiling applies separately.
+   */
   maxChargeKW: number;
+  /**
+   * AC energy the batteries planned before this one move in this period:
+   * positive charges them, negative supplies the house. It is part of this
+   * battery's net demand, and it sets the period's direction: this battery
+   * cannot supply while they charge, or charge while they supply, so no battery
+   * feeds another. Zero for the first battery.
+   */
+  otherStorageKWh: number;
+  /**
+   * What the batteries planned after this one can still supply, kW. A period
+   * this battery holds or supplies may leave up to this much import above
+   * `gridImportLimitKW` for them to cover, at a penalty that makes this battery
+   * cover what it can first. Zero for the last battery.
+   */
+  laterSupplyKW: number;
 };
 
 export type BatteryEnergyHorizon = {

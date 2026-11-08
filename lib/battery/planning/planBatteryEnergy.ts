@@ -7,7 +7,9 @@ import type {
   BatteryEnergyPeriod,
   BatteryPriceExportPolicy,
 } from '../../../packages/contracts/src/batteryPlan';
-import { batteryEnergyFlow, chargeLimitKW, ENERGY_EPSILON_KWH } from './batteryEnergyFlow';
+import {
+  batteryEnergyFlow, chargeLimitKW, deferredImportKWh, ENERGY_EPSILON_KWH, periodNetDemandKWh,
+} from './batteryEnergyFlow';
 
 type PlannedBatteryEnergy = Extract<BatteryEnergyPlan, { status: 'planned' }>;
 type BatteryPlanFrontier =
@@ -122,6 +124,19 @@ const energyValue = (battery: BatteryEnergyModel, energyKWh: number): number => 
 
 const periodCost = (flow: BatteryEnergyPlanPeriod): number => flow.importCost - flow.exportRevenue + flow.wearCost;
 
+/**
+ * The route cost of a kWh of import left above a period's limit for later
+ * batteries (`BatteryEnergyPeriod.laterSupplyKW`). It dwarfs any price or wear
+ * in the horizon, so this battery covers what it can before leaving the rest.
+ * It ranks routes only; a plan's reported costs never include it.
+ */
+const deferredImportCostPerKWh = (horizon: BatteryEnergyHorizon): number => {
+  const largestPrice = horizon.periods.reduce((largest, period) => (
+    Math.max(largest, Math.abs(period.importPrice), Math.abs(period.exportPrice))
+  ), 0);
+  return 1000 * (largestPrice + horizon.battery.wearCostPerKWh + 1);
+};
+
 const isBetter = (cost: number, throughputKWh: number, previous: Route | undefined): boolean => (
   previous === undefined
   || cost < previous.cost - ENERGY_EPSILON_KWH
@@ -134,13 +149,19 @@ function advancePeriod(
   states: EnergyStates,
   current: ReadonlyMap<number, Route>,
   exportPolicy: BatteryEnergyExportPolicy,
+  deferredCostPerKWh: number,
 ): ReadonlyMap<number, Route> {
   const next = new Map<number, Route>();
   for (const before of current.values()) {
     for (const afterKWh of reachableStates(battery, period, states, before.energyKWh)) {
       const flow = batteryEnergyFlow(battery, period, before.energyKWh, afterKWh, exportPolicy);
       if (flow === false) continue;
-      const cost = before.cost + periodCost(flow);
+      // Only a period later batteries can cover carries the penalty, so a
+      // battery planned alone ranks routes exactly by its own costs.
+      const deferredCost = period.laterSupplyKW > 0
+        ? deferredImportKWh(period, flow.gridImportKWh) * deferredCostPerKWh
+        : 0;
+      const cost = before.cost + periodCost(flow) + deferredCost;
       const throughputKWh = before.throughputKWh + Math.abs(flow.batteryPowerKW) * period.durationMs / 3_600_000;
       if (!isBetter(cost, throughputKWh, next.get(afterKWh))) continue;
       next.set(afterKWh, { kind: 'step', energyKWh: afterKWh, cost, throughputKWh, flow, previous: before });
@@ -215,16 +236,18 @@ export function planBatteryEnergy(horizon: BatteryEnergyHorizon): BatteryEnergyP
 function buildFrontier(horizon: BatteryEnergyHorizon, exportPolicy: BatteryEnergyExportPolicy): BatteryPlanFrontier {
   const { battery } = horizon;
   const states = energyStates(battery);
+  const deferredCostPerKWh = deferredImportCostPerKWh(horizon);
   let current: ReadonlyMap<number, Route> = new Map([
     [battery.storedEnergyKWh, {
       kind: 'start', energyKWh: battery.storedEnergyKWh, cost: 0, throughputKWh: 0,
     }],
   ]);
   for (const period of horizon.periods) {
-    current = advancePeriod(battery, period, states, current, exportPolicy);
+    current = advancePeriod(battery, period, states, current, exportPolicy, deferredCostPerKWh);
     if (current.size === 0) {
-      const netDemandKWh = period.householdDemandKWh + period.otherManagedDemandKWh - period.solarKWh;
-      const absoluteSupplyKWh = (period.gridImportLimitKW + battery.maxDischargeKW) * period.durationMs / 3_600_000;
+      const netDemandKWh = periodNetDemandKWh(period);
+      const absoluteSupplyKWh = (period.gridImportLimitKW + period.laterSupplyKW + battery.maxDischargeKW)
+        * period.durationMs / 3_600_000;
       return {
         status: 'infeasible', periodStartsAtMs: period.startsAtMs,
         reason: netDemandKWh > absoluteSupplyKWh ? 'power_limit' : 'reserve_or_power_limit',

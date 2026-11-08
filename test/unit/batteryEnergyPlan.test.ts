@@ -28,6 +28,8 @@ const period = (index: number, changes: Partial<BatteryEnergyPeriod> = {}): Batt
   exportPrice: 0,
   householdDemandKWh: 1,
   otherManagedDemandKWh: 0,
+  otherStorageKWh: 0,
+  laterSupplyKW: 0,
   solarKWh: 0,
   gridImportLimitKW: 4,
   maxChargeKW: 3,
@@ -289,5 +291,36 @@ describe('continuous battery energy planning', () => {
     expect(storesAt(0.6)).toEqual([false]);
     // Nothing worth storing still exports nothing worth more: an unpriced export stores.
     expect(planned({ battery: battery(), periods: [period(0)] }).periods[0].storesSurplus).toBe(true);
+  });
+
+  it('moves only the way the batteries planned before it move in a period', () => {
+    // Expensive now: alone this battery supplies the house.
+    const charging = planned({
+      battery: battery({ storedEnergyKWh: 2 }),
+      periods: [period(0, { importPrice: 2, otherStorageKWh: 1 })],
+    });
+    expect(charging.periods[0].batteryPowerKW).toBeCloseTo(0);
+    // Cheap now and dear later: alone this battery buys now.
+    const supplying = planned({
+      battery: battery({ storedEnergyKWh: 0, terminalValuePerKWh: 3 }),
+      periods: [period(0, { importPrice: 0.1, householdDemandKWh: 2, otherStorageKWh: -1 })],
+    });
+    expect(supplying.periods[0].batteryPowerKW).toBeCloseTo(0);
+    expect(supplying.periods[0].gridImportKWh).toBeCloseTo(1);
+  });
+
+  it('leaves import above the limit to later batteries only when it holds or supplies, after covering what it can', () => {
+    const over = period(0, { householdDemandKWh: 5, gridImportLimitKW: 1, laterSupplyKW: 2 });
+    const result = planned({ battery: battery({ storedEnergyKWh: 4, terminalValuePerKWh: 10 }), periods: [over] });
+    expect(result.periods[0].batteryPowerKW).toBeCloseTo(-3);
+    expect(result.periods[0].gridImportKWh).toBeCloseTo(2);
+    // The penalty ranks routes only; the plan reports the import it pays for.
+    expect(result.importCost).toBeCloseTo(2);
+    // A charge never uses later batteries' supply as room.
+    expect(planBatteryEnergy({
+      battery: battery({ storedEnergyKWh: 0 }),
+      periods: [period(0, { householdDemandKWh: 1, gridImportLimitKW: 1, laterSupplyKW: 3, importPrice: 0.1 }),
+        period(1, { importPrice: 5, householdDemandKWh: 0 })],
+    })).toMatchObject({ status: 'planned', periods: [{ batteryPowerKW: 0 }, { batteryPowerKW: 0 }] });
   });
 });

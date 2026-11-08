@@ -382,12 +382,12 @@ describe('settingsUiApi', () => {
     expect(valid.settings.inverter_curtailment_devices).toEqual({ pv: true, invisible: false });
   });
 
-  it('bootstraps authoritative battery maps and refuses malformed or multiple-enabled settings', async () => {
+  it('bootstraps authoritative battery maps, several enabled included, and refuses malformed settings', async () => {
     const key = 'continuous_battery_plan';
     const absent = await buildSettingsUiBootstrap({ homey: createHomey() as never });
     expect(absent.settings.continuous_battery_plan).toEqual({});
     const config = { ...DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, enabled: true, priceUnit: 'EUR' };
-    for (const value of [null, { battery: { enabled: true } }, { first: config, second: config }]) {
+    for (const value of [null, { battery: { enabled: true } }]) {
       const invalid = await buildSettingsUiBootstrap({ homey: createHomey({ settings: { [key]: value } }) as never });
       expect(invalid.settings.continuous_battery_plan).toBeNull();
     }
@@ -395,6 +395,10 @@ describe('settingsUiApi', () => {
       homey: createHomey({ settings: { [key]: { battery: config, invisible: { ...config, enabled: false } } } }) as never,
     });
     expect(valid.settings.continuous_battery_plan).toEqual({ battery: config, invisible: { ...config, enabled: false } });
+    const several = await buildSettingsUiBootstrap({
+      homey: createHomey({ settings: { [key]: { first: config, second: config } } }) as never,
+    });
+    expect(several.settings.continuous_battery_plan).toEqual({ first: config, second: config });
   });
 
   it('carries Main inverter controls on ui_devices without adding solar devices to the managed list', () => {

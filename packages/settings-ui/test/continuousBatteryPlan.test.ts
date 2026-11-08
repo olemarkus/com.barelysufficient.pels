@@ -14,6 +14,7 @@ let powerLimit = true;
 let priceUnit = 'EUR';
 let cachedDevices: unknown = null;
 let efficiency: BatteryEfficiencyMeasurement | undefined;
+let otherPlans = true;
 vi.mock('../src/ui/homey.ts', () => ({
   callApi: async (method: string, path: string) => path === '/ui_prices'
     ? { priceTimeline: { state: 'ready', priceUnit } }
@@ -21,7 +22,7 @@ vi.mock('../src/ui/homey.ts', () => ({
   getApiReadModel: async (path: string) => {
     if (cachedDevices !== null) return cachedDevices;
     const result = await callApi('GET', path);
-    cachedDevices = { inverterDevices: [], continuousBatteryPlans: { battery: result, first: result, second: result },
+    cachedDevices = { inverterDevices: [], continuousBatteryPlans: { battery: result, ...(otherPlans ? { first: result, second: result } : {}) },
       batteryEfficiencyMeasurements: efficiency === undefined ? {} : { battery: efficiency } };
     return cachedDevices;
   },
@@ -41,7 +42,9 @@ vi.mock('../src/ui/deviceDetail/settingsWrite.ts', () => ({
 vi.mock('../src/ui/toast.ts', () => ({ formatSettingsError: (error: unknown) => String(error) }));
 
 const { setContinuousBatteryPlanDevice, initContinuousBatteryPlanRefresh } = await import('../src/ui/deviceDetail/continuousBatteryPlan.tsx');
-const { batteryPlanWindows, batteryPlanTimeLabel, readBatteryPlanDraft } = await import('../src/ui/views/ContinuousBatteryPlan.tsx');
+const {
+  BATTERY_PLAN_ORDER_LINE, batteryPlanWindows, batteryPlanTimeLabel, readBatteryPlanDraft,
+} = await import('../src/ui/views/ContinuousBatteryPlan.tsx');
 
 const config = {
   ...DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, enabled: true, priceUnit: 'EUR', exportPolicy: { kind: 'household_only' as const },
@@ -84,6 +87,7 @@ beforeEach(() => {
   priceUnit = 'EUR';
   cachedDevices = null;
   efficiency = undefined;
+  otherPlans = true;
   callApi.mockReset();
   callApi.mockResolvedValue(read);
   getSettingFresh.mockReset().mockResolvedValue({ battery: config });
@@ -122,6 +126,16 @@ test('says how far the measurement is, and shows nothing without one', async () 
   cachedDevices = null;
   await openBattery();
   expect(document.querySelector('.battery-plan-measured')).toBeNull();
+});
+
+test('explains the priority order only while other batteries also have the plan on', async () => {
+  await openBattery();
+  expect(document.body.textContent).toContain(BATTERY_PLAN_ORDER_LINE);
+  await act(async () => setContinuousBatteryPlanDevice(null));
+  otherPlans = false;
+  cachedDevices = null;
+  await openBattery();
+  expect(document.body.textContent).not.toContain(BATTERY_PLAN_ORDER_LINE);
 });
 
 test('a saved plan that cannot run keeps the managed hint', async () => {

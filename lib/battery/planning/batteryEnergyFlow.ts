@@ -47,6 +47,31 @@ export function chargeLimitKW(battery: BatteryEnergyModel, period: BatteryEnergy
   return Math.max(0, limitKW);
 }
 
+/** The house's net AC demand in a period, kWh, with what earlier-planned batteries move. */
+export const periodNetDemandKWh = (period: BatteryEnergyPeriod): number => (
+  period.householdDemandKWh + period.otherManagedDemandKWh - period.solarKWh + period.otherStorageKWh
+);
+
+/** A transition the other way from the batteries planned before this one: one battery would feed another. */
+const againstOtherStorage = (period: BatteryEnergyPeriod, acEnergyKWh: number): boolean => (
+  (period.otherStorageKWh > ENERGY_EPSILON_KWH && acEnergyKWh < -ENERGY_EPSILON_KWH)
+  || (period.otherStorageKWh < -ENERGY_EPSILON_KWH && acEnergyKWh > ENERGY_EPSILON_KWH)
+);
+
+/**
+ * The most a transition may import, kWh. A charge stays within the limit; a
+ * hold or supply may leave what later batteries can still supply above it.
+ */
+const importAllowanceKWh = (period: BatteryEnergyPeriod, acEnergyKWh: number): number => {
+  const deferredKW = acEnergyKWh > ENERGY_EPSILON_KWH ? 0 : period.laterSupplyKW;
+  return (period.gridImportLimitKW + deferredKW) * period.durationMs / HOUR_MS;
+};
+
+/** Import above the period's own limit, kWh, that a transition leaves for later batteries. */
+export const deferredImportKWh = (period: BatteryEnergyPeriod, gridImportKWh: number): number => (
+  Math.max(0, gridImportKWh - period.gridImportLimitKW * period.durationMs / HOUR_MS)
+);
+
 /**
  * Evaluate one represented storage transition, or reject it. Both directions
  * include conversion loss. An already-below-reserve battery can hold or charge
@@ -63,8 +88,9 @@ export function batteryEnergyFlow(
   const deltaKWh = afterKWh - beforeKWh;
   const efficiency = Math.sqrt(battery.roundTripEfficiency);
   const acEnergyKWh = deltaKWh >= 0 ? deltaKWh / efficiency : deltaKWh * efficiency;
-  const netDemandKWh = period.householdDemandKWh + period.otherManagedDemandKWh - period.solarKWh;
+  const netDemandKWh = periodNetDemandKWh(period);
   const gridEnergyKWh = netDemandKWh + acEnergyKWh;
+  if (againstOtherStorage(period, acEnergyKWh)) return false;
   // Independent solar export may already exceed the ceiling. Holding or charging
   // stays feasible, but discharge cannot worsen that excess. Nonpositive prices
   // prohibit battery-added export, without prohibiting household supply.
@@ -77,7 +103,7 @@ export function batteryEnergyFlow(
     || acEnergyKWh > chargeLimitKW(battery, period, beforeKWh) * hours + ENERGY_EPSILON_KWH
     || -acEnergyKWh > battery.maxDischargeKW * hours + ENERGY_EPSILON_KWH
     || -acEnergyKWh > dischargeAllowanceKWh + ENERGY_EPSILON_KWH
-    || gridEnergyKWh > period.gridImportLimitKW * hours + ENERGY_EPSILON_KWH) return false;
+    || gridEnergyKWh > importAllowanceKWh(period, acEnergyKWh) + ENERGY_EPSILON_KWH) return false;
   const gridImportKWh = Math.max(0, gridEnergyKWh);
   const gridExportKWh = Math.max(0, -gridEnergyKWh);
   return {

@@ -1,3 +1,4 @@
+import { perBatterySource } from '../helpers/batteryPlanSource';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ContinuousBatteryPlanService } from '../../lib/battery/continuousBatteryPlanService';
 import type { ContinuousBatteryPlanSource } from '../../lib/ports/continuousBatteryPlan';
@@ -20,7 +21,7 @@ const settings: SettingsPort = {
   getKeys: () => [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY],
 };
 
-const waitingSource = (reason: { current: ContinuousBatteryPlanWaitReason }): ContinuousBatteryPlanSource => ({
+const waitingSource = (reason: { current: ContinuousBatteryPlanWaitReason }): ContinuousBatteryPlanSource => perBatterySource({
   getNowMs: () => Date.parse('2026-10-27T00:00:00Z'),
   readHorizon: () => ({ kind: 'waiting', reason: reason.current }),
 });
