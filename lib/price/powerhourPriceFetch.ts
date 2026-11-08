@@ -1,10 +1,16 @@
 /**
  * Power by the Hour's prices, read over Homey's app-to-app API.
  *
- * The app (`com.gruijter.powerhour`) publishes one GET route, `/dap-prices`,
- * carrying every price device the owner has paired in it: the hourly driver
- * (`dap`), the quarter-hourly one (`dap15`) and gas (`dapg`). Its own
- * documentation for the route is `README.dap-api.md` in that repo.
+ * The app (`com.gruijter.powerhour`) publishes one GET route carrying every
+ * price device the owner has paired in it. Version 9 renamed that route:
+ *
+ * - **9.x: `/prices`** (`README.prices-api.md` in that app). Each device states
+ *   its `commodity` (`power`, `gas` or `water`) next to its `driverType`, which
+ *   is the new Energy Price driver (`price`) or one of the old day-ahead ones.
+ * - **8.10 to 8.x: `/dap-prices`** (`README.dap-api.md`). Devices carry only a
+ *   `driverType`: hourly (`dap`), quarter-hourly (`dap15`) or gas (`dapg`).
+ *
+ * Both answer the same body, so one resolver reads either.
  *
  * This module is the adapter at that boundary, and it owns the whole
  * classification (root `AGENTS.md` § "Clean and trusted interfaces"): a missing
@@ -18,19 +24,25 @@
  * - **It carries only FUTURE slots.** The app answers from the current period
  *   onwards, so a read at 18:00 says nothing about this morning. Today's stored
  *   payload is therefore merged into, never replaced — see `powerhourScheme.ts`.
- * - **Gas is not electricity.** The `dapg` driver prices a gas meter per m³ and
- *   would be a plausible-looking nonsense if it reached the planner, so it is
- *   dropped here rather than offered to the owner as a choice.
+ * - **Gas and water are not electricity.** They are priced per m³ and would be
+ *   plausible-looking nonsense if they reached the planner, so they are dropped
+ *   here rather than offered to the owner as a choice.
  */
 
 import type { ApiPort, ApiAppPort } from '../ports/homeyRuntime';
 import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 export const POWERHOUR_APP_ID = 'com.gruijter.powerhour';
+/** The route from version 9 on. */
+export const PRICES_PATH = '/prices';
+/** The route before version 9, which 9 removed. */
 export const DAP_PRICES_PATH = '/dap-prices';
 
-/** The electricity drivers. `dapg` (gas) is deliberately not among them. */
-const ELECTRICITY_DRIVER_TYPES = new Set(['dap', 'dap15']);
+/**
+ * The electricity drivers of an app older than 9, which states no commodity.
+ * `dapg` (gas) is deliberately not among them.
+ */
+const LEGACY_ELECTRICITY_DRIVER_TYPES = new Set(['dap', 'dap15']);
 
 /** One priced period, as the app publishes it. Instants are ISO-8601 UTC. */
 export type PowerhourSlot = {
@@ -101,6 +113,17 @@ const toNonEmptyString = (value: unknown): string | null => {
 };
 
 /**
+ * Whether a device prices electricity. A stated `commodity` decides: the 9.x
+ * Energy Price driver prices power, gas or water under the one `driverType`. An
+ * app older than 9 states none, and its driver type is the whole answer.
+ */
+const pricesElectricity = (record: Record<string, unknown>): boolean => {
+  if (record.commodity !== undefined) return record.commodity === 'power';
+  const driverType = toNonEmptyString(record.driverType);
+  return driverType !== null && LEGACY_ELECTRICITY_DRIVER_TYPES.has(driverType);
+};
+
+/**
  * A slot's period length. The app states it per device (`priceInterval`), and a
  * value outside one minute to one day is not a period length whatever it is.
  */
@@ -159,8 +182,7 @@ const resolveSlot = (value: unknown): PowerhourSlot | null => {
 const resolveDevice = (value: unknown): PowerhourDevice | null => {
   const record = asUnknownRecord(value);
   if (!record) return null;
-  const driverType = toNonEmptyString(record.driverType);
-  if (!driverType || !ELECTRICITY_DRIVER_TYPES.has(driverType)) return null;
+  if (!pricesElectricity(record)) return null;
   const deviceId = toNonEmptyString(record.deviceId);
   if (!deviceId) return null;
   const priceIntervalMinutes = resolveIntervalMinutes(record.priceInterval);
@@ -199,6 +221,11 @@ export const resolvePowerhourPayload = (payload: unknown): PowerhourRead => {
   return { kind: 'resolved', devices };
 };
 
+const readRoute = (apiApp: ApiAppPort, path: string) => apiApp.get(path).then(
+  (value: unknown) => ({ ok: true as const, value }),
+  () => ({ ok: false as const, value: undefined }),
+);
+
 /**
  * Read the app's prices once.
  *
@@ -208,6 +235,10 @@ export const resolvePowerhourPayload = (payload: unknown): PowerhourRead => {
  * `getInstalled()` itself is `read_failed` too: the question went unanswered,
  * which says nothing about whether the app is there, and PELS falls back from
  * a Power by the Hour source it assumed only on an answer that it is not.
+ *
+ * The 9.x route is asked first. An app older than 9 has no such route and
+ * refuses it, and only then is the old route asked; a 9.x app that refuses both
+ * is the same transient `read_failed` as before.
  */
 export const fetchPowerhourPrices = async (
   api: Pick<ApiPort, 'getApiApp'>,
@@ -223,10 +254,8 @@ export const fetchPowerhourPrices = async (
   if (!installed.ok) return { kind: 'unavailable', reason: 'read_failed' };
   if (!installed.value) return { kind: 'unavailable', reason: 'app_unavailable' };
 
-  const payload = await apiApp.get(DAP_PRICES_PATH).then(
-    (value: unknown) => ({ ok: true as const, value }),
-    () => ({ ok: false as const, value: undefined }),
-  );
+  const payload = await readRoute(apiApp, PRICES_PATH)
+    .then((read) => (read.ok ? read : readRoute(apiApp, DAP_PRICES_PATH)));
   if (!payload.ok) return { kind: 'unavailable', reason: 'read_failed' };
   return resolvePowerhourPayload(payload.value);
 };
