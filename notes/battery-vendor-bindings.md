@@ -84,7 +84,7 @@ remove once the key is saved (`batteryUsesHomeyApiKey` on the device list).
 
 - **API key.** With no key saved, or one Homey refused Flow permission, the
   battery is one PELS only watches: its card, device page and device-list row
-  read `PELS can only watch it: add a Homey API key to let PELS control it`
+  read `PELS can only watch it: add a Homey API key so it can help with your limit and solar`
   (`needs_homey_api_key`). A saved key not yet checked, or one whose last check
   could not reach Homey, still counts: the runner checks it before its next
   action.

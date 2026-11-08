@@ -4,6 +4,7 @@ import {
   groupSetupRecommendations,
   normalizeRecommendationDismissals,
   resolveAutomaticChargingControlRecommendations,
+  resolveBatteryApiKeyRecommendations,
   resolveSetpointShedLimitRecommendations,
   resolveSetupRecommendations,
   resolveSmartTaskStartPolicyRecommendations,
@@ -693,5 +694,31 @@ describe('setup recommendations', () => {
     );
 
     expect(recommendations[0]?.title).toBe('Select Polestar 3 on Connected 300');
+  });
+});
+
+describe('resolveBatteryApiKeyRecommendations', () => {
+  const battery = (id: string, batteryControl: SettingsUiDeviceSnapshot['batteryControl']) => device({
+    id, name: `Battery ${id}`, deviceClass: 'battery', batteryControl,
+  });
+
+  it('asks for a key only for a battery that is waiting for one', () => {
+    expect(resolveBatteryApiKeyRecommendations([
+      battery('needs-key', 'needs_homey_api_key'),
+      battery('drivable', 'drivable'),
+      battery('watch-only', 'watch_only'),
+      battery('observe-only', 'observe_only'),
+      device({ id: 'heater' }),
+    ])).toEqual([{
+      id: 'battery-api-key:needs-key',
+      version: 1,
+      category: 'recommendation',
+      title: 'Let PELS control Battery needs-key',
+      body: 'PELS can only watch this battery until you add a Homey API key with Flow permission. '
+        + 'With the key, PELS can use it to hold your limit and store spare solar. '
+        + 'Add the key in the Battery section of its device page.',
+      actionLabel: 'Review device',
+      target: { kind: 'device', deviceId: 'needs-key' },
+    }]);
   });
 });

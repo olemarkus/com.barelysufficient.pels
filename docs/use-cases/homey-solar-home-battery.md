@@ -26,7 +26,7 @@ A Marstek Venus paired with the Marstek Battery Connector app (its local connect
 3. For Sigenergy, pair the plant device in the Sigenergy app too: PELS controls the battery through it.
 4. For a LUNA2000, add the battery with the app's Modbus connection. PELS uses the maximum charge and discharge power the app reads from the battery.
 
-Until a key is saved, the battery's card reads `PELS can only watch it: add a Homey API key to let PELS control it`. These apps report no control mode back to Homey, so a change you make in the battery's own app while PELS holds it is not seen, and PELS's next command replaces it. Turn off **Managed by PELS** or **Power-limit control** to take the battery back.
+Until a key is saved, the battery's card reads `PELS can only watch it: add a Homey API key so it can help with your limit and solar`. These apps report no control mode back to Homey, so a change you make in the battery's own app while PELS holds it is not seen, and PELS's next command replaces it. Turn off **Managed by PELS** or **Power-limit control** to take the battery back.
 
 ## Your battery keeps its own mode until PELS has a job for it
 

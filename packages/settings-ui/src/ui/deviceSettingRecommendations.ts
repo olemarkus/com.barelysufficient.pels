@@ -1,10 +1,11 @@
 import {
+  resolveBatteryApiKeyRecommendations,
   resolveSetpointShedLimitRecommendations,
   resolveSmartTaskStartPolicyRecommendations,
   type SetupRecommendation,
 } from './recommendationsModel.ts';
 import { readSmartTaskUsageDeviceIds } from './smartTaskUsage.ts';
-import { state } from './state.ts';
+import { resolveManagedState, state } from './state.ts';
 
 /** Suggestions about a device's own settings, from the setting maps the settings UI holds. */
 export const resolveDeviceSettingRecommendations = (): SetupRecommendation[] => [
@@ -24,4 +25,6 @@ export const resolveDeviceSettingRecommendations = (): SetupRecommendation[] => 
       state.shedBehaviors,
     )
     : []),
+  // A battery's Managed switch is its own setting, so `managedMap` does not hold it.
+  ...resolveBatteryApiKeyRecommendations(state.latestDevices.filter(({ id }) => resolveManagedState(id))),
 ];
