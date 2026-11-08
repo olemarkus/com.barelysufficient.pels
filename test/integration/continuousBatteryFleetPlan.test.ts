@@ -10,6 +10,8 @@ import {
   CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG,
 } from '../../packages/shared-domain/src/settings/continuousBatteryPlan';
 import { perBatterySource } from '../helpers/batteryPlanSource';
+import { estimateBatteryEnergyTransitions } from '../../lib/battery/planning/planBatteryEnergy';
+import { MAX_EXPORT_COMPARISON_TRANSITIONS } from '../../lib/battery/batteryExportSelection';
 
 const NOW = Date.parse('2026-10-27T00:00:00Z');
 const HOUR_MS = 3_600_000;
@@ -168,5 +170,47 @@ describe('continuous battery plan across several batteries', () => {
     expect(horizonReads()).toBe(4);
     expect(owner.read('first')).toBe(first);
     expect(owner.read('second')).toBe(second);
+  });
+
+  it('sells within the strictest export limit any selling battery has', () => {
+    const periods = [
+      period(0, { householdDemandKWh: 0, importPrice: 0.1 }),
+      period(1, { householdDemandKWh: 0, exportPrice: 3, importPrice: 1 }),
+    ];
+    const selling = (netExportCeilingKW: number) => ({
+      ...config, exportPolicy: { kind: 'price_export' as const, netExportCeilingKW },
+    });
+    const { owner } = fleet(
+      { wide: ready(battery(), periods), narrow: ready(battery(), periods) },
+      ['wide', 'narrow'],
+      { wide: selling(5), narrow: selling(1) },
+    );
+    const wide = owner.read('wide');
+    if (wide.status !== 'planned' || !('exportDecision' in wide)) throw new Error('Expected a selling plan');
+    expect(wide.exportDecision).toMatchObject({ kind: 'selling', netExportCeilingKW: 1 });
+    // Its saved setting is unchanged: the form still shows what its owner entered.
+    expect(wide.config.exportPolicy).toEqual({ kind: 'price_export', netExportCeilingKW: 5 });
+    expect(planned(wide)[1]?.gridExportKWh).toBeLessThanOrEqual(1 + 1e-9);
+  });
+
+  it('shares one battery\'s comparison work bound between the batteries that sell', () => {
+    const quarter = (index: number) => period(index, {
+      durationMs: HOUR_MS / 4, startsAtMs: NOW + index * HOUR_MS / 4, householdDemandKWh: 0.1, exportPrice: 0.1,
+    });
+    const model = battery({ maxChargeKW: 2, maxDischargeKW: 2 });
+    const perPeriod = estimateBatteryEnergyTransitions({ battery: model, periods: [quarter(0)] });
+    // Each battery's comparison fits the bound alone; together they do not.
+    const count = Math.ceil(MAX_EXPORT_COMPARISON_TRANSITIONS * 0.6 / perPeriod);
+    const periods = Array.from({ length: count }, (_, index) => quarter(index));
+    const selling = { ...config, exportPolicy: { kind: 'price_export' as const, netExportCeilingKW: 5 } };
+    const { owner } = fleet(
+      { first: ready(model, periods), second: ready(model, periods) },
+      ['first', 'second'],
+      { first: selling, second: selling },
+    );
+    expect(owner.read('first')).not.toMatchObject({ exportDecision: { kind: 'waiting' } });
+    expect(owner.read('second')).toMatchObject({
+      status: 'planned', exportDecision: { kind: 'waiting', reason: 'evaluation_budget_exceeded' },
+    });
   });
 });

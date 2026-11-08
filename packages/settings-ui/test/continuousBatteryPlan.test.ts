@@ -322,7 +322,7 @@ test('saves the selling opt-in and its export limit through the settings channel
 });
 
 test.each([
-  [{ kind: 'selling', estimatedSavings: 0.4262 }, 'Estimated 0.43 EUR lower electricity cost than keeping the energy for your home'],
+  [{ kind: 'selling', estimatedSavings: 0.4262, netExportCeilingKW: 3 }, 'Estimated 0.43 EUR lower electricity cost than keeping the energy for your home'],
   [{ kind: 'kept_household' }, 'Selling would not lower your cost in this plan'],
   [{ kind: 'waiting', reason: 'export_prices_incomplete' }, 'Selling waits for an export price for every hour of the plan'],
 ] as const)('says what selling decided for the plan shown (%o)', async (exportDecision, text) => {

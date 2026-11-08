@@ -70,7 +70,7 @@ test('accepts a selling plan and refuses one whose selling decision is malformed
     generatedAtMs: 0, priceUnit: 'EUR', unpricedSolarExport: false,
     plan: { status: 'planned', periods: [period], importCost: 0, exportRevenue: 2, wearCost: 0.06, energyCost: -1.94,
       terminalEnergyValue: 0, objectiveCost: -1.94, terminalEnergyKWh: 2, resolutionKWh: 0.05 },
-    exportDecision: { kind: 'selling', estimatedSavings: 0.4 },
+    exportDecision: { kind: 'selling', estimatedSavings: 0.4, netExportCeilingKW: 3 },
   };
   getApiReadModel.mockResolvedValue({ continuousBatteryPlans: { battery: selling } });
   expect(await loadContinuousBatteryPlan('battery')).toEqual(selling);
