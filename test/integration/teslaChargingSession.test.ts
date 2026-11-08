@@ -157,15 +157,19 @@ test.each([
   expect(owner.isAllowed('battery')).toBe(false);
 });
 
-test('requires fresh coordinates, not a generic location update, after disconnect', () => {
+test('a replug at the same parked position restores control from the unchanged coordinates', () => {
   const owner = session(); owner.observeDevices(devices()); expect(owner.isAllowed('battery')).toBe(true);
-  vi.advanceTimersByTime(1000);
+  vi.advanceTimersByTime(3 * 60 * 60_000);
   owner.observeCapability('battery', 'charging_state', 'Disconnected');
-  owner.observeCapability('battery', 'charging_state', 'Stopped');
-  owner.observeCapability('location', 'location_last_update', new Date().toISOString());
   expect(owner.isAllowed('battery')).toBe(false);
-  owner.observeCapability('location', 'measure_location_latitude', 60);
-  owner.observeCapability('location', 'measure_location_longitude', 10);
+  owner.observeCapability('battery', 'charging_state', 'Stopped');
+  expect(owner.isAllowed('battery')).toBe(true);
+});
+
+test('a session started after a restart accepts coordinates dated when the car parked', () => {
+  const parked = devices();
+  vi.advanceTimersByTime(4 * 60 * 60_000);
+  const owner = session(); owner.observeDevices(parked);
   expect(owner.isAllowed('battery')).toBe(true);
 });
 
@@ -177,11 +181,13 @@ test('matches sibling vehicle identities and refuses ambiguous locations', () =>
   expect(owner.isAllowed('battery')).toBe(false);
 });
 
-test('a reconnect requires new coordinate evidence', () => {
+test('a reconnect discards pre-gap observations and re-establishes the session from the next full read', () => {
   const owner = session(); const initial = devices(); owner.setTrustEpoch('connected:0'); owner.observeDevices(initial);
   expect(owner.isAllowed('battery')).toBe(true);
-  vi.advanceTimersByTime(1000); owner.setTrustEpoch('connected:1'); owner.observeDevices(initial);
+  vi.advanceTimersByTime(60 * 60_000); owner.setTrustEpoch('connected:1');
   expect(owner.isAllowed('battery')).toBe(false);
+  owner.observeDevices(initial);
+  expect(owner.isAllowed('battery')).toBe(true);
 });
 
 test('current ceiling needs fresh actual current and power; lower draw is valid', () => {

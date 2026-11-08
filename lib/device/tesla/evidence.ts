@@ -5,8 +5,6 @@ import { toCapabilityTimestampMs } from '../managerControl';
 import { readCoordinates, type Coordinates } from '../deviceCoordinates';
 /** The hub's home coordinates; none until the first location read is accepted, so home authorization fails closed. */
 export type HomeLocation = { coordinates(): Coordinates | undefined };
-export type HomeSessionIdentity = { vehicleId: string; locationId: string; carId: string };
-export type HomeSessionEvidence = { identity: HomeSessionIdentity; coordinateAtMs: number };
 
 function distanceM(point: Coordinates, home: Coordinates): number {
   const radians = Math.PI / 180;
@@ -41,35 +39,37 @@ function isConnectedAcBattery(battery: HomeyDeviceLike): boolean {
   return dc == null || dc === 0;
 }
 
-function readHomeLocationEvidence(location: HomeyDeviceLike, home: HomeLocation): number | undefined {
-  if (location.available === false) return undefined;
+/**
+ * A dated, not future, coordinate pair within 100 m of home. Its age is no
+ * evidence: Homey re-dates a coordinate only when it changes, so a parked car
+ * keeps the date it arrived with.
+ */
+function isAtHome(location: HomeyDeviceLike, home: HomeLocation): boolean {
+  if (location.available === false) return false;
   const latitude = location.capabilitiesObj?.measure_location_latitude;
   const longitude = location.capabilitiesObj?.measure_location_longitude;
   const point = readCoordinates(latitude?.value, longitude?.value);
   const homePoint = home.coordinates();
-  if (!point || !homePoint || distanceM(point, homePoint) > 100) return undefined;
+  if (!point || !homePoint || distanceM(point, homePoint) > 100) return false;
   const latitudeAt = toCapabilityTimestampMs(latitude?.lastUpdated);
   const longitudeAt = toCapabilityTimestampMs(longitude?.lastUpdated);
-  if (latitudeAt === undefined || longitudeAt === undefined) return undefined;
-  if (latitudeAt > Date.now() || longitudeAt > Date.now()) return undefined;
-  return Math.min(latitudeAt, longitudeAt);
+  if (latitudeAt === undefined || longitudeAt === undefined) return false;
+  return latitudeAt <= Date.now() && longitudeAt <= Date.now();
 }
 
-/** Resolves vendor observations into affirmative home-session evidence. */
-export function readTeslaHomeEvidence(
+/** Whether the vendor observations show a stationary AC charging session at home. */
+export function hasTeslaHomeEvidence(
   battery: HomeyDeviceLike,
   devices: readonly HomeyDeviceLike[],
   home: HomeLocation,
-): HomeSessionEvidence | undefined {
+): boolean {
   const vehicleId = battery.data?.id;
-  if (!vehicleId || !isConnectedAcBattery(battery)) return undefined;
+  if (!vehicleId || !isConnectedAcBattery(battery)) return false;
   const siblings = devices.filter((device) => device.data?.id === vehicleId);
   const locations = siblings.filter((device) => teslaDriver(device) === 'location');
   const cars = siblings.filter((device) => teslaDriver(device) === 'car');
   const location = locations.length === 1 ? locations[0] : undefined;
   const car = cars.length === 1 ? cars[0] : undefined;
-  if (!location || !car || !isStationaryOnlineCar(car)) return undefined;
-  const coordinateAtMs = readHomeLocationEvidence(location, home);
-  if (coordinateAtMs === undefined) return undefined;
-  return { identity: { vehicleId, locationId: location.id, carId: car.id }, coordinateAtMs };
+  if (!location || !car || !isStationaryOnlineCar(car)) return false;
+  return isAtHome(location, home);
 }
