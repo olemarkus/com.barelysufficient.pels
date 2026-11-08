@@ -784,5 +784,8 @@
   },
   "3.30.8": {
     "en": "Setup shows all four steps from the start, lists devices with their type, zone and power, and lets you choose which devices stay on longest before the review. Norway price setup is simpler, and a new price area no longer mixes in prices from the old one. PELS now uses a fixed electricity price set in Homey Energy, and Sessy batteries are controlled within their own charge and discharge power. After setup, PELS offers to send a daily diagnostics report."
+  },
+  "3.30.9": {
+    "en": "Prices from Power by the Hour 9 work again. A parked Tesla stays under PELS control after a restart, and a boost ends once the device is idle at its setpoint. When the grid import limit holds devices back, PELS names it as the reason, and a charger waiting for its smart task's cheaper hours says so. Manual action needed on the PELS Insights device now follows PELS's live status, home battery efficiency is also measured while the battery reading holds steady, and the Prices step's Continue button opens as soon as prices are in."
   }
 }
