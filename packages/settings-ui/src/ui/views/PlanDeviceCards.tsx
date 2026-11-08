@@ -23,7 +23,7 @@ import {
 } from '../../../../shared-domain/src/smartTaskCopy/permissionsCopy.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
-import { cardActivationProps } from '../cardActivation.ts';
+import { cardActivationProps, dispatchOpenDeviceDetail } from '../cardActivation.ts';
 import {
   createStarvationRescue,
   isStarvationRescuable,
@@ -357,6 +357,18 @@ export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, children 
         </div>
       </div>
       {children}
+      {dev.status.reason?.offersPhaseSetting === true && (
+        <button
+          type="button"
+          class="hy-nostyle plan-card__quiet-link"
+          onClick={(event) => {
+            event.stopPropagation();
+            dispatchOpenDeviceDetail(dev.id, 'electrical-connection');
+          }}
+        >
+          Set phase
+        </button>
+      )}
     </div>
   );
 };

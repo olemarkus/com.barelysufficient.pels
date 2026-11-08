@@ -15,6 +15,7 @@ import type { StorageLaneBinding } from '../ports/batteryControlOwner';
 import type { PlanInputSnapshotDevice } from './runtimeDeviceRead';
 import type { ShedBehavior, SteppedClusterFields } from '../plan/planTypes';
 import type { PlanInputDevice } from '../plan/planTypes';
+import type { PhaseFootprint } from '../../packages/planner-types/src/phaseFootprint';
 import type { ContinuousBatteryPlanRead } from '../../packages/contracts/src/continuousBatteryPlan';
 
 /** Required owner reads used by the planner-input projection. */
@@ -37,6 +38,8 @@ export type PlanInputProjectionSource = {
   readContinuousBatteryPlan: (deviceId: string) => ContinuousBatteryPlanRead;
   resolveManagedState: (deviceId: string) => boolean;
   isExternalOffHoldActive: (deviceId: string, device: ObservedCurrentStateInput) => boolean;
+  /** What PELS has settled for this device's phases (`lib/phaseFootprint/`), when it has. */
+  getLearnedPhaseFootprint: (deviceId: string) => PhaseFootprint | undefined;
 };
 
 /** A home battery's storage cluster, or none: "no cluster" is the whole of "no lever". */

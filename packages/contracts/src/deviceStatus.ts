@@ -31,6 +31,8 @@ export type DeviceStatus = {
   // its measure is its draw (`powerText`).
   reading: DeviceStatusReading | null;
   reason: {
+    /** The device's phase is unknown and it waits for room: the card offers the setting quietly. */
+    offersPhaseSetting?: true;
     text: string;
     tone?: 'neutral' | 'warning';
     detail?: string;

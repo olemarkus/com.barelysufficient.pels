@@ -3,7 +3,7 @@ import { resolveChargerPhaseCurrentsA } from '../../lib/device/chargerPhaseCurre
 import { isDevicePhaseConnectionMap } from '../../packages/shared-domain/src/settings/devicePhaseConnections';
 
 const noFacts: PhaseFootprintFacts = {
-  ownerConnection: undefined, isEvCharger: false, chargerPhaseCurrentsA: undefined, evPreset: undefined,
+  ownerConnection: undefined, isEvCharger: false, chargerPhaseCurrentsA: undefined, evPreset: undefined, learned: undefined,
 };
 const charger: PhaseFootprintFacts = { ...noFacts, isEvCharger: true };
 

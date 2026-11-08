@@ -1,4 +1,5 @@
 import { PhaseReadingTracker } from './phaseReading';
+import { PhaseFootprintLearner } from '../phaseFootprint/phaseFootprintLearner';
 import { randomUUID } from 'node:crypto';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { HomeId } from '../utils/settingsKeys';
@@ -66,6 +67,9 @@ export const isOverShortfallThreshold = (
 export default class CapacityGuard {
   /** The accepted per-phase picture of this home's meter. */
   public readonly phaseReadings = new PhaseReadingTracker();
+
+  /** What PELS has learned of each device's phases from its own steps on this meter. */
+  public readonly phaseLearner = new PhaseFootprintLearner();
 
   private static readonly SHORTFALL_CLEAR_MARGIN_KW = 0.2;
   private static readonly SHORTFALL_CLEAR_SUSTAIN_MS = 60000; // 60 seconds of sustained positive headroom

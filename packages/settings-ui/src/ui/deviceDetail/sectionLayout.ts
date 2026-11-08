@@ -141,6 +141,14 @@ const placePowerLimitRows = (kind: DeviceDetailKind): void => {
   placeBefore(controllable, startPolicy);
 };
 
+// A battery's page has no Power limiting section; its Electrical connection row
+// joins the battery's own control settings.
+const placeElectricalConnectionRow = (kind: DeviceDetailKind): void => {
+  const row = document.getElementById('device-detail-electrical-connection-row');
+  const home = kind === 'battery' ? document.getElementById('device-detail-battery-list') : sectionContent('shedding');
+  appendTo(row, home);
+};
+
 // "Charge on solar surplus" is a charging rule on an EV charger's page, so it
 // joins Charge boost in the Charging card; every other page keeps the
 // solar-surplus row in Setup, ahead of Budget exempt.
@@ -171,6 +179,7 @@ export const applyDeviceDetailSectionLayout = (
   placeManagedRow(kind);
   placePowerLimitRows(kind);
   placeSurplusTrackRow(kind);
+  placeElectricalConnectionRow(kind);
   applyBatteryKindVisibility(kind);
   if (appliedKind === kind) return;
 

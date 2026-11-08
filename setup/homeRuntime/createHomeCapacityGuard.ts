@@ -1,3 +1,4 @@
+import { DEVICE_PHASE_LEARNING, MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 /**
  * One home's capacity guard: the immediate shortfall transition it drives on
  * that home's own plan service, and the two hard-cap Flow alert lanes it feeds.
@@ -125,5 +126,12 @@ export const createHomeCapacityGuard = (
     // definite logger and never branches on whether logging came up.
     structuredLog: ctx.getStructuredLogger('capacity'),
   });
+  // Only Main's meter has phases to learn from.
+  if (scope.homeId === MAIN_HOME_ID) {
+    guard.phaseLearner.bindStore({
+      get: () => ctx.homey.settings.get(DEVICE_PHASE_LEARNING),
+      set: (learning) => ctx.homey.settings.set(DEVICE_PHASE_LEARNING, learning),
+    });
+  }
   return { guard, shortfallSideEffectGate };
 };

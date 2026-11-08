@@ -21,7 +21,14 @@ import type {
  */
 export type SettingsUiDeviceSnapshot = DecoratedDeviceSnapshot & ObservedStateOfChargeProbe & SettingsUiBatteryState
   // Present while the device keeps moving away from what PELS set.
-  & ControlContestDecoration;
+  & ControlContestDecoration & { phaseFootprintRead?: SettingsUiPhaseFootprintRead };
+
+/** Which phases a device loads and how PELS knows, for the device page. */
+export type SettingsUiPhaseFootprintRead = {
+  source: 'set' | 'reported' | 'learned' | 'none';
+  /** A phase name or `all`; absent while PELS does not know. */
+  phases?: 'L1' | 'L2' | 'L3' | 'all';
+};
 
 /**
  * A listed device's home-battery facts, resolved from the battery control

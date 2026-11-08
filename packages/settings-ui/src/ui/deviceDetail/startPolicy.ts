@@ -150,6 +150,7 @@ export const revealDeviceDetailFocus = (focus: DeviceDetailFocus): void => {
     managed: 'device-detail-managed',
     'native-control': 'device-detail-native-wiring',
     'temperature-policy': 'device-detail-temperature-control-disabled',
+    'electrical-connection': 'device-detail-electrical-connection',
   };
   const id = prerequisiteControls[focus];
   if (id) {

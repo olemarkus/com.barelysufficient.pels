@@ -46,6 +46,8 @@
  *    lane actually runs; the budget verdict (`isBudgetReleasableHold`) judges
  *    such a hold on its gate's own need instead.
  */
+import { bindingPhaseFor, phaseRoomFor } from './phase/phaseRoom';
+import type { PhaseName } from '../../packages/planner-types/src/phaseFootprint';
 import type { DevicePlanDevice, MeteredDevicePlanDevice } from './planTypes';
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './restore/headroomLedger';
 import { isReserveAdmitted, resolveReserveAdmission, type HeadroomReserve } from './admission';
@@ -120,6 +122,22 @@ export type CeilingShortfallResolution =
   // to null-check.
   | { kind: 'blocked_by_reserve'; holderName: string }
   | { kind: 'no_gap' };
+
+/**
+ * The phase holding this device back, when its phases are what binds it: their
+ * room is below what it needs and no other axis is tighter. Names the phase it
+ * would land on, or for a device on an unknown phase the one with least room.
+ */
+export function resolvePhaseHoldPhase(dev: DevicePlanDevice, inputs: CeilingShortfallInputs): PhaseName | null {
+  const axis = inputs.ledger.axes().phase;
+  const roomKw = phaseRoomFor(axis, dev.phaseFootprint);
+  if (axis.kind === 'off' || roomKw.kind === 'off') return null;
+  const neededKw = computeRestoreRequirementKw(
+    estimateRestorePower(dev), inputs.lastDeviceShedMsById[dev.id], inputs.nowMs,
+  );
+  if (roomKw.kw >= neededKw || inputs.ledger.availableFor(dev) !== roomKw.kw) return null;
+  return bindingPhaseFor(axis, dev.phaseFootprint);
+}
 
 // The smaller (honest) gap wins; see `CeilingShortfallResolution` for the two
 // outcomes that carry no number.

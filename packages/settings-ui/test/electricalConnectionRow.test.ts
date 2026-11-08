@@ -10,6 +10,7 @@ const buildDom = () => {
         <md-select-option value="L1"></md-select-option>
         <md-select-option value="self_balancing"></md-select-option>
       </md-filled-select>
+      <small id="device-detail-electrical-connection-source"></small>
     </div>`;
 };
 
@@ -50,6 +51,19 @@ describe('Electrical connection row', () => {
     expect(option.hasAttribute('hidden')).toBe(true);
     syncElectricalConnectionRow('d1', { id: 'd1', name: 'EV', deviceClass: 'evcharger', isEvCharger: true } as never);
     expect(option.hasAttribute('hidden')).toBe(false);
+  });
+
+  it('says how PELS knows', async () => {
+    const { state, syncElectricalConnectionRow } = await load();
+    state.mainFuseSupply = 'three_phase_neutral';
+    syncElectricalConnectionRow('d1', {
+      id: 'd1', name: 'Heater', deviceClass: 'heater', phaseFootprintRead: { source: 'learned', phases: 'L3' },
+    } as never);
+    expect(document.querySelector('#device-detail-electrical-connection-source')?.textContent).toBe('Learned: L3.');
+    syncElectricalConnectionRow('d1', {
+      id: 'd1', name: 'Heater', deviceClass: 'heater', phaseFootprintRead: { source: 'none' },
+    } as never);
+    expect(document.querySelector('#device-detail-electrical-connection-source')?.textContent).toBe('');
   });
 
   it('deletes the entry when Automatic is chosen', async () => {

@@ -48,7 +48,8 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   priceTargetShift: PriceTargetShift;
   /** The plan device's control adapter, spread in with it; absent on a device that has none. */
   controlAdapter?: DeviceControlAdapterSnapshot;
-} & Pick<DevicePlanDevice, 'steppedFairnessHold' | 'steppedStepUpHold'>;
+} & Pick<DevicePlanDevice, 'steppedFairnessHold' | 'steppedStepUpHold'>
+  & Partial<Pick<DevicePlanDevice, 'phaseFootprint'>>;
 
 function resolveBaseKind(device: DeviceStatusInput): PlanStateKind {
   if (!device.controllable) return 'manual';
@@ -144,6 +145,11 @@ function buildCountdown(device: DeviceStatusInput, text: string, anchorMs: numbe
   return { kind: 'in_text', endsAtMs, totalSec, prefix: prefix ?? '', suffix: suffix ?? '' };
 }
 
+const resolvePhaseSettingOffer = (device: DeviceStatusInput): { offersPhaseSetting?: true } => (
+  device.reason.code === PLAN_REASON_CODES.phaseLimit && device.phaseFootprint?.kind === 'unknown'
+    ? { offersPhaseSetting: true } : {}
+);
+
 function buildReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus['reason'] {
   const kind = resolveBaseKind(device);
   if (kind === 'unavailable' || kind === 'manual') return null;
@@ -164,7 +170,12 @@ function buildReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number):
     && text === formatFairnessHoldCardLine(device.steppedFairnessHold, device.starvation);
   text = toSimulationReasonLine(text, dryRun);
   const countdown = fairnessLine ? undefined : buildCountdown(device, text, nowMs);
-  return { text, ...(idle ? { tone: idle.tone, detail: idle.detail } : {}), ...(countdown ? { countdown } : {}) };
+  return {
+    text,
+    ...(idle ? { tone: idle.tone, detail: idle.detail } : {}),
+    ...(countdown ? { countdown } : {}),
+    ...resolvePhaseSettingOffer(device),
+  };
 }
 
 // A charger still identifying its car says so only where nothing else explains

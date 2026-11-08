@@ -12,6 +12,7 @@ import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles'
 import { resolveObjectiveSampleDevices } from '../lib/objectives/samples';
 import { buildPublishedPlanCapacityStateSummary } from '../lib/plan/planLogging';
 import { resolvePlanRebuildPosture } from '../lib/plan/planRebuildPosture';
+import { feedPhaseLearning } from './phaseLearningFeed';
 import { addPerfDuration, incPerfCounter } from '../lib/utils/perfCounters';
 import type { PreparedReconcileFence } from '../lib/power/preparedReconcileFence';
 import type { SampleIngestQueue, StableSampleRevision } from '../lib/power/sampleIngestQueue';
@@ -332,6 +333,7 @@ export class PowerSamplePipeline {
           // latch is this sample by construction.
           const admittedTracker = this.deps.getPowerTracker();
           const capacityGuard = this.deps.getCapacityGuard();
+          feedPhaseLearning(capacityGuard, this.deps.getDeviceSurfaces(), planEngine.state.actuation, nowMs);
           recordShortfallPeriodAvailability(
             capacityGuard,
             admittedTracker,

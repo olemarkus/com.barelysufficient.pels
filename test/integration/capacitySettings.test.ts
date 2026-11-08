@@ -31,6 +31,7 @@ const capacityGuardInstances: MockCapacityGuardInstance[] = [];
 vi.mock('../../lib/power/capacityGuard', () => ({
   default: class MockCapacityGuard {
     phaseReadings = { reset: vi.fn(), admit: vi.fn(), current: () => ({ kind: 'none' }) };
+    phaseLearner = { bindStore: vi.fn(), observe: vi.fn(), learnedFootprint: vi.fn() };
 
     public setLimit = vi.fn();
     public setSoftMargin = vi.fn();

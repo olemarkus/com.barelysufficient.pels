@@ -189,6 +189,7 @@ export const resolvePlanInputDeviceFacts = (
       isEvCharger: device.isEvCharger,
       chargerPhaseCurrentsA: device.chargerPhaseCurrentsA,
       evPreset: device.targetPowerConfig?.preset,
+      learned: source.getLearnedPhaseFootprint(device.id),
     }),
     ...resolveStorageCluster(source, device, options),
   };

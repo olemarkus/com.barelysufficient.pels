@@ -20,6 +20,7 @@ export function createPlanInputProjectionSource(ctx: AppContext): PlanInputProje
     isCapacityControlEnabled: (deviceId) => ctx.isCapacityControlEnabled(deviceId),
     readContinuousBatteryPlan: (deviceId) => ctx.readContinuousBatteryPlan(deviceId),
     resolveManagedState: (deviceId) => ctx.resolveManagedState(deviceId),
+    getLearnedPhaseFootprint: (deviceId) => ctx.capacityGuard?.phaseLearner.learnedFootprint(deviceId),
     isExternalOffHoldActive: (deviceId, device) => (
       resolveExternalOffHoldActive(ctx.externalOffHold?.isHeld(deviceId) === true, device)
     ),

@@ -49,6 +49,9 @@ export const RESPECT_EXTERNAL_OFF_DEVICES = 'respect_external_off_devices';
 // 'L3' | 'all' | 'self_balancing'>` (absent = Automatic). Guard:
 // `./devicePhaseConnections.ts`; resolved by `lib/phaseFootprint/`.
 export const DEVICE_PHASE_CONNECTIONS = 'device_phase_connections';
+// Runtime-owned: what PELS learned of each device's phases from its own steps.
+// Owner and reader: `lib/phaseFootprint/phaseFootprintLearner.ts`.
+export const DEVICE_PHASE_LEARNING = 'device_phase_learning';
 // Per-device start authority: `Record<deviceId, 'unrestricted' | 'pels_only'>`
 // (absent entry = 'unrestricted'). Read and write policy live with the key's
 // owner, `packages/shared-domain/src/settings/deviceStartPolicy.ts`.

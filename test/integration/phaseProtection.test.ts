@@ -224,6 +224,16 @@ describe('main fuse phase protection in the planner', () => {
     ] })).toBe(false);
   });
 
+  it('says which phase an unknown device waits for, and offers the setting only then', async () => {
+    const off = (footprint: PhaseFootprint) => buildPlanInputDevice({
+      id: 'heater', name: 'heater', deviceType: 'onoff', currentDrawKw: 0, expectedPowerKw: 2, targets: [],
+      binaryControl: { on: false }, phaseFootprint: footprint, priority: 2,
+    });
+    vi.setSystemTime(Date.now() + 700_000);
+    const plan = await buildCycle(createPlanEngineState(), [4.5, 1, 1]).buildDevicePlanSnapshot([off(UNKNOWN)]);
+    expect(planned(plan, 'heater')).toMatchObject({ plannedState: 'shed', reason: { code: 'phase_limit', phase: 'L1' } });
+  });
+
   it('does nothing different without a fuse', async () => {
     const devices = [load('on_l1', 2, L1, 2)];
     const withoutFuse = await buildCycle(createPlanEngineState(), [6.2, -2, -2], { kind: 'off' })

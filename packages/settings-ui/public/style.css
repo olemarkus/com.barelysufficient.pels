@@ -1880,6 +1880,17 @@ md-filled-tonal-button.is-busy {
   display: contents;
 }
 
+.plan-card__quiet-link {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--md-sys-color-primary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
 .plan-card__rescue-caption {
   flex: 1 0 100%;
   margin: var(--spacing-1) 0 0;

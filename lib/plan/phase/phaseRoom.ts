@@ -89,3 +89,9 @@ export function phaseBoundedPoolKw(
   const room = phaseRoomFor(axis, footprint);
   return room.kind === 'off' ? poolKw : Math.min(poolKw, room.kw + ownDrawKw);
 }
+
+/** The phase that limits this footprint: its own, or the one with least room. */
+export function bindingPhaseFor(axis: Extract<PhaseRoomAxis, { kind: 'on' }>, footprint: PhaseFootprint): PhaseName {
+  if (footprint.kind === 'single') return footprint.phase;
+  return [...PHASE_NAMES].sort((a, b) => axis.roomKw[a] - axis.roomKw[b])[0] ?? 'L1';
+}
