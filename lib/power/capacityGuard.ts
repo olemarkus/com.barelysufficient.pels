@@ -1,3 +1,4 @@
+import { PhaseReadingTracker } from './phaseReading';
 import { randomUUID } from 'node:crypto';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { HomeId } from '../utils/settingsKeys';
@@ -63,6 +64,9 @@ export const isOverShortfallThreshold = (
  * none and so cannot open one.
  */
 export default class CapacityGuard {
+  /** The accepted per-phase picture of this home's meter. */
+  public readonly phaseReadings = new PhaseReadingTracker();
+
   private static readonly SHORTFALL_CLEAR_MARGIN_KW = 0.2;
   private static readonly SHORTFALL_CLEAR_SUSTAIN_MS = 60000; // 60 seconds of sustained positive headroom
 

@@ -1,3 +1,4 @@
+import { PhaseReadingTracker } from '../../lib/power/phaseReading';
 import { vi } from 'vitest';
 import type { PelsHost } from '../../lib/app/pelsHost';
 import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
@@ -51,6 +52,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     getPowerCalibrationSnapshot: () => createEmptyPowerCalibrationSnapshot(),
     refreshTargetDevicesSnapshot: async () => undefined,
     getCapacityScalars: notWired('getCapacityScalars'),
+    capacityGuard: { phaseReadings: new PhaseReadingTracker() } as unknown as PelsHost['capacityGuard'],
     getCurrentMonthCapacityPeakKw: () => null,
     getPriceSourcePayloadsForUi: () => NO_PRICE_SOURCE_PAYLOADS,
     getPvForecastSourceUiStatus: () => ({ kind: 'unknown' }),

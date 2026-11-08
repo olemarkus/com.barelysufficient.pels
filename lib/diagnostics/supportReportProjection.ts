@@ -1,3 +1,4 @@
+import type { PhaseReading } from '../power/phaseReading';
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 import type { DailyBudgetDayPayload } from '../../packages/contracts/src/dailyBudgetTypes';
 import type {
@@ -138,6 +139,23 @@ export const reportCapacitySettings = (settings: CapacityScalarSettings): Suppor
     capacityEnabled: settings.capacityEnabled, hardCapKw: settings.limitKw,
     safetyMarginKw: settings.marginKw, capacityPeriodMinutes: settings.periodMinutes,
     gridImportLimitKw: settings.gridImportLimitKw, simulation: settings.dryRun,
+  },
+});
+
+export type PhaseReadingEvidence = {
+  reading: PhaseReading;
+  meterCapabilityIds: readonly string[];
+};
+
+export const reportPhaseReading = (evidence: PhaseReadingEvidence): SupportReportSection => ({
+  title: 'Current meter phases',
+  values: {
+    state: evidence.reading.kind,
+    meterCapabilities: evidence.meterCapabilityIds.join(', '),
+    ...(evidence.reading.kind === 'healthy' ? {
+      signed: evidence.reading.signed,
+      phases: evidence.reading.phases.map((phase) => `${phase.phase} ${phase.kw.toFixed(2)} kW`).join(', '),
+    } : {}),
   },
 });
 

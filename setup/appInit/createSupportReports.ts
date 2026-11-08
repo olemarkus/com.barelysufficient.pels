@@ -18,7 +18,8 @@ import { requireDeviceManager, requireHomeMembership, requirePlanService } from 
 
 export type SupportReportApp = Pick<PelsHost,
   | 'deviceManager' | 'homeMembership' | 'planService' | 'homeRuntimeRead' | 'getDeviceLogUiPayload'
-  | 'getLatestPlanSnapshotForUi' | 'getCapacityScalars' | 'getDailyBudgetUiPayload' | 'readPriceSetup'
+  | 'getLatestPlanSnapshotForUi' | 'getCapacityScalars' | 'capacityGuard'
+  | 'getDailyBudgetUiPayload' | 'readPriceSetup'
   | 'getPriceTimelineForUi' | 'getUserdataDatabase' | 'readSchedules'>
   & Pick<AppContext, 'deferredObjectiveActivePlanRecorder' | 'deferredObjectivePlanHistoryRecorder'>;
 
@@ -40,6 +41,10 @@ export const createSupportReportReads = (
   getDeviceLogUiPayload: () => app.getDeviceLogUiPayload(),
   getLatestPlanSnapshotForUi: () => app.getLatestPlanSnapshotForUi(),
   getCapacityScalars: () => app.getCapacityScalars(),
+  getPhaseReadingEvidence: () => ({
+    reading: app.capacityGuard.phaseReadings.current(),
+    meterCapabilityIds: app.capacityGuard.phaseReadings.meterCapabilityIds(),
+  }),
   getDailyBudgetUiPayload: () => app.getDailyBudgetUiPayload(),
   readPriceSetup: () => app.readPriceSetup(),
   getPriceTimelineForUi: () => app.getPriceTimelineForUi(),

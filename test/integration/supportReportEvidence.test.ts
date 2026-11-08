@@ -60,6 +60,7 @@ const currentHost = (homeId = 'main') => pelsHostDouble({
   getDeviceLogUiPayload: vi.fn(() => reportHistoryFixture([reportActivityFixture()])),
   getLatestPlanSnapshotForUi: vi.fn(() => ({ generatedAtMs: now, meta: buildSettingsUiPlanMeta() })),
   getCapacityScalars: vi.fn(() => capacity),
+  getPhaseReadingEvidence: vi.fn(() => ({ reading: { kind: 'none' as const }, meterCapabilityIds: [] })),
   getSettingsUiManagedDevices: vi.fn(() => []),
   refreshTargetDevicesSnapshot: vi.fn(async () => undefined),
 });

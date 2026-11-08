@@ -50,3 +50,22 @@ export type MainMeterRead = {
   readonly meterDeviceIds: readonly string[];
   sampleFrom(readings: LiveMeterReadings): MeterPowerSample | null;
 };
+
+export type PhaseTriple = readonly [number, number, number];
+
+/**
+ * One read of the whole-home meter's per-phase capabilities. `none` is a meter
+ * with no usable phase capabilities, `unavailable` a read that failed. A facet
+ * is present only when all three of its phases read as finite numbers.
+ */
+export type MeterPhasesRead =
+  | { readonly state: 'unavailable' }
+  | { readonly state: 'none'; readonly capabilityIds: readonly string[] }
+  | {
+    readonly state: 'read';
+    readonly capabilityIds: readonly string[];
+    /** Signed per-phase power, W; positive is import. */
+    readonly powerW?: PhaseTriple;
+    readonly currentA?: PhaseTriple;
+    readonly voltageV?: PhaseTriple;
+  };

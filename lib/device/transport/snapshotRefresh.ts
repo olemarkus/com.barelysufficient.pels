@@ -1,3 +1,6 @@
+import { getRawDevice } from './managerHomeyApi';
+import { resolveMeterPhases } from '../meterPhases';
+import type { MeterPhasesRead } from '../../ports/homeMeterReadings';
 /**
  * Pull refresh pipeline for `DeviceTransport`, extracted as homey-free
  * functions owned by `SnapshotRefreshService`. It coordinates device fetches,
@@ -411,6 +414,15 @@ type RefreshLivePower = {
     byDeviceId: LiveDevicePowerWatts;
     meterReadings: LiveMeterReadings | null;
 };
+
+/** The meter's per-phase capabilities; a failed read is `unavailable`, never no phases. */
+export async function readMeterPhases(meterDeviceId: string): Promise<MeterPhasesRead> {
+    try {
+        return resolveMeterPhases(await getRawDevice(meterDeviceId));
+    } catch {
+        return { state: 'unavailable' };
+    }
+}
 
 /** One poll's read of the requested meters (`DeviceTransport.readMeters`). */
 export async function readLiveMeters(
