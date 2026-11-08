@@ -24,6 +24,7 @@
  * changed its mind.
  */
 import type { DeviceExpectedPowerOverrides } from '../../packages/contracts/src/types';
+import { MAX_PLAUSIBLE_DEVICE_POWER_KW } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 /**
@@ -161,6 +162,10 @@ const isFiniteTimestamp = (value: unknown): value is number => (
  * An EMPTY device id is rejected with the rest. No Homey device has one, so an
  * entry keyed on `''` is corruption; keeping it would put a peak in the record
  * that nothing can ever look up and that the prune can only drop by expiry.
+ *
+ * A peak above the plausible device ceiling is rejected too: it was learned from
+ * a corrupt reading before those were dropped, and dropping it here lets the
+ * device learn its real peak instead of waiting out the window.
  */
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export const parseLearnedPeaks = (raw: unknown): LearnedPeaksByDeviceId => {
@@ -172,6 +177,7 @@ export const parseLearnedPeaks = (raw: unknown): LearnedPeaksByDeviceId => {
     const entry = asUnknownRecord(value);
     if (!entry) continue;
     if (!isFinitePositive(entry.kw) || !isFiniteTimestamp(entry.observedAtMs)) continue;
+    if (entry.kw > MAX_PLAUSIBLE_DEVICE_POWER_KW) continue;
     parsed[deviceId] = { kw: entry.kw, observedAtMs: entry.observedAtMs };
   }
   return parsed;

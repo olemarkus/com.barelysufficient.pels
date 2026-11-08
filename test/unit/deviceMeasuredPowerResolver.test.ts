@@ -301,4 +301,30 @@ describe('DeviceMeasuredPowerResolver', () => {
     // so the contract's "present implies non-negative" holds for consumers.
     expect(measuredPower).toEqual({ observedAtMs: 1234 });
   });
+
+  it('accepts a direct reading at the plausible ceiling and drops one above it', () => {
+    const resolve = (watts: number) => new DeviceMeasuredPowerResolver().resolve({
+      deviceId: 'dev-1',
+      deviceLabel: 'Device 1',
+      observation: { measurePower: { watts, observedAtMs: 1234 } },
+    });
+
+    expect(resolve(100_000).measuredPowerKw).toBe(100);
+    expect(resolve(100_001)).toEqual({ observedAtMs: 1234 });
+    expect(resolve(524_288)).toEqual({ observedAtMs: 1234 });
+  });
+
+  it('drops an impossible rate from a meter and reads on from the new anchor', () => {
+    const resolver = new DeviceMeasuredPowerResolver();
+    const hourMs = 60 * 60 * 1000;
+    const observe = (kwh: number, observedAtMs: number) => resolver.resolve({
+      deviceId: 'dev-1',
+      deviceLabel: 'Device 1',
+      observation: { meterEnergy: { kwh, observedAtMs } },
+    });
+
+    observe(100, 0);
+    expect(observe(600, hourMs)).toEqual({ observedAtMs: hourMs });
+    expect(observe(603, 2 * hourMs).measuredPowerKw).toBeCloseTo(3, 6);
+  });
 });
