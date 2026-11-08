@@ -10,6 +10,8 @@ const BOOTSTRAP_KEYS: Record<SettingsUiBootstrapKey, true> = {
   capacity_enabled: true,
   grid_import_enabled: true,
   grid_import_limit_kw: true,
+  main_fuse_supply: true,
+  main_fuse_amps: true,
   capacity_limit_kw: true,
   capacity_margin_kw: true,
   capacity_period_minutes: true,

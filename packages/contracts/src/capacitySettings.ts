@@ -15,6 +15,12 @@ export type PowerLimitSettings = CapacitySettings & {
   gridImportLimitKw: number | null;
 };
 
+/** How the home's connection is wired: this decides what a fuse size means in kW. */
+export type MainFuseSupply = 'one_phase' | 'three_phase_neutral' | 'three_phase_no_neutral';
+
+/** The owner's main fuse, resolved by the power owner. Main home only. */
+export type MainFuse = { kind: 'off' } | { kind: 'on'; supply: MainFuseSupply; amps: number };
+
 /** Which enabled power limit a ceiling comes from: the hard cap's capacity control, or grid import control. */
 export type PowerLimitAxis = 'capacity' | 'grid';
 

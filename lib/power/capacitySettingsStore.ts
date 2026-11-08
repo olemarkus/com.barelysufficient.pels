@@ -52,6 +52,7 @@ import type { HomeId } from '../utils/settingsKeys';
 import type {
   CapacityPeriodMinutes,
   CapacityScalarSettings,
+  MainFuse,
 } from '../../packages/contracts/src/capacitySettings';
 import type { SettingsUiHardCapConfigurationRead } from '../../packages/contracts/src/settingsUi/power';
 import {
@@ -63,6 +64,11 @@ import {
   resolveGridImportLimitSetting,
   type PowerLimitControlRead,
 } from '../../packages/shared-domain/src/settings/powerLimits';
+import {
+  MAIN_FUSE_OFF,
+  effectiveGridImportLimitKw,
+  resolveMainFuseSetting,
+} from '../../packages/shared-domain/src/settings/mainFuse';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import type { TimerRegistry } from '../utils/timerRegistry';
 import { isFiniteNumber } from '../../packages/shared-domain/src/numberGuards';
@@ -71,6 +77,8 @@ import {
   CAPACITY_ENABLED,
   GRID_IMPORT_ENABLED,
   GRID_IMPORT_LIMIT_KW,
+  MAIN_FUSE_AMPS,
+  MAIN_FUSE_SUPPLY,
   MAIN_HOME_ID,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
@@ -107,6 +115,8 @@ const CARRIED_FIELD_KEYS: ReadonlySet<string> = new Set([
   CAPACITY_ENABLED,
   GRID_IMPORT_ENABLED,
   GRID_IMPORT_LIMIT_KW,
+  MAIN_FUSE_SUPPLY,
+  MAIN_FUSE_AMPS,
   CAPACITY_PERIOD_MINUTES,
 ]);
 
@@ -126,6 +136,7 @@ const NOTHING_ACCEPTED: { state: 'none' } = { state: 'none' };
 type CarriedFields<T extends 'read' | 'accepted'> = {
   capacityEnabled: T extends 'read' ? FieldRead<boolean> : AcceptedField<boolean>;
   gridImportLimitKw: T extends 'read' ? FieldRead<number | null> : AcceptedField<number | null>;
+  mainFuse: T extends 'read' ? FieldRead<MainFuse> : AcceptedField<MainFuse>;
   periodMinutes: T extends 'read' ? FieldRead<CapacityPeriodMinutes> : AcceptedField<CapacityPeriodMinutes>;
 };
 
@@ -135,9 +146,11 @@ type CarriedFields<T extends 'read' | 'accepted'> = {
  */
 const METER_AREA_CAPACITY_ENABLED: AcceptedField<boolean> = { state: 'accepted', value: true };
 const METER_AREA_GRID_IMPORT_LIMIT: AcceptedField<number | null> = { state: 'accepted', value: null };
-const METER_AREA_SWITCHES_READ: Pick<CarriedFields<'read'>, 'capacityEnabled' | 'gridImportLimitKw'> = {
+const METER_AREA_MAIN_FUSE: AcceptedField<MainFuse> = { state: 'accepted', value: { kind: 'off' } };
+const METER_AREA_SWITCHES_READ: Pick<CarriedFields<'read'>, 'capacityEnabled' | 'gridImportLimitKw' | 'mainFuse'> = {
   capacityEnabled: { state: 'resolved', value: true },
   gridImportLimitKw: { state: 'resolved', value: null },
+  mainFuse: { state: 'resolved', value: { kind: 'off' } },
 };
 
 /**
@@ -150,7 +163,7 @@ const METER_AREA_SWITCHES_READ: Pick<CarriedFields<'read'>, 'capacityEnabled' | 
 function readMainHomeSwitches(
   settings: SettingsPort,
   keys: readonly string[],
-): Pick<CarriedFields<'read'>, 'capacityEnabled' | 'gridImportLimitKw'> {
+): Pick<CarriedFields<'read'>, 'capacityEnabled' | 'gridImportLimitKw' | 'mainFuse'> {
   return {
     capacityEnabled: resolveCapacityEnabledSetting(
       keys.includes(CAPACITY_ENABLED) ? settings.get(CAPACITY_ENABLED) : true,
@@ -158,6 +171,10 @@ function readMainHomeSwitches(
     gridImportLimitKw: resolveGridImportLimitSetting(
       keys.includes(GRID_IMPORT_ENABLED) ? settings.get(GRID_IMPORT_ENABLED) : false,
       settings.get(GRID_IMPORT_LIMIT_KW),
+    ),
+    mainFuse: resolveMainFuseSetting(
+      keys.includes(MAIN_FUSE_SUPPLY) ? settings.get(MAIN_FUSE_SUPPLY) : MAIN_FUSE_OFF,
+      settings.get(MAIN_FUSE_AMPS),
     ),
   };
 }
@@ -209,6 +226,8 @@ const CAPACITY_SCALAR_KEYS: ReadonlySet<string> = new Set([
   CAPACITY_ENABLED,
   GRID_IMPORT_ENABLED,
   GRID_IMPORT_LIMIT_KW,
+  MAIN_FUSE_SUPPLY,
+  MAIN_FUSE_AMPS,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_DRY_RUN,
@@ -227,6 +246,7 @@ export function createCapacitySettingsStore(
   let accepted: CarriedFields<'accepted'> = {
     capacityEnabled: isMain ? NOTHING_ACCEPTED : METER_AREA_CAPACITY_ENABLED,
     gridImportLimitKw: isMain ? NOTHING_ACCEPTED : METER_AREA_GRID_IMPORT_LIMIT,
+    mainFuse: isMain ? NOTHING_ACCEPTED : METER_AREA_MAIN_FUSE,
     periodMinutes: NOTHING_ACCEPTED,
   };
   // When the open malformed-read window started; null while every carried field
@@ -265,16 +285,20 @@ export function createCapacitySettingsStore(
         };
         const capacityEnabled = carryField(read.capacityEnabled, accepted.capacityEnabled);
         const gridImportLimitKw = carryField(read.gridImportLimitKw, accepted.gridImportLimitKw);
+        const mainFuse = carryField(read.mainFuse, accepted.mainFuse);
         const periodMinutes = carryField(read.periodMinutes, accepted.periodMinutes);
         // A malformed field with nothing accepted to carry (boot): keep the
         // caller's safe boot posture, and accept nothing from this read either.
-        if (capacityEnabled.state === 'none' || gridImportLimitKw.state === 'none' || periodMinutes.state === 'none') {
+        if (
+          capacityEnabled.state === 'none' || gridImportLimitKw.state === 'none'
+          || mainFuse.state === 'none' || periodMinutes.state === 'none'
+        ) {
           return { state: 'unavailable' };
         }
-        accepted = { capacityEnabled, gridImportLimitKw, periodMinutes };
+        accepted = { capacityEnabled, gridImportLimitKw, mainFuse, periodMinutes };
         const value: CapacityScalarSettings = {
           capacityEnabled: capacityEnabled.value,
-          gridImportLimitKw: gridImportLimitKw.value,
+          gridImportLimitKw: effectiveGridImportLimitKw(gridImportLimitKw.value, mainFuse.value),
           limitKw: isFiniteNumber(limit) ? limit : fallback.limitKw,
           marginKw: isFiniteNumber(margin) ? margin : fallback.marginKw,
           dryRun: typeof dryRun === 'boolean' ? dryRun : fallback.dryRun,

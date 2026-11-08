@@ -3,7 +3,8 @@ import { pushSettingWriteIfChanged, settleSettingWrites } from './settingWrites.
 import { isFiniteNumber } from '../../../shared-domain/src/numberGuards.ts';
 import { resolveCapacityPeriodMinutes } from '../../../shared-domain/src/settings/capacityPeriod.ts';
 import { resolvePowerLimitSettings } from '../../../shared-domain/src/settings/powerLimits.ts';
-import type { CapacityScalarSettings } from '../../../contracts/src/capacitySettings.ts';
+import { MAIN_FUSE_OFF, resolveMainFuseSetting } from '../../../shared-domain/src/settings/mainFuse.ts';
+import type { CapacityScalarSettings, MainFuse } from '../../../contracts/src/capacitySettings.ts';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_ENABLED,
@@ -12,6 +13,8 @@ import {
   CAPACITY_PERIOD_MINUTES,
   GRID_IMPORT_ENABLED,
   GRID_IMPORT_LIMIT_KW,
+  MAIN_FUSE_AMPS,
+  MAIN_FUSE_SUPPLY,
 } from '../../../shared-domain/src/settings/settingsKeys.ts';
 
 /**
@@ -27,11 +30,14 @@ export type CurrentCapacitySettings = {
   capacityEnabled: unknown;
   gridImportEnabled: unknown;
   gridImportLimitKw: unknown;
+  mainFuseSupply: unknown;
+  mainFuseAmps: unknown;
 };
 
 export const readCurrentCapacitySettings = async (): Promise<CurrentCapacitySettings> => {
   const [
     limit, margin, dryRun, periodMinutes, capacityEnabled, gridImportEnabled, gridImportLimitKw,
+    mainFuseSupply, mainFuseAmps,
   ] = await Promise.all([
     getSetting(CAPACITY_LIMIT_KW),
     getSetting(CAPACITY_MARGIN_KW),
@@ -40,8 +46,13 @@ export const readCurrentCapacitySettings = async (): Promise<CurrentCapacitySett
     getSetting(CAPACITY_ENABLED),
     getSetting(GRID_IMPORT_ENABLED),
     getSetting(GRID_IMPORT_LIMIT_KW),
+    getSetting(MAIN_FUSE_SUPPLY),
+    getSetting(MAIN_FUSE_AMPS),
   ]);
-  return { limit, margin, dryRun, periodMinutes, capacityEnabled, gridImportEnabled, gridImportLimitKw };
+  return {
+    limit, margin, dryRun, periodMinutes, capacityEnabled, gridImportEnabled, gridImportLimitKw,
+    mainFuseSupply, mainFuseAmps,
+  };
 };
 
 /**
@@ -58,13 +69,21 @@ export const readCurrentCapacitySettings = async (): Promise<CurrentCapacitySett
  * without a valid threshold) takes `fallback`'s posture whole rather than mixing
  * a saved switch with a running one.
  */
+/** The saved main fuse; a never-written or unreadable pair is off in the form. */
+export const resolveSavedMainFuse = (current: CurrentCapacitySettings): MainFuse => {
+  const read = resolveMainFuseSetting(current.mainFuseSupply ?? MAIN_FUSE_OFF, current.mainFuseAmps);
+  return read.state === 'resolved' ? read.value : { kind: 'off' };
+};
+
 export const resolveCapacityScalars = (
   current: CurrentCapacitySettings,
   fallback: CapacityScalarSettings,
 ): CapacityScalarSettings => {
   const controls = resolvePowerLimitSettings(
     current.capacityEnabled ?? fallback.capacityEnabled,
-    current.gridImportEnabled ?? fallback.gridImportLimitKw !== null,
+    // The running limit includes the fuse's total, so with a fuse set it says
+    // nothing about a grid import switch the owner never wrote.
+    current.gridImportEnabled ?? (fallback.gridImportLimitKw !== null && resolveSavedMainFuse(current).kind === 'off'),
     current.gridImportLimitKw,
   ) ?? fallback;
   return {
@@ -104,6 +123,27 @@ export const writeLimitsSettings = async (
   ].filter((change) => change.stored !== change.next);
   await settleSettingWrites(switches.filter((change) => change.next).map((change) => setSetting(change.key, true)));
   await settleSettingWrites(switches.filter((change) => !change.next).map((change) => setSetting(change.key, false)));
+};
+
+/** The size first, so a supply never lands without a valid one. */
+export const writeMainFuseSettings = async (current: CurrentCapacitySettings, next: MainFuse): Promise<void> => {
+  if (next.kind === 'on') {
+    const size: Array<Promise<void>> = [];
+    pushSettingWriteIfChanged(size, MAIN_FUSE_AMPS, current.mainFuseAmps, next.amps);
+    await settleSettingWrites(size);
+  }
+  const supply = next.kind === 'on' ? next.supply : MAIN_FUSE_OFF;
+  if ((current.mainFuseSupply ?? MAIN_FUSE_OFF) !== supply) await setSetting(MAIN_FUSE_SUPPLY, supply);
+};
+
+export const writeLimitsAndFuseSettings = async (
+  current: CurrentCapacitySettings,
+  stored: CapacityScalarSettings,
+  next: CapacityScalarSettings,
+  mainFuse: MainFuse,
+): Promise<void> => {
+  await writeLimitsSettings(current, stored, next);
+  await writeMainFuseSettings(current, mainFuse);
 };
 
 export const writeSimulationSetting = async (current: CurrentCapacitySettings, dryRun: boolean): Promise<void> => {
