@@ -5,6 +5,10 @@ import {
 } from '../lib/utils/settingsKeys';
 import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../lib/dailyBudget/dailyBudgetConstants';
 import { hasHeadroomFor } from '../lib/power/lastTotalPower';
+import {
+  isPlausibleWholeHomePowerW,
+  MAX_PLAUSIBLE_WHOLE_HOME_POWER_W,
+} from '../lib/power/wholeHomePowerPlausibility';
 import { getDebugEmitter } from '../lib/logging/logger';
 import {
   readFlowNumberArg,
@@ -41,6 +45,11 @@ export function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     // only remaining rejection.
     if (power === null) {
       throw new Error('Power must be a number (W).');
+    }
+    // A reading past the plausible bound is a meter or scaling fault; failing
+    // the card keeps it out of the hour and shows the owner why in the flow.
+    if (!isPlausibleWholeHomePowerW(power)) {
+      throw new Error(`Power must be within ±${MAX_PLAUSIBLE_WHOLE_HOME_POWER_W} W.`);
     }
     await deps.recordPowerSample(power);
     return true;

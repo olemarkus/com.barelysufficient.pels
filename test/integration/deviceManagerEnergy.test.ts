@@ -244,6 +244,31 @@ describe('fetchLivePowerReport', () => {
     });
   });
 
+  // A meter or scaling fault (an app reporting mW, a corrupted frame) is a
+  // missing sample, not a reading that fills the hour and sheds every device.
+  it('drops an implausible meter reading in either direction, keeping the rest of the report', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [
+        { type: 'cumulative', id: 'meter-main', values: { W: 3_200_000 } },
+        { type: 'device', id: 'meter-sub', values: { W: -250_001 } },
+        { type: 'device', id: 'meter-edge', values: { W: -250_000 } },
+        { type: 'device', id: 'dev1', values: { W: 800 } },
+      ],
+    });
+
+    const result = await fetchLivePowerReport({
+      logger,
+      meterDeviceIds: ['meter-main', 'meter-sub', 'meter-edge'],
+    });
+
+    expect(result).toMatchObject({
+      state: 'measured',
+      meterPowerW: { 'meter-edge': -250_000 },
+      byDeviceId: { dev1: 800 },
+    });
+    expect(result.state === 'measured' && Object.keys(result.meterPowerW)).toEqual(['meter-edge']);
+  });
+
   it('reads no meter when none is requested, keeping the per-device lanes', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
       items: [
