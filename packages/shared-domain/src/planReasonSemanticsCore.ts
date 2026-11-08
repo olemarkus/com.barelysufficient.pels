@@ -24,6 +24,9 @@ export const PLAN_REASON_CODES = {
   inactive: 'inactive',
   capacity: 'capacity',
   gridImport: 'grid_import',
+  // A phase is above its share of the main fuse and this device touches it
+  // (`lib/plan/phase/phaseShedPass.ts`). Names the phase; carries no kW.
+  phaseLimit: 'phase_limit',
   // The whole-home meter has stopped reporting past the 10-minute shed timeout,
   // and the silent-meter fail-closed pass limited the device
   // (`lib/plan/planBuilderSilentMeter.ts`). Its cause in every mode — Capacity
@@ -244,6 +247,7 @@ export type DeviceReason =
   // the string they are about to put here.
   | { code: typeof PLAN_REASON_CODES.inactive; detail: string }
   | ({ code: typeof PLAN_REASON_CODES.gridImport } & AdmissionShortfall & ReserveHolder)
+  | { code: typeof PLAN_REASON_CODES.phaseLimit; phase: 'L1' | 'L2' | 'L3' }
   | ({ code: typeof PLAN_REASON_CODES.capacity } & AdmissionShortfall & ReserveHolder)
   | { code: typeof PLAN_REASON_CODES.meterSilent }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }

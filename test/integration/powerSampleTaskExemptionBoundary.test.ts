@@ -110,6 +110,7 @@ const buildHarness = (controllable: boolean, decisionDelayMs = 0) => {
     getTimeZone: () => 'UTC',
     getPlanEngine: () => partialDouble<PlanEngine>({
       computeShortfallThreshold: () => 10,
+      computePhaseDeficitKw: () => 0,
       state: createPlanEngineState(),
       clearStartupRestoreStabilization: () => false,
     }),

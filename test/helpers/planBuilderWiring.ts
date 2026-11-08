@@ -21,6 +21,7 @@ type PlanBuilderWiring = Omit<PlanBuilderDeps,
  */
 export const planBuilderWiring = (): PlanBuilderWiring => ({
   getCapacityDryRun: () => false,
+  getMainFuse: () => ({ kind: 'off' }),
   getInferredSurplusKw: () => 0,
   getStorageDischargeObservations: () => new Map(),
   inverterCurtailment: NO_INVERTER_PLANNER,

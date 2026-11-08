@@ -1,6 +1,7 @@
 import type { PowerTrackerState } from './tracker';
 import { resolveMeterEvidenceAtMs, resolveLastTotalPowerKw } from './lastTotalPower';
 import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from './sampleFreshness';
+import type { PhaseReading } from './phaseReading';
 
 /**
  * What one plan cycle is allowed to know about power: a MEASURED reading, or
@@ -25,6 +26,8 @@ export type MeasuredPowerReading = {
   lastPowerUpdateMs: number;
   /** The spare room before a limit, kW — negative when above it. */
   headroomKw: (limitKw: number) => number;
+  /** The meter's phases as this sample left them. */
+  phaseReading: PhaseReading;
 };
 
 /**
@@ -53,6 +56,13 @@ export type PowerCycleDisplay = {
   lastPowerUpdateMs: number;
 };
 
+/** What the meter side knows when a plan cycle starts: the latched sample, its clock, and the phases beside it. */
+export type PowerCycleObservation = {
+  powerTracker: PowerTrackerState;
+  nowMs: number;
+  phaseReading: PhaseReading;
+};
+
 /**
  * Resolve one plan cycle's reading — pure, no per-home state.
  *
@@ -61,11 +71,8 @@ export type PowerCycleDisplay = {
  * gate and `lib/power/meterSilence.ts`. This resolver only says which variant
  * the planner is looking at.
  */
-export const resolvePowerCycleReading = (params: {
-  powerTracker: PowerTrackerState;
-  nowMs: number;
-}): PowerCycleReading => {
-  const { powerTracker, nowMs } = params;
+export const resolvePowerCycleReading = (params: PowerCycleObservation): PowerCycleReading => {
+  const { powerTracker, nowMs, phaseReading } = params;
   // The reading is resolved from the tracker's own latch — no separate total
   // parameter to fall out of sync with the freshness stamp, and no nullable
   // to cross the seam. A build without a latched sample is a measurement-gate
@@ -88,5 +95,6 @@ export const resolvePowerCycleReading = (params: {
     totalKw,
     lastPowerUpdateMs,
     headroomKw: (limitKw: number): number => limitKw - totalKw,
+    phaseReading,
   };
 };

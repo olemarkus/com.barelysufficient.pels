@@ -30,6 +30,7 @@ const FAIRNESS_EXPLAINS_REASON_CODES: ReadonlySet<PlanReasonCode> = new Set([
   PLAN_REASON_CODES.shedInvariant,
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.gridImport,
+  PLAN_REASON_CODES.phaseLimit,
   PLAN_REASON_CODES.dailyBudget,
   PLAN_REASON_CODES.insufficientHeadroom,
   PLAN_REASON_CODES.shortfall,

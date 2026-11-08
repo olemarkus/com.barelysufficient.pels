@@ -1,6 +1,7 @@
 import { buildPlannedTargetCommand } from '../../lib/plan/planTargetCommand';
 import type { ChargeTargetHold, DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 import type { PhaseFootprint } from '../../packages/planner-types/src/phaseFootprint';
+import type { PhasePower } from '../../lib/plan/phase/phasePower';
 import { NO_SHEDDING_OUTCOME } from '../../lib/plan/planState';
 import type { SheddingPlan } from '../../lib/plan/shedding/types';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -1296,6 +1297,8 @@ export const buildPlanMeta = (
     // (`resolveMeasuredPower`): over the capacity pace or the grid target.
     physicalLimitBreached: (base.capacitySoftLimitKw !== null && base.totalKw > base.capacitySoftLimitKw)
       || (base.gridImportTargetKw !== null && base.totalKw > base.gridImportTargetKw),
+    phase: { kind: 'off' },
+    unrelievedPhase: null,
     headroomKw: 1,
     shortfallBudgetHeadroomKw: 1,
     hardCapHeadroomKw: 5,
@@ -1476,6 +1479,7 @@ export const restoreCycleFixture = (
   storageHandBackWaitingAt: Number.POSITIVE_INFINITY,
   headroomReserves: [],
   batchState: buildDisabledRestoreBatchState(),
+  readPhaseRoom: () => ({ kind: 'off' }),
   phase: resolveRestoreDecisionPhase(state.currentRebuildTrigger),
 });
 
@@ -1529,6 +1533,7 @@ export const sheddingPlanFixture = (overrides: Partial<SheddingPlan> = {}): Shed
   shedReasons: new Map<string, DeviceReason>(),
   shedStepTargets: new Map<string, string>(),
   storageSetpoints: new Map(),
+  unrelievedPhase: null,
   sheddingActive: false,
   guardInShortfall: false,
   outcome: NO_SHEDDING_OUTCOME,
@@ -1563,6 +1568,7 @@ export const resolveSurplusEligibilityForSpec = (spec: {
   getConfig: Parameters<typeof selectSurplusCandidates>[2];
   excludeIds: ReadonlySet<string>;
   nowTs: number;
+  phase?: PhasePower;
 }): ReadonlyMap<string, StorageSurplusOffer> => resolveSurplusEligibility(
   selectSurplusCandidates(spec.devices, spec.state, spec.getConfig, spec.excludeIds),
   spec.state,
@@ -1570,6 +1576,7 @@ export const resolveSurplusEligibilityForSpec = (spec: {
   spec.inferredSurplusKw,
   spec.storage,
   spec.nowTs,
+  spec.phase ?? { kind: 'off' },
 );
 
 /**

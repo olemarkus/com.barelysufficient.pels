@@ -443,6 +443,7 @@ describe('plan logging helpers', () => {
   it('builds grouped structured debug summaries for restore-blocked and inactive devices', () => {
     const plan = {
       meta: {
+        phase: { kind: 'off' },
         totalKw: 3.97,
         softLimitKw: 3.0,
         capacitySoftLimitKw: 4.0,
@@ -487,6 +488,7 @@ describe('plan logging helpers', () => {
 
     expect(buildPlanDebugSummaryEvent(plan)).toEqual({
       event: 'plan_debug_summary',
+      phase: { kind: 'off' },
       totalKw: 3.97,
       softLimitKw: 3,
       capacitySoftLimitKw: 4,
@@ -505,6 +507,7 @@ describe('plan logging helpers', () => {
   it('groups legacy restore cooldown reasons under one restore-blocked bucket', () => {
     const plan = {
       meta: {
+        phase: { kind: 'off' },
         totalKw: 2.2,
         softLimitKw: 3,
         capacitySoftLimitKw: 3,

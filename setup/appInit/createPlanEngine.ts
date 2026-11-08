@@ -130,6 +130,7 @@ export function createPlanEngineComposition(
     getCapacityDryRun: scope.getCapacityDryRun,
     capacityGuard: options.capacityGuard,
     getCapacitySettings: scope.getCapacitySettings,
+    getMainFuse: scope.getMainFuse,
     getPriceOptimizationSettings: scope.getPriceOptimizationSettings,
     getInferredSurplusKw: scope.getInferredSurplusKw,
     getStorageDischargeObservations: scope.getStorageDischargeObservations,

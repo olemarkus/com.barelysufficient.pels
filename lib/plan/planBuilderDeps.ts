@@ -20,7 +20,7 @@ import type {
   DeferredDecorationInput,
 } from '../../packages/planner-types/src/deferredDecoration';
 import type { ResolveTemperatureSetpoints } from '../../packages/planner-types/src/temperatureSetpoints';
-import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
+import type { MainFuse, PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 
 export type PlanBuilderDeps = {
   inverterCurtailment: import('../ports/inverterControl').InverterPlanner;
@@ -29,6 +29,8 @@ export type PlanBuilderDeps = {
   getCapacityDryRun: () => boolean;
   capacityGuard: CapacityGuard;
   getCapacitySettings: () => PowerLimitSettings;
+  /** The owner's main fuse; off for a meter area. */
+  getMainFuse: () => MainFuse;
   // The surplus allocator's opt-in (`surplusWilling`, a lift configured at all).
   // The lift's VALUE is not read here: it is a setpoint, resolved before the
   // planner with every other one (`resolveTemperatureSetpoints`).

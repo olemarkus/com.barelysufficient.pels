@@ -30,6 +30,7 @@ const readingFor = (
 ) => resolvePowerCycleReading({
   powerTracker,
   nowMs: Date.now(),
+  phaseReading: { kind: 'none' },
 });
 
 const buildDevice = (
@@ -86,7 +87,7 @@ describe('power sample freshness policy', () => {
   } & Parameters<typeof limitsFor>[0]): MeasuredPower | null => {
     const reading = readingFor(params.powerTracker);
     if (!reading.isMeasured) return null;
-    return resolveMeasuredPower(reading, limitsFor(params), params.devices ?? []);
+    return resolveMeasuredPower(reading, limitsFor(params), params.devices ?? [], { kind: 'off' });
   };
 
   it('uses real computed headroom for fresh samples', () => {

@@ -1,5 +1,6 @@
 import type { DevicePlanDevice } from '../planTypes';
 import { minLimitHeadroom, spendLimitHeadroom, type LimitHeadroom } from '../planContext';
+import { phaseRoomFor, spendPhaseRoom, type PhaseRoomAxis } from '../phase/phaseRoom';
 
 /**
  * The room left on each admission axis at the start of a restore pass, `off`
@@ -11,6 +12,7 @@ export type RestoreHeadroomAxes = {
   capacity: LimitHeadroom;
   grid: LimitHeadroom;
   budget: LimitHeadroom;
+  phase: PhaseRoomAxis;
 };
 
 /**
@@ -37,6 +39,10 @@ export type RestoreHeadroomAxes = {
  * none does (no limit is on): the candidate is unconstrained
  * (`resolveReserveAdmission`), never handed a stand-in number.
  *
+ * A phase axis, when phases are protected, adds a per-footprint room
+ * (`phase/phaseRoom.ts`) to every candidate's physical axes; the inner gates keep
+ * their single scalar. `summaryAvailableKw()` stays the non-exempt scalar view.
+ *
  * Commits are per-axis: any admission consumes the capacity and grid axes (real
  * import rises either way); only a non-exempt admission consumes the budget
  * axis — an exempt device's draw does not count toward the budget, and its
@@ -48,9 +54,11 @@ export type RestoreHeadroomAxes = {
  * no counted room. `summaryAvailableKw()` is the non-exempt view, used for the
  * batch throttle and the result scalar.
  */
+type LedgerDevice = Pick<DevicePlanDevice, 'budgetExempt' | 'phaseFootprint'>;
+
 export type RestoreHeadroomLedger = {
-  availableFor(dev: Pick<DevicePlanDevice, 'budgetExempt'>): number | null;
-  commit(dev: Pick<DevicePlanDevice, 'budgetExempt'>, spentKw: number): void;
+  availableFor(dev: LedgerDevice): number | null;
+  commit(dev: LedgerDevice, spentKw: number): void;
   summaryAvailableKw(): number | null;
   axes(): RestoreHeadroomAxes;
 };
@@ -59,13 +67,16 @@ export function buildRestoreHeadroomLedger(axes: RestoreHeadroomAxes): RestoreHe
   let capacity = axes.capacity;
   let grid = axes.grid;
   let budget = axes.budget;
+  let phase = axes.phase;
   const availableKw = (...limits: LimitHeadroom[]): number | null => {
     const headroom = minLimitHeadroom(...limits);
     return headroom.kind === 'on' ? headroom.kw : null;
   };
   return {
     availableFor(dev) {
-      return availableKw(capacity, grid, dev.budgetExempt ? { kind: 'off' } : budget);
+      return availableKw(
+        capacity, grid, dev.budgetExempt ? { kind: 'off' } : budget, phaseRoomFor(phase, dev.phaseFootprint),
+      );
     },
     commit(dev, spentKw) {
       // Negative swaps free no room until the next meter sample; keep the existing
@@ -74,12 +85,13 @@ export function buildRestoreHeadroomLedger(axes: RestoreHeadroomAxes): RestoreHe
       capacity = spendLimitHeadroom(capacity, spentKw);
       grid = spendLimitHeadroom(grid, spentKw);
       if (!dev.budgetExempt) budget = spendLimitHeadroom(budget, spentKw);
+      phase = spendPhaseRoom(phase, dev.phaseFootprint, spentKw);
     },
     summaryAvailableKw() {
       return availableKw(capacity, grid, budget);
     },
     axes() {
-      return { capacity, grid, budget };
+      return { capacity, grid, budget, phase };
     },
   };
 }

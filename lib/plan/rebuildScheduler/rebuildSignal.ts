@@ -36,6 +36,8 @@ export type PowerRebuildSignal = {
   hardCapBreach: LimitBreach;
   /** The draw against the grid import target. */
   gridBreach: LimitBreach;
+  /** The worst phase against its share of the main fuse. */
+  phaseBreach: LimitBreach;
   /** The last plan is still converging, so power deltas are worth rebuilding on. */
   planConvergenceActive: boolean;
   /** The last plan proved nothing can be shed or restored. */
@@ -78,6 +80,8 @@ export type AdmittedPowerReading = {
    */
   powerLimitKw: number | null;
   shortfallThresholdKw: number | null;
+  /** How far the worst phase is over its share of the main fuse, kW; zero with none over. */
+  phaseDeficitKw: number;
 };
 
 /**
@@ -91,6 +95,8 @@ export type PlanRebuildPosture = {
   planConvergenceActive: boolean;
   unactionable: boolean;
   shortfallUnrecoverable: boolean;
+  /** The last plan found a breached phase with nothing left to limit on it (`DevicePlan.meta.unrelievedPhase`). */
+  phaseNothingToLimit: boolean;
 };
 
 export const resolveHeadroomTight = (headroomKw: number | null): boolean => headroomKw !== null && headroomKw <= 0;

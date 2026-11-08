@@ -1,3 +1,4 @@
+import type { PhasePower } from './phase/phasePower';
 import type { PelsStatus } from './pelsStatus';
 import type { PriceLevel } from '../price/priceLevels';
 import type {
@@ -67,6 +68,19 @@ const normalizeDailyPaceComposition = (
   };
 };
 
+// Rounded like every other published kW, so a phase moving a few watts does not change the plan signature.
+const roundPhasePower = (power: PhasePower): PhasePower => (
+  power.kind === 'off' ? power : {
+    kind: 'on',
+    phases: power.phases.map((phase) => ({
+      ...phase,
+      drawKw: roundTo(phase.drawKw, PLAN_META_KW_STEP),
+      targetKw: roundTo(phase.targetKw, PLAN_META_KW_STEP),
+      roomKw: roundTo(phase.roomKw, PLAN_META_KW_STEP),
+    })),
+  }
+);
+
 // The measured figures, rounded — or nothing, on the unmeasured build. The one
 // branch on the signal this normalizer makes; it keeps the meta's variant intact.
 const normalizeMeasuredMetaFields = (
@@ -76,6 +90,8 @@ const normalizeMeasuredMetaFields = (
     ? {
       powerIsMeasured: true,
       physicalLimitBreached: meta.physicalLimitBreached,
+      phase: roundPhasePower(meta.phase),
+      unrelievedPhase: meta.unrelievedPhase,
       headroomKw: roundTo(meta.headroomKw, PLAN_META_KW_STEP),
       shortfallBudgetHeadroomKw: roundTo(meta.shortfallBudgetHeadroomKw, PLAN_META_KW_STEP),
       hardCapHeadroomKw: roundTo(meta.hardCapHeadroomKw, PLAN_META_KW_STEP),

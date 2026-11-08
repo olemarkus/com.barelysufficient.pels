@@ -67,6 +67,38 @@ describe('PlanRebuildThrottle — rebuild gates', () => {
     expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('grid_import_pressure');
   });
 
+  it('rebuilds on a phase over the fuse while the net sits calm', async () => {
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
+    const { throttle } = await createTestPlanRebuildThrottle({
+      rebuildPlanFromCache,
+      lastRebuild: { msAgo: 20_000, reading: { currentPowerW: 2_000 } },
+    });
+    await sampleThrottle(throttle, { currentPowerW: 2_000, phaseDeficitKw: 1.2, unactionable: true });
+    expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('phase_pressure');
+  });
+
+  it('does not let a small rise in a phase deficit past the unactionable throttle', async () => {
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
+    const { throttle } = await createTestPlanRebuildThrottle({
+      rebuildPlanFromCache,
+      lastRebuild: { msAgo: 20_000, reading: { currentPowerW: 2_000, phaseDeficitKw: 1 } },
+    });
+    await sampleThrottle(throttle, { currentPowerW: 2_000, phaseDeficitKw: 1.05, unactionable: true });
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+    await sampleThrottle(throttle, { currentPowerW: 2_000, phaseDeficitKw: 1.2, unactionable: true });
+    expect(rebuildPlanFromCache).toHaveBeenCalledExactlyOnceWith('phase_pressure');
+  });
+
+  it('treats a phase with nothing left to limit as unactionable while nothing else is over', async () => {
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
+    const { throttle } = await createTestPlanRebuildThrottle({
+      rebuildPlanFromCache,
+      lastRebuild: { msAgo: 5_000, reading: { currentPowerW: 2_000, phaseDeficitKw: 1 } },
+    });
+    await sampleThrottle(throttle, { currentPowerW: 2_000, phaseDeficitKw: 1, phaseNothingToLimit: true });
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+  });
+
   it('rebuilds immediately when a control boundary is already crossed', async () => {
     const rebuildPlanFromCache = vi.fn().mockResolvedValue(unchangedRebuildOutcome());
     const { throttle } = await createTestPlanRebuildThrottle({

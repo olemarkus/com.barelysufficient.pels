@@ -278,7 +278,7 @@ function resolveReasonFlags(reason: DeviceReason): {
       || reason.code === PLAN_REASON_CODES.capacity
       || reason.code === PLAN_REASON_CODES.meterSilent,
     hasDailyReason: reason.code === PLAN_REASON_CODES.dailyBudget,
-    hasGridReason: reason.code === PLAN_REASON_CODES.gridImport,
+    hasGridReason: reason.code === PLAN_REASON_CODES.gridImport || reason.code === PLAN_REASON_CODES.phaseLimit,
   };
 }
 

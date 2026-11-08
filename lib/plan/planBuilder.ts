@@ -50,6 +50,7 @@ import {
   type MeasuredPower,
   type PlanContext,
 } from './planContext';
+import { resolvePhasePower, worstPhaseDeficitKw } from './phase/phasePower';
 import { buildSheddingPlan, type SheddingPlan } from './shedding';
 import {
   NO_STORAGE_RELIEF,
@@ -218,6 +219,14 @@ export class PlanBuilder {
    * Shortfall should only trigger when projected selected-period usage would breach the hard cap
    * and no devices are left to shed.
    */
+  /** How far the worst phase is over its share of the main fuse, kW; zero with none over or no protection on. */
+  public computePhaseDeficitKw(netKw: number): number {
+    const fuse = this.deps.getMainFuse();
+    return fuse.kind === 'off'
+      ? 0
+      : worstPhaseDeficitKw(resolvePhasePower(fuse, this.capacityGuard.phaseReadings.current(), netKw));
+  }
+
   public computeShortfallThreshold(): number | null {
     return resolveShortfallThresholdKw(this.capacitySettings, this.powerTracker, Date.now());
   }
@@ -283,6 +292,7 @@ export class PlanBuilder {
     const reading = resolvePowerCycleReading({
       powerTracker: this.powerTracker,
       nowMs: nowTs,
+      phaseReading: this.capacityGuard.phaseReadings.current(),
     });
     const context = trackPlanStage('plan_context_ms', () => buildPlanContext(
       admittedDevices,
@@ -308,7 +318,7 @@ export class PlanBuilder {
     // drew as the level the drain falls from (`CapacityDrainStart`). Before
     // that, this build's pace already started from the same draw.
     this.state.capacityDrainStart.record(settings, this.powerTracker, nowTs, reading.totalKw);
-    const power = resolveMeasuredPower(reading, context, admittedDevices);
+    const power = resolveMeasuredPower(reading, context, admittedDevices, this.deps.getMainFuse());
     // Smart-task precedence for the standing postures, shared by the
     // allocator and the hold so the two can never disagree.
     const postureExcludeIds = resolvePostureExcludeIds(decoration, admittedDevices);
@@ -374,6 +384,7 @@ export class PlanBuilder {
       capacityGuard: this.capacityGuard,
       capacityLimitKw: settings.limitKw,
       hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(heldContext),
+      unrelievedPhase: sheddingPlan.unrelievedPhase,
     };
     trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState(
       metaFacts, power, overshootDecision, nowTs,
@@ -432,6 +443,7 @@ export class PlanBuilder {
       this.deps.getInferredSurplusKw(),
       storage,
       nowTs,
+      power.phase,
     ));
   }
 
@@ -485,7 +497,10 @@ export class PlanBuilder {
     const storageRelief = applyStorageLimits(heldStorage, sheddingPlan.storageSetpoints, nowTs);
 
     return {
-      sheddingPlan, overshootDecision, storageRelief, admissionPower: withoutStorageWithheld(power, storageRelief),
+      sheddingPlan,
+      overshootDecision,
+      storageRelief,
+      admissionPower: withoutStorageWithheld(power, storageRelief, context.devices),
     };
   }
 

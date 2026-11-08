@@ -48,6 +48,7 @@ const RESTORE_ADMISSION_HOLD_REASON_CODES = new Set<PlanReasonCode>([
 const DEFERRED_RESTORE_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.activationBackoff,
   PLAN_REASON_CODES.gridImport,
+  PLAN_REASON_CODES.phaseLimit,
   PLAN_REASON_CODES.capacity,
   // The silent-meter fail-closed pass: with no measurement nothing admits a
   // resume, a smart task's included. The pass marks every device `shed`, which
@@ -122,6 +123,7 @@ const COOLDOWN_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
 // describes a meter that stopped reporting.
 const COUNTING_SUPPRESSION_CAUSES: Partial<Record<PlanReasonCode, DeviceDiagnosticsStarvationCountingCause>> = {
   [PLAN_REASON_CODES.gridImport]: 'capacity',
+  [PLAN_REASON_CODES.phaseLimit]: 'capacity',
   [PLAN_REASON_CODES.capacity]: 'capacity',
   [PLAN_REASON_CODES.dailyBudget]: 'daily_budget',
   [PLAN_REASON_CODES.hourlyBudget]: 'hourly_budget',

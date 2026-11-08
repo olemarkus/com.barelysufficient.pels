@@ -7,6 +7,7 @@ import type { MeteredPlanInputDevice, PlanInputDevice, ShedBehavior } from '../p
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
 import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 import type { ObservedStorageInput } from '../../../packages/planner-types/src/planInputDevice';
+import type { PhaseName } from '../../../packages/planner-types/src/phaseFootprint';
 
 export type SheddingPlan = {
   shedSet: Set<string>;
@@ -45,6 +46,8 @@ export type SheddingPlan = {
   outcome: SheddingOutcome;
   /** When this cycle's guard update released the shedding latch, or null when it did not. */
   recoveredAtMs: number | null;
+  /** The worst phase still breached with nothing left to limit on it (`phase/phaseShedPass.ts`). */
+  unrelievedPhase: PhaseName | null;
 };
 
 /**
@@ -183,7 +186,13 @@ export type ShedCandidateParams = {
 
 /** See `ShedCandidateParams.storageLimit`. */
 export type StorageLimitInput =
-  | { kind: 'measured'; drawKw: number; levers: Readonly<Record<string, StorageLeverState>> }
+  | {
+    kind: 'measured';
+    drawKw: number;
+    levers: Readonly<Record<string, StorageLeverState>>;
+    /** Limit charge only, no discharge: the phase pass. */
+    chargeOnly?: true;
+  }
   | { kind: 'unmeasured' };
 
 export type BaseShedCandidate = MeteredPlanInputDevice & {

@@ -1,3 +1,5 @@
+import { phaseBoundedPoolKw, resolvePhaseRoomAxis, spendPhaseRoom } from './phase/phaseRoom';
+import type { PhasePower } from './phase/phasePower';
 import { resolveSurplusCeilingStepId, type PlanEngineState } from './planState';
 import type { ResolvedPriceOptimizationConfig } from '../price/priceOptimizer';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
@@ -730,6 +732,8 @@ export function resolveSurplusEligibility(
   // One timestamp for the whole admission pass, so a single plan build cannot
   // flip devices on different milliseconds at the settle/dwell threshold.
   nowTs: number,
+  // Solar exported on L2 and L3 is no room on L1: each device claims within its phases.
+  phasePower: PhasePower,
 ): ReadonlyMap<string, StorageSurplusOffer> {
   const hardOff = isHardOffCondition(signedNetKw, storage.dischargeW / 1000);
 
@@ -739,6 +743,7 @@ export function resolveSurplusEligibility(
   // device's measured draw is already out of the export.
   let storageKw = pool.poolKw - pool.deviceAddBackKw;
   let demandAbove: SurplusDemand = 'none';
+  let phaseRoom = resolvePhaseRoomAxis(phasePower);
   // What every consumer so far takes of a battery's share, kW, and each
   // battery's offer at its turn with that running total: what the consumers
   // after it take is the difference at the end.
@@ -763,15 +768,17 @@ export function resolveSurplusEligibility(
       continue;
     }
     const { dev } = consumer;
+    const measuredKw = pool.addedBackIds.has(dev.id) ? positiveOrZero(dev.currentDrawKw) : 0;
+    const devicePoolKw = phaseBoundedPoolKw(phaseRoom, dev.phaseFootprint, poolKw, measuredKw);
     const claim = dev.surplusTracking
-      ? claimForTrackingDevice(dev, state, poolKw, nowTs)
-      : claimForFixedDevice(dev, state, poolKw, hardOff, nowTs);
+      ? claimForTrackingDevice(dev, state, devicePoolKw, nowTs)
+      : claimForFixedDevice(dev, state, devicePoolKw, hardOff, nowTs);
     poolKw -= claim.claimKw;
+    phaseRoom = spendPhaseRoom(phaseRoom, dev.phaseFootprint, Math.max(0, claim.claimKw - measuredKw));
     if (claim.want.kind === 'waiting') storageKw -= claim.want.runKw;
     if (DEMAND_RANK[claim.want.kind] > DEMAND_RANK[demandAbove]) demandAbove = claim.want.kind;
     // What it takes of a battery's share above it: its smallest step while it
     // waits, else what it reserves beyond the draw already out of the export.
-    const measuredKw = pool.addedBackIds.has(dev.id) ? positiveOrZero(dev.currentDrawKw) : 0;
     takenKw += claim.want.kind === 'waiting' ? claim.want.runKw : Math.max(0, claim.claimKw - measuredKw);
   }
   return new Map([...turns].map(([deviceId, { takenAtTurnKw, ...offer }]): [string, StorageSurplusOffer] => (

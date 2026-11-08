@@ -232,6 +232,7 @@ function addStorageCandidate(
     storageLimit.drawKw,
     restore.recentlyRestored,
     nowTs,
+    storageLimit.chargeOnly === true,
   );
   if (typeof candidate !== 'string') return candidate;
   recorder.recordStorage({ device, batterySignedPowerW: device.storage.signedPowerW, reasonCode: candidate });

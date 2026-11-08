@@ -130,7 +130,9 @@ export class OvershootTracker {
             ...projectPlanLimits(context),
             // The same constructor the plan meta uses, so the summary's
             // managed/background split cannot drift from the published one.
-            ...resolveMeasuredMetaFields(power, reading, planDevices, capacityLimitKw, context.capacity),
+            ...resolveMeasuredMetaFields(
+              power, reading, planDevices, capacityLimitKw, context.capacity, facts.unrelievedPhase,
+            ),
           },
           devices: planDevices,
         }, { summarySource: 'plan_build', summarySourceAtMs: nowTs }),

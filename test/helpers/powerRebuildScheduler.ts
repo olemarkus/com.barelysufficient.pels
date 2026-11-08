@@ -39,6 +39,8 @@ export type ThrottleSampleForTest = {
   gridImportLimitKw?: number | null;
   /** Defaults to `limitKw`. */
   shortfallThresholdKw?: number | null;
+  phaseDeficitKw?: number;
+  phaseNothingToLimit?: boolean;
   planConvergenceActive?: boolean;
   unactionable?: boolean;
   shortfallUnrecoverable?: boolean;
@@ -57,11 +59,13 @@ export const sampleThrottle = (
       limitKw,
       powerLimitKw: sample.powerLimitKw === undefined ? limitKw : sample.powerLimitKw,
       shortfallThresholdKw: sample.shortfallThresholdKw === undefined ? limitKw : sample.shortfallThresholdKw,
+      phaseDeficitKw: sample.phaseDeficitKw ?? 0,
     },
     {
       planConvergenceActive: sample.planConvergenceActive ?? false,
       unactionable: sample.unactionable ?? false,
       shortfallUnrecoverable: sample.shortfallUnrecoverable ?? false,
+      phaseNothingToLimit: sample.phaseNothingToLimit ?? false,
     },
   );
 };

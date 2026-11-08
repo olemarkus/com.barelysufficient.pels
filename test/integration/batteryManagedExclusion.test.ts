@@ -108,7 +108,7 @@ const buildContext = (devices: PlanInputDevice[], overrides: PlanCycleSpec = {})
 const FIXTURE_NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 
 const emptyRestoreResult: RestorePlanResult = {
-  headroomAxes: { grid: { kind: 'off' }, capacity: { kind: 'on', kw: 1 }, budget: { kind: 'off' } },
+  headroomAxes: { phase: { kind: 'off' }, grid: { kind: 'off' }, capacity: { kind: 'on', kw: 1 }, budget: { kind: 'off' } },
   planDevices: [],
   restoredThisCycle: new Set<string>(),
   storageHandedBack: new Set<string>(),

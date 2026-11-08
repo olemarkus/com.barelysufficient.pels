@@ -12,6 +12,7 @@ const NOW_MS = Date.UTC(2026, 3, 18, 10, 0, 0);
 const resolve = (ageMs: number, totalKw = 4) => resolvePowerCycleReading({
   powerTracker: { lastPowerW: totalKw * 1000, lastTimestamp: NOW_MS - ageMs },
   nowMs: NOW_MS,
+  phaseReading: { kind: 'none' },
 });
 
 describe('resolvePowerCycleReading — what the planner is allowed to know', () => {
@@ -52,14 +53,16 @@ describe('resolvePowerCycleReading — what the planner is allowed to know', () 
   // for: a build reaching this resolver with an unsampled tracker is a wiring
   // bug, and it fails loud instead of planning on a fabricated number.
   it('throws on an unsampled tracker — a build past the gate is a violation, not a hold', () => {
-    expect(() => resolvePowerCycleReading({ powerTracker: {}, nowMs: NOW_MS })).toThrow(/measurement gate/);
+    expect(() => resolvePowerCycleReading({ powerTracker: {}, nowMs: NOW_MS, phaseReading: { kind: 'none' } })).toThrow(/measurement gate/);
     expect(() => resolvePowerCycleReading({
       powerTracker: { lastPowerW: 4000 },
       nowMs: NOW_MS,
+      phaseReading: { kind: 'none' },
     })).toThrow(/measurement gate/);
     expect(() => resolvePowerCycleReading({
       powerTracker: { lastPowerW: Number.NaN, lastTimestamp: NOW_MS },
       nowMs: NOW_MS,
+      phaseReading: { kind: 'none' },
     })).toThrow(/measurement gate/);
   });
 

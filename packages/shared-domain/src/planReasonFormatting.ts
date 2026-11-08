@@ -67,6 +67,8 @@ type StaticReason = Extract<
   | { code: typeof PLAN_REASON_CODES.carCurrentRangeUnavailable }
 >;
 
+export const formatPhaseLimitStatus = (phase: string): string => `Waiting for room on ${phase}`;
+
 function formatSignedKw(value: number, digits: number): string {
   const factor = 10 ** digits;
   const epsilonAdjusted = value >= 0 ? value + Number.EPSILON : value - Number.EPSILON;
@@ -292,6 +294,8 @@ export function formatDeviceReason(reason: DeviceReason): string {
         + `(${reason.shedDeviceCount} device(s) shed, max step: ${reason.maxStep})`;
     case PLAN_REASON_CODES.chargeTargetReached:
       return `reached its battery target (${reason.targetPercent}%)`;
+    case PLAN_REASON_CODES.phaseLimit:
+      return `shed due to main fuse on ${reason.phase}`;
     default: {
       const exhaustive: never = reason;
       return exhaustive;
@@ -575,6 +579,8 @@ export function formatDeviceReasonUserFacing(reason: DeviceReason): string {
       return formatShedInvariantUserFacing(reason);
     case PLAN_REASON_CODES.chargeTargetReached:
       return formatChargeTargetReachedStatus(reason.targetPercent);
+    case PLAN_REASON_CODES.phaseLimit:
+      return formatPhaseLimitStatus(reason.phase);
     default: {
       const exhaustive: never = reason;
       return exhaustive;

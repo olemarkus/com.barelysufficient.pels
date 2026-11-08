@@ -39,14 +39,15 @@ describe('resolvePlanRebuildPosture', () => {
       const posture = resolvePlanRebuildPosture(
         summaryWith({ remainingActionableControlledLoad: false, ...extra }),
         idleState(),
+        false,
       );
       expect(posture.shortfallUnrecoverable).toBe(true);
     }
   });
 
   it('is not unrecoverable when there is no plan yet, or load remains', () => {
-    expect(resolvePlanRebuildPosture(null, idleState()).shortfallUnrecoverable).toBe(false);
-    expect(resolvePlanRebuildPosture(summaryWith({ remainingActionableControlledLoad: true }), idleState())
+    expect(resolvePlanRebuildPosture(null, idleState(), false).shortfallUnrecoverable).toBe(false);
+    expect(resolvePlanRebuildPosture(summaryWith({ remainingActionableControlledLoad: true }), idleState(), false)
       .shortfallUnrecoverable).toBe(false);
   });
 
@@ -56,6 +57,7 @@ describe('resolvePlanRebuildPosture', () => {
     const posture = resolvePlanRebuildPosture(
       summaryWith({ remainingActionableControlledLoad: false, remainingReducibleControlledLoad: false }),
       { actuation: { hasInFlight: () => false }, pendingTargetCommands: {}, pendingBinaryCommands: {}, overshoot: activeIncident() },
+      false,
     );
     expect(posture.unactionable).toBe(true);
     expect(posture.planConvergenceActive).toBe(false);

@@ -24,9 +24,10 @@ import {
   holdPendingShedDecision,
   latchShedDecision,
   PENDING_RELIEF_EPSILON_KW,
+  resolveUndeliveredScalarReliefKw,
   type PendingShedRelief,
 } from './pendingRelief';
-import { resolveShedReason, selectShedDevices, type ShedSelection } from './selection';
+import { mergeShedDecisions, resolveShedReason, selectShedDevices, type ShedSelection } from './selection';
 import {
   buildShedCandidateParams,
   buildSheddingCandidates,
@@ -37,6 +38,7 @@ import { resolveContinuousChargeRelief } from './continuousChargeRelief';
 import { resolveSheddingLatch } from './sheddingLatch';
 import { reportShortfallToGuard } from './shortfallVerdict';
 import { resolveShedPressure, type ShedPressure } from './pressure';
+import { runPhaseShedPass } from '../phase/phaseShedPass';
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 const debug = getDebugEmitter('plan', 'plan');
@@ -56,14 +58,14 @@ export async function buildSheddingPlan(
   storage: StorageRelief,
 ): Promise<SheddingPlan> {
   const { nowTs } = context;
-  const selection = planShedding(context, power, state, deps, overshoot, storage);
-  const {
-    shedSet,
-    shedReasons,
-    shedStepTargets,
-    storageSetpoints,
-    outcome,
-  } = selection;
+  const scalar = planShedding(context, power, state, deps, overshoot, storage);
+  const phase = runPhaseShedPass(context, power, state, deps, storage, {
+    decidedIds: new Set([...scalar.shedSet, ...scalar.storageSetpoints.keys()]),
+    undeliveredKw: resolveScalarInFlightRelief(context, state, scalar, storage),
+  });
+  const merged = mergeShedDecisions(scalar, { ...phase, reliefByDevice: new Map() });
+  const selection = { ...scalar, ...merged };
+  const { shedSet, shedReasons, shedStepTargets, storageSetpoints, outcome } = selection;
   const wasSheddingActive = state.sheddingActive;
   // Resolved before the guard hears about the reading: its shortfall path
   // awaits a settings write, and the latch must read the hour this build
@@ -90,9 +92,26 @@ export async function buildSheddingPlan(
     guardInShortfall,
     outcome,
     recoveredAtMs: recoveredFromShedding ? nowTs : null,
+    unrelievedPhase: phase.unrelievedPhase,
   };
 }
 /* eslint-enable functional/immutable-data */
+
+/** What the scalar selection has decided and not yet delivered, for the phase pass to count. */
+function resolveScalarInFlightRelief(
+  context: PlanContext,
+  state: PlanEngineState,
+  scalar: PlanSheddingResult,
+  storage: StorageRelief,
+): Map<string, number> {
+  const { outcome } = scalar;
+  const latch = outcome.kind === 'shed' || outcome.kind === 'held' ? outcome.latch : state.shedPlanLatch;
+  const setpointsW = new Map([
+    ...Object.entries(storage.levers).map(([id, lever]) => [id, lever.setpointW] as const),
+    ...[...scalar.storageSetpoints].map(([id, setpoint]) => [id, setpoint.setpointW] as const),
+  ]);
+  return resolveUndeliveredScalarReliefKw(latch, context.devices, setpointsW, context.nowTs);
+}
 
 function shouldPlanShedding(headroom: LimitHeadroom): boolean {
   return headroom.kind === 'on' && headroom.kw < 0;
@@ -358,27 +377,6 @@ function shedBeyondPendingRelief(
  */
 function retainPendingLatch(pending: PendingShedRelief | null): SheddingOutcome {
   return pending === null ? NO_SHEDDING_OUTCOME : { kind: 'held', latch: pending.retained };
-}
-
-/**
- * The held decision with this cycle's additions laid over it. A device chosen
- * again goes where the new choice puts it — including no rung at all, for a
- * held stepped device whose next relief is its binary off.
- */
-function mergeShedDecisions(
-  held: Omit<ShedSelection, 'reliefByDevice'>,
-  beyond: ShedSelection,
-): Omit<ShedSelection, 'reliefByDevice'> {
-  const shedSet = new Set([...held.shedSet, ...beyond.shedSet]);
-  const shedReasons = new Map([...held.shedReasons, ...beyond.shedReasons]);
-  const shedStepTargets = new Map(held.shedStepTargets);
-  for (const deviceId of beyond.shedSet) {
-    const stepId = beyond.shedStepTargets.get(deviceId);
-    if (stepId === undefined) shedStepTargets.delete(deviceId);
-    else shedStepTargets.set(deviceId, stepId);
-  }
-  const storageSetpoints = new Map([...held.storageSetpoints, ...beyond.storageSetpoints]);
-  return { shedSet, shedReasons, shedStepTargets, storageSetpoints };
 }
 
 /** An escalation on an unchanged reading that found nothing to shed. */

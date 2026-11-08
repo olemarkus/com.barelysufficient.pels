@@ -51,7 +51,6 @@ import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './restor
 import { isReserveAdmitted, resolveReserveAdmission, type HeadroomReserve } from './admission';
 import { computeRestoreRequirementKw, estimateRestorePower } from './restore/accounting';
 import { buildSwapCandidates, type SwapLedger } from './swap';
-import { minLimitHeadroom } from './planContext';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { ceilToDisplayKw, PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 
@@ -149,7 +148,7 @@ export function resolveCeilingShortfall(params: {
     [...inputs.onDevices],
     inputs.swapLedger,
     inputs.deviceMap,
-    reserved.availableKw - reserved.reservedKw,
+    { availableKw: reserved.availableKw - reserved.reservedKw, phaseRoom: inputs.ledger.axes().phase },
     neededKw,
     inputs.restoredThisCycle,
   );
@@ -184,12 +183,13 @@ export function isBudgetReleasableHold(params: {
   // so its own gate's need decides: the kW it had to find on its axes,
   // reserves included, against what the physical axes hold.
   const { reason } = dev;
+  const physicalOnlyLedger = buildRestoreHeadroomLedger({ ...axes, budget: { kind: 'off' } });
   if (isSteppedLoadDevice(dev) && dev.currentState === 'on' && reason.code === PLAN_REASON_CODES.insufficientHeadroom) {
-    const physical = minLimitHeadroom(axes.capacity, axes.grid);
-    return physical.kind === 'off' || physical.kw >= reason.availableKw - reason.admissionMarginKw;
+    const physicalKw = physicalOnlyLedger.availableFor(dev);
+    return physicalKw === null || physicalKw >= reason.availableKw - reason.admissionMarginKw;
   }
   if (resolveCeilingShortfall({ dev, inputs }).kind !== 'gap') return false;
-  const physicalOnly = { ...inputs, ledger: buildRestoreHeadroomLedger({ ...axes, budget: { kind: 'off' } }) };
+  const physicalOnly = { ...inputs, ledger: physicalOnlyLedger };
   return resolveCeilingShortfall({ dev, inputs: physicalOnly }).kind === 'no_gap';
 }
 

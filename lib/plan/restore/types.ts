@@ -1,3 +1,4 @@
+import type { PhaseRoomAxis } from '../phase/phaseRoom';
 import type { RestoreHeadroomAxes } from './headroomLedger';
 import type { DrawEvidenceReads } from '../../observer/observedDeviceStateProjection';
 import type { Logger as PinoLogger } from '../../logging/logger';
@@ -78,6 +79,8 @@ export type RestoreCycle = {
   storageHandBackWaitingAt: number;
   /** Resolved exactly once per cycle — the resolver advances arming state. */
   readonly headroomReserves: readonly HeadroomReserve[];
+  /** The phases' room as the pass has spent it: a swap counts a donor only for what it frees on them. */
+  readonly readPhaseRoom: () => PhaseRoomAxis;
   readonly batchState: RestoreBatchState;
   /**
    * Startup or runtime, resolved once from this cycle's rebuild trigger. It was

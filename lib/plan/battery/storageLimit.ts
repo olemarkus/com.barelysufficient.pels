@@ -7,6 +7,9 @@
  * hold (`StorageLeverState`) and its `StorageDecision`, which the executor's
  * storage lane carries out unchanged.
  */
+import type { PhaseFootprint } from '../../../packages/planner-types/src/phaseFootprint';
+import type { PlanInputDevice } from '../planTypes';
+import { withholdPhaseRoom } from '../phase/phasePower';
 import { spendLimitHeadroom } from '../planContext';
 import type { MeasuredPower } from '../planContext';
 import type { StorageDecision } from '../../planContract/storageDecision';
@@ -123,11 +126,23 @@ export function applyStorageHandBacks(
  * admits a device and a charge increase never meets a restore on the same
  * room. The draw stays the measured one.
  */
-export function withoutStorageWithheld(power: MeasuredPower, relief: StorageRelief): MeasuredPower {
+export function withoutStorageWithheld(
+  power: MeasuredPower,
+  relief: StorageRelief,
+  devices: readonly Pick<PlanInputDevice, 'id' | 'phaseFootprint'>[],
+): MeasuredPower {
   const withheldKw = sumWithheldKw(relief.batteries);
   if (withheldKw <= 0) return power;
+  const footprintOf = (deviceId: string): PhaseFootprint => (
+    devices.find((device) => device.id === deviceId)?.phaseFootprint ?? { kind: 'unknown' }
+  );
+  let { phase } = power;
+  for (const battery of relief.batteries) {
+    phase = withholdPhaseRoom(phase, footprintOf(battery.deviceId), battery.withheldW / 1000);
+  }
   return {
     ...power,
+    phase,
     headroom: spendLimitHeadroom(power.headroom, withheldKw),
     capacityHeadroom: spendLimitHeadroom(power.capacityHeadroom, withheldKw),
     gridHeadroom: spendLimitHeadroom(power.gridHeadroom, withheldKw),

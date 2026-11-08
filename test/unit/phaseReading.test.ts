@@ -67,6 +67,17 @@ describe('PhaseReadingTracker', () => {
     expect(tracker.current()).toMatchObject({ kind: 'healthy', acceptedAtMs: 1 });
   });
 
+  it('stops trusting the picture when reads keep failing, and clears it when no meter feeds it', () => {
+    const tracker = new PhaseReadingTracker();
+    tracker.admit(power([1000, 1000, 1000]), 3000, 1);
+    for (let index = 0; index < 5; index += 1) tracker.admit({ state: 'unavailable' }, 3000, 2 + index);
+    expect(tracker.current().kind).toBe('healthy');
+    tracker.admit({ state: 'unavailable' }, 3000, 10);
+    expect(tracker.current().kind).toBe('degraded');
+    tracker.reset();
+    expect(tracker.current()).toEqual({ kind: 'none' });
+  });
+
   it('checks a current-only meter one-sidedly and marks it unsigned', () => {
     const tracker = new PhaseReadingTracker();
     tracker.admit({ state: 'read', capabilityIds: [], currentA: [10, 5, 5] }, 2000, 1);

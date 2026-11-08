@@ -19,6 +19,7 @@ export type LastRebuild = {
    */
   hardCapBreach: LimitBreach;
   gridBreach: LimitBreach;
+  phaseBreach: LimitBreach;
 };
 
 /**

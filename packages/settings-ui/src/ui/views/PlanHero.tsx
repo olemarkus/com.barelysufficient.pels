@@ -130,6 +130,7 @@ const buildDecisionSentence = ({
     projectedOverBudget: projectedOverHardCap
       || projectionTone === 'warning' || projectionTone === 'critical',
     gridImportHigh: meta.gridImportTargetKw !== null && meta.totalKw > meta.gridImportTargetKw,
+    ...(meta.powerIsMeasured && meta.unrelievedPhase ? { unrelievedPhase: meta.unrelievedPhase } : {}),
     safePaceKw: meta.softLimitKw,
     capacityPeriodMinutes: meta.capacityPeriodMinutes,
     deferredObjectiveAvoidCount: limited.filter((d) => d.status.holdCause === 'smart_task').length,

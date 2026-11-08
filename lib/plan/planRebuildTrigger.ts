@@ -35,6 +35,9 @@ export const POWER_SAMPLE_REBUILD_TRIGGERS = [
   'shortfall',
   'hard_cap_breach',
   'grid_import_pressure',
+  // A phase is above its share of the main fuse, whatever the net total does
+  // (`lib/plan/phase/`). The reading is the subject here too: it carries the phases.
+  'phase_pressure',
   'headroom_tight',
   'power_sample_convergence',
   'power_delta',

@@ -24,7 +24,7 @@ import type { SheddingPlan } from '../../lib/plan/shedding/types';
  */
 const ALWAYS: readonly string[] = [
   'available', 'binaryCommandPending', 'boostActive', 'budgetExempt', 'commandableNow',
-  'control', 'controlAdapter', 'currentDrawKw',
+  'control', 'controlAdapter', 'currentDrawKw', 'phaseFootprint',
   // Every input device is binary-capable — the producer resolves `currentOn`
   // for all of them at `toPlanDevice` — so the binary cluster is universal in
   // practice even though `isBinaryPlanDevice` gates it.
@@ -206,7 +206,7 @@ const buildFor = (kind: Kind): Record<string, unknown> => {
   const shedStepTargets = new Map<string, string>();
   if (kind.stepTarget !== undefined) shedStepTargets.set(kind.dev.id, kind.stepTarget);
   const sheddingPlan: SheddingPlan = {
-    shedSet: new Set<string>(kind.shed === true ? [kind.dev.id] : []),
+    unrelievedPhase: null, shedSet: new Set<string>(kind.shed === true ? [kind.dev.id] : []),
     shedReasons,
     shedStepTargets,
     storageSetpoints: new Map(),

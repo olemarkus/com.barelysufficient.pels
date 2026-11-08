@@ -299,7 +299,10 @@ export class PowerSamplePipeline {
       // resolved by the planner (`resolvePlanRebuildPosture`); the throttle gates
       // on it so an unwinnable state rides the max-interval cadence instead of
       // burning ~1.4 s of CPU on every power sample (Homey's cpuwarn watchdog).
-      const posture = resolvePlanRebuildPosture(latestPlanSummary, planState);
+      const publishedMeta = latestPublishedPlan?.plan.meta;
+      const posture = resolvePlanRebuildPosture(
+        latestPlanSummary, planState, publishedMeta?.powerIsMeasured === true && publishedMeta.unrelievedPhase !== null,
+      );
       const capacitySettings = this.deps.getCapacitySettings();
       await recordPowerSampleForApp({
         currentPowerW,
@@ -343,6 +346,7 @@ export class PowerSamplePipeline {
               limitKw: capacitySettings.limitKw,
               powerLimitKw: planService.computePhysicalPowerLimit(),
               shortfallThresholdKw: planEngine.computeShortfallThreshold(),
+              phaseDeficitKw: planEngine.computePhaseDeficitKw(requireLastTotalPowerKw(admittedTracker)),
             },
             posture,
           );

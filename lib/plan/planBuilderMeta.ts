@@ -7,6 +7,7 @@
 import type CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
 import type { PowerCycleDisplay } from '../power/powerCycleReading';
+import type { PhaseName } from '../../packages/planner-types/src/phaseFootprint';
 import type {
   DevicePlan,
   DevicePlanDevice,
@@ -45,6 +46,8 @@ export type PlanMetaCycleFacts = {
   capacityGuard: CapacityGuard;
   capacityLimitKw: number;
   hourlyBudgetExhausted: boolean;
+  /** The worst phase still breached with nothing left to limit on it. */
+  unrelievedPhase: PhaseName | null;
 };
 
 /** Nullable scalar fields belong to the published meta and logs, never the planner's policy. */
@@ -104,7 +107,7 @@ export function buildPlanMeta(facts: PlanMetaCycleFacts, power: MeasuredPower): 
   return {
     ...buildPlanMetaBase(facts),
     ...resolveMeasuredMetaFields(
-      power, facts.reading, facts.planDevices, facts.capacityLimitKw, facts.context.capacity,
+      power, facts.reading, facts.planDevices, facts.capacityLimitKw, facts.context.capacity, facts.unrelievedPhase,
     ),
   };
 }
@@ -150,10 +153,13 @@ export function resolveMeasuredMetaFields(
   planDevices: DevicePlanDevice[],
   capacityLimitKw: number,
   capacity: CapacityPlanLimit,
+  unrelievedPhase: PhaseName | null,
 ): PlanMeasuredMetaFields {
   return {
     powerIsMeasured: true,
     physicalLimitBreached: power.physicalLimitBreached,
+    phase: power.phase,
+    unrelievedPhase,
     headroomKw: power.headroom.kind === 'on' ? power.headroom.kw : null,
     ...resolveCapacityLineDistances(reading, capacityLimitKw, capacity),
     ...splitControlledUsageKwFor({
