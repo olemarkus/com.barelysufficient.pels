@@ -153,8 +153,11 @@ export type SupportReportSubmission =
   | { state: 'failed' }
   | { state: 'unknown' };
 
+/** What the settings page needs of a report; the evidence stays in `message`. */
+export type SupportReportSummary = Pick<SupportReportDocument, 'id' | 'request' | 'subjectName'>;
+
 export type PreparedSupportReport = {
-  document: SupportReportDocument;
+  document: SupportReportSummary;
   message: string;
   expiresAtMs: number;
   availability: SupportReportAvailability;

@@ -5,7 +5,7 @@ import {
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
 import { httpResponse } from '../helpers/httpResponse';
-import type { SupportReportDocument } from '../../packages/contracts/src/supportReport';
+import { decodeReportMessage } from '../helpers/supportReportEvidenceFixtures';
 
 describe('manual report through the app API and Homey boundary', () => {
   beforeEach(() => {
@@ -53,12 +53,13 @@ describe('manual report through the app API and Homey boundary', () => {
       problem: 'Heater stayed limited.', expected: 'Resume.', occurredAtMs: Date.now(), historyWindow: 'incident',
     } });
     if (!preview.ok) throw Error(preview.code);
-    expect(preview.report.document.activity.state).toBe('available');
-    if (preview.report.document.activity.state === 'available') {
-      expect(preview.report.document.activity.entries).toContainEqual(expect.objectContaining({ deviceId: 'heater' }));
+    const carried = decodeReportMessage(preview.report.message);
+    expect(carried.activity.state).toBe('available');
+    if (carried.activity.state === 'available') {
+      expect(carried.activity.entries).toContainEqual(expect.objectContaining({ deviceId: 'heater' }));
     }
     // The heater has no smart task, and the report says so rather than leaving it out.
-    expect(preview.report.document.sections).toContainEqual({ title: 'Current smart task', values: { exists: false } });
+    expect(carried.sections).toContainEqual({ title: 'Current smart task', values: { exists: false } });
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
     const id = preview.report.document.id;
     const sent = await api.support_report_send({ homey: app.homey, params: { id }, body: { consent: true } });
@@ -97,7 +98,7 @@ describe('manual report through the app API and Homey boundary', () => {
     } });
     if (!prepared.ok) throw Error(prepared.code);
     expect(prepared.report.document.subjectName).toBe('Water heater relay');
-    expect(prepared.report.document.sections).toContainEqual(expect.objectContaining({
+    expect(decodeReportMessage(prepared.report.message).sections).toContainEqual(expect.objectContaining({
       title: 'Homey device',
       values: expect.objectContaining({
         class: 'light', ownerUri: 'homey:app:com.knx', driverId: 'switch',
@@ -127,7 +128,7 @@ describe('manual report through the app API and Homey boundary', () => {
     await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
     expect(posts()).toHaveLength(1);
     const { message } = JSON.parse(String(posts()[0]?.[1]?.body)) as { message: string };
-    const document = JSON.parse(message.split('\n')[1] ?? '{}') as SupportReportDocument;
+    const document = decodeReportMessage(message);
     expect(document.trigger).toBe('daily');
     expect(document.request.subject).toEqual({ kind: 'app', homeId: 'main' });
     if (document.log.state !== 'available') throw new Error('the kept log is missing');

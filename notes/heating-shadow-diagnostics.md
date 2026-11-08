@@ -54,11 +54,9 @@ When the owner enables existing daily reports, Main app reports include
 **Daily heating observations** for the latest retained completed day. The compact
 section preserves precision and actual durations within 64 KiB of uncompressed
 JSON. Whole device-day blocks are selected in the collector's calendar order;
-omitted devices and local caps remain explicit. The section takes its size out
-of the report's 448 KiB log budget, so a busy home's report carries it in place
-of its oldest log lines. If the report still exceeds its 512 KiB limit once no
-log line is left to make room, the section is omitted before any activity is
-trimmed, with an omission note when the note fits. Manual and event
+omitted devices and local caps remain explicit. If the report exceeds its
+512 KiB limit once no log line is left to make room, the section is omitted before any activity is
+trimmed, with an omission note. Manual and event
 reports do not include it. Collection introduces no new setting or consent path.
 
 The input integral is derived from reported power, not an independent energy

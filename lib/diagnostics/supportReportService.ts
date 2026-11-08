@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { promisify } from 'node:util';
+import { gzip } from 'node:zlib';
 import type {
   PreparedSupportReport, SupportReportDocument, SupportReportEvidence, SupportReportRequest,
   SupportReportResponse, SupportReportTrigger,
@@ -19,21 +21,42 @@ type EvidenceSource = {
 const TTL_MS = 15 * 60_000;
 const MAX_REPORTS = 4;
 /**
- * The largest message Homey has been seen to deliver. Homey answers a 1 MiB report
- * with a log id but never delivers it, so a larger report is refused before sending.
+ * The largest message Homey has been seen to deliver, after compression. Homey answers
+ * a 1 MiB report with a log id but never delivers it, so a larger report is refused
+ * before sending.
  */
 export const SUPPORT_REPORT_MAX_BYTES = 512 * 1024;
 const logger = getLogger('diagnostics/support-report');
 
 const DAILY_REPORT_PROBLEM = 'Daily diagnostics report, sent because the owner turned it on.';
 
-const toMessage = (document: SupportReportDocument): { json: string; message: string; bytes: number } => {
+const gzipAsync = promisify(gzip);
+
+const reportHeader = ({ trigger, request }: SupportReportDocument): string => [
+  'PELS PROBLEM REPORT V2',
+  `Type: ${trigger}, ${request.subject.kind}`,
+  `Description: ${request.problem}`,
+  ...(request.expected ? [`Expected: ${request.expected}`] : []),
+  'Data (gzip, base64):',
+].join('\n');
+
+/**
+ * The plain header a person reads, then the whole document as one line, then a
+ * closing marker. What the owner wrote can span lines, so a reader takes the
+ * data from the line before the closing marker.
+ */
+const toMessage = async (document: SupportReportDocument): Promise<{
+  message: string; bytes: number; jsonBytes: number;
+}> => {
   const json = JSON.stringify(document);
-  const message = `PELS PROBLEM REPORT V1\n${json}\nEND PELS REPORT ${document.id}\n`;
-  return { json, message, bytes: Buffer.byteLength(message, 'utf8') };
+  const data = (await gzipAsync(json)).toString('base64');
+  const message = `${reportHeader(document)}\n${data}\nEND PELS REPORT ${document.id}\n`;
+  return { message, bytes: Buffer.byteLength(message, 'utf8'), jsonBytes: Buffer.byteLength(json, 'utf8') };
 };
 
-type FittedMessage = ReturnType<typeof toMessage> & { document: SupportReportDocument };
+type EncodedMessage = Awaited<ReturnType<typeof toMessage>>;
+type FittedMessage = EncodedMessage & { document: SupportReportDocument };
+type LogLine = Extract<SupportReportDocument['log'], { state: 'available' }>['lines'][number];
 
 /** What an element adds to its array's JSON, the comma after it aside: never more than removing it frees. */
 const jsonBytes = (value: unknown): number => Buffer.byteLength(JSON.stringify(value), 'utf8');
@@ -49,34 +72,58 @@ const countToLeaveOut = (items: readonly unknown[], excessBytes: number): number
   return count;
 };
 
+const isOrdinary = (line: LogLine): boolean => line.level === 'info';
+
+/** The log lines to leave out to free `excessBytes`: the oldest ordinary lines, then the oldest of the rest. */
+const logLinesToLeaveOut = (lines: readonly LogLine[], excessBytes: number): LogLine[] => {
+  const inOrder = [...lines.filter(isOrdinary), ...lines.filter((line) => !isOrdinary(line))];
+  return inOrder.slice(0, countToLeaveOut(inOrder, excessBytes));
+};
+
 /**
- * The document with the oldest of its log lines and, when `activityToo`, of its
- * activity left out, the fewest that make the message fit, each saying how
- * many; `null` when it is too large without them.
+ * The document with enough more left out to bring `encoded` within the limit if
+ * what goes compresses like the rest, each part saying how many; `null` when
+ * nothing is left to leave out.
  */
-const leaveOutOldest = (
-  document: SupportReportDocument, bytes: number, activityToo: boolean,
-): FittedMessage | null => {
+const leaveOutMore = (
+  document: SupportReportDocument, encoded: EncodedMessage, activityToo: boolean,
+): SupportReportDocument | null => {
   const { log, activity } = document;
-  // Log lines are oldest first, activity newest first.
-  const logLines = log.state === 'available' ? log.lines : [];
-  const logLeftOut = countToLeaveOut(logLines, bytes - SUPPORT_REPORT_MAX_BYTES);
-  const stillExcess = bytes - SUPPORT_REPORT_MAX_BYTES
-    - logLines.slice(0, logLeftOut).reduce((sum, line) => sum + jsonBytes(line), 0);
+  const excessJsonBytes = Math.ceil((encoded.bytes - SUPPORT_REPORT_MAX_BYTES) * (encoded.jsonBytes / encoded.bytes));
+  const leftOutLines = logLinesToLeaveOut(log.state === 'available' ? log.lines : [], excessJsonBytes);
+  const stillExcess = excessJsonBytes - leftOutLines.reduce((sum, line) => sum + jsonBytes(line), 0);
+  // Activity is newest first.
   const activityLeftOut = activityToo && activity.state === 'available' && stillExcess > 0
     ? countToLeaveOut([...activity.entries].reverse(), stillExcess) : 0;
-  const trimmed: SupportReportDocument = {
+  if (leftOutLines.length === 0 && activityLeftOut === 0) return null;
+  const goes = new Set(leftOutLines);
+  return {
     ...document,
-    log: log.state === 'available' && logLeftOut > 0
-      ? { ...log, lines: log.lines.slice(logLeftOut), leftOutForSize: log.leftOutForSize + logLeftOut } : log,
+    log: log.state === 'available' && leftOutLines.length > 0 ? {
+      ...log,
+      lines: log.lines.filter((line) => !goes.has(line)),
+      leftOutForSize: log.leftOutForSize + leftOutLines.length,
+    } : log,
     activity: activity.state === 'available' && activityLeftOut > 0 ? {
       ...activity,
       entries: activity.entries.slice(0, activity.entries.length - activityLeftOut),
       leftOutForSize: activity.leftOutForSize + activityLeftOut,
     } : activity,
   };
-  const fitted = toMessage(trimmed);
-  return fitted.bytes <= SUPPORT_REPORT_MAX_BYTES ? { ...fitted, document: trimmed } : null;
+};
+
+const leaveOutUntilItFits = async (
+  document: SupportReportDocument, whole: EncodedMessage, activityToo: boolean,
+): Promise<FittedMessage | null> => {
+  let current = document;
+  let encoded = whole;
+  while (encoded.bytes > SUPPORT_REPORT_MAX_BYTES) {
+    const trimmed = leaveOutMore(current, encoded, activityToo);
+    if (!trimmed) return null;
+    current = trimmed;
+    encoded = await toMessage(trimmed);
+  }
+  return { ...encoded, document: current };
 };
 
 const isHeatingSection = (section: SupportReportDocument['sections'][number]): boolean => (
@@ -84,33 +131,26 @@ const isHeatingSection = (section: SupportReportDocument['sections'][number]): b
 );
 
 /**
- * The document fitted to the message limit, `null` when it cannot be. The
- * oldest log lines go first, then, in a report nobody pressed Send for, the
- * oldest activity: an owner's report keeps all its activity, since the owner
- * can choose one device or a shorter window instead.
+ * The document fitted to the message limit, `null` when it cannot be. Compressed,
+ * a day's evidence fits, so this is for an unusually large report. The oldest
+ * ordinary log lines go first, then warnings and errors, then, in a report nobody
+ * pressed Send for, the oldest activity: an owner's report keeps all its activity,
+ * since the owner can choose one device or a shorter window instead.
  *
- * A daily report's heating observations already took their size out of the
- * log budget at capture (`readLog`), so they stay while log lines can make
- * room, and give way before any activity does.
+ * A daily report's heating observations stay while log lines can make room, and
+ * give way before any activity does.
  */
-const fitToSize = (document: SupportReportDocument): FittedMessage | null => {
-  const whole = toMessage(document);
+const fitToSize = async (document: SupportReportDocument): Promise<FittedMessage | null> => {
+  const whole = await toMessage(document);
   if (whole.bytes <= SUPPORT_REPORT_MAX_BYTES) return { ...whole, document };
   if (document.trigger !== 'daily' || !document.sections.some(isHeatingSection)) {
-    return leaveOutOldest(document, whole.bytes, document.trigger !== 'owner');
+    return leaveOutUntilItFits(document, whole, document.trigger !== 'owner');
   }
-  return leaveOutOldest(document, whole.bytes, false) ?? fitWithoutHeating(document);
-};
-
-const fitWithoutHeating = (document: SupportReportDocument): FittedMessage | null => {
-  const sections = document.sections.filter((section) => !isHeatingSection(section));
-  const fitted = fitToSize({ ...document, sections });
-  if (!fitted) return null;
-  const annotated = { ...fitted.document,
+  return await leaveOutUntilItFits(document, whole, false) ?? fitToSize({
+    ...document,
+    sections: document.sections.filter((section) => !isHeatingSection(section)),
     omissions: [...document.omissions, 'Daily heating observations was left out to fit the report size limit.'],
-  };
-  const message = toMessage(annotated);
-  return message.bytes <= SUPPORT_REPORT_MAX_BYTES ? { ...message, document: annotated } : fitted;
+  });
 };
 
 /**
@@ -182,8 +222,7 @@ export class SupportReportService {
     try {
       const capturedAtMs = Date.now();
       const evidence = await this.source.capture(request, capturedAtMs, trigger);
-      // Keep the report's origin and description ahead of potentially large evidence arrays.
-      const fitted = fitToSize({
+      const fitted = await fitToSize({
         trigger,
         request: {
           problem: request.problem,
@@ -198,12 +237,14 @@ export class SupportReportService {
         ...evidence,
       });
       if (!fitted) return { ok: false, code: 'report_too_large' };
-      const { document, json, message, bytes } = fitted;
+      const { document, message, bytes } = fitted;
       const availability = await this.transport.availability();
       this.prune();
       if (!this.makeRoom()) return { ok: false, code: 'report_busy' };
       this.reports.set(document.id, {
-        document: JSON.parse(json) as SupportReportDocument, message,
+        // The evidence is in the message; only this much stays decoded for the settings page.
+        document: { id: document.id, request: document.request, subjectName: document.subjectName },
+        message,
         expiresAtMs: Date.now() + TTL_MS, availability, submission: { state: 'draft' },
       });
       logger.info({ event: 'support_report_prepared', reportId: document.id, bytes, trigger });
