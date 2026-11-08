@@ -46,6 +46,9 @@ wired under **Electrical connection** on the device page. PELS reads three-phase
 learns other devices from how the phases move when it switches them. Export past the fuse on a
 phase is turned down too: first a battery on that phase, then solar, and finally surplus loads on it start up.
 
+If your meter's phases are not found automatically, choose them under **Main fuse** on Limits & safety. The Usage page
+lists recent phase peaks with what was drawing.
+
 ### Grid import limit {#grid-import-limit}
 The most power, in kW, you want the home to draw from the grid at any moment, for example
 the contracted power of your meter. Unlike the hard cap, it is not an average: PELS compares

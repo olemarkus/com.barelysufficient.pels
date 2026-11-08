@@ -50,7 +50,9 @@ import {
   type MeasuredPower,
   type PlanContext,
 } from './planContext';
-import { lowestPhaseExportRoomKw, resolvePhasePower, worstPhaseDeficitKw } from './phase/phasePower';
+import {
+  lowestPhaseExportRoomKw, PHASE_POWER_OFF, resolvePhasePower, worstPhaseDeficitKw, type PhasePower,
+} from './phase/phasePower';
 import { buildSheddingPlan, type SheddingPlan } from './shedding';
 import {
   NO_STORAGE_RELIEF,
@@ -221,10 +223,14 @@ export class PlanBuilder {
    */
   /** How far the worst phase is over its share of the main fuse, kW; zero with none over or no protection on. */
   public computePhaseDeficitKw(netKw: number): number {
+    return worstPhaseDeficitKw(this.computePhasePower(netKw));
+  }
+
+  /** Each phase against the fuse, outside a build. */
+  public computePhasePower(netKw: number): PhasePower {
     const fuse = this.deps.getMainFuse();
-    return fuse.kind === 'off'
-      ? 0
-      : worstPhaseDeficitKw(resolvePhasePower(fuse, this.capacityGuard.phaseReadings.current(), netKw));
+    if (fuse.kind === 'off') return PHASE_POWER_OFF;
+    return resolvePhasePower(fuse, this.capacityGuard.phaseReadings.current(), netKw);
   }
 
   public computeShortfallThreshold(): number | null {

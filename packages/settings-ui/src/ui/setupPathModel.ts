@@ -174,6 +174,14 @@ const MEASURED_PEAK_QUESTION = 'Charged for your highest hourly or 15-minute ave
 const DUTCH_CONNECTION_TARIFF = 'Dutch household grid charges depend on connection size, not measured peaks. '
   + 'You can turn off Capacity limit and still use prices and solar.';
 
+// Dutch homes are offered Main fuse in place of a grid import limit (owner
+// ruling): what the connection carries is the limit they think in.
+const DUTCH_MAIN_FUSE_OFFER = 'Set your main fuse so PELS keeps the home within what your connection carries.';
+
+const isMainFuseMarket = (market: SettingsUiHubMarketRead): boolean => (
+  market.state === 'resolved' && market.country === 'NL'
+);
+
 // What an unchosen cap adds after the running default. Every Norwegian household
 // pays for its measured hourly peaks, so asking would only make the owner answer
 // the same yes; the step names the running default and stops. Dutch bills call
@@ -182,7 +190,7 @@ const DUTCH_CONNECTION_TARIFF = 'Dutch household grid charges depend on connecti
 const resolveUnsetCapacityGuidance = (market: SettingsUiHubMarketRead): string | null => {
   if (market.state !== 'resolved') return MEASURED_PEAK_QUESTION;
   if (market.country === 'NO') return null;
-  return market.country === 'NL' ? DUTCH_CONNECTION_TARIFF : MEASURED_PEAK_QUESTION;
+  return isMainFuseMarket(market) ? `${DUTCH_MAIN_FUSE_OFFER} ${DUTCH_CONNECTION_TARIFF}` : MEASURED_PEAK_QUESTION;
 };
 
 const resolveHardCapDetail = (facts: SetupPathFacts): string => {
@@ -192,6 +200,10 @@ const resolveHardCapDetail = (facts: SetupPathFacts): string => {
     const guidance = resolveUnsetCapacityGuidance(market);
     const running = formatCapacityDetail(hardCap);
     return guidance === null ? running : `${running}. ${guidance}`;
+  }
+  // A fresh Dutch install has both limits off, so the offer belongs here too.
+  if (hardCap.state === 'disabled' && isMainFuseMarket(market)) {
+    return `${formatLimitsSummary(hardCap)}. ${DUTCH_MAIN_FUSE_OFFER}`;
   }
   return formatLimitsSummary(hardCap);
 };
@@ -242,7 +254,9 @@ export const resolveSetupSteps = (facts: SetupPathFacts): SetupPath => {
       done: devicesChosen && (!hardCapApplies || facts.hardCap.state !== 'unset'),
       title: 'Limits',
       detail: resolveLimitsStageDetail(facts),
-      target: { panel: 'limits' },
+      target: isMainFuseMarket(facts.market)
+        ? { panel: 'limits', anchor: '#settings-main-fuse-enabled' }
+        : { panel: 'limits' },
     },
     {
       id: 'prices',

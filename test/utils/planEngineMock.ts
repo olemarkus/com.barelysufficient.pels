@@ -56,6 +56,7 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
   computePhysicalPowerLimit: vi.fn(() => 0),
   computeShortfallThreshold: vi.fn(() => 0),
   computePhaseDeficitKw: vi.fn(() => 0),
+  computePhasePower: vi.fn(() => ({ kind: 'off' as const })),
   handleShortfall: vi.fn().mockResolvedValue(undefined),
   handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
   isInverterReleaseRecoveryReady: () => true,

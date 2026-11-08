@@ -1,3 +1,4 @@
+import { observeFlowSamplePhases } from '../phaseSourceFeed';
 import {
   requireBatteryControl,
   requireDeviceManager,
@@ -53,6 +54,7 @@ export function registerAppFlowCards(
       }
       if (source.value === 'homey_energy') return;
       const nowMs = ctx.getNow().getTime();
+      observeFlowSamplePhases(ctx, powerW, nowMs);
       const admission = await ctx.recordPowerSample(powerW, nowMs);
       // The pipeline coalesces concurrent samples behind one loop. Waiting for
       // that loop is not evidence this request won: a newer Homey-Energy

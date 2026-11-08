@@ -1,5 +1,7 @@
 import { PhaseReadingTracker } from './phaseReading';
+import { PhaseReadFlight } from './phaseReadFlight';
 import { PhaseFootprintLearner } from '../phaseFootprint/phaseFootprintLearner';
+import { PhasePeakLog } from './phasePeakLog';
 import { randomUUID } from 'node:crypto';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { HomeId } from '../utils/settingsKeys';
@@ -68,8 +70,14 @@ export default class CapacityGuard {
   /** The accepted per-phase picture of this home's meter. */
   public readonly phaseReadings = new PhaseReadingTracker();
 
+  /** Keeps a Flow sample from waiting on its phase meter. */
+  public readonly phaseReadFlight = new PhaseReadFlight();
+
   /** What PELS has learned of each device's phases from its own steps on this meter. */
   public readonly phaseLearner = new PhaseFootprintLearner();
+
+  /** Episodes of a phase past its share of the fuse, for the Usage page. */
+  public readonly phasePeaks = new PhasePeakLog();
 
   private static readonly SHORTFALL_CLEAR_MARGIN_KW = 0.2;
   private static readonly SHORTFALL_CLEAR_SUSTAIN_MS = 60000; // 60 seconds of sustained positive headroom

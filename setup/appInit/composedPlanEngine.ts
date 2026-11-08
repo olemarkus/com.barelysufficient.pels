@@ -1,3 +1,4 @@
+import type { PhasePower } from '../../lib/plan/phase/phasePower';
 import type { ExecutionState } from '../../lib/executor/executionState';
 import { syncPendingTargetCommands, prunePendingTargetCommands } from '../../lib/executor/pendingTargetObservation';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsService';
@@ -97,6 +98,10 @@ export class ComposedPlanEngine implements PlanEngine {
 
   public computePhysicalPowerLimit(): number | null {
     return this.builder.computePhysicalPowerLimit();
+  }
+
+  public computePhasePower(netKw: number): PhasePower {
+    return this.builder.computePhasePower(netKw);
   }
 
   public computePhaseDeficitKw(netKw: number): number {

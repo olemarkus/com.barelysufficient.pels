@@ -74,6 +74,7 @@ const buildPipeline = (
     getPlanEngine: () => ({
       computeShortfallThreshold: () => 10,
       computePhaseDeficitKw: () => 0,
+      computePhasePower: () => ({ kind: 'off' }),
       state: {
         actuation: { hasInFlight: () => false },
         pendingTargetCommands: {},

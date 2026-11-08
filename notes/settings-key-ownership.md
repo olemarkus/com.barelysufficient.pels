@@ -79,7 +79,9 @@ Keys with owners so far include `mode_aliases`, `mode_device_targets`, `pv_forec
 `homey_price_formula`, `price_scheme` + `powerhour_device_id`, `web_app_cloud_host`,
 `daily_diagnostics_report`, `event_diagnostics_reports`, `device_start_policies`
 (`deviceStartPolicy.ts`), `device_phase_connections` (`devicePhaseConnections.ts`, read by
-`lib/device/deviceControlSettings.ts` and resolved in `lib/phaseFootprint/`), `device_phase_learning`
+`lib/device/deviceControlSettings.ts` and resolved in `lib/phaseFootprint/`), `main_fuse_phase_capabilities` and `main_fuse_phase_meter_device_id` (`mainFusePhaseSource.ts`, read by
+`lib/power/mainFusePhaseSource.ts`), `main_fuse_phase_peaks` (runtime-owned, `lib/power/phasePeakLog.ts`, validated
+on read), `device_phase_learning`
 (runtime-owned, validated entry by entry by `parsePhaseLearning` in `lib/phaseFootprint/phaseFootprintLearner.ts`,
 written only by that learner through setup's wiring; the settings UI does not write it), `ev_car_associations` (`evCarAssociations.ts`),
 `export_price_source` (`exportPriceSource.ts`), `overshoot_behaviors`

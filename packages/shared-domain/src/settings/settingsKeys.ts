@@ -13,6 +13,12 @@ export const GRID_IMPORT_ENABLED = 'grid_import_enabled';
 export const GRID_IMPORT_LIMIT_KW = 'grid_import_limit_kw';
 export const MAIN_FUSE_SUPPLY = 'main_fuse_supply';
 export const MAIN_FUSE_AMPS = 'main_fuse_amps';
+// The owner's phase source for a meter PELS cannot read phases from on its own.
+// Owner: `./mainFusePhaseSource.ts`; read by `lib/power/mainFusePhaseSource.ts`.
+export const MAIN_FUSE_PHASE_CAPABILITIES = 'main_fuse_phase_capabilities';
+export const MAIN_FUSE_PHASE_METER_DEVICE_ID = 'main_fuse_phase_meter_device_id';
+// Runtime-owned episodes of a phase past its share of the fuse (`lib/power/phasePeakLog.ts`).
+export const MAIN_FUSE_PHASE_PEAKS = 'main_fuse_phase_peaks';
 export const CAPACITY_LIMIT_KW = 'capacity_limit_kw';
 export const CAPACITY_MARGIN_KW = 'capacity_margin_kw';
 export const CAPACITY_DRY_RUN = 'capacity_dry_run';

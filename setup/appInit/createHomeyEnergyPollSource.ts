@@ -1,3 +1,5 @@
+import { readMainFusePhaseSource } from '../../lib/power/mainFusePhaseSource';
+import type { MainFusePhaseCapabilities } from '../../packages/shared-domain/src/settings/mainFusePhaseSource';
 import type { PowerSource } from '../../lib/power/powerSource';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import type { PowerSamplePipeline } from '../powerSamplePipeline';
@@ -20,7 +22,7 @@ export type HomeyEnergyPollSourceHost = {
   getPowerSource(): PowerSource;
   readonly deviceManager?: {
     readMeters(meterDeviceIds: readonly string[]): Promise<LiveMeterReadings | null>;
-    readMeterPhases(meterDeviceId: string): Promise<MeterPhasesRead>;
+    readMeterPhases(meterDeviceId: string, ownerChoice: MainFusePhaseCapabilities | null): Promise<MeterPhasesRead>;
   };
   readonly capacityGuard?: { readonly phaseReadings: PhaseReadingTracker };
   /** The sub-homes, once the registry exists. */
@@ -50,13 +52,18 @@ export const createHomeyEnergyPollSource = (
     },
     () => host.getSubHomeMeters(),
     async (sample) => {
-      const read = await host.deviceManager?.readMeterPhases(sample.meterDeviceId);
+      const { capabilities } = readMainFusePhaseSource(host.homey.settings);
+      const read = await host.deviceManager?.readMeterPhases(sample.meterDeviceId, capabilities);
       if (read) host.capacityGuard?.phaseReadings.admit(read, sample.powerW, Date.now());
     },
   );
   return new HomeyEnergyPollSource({
     getPowerSource: () => host.getPowerSource(),
-    onInactive: () => host.capacityGuard?.phaseReadings.reset(),
+    // A Flow-source home that picked a phase meter still has phases to read.
+    onInactive: () => {
+      const { meterDeviceId } = readMainFusePhaseSource(host.homey.settings);
+      if (meterDeviceId === null) host.capacityGuard?.phaseReadings.reset();
+    },
     timers: host.timers,
     requestHomeMeters: () => homeMeters.request(),
     readMeters: async (meterDeviceIds) => (await host.deviceManager?.readMeters(meterDeviceIds)) ?? null,

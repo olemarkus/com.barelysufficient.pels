@@ -1,3 +1,4 @@
+import type { MainFusePhaseCapabilities } from '../../packages/shared-domain/src/settings/mainFusePhaseSource';
 import type { MeterPhasesRead, PhaseTriple } from '../ports/homeMeterReadings';
 
 type CapabilityRecord = Record<string, { value?: unknown } | undefined>;
@@ -42,16 +43,31 @@ const readFacet = (
   return toTriple(PHASE_NUMBERS.map((phase) => byPhase.get(phase)));
 };
 
+/** The owner's chosen capabilities, read like recognised ones: all three finite, or no phases. */
+const resolveOwnerChosenPhases = (
+  capabilities: CapabilityRecord,
+  capabilityIds: readonly string[],
+  choice: MainFusePhaseCapabilities,
+): MeterPhasesRead => {
+  const values = toTriple([choice.L1, choice.L2, choice.L3].map((id) => finite(capabilities[id]?.value)));
+  if (values === undefined) return { state: 'none', capabilityIds };
+  return { state: 'read', capabilityIds, ...(choice.facet === 'power' ? { powerW: values } : { currentA: values }) };
+};
+
 /**
  * Resolve a meter's per-phase capabilities at the device boundary. Meter apps
  * name them differently, so recognition is by pattern. A facet missing a phase
  * or a finite value is absent as a whole: half a picture would show room that
  * is not there.
  */
-export function resolveMeterPhases(device: object): MeterPhasesRead {
+export function resolveMeterPhases(
+  device: object,
+  ownerChoice: MainFusePhaseCapabilities | null,
+): MeterPhasesRead {
   const capabilities = ((device as { capabilitiesObj?: unknown }).capabilitiesObj ?? {}) as CapabilityRecord;
   const ids = Object.keys(capabilities);
   const capabilityIds = ids.filter((id) => id.startsWith('measure_'));
+  if (ownerChoice !== null) return resolveOwnerChosenPhases(capabilities, capabilityIds, ownerChoice);
   const powerW = readFacet(capabilities, ids, 'power') ?? readSplitPower(capabilities, ids);
   const currentA = readFacet(capabilities, ids, 'current');
   const voltageV = readFacet(capabilities, ids, 'voltage');

@@ -5,6 +5,12 @@ const NONE: SettingsUiPhaseLoad = { state: 'none' };
 
 /** Re-validate the runtime's phase load at the browser boundary; anything else shows no phases. */
 export const classifyPhaseLoad = (value: unknown): SettingsUiPhaseLoad => {
+  if (isUnknownRecord(value) && value.state === 'none' && Array.isArray(value.meterCapabilityIds)) {
+    return {
+      state: 'none',
+      meterCapabilityIds: value.meterCapabilityIds.filter((id): id is string => typeof id === 'string'),
+    };
+  }
   if (!isUnknownRecord(value) || value.state !== 'phases' || !Array.isArray(value.phases)) return NONE;
   const { fuseAmps } = value;
   if (typeof fuseAmps !== 'number' || !Number.isFinite(fuseAmps) || fuseAmps <= 0) return NONE;
@@ -13,5 +19,8 @@ export const classifyPhaseLoad = (value: unknown): SettingsUiPhaseLoad => {
     && typeof entry.amps === 'number' && Number.isFinite(entry.amps)
       ? [{ phase: entry.phase, amps: entry.amps }] : []
   ));
-  return phases.length === 3 ? { state: 'phases', fuseAmps, phases } : NONE;
+  if (phases.length !== 3) return NONE;
+  const ids = Array.isArray(value.meterCapabilityIds)
+    ? value.meterCapabilityIds.filter((id): id is string => typeof id === 'string') : [];
+  return { state: 'phases', fuseAmps, phases, ...(ids.length > 0 ? { meterCapabilityIds: ids } : {}) };
 };

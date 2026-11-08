@@ -13,6 +13,8 @@ import {
   settingsMainFuseSupplySelect,
 } from './dom.ts';
 
+import { bindMainFusePhaseSource, syncMainFusePhaseSource } from './mainFusePhaseSource.ts';
+
 const FUSE_SIZE_PROMPT = 'Enter the size printed on your main fuse, such as 25 A.';
 
 const readFormFuse = (): MainFuse | null => {
@@ -24,6 +26,8 @@ const readFormFuse = (): MainFuse | null => {
 
 export const refreshMainFuseControls = (): void => {
   if (settingsMainFuseFields) settingsMainFuseFields.hidden = settingsMainFuseEnabledInput?.selected !== true;
+  const supply = settingsMainFuseEnabledInput?.selected === true ? settingsMainFuseSupplySelect?.value : undefined;
+  void syncMainFusePhaseSource(supply);
   if (!settingsMainFuseHint) return;
   const fuse = readFormFuse();
   settingsMainFuseHint.textContent = fuse === null || fuse.kind === 'off'
@@ -32,6 +36,7 @@ export const refreshMainFuseControls = (): void => {
 };
 
 export const bindMainFuseControls = (): void => {
+  bindMainFusePhaseSource();
   settingsMainFuseEnabledInput?.addEventListener('change', refreshMainFuseControls);
   settingsMainFuseSupplySelect?.addEventListener('change', refreshMainFuseControls);
   settingsMainFuseAmpsInput?.addEventListener('input', refreshMainFuseControls);

@@ -1,3 +1,4 @@
+import type { MainFusePhaseCapabilities } from '../../packages/shared-domain/src/settings/mainFusePhaseSource';
 import type { ChargingCurrentControl } from './chargingCurrentControl';
 import type { HomeBatteryAppActions } from './homeBatteryAppActions';
 import type { HomeyActionAccess } from './transport/homeyActionAccess';
@@ -484,8 +485,11 @@ export class DeviceTransport {
         );
     }
     /** The whole-home meter's per-phase capabilities; a failed read is `unavailable`, never no phases. */
-    async readMeterPhases(meterDeviceId: string): Promise<MeterPhasesRead> {
-        return readMeterPhases(meterDeviceId);
+    async readMeterPhases(
+        meterDeviceId: string,
+        ownerChoice: MainFusePhaseCapabilities | null,
+    ): Promise<MeterPhasesRead> {
+        return readMeterPhases(meterDeviceId, ownerChoice);
     }
     /**
      * Gross PV production for the flow source's companion poll
