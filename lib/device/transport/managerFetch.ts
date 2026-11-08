@@ -2,6 +2,7 @@ import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import { getDebugEmitter, isDebugTopicEnabled } from '../../logging/logger';
 import { shouldEmitOnChange, type LogDedupeEntry } from '../../logging/logDedupe';
 import { isHomeyDeviceLike } from '../../utils/types';
+import { isPlausibleWholeHomePowerW } from '../../power/wholeHomePowerPlausibility';
 
 import {
   asLiveEnergyReport,
@@ -190,14 +191,20 @@ export type LivePowerReport =
   };
 
 // Resolve each requested meter id against the one live payload (one fetch
-// serves every home). Only finite readings land in the map.
+// serves every home). Only finite, plausible readings land in the map; an
+// implausible one is a missing sample (`lib/power/wholeHomePowerPlausibility.ts`).
 const extractMeterPowerW = (
   report: unknown,
   meterDeviceIds: readonly string[],
 ): Record<string, number> => Object.fromEntries(
   meterDeviceIds.flatMap((meterDeviceId) => {
     const watts = extractLiveMeterPowerWatts(report, meterDeviceId);
-    return watts === null ? [] : [[meterDeviceId, watts] as const];
+    if (watts === null) return [];
+    if (!isPlausibleWholeHomePowerW(watts)) {
+      emitDeviceDebug({ event: 'whole_home_meter_reading_implausible', meterDeviceId, watts });
+      return [];
+    }
+    return [[meterDeviceId, watts] as const];
   }),
 );
 

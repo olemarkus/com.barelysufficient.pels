@@ -895,7 +895,7 @@ describe('MyApp initialization', () => {
       .rejects.toThrow(`Daily budget must be 0 (to disable) or between ${MIN_DAILY_BUDGET_KWH} and ${MAX_DAILY_BUDGET_KWH} kWh.`);
   });
 
-  it('report_power_usage admits signed watts and rejects only a non-number', async () => {
+  it('report_power_usage admits signed watts and rejects a non-number or an implausible reading', async () => {
     // Grid export is a NEGATIVE whole-home reading. Rejecting it fenced every
     // exporting home out of the flow power source: an ordinary signed HAN meter
     // could not report at all while exporting, so PELS received no sample and
@@ -926,6 +926,14 @@ describe('MyApp initialization', () => {
     // guarantees finite-or-null, so NaN/Infinity arrive as null.
     await expect(reportPower({})).rejects.toThrow('Power must be a number (W).');
     await expect(reportPower({ power: 'not-a-number' })).rejects.toThrow('Power must be a number (W).');
+
+    // A meter or scaling fault past the plausible bound never reaches the
+    // tracker, in either direction; the bound itself is still a reading.
+    recordSpy.mockClear();
+    await expect(reportPower({ power: 250_001 })).rejects.toThrow('Power must be within ±250000 W.');
+    await expect(reportPower({ power: -250_001 })).rejects.toThrow('Power must be within ±250000 W.');
+    expect(recordSpy).not.toHaveBeenCalled();
+    await expect(reportPower({ power: 250_000 })).resolves.toBe(true);
 
     recordSpy.mockRestore();
   });
