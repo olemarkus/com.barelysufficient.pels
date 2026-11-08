@@ -99,8 +99,7 @@ function handleFreshnessOnlyCapabilityUpdate(
         // accepted-write revision for an observation that never happened.
         // Accepted repeated reports still advance freshness; push that stamp even
         // when the value is unchanged, or the observer stays stale until the next
-        // refresh. This is also required by `resolveConfirmedNotDrawing`'s
-        // 60-second window. See the parallel step-report path in
+        // refresh. See the parallel step-report path in
         // `nativeSteppedRealtime.ts`.
         if (result.observationAdvanced) dispatchRealtimeObservation(ingest, deviceId, capabilityId);
         return;

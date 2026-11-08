@@ -80,16 +80,14 @@ export function applyFreshnessOnlyCapabilityUpdate(
     // was observed"), and until now only the parse path honoured it, so a
     // realtime-fed device carried a `measuredPowerKw` from seconds ago beside a
     // `measuredPowerObservedAtMs` from the last full refresh. Consumers that need
-    // to know whether the READING is fresh cannot use device-wide
-    // `lastFreshDataMs`: it is a max across capabilities, so a thermometer
-    // update makes a silent power meter look current. `resolveConfirmedNotDrawing`
-    // is exactly such a consumer, and answering it from the wrong clock would
-    // release a boost on a device whose draw is simply unknown.
+    // to know when the READING was observed cannot use device-wide
+    // `lastFreshDataMs`: it is a max across capabilities.
     //
     // Stamped BEFORE the change check on purpose: a repeated identical reading is
-    // still a fresh observation. `changed` gates expensive downstream work
+    // still an observation. `changed` gates expensive downstream work
     // (calibration ingest, rebuild scheduling); it does not decide what was
-    // observed, and a device holding a steady draw must not decay to "stale".
+    // observed. Homey seldom repeats an unchanged value, so no consumer may
+    // require this stamp to be recent.
     const observedAtMs = nowMs;
     snapshot.measuredPowerObservedAtMs = observedAtMs;
     snapshot.measuredPowerReading = {
