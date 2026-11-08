@@ -12,6 +12,4 @@ export type PlannerExecutionFeedback = {
   noteShedReleased(deviceId: string): void;
   recordActivationAttemptStarted(deviceId: string, name: string, nowMs: number): void;
   closeActivationAttemptForShed(deviceId: string, name: string, nowMs: number): void;
-  isInShortfall(): boolean;
-  commitShortfall(value: boolean): void;
 };

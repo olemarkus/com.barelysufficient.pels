@@ -8,6 +8,7 @@ import {
   buildPelsStatusInputKey,
   normalizeLastPowerUpdate,
   normalizePelsStatus,
+  type StatusPublishFacts,
 } from './planStatusHelpers';
 import {
   STATUS_POWER_BUCKET_MS,
@@ -21,11 +22,13 @@ import type {
 type PelsStatusComputation = {
   status: PelsStatus;
   statusJson: string;
-  /** The effective (membership-gated) dry-run this write reflects. */
-  dryRunEffective: boolean;
-  /** Whether the plan behind this write was measured (`powerKnown` on the blob). */
-  powerIsMeasured: boolean;
 };
+
+const publishFactsChanged = (current: StatusPublishFacts, written: StatusPublishFacts): boolean => (
+  current.dryRunEffective !== written.dryRunEffective
+  || current.powerIsMeasured !== written.powerIsMeasured
+  || current.capacityShortfall !== written.capacityShortfall
+);
 
 type PlanStatusWriterDeps = {
   homey: { flow: FlowPort };
@@ -55,26 +58,8 @@ export class PlanStatusWriter {
   private lastPelsStatusInputKey = '';
   private lastPelsStatusResult: PelsStatus | null = null;
   private lastPelsStatusWriteMs = 0;
-  /**
-   * The effective dry-run captured at the last publish. A change vs the current
-   * value is a material posture flip (control activated from an already-planned
-   * dry-run shed, or the membership gate opening) that must force a status write
-   * even inside the volatile throttle window — otherwise the home's Limits card
-   * lags (still "Simulating" after control is live, or vice versa). Undefined
-   * until the first write, and inert: both readers return before the comparison
-   * while `lastPelsStatusWriteMs === 0`, so the `undefined` arm decides nothing.
-   */
-  private lastPelsStatusWrittenDryRunEffective: boolean | undefined = undefined;
-  /**
-   * Whether the last published status was built from a measured plan. A flip is
-   * material even inside the volatile throttle: the one unmeasured build (the
-   * silent-meter fail-closed pass) writes `powerKnown: false` and omits every
-   * measured figure, and after it the silence block stops rebuilding — so a
-   * swallowed write would leave the widget and the Insights capabilities
-   * asserting a measured headroom for the whole outage, with nothing scheduled
-   * to correct it. Undefined until the first write.
-   */
-  private lastPelsStatusWrittenPowerIsMeasured: boolean | undefined = undefined;
+  /** The publish facts of the last write; `null` until the first one. */
+  private lastWrittenPublishFacts: StatusPublishFacts | null = null;
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
 
   constructor(private deps: PlanStatusWriterDeps) {}
@@ -94,21 +79,19 @@ export class PlanStatusWriter {
     this.notifyPriceLevelChanged(priceLevel);
     this.lastNotifiedPriceLevel = priceLevel;
 
-    if (this.computationIsDeadWork(changes?.actionChanged === true, plan.meta.powerIsMeasured, now)) {
+    const facts: StatusPublishFacts = {
+      dryRunEffective: this.deps.getCapacityDryRun(),
+      powerIsMeasured: plan.meta.powerIsMeasured,
+      capacityShortfall: plan.meta.capacityShortfall,
+    };
+    if (this.computationIsDeadWork(changes?.actionChanged === true, facts, now)) {
       incPerfCounter('plan_status_skipped_throttle_total');
       incPerfCounter('plan_status_compute_skipped_total');
       return 0;
     }
-    const computation = this.compute(plan, priceLevel, changes);
+    const computation = this.compute(plan, priceLevel, facts, changes);
 
-    return this.maybeWriteStatus(
-      computation.status,
-      computation.statusJson,
-      changes?.actionChanged === true,
-      computation.dryRunEffective,
-      computation.powerIsMeasured,
-      now,
-    );
+    return this.maybeWriteStatus(computation, changes?.actionChanged === true, facts, now);
   }
 
   /**
@@ -121,9 +104,9 @@ export class PlanStatusWriter {
    * half — paid that cost for nothing. `planRebuildStatus` is 170 ms of a 311 ms
    * rebuild, and the write itself only accounts for 100 ms of it.
    *
-   * The four reasons that can force a write inside the throttle window are all
+   * The reasons that can force a write inside the throttle window are all
    * knowable without the status: the first-ever write, an action-signature
-   * change, a dry-run posture flip, and a measured/unmeasured flip. Mirror exactly those, so this stays a
+   * change, and a change in the publish facts. Mirror exactly those, so this stays a
    * fast path in front of `resolveWriteReason` rather than a second policy —
    * every case it lets through is still decided there.
    *
@@ -133,31 +116,27 @@ export class PlanStatusWriter {
    * a property of the status blob, and nothing guarantees another rebuild inside
    * the hour that could carry a deferred one.
    */
-  private computationIsDeadWork(actionChanged: boolean, powerIsMeasured: boolean, now: number): boolean {
-    if (this.lastPelsStatusWriteMs === 0) return false;
+  private computationIsDeadWork(actionChanged: boolean, facts: StatusPublishFacts, now: number): boolean {
+    const written = this.lastWrittenPublishFacts;
+    if (written === null) return false;
     if (actionChanged) return false;
-    if (this.deps.getCapacityDryRun() !== this.lastPelsStatusWrittenDryRunEffective) return false;
-    if (powerIsMeasured !== this.lastPelsStatusWrittenPowerIsMeasured) return false;
+    if (publishFactsChanged(facts, written)) return false;
     return now - this.lastPelsStatusWriteMs <= VOLATILE_WRITE_THROTTLE_MS;
   }
 
   private compute(
     plan: DevicePlan,
     priceLevel: PriceLevel,
+    facts: StatusPublishFacts,
     changes?: StatusPlanChanges,
   ): PelsStatusComputation {
     const lastPowerUpdate = normalizeLastPowerUpdate(this.deps.getLastPowerUpdate(), STATUS_POWER_BUCKET_MS);
-    const dryRunEffective = this.deps.getCapacityDryRun();
-    const inputKey = buildPelsStatusInputKey(
-      changes, priceLevel, lastPowerUpdate, plan.meta.powerIsMeasured, dryRunEffective,
-    );
-    const status = this.resolveStatusResult(inputKey, plan, priceLevel, lastPowerUpdate, dryRunEffective);
+    const inputKey = buildPelsStatusInputKey(changes, priceLevel, lastPowerUpdate, facts);
+    const status = this.resolveStatusResult(inputKey, plan, priceLevel, lastPowerUpdate, facts.dryRunEffective);
 
     return {
       status,
       statusJson: JSON.stringify(normalizePelsStatus(status)),
-      dryRunEffective,
-      powerIsMeasured: plan.meta.powerIsMeasured,
     };
   }
 
@@ -179,37 +158,28 @@ export class PlanStatusWriter {
   }
 
   private maybeWriteStatus(
-    status: PelsStatus,
-    statusJson: string,
+    computation: PelsStatusComputation,
     actionChanged: boolean,
-    dryRunEffective: boolean,
-    powerIsMeasured: boolean,
+    facts: StatusPublishFacts,
     now: number,
   ): number {
-    const reason = this.resolveWriteReason(statusJson, actionChanged, dryRunEffective, powerIsMeasured, now);
+    const reason = this.resolveWriteReason(computation.statusJson, actionChanged, facts, now);
     if (!reason) return 0;
-    return this.writeStatus(status, statusJson, dryRunEffective, powerIsMeasured, reason, now);
+    return this.writeStatus(computation, facts, reason, now);
   }
 
   private resolveWriteReason(
     statusJson: string,
     actionChanged: boolean,
-    dryRunEffective: boolean,
-    powerIsMeasured: boolean,
+    facts: StatusPublishFacts,
     now: number,
   ): PelsStatusWriteReason | null {
     if (statusJson === this.lastPelsStatusWrittenJson) return null;
-    if (this.lastPelsStatusWriteMs === 0) return 'initial';
+    const written = this.lastWrittenPublishFacts;
+    if (written === null) return 'initial';
     if (actionChanged) return 'action_changed';
-    // Same standing as the dry-run flip below: the measured/unmeasured
-    // transition is what the widget's empty state and the blob's omitted
-    // headroom hang on (see `lastPelsStatusWrittenPowerIsMeasured`).
-    if (powerIsMeasured !== this.lastPelsStatusWrittenPowerIsMeasured) return 'posture_flip';
-    // A posture flip (effective dry-run changed since the last publish) is
-    // material even without an action-signature change — force the write so the
-    // home's Limits card reflects live/simulating promptly, busting the
-    // volatile throttle.
-    if (dryRunEffective !== this.lastPelsStatusWrittenDryRunEffective) return 'posture_flip';
+    if (facts.capacityShortfall !== written.capacityShortfall) return 'shortfall_changed';
+    if (publishFactsChanged(facts, written)) return 'posture_flip';
     if (now - this.lastPelsStatusWriteMs > VOLATILE_WRITE_THROTTLE_MS) return 'throttle';
 
     incPerfCounter('plan_status_skipped_throttle_total');
@@ -217,10 +187,8 @@ export class PlanStatusWriter {
   }
 
   private writeStatus(
-    status: PelsStatus,
-    statusJson: string,
-    dryRunEffective: boolean,
-    powerIsMeasured: boolean,
+    computation: PelsStatusComputation,
+    facts: StatusPublishFacts,
     reason: PelsStatusWriteReason,
     now: number,
   ): number {
@@ -228,10 +196,9 @@ export class PlanStatusWriter {
     // WebView, the Insights driver's capability writes — so its time is still
     // worth a metric, as `plan_rebuild_status_write_ms`.
     const publishStart = Date.now();
-    this.deps.publishPelsStatus(status);
-    this.lastPelsStatusWrittenJson = statusJson;
-    this.lastPelsStatusWrittenDryRunEffective = dryRunEffective;
-    this.lastPelsStatusWrittenPowerIsMeasured = powerIsMeasured;
+    this.deps.publishPelsStatus(computation.status);
+    this.lastPelsStatusWrittenJson = computation.statusJson;
+    this.lastWrittenPublishFacts = facts;
     this.lastPelsStatusWriteMs = now;
     incPerfCounter('plan_status_published');
     incPerfCounter(`plan_status_published_reason.${reason}_total`);

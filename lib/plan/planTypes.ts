@@ -885,7 +885,7 @@ export type PlanChangeSet = {
   metaChanged: boolean;
 };
 
-export type PelsStatusWriteReason = 'initial' | 'action_changed' | 'posture_flip' | 'throttle';
+export type PelsStatusWriteReason = 'initial' | 'action_changed' | 'posture_flip' | 'shortfall_changed' | 'throttle';
 
 export type StatusPlanChanges = Pick<
   PlanChangeSet,

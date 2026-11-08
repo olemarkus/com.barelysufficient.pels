@@ -86,7 +86,6 @@ const buildHarness = (scenario: Scenario) => {
     getStorageDischargeObservations: () => new Map(),
   inverterCurtailment: NO_INVERTER_PLANNER,
     getCapacityDryRun: () => false,
-    setCapacityInShortfall: vi.fn(),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
     getCapacitySettings: () => scenario.settings,
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({

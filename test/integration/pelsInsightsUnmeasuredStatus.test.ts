@@ -134,3 +134,33 @@ describe('pels_insights — the capabilities hear the main home\'s status from t
     expect(device.capabilityValues.has('pels_headroom')).toBe(false);
   });
 });
+
+describe('pels_insights — Manual action needed mirrors the status\'s capacity shortfall', () => {
+  it('follows the published shortfall, and holds it through a silent meter', async () => {
+    const device = new PelsInsightsDevice();
+    await device.updateFromStatus({ ...MEASURED_STATUS, capacityShortfall: true });
+    expect(device.capabilityValues.get('pels_shortfall')).toBe(true);
+
+    // The capacity guard does not change while the meter is silent, and the
+    // alarm is not a measured figure: an outage must not clear it.
+    await device.updateFromStatus({ ...UNMEASURED_STATUS, capacityShortfall: true });
+    expect(device.capabilityValues.get('pels_shortfall')).toBe(true);
+
+    await device.updateFromStatus({ ...MEASURED_STATUS, capacityShortfall: false });
+    expect(device.capabilityValues.get('pels_shortfall')).toBe(false);
+  });
+
+  it('still raises the alarm when another capability write is rejected', async () => {
+    const device = new PelsInsightsDevice();
+    const write = device.setCapabilityValue.bind(device);
+    device.setCapabilityValue = async (id: string, value: unknown) => {
+      if (id === 'pels_headroom') throw new Error('capability write rejected');
+      await write(id, value);
+    };
+
+    await device.updateFromStatus({ ...MEASURED_STATUS, capacityShortfall: true });
+
+    expect(device.capabilityValues.get('pels_shortfall')).toBe(true);
+    expect(device.capabilityValues.get('pels_devices_on')).toBe(2);
+  });
+});

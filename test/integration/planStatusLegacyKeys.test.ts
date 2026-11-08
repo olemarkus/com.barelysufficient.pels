@@ -4,7 +4,8 @@ import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 
 // The status left settings for the app's memory: nothing is imported (a
 // previous run's status is exactly what must not be served), the old keys —
-// main's bare one and every area's suffixed one — are unset once at boot,
+// the blob and the stored shortfall, main's bare ones and every area's
+// suffixed ones — are unset once at boot,
 // and a key list that cannot be read leaves them for the next boot.
 describe('retireLegacyPlanStatusKeys', () => {
   beforeEach(() => {
@@ -16,11 +17,21 @@ describe('retireLegacyPlanStatusKeys', () => {
     mockHomeyInstance.settings.set('pels_status', { headroomKw: 1 });
     mockHomeyInstance.settings.set('pels_status:h_area', { headroomKw: 2 });
     mockHomeyInstance.settings.set('pels_status_unrelated', 'kept');
-    mockHomeyInstance.settings.set('capacity_in_shortfall', false);
+    mockHomeyInstance.settings.set('capacity_period_minutes', 60);
 
     retireLegacyPlanStatusKeys(mockHomeyInstance.settings);
 
-    expect(mockHomeyInstance.settings.getKeys().sort()).toEqual(['capacity_in_shortfall', 'pels_status_unrelated']);
+    expect(mockHomeyInstance.settings.getKeys().sort()).toEqual(['capacity_period_minutes', 'pels_status_unrelated']);
+  });
+
+  it('unsets the shortfall Manual action needed used to read, for Main and every meter area', () => {
+    // Possibly `true` from an incident the app restarted out of; nothing reads it.
+    mockHomeyInstance.settings.set('capacity_in_shortfall', true);
+    mockHomeyInstance.settings.set('capacity_in_shortfall:h_area', false);
+
+    retireLegacyPlanStatusKeys(mockHomeyInstance.settings);
+
+    expect(mockHomeyInstance.settings.getKeys()).toEqual([]);
   });
 
   it('touches nothing when the key list cannot be read', () => {

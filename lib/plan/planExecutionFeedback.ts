@@ -3,7 +3,7 @@ import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnostics
 import type { PlanEngineState } from './planState';
 import { closeActivationAttemptForShed, recordActivationAttemptStart } from './admission';
 
-/** Applies execution facts to planner-owned admission, shed membership and shortfall state. */
+/** Applies execution facts to planner-owned admission and shed membership state. */
 export class PlanExecutionFeedback implements PlannerExecutionFeedback {
   constructor(private readonly state: PlanEngineState,
     private readonly diagnostics: DeviceDiagnosticsRecorder | undefined) {}
@@ -28,6 +28,4 @@ export class PlanExecutionFeedback implements PlannerExecutionFeedback {
     const transition = closeActivationAttemptForShed(this.state, deviceId, nowMs);
     if (transition) this.diagnostics?.recordActivationTransition(transition, { name });
   }
-  isInShortfall(): boolean { return this.state.inShortfall; }
-  commitShortfall(value: boolean): void { this.state.inShortfall = value; }
 }

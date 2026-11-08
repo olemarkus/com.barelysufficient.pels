@@ -1,7 +1,6 @@
 import { describe, expect, it, type Mock } from 'vitest';
 import {
   CAPACITY_DRY_RUN,
-  CAPACITY_IN_SHORTFALL,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   DEVICE_LAST_CONTROLLED_MS,
@@ -53,17 +52,15 @@ describe('buildMainHomeScope', () => {
     expect(scope.getCapacityDryRun()).toBe(true);
   });
 
-  it('writes the persisted signals to the unsuffixed main-home keys and publishes the status under main', () => {
+  it('persists the last-controlled map under main and publishes the status under main', () => {
     const ctx = createAppContextMock();
     const scope = buildMainHomeScopeForTest(ctx, () => false);
     const setSpy = ctx.homey.settings.set as unknown as Mock;
 
-    scope.setCapacityInShortfall(true);
     scope.persistLastControlledMs({ 'device-1': 123 });
     scope.publishPelsStatus(minimalStatus);
 
     expect(scope.homeId).toBe(MAIN_HOME_ID);
-    expect(setSpy).toHaveBeenCalledWith(CAPACITY_IN_SHORTFALL, true);
     expect(createLastControlledRepository(ctx.getUserdataDatabase()).read(MAIN_HOME_ID)).toEqual({ 'device-1': 123 });
     expect(setSpy).not.toHaveBeenCalledWith(DEVICE_LAST_CONTROLLED_MS, expect.anything());
     expect(ctx.planStatuses.read(MAIN_HOME_ID)).toEqual({ state: 'resolved', status: minimalStatus });

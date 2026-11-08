@@ -102,7 +102,7 @@ export class PlanExecutor {
 
   constructor(private readonly deps: PlanExecutorDeps, private readonly execution: ExecutionState,
     private readonly feedback: PlannerExecutionFeedback) {
-    this.shortfallExecutor = new ShortfallExecutor(deps, feedback);
+    this.shortfallExecutor = new ShortfallExecutor(deps);
     this.ctx = {
       homeId: deps.homeId,
       owner: 'ordinary',
