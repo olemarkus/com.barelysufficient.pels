@@ -6,6 +6,8 @@
 
 Resolve external values at their owning boundary, including Homey settings absence and failures. Pass typed semantic outcomes inward and trust accepted in-process facts. See root `AGENTS.md` § "Clean and trusted interfaces between layers".
 
+Homey re-dates a capability only when its value changes, so a device observation's age is not evidence. No decision, session, admission or learner may require a device reading to be recent, whether by a clock window or by being newer than a restart, reconnect or unplug. Compare readings with each other or with a command PELS issued, and revoke on a contrary observation. Meter trust in `lib/power/` is a separate policy.
+
 ## TypeScript and comments
 
 Follow the repository's strict TypeScript and ESLint configuration. Use clear types and small functions where they help ownership and review. Exported boundary contracts should state their owner and the invariant callers may rely on; internal helpers need comments only when their reason is not clear from code. Link to the governing note for a canonical quantity rather than copying its definition. Prefer symbol names over line numbers in cross-references.

@@ -154,7 +154,7 @@ describe('battery round-trip efficiency measurement', () => {
     expect(run.learner.read('battery')).toEqual({ status: 'measuring', cycles: 0, cyclesNeeded: 3 });
   });
 
-  it('abandons the cycle when a flowing power reading stops being refreshed', () => {
+  it('keeps integrating a steady flowing reading that Homey does not re-date', () => {
     const battery = new SimulatedBattery(10, 0.95, 0.95, 50);
     const run = harness(battery);
     run.driveTo(51, 3000);
@@ -165,7 +165,7 @@ describe('battery round-trip efficiency measurement', () => {
     run.driveTo(80, 3000);
     run.driveTo(40, -3000);
     run.driveTo(51, 3000);
-    expect(run.learner.read('battery')).toEqual({ status: 'measuring', cycles: 0, cyclesNeeded: 3 });
+    expect(run.learner.read('battery')).toEqual({ status: 'measuring', cycles: 1, cyclesNeeded: 3 });
   });
 
   it('rejects a cycle that returned more energy than it took in', () => {
