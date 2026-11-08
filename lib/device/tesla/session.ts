@@ -9,9 +9,7 @@ import type { HomeyDeviceLike } from '../../utils/types';
 import { toCapabilityTimestampMs } from '../managerControl';
 import { isTeslaChargingDevice, teslaDriver } from './identity';
 
-import { readTeslaHomeEvidence, type HomeLocation, type HomeSessionIdentity } from './evidence';
-type HomeSession = { identity: HomeSessionIdentity };
-const FRESH_LOCATION_MS = 10 * 60_000;
+import { hasTeslaHomeEvidence, type HomeLocation } from './evidence';
 const NUMERIC_OBSERVATIONS = new Set([
   'measure_location_latitude', 'measure_location_longitude', 'measure_car_drive_speed',
   'measure_charge_current_max', 'measure_charge_current', 'measure_charge_power', 'measure_charge_power_dc',
@@ -24,13 +22,14 @@ function isObservationValue(id: string, value: unknown): boolean {
   return id === 'charging_on' && typeof value === 'boolean';
 }
 
-/** Home authorization belongs to one uninterrupted, stationary AC session. */
+/**
+ * Home authorization holds while the vehicle's current observations show a
+ * stationary AC session at home. A parked car's coordinates stay unchanged, so
+ * their age is no evidence: only a contrary observation revokes it.
+ */
 export class TeslaChargingSession implements DeviceAdapterSession {
   private readonly devices = new Map<string, HomeyDeviceLike>();
-  private readonly sessions = new Map<string, HomeSession>();
   private trustEpoch = '';
-  private freshAfterMs = Date.now() - FRESH_LOCATION_MS;
-  private readonly disconnectedAt = new Map<string, number>();
 
   constructor(private readonly home: HomeLocation) {}
 
@@ -81,20 +80,13 @@ export class TeslaChargingSession implements DeviceAdapterSession {
   retainDevices(devices: readonly HomeyDeviceLike[]): void {
     const ids = new Set(devices.map((device) => device.id));
     for (const id of this.devices.keys()) if (!ids.has(id)) this.devices.delete(id);
-    for (const id of this.sessions.keys()) this.isAllowed(id);
   }
 
   observeDevice(device: HomeyDeviceLike): void {
     if (teslaDriver(device) === undefined) return;
     const previous = this.devices.get(device.id);
     const capabilities = mergeCapabilities(previous, device);
-    if (isTeslaChargingDevice(device) && capabilities.charging_state?.value === 'Disconnected'
-      && previous?.capabilitiesObj?.charging_state?.value !== 'Disconnected') {
-      this.disconnectedAt.set(device.id, toCapabilityTimestampMs(capabilities.charging_state.lastUpdated)!);
-    }
     this.devices.set(device.id, { ...device, capabilitiesObj: capabilities });
-    // Any affirmative away, motion or disconnect ends authorization immediately.
-    for (const id of this.sessions.keys()) this.isAllowed(id);
   }
 
   observeCapability(deviceId: string, capabilityId: string, value: unknown): void {
@@ -125,36 +117,18 @@ export class TeslaChargingSession implements DeviceAdapterSession {
 
   observes(deviceId: string): boolean { return this.devices.has(deviceId); }
 
-  /** A reconnect requires location evidence obtained after that trust gap. */
+  /** A trust gap discards what the feed reported before it; the next full read re-establishes it. */
   setTrustEpoch(epoch: string): void {
     if (epoch === this.trustEpoch) return;
-    const initial = this.trustEpoch === '';
     this.trustEpoch = epoch;
-    if (!initial) this.freshAfterMs = Date.now();
-    this.sessions.clear();
     this.devices.clear();
   }
 
   isAllowed(deviceId: string): boolean {
     const battery = this.devices.get(deviceId);
     if (!battery || !isTeslaChargingDevice(battery)) return false;
-    const evidence = readTeslaHomeEvidence(battery, [...this.devices.values()], this.home);
-    if (!evidence) {
-      if (this.sessions.delete(deviceId)) this.disconnectedAt.set(deviceId, Date.now());
-      return false;
-    }
-    const session = this.sessions.get(deviceId);
-    const { identity, coordinateAtMs } = evidence;
-    if (session && session.identity.vehicleId === identity.vehicleId
-      && session.identity.locationId === identity.locationId && session.identity.carId === identity.carId) return true;
-    const now = Date.now();
-    const notBefore = Math.max(this.freshAfterMs, this.disconnectedAt.get(deviceId) ?? 0, now - FRESH_LOCATION_MS);
-    if (coordinateAtMs > now || coordinateAtMs < notBefore) {
-      this.sessions.delete(deviceId);
-      return false;
-    }
-    this.sessions.set(deviceId, { identity });
-    return true;
+    // Away coordinates, motion, a disconnect or an unavailable companion fail this at once.
+    return hasTeslaHomeEvidence(battery, [...this.devices.values()], this.home);
   }
 }
 

@@ -29,6 +29,6 @@ PELS handles start and stop separately. Do not add a second current controller a
 
 ## Charging at home
 
-Control requires an online, stationary vehicle connected for AC charging at Homey's configured location. Missing or ambiguous location evidence blocks control. Moving away, disconnecting, becoming unavailable or losing the Homey device feed revokes the confirmed session. Fresh home-location evidence is required to establish it again. Keep Homey's location accurate.
+Control requires an online, stationary vehicle connected for AC charging at Homey's configured location. Missing or ambiguous location evidence blocks control. Moving away, disconnecting or becoming unavailable revokes the confirmed session. Control returns as soon as the car again reports that state, including after a restart while it stays parked. Keep Homey's location accurate.
 
 Tesla commands depend on the vehicle and its connection to Tesla. PELS prepares the current limit before starting a paused car and confirms running adjustments through reported current and power. Commands may be delayed or fail, and this cannot provide fast overload protection. Avoid another service independently controlling the same charging session, including reward or charging-schedule services that compete with PELS.
