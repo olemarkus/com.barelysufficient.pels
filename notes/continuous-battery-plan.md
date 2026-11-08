@@ -170,6 +170,17 @@ hold period never discharges into the export. Otherwise the battery waits and
 the solar is exported. The stored energy shows up in the next reading of the
 battery's level, from which the plan is made again.
 
+With several batteries, a battery that delivers less than its plan asks
+hands its share over through the plan, not through a second live rule. Live
+control holds it to what it shows it can deliver (the lagging-reading bound
+and the verification's learned delivery ceiling, `batteryVerification.ts`);
+that ceiling is the horizon's `maxDischargeKW`, so the next plan gives the
+rest of the house to the batteries after it, typically within a few minutes
+of the plateau. A battery verification judges `not_responding` or
+`sign_inverted` waits `control_unavailable`, so the others plan for the house
+without it until its reprobe; one PELS cannot read waits
+`battery_unavailable` the same way.
+
 A capacity hold returns directly to continuous
 planning after its ordinary resume admission, without a native-mode pulse.
 

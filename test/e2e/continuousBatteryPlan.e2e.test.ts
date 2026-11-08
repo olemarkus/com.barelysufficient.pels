@@ -39,6 +39,8 @@ type Home = {
 async function startHome(
   cheapLater = false, initialPercent = 20, solar?: MockDevice, pricesEndAtMs = Number.POSITIVE_INFINITY,
   batteryIds: readonly string[] = [BATTERY],
+  /** A battery that delivers no more than this, W, whatever it is asked. */
+  dischargeCapW: Readonly<Record<string, number>> = {},
 ): Promise<Home> {
   const batteries = batteryIds.map((id) => {
     const device = buildSetpointBatteryDevice({ id, claimValue: 'anti_feed', stepW: 5 });
@@ -97,9 +99,11 @@ async function startHome(
       for (let poll = 0; poll < polls; poll += 1) {
         await vi.advanceTimersByTimeAsync(10_000);
         await drainPending();
-        for (const device of batteries) {
+        for (const [index, device] of batteries.entries()) {
           if (device.getActualCapabilityValue('target_power_mode') === 'homey') {
-            device.setActualCapabilityValue('measure_power', device.getActualCapabilityValue('target_power'));
+            const target = Number(device.getActualCapabilityValue('target_power'));
+            const capW = dischargeCapW[batteryIds[index] ?? ''];
+            device.setActualCapabilityValue('measure_power', capW === undefined ? target : Math.max(target, -capW));
           }
         }
         // The real UI refresh route publishes the simulated battery's current
@@ -164,6 +168,33 @@ describe('continuous battery plan through the Homey SDK', () => {
     });
     expect(setpoints(home, BATTERY).some(watts => watts > 0)).toBe(true);
     expect(setpoints(home, SECOND).some(watts => watts > 0)).toBe(true);
+  });
+
+  it('plans the house onto the other battery once a battery shows it delivers less', async () => {
+    // Dear now, cheap from 04:00: stored energy is worth using now.
+    const SECOND = 'second-battery';
+    const home = await startHome(true, 80, undefined, Number.POSITIVE_INFINITY, [BATTERY, SECOND], { [BATTERY]: 500 });
+    const firstNow = async () => {
+      const plans = (await api.ui_devices(context())).continuousBatteryPlans;
+      const first = plans[BATTERY];
+      const second = plans[SECOND];
+      if (first?.status !== 'planned' || second?.status !== 'planned') throw new Error('Expected both batteries planned');
+      return { first: first.plan.periods[0], second: second.plan.periods[0] };
+    };
+    await home.advance(6);
+    // The first battery's plan supplies the house; the second's leaves it to the first.
+    const before = await firstNow();
+    expect(before.first?.reason).toBe('supply_house');
+    expect(before.first?.batteryPowerKW).toBeLessThan(-1.5);
+    expect(before.second?.batteryPowerKW ?? 0).toBeGreaterThan(-0.2);
+    // It delivers 0.5 kW. Once PELS has seen that, the next plan gives the
+    // rest of the 1.8 kW house to the second battery.
+    await home.advance(24);
+    const after = await firstNow();
+    expect(after.first?.batteryPowerKW).toBeGreaterThan(-0.6);
+    expect(after.second?.batteryPowerKW).toBeLessThan(-1);
+    expect(-((after.first?.batteryPowerKW ?? 0) + (after.second?.batteryPowerKW ?? 0))).toBeLessThanOrEqual(1.8);
+    expect(setpoints(home, SECOND).at(-1)).toBeLessThan(-1000);
   });
 
   it('starts planning from meter samples after the owner enables a previously disabled plan', async () => {

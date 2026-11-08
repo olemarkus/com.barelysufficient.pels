@@ -124,6 +124,7 @@ function readBattery(
   const device = devices.find(candidate => candidate.id === deviceId);
   const control = sources.getControl().readControl(deviceId);
   if (control.kind !== 'setpoint' || !control.admissible
+    || control.verdict === 'not_responding' || control.verdict === 'sign_inverted'
     || !isBatteryPowerLimitEnabled(sources.getControllableDevices(), deviceId)
     || !device?.managed) return { kind: 'waiting', reason: 'control_unavailable' };
   const level = device.batteryLevel;
