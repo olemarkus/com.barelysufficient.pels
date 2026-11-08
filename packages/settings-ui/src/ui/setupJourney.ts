@@ -41,7 +41,7 @@ import { offersSetupGoals, resolveSetupGoalChoices } from './setupGoals.ts';
 import { followsPrices, readMainHomeManagedDevices } from './mainHomeDevices.ts';
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 import {
-  acceptSetupBatteryPlans, isSetupBatteryPlanOn, loadSetupBatteryPlans,
+  acceptSetupBatteryPlans, countSetupBatteryPlansOn, isSetupBatteryPlanOn, loadSetupBatteryPlans,
   onSetupBatteryPlansChange, retrySetupBatteryPlans,
 } from './setupBatteryPlan.ts';
 
@@ -262,6 +262,7 @@ const headerDetail = (step: SetupJourneyStep, fact: SetupStep | undefined): stri
   }
   if (step === 'goals') return goalsHeaderDetail();
   if (step === 'priorities') return `Optional. In ${state.activeMode}, the top device keeps running longest. `
+    + (countSetupBatteryPlansOn() >= 2 ? 'Batteries higher in the list are also planned first. ' : '')
     + 'Drag to change the order, or continue with the current order. You can change it later in Modes.';
   if (step === 'devices') return null;
   return fact?.detail ?? null;

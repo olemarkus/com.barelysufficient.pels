@@ -213,4 +213,20 @@ describe('continuous battery plan across several batteries', () => {
       status: 'planned', exportDecision: { kind: 'waiting', reason: 'evaluation_budget_exceeded' },
     });
   });
+
+  it('keeps the strictest export limit while the battery that set it waits', () => {
+    const periods = [
+      period(0, { householdDemandKWh: 0, importPrice: 0.1 }),
+      period(1, { householdDemandKWh: 0, exportPrice: 3, importPrice: 1 }),
+    ];
+    const selling = (netExportCeilingKW: number) => ({
+      ...config, exportPolicy: { kind: 'price_export' as const, netExportCeilingKW },
+    });
+    const { owner } = fleet(
+      { wide: ready(battery(), periods), narrow: { kind: 'waiting', reason: 'battery_unavailable' } },
+      ['wide', 'narrow'],
+      { wide: selling(5), narrow: selling(1) },
+    );
+    expect(owner.read('wide')).toMatchObject({ exportDecision: { kind: 'selling', netExportCeilingKW: 1 } });
+  });
 });

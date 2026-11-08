@@ -24,7 +24,7 @@ const battery = (overrides: Partial<SetupGoalChoice> = {}): SetupGoalChoice => (
   price: null,
   smartTask: null,
   solar: null,
-  battery: { state: 'ready', enabled: false, capacityKWh: null, simulating: true },
+  battery: { state: 'ready', enabled: false, capacityKWh: null, simulating: true, othersPlanned: false },
   ...overrides,
 });
 
@@ -74,7 +74,7 @@ describe('Choose what PELS does, battery row', () => {
   ])('restores the accepted switch and keeps the save error and price action visible (%s)', async (message, expected) => {
     const onBatteryPlan = vi.fn(async () => { throw new Error(message); });
     const { root } = renderPicker([battery({
-      battery: { state: 'ready', enabled: false, capacityKWh: 10, simulating: true },
+      battery: { state: 'ready', enabled: false, capacityKWh: 10, simulating: true, othersPlanned: false },
     })], onBatteryPlan);
     await act(async () => {
       const toggle = root.querySelector<Switch>('md-switch')!;
@@ -102,16 +102,28 @@ describe('Choose what PELS does, battery row', () => {
 
   it('fills in a saved capacity, and names it once the plan is on', () => {
     const { root } = renderPicker([battery({
-      battery: { state: 'ready', enabled: false, capacityKWh: 9.6, simulating: false },
+      battery: { state: 'ready', enabled: false, capacityKWh: 9.6, simulating: false, othersPlanned: false },
     })]);
     expect(root.querySelector<Field>('md-filled-text-field')!.value).toBe('9.6');
 
     const on = renderPicker([battery({
       id: 'other',
-      battery: { state: 'ready', enabled: true, capacityKWh: 9.6, simulating: true },
+      battery: { state: 'ready', enabled: true, capacityKWh: 9.6, simulating: true, othersPlanned: false },
     })]);
     expect(on.root.querySelector('md-filled-text-field')).toBeNull();
     expect(on.root.textContent).toContain('Planned for 9.6 kWh usable capacity. The plan runs once you start managing.');
+  });
+
+  it('says batteries plan together in priority order only while another battery also plans', () => {
+    const alone = renderPicker([battery({
+      battery: { state: 'ready', enabled: true, capacityKWh: 9.6, simulating: false, othersPlanned: false },
+    })]);
+    expect(alone.root.textContent).not.toContain('in priority order');
+    const together = renderPicker([battery({
+      id: 'other',
+      battery: { state: 'ready', enabled: true, capacityKWh: 9.6, simulating: false, othersPlanned: true },
+    })]);
+    expect(together.root.textContent).toContain('PELS plans your batteries together, in priority order');
   });
 
   it('says why PELS cannot plan the battery instead of offering the switch', () => {

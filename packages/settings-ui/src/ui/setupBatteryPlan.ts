@@ -81,9 +81,11 @@ export type SetupBatteryGoal =
   | { state: 'blocked'; reason: string }
   /**
    * `capacityKWh` is the saved usable capacity, `null` while none was ever
-   * saved; `simulating` while Simulation mode holds back battery commands.
+   * saved; `simulating` while Simulation mode holds back battery commands;
+   * `othersPlanned` while another battery's plan is on, so they plan together
+   * in priority order.
    */
-  | { state: 'ready'; enabled: boolean; capacityKWh: number | null; simulating: boolean };
+  | { state: 'ready'; enabled: boolean; capacityKWh: number | null; simulating: boolean; othersPlanned: boolean };
 
 /** The battery row's state, or `null` for a device that is not a home battery. */
 export const resolveSetupBatteryGoal = (device: SettingsUiDeviceListItem): SetupBatteryGoal | null => {
@@ -92,10 +94,19 @@ export const resolveSetupBatteryGoal = (device: SettingsUiDeviceListItem): Setup
   if (reason !== '') return { state: 'blocked', reason };
   if (saved.state !== 'ready') return { state: saved.state };
   const config = readSavedConfig(device.id);
+  const othersPlanned = Object.entries(saved.configs).some(([id, other]) => id !== device.id && other.enabled);
   return config === null
-    ? { state: 'ready', enabled: false, capacityKWh: null, simulating: state.dryRun }
-    : { state: 'ready', enabled: config.enabled, capacityKWh: config.usableCapacityKWh, simulating: state.dryRun };
+    ? { state: 'ready', enabled: false, capacityKWh: null, simulating: state.dryRun, othersPlanned }
+    : {
+      state: 'ready', enabled: config.enabled, capacityKWh: config.usableCapacityKWh, simulating: state.dryRun,
+      othersPlanned,
+    };
 };
+
+/** How many batteries' plans are saved on; 0 while the map has not been read. */
+export const countSetupBatteryPlansOn = (): number => (
+  saved.state === 'ready' ? Object.values(saved.configs).filter(config => config.enabled).length : 0
+);
 
 /** Whether the battery's plan is saved on; `false` while the map has not been read. */
 export const isSetupBatteryPlanOn = (deviceId: string): boolean => readSavedConfig(deviceId)?.enabled === true;

@@ -845,6 +845,7 @@ keeps the word for what PELS holds it to do.
 | Reason while the battery plan sells stored energy | `Selling stored energy while export pays more` |
 | Battery plan window, a sale | `Sell to grid` |
 | Device page, under Plan charging with PELS, while another battery also has the plan on | `PELS plans your batteries together, in priority order: a battery higher in the list goes first, and the next covers what it leaves. No battery charges from another.` (a battery left with nothing to do reads the ordinary `Waiting` / `Keeping stored energy for later`, never a fault) |
+| Device page, a sale within a stricter export limit another battery's owner set | `Selling stays within 2 kW at your meter, the lowest export limit set on your batteries.` |
 | Device page, selling opt-in under Plan charging with PELS | `Sell stored energy when profitable`; its limit field `Export limit at your meter (kW)` |
 | Device page, selling decided | `Selling is planned. Estimated 0.43 EUR lower electricity cost than keeping the energy for your home over this plan.` / `Selling would not lower your cost in this plan, so PELS keeps the energy for your home.` / `Selling waits for an export price for every hour of the plan. PELS keeps planning for your home.` |
 | Reason in its own mode (a battery PELS can drive) | `PELS takes over when your limit or solar needs it` |

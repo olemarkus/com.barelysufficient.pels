@@ -102,6 +102,19 @@ export const batteryPlanSellingLine = (decision: ContinuousBatteryExportDecision
   }
 };
 
+/**
+ * While this battery sells within a stricter export limit another battery's
+ * owner set, the limit the sale uses; otherwise nothing.
+ */
+export const batteryPlanSharedLimitLine = (
+  decision: ContinuousBatteryExportDecision,
+  config: ContinuousBatteryPlanConfig,
+): string | null => {
+  if (decision.kind !== 'selling' || config.exportPolicy.kind !== 'price_export') return null;
+  if (decision.netExportCeilingKW >= config.exportPolicy.netExportCeilingKW) return null;
+  return `Selling stays within ${Number(decision.netExportCeilingKW.toFixed(1))} kW at your meter, the lowest export limit set on your batteries.`;
+};
+
 /** Calendar-day labels follow the Homey's zone, including 23/25-hour DST days. */
 export const batteryPlanTimeLabel = (timestamp: number, generatedAtMs: number, timeZone: string): string => {
   const date = new Date(timestamp);
@@ -180,6 +193,8 @@ function BatteryPlanPreview(props: Pick<ContinuousBatteryPlanProps, 'read' | 'ti
       && <p class="field__hint" role="status">{UNPRICED_SOLAR_EXPORT_LINE}</p>}
     {'exportDecision' in read
       && <p class="field__hint" role="status">{batteryPlanSellingLine(read.exportDecision, read.priceUnit)}</p>}
+    {'exportDecision' in read && batteryPlanSharedLimitLine(read.exportDecision, read.config)
+      && <p class="field__hint">{batteryPlanSharedLimitLine(read.exportDecision, read.config)}</p>}
     <BatteryLevelChart periods={read.plan.periods} config={read.config} generatedAtMs={read.generatedAtMs} timeZone={timeZone} />
     <ol class="battery-plan-windows">{windows.map(window => <li key={window.startsAtMs}>
       <span class="field__hint">{batteryPlanTimeLabel(window.startsAtMs, read.generatedAtMs, timeZone)} – {batteryPlanTimeLabel(window.endsAtMs, read.generatedAtMs, timeZone)}</span>
