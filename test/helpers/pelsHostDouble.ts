@@ -1,6 +1,7 @@
 import { PhaseReadingTracker } from '../../lib/power/phaseReading';
 import { PhaseFootprintLearner } from '../../lib/phaseFootprint/phaseFootprintLearner';
 import { deviceControlSettingsFixture } from './deviceControlSettingsFixture';
+import { PhasePeakLog } from '../../lib/power/phasePeakLog';
 import { vi } from 'vitest';
 import type { PelsHost } from '../../lib/app/pelsHost';
 import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
@@ -55,7 +56,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     refreshTargetDevicesSnapshot: async () => undefined,
     getCapacityScalars: notWired('getCapacityScalars'),
     capacityGuard: {
-      phaseReadings: new PhaseReadingTracker(), phaseLearner: new PhaseFootprintLearner(),
+      phaseReadings: new PhaseReadingTracker(), phaseLearner: new PhaseFootprintLearner(), phasePeaks: new PhasePeakLog(),
     } as unknown as PelsHost['capacityGuard'],
     deviceControlSettings: deviceControlSettingsFixture(),
     capacitySettingsStore: { mainFuse: () => ({ kind: 'off' }) } as unknown as PelsHost['capacitySettingsStore'],

@@ -142,12 +142,16 @@ export class PhaseReadingTracker {
 const phaseAmps = (load: PhaseLoad): number => load.currentA ?? Math.abs(load.kw) * 1000 / NOMINAL_VOLTAGE_V;
 
 /** The settings UI's view: only a three-phase fuse with trusted phases has anything to show. */
-export function projectPhaseLoadForUi(reading: PhaseReading, fuse: MainFuse): SettingsUiPhaseLoad {
-  if (reading.kind !== 'healthy' || fuse.kind !== 'on' || fuse.supply !== 'three_phase_neutral') {
-    return { state: 'none' };
-  }
+export function projectPhaseLoadForUi(
+  reading: PhaseReading,
+  fuse: MainFuse,
+  meterCapabilityIds: readonly string[],
+): SettingsUiPhaseLoad {
+  if (fuse.kind !== 'on' || fuse.supply !== 'three_phase_neutral') return { state: 'none' };
+  if (reading.kind !== 'healthy') return { state: 'none', meterCapabilityIds };
   return {
     state: 'phases',
+    ...(meterCapabilityIds.length > 0 ? { meterCapabilityIds } : {}),
     fuseAmps: fuse.amps,
     phases: reading.phases.map((load) => ({ phase: load.phase, amps: phaseAmps(load) })),
   };

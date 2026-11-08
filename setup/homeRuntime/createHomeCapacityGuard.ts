@@ -1,4 +1,4 @@
-import { DEVICE_PHASE_LEARNING, MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
+import { DEVICE_PHASE_LEARNING, MAIN_FUSE_PHASE_PEAKS, MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 /**
  * One home's capacity guard: the immediate shortfall transition it drives on
  * that home's own plan service, and the two hard-cap Flow alert lanes it feeds.
@@ -131,6 +131,10 @@ export const createHomeCapacityGuard = (
     guard.phaseLearner.bindStore({
       get: () => ctx.homey.settings.get(DEVICE_PHASE_LEARNING),
       set: (learning) => ctx.homey.settings.set(DEVICE_PHASE_LEARNING, learning),
+    });
+    guard.phasePeaks.bindStore({
+      get: () => ctx.homey.settings.get(MAIN_FUSE_PHASE_PEAKS),
+      set: (entries) => ctx.homey.settings.set(MAIN_FUSE_PHASE_PEAKS, entries),
     });
   }
   return { guard, shortfallSideEffectGate };

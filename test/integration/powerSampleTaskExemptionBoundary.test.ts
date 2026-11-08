@@ -111,6 +111,7 @@ const buildHarness = (controllable: boolean, decisionDelayMs = 0) => {
     getPlanEngine: () => partialDouble<PlanEngine>({
       computeShortfallThreshold: () => 10,
       computePhaseDeficitKw: () => 0,
+      computePhasePower: () => ({ kind: 'off' }),
       state: createPlanEngineState(),
       clearStartupRestoreStabilization: () => false,
     }),

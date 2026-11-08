@@ -1,3 +1,4 @@
+import type { MainFusePhaseCapabilities } from '../../../packages/shared-domain/src/settings/mainFusePhaseSource';
 import { getRawDevice } from './managerHomeyApi';
 import { resolveMeterPhases } from '../meterPhases';
 import type { MeterPhasesRead } from '../../ports/homeMeterReadings';
@@ -416,9 +417,12 @@ type RefreshLivePower = {
 };
 
 /** The meter's per-phase capabilities; a failed read is `unavailable`, never no phases. */
-export async function readMeterPhases(meterDeviceId: string): Promise<MeterPhasesRead> {
+export async function readMeterPhases(
+    meterDeviceId: string,
+    ownerChoice: MainFusePhaseCapabilities | null,
+): Promise<MeterPhasesRead> {
     try {
-        return resolveMeterPhases(await getRawDevice(meterDeviceId));
+        return resolveMeterPhases(await getRawDevice(meterDeviceId), ownerChoice);
     } catch {
         return { state: 'unavailable' };
     }

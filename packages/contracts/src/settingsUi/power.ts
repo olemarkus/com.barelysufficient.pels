@@ -121,12 +121,23 @@ export type SettingsUiHardCapConfigurationRead =
 
 /** Each phase's load against the main fuse; `none` when PELS has no trusted phases to show. */
 export type SettingsUiPhaseLoad =
-  | { readonly state: 'none' }
+  | { readonly state: 'none'; readonly meterCapabilityIds?: readonly string[] }
   | {
     readonly state: 'phases';
+    /** Kept so an owner's own capability choice can still be changed once it works. */
+    readonly meterCapabilityIds?: readonly string[];
     readonly fuseAmps: number;
     readonly phases: readonly { readonly phase: string; readonly amps: number }[];
   };
+
+export type SettingsUiPhasePeak = {
+  readonly phase: 'L1' | 'L2' | 'L3';
+  readonly direction: 'import' | 'export';
+  readonly startedAtMs: number;
+  readonly durationS: number;
+  readonly peakKw: number;
+  readonly devices: readonly string[];
+};
 
 export type SettingsUiPowerPayload = {
   /**
@@ -139,6 +150,8 @@ export type SettingsUiPowerPayload = {
   readings: SettingsUiPowerReadings;
   status: SettingsUiPowerStatusRead;
   phaseLoad: SettingsUiPhaseLoad;
+  /** Recent episodes of a phase past its share of the main fuse, oldest first. */
+  phasePeaks?: readonly SettingsUiPhasePeak[];
   /**
    * The running app's own capacity scalars for the home this payload
    * describes. The running app retains its last-good values when a persisted

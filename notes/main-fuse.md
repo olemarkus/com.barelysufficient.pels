@@ -25,6 +25,13 @@ within max(500 W, 15 % of the summed absolute phase power), and not frozen while
 reads degrade the set, and phases read as `none` when the power source is not Homey Energy, the only one that
 reads them.
 
+When the meter's phases are not recognised the owner can choose which `measure_power.*` or `measure_current.*`
+capability is each phase (`main_fuse_phase_capabilities`), all of one kind; the capability list arrives on the
+existing power payload. A Flow-source home can pick a phase meter device (`main_fuse_phase_meter_device_id`):
+phases are then read beside each Flow sample and judged by the same rules, and the poll does not reset them. That
+read never holds the sample: one runs at a time under a short deadline, a later sample uses the last accepted phases,
+and clearing the meter resets the phases to none.
+
 A supply without neutral puts a one-phase load on two conductors, so phase protection is for
 supplies with neutral. Without neutral PELS holds only the total, sqrt(3) x 230 V x A.
 
@@ -141,3 +148,12 @@ The battery plan and smart tasks plan against the effective ceiling (`planningPo
 `resolvePlanningCeilingKw`), which includes the fuse total through the grid import limit, so the car and batteries
 share a cheap hour in priority order under what the connection carries. Neither forecasts per phase; phases are held
 live by the shed pass, the phase room and the export pass above.
+
+## Phase peaks
+
+Each episode of a phase past its share of the fuse, in either direction, is kept for a week in the runtime-owned
+`main_fuse_phase_peaks` key (`lib/power/phasePeakLog.ts`): when it started, how long it lasted, the peak, and which
+managed devices drew most at that moment. An episode ends after a minute clear, a blip under 30 s is not kept, and a
+gap in the samples never stretches one. The Usage page shows them as a compact list.
+
+Setup offers Main fuse to homes in the Netherlands in place of a grid import limit; other markets are unchanged.

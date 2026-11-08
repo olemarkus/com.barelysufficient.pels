@@ -1,3 +1,4 @@
+import type { PhasePower } from './phase/phasePower';
 /**
  * Narrow behavior exposed by the setup-composed planning runtime. Construction
  * and shared mutable state binding belong in `setup/`; planner consumers cannot
@@ -32,6 +33,7 @@ export type PlanEngine = {
   computeCapacityPace: () => number | null;
   computeShortfallThreshold: () => number | null;
   computePhaseDeficitKw: (netKw: number) => number;
+  computePhasePower: (netKw: number) => PhasePower;
   handleShortfall: (deficitKw: number) => Promise<void>;
   handleShortfallCleared: () => Promise<void>;
   applyPlanActions: (plan: ExecutionPlan) => Promise<PlanActuationResult>;

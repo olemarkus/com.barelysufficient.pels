@@ -12,7 +12,7 @@ describe('resolveMeterPhases', () => {
   it.each(['l', 'L', 'p', 'phase', 'phase_'])('recognises measure_power.%s1-3', (prefix) => {
     const read = resolveMeterPhases(caps({
       [`measure_power.${prefix}1`]: 100, [`measure_power.${prefix}2`]: -50, [`measure_power.${prefix}3`]: 0,
-    }));
+    }), null);
     expect(read).toMatchObject({ state: 'read', powerW: [100, -50, 0] });
   });
 
@@ -21,19 +21,19 @@ describe('resolveMeterPhases', () => {
       'measure_power.l1i': 500, 'measure_power.l1e': 0,
       'measure_power.l2i': 0, 'measure_power.l2e': 300,
       'measure_power.l3i': 100, 'measure_power.l3e': 100,
-    }));
+    }), null);
     expect(read).toMatchObject({ state: 'read', powerW: [500, -300, 0] });
   });
 
   it('treats a facet with a missing phase as absent', () => {
-    const read = resolveMeterPhases(caps({ 'measure_power.l1': 1, 'measure_power.l2': 2, measure_power: 3 }));
+    const read = resolveMeterPhases(caps({ 'measure_power.l1': 1, 'measure_power.l2': 2, measure_power: 3 }), null);
     expect(read).toEqual({ state: 'none', capabilityIds: ['measure_power.l1', 'measure_power.l2', 'measure_power'] });
   });
 
   it('treats a non-finite value as absent', () => {
     expect(resolveMeterPhases(caps({
       'measure_current.l1': 1, 'measure_current.l2': null, 'measure_current.l3': 3,
-    })).state).toBe('none');
+    }), null).state).toBe('none');
   });
 });
 
@@ -78,6 +78,16 @@ describe('PhaseReadingTracker', () => {
     expect(tracker.current()).toEqual({ kind: 'none' });
   });
 
+  it('reads the owner\'s chosen capabilities like recognised ones, and goes back to none for a gap', () => {
+    const device = { capabilitiesObj: { 'measure_power.a': { value: 1000 }, 'measure_power.b': { value: 1000 }, 'measure_power.c': { value: 500 } } };
+    const choice = { facet: 'power', L1: 'measure_power.a', L2: 'measure_power.b', L3: 'measure_power.c' } as const;
+    expect(resolveMeterPhases(device, choice)).toMatchObject({ state: 'read', powerW: [1000, 1000, 500] });
+    expect(resolveMeterPhases({ capabilitiesObj: { 'measure_power.a': { value: 1 } } }, choice)).toMatchObject({ state: 'none' });
+    const current = { facet: 'current', L1: 'measure_current.a', L2: 'measure_current.b', L3: 'measure_current.c' } as const;
+    const amps = { capabilitiesObj: { 'measure_current.a': { value: 4 }, 'measure_current.b': { value: 5 }, 'measure_current.c': { value: 6 } } };
+    expect(resolveMeterPhases(amps, current)).toMatchObject({ state: 'read', currentA: [4, 5, 6] });
+  });
+
   it('checks a current-only meter one-sidedly and marks it unsigned', () => {
     const tracker = new PhaseReadingTracker();
     tracker.admit({ state: 'read', capabilityIds: [], currentA: [10, 5, 5] }, 2000, 1);
@@ -97,7 +107,7 @@ describe('projectPhaseLoadForUi', () => {
   };
 
   it('shows measured amps against the fuse', () => {
-    expect(projectPhaseLoadForUi(healthy(), fuse)).toEqual({
+    expect(projectPhaseLoadForUi(healthy(), fuse, [])).toEqual({
       state: 'phases',
       fuseAmps: 25,
       phases: [{ phase: 'L1', amps: 20 }, { phase: 'L2', amps: 10 }, { phase: 'L3', amps: 0 }],
@@ -105,8 +115,10 @@ describe('projectPhaseLoadForUi', () => {
   });
 
   it('shows nothing without a fuse, on other supplies, or without trusted phases', () => {
-    expect(projectPhaseLoadForUi(healthy(), { kind: 'off' })).toEqual({ state: 'none' });
-    expect(projectPhaseLoadForUi(healthy(), { ...fuse, supply: 'three_phase_no_neutral' })).toEqual({ state: 'none' });
-    expect(projectPhaseLoadForUi({ kind: 'degraded' }, fuse)).toEqual({ state: 'none' });
+    expect(projectPhaseLoadForUi(healthy(), { kind: 'off' }, [])).toEqual({ state: 'none' });
+    expect(projectPhaseLoadForUi(healthy(), { ...fuse, supply: 'three_phase_no_neutral' }, [])).toEqual({ state: 'none' });
+    expect(projectPhaseLoadForUi({ kind: 'degraded' }, fuse, ['measure_power.a'])).toEqual({
+      state: 'none', meterCapabilityIds: ['measure_power.a'],
+    });
   });
 });

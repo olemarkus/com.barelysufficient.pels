@@ -33,6 +33,7 @@ import { classifyCapacityPeak } from './capacityPeakRead.ts';
 import { classifyCapacityScalarsRead } from './capacityScalarsRead.ts';
 import { areMeterAreasInUse, getHomeScope } from './homeScope.ts';
 import { readUsagePower } from './usagePowerRead.ts';
+import { renderPhasePeaks } from './phasePeaksCard.ts';
 import { createToggleGroup } from './components.ts';
 import type { SettingsUiPowerTracker } from '../../../contracts/src/powerTrackerTypes.ts';
 import {
@@ -508,6 +509,7 @@ export const renderPowerStatsFromRead = async (
     const footer = document.getElementById('usage-footer-text');
     if (footer) footer.textContent = resolveUsageFooterText(getHomeScope().selectedHomeId, areMeterAreasInUse());
     const { stats, timeZone } = computePowerStats(read.payload.tracker);
+    renderPhasePeaks(read.payload.phasePeaks, timeZone);
     latestPowerStats = stats;
     latestPowerStatsTimeZone = timeZone;
     powerStatsRendered = true;

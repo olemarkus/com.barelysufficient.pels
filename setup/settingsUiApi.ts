@@ -1,4 +1,4 @@
-import { resolvePhaseFootprintWithSource } from '../lib/phaseFootprint/resolvePhaseFootprint';
+import { readSettingsUiPhaseFootprint } from './settingsUiPhaseFootprint';
 import { projectPhaseLoadForUi } from '../lib/power/phaseReading';
 import type Homey from 'homey';
 import type {
@@ -32,7 +32,6 @@ import type {
   SettingsUiDeviceLogPayload,
   SettingsUiDevicesPayload,
   SettingsUiDeviceSnapshot,
-  SettingsUiPhaseFootprintRead,
   SettingsUiBatteryState,
 } from '../packages/contracts/src/settingsUi/devices';
 import type {
@@ -286,22 +285,6 @@ const buildSettingsUiDeviceList = (
   });
 };
 
-const readSettingsUiPhaseFootprint = (
-  host: PelsHost,
-  device: DecoratedDeviceSnapshot,
-  chargerPhaseCurrentsA: readonly [number, number, number] | undefined,
-): SettingsUiPhaseFootprintRead => {
-  const { footprint, source } = resolvePhaseFootprintWithSource({
-    ownerConnection: host.deviceControlSettings.getDevicePhaseConnection(device.id),
-    isEvCharger: device.isEvCharger === true,
-    chargerPhaseCurrentsA,
-    evPreset: device.targetPowerConfig?.preset,
-    learned: host.capacityGuard?.phaseLearner.learnedFootprint(device.id),
-  });
-  if (footprint.kind === 'single') return { source, phases: footprint.phase };
-  return footprint.kind === 'all_three' ? { source, phases: 'all' } : { source };
-};
-
 /**
  * A listed device's home-battery facts, as the battery control owner answers
  * them; the owner answers `not_battery` for every other device. Devices are
@@ -377,7 +360,12 @@ const getSettingsUiPower = (host: PelsHost): SettingsUiPowerPayload => {
     tracker: projectPowerTrackerForUi(tracker, Date.now()),
     readings: resolvePowerReadingsForUi(tracker),
     status: classifyMainPowerStatus(host),
-    phaseLoad: projectPhaseLoadForUi(host.capacityGuard.phaseReadings.current(), host.capacitySettingsStore.mainFuse()),
+    phaseLoad: projectPhaseLoadForUi(
+      host.capacityGuard.phaseReadings.current(),
+      host.capacitySettingsStore.mainFuse(),
+      host.capacityGuard.phaseReadings.meterCapabilityIds(),
+    ),
+    phasePeaks: host.capacityGuard.phasePeaks.recent(Date.now()),
     capacityScalars: { state: 'resolved', scalars: host.getCapacityScalars() },
     hardCapConfiguration: host.readHardCapConfiguration(),
     capacityPeak: projectCapacityPeakForUi(host.getCurrentMonthCapacityPeakKw()),

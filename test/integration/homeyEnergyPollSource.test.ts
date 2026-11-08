@@ -360,3 +360,34 @@ describe('phases under another power source', () => {
     expect(onInactive).toHaveBeenCalledOnce();
   });
 });
+
+describe('phase source for a Flow-source home', () => {
+  it('keeps the readings when a phase meter was picked', () => {
+    const reset = vi.fn();
+    const source = createHomeyEnergyPollSource({
+      getPowerSource: () => 'flow',
+      timers: new TimerRegistry(),
+      homey: { settings: { get: (key: string) => (key === 'main_fuse_phase_meter_device_id' ? 'meter' : null) } },
+      deviceManager: { readMeters: async () => null, readMeterPhases: async () => ({ state: 'unavailable' as const }) },
+      capacityGuard: { phaseReadings: { reset } },
+      getSubHomeMeters: () => undefined,
+      error: vi.fn(),
+    } as never, { recordPowerSample: vi.fn() } as never);
+    source.start();
+    expect(reset).not.toHaveBeenCalled();
+  });
+
+  it('resets the readings when no meter was picked', () => {
+    const reset = vi.fn();
+    createHomeyEnergyPollSource({
+      getPowerSource: () => 'flow',
+      timers: new TimerRegistry(),
+      homey: { settings: { get: () => null } },
+      deviceManager: { readMeters: async () => null, readMeterPhases: async () => ({ state: 'unavailable' as const }) },
+      capacityGuard: { phaseReadings: { reset } },
+      getSubHomeMeters: () => undefined,
+      error: vi.fn(),
+    } as never, { recordPowerSample: vi.fn() } as never).start();
+    expect(reset).toHaveBeenCalledOnce();
+  });
+});

@@ -360,6 +360,11 @@
         <p id="daily-empty" class="pels-card-supporting" hidden>No daily totals yet.</p>
       </section>
 
+      <section class="pels-surface-card usage-card" id="usage-phase-peaks" aria-labelledby="usage-phase-peaks-title" hidden>
+        <h3 class="section-title" id="usage-phase-peaks-title">Phase peaks</h3>
+        <p class="pels-card-supporting">When a phase went past your main fuse, how long, and what was drawing.</p>
+        <ul class="pels-card-supporting" id="usage-phase-peaks-list"></ul>
+      </section>
       <section class="pels-surface-card usage-card" aria-labelledby="usage-pattern-title">
         <md-elevation aria-hidden="true"></md-elevation>
         <div class="usage-card__header">
@@ -649,6 +654,21 @@
             <span class="field__label pels-text-settings-label" id="settings-main-fuse-amps-label">Fuse size per phase</span>
             <md-filled-text-field id="settings-main-fuse-amps" name="settings_main_fuse_amps" type="number" step="1" min="6" max="250" inputmode="numeric" autocomplete="off" suffix-text="A" aria-labelledby="settings-main-fuse-amps-label"></md-filled-text-field>
             <small class="field__hint" id="settings-main-fuse-hint"></small>
+          </div>
+          <div class="form-grid" id="settings-main-fuse-phase-source" hidden>
+            <div class="field" id="settings-main-fuse-phase-meter-field" hidden>
+              <span class="field__label pels-text-settings-label" id="settings-main-fuse-phase-meter-label">Phase meter</span>
+              <md-filled-select id="settings-main-fuse-phase-meter" aria-labelledby="settings-main-fuse-phase-meter-label"></md-filled-select>
+              <small class="field__hint">The meter PELS reads each phase from when your power comes from a Flow.</small>
+            </div>
+            <div class="field" id="settings-main-fuse-phase-capabilities-field" hidden>
+              <span class="field__label pels-text-settings-label" id="settings-main-fuse-phase-capabilities-label">Meter phases</span>
+              <md-filled-select id="settings-main-fuse-phase-L1" label="L1" aria-labelledby="settings-main-fuse-phase-capabilities-label"></md-filled-select>
+              <md-filled-select id="settings-main-fuse-phase-L2" label="L2" aria-labelledby="settings-main-fuse-phase-capabilities-label"></md-filled-select>
+              <md-filled-select id="settings-main-fuse-phase-L3" label="L3" aria-labelledby="settings-main-fuse-phase-capabilities-label"></md-filled-select>
+              <small class="field__hint">Pick which reading is each phase, all power or all current.</small>
+              <small class="field__hint" id="settings-main-fuse-phase-capabilities-hint" hidden>Choose all three, all power or all current.</small>
+            </div>
           </div>
         </div>
         <div class="md-switch-row">
