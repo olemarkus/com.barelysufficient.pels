@@ -1,3 +1,5 @@
+import { classifyPhaseLoad } from './phaseLoadRead.ts';
+import type { SettingsUiPhaseLoad } from '../../../contracts/src/settingsUi/power.ts';
 import './materialWeb.ts';
 import {
   type SettingsUiDeferredObjectivePlanHistoryPayload,
@@ -186,6 +188,7 @@ type PlanPowerRead = {
 const readPowerForPlanRefresh = async (): Promise<PlanPowerRead> => {
   try {
     const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
+    cachedPhaseLoad = classifyPhaseLoad(payload?.phaseLoad);
     return { solarNowInput: payload ? toSolarNowInput(payload.tracker) : null };
   } catch {
     return { solarNowInput: null };
@@ -205,6 +208,7 @@ const readPowerForPlanRefresh = async (): Promise<PlanPowerRead> => {
 // `planPayloadReceived` so a slow boot keeps showing the skeleton instead of
 // a premature empty-state verdict.
 let surfaceSkeletonCleared = false;
+let cachedPhaseLoad: SettingsUiPhaseLoad = { state: 'none' };
 
 // True once a plan payload has been DELIVERED (`renderPlan` ran; the payload
 // itself may legitimately be null, meaning the runtime has no plan yet).
@@ -248,6 +252,7 @@ const doRender = () => {
     // Main's task states under the area's name would break the scope bar's
     // honesty claim.
     smartTaskRow: overviewScope.kind === 'main' ? resolveSmartTaskRow(now) : null,
+    phaseLoad: overviewScope.kind === 'main' ? cachedPhaseLoad : { state: 'none' },
     // Same Main-only rule as the smart-task row above.
     evStateLines: overviewScope.kind === 'main' ? resolveEvCardStateLines(now) : new Map(),
     setupPath: setup,
@@ -393,6 +398,7 @@ export const refreshPlanPower = async (): Promise<void> => {
   if (getHomeScope().selectedHomeId !== MAIN_HOME_ID) return;
   if (!solarNowReads.commit(stamp)) return;
   cachedSolarNowInput = payload ? toSolarNowInput(payload.tracker) : null;
+  cachedPhaseLoad = classifyPhaseLoad(payload?.phaseLoad);
   doRender();
 };
 
@@ -502,6 +508,7 @@ const readScopedPowerForPlanRefresh = async (): Promise<PlanPowerRead> => {
   try {
     const read = await readUsagePower();
     if (read.state !== 'served') return { solarNowInput: null };
+    cachedPhaseLoad = classifyPhaseLoad(read.payload.phaseLoad);
     return {
       solarNowInput: toSolarNowInput(read.payload.tracker),
     };

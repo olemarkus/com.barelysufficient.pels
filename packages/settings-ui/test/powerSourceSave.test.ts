@@ -471,6 +471,7 @@ describe('savePowerSourceSetting', () => {
       tracker: {},
       readings: { state: 'never' },
       status: { state: 'unavailable', reason: 'no_measurement' },
+      phaseLoad: { state: 'none' },
       capacityPeak: { state: 'unavailable' },
       capacityScalars: { state: 'unavailable' },
       hardCapConfiguration: { state: 'unavailable' },

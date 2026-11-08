@@ -1,3 +1,4 @@
+import { projectPhaseLoadForUi } from '../lib/power/phaseReading';
 import type Homey from 'homey';
 import type {
   DailyBudgetModelPreviewResponse,
@@ -101,6 +102,7 @@ const NOT_READY_POWER_PAYLOAD: SettingsUiPowerPayload = {
   readings: { state: 'never' },
   status: { state: 'unavailable', reason: 'no_measurement' },
   capacityPeak: { state: 'unavailable' },
+  phaseLoad: { state: 'none' },
   capacityScalars: { state: 'unavailable' },
   hardCapConfiguration: { state: 'unavailable' },
   hasManagedSolarDevice: false,
@@ -356,6 +358,7 @@ const getSettingsUiPower = (host: PelsHost): SettingsUiPowerPayload => {
     tracker: projectPowerTrackerForUi(tracker, Date.now()),
     readings: resolvePowerReadingsForUi(tracker),
     status: classifyMainPowerStatus(host),
+    phaseLoad: projectPhaseLoadForUi(host.capacityGuard.phaseReadings.current(), host.capacitySettingsStore.mainFuse()),
     capacityScalars: { state: 'resolved', scalars: host.getCapacityScalars() },
     hardCapConfiguration: host.readHardCapConfiguration(),
     capacityPeak: projectCapacityPeakForUi(host.getCurrentMonthCapacityPeakKw()),
@@ -456,6 +459,7 @@ const UNAVAILABLE_POWER_PAYLOAD: SettingsUiPowerPayload = {
   readings: { state: 'never' },
   status: { state: 'unavailable', reason: 'home_scope_unavailable' },
   capacityPeak: { state: 'unavailable' },
+  phaseLoad: { state: 'none' },
   capacityScalars: { state: 'unavailable' },
   hardCapConfiguration: { state: 'unavailable' },
   homeScope: { state: 'unavailable' },
@@ -508,6 +512,7 @@ const powerPayloadForHome = (
     readings: resolvePowerReadingsForUi(reading.powerTracker),
     status: classifyPowerStatusRead(latchEvidence(hasPowerMeasurement(reading.powerTracker)), statusRead),
     capacityPeak: projectCapacityPeakForUi(reading.currentMonthCapacityPeakKw),
+    phaseLoad: { state: 'none' },
     capacityScalars: { state: 'resolved', scalars: reading.diagnostics.capacityScalars },
     // Sub-home diagnostics expose running scalars but not persisted key
     // provenance; absence must remain unavailable rather than be guessed.

@@ -1,3 +1,5 @@
+import { PhaseLoadRow } from './PhaseLoadRow.tsx';
+import type { SettingsUiPhaseLoad } from '../../../../contracts/src/settingsUi/power.ts';
 import { render } from 'preact';
 import { MdElevation, MdOutlinedButton, MdRipple } from './materialWebJSX.tsx';
 import { PlanHero, type HeroContext } from './PlanHero.tsx';
@@ -43,6 +45,7 @@ type OverviewProps = {
   // nothing — no active tasks and no recent misses). Resolved in the
   // orchestrator (`planRedesign.ts`) so this view stays props-in.
   smartTaskRow: OverviewSmartTaskRow | null;
+  phaseLoad: SettingsUiPhaseLoad;
   // Each charger's EV smart-task line, keyed by device id; the on/off card shows
   // it when its status carries no reason. Resolved in the orchestrator.
   evStateLines: ReadonlyMap<string, string>;
@@ -148,7 +151,7 @@ const ScopeUnavailableNotice = () => (
 );
 
 const PlanOverviewRoot = ({
-  devices, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, evStateLines, setupPath,
+  devices, plan, planResolved, scopeUnavailable, prices, solarNowInput, smartTaskRow, phaseLoad, evStateLines, setupPath,
   context, nowMs,
 }: OverviewProps) => {
   if (scopeUnavailable) {
@@ -205,6 +208,7 @@ const PlanOverviewRoot = ({
           nowMs={nowMs}
         />
       )}
+      {showHero && <PhaseLoadRow load={phaseLoad} />}
       <div id="plan-hour-strip" class="plan-hour-strip" hidden />
       {smartTaskRow !== null && <SmartTaskRow row={smartTaskRow} />}
       {devices.state === 'unavailable' && (
