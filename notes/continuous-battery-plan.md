@@ -93,9 +93,52 @@ The configured wear allowance is bound to its electricity price unit. Switching
 units cannot silently reinterpret its value. The form starts an unbound wear
 allowance at zero and explains that zero ignores wear.
 
+## Several batteries
+
+Each drivable Main-home battery opts in on its own page. The battery owner
+(`ContinuousBatteryPlanService`) plans every enabled battery together, as one
+memo published at once, so no battery's plan outlives the inputs of the ones
+it depends on:
+
+- `readHorizons` reads every battery at one instant. All ready horizons share
+  the same periods; without a power limit the synthetic import ceiling is what
+  all of them charging at once could draw.
+- The batteries plan one after another in the owner's priority order
+  (`orderByPriority`, highest priority first), each with its own unchanged
+  dynamic program, economics, taper and export policy. A battery that waits
+  (unreadable, no control) waits alone; the others plan without it.
+- Each period carries what the batteries before it move (`otherStorageKWh`,
+  part of net demand) and its charging room is what they left. A battery may
+  not supply while they charge, or charge while they supply, so no battery
+  feeds another, and a household-only battery's discharge allowance is the
+  house's demand after their supply: it never supplies more than the house
+  uses, so never into a sale planned before it. A seller later in the order
+  may still sell while an earlier household-only battery covers the house.
+- A period a battery holds or supplies may leave import above the limit for
+  the batteries after it, up to their summed discharge (`laterSupplyKW`), at
+  a penalty that ranks routes only: the battery covers what it can first, and
+  its reported costs exclude the penalty. A charge never uses that room. The
+  last battery plans against the limit alone, so a single battery plans
+  exactly as before. The earlier battery leaves only what it cannot cover at
+  all: the penalty makes it charge ahead for an over-limit period when it can.
+  A later battery that cannot cover all it was left (its stored energy ran
+  short, not just its power) plans again with the same allowance, covering
+  what it can; the rest stays on the grid for power-limit control. The first
+  battery alone still waits `horizon_infeasible` as before.
+- A kept sale is decided again when the direction of the earlier batteries in
+  any period changes (`exportEconomicsKey`). Within a direction it keeps its
+  plan while their amounts move, as it does for live device draw; the storage
+  lane bounds each command by measurement.
+- Each seller's sale is bounded by its own Main-meter export ceiling against
+  the house the earlier batteries left, so with different ceilings the last
+  seller's applies.
+
+The order is a heuristic, not a joint optimum: the earlier battery takes the
+first opportunities, and identical batteries do not share work evenly.
+
 ## Execution
 
-Continuous planning is opt-in for one drivable main-home battery. Managed,
+Continuous planning is opt-in for each drivable main-home battery. Managed,
 Power-limit control, membership, observation trust, simulation, manual takeover
 and nonresponse protections still apply. The storage lane retains a continuous
 claim at zero power between charging windows. Disabling the plan releases that

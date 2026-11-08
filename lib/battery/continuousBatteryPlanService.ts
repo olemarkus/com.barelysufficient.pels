@@ -9,18 +9,32 @@ import {
   DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG,
 } from '../../packages/shared-domain/src/settings/continuousBatteryPlan';
 import { getDebugEmitter, getLogger } from '../logging/logger';
-import type { ContinuousBatteryPlanSource } from '../ports/continuousBatteryPlan';
+import type { ContinuousBatteryHorizonRead, ContinuousBatteryPlanSource } from '../ports/continuousBatteryPlan';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { readContinuousBatteryPlanConfigs } from './continuousBatteryPlanSettings';
 import { planBatteryEnergy } from './planning/planBatteryEnergy';
+import { ENERGY_EPSILON_KWH } from './planning/batteryEnergyFlow';
 import { BatteryExportShadow } from './batteryExportShadow';
 import { selectBatteryExportPlan, type BatteryExportSelection } from './batteryExportSelection';
 
 type SettingsRead = { kind: 'resolved'; configs: ContinuousBatteryPlanConfigs } | { kind: 'unavailable' };
-type PlanMemo = { inputs: PlanInputs; atMs: number; validUntilMs: number; read: ContinuousBatteryPlanRead };
 type HouseholdPlan = Extract<BatteryEnergyPlan, { status: 'planned' }>;
 type ExportMemo = { key: string; atMs: number; validUntilMs: number; selection: BatteryExportSelection };
-type ReadyHorizon = Extract<ReturnType<ContinuousBatteryPlanSource['readHorizon']>, { kind: 'ready' }>;
+type HorizonRead = ContinuousBatteryHorizonRead;
+type ReadyHorizon = Extract<HorizonRead, { kind: 'ready' }>;
+type FleetBattery = { deviceId: string; config: ContinuousBatteryPlanConfig; input: ReadyHorizon };
+/** One battery's part of the fleet's inputs: what it planned from, or why it waits. */
+type BatteryInputs = { deviceId: string; inputs: PlanInputs } | { deviceId: string; waiting: string };
+/**
+ * Every enabled battery's read, made together and kept together: a battery
+ * plans on what the ones before it left, so no read outlives the fleet's.
+ */
+type FleetMemo = {
+  inputs: readonly BatteryInputs[];
+  atMs: number;
+  validUntilMs: number;
+  reads: ReadonlyMap<string, ContinuousBatteryPlanRead>;
+};
 const PLAN_MEMO_MAX_AGE_MS = 30_000;
 const emitDebug = getDebugEmitter('battery', 'price');
 
@@ -84,6 +98,7 @@ const planInputs = (input: ReadyHorizon, config: ContinuousBatteryPlanConfig): P
  * every reading, and the storage lane bounds each command by measurement.
  */
 const exportEconomicsKey = (input: ReadyHorizon, policy: BatteryPriceExportPolicy): string => {
+  const direction = (kWh: number): number => (Math.abs(kWh) <= ENERGY_EPSILON_KWH ? 0 : Math.sign(kWh));
   const {
     capacityKWh, minimumEnergyKWh, roundTripEfficiency, wearCostPerKWh, terminalValuePerKWh,
   } = input.horizon.battery;
@@ -92,10 +107,46 @@ const exportEconomicsKey = (input: ReadyHorizon, policy: BatteryPriceExportPolic
     priceUnit: input.priceUnit,
     exportPricing: input.exportPricing,
     battery: { capacityKWh, minimumEnergyKWh, roundTripEfficiency, wearCostPerKWh, terminalValuePerKWh },
+    // Which way the batteries planned before this one move in each period
+    // bounds which way this one may: a sale decided against other directions
+    // is decided again.
     periods: input.horizon.periods.map(period => [
-      period.startsAtMs + period.durationMs, period.importPrice, period.exportPrice,
+      period.startsAtMs + period.durationMs, period.importPrice, period.exportPrice, direction(period.otherStorageKWh),
     ]),
   });
+};
+
+const sameInputs = (made: readonly BatteryInputs[], current: readonly BatteryInputs[]): boolean => (
+  made.length === current.length && made.every((battery, index) => {
+    const now = current[index];
+    if (now === undefined || now.deviceId !== battery.deviceId) return false;
+    if ('waiting' in battery || 'waiting' in now) {
+      return 'waiting' in battery && 'waiting' in now && battery.waiting === now.waiting;
+    }
+    return withinTolerance(battery.inputs, now.inputs);
+  })
+);
+
+/**
+ * A battery's horizon after the batteries planned before it: their energy is
+ * part of its demand and sets each period's direction, their charge takes
+ * from its charging room, and the batteries after it may cover import it
+ * leaves above the limit.
+ */
+const followingHorizon = (
+  input: ReadyHorizon,
+  otherStorageKWh: readonly number[],
+  otherChargeKW: readonly number[],
+  laterSupplyKW: number,
+): ReadyHorizon => {
+  const [first, ...rest] = input.horizon.periods.map((period, index) => ({
+    ...period,
+    otherStorageKWh: otherStorageKWh[index] ?? 0,
+    maxChargeKW: Math.max(0, period.maxChargeKW - (otherChargeKW[index] ?? 0)),
+    laterSupplyKW,
+  }));
+  if (first === undefined) throw new Error('A ready battery horizon has periods');
+  return { ...input, horizon: { ...input.horizon, periods: [first, ...rest] } };
 };
 
 const withinTolerance = (made: PlanInputs, current: PlanInputs): boolean => (
@@ -106,10 +157,14 @@ const withinTolerance = (made: PlanInputs, current: PlanInputs): boolean => (
   })
 );
 
-/** Continuous-plan configuration, economic planning and bounded memo belong to this battery owner. */
+/**
+ * Continuous-plan configuration, economic planning and bounded memo belong to
+ * this battery owner. Every enabled battery plans together, in the owner's
+ * priority order: each on what the batteries before it left.
+ */
 export class ContinuousBatteryPlanService {
   private lastSettings: SettingsRead = { kind: 'unavailable' };
-  private readonly plans = new Map<string, PlanMemo>();
+  private fleet: FleetMemo | undefined;
   private readonly standings = new Map<string, ReadStanding>();
   private readonly exportShadow = new BatteryExportShadow();
   private readonly exportMemos = new Map<string, ExportMemo>();
@@ -125,7 +180,6 @@ export class ContinuousBatteryPlanService {
     const next = this.readSettings();
     if (next.kind === 'resolved') {
       this.lastSettings = next;
-      for (const id of this.plans.keys()) if (!next.configs[id]?.enabled) this.plans.delete(id);
       for (const id of this.exportMemos.keys()) if (!next.configs[id]?.enabled) this.exportMemos.delete(id);
     }
     return this.lastSettings;
@@ -146,7 +200,6 @@ export class ContinuousBatteryPlanService {
     this.logStandingChange(deviceId, read);
     return read;
   }
-
   private logStandingChange(deviceId: string, read: ContinuousBatteryPlanRead): void {
     const next = standingOf(read);
     const previous = this.standings.get(deviceId);
@@ -195,35 +248,98 @@ export class ContinuousBatteryPlanService {
       ? accepted.configs[deviceId]
       : undefined;
     const config = storedConfig ?? DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG;
-    if (!config.enabled) {
-      this.plans.delete(deviceId);
-      return { status: 'disabled', config };
-    }
-    const input = this.source.readHorizon(deviceId, config);
-    if (input.kind === 'waiting') {
-      this.plans.delete(deviceId);
-      return { status: 'waiting', config, reason: input.reason };
-    }
-    // Every consumed input participates: current SoC, partial period, prices and
-    // forecasts must match exactly. Live device draw, task reservations and the
-    // charge room and import limit they leave may move within the tolerance, for
-    // at most the memo's age; storage rules cap each command by live headroom.
-    // One entry per configured device; no accumulated revision history.
-    const inputs = planInputs(input, config);
-    const nowMs = this.source.getNowMs();
-    const previous = this.plans.get(deviceId);
-    if (previous !== undefined && withinTolerance(previous.inputs, inputs) && nowMs >= previous.atMs
-      && nowMs - previous.atMs < PLAN_MEMO_MAX_AGE_MS && nowMs < previous.validUntilMs) return previous.read;
-    const household = planBatteryEnergy(input.horizon);
-    const read: ContinuousBatteryPlanRead = household.status === 'planned'
-      ? this.plannedRead(deviceId, input, config, household, nowMs)
-      : { status: 'waiting', config, reason: 'horizon_infeasible' };
-    this.plans.set(deviceId, {
-      inputs, atMs: nowMs,
-      validUntilMs: input.horizon.periods[0].startsAtMs + input.horizon.periods[0].durationMs,
-      read,
-    });
+    if (!config.enabled) return { status: 'disabled', config };
+    const read = this.fleetReads(accepted.configs).get(deviceId);
+    if (read === undefined) throw new Error('Every enabled battery has a fleet read');
     return read;
+  }
+
+  /**
+   * Every enabled battery's read. Every consumed input participates: current
+   * SoC, partial period, prices and forecasts must match exactly. Live device
+   * draw, task reservations and the charge room and import limit they leave
+   * may move within the tolerance, for at most the memo's age; storage rules
+   * cap each command by live headroom. One fleet entry; no revision history.
+   */
+  private fleetReads(configs: ContinuousBatteryPlanConfigs): ReadonlyMap<string, ContinuousBatteryPlanRead> {
+    const enabledIds = Object.keys(configs).filter(id => configs[id]?.enabled === true);
+    const order = this.source.orderByPriority(enabledIds);
+    const batteries = order.map((deviceId) => {
+      const config = configs[deviceId];
+      if (config === undefined) throw new Error('An ordered battery has a config');
+      return { deviceId, config };
+    });
+    const nowMs = this.source.getNowMs();
+    const horizons = this.source.readHorizons(nowMs, batteries);
+    const inputs: BatteryInputs[] = batteries.map(({ deviceId, config }) => {
+      const horizon = horizons.get(deviceId);
+      if (horizon === undefined) throw new Error('Every enabled battery has a horizon read');
+      return horizon.kind === 'waiting'
+        ? { deviceId, waiting: horizon.reason }
+        : { deviceId, inputs: planInputs(horizon, config) };
+    });
+    const previous = this.fleet;
+    if (previous !== undefined && sameInputs(previous.inputs, inputs) && nowMs >= previous.atMs
+      && nowMs - previous.atMs < PLAN_MEMO_MAX_AGE_MS && nowMs < previous.validUntilMs) return previous.reads;
+    const reads = this.planFleet(batteries, horizons, nowMs);
+    const firstReady = [...horizons.values()].find(horizon => horizon.kind === 'ready');
+    this.fleet = {
+      inputs, atMs: nowMs, reads,
+      validUntilMs: firstReady?.kind === 'ready'
+        ? firstReady.horizon.periods[0].startsAtMs + firstReady.horizon.periods[0].durationMs
+        : nowMs,
+    };
+    return reads;
+  }
+
+  /**
+   * Plan the ready batteries one after another. Each plans with its own
+   * economics against the house the earlier ones left, and the ones after it
+   * may cover import it cannot; the last plans against the limit alone, as a
+   * single battery does. A later battery that cannot cover all the earlier
+   * ones left covers what it can: the rest stays on the grid, where power-limit
+   * control handles it, rather than leaving that battery unplanned.
+   */
+  private planFleet(
+    batteries: readonly { deviceId: string; config: ContinuousBatteryPlanConfig }[],
+    horizons: ReadonlyMap<string, HorizonRead>,
+    nowMs: number,
+  ): ReadonlyMap<string, ContinuousBatteryPlanRead> {
+    const reads = new Map<string, ContinuousBatteryPlanRead>();
+    const ready = batteries.flatMap(({ deviceId, config }): FleetBattery[] => {
+      const horizon = horizons.get(deviceId);
+      if (horizon?.kind === 'ready') return [{ deviceId, config, input: horizon }];
+      if (horizon?.kind === 'waiting') reads.set(deviceId, { status: 'waiting', config, reason: horizon.reason });
+      return [];
+    });
+    const supplyKW = (fleet: readonly FleetBattery[]): number => (
+      fleet.reduce((total, battery) => total + battery.input.horizon.battery.maxDischargeKW, 0)
+    );
+    // The most import any battery may have left above the limit for others.
+    const deferrableKW = supplyKW(ready.slice(1));
+    const periodCount = ready[0]?.input.horizon.periods.length ?? 0;
+    const otherStorageKWh = new Array<number>(periodCount).fill(0);
+    const otherChargeKW = new Array<number>(periodCount).fill(0);
+    ready.forEach(({ deviceId, config, input }, index) => {
+      let following = followingHorizon(input, otherStorageKWh, otherChargeKW, supplyKW(ready.slice(index + 1)));
+      let household = planBatteryEnergy(following.horizon);
+      if (household.status !== 'planned' && index > 0) {
+        following = followingHorizon(input, otherStorageKWh, otherChargeKW, deferrableKW);
+        household = planBatteryEnergy(following.horizon);
+      }
+      if (household.status !== 'planned') {
+        reads.set(deviceId, { status: 'waiting', config, reason: 'horizon_infeasible' });
+        return;
+      }
+      const read = this.plannedRead(deviceId, following, config, household, nowMs);
+      reads.set(deviceId, read);
+      read.plan.periods.forEach((period, periodIndex) => {
+        const energyKWh = period.batteryPowerKW * period.durationMs / 3_600_000;
+        otherStorageKWh[periodIndex] = (otherStorageKWh[periodIndex] ?? 0) + energyKWh;
+        otherChargeKW[periodIndex] = (otherChargeKW[periodIndex] ?? 0) + Math.max(0, period.batteryPowerKW);
+      });
+    });
+    return reads;
   }
 
   /**

@@ -24,6 +24,8 @@ export type ContinuousBatteryHorizonSources = {
   getDevices(): readonly DeviceSurfaces[];
   getControl(): BatteryControlOwner;
   getControllableDevices(): Readonly<Record<string, boolean>>;
+  /** The home's planned devices in the owner's order (`HomeModeCatalog.getPrioritiesForDevices`). */
+  getPrioritiesForDevices(deviceIds: readonly string[]): { getPriority(deviceId: string): number };
   getPriceTimeline(): PriceTimelineRead;
   getPowerLimitSettings(): PowerLimitSettings;
   taskReservations: TaskReservationSource;
@@ -52,16 +54,73 @@ export function createContinuousBatteryPlanSource(
 ): ContinuousBatteryPlanSource {
   return {
     getNowMs: () => sources.getNowMs(),
-    readHorizon: (deviceId, config): ContinuousBatteryHorizonRead => readHorizon(sources, deviceId, config),
+    // The mode catalog's order has unique ranks, so it needs no tiebreak.
+    orderByPriority: (deviceIds) => {
+      const priorities = sources.getPrioritiesForDevices(deviceIds);
+      return [...deviceIds].sort((left, right) => priorities.getPriority(left) - priorities.getPriority(right));
+    },
+    readHorizons: (nowMs, batteries) => readHorizons(sources, nowMs, batteries),
   };
 }
 
-function readHorizon(
+type ReadyBattery = {
+  deviceId: string;
+  config: ContinuousBatteryPlanConfig;
+  control: Extract<ReturnType<BatteryControlOwner['readControl']>, { kind: 'setpoint' }>;
+  levelPercent: number;
+};
+
+/**
+ * Every enabled battery's horizon from one set of reads at one instant, so all
+ * of them share the same periods: the house's demand, solar, prices and limits.
+ * A battery that cannot plan waits on its own; the others still plan.
+ */
+function readHorizons(
   sources: ContinuousBatteryHorizonSources,
+  nowMs: number,
+  batteries: readonly { deviceId: string; config: ContinuousBatteryPlanConfig }[],
+): ReadonlyMap<string, ContinuousBatteryHorizonRead> {
+  const devices = sources.getDevices();
+  const reads = new Map<string, ContinuousBatteryHorizonRead>();
+  const ready = batteries.flatMap(({ deviceId, config }): ReadyBattery[] => {
+    const battery = readBattery(sources, devices, deviceId, config);
+    if (!('kind' in battery)) return [battery];
+    reads.set(deviceId, battery);
+    return [];
+  });
+  if (ready.length === 0) return reads;
+  const prices = sources.getPriceTimeline();
+  if (prices.state !== 'ready') {
+    for (const { deviceId } of ready) reads.set(deviceId, { kind: 'waiting', reason: 'prices_unavailable' });
+    return reads;
+  }
+  // Without a power limit the import ceiling is what every battery charging at
+  // once could draw, so no battery's charge is cut by another's.
+  const fleetChargeKW = ready.reduce((total, battery) => total + battery.control.chargeCeiling.everyLevelW / 1000, 0);
+  const periodRead = buildEnergyPeriods(sources, prices, devices, fleetChargeKW, nowMs);
+  for (const battery of ready) {
+    if (prices.priceUnit.trim().toLowerCase() !== battery.config.priceUnit.trim().toLowerCase()) {
+      reads.set(battery.deviceId, { kind: 'waiting', reason: 'price_unit_changed' });
+    } else if (periodRead.kind === 'waiting') {
+      reads.set(battery.deviceId, periodRead);
+    } else {
+      reads.set(battery.deviceId, {
+        kind: 'ready',
+        horizon: { battery: batteryModel(battery, periodRead.periods), periods: periodRead.periods },
+        priceUnit: prices.priceUnit,
+        exportPricing: periodRead.exportPricing,
+      });
+    }
+  }
+  return reads;
+}
+
+function readBattery(
+  sources: ContinuousBatteryHorizonSources,
+  devices: readonly DeviceSurfaces[],
   deviceId: string,
   config: ContinuousBatteryPlanConfig,
-): ContinuousBatteryHorizonRead {
-  const devices = sources.getDevices();
+): ReadyBattery | WaitingHorizon {
   const device = devices.find(candidate => candidate.id === deviceId);
   const control = sources.getControl().readControl(deviceId);
   if (control.kind !== 'setpoint' || !control.admissible
@@ -71,36 +130,30 @@ function readHorizon(
   if (!device.available || level === undefined || device.batteryPower === undefined) {
     return { kind: 'waiting', reason: 'battery_unavailable' };
   }
-  const prices = sources.getPriceTimeline();
-  if (prices.state !== 'ready') return { kind: 'waiting', reason: 'prices_unavailable' };
-  if (prices.priceUnit.trim().toLowerCase() !== config.priceUnit.trim().toLowerCase()) {
-    return { kind: 'waiting', reason: 'price_unit_changed' };
-  }
-  const { chargeCeiling } = control;
-  const periodRead = buildEnergyPeriods(sources, prices, devices, chargeCeiling.everyLevelW / 1000);
-  if (periodRead.kind === 'waiting') return periodRead;
-  const { periods } = periodRead;
-  const cheapestImport = Math.max(0, Math.min(...periods.map(period => period.importPrice)));
-  const horizon: ContinuousBatteryEnergyHorizon = {
-    battery: {
-      capacityKWh: config.usableCapacityKWh,
-      storedEnergyKWh: config.usableCapacityKWh * level.percent / 100,
-      minimumEnergyKWh: config.usableCapacityKWh * config.minimumReservePercent / 100,
-      maxChargeKW: Math.min(control.range.maxW, chargeCeiling.everyLevelW) / 1000,
-      chargeTaper: chargeCeiling.planningTaper.map(step => ({
-        fromEnergyKWh: config.usableCapacityKWh * step.fromPercent / 100,
-        maxChargeKW: Math.min(control.range.maxW, step.ceilingW) / 1000,
-      })),
-      maxDischargeKW: Math.min(-control.range.minW, control.deliveryCeilingW) / 1000,
-      roundTripEfficiency: config.roundTripEfficiency,
-      wearCostPerKWh: config.wearCostPerKWh,
-      terminalValuePerKWh: Math.max(0, cheapestImport - config.wearCostPerKWh) * Math.sqrt(config.roundTripEfficiency),
-    },
-    periods,
-  };
-  return { kind: 'ready', horizon, priceUnit: prices.priceUnit, exportPricing: periodRead.exportPricing };
+  return { deviceId, config, control, levelPercent: level.percent };
 }
 
+function batteryModel(
+  { config, control, levelPercent }: ReadyBattery,
+  periods: ContinuousBatteryEnergyHorizon['periods'],
+): ContinuousBatteryEnergyHorizon['battery'] {
+  const { chargeCeiling } = control;
+  const cheapestImport = Math.max(0, Math.min(...periods.map(period => period.importPrice)));
+  return {
+    capacityKWh: config.usableCapacityKWh,
+    storedEnergyKWh: config.usableCapacityKWh * levelPercent / 100,
+    minimumEnergyKWh: config.usableCapacityKWh * config.minimumReservePercent / 100,
+    maxChargeKW: Math.min(control.range.maxW, chargeCeiling.everyLevelW) / 1000,
+    chargeTaper: chargeCeiling.planningTaper.map(step => ({
+      fromEnergyKWh: config.usableCapacityKWh * step.fromPercent / 100,
+      maxChargeKW: Math.min(control.range.maxW, step.ceilingW) / 1000,
+    })),
+    maxDischargeKW: Math.min(-control.range.minW, control.deliveryCeilingW) / 1000,
+    roundTripEfficiency: config.roundTripEfficiency,
+    wearCostPerKWh: config.wearCostPerKWh,
+    terminalValuePerKWh: Math.max(0, cheapestImport - config.wearCostPerKWh) * Math.sqrt(config.roundTripEfficiency),
+  };
+}
 
 type PriceSpan = { price: PriceTimelinePeriod; startsAtMs: number; endsAtMs: number };
 type WaitingHorizon = Extract<ContinuousBatteryHorizonRead, { kind: 'waiting' }>;
@@ -171,8 +224,8 @@ function buildEnergyPeriods(
   prices: PriceTimeline,
   devices: readonly DeviceSurfaces[],
   hardwareChargeKW: number,
+  nowMs: number,
 ): PeriodRead {
-  const nowMs = sources.getNowMs();
   const managedDeviceIds = new Set(devices.filter(device => device.managed).map(device => device.id));
   const tasks = sources.taskReservations.read(nowMs, managedDeviceIds);
   const solarScope = resolveBatterySolarScope(sources.solarScope);
@@ -217,7 +270,9 @@ function buildEnergyPeriods(
       solarKWh: hour.solarKWh * fraction,
       gridImportLimitKW: planningCeiling
         ?? hour.backgroundKWh + otherManagedDemandKWh / fraction + hardwareChargeKW,
-      maxChargeKW: Math.max(0, Math.min(hardwareChargeKW, chargeRoomKW)),
+      maxChargeKW: Math.max(0, chargeRoomKW),
+      otherStorageKWh: 0,
+      laterSupplyKW: 0,
     });
   }
   const [firstPeriod, ...remainingPeriods] = periods;

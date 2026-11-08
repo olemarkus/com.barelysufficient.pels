@@ -3,6 +3,7 @@ import { createContinuousBatteryPlanSource, type ContinuousBatteryHorizonSources
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import type { BatteryControlOwner, BatteryLeverRead } from '../../lib/ports/batteryControlOwner';
 import type { ContinuousBatteryPlanConfig } from '../../packages/contracts/src/continuousBatteryPlan';
+import type { ContinuousBatteryHorizonRead } from '../../lib/ports/continuousBatteryPlan';
 import type { DeferredObjectiveActivePlansV2, DeferredObjectiveActivePlanV1, DeferredObjectiveActivePlanRevisionV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveSettingsEntry } from '../../packages/contracts/src/deferredObjectiveSettings';
 import { ObjectiveTaskReservationSource } from '../../lib/objectives/deferredObjectives/taskReservationSource';
@@ -37,6 +38,7 @@ const sources = (overrides: Partial<ContinuousBatteryHorizonSources> & {
   }), partialDouble<DeviceSurfaces>({ id: 'ev', managed: true, isBatteryOrSolar: false })],
   getControl: () => partialDouble<BatteryControlOwner>({ readControl: () => control }),
   getControllableDevices: () => ({}),
+  getPrioritiesForDevices: (deviceIds) => ({ getPriority: (deviceId) => deviceIds.indexOf(deviceId) }),
   getPriceTimeline: () => ({
     state: 'ready', priceUnit: 'EUR/kWh', hasExportPrice: false,
     lines: { average: 0.2, cheapAtOrBelow: 0.1, expensiveFrom: 0.3 },
@@ -69,14 +71,26 @@ const task = (plannedKWh: number, startMs = NOW, endMs = NOW + HOUR_MS): Deferre
   })
 );
 
+/** One battery's horizon, read the way the plan owner reads every enabled battery. */
+const horizonSource = (input: ContinuousBatteryHorizonSources) => {
+  const source = createContinuousBatteryPlanSource(input);
+  return {
+    readHorizon: (deviceId: string, batteryConfig: ContinuousBatteryPlanConfig): ContinuousBatteryHorizonRead => {
+      const read = source.readHorizons(source.getNowMs(), [{ deviceId, config: batteryConfig }]).get(deviceId);
+      if (read === undefined) throw new Error('Expected a horizon read');
+      return read;
+    },
+  };
+};
+
 describe('continuous battery horizon projection', () => {
   it('cannot plan a battery excluded by the main-home membership owner', () => {
-    expect(createContinuousBatteryPlanSource(sources({ getDevices: () => [] })).readHorizon('battery', config))
+    expect(horizonSource(sources({ getDevices: () => [] })).readHorizon('battery', config))
       .toEqual({ kind: 'waiting', reason: 'control_unavailable' });
   });
 
   it('plans a home without solar from resolved absence, without inventing a solar forecast', () => {
-    const result = createContinuousBatteryPlanSource(sources()).readHorizon('battery', config);
+    const result = horizonSource(sources()).readHorizon('battery', config);
     expect(result.kind).toBe('ready');
     if (result.kind !== 'ready') throw new Error('Expected horizon');
     expect(result.horizon.periods[0].solarKWh).toBe(0);
@@ -93,7 +107,7 @@ describe('continuous battery horizon projection', () => {
         planningTaper: [{ fromPercent: 90, ceilingW: 3000 }, { fromPercent: 95, ceilingW: 600 }],
       },
     };
-    const result = createContinuousBatteryPlanSource(sources({
+    const result = horizonSource(sources({
       getControl: () => partialDouble<BatteryControlOwner>({ readControl: () => tapered }),
     })).readHorizon('battery', config);
     if (result.kind !== 'ready') throw new Error('Expected horizon');
@@ -106,7 +120,7 @@ describe('continuous battery horizon projection', () => {
 
   it.each([0, -0.1, 0.1])('recognizes an actual export quote of %s without solar', (exportPrice) => {
     const base = sources();
-    const result = createContinuousBatteryPlanSource(sources({
+    const result = horizonSource(sources({
       getPriceTimeline: () => {
         const timeline = base.getPriceTimeline();
         if (timeline.state !== 'ready') throw new Error('Expected fixture prices');
@@ -119,7 +133,7 @@ describe('continuous battery horizon projection', () => {
   it('requires export quotes throughout the actual contiguous horizon, ignoring expired periods', () => {
     const base = sources();
     let quotePublished = false;
-    const source = createContinuousBatteryPlanSource(sources({
+    const source = horizonSource(sources({
       getNowMs: () => NOW + HOUR_MS / 8,
       getPriceTimeline: () => {
         const timeline = base.getPriceTimeline();
@@ -149,18 +163,18 @@ describe('continuous battery horizon projection', () => {
     const pv = { id: 'pv', deviceClass: 'solarpanel' };
     const foreign = { id: 'foreign-pv', deviceClass: 'solarpanel' };
     const getSolarForecast = () => { throw new Error('A foreign aggregate must not be consumed'); };
-    const withoutMain = createContinuousBatteryPlanSource(sources({
+    const withoutMain = horizonSource(sources({
       solarScope: { mainDevices: () => [], allDevices: () => [foreign] }, getSolarForecast,
     })).readHorizon('battery', config);
     if (withoutMain.kind !== 'ready') throw new Error('Main has no solar');
     expect(withoutMain.horizon.periods[0].solarKWh).toBe(0);
-    expect(createContinuousBatteryPlanSource(sources({
+    expect(horizonSource(sources({
       solarScope: { mainDevices: () => [pv], allDevices: () => [pv, foreign] }, getSolarForecast,
     })).readHorizon('battery', config)).toEqual({ kind: 'waiting', reason: 'solar_scope_shared' });
   });
 
   it('keeps economic EV energy separate from the physical charging reservation', () => {
-    const result = createContinuousBatteryPlanSource(sources({
+    const result = horizonSource(sources({
       getActiveTasks: () => ({ version: 2, plansByDeviceId: { ev: task(0.5) } }),
     })).readHorizon('battery', config);
     if (result.kind !== 'ready') throw new Error('Expected horizon');
@@ -174,7 +188,7 @@ describe('continuous battery horizon projection', () => {
       hours: [{ startsAtMs: NOW + HOUR_MS / 4, endsAtMs: NOW + HOUR_MS / 2,
         plannedKWh: 0.5, plannedAdmissionPowerKw: 7 }],
     }) };
-    const result = createContinuousBatteryPlanSource(sources({
+    const result = horizonSource(sources({
       getActiveTasks: () => ({ version: 2, plansByDeviceId: { ev: scheduled } }),
     })).readHorizon('battery', config);
     if (result.kind !== 'ready') throw new Error('Expected horizon');
@@ -182,32 +196,32 @@ describe('continuous battery horizon projection', () => {
       NOW, NOW + HOUR_MS / 4, NOW + HOUR_MS / 2,
     ]);
     expect(result.horizon.periods.map(period => period.otherManagedDemandKWh)).toEqual([0, 0.5, 0]);
-    expect(result.horizon.periods.map(period => period.maxChargeKW)).toEqual([2.5, 0, 2.5]);
+    expect(result.horizon.periods.map(period => period.maxChargeKW)).toEqual([4.5, 0, 4.5]);
   });
 
   it.each(['unmanaged', 'other_home'])('ignores committed and pending tasks outside the participating roster: %s', (scope) => {
     const original = sources();
     const devices = original.getDevices();
     for (const pending of [false, true]) {
-      const result = createContinuousBatteryPlanSource(sources({
+      const result = horizonSource(sources({
         getDevices: () => scope === 'other_home' ? devices.filter(device => device.id !== 'ev')
           : devices.map(device => device.id === 'ev' ? { ...device, managed: false } : device),
         getActiveTasks: () => ({ version: 2, plansByDeviceId: { ev: { ...task(0.5), pending } } }),
       })).readHorizon('battery', config);
       if (result.kind !== 'ready') throw new Error('An excluded task must not block battery planning');
       expect(result.horizon.periods[0].otherManagedDemandKWh).toBe(0);
-      expect(result.horizon.periods[0].maxChargeKW).toBe(2.5);
+      expect(result.horizon.periods[0].maxChargeKW).toBe(4.5);
     }
   });
 
   it('waits for a participating smart task that has not settled its plan', () => {
-    expect(createContinuousBatteryPlanSource(sources({
+    expect(horizonSource(sources({
       getActiveTasks: () => ({ version: 2, plansByDeviceId: { ev: { ...task(0.5), pending: true } } }),
     })).readHorizon('battery', config)).toEqual({ kind: 'waiting', reason: 'smart_tasks_planning' });
   });
 
   it('splits a fractional-offset price period at UTC forecast boundaries', () => {
-    const result = createContinuousBatteryPlanSource(sources({
+    const result = horizonSource(sources({
       getNowMs: () => NOW + HOUR_MS / 2,
       getPriceTimeline: () => ({
         state: 'ready', priceUnit: 'EUR/kWh', hasExportPrice: false,
@@ -222,16 +236,16 @@ describe('continuous battery horizon projection', () => {
   });
 
   it('does not spread a short EV reservation over the rest of the price period', () => {
-    const result = createContinuousBatteryPlanSource(sources({
+    const result = horizonSource(sources({
       getActiveTasks: () => ({ version: 2, plansByDeviceId: { ev: task(0.5, NOW + HOUR_MS / 4, NOW + HOUR_MS * 3 / 4) } }),
     })).readHorizon('battery', config);
     if (result.kind !== 'ready') throw new Error('Expected horizon');
     expect(result.horizon.periods.map(period => period.otherManagedDemandKWh)).toEqual([0, 0.5, 0]);
-    expect(result.horizon.periods.map(period => period.maxChargeKW)).toEqual([2.5, 0, 2.5]);
+    expect(result.horizon.periods.map(period => period.maxChargeKW)).toEqual([4.5, 0, 4.5]);
   });
 
   it('allows spare forecast solar to charge the battery while a physical EV step occupies grid room', () => {
-    const result = createContinuousBatteryPlanSource(sources({
+    const result = horizonSource(sources({
       solarScope: {
         mainDevices: () => [{ id: 'pv', deviceClass: 'solarpanel' }],
         allDevices: () => [{ id: 'pv', deviceClass: 'solarpanel' }],
@@ -250,7 +264,7 @@ describe('continuous battery horizon projection', () => {
   });
 
   it('plans forecast solar without an export price, valuing its export at 0 and never as a quote', () => {
-    const solarHome = (exportPrice?: number) => createContinuousBatteryPlanSource(sources({
+    const solarHome = (exportPrice?: number) => horizonSource(sources({
       solarScope: {
         mainDevices: () => [{ id: 'pv', deviceClass: 'solarpanel' }],
         allDevices: () => [{ id: 'pv', deviceClass: 'solarpanel' }],
@@ -282,12 +296,12 @@ describe('continuous battery horizon projection', () => {
       allDevices: () => [{ id: 'pv', deviceClass: 'solarpanel' }],
     } }],
   ] as const)('waits for %s instead of treating an unavailable read as zero', (reason, overrides) => {
-    expect(createContinuousBatteryPlanSource(sources(overrides)).readHorizon('battery', config))
+    expect(horizonSource(sources(overrides)).readHorizon('battery', config))
       .toEqual({ kind: 'waiting', reason });
   });
 
   it('requires a review of battery wear when the source price unit changes', () => {
-    expect(createContinuousBatteryPlanSource(sources()).readHorizon('battery', { ...config, priceUnit: 'øre/kWh' }))
+    expect(horizonSource(sources()).readHorizon('battery', { ...config, priceUnit: 'øre/kWh' }))
       .toEqual({ kind: 'waiting', reason: 'price_unit_changed' });
   });
 });

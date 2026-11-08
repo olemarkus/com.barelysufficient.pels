@@ -65,12 +65,9 @@ export function parseContinuousBatteryPlanConfig(value: unknown): ContinuousBatt
 export function parseContinuousBatteryPlanConfigs(value: unknown): ContinuousBatteryPlanConfigs | null {
   if (!isUnknownRecord(value)) return null;
   const result: ContinuousBatteryPlanConfigs = {};
-  let enabledCount = 0;
   for (const [deviceId, raw] of Object.entries(value)) {
     const config = parseContinuousBatteryPlanConfig(raw);
     if (!deviceId || config === null) return null;
-    if (config.enabled) enabledCount += 1;
-    if (enabledCount > 1) return null;
     Object.defineProperty(result, deviceId, { value: config, enumerable: true, configurable: true, writable: true });
   }
   return result;

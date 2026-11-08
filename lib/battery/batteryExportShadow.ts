@@ -13,18 +13,18 @@ const SAMPLE_INTERVAL_MS = 5 * 60_000;
  * gets the real comparison instead), and only the existing plan debug topic
  * enables the extra solve. The assumed net
  * export ceiling is the current battery delivery limit, not owner permission.
- * One battery can be enabled, so only its latest sample time is retained. */
+ * Each battery keeps only its latest sample time. */
 export class BatteryExportShadow {
-  private sampled: { deviceId: string; atMs: number } | undefined;
+  private readonly sampledAtMs = new Map<string, number>();
 
   observe(deviceId: string, input: ReadyHorizon, baseline: HouseholdPlan, nowMs: number): void {
     if (!isDebugTopicEnabled('plan')) {
-      this.sampled = undefined;
+      this.sampledAtMs.clear();
       return;
     }
-    if (this.sampled?.deviceId === deviceId && nowMs >= this.sampled.atMs
-      && nowMs - this.sampled.atMs < SAMPLE_INTERVAL_MS) return;
-    this.sampled = { deviceId, atMs: nowMs };
+    const sampledAtMs = this.sampledAtMs.get(deviceId);
+    if (sampledAtMs !== undefined && nowMs >= sampledAtMs && nowMs - sampledAtMs < SAMPLE_INTERVAL_MS) return;
+    this.sampledAtMs.set(deviceId, nowMs);
     const emit = getDebugEmitter('battery', 'plan');
     const netExportCeilingKW = input.horizon.battery.maxDischargeKW;
     const sample = {

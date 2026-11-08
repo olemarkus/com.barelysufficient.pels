@@ -38,13 +38,19 @@ type Home = {
 
 async function startHome(
   cheapLater = false, initialPercent = 20, solar?: MockDevice, pricesEndAtMs = Number.POSITIVE_INFINITY,
+  batteryIds: readonly string[] = [BATTERY],
 ): Promise<Home> {
-  const battery = buildSetpointBatteryDevice({ id: BATTERY, claimValue: 'anti_feed', stepW: 5 });
-  battery.setActualCapabilityValue('measure_battery', initialPercent);
+  const batteries = batteryIds.map((id) => {
+    const device = buildSetpointBatteryDevice({ id, claimValue: 'anti_feed', stepW: 5 });
+    device.setActualCapabilityValue('measure_battery', initialPercent);
+    return device;
+  });
+  const [battery] = batteries;
+  if (battery === undefined) throw new Error('A home needs a battery');
   const heater = new MockDevice('heater', 'Heater', ['onoff', 'measure_power'], 'socket');
   await heater.setCapabilityValue('onoff', true);
   await heater.setCapabilityValue('measure_power', 1000);
-  setMockDrivers({ home: new MockDriver('home', [battery, heater, ...(solar ? [solar] : [])]) });
+  setMockDrivers({ home: new MockDriver('home', [...batteries, heater, ...(solar ? [solar] : [])]) });
   mockHomeyInstance.settings.set('power_source', 'homey_energy');
   mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
   mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
@@ -54,8 +60,10 @@ async function startHome(
   mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
   mockHomeyInstance.settings.set('managed_devices', { heater: true });
   mockHomeyInstance.settings.set('controllable_devices', { heater: true });
-  mockHomeyInstance.settings.set('capacity_priorities', { Home: { heater: 1, [BATTERY]: 2 } });
-  mockHomeyInstance.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, { [BATTERY]: CONFIG });
+  mockHomeyInstance.settings.set('capacity_priorities', {
+    Home: { heater: 1, ...Object.fromEntries(batteryIds.map((id, index) => [id, index + 2])) },
+  });
+  mockHomeyInstance.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, Object.fromEntries(batteryIds.map(id => [id, CONFIG])));
   const prices: HomeyEnergyApi = {
     fetchDynamicElectricityPrices: async ({ date }) => ({
       interval: 60, priceUnit: 'EUR', pricesPerInterval: Array.from({ length: 24 }, (_, hour) => ({
@@ -69,7 +77,7 @@ async function startHome(
   const originalGet = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
   vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => {
     if (path === 'manager/energy/live') {
-      const batteryW = battery.getActualCapabilityValue('measure_power');
+      const batteryW = batteries.reduce((total, device) => total + Number(device.getActualCapabilityValue('measure_power')), 0);
       const solarW = Number(solar?.getActualCapabilityValue('measure_power') ?? 0);
       return {
         items: [{ type: 'cumulative', id: 'meter-main', values: { W: houseW + Number(batteryW) - solarW } }],
@@ -89,9 +97,10 @@ async function startHome(
       for (let poll = 0; poll < polls; poll += 1) {
         await vi.advanceTimersByTimeAsync(10_000);
         await drainPending();
-        if (battery.getActualCapabilityValue('target_power_mode') === 'homey') {
-          const target = battery.getActualCapabilityValue('target_power');
-          battery.setActualCapabilityValue('measure_power', target);
+        for (const device of batteries) {
+          if (device.getActualCapabilityValue('target_power_mode') === 'homey') {
+            device.setActualCapabilityValue('measure_power', device.getActualCapabilityValue('target_power'));
+          }
         }
         // The real UI refresh route publishes the simulated battery's current
         // report, its own mode included, as the battery's reports would.
@@ -101,9 +110,9 @@ async function startHome(
   };
 }
 
-function setpoints(home: Home): number[] {
+function setpoints(home: Home, deviceId = BATTERY): number[] {
   return home.put.mock.calls.flatMap(([path, body]) => (
-    path === `manager/devices/device/${BATTERY}/capability/target_power`
+    path === `manager/devices/device/${deviceId}/capability/target_power`
       && typeof (body as { value: unknown }).value === 'number'
       ? [(body as { value: number }).value] : []
   ));
@@ -134,6 +143,27 @@ describe('continuous battery plan through the Homey SDK', () => {
     expect(home.battery.getActualCapabilityValue('target_power_mode')).toBe('homey');
     expect(setpoints(home).some(watts => watts > 0)).toBe(true);
     expect(setpoints(home).every(watts => watts <= 2500)).toBe(true);
+  });
+
+  it('plans two batteries together in priority order, sharing the charging room the house leaves', async () => {
+    const SECOND = 'second-battery';
+    const home = await startHome(false, 20, undefined, Number.POSITIVE_INFINITY, [BATTERY, SECOND]);
+    await home.advance(8);
+    const plans = (await api.ui_devices(context())).continuousBatteryPlans;
+    const first = plans[BATTERY];
+    const second = plans[SECOND];
+    if (first?.status !== 'planned' || second?.status !== 'planned') throw new Error('Expected both batteries planned');
+    // The later battery plans against the house the first one left: its grid
+    // import counts both batteries and stays within the 5 kW limit, and in no
+    // period does one battery charge while the other supplies.
+    second.plan.periods.forEach((period, index) => {
+      expect(period.gridImportKWh * HOUR_MS / period.durationMs).toBeLessThanOrEqual(5 + 1e-6);
+      const other = first.plan.periods[index];
+      if (other === undefined) throw new Error('Both plans cover the same periods');
+      expect(other.batteryPowerKW * period.batteryPowerKW).toBeGreaterThanOrEqual(0);
+    });
+    expect(setpoints(home, BATTERY).some(watts => watts > 0)).toBe(true);
+    expect(setpoints(home, SECOND).some(watts => watts > 0)).toBe(true);
   });
 
   it('starts planning from meter samples after the owner enables a previously disabled plan', async () => {

@@ -12,6 +12,7 @@ export function wireContinuousBatteryPlan(
   ctx: InitializedAppContext,
   taskReservations: TaskReservationSource,
   getSolarForecast: ContinuousBatteryHorizonSources['getSolarForecast'],
+  getPrioritiesForDevices: ContinuousBatteryHorizonSources['getPrioritiesForDevices'],
 ): void {
   requireHomeMembership(ctx);
   const source = createContinuousBatteryPlanSource({
@@ -21,6 +22,7 @@ export function wireContinuousBatteryPlan(
     getDevices: () => ctx.homeMembership?.filterDevicesForHome(ctx.getDeviceSurfaces(), MAIN_HOME_ID) ?? [],
     getControl: () => requireBatteryControl(ctx),
     getControllableDevices: () => ctx.deviceControlSettings.controllableDevices,
+    getPrioritiesForDevices,
     getPriceTimeline: () => ctx.priceCoordinator.getPriceTimeline(),
     getPowerLimitSettings: () => ctx.capacitySettings,
     taskReservations,

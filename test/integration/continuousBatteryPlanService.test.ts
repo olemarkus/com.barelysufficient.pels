@@ -1,6 +1,6 @@
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { ContinuousBatteryPlanService } from '../../lib/battery/continuousBatteryPlanService';
-import type { ContinuousBatteryEnergyHorizon, ContinuousBatteryPlanSource } from '../../lib/ports/continuousBatteryPlan';
+import type { ContinuousBatteryEnergyHorizon } from '../../lib/ports/continuousBatteryPlan';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
 import type {
   ContinuousBatteryPlanConfig, ContinuousBatteryPlanRead,
@@ -11,6 +11,7 @@ import {
   parseContinuousBatteryPlanConfig,
   parseContinuousBatteryPlanConfigs,
 } from '../../packages/shared-domain/src/settings/continuousBatteryPlan';
+import { perBatterySource, type PerBatterySourceInput } from '../helpers/batteryPlanSource';
 import { captureDebugTopic, captureLogger } from '../utils/loggerCapture';
 
 const NOW = Date.parse('2026-10-27T00:00:00Z');
@@ -26,10 +27,10 @@ const horizon: ContinuousBatteryEnergyHorizon = {
   periods: [{
     startsAtMs: NOW, durationMs: 3_600_000,
     importPrice: 0.2, exportPrice: 0, householdDemandKWh: 0.5, otherManagedDemandKWh: 0,
-    solarKWh: 0, gridImportLimitKW: 5, maxChargeKW: 2.5,
+    solarKWh: 0, gridImportLimitKW: 5, maxChargeKW: 2.5, otherStorageKWh: 0, laterSupplyKW: 0,
   }],
 };
-const source: ContinuousBatteryPlanSource = {
+const source: PerBatterySourceInput = {
   getNowMs: () => NOW,
   readHorizon: () => ({ kind: 'ready', exportPricing: 'complete', horizon, priceUnit: 'EUR/kWh' }),
 };
@@ -61,10 +62,10 @@ describe('continuous battery plan owner', () => {
       }))],
     };
     const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: config } });
-    const owner = new ContinuousBatteryPlanService(store.settings, {
+    const owner = new ContinuousBatteryPlanService(store.settings, perBatterySource({
       getNowMs: () => NOW,
       readHorizon: () => ({ kind: 'ready', horizon: stress, priceUnit: 'EUR/kWh', exportPricing: 'complete' }),
-    });
+    }));
     const result = owner.read('battery');
     if (result.status !== 'planned') throw new Error('Expected household plan');
     expect(result.plan.periods.every(period => period.gridExportKWh === 0)).toBe(true);
@@ -85,10 +86,10 @@ describe('continuous battery plan owner', () => {
         { ...horizon.periods[0], startsAtMs: NOW + 3_600_000, importPrice: 0.5, exportPrice: 1, householdDemandKWh: 0 },
       ],
     };
-    const owner = new ContinuousBatteryPlanService(store.settings, {
+    const owner = new ContinuousBatteryPlanService(store.settings, perBatterySource({
       getNowMs: () => NOW,
       readHorizon: () => ({ kind: 'ready', horizon: tradingHorizon, priceUnit: 'EUR/kWh', exportPricing: 'complete' }),
-    });
+    }));
     const result = owner.read('battery');
     if (result.status !== 'planned') throw new Error('Expected household plan');
     expect(result.plan.periods.every(period => period.gridExportKWh === 0 && period.batteryPowerKW >= 0)).toBe(true);
@@ -106,7 +107,7 @@ describe('continuous battery plan owner', () => {
   it('does not produce shadow diagnostics with the plan topic off', () => {
     const capture = captureDebugTopic('plan', { enabled: false });
     const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: config } });
-    expect(new ContinuousBatteryPlanService(store.settings, source).read('battery').status).toBe('planned');
+    expect(new ContinuousBatteryPlanService(store.settings, perBatterySource(source)).read('battery').status).toBe('planned');
     expect(capture.events()).toEqual([]);
   });
 
@@ -114,7 +115,7 @@ describe('continuous battery plan owner', () => {
     const capture = captureDebugTopic('plan');
     const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: config } });
     let nowMs = NOW;
-    const owner = new ContinuousBatteryPlanService(store.settings, { ...source, getNowMs: () => nowMs });
+    const owner = new ContinuousBatteryPlanService(store.settings, perBatterySource({ ...source, getNowMs: () => nowMs }));
     owner.read('battery');
     nowMs += 31_000;
     owner.read('battery');
@@ -132,10 +133,10 @@ describe('continuous battery plan owner', () => {
     const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: config } });
     let exportPricing: 'complete' | 'incomplete' = 'incomplete';
     let nowMs = NOW;
-    const owner = new ContinuousBatteryPlanService(store.settings, {
+    const owner = new ContinuousBatteryPlanService(store.settings, perBatterySource({
       getNowMs: () => nowMs,
       readHorizon: () => ({ kind: 'ready', horizon, priceUnit: 'EUR/kWh', exportPricing }),
-    });
+    }));
     const first = owner.read('battery');
     expect(first.status).toBe('planned');
     expect(capture.findEvents('battery_export_shadow_skipped')[0]).toMatchObject({ reason: 'export_prices_incomplete' });
@@ -155,7 +156,7 @@ describe('continuous battery plan owner', () => {
 
   it('reports whether accepted settings enable any plan as settings change', () => {
     const store = settingsStore();
-    const owner = new ContinuousBatteryPlanService(store.settings, source);
+    const owner = new ContinuousBatteryPlanService(store.settings, perBatterySource(source));
     expect(owner.hasEnabledPlan()).toBe(false);
     store.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, { battery: { ...config, enabled: false } });
     expect(owner.hasEnabledPlan()).toBe(false);
@@ -167,25 +168,25 @@ describe('continuous battery plan owner', () => {
 
   it('retains accepted plan enablement through failed reads without enabling a first unreadable plan', () => {
     const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: config } });
-    const owner = new ContinuousBatteryPlanService(store.settings, source);
+    const owner = new ContinuousBatteryPlanService(store.settings, perBatterySource(source));
     expect(owner.hasEnabledPlan()).toBe(true);
     store.loseReads();
     expect(owner.hasEnabledPlan()).toBe(true);
-    const unread = new ContinuousBatteryPlanService(store.settings, source);
+    const unread = new ContinuousBatteryPlanService(store.settings, perBatterySource(source));
     expect(unread.hasEnabledPlan()).toBe(false);
   });
 
   it('defaults to disabled only for a genuinely never-written setting', () => {
     const store = settingsStore();
-    const owner = new ContinuousBatteryPlanService(store.settings, source);
+    const owner = new ContinuousBatteryPlanService(store.settings, perBatterySource(source));
     expect(owner.read('battery')).toEqual({ status: 'disabled', config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG });
     store.loseReads();
-    const unread = new ContinuousBatteryPlanService(store.settings, source);
+    const unread = new ContinuousBatteryPlanService(store.settings, perBatterySource(source));
     expect(unread.read('battery')).toMatchObject({ status: 'waiting', reason: 'settings_unavailable' });
   });
 
   it('never resolves inherited map keys as configured batteries', () => {
-    const owner = new ContinuousBatteryPlanService(settingsStore().settings, source);
+    const owner = new ContinuousBatteryPlanService(settingsStore().settings, perBatterySource(source));
     for (const id of ['constructor', 'toString', '__proto__']) {
       expect(owner.read(id)).toEqual({ status: 'disabled', config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG });
     }
@@ -193,7 +194,7 @@ describe('continuous battery plan owner', () => {
 
   it('retains the last accepted configuration through a transient settings read failure', () => {
     const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: config } });
-    const owner = new ContinuousBatteryPlanService(store.settings, source);
+    const owner = new ContinuousBatteryPlanService(store.settings, perBatterySource(source));
     const plan = owner.read('battery');
     expect(plan.status).toBe('planned');
     store.loseReads();
@@ -201,13 +202,14 @@ describe('continuous battery plan owner', () => {
     expect(store.values.get(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY)).toEqual({ battery: config });
   });
 
-  it('accepts settings-channel updates and retains the last complete single-battery map', () => {
+  it('accepts settings-channel updates, including a second enabled battery', () => {
     const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: config } });
-    const owner = new ContinuousBatteryPlanService(store.settings, source);
-    const accepted = owner.read('battery');
-    store.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, { battery: config, other: config });
-    expect(owner.read('battery')).toBe(accepted);
+    const owner = new ContinuousBatteryPlanService(store.settings, perBatterySource(source));
+    expect(owner.read('battery').status).toBe('planned');
     expect(owner.read('other').status).toBe('disabled');
+    store.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, { battery: config, other: config });
+    expect(owner.read('battery').status).toBe('planned');
+    expect(owner.read('other').status).toBe('planned');
     store.settings.set(CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY, { battery: { ...config, enabled: false } });
     expect(owner.read('battery').status).toBe('disabled');
   });
@@ -215,12 +217,12 @@ describe('continuous battery plan owner', () => {
   it('stops returning an executable plan when its input becomes unavailable', () => {
     const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: config } });
     let available = true;
-    const owner = new ContinuousBatteryPlanService(store.settings, {
+    const owner = new ContinuousBatteryPlanService(store.settings, perBatterySource({
       getNowMs: () => NOW,
       readHorizon: () => available
         ? { kind: 'ready', exportPricing: 'complete', horizon, priceUnit: 'EUR/kWh' }
         : { kind: 'waiting', reason: 'forecast_unavailable' },
-    });
+    }));
     expect(owner.read('battery').status).toBe('planned');
     available = false;
     expect(owner.read('battery')).toEqual({ status: 'waiting', config, reason: 'forecast_unavailable' });
@@ -231,7 +233,7 @@ describe('continuous battery plan owner', () => {
     let nowMs = NOW;
     let managedKWh = 0;
     let readings = 0;
-    const owner = new ContinuousBatteryPlanService(store.settings, {
+    const owner = new ContinuousBatteryPlanService(store.settings, perBatterySource({
       getNowMs: () => nowMs,
       readHorizon: () => {
         readings += 1;
@@ -243,7 +245,7 @@ describe('continuous battery plan owner', () => {
           maxChargeKW: 2.5 - managedKWh,
         }] } };
       },
-    });
+    }));
     const first = owner.read('battery');
     expect(first.status).toBe('planned');
     for (const [stepMs, drawKW] of [[5_000, 0.1], [10_000, 0.05], [15_000, 0.2]] as const) {
@@ -294,9 +296,9 @@ describe('selling stored energy', () => {
       { ...horizon.periods[0], startsAtMs: NOW + 3_600_000, importPrice: 0.5, exportPrice: 1, householdDemandKWh: 0 },
     ],
   };
-  const ownerFor = (stored: ContinuousBatteryPlanConfig, readHorizon: ContinuousBatteryPlanSource['readHorizon']) => {
+  const ownerFor = (stored: ContinuousBatteryPlanConfig, readHorizon: PerBatterySourceInput['readHorizon']) => {
     const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: stored } });
-    return { store, owner: new ContinuousBatteryPlanService(store.settings, { getNowMs: () => NOW, readHorizon }) };
+    return { store, owner: new ContinuousBatteryPlanService(store.settings, perBatterySource({ getNowMs: () => NOW, readHorizon })) };
   };
   /** The export decision of a planned read under a price-export policy. */
   const decisionOf = (read: ContinuousBatteryPlanRead) => {
@@ -356,10 +358,10 @@ describe('selling stored energy', () => {
       let nowMs = NOW;
       let current = initial;
       const store = settingsStore({ [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY]: { battery: selling } });
-      const owner = new ContinuousBatteryPlanService(store.settings, {
+      const owner = new ContinuousBatteryPlanService(store.settings, perBatterySource({
         getNowMs: () => nowMs,
         readHorizon: () => ({ kind: 'ready', horizon: current, priceUnit: 'EUR/kWh', exportPricing: 'complete' }),
-      });
+      }));
       const planned = () => {
         const read = owner.read('battery');
         if (read.status !== 'planned') throw new Error('Expected a plan');

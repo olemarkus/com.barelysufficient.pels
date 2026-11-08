@@ -49,7 +49,12 @@ export const startPostStartupBackgroundTasks = (
   // The collector factory constructs one live selector for all forecast consumers.
   const { getSelectedPvForecast } = collectors;
   wireBudgetPrice(ctx, (ms) => getSelectedPvForecast().forecast([ms])[0]?.generationKwh);
-  wireContinuousBatteryPlan(ctx, createTaskReservationSource(ctx, taskEvaluationSource), getSelectedPvForecast);
+  wireContinuousBatteryPlan(
+    ctx,
+    createTaskReservationSource(ctx, taskEvaluationSource),
+    getSelectedPvForecast,
+    taskEvaluationSource.getPrioritiesForDevices,
+  );
   // Provenance for the settings UI's Solar forecast section — read from the
   // live selector so the UI can never disagree with what planning consumes.
   // Both availability flags ask the producer whether it can answer for the

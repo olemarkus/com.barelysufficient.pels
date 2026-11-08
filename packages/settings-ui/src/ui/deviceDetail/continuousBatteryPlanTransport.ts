@@ -72,6 +72,19 @@ export async function loadContinuousBatteryPlan(deviceId: string): Promise<Conti
   throw new Error('Invalid battery plan response.');
 }
 
+/**
+ * How many other batteries have the plan on, from the same device read. It
+ * only adds an explanation, so an unreadable roster counts none.
+ */
+export async function countOtherEnabledBatteryPlans(deviceId: string): Promise<number> {
+  const payload = asUnknownRecord(await getApiReadModel<unknown>(SETTINGS_UI_DEVICES_PATH));
+  const plans = asUnknownRecord(payload?.continuousBatteryPlans);
+  if (plans === null) return 0;
+  return Object.entries(plans).filter(([id, entry]) => (
+    id !== deviceId && parseContinuousBatteryPlanConfig(asUnknownRecord(entry)?.config)?.enabled === true
+  )).length;
+}
+
 const isCycleCount = (value: unknown): value is number => (
   typeof value === 'number' && Number.isInteger(value) && value >= 0
 );
@@ -146,7 +159,7 @@ export async function saveContinuousBatteryPlanConfig(
   if (!deviceId || config === null) throw new Error('Enter valid battery settings before saving.');
   const current = await loadSavedContinuousBatteryPlanConfigs();
   const next = parseContinuousBatteryPlanConfigs({ ...current, [deviceId]: config });
-  if (next === null) throw new Error('Turn off the other battery plan before enabling this battery.');
+  if (next === null) throw new Error('Enter valid battery settings before saving.');
   if (config.enabled) {
     const priceUnit = await loadBatteryPlanPriceUnit();
     if (priceUnit.trim().toLowerCase() !== config.priceUnit.trim().toLowerCase()) {

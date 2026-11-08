@@ -144,6 +144,7 @@ describe('objective-owned battery task reservations', () => {
         claimEngaged: false, claimHeld: false, handBackDeferred: false, verdict: 'responding', keepAliveFor: () => ({ kind: 'none' }),
       }) }),
       getControllableDevices: () => ({}), getPowerLimitSettings: () => limits,
+      getPrioritiesForDevices: () => ({ getPriority: () => 1 }),
       taskReservations: source(), solarScope: { mainDevices: () => [], allDevices: () => [] },
       getBackgroundKWh: () => 0.5, getSolarForecast: () => ({ forecast: () => [] }),
       getPriceTimeline: () => ({
@@ -151,11 +152,11 @@ describe('objective-owned battery task reservations', () => {
         lines: { average: 0.2, cheapAtOrBelow: 0.1, expensiveFrom: 0.3 },
         periods: [NOW, START].map(start => ({ startsAt: new Date(start).toISOString(), durationMinutes: 60, importPrice: 0.2, level: 'normal' })),
       }),
-    }).readHorizon('battery', {
+    }).readHorizons(NOW, [{ deviceId: 'battery', config: {
       enabled: true, usableCapacityKWh: 10, minimumReservePercent: 20, roundTripEfficiency: 0.9,
       wearCostPerKWh: 0.03, priceUnit: 'EUR/kWh', exportPolicy: { kind: 'household_only' },
-    });
-    if (horizon.kind !== 'ready') throw new Error('Expected horizon');
+    } }]).get('battery');
+    if (horizon?.kind !== 'ready') throw new Error('Expected horizon');
     const future = horizon.horizon.periods.filter(period => period.startsAtMs >= START);
     expect(future.map(period => period.maxChargeKW)).toEqual([1.5, 4.5]);
     expect(future.reduce((total, period) => total + period.otherManagedDemandKWh, 0)).toBeCloseTo(0.56);

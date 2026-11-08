@@ -16,7 +16,8 @@ import { createSerializedAsyncRunner } from './settingsWrite.ts';
 import { resolveBatteryManagedHint } from './batterySection.ts';
 import { ContinuousBatteryPlanLoading, ContinuousBatteryPlanView } from '../views/ContinuousBatteryPlan.tsx';
 import {
-  loadBatteryEfficiencyMeasurement, loadContinuousBatteryPlan, saveContinuousBatteryPlanConfig,
+  countOtherEnabledBatteryPlans, loadBatteryEfficiencyMeasurement, loadContinuousBatteryPlan,
+  saveContinuousBatteryPlanConfig,
 } from './continuousBatteryPlanTransport.ts';
 
 type BatteryPlanSession = {
@@ -25,6 +26,8 @@ type BatteryPlanSession = {
   blockedReason: string;
   read: ContinuousBatteryPlanRead | null;
   efficiency: BatteryEfficiencyMeasurement;
+  /** Other batteries with the plan on: they plan together, in priority order. */
+  otherEnabledPlans: number;
   /** The saved settings the form edits: the read's config, or a config just saved. */
   config: ContinuousBatteryPlanConfig | null;
   priceUnit: string;
@@ -54,7 +57,7 @@ function display(current: BatteryPlanSession): void {
     render(<ContinuousBatteryPlanLoading failed={current.error !== ''} onRetry={() => refresh(current)} />, mount);
     return;
   }
-  render(<ContinuousBatteryPlanView key={current.deviceId} read={current.read} efficiency={current.efficiency} config={current.config} priceUnit={current.priceUnit}
+  render(<ContinuousBatteryPlanView key={current.deviceId} read={current.read} efficiency={current.efficiency} otherEnabledPlans={current.otherEnabledPlans} config={current.config} priceUnit={current.priceUnit}
     timeZone={getHomeyTimezone()} blockedReason={current.blockedReason} busy={current.busy}
     error={current.error} previewAvailable={current.previewAvailable}
     onSave={config => save(current, config)} onRefresh={() => refresh(current)} />, mount);
@@ -69,14 +72,16 @@ async function load(current: BatteryPlanSession): Promise<void> {
   const generation = ++current.generation;
   current.loading = true;
   try {
-    const [read, efficiency, prices] = await Promise.all([
+    const [read, efficiency, otherEnabledPlans, prices] = await Promise.all([
       loadContinuousBatteryPlan(current.deviceId),
       loadBatteryEfficiencyMeasurement(current.deviceId).catch((): BatteryEfficiencyMeasurement => ({ status: 'unavailable' })),
+      countOtherEnabledBatteryPlans(current.deviceId).catch(() => 0),
       getPricesReadModel().catch(() => null),
     ]);
     if (session !== current || generation !== current.generation) return;
     current.read = read;
     current.efficiency = efficiency;
+    current.otherEnabledPlans = otherEnabledPlans;
     current.config = read.config;
     current.previewAvailable = true;
     const combined = prices?.combinedPrices;
@@ -157,7 +162,7 @@ export function setContinuousBatteryPlanDevice(device: SettingsUiDeviceDetailIte
     display(session);
     return;
   }
-  session = { deviceId: device.id, drivable: device.batteryControl === 'drivable', blockedReason, read: null, efficiency: { status: 'unavailable' }, config: null, priceUnit: 'price units', busy: false,
+  session = { deviceId: device.id, drivable: device.batteryControl === 'drivable', blockedReason, read: null, efficiency: { status: 'unavailable' }, otherEnabledPlans: 0, config: null, priceUnit: 'price units', busy: false,
     error: '', loading: false, previewAvailable: true, generation: 0 };
   display(session);
   void load(session);
