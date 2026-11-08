@@ -148,7 +148,9 @@ describe('Choose what PELS does', () => {
       manageBattery(state);
       const plans = await import('../src/ui/setupBatteryPlan.ts');
       await plans.loadSetupBatteryPlans();
-      expect(batteryGoal(goals)).toEqual({ state: 'ready', enabled: false, capacityKWh: null, simulating: state.dryRun });
+      expect(batteryGoal(goals)).toEqual({
+        state: 'ready', enabled: false, capacityKWh: null, simulating: state.dryRun, othersPlanned: false,
+      });
     });
 
     it('fills in the capacity the owner saved, and whether the plan is on', async () => {
@@ -160,8 +162,21 @@ describe('Choose what PELS does', () => {
       manageBattery(state);
       const plans = await import('../src/ui/setupBatteryPlan.ts');
       await plans.loadSetupBatteryPlans();
-      expect(batteryGoal(goals)).toMatchObject({ state: 'ready', enabled: true, capacityKWh: 5.12 });
+      expect(batteryGoal(goals)).toMatchObject({ state: 'ready', enabled: true, capacityKWh: 5.12, othersPlanned: false });
       expect(plans.isSetupBatteryPlanOn('battery')).toBe(true);
+      expect(plans.countSetupBatteryPlansOn()).toBe(1);
+    });
+
+    it('says when another battery also plans', async () => {
+      const { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } = await import('../../shared-domain/src/settings/continuousBatteryPlan.ts');
+      const on = { ...DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, enabled: true, usableCapacityKWh: 5, priceUnit: 'EUR/kWh' };
+      savedPlans.mockResolvedValue({ battery: on, other: on });
+      const { goals, state } = await load();
+      manageBattery(state);
+      const plans = await import('../src/ui/setupBatteryPlan.ts');
+      await plans.loadSetupBatteryPlans();
+      expect(batteryGoal(goals)).toMatchObject({ state: 'ready', enabled: true, othersPlanned: true });
+      expect(plans.countSetupBatteryPlansOn()).toBe(2);
     });
 
     it('publishes a loaded battery plan into the required Prices step', async () => {

@@ -317,7 +317,9 @@ export class ContinuousBatteryPlanService {
     );
     // The most import any battery may have left above the limit for others.
     const deferrableKW = supplyKW(ready.slice(1));
-    const ceilings = ready.flatMap(({ config }) => (
+    // Every battery allowed to sell counts, ready or not: the limit is the
+    // Main meter's, and one battery waiting does not loosen it.
+    const ceilings = batteries.flatMap(({ config }) => (
       config.exportPolicy.kind === 'price_export' ? [config.exportPolicy.netExportCeilingKW] : []
     ));
     const exportTerms = new FleetExportTerms(ceilings.length === 0 ? 0 : Math.min(...ceilings));
@@ -399,6 +401,12 @@ export class ContinuousBatteryPlanService {
         : { plan: household, decision: kept.selection.decision };
     }
     const selection = selectBatteryExportPlan(input, household, exportTerms);
+    // A wait for the shared work bound depends on what the other batteries
+    // spent this plan: it is decided again next plan, not kept.
+    if (selection.decision.kind === 'waiting' && selection.decision.reason === 'evaluation_budget_exceeded') {
+      this.exportMemos.delete(deviceId);
+      return selection;
+    }
     const first = input.horizon.periods[0];
     this.exportMemos.set(deviceId, { key, atMs: nowMs, validUntilMs: first.startsAtMs + first.durationMs, selection });
     return selection;

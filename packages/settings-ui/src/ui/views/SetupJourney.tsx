@@ -4,6 +4,7 @@ import type { SolarSetupAction } from '../setupDevices.ts';
 import { useState } from 'preact/hooks';
 import type { SetupGoalChoices } from '../setupGoals.ts';
 import type { SetupBatteryGoal } from '../setupBatteryPlan.ts';
+import { BATTERY_PLAN_ORDER_LINE } from './ContinuousBatteryPlan.tsx';
 import { AppBar } from './AppBar.tsx';
 import {
   MdFilledButton, MdFilledTextField, MdFilledTonalButton, MdTextButton, MdSwitch, readSwitchSelected,
@@ -137,6 +138,7 @@ const BatteryGoal = ({ id, name, goal, busy, onBatteryPlan, onOpen }: BatteryGoa
         supporting-text="From your battery’s specification. PELS needs it to plan."
         onInput={(event: Event) => setDraft((event.currentTarget as HTMLInputElement).value)} />
     )}
+    {goal.enabled && goal.othersPlanned && <p class="pels-card-supporting">{BATTERY_PLAN_ORDER_LINE}</p>}
     {goal.enabled && goal.capacityKWh !== null && (
       <p class="pels-card-supporting">
         {`Planned for ${formatCapacity(goal.capacityKWh)} usable capacity.`}

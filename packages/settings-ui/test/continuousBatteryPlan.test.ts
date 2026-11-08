@@ -43,7 +43,7 @@ vi.mock('../src/ui/toast.ts', () => ({ formatSettingsError: (error: unknown) => 
 
 const { setContinuousBatteryPlanDevice, initContinuousBatteryPlanRefresh } = await import('../src/ui/deviceDetail/continuousBatteryPlan.tsx');
 const {
-  BATTERY_PLAN_ORDER_LINE, batteryPlanWindows, batteryPlanTimeLabel, readBatteryPlanDraft,
+  BATTERY_PLAN_ORDER_LINE, batteryPlanSharedLimitLine, batteryPlanWindows, batteryPlanTimeLabel, readBatteryPlanDraft,
 } = await import('../src/ui/views/ContinuousBatteryPlan.tsx');
 
 const config = {
@@ -349,4 +349,12 @@ test('shows no selling line while selling is off', async () => {
   expect(preview).not.toContain('Selling');
   expect(preview).not.toContain('No export price is set');
   expect(preview).toContain('Charge from grid');
+});
+
+test('names a stricter export limit another battery set, and nothing otherwise', () => {
+  const selling = { ...config, exportPolicy: { kind: 'price_export' as const, netExportCeilingKW: 5 } };
+  expect(batteryPlanSharedLimitLine({ kind: 'selling', estimatedSavings: 1, netExportCeilingKW: 2 }, selling))
+    .toBe('Selling stays within 2 kW at your meter, the lowest export limit set on your batteries.');
+  expect(batteryPlanSharedLimitLine({ kind: 'selling', estimatedSavings: 1, netExportCeilingKW: 5 }, selling)).toBeNull();
+  expect(batteryPlanSharedLimitLine({ kind: 'kept_household' }, selling)).toBeNull();
 });
