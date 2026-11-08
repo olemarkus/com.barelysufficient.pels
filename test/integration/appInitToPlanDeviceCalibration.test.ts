@@ -3,7 +3,7 @@ import { withDeviceConfiguration } from '../utils/planTestUtils';
  * Coverage for `toPlanDevice`'s calibration-view enrichment.
  *
  * `confirmedNotDrawing` is two-state by contract, and `true` is the narrow arm.
- * It requires POSITIVE evidence — a fresh meter reading below the active floor,
+ * It requires POSITIVE evidence — a dated meter reading below the active floor,
  * on a device PELS is not itself holding off — because sample ACCEPTANCE is EMA
  * hygiene, not an answer to "is it drawing". A charger parked on a high rung
  * while a PHEV pulls 1-2 kW records no samples at all, and reading that silence
@@ -64,7 +64,7 @@ const buildSnapshotWithMediumEntry = (): PowerCalibrationSnapshot => {
   return snapshot;
 };
 
-// The idle-at-setpoint baseline: observed ON, meter fresh, and reading zero.
+// The idle-at-setpoint baseline: observed ON, meter dated, and reading zero.
 // Those three are what `true` now REQUIRES — the verdict is positive evidence of
 // idleness, never inferred from an absent sample — so every scenario below
 // varies exactly one of them or the calibration store.
@@ -214,65 +214,38 @@ describe('toPlanDevice — confirmedNotDrawing', () => {
     expect(result.confirmedNotDrawing).toBe(false);
   });
 
-  it('is false when the meter reading is stale, and when there is none at all', () => {
-    // Absence of a METER is not zero draw either: `getCurrentDrawKw` resolves an
-    // unreadable meter to 0, so a vendor-cloud gap would otherwise testify to
-    // idleness on a device pulling full power. Staleness is judged on the
-    // reading's OWN timestamp — device-wide `lastFreshDataMs` is a max across
-    // capabilities, so a live thermometer would mask a silent power meter.
+  it('is true for a zero reading dated when the draw stopped, and false with no meter at all', () => {
+    // Homey re-dates a capability only when its value changes, so a device idle
+    // at its setpoint keeps the 0 W reading from when it stopped drawing. Its
+    // age is not evidence; it stands until a newer reading replaces it.
     let snapshot = createEmptyPowerCalibrationSnapshot();
-    const staleBase = FIXED_NOW - 30 * 60_000;
+    const drawBase = FIXED_NOW - 30 * 60_000;
     for (let i = 0; i < 6; i += 1) {
       const outcome = recordSample(snapshot, {
         deviceId: 'hoiax-1',
         stepId: 'medium',
         measuredPowerKw: 1.6,
         nameplateKw: 1.75,
-        nowMs: staleBase + i * 70_000,
+        nowMs: drawBase + i * 70_000,
       });
       if (outcome.accepted) snapshot = outcome.snapshot;
     }
     const ctx = ctxWithSnapshot(snapshot);
-    const stale = toPlanDevice(ctx, withDeviceConfiguration(buildDeviceSnapshot({
+    const quiet = toPlanDevice(ctx, withDeviceConfiguration(buildDeviceSnapshot({
       reportedStepId: 'medium',
       selectedStepId: 'medium',
-      measuredPowerObservedAtMs: FIXED_NOW - 5 * 60_000,
+      lastFreshDataMs: FIXED_NOW,
+      measuredPowerObservedAtMs: drawBase + 6 * 70_000,
     })));
-    expect(stale.confirmedNotDrawing).toBe(false);
+    expect(quiet.confirmedNotDrawing).toBe(true);
+    // Absence of a METER is not zero draw: `getCurrentDrawKw` resolves an
+    // unreadable meter to 0, so a device without one never testifies to idleness.
     const unmetered = toPlanDevice(ctx, withDeviceConfiguration(buildDeviceSnapshot({
       reportedStepId: 'medium',
       selectedStepId: 'medium',
       measuredPowerKw: undefined,
     })));
     expect(unmetered.confirmedNotDrawing).toBe(false);
-  });
-
-  it('is false when only the power meter went silent, however fresh the device is', () => {
-    // Device-wide `lastFreshDataMs` is a max across capabilities, so a device
-    // whose thermometer keeps reporting looks current while its power meter has
-    // stopped. Judging freshness on that clock would let a stale cached zero
-    // stand in for an unknown draw and cancel a configured or forced boost.
-    let snapshot = createEmptyPowerCalibrationSnapshot();
-    const staleBase = FIXED_NOW - 30 * 60_000;
-    for (let i = 0; i < 6; i += 1) {
-      const outcome = recordSample(snapshot, {
-        deviceId: 'hoiax-1',
-        stepId: 'medium',
-        measuredPowerKw: 1.6,
-        nameplateKw: 1.75,
-        nowMs: staleBase + i * 70_000,
-      });
-      if (outcome.accepted) snapshot = outcome.snapshot;
-    }
-    const ctx = ctxWithSnapshot(snapshot);
-    const result = toPlanDevice(ctx, withDeviceConfiguration(buildDeviceSnapshot({
-      reportedStepId: 'medium',
-      selectedStepId: 'medium',
-      // Fresh device, stale reading — the whole point.
-      lastFreshDataMs: FIXED_NOW,
-      measuredPowerObservedAtMs: FIXED_NOW - 5 * 60_000,
-    })));
-    expect(result.confirmedNotDrawing).toBe(false);
   });
 
   it('is false for a device PELS is holding off, whatever rung it still announces', () => {

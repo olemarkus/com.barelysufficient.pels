@@ -15,10 +15,6 @@ import type { ToPlanDeviceInput } from './planInputDeviceTypes';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 
 const BOOST_RECENT_DRAW_WINDOW_MS = 10 * 60 * 1000;
-// One minute, matching the calibration store's own `DEFAULT_FRESHNESS_WINDOW_MS`
-// staleness gate: a reading the sample recorder would refuse as stale is not
-// evidence here either.
-const MEASURED_DRAW_FRESHNESS_WINDOW_MS = 60 * 1000;
 
 export function buildStepPowerCalibrationView(
   snapshot: PowerCalibrationSnapshot,
@@ -80,7 +76,7 @@ function buildEvChargerCalibrationView(
  * `true` requires POSITIVE evidence of idleness, and is reserved for the
  * idle-at-setpoint device: a Hoiax holding at its element setpoint, a thermostat
  * in a room already at target, a charger whose car has stopped accepting charge.
- * Four things must all hold — a fresh meter reading below the active floor, a
+ * Four things must all hold — a dated meter reading below the active floor, a
  * device PELS is not itself holding off, no in-band draw at any step inside the
  * window, and a confidence-qualified reported step.
  *
@@ -99,39 +95,30 @@ function buildEvChargerCalibrationView(
  * declines to answer when there is none.
  *
  * Everything else is `false`, including every shape of "no opinion": no reported
- * step yet, no fresh reading, or warm-up samples below the confidence threshold.
+ * step yet, no dated reading, or warm-up samples below the confidence threshold.
  * There is no third state to represent. The consumer (`resolveBoostActive`)
  * releases a boost on `true`, so folding "no opinion" into the idle arm would
  * silently switch boost off for every newly-paired device.
  */
 /**
- * The device's own live testimony: a meter reading that is present, fresh, and
- * below the active floor. This is the POSITIVE half of the verdict — it is what
- * separates "measurably drawing nothing" from "we have not heard anything".
+ * The device's own testimony: a dated meter reading below the active floor.
+ * This is the POSITIVE half of the verdict — it is what separates "measurably
+ * drawing nothing" from "we have not heard anything".
  *
- * A reading is only evidence while it is fresh; without the freshness gate a
- * silent or unreadable meter keeps answering with whatever it last said. And
  * `null` is declined rather than read as zero, because `getCurrentDrawKw`
  * resolves an unreadable meter to `0` and a device with no meter would otherwise
  * testify to its own idleness.
  *
- * Freshness is judged on `measuredPowerObservedAtMs` — the timestamp that
- * travels with the READING — and never on device-wide `lastFreshDataMs`, which
- * is a max across every capability. A device whose power meter has gone silent
- * while its thermometer keeps reporting has a fresh `lastFreshDataMs` and a
- * stale cached `measuredPowerKw`, which is precisely the shape that would let an
- * unknown draw pass as zero and cancel a configured or forced boost.
+ * The reading's age is not evidence. Homey re-dates a capability only when its
+ * value changes, so a device idle at its setpoint keeps the 0 W reading dated
+ * when it stopped drawing; it stays accepted until a newer reading replaces it
+ * (`lib/observer/AGENTS.md`).
  */
-const isMeasurablyIdle = (
-  device: MeasuredPowerObservedProbe,
-  nowMs: number,
-): boolean => {
+const isMeasurablyIdle = (device: MeasuredPowerObservedProbe): boolean => {
   const measuredKw = normalizeMeasuredPowerKw(device.measuredPowerKw);
   if (measuredKw === null) return false;
   if (measuredKw >= MIN_ACTIVE_MEASURED_POWER_KW) return false;
-  const observedAtMs = device.measuredPowerObservedAtMs;
-  if (!isFiniteNumber(observedAtMs)) return false;
-  return (nowMs - observedAtMs) <= MEASURED_DRAW_FRESHNESS_WINDOW_MS;
+  return isFiniteNumber(device.measuredPowerObservedAtMs);
 };
 
 /**
@@ -195,7 +182,7 @@ export function resolveConfirmedNotDrawing(
   // never have visited, releasing boost during the warm-up window.
   const stepId = device.reportedStepId;
   if (typeof stepId !== 'string' || stepId.length === 0) return false;
-  if (!isMeasurablyIdle(device, nowMs)) return false;
+  if (!isMeasurablyIdle(device)) return false;
   const steps = device.steppedLoadProfile?.steps ?? [];
   // No ladder, no recency scan — and therefore no verdict. Without this the
   // confidence check below would be the whole answer, which contradicts this
