@@ -1,4 +1,5 @@
 import { loadEvCarCurrentLimits, loadEvChargerCurrentLimits } from './deviceDetail/chargingCurrentLimits.tsx';
+import { bindMainFuseControls } from './mainFuseControls.ts';
 import { initSetupJourney, openSetupReview } from './setupJourney.ts';
 import { setupJourneyFromSearch } from './setupJourneyState.ts';
 import { showUsageDayToday } from './usageDayView.ts';
@@ -274,6 +275,7 @@ const initPowerLimitSwitchHandlers = (autoSaveSettingsLimits: () => Promise<void
     void autoSaveSettingsLimits();
   });
   settingsGridImportLimitInput?.addEventListener('input', refreshPowerLimitControls);
+  bindMainFuseControls();
   settingsGridImportLimitInput?.addEventListener('change', () => autoSaveSettingsLimits());
   settingsCapacityEnabledInput?.addEventListener('change', () => {
     refreshPowerLimitControls();

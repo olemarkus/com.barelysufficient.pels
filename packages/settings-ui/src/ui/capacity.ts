@@ -12,6 +12,7 @@ export {
   refreshPowerLimitControls,
 } from './powerLimitControls.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
+import { readMainFuseForm, syncMainFuseControls } from './mainFuseControls.ts';
 import {
   settingsGridImportLimitInput,
   settingsCapacityMonthlyPeakValue,
@@ -60,6 +61,7 @@ import { renderLegacyTopicsHint } from './debugLoggingHint.ts';
 import { DEFAULT_CAPACITY_PERIOD_MINUTES } from '../../../shared-domain/src/settings/capacityPeriod.ts';
 import type {
   CapacityScalarSettings,
+  MainFuse,
   PowerLimitSettings,
 } from '../../../contracts/src/capacitySettings.ts';
 import {
@@ -81,7 +83,8 @@ import { showToast } from './toast.ts';
 import {
   readCurrentCapacitySettings,
   resolveCapacityScalars,
-  writeLimitsSettings,
+  resolveSavedMainFuse,
+  writeLimitsAndFuseSettings,
   writeCapacityOffSetting,
   writeCapacityPeriodSetting,
   writeSimulationSetting,
@@ -102,7 +105,7 @@ import { formatCapacityPeak } from './capacityPeakRead.ts';
 export type PowerSource = 'flow' | 'homey_energy';
 
 type CapacitySettingsCommand =
-  | ({ kind: 'limits' } & PowerLimitSettings)
+  | ({ kind: 'limits'; mainFuse: MainFuse } & PowerLimitSettings)
   | { kind: 'simulation'; dryRun: boolean }
   | { kind: 'period'; periodMinutes: 15 | 60 }
   | { kind: 'capacity-off' };
@@ -460,6 +463,7 @@ export const loadCapacitySettings = async () => {
     settingsGridImportLimitInput.value = String(current.gridImportLimitKw);
   }
   syncCapacityOwnedControls(resolved);
+  syncMainFuseControls(resolveSavedMainFuse(current));
   // Meter selection is independently persisted. A power-source save may fence
   // source-owned paint while this load is in flight, but it must not discard a
   // concurrent Whole-home meter refresh that this snapshot already read.
@@ -500,7 +504,7 @@ const saveCapacitySettingsCommand = async (
     // Never power_source: a hard-cap/margin/simulation save must not materialize
     // the 'flow' default for a user who never chose a source, and the select's
     // own change goes through the guarded seam (`savePowerSourceSetting`).
-    if (command.kind === 'limits') await writeLimitsSettings(current, stored, resolved);
+    if (command.kind === 'limits') await writeLimitsAndFuseSettings(current, stored, resolved, command.mainFuse);
     else if (command.kind === 'period') await writeCapacityPeriodSetting(current, resolved.periodMinutes);
     else if (command.kind === 'capacity-off') await writeCapacityOffSetting(stored);
     else await writeSimulationSetting(current, resolved.dryRun);
@@ -551,7 +555,11 @@ let limitsSaveQueue: Promise<void> = Promise.resolve();
 
 export const saveSettingsLimitsSettings = async () => {
   try {
-    const command: CapacitySettingsCommand = { kind: 'limits', ...readPowerLimitSettings(lastGoodCapacityScalars) };
+    const command: CapacitySettingsCommand = {
+      kind: 'limits',
+      mainFuse: readMainFuseForm(),
+      ...readPowerLimitSettings(lastGoodCapacityScalars),
+    };
     const previous = limitsSaveQueue;
     const save = trackSetupSave('limits', () => previous.then(
       () => saveCapacitySettingsCommand(command, 'Limits & safety saved.'),

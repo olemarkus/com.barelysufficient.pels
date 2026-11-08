@@ -15,6 +15,8 @@ import {
   CAPACITY_ENABLED,
   GRID_IMPORT_ENABLED,
   GRID_IMPORT_LIMIT_KW,
+  MAIN_FUSE_AMPS,
+  MAIN_FUSE_SUPPLY,
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
@@ -137,6 +139,8 @@ const CAPACITY_SETTINGS_KEYS = new Set([
   CAPACITY_ENABLED,
   GRID_IMPORT_ENABLED,
   GRID_IMPORT_LIMIT_KW,
+  MAIN_FUSE_AMPS,
+  MAIN_FUSE_SUPPLY,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_PERIOD_MINUTES,
@@ -148,7 +152,8 @@ const CAPACITY_SETTINGS_KEYS = new Set([
 
 const refreshCapacitySettings = (key: string, context: 'settings.set' | 'settings.unset') => {
   if (!CAPACITY_SETTINGS_KEYS.has(key)) return;
-  const powerLimitsChanged = key === CAPACITY_ENABLED || key === GRID_IMPORT_ENABLED || key === GRID_IMPORT_LIMIT_KW;
+  const powerLimitsChanged = key === CAPACITY_ENABLED || key === GRID_IMPORT_ENABLED
+    || key === GRID_IMPORT_LIMIT_KW || key === MAIN_FUSE_SUPPLY || key === MAIN_FUSE_AMPS;
   if (key === CAPACITY_LIMIT_KW || powerLimitsChanged) invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
   if (powerLimitsChanged) {
     invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);

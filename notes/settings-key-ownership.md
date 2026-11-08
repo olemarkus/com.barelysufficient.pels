@@ -298,6 +298,14 @@ read on the upgrade boot does not leave that whole run without the history.
 The settings UI reaches history through `api.js` endpoints and the store's own
 realtime push, never through a settings key.
 
+### Main fuse
+
+`main_fuse_supply` and `main_fuse_amps` belong to
+`packages/shared-domain/src/settings/mainFuse.ts`. They are a pair: a supply is usable only with a
+valid size, and `off` (or a never-written supply) ignores the size. The runtime store applies the
+fuse's total through the grid import limit it hands out, so `grid_import_*` keep holding only what
+the owner entered, and the browser never shows the fuse's total as an owner limit.
+
 ### Main-home power limit switches
 
 `capacity_enabled`, `grid_import_enabled` and `grid_import_limit_kw` belong to

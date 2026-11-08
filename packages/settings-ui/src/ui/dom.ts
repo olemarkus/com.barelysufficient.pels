@@ -98,6 +98,11 @@ export const settingsGridImportLimitInput = document.querySelector<MdFilledTextF
 );
 export const settingsGridImportField = document.getElementById('settings-grid-import-field');
 export const settingsGridImportHint = document.getElementById('settings-grid-import-hint');
+export const settingsMainFuseEnabledInput = document.querySelector<MdSwitchElement>('#settings-main-fuse-enabled');
+export const settingsMainFuseFields = document.getElementById('settings-main-fuse-fields');
+export const settingsMainFuseSupplySelect = document.querySelector<MdFilledSelectElement>('#settings-main-fuse-supply');
+export const settingsMainFuseAmpsInput = document.querySelector<MdFilledTextFieldElement>('#settings-main-fuse-amps');
+export const settingsMainFuseHint = document.getElementById('settings-main-fuse-hint');
 export const settingsCapacityEnabledInput = document.querySelector<MdSwitchElement>('#settings-capacity-enabled');
 export const settingsCapacityFields = document.getElementById('settings-capacity-fields');
 export const settingsLimitsForm = document.querySelector<HTMLFormElement>('#settings-limits-form');

@@ -17,6 +17,8 @@ export type SettingsUiBootstrapKey =
   | 'capacity_enabled'
   | 'grid_import_enabled'
   | 'grid_import_limit_kw'
+  | 'main_fuse_supply'
+  | 'main_fuse_amps'
   | 'capacity_limit_kw'
   | 'capacity_margin_kw'
   | 'capacity_period_minutes'

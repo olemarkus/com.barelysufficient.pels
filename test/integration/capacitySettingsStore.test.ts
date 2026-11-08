@@ -13,6 +13,8 @@ import {
   CAPACITY_ENABLED,
   GRID_IMPORT_ENABLED,
   GRID_IMPORT_LIMIT_KW,
+  MAIN_FUSE_AMPS,
+  MAIN_FUSE_SUPPLY,
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
@@ -29,6 +31,27 @@ const resolvedValue = (read: CapacityScalarSettingsRead): CapacityScalarSettings
 };
 
 describe('createCapacitySettingsStore', () => {
+  it('enforces the main fuse total through the grid import limit', () => {
+    const settings = new MockSettings();
+    settings.set(MAIN_FUSE_SUPPLY, 'three_phase_neutral');
+    settings.set(MAIN_FUSE_AMPS, 25);
+    const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
+    expect(resolvedValue(store.read()).gridImportLimitKw).toBe(17.25);
+  });
+
+  it('keeps the last accepted main fuse across a malformed read', () => {
+    const settings = new MockSettings();
+    settings.set(MAIN_FUSE_SUPPLY, 'three_phase_neutral');
+    settings.set(MAIN_FUSE_AMPS, 25);
+    const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
+    store.read();
+    settings.set(MAIN_FUSE_AMPS, 'junk');
+    const read = store.read();
+    expect(read.state).toBe('retained');
+    if (read.state === 'unavailable') throw new Error('expected a value');
+    expect(read.value.gridImportLimitKw).toBe(17.25);
+  });
+
   it('supports grid control independently of settlement capacity', () => {
     const settings = new MockSettings();
     settings.set(CAPACITY_ENABLED, false);

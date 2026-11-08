@@ -31,10 +31,14 @@ capacity period. PELS supports an hourly period and a 15-minute period,
 and treats the selected one as the period boundary it protects. Set it
 to match the peak or tariff step you want to protect. It is not a setting you
 raise to get more room. If your grid does not charge for measured peaks, turn off **Capacity limit**.
-Your main fuse is a separate physical limit that PELS does not manage. A
-[grid import limit](#grid-import-limit) can keep import below a level you choose, but it is
-not electrical protection. See
+To stay under what the connection carries, set [Main fuse](#main-fuse). See
 [Getting Started → Set your limits](/getting-started#step-2-set-your-limits).
+
+### Main fuse {#main-fuse}
+The size of your main fuse and how the connection is wired. PELS works out what the whole
+connection carries, for example 17.3 kW on 3x25 A with neutral, and starts reducing loads near
+95% of it. It works from meter readings, so a short overshoot is possible while the meter
+updates and devices respond.
 
 ### Grid import limit {#grid-import-limit}
 The most power, in kW, you want the home to draw from the grid at any moment, for example

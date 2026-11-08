@@ -9,7 +9,7 @@ vi.mock('../src/ui/homey.ts', () => ({ getSetting: vi.fn(), setSetting: vi.fn().
 
 const unchosen: CurrentCapacitySettings = {
   limit: undefined, margin: undefined, dryRun: true, periodMinutes: undefined,
-  capacityEnabled: undefined, gridImportEnabled: undefined, gridImportLimitKw: undefined,
+  capacityEnabled: undefined, gridImportEnabled: undefined, gridImportLimitKw: undefined, mainFuseSupply: undefined, mainFuseAmps: undefined,
 };
 
 describe('explicit capacity-period selection', () => {

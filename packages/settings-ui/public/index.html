@@ -630,6 +630,28 @@
       <div id="home-limits-mount" hidden></div>
       <form id="settings-limits-form" class="form-grid settings-form-card">
         <div class="md-switch-row">
+          <md-switch id="settings-main-fuse-enabled" aria-labelledby="settings-main-fuse-enabled-label"></md-switch>
+          <span class="md-switch-row__content">
+            <span class="md-switch-row__label pels-text-settings-label" id="settings-main-fuse-enabled-label">Main fuse</span>
+            <small class="field__hint">Reduce flexible loads before the home reaches what your main fuse carries.</small>
+          </span>
+        </div>
+        <div id="settings-main-fuse-fields" class="form-grid" hidden>
+          <div class="field">
+            <span class="field__label pels-text-settings-label" id="settings-main-fuse-supply-label">Connection</span>
+            <md-filled-select id="settings-main-fuse-supply" name="settings_main_fuse_supply" aria-labelledby="settings-main-fuse-supply-label">
+              <md-select-option value="three_phase_neutral" selected><div slot="headline">Three phases with neutral (400 V)</div></md-select-option>
+              <md-select-option value="three_phase_no_neutral"><div slot="headline">Three phases without neutral (230 V)</div></md-select-option>
+              <md-select-option value="one_phase"><div slot="headline">One phase</div></md-select-option>
+            </md-filled-select>
+          </div>
+          <div class="field">
+            <span class="field__label pels-text-settings-label" id="settings-main-fuse-amps-label">Fuse size per phase</span>
+            <md-filled-text-field id="settings-main-fuse-amps" name="settings_main_fuse_amps" type="number" step="1" min="6" max="250" inputmode="numeric" autocomplete="off" suffix-text="A" aria-labelledby="settings-main-fuse-amps-label"></md-filled-text-field>
+            <small class="field__hint" id="settings-main-fuse-hint"></small>
+          </div>
+        </div>
+        <div class="md-switch-row">
           <md-switch id="settings-grid-import-enabled" aria-labelledby="settings-grid-import-enabled-label"></md-switch>
           <span class="md-switch-row__content">
             <span class="md-switch-row__label pels-text-settings-label" id="settings-grid-import-enabled-label">Grid import limit</span>
