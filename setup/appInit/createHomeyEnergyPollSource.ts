@@ -7,7 +7,8 @@ import { HomeMeters, type SubHomeMeters } from '../../lib/home/homeMeters';
 // The snapshot refresh reads Main by the same rule as this poll.
 export { resolveMainMeterRead } from '../../lib/home/homeMeters';
 import type { MainMeterSelectionSettings } from '../../lib/home/mainMeterSelection';
-import type { LiveMeterReadings } from '../../lib/ports/homeMeterReadings';
+import type { LiveMeterReadings, MeterPhasesRead } from '../../lib/ports/homeMeterReadings';
+import type { PhaseReadingTracker } from '../../lib/power/phaseReading';
 
 /**
  * The slice of the app this factory reads. Structural rather than `PelsApp` so
@@ -17,7 +18,11 @@ export type HomeyEnergyPollSourceHost = {
   readonly timers: TimerRegistry;
   readonly homey: { readonly settings: MainMeterSelectionSettings };
   getPowerSource(): PowerSource;
-  readonly deviceManager?: { readMeters(meterDeviceIds: readonly string[]): Promise<LiveMeterReadings | null> };
+  readonly deviceManager?: {
+    readMeters(meterDeviceIds: readonly string[]): Promise<LiveMeterReadings | null>;
+    readMeterPhases(meterDeviceId: string): Promise<MeterPhasesRead>;
+  };
+  readonly capacityGuard?: { readonly phaseReadings: PhaseReadingTracker };
   /** The sub-homes, once the registry exists. */
   getSubHomeMeters(): SubHomeMeters | undefined;
   error(...args: unknown[]): void;
@@ -44,6 +49,10 @@ export const createHomeyEnergyPollSource = (
       await pipeline.recordPowerSample(sample.powerW, undefined, sample);
     },
     () => host.getSubHomeMeters(),
+    async (sample) => {
+      const read = await host.deviceManager?.readMeterPhases(sample.meterDeviceId);
+      if (read) host.capacityGuard?.phaseReadings.admit(read, sample.powerW, Date.now());
+    },
   );
   return new HomeyEnergyPollSource({
     getPowerSource: () => host.getPowerSource(),

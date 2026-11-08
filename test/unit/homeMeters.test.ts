@@ -18,20 +18,20 @@ const subHomes = (meterDeviceIds: string[]) => {
 
 describe('HomeMeters', () => {
   it('requests Main\'s meter and every sub-home\'s, once each', () => {
-    const homes = new HomeMeters(mainSelected, vi.fn(), () => subHomes(['m-area', 'meter-main']));
+    const homes = new HomeMeters(mainSelected, vi.fn(), () => subHomes(['m-area', 'meter-main']), vi.fn().mockResolvedValue(undefined));
     expect(homes.request().meterDeviceIds).toEqual(['meter-main', 'm-area']);
   });
 
   it('requests only the sub-homes while no Main meter is selected, and none before the registry exists', () => {
-    expect(new HomeMeters(noMainSelected, vi.fn(), () => subHomes(['m-area'])).request().meterDeviceIds)
+    expect(new HomeMeters(noMainSelected, vi.fn(), () => subHomes(['m-area']), vi.fn().mockResolvedValue(undefined)).request().meterDeviceIds)
       .toEqual(['m-area']);
-    expect(new HomeMeters(noMainSelected, vi.fn(), () => undefined).request().meterDeviceIds).toEqual([]);
+    expect(new HomeMeters(noMainSelected, vi.fn(), () => undefined, vi.fn().mockResolvedValue(undefined)).request().meterDeviceIds).toEqual([]);
   });
 
   it('routes each reading to its home: Main as an identity-stamped sample, the sub-homes to their bundles', async () => {
     const recordMainSample = vi.fn().mockResolvedValue(undefined);
     const areas = subHomes(['m-area']);
-    const request = new HomeMeters(mainSelected, recordMainSample, () => areas).request();
+    const request = new HomeMeters(mainSelected, recordMainSample, () => areas, vi.fn().mockResolvedValue(undefined)).request();
 
     await request.record({ meterPowerW: { 'meter-main': 2_000, 'm-area': 600 }, generationW: 150 });
 
@@ -41,7 +41,7 @@ describe('HomeMeters', () => {
 
   it('records no Main sample when Main\'s meter did not answer', async () => {
     const recordMainSample = vi.fn();
-    const request = new HomeMeters(mainSelected, recordMainSample, () => undefined).request();
+    const request = new HomeMeters(mainSelected, recordMainSample, () => undefined, vi.fn().mockResolvedValue(undefined)).request();
 
     await request.record({ meterPowerW: {} });
 
@@ -52,7 +52,7 @@ describe('HomeMeters', () => {
     const recordMainSample = vi.fn().mockResolvedValue(undefined);
     const areas = subHomes(['m-area']);
     areas.routeMeterReadings.mockImplementation(() => { throw new Error('bundle torn down'); });
-    const request = new HomeMeters(mainSelected, recordMainSample, () => areas).request();
+    const request = new HomeMeters(mainSelected, recordMainSample, () => areas, vi.fn().mockResolvedValue(undefined)).request();
 
     await request.record({ meterPowerW: { 'meter-main': 2_000, 'm-area': 600 } });
 
@@ -64,7 +64,7 @@ describe('HomeMeters', () => {
   it('routes Main\'s reading to the meter selected when the request was made', async () => {
     const values: Record<string, unknown> = { [HOMEY_ENERGY_METER_DEVICE_ID]: 'meter-main' };
     const recordMainSample = vi.fn().mockResolvedValue(undefined);
-    const request = new HomeMeters(settingsWith(values), recordMainSample, () => undefined).request();
+    const request = new HomeMeters(settingsWith(values), recordMainSample, () => undefined, vi.fn().mockResolvedValue(undefined)).request();
     values[HOMEY_ENERGY_METER_DEVICE_ID] = 'meter-new';
 
     await request.record({ meterPowerW: { 'meter-main': 2_000, 'meter-new': 50 } });

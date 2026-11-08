@@ -24,7 +24,8 @@ import type { HomeyDeviceLike } from '../utils/types';
 import { selectSupportReportActivity, supportReportWindow } from './supportReportHistory';
 import { SupportReportInputError } from './supportReportInput';
 import {
-  reportCapacitySettings, reportCarLink, reportDailyBudget, reportDeviceDecision, reportDevicePresentation,
+  reportCapacitySettings, reportPhaseReading, type PhaseReadingEvidence,
+  reportCarLink, reportDailyBudget, reportDeviceDecision, reportDevicePresentation,
   reportDeviceSnapshot, reportHomePlan, type SupportReportDeviceSnapshot,
 } from './supportReportProjection';
 import {
@@ -62,6 +63,7 @@ export type SupportReportReads = {
   getDeviceLogUiPayload(): SettingsUiDeviceLogPayload;
   getLatestPlanSnapshotForUi(): SettingsUiPlanSnapshot | null;
   getCapacityScalars(): CapacityScalarSettings;
+  getPhaseReadingEvidence(): PhaseReadingEvidence;
   getDailyBudgetUiPayload(): DailyBudgetUiRead;
   readPriceSetup(): PriceSetupRead;
   getPriceTimelineForUi(): PriceTimelineRead;
@@ -209,6 +211,8 @@ const readHomeSections = (
     const settings = homeId === MAIN_HOME_ID ? host.getCapacityScalars() : area?.diagnostics.capacityScalars;
     return settings ? reportCapacitySettings(settings) : null;
   }),
+  readSection('Current meter phases', () => (homeId === MAIN_HOME_ID
+    ? reportPhaseReading(host.getPhaseReadingEvidence()) : null)),
   readSection('Current daily budget', () => {
     // The current budget owner publishes Main only. Never substitute it for an area's budget.
     if (homeId !== MAIN_HOME_ID) return null;

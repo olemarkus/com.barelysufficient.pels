@@ -1,0 +1,66 @@
+import type { MeterPhasesRead, PhaseTriple } from '../ports/homeMeterReadings';
+
+type CapabilityRecord = Record<string, { value?: unknown } | undefined>;
+
+const PHASE_CAPABILITY = /^measure_(power|current|voltage)\.(?:l|p|phase_?)([123])$/iu;
+const SPLIT_POWER_CAPABILITY = /^measure_power\.l([123])([ie])$/iu;
+
+type Facet = 'power' | 'current' | 'voltage';
+const PHASE_NUMBERS = ['1', '2', '3'] as const;
+
+const finite = (value: unknown): number | undefined => (
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined
+);
+
+const toTriple = (values: readonly (number | undefined)[]): PhaseTriple | undefined => {
+  const [a, b, c] = values;
+  return a === undefined || b === undefined || c === undefined ? undefined : [a, b, c];
+};
+
+// Some meter apps publish import and export per phase as two positive numbers.
+const readSplitPower = (capabilities: CapabilityRecord, ids: readonly string[]): PhaseTriple | undefined => {
+  const byKey = new Map(ids.flatMap((id) => {
+    const [, phase, direction] = SPLIT_POWER_CAPABILITY.exec(id) ?? [];
+    return phase && direction ? [[`${phase}${direction.toLowerCase()}`, finite(capabilities[id]?.value)] as const] : [];
+  }));
+  return toTriple(PHASE_NUMBERS.map((phase) => {
+    const imported = byKey.get(`${phase}i`);
+    const exported = byKey.get(`${phase}e`);
+    return imported === undefined || exported === undefined ? undefined : imported - exported;
+  }));
+};
+
+const readFacet = (
+  capabilities: CapabilityRecord,
+  ids: readonly string[],
+  facet: Facet,
+): PhaseTriple | undefined => {
+  const byPhase = new Map(ids.flatMap((id) => {
+    const [, name, phase] = PHASE_CAPABILITY.exec(id) ?? [];
+    return name?.toLowerCase() === facet && phase ? [[phase, finite(capabilities[id]?.value)] as const] : [];
+  }));
+  return toTriple(PHASE_NUMBERS.map((phase) => byPhase.get(phase)));
+};
+
+/**
+ * Resolve a meter's per-phase capabilities at the device boundary. Meter apps
+ * name them differently, so recognition is by pattern. A facet missing a phase
+ * or a finite value is absent as a whole: half a picture would show room that
+ * is not there.
+ */
+export function resolveMeterPhases(device: object): MeterPhasesRead {
+  const capabilities = ((device as { capabilitiesObj?: unknown }).capabilitiesObj ?? {}) as CapabilityRecord;
+  const ids = Object.keys(capabilities);
+  const capabilityIds = ids.filter((id) => id.startsWith('measure_'));
+  const powerW = readFacet(capabilities, ids, 'power') ?? readSplitPower(capabilities, ids);
+  const currentA = readFacet(capabilities, ids, 'current');
+  const voltageV = readFacet(capabilities, ids, 'voltage');
+  if (powerW === undefined && currentA === undefined) return { state: 'none', capabilityIds };
+  return {
+    state: 'read',
+    capabilityIds,
+    ...(powerW ? { powerW } : {}),
+    ...(currentA ? { currentA } : {}),
+    ...(voltageV ? { voltageV } : {}),
+  };
+}

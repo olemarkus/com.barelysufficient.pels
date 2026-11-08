@@ -53,6 +53,8 @@ export class HomeMeters {
     private readonly recordMainSample: (sample: MeterPowerSample) => Promise<void>,
     /** The sub-homes, once their registry exists; none before that or after teardown. */
     private readonly getSubHomes: () => SubHomeMeters | undefined,
+    /** Read Main's phases beside its net sample, before the sample can reach a plan. */
+    private readonly observeMainPhases: (sample: MeterPowerSample) => Promise<void>,
   ) {}
 
   /**
@@ -74,7 +76,9 @@ export class HomeMeters {
       record: async (readings) => {
         routeSubHomeReadings(subHomes, readings);
         const sample = main.sampleFrom(readings);
-        if (sample !== null) await this.recordMainSample(sample);
+        if (sample === null) return;
+        await this.observeMainPhases(sample);
+        await this.recordMainSample(sample);
       },
     };
   }

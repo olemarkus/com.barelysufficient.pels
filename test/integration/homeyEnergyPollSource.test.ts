@@ -1,3 +1,4 @@
+import { PhaseReadingTracker } from '../../lib/power/phaseReading';
 import { captureDebugTopic } from '../utils/loggerCapture';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import { createHomeyEnergyPollSource } from '../../setup/appInit/createHomeyEnergyPollSource';
@@ -317,7 +318,8 @@ describe('HomeyEnergyPollSource', () => {
       getPowerSource: () => 'homey_energy',
       timers: new TimerRegistry(),
       homey: mockHomeyInstance,
-      deviceManager: { readMeters },
+      deviceManager: { readMeters, readMeterPhases: async () => ({ state: 'unavailable' as const }) },
+      capacityGuard: { phaseReadings: new PhaseReadingTracker() },
       getSubHomeMeters: () => ({ getMeterDeviceIds: () => ['m-area'], routeMeterReadings }),
       error: vi.fn(),
     }, { recordPowerSample });

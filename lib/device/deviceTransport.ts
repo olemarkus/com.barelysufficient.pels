@@ -57,7 +57,7 @@ import {
   type DeviceDebugObservedSources,
 } from './transport/managerObservation';
 import type { DeviceParseSources } from './transport/managerParseDevice';
-import type { LiveMeterReadings } from '../ports/homeMeterReadings';
+import type { LiveMeterReadings, MeterPhasesRead } from '../ports/homeMeterReadings';
 import {
   createEstimateDecisionLogState,
   createPeakPowerLogState,
@@ -83,6 +83,7 @@ import {
   SnapshotRefreshService,
   SnapshotRefreshState,
   readLiveMeters,
+    readMeterPhases,
 } from './transport/snapshotRefresh';
 import { DeviceSnapshotReader, createDeviceParseSources } from './transport/deviceSnapshotReader';
 import { createEvCarAssociationControl, RealtimeIngestService } from './transport/transportServices';
@@ -481,6 +482,10 @@ export class DeviceTransport {
             (watts, observedAtMs) => this.observationBridge.setGenerationW(watts, observedAtMs),
             meterDeviceIds,
         );
+    }
+    /** The whole-home meter's per-phase capabilities; a failed read is `unavailable`, never no phases. */
+    async readMeterPhases(meterDeviceId: string): Promise<MeterPhasesRead> {
+        return readMeterPhases(meterDeviceId);
     }
     /**
      * Gross PV production for the flow source's companion poll
