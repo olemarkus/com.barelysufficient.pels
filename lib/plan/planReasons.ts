@@ -22,6 +22,7 @@ import {
 import {
   resolveCeilingShortfall,
   type CeilingShortfallInputs,
+  resolvePhaseHoldPhase,
 } from './planReasonShortfall';
 import { isSwapTargetPendingReason } from '../planContract/planDecisionSemantics';
 
@@ -168,6 +169,13 @@ const HOURLY_FOLD_REASON_CODES: ReadonlySet<DeviceReason['code']> = new Set([
   PLAN_REASON_CODES.insufficientHeadroom,
 ]);
 
+// Holds a full phase can be behind: the card then says which phase, not a kW gap.
+const PHASE_HOLD_REASON_CODES: ReadonlySet<DeviceReason['code']> = new Set([
+  PLAN_REASON_CODES.gridImport,
+  PLAN_REASON_CODES.capacity,
+  PLAN_REASON_CODES.insufficientHeadroom,
+]);
+
 // Reason codes the uniform per-cycle shortfall attaches to. `insufficientHeadroom`
 // self-computes from its own admission margins; `hourlyBudget` never carries a
 // kW (time-based copy); `sheddingActive` has no live producer.
@@ -221,6 +229,10 @@ function finalizeCeilingReason(
     return withReason(stripCycleAnnotations(folded));
   }
 
+  if (admissionInputs && PHASE_HOLD_REASON_CODES.has(folded.code)) {
+    const phase = resolvePhaseHoldPhase(dev, admissionInputs);
+    if (phase !== null) return withReason({ code: PLAN_REASON_CODES.phaseLimit, phase });
+  }
   if (!admissionInputs || !SHORTFALL_ATTACH_REASON_CODES.has(folded.code)) {
     return withReason(folded);
   }

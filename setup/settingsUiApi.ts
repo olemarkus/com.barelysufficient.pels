@@ -1,3 +1,4 @@
+import { resolvePhaseFootprintWithSource } from '../lib/phaseFootprint/resolvePhaseFootprint';
 import { projectPhaseLoadForUi } from '../lib/power/phaseReading';
 import type Homey from 'homey';
 import type {
@@ -31,6 +32,7 @@ import type {
   SettingsUiDeviceLogPayload,
   SettingsUiDevicesPayload,
   SettingsUiDeviceSnapshot,
+  SettingsUiPhaseFootprintRead,
   SettingsUiBatteryState,
 } from '../packages/contracts/src/settingsUi/devices';
 import type {
@@ -278,9 +280,26 @@ const buildSettingsUiDeviceList = (
       ...(controlContest ? { controlContest } : {}),
       ...(stateOfCharge ? { stateOfCharge } : {}),
       ...readSettingsUiBatteryState(host, device),
+      phaseFootprintRead: readSettingsUiPhaseFootprint(host, device, observed?.chargerPhaseCurrentsA),
       priority: priorities.getPriority(device.id),
     };
   });
+};
+
+const readSettingsUiPhaseFootprint = (
+  host: PelsHost,
+  device: DecoratedDeviceSnapshot,
+  chargerPhaseCurrentsA: readonly [number, number, number] | undefined,
+): SettingsUiPhaseFootprintRead => {
+  const { footprint, source } = resolvePhaseFootprintWithSource({
+    ownerConnection: host.deviceControlSettings.getDevicePhaseConnection(device.id),
+    isEvCharger: device.isEvCharger === true,
+    chargerPhaseCurrentsA,
+    evPreset: device.targetPowerConfig?.preset,
+    learned: host.capacityGuard?.phaseLearner.learnedFootprint(device.id),
+  });
+  if (footprint.kind === 'single') return { source, phases: footprint.phase };
+  return footprint.kind === 'all_three' ? { source, phases: 'all' } : { source };
 };
 
 /**

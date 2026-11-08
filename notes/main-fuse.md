@@ -41,6 +41,18 @@ three phases over about 1 A is all three, fewer says only that it is not all thr
 mode, otherwise `unknown`. A charger's "phase 1" need not be the meter's L1, so a one-phase reading is never
 turned into a phase name without the owner's say.
 
+PELS also learns a footprint (`phaseFootprintLearner.ts`, fed from each accepted phase sample by setup): for each
+of its own commands whose device moved at least 500 W, it compares stable windows before and after, skipping the
+samples around the command for meter lag, and drops the step when another PELS command or another managed device's
+draw moved in the span. One phase taking at least 70 % of the change with the others little is a vote for that phase;
+all three within about a third each is a vote for all three. Five votes with an 80 % majority settle it; three dissenting
+votes in a row put it back to unknown. It is kept in the runtime-owned `device_phase_learning` key. The owner's
+setting and a live charger reading outrank it. For an EV charger the votes last for the session only and are never
+stored, because the phases are the car's. A battery has the Electrical connection row on its own page.
+
+A device waiting for room says so on its card (`Waiting for room on L1`), and a device on an unknown phase offers the
+setting as a quiet link to its page. No notification or prompt.
+
 ## The shed pass
 
 `lib/plan/phase/phaseShedPass.ts` runs after the scalar selection and merges with it. Scalar shedding is

@@ -130,7 +130,7 @@ describe('capacity shortfall alert dispatch', () => {
     const ctx = {
       timers,
       capacitySettings: { limitKw: 5, marginKw: 0 },
-      homey: {
+      homey: { settings: { get: () => null, set: () => undefined },
         flow: { getTriggerCard: vi.fn(() => ({ trigger: triggerAlert })) },
       },
       planService: {

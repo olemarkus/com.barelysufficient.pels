@@ -1,3 +1,4 @@
+import { PhaseFootprintLearner } from '../../lib/phaseFootprint/phaseFootprintLearner';
 import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowConflictStore';
 import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings';
 import { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } from '../../packages/shared-domain/src/settings/continuousBatteryPlan';
@@ -468,6 +469,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     // Matches what the guard actually exposes now: the hard-cap incident, no
     // power and no thresholds.
     capacityGuard: {
+      phaseLearner: new PhaseFootprintLearner(),
       isInShortfall: vi.fn(() => false),
       getCurrentIncidentId: vi.fn(() => null),
       recordPlanVerdict: vi.fn(async () => undefined),

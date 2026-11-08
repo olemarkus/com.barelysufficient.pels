@@ -502,7 +502,7 @@ describe('settingsUiApi', () => {
     expect(homey.refreshTargetDevicesSnapshot).toHaveBeenCalledTimes(1);
     // `priority` is resolved over the payload's own device set — see
     // `withResolvedPriorities`.
-    expect(result.devices).toEqual([{ id: 'dev-2', name: 'Pump', priority: 1, batteryControl: 'not_battery', batteryTakenOver: false, batteryUsesHomeyApiKey: false }]);
+    expect(result.devices).toEqual([{ id: 'dev-2', name: 'Pump', priority: 1, phaseFootprintRead: { source: 'none' }, batteryControl: 'not_battery', batteryTakenOver: false, batteryUsesHomeyApiKey: false }]);
   });
 
   it('rechecks Flow conflicts and returns only the current conflict-gated control facts', async () => {
@@ -658,7 +658,7 @@ describe('settingsUiApi', () => {
           // stored the owner breaks the tie by device id.
           priority: 1,
           // Not a home battery: the owner is never asked.
-          batteryControl: 'not_battery', batteryTakenOver: false, batteryUsesHomeyApiKey: false,
+          phaseFootprintRead: { source: 'none' }, batteryControl: 'not_battery', batteryTakenOver: false, batteryUsesHomeyApiKey: false,
         },
         {
           id: 'ev-1',
@@ -679,7 +679,7 @@ describe('settingsUiApi', () => {
             ],
           },
           reportedStepId: 'low',
-          batteryControl: 'not_battery', batteryTakenOver: false, batteryUsesHomeyApiKey: false,
+          phaseFootprintRead: { source: 'none' }, batteryControl: 'not_battery', batteryTakenOver: false, batteryUsesHomeyApiKey: false,
         },
       ],
       // The fixture's trusted app seam reports a warm snapshot with no charger wiring.
@@ -1010,7 +1010,7 @@ describe('settingsUiApi', () => {
       measuredPowerKw: 2.7,
       binaryControl: { on: false },
       priority: 1,
-      batteryControl: 'not_battery', batteryTakenOver: false, batteryUsesHomeyApiKey: false,
+      phaseFootprintRead: { source: 'none' }, batteryControl: 'not_battery', batteryTakenOver: false, batteryUsesHomeyApiKey: false,
     }]);
   });
 
@@ -1124,7 +1124,7 @@ describe('settingsUiApi', () => {
     });
 
     expect(getSettingsUiDevicesPayload({ homey: homey as never }).devices).toEqual([
-      { id: 'pump-9', name: 'Pump', available: true, priority: 1, batteryControl: 'not_battery', batteryTakenOver: false, batteryUsesHomeyApiKey: false },
+      { id: 'pump-9', name: 'Pump', available: true, priority: 1, phaseFootprintRead: { source: 'none' }, batteryControl: 'not_battery', batteryTakenOver: false, batteryUsesHomeyApiKey: false },
     ]);
   });
 
@@ -1150,7 +1150,7 @@ describe('settingsUiApi', () => {
       measuredPowerKw: 0.4,
       binaryControl: { on: true },
       priority: 1,
-      batteryControl: 'not_battery', batteryTakenOver: false, batteryUsesHomeyApiKey: false,
+      phaseFootprintRead: { source: 'none' }, batteryControl: 'not_battery', batteryTakenOver: false, batteryUsesHomeyApiKey: false,
     }]);
   });
 

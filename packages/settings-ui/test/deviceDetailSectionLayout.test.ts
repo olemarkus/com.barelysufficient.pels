@@ -321,3 +321,20 @@ describe('autoExpandSetupWhenBare', () => {
     expect(disclosure.open).toBe(false);
   });
 });
+
+describe('electrical connection row placement', () => {
+  it('moves into the battery page control settings and back', async () => {
+    buildDom();
+    const list = document.createElement('div');
+    list.id = 'device-detail-battery-list';
+    document.body.appendChild(list);
+    const row = document.createElement('div');
+    row.id = 'device-detail-electrical-connection-row';
+    document.querySelector('#device-detail-shedding-section .collapse-content')!.appendChild(row);
+    const { applyDeviceDetailSectionLayout } = await import('../src/ui/deviceDetail/sectionLayout.ts');
+    applyDeviceDetailSectionLayout(withDescriptorIdentity({ id: 'b', deviceClass: 'battery' } as never) as never);
+    expect(row.parentElement?.id).toBe('device-detail-battery-list');
+    applyDeviceDetailSectionLayout(withDescriptorIdentity({ id: 'h', deviceClass: 'heater' } as never) as never);
+    expect(row.parentElement?.closest('section')?.id).toBe('device-detail-shedding-section');
+  });
+});
