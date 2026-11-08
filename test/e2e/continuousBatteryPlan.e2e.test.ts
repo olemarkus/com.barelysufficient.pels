@@ -8,6 +8,7 @@ import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { drainPending } from '../utils/asyncDrain';
 import { buildSetpointBatteryDevice } from '../helpers/homeBatteryMock';
 import type { HomeyEnergyApi } from '../../lib/utils/homeyEnergy';
+import type { SmartTaskCandidateRequest } from '../../packages/contracts/src/smartTaskEdit';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, DEBUG_LOGGING_TOPICS,
   OPERATING_MODE_SETTING, PRICE_SCHEME,
@@ -195,6 +196,44 @@ describe('continuous battery plan through the Homey SDK', () => {
     expect(after.second?.batteryPowerKW).toBeLessThan(-1);
     expect(-((after.first?.batteryPowerKW ?? 0) + (after.second?.batteryPowerKW ?? 0))).toBeLessThanOrEqual(1.8);
     expect(setpoints(home, SECOND).at(-1)).toBeLessThan(-1000);
+  });
+
+  it('plans two batteries around a smart task and the capacity limit together', async () => {
+    // Cheap until 04:00: both batteries charge, the heater has a task to finish by 08:00,
+    // and the house has 5 kW.
+    const SECOND = 'second-battery';
+    const home = await startHome(false, 20, undefined, Number.POSITIVE_INFINITY, [BATTERY, SECOND]);
+    await home.advance(3);
+    const task: SmartTaskCandidateRequest = {
+      deviceId: 'heater', kind: 'energy', target: 2, readyByLocalTime: '08:00',
+      deadlineAtMs: Date.UTC(2026, 9, 27, 8, 0),
+    };
+    expect(await api.ui_smart_task_create({ homey: mockHomeyInstance as never, body: task })).toMatchObject({ ok: true });
+    const meterW: number[] = [];
+    for (let poll = 0; poll < 12; poll += 1) {
+      await home.advance(1);
+      const live = await mockHomeyInstance.api.get('manager/energy/live') as { items: { values: { W: number } }[] };
+      meterW.push(live.items[0]?.values.W ?? 0);
+    }
+    const plans = (await api.ui_devices(context())).continuousBatteryPlans;
+    const first = plans[BATTERY];
+    const second = plans[SECOND];
+    if (first?.status !== 'planned' || second?.status !== 'planned') throw new Error('Expected both batteries planned');
+    // Both batteries charge in the cheap hours, never one against the other,
+    // and the later battery's plan, which counts the first's charge and the
+    // task's booked energy, stays within the limit in every period.
+    expect(first.plan.periods[0]?.batteryPowerKW).toBeGreaterThan(0);
+    second.plan.periods.forEach((period, index) => {
+      expect(period.gridImportKWh * HOUR_MS / period.durationMs).toBeLessThanOrEqual(5 + 1e-6);
+      expect((first.plan.periods[index]?.batteryPowerKW ?? 0) * period.batteryPowerKW).toBeGreaterThanOrEqual(0);
+    });
+    // Live, the batteries charge only into the room the house leaves: the
+    // meter stays within the 5 kW limit, and the heater keeps running.
+    expect(Math.max(...meterW)).toBeLessThanOrEqual(5000 + 50);
+    expect(setpoints(home, BATTERY).some(watts => watts > 0)).toBe(true);
+    expect(home.put.mock.calls.some(([path, body]) => (
+      path === 'manager/devices/device/heater/capability/onoff' && (body as { value: unknown }).value === false
+    ))).toBe(false);
   });
 
   it('starts planning from meter samples after the owner enables a previously disabled plan', async () => {
