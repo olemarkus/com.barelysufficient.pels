@@ -346,6 +346,6 @@ then leaves it to its own app for your solar too.
 ## Still stuck?
 
 If a problem doesn't fit any of these, the [Technical Reference](/technical)
-explains the underlying behaviour, and you can ask or report an issue on
-[GitHub](https://github.com/olemarkus/com.barelysufficient.pels). When reporting,
-say what you expected, what happened, and which devices and settings are involved.
+explains the underlying behaviour, and [Get help](/support) shows how to send a
+report from PELS and where to ask a question. When reporting, say what you
+expected, what happened, and which devices and settings are involved.
