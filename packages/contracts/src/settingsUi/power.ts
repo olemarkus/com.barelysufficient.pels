@@ -121,13 +121,20 @@ export type SettingsUiHardCapConfigurationRead =
 
 /** Each phase's load against the main fuse; `none` when PELS has no trusted phases to show. */
 export type SettingsUiPhaseLoad =
-  | { readonly state: 'none'; readonly meterCapabilityIds?: readonly string[] }
+  | {
+    readonly state: 'none';
+    readonly meterCapabilityIds?: readonly string[];
+    /** The meter's phases already read well, so no owner choice is needed. */
+    readonly phasesRecognised?: true;
+  }
   | {
     readonly state: 'phases';
     /** Kept so an owner's own capability choice can still be changed once it works. */
     readonly meterCapabilityIds?: readonly string[];
     readonly fuseAmps: number;
-    readonly phases: readonly { readonly phase: string; readonly amps: number }[];
+    /** The meter gives power without current, so phases are held further from the fuse. */
+    readonly powerOnly?: true;
+    readonly phases: readonly { readonly phase: string; readonly amps: number; readonly exporting?: true }[];
   };
 
 export type SettingsUiPhasePeak = {

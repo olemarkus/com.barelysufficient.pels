@@ -106,6 +106,13 @@ const isWouldLimitDevice = (device: PlanDeviceSnapshot): boolean => device.statu
 // This adapter narrows the local view-model (devices array, projection tone)
 // to the counts and booleans the shared helper takes — keeping the helper
 // independent of UI types.
+// Named only when one phase holds every limited device; a mixed hold keeps the house-level line.
+const resolveHeldForPhase = (limited: readonly PlanDeviceSnapshot[]): { heldForPhase?: 'L1' | 'L2' | 'L3' } => {
+  const phases = new Set(limited.map((device) => device.status.heldForPhase));
+  const [only] = phases;
+  return phases.size === 1 && only !== undefined ? { heldForPhase: only } : {};
+};
+
 const buildDecisionSentence = ({
   devices,
   context,
@@ -132,6 +139,7 @@ const buildDecisionSentence = ({
     gridImportHigh: meta.gridImportTargetKw !== null && meta.totalKw > meta.gridImportTargetKw,
     ...(meta.powerIsMeasured && meta.unrelievedPhase ? { unrelievedPhase: meta.unrelievedPhase } : {}),
     ...(meta.powerIsMeasured && meta.exportPhase ? { exportPhase: meta.exportPhase } : {}),
+    ...resolveHeldForPhase(limited),
     safePaceKw: meta.softLimitKw,
     capacityPeriodMinutes: meta.capacityPeriodMinutes,
     deferredObjectiveAvoidCount: limited.filter((d) => d.status.holdCause === 'smart_task').length,

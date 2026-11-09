@@ -75,6 +75,7 @@ export const toSimulationReasonLine = (label: string, dryRun: boolean): string =
   if (label.startsWith('Waiting to resume ')
     || label.startsWith('Waiting to increase ')
     || label.startsWith('Waiting so ')
+    || label.startsWith('Waiting for room on ')
     || label.startsWith('Holding at ')
     || label.startsWith('Holding —')) {
     return `Would be ${label.charAt(0).toLowerCase()}${label.slice(1)}${SIMULATION_TAG}`;

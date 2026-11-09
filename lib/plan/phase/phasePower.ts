@@ -1,4 +1,5 @@
 import type { MainFuse } from '../../../packages/contracts/src/capacitySettings';
+import { mainFusePhaseTargetKw } from '../../../packages/shared-domain/src/settings/mainFuse';
 import type { PhaseFootprint, PhaseName } from '../../../packages/planner-types/src/phaseFootprint';
 import type { PhaseLoad, PhaseReading } from '../../power/phaseReading';
 import { SHEDDING_CLEAR_THRESHOLD_KW } from '../planConstants';
@@ -23,11 +24,6 @@ export type PhasePower = { kind: 'off' } | { kind: 'on'; phases: readonly PhaseM
 export const PHASE_POWER_OFF: PhasePower = Object.freeze({ kind: 'off' });
 
 const NOMINAL_PHASE_VOLTAGE_V = 230;
-/** Target share of the fuse when the meter reports per-phase current. */
-const TARGET_SHARE_WITH_CURRENT = 0.95;
-/** Power alone understates current at a low power factor, so the target stays further from the fuse. */
-const TARGET_SHARE_POWER_ONLY = 0.90;
-
 const resolveDrawKw = (load: PhaseLoad, signed: boolean): number => {
   if (load.currentA === undefined) return load.kw;
   const magnitudeKw = load.currentA * NOMINAL_PHASE_VOLTAGE_V / 1000;
@@ -44,8 +40,7 @@ export function resolvePhasePower(fuse: MainFuse, reading: PhaseReading, netKw: 
   if (fuse.kind !== 'on' || fuse.supply !== 'three_phase_neutral') return PHASE_POWER_OFF;
   if (reading.kind !== 'healthy' || (!reading.signed && netKw <= 0)) return PHASE_POWER_OFF;
   const phases = reading.phases.map((load) => {
-    const share = load.currentA === undefined ? TARGET_SHARE_POWER_ONLY : TARGET_SHARE_WITH_CURRENT;
-    const targetKw = fuse.amps * NOMINAL_PHASE_VOLTAGE_V * share / 1000;
+    const targetKw = mainFusePhaseTargetKw(fuse.amps, load.currentA !== undefined);
     const drawKw = resolveDrawKw(load, reading.signed);
     const exportExcessKw = reading.signed ? Math.max(0, -drawKw - targetKw) : 0;
     return {

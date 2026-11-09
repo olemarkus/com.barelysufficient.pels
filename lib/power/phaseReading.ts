@@ -147,12 +147,21 @@ export function projectPhaseLoadForUi(
   fuse: MainFuse,
   meterCapabilityIds: readonly string[],
 ): SettingsUiPhaseLoad {
-  if (fuse.kind !== 'on' || fuse.supply !== 'three_phase_neutral') return { state: 'none' };
+  if (fuse.kind !== 'on' || fuse.supply !== 'three_phase_neutral') {
+    // Carried with the fuse off, so the picker can appear the moment it is turned on.
+    if (meterCapabilityIds.length === 0) return { state: 'none' };
+    return { state: 'none', meterCapabilityIds, ...(reading.kind === 'healthy' ? { phasesRecognised: true } : {}) };
+  }
   if (reading.kind !== 'healthy') return { state: 'none', meterCapabilityIds };
   return {
     state: 'phases',
     ...(meterCapabilityIds.length > 0 ? { meterCapabilityIds } : {}),
     fuseAmps: fuse.amps,
-    phases: reading.phases.map((load) => ({ phase: load.phase, amps: phaseAmps(load) })),
+    ...(reading.phases.some((load) => load.currentA === undefined) ? { powerOnly: true } : {}),
+    phases: reading.phases.map((load) => ({
+      phase: load.phase,
+      amps: phaseAmps(load),
+      ...(reading.signed && load.kw < 0 ? { exporting: true } : {}),
+    })),
   };
 }
