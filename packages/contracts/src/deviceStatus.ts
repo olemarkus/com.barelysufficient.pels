@@ -43,5 +43,7 @@ export type DeviceStatus = {
   wouldLimit: boolean;
   canEaseOff: boolean;
   controlOffDrawing: boolean;
+  /** The phase this device is held for, when a phase is what holds it. */
+  heldForPhase?: 'L1' | 'L2' | 'L3';
   holdCause: 'smart_task' | 'smart_task_done' | 'daily_budget' | null;
 };

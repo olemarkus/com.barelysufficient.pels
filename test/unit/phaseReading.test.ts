@@ -110,8 +110,23 @@ describe('projectPhaseLoadForUi', () => {
     expect(projectPhaseLoadForUi(healthy(), fuse, [])).toEqual({
       state: 'phases',
       fuseAmps: 25,
-      phases: [{ phase: 'L1', amps: 20 }, { phase: 'L2', amps: 10 }, { phase: 'L3', amps: 0 }],
+      phases: [{ phase: 'L1', amps: 20 }, { phase: 'L2', amps: 10, exporting: true }, { phase: 'L3', amps: 0 }],
     });
+  });
+
+  it('marks exporting phases on signed meters and says when there is no current', () => {
+    const tracker = new PhaseReadingTracker();
+    tracker.admit({ state: 'read', capabilityIds: [], powerW: [3000, -1000, 0] }, 2000, 1);
+    expect(projectPhaseLoadForUi(tracker.current(), fuse, [])).toMatchObject({
+      powerOnly: true, phases: [{ phase: 'L1' }, { phase: 'L2', exporting: true }, { phase: 'L3' }],
+    });
+  });
+
+  it('carries capability ids with the fuse off, and whether the phases are already recognised', () => {
+    expect(projectPhaseLoadForUi({ kind: 'none' }, { kind: 'off' }, ['measure_power.a'])).toEqual({
+      state: 'none', meterCapabilityIds: ['measure_power.a'],
+    });
+    expect(projectPhaseLoadForUi(healthy(), { kind: 'off' }, ['measure_power.a'])).toMatchObject({ phasesRecognised: true });
   });
 
   it('shows nothing without a fuse, on other supplies, or without trusted phases', () => {

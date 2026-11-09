@@ -47,10 +47,20 @@ const replaceOptions = (
   select.value = selected;
 };
 
+/** A capability as an owner reads it: `measure_power.l1` is "Power L1". */
+export const formatPhaseCapabilityLabel = (capabilityId: string): string => {
+  const kind = resolvePhaseCapabilityFacet(capabilityId) === 'current' ? 'Current' : 'Power';
+  const name = capabilityId.slice(capabilityId.indexOf('.') + 1).replace(/[_-]+/gu, ' ').trim();
+  return `${kind} ${/^[a-z]\d$/iu.test(name) ? name.toUpperCase() : name}`;
+};
+
 const renderCapabilities = (ids: readonly string[], saved: MainFusePhaseCapabilities | null): void => {
   const candidates = ids.filter((id) => resolvePhaseCapabilityFacet(id) !== null);
   if (capabilitiesFieldEl) capabilitiesFieldEl.hidden = candidates.length === 0;
-  const options = [{ value: NOT_SET, label: 'Not set' }, ...candidates.map((id) => ({ value: id, label: id }))];
+  const options = [
+    { value: NOT_SET, label: 'Not set' },
+    ...candidates.map((id) => ({ value: id, label: formatPhaseCapabilityLabel(id) })),
+  ];
   for (const { phase, select } of phaseSelects) replaceOptions(select, options, saved?.[phase] ?? NOT_SET);
 };
 
@@ -62,26 +72,39 @@ const renderMeters = async (selectedId: string | null): Promise<void> => {
   ], selectedId ?? NOT_SET);
 };
 
+/** Fill the block from the runtime's reads; answers whether the meter gives power without current. */
+const renderPhaseSource = async (block: HTMLElement): Promise<boolean> => {
+  const [powerSource, meterDeviceId, capabilities, power] = await Promise.all([
+    getSetting(POWER_SOURCE),
+    getSetting(MAIN_FUSE_PHASE_METER_DEVICE_ID),
+    getSetting(MAIN_FUSE_PHASE_CAPABILITIES),
+    getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH),
+  ]);
+  const isFlow = powerSource === 'flow';
+  if (meterFieldEl) meterFieldEl.hidden = !isFlow;
+  if (isFlow) await renderMeters(typeof meterDeviceId === 'string' ? meterDeviceId : null);
+  const load = classifyPhaseLoad(power?.phaseLoad);
+  const saved = isMainFusePhaseCapabilities(capabilities) ? capabilities : null;
+  // Recognised phases need no picker; a choice the owner made stays changeable once it works.
+  const recognised = load.state === 'phases' || load.phasesRecognised === true;
+  renderCapabilities(!recognised || saved !== null ? load.meterCapabilityIds ?? [] : [], saved);
+  // An empty block would still take its grid gaps under the fuse hint.
+  // eslint-disable-next-line no-param-reassign -- the element's own hidden flag
+  block.hidden = meterFieldEl?.hidden !== false && capabilitiesFieldEl?.hidden !== false;
+  return load.state === 'phases' && load.powerOnly === true;
+};
+
 /** Show the row when it can help, on the same Limits form as the fuse itself. */
-export const syncMainFusePhaseSource = async (supply: string | undefined): Promise<void> => {
+export const syncMainFusePhaseSource = async (
+  supply: string | undefined,
+  onPhaseKind: (powerOnly: boolean) => void,
+): Promise<void> => {
   if (!fieldsEl) return;
   const applies = supply === 'three_phase_neutral';
-  fieldsEl.hidden = !applies;
+  if (!applies) fieldsEl.hidden = true;
   if (!applies) return;
   try {
-    const [powerSource, meterDeviceId, capabilities, power] = await Promise.all([
-      getSetting(POWER_SOURCE),
-      getSetting(MAIN_FUSE_PHASE_METER_DEVICE_ID),
-      getSetting(MAIN_FUSE_PHASE_CAPABILITIES),
-      getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH),
-    ]);
-    const isFlow = powerSource === 'flow';
-    if (meterFieldEl) meterFieldEl.hidden = !isFlow;
-    if (isFlow) await renderMeters(typeof meterDeviceId === 'string' ? meterDeviceId : null);
-    const load = classifyPhaseLoad(power?.phaseLoad);
-    const saved = isMainFusePhaseCapabilities(capabilities) ? capabilities : null;
-    // Recognised phases need no picker; a choice the owner made stays changeable once it works.
-    renderCapabilities(load.state === 'none' || saved !== null ? load.meterCapabilityIds ?? [] : [], saved);
+    onPhaseKind(await renderPhaseSource(fieldsEl));
   } catch (error) {
     await logSettingsError('Failed to load the main fuse phase source', error, 'mainFusePhaseSource');
   }

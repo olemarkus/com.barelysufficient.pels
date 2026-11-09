@@ -1881,7 +1881,10 @@ md-filled-tonal-button.is-busy {
 }
 
 .plan-card__quiet-link {
+  display: inline-flex;
+  align-items: center;
   align-self: flex-start;
+  min-height: var(--pels-touch-target-min);
   padding: 0;
   border: none;
   background: none;
@@ -9383,7 +9386,20 @@ md-switch {
 }
 
 .plan-phase-load {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-2);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-1);
+}
+
+.plan-phase-load .plan-chip {
+  justify-content: center;
+  min-width: 0;
+  white-space: normal;
+  text-align: center;
+}
+
+.main-fuse-phase-select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }

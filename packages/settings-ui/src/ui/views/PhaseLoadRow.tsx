@@ -14,8 +14,10 @@ export const PhaseLoadRow = ({ load }: { load: SettingsUiPhaseLoad }) => {
   if (load.state !== 'phases') return null;
   return (
     <div class="plan-phase-load" id="plan-phase-load" role="group" aria-label={`Load per phase, ${load.fuseAmps} A fuse`}>
-      {load.phases.map(({ phase, amps }) => (
-        <Chip key={phase} tone={toneFor(amps, load.fuseAmps)}>{`${phase} ${Math.round(amps)} of ${load.fuseAmps} A`}</Chip>
+      {load.phases.map(({ phase, amps, exporting }) => (
+        <Chip key={phase} tone={toneFor(amps, load.fuseAmps)}>
+          {`${phase} ${Math.round(amps)} of ${load.fuseAmps} A${exporting === true ? ' export' : ''}`}
+        </Chip>
       ))}
     </div>
   );

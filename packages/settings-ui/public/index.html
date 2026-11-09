@@ -362,7 +362,7 @@
 
       <section class="pels-surface-card usage-card" id="usage-phase-peaks" aria-labelledby="usage-phase-peaks-title" hidden>
         <h3 class="section-title" id="usage-phase-peaks-title">Phase peaks</h3>
-        <p class="pels-card-supporting">When a phase went past your main fuse, how long, and what was drawing.</p>
+        <p class="pels-card-supporting">When a phase came close to or went past your main fuse, how long, and what was drawing.</p>
         <ul class="pels-card-supporting" id="usage-phase-peaks-list"></ul>
       </section>
       <section class="pels-surface-card usage-card" aria-labelledby="usage-pattern-title">
@@ -645,9 +645,9 @@
           <div class="field">
             <span class="field__label pels-text-settings-label" id="settings-main-fuse-supply-label">Connection</span>
             <md-filled-select id="settings-main-fuse-supply" name="settings_main_fuse_supply" aria-labelledby="settings-main-fuse-supply-label">
-              <md-select-option value="three_phase_neutral" selected><div slot="headline">Three phases with neutral (400 V)</div></md-select-option>
-              <md-select-option value="three_phase_no_neutral"><div slot="headline">Three phases without neutral (230 V)</div></md-select-option>
-              <md-select-option value="one_phase"><div slot="headline">One phase</div></md-select-option>
+              <md-select-option value="three_phase_neutral" selected><div slot="headline">Three phases with neutral (like 3x25 A, 400 V)</div></md-select-option>
+              <md-select-option value="three_phase_no_neutral"><div slot="headline">Three phases without neutral (like 3x25 A, 230 V)</div></md-select-option>
+              <md-select-option value="one_phase"><div slot="headline">One phase (like 1x35 A)</div></md-select-option>
             </md-filled-select>
           </div>
           <div class="field">
@@ -663,9 +663,9 @@
             </div>
             <div class="field" id="settings-main-fuse-phase-capabilities-field" hidden>
               <span class="field__label pels-text-settings-label" id="settings-main-fuse-phase-capabilities-label">Meter phases</span>
-              <md-filled-select id="settings-main-fuse-phase-L1" label="L1" aria-labelledby="settings-main-fuse-phase-capabilities-label"></md-filled-select>
-              <md-filled-select id="settings-main-fuse-phase-L2" label="L2" aria-labelledby="settings-main-fuse-phase-capabilities-label"></md-filled-select>
-              <md-filled-select id="settings-main-fuse-phase-L3" label="L3" aria-labelledby="settings-main-fuse-phase-capabilities-label"></md-filled-select>
+              <md-filled-select class="main-fuse-phase-select" id="settings-main-fuse-phase-L1" label="L1" aria-labelledby="settings-main-fuse-phase-capabilities-label"></md-filled-select>
+              <md-filled-select class="main-fuse-phase-select" id="settings-main-fuse-phase-L2" label="L2" aria-labelledby="settings-main-fuse-phase-capabilities-label"></md-filled-select>
+              <md-filled-select class="main-fuse-phase-select" id="settings-main-fuse-phase-L3" label="L3" aria-labelledby="settings-main-fuse-phase-capabilities-label"></md-filled-select>
               <small class="field__hint">Pick which reading is each phase, all power or all current.</small>
               <small class="field__hint" id="settings-main-fuse-phase-capabilities-hint" hidden>Choose all three, all power or all current.</small>
             </div>

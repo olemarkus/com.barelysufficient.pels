@@ -48,3 +48,13 @@ export function effectiveGridImportLimitKw(ownerLimitKw: number | null, fuse: Ma
   const fuseKw = mainFuseTotalKw(fuse);
   return ownerLimitKw === null ? fuseKw : Math.min(ownerLimitKw, fuseKw);
 }
+
+/** Share of the fuse a phase is held to: closer with measured current, since power alone understates it. */
+const PHASE_TARGET_SHARE_WITH_CURRENT = 0.95;
+const PHASE_TARGET_SHARE_POWER_ONLY = 0.90;
+
+/** What PELS holds one phase to, kW. */
+export const mainFusePhaseTargetKw = (amps: number, reportsCurrent: boolean): number => (
+  amps * NOMINAL_PHASE_VOLTAGE_V
+    * (reportsCurrent ? PHASE_TARGET_SHARE_WITH_CURRENT : PHASE_TARGET_SHARE_POWER_ONLY) / 1000
+);

@@ -322,5 +322,6 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
     canEaseOff: device.controllable && (kind === 'active' || (limited && (draw ?? 0) > 0)),
     controlOffDrawing: !device.controllable && (draw ?? 0) > 0,
     holdCause: resolveHoldCause(device),
+    ...(device.reason.code === PLAN_REASON_CODES.phaseLimit ? { heldForPhase: device.reason.phase } : {}),
   };
 }

@@ -275,7 +275,7 @@ const initPowerLimitSwitchHandlers = (autoSaveSettingsLimits: () => Promise<void
     void autoSaveSettingsLimits();
   });
   settingsGridImportLimitInput?.addEventListener('input', refreshPowerLimitControls);
-  bindMainFuseControls();
+  bindMainFuseControls(autoSaveSettingsLimits);
   settingsGridImportLimitInput?.addEventListener('change', () => autoSaveSettingsLimits());
   settingsCapacityEnabledInput?.addEventListener('change', () => {
     refreshPowerLimitControls();

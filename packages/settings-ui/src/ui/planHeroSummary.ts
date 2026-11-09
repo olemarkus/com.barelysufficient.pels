@@ -261,6 +261,8 @@ export type DecisionSentenceInput = {
   gridImportHigh: boolean;
   /** A phase over its share of the main fuse with nothing left to limit on it. */
   unrelievedPhase?: 'L1' | 'L2' | 'L3';
+  /** The phase holding back every limited device, when one phase does. */
+  heldForPhase?: 'L1' | 'L2' | 'L3';
   /** A phase exporting past its target: PELS turns solar and battery output down. */
   exportPhase?: 'L1' | 'L2' | 'L3';
   // `null` when no limit is in force (no grid import limit, Capacity limit or
@@ -387,6 +389,13 @@ const resolveLimitingDecisionSentence = (input: DecisionSentenceInput): Decision
 
   if (dailyCount > 0 && dailyCount === input.limitedCount) {
     return { text: `Holding back ${devicesText} to stay within today’s budget.`, positive: false };
+  }
+
+  if (input.heldForPhase !== undefined) {
+    return {
+      text: `Holding back ${devicesText} so ${input.heldForPhase} stays under your main fuse.`,
+      positive: false,
+    };
   }
 
   const safePaceText = input.safePaceKw !== null

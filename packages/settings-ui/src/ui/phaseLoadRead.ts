@@ -9,6 +9,7 @@ export const classifyPhaseLoad = (value: unknown): SettingsUiPhaseLoad => {
     return {
       state: 'none',
       meterCapabilityIds: value.meterCapabilityIds.filter((id): id is string => typeof id === 'string'),
+      ...(value.phasesRecognised === true ? { phasesRecognised: true } : {}),
     };
   }
   if (!isUnknownRecord(value) || value.state !== 'phases' || !Array.isArray(value.phases)) return NONE;
@@ -17,10 +18,15 @@ export const classifyPhaseLoad = (value: unknown): SettingsUiPhaseLoad => {
   const phases = value.phases.flatMap((entry: unknown) => (
     isUnknownRecord(entry) && typeof entry.phase === 'string'
     && typeof entry.amps === 'number' && Number.isFinite(entry.amps)
-      ? [{ phase: entry.phase, amps: entry.amps }] : []
+      ? [{
+        phase: entry.phase,
+        amps: entry.amps,
+        ...(entry.exporting === true ? { exporting: true as const } : {}),
+      }] : []
   ));
   if (phases.length !== 3) return NONE;
   const ids = Array.isArray(value.meterCapabilityIds)
     ? value.meterCapabilityIds.filter((id): id is string => typeof id === 'string') : [];
-  return { state: 'phases', fuseAmps, phases, ...(ids.length > 0 ? { meterCapabilityIds: ids } : {}) };
+  const powerOnly = value.powerOnly === true ? { powerOnly: true as const } : {};
+  return { state: 'phases', fuseAmps, phases, ...powerOnly, ...(ids.length > 0 ? { meterCapabilityIds: ids } : {}) };
 };
