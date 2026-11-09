@@ -64,8 +64,8 @@ export class DeviceAdapterSessions {
     if (withheld.size === 0) return device;
     return {
       ...device,
-      capabilities: (device.capabilities ?? []).filter((capabilityId) => !withheld.has(capabilityId)),
-      capabilitiesObj: Object.fromEntries(Object.entries(device.capabilitiesObj ?? {})
+      capabilities: (device.capabilities).filter((capabilityId) => !withheld.has(capabilityId)),
+      capabilitiesObj: Object.fromEntries(Object.entries(device.capabilitiesObj)
         .filter(([capabilityId]) => !withheld.has(capabilityId))),
     };
   }

@@ -13,7 +13,7 @@ export function isTeslaChargingState(value: unknown): value is string {
 
 /** Valid vendor evidence can revoke control without asserting a Homey plug state. */
 export function hasTeslaChargingStateWithoutEvProjection(device: HomeyDeviceLike): boolean {
-  const state = device.capabilitiesObj?.charging_state?.value;
+  const state = device.capabilitiesObj.charging_state?.value;
   return isTeslaChargingDevice(device) && isTeslaChargingState(state)
     && resolveTeslaChargingState(state) === undefined;
 }

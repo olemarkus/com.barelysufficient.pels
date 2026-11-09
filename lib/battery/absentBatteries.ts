@@ -1,9 +1,6 @@
 /**
  * Which recorded batteries a complete device refresh has missed often enough
- * that their claim record can be pruned. A battery is present when the read
- * listed it, its read ignored included: one whose read broke the read
- * contract before PELS ever parsed it (just after a restart) has no entry but
- * is still there. An empty refresh proves nothing about any one battery and
+ * that their claim record can be pruned. An empty refresh proves nothing about any one battery and
  * counts for nothing; a failed one never reaches here. A battery seen again
  * starts over.
  */
@@ -18,8 +15,8 @@ export class AbsentBatteries {
 
   /** Count this refresh for every recorded battery, answering those now missing long enough to prune. */
   dueForPrune(recorded: Iterable<string>, refresh: ObservedDeviceStateRefreshPayload): string[] {
-    if (refresh.entries.length === 0 && refresh.ignoredReadIds.length === 0) return [];
-    const present = new Set([...refresh.entries.map((entry) => entry.observed.id), ...refresh.ignoredReadIds]);
+    if (refresh.entries.length === 0) return [];
+    const present = new Set(refresh.entries.map((entry) => entry.observed.id));
     const due: string[] = [];
     for (const deviceId of recorded) {
       if (present.has(deviceId)) {

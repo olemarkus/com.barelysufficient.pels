@@ -354,7 +354,7 @@ function mergeCapabilityObservation(
     // two-source reconciliation we want visibility on); when both already agree
     // there is no reconciliation, so that case is counted instead. Both helpers
     // no-op for non-control capabilities.
-    const fetchedValue = sourceDevice.capabilitiesObj?.[capabilityId]?.value;
+    const fetchedValue = sourceDevice.capabilitiesObj[capabilityId]?.value;
     const emitConsolidation = (
         consolidatedValue: unknown,
         winner: ConsolidationWinner,
@@ -460,13 +460,13 @@ type ConsolidationReason =
     | 'retained_over_disagreeing_pull';
 
 function deviceSupportsCapability(device: HomeyDeviceLike, capabilityId: string): boolean {
-    return device.capabilities?.includes(capabilityId) === true
-        || Boolean(device.capabilitiesObj?.[capabilityId]);
+    return device.capabilities.includes(capabilityId)
+        || Boolean(device.capabilitiesObj[capabilityId]);
 }
 
 function getCapabilityLastUpdatedMs(
     device: HomeyDeviceLike,
     capabilityId: string,
 ): number | undefined {
-    return toCapabilityTimestampMs(device.capabilitiesObj?.[capabilityId]?.lastUpdated);
+    return toCapabilityTimestampMs(device.capabilitiesObj[capabilityId]?.lastUpdated);
 }

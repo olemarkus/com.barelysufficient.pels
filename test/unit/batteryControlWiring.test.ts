@@ -8,13 +8,14 @@ import { getDeviceAdapter } from '../../lib/device/deviceAdapterRegistry';
 import type { HomeBatterySetpointRange } from '../../packages/contracts/src/types';
 import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const enumValues = (...ids: string[]) => ids.map((id) => ({ id, title: { en: id } }));
 
 // Raw Homey `capabilitiesObj` entries carry `values` for an enum capability,
 // which `DeviceCapabilityMap` does not model; the classifier reads it from the
 // raw entry.
-const device = (identity: Partial<HomeyDeviceLike> = {}): HomeyDeviceLike => ({
+const device = (identity: Partial<HomeyDeviceLike> = {}): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'battery-1', name: 'Battery', class: 'battery', ...identity,
 });
 
@@ -129,7 +130,7 @@ describe('resolveBatteryControlSurface', () => {
 
   it.each([
     ['owner URI', { ownerUri: 'homey:app:nl.sessy' }],
-    ['driver URI', { driver: { uri: 'Homey:App:NL.Sessy' } }],
+    ['owner URI in any case', { ownerUri: 'Homey:App:NL.Sessy' }],
     ['bare driver id', { driverId: 'nl.sessy:sessy' }],
   ])('recognises a Sessy by its %s', (_label, identity) => {
     const surface = resolveBatteryControlSurface(

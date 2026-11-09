@@ -7,16 +7,17 @@ import {
 import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
 import { isTargetPowerControlActive } from '../../lib/device/nativeSteppedLoadWiring';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const STAMP = '2026-09-23T10:00:00.000Z';
 
 // The contract's input is an unvalidated SDK payload: its values are whatever
 // Homey sent, not the types the model will read them as.
 type RawCapabilityEntry = { value?: unknown; lastUpdated?: string | null };
-type RawDeviceRead = Omit<HomeyDeviceLike, 'capabilitiesObj'> & {
+type RawDeviceRead = Pick<HomeyDeviceLike, 'id' | 'name'> & Partial<Omit<HomeyDeviceLike, 'capabilitiesObj'>> & {
   capabilitiesObj?: Record<string, RawCapabilityEntry | undefined>;
 };
-const asRead = (device: RawDeviceRead): HomeyDeviceLike => device as HomeyDeviceLike;
+const asRead = (device: RawDeviceRead): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS, ...device }) as HomeyDeviceLike;
 const entry = (value: unknown): RawCapabilityEntry => ({ value, lastUpdated: STAMP });
 
 const HEATER_VALUES: Record<string, RawCapabilityEntry> = {
@@ -99,13 +100,6 @@ describe('device-read contract', () => {
 
   it('accepts a read that carries a value of the model type for every declared model capability', () => {
     expect(findDeviceReadContractViolation(heater())).toBeNull();
-  });
-
-  it('ignores a read without its capability list or its values', () => {
-    expect(findDeviceReadContractViolation(heater({ capabilities: undefined })))
-      .toEqual({ reason: 'missing_capability_list' });
-    expect(findDeviceReadContractViolation(heater({ capabilitiesObj: undefined })))
-      .toEqual({ reason: 'missing_capability_values' });
   });
 
   it('identifies a missing declared model capability', () => {
@@ -401,15 +395,6 @@ describe('independent capability resolution', () => {
     expect(said.info).toHaveBeenLastCalledWith(expect.objectContaining({ event: 'device_read_conforming_again' }));
   });
 
-  it.each([undefined, null])('ignores only an unreadable structural envelope: %s values', (values) => {
-    const said = emitter();
-    const device = asRead({ ...heater(), capabilitiesObj: values as undefined });
-    expect(resolveDeviceRead({}, device, 'device_fetch', said)).toBeNull();
-    expect(said.warn).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'device_read_ignored', reason: 'missing_capability_values',
-    }));
-  });
-
   it.each([null, 'true', undefined])('never falls back to a charger disabling switch after rejecting charging=%s', (value) => {
     const charger = asRead({
       id: 'charger', name: 'Charger', class: 'evcharger',
@@ -448,7 +433,7 @@ describe('independent capability resolution', () => {
 
   it('accepts a Toshiba custom power mode outside native watt control', () => {
     const device = heater({
-      class: 'airconditioning', driverUri: 'homey:app:com.toshiba', driverId: 'ac',
+      class: 'airconditioning', ownerUri: 'homey:app:com.toshiba', driverId: 'ac',
       capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'meter_power', 'target_power_mode'],
       capabilitiesObj: { onoff: entry(true), measure_temperature: entry(21), target_temperature: entry(22),
         meter_power: entry(42.5), target_power_mode: entry('Power 100%') },

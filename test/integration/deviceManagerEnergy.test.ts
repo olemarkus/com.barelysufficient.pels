@@ -15,6 +15,7 @@ import type { Logger } from '../../lib/utils/types';
 import { PassThrough } from 'node:stream';
 import { createRootLogger } from '../../lib/logging/logger';
 import { captureLogger } from '../utils/loggerCapture';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 // A complete `Logger`: the transport logs through `structuredLog`, which is
 // required, so a fixture without one crashes where production cannot.
@@ -519,7 +520,7 @@ describe('hasWarmSnapshot — proof that the SDK listed devices', () => {
 
     // The SDK answers with a device that is not even managed: the list is
     // known, so the read counts even though the parsed snapshot stays empty.
-    rawDevices.mockResolvedValue([{
+    rawDevices.mockResolvedValue([{ ...HOMEY_DEVICE_FIELDS,
       id: 'sensor-1', name: 'Sensor', class: 'sensor', capabilities: [], capabilitiesObj: {},
       available: true, ready: true,
     }]);
@@ -529,7 +530,7 @@ describe('hasWarmSnapshot — proof that the SDK listed devices', () => {
 
   it('goes cold again once an empty-read streak commits []', async () => {
     vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue(null);
-    const rawDevices = vi.spyOn(homeyApi, 'getRawDevices').mockResolvedValue([{
+    const rawDevices = vi.spyOn(homeyApi, 'getRawDevices').mockResolvedValue([{ ...HOMEY_DEVICE_FIELDS,
       id: 'heater-1', name: 'Heater', class: 'heater', capabilities: ['onoff', 'measure_power'],
       capabilitiesObj: { onoff: { value: true }, measure_power: { value: 1800 } }, available: true, ready: true,
     }]);

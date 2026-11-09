@@ -8,6 +8,24 @@
  */
 import type { CapabilityValue, HomeyDeviceLike } from '../../lib/utils/types';
 
+/** The fields Homey sends on every device, for a fixture that does not care about them. */
+export const HOMEY_DEVICE_FIELDS = {
+  class: 'other',
+  driverId: 'homey:app:com.test:device',
+  ownerUri: 'homey:app:com.test',
+  virtualClass: null,
+  data: {},
+  capabilities: [],
+  capabilitiesObj: {},
+  settings: {},
+  energy: null,
+  energyObj: null,
+  available: true,
+  ready: true,
+  unavailableMessage: null,
+  zone: 'Unknown',
+} satisfies Omit<HomeyDeviceLike, 'id' | 'name'>;
+
 /** When Homey observed a value: an entry's `lastUpdated`. */
 type ReadingStamp = CapabilityValue<unknown>['lastUpdated'];
 
@@ -45,13 +63,14 @@ export const capabilityReadings = <K extends string>(
  * the readings' order unless `device` names its own.
  */
 export const homeyDevice = <K extends string>(
-  device: Omit<HomeyDeviceLike, 'capabilitiesObj'>,
+  device: Pick<HomeyDeviceLike, 'id' | 'name'> & Partial<Omit<HomeyDeviceLike, 'capabilitiesObj'>>,
   readings: Record<K, CapabilityReading>,
   at?: ReadingStamp,
 ): HomeyDeviceLike & {
   capabilities: string[];
   capabilitiesObj: CapabilitiesObj & Record<K, CapabilityValue<unknown>>;
 } => ({
+  ...HOMEY_DEVICE_FIELDS,
   capabilities: Object.keys(readings),
   ...device,
   capabilitiesObj: capabilityReadings(readings, at),

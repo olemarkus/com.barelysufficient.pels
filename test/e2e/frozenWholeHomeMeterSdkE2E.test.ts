@@ -22,6 +22,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { drainPending } from '../utils/asyncDrain';
 import api from '../../api';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const HEATER = 'water-heater';
 const CHARGER = 'car-socket';
@@ -47,7 +48,7 @@ const energy = {
  */
 type Relay = { on: boolean };
 
-const relayApiDevice = (relay: Relay): Record<string, unknown> => ({
+const relayApiDevice = (relay: Relay): Record<string, unknown> => ({ ...HOMEY_DEVICE_FIELDS,
   id: RELAY,
   name: 'Relay heater',
   class: 'socket',

@@ -30,7 +30,6 @@ import type { EvCarLinkEvent } from './evCarLinkEvents';
 import type { EvCarChargerMatchHistory, EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
 import type { HomeyDeviceLike } from '../utils/types';
 import { EvCarLinkWaitReporter } from './evCarLinkWaitReports';
-import type { DeviceListRead } from './deviceListRead';
 import { EvCarLinkReadMisses } from './evCarLinkReadMisses';
 import {
     collectAssociatedCarLevels,
@@ -321,14 +320,14 @@ export class EvCarLinkProducer {
      * be pruned at all. A targeted read re-reads only known ids, so a car it
      * misses is dropped only on the miss grace below.
      */
-    observe(read: DeviceListRead, options: { fullRefresh: boolean; nowMs: number }): void {
+    observe(devices: readonly HomeyDeviceLike[], options: { fullRefresh: boolean; nowMs: number }): void {
         const seen = new Set<string>();
-        for (const device of read.devices) {
+        for (const device of devices) {
             if (this.ingestCar(device, options.nowMs)) seen.add(device.id);
         }
         // Collected first, then forgotten: forgetting mutates the roster being read.
         const removed = this.readMisses.removedBy(
-            this.getObservedCarDeviceIds(), seen, read.ignoredIds, options.fullRefresh, options.nowMs);
+            this.getObservedCarDeviceIds(), seen, options.fullRefresh, options.nowMs);
         for (const carId of removed) this.forgetCar(carId, options.nowMs);
         this.correlate(options.nowMs);
     }

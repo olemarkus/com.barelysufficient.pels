@@ -58,7 +58,7 @@ export function resolveExplicitBinaryEvidence(
   observation: ExplicitControlObservation,
 ): { accepted: true; observedAtMs: number } | { accepted: false } {
   const sourceObservedAtMs = toCapabilityTimestampMs(
-    device.capabilitiesObj?.[observation.observedCapabilityId]?.lastUpdated,
+    device.capabilitiesObj[observation.observedCapabilityId]?.lastUpdated,
   );
   if (sourceObservedAtMs === undefined) return { accepted: false };
   const previousObservedAtMs = previous === null
@@ -85,7 +85,7 @@ export function preserveStaleBundledEvState(
   ) return;
   const previousStateObservedAtMs = previous.evChargingStateObservedAtMs;
   const incomingStateObservedAtMs = toCapabilityTimestampMs(
-    device.capabilitiesObj?.evcharger_charging_state?.lastUpdated,
+    device.capabilitiesObj.evcharger_charging_state?.lastUpdated,
   );
   if (
     previousStateObservedAtMs === undefined

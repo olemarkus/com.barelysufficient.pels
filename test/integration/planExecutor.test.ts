@@ -71,6 +71,7 @@ import {
 } from '../utils/planTestUtils';
 import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import { noStorageTransport } from '../helpers/storageTransportStub';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
 const CAPACITY_REASON = fixtureDeviceReason('shed due to capacity')!;
@@ -2273,7 +2274,7 @@ describe('PlanExecutor stepped loads', () => {
         unansweredStepCommands: { kind: 'none' as const },
       }),
     });
-    nativeSteppedAdapters.observe('dev-1', {
+    nativeSteppedAdapters.observe('dev-1', { ...HOMEY_DEVICE_FIELDS,
       id: 'dev-1',
       name: 'Tank',
       ownerUri: 'homey:app:no.hoiax',

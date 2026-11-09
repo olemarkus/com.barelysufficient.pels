@@ -84,8 +84,8 @@ const luna2000Actions = (deviceId: string, chargeW: number, dischargeW: number):
 };
 
 const resolveLuna2000 = (device: HomeyDeviceLike): HomeBatteryActionsResolution => {
-  const chargeW = readMaxPowerW(device.settings?.max_charge_power);
-  const dischargeW = readMaxPowerW(device.settings?.max_discharge_power);
+  const chargeW = readMaxPowerW(device.settings.max_charge_power);
+  const dischargeW = readMaxPowerW(device.settings.max_discharge_power);
   if (chargeW === undefined || dischargeW === undefined) {
     return { kind: 'unavailable', reasonCode: 'max_power_unknown' };
   }

@@ -25,6 +25,7 @@ import { steppedStoresForTest } from '../helpers/steppedStores';
 import {
   buildTargetPowerReachabilityState, type TargetPowerConfigWithReachability,
 } from '../../lib/device/targetPowerReachability';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const savedProfile: SteppedLoadProfile = {
   steps: [
@@ -34,7 +35,7 @@ const savedProfile: SteppedLoadProfile = {
   ],
 };
 
-const heater = (): HomeyDeviceLike => ({
+const heater = (): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'heater',
   name: 'Connected 300',
   class: 'heater',
@@ -117,7 +118,7 @@ describe('device owner control resolution', () => {
       const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger, {
         settings: { getDeviceTargetPowerConfig: () => config },
       });
-      const device: HomeyDeviceLike = {
+      const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
         id: 'charger', name: 'Native charger', class: 'evcharger',
         capabilities: ['measure_power', 'onoff', 'target_power', 'evcharger_charging_state'],
         capabilitiesObj: {
@@ -301,7 +302,7 @@ describe('device owner control resolution', () => {
     const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger, {
       settings: { getDeviceTargetPowerConfig: () => config },
     });
-    const charger: HomeyDeviceLike = {
+    const charger: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'charger', name: 'Flow charger', class: 'evcharger',
       capabilities: ['measure_power', 'evcharger_charging', 'evcharger_charging_state'],
       capabilitiesObj: {
@@ -331,7 +332,7 @@ describe('device owner control resolution', () => {
     const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger, {
       settings: { getDeviceTargetPowerConfig: () => config },
     });
-    const charger: HomeyDeviceLike = {
+    const charger: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'charger', name: 'Flow charger', class: 'evcharger',
       capabilities: ['measure_power', 'evcharger_charging', 'evcharger_charging_state'],
       capabilitiesObj: {
@@ -424,7 +425,7 @@ describe('device owner control resolution', () => {
         nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
     );
-    const device: HomeyDeviceLike = {
+    const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'easee', name: 'Easee', class: 'evcharger', driverId: 'homey:app:no.easee:charger',
       capabilities: ['onoff', 'measure_power', 'target_charger_current', 'available_installation_current',
         'evcharger_charging', 'evcharger_charging_state'],
@@ -457,7 +458,7 @@ describe('device owner control resolution', () => {
       logger,
       { settings: { getDeviceTargetPowerConfig: () => ({ preset: 'ev_charger_1_phase', max: 7360 }) } },
     );
-    const device = (currentLimit: unknown): HomeyDeviceLike => ({
+    const device = (currentLimit: unknown): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
       id: 'futurehome', name: 'Futurehome', class: 'evcharger', driverId: 'homey:app:no.futurehome:ev_charger',
       capabilities: ['measure_power', 'evcharger_charging', 'evcharger_charging_state'],
       capabilitiesObj: {
@@ -512,7 +513,7 @@ describe('device owner control resolution', () => {
   it('reads an OSO water heater as a setpoint-only heater whose heating flag is not a switch', async () => {
     const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger);
     const stamp = '2026-09-30T08:00:00.000Z';
-    const oso: HomeyDeviceLike = {
+    const oso: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'oso', name: 'OSO', class: 'other', driverId: 'homey:app:no.osoincharge:water-heater',
       capabilities: ['onoff', 'measure_power', 'measure_temperature', 'target_temperature', 'meter_power',
         'water_heater_heating', 'water_heater_mode'],
@@ -554,7 +555,7 @@ describe('device owner control resolution', () => {
     const omittedByCloud: Record<string, { value: null; lastUpdated: string }> = {
       meter_power: { value: null, lastUpdated: stamp },
     };
-    const oso: HomeyDeviceLike = {
+    const oso: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'oso', name: 'OSO', class: 'other', driverId: 'homey:app:no.osoincharge:water-heater',
       capabilities: ['onoff', 'measure_power', 'measure_temperature', 'target_temperature', 'meter_power'],
       capabilitiesObj: {
@@ -588,7 +589,7 @@ describe('device owner control resolution', () => {
         if (configuration?.controlModel === 'stepped_load') notifiedProfiles.push(configuration.steppedLoadProfile);
       } },
     );
-    const device: HomeyDeviceLike = {
+    const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'charger', name: 'Flow charger', class: 'evcharger',
       capabilities: ['measure_power', 'onoff', 'evcharger_charging_state'],
       capabilitiesObj: {

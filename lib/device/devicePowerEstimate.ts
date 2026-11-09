@@ -154,7 +154,7 @@ function toFiniteNumber(value: unknown): number | null {
 }
 
 function resolveCurrentOnState(device: HomeyDeviceLike): boolean | null {
-  const raw = device.capabilitiesObj?.onoff?.value;
+  const raw = device.capabilitiesObj.onoff?.value;
   return typeof raw === 'boolean' ? raw : null;
 }
 
@@ -206,7 +206,7 @@ function getLoadSettingWatts(device: HomeyDeviceLike): number | null {
   // `toFiniteNumber` (not a bare `typeof === 'number'`) so a non-finite settings
   // value is dropped at the boundary: a raw `Infinity` would pass the old
   // `loadW && loadW > 0` guard and propagate as an infinite power estimate.
-  const loadW = toFiniteNumber(device.settings?.load);
+  const loadW = toFiniteNumber(device.settings.load);
   return loadW !== null && loadW > 0 ? loadW : null;
 }
 

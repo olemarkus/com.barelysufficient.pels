@@ -213,7 +213,5 @@ export class DeviceSnapshotReader {
 }
 
 function getCapabilityObj(device: HomeyDeviceLike) {
-  return device.capabilitiesObj && typeof device.capabilitiesObj === 'object'
-    ? device.capabilitiesObj as import('../managerControl').DeviceCapabilityMap
-    : {};
+  return device.capabilitiesObj as import('../managerControl').DeviceCapabilityMap;
 }

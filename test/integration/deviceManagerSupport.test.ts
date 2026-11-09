@@ -46,6 +46,7 @@ import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { PEAK_REANCHOR_INTERVAL_MS, type LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
 import { mockHomeyInstance } from '../mocks/homey';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const createLogger = () => ({
   log: vi.fn(),
@@ -325,7 +326,7 @@ describe('device manager support helpers', () => {
     );
 
     const lastUpdated = new Date().toISOString();
-    await seedTransportDevices(deviceManager, [{
+    await seedTransportDevices(deviceManager, [{ ...HOMEY_DEVICE_FIELDS,
       id: 'heater-1',
       name: 'Heater',
       class: 'heater',
@@ -410,7 +411,7 @@ describe('device manager support helpers', () => {
     reconcileRealtimeDeviceUpdate({
       latestSnapshot,
       observationState: new TransportObservationState(),
-      device: { id: 'ev-1', name: 'Charger' },
+      device: { ...HOMEY_DEVICE_FIELDS, id: 'ev-1', name: 'Charger' },
       parseDevice: () => transportSnapshotFixture({ available: true, expectedPowerKw: 1, expectedPowerSource: 'default',
         id: 'ev-1',
         name: 'Charger',
@@ -499,8 +500,8 @@ describe('device manager support helpers', () => {
 
   it('fetchDevicesByIds returns all devices on success', async () => {
     const devices = [
-      { id: 'a', name: 'A' },
-      { id: 'b', name: 'B' },
+      { ...HOMEY_DEVICE_FIELDS, id: 'a', name: 'A' },
+      { ...HOMEY_DEVICE_FIELDS, id: 'b', name: 'B' },
     ];
     const mockGet = vi.fn()
       .mockResolvedValueOnce(devices[0])
@@ -531,7 +532,7 @@ describe('device manager support helpers', () => {
   // one succeeds, the surviving devices commit and the failed ids are simply
   // absent from this cycle — no cascade to the bulk full fetch.
   it('fetchDevicesByIds commits the surviving devices on a partial failure (no full fetch)', async () => {
-    const deviceA = { id: 'a', name: 'A' };
+    const deviceA = { ...HOMEY_DEVICE_FIELDS, id: 'a', name: 'A' };
     // `manager/devices/device/a` resolves; `.../b` rejects; the bulk full-fetch
     // path (`manager/devices/device`, no id) must never be hit.
     const mockGet = vi.fn(async (path: string) => {
@@ -563,9 +564,9 @@ describe('device manager support helpers', () => {
   // authoritative full-fetch recovery path still fires.
   it('fetchDevicesByIds falls back to full fetch when every requested id fails', async () => {
     const allDevices = [
-      { id: 'a', name: 'A' },
-      { id: 'b', name: 'B' },
-      { id: 'c', name: 'C' },
+      { ...HOMEY_DEVICE_FIELDS, id: 'a', name: 'A' },
+      { ...HOMEY_DEVICE_FIELDS, id: 'b', name: 'B' },
+      { ...HOMEY_DEVICE_FIELDS, id: 'c', name: 'C' },
     ];
     const fullFetch = vi.fn();
     const mockGet = vi.fn(async (path: string) => {

@@ -14,6 +14,7 @@ import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
 import { drainUntilCalledWith } from '../utils/asyncDrain';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
@@ -54,7 +55,7 @@ const buildTemperatureApiDevice = (o: DeviceOverrides = {}) => {
   if (capabilities.includes('onoff')) {
     capabilitiesObj.onoff = { id: 'onoff', value: o.onoff ?? true, lastUpdated };
   }
-  return {
+  return { ...HOMEY_DEVICE_FIELDS,
     id: o.id ?? 'airtreatment-1',
     name: 'Nordic S4 REL',
     class: o.class ?? 'airtreatment',

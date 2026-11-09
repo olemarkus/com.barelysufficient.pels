@@ -29,7 +29,7 @@ const INSTALLATION_CURRENT = 'available_installation_current';
 const RUNNING_STATUSES = new Set(['Charging', 'Waiting']);
 
 function isWallbox(device: HomeyDeviceLike): boolean {
-  return DRIVER_IDS.has(device.driverId?.trim().toLowerCase() ?? '');
+  return DRIVER_IDS.has(device.driverId.trim().toLowerCase());
 }
 
 function readCurrentA(value: unknown): number | undefined {

@@ -4,7 +4,6 @@
  */
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../../utils/types';
-import type { DeviceListRead } from '../deviceListRead';
 import type { BatteryStateProducer } from '../batteryStateProducer';
 import type { SolarProductionProducer } from '../solarProductionProducer';
 import type { EvCarLinkProducer } from '../evCarLinkProducer';
@@ -25,11 +24,11 @@ import type { DeviceFetchSource } from './managerFetch';
 export function observeEvCarLinkAndResubscribe(
     evCarLink: EvCarLinkProducer,
     updateLiveFeedTrackedDevices: (deviceIds: string[]) => void,
-    read: DeviceListRead,
+    devices: readonly HomeyDeviceLike[],
     fetchSource: DeviceFetchSource,
     snapshot: readonly TargetDeviceSnapshot[],
 ): void {
-    evCarLink.observe(read, {
+    evCarLink.observe(devices, {
         fullRefresh: fetchSource === 'raw_manager_devices',
         nowMs: Date.now(),
     });
@@ -52,16 +51,16 @@ export function observeEvCarLinkAndResubscribe(
 export function observeBatteryStateFromList(
     battery: BatteryStateProducer,
     solar: SolarProductionProducer,
-    read: DeviceListRead,
+    devices: HomeyDeviceLike[],
     fetchSource: DeviceFetchSource,
 ): HomeyDeviceLike[] {
     const fullRefresh = fetchSource === 'raw_manager_devices';
-    battery.observe(read, { fullRefresh });
-    solar.observe(read, { fullRefresh });
+    battery.observe(devices, { fullRefresh });
+    solar.observe(devices, { fullRefresh });
     // The EV car-link probe is deliberately NOT observed here — it runs after the
     // snapshot commit (see `refreshSnapshot`), because it resolves charger state
     // from the committed snapshot. Observing it here as well would give it one
     // pass against the PREVIOUS charger state, which can emit and persist a false
     // self-stop on the very refresh where the dwell expires.
-    return read.devices;
+    return devices;
 }

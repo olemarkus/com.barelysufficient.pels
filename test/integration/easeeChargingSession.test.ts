@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EaseeChargingSession } from '../../lib/device/easee/session';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
-const device = (status: unknown, atMs = Date.now()): HomeyDeviceLike => ({
+const device = (status: unknown, atMs = Date.now()): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'charger', name: 'Charger', driverId: 'homey:app:no.easee:charger',
   capabilities: ['charger_status'],
   capabilitiesObj: { charger_status: { value: status, lastUpdated: atMs } },

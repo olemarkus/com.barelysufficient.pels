@@ -5,6 +5,7 @@ import type { DevicePowerControlMode, SteppedLoadProfile } from '../../packages/
 import { buildZaptecCurrentOnlyDevice, buildZaptecTargetPowerDevice } from '../helpers/zaptecDeviceFixture';
 import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const ID = 'zaptec-target-power';
 const PROFILE: SteppedLoadProfile = { steps: [
@@ -42,7 +43,7 @@ class NativeAdaptersFixture extends NativeSteppedLoadCommandAdapters {
   }
 }
 
-const easeeDevice = (max = 32): HomeyDeviceLike => ({
+const easeeDevice = (max = 32): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: ID, name: 'Easee', ownerUri: 'homey:app:no.easee', driverId: 'homey:app:no.easee:charger',
   settings: { phaseMode: 'Locked to single phase' }, capabilities: ['target_charger_current'],
   capabilitiesObj: { target_charger_current: { value: 16, min: 0, max, step: 1, setable: true } },
@@ -197,7 +198,7 @@ describe('native watt ownership after Manual control', () => {
   it.each(['removed', 'capability gone'] as const)('requires a new cold claim when the device returns after %s', (change) => {
     const adapters = manualThenAutomatic();
     if (change === 'removed') adapters.sync([], () => true);
-    else adapters.observe(ID, { id: ID, name: 'Zaptec', capabilities: ['measure_power'] });
+    else adapters.observe(ID, { ...HOMEY_DEVICE_FIELDS, id: ID, name: 'Zaptec', capabilities: ['measure_power'] });
     adapters.observe(ID, rawDevice());
     expect(adapters.projectObservation(snapshot('automatic')).reportedStepId).toBeUndefined();
   });

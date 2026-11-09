@@ -77,7 +77,7 @@ export const resolveDeviceClassKey = (device: HomeyDeviceLike): string | null =>
   // also survives identity and every downstream `deviceClassKey === 'solarpanel'`
   // gate fires. Stamped managed and non-controllable in `resolveParsedDeviceSettings`.
   if (isSolarPanelDevice(resolved)) return 'solarpanel';
-  const deviceClass = typeof resolved.class === 'string' ? resolved.class.trim() : '';
+  const deviceClass = resolved.class.trim();
   if (!deviceClass) return null;
   const deviceClassKey = deviceClass.toLowerCase();
   if (!SUPPORTED_DEVICE_CLASSES.has(deviceClassKey)) return null;
@@ -85,11 +85,11 @@ export const resolveDeviceClassKey = (device: HomeyDeviceLike): string | null =>
 };
 
 export const getCapabilities = (device: HomeyDeviceLike): string[] => (
-  Array.isArray(device.capabilities) ? device.capabilities : []
+  device.capabilities
 );
 
 export const getIsAvailable = (device: HomeyDeviceLike): boolean => (
-  typeof device.available === 'boolean' ? device.available : true
+  device.available
 );
 
 export const resolveDeviceLabel = (device: HomeyDeviceLike, deviceId: string): string => (
@@ -117,20 +117,4 @@ export const resolveZoneId = (device: HomeyDeviceLike): string | undefined => {
   return undefined;
 };
 
-export const resolveZoneLabel = (device: HomeyDeviceLike): string => {
-  const zone = device.zone;
-  if (zone && typeof zone === 'object' && 'name' in zone) {
-    const name = (zone as { name?: unknown }).name;
-    if (typeof name === 'string' && name) {
-      return name;
-    }
-  }
-  if (typeof zone === 'string' && zone) {
-    return zone;
-  }
-  const zoneName = device.zoneName;
-  if (typeof zoneName === 'string' && zoneName) {
-    return zoneName;
-  }
-  return 'Unknown';
-};
+export const resolveZoneLabel = (device: HomeyDeviceLike): string => device.zone;

@@ -5,8 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { getDeviceAdapter } from '../../lib/device/deviceAdapterRegistry';
 import type { HomeBatteryActionBinding, HomeBatteryActions } from '../../lib/device/deviceAdapter';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
-const device = (id: string, driverId: string, settings: Record<string, unknown> = {}): HomeyDeviceLike => ({
+const device = (id: string, driverId: string, settings: Record<string, unknown> = {}): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id, name: id, class: driverId.endsWith(':plant') ? 'other' : 'battery', driverId, settings,
 });
 

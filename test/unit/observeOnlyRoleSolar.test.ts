@@ -3,6 +3,7 @@ import { resolveFlowAugmentedDeviceType } from '../../lib/device/transport/flowR
 import { resolveDeviceClassKey } from '../../lib/device/transport/managerHelpers';
 import { shouldDropAfterControlState, type ManagedFilterDecision } from '../../lib/device/transport/managerManagedFilter';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 // A solar device is MANAGED OBSERVE-ONLY, exactly like a battery: PELS never controls
 // it. These lock the four shared parse seams for the solar role.
@@ -10,14 +11,14 @@ const managedDecision: ManagedFilterDecision = { filterActive: true, isManaged: 
 
 describe('resolveDeviceClassKey — solar normalization (detection == survival)', () => {
   it('normalizes a class:solarpanel device to the "solarpanel" class-key', () => {
-    const dev: HomeyDeviceLike = {
+    const dev: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 's1', name: 'Solar', class: 'solarpanel', capabilities: ['measure_power', 'meter_power'],
     };
     expect(resolveDeviceClassKey(dev)).toBe('solarpanel');
   });
 
   it('does NOT normalize a non-solar grid meter (export cap, class:sensor) to "solarpanel"', () => {
-    const grid: HomeyDeviceLike = {
+    const grid: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'grid', name: 'Grid meter', class: 'sensor',
       energy: { meterPowerExportedCapability: 'meter_power.exported' },
       capabilities: ['measure_power'],
@@ -29,7 +30,7 @@ describe('resolveDeviceClassKey — solar normalization (detection == survival)'
   });
 
   it('leaves a non-solar supported class unchanged', () => {
-    expect(resolveDeviceClassKey({ id: 'h', name: 'Heater', class: 'heater' })).toBe('heater');
+    expect(resolveDeviceClassKey({ ...HOMEY_DEVICE_FIELDS, id: 'h', name: 'Heater', class: 'heater' })).toBe('heater');
   });
 });
 
@@ -40,7 +41,7 @@ describe('resolveFlowAugmentedDeviceType — solar exclusion', () => {
   });
 
   it('returns "unsupported" for a class:solarpanel device via its normalized class-key', () => {
-    const classSolar: HomeyDeviceLike = {
+    const classSolar: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 's1', name: 'Solar', class: 'solarpanel', capabilities: ['measure_power'],
     };
     const deviceClassKey = resolveDeviceClassKey(classSolar);

@@ -19,6 +19,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const DEVICE = 'heater-1';
 
@@ -31,7 +32,7 @@ type AppLike = {
 // Stamped when the update is sent: the device changed state just now.
 const deviceUpdate = (on: boolean): Record<string, unknown> => {
   const lastUpdated = new Date().toISOString();
-  return {
+  return { ...HOMEY_DEVICE_FIELDS,
     id: DEVICE,
     name: 'Water heater',
     class: 'socket',

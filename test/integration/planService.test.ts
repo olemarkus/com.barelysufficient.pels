@@ -415,7 +415,7 @@ describe('PlanService', () => {
             target: { id: 'target_temperature', value: 65, unit: '°C' } },
         };
         emitter.emitObservedStateRefresh({
-          entries: [{ observationSeq, observedAtMs: Date.now(), observed }], ignoredReadIds: [],
+          entries: [{ observationSeq, observedAtMs: Date.now(), observed }],
         });
       };
       snapshot(1, false);

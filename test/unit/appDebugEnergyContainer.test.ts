@@ -1,5 +1,6 @@
 import { buildEnergyDebugPayload } from '../../setup/appDebugCompaction';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const asDevice = (device: Partial<HomeyDeviceLike> & Record<string, unknown>): HomeyDeviceLike => (
   device as HomeyDeviceLike
@@ -10,7 +11,7 @@ describe('buildEnergyDebugPayload energy containers', () => {
     // The case the dump used to drop entirely: an AMS/HAN meter has no
     // `approximation` and no `W`, only the role declaration — which is exactly
     // what identifies how Homey Energy will classify it.
-    const payload = buildEnergyDebugPayload(asDevice({
+    const payload = buildEnergyDebugPayload(asDevice({ ...HOMEY_DEVICE_FIELDS,
       id: 'han-1',
       energy: {
         cumulative: true,
@@ -37,7 +38,7 @@ describe('buildEnergyDebugPayload energy containers', () => {
     // lib/device/managerEnergy.ts). Reporting only the first one found would
     // print `{}` here and read as "this device declared nothing" — which is how
     // a mock of it gets built with the wrong role.
-    const payload = buildEnergyDebugPayload(asDevice({
+    const payload = buildEnergyDebugPayload(asDevice({ ...HOMEY_DEVICE_FIELDS,
       id: 'battery-1',
       energyObj: {},
       energy: { homeBattery: true },
@@ -48,7 +49,7 @@ describe('buildEnergyDebugPayload energy containers', () => {
   });
 
   it('reads a container from energyObj alone', () => {
-    const payload = buildEnergyDebugPayload(asDevice({
+    const payload = buildEnergyDebugPayload(asDevice({ ...HOMEY_DEVICE_FIELDS,
       id: 'battery-2',
       energyObj: { homeBattery: true },
     }));
@@ -57,7 +58,7 @@ describe('buildEnergyDebugPayload energy containers', () => {
   });
 
   it('keeps resolving the approximation values alongside the containers', () => {
-    const payload = buildEnergyDebugPayload(asDevice({
+    const payload = buildEnergyDebugPayload(asDevice({ ...HOMEY_DEVICE_FIELDS,
       id: 'socket-1',
       capabilitiesObj: { onoff: { value: true } },
       energy: { W: 42, approximation: { usageOn: 900, usageOff: 100 } },
@@ -72,7 +73,7 @@ describe('buildEnergyDebugPayload energy containers', () => {
   });
 
   it('copies primitives only, so a nested structure cannot balloon the dump', () => {
-    const payload = buildEnergyDebugPayload(asDevice({
+    const payload = buildEnergyDebugPayload(asDevice({ ...HOMEY_DEVICE_FIELDS,
       id: 'odd-1',
       energy: {
         cumulative: true,
@@ -89,7 +90,7 @@ describe('buildEnergyDebugPayload energy containers', () => {
     // `null` — the same thing a genuinely declared `null` serializes to. In a
     // dump whose whole job is "what did this device declare", those two must
     // not collide, and an omitted key would read as "declared nothing".
-    const payload = buildEnergyDebugPayload(asDevice({
+    const payload = buildEnergyDebugPayload(asDevice({ ...HOMEY_DEVICE_FIELDS,
       id: 'broken-1',
       energy: {
         W: Number.NaN,
@@ -109,15 +110,15 @@ describe('buildEnergyDebugPayload energy containers', () => {
   });
 
   it('returns null only when the device has neither container', () => {
-    expect(buildEnergyDebugPayload(asDevice({ id: 'plain-1' }))).toBeNull();
-    expect(buildEnergyDebugPayload(asDevice({ id: 'plain-2', energyObj: null }))).toBeNull();
+    expect(buildEnergyDebugPayload(asDevice({ ...HOMEY_DEVICE_FIELDS, id: 'plain-1' }))).toBeNull();
+    expect(buildEnergyDebugPayload(asDevice({ ...HOMEY_DEVICE_FIELDS, id: 'plain-2', energyObj: null }))).toBeNull();
   });
 
   it('reports an empty container as present rather than absent', () => {
     // `{}` is a real declaration ("this device has an energy object and it says
     // nothing"), which is different from having none — the distinction matters
     // when deciding what a mock of the device must declare.
-    const payload = buildEnergyDebugPayload(asDevice({ id: 'empty-1', energy: {} }));
+    const payload = buildEnergyDebugPayload(asDevice({ ...HOMEY_DEVICE_FIELDS, id: 'empty-1', energy: {} }));
     expect(payload).not.toBeNull();
     expect(payload?.containers.energy).toEqual({});
     expect(payload?.containers.energyObj).toBeNull();

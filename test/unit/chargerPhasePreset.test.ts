@@ -1,8 +1,9 @@
 import { resolveChargerPhasePresets, resolveChargerPhaseReport } from '../../lib/device/chargerPhasePreset';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 // Setting values as the deployed Easee app 2.0.5 decodes them (`lib/enums.js`).
-const easee = (settings: Record<string, unknown>): HomeyDeviceLike => ({
+const easee = (settings: Record<string, unknown>): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'easee-1',
   name: 'Elbillader',
   ownerUri: 'homey:app:no.easee',
@@ -66,7 +67,7 @@ describe('resolveChargerPhaseReport', () => {
   });
 
   it('only reads Easee settings', () => {
-    expect(resolveChargerPhaseReport({
+    expect(resolveChargerPhaseReport({ ...HOMEY_DEVICE_FIELDS,
       id: 'other',
       name: 'Other charger',
       ownerUri: 'homey:app:com.example',
@@ -80,7 +81,7 @@ describe('resolveChargerPhasePresets', () => {
     expect(resolveChargerPhasePresets([
       easee({ phaseMode: 'Locked to single phase' }),
       { ...easee({ phaseMode: 'Auto', detectedPowerGridType: 'NOT_YET_DETECTED' }), id: 'easee-2' },
-      { id: 'heater', name: 'Heater', ownerUri: 'homey:app:com.example' },
+      { ...HOMEY_DEVICE_FIELDS, id: 'heater', name: 'Heater', ownerUri: 'homey:app:com.example' },
     ])).toEqual({ 'easee-1': 'ev_charger_1_phase' });
   });
 });

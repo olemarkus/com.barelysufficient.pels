@@ -199,7 +199,7 @@ function emitFlowBackedCapabilityReportLog(
     valueChanged: reportOutcome.valueChanged,
     freshnessAdvanced: reportOutcome.freshnessAdvanced,
     nativeCapabilityPresent,
-    zone: resolveZoneLabel(device) || undefined,
+    zone: device.zone,
   });
 }
 
@@ -248,10 +248,8 @@ function buildFlowBackedDeviceAutocompleteOptions(
   const { requiredMissingCapabilityId } = options;
   const filteredDevices = devices.filter((
     device,
-  ): device is Pick<HomeyDeviceLike, 'id' | 'name' | 'zone' | 'zoneName' | 'class' | 'capabilities'> => (
-    typeof device.id === 'string'
-    && typeof device.name === 'string'
-    && isSupportedFlowBackedDevice(device, target)
+  ): device is HomeyDeviceLike => (
+    isSupportedFlowBackedDevice(device, target)
     && (!requiredMissingCapabilityId || !isCapabilityProvidedNatively({
       device,
       capabilityId: requiredMissingCapabilityId,
@@ -264,7 +262,7 @@ function buildFlowBackedDeviceAutocompleteOptions(
 
   return filteredDevices
     .filter((device) => {
-      const zoneLabel = resolveZoneLabel(device).toLowerCase();
+      const zoneLabel = device.zone.toLowerCase();
       return (
         !normalizedQuery
         || device.name.toLowerCase().includes(normalizedQuery)
@@ -273,7 +271,7 @@ function buildFlowBackedDeviceAutocompleteOptions(
       );
     })
     .map((device) => {
-      const zoneLabel = resolveZoneLabel(device);
+      const zoneLabel = device.zone;
       const duplicateName = (nameCounts.get(device.name) ?? 0) > 1;
       return {
         id: device.id,
@@ -314,15 +312,6 @@ function resolveFlowBackedDeviceCategory(device: HomeyDeviceLike): FlowBackedCar
   });
 }
 
-function resolveZoneLabel(device: Pick<HomeyDeviceLike, 'zone' | 'zoneName'>): string {
-  const zone = device.zone;
-  if (zone && typeof zone === 'object' && 'name' in zone && typeof zone.name === 'string') {
-    return zone.name.trim();
-  }
-  if (typeof zone === 'string') return zone.trim();
-  if (typeof device.zoneName === 'string') return device.zoneName.trim();
-  return '';
-}
 
 function isCapabilityProvidedNatively(params: {
   device: HomeyDeviceLike;

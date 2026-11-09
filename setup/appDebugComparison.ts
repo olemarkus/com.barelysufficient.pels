@@ -21,7 +21,7 @@ import { asTimestampString } from './appDebugPrimitives';
 import { isUnknownRecord } from '../packages/shared-domain/src/recordGuards';
 
 const getCapabilityEntry = (device: HomeyDeviceLike, capabilityId: string): UnknownRecord | null => {
-  const entry = device.capabilitiesObj?.[capabilityId];
+  const entry = device.capabilitiesObj[capabilityId];
   return isUnknownRecord(entry) ? entry : null;
 };
 

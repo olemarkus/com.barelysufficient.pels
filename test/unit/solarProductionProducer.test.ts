@@ -1,12 +1,12 @@
-import { conformingRead } from '../helpers/deviceListRead';
 import { describe, it, expect, vi } from 'vitest';
 import { SolarProductionProducer } from '../../lib/device/solarProductionProducer';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const solar = (
   id: string,
   caps: { measure_power?: number | null },
-): HomeyDeviceLike => ({
+): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id,
   name: id,
   class: 'solarpanel',
@@ -15,7 +15,7 @@ const solar = (
   } as HomeyDeviceLike['capabilitiesObj'],
 });
 
-const nonSolar = (id: string): HomeyDeviceLike => ({
+const nonSolar = (id: string): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id,
   name: id,
   class: 'socket',
@@ -27,7 +27,7 @@ describe('SolarProductionProducer', () => {
     it('emits solar_production_observed with a concrete number when a solar device is present', () => {
       const emit = vi.fn();
       const producer = new SolarProductionProducer(emit);
-      producer.observe(conformingRead([solar('s1', { measure_power: 3000 })]), { fullRefresh: true });
+      producer.observe(([solar('s1', { measure_power: 3000 })]), { fullRefresh: true });
       expect(emit).toHaveBeenCalledTimes(1);
       expect(emit).toHaveBeenCalledWith({
         component: 'devices',
@@ -40,7 +40,7 @@ describe('SolarProductionProducer', () => {
     it('sums production across multiple solar devices', () => {
       const emit = vi.fn();
       const producer = new SolarProductionProducer(emit);
-      producer.observe(conformingRead([
+      producer.observe(([
         solar('s1', { measure_power: 3000 }),
         solar('s2', { measure_power: 1200 }),
       ]), { fullRefresh: true });
@@ -50,7 +50,7 @@ describe('SolarProductionProducer', () => {
     it('emits 0 for a present, available, non-producing solar device (real 0, not absent)', () => {
       const emit = vi.fn();
       const producer = new SolarProductionProducer(emit);
-      producer.observe(conformingRead([solar('s1', { measure_power: 0 })]), { fullRefresh: true });
+      producer.observe(([solar('s1', { measure_power: 0 })]), { fullRefresh: true });
       expect(emit).toHaveBeenCalledWith(expect.objectContaining({ productionW: 0 }));
     });
   });
@@ -59,41 +59,41 @@ describe('SolarProductionProducer', () => {
     it('emits nothing when a successful fetch contains no solar device', () => {
       const emit = vi.fn();
       const producer = new SolarProductionProducer(emit);
-      producer.observe(conformingRead([nonSolar('ev')]), { fullRefresh: true });
+      producer.observe(([nonSolar('ev')]), { fullRefresh: true });
       expect(emit).not.toHaveBeenCalled();
     });
 
     it('emits nothing when the device list is empty', () => {
       const emit = vi.fn();
       const producer = new SolarProductionProducer(emit);
-      producer.observe(conformingRead([]), { fullRefresh: true });
+      producer.observe(([]), { fullRefresh: true });
       expect(emit).not.toHaveBeenCalled();
     });
 
     it('emits nothing when the only solar device is OFFLINE (retained stale caps must not surface)', () => {
       const emit = vi.fn();
       const producer = new SolarProductionProducer(emit);
-      const offline: HomeyDeviceLike = {
+      const offline: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
         id: 's1', name: 's1', class: 'solarpanel', available: false,
         capabilitiesObj: { measure_power: { value: 3000 } } as HomeyDeviceLike['capabilitiesObj'],
       };
-      producer.observe(conformingRead([offline]), { fullRefresh: true });
+      producer.observe(([offline]), { fullRefresh: true });
       expect(emit).not.toHaveBeenCalled();
     });
 
     it('emits nothing when a present solar device has an unreadable power cap (no null field crosses out)', () => {
       const emit = vi.fn();
       const producer = new SolarProductionProducer(emit);
-      producer.observe(conformingRead([solar('s1', { measure_power: null })]), { fullRefresh: true });
+      producer.observe(([solar('s1', { measure_power: null })]), { fullRefresh: true });
       expect(emit).not.toHaveBeenCalled();
     });
 
     it('does NOT emit a fabricated "cleared" event when a present solar device is later removed', () => {
       const emit = vi.fn();
       const producer = new SolarProductionProducer(emit);
-      producer.observe(conformingRead([solar('s1', { measure_power: 3000 })]), { fullRefresh: true });
+      producer.observe(([solar('s1', { measure_power: 3000 })]), { fullRefresh: true });
       emit.mockClear();
-      producer.observe(conformingRead([nonSolar('ev')]), { fullRefresh: true });
+      producer.observe(([nonSolar('ev')]), { fullRefresh: true });
       expect(emit).not.toHaveBeenCalled();
     });
   });
@@ -103,56 +103,43 @@ describe('SolarProductionProducer', () => {
 
     it('marks a detected solar id on a non-empty full refresh', () => {
       const producer = new SolarProductionProducer(noopEmit);
-      producer.observe(conformingRead([solar('s1', { measure_power: 100 })]), { fullRefresh: true });
+      producer.observe(([solar('s1', { measure_power: 100 })]), { fullRefresh: true });
       expect(producer.isSolarDevice('s1')).toBe(true);
       expect(producer.isSolarDevice('ev')).toBe(false);
     });
 
     it('re-derives (prunes) the membership set on the next non-empty full refresh', () => {
       const producer = new SolarProductionProducer(noopEmit);
-      producer.observe(conformingRead([
+      producer.observe(([
         solar('s1', { measure_power: 100 }),
         solar('s2', { measure_power: 200 }),
       ]), { fullRefresh: true });
       expect(producer.isSolarDevice('s2')).toBe(true);
-      producer.observe(conformingRead([solar('s1', { measure_power: 110 })]), { fullRefresh: true });
+      producer.observe(([solar('s1', { measure_power: 110 })]), { fullRefresh: true });
       expect(producer.isSolarDevice('s1')).toBe(true);
       expect(producer.isSolarDevice('s2')).toBe(false);
     });
 
-    it('keeps a solar device whose read was ignored: present and unread, never pruned', () => {
-      const producer = new SolarProductionProducer(noopEmit);
-      producer.observe(conformingRead([
-        solar('s1', { measure_power: 100 }),
-        solar('s2', { measure_power: 200 }),
-      ]), { fullRefresh: true });
-      producer.observe({
-        devices: [solar('s1', { measure_power: 110 })],
-        ignoredIds: new Set(['s2']),
-      }, { fullRefresh: true });
-      expect(producer.isSolarDevice('s2')).toBe(true);
-    });
-
     it('a TARGETED refresh never grows the membership set', () => {
       const producer = new SolarProductionProducer(noopEmit);
-      producer.observe(conformingRead([solar('s1', { measure_power: 100 })]), { fullRefresh: false });
+      producer.observe(([solar('s1', { measure_power: 100 })]), { fullRefresh: false });
       expect(producer.isSolarDevice('s1')).toBe(false);
     });
 
     it('an EMPTY full read leaves the membership set intact (benign — re-read next full refresh)', () => {
       const producer = new SolarProductionProducer(noopEmit);
-      producer.observe(conformingRead([solar('s1', { measure_power: 100 })]), { fullRefresh: true });
-      producer.observe(conformingRead([]), { fullRefresh: true });
+      producer.observe(([solar('s1', { measure_power: 100 })]), { fullRefresh: true });
+      producer.observe(([]), { fullRefresh: true });
       expect(producer.isSolarDevice('s1')).toBe(true);
     });
 
     it('keeps an OFFLINE solar device in the membership set so it stays managed', () => {
       const producer = new SolarProductionProducer(noopEmit);
-      const offline: HomeyDeviceLike = {
+      const offline: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
         id: 's1', name: 's1', class: 'solarpanel', available: false,
         capabilitiesObj: { measure_power: { value: 3000 } } as HomeyDeviceLike['capabilitiesObj'],
       };
-      producer.observe(conformingRead([offline]), { fullRefresh: true });
+      producer.observe(([offline]), { fullRefresh: true });
       expect(producer.isSolarDevice('s1')).toBe(true);
     });
 

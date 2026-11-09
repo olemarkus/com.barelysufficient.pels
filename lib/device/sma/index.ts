@@ -9,8 +9,7 @@ import { plainDeviceAdapter } from '../standardDeviceAdapter';
  */
 export const smaAdapter: DeviceAdapter = {
   ...plainDeviceAdapter,
-  matches: (device) => [device.ownerUri, device.driverUri, device.driverId,
-    device.driver?.owner_uri, device.driver?.uri, device.driver?.id]
-    .some((value) => typeof value === 'string' && value.toLowerCase().includes('sma.modbus')),
+  matches: (device) => [device.ownerUri, device.driverId]
+    .some((value) => value.toLowerCase().includes('sma.modbus')),
   supportsProductionLimits: false,
 };

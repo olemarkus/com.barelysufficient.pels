@@ -1,15 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { extractBatteryState } from '../../lib/device/managerEnergy';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const battery = (
   id: string,
   caps: { measure_battery?: number | null; measure_power?: number | null },
   detect: { class?: string; homeBattery?: boolean; available?: boolean } = { class: 'battery' },
-): HomeyDeviceLike => ({
+): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id,
   name: id,
-  class: detect.class,
+  class: detect.class ?? 'other',
   energyObj: detect.homeBattery ? { homeBattery: true } : null,
   ...(detect.available !== undefined ? { available: detect.available } : {}),
   // The real SDK can present a capability with a `null` value (present-but-
@@ -20,7 +21,7 @@ const battery = (
   } as HomeyDeviceLike['capabilitiesObj'],
 });
 
-const nonBattery = (id: string, powerW: number): HomeyDeviceLike => ({
+const nonBattery = (id: string, powerW: number): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id,
   name: id,
   class: 'socket',
@@ -114,7 +115,7 @@ describe('extractBatteryState', () => {
 
   // FIX 3 — detection checks energyObj AND energy independently (no short-circuit).
   it('detects a battery via energy.homeBattery even when energyObj exists but lacks the role', () => {
-    const dev: HomeyDeviceLike = {
+    const dev: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'b1',
       name: 'b1',
       class: 'other',

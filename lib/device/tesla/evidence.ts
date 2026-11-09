@@ -23,7 +23,7 @@ function distanceM(point: Coordinates, home: Coordinates): number {
  * or D does.
  */
 function isStationaryOnlineCar(car: HomeyDeviceLike): boolean {
-  if (car.available === false) return false;
+  if (!car.available) return false;
   const caps = car.capabilitiesObj;
   const shift = caps?.car_shift_state?.value;
   return caps?.car_state?.value === 'online' && caps.measure_car_drive_speed?.value === 0
@@ -31,7 +31,7 @@ function isStationaryOnlineCar(car: HomeyDeviceLike): boolean {
 }
 
 function isConnectedAcBattery(battery: HomeyDeviceLike): boolean {
-  if (battery.available === false) return false;
+  if (!battery.available) return false;
   const caps = battery.capabilitiesObj;
   if (!['Starting', 'Charging', 'Stopped'].includes(String(caps?.charging_state?.value))) return false;
   if (!['IEC', 'SAE', 'GB_AC'].includes(String(caps?.charging_port_cable?.value))) return false;
@@ -45,9 +45,9 @@ function isConnectedAcBattery(battery: HomeyDeviceLike): boolean {
  * keeps the date it arrived with.
  */
 function isAtHome(location: HomeyDeviceLike, home: HomeLocation): boolean {
-  if (location.available === false) return false;
-  const latitude = location.capabilitiesObj?.measure_location_latitude;
-  const longitude = location.capabilitiesObj?.measure_location_longitude;
+  if (!location.available) return false;
+  const latitude = location.capabilitiesObj.measure_location_latitude;
+  const longitude = location.capabilitiesObj.measure_location_longitude;
   const point = readCoordinates(latitude?.value, longitude?.value);
   const homePoint = home.coordinates();
   if (!point || !homePoint || distanceM(point, homePoint) > 100) return false;
@@ -63,9 +63,9 @@ export function hasTeslaHomeEvidence(
   devices: readonly HomeyDeviceLike[],
   home: HomeLocation,
 ): boolean {
-  const vehicleId = battery.data?.id;
+  const vehicleId = battery.data.id;
   if (!vehicleId || !isConnectedAcBattery(battery)) return false;
-  const siblings = devices.filter((device) => device.data?.id === vehicleId);
+  const siblings = devices.filter((device) => device.data.id === vehicleId);
   const locations = siblings.filter((device) => teslaDriver(device) === 'location');
   const cars = siblings.filter((device) => teslaDriver(device) === 'car');
   const location = locations.length === 1 ? locations[0] : undefined;

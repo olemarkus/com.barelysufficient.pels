@@ -12,6 +12,7 @@ import {
   CAPACITY_MARGIN_KW,
 } from '../../lib/utils/settingsKeys';
 import { steerCapacityPace } from '../helpers/capacityPaceFixture';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
@@ -65,7 +66,7 @@ const buildTemperatureApiDevice = (overrides?: Partial<{
     capabilitiesObj.onoff = { id: 'onoff', value: overrides?.onoff ?? true, lastUpdated };
   }
 
-  return {
+  return { ...HOMEY_DEVICE_FIELDS,
     id: overrides?.id ?? 'airtreatment-1',
     name: overrides?.name ?? 'Nordic S4 REL',
     class: overrides?.class ?? 'airtreatment',

@@ -9,12 +9,13 @@ import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userda
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
 import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const selected: ChargingCurrentSetup = { method: 'built_in', confirmation: 'single_charger' };
-const zaptec = (writable = false): HomeyDeviceLike => ({ id: 'charger', name: 'Zaptec', class: 'evcharger',
+const zaptec = (writable = false): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS, id: 'charger', name: 'Zaptec', class: 'evcharger',
   driverId: 'homey:app:com.zaptec:go2', data: { id: 'zaptec-id', installationId: 'installation' },
   capabilities: ['available_installation_current'], capabilitiesObj: { available_installation_current: { value: 16, setable: writable } } });
-const futurehome = (): HomeyDeviceLike => ({ id: 'futurehome', name: 'Futurehome', class: 'evcharger',
+const futurehome = (): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS, id: 'futurehome', name: 'Futurehome', class: 'evcharger',
   driverId: 'homey:app:no.futurehome:ev_charger', settings: { currentLimit: 16 },
   capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'] });
 function fixture(device = zaptec(), flowWritesStore = createChargingFlowWritesStore(openUserdataDatabase(IN_MEMORY_DATABASE))) {
@@ -124,7 +125,7 @@ test('a battery-level reporting Flow does not block current control', async () =
 });
 
 test.each(['missing key', 'conflicting Flow', 'unreadable Flows'])('Tesla control can be revoked with %s', async (failure) => {
-  const tesla: HomeyDeviceLike = { id: 'tesla', name: 'Tesla', class: 'sensor',
+  const tesla: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS, id: 'tesla', name: 'Tesla', class: 'sensor',
     driverId: 'homey:app:com.tesla.car:battery',
     capabilities: ['charging_on', 'charging_state', 'measure_charge_power', 'measure_soc_level'] };
   const { control, access, get } = fixture(tesla);

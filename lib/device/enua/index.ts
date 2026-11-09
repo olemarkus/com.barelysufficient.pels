@@ -15,7 +15,7 @@ function isEnuaCharger(device: HomeyDeviceLike): boolean {
 }
 
 function wattsPerAmp(device: HomeyDeviceLike): number {
-  switch (device.settings?.grid_type) {
+  switch (device.settings.grid_type) {
     case '1phase': return PHASE_VOLTAGE;
     case 'it_3phase': return Math.sqrt(3) * PHASE_VOLTAGE;
     // Enua itself defaults missing/unknown grid types to three-phase TN.
@@ -31,7 +31,7 @@ function configureTargetPower(
   // the device, reachability and planner reading the same saved preset.
   if (config.enabled === false || resolveTargetPowerPresetPhaseCount(config.preset)) return config;
   const gridW = wattsPerAmp(device);
-  const raw = device.capabilitiesObj?.target_power;
+  const raw = device.capabilitiesObj.target_power;
   const declaredMaxA = typeof raw?.max === 'number' && Number.isFinite(raw.max) && raw.max > 0
     ? raw.max / gridW : MAX_CURRENT_A;
   const max = Math.min(config.max ?? MAX_CURRENT_A * gridW, Math.min(MAX_CURRENT_A, declaredMaxA) * gridW);

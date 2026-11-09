@@ -114,8 +114,7 @@ export class TransportSnapshotStore {
   }
 
   /**
-   * A full read's accepted raw devices, and Homey's list as fetched for it
-   * (every device it named, including one whose read was ignored).
+   * A full read's accepted raw devices, and Homey's list as fetched for it.
    */
   replaceLatestRawDevices(devices: HomeyDeviceLike[], fetchedList: readonly HomeyDeviceLike[]): void {
     this.latestRawDevices = devices;

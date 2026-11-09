@@ -1,15 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { extractSolarProductionState, isSolarPanelDevice } from '../../lib/device/managerEnergy';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const solar = (
   id: string,
   caps: { measure_power?: number | null },
   detect: { class?: string; available?: boolean } = { class: 'solarpanel' },
-): HomeyDeviceLike => ({
+): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id,
   name: id,
-  class: detect.class,
+  class: detect.class ?? 'other',
   ...(detect.available !== undefined ? { available: detect.available } : {}),
   // The real SDK can present a capability with a `null` value (present-but-unreadable);
   // the typed shape models value as optional, so cast for those.
@@ -18,7 +19,7 @@ const solar = (
   } as HomeyDeviceLike['capabilitiesObj'],
 });
 
-const nonSolar = (id: string, powerW: number): HomeyDeviceLike => ({
+const nonSolar = (id: string, powerW: number): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id,
   name: id,
   class: 'socket',
@@ -29,7 +30,7 @@ const nonSolar = (id: string, powerW: number): HomeyDeviceLike => ({
 // `meterPowerExportedCapability` but is class 'sensor'/'other', NOT 'solarpanel'. It must
 // NOT be classified as solar (else its real consumption is wrongly excluded and it emits
 // a false production reading). Mirrors the repo's treatment in `meterKwhBackfill.ts`.
-const gridMeter = (id: string, powerW: number): HomeyDeviceLike => ({
+const gridMeter = (id: string, powerW: number): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id,
   name: id,
   class: 'sensor',
@@ -48,7 +49,7 @@ describe('isSolarPanelDevice', () => {
   });
 
   it('does NOT classify a class:other device with energyObj.meterPowerExportedCapability as solar', () => {
-    const dev: HomeyDeviceLike = {
+    const dev: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'm1', name: 'm1', class: 'other',
       energyObj: { meterPowerExportedCapability: 'meter_power.exported' },
       capabilitiesObj: { measure_power: { value: 1000 } },

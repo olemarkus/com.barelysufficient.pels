@@ -254,7 +254,7 @@ function resolveAdapterReportedStep(
       value: getDeviceAdapter(device).targetPowerReading(device, config, target.value) } }
     : capabilityObj;
   return resolveNativeSteppedLoadReportedStepId({
-    profile, capabilities: device.capabilities ?? [], capabilityObj: values,
+    profile, capabilities: device.capabilities, capabilityObj: values,
   });
 }
 
@@ -273,7 +273,7 @@ function sameAutomaticProfile(previous: SteppedLoadProfile | undefined, next: St
 }
 
 function resolveDeviceAutomaticProfile(device: HomeyDeviceLike): SteppedLoadProfile | undefined {
-  const overlay = getDeviceAdapter(device).overlay(device, device.capabilities ?? [], getCapabilityObj(device));
+  const overlay = getDeviceAdapter(device).overlay(device, device.capabilities, getCapabilityObj(device));
   return resolveAutomaticSteppedLoadProfile(device, overlay.capabilities, overlay.capabilityObj);
 }
 
@@ -297,9 +297,7 @@ function retainTargetPowerEvidence(
 }
 
 export function getCapabilityObj(device: HomeyDeviceLike): DeviceCapabilityMap {
-  return device.capabilitiesObj && typeof device.capabilitiesObj === 'object'
-    ? device.capabilitiesObj as DeviceCapabilityMap
-    : {};
+  return device.capabilitiesObj as DeviceCapabilityMap;
 }
 
 function needsTargetPowerTakeover(capabilities: string[], capabilityObj: DeviceCapabilityMap): boolean {

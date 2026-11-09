@@ -4,13 +4,14 @@ import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { partialDouble } from '../helpers/partialDouble';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const capabilities = ['target_power', 'evcharger_charging', 'measure_current.stationlimit'];
 const control = { kind: 'capability_adapter' as const, activationRequired: false, activationEnabled: true };
 const sessions = { hasCarStopEvidence: () => false };
 
 function charger(stationPhases: 1 | 3): HomeyDeviceLike {
-  return {
+  return { ...HOMEY_DEVICE_FIELDS,
     id: 'alfen', name: 'Alfen', driverId: 'homey:app:com.alfen:chargepoint', capabilities,
     capabilitiesObj: {
       'measure_voltage.l2': { value: stationPhases === 3 ? 230 : 0 },

@@ -6,6 +6,7 @@ import {
   MockDriver,
 } from '../mocks/homey';
 import { createApp, cleanupApps, getDeviceSurfacesForTests } from '../utils/appTestUtils';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });
@@ -48,7 +49,7 @@ const buildHeatpumpApiDevice = (overrides?: Partial<{
 }>) => {
     // Homey dates every capability value it reports.
     const lastUpdated = new Date().toISOString();
-    return {
+    return { ...HOMEY_DEVICE_FIELDS,
         id: overrides?.id ?? 'heatpump-a',
         name: overrides?.name ?? 'Hallway Heatpump',
         class: overrides?.class ?? 'heatpump',

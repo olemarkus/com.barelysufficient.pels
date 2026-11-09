@@ -27,6 +27,7 @@ import { stateOfChargeFixture } from '../utils/stateOfChargeFixture';
 import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import type { HeadroomForDeviceDecision } from '../../lib/plan/planHeadroomDevice';
 import type { ObservedHeadroom } from '../../lib/power/lastTotalPower';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const steppedProfile: SteppedLoadProfile = {
   steps: [
@@ -1853,7 +1854,7 @@ describe('registerFlowCards', () => {
         refreshSnapshot: false,
       })),
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
-        { id: 'dev-1', name: 'Relay', class: 'socket', capabilities: ['onoff'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Relay', class: 'socket', capabilities: ['onoff'] },
       ]),
     });
 
@@ -1883,7 +1884,7 @@ describe('registerFlowCards', () => {
   it('parses EV car connection autocomplete values as boolean flow reports', async () => {
     const { deps, actionListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
-        { id: 'dev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging', 'alarm_generic.car_connected'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging', 'alarm_generic.car_connected'] },
       ]),
     });
 
@@ -1909,7 +1910,7 @@ describe('registerFlowCards', () => {
   it('parses EV resumable autocomplete values as boolean flow reports', async () => {
     const { deps, actionListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
-        { id: 'dev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
       ]),
     });
 
@@ -1935,8 +1936,8 @@ describe('registerFlowCards', () => {
   it('uses raw Homey devices for flow-backed device autocomplete', async () => {
     const { deps, actionAutocompleteListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
-        { id: 'dev-2', name: 'Garage Charger', zoneName: 'Garage', class: 'evcharger', capabilities: ['evcharger_charging'] },
-        { id: 'dev-1', name: 'Attic Relay', class: 'socket', capabilities: ['onoff'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'dev-2', name: 'Garage Charger', zoneName: 'Garage', class: 'evcharger', capabilities: ['evcharger_charging'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Attic Relay', class: 'socket', capabilities: ['onoff'] },
       ]),
     });
 
@@ -1949,8 +1950,8 @@ describe('registerFlowCards', () => {
   it('disambiguates duplicate flow-backed device names with zone labels', async () => {
     const { deps, actionAutocompleteListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
-        { id: 'dev-1', name: 'Wallbox', zoneName: 'Garage', class: 'socket', capabilities: ['onoff'] },
-        { id: 'dev-2', name: 'Wallbox', zone: { name: 'Driveway' }, class: 'socket', capabilities: ['onoff'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Wallbox', zone: 'Garage', class: 'socket', capabilities: ['onoff'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'dev-2', name: 'Wallbox', zone: 'Driveway', class: 'socket', capabilities: ['onoff'] },
       ]),
     });
 
@@ -1988,8 +1989,8 @@ describe('registerFlowCards', () => {
   it('limits EV flow-backed device autocomplete to evcharger devices only', async () => {
     const { deps, actionAutocompleteListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
-        { id: 'ev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
-        { id: 'socket-1', name: 'Wallbox', class: 'socket', capabilities: ['onoff'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'ev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'socket-1', name: 'Wallbox', class: 'socket', capabilities: ['onoff'] },
       ]),
     });
 
@@ -2002,8 +2003,8 @@ describe('registerFlowCards', () => {
   it('limits EV resumable autocomplete to evcharger devices only', async () => {
     const { deps, actionAutocompleteListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
-        { id: 'ev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
-        { id: 'socket-1', name: 'Wallbox', class: 'socket', capabilities: ['onoff'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'ev-1', name: 'Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'socket-1', name: 'Wallbox', class: 'socket', capabilities: ['onoff'] },
       ]),
     });
 
@@ -2016,8 +2017,8 @@ describe('registerFlowCards', () => {
   it('limits flow-backed on/off request autocomplete to devices still missing native onoff', async () => {
     const { deps, triggerAutocompleteListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
-        { id: 'dev-1', name: 'Relay', class: 'socket', capabilities: [] },
-        { id: 'dev-2', name: 'Native Relay', class: 'socket', capabilities: ['onoff'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Relay', class: 'socket', capabilities: [] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'dev-2', name: 'Native Relay', class: 'socket', capabilities: ['onoff'] },
       ]),
     });
 
@@ -2030,9 +2031,9 @@ describe('registerFlowCards', () => {
   it('limits EV charging request autocomplete to EV chargers still missing native evcharger_charging', async () => {
     const { deps, triggerAutocompleteListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
-        { id: 'ev-1', name: 'Wallbox', class: 'evcharger', capabilities: [] },
-        { id: 'ev-2', name: 'Native Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
-        { id: 'socket-1', name: 'Socket', class: 'socket', capabilities: [] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'ev-1', name: 'Wallbox', class: 'evcharger', capabilities: [] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'ev-2', name: 'Native Wallbox', class: 'evcharger', capabilities: ['evcharger_charging'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'socket-1', name: 'Socket', class: 'socket', capabilities: [] },
       ]),
     });
 
@@ -2068,9 +2069,9 @@ describe('registerFlowCards', () => {
   it('excludes temperature and unknown-class devices from binary flow-backed autocomplete', async () => {
     const { deps, actionAutocompleteListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
-        { id: 'dev-1', name: 'Relay', class: 'socket', capabilities: ['onoff'] },
-        { id: 'dev-2', name: 'Thermostat', class: 'heater', capabilities: ['target_temperature', 'measure_temperature'] },
-        { id: 'dev-3', name: 'Mystery', class: 'light', capabilities: ['onoff'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Relay', class: 'socket', capabilities: ['onoff'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'dev-2', name: 'Thermostat', class: 'heater', capabilities: ['target_temperature', 'measure_temperature'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'dev-3', name: 'Mystery', class: 'light', capabilities: ['onoff'] },
       ]),
     });
 
@@ -2083,7 +2084,7 @@ describe('registerFlowCards', () => {
   it('rejects unsupported devices even if a crafted id is passed to a flow-backed action card', async () => {
     const { deps, actionListeners } = buildDeps({
       getHomeyDevicesForFlow: vi.fn().mockResolvedValue([
-        { id: 'dev-1', name: 'Thermostat', class: 'heater', capabilities: ['target_temperature', 'measure_temperature'] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Thermostat', class: 'heater', capabilities: ['target_temperature', 'measure_temperature'] },
       ]),
     });
 

@@ -5,6 +5,7 @@ import { DeviceAdapterSessions, getDeviceAdapter } from '../../lib/device/device
 import { hasSharedChargingInstallation, resolveChargingCurrentAction } from '../../lib/device/chargingCurrentAdapter';
 import { partialDouble } from '../helpers/partialDouble';
 import { FuturehomeChargerSession } from '../../lib/device/futurehome/session';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const cap = <T>(value: T) => ({ value, lastUpdated: new Date().toISOString() });
 const setup = { method: 'flow', confirmation: 'vehicle' } as const;
@@ -12,13 +13,13 @@ const setup = { method: 'flow', confirmation: 'vehicle' } as const;
 function vehicle(id: string): HomeyDeviceLike[] {
   const data = { id };
   return [
-    { id, name: id, class: 'sensor', data, driverId: 'homey:app:com.tesla.car:battery',
+    { ...HOMEY_DEVICE_FIELDS, id, name: id, class: 'sensor', data, driverId: 'homey:app:com.tesla.car:battery',
       capabilities: ['charging_on', 'charging_state', 'measure_charge_power', 'measure_soc_level'],
       capabilitiesObj: { charging_on: cap(true), charging_state: cap('Charging'), measure_charge_power: cap(4),
         measure_soc_level: cap(55), charging_port_cable: cap('IEC') } },
-    { id: `${id}-car`, name: id, class: 'car', data, driverId: 'homey:app:com.tesla.car:car',
+    { ...HOMEY_DEVICE_FIELDS, id: `${id}-car`, name: id, class: 'car', data, driverId: 'homey:app:com.tesla.car:car',
       capabilitiesObj: { car_state: cap('online'), car_shift_state: cap('P'), measure_car_drive_speed: cap(0) } },
-    { id: `${id}-location`, name: id, class: 'sensor', data, driverId: 'homey:app:com.tesla.car:location',
+    { ...HOMEY_DEVICE_FIELDS, id: `${id}-location`, name: id, class: 'sensor', data, driverId: 'homey:app:com.tesla.car:location',
       capabilitiesObj: { measure_location_latitude: cap(60), measure_location_longitude: cap(10) } },
   ];
 }
@@ -54,7 +55,7 @@ test('the generic registry isolates two vehicle sessions and trust recovery', ()
 
 test('vendor action arguments and installation membership are resolved by the binding owner', () => {
   const car = vehicle('car')[0]!;
-  const charger: HomeyDeviceLike = { id: 'charger', name: 'Charger', driverId: 'homey:app:com.zaptec:go',
+  const charger: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS, id: 'charger', name: 'Charger', driverId: 'homey:app:com.zaptec:go',
     data: { installationId: 'site' }, capabilities: ['available_installation_current'] };
   const carBinding = getDeviceAdapter(car).currentBindings(car)[0]!;
   const chargerBinding = getDeviceAdapter(charger).currentBindings(charger)[0]!;
@@ -63,14 +64,14 @@ test('vendor action arguments and installation membership are resolved by the bi
   expect(resolveChargingCurrentAction(chargerBinding, [{ id: 'homey:device:charger:installation_current_control' }], 10).args)
     .toEqual({ current1: 10, current2: 10, current3: 10 });
   // Even a sibling without a supported current-control driver belongs to the installation.
-  expect(hasSharedChargingInstallation(chargerBinding, [charger, {
+  expect(hasSharedChargingInstallation(chargerBinding, [charger, { ...HOMEY_DEVICE_FIELDS,
     id: 'other', name: 'Other charger', class: 'evcharger', driverId: 'homey:app:com.zaptec:other',
     data: { installationId: 'site' },
   }])).toBe(true);
 });
 
 test('an unrelated device retains standard behavior and exposes no integration control bindings', () => {
-  const device: HomeyDeviceLike = { id: 'heater', name: 'Heater', class: 'heater', capabilities: ['onoff'] };
+  const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS, id: 'heater', name: 'Heater', class: 'heater', capabilities: ['onoff'] };
   const adapter = getDeviceAdapter(device);
   expect(adapter.identity(device)).toBe(device);
   expect(adapter.currentBindings(device)).toEqual([]);
@@ -78,7 +79,7 @@ test('an unrelated device retains standard behavior and exposes no integration c
 });
 
 test('a Futurehome charger reports its sent current limit and only a one-phase installation', () => {
-  const charger = (settings: Record<string, unknown>): HomeyDeviceLike => ({ id: 'futurehome', name: 'Futurehome',
+  const charger = (settings: Record<string, unknown>): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS, id: 'futurehome', name: 'Futurehome',
     class: 'evcharger', driverId: 'homey:app:no.futurehome:ev_charger', settings,
     capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'] });
   const read = (device: HomeyDeviceLike) => getDeviceAdapter(device)
@@ -94,7 +95,7 @@ test('a Futurehome charger reports its sent current limit and only a one-phase i
 
 test('a Futurehome limit is dated by the newest read only, and only on a step at that current', () => {
   const session = new FuturehomeChargerSession();
-  const charger = (currentLimit: unknown): HomeyDeviceLike => ({ id: 'futurehome', name: 'Futurehome',
+  const charger = (currentLimit: unknown): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS, id: 'futurehome', name: 'Futurehome',
     class: 'evcharger', driverId: 'homey:app:no.futurehome:ev_charger', settings: { currentLimit } });
   const steppedLoadProfile = { steps: [6, 10, 12, 16].map((amps) => (
     { id: `${amps}a`, planningPowerW: amps * 230, planningCurrentA: amps })) };

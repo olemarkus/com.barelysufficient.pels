@@ -40,7 +40,7 @@ const resolveEnergyContainer = (device: HomeyDeviceLike): UnknownRecord | null =
 };
 
 const resolveOnOffValue = (device: HomeyDeviceLike): boolean | null => {
-  const value = device.capabilitiesObj?.onoff?.value;
+  const value = device.capabilitiesObj.onoff?.value;
   return typeof value === 'boolean' ? value : null;
 };
 
@@ -158,11 +158,8 @@ const compactCapability = (value: unknown): HomeyCapabilitySummary => {
 
 export const compactHomeyDevice = (device: HomeyDeviceLike): HomeyDeviceSummary => {
   const record = device as unknown as UnknownRecord;
-  const zone = typeof device.zone === 'string'
-    ? device.zone
-    : asString(device.zone?.name) ?? asString(record.zoneName);
   const capabilityValues = Object.fromEntries(
-    Object.entries(device.capabilitiesObj || {}).map(([capabilityId, capabilityValue]) => [
+    Object.entries(device.capabilitiesObj).map(([capabilityId, capabilityValue]) => [
       capabilityId,
       compactCapability(capabilityValue),
     ]),
@@ -171,12 +168,12 @@ export const compactHomeyDevice = (device: HomeyDeviceLike): HomeyDeviceSummary 
     id: device.id,
     name: device.name,
     class: device.class,
-    ...(asString(record.driverId) ? { driverId: asString(record.driverId) } : {}),
-    ...(typeof device.available === 'boolean' ? { available: device.available } : {}),
-    ...(typeof record.ready === 'boolean' ? { ready: record.ready } : {}),
-    ...(zone ? { zone } : {}),
+    driverId: device.driverId,
+    available: device.available,
+    ready: device.ready,
+    zone: device.zone,
     ...(asTimestampString(record.lastSeenAt) ? { lastSeenAt: asTimestampString(record.lastSeenAt) } : {}),
-    capabilities: Array.isArray(device.capabilities) ? device.capabilities : [],
+    capabilities: device.capabilities,
     capabilityValues,
   };
 };

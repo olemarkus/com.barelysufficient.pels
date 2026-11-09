@@ -6,8 +6,8 @@ import { EASEE_CHARGER_CURRENT_CAPABILITY_ID, EASEE_MIN_CHARGING_CURRENT_A } fro
 
 /** Easee publishes decoded grid/phase settings; current commands remain amps. */
 function resolveWattsPerAmp(settings: HomeyDeviceLike['settings']): number | undefined {
-  if (settings?.phaseMode === 'Locked to single phase') return 230;
-  const grid = settings?.detectedPowerGridType;
+  if (settings.phaseMode === 'Locked to single phase') return 230;
+  const grid = settings.detectedPowerGridType;
   if (typeof grid !== 'string') return undefined;
   if (/_1_PHASE(?:_|$)/u.test(grid)) return 230;
   if (grid === 'TN_3_PHASE') return 3 * 230;
@@ -23,7 +23,7 @@ function positiveSetting(value: unknown): number | undefined {
 function resolveCurrentMaximum(device: HomeyDeviceLike, declaredMax: number): number | undefined {
   let maximum = declaredMax;
   for (const key of ['maxChargerCurrent', 'circuitFuse']) {
-    const raw = device.settings?.[key];
+    const raw = device.settings[key];
     if (raw === undefined || raw === null || raw === '') continue;
     const limit = positiveSetting(raw);
     if (limit === undefined) return undefined;

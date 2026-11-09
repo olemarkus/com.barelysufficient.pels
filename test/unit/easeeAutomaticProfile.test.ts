@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { resolveEaseeAutomaticProfile } from '../../lib/device/easee/automaticProfile';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const current: DeviceCapabilityMap = {
   target_charger_current: { value: 16, min: 0, max: 40, step: 1, setable: true },
 };
-const charger = (settings: HomeyDeviceLike['settings']): HomeyDeviceLike => ({
+const charger = (settings: HomeyDeviceLike['settings']): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'easee', name: 'Easee', settings,
 });
 

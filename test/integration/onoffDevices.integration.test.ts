@@ -13,6 +13,7 @@ import {
   getDeviceSurfacesForTests,
 } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN } from '../../lib/utils/settingsKeys';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
@@ -49,7 +50,7 @@ const buildOnOffApiDevice = (overrides?: Partial<{
   const capabilities = overrides?.capabilities ?? ['onoff', 'measure_power', 'meter_power', 'rms_voltage', 'rms_current'];
   // Homey dates every capability value it reports.
   const lastUpdated = new Date().toISOString();
-  return {
+  return { ...HOMEY_DEVICE_FIELDS,
     id: overrides?.id ?? 'device-a',
     name: overrides?.name ?? 'On/Off Socket',
     class: overrides?.class ?? 'socket',
@@ -62,8 +63,8 @@ const buildOnOffApiDevice = (overrides?: Partial<{
       ...(capabilities.includes('meter_power') ? { meter_power: { id: 'meter_power', value: 100, lastUpdated } } : {}),
     },
     settings: overrides?.settings ?? {},
-    energyObj: overrides?.energyObj,
-    energy: overrides?.energy,
+    energyObj: overrides?.energyObj ?? null,
+    energy: overrides?.energy ?? null,
   };
 };
 

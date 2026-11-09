@@ -410,7 +410,7 @@ function resolveActiveTargetPowerW(
   observation: ReturnType<typeof resolveInstallationCurrentTargetPowerObservation>,
   manualControl: boolean,
 ): number | undefined {
-  if (!manualControl && !isTargetPowerControlActive(capabilityObj, device.capabilities ?? [])) return undefined;
+  if (!manualControl && !isTargetPowerControlActive(capabilityObj, device.capabilities)) return undefined;
   return observation?.value ?? resolveReportedTargetPowerW(device, config, capabilityObj);
 }
 

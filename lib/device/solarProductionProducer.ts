@@ -1,5 +1,4 @@
 import type { HomeyDeviceLike } from '../utils/types';
-import type { DeviceListRead } from './deviceListRead';
 import { extractSolarProductionState, isSolarPanelDevice } from './managerEnergy';
 
 /**
@@ -74,16 +73,10 @@ export class SolarProductionProducer {
      * `fullRefresh` (when the list is non-empty) re-derives the solar-id set so the
      * managed/controllable resolution knows which devices are solar — a targeted
      * (by-known-id) refresh re-reads the SAME known ids and must not narrow the set.
-     * A solar device whose read was ignored is present but unread: it stays a member
-     * and contributes nothing to the aggregate.
      */
-    observe(read: DeviceListRead, options: { fullRefresh: boolean }): void {
-        const { devices, ignoredIds } = read;
+    observe(devices: HomeyDeviceLike[], options: { fullRefresh: boolean }): void {
         const { productionW, solarDeviceCount, solarDeviceIds } = extractSolarProductionState(devices);
-        if (options.fullRefresh && (devices.length > 0 || ignoredIds.size > 0)) {
-            const unreadMembers = [...this.solarDeviceIds].filter((deviceId) => ignoredIds.has(deviceId));
-            this.solarDeviceIds = new Set([...solarDeviceIds, ...unreadMembers]);
-        }
+        if (options.fullRefresh && devices.length > 0) this.solarDeviceIds = new Set(solarDeviceIds);
         // Emit only with a concrete finite production number; otherwise drop so nothing
         // nullable crosses out of the device layer.
         if (productionW === null) return;

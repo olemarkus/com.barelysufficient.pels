@@ -150,7 +150,7 @@ describe('home battery claim and hand-back through the real transport', () => {
 
     device.clearCapabilityBehavior('target_power');
     vi.setSystemTime(Date.now() + 60_000);
-    owner.onSnapshotCommitted({ entries: [], ignoredReadIds: [] });
+    owner.onSnapshotCommitted({ entries: [] });
     await vi.advanceTimersByTimeAsync(0);
 
     expect(writes().slice(-2)).toEqual([['target_power', 0], ['target_power_mode', 'anti_feed']]);
@@ -182,12 +182,12 @@ describe('home battery claim and hand-back through the real transport', () => {
     // landed, and writes it back at the end; its next poll reports the claim.
     vi.setSystemTime(Date.now() + 2_000);
     await emitCapability(BATTERY, 'target_power_mode', 'anti_feed');
-    owner.onSnapshotCommitted({ entries: [], ignoredReadIds: [] });
+    owner.onSnapshotCommitted({ entries: [] });
     expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'claim_contested' });
     vi.setSystemTime(Date.now() + 5_000);
     await emitCapability(BATTERY, 'target_power_mode', 'homey');
     vi.setSystemTime(Date.now() + CONTROL_COMMAND_CONFIRMATION_MS);
-    owner.onSnapshotCommitted({ entries: [], ignoredReadIds: [] });
+    owner.onSnapshotCommitted({ entries: [] });
 
     expect(owner.isManaged(BATTERY)).toBe(true);
     expect(owner.wasTakenOver(BATTERY)).toBe(false);
@@ -212,7 +212,7 @@ describe('home battery claim and hand-back through the real transport', () => {
     const logs = captureLogger('info');
     vi.setSystemTime(Date.now() + 1_000);
     await emitCapability(BATTERY, 'target_power_mode', 'anti_feed');
-    owner.onSnapshotCommitted({ entries: [], ignoredReadIds: [] });
+    owner.onSnapshotCommitted({ entries: [] });
 
     expect(owner.isManaged(BATTERY)).toBe(true);
     expect(owner.wasTakenOver(BATTERY)).toBe(false);
@@ -253,14 +253,14 @@ describe('home battery claim and hand-back through the real transport', () => {
     vi.setSystemTime(Date.now() + 5_000);
     await emitCapability(BATTERY, 'target_power_mode', reportedMode(writes().at(-1)?.[1]));
     vi.setSystemTime(Date.now() + CONTROL_COMMAND_CONFIRMATION_MS);
-    owner.onSnapshotCommitted({ entries: [], ignoredReadIds: [] });
+    owner.onSnapshotCommitted({ entries: [] });
     expect(owner.wasTakenOver(BATTERY)).toBe(false);
     expect(owner.isManaged(BATTERY)).toBe(true);
 
     // The owner picks Inactive in the Zinvolt app while PELS holds the battery.
     await emitCapability(BATTERY, 'target_power_mode', 'INACTIVE');
     vi.setSystemTime(Date.now() + CONTROL_COMMAND_CONFIRMATION_MS);
-    owner.onSnapshotCommitted({ entries: [], ignoredReadIds: [] });
+    owner.onSnapshotCommitted({ entries: [] });
     await vi.advanceTimersByTimeAsync(0);
     expect(owner.wasTakenOver(BATTERY)).toBe(true);
     expect(owner.isManaged(BATTERY)).toBe(false);

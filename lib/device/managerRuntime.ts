@@ -293,7 +293,7 @@ function getChangedEvBinaryObservation(
   previousEvCharging: boolean | undefined,
 ): ExplicitBinaryObservation | undefined {
   if (binaryCapabilityId !== 'evcharger_charging') return undefined;
-  const rawControlValue = device.capabilitiesObj?.evcharger_charging?.value;
+  const rawControlValue = device.capabilitiesObj.evcharger_charging?.value;
   if (typeof rawControlValue === 'boolean' && rawControlValue !== previousEvCharging) {
     return { value: rawControlValue, observedCapabilityId: 'evcharger_charging' };
   }
@@ -308,7 +308,7 @@ function getExplicitObservedBinaryObservation(
 ): ExplicitBinaryObservation | undefined {
   const changedEvObservation = getChangedEvBinaryObservation(device, binaryCapabilityId, previousEvCharging);
   if (changedEvObservation) return changedEvObservation;
-  const value = device.capabilitiesObj?.[binaryObservationCapabilityId]?.value;
+  const value = device.capabilitiesObj[binaryObservationCapabilityId]?.value;
   if (typeof value === 'boolean') {
     return { value, observedCapabilityId: binaryObservationCapabilityId };
   }
@@ -317,7 +317,7 @@ function getExplicitObservedBinaryObservation(
   // distinct explicit user/Flow action. When state itself did not change, retain
   // that raw observation so external-off provenance can see ON/OFF transitions.
   const rawControlValue = binaryCapabilityId === 'evcharger_charging'
-    ? device.capabilitiesObj?.[binaryCapabilityId]?.value
+    ? device.capabilitiesObj[binaryCapabilityId]?.value
     : undefined;
   return typeof rawControlValue === 'boolean'
     ? { value: rawControlValue, observedCapabilityId: 'evcharger_charging' }

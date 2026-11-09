@@ -34,6 +34,7 @@ import type {
   MeasuredPowerObservedProbe,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 // `toPlanDevice` is the per-device half of a two-stage producer: ranking needs
 // the SET, so `buildHomePlanDevices` stamps `priority` right after. These specs
@@ -68,7 +69,7 @@ const resolveSavedFlowPlanDevice = async (profile: SteppedLoadProfile, observedA
     settings: { getDeviceControlProfile: () => profile },
   });
   const lastUpdated = new Date(observedAtMs).toISOString();
-  const device: HomeyDeviceLike = {
+  const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
     id: 'tank', name: 'Water heater', class: 'heater', available: true, ready: true,
     capabilities: ['onoff', 'measure_power', 'measure_temperature', 'target_temperature'],
     capabilitiesObj: {

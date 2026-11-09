@@ -31,7 +31,7 @@ const DRIVER_IDS = new Set(['homey:app:com.alfen:chargepoint', 'com.alfen:charge
 const SIGNATURE_CAPABILITY = 'measure_current.stationlimit';
 
 function isAlfenChargepoint(device: HomeyDeviceLike): boolean {
-  return DRIVER_IDS.has(device.driverId?.trim().toLowerCase() ?? '');
+  return DRIVER_IDS.has(device.driverId.trim().toLowerCase());
 }
 
 function readVolts(values: DeviceCapabilityMap | undefined, capabilityId: string): number {

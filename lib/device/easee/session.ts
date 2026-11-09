@@ -17,7 +17,7 @@ export class EaseeChargingSession implements DeviceAdapterSession {
   observeDevice(device: HomeyDeviceLike, readAtMs: number): void {
     const previous = this.statuses.get(device.id);
     if (previous?.kind === 'retired' && readAtMs < previous.readAtMs) return;
-    if (!isEaseeChargerDevice(device) || !device.capabilities?.includes(EASEE_CHARGER_STATUS)) {
+    if (!isEaseeChargerDevice(device) || !device.capabilities.includes(EASEE_CHARGER_STATUS)) {
       if (previous && readAtMs < previous.readAtMs) return;
       // Rejected observations retain their accepted status at the read boundary.
       // A status actually removed from the inventory relinquishes its authority.
@@ -31,7 +31,7 @@ export class EaseeChargingSession implements DeviceAdapterSession {
 
   private observeStatus(device: HomeyDeviceLike, readAtMs: number): void {
     const previous = this.statuses.get(device.id);
-    const status = device.capabilitiesObj?.[EASEE_CHARGER_STATUS];
+    const status = device.capabilitiesObj[EASEE_CHARGER_STATUS];
     const atMs = toCapabilityTimestampMs(status?.lastUpdated);
     if (!isEaseeChargingStatus(status?.value) || atMs === undefined) return;
     if (previous?.kind === 'observed' && atMs < previous.atMs) return;

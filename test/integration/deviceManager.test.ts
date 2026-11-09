@@ -27,7 +27,7 @@ import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { transportSnapshotFixtures } from '../utils/deviceSnapshotFixture';
-import { capabilityReadings, celsius, homeyDevice, setable } from '../helpers/homeyDevicePayload';
+import { capabilityReadings, celsius, homeyDevice, setable, HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 
 const mockApiGet = vi.fn();
@@ -179,7 +179,7 @@ describe('DeviceTransport', () => {
                     id: 'thermo-1',
                     name: 'Hall Thermostat',
                     class: 'thermostat',
-                    zoneName: 'Hallway',
+                    zone: 'Hallway',
                     settings: { load: 900 },
                     available: false,
                 },
@@ -294,9 +294,6 @@ describe('DeviceTransport', () => {
                 deviceId: 'heatpump-1',
                 capabilityIds: ['measure_power'],
             }));
-            expect(loggerMock.structuredLog.warn).not.toHaveBeenCalledWith(expect.objectContaining({
-                event: 'device_read_ignored',
-            }));
         });
 
         it.each(['device_fetch', 'device_update'] as const)(
@@ -305,7 +302,7 @@ describe('DeviceTransport', () => {
                 const cold = homeyDevice(
                     {
                         id: 'toshiba-ac', name: 'Toshiba heat pump', class: 'airconditioning',
-                        driverUri: 'homey:app:com.toshiba', driverId: 'ac', available: true,
+                        ownerUri: 'homey:app:com.toshiba', driverId: 'ac', available: true,
                     },
                     {
                         onoff: setable(true), measure_temperature: celsius(20),
@@ -348,9 +345,6 @@ describe('DeviceTransport', () => {
                 if (source === 'device_fetch') {
                     expect(deviceManager.getSnapshot()[0].lastFreshDataMs).toBe(Date.parse('2026-04-01T11:10:00.000Z'));
                 }
-                expect(loggerMock.structuredLog.warn).not.toHaveBeenCalledWith(expect.objectContaining({
-                    event: 'device_read_ignored', deviceId: 'toshiba-ac',
-                }));
             },
         );
 
@@ -362,26 +356,6 @@ describe('DeviceTransport', () => {
             )]);
 
             expect((parsed as TransportDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBe(0.73);
-        });
-
-        it.each([
-            { label: 'omitted', availability: {} },
-            { label: 'non-boolean', availability: { available: 'unexpected' as never } },
-        ])('resolves $label SDK availability to true at the parser boundary', async ({ availability }) => {
-            const [parsed] = await seedTransportDevices(deviceManager, [{
-                id: 'availability-boundary',
-                name: 'Availability Boundary',
-                class: 'thermostat',
-                capabilities: ['onoff', 'measure_temperature', 'target_temperature'],
-                capabilitiesObj: capabilityReadings({
-                    onoff: true,
-                    measure_temperature: celsius(20),
-                    target_temperature: celsius(22),
-                }, stampedNow()),
-                ...availability,
-            }]);
-
-            expect(parsed.available).toBe(true);
         });
 
         // A malformed field cannot hide independently usable temperature or binary control.
@@ -406,7 +380,7 @@ describe('DeviceTransport', () => {
                 violation: { reason: 'unexpected_value', capabilityId: 'target_temperature' },
             },
         ])('keeps independent controls on a cold read carrying $label', async ({ entries, violation }) => {
-            const parsed = await seedTransportDevices(deviceManager, [{
+            const parsed = await seedTransportDevices(deviceManager, [{ ...HOMEY_DEVICE_FIELDS,
                 id: 'thermo-2',
                 name: 'Bedroom Thermostat',
                 class: 'thermostat',
@@ -588,7 +562,6 @@ describe('DeviceTransport', () => {
             expect(dm.getSnapshotByDeviceId('neverConformingManaged')?.binaryControlObservation).toBeUndefined();
             // Field rejection does not classify the whole device read as ignored.
             expect(refreshes.at(-1)?.entries.map((entry) => entry.observed.id)).toEqual(['dev1']);
-            expect(refreshes.at(-1)?.ignoredReadIds).toEqual([]);
             // Every device Homey listed is still Homey's, read or not: nothing
             // learned about one is pruned because PELS could not read it.
             expect([...dm.getHomeyDeviceIds()].sort())
@@ -781,7 +754,7 @@ describe('DeviceTransport', () => {
             const HEAT_PUMP_CAPABILITIES = ['onoff', 'measure_temperature', 'target_temperature', 'thermostat_mode'];
             const heatPump = (
                 capabilitiesObj: Record<string, { value: unknown; id: string; units?: string; lastUpdated: string }>,
-            ) => ({
+            ) => ({ ...HOMEY_DEVICE_FIELDS,
                 id: 'dev1',
                 name: 'Living Room Heat Pump',
                 class: 'heatpump',
@@ -1028,7 +1001,7 @@ describe('DeviceTransport', () => {
             // (e.g. the last managed device became ineligible), not a transient
             // SDK blip — it must commit immediately, not be held under grace.
             mockApiGet.mockResolvedValue({
-                ignored: { id: 'ignored', name: 'Ignored', class: 'other', capabilities: [], capabilitiesObj: {} },
+                ignored: { ...HOMEY_DEVICE_FIELDS, id: 'ignored', name: 'Ignored', class: 'other', capabilities: [], capabilitiesObj: {} },
             });
             await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
 
@@ -1203,7 +1176,7 @@ describe('DeviceTransport', () => {
         it('skips devices with malformed class values without crashing snapshot refresh', async () => {
             await deviceManager.init();
             mockApiGet.mockResolvedValue({
-                badClass: {
+                badClass: { ...HOMEY_DEVICE_FIELDS,
                     id: 'badClass',
                     name: 'Malformed Class Device',
                     class: { value: 'heater' },
@@ -1301,7 +1274,7 @@ describe('DeviceTransport', () => {
                 [valuelessCapabilityId]: { id: valuelessCapabilityId },
             };
             mockApiGet.mockResolvedValue({
-                ev1: {
+                ev1: { ...HOMEY_DEVICE_FIELDS,
                     id: 'ev1',
                     name: 'Easee',
                     class: 'evcharger',
@@ -1818,7 +1791,7 @@ describe('DeviceTransport', () => {
             await deviceManager.init();
             // Seed the snapshot
             mockApiGet.mockResolvedValue({
-                dev1: {
+                dev1: { ...HOMEY_DEVICE_FIELDS,
                     id: 'dev1',
                     name: 'Heater',
                     class: 'heater',
@@ -2328,7 +2301,7 @@ describe('DeviceTransport', () => {
                 observedValue: false,
             }));
             const pushOn = (onoff: { value: boolean; id: string; lastUpdated?: string }) => {
-                emitDeviceUpdate({
+                emitDeviceUpdate({ ...HOMEY_DEVICE_FIELDS,
                     id: 'dev1',
                     name: 'Heater',
                     capabilities: ['onoff', 'measure_power'],
@@ -3453,7 +3426,7 @@ describe('DeviceTransport', () => {
             it('prefers bundled raw EV axis changes over simultaneous non-charging state changes', async () => {
                 const evDeviceManager = createTestDeviceTransport(homeyMock, loggerMock);
                 await evDeviceManager.init();
-                const evDevice = (charging: boolean, state: string, offsetMs: number) => ({
+                const evDevice = (charging: boolean, state: string, offsetMs: number) => ({ ...HOMEY_DEVICE_FIELDS,
                     getHomeyEnergyMeterSelection: () => ({ state: 'unavailable' as const }),
                     id: 'ev1',
                     name: 'Easee',
@@ -6383,7 +6356,7 @@ describe('DeviceTransport', () => {
                     // make the rejected sole binary facet usable.
                     vi.setSystemTime(new Date('2026-04-01T12:10:00.000Z'));
                     mockApiGet.mockResolvedValue({
-                        dev1: {
+                        dev1: { ...HOMEY_DEVICE_FIELDS,
                             id: 'dev1',
                             name: 'Heater',
                             class: 'heater',
@@ -6523,7 +6496,7 @@ describe('DeviceTransport', () => {
                         source: 'snapshot_refresh',
                     },
                 }];
-                const sourceDevice: HomeyDeviceLike = {
+                const sourceDevice: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
                     id: 'ev1',
                     name: 'Zaptec',
                     class: 'evcharger',
@@ -6574,7 +6547,7 @@ describe('DeviceTransport', () => {
                     reportedStepPowerW: 5520,
                     reportedStepObservedAtMs: refreshObservedAtMs,
                 }];
-                const sourceDevice: HomeyDeviceLike = {
+                const sourceDevice: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
                     id: 'ev1',
                     name: 'Zaptec',
                     class: 'evcharger',

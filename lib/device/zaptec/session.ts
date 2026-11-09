@@ -7,8 +7,8 @@ import { normalizeText } from './charging';
  * carries the same id but is a meter: it takes no current from the installation.
  */
 export const zaptecInstallationOf = (device: HomeyDeviceLike): string | undefined => (
-  device.driverId?.startsWith('homey:app:com.zaptec:') === true && normalizeText(device.class) === 'evcharger'
-    ? device.data?.installationId || undefined
+  device.driverId.startsWith('homey:app:com.zaptec:') && normalizeText(device.class) === 'evcharger'
+    ? device.data.installationId || undefined
     : undefined
 );
 
@@ -46,7 +46,7 @@ export class ZaptecInstallationSession implements DeviceAdapterSession {
   withheldCapabilities(device: HomeyDeviceLike): readonly string[] {
     const installationId = zaptecInstallationOf(device);
     if (installationId === undefined || !this.sharedInstallations.has(installationId)) return [];
-    return device.capabilitiesObj?.target_power_mode?.value === 'homey' ? [] : ['target_power', 'target_power_mode'];
+    return device.capabilitiesObj.target_power_mode?.value === 'homey' ? [] : ['target_power', 'target_power_mode'];
   }
 
   observeDevice(): void {}

@@ -59,6 +59,7 @@ import {
 import { withFixtureResidualKw } from '../utils/planTestUtils';
 import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 import { deviceControlSettingsFixture } from '../helpers/deviceControlSettingsFixture';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const steppedProfile: SteppedLoadProfile = {
   steps: [
@@ -155,6 +156,7 @@ const createLogger = () => ({
 const buildHoiaxDevice = () => {
   const readAt = new Date().toISOString();
   return {
+    ...HOMEY_DEVICE_FIELDS,
     id: 'hoiax-1',
     name: 'Connected 300',
     class: 'heater',
@@ -176,7 +178,7 @@ const buildHoiaxDevice = () => {
 // When a hand-built target_power read was taken, overrides included.
 const TARGET_POWER_READ_AT = '2026-05-04T06:00:00.000Z';
 
-const buildTargetPowerDevice = (overrides: Partial<HomeyDeviceLike> = {}): HomeyDeviceLike => ({
+const buildTargetPowerDevice = (overrides: Partial<HomeyDeviceLike> = {}): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'target-power-1',
   name: 'Target power charger',
   class: 'evcharger',
@@ -214,7 +216,7 @@ const buildTargetPowerDevice = (overrides: Partial<HomeyDeviceLike> = {}): Homey
 // `desired_stepped_load_changed` trigger.
 const buildFlowSteppedLoad = (): HomeyDeviceLike => {
   const readAt = new Date().toISOString();
-  return {
+  return { ...HOMEY_DEVICE_FIELDS,
     id: 'flow-step-1',
     name: 'Flow backed charger',
     class: 'socket',
@@ -814,7 +816,7 @@ describe('native stepped-load wiring', () => {
         nativeWiring: { resolveNativeWiringEnabled: () => true },
       },
     );
-    const [parsed] = await seedTransportDevices(deviceManager, [{
+    const [parsed] = await seedTransportDevices(deviceManager, [{ ...HOMEY_DEVICE_FIELDS,
       ...buildHoiaxDevice(),
       id: 'other-1',
       ownerUri: 'homey:app:com.example',
@@ -834,35 +836,34 @@ describe('native stepped-load wiring', () => {
     );
 
     const [compactDriverId, nestedDriverOwner, myuplinkHoiax, myuplinkOther] = await seedTransportDevices(deviceManager, [
-      {
+      { ...HOMEY_DEVICE_FIELDS,
         ...buildHoiaxDevice(),
         id: 'compact-driver-id',
         driverId: 'no.hoiax:hiax-connected-200',
-        ownerUri: undefined,
+        ownerUri: 'homey:app:other',
         capabilities: ['measure_power', 'target_temperature', 'measure_temperature', 'onoff', 'max_power'],
         capabilitiesObj: {
           ...buildHoiaxDevice().capabilitiesObj,
           max_power: { value: 'medium_power', setable: true },
         },
       },
-      {
+      { ...HOMEY_DEVICE_FIELDS,
         ...buildHoiaxDevice(),
         id: 'nested-driver-owner',
         driverId: 'hiax-connected-300',
-        ownerUri: undefined,
-        driver: { owner_uri: 'homey:app:no.hoiax' },
+        ownerUri: 'homey:app:no.hoiax',
       },
-      {
+      { ...HOMEY_DEVICE_FIELDS,
         ...buildHoiaxDevice(),
         id: 'myuplink-hoiax',
         driverId: 'homey:app:com.myuplink:hoiax',
-        ownerUri: undefined,
+        ownerUri: 'homey:app:com.myuplink',
       },
-      {
+      { ...HOMEY_DEVICE_FIELDS,
         ...buildHoiaxDevice(),
         id: 'myuplink-other',
         driverId: 'homey:app:com.myuplink:ctc',
-        ownerUri: undefined,
+        ownerUri: 'homey:app:com.myuplink',
         capabilities: ['measure_power', 'target_temperature', 'measure_temperature', 'onoff', 'max_power_2000'],
         capabilitiesObj: {
           ...buildHoiaxDevice().capabilitiesObj,
@@ -890,7 +891,7 @@ describe('native stepped-load wiring', () => {
     // The rest of the read predates the step report, so the step is its freshest value.
     const readAt = '2026-04-01T12:00:00.000Z';
     const nativeStepObservedAt = '2026-04-01T12:03:00.000Z';
-    const device = {
+    const device = { ...HOMEY_DEVICE_FIELDS,
       id: 'myuplink-hoiax-connected-300',
       name: 'Connected 300',
       class: 'heater',
@@ -995,7 +996,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('does not record an issued step or cooldown when charging action metadata times out', async () => {
-    const device: HomeyDeviceLike = {
+    const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'charger', name: 'Zaptec', class: 'evcharger', driverId: 'homey:app:com.zaptec:go2',
       data: { id: 'zaptec-id', installationId: 'installation' },
       capabilities: ['available_installation_current'],
@@ -2030,7 +2031,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('uses driver overrides when caching native stepped-load command adapters', async () => {
-    const rawMockDevice = {
+    const rawMockDevice = { ...HOMEY_DEVICE_FIELDS,
       ...buildHoiaxDevice(),
       id: 'hoiax-mock',
       name: 'Connected 300 Mock',

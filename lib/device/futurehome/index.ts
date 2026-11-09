@@ -31,7 +31,7 @@ function withSentCurrent(device: HomeyDeviceLike, capabilityObj: DeviceCapabilit
 // IT grid draw sqrt(3) * 230 W/A, which the three-phase preset does not model,
 // so only a one-phase installation is reported.
 function resolvePhaseReport(device: HomeyDeviceLike): ChargerPhaseReport {
-  return isFuturehomeCharger(device) && device.settings?.[PHASES_SETTING] === 'one'
+  return isFuturehomeCharger(device) && device.settings[PHASES_SETTING] === 'one'
     ? { kind: 'reported', preset: 'ev_charger_1_phase' }
     : { kind: 'not_reported' };
 }

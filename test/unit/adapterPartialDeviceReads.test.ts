@@ -4,15 +4,16 @@ import { zaptecAdapter } from '../../lib/device/zaptec';
 import { withEaseeObservedCharging } from '../../lib/device/easee/switch';
 import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const STAMP = '2026-10-01T12:00:00.000Z';
 const entry = (value: unknown) => ({ value, lastUpdated: STAMP });
-const tesla = (values: DeviceCapabilityMap): HomeyDeviceLike => ({
+const tesla = (values: DeviceCapabilityMap): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'tesla-battery', name: 'Tesla battery', class: 'sensor',
   driverId: 'homey:app:com.tesla.car:battery',
   capabilities: Object.keys(values), capabilitiesObj: values,
 });
-const zaptec = (values: DeviceCapabilityMap): HomeyDeviceLike => ({
+const zaptec = (values: DeviceCapabilityMap): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'zaptec', name: 'Zaptec', class: 'evcharger',
   driverId: 'homey:app:com.zaptec:go',
   capabilities: Object.keys(values), capabilitiesObj: values,

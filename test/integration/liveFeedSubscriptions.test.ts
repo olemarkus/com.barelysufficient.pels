@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import { createDeviceLiveFeed, type DeviceLiveFeed } from '../../lib/device/liveFeed';
 import { getLogger } from '../../lib/logging/logger';
 import { createLiveFeedSocketHarness } from '../helpers/liveFeedSocketHarness';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 vi.mock('socket.io-client', () => ({ io: vi.fn() }));
 
@@ -42,7 +43,7 @@ describe('device live feed subscriptions', () => {
     // Periodic refreshes re-read only known ids, so a car app installed later is
     // seen first by its creation frame.
     await settle();
-    const car = { id: 'car-2', name: 'Polestar', class: 'car', capabilities: [], capabilitiesObj: {} };
+    const car = { ...HOMEY_DEVICE_FIELDS, id: 'car-2', name: 'Polestar', class: 'car', capabilities: [], capabilitiesObj: {} };
 
     sockets.namespace.deliver('homey:manager:devices', 'device.create', car);
     sockets.namespace.deliver('homey:manager:devices', 'device.delete', car);

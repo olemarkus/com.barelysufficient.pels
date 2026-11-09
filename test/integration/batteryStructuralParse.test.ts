@@ -25,6 +25,7 @@ import type { ProjectedObservedDeviceState } from '../../packages/contracts/src/
 import Homey from 'homey';
 import { mockHomeyInstance } from '../mocks/homey';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const homeyMock = mockHomeyInstance as unknown as Homey.App;
 const noop = (): void => undefined;
@@ -51,7 +52,7 @@ const batteryCaps = {
 describe('structural battery-role resolution at parse', () => {
   it('stamps a class:battery device managed:true/controllable:false despite settings saying controllable:true', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    const [parsed] = await seedTransportDevices(transport, [{
+    const [parsed] = await seedTransportDevices(transport, [{ ...HOMEY_DEVICE_FIELDS,
       id: 'battery1',
       name: 'Home Battery',
       class: 'battery',
@@ -71,7 +72,7 @@ describe('structural battery-role resolution at parse', () => {
       ...adversarialProviders,
       batteryManaged: { isManaged: (deviceId: string) => deviceId !== 'battery-off' },
     });
-    const [parsed] = await seedTransportDevices(transport, [{
+    const [parsed] = await seedTransportDevices(transport, [{ ...HOMEY_DEVICE_FIELDS,
       id: 'battery-off',
       name: 'Home Battery',
       class: 'battery',
@@ -85,7 +86,7 @@ describe('structural battery-role resolution at parse', () => {
 
   it('detects AND survives an energy-role-only battery (class not "battery") via the homeBattery role', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    const [parsed] = await seedTransportDevices(transport, [{
+    const [parsed] = await seedTransportDevices(transport, [{ ...HOMEY_DEVICE_FIELDS,
       id: 'battery2',
       name: 'Inverter Battery',
       // Real class is NOT 'battery' and is not otherwise a supported class — only the
@@ -109,7 +110,7 @@ describe('structural battery-role resolution at parse', () => {
     // controllable:true STILL resolves controllable:false the moment it is observed.
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
     await initWithLiveFeed(transport);
-    emitDeviceUpdate({
+    emitDeviceUpdate({ ...HOMEY_DEVICE_FIELDS,
       id: 'battery1',
       name: 'Home Battery',
       class: 'battery',
@@ -130,7 +131,7 @@ const signedTargetPowerBattery = (overrides: {
   targetPowerW?: number | null;
   stepW?: number;
   claim?: { value: string | null; lastUpdated: string };
-} = {}): HomeyDeviceLike => ({
+} = {}): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'battery-setpoint',
   name: 'Marstek Venus',
   class: 'battery',
@@ -231,7 +232,7 @@ describe('home battery control surface at parse', () => {
 
   it('keeps a battery without a claim capability observe-only, still with its signed power', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    const [parsed] = await seedTransportDevices(transport, [{
+    const [parsed] = await seedTransportDevices(transport, [{ ...HOMEY_DEVICE_FIELDS,
       id: 'battery1',
       name: 'Home Battery',
       class: 'battery',
@@ -246,7 +247,7 @@ describe('home battery control surface at parse', () => {
 
   it('gives a non-battery device neither home-battery cluster', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    const [parsed] = await seedTransportDevices(transport, [{
+    const [parsed] = await seedTransportDevices(transport, [{ ...HOMEY_DEVICE_FIELDS,
       id: 'heater1',
       name: 'Heater',
       class: 'heater',
@@ -388,7 +389,7 @@ describe('home battery control surface at parse', () => {
 
   it('drops the claim when the battery comes to claim through another capability', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    const sessy = (withTargetPowerMode: boolean): HomeyDeviceLike => ({
+    const sessy = (withTargetPowerMode: boolean): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
       id: 'sessy-1',
       name: 'Sessy',
       class: 'battery',

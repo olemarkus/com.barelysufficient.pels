@@ -92,7 +92,7 @@ export class TeslaChargingSession implements DeviceAdapterSession {
   observeCapability(deviceId: string, capabilityId: string, value: unknown): void {
     const device = this.devices.get(deviceId);
     if (!device) return;
-    const previous = device.capabilitiesObj?.[capabilityId];
+    const previous = device.capabilitiesObj[capabilityId];
     if (!isObservationValue(capabilityId, value)) return;
     this.observeDevice({ ...device, capabilitiesObj: {
       ...device.capabilitiesObj, [capabilityId]: { ...previous, value, lastUpdated: new Date().toISOString() },
@@ -102,13 +102,13 @@ export class TeslaChargingSession implements DeviceAdapterSession {
   confirmedCurrent(deviceId: string): number | undefined {
     const raw = this.devices.get(deviceId);
     return raw && isTeslaChargingDevice(raw)
-      ? confirmedTeslaCurrent(raw.capabilitiesObj ?? {})?.value as number | undefined : undefined;
+      ? confirmedTeslaCurrent(raw.capabilitiesObj)?.value as number | undefined : undefined;
   }
 
   acknowledgedCurrent(deviceId: string): number | undefined {
     const raw = this.devices.get(deviceId);
     return raw && isTeslaChargingDevice(raw)
-      ? acknowledgedTeslaCurrent(raw.capabilitiesObj ?? {})?.value as number | undefined : undefined;
+      ? acknowledgedTeslaCurrent(raw.capabilitiesObj)?.value as number | undefined : undefined;
   }
 
   observedIds(): string[] { return [...this.devices.keys()]; }
@@ -133,9 +133,9 @@ export class TeslaChargingSession implements DeviceAdapterSession {
 }
 
 function mergeCapabilities(previous: HomeyDeviceLike | undefined, device: HomeyDeviceLike) {
-  const accepted = Object.entries(device.capabilitiesObj ?? {}).filter(([id, capability]) => {
+  const accepted = Object.entries(device.capabilitiesObj).filter(([id, capability]) => {
     const time = toCapabilityTimestampMs(capability?.lastUpdated);
-    const priorTime = toCapabilityTimestampMs(previous?.capabilitiesObj?.[id]?.lastUpdated);
+    const priorTime = toCapabilityTimestampMs(previous?.capabilitiesObj[id]?.lastUpdated);
     if (!capability || time === undefined || (priorTime !== undefined && time < priorTime)) return false;
     return isObservationValue(id, capability.value);
   });

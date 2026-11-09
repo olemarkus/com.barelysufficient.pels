@@ -1,5 +1,6 @@
 import { readDeviceMeasuredPowerObservation } from '../../lib/device/measuredPowerReader';
 import { readHomeyEnergyDeviceWatts } from '../../lib/device/managerEnergy';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 type CapabilityObj = Parameters<typeof readDeviceMeasuredPowerObservation>[0]['capabilityObj'];
 
@@ -80,22 +81,22 @@ describe('readDeviceMeasuredPowerObservation — Homey Energy', () => {
 
 describe('readHomeyEnergyDeviceWatts', () => {
   it('reads the device figure, including 0 W', () => {
-    expect(readHomeyEnergyDeviceWatts({ id: 'a', name: 'A', energyObj: { W: 3000 } })).toBe(3000);
-    expect(readHomeyEnergyDeviceWatts({ id: 'a', name: 'A', energyObj: { W: 0 } })).toBe(0);
+    expect(readHomeyEnergyDeviceWatts({ ...HOMEY_DEVICE_FIELDS, id: 'a', name: 'A', energyObj: { W: 3000 } })).toBe(3000);
+    expect(readHomeyEnergyDeviceWatts({ ...HOMEY_DEVICE_FIELDS, id: 'a', name: 'A', energyObj: { W: 0 } })).toBe(0);
   });
 
   it('has no figure when Homey has none', () => {
-    expect(readHomeyEnergyDeviceWatts({ id: 'a', name: 'A', energyObj: { W: null } })).toBeNull();
-    expect(readHomeyEnergyDeviceWatts({ id: 'a', name: 'A' })).toBeNull();
+    expect(readHomeyEnergyDeviceWatts({ ...HOMEY_DEVICE_FIELDS, id: 'a', name: 'A', energyObj: { W: null } })).toBeNull();
+    expect(readHomeyEnergyDeviceWatts({ ...HOMEY_DEVICE_FIELDS, id: 'a', name: 'A' })).toBeNull();
   });
 
   // The live report lists these under their own types, never as a device draw.
   it('skips a whole-home meter and a producer', () => {
-    expect(readHomeyEnergyDeviceWatts({ id: 'a', name: 'A', energyObj: { W: 10118, cumulative: true } })).toBeNull();
-    expect(readHomeyEnergyDeviceWatts({ id: 'a', name: 'A', energyObj: { W: 2500, generator: true } })).toBeNull();
+    expect(readHomeyEnergyDeviceWatts({ ...HOMEY_DEVICE_FIELDS, id: 'a', name: 'A', energyObj: { W: 10118, cumulative: true } })).toBeNull();
+    expect(readHomeyEnergyDeviceWatts({ ...HOMEY_DEVICE_FIELDS, id: 'a', name: 'A', energyObj: { W: 2500, generator: true } })).toBeNull();
   });
 
   it('skips a negative figure', () => {
-    expect(readHomeyEnergyDeviceWatts({ id: 'a', name: 'A', energyObj: { W: -800 } })).toBeNull();
+    expect(readHomeyEnergyDeviceWatts({ ...HOMEY_DEVICE_FIELDS, id: 'a', name: 'A', energyObj: { W: -800 } })).toBeNull();
   });
 });

@@ -29,6 +29,7 @@ import { emitCapability, emitDeviceUpdate } from '../helpers/liveFeedSocketHarne
 import { mockHomeyInstance } from '../mocks/homey';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import Homey from 'homey';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const DEVICE_ID = 'dev1';
 
@@ -68,7 +69,7 @@ const temperatureCapabilities = ({ measured, target }: TemperaturePair) => ({
 });
 
 /** A thermostat with no binary or stepped control: its temperature pair is its only control facet. */
-const temperatureOnlyDevice = (pair: TemperaturePair) => ({
+const temperatureOnlyDevice = (pair: TemperaturePair) => ({ ...HOMEY_DEVICE_FIELDS,
     id: DEVICE_ID,
     name: 'Thermostat',
     class: 'thermostat',
@@ -77,7 +78,7 @@ const temperatureOnlyDevice = (pair: TemperaturePair) => ({
 });
 
 /** The same thermostat with an `onoff` axis, which keeps it planned without its temperature facet. */
-const binaryThermostat = (pair: TemperaturePair) => ({
+const binaryThermostat = (pair: TemperaturePair) => ({ ...HOMEY_DEVICE_FIELDS,
     id: DEVICE_ID,
     name: 'Thermostat',
     class: 'thermostat',

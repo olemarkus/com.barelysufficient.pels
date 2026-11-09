@@ -33,6 +33,7 @@ import {
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { insufficientHeadroomFixtureReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 // The executor's in-flight binary command is passed alongside the observed
 // device, not folded into it: it belongs to a different layer and does not ride
@@ -964,7 +965,7 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
   const lastUpdated = new Date().toISOString();
 
   // Nothing here says "charger" but the class.
-  const unpluggedCharger: HomeyDeviceLike = {
+  const unpluggedCharger: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
     id: 'ev-1',
     name: 'Driveway charger',
     class: 'evcharger',
@@ -978,7 +979,7 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
     ready: true,
   };
 
-  const offSocket: HomeyDeviceLike = {
+  const offSocket: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
     id: 'socket-1',
     name: 'Garage socket',
     class: 'socket',

@@ -8,23 +8,24 @@ import {
 } from '../helpers/deviceTransportHarness';
 import { emitCapability } from '../helpers/liveFeedSocketHarness';
 import { mockHomeyInstance, setMockGeolocation } from '../mocks/homey';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const cap = <T>(value: T) => ({ value, lastUpdated: new Date().toISOString() });
 
 function devices(): HomeyDeviceLike[] {
   const data = { id: 'vehicle' };
   return [
-    { id: 'battery', name: 'Car battery', class: 'sensor', data,
+    { ...HOMEY_DEVICE_FIELDS, id: 'battery', name: 'Car battery', class: 'sensor', data,
       driverId: 'homey:app:com.tesla.car:battery',
       capabilities: ['charging_on', 'charging_state', 'measure_charge_power', 'measure_soc_level'],
       capabilitiesObj: { charging_on: cap(true), charging_state: cap('Charging'),
         measure_charge_current_max: cap(16), measure_charge_current: cap(6), measure_charge_power: cap(4),
         measure_soc_level: cap(55), charging_port_cable: cap('IEC') } },
-    { id: 'location', name: 'Location', class: 'sensor', data,
+    { ...HOMEY_DEVICE_FIELDS, id: 'location', name: 'Location', class: 'sensor', data,
       driverId: 'homey:app:com.tesla.car:location',
       capabilities: ['measure_location_latitude', 'measure_location_longitude'],
       capabilitiesObj: { measure_location_latitude: cap(60), measure_location_longitude: cap(10) } },
-    { id: 'car', name: 'Car', class: 'car', data, driverId: 'homey:app:com.tesla.car:car',
+    { ...HOMEY_DEVICE_FIELDS, id: 'car', name: 'Car', class: 'car', data, driverId: 'homey:app:com.tesla.car:car',
       capabilities: ['car_state', 'car_shift_state', 'measure_car_drive_speed'],
       capabilitiesObj: { car_state: cap('online'), car_shift_state: cap('P'), measure_car_drive_speed: cap(0) } },
   ];

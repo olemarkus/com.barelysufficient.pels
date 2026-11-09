@@ -26,6 +26,7 @@ import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { PassThrough, type Writable } from 'node:stream';
 import { createRootLogger, setDebugTopics, setRootLogger } from '../../lib/logging/logger';
 import { captureLogger } from '../utils/loggerCapture';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const homeyMock = mockHomeyInstance as unknown as Homey.App;
 const noop = (): void => undefined;
@@ -39,6 +40,7 @@ const heaterDevice = (overrides: Partial<HomeyDeviceLike>): HomeyDeviceLike => {
   // Homey dates every capability value it reports.
   const lastUpdated = new Date().toISOString();
   return {
+    ...HOMEY_DEVICE_FIELDS,
     id: 'dev1',
     name: 'Heater',
     class: 'heater',
@@ -75,25 +77,6 @@ describe('zoneId on parsed device snapshots', () => {
     expect(parsed.zone).toBe('zone-uuid-1');
   });
 
-  it('sources zoneId from the object shape via zone.id, label from zone.name', async () => {
-    const parsed = await parseOne({ zone: { id: 'zone-uuid-2', name: 'Living room' } });
-    expect(parsed.zoneId).toBe('zone-uuid-2');
-    expect(parsed.zone).toBe('Living room');
-  });
-
-  it('resolves flat undefined when zone is absent (label falls back to zoneName)', async () => {
-    const parsed = await parseOne({ zoneName: 'Kitchen' });
-    expect(parsed.zoneId).toBeUndefined();
-    expect(parsed.zone).toBe('Kitchen');
-  });
-
-  it('resolves flat undefined for malformed zone values (boundary validation)', async () => {
-    expect((await parseOne({ zone: '' })).zoneId).toBeUndefined();
-    expect((await parseOne({ zone: {} })).zoneId).toBeUndefined();
-    expect((await parseOne({ zone: { name: 'Loft' } })).zoneId).toBeUndefined();
-    // Untrusted payload can carry a non-string id — must not cross the boundary.
-    expect((await parseOne({ zone: { id: 42 } as unknown as HomeyDeviceLike['zone'] })).zoneId).toBeUndefined();
-  });
 });
 
 describe('zone tree fetch riding the snapshot refresh', () => {

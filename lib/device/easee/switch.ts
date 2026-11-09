@@ -251,7 +251,5 @@ function latestOf(first: CapabilityValue<unknown>, second: CapabilityValue<unkno
 }
 
 function getCapabilityObj(device: HomeyDeviceLike): DeviceCapabilityMap {
-  return device.capabilitiesObj && typeof device.capabilitiesObj === 'object'
-    ? device.capabilitiesObj as DeviceCapabilityMap
-    : {};
+  return device.capabilitiesObj as DeviceCapabilityMap;
 }

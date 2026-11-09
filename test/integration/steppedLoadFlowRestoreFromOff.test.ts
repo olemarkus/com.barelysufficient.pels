@@ -68,6 +68,7 @@ import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSn
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { testParseSources } from '../helpers/deviceTransportHarness';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
 const DEVICE_ID = 'easee-1';
@@ -123,7 +124,7 @@ const buildEaseeDevice = (freshIso: string, charging = false): HomeyDeviceLike =
       lastUpdated: freshIso,
     },
   };
-  return {
+  return { ...HOMEY_DEVICE_FIELDS,
     id: DEVICE_ID,
     name: DEVICE_NAME,
     class: 'evcharger',

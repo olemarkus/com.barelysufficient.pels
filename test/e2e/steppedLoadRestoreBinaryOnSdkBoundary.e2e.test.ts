@@ -46,6 +46,7 @@ import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/t
 import { fixtureControlPosture, buildPlanMeta, withFixtureResidualKw } from '../utils/planTestUtils';
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { testParseSources } from '../helpers/deviceTransportHarness';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
 const DEVICE_ID = 'hoiax-1';
@@ -108,7 +109,7 @@ const buildHoiaxDevice = (onoff: OnoffVariant): HomeyDeviceLike => {
   }
   // `absent`: capabilitiesObj.onoff is left unset (the capability is still
   // advertised in `capabilities`, so the control capability id is 'onoff').
-  return {
+  return { ...HOMEY_DEVICE_FIELDS,
     id: DEVICE_ID,
     name: 'Connected 300',
     // Høiax water heaters present to Homey as the supported `heater` class;

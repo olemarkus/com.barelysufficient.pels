@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, resetMockHomey, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { connectLiveFeed, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const deviceId = 'heater-1';
 const capabilities = ['onoff', 'measure_power', 'measure_temperature', 'target_temperature'];
@@ -12,7 +13,7 @@ const capabilities = ['onoff', 'measure_power', 'measure_temperature', 'target_t
 // moment of the update.
 const update = (temperature: number) => {
   const lastUpdated = new Date().toISOString();
-  return {
+  return { ...HOMEY_DEVICE_FIELDS,
     id: deviceId, name: 'Heat pump', class: 'heater', capabilities,
     capabilitiesObj: {
       onoff: { id: 'onoff', value: true, lastUpdated },
