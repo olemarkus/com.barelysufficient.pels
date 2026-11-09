@@ -64,7 +64,8 @@ test('vendor action arguments and installation membership are resolved by the bi
     .toEqual({ current1: 10, current2: 10, current3: 10 });
   // Even a sibling without a supported current-control driver belongs to the installation.
   expect(hasSharedChargingInstallation(chargerBinding, [charger, {
-    id: 'other', name: 'Other charger', driverId: 'homey:app:com.zaptec:other', data: { installationId: 'site' },
+    id: 'other', name: 'Other charger', class: 'evcharger', driverId: 'homey:app:com.zaptec:other',
+    data: { installationId: 'site' },
   }])).toBe(true);
 });
 

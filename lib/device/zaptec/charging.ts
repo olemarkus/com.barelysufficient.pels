@@ -33,7 +33,7 @@ const hasOfficialEvChargerCapabilities = (capabilities: readonly string[]): bool
   && hasCapability(capabilities, 'evcharger_charging_state')
 );
 
-const normalizeText = (value: unknown): string => (
+export const normalizeText = (value: unknown): string => (
   typeof value === 'string' ? value.trim().toLowerCase() : ''
 );
 
