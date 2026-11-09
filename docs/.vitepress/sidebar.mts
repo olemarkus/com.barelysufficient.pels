@@ -48,6 +48,10 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
         link: '/use-cases/homey-home-away-night-energy-modes',
       },
       {
+        text: 'Temporarily change a heater temperature',
+        link: '/use-cases/homey-temporary-heater-temperature',
+      },
+      {
         text: 'Solar and a home battery',
         link: '/use-cases/homey-solar-home-battery',
       },
