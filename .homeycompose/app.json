@@ -601,6 +601,9 @@
     "donate": {
       "githubSponsors": {
         "username": "olemarkus"
+      },
+      "paypal": {
+        "username": "olemwith"
       }
     }
   }
