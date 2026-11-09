@@ -117,4 +117,4 @@ export const resolveZoneId = (device: HomeyDeviceLike): string | undefined => {
   return undefined;
 };
 
-export const resolveZoneLabel = (device: HomeyDeviceLike): string => device.zone;
+export const resolveZoneLabel = (device: HomeyDeviceLike): string => device.zone || 'Unknown';

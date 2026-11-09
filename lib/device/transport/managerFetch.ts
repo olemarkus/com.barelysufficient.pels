@@ -1,7 +1,6 @@
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import { getDebugEmitter, isDebugTopicEnabled } from '../../logging/logger';
 import { shouldEmitOnChange, type LogDedupeEntry } from '../../logging/logDedupe';
-import { isHomeyDeviceLike } from '../../utils/types';
 import { isPlausibleWholeHomePowerW } from '../../power/wholeHomePowerPlausibility';
 
 import {
@@ -22,6 +21,8 @@ import {
   getRawDevices,
   logDeviceTransportRuntimeError,
 } from './managerHomeyApi';
+import { parseHomeyDevicePayload } from './homeyDevicePayload';
+import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
 
 const emitDeviceDebug = getDebugEmitter('devices', 'devices');
 const liveReportLogState = new WeakMap<Logger, Map<string, LogDedupeEntry>>();
@@ -53,6 +54,25 @@ export type DeviceFetchResult = {
   failedIds: string[];
 };
 
+const REJECTED_PAYLOAD_REPEAT_MS = 60 * 60 * 1000;
+const lastRejectedPayloadWarning = new WeakMap<Logger, LogDedupeEntry>();
+
+/** A rejected device is gone from PELS, so an owner's log has to say which one. */
+function warnRejectedDevicePayloads(logger: Logger, rejected: readonly unknown[]): void {
+  const deviceIds = rejected
+    .map((entry) => (isUnknownRecord(entry) && typeof entry.id === 'string' ? entry.id : 'unknown'));
+  if (deviceIds.length === 0) {
+    lastRejectedPayloadWarning.delete(logger);
+    return;
+  }
+  const signature = deviceIds.join(',');
+  const now = Date.now();
+  const previous = lastRejectedPayloadWarning.get(logger);
+  if (previous?.signature === signature && now - previous.emittedAt < REJECTED_PAYLOAD_REPEAT_MS) return;
+  lastRejectedPayloadWarning.set(logger, { signature, emittedAt: now });
+  logger.structuredLog.warn({ event: 'device_payload_rejected', deviceIds });
+}
+
 const DEVICE_FETCH_RETRY_DELAYS_MS = [2000, 4000, 8000, 16000];
 
 export async function fetchDevicesWithFallback(params: {
@@ -64,7 +84,9 @@ export async function fetchDevicesWithFallback(params: {
     try {
       const devices = await getRawDevices(DEVICES_API_PATH);
       const rawList = Array.isArray(devices) ? devices : Object.values(devices || {});
-      const list = rawList.filter(isHomeyDeviceLike);
+      const parsed = rawList.map(parseHomeyDevicePayload);
+      const list = parsed.filter((device) => device !== null);
+      warnRejectedDevicePayloads(logger, rawList.filter((_, index) => parsed[index] === null));
       emitDeviceDebug({
         event: 'manager_api_devices_returned',
         validDevices: list.length,
@@ -116,8 +138,9 @@ export async function fetchDevicesByIds(params: {
       continue;
     }
     if (result.status === 'fulfilled') {
-      if (isHomeyDeviceLike(result.value)) {
-        devices.push(result.value);
+      const device = parseHomeyDevicePayload(result.value);
+      if (device !== null) {
+        devices.push(device);
       } else {
         failedIds.push(deviceId);
         emitDeviceDebug({ event: 'targeted_device_fetch_invalid_payload', deviceId });
