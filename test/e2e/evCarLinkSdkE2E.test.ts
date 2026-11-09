@@ -635,7 +635,8 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     await charger.setCapabilityValue('evcharger_charging_state', 'plugged_in');
     await pumpMinutes(45);
     expect(of('ev_car_link_unmatched')).toHaveLength(1);
-    expect(posts()).toHaveLength(1);
+    // A report is gzipped on the real thread pool, which fake timers do not wait for.
+    await vi.waitFor(() => expect(posts()).toHaveLength(1), { timeout: 10_000 });
     const { message } = JSON.parse(String(posts()[0]?.[1]?.body)) as { message: string };
     const document = decodeReportMessage(message);
     expect(document.trigger).toBe('event');
