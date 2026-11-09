@@ -17,6 +17,7 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { hasPlanDeviceExecutionDrift } from '../../lib/executor/planExecutionDrift';
 import { splitPlanInputDevice } from '../utils/driftObservationTestUtils';
 import type { DriftCommandRead } from '../../lib/executor/driftObservedDevice';
+import type { PendingTargetCommandState } from '../../lib/executor/executionState';
 import { buildBinaryObservation } from '../utils/binaryObservationTestUtils';
 import { buildPlanMeta, resolveFixtureCurrentOn } from '../utils/planTestUtils';
 import {
@@ -992,16 +993,28 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
     ready: true,
   };
 
-  const buildExecutor = async (): Promise<PlanExecutor> => {
+  const heatPump: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
+    id: 'heat-1',
+    name: 'Heat pump',
+    class: 'thermostat',
+    capabilities: ['target_temperature', 'measure_temperature'],
+    capabilitiesObj: {
+      target_temperature: { value: 22, setable: true, units: '°C', lastUpdated },
+      measure_temperature: { value: 21, units: '°C', lastUpdated },
+    },
+    available: true,
+    ready: true,
+  };
+
+  const buildExecutor = async (state = createPlanEngineState()): Promise<PlanExecutor> => {
     const parsed = await seedTransportDevices(createTestDeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       loggerMock,
       {},
-    ), [unpluggedCharger, offSocket]);
+    ), [unpluggedCharger, offSocket, heatPump]);
     const configuration = new DeviceConfigurationStore();
     configuration.replace(parsed);
     const observedById = new Map(parsed.map((snapshot) => [snapshot.id, projectObservedState(snapshot)]));
-    const state = createPlanEngineState();
     const deps: PlanExecutorDeps = {
       getHomeDisplayName: () => 'Main home',
       homeId: 'main',
@@ -1067,5 +1080,49 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
       id: 'socket-1', name: 'Garage socket', binaryCapabilityId: 'onoff', isEvCharger: false,
     });
     expect(hasPlanExecutionDriftAgainstIntent(buildExecutionPlan(plan), (await buildExecutor()).driftObservationDeps())).toBe(true);
+  });
+
+  describe('a setpoint command the device has not confirmed', () => {
+    const lowerSetpointPlan = () => buildPlan([buildBinaryDevice({
+      id: 'heat-1',
+      name: 'Heat pump',
+      deviceType: 'temperature',
+      currentState: 'not_applicable' as const,
+      plannedState: 'keep',
+      binaryCapabilityId: undefined,
+      currentTarget: 22,
+      plannedTarget: 20,
+    })]);
+
+    const driftWithPending = async (
+      status: PendingTargetCommandState['status'],
+      retryInMs: number,
+    ): Promise<boolean> => {
+      const state = createPlanEngineState();
+      state.pendingTargetCommands['heat-1'] = {
+        desired: 20,
+        startedMs: Date.now() - 60_000,
+        lastAttemptMs: Date.now() - 60_000,
+        retryCount: 0,
+        nextRetryAtMs: Date.now() + retryInMs,
+        status,
+      };
+      return hasPlanExecutionDriftAgainstIntent(
+        buildExecutionPlan(lowerSetpointPlan()),
+        (await buildExecutor(state)).driftObservationDeps(),
+      );
+    };
+
+    it('leaves a failed write alone until its retry is due', async () => {
+      expect(await driftWithPending('temporary_unavailable', 30_000)).toBe(false);
+    });
+
+    it('makes a failed write work for the executor once its retry is due, so a stable plan re-sends it', async () => {
+      expect(await driftWithPending('temporary_unavailable', -1)).toBe(true);
+    });
+
+    it('keeps waiting for the device after Homey accepted the write, even past its retry time', async () => {
+      expect(await driftWithPending('waiting_confirmation', -1)).toBe(false);
+    });
   });
 });
