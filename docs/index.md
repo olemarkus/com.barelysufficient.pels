@@ -1,5 +1,5 @@
 ---
-title: "PELS — Power-limit control & cheap-hour load shifting for Homey Pro"
+title: "PELS for Homey Pro: capacity limits, EV charging, cheap hours"
 titleTemplate: false
 description: PELS keeps your Homey Pro home under its power limit, shifts EV charging, heating, and hot water into the cheapest hours, and puts your solar and home battery to work.
 aside: false
@@ -15,7 +15,7 @@ editLink: false
     <p class="landing-lead">PELS watches your total power usage and turns down heaters, water tanks, ventilation, and EV charging before you hit your capacity limit. The moment there is room again, it brings them back in priority order. It plans Smart tasks around deadlines and shifts flexible load into the cheapest hours of the day, automatically, every hour, without you watching the meter. With solar panels or a home battery, PELS sends your surplus to useful load and uses the battery to hold your limit at its place in your priority order, by default before it turns anything down.</p>
     <div class="landing-actions">
       <a class="VPButton brand" href="https://homey.app/a/com.barelysufficient.pels">Get the app on the Homey App Store</a>
-      <a class="VPButton alt" href="#is-pels-a-fit">See if PELS fits your home</a>
+      <a class="VPButton alt" href="#start-by-problem">See if PELS fits your home</a>
       <a class="VPButton alt" href="getting-started.html">Open the user guide</a>
     </div>
     <p class="landing-inline-note"><strong>Already installed?</strong> Open the Homey app and go to More &gt; Apps &gt; PELS &gt; Settings. The Set up PELS card there shows what to do first.</p>
@@ -29,52 +29,74 @@ editLink: false
 </section>
 
 <div class="home-shell">
-  <section class="landing-section" id="is-pels-a-fit">
-    <p class="landing-section-kicker">Is it for you?</p>
-    <h2 class="landing-section-title">PELS is worth it if any of this sounds familiar</h2>
-    <p class="landing-section-text">You don't need a complicated setup to get value from PELS. A few power-hungry devices and an interest in your electricity bill are all it takes. Norwegian users can also read the <a href="stromstyring-norge.html">Norwegian overview for strømstyring, kapasitetsledd, and elbillading</a>.</p>
-    <div class="landing-grid landing-grid-three">
-      <article class="landing-card">
-        <h3>You have devices that use a lot of power</h3>
-        <p>Heaters, floor heating, water heaters, ventilation, and EV charging are the obvious wins. PELS turns them down when capacity gets tight and brings them back when there is room — comfort stays steady, the bill drops. For chargers, start with <a href="use-cases/homey-ev-charging-power-limit.html">Homey EV charging without crossing your power limit</a>.</p>
+  <section class="landing-section" id="a-day-with-pels">
+    <p class="landing-section-kicker">In practice</p>
+    <h2 class="landing-section-title">A day with PELS on Homey Pro</h2>
+    <p class="landing-section-text">What PELS does for a home over one day, shown in its own screens and Homey widgets from a demo home.</p>
+    <div class="landing-grid landing-grid-two">
+      <article class="landing-card landing-card-with-screenshot">
+        <figure class="landing-card-media">
+          <img class="landing-card-screenshot" loading="lazy" src="/screenshots/widgets/held-back-1-list.png" alt="Held-back devices widget: hot water, car charger and bathroom floor each held back for a few minutes, with a Let it run now button" />
+        </figure>
+        <h3>Evening: the peak stays under your limit</h3>
+        <p>Cooking, showers and the car all want power at once. PELS holds back the lowest-priority devices for a few minutes and brings each one back as soon as there is room. The Held-back devices widget shows who is waiting, and Let it run now overrides any of them.</p>
+        <a href="widgets.html">See the Homey widgets</a>
       </article>
-      <article class="landing-card">
-        <h3>You want to stay within your capacity limit</h3>
-        <p>If you are on a power-based grid tariff (effekttrinn in Norway, similar power-tariff models in Sweden and Finland, or the quarter-hour capacity tariff in Flanders) where consumption above a chosen level costs more, PELS keeps your hourly or quarter-hour draw under the limit automatically.</p>
+      <article class="landing-card landing-card-with-screenshot">
+        <figure class="landing-card-media">
+          <img class="landing-card-screenshot" loading="lazy" src="/screenshots/widgets/smart-tasks-ended.png" alt="Ended Smart task for an EV charger: charged from 45 to 80 percent, target reached at 06:00 for a 06:30 deadline" />
+        </figure>
+        <h3>Night: the car is ready by morning</h3>
+        <p>Ask for 80 % by 06:30. PELS charges in the cheapest hours that still get there, stays inside your limit while it does, and shows how it went when the task ends.</p>
+        <a href="smart-tasks.html">Smart tasks</a>
       </article>
-      <article class="landing-card">
-        <h3>You want flexible load to run when power is cheap</h3>
-        <p>PELS can move heating, charging, and task-based load toward cheaper hours, so you spend less without having to check prices yourself. This works anywhere with dynamic hourly electricity prices — see <a href="homey-energy.html">Using Homey Energy</a> if you are outside Norway.</p>
+      <article class="landing-card landing-card-with-screenshot">
+        <figure class="landing-card-media">
+          <img class="landing-card-screenshot" loading="lazy" src="/screenshots/landing-cheap-hours.png" alt="Smart task plan for a water heater: on track, needs 11.1 kWh at an estimated cost, with a price chart of the scheduled hours before the deadline" />
+        </figure>
+        <h3>Hot water heats when power is cheap</h3>
+        <p>Give the water heater a temperature and a deadline. PELS picks the cheapest hours that still reach it, shows the energy needed and the estimated cost, and tracks progress until it is done.</p>
+        <a href="use-cases/homey-water-heater-cheap-hours.html">Hot water and heating in cheaper hours</a>
+      </article>
+      <article class="landing-card landing-card-with-screenshot">
+        <figure class="landing-card-media">
+          <img class="landing-card-screenshot" loading="lazy" src="/screenshots/landing-usage.png" alt="PELS Usage tab showing today's grid energy and the Solar card with production, use at home and export by day" />
+        </figure>
+        <h3>Daytime: your solar stays at home</h3>
+        <p>Surplus solar goes to hot water, heating, the car or a home battery instead of the grid. Usage shows what your panels produced and how much of it your home used.</p>
+        <a href="use-cases/homey-solar-home-battery.html">Solar and home battery</a>
       </article>
     </div>
   </section>
 
   <section class="landing-section">
 
-  ## Start by problem {.landing-section-title}
+  <p class="landing-section-kicker">Is it for you?</p>
 
-  Pick the problem that sounds closest to what you are trying to solve. Start with the use-case page when one exists, then continue into the setup guide.
+  ## Use cases: capacity tariffs, EV charging, cheap hours and solar {#start-by-problem .landing-section-title}
+
+  PELS fits any home with a Homey Pro, a whole-home power meter and a few devices that use a lot of power, such as heaters, water heaters, ventilation or an EV charger. Pick the problem closest to yours. Start with the use-case page when one exists, then continue into the setup guide.
   {.landing-section-text}
 
-  ### Stay below a capacity tariff step or power limit
+  ### Stay below a capacity tariff or power limit
 
-  If your grid tariff gets more expensive above a chosen hourly level, start with power limiting. PELS watches whole-home power and limits lower-priority devices before the hard cap is crossed.
+  A capacity tariff, known in various countries as <span lang="nb">kapasitetsledd</span>, <span lang="nl">capaciteitstarief</span>, <span lang="sv">effektavgift</span> or <span lang="fi">tehomaksu</span>, charges for your highest hourly or quarter-hour power. If you have one, or just want the house to stay under a set level, start with power limiting. PELS watches whole-home power and turns down lower-priority devices before you cross the limit, on an hourly or a 15-minute average.
 
-  [Compare cost-saving functions](./cost-saving-functions.md) · [Open configuration docs](./configuration.md)
+  [<span lang="nb">Strømstyring og kapasitetsledd på norsk</span>](./stromstyring-norge.md) · [Compare cost-saving functions](./cost-saving-functions.md) · [Open configuration docs](./configuration.md)
 
-  ### Charge an EV without crossing your whole-home power limit
+  ### Smart EV charging within your power limit
 
   If your charger is paired in Homey, PELS calculates the charging current while still protecting the house limit. Some chargers, such as Easee, take that current directly; for others a Flow passes it to the charger app. If the real goal is a battery target by morning, use deadline charging with state of charge.
 
   [Read the EV charging use case](./use-cases/homey-ev-charging-power-limit.md) · [Deadline Charging With State of Charge](./how-to-deadline-charging-soc.md) · [Configure an EV charger](./ev-charger.md) · [Easee](./easee-ev-charger.md) · [Zaptec](./zaptec-ev-charger.md)
 
-  ### Move hot water, heating or ventilation toward cheap hours
+  ### Run hot water, heating and ventilation in the cheapest hours
 
-  If a water heater, floor heating, panel heater or ventilation unit can run earlier or later, use price shifting, Smart tasks or Flow-booked cheap hours. The hard cap still takes priority.
+  With a dynamic electricity contract, known in various countries as <span lang="nl">dynamisch energiecontract</span>, <span lang="de">dynamischer Stromtarif</span> or <span lang="nb">spotpris</span>, a water heater, heat pump, floor heating, panel heater or ventilation unit can run when power is cheapest. Use price shifting, Smart tasks or Flow-booked cheap hours. The hard cap still takes priority.
 
   [Read the hot water and heating use case](./use-cases/homey-water-heater-cheap-hours.md) · [Compare cost-saving functions](./cost-saving-functions.md) · [Smart Tasks](./smart-tasks.md) · [Book cheap hours with Flows](./how-to-book-cheap-hours-with-flows.md)
 
-  ### Use more of your own solar
+  ### Use more of your own solar with a home battery
 
   With solar panels, PELS puts your surplus to work in hot water, heating or the car, even behind an inverter limited to zero export, and the Usage tab shows what your panels produced and what that saved you. A home battery joins your priority list: your sun goes to devices and the battery in your order, and when the house nears its limit the battery discharges on its turn, by default before anything is turned down.
 
@@ -86,7 +108,7 @@ editLink: false
 
   [Read the modes use case](./use-cases/homey-home-away-night-energy-modes.md) · [Open configuration docs](./configuration.md) · [See available Flow cards](./flow-cards.md)
 
-  ### Use Homey Energy, Tibber Pulse, AMS/HAN/P1 or Flow data as input
+  ### Use Homey Energy, Tibber Pulse, an AMS/HAN or P1 meter reader, or Flow data as input
 
   PELS needs whole-home power and, for price features, a price source. Homey Energy can provide both in many setups; Flow data can be used when you already have another meter or price source.
 
@@ -94,50 +116,11 @@ editLink: false
 
   </section>
 
-  <section class="landing-section" id="how-pels-fits-into-homey">
-    <p class="landing-section-kicker">Inside Homey</p>
-    <h2 class="landing-section-title">Four things you use in practice</h2>
-    <p class="landing-section-text">PELS lives entirely inside Homey. You configure it in the settings page, connect it with a few Flows, add Smart tasks when something must be ready, and check what it is doing in the overview.</p>
-    <div class="landing-grid landing-grid-two">
-      <article class="landing-card landing-card-with-screenshot">
-        <figure class="landing-card-media">
-          <img class="landing-card-screenshot" src="/screenshots/landing-devices.png" alt="PELS Devices page listing managed heaters, a water heater, and an EV charger with Managed, Limit, and Price toggles" />
-          <figcaption>The device list is where you choose which devices are managed, can be limited to stay under your limits, or adjusted by price.</figcaption>
-        </figure>
-        <h3>Device control</h3>
-        <p>Pick the devices PELS can control, set your hard cap, and choose how it should behave in different situations — like daytime vs. nighttime.</p>
-        <a href="configuration.html">Open configuration docs</a>
-      </article>
-      <article class="landing-card landing-card-with-screenshot">
-        <figure class="landing-card-media">
-          <img class="landing-card-screenshot" src="/screenshots/landing-usage.png" alt="PELS Usage tab showing today's grid energy, the solar the home used itself, and the Solar card with production, use at home and export by day" />
-          <figcaption>Usage shows your energy history and what your solar did: produced, used at home and exported.</figcaption>
-        </figure>
-        <h3>Usage and insights</h3>
-        <p>See how much power you are using, track hourly and daily totals, and see how much of your own solar your home used instead of sending it to the grid.</p>
-        <a href="insights-device.html">Open PELS Insights docs</a>
-      </article>
-      <article class="landing-card landing-card-with-screenshot">
-        <figure class="landing-card-media">
-          <img class="landing-card-screenshot" src="/screenshots/landing-price.png" alt="PELS price view showing the current price source and the cheap and expensive hours used to shift flexible load" />
-          <figcaption>Price settings show the current price source and the cheap/expensive hours PELS can use to choose when flexible devices should run.</figcaption>
-        </figure>
-        <h3>Price optimization</h3>
-        <p>PELS knows when electricity is cheap or expensive and shifts flexible load to save money automatically, based on spot prices.</p>
-        <a href="flow-cards.html">See available Flow cards</a>
-      </article>
-      <article class="landing-card">
-        <h3>Smart tasks</h3>
-        <p>Tell PELS that a charger, room, or water heater should be ready by a specific time, and it plans useful hours before the ready-by time.</p>
-        <a href="smart-tasks.html">Open Smart tasks docs</a>
-      </article>
-    </div>
-  </section>
 
   <section class="landing-section" id="quick-setup">
     <p class="landing-section-kicker">Get started</p>
     <h2 class="landing-section-title">Start with a basic setup in about 15 minutes</h2>
-    <p class="landing-section-text">Install the app, connect your power meter, set a limit, and pick one or two devices PELS should control. That is enough to start learning how it behaves — you can add EV charging, modes, Daily Energy Budget and Smart Tasks later.</p>
+    <p class="landing-section-text">Install the app, connect your power meter, set a limit, and pick one or two devices PELS should control. That is enough to start learning how it behaves. You can add EV charging, modes, Daily Energy Budget and Smart Tasks later.</p>
     <div class="landing-grid landing-grid-three">
       <article class="landing-card">
         <h3>Getting started</h3>
@@ -146,7 +129,7 @@ editLink: false
       </article>
       <article class="landing-card">
         <h3>Configuration</h3>
-        <p>A full walkthrough of every tab in the settings page — devices, modes, budget, prices, and more.</p>
+        <p>A full walkthrough of every tab in the settings page: devices, modes, budget, prices, and more.</p>
         <a href="configuration.html">Open configuration docs</a>
       </article>
       <article class="landing-card">
