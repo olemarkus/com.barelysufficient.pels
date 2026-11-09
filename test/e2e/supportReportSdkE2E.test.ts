@@ -122,11 +122,13 @@ describe('manual report through the app API and Homey boundary', () => {
     const app = createApp({ withoutPowerMeasurement: true });
     await app.onInit();
     const posts = () => fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST');
+    // A report is gzipped on the real thread pool, which fake timers do not wait for.
+    const expectSends = (count: number) => vi.waitFor(() => expect(posts()).toHaveLength(count), { timeout: 10_000 });
 
     await vi.advanceTimersByTimeAsync(14 * 60 * 1000);
     expect(posts()).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
-    expect(posts()).toHaveLength(1);
+    await expectSends(1);
     const { message } = JSON.parse(String(posts()[0]?.[1]?.body)) as { message: string };
     const document = decodeReportMessage(message);
     expect(document.trigger).toBe('daily');
@@ -137,6 +139,6 @@ describe('manual report through the app API and Homey boundary', () => {
     await vi.advanceTimersByTimeAsync(3 * 60 * 60 * 1000);
     expect(posts()).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(21 * 60 * 60 * 1000);
-    expect(posts()).toHaveLength(2);
+    await expectSends(2);
   });
 });

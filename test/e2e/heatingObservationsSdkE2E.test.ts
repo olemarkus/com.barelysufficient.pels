@@ -96,7 +96,8 @@ describe('passive heating observations (SDK-boundary e2e)', () => {
 
     mockHomeyInstance.settings.set(DAILY_DIAGNOSTICS_REPORT, true);
     await vi.advanceTimersByTimeAsync(60 * MINUTE_MS);
-    expect(posts()).toHaveLength(1);
+    // A report is gzipped on the real thread pool, which fake timers do not wait for.
+    await vi.waitFor(() => expect(posts()).toHaveLength(1), { timeout: 10_000 });
     const { message } = JSON.parse(String(posts()[0]?.[1]?.body)) as { message: string };
     const document = decodeReportMessage(message);
     expect(document.trigger).toBe('daily');
