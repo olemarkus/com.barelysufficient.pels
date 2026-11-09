@@ -126,6 +126,8 @@ export type SettingsUiPhaseLoad =
     readonly meterCapabilityIds?: readonly string[];
     /** The meter's phases already read well, so no owner choice is needed. */
     readonly phasesRecognised?: true;
+    /** As on `phases`: the hint states the real target before the fuse is on. */
+    readonly powerOnly?: true;
   }
   | {
     readonly state: 'phases';

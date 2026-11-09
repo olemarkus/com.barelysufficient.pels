@@ -661,4 +661,32 @@ describe('readPowerLimitFormSettings', () => {
       capacityEnabled: false, gridImportEnabled: true, limitKw: 10, marginKw: 0.2, gridImportLimitKw: null,
     });
   });
+
+  it('does not repaint the switch from a half-written fuse while its save is landing', async () => {
+    buildLimitsDom();
+    document.querySelector('form')!.insertAdjacentHTML('beforeend', [
+      '<md-switch id="settings-main-fuse-enabled"></md-switch>',
+      '<md-filled-select id="settings-main-fuse-supply"></md-filled-select>',
+      '<md-filled-text-field id="settings-main-fuse-amps"></md-filled-text-field>',
+    ].join(''));
+    let releaseSupply: () => void = () => undefined;
+    const { capacity, settingsStore } = await loadCapacityModuleWithWriter({}, undefined, { state: 'recorded', peakKw: 4.75 },
+      async (key, value, store) => {
+        if (key === 'main_fuse_supply') await new Promise<void>((resolve) => { releaseSupply = resolve; });
+        store[key] = value;
+      });
+    const field = (id: string) => document.querySelector(id) as HTMLElement & { value: string; selected: boolean };
+    await capacity.loadCapacitySettings();
+    field('#settings-main-fuse-enabled').selected = true;
+    field('#settings-main-fuse-supply').value = 'three_phase_neutral';
+    field('#settings-main-fuse-amps').value = '25';
+    const save = capacity.saveSettingsLimitsSettings();
+    await vi.waitFor(() => expect(settingsStore.main_fuse_amps).toBe(25));
+    await capacity.loadCapacitySettings();
+    expect(field('#settings-main-fuse-enabled').selected).toBe(true);
+    releaseSupply();
+    await save;
+    expect(settingsStore.main_fuse_supply).toBe('three_phase_neutral');
+    expect(field('#settings-main-fuse-enabled').selected).toBe(true);
+  });
 });

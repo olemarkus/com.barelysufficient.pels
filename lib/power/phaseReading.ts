@@ -150,7 +150,13 @@ export function projectPhaseLoadForUi(
   if (fuse.kind !== 'on' || fuse.supply !== 'three_phase_neutral') {
     // Carried with the fuse off, so the picker can appear the moment it is turned on.
     if (meterCapabilityIds.length === 0) return { state: 'none' };
-    return { state: 'none', meterCapabilityIds, ...(reading.kind === 'healthy' ? { phasesRecognised: true } : {}) };
+    if (reading.kind !== 'healthy') return { state: 'none', meterCapabilityIds };
+    return {
+      state: 'none',
+      meterCapabilityIds,
+      phasesRecognised: true,
+      ...(reading.phases.some((load) => load.currentA === undefined) ? { powerOnly: true } : {}),
+    };
   }
   if (reading.kind !== 'healthy') return { state: 'none', meterCapabilityIds };
   return {

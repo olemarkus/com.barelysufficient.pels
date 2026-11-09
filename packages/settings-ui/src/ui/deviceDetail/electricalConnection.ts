@@ -39,17 +39,26 @@ const syncSelfBalancingOption = (isEvCharger: boolean): void => {
   selectEl?.querySelector(`md-select-option[value="${SELF_BALANCING}"]`)?.toggleAttribute('hidden', !isEvCharger);
 };
 
-const phaseLabel = (phases: NonNullable<SettingsUiPhaseFootprintRead['phases']>): string => (
+const phaseLabel = (phases: Exclude<DevicePhaseConnection, 'self_balancing'>): string => (
   phases === 'all' ? 'all three phases' : phases
 );
 
-/** How PELS knows, in the device page's words. Nothing to say until it has an answer. */
-const formatPhaseSource = (read: SettingsUiPhaseFootprintRead | undefined): string => {
+/**
+ * How PELS knows, in the device page's words. Nothing to say until it has an
+ * answer. The owner's choice is known here at once; the device list's read of
+ * it lags until the next refresh.
+ */
+const formatPhaseSource = (
+  read: SettingsUiPhaseFootprintRead | undefined,
+  chosen: DevicePhaseConnection | undefined,
+): string => {
+  if (chosen !== undefined) return chosen === 'self_balancing' ? '' : `Set by you: ${phaseLabel(chosen)}.`;
+  if (read?.source === 'set') return '';
   if (read === undefined || read.phases === undefined) return '';
   const phases = phaseLabel(read.phases);
   if (read.source === 'learned') return `Learned: ${phases}.`;
   if (read.source === 'reported') return `Reported by the charger: ${phases}.`;
-  return read.source === 'set' ? `Set by you: ${phases}.` : '';
+  return '';
 };
 
 export const syncElectricalConnectionRow = (
@@ -62,7 +71,8 @@ export const syncElectricalConnectionRow = (
   if (!show || deviceId === null) return;
   syncSelfBalancingOption(resolveDeviceDetailKind(device) === 'ev_charger');
   selectEl.value = state.devicePhaseConnectionMap[deviceId] ?? AUTOMATIC;
-  if (sourceEl) sourceEl.textContent = formatPhaseSource(device?.phaseFootprintRead);
+  const chosen = state.devicePhaseConnectionMap[deviceId];
+  if (sourceEl) sourceEl.textContent = formatPhaseSource(device?.phaseFootprintRead, chosen);
 };
 
 type ElectricalConnectionHandlerDeps = {

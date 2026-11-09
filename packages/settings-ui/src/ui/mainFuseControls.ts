@@ -77,8 +77,12 @@ export const bindMainFuseControls = (autoSave: () => Promise<void>): void => {
   settingsMainFuseAmpsInput?.addEventListener('change', refreshAndSave);
 };
 
-export const syncMainFuseControls = (fuse: MainFuse): void => {
+export const syncMainFuseControls = (fuse: MainFuse, storedAmps: unknown): void => {
   if (settingsMainFuseEnabledInput) settingsMainFuseEnabledInput.selected = fuse.kind === 'on';
+  // Kept while off, so turning the fuse back on needs no retyping.
+  if (fuse.kind === 'off' && isValidMainFuseAmps(storedAmps) && settingsMainFuseAmpsInput) {
+    settingsMainFuseAmpsInput.value = String(storedAmps);
+  }
   if (fuse.kind === 'on') {
     if (settingsMainFuseSupplySelect) settingsMainFuseSupplySelect.value = fuse.supply;
     if (settingsMainFuseAmpsInput) settingsMainFuseAmpsInput.value = String(fuse.amps);

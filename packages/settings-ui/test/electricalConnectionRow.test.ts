@@ -66,6 +66,18 @@ describe('Electrical connection row', () => {
     expect(document.querySelector('#device-detail-electrical-connection-source')?.textContent).toBe('');
   });
 
+  it('follows the owner\'s choice at once, ahead of the device list', async () => {
+    const { state, syncElectricalConnectionRow } = await load();
+    const stale = { id: 'd1', name: 'H', deviceClass: 'heater', phaseFootprintRead: { source: 'set', phases: 'L1' } } as never;
+    state.mainFuseSupply = 'three_phase_neutral';
+    state.devicePhaseConnectionMap = { d1: 'L2' };
+    syncElectricalConnectionRow('d1', stale);
+    expect(document.querySelector('#device-detail-electrical-connection-source')?.textContent).toBe('Set by you: L2.');
+    state.devicePhaseConnectionMap = {};
+    syncElectricalConnectionRow('d1', stale);
+    expect(document.querySelector('#device-detail-electrical-connection-source')?.textContent).toBe('');
+  });
+
   it('deletes the entry when Automatic is chosen', async () => {
     const { state, setSetting, initElectricalConnectionHandler } = await load();
     state.devicePhaseConnectionMap = { d1: 'L1', d2: 'L2' };

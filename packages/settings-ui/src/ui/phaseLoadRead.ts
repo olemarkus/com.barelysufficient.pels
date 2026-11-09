@@ -3,15 +3,19 @@ import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 
 const NONE: SettingsUiPhaseLoad = { state: 'none' };
 
+const classifyNoPhases = (value: Record<string, unknown>): SettingsUiPhaseLoad => {
+  if (!Array.isArray(value.meterCapabilityIds)) return NONE;
+  return {
+    state: 'none',
+    meterCapabilityIds: value.meterCapabilityIds.filter((id): id is string => typeof id === 'string'),
+    ...(value.phasesRecognised === true ? { phasesRecognised: true } : {}),
+    ...(value.powerOnly === true ? { powerOnly: true } : {}),
+  };
+};
+
 /** Re-validate the runtime's phase load at the browser boundary; anything else shows no phases. */
 export const classifyPhaseLoad = (value: unknown): SettingsUiPhaseLoad => {
-  if (isUnknownRecord(value) && value.state === 'none' && Array.isArray(value.meterCapabilityIds)) {
-    return {
-      state: 'none',
-      meterCapabilityIds: value.meterCapabilityIds.filter((id): id is string => typeof id === 'string'),
-      ...(value.phasesRecognised === true ? { phasesRecognised: true } : {}),
-    };
-  }
+  if (isUnknownRecord(value) && value.state === 'none') return classifyNoPhases(value);
   if (!isUnknownRecord(value) || value.state !== 'phases' || !Array.isArray(value.phases)) return NONE;
   const { fuseAmps } = value;
   if (typeof fuseAmps !== 'number' || !Number.isFinite(fuseAmps) || fuseAmps <= 0) return NONE;
