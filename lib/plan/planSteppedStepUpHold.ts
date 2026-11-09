@@ -33,14 +33,15 @@ const isSettledBelowTopStep = (device: SteppedPlanDevice): boolean => {
 
 const isHeldBelowTopStep = (device: DevicePlanDevice): boolean => {
   if (!isSteppedLoadDevice(device)) return false;
-  // A non-capacity reduction is not a wait for room, a device tracking solar
-  // surplus is capped by its surplus ceiling, and the fairness hold states its own
-  // rule.
+  // A non-capacity reduction is not a wait for room, and a device tracking solar
+  // surplus is capped by its surplus ceiling.
   if (device.nonCapacityHoldShed === true || device.surplusTracking === true) return false;
-  if (device.steppedFairnessHold !== undefined) return false;
   if (!device.control.commandAuthority || !device.hasStandingDemand) return false;
   if (device.plannedState !== 'keep' || device.currentState !== 'on') return false;
-  return STEP_UP_WAIT_REASON_CODES.has(device.reason.code) && isSettledBelowTopStep(device);
+  if (!isSettledBelowTopStep(device)) return false;
+  // The fairness hold is the same wait with its rule stated: whatever reason the
+  // cycle wrote, the device reads held and the card keeps the fairness line.
+  return device.steppedFairnessHold !== undefined || STEP_UP_WAIT_REASON_CODES.has(device.reason.code);
 };
 
 /**

@@ -48,9 +48,23 @@ describe('stampSteppedStepUpHolds', () => {
     { name: 'PELS cannot command it', overrides: { commandAuthority: false } },
     { name: 'a non-capacity hold lowered it', overrides: { nonCapacityHoldShed: true as const } },
     { name: 'it tracks solar surplus', overrides: { surplusTracking: true } },
-    { name: 'the stepped fairness hold states its rule', overrides: {
-      steppedFairnessHold: { stepId: 'low', limitedDeviceCount: 1 } } },
   ])('does not hold it when $name', ({ overrides }) => {
     expect(stampOf(heater(overrides))).toBeUndefined();
+  });
+
+  const fairness = { steppedFairnessHold: { stepId: 'low', limitedDeviceCount: 1 } };
+
+  it('holds a settled device the fairness rule keeps down, whatever reason the cycle wrote', () => {
+    expect(stampOf(heater(fairness))).toBe(true);
+    expect(stampOf(heater({ ...fairness,
+      reason: { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30 } }))).toBe(true);
+  });
+
+  it.each([
+    { name: 'its step command is in flight', overrides: { stepCommandPending: true } },
+    { name: 'its owner left it at that step', overrides: { lastDesiredStepId: undefined } },
+    { name: 'its demand has ended', overrides: { hasStandingDemand: false } },
+  ])('does not hold a fairness-limited device when $name', ({ overrides }) => {
+    expect(stampOf(heater({ ...fairness, ...overrides }))).toBeUndefined();
   });
 });

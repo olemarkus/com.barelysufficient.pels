@@ -439,8 +439,9 @@ step-up. The plan resolves that wait every cycle (`steppedStepUpHold`,
 `Waiting to increase` (held back: `Held 2 h`) until a step-up is admitted, the
 device reaches its top step or its demand ends; the hero counts it. The one-cycle
 flip after the cut and the restore cooldown and queue lines keep their own words,
-a device its owner left at a lower step is not PELS's wait, and the fairness hold
-keeps its line. The activity log keeps it as a device PELS leaves on, so the wait
+a device its owner left at a lower step is not PELS's wait. A device settled at
+the step the fairness hold keeps it on reads `Limited · Low` too, with the fairness
+line in place of `Waiting to increase`. The activity log keeps it as a device PELS leaves on, so the wait
 adds no row (`buildLoggedReasonShape`, `lib/plan/deviceOverviewLog.ts`).
 
 **Held-back cards state the elapsed hold, and still name no ceiling** (2026-08-04).
