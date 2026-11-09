@@ -4,6 +4,7 @@ import type {
   TargetPowerReachabilityState,
   TargetPowerSteppedLoadConfig,
 } from '../../packages/contracts/src/types';
+import { isWithinSteppedLoadPowerCeiling } from './steppedLoadPowerCeiling';
 
 /** Runtime-only join of user configuration and learned device evidence. */
 export type TargetPowerConfigWithReachability = TargetPowerSteppedLoadConfig & {
@@ -14,6 +15,10 @@ export type DeviceTargetPowerConfigsWithReachability = Record<string, TargetPowe
 
 const NOMINAL_PHASE_VOLTAGE = 230;
 const EV_CHARGER_AMPS = [6, 8, 10, 12, 14, 16, 20, 24, 28, 32] as const;
+/** 5% covers mains up to 241.5 V. */
+const EV_RUNG_OVER_NOMINAL_RATIO = 0.05;
+/** The share of the gap to the rung above that the allowance never reaches. */
+const EV_RUNG_OVER_NOMINAL_GAP_FRACTION = 0.5;
 
 const isFiniteNonNegative = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value) && value >= 0
@@ -163,6 +168,35 @@ export const buildEvTargetPowerCandidateProfile = (
   };
 };
 
+/**
+ * The configured rung a measured EV draw is on, or `undefined` when the reading
+ * is outside the ladder. A rung is a current, and a watt reading is that current
+ * at whatever the mains and the car happen to be doing, so a measurement names a
+ * rung and never creates one: only a value a charger or Flow states as a current
+ * can be an exact step (`resolveEvTargetPowerExactStep`).
+ *
+ * A reading just under a rung is that rung (a car on 16 A reads about 3.6 kW).
+ * Otherwise it is the rung at or below it, so a charger reading over nominal
+ * stays on its rung and a reading between rungs never claims the one above, which
+ * would prove a current the charger has not reached. Above the top rung only
+ * mains drift is accepted.
+ */
+export const resolveEvMeasuredStep = (
+  config: TargetPowerSteppedLoadConfig | undefined,
+  measuredPowerW: number,
+): SteppedLoadStep | undefined => {
+  if (!isEvTargetPowerConfig(config) || !isFiniteNonNegative(measuredPowerW)) return undefined;
+  const { steps } = buildEvTargetPowerCandidateProfile(config);
+  const justUnder = steps.find((step) => (
+    step.planningPowerW > 0 && isWithinSteppedLoadPowerCeiling(step.planningPowerW, measuredPowerW)
+  ));
+  if (justUnder) return justUnder;
+  const below = steps.filter((step) => step.planningPowerW <= measuredPowerW).at(-1);
+  if (!below || (below.planningPowerW === 0 && measuredPowerW > 0)) return undefined;
+  const isTopRung = below === steps.at(-1);
+  return isTopRung && measuredPowerW > below.planningPowerW * (1 + EV_RUNG_OVER_NOMINAL_RATIO) ? undefined : below;
+};
+
 export const buildEvTargetPowerProfileFingerprint = (
   config: TargetPowerSteppedLoadConfig,
 ): string => {
@@ -170,6 +204,27 @@ export const buildEvTargetPowerProfileFingerprint = (
   return `${config.preset ?? 'unknown'}:${candidate.steps
     .map((step) => `${step.id}=${Math.round(step.planningPowerW)}`)
     .join(',')}`;
+};
+
+/**
+ * A maximum saved from a reading just over a rung reads as that rung: the proven
+ * maximum only ever rises, so it would otherwise stay an off-ladder step. Saved
+ * state does not record where a value came from, so this is bounded to mains
+ * drift: under half the gap to the next rung and under one whole amp.
+ */
+const withSavedMaximumOnRung = (
+  config: TargetPowerSteppedLoadConfig,
+  state: TargetPowerReachabilityState,
+): TargetPowerReachabilityState => {
+  const { steps } = buildEvTargetPowerCandidateProfile(config);
+  const rung = steps.filter((step) => step.planningPowerW < state.maxReachedPowerW).at(-1);
+  if (!rung || rung.planningPowerW <= 0) return state;
+  const above = steps[steps.indexOf(rung) + 1];
+  const overW = state.maxReachedPowerW - rung.planningPowerW;
+  const isMainsDrift = overW <= rung.planningPowerW * EV_RUNG_OVER_NOMINAL_RATIO
+    && overW < NOMINAL_PHASE_VOLTAGE * resolvePhaseCount(config)
+    && (!above || overW <= (above.planningPowerW - rung.planningPowerW) * EV_RUNG_OVER_NOMINAL_GAP_FRACTION);
+  return isMainsDrift ? { ...state, maxReachedPowerW: rung.planningPowerW } : state;
 };
 
 export const resolveValidTargetPowerReachability = (
@@ -193,7 +248,7 @@ export const resolveValidTargetPowerReachability = (
   if (state.maxReachedPowerW > resolveCandidateMaxPowerW(config)) return undefined;
   if (!Number.isInteger(state.probeFailureCount) || state.probeFailureCount < 0) return undefined;
   if (state.nextProbeAtMs !== undefined && !isFiniteNonNegative(state.nextProbeAtMs)) return undefined;
-  return state;
+  return withSavedMaximumOnRung(config, state);
 };
 
 const resolveObservedPowerW = (

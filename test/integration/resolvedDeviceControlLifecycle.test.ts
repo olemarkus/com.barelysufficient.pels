@@ -622,9 +622,9 @@ describe('resolved device control composition and command lifecycle', () => {
   });
 
   it.each([
-    ['inside the ladder', '16a', 3_600],
-    ['just below the lowest rung', '6a', 1_320],
-  ])('admits a Flow power report %s as the rung the card matched', (_case, stepId, reportedW) => {
+    ['16a', 3_680],
+    ['6a', 1_380],
+  ])('admits a measured EV draw reported as rung %s', (stepId, rungW) => {
     const baseConfig: TargetPowerSteppedLoadConfig = {
       enabled: true,
       preset: 'ev_charger_1_phase',
@@ -649,16 +649,11 @@ describe('resolved device control composition and command lifecycle', () => {
     helpers.markSteppedLoadDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: stepId, issuedAtMs: 1_000 });
     const dateNow = vi.spyOn(Date, 'now').mockReturnValue(2_000);
 
-    // Cars draw a little under nominal; the card resolves such a reading to the
-    // rung just above it, and the owner must accept the rung it was handed.
-    expect(helpers.reportSteppedLoadActualStep('dev-1', stepId, reportedW)).toBe('changed');
+    // The card names the rung a measured draw is on and passes no watts.
+    expect(helpers.reportSteppedLoadActualStep('dev-1', stepId)).toBe('changed');
 
-    expect(stores.reportedStore.get('dev-1')).toMatchObject({ stepId, planningPowerW: reportedW });
+    expect(stores.reportedStore.get('dev-1')).toMatchObject({ stepId, planningPowerW: rungW });
     expect(stores.store.getDesired('dev-1')).toMatchObject({ stepId, status: 'success' });
-    // The rung is reported as-is: the ladder gains no off-grid exact step.
-    expect(helpers.getSteppedLoadProfile('dev-1')?.steps.map((step) => step.id)).not.toContain(
-      `${String(Math.round((reportedW / 230) * 1000) / 1000)}a`,
-    );
     dateNow.mockRestore();
   });
 

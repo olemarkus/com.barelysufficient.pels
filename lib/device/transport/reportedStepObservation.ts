@@ -1,5 +1,4 @@
 import { isBuiltInSteppedLoadControlEnabled } from '../deviceActionProjection';
-import { resolveSteppedLoadCeilingStep } from '../steppedLoadPowerCeiling';
 import { isEvTargetPowerConfig, resolveEvTargetPowerExactStep } from '../targetPowerReachability';
 import { resolveTargetPowerObservationProfile } from '../targetPowerObservationProfile';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
@@ -43,23 +42,17 @@ export function preserveNewerReportedStepObservation(
 
 /**
  * The ladder an EV report is carried forward on, or `undefined` when the
- * current configuration no longer has the reported rung. An exact reading keeps
- * its own step. A reading admitted as the rung just above its watts is that
- * rung: it is matched on the ladder it was admitted against (which may hold an
- * earlier off-grid step the fresh parse lacks) and re-anchored into this one
- * through the configuration, never re-derived into an off-grid step or dropped.
+ * current configuration no longer has the reported step.
  */
 function resolveEvReportLadder(
     config: TargetPowerSteppedLoadConfig,
     previous: TransportDeviceSnapshot,
     ladder: SteppedLoadProfile,
 ): SteppedLoadProfile | undefined {
-    const { reportedStepId, reportedStepPowerW, steppedLoadProfile: admittedLadder } = previous;
+    const { reportedStepId, reportedStepPowerW } = previous;
     if (reportedStepId === undefined || reportedStepPowerW === undefined) return undefined;
     const exactStep = resolveEvTargetPowerExactStep(config, reportedStepPowerW);
-    if (exactStep?.id === reportedStepId) return resolveTargetPowerObservationProfile(config, ladder, exactStep);
-    const ceilingStep = admittedLadder
-        && resolveSteppedLoadCeilingStep(admittedLadder, reportedStepId, reportedStepPowerW);
-    const rung = ceilingStep && resolveEvTargetPowerExactStep(config, ceilingStep.planningPowerW);
-    return rung?.id === reportedStepId ? resolveTargetPowerObservationProfile(config, ladder, rung) : undefined;
+    return exactStep?.id === reportedStepId
+        ? resolveTargetPowerObservationProfile(config, ladder, exactStep)
+        : undefined;
 }

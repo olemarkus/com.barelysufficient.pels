@@ -10,7 +10,11 @@ import { emitGated } from '../lib/logging/deviationGate';
 import type { LogDedupeEntry } from '../lib/logging/logDedupe';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type { FlowCardDeps } from './registerFlowCards';
-import { resolveEvTargetPowerExactStep } from '../lib/device/targetPowerReachability';
+import {
+  isEvTargetPowerConfig,
+  resolveEvMeasuredStep,
+  resolveEvTargetPowerExactStep,
+} from '../lib/device/targetPowerReachability';
 import {
   getSteppedLoadPowerCeilingMarginW,
   isWithinSteppedLoadPowerCeiling,
@@ -23,23 +27,36 @@ const EV_CHARGER_NOMINAL_VOLTAGE = 230;
 const STEPPED_LOAD_CLAMP_HEARTBEAT_MS = 10 * 60 * 1000;
 const steppedLoadClampDedupe = new Map<string, LogDedupeEntry>();
 
+type ParsedSteppedLoadPower = { powerW: number; unit: 'watts' | 'amps' };
+
+/**
+ * The step a power report names. An EV current given in amps is stated, so it
+ * is its own exact step; EV watts are a measurement and name a configured rung.
+ * `admittedPowerW` is what admission receives: absent for a measured EV draw,
+ * which reports its rung and nothing more. `parsedPowerW` is the input as
+ * given, for the logs.
+ */
 export async function resolveSteppedLoadStepIdFromPowerInput(
   deps: FlowCardDeps,
   deviceId: string,
   rawPower: unknown,
-): Promise<{ stepId: string; deviceName: string; parsedPowerW: number }> {
+): Promise<{ stepId: string; deviceName: string; parsedPowerW: number; admittedPowerW: number | undefined }> {
   const device = await getSteppedLoadDeviceSnapshot(deps, deviceId);
-  const powerW = parseSteppedLoadPowerInput(rawPower, device);
-  if (powerW === null) {
+  const parsed = parseSteppedLoadPowerInput(rawPower, device);
+  if (parsed === null) {
     throw createSteppedLoadReportError(
       'invalid_power_input',
       'Power must be provided as a number or text like "1750 W" or "6 A".',
     );
   }
+  const { powerW } = parsed;
   const steps = device.steppedLoadProfile.steps;
-  const resolvedStep = resolveSteppedLoadStepFromPower(steps, powerW)
-    ?? resolveEvTargetPowerExactStep(device.targetPowerConfig, powerW)
-    ?? null;
+  const isEv = isEvTargetPowerConfig(device.targetPowerConfig);
+  const isMeasuredEvDraw = isEv && parsed.unit === 'watts';
+  const resolveEvStep = isMeasuredEvDraw ? resolveEvMeasuredStep : resolveEvTargetPowerExactStep;
+  const resolvedStep = isEv
+    ? resolveEvStep(device.targetPowerConfig, powerW) ?? null
+    : resolveSteppedLoadStepFromPower(steps, powerW);
   if (!resolvedStep) {
     throw createSteppedLoadReportError(
       'no_matching_step',
@@ -56,15 +73,16 @@ export async function resolveSteppedLoadStepIdFromPowerInput(
     stepId: resolvedStep.id,
     deviceName: device.name.trim(),
     parsedPowerW: powerW,
+    admittedPowerW: isMeasuredEvDraw ? undefined : powerW,
   };
 }
 
 function parseSteppedLoadPowerInput(
   rawPower: unknown,
   device: TargetDeviceSnapshot & SteppedLoadDescriptorFields,
-): number | null {
+): ParsedSteppedLoadPower | null {
   if (typeof rawPower === 'number' && Number.isFinite(rawPower)) {
-    return Math.round(rawPower);
+    return { powerW: Math.round(rawPower), unit: 'watts' };
   }
 
   const normalized = String(rawPower ?? '').trim();
@@ -78,8 +96,7 @@ function parseSteppedLoadPowerInput(
   const value = Number.parseFloat(magnitude.replace(',', '.'));
   if (!Number.isFinite(value)) return null;
 
-  const unit = match[2]?.toLowerCase();
-  if (unit === 'a') {
+  if (match[2]?.toLowerCase() === 'a') {
     const phaseCount = resolveEvTargetPowerPhaseCount(device.targetPowerConfig);
     if (!phaseCount) {
       throw createSteppedLoadReportError(
@@ -87,10 +104,10 @@ function parseSteppedLoadPowerInput(
         'Amp reports are only supported for EV charger target-power presets.',
       );
     }
-    return Math.round(value * EV_CHARGER_NOMINAL_VOLTAGE * phaseCount);
+    return { powerW: Math.round(value * EV_CHARGER_NOMINAL_VOLTAGE * phaseCount), unit: 'amps' };
   }
 
-  return Math.round(value);
+  return { powerW: Math.round(value), unit: 'watts' };
 }
 
 function resolveEvTargetPowerPhaseCount(

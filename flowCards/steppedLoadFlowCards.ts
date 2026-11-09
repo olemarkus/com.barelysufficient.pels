@@ -101,10 +101,10 @@ function registerReportActualPowerCard(deps: FlowCardDeps): void {
         emitSteppedLoadReportNativeIgnoredLog(deps, sourceCardId, deviceId, nativeIgnored.deviceName, null);
         return true;
       }
-      const { stepId, deviceName, parsedPowerW } = await resolveSteppedLoadStepIdFromPowerInput(
+      const { stepId, deviceName, parsedPowerW, admittedPowerW } = await resolveSteppedLoadStepIdFromPowerInput(
         deps, deviceId, rawPower,
       );
-      const result = await deps.reportSteppedLoadActualStep(deviceId, stepId, parsedPowerW);
+      const result = await deps.reportSteppedLoadActualStep(deviceId, stepId, admittedPowerW);
       await handleSteppedLoadReportResult(deps, result, sourceCardId, deviceId, deviceName, stepId, parsedPowerW);
       return true;
     } catch (error) {

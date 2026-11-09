@@ -289,12 +289,11 @@ describe('device owner control resolution', () => {
   });
 
   it.each([
-    ['inside the ladder', '16a', 3_600],
-    ['just below the lowest rung', '6a', 1_320],
-  ])('keeps a Flow EV report %s as its rung across a refresh', async (_case, stepId, reportedW) => {
-    // Cars draw a little under nominal, so the report card resolves such a
-    // reading to the rung above it. A refresh re-parses the charger without
-    // that report and must carry the admitted rung forward, not drop it.
+    ['inside the ladder', '16a', 3_600, 3_680],
+    ['just below the lowest rung', '6a', 1_320, 1_380],
+  ])('keeps a measured EV draw %s as its rung across a refresh', async (_case, stepId, reportedW, rungW) => {
+    // The report card names the rung a measured draw is on. A refresh re-parses
+    // the charger without that report and must carry the rung forward.
     const baseConfig = { enabled: true, preset: 'ev_charger_1_phase' as const, max: 7_360 };
     const config: TargetPowerConfigWithReachability = { ...baseConfig, reachability: buildTargetPowerReachabilityState({
       config: baseConfig, maxReachedPowerW: 5_520,
@@ -314,43 +313,11 @@ describe('device owner control resolution', () => {
     };
     const [previous] = await seedTransportDevices(transport, [charger]);
     const ladder = previous.steppedLoadProfile;
-    expect(transport.reportSteppedLoadActualStep('charger', stepId, reportedW)).toMatchObject({ kind: 'accepted' });
+    expect(transport.reportSteppedLoadActualStep('charger', stepId)).toMatchObject({ kind: 'accepted' });
     const [next] = await seedTransportDevices(transport, [charger]);
 
-    expect(next).toMatchObject({ reportedStepId: stepId, reportedStepPowerW: reportedW });
+    expect(next).toMatchObject({ reportedStepId: stepId, reportedStepPowerW: rungW });
     expect(next.steppedLoadProfile).toEqual(ladder);
-  });
-
-  it('keeps a Flow EV report admitted just under an earlier off-grid step across a refresh', async () => {
-    // An exact off-grid reading puts its own step on the ladder; the next
-    // reading a little under it is admitted as that step, and a refresh, whose
-    // fresh ladder lacks the off-grid step, must still carry it forward.
-    const baseConfig = { enabled: true, preset: 'ev_charger_1_phase' as const, max: 7_360 };
-    const config: TargetPowerConfigWithReachability = { ...baseConfig, reachability: buildTargetPowerReachabilityState({
-      config: baseConfig, maxReachedPowerW: 5_520,
-    }) };
-    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger, {
-      settings: { getDeviceTargetPowerConfig: () => config },
-    });
-    const charger: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
-      id: 'charger', name: 'Flow charger', class: 'evcharger',
-      capabilities: ['measure_power', 'evcharger_charging', 'evcharger_charging_state'],
-      capabilitiesObj: {
-        measure_power: { value: 3_520, lastUpdated: '2026-09-30T08:00:00.000Z' },
-        evcharger_charging: { value: true, setable: true, lastUpdated: '2026-09-30T08:00:00.000Z' },
-        evcharger_charging_state: { value: 'plugged_in_charging', lastUpdated: '2026-09-30T08:00:00.000Z' },
-      },
-      available: true, ready: true,
-    };
-    await seedTransportDevices(transport, [charger]);
-    expect(transport.reportSteppedLoadActualStep('charger', '15.304a', 3_520)).toMatchObject({ kind: 'accepted' });
-    const [second] = await seedTransportDevices(transport, [charger]);
-    expect(second.reportedStepId).toBe('15.304a');
-    expect(transport.reportSteppedLoadActualStep('charger', '15.304a', 3_515)).toMatchObject({ kind: 'accepted' });
-    const [third] = await seedTransportDevices(transport, [charger]);
-
-    expect(third).toMatchObject({ reportedStepId: '15.304a', reportedStepPowerW: 3_515 });
-    expect(third.steppedLoadProfile?.steps.map((step) => step.id)).toContain('15.304a');
   });
 
   it('does not retain a step removed by a Flow profile edit', async () => {

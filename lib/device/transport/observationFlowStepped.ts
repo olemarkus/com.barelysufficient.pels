@@ -8,7 +8,6 @@ import type { DeviceConfigurationStore } from '../deviceConfiguration';
 import type { FlowSteppedLoadAdmission, FlowSteppedLoadObservation } from '../../ports/flowSteppedLoadAdmission';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 import { resolveTargetPowerObservationProfile } from '../targetPowerObservationProfile';
-import { resolveSteppedLoadCeilingStep } from '../steppedLoadPowerCeiling';
 
 /** Resolve source authority, identity, and exact power at the device boundary. */
 /* eslint-disable functional/immutable-data -- Transport owns the accepted snapshot and configuration. */
@@ -34,15 +33,9 @@ export function admitFlowSteppedLoadReport(
         ? resolveEvTargetPowerExactStepById(snapshot.targetPowerConfig, stepId)
         : resolveEvTargetPowerExactStep(snapshot.targetPowerConfig, planningPowerW);
     const namedStep = snapshot.steppedLoadProfile.steps.find((candidate) => candidate.id === stepId);
-    // The report card resolves a reading just under a rung to that rung. It is the
-    // rung, with the raw watts as its evidence, and adds no off-grid exact step.
-    const ceilingStep = exactStep?.id !== stepId && planningPowerW !== undefined
-        ? resolveSteppedLoadCeilingStep(snapshot.steppedLoadProfile, stepId, planningPowerW)
-        : undefined;
-    if (!ceilingStep && ((isEvTargetPowerConfig(snapshot.targetPowerConfig) && !exactStep)
-        || (exactStep && exactStep.id !== stepId))) return { kind: 'invalid' };
-    const ladderStep = ceilingStep ? undefined : exactStep;
-    const step = ladderStep ?? namedStep;
+    if ((isEvTargetPowerConfig(snapshot.targetPowerConfig) && !exactStep)
+        || (exactStep && exactStep.id !== stepId)) return { kind: 'invalid' };
+    const step = exactStep ?? namedStep;
     if (!step) return { kind: 'invalid' };
     const observation: FlowSteppedLoadObservation = {
         deviceId, stepId, planningPowerW: Math.round(planningPowerW ?? step.planningPowerW), observedAtMs,
@@ -53,9 +46,9 @@ export function admitFlowSteppedLoadReport(
     // Repeated valid feedback still answers a newer command or plan intent.
     // Only publishing a changed observation is conditional; admission is not.
     if (!changed) return { kind: 'accepted', profile: snapshot.steppedLoadProfile, observation };
-    if (ladderStep && snapshot.targetPowerConfig) {
+    if (exactStep && snapshot.targetPowerConfig) {
         snapshot.steppedLoadProfile = resolveTargetPowerObservationProfile(
-            snapshot.targetPowerConfig, snapshot.steppedLoadProfile, ladderStep,
+            snapshot.targetPowerConfig, snapshot.steppedLoadProfile, exactStep,
         );
     }
     snapshot.reportedStepId = stepId;
