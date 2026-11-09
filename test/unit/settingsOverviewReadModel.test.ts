@@ -300,6 +300,22 @@ describe('settingsOverviewReadModel', () => {
       .toBe(`Reducing to ${formatStepDisplayLabel('low')}`);
   });
 
+  it('reads a device settled at the step the fairness rule keeps it on as limited there', () => {
+    const device = steppedPlanDevice({
+      currentState: 'on', currentDrawKw: 1.25, plannedState: 'keep',
+      reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'low', lastDesiredStepId: 'low',
+      reason: { code: PLAN_REASON_CODES.keep, detail: null },
+      steppedFairnessHold: { stepId: 'low', limitedDeviceCount: 1 },
+      steppedStepUpHold: true,
+    });
+    const { status } = buildDeviceCard(device, absentTemperature);
+
+    expect(status.label).toBe(`Limited · ${formatStepDisplayLabel('low')}`);
+    expect(status.reason?.text).toBe(
+      `Holding at ${formatStepDisplayLabel('low')} — cannot increase while 1 device is limited`,
+    );
+  });
+
   it('keeps the elapsed hold on a held-back device the fairness rule holds', () => {
     const device = steppedPlanDevice({
       currentState: 'on', currentDrawKw: 1.25, plannedState: 'keep',
