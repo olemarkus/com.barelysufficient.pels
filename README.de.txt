@@ -8,7 +8,7 @@ Die Preise kommen aus Homey Energy, Power by the Hour oder deinen Flows. In der 
 
 Erzeugt deine PV-Anlage mehr Strom, als das Haus gerade verbraucht, nutzt PELS den Überschuss fürs Warmwasser, zum Vorheizen oder Kühlen und zum Laden deines Autos. Die Ladeleistung wird an den Solarüberschuss angepasst. PELS berücksichtigt außerdem den Preis für die Einspeisung, auch wenn er negativ ist.
 
-Ein Heimspeicher wie Sessy, Marstek Venus, Zendure, Huawei LUNA2000, Sigenergy oder Anker SOLIX nimmt den Solarüberschuss auf, den die anderen Geräte nicht nutzen. PELS reduziert die Ladeleistung des Speichers, wenn ein Gerät mit höherer Priorität Leistung braucht, und entlädt ihn, um die eingestellte Leistungsgrenze einzuhalten. Wenn du es einschaltest, kann PELS gespeicherte Energie auch verkaufen, sobald das deine Kosten senkt.
+Ein Heimspeicher wie Sessy, Marstek Venus, Zendure, Huawei LUNA2000, Sigenergy oder Anker SOLIX nimmt den Solarüberschuss auf, den die anderen Geräte nicht nutzen. PELS reduziert die Ladeleistung des Speichers, wenn ein Gerät mit höherer Priorität Leistung braucht, und entlädt ihn, um die eingestellte Leistungsgrenze einzuhalten. Wenn du es einschaltest, kann PELS gespeicherte Energie auch verkaufen, sobald das deine Kosten senkt. Mehrere Speicher plant PELS gemeinsam in deiner Prioritätsreihenfolge, sodass kein Speicher einen anderen lädt.
 
 Mit Grid import limit reduziert PELS bei hohem Netzbezug die Ladeleistung, passt die Heizung an oder pausiert Geräte mit niedrigerer Priorität. Sobald wieder Leistung verfügbar ist, laufen sie weiter. Die Messwerte für das Haus kommen aus Homey Energy, einem Lesegerät für den Stromzähler oder einem Flow.
 
