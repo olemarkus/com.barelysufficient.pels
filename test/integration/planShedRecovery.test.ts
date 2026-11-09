@@ -6,10 +6,12 @@ import { buildPlanInputDevice, steppedInputDevice } from '../utils/planTestUtils
 
 const buildState = (overrides: {
   lastPlannedShedIds?: readonly string[];
+  lastPlannedNonCapacityHoldIds?: readonly string[];
   swapReservation?: { targetId: string; donorIds?: readonly string[] };
 } = {}): PlanEngineState => {
   const state = createPlanEngineState();
   state.shedDecisions.lastPlannedShedIds = new Set(overrides.lastPlannedShedIds);
+  state.shedDecisions.lastPlannedNonCapacityHoldIds = new Set(overrides.lastPlannedNonCapacityHoldIds);
   if (overrides.swapReservation) seedSwapReservation(state, overrides.swapReservation);
   return state;
 };
@@ -57,6 +59,20 @@ describe('isNonSteppedDeviceRecovering', () => {
     const device = buildPlanInputDevice({ id: 'a', currentState: 'off' });
     expect(isNonSteppedDeviceRecovering(device, buildState({
       lastPlannedShedIds: ['a'],
+    }))).toBe(true);
+  });
+
+  it('is false while the previous plan shed it for a standing hold rather than for power', () => {
+    const device = buildPlanInputDevice({ id: 'a', currentState: 'off' });
+    expect(isNonSteppedDeviceRecovering(device, buildState({
+      lastPlannedShedIds: ['a'], lastPlannedNonCapacityHoldIds: ['a'],
+    }))).toBe(false);
+  });
+
+  it('still counts a swapped-out device whatever the previous plan recorded', () => {
+    const device = buildPlanInputDevice({ id: 'a', currentState: 'off' });
+    expect(isNonSteppedDeviceRecovering(device, buildState({
+      lastPlannedNonCapacityHoldIds: ['a'], swapReservation: { targetId: 'b', donorIds: ['a'] },
     }))).toBe(true);
   });
 });

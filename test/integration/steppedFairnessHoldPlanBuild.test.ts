@@ -56,6 +56,27 @@ const charger = (stepId: string): PlanInputDevice => inputDevice({
   priority: 1,
 });
 
+const SOLAR_LADDER = { steps: [0, 6, 8, 10, 12, 14, 16].map((amps) => ({
+  id: amps ? `${amps}a` : 'off', planningPowerW: amps * 230,
+})) };
+
+const chargerAt14A = (): PlanInputDevice => inputDevice({
+  id: 'charger',
+  name: 'Charger',
+  isEvCharger: true,
+  binaryCapabilityId: 'evcharger_charging',
+  binaryControl: { on: true },
+  currentState: 'on',
+  currentDrawKw: 3.22,
+  expectedPowerKw: 7.4,
+  steppedLoadProfile: SOLAR_LADDER,
+  selectedStepId: '14a',
+  desiredStepId: '14a',
+  controllable: true,
+  managed: true,
+  priority: 1,
+});
+
 describe('stepped fairness hold through a plan build', () => {
   // The capacity pace is computed from the current hour. Pin the clock mid-hour:
   // near an hour's end the drain changes the pace and the fixture cannot land on 8 kW.
@@ -104,5 +125,53 @@ describe('stepped fairness hold through a plan build', () => {
     for (const planned of cycles.slice(0, cycles.indexOf(cut!))) {
       expect(planned.charger?.steppedFairnessHold).toBeUndefined();
     }
+  });
+
+  const shedOnceOver = async (pump: PlanInputDevice, lastPlannedShed: readonly string[] = []) => {
+    let houseKw = 4;
+    const state = createPlanEngineState();
+    const builder = new PlanBuilder({
+      ...planBuilderWiring(),
+      capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+      getCapacitySettings: () => CAPACITY,
+      getPowerTracker: () => withCapacityPace({ lastTimestamp: Date.now(), lastPowerW: houseKw * 1000 }, CAPACITY, 8),
+      getShedBehavior: (deviceId: string) => (
+        deviceId === 'charger' ? { action: 'set_step' } : { action: 'turn_off' }
+      ),
+      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
+    }, state);
+    await builder.buildDevicePlanSnapshot([pump, chargerAt14A()]);
+    const settled = new Set(state.shedDecisions.lastPlannedNonCapacityHoldIds);
+    // A device limited for power stays shed from the cycles before this one.
+    state.shedDecisions.lastPlannedShedIds = new Set([...state.shedDecisions.lastPlannedShedIds, ...lastPlannedShed]);
+    houseKw = 8.25;
+    const plan = await builder.buildDevicePlanSnapshot([pump, chargerAt14A()]);
+    return { charger: plan.devices.find((device) => device.id === 'charger'), settled };
+  };
+
+  const pump = (surplusOnly: boolean): PlanInputDevice => inputDevice({
+    id: 'pump',
+    name: 'Pump',
+    binaryCapabilityId: 'onoff',
+    binaryControl: { on: false },
+    currentState: 'off',
+    currentDrawKw: 0,
+    expectedPowerKw: 2,
+    controllable: true,
+    managed: true,
+    priority: 3,
+    ...(surplusOnly ? { surplusOnly: true as const } : {}),
+  });
+
+  it('leaves a charger on its next step while a solar-only pump waits for export', async () => {
+    const { charger: planned, settled } = await shedOnceOver(pump(true));
+    expect(settled.has('pump')).toBe(true);
+    expect(planned?.desiredStepId).toBe('12a');
+  });
+
+  it('takes the charger to its lowest step while a device limited for power waits', async () => {
+    const { charger: planned, settled } = await shedOnceOver(pump(false), ['pump']);
+    expect(settled.has('pump')).toBe(false);
+    expect(planned?.desiredStepId).toBe('6a');
   });
 });

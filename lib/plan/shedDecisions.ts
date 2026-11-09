@@ -67,6 +67,15 @@ export class ShedDecisions {
   lastPlannedShedIds: ReadonlySet<string> = new Set<string>();
 
   /**
+   * The previous plan's sheds that were a standing hold and not a lack of power
+   * (`DevicePlanDevice.nonCapacityHoldShed`), such as a dump load waiting for solar
+   * surplus. More room does not bring one back, so the stepped-shed recovery rule
+   * (`isNonSteppedDeviceRecovering`) owes it no rung. A fresh capacity shed, or a
+   * smart task governing the device, is not stamped and still counts.
+   */
+  lastPlannedNonCapacityHoldIds: ReadonlySet<string> = new Set<string>();
+
+  /**
    * The on/off devices PELS turned off and has not seen on since: the ones it
    * turns on itself if the owner takes its authority over the device away, so
    * turning Power-limit control off never strands a device off under a limit
@@ -181,6 +190,9 @@ export class ShedDecisions {
           && (!isPlanDeviceObservedOn(device) || pendingBinaryCommands.hasActiveTurnOff(device.id))))
       .map(({ id }) => id));
     this.lastPlannedShedIds = new Set(shedIds);
+    this.lastPlannedNonCapacityHoldIds = new Set(planDevices
+      .filter((device) => device.plannedState === 'shed' && device.nonCapacityHoldShed === true)
+      .map(({ id }) => id));
     this.lastPlannedKeptIds = new Set(planDevices
       .filter((device) => device.plannedState === 'keep' && device.control.commandAuthority)
       .map(({ id }) => id));

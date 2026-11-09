@@ -47,5 +47,8 @@ export function isNonSteppedDeviceRecovering(
   if (state.swapLedger.isDonor(candidate.id) || state.swapLedger.reservationFor(candidate.id) !== undefined) {
     return true;
   }
-  return state.shedDecisions.lastPlannedShedIds.has(candidate.id);
+  // Held for solar surplus or another standing posture, the device is not waiting
+  // for room, so no stepped device owes it a rung either.
+  const { lastPlannedShedIds, lastPlannedNonCapacityHoldIds } = state.shedDecisions;
+  return lastPlannedShedIds.has(candidate.id) && !lastPlannedNonCapacityHoldIds.has(candidate.id);
 }
