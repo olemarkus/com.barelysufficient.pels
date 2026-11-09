@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PelsHost } from '../../lib/app/pelsHost';
 import { SupportReportEvidenceSource } from '../../lib/diagnostics/supportReportEvidence';
 import { createSupportReportReads, type SupportReportApp } from '../../setup/appInit/createSupportReports';
+import { SUPPORT_REPORT_MAX_HOMEY_DEVICES } from '../../lib/diagnostics/homeyDeviceSupportSection';
 import type { DailyBudgetDayPayload } from '../../packages/contracts/src/dailyBudgetTypes';
 import type { SupportReportEvidence, SupportReportRequest } from '../../packages/contracts/src/supportReport';
 import { pelsHostDouble } from '../helpers/pelsHostDouble';
@@ -718,6 +719,54 @@ describe('device support request evidence', () => {
     expect(JSON.stringify(report)).not.toContain('secret');
     // PELS has no snapshot of the device, so no section claims to describe one.
     expect(values(report, 'Current device observation and configuration')).toBeUndefined();
+  });
+
+  describe('the device list', () => {
+    const appReport: SupportReportRequest = {
+      subject: { kind: 'app', homeId: 'main' },
+      problem: 'Daily report.', expected: '', occurredAtMs: now, historyWindow: 'day',
+    };
+    const managedHeater = { ...relay, id: 'heater', name: 'Hall heater', class: 'heater',
+      ownerUri: 'homey:app:com.example.heat', driverId: 'homey:app:com.example.heat:pump' };
+
+    it('names the app behind every device, and whether PELS manages it', async () => {
+      const host = pelsHostDouble({
+        homeMembership: membership(),
+        deviceManager: partialDouble<NonNullable<PelsHost['deviceManager']>>({
+          getSnapshotByDeviceId: vi.fn((id: string) => id === 'heater' ? deviceSnapshot() : undefined),
+          getDevicesForDebug: vi.fn(async () => [relay, managedHeater]) as NonNullable<PelsHost['deviceManager']>['getDevicesForDebug'],
+        }),
+        getDeviceLogUiPayload: vi.fn(() => reportHistoryFixture([])),
+      });
+      const report = await source(host).capture(appReport, now);
+      expect(values(report, 'Current Homey devices')).toEqual({
+        devices: [
+          { id: 'relay', name: 'Water heater relay', class: 'light', ownerUri: 'homey:app:com.knx',
+            driverId: 'switch', available: true },
+          { id: 'heater', name: 'Hall heater', class: 'heater', ownerUri: 'homey:app:com.example.heat',
+            driverId: 'homey:app:com.example.heat:pump', available: true, managed: deviceSnapshot().managed },
+        ],
+        leftOut: 0,
+      });
+      expect(JSON.stringify(values(report, 'Current Homey devices'))).not.toContain('secret');
+    });
+
+    it('states how many devices it left out past its limit', async () => {
+      const devices = Array.from({ length: SUPPORT_REPORT_MAX_HOMEY_DEVICES + 2 }, (_, index) => (
+        { ...relay, id: `device-${index}` }
+      ));
+      const report = await source(hostWithHomeyDevices(async () => devices)).capture(appReport, now);
+      const list = values(report, 'Current Homey devices') as { devices: unknown[]; leftOut: number };
+      expect(list.devices).toHaveLength(SUPPORT_REPORT_MAX_HOMEY_DEVICES);
+      expect(list.leftOut).toBe(2);
+    });
+
+    it('still captures the report when Homey cannot list its devices, and says so', async () => {
+      const report = await source(hostWithHomeyDevices(async () => { throw new Error('Homey busy'); }))
+        .capture(appReport, now);
+      expect(values(report, 'Current Homey devices')).toBeUndefined();
+      expect(report.omissions).toContain('Current Homey devices is unavailable.');
+    });
   });
 
   it('asks for another try when Homey cannot be read, and rejects a device Homey no longer has', async () => {
