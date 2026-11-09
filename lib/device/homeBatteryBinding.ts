@@ -53,10 +53,13 @@ export const isDeviceOfApp = (device: HomeyDeviceLike, appId: string): boolean =
 /**
  * Whether `device` is one of app `appId`'s `driverId` driver (such as
  * `com.sigenergy` and `plant`), by its driver id with or without the
- * `homey:app:` prefix. An integration passes its own ids; common code never
- * calls this with one.
+ * `homey:app:` prefix, or by the local driver id Homey reports beside the
+ * owning app. An integration passes its own ids; common code never calls this
+ * with one.
  */
 export const isDeviceOfAppDriver = (device: HomeyDeviceLike, appId: string, driverId: string): boolean => {
   const id = normalizeText(device.driverId);
-  return id === `homey:app:${appId}:${driverId}` || id === `${appId}:${driverId}`;
+  const ownerUri = `homey:app:${appId}`;
+  if (id === `${ownerUri}:${driverId}` || id === `${appId}:${driverId}`) return true;
+  return id === driverId && normalizeText(device.ownerUri) === ownerUri;
 };

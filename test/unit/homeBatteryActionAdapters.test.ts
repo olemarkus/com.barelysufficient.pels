@@ -54,6 +54,37 @@ describe('Marstek Venus Connector binding', () => {
   });
 });
 
+describe('a battery whose driver Homey reports as a local id beside its app', () => {
+  const split = (id: string, driverId: string, app: string): HomeyDeviceLike => ({
+    ...device(id, driverId), ownerUri: `homey:app:${app}`,
+  });
+
+  it('selects the adapter as it does for a qualified driver id', () => {
+    expect(actionBinding(split('zendure', 'zendure', 'com.tweakers.zendure')).appUri)
+      .toBe('homey:app:com.tweakers.zendure');
+    expect(actionBinding(split('venus', 'marstek-venus', 'com.niewold.marstek')).appUri)
+      .toBe('homey:app:com.niewold.marstek');
+    expect(actionBinding(split('luna', 'luna2000_modbus', 'com.huawei.fusionsolar')).appUri)
+      .toBe('homey:app:com.huawei.fusionsolar');
+  });
+
+  it('finds the Sigenergy plant beside its battery', () => {
+    const battery = split('sigen-battery', 'battery', 'com.sigenergy');
+    const plant: HomeyDeviceLike = {
+      ...split('sigen-plant', 'plant', 'com.sigenergy'),
+      settings: { ratedChargingPower: '8 kW', ratedDischargingPower: '6.25 kW' },
+    };
+    expect(resolved(battery, [battery, plant]).command(2300)).toEqual([
+      { deviceId: 'sigen-plant', actionId: 'force_charge_from_grid', args: { power: 2.3 } },
+    ]);
+  });
+
+  it('rejects another app using the same local driver name', () => {
+    const foreign = split('other', 'zendure', 'com.example.other');
+    expect(getDeviceAdapter(foreign).homeBatteryBinding(foreign).kind).toBe('capability');
+  });
+});
+
 describe('Sigenergy binding', () => {
   const battery = device('sigen-battery', 'homey:app:com.sigenergy:battery');
   const plant = device('sigen-plant', 'homey:app:com.sigenergy:plant', {
