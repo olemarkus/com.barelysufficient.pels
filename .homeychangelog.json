@@ -790,5 +790,8 @@
   },
   "3.30.10": {
     "en": "One corrupt power reading can no longer keep a device off for weeks, and a device already affected recovers with this update. A whole-home reading no home could draw is now ignored instead of limiting every device. A home battery waiting for a Homey API key now says what the key lets it do, and PELS recommends adding one. Daily diagnostics reports now carry a whole day of log."
+  },
+  "3.30.11": {
+    "en": "A device waiting for solar surplus no longer cuts a charger to its minimum, and a Zaptec Sense no longer counts as a second charger. A temperature change that fails is now retried without waiting for the plan to change. Home batteries and other supported devices are recognized on Homeys that report their drivers in a different form. A device held on a lower step so a limited device can come back now reads as Limited, and diagnostics reports list the devices on your Homey and the app behind each."
   }
 }
