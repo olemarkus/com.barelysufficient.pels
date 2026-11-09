@@ -191,9 +191,19 @@ export default defineConfig({
       'stromstyring-norge.md': 'en_US',
     };
     const ogLocaleAlternate = alternateLocaleByPage[pageData.relativePath];
+    // Google reads hreflang links, not og:locale. Both pages of the pair list
+    // both languages, and the English homepage is the default for everyone else.
+    const hreflangLinks = ogLocaleAlternate
+      ? [
+          ['link', { rel: 'alternate', hreflang: 'en', href: resolvePageUrl('index.md') }],
+          ['link', { rel: 'alternate', hreflang: 'nb', href: resolvePageUrl('stromstyring-norge.md') }],
+          ['link', { rel: 'alternate', hreflang: 'x-default', href: resolvePageUrl('index.md') }],
+        ]
+      : [];
 
     return [
       ['link', { rel: 'canonical', href: pageUrl }],
+      ...hreflangLinks,
       propertyMeta(
         'og:type',
         pageData.relativePath === 'index.md' ? 'website' : 'article',
