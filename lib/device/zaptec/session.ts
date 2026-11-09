@@ -1,9 +1,15 @@
 import type { DeviceAdapterSession } from '../deviceAdapter';
 import type { HomeyDeviceLike } from '../../utils/types';
+import { normalizeText } from './charging';
 
-/** The installation a Zaptec charger is on, by the id the app gives it. */
+/**
+ * The installation a Zaptec charger is on, by the id the app gives it. A Sense
+ * carries the same id but is a meter: it takes no current from the installation.
+ */
 export const zaptecInstallationOf = (device: HomeyDeviceLike): string | undefined => (
-  device.driverId?.startsWith('homey:app:com.zaptec:') === true ? device.data?.installationId || undefined : undefined
+  device.driverId?.startsWith('homey:app:com.zaptec:') === true && normalizeText(device.class) === 'evcharger'
+    ? device.data?.installationId || undefined
+    : undefined
 );
 
 /**

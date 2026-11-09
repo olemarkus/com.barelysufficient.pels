@@ -4,7 +4,9 @@ import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices, onObservedControlState } from '../helpers/deviceTransportHarness';
 import { emitCapability, emitDeviceUpdate, settleLiveFeed } from '../helpers/liveFeedSocketHarness';
-import { buildZaptecCurrentOnlyDevice, buildZaptecTargetPowerDevice } from '../helpers/zaptecDeviceFixture';
+import {
+  buildZaptecCurrentOnlyDevice, buildZaptecSenseDevice, buildZaptecTargetPowerDevice,
+} from '../helpers/zaptecDeviceFixture';
 import { capabilityReadings } from '../helpers/homeyDevicePayload';
 import { mockHomeyInstance } from '../mocks/homey';
 import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
@@ -430,6 +432,15 @@ describe('Zaptec native target power', () => {
 
       await seedTransportDevices(transport, [buildZaptecTargetPowerDevice()]);
       expect(transport.getSnapshotByDeviceId(ZAPTEC_ID)).toMatchObject({ nativeWriteCapabilities: ['target_power'] });
+    });
+
+    it('is offered watt stepping beside a Sense on the same installation', async () => {
+      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
+      await seedTransportDevices(transport, [buildZaptecTargetPowerDevice(), buildZaptecSenseDevice()]);
+
+      expect(transport.getSnapshotByDeviceId(ZAPTEC_ID)).toMatchObject({
+        controlModel: 'stepped_load', nativeWriteCapabilities: ['target_power'],
+      });
     });
 
     it('is offered watt stepping beside a charger on another installation', async () => {

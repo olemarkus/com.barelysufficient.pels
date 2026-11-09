@@ -85,3 +85,23 @@ export function buildZaptecTargetPowerDevice(overrides: Partial<HomeyDeviceLike>
     capabilitiesObj: { ...device.capabilitiesObj, ...overrides.capabilitiesObj },
   };
 }
+
+/**
+ * com.zaptec 1.12.1's Sense: the home's grid meter, paired with the
+ * `installationId` of the charger it serves. It is a `sensor`, not a charger.
+ */
+export function buildZaptecSenseDevice(): HomeyDeviceLike {
+  return homeyDevice({
+    id: 'zaptec-sense', name: 'Zaptec Sense', class: 'sensor',
+    driverId: 'homey:app:com.zaptec:sense', ownerUri: 'homey:app:com.zaptec',
+    data: { id: 'zaptec-sense', installationId: 'zaptec-installation' },
+    available: true, ready: true,
+  }, {
+    measure_power: 1200,
+    'measure_current.phase1': 2,
+    'measure_current.phase2': 2,
+    'measure_current.phase3': 2,
+    'meter_power.imported': 1000,
+    'meter_power.exported': 0,
+  }, new Date().toISOString());
+}
