@@ -27,6 +27,7 @@ import type {
 import type { DeferredObjectivePlanHistoryRecord } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { ScheduleEntry, SchedulesSnapshot } from '../../packages/contracts/src/schedules';
 import type { HeatingShadowCollector } from '../../lib/diagnostics/heatingShadowCollector';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const request: SupportReportRequest = {
   subject: { kind: 'device', homeId: 'main', deviceId: 'heater' },
@@ -681,7 +682,7 @@ describe('device support request evidence', () => {
     subject: { kind: 'device_support', homeId: 'main', deviceId: 'relay' },
     problem: 'A water heater on a KNX relay.', expected: '', occurredAtMs: now, historyWindow: 'incident',
   };
-  const relay = {
+  const relay = { ...HOMEY_DEVICE_FIELDS,
     id: 'relay', name: 'Water heater relay', class: 'light', ownerUri: 'homey:app:com.knx',
     driverUri: 'homey:app:com.knx', driverId: 'switch', available: true,
     capabilities: ['onoff', 'measure_power'],
@@ -706,7 +707,7 @@ describe('device support request evidence', () => {
     expect(report.subjectName).toBe('Water heater relay');
     expect(values(report, 'Homey device')).toEqual({
       id: 'relay', class: 'light', virtualClass: null, ownerUri: 'homey:app:com.knx',
-      driverUri: 'homey:app:com.knx', driverId: 'switch', available: true,
+      driverId: 'switch', available: true,
       capabilities: {
         onoff: { value: true, setable: true, getable: true },
         measure_power: { value: 2950, units: 'W', setable: false },

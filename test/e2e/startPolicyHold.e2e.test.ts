@@ -22,6 +22,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { drainPending, drainUntil } from '../utils/asyncDrain';
 import { connectLiveFeed, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
@@ -102,7 +103,7 @@ describe('Only PELS starts this device (SDK-boundary e2e)', () => {
   /** Something other than PELS (a wall switch, the vendor app) turns the heater on. */
   const announceTurnedOn = () => {
     const lastUpdated = new Date().toISOString();
-    emitDeviceUpdate({
+    emitDeviceUpdate({ ...HOMEY_DEVICE_FIELDS,
       id: DEVICE,
       name: 'Water heater',
       class: 'socket',

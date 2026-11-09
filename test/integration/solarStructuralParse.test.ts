@@ -22,6 +22,7 @@ import { emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import Homey from 'homey';
 import { mockHomeyInstance } from '../mocks/homey';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const homeyMock = mockHomeyInstance as unknown as Homey.App;
 const noop = (): void => undefined;
@@ -45,7 +46,7 @@ const solarCaps = {
 describe('structural solar-role resolution at parse', () => {
   it('stamps a class:solarpanel device managed:true/controllable:false despite settings saying controllable:true', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    const [parsed] = await seedTransportDevices(transport, [{
+    const [parsed] = await seedTransportDevices(transport, [{ ...HOMEY_DEVICE_FIELDS,
       id: 'solar1',
       name: 'Solar Panel',
       class: 'solarpanel',
@@ -68,7 +69,7 @@ describe('structural solar-role resolution at parse', () => {
     // it certainly never rides as a managed observe-only solar device), and it is NOT in
     // the solar membership set.
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
-    const parsed = await seedTransportDevices(transport, [{
+    const parsed = await seedTransportDevices(transport, [{ ...HOMEY_DEVICE_FIELDS,
       id: 'grid',
       name: 'Grid meter',
       class: 'sensor',
@@ -86,7 +87,7 @@ describe('structural solar-role resolution at parse', () => {
   it('stamps the same structural values on the REALTIME device.update path (before any full refresh)', async () => {
     const transport = createTestDeviceTransport(homeyMock, loggerMock, adversarialProviders);
     await initWithLiveFeed(transport);
-    emitDeviceUpdate({
+    emitDeviceUpdate({ ...HOMEY_DEVICE_FIELDS,
       id: 'solar1',
       name: 'Solar Panel',
       class: 'solarpanel',

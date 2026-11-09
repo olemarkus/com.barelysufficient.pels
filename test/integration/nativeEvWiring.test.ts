@@ -10,6 +10,7 @@ import {
 import type { Logger, HomeyDeviceLike } from '../../lib/utils/types';
 import { mockHomeyInstance } from '../mocks/homey';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const createLogger = () => ({
   log: vi.fn(),
@@ -25,7 +26,7 @@ const createLogger = () => ({
 // When a hand-built full read below was taken; Homey dates every value it holds.
 const READ_AT = '2026-04-22T09:00:04.000Z';
 
-const buildZaptecDevice = (overrides: Partial<HomeyDeviceLike> = {}): HomeyDeviceLike => ({
+const buildZaptecDevice = (overrides: Partial<HomeyDeviceLike> = {}): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'zaptec-go-1',
   name: 'Zaptec Go',
   class: 'evcharger',

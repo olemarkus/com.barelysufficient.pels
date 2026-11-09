@@ -83,7 +83,7 @@ export function withInverterParseFields(
   snapshot: TransportDeviceSnapshot, device: HomeyDeviceLike, values: DeviceCapabilityMap,
   previous: TransportDeviceSnapshot | undefined,
 ): TransportDeviceSnapshot {
-  if (!isSolarPanelDevice(device) || !device.capabilities?.includes('target_power')) return snapshot;
+  if (!isSolarPanelDevice(device) || !device.capabilities.includes('target_power')) return snapshot;
   const accepted = resolveInverterControl(device, values);
   const binding = accepted ?? previous?.inverterControl;
   // Metadata controls write authority; independently valid reports still confirm

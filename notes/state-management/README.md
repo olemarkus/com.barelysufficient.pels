@@ -411,8 +411,9 @@ rather than represented by a blank unsupported row. A rejected native-limit
 reading preserves independently usable native-control metadata and range, so
 it cannot turn a stepped charger into a binary-only start at an unknown limit.
 That metadata is neither an observed value nor binary authority. The write
-owner gates start prerequisites. An unreadable structural envelope, such as a
-missing capability list or map, instead makes the whole read a no-op.
+owner gates start prerequisites. A payload missing a field Homey always sends,
+such as a capability list or map, is dropped at the SDK parse
+(`isHomeyDeviceLike`).
 Per-capability events (`homey:device:{id}`) carry one capability by design and
 are their own, narrower read.
 

@@ -3,6 +3,7 @@ import { EventEmitter } from 'events';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
 import { publishCapability, publishDeviceUpdate } from '../helpers/liveFeedSocketHarness';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 type MockCapabilityMutationBehavior = {
   updateActual?: boolean;
@@ -305,6 +306,7 @@ export class MockDevice {
       capabilitiesObj[cap] = entry;
     }
     return {
+      ...HOMEY_DEVICE_FIELDS,
       id: this.idValue,
       data: { id: this.idValue },
       name: this.getName(),

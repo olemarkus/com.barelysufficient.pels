@@ -3,13 +3,14 @@ import { getCapabilityAdapter, getDeviceAdapter } from '../../lib/device/deviceA
 import { plainDeviceAdapter } from '../../lib/device/standardDeviceAdapter';
 import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const control = { kind: 'capability_adapter', activationRequired: false,
   activationAvailable: true, activationEnabled: true } as const;
 const stamp = '2026-11-06T08:00:00.000Z';
 const later = '2026-11-06T08:05:00.000Z';
 
-const device = (driverId: string, capabilitiesObj: DeviceCapabilityMap, settings = {}): HomeyDeviceLike => ({
+const device = (driverId: string, capabilitiesObj: DeviceCapabilityMap, settings = {}): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'charger', name: 'Charger', class: 'evcharger', driverId, settings,
   capabilities: Object.keys(capabilitiesObj), capabilitiesObj,
 });

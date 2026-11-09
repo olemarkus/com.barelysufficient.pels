@@ -36,8 +36,8 @@ export function warnIfTargetPowerCapabilityViolatesContract(params: {
     event: 'target_power_contract_violation',
     deviceId: device.id,
     deviceName: device.name,
-    driverId: device.driverId ?? null,
-    ownerUri: device.ownerUri ?? null,
+    driverId: device.driverId,
+    ownerUri: device.ownerUri,
     issue: assessment.issue,
     ...optionSnapshot,
   });

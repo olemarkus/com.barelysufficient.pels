@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { readCarDevice, resolveCarAssociationCandidates } from '../../lib/device/evCarLinkObservation';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
-const car = (available?: boolean): HomeyDeviceLike => ({
+const car = (available?: boolean): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'car-1',
   name: 'Polestar',
   class: 'car',
@@ -42,7 +43,7 @@ describe('resolveCarAssociationCandidates', () => {
     expect(resolveCarAssociationCandidates([
       { ...car(true), capabilities: ['ev_charging_state', 'measure_battery'] },
       { ...car(true), id: 'incomplete', capabilities: ['ev_charging_state'] },
-      { id: 'heater', name: 'Tank', class: 'heater', capabilities: ['ev_charging_state', 'measure_battery'] },
+      { ...HOMEY_DEVICE_FIELDS, id: 'heater', name: 'Tank', class: 'heater', capabilities: ['ev_charging_state', 'measure_battery'] },
     ])).toEqual([{ id: 'car-1', name: 'Polestar' }]);
   });
 

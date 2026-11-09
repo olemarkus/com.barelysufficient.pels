@@ -21,14 +21,14 @@ const PAUSE_CAPABILITY_ID = 'charging_paused';
 const DRIVER_IDS = new Set(['homey:app:alfen.prolinesingle:alfen-ace', 'alfen.prolinesingle:alfen-ace']);
 
 function isProlineCharger(device: HomeyDeviceLike): boolean {
-  return DRIVER_IDS.has(device.driverId?.trim().toLowerCase() ?? '');
+  return DRIVER_IDS.has(device.driverId.trim().toLowerCase());
 }
 
 /** The charger's own phase register (`charge_phases`, '1' or '3'), else the `grid_phases` setting. */
 function phases(device: HomeyDeviceLike, values: DeviceCapabilityMap | undefined): 1 | 3 | undefined {
   const reported = values?.charge_phases?.value;
   if (reported === '1' || reported === '3') return reported === '1' ? 1 : 3;
-  const setting = device.settings?.grid_phases;
+  const setting = device.settings.grid_phases;
   const parsed = typeof setting === 'string' ? Number(setting) : setting;
   return parsed === 1 || parsed === 3 ? parsed : undefined;
 }

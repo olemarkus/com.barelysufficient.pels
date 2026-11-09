@@ -370,11 +370,8 @@ export function resolveNativeSteppedLoadObservationCapabilityId(params: {
 }
 
 function isHoiaxDevice(device: HomeyDeviceLike): boolean {
-  const ownerUri = normalizeText(device.ownerUri ?? device.driver?.owner_uri);
-  if (HOIAX_OWNER_URIS.has(ownerUri)) return true;
-  const driverUri = normalizeText(device.driverUri ?? device.driver?.uri);
-  if (HOIAX_OWNER_URIS.has(driverUri)) return true;
-  const driverId = normalizeText(device.driverId ?? device.driver?.id);
+  if (HOIAX_OWNER_URIS.has(normalizeText(device.ownerUri))) return true;
+  const driverId = normalizeText(device.driverId);
   return HOIAX_DRIVER_IDS.has(driverId)
     || HOIAX_DRIVER_ID_PREFIXES.some((prefix) => driverId.startsWith(prefix));
 }
@@ -429,8 +426,7 @@ function resolveTargetPowerSteppedLoadProfileSuggestion(params: {
 }
 
 function resolveTargetPowerPreset(device: HomeyDeviceLike): TargetPowerPreset | undefined {
-  const settings = device.settings;
-  if (!settings) return undefined;
+  const { settings } = device;
   for (const key of TARGET_POWER_PRESET_SETTING_KEYS) {
     const value = settings[key];
     if (value === 'ev_charger_1_phase' || value === 'ev_charger_3_phase') return value;

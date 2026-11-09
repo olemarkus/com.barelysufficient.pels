@@ -255,6 +255,6 @@ function hasRawBinaryObservation(rawBinaryValue: boolean | undefined): rawBinary
 
 function extractRawBinaryValue(device: HomeyDeviceLike, capabilityId: string | undefined): boolean | undefined {
   if (capabilityId === undefined) return undefined;
-  const capValue = device.capabilitiesObj?.[capabilityId]?.value;
+  const capValue = device.capabilitiesObj[capabilityId]?.value;
   return typeof capValue === 'boolean' ? capValue : undefined;
 }

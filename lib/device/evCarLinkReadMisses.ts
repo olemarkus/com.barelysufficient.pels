@@ -20,13 +20,11 @@ export class EvCarLinkReadMisses {
 
     /**
      * The cars among `trackedIds` this read removes. `seen` are the cars the read
-     * returned; `ignoredIds` are listed but their read was ignored, which is
-     * present and unread: not a miss, and not evidence of anything.
+     * returned.
      */
     removedBy(
         trackedIds: readonly string[],
         seen: ReadonlySet<string>,
-        ignoredIds: ReadonlySet<string>,
         fullRefresh: boolean,
         nowMs: number,
     ): string[] {
@@ -35,7 +33,6 @@ export class EvCarLinkReadMisses {
                 this.missesByCarId.delete(carId);
                 return false;
             }
-            if (ignoredIds.has(carId)) return false;
             if (fullRefresh) return true;
             const { state, graceExceeded } = advanceTargetedMiss(this.missesByCarId.get(carId), nowMs);
             this.missesByCarId.set(carId, state);

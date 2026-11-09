@@ -16,32 +16,28 @@ import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowConflictStore';
 import { IN_MEMORY_DATABASE, openUserdataDatabase } from '../../lib/store/userdataDatabase';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const now = Date.parse('2026-10-13T10:00:00Z');
 const cap = <T>(value: T, time = Date.now()) => ({ value, lastUpdated: new Date(time).toISOString() });
 function devices(): HomeyDeviceLike[] {
   return [
-    { id: 'battery', name: 'Car battery', class: 'sensor', driverId: 'homey:app:com.tesla.car:battery',
+    { ...HOMEY_DEVICE_FIELDS, id: 'battery', name: 'Car battery', class: 'sensor', driverId: 'homey:app:com.tesla.car:battery',
       data: { id: 'vehicle-1' }, capabilities: ['charging_on', 'charging_state', 'measure_charge_power', 'measure_soc_level'],
       capabilitiesObj: { charging_on: cap(true), charging_state: cap('Charging'), measure_charge_power: cap(4),
         measure_soc_level: cap(55), charging_port_cable: cap('IEC'), measure_charge_phases: cap(3) } },
-    { id: 'location', name: 'Location', class: 'sensor', capabilities: ['measure_location_latitude', 'measure_location_longitude'], driverId: 'homey:app:com.tesla.car:location', data: { id: 'vehicle-1' },
+    { ...HOMEY_DEVICE_FIELDS, id: 'location', name: 'Location', class: 'sensor', capabilities: ['measure_location_latitude', 'measure_location_longitude'], driverId: 'homey:app:com.tesla.car:location', data: { id: 'vehicle-1' },
       capabilitiesObj: { measure_location_latitude: cap(60), measure_location_longitude: cap(10) } },
-    { id: 'car', name: 'Car', class: 'car', capabilities: ['car_state', 'car_shift_state', 'measure_car_drive_speed'], driverId: 'homey:app:com.tesla.car:car', data: { id: 'vehicle-1' },
+    { ...HOMEY_DEVICE_FIELDS, id: 'car', name: 'Car', class: 'car', capabilities: ['car_state', 'car_shift_state', 'measure_car_drive_speed'], driverId: 'homey:app:com.tesla.car:car', data: { id: 'vehicle-1' },
       capabilitiesObj: { car_state: cap('online'), measure_car_drive_speed: cap(0), car_shift_state: cap('P') } },
   ];
 }
-const identityShapes = ['qualified', 'split', 'nested', 'owner', 'empty'] as const;
+const identityShapes = ['qualified', 'owner'] as const;
 type IdentityShape = typeof identityShapes[number];
 function devicesWithIdentity(shape: IdentityShape): HomeyDeviceLike[] {
   return devices().map(device => {
     if (shape === 'qualified') return device;
-    const driverId = device.driverId!.split(':').at(-1)!;
-    if (shape === 'owner') return { ...device, driverId, ownerUri: 'homey:app:com.tesla.car' };
-    if (shape === 'empty') return { ...device, driverId: '', ownerUri: 'homey:app:com.tesla.car', driver: { id: driverId } };
-    return shape === 'split'
-      ? { ...device, driverId, driverUri: 'homey:app:com.tesla.car' }
-      : { ...device, driverId: undefined, driver: { id: driverId, uri: 'homey:app:com.tesla.car' } };
+    return { ...device, driverId: device.driverId.split(':').at(-1)!, ownerUri: 'homey:app:com.tesla.car' };
   });
 }
 function session() { return new TeslaChargingSession({ coordinates: () => ({ latitude: 60, longitude: 10 }) }); }
@@ -71,7 +67,7 @@ test.each(identityShapes)('validates %s Tesla vendor observations before admissi
   } })).toEqual({ reason: 'unexpected_value', capabilityId: 'charging_state' });
 });
 
-test.each(['split', 'nested'] as const)('matches %s companions with a qualified battery and vice versa', (shape) => {
+test.each(['owner'] as const)('matches %s companions with a qualified battery and vice versa', (shape) => {
   const split = devicesWithIdentity(shape);
   const qualified = devices();
   for (const initial of [[split[0]!, ...qualified.slice(1)], [qualified[0]!, ...split.slice(1)]]) {
@@ -81,10 +77,8 @@ test.each(['split', 'nested'] as const)('matches %s companions with a qualified 
 });
 
 test.each([
-  { driverId: 'battery', driverUri: 'homey:app:foreign' },
-  { driverId: 'battery' },
-  { driverId: 'battery', driverUri: 'homey:app:foreign', ownerUri: 'homey:app:com.tesla.car' },
-  { driverId: 'homey:app:foreign:battery', driverUri: 'homey:app:com.tesla.car' },
+  { driverId: 'battery', ownerUri: 'homey:app:foreign' },
+  { driverId: 'homey:app:foreign:battery', ownerUri: 'homey:app:com.tesla.car' },
 ])('rejects non-Tesla battery identity %j', (identity) => {
   const battery = { ...devices()[0]!, ...identity };
   expect(resolveDeviceClassKey(battery)).toBeNull();
@@ -92,15 +86,15 @@ test.each([
   expect(owner.isAllowed('battery')).toBe(false);
 });
 
-test('rejects a foreign split companion even with matching vehicle data', () => {
-  const initial = devicesWithIdentity('split');
-  initial[1]!.driverUri = 'homey:app:foreign';
+test('rejects a foreign companion even with matching vehicle data', () => {
+  const initial = devicesWithIdentity('owner');
+  initial[1]!.ownerUri = 'homey:app:foreign';
   const owner = session(); owner.observeDevices(initial);
   expect(owner.isAllowed('battery')).toBe(false);
 });
 
 test('keeps a split Tesla energy device distinct from vehicle charging', () => {
-  const device = { ...devicesWithIdentity('split')[0]!, driverId: 'energy_battery', class: 'battery' };
+  const device = { ...devicesWithIdentity('owner')[0]!, driverId: 'energy_battery', class: 'battery' };
   const adapter = getDeviceAdapter(device);
   expect(adapter).toBe(getDeviceAdapter({ ...device, driverId: 'homey:app:com.tesla.car:energy_battery' }));
   expect(resolveDeviceClassKey(device)).toBe('battery');
@@ -352,7 +346,7 @@ test('transport permits home start/stop for a split Tesla whose shift state tele
       { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') },
       { settings: { getDeviceTargetPowerConfig: () => ({ enabled: true, preset: 'ev_charger_3_phase' }) } });
     await initWithLiveFeed(transport);
-    const initial = devicesWithIdentity('split');
+    const initial = devicesWithIdentity('owner');
     initial[2]!.capabilitiesObj!.car_shift_state = { value: null, lastUpdated: null };
     const [battery] = await seedTransportDevices(transport, initial);
     expect(battery).toMatchObject({ id: 'battery', isEvCharger: true, available: true });

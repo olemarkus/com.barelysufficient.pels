@@ -6,9 +6,10 @@ import type { HomeyDeviceLike } from '../../lib/utils/types';
 import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
 import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import { partialDouble } from '../helpers/partialDouble';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const NOW = 1_800_000_000_000;
-const device: HomeyDeviceLike = {
+const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
   id: 'pv', name: 'Inverter', class: 'solarpanel', capabilities: ['measure_power', 'target_power'],
 };
 const values: DeviceCapabilityMap = {

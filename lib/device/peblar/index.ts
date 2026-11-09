@@ -21,7 +21,7 @@ const DRIVER_IDS = new Set([
 const LIVE_PHASE_VOLTAGE = 50;
 
 function isPeblarCharger(device: HomeyDeviceLike): boolean {
-  return DRIVER_IDS.has(device.driverId?.trim().toLowerCase() ?? '');
+  return DRIVER_IDS.has(device.driverId.trim().toLowerCase());
 }
 
 function readVolts(values: DeviceCapabilityMap | undefined, capabilityId: string): number | undefined {

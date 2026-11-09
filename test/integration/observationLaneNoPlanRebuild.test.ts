@@ -20,6 +20,7 @@ import {
 } from '../helpers/deviceTransportHarness';
 import { emitCapability } from '../helpers/liveFeedSocketHarness';
 import { mockHomeyInstance } from '../mocks/homey';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 /**
  * An observation may drive the UI and the executor. It may NOT drive the
@@ -152,7 +153,7 @@ describe('a discharging home battery on the observation lane', () => {
     };
     const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger);
     const lastUpdated = new Date().toISOString();
-    const battery: HomeyDeviceLike = {
+    const battery: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'battery-1',
       name: 'Home Battery',
       class: 'battery',

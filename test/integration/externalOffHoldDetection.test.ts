@@ -40,6 +40,7 @@ import { createTestDeviceTransport, seedTransportDevices } from '../helpers/devi
 import { mockHomeyInstance } from '../mocks/homey';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { syncExternalOffHoldForObservation } from '../../setup/appObservedControlStateRuntime';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const NOW = new Date('2026-07-25T12:00:00Z').getTime();
 const DEVICE_ID = 'heater-1';
@@ -571,7 +572,7 @@ describe('external-off hold — real configuration and Observer reads', () => {
   const lastUpdated = new Date(NOW).toISOString();
 
   // Nothing here says "charger" but the class.
-  const rawUnpluggedCharger = (): HomeyDeviceLike => ({
+  const rawUnpluggedCharger = (): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
     id: CHARGER_ID,
     name: 'Driveway charger',
     class: 'evcharger',
@@ -585,7 +586,7 @@ describe('external-off hold — real configuration and Observer reads', () => {
     ready: true,
   });
 
-  const rawSocket = (): HomeyDeviceLike => ({
+  const rawSocket = (): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
     id: SOCKET_ID,
     name: 'Garage socket',
     class: 'socket',

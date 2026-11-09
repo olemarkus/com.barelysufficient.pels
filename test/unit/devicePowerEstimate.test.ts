@@ -3,6 +3,7 @@ import type { PowerEstimateState } from '../../lib/device/devicePowerEstimate';
 import type { LearnedPeaksByDeviceId } from '../../lib/device/devicePowerPeak';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const buildState = (): Required<PowerEstimateState> => ({
   expectedPowerKwOverrides: {} as Record<string, { kw: number; ts: number }>,
@@ -11,7 +12,7 @@ const buildState = (): Required<PowerEstimateState> => ({
   lastPeakPowerLogByDevice: new Map(),
 });
 
-const buildDevice = (load?: number): HomeyDeviceLike => ({
+const buildDevice = (load?: number): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'dev-1',
   name: 'Device 1',
   class: 'thermostat',
@@ -27,7 +28,7 @@ const buildSocketDevice = (params?: {
   onoff?: boolean;
   energyObj?: Record<string, unknown> | null;
   settings?: Record<string, unknown>;
-}): HomeyDeviceLike => ({
+}): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'dev-socket-1',
   name: 'Socket 1',
   class: 'socket',
@@ -35,7 +36,7 @@ const buildSocketDevice = (params?: {
   capabilitiesObj: {
     onoff: { value: params?.onoff ?? true },
   },
-  settings: params?.settings,
+  settings: params?.settings ?? {},
   energyObj: params?.energyObj ?? null,
 });
 

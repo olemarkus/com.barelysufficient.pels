@@ -2,31 +2,23 @@ import type { TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/
 import type { HomeyDeviceLike } from '../utils/types';
 import { normalizeTargetPowerSteppedLoadConfig } from '../utils/targetPowerConfig';
 
-type UnknownRecord = Record<string, unknown>;
-
 export function applyDeviceCompatibilityMetadata(device: HomeyDeviceLike): HomeyDeviceLike {
-  const settings = getSettings(device);
-  const ownerUri = normalizeString(settings?.pelsCompatibilityOwnerUri);
-  const driverId = normalizeString(settings?.pelsCompatibilityDriverId);
+  const { settings } = device;
+  const ownerUri = normalizeString(settings.pelsCompatibilityOwnerUri);
+  const driverId = normalizeString(settings.pelsCompatibilityDriverId);
   if (!ownerUri && !driverId) return device;
 
   return {
     ...device,
     ...(ownerUri ? { ownerUri } : {}),
     ...(driverId ? { driverId, realDriverId: device.realDriverId ?? device.driverId } : {}),
-    driver: {
-      ...device.driver,
-      ...(ownerUri ? { owner_uri: ownerUri } : {}),
-      ...(driverId ? { id: driverId } : {}),
-    },
   };
 }
 
 export function resolveDeviceCompatibilityTargetPowerConfig(
   device: HomeyDeviceLike,
 ): TargetPowerSteppedLoadConfig | undefined {
-  const settings = getSettings(device);
-  if (!settings) return undefined;
+  const { settings } = device;
   return normalizeTargetPowerSteppedLoadConfig(settings.pelsCompatibilityTargetPower)
     ?? normalizeTargetPowerSteppedLoadConfig({
       preset: settings.pelsCompatibilityTargetPowerPreset,
@@ -36,12 +28,6 @@ export function resolveDeviceCompatibilityTargetPowerConfig(
       excludeMin: settings.pelsCompatibilityTargetPowerExcludeMin,
       excludeMax: settings.pelsCompatibilityTargetPowerExcludeMax,
     });
-}
-
-function getSettings(device: HomeyDeviceLike): UnknownRecord | undefined {
-  return device.settings && typeof device.settings === 'object'
-    ? device.settings
-    : undefined;
 }
 
 function normalizeString(value: unknown): string | undefined {

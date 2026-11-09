@@ -20,6 +20,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { drainUntilCalledWith } from '../utils/asyncDrain';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
@@ -293,7 +294,7 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     // update; the nudge happens now.
     await device.setCapabilityValue('target_temperature', 20);
     const lastUpdated = new Date().toISOString();
-    emitDeviceUpdate({
+    emitDeviceUpdate({ ...HOMEY_DEVICE_FIELDS,
       id: 'heatpump-a', name: 'Hallway Heatpump', class: 'heatpump',
       capabilities: ['onoff', 'target_temperature', 'measure_temperature', 'measure_power', 'meter_power', 'thermostat_mode'],
       capabilitiesObj: {

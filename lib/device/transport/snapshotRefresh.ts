@@ -12,11 +12,8 @@
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
 import { observeBatteryStateFromList, observeEvCarLinkAndResubscribe } from './refreshProducers';
-import {
-    partitionConformingDeviceReads,
-    withIgnoredReadEntries,
-    withIgnoredReadRawDevices,
-} from './ignoredDeviceReads';
+import { resolveDeviceRead } from './deviceReadContract';
+import { getDeviceId } from './managerHelpers';
 import type {
   TargetDeviceSnapshot,
 } from '../../../packages/contracts/src/types';
@@ -206,7 +203,6 @@ function commitRefreshedSnapshot(
     snapshot: TargetDeviceSnapshot[],
     previousSnapshot: readonly TargetDeviceSnapshot[],
     rawWasEmpty: boolean,
-    ignoredReadIds: ReadonlySet<string>,
 ): void {
     refresh.snapshotCommit.commit(snapshot);
     // Warm iff this read returned at least one RAW device, re-judged on every
@@ -221,7 +217,7 @@ function commitRefreshedSnapshot(
     // After the commit so latestSnapshotById is current. The grace-deferred
     // path returns before this function, so the abandon-grace invariant
     // — no refresh event on a deferred empty read — holds by construction.
-    refresh.observationBridge.dispatchStateRefresh(snapshot, ignoredReadIds);
+    refresh.observationBridge.dispatchStateRefresh(snapshot);
     refresh.temperatureRecovery.completeAfterRefresh();
     // Managed devices PLUS the cars the EV car-link probe tracks. Per-device
     // capability subscriptions (`homey:device:<id>`) are the ONLY realtime source
@@ -562,30 +558,27 @@ export class SnapshotRefreshService {
     if (this.stopped || shouldDeferEmptySnapshotCommit(this, previousSnapshot, list.length === 0, start)) {
         return meterReadings;
     }
-    // Reject individual fields before conversion or observation. Only an
-    // unreadable envelope retains the whole previous device entry.
-    const read = partitionConformingDeviceReads(
+    // Reject individual fields before conversion or observation.
+    const previousReads = this.reader.snapshotStore.getLastAcceptedRawDevicesById();
+    const acceptedRawDevices = list.map((device) => resolveDeviceRead(
         this.reader.snapshotStore,
-        this.reader.logger,
-        list.map((device) => this.reader.applyDeviceDriverOverride(device)),
-    );
-    const acceptedRawDevices = withIgnoredReadRawDevices(this.reader.snapshotStore, read);
-    // Only a full inventory can remove companions. Keep ignored entries' last
-    // accepted reads, and resolve membership before parsing publishes eligibility.
+        this.reader.applyDeviceDriverOverride(device),
+        'device_fetch',
+        this.reader.logger.structuredLog,
+        previousReads.get(getDeviceId(device)),
+    ));
+    // Only a full inventory can remove companions. Resolve membership before
+    // parsing publishes eligibility.
     if (fetchSource === 'raw_manager_devices') {
         this.reader.chargingCurrentControl.retainDevices(acceptedRawDevices);
     }
     const effectiveList = observeBatteryStateFromList(
         this.observationProducers.battery,
         this.observationProducers.solar,
-        read,
+        acceptedRawDevices,
         fetchSource,
     );
-    const presentSnapshot = withIgnoredReadEntries(
-        this.reader.parseFetchedDeviceList(effectiveList, start, livePowerByDeviceId),
-        previousSnapshot,
-        read.ignoredIds,
-    );
+    const presentSnapshot = this.reader.parseFetchedDeviceList(effectiveList, start, livePowerByDeviceId);
     retainUnreadHomeyEnergyPower(previousSnapshot, presentSnapshot, options.includeLivePower !== false);
     // Carry the observations the realtime path made since the last refresh
     // over a read that may be older than them.
@@ -600,8 +593,6 @@ export class SnapshotRefreshService {
     // (every id failed) reports `raw_manager_devices`, so it is treated as
     // authoritative here even though `isTargetedRefresh` was requested.
     const isTargetedOverlay = isTargetedRefresh && fetchSource === 'targeted_by_id';
-    // Resolve retained entries too: an ignored battery read preserves its
-    // observations, but cannot preserve control after an accepted companion removal.
     const snapshot = resolveCommittedRefreshSnapshot(
         this,
         presentSnapshot,
@@ -614,7 +605,6 @@ export class SnapshotRefreshService {
         snapshot,
         previousSnapshot,
         list.length === 0,
-        read.ignoredIds,
     );
     adoptCommittedDeviceList(
         this,
@@ -636,7 +626,7 @@ export class SnapshotRefreshService {
         (deviceIds) => this.deviceSdk.updateTrackedDevices([
             ...deviceIds, ...this.reader.chargingCurrentControl.sessions.observedIds(),
         ]),
-        read,
+        acceptedRawDevices,
         fetchSource,
         snapshot,
     );

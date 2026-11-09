@@ -56,6 +56,7 @@ import {
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { steerCapacityPace } from '../helpers/capacityPaceFixture';
 import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const flushPromises = () => new Promise<void>((resolve) => {
   if (typeof setImmediate === 'function') {
@@ -1517,7 +1518,7 @@ describe('MyApp initialization', () => {
     const rebuildSpy = vi.spyOn(app.planService, 'rebuildPlanFromCache');
 
     const lastUpdated = new Date().toISOString();
-    emitDeviceUpdate({
+    emitDeviceUpdate({ ...HOMEY_DEVICE_FIELDS,
       id: 'dev-1',
       name: 'Heater',
       class: 'heater',
@@ -1570,7 +1571,7 @@ describe('MyApp initialization', () => {
     const requestSpy = vi.spyOn(app['planRebuildScheduler'], 'request');
 
     const lastUpdated = new Date().toISOString();
-    emitDeviceUpdate({
+    emitDeviceUpdate({ ...HOMEY_DEVICE_FIELDS,
       id: 'ev-1',
       name: 'Garage Charger',
       class: 'evcharger',
@@ -1724,7 +1725,7 @@ describe('MyApp initialization', () => {
     const observation = vi.spyOn(app.planRebuildThrottle, 'onObservation');
 
     const lastUpdated = new Date().toISOString();
-    emitDeviceUpdate({
+    emitDeviceUpdate({ ...HOMEY_DEVICE_FIELDS,
       id: 'dev-1',
       name: 'Heater',
       class: 'heater',
@@ -3304,8 +3305,8 @@ describe('periodic snapshot refresh scheduling', () => {
     app.deviceManager = deviceTransportDouble({
       getSnapshot: vi.fn().mockReturnValue([]),
       getDevicesForDebug: vi.fn().mockResolvedValue([
-        { id: 'dev-1', name: 'Relay 1', class: 'socket', capabilities: [] },
-        { id: 'dev-2', name: 'Relay 2', class: 'socket', capabilities: [] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'dev-1', name: 'Relay 1', class: 'socket', capabilities: [] },
+        { ...HOMEY_DEVICE_FIELDS, id: 'dev-2', name: 'Relay 2', class: 'socket', capabilities: [] },
       ]),
     });
     vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation(() => ({
@@ -3381,7 +3382,7 @@ describe('periodic snapshot refresh scheduling', () => {
         },
       ]),
       getDevicesForDebug: vi.fn().mockResolvedValue([
-        {
+        { ...HOMEY_DEVICE_FIELDS,
           id: 'zaptec-1',
           name: 'Zaptec Go',
           class: 'evcharger',
@@ -3451,7 +3452,7 @@ describe('periodic snapshot refresh scheduling', () => {
         },
       ]),
       getDevicesForDebug: vi.fn().mockResolvedValue([
-        {
+        { ...HOMEY_DEVICE_FIELDS,
           id: 'zaptec-native-1',
           name: 'Zaptec Go',
           class: 'evcharger',
@@ -3523,7 +3524,7 @@ describe('periodic snapshot refresh scheduling', () => {
         },
       ]),
       getDevicesForDebug: vi.fn().mockResolvedValue([
-        {
+        { ...HOMEY_DEVICE_FIELDS,
           id: 'zaptec-active-1',
           name: 'Zaptec Go',
           class: 'evcharger',

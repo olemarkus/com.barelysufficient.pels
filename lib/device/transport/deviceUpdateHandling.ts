@@ -114,7 +114,6 @@ export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, d
         contractEmitter,
         ingest.reader.snapshotStore.getLastAcceptedRawDevicesById().get(deviceId),
     );
-    if (effectiveDevice === null) return;
     ingest.observeChargingDevice(effectiveDevice);
     if (deviceId && !ingest.reader.shouldTrackRealtimeDeviceRead(deviceId, effectiveDevice)) {
         ingest.binaryEvidence.clearBinarySettleEvidence(deviceId);

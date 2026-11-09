@@ -21,7 +21,7 @@ const DRIVER_IDS = new Set(['homey:app:net.biseth.myenergi:zappi', 'net.biseth.m
 const SIGNATURE_CAPABILITY = 'zappi_boost_mode';
 
 function isZappi(device: HomeyDeviceLike): boolean {
-  return DRIVER_IDS.has(device.driverId?.trim().toLowerCase() ?? '');
+  return DRIVER_IDS.has(device.driverId.trim().toLowerCase());
 }
 
 /** The charging switch read from the charge mode, dated by it; the app's own switch otherwise stays. */

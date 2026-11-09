@@ -189,7 +189,7 @@ export class ChargingCurrentControl {
   private routesBuiltInFor(deviceId: string, setup: ChargingCurrentSetup): boolean {
     const device = this.findDevice(deviceId);
     // Automatic watts own the route; an existing manual current choice stays in force.
-    if (device?.capabilities && device.capabilitiesObj
+    if (device
       && hasNativeTargetPowerLadder(device.capabilities, device.capabilitiesObj)
       && this.deviceSettings.resolveDevicePowerControlMode(
         deviceId, this.requiresManualControl(deviceId),

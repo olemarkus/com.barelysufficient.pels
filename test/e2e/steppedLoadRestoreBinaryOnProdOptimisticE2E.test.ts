@@ -79,6 +79,7 @@ import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSn
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { testParseSources } from '../helpers/deviceTransportHarness';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
 const DEVICE_ID = 'hoiax-1';
@@ -128,7 +129,7 @@ const buildHoiaxDevice = (params: { nativeStepValue: unknown; freshIso: string }
     // CONNECTED_200 profile: off(0)/low(700)/medium(1300)/max(2000).
     max_power_2000: { value: nativeStepValue, setable: true, lastUpdated: freshIso },
   };
-  return {
+  return { ...HOMEY_DEVICE_FIELDS,
     id: DEVICE_ID,
     name: 'Connected 300',
     // Høiax water heaters present to Homey as the `heater` class; Høiax

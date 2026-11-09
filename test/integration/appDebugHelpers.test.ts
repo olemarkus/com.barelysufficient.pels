@@ -12,6 +12,7 @@ import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { fixtureControlPosture } from '../utils/planTestUtils';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const buildDeviceManager = (params: {
   devices?: HomeyDeviceLike[];
@@ -106,9 +107,9 @@ describe('appDebugHelpers', () => {
     const app = {
       deviceManager: buildDeviceManager({
         devices: [
-          { id: 'han', name: 'HAN meter', class: 'sensor' } as HomeyDeviceLike,
-          { id: 'sub', name: 'Garage submeter', class: 'sensor' } as HomeyDeviceLike,
-          { id: 'charger', name: 'EV Charger', class: 'evcharger' } as HomeyDeviceLike,
+          { ...HOMEY_DEVICE_FIELDS, id: 'han', name: 'HAN meter', class: 'sensor' } as HomeyDeviceLike,
+          { ...HOMEY_DEVICE_FIELDS, id: 'sub', name: 'Garage submeter', class: 'sensor' } as HomeyDeviceLike,
+          { ...HOMEY_DEVICE_FIELDS, id: 'charger', name: 'EV Charger', class: 'evcharger' } as HomeyDeviceLike,
         ],
       }),
       error: vi.fn(),
@@ -130,7 +131,7 @@ describe('appDebugHelpers', () => {
     });
     const app = {
       deviceManager: buildDeviceManager({
-        devices: [{ id: 'pulse', name: 'Pulse', class: 'other' } as HomeyDeviceLike],
+        devices: [{ ...HOMEY_DEVICE_FIELDS, id: 'pulse', name: 'Pulse', class: 'other' } as HomeyDeviceLike],
       }),
       error: vi.fn(),
     };
@@ -146,7 +147,7 @@ describe('appDebugHelpers', () => {
     });
     const app = {
       deviceManager: buildDeviceManager({
-        devices: [{
+        devices: [{ ...HOMEY_DEVICE_FIELDS,
           id: 'tesla', name: 'Tesla', class: 'sensor', driverId: 'homey:app:com.tesla.car:battery',
           capabilities: ['charging_on', 'charging_state', 'measure_charge_power', 'measure_soc_level'],
         }],
@@ -164,7 +165,7 @@ describe('appDebugHelpers', () => {
     });
     const app = {
       deviceManager: buildDeviceManager({
-        devices: [{ id: 'lamp', name: 'Lamp', class: 'light' } as HomeyDeviceLike],
+        devices: [{ ...HOMEY_DEVICE_FIELDS, id: 'lamp', name: 'Lamp', class: 'light' } as HomeyDeviceLike],
       }),
       error: vi.fn(),
     };
@@ -185,7 +186,7 @@ describe('appDebugHelpers', () => {
     });
     const app = {
       deviceManager: buildDeviceManager({
-        devices: [{ id: 'plug', name: 'Metering plug', class: 'socket' } as HomeyDeviceLike],
+        devices: [{ ...HOMEY_DEVICE_FIELDS, id: 'plug', name: 'Metering plug', class: 'socket' } as HomeyDeviceLike],
       }),
       error: vi.fn(),
     };
@@ -198,7 +199,7 @@ describe('appDebugHelpers', () => {
       put: vi.fn(),
     });
     const app = {
-      deviceManager: buildDeviceManager({ devices: [{ id: 'mystery', name: 'Mystery' } as HomeyDeviceLike] }),
+      deviceManager: buildDeviceManager({ devices: [{ ...HOMEY_DEVICE_FIELDS, id: 'mystery', name: 'Mystery' } as HomeyDeviceLike] }),
       error: vi.fn(),
     };
     await expect(getHomeyEnergyMetersFromApp(app as never)).resolves.toEqual([]);
@@ -233,7 +234,7 @@ describe('appDebugHelpers', () => {
   });
 
   it('logs the device dump as one line per section when APIs are available', async () => {
-    const device: HomeyDeviceLike = {
+    const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'dev-1',
       name: 'Kitchen Socket',
       capabilities: ['onoff'],
@@ -248,7 +249,7 @@ describe('appDebugHelpers', () => {
     setRestClient({
       get: vi.fn().mockResolvedValue([
         null,
-        {
+        { ...HOMEY_DEVICE_FIELDS,
           id: 'dev-1',
           name: 'Kitchen Socket',
           capabilities: ['onoff'],
@@ -313,7 +314,7 @@ describe('appDebugHelpers', () => {
   });
 
   it('logs settings as unavailable when device has no settings', async () => {
-    const device: HomeyDeviceLike = {
+    const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'dev-1',
       name: 'Kitchen Socket',
       capabilities: ['onoff'],
@@ -353,7 +354,7 @@ describe('appDebugHelpers', () => {
   });
 
   it('includes settings from device list entry when present', async () => {
-    const device: HomeyDeviceLike = {
+    const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'dev-1',
       name: 'Kitchen Socket',
       capabilities: ['onoff'],
@@ -389,7 +390,7 @@ describe('appDebugHelpers', () => {
   });
 
   it('uses listEntry source when device is found in the device list', async () => {
-    const device: HomeyDeviceLike = {
+    const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'dev-1',
       name: 'Kitchen Socket',
       capabilities: ['onoff'],
@@ -419,7 +420,7 @@ describe('appDebugHelpers', () => {
   });
 
   it('includes PELS live snapshot and plan state when logging from the app wrapper', async () => {
-    const device: HomeyDeviceLike = {
+    const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'dev-1',
       name: 'Kitchen Socket',
       capabilities: ['onoff'],

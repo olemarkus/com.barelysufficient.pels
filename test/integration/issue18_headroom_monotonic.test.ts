@@ -8,12 +8,13 @@ import { DeviceTransport } from '../../lib/device/deviceTransport';
 import type { Logger } from '../../lib/utils/types';
 import { mockHomeyInstance } from '../mocks/homey';
 import Homey from 'homey';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 // A full read of the heater as Homey reports it: every value dated when read.
 const heaterRead = (deviceId: string, measuredPowerW: number) => {
     const lastUpdated = new Date().toISOString();
     return {
-        [deviceId]: {
+        [deviceId]: { ...HOMEY_DEVICE_FIELDS,
             id: deviceId,
             name: 'Heater',
             class: 'heater',

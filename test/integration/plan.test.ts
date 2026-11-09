@@ -31,6 +31,7 @@ import {
 import { steerCapacityPace } from '../helpers/capacityPaceFixture';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 // Use fake timers for setInterval only to prevent resource leaks from periodic refresh
 vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
@@ -1637,6 +1638,7 @@ describe('Device plan snapshot', () => {
     const sampleDevice = {
       id: 'thermostat-1',
       name: 'Room Thermostat',
+      ...HOMEY_DEVICE_FIELDS,
       class: 'thermostat',
       binaryCapabilityId: 'onoff',
       capabilities: ['onoff', 'target_temperature', 'measure_power', 'measure_temperature'],

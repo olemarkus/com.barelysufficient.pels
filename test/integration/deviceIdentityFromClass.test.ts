@@ -35,6 +35,7 @@ import { buildPlanMeta, restoreTimingFixture, buildInitialPlanDevicesForSpec } f
 import { executionStateFixture } from '../utils/deviceStatusFixture';
 import { overviewReadModelWiring } from '../utils/settingsOverviewFixture';
 import { noPlanServiceObservedReads } from '../helpers/observedDeviceReadsDouble';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const noop = (): void => undefined;
 const loggerMock: Logger = {
@@ -53,7 +54,7 @@ const rawDevice = (
   id: string,
   deviceClass: string,
   capabilitiesObj: Record<string, CapabilityValue<unknown>>,
-): HomeyDeviceLike => ({
+): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id,
   name: `${deviceClass} ${id}`,
   class: deviceClass,

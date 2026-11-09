@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { getDeviceAdapter } from '../../lib/device/deviceAdapterRegistry';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const values = { target_power: { value: 11040, min: 0, max: 22080, step: 230, setable: true } };
-const charger = (grid_type?: string): HomeyDeviceLike => ({
+const charger = (grid_type?: string): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'enua', name: 'Enua Charge', driverId: 'homey:app:no.enua:enua-charger',
   settings: grid_type === undefined ? {} : { grid_type }, capabilities: ['target_power'], capabilitiesObj: values,
 });

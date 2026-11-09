@@ -7,10 +7,11 @@ import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices } fro
 import { emitCapability } from '../helpers/liveFeedSocketHarness';
 import { mockHomeyInstance } from '../mocks/homey';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const logger: Logger = { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('devices') };
 
-const actuator = (): HomeyDeviceLike => ({
+const actuator = (): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'knx-actuator',
   name: 'KNX actuator',
   class: 'light',

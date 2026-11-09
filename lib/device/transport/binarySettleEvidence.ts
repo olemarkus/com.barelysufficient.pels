@@ -19,7 +19,7 @@ export function readCapabilityValue(device: HomeyDeviceLike, capabilityId: strin
     value: unknown;
     observedAtMs?: number;
 } {
-    if (!capabilityId || !device.capabilitiesObj) return { present: false, value: undefined };
+    if (!capabilityId) return { present: false, value: undefined };
     if (!Object.prototype.hasOwnProperty.call(device.capabilitiesObj, capabilityId)) {
         return { present: false, value: undefined };
     }

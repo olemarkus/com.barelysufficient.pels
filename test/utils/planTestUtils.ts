@@ -97,6 +97,7 @@ import { fixtureDeviceReason } from './deviceReasonTestUtils.ts';
 import { type DescriptorIdentity, resolveFixtureDescriptorIdentity } from './deviceSnapshotFixture';
 import { testLogger } from './testLogger';
 import { noDrawEvidence } from '../helpers/observedDeviceReadsDouble';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 /** A home without a battery, as the surplus allocator sees it: no claimant, no discharge. */
 export const NO_STORAGE_SURPLUS: StorageSurplus = { claimants: [], dischargeW: 0 };
@@ -468,7 +469,7 @@ export const fixtureExpectedPowerKw = (o: {
   const memoised = evidenceFreeEstimateByCapability.get(key);
   if (memoised !== undefined) return memoised;
   const resolved = estimatePower({
-    device: { id: 'fixture', name: 'fixture' } as HomeyDeviceLike,
+    device: { ...HOMEY_DEVICE_FIELDS, id: 'fixture', name: 'fixture' } as HomeyDeviceLike,
     deviceId: 'fixture',
     deviceLabel: 'fixture',
     binaryCapabilityId: isEv ? 'evcharger_charging' : undefined,

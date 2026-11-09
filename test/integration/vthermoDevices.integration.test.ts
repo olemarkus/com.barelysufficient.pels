@@ -6,6 +6,7 @@ import {
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN } from '../../lib/utils/settingsKeys';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
@@ -23,7 +24,7 @@ const buildVThermoApiDevice = (overrides?: Partial<{
 }>) => {
   // Homey dates every capability value it reports.
   const lastUpdated = new Date().toISOString();
-  return {
+  return { ...HOMEY_DEVICE_FIELDS,
     id: overrides?.id ?? 'vthermo-1',
     name: overrides?.name ?? 'Virtual Thermostat',
     class: overrides?.class ?? 'thermostat',

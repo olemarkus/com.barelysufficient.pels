@@ -3,9 +3,10 @@ import { withEaseeChargingState } from '../../lib/device/easee/chargingState';
 import { findDeviceReadContractViolation } from '../../lib/device/transport/deviceReadContract';
 import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const at = '2026-10-01T12:00:00Z';
-const device = (status: unknown): HomeyDeviceLike => ({
+const device = (status: unknown): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'charger', name: 'Charger', class: 'evcharger', driverId: 'homey:app:no.easee:charger',
   capabilities: ['charger_status', 'evcharger_charging', 'evcharger_charging_state', 'target_charger_current'],
   capabilitiesObj: {

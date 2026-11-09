@@ -45,9 +45,8 @@ const normalizeText = (value: unknown): string => (
  */
 export const isDeviceOfApp = (device: HomeyDeviceLike, appId: string): boolean => {
   const ownerUri = `homey:app:${appId}`;
-  if (normalizeText(device.ownerUri ?? device.driver?.owner_uri) === ownerUri) return true;
-  if (normalizeText(device.driverUri ?? device.driver?.uri) === ownerUri) return true;
-  const driverId = normalizeText(device.driverId ?? device.driver?.id);
+  if (normalizeText(device.ownerUri) === ownerUri) return true;
+  const driverId = normalizeText(device.driverId);
   return driverId.startsWith(`${ownerUri}:`) || driverId.startsWith(`${appId}:`);
 };
 
@@ -58,6 +57,6 @@ export const isDeviceOfApp = (device: HomeyDeviceLike, appId: string): boolean =
  * calls this with one.
  */
 export const isDeviceOfAppDriver = (device: HomeyDeviceLike, appId: string, driverId: string): boolean => {
-  const id = normalizeText(device.driverId ?? device.driver?.id);
+  const id = normalizeText(device.driverId);
   return id === `homey:app:${appId}:${driverId}` || id === `${appId}:${driverId}`;
 };

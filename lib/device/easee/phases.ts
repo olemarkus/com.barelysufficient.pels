@@ -14,16 +14,13 @@ const EASEE_SINGLE_PHASE_GRID = /_1_PHASE(?:_|$)/u;
 const EASEE_THREE_PHASE_GRID = 'TN_3_PHASE';
 
 export function isEaseeDevice(device: HomeyDeviceLike): boolean {
-  const ownerUri = device.ownerUri ?? device.driver?.owner_uri ?? device.driverUri ?? device.driver?.uri;
-  if (ownerUri === EASEE_OWNER_URI) return true;
-  const driverId = device.driverId ?? device.driver?.id;
-  return typeof driverId === 'string' && driverId.startsWith(`${EASEE_OWNER_URI}:`);
+  return device.ownerUri === EASEE_OWNER_URI || device.driverId.startsWith(`${EASEE_OWNER_URI}:`);
 }
 
 export function resolveEaseePhaseReport(settings: HomeyDeviceLike['settings']): ChargerPhaseReport {
-  const phaseMode = settings?.[EASEE_PHASE_MODE_SETTING];
+  const phaseMode = settings[EASEE_PHASE_MODE_SETTING];
   if (phaseMode === EASEE_PHASE_MODE_SINGLE) return { kind: 'reported', preset: 'ev_charger_1_phase' };
-  const gridType = settings?.[EASEE_GRID_TYPE_SETTING];
+  const gridType = settings[EASEE_GRID_TYPE_SETTING];
   // The existing three-phase preset assumes 400 V TN (230 V per phase).
   // IT three-phase needs sqrt(3) * 230 W/A, which neither preset models.
   // Locked single-phase above remains valid on either grid; locked three-phase

@@ -34,7 +34,7 @@ export const teslaAdapter: DeviceAdapter = {
   currentBindings: (device) => isTeslaChargingDevice(device) ? [{
     deviceId: device.id,
     current: { kind: 'capability', capabilityId: 'measure_charge_current_max',
-      writable: device.capabilitiesObj?.measure_charge_current_max?.setable === true },
+      writable: device.capabilitiesObj.measure_charge_current_max?.setable === true },
     actionId: 'charge_current', appUri: 'homey:app:com.tesla.car', scope: { kind: 'vehicle' },
     sharesInstallation: () => false,
     currentArguments: (currentA) => ({ current: currentA }),

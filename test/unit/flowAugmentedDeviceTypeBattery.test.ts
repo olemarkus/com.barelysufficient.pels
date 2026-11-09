@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { resolveFlowAugmentedDeviceType } from '../../lib/device/transport/flowReportedCapabilities';
 import { resolveDeviceClassKey } from '../../lib/device/transport/managerHelpers';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 // A home battery is MANAGED OBSERVE-ONLY: it must never be classified as a `binary`
 // flow-backed device, because that makes it eligible for flow-backed binary device
@@ -19,11 +20,11 @@ describe('resolveFlowAugmentedDeviceType — home battery exclusion', () => {
 
   it('returns "unsupported" for a role-detected battery via its normalized class-key', () => {
     // class:'battery' normalizes to the 'battery' class-key.
-    const classBattery: HomeyDeviceLike = {
+    const classBattery: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'b1', name: 'Battery', class: 'battery', capabilities: ['measure_battery', 'measure_power'],
     };
     // energy-role-only battery (real class not a supported class) also normalizes.
-    const roleBattery: HomeyDeviceLike = {
+    const roleBattery: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'b2', name: 'Inverter', class: 'sensor', energy: { homeBattery: true },
       capabilities: ['measure_battery', 'measure_power'],
     };

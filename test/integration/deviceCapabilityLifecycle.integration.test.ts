@@ -5,6 +5,7 @@ import {
 } from '../mocks/homey';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import { createApp, cleanupApps, getTransportSnapshotForTests } from '../utils/appTestUtils';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 // Use fake timers to prevent resource leaks from periodic refresh and control
 // timing deterministically.
@@ -85,7 +86,7 @@ describe('Device capability lifecycle across SDK pulls', () => {
     // A non-EV device with no `onoff` and no target is not manageable: it never
     // enters the snapshot, so nothing is planned or written for it.
     deviceList = {
-      [DEVICE_ID]: {
+      [DEVICE_ID]: { ...HOMEY_DEVICE_FIELDS,
         id: DEVICE_ID,
         name: 'Socket',
         class: 'socket',
@@ -101,7 +102,7 @@ describe('Device capability lifecycle across SDK pulls', () => {
     // Pull 2 — gains `onoff` + a live `measure_power`. It becomes manageable and
     // power-limit capable: a binary, power-capable shed candidate.
     deviceList = {
-      [DEVICE_ID]: {
+      [DEVICE_ID]: { ...HOMEY_DEVICE_FIELDS,
         id: DEVICE_ID,
         name: 'Socket',
         class: 'socket',
@@ -126,7 +127,7 @@ describe('Device capability lifecycle across SDK pulls', () => {
     // core control capabilities, so it drops back out of the managed snapshot and
     // no binary action is ever issued for it.
     deviceList = {
-      [DEVICE_ID]: {
+      [DEVICE_ID]: { ...HOMEY_DEVICE_FIELDS,
         id: DEVICE_ID,
         name: 'Socket',
         class: 'socket',
@@ -155,7 +156,7 @@ describe('Device capability lifecycle across SDK pulls', () => {
     // Has a binary handle and power, but no stepped-load capability/profile, so it
     // is a binary device: no stepped-load classification, controlled via onoff.
     deviceList = {
-      [DEVICE_ID]: {
+      [DEVICE_ID]: { ...HOMEY_DEVICE_FIELDS,
         id: DEVICE_ID,
         name: 'Socket',
         class: 'socket',
@@ -188,7 +189,7 @@ describe('Device capability lifecycle across SDK pulls', () => {
     // Pull 1 — a well-formed charger with switch and plug-state observations is admitted
     // and controlled through `evcharger_charging`.
     deviceList = {
-      [evId]: {
+      [evId]: { ...HOMEY_DEVICE_FIELDS,
         id: evId,
         name: 'Wallbox',
         class: 'evcharger',
@@ -210,7 +211,7 @@ describe('Device capability lifecycle across SDK pulls', () => {
     // Pull 2 — loses its plug-state capability. Independent power and control
     // remain visible; no connected/disconnected state or start may be invented.
     deviceList = {
-      [evId]: {
+      [evId]: { ...HOMEY_DEVICE_FIELDS,
         id: evId,
         name: 'Wallbox',
         class: 'evcharger',
@@ -243,7 +244,7 @@ describe('Device capability lifecycle across SDK pulls', () => {
 
     // Pull 1 — a charger with no binary handle at all: its only control axis is
     // the `target_power` ladder, which is what keeps it in the snapshot.
-    const buildCharger = (max: number, step: number): ApiDevice => ({
+    const buildCharger = (max: number, step: number): ApiDevice => ({ ...HOMEY_DEVICE_FIELDS,
       id: evId,
       name: 'Step-only wallbox',
       class: 'evcharger',

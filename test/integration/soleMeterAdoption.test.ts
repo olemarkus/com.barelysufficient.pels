@@ -5,6 +5,7 @@ import { MockSettings, mockHomeyInstance } from '../mocks/homey';
 import { startSoleMeterAdoption } from '../../setup/soleMeterAdoption';
 import { classifySoleMeterAdoptionEligibility } from '../../setup/soleMeterAdoptionEligibility';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const METER_ID = 'meter-device-1';
 const OTHER_METER_ID = 'meter-device-2';
@@ -21,7 +22,7 @@ const otherSoleMeterReport = { items: [cumulative(OTHER_METER_ID, 900)] };
 const multiMeterReport = { items: [cumulative(METER_ID, 1200), cumulative(OTHER_METER_ID, 900)] };
 const idlessAggregateReport = { items: [{ type: 'cumulative', values: { W: 640 } }] };
 
-const meterDevice = (id: string) => ({ id, name: id, class: 'sensor', capabilities: ['measure_power'] });
+const meterDevice = (id: string) => ({ ...HOMEY_DEVICE_FIELDS, id, name: id, class: 'sensor', capabilities: ['measure_power'] });
 const registryOf = (...ids: string[]) => Object.fromEntries(ids.map((id) => [id, meterDevice(id)]));
 
 type CensusLane = 'report' | 'devices';
@@ -280,7 +281,7 @@ describe('runSoleMeterAdoption', () => {
 
   it('keeps trying, then gives up, when the registry never corroborates the live meter', async () => {
     vi.useFakeTimers();
-    const { report } = stubCensus(soleMeterReport, { plug: { id: 'plug', name: 'Plug', class: 'socket' } });
+    const { report } = stubCensus(soleMeterReport, { plug: { ...HOMEY_DEVICE_FIELDS, id: 'plug', name: 'Plug', class: 'socket' } });
     const homey = makeHomey({});
     const timers = run(homey);
     await vi.advanceTimersByTimeAsync(15 * 60_000);

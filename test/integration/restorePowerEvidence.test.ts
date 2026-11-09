@@ -154,9 +154,9 @@ describe('observer drawing-start evidence', () => {
   it('accepts refresh evidence and drops it when the device disappears', () => {
     const observer = new ObservedDeviceStateProjection();
     observe(observer, reading('first', 0, 500), 500);
-    observer.applyRefresh({ ignoredReadIds: [], entries: [{ observed: reading('first', 1, 2000), observedAtMs: 2100, observationSeq: 2100 }] });
+    observer.applyRefresh({ entries: [{ observed: reading('first', 1, 2000), observedAtMs: 2100, observationSeq: 2100 }] });
     expect(observer.hasStartedDrawingSince('first', 1000, 10_000, 0.5)).toBe(true);
-    observer.applyRefresh({ ignoredReadIds: [], entries: [] });
+    observer.applyRefresh({ entries: [] });
     expect(observer.hasStartedDrawingSince('first', 1000, 10_000, 0.5)).toBe(false);
   });
 });

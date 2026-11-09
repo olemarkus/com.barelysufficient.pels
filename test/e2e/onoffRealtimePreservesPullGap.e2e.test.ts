@@ -9,6 +9,7 @@ import { drainPending, drainUntil, drainUntilCalledWith } from '../utils/asyncDr
 import { connectLiveFeed, emitCapability } from '../helpers/liveFeedSocketHarness';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const DEVICE_ID = 'device-a';
 const FRESH_ISO = '2026-06-03T06:00:00.000Z';
@@ -18,7 +19,7 @@ const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 const onoffCap = (deviceId: string) => `manager/devices/device/${deviceId}/capability/onoff`;
 const deviceListPullPath = 'manager/devices/device';
 
-const buildPullDevice = (onoff: boolean | undefined) => ({
+const buildPullDevice = (onoff: boolean | undefined) => ({ ...HOMEY_DEVICE_FIELDS,
   id: DEVICE_ID,
   name: 'On/Off Socket',
   class: 'socket',

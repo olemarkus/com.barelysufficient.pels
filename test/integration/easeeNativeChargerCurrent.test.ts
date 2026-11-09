@@ -26,6 +26,7 @@ import { createEmptyEvCarLinkSnapshot } from '../../lib/device/evCarLinkSnapshot
 import { EV_CAR_LINK_SELF_STOP_MIN_MS } from '../../lib/device/evCarLink';
 import type { EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 // Shapes are taken from a production Easee charger on the deployed Easee app
 // 2.0.5: `target_charger_current` is the setable dynamic charger current in amps,
@@ -79,7 +80,7 @@ const buildEaseeCapabilityObj = (
 
 const buildEaseeCharger = (
   capabilityOverrides: DeviceCapabilityMap = {},
-): HomeyDeviceLike => ({
+): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: EASEE_ID,
   name: 'Elbillader',
   class: 'evcharger',
@@ -300,7 +301,7 @@ describe('Easee native charger current', () => {
       measure_power: { value: 0, lastUpdated: READ_AT },
     });
     device.capabilities = [...EASEE_CAPABILITIES, 'charger_status'];
-    const car: HomeyDeviceLike = {
+    const car: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'car-1', name: 'Car', class: 'car',
       capabilities: ['ev_charging_state', 'measure_battery'],
       capabilitiesObj: {

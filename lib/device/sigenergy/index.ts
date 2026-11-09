@@ -111,8 +111,8 @@ const resolveSigenergy = (
   const [plant] = plants;
   if (plant === undefined) return { kind: 'unavailable', reasonCode: 'plant_not_found' };
   if (plants.length > 1) return { kind: 'unavailable', reasonCode: 'plant_ambiguous' };
-  const chargeW = readRatedPowerW(plant.settings?.ratedChargingPower);
-  const dischargeW = readRatedPowerW(plant.settings?.ratedDischargingPower);
+  const chargeW = readRatedPowerW(plant.settings.ratedChargingPower);
+  const dischargeW = readRatedPowerW(plant.settings.ratedDischargingPower);
   if (chargeW === undefined || dischargeW === undefined) {
     return { kind: 'unavailable', reasonCode: 'plant_rated_power_unknown' };
   }

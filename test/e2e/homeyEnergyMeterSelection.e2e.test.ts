@@ -20,6 +20,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { drainUntilCalledWith } from '../utils/asyncDrain';
 import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
@@ -28,7 +29,7 @@ const cap = (deviceId: string, capability: string) =>
 // under the fake clock, so "now" is the scenario's time.
 const buildAirtreatmentApiDevice = () => {
   const lastUpdated = new Date().toISOString();
-  return {
+  return { ...HOMEY_DEVICE_FIELDS,
     id: 'airtreatment-1',
     name: 'Panel heater',
     class: 'airtreatment',

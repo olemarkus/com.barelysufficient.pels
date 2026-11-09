@@ -77,6 +77,7 @@ import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/t
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { testParseSources } from '../helpers/deviceTransportHarness';
 import { noDrawEvidence } from '../helpers/observedDeviceReadsDouble';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const SHED_REASON = fixtureDeviceReason('shed due to daily budget')!;
 const DEVICE_ID = 'elbillader-1';
@@ -133,7 +134,7 @@ const buildChargerDevice = (params: { charging: boolean; nowIso: string }): Home
       lastUpdated: params.nowIso,
     },
   };
-  return {
+  return { ...HOMEY_DEVICE_FIELDS,
     id: DEVICE_ID,
     name: 'Elbillader',
     class: 'evcharger',

@@ -29,9 +29,8 @@ export function isEaseeChargerCurrentCandidate(
 }
 
 export function isEaseeChargerDevice(device: HomeyDeviceLike): boolean {
-  if (EASEE_OWNER_URIS.has(normalizeText(device.ownerUri ?? device.driver?.owner_uri))) return true;
-  if (EASEE_OWNER_URIS.has(normalizeText(device.driverUri ?? device.driver?.uri))) return true;
-  return EASEE_CHARGER_DRIVER_IDS.has(normalizeText(device.driverId ?? device.driver?.id));
+  if (EASEE_OWNER_URIS.has(normalizeText(device.ownerUri))) return true;
+  return EASEE_CHARGER_DRIVER_IDS.has(normalizeText(device.driverId));
 }
 
 

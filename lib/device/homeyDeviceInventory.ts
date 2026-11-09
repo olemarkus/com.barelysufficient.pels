@@ -26,7 +26,7 @@ export const listHomeyDevices = (
   return {
     id: device.id,
     name: device.name,
-    ...(typeof device.class === 'string' ? { class: device.class } : {}),
+    class: device.class,
     zoneName: typeof zoneName === 'string' && zoneName ? zoneName : null,
     hasTemperature: capabilities.includes('measure_temperature'),
     hasPower: hasPowerCapability(capabilities),

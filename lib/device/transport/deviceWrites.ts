@@ -192,18 +192,18 @@ export class DeviceWriteService {
     if (this.needsNativeWattReadBeforeStart(raw)) return true;
     if (!this.nativeWiring.resolveNativeWiringEnabled(snapshot.id)) return false;
     return getDeviceAdapter(raw).nativeCurrentControls.some(control => {
-      const current = raw.capabilitiesObj?.[control.capabilityId];
-      if (!raw.capabilities?.includes(control.capabilityId) || current?.setable === false) return false;
+      const current = raw.capabilitiesObj[control.capabilityId];
+      if (!raw.capabilities.includes(control.capabilityId) || current?.setable === false) return false;
       return current?.setable !== true || current.value === undefined;
     });
   }
 
   private needsNativeWattReadBeforeStart(raw: HomeyDeviceLike): boolean {
-    const targetPower = raw.capabilitiesObj?.target_power;
-    if (!raw.capabilities?.includes('target_power') || targetPower?.setable === false) return false;
+    const targetPower = raw.capabilitiesObj.target_power;
+    if (!raw.capabilities.includes('target_power') || targetPower?.setable === false) return false;
     return targetPower?.setable !== true || targetPower.value === undefined
       || (raw.capabilities.includes('target_power_mode')
-        && raw.capabilitiesObj?.target_power_mode?.value === undefined);
+        && raw.capabilitiesObj.target_power_mode?.value === undefined);
   }
 
   private assertBinaryWriteAllowed(snapshot: TransportDeviceSnapshot | undefined, requested: CapabilityWrite): void {

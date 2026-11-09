@@ -8,13 +8,13 @@ export function prepareZaptecTargetPowerReassertion(
   device: HomeyDeviceLike, inventory: readonly HomeyDeviceLike[],
 ): TargetPowerReassertionPreparation {
   const accepted = inventory.find((entry) => entry.id === device.id);
-  const capabilities = accepted?.capabilities ?? device.capabilities ?? [];
+  const capabilities = accepted?.capabilities ?? device.capabilities;
   const stopCapabilityId = resolveStopCapabilityId(capabilities);
   const stop: TargetPowerReassertionPreparation = { kind: 'stop', write: {
     capabilityId: stopCapabilityId, value: stopCapabilityId === 'target_power' ? 0 : false,
   } };
   if (!accepted) return stop;
-  const mode = accepted.capabilitiesObj?.target_power_mode;
+  const mode = accepted.capabilitiesObj.target_power_mode;
   // A reset restores pre-Homey installation current. A sibling, even unmanaged,
   // may be charging on it, so only an exclusive installation can be reset.
   // Without a reset there is nothing to reclaim: the watt target is written as
@@ -50,8 +50,8 @@ function hasExclusiveInstallation(device: HomeyDeviceLike, inventory: readonly H
  * because Homey republishes nothing for an unchanged value.
  */
 function isStopped(device: HomeyDeviceLike, stopWrite: { capabilityId: string; value: unknown }): boolean {
-  const stopped = device.capabilitiesObj?.[stopWrite.capabilityId];
-  const power = device.capabilitiesObj?.measure_power;
+  const stopped = device.capabilitiesObj[stopWrite.capabilityId];
+  const power = device.capabilitiesObj.measure_power;
   return stopped !== undefined && Object.is(stopped.value, stopWrite.value) && power?.value === 0
     && toCapabilityTimestampMs(stopped.lastUpdated) !== undefined
     && toCapabilityTimestampMs(power.lastUpdated) !== undefined;

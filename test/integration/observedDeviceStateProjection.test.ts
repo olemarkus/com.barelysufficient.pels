@@ -31,6 +31,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
 import { resolveThermalDirection } from '../../lib/observer/thermalDirection';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const mockApiGet = vi.fn();
 const mockApiPut = vi.fn().mockResolvedValue(undefined);
@@ -71,7 +72,7 @@ async function buildHarness(): Promise<Harness> {
 // `lastUpdated` is a read the device-read contract ignores.
 const READ_AT = '2026-03-20T06:00:00.000Z';
 
-const device = (id: string, overrides: Record<string, unknown> = {}) => ({
+const device = (id: string, overrides: Record<string, unknown> = {}) => ({ ...HOMEY_DEVICE_FIELDS,
     id,
     name: id,
     class: 'heater',
@@ -236,7 +237,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         // Realtime deltas through the real merge.
         await emitCapability('dev1', 'onoff', true);
         await emitCapability('dev2', 'measure_power', 2500);
-        emitDeviceUpdate({
+        emitDeviceUpdate({ ...HOMEY_DEVICE_FIELDS,
             id: 'dev1',
             name: 'dev1',
             class: 'heater',
@@ -673,7 +674,6 @@ describe('ObservedDeviceStateProjection apply guard', () => {
             observedAtMs: 1000 + index,
             observed: baseObserved(id, true),
         })),
-        ignoredReadIds: [],
     });
 
     // The committed snapshot is always complete truth (a targeted refresh is
@@ -819,7 +819,7 @@ describe('targeted refresh merge-overlay and per-device miss grace', () => {
         // Targeted refresh: dev1 reads fine; dev2's by-id read SUCCEEDS but returns
         // a payload with no usable capabilities — parsing drops it. It is NOT a
         // network miss, so it must drop immediately, not be retained for grace.
-        const parsedOutDev2 = { id: 'dev2', name: 'dev2', class: 'sensor', capabilities: [], capabilitiesObj: {} };
+        const parsedOutDev2 = { ...HOMEY_DEVICE_FIELDS, id: 'dev2', name: 'dev2', class: 'sensor', capabilities: [], capabilitiesObj: {} };
         serveDevices(full, {
             dev1: onoffDevice('dev1', false, '2026-03-20T07:00:00.000Z'),
             dev2: parsedOutDev2,

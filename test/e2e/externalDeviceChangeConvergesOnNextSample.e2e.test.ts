@@ -33,6 +33,7 @@ import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrive
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainPending, drainUntil } from '../utils/asyncDrain';
 import { connectLiveFeed, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const HEATER_ID = 'heater-1';
 const HEATER_ONOFF_PATH = `manager/devices/device/${HEATER_ID}/capability/onoff`;
@@ -68,7 +69,7 @@ function reportHomePower(getTotalW: () => number): void {
 const announceTurnedItselfOn = (measuredW: number): void => {
   // Observed now: after PELS's own off write.
   const lastUpdated = new Date().toISOString();
-  emitDeviceUpdate({
+  emitDeviceUpdate({ ...HOMEY_DEVICE_FIELDS,
     id: HEATER_ID,
     name: 'Heater',
     class: 'heater',

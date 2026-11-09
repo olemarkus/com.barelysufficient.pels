@@ -127,8 +127,6 @@ function resolveModelCapabilityTypes(
 }
 
 export type DeviceReadContractViolation =
-    | { reason: 'missing_capability_list' }
-    | { reason: 'missing_capability_values' }
     | { reason: 'missing_capability_entry'; capabilityId: string }
     | { reason: 'unexpected_value'; capabilityId: string }
     | { reason: 'missing_stamp'; capabilityId: string };
@@ -155,7 +153,7 @@ export function withAcceptedCapabilityReport(
     observedAtMs: number,
 ): HomeyDeviceLike {
     const types = {
-        ...resolveModelCapabilityTypes(device, device.capabilities ?? []),
+        ...resolveModelCapabilityTypes(device, device.capabilities),
         ...getDeviceAdapter(device).readRules(device),
     };
     const type = types[capabilityId];
@@ -164,15 +162,15 @@ export function withAcceptedCapabilityReport(
         ...device,
         capabilitiesObj: {
             ...device.capabilitiesObj,
-            [capabilityId]: { ...device.capabilitiesObj?.[capabilityId], value, lastUpdated: observedAtMs },
+            [capabilityId]: { ...device.capabilitiesObj[capabilityId], value, lastUpdated: observedAtMs },
         },
     };
 }
 
 /** The raw source fields this device's model and adapter actually read. */
 function findRawCapabilityViolations(device: HomeyDeviceLike): CapabilityViolation[] {
-    const capabilities = device.capabilities ?? [];
-    const values = device.capabilitiesObj ?? {};
+    const capabilities = device.capabilities;
+    const values = device.capabilitiesObj;
     const integrationTypes = getDeviceAdapter(device).readRules(device);
     const types = { ...resolveModelCapabilityTypes(device, capabilities), ...integrationTypes };
     const readIds = new Set([...capabilities,
@@ -194,10 +192,10 @@ export type DeviceCapabilityResolution = {
 
 /** A rejected scalar observation does not erase a real supported write operation. */
 function resolveReadDescriptorIds(device: HomeyDeviceLike): Set<string> {
-    const values = Object.fromEntries(Object.entries(device.capabilitiesObj ?? {}).flatMap(([id, entry]) => (
+    const values = Object.fromEntries(Object.entries(device.capabilitiesObj).flatMap(([id, entry]) => (
         entry === undefined ? [] : [[id, entry]]
     )));
-    const overlay = applyNativeEvWiringOverlay(device, device.capabilities ?? [], values);
+    const overlay = applyNativeEvWiringOverlay(device, device.capabilities, values);
     const descriptors = new Set([
         'measure_temperature', 'target_temperature', 'target_power', 'target_power_mode',
         ...getDeviceAdapter(device).nativeCurrentControls.map((control) => control.capabilityId),
@@ -219,7 +217,7 @@ export function withholdInvalidModelCapabilities(
 ): DeviceCapabilityResolution {
     const violations = findRawCapabilityViolations(device);
     const types = {
-        ...resolveModelCapabilityTypes(device, device.capabilities ?? []),
+        ...resolveModelCapabilityTypes(device, device.capabilities),
         ...getDeviceAdapter(device).readRules(device),
     };
     const descriptorIds = resolveReadDescriptorIds(device);
@@ -228,7 +226,7 @@ export function withholdInvalidModelCapabilities(
         // limits retain their own readings/metadata independently of this axis.
         if (capabilityId === 'onoff' || capabilityId === 'evcharger_charging'
             || (types[capabilityId] === 'boolean' && descriptorIds.has(capabilityId))) return [];
-        const entry = previousRead?.capabilitiesObj?.[capabilityId];
+        const entry = previousRead?.capabilitiesObj[capabilityId];
         const type = types[capabilityId];
         return entry && type !== undefined && findEntryViolation(capabilityId, entry, type) === null
             ? [[capabilityId, entry] as const] : [];
@@ -242,7 +240,7 @@ export function withholdInvalidModelCapabilities(
     // range. Those descriptors let the owner keep the ladder and wait for a
     // real step report, rather than fall back to a binary-only start.
     const descriptors = [...withheld].flatMap((id) => {
-        const entry = device.capabilitiesObj?.[id];
+        const entry = device.capabilitiesObj[id];
         if (!descriptorIds.has(id) || !isUnknownRecord(entry)) return [];
         const { value: _value, lastUpdated: _lastUpdated, ...descriptor } = entry;
         return [[id, descriptor] as const];
@@ -253,9 +251,9 @@ export function withholdInvalidModelCapabilities(
     return {
         device: {
             ...device,
-            capabilities: device.capabilities?.filter((id) => !withheld.has(id) || descriptorIds.has(id)),
+            capabilities: device.capabilities.filter((id) => !withheld.has(id) || descriptorIds.has(id)),
             capabilitiesObj: Object.fromEntries([
-                ...Object.entries(device.capabilitiesObj ?? {})
+                ...Object.entries(device.capabilitiesObj)
                     .filter(([id]) => !rejected.has(id) && !withheld.has(id)),
                 ...retained,
                 ...descriptors,
@@ -277,10 +275,6 @@ function findViolation(
     device: HomeyDeviceLike,
 ): DeviceReadContractViolation | null {
     const { capabilities, capabilitiesObj } = device;
-    if (!Array.isArray(capabilities) || !capabilities.every((id) => typeof id === 'string')) {
-        return { reason: 'missing_capability_list' };
-    }
-    if (!isUnknownRecord(capabilitiesObj)) return { reason: 'missing_capability_values' };
     // Convert to the model first; only then validate.
     const model = applyNativeEvWiringOverlay(device, capabilities, capabilitiesObj as DeviceCapabilityMap);
     const integrationTypes = getDeviceAdapter(device).readRules(device);
@@ -316,16 +310,14 @@ function findEntryViolation(
 
 export type DeviceReadSource = 'device_fetch' | 'device_update';
 
-/** The two levels an ignored read is said at. */
 export type DeviceReadContractEmitter = {
-    warn: (payload: Record<string, unknown>) => void;
     info: (payload: Record<string, unknown>) => void;
 };
 
 // The last violation or withheld set said per device, per transport, so a
 // device that stays non-conforming is named once rather than on every refresh
-// and update. Cleared when it conforms again, which is said too: an ignored
-// read or a withheld capability is a gap in what PELS knows, and the log is
+// and update. Cleared when it conforms again, which is said too: a withheld
+// capability is a gap in what PELS knows, and the log is
 // where an owner's support session finds its start and end. Keyed by the
 // transport's owner so two transports (and two tests) never share what was
 // said.
@@ -346,16 +338,9 @@ export function resolveDeviceRead(
     source: DeviceReadSource,
     emitter: DeviceReadContractEmitter,
     previousRead?: HomeyDeviceLike,
-): HomeyDeviceLike | null {
-    const deviceId = typeof device.id === 'string' ? device.id : '';
+): HomeyDeviceLike {
+    const deviceId = device.id;
     const signatures = violationSignatures(owner);
-    const envelope = findEnvelopeViolation(device);
-    if (envelope) {
-        if (claimSignature(signatures, deviceId, envelope)) {
-            emitter.warn({ event: 'device_read_ignored', deviceId, deviceName: device.name, source, ...envelope });
-        }
-        return null;
-    }
     const resolution = withholdInvalidModelCapabilities(device, previousRead);
     const { violations, retainedCapabilityIds, withheldCapabilityIds } = resolution;
     if (violations.length === 0) {
@@ -370,14 +355,6 @@ export function resolveDeviceRead(
         });
     }
     return resolution.device;
-}
-
-function findEnvelopeViolation(device: HomeyDeviceLike): DeviceReadContractViolation | null {
-    if (!Array.isArray(device.capabilities) || !device.capabilities.every((id) => typeof id === 'string')) {
-        return { reason: 'missing_capability_list' };
-    }
-    if (!isUnknownRecord(device.capabilitiesObj)) return { reason: 'missing_capability_values' };
-    return null;
 }
 
 /** Record what is said about a device; true when it differs from what was said last. */

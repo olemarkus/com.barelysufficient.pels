@@ -124,9 +124,9 @@ const resolveObservedAtMs = (
 export const readCarDevice = (device: HomeyDeviceLike, arrivedAtMs: number): CarDeviceRead | null => {
     const identity = readCarIdentity(device);
     if (!identity) return null;
-    if (device.available === false) return { kind: 'unavailable', ...identity };
-    const stateCapability = device.capabilitiesObj?.ev_charging_state;
-    const socCapability = device.capabilitiesObj?.measure_battery;
+    if (!device.available) return { kind: 'unavailable', ...identity };
+    const stateCapability = device.capabilitiesObj.ev_charging_state;
+    const socCapability = device.capabilitiesObj.measure_battery;
     const rawState = stateCapability?.value;
     return {
         kind: 'observed',

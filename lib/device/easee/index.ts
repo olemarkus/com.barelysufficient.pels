@@ -41,7 +41,7 @@ export const easeeAdapter: DeviceAdapter = {
   overlay: (_device, capabilities, values) => ({
     kind: 'standard', capabilities, capabilityObj: withEaseeChargingState(capabilities, values),
   }),
-  observation: (device) => withEaseeChargingState(device.capabilities ?? [], standardDeviceAdapter.observation(device)),
+  observation: (device) => withEaseeChargingState(device.capabilities, standardDeviceAdapter.observation(device)),
   normalize: (snapshot, capabilityId, value) => isEaseeUnderBuiltInControl(snapshot)
     ? resolveEaseeRealtimeUpdates(snapshot, capabilityId, value) : [{ capabilityId, value }],
   finalizeObservation: (control, capabilities, values) => control.activationAvailable !== undefined
@@ -52,7 +52,7 @@ export const easeeAdapter: DeviceAdapter = {
       [EASEE_CHARGER_CURRENT_CAPABILITY_ID]: (value) => (
         typeof value === 'number' && Number.isFinite(value) && value >= 0
       ),
-      ...(device.capabilities?.includes(EASEE_CHARGER_STATUS)
+      ...(device.capabilities.includes(EASEE_CHARGER_STATUS)
         // Any mode name: a full read with one this adapter does not know carries the app's own plug state.
         ? { [EASEE_CHARGER_STATUS]: 'string' } : {}),
     } : {},

@@ -2,6 +2,7 @@ import { createApp, cleanupApps, getTransportSnapshotForTests } from '../utils/a
 import { mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { FLOW_REPORTED_DEVICE_CAPABILITIES } from '../../lib/utils/settingsKeys';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance'] });
 
@@ -19,7 +20,7 @@ const buildBinaryApiDevice = (overrides?: Partial<{
   measurePowerLastUpdated: string;
   measurePowerCapabilityId: string;
   capabilities: string[];
-}>) => ({
+}>) => ({ ...HOMEY_DEVICE_FIELDS,
   id: overrides?.id ?? 'binary-1',
   name: overrides?.name ?? 'Binary Relay',
   class: 'socket',
@@ -49,7 +50,7 @@ const buildEvApiDevice = (overrides?: Partial<{
   evchargerCharging: boolean;
   evchargerChargingState: string;
   carConnected: boolean;
-}>) => ({
+}>) => ({ ...HOMEY_DEVICE_FIELDS,
   id: overrides?.id ?? 'ev-1',
   name: overrides?.name ?? 'Garage Charger',
   class: 'evcharger',

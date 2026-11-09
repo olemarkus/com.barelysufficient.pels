@@ -15,13 +15,14 @@ import { mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/home
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN } from '../../lib/utils/settingsKeys';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate', 'performance', 'Date'] });
 
 const T0 = Date.parse('2026-09-23T10:00:00.000Z');
 const MINUTE_MS = 60 * 1000;
 
-const meterOnlyPlug = (params: { on: boolean; kwh: number; meterUpdatedAtMs: number }) => ({
+const meterOnlyPlug = (params: { on: boolean; kwh: number; meterUpdatedAtMs: number }) => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'plug-1',
   name: 'Panel heater plug',
   class: 'socket',

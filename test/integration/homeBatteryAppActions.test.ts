@@ -333,7 +333,7 @@ describe('home battery app actions', () => {
     const replacement = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'replacement' });
     const restarted = await setup([replacement.battery, replacement.plant], SIGENERGY_CARDS);
     const recovered = claimOwner(restarted.transport).owner;
-    recovered.onSnapshotCommitted({ entries: [], ignoredReadIds: ['sigen'] });
+    recovered.onSnapshotCommitted({ entries: [] });
     await vi.waitFor(() => expect(restarted.runs()).toHaveLength(3));
     expect(restarted.runs()[0]?.[1]).toEqual({
       ownerUri: SIGENERGY_APP, cardId: `${SIGENERGY_APP}:set_remote_ems`,
@@ -389,7 +389,7 @@ describe('home battery app actions', () => {
     const key = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}sigen`;
     mockHomeyInstance.settings.set(key, { handBack: 'app_actions', claimedAtMs: 1 });
     const { owner } = claimOwner(transport);
-    owner.onSnapshotCommitted({ entries: [], ignoredReadIds: ['sigen'] });
+    owner.onSnapshotCommitted({ entries: [] });
 
     await vi.waitFor(() => expect(mockHomeyInstance.settings.get(key)).toBeNull());
 
@@ -443,7 +443,7 @@ describe('home battery app actions', () => {
     const { transport, runs } = await setup([battery, plant], SIGENERGY_CARDS);
     await seedTransportDevices(transport, [
       battery.toHomeyApiDevice() as HomeyDeviceLike,
-      { ...plant.toHomeyApiDevice(), settings: {} } as HomeyDeviceLike,
+      { ...plant.toHomeyApiDevice(), settings: {} } as unknown as HomeyDeviceLike,
     ]);
     vi.mocked(transport.chargingAccess.runAction).mockImplementation(async (_id, action) => {
       if (action.cardId.endsWith(':remove_ess_charge_limit')) throw new Error('Rated charging power not known yet');
@@ -472,7 +472,7 @@ describe('home battery app actions', () => {
     const key = `${PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX}venus`;
     mockHomeyInstance.settings.set(key, { handBack: 'app_actions', claimedAtMs: 1 });
     const { owner } = claimOwner(transport);
-    owner.onSnapshotCommitted({ entries: [], ignoredReadIds: ['venus'] });
+    owner.onSnapshotCommitted({ entries: [] });
     await vi.waitFor(() => expect(mockHomeyInstance.settings.get(key)).toBeNull());
     expect(runs()[0]?.[1].cardId).toBe(`${MARSTEK_APP}:marstek_auto_mode`);
   });

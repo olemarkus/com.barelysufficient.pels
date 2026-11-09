@@ -59,24 +59,18 @@ export type CapabilityValue<T> = {
 export type HomeyDeviceLike = {
     id: string;
     name: string;
-    class?: string;
-    driverId?: string;
+    class: string;
+    driverId: string;
     realDriverId?: string;
-    driverUri?: string;
-    ownerUri?: string;
-    driver?: {
-        id?: string;
-        uri?: string;
-        owner_uri?: string;
-    };
-    data?: {
+    ownerUri: string;
+    data: {
         id?: string;
         driverId?: string;
         installationId?: string;
     };
-    virtualClass?: string;
-    capabilities?: string[];
-    capabilitiesObj?: Record<string, CapabilityValue<unknown> | undefined> & {
+    virtualClass: string | null;
+    capabilities: string[];
+    capabilitiesObj: Record<string, CapabilityValue<unknown> | undefined> & {
         measure_temperature?: CapabilityValue<number>;
         measure_power?: CapabilityValue<number>;
         meter_power?: CapabilityValue<number>;
@@ -89,7 +83,7 @@ export type HomeyDeviceLike = {
         target_temperature?: CapabilityValue<number>;
         target_power?: CapabilityValue<number>;
     };
-    settings?: Record<string, unknown> & {
+    settings: Record<string, unknown> & {
         load?: number;
         energy_value_on?: number | null;
         energy_value_off?: number | null;
@@ -98,16 +92,13 @@ export type HomeyDeviceLike = {
         pelsCompatibilityTargetPower?: string | TargetPowerSteppedLoadConfig;
         pelsCompatibilityTargetPowerPreset?: TargetPowerSteppedLoadPreset;
     };
-    energy?: Record<string, unknown> | null;
-    energyObj?: Record<string, unknown> | null;
-    available?: boolean;
-    ready?: boolean;
-    unavailableMessage?: string | null;
-    // The local Web API REST payload carries `zone` as the zone-id STRING;
-    // homey-api-shaped objects carry `{ id, name }`. Both shapes are sourced
-    // at the parse boundary (`resolveZoneLabel` / `resolveZoneId`).
-    zone?: { id?: string; name?: string } | string;
-    zoneName?: string;
+    energy: Record<string, unknown> | null;
+    energyObj: Record<string, unknown> | null;
+    available: boolean;
+    ready: boolean;
+    unavailableMessage: string | null;
+    /** The zone id. */
+    zone: string;
 };
 
 export type RawHomeyDeviceLike = UnknownRecord & {
@@ -115,8 +106,25 @@ export type RawHomeyDeviceLike = UnknownRecord & {
     name?: unknown;
 };
 
+const isRecordOrNull = (value: unknown): boolean => value === null || isUnknownRecord(value);
+const isStringOrNull = (value: unknown): boolean => value === null || typeof value === 'string';
+
+/**
+ * The boundary for a device read from Homey: its server always sends these
+ * fields, so past this guard they are trusted and a malformed payload is dropped.
+ */
 export const isHomeyDeviceLike = (value: unknown): value is HomeyDeviceLike => (
     isUnknownRecord(value)
-    && typeof value.id === 'string'
-    && typeof value.name === 'string'
+    && (['id', 'name', 'class', 'driverId', 'ownerUri', 'zone'] as const).every((key) => typeof value[key] === 'string')
+    && typeof value.available === 'boolean'
+    && typeof value.ready === 'boolean'
+    && isStringOrNull(value.virtualClass)
+    && isStringOrNull(value.unavailableMessage)
+    && isRecordOrNull(value.energy)
+    && isRecordOrNull(value.energyObj)
+    && isUnknownRecord(value.data)
+    && isUnknownRecord(value.settings)
+    && isUnknownRecord(value.capabilitiesObj)
+    && Array.isArray(value.capabilities)
+    && value.capabilities.every((id) => typeof id === 'string')
 );
