@@ -793,5 +793,8 @@
   },
   "3.30.11": {
     "en": "A device waiting for solar surplus no longer cuts a charger to its minimum, and a Zaptec Sense no longer counts as a second charger. A temperature change that fails is now retried without waiting for the plan to change. Home batteries and other supported devices are recognized on Homeys that report their drivers in a different form. A device held on a lower step so a limited device can come back now reads as Limited, and diagnostics reports list the devices on your Homey and the app behind each."
+  },
+  "3.31.0": {
+    "en": "New: Main fuse. Enter your connection, such as 3x25 A, and PELS keeps each phase under your fuse by limiting the devices on the full phase in your priority order, including charging and discharging a home battery. Overview shows the load per phase, Usage lists recent phase peaks, and PELS learns which phase a device is on, or you can set it on the device page."
   }
 }
