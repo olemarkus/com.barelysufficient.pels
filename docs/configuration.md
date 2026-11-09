@@ -343,7 +343,7 @@ Simulation mode covers your Main home. Each [meter area](/meter-areas) has its o
 
 Describe what happened and send the report. PELS adds relevant device activity and current state. Opening the form from a device, Smart task or Activity entry keeps that context; an Activity entry also sets the incident time.
 
-Problem reports and device-support requests use the same sending and follow-up flow. After sending, post in the PELS forum thread and quote the report reference, or email the developer, to hear back. The email link includes your description and the report reference. Copying the diagnostic report is available if Homey cannot send it.
+Problem reports and device-support requests use the same sending and follow-up flow. Sending the report is all the developer needs. If you would like an answer, post in the PELS forum thread and quote the report reference, or email the developer. The email link includes your description and the report reference. Copying the diagnostic report is available if Homey cannot send it.
 
 ## Settings > Advanced
 

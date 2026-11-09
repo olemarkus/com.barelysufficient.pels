@@ -12,7 +12,8 @@ description: How to send a problem report from PELS, request support for a new d
 1. Open PELS and go to **Settings > Report a problem**. To report something about one device, Smart task or Activity entry, open the form from there and PELS keeps that context.
 2. Say what you expected and what happened instead.
 3. Send the report. PELS adds the relevant device activity and current state, and shows you a reference.
-4. To hear back, post in the [PELS forum thread](https://community.homey.app/t/147496) and quote the reference, or use the email link PELS shows. The report reaches the developer without a reply address, so this step is what makes an answer possible.
+
+Sending the report is all the developer needs. If you would like an answer, post in the [PELS forum thread](https://community.homey.app/t/147496) and quote the reference, or use the email link PELS shows: the report itself carries no reply address.
 
 If Homey cannot send the report, PELS offers **Copy report** instead. Email the copied text to [olemarkus@gmail.com](mailto:olemarkus@gmail.com).
 
