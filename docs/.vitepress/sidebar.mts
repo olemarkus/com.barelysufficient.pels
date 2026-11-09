@@ -32,6 +32,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
     text: 'Troubleshooting',
     items: [
       { text: 'When something goes wrong', link: '/troubleshooting' },
+      { text: 'Get help', link: '/support' },
     ],
   },
   {
