@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { isSimulationBannerSuppressedOnPanel } from '../src/ui/capacity.ts';
+import { afterEach, describe, expect, it } from 'vitest';
+import { isSimulationBannerSuppressedOnPanel, readSimulationBannerAreaId } from '../src/ui/capacity.ts';
+import { state } from '../src/ui/state.ts';
 import {
   mergeMeterAreaSimulation,
   readHomesConfigScope,
@@ -182,6 +183,32 @@ describe('settings hub simulation chip', () => {
   });
 });
 
+describe('simulation banner button target', () => {
+  const areas = [
+    { homeId: 'live', name: 'Cabin', simulating: false },
+    { homeId: 'unknown', name: 'Shed', simulating: null },
+    { homeId: 'rental', name: 'Rental unit', simulating: true },
+    { homeId: 'garage', name: 'Garage', simulating: true },
+  ];
+
+  afterEach(() => {
+    state.dryRun = false;
+    state.meterAreaSimulation = [];
+  });
+
+  it('opens the first area known to simulate while Main is live', () => {
+    state.dryRun = false;
+    state.meterAreaSimulation = areas;
+    expect(readSimulationBannerAreaId()).toBe('rental');
+  });
+
+  it('stays with Main setup while Main simulates, as the banner does', () => {
+    state.dryRun = true;
+    state.meterAreaSimulation = areas;
+    expect(readSimulationBannerAreaId()).toBeNull();
+  });
+});
+
 describe('simulation banner content', () => {
   it('keeps the single-home copy when no meter areas exist', () => {
     expect(resolveSimulationBannerContent({
@@ -231,14 +258,14 @@ describe('simulation banner content', () => {
     });
   });
 
-  it('names the one simulating area while Main is live, with no Main-flag button', () => {
+  it('names the one simulating area while Main is live, and opens its limits', () => {
     expect(resolveSimulationBannerContent({
       hasMeterAreas: true,
       mainSimulating: false,
       simulatingAreaNames: ['Rental unit'],
     })).toEqual({
       text: 'PELS is only simulating “Rental unit”. Turn on control under Limits & safety.',
-      actionLabel: null,
+      actionLabel: 'Open Limits & safety',
       scope: 'areas',
     });
   });
@@ -258,7 +285,7 @@ describe('simulation banner content', () => {
       simulatingAreaNames: ['Rental unit', 'Cabin'],
     })).toEqual({
       text: 'PELS is only simulating 2 meter areas. Turn on control under Limits & safety.',
-      actionLabel: null,
+      actionLabel: 'Open Limits & safety',
       scope: 'areas',
     });
   });

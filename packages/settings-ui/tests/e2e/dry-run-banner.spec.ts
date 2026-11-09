@@ -96,3 +96,43 @@ test('the Main-scoped simulation banner stays readable across the supported widt
     ).toBeLessThanOrEqual(heights[320]);
   }
 });
+
+test('the meter-area simulation banner opens that area at its own control', async ({ page }) => {
+  await seedMeterAreaBeforeBoot(page);
+  await page.addInitScript(() => {
+    (window as unknown as { __PELS_HOMEY_STUB__: { settings: Record<string, unknown> } })
+      .__PELS_HOMEY_STUB__.settings.capacity_dry_run = false;
+  });
+  await gotoApp(page);
+
+  const banner = page.locator('#dry-run-banner');
+  await expect(banner).toHaveAttribute('data-home-scope', 'areas');
+  await expect(banner).toContainText('Rental unit');
+  await page.locator('#simulation-disable-button', { hasText: 'Open Limits & safety' }).click();
+
+  await expect(page.locator('#limits-panel')).toBeVisible();
+  await expect(page.locator('#home-limits-simulation-switch')).toBeVisible();
+  await expect(page.locator('#home-limits-simulation-row')).toBeInViewport();
+});
+
+test('the meter-area banner still opens the area when the scope bar has not read it yet', async ({ page }) => {
+  await seedMeterAreaBeforeBoot(page);
+  await page.addInitScript(() => {
+    const stub = (window as unknown as {
+      __PELS_HOMEY_STUB__: { settings: Record<string, unknown>; apiHandlers?: Record<string, () => unknown> };
+    }).__PELS_HOMEY_STUB__;
+    stub.settings.capacity_dry_run = false;
+    stub.apiHandlers = { ...(stub.apiHandlers ?? {}), 'GET /ui_homes': () => { throw new Error('Offline'); } };
+  });
+  await gotoApp(page);
+  await expect(page.locator('#dry-run-banner')).toHaveAttribute('data-home-scope', 'areas');
+
+  await page.evaluate(() => {
+    (window as unknown as { Homey: { __stub: { clearApiHandler: (key: string) => void } } })
+      .Homey.__stub.clearApiHandler('GET /ui_homes');
+  });
+  await page.locator('#simulation-disable-button').click();
+
+  await expect(page.locator('#limits-panel')).toBeVisible();
+  await expect(page.locator('#home-limits-simulation-switch')).toBeVisible();
+});

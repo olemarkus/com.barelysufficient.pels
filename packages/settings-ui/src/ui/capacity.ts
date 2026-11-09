@@ -198,9 +198,6 @@ export const syncDryRunBannerVisibility = (): void => {
     renderDryRunBannerText(content.text);
     if (simulationDisableButton) {
       simulationDisableButton.textContent = content.actionLabel ?? '';
-      // The area-scoped line has no one-tap remedy: the button writes MAIN's
-      // flag, which is already off in that state, so it hides and the text
-      // names the page holding each area's own control.
       simulationDisableButton.hidden = content.actionLabel === null;
     }
   }
@@ -215,6 +212,14 @@ export const syncDryRunBannerVisibility = (): void => {
   // input it depends on (the active-area roster) already drives this function.
   syncSimulationHomeScopeNote(state.meterAreaSimulation.length > 0);
 };
+
+// The meter area the banner's button opens, or `null` while the button is
+// about Main's setup. Same precedence as the banner: a simulating Main comes
+// first. With several areas it opens the first; turning that one on moves the
+// banner to the next.
+export const readSimulationBannerAreaId = (): string | null => (
+  state.dryRun ? null : state.meterAreaSimulation.find((area) => area.simulating === true)?.homeId ?? null
+);
 
 // Generation fence, mirroring `refreshHomeScope`: rapid suffixed-flag or
 // roster writes each start an async refresh, and an older one — carrying a
