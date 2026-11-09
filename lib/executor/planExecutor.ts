@@ -277,7 +277,12 @@ export class PlanExecutor {
     const session = this.deps.getSteppedLoadCommandSession(deviceId);
     const target = this.execution.pendingTargetCommands[deviceId];
     return {
-      target: target ? { kind: 'pending', desired: target.desired } : { kind: 'none' },
+      // A write that failed stops holding once its retry is due, or nothing would
+      // reopen a stable plan to send it. A write Homey accepted keeps waiting for
+      // the device: sending it again could fight whatever holds the value.
+      target: target && !(target.status === 'temporary_unavailable' && Date.now() >= target.nextRetryAtMs)
+        ? { kind: 'pending', desired: target.desired }
+        : { kind: 'none' },
       binary: pendingBinary
         ? { kind: 'pending', desired: pendingBinary.desired }
         : { kind: 'none' },

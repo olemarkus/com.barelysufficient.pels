@@ -94,7 +94,9 @@ export function hasPlanDeviceExecutionDrift(
 // awaiting settlement. That bypass is gone with the reconcile mode, so the
 // dampener and the executor's own suppression now agree instead of one covering
 // for the other. Keep the dampener: it is what makes this predicate idempotent
-// across cycles, independent of the executor.
+// across cycles, independent of the executor. A failed write holds only until
+// its retry is due (`PlanExecutor.resolveCommandState`): a stable plan reaches the
+// executor through this predicate alone, so holding longer strands the retry.
 function buildDriftRuntimeState(
   command: DriftCommandRead,
 ): DriftRuntimeState {
