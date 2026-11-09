@@ -77,6 +77,37 @@ export const describeHomeyDeviceForSupport = (device: HomeyDeviceLike): SupportR
   },
 });
 
+/** The most devices one report lists, far more than a home has; it says how many it left out. */
+export const SUPPORT_REPORT_MAX_HOMEY_DEVICES = 500;
+
+/**
+ * Every device on the Homey and the app that provides it, managed by PELS or
+ * not. A log names a device by id only, and how a device behaves when PELS
+ * writes to it depends on that app. `isManaged` is `undefined` for a device
+ * PELS does not hold.
+ */
+export const reportHomeyDevices = (
+  devices: readonly HomeyDeviceLike[],
+  isManaged: (deviceId: string) => boolean | undefined,
+): SupportReportSection => ({
+  title: 'Current Homey devices',
+  values: {
+    devices: devices.slice(0, SUPPORT_REPORT_MAX_HOMEY_DEVICES).map((device) => {
+      const managed = isManaged(device.id);
+      return {
+        id: device.id,
+        name: toReportValue(device.name),
+        class: device.class,
+        ownerUri: device.ownerUri,
+        driverId: device.driverId,
+        available: device.available,
+        ...(managed === undefined ? {} : { managed }),
+      };
+    }),
+    leftOut: Math.max(0, devices.length - SUPPORT_REPORT_MAX_HOMEY_DEVICES),
+  },
+});
+
 /**
  * One Homey device as a device support request describes it, listed by PELS
  * or not; `undefined` when Homey has no such device. A failed read rejects.

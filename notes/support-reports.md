@@ -88,6 +88,10 @@ command PELS sent, its acknowledgement and a stepped device's reported level
 to, and on a busy home those lines alone pushed the morning out of the daily report
 (2026-10-26). It names the events it left out; a change nobody commanded stays. A
 report about one device, or the hour before an incident, keeps them all.
+Every report lists the devices on the Homey (`Current Homey devices`, at most 500): id,
+name, class, the providing app (`ownerUri`), driver, availability, and whether PELS
+manages it, read from Homey at capture. A log names a device by id only, and why a write
+fails often depends on the app behind it. A failed read is a visible omission.
 The current collector does not dump settings, credentials or raw Homey devices into
 the message, and of stdout only the structured lines it kept. New sections require explicit field
 selection at their diagnostic projection, rather than serializing an owner object.

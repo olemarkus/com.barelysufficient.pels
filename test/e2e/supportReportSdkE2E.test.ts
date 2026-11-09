@@ -105,6 +105,14 @@ describe('manual report through the app API and Homey boundary', () => {
         capabilities: expect.objectContaining({ measure_power: expect.objectContaining({ value: 2950 }) }),
       }),
     }));
+    expect(decodeReportMessage(prepared.report.message).sections).toContainEqual(expect.objectContaining({
+      title: 'Current Homey devices',
+      values: expect.objectContaining({
+        devices: expect.arrayContaining([
+          expect.objectContaining({ id: 'relay', ownerUri: 'homey:app:com.knx', driverId: 'switch' }),
+        ]),
+      }),
+    }));
   });
 
   it.each([200, 400, 408])('sends the daily report only once a day even after HTTP %s', async (status) => {

@@ -13,13 +13,14 @@ import type {
   SupportReportRequest, SupportReportSection, SupportReportSubject, SupportReportTrigger,
 } from '../../packages/contracts/src/supportReport';
 import type { CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
-import type { HomeyDeviceSupportDescription } from './homeyDeviceSupportSection';
+import { reportHomeyDevices, type HomeyDeviceSupportDescription } from './homeyDeviceSupportSection';
 import { DEVICE_EVENT_MAX_ENTRIES_PER_DEVICE, DEVICE_EVENT_RETENTION_DAYS } from './deviceEventStore';
 import type { LogTailRead } from './logTailStore';
 import { MAIN_HOME_ID } from '../home/homeConfig';
 import type { HomeRuntimeReadPort, HomeRuntimeReading } from '../home/homeRuntimeRead';
 import type { HomeMembershipPort } from '../home/membership';
 import type { DevicePlan } from '../plan/planTypes';
+import type { HomeyDeviceLike } from '../utils/types';
 import { selectSupportReportActivity, supportReportWindow } from './supportReportHistory';
 import { SupportReportInputError } from './supportReportInput';
 import {
@@ -51,6 +52,8 @@ export type SupportReportReads = {
    * Homey cannot be read.
    */
   describeHomeyDeviceForSupport(deviceId: string): Promise<HomeyDeviceSupportDescription | undefined>;
+  /** Every device on the Homey, whether or not PELS lists it. Rejects when Homey cannot be read. */
+  listHomeyDevices(): Promise<readonly HomeyDeviceLike[]>;
   getHomeMembership(): Pick<HomeMembershipPort,
     'isOwnershipReady' | 'hasPendingOwnershipGeneration' | 'getHomeIdForDevice'>;
   /** Main's latest plan decisions; `null` before the first plan. */
@@ -119,6 +122,18 @@ const resolveDeviceSupportSubject = async (
   }
   if (!description) throw new SupportReportInputError('invalid_subject');
   return { name: description.name, sections: [description.section] };
+};
+
+const readHomeyDevicesSection = async (host: SupportReportReads): Promise<SectionRead> => {
+  try {
+    const devices = await host.listHomeyDevices();
+    return {
+      state: 'available',
+      section: reportHomeyDevices(devices, (deviceId) => readOptional(() => host.getDeviceSnapshot(deviceId)?.managed)),
+    };
+  } catch {
+    return { state: 'unavailable', reason: 'Current Homey devices is unavailable.' };
+  }
 };
 
 /** The device's latest retained activity row at or before `atMs`. */
@@ -457,6 +472,7 @@ export class SupportReportEvidenceSource {
       ? readCarLink(host, request.subject) : { state: 'read', link: undefined };
     // Read before the log, which gives up the room these take.
     const heating = readHeatingShadowSection(host, request, capturedAtMs, trigger);
+    const homeyDevices = await readHomeyDevicesSection(host);
     const sectionReads: SectionRead[] = [
       ...(supportSubject?.sections ?? []).map((section): SectionRead => ({ state: 'available', section })),
       ...readDeviceSections(host, request.subject, subject.currentDevice, plan, capturedAtMs),
@@ -465,6 +481,7 @@ export class SupportReportEvidenceSource {
       ...heating,
       ...readHomeSections(host, request.subject.homeId, plan, area),
       ...readPriceSections(host, capturedAtMs),
+      homeyDevices,
     ];
     return {
       subjectName: subject.name,
