@@ -1,3 +1,4 @@
+import { PassThrough } from 'node:stream';
 import type Homey from 'homey';
 import { getDeviceAdapter } from '../../lib/device/deviceAdapterRegistry';
 import { findDeviceReadContractViolation } from '../../lib/device/transport/deviceReadContract';
@@ -7,7 +8,7 @@ import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices, onOb
 import { emitCapability, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import { mockHomeyInstance, setMockGeolocation } from '../mocks/homey';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
-import { getLogger } from '../../lib/logging/logger';
+import { createRootLogger, getLogger, setRootLogger } from '../../lib/logging/logger';
 import { TeslaChargingSession } from '../../lib/device/tesla/session';
 import { applyNativeEvWiringOverlay } from '../../lib/device/nativeEvWiring';
 import { resolveDeviceClassKey } from '../../lib/device/transport/managerHelpers';
@@ -669,4 +670,48 @@ test('a Flow setting the current holds the built-in route back for step requests
     expect(trigger).toHaveBeenCalledOnce();
     expect(transport.reportSteppedLoadActualStep('battery', '6a', 4140)).toEqual({ kind: 'native_control' });
   } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
+});
+
+describe('home evidence log', () => {
+  let lines: Record<string, unknown>[] = [];
+  const evidenceLines = () => lines.filter((line) => line.event === 'tesla_home_evidence_changed');
+  beforeEach(() => {
+    lines = [];
+    setRootLogger(createRootLogger({ write: (line: string) => { lines.push(JSON.parse(line)); } }, 'info'));
+  });
+  afterEach(() => { setRootLogger(createRootLogger(new PassThrough(), 'silent')); });
+
+  test('names the failing check once per change of outcome', () => {
+    const owner = session(); const [battery, location, car] = devices();
+    owner.observeDevices([battery!, car!]);
+    expect(owner.isAllowed('battery')).toBe(false);
+    expect(owner.isAllowed('battery')).toBe(false);
+    owner.observeDevices([location!]);
+    expect(owner.isAllowed('battery')).toBe(true);
+    expect(evidenceLines()).toMatchObject([
+      { deviceId: 'battery', kind: 'failed', check: 'no_location_device' },
+      { deviceId: 'battery', kind: 'home' },
+    ]);
+  });
+
+  test('reports how far the car is from home without its position', () => {
+    const owner = session(); const initial = devices();
+    initial[1]!.capabilitiesObj!.measure_location_latitude = cap(60.01);
+    owner.observeDevices(initial);
+    expect(owner.isAllowed('battery')).toBe(false);
+    expect(evidenceLines()).toMatchObject([{ kind: 'too_far', distanceFromHomeM: 1112 }]);
+    expect(JSON.stringify(evidenceLines())).not.toContain('60.01');
+  });
+
+  test.each([
+    ['car_not_online', 2, { car_state: cap('asleep', now) }],
+    ['car_in_gear', 2, { car_shift_state: cap('D', now) }],
+    ['no_ac_cable', 0, { charging_port_cable: cap('', now) }],
+  ] as const)('reports %s', (check, index, patch) => {
+    const owner = session(); const initial = devices();
+    initial[index] = { ...initial[index]!, capabilitiesObj: { ...initial[index]!.capabilitiesObj, ...patch } };
+    owner.observeDevices(initial);
+    expect(owner.isAllowed('battery')).toBe(false);
+    expect(evidenceLines()).toMatchObject([{ kind: 'failed', check }]);
+  });
 });

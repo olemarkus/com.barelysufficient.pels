@@ -8,8 +8,12 @@ import { ACKNOWLEDGED_CURRENT_CAPABILITY_ID } from '../deviceAdapter';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { toCapabilityTimestampMs } from '../managerControl';
 import { isTeslaChargingDevice, teslaDriver } from './identity';
+import { getLogger } from '../../logging/logger';
 
-import { hasTeslaHomeEvidence, type HomeLocation } from './evidence';
+import { resolveTeslaHomeEvidence, type HomeLocation, type TeslaHomeEvidence } from './evidence';
+
+const logger = getLogger('device/tesla');
+
 const NUMERIC_OBSERVATIONS = new Set([
   'measure_location_latitude', 'measure_location_longitude', 'measure_car_drive_speed',
   'measure_charge_current_max', 'measure_charge_current', 'measure_charge_power', 'measure_charge_power_dc',
@@ -30,6 +34,7 @@ function isObservationValue(id: string, value: unknown): boolean {
 export class TeslaChargingSession implements DeviceAdapterSession {
   private readonly devices = new Map<string, HomeyDeviceLike>();
   private trustEpoch = '';
+  private readonly lastEvidence = new Map<string, string>();
 
   constructor(private readonly home: HomeLocation) {}
 
@@ -80,6 +85,7 @@ export class TeslaChargingSession implements DeviceAdapterSession {
   retainDevices(devices: readonly HomeyDeviceLike[]): void {
     const ids = new Set(devices.map((device) => device.id));
     for (const id of this.devices.keys()) if (!ids.has(id)) this.devices.delete(id);
+    for (const id of this.lastEvidence.keys()) if (!ids.has(id)) this.lastEvidence.delete(id);
   }
 
   observeDevice(device: HomeyDeviceLike): void {
@@ -128,7 +134,20 @@ export class TeslaChargingSession implements DeviceAdapterSession {
     const battery = this.devices.get(deviceId);
     if (!battery || !isTeslaChargingDevice(battery)) return false;
     // Away coordinates, motion, a disconnect or an unavailable companion fail this at once.
-    return hasTeslaHomeEvidence(battery, [...this.devices.values()], this.home);
+    const evidence = resolveTeslaHomeEvidence(battery, [...this.devices.values()], this.home);
+    this.logEvidenceChange(battery, evidence);
+    return evidence.kind === 'home';
+  }
+
+  /**
+   * One line per change of outcome, because this runs on every projection. The
+   * failing check is the only record of why a car at home reads as Unavailable.
+   */
+  private logEvidenceChange(battery: HomeyDeviceLike, evidence: TeslaHomeEvidence): void {
+    const outcome = evidence.kind === 'failed' ? evidence.check : evidence.kind;
+    if (this.lastEvidence.get(battery.id) === outcome) return;
+    this.lastEvidence.set(battery.id, outcome);
+    logger.info({ event: 'tesla_home_evidence_changed', deviceId: battery.id, deviceName: battery.name, ...evidence });
   }
 }
 
