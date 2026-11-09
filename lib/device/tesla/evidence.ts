@@ -15,6 +15,26 @@ function distanceM(point: Coordinates, home: Coordinates): number {
   return 6_371_000 * 2 * Math.atan2(Math.sqrt(boundedA), Math.sqrt(1 - boundedA));
 }
 
+/** The check that kept a Tesla battery out of a home charging session, for the log and nothing else. */
+export type TeslaHomeCheck =
+  | 'no_vehicle_id' | 'battery_unavailable' | 'not_connected_state' | 'no_ac_cable' | 'dc_charging'
+  | 'no_location_device' | 'multiple_location_devices' | 'no_car_device' | 'multiple_car_devices'
+  | 'car_unavailable' | 'car_not_online' | 'car_moving' | 'car_in_gear'
+  | 'location_unavailable' | 'no_car_coordinates' | 'no_home_coordinates'
+  | 'coordinates_undated' | 'coordinates_in_future';
+
+/** Why a battery is or is not in a home session. Carries a distance from home, never a position. */
+export type TeslaHomeEvidence =
+  | { kind: 'home' }
+  | { kind: 'failed'; check: TeslaHomeCheck }
+  | { kind: 'too_far'; distanceFromHomeM: number };
+
+const MAX_HOME_DISTANCE_M = 100;
+
+function failed(check: TeslaHomeCheck): TeslaHomeEvidence {
+  return { kind: 'failed', check };
+}
+
 /**
  * Called only for a car whose battery reports a connected AC cable, which a
  * Tesla cannot drive with. The app sets the shift state from a Fleet API poll
@@ -22,21 +42,22 @@ function distanceM(point: Coordinates, home: Coordinates): number {
  * shift state therefore does not block home evidence, while a reported R, N
  * or D does.
  */
-function isStationaryOnlineCar(car: HomeyDeviceLike): boolean {
-  if (!car.available) return false;
+function stationaryOnlineCarFailure(car: HomeyDeviceLike): TeslaHomeCheck | undefined {
+  if (car.available === false) return 'car_unavailable';
   const caps = car.capabilitiesObj;
-  const shift = caps?.car_shift_state?.value;
-  return caps?.car_state?.value === 'online' && caps.measure_car_drive_speed?.value === 0
-    && (shift === 'P' || shift === '' || shift == null);
+  if (caps?.car_state?.value !== 'online') return 'car_not_online';
+  if (caps.measure_car_drive_speed?.value !== 0) return 'car_moving';
+  const shift = caps.car_shift_state?.value;
+  return shift === 'P' || shift === '' || shift == null ? undefined : 'car_in_gear';
 }
 
-function isConnectedAcBattery(battery: HomeyDeviceLike): boolean {
-  if (!battery.available) return false;
+function connectedAcBatteryFailure(battery: HomeyDeviceLike): TeslaHomeCheck | undefined {
+  if (battery.available === false) return 'battery_unavailable';
   const caps = battery.capabilitiesObj;
-  if (!['Starting', 'Charging', 'Stopped'].includes(String(caps?.charging_state?.value))) return false;
-  if (!['IEC', 'SAE', 'GB_AC'].includes(String(caps?.charging_port_cable?.value))) return false;
+  if (!['Starting', 'Charging', 'Stopped'].includes(String(caps?.charging_state?.value))) return 'not_connected_state';
+  if (!['IEC', 'SAE', 'GB_AC'].includes(String(caps?.charging_port_cable?.value))) return 'no_ac_cable';
   const dc = caps?.measure_charge_power_dc?.value;
-  return dc == null || dc === 0;
+  return dc == null || dc === 0 ? undefined : 'dc_charging';
 }
 
 /**
@@ -44,32 +65,49 @@ function isConnectedAcBattery(battery: HomeyDeviceLike): boolean {
  * evidence: Homey re-dates a coordinate only when it changes, so a parked car
  * keeps the date it arrived with.
  */
-function isAtHome(location: HomeyDeviceLike, home: HomeLocation): boolean {
-  if (!location.available) return false;
-  const latitude = location.capabilitiesObj.measure_location_latitude;
-  const longitude = location.capabilitiesObj.measure_location_longitude;
+function locationEvidence(location: HomeyDeviceLike, home: HomeLocation): TeslaHomeEvidence {
+  if (location.available === false) return failed('location_unavailable');
+  const latitude = location.capabilitiesObj?.measure_location_latitude;
+  const longitude = location.capabilitiesObj?.measure_location_longitude;
   const point = readCoordinates(latitude?.value, longitude?.value);
+  if (!point) return failed('no_car_coordinates');
   const homePoint = home.coordinates();
-  if (!point || !homePoint || distanceM(point, homePoint) > 100) return false;
+  if (!homePoint) return failed('no_home_coordinates');
+  const distance = distanceM(point, homePoint);
+  if (distance > MAX_HOME_DISTANCE_M) return { kind: 'too_far', distanceFromHomeM: Math.round(distance) };
   const latitudeAt = toCapabilityTimestampMs(latitude?.lastUpdated);
   const longitudeAt = toCapabilityTimestampMs(longitude?.lastUpdated);
-  if (latitudeAt === undefined || longitudeAt === undefined) return false;
-  return latitudeAt <= Date.now() && longitudeAt <= Date.now();
+  if (latitudeAt === undefined || longitudeAt === undefined) return failed('coordinates_undated');
+  return latitudeAt <= Date.now() && longitudeAt <= Date.now()
+    ? { kind: 'home' } : failed('coordinates_in_future');
 }
 
-/** Whether the vendor observations show a stationary AC charging session at home. */
-export function hasTeslaHomeEvidence(
+function soleCompanion(
+  siblings: readonly HomeyDeviceLike[],
+  driver: 'location' | 'car',
+): HomeyDeviceLike | 'none' | 'multiple' {
+  const matches = siblings.filter((device) => teslaDriver(device) === driver);
+  if (matches.length === 0) return 'none';
+  return matches.length === 1 ? matches[0]! : 'multiple';
+}
+
+/** Whether the vendor observations show a stationary AC session at home, or the first check that failed. */
+export function resolveTeslaHomeEvidence(
   battery: HomeyDeviceLike,
   devices: readonly HomeyDeviceLike[],
   home: HomeLocation,
-): boolean {
-  const vehicleId = battery.data.id;
-  if (!vehicleId || !isConnectedAcBattery(battery)) return false;
-  const siblings = devices.filter((device) => device.data.id === vehicleId);
-  const locations = siblings.filter((device) => teslaDriver(device) === 'location');
-  const cars = siblings.filter((device) => teslaDriver(device) === 'car');
-  const location = locations.length === 1 ? locations[0] : undefined;
-  const car = cars.length === 1 ? cars[0] : undefined;
-  if (!location || !car || !isStationaryOnlineCar(car)) return false;
-  return isAtHome(location, home);
+): TeslaHomeEvidence {
+  const vehicleId = battery.data?.id;
+  if (!vehicleId) return failed('no_vehicle_id');
+  const batteryFailure = connectedAcBatteryFailure(battery);
+  if (batteryFailure) return failed(batteryFailure);
+  const siblings = devices.filter((device) => device.data?.id === vehicleId);
+  const location = soleCompanion(siblings, 'location');
+  if (location === 'none') return failed('no_location_device');
+  if (location === 'multiple') return failed('multiple_location_devices');
+  const car = soleCompanion(siblings, 'car');
+  if (car === 'none') return failed('no_car_device');
+  if (car === 'multiple') return failed('multiple_car_devices');
+  const carFailure = stationaryOnlineCarFailure(car);
+  return carFailure ? failed(carFailure) : locationEvidence(location, home);
 }
