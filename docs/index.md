@@ -106,7 +106,7 @@ editLink: false
 
   If your home should behave differently when you are home, away or asleep, configure modes and switch them from Homey Flows. Modes can change comfort targets and priorities without rebuilding your automations.
 
-  [Read the modes use case](./use-cases/homey-home-away-night-energy-modes.md) · [Open configuration docs](./configuration.md) · [See available Flow cards](./flow-cards.md)
+  [Read the modes use case](./use-cases/homey-home-away-night-energy-modes.md) · [Temporarily change one heater's temperature](./use-cases/homey-temporary-heater-temperature.md) · [Open configuration docs](./configuration.md) · [See available Flow cards](./flow-cards.md)
 
   ### Use Homey Energy, Tibber Pulse, an AMS/HAN or P1 meter reader, or Flow data as input
 

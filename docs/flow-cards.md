@@ -109,6 +109,8 @@ Use **Set operating mode** from schedules or presence events to move between com
 
 ### Temperature changes from a Flow
 
+For a step-by-step temporary change with screenshots, see [Temporarily change one heater's temperature](/use-cases/homey-temporary-heater-temperature).
+
 Let your Flows change PELS's settings for a thermostat instead of writing to the thermostat directly. With the device on **Return to mode target**, PELS then keeps adjusting for price, solar and power on top of what the Flow chose.
 
 - **Lower a room while a door is open:** when the door opens, **Set mode temperature for device** in **Active mode** to 17 °C; when it closes, set it back to 21 °C.
