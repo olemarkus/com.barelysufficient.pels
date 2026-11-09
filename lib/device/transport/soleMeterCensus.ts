@@ -1,6 +1,6 @@
 import { getLogger } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
-import { isHomeyDeviceLike } from '../../utils/types';
+import { parseHomeyDevicePayload } from './homeyDevicePayload';
 import type { SoleMeterAdoptionCensus } from '../../power/soleMeterAdoption';
 import { resolveSoleMeterAdoptionCandidate } from '../soleCumulativeMeter';
 import { DEVICES_API_PATH, getEnergyLiveReport, getRawDevices } from './managerHomeyApi';
@@ -9,7 +9,8 @@ const moduleLogger = getLogger('device/sole-meter-census');
 
 /** At least one entry is a device record; a keyed error body or an empty payload is not a registry. */
 const holdsDeviceRecords = (rawDevices: Record<string, unknown> | unknown[]): boolean => (
-  (Array.isArray(rawDevices) ? rawDevices : Object.values(rawDevices)).some(isHomeyDeviceLike)
+  (Array.isArray(rawDevices) ? rawDevices : Object.values(rawDevices))
+    .some((entry) => parseHomeyDevicePayload(entry) !== null)
 );
 
 /**

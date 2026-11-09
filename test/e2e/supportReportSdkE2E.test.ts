@@ -101,7 +101,7 @@ describe('manual report through the app API and Homey boundary', () => {
     expect(decodeReportMessage(prepared.report.message).sections).toContainEqual(expect.objectContaining({
       title: 'Homey device',
       values: expect.objectContaining({
-        class: 'light', ownerUri: 'homey:app:com.knx', driverId: 'switch',
+        class: 'light', ownerUri: 'homey:app:com.knx', driverId: 'homey:app:com.knx:switch',
         capabilities: expect.objectContaining({ measure_power: expect.objectContaining({ value: 2950 }) }),
       }),
     }));
@@ -109,7 +109,7 @@ describe('manual report through the app API and Homey boundary', () => {
       title: 'Current Homey devices',
       values: expect.objectContaining({
         devices: expect.arrayContaining([
-          expect.objectContaining({ id: 'relay', ownerUri: 'homey:app:com.knx', driverId: 'switch' }),
+          expect.objectContaining({ id: 'relay', ownerUri: 'homey:app:com.knx', driverId: 'homey:app:com.knx:switch' }),
         ]),
       }),
     }));

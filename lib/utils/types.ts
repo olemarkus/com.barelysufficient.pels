@@ -2,7 +2,7 @@ import type {
     TargetPowerSteppedLoadConfig,
     TargetPowerSteppedLoadPreset,
 } from '../../packages/contracts/src/types';
-import { isUnknownRecord, type UnknownRecord } from '../../packages/shared-domain/src/recordGuards';
+import type { UnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 
 export type Logger = {
     log: (...args: unknown[]) => void;
@@ -95,7 +95,7 @@ export type HomeyDeviceLike = {
     energy: Record<string, unknown> | null;
     energyObj: Record<string, unknown> | null;
     available: boolean;
-    ready: boolean;
+    ready: boolean | null;
     unavailableMessage: string | null;
     /** The zone id. */
     zone: string;
@@ -105,26 +105,3 @@ export type RawHomeyDeviceLike = UnknownRecord & {
     id?: unknown;
     name?: unknown;
 };
-
-const isRecordOrNull = (value: unknown): boolean => value === null || isUnknownRecord(value);
-const isStringOrNull = (value: unknown): boolean => value === null || typeof value === 'string';
-
-/**
- * The boundary for a device read from Homey: its server always sends these
- * fields, so past this guard they are trusted and a malformed payload is dropped.
- */
-export const isHomeyDeviceLike = (value: unknown): value is HomeyDeviceLike => (
-    isUnknownRecord(value)
-    && (['id', 'name', 'class', 'driverId', 'ownerUri', 'zone'] as const).every((key) => typeof value[key] === 'string')
-    && typeof value.available === 'boolean'
-    && typeof value.ready === 'boolean'
-    && isStringOrNull(value.virtualClass)
-    && isStringOrNull(value.unavailableMessage)
-    && isRecordOrNull(value.energy)
-    && isRecordOrNull(value.energyObj)
-    && isUnknownRecord(value.data)
-    && isUnknownRecord(value.settings)
-    && isUnknownRecord(value.capabilitiesObj)
-    && Array.isArray(value.capabilities)
-    && value.capabilities.every((id) => typeof id === 'string')
-);

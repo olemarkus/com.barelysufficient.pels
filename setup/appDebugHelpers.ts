@@ -8,7 +8,7 @@ import type { HomeyEnergyMeterEntry } from '../packages/contracts/src/settingsUi
 import type { HomeyDeviceListEntry } from '../packages/contracts/src/settingsUi/homeyDevices';
 import { DEVICES_API_PATH, getRawDevices } from '../lib/device/transport/managerHomeyApi';
 import type { HomeyDeviceLike } from '../lib/utils/types';
-import { isHomeyDeviceLike } from '../lib/utils/types';
+import { parseHomeyDevicePayload } from '../lib/device/transport/homeyDevicePayload';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { safeJsonStringify, sanitizeLogValue } from '../lib/utils/logUtils';
 import { getLogger } from '../lib/logging/logger';
@@ -45,9 +45,8 @@ const getRawManagerDeviceEntry = async (params: {
     const devices = await getRawDevices(DEVICES_API_PATH);
     const list = Array.isArray(devices) ? devices : Object.values(devices || {});
     for (const entry of list) {
-      if (isHomeyDeviceLike(entry) && entry.id === deviceId) {
-        return entry;
-      }
+      const device = parseHomeyDevicePayload(entry);
+      if (device?.id === deviceId) return device;
     }
     return null;
   } catch {

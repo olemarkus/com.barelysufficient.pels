@@ -170,7 +170,7 @@ export const compactHomeyDevice = (device: HomeyDeviceLike): HomeyDeviceSummary 
     class: device.class,
     driverId: device.driverId,
     available: device.available,
-    ready: device.ready,
+    ...(device.ready === null ? {} : { ready: device.ready }),
     zone: device.zone,
     ...(asTimestampString(record.lastSeenAt) ? { lastSeenAt: asTimestampString(record.lastSeenAt) } : {}),
     capabilities: device.capabilities,
