@@ -17,6 +17,7 @@ import {
   CAPACITY_MARGIN_KW,
   CONTROLLABLE_DEVICES,
   DEVICE_TARGET_POWER_CONFIGS,
+  DEVICE_TARGET_POWER_REACHABILITY,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
@@ -24,6 +25,7 @@ import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrive
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { drainPending } from '../utils/asyncDrain';
 import api from '../../api';
+import { buildEvTargetPowerProfileFingerprint } from '../../lib/device/targetPowerReachability';
 
 const CHARGER_ID = 'flow-charger';
 
@@ -109,5 +111,90 @@ describe('bridge Flow EV power report (SDK-boundary e2e)', () => {
     await vi.advanceTimersByTimeAsync(6 * 60 * 1000);
     await drainPending();
     expect(await readChargerCard()).toMatchObject(onSixAmps);
+  });
+
+  it('keeps a report a little over a rung as that rung after refreshes', async () => {
+    const charger = await buildFlowCharger(4_614);
+    setMockDrivers({ driverA: new MockDriver('driverA', [charger]) });
+    configureRuntime();
+    reportHomePower(4_614 + 500);
+
+    const app = createApp();
+    await app.onInit();
+    const reportPower = mockHomeyInstance.flow._actionCardListeners.report_stepped_load_power;
+    if (!reportPower) throw new Error('Expected report_stepped_load_power to be registered.');
+    const onTwentyAmps = {
+      factText: 'Charging · level 20 A',
+      rail: { labels: ['Off', '6 A', '8 A', '10 A', '12 A', '14 A', '16 A', '20 A'], activeIndex: 7 },
+    };
+
+    // The 20 A rung is 4600 W; at 230.7 V a car on it reads 4614 W.
+    await expect(reportPower({ device: CHARGER_ID, power_w: '4614 W' })).resolves.toBe(true);
+    expect(await readChargerCard()).toMatchObject(onTwentyAmps);
+
+    await vi.advanceTimersByTimeAsync(6 * 60 * 1000);
+    await drainPending();
+    expect(await readChargerCard()).toMatchObject(onTwentyAmps);
+  });
+
+  it('reads a maximum saved just over a rung as that rung', async () => {
+    const charger = await buildFlowCharger(6_449);
+    setMockDrivers({ driverA: new MockDriver('driverA', [charger]) });
+    configureRuntime();
+    reportHomePower(6_449 + 500);
+    // 28 A at about 233 V, learned before readings over a rung counted as that rung.
+    mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_REACHABILITY, {
+      [CHARGER_ID]: {
+        profileFingerprint: buildEvTargetPowerProfileFingerprint({
+          enabled: true, preset: 'ev_charger_1_phase', max: 7_360,
+        }),
+        maxReachedPowerW: 6_514,
+        probeFailureCount: 37,
+      },
+    });
+
+    const app = createApp();
+    await app.onInit();
+    const reportPower = mockHomeyInstance.flow._actionCardListeners.report_stepped_load_power;
+    if (!reportPower) throw new Error('Expected report_stepped_load_power to be registered.');
+
+    await expect(reportPower({ device: CHARGER_ID, power_w: '6449 W' })).resolves.toBe(true);
+    const card = await readChargerCard();
+    expect(card?.factText).toBe('Charging · level 28 A');
+    expect(card?.rail?.labels).not.toContain('28.322a');
+  });
+
+  it('keeps a stated current just under an earned rung as its own step', async () => {
+    const charger = await buildFlowCharger(5_635);
+    setMockDrivers({ driverA: new MockDriver('driverA', [charger]) });
+    configureRuntime();
+    reportHomePower(5_635 + 500);
+
+    const app = createApp();
+    await app.onInit();
+    const reportPower = mockHomeyInstance.flow._actionCardListeners.report_stepped_load_power;
+    if (!reportPower) throw new Error('Expected report_stepped_load_power to be registered.');
+
+    await expect(reportPower({ device: CHARGER_ID, power_w: '25 A' })).resolves.toBe(true);
+    expect((await readChargerCard())?.factText).toBe('Charging · level 25 A');
+    await expect(reportPower({ device: CHARGER_ID, power_w: '24.5 A' })).resolves.toBe(true);
+    expect((await readChargerCard())?.factText).toBe('Charging · level 24.5a');
+  });
+
+  it('reads a measured draw between two rungs as the rung below', async () => {
+    const charger = await buildFlowCharger(5_112);
+    setMockDrivers({ driverA: new MockDriver('driverA', [charger]) });
+    configureRuntime();
+    reportHomePower(5_112 + 500);
+
+    const app = createApp();
+    await app.onInit();
+    const reportPower = mockHomeyInstance.flow._actionCardListeners.report_stepped_load_power;
+    if (!reportPower) throw new Error('Expected report_stepped_load_power to be registered.');
+
+    await expect(reportPower({ device: CHARGER_ID, power_w: '5112 W' })).resolves.toBe(true);
+    const card = await readChargerCard();
+    expect(card?.factText).toBe('Charging · level 20 A');
+    expect(card?.rail?.labels).not.toContain('22.226a');
   });
 });
