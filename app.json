@@ -41,7 +41,7 @@
   "homepage": "https://pels.barelysufficient.org/",
   "support": "mailto:olemarkus@gmail.com",
   "bugs": {
-    "url": "https://github.com/olemarkus/com.barelysufficient.pels/issues"
+    "url": "https://pels.barelysufficient.org/support"
   },
   "tags": {
     "en": [
@@ -84,7 +84,14 @@
       "Smart tasks",
       "Power by the Hour",
       "Sessy",
-      "Marstek"
+      "Marstek",
+      "Alfen",
+      "Peblar",
+      "Wallbox",
+      "Zappi",
+      "Zendure",
+      "Huawei",
+      "Sigenergy"
     ],
     "no": [
       "effektledd",
@@ -122,7 +129,14 @@
       "Zaptec",
       "hjemmebatteri",
       "Sessy",
-      "Marstek"
+      "Marstek",
+      "Alfen",
+      "Peblar",
+      "Wallbox",
+      "Zappi",
+      "Zendure",
+      "Huawei",
+      "Sigenergy"
     ],
     "nl": [
       "zonnepanelen",
@@ -164,7 +178,14 @@
       "batterij",
       "Power by the Hour",
       "Sessy",
-      "Marstek"
+      "Marstek",
+      "Alfen",
+      "Peblar",
+      "Wallbox",
+      "Zappi",
+      "Zendure",
+      "Huawei",
+      "Sigenergy"
     ],
     "fr": [
       "heures creuses",
@@ -203,7 +224,16 @@
       "climatisation",
       "Power by the Hour",
       "Sessy",
-      "Marstek"
+      "Marstek",
+      "Easee",
+      "Zaptec",
+      "Alfen",
+      "Peblar",
+      "Wallbox",
+      "Zappi",
+      "Zendure",
+      "Huawei",
+      "Sigenergy"
     ],
     "it": [
       "gestione carichi",
@@ -228,7 +258,14 @@
       "Easee",
       "Zaptec",
       "Sessy",
-      "Marstek"
+      "Marstek",
+      "Alfen",
+      "Peblar",
+      "Wallbox",
+      "Zappi",
+      "Zendure",
+      "Huawei",
+      "Sigenergy"
     ],
     "sv": [
       "elpris",
@@ -261,7 +298,14 @@
       "Easee",
       "Zaptec",
       "Sessy",
-      "Marstek"
+      "Marstek",
+      "Alfen",
+      "Peblar",
+      "Wallbox",
+      "Zappi",
+      "Zendure",
+      "Huawei",
+      "Sigenergy"
     ],
     "de": [
       "dynamischer Stromtarif",
@@ -297,7 +341,13 @@
       "Easee",
       "Zaptec",
       "Sessy",
-      "Marstek"
+      "Marstek",
+      "Alfen",
+      "Peblar",
+      "Zappi",
+      "Zendure",
+      "Huawei",
+      "Sigenergy"
     ],
     "da": [
       "elpris",
@@ -329,7 +379,14 @@
       "Easee",
       "Zaptec",
       "Sessy",
-      "Marstek"
+      "Marstek",
+      "Alfen",
+      "Peblar",
+      "Wallbox",
+      "Zappi",
+      "Zendure",
+      "Huawei",
+      "Sigenergy"
     ],
     "fi": [
       "pörssisähkö",
@@ -363,7 +420,14 @@
       "Easee",
       "Zaptec",
       "Sessy",
-      "Marstek"
+      "Marstek",
+      "Alfen",
+      "Peblar",
+      "Wallbox",
+      "Zappi",
+      "Zendure",
+      "Huawei",
+      "Sigenergy"
     ],
     "pl": [
       "fotowoltaika",
@@ -384,7 +448,18 @@
       "zarządzanie mocą",
       "ograniczenie poboru mocy",
       "Smart tasks",
-      "Power by the Hour"
+      "Power by the Hour",
+      "Easee",
+      "Zaptec",
+      "Alfen",
+      "Peblar",
+      "Wallbox",
+      "Zappi",
+      "Sessy",
+      "Marstek",
+      "Zendure",
+      "Huawei",
+      "Sigenergy"
     ]
   },
   "permissions": [

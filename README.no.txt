@@ -1,4 +1,4 @@
-PELS reduserer effekttoppene ved å senke ladestrømmen, justere varmen eller pause enheter med lavere prioritet. Ladestrømmen økes og enhetene starter igjen når det er ledig effekt. Appen styrer blant annet Easee- og Zaptec-ladere, varmtvannsberedere, panelovner, varmepumper og hjemmebatterier gjennom styringsfunksjonene enhetenes Homey-apper tilbyr. Du velger hvilke enheter som skal få strøm først, også når utstyret kommer fra ulike produsenter.
+PELS reduserer effekttoppene ved å senke ladestrømmen, justere varmen eller pause enheter med lavere prioritet. Ladestrømmen økes og enhetene starter igjen når det er ledig effekt. Appen styrer blant annet ladere fra Easee, Zaptec, Alfen, Peblar, Wallbox og Zappi, varmtvannsberedere, panelovner, varmepumper og hjemmebatterier gjennom styringsfunksjonene enhetenes Homey-apper tilbyr. Du velger hvilke enheter som skal få strøm først, også når utstyret kommer fra ulike produsenter.
 
 Etter installasjonen åpner du Homey > Mer > Apper > PELS > Innstillinger for å fullføre oppsettet. Her velger du enheter, setter opp PELS og ser hva appen gjør.
 

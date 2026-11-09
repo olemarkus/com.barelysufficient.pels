@@ -1,4 +1,4 @@
-Pörssisähkön hinta vaihtelee, mutta koti ja käyttövesi pitää saada lämpimäksi oikeaan aikaan. PELS ajoittaa sähkölämmityksen, lämpöpumppujen ja lämminvesivaraajien käytön sekä sähköauton latauksen edullisille tunneille. Laitteita ohjataan niiden Homey-sovellusten tarjoamilla toiminnoilla. Esimerkkejä ovat Easeen ja Zaptecin latausasemat sekä Sessyn ja Marstek Venus -sarjan kotiakut.
+Pörssisähkön hinta vaihtelee, mutta koti ja käyttövesi pitää saada lämpimäksi oikeaan aikaan. PELS ajoittaa sähkölämmityksen, lämpöpumppujen ja lämminvesivaraajien käytön sekä sähköauton latauksen edullisille tunneille. Laitteita ohjataan niiden Homey-sovellusten tarjoamilla toiminnoilla. Esimerkkejä ovat Easeen, Zaptecin, Alfenin, Peblarin, Wallboxin ja Zappin latausasemat sekä Sessyn, Marstek Venus -sarjan, Zenduren, Huawei LUNA2000:n, Sigenergyn ja Anker SOLIXin kotiakut.
 
 Avaa asennuksen jälkeen Homey > More > Apps > PELS > Settings ja viimeistele käyttöönotto. Täällä valitset laitteet, määrität PELSin asetukset ja näet, mitä sovellus tekee.
 
@@ -8,7 +8,7 @@ Smart tasks -toiminnolla määrität, milloin auton pitää olla ladattu tai huo
 
 Saunan lämmitys voi nostaa kulutusta juuri auton latautuessa. Grid import limit seuraa kodin verkosta ottamaa tehoa, ja PELS pienentää lataustehoa, säätää lämmitystä tai keskeyttää vähemmän tärkeiden laitteiden käytön. Ne jatkavat, kun tehoa on taas käytettävissä. Jos maksat sähkönsiirrosta tehomaksua, Capacity limit auttaa tasaamaan kulutushuippuja. Erikseen mitatulle mökille voi asettaa oman tehorajan.
 
-Aurinkopaneelien ylijäämällä voi lämmittää käyttövettä ja huoneita tai ladata autoa. PELS säätää lataustehoa tuotannon mukaan ja huomioi myös verkkoon myydyn sähkön hinnan, vaikka se olisi negatiivinen. PELS varastoi kotiakkuun aurinkosähkön, jota kodin muut laitteet eivät käytä. Akku voi syöttää sähköä kodin laitteille kulutushuippujen aikana, ja sen latausta rajoitetaan kodin tehorajan mukaan.
+Aurinkopaneelien ylijäämällä voi lämmittää käyttövettä ja huoneita tai ladata autoa. PELS säätää lataustehoa tuotannon mukaan ja huomioi myös verkkoon myydyn sähkön hinnan, vaikka se olisi negatiivinen. PELS varastoi kotiakkuun aurinkosähkön, jota kodin muut laitteet eivät käytä. Akku voi syöttää sähköä kodin laitteille kulutushuippujen aikana, ja sen latausta rajoitetaan kodin tehorajan mukaan. Jos otat toiminnon käyttöön, PELS voi myös myydä varastoitua sähköä silloin, kun se pienentää kustannuksiasi.
 
 Tiloille, kuten Home, Away ja Night, voi määrittää omat lämpötilat ja laitteiden tärkeysjärjestykset. Flow-automaatiolla tilaa voi vaihtaa esimerkiksi kotoa lähtiessä.
 

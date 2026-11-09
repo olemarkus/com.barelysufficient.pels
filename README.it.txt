@@ -1,4 +1,4 @@
-Il forno è acceso, l'auto è in carica e serve acqua calda. PELS regola ricarica, riscaldamento e scaldacqua in base ai consumi di casa, dando precedenza agli apparecchi che scegli tu. La ricarica rallenta quando accendi il forno e riprende automaticamente quando c'è più potenza disponibile. I comandi delle app Homey permettono a PELS di gestire apparecchi di marche diverse, come le wallbox Easee e Zaptec.
+Il forno è acceso, l'auto è in carica e serve acqua calda. PELS regola ricarica, riscaldamento e scaldacqua in base ai consumi di casa, dando precedenza agli apparecchi che scegli tu. La ricarica rallenta quando accendi il forno e riprende automaticamente quando c'è più potenza disponibile. I comandi delle app Homey permettono a PELS di gestire apparecchi di marche diverse, come le wallbox Easee, Zaptec, Alfen, Peblar, Wallbox e Zappi.
 
 Dopo l’installazione, apri Homey > Altro > App > PELS > Impostazioni per completare la configurazione. Qui scegli gli apparecchi, configuri PELS e vedi cosa sta facendo.
 
@@ -8,7 +8,7 @@ PELS programma ricarica, riscaldamento e acqua calda nelle fasce orarie più con
 
 In Smart tasks indichi l'obiettivo e quando deve essere raggiunto: l'auto all'80 % alle 7, il soggiorno caldo al rientro o quanta energia fornire allo scaldacqua entro il mattino. PELS sceglie le ore meno costose. Se il livello di carica dell'auto è disponibile in Homey, lo usa per pianificare la ricarica fino all'obiettivo. Con Schedules puoi creare Smart tasks o cambiare modalità a orari prestabiliti, una sola volta o nei giorni scelti.
 
-Quando i pannelli producono più di quanto la casa consuma, il surplus viene usato per l'acqua calda, il riscaldamento, il raffrescamento o la ricarica dell'auto. La potenza di ricarica si adatta al surplus disponibile. Anche il prezzo dell'energia immessa in rete, compresi i valori negativi, rientra nella pianificazione. Con una batteria domestica come Sessy o Marstek Venus, PELS accumula il surplus rimasto, limita la carica quando altri apparecchi hanno la precedenza e usa l'energia accumulata per rispettare il limite di potenza.
+Quando i pannelli producono più di quanto la casa consuma, il surplus viene usato per l'acqua calda, il riscaldamento, il raffrescamento o la ricarica dell'auto. La potenza di ricarica si adatta al surplus disponibile. Anche il prezzo dell'energia immessa in rete, compresi i valori negativi, rientra nella pianificazione. Con una batteria domestica come Sessy, Marstek Venus, Zendure, Huawei LUNA2000, Sigenergy o Anker SOLIX, PELS accumula il surplus rimasto, limita la carica quando altri apparecchi hanno la precedenza e usa l'energia accumulata per rispettare il limite di potenza. Se lo attivi, PELS può anche vendere l'energia accumulata quando questo riduce i tuoi costi.
 
 Modalità come Home, Away o Night definiscono temperature e priorità per le diverse abitudini di casa.
 
