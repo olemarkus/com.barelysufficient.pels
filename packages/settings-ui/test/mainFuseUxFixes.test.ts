@@ -77,6 +77,24 @@ describe('main fuse controls', () => {
   });
 });
 
+describe('main fuse form sync', () => {
+  it('states the power-only target from a read taken with the fuse off', async () => {
+    const { amps, hint, controls } = await load({
+      phaseLoad: { state: 'none', meterCapabilityIds: [], phasesRecognised: true, powerOnly: true },
+    });
+    amps.value = '25';
+    controls.refreshMainFuseControls();
+    await flush();
+    expect(hint.textContent).toContain('near 5.2 kW per phase');
+  });
+
+  it('shows the stored size while the fuse is off', async () => {
+    const { amps, controls } = await load();
+    controls.syncMainFuseControls({ kind: 'off' }, 25);
+    expect(amps.value).toBe('25');
+  });
+});
+
 describe('hero for a phase hold', () => {
   it('names the phase', async () => {
     const { buildDecisionSentence } = await import('../src/ui/planHeroSummary.ts');

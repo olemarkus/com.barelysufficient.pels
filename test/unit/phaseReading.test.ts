@@ -127,6 +127,9 @@ describe('projectPhaseLoadForUi', () => {
       state: 'none', meterCapabilityIds: ['measure_power.a'],
     });
     expect(projectPhaseLoadForUi(healthy(), { kind: 'off' }, ['measure_power.a'])).toMatchObject({ phasesRecognised: true });
+    const powerOnly = new PhaseReadingTracker();
+    powerOnly.admit({ state: 'read', capabilityIds: [], powerW: [1000, 500, 500] }, 2000, 1);
+    expect(projectPhaseLoadForUi(powerOnly.current(), { kind: 'off' }, ['measure_power.a'])).toMatchObject({ powerOnly: true });
   });
 
   it('shows nothing without a fuse, on other supplies, or without trusted phases', () => {

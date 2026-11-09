@@ -325,6 +325,8 @@ const NO_READINGS_YET_FALLBACK = 'No power readings yet.';
 let capacitySettingsLoadGeneration = 0;
 let capacitySettingsAppliedGeneration = 0;
 let capacitySettingsMutationRevision = 0;
+// Writes of one save land key by key, so a load finishing among them reads a half-written store.
+let capacitySettingsSavesInFlight = 0;
 let powerSourcePaintGeneration = 0;
 let confirmedPowerSourcePaintGeneration = 0;
 
@@ -457,13 +459,15 @@ export const loadCapacitySettings = async () => {
   // Only a successfully completed newer load supersedes this snapshot. A load
   // that merely STARTED later but failed must not discard valid settings with
   // no remaining refresh guaranteed.
-  if (generation < capacitySettingsAppliedGeneration || mutationRevision !== capacitySettingsMutationRevision) return;
+  if (capacitySettingsSavesInFlight > 0
+    || generation < capacitySettingsAppliedGeneration
+    || mutationRevision !== capacitySettingsMutationRevision) return;
   capacitySettingsAppliedGeneration = generation;
   if (settingsGridImportLimitInput && isValidGridImportLimitKw(current.gridImportLimitKw)) {
     settingsGridImportLimitInput.value = String(current.gridImportLimitKw);
   }
   syncCapacityOwnedControls(resolved);
-  syncMainFuseControls(resolveSavedMainFuse(current));
+  syncMainFuseControls(resolveSavedMainFuse(current), current.mainFuseAmps);
   // Meter selection is independently persisted. A power-source save may fence
   // source-owned paint while this load is in flight, but it must not discard a
   // concurrent Whole-home meter refresh that this snapshot already read.
@@ -490,6 +494,23 @@ export const loadCapacitySettings = async () => {
   if (dryRunChanged) refreshPlanSurface();
 };
 
+const settleCapacitySave = (): void => {
+  capacitySettingsSavesInFlight -= 1;
+  capacitySettingsMutationRevision += 1;
+};
+
+const writeCapacityCommand = async (
+  command: CapacitySettingsCommand,
+  current: Awaited<ReturnType<typeof readCurrentCapacitySettings>>,
+  stored: CapacityScalarSettings,
+  resolved: CapacityScalarSettings,
+): Promise<void> => {
+  if (command.kind === 'limits') await writeLimitsAndFuseSettings(current, stored, resolved, command.mainFuse);
+  else if (command.kind === 'period') await writeCapacityPeriodSetting(current, resolved.periodMinutes);
+  else if (command.kind === 'capacity-off') await writeCapacityOffSetting(stored);
+  else await writeSimulationSetting(current, resolved.dryRun);
+};
+
 const saveCapacitySettingsCommand = async (
   command: CapacitySettingsCommand,
   successMessage = 'Capacity settings saved.',
@@ -500,14 +521,12 @@ const saveCapacitySettingsCommand = async (
   const resolved = resolveCapacitySettingsCommand(stored, command);
   validatePowerLimitSettings(resolved);
 
+  capacitySettingsSavesInFlight += 1;
   try {
     // Never power_source: a hard-cap/margin/simulation save must not materialize
     // the 'flow' default for a user who never chose a source, and the select's
     // own change goes through the guarded seam (`savePowerSourceSetting`).
-    if (command.kind === 'limits') await writeLimitsAndFuseSettings(current, stored, resolved, command.mainFuse);
-    else if (command.kind === 'period') await writeCapacityPeriodSetting(current, resolved.periodMinutes);
-    else if (command.kind === 'capacity-off') await writeCapacityOffSetting(stored);
-    else await writeSimulationSetting(current, resolved.dryRun);
+    await writeCapacityCommand(command, current, stored, resolved);
   } catch (caught) {
     // Started writes have settled, and each one that landed is already in the
     // settings cache. Reconcile the switches from it, as a load would, before the
@@ -525,7 +544,7 @@ const saveCapacitySettingsCommand = async (
     // A load that started while these writes were landing read a store this save
     // was still changing; settling the save retires it. The writes' own change
     // events start fresh loads, which read the settled store.
-    capacitySettingsMutationRevision += 1;
+    settleCapacitySave();
   }
   // A save commits only the fields named by its command. Another save or a
   // realtime settings refresh may have established newer values for the other

@@ -91,7 +91,7 @@ const renderPhaseSource = async (block: HTMLElement): Promise<boolean> => {
   // An empty block would still take its grid gaps under the fuse hint.
   // eslint-disable-next-line no-param-reassign -- the element's own hidden flag
   block.hidden = meterFieldEl?.hidden !== false && capabilitiesFieldEl?.hidden !== false;
-  return load.state === 'phases' && load.powerOnly === true;
+  return load.powerOnly === true;
 };
 
 /** Show the row when it can help, on the same Limits form as the fuse itself. */
