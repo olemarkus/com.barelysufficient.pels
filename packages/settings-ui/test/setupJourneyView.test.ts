@@ -141,6 +141,8 @@ const headerProps = (overrides: Partial<SetupJourneyHeaderProps> = {}): SetupJou
   onDismissQuarterHour: vi.fn(),
   capacityOffAction: false,
   onCapacityOff: vi.fn(),
+  simulationExitStep: null,
+  onOpenSimulation: vi.fn(),
   ...overrides,
 });
 
@@ -158,6 +160,22 @@ describe('setup journey header', () => {
     expect(root.textContent).not.toContain('Back to setup');
     expect(root.textContent).not.toContain('Review setup');
     expect(root.textContent).toContain('Choose what PELS does');
+  });
+
+  it('keeps the way out of simulation away from guided setup', () => {
+    const root = mount();
+    act(() => { render(h(SetupJourneyHeader, headerProps()), root); });
+    expect(root.textContent).not.toContain('Open Simulation mode');
+  });
+
+  it('names the open step and offers Simulation mode when the banner sent someone here', () => {
+    const root = mount();
+    const onOpenSimulation = vi.fn();
+    act(() => { render(h(SetupJourneyHeader, headerProps({ simulationExitStep: 'Limits', onOpenSimulation })), root); });
+    expect(root.textContent).toContain('Continue setup with Limits before you start managing, or turn off simulation now.');
+    const button = [...root.querySelectorAll('md-text-button')].find((el) => el.textContent === 'Open Simulation mode');
+    act(() => { (button as HTMLElement).click(); });
+    expect(onOpenSimulation).toHaveBeenCalledOnce();
   });
 });
 

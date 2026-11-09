@@ -354,8 +354,8 @@ simulating / mixed — resolved in shared-domain (`simulationPosture.ts`) from
 Main's flag plus each area's flag; an unresolved flag keeps its
 last-good value and an unknown joins no aggregate claim. Main live + a
 simulating area gets an area-scoped banner line naming the area and the
-Limits & safety page that holds its control; the Main-flag button hides there
-because it could not act on the area's flag.
+Limits & safety page that holds its control; its button selects the area and
+opens that page, the first simulating area when there are several.
 
 **Changing the whole-home meter selection invalidates the weather
 energy-signature backfill scope**: the collector owns a meter-scope signature

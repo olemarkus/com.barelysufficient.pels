@@ -62,9 +62,9 @@ export type SimulationBannerScope = 'all' | 'main' | 'areas';
 export type SimulationBannerContent = {
   text: string;
   /**
-   * The banner button's label. `null` hides the button: the area-scoped line
-   * has no one-tap remedy here — each area's own control toggle lives on the
-   * Limits & safety page, which the text names.
+   * The banner button's label, or `null` to hide the button. The area-scoped
+   * line's button opens the Limits & safety page holding the area's own
+   * control; the other two open Main's setup review.
    */
   actionLabel: string | null;
   scope: SimulationBannerScope;
@@ -118,7 +118,7 @@ export const resolveSimulationBannerContent = (input: {
     : `${input.simulatingAreaNames.length} meter areas`;
   return {
     text: `PELS is only simulating ${subject}. Turn on control under Limits & safety.`,
-    actionLabel: null,
+    actionLabel: 'Open Limits & safety',
     scope: 'areas',
   };
 };

@@ -460,3 +460,27 @@ for (const [width, mobile] of [[320, true], [390, false], [480, true]] as const)
     });
   });
 }
+
+test('the simulation banner on unfinished setup also offers Simulation mode, for that visit only', async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('setup-saved-settings', JSON.stringify({
+      managed_devices: { 'setup-pump': true }, controllable_devices: { 'setup-pump': true },
+    }));
+  });
+  await seed(page, 'NO', false, false, 'homey_energy');
+  await page.goto('/');
+  // The setup card stands in for the banner on Overview; other tabs show it.
+  await page.getByRole('tab', { name: 'Budget' }).click();
+  await page.locator('#simulation-disable-button').click();
+
+  const exit = page.locator('.setup-journey:visible').getByText('before you start managing, or turn off simulation now.');
+  await expect(exit).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('simulation-exit.png') });
+  await page.getByRole('button', { name: 'Open Simulation mode', exact: true }).click();
+  await expect(page.locator('#simulation-panel')).toBeVisible();
+  expect(await stored(page, 'capacity_dry_run')).toBe(true);
+
+  await page.goBack();
+  await expect(page.locator('.setup-journey:visible')).toBeVisible();
+  await expect(exit).toBeHidden();
+});

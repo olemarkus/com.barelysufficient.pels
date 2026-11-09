@@ -231,6 +231,9 @@ export type SetupJourneyHeaderProps = {
   onDismissQuarterHour: () => void;
   capacityOffAction: boolean;
   onCapacityOff: () => void;
+  /** The setup step still open when the simulation banner sent someone here; `null` hides the way out. */
+  simulationExitStep: string | null;
+  onOpenSimulation: () => void;
 };
 
 export const SetupJourneyHeader = (props: SetupJourneyHeaderProps) => (
@@ -258,6 +261,12 @@ export const SetupJourneyHeader = (props: SetupJourneyHeaderProps) => (
     </div>}
     {props.meterHelp && <MdTextButton type="button" onClick={props.onCheckMeter}>Check meter</MdTextButton>}
     {props.fluviusHelp && <a href="https://www.fluvius.be/nl/meters-en-meterstanden/maak-je-meter-slim" target="_blank" rel="noopener noreferrer">Activate the Fluvius P1 port</a>}
+    {props.simulationExitStep !== null && <div>
+      <p class="pels-card-supporting">Continue setup with {props.simulationExitStep} before you start managing, or turn off simulation now.</p>
+      <div class="setup-recommendation-card__actions">
+        <MdTextButton type="button" onClick={props.onOpenSimulation}>Open Simulation mode</MdTextButton>
+      </div>
+    </div>}
     {props.error && <p role="alert" class="pels-notice-warning">{props.error}</p>}
     {props.journeyActions && <div class="setup-recommendation-card__actions">
       <MdTextButton type="button" data-settings-target="recommendations">Back to setup</MdTextButton>

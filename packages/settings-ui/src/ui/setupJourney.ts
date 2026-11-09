@@ -7,7 +7,7 @@ import {
 } from './state.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { showTab } from './tabNavigation.ts';
-import { selectHomeScope, subscribeToHomeScope, getHomeScope } from './homeScope.ts';
+import { refreshHomeScope, selectHomeScope, subscribeToHomeScope, getHomeScope } from './homeScope.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   readSetupReview, readSetupMarket, onSetupPathChange, notifySetupPathChange, readSetupLimitsInForce,
@@ -24,7 +24,8 @@ import {
 import { renderDevices } from './devices.ts';
 import { setEditingMode } from './modes.ts';
 import {
-  loadCapacitySettings, saveSimulationModeSettings, saveCapacityPeriodSettings, saveCapacityOffSettings,
+  loadCapacitySettings, readSimulationBannerAreaId, saveSimulationModeSettings, saveCapacityPeriodSettings,
+  saveCapacityOffSettings,
 } from './capacity.ts';
 import { flushDebouncedSettingSaves } from './utils.ts';
 import { resolveSolarSetupAction } from './setupDevices.ts';
@@ -53,6 +54,10 @@ let meterLine: string | null = null;
 // back to it. Never persisted.
 let goalsShown = false;
 let prioritiesShown = false;
+// Whether this visit came from the simulation banner with setup unfinished.
+// Only then is someone looking for the way out of simulation; guided setup
+// itself keeps to its steps. Never persisted.
+let simulationExitOffered = false;
 
 const usesFlowMeter = (): boolean => settingsPowerSourceSelect?.value === 'flow';
 
@@ -78,11 +83,26 @@ const navigateStep = (step: SetupStep): void => {
   showTab(step.target.panel, step.id);
 };
 
-export const openSetupReview = (): void => {
+const openSetupReview = (): void => {
   selectHomeScope(MAIN_HOME_ID);
   const next = readSetupReview()?.steps.find((step) => step.status !== 'done');
+  simulationExitOffered = next !== undefined;
   if (next) navigateStep(next);
   else showTab('setup-review', 'review');
+};
+
+export const followSimulationBanner = async (): Promise<void> => {
+  const areaId = readSimulationBannerAreaId();
+  if (areaId === null) {
+    openSetupReview();
+    return;
+  }
+  // The banner names areas from saved settings and the scope bar from
+  // `ui_homes`, so a tap can come before the bar knows the area. Selecting it
+  // then would open Main's page instead.
+  if (!getHomeScope().areas.some((area) => area.homeId === areaId)) await refreshHomeScope();
+  selectHomeScope(areaId);
+  showTab('limits');
 };
 
 const runAction = async (action: () => Promise<void>): Promise<void> => {
@@ -276,6 +296,11 @@ const continueLabel = (path: SetupPath | null): string => (
     ? 'Review setup' : 'Continue'
 );
 
+const simulationExitStep = (path: SetupPath | null): string | null => {
+  if (!simulationExitOffered || !state.dryRun) return null;
+  return path?.steps.find((candidate) => candidate.status !== 'done')?.title ?? null;
+};
+
 const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourneyHeaderProps => {
   const fact = path?.steps.find((candidate) => candidate.id === step);
   const market = readSetupMarket();
@@ -296,6 +321,8 @@ const headerProps = (step: SetupJourneyStep, path: SetupPath | null): SetupJourn
     onCheckMeter: () => showTab('limits', 'power'),
     quarterHourAdvice: advice !== null,
     onQuarterHour: () => { void runAction(() => saveCapacityPeriodSettings(15)); },
+    simulationExitStep: simulationExitStep(path),
+    onOpenSimulation: () => showTab('simulation'),
     capacityOffAction: offersCapacityOff(step, fact),
     onCapacityOff: () => { void runAction(saveCapacityOffSettings); },
     onDismissQuarterHour: () => {
@@ -366,7 +393,10 @@ export const initSetupJourney = (): void => {
       selectHomeScope(MAIN_HOME_ID);
       window.scrollTo(0, 0);
       if (step === 'goals' || step === 'review') void loadSetupBatteryPlans();
-    } else acknowledgeSetupSaveFailures();
+    } else {
+      simulationExitOffered = false;
+      acknowledgeSetupSaveFailures();
+    }
     paintJourney();
     if (state.devicesLoaded) renderDevices(state.latestDevices);
     void refreshLivePreview();

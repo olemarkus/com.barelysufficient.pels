@@ -1,6 +1,6 @@
 import { loadEvCarCurrentLimits, loadEvChargerCurrentLimits } from './deviceDetail/chargingCurrentLimits.tsx';
 import { bindMainFuseControls } from './mainFuseControls.ts';
-import { initSetupJourney, openSetupReview } from './setupJourney.ts';
+import { followSimulationBanner, initSetupJourney } from './setupJourney.ts';
 import { setupJourneyFromSearch } from './setupJourneyState.ts';
 import { showUsageDayToday } from './usageDayView.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
@@ -324,7 +324,7 @@ const initLimitsAndSimulationHandlers = () => {
       await showToastError(error, 'Failed to save simulation mode setting.');
     }
   });
-  simulationDisableButton?.addEventListener('click', openSetupReview);
+  simulationDisableButton?.addEventListener('click', () => { void followSimulationBanner(); });
   priorityForm?.addEventListener('submit', (event) => {
     event.preventDefault();
   });

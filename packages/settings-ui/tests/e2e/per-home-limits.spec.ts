@@ -421,9 +421,9 @@ test('a simulating area surfaces on the global banner while Main is live, until 
     'PELS is only simulating “Rental unit”. Turn on control under Limits & safety.',
   );
   await expect(banner).toHaveAttribute('data-home-scope', 'areas');
-  // The button writes MAIN's flag, which is already off — it hides, and the
-  // text names the page that holds the area's own control.
-  await expect(page.locator('#simulation-disable-button')).toHaveJSProperty('hidden', true);
+  // The button leads to the page that holds the area's own control.
+  await expect(page.locator('#simulation-disable-button')).toHaveText('Open Limits & safety');
+  await expect(page.locator('#simulation-disable-button')).toHaveJSProperty('hidden', false);
 
   // The Settings hub chip renders the aggregate split, not Main's bare flag.
   await page.getByRole('tab', { name: 'Settings' }).click();

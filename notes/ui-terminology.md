@@ -2121,8 +2121,8 @@ all simulating / mixed (source: `resolveSimulationPosture` and
 |---|---|---|
 | Simulating, no meter areas | `Simulation on — devices stay as-is` | `On` |
 | Main simulating, areas exist | `Main home simulation on — Main home devices stay as-is` (never appends the areas — the button acts on Main) | `On` while the areas simulate too, else `Partly on` |
-| Main live, one area simulating | `PELS is only simulating “<area>”. Turn on control under Limits & safety.` — no button: each area's control lives on its Limits & safety page | `Partly on` |
-| Main live, several areas simulating | `PELS is only simulating N meter areas. Turn on control under Limits & safety.` | `Partly on` |
+| Main live, one area simulating | `PELS is only simulating “<area>”. Turn on control under Limits & safety.`, with `Open Limits & safety`, which selects that area and opens the page holding its control | `Partly on` |
+| Main live, several areas simulating | `PELS is only simulating N meter areas. Turn on control under Limits & safety.`, with `Open Limits & safety`, which selects the first simulating area | `Partly on` |
 | Everything live | hidden | hidden |
 
 ### Beta notice
@@ -2355,7 +2355,10 @@ settings. No tour-completed flag is persisted.
   banner stands down during guided setup; meter-area warnings remain visible.
   No persistent Overview
   completion card. The simulation banner offers `Review and start` (or
-  `Review Main home setup` when areas exist).
+  `Review Main home setup` when areas exist). When that button lands on an
+  unfinished step, the step's header adds `Continue setup with <step> before you
+  start managing, or turn off simulation now.` with `Open Simulation mode`, for as long as the
+  visit stays in setup. Guided setup reached any other way does not show it.
 - `Waiting for solar surplus` is a normal runtime state; do not substitute it
   for missing readings or incomplete solar configuration. Before combining a
   Smart task with solar-only operation, state that the active task decides when
