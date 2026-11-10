@@ -6,10 +6,12 @@
  *
  * While one is in force, it stands where the mode target stands in
  * `temperatureSetpoints.ts`: the setpoint PELS keeps the device at, without the
- * price shift or the surplus lift. Everything that limits a device still applies
- * on top: power limiting writes its own limit, and a Smart task's deadline floor
- * still holds the setpoint at least at the task's target. It is an input to the
- * one place a setpoint is computed, never a second place that commands one
+ * price shift or the surplus lift. Power limiting still applies on top: it writes
+ * its own limit. A Smart task on the device gives way: while a temporary
+ * temperature is in force the task's decoration decides nothing for the device
+ * (`DeferredObjectiveDecorationController`), and a deadline reached meanwhile
+ * ends the task without its fallback write. It is an input to the one place a
+ * setpoint is computed, never a second place that commands one
  * (`notes/temperature-ownership.md`).
  *
  * ## Lifetime

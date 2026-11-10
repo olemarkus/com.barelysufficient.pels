@@ -20,6 +20,7 @@ import {
   requireDeferredObjectiveEnergyDelivery,
 } from './deferredRecorders';
 import { resolveLifecycleFallbackRequest } from '../lifecycleFallbackRequest';
+import { bindTemporaryTemperatureRead } from './temperatureSetpointsSeam';
 import { projectLifecycleFallbackCommandState } from '../../lib/planInput/lifecycleFallbackDeviceProjection';
 import { requirePlanService } from './contextGuards';
 
@@ -127,7 +128,10 @@ export const handleDeferredDeadlineReached = (
     return;
   }
   // Cap-on → the planner owns the device on its normal lane once the task ends.
-  if (ctx.isCapacityControlEnabled(deviceId)) {
+  // So it does under a Flow's temporary temperature, which outranks the task:
+  // the plan holds the device at it and returns it to its mode target after, so
+  // a fallback write here would only fight the plan.
+  if (ctx.isCapacityControlEnabled(deviceId) || bindTemporaryTemperatureRead(ctx)(deviceId) !== null) {
     abandonLifecycleFallback(ctx, deviceId);
     disarm();
     return;

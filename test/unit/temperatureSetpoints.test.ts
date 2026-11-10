@@ -207,13 +207,13 @@ describe('temperature setpoints, resolved before the planner', () => {
       expect([heater.intendedC, heater.keepC, heater.temporaryTemperatureActive]).toEqual([21, 21, false]);
     });
 
-    it('still gives way to a Smart task floor and keeps the configured limit', () => {
-      const heater = resolve(device({ currentTarget: 21, currentTemperature: 20, deadlineFloorTargetC: 23 }), {
+    it('keeps the configured limit, measured against the temporary temperature', () => {
+      const heater = resolve(device({ currentTarget: 21, currentTemperature: 20 }), {
         ...modeTarget(21),
         ...temporary(19),
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
       });
-      expect(heater.keepC).toBe(23);
+      expect(heater.keepC).toBe(19);
       expect(heater.shed).toMatchObject({ action: 'set_temperature', limitC: 15, asksLessThanIntended: true });
     });
   });

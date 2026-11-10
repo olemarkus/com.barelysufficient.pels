@@ -26,7 +26,9 @@ Use **Set temporary temperature for device**. One card is enough: PELS ends the 
 
 PELS sets the thermostat to exactly that temperature, without price or solar adjustments, and the device card reads **Temporary temperature from a Flow**. When the time is up, PELS returns the thermostat to the target of whichever mode is active, with its adjustments. A mode change in the meantime does not end it, and neither does a Homey restart.
 
-Power limiting still applies: if PELS needs the power, it lowers the thermostat to its limit temperature and goes back to the temporary temperature when the limit ends. A Smart task on the thermostat keeps it at least at the task's temperature.
+Power limiting still applies: if PELS needs the power, it lowers the thermostat to its limit temperature and goes back to the temporary temperature when the limit ends.
+
+The temporary temperature also takes priority over a Smart task on the thermostat. The task stays, but it does not set the temperature or hold the thermostat back until the time is up; then it carries on with the hours left before its ready-by time. If the ready-by time passes in the meantime, the task ends and the thermostat stays at the temporary temperature.
 
 Running the card again replaces the temperature and starts the time again. The card works with **When the temperature changes outside PELS** set to **Return to mode target** or **Save as current mode target**, and is not available with **Keep the new temperature**.
 

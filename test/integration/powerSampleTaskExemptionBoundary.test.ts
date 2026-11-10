@@ -74,7 +74,7 @@ const buildHarness = (controllable: boolean, decisionDelayMs = 0) => {
     hasObservedTask: () => false,
     isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
-  }, () => settings);
+  }, () => settings, () => false);
   const guard = createTestCapacityGuard({ homeId: 'main' });
   const scheduler = partialDouble<PlanRebuildScheduler>({
     request: () => {

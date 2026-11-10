@@ -54,6 +54,12 @@ export class DeferredObjectiveDecorationController {
   constructor(
     private readonly source: TaskEvaluationSource,
     private readonly getDeferredObjectiveSettings: () => DeferredObjectiveRoster | undefined,
+    /**
+     * A Flow's temporary temperature is in force on the device
+     * (`lib/thermostat/temporaryTemperatureTargets.ts`). It outranks the task:
+     * the task keeps its plan, but this cycle it decides nothing for the device.
+     */
+    private readonly isTemporaryTemperatureActive: (deviceId: string) => boolean,
   ) {}
 
   public decorate(input: DeferredDecorationInput): DeferredDecorationBundle {
@@ -66,7 +72,7 @@ export class DeferredObjectiveDecorationController {
     // committed plan (via the diagnostics build above, which consults
     // `resolveCommittedHours`) to decorate the device inputs — reading is free
     // every cycle; only the write rides the clock. See the carve-out note.
-    const decisions = applyDeferredObjectiveAdmission(evaluations, devices);
+    const decisions = this.withoutSuspendedDevices(applyDeferredObjectiveAdmission(evaluations, devices));
     const admission = applyDeferredAdmissionToInput(devices, decisions);
     this.latestCycles = recordCycles(reports, decisions, nowTs);
     this.budgetExemptClaims = recordBudgetExemptClaims(reports, decisions, settings, nowTs);
@@ -80,6 +86,20 @@ export class DeferredObjectiveDecorationController {
       lentAuthorityDeviceIds: admission.lentAuthorityDeviceIds,
       externalOffHoldLiftedDeviceIds: admission.externalOffHoldLiftedDeviceIds,
     };
+  }
+
+  /**
+   * The decisions with every device a Flow's temporary temperature holds left
+   * out, so no floor, deferred hold, lent authority or hour claim reaches it.
+   * The task is not touched: once the temporary temperature ends, its next
+   * decision applies as usual.
+   */
+  private withoutSuspendedDevices(
+    decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
+  ): ReadonlyMap<string, DeferredAdmissionDecision> {
+    const suspended = [...decisions.keys()].filter((deviceId) => this.isTemporaryTemperatureActive(deviceId));
+    if (suspended.length === 0) return decisions;
+    return new Map([...decisions].filter(([deviceId]) => !suspended.includes(deviceId)));
   }
 
   /** The latest cycle's decision for the device's task; `undefined` with no live task. */

@@ -6,7 +6,7 @@
     "en": "Set [[device]] to [[temperature]] °C for [[minutes]] minutes"
   },
   "hint": {
-    "en": "Holds the device at this temperature instead of its mode target, then returns it to the mode target when the time is up. Price and solar adjustments pause meanwhile; power limiting and Smart tasks still apply. Running the card again replaces the temperature and starts the time again. Not available while the device is set to Keep the new temperature."
+    "en": "Holds the device at this temperature instead of its mode target, then returns it to the mode target when the time is up. Price and solar adjustments pause meanwhile, and so does a Smart task on the device; power limiting still applies. Running the card again replaces the temperature and starts the time again. Not available while the device is set to Keep the new temperature."
   },
   "args": [
     {

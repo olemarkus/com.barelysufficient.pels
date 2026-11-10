@@ -161,8 +161,9 @@ function resolveDeviceSetpoints(
   const direction = reads.getThermalDirection(device.id);
   const target = getPrimaryTargetCapability(device.targets);
   // A Flow's temporary temperature stands in for the mode target, literally: no
-  // price shift and no surplus lift. The deadline floor and the shed limit below
-  // still apply to it as they would to the mode target.
+  // price shift and no surplus lift. The shed limit below still applies to it. A
+  // Smart task stamps no deadline floor while it is in force: the task's
+  // decoration leaves the device alone (`temporaryTemperatureTargets.ts`).
   const temporaryC = reads.getTemporaryTemperatureC(device.id);
   const storedIntendedC = intent.modeTargets[device.id];
   const modeIntendedC = typeof storedIntendedC === 'number' ? storedIntendedC : device.currentTarget;

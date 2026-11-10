@@ -128,7 +128,10 @@ the problem, not the safety net.
 **A Flow's temporary temperature is not a second target.** It is an input to
 the same resolver, standing where the mode target stands until its stored end
 time (`lib/thermostat/temporaryTemperatureTargets.ts`): no price shift, no
-surplus lift, the deadline floor and the shed limit unchanged. It records no
+surplus lift, the shed limit unchanged. It outranks a Smart task: the task's
+decoration decides nothing for the device while it is in force, so no deadline
+floor or deferred hold reaches it, and a deadline reached meanwhile disarms the
+task without the fallback write. It records no
 restore value either: when it ends, the next build reads the mode target. The
 "Save as current mode target" fence admits it beside the saved target.
 
