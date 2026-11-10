@@ -52,6 +52,9 @@ function createHorizon(capacityKWh, maxPowerKW) {
         solarKWh: hour >= 10 && hour < 15 ? 3 / 4 : 0,
         gridImportLimitKW: maxPowerKW + 2,
         maxChargeKW: maxPowerKW,
+        // One battery: no others planned before or after it.
+        otherStorageKWh: 0,
+        laterSupplyKW: 0,
       };
     }),
   };
