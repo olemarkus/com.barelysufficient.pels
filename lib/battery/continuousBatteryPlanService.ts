@@ -24,7 +24,13 @@ type HorizonRead = ContinuousBatteryHorizonRead;
 type ReadyHorizon = Extract<HorizonRead, { kind: 'ready' }>;
 type FleetBattery = { deviceId: string; config: ContinuousBatteryPlanConfig; input: ReadyHorizon };
 /** One battery's part of the fleet's inputs: what it planned from, or why it waits. */
-type BatteryInputs = { deviceId: string; inputs: PlanInputs } | { deviceId: string; waiting: string };
+/**
+ * A waiting battery keeps its export policy in the inputs: its limit still
+ * counts toward the fleet's shared one, so a changed limit replans.
+ */
+type BatteryInputs =
+  | { deviceId: string; inputs: PlanInputs }
+  | { deviceId: string; waiting: string; exportPolicy: string };
 /**
  * Every enabled battery's read, made together and kept together: a battery
  * plans on what the ones before it left, so no read outlives the fleet's.
@@ -121,7 +127,8 @@ const sameInputs = (made: readonly BatteryInputs[], current: readonly BatteryInp
     const now = current[index];
     if (now === undefined || now.deviceId !== battery.deviceId) return false;
     if ('waiting' in battery || 'waiting' in now) {
-      return 'waiting' in battery && 'waiting' in now && battery.waiting === now.waiting;
+      return 'waiting' in battery && 'waiting' in now && battery.waiting === now.waiting
+        && battery.exportPolicy === now.exportPolicy;
     }
     return withinTolerance(battery.inputs, now.inputs);
   })
@@ -275,7 +282,7 @@ export class ContinuousBatteryPlanService {
       const horizon = horizons.get(deviceId);
       if (horizon === undefined) throw new Error('Every enabled battery has a horizon read');
       return horizon.kind === 'waiting'
-        ? { deviceId, waiting: horizon.reason }
+        ? { deviceId, waiting: horizon.reason, exportPolicy: JSON.stringify(config.exportPolicy) }
         : { deviceId, inputs: planInputs(horizon, config) };
     });
     const previous = this.fleet;

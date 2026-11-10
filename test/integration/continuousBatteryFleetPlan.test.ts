@@ -229,4 +229,26 @@ describe('continuous battery plan across several batteries', () => {
     );
     expect(owner.read('wide')).toMatchObject({ exportDecision: { kind: 'selling', netExportCeilingKW: 1 } });
   });
+
+  it('replans when a waiting battery lowers the export limit the fleet shares', () => {
+    const periods = [
+      period(0, { householdDemandKWh: 0, importPrice: 0.1 }),
+      period(1, { householdDemandKWh: 0, exportPrice: 3, importPrice: 1 }),
+    ];
+    const selling = (netExportCeilingKW: number) => ({
+      ...config, exportPolicy: { kind: 'price_export' as const, netExportCeilingKW },
+    });
+    const configs: Record<string, ContinuousBatteryPlanConfig> = { wide: selling(5), narrow: selling(4) };
+    const owner = new ContinuousBatteryPlanService({
+      get: key => (key === CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY ? { ...configs } : null),
+      set: () => {}, unset: () => {}, getKeys: () => [CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY],
+    }, perBatterySource({
+      getNowMs: () => NOW,
+      order: ['wide', 'narrow'],
+      readHorizon: (deviceId) => (deviceId === 'wide' ? ready(battery(), periods) : { kind: 'waiting', reason: 'battery_unavailable' }),
+    }));
+    expect(owner.read('wide')).toMatchObject({ exportDecision: { kind: 'selling', netExportCeilingKW: 4 } });
+    configs.narrow = selling(1);
+    expect(owner.read('wide')).toMatchObject({ exportDecision: { kind: 'selling', netExportCeilingKW: 1 } });
+  });
 });
