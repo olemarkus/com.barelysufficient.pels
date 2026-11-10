@@ -6,6 +6,7 @@ import type {
 } from './types';
 import type { PowerTrackerState } from '../power/trackerTypes';
 import { shouldEmitRejectedProfileSample } from './rejectionLogging';
+import { countRefusal, tallyPowerlessReset, tallyUnpoweredProgress } from './rejectionTally';
 import {
   isWithinEnergyPerUnitBand,
   resolveEnergyPerUnitBand,
@@ -296,7 +297,8 @@ export function updateDeviceObjectiveProfile(
   // per-step power profile.
   if (rejection?.reason === 'objective_profile_progress_too_small') {
     emitRejectedProfileSample(deviceId, deviceName, intervalMs, valueDelta, rejection);
-    return { ...accrueSubInterval({ previous, sample }), rejectedSamples: previous.rejectedSamples + 1 };
+    const accrued = accrueSubInterval({ previous, sample });
+    return { ...accrued, ...countRefusal(accrued, rejection.reason) };
   }
   if (rejection) {
     emitRejectedProfileSample(deviceId, deviceName, intervalMs, valueDelta, rejection);
@@ -326,6 +328,7 @@ function accrueSubInterval(params: {
   if (typeof powerW !== 'number' || powerW <= 0) {
     return {
       ...previous,
+      ...tallyPowerlessReset(previous),
       updatedAtMs: sample.observedAtMs,
       lastSample: sample,
       ...CLEARED_ENERGY_ACCUMULATOR,
@@ -372,6 +375,7 @@ function buildAcceptedProfileSample(
     updatedAtMs: sample.observedAtMs,
     lastSample: sample,
     acceptedSamples: previous.acceptedSamples + 1,
+    ...(windowEnergyKwh === undefined ? tallyUnpoweredProgress(previous) : {}),
     unitPerHour: updateProfileStat(previous.unitPerHour, unitPerHour, sample.observedAtMs),
     // `kwhPerUnit` arrives inside the update, derived from the same buffer the
     // bands are fitted from, rather than accumulated separately here.
@@ -432,7 +436,9 @@ function buildRejectedProfileSample(
       ...previous,
       updatedAtMs: sample.observedAtMs,
       lastSample: sample,
-      rejectedSamples: previous.rejectedSamples + 1,
+      ...countRefusal(
+        previous, rejection.reason, calculateWindowEnergyKwh(previous, sample) ?? previous.pendingEnergyKWh,
+      ),
       // Baseline reset → the open energy window is void; drop the partial sum.
       // Both halves are required: keeping either the baseline or the partial sum
       // carries the refused window into the next one.
@@ -440,10 +446,7 @@ function buildRejectedProfileSample(
       baselineMidStep: undefined,
     };
   }
-  return {
-    ...previous,
-    rejectedSamples: previous.rejectedSamples + 1,
-  };
+  return { ...previous, ...countRefusal(previous, rejection.reason) };
 }
 
 function emitRejectedProfileSample(

@@ -20,7 +20,7 @@ export type SupportReportApp = Pick<PelsHost,
   | 'deviceManager' | 'homeMembership' | 'planService' | 'homeRuntimeRead' | 'getDeviceLogUiPayload'
   | 'getLatestPlanSnapshotForUi' | 'getCapacityScalars' | 'capacityGuard'
   | 'getDailyBudgetUiPayload' | 'readPriceSetup'
-  | 'getPriceTimelineForUi' | 'getUserdataDatabase' | 'readSchedules'>
+  | 'getPriceTimelineForUi' | 'getUserdataDatabase' | 'readSchedules' | 'powerTracker'>
   & Pick<AppContext, 'deferredObjectiveActivePlanRecorder' | 'deferredObjectivePlanHistoryRecorder'>;
 
 // Each read reaches the app when a report is captured. A service that is not
@@ -69,6 +69,7 @@ export const createSupportReportReads = (
     if (!read.ok) throw new Error(read.error);
     return read.data;
   },
+  readObjectiveProfiles: () => app.powerTracker.objectiveProfiles,
   readHeatingShadowDaily: (capturedAtMs) => heatingShadow.readDaily(capturedAtMs),
   // Built per capture: the database opens after the report service is constructed.
   readDeviceEvents: (deviceIds, fromMs, toMs) => (

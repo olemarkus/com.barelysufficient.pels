@@ -13,6 +13,7 @@ import type {
   SupportReportRequest, SupportReportSection, SupportReportSubject, SupportReportTrigger,
 } from '../../packages/contracts/src/supportReport';
 import type { CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
+import type { DeviceObjectiveProfile } from '../../packages/contracts/src/objectiveProfileTypes';
 import { reportHomeyDevices, type HomeyDeviceSupportDescription } from './homeyDeviceSupportSection';
 import { DEVICE_EVENT_MAX_ENTRIES_PER_DEVICE, DEVICE_EVENT_RETENTION_DAYS } from './deviceEventStore';
 import type { LogTailRead } from './logTailStore';
@@ -23,6 +24,7 @@ import type { DevicePlan } from '../plan/planTypes';
 import type { HomeyDeviceLike } from '../utils/types';
 import { selectSupportReportActivity, supportReportWindow } from './supportReportHistory';
 import { SupportReportInputError } from './supportReportInput';
+import { LEARNED_RATES_REPORT_TITLE, reportLearnedRates } from './supportReportLearnedRates';
 import {
   reportCapacitySettings, reportPhaseReading, type PhaseReadingEvidence,
   reportCarLink, reportDailyBudget, reportDeviceDecision, reportDevicePresentation,
@@ -77,6 +79,8 @@ export type SupportReportReads = {
   readSmartTaskRuns(): readonly SupportReportSmartTaskRun[];
   /** Throws while schedules are starting or cannot be read. */
   readSchedules(): SchedulesSnapshot;
+  /** Main's learned device profiles; `undefined` before any device has one. */
+  readObjectiveProfiles(): Readonly<Record<string, DeviceObjectiveProfile>> | undefined;
   /** Kept device events about any of `deviceIds` in the window, oldest first; every device without ids. */
   readDeviceEvents(deviceIds: readonly string[] | 'all', fromMs: number, toMs: number): SupportReportDeviceEvent[];
   /** PELS's kept log lines in the window, without lines of `omittedEvents` (`logTailStore.ts`). */
@@ -318,6 +322,7 @@ const readAppSmartTaskSections = (
       SUPPORT_REPORT_MAX_SMART_TASK_RUNS, deviceName, window,
     )),
     readSection('Smart task schedules', () => reportSmartTaskSchedules(host.readSchedules(), null)),
+    readSection(LEARNED_RATES_REPORT_TITLE, () => reportLearnedRates(host.readObjectiveProfiles(), deviceName)),
   ];
 };
 

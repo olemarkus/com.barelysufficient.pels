@@ -35,6 +35,14 @@ export type DeviceObjectiveProfile = {
   unitPerHour?: ObjectiveProfileStat;
   acceptedSamples: number;
   rejectedSamples: number;
+  // Lifetime tally of what learning refused, by reason: refused samples (the
+  // `rejectedSamples` reasons) and windows discarded because a sub-interval had
+  // no power (`objective_profile_powerless_sub_interval`, not counted in
+  // `rejectedSamples`). `discardedEnergyKWh` is the energy the dropped windows
+  // had summed, 0 when a refusal kept its window. Diagnostics only: nothing
+  // learns from it. Absent on profiles persisted before it existed and until
+  // the first refusal.
+  rejections?: Record<string, ObjectiveProfileRejectionTally>;
   // No refill-recovery cluster. There used to be one — a sharp fall armed a
   // window (`recoveryTargetValue` / `recoveryArmedAtMs` /
   // `recoveryNoProgressSamples`) that suspended ALL learning until the value
@@ -93,6 +101,11 @@ export type DeviceObjectiveProfile = {
   // if its last baseline was mid-step; at worst its first window learns the way
   // every window did before.
   baselineMidStep?: true;
+};
+
+export type ObjectiveProfileRejectionTally = {
+  count: number;
+  discardedEnergyKWh: number;
 };
 
 export type ObjectiveProfileSampleObservation = {
