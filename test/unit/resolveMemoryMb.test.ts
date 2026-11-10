@@ -1,5 +1,5 @@
 import v8 from 'node:v8';
-import { resolveMemoryMb } from '../../lib/diagnostics/resourceWarnings';
+import { resolveHeapCodeMb, resolveMemoryMb } from '../../lib/diagnostics/resourceWarnings';
 
 const MB = 1024 * 1024;
 const enoent = (): never => {
@@ -77,5 +77,30 @@ describe('resolveMemoryMb', () => {
       arrayBuffers: 0,
     })) as unknown as typeof process.memoryUsage;
     expect(resolveMemoryMb()).toEqual({ source: 'unavailable' });
+  });
+});
+
+describe('resolveHeapCodeMb', () => {
+  const originalGetHeapCodeStatistics = v8.getHeapCodeStatistics;
+
+  afterEach(() => {
+    v8.getHeapCodeStatistics = originalGetHeapCodeStatistics;
+  });
+
+  it('reports compiled code, bytecode and retained script source in MB', () => {
+    v8.getHeapCodeStatistics = (() => ({
+      code_and_metadata_size: 6.25 * MB,
+      bytecode_and_metadata_size: 4.5 * MB,
+      external_script_source_size: 2.34 * MB,
+      cpu_profiler_metadata_size: 0,
+    })) as unknown as typeof v8.getHeapCodeStatistics;
+    expect(resolveHeapCodeMb()).toEqual({ codeMb: 6.3, bytecodeMb: 4.5, scriptSourceMb: 2.3 });
+  });
+
+  it('returns an empty record when V8 refuses the read', () => {
+    v8.getHeapCodeStatistics = (() => {
+      throw new Error('no v8');
+    }) as unknown as typeof v8.getHeapCodeStatistics;
+    expect(resolveHeapCodeMb()).toEqual({});
   });
 });
