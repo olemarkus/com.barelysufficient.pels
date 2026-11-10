@@ -1,4 +1,5 @@
 import { phaseRoomFor, resolvePhaseRoomAxis, type PhaseRoomAxis } from '../phase/phaseRoom';
+import { chargeWithinPhaseRoom } from './storagePhaseCharge';
 import type { PhaseFootprint } from '../../../packages/planner-types/src/phaseFootprint';
 /**
  * The home-battery stage that runs before shedding selection, every measured
@@ -472,7 +473,7 @@ class StorageReliefCycle {
     /** What the allocator offered each battery at its place in the priority order. */
     private readonly offers: ReadonlyMap<string, StorageSurplusOffer>,
     private readonly nowTs: number,
-    private readonly phaseRoom: PhaseRoomAxis,
+    private phaseRoom: PhaseRoomAxis,
   ) {}
 
   release(
@@ -517,10 +518,11 @@ class StorageReliefCycle {
     }
     const candidateW = step.lever.setpointW;
     const ceilingW = candidateW < 0 ? storage.deliveryCeilingW : storage.chargeCeilingW;
-    const next = {
-      ...step.lever,
-      setpointW: floorStorageSetpointW(Math.sign(candidateW) * Math.min(Math.abs(candidateW), ceilingW), storage.range),
-    };
+    const ceiledW = Math.sign(candidateW) * Math.min(Math.abs(candidateW), ceilingW);
+    const cappedW = floorStorageSetpointW(ceiledW, storage.range);
+    const withinPhases = chargeWithinPhaseRoom(this.phaseRoom, storage, footprint, cappedW);
+    this.phaseRoom = withinPhases.axis;
+    const next = { ...step.lever, setpointW: withinPhases.setpointW };
     this.levers[deviceId] = next;
     const nextDischargeW = -next.setpointW;
     const previousDischargeW = previous === undefined ? observedDischargeW : -previous.setpointW;

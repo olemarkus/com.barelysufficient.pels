@@ -132,8 +132,10 @@ spends a third on each phase, all on the phase, or all on every phase. Phase roo
 A swap counts a donor only by what it frees on the target's phases, and skips a donor with no share of them,
 when those phases are what holds the target. Solar surplus claims are bounded by the device's phase room, so
 export on L2 and L3 does not raise a device on L1. Discharge a battery is held at is taken off the phase room by
-its footprint, so restore cannot spend it. Battery charge raised from surplus is not bounded by phase: a battery's
-footprint is almost always unknown, and bounding it by the lowest phase would stop it storing solar.
+its footprint, so restore cannot spend it. A battery's charge on a known phase, planned or from surplus, rises only into what its phases have left that
+cycle, and spends it, so batteries sharing a phase do not each take the same room
+(`lib/plan/battery/storagePhaseCharge.ts`). A battery on an unknown phase is not bounded: bounding it by the
+lowest phase would stop it storing solar.
 
 A rebuild is triggered by a meter reading only: `phase_pressure` joins the power-sample triggers and is
 resolved from the same admitted sample. A device observation never triggers one. A rise under 100 W is not an
