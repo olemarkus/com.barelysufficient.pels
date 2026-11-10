@@ -799,5 +799,8 @@
   },
   "3.31.1": {
     "en": "An EV charger reported to PELS in watts through Flow now stays on its charging step, instead of PELS asking it to step down again, and a charger already affected recovers with this update. The simulation notice for a meter area now opens that area's Limits & safety page, and setup opened from the notice also offers to turn off simulation."
+  },
+  "3.32.0": {
+    "en": "New: Plan charging with PELS now works for several home batteries. PELS plans them together in your priority order: the battery higher in the list goes first and the next covers what it leaves, and no battery charges from another. Batteries that sell share the lowest export limit set on any of them. A battery PELS stops getting a response from is left out of the plan until it is tried again, and a battery charge on a known phase stays within what that phase has left."
   }
 }
