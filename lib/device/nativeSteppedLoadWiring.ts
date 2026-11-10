@@ -28,6 +28,9 @@ const NATIVE_STEPPED_LOAD_CAPABILITY_IDS = [
   'max_power_3000',
   'max_power_2000',
   'max_power',
+  // myUplink's Connected 120 and Connected Retrofit. Their element wattages
+  // vary by installation, so they have no fixed ladder below.
+  'max_power_2elem',
 ] as const;
 
 export type NativeSteppedLoadCapabilityId = (typeof NATIVE_STEPPED_LOAD_CAPABILITY_IDS)[number];
@@ -86,6 +89,65 @@ export const CONNECTED_200_STEPPED_LOAD_PROFILE: SteppedLoadProfile = {
   ],
 };
 
+const FIXED_HOIAX_LADDERS: Partial<Record<NativeSteppedLoadCapabilityId, SteppedLoadProfile>> = {
+  max_power_3000: CONNECTED_300_STEPPED_LOAD_PROFILE,
+  max_power_2000: CONNECTED_200_STEPPED_LOAD_PROFILE,
+  max_power: CONNECTED_200_STEPPED_LOAD_PROFILE,
+};
+
+// A Høiax heater reports the wattage of each of its two elements. The myUplink
+// app publishes them as read-only labels such as "1250W" (heater points 504
+// and 503); the no.hoiax app as `HeaterNomPower` and `HeaterNomPower2`.
+const HOIAX_ELEMENT_POWER_SETTING_PAIRS = [
+  ['status_504', 'status_503'],
+  ['HeaterNomPower', 'HeaterNomPower2'],
+] as const;
+const MAX_HOIAX_ELEMENT_POWER_W = 6000;
+const HOIAX_ELEMENT_POWER_TEXT = /^\s*(\d+(?:\.\d+)?)\s*w?\s*$/iu;
+
+function readHoiaxElementPowerW(value: unknown): number | undefined {
+  const text = typeof value === 'number' || typeof value === 'string' ? String(value) : undefined;
+  const match = text === undefined ? null : HOIAX_ELEMENT_POWER_TEXT.exec(text);
+  const watts = match?.[1] === undefined ? Number.NaN : Number(match[1]);
+  return Number.isFinite(watts) && watts > 0 && watts <= MAX_HOIAX_ELEMENT_POWER_W ? watts : undefined;
+}
+
+/**
+ * The ladder the heater's own element wattages give: low runs the smaller
+ * element, medium the larger, max both. The apps number the two elements
+ * differently, so the levels are ordered by wattage rather than by point.
+ * Two equal elements give one single-element rung.
+ */
+function resolveHoiaxElementLadder(device: HomeyDeviceLike): SteppedLoadProfile | undefined {
+  const pair = HOIAX_ELEMENT_POWER_SETTING_PAIRS
+    .map(([firstKey, secondKey]) => [
+      readHoiaxElementPowerW(device.settings[firstKey]),
+      readHoiaxElementPowerW(device.settings[secondKey]),
+    ] as const)
+    .find((watts): watts is readonly [number, number] => watts[0] !== undefined && watts[1] !== undefined);
+  if (!pair) return undefined;
+  const lowW = Math.min(...pair);
+  const mediumW = Math.max(...pair);
+  const steps: SteppedLoadStep[] = [
+    { id: 'off', planningPowerW: 0 },
+    { id: 'low', planningPowerW: lowW },
+    { id: 'medium', planningPowerW: mediumW },
+    { id: 'max', planningPowerW: lowW + mediumW },
+  ];
+  return { steps: mediumW > lowW ? steps : steps.filter((step) => step.id !== 'medium') };
+}
+
+/** A Høiax heater's ladder, or none when its power levels cannot be sized. */
+function resolveHoiaxSteppedLoadProfile(
+  device: HomeyDeviceLike,
+  capabilities: readonly string[],
+): SteppedLoadProfile | undefined {
+  if (!isHoiaxDevice(device)) return undefined;
+  const capabilityId = resolveNativeSteppedLoadCapabilityId(capabilities);
+  if (capabilityId === undefined) return undefined;
+  return resolveHoiaxElementLadder(device) ?? FIXED_HOIAX_LADDERS[capabilityId];
+}
+
 export function resolveNativeSteppedLoadCapabilityId(
   capabilities: readonly string[],
 ): NativeSteppedLoadCapabilityId | undefined {
@@ -98,7 +160,7 @@ export function isNativeSteppedLoadWiringCandidate(params: {
   capabilityObj?: DeviceCapabilityMap;
 }): boolean {
   const { device, capabilities, capabilityObj } = params;
-  if (isHoiaxDevice(device) && resolveNativeSteppedLoadCapabilityId(capabilities) !== undefined) return true;
+  if (resolveHoiaxSteppedLoadProfile(device, capabilities) !== undefined) return true;
   if (capabilityObj !== undefined && getDeviceAdapter(device).nativeCurrentControls
     .some((control) => control.accepts(device, capabilityObj))) return true;
   return isTargetPowerSteppedLoadCandidate({ capabilities, capabilityObj });
@@ -171,6 +233,8 @@ export function resolveNativeSteppedLoadProfileSuggestion(params: {
   capabilityObj?: DeviceCapabilityMap;
 }): SteppedLoadProfile | undefined {
   if (!isNativeSteppedLoadWiringCandidate(params)) return undefined;
+  const hoiaxProfile = resolveHoiaxSteppedLoadProfile(params.device, params.capabilities);
+  if (hoiaxProfile) return hoiaxProfile;
   if (params.capabilities.includes('max_power_3000')) return CONNECTED_300_STEPPED_LOAD_PROFILE;
   if (params.capabilities.includes('max_power_2000') || params.capabilities.includes('max_power')) {
     return CONNECTED_200_STEPPED_LOAD_PROFILE;

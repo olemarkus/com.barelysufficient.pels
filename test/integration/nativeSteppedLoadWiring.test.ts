@@ -15,6 +15,8 @@ import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { isMeteredPlanDevice } from '../../lib/plan/planMeteredDevice';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import {
+  CONNECTED_200_STEPPED_LOAD_PROFILE,
+  CONNECTED_300_STEPPED_LOAD_PROFILE,
   resolveNativeSteppedLoadCommand,
   resolveNativeSteppedLoadProfileSuggestion,
   resolveNativeSteppedLoadReportedStepId,
@@ -239,6 +241,125 @@ const restoreMockRestClient = () => {
 let logCapture: LoggerCapture;
 beforeEach(() => { logCapture = captureLogger(); });
 afterEach(() => { logCapture.restore(); });
+
+// A myUplink Høiax as the app publishes it: power level as `'1' | '2' | '3'`,
+// element wattages as read-only labels (point 504 and 503).
+const buildMyUplinkHoiax = (
+  capabilityId: string,
+  settings: Record<string, unknown>,
+): HomeyDeviceLike => {
+  const readAt = new Date().toISOString();
+  return { ...HOMEY_DEVICE_FIELDS,
+    id: 'myuplink-hoiax',
+    name: 'Water heater',
+    class: 'heater',
+    driverId: 'homey:app:com.myuplink:hoiax',
+    ownerUri: 'homey:app:com.myuplink',
+    available: true,
+    capabilities: ['measure_power', 'target_temperature', 'measure_temperature', 'onoff', capabilityId],
+    capabilitiesObj: {
+      measure_power: { value: 900, lastUpdated: readAt },
+      target_temperature: { value: 70, lastUpdated: readAt },
+      measure_temperature: { value: 60, lastUpdated: readAt },
+      onoff: { value: true, setable: true, lastUpdated: readAt },
+      [capabilityId]: { value: '1', setable: true, lastUpdated: readAt },
+    },
+    settings,
+  };
+};
+
+const suggestFor = (device: HomeyDeviceLike) => resolveNativeSteppedLoadProfileSuggestion({
+  device,
+  capabilities: device.capabilities,
+  capabilityObj: device.capabilitiesObj as unknown as DeviceCapabilityMap,
+});
+
+describe('Høiax ladder from the heater element wattages', () => {
+  it('sizes a myUplink Connected 300 from the wattages it reports', () => {
+    // The owner's Connected 300 reports these two labels.
+    expect(suggestFor(buildMyUplinkHoiax('max_power_3000', {
+      status_503: '1750W',
+      status_504: '1250W',
+    }))).toEqual({
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: 'low', planningPowerW: 1250 },
+        { id: 'medium', planningPowerW: 1750 },
+        { id: 'max', planningPowerW: 3000 },
+      ],
+    });
+  });
+
+  it('steps a two-element heater and writes its numeric power level', () => {
+    const device = buildMyUplinkHoiax('max_power_2elem', { status_503: '1000 W', status_504: '500W' });
+    const profile = suggestFor(device);
+
+    expect(profile).toEqual({
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: 'low', planningPowerW: 500 },
+        { id: 'medium', planningPowerW: 1000 },
+        { id: 'max', planningPowerW: 1500 },
+      ],
+    });
+    expect(resolveNativeSteppedLoadCommand({
+      profile: profile!,
+      desiredStepId: 'low',
+      capabilities: device.capabilities,
+      capabilityObj: device.capabilitiesObj as unknown as DeviceCapabilityMap,
+    })).toEqual({ capabilityId: 'max_power_2elem', value: '1' });
+    expect(resolveNativeSteppedLoadCommand({
+      profile: profile!,
+      desiredStepId: 'max',
+      capabilities: device.capabilities,
+      capabilityObj: device.capabilitiesObj as unknown as DeviceCapabilityMap,
+    })).toEqual({ capabilityId: 'max_power_2elem', value: '3' });
+  });
+
+  it('leaves a two-element heater without readable wattages on on/off control', () => {
+    expect(suggestFor(buildMyUplinkHoiax('max_power_2elem', { status_503: 'N/A', status_504: 'N/A' })))
+      .toBeUndefined();
+    expect(suggestFor(buildMyUplinkHoiax('max_power_2elem', { status_503: '1000W' }))).toBeUndefined();
+  });
+
+  it('keeps the model ladder when a fixed-size heater reports no wattages', () => {
+    expect(suggestFor(buildMyUplinkHoiax('max_power_3000', { status_503: 'N/A', status_504: '-5W' })))
+      .toEqual(CONNECTED_300_STEPPED_LOAD_PROFILE);
+  });
+
+  it('reads the no.hoiax element settings', () => {
+    expect(suggestFor({
+      ...buildHoiaxDevice(),
+      settings: { HeaterNomPower: '700', HeaterNomPower2: 1300 },
+    } as HomeyDeviceLike)).toEqual(CONNECTED_200_STEPPED_LOAD_PROFILE);
+  });
+
+  it('gives equal elements one single-element rung', () => {
+    expect(suggestFor(buildMyUplinkHoiax('max_power_2elem', { status_503: '1000W', status_504: '1000W' })))
+      .toEqual({
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1000 },
+          { id: 'max', planningPowerW: 2000 },
+        ],
+      });
+  });
+
+  it('offers built-in control for a two-element heater and hides its power level capability', async () => {
+    const manager = createTestDeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      { nativeWiring: { resolveNativeWiringEnabled: () => true } },
+    );
+    const [parsed] = await seedTransportDevices(manager, [
+      buildMyUplinkHoiax('max_power_2elem', { status_503: '1000W', status_504: '500W' }),
+    ]);
+
+    expect(parsed.controlAdapter).toEqual(expect.objectContaining({ activationEnabled: true }));
+    expect(parsed.capabilities).not.toContain('max_power_2elem');
+    expect(parsed.reportedStepId).toBe('low');
+  });
+});
 
 describe('native stepped-load wiring', () => {
   it('maps Høiax max_power values to the configured stepped-load profile', () => {
