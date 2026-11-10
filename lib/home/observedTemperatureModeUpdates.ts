@@ -43,6 +43,8 @@ export class ObservedTemperatureModeUpdates {
     private readonly isLimited: (deviceId: string) => boolean,
     /** Every setpoint a limit may write to this device, as the shed-behaviour producer resolves it. */
     private readonly readLimitTemperatures: (deviceId: string) => readonly number[],
+    /** A Flow's temporary temperature while it is in force, already normalized, or `null`. */
+    private readonly readTemporaryTemperatureC: (deviceId: string) => number | null,
   ) {}
 
   /** Policy reads retain the last good value across transient SDK gaps. */
@@ -67,8 +69,9 @@ export class ObservedTemperatureModeUpdates {
   /**
    * A queued adjustment cannot outlive a switch to manual target ownership.
    *
-   * Under "Save as current mode target" two writes are legitimate: the saved
-   * mode target itself, and a limit — either direction's, because the fence
+   * Under "Save as current mode target" three writes are legitimate: the saved
+   * mode target itself, a Flow's temporary temperature while it is in force, and
+   * a limit — either direction's, because the fence
    * does not know which way the device is moving demand. The limits are the
    * shed-behaviour producer's, so a limit the planner derives is one the fence
    * admits. A queued price or solar offset is neither.
@@ -80,6 +83,9 @@ export class ObservedTemperatureModeUpdates {
     if (this.readLimitTemperatures(deviceId).some((limit) => this.normalizeTarget(deviceId, limit) === value)) {
       return true;
     }
+    // A Flow's temporary temperature is the owner's own choice for now, the way
+    // the saved target is; the resolver applies no offset to it.
+    if (this.readTemporaryTemperatureC(deviceId) === value) return true;
     try {
       const active = this.resolveDeviceMode(deviceId);
       if (active.state !== 'resolved' || active.mode === null) return false;

@@ -46,6 +46,8 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   idleClassification?: IdleClassification;
   /** The plan device's own fact (`DevicePlanDevice.priceTargetShift`), spread in with it. */
   priceTargetShift: PriceTargetShift;
+  /** The plan device's own fact (`DevicePlanDevice.temporaryTemperatureActive`), spread in with it. */
+  temporaryTemperatureActive?: boolean;
   /** The plan device's control adapter, spread in with it; absent on a device that has none. */
   controlAdapter?: DeviceControlAdapterSnapshot;
 } & Pick<DevicePlanDevice, 'steppedFairnessHold' | 'steppedStepUpHold'>

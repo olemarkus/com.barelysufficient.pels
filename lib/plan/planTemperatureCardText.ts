@@ -18,6 +18,8 @@ type TemperatureDevice = DeviceOverviewSnapshot & {
   stateKind?: PlanStateKind;
   starvation?: SettingsUiPlanDeviceStarvation;
   priceTargetShift: PriceTargetShift;
+  /** The plan device's own fact (`DevicePlanDevice.temporaryTemperatureActive`). */
+  temporaryTemperatureActive?: boolean;
   /** The observer's diagnosis of a device not drawing, when it has one. */
   idleClassification?: IdleClassification;
 };
@@ -116,6 +118,20 @@ export const resolvePriceTargetReason = (
   return `${shift.direction === 'raised' ? 'Raised' : 'Lowered'} while power is ${shift.priceLevel}`;
 };
 
+export const TEMPORARY_TEMPERATURE_REASON = 'Temporary temperature from a Flow';
+
+/**
+ * Why the target sits off the mode's own while a Flow's temporary temperature
+ * is in force, on the same cards as the price line: running, or idle at that
+ * target with its output on. A held card says what holds it, and the plan
+ * device carries the flag only while the plan keeps the device at it.
+ */
+const resolveTemporaryTemperatureReason = (device: TemperatureDevice, kind: string): string | null => {
+  if (device.temporaryTemperatureActive !== true) return null;
+  if (kind !== 'active' && (kind !== 'idle' || device.currentState === 'off')) return null;
+  return TEMPORARY_TEMPERATURE_REASON;
+};
+
 // Plan-INTENT kind (raw + the idle→held upgrade): a hold/wait reason means
 // the plan is holding the device back even when the planner marked it
 // inactive, so the reason line renders for those cards too. Simulation only
@@ -151,6 +167,8 @@ const resolveTemperaturePlanReasonLine = (device: TemperatureDevice): string | n
   if (surplusReason !== null) return surplusReason;
   const priceReason = resolvePriceTargetReason(device, kind);
   if (priceReason !== null) return priceReason;
+  const temporaryReason = resolveTemporaryTemperatureReason(device, kind);
+  if (temporaryReason !== null) return temporaryReason;
 
   if (kind !== 'held' && kind !== 'resuming') return null;
   // The card's bold state word already says "Resuming" (2026-07 card

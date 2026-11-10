@@ -11,7 +11,9 @@ import {
   OPERATING_MODE_SETTING,
   PRICE_OPTIMIZATION_SETTINGS,
   TEMPERATURE_CONTROL_MODES,
+  TEMPORARY_TEMPERATURE_TARGETS,
 } from '../../lib/utils/settingsKeys';
+import { readActiveTemporaryTemperatureC } from '../../lib/thermostat/temporaryTemperatureTargets';
 import type { HomeMembershipPort } from '../../lib/home/membership';
 import type { DeviceDescriptorRead } from '../../packages/contracts/src/types';
 import type { SmartTaskInProgressRead } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
@@ -64,6 +66,7 @@ const register = (smartTask: SmartTaskInProgressRead = 'none', hasSubHomes = fal
     setDeviceModeTarget: catalog.setDeviceModeTarget,
     normalizeTemperatureTarget,
     readSmartTaskInProgress: () => smartTask,
+    getNow: () => new Date(NOW_MS),
     getStructuredLogger: () => partialDouble<ReturnType<FlowCardDeps['getStructuredLogger']> & object>({ info }),
   }));
   const run = (cardId: string, args: Record<string, unknown>) => mockHomeyInstance.flow._actionCardListeners[cardId](args);
@@ -78,6 +81,7 @@ const register = (smartTask: SmartTaskInProgressRead = 'none', hasSubHomes = fal
 };
 
 const HEATER = { id: 'heater', name: 'Living room' };
+const NOW_MS = Date.UTC(2026, 10, 10, 12, 0);
 const ACTIVE = { id: 'active-mode', name: 'Active mode', activeMode: true };
 
 beforeEach(() => {
@@ -248,5 +252,78 @@ describe('set_device_temperature_control_mode', () => {
     expect(settings.get(TEMPERATURE_CONTROL_MODES)).toEqual({ unmanaged: 'external' });
     await expect(autocomplete('set_device_temperature_control_mode', 'device', ''))
       .resolves.toEqual([{ id: 'unmanaged', name: 'Garage' }, HEATER]);
+  });
+});
+
+describe('set_device_temporary_temperature and end_device_temporary_temperature', () => {
+  it('holds the snapped temperature until the duration is up', async () => {
+    const { run, info } = register();
+
+    await expect(run('set_device_temporary_temperature', { device: HEATER, temperature: 23.2, minutes: 90 }))
+      .resolves.toBe(true);
+
+    expect(settings.get(TEMPORARY_TEMPERATURE_TARGETS)).toEqual({ heater: { targetC: 23, untilMs: NOW_MS + 90 * 60_000 } });
+    expect(readActiveTemporaryTemperatureC(settings, 'heater', NOW_MS + 89 * 60_000)).toBe(23);
+    expect(readActiveTemporaryTemperatureC(settings, 'heater', NOW_MS + 90 * 60_000)).toBeNull();
+    // The mode target is untouched: it is where the device returns.
+    expect(settings.get(MODE_DEVICE_TARGETS)).toEqual({ Home: { heater: 21 }, Away: { heater: 16 } });
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({
+      setting: 'temporary_temperature', outcome: 'written', targetC: 23, minutes: 90,
+    }));
+  });
+
+  it('ends it now, and says nothing changed when none is in force', async () => {
+    const { run, info } = register();
+    await run('set_device_temporary_temperature', { device: HEATER, temperature: 23, minutes: 30 });
+
+    await run('end_device_temporary_temperature', { device: HEATER });
+    expect(readActiveTemporaryTemperatureC(settings, 'heater', NOW_MS)).toBeNull();
+    await run('end_device_temporary_temperature', { device: HEATER });
+    expect(info).toHaveBeenLastCalledWith(expect.objectContaining({ setting: 'temporary_temperature_end', outcome: 'unchanged' }));
+  });
+
+  it('rejects a duration outside 1 to 1440 whole minutes', async () => {
+    const { run } = register();
+    for (const minutes of [0, 1441, 2.5, 'soon']) {
+      await expect(run('set_device_temporary_temperature', { device: HEATER, temperature: 23, minutes }))
+        .rejects.toThrow('Duration must be a whole number of minutes from 1 to 1440.');
+    }
+    expect(settings.get(TEMPORARY_TEMPERATURE_TARGETS)).toBeNull();
+  });
+
+  it('refuses a device set to Keep the new temperature', async () => {
+    settings.set(TEMPERATURE_CONTROL_MODES, { heater: 'external' });
+    const { run } = register();
+
+    await expect(run('set_device_temporary_temperature', { device: HEATER, temperature: 23, minutes: 30 }))
+      .rejects.toThrow('set to Keep the new temperature');
+    expect(settings.get(TEMPORARY_TEMPERATURE_TARGETS)).toBeNull();
+  });
+
+  it('accepts a device set to Save as current mode target', async () => {
+    settings.set(TEMPERATURE_CONTROL_MODES, { heater: 'update_mode' });
+    const { run } = register();
+
+    await run('set_device_temporary_temperature', { device: HEATER, temperature: 23, minutes: 30 });
+    expect(readActiveTemporaryTemperatureC(settings, 'heater', NOW_MS)).toBe(23);
+  });
+
+  it('drops entries that have ended when it writes', async () => {
+    settings.set(TEMPORARY_TEMPERATURE_TARGETS, {
+      old: { targetC: 18, untilMs: NOW_MS - 1 },
+      broken: { targetC: 'warm' },
+    });
+    const { run } = register();
+
+    await run('set_device_temporary_temperature', { device: HEATER, temperature: 23, minutes: 30 });
+    expect(Object.keys(settings.get(TEMPORARY_TEMPERATURE_TARGETS) as object)).toEqual(['heater']);
+  });
+
+  it('fails for a device that is not a managed temperature device', async () => {
+    const { run, autocomplete } = register();
+
+    await expect(run('set_device_temporary_temperature', { device: { id: 'unmanaged' }, temperature: 23, minutes: 30 }))
+      .rejects.toThrow('not a temperature device managed by PELS');
+    await expect(autocomplete('set_device_temporary_temperature', 'device', '')).resolves.toEqual([HEATER]);
   });
 });

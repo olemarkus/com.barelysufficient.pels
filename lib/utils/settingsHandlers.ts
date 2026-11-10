@@ -42,6 +42,7 @@ import {
   TEMPERATURE_BOOST_SETTINGS,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
   TEMPERATURE_CONTROL_MODES,
+  TEMPORARY_TEMPERATURE_TARGETS,
   OPERATING_MODE_SETTING,
   HOMEY_ENERGY_METER_DEVICE_ID,
   parseHomeScopedSettingsKey,
@@ -345,6 +346,12 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'temperature_control_mode_change');
       await rebuildPlanFromSettings(deps, TEMPERATURE_CONTROL_MODES);
+      deps.rebuildAllHomeRuntimePlansForDeviceControlChange();
+    },
+    // A Flow started or ended a temporary temperature. Its end needs no event:
+    // each build reads whether it is still in force.
+    [TEMPORARY_TEMPERATURE_TARGETS]: async () => {
+      await rebuildPlanFromSettings(deps, TEMPORARY_TEMPERATURE_TARGETS);
       deps.rebuildAllHomeRuntimePlansForDeviceControlChange();
     },
     [TEMPERATURE_CONTROL_DISABLED_DEVICES]: async () => {

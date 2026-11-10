@@ -38,7 +38,7 @@ const ALWAYS: readonly string[] = [
   'surplusTracking',
 ];
 
-const TEMPERATURE_CLUSTER = ['currentTarget', 'currentTemperature', 'plannedTarget'];
+const TEMPERATURE_CLUSTER = ['currentTarget', 'currentTemperature', 'plannedTarget', 'temporaryTemperatureActive'];
 const STEPPED_CLUSTER = ['steppedLoadProfile', 'selectedStepId', 'planningPowerKw'];
 
 type Kind = {
@@ -227,6 +227,7 @@ const buildFor = (kind: Kind): Record<string, unknown> => {
     surplusHoldShed: false,
     surplusAbsorbActive: kind.surplus === true,
     priceTargetShift: { kind: 'none' },
+    temporaryTemperatureActive: false,
     surplusCeilingStepId: kind.ceiling,
   }) as unknown as Record<string, unknown>;
 };

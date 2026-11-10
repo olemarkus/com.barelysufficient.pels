@@ -183,6 +183,41 @@ describe('temperature setpoints, resolved before the planner', () => {
     expect(unconfigured).not.toHaveBeenCalled();
   });
 
+  describe('a Flow\'s temporary temperature', () => {
+    const temporary = (targetC: number): Partial<TemperatureIntentReads> => ({
+      getTemporaryTemperatureC: () => targetC,
+    });
+
+    it('stands in for the mode target, with no price shift or surplus lift', () => {
+      const heater = resolve(device({ currentTarget: 21, currentTemperature: 20 }), {
+        ...modeTarget(21),
+        ...priced(PriceLevel.CHEAP, 2, -2),
+        getPriceOptimizationSettings: () => ({
+          unit: { enabled: true, cheapDelta: 2, expensiveDelta: -2, surplusWilling: true, surplusDelta: 3 },
+        }),
+        ...temporary(24),
+      });
+      expect([heater.intendedC, heater.desiredC, heater.keepC, heater.surplusC]).toEqual([24, 24, 24, 24]);
+      expect(heater.keepPriceShift).toEqual({ kind: 'none' });
+      expect(heater.temporaryTemperatureActive).toBe(true);
+    });
+
+    it('is not in force when the read answers none', () => {
+      const heater = resolve(device({ currentTarget: 21, currentTemperature: 20 }), modeTarget(21));
+      expect([heater.intendedC, heater.keepC, heater.temporaryTemperatureActive]).toEqual([21, 21, false]);
+    });
+
+    it('still gives way to a Smart task floor and keeps the configured limit', () => {
+      const heater = resolve(device({ currentTarget: 21, currentTemperature: 20, deadlineFloorTargetC: 23 }), {
+        ...modeTarget(21),
+        ...temporary(19),
+        getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
+      });
+      expect(heater.keepC).toBe(23);
+      expect(heater.shed).toMatchObject({ action: 'set_temperature', limitC: 15, asksLessThanIntended: true });
+    });
+  });
+
   it('resolves nothing for a device that is not a temperature device', () => {
     const plug = partialDouble<PlanInputDevice>({ id: 'plug', deviceType: 'onoff', targets: [] });
     expect(fixtureTemperatureSetpoints()([plug]).size).toBe(0);

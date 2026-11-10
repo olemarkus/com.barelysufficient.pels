@@ -127,6 +127,28 @@ describe('resolveTemperatureReasonLine', () => {
     });
   });
 
+  describe('a Flow\'s temporary temperature', () => {
+    const running = {
+      ...baseDevice,
+      stateKind: 'active' as const,
+      plannedState: 'keep' as const,
+      temporaryTemperatureActive: true,
+      temperature: { currentTemperature: 21, currentTarget: 24, plannedTarget: 24, thermalDirection: 'heating' as const },
+      reason: { code: 'keep' as const, detail: null },
+    };
+
+    it('says why the target sits off the mode while it is in force', () => {
+      expect(resolveTemperatureReasonLine(running)).toBe('Temporary temperature from a Flow');
+      expect(resolveTemperatureReasonLine({ ...running, temporaryTemperatureActive: false })).toBeNull();
+    });
+
+    it('says nothing about a target on a card that is off', () => {
+      expect(resolveTemperatureReasonLine({
+        ...running, stateKind: 'idle' as const, currentState: 'off' as const,
+      })).toBeNull();
+    });
+  });
+
   // The gap is the negated admission margin, which is now exactly
   // `need − available`: nothing is withheld on top of the device's own need. It
   // used to differ, and `need − available` understated the real bar by the flat

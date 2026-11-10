@@ -183,6 +183,8 @@ export type BasePlanDeviceInputs = {
   surplusHoldShed: boolean;
   surplusAbsorbActive: boolean;
   priceTargetShift: PriceTargetShift;
+  /** The plan commands a Flow's temporary temperature (`DevicePlanDevice.temporaryTemperatureActive`). */
+  temporaryTemperatureActive: boolean;
   /**
    * The rung this cycle's surplus allocation bought a surplus-TRACKING device,
    * or undefined for every other device. A ceiling on the keep step, never a
@@ -194,7 +196,7 @@ export type BasePlanDeviceInputs = {
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
 export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDevice {
   const {
-    dev, binaryCommandPending, boostActive, surplusAbsorbActive, priceTargetShift,
+    dev, binaryCommandPending, boostActive, surplusAbsorbActive, priceTargetShift, temporaryTemperatureActive,
   } = inputs;
   const { currentState } = dev;
   const decision = resolvePlannedDeviceDecision(inputs);
@@ -274,6 +276,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
       // planned === current, which the executor's no-op fence skips.
       plannedTarget: resolvedPlannedTarget ?? dev.currentTarget,
     } satisfies TemperatureKind);
+    loose.temporaryTemperatureActive = temporaryTemperatureActive;
   }
   // The stepped cluster as a UNIT, for the reason above: `SteppedLoadKind`
   // requires all three, so dropping one here is a local compile error rather
