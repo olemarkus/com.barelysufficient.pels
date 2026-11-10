@@ -58,7 +58,15 @@ miss as budget-only, and `hours` rows of booked beside delivered energy per hour
 `Smart task schedules` carries the device's task schedules with the permissions each
 grants. A Main report about the whole app carries every saved task
 (`Current smart tasks`), the runs that finalized in its window (the newest 12) and
-every task schedule. These sections are bounded (about 40 KB at most) and are kept
+every task schedule. It also carries `Learned device rates`: for each device with a
+learned profile, task or no task, the kWh/unit smart tasks are sized from, the
+accepted and refused sample counts, the up to 64 windows of the last 14 days it rests
+on (`sampleColumns` names their fields), and `rejections`, a lifetime tally by reason
+of refused samples and dropped windows with the energy each dropped window had summed.
+Two reasons are windows no sample refusal counts: `objective_profile_powerless_sub_interval`
+(a stretch without power reset the window) and `objective_profile_unpowered_progress`
+(the value moved while nothing was drawn, so the window learned no rate). Per-car
+profiles are not included. These sections are bounded (about 40 KB at most) and are kept
 whole: the log gives way first when a report must fit its size limit. `Current device plan` adds whether PELS
 may command the device and which standing hold (start policy, charge target) keeps it
 off. The smart-task page opens a report on its device with **Report a problem**, in

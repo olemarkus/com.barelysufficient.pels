@@ -637,6 +637,30 @@ describe('support report smart task audit', () => {
     });
   });
 
+  it('states each learned device rate, with or without a smart task', async () => {
+    const app = Object.assign(auditedApp([]), {
+      powerTracker: {
+        objectiveProfiles: {
+          heater: {
+            updatedAtMs: now, lastSample: { observedAtMs: now, value: 21 }, acceptedSamples: 1, rejectedSamples: 0,
+            samples: [{ observedAtMs: now, inputValue: 20.5, kwhPerUnit: 1.4 }],
+            rejections: { objective_profile_powerless_sub_interval: { count: 1, discardedEnergyKWh: 0.6 } },
+          },
+        },
+      },
+    });
+    const report = await source(app, objectiveStore({}), () => undefined).capture(dayRequest, now);
+    expect(values(report, 'Learned device rates')).toEqual({
+      sampleColumns: ['observedAtMs', 'inputValue', 'kwhPerUnit', 'outdoorTemperatureC', 'progressDirection'],
+      devices: [{
+        deviceId: 'heater', deviceName: 'Hall heater now', updatedAtMs: now, acceptedSamples: 1, rejectedSamples: 0,
+        kwhPerUnit: null,
+        rejections: { objective_profile_powerless_sub_interval: { count: 1, discardedEnergyKWh: 0.6 } },
+        samples: [[now, 20.5, 1.4, null, 'increasing']],
+      }],
+    });
+  });
+
   it('shares an interval that crosses an hour over both hours, booked and delivered alike', async () => {
     // A half-hour price period from :45 to :15, booked from a restart at :50.
     const report = await source(auditedApp([run({

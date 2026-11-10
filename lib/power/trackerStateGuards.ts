@@ -176,6 +176,16 @@ const OBJECTIVE_PROFILE_OPTIONAL_FINITE_FIELDS = [
   'subIntervalPowerW',
 ] as const;
 
+const isObjectiveProfileRejectionTally = (value: unknown): boolean => (
+  isPlainObjectRecord(value)
+  && isFiniteNumber(value.count) && value.count >= 0
+  && isFiniteNumber(value.discardedEnergyKWh) && value.discardedEnergyKWh >= 0
+);
+
+const isObjectiveProfileRejections = (value: unknown): boolean => (
+  isPlainObjectRecord(value) && Object.values(value).every(isObjectiveProfileRejectionTally)
+);
+
 const isDeviceObjectiveProfile = (value: unknown): boolean => {
   if (!isPlainObjectRecord(value)) return false;
   // No `kind` or sample `unit`: a profile records a value and a time, and this
@@ -197,7 +207,8 @@ const isDeviceObjectiveProfile = (value: unknown): boolean => {
     )
     && isOptionalArrayOf(value.samples, isObjectiveProfileObservation)
     && isOptionalArrayOf(value.bands, isObjectiveProfileBand)
-    && isOptional(value.baselineMidStep, (flag) => flag === true);
+    && isOptional(value.baselineMidStep, (flag) => flag === true)
+    && isOptional(value.rejections, isObjectiveProfileRejections);
 };
 
 const isObjectiveProfileMap = (value: unknown): boolean => (

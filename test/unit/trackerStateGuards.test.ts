@@ -143,6 +143,17 @@ describe('isPlausiblePowerTrackerState — persisted core shape', () => {
         },
       },
     }],
+    ['an objective profile with a negative rejection tally', {
+      objectiveProfiles: {
+        heater: {
+          updatedAtMs: 1,
+          lastSample: { observedAtMs: 1, value: 55 },
+          acceptedSamples: 0,
+          rejectedSamples: 0,
+          rejections: { objective_profile_interval_too_long: { count: -1, discardedEnergyKWh: 0 } },
+        },
+      },
+    }],
     ['a car profile map that is not keyed by charger', {
       carObjectiveProfiles: {
         'car-a': { updatedAtMs: 1, lastSample: { observedAtMs: 1, value: 55 }, acceptedSamples: 0, rejectedSamples: 0 },
@@ -151,6 +162,20 @@ describe('isPlausiblePowerTrackerState — persisted core shape', () => {
     ['a non-finite freshness latch', { lastTimestamp: Number.NEGATIVE_INFINITY }],
   ])('rejects %s', (_label, state) => {
     expect(isPlausiblePowerTrackerState(state)).toBe(false);
+  });
+
+  it('accepts a profile carrying a rejection tally', () => {
+    expect(isPlausiblePowerTrackerState({
+      objectiveProfiles: {
+        heater: {
+          updatedAtMs: 1,
+          lastSample: { observedAtMs: 1, value: 55 },
+          acceptedSamples: 2,
+          rejectedSamples: 1,
+          rejections: { objective_profile_powerless_sub_interval: { count: 3, discardedEnergyKWh: 1.5 } },
+        },
+      },
+    })).toBe(true);
   });
 
   it('accepts per-car profiles keyed by car and then charger', () => {
