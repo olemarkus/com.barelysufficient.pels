@@ -3,6 +3,7 @@ import type { ContinuousStoragePlan } from '../../packages/planner-types/src/pla
 import type { PendingBinaryCommandRead } from '../ports/pendingBinaryCommand';
 import type { PlanRebuildTrigger } from './planRebuildTrigger';
 import { NO_PHASE_SHED_STATE, type PhaseShedState } from './phase/phaseShedState';
+import { ShedReliefAudit } from './shedding/shedReliefAudit';
 import type { PlanLimits } from './planContext';
 import { OvershootIncident } from './overshootIncident';
 import { CapacityDrainStart } from './capacityDrainStart';
@@ -398,6 +399,9 @@ export class PlanEngineState {
    * no relief is credited. Cleared only when the overshoot ends.
    */
   shedPlanLatch: ShedPlanLatch | null = null;
+
+  /** Credited relief beside the meter's response, for the logs (`shedding/shedReliefAudit.ts`). */
+  readonly shedReliefAudit = new ShedReliefAudit();
 
   /**
    * Drop the shed-plan latch when the overshoot it belongs to is over. The

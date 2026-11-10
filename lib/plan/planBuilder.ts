@@ -358,6 +358,7 @@ export class PlanBuilder {
     const storageRelief = this.handBackStorage(
       limitedStorage, restoreResult, power, surplusOffers, heldContext.devices, nowTs,
     );
+    this.auditShedRelief(heldContext, power, restoreResult);
 
     const holdResult = this.stages.applyHoldPlan(
       restoreResult,
@@ -631,6 +632,14 @@ export class PlanBuilder {
       budgetPaceKw,
       projectedExemptKw,
     };
+  }
+
+  /** Credited relief beside the meter, for the logs; a simulated shed sends nothing to show. */
+  private auditShedRelief(context: PlanContext, power: MeasuredPower, restoreResult: RestorePlanResult): void {
+    if (this.deps.getCapacityDryRun()) return;
+    this.state.shedReliefAudit.observe(
+      this.state.shedPlanLatch, context.devices, power.drawKw, restoreResult.restoredThisCycle, context.nowTs,
+    );
   }
 
   private applySheddingOutcome(sheddingPlan: SheddingPlan): void {
