@@ -1,44 +1,41 @@
 ---
 title: Temporarily change one heater's temperature with Homey Flows
-description: Use PELS Flow cards and a delay to warm one room for an hour or a session, then return the thermostat to its normal target automatically.
+description: Use a PELS Flow card to warm one room for an hour or a session, then return the thermostat to its normal target automatically.
 ---
 
 # Temporarily change one heater's temperature with Homey Flows
 
-Warm the bathroom for an hour, heat the basement for a film, or keep a guest room at a fixed temperature overnight. A Homey Flow decides when this starts and ends, and PELS returns the thermostat to normal control afterwards.
+Warm the bathroom for an hour, heat the basement for a film, or keep a guest room at a fixed temperature overnight. PELS holds the thermostat at the temperature for the time you choose, then returns it to normal control.
 
-Both recipes below use a Flow with a delay. Choose by who should set the temperature while the override runs.
+Choose by who should set the temperature meanwhile.
 
 | | Keep PELS in control | Hand the thermostat to a Flow |
 | --- | --- | --- |
 | **Who sets the temperature** | PELS, using the value from the Flow | The Flow or the thermostat itself |
-| **Price and solar adjustments** | Stay on | Paused for this device |
+| **Price and solar adjustments** | Paused for this device | Paused for this device |
 | **Limiting by lowering the temperature** | Stays on | Paused for this device |
 | **On/off limiting** | Stays on | Stays on |
 | **Best for** | Most temporary changes | Virtual thermostats and Flows that set the temperature themselves |
 
 ## Keep PELS in control
 
-Use **Set mode temperature for device** at the start and again at the end. The thermostat needs **When the temperature changes outside PELS** set to **Return to mode target**.
-
-![Homey Flow that sets the Bathroom thermostat to 23 °C in Home mode, waits 60 minutes, then sets it back to 21 °C](../images/howto_temporary_heater_mode_temperature_flow.png)
-*Figure 1. The bathroom runs at 23 °C for 60 minutes, then goes back to 21 °C.*
+Use **Set temporary temperature for device**. One card is enough: PELS ends the temporary temperature itself.
 
 1. Add **This Flow is started**, or any other trigger, such as a button.
-2. Add **Set mode temperature for device**. Choose the thermostat and mode, and enter the temporary temperature.
-3. Add a delay of the length you want.
-4. Add **Set mode temperature for device** again, with the thermostat's normal temperature.
+2. Add **Set temporary temperature for device**. Choose the thermostat, enter the temperature and the number of minutes (up to 1440, one day).
 
-PELS adds price and solar adjustments on top of the temporary temperature. For one exact temperature, also use **Set price adjustment for device** to set both adjustments to `0` at the start, and restore them at the end.
+PELS sets the thermostat to exactly that temperature, without price or solar adjustments, and the device card reads **Temporary temperature from a Flow**. When the time is up, PELS returns the thermostat to the target of whichever mode is active, with its adjustments. A mode change in the meantime does not end it, and neither does a Homey restart.
 
-The card saves the temperature to the mode, so the last card has to write the normal value back. Pick the mode by name if it can change during the delay. **Active mode** writes to whichever mode is in force when each card runs, so a mode change would leave the temporary temperature in the first mode.
+Power limiting still applies: if PELS needs the power, it lowers the thermostat to its limit temperature and goes back to the temporary temperature when the limit ends. A Smart task on the thermostat keeps it at least at the task's temperature.
+
+Running the card again replaces the temperature and starts the time again. The card works with **When the temperature changes outside PELS** set to **Return to mode target** or **Save as current mode target**, and is not available with **Keep the new temperature**.
 
 ## Hand the thermostat to a Flow
 
 Use this when something other than PELS should set the temperature for a while, such as a virtual thermostat with its own logic.
 
 ![Homey Flow that sets Bathroom thermostat to Keep the new temperature, sets the thermostat to 23 °C, waits 60 minutes, then sets it to Return to mode target](../images/howto_temporary_heater_handover_flow.png)
-*Figure 2. PELS leaves the thermostat's temperature alone for 60 minutes, then takes it back.*
+*Figure 1. PELS leaves the thermostat's temperature alone for 60 minutes, then takes it back.*
 
 1. Add **This Flow is started**, or any other trigger.
 2. Add **Set what happens when a device's temperature changes outside PELS**, with **Keep the new temperature**.
@@ -52,7 +49,7 @@ A mode change during the delay does not change the temperature. On/off limiting 
 
 ## End it with an event instead of a timer
 
-To end a session when something happens, such as a switch turning off, leave out the delay and put the last card in a second Flow with that trigger.
+To end a session when something happens, such as a switch turning off, add **End temporary temperature for device** to a second Flow with that trigger. Set the duration long enough to cover the session. In the handover recipe, leave out the delay and put the last card in the second Flow.
 
 ## Related
 

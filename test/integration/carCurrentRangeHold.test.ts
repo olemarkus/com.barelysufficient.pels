@@ -42,7 +42,7 @@ const buildHeld = (device: PlanInputDevice) => {
   const built = buildBasePlanDevice({
     dev: device, recentlyRestored: false, binaryCommandPending: false, plannedTarget: undefined,
     shedBehavior: { action: 'set_step' }, sheddingPlan, fairnessLimited: false, boostActive: false,
-    surplusHoldShed: false, surplusAbsorbActive: false, priceTargetShift: { kind: 'none' },
+    surplusHoldShed: false, surplusAbsorbActive: false, priceTargetShift: { kind: 'none' }, temporaryTemperatureActive: false,
     surplusCeilingStepId: undefined,
   });
   return finalizePlanDevices([built], new Map(), new Set()).planDevices[0]!;

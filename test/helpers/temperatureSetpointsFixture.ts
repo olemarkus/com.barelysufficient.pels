@@ -26,6 +26,7 @@ export const fixtureTemperatureSetpoints = (
   getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
   getThermalDirection: () => 'heating',
   getShedBehavior: () => ({ action: 'turn_off' }),
+  getTemporaryTemperatureC: () => null,
   ...reads,
 });
 
@@ -47,6 +48,7 @@ export const fixtureTemperatureSetpointsEntry = (
   desiredC: 21,
   keepC: 21,
   keepPriceShift: { kind: 'none' },
+  temporaryTemperatureActive: false,
   surplusC: 21,
   targetStepC: 0.5,
   shed: { action: 'turn_off' },

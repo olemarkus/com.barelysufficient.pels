@@ -2010,6 +2010,30 @@
       },
       {
         "title": {
+          "en": "End temporary temperature for device"
+        },
+        "titleFormatted": {
+          "en": "End the temporary temperature for [[device]]"
+        },
+        "hint": {
+          "en": "Returns the device to its mode target now, with price and solar adjustments."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select temperature device"
+            }
+          }
+        ],
+        "id": "end_device_temporary_temperature"
+      },
+      {
+        "title": {
           "en": "Remove budget exemption for device"
         },
         "titleFormatted": {
@@ -2385,6 +2409,56 @@
           }
         ],
         "id": "set_device_temperature_control_mode"
+      },
+      {
+        "title": {
+          "en": "Set temporary temperature for device"
+        },
+        "titleFormatted": {
+          "en": "Set [[device]] to [[temperature]] °C for [[minutes]] minutes"
+        },
+        "hint": {
+          "en": "Holds the device at this temperature instead of its mode target, then returns it to the mode target when the time is up. Price and solar adjustments pause meanwhile; power limiting and Smart tasks still apply. Running the card again replaces the temperature and starts the time again. Not available while the device is set to Keep the new temperature."
+        },
+        "args": [
+          {
+            "name": "device",
+            "type": "autocomplete",
+            "title": {
+              "en": "Device"
+            },
+            "placeholder": {
+              "en": "Select temperature device"
+            }
+          },
+          {
+            "name": "temperature",
+            "type": "number",
+            "title": {
+              "en": "Temperature (°C)"
+            },
+            "placeholder": {
+              "en": "23"
+            },
+            "min": -30,
+            "max": 100,
+            "step": 0.5
+          },
+          {
+            "name": "minutes",
+            "type": "number",
+            "title": {
+              "en": "Duration (minutes)"
+            },
+            "placeholder": {
+              "en": "60"
+            },
+            "min": 1,
+            "max": 1440,
+            "step": 1
+          }
+        ],
+        "id": "set_device_temporary_temperature"
       },
       {
         "title": {

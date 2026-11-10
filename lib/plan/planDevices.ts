@@ -140,6 +140,7 @@ export function buildInitialPlanDevices(
       // Set by resolvePlannedTarget above (read after it ran for this device).
       surplusAbsorbActive: state.surplusAbsorbActiveByDevice[dev.id] === true,
       priceTargetShift: resolvePriceTargetShift(dev, context.temperatureSetpoints, plannedTarget),
+      temporaryTemperatureActive: isKeptAtTemporaryTemperature(dev, context.temperatureSetpoints, plannedTarget),
       surplusCeilingStepId,
     });
     baseMs += Date.now() - t1;
@@ -196,6 +197,17 @@ function resolvePriceTargetShift(
   if (!isTemperaturePlanDevice(dev)) return NO_PRICE_TARGET_SHIFT;
   const setpoints = temperatureSetpointsFor(temperatureSetpoints, dev.id);
   return plannedTarget === setpoints.keepC ? setpoints.keepPriceShift : NO_PRICE_TARGET_SHIFT;
+}
+
+/** The plan commands a Flow's temporary temperature: the kept setpoint, while one is in force. */
+function isKeptAtTemporaryTemperature(
+  dev: PlanInputDevice,
+  temperatureSetpoints: TemperatureSetpointsByDevice,
+  plannedTarget: ResolvedPlannedTarget,
+): boolean {
+  if (!isTemperaturePlanDevice(dev)) return false;
+  const setpoints = temperatureSetpointsFor(temperatureSetpoints, dev.id);
+  return setpoints.temporaryTemperatureActive && plannedTarget === setpoints.keepC;
 }
 
 function isRecentlyRestored(lastRestoreMs: number | undefined, nowTs: number): boolean {

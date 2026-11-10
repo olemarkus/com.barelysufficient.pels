@@ -1,0 +1,24 @@
+{
+  "title": {
+    "en": "End temporary temperature for device"
+  },
+  "titleFormatted": {
+    "en": "End the temporary temperature for [[device]]"
+  },
+  "hint": {
+    "en": "Returns the device to its mode target now, with price and solar adjustments."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select temperature device"
+      }
+    }
+  ],
+  "id": "end_device_temporary_temperature"
+}

@@ -53,10 +53,18 @@ export type PriceTargetShift =
   | { kind: 'shifted'; direction: 'raised' | 'lowered'; priceLevel: 'cheap' | 'expensive' };
 
 export type TemperatureSetpoints = {
-  /** The active mode's target for the device, or its own setpoint when the mode has none. */
+  /**
+   * A Flow's temporary temperature while one is in force; otherwise the active
+   * mode's target for the device, or its own setpoint when the mode has none.
+   */
   intendedC: number;
-  /** `intendedC` with this hour's price shift applied: what the owner wants the device at now. */
+  /**
+   * `intendedC` with this hour's price shift applied: what the owner wants the
+   * device at now. Equal to `intendedC` under a temporary temperature.
+   */
   desiredC: number;
+  /** `intendedC` is a Flow's temporary temperature, not the mode target. */
+  temporaryTemperatureActive: boolean;
   /**
    * What PELS commands when it neither limits the device nor lifts it for
    * surplus: `desiredC` held at the smart-task deadline floor when one applies.

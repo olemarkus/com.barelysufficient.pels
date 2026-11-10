@@ -17,7 +17,9 @@ const settings = (cheapDelta: number) => ({
   [DEVICE_ID]: { enabled: true, cheapDelta, expensiveDelta: -2, surplusWilling: false, surplusDelta: 0 },
 });
 
-const planDevice = (params: { level: PriceLevel; cheapDelta?: number; deadlineFloorTargetC?: number }) => {
+const planDevice = (params: {
+  level: PriceLevel; cheapDelta?: number; deadlineFloorTargetC?: number; temporaryC?: number;
+}) => {
   const priceSettings = settings(params.cheapDelta ?? 2);
   const context = buildPlanCycleObject({
     devices: [
@@ -36,6 +38,7 @@ const planDevice = (params: { level: PriceLevel; cheapDelta?: number; deadlineFl
       getPriceOptimizationEnabled: () => true,
       getPriceOptimizationSettings: () => priceSettings,
       getCurrentHourPriceLevel: () => params.level,
+      getTemporaryTemperatureC: () => params.temporaryC ?? null,
     },
     total: 2,
     softLimit: 10,
@@ -63,5 +66,18 @@ describe('the price shift behind a planned target', () => {
     expect(planDevice({ level: PriceLevel.NORMAL })?.priceTargetShift).toEqual({ kind: 'none' });
     expect(planDevice({ level: PriceLevel.CHEAP, deadlineFloorTargetC: 25 })?.priceTargetShift)
       .toEqual({ kind: 'none' });
+  });
+});
+
+describe('a Flow\'s temporary temperature behind a planned target', () => {
+  it('is what the plan commands, flagged on the plan device, with no price shift', () => {
+    const device = planDevice({ level: PriceLevel.CHEAP, temporaryC: 24 });
+    expect(device?.plannedTarget).toBe(24);
+    expect(device?.temporaryTemperatureActive).toBe(true);
+    expect(device?.priceTargetShift).toEqual({ kind: 'none' });
+  });
+
+  it('is not flagged when no temporary temperature is in force', () => {
+    expect(planDevice({ level: PriceLevel.CHEAP })?.temporaryTemperatureActive).toBe(false);
   });
 });

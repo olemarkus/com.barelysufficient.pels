@@ -2,6 +2,7 @@ import type { AppContext } from '../../lib/app/appContext';
 import { ObservedTemperatureModeUpdates } from '../../lib/home/observedTemperatureModeUpdates';
 import type { ResolveOperatingModeForDevice } from '../../lib/home/homeModeDeviceRead';
 import type { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
+import { bindTemporaryTemperatureRead } from './temperatureSetpointsSeam';
 
 export function createObservedTemperatureModeUpdates(
   ctx: AppContext,
@@ -18,5 +19,6 @@ export function createObservedTemperatureModeUpdates(
     (deviceId, value) => ctx.deviceManager!.resolveTemperatureTarget(deviceId, value),
     isDeviceLimited,
     (deviceId) => ctx.getShedLimitTemperaturesC(deviceId),
+    bindTemporaryTemperatureRead(ctx),
   );
 }

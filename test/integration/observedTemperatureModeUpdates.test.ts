@@ -22,7 +22,7 @@ describe('observation-origin mode edits', () => {
     const isLimited = vi.fn(() => false);
     const service = new ObservedTemperatureModeUpdates(
       settings, resolveMode, () => true, reloadMain, () => [{ reloadModeCatalog: reloadArea }], (_id, value) => value,
-      isLimited, () => [],
+      isLimited, () => [], () => null,
     );
     return { settings, key, service, reloadMain, reloadArea, resolveMode, isLimited };
   };
@@ -30,7 +30,7 @@ describe('observation-origin mode edits', () => {
   it('authorizes the normalized saved target rather than an old adjusted target', () => {
     const { settings, resolveMode } = start();
     const service = new ObservedTemperatureModeUpdates(
-      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false, () => [],
+      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false, () => [], () => null,
     );
     expect(service.allowsTarget('heater', 24)).toBe(true);
     expect(service.allowsTarget('heater', 23.5)).toBe(false);
@@ -46,12 +46,22 @@ describe('observation-origin mode edits', () => {
     const { settings, resolveMode } = start();
     const readLimits = vi.fn(() => [16.4, 26.2]);
     const service = new ObservedTemperatureModeUpdates(
-      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false, readLimits,
+      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false, readLimits, () => null,
     );
     expect(service.allowsTarget('heater', 16)).toBe(true);
     expect(service.allowsTarget('heater', 26)).toBe(true);
     expect(service.allowsTarget('heater', 20)).toBe(false);
     expect(readLimits).toHaveBeenCalledWith('heater');
+  });
+
+  it('authorizes a Flow\'s temporary temperature under Save as current mode target', () => {
+    const { settings, resolveMode } = start();
+    const service = new ObservedTemperatureModeUpdates(
+      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false, () => [],
+      () => 18,
+    );
+    expect(service.allowsTarget('heater', 18)).toBe(true);
+    expect(service.allowsTarget('heater', 19)).toBe(false);
   });
 
   it('allows limiting under Save as current mode target and denies it only under Keep the new temperature', () => {
@@ -92,7 +102,7 @@ describe('observation-origin mode edits', () => {
   it('reads a policy never written to an empty store as the default policy', () => {
     const service = new ObservedTemperatureModeUpdates(
       mockHomeyInstance.settings, () => ({ state: 'unavailable' }), () => true, vi.fn(), () => [],
-      (_id, value) => value, () => false, () => [],
+      (_id, value) => value, () => false, () => [], () => null,
     );
     expect(service.allowsAutomaticAdjustments('heater')).toBe(true);
     expect(service.allowsLimiting('heater')).toBe(true);

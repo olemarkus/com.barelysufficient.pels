@@ -321,7 +321,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     isSurplusPoolReachable: () => surplusPoolReachability.isReachable(),
     observedTemperatureModeUpdates: new ObservedTemperatureModeUpdates(
       homey.settings, () => ({ state: 'unavailable' }), () => false, vi.fn(), () => [], (_id, value) => value,
-      () => false, () => [],
+      () => false, () => [], () => null,
     ),
     startupBootstrap: undefined,
     getHomeyPriceFormulaUiStatus: () => ({ kind: 'none' as const }),

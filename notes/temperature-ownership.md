@@ -125,6 +125,13 @@ pass that keeps it complete — never by adding a second place that also knows
 what a device should be set to. Two sources of a device's intended setpoint is
 the problem, not the safety net.
 
+**A Flow's temporary temperature is not a second target.** It is an input to
+the same resolver, standing where the mode target stands until its stored end
+time (`lib/thermostat/temporaryTemperatureTargets.ts`): no price shift, no
+surplus lift, the deadline floor and the shed limit unchanged. It records no
+restore value either: when it ends, the next build reads the mode target. The
+"Save as current mode target" fence admits it beside the saved target.
+
 ## Consequences to keep true
 
 - **Seed candidacy is the planned set (`control.managed`), not the power-limited

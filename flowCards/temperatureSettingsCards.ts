@@ -3,6 +3,11 @@ import type { ModeTargetSelection } from '../lib/home/modeDeviceTargetWrite';
 import { writeDevicePriceAdjustment } from '../lib/price/priceOptimizationSettingsStore';
 import { writeTemperatureControlMode } from '../lib/device/temperatureControlSettings';
 import {
+  endTemporaryTemperature,
+  MAX_TEMPORARY_TEMPERATURE_MINUTES,
+  startTemporaryTemperature,
+} from '../lib/thermostat/temporaryTemperatureTargets';
+import {
   MAX_PRICE_ADJUSTMENT_C,
   type PriceAdjustmentKind,
 } from '../packages/shared-domain/src/settings/priceOptimization';
@@ -25,8 +30,8 @@ import {
  * the temperature changes outside PELS. Each card writes the setting through
  * its owner, which also holds the rules for what may be written; the card
  * parses its arguments and turns the owner's answer into a message. No card
- * holds state of its own: a Flow that wants a temporary change sets the value
- * back itself.
+ * holds state of its own; a temporary temperature carries its own end time, kept
+ * by `lib/thermostat/temporaryTemperatureTargets.ts`.
  */
 
 // The "When the temperature changes outside PELS" row shows for every
@@ -53,6 +58,45 @@ export function registerTemperatureSettingsCards(deps: FlowCardDeps): void {
   registerModeTemperatureCard(deps);
   registerPriceAdjustmentCard(deps);
   registerTemperatureControlModeCard(deps);
+  registerTemporaryTemperatureCards(deps);
+}
+
+function registerTemporaryTemperatureCards(deps: FlowCardDeps): void {
+  const start = deps.homey.flow.getActionCard('set_device_temporary_temperature');
+  start.registerRunListener(async (args: unknown) => {
+    const device = await requireDevice(args, deps, isManagedTemperatureDevice);
+    const temperature = readFlowNumberArg(args, 'temperature');
+    if (temperature === null) throw new Error('Temperature must be a number.');
+    const minutes = readFlowNumberArg(args, 'minutes');
+    if (minutes === null || !Number.isInteger(minutes) || minutes < 1 || minutes > MAX_TEMPORARY_TEMPERATURE_MINUTES) {
+      throw new Error(`Duration must be a whole number of minutes from 1 to ${MAX_TEMPORARY_TEMPERATURE_MINUTES}.`);
+    }
+    const targetC = normalizeTemperature(deps, device.id, temperature);
+    const outcome = startTemporaryTemperature(
+      deps.homey.settings, device.id, { targetC, minutes }, deps.getNow().getTime(),
+    );
+    if (outcome === 'temperature_control_off') {
+      throw new Error(`${device.name} is set to Keep the new temperature, so PELS does not set its temperature.`);
+    }
+    if (outcome === 'unavailable') throw new Error('PELS could not save the temperature. Try again shortly.');
+    logSettingSaved(deps, device, { setting: 'temporary_temperature', outcome, targetC, minutes });
+    return true;
+  });
+  start.registerArgumentAutocompleteListener('device', async (query: string) => (
+    getDeviceOptions(deps, query, isManagedTemperatureDevice)
+  ));
+
+  const end = deps.homey.flow.getActionCard('end_device_temporary_temperature');
+  end.registerRunListener(async (args: unknown) => {
+    const device = await requireDevice(args, deps, isManagedTemperatureDevice);
+    const outcome = endTemporaryTemperature(deps.homey.settings, device.id, deps.getNow().getTime());
+    if (outcome === 'unavailable') throw new Error('PELS could not end the temperature. Try again shortly.');
+    logSettingSaved(deps, device, { setting: 'temporary_temperature_end', outcome });
+    return true;
+  });
+  end.registerArgumentAutocompleteListener('device', async (query: string) => (
+    getDeviceOptions(deps, query, isManagedTemperatureDevice)
+  ));
 }
 
 function registerModeTemperatureCard(deps: FlowCardDeps): void {

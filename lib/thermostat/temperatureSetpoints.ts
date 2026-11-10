@@ -68,6 +68,8 @@ export type TemperatureIntentReads = {
   getThermalDirection: (deviceId: string) => ThermalDirection;
   /** Already resolved for the device's direction and policy (`AppHostApi.getShedBehavior`). */
   getShedBehavior: (deviceId: string) => ShedBehavior;
+  /** A Flow's temporary temperature while it is in force (`temporaryTemperatureTargets.ts`), or `null`. */
+  getTemporaryTemperatureC: (deviceId: string) => number | null;
 };
 
 // The tolerance for "the target is short of what the owner wants" — as before.
@@ -158,12 +160,18 @@ function resolveDeviceSetpoints(
 ): TemperatureSetpoints {
   const direction = reads.getThermalDirection(device.id);
   const target = getPrimaryTargetCapability(device.targets);
+  // A Flow's temporary temperature stands in for the mode target, literally: no
+  // price shift and no surplus lift. The deadline floor and the shed limit below
+  // still apply to it as they would to the mode target.
+  const temporaryC = reads.getTemporaryTemperatureC(device.id);
   const storedIntendedC = intent.modeTargets[device.id];
-  const intendedC = typeof storedIntendedC === 'number' ? storedIntendedC : device.currentTarget;
+  const modeIntendedC = typeof storedIntendedC === 'number' ? storedIntendedC : device.currentTarget;
+  const intendedC = temporaryC ?? modeIntendedC;
   const config = resolvePriceOptimizationConfig(intent.settings, device.id);
-  const desiredC = intent.priceShiftActive && config.enabled
+  const desiredC = temporaryC === null && intent.priceShiftActive && config.enabled
     ? applyPriceShift(intendedC, config, intent.priceLevel, direction)
     : intendedC;
+  const surplusLiftC = temporaryC === null ? config.surplusLiftC : 0;
   // An active smart task holds the device's setpoint at least at the task's target.
   const floorC = device.deadlineFloorTargetC;
   const withFloor = (setpointC: number): number => (
@@ -175,7 +183,7 @@ function resolveDeviceSetpoints(
   );
   const surplusC = normalizeTargetCapabilityValue({
     target,
-    value: withFloor(resolveSurplusRawC(direction, config.surplusLiftC, intendedC, desiredC)),
+    value: withFloor(resolveSurplusRawC(direction, surplusLiftC, intendedC, desiredC)),
   });
   const targetStepC = resolveTargetStepC(device, intendedC);
   // Half a step: keeps float quantization from reading an equal command as short.
@@ -198,6 +206,7 @@ function resolveDeviceSetpoints(
     desiredC,
     keepC,
     keepPriceShift,
+    temporaryTemperatureActive: temporaryC !== null,
     surplusC,
     targetStepC,
     shed,

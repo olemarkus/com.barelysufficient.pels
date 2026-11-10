@@ -715,6 +715,12 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
    * lift included. Drives the card's "Raised while power is cheap" reason line.
    */
   priceTargetShift: PriceTargetShift;
+  /**
+   * Producer-resolved: the planned target is a Flow's temporary temperature, kept as is
+   * (not a limit). `false` for every other temperature outcome, absent on a device with no
+   * temperature target. Drives the card's "Temporary temperature from a Flow" reason line.
+   */
+  temporaryTemperatureActive?: boolean;
   // Forwarded flat from `PlanInputDevice.reservesStartupPower` (see its doc block): this device
   // may hold back its lowest-active-step power from lower-priority devices' admission until it
   // has started. Read only by `lib/plan/admission/headroomReserve.ts`.
