@@ -90,7 +90,7 @@ On the 15-minute period, **Highest completed quarter this month** reports PELS's
 Important:
 
 - The selected-period hard cap is the only limit with an urgent manual-action alert. The grid import limit shows its own status on the Overview and does not fire hard-cap Flows.
-- The **Hard cap breach imminent — manual action needed** trigger fires only when PELS projects a hard-cap breach in the current capacity period and cannot limit any more load.
+- The **Hard cap breach imminent: manual action needed** trigger fires only when PELS projects a hard-cap breach in the current capacity period and cannot limit any more load.
 
 ## Settings > Devices
 

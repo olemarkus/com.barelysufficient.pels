@@ -329,8 +329,8 @@ prices, and the daily budget are app-global settings and behave as before;
 cards that read or write a **capacity number** (`Is there enough available
 power?`, `Is there available power for device?`, `Set capacity limit`) work
 from the Main home. Two triggers are area-aware: `capacity_shortfall` ("Hard
-cap breach imminent — manual action needed") and `capacity_shortfall_sustained`
-("Hard cap breach imminent for at least… — manual action needed") each carry a
+cap breach imminent: manual action needed") and `capacity_shortfall_sustained`
+("Hard cap breach imminent for at least...: manual action needed") each carry a
 `Home` token whose value is the home's display *name*
 (`resolveHomeAreaDisplayName` — `Main home`, the area's own name, or
 `Meter area` for a blank name), fired by every home's alert dispatcher. Widgets remain whole-home. The home device

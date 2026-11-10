@@ -2087,9 +2087,9 @@ classifications). Copy says what happens ("Its devices move back to the Main
 home", "your settings couldn't be read"), never the resolver or store
 vocabulary.
 
-The same two names reach Flow. Both hard-cap triggers — `Hard cap breach imminent
-— manual action needed` and its sustained sibling `Hard cap breach imminent for at
-least...` — carry a `Home` tag naming the part of the home that fired it:
+The same two names reach Flow. Both hard-cap triggers, `Hard cap breach imminent:
+manual action needed` and its sustained sibling `Hard cap breach imminent for at
+least...`, carry a `Home` tag naming the part of the home that fired it:
 
 | Concept | Label |
 |---|---|
