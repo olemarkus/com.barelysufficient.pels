@@ -3,7 +3,9 @@ import type { MeterPhasesRead, PhaseTriple } from '../ports/homeMeterReadings';
 
 type CapabilityRecord = Record<string, { value?: unknown } | undefined>;
 
-const PHASE_CAPABILITY = /^measure_(power|current|voltage)\.(?:l|p|phase_?)([123])$/iu;
+// Phases are numbered (`l1`, `p1`, `phase_1`) or lettered (`phase_a`, as some HAN readers name them).
+const PHASE_CAPABILITY = /^measure_(power|current|voltage)\.(?:(?:l|p|phase_?)([123])|phase_?([abc]))$/iu;
+const PHASE_LETTER_NUMBER: Readonly<Record<string, string>> = { a: '1', b: '2', c: '3' };
 const SPLIT_POWER_CAPABILITY = /^measure_power\.l([123])([ie])$/iu;
 
 type Facet = 'power' | 'current' | 'voltage';
@@ -36,9 +38,12 @@ const readFacet = (
   ids: readonly string[],
   facet: Facet,
 ): PhaseTriple | undefined => {
+  // A meter may name one phase twice (`l1` and `phase1`); a broken alias must not hide a good one.
   const byPhase = new Map(ids.flatMap((id) => {
-    const [, name, phase] = PHASE_CAPABILITY.exec(id) ?? [];
-    return name?.toLowerCase() === facet && phase ? [[phase, finite(capabilities[id]?.value)] as const] : [];
+    const [, name, numbered, lettered] = PHASE_CAPABILITY.exec(id) ?? [];
+    const phase = numbered ?? (lettered ? PHASE_LETTER_NUMBER[lettered.toLowerCase()] : undefined);
+    const value = finite(capabilities[id]?.value);
+    return name?.toLowerCase() === facet && phase && value !== undefined ? [[phase, value] as const] : [];
   }));
   return toTriple(PHASE_NUMBERS.map((phase) => byPhase.get(phase)));
 };
