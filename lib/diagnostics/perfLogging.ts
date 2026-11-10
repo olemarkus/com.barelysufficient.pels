@@ -2,10 +2,21 @@ import fs from 'node:fs';
 import { getDebugEmitter, isDebugTopicEnabled } from '../logging/logger';
 import { getPerfSnapshotAndResetWindow, type PerfSnapshot } from '../utils/perfCounters';
 import { startCpuSpikeMonitor } from '../utils/cpuSpikeMonitor';
-import { resolveMemoryMb } from '../diagnostics/resourceWarnings';
+import { resolveHeapCodeMb, resolveHeapSpaces, resolveMemoryMb } from '../diagnostics/resourceWarnings';
 import { drainGcWindow, startGcObserver } from '../diagnostics/gcObserver';
 import { drainOpRssWindow } from '../utils/opRssTracker';
 import { resolveSmapsDetail, resolveSmapsSummary } from '../diagnostics/smapsRollup';
+
+const HEAP_CODE_SAMPLE_EVERY = 10;
+let heapCodeCallIndex = 0;
+let lastHeapCode: Record<string, number> = {};
+// Every 10th perf line (5 min at the 30 s cadence) reads the code statistics;
+// the lines between repeat the last reading.
+const resolveSampledHeapCodeMb = (): Record<string, number> => {
+  if (heapCodeCallIndex % HEAP_CODE_SAMPLE_EVERY === 0) lastHeapCode = resolveHeapCodeMb();
+  heapCodeCallIndex += 1;
+  return lastHeapCode;
+};
 
 const NON_RETRYABLE_FD_PROBE_CODES = new Set(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM']);
 
@@ -263,6 +274,8 @@ export const startPerfLogger = (params: {
     const payload = {
       uptimeSec,
       memory: resolveMemoryMb(),
+      heapSpaces: resolveHeapSpaces(),
+      heapCode: resolveSampledHeapCodeMb(),
       smaps: resolveSmapsSummary(),
       smapsDetail: resolveSmapsDetail(),
       fdCount: resolveFdCount(),
