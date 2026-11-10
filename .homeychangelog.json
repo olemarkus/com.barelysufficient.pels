@@ -796,5 +796,8 @@
   },
   "3.31.0": {
     "en": "New: Main fuse. Enter your connection, such as 3x25 A, and PELS keeps each phase under your fuse by limiting the devices on the full phase in your priority order, including charging and discharging a home battery. Overview shows the load per phase, Usage lists recent phase peaks, and PELS learns which phase a device is on, or you can set it on the device page."
+  },
+  "3.31.1": {
+    "en": "An EV charger reported to PELS in watts through Flow now stays on its charging step, instead of PELS asking it to step down again, and a charger already affected recovers with this update. The simulation notice for a meter area now opens that area's Limits & safety page, and setup opened from the notice also offers to turn off simulation."
   }
 }
