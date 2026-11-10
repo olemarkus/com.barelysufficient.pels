@@ -16,6 +16,25 @@ describe('resolveMeterPhases', () => {
     expect(read).toMatchObject({ state: 'read', powerW: [100, -50, 0] });
   });
 
+  it.each(['phase_', 'phase'])('recognises lettered measure_current.%sa-c with their voltages', (prefix) => {
+    const read = resolveMeterPhases(caps({
+      [`measure_current.${prefix}a`]: 4.2, [`measure_voltage.${prefix}a`]: 231,
+      [`measure_current.${prefix}B`]: 1.1, [`measure_voltage.${prefix}B`]: 229,
+      [`measure_current.${prefix}c`]: 0, [`measure_voltage.${prefix}c`]: 230,
+      measure_power: 1250,
+    }), null);
+    expect(read).toMatchObject({ state: 'read', currentA: [4.2, 1.1, 0], voltageV: [231, 229, 230] });
+  });
+
+  it('keeps a valid phase when another name for the same phase is broken', () => {
+    const read = resolveMeterPhases(caps({
+      'measure_current.l1': 3, 'measure_current.phase1': null,
+      'measure_current.phase_b': 2, 'measure_current.l2': 'n/a',
+      'measure_current.l3': 1,
+    }), null);
+    expect(read).toMatchObject({ state: 'read', currentA: [3, 2, 1] });
+  });
+
   it('nets split import and export per phase', () => {
     const read = resolveMeterPhases(caps({
       'measure_power.l1i': 500, 'measure_power.l1e': 0,
