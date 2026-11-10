@@ -3,7 +3,8 @@ import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 type CapabilityRecord = Record<string, { value?: unknown } | undefined>;
 type PhaseCurrents = NonNullable<TransportDeviceSnapshot['chargerPhaseCurrentsA']>;
 
-const PHASE_CURRENT_CAPABILITY = /^measure_current\.(?:l|p|phase_?)([123])$/iu;
+const PHASE_CURRENT_CAPABILITY = /^measure_current\.(?:(?:l|p|phase_?)([123])|phase_?([abc]))$/iu;
+const PHASE_LETTER_NUMBER: Readonly<Record<string, string>> = { a: '1', b: '2', c: '3' };
 
 const usableAmps = (value: unknown): number | undefined => (
   typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
@@ -22,7 +23,8 @@ export function resolveChargerPhaseCurrentsA(
 ): PhaseCurrents | undefined {
   const capabilities = ((device as { capabilitiesObj?: unknown }).capabilitiesObj ?? {}) as CapabilityRecord;
   const idByPhase = new Map(Object.keys(capabilities).flatMap((id) => {
-    const phase = PHASE_CURRENT_CAPABILITY.exec(id)?.[1];
+    const match = PHASE_CURRENT_CAPABILITY.exec(id);
+    const phase = match?.[1] ?? (match?.[2] ? PHASE_LETTER_NUMBER[match[2].toLowerCase()] : undefined);
     return phase === undefined ? [] : [[phase, id] as const];
   }));
   const [l1, l2, l3] = ['1', '2', '3'].map((phase) => idByPhase.get(phase));

@@ -22,6 +22,7 @@ These chargers need no vendor guide:
 
 - **Alfen** (the Alfen app, or the Alfen Pro-line/ACE app): PELS sets the current directly in whole amps from 6 A, so skip Step 3.
 - **Peblar** (the Peblar EV Charger app by Kyle Michiels): PELS sets the live charge limit directly in whole amps from 6 A, so skip Step 3.
+- **amina S** (the amina app): built-in control with a Homey API key under **Setup → Charging current**, or a Flow. PELS starts and stops charging with the charger's on/off switch.
 - **Wallbox** (the Wallbox Charger app): built-in control with a Homey API key under **Setup → Charging current**, or a Flow. Choose **EV 1-phase** or **EV 3-phase** as the control model.
 - **Zappi** (the myenergi app): PELS starts and stops charging, and the Zappi charges in the charge mode you chose in the myenergi app.
 
@@ -68,7 +69,7 @@ A charger whose **Automatic** model uses power levels in watts from its own sett
 
 ## Step 3: Create the Charger Current Flow
 
-Skip this step when using built-in current control. Easee, Alfen and Peblar need no key or Flow; supported Zaptec and Tesla devices can use a Homey API key when a writable current capability is unavailable, and Futurehome and Wallbox always use one. Follow the vendor-specific guide above before selecting a method.
+Skip this step when using built-in current control. Easee, Alfen and Peblar need no key or Flow; supported Zaptec and Tesla devices can use a Homey API key when a writable current capability is unavailable, and Futurehome, Wallbox and amina always use one. Follow the vendor-specific guide above before selecting a method.
 
 Create the Flows that connect PELS to the charger app. The first Flow sends PELS' desired current to the charger. The second Flow reports the selected current back to PELS when your charger app can expose it.
 
@@ -164,7 +165,7 @@ Start with **Simulation mode** if you are still tuning the rest of PELS. Then ve
 
 1. The charger is visible as a managed device in PELS.
 2. The charger uses **EV 1-phase** or **EV 3-phase** control mode.
-3. Current control matches the charger: a new Easee setup uses **Use built-in device control**, while an existing Easee current-control Flow remains supported. A Zaptec, Futurehome, Wallbox or Tesla with built-in control shows **Built-in current control is selected** under **Setup → Charging current**. Other chargers, and any charger you chose to keep on a Flow, receive **EV charger current (A)** in their current-control Flow.
+3. Current control matches the charger: a new Easee setup uses **Use built-in device control**, while an existing Easee current-control Flow remains supported. A Zaptec, Futurehome, Wallbox, amina or Tesla with built-in control shows **Built-in current control is selected** under **Setup → Charging current**. Other chargers, and any charger you chose to keep on a Flow, receive **EV charger current (A)** in their current-control Flow.
 4. Charging current changes in the charger app when PELS asks for a lower or higher level.
 5. If you configured battery reporting, the charger's **Car** section or charging readout shows the battery percentage from your chosen source.
 
