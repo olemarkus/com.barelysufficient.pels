@@ -288,7 +288,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
     hasObservedTask: () => false,
     isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
-  }, () => buildSettings());
+  }, () => buildSettings(), () => false);
 
   const state = createPlanEngineState();
   state.shedDecisions.lastPlannedShedIds = new Set([LOWER_PRIORITY_ID]);

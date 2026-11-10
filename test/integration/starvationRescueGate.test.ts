@@ -215,7 +215,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     hasObservedTask: () => false,
     isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
-  }, () => buildSettings(rescue));
+  }, () => buildSettings(rescue), () => false);
   return new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: capacityGuard,

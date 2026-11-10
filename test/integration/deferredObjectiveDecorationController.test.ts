@@ -63,7 +63,7 @@ describe('DeferredObjectiveDecorationController', () => {
       hasObservedTask: () => false,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
-    }, () => settings);
+    }, () => settings, () => false);
 
     const bundle = controller.decorate({ devices: [device], dailyBudgetSnapshot: null, nowTs: deadlineAtMs + delayMs });
 
@@ -97,7 +97,7 @@ describe('DeferredObjectiveDecorationController', () => {
       hasObservedTask: () => false,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
-    }, getDeferredObjectiveSettings);
+    }, getDeferredObjectiveSettings, () => false);
 
     controller.decorate({ devices: [buildDevice()], dailyBudgetSnapshot: null, nowTs: Date.now() });
 
@@ -136,7 +136,7 @@ describe('DeferredObjectiveDecorationController', () => {
           deadlineAtMs: Date.now() + 4 * 60 * 60 * 1000,
         },
       },
-    }));
+    }), () => false);
 
     controller.decorate({ devices: [buildDevice()], dailyBudgetSnapshot: null, nowTs: Date.now() });
 
@@ -160,7 +160,7 @@ describe('DeferredObjectiveDecorationController', () => {
       hasObservedTask: () => false,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
-    }, () => undefined);
+    }, () => undefined, () => false);
     const devices = [buildDevice()];
 
     const bundle = controller.decorate({ devices, dailyBudgetSnapshot: null, nowTs: Date.now() });
@@ -196,7 +196,7 @@ describe('DeferredObjectiveDecorationController latest cycle', () => {
     hasObservedTask: () => false,
     isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
-  }, () => settings);
+  }, () => settings, () => false);
   const device = () => ({ ...buildDevice(), controlModel: 'binary_power' as const });
 
   it('keeps the decision and its reason for a task that could not plan', () => {
@@ -225,7 +225,7 @@ describe('DeferredObjectiveDecorationController measured budget exemption', () =
   const startMs = Date.UTC(2026, 9, 2, 0);
   const quarterMs = 15 * 60_000;
   const deadlineAtMs = startMs + 4 * quarterMs;
-  const buildExemptController = () => {
+  const buildExemptController = (temporaryTemperatureActive = false) => {
     const settings: DeferredObjectiveRoster = {
       objectivesByDeviceId: {
         dev: {
@@ -256,7 +256,7 @@ describe('DeferredObjectiveDecorationController measured budget exemption', () =
       hasObservedTask: () => false,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
-    }, () => settings);
+    }, () => settings, () => temporaryTemperatureActive);
     const device = {
       ...buildDevice(), controlModel: 'binary_power' as const,
       control: fixtureControlPosture({ controllable: false }),
@@ -289,6 +289,20 @@ describe('DeferredObjectiveDecorationController measured budget exemption', () =
       expect(controller.readBudgetExemptDeviceIds(startMs + 2)).toEqual(new Set());
     },
   );
+
+  it('decides nothing for a device while a Flow\'s temporary temperature is in force', () => {
+    // The temporary temperature outranks the task: no claim, hold or lent
+    // authority reaches the device, and the task itself is left as it was.
+    const { controller, device, settings } = buildExemptController(true);
+    const result = controller.decorate({ devices: [device], dailyBudgetSnapshot: null, nowTs: startMs });
+
+    expect(result.admittedDevices[0]).toBe(device);
+    expect(result.admittedDeviceIds.size).toBe(0);
+    expect(result.forceShedSet.size).toBe(0);
+    expect(result.lentAuthorityDeviceIds.size).toBe(0);
+    expect(controller.readBudgetExemptDeviceIds(startMs + 1)).toEqual(new Set());
+    expect(settings.objectivesByDeviceId.dev.enabled).toBe(true);
+  });
 
   it('never carries the last interval claim beyond the task deadline', () => {
     const { controller, device } = buildExemptController();

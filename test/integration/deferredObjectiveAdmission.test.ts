@@ -223,7 +223,7 @@ const buildBuilder = (
     hasObservedTask: () => false,
     isReservationSuppressed: noReservationSuppression,
     getDeliveredEnergyKWh: noDeliveredEnergy,
-  }, () => buildSettings());
+  }, () => buildSettings(), () => false);
   return new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: capacityGuard,
@@ -368,7 +368,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       hasObservedTask: () => false,
       isReservationSuppressed: noReservationSuppression,
       getDeliveredEnergyKWh: noDeliveredEnergy,
-    }, () => buildSettings());
+    }, () => buildSettings(), () => false);
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
@@ -629,7 +629,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
           deadlineAtMs: DEADLINE_AT_MS,
         },
       },
-    }));
+    }), () => false);
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: capacityGuard,

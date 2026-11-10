@@ -834,7 +834,7 @@ describe('decoration controller: resolveDeviceExclusion dep threading', () => {
       getDeliveredEnergyKWh: noDeliveredEnergy,
     }, () => objectiveRosterFor({
       objectivesByDeviceId: { 'heater-sub': heaterEntry },
-    }));
+    }), () => false);
     const bundle = controller.decorate({
       devices: [buildHeaterDevice()],
       dailyBudgetSnapshot: null,

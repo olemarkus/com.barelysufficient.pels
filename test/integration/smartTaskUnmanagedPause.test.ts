@@ -18,6 +18,7 @@ import { noDeviceExclusion, noDeliveredEnergy, noStallEvidence } from '../helper
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { ModePriorityCatalog } from '../../packages/shared-domain/src/settings/modePriorities';
 import { describe, expect, it, vi } from 'vitest';
+import { TEMPORARY_TEMPERATURE_TARGETS } from '../../lib/utils/settingsKeys';
 import { handleDeferredDeadlineReached } from '../../setup/appInit/deferredObjectiveLifecycle';
 import type { AppContext } from '../../lib/app/appContext';
 import { buildFixtureDiagnostics } from '../helpers/taskEvaluationFixture';
@@ -380,5 +381,20 @@ describe('handleDeferredDeadlineReached: an un-managed device gets no terminal a
     handleDeferredDeadlineReached(h.ctx, 'd1', DEADLINE_MS_LIFECYCLE, DEADLINE_MS_LIFECYCLE + 1_000);
 
     expect(h.converge).toHaveBeenCalled();
+  });
+
+  it('ends without a fallback write while a Flow\'s temporary temperature holds the device', () => {
+    // The plan holds the device at the temporary temperature and returns it to
+    // its mode target after; a fallback write at the deadline would fight it.
+    const h = buildTerminalFallbackCtx({ 'd1': true });
+    const nowMs = DEADLINE_MS_LIFECYCLE + 1_000;
+    vi.spyOn(h.ctx, 'getNow').mockReturnValue(new Date(nowMs));
+    h.settingsStore.set(TEMPORARY_TEMPERATURE_TARGETS, { d1: { targetC: 23, untilMs: nowMs + 60_000 } });
+
+    handleDeferredDeadlineReached(h.ctx, 'd1', DEADLINE_MS_LIFECYCLE, nowMs);
+
+    expect(h.converge).not.toHaveBeenCalled();
+    expect(h.abandon).toHaveBeenCalledWith('d1');
+    expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
   });
 });

@@ -71,10 +71,11 @@ describe('the price shift behind a planned target', () => {
 
 describe('a Flow\'s temporary temperature behind a planned target', () => {
   it('is what the plan commands, flagged on the plan device, with no price shift', () => {
-    const device = planDevice({ level: PriceLevel.CHEAP, temporaryC: 24 });
-    expect(device?.plannedTarget).toBe(24);
-    expect(device?.temporaryTemperatureActive).toBe(true);
-    expect(device?.priceTargetShift).toEqual({ kind: 'none' });
+    expect(planDevice({ level: PriceLevel.CHEAP, temporaryC: 24 })).toMatchObject({
+      plannedTarget: 24,
+      temporaryTemperatureActive: true,
+      priceTargetShift: { kind: 'none' },
+    });
   });
 
   it('is not flagged when no temporary temperature is in force', () => {

@@ -54,6 +54,7 @@ import {
   DeferredObjectiveDecorationController,
   type TaskEvaluationSource,
 } from '../../lib/objectives/deferredObjectives';
+import { bindTemporaryTemperatureRead } from '../appInit/temperatureSetpointsSeam';
 import type { SmartTaskCycleRecord } from '../../lib/objectives/deferredObjectives/smartTaskCycleRecord';
 import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
@@ -239,6 +240,7 @@ export function buildMainHomeScope(
   const deferredObjectiveController = new DeferredObjectiveDecorationController(
     taskEvaluationSource,
     createTrustedDeferredObjectiveSettingsReader(ctx.homey.settings),
+    (deviceId) => bindTemporaryTemperatureRead(ctx)(deviceId) !== null,
   );
   const binaryCommandReachability = createHomeCommandReachability(ctx, homeId, (trigger) => {
     void requirePlanService(ctx).rebuildPlanFromCache(trigger);
