@@ -16,6 +16,7 @@
  * as the charger's current reading.
  */
 import type { DeviceAdapter, DeviceEvOverlay, SwitchWrite } from '../deviceAdapter';
+import { whileBuiltInControlEnabled } from '../deviceAdapter';
 import type { DeviceCapabilityMap } from '../managerControl';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
@@ -68,7 +69,7 @@ export const wallboxAdapter: DeviceAdapter = {
   matchesCapabilities: (capabilities) => capabilities.includes(STATUS_CAPABILITY)
     && capabilities.includes('locked') && capabilities.includes('evcharger_charging'),
   overlay: wallboxOverlay,
-  normalize: (_snapshot, capabilityId, value) => {
+  normalize: whileBuiltInControlEnabled((_snapshot, capabilityId, value) => {
     // The app's switch says "charging now", not whether PELS lets the session run.
     if (capabilityId === 'evcharger_charging') return [];
     if (capabilityId === STATUS_CAPABILITY && typeof value === 'string') {
@@ -77,7 +78,7 @@ export const wallboxAdapter: DeviceAdapter = {
     const currentA = capabilityId === CONFIGURED_CURRENT_CAPABILITY ? readCurrentA(value) : undefined;
     return currentA === undefined ? [{ capabilityId, value }]
       : [{ capabilityId, value }, { capabilityId: INSTALLATION_CURRENT, value: currentA }];
-  },
+  }),
   // Read from the status, the switch is no observation of PELS's own write.
   switchWrite: (snapshot, request, sessions): SwitchWrite => {
     const plain = standardDeviceAdapter.switchWrite(snapshot, request, sessions);

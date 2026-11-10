@@ -12,6 +12,7 @@ import { zaptecAdapter } from './zaptec';
 import { futurehomeAdapter } from './futurehome';
 import { smaAdapter } from './sma';
 import { osoAdapter } from './oso';
+import { adaxAdapter } from './adax';
 import { knxAdapter } from './knx';
 import { sessyAdapter } from './sessy';
 import { ankerSolixAdapter } from './anker';
@@ -27,7 +28,7 @@ import type { HomeyDeviceLike } from '../utils/types';
 
 const adapters: readonly DeviceAdapter[] = [
   teslaAdapter, easeeAdapter, enuaAdapter, alfenAdapter, alfenProlineAdapter, peblarAdapter, zappiAdapter,
-  wallboxAdapter, zaptecAdapter, futurehomeAdapter, osoAdapter, smaAdapter, knxAdapter,
+  wallboxAdapter, zaptecAdapter, futurehomeAdapter, osoAdapter, adaxAdapter, smaAdapter, knxAdapter,
   sessyAdapter, ankerSolixAdapter, zinvoltAdapter, marstekConnectorAdapter, sigenergyAdapter, zendureLocalAdapter,
   huaweiLuna2000Adapter,
 ];

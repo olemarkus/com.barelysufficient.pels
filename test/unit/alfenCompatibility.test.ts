@@ -74,7 +74,7 @@ describe('Alfen station and car phase conversion', () => {
         expect(full).toMatchObject({ value: currentA >= 6, lastUpdated: observedAt });
         expect(adapter.observation({ ...charger(stationPhases), capabilitiesObj: values }).evcharger_charging)
           .toMatchObject(full!);
-        expect(adapter.normalize(view, 'target_power', watts)).toEqual([
+        expect(adapter.normalize(view, 'target_power', watts, charger(stationPhases))).toEqual([
           { capabilityId: 'target_power', value: watts },
           { capabilityId: 'evcharger_charging', value: currentA >= 6 },
         ]);
@@ -123,7 +123,7 @@ describe('Alfen station and car phase conversion', () => {
     const adapter = getSnapshotAdapter(view);
     expect(adapter.switchWrite(view, { capabilityId: 'evcharger_charging', value: true }, sessions))
       .toEqual({ kind: 'none' });
-    expect(adapter.normalize(view, 'target_power', 4140)).toEqual([{ capabilityId: 'target_power', value: 4140 }]);
+    expect(adapter.normalize(view, 'target_power', 4140, charger(3))).toEqual([{ capabilityId: 'target_power', value: 4140 }]);
     expect(adapter.switchWrite(view, { capabilityId: 'evcharger_charging', value: false }, sessions))
       .toMatchObject({ kind: 'write', write: { capabilityId: 'target_power', value: 0 } });
   });

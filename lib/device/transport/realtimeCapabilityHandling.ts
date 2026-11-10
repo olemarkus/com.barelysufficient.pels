@@ -5,7 +5,7 @@ import { applyFreshnessOnlyCapabilityUpdate } from './managerFreshness';
 import {
   didMeasurePowerBecomeSignificantlyPositive,
 } from './managerRealtimeHandlers';
-import { normalizeNativeEvCapabilityUpdate } from '../nativeEvWiring';
+import { normalizeCapabilityUpdate } from '../nativeEvWiring';
 import { MIN_SIGNIFICANT_POWER_W } from './transportTypes';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import {
@@ -281,7 +281,8 @@ function handleSteppedSourceCapabilityUpdate(
  * target write's value is already held as PELS's own write
  * (`recordLocalWriteObservation`): its echo adds nothing. Any other event is
  * the device's own report, and its switch or setpoint goes to the control
- * contest record.
+ * contest record. PELS never writes `measure_power`, so one in an echo is a
+ * draw the adapter read from it (an Adax heater's setback), and stands.
  */
 function admitControlEvent(
     ingest: RealtimeIngestService,
@@ -290,7 +291,7 @@ function admitControlEvent(
     value: unknown,
     pelsEcho: boolean,
 ): boolean {
-    if (pelsEcho) return capabilityId === snapshot.binaryCapabilityId;
+    if (pelsEcho) return capabilityId === snapshot.binaryCapabilityId || capabilityId === 'measure_power';
     const report = resolveControlReport(snapshot, capabilityId, value, Date.now());
     if (report) ingest.observationBridge.dispatchControlReported(report);
     return true;
@@ -315,7 +316,10 @@ export function handleRealtimeCapabilityUpdate(
     }
     if (handleObservedOnlyCapabilityUpdate(ingest, snapshot, capabilityId, value)) return;
 
-    const normalizedEvents = normalizeNativeEvCapabilityUpdate(snapshot, capabilityId, value);
+    // The accepted read already holds this report (`transportServices.ts`).
+    const device = ingest.reader.snapshotStore.getLastAcceptedRawDevice(deviceId);
+    const normalizedEvents = device === undefined
+        ? [{ capabilityId, value }] : normalizeCapabilityUpdate(device, snapshot, capabilityId, value);
     for (const normalizedEvent of normalizedEvents) {
         if (handleSteppedSourceCapabilityUpdate(
             ingest, snapshot, normalizedEvent.capabilityId, normalizedEvent.value, pelsEcho,

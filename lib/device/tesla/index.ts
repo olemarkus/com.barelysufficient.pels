@@ -1,4 +1,5 @@
 import type { DeviceAdapter, DeviceReadRule, DeviceEvOverlay } from '../deviceAdapter';
+import { whileBuiltInControlEnabled } from '../deviceAdapter';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 import { isTeslaChargingDevice, teslaDriver } from './identity';
 import { teslaChargingCapabilities, normalizeTeslaChargingUpdate,
@@ -27,7 +28,9 @@ export const teslaAdapter: DeviceAdapter = {
   identity: (device) => isTeslaChargingDevice(device)
     ? { ...device, class: 'evcharger', virtualClass: 'evcharger' } : device,
   overlay: chargingOverlay,
-  normalize: (_snapshot, capabilityId, value) => normalizeTeslaChargingUpdate(capabilityId, value),
+  normalize: whileBuiltInControlEnabled(
+    (_snapshot, capabilityId, value) => normalizeTeslaChargingUpdate(capabilityId, value),
+  ),
   observation: (device) => teslaChargingCapabilities(device, standardDeviceAdapter.observation(device)),
   readRules: (device) => TESLA_MODEL_CAPABILITY_TYPES[teslaDriver(device) ?? ''] ?? {},
   retainsPlugObservation: hasTeslaChargingStateWithoutEvProjection,
