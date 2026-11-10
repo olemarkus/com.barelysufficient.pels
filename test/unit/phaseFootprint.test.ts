@@ -54,6 +54,7 @@ describe('resolveChargerPhaseCurrentsA', () => {
     ['measure_current.p1', 'measure_current.p2', 'measure_current.p3'],
     ['measure_current.l1', 'measure_current.l2', 'measure_current.l3'],
     ['measure_current.phase1', 'measure_current.phase2', 'measure_current.phase3'],
+    ['measure_current.phase_a', 'measure_current.phase_b', 'measure_current.phase_c'],
   ])('recognises %s and siblings', (a, b, c) => {
     expect(read({ [a]: 1, [b]: 2, [c]: 3 })).toEqual([1, 2, 3]);
   });

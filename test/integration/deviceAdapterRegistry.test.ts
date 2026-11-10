@@ -6,6 +6,7 @@ import { hasSharedChargingInstallation, resolveChargingCurrentAction } from '../
 import { partialDouble } from '../helpers/partialDouble';
 import { FuturehomeChargerSession } from '../../lib/device/futurehome/session';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
+import { standardDeviceAdapter } from '../../lib/device/standardDeviceAdapter';
 
 const cap = <T>(value: T) => ({ value, lastUpdated: new Date().toISOString() });
 const setup = { method: 'flow', confirmation: 'vehicle' } as const;
@@ -90,6 +91,59 @@ test('a Futurehome charger reports its sent current limit and only a one-phase i
     .toEqual({ kind: 'reported', preset: 'ev_charger_1_phase' });
   // Three phases may be an IT grid, which the three-phase preset does not model.
   expect(getDeviceAdapter(charger({ phases: 'three' })).phaseReport(charger({ phases: 'three' })))
+    .toEqual({ kind: 'not_reported' });
+});
+
+test('an amina S reads its switch from onoff, its plug state from the EV status and its sent limit', () => {
+  type Status = { onoff: boolean; ev_connected: boolean; power_delivered: boolean; charging_paused: boolean };
+  const charger = (status: Partial<Status>, settings: Record<string, unknown> = {}): HomeyDeviceLike => ({
+    ...HOMEY_DEVICE_FIELDS, id: 'amina', name: 'amina S', class: 'evcharger',
+    driverId: 'homey:app:com.aminacharging:amina-s', settings,
+    capabilities: ['onoff', 'ev_connected', 'power_delivered', 'charging_paused', 'measure_power'],
+    capabilitiesObj: Object.fromEntries(Object.entries(status).map(([id, value]) => [id, { ...cap(value), setable: id === 'onoff' }])),
+  });
+  const overlay = (device: HomeyDeviceLike) => getDeviceAdapter(device)
+    .overlay(device, device.capabilities ?? [], standardDeviceAdapter.observation(device));
+  const plugState = (status: Partial<Status>) => overlay(charger(status)).capabilityObj.evcharger_charging_state?.value;
+  const connected = { onoff: true, ev_connected: true, power_delivered: false, charging_paused: false };
+
+  expect(plugState({ ...connected, ev_connected: false })).toBe('plugged_out');
+  expect(plugState({ ev_connected: false })).toBe('plugged_out');
+  expect(plugState({ ...connected, power_delivered: true })).toBe('plugged_in_charging');
+  expect(plugState({ ...connected, onoff: false })).toBe('plugged_in_paused');
+  expect(plugState({ ...connected, charging_paused: true })).toBe('plugged_in_paused');
+  // Connected and enabled, but the car takes nothing.
+  expect(plugState(connected)).toBe('plugged_in');
+  // A missing status reading leaves the state unread.
+  expect(plugState({ onoff: true, ev_connected: true, power_delivered: false })).toBeUndefined();
+
+  const adapted = overlay(charger(connected, { maxCurrent: 16 }));
+  expect(adapted).toMatchObject({ kind: 'adapted', binaryTarget: { kind: 'capability', writeCapabilityId: 'onoff',
+    observationCapabilityId: 'evcharger_charging' } });
+  expect(adapted.capabilities).toEqual(expect.arrayContaining(['evcharger_charging', 'evcharger_charging_state']));
+  expect(adapted.capabilityObj.evcharger_charging?.value).toBe(true);
+  expect(adapted.capabilityObj.available_installation_current).toEqual({ value: 16, setable: false });
+  for (const maxCurrent of [5, 33, 10.5, '16', null]) {
+    expect(overlay(charger(connected, { maxCurrent })).capabilityObj.available_installation_current).toBeUndefined();
+  }
+
+  // A live report carries the switch and the plug state derived from the device as it now reads.
+  expect(getDeviceAdapter(charger(connected)).normalize(
+    partialDouble({ controlAdapter: adapted.kind === 'adapted' ? adapted.controlAdapter : undefined }),
+    'onoff', false, charger({ ...connected, onoff: false }),
+  )).toEqual([
+    { capabilityId: 'onoff', value: false },
+    { capabilityId: 'evcharger_charging', value: false },
+    { capabilityId: 'evcharger_charging_state', value: 'plugged_in_paused' },
+  ]);
+
+  const binding = getDeviceAdapter(charger(connected)).currentBindings(charger(connected))[0]!;
+  expect(resolveChargingCurrentAction(binding, [{ id: 'homey:app:com.aminacharging:set_charging_current' }], 10).args)
+    .toEqual({ device: { id: 'amina' }, max: 10 });
+  expect(getDeviceAdapter(charger(connected)).phaseReport(charger(connected, { singlePhase: true })))
+    .toEqual({ kind: 'reported', preset: 'ev_charger_1_phase' });
+  // Three phases may be an IT grid, which the three-phase preset does not model.
+  expect(getDeviceAdapter(charger(connected)).phaseReport(charger(connected, { singlePhase: false })))
     .toEqual({ kind: 'not_reported' });
 });
 
