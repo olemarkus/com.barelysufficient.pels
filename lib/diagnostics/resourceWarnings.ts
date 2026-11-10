@@ -71,13 +71,31 @@ export const resolveMemoryMb = (): Record<string, number | string> => {
   return result;
 };
 
-const resolveHeapSpaces = (): Record<string, string> => {
+export const resolveHeapSpaces = (): Record<string, string> => {
   try {
     return Object.fromEntries(
       v8.getHeapSpaceStatistics()
         .filter((s) => s.space_used_size > 0)
         .map((s) => [s.space_name, `${Math.round(s.space_used_size / 1024)}KB/${Math.round(s.space_size / 1024)}KB`]),
     );
+  } catch {
+    return {};
+  }
+};
+
+// Compiled code is about half of PELS's heap, so the perf line splits it out:
+// bytecode and machine code with their metadata, plus the source V8 keeps for
+// lazy compilation. Growth here is newly compiled code, not retained data.
+// V8 walks the code-bearing spaces on the main thread for this (~8 ms on a
+// laptop with a 77 MB heap), so callers sample it rather than read it per line.
+export const resolveHeapCodeMb = (): Record<string, number> => {
+  try {
+    const code = v8.getHeapCodeStatistics();
+    return {
+      codeMb: Math.round(code.code_and_metadata_size / MB * 10) / 10,
+      bytecodeMb: Math.round(code.bytecode_and_metadata_size / MB * 10) / 10,
+      scriptSourceMb: Math.round(code.external_script_source_size / MB * 10) / 10,
+    };
   } catch {
     return {};
   }
