@@ -90,7 +90,7 @@ export class RealtimeIngestService {
     // Keep accepted source fields current before a later whole-device read can
     // retain them. Follow the step lane's echo policy: native current echoes
     // are accepted observations; other local writes are not.
-    const raw = this.reader.snapshotStore.getLastAcceptedRawDevicesById().get(deviceId);
+    const raw = this.reader.snapshotStore.getLastAcceptedRawDevice(deviceId);
     if (!isIgnoredOwnStepEcho(capabilityId, pelsEcho) && raw) {
       this.reader.snapshotStore.updateAcceptedRawDevice(
         withAcceptedCapabilityReport(raw, capabilityId, value, Date.now()),

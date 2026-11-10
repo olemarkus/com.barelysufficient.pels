@@ -13,6 +13,7 @@
 import type {
   CapabilityWrite, DeviceAdapter, DeviceEvOverlay, SwitchWrite,
 } from '../deviceAdapter';
+import { whileBuiltInControlEnabled } from '../deviceAdapter';
 import type { DeviceCapabilityMap } from '../managerControl';
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
@@ -162,7 +163,7 @@ export const alfenAdapter: DeviceAdapter = {
   },
   stepCommand: (device, step, command) => command.capabilityId === 'target_power' && step.planningCurrentA !== undefined
     ? { ...command, value: currentToNativeWatts(step.planningCurrentA, deviceWattsPerAmp(device)) } : command,
-  normalize: (snapshot, capabilityId, value) => {
+  normalize: whileBuiltInControlEnabled((snapshot, capabilityId, value) => {
     // The app's switch says "charging now", not whether PELS lets it charge.
     if (capabilityId === 'evcharger_charging') return [];
     if (capabilityId !== 'target_power' || typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
@@ -172,7 +173,7 @@ export const alfenAdapter: DeviceAdapter = {
     if (gridWattsPerAmp === undefined) return [{ capabilityId, value }];
     return [{ capabilityId, value },
       { capabilityId: 'evcharger_charging', value: allowsCharging(value, gridWattsPerAmp) }];
-  },
+  }),
   switchWrite: (snapshot, request) => switchWrite(snapshot, request),
   recoverSwitchWrite: (snapshot, _raw, request) => switchWrite(snapshot, request),
 };

@@ -1,4 +1,4 @@
-import { getDeviceAdapter, getSnapshotAdapter } from './deviceAdapterRegistry';
+import { getDeviceAdapter } from './deviceAdapterRegistry';
 import type { DeviceAdapter, AdapterSnapshot, AdapterObservation } from './deviceAdapter';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceCapabilityMap } from './managerControl';
@@ -23,11 +23,11 @@ export function applyNativeEvWiringOverlay(
   };
 }
 
-export function normalizeNativeEvCapabilityUpdate(
-  snapshot: AdapterSnapshot, capabilityId: string, value: unknown,
+/** A live report as the adapter of the device's driver reads it, as on a full read. */
+export function normalizeCapabilityUpdate(
+  device: HomeyDeviceLike, snapshot: AdapterSnapshot, capabilityId: string, value: unknown,
 ): ReturnType<DeviceAdapter['normalize']> {
-  if (snapshot.controlAdapter?.activationEnabled !== true) return [{ capabilityId, value }];
-  return getSnapshotAdapter(snapshot).normalize(snapshot, capabilityId, value);
+  return getDeviceAdapter(device).normalize(snapshot, capabilityId, value, device);
 }
 
 export function buildNativeEvObservationCapabilityObj(

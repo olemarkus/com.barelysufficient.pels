@@ -28,10 +28,10 @@ Realtime observations update the observed view before any convergence decision. 
 ## Integration adapters
 
 Tesla vehicle charging, Easee, Enua, Alfen (official app), Alfen Pro-line/ACE, Peblar, Zappi, Wallbox, Zaptec,
-Futurehome, OSO, SMA, KNX, Sessy, Anker SOLIX, Zinvolt, Marstek Venus (Connector app), Sigenergy, Zendure
+Futurehome, OSO, Adax, SMA, KNX, Sessy, Anker SOLIX, Zinvolt, Marstek Venus (Connector app), Sigenergy, Zendure
 (local app) and Huawei LUNA2000 (Modbus) interpretation belongs in `tesla/`, `easee/`, `enua/`, `alfen/`,
-`alfenProline/`, `peblar/`, `myenergi/`, `wallbox/`, `zaptec/`, `futurehome/`, `oso/`, `sma/`, `knx/`, `sessy/`,
-`anker/`, `zinvolt/`, `marstek/`, `sigenergy/`, `zendure/` and `huawei/`. Chargers stepped through one whole-amp
+`alfenProline/`, `peblar/`, `myenergi/`, `wallbox/`, `zaptec/`, `futurehome/`, `oso/`, `adax/`, `sma/`, `knx/`,
+`sessy/`, `anker/`, `zinvolt/`, `marstek/`, `sigenergy/`, `zendure/` and `huawei/`. Chargers stepped through one whole-amp
 current whose app starts at a current PELS did not choose share `currentSwitchCharger.ts`. A home
 battery's control binding (claim, setpoint sign, range defaults, or its app's Flow actions) is the adapter's
 `homeBatteryBinding`; see `notes/battery-vendor-bindings.md`. Battery app actions run through the common host

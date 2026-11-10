@@ -5,7 +5,7 @@ import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import {
   applyNativeEvWiringOverlay,
   buildNativeEvObservationCapabilityObj,
-  normalizeNativeEvCapabilityUpdate,
+  normalizeCapabilityUpdate,
 } from '../../lib/device/nativeEvWiring';
 import type { Logger, HomeyDeviceLike } from '../../lib/utils/types';
 import { mockHomeyInstance } from '../mocks/homey';
@@ -453,7 +453,7 @@ describe('native EV wiring shim', () => {
   it('does not let a connected alarm downgrade a discharging session', () => {
     // The alarm says a car is attached and nothing more. Collapsing V2G to
     // `plugged_in_paused` would read as commandable when it is not.
-    expect(normalizeNativeEvCapabilityUpdate({
+    expect(normalizeCapabilityUpdate(buildZaptecDevice(), {
         capabilities: buildZaptecDevice().capabilities,
         controlAdapter: { kind: 'capability_adapter', activationRequired: false, activationEnabled: true },
         evChargingState: 'plugged_in_discharging',
@@ -776,7 +776,7 @@ describe('native EV wiring shim', () => {
   // reclassification is invisible until the :25/:55 snapshot, and until then a
   // full car reads `Paused` and can synthesize a charging readback.
   it('does not let a car_connected event reclassify a finished Zaptec session', () => {
-    const normalized = normalizeNativeEvCapabilityUpdate({
+    const normalized = normalizeCapabilityUpdate(buildZaptecDevice(), {
         capabilities: buildZaptecDevice().capabilities,
         controlAdapter: {
           kind: 'capability_adapter',
@@ -794,7 +794,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('promotes a disconnected Zaptec to the ambiguous state on car_connected, not to paused', () => {
-    const normalized = normalizeNativeEvCapabilityUpdate({
+    const normalized = normalizeCapabilityUpdate(buildZaptecDevice(), {
         capabilities: buildZaptecDevice().capabilities,
         controlAdapter: {
           kind: 'capability_adapter',
@@ -880,7 +880,7 @@ describe('native EV wiring shim', () => {
           activationEnabled: true,
         },
       });
-    const normalizedButtonUpdate = normalizeNativeEvCapabilityUpdate({
+    const normalizedButtonUpdate = normalizeCapabilityUpdate(buildZaptecDevice(), {
         capabilities: buildZaptecDevice().capabilities,
         controlAdapter: {
           kind: 'capability_adapter',
@@ -890,7 +890,7 @@ describe('native EV wiring shim', () => {
         binaryControl: { on: false },
         evChargingState: 'plugged_in_paused',
       }, 'charging_button', true);
-    const normalizedChargeModeUpdate = normalizeNativeEvCapabilityUpdate({
+    const normalizedChargeModeUpdate = normalizeCapabilityUpdate(buildZaptecDevice(), {
         capabilities: buildZaptecDevice().capabilities,
         controlAdapter: {
           kind: 'capability_adapter',
@@ -917,7 +917,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('does not upgrade a paused Zaptec session to charging on car_connected=true alone', () => {
-    const normalizedConnectedUpdate = normalizeNativeEvCapabilityUpdate({
+    const normalizedConnectedUpdate = normalizeCapabilityUpdate(buildZaptecDevice(), {
         capabilities: buildZaptecDevice().capabilities,
         controlAdapter: {
           kind: 'capability_adapter',
@@ -935,7 +935,7 @@ describe('native EV wiring shim', () => {
   });
 
   it('keeps a charging Zaptec session as charging on car_connected=true', () => {
-    const normalizedConnectedUpdate = normalizeNativeEvCapabilityUpdate({
+    const normalizedConnectedUpdate = normalizeCapabilityUpdate(buildZaptecDevice(), {
         capabilities: buildZaptecDevice().capabilities,
         controlAdapter: {
           kind: 'capability_adapter',

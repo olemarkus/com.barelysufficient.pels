@@ -201,7 +201,13 @@ export type DeviceAdapter = {
   prepareTargetPowerReassertion(
     device: HomeyDeviceLike, inventory: readonly HomeyDeviceLike[],
   ): TargetPowerReassertionPreparation;
-  normalize(snapshot: AdapterSnapshot, capabilityId: string, value: unknown): CapabilityUpdate[];
+  /**
+   * One live report as PELS reads it, for every device the adapter matches. `device` is the
+   * device's last accepted read with this report already applied.
+   */
+  normalize(
+    snapshot: AdapterSnapshot, capabilityId: string, value: unknown, device: HomeyDeviceLike,
+  ): CapabilityUpdate[];
   observation(device: HomeyDeviceLike): DeviceCapabilityMap;
   finalizeObservation(
     control: DeviceControlAdapterSnapshot,
@@ -252,6 +258,17 @@ export type DeviceAdapterSession = {
   assertAllowed(device: HomeyDeviceLike, setup: ChargingCurrentSetup, connected: boolean): void;
   controlEvents(deviceId: string, capabilityId: string, value: unknown): CapabilityUpdate[];
 };
+
+/**
+ * A charger's live reports are rewritten only while its built-in control is
+ * on; otherwise each report stands as the device sent it.
+ */
+export const whileBuiltInControlEnabled = (
+  normalize: DeviceAdapter['normalize'],
+): DeviceAdapter['normalize'] => (snapshot, capabilityId, value, device) => (
+  snapshot.controlAdapter?.activationEnabled === true
+    ? normalize(snapshot, capabilityId, value, device) : [{ capabilityId, value }]
+);
 
 export function isNativeSteppedLoadControlEnabled(snapshot: Pick<TransportDeviceSnapshot, 'controlAdapter'>): boolean {
   return snapshot.controlAdapter?.kind === 'capability_adapter'

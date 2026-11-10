@@ -89,6 +89,12 @@ export class TransportSnapshotStore {
     ]);
   }
 
+  /** One device's last accepted raw read, by the same precedence. */
+  getLastAcceptedRawDevice(deviceId: string): HomeyDeviceLike | undefined {
+    return this.trackedRawDeviceById.get(deviceId)
+      ?? this.latestRawDevices.find((device) => getDeviceId(device) === deviceId);
+  }
+
   /** Replace an existing accepted raw read after an independent capability report. */
   updateAcceptedRawDevice(device: HomeyDeviceLike): void {
     if (this.trackedRawDeviceById.has(device.id)) this.trackedRawDeviceById.set(device.id, device);

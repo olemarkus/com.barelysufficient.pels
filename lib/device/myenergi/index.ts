@@ -12,6 +12,7 @@
  * the charging switch from it.
  */
 import type { DeviceAdapter, DeviceEvOverlay } from '../deviceAdapter';
+import { whileBuiltInControlEnabled } from '../deviceAdapter';
 import type { DeviceCapabilityMap } from '../managerControl';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
@@ -48,10 +49,10 @@ export const zappiAdapter: DeviceAdapter = {
   matches: isZappi,
   matchesCapabilities: (capabilities) => capabilities.includes(SIGNATURE_CAPABILITY),
   overlay: zappiOverlay,
-  normalize: (_snapshot, capabilityId, value) => {
+  normalize: whileBuiltInControlEnabled((_snapshot, capabilityId, value) => {
     // The app's switch says "a car draws now", not whether the Zappi may charge.
     if (capabilityId === 'evcharger_charging') return [];
     if (capabilityId !== 'onoff' || typeof value !== 'boolean') return [{ capabilityId, value }];
     return [{ capabilityId, value }, { capabilityId: 'evcharger_charging', value }];
-  },
+  }),
 };
