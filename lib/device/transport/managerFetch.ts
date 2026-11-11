@@ -52,6 +52,11 @@ export type DeviceFetchResult = {
   devices: HomeyDeviceLike[];
   fetchSource: DeviceFetchSource;
   failedIds: string[];
+  /**
+   * Entries this read dropped at the payload parse (`parseHomeyDevicePayload`).
+   * A full read with any is not proof that a device it lacks is absent.
+   */
+  rejectedPayloads: number;
 };
 
 const REJECTED_PAYLOAD_REPEAT_MS = 60 * 60 * 1000;
@@ -96,6 +101,7 @@ export async function fetchDevicesWithFallback(params: {
         devices: list,
         fetchSource: 'raw_manager_devices',
         failedIds: [],
+        rejectedPayloads: rawList.length - list.length,
       };
     } catch (error) {
       lastError = error;
@@ -121,7 +127,7 @@ export async function fetchDevicesByIds(params: {
 }): Promise<DeviceFetchResult> {
   const { deviceIds, logger } = params;
   if (deviceIds.length === 0) {
-    return { devices: [], fetchSource: 'targeted_by_id', failedIds: [] };
+    return { devices: [], fetchSource: 'targeted_by_id', failedIds: [], rejectedPayloads: 0 };
   }
   const results = await Promise.allSettled(
     deviceIds.map((id) => getRawDevice(id)),
@@ -182,7 +188,7 @@ export async function fetchDevicesByIds(params: {
       failed: failedIds.length,
     });
   }
-  return { devices, fetchSource: 'targeted_by_id', failedIds };
+  return { devices, fetchSource: 'targeted_by_id', failedIds, rejectedPayloads: 0 };
 }
 /* eslint-enable functional/immutable-data */
 

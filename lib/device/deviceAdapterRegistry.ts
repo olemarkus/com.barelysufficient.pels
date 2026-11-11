@@ -23,7 +23,9 @@ import { sigenergyAdapter } from './sigenergy';
 import { zendureLocalAdapter } from './zendure';
 import { huaweiLuna2000Adapter } from './huawei';
 import { plainDeviceAdapter } from './standardDeviceAdapter';
-import type { DeviceAdapter, AdapterObservation, AdapterControlTarget, DeviceAdapterSession } from './deviceAdapter';
+import type {
+  DeviceAdapter, AdapterObservation, AdapterControlTarget, DeviceAdapterSession, InventoryCompleteness,
+} from './deviceAdapter';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../utils/types';
 
@@ -57,8 +59,8 @@ export class DeviceAdapterSessions {
   observeCapability(id: string, capability: string, value: unknown): void {
     for (const session of this.sessions) session.observeCapability(id, capability, value);
   }
-  retainDevices(devices: readonly HomeyDeviceLike[]): void {
-    for (const session of this.sessions) session.retainDevices(devices);
+  retainDevices(devices: readonly HomeyDeviceLike[], inventory: InventoryCompleteness): void {
+    for (const session of this.sessions) session.retainDevices(devices, inventory);
   }
   /** `device` as it is parsed: without the capabilities a session withholds from it. */
   withholdCapabilities(device: HomeyDeviceLike): HomeyDeviceLike {

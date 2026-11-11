@@ -232,6 +232,9 @@ export type DeviceAdapter = {
   createSession(home: HubHomeLocation): DeviceAdapterSession;
 };
 
+/** Whether a full device list proves that a device it lacks is absent (`DeviceAdapterSession.retainDevices`). */
+export type InventoryCompleteness = 'complete' | 'partial';
+
 /** What a write resolution may read from the transport's adapter sessions. */
 export type SessionEvidence = Pick<DeviceAdapterSession, 'hasCarStopEvidence'>;
 
@@ -241,7 +244,11 @@ export type DeviceAdapterSession = {
   observeDevice(device: HomeyDeviceLike, readAtMs: number): void;
   observeCapability(deviceId: string, capabilityId: string, value: unknown): void;
   /** A full inventory: every device Homey lists, as last accepted. */
-  retainDevices(devices: readonly HomeyDeviceLike[]): void;
+  /**
+   * `inventory`: `complete` when the list proves a device it lacks is absent: read under the
+   * current trust epoch, with no payload dropped at the parse.
+   */
+  retainDevices(devices: readonly HomeyDeviceLike[], inventory: InventoryCompleteness): void;
   /**
    * The capabilities a read of `device` is parsed without, as if it did not
    * declare them: a control it cannot hold alone, as the last full inventory
