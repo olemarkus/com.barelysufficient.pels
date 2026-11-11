@@ -29,7 +29,7 @@ describe('a swap donor that sheds by temperature', () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
   });
 
-  it('gets its setback, keeps running, and stays limited while the swap is pending', async () => {
+  const setUp = async () => {
     const spotter = new MockDevice('spotter', 'Spotter', ['onoff']);
     await spotter.setCapabilityValue('onoff', false);
     await spotter.setCapabilityValue('measure_power', 0);
@@ -57,6 +57,11 @@ describe('a swap donor that sheds by temperature', () => {
     app.planEngine.state.restoreBackoff.lastInstabilityMs = null;
     getTestExecutionFacts(app.planEngine.state).actuation.lastRestoreMs = null;
 
+    return { app, spotter, heater };
+  };
+
+  it('gets its setback, keeps running, and stays limited while the swap is pending', async () => {
+    const { app, spotter, heater } = await setUp();
     // 0.2 kW of headroom does not fit the spotlights' 0.05 kW plus the restore
     // buffer, so the heater is swapped out for them.
     await app['powerSamplePipeline'].recordPowerSample(200);
@@ -81,5 +86,59 @@ describe('a swap donor that sheds by temperature', () => {
     expect(reasonText(pending?.reason)).toBe('swap pending (Spotter)');
     expect(await heater.getCapabilityValue('target_temperature')).toBe(16);
     expect(await heater.getCapabilityValue('onoff')).toBe(true);
+  });
+
+  it('counts a donor switched off before it reports its setback as released', async () => {
+    const { app, spotter, heater } = await setUp();
+    await app['powerSamplePipeline'].recordPowerSample(200);
+    await app.refreshTargetDevicesSnapshot();
+    expect(await heater.getCapabilityValue('target_temperature')).toBe(16);
+
+    // The owner switches the heater off, and its app reverts the target written
+    // while it runs: it never reports the setback, but its draw is gone.
+    heater.setActualCapabilityValue('onoff', false);
+    heater.setActualCapabilityValue('target_temperature', 20);
+    heater.setActualCapabilityValue('measure_power', 0);
+    await app.refreshTargetDevicesSnapshot();
+    vi.advanceTimersByTime(70_000);
+    steerCapacityPace(app, 2);
+    await app['powerSamplePipeline'].recordPowerSample(200);
+    await app.refreshTargetDevicesSnapshot();
+    expect(await spotter.getCapabilityValue('onoff')).toBe(true);
+  });
+  it('returns the donor to its kept temperature once the swap settles', async () => {
+    const { app, spotter, heater } = await setUp();
+    await app['powerSamplePipeline'].recordPowerSample(200);
+    await app.refreshTargetDevicesSnapshot();
+    vi.advanceTimersByTime(70_000);
+    steerCapacityPace(app, 2);
+    await app['powerSamplePipeline'].recordPowerSample(200);
+    await app.refreshTargetDevicesSnapshot();
+    expect(await spotter.getCapabilityValue('onoff')).toBe(true);
+
+    // The spotlights draw, which settles the swap; once the restore cooldown has
+    // passed and there is room for the heater, it goes back to its mode temperature.
+    spotter.setActualCapabilityValue('measure_power', 50);
+    await app.refreshTargetDevicesSnapshot();
+    vi.advanceTimersByTime(310_000);
+    await app['powerSamplePipeline'].recordPowerSample(250);
+    await app.refreshTargetDevicesSnapshot();
+    const kept = getLatestPlanSnapshotForTests().devices.find((d: { id: string }) => d.id === 'heater');
+    expect(kept).toMatchObject({ plannedState: 'keep', plannedTarget: 20 });
+    expect(await heater.getCapabilityValue('target_temperature')).toBe(20);
+    expect(await spotter.getCapabilityValue('onoff')).toBe(true);
+  });
+  it('does not start the target while the donor keeps drawing at its setback', async () => {
+    const { app, spotter, heater } = await setUp();
+    await app['powerSamplePipeline'].recordPowerSample(200);
+    await app.refreshTargetDevicesSnapshot();
+    expect(await heater.getCapabilityValue('target_temperature')).toBe(16);
+
+    // The heater reports its setback but still heats, so the reading leaves no
+    // more room than before: the release is not a reason to start the spotlights.
+    vi.advanceTimersByTime(70_000);
+    await app['powerSamplePipeline'].recordPowerSample(200);
+    await app.refreshTargetDevicesSnapshot();
+    expect(await spotter.getCapabilityValue('onoff')).toBe(false);
   });
 });
