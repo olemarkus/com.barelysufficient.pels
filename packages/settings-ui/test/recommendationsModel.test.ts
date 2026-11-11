@@ -722,3 +722,19 @@ describe('resolveBatteryApiKeyRecommendations', () => {
     }]);
   });
 });
+
+describe('level report recommendations', () => {
+  it('asks for the Flow that reports the level back, and leaves once a level comes back', () => {
+    const floor = device({ id: 'floor', name: 'Varmekabler Kjøkken', levelUnconfirmed: true } as Partial<SettingsUiDeviceSnapshot>);
+    const answered = device({ id: 'answered', name: 'Gang' });
+    const recommendations = resolveSetupRecommendations([floor, answered], [], {}, {})
+      .filter(({ id }) => id.startsWith('level-report:'));
+    expect(recommendations).toEqual([expect.objectContaining({
+      id: 'level-report:floor', version: 1, category: 'recommendation',
+      title: 'Varmekabler Kjøkken does not report its level',
+      target: { kind: 'device', deviceId: 'floor' },
+    })]);
+    expect(recommendations[0]?.body).toContain('Report stepped load');
+    expect(recommendations[0]?.body).not.toContain('—');
+  });
+});

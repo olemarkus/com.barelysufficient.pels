@@ -21,7 +21,15 @@ import type {
  */
 export type SettingsUiDeviceSnapshot = DecoratedDeviceSnapshot & ObservedStateOfChargeProbe & SettingsUiBatteryState
   // Present while the device keeps moving away from what PELS set.
-  & ControlContestDecoration & { phaseFootprintRead?: SettingsUiPhaseFootprintRead };
+  & ControlContestDecoration & { phaseFootprintRead?: SettingsUiPhaseFootprintRead }
+  & {
+    /**
+     * Present while PELS's level commands for this stepped device have drawn no
+     * report of any level, in a row, as many times as makes its card say the
+     * change is not confirmed (`STEP_COMMAND_UNANSWERED_AFTER`).
+     */
+    levelUnconfirmed?: true;
+  };
 
 /** Which phases a device loads and how PELS knows, for the device page. */
 export type SettingsUiPhaseFootprintRead = {

@@ -46,10 +46,14 @@ describe('SteppedCommandStore', () => {
     // The reissue in flight still carries the expiries before it.
     store.markDesiredStepIssued({ deviceId: 'dev-1', desiredStepId: 'high', issuedAtMs: 200_000 });
     expect(store.getUnansweredStepCommands('dev-1')).toEqual({ kind: 'unanswered', stepId: 'high', count: 1 });
+    expect(store.isLevelUnconfirmed('dev-1')).toBe(false);
     store.pruneStale(200_000 + STEPPED_LOAD_COMMAND_STALE_MS);
     expect(store.getUnansweredStepCommands('dev-1')).toEqual({ kind: 'unanswered', stepId: 'high', count: 2 });
+    // Two in a row is what the card calls unconfirmed, and so does the setup recommendation.
+    expect(store.isLevelUnconfirmed('dev-1')).toBe(true);
     store.confirmDesired('dev-1', store.getDesired('dev-1')!);
     expect(store.getUnansweredStepCommands('dev-1')).toEqual({ kind: 'none' });
+    expect(store.isLevelUnconfirmed('dev-1')).toBe(false);
 
     issueAndExpire('low', 400_000);
     expect(store.getUnansweredStepCommands('dev-1')).toEqual({ kind: 'unanswered', stepId: 'low', count: 1 });

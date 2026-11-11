@@ -71,6 +71,8 @@ export type SettingsUiDeviceDetailItem = SettingsUiDeviceListItem
   // Present while the device keeps moving away from what PELS set.
   & ControlContestDecoration
   & { phaseFootprintRead?: SettingsUiPhaseFootprintRead }
+  // Present while PELS's level changes draw no level report back (`SettingsUiDeviceSnapshot`).
+  & { levelUnconfirmed?: true }
   // `steppedLoadProfile` / `targetPowerConfig` moved off `DeviceDescriptor` onto
   // the stepped-descriptor cluster; the `/ui_devices` snapshot physically carries
   // them, which the control-mode / target-power / stepped-load-draft detail panes

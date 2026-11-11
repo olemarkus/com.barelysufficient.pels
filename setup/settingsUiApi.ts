@@ -265,6 +265,7 @@ const buildSettingsUiDeviceList = (
     const associatedCar = host.deviceManager?.getAssociatedCar(device.id);
     const carConfirmation = host.deviceManager?.getCarConfirmation(device.id);
     const controlContest = host.controlContests.contestedControl(device.id, Date.now());
+    const levelUnconfirmed = host.steppedCommandStore.isLevelUnconfirmed(device.id);
     const stateOfCharge = resolveStateOfCharge(device, readObservedStateOfCharge(observed));
     return {
       ...device,
@@ -277,6 +278,7 @@ const buildSettingsUiDeviceList = (
       ...(associatedCar ? { associatedCar } : {}),
       ...(carConfirmation ? { carConfirmation } : {}),
       ...(controlContest ? { controlContest } : {}),
+      ...(levelUnconfirmed ? { levelUnconfirmed: true as const } : {}),
       ...(stateOfCharge ? { stateOfCharge } : {}),
       ...readSettingsUiBatteryState(host, device),
       phaseFootprintRead: readSettingsUiPhaseFootprint(host, device, observed?.chargerPhaseCurrentsA),
