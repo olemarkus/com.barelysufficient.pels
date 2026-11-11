@@ -1,5 +1,7 @@
 import { getDebugEmitter } from '../../logging/logger';
-import type { DevicePlanDevice, MeteredDevicePlanDevice, MeteredKind, SteppedPlanDevice } from '../planTypes';
+import type {
+  DevicePlanDevice, MeteredDevicePlanDevice, MeteredKind, SteppedPlanDevice, TemperatureKind,
+} from '../planTypes';
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import {
   buildSwapCandidates,
@@ -16,6 +18,7 @@ import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { hasReportedStepAtOrBelow } from '../swap/donorRelease';
 import { buildRestoreAdmissionMetrics } from '../admission';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
+import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import type { RestoreCycle } from './types';
 import { buildRestoreEvidenceLogFields } from './timing';
@@ -105,7 +108,7 @@ export function attemptSwapRestore(
   const swap = buildSwapCandidates(
     dev, onDevices, swapLedger, deviceMap,
     { availableKw: availableHeadroom, phaseRoom: cycle.readPhaseRoom() },
-    restoreNeed.needed, restoredThisCycle,
+    restoreNeed.needed, restoredThisCycle, cycle.deps.temperatureSetpoints,
   );
   if (!swap.ready) {
     return rejectSwapRestoreWithCandidates(
@@ -163,6 +166,8 @@ function hasUnreleasedSwapDonors(
  * has released once it reports that step or lower.
  */
 function hasDonorReleased(device: DevicePlanDevice, release: SwapDonorRelease): boolean {
+  // A setpoint donor keeps running: it has released once it reports its limit.
+  if (release.kind === 'setpoint') return isTemperaturePlanDevice(device) && device.currentTarget === release.limitC;
   if (release.kind === 'step' && hasReportedStepAtOrBelow(device, release.stepId)) return true;
   return isBinaryPlanDevice(device) ? !device.currentOn : isOffSteppedRestoreCandidate(device);
 }
@@ -325,12 +330,21 @@ function rejectSwapRestoreForMeasurement(
 }
 
 /**
- * A swap donor paused to fund `targetName`'s restore: switched off, or kept
- * running at the step the swap lowered it to.
+ * A swap donor paused to fund `targetName`'s restore: switched off, kept
+ * running at the step the swap lowered it to, or held at its setpoint limit,
+ * stamped as the setpoint hold stamps a shed (`applyHoldUpdate`).
  */
 function buildSwappedOutUpdate(targetName: string, release: SwapDonorRelease): Partial<DevicePlanDevice> {
   const reason = { code: PLAN_REASON_CODES.swappedOut, targetName } as const;
   if (release.kind === 'off') return { plannedState: 'shed', reason };
+  if (release.kind === 'setpoint') {
+    // `plannedTarget` lives on the temperature cluster; only a temperature device gets this release.
+    const limited: Partial<DevicePlanDevice & TemperatureKind> = {
+      plannedState: 'shed', shedAction: 'set_temperature', shedTemperature: release.limitC,
+      plannedTarget: release.limitC, reason,
+    };
+    return limited;
+  }
   return { plannedState: 'shed', desiredStepId: release.stepId, plannedShedStepId: release.stepId, reason };
 }
 

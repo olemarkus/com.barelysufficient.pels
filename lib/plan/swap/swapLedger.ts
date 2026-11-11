@@ -65,14 +65,17 @@ export type SwapWait =
   | { readonly kind: 'serving'; readonly sinceMs: number };
 
 /**
- * What a donor gave up for its target: switched off, or kept running at a
- * lower step. Recorded at approval because the device cannot say it later — a
- * stepped donor switched off still carries its old step as the plan's step
- * until it reports off, so "held at a step" and "on its way off" look the same.
+ * What a donor gave up for its target: switched off, kept running at a lower
+ * step, or held at its setpoint limit (`setpoint`, at `limitC`) when its shed
+ * behaviour lowers its temperature (`resolveShedLever`). Recorded at approval
+ * because the device cannot say it later — a stepped donor switched off still
+ * carries its old step as the plan's step until it reports off, so "held at a
+ * step" and "on its way off" look the same.
  */
 export type SwapDonorRelease =
   | { readonly kind: 'off' }
-  | { readonly kind: 'step'; readonly stepId: string };
+  | { readonly kind: 'step'; readonly stepId: string }
+  | { readonly kind: 'setpoint'; readonly limitC: number };
 
 export type SwapReservation = {
   readonly targetId: string;

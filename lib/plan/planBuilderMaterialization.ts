@@ -148,6 +148,7 @@ export class PlanMaterializationStages {
       swapLedger: this.state.swapLedger,
       deviceMap: new Map(planDevices.map((device) => [device.id, device])),
       restoredThisCycle: restoreResult.restoredThisCycle,
+      temperatureSetpoints: context.temperatureSetpoints,
       // Same need the restore gate rejects on: it inflates a recently shed
       // device's requirement, and a card computed against the deflated
       // figure would claim the device is admissible on the very cycle the

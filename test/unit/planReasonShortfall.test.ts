@@ -46,6 +46,7 @@ const inputs = (params: {
   swapLedger: params.swapLedger ?? new SwapLedger(),
   deviceMap: new Map((params.onDevices ?? []).map((device) => [device.id, device])),
   restoredThisCycle: params.restoredThisCycle ?? new Set(),
+  temperatureSetpoints: new Map(),
   lastDeviceShedMsById: params.lastDeviceShedMsById ?? {},
   nowMs: params.nowMs ?? NOW_MS,
 });

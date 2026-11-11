@@ -55,6 +55,7 @@ import { computeRestoreRequirementKw, estimateRestorePower } from './restore/acc
 import { buildSwapCandidates, type SwapLedger } from './swap';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { ceilToDisplayKw, PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
+import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 
 // The per-cycle admission context the shortfall computation gates against —
 // per-axis availability, startup reservations, and the swap surface (running
@@ -77,6 +78,8 @@ export type CeilingShortfallInputs = {
   /** This plan's devices: the ranks of the targets a swap donor is already held for. */
   deviceMap: ReadonlyMap<string, DevicePlanDevice>;
   restoredThisCycle: ReadonlySet<string>;
+  /** This build's resolved setpoints, which the swap reads for how a donor sheds. */
+  temperatureSetpoints: TemperatureSetpointsByDevice;
   // Shed timestamps + this cycle's clock, so the need matches the restore gate's
   // recent-shed inflation (`computeRestoreRequirementKw`). Not optional: a missing
   // clock would silently deflate the need for exactly the devices most likely to
@@ -169,6 +172,7 @@ export function resolveCeilingShortfall(params: {
     { availableKw: reserved.availableKw - reserved.reservedKw, phaseRoom: inputs.ledger.axes().phase },
     neededKw,
     inputs.restoredThisCycle,
+    inputs.temperatureSetpoints,
   );
   const gapKw = swap.toShed.length > 0
     ? Math.min(plainGapKw, -swap.displayMarginKw)
