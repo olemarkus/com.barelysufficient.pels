@@ -181,6 +181,30 @@ export const buildSigenergyDevices = (params: {
 };
 
 /**
+ * A SolaX battery and the inverter it follows, as com.msd.inverter.solax 4.4.10
+ * declares them: the battery device only reads, and the inverter offers the
+ * RAM remote-control cards of its driver (`solax_modbus_g4` by default).
+ */
+export const buildSolaxDevices = (params: {
+  batteryId: string;
+  inverterId: string;
+  inverterDriver?: string;
+}): { battery: MockDevice; inverter: MockDevice } => {
+  const quiet = { emitCapabilityEvent: false, emitDeviceUpdate: false };
+  const battery = new MockDevice(params.batteryId, 'SolaX battery', ['measure_power', 'measure_battery'], 'battery');
+  battery.setDriverIdentity({ driverId: 'homey:app:com.msd.inverter.solax:solax_modbus_battery' });
+  battery.setActualCapabilityValue('measure_battery', 60, quiet);
+  battery.setActualCapabilityValue('measure_power', 0, quiet);
+  const inverter = new MockDevice(params.inverterId, 'SolaX inverter', ['measure_power', 'status_inverter_ram_mode'], 'solarpanel');
+  inverter.setDriverIdentity({
+    driverId: `homey:app:com.msd.inverter.solax:${params.inverterDriver ?? 'solax_modbus_g4'}`,
+  });
+  inverter.setActualCapabilityValue('measure_power', 0, quiet);
+  inverter.setActualCapabilityValue('status_inverter_ram_mode', 'Disabled', quiet);
+  return { battery, inverter };
+};
+
+/**
  * A Zendure SolarFlow as com.tweakers.zendure 1.0.16 declares its `zendure`
  * driver: no `target_power` and no claim capability, only its readings. PELS
  * drives it through the app's `set-power` Flow card.
