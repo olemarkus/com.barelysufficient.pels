@@ -16,8 +16,7 @@ import type { MeterPhasesRead } from '../../ports/homeMeterReadings';
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
 import { observeBatteryStateFromList, observeEvCarLinkAndResubscribe } from './refreshProducers';
-import { resolveDeviceRead } from './deviceReadContract';
-import { getDeviceId } from './managerHelpers';
+import { resolveDeviceViews } from './deviceReadContract';
 import type {
   TargetDeviceSnapshot,
 } from '../../../packages/contracts/src/types';
@@ -166,10 +165,14 @@ function resolveCommittedRefreshSnapshot(
         refresh.refreshState.getTargetedMisses().clear();
         return presentSnapshot;
     }
+    // A read that failed for a Homey device failed for every view read from it.
+    const failedSources = new Set(failedIds);
+    const failedViewIds = previousSnapshot.map((device) => device.id)
+        .filter((id) => failedSources.has(refresh.reader.snapshotStore.sourceDeviceId(id)));
     const { snapshot, graceExceededIds } = mergeTargetedRefreshSnapshot({
         presentSnapshot,
         previousSnapshot,
-        failedIds,
+        failedIds: [...new Set([...failedIds, ...failedViewIds])],
         missByDeviceId: refresh.refreshState.getTargetedMisses(),
         nowMs,
     });
@@ -230,7 +233,7 @@ function commitRefreshedSnapshot(
     // union the probe would never see a plug transition in realtime and would be
     // limited to the device poll, which loses the timing of individual reports.
     refresh.deviceSdk.updateTrackedDevices([
-        ...snapshot.map((d) => d.id),
+        ...new Set(snapshot.map((d) => refresh.reader.snapshotStore.sourceDeviceId(d.id))),
         ...refresh.reader.chargingCurrentControl.sessions.observedIds(),
         ...refresh.observationProducers.evCarLink.getObservedCarDeviceIds(),
     ]);
@@ -496,10 +499,11 @@ export class SnapshotRefreshService {
   ) {}
 
   fetchDevicesByKnownIds(): Promise<DeviceFetchResult> {
+    const store = this.reader.snapshotStore;
     const ids = new Set([
-      ...this.reader.snapshotStore.getSnapshot().map((device) => device.id),
+      ...store.getSnapshot().map((device) => store.sourceDeviceId(device.id)),
       ...this.observationProducers.evCarLink.getObservedCarDeviceIds(),
-      ...this.temperatureRecovery.getPendingDeviceIds(),
+      ...this.temperatureRecovery.getPendingDeviceIds().map((id) => store.sourceDeviceId(id)),
     ]);
     return this.deviceSdk.fetchDevicesByIds([...ids]);
   }
@@ -577,12 +581,12 @@ export class SnapshotRefreshService {
     }
     // Reject individual fields before conversion or observation.
     const previousReads = this.reader.snapshotStore.getLastAcceptedRawDevicesById();
-    const acceptedRawDevices = list.map((device) => resolveDeviceRead(
+    const acceptedRawDevices = list.flatMap((device) => resolveDeviceViews(
         this.reader.snapshotStore,
         this.reader.applyDeviceDriverOverride(device),
         'device_fetch',
         this.reader.logger.structuredLog,
-        previousReads.get(getDeviceId(device)),
+        previousReads,
     ));
     // Only a full inventory can remove companions. Resolve membership before
     // parsing publishes eligibility.

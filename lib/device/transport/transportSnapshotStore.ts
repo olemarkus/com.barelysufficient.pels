@@ -7,6 +7,7 @@ import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { getDeviceId } from './managerHelpers';
 import { NativeSteppedLoadCommandAdapters } from '../managerNativeSteppedCommand';
+import { getDeviceAdapter } from '../deviceAdapterRegistry';
 
 export class TransportSnapshotStore {
   private snapshot: TransportDeviceSnapshot[] = [];
@@ -95,6 +96,16 @@ export class TransportSnapshotStore {
       ?? this.latestRawDevices.find((device) => getDeviceId(device) === deviceId);
   }
 
+  /**
+   * The Homey device a PELS device is read from and written to
+   * (`DeviceAdapter.sourceDeviceId`); a device with no accepted read is its
+   * own Homey device.
+   */
+  sourceDeviceId(deviceId: string): string {
+    const raw = this.getLastAcceptedRawDevice(deviceId);
+    return raw ? getDeviceAdapter(raw).sourceDeviceId(raw) : deviceId;
+  }
+
   /** Replace an existing accepted raw read after an independent capability report. */
   updateAcceptedRawDevice(device: HomeyDeviceLike): void {
     if (this.trackedRawDeviceById.has(device.id)) this.trackedRawDeviceById.set(device.id, device);
@@ -103,8 +114,9 @@ export class TransportSnapshotStore {
   }
 
   /**
-   * Every device in Homey's last full device list, readable or not: the
-   * inventory a device is truly gone from. Empty before the first full list.
+   * Every device in Homey's last full device list, readable or not, and every
+   * view read from one: the inventory a device is truly gone from. Empty before
+   * the first full list.
    */
   getHomeyDeviceIds(): ReadonlySet<string> {
     return this.homeyDeviceIds ?? new Set();
@@ -122,9 +134,14 @@ export class TransportSnapshotStore {
   /**
    * A full read's accepted raw devices, and Homey's list as fetched for it.
    */
+  /**
+   * `devices` are the accepted views (`resolveDeviceViews`), `fetchedList` the
+   * Homey devices as fetched. A view read from a present Homey device is
+   * present in the inventory too.
+   */
   replaceLatestRawDevices(devices: HomeyDeviceLike[], fetchedList: readonly HomeyDeviceLike[]): void {
     this.latestRawDevices = devices;
-    this.homeyDeviceIds = new Set(fetchedList.map(getDeviceId));
+    this.homeyDeviceIds = new Set([...fetchedList.map(getDeviceId), ...devices.map(getDeviceId)]);
   }
 
 }

@@ -266,7 +266,9 @@ export class DeviceWriteService {
     }
     incPerfCounter('device_action_total');
     incPerfCounter(`device_action.capability.${capabilityId}`);
-    const ownWrite = this.observationState.ownWrites.begin(deviceId, write.capabilityId, Date.now());
+    // The Homey device behind the view: the write and its echo are the Homey device's.
+    const homeyDeviceId = this.snapshotStore.sourceDeviceId(deviceId);
+    const ownWrite = this.observationState.ownWrites.begin(homeyDeviceId, write.capabilityId, Date.now());
     emitCapabilityWriteDebug(
         'device_capability_write_requested',
         deviceId,
@@ -274,7 +276,7 @@ export class DeviceWriteService {
         normalizedValue,
         write,
     );
-    await setRawCapabilityValue(deviceId, write.capabilityId, write.value, ownWrite.transactionId);
+    await setRawCapabilityValue(homeyDeviceId, write.capabilityId, write.value, ownWrite.transactionId);
     emitCapabilityWriteDebug(
         'device_capability_write_accepted',
         deviceId,

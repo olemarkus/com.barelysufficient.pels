@@ -24,10 +24,10 @@ reading in `measure_temperature.room`; neither declares a plain
   removes both capabilities when the system has no controllable zone.
 
 The adapter accepts a read that declares both room capabilities and no plain
-pair as `target_temperature` / `measure_temperature` (`projectRead`, applied at
-the read contract before validation, so merges, the accepted read and parsing
-see only the standard names), names live room reports the same way
-(`reportedCapabilityId`), and writes `target_temperature` back to
+pair as `target_temperature` / `measure_temperature` (`projectRead`, one view,
+applied at the read contract before validation, so merges, the accepted read
+and parsing see only the standard names), names live room reports the same way
+(`routeReport`), and writes `target_temperature` back to
 `target_temperature.room` (`capabilityWrite`). A pump without a room reading is
 left as Homey reports it, and PELS does not treat it as a temperature device.
 

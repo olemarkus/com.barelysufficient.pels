@@ -82,19 +82,21 @@ export class RealtimeIngestService {
   }
 
   handleCapabilityUpdate(
-    deviceId: string, reportedCapabilityId: string, value: unknown, transactionId: string | undefined,
+    homeyDeviceId: string, reportedCapabilityId: string, value: unknown, transactionId: string | undefined,
   ): void {
-    // Classified once per Homey event, under the capability PELS wrote: whatever
-    // the adapter derives from PELS's echo is PELS's echo too.
-    const echoed = this.observationBridge.state.ownWrites.takeEcho(deviceId, reportedCapabilityId, transactionId);
+    // Classified once per Homey event, under the Homey device and capability PELS
+    // wrote: whatever the adapter derives from PELS's echo is PELS's echo too.
+    const echoed = this.observationBridge.state.ownWrites.takeEcho(homeyDeviceId, reportedCapabilityId, transactionId);
     const pelsEcho = echoed !== undefined;
+    // The view the report belongs to, and the capability as it reads it (`projectRead`).
+    const source = this.reader.snapshotStore.getLastAcceptedRawDevice(homeyDeviceId);
+    const { deviceId, capabilityId } = source
+      ? getDeviceAdapter(source).routeReport(source, reportedCapabilityId)
+      : { deviceId: homeyDeviceId, capabilityId: reportedCapabilityId };
     // Keep accepted source fields current before a later whole-device read can
     // retain them. Follow the step lane's echo policy: native current echoes
     // are accepted observations; other local writes are not.
     const raw = this.reader.snapshotStore.getLastAcceptedRawDevice(deviceId);
-    // The accepted read names the report as its integration reads it (`projectRead`).
-    const capabilityId = raw
-      ? getDeviceAdapter(raw).reportedCapabilityId(raw, reportedCapabilityId) : reportedCapabilityId;
     if (!isIgnoredOwnStepEcho(capabilityId, pelsEcho) && raw) {
       this.reader.snapshotStore.updateAcceptedRawDevice(
         withAcceptedCapabilityReport(raw, capabilityId, value, Date.now()),
