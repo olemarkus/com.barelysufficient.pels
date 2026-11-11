@@ -3,6 +3,7 @@ import type { ChargingAccessStatus } from '../../../packages/contracts/src/charg
 import type { Logger } from '../../utils/types';
 import type { SettingsPort } from '../../ports/homeyRuntime';
 import { HomeyRequestTimeoutError } from '../../utils/errorUtils';
+import { HomeyRequestInFlightError } from '../../utils/homeyRequestInFlightError';
 import { isUnknownRecord } from '../../../packages/shared-domain/src/recordGuards';
 
 /** An adapter-resolved Homey Flow action card run, never supplied by the settings UI. */
@@ -111,11 +112,16 @@ export class HomeyActionAccess {
     return this.status();
   }
 
+  /** Whether an action for `deviceId` is still outstanding, even past its caller's timeout. */
+  isActionInFlight(deviceId: string): boolean {
+    return this.inFlight.has(deviceId);
+  }
+
   /**
    * Run one action card for `deviceId`. Called only by device transport under
    * the actuator's current command. One action per device runs at a time: a
    * second while one is outstanding (even past its caller's timeout) is
-   * refused, never queued. `assertAuthorized` is checked again just before the
+   * refused unsent with `HomeyRequestInFlightError`, never queued. `assertAuthorized` is checked again just before the
    * POST, after the Homey target resolved.
    */
   async runAction(
@@ -128,9 +134,11 @@ export class HomeyActionAccess {
     // A transient scope-check failure must not require a settings visit to
     // recover. Recheck on the next planned command; never retry its POST.
     if (this.key && this.accessState !== 'ready') await this.check();
-    if (!this.key || this.accessState !== 'ready' || this.inFlight.has(deviceId)) {
+    if (!this.key || this.accessState !== 'ready') {
       throw new HomeyActionAccessError(this.accessState === 'permission_denied' ? 'permission_denied' : 'unavailable');
     }
+    // Busy, not an access failure: the key is fine and the earlier action may still land.
+    if (this.inFlight.has(deviceId)) throw new HomeyRequestInFlightError();
     const generation = this.generation;
     const path = `manager/flow/flowcardaction/${encodeURIComponent(action.ownerUri)}`
       + `/${encodeURIComponent(action.cardId)}/run`;

@@ -30,6 +30,7 @@ import { createTestExecutorCommandContext, PRIOR_STEP_COMMAND_SESSION } from '..
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
+import { HomeyRequestInFlightError } from '../../lib/utils/homeyRequestInFlightError';
 import { SteppedLoadTransportError } from '../../lib/ports/steppedLoadWrite';
 import { buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
 import {
@@ -1237,6 +1238,69 @@ describe('native stepped-load wiring', () => {
     expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_failed',
     }));
+  });
+
+  // A slow cloud card (Tesla charge_current) can outlive the caller's timeout;
+  // the next command for that device is refused unsent while it is outstanding.
+  // Nothing went out: no failure, no pending record, no cooldown, no contest.
+  it('skips a step refused while the previous Flow action is outstanding, recording nothing', async () => {
+    const markSteppedLoadDesiredStepIssued = vi.fn();
+    const recordShedActuation = vi.fn();
+    const recordRestoreActuation = vi.fn();
+    const ctx = steppedCommandContext(vi.fn(async () => {
+      throw new SteppedLoadTransportError('homey_action', new HomeyRequestInFlightError());
+    }), { markSteppedLoadDesiredStepIssued, recordShedActuation, recordRestoreActuation });
+    const commandSent = vi.spyOn(ctx.execution.controlContests, 'commandSent');
+    const action = buildSteppedAction({
+      id: 'tesla', name: 'Car', binaryControl: { on: true }, currentState: 'on', plannedState: 'shed',
+      controlModel: 'stepped_load', steppedLoadProfile: steppedProfile, selectedStepId: 'max',
+      desiredStepId: 'medium', plannedShedStepId: 'medium', reason: { code: 'capacity' },
+    });
+    expect(action).not.toBeNull();
+    expect(await applySteppedLoadCommand(ctx, action!)).toBe(false);
+    expect(markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
+    expect(recordShedActuation).not.toHaveBeenCalled();
+    expect(recordRestoreActuation).not.toHaveBeenCalled();
+    expect(commandSent).not.toHaveBeenCalled();
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({ event: 'stepped_load_command_failed' }));
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({ event: 'executor_stepped_error' }));
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({ event: 'stepped_load_command_outcome_unknown' }));
+  });
+
+  it('refuses a busy charger before reading its action metadata', async () => {
+    const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
+      id: 'charger', name: 'Zaptec', class: 'evcharger', driverId: 'homey:app:com.zaptec:go2',
+      data: { id: 'zaptec-id', installationId: 'installation' },
+      capabilities: ['available_installation_current'],
+      capabilitiesObj: { available_installation_current: { value: 16, setable: false } },
+    };
+    const values = new Map<string, unknown>();
+    const settings = {
+      get: (key: string) => values.get(key), getKeys: () => [...values.keys()],
+      set: (key: string, value: unknown) => { values.set(key, value); },
+      unset: (key: string) => { values.delete(key); },
+    };
+    const get = vi.fn(async (): Promise<unknown> => ({}));
+    setRestClient({ get, put: vi.fn() });
+    const logger = createLogger();
+    const control = new ChargingCurrentControl(settings, new HomeyActionAccess({ settings,
+      api: { getLocalUrl: async () => 'http://homey.local' }, cloud: { getHomeyId: async () => 'test' },
+    }, logger), logger, () => [device], () => ({ connected: true, revision: 0 }),
+    createChargingFlowWritesStore(openUserdataDatabase(IN_MEMORY_DATABASE)), deviceControlSettingsFixture());
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200,
+      headers: { get: () => 'test' }, json: async () => ({ intersectedScopes: ['homey.flow'] }),
+    }));
+    try {
+      await control.access.save({ key: 'private-key' });
+      await control.save('charger', { method: 'built_in', confirmation: 'single_charger' });
+      vi.spyOn(control.access, 'isActionInFlight').mockReturnValue(true);
+      const failure = await control.writeCurrent(device, 10, vi.fn()).catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(SteppedLoadTransportError);
+      expect((failure as SteppedLoadTransportError).cause).toBeInstanceOf(HomeyRequestInFlightError);
+      expect(get).not.toHaveBeenCalledWith('manager/flow/flowcardaction');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('treats an unacknowledged flow trigger as the same unknown outcome as a native timeout', async () => {

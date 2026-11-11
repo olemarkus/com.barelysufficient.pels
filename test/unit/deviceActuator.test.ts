@@ -1,4 +1,5 @@
 import { HomeyRequestTimeoutError } from '../../lib/utils/errorUtils';
+import { HomeyRequestInFlightError } from '../../lib/utils/homeyRequestInFlightError';
 import { SteppedLoadTransportError } from '../../lib/ports/steppedLoadWrite';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
@@ -127,6 +128,17 @@ it.each(['native_capability', 'homey_action'] as const)('resolves a %s write tim
   await expect(actuator.apply(stepCommand)).resolves.toEqual({
     kind: 'step', requested: true, acknowledged: false, transport,
     reasonCode: 'command_request_timed_out', err: timeout,
+  });
+});
+
+it('reports a step refused while the previous Flow action is outstanding as not requested, not failed', async () => {
+  const actuator = createDeviceActuator(buildTransport({
+    requestSteppedLoadStep: vi.fn().mockRejectedValue(
+      new SteppedLoadTransportError('homey_action', new HomeyRequestInFlightError()),
+    ),
+  }));
+  await expect(actuator.apply(stepCommand)).resolves.toEqual({
+    requested: false, reason: 'previous_command_in_flight',
   });
 });
 
