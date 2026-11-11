@@ -1,4 +1,4 @@
-import type { ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
+import type { ChargingCurrentSetup, ChargingMissingCompanion } from '../../packages/contracts/src/chargingControl';
 import type { HubHomeLocation } from './hubHomeLocation';
 import { teslaAdapter } from './tesla';
 import { easeeAdapter } from './easee';
@@ -75,6 +75,10 @@ export class DeviceAdapterSessions {
   observedIds(): string[] { return this.sessions.flatMap((session) => session.observedIds()); }
   observes(id: string): boolean { return this.sessions.some((session) => session.observes(id)); }
   hasCarStopEvidence(id: string): boolean { return this.sessions.some(session => session.hasCarStopEvidence(id)); }
+  missingCompanion(id: string): ChargingMissingCompanion {
+    const companions = this.sessions.map((session) => session.missingCompanion(id));
+    return companions.find((companion) => companion !== 'none') ?? 'none';
+  }
   controls(snapshot: AdapterControlTarget): boolean {
     return this.sessions.some((session) => session.controls(snapshot));
   }

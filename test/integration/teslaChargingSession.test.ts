@@ -398,16 +398,23 @@ test('rejects a future coordinate even when the other coordinate is fresh', () =
   expect(owner.isAllowed('battery')).toBe(false);
 });
 
-test('removing a companion revokes authorization until a complete home session is observed', () => {
+test('removing the car companion revokes authorization until a complete home session is observed', () => {
   const owner = session(); const initial = devices(); owner.observeDevices(initial);
   expect(owner.isAllowed('battery')).toBe(true);
-  owner.retainDevices([initial[0]!, initial[2]!]);
+  owner.retainDevices([initial[0]!, initial[1]!]);
   expect(owner.isAllowed('battery')).toBe(false);
-  expect(owner.observedIds()).not.toContain('location');
+  expect(owner.observedIds()).not.toContain('car');
+});
+
+test('removing the location companion leaves a stationary AC session admitted on its car checks', () => {
+  const owner = session(); const initial = devices(); owner.observeDevices(initial);
+  owner.retainDevices([initial[0]!, initial[2]!]);
+  expect(owner.isAllowed('battery')).toBe(true);
+  expect(owner.missingCompanion('battery')).toBe('vehicle_location');
 });
 
 test.each([
-  ['location', false], ['car', false], ['location', true],
+  ['car', false], ['car', true],
 ] as const)('full refresh removes %s before publishing Tesla eligibility (ignored battery: %s)', async (removed, ignoredBattery) => {
   vi.useRealTimers();
   mockHomeyInstance.settings.set('charging_current_control', { battery: { method: 'flow', confirmation: 'vehicle' } });
@@ -428,6 +435,20 @@ test.each([
     expect(published).toEqual([false]);
     expect(transport.getSnapshotByDeviceId('battery')).toMatchObject({ available: false, measuredPowerKw: 0 });
     await expect(transport.setCapability('battery', 'evcharger_charging', true)).rejects.toThrow('at home');
+  } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
+});
+
+test('a full refresh without the location companion keeps the home session and reports the missing device', async () => {
+  vi.useRealTimers();
+  mockHomeyInstance.settings.set('charging_current_control', { battery: { method: 'flow', confirmation: 'vehicle' } });
+  const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
+    { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') });
+  try {
+    await initWithLiveFeed(transport);
+    await seedTransportDevices(transport, devices().filter((device) => device.id !== 'location'));
+    expect(transport.getSnapshotByDeviceId('battery')).toMatchObject({ available: true, measuredPowerKw: 4 });
+    const read = transport.chargingCurrentControl.describe({ status: 'unknown', reason: 'not read' });
+    expect(read.find((entry) => entry.deviceId === 'battery')?.missingCompanion).toBe('vehicle_location');
   } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
 });
 
@@ -694,6 +715,14 @@ describe('home evidence log', () => {
     ]);
   });
 
+  test('logs a session admitted without a location device', () => {
+    const owner = session(); const [battery, , car] = devices();
+    owner.retainDevices([battery!, car!]); owner.observeDevices([battery!, car!]);
+    expect(owner.isAllowed('battery')).toBe(true);
+    expect(evidenceLines()).toMatchObject([{ deviceId: 'battery', kind: 'home_without_location' }]);
+  });
+
+
   test('reports how far the car is from home without its position', () => {
     const owner = session(); const initial = devices();
     initial[1]!.capabilitiesObj!.measure_location_latitude = cap(60.01);
@@ -713,5 +742,57 @@ describe('home evidence log', () => {
     owner.observeDevices(initial);
     expect(owner.isAllowed('battery')).toBe(false);
     expect(evidenceLines()).toMatchObject([{ kind: 'failed', check }]);
+  });
+});
+
+describe('a vehicle without a Location & navigation device', () => {
+  const unlocated = () => devices().filter((device) => device.id !== 'location');
+  const fullRead = (owner: TeslaChargingSession, list: HomeyDeviceLike[]) => {
+    owner.retainDevices(list); owner.observeDevices(list);
+  };
+
+  test('charges under control at home once a full device list shows it has none', () => {
+    const owner = session();
+    fullRead(owner, unlocated());
+    expect(owner.isAllowed('battery')).toBe(true);
+    expect(owner.missingCompanion('battery')).toBe('vehicle_location');
+  });
+
+  test('is not admitted on a live update before any full device list', () => {
+    const owner = session();
+    owner.observeDevices(unlocated());
+    expect(owner.isAllowed('battery')).toBe(false);
+    expect(owner.missingCompanion('battery')).toBe('none');
+  });
+
+  test('a trust gap waits for the next full device list again', () => {
+    const owner = session(); owner.setTrustEpoch('connected:0');
+    fullRead(owner, unlocated());
+    expect(owner.isAllowed('battery')).toBe(true);
+    owner.setTrustEpoch('connected:1'); owner.observeDevices(unlocated());
+    expect(owner.isAllowed('battery')).toBe(false);
+    fullRead(owner, unlocated());
+    expect(owner.isAllowed('battery')).toBe(true);
+  });
+
+  test.each([
+    ['moving', 2, { measure_car_drive_speed: cap(30) }],
+    ['asleep', 2, { car_state: cap('asleep') }],
+    ['on DC', 0, { measure_charge_power_dc: cap(120) }],
+    ['without an AC cable', 0, { charging_port_cable: cap('') }],
+  ] as const)('is still refused while %s', (_label, index, patch) => {
+    const owner = session(); const list = devices();
+    list[index] = { ...list[index]!, capabilitiesObj: { ...list[index]!.capabilitiesObj, ...patch } };
+    fullRead(owner, list.filter((device) => device.id !== 'location'));
+    expect(owner.isAllowed('battery')).toBe(false);
+  });
+
+  test('pairing the location device later puts the coordinates back in charge', () => {
+    const owner = session();
+    fullRead(owner, unlocated());
+    const away = devices(); away[1]!.capabilitiesObj!.measure_location_latitude = cap(61);
+    fullRead(owner, away);
+    expect(owner.isAllowed('battery')).toBe(false);
+    expect(owner.missingCompanion('battery')).toBe('none');
   });
 });

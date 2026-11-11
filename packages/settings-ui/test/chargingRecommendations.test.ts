@@ -3,7 +3,7 @@ import type { ChargingCurrentRead } from '../../contracts/src/chargingControl.ts
 const device: ChargingCurrentRead = { deviceId: 'charger', name: 'Garage', setup: {
   method: 'flow', confirmation: 'none',
 }, capabilityWritable: false, scope: 'installation', sharedInstallation: false,
-flowCheck: 'clear', flowNames: [], currentRoute: 'flow' };
+flowCheck: 'clear', flowNames: [], currentRoute: 'flow', missingCompanion: 'none' };
 
 test('recommends a key while preserving the Flow alternative', () => {
   const [recommendation] = chargingRecommendations([device], { configured: false, state: 'not_configured' });
@@ -30,4 +30,19 @@ test('a writable capability does not prompt for a key', () => {
 });
 test('shared installations retain Flow control without a built-in recommendation', () => {
   expect(chargingRecommendations([{ ...device, sharedInstallation: true }], { configured: true, state: 'ready' })).toEqual([]);
+});
+test('a car PELS controls without its location device gets its own dismissable advice', () => {
+  const car: ChargingCurrentRead = { ...device, deviceId: 'tesla', name: 'Model Y', scope: 'vehicle',
+    setup: { method: 'built_in', confirmation: 'vehicle' }, currentRoute: 'built_in', missingCompanion: 'vehicle_location' };
+  const recommendations = chargingRecommendations([car], { configured: true, state: 'ready' });
+  expect(recommendations).toEqual([expect.objectContaining({
+    id: 'charging-vehicle-location:tesla', version: 1, category: 'recommendation',
+    title: 'Add the location device for Model Y', target: { kind: 'device', deviceId: 'tesla' },
+  })]);
+  expect(recommendations[0]?.body).toContain('Location & navigation');
+});
+test('the location advice waits until the owner chooses to control charging through the car', () => {
+  const car: ChargingCurrentRead = { ...device, scope: 'vehicle', missingCompanion: 'vehicle_location' };
+  expect(chargingRecommendations([car], { configured: true, state: 'ready' }).map(({ id }) => id))
+    .toEqual(['charging-owner:charger']);
 });

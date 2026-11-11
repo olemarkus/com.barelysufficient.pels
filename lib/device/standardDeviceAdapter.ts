@@ -4,7 +4,7 @@ import { STANDARD_HOME_BATTERY_BINDING } from './homeBatteryBinding';
 const unrestrictedSession: DeviceAdapterSession = {
   observeDevice() {}, observeCapability() {}, retainDevices() {}, withheldCapabilities: () => [], setTrustEpoch() {},
   observedIds: () => [], observes: () => false, controls: () => false,
-  hasCarStopEvidence: () => false,
+  hasCarStopEvidence: () => false, missingCompanion: () => 'none',
   project: (snapshot) => snapshot, assertAllowed() {},
   controlEvents: (_id, capabilityId, value) => [{ capabilityId, value }],
 };

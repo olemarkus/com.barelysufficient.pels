@@ -1,6 +1,6 @@
 import type { AppActionControlTarget } from '../ports/storageCommand';
 import type { HubHomeLocation } from './hubHomeLocation';
-import type { ChargingCurrentSetup } from '../../packages/contracts/src/chargingControl';
+import type { ChargingCurrentSetup, ChargingMissingCompanion } from '../../packages/contracts/src/chargingControl';
 import type { DeviceControlAdapterSnapshot, HomeBatteryClaimCapabilityId, HomeBatteryClaimRejection,
   HomeBatterySetpointRange, SteppedLoadProfile, SteppedLoadStep,
   TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
@@ -254,6 +254,8 @@ export type DeviceAdapterSession = {
   controls(snapshot: AdapterControlTarget): boolean;
   /** Positive observed evidence that the car stopped accepting energy, not a controller-off command. */
   hasCarStopEvidence(deviceId: string): boolean;
+  /** A companion device the owner could pair to make control of `deviceId` more reliable. */
+  missingCompanion(deviceId: string): ChargingMissingCompanion;
   project(snapshot: TransportDeviceSnapshot, setup: ChargingCurrentSetup): TransportDeviceSnapshot;
   assertAllowed(device: HomeyDeviceLike, setup: ChargingCurrentSetup, connected: boolean): void;
   controlEvents(deviceId: string, capabilityId: string, value: unknown): CapabilityUpdate[];

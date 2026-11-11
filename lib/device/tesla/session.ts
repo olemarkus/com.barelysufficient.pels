@@ -10,7 +10,9 @@ import { toCapabilityTimestampMs } from '../managerControl';
 import { isTeslaChargingDevice, teslaDriver } from './identity';
 import { getLogger } from '../../logging/logger';
 
-import { resolveTeslaHomeEvidence, type HomeLocation, type TeslaHomeEvidence } from './evidence';
+import {
+  lacksTeslaLocationDevice, resolveTeslaHomeEvidence, type HomeLocation, type TeslaHomeEvidence,
+} from './evidence';
 
 const logger = getLogger('device/tesla');
 
@@ -35,11 +37,16 @@ export class TeslaChargingSession implements DeviceAdapterSession {
   private readonly devices = new Map<string, HomeyDeviceLike>();
   private trustEpoch = '';
   private readonly lastEvidence = new Map<string, string>();
+  /** A full device list was read since the last trust gap, so a companion it lacks is not paired. */
+  private inventoryRead = false;
 
   constructor(private readonly home: HomeLocation) {}
 
   controls(snapshot: AdapterControlTarget): boolean { return hasTeslaChargingSurface(snapshot); }
   hasCarStopEvidence(): boolean { return false; }
+  missingCompanion(deviceId: string): 'none' | 'vehicle_location' {
+    return this.lacksLocationDevice(deviceId) ? 'vehicle_location' : 'none';
+  }
 
   assertAllowed(device: HomeyDeviceLike, setup: ChargingCurrentSetup, connected: boolean): void {
     if (!isTeslaChargingDevice(device)) return;
@@ -83,6 +90,7 @@ export class TeslaChargingSession implements DeviceAdapterSession {
   }
 
   retainDevices(devices: readonly HomeyDeviceLike[]): void {
+    this.inventoryRead = true;
     const ids = new Set(devices.map((device) => device.id));
     for (const id of this.devices.keys()) if (!ids.has(id)) this.devices.delete(id);
     for (const id of this.lastEvidence.keys()) if (!ids.has(id)) this.lastEvidence.delete(id);
@@ -128,15 +136,23 @@ export class TeslaChargingSession implements DeviceAdapterSession {
     if (epoch === this.trustEpoch) return;
     this.trustEpoch = epoch;
     this.devices.clear();
+    this.inventoryRead = false;
+  }
+
+  /** The vehicle has no Location & navigation device in the last full device list. */
+  lacksLocationDevice(deviceId: string): boolean {
+    const battery = this.devices.get(deviceId);
+    return this.inventoryRead && battery !== undefined && isTeslaChargingDevice(battery)
+      && lacksTeslaLocationDevice(battery, [...this.devices.values()]);
   }
 
   isAllowed(deviceId: string): boolean {
     const battery = this.devices.get(deviceId);
     if (!battery || !isTeslaChargingDevice(battery)) return false;
     // Away coordinates, motion, a disconnect or an unavailable companion fail this at once.
-    const evidence = resolveTeslaHomeEvidence(battery, [...this.devices.values()], this.home);
+    const evidence = resolveTeslaHomeEvidence(battery, [...this.devices.values()], this.home, this.inventoryRead);
     this.logEvidenceChange(battery, evidence);
-    return evidence.kind === 'home';
+    return evidence.kind === 'home' || evidence.kind === 'home_without_location';
   }
 
   /**

@@ -27,5 +27,13 @@ export type ChargingCurrentRead = {
    * is held back to the Flow while a Flow is known to set the same current.
    */
   currentRoute: ChargingCurrentMethod;
+  /**
+   * A companion device the vehicle's app offers that would make PELS's control
+   * more reliable and that the owner has not paired: `vehicle_location`, the
+   * car's position, without which PELS cannot tell a home session from an AC
+   * charger elsewhere. `none` for every other device.
+   */
+  missingCompanion: ChargingMissingCompanion;
 };
+export type ChargingMissingCompanion = 'none' | 'vehicle_location';
 export const CHARGING_CURRENT_PATH = '/ui_charging_current';

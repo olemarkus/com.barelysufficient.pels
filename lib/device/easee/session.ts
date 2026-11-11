@@ -58,6 +58,8 @@ export class EaseeChargingSession implements DeviceAdapterSession {
   controls(snapshot: AdapterControlTarget): boolean { return this.statuses.get(snapshot.id)?.kind === 'observed'; }
   project(snapshot: TransportDeviceSnapshot): TransportDeviceSnapshot { return snapshot; }
   assertAllowed(): void {}
+  missingCompanion(): 'none' { return 'none'; }
+
   hasCarStopEvidence(deviceId: string): boolean {
     const authority = this.statuses.get(deviceId);
     return authority?.kind === 'observed' && authority.status === 'Completed';
