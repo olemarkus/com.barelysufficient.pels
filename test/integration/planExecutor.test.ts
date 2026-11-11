@@ -71,6 +71,7 @@ import {
 } from '../utils/planTestUtils';
 import { transportSnapshotFixture } from '../utils/deviceSnapshotFixture';
 import { noStorageTransport } from '../helpers/storageTransportStub';
+import type { BatteryControlOwner } from '../../lib/ports/batteryControlOwner';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const KEEP_REASON = fixtureDeviceReason('keep')!;
@@ -1924,6 +1925,79 @@ describe('PlanExecutor stepped loads', () => {
     };
   };
 
+  it('issues independent sheds while another device write waits, isolates failures, and awaits every device', async () => {
+    const binaryShed = (id: string) => pd({
+      id, name: id, controllable: true, available: true,
+      binaryCapabilityId: 'onoff', binaryControl: { on: true },
+      currentState: 'on', plannedState: 'shed', shedAction: 'turn_off', reason: CAPACITY_REASON,
+    });
+    const step = steppedPlan({
+      id: 'step', currentState: 'on', plannedState: 'shed',
+      selectedStepId: 'max', reportedStepId: 'max', desiredStepId: 'low',
+      plannedShedStepId: 'low', shedAction: 'turn_off', reason: CAPACITY_REASON,
+    }).devices[0]!;
+    const temperature = pd({
+      id: 'temperature', name: 'Temperature heater', controllable: true, available: true,
+      deviceType: 'temperature', currentTarget: 21, plannedTarget: 5, currentTemperature: 20,
+      currentState: 'on', plannedState: 'shed', shedAction: 'set_temperature', shedTemperature: 5,
+      reason: CAPACITY_REASON,
+    });
+    const inverterApply = vi.fn(NO_INVERTER_EXECUTION.apply);
+    const releaseBattery = vi.fn(async () => 'released' as const);
+    const persistLastControlledMs = vi.fn();
+    const { executor, deviceManager } = buildExecutor(undefined, [
+      ...['slow', 'binary'].map((id) => ({
+        id, name: id, binaryCapabilityId: 'onoff', binaryControl: { on: true },
+        available: true, canSetControl: true,
+      })),
+      { id: 'temperature', name: 'Temperature heater', available: true,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }] },
+      ...steppedSnapshot({ id: 'step', reportedStepId: 'max' }),
+    ], {
+      inverterLane: { ...NO_INVERTER_EXECUTION, apply: inverterApply },
+      storageLane: { kind: 'battery_control', owner: partialDouble<BatteryControlOwner>({ releaseClaim: releaseBattery }) },
+      persistLastControlledMs,
+    });
+    let releaseSlowWrite!: () => void;
+    const slowWrite = new Promise<void>((resolve) => { releaseSlowWrite = resolve; });
+    deviceManager.setCapability.mockImplementation(async (deviceId: string) => {
+      if (deviceId === 'slow') await slowWrite;
+    });
+    const plan = buildExecutionPlan({ ...steppedPlan(),
+      devices: [binaryShed('slow'), binaryShed('binary'), temperature, step] });
+    plan.storageReleases.push({ deviceId: 'battery', reason: 'limit_off' });
+    plan.devices.splice(1, 0, {
+      commands: { id: 'bad', name: 'Bad projection', commandAuthority: true,
+        projection: 'failed', error: new Error('Projection failed') },
+      stableOperations: [], nonCapacityHoldShed: false,
+    });
+    const applying = executor.applyPlanActions(plan);
+    try {
+      await vi.waitFor(() => {
+        expect(deviceManager.setCapability).toHaveBeenCalledWith('binary', 'onoff', false);
+        expect(deviceManager.setCapability).toHaveBeenCalledWith('temperature', 'target_temperature', 5);
+        expect(deviceManager.requestSteppedLoadStep).toHaveBeenCalledWith(expect.objectContaining({
+          deviceId: 'step', desiredStepId: 'low',
+        }));
+      });
+      expect(logCapture.findEvent('executor_plan_error')).toMatchObject({
+        msg: 'Failed to apply action for Bad projection; continuing with remaining devices',
+      });
+      expect(inverterApply).not.toHaveBeenCalled();
+      expect(releaseBattery).not.toHaveBeenCalled();
+      expect(persistLastControlledMs).not.toHaveBeenCalled();
+    } finally {
+      releaseSlowWrite();
+      await applying;
+    }
+    await expect(applying).resolves.toEqual({
+      deviceWriteCount: 3, commandRequestCount: 2, deviceApplyFailureCount: 1, pendingInverterReleaseCount: 0,
+    });
+    expect(releaseBattery).toHaveBeenCalledExactlyOnceWith('battery', 'limit_off');
+    expect(inverterApply).toHaveBeenCalledOnce();
+    expect(persistLastControlledMs).toHaveBeenCalledOnce();
+  });
+
   it('initializes an unknown running stepped load at its lowest step before ramping higher', async () => {
     const { executor, deviceManager, desiredSteppedTrigger, state, deps } = buildExecutor(
       undefined,
@@ -2570,12 +2644,12 @@ describe('PlanExecutor stepped loads', () => {
     }));
   });
 
-  it.each(['low', 'off'])('reads the report at the write, after an earlier write kept dispatch waiting (report %s)', async (
+  it.each(['low', 'off'])('reads a newer report without waiting for another device write (report %s)', async (
     laterReport,
   ) => {
-    // Two held devices, each planned max -> medium. The first device's write
-    // stays in flight; while dispatch waits on it the second device reports a
-    // lower step, and its `medium` would now raise it under the hold.
+    // Two held devices, each planned max -> medium. As the first write starts,
+    // the second device reports a lower step. Its `medium` would now raise it
+    // under the hold, so dispatch must use that report before issuing its write.
     const heldDevice = (id: string) => steppedPlan({
       id,
       steppedLoadProfile: fourStepProfile,
@@ -2598,6 +2672,7 @@ describe('PlanExecutor stepped loads', () => {
     deviceManager.requestSteppedLoadStep.mockImplementation(async ({ deviceId, desiredStepId }) => {
       writes.push(`${deviceId}:${desiredStepId}`);
       if (deviceId === 'dev-1') {
+        Object.assign(snapshot[1]!, { reportedStepId: laterReport });
         markFirstWriteStarted();
         await firstWriteReleased;
       }
@@ -2606,9 +2681,18 @@ describe('PlanExecutor stepped loads', () => {
 
     const applying = executor.applyPlanActions(buildExecutionPlan(plan));
     await firstWriteStarted;
-    Object.assign(snapshot[1]!, { reportedStepId: laterReport });
-    releaseFirstWrite();
-    await applying;
+    try {
+      await vi.waitFor(() => {
+        expect(logCapture.events).toContainEqual(expect.objectContaining({
+          event: 'stepped_load_command_skipped',
+          reasonCode: 'not_below_reported_step',
+          deviceId: 'dev-2',
+        }));
+      });
+    } finally {
+      releaseFirstWrite();
+      await applying;
+    }
 
     expect(writes).toEqual(['dev-1:medium']);
     expect(logCapture.events).toContainEqual(expect.objectContaining({
@@ -3616,6 +3700,52 @@ describe('PlanExecutor stepped loads', () => {
       DEVICE_LAST_CONTROLLED_MS,
       expect.objectContaining({ 'dev-1': expect.any(Number) }),
     );
+  });
+
+  it('keeps step preparation before binary off while another device write waits', async () => {
+    const { executor, deviceManager } = buildExecutor(undefined, [
+      { id: 'slow', name: 'Slow device', binaryCapabilityId: 'onoff', canSetControl: true,
+        available: true, binaryControl: { on: true } },
+      ...steppedSnapshot({ reportedStepId: 'max' }),
+    ]);
+    let releaseSlowWrite!: () => void;
+    const slowWrite = new Promise<void>((resolve) => { releaseSlowWrite = resolve; });
+    let releasePreparation!: () => void;
+    const preparation = new Promise<void>((resolve) => { releasePreparation = resolve; });
+    deviceManager.setCapability.mockImplementation(async (deviceId: string) => {
+      if (deviceId === 'slow') await slowWrite;
+    });
+    deviceManager.requestSteppedLoadStep.mockImplementation(async () => {
+      await preparation;
+      return { requested: true, acknowledged: true as const, transport: 'flow' as const };
+    });
+    const plan = steppedPlan({
+      currentState: 'on', plannedState: 'shed', shedAction: 'turn_off',
+      selectedStepId: 'max', reportedStepId: 'max', desiredStepId: 'off', plannedShedStepId: 'off',
+    });
+    plan.devices.unshift(pd({
+      id: 'slow', name: 'Slow device', controllable: true, binaryCapabilityId: 'onoff',
+      binaryControl: { on: true }, currentState: 'on', plannedState: 'shed', shedAction: 'turn_off',
+      reason: CAPACITY_REASON,
+    }));
+    const applying = executor.applyPlanActions(buildExecutionPlan(plan));
+    try {
+      await vi.waitFor(() => {
+        expect(deviceManager.requestSteppedLoadStep).toHaveBeenCalledWith(expect.objectContaining({
+          deviceId: 'dev-1', desiredStepId: 'low',
+        }));
+      });
+      expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
+      releasePreparation();
+      await vi.waitFor(() => {
+        expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+      });
+    } finally {
+      releasePreparation();
+      releaseSlowWrite();
+      await applying;
+    }
+    await expect(applying).resolves.toMatchObject({ deviceWriteCount: 2, commandRequestCount: 1 });
   });
 
   it('leaves a turn_off stepped shed running when the planner parked it at an intermediate rung', async () => {

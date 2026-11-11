@@ -316,28 +316,36 @@ export const dispatchPlanActions = async (
   for (const dropped of plan.droppedSteppedSheds) {
     emitExecutorDebug({ event: 'stepped_load_shed_intent_dropped', reasonCode: 'underspecified_set_step', ...dropped });
   }
-  let deviceWriteCount = 0;
-  let commandRequestCount = 0;
-  let deviceApplyFailureCount = 0;
-  for (const device of plan.devices) {
+  // Devices are independent decisions: a slow write must not delay another
+  // device's shed. Keep each device's command sequence intact and settle all
+  // devices before storage runs or the caller flushes batched persistence.
+  const results = await Promise.all(plan.devices.map(async (device) => {
     try {
-      const result = await applyDeviceIntent(
+      const applied = await applyDeviceIntent(
         ctx,
         device.commands,
         observedMap.get(device.commands.id),
         plan.hasShedDevices,
         device.stepBaseline,
       );
-      deviceWriteCount += result.deviceWriteCount;
-      commandRequestCount += result.commandRequestCount;
+      return { ok: true as const, delta: applied };
     } catch (error) {
-      deviceApplyFailureCount += 1;
       logger.error({
         event: 'executor_plan_error',
         msg: `Failed to apply action for ${device.commands.name}; continuing with remaining devices`,
         err: error,
       });
+      return { ok: false as const };
     }
+  }));
+  let deviceWriteCount = 0;
+  let commandRequestCount = 0;
+  let deviceApplyFailureCount = 0;
+  for (const result of results) {
+    if (result.ok) {
+      deviceWriteCount += result.delta.deviceWriteCount;
+      commandRequestCount += result.delta.commandRequestCount;
+    } else deviceApplyFailureCount += 1;
   }
   // Batteries after every shed: a slow cloud battery must never delay one.
   const storageResult = await dispatchStorageDecisions(storage, plan);
