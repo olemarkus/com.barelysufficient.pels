@@ -805,5 +805,8 @@
   },
   "3.33.0": {
     "en": "New: the Flow card Set temporary temperature for device holds a thermostat or water heater at a temperature for up to a day, then returns it to its mode target. Price and solar adjustments pause meanwhile, and so does a Smart task on the device, which carries on afterwards; power limiting still applies. End temporary temperature for device ends it early."
+  },
+  "3.33.1": {
+    "en": "New: PELS controls the amina S charger, starting and stopping charging and setting its charging current with a Homey API key. Adax Wi-Fi heaters now show their real draw, so turning one down or off counts as relief at once. Høiax water heaters get power levels sized from their own element wattages, and two-element Connected heaters can now be stepped. Meters that name their phases a, b and c are read per phase."
   }
 }
