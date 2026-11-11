@@ -9,6 +9,7 @@ import { readFlowCapabilityWrites, type FlowReadResult } from '../flowApi/readUs
 import type { FlowCapabilityWrites, UserFlowFacts } from '../flowApi/userFlows';
 import type { AcceptedFlowConflictSlice } from '../flowApi/acceptedFlowConflictStore';
 import { normalizeError } from '../utils/errorUtils';
+import { HomeyRequestInFlightError } from '../utils/homeyRequestInFlightError';
 import { isBuiltInControlInEffect } from './builtInControlFlowGate';
 import {
   hasSharedChargingInstallation, resolveChargingCurrentAdapter, resolveChargingCurrentAction,
@@ -338,6 +339,11 @@ export class ChargingCurrentControl {
     if (adapter.current.kind === 'capability' && adapter.current.writable) {
       await setCapability(adapter.current.capabilityId, currentA);
       return 'native_capability';
+    }
+    // Refuse a busy device before reading the action metadata: the next plan
+    // rebuild asks again, and each ask must stay local until the earlier action answers.
+    if (this.access.isActionInFlight(device.id)) {
+      throw new SteppedLoadTransportError('homey_action', new HomeyRequestInFlightError());
     }
     const inventory = await getRawFromHomeyApi(FLOW_ACTION_CARDS_API_PATH).catch((cause: unknown) => {
       throw new Error('Unable to read charging-current action metadata', { cause });

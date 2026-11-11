@@ -1,5 +1,7 @@
 import { HomeyActionAccess, HOMEY_FLOW_API_KEY, type HomeyActionAccessHomey } from '../../lib/device/transport/homeyActionAccess';
 import { getLogger } from '../../lib/logging/logger';
+import { HomeyActionAccessError } from '../../lib/device/transport/homeyActionAccessError';
+import { HomeyRequestInFlightError } from '../../lib/utils/homeyRequestInFlightError';
 
 const KEY = 'private-test-credential';
 const action = { ownerUri: 'homey:device:charger', cardId: 'homey:device:charger:charge_current', args: { current: 6 } };
@@ -67,11 +69,12 @@ test('removal while resolving the Homey address prevents a stale command', async
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 
-test('caller timeout retains the per-device lock until the remote request completes', async () => {
+test('caller timeout retains the per-device lock, refusing the next action as busy with access intact', async () => {
   vi.useFakeTimers();
   let resolveWrite!: (value: ReturnType<typeof response>) => void;
   const fetchMock = vi.fn().mockResolvedValueOnce(response({ intersectedScopes: ['homey.flow'] }))
-    .mockImplementationOnce(() => new Promise((resolve) => { resolveWrite = resolve; }));
+    .mockImplementationOnce(() => new Promise((resolve) => { resolveWrite = resolve; }))
+    .mockResolvedValueOnce(response({ error: null }));
   vi.stubGlobal('fetch', fetchMock);
   const { access } = fixture();
   await access.save({ key: KEY });
@@ -79,10 +82,17 @@ test('caller timeout retains the per-device lock until the remote request comple
   const rejected = expect(pending).rejects.toThrow();
   await vi.advanceTimersByTimeAsync(15_000);
   await rejected;
-  await expect(access.runAction('charger', action, 'charging_current', () => {})).rejects.toThrow('unavailable');
+  expect(access.isActionInFlight('charger')).toBe(true);
+  const busy = access.runAction('charger', action, 'charging_current', () => {});
+  await expect(busy).rejects.toThrow(HomeyRequestInFlightError);
+  await expect(busy).rejects.not.toThrow(HomeyActionAccessError);
+  expect(access.status()).toEqual({ configured: true, state: 'ready' });
   expect(fetchMock).toHaveBeenCalledTimes(2);
   resolveWrite(response({ error: null }));
   await vi.advanceTimersByTimeAsync(0);
+  expect(access.isActionInFlight('charger')).toBe(false);
+  await access.runAction('charger', action, 'charging_current', () => {});
+  expect(fetchMock).toHaveBeenCalledTimes(3);
 });
 
 test('does not leak failed response bodies or network errors', async () => {

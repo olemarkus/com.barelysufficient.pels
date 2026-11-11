@@ -82,6 +82,7 @@ export const logSteppedLoadCommandSkip = (
     | 'waiting_for_confirmation'
     | 'retry_backoff'
     | 'command_unavailable'
+    | 'previous_command_in_flight'
     | 'not_below_reported_step',
   logMessage: string,
   fields: Record<string, unknown>,
@@ -375,6 +376,47 @@ const recordAcceptedSteppedLoadCommand = (
   return true;
 };
 
+/**
+ * A step the actuator did not issue: a binary pause it needs first, a
+ * preparation that already wrote to the device, a busy device whose previous
+ * command is still running, or no command transport at all.
+ */
+const handleUnrequestedStep = async (
+  ctx: ExecutorCommandContext,
+  intent: ExecutableSteppedLoadIntent,
+  desiredStep: SteppedLoadStep,
+  result: Extract<ActuatorOutcome, { requested: false }>,
+): Promise<boolean> => {
+  if ('preparation' in result && result.preparation === 'binary_off') {
+    const stopped = await runBinaryControl(ctx, {
+      deviceId: intent.id, name: intent.name, desired: false, logContext: 'capacity',
+    }, ctx.readDevice(intent.id));
+    return stopped.applied;
+  }
+  if ('reason' in result && result.reason === 'previous_command_in_flight') {
+    return logSteppedLoadCommandSkip(
+      intent, 'previous_command_in_flight',
+      `Capacity: skip stepped-load command for ${intent.name}, its previous command is still running`,
+      { desiredStepId: desiredStep.id },
+    );
+  }
+  if ('preparation' in result && result.preparation === 'issued') {
+    logger.info({
+      event: 'stepped_load_preparation_issued',
+      deviceId: intent.id,
+      deviceName: intent.name,
+      desiredStepId: desiredStep.id,
+    });
+    return true;
+  }
+  return logSteppedLoadCommandSkip(
+    intent, 'command_unavailable',
+    `Capacity: skip stepped-load command for ${intent.name}, `
+      + `no command transport for desired step ${desiredStep.id}`,
+    { desiredStepId: desiredStep.id },
+  );
+};
+
 /** One step command for `action` at `desiredStep`, issued and accounted as `options` says. */
 export const executeSteppedLoadCommand = async (
   ctx: ExecutorCommandContext,
@@ -398,29 +440,7 @@ export const executeSteppedLoadCommand = async (
       desiredStepId: desiredStep.id, planningPowerW: desiredStep.planningPowerW,
       planningCurrentA: resolvePlanningCurrentA(desiredStep), previousStepId: resolveCommandPreviousStepId(action),
     });
-    if (!result.requested) {
-      if ('preparation' in result && result.preparation === 'binary_off') {
-        const stopped = await runBinaryControl(ctx, {
-          deviceId: intent.id, name: intent.name, desired: false, logContext: 'capacity',
-        }, ctx.readDevice(intent.id));
-        return stopped.applied;
-      }
-      if ('preparation' in result && result.preparation === 'issued') {
-        logger.info({
-          event: 'stepped_load_preparation_issued',
-          deviceId: intent.id,
-          deviceName: intent.name,
-          desiredStepId: desiredStep.id,
-        });
-        return true;
-      }
-      return logSteppedLoadCommandSkip(
-        intent, 'command_unavailable',
-        `Capacity: skip stepped-load command for ${intent.name}, `
-          + `no command transport for desired step ${desiredStep.id}`,
-        { desiredStepId: desiredStep.id },
-      );
-    }
+    if (!result.requested) return await handleUnrequestedStep(ctx, intent, desiredStep, result);
     if (result.kind !== 'step') throw new Error(`Step actuator returned ${result.kind} outcome for ${intent.id}`);
     if (!ctx.isAuthorityCurrent()) return false;
     accepted = result.acknowledged

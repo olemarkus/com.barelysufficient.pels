@@ -88,6 +88,15 @@ export type ActuatorOutcome =
   | {
     requested: false;
     /**
+     * A `step` refused unsent: the previous write to the device is still
+     * outstanding past its caller's timeout. Nothing went out, so nothing is
+     * pending, stamped or contested; the next plan rebuild asks again.
+     */
+    reason: 'previous_command_in_flight';
+  }
+  | {
+    requested: false;
+    /**
      * A `storage_power` intent whose claim write the battery's app rejected:
      * no setpoint went out. The battery owner judges what that means.
      */

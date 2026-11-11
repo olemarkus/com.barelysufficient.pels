@@ -1,5 +1,6 @@
 import { SteppedLoadTransportError } from '../ports/steppedLoadWrite';
 import { isHomeyRequestTimeout } from '../utils/errorUtils';
+import { isHomeyRequestInFlight } from '../utils/homeyRequestInFlightError';
 import type { ActuatorOutcome, ActuatorTransport, DeviceCommand } from './deviceCommand';
 
 /**
@@ -49,6 +50,7 @@ const applyStep = async (
     return result.requested ? { kind: 'step', ...result } : result;
   } catch (error) {
     const err = error instanceof SteppedLoadTransportError ? error.cause : error;
+    if (isHomeyRequestInFlight(err)) return { requested: false, reason: 'previous_command_in_flight' };
     if (!isHomeyRequestTimeout(err)) throw error;
     return {
       requested: true, kind: 'step', acknowledged: false,
