@@ -147,6 +147,114 @@ test('an amina S reads its switch from onoff, its plug state from the EV status 
     .toEqual({ kind: 'not_reported' });
 });
 
+test('a go-e reads its switch from is_allowed, its plug state from the status and its current from current_limit', () => {
+  type Status = { is_allowed: boolean; status: string; current_limit: number; num_phases: string };
+  const charger = (status: Partial<Status>): HomeyDeviceLike => ({
+    ...HOMEY_DEVICE_FIELDS, id: 'goe', name: 'go-e', class: 'evcharger',
+    driverId: 'homey:app:com.go-e.charger:go-eCharger_V3',
+    capabilities: ['is_allowed', 'is_charging', 'is_connected', 'status', 'current_limit', 'num_phases', 'measure_power'],
+    capabilitiesObj: Object.fromEntries(Object.entries(status)
+      .map(([id, value]) => [id, { ...cap(value), setable: id === 'is_allowed' || id === 'num_phases' }])),
+  });
+  const overlay = (device: HomeyDeviceLike) => getDeviceAdapter(device)
+    .overlay(device, device.capabilities ?? [], standardDeviceAdapter.observation(device));
+  const plugState = (status: Partial<Status>) => overlay(charger(status)).capabilityObj.evcharger_charging_state?.value;
+  const waiting = { is_allowed: true, status: 'station_waiting' };
+
+  expect(plugState({ ...waiting, status: 'station_idle' })).toBe('plugged_out');
+  expect(plugState({ ...waiting, status: 'car_charging' })).toBe('plugged_in_charging');
+  expect(plugState({ ...waiting, is_allowed: false })).toBe('plugged_in_paused');
+  expect(plugState({ ...waiting, status: 'car_finished', is_allowed: false })).toBe('plugged_in_paused');
+  // Connected and allowed, but the car takes nothing.
+  expect(plugState(waiting)).toBe('plugged_in');
+  expect(plugState({ ...waiting, status: 'car_finished' })).toBe('plugged_in');
+  // An error or an unknown status leaves the state unread.
+  expect(plugState({ ...waiting, status: 'station_error' })).toBeUndefined();
+  expect(plugState({ status: 'station_waiting' })).toBeUndefined();
+
+  const adapted = overlay(charger({ ...waiting, current_limit: 16 }));
+  expect(adapted).toMatchObject({ kind: 'adapted', binaryTarget: { kind: 'capability', writeCapabilityId: 'is_allowed',
+    observationCapabilityId: 'evcharger_charging' }, controlAdapter: { activationOrder: 'current_before_start' } });
+  expect(adapted.capabilities).toEqual(expect.arrayContaining(['evcharger_charging', 'evcharger_charging_state']));
+  expect(adapted.capabilityObj.evcharger_charging?.value).toBe(true);
+  expect(adapted.capabilityObj.available_installation_current).toMatchObject({ value: 16, setable: false });
+  for (const currentLimit of [5, 33, 10.5]) {
+    expect(overlay(charger({ ...waiting, current_limit: currentLimit })).capabilityObj.available_installation_current)
+      .toBeUndefined();
+  }
+
+  const adapter = getDeviceAdapter(charger(waiting));
+  const control = adapted.kind === 'adapted' ? adapted.controlAdapter : undefined;
+  expect(adapter.normalize(partialDouble({ controlAdapter: control }), 'is_allowed', false,
+    charger({ ...waiting, is_allowed: false }))).toEqual([
+    { capabilityId: 'is_allowed', value: false },
+    { capabilityId: 'evcharger_charging', value: false },
+    { capabilityId: 'evcharger_charging_state', value: 'plugged_in_paused' },
+  ]);
+  expect(adapter.normalize(partialDouble({ controlAdapter: control }), 'current_limit', 10, charger(waiting))).toEqual([
+    { capabilityId: 'current_limit', value: 10 },
+    { capabilityId: 'available_installation_current', value: 10 },
+  ]);
+
+  const binding = adapter.currentBindings(charger(waiting))[0]!;
+  expect(binding).toMatchObject({ current: { kind: 'action_only' }, scope: { kind: 'charger' } });
+  expect(resolveChargingCurrentAction(binding, [{ id: 'homey:app:com.go-e.charger:change_current' }], 10).args)
+    .toEqual({ device: { id: 'goe' }, action_amps: 10 });
+  expect(adapter.phaseReport(charger({ ...waiting, num_phases: '1' })))
+    .toEqual({ kind: 'reported', preset: 'ev_charger_1_phase' });
+  // Three is the app's default, not a reading, and may be an IT grid.
+  expect(adapter.phaseReport(charger({ ...waiting, num_phases: '3' }))).toEqual({ kind: 'not_reported' });
+});
+
+test('a Smappee EV Wall reads its switch from the charging mode and writes it as normal or paused', () => {
+  type Status = { charging_mode: string; cable_connected: boolean; charging: boolean };
+  const charger = (status: Partial<Status>): HomeyDeviceLike => ({
+    ...HOMEY_DEVICE_FIELDS, id: 'smappee', name: 'EV Wall', class: 'other',
+    driverId: 'homey:app:com.smappee:ev-wall',
+    capabilities: ['measure_power', 'measure_power.alwayson', 'cable_connected', 'charging', 'charging_mode'],
+    capabilitiesObj: Object.fromEntries(Object.entries(status)
+      .map(([id, value]) => [id, { ...cap(value), setable: id === 'charging_mode' }])),
+  });
+  const overlay = (device: HomeyDeviceLike) => getDeviceAdapter(device)
+    .overlay(device, device.capabilities ?? [], standardDeviceAdapter.observation(device));
+  const plugState = (status: Partial<Status>) => overlay(charger(status)).capabilityObj.evcharger_charging_state?.value;
+  const connected = { charging_mode: 'normal', cable_connected: true, charging: false };
+
+  expect(plugState({ ...connected, cable_connected: false })).toBe('plugged_out');
+  expect(plugState({ cable_connected: false })).toBe('plugged_out');
+  expect(plugState({ ...connected, charging: true })).toBe('plugged_in_charging');
+  expect(plugState({ ...connected, charging_mode: 'paused' })).toBe('plugged_in_paused');
+  expect(plugState(connected)).toBe('plugged_in');
+  expect(plugState({ ...connected, charging_mode: 'smart' })).toBe('plugged_in');
+  expect(plugState({ ...connected, charging_mode: 'eco' })).toBeUndefined();
+
+  const adapted = overlay(charger(connected));
+  expect(adapted).toMatchObject({ kind: 'adapted', binaryTarget: { kind: 'capability',
+    writeCapabilityId: 'charging_mode', observationCapabilityId: 'evcharger_charging' } });
+  expect(adapted.capabilityObj.evcharger_charging?.value).toBe(true);
+  expect(overlay(charger({ ...connected, charging_mode: 'smart' })).capabilityObj.evcharger_charging?.value).toBe(true);
+  expect(overlay(charger({ ...connected, charging_mode: 'paused' })).capabilityObj.evcharger_charging?.value)
+    .toBe(false);
+
+  const adapter = getDeviceAdapter(charger(connected));
+  const switchSnapshot = partialDouble<TransportDeviceSnapshot>({
+    id: 'smappee', binaryCapabilityId: 'evcharger_charging', binaryWriteCapabilityId: 'charging_mode',
+  });
+  const noEvidence = { hasCarStopEvidence: () => false };
+  expect(adapter.switchWrite(switchSnapshot, { capabilityId: 'evcharger_charging', value: false }, noEvidence))
+    .toEqual({ kind: 'write', write: { capabilityId: 'charging_mode', value: 'paused' }, readBackAsWritten: false });
+  expect(adapter.switchWrite(switchSnapshot, { capabilityId: 'evcharger_charging', value: true }, noEvidence))
+    .toEqual({ kind: 'write', write: { capabilityId: 'charging_mode', value: 'normal' }, readBackAsWritten: false });
+  const control = adapted.kind === 'adapted' ? adapted.controlAdapter : undefined;
+  expect(adapter.normalize(partialDouble({ controlAdapter: control }), 'charging_mode', 'paused',
+    charger({ ...connected, charging_mode: 'paused' }))).toEqual([
+    { capabilityId: 'charging_mode', value: 'paused' },
+    { capabilityId: 'evcharger_charging', value: false },
+    { capabilityId: 'evcharger_charging_state', value: 'plugged_in_paused' },
+  ]);
+  expect(adapter.currentBindings(charger(connected))).toEqual([]);
+});
+
 test('a Futurehome limit is dated by the newest read only, and only on a step at that current', () => {
   const session = new FuturehomeChargerSession();
   const charger = (currentLimit: unknown): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS, id: 'futurehome', name: 'Futurehome',

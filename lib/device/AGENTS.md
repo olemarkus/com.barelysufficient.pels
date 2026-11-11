@@ -28,9 +28,9 @@ Realtime observations update the observed view before any convergence decision. 
 ## Integration adapters
 
 Tesla vehicle charging, Easee, Enua, Alfen (official app), Alfen Pro-line/ACE, Peblar, Zappi, Wallbox, Zaptec,
-Futurehome, amina, OSO, Adax, SMA, KNX, Sessy, Anker SOLIX, Zinvolt, Marstek Venus (Connector app), Sigenergy, Zendure
+Futurehome, amina, go-e, Smappee EV Wall, OSO, Adax, SMA, KNX, Sessy, Anker SOLIX, Zinvolt, Marstek Venus (Connector app), Sigenergy, Zendure
 (local app) and Huawei LUNA2000 (Modbus) interpretation belongs in `tesla/`, `easee/`, `enua/`, `alfen/`,
-`alfenProline/`, `peblar/`, `myenergi/`, `wallbox/`, `zaptec/`, `futurehome/`, `amina/`, `oso/`, `adax/`, `sma/`, `knx/`,
+`alfenProline/`, `peblar/`, `myenergi/`, `wallbox/`, `zaptec/`, `futurehome/`, `amina/`, `goe/`, `smappee/`, `oso/`, `adax/`, `sma/`, `knx/`,
 `sessy/`, `anker/`, `zinvolt/`, `marstek/`, `sigenergy/`, `zendure/` and `huawei/`. Chargers stepped through one whole-amp
 current whose app starts at a current PELS did not choose share `currentSwitchCharger.ts`. Chargers whose app
 saves the current it last sent in a device setting (Futurehome, amina) date it with
