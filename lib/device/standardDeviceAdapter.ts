@@ -30,6 +30,9 @@ export const standardDeviceAdapter: DeviceAdapter = {
   phaseReport: () => ({ kind: 'not_reported' }), currentBindings: () => [],
   nativeCurrentControls: [], homeBatteryBinding: () => STANDARD_HOME_BATTERY_BINDING,
   readBackAfterWrite: true, supportsProductionLimits: true,
+  projectRead: (device) => device,
+  reportedCapabilityId: (_device, capabilityId) => capabilityId,
+  capabilityWrite: (_device, request) => request,
   switchWrite: (snapshot, request): SwitchWrite => ({
     kind: 'write',
     write: { ...request, capabilityId: snapshot.binaryWriteCapabilityId ?? request.capabilityId },
