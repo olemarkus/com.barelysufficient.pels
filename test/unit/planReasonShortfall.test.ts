@@ -4,6 +4,8 @@ import { describe, it, expect } from 'vitest';
 import { resolveCeilingShortfall, type CeilingShortfallInputs } from '../../lib/plan/planReasonShortfall';
 import { buildRestoreHeadroomLedger } from '../../lib/plan/restore/headroomLedger';
 import { buildPlanDevice } from '../utils/planTestUtils';
+import { fixtureTemperatureSetpointsEntry } from '../helpers/temperatureSetpointsFixture';
+import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 
 // The uniform per-cycle admission gap for ceiling-held cards. The arithmetic
 // must be EXACTLY the restore gates' inequality — gap = FLOOR − (available −
@@ -34,6 +36,7 @@ const inputs = (params: {
   restoredThisCycle?: ReadonlySet<string>;
   lastDeviceShedMsById?: Readonly<Record<string, number>>;
   nowMs?: number;
+  temperatureSetpoints?: TemperatureSetpointsByDevice;
 }): CeilingShortfallInputs => ({
   ledger: buildRestoreHeadroomLedger({
     phase: { kind: 'off' },
@@ -46,7 +49,7 @@ const inputs = (params: {
   swapLedger: params.swapLedger ?? new SwapLedger(),
   deviceMap: new Map((params.onDevices ?? []).map((device) => [device.id, device])),
   restoredThisCycle: params.restoredThisCycle ?? new Set(),
-  temperatureSetpoints: new Map(),
+  temperatureSetpoints: params.temperatureSetpoints ?? new Map(),
   lastDeviceShedMsById: params.lastDeviceShedMsById ?? {},
   nowMs: params.nowMs ?? NOW_MS,
 });
@@ -150,6 +153,17 @@ describe('resolveCeilingShortfall', () => {
         dev: heldDevice(),
         inputs: inputs({ capacityAvailableKw: 0.5, onDevices: [victim({ measuredPowerKw: 2.5 })] }),
       })).toBeNull();
+    });
+
+    it('counts the draw of a victim that sheds by lowering its temperature, as a switched-off victim\'s', () => {
+      const heater = victim({ deviceType: 'temperature', currentTarget: 21, measuredPowerKw: 0.6 });
+      const temperatureSetpoints: TemperatureSetpointsByDevice = new Map([['victim', fixtureTemperatureSetpointsEntry({
+        shed: { action: 'set_temperature', limitC: 16, releasesDemand: true, asksLessThanIntended: true },
+      })]]);
+      expect(gapKw({
+        dev: heldDevice(),
+        inputs: inputs({ capacityAvailableKw: 0.5, onDevices: [heater], temperatureSetpoints }),
+      })).toBe(0.4);
     });
 
     it('ignores a HIGHER-priority running device — it cannot be swapped out', () => {

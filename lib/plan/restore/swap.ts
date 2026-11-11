@@ -166,8 +166,12 @@ function hasUnreleasedSwapDonors(
  * has released once it reports that step or lower.
  */
 function hasDonorReleased(device: DevicePlanDevice, release: SwapDonorRelease): boolean {
-  // A setpoint donor keeps running: it has released once it reports its limit.
-  if (release.kind === 'setpoint') return isTemperaturePlanDevice(device) && device.currentTarget === release.limitC;
+  // A setpoint donor keeps running: it has released once it reports its limit,
+  // or once it is off, which gives up its draw whatever its target reads.
+  if (release.kind === 'setpoint') {
+    return (isTemperaturePlanDevice(device) && device.currentTarget === release.limitC)
+      || (isBinaryPlanDevice(device) && !device.currentOn);
+  }
   if (release.kind === 'step' && hasReportedStepAtOrBelow(device, release.stepId)) return true;
   return isBinaryPlanDevice(device) ? !device.currentOn : isOffSteppedRestoreCandidate(device);
 }
