@@ -63,7 +63,9 @@ const writeRoomSetpoint = (device: HomeyDeviceLike, request: CapabilityWrite): C
 export const nibeMyUplinkAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
   matches: isNibePump,
-  projectRead: projectRoomPair,
-  reportedCapabilityId: reportedRoomCapabilityId,
+  projectRead: (device) => [projectRoomPair(device)],
+  routeReport: (device, capabilityId) => ({
+    deviceId: device.id, capabilityId: reportedRoomCapabilityId(device, capabilityId),
+  }),
   capabilityWrite: writeRoomSetpoint,
 };

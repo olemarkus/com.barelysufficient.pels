@@ -331,7 +331,23 @@ const violationSignatures = (owner: object): Map<string, string> => {
     return created;
 };
 
-/** Resolve a read before producers, parsing or tracking can consume any values. */
+/**
+ * Resolve one Homey device read into the views PELS reads from it
+ * (`DeviceAdapter.projectRead`), each validated against its own previous
+ * accepted read, before producers, parsing or tracking can consume any values.
+ */
+export function resolveDeviceViews(
+    owner: object,
+    device: HomeyDeviceLike,
+    source: DeviceReadSource,
+    emitter: DeviceReadContractEmitter,
+    previousReads: ReadonlyMap<string, HomeyDeviceLike>,
+): HomeyDeviceLike[] {
+    return getDeviceAdapter(device).projectRead(device)
+        .map((view) => resolveDeviceRead(owner, view, source, emitter, previousReads.get(view.id)));
+}
+
+/** Resolve a view's read before producers, parsing or tracking can consume any values. */
 export function resolveDeviceRead(
     owner: object,
     device: HomeyDeviceLike,
@@ -341,7 +357,7 @@ export function resolveDeviceRead(
 ): HomeyDeviceLike {
     const deviceId = device.id;
     const signatures = violationSignatures(owner);
-    const resolution = withholdInvalidModelCapabilities(getDeviceAdapter(device).projectRead(device), previousRead);
+    const resolution = withholdInvalidModelCapabilities(device, previousRead);
     const { violations, retainedCapabilityIds, withheldCapabilityIds } = resolution;
     if (violations.length === 0) {
         if (signatures.delete(deviceId)) {

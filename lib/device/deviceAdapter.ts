@@ -33,6 +33,8 @@ export type ChargingCurrentBinding = {
 
 export type CapabilityWrite = { capabilityId: string; value: unknown };
 export type CapabilityUpdate = CapabilityWrite;
+/** A live report's view and capability as that view reads it (`DeviceAdapter.routeReport`). */
+export type CapabilityRoute = { deviceId: string; capabilityId: string };
 /** Preparation before reclaiming a native watt target: stop first, or safely reset its owner. */
 export type TargetPowerReassertionPreparation =
   | { kind: 'stop'; write: CapabilityWrite }
@@ -230,21 +232,30 @@ export type DeviceAdapter = {
   /** Whether standard production-cap writes are suitable for repeated live control. */
   supportsProductionLimits: boolean;
   /**
-   * A whole-device read as PELS accepts it: an integration whose app keeps a
-   * standard quantity under its own capability name reads it under the
-   * standard one. Applied once, at the read contract (`resolveDeviceRead`),
-   * before validation, so everything past it (merges, the accepted read,
-   * parsing) sees only the standard name.
+   * A whole-device read as PELS accepts it: the devices PELS reads from one
+   * Homey device. An integration whose app keeps a standard quantity under its
+   * own capability name reads it under the standard one, and one whose app
+   * keeps two loads on one device reads each as its own device. The first view
+   * keeps the Homey device's id; every other view has an id of the
+   * integration's own that no Homey device can have. Applied once per read
+   * (`resolveDeviceViews`), before validation, so everything past it (merges,
+   * the accepted read, parsing) sees only views and standard names.
    */
-  projectRead(device: HomeyDeviceLike): HomeyDeviceLike;
-  /** A live report's capability, as `projectRead` names it on `device`, the accepted read. */
-  reportedCapabilityId(device: HomeyDeviceLike, capabilityId: string): string;
+  projectRead(device: HomeyDeviceLike): readonly HomeyDeviceLike[];
   /**
-   * The device's own capability for a write PELS requests by its standard
-   * name, for every write that is not the binary switch: the inverse of
-   * `projectRead`.
+   * Where a live report for the Homey device belongs: which view, and the
+   * capability as that view names it. `device` is the accepted read of the
+   * first view, the one that keeps the Homey id.
    */
-  capabilityWrite(device: HomeyDeviceLike, request: CapabilityWrite): CapabilityWrite;
+  routeReport(device: HomeyDeviceLike, capabilityId: string): CapabilityRoute;
+  /**
+   * The device's own capability for a write PELS requests on a view by its
+   * standard name, for every write that is not the binary switch: the inverse
+   * of `projectRead`.
+   */
+  capabilityWrite(view: HomeyDeviceLike, request: CapabilityWrite): CapabilityWrite;
+  /** The Homey device a view is read from and written to. */
+  sourceDeviceId(view: HomeyDeviceLike): string;
   /** `sessions`: the transport's adapter sessions, for what they have observed of the device. */
   switchWrite(snapshot: TransportDeviceSnapshot, request: CapabilityWrite, sessions: SessionEvidence): SwitchWrite;
   recoverSwitchWrite(

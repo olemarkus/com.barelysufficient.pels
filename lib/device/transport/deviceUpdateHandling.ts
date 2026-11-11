@@ -7,7 +7,7 @@
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
-import { resolveDeviceRead } from './deviceReadContract';
+import { resolveDeviceViews } from './deviceReadContract';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
@@ -103,17 +103,21 @@ function notifyDeviceZoneChangeContained(
 }
 
 export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, device: HomeyDeviceLike): void {
-    const deviceId = getDeviceId(device);
-    // Resolve each field against the accepted read before producers see it.
-    // Rejected fields keep their original source dates; valid siblings advance.
-    const contractEmitter = moduleLogger;
-    const effectiveDevice = resolveDeviceRead(
+    // Resolve each view's fields against its accepted read before producers see
+    // them. Rejected fields keep their original source dates; valid siblings
+    // advance. Each view is then its own device update.
+    const views = resolveDeviceViews(
         ingest.reader.snapshotStore,
         ingest.reader.applyDeviceDriverOverride(device),
         'device_update',
-        contractEmitter,
-        ingest.reader.snapshotStore.getLastAcceptedRawDevicesById().get(deviceId),
+        moduleLogger,
+        ingest.reader.snapshotStore.getLastAcceptedRawDevicesById(),
     );
+    for (const view of views) handleRealtimeViewUpdate(ingest, view);
+}
+
+function handleRealtimeViewUpdate(ingest: RealtimeIngestService, effectiveDevice: HomeyDeviceLike): void {
+    const deviceId = getDeviceId(effectiveDevice);
     ingest.observeChargingDevice(effectiveDevice);
     if (deviceId && !ingest.reader.shouldTrackRealtimeDeviceRead(deviceId, effectiveDevice)) {
         ingest.binaryEvidence.clearBinarySettleEvidence(deviceId);
