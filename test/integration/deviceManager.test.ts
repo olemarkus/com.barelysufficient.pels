@@ -940,6 +940,37 @@ describe('DeviceTransport', () => {
             expect(ids).toEqual(['dev1']);
         });
 
+        it('keeps accepted inventory across unreadable full responses beyond both empty-grace thresholds', async () => {
+            vi.useFakeTimers();
+            try {
+                await populateSnapshotForGrace(deviceManager);
+                mockApiGet.mockResolvedValue(undefined);
+
+                for (let read = 0; read < 3; read += 1) {
+                    const refreshing = deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+                    await vi.advanceTimersByTimeAsync(30_000);
+                    await refreshing;
+                    if (read === 0) vi.setSystemTime(Date.now() + 5 * 60 * 1000);
+                }
+
+                expect(deviceManager.getSnapshot().map(snapshotDeviceId)).toEqual(['dev1']);
+                expect(logCapture.findEvent('device_snapshot_refresh_failed')).toBeDefined();
+                expect(logCapture.findEvent('device_snapshot_empty_deferred')).toBeUndefined();
+                expect(logCapture.findEvent('device_snapshot_empty_grace_exceeded')).toBeUndefined();
+
+                // An accepted empty read starts its own grace, unaffected by
+                // the preceding malformed reads or how long they persisted.
+                mockApiGet.mockResolvedValue({});
+                await deviceManager.refreshSnapshot({ meterDeviceIds: [] });
+                expect(deviceManager.getSnapshot().map(snapshotDeviceId)).toEqual(['dev1']);
+                expect(logCapture.findEvent('device_snapshot_empty_deferred')).toMatchObject({
+                    consecutiveEmptyReads: 1,
+                });
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
         it('abandon-grace: eventually commits the empty snapshot after the consecutive-read threshold', async () => {
             await populateSnapshotForGrace(deviceManager);
 
