@@ -7,15 +7,17 @@ import ts from 'typescript';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const registry = 'lib/device/deviceAdapterRegistry.ts';
-const integration = /^lib\/device\/(tesla|easee|enua|alfen|alfenProline|peblar|myenergi|wallbox|zaptec|futurehome|amina|goe|smappee|oso|sma|knx|nibe|sessy|anker|zinvolt|marstek|sigenergy|zendure|huawei|solax)\//u;
+const integration = /^lib\/device\/(tesla|easee|enua|alfen|alfenProline|peblar|myenergi|wallbox|zaptec|futurehome|amina|goe|smappee|oso|sma|knx|nibe|stiebel|sessy|anker|zinvolt|marstek|sigenergy|zendure|huawei|solax)\//u;
 const rawCapabilities = new Set([
   'charging_on', 'charging_button', 'charge_mode', 'target_charger_current',
   'measure_charge_current_max', 'measure_charge_current', 'measure_charge_power',
   'measure_charge_power_dc', 'charging_port_cable', 'car_shift_state', 'car_state',
   'measure_current.stationlimit', 'max_current', 'charging_paused', 'peblar_charge_limit', 'zappi_boost_mode',
   'target_temperature.room', 'measure_temperature.room',
+  'target_temperature.warmwater_temp', 'measure_temperature.warmwater_temp',
+  'target_temperature.warmwater', 'measure_temperature.warmwater',
 ]);
-const vendorDriver = /^(?:homey:app:)?(?:com\.tesla\.car|com\.zaptec|no\.easee|no\.enua|com\.alfen|alfen\.prolinesingle|com\.kylemichiels\.peblar|net\.biseth\.myenergi|nl\.xseth\.wallbox|no\.futurehome|com\.aminacharging|com\.go-e\.charger|com\.smappee|no\.osoincharge|sma\.modbus|org\.knx|com\.nibe\.myuplink|nl\.sessy|com\.anker\.solix|com\.zinvolt|com\.niewold\.marstek|com\.sigenergy|com\.tweakers\.zendure|com\.huawei\.fusionsolar|com\.msd\.inverter\.solax)(?::|$)/iu;
+const vendorDriver = /^(?:homey:app:)?(?:com\.tesla\.car|com\.zaptec|no\.easee|no\.enua|com\.alfen|alfen\.prolinesingle|com\.kylemichiels\.peblar|net\.biseth\.myenergi|nl\.xseth\.wallbox|no\.futurehome|com\.aminacharging|com\.go-e\.charger|com\.smappee|no\.osoincharge|sma\.modbus|org\.knx|com\.nibe\.myuplink|stiebel\.heatpump|nl\.sessy|com\.anker\.solix|com\.zinvolt|com\.niewold\.marstek|com\.sigenergy|com\.tweakers\.zendure|com\.huawei\.fusionsolar|com\.msd\.inverter\.solax)(?::|$)/iu;
 
 /** Pure source check, also exercised with adversarial source fixtures. */
 export function findDeviceAdapterViolations(file, source) {
