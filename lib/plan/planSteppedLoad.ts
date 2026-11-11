@@ -394,7 +394,7 @@ const resolveHigherSteppedLoadStepId = (
 // to is being limited this cycle (`isFairnessLimited`: for a boosted device, only one ranked
 // above it), clamp the keep desired step down so the executor issues a step-down command
 // (e.g. medium -> low) instead of holding the higher step.
-const clampToLowestActiveWhenFairnessLimited = (
+export const clampToLowestActiveWhenFairnessLimited = (
   profile: SteppedLoadProfile,
   stepId: string | undefined,
   lowestActiveStep: SteppedLoadStep,

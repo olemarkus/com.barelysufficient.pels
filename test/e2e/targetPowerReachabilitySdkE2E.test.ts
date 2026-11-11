@@ -191,6 +191,12 @@ describe('EV target-power reachability (SDK-boundary e2e)', () => {
       // deadline must classify silence as a failed probe and persist the proven
       // ceiling instead of leaving the restore attempt pending indefinitely.
       await vi.advanceTimersByTimeAsync(90_000);
+      // A peer waiting on the restore timer must not replace the pending probe
+      // with a fairness step-down or restart that timer with a longer back-off.
+      expect(putSpy).not.toHaveBeenCalledWith(CHARGER_CURRENT_PATH, pelsCapabilityWrite(6));
+      const settlingPlan = await api.ui_plan({ homey: mockHomeyInstance as never });
+      expect(settlingPlan.plan?.devices?.find((device) => device.id === WATER_HEATER_ID)
+        ?.status.reason?.countdown?.totalSec).toBe(300);
       await drainUntil(() => readReachability()?.probeFailureCount === 1);
       const learned = readReachability();
       expect(learned).toMatchObject({

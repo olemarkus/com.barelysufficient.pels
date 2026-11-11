@@ -7,7 +7,7 @@
  * among the devices → the battery limits it chose (`battery/storageLimit.ts`)
  * → standing-posture holds → initial device materialization → restore, a
  * battery handed back in priority order → shed-temperature hold → reason
- * normalization → finalization, followed by
+ * normalization → final keep fairness → finalization, followed by
  * overshoot bookkeeping, plan meta, and diagnostics observation. The builder
  * mutates the shared `PlanEngineState` (cooldown clocks, overshoot tracking,
  * shed-decision stamps) but performs no actuation — every device write
