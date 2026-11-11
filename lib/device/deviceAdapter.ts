@@ -178,7 +178,12 @@ export type HomeBatteryActionBinding = {
   resolveTarget(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryTargetResolution;
   /** The adapter's upgrade policy for claims written before target identities were persisted. */
   resolveLegacyTarget(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryTargetResolution;
-  handBack(target: AppActionControlTarget): readonly DeviceActionStep[];
+  /**
+   * The cards that return the recorded `target` to its own mode. `devices` is
+   * the same inventory as `resolve`'s, for an app whose card depends on which
+   * driver the target device runs.
+   */
+  handBack(target: AppActionControlTarget, devices: readonly HomeyDeviceLike[]): readonly DeviceActionStep[];
 };
 
 export type HomeBatteryBinding = HomeBatteryCapabilityBinding | HomeBatteryActionBinding;

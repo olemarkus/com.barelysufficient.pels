@@ -13,7 +13,8 @@ import { PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKey
 
 import { createTestDeviceTransport, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import {
-  buildHuaweiLuna2000Device, buildMarstekConnectorBatteryDevice, buildSigenergyDevices, buildZendureLocalBatteryDevice,
+  buildHuaweiLuna2000Device, buildMarstekConnectorBatteryDevice, buildSigenergyDevices, buildSolaxDevices,
+  buildZendureLocalBatteryDevice,
 } from '../helpers/homeBatteryMock';
 import { mockHomeyInstance, MockDriver, setMockDrivers, type MockDevice } from '../mocks/homey';
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
@@ -44,6 +45,10 @@ const HUAWEI_CARDS = [
   'luna2000_stop_force_charge_discharge',
 ].map((id) => `${HUAWEI_APP}:${id}`);
 
+const SOLAX_APP = 'homey:app:com.msd.inverter.solax';
+const SOLAX_CARDS = ['set_remote_control_power_ram_ultra', 'disable_remote_control_ram_ultra']
+  .map((id) => `${SOLAX_APP}:${id}`);
+const SOLAX_CONTROL = { kind: 'app_actions' as const, target: { appUri: SOLAX_APP, deviceId: 'inverter' } };
 const MARSTEK_CONTROL = { kind: 'app_actions' as const, target: { appUri: MARSTEK_APP, deviceId: 'venus' } };
 const SIGENERGY_CONTROL = { kind: 'app_actions' as const, target: { appUri: SIGENERGY_APP, deviceId: 'plant' } };
 const ZENDURE_CONTROL = { kind: 'app_actions' as const, target: { appUri: ZENDURE_APP, deviceId: 'zendure' } };
@@ -608,5 +613,46 @@ describe('home battery app actions', () => {
     await expect(noStop.transport.requestStoragePower({ kind: 'storage_power', control: HUAWEI_CONTROL, deviceId: 'luna', setpointW: 500 }))
       .rejects.toThrow('unavailable');
     expect(noStop.runs()).toEqual([]);
+  });
+
+  it('drives a SolaX battery through its inverter\'s RAM cards, kept alive at a third of their timeout', async () => {
+    const { battery, inverter } = buildSolaxDevices({
+      batteryId: 'solax', inverterId: 'inverter', inverterDriver: 'solax_modbus_x3_ultra',
+    });
+    const { transport, runs } = await setup([battery, inverter], SOLAX_CARDS);
+
+    expect(transport.readBatteryControl('solax')).toEqual({
+      kind: 'app_actions',
+      target: SOLAX_CONTROL.target,
+      range: { minW: -30_000, maxW: 30_000, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
+      keepAliveFor: expect.any(Function),
+    });
+    const resend = { kind: 'resend', everyMs: 100_000 };
+    expect(keepAlives(transport, 'solax')).toEqual([resend, resend, resend]);
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: SOLAX_CONTROL, deviceId: 'solax', setpointW: 2500 }))
+      .resolves.toEqual({ kind: 'written', setpointW: 2500 });
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: SOLAX_CONTROL, deviceId: 'solax', setpointW: -1800 }))
+      .resolves.toEqual({ kind: 'written', setpointW: -1800 });
+    await transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'solax', handBack: 'app_actions', target: SOLAX_CONTROL.target });
+
+    const card = (actionId: string, args: Record<string, unknown> = {}): [string, HomeyFlowAction] => [
+      'solax', { ownerUri: SOLAX_APP, cardId: `${SOLAX_APP}:${actionId}`, args: { device: { id: 'inverter' }, ...args } },
+    ];
+    expect(runs()).toEqual([
+      card('set_remote_control_power_ram_ultra', { mode: '4', power: 2500, timeout: 300 }),
+      card('set_remote_control_power_ram_ultra', { mode: '4', power: -1800, timeout: 300 }),
+      card('disable_remote_control_ram_ultra'),
+    ]);
+  });
+
+  it('only watches a SolaX battery whose inverter has no remote control, and runs nothing', async () => {
+    const { battery, inverter } = buildSolaxDevices({
+      batteryId: 'solax', inverterId: 'inverter', inverterDriver: 'solax_modbus_g3',
+    });
+    const { transport, runs } = await setup([battery, inverter], SOLAX_CARDS);
+    expect(transport.readBatteryControl('solax').kind).not.toBe('app_actions');
+    await expect(transport.requestStoragePower({ kind: 'storage_power', control: SOLAX_CONTROL, deviceId: 'solax', setpointW: 500 }))
+      .rejects.toThrow('unavailable');
+    expect(runs()).toEqual([]);
   });
 });

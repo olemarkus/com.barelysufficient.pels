@@ -223,7 +223,7 @@ export class HomeBatteryAppActions {
     if (this.inventory.kind !== 'read') throw new Error('Home battery action cards are unread.');
     if (isKeyMissing(this.access)) throw new Error('Home battery Homey API key is missing.');
     const cards = this.inventory.cards;
-    const steps = binding.handBack(target);
+    const steps = binding.handBack(target, this.getDevices());
     // Bind each step only when it runs: an available first release step must
     // still land when a later cleanup card disappeared. The owed claim stays.
     await this.runSteps(deviceId, { binding, cards }, steps, () => undefined);
@@ -320,7 +320,7 @@ export class HomeBatteryAppActions {
       this.noteUnavailable(deviceId, target.reasonCode);
       return { kind: 'unobserved' };
     }
-    const handBack = binding.handBack(target.target);
+    const handBack = binding.handBack(target.target, devices);
     const { cards } = this.inventory;
     const handBackMissing = missingCard(cards, binding.appUri, handBack);
     if (handBackMissing !== undefined) {

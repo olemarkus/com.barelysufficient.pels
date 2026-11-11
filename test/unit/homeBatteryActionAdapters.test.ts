@@ -45,7 +45,7 @@ describe('Marstek Venus Connector binding', () => {
   });
 
   it('hands back to the battery\'s own Auto mode', () => {
-    expect(actionBinding(venus).handBack(resolved(venus, [venus]).target)).toEqual([{ deviceId: 'venus', actionId: 'marstek_auto_mode', args: {} }]);
+    expect(actionBinding(venus).handBack(resolved(venus, [venus]).target, [venus])).toEqual([{ deviceId: 'venus', actionId: 'marstek_auto_mode', args: {} }]);
   });
 
   it('leaves the cloud driver on Homey\'s standard binding', () => {
@@ -117,7 +117,7 @@ describe('Sigenergy binding', () => {
     expect(actions.command(0)).toEqual([
       { deviceId: 'sigen-plant', actionId: 'set_remote_ems_control_mode', args: { mode: '1' } },
     ]);
-    expect(actionBinding(battery).handBack(resolved(battery, [battery, plant]).target)).toEqual([
+    expect(actionBinding(battery).handBack(resolved(battery, [battery, plant]).target, [battery, plant])).toEqual([
       { deviceId: 'sigen-plant', actionId: 'set_remote_ems', args: { state: 'off' } },
       { deviceId: 'sigen-plant', actionId: 'remove_ess_charge_limit', args: {} },
       { deviceId: 'sigen-plant', actionId: 'remove_ess_discharge_limit', args: {} },
@@ -162,7 +162,7 @@ describe('Zendure local binding', () => {
   });
 
   it('hands back with the app\'s idle, set-power 0, its only control', () => {
-    expect(actionBinding(zendure).handBack(resolved(zendure, [zendure]).target)).toEqual([
+    expect(actionBinding(zendure).handBack(resolved(zendure, [zendure]).target, [zendure])).toEqual([
       { deviceId: 'zendure', actionId: 'set-power', args: { power: 0 } },
     ]);
   });
@@ -201,7 +201,7 @@ describe('Huawei LUNA2000 Modbus binding', () => {
   });
 
   it('hands back by stopping the forced run', () => {
-    expect(actionBinding(luna).handBack(resolved(luna, [luna]).target)).toEqual([
+    expect(actionBinding(luna).handBack(resolved(luna, [luna]).target, [luna])).toEqual([
       { deviceId: 'luna', actionId: 'luna2000_stop_force_charge_discharge', args: {} },
     ]);
   });
@@ -218,5 +218,73 @@ describe('Huawei LUNA2000 Modbus binding', () => {
   it.each(['luna2000_emma_modbus', 'luna2000_openapi_fusionsolar'])('leaves the %s driver on Homey\'s standard binding', (driver) => {
     const other = device('other', `homey:app:com.huawei.fusionsolar:${driver}`);
     expect(getDeviceAdapter(other).homeBatteryBinding(other).kind).toBe('capability');
+  });
+});
+
+describe('SolaX Modbus binding', () => {
+  const battery = device('solax-battery', 'homey:app:com.msd.inverter.solax:solax_modbus_battery');
+  const inverter = { ...device('solax-g4', 'homey:app:com.msd.inverter.solax:solax_modbus_g4'), class: 'solarpanel' };
+
+  it('runs Push Power on the inverter the battery follows, for the 300 s timeout it declares', () => {
+    const binding = actionBinding(battery);
+    expect(binding.appUri).toBe('homey:app:com.msd.inverter.solax');
+    for (const setpointW of [3000, -2500, 0]) {
+      expect(binding.commandLifetime(setpointW)).toEqual({ kind: 'expires', lifetimeMs: 300_000 });
+    }
+    const actions = resolved(battery, [battery, inverter]);
+    expect(actions.target).toEqual({ appUri: 'homey:app:com.msd.inverter.solax', deviceId: 'solax-g4' });
+    expect(actions.range).toEqual({ minW: -30_000, maxW: 30_000, stepW: 1, excludeMinW: 0, excludeMaxW: 0 });
+  });
+
+  it('commands with the card\'s sign, positive charging, and holds at 0 W in Push Power', () => {
+    const actions = resolved(battery, [battery, inverter]);
+    expect(actions.command(3000)).toEqual([{
+      deviceId: 'solax-g4', actionId: 'set_remote_control_power_ram_g4', args: { mode: '4', power: 3000, timeout: 300 },
+    }]);
+    expect(actions.command(-2500)).toEqual([{
+      deviceId: 'solax-g4', actionId: 'set_remote_control_power_ram_g4', args: { mode: '4', power: -2500, timeout: 300 },
+    }]);
+    const [hold] = actions.command(0);
+    expect(Object.is(hold?.args.power, 0)).toBe(true);
+  });
+
+  it.each([
+    ['solax_modbus_g4_pro', 'g4_pro'],
+    ['solax_modbus_x1_vast', 'x1_vast'],
+    ['solax_modbus_x3_ies', 'x3_ies'],
+    ['solax_modbus_x3_ultra', 'ultra'],
+  ])('uses the %s inverter\'s own cards', (driverId, suffix) => {
+    const other = { ...inverter, driverId: `homey:app:com.msd.inverter.solax:${driverId}` };
+    const actions = resolved(battery, [battery, other]);
+    expect(actions.command(1000)[0]?.actionId).toBe(`set_remote_control_power_ram_${suffix}`);
+    expect(actionBinding(battery).handBack(actions.target, [battery, other])).toEqual([
+      { deviceId: 'solax-g4', actionId: `disable_remote_control_ram_${suffix}`, args: {} },
+    ]);
+  });
+
+  it('hands back by disabling remote control, returning the inverter to its own work mode', () => {
+    expect(actionBinding(battery).handBack(resolved(battery, [battery, inverter]).target, [battery, inverter])).toEqual([
+      { deviceId: 'solax-g4', actionId: 'disable_remote_control_ram_g4', args: {} },
+    ]);
+  });
+
+  it('names no listed card for a hand-back whose inverter left the inventory, so the claim stays owed', () => {
+    const target = { appUri: 'homey:app:com.msd.inverter.solax', deviceId: 'solax-g4' };
+    expect(actionBinding(battery).handBack(target, [battery])).toEqual([
+      { deviceId: 'solax-g4', actionId: 'disable_remote_control_ram', args: {} },
+    ]);
+  });
+
+  it.each([
+    { name: 'no inverter', devices: [battery], reasonCode: 'inverter_not_found' },
+    { name: 'two inverters', devices: [battery, inverter, { ...inverter, id: 'g4-2' }], reasonCode: 'inverter_ambiguous' },
+    { name: 'a second battery', devices: [battery, inverter, { ...battery, id: 'b2' }], reasonCode: 'battery_ambiguous' },
+    {
+      name: 'a G3 inverter, which has no remote control',
+      devices: [battery, { ...inverter, driverId: 'homey:app:com.msd.inverter.solax:solax_modbus_g3' }],
+      reasonCode: 'inverter_without_remote_control',
+    },
+  ])('is unavailable with $name', ({ devices, reasonCode }) => {
+    expect(actionBinding(battery).resolve(battery, devices)).toEqual({ kind: 'unavailable', reasonCode });
   });
 });
