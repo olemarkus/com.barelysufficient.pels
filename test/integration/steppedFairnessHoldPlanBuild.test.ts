@@ -7,6 +7,7 @@ import { inputDevice } from '../utils/planConvergenceFixtures';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
 import type { PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
+import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 
 /**
  * The stepped fairness hold, driven through a whole plan build (report
@@ -64,6 +65,8 @@ const chargerAt14A = (): PlanInputDevice => inputDevice({
   id: 'charger',
   name: 'Charger',
   isEvCharger: true,
+  evChargingState: 'plugged_in_charging',
+  hasStandingDemand: false,
   binaryCapabilityId: 'evcharger_charging',
   binaryControl: { on: true },
   currentState: 'on',
@@ -173,5 +176,60 @@ describe('stepped fairness hold through a plan build', () => {
     const { charger: planned, settled } = await shedOnceOver(pump(false), ['pump']);
     expect(settled.has('pump')).toBe(false);
     expect(planned?.desiredStepId).toBe('6a');
+  });
+
+  const buildWithPreviouslyHeldPeer = async (charging: PlanInputDevice, peer: PlanInputDevice) => {
+    const capacity = { ...CAPACITY, limitKw: 5, marginKw: 0 };
+    const state = createPlanEngineState();
+    state.shedDecisions.lastPlannedShedIds = new Set([peer.id]);
+    state.shedDecisions.lastPlannedKeptIds = new Set([charging.id]);
+    state.shedDecisions.lastPlannedDeviceIds = new Set([charging.id, peer.id]);
+    state.boostActiveByDevice[charging.id] = true;
+    const builder = new PlanBuilder({
+      ...planBuilderWiring(),
+      capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+      getCapacitySettings: () => capacity,
+      getPowerTracker: () => withCapacityPace({ lastTimestamp: Date.now(), lastPowerW: 4900 }, capacity, 5),
+      getShedBehavior: (deviceId) => (
+        deviceId === charging.id ? { action: 'set_step' } : { action: 'turn_off' }
+      ),
+      decorateDeferredObjectives: decorateWithoutDeferredObjectives,
+    }, state);
+    return builder.buildDevicePlanSnapshot([peer, charging]);
+  };
+
+  it('lowers a retained charger rung when restore keeps a previously limited peer off', async () => {
+    const plan = await buildWithPreviouslyHeldPeer(chargerAt14A(), heater(false));
+    const charging = plan.devices.find((device) => device.id === 'charger');
+    expect(plan.devices.find((device) => device.id === 'heater')?.plannedState).toBe('shed');
+    expect(charging).toMatchObject({ plannedState: 'keep', commandableNow: true });
+    expect(charging?.boostActive).toBe(false);
+    expect(charging?.desiredStepId).toBe('6a');
+    expect(charging?.steppedFairnessHold).toEqual({ stepId: '6a', limitedDeviceCount: 1 });
+    expect(buildExecutionPlan(plan).devices.find((device) => device.commands.id === 'charger')?.commands)
+      .toMatchObject({ steppedLoad: { desired: { stepId: '6a', plannedStepId: '6a' },
+        transition: { effectiveTransition: 'step_down_while_on' } } });
+  });
+
+  it.each([
+    { priority: 1, step: '14a' },
+    { priority: 5, step: '6a' },
+  ])('keeps boost priority over a previously limited peer (charger priority $priority)', async ({ priority, step }) => {
+    const plan = await buildWithPreviouslyHeldPeer({
+      ...chargerAt14A(), priority, boostSupported: true, boostRequested: true,
+    }, heater(false));
+    const charging = plan.devices.find((device) => device.id === 'charger');
+    expect(plan.devices.find((device) => device.id === 'heater')?.plannedState).toBe('shed');
+    expect(charging).toMatchObject({ plannedState: 'keep', commandableNow: true });
+    expect(charging?.boostActive).toBe(true);
+    expect(charging?.desiredStepId).toBe(step);
+  });
+
+  it('does not lower a retained rung for a peer held only by its solar posture', async () => {
+    const plan = await buildWithPreviouslyHeldPeer(chargerAt14A(), { ...heater(false), surplusOnly: true });
+    expect(plan.devices.find((device) => device.id === 'heater')).toMatchObject({
+      plannedState: 'shed', nonCapacityHoldShed: true,
+    });
+    expect(plan.devices.find((device) => device.id === 'charger')).toMatchObject({ desiredStepId: '14a' });
   });
 });

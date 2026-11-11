@@ -2,6 +2,7 @@ import type { DevicePlanDevice, SteppedFairnessHold } from './planTypes';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { countFairnessLimitedDevices } from './restore/coordination';
 import type { ShedDecisions } from './shedDecisions';
+import { isSteppedFairnessPowerHoldReason } from './steppedFairness';
 import {
   getSteppedLoadHighestStep,
   getSteppedLoadLowestActiveStep,
@@ -25,17 +26,9 @@ import { PLAN_REASON_CODES, type PlanReasonCode } from '../../packages/shared-do
 // `waitingForOtherDevices`, `restoreThrottled`, `activationBackoff`) keep their
 // lines too: while the restore cooldown runs, its countdown and the cohort queue
 // line say what holds every device (notes/ui-terminology.md).
-const FAIRNESS_EXPLAINS_REASON_CODES: ReadonlySet<PlanReasonCode> = new Set([
+const FAIRNESS_EXPLAINS_OTHER_REASON_CODES: ReadonlySet<PlanReasonCode> = new Set([
   PLAN_REASON_CODES.keep,
   PLAN_REASON_CODES.shedInvariant,
-  PLAN_REASON_CODES.capacity,
-  PLAN_REASON_CODES.gridImport,
-  PLAN_REASON_CODES.phaseLimit,
-  PLAN_REASON_CODES.dailyBudget,
-  PLAN_REASON_CODES.insufficientHeadroom,
-  PLAN_REASON_CODES.shortfall,
-  PLAN_REASON_CODES.swapPending,
-  PLAN_REASON_CODES.swappedOut,
   PLAN_REASON_CODES.cooldownShedding,
   PLAN_REASON_CODES.meterSettling,
 ]);
@@ -54,7 +47,8 @@ const resolveSteppedFairnessHold = (
   if (!device.control.commandAuthority || device.plannedState === 'inactive') return null;
   // An off device at its lowest step is starting, not being held there.
   if (device.currentState === 'off') return null;
-  if (!FAIRNESS_EXPLAINS_REASON_CODES.has(device.reason.code)) return null;
+  if (!isSteppedFairnessPowerHoldReason(device.reason.code)
+    && !FAIRNESS_EXPLAINS_OTHER_REASON_CODES.has(device.reason.code)) return null;
   const lowest = getSteppedLoadLowestActiveStep(device.steppedLoadProfile);
   const highest = getSteppedLoadHighestStep(device.steppedLoadProfile);
   if (!lowest || !highest || lowest.id === highest.id || device.desiredStepId !== lowest.id) return null;

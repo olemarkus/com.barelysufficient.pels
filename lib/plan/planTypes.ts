@@ -656,9 +656,10 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
    * This cycle's reduction is NOT capacity pressure: "Only PELS starts this
    * device", a smart task's deferred hour, a solar hold, or a keep step lowered
    * solely by its solar-tracking ceiling, with no fresh capacity reason. A device
-   * capacity also took down is pressure and does not carry it. Stamped once in
-   * `buildBasePlanDevice`, from the same predicates the plan's own keep-invariant
-   * exclusion reads (`planDevices.ts`).
+   * capacity also took down is pressure and does not carry it. Stamped initially
+   * in `buildBasePlanDevice`, from the same predicates the keep-invariant exclusion
+   * reads (`planDevices.ts`); final keep fairness clears it if that rule lowers the
+   * device further after restore admission.
    *
    * Read by the two other readers of the stepped fairness invariant, so all
    * three answer alike: `countShedDevices` (`lib/plan/restore/coordination.ts`,

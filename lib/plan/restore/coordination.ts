@@ -5,7 +5,7 @@ import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 import { getSteppedLoadStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { ShedDecisions } from '../shedDecisions';
-import { yieldsToLimitedDevice } from '../steppedFairness';
+import { isSteppedFairnessPowerHoldReason, yieldsToLimitedDevice } from '../steppedFairness';
 
 function isTargetRestorePending(device: DevicePlanDevice): boolean {
   if (!isTemperaturePlanDevice(device)) return false;
@@ -124,6 +124,20 @@ export function countFairnessLimitedDevices(
 ): number {
   return countShedDevicesWhere(deviceMap, device.id, shedDecisions, (other) => (
     yieldsToLimitedDevice(device, device.boostActive, other)
+  ));
+}
+
+/** Peers held for power in the finished plan; a restore timer alone needs no reduction. */
+export function countFinalFairnessLimitedDevices(
+  deviceMap: Map<string, DevicePlanDevice>,
+  device: Pick<DevicePlanDevice, 'id' | 'priority' | 'boostActive'>,
+  shedDecisions: ShedDecisions,
+): number {
+  return countShedDevicesWhere(deviceMap, device.id, shedDecisions, (other) => (
+    other.plannedState === 'shed'
+    && (isSteppedFairnessPowerHoldReason(other.reason.code)
+      || other.reason.code === PLAN_REASON_CODES.startupStabilization)
+    && yieldsToLimitedDevice(device, device.boostActive, other)
   ));
 }
 

@@ -11,10 +11,10 @@ import { resolveCapacityAdmissionCutKw } from './planBudget';
  *
  * `PlanMaterializationStages` runs the fixed sequence the builder documents:
  * initial device materialization → restore → shed-temperature hold → reason
- * normalization → finalization, plus the headroom-card sync and the diagnostics
+ * normalization → final keep fairness → finalization, plus headroom-card sync and diagnostics
  * observation. It holds the shared `PlanEngineState` and the builder's dep bag
  * as fields, so the state mutations stay on `this.state` exactly as they did
- * when these were `PlanBuilder` methods. Behaviour is byte-for-byte unchanged.
+ * when these were `PlanBuilder` methods.
  *
  * Shed-selection invariant (`lib/plan/shedding/AGENTS.md`): none of these
  * stages may add a device to the shed set — they only copy `shedSet`
@@ -42,6 +42,7 @@ import { buildDeviceDiagnosticsObservations } from './planDiagnostics';
 import { getOnDevices } from './restore/devices';
 import { stampSteppedFairnessHolds } from './planSteppedFairnessHold';
 import { stampSteppedStepUpHolds } from './planSteppedStepUpHold';
+import { reconcileSteppedKeepFairness } from './planSteppedKeepFairness';
 import { trackPlanStage } from './planStageTiming';
 
 type HoldPlanResult = {
@@ -192,9 +193,10 @@ export class PlanMaterializationStages {
     temperatureSetpoints: TemperatureSetpointsByDevice,
     nowTs: number,
   ): FinalizedPlanResult {
-    this.syncHeadroomCardState(planDevices, nowTs);
+    const fairDevices = reconcileSteppedKeepFairness(planDevices, this.state.shedDecisions);
+    this.syncHeadroomCardState(fairDevices, nowTs);
     return trackPlanStage('plan_finalize_ms', () => this.stampSteppedHolds(finalizePlanDevices(
-      planDevices, temperatureSetpoints, this.state.shedDecisions.lastPlannedShedIds, {
+      fairDevices, temperatureSetpoints, this.state.shedDecisions.lastPlannedShedIds, {
       onInvalidReasonPair: (issue) => {
         this.deps.structuredLog.warn({
           event: 'plan_reason_pair_invalid',
