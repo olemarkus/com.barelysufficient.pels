@@ -164,7 +164,7 @@ export async function getRawDevices(
   const data = await restClient.get(path);
   if (Array.isArray(data)) return data as RawHomeyDeviceLike[];
   if (typeof data === 'object' && data !== null) return data as Record<string, RawHomeyDeviceLike>;
-  return [];
+  throw new Error('Invalid response for device inventory');
 }
 
 export async function getRawDevice(

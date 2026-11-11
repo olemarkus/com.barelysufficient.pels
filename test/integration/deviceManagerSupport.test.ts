@@ -261,6 +261,11 @@ describe('device manager support helpers', () => {
     mockGet.mockResolvedValue({ wrapped: { id: 'wrapped' } });
     await expect(getRawDevices('devices')).resolves.toEqual({ wrapped: { id: 'wrapped' } });
 
+    mockGet.mockResolvedValue([]);
+    await expect(getRawDevices('devices')).resolves.toEqual([]);
+    mockGet.mockResolvedValue({});
+    await expect(getRawDevices('devices')).resolves.toEqual({});
+
     const uninitialized = await importUninitializedHomeyApi();
     await expect(uninitialized.getRawDevices('devices')).rejects.toThrow('REST client not initialized');
 
@@ -282,6 +287,13 @@ describe('device manager support helpers', () => {
     expect(stringFailureCall?.err).toBeInstanceOf(Error);
     expect((stringFailureCall?.err as Error).message).toBe('string boom');
   });
+
+  it.each([null, undefined, 'unreadable', 0, true])('rejects an unreadable device inventory envelope (%s)', async (response) => {
+    mockRestClient.get.mockResolvedValueOnce(response);
+
+    await expect(getRawDevices('devices')).rejects.toThrow('Invalid response for device inventory');
+  });
+
   it('announces a re-anchored window even when the peak reads the same', () => {
     // The persistence write-back hangs off this callback. A reading equal to the
     // standing peak changes no calibration input, so the seam it used to hang off
