@@ -14,8 +14,12 @@
  *   the battery one PELS can only observe, logged once per reason. A hand-back
  *   is judged by its own cards alone: a battery whose command cards are gone
  *   but whose hand-back cards are not reads `hand_back_only`, so a hand-back
- *   PELS owes it still runs. Before the first inventory read the battery
- *   reads as not observed yet. Nothing is guessed and nothing crashes.
+ *   PELS owes it still runs. Before the first inventory read, and while the
+ *   battery's own read carries no value (its app still starting after a Homey
+ *   restart, or the battery offline), the battery reads as not observed yet.
+ *   A missing card is logged only once an inventory read started after the
+ *   miss still lacks it, so an app that registers its cards a moment after
+ *   PELS looked is not reported. Nothing is guessed and nothing crashes.
  * - **The key.** The actions need the owner's Homey API key with Flow
  *   permission. With none saved the battery reads `homey_api_key_missing`.
  *   Refused permission blocks new commands but leaves hand-back retryable. A saved key
@@ -69,7 +73,7 @@ export type AppActionBatteryControl = Extract<BatteryControlRead,
 
 type CardInventory =
   | { kind: 'unread'; retryAtMs: number }
-  | { kind: 'read'; cards: FlowActionCardIds; refreshAtMs: number };
+  | { kind: 'read'; cards: FlowActionCardIds; refreshAtMs: number; startedAtMs: number };
 
 /**
  * A battery's actions against the installed cards. Hand-back can start even
@@ -104,6 +108,16 @@ const everyCommandStep = (actions: HomeBatteryActions): readonly DeviceActionSte
 
 const CARD_MISSING_PREFIX = 'action_card_missing:';
 
+/**
+ * Whether the battery's own read carries anything: Homey lists every device
+ * with its capability entries missing or empty while its app starts.
+ */
+const isReporting = (device: HomeyDeviceLike): boolean => device.available
+  && device.capabilities.some((id) => {
+    const value = device.capabilitiesObj[id]?.value;
+    return value !== null && value !== undefined;
+  });
+
 /** No saved key can run a hand-back. A configured key is rechecked by the runner. */
 const isKeyMissing = (access: HomeyActionAccess): boolean => {
   const { state } = access.status();
@@ -115,6 +129,8 @@ export class HomeBatteryAppActions {
   private inventoryRead: Promise<void> | undefined;
   /** The reason each battery was last logged unavailable, so each change is logged once. */
   private readonly unavailable = new Map<string, string>();
+  /** When each battery was first seen missing a card, until an inventory read started after it confirms the miss. */
+  private readonly cardMissSinceMs = new Map<string, number>();
 
   /**
    * @param access The owner's Homey API key and the one action runner.
@@ -138,10 +154,12 @@ export class HomeBatteryAppActions {
 
   /** Read the card inventory now, joining a read already running. Never rejects. */
   refreshCards(): Promise<void> {
+    const startedAtMs = Date.now();
     this.inventoryRead ??= getRawFromHomeyApi(FLOW_ACTION_CARDS_API_PATH).then(
       (raw) => {
         this.inventory = {
-          kind: 'read', cards: readFlowActionCardIds(raw), refreshAtMs: Date.now() + CARD_INVENTORY_MAX_AGE_MS,
+          kind: 'read', cards: readFlowActionCardIds(raw), startedAtMs,
+          refreshAtMs: Date.now() + CARD_INVENTORY_MAX_AGE_MS,
         };
       },
     ).catch((error: unknown) => {
@@ -289,6 +307,12 @@ export class HomeBatteryAppActions {
     if (device === undefined) return { kind: 'unavailable', reasonCode: 'battery_unread' };
     const binding = this.bindingOf(device);
     if (binding === undefined) return { kind: 'unavailable', reasonCode: 'not_app_actions' };
+    // Its app is still starting (every device after a Homey restart) or it is
+    // offline: its cards may not be registered yet, so nothing about them is known.
+    if (!isReporting(device)) {
+      this.cardMissSinceMs.delete(deviceId);
+      return { kind: 'unobserved' };
+    }
     if (this.inventory.kind !== 'read') return { kind: 'unobserved' };
     const devices = this.getDevices();
     const target = binding.resolveTarget(device, devices);
@@ -300,7 +324,7 @@ export class HomeBatteryAppActions {
     const { cards } = this.inventory;
     const handBackMissing = missingCard(cards, binding.appUri, handBack);
     if (handBackMissing !== undefined) {
-      this.retryInventorySoon();
+      this.noteCardMiss(deviceId);
       if (missingCard(cards, binding.appUri, handBack.slice(0, 1)) !== undefined) {
         return { kind: 'unavailable', reasonCode: handBackMissing };
       }
@@ -308,11 +332,25 @@ export class HomeBatteryAppActions {
       return { kind: 'resolved', resolved: { binding, commands, cards } };
     }
     const commands = resolveCommands(binding.resolve(device, devices), cards, binding.appUri);
-    if (commands.kind === 'blocked' && commands.reasonCode.startsWith(CARD_MISSING_PREFIX)) this.retryInventorySoon();
+    if (commands.kind === 'blocked' && commands.reasonCode.startsWith(CARD_MISSING_PREFIX)) this.noteCardMiss(deviceId);
+    else this.cardMissSinceMs.delete(deviceId);
     return { kind: 'resolved', resolved: { binding, commands, cards } };
   }
 
+  /** A missing card is retried soon, and reported only once a read started after the miss still lacks it. */
+  private noteCardMiss(deviceId: string): void {
+    if (!this.cardMissSinceMs.has(deviceId)) this.cardMissSinceMs.set(deviceId, Date.now());
+    this.retryInventorySoon();
+  }
+
+  private isCardMissConfirmed(deviceId: string): boolean {
+    const sinceMs = this.cardMissSinceMs.get(deviceId);
+    return sinceMs !== undefined && this.inventory.kind === 'read' && this.inventory.startedAtMs > sinceMs;
+  }
+
   private noteUnavailable(deviceId: string, reasonCode: string): void {
+    // An app that just started or updated registers its cards a moment later.
+    if (reasonCode.startsWith(CARD_MISSING_PREFIX) && !this.isCardMissConfirmed(deviceId)) return;
     if (this.unavailable.get(deviceId) === reasonCode) return;
     this.unavailable.set(deviceId, reasonCode);
     this.logger.structuredLog.warn({ event: 'home_battery_actions_unavailable', deviceId, reasonCode });

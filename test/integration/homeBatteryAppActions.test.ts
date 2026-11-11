@@ -58,14 +58,19 @@ const keepAlives = (transport: DeviceTransport, deviceId: string): BatteryComman
   return [1000, -1000, 0].map((setpointW) => control.keepAliveFor(setpointW));
 };
 
-const setup = async (devices: MockDevice[], cards: readonly string[]): Promise<Setup> => {
+const setup = async (
+  devices: MockDevice[],
+  cards: readonly string[],
+  options: { logger?: Logger; rawRead?: (device: HomeyDeviceLike) => HomeyDeviceLike } = {},
+): Promise<Setup> => {
   setMockDrivers({ batteries: new MockDriver('batteries', devices) });
   const original = mockHomeyInstance.api.get.bind(mockHomeyInstance.api);
   vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string) => (
     path === 'manager/flow/flowcardaction' ? cards.map((id) => ({ id })) : original(path)
   ));
-  const transport = createTestDeviceTransport(homeyMock, loggerMock);
-  await seedTransportDevices(transport, devices.map((device) => device.toHomeyApiDevice() as HomeyDeviceLike));
+  const transport = createTestDeviceTransport(homeyMock, options.logger ?? loggerMock);
+  const rawRead = options.rawRead ?? ((device: HomeyDeviceLike) => device);
+  await seedTransportDevices(transport, devices.map((device) => rawRead(device.toHomeyApiDevice() as HomeyDeviceLike)));
   await transport.batteryAppActions.refreshCards();
   const run = vi.spyOn(transport.chargingAccess, 'runAction').mockResolvedValue(undefined);
   return {
@@ -232,6 +237,53 @@ describe('home battery app actions', () => {
       transport.batteryAppActions.observeDevices(raw, Date.now() + CARD_INVENTORY_RETRY_MS);
       await vi.waitFor(() => expect(transport.readBatteryControl('venus')).toMatchObject({ kind: 'app_actions' }));
       expect(inventoryReads()).toBe(readsBefore + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  const warnLogger = () => {
+    const warn = vi.fn();
+    const logger: Logger = { ...loggerMock, structuredLog: { ...loggerMock.structuredLog, warn } as Logger['structuredLog'] };
+    const unavailableWarnings = () => warn.mock.calls
+      .map(([event]) => event as { event?: string; reasonCode?: string })
+      .filter(({ event }) => event === 'home_battery_actions_unavailable');
+    return { logger, unavailableWarnings };
+  };
+
+  // After a Homey restart every device arrives with its capability entries
+  // missing while its app starts, and the app registers its cards a moment
+  // later. Nothing is known about the cards yet, so nothing is reported.
+  it('reads a battery whose app is still starting as not observed, without a missing-card warning', async () => {
+    const { logger, unavailableWarnings } = warnLogger();
+    const { transport, runs } = await setup([buildMarstekConnectorBatteryDevice({ id: 'venus' })], [], {
+      logger, rawRead: (device) => ({ ...device, capabilitiesObj: {} }),
+    });
+
+    expect(transport.readBatteryControl('venus')).toEqual({ kind: 'unobserved' });
+    expect(unavailableWarnings()).toEqual([]);
+    expect(runs()).toEqual([]);
+  });
+
+  it('reports a missing card only once a later inventory read still lacks it', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const { logger, unavailableWarnings } = warnLogger();
+      const battery = buildMarstekConnectorBatteryDevice({ id: 'venus' });
+      const { transport, runs } = await setup([battery], [`${MARSTEK_APP}:marstek_passive_mode`], { logger });
+
+      expect(transport.readBatteryControl('venus')).toEqual({ kind: 'observe_only' });
+      expect(unavailableWarnings()).toEqual([]);
+
+      vi.setSystemTime(Date.now() + CARD_INVENTORY_RETRY_MS);
+      transport.batteryAppActions.observeDevices([battery.toHomeyApiDevice() as HomeyDeviceLike], Date.now());
+      await transport.batteryAppActions.refreshCards();
+      expect(transport.readBatteryControl('venus')).toEqual({ kind: 'observe_only' });
+      expect(transport.readBatteryControl('venus')).toEqual({ kind: 'observe_only' });
+      expect(unavailableWarnings()).toEqual([
+        expect.objectContaining({ reasonCode: 'action_card_missing:marstek_auto_mode' }),
+      ]);
+      expect(runs()).toEqual([]);
     } finally {
       vi.useRealTimers();
     }
