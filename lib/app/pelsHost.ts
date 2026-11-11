@@ -73,6 +73,7 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   | 'getPvForecastSourceUiStatus'
   | 'getHomeyPriceFormulaUiStatus'
   | 'getPowerhourSourceUiStatus'
+  | 'steppedCommandStore'
 > & {
   readSchedules(): SchedulesResponse;
   /** The battery owner's measured round-trip efficiency, offered beside the configured value. */

@@ -289,6 +289,7 @@ describe('settingsUiApi', () => {
         getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, hasWarmSnapshot: () => true, readInverterControlOptions: () => [],
       }),
       controlContests: { contestedControl: () => undefined },
+      steppedCommandStore: { isLevelUnconfirmed: () => false },
       getSettingsUiManagedDevices: () => latestDevices,
       getUiPickerDevices: () => options.uiPickerDevices ?? [],
       // The payload refresh reads the whole observed record through its own
@@ -975,6 +976,19 @@ describe('settingsUiApi', () => {
     expect(devices.find(({ id }) => id === 'calm')).not.toHaveProperty('controlContest');
     // The settings UI, not the route, leaves out a device the owner let go.
     expect(devices.find(({ id }) => id === 'let-go')?.controlContest).toEqual(contest);
+  });
+
+  it('marks a stepped device whose level changes draw no level report back', () => {
+    const homey = createHomey({
+      latestDevicesOverride: [
+        { id: 'floor', name: 'Varmekabler', deviceType: 'temperature', available: true, managed: true },
+        { id: 'answered', name: 'Gang', deviceType: 'temperature', available: true, managed: true },
+      ],
+    });
+    Object.assign(homey.app, { steppedCommandStore: { isLevelUnconfirmed: (id: string) => id === 'floor' } });
+    const devices = getSettingsUiDevicesPayload({ homey: homey as never }).devices;
+    expect(devices.find(({ id }) => id === 'floor')?.levelUnconfirmed).toBe(true);
+    expect(devices.find(({ id }) => id === 'answered')).not.toHaveProperty('levelUnconfirmed');
   });
 
   it('serves the observer projection\'s observed state, not the stored snapshot\'s', () => {

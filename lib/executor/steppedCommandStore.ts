@@ -23,6 +23,7 @@
 
 import type { FlowSteppedLoadObservation } from '../ports/flowSteppedLoadAdmission';
 import type { UnansweredStepCommands } from './executablePlan';
+import { STEP_COMMAND_UNANSWERED_AFTER } from './deviceExecutionState';
 import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 import {
   getSteppedLoadLowestActiveStep, getSteppedLoadStep,
@@ -137,6 +138,17 @@ export class SteppedCommandStore {
     return desired?.answer.kind === 'unanswered' && desired.answer.expiredCount > 0
       ? { kind: 'unanswered', stepId: desired.stepId, count: desired.answer.expiredCount }
       : { kind: 'none' };
+  }
+
+  /**
+   * Whether level changes for the tracked step have drawn no report of any level
+   * as many times in a row as makes the device's card say the change is not
+   * confirmed (`STEP_COMMAND_UNANSWERED_AFTER`), for the settings UI's setup
+   * recommendation.
+   */
+  isLevelUnconfirmed(deviceId: string): boolean {
+    const unanswered = this.getUnansweredStepCommands(deviceId);
+    return unanswered.kind === 'unanswered' && unanswered.count >= STEP_COMMAND_UNANSWERED_AFTER;
   }
 
   /** Whether a step command is issued and not yet settled, acknowledged or not. */

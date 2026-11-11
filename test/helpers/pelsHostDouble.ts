@@ -4,6 +4,8 @@ import { deviceControlSettingsFixture } from './deviceControlSettingsFixture';
 import { PhasePeakLog } from '../../lib/power/phasePeakLog';
 import { vi } from 'vitest';
 import type { PelsHost } from '../../lib/app/pelsHost';
+import type { SteppedCommandStore } from '../../lib/executor/steppedCommandStore';
+import { partialDouble } from './partialDouble';
 import { createPlanStatusRegistry } from '../../lib/plan/planStatusRegistry';
 import { createEmptyPowerCalibrationSnapshot } from '../../lib/device/devicePowerCalibration';
 import { NO_PRICE_SOURCE_PAYLOADS } from '../../setup/settingsUiApi';
@@ -39,6 +41,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     planStatuses: createPlanStatusRegistry(),
     deviceManager: undefined,
     controlContests: { contestedControl: () => undefined },
+    steppedCommandStore: partialDouble<SteppedCommandStore>({ isLevelUnconfirmed: () => false }),
     planService: undefined,
     priceCoordinator: undefined,
     batteryControl: undefined,

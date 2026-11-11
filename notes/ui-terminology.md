@@ -381,6 +381,15 @@ can miss one confirmation window. A device that reports any other level after
 a command has answered it, so it gets no such line: a charger asked for 16 A
 that clamps to 10 A and reports 10 A has a working Flow.
 
+The same fact also raises a dismissable setup recommendation, `<Device> does not
+report its level` (source: `resolveLevelReportRecommendations` in
+`packages/settings-ui/src/ui/recommendationsModel.ts`, from the device list's
+`levelUnconfirmed`), because the card line reaches only an owner who opens the
+device. Under a Flow it names the card to add, **Report stepped load**, and the
+way out for a device with no levels of its own: another way to control it on its
+device page. Under built-in control it asks the owner to check that the device is
+online and accepts level changes. It leaves once a level comes back.
+
 ### Device cards say what a device needs; the hero says what limits the house
 
 The reason line under a Limited card states **what this device needs**. It does
