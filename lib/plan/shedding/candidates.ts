@@ -13,8 +13,7 @@ import {
   recordSetpointShedSkip,
 } from './candidateBuilders';
 import { buildSteppedCandidate } from './steppedCandidates';
-import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
-import { isTemperaturePlanDevice } from '../planTemperatureDevice';
+import { resolveShedLever } from './shedLever';
 import {
   createShedCandidateSkipRecorder,
   type ShedCandidateSkipRecorder,
@@ -281,15 +280,13 @@ function addCandidatePower(
     });
   }
   // A device with no temperature facet has no setpoint to limit, whatever its
-  // stored shed behaviour says.
+  // stored shed behaviour says (`resolveShedLever`).
+  const lever = resolveShedLever(device, temperatureSetpoints);
   const target = device.targets?.[0];
-  if (isTemperaturePlanDevice(device) && target?.id) {
-    const { shed } = temperatureSetpointsFor(temperatureSetpoints, device.id);
-    if (shed.action === 'set_temperature') {
-      return buildTemperatureCandidate(
-        device, priority, recentlyRestored, shed.limitC, target.id, state.pendingTargetCommands, recorder,
-      );
-    }
+  if (lever.kind === 'setpoint' && target?.id) {
+    return buildTemperatureCandidate(
+      device, priority, recentlyRestored, lever.limitC, target.id, state.pendingTargetCommands, recorder,
+    );
   }
   return buildBinaryCandidate(device, priority, recentlyRestored, deps.pendingBinaryCommandStore, recorder);
 }

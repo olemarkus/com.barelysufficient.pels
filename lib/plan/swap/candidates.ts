@@ -9,6 +9,8 @@ import { getSteppedLoadNextLowerStep } from '../../utils/steppedLoadLadder';
 import type { SwapDonorRelease, SwapLedger } from './swapLedger';
 import { hasReportedStepAtOrBelow } from './donorRelease';
 import { swapDonorPhaseShare, type PhaseRoomAxis } from '../phase/phaseRoom';
+import { resolveShedLever } from '../shedding/shedLever';
+import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 
 /** A running device the swap pauses, and what it gives up. */
 export type SwapDonor = {
@@ -94,10 +96,13 @@ function isViableSwapCandidate(
 
 /**
  * What a donor gives up, and the draw that frees: the gentlest lower step that
- * alone completes the swap, or a stop when no step does (and for a device
- * without steps). A lower step that is enough is preferred over a stop: the
- * donor keeps delivering, and a stopped charger can take minutes to draw again
- * once it is restarted. Each step is priced by `resolveStepChangeKw`, so it is
+ * alone completes the swap, or a stop when no step does. A device without steps
+ * gives up what its shed behaviour gives up (`resolveShedLever`), as shedding
+ * would limit it: a setpoint limit for one that sheds by temperature, credited
+ * with its measured draw as shedding credits it, and a switch-off otherwise.
+ * A lower step that is enough is preferred over a stop: the donor keeps
+ * delivering, and a stopped charger can take minutes to draw again once it is
+ * restarted. Each step is priced by `resolveStepChangeKw`, so it is
  * never credited with more than the donor is measured drawing.
  *
  * An EV charger's lower step is credited only down to its full nameplate. The
@@ -113,9 +118,15 @@ function resolveDonorRelease(
   neededKw: number,
   /** The fraction of this donor's relief that reaches the target (`swapDonorPhaseShare`). */
   share: number,
+  temperatureSetpoints: TemperatureSetpointsByDevice,
 ): { release: SwapDonorRelease; reliefKw: number } {
   const stop = { release: { kind: 'off' } as const, reliefKw: onDev.currentDrawKw };
-  if (!isSteppedLoadDevice(onDev)) return stop;
+  if (!isSteppedLoadDevice(onDev)) {
+    const lever = resolveShedLever(onDev, temperatureSetpoints);
+    return lever.kind === 'setpoint'
+      ? { release: { kind: 'setpoint', limitC: lever.limitC }, reliefKw: onDev.currentDrawKw }
+      : stop;
+  }
   const profile = onDev.steppedLoadProfile;
   const floor = getSteppedLoadLowestActiveStep(profile);
   if (!floor) return stop;
@@ -145,6 +156,7 @@ export type SwapRoom = {
 };
 
 /* eslint-disable functional/immutable-data -- In-place update avoids another state or accumulator copy. */
+// eslint-disable-next-line max-params -- The target and this cycle's own facts, not an argument bag.
 export function buildSwapCandidates(
   dev: DevicePlanDevice,
   onDevices: MeteredDevicePlanDevice[],
@@ -154,6 +166,8 @@ export function buildSwapCandidates(
   room: SwapRoom,
   needed: number,
   restoredThisCycle: ReadonlySet<string>,
+  /** This build's resolved setpoints: how a donor without steps sheds (`resolveShedLever`). */
+  temperatureSetpoints: TemperatureSetpointsByDevice,
 ): {
   ready: boolean;
   toShed: SwapDonor[];
@@ -181,7 +195,9 @@ export function buildSwapCandidates(
       phaseRoom, dev.phaseFootprint, onDev.phaseFootprint, needed + SWAP_RESTORE_RESERVE_KW,
     );
     if (share <= 0) continue;
-    const { release, reliefKw } = resolveDonorRelease(onDev, currentPotential, needed, share);
+    const { release, reliefKw } = resolveDonorRelease(
+      onDev, currentPotential, needed, share, temperatureSetpoints,
+    );
     toShed.push({ device: onDev, release });
     currentPotential += reliefKw * share;
     effectiveHeadroom = Math.max(0, currentPotential - SWAP_RESTORE_RESERVE_KW);

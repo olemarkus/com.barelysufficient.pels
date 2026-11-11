@@ -960,7 +960,8 @@ describe('restore cooldown backoff', () => {
       }),
       state,
       sheddingActive: false,
-      deps: restoreDeps(123),
+      // Every temperature device in a build has resolved setpoints (`resolveTemperatureSetpoints`).
+      deps: { ...restoreDeps(123), temperatureSetpoints: new Map([['dev-temp', fixtureTemperatureSetpointsEntry()]]) },
     });
 
     const offDevice = result.planDevices.find((device) => device.id === 'dev-off');

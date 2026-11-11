@@ -3,6 +3,7 @@ import type { PlanEngineState } from './planState';
 import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { RestorePlanResult } from './restore/types';
 import type { SheddingPlan } from './shedding/types';
+import type { DevicePlanDevice } from './planTypes';
 /** Local shape: the pending-restore countdown a hold names. */
 export type PendingRestoreDelay = { remainingSec: number; countdownStartedAtMs: number; countdownTotalSec: number };
 
@@ -53,6 +54,8 @@ export type HoldPass = {
   readonly pendingRestoreDelay: PendingRestoreDelay | null;
   readonly temperatureSetpoints: TemperatureSetpointsByDevice;
   readonly normalizedShedFloorCByDevice: ReadonlyMap<string, number>;
+  /** The restore pass's devices by id: the ranks a swap reservation is held against (`SwapLedger.blockingTarget`). */
+  readonly planDeviceMap: ReadonlyMap<string, DevicePlanDevice>;
 };
 
 /** The running pair the per-device loop threads through the pass. */

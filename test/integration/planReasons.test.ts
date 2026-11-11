@@ -518,6 +518,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
       swapLedger: new SwapLedger(),
       deviceMap: new Map(params.devices.map((device) => [device.id, device])),
       restoredThisCycle: new Set<string>(),
+      temperatureSetpoints: new Map(),
       lastDeviceShedMsById: params.lastDeviceShedMsById ?? {},
       nowMs: SHORTFALL_NOW_MS,
     };
@@ -608,6 +609,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
           swapLedger: new SwapLedger(),
           deviceMap: new Map(),
           restoredThisCycle: new Set<string>(),
+          temperatureSetpoints: new Map(),
           lastDeviceShedMsById: {},
           nowMs: SHORTFALL_NOW_MS,
         }, false).has(dev.id)
@@ -796,6 +798,7 @@ describe('normalizeShedReasons — uniform ceiling shortfall', () => {
         swapLedger: new SwapLedger(),
         deviceMap: new Map(),
         restoredThisCycle: new Set(),
+        temperatureSetpoints: new Map(),
         lastDeviceShedMsById: state.actuation.lastDeviceShedMs,
         nowMs: SHORTFALL_NOW_MS,
       });

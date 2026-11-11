@@ -12,9 +12,8 @@ import { isMeteredPlanDevice } from '../planMeteredDevice';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { compareDeviceIdAsc, sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
-import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 import { buildChargeTargetHoldReason } from '../shedding/chargeTargetHold';
-import { temperatureSetpointsFor } from '../planTemperatureSetpoints';
+import { resolveShedLever } from '../shedding/shedLever';
 import type { TemperatureSetpointsByDevice } from '../../../packages/planner-types/src/temperatureSetpoints';
 import type { ShedDecisions } from '../shedDecisions';
 import type { StorageLeverState } from '../planState';
@@ -233,13 +232,10 @@ export function getOnDevices(
   const filtered = planDevices
     .filter((device): device is MeteredDevicePlanDevice => {
       if (!isSwapRestoreCandidate(device)) return false;
-      const behavior = getShedBehavior(device.id);
       if (isSteppedLoadDevice(device)) {
-        return behavior.action === 'turn_off'
-          && isBinaryPlanDevice(device)
-          && canSwapOutDevice(device, behavior, temperatureSetpoints);
+        return getShedBehavior(device.id).action === 'turn_off' && isBinaryPlanDevice(device);
       }
-      return canSwapOutDevice(device, behavior, temperatureSetpoints);
+      return canSwapOutDevice(device, temperatureSetpoints);
     });
   return sortByPriorityDesc(filtered);
 }
@@ -299,20 +295,19 @@ export function resolveInactiveRestoreUpdate(dev: DevicePlanDevice): Partial<Dev
   return reason ? { plannedState: 'inactive', reason } : null;
 }
 
+/**
+ * Whether limiting a device without steps, the way its shed behaviour limits it
+ * (`resolveShedLever`), frees anything: a switch-off always does, and a setpoint
+ * limit only while moving to it still releases demand. A thermostat already at
+ * its limit frees nothing. Resolved before the planner, because that is a
+ * question of which way the device moves demand.
+ */
 function canSwapOutDevice(
   dev: DevicePlanDevice,
-  behavior: ShedBehavior,
   temperatureSetpoints: TemperatureSetpointsByDevice,
 ): boolean {
-  if (behavior.action !== 'set_temperature') return true;
-  // A non-temperature device has no setpoint to compare — swappable. The old
-  // fail-open on a null observed target is gone with the nullable field.
-  if (!isTemperaturePlanDevice(dev)) return true;
-  // Swappable while moving it to its limit would still release demand — a
-  // thermostat already at its limit frees nothing. Resolved before the planner,
-  // because that is a question of which way the device moves demand.
-  const { shed } = temperatureSetpointsFor(temperatureSetpoints, dev.id);
-  return shed.action === 'set_temperature' && shed.releasesDemand;
+  const lever = resolveShedLever(dev, temperatureSetpoints);
+  return lever.kind !== 'setpoint' || lever.releasesDemand;
 }
 
 /**

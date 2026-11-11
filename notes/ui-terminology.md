@@ -1468,7 +1468,7 @@ A lower-priority device waiting on a reservation renders the reason line
 `packages/shared-domain/src/planReasonFormatting.ts`). The card's state word is still
 **Limited** — `reserved_for_start` is in `HOLD_REASON_CODES`, and § "Device state words"
 covers a device made to wait for power. Only the reason line differs: it avoids the
-`Limited so … can run` form used by `swappedOut`, because nothing was switched off to
+`Limited so … can run` form used by `swappedOut`, because nothing was limited to
 build the reservation. Do not reuse `Held back`, which belongs to the budget widget.
 
 `reserved_for_start` is a starvation *counting* cause since 2026-08-08

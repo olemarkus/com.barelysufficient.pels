@@ -173,6 +173,7 @@ export function applyShedTemperatureHold(
     pendingRestoreDelay,
     temperatureSetpoints,
     normalizedShedFloorCByDevice,
+    planDeviceMap: new Map(planDevices.map((device) => [device.id, device])),
   };
 
   for (const dev of planDevices) {
@@ -247,12 +248,24 @@ function resolveHoldDecision(
   const observedAtShedFloor = isObservedAtShedFloor(dev, floorC);
   const meterSettlingHold = resolveMeterSettlingHold(pass, wasShedLastPlan, observedAtShedFloor);
   if (meterSettlingHold) return meterSettlingHold;
+
   // A device held by a global restore cooldown is not re-decided here: the
   // ladder below names the cooldown on its card, and the finished plan ranks
   // the held cohort once (`planRestoreCooldownCohort.ts`). The lane used to run the admission path anyway,
   // against a hypothetical ledger, to pick which card got the countdown.
   const shouldResolveRestore = wasShedLastPlan && !shouldAbortRestoreForShortfall && !shouldHold;
   if (shouldResolveRestore) {
+    // A pending swap holds the device at its limit until that swap settles, as
+    // the binary lane holds its restore (`restore/gating.ts`): the swap's donor,
+    // or a device ranked below its target. Raising it would spend the draw the
+    // swap paused it to free.
+    const swapTarget = pass.state.swapLedger.blockingTarget(dev, pass.planDeviceMap);
+    if (swapTarget !== undefined) {
+      return {
+        type: 'hold',
+        reason: { code: 'existing', reason: { code: PLAN_REASON_CODES.swapPending, targetName: swapTarget.name } },
+      };
+    }
     // "Observed at the shed floor" means the DEVICE reports the floor target —
     // not the plan's own `plannedTarget`, which the hold writes back each
     // cycle. Until the floor is observed, a reserve block must keep asserting
