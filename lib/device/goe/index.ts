@@ -16,7 +16,7 @@
  */
 import type { DeviceAdapter, DeviceEvOverlay } from '../deviceAdapter';
 import { whileBuiltInControlEnabled } from '../deviceAdapter';
-import type { DeviceCapabilityMap } from '../managerControl';
+import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerControl';
 import type { ChargerPhaseReport } from '../chargerPhasePreset';
 import type { CapabilityValue, HomeyDeviceLike } from '../../utils/types';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
@@ -56,10 +56,28 @@ function resolvePlugValue(status: unknown, allowed: unknown): string | undefined
   return allowed ? 'plugged_in' : 'plugged_in_paused';
 }
 
+type ReadingDate = CapabilityValue<unknown>['lastUpdated'];
+
+function newerDate(left: ReadingDate, right: ReadingDate): ReadingDate {
+  const leftMs = toCapabilityTimestampMs(left);
+  const rightMs = toCapabilityTimestampMs(right);
+  if (leftMs === undefined) return right;
+  if (rightMs === undefined) return left;
+  return rightMs > leftMs ? right : left;
+}
+
+/**
+ * Dated by the newest reading it rests on: a connected car's state follows the
+ * switch, so a switch change after the last status report dates it.
+ */
 function resolvePlugState(values: CapabilityReadings): CapabilityValue<string> | undefined {
   const status = values[STATUS_CAPABILITY];
-  const value = resolvePlugValue(status?.value, values[SWITCH_CAPABILITY]?.value);
-  return value === undefined ? undefined : { value, lastUpdated: status?.lastUpdated };
+  const allowed = values[SWITCH_CAPABILITY];
+  const value = resolvePlugValue(status?.value, allowed?.value);
+  if (value === undefined) return undefined;
+  const readsSwitch = value === 'plugged_in' || value === 'plugged_in_paused';
+  const lastUpdated = readsSwitch ? newerDate(status?.lastUpdated, allowed?.lastUpdated) : status?.lastUpdated;
+  return { value, lastUpdated };
 }
 
 function withGoeObservation(device: HomeyDeviceLike, values: DeviceCapabilityMap): DeviceCapabilityMap {
@@ -128,7 +146,8 @@ export const goeAdapter: DeviceAdapter = {
     ];
   }),
   readRules: () => ({
-    [STATUS_CAPABILITY]: 'string', [CURRENT_CAPABILITY]: 'number', is_connected: 'boolean',
+    [STATUS_CAPABILITY]: 'string', [SWITCH_CAPABILITY]: 'boolean', [CURRENT_CAPABILITY]: 'number',
+    is_connected: 'boolean',
   }),
   phaseReport: resolvePhaseReport,
   currentBindings: (device) => isGoeCharger(device) ? [{

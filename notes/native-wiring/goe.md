@@ -25,7 +25,10 @@ before the switch (`current_before_start`).
   a car that takes nothing.
 - `station_error`, `unknown` or a missing switch: unread.
 
-The derived state is dated by `status`.
+The derived state is dated by `status`, or by the newer of `status` and
+`is_allowed` when the switch decides it. The adapter types `is_allowed` in its
+read rules, so a realtime switch report updates the accepted read the state is
+derived from.
 
 **Charging current.** `current_limit` is the charger's `amp`, declared
 read-only. The app's `change_current` card writes `amp` (6-32 A, clamped by
