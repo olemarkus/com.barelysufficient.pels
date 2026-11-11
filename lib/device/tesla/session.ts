@@ -1,6 +1,6 @@
 import type { ChargingCurrentSetup } from '../../../packages/contracts/src/chargingControl';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
-import type { DeviceAdapterSession, AdapterControlTarget } from '../deviceAdapter';
+import type { DeviceAdapterSession, AdapterControlTarget, InventoryCompleteness } from '../deviceAdapter';
 import {
   acknowledgedTeslaCurrent, hasTeslaChargingSurface, confirmedTeslaCurrent, isTeslaChargingState,
 } from './charging';
@@ -37,7 +37,7 @@ export class TeslaChargingSession implements DeviceAdapterSession {
   private readonly devices = new Map<string, HomeyDeviceLike>();
   private trustEpoch = '';
   private readonly lastEvidence = new Map<string, string>();
-  /** A full device list was read since the last trust gap, so a companion it lacks is not paired. */
+  /** A complete device list was read since the last trust gap, so a companion it lacks is not paired. */
   private inventoryRead = false;
 
   constructor(private readonly home: HomeLocation) {}
@@ -89,8 +89,8 @@ export class TeslaChargingSession implements DeviceAdapterSession {
     for (const device of devices) this.observeDevice(device);
   }
 
-  retainDevices(devices: readonly HomeyDeviceLike[]): void {
-    this.inventoryRead = true;
+  retainDevices(devices: readonly HomeyDeviceLike[], inventory: InventoryCompleteness): void {
+    this.inventoryRead = inventory === 'complete';
     const ids = new Set(devices.map((device) => device.id));
     for (const id of this.devices.keys()) if (!ids.has(id)) this.devices.delete(id);
     for (const id of this.lastEvidence.keys()) if (!ids.has(id)) this.lastEvidence.delete(id);

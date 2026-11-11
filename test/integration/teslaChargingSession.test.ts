@@ -401,14 +401,14 @@ test('rejects a future coordinate even when the other coordinate is fresh', () =
 test('removing the car companion revokes authorization until a complete home session is observed', () => {
   const owner = session(); const initial = devices(); owner.observeDevices(initial);
   expect(owner.isAllowed('battery')).toBe(true);
-  owner.retainDevices([initial[0]!, initial[1]!]);
+  owner.retainDevices([initial[0]!, initial[1]!], 'complete');
   expect(owner.isAllowed('battery')).toBe(false);
   expect(owner.observedIds()).not.toContain('car');
 });
 
 test('removing the location companion leaves a stationary AC session admitted on its car checks', () => {
   const owner = session(); const initial = devices(); owner.observeDevices(initial);
-  owner.retainDevices([initial[0]!, initial[2]!]);
+  owner.retainDevices([initial[0]!, initial[2]!], 'complete');
   expect(owner.isAllowed('battery')).toBe(true);
   expect(owner.missingCompanion('battery')).toBe('vehicle_location');
 });
@@ -449,6 +449,23 @@ test('a full refresh without the location companion keeps the home session and r
     expect(transport.getSnapshotByDeviceId('battery')).toMatchObject({ available: true, measuredPowerKw: 4 });
     const read = transport.chargingCurrentControl.describe({ status: 'unknown', reason: 'not read' });
     expect(read.find((entry) => entry.deviceId === 'battery')?.missingCompanion).toBe('vehicle_location');
+  } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
+});
+
+test('a full refresh that drops the location payload at the parse keeps the session closed', async () => {
+  vi.useRealTimers();
+  mockHomeyInstance.settings.set('charging_current_control', { battery: { method: 'flow', confirmation: 'vehicle' } });
+  const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
+    { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') });
+  try {
+    await initWithLiveFeed(transport);
+    const list = devices();
+    // A payload without a capability list is dropped by `parseHomeyDevicePayload`.
+    const { capabilities: _dropped, ...unparseable } = list[1]!;
+    await seedTransportDevices(transport, [list[0]!, unparseable as HomeyDeviceLike, list[2]!]);
+    expect(transport.getSnapshotByDeviceId('battery')).toMatchObject({ available: false, measuredPowerKw: 0 });
+    const read = transport.chargingCurrentControl.describe({ status: 'unknown', reason: 'not read' });
+    expect(read.find((entry) => entry.deviceId === 'battery')?.missingCompanion).toBe('none');
   } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
 });
 
@@ -717,7 +734,7 @@ describe('home evidence log', () => {
 
   test('logs a session admitted without a location device', () => {
     const owner = session(); const [battery, , car] = devices();
-    owner.retainDevices([battery!, car!]); owner.observeDevices([battery!, car!]);
+    owner.retainDevices([battery!, car!], 'complete'); owner.observeDevices([battery!, car!]);
     expect(owner.isAllowed('battery')).toBe(true);
     expect(evidenceLines()).toMatchObject([{ deviceId: 'battery', kind: 'home_without_location' }]);
   });
@@ -748,7 +765,7 @@ describe('home evidence log', () => {
 describe('a vehicle without a Location & navigation device', () => {
   const unlocated = () => devices().filter((device) => device.id !== 'location');
   const fullRead = (owner: TeslaChargingSession, list: HomeyDeviceLike[]) => {
-    owner.retainDevices(list); owner.observeDevices(list);
+    owner.retainDevices(list, 'complete'); owner.observeDevices(list);
   };
 
   test('charges under control at home once a full device list shows it has none', () => {
@@ -756,6 +773,13 @@ describe('a vehicle without a Location & navigation device', () => {
     fullRead(owner, unlocated());
     expect(owner.isAllowed('battery')).toBe(true);
     expect(owner.missingCompanion('battery')).toBe('vehicle_location');
+  });
+
+  test('is not admitted on a partial device list: a dropped payload or a read across a trust gap', () => {
+    const owner = session();
+    owner.retainDevices(unlocated(), 'partial'); owner.observeDevices(unlocated());
+    expect(owner.isAllowed('battery')).toBe(false);
+    expect(owner.missingCompanion('battery')).toBe('none');
   });
 
   test('is not admitted on a live update before any full device list', () => {

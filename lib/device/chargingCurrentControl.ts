@@ -126,9 +126,12 @@ export class ChargingCurrentControl {
 
   synchronizeTrust(): boolean {
     const trust = this.readTrust();
-    this.sessions.setTrustEpoch(`${trust.connected}:${trust.revision}`);
+    this.sessions.setTrustEpoch(trustEpochOf(trust));
     return trust.connected;
   }
+
+  /** The live feed's trust epoch now: a full read records it before it fetches (`retainDevices`). */
+  trustEpoch(): string { return trustEpochOf(this.readTrust()); }
 
   observeDevices(devices: readonly HomeyDeviceLike[], readAtMs: number): void {
     for (const device of devices) {
@@ -173,12 +176,17 @@ export class ChargingCurrentControl {
     return this.routesBuiltInFor(deviceId, this.setup(deviceId));
   }
 
-  /** A full inventory: sessions keep only its devices, and so does the read-side lookup. */
-  retainDevices(devices: readonly HomeyDeviceLike[]): void {
-    // The list belongs to the trust epoch in force now, so a session's record of it survives
-    // the observation that follows in the same refresh.
+  /**
+   * A full inventory: sessions keep only its devices, and so does the read-side lookup.
+   * It proves a device it lacks is absent only when it was fetched under the trust epoch in
+   * force now (`startedUnder`, from `trustEpoch` before the fetch) and dropped no payload at
+   * the parse; otherwise a session keeps failing closed on a companion it does not see.
+   */
+  retainDevices(devices: readonly HomeyDeviceLike[], startedUnder: string, rejectedPayloads: number): void {
+    // Synchronized first, so the record survives the observation that follows in the same refresh.
     this.synchronizeTrust();
-    this.sessions.retainDevices(devices);
+    const inventory = rejectedPayloads === 0 && startedUnder === this.trustEpoch() ? 'complete' : 'partial';
+    this.sessions.retainDevices(devices, inventory);
     const present = new Set(devices.map((device) => device.id));
     for (const id of this.observedDevices.keys()) if (!present.has(id)) this.observedDevices.delete(id);
   }
@@ -375,4 +383,8 @@ export class ChargingCurrentControl {
       this.setupsReadState = 'resolved';
     } catch { /* A transient read preserves accepted configuration. */ }
   }
+}
+
+function trustEpochOf(trust: { connected: boolean; revision: number }): string {
+  return `${trust.connected}:${trust.revision}`;
 }

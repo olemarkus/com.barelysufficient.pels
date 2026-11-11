@@ -561,6 +561,7 @@ export class SnapshotRefreshService {
   ): Promise<LiveMeterReadings | null> {
     const previousSnapshot = this.reader.snapshotStore.getSnapshot();
     const isTargetedRefresh = !refreshInventory && options.targetedRefresh === true && previousSnapshot.length > 0;
+    const inventoryTrustEpoch = this.reader.chargingCurrentControl.trustEpoch();
     const fetchResult = await fetchDevicesForSnapshotRefresh(this, isTargetedRefresh);
     if (!fetchResult || this.stopped) return null;
     const { devices: list, fetchSource, failedIds } = fetchResult;
@@ -586,7 +587,9 @@ export class SnapshotRefreshService {
     // Only a full inventory can remove companions. Resolve membership before
     // parsing publishes eligibility.
     if (fetchSource === 'raw_manager_devices') {
-        this.reader.chargingCurrentControl.retainDevices(acceptedRawDevices);
+        this.reader.chargingCurrentControl.retainDevices(
+            acceptedRawDevices, inventoryTrustEpoch, fetchResult.rejectedPayloads,
+        );
     }
     const effectiveList = observeBatteryStateFromList(
         this.observationProducers.battery,
