@@ -808,5 +808,8 @@
   },
   "3.33.1": {
     "en": "New: PELS controls the amina S charger, starting and stopping charging and setting its charging current with a Homey API key. Adax Wi-Fi heaters now show their real draw, so turning one down or off counts as relief at once. Høiax water heaters get power levels sized from their own element wattages, and two-element Connected heaters can now be stepped. Meters that name their phases a, b and c are read per phase."
+  },
+  "3.33.2": {
+    "en": "New: PELS controls go-e chargers and the Smappee EV Wall, SolaX batteries through their inverter's remote control, and NIBE heat pumps on the myUplink app by their room setpoint. A Tesla can now be controlled without its Location & navigation device, and PELS recommends adding one. A heater that lowers its temperature to make room for another device is no longer switched off instead."
   }
 }
