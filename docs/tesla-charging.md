@@ -9,7 +9,7 @@ PELS can manage charging through the **Battery & charging** device in **Tesla Ca
 
 ## Set up the car
 
-1. Pair the car, **Battery & charging**, and location devices through Tesla Car & Energy. They must identify the same vehicle.
+1. Pair the car, **Battery & charging**, and **Location & navigation** devices through Tesla Car & Energy. They must identify the same vehicle. PELS also works without **Location & navigation**, but then it cannot tell charging at home from charging at another AC charger.
 2. Open the charging device in **PELS → Settings → Devices**. Follow [Configure an EV Charger](/ev-charger) to choose the correct phases and current limit for your car and installation. Current commands use whole amps from 6 to 32 A; pausing uses the charging switch.
 3. In **Setup → Charging current**, turn on **Control charging through this car**. Manage either the car or its physical charger: turn off **Power-limit control** for the other device.
 4. Create a Homey API key with **Flow** permission using [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro). Enter the key and select **Save key and enable**. If a key is already verified, select **Use built-in control**. PELS cannot create this key for you. One key works for all supported cars and chargers on this Homey.
@@ -29,6 +29,6 @@ PELS handles start and stop separately. Do not add a second current controller a
 
 ## Charging at home
 
-Control requires an online, stationary vehicle connected for AC charging at Homey's configured location. Missing or ambiguous location evidence blocks control. Moving away, disconnecting or becoming unavailable revokes the confirmed session. Control returns as soon as the car again reports that state, including after a restart while it stays parked. Keep Homey's location accurate.
+Control requires an online, stationary vehicle connected for AC charging at Homey's configured location. With a **Location & navigation** device, PELS checks that the car is within 100 m of that location; two of them for one car block control. Without one, PELS treats every stationary AC session as charging at home, so a session at work or at a friend's AC charger also counts toward your home's power. PELS then recommends adding the device; you can dismiss the recommendation. Moving away, disconnecting or becoming unavailable revokes the confirmed session. Control returns as soon as the car again reports that state, including after a restart while it stays parked. Keep Homey's location accurate.
 
 Tesla commands depend on the vehicle and its connection to Tesla. PELS prepares the current limit before starting a paused car and confirms running adjustments through reported current and power. Commands may be delayed or fail, and this cannot provide fast overload protection. Avoid another service independently controlling the same charging session, including reward or charging-schedule services that compete with PELS.

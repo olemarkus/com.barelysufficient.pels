@@ -23,9 +23,14 @@ export type TeslaHomeCheck =
   | 'location_unavailable' | 'no_car_coordinates' | 'no_home_coordinates'
   | 'coordinates_undated' | 'coordinates_in_future';
 
-/** Why a battery is or is not in a home session. Carries a distance from home, never a position. */
+/**
+ * Why a battery is or is not in a home session. Carries a distance from home, never a position.
+ * `home_without_location`: the vehicle has no Location & navigation device in Homey's full
+ * device list, so the session rests on the car and charging checks alone.
+ */
 export type TeslaHomeEvidence =
   | { kind: 'home' }
+  | { kind: 'home_without_location' }
   | { kind: 'failed'; check: TeslaHomeCheck }
   | { kind: 'too_far'; distanceFromHomeM: number };
 
@@ -91,11 +96,19 @@ function soleCompanion(
   return matches.length === 1 ? matches[0]! : 'multiple';
 }
 
-/** Whether the vendor observations show a stationary AC session at home, or the first check that failed. */
+/**
+ * Whether the vendor observations show a stationary AC session at home, or the first check that failed.
+ *
+ * `inventoryRead`: whether `devices` holds a full device list read since the last trust gap. Only
+ * then is a missing Location & navigation device known to be unpaired rather than not read yet; a
+ * vehicle without one is then admitted on its car and charging checks, which rule out DC and
+ * driving but not an AC charger away from home.
+ */
 export function resolveTeslaHomeEvidence(
   battery: HomeyDeviceLike,
   devices: readonly HomeyDeviceLike[],
   home: HomeLocation,
+  inventoryRead: boolean,
 ): TeslaHomeEvidence {
   const vehicleId = battery.data?.id;
   if (!vehicleId) return failed('no_vehicle_id');
@@ -103,11 +116,19 @@ export function resolveTeslaHomeEvidence(
   if (batteryFailure) return failed(batteryFailure);
   const siblings = devices.filter((device) => device.data?.id === vehicleId);
   const location = soleCompanion(siblings, 'location');
-  if (location === 'none') return failed('no_location_device');
+  if (location === 'none' && !inventoryRead) return failed('no_location_device');
   if (location === 'multiple') return failed('multiple_location_devices');
   const car = soleCompanion(siblings, 'car');
   if (car === 'none') return failed('no_car_device');
   if (car === 'multiple') return failed('multiple_car_devices');
   const carFailure = stationaryOnlineCarFailure(car);
-  return carFailure ? failed(carFailure) : locationEvidence(location, home);
+  if (carFailure) return failed(carFailure);
+  return location === 'none' ? { kind: 'home_without_location' } : locationEvidence(location, home);
+}
+
+/** Whether the vehicle of `battery` has no Location & navigation device among `devices`. */
+export function lacksTeslaLocationDevice(battery: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): boolean {
+  const vehicleId = battery.data?.id;
+  if (!vehicleId) return false;
+  return soleCompanion(devices.filter((device) => device.data?.id === vehicleId), 'location') === 'none';
 }

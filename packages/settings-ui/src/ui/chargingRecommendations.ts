@@ -2,7 +2,35 @@ import type { ChargingAccessStatus, ChargingCurrentRead } from '../../../contrac
 import type { SetupRecommendation } from './recommendationsModel.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 
+/**
+ * A car PELS controls whose app offers a companion device the owner has not
+ * paired. Its own recommendation, beside the setup one: control works without
+ * it, so it is advice the owner may dismiss.
+ */
+function missingCompanionRecommendation(device: ChargingCurrentRead): SetupRecommendation[] {
+  if (device.missingCompanion !== 'vehicle_location' || device.setup.confirmation !== 'vehicle') return [];
+  const name = formatDisplayDeviceName(device.name);
+  return [{
+    id: `charging-vehicle-location:${encodeURIComponent(device.deviceId)}`,
+    version: 1,
+    category: 'recommendation',
+    title: `Add the location device for ${name}`,
+    body: 'PELS cannot see where this car is, so it treats every AC charging session as charging at home. '
+      + 'In Homey, add the car’s Location & navigation device from Tesla Car & Energy. '
+      + 'PELS then controls charging only while the car is at home.',
+    actionLabel: 'Review device',
+    target: { kind: 'device', deviceId: device.deviceId },
+  }];
+}
+
 export function chargingRecommendations(
+  devices: readonly ChargingCurrentRead[],
+  access: ChargingAccessStatus,
+): SetupRecommendation[] {
+  return [...setupRecommendations(devices, access), ...devices.flatMap(missingCompanionRecommendation)];
+}
+
+function setupRecommendations(
   devices: readonly ChargingCurrentRead[],
   access: ChargingAccessStatus,
 ): SetupRecommendation[] {

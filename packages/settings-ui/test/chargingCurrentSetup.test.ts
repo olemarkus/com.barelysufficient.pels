@@ -9,7 +9,7 @@ vi.mock('../src/ui/homey.ts', () => ({
 const { setChargingCurrentDevice } = await import('../src/ui/deviceDetail/chargingCurrent.tsx');
 const charger: ChargingCurrentRead = { deviceId: 'charger', name: 'Garage',
   setup: { method: 'flow', confirmation: 'single_charger' }, scope: 'installation',
-  capabilityWritable: false, sharedInstallation: false, flowCheck: 'clear', flowNames: [], currentRoute: 'flow' };
+  capabilityWritable: false, sharedInstallation: false, flowCheck: 'clear', flowNames: [], currentRoute: 'flow', missingCompanion: 'none' };
 
 beforeEach(() => {
   document.body.innerHTML = '<div id="device-detail-charging-current"></div>';

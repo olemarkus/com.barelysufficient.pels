@@ -175,6 +175,9 @@ export class ChargingCurrentControl {
 
   /** A full inventory: sessions keep only its devices, and so does the read-side lookup. */
   retainDevices(devices: readonly HomeyDeviceLike[]): void {
+    // The list belongs to the trust epoch in force now, so a session's record of it survives
+    // the observation that follows in the same refresh.
+    this.synchronizeTrust();
     this.sessions.retainDevices(devices);
     const present = new Set(devices.map((device) => device.id));
     for (const id of this.observedDevices.keys()) if (!present.has(id)) this.observedDevices.delete(id);
@@ -271,6 +274,7 @@ export class ChargingCurrentControl {
         flowCheck,
         flowNames: [...names.values()],
         currentRoute: this.routesBuiltIn(device.id) ? 'built_in' : 'flow',
+        missingCompanion: this.sessions.missingCompanion(device.id),
       }];
     });
   }
