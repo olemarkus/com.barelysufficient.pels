@@ -229,6 +229,22 @@ export type DeviceAdapter = {
   readBackAfterWrite: boolean;
   /** Whether standard production-cap writes are suitable for repeated live control. */
   supportsProductionLimits: boolean;
+  /**
+   * A whole-device read as PELS accepts it: an integration whose app keeps a
+   * standard quantity under its own capability name reads it under the
+   * standard one. Applied once, at the read contract (`resolveDeviceRead`),
+   * before validation, so everything past it (merges, the accepted read,
+   * parsing) sees only the standard name.
+   */
+  projectRead(device: HomeyDeviceLike): HomeyDeviceLike;
+  /** A live report's capability, as `projectRead` names it on `device`, the accepted read. */
+  reportedCapabilityId(device: HomeyDeviceLike, capabilityId: string): string;
+  /**
+   * The device's own capability for a write PELS requests by its standard
+   * name, for every write that is not the binary switch: the inverse of
+   * `projectRead`.
+   */
+  capabilityWrite(device: HomeyDeviceLike, request: CapabilityWrite): CapabilityWrite;
   /** `sessions`: the transport's adapter sessions, for what they have observed of the device. */
   switchWrite(snapshot: TransportDeviceSnapshot, request: CapabilityWrite, sessions: SessionEvidence): SwitchWrite;
   recoverSwitchWrite(

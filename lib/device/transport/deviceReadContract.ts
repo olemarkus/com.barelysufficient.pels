@@ -341,7 +341,7 @@ export function resolveDeviceRead(
 ): HomeyDeviceLike {
     const deviceId = device.id;
     const signatures = violationSignatures(owner);
-    const resolution = withholdInvalidModelCapabilities(device, previousRead);
+    const resolution = withholdInvalidModelCapabilities(getDeviceAdapter(device).projectRead(device), previousRead);
     const { violations, retainedCapabilityIds, withheldCapabilityIds } = resolution;
     if (violations.length === 0) {
         if (signatures.delete(deviceId)) {

@@ -102,7 +102,15 @@ function resolveSwitchSdkWrite(
         : getSnapshotAdapter(snapshot).switchWrite(snapshot, requested, sessions);
 }
 
-type DrivableSurface = Extract<HomeBatteryControlSurface, { kind: 'setpoint' } | { kind: 'app_actions' }>;
+/** A non-switch write, under the capability the device's integration writes it to. */
+function resolveCapabilitySdkWrite(
+    trackedDevice: HomeyDeviceLike | undefined,
+    requested: CapabilityWrite,
+): CapabilityWrite {
+    return trackedDevice ? getDeviceAdapter(trackedDevice).capabilityWrite(trackedDevice, requested) : requested;
+}
+
+type DrivableSurface =Extract<HomeBatteryControlSurface, { kind: 'setpoint' } | { kind: 'app_actions' }>;
 
 /**
  * The surface a storage intent's writes are resolved from: a setpoint
@@ -240,7 +248,11 @@ export class DeviceWriteService {
           requested,
           this.chargingCurrentControl.sessions,
         )
-        : { kind: 'write', write: requested, readBackAsWritten: true };
+        : {
+            kind: 'write',
+            write: resolveCapabilitySdkWrite(this.snapshotStore.getTrackedRawDevice(deviceId), requested),
+            readBackAsWritten: true,
+        };
     logEvCapabilityRequest(deviceId, capabilityId, normalizedValue, snapshotBefore);
     if (sdkWrite.kind === 'none') {
         emitTransportDebug({ event: 'device_capability_write_skipped', deviceId, capabilityId,

@@ -23,6 +23,7 @@ import type { HomeyDeviceLike } from '../../utils/types';
 import { handleRealtimeDeviceUpdateEvent } from './deviceUpdateHandling';
 import { handleRealtimeCapabilityUpdateWithProbe } from './realtimeCapabilityHandling';
 import { getIsAvailable } from './managerHelpers';
+import { getDeviceAdapter } from '../deviceAdapterRegistry';
 
 /** Why a charger's wait for a car ended, with the car that ended it. */
 type WaitEnd = Pick<Extract<EvCarLinkEvent, { event: 'ev_car_link_waiting_ended' }>, 'reason' | 'carId' | 'carName'>;
@@ -81,16 +82,19 @@ export class RealtimeIngestService {
   }
 
   handleCapabilityUpdate(
-    deviceId: string, capabilityId: string, value: unknown, transactionId: string | undefined,
+    deviceId: string, reportedCapabilityId: string, value: unknown, transactionId: string | undefined,
   ): void {
-    // Classified once per Homey event: whatever the adapter derives from PELS's
-    // echo is PELS's echo too.
-    const echoed = this.observationBridge.state.ownWrites.takeEcho(deviceId, capabilityId, transactionId);
+    // Classified once per Homey event, under the capability PELS wrote: whatever
+    // the adapter derives from PELS's echo is PELS's echo too.
+    const echoed = this.observationBridge.state.ownWrites.takeEcho(deviceId, reportedCapabilityId, transactionId);
     const pelsEcho = echoed !== undefined;
     // Keep accepted source fields current before a later whole-device read can
     // retain them. Follow the step lane's echo policy: native current echoes
     // are accepted observations; other local writes are not.
     const raw = this.reader.snapshotStore.getLastAcceptedRawDevice(deviceId);
+    // The accepted read names the report as its integration reads it (`projectRead`).
+    const capabilityId = raw
+      ? getDeviceAdapter(raw).reportedCapabilityId(raw, reportedCapabilityId) : reportedCapabilityId;
     if (!isIgnoredOwnStepEcho(capabilityId, pelsEcho) && raw) {
       this.reader.snapshotStore.updateAcceptedRawDevice(
         withAcceptedCapabilityReport(raw, capabilityId, value, Date.now()),
