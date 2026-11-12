@@ -112,4 +112,37 @@ describe('restore pacing at the SDK boundary', () => {
     await vi.advanceTimersByTimeAsync(90_000);
     await drainUntilCalledWith(putSpy, secondPath, pelsCapabilityWrite(true));
   });
+
+  it('counts power arriving during the write before the binary ON confirmation', async () => {
+    connectLiveFeed();
+    const first = await buildHeater('first', 1500);
+    const second = await buildHeater('second', 1500);
+    setMockDrivers({ driverA: new MockDriver('driverA', [first, second]) });
+    const write = first.setCapabilityValue.bind(first);
+    vi.spyOn(first, 'setCapabilityValue').mockImplementation(async (capabilityId, value, transactionId) => {
+      if (capabilityId === 'onoff' && value === true) {
+        vi.setSystemTime(Date.now() + 1);
+        await write('measure_power', 1500);
+        await emitCapability('first', 'measure_power', 1500);
+        vi.setSystemTime(Date.now() + 20);
+        await write(capabilityId, value, transactionId);
+        await emitCapability('first', capabilityId, value);
+        return;
+      }
+      await write(capabilityId, value, transactionId);
+    });
+    const { putSpy, secondPath, setHomePower } = await startPacing(4, 500);
+    await drainPending();
+    expect(putSpy).not.toHaveBeenCalledWith(secondPath, pelsCapabilityWrite(true));
+
+    // A power observation alone cannot release another load. The meter must
+    // replace its value twice after that draw reached PELS, with room left.
+    setHomePower(1950);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await drainPending();
+    expect(putSpy).not.toHaveBeenCalledWith(secondPath, pelsCapabilityWrite(true));
+    setHomePower(2000);
+    await vi.advanceTimersByTimeAsync(90_000);
+    await drainUntilCalledWith(putSpy, secondPath, pelsCapabilityWrite(true));
+  });
 });

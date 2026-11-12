@@ -237,11 +237,15 @@ window has visibly landed:
 
 - **The device started drawing, or a running stepped load rose.** For a device
   resumed from idle: its live, direct power reading went from idle (below 50 W) to
-  active in a reading measured and received after its restore stamp, and it is
-  still active. For a stepped load that was already running when it stepped up:
+  active in a reading measured and received after its restore evidence window
+  began, and it is still active. For a stepped load that was already running when it stepped up:
   its live draw rose above its draw at the step-up, in a reading measured and
   received after the step-up, and it still draws that much. A setpoint raise on a
   running heating load keeps the timer: its rise cannot be told from fluctuation.
+  For a confirmed binary ON, the evidence window begins at command dispatch:
+  power can arrive before the ON confirmation. The cooldown still starts at
+  confirmation. A newer step-up advances the evidence window, so a delayed ON
+  confirmation cannot credit power that predates that increase.
 - **It reached half its expected draw**: for a device resumed from idle, half the
   running step's planning power for a stepped load, its expected power otherwise,
   judged against the run's highest level, re-dated only by a further rise of at
@@ -269,9 +273,9 @@ window has visibly landed:
   device keeps the timer, and so does a pending step command or target
   temperature on a restored device, or instability noted after a restore in the
   window. A step or target another device keeps retrying does not hold the
-  others. Power reported before a restore was confirmed does not count either: a
-  binary restore is stamped at the observed time of its on/off confirmation, so
-  draw that arrived first never starts a run after it.
+  others. Power from before dispatch does not count. A binary restore keeps its
+  cooldown stamp at the observed time of its ON confirmation, while its separate
+  evidence window admits power that arrived during the command.
 
 The observer owns the run; the planner applies its existing restore clocks and each
 device's expected draw. Without that evidence the timer expires normally. Device
