@@ -15,6 +15,7 @@ const battery = (targetW: number, observedW: number): PlanInputDevice & { storag
     reading: 'observed', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
     handBackDeferred: false, signedPowerW: observedW, observedAtMs: 0, claimHeld: true, admissible: true,
     verdict: 'responding', deliveryCeilingW: 2500, chargeCeilingW: 2500, powerLimitControl: true,
+    ownModeGridCharge: { kind: 'observed' },
     continuousPlan: { setpointW: targetW, validUntilMs: NOW + 600_000, reason: 'charge_grid' },
   },
 });

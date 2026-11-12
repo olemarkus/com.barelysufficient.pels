@@ -10,6 +10,7 @@ import type {
 const HOUR_MS = 3_600_000;
 const battery = (changes: Partial<BatteryEnergyModel> = {}): BatteryEnergyModel => ({
   capacityKWh: 4,
+  gridCharge: { kind: 'any' },
   storedEnergyKWh: 1,
   minimumEnergyKWh: 1,
   maxChargeKW: 3,
@@ -86,7 +87,8 @@ describe('continuous battery energy planning', () => {
   it('accounts for both conversion directions and wear in actual energy costs', () => {
     const result = planned({
       battery: battery({
-        capacityKWh: 2, storedEnergyKWh: 0, minimumEnergyKWh: 0,
+        capacityKWh: 2,
+        gridCharge: { kind: 'any' }, storedEnergyKWh: 0, minimumEnergyKWh: 0,
         roundTripEfficiency: 0.81, wearCostPerKWh: 0.1,
       }),
       periods: [period(0, { householdDemandKWh: 0 }), period(1, { importPrice: 3, householdDemandKWh: 0.81 })],
@@ -264,7 +266,8 @@ describe('continuous battery energy planning', () => {
       importPrice, householdDemandKWh: 0.5, gridImportLimitKW: 1,
     }));
     const model = battery({
-      capacityKWh: 1, storedEnergyKWh: 0.5, minimumEnergyKWh: 0,
+      capacityKWh: 1,
+      gridCharge: { kind: 'any' }, storedEnergyKWh: 0.5, minimumEnergyKWh: 0,
       maxChargeKW: 0.5, maxDischargeKW: 0.5, terminalValuePerKWh: 0.05,
     });
     const exhaustive = (index: number, energy: number): number => {
@@ -322,5 +325,62 @@ describe('continuous battery energy planning', () => {
       periods: [period(0, { householdDemandKWh: 1, gridImportLimitKW: 1, laterSupplyKW: 3, importPrice: 0.1 }),
         period(1, { importPrice: 5, householdDemandKWh: 0 })],
     })).toMatchObject({ status: 'planned', periods: [{ batteryPowerKW: 0 }, { batteryPowerKW: 0 }] });
+  });
+});
+
+describe('continuous battery energy planning: a battery whose grid charge has one fixed power', () => {
+  // A 2.7 kWh group that charges from the grid only at its full 0.8 kW.
+  const fixed = (changes: Partial<BatteryEnergyModel> = {}) => battery({
+    capacityKWh: 2.7, storedEnergyKWh: 0.6, minimumEnergyKWh: 0.3, maxChargeKW: 0.8, maxDischargeKW: 0.8,
+    gridCharge: { kind: 'fixed', powerKW: 0.8 }, ...changes,
+  });
+  // A cheap night hour, then an expensive evening hour the battery could supply.
+  const cheapThenDear = (changes: Partial<BatteryEnergyPeriod> = {}) => [
+    period(0, { importPrice: 0.1, householdDemandKWh: 0.2, ...changes }),
+    period(1, { importPrice: 1, householdDemandKWh: 0.8 }),
+  ];
+
+  it('plans a grid charge at the full fixed power when the import ceiling fits it', () => {
+    const result = planned({ battery: fixed(), periods: cheapThenDear() });
+    expect(result.periods[0]).toMatchObject({ reason: 'charge_grid', batteryPowerKW: 0.8 });
+  });
+
+  it('never plans a partial grid charge: with room for less than the fixed power it charges nothing from the grid', () => {
+    const result = planned({ battery: fixed(), periods: cheapThenDear({ gridImportLimitKW: 0.7 }) });
+    expect(result.periods[0].reason).not.toBe('charge_grid');
+    expect(result.periods[0].batteryPowerKW).toBeLessThanOrEqual(1e-9);
+  });
+
+  it('plans every grid charge at exactly the fixed power, never between', () => {
+    const periods = [0, 1, 2, 3].map(index => period(index, { importPrice: 0.1 + index * 0.01, householdDemandKWh: 0.1 }))
+      .concat(period(4, { importPrice: 1, householdDemandKWh: 2 }));
+    const result = planned({ battery: fixed({ storedEnergyKWh: 0.3 }), periods });
+    for (const value of result.periods.filter(entry => entry.reason === 'charge_grid')) {
+      expect(value.batteryPowerKW).toBe(0.8);
+    }
+    expect(result.periods.some(entry => entry.reason === 'charge_grid')).toBe(true);
+  });
+
+  it('still stores a surplus smaller than the fixed power', () => {
+    // Equal prices and a lossy round trip: buying to store never pays, keeping free solar does.
+    const result = planned({
+      battery: fixed({ roundTripEfficiency: 0.9 }),
+      periods: [
+        period(0, { importPrice: 0.3, householdDemandKWh: 0.2, solarKWh: 0.5 }),
+        period(1, { importPrice: 0.3, householdDemandKWh: 0.8 }),
+      ],
+    });
+    expect(result.periods[0].reason).toBe('store_solar');
+    expect(result.periods[0].batteryPowerKW).toBeCloseTo(0.3, 1);
+  });
+
+  it('leaves a battery that charges at any power planning a partial grid charge as before', () => {
+    const result = planned({
+      battery: fixed({ gridCharge: { kind: 'any' } }),
+      periods: cheapThenDear({ gridImportLimitKW: 0.7 }),
+    });
+    expect(result.periods[0].reason).toBe('charge_grid');
+    expect(result.periods[0].batteryPowerKW).toBeGreaterThan(0.3);
+    expect(result.periods[0].batteryPowerKW).toBeLessThan(0.8);
   });
 });

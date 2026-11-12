@@ -58,6 +58,7 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}): PlanInputDevice
     verdict: 'unverified',
     deliveryCeilingW: 2500,
     chargeCeilingW: 2500,
+    ownModeGridCharge: { kind: 'observed' },
     powerLimitControl: true,
     ...overrides,
   },
@@ -539,6 +540,7 @@ describe('a raise past the own mode\'s charge, ranked against the consumers belo
     const base = battery({
       range: { minW: -5000, maxW: 5000, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
       chargeCeilingW: 5000,
+      ownModeGridCharge: { kind: 'observed' },
       ...overrides,
     });
     return { ...base, id, name: id, priority };

@@ -9,6 +9,25 @@ import type {
 const HOUR_MS = 3_600_000;
 export const ENERGY_EPSILON_KWH = 1e-9;
 
+/** The plan's stored-energy grid: capacity / ENERGY_INTERVALS kWh per state (`planBatteryEnergy`). */
+export const ENERGY_INTERVALS = 200;
+
+/**
+ * Whether a charging transition that imports is one a fixed grid-charge
+ * battery can make: at its one power, within one stored-energy state of it,
+ * since the plan's energies sit on the state grid. A charge that imports
+ * nothing is surplus, which any battery takes at any power.
+ */
+const admitsGridCharge = (
+  battery: BatteryEnergyModel, acEnergyKWh: number, gridImportKWh: number, hours: number,
+): boolean => {
+  if (battery.gridCharge.kind === 'any' || acEnergyKWh <= ENERGY_EPSILON_KWH || gridImportKWh <= ENERGY_EPSILON_KWH) {
+    return true;
+  }
+  const stateKWh = battery.capacityKWh / ENERGY_INTERVALS / Math.sqrt(battery.roundTripEfficiency);
+  return Math.abs(acEnergyKWh - battery.gridCharge.powerKW * hours) <= stateKWh + ENERGY_EPSILON_KWH;
+};
+
 /**
  * A discharge whose energy reaches the grid is an export; one the house uses
  * is household supply. Household-only planning can never export battery
@@ -106,10 +125,16 @@ export function batteryEnergyFlow(
     || gridEnergyKWh > importAllowanceKWh(period, acEnergyKWh) + ENERGY_EPSILON_KWH) return false;
   const gridImportKWh = Math.max(0, gridEnergyKWh);
   const gridExportKWh = Math.max(0, -gridEnergyKWh);
+  if (!admitsGridCharge(battery, acEnergyKWh, gridImportKWh, hours)) return false;
+  // A fixed grid charge is commanded at its one power; the state grid only approximates it.
+  const fixedGridCharge = battery.gridCharge.kind === 'fixed' && acEnergyKWh > ENERGY_EPSILON_KWH
+    && gridImportKWh > ENERGY_EPSILON_KWH;
   return {
     startsAtMs: period.startsAtMs,
     durationMs: period.durationMs,
-    batteryPowerKW: acEnergyKWh / hours,
+    batteryPowerKW: fixedGridCharge && battery.gridCharge.kind === 'fixed'
+      ? battery.gridCharge.powerKW
+      : acEnergyKWh / hours,
     energyBeforeKWh: beforeKWh,
     energyAfterKWh: afterKWh,
     gridImportKWh,

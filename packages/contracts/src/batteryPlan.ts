@@ -14,8 +14,17 @@ export type BatteryChargeTaperStep = {
   maxChargeKW: number;
 };
 
+/**
+ * How a battery may charge from the grid: at `any` power up to its charge
+ * limit, or only at one `fixed` power (a battery whose grid charge is a mode
+ * with no power setting). Charging from surplus alone is never limited by it.
+ */
+export type BatteryGridCharge = { kind: 'any' } | { kind: 'fixed'; powerKW: number };
+
 export type BatteryEnergyModel = {
   capacityKWh: number;
+  /** A transition that imports to charge is admitted only at the fixed power, when there is one. */
+  gridCharge: BatteryGridCharge;
   storedEnergyKWh: number;
   minimumEnergyKWh: number;
   maxChargeKW: number;

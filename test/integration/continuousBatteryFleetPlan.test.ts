@@ -20,7 +20,8 @@ const config: ContinuousBatteryPlanConfig = {
 };
 
 const battery = (changes: Partial<BatteryEnergyModel> = {}): BatteryEnergyModel => ({
-  capacityKWh: 10, storedEnergyKWh: 8, minimumEnergyKWh: 0,
+  capacityKWh: 10,
+  gridCharge: { kind: 'any' }, storedEnergyKWh: 8, minimumEnergyKWh: 0,
   maxChargeKW: 2, chargeTaper: [], maxDischargeKW: 2, roundTripEfficiency: 1,
   wearCostPerKWh: 0, terminalValuePerKWh: 0, ...changes,
 });

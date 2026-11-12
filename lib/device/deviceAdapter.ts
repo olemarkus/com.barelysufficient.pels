@@ -202,7 +202,12 @@ export type HomeBatteryModeBinding = {
   kind: 'meter_modes';
   claimCapabilityId: HomeBatteryClaimCapabilityId;
   rejection: HomeBatteryClaimRejection;
-  modes: Omit<HomeBatteryMeterModes, 'gridChargeW'>;
+  modes: Omit<HomeBatteryMeterModes, 'gridChargeW' | 'gridChargingModes'>;
+  /**
+   * Its own modes, beyond `modes.chargeGrid`, that may charge from the grid
+   * (`HomeBatteryMeterModes.gridChargingModes`).
+   */
+  ownGridChargingModes: readonly string[];
   resolvePowers(capabilityObj: DeviceCapabilityMap): { maxDischargeW: number; maxChargeW: number } | undefined;
 };
 

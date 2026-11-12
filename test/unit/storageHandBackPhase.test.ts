@@ -43,3 +43,24 @@ describe('hand-back from an export-phase hold', () => {
     expect(handedBack(lever({ resumePlan: { setpointW: -800, validUntilMs: 5_000 } }))).toBe(false);
   });
 });
+
+describe('hand-back of a standby hold on a battery that follows the meter', () => {
+  // The owner's own mode was standby: PELS held the group at 0 W after a discharge, with 1.8 kW of room.
+  const handedBackWithRoom = (ownModeChargeW: number, availableHeadroom: number): boolean => {
+    const state = createPlanEngineState();
+    const device = buildPlanDevice({ id: 'battery' });
+    const cycle = restoreCycleFixture(new Map([['battery', device]]), state, { nowTs: 10_000 });
+    const held = lever({ setpointW: 0, preClaimSignedW: 0, ownModeChargeW, exportPhase: undefined });
+    planStorageHandBack(cycle, device, held, { availableHeadroom, restoredOneThisCycle: false });
+    return cycle.storageHandedBack.has('battery');
+  };
+
+  it('hands back at once when its own mode imports nothing', () => {
+    expect(handedBackWithRoom(0, 1.8)).toBe(true);
+  });
+
+  it('holds a battery whose own mode charges from the grid until the room fits that charge', () => {
+    expect(handedBackWithRoom(2400, 1.8)).toBe(false);
+    expect(handedBackWithRoom(800, 1.8)).toBe(true);
+  });
+});
