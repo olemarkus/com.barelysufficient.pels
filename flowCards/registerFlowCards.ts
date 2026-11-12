@@ -46,11 +46,9 @@ import type {
   DeferredObjectiveHoursRemainingBus,
   DeferredObjectiveHoursRemainingTracker,
   DeferredObjectivePlanRevisionBus,
-  DeferredObjectiveSettingsEntry,
-  DeferredObjectiveRoster,
   DeferredObjectiveStatusBus,
-  ObjectiveWriteOutcome,
 } from '../lib/objectives/deferredObjectives';
+import type { SmartTaskCommandPort } from '../lib/objectives/deferredObjectives/smartTaskCommands';
 
 // Device-scoped objective writes the Flow cards delegate to. Both write the
 // target device's OWN settings key + run the shared notify/flush
@@ -60,18 +58,12 @@ import type {
 // absence read, or a device outside the main home), so it forwards the
 // `ObjectiveWriteOutcome`; the Flow cards throw on a refusal so Homey surfaces
 // it rather than a silent (false) success. A clear never refuses.
-export type UpsertDeferredObjectiveForDevice = (
-  deviceId: string,
-  deviceName: string | null,
-  entry: DeferredObjectiveSettingsEntry,
-  rescue?: 'preserve' | 'replace',
-) => ObjectiveWriteOutcome;
 export type ClearDeferredObjectiveForDevice = (params: {
   deviceId: string;
   deviceName: string | null;
 }) => void;
 
-export type FlowCardDeps = {
+export type FlowCardDeps = SmartTaskCommandPort & {
   homey: FlowHomeyLike;
   areFlowBackedCardsAvailable: () => boolean;
   structuredLog: {
@@ -143,12 +135,10 @@ export type FlowCardDeps = {
     storedCount: number;
     missingHours: number[];
   };
-  getDeferredObjectiveSettings: () => DeferredObjectiveRoster;
   // Required — the deadline / clear / rescue cards write each device's own
   // settings key through these (a per-key write cannot clobber a sibling).
   // Non-optional so a missing wiring is a build error, not a silent no-op.
   // Production always wires these via appInit.
-  upsertDeferredObjectiveForDevice: UpsertDeferredObjectiveForDevice;
   clearDeferredObjectiveForDevice: ClearDeferredObjectiveForDevice;
   // Durable multi-home membership used by the live `deadline_status_is`
   // guard. A transient Main-authority fence must not erase the status of an

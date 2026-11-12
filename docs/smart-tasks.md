@@ -26,7 +26,7 @@ The quickest way is **New smart task** on the **Smart tasks** page: choose a man
 
 The preview also says what happens to the device **When the task is done**, from the device's own settings (see [Power-Limit Control and Tasks](#power-limit-control-and-tasks)). **Change** opens those settings without losing what you have typed.
 
-For tasks at fixed times, open **Settings → Schedules → New schedule**, choose **Create Smart task**, and set the device, goal, creation time and ready-by time. Run it once or repeat it on the days you choose. Switching a schedule off stops future creations; a task it already created stays active.
+For tasks at fixed times, open **Settings → Schedules → New schedule**, choose **Create Smart task**, and set the device, goal, creation time and ready-by time. Run it once or repeat it on the days you choose. Each occurrence replaces the device's current task and keeps its extra permissions. Permissions enabled in the schedule apply whenever the task is planned to run; permissions left off keep their existing settings. Switching a schedule off stops future creations; a task it already created stays active.
 
 Use Homey Flow action cards for event-based creation, such as plugging in a car, or when other Flow conditions should decide whether to create the task:
 

@@ -2598,10 +2598,8 @@ The results come from `lib/schedules/scheduleService.ts` and `scheduleActions.ts
 - `Trigger recorded.` while the action is under way (PELS records the
   occurrence before it acts, so it never runs twice), and afterwards when PELS
   could not record how the action went.
-- `Waiting for the device's current Smart task to end.` while a scheduled task
-  waits to replace one.
 - `Skipped because` `the ready-by time had already passed.`, `the ready-by time
-  does not exist on this date.`, `this device already has a Smart task.`,
+  does not exist on this date.`,
   `this device is not available for a scheduled Smart task.`, `another schedule
   has the same time and target.`, or `the current mode did not match the
   schedule condition.`
@@ -2612,6 +2610,15 @@ The results come from `lib/schedules/scheduleService.ts` and `scheduleActions.ts
   available for this Smart task.`, or `the target was outside the device’s
   range.`
 - `Could not run. {reason}`, or `Could not run this schedule.` without one.
+- `Could not run. The Smart task was saved, but an extra permission could not be saved.`
+  if the deadline write succeeded and a later permission write failed.
+
+A scheduled creation replaces the device's existing task immediately, like its
+deadline Flow card. It keeps standing extra permissions and applies each
+permission enabled in the schedule whenever the task is planned to run. A
+stored `Waiting for the device's current Smart task to end.` from an earlier
+version reads as `Skipped because this device already has a Smart task.`;
+current occurrences never wait for an existing task to end.
 
 ## Report a problem: after sending
 

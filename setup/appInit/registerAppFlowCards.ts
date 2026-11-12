@@ -15,10 +15,9 @@ import {
 } from './smartTaskHomeScope';
 import {
   clearObjectiveForDevice,
-  readAllObjectives,
   readSmartTaskInProgress,
-  upsertObjectiveForDevice,
 } from '../../lib/objectives/deferredObjectives';
+import { createSmartTaskCommandPort } from '../appSmartTaskCommands';
 import { buildDeferredObjectiveDeviceWriteDeps } from './deferredRecorders';
 import {
   readConfiguredPowerSource,
@@ -98,15 +97,8 @@ export function registerAppFlowCards(
     ),
     setExpectedOverride: (deviceId, kw) => ctx.flowBacked.setExpectedOverride(deviceId, kw),
     storeFlowPriceData: (kind, raw) => requirePriceCoordinator(ctx).storeFlowPriceData(kind, raw),
-    getDeferredObjectiveSettings: () => readAllObjectives(ctx.homey.settings),
-    // Both writes route through the device-scoped ops over the hardened
-    // settings-mutation primitive (see buildDeferredObjectiveDeviceWriteDeps),
-    // so the Flow cards and the create-smart-task widget share one
-    // read-modify-write + notify/flush path.
-    upsertDeferredObjectiveForDevice: (deviceId, deviceName, entry, rescue) => upsertObjectiveForDevice(
-      buildDeferredObjectiveDeviceWriteDeps(ctx, ctx.getNow().getTime()),
-      deviceId, deviceName, entry, rescue,
-    ),
+    // Flow and scheduled commands share the hardened per-device write and its recorder notifications.
+    ...createSmartTaskCommandPort(ctx),
     clearDeferredObjectiveForDevice: (params) => clearObjectiveForDevice(
       buildDeferredObjectiveDeviceWriteDeps(ctx, ctx.getNow().getTime()),
       params,

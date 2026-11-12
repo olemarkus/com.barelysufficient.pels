@@ -1,28 +1,43 @@
 import { scheduleInstant } from '../../packages/shared-domain/src/scheduleTime';
 import { getDateKeyInTimeZone, shiftDateKey } from '../../packages/shared-domain/src/utils/dateUtils';
 import type { Schedule } from '../../packages/contracts/src/schedules';
-import type { NewSmartTaskWriteResult } from '../../packages/contracts/src/smartTaskEdit';
+import type { SmartTaskCandidateDevice } from '../../packages/contracts/src/smartTaskEdit';
+import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
+import {
+  normalizeDeferredObjectiveSettingsEntry,
+} from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
 import { ScheduleSkip } from './scheduleSkip';
-import type { SmartTaskCreateLaneHost } from '../objectives/deferredObjectives/smartTaskCreateLane';
 import { rejectForSmartTaskHomeScope } from '../objectives/deferredObjectives/smartTaskCreateLane';
 import {
-  buildValidSmartTaskCandidate,
+  buildSmartTaskCandidateBase,
   resolveSmartTaskWriteDeadline,
 } from '../objectives/deferredObjectives/smartTaskCandidateRequest';
+import {
+  setSmartTaskDeadline,
+  setSmartTaskRescuePermission,
+  type SmartTaskCommandPort,
+} from '../objectives/deferredObjectives/smartTaskCommands';
+import type { ObjectiveWriteOutcome } from '../objectives/deferredObjectives/objectiveWrite';
 
-type CreateFailure = Exclude<NewSmartTaskWriteResult, { ok: true } | { reason: 'task_exists' }>['reason'];
-const CREATE_FAILURES: Record<CreateFailure, string> = {
-  device_not_found: 'The device was not found.',
-  device_not_planned: 'PELS does not manage this device.',
-  device_not_eligible: 'This device cannot take this Smart task now.',
-  device_in_sub_home: 'This device is in a separately metered home.',
-  invalid_candidate: 'The task target is invalid.',
-  write_refused: 'The Smart task could not be saved.',
-  unavailable: 'Smart tasks are temporarily unavailable.',
+const requireTaskWrite = (outcome: ObjectiveWriteOutcome): void => {
+  if (outcome.persisted) return;
+  const { reason } = outcome;
+  switch (reason) {
+    case 'device_not_planned': throw new Error('PELS does not manage this device.');
+    case 'device_in_sub_home': throw new Error('This device is in a separately metered home.');
+    case 'untrusted_absence':
+    case 'ownership_unavailable': throw new Error('The Smart task could not be saved.');
+    default: {
+      const exhaustive: never = reason;
+      throw new Error(`Unexpected task write refusal: ${exhaustive}`);
+    }
+  }
 };
 
 /** Commands shared with manual/Flow actions; this executor owns no device writes. */
-type ScheduleActionHost = SmartTaskCreateLaneHost & {
+type ScheduleActionHost = SmartTaskCommandPort & {
+  resolveSmartTaskHomeScope(deviceId: string): SmartTaskHomeScope;
+  listTaskDevices(): SmartTaskCandidateDevice[];
   handleOperatingModeChange(mode: string): Promise<void>;
 };
 
@@ -48,16 +63,23 @@ export class ScheduleActionExecutor {
     }
     const deadline = resolveSmartTaskWriteDeadline({ ...request, deadlineAtMs }, timeZone, Date.now());
     if (!deadline.ok) throw new ScheduleSkip('Skipped because the ready-by time had already passed.');
-    const candidate = buildValidSmartTaskCandidate(request, deadline.deadlineAtMs);
-    if (!candidate) throw new Error('The task target is invalid.');
-    const result = this.host.createNewDeferredObjective(request.deviceId, {
-      ...candidate, scheduleSource: { id: schedule.id, name: schedule.name },
+    const entry = normalizeDeferredObjectiveSettingsEntry({
+      ...buildSmartTaskCandidateBase(request.kind, request.target, deadline.deadlineAtMs),
+      enabled: true,
+      scheduleSource: { id: schedule.id, name: schedule.name },
     });
-    if (!result.ok) {
-      if (result.reason === 'task_exists') {
-        throw new ScheduleSkip('Skipped because this device already has a Smart task.', true);
+    if (!entry) throw new Error('The task target is invalid.');
+    const device = this.host.listTaskDevices().find((candidate) => candidate.deviceId === request.deviceId);
+    if (!device) throw new Error('The device was not found.');
+    requireTaskWrite(setSmartTaskDeadline(this.host, request.deviceId, device.deviceName, entry));
+    // An unchecked permission means its Flow card did not run, so keep its standing mode.
+    for (const permission of ['exemptFromBudget', 'limitLowerPriorityDevices', 'pauseLowerPriorityDevices'] as const) {
+      if (request[permission]) {
+        const outcome = setSmartTaskRescuePermission(this.host, request.deviceId, permission, 'always');
+        if (!outcome.persisted) {
+          throw new Error('The Smart task was saved, but an extra permission could not be saved.');
+        }
       }
-      throw new Error(CREATE_FAILURES[result.reason]);
     }
   }
 }
