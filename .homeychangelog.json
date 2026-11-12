@@ -814,5 +814,8 @@
   },
   "3.34.0": {
     "en": "New: a Stiebel Eltron heat pump's hot-water tank appears as its own device, so PELS can heat hot water in cheap hours or lower it for your limit without touching the room temperature. HomeWizard Plug-In Batteries appear as one battery that PELS steers through the P1 meter. Plan charging with PELS now works with Flow prices. A scheduled Smart task now replaces the device's current task instead of waiting for it to end, and PELS sends commands to several devices at once."
+  },
+  "3.34.1": {
+    "en": "Fixed: a Tesla that is unplugged or has finished charging now shows as Idle instead of Unavailable. PELS checks that a HomeWizard Plug-In Battery really returned to its own mode after PELS hands it back, and asks again if not. A device that draws power before Homey confirms it is on now counts at once, so the next device can resume sooner. Device reports include the EV charging range in use."
   }
 }
