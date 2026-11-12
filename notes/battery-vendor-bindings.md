@@ -107,6 +107,41 @@ charge power as its one grid-charge power; every other battery's `response` is
   still unreported past the confirmation window goes out again at the next
   rebuild, unless the battery left PELS's modes, which is a takeover.
 
+## HomeWizard Plug-In Battery
+
+`lib/device/homewizard/` (HomeWizard app `com.homewizard` 3.20.3) is the one
+`meter_modes` binding. The batteries take no power setting; the P1 meter
+(`energy_v2`) holds the whole group's one mode, `battery_group_charge_mode`
+(`zero`, `zero_charge_only`, `zero_discharge_only`, `standby`, `to_full`,
+`predictive`), and the group's power (`measure_power.battery_group_power_w`,
+positive charging), average charge level (`battery_group_average_soc`) and
+limits (`measure_power.battery_group_max_consumption_w` to charge,
+`..._max_production_w` to discharge).
+
+- **One battery per group.** The adapter reads the P1 as two views
+  (`DeviceAdapter.projectRead`): the P1 under its own id, still the whole-home
+  meter (the meter pickers and the boot-time meter adoption read Homey
+  Energy's report and the raw registry, which never hold a view), and the group
+  as a battery, `<P1 id>~battery_group`. Each `plugin_battery` device is read
+  by no view: its power and level are the group's again, and its own
+  `target_power_mode` accepts only `device`.
+- **Modes.** Discharge `zero_discharge_only`, hold `standby`, surplus charge
+  `zero_charge_only`, grid charge `to_full` at the group's charge limit,
+  which is also its one grid-charge power. The firmware's limit can be one
+  battery's even with several (the app's own comment, `drivers/energy_v2/device.js`
+  near the WebSocket battery handler). A group whose limits the P1 has not
+  reported is watched only.
+- **Writes.** PELS writes the mode capability on the P1. Its listener drops a
+  change made within 5 s of the last one and still answers success
+  (`drivers/energy_v2/device.js`, the `battery_group_charge_mode` listener),
+  so a command is confirmed only when the P1 reports the mode; an unreported
+  one goes out again. The listener also counts every write by another app and
+  logs it as a likely override (`capability_api_mode_changes`): each PELS
+  command adds one. That is an accepted cost; the app's Flow cards avoid the
+  counter but need the owner's Homey API key and leave no mode to restore.
+- **No export.** In every mode the group holds the P1 at zero: it covers the
+  house's import or takes its export, never sells to the grid.
+
 ## App-action bindings
 
 The common host is `lib/device/homeBatteryAppActions.ts`; the adapter only

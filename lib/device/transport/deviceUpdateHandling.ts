@@ -114,6 +114,27 @@ export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, d
         ingest.reader.snapshotStore.getLastAcceptedRawDevicesById(),
     );
     for (const view of views) handleRealtimeViewUpdate(ingest, view);
+    requestRemovalOfDroppedViews(ingest, device, views);
+}
+
+/**
+ * A device update that no longer produces a view the transport holds for that
+ * Homey device (a P1 whose batteries were removed): the full inventory read
+ * removes it, exactly as it would on its next round, rather than leaving it
+ * listed until then.
+ */
+function requestRemovalOfDroppedViews(
+    ingest: RealtimeIngestService, device: HomeyDeviceLike, views: readonly HomeyDeviceLike[],
+): void {
+    const homeyDeviceId = getDeviceId(device);
+    const produced = new Set(views.map(getDeviceId));
+    const { snapshotStore } = ingest.reader;
+    const dropped = snapshotStore.getSnapshot().map((entry) => entry.id).filter((id) => (
+        !produced.has(id) && id !== homeyDeviceId && snapshotStore.sourceDeviceId(id) === homeyDeviceId
+    ));
+    if (dropped.length === 0) return;
+    emitDeviceDebug({ event: 'device_views_dropped', deviceId: homeyDeviceId, droppedDeviceIds: dropped });
+    ingest.notifications.notifyInventoryChanged();
 }
 
 function handleRealtimeViewUpdate(ingest: RealtimeIngestService, effectiveDevice: HomeyDeviceLike): void {

@@ -143,6 +143,11 @@ export class MockDevice {
     this.removedCapabilities.add(capabilityId);
   }
 
+  /** Declare again a capability `removeCapability` took away: seen at the app's next read of the device. */
+  restoreCapability(capabilityId: string): void {
+    this.removedCapabilities.delete(capabilityId);
+  }
+
   get idValue() {
     return this.id;
   }

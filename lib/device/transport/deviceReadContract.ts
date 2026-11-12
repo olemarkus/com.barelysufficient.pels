@@ -8,6 +8,7 @@
  * unreadable envelope ignores the whole read; otherwise normal admission may
  * omit a device only when none of its supported features remains usable.
  */
+import { applyDeviceCompatibilityMetadata } from '../compatibility';
 import { isReportedThermostatMode } from './thermostatModeRealtime';
 import { normalizeStateOfChargePercent } from './stateOfCharge';
 import type { HomeyDeviceLike } from '../../utils/types';
@@ -343,7 +344,10 @@ export function resolveDeviceViews(
     emitter: DeviceReadContractEmitter,
     previousReads: ReadonlyMap<string, HomeyDeviceLike>,
 ): HomeyDeviceLike[] {
-    return getDeviceAdapter(device).projectRead(device)
+    // The views carry the identity the parse reads (`applyDeviceCompatibilityMetadata`), so a
+    // device standing in for another app's (a lab mock) is split and routed by that app's adapter.
+    const identified = applyDeviceCompatibilityMetadata(device);
+    return getDeviceAdapter(identified).projectRead(identified)
         .map((view) => resolveDeviceRead(owner, view, source, emitter, previousReads.get(view.id)));
 }
 
