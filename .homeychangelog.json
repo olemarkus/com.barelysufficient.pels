@@ -811,5 +811,8 @@
   },
   "3.33.2": {
     "en": "New: PELS controls go-e chargers and the Smappee EV Wall, SolaX batteries through their inverter's remote control, and NIBE heat pumps on the myUplink app by their room setpoint. A Tesla can now be controlled without its Location & navigation device, and PELS recommends adding one. A heater that lowers its temperature to make room for another device is no longer switched off instead."
+  },
+  "3.34.0": {
+    "en": "New: a Stiebel Eltron heat pump's hot-water tank appears as its own device, so PELS can heat hot water in cheap hours or lower it for your limit without touching the room temperature. HomeWizard Plug-In Batteries appear as one battery that PELS steers through the P1 meter. Plan charging with PELS now works with Flow prices. A scheduled Smart task now replaces the device's current task instead of waiting for it to end, and PELS sends commands to several devices at once."
   }
 }
