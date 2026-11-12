@@ -1,8 +1,8 @@
 import {
   type DeferredObjectiveRescueMode,
   type DeferredObjectiveRescuePermissions,
-  type DeferredObjectiveSettingsEntry,
 } from '../lib/objectives/deferredObjectives';
+import { setSmartTaskRescuePermission } from '../lib/objectives/deferredObjectives/smartTaskCommands';
 import {
   getDropdownId,
   type DropdownArg,
@@ -42,33 +42,6 @@ const resolveWhen = (raw: DropdownArg | undefined): DeferredObjectiveRescueMode 
   throw new Error(SMART_TASK_RESCUE_INVALID_WHEN);
 };
 
-// Rebuild the rescue permissions from the existing entry plus the single changed
-// key, dropping the whole object when nothing is set so it matches the persisted
-// schema shape (absent = off). No mutation, mirroring the settings normalizer.
-const withRescuePermission = (
-  entry: DeferredObjectiveSettingsEntry,
-  key: keyof DeferredObjectiveRescuePermissions,
-  mode: DeferredObjectiveRescueMode | undefined,
-): DeferredObjectiveSettingsEntry => {
-  const exemptFromBudget = key === 'exemptFromBudget' ? mode : entry.rescue?.exemptFromBudget;
-  const limitLowerPriorityDevices = key === 'limitLowerPriorityDevices'
-    ? mode
-    : entry.rescue?.limitLowerPriorityDevices;
-  const pauseLowerPriorityDevices = key === 'pauseLowerPriorityDevices'
-    ? mode
-    : entry.rescue?.pauseLowerPriorityDevices;
-  const rescue: DeferredObjectiveRescuePermissions | undefined = (
-    exemptFromBudget || limitLowerPriorityDevices || pauseLowerPriorityDevices
-  )
-    ? {
-      ...(exemptFromBudget ? { exemptFromBudget } : {}),
-      ...(limitLowerPriorityDevices ? { limitLowerPriorityDevices } : {}),
-      ...(pauseLowerPriorityDevices ? { pauseLowerPriorityDevices } : {}),
-    }
-    : undefined;
-  return { ...entry, rescue };
-};
-
 export function registerAllowSmartTaskRescueCard(deps: FlowCardDeps): void {
   const card = deps.homey.flow.getActionCard('allow_smart_task_rescue');
   card.registerRunListener(async (args: unknown) => {
@@ -77,29 +50,14 @@ export function registerAllowSmartTaskRescueCard(deps: FlowCardDeps): void {
     if (!deviceId) throw new Error(SMART_TASK_RESCUE_MISSING_DEVICE);
     const key = RESCUE_PROPERTY_KEYS[resolveRescuePropertyId(payload?.property)];
     const mode = resolveWhen(payload?.when);
-    const settings = deps.getDeferredObjectiveSettings();
-    const prevEntry = settings.objectivesByDeviceId[deviceId];
-    if (!prevEntry) {
-      throw new Error(SMART_TASK_RESCUE_NO_TASK);
-    }
-    // Idempotent: an unchanged mode means no write, no re-plan, no plan revision.
-    if (prevEntry.rescue?.[key] === mode) return true;
-    // Route the write through the device-scoped per-key op. `rescue: 'replace'`
-    // makes the op write this entry's rescue field verbatim (including clearing
-    // a permission to `undefined`) rather than preserving the prior one — this
-    // card IS the authority on rescue. A rescue-only change keeps the same
-    // kind/deadline/target, so the recorder notification no-ops; the next plan
-    // rebuild applies the new permission. A per-key write touches only this
-    // device's key, so it cannot clobber a sibling task.
-    const outcome = deps.upsertDeferredObjectiveForDevice(
-      deviceId, null, withRescuePermission(prevEntry, key, mode), 'replace',
-    );
+    const outcome = setSmartTaskRescuePermission(deps, deviceId, key, mode);
     // A refused write must surface as a failure, not a silent success that
     // leaves the rescue permission unchanged. Transient refusals (an
     // untrustworthy settings read) get the retry framing; durable scope
     // refusals cannot be cleared by retrying, so they throw their own honest
     // lines (shared with the other smart-task surfaces).
     if (!outcome.persisted) {
+      if (outcome.reason === 'no_task') throw new Error(SMART_TASK_RESCUE_NO_TASK);
       throw new Error(resolveObjectiveWriteRefusalMessage(outcome.reason));
     }
     return true;

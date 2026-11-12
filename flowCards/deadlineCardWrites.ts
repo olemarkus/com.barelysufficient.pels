@@ -10,6 +10,7 @@ import type { DecoratedDeviceSnapshot, TargetDeviceSnapshot } from '../packages/
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import { resolveObjectiveWriteRefusalMessage } from '../packages/shared-domain/src/objectiveWriteStrings';
 import type { FlowCardDeps } from './registerFlowCards';
+import { setSmartTaskDeadline } from '../lib/objectives/deferredObjectives/smartTaskCommands';
 
 const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -101,8 +102,8 @@ export const registerSetDeadlineCard = <Target extends object>(
     if (!supports(device)) throw new Error(unsupportedMessage(device.name.trim() || deviceId));
     const buildEntry = readTarget(payload, device);
     const deadlineAtMs = resolveReadyByToDeadlineAtMs(deps, validateReadyBy(payload?.ready_by));
-    throwIfWriteRefused(deps.upsertDeferredObjectiveForDevice(
-      deviceId, device.name ?? null, buildEntry(deadlineAtMs),
+    throwIfWriteRefused(setSmartTaskDeadline(
+      deps, deviceId, device.name ?? null, buildEntry(deadlineAtMs),
     ));
     return true;
   });

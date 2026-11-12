@@ -114,7 +114,9 @@ describe('allow_smart_task_rescue flow card', () => {
 
     await listener()({ device: 'dev-1', property: 'exempt_from_budget', when: 'always' });
     const before = JSON.stringify(mockHomeyInstance.settings.get(keyFor('dev-1')));
+    const write = vi.spyOn(mockHomeyInstance.settings, 'set');
     await expect(listener()({ device: 'dev-1', property: 'exempt_from_budget', when: 'always' })).resolves.toBe(true);
+    expect(write).not.toHaveBeenCalled();
     expect(JSON.stringify(mockHomeyInstance.settings.get(keyFor('dev-1')))).toBe(before);
 
     await app.onUninit?.();

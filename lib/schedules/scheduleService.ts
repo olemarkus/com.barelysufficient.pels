@@ -21,11 +21,6 @@ export const SCHEDULE_PREFIX = 'schedule.';
 export const SCHEDULE_MODES_ENABLED = 'schedule_modes_enabled';
 export const SCHEDULE_TASK_ENABLED_PREFIX = 'schedule_task_enabled.';
 const logger = getLogger('schedules');
-// PELS ends a task within its 5-minute disarm grace after the ready-by. A create
-// refused meanwhile waits for that instead of losing the occurrence.
-const BUSY_RETRY_WINDOW_MS = 6 * 60_000;
-const WAITING_RESULT = "Waiting for the device's current Smart task to end.";
-const BUSY_RESULT = 'Skipped because this device already has a Smart task.';
 // What an occurrence records when its schedule could not run as saved.
 const ELIGIBILITY_SKIP_RESULTS: Record<ScheduleEligibilityIssue, string> = {
   condition_mode_missing: 'Skipped because a mode in its condition was no longer available.',
@@ -42,6 +37,7 @@ const LEGACY_RESULT_PREFIXES: ReadonlyArray<readonly [string, string]> = [
 ];
 const LEGACY_RESULTS: Readonly<Record<string, string>> = {
   'Mode changed': 'Mode changed.', 'Smart task created': 'Smart task created.',
+  "Waiting for the device's current Smart task to end.": 'Skipped because this device already has a Smart task.',
 };
 const currentResultWording = (result: string): string => {
   const legacy = LEGACY_RESULTS[result];
@@ -49,9 +45,6 @@ const currentResultWording = (result: string): string => {
   const prefix = LEGACY_RESULT_PREFIXES.find(([old]) => result.startsWith(old));
   return prefix ? `${prefix[1]}${result.slice(prefix[0].length)}` : result;
 };
-
-/** A consumed occurrence whose create waits for the device's ended task to close. */
-type PendingRun = { schedule: Schedule; consumed: ScheduleReceipt; atMs: number };
 
 const formatScheduleTime = (atMs: number, timeZone: string): string => new Intl.DateTimeFormat('en-GB', {
   timeZone, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
@@ -94,7 +87,6 @@ export class ScheduleService {
   private schedules = new Map<string, Schedule>();
   private controls: ScheduleControls = { modeChangesEnabled: true, disabledTaskDeviceIds: [] };
   private readonly armedAt = new Map<string, number>();
-  private readonly pending = new Map<string, PendingRun>();
   private lastCheckAt = 0;
   private latestTickAt = 0;
   private ticking = false;
@@ -123,7 +115,6 @@ export class ScheduleService {
     }
     this.lastCheckAt = 0;
     this.latestTickAt = 0;
-    this.pending.clear();
   }
 
   onSettingsChanged(key: string): void {
@@ -174,13 +165,10 @@ export class ScheduleService {
     for (const schedule of next.values()) {
       const changed = JSON.stringify(this.schedules.get(schedule.id)) !== JSON.stringify(schedule);
       const resumed = groupPaused(schedule, this.controls) && !groupPaused(schedule, controls);
-      const paused = !groupPaused(schedule, this.controls) && groupPaused(schedule, controls);
       if (changed || resumed) this.armedAt.set(schedule.id, now);
-      // Any edit, enable change or pause ends a waiting retry; re-enabling arms only future triggers.
-      if (changed || resumed || paused) this.pending.delete(schedule.id);
     }
     for (const id of this.schedules.keys()) {
-      if (!next.has(id)) { this.armedAt.delete(id); this.pending.delete(id); this.port.receipts.delete(id); }
+      if (!next.has(id)) { this.armedAt.delete(id); this.port.receipts.delete(id); }
     }
   }
 
@@ -235,7 +223,7 @@ export class ScheduleService {
     const receipt = this.port.receipts.read(schedule.id);
     const base = {
       schedule: structuredClone(schedule), modeReferences: this.modeReferences(schedule, catalog.modes),
-      nextAtMs: null, nextLabel: '', lastResult: this.lastResult(schedule.id, receipt),
+      nextAtMs: null, nextLabel: '', lastResult: receipt ? currentResultWording(receipt.lastResult) : '',
       lastLabel: receipt ? occurrenceLabel(receipt.localOccurrence, timeZone) : '',
     };
     if (!schedule.enabled) return { ...base, state: 'off', reason: 'No future triggers' };
@@ -255,13 +243,6 @@ export class ScheduleService {
     return {
       ...base, state: 'on', reason: '', nextAtMs: next.atMs, nextLabel: formatScheduleTime(next.atMs, timeZone),
     };
-  }
-
-  /** A waiting result whose retry ended with a stop or restart reads as the skip it became. */
-  private lastResult(id: string, receipt: ScheduleReceipt | undefined): string {
-    if (!receipt) return '';
-    return receipt.lastResult === WAITING_RESULT && !this.pending.has(id)
-      ? BUSY_RESULT : currentResultWording(receipt.lastResult);
   }
 
   write(raw: unknown): void {
@@ -361,7 +342,6 @@ export class ScheduleService {
     if (after === 0) { this.lastCheckAt = now; return; }
     if (now < latestTickAt) return;
     this.load();
-    if (this.pending.size > 0) await this.retryPending();
     let inspectedAll = true;
     for (const schedule of this.dueSchedules(after, now)) {
       if (!this.running) break;
@@ -406,36 +386,8 @@ export class ScheduleService {
     // Persist synchronous skips and read failures before yielding or attempting another settings read.
     this.port.receipts.write(schedule.id, consumed);
     if (lastResult) return;
-    await this.run({ schedule, consumed, atMs: occurrence.atMs });
-  }
-
-  private async run(pending: PendingRun): Promise<void> {
-    const result = await this.execute(pending.schedule, pending.atMs);
-    if (result === undefined) this.pending.set(pending.schedule.id, pending);
-    this.finalize(pending.schedule, pending.consumed, result ?? WAITING_RESULT);
-  }
-
-  /** Retry consumed occurrences only while their schedule and receipt are unchanged. */
-  private async retryPending(): Promise<void> {
-    for (const pending of [...this.pending.values()]) {
-      if (!this.running) return;
-      const { schedule, consumed } = pending;
-      try {
-        // A late tick never creates after the window; even an unreadable
-        // receipt must not keep a pending retry alive beyond it.
-        if (this.port.getNowMs() >= pending.atMs + BUSY_RETRY_WINDOW_MS) {
-          this.pending.delete(schedule.id);
-          this.finalize(schedule, consumed, BUSY_RESULT);
-          continue;
-        }
-        const receipt = this.port.receipts.read(schedule.id);
-        this.pending.delete(schedule.id);
-        if (receipt?.localOccurrence !== consumed.localOccurrence) continue;
-        await this.run(pending);
-      } catch (error) {
-        logger.error({ event: 'schedule_run_failed', scheduleId: schedule.id, err: error });
-      }
-    }
+    const result = await this.execute(schedule, occurrence.atMs);
+    this.finalize(schedule, consumed, result);
   }
 
   private finalize(schedule: Schedule, consumed: ScheduleReceipt, result: string): void {
@@ -475,15 +427,12 @@ export class ScheduleService {
     return matches ? '' : 'Skipped because the current mode did not match the schedule condition.';
   }
 
-  /** The result to record, or undefined while a refused create may still be retried. */
-  private async execute(schedule: Schedule, atMs: number): Promise<string | undefined> {
+  private async execute(schedule: Schedule, atMs: number): Promise<string> {
     try {
       await this.port.execute(schedule, atMs);
       logger.info({ event: 'schedule_triggered', scheduleId: schedule.id, scheduledAtMs: atMs });
       return schedule.action.type === 'mode' ? 'Mode changed.' : 'Smart task created.';
     } catch (error) {
-      const busy = error instanceof ScheduleSkip && error.deviceBusy;
-      if (busy && this.port.getNowMs() < atMs + BUSY_RETRY_WINDOW_MS) return undefined;
       return this.failureResult(schedule, error);
     }
   }

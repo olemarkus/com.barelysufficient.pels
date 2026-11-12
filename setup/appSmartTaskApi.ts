@@ -7,6 +7,8 @@ import { buildDeferredObjectiveDeviceWriteDeps, toPlanDevice } from './appInit';
 import { resolveSmartTaskHomeScope } from './appInit/smartTaskHomeScope';
 import { isRuntimePlannedDevice } from './appDeviceSupport';
 
+export { createScheduledSmartTaskHost } from './appSmartTaskCommands';
+
 export type SmartTaskWriteResult = WidgetObjectiveWriteResult;
 export type AppSmartTaskApi = SmartTaskRequests<PlanInputSnapshotDevice>;
 

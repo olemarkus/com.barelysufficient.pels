@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Schedule } from '../../packages/contracts/src/schedules';
 import type { ScheduleReceipt } from '../../lib/schedules/scheduleReceipts';
 import { ScheduleService, type ScheduleRuntimePort } from '../../lib/schedules/scheduleService';
-import { ScheduleSkip } from '../../lib/schedules/scheduleSkip';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { CreateSmartTaskCandidateDevice } from '../../packages/contracts/src/widgetHostApi';
 import { buildSmartTaskCandidateDevices } from '../../lib/objectives/deferredObjectives/smartTaskCandidateDevices';
@@ -96,92 +95,31 @@ describe('schedule owner', () => {
     expect(service.read().entries[0]?.lastResult).toContain('not available');
   });
 
-  it('creates a back-to-back task once PELS has ended the device\'s previous task', async () => {
+  it('records an action failure once without retrying the consumed occurrence', async () => {
     const f = fixture();
     f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
     f.values.set('schedule.charge', energySchedule());
-    const busy = new ScheduleSkip('Skipped because this device already has a Smart task.', true);
-    f.execute.mockRejectedValueOnce(busy).mockRejectedValueOnce(busy);
+    f.execute.mockRejectedValue(new Error('The Smart task could not be saved.'));
     const service = f.create(); service.start();
     f.setNow('2026-10-28T09:00:10Z'); await service.tick();
-    expect(service.read().entries[0]?.lastResult).toBe("Waiting for the device's current Smart task to end.");
+    expect(service.read().entries[0]?.lastResult).toBe('Could not run. The Smart task could not be saved.');
     f.setNow('2026-10-28T09:00:25Z'); await service.tick();
-    f.setNow('2026-10-28T09:00:40Z'); await service.tick();
-    expect(f.execute).toHaveBeenCalledTimes(3);
-    expect(f.execute.mock.calls.every(([, atMs]) => atMs === Date.parse('2026-10-28T09:00:00Z'))).toBe(true);
-    expect(service.read().entries[0]).toMatchObject({
-      lastResult: 'Smart task created.', lastLabel: 'Wed 28 Oct, 10:00',
-    });
-    f.setNow('2026-10-28T09:01:00Z'); await service.tick();
-    expect(f.execute).toHaveBeenCalledTimes(3);
-  });
-
-  it('records the skip once the device keeps its task past the retry window', async () => {
-    const f = fixture();
-    f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
-    f.values.set('schedule.charge', energySchedule());
-    f.execute.mockRejectedValue(new ScheduleSkip('Skipped because this device already has a Smart task.', true));
-    const service = f.create(); service.start();
-    f.setNow('2026-10-28T09:00:10Z'); await service.tick();
-    f.setNow('2026-10-28T09:05:50Z'); await service.tick();
-    f.setNow('2026-10-28T09:06:05Z'); await service.tick();
-    expect(service.read().entries[0]?.lastResult).toBe('Skipped because this device already has a Smart task.');
-    const calls = f.execute.mock.calls.length;
-    f.setNow('2026-10-28T09:06:20Z'); await service.tick();
-    expect(f.execute).toHaveBeenCalledTimes(calls);
-  });
-
-  it('drops a waiting retry when the schedule is switched off', async () => {
-    const f = fixture();
-    f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
-    f.values.set('schedule.charge', energySchedule());
-    f.execute.mockRejectedValueOnce(new ScheduleSkip('Skipped because this device already has a Smart task.', true));
-    const service = f.create(); service.start();
-    f.setNow('2026-10-28T09:00:10Z'); await service.tick();
-    f.values.set('schedule.charge', { ...energySchedule(), enabled: false });
-    service.onSettingsChanged('schedule.charge');
-    f.setNow('2026-10-28T09:00:25Z'); await service.tick();
-    expect(f.execute).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not revive a waiting retry when the schedule is switched off and on again', async () => {
-    const f = fixture();
-    f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
-    f.values.set('schedule.charge', energySchedule());
-    f.execute.mockRejectedValueOnce(new ScheduleSkip('Skipped because this device already has a Smart task.', true));
-    const service = f.create(); service.start();
-    f.setNow('2026-10-28T09:00:10Z'); await service.tick();
-    f.values.set('schedule.charge', { ...energySchedule(), enabled: false });
-    service.onSettingsChanged('schedule.charge');
-    f.values.set('schedule.charge', energySchedule());
-    service.onSettingsChanged('schedule.charge');
-    f.setNow('2026-10-28T09:00:25Z'); await service.tick();
-    expect(f.execute).toHaveBeenCalledTimes(1);
-  });
-
-  it('records the skip without creating when a late tick arrives after the retry window', async () => {
-    const f = fixture();
-    f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
-    f.values.set('schedule.charge', energySchedule());
-    f.execute.mockRejectedValueOnce(new ScheduleSkip('Skipped because this device already has a Smart task.', true));
-    const service = f.create(); service.start();
-    f.setNow('2026-10-28T09:00:10Z'); await service.tick();
     f.setNow('2026-10-28T09:07:00Z'); await service.tick();
     expect(f.execute).toHaveBeenCalledTimes(1);
-    expect(f.receipts.get('charge')?.lastResult).toBe('Skipped because this device already has a Smart task.');
   });
 
-  it('reads a waiting result left by a restart as the skip, without replaying it', async () => {
+  it('reads a legacy waiting receipt as the historical skip without replaying it', async () => {
     const f = fixture();
     f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
     f.values.set('schedule.charge', energySchedule());
-    f.execute.mockRejectedValueOnce(new ScheduleSkip('Skipped because this device already has a Smart task.', true));
+    f.receipts.set('charge', {
+      localOccurrence: '2026-10-28|10:00', consumedAtMs: Date.parse('2026-10-28T09:00:10Z'),
+      lastResult: "Waiting for the device's current Smart task to end.",
+    });
+    f.setNow('2026-10-28T09:00:15Z');
     const service = f.create(); service.start();
-    f.setNow('2026-10-28T09:00:10Z'); await service.tick();
-    await service.stop();
-    service.start();
     f.setNow('2026-10-28T09:00:25Z'); await service.tick();
-    expect(f.execute).toHaveBeenCalledTimes(1);
+    expect(f.execute).not.toHaveBeenCalled();
     expect(service.read().entries[0]?.lastResult).toBe('Skipped because this device already has a Smart task.');
   });
 
@@ -410,26 +348,6 @@ describe('schedule owner', () => {
     expect(f.execute).not.toHaveBeenCalled();
     f.setNow('2026-10-28T09:00:45Z'); await service.tick();
     expect(f.execute).toHaveBeenCalledTimes(1);
-  });
-
-  it('isolates an unreadable pending receipt from a new trigger and retains the retry', async () => {
-    const f = fixture();
-    f.values.set('schedule.charge', energySchedule());
-    f.values.set('schedule.mode', { ...modeSchedule('mode'), at: '10:01' });
-    f.port.listTaskDevices = () => buildSmartTaskCandidateDevices([charger]);
-    f.execute.mockRejectedValueOnce(new ScheduleSkip('Busy', true));
-    const service = f.create(); service.start();
-    f.setNow('2026-10-28T09:00:05Z'); await service.tick();
-    const { read } = f.port.receipts;
-    f.port.receipts.read = (id) => {
-      if (id === 'charge') throw new Error('Unavailable');
-      return read(id);
-    };
-    f.setNow('2026-10-28T09:01:05Z'); await expect(service.tick()).resolves.toBeUndefined();
-    expect(f.execute.mock.calls.map(([schedule]) => schedule.id)).toEqual(['charge', 'mode']);
-    f.port.receipts.read = read;
-    f.setNow('2026-10-28T09:01:20Z'); await service.tick();
-    expect(f.execute.mock.calls.map(([schedule]) => schedule.id)).toEqual(['charge', 'mode', 'charge']);
   });
 
   it('consumes explicit deletion while leaving listed null as an unavailable read', () => {

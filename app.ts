@@ -73,7 +73,7 @@ import { createHomeyEnergyPollSource, resolveMainMeterRead } from './setup/appIn
 import type { SubHomeMeters } from './lib/home/homeMeters';
 import { AppSnapshotHelpers, createTargetPowerReachabilityAppWiring } from './setup/appSnapshotHelpers';
 import { createFlowBackedDeviceState } from './setup/flowBackedCardAccess';
-import { createAppSmartTaskApi } from './setup/appSmartTaskApi';
+import { createAppSmartTaskApi, createScheduledSmartTaskHost } from './setup/appSmartTaskApi';
 import { AppSmartTaskPayloads } from './setup/appSmartTaskPayloads';
 import {
   createHomeRebuildRuntime,
@@ -634,12 +634,12 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   private readonly scheduleSettingsChanged = (key: string): void => { this.scheduleService?.onSettingsChanged(key); };
 
   protected startSchedules(): void {
-    const executor = new ScheduleActionExecutor(this, this.homey.clock);
     const listTaskDevices = () => {
       const read = this.getCreateSmartTaskCandidateDevices();
       if (read.state !== 'ready') throw new Error('Smart-task devices are temporarily unavailable.');
       return buildSmartTaskCandidateDevices(read.devices);
     };
+    const executor = new ScheduleActionExecutor(createScheduledSmartTaskHost(this, listTaskDevices), this.homey.clock);
     const schedules = new ScheduleService({
       settings: this.homey.settings,
       clock: this.homey.clock,
