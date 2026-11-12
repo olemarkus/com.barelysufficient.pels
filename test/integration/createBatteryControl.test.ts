@@ -25,9 +25,9 @@ const battery: BatteryControlRead = {
   kind: 'setpoint',
   surface: {
     kind: 'setpoint',
+    response: { kind: 'delivers_setpoint', claimValue: 'homey' },
     claim: {
       capabilityId: 'target_power_mode',
-      homeyValue: 'homey',
       values: ['homey', 'anti_feed'],
       rejection: 'unanswered',
     },

@@ -306,6 +306,10 @@ export class BatteryExecutor {
         this.commands.delete(deviceId);
         continue;
       }
+      if (control.response.kind === 'follows_meter') {
+        this.settleMeterMode(deviceId, recorded, control, control.response, nowMs);
+        continue;
+      }
       const power = this.readBatteryPower(deviceId);
       if (power === undefined) continue;
       const record = recorded.phase.kind === 'pending' ? this.settle(deviceId, recorded, power, nowMs) : recorded;
@@ -328,6 +332,11 @@ export class BatteryExecutor {
     const decision = device.storageDecision;
     if (decision.kind === 'release') return control.claimHeld && !control.handBackDeferred ? control : 'no_drift';
     if (!control.admissible || isBlockedVerdict(control)) return 'no_drift';
+    // A battery that follows the meter answers a setpoint with a mode, not a
+    // power: a new setpoint whose mode it already reports, while PELS holds its
+    // claim, is the state it is in, and writing it again is not a command.
+    if (control.response.kind === 'follows_meter' && control.claimHeld
+      && control.response.reportsSetpoint(decision.setpointW)) return 'no_drift';
     const record = this.commands.get(device.id);
     const drifted = record?.setpointW !== decision.setpointW
       || (control.claimHeld && isKeepAliveDue(record, control, Date.now()));
@@ -477,6 +486,37 @@ export class BatteryExecutor {
     });
     if (decision.reason === 'restored') this.recordRestore(device.id, device.name, Date.now());
     return true;
+  }
+
+  /**
+   * A meter-following battery's command is judged by the mode it reports, never
+   * by its power: in its mode it covers whatever the house imports or exports,
+   * so its power teaches no ceiling, and a battery with nothing to cover is
+   * idle, not unresponsive. The command landed once the battery reports the
+   * mode it maps to. Past the confirmation window without it, a battery that
+   * left PELS's modes was taken over (`isClaimLost`); one still in another of
+   * PELS's modes did not take the command (its app may drop a change made too
+   * soon after the last), and the command goes out again at the next rebuild.
+   */
+  private settleMeterMode(
+    deviceId: string,
+    record: StorageCommandRecord,
+    control: SetpointLever,
+    response: Extract<SetpointLever['response'], { kind: 'follows_meter' }>,
+    nowMs: number,
+  ): void {
+    if (record.phase.kind === 'pending' && response.reportsSetpoint(record.setpointW)) {
+      this.commands.set(deviceId, { ...record, phase: DONE });
+      logger.info({
+        event: 'battery_storage_mode_confirmed', deviceId, setpointW: record.setpointW,
+        elapsedMs: nowMs - record.issuedAtMs,
+      });
+      return;
+    }
+    if (this.isClaimLost(deviceId, record, control, nowMs)) return;
+    if (record.phase.kind !== 'pending' || nowMs - record.issuedAtMs < CONTROL_COMMAND_CONFIRMATION_MS) return;
+    this.commands.delete(deviceId);
+    logger.info({ event: 'battery_storage_mode_unconfirmed', deviceId, setpointW: record.setpointW });
   }
 
   /**

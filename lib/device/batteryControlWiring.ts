@@ -2,7 +2,7 @@ import type { HomeBatteryControlSurface, HomeBatterySetpointRange } from '../../
 import type { HomeyDeviceLike } from '../utils/types';
 import { asUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { DeviceCapabilityMap } from './managerControl';
-import type { HomeBatteryCapabilityBinding, TargetPowerDefaults } from './deviceAdapter';
+import type { HomeBatteryCapabilityBinding, HomeBatteryModeBinding, TargetPowerDefaults } from './deviceAdapter';
 import { getDeviceAdapter } from './deviceAdapterRegistry';
 import { HOMEY_TARGET_POWER_DEFAULTS } from './homeBatteryBinding';
 
@@ -119,6 +119,7 @@ export function resolveBatteryControlSurface(
 ): HomeBatteryControlSurface {
   const binding = getDeviceAdapter(device).homeBatteryBinding(device);
   if (binding.kind === 'app_actions') return { kind: 'app_actions' };
+  if (binding.kind === 'meter_modes') return resolveMeterModeSurface(binding, capabilities, capabilityObj);
   const targetPower = capabilities.includes(HOME_BATTERY_SETPOINT_CAPABILITY_ID)
     ? asUnknownRecord(capabilityObj[HOME_BATTERY_SETPOINT_CAPABILITY_ID])
     : null;
@@ -135,10 +136,49 @@ export function resolveBatteryControlSurface(
   if (candidates.length === 0) return { kind: 'observe_only', reason: 'no_claim_capability' };
   const claim = candidates.find((candidate) => candidate.values.includes(candidate.homeyValue));
   if (claim === undefined) return { kind: 'observe_only', reason: 'claim_value_missing' };
-  return { kind: 'setpoint', claim, range };
+  return {
+    kind: 'setpoint',
+    response: { kind: 'delivers_setpoint', claimValue: claim.homeyValue },
+    claim: { capabilityId: claim.capabilityId, values: claim.values, rejection: claim.rejection },
+    range,
+  };
+}
+
+/**
+ * A meter-following battery's surface: its claim capability, setable and
+ * declaring every command mode, and the powers its integration reads. The
+ * range is those powers in PELS's sign; its grid is 1 W, since the battery
+ * takes no watts, only the mode a setpoint maps to (`meterModeFor`).
+ */
+function resolveMeterModeSurface(
+  binding: HomeBatteryModeBinding,
+  capabilities: readonly string[],
+  capabilityObj: DeviceCapabilityMap,
+): HomeBatteryControlSurface {
+  const entry = capabilities.includes(binding.claimCapabilityId)
+    ? asUnknownRecord(capabilityObj[binding.claimCapabilityId])
+    : null;
+  if (entry === null || entry.setable !== true) return { kind: 'observe_only', reason: 'no_claim_capability' };
+  const values = readEnumValueIds(entry);
+  const { modes } = binding;
+  if (![modes.discharge, modes.hold, modes.chargeSurplus, modes.chargeGrid].every((mode) => values.includes(mode))) {
+    return { kind: 'observe_only', reason: 'claim_value_missing' };
+  }
+  const powers = binding.resolvePowers(capabilityObj);
+  if (powers === undefined || !Number.isFinite(powers.maxDischargeW + powers.maxChargeW)
+    || powers.maxDischargeW <= 0 || powers.maxChargeW <= 0) {
+    return { kind: 'observe_only', reason: 'not_signed_range' };
+  }
+  return {
+    kind: 'setpoint',
+    response: { kind: 'follows_meter', modes: { ...modes, gridChargeW: powers.maxChargeW } },
+    claim: { capabilityId: binding.claimCapabilityId, values, rejection: binding.rejection },
+    range: { minW: -powers.maxDischargeW, maxW: powers.maxChargeW, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
+  };
 }
 
 export { toTargetPowerCapabilityValue } from '../utils/storageSetpoint';
+export { meterModeFor } from '../ports/homeBatteryResponse';
 
 /**
  * The app's `target_power` value for a setpoint already mapped onto the range,

@@ -91,8 +91,15 @@ export type BatteryClaimRecordsRead =
   }
   | { status: 'unavailable' };
 
+/** Every claim capability a record may name: a new one must be listed here, or its records never read back. */
+const CLAIM_CAPABILITY_IDS: Readonly<Record<HomeBatteryClaimCapabilityId, true>> = {
+  target_power_mode: true,
+  control_strategy: true,
+  battery_group_charge_mode: true,
+};
+
 const isClaimCapabilityId = (value: unknown): value is HomeBatteryClaimCapabilityId => (
-  value === 'target_power_mode' || value === 'control_strategy'
+  typeof value === 'string' && Object.hasOwn(CLAIM_CAPABILITY_IDS, value)
 );
 
 const parseActionTarget = (value: unknown): AppActionControlTarget | null => {

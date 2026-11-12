@@ -6,10 +6,13 @@
  * writes they are read against.
  */
 import type { HomeBatteryClaimCapabilityId, HomeBatteryClaimObservation } from '../../packages/contracts/src/types';
-import type { BatteryClaimAdmission, BatteryClaimRefusal, BatteryControlRead } from '../ports/batteryControlOwner';
+import type {
+  BatteryClaimAdmission, BatteryClaimRefusal, BatteryControlRead, BatteryLeverResponse,
+} from '../ports/batteryControlOwner';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
 import type { AppActionControlTarget, StorageReleaseCommand, StorageControlBinding } from '../ports/storageCommand';
 import type { BatteryClaimRecord } from './batteryClaimStore';
+import { isPelsClaimValue, meterModeFor } from '../ports/homeBatteryResponse';
 
 /** Complete write authority after durable claim admission. */
 export type WriteAdmission = { status: 'admitted'; control: StorageControlBinding }
@@ -77,9 +80,31 @@ export type ReleaseVerdict =
  */
 export type ClaimStanding = 'held' | 'contested' | 'taken_over';
 
-/** Whether the battery reports Homey's claim value: under a claim, PELS's or anyone's. */
+/**
+ * Whether the battery reports a claim value PELS drives it with: Homey's
+ * claim value, or for a meter-following battery one of its command modes.
+ * Under a claim, PELS's or anyone's.
+ */
 export const isClaimEngaged = (battery: SetpointBatteryRead): boolean => (
-  !('kind' in battery.claim) && battery.claim.value === battery.surface.claim.homeyValue
+  !('kind' in battery.claim) && isPelsClaimValue(battery.surface.response, battery.claim.value)
+);
+
+/**
+ * Whether a meter-following battery reports the mode a setpoint maps to
+ * (`meterModeFor`): the evidence that command landed. A battery that delivers
+ * its setpoint answers with its own power instead, and is never judged here.
+ */
+export const reportsMeterMode = (battery: SetpointBatteryRead, setpointW: number): boolean => {
+  const { response } = battery.surface;
+  return response.kind === 'follows_meter' && !('kind' in battery.claim)
+    && battery.claim.value === meterModeFor(response.modes, setpointW);
+};
+
+/** How the storage lane judges this battery's setpoints (`BatteryLeverResponse`). */
+export const toLeverResponse = (battery: DrivableBatteryRead): BatteryLeverResponse => (
+  battery.kind === 'setpoint' && battery.surface.response.kind === 'follows_meter'
+    ? { kind: 'follows_meter', reportsSetpoint: (setpointW) => reportsMeterMode(battery, setpointW) }
+    : { kind: 'delivers_setpoint' }
 );
 
 /**
@@ -93,7 +118,11 @@ export const resolveValueToRecord = (
   if (battery.kind === 'app_actions') return { kind: 'app_actions', target: battery.target };
   const { surface, claim } = battery;
   if ('kind' in claim) return 'claim_unobserved';
-  if (claim.value === surface.claim.homeyValue) return 'held_by_other';
+  // A meter-following battery's own modes include PELS's: one an owner left it
+  // in (standby) is still a mode to hand back to, never someone else's claim.
+  if (surface.response.kind === 'delivers_setpoint' && claim.value === surface.response.claimValue) {
+    return 'held_by_other';
+  }
   if (!surface.claim.values.includes(claim.value)) return 'claim_value_undeclared';
   return { kind: 'claim_capability', claim, capabilityId: surface.claim.capabilityId };
 };
@@ -194,7 +223,7 @@ export class ClaimWriteLog {
     if (surface.claim.capabilityId !== record.capabilityId || 'kind' in claim) return 'held';
     // No claim write yet this run: the record's claim time is the last one known.
     const lastWriteMs = this.writtenAtMs.get(deviceId) ?? record.claimedAtMs;
-    if (claim.value === surface.claim.homeyValue || claim.observedAtMs <= lastWriteMs) return 'held';
+    if (isPelsClaimValue(surface.response, claim.value) || claim.observedAtMs <= lastWriteMs) return 'held';
     return nowMs - lastWriteMs < CONTROL_COMMAND_CONFIRMATION_MS ? 'contested' : 'taken_over';
   }
 }

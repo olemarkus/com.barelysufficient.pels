@@ -2,7 +2,7 @@ import type { AppActionControlTarget } from '../ports/storageCommand';
 import type { HubHomeLocation } from './hubHomeLocation';
 import type { ChargingCurrentSetup, ChargingMissingCompanion } from '../../packages/contracts/src/chargingControl';
 import type { DeviceControlAdapterSnapshot, HomeBatteryClaimCapabilityId, HomeBatteryClaimRejection,
-  HomeBatterySetpointRange, SteppedLoadProfile, SteppedLoadStep,
+  HomeBatteryMeterModes, HomeBatterySetpointRange, SteppedLoadProfile, SteppedLoadStep,
   TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
 import type { DeviceActionStep } from './flowActionCards';
 import type { TargetPowerConfigWithReachability } from './targetPowerReachability';
@@ -188,7 +188,25 @@ export type HomeBatteryActionBinding = {
   handBack(target: AppActionControlTarget, devices: readonly HomeyDeviceLike[]): readonly DeviceActionStep[];
 };
 
-export type HomeBatteryBinding = HomeBatteryCapabilityBinding | HomeBatteryActionBinding;
+/**
+ * `meter_modes`: a battery with no power setpoint that follows the whole-home
+ * meter in a mode PELS writes to its claim capability (`HomeBatteryResponse`
+ * `follows_meter`). PELS records the mode it held before the first write and
+ * restores it on hand-back, as for any claim capability.
+ * - `modes`: the claim capability's value for each kind of command.
+ * - `resolvePowers`: the most the battery discharges and charges, W, from its
+ *   own reads; the charge power is also its one grid-charge power. `undefined`
+ *   while the device reports neither, when PELS only watches it.
+ */
+export type HomeBatteryModeBinding = {
+  kind: 'meter_modes';
+  claimCapabilityId: HomeBatteryClaimCapabilityId;
+  rejection: HomeBatteryClaimRejection;
+  modes: Omit<HomeBatteryMeterModes, 'gridChargeW'>;
+  resolvePowers(capabilityObj: DeviceCapabilityMap): { maxDischargeW: number; maxChargeW: number } | undefined;
+};
+
+export type HomeBatteryBinding = HomeBatteryCapabilityBinding | HomeBatteryActionBinding | HomeBatteryModeBinding;
 
 /** The host owns I/O; an integration owns the meaning of its reads and writes. */
 export type DeviceAdapter = {

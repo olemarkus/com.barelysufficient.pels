@@ -40,9 +40,9 @@ describe('resolveBatteryControlSurface', () => {
 
     expect(surface).toEqual({
       kind: 'setpoint',
+      response: { kind: 'delivers_setpoint', claimValue: 'homey' },
       claim: {
         capabilityId: 'target_power_mode',
-        homeyValue: 'homey',
         values: ['homey', 'anti_feed', 'trade_mode', 'manual'],
         rejection: 'unanswered',
       },
@@ -66,9 +66,9 @@ describe('resolveBatteryControlSurface', () => {
 
     expect(surface).toEqual({
       kind: 'setpoint',
+      response: { kind: 'delivers_setpoint', claimValue: 'POWER_STRATEGY_API' },
       claim: {
         capabilityId: 'control_strategy',
-        homeyValue: 'POWER_STRATEGY_API',
         values: ['POWER_STRATEGY_NOM', 'POWER_STRATEGY_API', 'POWER_STRATEGY_IDLE'],
         // A rejected claim means its app refuses control (cloud login).
         rejection: 'app_refuses_control',
@@ -171,9 +171,9 @@ describe('resolveBatteryControlSurface', () => {
 
     expect(surface).toEqual({
       kind: 'setpoint',
+      response: { kind: 'delivers_setpoint', claimValue: 'homey' },
       claim: {
         capabilityId: 'target_power_mode',
-        homeyValue: 'homey',
         values: ['homey', 'self_consumption'],
         rejection: 'unanswered',
       },
@@ -194,7 +194,8 @@ describe('resolveBatteryControlSurface', () => {
 
     expect(surface).toMatchObject({
       kind: 'setpoint',
-      claim: { capabilityId: 'target_power_mode', homeyValue: 'homey', rejection: 'unanswered' },
+      response: { kind: 'delivers_setpoint', claimValue: 'homey' },
+    claim: { capabilityId: 'target_power_mode', rejection: 'unanswered' },
       range: { minW: -800, maxW: 2000, stepW: 10, excludeMinW: 0, excludeMaxW: 0 },
     });
   });

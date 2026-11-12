@@ -68,6 +68,21 @@ describe('BatteryClaimStore', () => {
     expect(settings.getKeys()).toEqual(['other']);
   });
 
+  it('reads back a record of every claim capability a battery can be driven by, a fresh store included', () => {
+    for (const [capabilityId, previousValue] of [
+      ['target_power_mode', 'anti_feed'], ['control_strategy', 'POWER_STRATEGY_NOM'], ['battery_group_charge_mode', 'zero'],
+    ] as const) {
+      const settings = settingsStore({});
+      const record = { kind: 'claim_capability', capabilityId, previousValue, claimedAtMs: 3 } as const;
+      expect(new BatteryClaimStore(settings).write('battery-1', record)).toBe(true);
+      // A new store over the same settings, as after a restart.
+      const read = new BatteryClaimStore(settings).readAll();
+      expect(read.status === 'resolved'
+        ? { records: Object.fromEntries(read.records), unreadable: read.unreadableDeviceIds }
+        : read).toEqual({ records: { 'battery-1': record }, unreadable: [] });
+    }
+  });
+
   it('reports a record that does not parse for its own battery only, never as no record', () => {
     const good = { capabilityId: 'control_strategy', previousValue: 'POWER_STRATEGY_NOM', claimedAtMs: 5 };
     for (const junk of [{ capabilityId: 'onoff', previousValue: 'x', claimedAtMs: 1 }, true, {

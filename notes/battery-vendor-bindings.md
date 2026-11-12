@@ -69,6 +69,37 @@ write time (`requestStoragePower`, `releaseStorageControl` in
 `lib/device/transport/deviceWrites.ts`). Planner, executor and UI read only the
 resolved `HomeBatteryControlSurface`, in PELS's sign.
 
+## Meter-mode bindings
+
+A `meter_modes` binding is for a battery with no power setpoint that follows the
+whole-home meter in a mode written to its claim capability. It states the claim
+capability, what a rejected write means, the capability's value for each kind
+of command (`discharge`, `hold`, `chargeSurplus`, `chargeGrid`) and
+`resolvePowers`, the most the battery discharges and charges from its own reads.
+The surface resolver (`resolveMeterModeSurface`, `lib/device/batteryControlWiring.ts`)
+turns it into a `setpoint` surface whose `response` is `follows_meter`, with the
+charge power as its one grid-charge power; every other battery's `response` is
+`delivers_setpoint`, carrying the claim value that hands it to Homey.
+
+- **Command.** A setpoint maps to one mode (`meterModeFor`,
+  `lib/ports/homeBatteryResponse.ts`): any discharge covers the house's import, 0 W
+  holds, a charge below the grid-charge power takes surplus only, and a charge at
+  it charges at that power, from the grid when surplus falls short. The transport
+  writes that mode to the claim capability; there is no `target_power` write.
+- **Claim and hand-back.** The claim record is the ordinary `claim_capability`
+  one: the mode the battery held before PELS's first write, restored on
+  hand-back with no zero-setpoint write first. Any of PELS's four modes reads
+  as engaged; a mode outside them, reported after PELS's last write, is
+  contested and then a takeover. A mode the owner left the battery in, even
+  one of PELS's, is recorded and restored, never refused as someone else's
+  claim.
+- **Confirmation.** The storage lane judges the battery by the mode it reports,
+  never its power (`settleMeterMode`, `lib/executor/batteryExecutor.ts`): in its
+  mode it covers whatever the house imports or exports, so its power teaches no
+  ceiling, and one with nothing to cover is idle, not unresponsive. A command
+  still unreported past the confirmation window goes out again at the next
+  rebuild, unless the battery left PELS's modes, which is a takeover.
+
 ## App-action bindings
 
 The common host is `lib/device/homeBatteryAppActions.ts`; the adapter only

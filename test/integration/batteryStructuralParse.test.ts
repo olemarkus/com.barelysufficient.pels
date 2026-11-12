@@ -212,9 +212,9 @@ describe('home battery control surface at parse', () => {
     expect(parsed.homeBattery).toEqual({
       controlSurface: {
         kind: 'setpoint',
+        response: { kind: 'delivers_setpoint', claimValue: 'homey' },
         claim: {
           capabilityId: 'target_power_mode',
-          homeyValue: 'homey',
           values: ['homey', 'anti_feed', 'trade_mode', 'manual'],
           rejection: 'unanswered',
         },
