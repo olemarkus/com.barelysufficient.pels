@@ -4,6 +4,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { DeviceConfigurationRead } from '../ports/deviceConfigurationRead';
 import type { SteppedLoadWrite } from '../ports/steppedLoadWrite';
+import type { EvChargingCurrentDiagnostics, EvChargingCurrentSource } from '../ports/evChargingCurrentDiagnostics';
 import type { DeviceControlSettings } from './deviceControlSettings';
 import type { EvChargingCurrentPolicy } from './evChargingCurrentLimitSettings';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
@@ -12,7 +13,7 @@ import {
   buildEvTargetPowerCandidateProfile, isEvTargetPowerConfig, resolveEvTargetPowerPlannerProfile,
 } from './targetPowerReachability';
 import {
-  hasUsableSteppedLoadLadder, isSteppedLoadOffStep,
+  hasUsableSteppedLoadLadder, isSteppedLoadOffStep, isSteppedLoadStepOff,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { chargingLadderCarriesCurrent } from '../../packages/shared-domain/src/settings/evChargingCurrentLimits';
 
@@ -32,20 +33,43 @@ export class EvChargingCurrentLimitPolicy {
   ) {}
 
   resolve(deviceId: string): EvChargingCurrentPolicy {
-    const carId = this.cars.getAssociatedCar(deviceId)?.carId
-      ?? this.cars.getCarConfirmation(deviceId)?.carId;
+    return this.resolveWithSource(deviceId).policy;
+  }
+
+  private resolveWithSource(deviceId: string): { policy: EvChargingCurrentPolicy; source: EvChargingCurrentSource } {
+    const associatedCar = this.cars.getAssociatedCar(deviceId);
+    const carId = associatedCar?.carId ?? this.cars.getCarConfirmation(deviceId)?.carId;
     if (carId !== undefined) {
       const carPolicy = this.settings.resolveEvCarCurrentLimits(carId);
-      if (carPolicy.kind !== 'unrestricted') return carPolicy;
+      if (carPolicy.kind !== 'unrestricted') {
+        return { policy: carPolicy, source: associatedCar ? 'associated_car' : 'confirmed_car' };
+      }
     }
-    return this.settings.resolveEvChargerCurrentLimits(deviceId);
+    return { policy: this.settings.resolveEvChargerCurrentLimits(deviceId), source: 'charger' };
+  }
+
+  /** Capture the projected configuration returned by DeviceConfigurationStore.get. */
+  describe(configuration: DeviceConfigurationRead, nowMs: number): EvChargingCurrentDiagnostics | undefined {
+    if (configuration.controlModel !== 'stepped_load' || !boundsChargingCurrent(configuration)) return undefined;
+    const { policy, source } = this.resolveWithSource(configuration.id);
+    if (policy.kind === 'hold') return { kind: 'hold', cause: 'limits_unavailable', source };
+    const plannerSteps = resolveEvTargetPowerPlannerProfile({
+      config: configuration.targetPowerConfig, confirmedProfile: configuration.steppedLoadProfile, nowMs,
+    }).steps.filter((step) => !isSteppedLoadStepOff(step));
+    if (policy.kind === 'unrestricted') return { kind: 'unrestricted', source: 'charger', plannerSteps };
+    const effectiveLimits = configuration.targetPowerConfig?.currentLimits;
+    if (!effectiveLimits) throw new Error('Projected charging current limits are unavailable.');
+    const held = configuration.carCurrentRangeUnavailable === true || plannerSteps.length === 0;
+    return {
+      ...(held ? { kind: 'hold', cause: 'no_supported_current' } as const : { kind: 'limited' } as const), source,
+      selectedLimits: policy.limits, effectiveLimits, plannerSteps: held ? [] : plannerSteps,
+    };
   }
 
   projectConfiguration(configuration: DeviceConfigurationRead): DeviceConfigurationRead {
     // An on/off charger or a published watt ladder has no current to bound,
     // so a range never holds it.
-    if (!configuration.isEvCharger || configuration.controlModel !== 'stepped_load'
-      || !chargingLadderCarriesCurrent(configuration.steppedLoadProfile, configuration.targetPowerConfig?.preset)) {
+    if (configuration.controlModel !== 'stepped_load' || !boundsChargingCurrent(configuration)) {
       return configuration;
     }
     const policy = this.resolve(configuration.id);
@@ -160,7 +184,8 @@ export class EvChargingCurrentLimitPolicy {
 }
 
 /** Charging current ranges bound only a stepped EV charger whose levels carry current. */
-function boundsChargingCurrent(snapshot: TransportDeviceSnapshot): boolean {
+function boundsChargingCurrent(snapshot: Pick<TransportDeviceSnapshot,
+  'isEvCharger' | 'controlModel' | 'steppedLoadProfile' | 'targetPowerConfig'>): boolean {
   return snapshot.isEvCharger && snapshot.controlModel === 'stepped_load'
     && chargingLadderCarriesCurrent(snapshot.steppedLoadProfile, snapshot.targetPowerConfig?.preset);
 }

@@ -29,6 +29,7 @@ import type { CarIdentificationState } from '../../packages/contracts/src/evCarL
 import { RetainedPowerPersistence } from './retainedPowerPersistence';
 import type Homey from 'homey';
 import type { SteppedLoadWrite } from '../ports/steppedLoadWrite';
+import type { EvChargingCurrentDiagnostics } from '../ports/evChargingCurrentDiagnostics';
 import type { HomeBatteryDevicesRead } from '../ports/homeBatteryDevices';
 import type { BatteryControlRead } from '../ports/batteryControlOwner';
 import type { StoragePowerCommand, StoragePowerWrite, StorageReleaseCommand } from '../ports/storageCommand';
@@ -451,6 +452,10 @@ export class DeviceTransport {
      */
     getSnapshotByDeviceId(id: string): TransportDeviceSnapshot | undefined {
         return this.snapshotStore.getSnapshotByDeviceId(id);
+    }
+    getEvChargingCurrentDiagnostics(deviceId: string, nowMs: number): EvChargingCurrentDiagnostics | undefined {
+        const configuration = this.runtimeConfiguration.get(deviceId);
+        return configuration && this.runtimeConfiguration.currentLimits.describe(configuration, nowMs);
     }
     getUiPickerDevices(): TransportDeviceSnapshot[] { return this.reader.getUiPickerDevices(); }
     getHomeyDeviceIds(): ReadonlySet<string> { return this.snapshotStore.getHomeyDeviceIds(); }

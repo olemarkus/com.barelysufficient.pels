@@ -13,6 +13,7 @@ import type {
   SupportReportRequest, SupportReportSection, SupportReportSubject, SupportReportTrigger,
 } from '../../packages/contracts/src/supportReport';
 import type { CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
+import type { EvChargingCurrentDiagnostics } from '../ports/evChargingCurrentDiagnostics';
 import type { DeviceObjectiveProfile } from '../../packages/contracts/src/objectiveProfileTypes';
 import { reportHomeyDevices, type HomeyDeviceSupportDescription } from './homeyDeviceSupportSection';
 import { DEVICE_EVENT_MAX_ENTRIES_PER_DEVICE, DEVICE_EVENT_RETENTION_DAYS } from './deviceEventStore';
@@ -28,7 +29,7 @@ import { LEARNED_RATES_REPORT_TITLE, reportLearnedRates } from './supportReportL
 import {
   reportCapacitySettings, reportPhaseReading, type PhaseReadingEvidence,
   reportCarLink, reportDailyBudget, reportDeviceDecision, reportDevicePresentation,
-  reportDeviceSnapshot, reportHomePlan, type SupportReportDeviceSnapshot,
+  reportDeviceSnapshot, reportHomePlan, reportEvChargingCurrent, type SupportReportDeviceSnapshot,
 } from './supportReportProjection';
 import {
   reportSmartTask, reportSmartTaskRuns, reportSmartTasks, reportSmartTaskSchedules,
@@ -49,6 +50,8 @@ export type SupportReportHomey = {
 export type SupportReportReads = {
   /** `undefined` when device transport does not hold the device. */
   getDeviceSnapshot(deviceId: string): SupportReportDeviceSnapshot | undefined;
+  /** No section for devices without current-based EV control; throws when the owner cannot be read. */
+  getEvChargingCurrentDiagnostics(deviceId: string, nowMs: number): EvChargingCurrentDiagnostics | undefined;
   /**
    * A Homey device as a device support request describes it, whether or not
    * PELS lists it; `undefined` when Homey has no such device. Rejects when
@@ -258,6 +261,20 @@ const readPriceSections = (host: SupportReportReads, capturedAtMs: number): Sect
   }),
 ];
 
+/** An inapplicable range has no section; an unread owner is an explicit omission. */
+const readCurrentEvRangeSections = (
+  host: SupportReportReads,
+  deviceId: string,
+  capturedAtMs: number,
+): SectionRead[] => {
+  try {
+    const current = host.getEvChargingCurrentDiagnostics(deviceId, capturedAtMs);
+    return current ? [{ state: 'available', section: reportEvChargingCurrent(current) }] : [];
+  } catch {
+    return [{ state: 'unavailable', reason: 'Current EV charging range is unavailable.' }];
+  }
+};
+
 const readDeviceSections = (
   host: SupportReportReads,
   subject: SupportReportSubject,
@@ -268,6 +285,7 @@ const readDeviceSections = (
   if (!device || subject.kind !== 'device') return [];
   return [
     readSection('Current device observation and configuration', () => reportDeviceSnapshot(device)),
+    ...(device.isEvCharger ? readCurrentEvRangeSections(host, device.id, capturedAtMs) : []),
     readSection('Current device status', () => {
       const presentation = plan?.devices?.find((entry) => entry.id === device.id);
       return presentation ? reportDevicePresentation(presentation) : null;
