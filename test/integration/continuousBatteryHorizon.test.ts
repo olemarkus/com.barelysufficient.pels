@@ -310,6 +310,20 @@ describe('continuous battery horizon projection', () => {
       .toEqual({ kind: 'waiting', reason });
   });
 
+  it('plans on Flow prices, which carry no currency, in the unit the owner saved the plan in', () => {
+    const flowPrices = sources({
+      getPriceTimeline: () => ({
+        state: 'ready', priceUnit: 'price units', hasExportPrice: false,
+        lines: { average: 0.2, cheapAtOrBelow: 0.1, expensiveFrom: 0.3 },
+        periods: [{ startsAt: new Date(NOW).toISOString(), durationMinutes: 60, importPrice: 0.2, level: 'normal' }],
+      }),
+    });
+    expect(horizonSource(flowPrices).readHorizon('battery', { ...config, priceUnit: 'price units' }))
+      .toMatchObject({ kind: 'ready', priceUnit: 'price units' });
+    expect(horizonSource(flowPrices).readHorizon('battery', config))
+      .toEqual({ kind: 'waiting', reason: 'price_unit_changed' });
+  });
+
   it('requires a review of battery wear when the source price unit changes', () => {
     expect(horizonSource(sources()).readHorizon('battery', { ...config, priceUnit: 'øre/kWh' }))
       .toEqual({ kind: 'waiting', reason: 'price_unit_changed' });

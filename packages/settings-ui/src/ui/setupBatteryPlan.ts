@@ -2,7 +2,7 @@ import type {
   ContinuousBatteryPlanConfig, ContinuousBatteryPlanConfigs,
 } from '../../../contracts/src/continuousBatteryPlan.ts';
 import {
-  DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG,
+  DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG, isBatteryPlanUnitSettled,
 } from '../../../shared-domain/src/settings/continuousBatteryPlan.ts';
 import { isHomeBatteryClassKey } from '../../../shared-domain/src/batteryOrSolarRole.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
@@ -111,8 +111,6 @@ export const countSetupBatteryPlansOn = (): number => (
 /** Whether the battery's plan is saved on; `false` while the map has not been read. */
 export const isSetupBatteryPlanOn = (deviceId: string): boolean => readSavedConfig(deviceId)?.enabled === true;
 
-const PLACEHOLDER_UNIT = 'price units';
-
 /**
  * Turn the battery's plan on with this usable capacity, or off. Turning it on
  * keeps the rest of what the device page saved; a battery never saved starts
@@ -135,7 +133,7 @@ export const saveSetupBatteryPlan = async (
   } else {
     if (capacityKWh === null) throw new Error('Enter the battery’s usable capacity first.');
     const priceUnit = await loadBatteryPlanPriceUnit();
-    const unitless = base.priceUnit === PLACEHOLDER_UNIT;
+    const unitless = !isBatteryPlanUnitSettled(base);
     if (!unitless && base.priceUnit.trim().toLowerCase() !== priceUnit.trim().toLowerCase()) {
       throw new Error('The electricity price unit changed. Review the wear allowance on the battery’s device page.');
     }
