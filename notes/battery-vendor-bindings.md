@@ -135,7 +135,10 @@ limits (`measure_power.battery_group_max_consumption_w` to charge,
   change made within 5 s of the last one and still answers success
   (`drivers/energy_v2/device.js`, the `battery_group_charge_mode` listener),
   so a command is confirmed only when the P1 reports the mode; an unreported
-  one goes out again. The listener also counts every write by another app and
+  one goes out again. A hand-back is confirmed the same way: PELS keeps the
+  claim record until the P1 reports the restored mode, and writes the
+  hand-back again if the group still shows another mode 15 s later
+  (`HAND_BACK_REPORT_WINDOW_MS`). The listener also counts every write by another app and
   logs it as a likely override (`capability_api_mode_changes`): each PELS
   command adds one. That is an accepted cost; the app's Flow cards avoid the
   counter but need the owner's Homey API key and leave no mode to restore.

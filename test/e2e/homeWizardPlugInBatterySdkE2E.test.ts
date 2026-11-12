@@ -261,6 +261,35 @@ describe('HomeWizard Plug-In Batteries at the SDK boundary', () => {
     settings: meterSettings({ [CAPACITY_LIMIT_KW]: 3, [CAPACITY_MARGIN_KW]: 0, [CAPACITY_PERIOD_MINUTES]: 15 }),
   });
 
+  it('(d, dropped) hands the group back again when the P1 dropped a hand-back sent within 5 s of a command', async () => {
+    const original = mockHomeyInstance.api.put.bind(mockHomeyInstance.api);
+    // HomeWizard's listener drops a mode change made within 5 s of the last one and still answers success.
+    const DROP_WINDOW_MS = 5_000;
+    let lastChangeMs = Number.NEGATIVE_INFINITY;
+    let commandWrites = 0;
+    vi.spyOn(mockHomeyInstance.api, 'put').mockImplementation(async (path: string, body: unknown) => {
+      if (path !== MODE_WRITE) return original(path, body);
+      const nowMs = Date.now();
+      if (nowMs - lastChangeMs < DROP_WINDOW_MS) return undefined;
+      lastChangeMs = nowMs;
+      const result = await original(path, body);
+      // The owner opts out 1 s after PELS's first command: the hand-back falls inside the P1's window.
+      commandWrites += 1;
+      if (commandWrites === 1) {
+        setTimeout(() => { mockHomeyInstance.settings.set(BATTERY_CONTROL_DEVICES, { [GROUP]: false }); }, 1_000);
+      }
+      return result;
+    });
+    const home = await startHome(pressured());
+    await home.advance(12);
+    expect(home.modeWrites().slice(0, 2)).toEqual(['zero_discharge_only', 'predictive']);
+    // Past the report window, PELS sees the group still in its command and writes the hand-back again.
+    await home.advance(36);
+    expect(home.p1.getActualCapabilityValue(MODE)).toBe('predictive');
+    expect(home.modeWrites()).toEqual(['zero_discharge_only', 'predictive', 'predictive']);
+    expect(mockHomeyInstance.settings.get(`battery_control_claim.${GROUP}`)).toBeNull();
+  });
+
   it('(d, restart) still hands the group back to its recorded mode, once, after an app restart', async () => {
     const home = await startHome(pressured());
     await home.advance(12);
@@ -323,9 +352,11 @@ describe('HomeWizard Plug-In Batteries at the SDK boundary', () => {
     // The hold steps down to 0 W (standby, PELS's hold) and is then handed back to the owner's standby.
     const after = home.modeWrites().slice(before);
     expect(after).toEqual(['standby', 'standby']);
-    expect(mockHomeyInstance.settings.get(`battery_control_claim.${GROUP}`)).toBeNull();
-    // Handed back once: nothing more is written while the load stays low.
+    // Handed back once: nothing more is written while the load stays low. The
+    // group already held standby, so it reports no change: its record goes once
+    // the report window has passed with the group still in standby.
     await home.advance(36);
     expect(home.modeWrites().slice(before)).toEqual(['standby', 'standby']);
+    expect(mockHomeyInstance.settings.get(`battery_control_claim.${GROUP}`)).toBeNull();
   });
 });
