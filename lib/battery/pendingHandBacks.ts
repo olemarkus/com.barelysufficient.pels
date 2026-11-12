@@ -7,7 +7,7 @@
 import { getLogger } from '../logging/logger';
 import type { StorageReleaseReason } from '../ports/batteryControlOwner';
 import { normalizeError } from '../utils/errorUtils';
-import type { TerminalReleaseFailure } from './batteryClaimStanding';
+import { HAND_BACK_REPORT_WINDOW_MS, type TerminalReleaseFailure } from './batteryClaimStanding';
 import { backoffDelayMs } from './retryBackoff';
 
 const logger = getLogger('battery');
@@ -28,9 +28,14 @@ export type RetryableReleaseFailure =
   | { kind: 'not_requested' }
   | { kind: 'write_failed'; error: unknown };
 
-/** A record still owed a hand-back: due for an attempt, or stopped by a terminal failure. */
+/**
+ * A record still owed a hand-back: due for an attempt, or stopped by a terminal
+ * failure. `awaitingReport`: the hand-back was written to a battery that
+ * confirms it only by reporting the restored mode, and the attempt is due if
+ * that report has not come by `nextAttemptAtMs`.
+ */
 export type PendingHandBack =
-  | { state: 'due'; reason: ReleaseReason; failures: number; nextAttemptAtMs: number }
+  | { state: 'due'; reason: ReleaseReason; failures: number; nextAttemptAtMs: number; awaitingReport: boolean }
   | { state: 'terminal'; reason: ReleaseReason; failure: TerminalReleaseFailure };
 
 export class PendingHandBacks {
@@ -54,7 +59,9 @@ export class PendingHandBacks {
 
   /** A record a previous run left, or one that read cleanly only now: its hand-back is due at once. */
   markBootRecovery(deviceId: string): void {
-    this.entries.set(deviceId, { state: 'due', reason: 'boot_recovery', failures: 0, nextAttemptAtMs: 0 });
+    this.entries.set(deviceId, {
+      state: 'due', reason: 'boot_recovery', failures: 0, nextAttemptAtMs: 0, awaitingReport: false,
+    });
   }
 
   /**
@@ -76,6 +83,7 @@ export class PendingHandBacks {
       reason: reason === 'boot_recovery' ? reason : 'retry',
       failures,
       nextAttemptAtMs,
+      awaitingReport: false,
     });
     logger.warn({
       event: 'battery_control_release_failed',
@@ -85,6 +93,64 @@ export class PendingHandBacks {
       terminal: false,
       nextAttemptAtMs,
       ...(failure.kind === 'write_failed' ? { err: normalizeError(failure.error) } : {}),
+    });
+  }
+
+  /**
+   * A hand-back written to a battery that confirms it only by reporting the
+   * restored mode: its record stays until that report. Without one, the
+   * hand-back is due again after the report window, or after the back-off
+   * once an earlier attempt went unreported.
+   */
+  awaitReport(deviceId: string, reason: ReleaseReason, nowMs: number, restoredClaimValue: string): true {
+    const previous = this.entries.get(deviceId);
+    const failures = previous?.state === 'due' ? previous.failures : 0;
+    const waitMs = failures === 0 ? HAND_BACK_REPORT_WINDOW_MS
+      : Math.max(HAND_BACK_REPORT_WINDOW_MS, backoffDelayMs(BATTERY_RELEASE_RETRY_BACKOFF_MS, failures));
+    this.entries.set(deviceId, {
+      state: 'due',
+      reason: reason === 'boot_recovery' ? reason : 'retry',
+      failures,
+      nextAttemptAtMs: nowMs + waitMs,
+      awaitingReport: true,
+    });
+    logger.info({ event: 'battery_control_release_awaiting_report', deviceId, reason, restoredClaimValue });
+    return true;
+  }
+
+  /**
+   * Whether a hand-back keeps the battery from a new claim: one waiting out
+   * its back-off, or stopped for good. One that only waits for its report does
+   * not: a new claim adopts its record, which still names the battery's own
+   * mode.
+   */
+  holdsClaim(deviceId: string, nowMs: number): boolean {
+    return this.isWaiting(deviceId, nowMs) && !this.isAwaitingReport(deviceId);
+  }
+
+  /** Whether the battery's last hand-back write is still waiting for its report. */
+  isAwaitingReport(deviceId: string): boolean {
+    const pending = this.entries.get(deviceId);
+    return pending?.state === 'due' && pending.awaitingReport;
+  }
+
+  /**
+   * The hand-back written last went unreported past its window: a failure
+   * that counts toward the back-off, logged like any other, before it is
+   * written again.
+   */
+  noteRestoreUnreported(deviceId: string, reason: ReleaseReason): void {
+    const previous = this.entries.get(deviceId);
+    if (previous?.state !== 'due' || !previous.awaitingReport) return;
+    const failures = previous.failures + 1;
+    this.entries.set(deviceId, { ...previous, failures, awaitingReport: false });
+    logger.warn({
+      event: 'battery_control_release_failed',
+      deviceId,
+      reason,
+      failure: 'restore_unreported',
+      terminal: false,
+      failures,
     });
   }
 

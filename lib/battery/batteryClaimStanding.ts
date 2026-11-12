@@ -85,6 +85,21 @@ export type ReleaseVerdict =
 export type ClaimStanding = 'held' | 'contested' | 'taken_over';
 
 /**
+ * How long a meter-following battery's hand-back waits for the battery to
+ * report the restored mode. Its app may drop a mode change made too soon after
+ * the last and still answer success (`notes/battery-vendor-bindings.md`), so
+ * only the report confirms it. A battery reports only a change: once the
+ * window has passed, its last report is its mode, and a restore to the mode it
+ * already held shows as landed then.
+ */
+export const HAND_BACK_REPORT_WINDOW_MS = 15_000;
+
+/** Whether the battery confirms a hand-back only by reporting the restored mode. */
+export const awaitsHandBackReport = (battery: BatteryControlRead): battery is SetpointBatteryRead => (
+  battery.kind === 'setpoint' && battery.surface.response.kind === 'follows_meter'
+);
+
+/**
  * Whether the battery reports a claim value PELS drives it with: Homey's
  * claim value, or for a meter-following battery one of its command modes.
  * Under a claim, PELS's or anyone's.
@@ -224,7 +239,9 @@ export class ClaimWriteLog {
    * outlives the hand-back it recorded) and the report is dated after its
    * claim. A report with no hand-back behind it is not one: on a first claim,
    * the battery app's stale echo of its own mode IS the value PELS would
-   * restore.
+   * restore. A meter-following battery reporting that value once the report
+   * window after the restore has passed shows it too
+   * (`HAND_BACK_REPORT_WINDOW_MS`).
    */
   showsLandedHandBack(
     deviceId: string,
@@ -236,8 +253,47 @@ export class ClaimWriteLog {
     const { claim } = battery;
     if (record.kind !== 'claim_capability' || 'kind' in claim || claim.value !== record.previousValue) return false;
     const restoredAtMs = this.restoredAtMs.get(deviceId);
-    if (restoredAtMs !== undefined) return claim.observedAtMs > restoredAtMs;
+    if (restoredAtMs !== undefined) {
+      return claim.observedAtMs > restoredAtMs
+        || (awaitsHandBackReport(battery) && nowMs - restoredAtMs >= HAND_BACK_REPORT_WINDOW_MS);
+    }
     return bootRecovery && this.readStanding(deviceId, record, battery, nowMs) !== 'held';
+  }
+
+  /**
+   * Whether a hand-back just written to this battery waits for its report:
+   * a meter-following battery that does not show the restored mode yet
+   * (`HAND_BACK_REPORT_WINDOW_MS`). Every other battery's write is its
+   * hand-back.
+   */
+  owesHandBackReport(
+    deviceId: string, record: BatteryClaimRecord, battery: BatteryControlRead, nowMs: number,
+  ): boolean {
+    return awaitsHandBackReport(battery) && !this.showsLandedHandBack(deviceId, record, battery, false, nowMs);
+  }
+
+  /**
+   * What a hand-back of this record would do to the battery as it is now:
+   * nothing it could ever do (`terminal`), nothing because PELS's own earlier
+   * hand-back already landed (`handed_back`), wait because the battery's claim
+   * is contested (`contested`), nothing because someone else took the battery
+   * over (`superseded`), or the hand-back.
+   */
+  classifyRelease(
+    deviceId: string,
+    record: BatteryClaimRecord,
+    battery: Exclude<BatteryControlRead, { kind: 'unobserved' }>,
+    bootRecovery: boolean,
+    nowMs: number,
+  ): ReleaseVerdict {
+    const failure = resolveTerminalFailure(record, battery);
+    if (failure !== undefined) return { kind: 'terminal', failure };
+    // A claim-less battery shows neither a landed hand-back nor a takeover.
+    if (battery.kind !== 'setpoint') return { kind: 'release' };
+    if (this.showsLandedHandBack(deviceId, record, battery, bootRecovery, nowMs)) return { kind: 'handed_back' };
+    const standing = this.readStanding(deviceId, record, battery, nowMs);
+    if (standing === 'held') return { kind: 'release' };
+    return standing === 'contested' ? { kind: 'contested' } : { kind: 'superseded' };
   }
 
   forget(deviceId: string): void {

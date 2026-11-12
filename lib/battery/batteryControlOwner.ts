@@ -40,6 +40,13 @@
  *   the hand-back it recorded. The record is dropped and Managed stays as it
  *   is. Without a hand-back behind it the same report proves nothing: on a
  *   first claim the stale echo is the value PELS would restore.
+ * - **Reported hand-back.** A meter-following battery confirms its hand-back
+ *   only by reporting the restored mode: its app may drop a mode change made
+ *   too soon after the last and still answer success. Its record stays until
+ *   that report, and the hand-back is written again if the battery still shows
+ *   another mode once `HAND_BACK_REPORT_WINDOW_MS` has passed. It reports only
+ *   a change, so after the window its last report is its mode. A new claim
+ *   meanwhile adopts the record, which still names the battery's own mode.
  * - **Retries.** A failed hand-back is retried on committed snapshots with a
  *   per-battery backoff. A terminal one (a restore value or claim capability
  *   the battery no longer declares, a battery PELS can only observe, or a
@@ -114,6 +121,7 @@ import type { StorageActuation, StorageControlBinding } from '../ports/storageCo
 import { normalizeError } from '../utils/errorUtils';
 import { BATTERY_CONTROL_DEVICES } from '../utils/settingsKeys';
 import { BatteryClaimStore, type BatteryClaimRecord } from './batteryClaimStore';
+import { BatteryWriteQueue } from './batteryWriteQueue';
 import {
   ClaimWriteLog,
   describeHandBack,
@@ -183,7 +191,8 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
   private readonly takenOver = new Set<string>();
   /** Batteries whose app refused control, for now (`batteryWatchOnly.ts`). */
   private readonly watchOnly = new BatteryWatchOnlyLedger();
-  private readonly writes = new Map<string, Promise<void>>();
+  /** One write at a time per battery: setpoints and hand-backs alike. */
+  private readonly writes = new BatteryWriteQueue();
   /** PELS's own claim writes, which a battery's claim standing is read against. */
   private readonly claimWrites = new ClaimWriteLog();
   /** Key removals waiting for their hand-backs (`handBackBeforeHomeyApiKeyRemoval`): no app-actions claim meanwhile. */
@@ -244,7 +253,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
   dispatchSetpoint(
     deviceId: string, write: (control: StorageControlBinding) => Promise<BatterySetpointWrite>,
   ): Promise<BatterySetpointOutcome> {
-    return this.serializeWrite(deviceId, async () => {
+    return this.writes.run(deviceId, async () => {
       const recordBefore = this.readRecord(deviceId);
       const admission = this.admitWrite(deviceId);
       if (admission.status === 'refused') return admission;
@@ -353,15 +362,10 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
       && !isBatteryControlEnabled(held.devices, deviceId) && isBatteryControlEnabled(stored.devices, deviceId);
   }
 
-  private serializeWrite<T>(deviceId: string, write: () => Promise<T>): Promise<T> {
-    const work = (this.writes.get(deviceId) ?? Promise.resolve()).then(write);
-    const settled = work.then(() => undefined, () => undefined);
-    this.writes.set(deviceId, settled);
-    void settled.then(() => { if (this.writes.get(deviceId) === settled) this.writes.delete(deviceId); });
-    return work;
-  }
-
   readControl(deviceId: string): BatteryLeverRead {
+    // A hand-back waiting for the battery's report settles on the rebuild that
+    // reads it, not only at the next committed snapshot.
+    if (this.pending.isAwaitingReport(deviceId)) this.settleObservedHandBack(deviceId);
     const battery = this.getBattery(deviceId);
     // A watch-only battery is still read, so its discharge counts against
     // surplus devices; `checkClaim` answers `watch_only`, so it is never
@@ -551,7 +555,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     if (!this.isMainHomeMember(deviceId)) return 'not_main_home';
     if (holds === 'holds_apply' && this.isActuationFenced()) return 'actuation_fenced';
     if (this.isCapacityDryRun()) return 'dry_run';
-    if (this.releasing.has(deviceId) || this.pending.isWaiting(deviceId, Date.now())) return 'release_in_flight';
+    if (this.releasing.has(deviceId) || this.pending.holdsClaim(deviceId, Date.now())) return 'release_in_flight';
     const claims = this.loadClaims();
     if (claims.status !== 'loaded') return 'claim_records_unread';
     if (claims.unreadable.has(deviceId)) return 'claim_record_unreadable';
@@ -655,7 +659,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
   private release(deviceId: string, reason: ReleaseReason): Promise<boolean> {
     const running = this.releasing.get(deviceId);
     if (running !== undefined) return running;
-    const work = this.serializeWrite(deviceId, () => this.runRelease(deviceId, reason)).finally(() => {
+    const work = this.writes.run(deviceId, () => this.runRelease(deviceId, reason)).finally(() => {
       this.releasing.delete(deviceId);
     });
     this.releasing.set(deviceId, work);
@@ -675,9 +679,11 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     // Its app refuses control, so it refuses the hand-back's writes as well.
     // Nothing is recorded: the hand-back is due again once watch-only ends.
     if (this.isWatchOnly(deviceId)) return false;
-    const verdict: ReleaseVerdict = battery.kind === 'unobserved'
-      ? { kind: 'release' } : this.classifyRelease(deviceId, record, battery);
+    const bootRecovery = this.pending.get(deviceId)?.reason === 'boot_recovery';
+    const verdict: ReleaseVerdict = battery.kind === 'unobserved' ? { kind: 'release' }
+      : this.claimWrites.classifyRelease(deviceId, record, battery, bootRecovery, Date.now());
     if (verdict.kind !== 'release') return this.settleWithoutWrite(claims, deviceId, record, reason, verdict);
+    this.pending.noteRestoreUnreported(deviceId, reason);
     this.claimWrites.noteRestore(deviceId, Date.now());
     try {
       const outcome = await this.actuation.apply(toReleaseCommand(deviceId, record));
@@ -688,6 +694,10 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     } catch (error) {
       this.pending.scheduleRetry(deviceId, reason, { kind: 'write_failed', error });
       return false;
+    }
+    // Its record stays until the battery reports the restored mode (`settleObservedHandBack`).
+    if (this.claimWrites.owesHandBackReport(deviceId, record, this.getBattery(deviceId), Date.now())) {
+      return this.pending.awaitReport(deviceId, reason, Date.now(), describeHandBack(record));
     }
     const recordRemoved = this.forget(claims, deviceId);
     logger.info({
@@ -731,27 +741,5 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     logger.info({ event: 'battery_control_claim_superseded', deviceId, reason, recordRemoved });
     // Nothing was handed back: someone else had already taken the battery.
     return false;
-  }
-
-  /**
-   * What a hand-back of this record would do to the battery as it is now:
-   * nothing it could ever do (`terminal`), nothing because PELS's own earlier
-   * hand-back already landed (`handed_back`), wait because the battery's claim
-   * is contested (`contested`), nothing because someone else took the battery
-   * over (`superseded`), or the hand-back.
-   */
-  private classifyRelease(
-    deviceId: string,
-    record: BatteryClaimRecord,
-    battery: Exclude<BatteryControlRead, { kind: 'unobserved' }>,
-  ): ReleaseVerdict {
-    const failure = resolveTerminalFailure(record, battery);
-    if (failure !== undefined) return { kind: 'terminal', failure };
-    // A claim-less battery shows neither a landed hand-back nor a takeover.
-    if (battery.kind !== 'setpoint') return { kind: 'release' };
-    if (this.showsOwedHandBack(deviceId, record, battery)) return { kind: 'handed_back' };
-    const standing = this.claimWrites.readStanding(deviceId, record, battery, Date.now());
-    if (standing === 'held') return { kind: 'release' };
-    return standing === 'contested' ? { kind: 'contested' } : { kind: 'superseded' };
   }
 }
