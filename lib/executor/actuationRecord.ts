@@ -1,3 +1,4 @@
+import type { RestoreDrawEvidence } from '../ports/actuationHistory';
 
 /**
  * Executor-owned command history and in-flight work, one per home.
@@ -24,6 +25,9 @@ export class ActuationRecord {
 
   /** The last restore of each device — a step adjustment upward stamps it as well as a turn-on. */
   lastDeviceRestoreMs: Record<string, number> = {};
+
+  /** Binary power may arrive between dispatch and the ON confirmation that starts pacing. */
+  private readonly binaryRestoreDrawEvidenceFromMs: Record<string, number> = {};
 
   /** The last restore of any device — the restore cooldown's anchor. */
   lastRestoreMs: number | null = null;
@@ -97,6 +101,28 @@ export class ActuationRecord {
   markRestore(deviceId: string, nowMs: number): void {
     this.lastRestoreMs = nowMs;
     this.lastDeviceRestoreMs[deviceId] = nowMs;
+    delete this.binaryRestoreDrawEvidenceFromMs[deviceId];
+  }
+
+  /** Confirmation starts pacing; the corresponding dispatch starts its power-evidence window. */
+  markConfirmedBinaryRestore(deviceId: string, dispatchedAtMs: number, confirmedAtMs: number): void {
+    const evidenceFromMs = Math.max(
+      dispatchedAtMs,
+      this.resolveDrawEvidenceFromMs(deviceId, this.lastDeviceRestoreMs[deviceId] ?? dispatchedAtMs),
+    );
+    this.markRestore(deviceId, confirmedAtMs);
+    // A delayed ON confirmation cannot make power from before a newer step-up count.
+    this.binaryRestoreDrawEvidenceFromMs[deviceId] = evidenceFromMs;
+  }
+
+  readRestoreDrawEvidence(): readonly RestoreDrawEvidence[] {
+    return Object.entries(this.lastDeviceRestoreMs).map(([deviceId, restoredAtMs]) => ({
+      deviceId, restoredAtMs, drawEvidenceFromMs: this.resolveDrawEvidenceFromMs(deviceId, restoredAtMs),
+    }));
+  }
+
+  private resolveDrawEvidenceFromMs(deviceId: string, restoredAtMs: number): number {
+    return this.binaryRestoreDrawEvidenceFromMs[deviceId] ?? restoredAtMs;
   }
 
   /** Whether PELS shed or restored any device at or after `sinceMs` this run. */

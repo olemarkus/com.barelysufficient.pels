@@ -183,6 +183,10 @@ export class PlanExecutor {
 
   private recordRestoreActuation(deviceId: string, name: string, now: number): void {
     this.execution.actuation.markRestore(deviceId, now);
+    this.recordRestoreControlEvent(deviceId, name, now);
+  }
+
+  private recordRestoreControlEvent(deviceId: string, name: string, now: number): void {
     this.recordControlTimestamp(deviceId, now);
     this.deps.deviceDiagnostics?.recordControlEvent({ kind: 'pels_restore', deviceId, name, nowTs: now });
   }
@@ -211,7 +215,8 @@ export class PlanExecutor {
       if (pending.logContext === 'capacity_control_off') {
         this.execution.actuation.clearShed(deviceId);
       } else {
-        this.recordRestoreActuation(deviceId, liveDevice.name, now);
+        this.execution.actuation.markConfirmedBinaryRestore(deviceId, pending.startedMs, now);
+        this.recordRestoreControlEvent(deviceId, liveDevice.name, now);
         this.ctx.recordActivationAttemptStarted(deviceId, liveDevice.name, now);
       }
 

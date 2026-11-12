@@ -55,6 +55,56 @@ function poweredRestore() {
   return { observer, state, deps, nowTs, devices: [restoredHeater('first')] };
 }
 
+describe('confirmed binary restore power evidence', () => {
+  it.each([1800, 2200])('accepts draw on either side of the ON confirmation at %s', (confirmedAtMs) => {
+    const { state, deps, devices, nowTs } = poweredRestore();
+    state.actuation.markConfirmedBinaryRestore('first', 1000, confirmedAtMs);
+    expect(state.actuation.lastRestoreMs).toBe(confirmedAtMs);
+    expect(state.actuation.lastDeviceRestoreMs.first).toBe(confirmedAtMs);
+    expect(state.actuation.readRestoreDrawEvidence()).toContainEqual({
+      deviceId: 'first', restoredAtMs: confirmedAtMs, drawEvidenceFromMs: 1000,
+    });
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs).inRestoreCooldown).toBe(false);
+  });
+
+  it.each([2000, 2200])('rejects draw measured at or before dispatch at %s', (dispatchedAtMs) => {
+    const { state, deps, devices, nowTs } = poweredRestore();
+    state.actuation.markConfirmedBinaryRestore('first', dispatchedAtMs, 2300);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs).inRestoreCooldown).toBe(true);
+  });
+
+  it('recognizes the startup draw of a stepped device without requiring a second rise', () => {
+    const { state, deps, nowTs } = poweredRestore();
+    state.actuation.markConfirmedBinaryRestore('first', 1000, 2200);
+    const devices = [steppedPlanDevice({ id: 'first', planningPowerKw: 1.5 })];
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs).inRestoreCooldown).toBe(false);
+  });
+
+  it('keeps a newer step-up evidence window when an older ON confirmation arrives late', () => {
+    const { observer, state, deps, nowTs } = poweredRestore();
+    state.actuation.markRestore('first', 2150);
+    state.actuation.markConfirmedBinaryRestore('first', 1000, 2300);
+    const devices = [steppedPlanDevice({ id: 'first', planningPowerKw: 2 })];
+    expect(state.actuation.readRestoreDrawEvidence()).toContainEqual({
+      deviceId: 'first', restoredAtMs: 2300, drawEvidenceFromMs: 2150,
+    });
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs).inRestoreCooldown).toBe(true);
+    observe(observer, reading('first', 1.9, 2400), 2450);
+    deps.powerTracker = homeReading(2600, 2700);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs).inRestoreCooldown).toBe(false);
+  });
+
+  it('retains confirmation-based instability gating and the extended backoff', () => {
+    const { state, deps, devices, nowTs } = poweredRestore();
+    state.actuation.markConfirmedBinaryRestore('first', 1000, 2200);
+    state.restoreBackoff.noteInstability(1500);
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs).inRestoreCooldown).toBe(false);
+    state.restoreBackoff.restoreCooldownMs = 600_000;
+    expect(buildRestoreTiming(state, { kind: 'on', kw: 8 }, deps, devices, nowTs).inRestoreCooldown).toBe(true);
+  });
+
+});
+
 describe('observer drawing-start evidence', () => {
   it('starts a run when a live idle reading is followed by an active one', () => {
     const { observer } = poweredRestore();

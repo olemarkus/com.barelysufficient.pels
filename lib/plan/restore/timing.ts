@@ -138,14 +138,14 @@ function recentRestoresHavePowerEvidence(
   if (measuredAfterMs === null || state.actuation.hasInFlight()
     || planDevices.some((device) => device.binaryCommandPending)) return false;
   const { lastInstabilityMs } = state.restoreBackoff;
-  const recentRestores = Object.entries(state.actuation.lastDeviceRestoreMs)
-    .filter(([, restoredAtMs]) => nowTs - restoredAtMs < RESTORE_COOLDOWN_MS);
-  return recentRestores.length > 0 && recentRestores.every(([deviceId, restoredAtMs]) => {
+  const recentRestores = state.actuation.readRestoreDrawEvidence()
+    .filter(({ restoredAtMs }) => nowTs - restoredAtMs < RESTORE_COOLDOWN_MS);
+  return recentRestores.length > 0 && recentRestores.every(({ deviceId, restoredAtMs, drawEvidenceFromMs }) => {
     const device = planDevices.find((candidate) => candidate.id === deviceId);
     return device !== undefined && device.stepCommandPending !== true
       && state.pendingTargetCommands[deviceId] === undefined
       && (lastInstabilityMs === null || lastInstabilityMs < restoredAtMs)
-      && hasRestoredDrawArrived(deps, device, restoredAtMs, measuredAfterMs);
+      && hasRestoredDrawArrived(deps, device, drawEvidenceFromMs, measuredAfterMs);
   });
 }
 
