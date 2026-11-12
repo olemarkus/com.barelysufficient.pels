@@ -30,7 +30,8 @@ type BatteryPlanSession = {
   otherEnabledPlans: number;
   /** The saved settings the form edits: the read's config, or a config just saved. */
   config: ContinuousBatteryPlanConfig | null;
-  priceUnit: string;
+  /** The unit the prices are in now, or `null` until prices have been read. */
+  priceUnit: string | null;
   busy: boolean;
   error: string;
   loading: boolean;
@@ -85,7 +86,7 @@ async function load(current: BatteryPlanSession): Promise<void> {
     current.config = read.config;
     current.previewAvailable = true;
     const combined = prices?.combinedPrices;
-    current.priceUnit = 'price units';
+    current.priceUnit = null;
     if (read.status === 'planned') current.priceUnit = read.priceUnit;
     else if (isUnknownRecord(combined) && typeof combined.priceUnit === 'string' && combined.priceUnit.trim()) {
       current.priceUnit = combined.priceUnit;
@@ -162,7 +163,7 @@ export function setContinuousBatteryPlanDevice(device: SettingsUiDeviceDetailIte
     display(session);
     return;
   }
-  session = { deviceId: device.id, drivable: device.batteryControl === 'drivable', blockedReason, read: null, efficiency: { status: 'unavailable' }, otherEnabledPlans: 0, config: null, priceUnit: 'price units', busy: false,
+  session = { deviceId: device.id, drivable: device.batteryControl === 'drivable', blockedReason, read: null, efficiency: { status: 'unavailable' }, otherEnabledPlans: 0, config: null, priceUnit: null, busy: false,
     error: '', loading: false, previewAvailable: true, generation: 0 };
   display(session);
   void load(session);

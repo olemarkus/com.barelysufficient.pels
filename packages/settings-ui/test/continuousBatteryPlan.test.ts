@@ -11,14 +11,15 @@ const getSettingFresh = vi.fn();
 const setSetting = vi.fn();
 let managed = true;
 let powerLimit = true;
-let priceUnit = 'EUR';
+/** The unit the prices are in; `null` before any prices were read. */
+let priceUnit: string | null = 'EUR';
 let cachedDevices: unknown = null;
 let efficiency: BatteryEfficiencyMeasurement | undefined;
 let otherPlans = true;
 vi.mock('../src/ui/homey.ts', () => ({
-  callApi: async (method: string, path: string) => path === '/ui_prices'
-    ? { priceTimeline: { state: 'ready', priceUnit } }
-    : callApi(method, path),
+  callApi: async (method: string, path: string, body?: unknown) => path === '/ui_prices'
+    ? { priceTimeline: priceUnit === null ? { state: 'unavailable', reason: 'no_prices' } : { state: 'ready', priceUnit } }
+    : callApi(method, path, body),
   getApiReadModel: async (path: string) => {
     if (cachedDevices !== null) return cachedDevices;
     const result = await callApi('GET', path);
@@ -30,7 +31,9 @@ vi.mock('../src/ui/homey.ts', () => ({
   setSetting: (...args: unknown[]) => setSetting(...args),
   invalidateApiCache: () => { cachedDevices = null; }, getHomeyTimezone: () => 'Europe/Amsterdam',
 }));
-vi.mock('../src/ui/prices.ts', () => ({ getPricesReadModel: async () => ({ combinedPrices: { priceUnit } }) }));
+vi.mock('../src/ui/prices.ts', () => ({
+  getPricesReadModel: async () => ({ combinedPrices: priceUnit === null ? null : { priceUnit } }),
+}));
 vi.mock('../src/ui/state.ts', () => ({
   state: { dryRun: false }, resolveManagedState: () => managed, resolveBatteryPowerLimitOn: () => powerLimit,
 }));
@@ -247,11 +250,47 @@ test('refuses empty and malformed numeric input rather than saving zeroes', () =
 });
 
 test('blocks enabling while the price unit is unknown', async () => {
-  priceUnit = 'price units';
+  priceUnit = null;
   callApi.mockResolvedValue({ status: 'disabled', config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG });
   await openBattery();
   expect(document.body.textContent).toContain('Waiting for the electricity price unit');
   expect(document.querySelector('md-switch')?.hasAttribute('disabled')).toBe(true);
+});
+
+test('plans on Flow prices, whose unit is the owner\'s own', async () => {
+  priceUnit = 'price units';
+  let latest: ContinuousBatteryPlanRead = { status: 'disabled', config: DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG };
+  callApi.mockImplementation(async () => latest);
+  getSettingFresh.mockResolvedValue({});
+  setSetting.mockImplementation(async (_key: string, value: Record<string, ContinuousBatteryPlanConfig>) => {
+    latest = { status: 'waiting', config: value.battery, reason: 'battery_unavailable' };
+  });
+  await openBattery();
+  expect(document.body.textContent).not.toContain('Waiting for the electricity price unit');
+  const toggle = document.querySelector<HTMLElement & { selected: boolean }>('md-switch')!;
+  await act(async () => { toggle.selected = true; toggle.dispatchEvent(new Event('change')); });
+  expect(field('Wear allowance (per kWh)').value).toBe('0');
+  await act(async () => { field('Wear allowance (per kWh)').value = '0.02'; field('Wear allowance (per kWh)').dispatchEvent(new Event('input')); });
+  await act(async () => button('Save battery plan').click());
+  await vi.waitFor(() => expect(setSetting).toHaveBeenCalledWith('continuous_battery_plan', {
+    battery: expect.objectContaining({ enabled: true, priceUnit: 'price units', wearCostPerKWh: 0.02 }),
+  }));
+  expect(document.body.textContent).not.toContain('The electricity price unit changed');
+});
+
+test('reopens a saved Flow plan with its wear allowance', async () => {
+  priceUnit = 'price units';
+  callApi.mockResolvedValue({ status: 'waiting', config: { ...config, priceUnit: 'price units', wearCostPerKWh: 0.02 }, reason: 'battery_unavailable' });
+  await openBattery();
+  expect(field('Wear allowance (per kWh)').value).toBe('0.02');
+  expect(document.body.textContent).not.toContain('The electricity price unit changed');
+});
+
+test('asks for a wear review when a Flow plan moves to a priced source', async () => {
+  priceUnit = 'EUR';
+  callApi.mockResolvedValue({ status: 'waiting', config: { ...config, priceUnit: 'price units', wearCostPerKWh: 0.02 }, reason: 'price_unit_changed' });
+  await openBattery();
+  expect(document.body.textContent).toContain('The electricity price unit changed from price units to EUR');
 });
 
 test('starts an unbound wear allowance at zero in the current price unit', async () => {

@@ -4,7 +4,8 @@ import type {
 } from '../../../../contracts/src/continuousBatteryPlan.ts';
 import type { BatteryEnergyPlanPeriod } from '../../../../contracts/src/batteryPlan.ts';
 import {
-  EXPORT_CEILING_MAX_KW, EXPORT_CEILING_MIN_KW, parseContinuousBatteryPlanConfig,
+  EXPORT_CEILING_MAX_KW, EXPORT_CEILING_MIN_KW, UNITLESS_PRICE_UNIT, isBatteryPlanUnitSettled,
+  parseContinuousBatteryPlanConfig,
 } from '../../../../shared-domain/src/settings/continuousBatteryPlan.ts';
 import { formatDayFirstInTimeZone, formatTimeInTimeZone, getDateKeyInTimeZone, shiftDateKey } from '../../../../shared-domain/src/utils/dateUtils.ts';
 import { MdFilledButton, MdFilledTextField, MdOutlinedButton, MdSwitch, MdTextButton, readSwitchSelected } from './materialWebJSX.tsx';
@@ -19,7 +20,8 @@ export type ContinuousBatteryPlanProps = {
    * saved while the plan for it is still loading.
    */
   config: ContinuousBatteryPlanConfig;
-  priceUnit: string;
+  /** The unit the prices are in now, or `null` until prices have been read. */
+  priceUnit: string | null;
   timeZone: string;
   blockedReason: string;
   busy: boolean;
@@ -38,7 +40,7 @@ const draftFrom = (config: ContinuousBatteryPlanConfig): Draft => ({
   capacity: String(config.usableCapacityKWh),
   reserve: String(config.minimumReservePercent),
   efficiency: String(Math.round(config.roundTripEfficiency * 100)),
-  wear: config.priceUnit === 'price units' ? '0' : String(config.wearCostPerKWh),
+  wear: isBatteryPlanUnitSettled(config) ? String(config.wearCostPerKWh) : '0',
   sell: config.exportPolicy.kind === 'price_export',
   exportCeiling: config.exportPolicy.kind === 'price_export' ? String(config.exportPolicy.netExportCeilingKW) : '',
 });
@@ -58,6 +60,15 @@ export const readBatteryPlanDraft = (draft: Draft, priceUnit: string): Continuou
       : { kind: 'household_only' },
   };
   return parseContinuousBatteryPlanConfig(config);
+};
+
+/**
+ * The wear field's label in the unit the prices are in. Prices without a
+ * currency (Flow) read as per kWh in the owner's own price unit.
+ */
+const wearAllowanceLabel = (unit: string | null): string => {
+  if (unit === null || unit.trim().toLowerCase() === UNITLESS_PRICE_UNIT) return 'Wear allowance (per kWh)';
+  return `Wear allowance (${unit.toLowerCase().includes('/kwh') ? unit : `${unit}/kWh`})`;
 };
 
 type WaitingReason = Extract<ContinuousBatteryPlanRead, { status: 'waiting' }>['reason'];
@@ -94,7 +105,10 @@ export const UNPRICED_SOLAR_EXPORT_LINE = 'No export price is set, so the plan c
 /** What the selling choice decided for the plan shown. */
 export const batteryPlanSellingLine = (decision: ContinuousBatteryExportDecision, priceUnit: string): string => {
   switch (decision.kind) {
-    case 'selling': return `Selling is planned. Estimated ${decision.estimatedSavings.toFixed(2)} ${moneyUnitOf(priceUnit)} lower electricity cost than keeping the energy for your home over this plan.`;
+    case 'selling': {
+      const money = priceUnit.trim().toLowerCase() === UNITLESS_PRICE_UNIT ? '' : ` ${moneyUnitOf(priceUnit)}`;
+      return `Selling is planned. Estimated ${decision.estimatedSavings.toFixed(2)}${money} lower electricity cost than keeping the energy for your home over this plan.`;
+    }
     case 'kept_household': return 'Selling would not lower your cost in this plan, so PELS keeps the energy for your home.';
     case 'waiting': return decision.reason === 'export_prices_incomplete'
       ? 'Selling waits for an export price for every hour of the plan. PELS keeps planning for your home.'
@@ -245,14 +259,14 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
   const update = (key: keyof Draft, value: string | boolean) => setForm(current => ({
     ...current, draft: { ...current.draft, [key]: value }, dirty: true,
   }));
-  const config = draft.enabled ? readBatteryPlanDraft(draft, props.priceUnit)
+  const unit = props.priceUnit;
+  const config = draft.enabled ? (unit === null ? null : readBatteryPlanDraft(draft, unit))
     : { ...props.config, enabled: false };
-  const unitAvailable = props.priceUnit.trim() !== '' && props.priceUnit.trim().toLowerCase() !== 'price units';
-  const changedUnit = draft.enabled && unitAvailable && props.config.priceUnit !== 'price units'
-    && props.config.priceUnit.trim().toLowerCase() !== props.priceUnit.trim().toLowerCase();
-  const enableBlocked = props.blockedReason !== '' || !unitAvailable;
+  const changedUnit = draft.enabled && unit !== null && isBatteryPlanUnitSettled(props.config)
+    && props.config.priceUnit.trim().toLowerCase() !== unit.trim().toLowerCase();
+  const enableBlocked = props.blockedReason !== '' || unit === null;
   const canSave = canSaveBatteryPlan(config, enableBlocked, props.busy);
-  const priceUnit = props.priceUnit.toLowerCase().includes('/kwh') ? props.priceUnit : `${props.priceUnit}/kWh`;
+  const wearLabel = wearAllowanceLabel(unit);
   return <div class="continuous-battery-plan">
     <label class="md-switch-row">
       <span class="md-switch-row__content"><span class="md-switch-row__label pels-text-settings-label">Plan charging with PELS</span></span>
@@ -261,8 +275,8 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
     </label>
     <p class="field__hint">PELS plans charging and household supply. Your battery’s own schedule resumes when you turn this off. Changes apply when you save.</p>
     {props.blockedReason && <p class="field__hint" role="status">{props.blockedReason}</p>}
-    {!unitAvailable && <p class="field__hint" role="status">Waiting for the electricity price unit.</p>}
-    {changedUnit && <p class="field__hint" role="status">The electricity price unit changed from {props.config.priceUnit} to {props.priceUnit}. Review the wear allowance and save the battery plan.</p>}
+    {unit === null && <p class="field__hint" role="status">Waiting for the electricity price unit.</p>}
+    {changedUnit && <p class="field__hint" role="status">The electricity price unit changed from {props.config.priceUnit} to {unit}. Review the wear allowance and save the battery plan.</p>}
     {props.error && <p class="field__hint field__hint--alert" role="alert">{props.error}</p>}
     {draft.enabled && <div class="form-grid battery-plan-fields">
       <MdFilledTextField id="device-detail-battery-plan-capacity" label="Usable capacity (kWh)" type="number" min="0.1" max="500" step="0.1" value={draft.capacity} disabled={props.busy}
@@ -288,7 +302,7 @@ export function ContinuousBatteryPlanView(props: ContinuousBatteryPlanProps) {
       <div class="form-grid battery-plan-fields">
         <MdFilledTextField id="device-detail-battery-plan-efficiency" label="Round-trip efficiency (%)" type="number" min="50" max="100" step="1" value={draft.efficiency} disabled={props.busy}
           onInput={(event: Event) => update('efficiency', (event.currentTarget as HTMLInputElement).value)} />
-        <MdFilledTextField id="device-detail-battery-plan-wear" label={`Wear allowance (${priceUnit})`} type="number" min="0" max="1000" step="any" value={draft.wear} disabled={props.busy}
+        <MdFilledTextField id="device-detail-battery-plan-wear" label={wearLabel} type="number" min="0" max="1000" step="any" value={draft.wear} disabled={props.busy}
           onInput={(event: Event) => update('wear', (event.currentTarget as HTMLInputElement).value)} />
       </div>
       <MeasuredEfficiency efficiency={props.efficiency} draft={draft.efficiency} busy={props.busy}

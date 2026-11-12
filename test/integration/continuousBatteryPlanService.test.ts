@@ -8,6 +8,7 @@ import type {
 import {
   CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY,
   DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG,
+  isBatteryPlanUnitSettled,
   parseContinuousBatteryPlanConfig,
   parseContinuousBatteryPlanConfigs,
 } from '../../packages/shared-domain/src/settings/continuousBatteryPlan';
@@ -270,6 +271,15 @@ describe('continuous battery plan owner', () => {
       { ...config, roundTripEfficiency: 0 }, { ...config, wearCostPerKWh: -1 }, { ...config, priceUnit: '' },
     ]) expect(parseContinuousBatteryPlanConfig(invalid)).toBeNull();
     expect(parseContinuousBatteryPlanConfigs({ battery: config, other: { enabled: true } })).toBeNull();
+  });
+
+  it('accepts an enabled plan in the unit of Flow prices, and tells a never-enabled default from a settled unit', () => {
+    const flow = { ...config, priceUnit: 'price units', wearCostPerKWh: 0.02 };
+    expect(parseContinuousBatteryPlanConfig(flow)).toEqual(flow);
+    expect(isBatteryPlanUnitSettled(flow)).toBe(true);
+    expect(isBatteryPlanUnitSettled({ ...flow, enabled: false })).toBe(false);
+    expect(isBatteryPlanUnitSettled(DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG)).toBe(false);
+    expect(isBatteryPlanUnitSettled({ ...config, enabled: false })).toBe(true);
   });
 
   it('resolves a config saved before selling existed to household-only, and refuses a malformed export policy', () => {

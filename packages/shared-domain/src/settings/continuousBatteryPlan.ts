@@ -7,6 +7,13 @@ import { isUnknownRecord } from '../recordGuards';
 
 export const CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY = 'continuous_battery_plan';
 
+/**
+ * The price-unit label of a source that carries no currency (Flow prices), and
+ * the form default before any prices were read. Flow prices and the wear
+ * allowance the owner types are taken to be in the same unit.
+ */
+export const UNITLESS_PRICE_UNIT = 'price units';
+
 /** Form defaults only: an absent setting never authorizes a plan or invents a battery capacity. */
 export const DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG: ContinuousBatteryPlanConfig = {
   enabled: false,
@@ -14,9 +21,19 @@ export const DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG: ContinuousBatteryPlanConfig
   minimumReservePercent: 20,
   roundTripEfficiency: 0.9,
   wearCostPerKWh: 0.03,
-  priceUnit: 'price units',
+  priceUnit: UNITLESS_PRICE_UNIT,
   exportPolicy: { kind: 'household_only' },
 };
+
+/**
+ * Whether a saved config's wear allowance was entered in the price unit it
+ * names. Every enabled save is made in the unit the plan runs in, and a plan
+ * turned off keeps that unit; only a config never turned on still holds the
+ * form defaults, whose wear allowance belongs to no unit.
+ */
+export const isBatteryPlanUnitSettled = (config: ContinuousBatteryPlanConfig): boolean => (
+  config.enabled || config.priceUnit.trim().toLowerCase() !== UNITLESS_PRICE_UNIT
+);
 
 /** The export ceiling's accepted range, kW: a positive Main-meter bound a home connection can carry. */
 export const EXPORT_CEILING_MIN_KW = 0.1;
@@ -47,8 +64,7 @@ export function parseContinuousBatteryPlanConfig(value: unknown): ContinuousBatt
     || !inRange(value.minimumReservePercent, 0, 95)
     || !inRange(value.roundTripEfficiency, 0.5, 1)
     || !inRange(value.wearCostPerKWh, 0, 1000)
-    || typeof value.priceUnit !== 'string' || !value.priceUnit.trim() || value.priceUnit.length > 64
-    || (value.enabled && value.priceUnit.trim().toLowerCase() === 'price units')) return null;
+    || typeof value.priceUnit !== 'string' || !value.priceUnit.trim() || value.priceUnit.length > 64) return null;
   const exportPolicy = parseExportPolicy(value.exportPolicy);
   if (exportPolicy === null) return null;
   return {
