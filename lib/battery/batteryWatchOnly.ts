@@ -6,6 +6,7 @@
  * `BATTERY_WATCH_ONLY_MS` after it began; the next claim then decides again.
  */
 import type { HomeBatteryControlSurface } from '../../packages/contracts/src/types';
+import { isSameResponse } from '../ports/homeBatteryResponse';
 import { getLogger } from '../logging/logger';
 import type { BatteryControlRead, BatterySetpointOutcome } from '../ports/batteryControlOwner';
 import type { StorageClaimRejected } from '../ports/storageCommand';
@@ -27,7 +28,7 @@ type WatchOnlyEntry = { surface: SetpointSurface; sinceMs: number };
 /** Whether two reads of a battery's setpoint surface describe the same binding: claim, rejection and range. */
 const isSameSurface = (a: SetpointSurface, b: SetpointSurface): boolean => (
   a.claim.capabilityId === b.claim.capabilityId
-  && a.claim.homeyValue === b.claim.homeyValue
+  && isSameResponse(a.response, b.response)
   && a.claim.rejection === b.claim.rejection
   && a.claim.values.length === b.claim.values.length
   && a.claim.values.every((value, index) => value === b.claim.values[index])

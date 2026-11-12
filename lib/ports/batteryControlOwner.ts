@@ -180,6 +180,8 @@ export type BatteryLeverRead =
     claimEngaged: boolean;
     /** How a setpoint PELS sent is kept in force (`BatteryCommandKeepAlive`). */
     keepAliveFor(setpointW: number): BatteryCommandKeepAlive;
+    /** How the battery answers a setpoint, and so how the storage lane judges it (`BatteryLeverResponse`). */
+    response: BatteryLeverResponse;
     /**
      * PELS may hold the battery: `admitClaim` would admit it now, Main's write
      * fence and a contested claim aside (each holds writes for a moment; neither
@@ -189,6 +191,17 @@ export type BatteryLeverRead =
     admissible: boolean;
     verdict: StorageVerdict;
   };
+
+/**
+ * How a battery answers a setpoint, for the storage lane
+ * (`HomeBatteryResponse`): it `delivers_setpoint`, so its own power is judged
+ * against it and teaches its ceilings, or it `follows_meter` in the mode the
+ * setpoint maps to, so its own power says nothing about the command and
+ * `reportsSetpoint` says whether the battery reports that mode now.
+ */
+export type BatteryLeverResponse =
+  | { kind: 'delivers_setpoint' }
+  | { kind: 'follows_meter'; reportsSetpoint(setpointW: number): boolean };
 
 /**
  * The most charge PELS may ask for a battery, W, by its charge level. A charge

@@ -35,6 +35,7 @@ import type { ObservationProducers } from '../observationProducers';
 import { isCanSetControl } from '../deviceActionProjection';
 import {
   HOME_BATTERY_SETPOINT_CAPABILITY_ID,
+  meterModeFor,
   toBatterySetpointCapabilityValue,
   toTargetPowerCapabilityValue,
 } from '../batteryControlWiring';
@@ -345,28 +346,48 @@ export class DeviceWriteService {
     if (command.control.kind !== 'capability') {
       throw new Error('Home battery command authority does not match binding.');
     }
-    const binding = requireHomeBatteryBinding(this.snapshotStore, deviceId);
     // Checked here as well as in `setCapability`, so a write that never left
     // PELS is not mistaken for one the battery's app rejected.
     if (!hasRestClient()) throw new Error('REST client not ready');
-    if (snapshot?.batteryClaim?.value !== surface.claim.homeyValue) {
-      try {
-        await this.setCapability(deviceId, surface.claim.capabilityId, surface.claim.homeyValue);
-      } catch (error) {
-        // Only an answer is a rejection: an HTTP error status, which is how
-        // Homey returns a capability listener's throw (an app's own error comes
-        // back as HTTP 500, as myUplink's "Failed to change the settings." does).
-        // A timeout, a connection reset or an unreadable 2xx may have landed: its
-        // outcome is unknown, and it throws like any other failed write.
-        if (resolveHomeyHttpStatusCode(error) === undefined) throw error;
-        return { kind: 'claim_rejected', errorMessage: normalizeError(error).message };
-      }
+    const { response } = surface;
+    if (response.kind === 'follows_meter') {
+      // The mode is the command: one claim write, whatever the battery reports now.
+      const setpointW = toTargetPowerCapabilityValue(command.setpointW, surface.range);
+      const mode = meterModeFor(response.modes, setpointW);
+      const rejected = await this.writeClaim(deviceId, surface.claim.capabilityId, mode);
+      return rejected ?? { kind: 'written', setpointW };
+    }
+    const binding = requireHomeBatteryBinding(this.snapshotStore, deviceId);
+    if (snapshot?.batteryClaim?.value !== response.claimValue) {
+      const rejected = await this.writeClaim(deviceId, surface.claim.capabilityId, response.claimValue);
+      if (rejected !== undefined) return rejected;
     }
     const setpointW = toTargetPowerCapabilityValue(command.setpointW, surface.range);
     await this.setCapability(
       deviceId, HOME_BATTERY_SETPOINT_CAPABILITY_ID, toBatterySetpointCapabilityValue(binding, setpointW),
     );
     return { kind: 'written', setpointW };
+  }
+
+  /**
+   * Write a battery's claim capability: `undefined` once written, or the
+   * rejection the battery's app answered. Only an answer is a rejection: an
+   * HTTP error status, which is how Homey returns a capability listener's
+   * throw (an app's own error comes back as HTTP 500, as myUplink's "Failed to
+   * change the settings." does). A timeout, a connection reset or an
+   * unreadable 2xx may have landed: its outcome is unknown, and it throws like
+   * any other failed write.
+   */
+  private async writeClaim(
+    deviceId: string, capabilityId: string, value: string,
+  ): Promise<Extract<StoragePowerWrite, { kind: 'claim_rejected' }> | undefined> {
+    try {
+      await this.setCapability(deviceId, capabilityId, value);
+      return undefined;
+    } catch (error) {
+      if (resolveHomeyHttpStatusCode(error) === undefined) throw error;
+      return { kind: 'claim_rejected', errorMessage: normalizeError(error).message };
+    }
   }
 
   /** Native solar production caps and their hand-back, without synthetic telemetry. */
@@ -454,6 +475,11 @@ export class DeviceWriteService {
       throw new Error(`Home battery ${deviceId} hand-back does not match its control binding`);
     }
     const { restoreClaimValue } = command;
+    // A meter-following battery has no setpoint to zero: restoring its mode is the whole hand-back.
+    if (surface.response.kind === 'follows_meter') {
+      await this.setCapability(deviceId, surface.claim.capabilityId, restoreClaimValue);
+      return;
+    }
     const zeroed = await this.setCapability(deviceId, HOME_BATTERY_SETPOINT_CAPABILITY_ID, 0).then(
       () => ({ failed: false as const }),
       (error: unknown) => ({ failed: true as const, error }),

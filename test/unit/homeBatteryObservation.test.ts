@@ -64,7 +64,8 @@ describe('toBatteryControlRead', () => {
   const readAppActions = (): BatteryControlRead => ({ kind: 'homey_api_key_missing' });
   const surface = {
     kind: 'setpoint',
-    claim: { capabilityId: 'target_power_mode', homeyValue: 'homey', values: ['homey', 'anti_feed'], rejection: 'unanswered' },
+    response: { kind: 'delivers_setpoint', claimValue: 'homey' },
+    claim: { capabilityId: 'target_power_mode', values: ['homey', 'anti_feed'], rejection: 'unanswered' },
     range: { minW: -2500, maxW: 2500, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
   } as const;
 

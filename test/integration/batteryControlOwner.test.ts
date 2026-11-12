@@ -40,9 +40,9 @@ const setpointBattery = (claimValue: string, observedAtMs = T0 - 60_000): Batter
   kind: 'setpoint',
   surface: {
     kind: 'setpoint',
+    response: { kind: 'delivers_setpoint', claimValue: 'homey' },
     claim: {
       capabilityId: 'target_power_mode',
-      homeyValue: 'homey',
       values: ['homey', 'anti_feed', 'manual'],
       rejection: 'unanswered',
     },
@@ -563,6 +563,8 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
       handBackDeferred: false,
       claimEngaged: false,
       keepAliveFor: HOLDS_UNTIL_NEXT,
+      // A setpoint battery is judged by the power it delivers, as before.
+      response: { kind: 'delivers_setpoint' },
       admissible: true,
       verdict: 'unverified',
     });

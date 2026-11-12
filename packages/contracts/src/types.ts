@@ -974,7 +974,7 @@ export type AcknowledgedStepObservation = {
  * `control_strategy` enum set to `POWER_STRATEGY_API` (Sessy declares no
  * `target_power_mode`).
  */
-export type HomeBatteryClaimCapabilityId = 'target_power_mode' | 'control_strategy';
+export type HomeBatteryClaimCapabilityId = 'target_power_mode' | 'control_strategy' | 'battery_group_charge_mode';
 
 /** What a rejected write to a home battery's claim capability means (`HomeBatteryControlSurface`). */
 export type HomeBatteryClaimRejection = 'app_refuses_control' | 'unanswered';
@@ -1012,13 +1012,43 @@ export type HomeBatteryObserveOnlyReason =
  * actuator's storage intents against it; a battery that is `observe_only`
  * refuses them.
  */
+/**
+ * The claim capability's values a battery that follows the meter holds while
+ * PELS drives it, one per kind of command: it discharges to cover the house's
+ * import (`discharge`), holds (`hold`), charges from surplus only
+ * (`chargeSurplus`), or charges at its one fixed grid-charge power
+ * (`chargeGrid`, `gridChargeW`).
+ */
+export type HomeBatteryMeterModes = {
+    discharge: string;
+    hold: string;
+    chargeSurplus: string;
+    chargeGrid: string;
+    gridChargeW: number;
+};
+
+/**
+ * How a home battery answers PELS's command, resolved with its control surface.
+ *
+ * - `delivers_setpoint`: PELS writes `claimValue` to the claim capability to
+ *   take it over, then a signed `target_power`, and the battery delivers it:
+ *   its own power is the evidence a command landed.
+ * - `follows_meter`: the battery has no power setpoint. The claim capability
+ *   itself is the command: PELS writes one of `modes`, and the battery then
+ *   follows the whole-home meter in that mode, so its own power says nothing
+ *   about the command. The battery reporting the mode PELS wrote is the
+ *   evidence it landed.
+ */
+export type HomeBatteryResponse =
+    | { kind: 'delivers_setpoint'; claimValue: string }
+    | { kind: 'follows_meter'; modes: HomeBatteryMeterModes };
+
 export type HomeBatteryControlSurface =
     | {
         kind: 'setpoint';
+        response: HomeBatteryResponse;
         claim: {
             capabilityId: HomeBatteryClaimCapabilityId;
-            /** The claim capability's value that hands control to Homey. */
-            homeyValue: string;
             /** Every value the claim capability declares. */
             values: readonly string[];
             /**

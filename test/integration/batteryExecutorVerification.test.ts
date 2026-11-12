@@ -10,6 +10,7 @@ import type {
   BatteryControlOwner,
   BatteryHandBackOutcome,
   BatteryLeverRead,
+  BatteryLeverResponse,
 } from '../../lib/ports/batteryControlOwner';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
@@ -41,6 +42,7 @@ const buildLane = () => {
   const owned = {
     held: false, takenOver: false, deferred: false, releaseOutcome: 'released' as BatteryHandBackOutcome,
     keepAliveFor: (_setpointW: number): BatteryCommandKeepAlive => ({ kind: 'none' }),
+    response: { kind: 'delivers_setpoint' } as BatteryLeverResponse,
   };
   let lastActionAtMs = Number.NEGATIVE_INFINITY;
   const owner: BatteryControlOwner = {
@@ -60,6 +62,7 @@ const buildLane = () => {
       handBackDeferred: owned.deferred,
       claimEngaged: owned.held && !owned.takenOver,
       keepAliveFor: owned.keepAliveFor,
+      response: owned.response,
       admissible: true,
       ...ledger.read(BATTERY, RANGE, Date.now()),
     })),
@@ -624,5 +627,107 @@ describe('battery storage lane', () => {
     }
     expect(recordRestore).not.toHaveBeenCalled();
     expect(apply).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('battery storage lane: a battery that follows the meter', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(START_MS));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /**
+   * A lane whose battery follows the meter in the mode its setpoint maps to:
+   * `reported` is the mode it reports now, a setpoint's sign standing in for
+   * its mode, as `meterModeFor` maps it.
+   */
+  const buildMeterFollowingLane = () => {
+    const lane = buildLane();
+    const modeOf = (setpointW: number) => Math.sign(setpointW);
+    const battery = { reported: Number.NaN };
+    lane.owned.response = {
+      kind: 'follows_meter',
+      reportsSetpoint: (setpointW: number) => battery.reported === modeOf(setpointW),
+    };
+    return { ...lane, report: (setpointW: number) => { battery.reported = modeOf(setpointW); } };
+  };
+
+  it('confirms a command once the battery reports its mode, and sends it once', async () => {
+    const lane = buildMeterFollowingLane();
+    await lane.send(-1000, 0);
+    lane.read(-200, 3800, 30_000);
+    expect(lane.lane.hasDrift(setpoint(-1000))).toBe(false);
+    lane.report(-1000);
+    lane.read(-200, 3800, 40_000);
+    // Past the window it stays confirmed: no re-send.
+    lane.read(-200, 3800, CONTROL_COMMAND_CONFIRMATION_MS + 60_000);
+    expect(lane.lane.hasDrift(setpoint(-1000))).toBe(false);
+    expect(lane.apply).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes nothing for a new setpoint whose mode the battery already reports', async () => {
+    const lane = buildMeterFollowingLane();
+    await lane.send(-1000, 0);
+    lane.report(-1000);
+    lane.read(-300, 3700, 30_000);
+    // The plan resizes the discharge each reading; the mode stays the same.
+    expect(lane.lane.hasDrift(setpoint(-460))).toBe(false);
+    expect(lane.lane.hasDrift(setpoint(-270))).toBe(false);
+    // A setpoint in another mode is a command.
+    expect(lane.lane.hasDrift(setpoint(0))).toBe(true);
+    expect(lane.apply).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends a command again when the battery kept its old mode past the window (a change its app dropped)', async () => {
+    const lane = buildMeterFollowingLane();
+    lane.report(0);
+    await lane.send(-1000, 0);
+    lane.read(0, 4000, 30_000);
+    expect(lane.lane.hasDrift(setpoint(-1000))).toBe(false);
+    lane.read(0, 4000, CONTROL_COMMAND_CONFIRMATION_MS + 1_000);
+    expect(lane.lane.hasDrift(setpoint(-1000))).toBe(true);
+    expect(lane.verdict()).not.toBe('not_responding');
+    await lane.send(-1000, CONTROL_COMMAND_CONFIRMATION_MS + 2_000);
+    expect(lane.apply).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads a battery that left PELS\'s modes after the window as taken over', async () => {
+    const lane = buildMeterFollowingLane();
+    await lane.send(-1000, 0);
+    lane.owned.takenOver = true;
+    lane.read(0, 4000, CONTROL_COMMAND_CONFIRMATION_MS + 1_000);
+    expect(lane.verdict()).toBe('not_responding');
+    expect(lane.lane.hasDrift(setpoint(-1000))).toBe(false);
+  });
+
+  it('learns no delivery ceiling from a discharge that covers only what the house imports', async () => {
+    const lane = buildMeterFollowingLane();
+    await lane.send(-2000, 0);
+    lane.report(-2000);
+    lane.read(-300, 3700, VERIFICATION_MAX_WAIT_MS + 1_000);
+    const read = lane.ledger.read(BATTERY, RANGE, Date.now());
+    expect(read.deliveryCeilingW).toBe(-RANGE.minW);
+    expect(read.chargeCeiling.everyLevelW).toBe(RANGE.maxW);
+  });
+
+  it('learns no charge ceiling from a charge that takes only the surplus', async () => {
+    const lane = buildMeterFollowingLane();
+    await lane.send(1500, 0);
+    lane.report(1500);
+    lane.read(400, -100, VERIFICATION_MAX_WAIT_MS + 1_000);
+    expect(lane.ledger.read(BATTERY, RANGE, Date.now()).chargeCeiling.everyLevelW).toBe(RANGE.maxW);
+  });
+
+  it('never judges a battery idle for lack of import not responding', async () => {
+    const lane = buildMeterFollowingLane();
+    await lane.send(-1500, 0);
+    lane.report(-1500);
+    lane.read(0, 0, VERIFICATION_MAX_WAIT_MS + 1_000);
+    lane.read(0, 0, VERIFICATION_MAX_WAIT_MS + 120_000);
+    expect(lane.verdict()).toBe('unverified');
+    expect(lane.lane.hasDrift(setpoint(-1500))).toBe(false);
   });
 });

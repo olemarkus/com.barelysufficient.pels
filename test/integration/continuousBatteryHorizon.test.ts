@@ -21,7 +21,7 @@ const config: ContinuousBatteryPlanConfig = {
 const control: BatteryLeverRead = {
   kind: 'setpoint', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
   deliveryCeilingW: 2500, chargeCeiling: { everyLevelW: 2500, taper: [], planningTaper: [] }, claimHeld: false, handBackDeferred: false,
-  claimEngaged: false, keepAliveFor: () => ({ kind: 'none' }), admissible: true, verdict: 'responding',
+  claimEngaged: false, keepAliveFor: () => ({ kind: 'none' }), response: { kind: 'delivers_setpoint' }, admissible: true, verdict: 'responding',
 };
 
 const taskObjective = (deadlineAtMs: number): DeferredObjectiveSettingsEntry => ({

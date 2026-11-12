@@ -141,7 +141,7 @@ describe('objective-owned battery task reservations', () => {
       getControl: () => partialDouble<BatteryControlOwner>({ readControl: () => ({
         kind: 'setpoint', admissible: true, range: { minW: -5000, maxW: 5000, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
         chargeCeiling: { everyLevelW: 5000, taper: [], planningTaper: [] }, deliveryCeilingW: 5000,
-        claimEngaged: false, claimHeld: false, handBackDeferred: false, verdict: 'responding', keepAliveFor: () => ({ kind: 'none' }),
+        claimEngaged: false, claimHeld: false, handBackDeferred: false, verdict: 'responding', keepAliveFor: () => ({ kind: 'none' }), response: { kind: 'delivers_setpoint' },
       }) }),
       getControllableDevices: () => ({}), getPowerLimitSettings: () => limits,
       getPrioritiesForDevices: () => ({ getPriority: () => 1 }),
