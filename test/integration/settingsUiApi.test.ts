@@ -47,6 +47,7 @@ describe('settingsUiApi', () => {
     dryRun: false,
     getDeviceExecutionState: () => executionStateFixture(device),
     observed: noPlanServiceObservedReads,
+    getDeviceControlAdapter: () => undefined,
     getHomeBatteryCard: () => ({ kind: 'none' } as const),
   });
   const defaultPlanSnapshot = overviewFixture(buildPlanDevice({ id: 'dev-1', name: 'Heater' }));

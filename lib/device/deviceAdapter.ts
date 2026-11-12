@@ -318,6 +318,7 @@ export type DeviceAdapterSession = {
   hasCarStopEvidence(deviceId: string): boolean;
   /** A companion device the owner could pair to make control of `deviceId` more reliable. */
   missingCompanion(deviceId: string): ChargingMissingCompanion;
+  /** Recompute control gates and adapter presentation, including on an already-projected snapshot. */
   project(snapshot: TransportDeviceSnapshot, setup: ChargingCurrentSetup): TransportDeviceSnapshot;
   assertAllowed(device: HomeyDeviceLike, setup: ChargingCurrentSetup, connected: boolean): void;
   controlEvents(deviceId: string, capabilityId: string, value: unknown): CapabilityUpdate[];

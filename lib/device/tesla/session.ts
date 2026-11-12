@@ -1,4 +1,6 @@
 import type { ChargingCurrentSetup } from '../../../packages/contracts/src/chargingControl';
+import type { AdapterUnavailableStatus } from '../../../packages/contracts/src/types';
+import { resolveEvChargingStateLabel } from '../../../packages/shared-domain/src/evChargingStateLabel';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { DeviceAdapterSession, AdapterControlTarget, InventoryCompleteness } from '../deviceAdapter';
 import {
@@ -57,9 +59,29 @@ export class TeslaChargingSession implements DeviceAdapterSession {
   }
 
   project(snapshot: TransportDeviceSnapshot, setup: ChargingCurrentSetup): TransportDeviceSnapshot {
-    if (setup.confirmation === 'vehicle' && this.isAllowed(snapshot.id)) return snapshot;
+    const allowed = setup.confirmation === 'vehicle' && this.isAllowed(snapshot.id);
+    const controlAdapter = snapshot.controlAdapter && { ...snapshot.controlAdapter,
+      unavailableStatus: allowed ? undefined : this.unavailableStatus(snapshot.id),
+    };
+    if (allowed) return { ...snapshot, controlAdapter };
     // A connected vehicle outside the accepted home session contributes no home charging power.
-    return { ...snapshot, available: false, measuredPowerKw: 0 };
+    return { ...snapshot, controlAdapter, available: false, measuredPowerKw: 0 };
+  }
+
+  private unavailableStatus(deviceId: string): AdapterUnavailableStatus {
+    // A snapshot may already be projected. Only the accepted battery record
+    // says whether Homey itself marked it unavailable; a trust gap clears it.
+    const battery = this.devices.get(deviceId);
+    const unavailable: AdapterUnavailableStatus = { kind: 'unavailable', factText: null, reasonText: null };
+    if (!battery || battery.available === false) return unavailable;
+    switch (battery.capabilitiesObj.charging_state?.value) {
+      case 'Disconnected':
+        return { kind: 'idle', factText: resolveEvChargingStateLabel('plugged_out'), reasonText: null };
+      case 'Complete':
+        return { kind: 'idle', factText: resolveEvChargingStateLabel('plugged_in'), reasonText: null };
+      case 'NoPower': return { ...unavailable, reasonText: 'The charger is not supplying power' };
+      default: return unavailable;
+    }
   }
 
   controlEvents(deviceId: string, capabilityId: string, value: unknown) {

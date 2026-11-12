@@ -136,7 +136,9 @@ export class DeviceSnapshotReader {
     if (!previous) return undefined;
     // Keep the last real plug observation and its source timestamp. Unknown,
     // NoPower and Calibrating must never fabricate an unplug or a new session.
-    return { ...previous, managed: decision.isManaged, available: false, measuredPowerKw: 0 };
+    return this.chargingCurrentControl.projectControl({
+      ...previous, managed: decision.isManaged, available: false, measuredPowerKw: 0,
+    });
   }
 
   getUiPickerDevices(): TransportDeviceSnapshot[] {

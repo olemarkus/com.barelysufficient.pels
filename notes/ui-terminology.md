@@ -250,6 +250,14 @@ Cards, device detail, and activity logs consume the same presentation:
 | **Manual** | The device is managed but PELS does not have power-limit control for it right now. |
 | **Unavailable** | PELS does not currently trust the device state enough to plan with it. |
 
+A vehicle adapter's confirmed unplugged or completed charging session is an
+exception: the card reads **Idle** with `Unplugged` or `Not charging`, even if
+the vehicle's charging switch is off. PELS still refuses control of that
+session. The card shows no old hold reason, level rail, or expected charging
+power. Physical device unavailability takes precedence in the adapter and
+does not qualify for this exception. A confirmed no-power session reads
+**Unavailable** with `The charger is not supplying power`; it names no cause.
+
 **Leave off until turned on again** renders `Off` + `Turned off elsewhere —
 turn it on to resume`. A waiting-for-power hold still renders `Limited`; `Off`
 is the factual binary state only when PELS is not currently limiting or

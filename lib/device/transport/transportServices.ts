@@ -4,7 +4,9 @@ import { isEvObserved } from '../../../packages/shared-domain/src/evObservedStat
 import { isEvPlugStateConnected } from '../../../packages/shared-domain/src/evPlugState';
 import type { EvCarLinkEventEmitter, EvCarLinkProducer } from '../evCarLinkProducer';
 import type { EvCarLinkEvent } from '../evCarLinkEvents';
-import type { AssociatedCarSnapshot, CarConfirmation } from '../../../packages/contracts/src/types';
+import type {
+  AdapterUnavailableStatus, AssociatedCarSnapshot, CarConfirmation,
+} from '../../../packages/contracts/src/types';
 import type { CarLinkDiagnostics } from '../../ports/carLinkDiagnostics';
 import type { CarIdentificationState } from '../../../packages/contracts/src/evCarLink';
 import { EV_CAR_LINK_COINCIDENCE_WINDOW_MS } from '../evCarLink';
@@ -27,6 +29,12 @@ import { getDeviceAdapter } from '../deviceAdapterRegistry';
 
 /** Why a charger's wait for a car ended, with the car that ended it. */
 type WaitEnd = Pick<Extract<EvCarLinkEvent, { event: 'ev_car_link_waiting_ended' }>, 'reason' | 'carId' | 'carName'>;
+
+const adapterStatusChanged = (
+  previous: AdapterUnavailableStatus | undefined,
+  current: AdapterUnavailableStatus | undefined,
+): boolean => previous?.kind !== current?.kind
+  || previous?.factText !== current?.factText || previous?.reasonText !== current?.reasonText;
 
 /** Realtime ingestion collaborators. Refresh lifecycle state and SDK lifecycle are absent. */
 export class RealtimeIngestService {
@@ -60,17 +68,22 @@ export class RealtimeIngestService {
       // Home authorization can recover from companion capability events. The
       // accepted device read still owns Homey's independent availability.
       const previousAvailability = snapshot.available;
+      const previousStatus = snapshot.controlAdapter?.unavailableStatus;
       snapshot.available = raw !== undefined && getIsAvailable(raw);
       const resolved = current.projectControl(snapshot);
       const available = resolved.available;
       const availabilityChanged = previousAvailability !== available;
       snapshot.available = available;
+      snapshot.controlAdapter = resolved.controlAdapter;
+      const statusChanged = adapterStatusChanged(previousStatus, snapshot.controlAdapter?.unavailableStatus);
       const powerKw = resolved.measuredPowerKw;
       if (powerKw !== undefined && powerKw !== snapshot.measuredPowerKw) {
         handleRealtimeCapabilityUpdateWithProbe(this, snapshot.id, 'measure_power', powerKw * 1000, false);
       }
       this.deviceConfiguration.set(snapshot);
-      if (availabilityChanged) this.observationBridge.dispatchStateForDevice(snapshot.id);
+      if (availabilityChanged || statusChanged) {
+        this.observationBridge.dispatchStateForDevice(snapshot.id);
+      }
     }
   }
 

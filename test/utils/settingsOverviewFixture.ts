@@ -15,6 +15,7 @@ type OverviewReadModelWiring = Pick<SettingsOverviewReadModelDeps,
   | 'getAssociatedCarChargingState'
   | 'getCarIdentificationState'
   | 'getSteppedLoadProfileById'
+  | 'getDeviceControlAdapter'
   | 'readStarvationRescuableDeviceIds'>;
 
 /**
@@ -30,6 +31,7 @@ export const overviewReadModelWiring = (): OverviewReadModelWiring => ({
   getAssociatedCarChargingState: () => undefined,
   getCarIdentificationState: () => 'not_waiting',
   getSteppedLoadProfileById: () => new Map(),
+  getDeviceControlAdapter: () => undefined,
   readStarvationRescuableDeviceIds: () => [],
 });
 
