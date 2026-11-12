@@ -617,6 +617,84 @@ test.each([
   } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
 });
 
+test.each(['capability', 'device_update', 'device_fetch'] as const)(
+  '%s publishes ended sessions, faults and recovery independently of control availability', async (source) => {
+    vi.useRealTimers();
+    mockHomeyInstance.settings.set('charging_current_control', { battery: { method: 'flow', confirmation: 'vehicle' } });
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
+      { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') });
+    const changes = vi.fn();
+    onObservedState(transport, changes);
+    try {
+      await initWithLiveFeed(transport);
+      const initial = devices();
+      initial[0]!.capabilitiesObj.charging_state = cap('Disconnected');
+      initial[0]!.capabilitiesObj.charging_on = cap(false);
+      await seedTransportDevices(transport, initial);
+      // A full read projects twice, including when there is no intervening event.
+      await seedTransportDevices(transport, initial);
+      expect(transport.deviceConfigurationStore.get('battery')?.controlAdapter?.unavailableStatus)
+        .toEqual({ kind: 'idle', factText: 'Unplugged', reasonText: null });
+
+      for (const [state, status] of [
+        ['Complete', { kind: 'idle', factText: 'Not charging', reasonText: null }],
+        ['NoPower', { kind: 'unavailable', factText: null, reasonText: 'The charger is not supplying power' }],
+        ['Unknown', { kind: 'unavailable', factText: null, reasonText: null }],
+        ['Calibrating', { kind: 'unavailable', factText: null, reasonText: null }],
+        ['Disconnected', { kind: 'idle', factText: 'Unplugged', reasonText: null }],
+        ['Charging', undefined],
+      ] as const) {
+        changes.mockClear();
+        if (source === 'capability') await emitCapability('battery', 'charging_state', state);
+        else {
+          initial[0]!.capabilitiesObj.charging_state = cap(state);
+          if (source === 'device_update') emitDeviceUpdate(initial[0]!);
+          else await seedTransportDevices(transport, initial);
+        }
+        expect(transport.getSnapshotByDeviceId('battery')).toMatchObject({
+          available: state === 'Charging',
+        });
+        expect(transport.deviceConfigurationStore.get('battery')?.controlAdapter?.unavailableStatus).toEqual(status);
+        // Unknown -> Calibrating has the same presentation; the other edges change it.
+        if (source !== 'device_fetch' && state !== 'Calibrating') expect(changes, state).toHaveBeenCalled();
+        if (state === 'Charging') continue;
+        const put = vi.fn().mockResolvedValue(undefined);
+        setRestClient({ get: vi.fn(), put });
+        await expect(transport.setCapability('battery', 'evcharger_charging', true)).rejects.toThrow('at home');
+        expect(put).not.toHaveBeenCalled();
+      }
+    } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
+  },
+);
+
+test.each(['Disconnected', 'Complete'])(
+  'physical unavailability overrides the normal %s session on every projection', async (state) => {
+    vi.useRealTimers();
+    mockHomeyInstance.settings.set('charging_current_control', { battery: { method: 'flow', confirmation: 'vehicle' } });
+    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,
+      { log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test') });
+    try {
+      await initWithLiveFeed(transport);
+      const initial = devices();
+      initial[0]!.capabilitiesObj.charging_state = cap(state);
+      await seedTransportDevices(transport, initial);
+      expect(transport.getSnapshotByDeviceId('battery')?.controlAdapter?.unavailableStatus?.kind).toBe('idle');
+      emitDeviceUpdate({ ...initial[0]!, available: false });
+      expect(transport.getSnapshotByDeviceId('battery')).toMatchObject({ available: false,
+        controlAdapter: { unavailableStatus: { kind: 'unavailable', factText: null, reasonText: null } },
+      });
+      const owner = session();
+      owner.observeDevices(initial);
+      const snapshot = transport.getSnapshotByDeviceId('battery')!;
+      expect(owner.project(owner.project(snapshot, { method: 'flow', confirmation: 'vehicle' }),
+        { method: 'flow', confirmation: 'vehicle' }).controlAdapter?.unavailableStatus?.kind).toBe('idle');
+      owner.setTrustEpoch('reconnected');
+      expect(owner.project(snapshot, { method: 'flow', confirmation: 'vehicle' })
+        .controlAdapter?.unavailableStatus?.kind).toBe('unavailable');
+    } finally { mockHomeyInstance.settings.unset('charging_current_control'); }
+  },
+);
+
 test('a Tesla first observed in Unknown state is not discovered as a manageable charger', async () => {
   vi.useRealTimers();
   const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App,

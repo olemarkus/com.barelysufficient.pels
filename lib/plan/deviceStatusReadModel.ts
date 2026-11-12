@@ -10,7 +10,7 @@ import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/sr
 import type { IdleClassification } from '../../packages/contracts/src/idleClassification';
 import type { DeviceOverviewSnapshot } from '../../packages/contracts/src/deviceOverview';
 import type { PriceTargetShift } from '../../packages/planner-types/src/temperatureSetpoints';
-import type { DeviceControlAdapterSnapshot } from '../../packages/contracts/src/types';
+import type { AdapterUnavailableStatus, DeviceControlAdapterSnapshot } from '../../packages/contracts/src/types';
 import { isBuiltInSteppedLoadControlEnabled } from '../device/deviceActionProjection';
 import {
   displayStateLabel, displayStateTone, isHoldReasonCode, resolveDisplayStateKind, resolveIntentStateKind,
@@ -40,6 +40,8 @@ import { resolveReportedLoadAfterPauseText, resolveSurplusHoldReportedLoadText,
 import type { DevicePlanDevice } from './planTypes';
 
 export type DeviceStatusInput = DeviceOverviewSnapshot & {
+  /** The adapter's live presentation, independently of its plan-time configuration. */
+  adapterUnavailableStatus: AdapterUnavailableStatus | undefined;
   carIdentificationState: CarIdentificationState;
   execution: DeviceExecutionState;
   starvation?: SettingsUiPlanDeviceStarvation;
@@ -302,8 +304,27 @@ function withPresentedTarget(device: DeviceStatusInput): DeviceStatusInput {
   return { ...device, temperature: { ...device.temperature, plannedTarget: device.temperature.currentTarget } };
 }
 
+/** An adapter may explain a control refusal without changing any command gate. */
+function buildUnavailableAdapterStatus(device: DeviceStatusInput): DeviceStatus | null {
+  const status = device.adapterUnavailableStatus;
+  if (!device.controllable || device.execution.available || !status) return null;
+  const reading = resolveReading(device);
+  const battery = reading?.kind === 'battery' ? `${Math.round(reading.percent)} %` : null;
+  return {
+    cardKind: resolveCardKind(device), kind: status.kind,
+    tone: displayStateTone(status.kind), label: displayStateLabel(status.kind),
+    powerText: null, powerVariant: 'live',
+    factText: status.factText === null ? null : [status.factText, battery].filter(Boolean).join(' · '), reading,
+    reason: status.reasonText === null ? null : { text: status.reasonText },
+    rail: null, limited: false, wouldLimit: false, canEaseOff: false,
+    controlOffDrawing: false, holdCause: null,
+  };
+}
+
 /** Presentation consumes executor conclusions; it never resolves control axes. */
 export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus {
+  const adapterStatus = buildUnavailableAdapterStatus(device);
+  if (adapterStatus) return adapterStatus;
   const grammar = { kind: resolveBaseKind(device), reasonCode: device.reason.code,
     starved: device.starvation?.isStarved === true };
   const intentKind = resolveIntentStateKind(grammar);

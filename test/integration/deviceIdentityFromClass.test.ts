@@ -231,6 +231,7 @@ describe('class-resolved identity through the plan build', () => {
       dryRun: false,
       nowMs: FIXTURE_NOW_MS,
       observed: noPlanServiceObservedReads,
+      getDeviceControlAdapter: () => undefined,
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
     });
 

@@ -15,6 +15,7 @@ import type { PlanEngine } from './planEngine';
 import type { PlanInputDevice } from './planTypes';
 import type {
   EvChargingState,
+  DeviceControlAdapterSnapshot,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import type { SnapshotWarmupGate } from './snapshotWarmupGate';
@@ -105,6 +106,8 @@ export type PlanServiceDeps = {
    * `none` for every other device.
    */
   getHomeBatteryCard: (deviceId: string) => HomeBatteryCardRead;
+  /** Live adapter-owned presentation; the plan's copy may predate a device event. */
+  getDeviceControlAdapter: (deviceId: string) => DeviceControlAdapterSnapshot | undefined;
   // Producer `deviceType` map for the settings-UI control-mode card selection
   // (the planner no longer carries `controlModel`). Built once per serialize from
   /** Confirmed producer profile for UI; excludes any planner-only probe rung. */

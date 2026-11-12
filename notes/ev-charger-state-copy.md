@@ -49,6 +49,24 @@ over signal 2 for what PELS wants.**
 
 ## The matrix
 
+### Vehicle sessions that PELS cannot control
+
+The vehicle adapter resolves session status independently of its control
+permission. A physically available Tesla reporting `Disconnected` or
+`Complete` reads **Idle** with `Unplugged` or `Not charging`. This terminal
+presentation overrides a retained off state, hold, or starvation reason;
+simulation uses the same factual state. It does not grant charging permission.
+The known battery level may accompany the fact, without a retained level rail
+or expected charging power.
+
+`NoPower` reads **Unavailable** with `The charger is not supplying power`.
+The card suppresses the retained plug fact: a previous `Disconnected` does not
+describe that new state. Other rejected sessions remain **Unavailable** and
+also suppress an old plug fact. Homey's physical unavailability or a cleared
+session record never earns an idle presentation. No sleep state is inferred.
+
+### Charger and associated-car observations
+
 Charger-only rows — everything PELS could say before the car association:
 
 | Charger state | Command | Meaning | Copy |

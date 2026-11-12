@@ -96,7 +96,10 @@ export class DeviceAdapterSessions {
   }
   project(snapshot: TransportDeviceSnapshot, setup: ChargingCurrentSetup): TransportDeviceSnapshot {
     const session = this.sessions.find((candidate) => candidate.controls(snapshot));
-    return session ? session.project(snapshot, setup) : snapshot;
+    if (session) return session.project(snapshot, setup);
+    if (!snapshot.controlAdapter?.unavailableStatus) return snapshot;
+    const { unavailableStatus: _previousStatus, ...controlAdapter } = snapshot.controlAdapter;
+    return { ...snapshot, controlAdapter };
   }
   controlEvents(snapshot: TransportDeviceSnapshot, capabilityId: string, value: unknown) {
     return this.sessions.find((session) => session.controls(snapshot))?.controlEvents(snapshot.id, capabilityId, value)

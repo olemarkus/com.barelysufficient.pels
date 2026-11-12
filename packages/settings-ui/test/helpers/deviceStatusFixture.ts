@@ -31,6 +31,7 @@ export function uiDeviceFixture(raw: Record<string, unknown> | CardFixture = {},
   const status = device.status ?? buildDeviceStatus({
     ...device, reason, controllable: device.controllable ?? true, available,
     carIdentificationState: device.carIdentificationState ?? 'not_waiting',
+    adapterUnavailableStatus: undefined,
     binaryControllable: device.binaryControllable ?? false, isEvCharger,
     expectedPowerKw: device.expectedPowerKw ?? 0,
     // No card scenario here moves a target for price.

@@ -23,6 +23,7 @@ const device = () => {
     ...overviewReadModelWiring(), dryRun: false, nowMs: NOW,
     getDeviceExecutionState: () => executionStateFixture(planned),
     observed: noPlanServiceObservedReads,
+    getDeviceControlAdapter: () => undefined,
     getHomeBatteryCard: () => ({ kind: 'none' }),
   });
 };

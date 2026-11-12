@@ -249,6 +249,13 @@ export type AssociatedCarSnapshot = {
     socObservedAtMs?: number;
 };
 
+/** An adapter's resolved presentation while its device cannot be controlled. No command authority. */
+export type AdapterUnavailableStatus = {
+    kind: 'idle' | 'unavailable';
+    factText: string | null;
+    reasonText: string | null;
+};
+
 export type DeviceControlAdapterSnapshot = {
     activationOrder?: 'current_before_start';
     currentControl?: 'built_in';
@@ -256,6 +263,7 @@ export type DeviceControlAdapterSnapshot = {
     activationAvailable?: boolean;
     activationRequired: boolean;
     activationEnabled: boolean;
+    unavailableStatus?: AdapterUnavailableStatus;
 };
 
 /**

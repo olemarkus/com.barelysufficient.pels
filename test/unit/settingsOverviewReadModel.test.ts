@@ -5,10 +5,13 @@ import { buildOverviewDeviceCard, overviewReadModelWiring } from '../utils/setti
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { buildPlanDevice, buildPlanMeta, steppedPlanDevice } from '../utils/planTestUtils';
 import { executionStateFixture } from '../utils/deviceStatusFixture';
+import { buildDeviceLogEntry } from '../../lib/plan/deviceOverviewLog';
 import { insufficientHeadroomFixtureReason } from '../utils/deviceReasonTestUtils';
 import type { SettingsOverviewReadModelDeps } from '../../lib/plan/settingsOverviewReadModel';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
-import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type {
+  AdapterUnavailableStatus, DeviceControlAdapterSnapshot, SteppedLoadProfile,
+} from '../../packages/contracts/src/types';
 import type { HomeBatteryCardControl } from '../../lib/observer/observedDeviceStateProjection';
 import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
 import { formatStarvationDurationLabel } from '../../packages/shared-domain/src/planStarvation';
@@ -39,6 +42,7 @@ const buildSettingsOverviewReadModel = (
 // of saying "no reading".
 const absentTemperature = {
   observed: noPlanServiceObservedReads,
+  getDeviceControlAdapter: () => undefined,
   getHomeBatteryCard: () => ({ kind: 'none' } as const),
 };
 
@@ -53,7 +57,70 @@ const observedTemperature = (currentTarget: number, currentTemperature: number) 
   },
 });
 
+const adapterWithStatus = (status: AdapterUnavailableStatus): DeviceControlAdapterSnapshot => ({
+  kind: 'capability_adapter', activationEnabled: true, activationRequired: false, unavailableStatus: status,
+});
+
 describe('settingsOverviewReadModel', () => {
+  it.each([
+    ['unplugged', 'Unplugged'], ['complete', 'Not charging'],
+  ] as const)('presents a denied %s session as idle without a stale hold or expected draw', (_session, fact) => {
+    for (const stepped of [false, true]) {
+      for (const dryRun of [false, true]) {
+        const createDevice = stepped ? steppedPlanDevice : buildPlanDevice;
+        const device = createDevice({ id: 'ev-1', isEvCharger: true, available: false,
+          currentState: 'off', plannedState: 'inactive',
+          reason: { code: PLAN_REASON_CODES.inactive, detail: 'device unavailable' } });
+        const card = buildOverviewDeviceCard(device, { ...overviewReadModelWiring(), ...absentTemperature,
+          dryRun, nowMs: 0, getDeviceExecutionState: () => executionStateFixture(device),
+          getDeviceControlAdapter: () => adapterWithStatus({ kind: 'idle', factText: fact, reasonText: null }),
+        });
+        expect(card.available).toBe(false);
+        expect(card.status).toMatchObject({ kind: 'idle', tone: 'idle', label: 'Idle', factText: fact,
+          reason: null, powerText: null, rail: null, limited: false, wouldLimit: false,
+          canEaseOff: false, holdCause: null });
+        expect(buildDeviceLogEntry(card, 1_000)).toMatchObject({
+          stateMsg: 'Idle', stateKind: 'idle', usageMsg: fact, statusMsg: '',
+        });
+      }
+    }
+  });
+
+  it('does not turn a session that ended into a hold through a latched starvation or plan reason', () => {
+    const device = steppedPlanDevice({ isEvCharger: true, available: false,
+      currentState: 'off', plannedState: 'shed', reason: { code: PLAN_REASON_CODES.capacity } });
+    const card = buildDeviceCard(device, { ...absentTemperature,
+      getOverviewStarvation: () => ({ isStarved: true, accumulatedMs: 60_000 }),
+      getDeviceControlAdapter: () => adapterWithStatus({ kind: 'idle', factText: 'Unplugged', reasonText: null }),
+    });
+    expect(card.status).toMatchObject({ kind: 'idle', limited: false, reason: null });
+  });
+
+  it('names a no-power session without a retained unplugged fact or an invented cause', () => {
+    const device = steppedPlanDevice({ isEvCharger: true, available: false, currentState: 'off' });
+    const card = buildDeviceCard(device, { ...absentTemperature,
+      observed: { ...noPlanServiceObservedReads,
+        getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_out' }),
+      },
+      getDeviceControlAdapter: () => adapterWithStatus({ kind: 'unavailable', factText: null,
+        reasonText: 'The charger is not supplying power' }),
+    });
+    expect(card.status).toMatchObject({ kind: 'unavailable', tone: 'warning', factText: null,
+      reason: { text: 'The charger is not supplying power' }, limited: false });
+  });
+
+  it('uses the live adapter status instead of an idle status retained by the plan', () => {
+    const device = steppedPlanDevice({ isEvCharger: true, available: false, currentState: 'off' });
+    device.controlAdapter = adapterWithStatus({ kind: 'idle', factText: 'Unplugged', reasonText: null });
+    const card = buildDeviceCard(device, { ...absentTemperature,
+      observed: { ...noPlanServiceObservedReads,
+        getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_out' }),
+      },
+      getDeviceControlAdapter: () => adapterWithStatus({ kind: 'unavailable', factText: null, reasonText: null }),
+    });
+    expect(card.status).toMatchObject({ kind: 'unavailable', tone: 'warning', reason: null, factText: null });
+  });
+
   it('projects capacity and effective hour budgets for settings overview', () => {
     const device = buildPlanDevice({
       reason: { code: PLAN_REASON_CODES.keep, detail: null },

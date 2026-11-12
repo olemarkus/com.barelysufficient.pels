@@ -27,6 +27,7 @@ const asOverviewLogDevice = (device: DevicePlanDevice): OverviewLogDevice => bui
   ...overviewReadModelWiring(),
   getDeviceExecutionState: () => executionStateFixture(device), dryRun: false, nowMs: 0,
   observed: noPlanServiceObservedReads,
+  getDeviceControlAdapter: () => undefined,
   getHomeBatteryCard: () => ({ kind: 'none' } as const),
 });
 
