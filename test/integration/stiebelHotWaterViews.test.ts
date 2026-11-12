@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { getLogger } from '../../lib/logging/logger';
 import { DEVICES_API_PATH, setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices } from '../helpers/deviceTransportHarness';
-import { emitCapability } from '../helpers/liveFeedSocketHarness';
+import { emitCapability, emitDeviceUpdate } from '../helpers/liveFeedSocketHarness';
 import { mockHomeyInstance } from '../mocks/homey';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 import { ownWriteTransactionId } from '../helpers/ownCapabilityWrites';
@@ -181,5 +181,23 @@ describe('Stiebel Eltron hot water as its own device', () => {
     expect(view(transport, 'stiebel')).toBeUndefined();
     expect(view(transport, HOT_WATER)).toBeUndefined();
     expect(transport.isDeviceConfirmedRemoved(HOT_WATER)).toBe(true);
+  });
+
+  it('removes the hot-water view at once when a device update no longer has the hot-water pair, and keeps the room', async () => {
+    const transport = await seed([stiebel()]);
+    expect(view(transport, HOT_WATER)).toBeDefined();
+    const { capabilities, capabilitiesObj } = stiebel();
+    const keep = (id: string) => !id.includes('warmwater');
+    const roomOnly = stiebel({
+      capabilities: capabilities.filter(keep),
+      capabilitiesObj: Object.fromEntries(Object.entries(capabilitiesObj).filter(([id]) => keep(id))),
+    });
+    setRestClient({
+      get: async (path) => (path === DEVICES_API_PATH ? { stiebel: roomOnly } : mockHomeyInstance.api.get(path)),
+      put: (path, body) => mockHomeyInstance.api.put(path, body),
+    });
+    emitDeviceUpdate(roomOnly);
+    await vi.waitFor(() => expect(view(transport, HOT_WATER)).toBeUndefined());
+    expect(view(transport, 'stiebel')).toBeDefined();
   });
 });

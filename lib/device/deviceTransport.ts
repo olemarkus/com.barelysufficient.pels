@@ -234,6 +234,7 @@ export class DeviceTransport {
             options.onSnapshotMutated,
             (zoneId) => this.refreshService.refreshZoneTreeIfUnknown(zoneId),
             options.onDeviceInventoryRefreshed,
+            () => this.refreshService.requestInventoryRefresh(),
         );
         this.deviceSdk = new DeviceHomeySdk(
             homey,

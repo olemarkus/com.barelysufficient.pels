@@ -522,6 +522,13 @@ export class SnapshotRefreshService {
     await this.refresh({ includeLivePower: false, meterDeviceIds: [] });
   }
 
+  /** A full inventory read, detached: a failure is logged, never thrown at the caller. */
+  requestInventoryRefresh(): void {
+    this.refreshInventory().catch((error: unknown) => {
+      moduleLogger.error({ event: 'device_inventory_refresh_failed', err: normalizeError(error) });
+    });
+  }
+
   stop(): void {
     this.stopped = true;
     this.inventoryRefreshPending = false;
@@ -646,9 +653,12 @@ export class SnapshotRefreshService {
     // from the raw list.
     observeEvCarLinkAndResubscribe(
         this.observationProducers.evCarLink,
-        (deviceIds) => this.deviceSdk.updateTrackedDevices([
-            ...deviceIds, ...this.reader.chargingCurrentControl.sessions.observedIds(),
-        ]),
+        // A view is subscribed through the Homey device it is read from: its own id
+        // may be one Homey has never heard of (`DeviceAdapter.sourceDeviceId`).
+        (deviceIds) => this.deviceSdk.updateTrackedDevices([...new Set([
+            ...deviceIds.map((id) => this.reader.snapshotStore.sourceDeviceId(id)),
+            ...this.reader.chargingCurrentControl.sessions.observedIds(),
+        ])]),
         acceptedRawDevices,
         fetchSource,
         snapshot,

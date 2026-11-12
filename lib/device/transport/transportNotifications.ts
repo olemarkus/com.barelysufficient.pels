@@ -14,7 +14,15 @@ export class TransportNotifications {
      */
     private readonly zoneEntered: (zoneId: string) => void,
     readonly inventoryRefreshed: () => void,
+    /**
+     * The transport's own full inventory read, as Homey's `device.delete` asks
+     * for: a device update that no longer produces a view the transport holds
+     * (`DeviceAdapter.projectRead`) leaves that view to the full read's removal.
+     */
+    private readonly inventoryChanged: () => void,
   ) {}
+
+  notifyInventoryChanged(): void { this.inventoryChanged(); }
 
   snapshotChanged(snapshot: TargetDeviceSnapshot, nowMs: number): void {
     this.snapshotMutated(snapshot, nowMs);
