@@ -19,6 +19,8 @@ import {
  */
 export const resolveOwnModeChargeW = (storage: ObservedStorageInput, preClaimSignedW: number): number => {
   if (storage.continuousPlan !== undefined) return Math.max(0, storage.continuousPlan.setpointW);
+  // A mode that follows the meter takes only surplus; one that charges from the grid takes its one power.
+  if (storage.ownModeGridCharge.kind === 'declared') return storage.ownModeGridCharge.chargeW;
   const deadbandW = deadbandWFor(storage);
   if (preClaimSignedW <= -deadbandW) return 0;
   return preClaimSignedW >= deadbandW ? Math.min(preClaimSignedW, storage.chargeCeilingW) : storage.chargeCeilingW;

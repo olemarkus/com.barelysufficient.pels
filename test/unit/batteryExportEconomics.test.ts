@@ -8,7 +8,8 @@ import type {
 const HOUR_MS = 3_600_000;
 const policy: BatteryPriceExportPolicy = { kind: 'price_export', netExportCeilingKW: 1 };
 const battery = (changes: Partial<BatteryEnergyModel> = {}): BatteryEnergyModel => ({
-  capacityKWh: 2, storedEnergyKWh: 0, minimumEnergyKWh: 0,
+  capacityKWh: 2,
+  gridCharge: { kind: 'any' }, storedEnergyKWh: 0, minimumEnergyKWh: 0,
   maxChargeKW: 2, chargeTaper: [], maxDischargeKW: 2, roundTripEfficiency: 1,
   wearCostPerKWh: 0, terminalValuePerKWh: 0, ...changes,
 });

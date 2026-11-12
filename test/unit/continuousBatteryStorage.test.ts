@@ -16,6 +16,7 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}, id = 'battery'):
     reading: 'observed', range: { minW: -2500, maxW: 2500, stepW: 5, excludeMinW: 0, excludeMaxW: 0 },
     handBackDeferred: false, signedPowerW: 0, observedAtMs: 0, claimHeld: true, admissible: true,
     verdict: 'responding', deliveryCeilingW: 2500, chargeCeilingW: 2500, powerLimitControl: true,
+    ownModeGridCharge: { kind: 'observed' },
     continuousPlan: { setpointW: 0, validUntilMs: NOW + 60_000, reason: 'hold_energy', storesSurplus: true },
     ...overrides,
   },

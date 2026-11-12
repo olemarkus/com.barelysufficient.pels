@@ -58,6 +58,7 @@ const battery = (overrides: Partial<ObservedStorageInput> = {}): PlanInputDevice
     verdict: 'unverified',
     deliveryCeilingW: 2500,
     chargeCeilingW: 2500,
+    ownModeGridCharge: { kind: 'observed' },
     ...overrides,
   },
 });
@@ -344,6 +345,28 @@ describe('the restore hand-back', () => {
       new Map([['battery', { setpointW: -2500, banked: true, storage: discharging.storage }]]), NOW,
     );
     expect(relief.levers.battery?.ownModeChargeW).toBe(0);
+  });
+
+  it('sizes a battery whose own mode only follows the meter at nothing, whatever its charge ceiling', () => {
+    const meterHeld = battery({ signedPowerW: 0, chargeCeilingW: 2400, ownModeGridCharge: { kind: 'declared', chargeW: 0 } });
+    const relief = applyStorageLimits(
+      decideStorageRelief([meterHeld], buildMeasuredPower({ drawKw: 6, headroomKw: -2 }), {},
+        NO_OFFERS, NOW),
+      new Map([['battery', { setpointW: -800, banked: true, storage: meterHeld.storage }]]), NOW,
+    );
+    expect(relief.levers.battery?.ownModeChargeW).toBe(0);
+  });
+
+  it('sizes a battery whose own mode charges from the grid at its one grid-charge power', () => {
+    const gridCharging = battery({
+      signedPowerW: 0, chargeCeilingW: 2400, ownModeGridCharge: { kind: 'declared', chargeW: 800 },
+    });
+    const relief = applyStorageLimits(
+      decideStorageRelief([gridCharging], buildMeasuredPower({ drawKw: 6, headroomKw: -2 }), {},
+        NO_OFFERS, NOW),
+      new Map([['battery', { setpointW: -800, banked: true, storage: gridCharging.storage }]]), NOW,
+    );
+    expect(relief.levers.battery?.ownModeChargeW).toBe(800);
   });
 
   it('is offered only for a read limit hold on a managed battery', () => {

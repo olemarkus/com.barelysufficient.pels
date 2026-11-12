@@ -182,6 +182,16 @@ export type BatteryLeverRead =
     keepAliveFor(setpointW: number): BatteryCommandKeepAlive;
     /** How the battery answers a setpoint, and so how the storage lane judges it (`BatteryLeverResponse`). */
     response: BatteryLeverResponse;
+    /** How it may charge from the grid, for the battery plan: at any power, or only at its one fixed power, W. */
+    gridCharge: { kind: 'any' } | { kind: 'fixed'; powerW: number };
+    /**
+     * What the battery's own mode takes from the grid once handed back:
+     * `observed`, judged from its power before the claim (a battery that
+     * delivers setpoints), or `declared` by the mode it is handed back to, W
+     * (a meter-following battery: 0 for a mode that only follows the meter,
+     * its grid-charge power for one that may charge from the grid).
+     */
+    ownModeGridCharge: { kind: 'observed' } | { kind: 'declared'; chargeW: number };
     /**
      * PELS may hold the battery: `admitClaim` would admit it now, Main's write
      * fence and a contested claim aside (each holds writes for a moment; neither

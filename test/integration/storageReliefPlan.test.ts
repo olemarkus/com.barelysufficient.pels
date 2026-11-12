@@ -74,6 +74,7 @@ const battery = (
     verdict: 'unverified',
     deliveryCeilingW: 2500,
     chargeCeilingW: 2500,
+    ownModeGridCharge: { kind: 'observed' },
     powerLimitControl: true,
     ...overrides,
   },

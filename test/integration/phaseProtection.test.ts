@@ -59,6 +59,7 @@ const batteryOn = (id: string, footprint: PhaseFootprint, signedPowerW: number) 
     verdict: 'unverified' as const,
     deliveryCeilingW: 2500,
     chargeCeilingW: 2500,
+    ownModeGridCharge: { kind: 'observed' as const },
   },
 });
 
@@ -147,6 +148,7 @@ describe('main fuse phase protection in the planner', () => {
         verdict: 'unverified' as const,
         deliveryCeilingW: 2500,
         chargeCeilingW: 2500,
+        ownModeGridCharge: { kind: 'observed' as const },
       },
     };
     await buildCycle(state, [6.2, -4, -4]).buildDevicePlanSnapshot([battery as never]);

@@ -93,6 +93,13 @@ charge power as its one grid-charge power; every other battery's `response` is
   contested and then a takeover. A mode the owner left the battery in, even
   one of PELS's, is recorded and restored, never refused as someone else's
   claim.
+- **Own mode's grid charge.** A limit hold is handed back once the room fits
+  what the battery's own mode takes from the grid (`resolveOwnModeChargeW`).
+  For a meter-following battery that is declared by the mode it returns to,
+  the recorded one (`toOwnModeGridCharge`): 0 for a mode that only follows the
+  meter, the grid-charge power for one of `gridChargingModes`. Its charge
+  ceiling says nothing about it: a mode that holds the meter at zero takes
+  only surplus.
 - **Confirmation.** The storage lane judges the battery by the mode it reports,
   never its power (`settleMeterMode`, `lib/executor/batteryExecutor.ts`): in its
   mode it covers whatever the house imports or exports, so its power teaches no

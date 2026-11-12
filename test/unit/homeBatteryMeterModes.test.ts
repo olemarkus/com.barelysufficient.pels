@@ -4,7 +4,7 @@
 // takeover once the confirmation window is over.
 import { isPelsClaimValue, meterModeFor } from '../../lib/ports/homeBatteryResponse';
 import {
-  ClaimWriteLog, isClaimEngaged, reportsMeterMode, resolveValueToRecord, type SetpointBatteryRead,
+  ClaimWriteLog, isClaimEngaged, reportsMeterMode, resolveValueToRecord, toOwnModeGridCharge, type SetpointBatteryRead,
 } from '../../lib/battery/batteryClaimStanding';
 import type { BatteryClaimRecord } from '../../lib/battery/batteryClaimStore';
 import type { HomeBatteryMeterModes } from '../../packages/contracts/src/types';
@@ -12,7 +12,7 @@ import { CONTROL_COMMAND_CONFIRMATION_MS } from '../../lib/ports/controlCommandC
 
 const MODES: HomeBatteryMeterModes = {
   discharge: 'zero_discharge_only', hold: 'standby', chargeSurplus: 'zero_charge_only', chargeGrid: 'to_full',
-  gridChargeW: 800,
+  gridChargeW: 800, gridChargingModes: ['to_full', 'predictive'],
 };
 const VALUES = ['zero', 'zero_charge_only', 'zero_discharge_only', 'standby', 'to_full', 'predictive'];
 
@@ -69,5 +69,21 @@ describe('meter-following battery modes', () => {
     expect(log.readStanding('p1', record, battery('zero', 2_000), 2_000)).toBe('contested');
     expect(log.readStanding('p1', record, battery('zero', 2_000), 1_000 + CONTROL_COMMAND_CONFIRMATION_MS))
       .toBe('taken_over');
+  });
+
+  it('declares what its own mode takes from the grid by the mode it is handed back to', () => {
+    const recorded = (previousValue: string): BatteryClaimRecord => ({
+      kind: 'claim_capability', capabilityId: 'battery_group_charge_mode', previousValue, claimedAtMs: 0,
+    });
+    // Held in PELS's discharge mode, it is handed back to the mode it had before.
+    for (const ownMode of ['zero', 'standby', 'zero_charge_only', 'zero_discharge_only']) {
+      expect(toOwnModeGridCharge(battery('zero_discharge_only'), recorded(ownMode))).toEqual({ kind: 'declared', chargeW: 0 });
+    }
+    for (const ownMode of ['to_full', 'predictive']) {
+      expect(toOwnModeGridCharge(battery('zero_discharge_only'), recorded(ownMode))).toEqual({ kind: 'declared', chargeW: 800 });
+    }
+    // Not held: the mode it reports now is its own.
+    expect(toOwnModeGridCharge(battery('predictive'), undefined)).toEqual({ kind: 'declared', chargeW: 800 });
+    expect(toOwnModeGridCharge(battery('zero'), undefined)).toEqual({ kind: 'declared', chargeW: 0 });
   });
 });

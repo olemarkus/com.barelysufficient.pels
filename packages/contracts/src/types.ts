@@ -1025,6 +1025,13 @@ export type HomeBatteryMeterModes = {
     chargeSurplus: string;
     chargeGrid: string;
     gridChargeW: number;
+    /**
+     * The claim values whose own behaviour may charge from the grid, at the
+     * grid-charge power: `chargeGrid`, and any of the battery's own modes that
+     * plan grid charging themselves. Every other value only follows the meter
+     * and imports nothing.
+     */
+    gridChargingModes: readonly string[];
 };
 
 /**

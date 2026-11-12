@@ -657,6 +657,7 @@ describe('surplus by priority without a battery (byte-identity)', () => {
       verdict: 'unverified',
       deliveryCeilingW: 2500,
       chargeCeilingW: 2500,
+      ownModeGridCharge: { kind: 'observed' },
       powerLimitControl: true,
     },
   });

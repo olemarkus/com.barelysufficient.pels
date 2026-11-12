@@ -217,6 +217,12 @@ export type ObservedStorageInput = {
    * asked at that level's band (a full battery stops at 0 W).
    */
   chargeCeilingW: number;
+  /**
+   * What the battery's own mode takes from the grid once handed back:
+   * `observed` from its power before the claim, or `declared` by that mode, W.
+   * A limit hold's hand-back is sized on it (`resolveOwnModeChargeW`).
+   */
+  ownModeGridCharge: { kind: 'observed' } | { kind: 'declared'; chargeW: number };
   /** Present only while the owner has an executable continuous strategy. Its absence
    * means the battery's own schedule remains the routine policy. */
   continuousPlan?: ContinuousStoragePlan;

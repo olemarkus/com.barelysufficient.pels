@@ -171,7 +171,13 @@ function resolveMeterModeSurface(
   }
   return {
     kind: 'setpoint',
-    response: { kind: 'follows_meter', modes: { ...modes, gridChargeW: powers.maxChargeW } },
+    response: {
+      kind: 'follows_meter',
+      modes: {
+        ...modes, gridChargeW: powers.maxChargeW,
+        gridChargingModes: [...new Set([modes.chargeGrid, ...binding.ownGridChargingModes])],
+      },
+    },
     claim: { capabilityId: binding.claimCapabilityId, values, rejection: binding.rejection },
     range: { minW: -powers.maxDischargeW, maxW: powers.maxChargeW, stepW: 1, excludeMinW: 0, excludeMaxW: 0 },
   };

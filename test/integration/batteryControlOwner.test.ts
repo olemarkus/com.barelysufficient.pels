@@ -565,6 +565,10 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
       keepAliveFor: HOLDS_UNTIL_NEXT,
       // A setpoint battery is judged by the power it delivers, as before.
       response: { kind: 'delivers_setpoint' },
+      // And its plan may charge it from the grid at any power, as before.
+      gridCharge: { kind: 'any' },
+      // Its own mode's grid charge is judged from its power, as before.
+      ownModeGridCharge: { kind: 'observed' },
       admissible: true,
       verdict: 'unverified',
     });

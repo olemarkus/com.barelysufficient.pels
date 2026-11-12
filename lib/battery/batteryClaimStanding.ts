@@ -7,7 +7,7 @@
  */
 import type { HomeBatteryClaimCapabilityId, HomeBatteryClaimObservation } from '../../packages/contracts/src/types';
 import type {
-  BatteryClaimAdmission, BatteryClaimRefusal, BatteryControlRead, BatteryLeverResponse,
+  BatteryClaimAdmission, BatteryClaimRefusal, BatteryControlRead, BatteryLeverRead, BatteryLeverResponse,
 } from '../ports/batteryControlOwner';
 import { CONTROL_COMMAND_CONFIRMATION_MS } from '../ports/controlCommandConfirmation';
 import type { AppActionControlTarget, StorageReleaseCommand, StorageControlBinding } from '../ports/storageCommand';
@@ -19,6 +19,10 @@ export type WriteAdmission = { status: 'admitted'; control: StorageControlBindin
   | Extract<BatteryClaimAdmission, { status: 'refused' }>;
 
 export type SetpointBatteryRead = Extract<BatteryControlRead, { kind: 'setpoint' }>;
+
+type BatteryLeverGridCharge = Extract<BatteryLeverRead, { kind: 'setpoint' }>['gridCharge'];
+
+type BatteryLeverOwnModeGridCharge = Extract<BatteryLeverRead, { kind: 'setpoint' }>['ownModeGridCharge'];
 
 /**
  * A battery PELS can drive now: through a claim capability (`setpoint`), or
@@ -106,6 +110,36 @@ export const toLeverResponse = (battery: DrivableBatteryRead): BatteryLeverRespo
     ? { kind: 'follows_meter', reportsSetpoint: (setpointW) => reportsMeterMode(battery, setpointW) }
     : { kind: 'delivers_setpoint' }
 );
+
+/** How the battery plan may charge it from the grid: only at a meter-following battery's grid-charge power. */
+export const toGridCharge = (battery: DrivableBatteryRead): BatteryLeverGridCharge => (
+  battery.kind === 'setpoint' && battery.surface.response.kind === 'follows_meter'
+    ? { kind: 'fixed', powerW: battery.surface.response.modes.gridChargeW }
+    : { kind: 'any' }
+);
+
+/**
+ * What the battery's own mode takes from the grid once handed back: a
+ * meter-following battery's declared by the mode it returns to (its record's,
+ * else the mode it reports now), any other battery's judged from its power.
+ */
+export const toOwnModeGridCharge = (
+  battery: DrivableBatteryRead, record: BatteryClaimRecord | undefined,
+): BatteryLeverOwnModeGridCharge => {
+  if (battery.kind !== 'setpoint' || battery.surface.response.kind !== 'follows_meter') return { kind: 'observed' };
+  const { modes } = battery.surface.response;
+  const reported = 'kind' in battery.claim ? undefined : battery.claim.value;
+  const ownMode = record?.kind === 'claim_capability' ? record.previousValue : reported;
+  const chargesFromGrid = ownMode !== undefined && modes.gridChargingModes.includes(ownMode);
+  return { kind: 'declared', chargeW: chargesFromGrid ? modes.gridChargeW : 0 };
+};
+
+/** The lever's two grid-charge facts: how the plan may grid-charge it, and what its own mode would. */
+export const toGridChargeFacts = (
+  battery: DrivableBatteryRead, record: BatteryClaimRecord | undefined,
+): { gridCharge: BatteryLeverGridCharge; ownModeGridCharge: BatteryLeverOwnModeGridCharge } => ({
+  gridCharge: toGridCharge(battery), ownModeGridCharge: toOwnModeGridCharge(battery, record),
+});
 
 /**
  * What to record before PELS first claims a battery: the claim value it

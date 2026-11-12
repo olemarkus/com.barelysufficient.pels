@@ -12,7 +12,8 @@ import type { HomeBatteryMeterModes, HomeBatteryResponse } from '../../packages/
 export const meterModeFor = (modes: HomeBatteryMeterModes, setpointW: number): string => {
   if (setpointW < 0) return modes.discharge;
   if (setpointW === 0) return modes.hold;
-  return setpointW >= modes.gridChargeW ? modes.chargeGrid : modes.chargeSurplus;
+  // A planned grid charge arrives floored to the 1 W grid, so it may sit just below the size.
+  return setpointW + 1 > modes.gridChargeW ? modes.chargeGrid : modes.chargeSurplus;
 };
 
 /** The claim values PELS writes to drive a battery: the one claim value, or every command mode. */
@@ -34,5 +35,7 @@ export const isSameResponse = (a: HomeBatteryResponse, b: HomeBatteryResponse): 
   const am = a.modes;
   const bm = b.modes;
   return am.discharge === bm.discharge && am.hold === bm.hold && am.chargeSurplus === bm.chargeSurplus
-    && am.chargeGrid === bm.chargeGrid && am.gridChargeW === bm.gridChargeW;
+    && am.chargeGrid === bm.chargeGrid && am.gridChargeW === bm.gridChargeW
+    && am.gridChargingModes.length === bm.gridChargingModes.length
+    && am.gridChargingModes.every((mode, index) => mode === bm.gridChargingModes[index]);
 };

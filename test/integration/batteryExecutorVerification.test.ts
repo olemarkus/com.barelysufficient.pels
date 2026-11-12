@@ -63,6 +63,7 @@ const buildLane = () => {
       claimEngaged: owned.held && !owned.takenOver,
       keepAliveFor: owned.keepAliveFor,
       response: owned.response,
+      gridCharge: { kind: 'any' }, ownModeGridCharge: { kind: 'observed' },
       admissible: true,
       ...ledger.read(BATTERY, RANGE, Date.now()),
     })),

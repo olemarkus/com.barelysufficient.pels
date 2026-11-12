@@ -117,7 +117,7 @@ import { BatteryClaimStore, type BatteryClaimRecord } from './batteryClaimStore'
 import {
   ClaimWriteLog,
   describeHandBack,
-  isClaimEngaged, toLeverResponse,
+  isClaimEngaged, toGridChargeFacts, toLeverResponse,
   isDrivableBattery,
   isRecordOfBinding,
   runsOnHomeyApiKey,
@@ -383,7 +383,7 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
         || (record !== undefined && this.claimWrites.readStanding(deviceId, record, battery, nowMs) === 'taken_over'),
       // A claim-less battery reports no claim: PELS's record is its claim.
       claimEngaged: battery.kind === 'setpoint' ? isClaimEngaged(battery) : claimHeld,
-      keepAliveFor: battery.keepAliveFor, response: toLeverResponse(battery),
+      keepAliveFor: battery.keepAliveFor, response: toLeverResponse(battery), ...toGridChargeFacts(battery, record),
       // Main's write fence is a moment (a superseded apply, a teardown), not a
       // reason to hand the battery back: the fenced actuator already holds
       // every write while it lasts. A contested claim is one too: it ends at

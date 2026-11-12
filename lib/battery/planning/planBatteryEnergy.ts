@@ -8,7 +8,7 @@ import type {
   BatteryPriceExportPolicy,
 } from '../../../packages/contracts/src/batteryPlan';
 import {
-  batteryEnergyFlow, chargeLimitKW, deferredImportKWh, ENERGY_EPSILON_KWH, periodNetDemandKWh,
+  batteryEnergyFlow, chargeLimitKW, deferredImportKWh, ENERGY_EPSILON_KWH, ENERGY_INTERVALS, periodNetDemandKWh,
 } from './batteryEnergyFlow';
 
 type PlannedBatteryEnergy = Extract<BatteryEnergyPlan, { status: 'planned' }>;
@@ -42,8 +42,6 @@ export type BatteryExportEconomicsComparison =
 /** Absolute numerical comparison tolerance in the horizon's money unit. */
 const COST_COMPARISON_TOLERANCE = 1e-9;
 
-/** 203 states at most, including exact initial energy and reserve. */
-const ENERGY_INTERVALS = 200;
 
 type Route =
   | { kind: 'start'; energyKWh: number; cost: number; throughputKWh: number }

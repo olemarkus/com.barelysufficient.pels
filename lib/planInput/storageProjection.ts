@@ -105,6 +105,7 @@ export const resolveStorageCluster = (
       verdict: control.verdict,
       deliveryCeilingW: Math.min(control.deliveryCeilingW, reserveCeilingW),
       chargeCeilingW: chargeCeilingAtLevelW(control.chargeCeiling, device.batteryLevel),
+      ownModeGridCharge: control.ownModeGridCharge,
       ...(currentPeriod === undefined || continuous.status !== 'planned' ? {} : {
         continuousPlan: resolveContinuousStoragePlan(currentPeriod, continuous),
       }),

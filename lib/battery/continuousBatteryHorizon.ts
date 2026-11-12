@@ -142,6 +142,9 @@ function batteryModel(
   const cheapestImport = Math.max(0, Math.min(...periods.map(period => period.importPrice)));
   return {
     capacityKWh: config.usableCapacityKWh,
+    gridCharge: control.gridCharge.kind === 'fixed'
+      ? { kind: 'fixed', powerKW: control.gridCharge.powerW / 1000 }
+      : { kind: 'any' },
     storedEnergyKWh: config.usableCapacityKWh * levelPercent / 100,
     minimumEnergyKWh: config.usableCapacityKWh * config.minimumReservePercent / 100,
     maxChargeKW: Math.min(control.range.maxW, chargeCeiling.everyLevelW) / 1000,
