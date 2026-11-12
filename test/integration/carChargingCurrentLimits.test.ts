@@ -82,6 +82,58 @@ const persistedPolicies = (carValue: unknown, chargerValue: unknown, chargerList
 };
 
 describe('car charging current limits', () => {
+  const diagnostics = (runtime: ReturnType<typeof setup>) => {
+    const configuration = runtime.configurations.get('charger');
+    if (!configuration) throw new Error('Expected charger configuration');
+    return runtime.owner.describe(configuration, 1);
+  };
+
+  it('reports the charger range independently of the complete observation ladder', () => {
+    const runtime = persistedPolicies({}, { charger: { minA: 16, maxA: 32 } });
+    const current = diagnostics(runtime);
+    expect(current).toMatchObject({
+      kind: 'limited', source: 'charger',
+      selectedLimits: { minA: 16, maxA: 32 }, effectiveLimits: { minA: 16, maxA: 32 },
+    });
+    expect(current && 'plannerSteps' in current && current.plannerSteps.map((step) => step.id))
+      .toEqual(['16a', '20a', '24a', '28a', '32a']);
+    const configuration = runtime.configurations.get('charger');
+    expect(configuration?.controlModel === 'stepped_load' && configuration.steppedLoadProfile.steps[1]?.id).toBe('6a');
+    expect(runtime.planned().steps[1]?.id).toBe('16a');
+  });
+
+  it('reports live associated and confirmed car sources, falling back to the charger without an override', () => {
+    const runtime = persistedPolicies({ a: { minA: 9, maxA: 25 } }, { charger: { minA: 16, maxA: 32 } });
+    runtime.links.set('charger', associated('a'));
+    expect(diagnostics(runtime)).toMatchObject({ kind: 'limited', source: 'associated_car', selectedLimits: { minA: 9, maxA: 25 } });
+    runtime.links.clear();
+    runtime.confirmations.set('charger', { carId: 'a', carName: 'a', available: true });
+    expect(diagnostics(runtime)).toMatchObject({ kind: 'limited', source: 'confirmed_car' });
+    runtime.confirmations.clear();
+    runtime.links.set('charger', associated('without-override'));
+    expect(diagnostics(runtime)).toMatchObject({ kind: 'limited', source: 'charger', selectedLimits: { minA: 16, maxA: 32 } });
+  });
+
+  it('distinguishes an unrestricted range from unread limits without inventing defaults', () => {
+    const unrestricted = persistedPolicies({}, {});
+    expect(diagnostics(unrestricted)).toMatchObject({ kind: 'unrestricted', source: 'charger' });
+    expect(diagnostics(unrestricted)).not.toHaveProperty('effectiveLimits');
+    const unread = persistedPolicies({}, null);
+    expect(diagnostics(unread)).toEqual({ kind: 'hold', cause: 'limits_unavailable', source: 'charger' });
+  });
+
+  it('reports physically narrowed bounds and a distinct hold when no current is supported', () => {
+    const runtime = persistedPolicies({}, { charger: { minA: 9, maxA: 25 } });
+    const snapshot = { ...charger(), automaticPowerControl: { mode: 'manual' as const, profile: amps([6, 10, 18, 26]) } };
+    runtime.snapshots.replaceSnapshot([snapshot]);
+    runtime.configurations.set(snapshot);
+    expect(diagnostics(runtime)).toMatchObject({
+      kind: 'limited', selectedLimits: { minA: 9, maxA: 25 }, effectiveLimits: { minA: 10, maxA: 18 },
+    });
+    runtime.snapshots.replaceSnapshot([{ ...snapshot, automaticPowerControl: { mode: 'manual', profile: amps([6, 8]) } }]);
+    expect(diagnostics(runtime)).toMatchObject({ kind: 'hold', cause: 'no_supported_current', plannerSteps: [] });
+  });
+
   it('uses the charger default for an unidentified car and a matched car without its own range', () => {
     const runtime = persistedPolicies({}, { charger: { minA: 9, maxA: 25 } });
     expect(runtime.planned().steps.at(-1)?.id).toBe('25a');

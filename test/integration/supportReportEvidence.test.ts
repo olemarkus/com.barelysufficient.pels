@@ -115,6 +115,41 @@ describe('daily heating observations', () => {
 });
 
 describe('support report evidence capture', () => {
+  it('captures owner-resolved charging limits separately from observation steps at the capture time', async () => {
+    const host = currentHost();
+    const read = vi.fn(() => ({
+      kind: 'limited' as const, source: 'confirmed_car' as const,
+      selectedLimits: { minA: 16, maxA: 32 }, effectiveLimits: { minA: 16, maxA: 32 },
+      plannerSteps: [{ id: '16a', planningPowerW: 6374, planningCurrentA: 16 }],
+    }));
+    host.deviceManager = partialDouble<NonNullable<PelsHost['deviceManager']>>({
+      getSnapshotByDeviceId: () => ({ ...deviceSnapshot(), isEvCharger: true }),
+      getEvChargingCurrentDiagnostics: read,
+    });
+    const report = await source(host).capture(request, now);
+    expect(read).toHaveBeenCalledExactlyOnceWith('heater', now);
+    expect(values(report, 'Current EV charging range')).toEqual({
+      policy: 'limited', source: 'confirmed_car',
+      selectedLimits: { minA: 16, maxA: 32 }, effectiveLimits: { minA: 16, maxA: 32 },
+      plannerSteps: [{ id: '16a', planningPowerW: 6374, planningCurrentA: 16 }],
+    });
+  });
+
+  it('omits inapplicable charging ranges and records failed reads without inventing a range', async () => {
+    const host = currentHost();
+    host.deviceManager = partialDouble<NonNullable<PelsHost['deviceManager']>>({
+      getSnapshotByDeviceId: () => ({ ...deviceSnapshot(), isEvCharger: true }),
+      getEvChargingCurrentDiagnostics: () => undefined,
+    });
+    const absent = await source(host).capture(request, now);
+    expect(values(absent, 'Current EV charging range')).toBeUndefined();
+    expect(absent.omissions).not.toContain('Current EV charging range is unavailable.');
+    host.deviceManager.getEvChargingCurrentDiagnostics = () => { throw new Error('private read failure'); };
+    const failed = await source(host).capture(request, now);
+    expect(failed.omissions).toContain('Current EV charging range is unavailable.');
+    expect(JSON.stringify(failed)).not.toContain('private read failure');
+  });
+
   it('separates current observations, current plan, and retained incident activity without refreshes', async () => {
     const host = currentHost();
     const decision = buildPlanDevice({

@@ -32,6 +32,8 @@ export const createSupportReportReads = (
   heatingShadow: Pick<HeatingShadowCollector, 'readDaily'>,
 ): SupportReportReads => ({
   getDeviceSnapshot: (deviceId) => requireDeviceManager(app).getSnapshotByDeviceId(deviceId),
+  getEvChargingCurrentDiagnostics: (deviceId, nowMs) => (
+    requireDeviceManager(app).getEvChargingCurrentDiagnostics(deviceId, nowMs)),
   describeHomeyDeviceForSupport: (deviceId) => readHomeyDeviceForSupport(
     () => requireDeviceManager(app).getDevicesForDebug(), deviceId),
   listHomeyDevices: () => requireDeviceManager(app).getDevicesForDebug(),

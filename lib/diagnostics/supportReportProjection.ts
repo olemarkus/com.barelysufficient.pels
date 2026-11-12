@@ -18,10 +18,28 @@ import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import { isTemperaturePlanDevice } from '../plan/planTemperatureDevice';
 import type { DevicePlanDevice } from '../plan/planTypes';
 import type { CarLinkCarStatus, CarLinkDiagnostics } from '../ports/carLinkDiagnostics';
+import type { EvChargingCurrentDiagnostics } from '../ports/evChargingCurrentDiagnostics';
 
 export const present = (key: string, value: SupportReportValue | undefined): Record<string, SupportReportValue> => (
   value === undefined ? {} : { [key]: value }
 );
+
+export const reportEvChargingCurrent = (current: EvChargingCurrentDiagnostics): SupportReportSection => ({
+  title: 'Current EV charging range',
+  values: {
+    policy: current.kind,
+    source: current.source,
+    ...('cause' in current ? { holdCause: current.cause } : {}),
+    ...('selectedLimits' in current ? {
+      selectedLimits: { ...current.selectedLimits }, effectiveLimits: { ...current.effectiveLimits },
+    } : {}),
+    ...('plannerSteps' in current ? {
+      plannerSteps: current.plannerSteps.map((step) => ({
+        id: step.id, planningPowerW: step.planningPowerW, ...present('planningCurrentA', step.planningCurrentA),
+      })),
+    } : {}),
+  },
+});
 
 /** Semantic snapshot facets read by the report, without transport routing or write metadata. */
 export type SupportReportDeviceSnapshot = Pick<DeviceDescriptor,
