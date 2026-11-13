@@ -1,13 +1,13 @@
 /**
- * The meter readings one live energy report yields (`fetchLivePowerReport`),
- * for the poll and the snapshot refresh alike.
+ * The meter readings one live energy report yields, for the meter-only poll
+ * and the full snapshot refresh alike.
  */
 import type { LiveMeterReadings } from '../../ports/homeMeterReadings';
-import type { LivePowerReport } from './managerFetch';
+import type { LiveMeterReport } from './managerFetch';
 
 export function resolveLiveMeterReadings(
     setGenerationW: (watts: number | null, observedAtMs: number) => void,
-    report: LivePowerReport,
+    report: LiveMeterReport,
 ): LiveMeterReadings | null {
     // A FAILED read is not a measurement and must not be published: this
     // snapshot path runs on flow homes too, where a thrown fetch would

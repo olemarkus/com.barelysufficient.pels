@@ -8,7 +8,12 @@ import {
   extractLiveMeterPowerWatts,
 } from '../../lib/device/managerEnergy';
 import { mockHomeyInstance } from '../mocks/homey';
-import { fetchLiveGenerationW, fetchLiveMeterItems, fetchLivePowerReport } from '../../lib/device/transport/managerFetch';
+import {
+  fetchLiveGenerationW,
+  fetchLiveMeterItems,
+  fetchLiveMeterReport,
+  fetchLivePowerReport,
+} from '../../lib/device/transport/managerFetch';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import { SNAPSHOT_ABANDON_GRACE_READS } from '../../lib/device/transport/targetedSnapshotMerge';
 import type { Logger } from '../../lib/utils/types';
@@ -352,6 +357,102 @@ describe('fetchLivePowerReport', () => {
   });
 });
 
+describe('fetchLiveMeterReport', () => {
+  const logger = makeLogger();
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('reads only requested plausible meters and co-temporal generation from one report', async () => {
+    const read = vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      totalGenerated: { W: 600 },
+      items: [
+        { type: 'device', id: 'dev1', values: { W: 800 } },
+        { type: 'cumulative', id: 'meter-main', values: { W: 3200 } },
+        { type: 'device', id: 'meter-export', values: { W: -400 } },
+        { type: 'device', id: 'meter-implausible', values: { W: 3_200_000 } },
+        { type: 'device', id: 'meter-malformed', values: { W: Number.NaN } },
+      ],
+    });
+
+    await expect(fetchLiveMeterReport(logger, [
+      'meter-main', 'meter-export', 'meter-implausible', 'meter-malformed', 'meter-gone',
+    ])).resolves.toEqual({
+      state: 'measured',
+      meterPowerW: { 'meter-main': 3200, 'meter-export': -400 },
+      generation: { state: 'measured', watts: 600 },
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not guess a meter when none is requested', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [{ type: 'cumulative', id: 'meter-main', values: { W: 3200 } }],
+    });
+
+    await expect(fetchLiveMeterReport(logger, [])).resolves.toEqual({
+      state: 'measured', meterPowerW: {}, generation: { state: 'none' },
+    });
+  });
+
+  it('keeps invalid payloads and read errors unavailable', async () => {
+    const read = vi.spyOn(homeyApi, 'getEnergyLiveReport');
+    for (const payload of [null, undefined, '', {}, { items: 'nope' }]) {
+      read.mockResolvedValue(payload);
+      await expect(fetchLiveMeterReport(logger, ['meter-main'])).resolves.toEqual({ state: 'unavailable' });
+    }
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    read.mockRejectedValue(new Error('API down'));
+    await expect(fetchLiveMeterReport(logger, ['meter-main'])).resolves.toEqual({ state: 'unavailable' });
+    expect(stderrSpy).toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith({
+      event: 'energy_live_report_unavailable', reasonCode: 'rest_client_not_initialized',
+    });
+    expect(logger.error).toHaveBeenCalledWith({
+      event: 'energy_live_report_unavailable', reasonCode: 'malformed_payload',
+    });
+  });
+
+  it('samples meter-only reads independently of full reads and reports changes and recovery immediately', async () => {
+    vi.useFakeTimers();
+    const capture = captureLogger('info', ['devices']);
+    const sampleLogger = makeLogger();
+    const read = vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [{ type: 'cumulative', id: 'meter-main', values: { W: 1000 } }],
+    });
+    const fullRequest = { logger: sampleLogger, meterDeviceIds: ['meter-main'] };
+    try {
+      await fetchLivePowerReport(fullRequest);
+      await fetchLiveMeterReport(sampleLogger, ['meter-main']);
+      expect(capture.findEvents('energy_live_report_received')).toHaveLength(2);
+      for (let i = 1; i <= 5; i += 1) {
+        vi.advanceTimersByTime(10_000);
+        read.mockResolvedValue({ items: [{ type: 'cumulative', id: 'meter-main', values: { W: 1000 + i } }] });
+        await fetchLivePowerReport(fullRequest);
+        await fetchLiveMeterReport(sampleLogger, ['meter-main']);
+      }
+      expect(capture.findEvents('energy_live_report_received')).toHaveLength(2);
+      vi.advanceTimersByTime(10_000);
+      await fetchLiveMeterReport(sampleLogger, ['meter-main']);
+      expect(capture.findEvents('energy_live_report_received')).toHaveLength(3);
+      expect(capture.findEvents('energy_live_report_received').at(-1)).not.toHaveProperty('deviceCount');
+
+      read.mockResolvedValue({ items: [{ type: 'cumulative', id: 'other-meter', values: { W: 2000 } }] });
+      await fetchLiveMeterReport(sampleLogger, ['other-meter']);
+      expect(capture.findEvents('energy_live_report_received')).toHaveLength(4);
+      read.mockResolvedValue(null);
+      await fetchLiveMeterReport(sampleLogger, ['other-meter']);
+      read.mockResolvedValue({ items: [{ type: 'cumulative', id: 'other-meter', values: { W: 2000 } }] });
+      await fetchLiveMeterReport(sampleLogger, ['other-meter']);
+      expect(capture.findEvents('energy_live_report_received')).toHaveLength(5);
+    } finally {
+      capture.restore();
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('DeviceTransport.readMeters', () => {
   const logger = makeLogger();
 
@@ -391,6 +492,26 @@ describe('DeviceTransport.readMeters', () => {
     const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger);
 
     await expect(transport.readMeters(['meter-main'])).resolves.toBeNull();
+  });
+
+  it('preserves the held generation when its signal is malformed while reading a healthy meter', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [{ type: 'cumulative', id: 'meter-main', values: { W: 3000 } }],
+      totalGenerated: { W: 'broken' },
+    });
+    const setGenerationW = vi.fn();
+    const transport = createTestDeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      logger,
+      {},
+      undefined,
+      { observedStateDispatcher: createTestObservedStateDispatcher({ setGenerationW }) },
+    );
+
+    await expect(transport.readMeters(['meter-main'])).resolves.toEqual({
+      meterPowerW: { 'meter-main': 3000 },
+    });
+    expect(setGenerationW).not.toHaveBeenCalled();
   });
 });
 

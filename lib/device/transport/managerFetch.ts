@@ -29,13 +29,13 @@ const liveReportLogState = new WeakMap<Logger, Map<string, LogDedupeEntry>>();
 
 // Sample routine readings once a minute; meter identity and resolution changes
 // emit immediately. Watts remain in the payload, outside the dedupe signature.
-function shouldLogLiveReport(logger: Logger, signature: string): boolean {
+function shouldLogLiveReport(logger: Logger, key: 'live_report' | 'meter_report', signature: string): boolean {
   let state = liveReportLogState.get(logger);
   if (!state) {
     state = new Map();
     liveReportLogState.set(logger, state);
   }
-  return shouldEmitOnChange({ state, key: 'live_report', signature, now: Date.now(), repeatAfterMs: 60_000 });
+  return shouldEmitOnChange({ state, key, signature, now: Date.now(), repeatAfterMs: 60_000 });
 }
 
 export type DeviceFetchSource = 'raw_manager_devices' | 'targeted_by_id';
@@ -203,11 +203,10 @@ export async function fetchDevicesByIds(params: {
  * The report reads meters, not homes: which home a meter belongs to, and which
  * one is Main, is the caller's business (`lib/home/homeMeters.ts`).
  */
-export type LivePowerReport =
+export type LiveMeterReport =
   | { readonly state: 'unavailable' }
   | {
     readonly state: 'measured';
-    readonly byDeviceId: LiveDevicePowerWatts;
     /**
      * One entry per requested meter that produced a FINITE reading. A requested
      * id whose reading is absent or non-finite is simply not a key, never a
@@ -216,8 +215,14 @@ export type LivePowerReport =
     readonly meterPowerW: Readonly<Record<string, number>>;
     /** Gross PV generation from the same payload. `+`-only; `unavailable` = a malformed signal, publish nothing. */
     readonly generation: LiveGeneration;
-    readonly deviceCount: number;
   };
+
+export type LivePowerReport =
+  | { readonly state: 'unavailable' }
+  | (Extract<LiveMeterReport, { state: 'measured' }> & {
+    readonly byDeviceId: LiveDevicePowerWatts;
+    readonly deviceCount: number;
+  });
 
 // Resolve each requested meter id against the one live payload (one fetch
 // serves every home). Only finite, plausible readings land in the map; an
@@ -284,6 +289,36 @@ export async function fetchLiveGenerationW(logger: Logger): Promise<LiveGenerati
   }
 }
 
+/** One poll's selected meters and generation, without a discarded all-device power map. */
+export async function fetchLiveMeterReport(
+  logger: Logger,
+  meterDeviceIds: readonly string[],
+): Promise<LiveMeterReport> {
+  try {
+    const report = await readLiveEnergyReport(logger, 'energy_live_report_unavailable');
+    if (report === null) {
+      liveReportLogState.delete(logger);
+      return { state: 'unavailable' };
+    }
+    const generation = resolveLiveGeneration(report);
+    const meterPowerW = extractMeterPowerW(report, meterDeviceIds);
+    if (isDebugTopicEnabled('devices') && shouldLogLiveReport(logger, 'meter_report', JSON.stringify([
+      Object.keys(meterPowerW), generation.state,
+    ]))) emitDeviceDebug({
+      event: 'energy_live_report_received',
+      source: 'homey_energy',
+      meterPowerW,
+      metersRequested: meterDeviceIds.length,
+      ...(generation.state === 'measured' ? { generationW: generation.watts } : {}),
+    });
+    return { state: 'measured', meterPowerW, generation };
+  } catch (error) {
+    liveReportLogState.delete(logger);
+    logDeviceTransportRuntimeError(logger, { event: 'energy_live_report_fetch_failed' }, error);
+    return { state: 'unavailable' };
+  }
+}
+
 export async function fetchLivePowerReport(params: {
   logger: Logger;
   /** The meters to read; empty reads none and still fills the per-device lanes. */
@@ -305,7 +340,7 @@ export async function fetchLivePowerReport(params: {
     // and keying on the request would reopen the once-a-minute gate on every
     // call. Which meter is Main's is said by `main_meter_no_reading` and the
     // sample ingest, which know; this event names every meter it read.
-    if (isDebugTopicEnabled('devices') && shouldLogLiveReport(logger, JSON.stringify([
+    if (isDebugTopicEnabled('devices') && shouldLogLiveReport(logger, 'live_report', JSON.stringify([
       Object.keys(meterPowerW), generation.state, deviceCount,
     ]))) emitDeviceDebug({
       event: 'energy_live_report_received',

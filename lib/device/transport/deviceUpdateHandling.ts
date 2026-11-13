@@ -111,7 +111,7 @@ export function handleRealtimeDeviceUpdateEvent(ingest: RealtimeIngestService, d
         ingest.reader.applyDeviceDriverOverride(device),
         'device_update',
         moduleLogger,
-        ingest.reader.snapshotStore.getLastAcceptedRawDevicesById(),
+        ingest.reader.snapshotStore.getLastAcceptedRawDevice,
     );
     for (const view of views) handleRealtimeViewUpdate(ingest, view);
     requestRemovalOfDroppedViews(ingest, device, views);

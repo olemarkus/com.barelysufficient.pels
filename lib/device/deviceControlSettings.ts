@@ -93,6 +93,7 @@ type BooleanMap = Readonly<Record<string, boolean>>;
 type DeviceControlMaps = {
   readonly controllable: BooleanMap;
   readonly managed: BooleanMap;
+  readonly managedFilterActive: boolean;
   readonly budgetExempt: BooleanMap;
   readonly phaseConnections: Readonly<Record<string, DevicePhaseConnection>>;
   readonly startPolicies: Readonly<Record<string, DeviceStartPolicy>>;
@@ -151,6 +152,11 @@ const keep = <T>(raw: unknown, accept: (value: unknown) => value is T, current: 
   accept(raw) ? raw : current
 );
 
+/** A held generation owns the map paired with its derived admission decision. */
+const acceptManagedDevices = (raw: unknown, current: BooleanMap): BooleanMap => (
+  isBooleanMap(raw) ? { ...raw } : current
+);
+
 const normalizeOrKeep = <T>(raw: unknown, normalize: (value: unknown) => T, current: T): T => (
   isPlainObjectRecord(raw) ? normalize(raw) : current
 );
@@ -189,6 +195,7 @@ export class DeviceControlSettings {
   private maps: DeviceControlMaps = {
     controllable: {},
     managed: {},
+    managedFilterActive: false,
     budgetExempt: {},
     phaseConnections: {},
     startPolicies: {},
@@ -231,7 +238,7 @@ export class DeviceControlSettings {
    * would flip from "all devices visible" to "only the explicit-true devices"
    * merely because settings hold opt-outs.
    */
-  isManagedFilterActive(): boolean { return Object.values(this.maps.managed).some((value) => value === true); }
+  isManagedFilterActive(): boolean { return this.maps.managedFilterActive; }
   isBudgetExempt(deviceId: string): boolean { return this.maps.budgetExempt[deviceId] === true; }
   /** The owner's Electrical connection; `undefined` is Automatic, an answer rather than a gap. */
   getDevicePhaseConnection(deviceId: string): DevicePhaseConnection | undefined {
@@ -367,9 +374,12 @@ export class DeviceControlSettings {
     // A read that is not the map keeps the one already held: a transient miss is
     // not an owner who cleared every limit.
     const shedBehaviors = settings.get(OVERSHOOT_BEHAVIORS);
+    const managed = acceptManagedDevices(settings.get(MANAGED_DEVICES), current.managed);
+    const managedFilterActive = Object.values(managed).some((value) => value === true);
     this.maps = {
       controllable: keep(settings.get(CONTROLLABLE_DEVICES), isBooleanMap, current.controllable),
-      managed: keep(settings.get(MANAGED_DEVICES), isBooleanMap, current.managed),
+      managed,
+      managedFilterActive,
       budgetExempt: keep(settings.get(BUDGET_EXEMPT_DEVICES), isBooleanMap, current.budgetExempt),
       phaseConnections: readPhaseConnections(settings.get(DEVICE_PHASE_CONNECTIONS), current.phaseConnections),
       // All-or-nothing, and a rejected read keeps the last good map: a transient

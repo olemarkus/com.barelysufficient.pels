@@ -104,7 +104,7 @@ export class DeviceSnapshotReader {
   }
 
   parseDeviceList(
-    list: HomeyDeviceLike[],
+    list: readonly HomeyDeviceLike[],
     livePowerWByDeviceId: LiveDevicePowerWatts = {},
     purpose: ParseDevicePurpose = 'runtime',
   ): TransportDeviceSnapshot[] {
