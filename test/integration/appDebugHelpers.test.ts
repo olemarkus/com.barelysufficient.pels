@@ -11,8 +11,9 @@ import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
-import { fixtureControlPosture } from '../utils/planTestUtils';
+import { buildPlanDevice, fixtureControlPosture } from '../utils/planTestUtils';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
+import { deviceDiagnosticConfigurationFixture } from '../helpers/deviceDiagnosticConfigurationFixture';
 
 const buildDeviceManager = (params: {
   devices?: HomeyDeviceLike[];
@@ -419,6 +420,66 @@ describe('appDebugHelpers', () => {
     }));
   });
 
+  it.each(['area', 'unknown'] as const)('explains the missing Main decision for %s ownership', async (ownership) => {
+    const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
+      id: 'dev-1', name: 'Area heater', capabilities: ['onoff'], capabilitiesObj: { onoff: { value: false } },
+    };
+    const configuration = deviceDiagnosticConfigurationFixture();
+    configuration.modes = ownership === 'area'
+      ? { state: 'resolved', homeId: 'cabin', catalogHomeId: 'main', activeMode: 'Home', modes: [] }
+      : { state: 'unavailable' };
+    const app = {
+      deviceManager: buildDeviceManager({ devices: [device] }),
+      homeMembership: {
+        isOwnershipReady: () => true,
+        hasPendingOwnershipGeneration: () => ownership === 'unknown',
+        getHomeIdForDevice: () => 'cabin',
+      },
+      readDeviceDiagnosticConfiguration: () => configuration,
+      planService: { getLatestPlanSnapshot: vi.fn(() => ({ devices: [{ id: 'dev-1' }] })) },
+      getPowerCalibrationSnapshot: () => null,
+      error: vi.fn(),
+    };
+
+    expect(await logHomeyDeviceForDebugFromApp(app as never, 'dev-1')).toBe(true);
+    expect(parseDumpPayload(capture).pels).toMatchObject({
+      configuration: { state: 'available', configuration },
+      planDevice: null,
+      planOmission: ownership === 'area'
+        ? 'Current device plan is available for Main only.' : 'Current device plan ownership is unavailable.',
+    });
+    expect(app.error).not.toHaveBeenCalled();
+  });
+
+  it.each(['mode', 'configuration'] as const)('preserves the Main plan when the %s read fails', async (failedRead) => {
+    const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
+      id: 'dev-1', name: 'Main heater', capabilities: ['onoff'], capabilitiesObj: { onoff: { value: false } },
+    };
+    const configuration = deviceDiagnosticConfigurationFixture();
+    configuration.modes = { state: 'unavailable' };
+    const app = {
+      deviceManager: buildDeviceManager({ devices: [device] }),
+      homeMembership: {
+        isOwnershipReady: () => true, hasPendingOwnershipGeneration: () => false, getHomeIdForDevice: () => 'main',
+      },
+      readDeviceDiagnosticConfiguration: () => {
+        if (failedRead === 'configuration') throw new Error('private error');
+        return configuration;
+      },
+      planService: { getLatestPlanSnapshot: () => ({
+        generatedAtMs: 1_000, devices: [buildPlanDevice({ id: 'dev-1', priority: 2 })],
+      }) },
+      getPowerCalibrationSnapshot: () => null,
+      error: vi.fn(),
+    };
+    expect(await logHomeyDeviceForDebugFromApp(app as never, 'dev-1')).toBe(true);
+    const dump = parseDumpPayload(capture);
+    expect(dump.pels).toMatchObject({ planDevice: { id: 'dev-1', priority: 2 }, planGeneratedAtMs: 1_000 });
+    expect(dump.pels).not.toHaveProperty('planOmission');
+    expect(JSON.stringify(dump)).not.toContain('private error');
+    expect(app.error).not.toHaveBeenCalled();
+  });
+
   it('includes PELS live snapshot and plan state when logging from the app wrapper', async () => {
     const device: HomeyDeviceLike = { ...HOMEY_DEVICE_FIELDS,
       id: 'dev-1',
@@ -509,8 +570,10 @@ describe('appDebugHelpers', () => {
     });
     const app = {
       deviceManager,
+      readDeviceDiagnosticConfiguration: vi.fn(deviceDiagnosticConfigurationFixture),
       planService: {
         getLatestPlanSnapshot: vi.fn().mockReturnValue({
+          generatedAtMs: 1_000,
           meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
           devices: [
             {
@@ -522,6 +585,7 @@ describe('appDebugHelpers', () => {
               currentTarget: 18,
               currentTemperature: 18,
               plannedTarget: 21,
+              priority: 2,
               control: fixtureControlPosture({ controllable: true }),
               reason: { code: 'keep', detail: null },
             },
@@ -556,6 +620,8 @@ describe('appDebugHelpers', () => {
     const dumpPayload = parseDumpPayload(capture);
     expect(dumpPayload.pels).toEqual(expect.objectContaining({
       present: true,
+      configuration: { state: 'available', configuration: deviceDiagnosticConfigurationFixture() },
+      planGeneratedAtMs: 1_000,
       targetSnapshot: expect.objectContaining({
         id: 'dev-1',
         managed: true,
@@ -568,6 +634,9 @@ describe('appDebugHelpers', () => {
         currentTarget: 18,
         plannedTarget: 21,
         reason: 'keep',
+        reasonDetails: { code: 'keep', detail: null },
+        priority: 2,
+        controllable: true,
       }),
       powerCalibration: {
         lastTouchedMs: Date.parse('2026-03-12T10:04:00.000Z'),

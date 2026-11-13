@@ -17,6 +17,10 @@ import type { EvChargingCurrentDiagnostics } from '../ports/evChargingCurrentDia
 import type { DeviceObjectiveProfile } from '../../packages/contracts/src/objectiveProfileTypes';
 import { reportHomeyDevices, type HomeyDeviceSupportDescription } from './homeyDeviceSupportSection';
 import { DEVICE_EVENT_MAX_ENTRIES_PER_DEVICE, DEVICE_EVENT_RETENTION_DAYS } from './deviceEventStore';
+import {
+  captureDeviceDiagnosticConfiguration,
+  type DeviceDiagnosticConfiguration, type DeviceDiagnosticConfigurationRead,
+} from './deviceDiagnosticConfiguration';
 import type { LogTailRead } from './logTailStore';
 import { MAIN_HOME_ID } from '../home/homeConfig';
 import type { HomeRuntimeReadPort, HomeRuntimeReading } from '../home/homeRuntimeRead';
@@ -48,6 +52,7 @@ export type SupportReportHomey = {
  * not running yet throws; capture records that read as unavailable.
  */
 export type SupportReportReads = {
+  readDeviceDiagnosticConfiguration(deviceId: string): DeviceDiagnosticConfiguration;
   /** `undefined` when device transport does not hold the device. */
   getDeviceSnapshot(deviceId: string): SupportReportDeviceSnapshot | undefined;
   /** No section for devices without current-based EV control; throws when the owner cannot be read. */
@@ -133,12 +138,32 @@ const resolveDeviceSupportSubject = async (
   return { name: description.name, sections: [description.section] };
 };
 
-const readHomeyDevicesSection = async (host: SupportReportReads): Promise<SectionRead> => {
+const readInventoryConfiguration = (
+  host: SupportReportReads, subject: SupportReportSubject, deviceId: string,
+): DeviceDiagnosticConfigurationRead | undefined => {
+  if (subject.kind !== 'app'
+    || readOptional(() => host.getDeviceSnapshot(deviceId)?.managed) !== true) return undefined;
+  try {
+    const membership = host.getHomeMembership();
+    if (!membership.isOwnershipReady() || membership.hasPendingOwnershipGeneration()) return { state: 'unavailable' };
+    if (membership.getHomeIdForDevice(deviceId) !== subject.homeId) return undefined;
+    return captureDeviceDiagnosticConfiguration(host.readDeviceDiagnosticConfiguration, deviceId);
+  } catch {
+    return { state: 'unavailable' };
+  }
+};
+
+const readHomeyDevicesSection = async (
+  host: SupportReportReads, subject: SupportReportSubject,
+): Promise<SectionRead> => {
   try {
     const devices = await host.listHomeyDevices();
     return {
       state: 'available',
-      section: reportHomeyDevices(devices, (deviceId) => readOptional(() => host.getDeviceSnapshot(deviceId)?.managed)),
+      section: reportHomeyDevices(
+        devices, (deviceId) => readOptional(() => host.getDeviceSnapshot(deviceId)?.managed),
+        (deviceId) => readInventoryConfiguration(host, subject, deviceId),
+      ),
     };
   } catch {
     return { state: 'unavailable', reason: 'Current Homey devices is unavailable.' };
@@ -285,16 +310,24 @@ const readDeviceSections = (
   if (!device || subject.kind !== 'device') return [];
   return [
     readSection('Current device observation and configuration', () => reportDeviceSnapshot(device)),
+    readSection('Current PELS device configuration', () => {
+      const read = captureDeviceDiagnosticConfiguration(host.readDeviceDiagnosticConfiguration, device.id);
+      return read.state === 'available' ? { title: 'Current PELS device configuration', values: read } : null;
+    }),
     ...(device.isEvCharger ? readCurrentEvRangeSections(host, device.id, capturedAtMs) : []),
     readSection('Current device status', () => {
       const presentation = plan?.devices?.find((entry) => entry.id === device.id);
       return presentation ? reportDevicePresentation(presentation) : null;
     }),
-    readSection('Current device plan', () => {
-      if (subject.homeId !== MAIN_HOME_ID) return null;
-      const decision = host.getLatestDevicePlan()?.devices.find((entry) => entry.id === device.id);
-      return decision ? reportDeviceDecision(decision) : null;
-    }),
+    ...(subject.homeId !== MAIN_HOME_ID
+      ? [{ state: 'unavailable' as const, reason: 'Current device plan is available for Main only.' }]
+      : [readSection('Current device plan', () => {
+        const committed = host.getLatestDevicePlan();
+        const decision = committed?.devices.find((entry) => entry.id === device.id);
+        if (!decision) return null;
+        const section = reportDeviceDecision(decision);
+        return { ...section, values: { ...section.values, planGeneratedAtMs: committed?.generatedAtMs ?? null } };
+      })]),
     // Smart tasks are Main-home only, like the device plan above.
     readSection('Current smart task', () => (
       subject.homeId === MAIN_HOME_ID ? reportSmartTask(host.readSmartTask(device.id), capturedAtMs) : null
@@ -499,7 +532,7 @@ export class SupportReportEvidenceSource {
       ? readCarLink(host, request.subject) : { state: 'read', link: undefined };
     // Read before the log, which gives up the room these take.
     const heating = readHeatingShadowSection(host, request, capturedAtMs, trigger);
-    const homeyDevices = await readHomeyDevicesSection(host);
+    const homeyDevices = await readHomeyDevicesSection(host, request.subject);
     const sectionReads: SectionRead[] = [
       ...(supportSubject?.sections ?? []).map((section): SectionRead => ({ state: 'available', section })),
       ...readDeviceSections(host, request.subject, subject.currentDevice, plan, capturedAtMs),

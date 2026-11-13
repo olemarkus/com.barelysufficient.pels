@@ -29,7 +29,9 @@ import { sanitizeModeDeviceTargets } from '../../packages/shared-domain/src/sett
 import { readModeAliases } from '../../packages/shared-domain/src/settings/modeAliases';
 import { readHomeModeSetting } from './homeModeSettingsRead';
 import { readGoverningModeDeviceTargetC } from './modeDeviceTargetsRead';
-import { HomeModeDeviceResolver, type DeviceOperatingModeOutcome } from './homeModeDeviceRead';
+import {
+  HomeModeDeviceResolver, type DeviceOperatingModeOutcome, type DeviceModeConfigurationRead,
+} from './homeModeDeviceRead';
 import {
   editDeviceModeTarget,
   listTargetModes,
@@ -57,6 +59,8 @@ export type HomeModeCatalog = {
   resolveModeName: (name: string) => string;
   getAllModes: () => Set<string>;
   resolveOperatingModeForDevice: (deviceId: string) => DeviceOperatingModeOutcome;
+  /** Capture-time governing configuration; a failed area read is unavailable, not its runtime's last-good plan. */
+  readDeviceModeConfiguration: (deviceId: string) => DeviceModeConfigurationRead;
   /**
    * The modes a device's target temperature can be set in, from the catalog
    * its mode targets live in, which may be a meter area's. `null` when that
@@ -401,6 +405,9 @@ export class HomeModeCatalogOwner implements HomeModeCatalog {
   resolveOperatingModeForDevice = (deviceId: string): DeviceOperatingModeOutcome => (
     this.deviceModeResolver.resolve(deviceId)
   );
+
+  readDeviceModeConfiguration = (deviceId: string): DeviceModeConfigurationRead =>
+    this.deviceModeResolver.readConfiguration(deviceId);
 
   listDeviceTargetModes = (deviceId: string): string[] | null => {
     const membership = this.getMembership();

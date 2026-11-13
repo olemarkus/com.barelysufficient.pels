@@ -796,11 +796,13 @@ export default tseslint.config(
   // Raised 39 -> 40 so the battery's Main device reads take the membership
   // owner's rule (`filterDevicesForHome`) instead of an empty list before
   // membership is wired; no setup module that app.ts imports may take lib/home.
+  // Raised 40 -> 41 for the shared diagnostics configuration reader: the entry
+  // point binds the catalog and control owners for both dumps and reports.
   {
     files: ['app.ts'],
     plugins: { 'import-x': importX },
     rules: {
-      'import-x/max-dependencies': ['error', { max: 40, ignoreTypeImports: true }],
+      'import-x/max-dependencies': ['error', { max: 41, ignoreTypeImports: true }],
     },
   },
   // The device adapter registry is, by design, the only module that imports

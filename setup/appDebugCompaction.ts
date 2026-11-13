@@ -2,9 +2,6 @@ import type {
   DeviceCalibration,
   PowerCalibrationSnapshot,
 } from '../packages/contracts/src/powerCalibration';
-import { formatDeviceReason } from '../packages/shared-domain/src/planReasonSemantics';
-import type { DevicePlan } from '../lib/plan/planTypes';
-import { isTemperaturePlanDevice } from '../lib/plan/planTemperatureDevice';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import type {
   MeasuredPowerObservedProbe,
@@ -21,7 +18,6 @@ import type {
   EnergyInference,
   HomeyCapabilitySummary,
   HomeyDeviceSummary,
-  PelsPlanDeviceSummary,
   PelsTargetSnapshotSummary,
   UnknownRecord,
 } from './appDebugTypes';
@@ -215,23 +211,6 @@ export const compactPelsTargetSnapshot = (
     managed: snapshot.managed,
     available: snapshot.available,
     lastUpdated: snapshot.lastUpdated,
-  };
-};
-
-export const compactPelsPlanDevice = (
-  device: DevicePlan['devices'][number] | null,
-): PelsPlanDeviceSummary | null => {
-  if (!device) return null;
-  return {
-    id: device.id,
-    name: device.name,
-    currentState: device.currentState,
-    plannedState: device.plannedState,
-    currentTarget: isTemperaturePlanDevice(device) ? device.currentTarget : null,
-    plannedTarget: isTemperaturePlanDevice(device) ? device.plannedTarget : undefined,
-    reason: formatDeviceReason(device.reason),
-    controllable: device.control.commandAuthority,
-    pendingTargetCommand: device.pendingTargetCommand,
   };
 };
 

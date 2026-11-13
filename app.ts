@@ -3,10 +3,9 @@ import { ScheduleService, createScheduleReceiptStore, ScheduleActionExecutor } f
 import { registerScheduleFlowCards } from './flowCards/scheduleCards';
 import type { SchedulesResponse } from './packages/contracts/src/schedules';
 import { createHomeModeCatalog } from './lib/home/homeModeCatalog';
-import type {
-  BatteryEfficiencyMeasurement,
-  ContinuousBatteryPlanRead,
-} from './packages/contracts/src/continuousBatteryPlan';
+import { readDeviceDiagnosticConfiguration } from './lib/diagnostics/deviceDiagnosticConfiguration';
+import type { BatteryEfficiencyMeasurement, ContinuousBatteryPlanRead }
+  from './packages/contracts/src/continuousBatteryPlan';
 import { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } from './packages/shared-domain/src/settings/continuousBatteryPlan';
 import Homey from 'homey';
 import { createMainHeatingShadowCollector } from './lib/diagnostics/heatingShadowCollector';
@@ -75,9 +74,7 @@ import { AppSnapshotHelpers, createTargetPowerReachabilityAppWiring } from './se
 import { createFlowBackedDeviceState } from './setup/flowBackedCardAccess';
 import { createAppSmartTaskApi, createScheduledSmartTaskHost } from './setup/appSmartTaskApi';
 import { AppSmartTaskPayloads } from './setup/appSmartTaskPayloads';
-import {
-  createHomeRebuildRuntime,
-} from './lib/plan/rebuildScheduler/homeRebuildRuntime';
+import { createHomeRebuildRuntime } from './lib/plan/rebuildScheduler/homeRebuildRuntime';
 import { BuiltInControlFlowConflicts } from './lib/device/builtInControlFlowConflicts';
 import {
   createChargingFlowWritesStore, createNativeFlowConflictStore, whileDatabaseOpen,
@@ -176,6 +173,9 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   protected readonly getHomeModeNames = () => this.homeModeCatalog.getAllModes();
   protected readonly listDeviceTargetModes = (deviceId: string) => this.homeModeCatalog.listDeviceTargetModes(deviceId);
   protected readonly setDeviceModeTarget = this.homeModeCatalog.setDeviceModeTarget;
+  public readDeviceDiagnosticConfiguration = (deviceId: string) => readDeviceDiagnosticConfiguration(
+    this.homeModeCatalog, this.deviceControlSettings, this.context.externalOffHold, deviceId,
+  );
   /** Narrow settings bridge; the UI never receives the catalog owner itself. */
   public getModePrioritiesForUi = (deviceIds: readonly string[]) => (
     this.homeModeCatalog.getPrioritiesForDevices(deviceIds)

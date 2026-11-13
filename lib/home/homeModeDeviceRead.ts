@@ -31,9 +31,21 @@ export type ResolveOperatingModeForDevice = (deviceId: string) => DeviceOperatin
 export type DeviceModeCatalogOutcome =
   | {
     state: 'resolved';
+    homeId: HomeId;
     catalogHomeId: HomeId;
     activeMode: string | null;
     catalog: HomeModeCatalogSnapshot;
+  }
+  | { state: 'unavailable' };
+
+/** Capture-time configuration ranks span the home's whole catalog, not the active plan's device set. */
+export type DeviceModeConfigurationRead =
+  | {
+    state: 'resolved';
+    homeId: HomeId;
+    catalogHomeId: HomeId;
+    activeMode: string | null;
+    modes: Array<{ mode: string; configuredRank?: number; targetTemperatureC?: number }>;
   }
   | { state: 'unavailable' };
 
@@ -107,9 +119,35 @@ export class HomeModeDeviceResolver {
     if (governing.state === 'unavailable') return governing;
     return {
       state: 'resolved',
+      homeId: governing.homeId,
       catalogHomeId: governing.catalogHomeId,
       activeMode: governing.mode,
       catalog: governing.areaCatalog ?? this.mainCatalog.getSnapshot(),
+    };
+  };
+
+  readConfiguration = (deviceId: string): DeviceModeConfigurationRead => {
+    const read = this.resolveCatalog(deviceId);
+    if (read.state === 'unavailable') return read;
+    const { homeId, catalogHomeId, activeMode, catalog } = read;
+    const modes = new Set(Object.keys(catalog.targets));
+    if (activeMode !== null) modes.add(activeMode);
+    const priorities = catalog.modePriorityCatalog.resolveHomeConfiguration(
+      this.getManagedDevices(), catalog.targets, activeMode ?? '', homeId, this.getMembership(),
+    );
+    return {
+      state: 'resolved', homeId, catalogHomeId, activeMode,
+      // No target record means a priority-only entry is not a configured mode.
+      // A null active mode stays null; the rank resolver's empty key is never published.
+      modes: [...modes].sort((left, right) => left.localeCompare(right)).map((mode) => {
+        const configuredRank = priorities[mode]?.[deviceId];
+        const targetTemperatureC = catalog.targets[mode]?.[deviceId];
+        return {
+          mode,
+          ...(configuredRank === undefined ? {} : { configuredRank }),
+          ...(targetTemperatureC === undefined ? {} : { targetTemperatureC }),
+        };
+      }),
     };
   };
 

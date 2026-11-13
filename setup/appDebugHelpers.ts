@@ -1,6 +1,9 @@
 /* eslint-disable functional/immutable-data -- debug payload assembly is local and not shared mutable state. */
 import { nextDeviceDumpId } from '../lib/diagnostics/deviceDumpId';
 import type { AppContext } from '../lib/app/appContext';
+import type { PelsHost } from '../lib/app/pelsHost';
+import { captureDeviceDiagnosticConfiguration } from '../lib/diagnostics/deviceDiagnosticConfiguration';
+import { captureDeviceDebugPlan } from '../lib/diagnostics/deviceDebugPlan';
 import type { DeviceTransportPort } from '../lib/device/deviceTransport';
 import { readHomeyEnergyMeters } from '../lib/device/homeyEnergyMeters';
 import { readHomeyDeviceList } from '../lib/device/homeyDeviceInventory';
@@ -28,7 +31,6 @@ import {
   buildEnergyDebugPayload,
   buildUnavailableSection,
   compactHomeyDevice,
-  compactPelsPlanDevice,
   compactPelsTargetSnapshot,
   filterRelevantSettings,
   getPelsPowerCalibration,
@@ -215,7 +217,8 @@ export async function logHomeyDeviceForDebug(params: {
 }
 
 export async function logHomeyDeviceForDebugFromApp(
-  app: Pick<AppContext, 'deviceManager' | 'planService' | 'getPowerCalibrationSnapshot' | 'error'>,
+  app: Pick<AppContext, 'deviceManager' | 'planService' | 'homeMembership' | 'getPowerCalibrationSnapshot' | 'error'>
+    & Pick<PelsHost, 'readDeviceDiagnosticConfiguration'>,
   deviceId: string,
 ): Promise<boolean> {
   const { deviceManager } = app;
@@ -224,18 +227,19 @@ export async function logHomeyDeviceForDebugFromApp(
     deviceId,
     deviceManager,
     getPelsDeviceState: (targetDeviceId) => {
+      const configuration = captureDeviceDiagnosticConfiguration(app.readDeviceDiagnosticConfiguration, targetDeviceId);
       const targetSnapshot = compactPelsTargetSnapshot(
         deviceManager.getSnapshotByDeviceId?.(targetDeviceId) ?? null,
       );
-      const planDevice = compactPelsPlanDevice(
-        app.planService?.getLatestPlanSnapshot()
-          ?.devices.find((entry) => entry.id === targetDeviceId) ?? null,
+      const decision = captureDeviceDebugPlan(
+        app.planService?.getLatestPlanSnapshot(), app.homeMembership, targetDeviceId,
       );
       const powerCalibration = getPelsPowerCalibration(app.getPowerCalibrationSnapshot(), targetDeviceId);
       return {
-        present: Boolean(targetSnapshot || planDevice || powerCalibration),
+        present: Boolean(targetSnapshot || decision.planDevice || powerCalibration),
+        configuration,
+        ...decision,
         targetSnapshot,
-        planDevice,
         powerCalibration,
         observedSources: buildObservedSourcesSummary(deviceManager.getDebugObservedSources?.(targetDeviceId)),
       };

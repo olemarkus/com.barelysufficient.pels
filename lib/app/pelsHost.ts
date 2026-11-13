@@ -4,6 +4,7 @@ import type { BatteryEfficiencyMeasurement } from '../../packages/contracts/src/
 import type { ControlContestReading } from '../ports/controlContest';
 import type { AppContext } from './appContext';
 import type { SupportReportService } from '../diagnostics/supportReportService';
+import type { DeviceDiagnosticConfiguration } from '../diagnostics/deviceDiagnosticConfiguration';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { FlowConflictRefreshResult } from '../flowApi/flowConflictRefreshCoordinator';
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
@@ -75,6 +76,7 @@ export type PelsHost = PelsWidgetHostApi & Pick<AppContext,
   | 'getPowerhourSourceUiStatus'
   | 'steppedCommandStore'
 > & {
+  readDeviceDiagnosticConfiguration(deviceId: string): DeviceDiagnosticConfiguration;
   readSchedules(): SchedulesResponse;
   /** The battery owner's measured round-trip efficiency, offered beside the configured value. */
   readBatteryEfficiencyMeasurement(deviceId: string): BatteryEfficiencyMeasurement;

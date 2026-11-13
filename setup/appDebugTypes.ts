@@ -1,5 +1,7 @@
 import type { DeviceCalibration } from '../packages/contracts/src/powerCalibration';
+import type { DeviceDebugPlanSummary } from '../lib/diagnostics/deviceDebugPlan';
 import type { DevicePlan } from '../lib/plan/planTypes';
+import type { DeviceDiagnosticConfigurationRead } from '../lib/diagnostics/deviceDiagnosticConfiguration';
 import type {
   SteppedLoadProfile,
   TargetDeviceSnapshot,
@@ -105,20 +107,13 @@ export type PelsTargetSnapshotSummary = {
   lastUpdated?: number;
 };
 
-export type PelsPlanDeviceSummary = {
-  id: string;
-  name: string;
-  currentState: string;
-  plannedState: string;
-  currentTarget: unknown;
-  plannedTarget?: number;
-  reason?: string;
-  controllable?: boolean;
-  pendingTargetCommand?: DevicePlan['devices'][number]['pendingTargetCommand'];
-};
+export type PelsPlanDeviceSummary = DeviceDebugPlanSummary;
 
 export type PelsDeviceDebugState = {
   present: boolean;
+  configuration?: DeviceDiagnosticConfigurationRead;
+  planGeneratedAtMs?: number;
+  planOmission?: string;
   targetSnapshot: PelsTargetSnapshotSummary | null;
   planDevice: PelsPlanDeviceSummary | null;
   powerCalibration?: DeviceCalibration | null;

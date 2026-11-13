@@ -12,6 +12,7 @@ const catalogWith = (
   snapshot: Pick<HomeModeCatalogSnapshot, 'targets' | 'aliases' | 'priorities'>,
 ): Extract<DeviceModeCatalogOutcome, { state: 'resolved' }> => ({
   state: 'resolved',
+  homeId: 'main',
   catalogHomeId: 'main',
   activeMode,
   catalog: partialDouble<HomeModeCatalogSnapshot>(snapshot),

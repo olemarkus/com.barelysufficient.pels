@@ -66,6 +66,19 @@ const build = (
 ) => createExternalOffHoldPolicy({ store, readOptIn });
 
 describe('external-off hold policy — a hold is a key', () => {
+  it('reads opt-in evidence without migrating or writing holds, and preserves unavailable reads', () => {
+    const store = fakeStore({});
+    const readOptIn = vi.fn((): ExternalOffHoldOptInRead => optedIn({ a: true }));
+    const policy = build(store, readOptIn);
+    const set = vi.spyOn(store, 'set');
+    const unset = vi.spyOn(store, 'unset');
+    expect(policy.readOptInForDevice('a')).toEqual({ status: 'resolved', enabled: true });
+    expect(policy.readOptInForDevice('b')).toEqual({ status: 'resolved', enabled: false });
+    readOptIn.mockReturnValue({ status: 'unavailable' });
+    expect(policy.readOptInForDevice('a')).toEqual({ status: 'unavailable' });
+    expect(set).not.toHaveBeenCalled();
+    expect(unset).not.toHaveBeenCalled();
+  });
   it('reports a hold seeded by a previous run, with no value read', () => {
     const store = fakeStore({ [holdKey('a')]: true });
     const get = vi.spyOn(store, 'get');
