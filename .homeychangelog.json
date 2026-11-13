@@ -817,5 +817,8 @@
   },
   "3.34.1": {
     "en": "Fixed: a Tesla that is unplugged or has finished charging now shows as Idle instead of Unavailable. PELS checks that a HomeWizard Plug-In Battery really returned to its own mode after PELS hands it back, and asks again if not. A device that draws power before Homey confirms it is on now counts at once, so the next device can resume sooner. Device reports include the EV charging range in use."
+  },
+  "3.34.2": {
+    "en": "Fixed: a Tesla charging at home without PELS controlling it no longer fills the diagnostics log with false \"charging elsewhere\" entries."
   }
 }
