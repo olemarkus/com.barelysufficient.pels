@@ -58,6 +58,7 @@ const setup = async (device: MockDevice) => {
   };
   await refresh();
   const actuator = createDeviceActuator({
+requestChargingPhaseControl: async () => false,
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
     canTurnOnDevice: () => false,
     resolveTemperatureTarget: (_deviceId, desired) => desired,

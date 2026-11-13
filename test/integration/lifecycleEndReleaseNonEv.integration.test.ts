@@ -65,6 +65,7 @@ type SetCapabilityCall = {
 const buildActuatorTransport = (
   setCapability: (deviceId: string, capabilityId: string, value: unknown) => Promise<unknown>,
 ): ActuatorTransport => ({
+requestChargingPhaseControl: async () => false,
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
   canTurnOnDevice: () => true,
   resolveTemperatureTarget: (_deviceId, desired) => desired,
@@ -221,7 +222,7 @@ const buildIntent = (snapshot: TargetDeviceSnapshot, behavior: ShedBehavior): Ex
   });
   const devices = attachDeferredReleaseIntents([device], { [device.id]: 'shed_release' }, true, () => behavior);
   const [intent] = buildExecutablePlan({
-    meta: buildPlanMeta(), devices, inverterDecisions: [], storageReleases: [],
+    meta: buildPlanMeta(), devices, chargingPhaseDecisions: [], inverterDecisions: [], storageReleases: [],
   }).devices;
   if (!intent || !hasReleaseCommand(intent)) throw new Error('Expected the planner to emit the idle-task release');
   return intent.release;

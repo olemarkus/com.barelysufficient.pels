@@ -1,4 +1,7 @@
 import type { SettingsPort } from '../ports/homeyRuntime';
+import type { ChargingPhaseSettings, ChargingPhaseSettingsMap } from '../../packages/contracts/src/chargingPhases';
+import { CHARGING_PHASE_SETTINGS_KEY, isChargingPhaseSettingsMap }
+  from '../../packages/shared-domain/src/settings/chargingPhases';
 import {
   isShedBehaviorsSetting,
   readShedBehaviors,
@@ -96,6 +99,7 @@ type DeviceControlMaps = {
   readonly managedFilterActive: boolean;
   readonly budgetExempt: BooleanMap;
   readonly phaseConnections: Readonly<Record<string, DevicePhaseConnection>>;
+  readonly chargingPhases: ChargingPhaseSettingsMap;
   readonly startPolicies: Readonly<Record<string, DeviceStartPolicy>>;
   readonly temperatureControl: TemperatureControlPolicy;
   readonly temperatureBoost: TemperatureBoostSettings;
@@ -198,6 +202,7 @@ export class DeviceControlSettings {
     managedFilterActive: false,
     budgetExempt: {},
     phaseConnections: {},
+    chargingPhases: {},
     startPolicies: {},
     temperatureControl: { devices: {}, state: 'unavailable' },
     temperatureBoost: {},
@@ -243,6 +248,9 @@ export class DeviceControlSettings {
   /** The owner's Electrical connection; `undefined` is Automatic, an answer rather than a gap. */
   getDevicePhaseConnection(deviceId: string): DevicePhaseConnection | undefined {
     return this.maps.phaseConnections[deviceId];
+  }
+  getDeviceChargingPhaseSettings(deviceId: string): ChargingPhaseSettings | undefined {
+    return this.maps.chargingPhases[deviceId];
   }
   getTemperatureBoostConfig(deviceId: string): TemperatureBoostConfig | undefined {
     return this.maps.temperatureBoost[deviceId];
@@ -382,6 +390,9 @@ export class DeviceControlSettings {
       managedFilterActive,
       budgetExempt: keep(settings.get(BUDGET_EXEMPT_DEVICES), isBooleanMap, current.budgetExempt),
       phaseConnections: readPhaseConnections(settings.get(DEVICE_PHASE_CONNECTIONS), current.phaseConnections),
+      chargingPhases: keep(
+        settings.get(CHARGING_PHASE_SETTINGS_KEY), isChargingPhaseSettingsMap, current.chargingPhases,
+      ),
       // All-or-nothing, and a rejected read keeps the last good map: a transient
       // SDK miss must never look like an owner who just cleared every policy.
       startPolicies: keep(settings.get(DEVICE_START_POLICIES), isDeviceStartPolicyMap, current.startPolicies),

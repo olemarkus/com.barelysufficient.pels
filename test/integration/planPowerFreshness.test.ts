@@ -481,7 +481,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       getPowerTracker: () => tracker,
       decorateDeferredObjectives: (input) => ({
-        admittedDevices: input.devices,
+        chargingPhaseRequirements: new Map(), admittedDevices: input.devices,
         forceShedSet: new Set<string>(['idle-task']),
         deferredHoldCauseByDeviceId: new Map(),
         deferredReleaseIntentByDeviceId: {},
@@ -514,7 +514,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
       getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       getPowerTracker: () => tracker,
       decorateDeferredObjectives: (input) => ({
-        admittedDevices: input.devices,
+        chargingPhaseRequirements: new Map(), admittedDevices: input.devices,
         forceShedSet: new Set<string>(),
         deferredHoldCauseByDeviceId: new Map(),
         // A negative release rides the plan; the one positive intent needs a

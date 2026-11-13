@@ -55,6 +55,7 @@ const buildHarness = (controllable: boolean, decisionDelayMs = 0) => {
   };
   const device = buildTaskDevice(controllable);
   const controller = new DeferredObjectiveDecorationController({
+    getChargingPhaseEnvelopes: () => new Map(),
     allocationRoster: new TaskAllocationRoster(() => new Date()),
     hasSolarProduction: () => false,
     getThermalDirection: () => 'heating',

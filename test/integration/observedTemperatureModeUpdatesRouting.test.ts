@@ -1,3 +1,4 @@
+import { PendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { describe, expect, it, vi } from 'vitest';
 import { ShutdownLatch } from '../../lib/utils/shutdownLatch';
 import { AppServiceWiring, type AppServiceWiringDeps } from '../../setup/appServiceWiring';
@@ -33,6 +34,7 @@ describe('observed temperature mode updates ask the owning home whether a device
     const route = params.areaLimited === undefined ? undefined : {
       homeId: 'area-1',
       hooks: {
+        pendingBinaryCommandStore: new PendingBinaryCommandStore({}),
         isDeviceLimited: vi.fn(() => params.areaLimited === true),
         observeIdleEvidence: vi.fn(),
         syncLivePlanState: vi.fn().mockResolvedValue(false),

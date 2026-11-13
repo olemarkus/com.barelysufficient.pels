@@ -353,6 +353,7 @@ const runPreview = (params: {
   // when the device is in neither snapshot) and no other smart task.
   const devices = params.ctx.devices ?? (params.ctx.device ? [params.ctx.device] : []);
   const source: TaskEvaluationSource = {
+    getChargingPhaseEnvelopes: () => new Map(),
     allocationRoster: params.ctx.allocationRoster ?? new TaskAllocationRoster(() => new Date(NOW_MS)),
     hasSolarProduction: () => params.ctx.hasSolarProduction ?? false,
     getTimeZone: () => 'UTC',

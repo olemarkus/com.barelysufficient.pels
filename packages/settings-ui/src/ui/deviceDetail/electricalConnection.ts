@@ -32,16 +32,18 @@ const readStrictMap = (value: unknown): Record<string, DevicePhaseConnection> | 
 );
 
 const parseSelected = (value: string | undefined): DevicePhaseConnection | null => (
-  value === 'L1' || value === 'L2' || value === 'L3' || value === 'all' || value === SELF_BALANCING ? value : null
+  value === 'L1' || value === 'L2' || value === 'L3' || value === 'all' || value === SELF_BALANCING
+    || value === 'three_L1' || value === 'three_L2' || value === 'three_L3' ? value : null
 );
 
 const syncSelfBalancingOption = (isEvCharger: boolean): void => {
   selectEl?.querySelector(`md-select-option[value="${SELF_BALANCING}"]`)?.toggleAttribute('hidden', !isEvCharger);
 };
 
-const phaseLabel = (phases: Exclude<DevicePhaseConnection, 'self_balancing'>): string => (
-  phases === 'all' ? 'all three phases' : phases
-);
+const phaseLabel = (phases: Exclude<DevicePhaseConnection, 'self_balancing'>): string => {
+  if (phases.startsWith('three_')) return `three phases; single-phase charging on ${phases.slice(6)}`;
+  return phases === 'all' ? 'all three phases' : phases;
+};
 
 /**
  * How PELS knows, in the device page's words. Nothing to say until it has an
@@ -70,6 +72,11 @@ export const syncElectricalConnectionRow = (
   rowEl.hidden = !show;
   if (!show || deviceId === null) return;
   syncSelfBalancingOption(resolveDeviceDetailKind(device) === 'ev_charger');
+  for (const phase of ['L1', 'L2', 'L3']) {
+    const value = `three_${phase}`;
+    selectEl.querySelector(`md-select-option[value="${value}"]`)
+      ?.toggleAttribute('hidden', device?.chargingPhaseControl?.kind !== 'supported');
+  }
   selectEl.value = state.devicePhaseConnectionMap[deviceId] ?? AUTOMATIC;
   const chosen = state.devicePhaseConnectionMap[deviceId];
   if (sourceEl) sourceEl.textContent = formatPhaseSource(device?.phaseFootprintRead, chosen);

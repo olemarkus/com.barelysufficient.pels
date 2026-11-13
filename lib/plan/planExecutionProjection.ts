@@ -222,6 +222,7 @@ export function buildExecutionPlan(plan: DevicePlan): ExecutionPlan {
     )),
     storageReleases: plan.storageReleases,
     inverterDecisions: plan.inverterDecisions,
+    chargingPhaseDecisions: plan.chargingPhaseDecisions,
   };
 }
 

@@ -71,6 +71,7 @@ export type SettingsUiDeviceDetailItem = SettingsUiDeviceListItem
   // Present while the device keeps moving away from what PELS set.
   & ControlContestDecoration
   & { phaseFootprintRead?: SettingsUiPhaseFootprintRead }
+  & { chargingPhaseControl?: import('../../../contracts/src/chargingPhases.ts').ChargingPhaseRead }
   // Present while PELS's level changes draw no level report back (`SettingsUiDeviceSnapshot`).
   & { levelUnconfirmed?: true }
   // `steppedLoadProfile` / `targetPowerConfig` moved off `DeviceDescriptor` onto

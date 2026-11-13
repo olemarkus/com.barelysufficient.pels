@@ -23,6 +23,7 @@ export function applySteppedDeviceGates(
   loop: RestoreLoopState,
   batchContinuation: boolean,
   requestedStepId: string | null,
+  posture: 'ordinary_restore' | 'preserve_kept' = 'ordinary_restore',
 ): boolean {
   const { deviceMap, state, timing, phase } = cycle;
   const { availableHeadroom, restoredOneThisCycle } = loop;
@@ -35,7 +36,7 @@ export function applySteppedDeviceGates(
     reason: DevicePlanDevice['reason'],
     rejectionReason: 'meter_settling' | 'restore_gate' | 'waiting_for_other_recovery',
   ): true => {
-    setRestorePlanDevice(deviceMap, dev.id,
+    if (posture !== 'preserve_kept') setRestorePlanDevice(deviceMap, dev.id,
       deviceIsActive ? { reason } : buildOffSteppedRestoreHoldUpdate(dev, reason),
     );
     const payload = {

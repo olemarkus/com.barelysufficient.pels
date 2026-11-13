@@ -36,6 +36,8 @@ import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measu
 import { resolveDeviceExecutionState, resolvePlannedCommandValues } from './deviceExecutionState';
 import { BatteryExecutor, NO_STORAGE_LANE, type StorageLane } from './batteryExecutor';
 import type { StorageLaneBinding } from '../ports/batteryControlOwner';
+import type { ChargingPhaseOwner } from '../ports/chargingPhases';
+import { ChargingPhaseExecutor } from './chargingPhaseExecutor';
 
 const logger = getLogger('executor/plan');
 
@@ -51,6 +53,7 @@ const logger = getLogger('executor/plan');
  * `notes/state-management/actuator-write-seam.md`.
  */
 export type PlanExecutorDeps = ShortfallExecutorDeps & ExecutorDeviceReadDeps & {
+  chargingPhaseOwner: ChargingPhaseOwner;
   persistLastControlledMs: (lastControlledMs: Record<string, number>) => void;
   /**
    * Observer-owned accepted-write counter, used to tell whether the observed
@@ -95,6 +98,7 @@ export class PlanExecutor {
 
   /** The storage lane; a meter area builds none, and its plans carry no storage decision. */
   private readonly storage: StorageLane;
+  private readonly chargingPhases: ChargingPhaseExecutor;
 
   /** The ordinary lane's command context, built once; the lifecycle lane spreads it. */
   private readonly ctx: ExecutorCommandContext;
@@ -102,6 +106,7 @@ export class PlanExecutor {
 
   constructor(private readonly deps: PlanExecutorDeps, private readonly execution: ExecutionState,
     private readonly feedback: PlannerExecutionFeedback) {
+    this.chargingPhases = new ChargingPhaseExecutor(deps.chargingPhaseOwner);
     this.shortfallExecutor = new ShortfallExecutor(deps);
     this.ctx = {
       homeId: deps.homeId,
@@ -339,6 +344,7 @@ export class PlanExecutor {
       const planned = resolvePlannedCommandValues(device, this.feedback.isExternalOffHeld(device.id));
       return [device.id, {
         ...planned,
+        charging_phases: this.deps.chargingPhaseOwner.getDesiredForceSingle(device.id),
         temperature: this.resolvePlannedTemperature(device.id, planned.temperature),
       }] as const;
     })));
@@ -371,6 +377,7 @@ export class PlanExecutor {
    * here; see `hasStableDeviceActuation`.
    */
   public hasStablePlanActuation(plan: ExecutionPlan): boolean {
+    if (plan.chargingPhaseDecisions.length > 0) return true;
     return plan.devices.some((device) => hasStableDeviceActuation(
       device,
       this.deps.getSteppedLoadCommandSession(device.commands.id),
@@ -393,6 +400,7 @@ export class PlanExecutor {
   public hasExecutionWorkOutstanding(plan: ExecutionPlan, observationRevisionAtBuild: number): boolean {
     if (this.getObservationRevision() !== observationRevisionAtBuild) return false;
     return this.deps.inverterLane.hasWork(plan.inverterDecisions)
+      || plan.chargingPhaseDecisions.length > 0
       || hasPlanExecutionDriftAgainstIntent(plan, this.driftObservationDeps());
   }
 
@@ -412,11 +420,14 @@ export class PlanExecutor {
 
   public async applyPlanActions(plan: ExecutionPlan): Promise<PlanActuationResult> {
     if (this.deps.getCapacityDryRun()) {
+      const phases = await this.chargingPhases.apply(
+        plan.chargingPhaseDecisions.filter((decision) => decision.kind === 'release'), Date.now(),
+      );
       const release = await this.deps.inverterLane.apply(
         plan.inverterDecisions.filter((decision) => decision.kind === 'release'),
       );
-      return { deviceWriteCount: 0, commandRequestCount: release.commandRequestCount,
-        deviceApplyFailureCount: release.failureCount,
+      return { deviceWriteCount: 0, commandRequestCount: release.commandRequestCount + phases.commandRequestCount,
+        deviceApplyFailureCount: release.failureCount + phases.failureCount,
         pendingInverterReleaseCount: release.pendingInverterReleaseCount };
     }
 
@@ -425,11 +436,18 @@ export class PlanExecutor {
     );
     this.controlPersistenceBatchDepth += 1;
     try {
-      const result = await dispatchPlanActions(this.ctx, plan, readExecutorDevices(this.deps), this.storage);
+      const phaseWork = this.chargingPhases.apply(plan.chargingPhaseDecisions, Date.now());
+      const [result, phaseResult] = await Promise.all([
+        dispatchPlanActions(this.ctx, plan, readExecutorDevices(this.deps), this.storage, this.chargingPhases),
+        phaseWork,
+      ]);
       const inverterResult = await this.deps.inverterLane.apply(plan.inverterDecisions);
-      return { ...result,
-        commandRequestCount: result.commandRequestCount + inverterResult.commandRequestCount,
-        deviceApplyFailureCount: result.deviceApplyFailureCount + inverterResult.failureCount,
+      return {
+        ...result,
+        commandRequestCount: result.commandRequestCount
+          + inverterResult.commandRequestCount + phaseResult.commandRequestCount,
+        deviceApplyFailureCount: result.deviceApplyFailureCount
+          + inverterResult.failureCount + phaseResult.failureCount,
         pendingInverterReleaseCount: inverterResult.pendingInverterReleaseCount,
       };
     } finally {

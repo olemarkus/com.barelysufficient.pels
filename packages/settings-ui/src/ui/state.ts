@@ -110,6 +110,7 @@ export type UiState = {
   budgetExemptMap: Record<string, boolean>;
   respectExternalOffMap: Record<string, boolean>;
   devicePhaseConnectionMap: Record<string, DevicePhaseConnection>;
+  chargingPhaseSettings: import('../../../contracts/src/chargingPhases.ts').ChargingPhaseSettingsMap;
   mainFuseSupply: unknown;
   deviceStartPolicyMap: Record<string, DeviceStartPolicy>;
   temperatureControlModes: TemperatureControlModes;
@@ -217,6 +218,7 @@ export const state: UiState = {
   budgetExemptMap: {},
   respectExternalOffMap: {},
   devicePhaseConnectionMap: {},
+  chargingPhaseSettings: {},
   mainFuseSupply: null,
   deviceStartPolicyMap: {},
   temperatureControlModes: {},

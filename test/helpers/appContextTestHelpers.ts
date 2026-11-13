@@ -1,3 +1,4 @@
+import { NO_CHARGING_PHASE_OWNER } from '../../lib/ports/chargingPhases';
 import { PhaseFootprintLearner } from '../../lib/phaseFootprint/phaseFootprintLearner';
 import { createChargingFlowWritesStore } from '../../lib/flowApi/acceptedFlowConflictStore';
 import { BatteryManagedSettings } from '../../lib/battery/batteryControlSettings';
@@ -524,6 +525,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       getCombinedHourlyPrices: vi.fn(() => []),
     }),
     planService: {
+      readChargingPhaseExecutionGate: () => NO_CHARGING_PHASE_OWNER,
       rebuildPlanFromCache: vi.fn(async () => undefined),
       evaluateHeadroomForDevice: vi.fn<() => HeadroomForDeviceDecision>(),
       syncLivePlanStateInline: vi.fn(() => false),

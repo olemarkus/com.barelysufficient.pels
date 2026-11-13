@@ -1,3 +1,4 @@
+import { EMPTY_CHARGING_PHASE_READ } from '../../lib/ports/chargingPhases';
 import { NO_INVERTER_PLANNER } from '../../lib/ports/inverterControl';
 /** Period-funded pressure persistence across capacity, daily and grid control. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -79,6 +80,7 @@ const buildHarness = (scenario: Scenario) => {
     buckets: { [HOUR_KEY]: scenario.hourUsedKWh },
   };
   const builder = new PlanBuilder({
+    getChargingPhasePlanningRead: () => EMPTY_CHARGING_PHASE_READ,
     drawEvidence: noDrawEvidence,
     structuredLog: testLogger,
     leaveOffOnRelease: () => 'released',

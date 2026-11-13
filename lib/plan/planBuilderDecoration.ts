@@ -21,6 +21,7 @@ import type {
 // any lib/objectives dependency.
 export function buildIdentityDecorationBundle(devices: PlanInputDevice[]): DeferredDecorationBundle {
   return {
+    chargingPhaseRequirements: new Map(),
     admittedDevices: devices,
     forceShedSet: new Set<string>(),
     deferredHoldCauseByDeviceId: new Map(),

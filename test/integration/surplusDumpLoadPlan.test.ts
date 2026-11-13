@@ -557,7 +557,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     const h = makeHarness({
       totalKw: 0.5,
       decorate: (devices) => ({
-        admittedDevices: devices,
+        chargingPhaseRequirements: new Map(), admittedDevices: devices,
         forceShedSet: new Set<string>(),
         deferredHoldCauseByDeviceId: new Map(),
         deferredReleaseIntentByDeviceId: {},
@@ -581,7 +581,7 @@ describe('surplus dump-load standing hold (PlanBuilder integration)', () => {
     const h = makeHarness({
       totalKw: -3,
       decorate: (devices) => ({
-        admittedDevices: devices,
+        chargingPhaseRequirements: new Map(), admittedDevices: devices,
         forceShedSet: new Set<string>(),
         deferredHoldCauseByDeviceId: new Map(),
         deferredReleaseIntentByDeviceId: {},
@@ -669,6 +669,7 @@ describe('surplus by priority without a battery (byte-identity)', () => {
     const withoutBattery = (plan: DevicePlan): string => JSON.stringify({
       meta: plan.meta,
       devices: plan.devices.filter((device) => device.id !== 'battery'),
+      chargingPhaseDecisions: [],
       inverterDecisions: [], storageReleases: plan.storageReleases,
     });
     const run = async (battery: PlanInputDevice[]) => {
@@ -727,6 +728,7 @@ const buildExecutorCtx = (snapshot: TargetDeviceSnapshot, state: PlanEngineState
     readDevice: observation.getSnapshotByDeviceId,
     getObservedState: observation.getSnapshotByDeviceId,
     actuator: createDeviceActuator({
+requestChargingPhaseControl: async () => false,
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
       canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,

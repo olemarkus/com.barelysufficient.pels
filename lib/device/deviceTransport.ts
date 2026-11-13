@@ -1,8 +1,12 @@
 import type { MainFusePhaseCapabilities } from '../../packages/shared-domain/src/settings/mainFusePhaseSource';
 import type { ChargingCurrentControl } from './chargingCurrentControl';
+import type { ChargingPhaseTransport } from './chargingPhaseTransport';
+import type { ChargingPhaseCommand, ChargingPhaseDevice } from '../ports/chargingPhases';
+import type { ChargingPhaseCount } from '../../packages/contracts/src/chargingPhases';
+import type { ChargingPhaseEnvelope, ChargingPhasePoint } from '../../packages/planner-types/src/chargingPhases';
 import type { HomeBatteryAppActions } from './homeBatteryAppActions';
 import type { HomeyActionAccess } from './transport/homeyActionAccess';
-import { createHomeyActionOwners } from './homeyActionOwners';
+import { createHomeyActionOwners, type HomeyActionOwners } from './homeyActionOwners';
 import type { TaskDeviceConstraint } from '../../packages/contracts/src/taskDelivery';
 import type { CarIdentificationState } from '../../packages/contracts/src/evCarLink';
 /**
@@ -120,6 +124,7 @@ export class DeviceTransport {
     /** The owner's Homey API key and the one runner of every app action card: charger current and battery actions. */
     readonly chargingAccess: HomeyActionAccess;
     readonly chargingCurrentControl: ChargingCurrentControl;
+    private readonly chargingPhases: ChargingPhaseTransport;
     /** The host of every home battery driven through its app's Flow actions, on the shared API key. */
     readonly batteryAppActions: HomeBatteryAppActions;
     private readonly deviceSdk: DeviceHomeySdk;
@@ -169,6 +174,7 @@ export class DeviceTransport {
         deviceId, capabilityId, value, transactionId,
     ): void => {
         this.realtimeIngest.handleCapabilityUpdate(deviceId, capabilityId, value, transactionId);
+        this.refreshChargingPhaseProfile(deviceId);
         this.carAssociationControl.observe(Date.now());
     };
 
@@ -249,8 +255,9 @@ export class DeviceTransport {
         this.chargingAccess = actionOwners.access;
         this.batteryAppActions = actionOwners.batteryAppActions;
         this.chargingCurrentControl = actionOwners.chargingCurrentControl;
+        this.chargingPhases = this.createChargingPhaseTransport(actionOwners);
         // Roles and saved current choices are resolved by their owning services.
-        this.sources = createDeviceParseSources(options, this, this.chargingCurrentControl);
+        this.sources = createDeviceParseSources(options, this, this.chargingCurrentControl, this.chargingPhases);
         this.runtimeConfiguration = new RuntimeDeviceConfiguration(options.settings, this, this.snapshotStore);
         this.observationProducers = createObservationProducers(
             (p) => this.logger.structuredLog.info(p),
@@ -354,6 +361,45 @@ export class DeviceTransport {
             (cardId) => this.getFlowTriggerCard?.(cardId),
             (deviceId, capabilityId) => this.dispatchObservedStateForDevice(deviceId, capabilityId),
         );
+    }
+
+    private createChargingPhaseTransport(actionOwners: HomeyActionOwners): ChargingPhaseTransport {
+        return actionOwners.createChargingPhaseTransport(
+            (deviceId) => this.requestBinaryControl(deviceId, false, async () => {
+                throw new Error('Charging phase hand-back requires native pause control.');
+            }),
+            (deviceId) => this.runtimeConfiguration.currentLimits.resolve(deviceId),
+            async (deviceId, write) => {
+                await this.writeService.setCapability(deviceId, write.capabilityId, write.value);
+            },
+        );
+    }
+
+    readChargingPhaseDevices(): readonly ChargingPhaseDevice[] { return this.chargingPhases.readDevices(); }
+    readChargingPhaseEnvelopes(device: ChargingPhaseDevice): readonly ChargingPhaseEnvelope[] {
+        return this.chargingPhases.envelopes(device);
+    }
+    readChargingPhasePoint(device: ChargingPhaseDevice, phases: ChargingPhaseCount): ChargingPhasePoint {
+        return this.chargingPhases.observedPoint(device, phases);
+    }
+    resetChargingPhaseEnvelope(deviceId: string, forceSinglePhase: boolean): void {
+        this.chargingPhases.resetEnvelope(deviceId, forceSinglePhase);
+        this.refreshChargingPhaseProfile(deviceId);
+    }
+    requestChargingPhaseControl(command: ChargingPhaseCommand): Promise<boolean> {
+        return this.chargingPhases.request(command);
+    }
+
+    /** Realtime observations update descriptors; only a later meter sample decides another command. */
+    private refreshChargingPhaseProfile(deviceId: string): void {
+        const raw = this.snapshotStore.getLastAcceptedRawDevice(deviceId);
+        const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
+        if (!raw || !snapshot) return;
+        const updated = this.chargingPhases.projectProfile(snapshot, raw);
+        if (updated === snapshot) return;
+        this.snapshotStore.replaceSnapshotEntry(deviceId, updated);
+        this.runtimeConfiguration.set(updated);
+        this.dispatchObservedStateForDevice(deviceId);
     }
 
     // Read-only producer seams, single-line like the fetch seams above.

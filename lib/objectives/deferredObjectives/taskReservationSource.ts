@@ -7,7 +7,7 @@ import type {
   TaskAdmissionReservation, TaskEnergyReservation, TaskReservationSource, TaskReservationsRead,
 } from '../../ports/taskReservations';
 import {
-  resolveObjectiveDeviceInputs, resolveObjectiveProgressDirectionRead,
+  resolveObjectiveDeviceInputs, resolveObjectiveProgressDirectionRead, withPermittedChargingEnvelopes,
   type ObjectiveDeviceSource, type ObjectiveDeviceInput,
 } from '../types';
 import type { DeferredObjectivePriorityReservation } from './policyHorizon';
@@ -16,7 +16,7 @@ import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 import type { TaskEvaluationSource } from './taskEvaluationCoordinator';
 
 type ReservationReaders = Pick<TaskEvaluationSource,
-  'getDeferredObjectiveActivePlans' | 'getCapacitySettings' | 'getThermalDirection'>;
+  'getDeferredObjectiveActivePlans' | 'getCapacitySettings' | 'getThermalDirection' | 'getChargingPhaseEnvelopes'>;
 
 /** Original economic coverage is independent of the projected admission window. */
 const energyReservations = (
@@ -90,7 +90,10 @@ export class ObjectiveTaskReservationSource<Device extends { id: string }> imple
     const taskIds = new Set(tasks.map(([deviceId]) => deviceId));
     if (taskIds.size === 0) return { kind: 'ready', taskDeviceIds: taskIds, energy: [], admission: [] };
     const devices = resolveObjectiveDeviceInputs(
-      this.getDevices().filter((device) => taskIds.has(device.id)).map(this.projectDevice),
+      withPermittedChargingEnvelopes(
+        this.getDevices().filter((device) => taskIds.has(device.id)).map(this.projectDevice),
+        this.readers.getChargingPhaseEnvelopes(nowMs),
+      ),
       this.readers.getThermalDirection,
     );
     const devicesById = new Map(devices.map((device) => [device.id, device]));

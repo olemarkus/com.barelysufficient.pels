@@ -130,14 +130,16 @@ export class PlanBuilder {
     return this.deps.getPowerTracker();
   }
 
-  // Records the held devices a smart task drives this hour on the engine state,
-  // where the executor's hold gate reads them (`PlanEngineState.isExternalOffHeld`).
-  private decorateDeferredObjectives(
+  // Resolve owner inputs once before decoration; objective evaluation shares the phase owner's
+  // permitted envelopes, while the execution hold gate reads the admitted task authority.
+  private prepareDevicePlanningInputs(
     devices: PlanInputDevice[], dailyBudgetSnapshot: DailyBudgetUiPayload | null, nowTs: number,
   ): DeferredDecorationBundle {
+    this.state.beginChargingPhaseCycle(this.deps.getChargingPhasePlanningRead(nowTs));
     const decoration = trackPlanStage('plan_deferred_objective_observe_ms', () => (
       this.deps.decorateDeferredObjectives({ devices, dailyBudgetSnapshot, nowTs })
     ));
+    this.state.chargingPhaseCycle.setRequirements(decoration.chargingPhaseRequirements);
     this.state.externalOffHoldLiftedIds = decoration.externalOffHoldLiftedDeviceIds;
     return decoration;
   }
@@ -289,7 +291,7 @@ export class PlanBuilder {
     // lifecycle clock, not on this plan cycle. A home with no smart tasks binds
     // `decorateWithoutDeferredObjectives`, so the identity case arrives through
     // the seam like any other answer.
-    const decoration = this.decorateDeferredObjectives(devices, dailyBudgetSnapshot, nowTs);
+    const decoration = this.prepareDevicePlanningInputs(devices, dailyBudgetSnapshot, nowTs);
     const { admittedDevices } = decoration;
 
     // One reading per build, resolved by `lib/power` — pure: the silence
@@ -412,6 +414,7 @@ export class PlanBuilder {
       meta,
       devices: decidedDevices,
       inverterDecisions: this.decideInverters(power, sheddingPlan, decidedDevices, restoreResult, storageRelief, nowTs),
+      chargingPhaseDecisions: this.state.chargingPhaseCycle.finish(decidedDevices, sheddingPlan.shedSet),
       storageReleases: collectAbsentStorageReleases(decidedDevices, storageRelief),
     };
   }

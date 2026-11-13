@@ -25,6 +25,7 @@ import {
   recordShedPostureRestoreBatchAdmission,
 } from './batch';
 import { resolveSteppedRestoreTarget } from './steppedRestoreTarget';
+import { tryPlanChargingPhaseRestore } from './chargingPhaseRestore';
 import { getSteppedLoadNextRestoreStep } from '../planSteppedLoad';
 import {
   admitSteppedRestore,
@@ -144,6 +145,17 @@ export function planRestoreForSteppedDevice(
 
   if (blockRestoreForRecentActivationSetback(cycle, dev, true)) return loop;
 
+  const phaseRestore = tryPlanChargingPhaseRestore(cycle, dev, loop);
+  if (phaseRestore) return phaseRestore;
+
+  return finishSteppedRestore(cycle, lane, dev, loop, target, batchContinuation);
+}
+
+function finishSteppedRestore(
+  cycle: RestoreCycle, lane: RestoreLane, dev: SteppedPlanDevice & MeteredKind, loop: RestoreLoopState,
+  target: ReturnType<typeof resolveSteppedRestoreTarget>, batchContinuation: boolean,
+): RestoreLoopState {
+  const { state, batchState } = cycle;
   if (!target || target.need.deltaKw <= 0) {
     clearRestoreDebugEvent(state, `stepped:${dev.id}`);
     return loop;

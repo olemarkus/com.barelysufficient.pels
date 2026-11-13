@@ -94,6 +94,7 @@ import { PriceLevel } from '../../lib/price/priceLevels';
  * than for any one of them.
  */
 export type OwningHomeHooks = {
+  pendingBinaryCommandStore: PlanEngine['pendingBinaryCommandStore'];
   observeIdleEvidence: PlanService['observeIdleEvidence'];
   syncLivePlanState: PlanService['syncLivePlanState'];
   hasPendingBinaryCommand: (deviceId: string) => boolean;
@@ -334,7 +335,8 @@ function createBundlePlanningRuntime(
     ctx,
     scope,
     // Home-battery control is Main only (v1): a meter area builds no storage lane.
-    { capacityGuard: guard, isActuationFenced, storageLane: { kind: 'none' }, controlContests },
+    { capacityGuard: guard, isActuationFenced, storageLane: { kind: 'none' }, controlContests,
+      getChargingPhasePauseTarget: () => undefined },
   );
   const { pipeline, scheduler: planRebuildScheduler, throttle: planRebuildThrottle } = createBundleSamplePipeline(
     ctx, scope, timerKey, planEngine, planService, guard, tracker,

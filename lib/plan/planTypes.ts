@@ -888,6 +888,7 @@ export type DevicePlan = {
   devices: DevicePlanDevice[];
   /** Production caps and hand-backs, separate from consumption-device decisions. */
   inverterDecisions: import('../planContract/inverterDecision').InverterDecision[];
+  chargingPhaseDecisions: import('../planContract/chargingPhaseDecision').ChargingPhaseDecision[];
   /** The hand-backs with no surviving plan device to carry them; empty when there are none. */
   storageReleases: import('../planContract/storageDecision').StorageReleaseIntent[];
 };

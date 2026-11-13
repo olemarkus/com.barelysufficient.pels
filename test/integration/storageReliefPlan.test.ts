@@ -602,6 +602,7 @@ describe('storage relief in the plan build', () => {
     const shedOnly = (plan: DevicePlan): string => JSON.stringify({
       meta: plan.meta,
       devices: plan.devices.filter((device) => device.id !== 'battery'),
+      chargingPhaseDecisions: [],
       inverterDecisions: [], storageReleases: plan.storageReleases,
     });
     const without = buildHarness({ paceKw: 3 });
@@ -1184,6 +1185,7 @@ describe('storage charge from surplus in the plan build', () => {
       const shedOnly = (plan: DevicePlan): string => JSON.stringify({
         meta: plan.meta,
         devices: plan.devices.filter((device) => device.id !== 'battery'),
+        chargingPhaseDecisions: [],
         inverterDecisions: [], storageReleases: plan.storageReleases,
       });
       const without = buildHarness({ paceKw: 10 });

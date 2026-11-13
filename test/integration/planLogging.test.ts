@@ -24,7 +24,7 @@ describe('plan logging helpers', () => {
     [{ kind: 'step', stepId: 'low' }, { kind: 'step', stepId: 'mid' }],
   ])('changes the action signature when only the release posture changes', (before, after) => {
     const device = buildPlanDevice({ deferredReleaseIntent: { kind: 'shed_release', posture: before } });
-    const plan: DevicePlan = { meta: buildPlanMeta(), devices: [device], inverterDecisions: [], storageReleases: [] };
+    const plan: DevicePlan = { meta: buildPlanMeta(), devices: [device], chargingPhaseDecisions: [], inverterDecisions: [], storageReleases: [] };
     const changed: DevicePlan = {
       ...plan,
       devices: [{ ...device, deferredReleaseIntent: { kind: 'shed_release', posture: after } }],
@@ -37,7 +37,7 @@ describe('plan logging helpers', () => {
       id: 'dev-1', deviceType: 'temperature' as const, currentTarget: 18, currentTemperature: 18, plannedTarget: 21,
     };
     const device = buildPlanDevice(heater);
-    const plan: DevicePlan = { meta: buildPlanMeta(), devices: [device], inverterDecisions: [], storageReleases: [] };
+    const plan: DevicePlan = { meta: buildPlanMeta(), devices: [device], chargingPhaseDecisions: [], inverterDecisions: [], storageReleases: [] };
     const observedMoved: DevicePlan = {
       ...plan,
       devices: [buildPlanDevice({ ...heater, currentTarget: 19, recordRestoreOnTargetApply: true })],
@@ -64,15 +64,15 @@ describe('plan logging helpers', () => {
     expect(cooldown.targetCommand).toBeUndefined();
     expect(headroom.targetCommand).toEqual(expect.objectContaining({ desired: 15 }));
     const planWith = (device: DevicePlan['devices'][number]): DevicePlan => ({
-      meta: buildPlanMeta(), devices: [device], inverterDecisions: [], storageReleases: [],
+      meta: buildPlanMeta(), devices: [device], chargingPhaseDecisions: [], inverterDecisions: [], storageReleases: [],
     });
     expect(buildPlanSignature(planWith(headroom))).toBe(buildPlanSignature(planWith(cooldown)));
   });
 
   it('includes an absent battery release in both signatures even for an empty plan', () => {
-    const empty = { devices: [], inverterDecisions: [], storageReleases: [] } as unknown as DevicePlan;
+    const empty = { devices: [], chargingPhaseDecisions: [], inverterDecisions: [], storageReleases: [] } as unknown as DevicePlan;
     const released: DevicePlan = {
-      ...empty, inverterDecisions: [], storageReleases: [{ deviceId: 'battery', reason: 'not_admissible' }],
+      ...empty, chargingPhaseDecisions: [], inverterDecisions: [], storageReleases: [{ deviceId: 'battery', reason: 'not_admissible' }],
     };
     expect(buildPlanSignature(released)).not.toBe(buildPlanSignature(empty));
     expect(buildPlanDetailSignature(released)).not.toBe(buildPlanDetailSignature(empty));
@@ -80,6 +80,7 @@ describe('plan logging helpers', () => {
   it('builds a deterministic plan signature', () => {
     const plan = {
       meta: { headroomKw: 0 },
+      chargingPhaseDecisions: [],
       inverterDecisions: [],
       storageReleases: [],
       devices: [

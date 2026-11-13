@@ -1,4 +1,5 @@
 import type { HomeyRuntime } from '../ports/homeyRuntime';
+import { CHARGING_PHASE_SETTINGS_KEY } from '../../packages/shared-domain/src/settings/chargingPhases';
 import {
   BATTERY_CONTROL_DEVICES,
   BUDGET_EXEMPT_DEVICES,
@@ -299,6 +300,7 @@ function buildSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMap {
  * are load-bearing for log review; keep them verbatim when adding a key.
  */
 const SNAPSHOT_REPARSE_SETTINGS: readonly (readonly [string, string])[] = [
+  [CHARGING_PHASE_SETTINGS_KEY, 'charging_phase_control_change'],
   [CONTROLLABLE_DEVICES, 'controllable_devices_change'],
   [MANAGED_DEVICES, 'managed_devices_change'],
   [NATIVE_EV_WIRING_DEVICES, 'native_ev_wiring_change'],

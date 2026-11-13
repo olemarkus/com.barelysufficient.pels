@@ -169,7 +169,8 @@ describe('AppSmartTaskApi boot-window invariants', () => {
       getPriceOptimizationEnabled: () => true,
     },
     dailyBudgetService: { getSnapshot: () => null },
-    planService: { getPlanDevices: () => [], getStallEvidence: () => undefined },
+    planService: { getPlanDevices: () => [], getStallEvidence: () => undefined,
+      readChargingPhaseEnvelopes: () => new Map() },
   });
 
   it.each(['deferredObjectiveActivePlanRecorder', 'deferredObjectivePlanHistoryRecorder'] as const)(

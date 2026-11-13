@@ -21,6 +21,7 @@ import { applyBudgetExemptRestorePass } from './exemptRestoreLane';
 import { resolveHeadroomReserves, resolveRestoreDecisionPhase } from '../admission';
 import { buildRestoreHeadroomLedger, type RestoreHeadroomLedger } from './headroomLedger';
 import { resolvePhaseRoomAxis } from '../phase/phaseRoom';
+import { withChargingPhaseOffCandidates } from './chargingPhaseRestore';
 import { phaseExportRoomKw } from '../phase/phasePower';
 import { buildDisabledRestoreBatchState, buildRestoreBatchState } from './batch';
 import { resolveAcknowledgedStepUpReservationKw } from '../planSteppedRestorePending';
@@ -89,6 +90,7 @@ export function applyRestorePlan(
   const restoredThisCycle = new Set<string>();
   const storageHandedBack = new Set<string>();
   const ledger = buildCycleHeadroomLedger(power, context);
+  reservePendingChargingPhases(ledger, state, deviceMap);
   reserveAcknowledgedStepUps(ledger, planDevices);
   let restoredOneThisCycle = false;
   const batchState = context.grid.kind === 'on' ? buildDisabledRestoreBatchState() : buildRestoreBatchState({
@@ -164,6 +166,16 @@ function resolveEffectiveTiming(timing: RestoreTiming, context: PlanContext): Re
   };
 }
 
+function reservePendingChargingPhases(
+  ledger: RestoreHeadroomLedger, state: PlanEngineState, deviceMap: ReadonlyMap<string, DevicePlanDevice>,
+): void {
+  for (const [deviceId, debit] of state.chargingPhaseCycle.pendingDebits()) {
+    const device = deviceMap.get(deviceId);
+    // A retained hand-back obligation may outlive managed-device admission.
+    ledger.commitPhaseVector({ budgetExempt: device?.budgetExempt ?? false }, debit);
+  }
+}
+
 // Per-axis available-power ledger for this cycle. Pending-restore reservations
 // represent physical draw about to arrive, so they debit every admission axis
 // equally (the shortfall guard skips the reservation exactly as it skipped the
@@ -209,7 +221,9 @@ function applyFullRestorePass(
   // A battery PELS holds for the limit is handed back here, at its place in
   // the same priority order (`storageHandBack.ts`).
   const restoreCandidates = sortRestoreCandidates([
-    ...getRestoreCandidates(snapshot, cycle.state.shedDecisions),
+    ...withChargingPhaseOffCandidates(
+      snapshot, getRestoreCandidates(snapshot, cycle.state.shedDecisions), cycle.state.chargingPhaseCycle,
+    ),
     ...getStorageHandBackCandidates(snapshot, cycle.storageLevers),
   ]);
   const lane: RestoreLane = {

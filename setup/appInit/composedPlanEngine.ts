@@ -38,6 +38,7 @@ import type {
 
 
 export type PlanEngineComposition = {
+  chargingPhases: import('../../lib/ports/chargingPhases').ChargingPhaseOwner;
   state: PlanEngineState;
   execution: ExecutionState;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
@@ -77,6 +78,7 @@ export class ComposedPlanEngine implements PlanEngine {
   private readonly structuredLog: PinoLogger;
 
   public constructor(composition: PlanEngineComposition) {
+    this.chargingPhases = composition.chargingPhases;
     this.state = composition.state;
     this.execution = composition.execution;
     this.pendingBinaryCommandStore = composition.pendingBinaryCommandStore;
@@ -91,6 +93,15 @@ export class ComposedPlanEngine implements PlanEngine {
   public async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
     return this.builder.buildDevicePlanSnapshot(devices);
   }
+
+  private readonly chargingPhases: import('../../lib/ports/chargingPhases').ChargingPhaseOwner;
+
+  public readChargingPhaseControl(deviceId: string) {
+    return this.chargingPhases.read(deviceId);
+  }
+
+  public readChargingPhaseEnvelopes() { return this.chargingPhases.readPermittedEnvelopes(); }
+  public readChargingPhaseExecutionGate() { return this.chargingPhases; }
 
   public computeCapacityPace(): number | null {
     return this.builder.computeCapacityPace();

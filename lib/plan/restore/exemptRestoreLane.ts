@@ -9,6 +9,7 @@ import {
   applyRestoreCandidates,
 } from './candidateLoop';
 import type { RestoreCycle, RestoreLane } from './types';
+import { withChargingPhaseOffCandidates } from './chargingPhaseRestore';
 
 const isBudgetExempt = (dev: DevicePlanDevice): boolean => dev.budgetExempt;
 
@@ -52,7 +53,9 @@ export function applyBudgetExemptRestorePass(
 
   const snapshot = Array.from(deviceMap.values());
   const restoreCandidates = sortRestoreCandidates([
-    ...getRestoreCandidates(snapshot, state.shedDecisions),
+    ...withChargingPhaseOffCandidates(
+      snapshot, getRestoreCandidates(snapshot, state.shedDecisions), state.chargingPhaseCycle,
+    ),
     ...getStorageHandBackCandidates(snapshot, cycle.storageLevers),
   ])
     .filter((candidate) => isBudgetExempt(candidate.device));

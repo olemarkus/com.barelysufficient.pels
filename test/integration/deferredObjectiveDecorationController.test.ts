@@ -48,6 +48,7 @@ describe('DeferredObjectiveDecorationController', () => {
     };
     const device = { ...buildDevice(), controlModel: 'binary_power' as const, control: fixtureControlPosture({ controllable }) };
     const controller = new DeferredObjectiveDecorationController({
+      getChargingPhaseEnvelopes: () => new Map(),
       allocationRoster: new TaskAllocationRoster(() => new Date()),
       hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
@@ -82,6 +83,7 @@ describe('DeferredObjectiveDecorationController', () => {
       objectivesByDeviceId: {},
     } as const));
     const controller = new DeferredObjectiveDecorationController({
+      getChargingPhaseEnvelopes: () => new Map(),
       allocationRoster: new TaskAllocationRoster(() => new Date()),
       hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
@@ -111,6 +113,7 @@ describe('DeferredObjectiveDecorationController', () => {
     // task's reservations at the settle and disagree with the committed plan.
     const getStallClassification = vi.fn(() => undefined);
     const controller = new DeferredObjectiveDecorationController({
+      getChargingPhaseEnvelopes: () => new Map(),
       allocationRoster: new TaskAllocationRoster(() => new Date()),
       hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
@@ -145,6 +148,7 @@ describe('DeferredObjectiveDecorationController', () => {
 
   it('returns the identity bundle (devices untouched) when the settings read returns nothing', () => {
     const controller = new DeferredObjectiveDecorationController({
+      getChargingPhaseEnvelopes: () => new Map(),
       allocationRoster: new TaskAllocationRoster(() => new Date()),
       hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',
@@ -180,6 +184,7 @@ describe('DeferredObjectiveDecorationController latest cycle', () => {
     },
   };
   const buildController = () => new DeferredObjectiveDecorationController({
+    getChargingPhaseEnvelopes: () => new Map(),
     allocationRoster: new TaskAllocationRoster(() => new Date()),
     hasSolarProduction: () => false,
     getThermalDirection: () => 'heating',
@@ -241,6 +246,7 @@ describe('DeferredObjectiveDecorationController measured budget exemption', () =
       moneyPrice: 1,
     })));
     const controller = new DeferredObjectiveDecorationController({
+      getChargingPhaseEnvelopes: () => new Map(),
       allocationRoster: new TaskAllocationRoster(() => new Date()),
       hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',

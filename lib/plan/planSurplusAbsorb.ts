@@ -1,6 +1,8 @@
 import {
-  phaseBoundedPoolKw, phaseExportPoolKw, resolvePhaseBudget, spendPhaseBudget,
+  phaseBoundedPoolKw, phaseExportPoolKw, phaseShare, resolvePhaseBudget, spendPhaseBudget, spendPhaseBudgetVector,
 } from './phase/phaseRoom';
+import type { ChargingPhaseVector } from '../../packages/contracts/src/chargingPhases';
+import type { PhaseRoomAxis, PhaseBudget } from './phase/phaseRoom';
 import type { PhasePower } from './phase/phasePower';
 import { resolveSurplusCeilingStepId, type PlanEngineState } from './planState';
 import type { ResolvedPriceOptimizationConfig } from '../price/priceOptimizer';
@@ -740,12 +742,8 @@ export function resolveSurplusEligibility(
   const hardOff = isHardOffCondition(signedNetKw, storage.dischargeW / 1000);
 
   const pool = composeSurplusPool(willing, state, signedNetKw, storage, inferredSurplusKw);
-  let { poolKw } = pool;
-  // A battery's share starts without the devices' own add-back: a running
-  // device's measured draw is already out of the export.
-  let storageKw = pool.poolKw - pool.deviceAddBackKw;
+  let { poolKw, storageKw, phaseBudget } = reserveChargingPhasePool(state, pool, phasePower);
   let demandAbove: SurplusDemand = 'none';
-  let phaseBudget = resolvePhaseBudget(phasePower);
   // What every consumer so far takes of a battery's share, kW, and each
   // battery's offer at its turn with that running total: what the consumers
   // after it take is the difference at the end.
@@ -771,15 +769,12 @@ export function resolveSurplusEligibility(
     }
     const { dev } = consumer;
     const measuredKw = pool.addedBackIds.has(dev.id) ? positiveOrZero(dev.currentDrawKw) : 0;
-    const devicePoolKw = Math.max(
-      phaseBoundedPoolKw(phaseBudget.room, dev.phaseFootprint, poolKw, measuredKw),
-      phaseExportPoolKw(phaseBudget.exportRemainder, dev.phaseFootprint, phaseBudget.room),
-    );
-    const claim = dev.surplusTracking
-      ? claimForTrackingDevice(dev, state, devicePoolKw, nowTs)
-      : claimForFixedDevice(dev, state, devicePoolKw, hardOff, nowTs);
+    const phaseClaim = claimForChargingPhase(dev, state, poolKw, measuredKw, phaseBudget.room, nowTs);
+    const claim = phaseClaim ?? claimForOrdinaryDevice(dev, state, phaseBudget, poolKw, measuredKw, hardOff, nowTs);
     poolKw -= claim.claimKw;
-    phaseBudget = spendPhaseBudget(phaseBudget, dev.phaseFootprint, Math.max(0, claim.claimKw - measuredKw));
+    phaseBudget = phaseClaim
+      ? spendPhaseBudgetVector(phaseBudget, phaseClaim.incomingPerPhaseKw)
+      : spendPhaseBudget(phaseBudget, dev.phaseFootprint, Math.max(0, claim.claimKw - measuredKw));
     if (claim.want.kind === 'waiting') storageKw -= claim.want.runKw;
     if (DEMAND_RANK[claim.want.kind] > DEMAND_RANK[demandAbove]) demandAbove = claim.want.kind;
     // What it takes of a battery's share above it: its smallest step while it
@@ -789,6 +784,85 @@ export function resolveSurplusEligibility(
   return new Map([...turns].map(([deviceId, { takenAtTurnKw, ...offer }]): [string, StorageSurplusOffer] => (
     [deviceId, { ...offer, belowW: (takenKw - takenAtTurnKw) * 1000 }]
   )));
+}
+
+function reserveChargingPhasePool(
+  state: PlanEngineState, pool: ReturnType<typeof composeSurplusPool>, phasePower: PhasePower,
+): { poolKw: number; storageKw: number; phaseBudget: PhaseBudget } {
+  let { poolKw } = pool;
+  // A running device's measured draw is already out of a battery's export share.
+  let storageKw = pool.poolKw - pool.deviceAddBackKw;
+  let phaseBudget = resolvePhaseBudget(phasePower);
+  for (const debit of state.chargingPhaseCycle.pendingDebits().values()) {
+    poolKw -= debit.totalKw;
+    storageKw -= debit.totalKw;
+    phaseBudget = spendPhaseBudgetVector(phaseBudget, debit.perPhaseKw);
+  }
+  return { poolKw, storageKw, phaseBudget };
+}
+
+function claimForOrdinaryDevice(
+  dev: MeteredPlanInputDevice, state: PlanEngineState, phaseBudget: PhaseBudget,
+  poolKw: number, measuredKw: number, hardOff: boolean, nowTs: number,
+): SurplusClaim {
+  const devicePoolKw = Math.max(
+    phaseBoundedPoolKw(phaseBudget.room, dev.phaseFootprint, poolKw, measuredKw),
+    phaseExportPoolKw(phaseBudget.exportRemainder, dev.phaseFootprint, phaseBudget.room),
+  );
+  return dev.surplusTracking
+    ? claimForTrackingDevice(dev, state, devicePoolKw, nowTs)
+    : claimForFixedDevice(dev, state, devicePoolKw, hardOff, nowTs);
+}
+
+/** The phase owner's allocation remains owned during an independently observed firmware pause. */
+function claimForChargingPhase(
+  dev: MeteredPlanInputDevice, state: PlanEngineState, poolKw: number, measuredKw: number,
+  room: PhaseRoomAxis, nowTs: number,
+): (SurplusClaim & { incomingPerPhaseKw: ChargingPhaseVector }) | undefined {
+  const proposal = dev.surplusTracking
+    ? state.chargingPhaseCycle.chooseSurplus(dev.id, poolKw - SURPLUS_ABSORB_RESERVE_KW, room)
+    : undefined;
+  if ((!proposal && !state.chargingPhaseCycle.hasReservation(dev.id)) || !isSteppedLoadDevice(dev)) return undefined;
+  const floor = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);
+  if (!floor) return undefined;
+  const phases = state.chargingPhaseCycle;
+  const targetKw = proposal?.decision.target.totalKw
+    ?? phases.continuationTargetKw(dev.id) ?? floor.planningPowerW / 1000;
+  const availableKw = phases.availableSolarKw(dev.id, poolKw);
+  const rung = resolvePhaseTrackingRung(dev, state, availableKw, floor, nowTs);
+  const eligible = recordPhaseTrackingRung(state, dev, availableKw, rung, targetKw, nowTs);
+  const ordinaryKw = eligible ? rung.planningPowerW / 1000 : measuredKw;
+  const ordinaryIncreaseKw = Math.max(0, ordinaryKw - measuredKw);
+  const incoming = proposal?.debit.perPhaseKw ?? { L1: 0, L2: 0, L3: 0 };
+  return {
+    claimKw: Math.max(ordinaryKw, measuredKw + (proposal?.debit.totalKw ?? 0)),
+    want: measuredKw > 0 ? runningWant(dev, availableKw) : waitingWant(availableKw, targetKw),
+    incomingPerPhaseKw: {
+      L1: Math.max(incoming.L1, ordinaryIncreaseKw * phaseShare(dev.phaseFootprint, 'L1')),
+      L2: Math.max(incoming.L2, ordinaryIncreaseKw * phaseShare(dev.phaseFootprint, 'L2')),
+      L3: Math.max(incoming.L3, ordinaryIncreaseKw * phaseShare(dev.phaseFootprint, 'L3')),
+    },
+  };
+}
+
+/** A proposal alone grants no current reduction; an admitted pending operation retains its floor. */
+function resolvePhaseTrackingRung(
+  dev: MeteredPlanInputDevice, state: PlanEngineState, availableKw: number, floor: SteppedLoadStep, nowTs: number,
+): SteppedLoadStep {
+  if (state.chargingPhaseCycle.hasReservation(dev.id)) return floor;
+  return paceCeilingClimb(dev, state, resolveTrackingRung(dev, state, availableKw, floor), nowTs);
+}
+
+function recordPhaseTrackingRung(
+  state: PlanEngineState, dev: MeteredPlanInputDevice, availableKw: number, rung: SteppedLoadStep,
+  targetKw: number, nowTs: number,
+): boolean {
+  const { eligible } = syncSurplusEligibilityState(state, dev.id, availableKw, targetKw, availableKw <= 0, nowTs);
+  if (!eligible) state.chargingPhaseCycle.withdrawSolarOffer(dev.id);
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign -- Planner owns this cycle's solar tracker.
+  state.surplusTrackingByDevice[dev.id] = eligible
+    ? { kind: 'rung', stepId: rung.id, funded: rung.planningPowerW / 1000 <= availableKw } : { kind: 'stopped' };
+  return eligible;
 }
 
 /**

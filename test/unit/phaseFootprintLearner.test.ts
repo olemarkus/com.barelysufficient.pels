@@ -10,7 +10,7 @@ type Phases = readonly [number, number, number];
 const BASE: Phases = [2, 2, 2];
 
 const heater = (drawKw: number, lastCommandAtMs?: number): PhaseLearningDeviceSample => ({
-  deviceId: 'heater', drawKw, isEvCharger: false, evSessionActive: false, lastCommandAtMs,
+  deviceId: 'heater', drawKw, isEvCharger: false, evSessionActive: false, operatingPhases: undefined, lastCommandAtMs,
 });
 
 type Others = (index: number) => readonly PhaseLearningDeviceSample[];
@@ -108,7 +108,8 @@ describe('PhaseFootprintLearner', () => {
   it('rejects a step another managed device moved during', () => {
     const run = scenario();
     const others: Others = (index) => [{
-      deviceId: 'other', drawKw: index < 5 ? 0 : 1, isEvCharger: false, evSessionActive: false, lastCommandAtMs: undefined,
+      deviceId: 'other', drawKw: index < 5 ? 0 : 1, isEvCharger: false, evSessionActive: false,
+      operatingPhases: undefined, lastCommandAtMs: undefined,
     }];
     for (let index = 0; index < 6; index += 1) run.step([2, 0, 0], { others });
     expect(run.learner.learnedFootprint('heater')).toBeUndefined();
@@ -119,7 +120,7 @@ describe('PhaseFootprintLearner', () => {
     for (let index = 0; index < 6; index += 1) {
       const commandAt = run.atMs + 50_000;
       run.step([2, 0, 0], { others: (sampleIndex) => [{
-        deviceId: 'other', drawKw: 1, isEvCharger: false, evSessionActive: false,
+        deviceId: 'other', drawKw: 1, isEvCharger: false, evSessionActive: false, operatingPhases: undefined,
         lastCommandAtMs: sampleIndex < 5 ? undefined : commandAt,
       }] });
     }
@@ -152,6 +153,16 @@ describe('PhaseFootprintLearner', () => {
     expect(learner.learnedFootprint('heater')).toBeUndefined();
   });
 
+  it('discards a learned single-phase location when the operating envelope changes', () => {
+    const learner = new PhaseFootprintLearner();
+    const run = scenario(learner);
+    const device = { isEvCharger: true, evSessionActive: true, operatingPhases: 1 as const };
+    for (let index = 0; index < 5; index += 1) run.step([3, 0, 0], { device });
+    expect(learner.learnedFootprint('heater')).toEqual({ kind: 'single', phase: 'L1' });
+    run.step([1, 1, 1], { device: { ...device, operatingPhases: 3 } });
+    expect(learner.learnedFootprint('heater')).toBeUndefined();
+  });
+
   it('validates what it reads back entry by entry', () => {
     expect(parsePhaseLearning({
       good: { votes: ['L1'], settled: 'L1' },
@@ -164,7 +175,7 @@ describe('PhaseFootprintLearner', () => {
 
 describe('where learning sits', () => {
   const base = {
-    ownerConnection: undefined, isEvCharger: false, chargerPhaseCurrentsA: undefined,
+    ownerConnection: undefined, isEvCharger: false, chargerPhaseCurrentsA: undefined, operatingPhases: undefined,
     evPreset: undefined, learned: { kind: 'single', phase: 'L2' },
   } as const;
 

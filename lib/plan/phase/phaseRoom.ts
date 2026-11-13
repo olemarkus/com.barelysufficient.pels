@@ -2,6 +2,7 @@ import type { PhaseFootprint, PhaseName } from '../../../packages/planner-types/
 import { SHEDDING_CLEAR_THRESHOLD_KW } from '../planConstants';
 import type { LimitHeadroom } from '../planContext';
 import type { PhasePower } from './phasePower';
+import type { ChargingPhaseVector } from '../../../packages/contracts/src/chargingPhases';
 
 /** Spendable room per phase at the start of a restore pass; `off` when phases are not protected. */
 export type PhaseRoomAxis =
@@ -147,4 +148,22 @@ export const resolvePhaseBudget = (power: PhasePower): PhaseBudget => ({
 export const spendPhaseBudget = (budget: PhaseBudget, footprint: PhaseFootprint, kw: number): PhaseBudget => ({
   room: spendPhaseRoom(budget.room, footprint, kw),
   exportRemainder: spendPhaseExport(budget.exportRemainder, footprint, kw),
+});
+
+/** Incoming phase load only: moving a load never credits its old phase before measurement. */
+export function spendPhaseVector(axis: PhaseRoomAxis, incomingKw: ChargingPhaseVector): PhaseRoomAxis {
+  if (axis.kind === 'off') return axis;
+  return { kind: 'on', roomKw: {
+    L1: axis.roomKw.L1 - incomingKw.L1,
+    L2: axis.roomKw.L2 - incomingKw.L2,
+    L3: axis.roomKw.L3 - incomingKw.L3,
+  } };
+}
+
+/** A physical operating point spends the same incoming vector on import and export admission. */
+export const spendPhaseBudgetVector = (budget: PhaseBudget, incomingKw: ChargingPhaseVector): PhaseBudget => ({
+  room: spendPhaseVector(budget.room, incomingKw),
+  exportRemainder: new Map([...budget.exportRemainder].map(([phase, kw]) => (
+    [phase, Math.max(0, kw - incomingKw[phase])] as const
+  )).filter(([, kw]) => kw > 0)),
 });

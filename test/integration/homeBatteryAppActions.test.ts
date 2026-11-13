@@ -90,6 +90,7 @@ const setup = async (
 const claimOwner = (transport: DeviceTransport) => {
   const settings = mockHomeyInstance.settings;
   const actuator = createDeviceActuator({
+    requestChargingPhaseControl: async () => false,
     requestProductionControl: (command) => transport.requestProductionControl(command),
     canTurnOnDevice: (id) => transport.canTurnOnDevice(id),
     requestBinaryControl: (id, desired) => transport.requestBinaryControl(id, desired, async () => {

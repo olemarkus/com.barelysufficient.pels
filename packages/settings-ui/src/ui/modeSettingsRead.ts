@@ -1,4 +1,7 @@
 import { isDeviceStartPolicyMap } from '../../../shared-domain/src/settings/deviceStartPolicy.ts';
+import {
+  CHARGING_PHASE_SETTINGS_KEY, isChargingPhaseSettingsMap,
+} from '../../../shared-domain/src/settings/chargingPhases.ts';
 import { parseBatteryControlDevices } from '../../../shared-domain/src/settings/batteryControlDevices.ts';
 import { readModeAliases as readSharedModeAliases } from '../../../shared-domain/src/settings/modeAliases.ts';
 import {
@@ -39,6 +42,7 @@ export type ModeSettingsRead = {
   budgetExempt: unknown;
   respectExternalOff: unknown;
   devicePhaseConnections: unknown;
+  chargingPhases: unknown;
   mainFuseSupply: unknown;
   deviceStartPolicies: unknown;
   temperatureControlDisabled: unknown;
@@ -83,6 +87,7 @@ export const readModeSettings = async (homeId: string): Promise<ModeSettingsRead
     getSetting(BUDGET_EXEMPT_DEVICES),
     getSetting(RESPECT_EXTERNAL_OFF_DEVICES),
     getSetting(DEVICE_PHASE_CONNECTIONS),
+    getSetting(CHARGING_PHASE_SETTINGS_KEY),
     getSetting(MAIN_FUSE_SUPPLY),
     getSetting(DEVICE_START_POLICIES),
     getSetting(TEMPERATURE_CONTROL_DISABLED_DEVICES),
@@ -93,12 +98,12 @@ export const readModeSettings = async (homeId: string): Promise<ModeSettingsRead
   ]);
   const [
     mode, priorities, targets, controllables, managed,
-    budgetExempt, respectExternalOff, devicePhaseConnections, mainFuseSupply, deviceStartPolicies,
+    budgetExempt, respectExternalOff, devicePhaseConnections, chargingPhases, mainFuseSupply, deviceStartPolicies,
     temperatureControlDisabled, temperatureControlModes, nativeWiring, aliases, batteryControl,
   ] = values;
   return {
     mode, priorities, targets, controllables, managed,
-    budgetExempt, respectExternalOff, devicePhaseConnections, mainFuseSupply, deviceStartPolicies,
+    budgetExempt, respectExternalOff, devicePhaseConnections, chargingPhases, mainFuseSupply, deviceStartPolicies,
     temperatureControlDisabled, temperatureControlModes, nativeWiring, aliases, batteryControl,
   };
 };
@@ -134,6 +139,7 @@ export function applyDeviceStartPolicySettings(read: ModeSettingsRead): void {
 }
 
 export function applyDevicePhaseSettings(read: ModeSettingsRead): void {
+  if (isChargingPhaseSettingsMap(read.chargingPhases)) state.chargingPhaseSettings = read.chargingPhases;
   state.devicePhaseConnectionMap = readDevicePhaseConnections(read.devicePhaseConnections)
     ?? state.devicePhaseConnectionMap;
   state.mainFuseSupply = read.mainFuseSupply;

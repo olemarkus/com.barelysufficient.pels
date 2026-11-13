@@ -1,3 +1,4 @@
+import { NO_CHARGING_PHASE_OWNER } from '../../lib/ports/chargingPhases';
 import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 import { executionDeviceForFixture } from '../utils/executionDecisionFixture';
 import { createTestPlanExecutor } from '../utils/planEngineStateFixture';
@@ -57,7 +58,7 @@ describe('executorConvergence stepped device drift', () => {
   it('finds release work in an empty plan without requiring a live device', () => {
     const intent = { deviceId: 'battery', reason: 'not_admissible' as const };
     const hasStorageReleaseDrift = vi.fn(() => true);
-    expect(hasPlanExecutionDriftAgainstIntent(buildExecutionPlan({ ...buildPlan([]), inverterDecisions: [], storageReleases: [intent] }), {
+    expect(hasPlanExecutionDriftAgainstIntent(buildExecutionPlan({ ...buildPlan([]), chargingPhaseDecisions: [], inverterDecisions: [], storageReleases: [intent] }), {
       getObservedState: () => undefined,
       getCommandState: () => ({ binary: { kind: 'none' }, step: { kind: 'none' }, target: { kind: 'none' },
         session: { hasPriorStepCommand: false, stepCommandPending: false, unansweredStepCommands: { kind: 'none' } } }),
@@ -831,6 +832,7 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
   const buildPlanWith = (device: DevicePlan['devices'][number]): DevicePlan => ({
     meta: buildPlanMeta({ totalKw: 1, softLimitKw: 5, headroomKw: 4}),
     devices: [device],
+    chargingPhaseDecisions: [],
     inverterDecisions: [],
     storageReleases: [],
   });
@@ -1016,6 +1018,7 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
     configuration.replace(parsed);
     const observedById = new Map(parsed.map((snapshot) => [snapshot.id, projectObservedState(snapshot)]));
     const deps: PlanExecutorDeps = {
+    chargingPhaseOwner: NO_CHARGING_PHASE_OWNER,
       getHomeDisplayName: () => 'Main home',
       homeId: 'main',
       persistLastControlledMs: vi.fn(),
@@ -1024,6 +1027,7 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
       getObservationRevision: () => 0,
       getObservedState: (deviceId) => observedById.get(deviceId),
       actuator: createDeviceActuator({
+requestChargingPhaseControl: async () => false,
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
         canTurnOnDevice: () => true,
         resolveTemperatureTarget: (_deviceId, desired) => desired,

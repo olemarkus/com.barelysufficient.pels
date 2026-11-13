@@ -57,6 +57,7 @@ describe('pels status limit reason', () => {
         reason: typeof params.reason === 'string' ? fixtureDeviceReason(params.reason)! : params.reason,
       }),
     ],
+    chargingPhaseDecisions: [],
     inverterDecisions: [],
     storageReleases: [],
   });
@@ -250,6 +251,7 @@ describe('pels status limit reason', () => {
           reason: fixtureDeviceReason('inactive (charger is unplugged)')!,
         })),
       ],
+      chargingPhaseDecisions: [],
       inverterDecisions: [],
       storageReleases: [],
     };
@@ -278,6 +280,7 @@ describe('pels status limit reason', () => {
         shortfallBudgetHeadroomKw: -1.2,
         hardCapHeadroomKw: -1.2}),
       devices: [],
+      chargingPhaseDecisions: [],
       inverterDecisions: [],
       storageReleases: [],
     };
@@ -323,6 +326,7 @@ describe('pels status projected-over-hard-cap flag', () => {
   const buildPlanWithMeta = (meta: DevicePlan['meta']): DevicePlan => ({
     meta,
     devices: [],
+    chargingPhaseDecisions: [],
     inverterDecisions: [],
     storageReleases: [],
   });
@@ -392,6 +396,7 @@ describe('pels status effective dry-run posture (per-home Limits card)', () => {
   const emptyPlan: DevicePlan = {
     meta: buildPlanMeta({ totalKw: 0, softLimitKw: 6, headroomKw: 1 }),
     devices: [],
+    chargingPhaseDecisions: [],
     inverterDecisions: [],
     storageReleases: [],
   };
@@ -421,7 +426,7 @@ describe('pels status hard-cap trajectory (measured figures only)', () => {
   // every figure it was derived from.
   const overCapMeta = { totalKw: 9.5, usedKWh: 9, minutesRemaining: 30, hardCapLimitKw: 10 };
   const statusFor = (meta: DevicePlan['meta']) => buildPelsStatus(
-    { meta, devices: [], inverterDecisions: [], storageReleases: [] },
+    { meta, devices: [], chargingPhaseDecisions: [], inverterDecisions: [], storageReleases: [] },
     PriceLevel.NORMAL,
     1_745_000_000_000,
     false,
@@ -478,6 +483,7 @@ describe('pels status meter total (Limits "Power now")', () => {
   const drawPlan: DevicePlan = {
     meta: buildPlanMeta({ totalKw: 5.2, softLimitKw: 6, headroomKw: 0.8 }),
     devices: [],
+    chargingPhaseDecisions: [],
     inverterDecisions: [],
     storageReleases: [],
   };
@@ -495,7 +501,7 @@ describe('pels status meter total (Limits "Power now")', () => {
 
   it('omits the total only when the plan was unmeasured — measurement, not home kind', () => {
     const status = buildPelsStatus(
-      { meta: buildUnmeasuredPlanMeta({ totalKw: 5.2, softLimitKw: 6 }), devices: [], inverterDecisions: [], storageReleases: [] },
+      { meta: buildUnmeasuredPlanMeta({ totalKw: 5.2, softLimitKw: 6 }), devices: [], chargingPhaseDecisions: [], inverterDecisions: [], storageReleases: [] },
       PriceLevel.NORMAL,
       1_745_000_000_000,
       false,

@@ -22,6 +22,7 @@ import type {
  * design (transport input = channel-shaped; actuator input = intent-shaped).
  */
 export type DeviceCommand =
+  | import('../ports/chargingPhases').ChargingPhaseCommand
   | import('../ports/inverterControl').InverterCommand
   | {
     kind: 'binary';
@@ -55,6 +56,7 @@ export type DeviceCommand =
  * actuator layer carries no peer dependency on `lib/device/**`.
  */
 export type ActuatorTransport = {
+  requestChargingPhaseControl: (command: import('../ports/chargingPhases').ChargingPhaseCommand) => Promise<boolean>;
   requestProductionControl: (command: import('../ports/inverterControl').InverterCommand) => Promise<void>;
   canTurnOnDevice: (deviceId: string) => boolean;
   requestBinaryControl: (
@@ -80,6 +82,7 @@ export type ActuatorTransport = {
  * "already in posture" skips and never call the actuator in that case.
  */
 export type ActuatorOutcome =
+  | { requested: true; kind: 'charging_phase' | 'charging_phase_release' | 'charging_phase_prepare' }
   | { requested: true; kind: 'production_limit' | 'production_release' }
   | {
     requested: false;

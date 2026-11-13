@@ -9,7 +9,7 @@ describe('planner execution boundary', () => {
   it('keeps retry and confirmation state in execution instead of the emitted decision', () => {
     const device = steppedPlanDevice({ selectedStepId: 'low', desiredStepId: 'max', plannedState: 'keep' });
     const plan = buildExecutionPlan({
-      meta: buildPlanMeta(), devices: [device], inverterDecisions: [], storageReleases: [],
+      meta: buildPlanMeta(), devices: [device], chargingPhaseDecisions: [], inverterDecisions: [], storageReleases: [],
     });
     const decision = plan.devices[0]!;
     expect(hasPlannedStep(decision.commands)).toBe(true);

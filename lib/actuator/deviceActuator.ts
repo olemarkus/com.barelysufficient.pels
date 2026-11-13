@@ -81,6 +81,12 @@ const applyStorageRelease = async (
 
 const applyCommand = (transport: ActuatorTransport, command: DeviceCommand): Promise<ActuatorOutcome> => {
   switch (command.kind) {
+    case 'charging_phase':
+    case 'charging_phase_prepare':
+    case 'charging_phase_release':
+      return transport.requestChargingPhaseControl(command).then((requested) => (
+        requested ? { requested: true, kind: command.kind } : { requested: false }
+      ));
     case 'production_limit':
     case 'production_release':
       return transport.requestProductionControl(command).then(() => ({ requested: true, kind: command.kind }));

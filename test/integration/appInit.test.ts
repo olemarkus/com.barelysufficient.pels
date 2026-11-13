@@ -68,7 +68,7 @@ describe('app init plan service wiring', () => {
       deviceManager: undefined,
     });
 
-    expect(() => createPlanEngineComposition(ctx, buildMainHomeScopeForTest(ctx, () => false), { capacityGuard: ctx.capacityGuard, isActuationFenced: () => false, storageLane: { kind: 'none' }, controlContests: controlContestsForTest().contests })).toThrow(
+    expect(() => createPlanEngineComposition(ctx, buildMainHomeScopeForTest(ctx, () => false), { getChargingPhasePauseTarget: () => undefined, capacityGuard: ctx.capacityGuard, isActuationFenced: () => false, storageLane: { kind: 'none' }, controlContests: controlContestsForTest().contests })).toThrow(
       'DeviceTransport must be initialized before use.',
     );
   });
@@ -80,6 +80,11 @@ describe('app init plan service wiring', () => {
       deviceManager: {
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
         setCapability,
+        readChargingPhaseDevices: () => [],
+        readChargingPhaseEnvelopes: () => [],
+        readChargingPhasePoint: () => { throw new Error('Unexpected phase observation'); },
+        resetChargingPhaseEnvelope: () => {},
+        requestChargingPhaseControl: async () => false,
         applyDeviceTargets: vi.fn(async () => undefined),
         requestBinaryControl: vi.fn(async () => undefined),
         requestTemperatureTarget: async (_deviceId: string, desired: number) => {
@@ -104,6 +109,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
       key === 'temperature_control_modes' ? {} : null
     ));
     createPlanEngineComposition(engineCtx, buildMainHomeScopeForTest(engineCtx, () => false), {
+      getChargingPhasePauseTarget: () => undefined,
       capacityGuard: engineCtx.capacityGuard,
       isActuationFenced: () => fenced,
       storageLane: { kind: 'none' },

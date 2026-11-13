@@ -24,6 +24,7 @@ import {
 import { buildTargetPowerLadderSteps } from '../../packages/shared-domain/src/targetPowerLadder';
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from './managerControl';
 
+
 const NATIVE_STEPPED_LOAD_CAPABILITY_IDS = [
   'max_power_3000',
   'max_power_2000',

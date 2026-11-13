@@ -1,6 +1,7 @@
 import type { TargetPowerSteppedLoadPreset } from '../../packages/contracts/src/types';
 import type { PhaseFootprint } from '../../packages/planner-types/src/phaseFootprint';
 import type { DevicePhaseConnection } from '../../packages/shared-domain/src/settings/devicePhaseConnections';
+import { chargingSingleHousePhase, resolveChargingPhaseFootprint } from './chargingPhaseFootprints';
 
 /** A charger phase drawing at or below this is not carrying the car. */
 const CHARGER_PHASE_DRAWING_A = 1;
@@ -15,6 +16,8 @@ export type PhaseFootprintFacts = {
   evPreset: TargetPowerSteppedLoadPreset | undefined;
   /** What PELS has settled from its own steps against the meter, when it has. */
   learned: PhaseFootprint | undefined;
+  /** The operating envelope already resolved by the device producer, independent of the saved preset. */
+  operatingPhases: 1 | 3 | undefined;
 };
 
 /** Where a footprint came from, for the device page. */
@@ -24,6 +27,9 @@ export type ResolvedPhaseFootprint = { footprint: PhaseFootprint; source: PhaseF
 
 const fromOwnerConnection = (connection: DevicePhaseConnection): PhaseFootprint => {
   if (connection === 'all') return { kind: 'all_three' };
+  if (connection === 'three_L1' || connection === 'three_L2' || connection === 'three_L3') {
+    return { kind: 'all_three' };
+  }
   if (connection === 'self_balancing') return { kind: 'self_balancing' };
   return { kind: 'single', phase: connection };
 };
@@ -63,6 +69,12 @@ const fromCharger = (facts: PhaseFootprintFacts): ResolvedPhaseFootprint => {
  */
 export function resolvePhaseFootprintWithSource(facts: PhaseFootprintFacts): ResolvedPhaseFootprint {
   if (facts.ownerConnection !== undefined) {
+    if (chargingSingleHousePhase(facts.ownerConnection) !== undefined) {
+      const drawing = facts.chargerPhaseCurrentsA?.filter((amps) => amps > CHARGER_PHASE_DRAWING_A).length;
+      const phases = drawing !== undefined && drawing > 1 ? 3 : facts.operatingPhases;
+      return { footprint: phases === undefined ? { kind: 'unknown' }
+        : resolveChargingPhaseFootprint(facts.ownerConnection, phases), source: 'set' };
+    }
     return { footprint: fromOwnerConnection(facts.ownerConnection), source: 'set' };
   }
   if (facts.isEvCharger) return fromCharger(facts);

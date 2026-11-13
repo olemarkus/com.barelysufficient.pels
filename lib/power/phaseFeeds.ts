@@ -3,6 +3,7 @@ import type { ActuationHistoryRead } from '../ports/actuationHistory';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
 import { isHomeBatteryClassKey } from '../../packages/shared-domain/src/batteryOrSolarRole';
 import { isEvPlugStateConnected } from '../../packages/shared-domain/src/evPlugState';
+import { resolveOperatingChargingPhases } from '../phaseFootprint/chargingPhaseFootprints';
 
 type LearningGuard = Pick<CapacityGuard, 'phaseReadings' | 'phaseLearner'>;
 type PeakGuard = Pick<CapacityGuard, 'phasePeaks'>;
@@ -30,6 +31,7 @@ export function feedPhaseLearning(
         drawKw: device.measuredPowerKw,
         isEvCharger: device.isEvCharger === true,
         evSessionActive: device.evChargingState !== undefined && isEvPlugStateConnected(device.evChargingState),
+        operatingPhases: device.isEvCharger ? resolveOperatingChargingPhases(device.steppedLoadProfile) : undefined,
         lastCommandAtMs: actuation.lastDeviceControlledMs[device.id],
       }];
     }),

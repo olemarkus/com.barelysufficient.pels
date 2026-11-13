@@ -1,3 +1,6 @@
+import { ChargingPhaseTransport } from './chargingPhaseTransport';
+import type { EvChargingCurrentPolicy } from './evChargingCurrentLimitSettings';
+import type { CapabilityWrite } from './deviceAdapter';
 import { ChargingCurrentControl } from './chargingCurrentControl';
 import { HomeBatteryAppActions } from './homeBatteryAppActions';
 import type { DeviceHomeySdk } from './transport/deviceHomeySdk';
@@ -17,11 +20,16 @@ export type HomeyActionOwners = {
   access: HomeyActionAccess;
   batteryAppActions: HomeBatteryAppActions;
   chargingCurrentControl: ChargingCurrentControl;
+  createChargingPhaseTransport(
+    pause: (deviceId: string) => Promise<void>,
+    currentPolicy: (deviceId: string) => EvChargingCurrentPolicy,
+    writeCapability: (deviceId: string, write: CapabilityWrite) => Promise<void>,
+  ): ChargingPhaseTransport;
 };
 
 export const createHomeyActionOwners = (
   deviceSdk: DeviceHomeySdk,
-  snapshotStore: Pick<TransportSnapshotStore, 'getTrackedRawDevice' | 'getLatestRawDevices'>,
+  snapshotStore: TransportSnapshotStore,
   logger: Logger,
   options: Pick<DeviceTransportOptions, 'acceptedFlowWrites' | 'settings'>,
 ): HomeyActionOwners => {
@@ -41,5 +49,9 @@ export const createHomeyActionOwners = (
     },
     options.acceptedFlowWrites, options.settings,
   );
-  return { access, batteryAppActions, chargingCurrentControl };
+  return { access, batteryAppActions, chargingCurrentControl,
+    createChargingPhaseTransport: (pause, currentPolicy, writeCapability) => new ChargingPhaseTransport(
+      snapshotStore, options.settings, access, pause, currentPolicy, writeCapability,
+    ),
+  };
 };

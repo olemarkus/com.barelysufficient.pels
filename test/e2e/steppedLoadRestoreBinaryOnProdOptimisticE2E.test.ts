@@ -1,3 +1,4 @@
+import { NO_CHARGING_PHASE_OWNER } from '../../lib/ports/chargingPhases';
 import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 import { createTestPlanExecutor } from '../utils/planEngineStateFixture';
 import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
@@ -209,6 +210,7 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
   nativeSteppedAdapters.observe(DEVICE_ID, device);
 
   const deps: PlanExecutorDeps = {
+    chargingPhaseOwner: NO_CHARGING_PHASE_OWNER,
     getHomeDisplayName: () => 'Main home',
     homeId: 'main',
     persistLastControlledMs: vi.fn(),
@@ -222,6 +224,7 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
     // Route step writes through the actuator over the SAME device-manager stepped
     // method, preserving the prod restore behavior this e2e asserts.
     actuator: createDeviceActuator({
+requestChargingPhaseControl: async () => false,
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
       canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
@@ -288,6 +291,7 @@ const buildRestoreToLowPlan = (selectedStepId: 'max' | 'low'): DevicePlan => ({
       binaryControl: { on: false },
     }),
   ],
+  chargingPhaseDecisions: [],
   inverterDecisions: [],
   storageReleases: [],
 });

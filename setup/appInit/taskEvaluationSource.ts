@@ -22,6 +22,7 @@ export const buildTaskEvaluationSource = (
   ctx: AppContext,
   getPrioritiesForDevices: (deviceIds: readonly string[]) => ModePriorityOrder,
 ): TaskEvaluationSource => ({
+  getChargingPhaseEnvelopes: (_nowMs) => requirePlanService(ctx).readChargingPhaseEnvelopes(),
   allocationRoster: new TaskAllocationRoster(() => ctx.getNow()),
   getTimeZone: () => ctx.getTimeZone(),
   getThermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),

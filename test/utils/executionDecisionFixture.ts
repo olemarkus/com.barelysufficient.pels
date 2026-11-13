@@ -35,5 +35,5 @@ export { hasExecutableShedDevices, resolveSteppedLoadCurrentFallback };
 
 /** The same owner projection used by production, for a one-device drift assertion. */
 export function executionDeviceForFixture(device: DevicePlanDevice) {
-  return buildExecutionPlan({ meta: buildPlanMeta(), devices: [device], inverterDecisions: [], storageReleases: [] }).devices[0]!;
+  return buildExecutionPlan({ meta: buildPlanMeta(), devices: [device], chargingPhaseDecisions: [], inverterDecisions: [], storageReleases: [] }).devices[0]!;
 }

@@ -17,6 +17,7 @@ const planWithDevices = (devices: DevicePlan['devices']): DevicePlan => ({
     softLimitKw: 5,
     headroomKw: 4}),
   devices,
+  chargingPhaseDecisions: [],
   inverterDecisions: [],
   storageReleases: [],
 });
@@ -305,6 +306,7 @@ describe('planExecutablePlan', () => {
         softLimitKw: 5,
         headroomKw: 4}),
       devices: [evCharger],
+      chargingPhaseDecisions: [],
       inverterDecisions: [],
       storageReleases: [],
     });
@@ -337,6 +339,7 @@ describe('planExecutablePlan', () => {
         softLimitKw: 5,
         headroomKw: 4}),
       devices: [evCharger],
+      chargingPhaseDecisions: [],
       inverterDecisions: [],
       storageReleases: [],
     });

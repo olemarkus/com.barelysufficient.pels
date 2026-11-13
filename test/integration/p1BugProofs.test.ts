@@ -1,3 +1,4 @@
+import { NO_CHARGING_PHASE_OWNER } from '../../lib/ports/chargingPhases';
 import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 import { createTestPlanExecutor } from '../utils/planEngineStateFixture';
 import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
@@ -65,6 +66,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
   });
   const state = createPlanEngineState();
   const deps: PlanExecutorDeps = {
+    chargingPhaseOwner: NO_CHARGING_PHASE_OWNER,
     getHomeDisplayName: () => 'Main home',
     homeId: 'main',
     persistLastControlledMs: vi.fn(),
@@ -78,6 +80,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     // This proof never drives a step write; supply an actuator over the device
     // manager's writes so the executor's stepped binding has a seam to call.
       actuator: createDeviceActuator({
+requestChargingPhaseControl: async () => false,
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
         canTurnOnDevice: () => true,
         resolveTemperatureTarget: (_deviceId, desired) => desired,
@@ -378,6 +381,7 @@ describe('P1 bug proofs', () => {
         binaryCapabilityId: 'onoff',
         reason: fixtureDeviceReason('shed due to capacity'),
       })],
+      chargingPhaseDecisions: [],
       inverterDecisions: [],
       storageReleases: [],
     }));

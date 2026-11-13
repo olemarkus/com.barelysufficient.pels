@@ -45,6 +45,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
         expectedPowerKw: 1,
       }),
     ],
+    chargingPhaseDecisions: [],
     inverterDecisions: [],
     storageReleases: [],
   });

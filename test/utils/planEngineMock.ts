@@ -43,6 +43,12 @@ export type MockPlanEngineOptions = {
  * Tests spread overrides on top: `{ ...createMockPlanEngine(), buildDevicePlanSnapshot: ... }`.
  */
 export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
+  readChargingPhaseControl: () => ({ kind: 'unsupported' as const }),
+  readChargingPhaseEnvelopes: () => new Map(),
+  readChargingPhaseExecutionGate: () => ({
+    read: () => ({ kind: 'unsupported' as const }), blocksIncrease: () => false,
+    cancelForSafety: () => {}, runDeviceCommand: async <T>(_id: string, operation: () => Promise<T>) => operation(),
+  }),
   state: createPlanEngineState(),
   buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
     meta: buildPlanMeta({
@@ -50,6 +56,7 @@ export const createMockPlanEngine = (options?: MockPlanEngineOptions) => ({
       softLimitKw: 0,
       headroomKw: 0}),
     devices: [],
+    chargingPhaseDecisions: [],
     inverterDecisions: [],
     storageReleases: [],
   } satisfies DevicePlan),

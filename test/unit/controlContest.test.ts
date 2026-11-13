@@ -108,7 +108,7 @@ describe('ControlContestRecord', () => {
 
   it('forgets a command the plan no longer asks for, so asking again is a new command', () => {
     const { contests } = contestRounds(3);
-    contests.retainPlanned('main', new Map([[DEVICE, { temperature: 21, on_off: null, level: null }]]));
+    contests.retainPlanned('main', new Map([[DEVICE, { temperature: 21, on_off: null, level: null, charging_phases: null }]]));
     contests.controlReported(reported(34 * MINUTE_MS, 22));
     contests.commandSent(sent(35 * MINUTE_MS, 5));
     expect(contests.contestedControl(DEVICE, 35 * MINUTE_MS)).toBeUndefined();
@@ -116,7 +116,7 @@ describe('ControlContestRecord', () => {
 
   it('keeps the command the plan still asks for', () => {
     const { contests } = contestRounds(3);
-    contests.retainPlanned('main', new Map([[DEVICE, { temperature: 5, on_off: null, level: null }]]));
+    contests.retainPlanned('main', new Map([[DEVICE, { temperature: 5, on_off: null, level: null, charging_phases: null }]]));
     contests.controlReported(reported(34 * MINUTE_MS, 22));
     contests.commandSent(sent(35 * MINUTE_MS, 5));
     expect(contests.contestedControl(DEVICE, 35 * MINUTE_MS)?.count).toBe(4);
