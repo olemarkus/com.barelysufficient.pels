@@ -153,7 +153,7 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   got main's ambient `AppContext` state instead of a typed error. Main's
   status gained `dryRunEffective` and `totalKw` when that stopped being
   true; both are additive, and the posture is the same read the planner gates on.
-- **Per-meter sample routing:** one `fetchLivePowerReport` per poll fans out via
+- **Per-meter sample routing:** one `fetchLiveMeterReport` per poll fans out via
   `extractLiveMeterPowerWatts(report, meterId)` — each sub-home's own meter item
   (with a real device id; `totalCumulative` is their sum) into that bundle's
   pipeline. Realtime events route by `homeMembership.getHomeIdForDevice`. This

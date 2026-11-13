@@ -342,13 +342,13 @@ export function resolveDeviceViews(
     device: HomeyDeviceLike,
     source: DeviceReadSource,
     emitter: DeviceReadContractEmitter,
-    previousReads: ReadonlyMap<string, HomeyDeviceLike>,
+    previousRead: (deviceId: string) => HomeyDeviceLike | undefined,
 ): HomeyDeviceLike[] {
     // The views carry the identity the parse reads (`applyDeviceCompatibilityMetadata`), so a
     // device standing in for another app's (a lab mock) is split and routed by that app's adapter.
     const identified = applyDeviceCompatibilityMetadata(device);
     return getDeviceAdapter(identified).projectRead(identified)
-        .map((view) => resolveDeviceRead(owner, view, source, emitter, previousReads.get(view.id)));
+        .map((view) => resolveDeviceRead(owner, view, source, emitter, previousRead(view.id)));
 }
 
 /** Resolve a view's read before producers, parsing or tracking can consume any values. */

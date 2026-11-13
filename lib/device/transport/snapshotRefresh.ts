@@ -45,7 +45,7 @@ export type { DeviceFetchResult } from './managerFetch';
 import {
   type DeviceFetchSource,
 } from './managerFetch';
-import { fetchLivePowerReport, type DeviceFetchResult } from './managerFetch';
+import { fetchLiveMeterReport, fetchLivePowerReport, type DeviceFetchResult } from './managerFetch';
 import { fetchZoneTree } from './managerZones';
 import { getDebugEmitter, getLogger } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
@@ -437,7 +437,7 @@ export async function readLiveMeters(
     setGenerationW: (watts: number | null, observedAtMs: number) => void,
     meterDeviceIds: readonly string[],
 ): Promise<LiveMeterReadings | null> {
-    return resolveLiveMeterReadings(setGenerationW, await fetchLivePowerReport({ logger, meterDeviceIds }));
+    return resolveLiveMeterReadings(setGenerationW, await fetchLiveMeterReport(logger, meterDeviceIds));
 }
 
 async function resolveLivePowerForRefresh(
@@ -587,13 +587,12 @@ export class SnapshotRefreshService {
         return meterReadings;
     }
     // Reject individual fields before conversion or observation.
-    const previousReads = this.reader.snapshotStore.getLastAcceptedRawDevicesById();
     const acceptedRawDevices = list.flatMap((device) => resolveDeviceViews(
         this.reader.snapshotStore,
         this.reader.applyDeviceDriverOverride(device),
         'device_fetch',
         this.reader.logger.structuredLog,
-        previousReads,
+        this.reader.snapshotStore.getLastAcceptedRawDevice,
     ));
     // Only a full inventory can remove companions. Resolve membership before
     // parsing publishes eligibility.

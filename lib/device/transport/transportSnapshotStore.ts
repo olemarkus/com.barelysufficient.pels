@@ -14,6 +14,7 @@ export class TransportSnapshotStore {
   private snapshotByDeviceId = new Map<string, TransportDeviceSnapshot>();
   private readonly trackedRawDeviceById = new Map<string, HomeyDeviceLike>();
   private latestRawDevices: HomeyDeviceLike[] = [];
+  private latestRawDevicePositions = new Map<string, number>();
   private homeyDeviceIds: ReadonlySet<string> | undefined;
   /** The tracked devices' native step channels, built from the raw devices above. */
   readonly nativeSteppedAdapters = new NativeSteppedLoadCommandAdapters(
@@ -91,10 +92,12 @@ export class TransportSnapshotStore {
   }
 
   /** One device's last accepted raw read, by the same precedence. */
-  getLastAcceptedRawDevice(deviceId: string): HomeyDeviceLike | undefined {
-    return this.trackedRawDeviceById.get(deviceId)
-      ?? this.latestRawDevices.find((device) => getDeviceId(device) === deviceId);
-  }
+  readonly getLastAcceptedRawDevice = (deviceId: string): HomeyDeviceLike | undefined => {
+    const tracked = this.trackedRawDeviceById.get(deviceId);
+    if (tracked) return tracked;
+    const position = this.latestRawDevicePositions.get(deviceId);
+    return position === undefined ? undefined : this.latestRawDevices[position];
+  };
 
   /**
    * The Homey device a PELS device is read from and written to
@@ -109,8 +112,8 @@ export class TransportSnapshotStore {
   /** Replace an existing accepted raw read after an independent capability report. */
   updateAcceptedRawDevice(device: HomeyDeviceLike): void {
     if (this.trackedRawDeviceById.has(device.id)) this.trackedRawDeviceById.set(device.id, device);
-    const index = this.latestRawDevices.findIndex((entry) => entry.id === device.id);
-    if (index !== -1) this.latestRawDevices[index] = device;
+    const index = this.latestRawDevicePositions.get(device.id);
+    if (index !== undefined) this.latestRawDevices[index] = device;
   }
 
   /**
@@ -127,7 +130,7 @@ export class TransportSnapshotStore {
     return this.homeyDeviceIds.has(deviceId) ? 'present' : 'removed';
   }
 
-  getLatestRawDevices(): HomeyDeviceLike[] {
+  getLatestRawDevices(): readonly HomeyDeviceLike[] {
     return this.latestRawDevices;
   }
 
@@ -141,6 +144,10 @@ export class TransportSnapshotStore {
    */
   replaceLatestRawDevices(devices: HomeyDeviceLike[], fetchedList: readonly HomeyDeviceLike[]): void {
     this.latestRawDevices = devices;
+    this.latestRawDevicePositions = new Map();
+    for (const [index, device] of devices.entries()) {
+      this.latestRawDevicePositions.set(device.id, index);
+    }
     this.homeyDeviceIds = new Set([...fetchedList.map(getDeviceId), ...devices.map(getDeviceId)]);
   }
 

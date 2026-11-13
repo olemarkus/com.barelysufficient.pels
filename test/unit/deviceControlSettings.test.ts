@@ -54,6 +54,67 @@ describe('DeviceControlSettings managed filter', () => {
     expect(loaded(settingsDouble({ [MANAGED_DEVICES]: { ev1: true, 'vt-1': false } }).port).isManagedFilterActive())
       .toBe(true);
   });
+
+  it('updates the filter decision with each accepted managed generation', () => {
+    const { port, values } = settingsDouble({ [MANAGED_DEVICES]: { heater: true } });
+    const settings = loaded(port);
+
+    values[MANAGED_DEVICES] = { heater: false, socket: false };
+    settings.reload();
+    expect(settings.isManagedFilterActive()).toBe(false);
+    expect(settings.isManaged('heater')).toBe(false);
+
+    values[MANAGED_DEVICES] = {};
+    settings.reload();
+    expect(settings.isManagedFilterActive()).toBe(false);
+
+    values[MANAGED_DEVICES] = { socket: true };
+    settings.reload();
+    expect(settings.isManagedFilterActive()).toBe(true);
+    expect(settings.isManaged('socket')).toBe(true);
+  });
+
+  it('retains the managed map and filter decision when the read is unavailable or malformed', () => {
+    const { port, values } = settingsDouble({ [MANAGED_DEVICES]: { heater: true } });
+    const settings = loaded(port);
+
+    for (const value of [null, undefined, { heater: 'yes' }, []]) {
+      values[MANAGED_DEVICES] = value;
+      settings.reload();
+      expect(settings.isManaged('heater')).toBe(true);
+      expect(settings.isManagedFilterActive()).toBe(true);
+    }
+  });
+
+  it('adopts neither the map nor its filter decision when a later settings read throws', () => {
+    const { port, values } = settingsDouble({ [MANAGED_DEVICES]: { heater: true } });
+    const settings = loaded(port);
+
+    values[MANAGED_DEVICES] = { heater: false };
+    port.throwOn = EV_CAR_ASSOCIATIONS;
+    expect(() => settings.reload()).toThrow('settings unavailable');
+    expect(settings.isManaged('heater')).toBe(true);
+    expect(settings.isManagedFilterActive()).toBe(true);
+
+    port.throwOn = undefined;
+    settings.reload();
+    expect(settings.isManaged('heater')).toBe(false);
+    expect(settings.isManagedFilterActive()).toBe(false);
+  });
+
+  it('keeps an accepted generation independent of mutations to the settings input', () => {
+    const managed = { heater: true };
+    const { port } = settingsDouble({ [MANAGED_DEVICES]: managed });
+    const settings = loaded(port);
+
+    managed.heater = false;
+    expect(settings.isManaged('heater')).toBe(true);
+    expect(settings.isManagedFilterActive()).toBe(true);
+
+    settings.reload();
+    expect(settings.isManaged('heater')).toBe(false);
+    expect(settings.isManagedFilterActive()).toBe(false);
+  });
 });
 
 describe('DeviceControlSettings temperature-command policy', () => {
