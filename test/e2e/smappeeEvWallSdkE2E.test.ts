@@ -13,8 +13,8 @@ const MODES = ['normal', 'smart', 'paused'];
 
 /**
  * The Smappee app's EV Wall (`com.smappee` 1.3.4, `ev-wall` driver, Homey
- * class `other`), as its shipped `drivers/ev-wall/device.js` behaves:
- * - `charging_mode` is setable: a write PUTs the connector's mode to the
+ * class `other`), as the app behaves:
+ * - `charging_mode` is setable: a write sends the connector's mode to the
  *   Smappee cloud and sets the capability once the cloud accepts it.
  * - The charger's MQTT charging state then publishes `charging_mode`,
  *   `cable_connected` and `charging`; power arrives on `measure_power`.

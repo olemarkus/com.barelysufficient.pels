@@ -42,8 +42,8 @@ function readVolts(values: DeviceCapabilityMap | undefined, capabilityId: string
 
 /**
  * Watts per amp the app converts the limit with: three phases when L2 or L3 is
- * live, otherwise one, exactly as its `detectActivePhases` decides, since
- * that is what turns PELS's watts into the charger's amps.
+ * live, otherwise one, as the app counts phases, since that is what turns
+ * PELS's watts into the charger's amps.
  */
 function wattsPerAmp(values: DeviceCapabilityMap | undefined): number {
   const threePhase = readVolts(values, 'measure_voltage.l2') > LIVE_PHASE_VOLTAGE

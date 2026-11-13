@@ -9,30 +9,27 @@ import { isDeviceOfAppDriver } from '../homeBatteryBinding';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 
 /*
- * Sigenergy (`com.sigenergy` 0.6.6), read from the shipped package. PELS
- * manages the `battery` device (class `battery`, `homeBattery`); its
- * `measure_power` is the plant's ESS power (`lib/modbus/registry/battery.js:16`,
- * register 30037 on the plant unit), positive while charging
- * (`lib/enums.js:33`): Homey's sign. Control sits on the sibling `plant`
- * device (class `other`): every card below filters `driver_id=plant`
- * (`app.json` `flow.actions`), so each step runs on the plant.
+ * Sigenergy (`com.sigenergy`). PELS manages the `battery` device (class
+ * `battery`, `homeBattery`); its `measure_power` is the plant's ESS power,
+ * positive while charging: Homey's sign. Control sits on the sibling `plant`
+ * device (class `other`): every card below is for `driver_id=plant`, so each
+ * step runs on the plant.
  *
- * Cards (`drivers/plant/driver.js:16-55`, handlers in `drivers/plant/device.js`):
- * - `force_charge_from_grid` (`power` kW, min 0, step 0.1): writes the ESS max
- *   charging limit, then remote EMS control mode 3, "Charge, grid first"
- *   (`device.js:202`); the mode write enables remote EMS first (`:183`).
+ * Cards:
+ * - `force_charge_from_grid` (`power` kW, min 0, step 0.1): sets the ESS max
+ *   charging limit and remote EMS mode "Charge, grid first", enabling remote
+ *   EMS first.
  * - `set_ess_max_discharge_power` (`power` kW, min 0, step 0.1): the ESS max
- *   discharging limit, clamped to the rated power (`:89`).
+ *   discharging limit, clamped to the rated power.
  * - `set_remote_ems_control_mode` (`mode` dropdown `1`..`6`: Standby, Max self
  *   consumption, Charge grid first, Charge PV first, Discharge PV first,
- *   Discharge battery first; `lib/enums.js:169-174`), enabling remote EMS
- *   first (`:183`).
- * - `set_remote_ems` (`state` dropdown `on`/`off`, `:171`): off hands the
- *   plant back to its own EMS. Some firmware then falls back to Max self
- *   consumption rather than the mode chosen in mySigen; the app cannot
- *   restore that, and neither can PELS.
- * - `remove_ess_charge_limit`, `remove_ess_discharge_limit` (`:100`, `:110`):
- *   write the rated power, and throw while the rated power is not known.
+ *   Discharge battery first), enabling remote EMS first.
+ * - `set_remote_ems` (`state` dropdown `on`/`off`): off hands the plant back
+ *   to its own EMS. Some firmware then falls back to Max self consumption
+ *   rather than the mode chosen in mySigen; the app cannot restore that, and
+ *   neither can PELS.
+ * - `remove_ess_charge_limit`, `remove_ess_discharge_limit`: set the limit
+ *   back to the rated power, and fail while the rated power is not known.
  *
  * PELS's commands: charge W = `force_charge_from_grid` at W in kW (the app's
  * own "charge at N kW" pairing of limit and mode); discharge W =
@@ -41,16 +38,16 @@ import { standardDeviceAdapter } from '../standardDeviceAdapter';
  * then removes both power limits, which apply even under the plant's own EMS.
  * The removal cards use the app's persisted rated powers. If those are unknown,
  * remote EMS is still off and the owed cleanup retries without guessing a power.
- * A limit the owner had set before PELS is not restored: the app
- * reads the limit registers back unreliably and offers no card to read them.
+ * A limit the owner had set before PELS is not restored: the app offers no
+ * card to read it.
  * Remote EMS stays on until it is turned off, so a command lasts until the
  * next (`persistent`).
  *
  * Range: the plant's rated charging and discharging power, which the app
  * shows as its `ratedChargingPower` and `ratedDischargingPower` settings
- * (`"<n> kW"`, `device.js:63`). While either is unknown the plant also
- * refuses to remove a limit. New commands wait, but remote EMS off remains
- * available to hand back the plant.
+ * (`"<n> kW"`). While either is unknown the plant also refuses to remove a
+ * limit. New commands wait, but remote EMS off remains available to hand back
+ * the plant.
  *
  * The plant is the one `plant` device of the app. With none, or more than one
  * (two systems), or more than one `battery` device (each reads the same plant

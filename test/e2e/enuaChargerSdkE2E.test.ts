@@ -44,7 +44,7 @@ async function buildCharger(grid: string, amps: number, charging: boolean): Prom
   return device;
 }
 
-/** External charger simulation, following Enua 3.2.x's shipped listeners and 30 s poll. */
+/** External charger simulation, following Enua 3.2.x's behaviour and 30 s poll. */
 function simulateEnua(charger: MockDevice, wattsPerAmp: number) {
   let backgroundW = 1000;
   let limitA = Math.round(Number(charger.getActualCapabilityValue('target_power')) / wattsPerAmp);
@@ -56,7 +56,7 @@ function simulateEnua(charger: MockDevice, wattsPerAmp: number) {
   let refuseLimit = false;
   const startCurrents: number[] = [];
   const publish = (): void => {
-    // Stopping does not zero wallmountUserSetAmpere: the next poll publishes
+    // Stopping does not zero the user current limit: the next poll publishes
     // the positive limit again even while the charging switch is off.
     const targetW = limitA * wattsPerAmp;
     charger.setActualCapabilityValue('target_power', roundReports ? Math.round(targetW) : targetW);

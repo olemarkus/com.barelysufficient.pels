@@ -263,7 +263,7 @@ describe('HomeWizard Plug-In Batteries at the SDK boundary', () => {
 
   it('(d, dropped) hands the group back again when the P1 dropped a hand-back sent within 5 s of a command', async () => {
     const original = mockHomeyInstance.api.put.bind(mockHomeyInstance.api);
-    // HomeWizard's listener drops a mode change made within 5 s of the last one and still answers success.
+    // HomeWizard drops a mode change made within 5 s of the last one and still answers success.
     const DROP_WINDOW_MS = 5_000;
     let lastChangeMs = Number.NEGATIVE_INFINITY;
     let commandWrites = 0;

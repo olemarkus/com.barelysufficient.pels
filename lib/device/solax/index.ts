@@ -9,46 +9,40 @@ import { isDeviceOfAppDriver } from '../homeBatteryBinding';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 
 /*
- * SolaX hybrid inverters over Modbus (`com.msd.inverter.solax` 4.4.10), read
- * from the shipped package:
+ * SolaX hybrid inverters over Modbus (`com.msd.inverter.solax`):
  *
  * - The battery is its own device (`solax_modbus_battery`, class `battery`):
- *   `measure_power` and `measure_battery` read the inverter it follows
- *   (`drivers/solax_modbus_battery/device.js` `updateData`). It declares no
- *   `target_power` and offers no cards.
+ *   `measure_power` and `measure_battery` read the inverter it follows. It
+ *   declares no `target_power` and offers no cards.
  * - Control is the inverter device's RAM remote-control cards, one pair per
- *   inverter driver (`app.json` `flow.actions`, each filtered on its own
- *   `driver_id`): `set_remote_control_power_ram_<suffix>` (`mode` dropdown,
- *   `power` W -30000..30000, `timeout` s 10..600) and
- *   `disable_remote_control_ram_<suffix>`. G3 inverters have neither
- *   (`supportsRamControl`, `base_inverter_modbus.js`).
- * - `setRemoteControlRAM` writes the VPP block at 0x007C in RAM only, never
- *   the EEPROM (`buildRemoteControlPayload`). Mode 4 (Push Power) sets the
- *   battery's own power: the card's `power` is positive to charge, negative
- *   to discharge (the app negates it into PushModePower, where positive
- *   discharges). The inverter leaves remote control after `timeout` unless the
- *   block is written again; the app re-sends it every half `timeout` until
- *   the disable card runs (`startRamKeepAlive`).
- * - `disableRemoteControlRAM` writes ModbusPowerControl 0: the inverter
- *   returns to its own work mode in the EEPROM. It is the hand-back.
+ *   inverter driver (each for its own `driver_id`):
+ *   `set_remote_control_power_ram_<suffix>` (`mode` dropdown, `power` W
+ *   -30000..30000, `timeout` s 10..600) and
+ *   `disable_remote_control_ram_<suffix>`. G3 inverters offer no RAM cards.
+ * - The set card writes remote control to the inverter's RAM only, never its
+ *   permanent settings. Mode 4 (Push Power) sets the battery's own power: the
+ *   card's `power` is positive to charge, negative to discharge. The inverter
+ *   leaves remote control after `timeout` unless the command is sent again;
+ *   the app repeats it every half `timeout` until the disable card runs.
+ * - The disable card returns the inverter to its own work mode. It is the
+ *   hand-back.
  * - Both cards unlock the inverter first only when its `auto_unlock` setting
  *   is on; a write the inverter refuses fails the card.
  * - The battery's power is the inverter's battery power, positive while
- *   charging: the app's load is solar minus feed-in minus battery power
- *   (`setCalculatedCapabilities`). Homey's sign.
+ *   charging: Homey's sign.
  *
  * PELS's commands: Push Power at the setpoint, 0 W for a hold, with a 300 s
  * timeout. PELS declares that lifetime and sends the command again every
- * 100 s, so an app restart, which drops the app's own keep-alive, cannot leave
+ * 100 s, so an app restart, which drops the app's own repeat, cannot leave
  * the battery off PELS's command for longer than one timeout.
  *
- * Range: the cards' ±30 kW. The package reads no battery limit; a battery
+ * Range: the cards' ±30 kW. The app reports no battery limit; a battery
  * that delivers less teaches PELS its plateau (`lib/battery/batteryVerification.ts`).
  *
- * The battery follows one inverter, chosen in its own pairing (kept in the
- * app's device store, which Homey does not list). So the adapter needs the
- * only SolaX Modbus inverter in the inventory and the only SolaX battery: with
- * two inverters, or two batteries reading one, PELS only watches.
+ * The battery follows one inverter, chosen in its own pairing, which Homey
+ * does not list. So the adapter needs the only SolaX Modbus inverter in the
+ * inventory and the only SolaX battery: with two inverters, or two batteries
+ * reading one, PELS only watches.
  */
 const SOLAX_APP_ID = 'com.msd.inverter.solax';
 const BATTERY_DRIVER_ID = 'solax_modbus_battery';

@@ -2,16 +2,15 @@
  * The community Wallbox app (`nl.xseth.wallbox`, `wallbox` driver, Wallbox
  * cloud) at the SDK seam. See `notes/native-wiring/wallbox.md`.
  *
- * The app's `evcharger_charging` listener pauses or resumes the session, and
- * it publishes the switch as "charging now", which a resumed session waiting
+ * A write to the app's `evcharger_charging` pauses or resumes the session, and
+ * the app publishes the switch as "charging now", which a resumed session waiting
  * for a full car or for the charger's own schedule never is. Its `status`
  * tells those apart: `Charging` and `Waiting` are a session PELS lets run,
  * `Paused` is one it paused. So the switch is read from the status.
  *
  * The charging current has no capability: the app's `change_ampere` card sets
- * the charger's maximum charging current in the Wallbox cloud, and every poll
- * (10 s after a command, otherwise every 123 s) publishes that configured
- * maximum on `measure_current`. That is the cloud's answer, not proof the
+ * the charger's maximum charging current in the Wallbox cloud, and the app's
+ * poll publishes that configured maximum on `measure_current`. That is the cloud's answer, not proof the
  * charger applied it, accepted as Futurehome's saved limit is; it reaches PELS
  * as the charger's current reading.
  */

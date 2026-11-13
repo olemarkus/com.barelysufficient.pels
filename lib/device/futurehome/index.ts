@@ -6,12 +6,12 @@ import { standardDeviceAdapter } from '../standardDeviceAdapter';
 import { isFuturehomeCharger, readCurrentLimit } from './identity';
 import { FuturehomeChargerSession } from './session';
 
-// Futurehome 1.11.0 (`drivers/ev_charger`): a Zigbee charger with standard EV
-// capabilities and no current capability. Its `currentLimit` action writes the
-// charger, waits for its reply and then saves the same value to the device's
-// `currentLimit` setting, which is also read from the charger at startup. The
-// reply's status is not checked, so the setting is the limit Homey last sent
-// and got an answer to, not proof the charger applied it: a rejected or
+// Futurehome (driver `ev_charger`): a Zigbee charger with standard EV
+// capabilities and no current capability. Its `currentLimit` action card saves
+// the limit it sent to the device's `currentLimit` setting once the charger
+// answers, and the setting is also read from the charger at startup. So the
+// setting is the limit Homey last sent and got an answer to, not proof the
+// charger applied it: a rejected or
 // installer-clamped value is saved as sent, and a change made outside Homey
 // shows only after the vendor app restarts. It is the best evidence the vendor
 // offers, accepted as Tesla's echoed limit is; closing those gaps belongs in

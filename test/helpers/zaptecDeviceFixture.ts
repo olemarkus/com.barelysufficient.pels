@@ -2,9 +2,8 @@ import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { homeyDevice, setable } from './homeyDevicePayload';
 
 /**
- * com.zaptec 1.10.4 Go 2, inspected from its cloud-verified live package.
- * `drivers/go2/device.js` publishes the installation's lowest phase current
- * read-only; `go2_installation_current_control` writes all three phase limits.
+ * com.zaptec 1.10.4 Go 2: the device publishes the installation's lowest
+ * phase current read-only; `go2_installation_current_control` writes all three phase limits.
  * The manifest uses charging_button/charge_mode and has no target_power pair.
  */
 export function buildZaptecCurrentOnlyDevice(overrides: Partial<HomeyDeviceLike> = {}): HomeyDeviceLike {

@@ -48,23 +48,14 @@ runtime correctness, or measured economic advantage.
 
 ### Power by the Hour
 
-Inspected the public repository at commit
-[`64bc7ff82a938e74ee41d98813aa9d5c9302de9e`](https://github.com/gruijter/com.gruijter.powerhour/tree/64bc7ff82a938e74ee41d98813aa9d5c9302de9e),
-dated 2026-10-02; its package declares **8.19.0**. No package was installed or run.
+Its public description of version 8.19 advertises a trading strategy that picks
+buy, hold and sell periods from import and export prices, and a return-on-investment
+strategy that weighs charge and discharge efficiency, a cycling cost and the
+household's baseload. That is advertised behaviour, not a tested release.
 
-Its [TradeStrategy](https://github.com/gruijter/com.gruijter.powerhour/blob/64bc7ff82a938e74ee41d98813aa9d5c9302de9e/lib/strategies/TradeStrategy.js)
-selects buy/hold/sell through a bounded peak/trough search, using a minimum price
-spread and terminal inventory value. Its separate
-[RoiStrategy](https://github.com/gruijter/com.gruijter.powerhour/blob/64bc7ff82a938e74ee41d98813aa9d5c9302de9e/lib/strategies/RoiStrategy.js)
-uses linear programming with separate import/export prices, charge/discharge
-efficiencies, a throughput cost derived from `minPriceDelta`, fixed household
-baseload and terminal salvage value. It can compress periods to cap model size.
-Missing export prices fall back to import prices in these functions.
-
-This is source-level evidence about those functions, not a complete execution-path
-audit. PELS should retain its explicit quote-completeness rule, native period
-durations and household-only counterfactual. Another app using linear programming
-does not establish a need to replace PELS's one-battery dynamic program.
+PELS should retain its explicit quote-completeness rule, native period
+durations and household-only counterfactual. Another app's optimizer does not
+establish a need to replace PELS's one-battery dynamic program.
 
 ### Predbat
 

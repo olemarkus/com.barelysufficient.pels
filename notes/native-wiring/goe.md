@@ -2,14 +2,14 @@
 
 `lib/device/goe/` owns the go-e Charger app (`com.go-e.charger`, local HTTP
 API, drivers `go-eCharger_V1` to `go-eCharger_V4`, `go-eCharger_CORE` and
-`go-eCharger_PRO`). Checked against the live 2.11.1 package.
+`go-eCharger_PRO`). Behaviour as of version 2.11.1.
 
 **Start and stop.** The app declares neither `evcharger_charging` nor
 `evcharger_charging_state`. Its `is_allowed` is setable. On V3, V4, CORE and
-PRO a write sets the charger's force state: false forces charging off (`frc`
-1), true returns it to the charger's own logic (`frc` 0, with an anonymous
-transaction when the charger waits for authentication). On V1 and V2 it sets
-`alw`. The app's 5 s poll publishes the charger's own `alw` on `is_allowed`, so
+PRO a write sets the charger's force state: false forces charging off, true
+returns it to the charger's own logic, starting a session when the charger
+waits for authentication. On V1 and V2 it sets whether charging is allowed.
+The app's 5 s poll publishes the charger's own allowed state on `is_allowed`, so
 the reading is the charger's answer, not an echo. The adapter reads and writes
 the switch on `is_allowed` and publishes it as `evcharger_charging`. The
 charger keeps its current across a stop, so the planned current goes out
@@ -43,7 +43,7 @@ phase; otherwise it holds the app's default of 3. Only the one-phase reading
 is reported, because a Norwegian IT grid draws sqrt(3) * 230 W/A, which the
 three-phase preset does not model.
 
-`test/e2e/goeChargerSdkE2E.test.ts` drives PELS against the shipped switch,
+`test/e2e/goeChargerSdkE2E.test.ts` drives PELS against a model of the app's switch,
 poll and card:
 
 - a stop under pressure through `is_allowed`, then a start when there is

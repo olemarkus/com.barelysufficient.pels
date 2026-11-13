@@ -18,14 +18,14 @@ type LoggedEvent = { event?: unknown };
 
 /**
  * The community Alfen Pro-line/ACE app (`Alfen.ProlineSingle` 1.3.7,
- * `alfen-ace` driver), as its shipped `device.js` behaves without its own
+ * `alfen-ace` driver), as the app behaves without its own
  * load balancing or solar mode:
- * - `max_current` writes the Modbus charging current (1 A to the cable
+ * - `max_current` writes the charging current (1 A to the cable
  *   limit), lifts a pause, and reads the current back.
  * - `evcharger_charging = false` pauses at 5 A; `true` restores the current
  *   from before the pause.
- * - A 30 s keep-alive rewrites the current (5 A while paused, otherwise the
- *   last written current, at least 6 A); a 30 s poll publishes the Mode 3
+ * - A periodic keep-alive rewrites the current (5 A while paused, otherwise the
+ *   last written current, at least 6 A); a periodic poll publishes the Mode 3
  *   state, with `evcharger_charging` true only while the car draws, and while
  *   paused the app holds `plugged_in_paused` and `evcharger_charging = false`.
  * A car takes current from 6 A; below that the charger suspends it.

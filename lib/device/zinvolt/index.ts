@@ -3,14 +3,13 @@ import { isDeviceOfApp, STANDARD_HOME_BATTERY_BINDING } from '../homeBatteryBind
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 
 /*
- * Zinvolt (`com.zinvolt` 1.1.0, drivers `base` and `power`). Homey's standard
+ * Zinvolt (`com.zinvolt`, drivers `base` and `power`). Homey's standard
  * binding: signed `target_power` (positive charges, declared -800..2000 W,
  * step 10) taken over through `target_power_mode` = `homey`.
  *
- * One quirk: the app has no idle setpoint. Its `target_power` listener
- * (`drivers/baseDevice.js`) rounds to 10 W and maps an exact 0 onto its own
- * `INACTIVE` mode (smart mode `CHARGED` with a 0 W charge limit), and every
- * poll then reports `target_power_mode` = `INACTIVE`. PELS would read that as
+ * One quirk: the app has no idle setpoint. It rounds `target_power` to 10 W
+ * and maps an exact 0 onto its own `INACTIVE` mode, and every poll then
+ * reports `target_power_mode` = `INACTIVE`. PELS would read that as
  * the owner taking the battery back (a takeover, which turns control off).
  *
  * The binding writes the app's smallest charge setpoint, 10 W, for a 0 W

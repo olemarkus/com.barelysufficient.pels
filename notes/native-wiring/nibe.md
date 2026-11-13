@@ -1,19 +1,17 @@
 # NIBE myUplink compatibility
 
 `lib/device/nibe/` owns the official NIBE myUplink app (`com.nibe.myuplink`,
-drivers `heatpump` and `s-series`). Checked against the live 1.9.2 package.
+drivers `heatpump` and `s-series`). Behaviour as of version 1.9.2.
 
 Both drivers keep the room setpoint in `target_temperature.room` and the room
 reading in `measure_temperature.room`; neither declares a plain
 `target_temperature` / `measure_temperature` pair.
 
-- **F-series (`heatpump`)**: `target_temperature.room` is parameter 47398
-  (room sensor setpoint, climate system 1), or 47015 on an F730, which the app
-  picks from what the pump reports. A write queues a myUplink parameter update
-  and publishes the value only after it succeeds; a failure on both parameters
-  throws, so the write reports as failed. `measure_temperature.room` is
-  parameter 40033, the BT50 room sensor. The app adds each capability the
-  first time myUplink returns its parameter (`fetchAndSetDataPoints`). The
+- **F-series (`heatpump`)**: `target_temperature.room` is the room sensor
+  setpoint of climate system 1. A write publishes the value only after myUplink
+  accepts it, and a refused write reports as failed. `measure_temperature.room`
+  is the BT50 room sensor. Each capability appears the first time myUplink
+  reports its value. The
   pump uses the setpoint through its room sensor, so a pump runs on its own
   heat curve when no BT50 is fitted.
 - **S-series (`s-series`)**: both capabilities come from the first myUplink

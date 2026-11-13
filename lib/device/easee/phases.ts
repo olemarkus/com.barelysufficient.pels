@@ -2,8 +2,7 @@ import type { HomeyDeviceLike } from '../../utils/types';
 import type { ChargerPhaseReport } from '../chargerPhasePreset';
 const NOT_REPORTED: ChargerPhaseReport = { kind: 'not_reported' };
 
-// Easee 2.0.5 publishes these as read-only device settings, decoded to strings
-// (`lib/enums.js`: `decodePhaseMode`, `decodePowerGridType`).
+// Easee publishes these as read-only device settings, as strings.
 const EASEE_OWNER_URI = 'homey:app:no.easee';
 const EASEE_PHASE_MODE_SETTING = 'phaseMode';
 const EASEE_GRID_TYPE_SETTING = 'detectedPowerGridType';

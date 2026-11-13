@@ -1,12 +1,12 @@
 # Zappi compatibility
 
 `lib/device/myenergi/` owns the Zappi driver of the community myenergi app
-(`net.biseth.myenergi`, `zappi` driver, myenergi cloud). Checked against the
-live 2.4.18 package.
+(`net.biseth.myenergi`, `zappi` driver, myenergi cloud). Behaviour as of version
+2.4.18.
 
 A Zappi has no current a Homey app can set; myenergi's API offers charge modes.
-PELS switches it on and off. The app's `onoff` and `evcharger_charging`
-listeners do the same thing: charge mode Off, or the owner's last mode. The app
+PELS switches it on and off. Writes to the app's `onoff` and
+`evcharger_charging` do the same thing: charge mode Off, or the owner's last mode. The app
 publishes them differently:
 
 - `onoff` is the charge mode, on unless Off.

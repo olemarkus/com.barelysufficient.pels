@@ -17,9 +17,9 @@ const FAST_DRAW_W = 7360;
 type LoggedEvent = { event?: unknown };
 
 /**
- * The community myenergi app's Zappi (`net.biseth.myenergi` 2.4.18), as its
- * shipped `drivers/zappi/device.js` behaves:
- * - `onoff` and `evcharger_charging` share one listener: charge mode Off, or
+ * The community myenergi app's Zappi (`net.biseth.myenergi` 2.4.18), as the
+ * app behaves:
+ * - `onoff` and `evcharger_charging` do the same thing: charge mode Off, or
  *   the owner's last mode. It updates `charge_mode` at once; `onoff` keeps
  *   the value Homey was written until the next poll.
  * - Each 60 s poll publishes `onoff` as charge mode != Off, and

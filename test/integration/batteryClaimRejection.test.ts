@@ -1,8 +1,8 @@
 // A claim write the battery's app rejects, through the real stack below the
 // planner: the executor's storage lane, the battery control owner, the device
 // actuator and the device transport, down to the Homey Web API (`api.put`)
-// against a MockDevice. A Sessy on its cloud login rejects every claim
-// (nl.sessy `setControlStrategy`), so PELS only watches it; any other battery
+// against a MockDevice. A Sessy on its cloud login rejects every claim, so
+// PELS only watches it; any other battery
 // whose claim write fails is judged not responding and re-probed after its
 // back-off. Only the SDK seam is simulated.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -127,7 +127,7 @@ describe('a battery whose app rejects PELS\'s claim', () => {
 
   it('leaves a Sessy on its cloud login watch-only after the first rejection: no re-probe, one warning', async () => {
     const device = buildSessyBatteryDevice({ id: BATTERY, strategy: 'POWER_STRATEGY_NOM' });
-    // nl.sessy `setControlStrategy` throws unless the device uses its local login.
+    // Sessy refuses the strategy claim unless the device uses its local login.
     device.configureCapabilityBehavior('control_strategy', { onApiWrite: { accept: false } });
     const { owner, lane, settings, writes, reading } = await setup(device);
     expect(owner.readControlCapability(BATTERY)).toBe('drivable');

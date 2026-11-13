@@ -3,12 +3,11 @@ import type { DeviceCapabilityMap } from '../managerControl';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 
-// OSO inCharge 1.0.11 (`drivers/water-heater`): a cloud-polled water heater
-// registered as class `other`. Its `onoff` is not a switch. The value reads
-// the cloud's "element is heating" flag (the same field as its
-// `water_heater_heating`), so a hot, idle tank reads off, and a write sends one
-// of OSO's force commands: off or on for an hour, overriding OSO's own
-// scheduling. Neither can be cancelled. `target_temperature`
+// OSO inCharge (driver `water-heater`): a cloud-polled water heater
+// registered as class `other`. Its `onoff` is not a switch. It follows the
+// same "element is heating" state as its `water_heater_heating`, so a hot,
+// idle tank reads off, and a write forces the element off or on for an hour,
+// overriding OSO's own scheduling. Neither can be cancelled. `target_temperature`
 // is the real control: a write sets OSO's 24-hour temperature profile to that
 // one value, which holds until the next write. So PELS reads the heater as a
 // setpoint-only water heater: class `heater`, no `onoff`, limited and resumed

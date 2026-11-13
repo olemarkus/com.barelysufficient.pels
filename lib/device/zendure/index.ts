@@ -5,49 +5,37 @@ import { standardDeviceAdapter } from '../standardDeviceAdapter';
 
 /*
  * Zendure SolarFlow 2400 AC and 800 Pro through the local Zendure app
- * (`com.tweakers.zendure` 1.0.16, driver `zendure`), read from the shipped
- * package:
+ * (`com.tweakers.zendure`, driver `zendure`):
  *
- * - The driver declares no `target_power` or `target_power_mode`
- *   (`app.json` `drivers[zendure].capabilities`), so Homey's standard binding
- *   finds nothing to claim. Its one control is the app's Flow action card.
- * - `set-power` (`app.json` `flow.actions`; args `device` filtered to
- *   `driver_id=zendure`, `power` number -2400..2400 step 1) runs `setPower`
- *   on the battery itself (`drivers/zendure/driver.js:17`,
- *   `drivers/zendure/device.js:64`). A positive power discharges: `acMode`
- *   2 with `outputLimit` = power; a negative one charges: `acMode` 1 with
- *   `inputLimit` = |power| (`device.js:71-76`), sent over the battery's local
- *   HTTP API. 0 writes both limits 0 and `smartMode` 0: the battery idles.
- * - `measure_power` is the grid input power while charging, else minus the
- *   home output power (`device.js:247`): positive while charging, Homey's
- *   sign, so the executor's verification and sign check read it unchanged.
+ * - The driver declares no `target_power` or `target_power_mode`, so Homey's
+ *   standard binding finds nothing to claim. PELS controls it with the app's
+ *   Flow action card.
+ * - `set-power` (args `device` for `driver_id=zendure`, `power` number
+ *   -2400..2400 step 1) sets the battery's power over its local API. A
+ *   positive power discharges, a negative one charges, and 0 idles the
+ *   battery.
+ * - `measure_power` is positive while charging, Homey's sign, so the
+ *   executor's verification and sign check read it unchanged.
  *
- * Hand-back. The app has no card that returns the battery to a mode of its
- * own: `set-power` is the app's only control, and 0 is its idle (`device.js:61`).
- * So the hand-back is `set-power` 0, which leaves the battery idle at 0 W
+ * Hand-back. PELS uses no card that returns the battery to a mode of its own,
+ * so the hand-back is `set-power` 0, which leaves the battery idle at 0 W
  * until the owner's own flows set it again, and a 0 W hold is the same card.
  * That is safe here, unlike Zinvolt's 0 W (`zinvolt/`): an app-action battery
  * reports no claim PELS reads back, so a hold that looks like a hand-back is
  * never taken for the owner taking the battery back.
  *
- * The 15 s poll (`device.js:91-98`) drops a charge that has not moved yet.
- * Its `smartMode` policy (`:194-205`) writes `{ smartMode: 0 }` alone when
- * the battery reads idle: `outputLimit` 0 and both powers 0. A charge always
- * has `outputLimit` 0, so a charge on a full battery, or one still ramping,
- * gets `smartMode` 0 within one or two polls. The battery then runs from the
- * values in its flash and the charge PELS set in RAM (`smartMode` 1) is gone.
- * So a charge expires: PELS declares `CHARGE_LIFETIME_MS` and the storage
- * lane sends it again at a third of that, a `smartMode` 1 write to RAM only,
- * which puts a dropped charge back in force within 30 s.
+ * A charge that the battery has not started yet, or one on a full battery,
+ * is dropped by the app within one or two of its 15 s polls, and the battery
+ * falls back to its stored settings. So a charge expires: PELS declares
+ * `CHARGE_LIFETIME_MS` and the storage lane sends it again at a third of
+ * that, which puts a dropped charge back in force within 30 s.
  *
- * A discharge has `outputLimit` > 0, never reads idle, and holds until the
- * next command (`persistent`). So does the 0 W hold, which is itself the
- * app's idle (`smartMode` 0, both limits 0): a flash write, which PELS must
- * not repeat on a timer.
+ * A discharge holds until the next command (`persistent`). So does the 0 W
+ * hold, which is the app's own idle and is stored by the battery, so PELS
+ * must not repeat it on a timer.
  *
- * The card cannot fail on a battery that did not take the command: a write
- * that fails twice is logged and the run resolves (`device.js:136-141`). Only
- * the executor's verification against `measure_power` sees such a command.
+ * The card does not fail when the battery did not take the command. Only the
+ * executor's verification against `measure_power` sees such a command.
  *
  * Range: the card's own ±2400 W. An 800 Pro that delivers less teaches PELS
  * its plateau (`lib/battery/batteryVerification.ts`).
@@ -92,15 +80,14 @@ const ZENDURE_LOCAL_BINDING: HomeBatteryActionBinding = {
 };
 
 /*
- * The Zendure cloud app (`com.zendure.flow` 1.0.25) is not bound here and
- * keeps Homey's standard binding: PELS only watches it. Its battery drivers
+ * The Zendure cloud app (`com.zendure.flow`) is not bound here and keeps
+ * Homey's standard binding: PELS only watches it. Its battery drivers
  * (SolarFlow 800, 800 Plus, 800 Pro, 1600 AC+, 2400 AC, 2400 AC+, 2400 Pro,
  * 4000 Mix AC+, 4000 Mix Pro, Hyper 2000) offer `<driver>-switch-ac-input-mode`
  * and `<driver>-switch-ac-output-mode` cards (W), but declare no
- * `measure_power` (`app.json` `drivers[].capabilities`: `measure_battery`,
- * `battery_charging_state`), so PELS could not verify a single command. A
- * failed card run is also swallowed and returns `false`
- * (`drivers/hyper-2000/driver.js:337-361`, the same in each driver).
+ * `measure_power` (only `measure_battery` and `battery_charging_state`), so
+ * PELS could not verify a single command. A failed card run also reports
+ * `false` rather than an error.
  */
 export const zendureLocalAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,

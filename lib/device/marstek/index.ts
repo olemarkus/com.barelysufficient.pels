@@ -4,42 +4,35 @@ import { standardDeviceAdapter } from '../standardDeviceAdapter';
 
 /*
  * Marstek Venus through the Marstek Battery Connector app
- * (`com.niewold.marstek` 0.9.1, local driver `marstek-venus`), read from the
- * shipped package:
+ * (`com.niewold.marstek`, local driver `marstek-venus`):
  *
- * - The driver declares no `target_power` or `target_power_mode`
- *   (`app.json` `drivers[marstek-venus].capabilities`), so Homey's standard
- *   binding finds nothing to claim. Control is the driver's own Flow action
- *   cards, run with the owner's Homey API key.
- * - `marstek_passive_mode` (`app.json` `flow.actions`; args `device`,
- *   `power` number step 1 with no title, `seconds` number min 1 step 60)
- *   runs `setModePassive` (`drivers/marstek-venus/driver.js:324`, `:427`):
- *   it rejects a non-number and seconds below 1 (`:433`) and sends
- *   `ES.SetMode` with `mode: 'Passive'`, `passive_cfg: { power, cd_time:
- *   seconds }` (`:440`), unchanged.
- * - `marstek_auto_mode` (no args besides `device`) runs `setModeAuto`
- *   (`driver.js:319`, `:331`): `mode: 'Auto'`, `auto_cfg.enable: 1`, the
- *   battery's own self-consumption mode. It is the hand-back.
- * - `measure_power` is `bat_power` (`drivers/marstek-venus/device.js:203`),
- *   positive while charging (`:199`): Homey's sign, so the executor's
- *   verification and sign check read it unchanged.
+ * - The driver declares no `target_power` or `target_power_mode`, so Homey's
+ *   standard binding finds nothing to claim. Control is the driver's own Flow
+ *   action cards, run with the owner's Homey API key.
+ * - `marstek_passive_mode` (args `device`, `power` number step 1 with no
+ *   title, `seconds` number min 1 step 60) puts the battery in Passive mode
+ *   at that power for that many seconds. The card refuses a non-number and
+ *   seconds below 1.
+ * - `marstek_auto_mode` (no args besides `device`) returns the battery to
+ *   Auto, its own self-consumption mode. It is the hand-back.
+ * - `measure_power` is positive while charging: Homey's sign, so the
+ *   executor's verification and sign check read it unchanged.
  *
- * `passive_cfg.power` is negative to charge and positive to discharge, the
- * opposite of PELS's sign: the device's convention, as the same app titles its
- * Manual-mode `power` "Watt (negative = charge)" (`app.json`
- * `flow.actions[marstek_manual_mode]`) and accepts negative passive power
- * (`README.txt:52`). The app passes the value through unchanged.
+ * The passive `power` is negative to charge and positive to discharge, the
+ * opposite of PELS's sign: the device's convention, as the same app titles
+ * its Manual-mode `power` "Watt (negative = charge)" and its store
+ * description states negative passive power.
  *
- * `cd_time` is a countdown: the command lasts that long. PELS sends 300 s
- * (the Open API's own example) and declares that lifetime, so the storage
- * lane sends the setpoint in force again before it runs out.
+ * `seconds` is a countdown: the command lasts that long. PELS sends 300 s
+ * and declares that lifetime, so the storage lane sends the setpoint in
+ * force again before it runs out.
  *
- * Range: the package declares none. ±2500 W is the Venus's own range as
- * `com.kaoh.marstek` 1.5.23, the other Marstek app, declares it on the same
- * hardware (`target_power` min -2500, max 2500). A battery that delivers less
- * teaches PELS its plateau (`lib/battery/batteryVerification.ts`).
+ * Range: the app declares none. ±2500 W is the Venus's own range as
+ * `com.kaoh.marstek`, the other Marstek app, declares it on the same hardware
+ * (`target_power` min -2500, max 2500). A battery that delivers less teaches
+ * PELS its plateau (`lib/battery/batteryVerification.ts`).
  *
- * The cloud driver `marstek-venus-cloud` offers no cards (every card filters
+ * The cloud driver `marstek-venus-cloud` offers no cards (every card is for
  * `driver_id=marstek-venus`) and keeps Homey's standard binding: with no
  * `target_power` PELS only watches it.
  */

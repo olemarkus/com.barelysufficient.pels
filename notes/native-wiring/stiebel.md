@@ -2,7 +2,7 @@
 
 `lib/device/stiebel/` owns the Stiebel Eltron Heat Pumps app
 (`Stiebel.heatpump`, drivers `heatpump`, `heatpump-wpm3i` and `heatpump-lwz`).
-Checked against the live 1.5.3 package. The older `stiebel-heatpump` driver
+Behaviour as of version 1.5.3. The older `stiebel-heatpump` driver
 has no writable hot-water capability and stays one device.
 
 One Homey device holds two loads:
@@ -12,14 +12,13 @@ One Homey device holds two loads:
 - **Hot water:** `target_temperature.warmwater_temp` (10-60 °C, step 0.1) and
   `measure_temperature.warmwater_temp` on `heatpump` and `heatpump-wpm3i`;
   `target_temperature.warmwater` (10-55 °C, step 0.5) and
-  `measure_temperature.warmwater` on `heatpump-lwz`. A write sets the
-  `DHWComfortTemperature` register (`lib/devices/heatpump-wpm3i.js`
-  `setRegister('DHWComfortTemperature', …)`), and the poll reads that register
-  back onto the same capability.
+  `measure_temperature.warmwater` on `heatpump-lwz`. A write sets the hot-water
+  comfort temperature, and the app's poll publishes it back on the same
+  capability.
 - **Power:** `measure_power` is the total, `measure_power.heating` and
   `measure_power.warmwater` its parts; `meter_power` likewise. All of them are
   approximated from the app's daily energy counters, which the app reads only
-  when the owner turns on **ISG supports community registers**
+  when the owner turns on the **ISG supports community registers** setting
   (`has_community_registers`). Without it they have no value.
 
 ## Two devices
