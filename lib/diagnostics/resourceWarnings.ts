@@ -5,6 +5,7 @@ import { getRecentPlanRebuildTraces, summarizeRecentPlanRebuildTraces } from '..
 import { listRecentRuntimeSpans, listRuntimeSpans } from '../utils/runtimeTrace';
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import { reclaimHeapPages } from './heapReclaim';
+import './baselineCompilerOff';
 
 const resourceWarningLogger = getLogger('perf/resource-warnings');
 const emitPerfDebug = getDebugEmitter('perf', 'perf');
