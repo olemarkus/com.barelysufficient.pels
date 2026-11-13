@@ -49,9 +49,7 @@ plug transitions within the 20-minute coincidence window. The official apps defa
 to polling the server cache every 15 minutes (minimum configurable interval: 5),
 with a 10-minute active-car interval and periodic forced refresh disabled. Startup,
 commands and manual refresh can trigger earlier reads, but a cache read does not
-guarantee fresh vehicle telemetry. See the Hyundai build's
-[poll settings](https://github.com/gruijter/com.kia_hyundai/blob/com.hyundai/drivers/car/driver.settings.compose.json)
-and [polling implementation](https://github.com/gruijter/com.kia_hyundai/blob/com.hyundai/drivers/car/device.js).
+guarantee fresh vehicle telemetry; the poll interval is a device setting.
 The 20-minute window accommodates one default cache-poll interval plus delivery
 slack; older cloud data can still exceed it. No plug time is synthesized and no car
 refresh is forced. Real-device validation remains necessary for Hyundai/Kia's

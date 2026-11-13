@@ -16,12 +16,11 @@ const MAX_LEVEL_A = 32;
 type LoggedEvent = { event?: unknown };
 
 /**
- * The amina app (`com.aminacharging` 2.6.2), as its shipped
- * `drivers/amina-s/device.js` behaves:
- * - `onoff` is the Zigbee On/Off cluster: off disables charging, on enables
- *   it at the level the charger holds.
- * - The EV status attribute reports `ev_connected`, `charging_enabled`,
- *   `power_delivered` and `charging_paused` (minimum report interval 10 s).
+ * The amina app (`com.aminacharging` 2.6.2), as the app behaves:
+ * - `onoff`: off disables charging, on enables it at the level the charger
+ *   holds.
+ * - The charger reports connected, charging enabled, power delivered and
+ *   paused as separate states, at most every 10 s.
  * - The app card `set_charging_current` moves the charger's level (6 A to
  *   its maximum) and saves it to the `maxCurrent` setting.
  * - Electrical measurement reports `measure_power` (minimum interval 10 s).

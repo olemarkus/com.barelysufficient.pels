@@ -17,12 +17,11 @@ type LoggedEvent = { event?: unknown };
 type Car = 'drawing' | 'full';
 
 /**
- * The community Wallbox app (`nl.xseth.wallbox` 1.2.0), as its shipped
- * `drivers/wallbox/device.js` behaves:
- * - `evcharger_charging` pauses (`action: 2`) or resumes (`action: 1`) the
- *   session; the app card `change_ampere` sets the cloud's
- *   `maxChargingCurrent` (1 A to `max_available_current`).
- * - Its poll (123 s, and 10 s after either command) publishes `status`
+ * The community Wallbox app (`nl.xseth.wallbox` 1.2.0), as the app behaves:
+ * - `evcharger_charging` pauses or resumes the session; the app card
+ *   `change_ampere` sets the charger's maximum charging current (1 A to
+ *   `max_available_current`).
+ * - Its poll (soon after either command, otherwise every couple of minutes) publishes `status`
  *   (`Charging`, `Waiting` for a car that takes nothing, `Paused`),
  *   `evcharger_charging` as status == Charging, and the configured maximum
  *   current on `measure_current`.

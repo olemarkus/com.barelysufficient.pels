@@ -3,17 +3,14 @@ import { isDeviceOfApp, STANDARD_HOME_BATTERY_BINDING } from '../homeBatteryBind
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 
 /*
- * Anker SOLIX (`com.anker.solix` 1.1.0, driver `battery`). The app declares
+ * Anker SOLIX (`com.anker.solix`, driver `battery`). The app declares
  * its own `target_power` capability, titled "On-Grid Port Output Power (+) /
- * Grid-to-Battery Charge Power (-)", and writes the value unchanged into the
- * battery's power-setpoint register (`DataCoordinator.writePowerSetpoint`): a
- * positive value DISCHARGES, the opposite of Homey's sign. Its Flow card hint
- * says the same. So the binding flips the sign of every setpoint PELS writes,
- * and of the declared range PELS reads (the app sets it to ±max(charge,
+ * Grid-to-Battery Charge Power (-)": a positive value DISCHARGES, the
+ * opposite of Homey's sign. Its Flow card hint says the same. So the binding
+ * flips the sign of every setpoint PELS writes, and of the declared range PELS reads (the app sets it to ±max(charge,
  * discharge limit), step 100; symmetric today, flipped all the same).
  *
- * `measure_power` is already Homey's sign: the app maps register 10008
- * (positive discharging) with gain -1, so positive is charging. It is not
+ * `measure_power` is already Homey's sign: positive is charging. It is not
  * flipped, so the executor's sign check against the meter sees the battery
  * move the way PELS asked it to.
  *

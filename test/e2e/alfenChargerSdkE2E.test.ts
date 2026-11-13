@@ -20,17 +20,17 @@ function plugState(plugged: boolean, charging: boolean): string {
 }
 
 /**
- * The official Alfen app (`com.alfen` 2.1.1, `chargepoint` driver), as its
- * shipped `device.js` and `lib/AlfenApi.js` behave:
- * - `target_power` is the OCPP external-constraint profile. A write is sent as
- *   `round(round(W / 230, 0.1) / phases, 0.1)` A per phase, and the next read
- *   publishes `ampsPerPhase × phases × 230` back. The driver re-declares the
+ * The official Alfen app (`com.alfen` 2.1.1, `chargepoint` driver), as the
+ * app behaves:
+ * - `target_power` is the charger's external charging limit. A write is sent
+ *   as amps per phase at 230 V, to 0.1 A, and the next read publishes the
+ *   applied limit back in watts. The app declares the
  *   capability as `{ min: 0, max: limit × phases × 230, step: 230, excludeMin: 0,
  *   excludeMax: 1380 }` whatever the phase count.
  * - `evcharger_charging` is derived from the charger mode (`true` only while
  *   charging). Writing it sets the profile: `true` to the station limit's
  *   watts, `false` to 0 W.
- * - Phases are read from `measure_voltage.l2/l3` (> 50 V means three).
+ * - Phases are read from `measure_voltage.l2/l3` (a live L2 or L3 means three).
  * - Every write is followed by a read; the app also polls every 30 s.
  * A car takes current from 6 A per phase; below that the charger suspends it.
  */

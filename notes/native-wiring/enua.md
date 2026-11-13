@@ -7,11 +7,10 @@ involved. Everything Enua-specific stays in the adapter; shared code reaches it
 only through the `DeviceAdapter` hooks, which pass values through unchanged for
 every other device.
 
-The shipped Homey packages inspected on 2026-10-28 were live 3.2.0 and test
-3.2.1. Both declare `target_power` as 0–22080 W in 230 W steps on every grid.
-Their positive-target listener instead rounds to a whole amp and clamps between
-6 A and the cloud DTO's `wallmountMaxAmpere`, falling back to 32 A when that
-ceiling is absent. Its watt conversion follows the device's `grid_type` setting:
+As of live 3.2.0 and test 3.2.1 (2026-10-28), the app declares `target_power`
+as 0–22080 W in 230 W steps on every grid. The charger instead takes a positive
+target as a whole amp between 6 A and its installation maximum (32 A when that
+is unknown). The watt conversion follows the device's `grid_type` setting:
 
 | Grid setting | Watts per amp | Minimum charging power |
 |---|---:|---:|
@@ -29,9 +28,8 @@ grid setting follows Enua's own TN fallback. A corrected upstream declaration,
 including an installation-specific lower ceiling, is left unchanged. Neither
 capability values nor source timestamps are invented.
 
-The shipped Homey surface exposes `grid_type` and the accepted user current
-through `target_power`. Its installation-specific `wallmountMaxAmpere` stays
-inside the vendor's cloud DTO. The repaired ladder supplies candidate levels;
+The app exposes `grid_type` and the accepted user current through
+`target_power`. The installation-specific maximum is not published. The repaired ladder supplies candidate levels;
 the charger's clamp and subsequent target readback determine the accepted
 limit. Automatic's candidate maximum is bounded by 32 A and published watt
 metadata, while a lower private installation ceiling remains enforced by the
@@ -68,7 +66,7 @@ alongside charging disabled and zero measured power. That limit is not proof
 that charging resumed, and it is not a reason to enable the charger.
 
 `test/e2e/enuaChargerSdkE2E.test.ts` drives the real PELS stack through the
-Homey boundary with the shipped range, the 6 A clamp, delayed cloud
+Homey boundary with the declared range, the 6 A clamp, delayed cloud
 observations and retained stopped-session limits. `test/unit/enuaCompatibility.test.ts`
 also checks that corrected metadata and unrelated drivers remain unchanged.
 Reassess the adapter when Enua changes its capability range or its

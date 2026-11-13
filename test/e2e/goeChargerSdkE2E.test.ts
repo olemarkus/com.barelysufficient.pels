@@ -14,15 +14,14 @@ const CHANGE_CURRENT_CARD = 'homey:app:com.go-e.charger:change_current';
 const MAX_CURRENT_A = 32;
 
 /**
- * The go-e Charger app (`com.go-e.charger` 2.11.1), as its shipped
- * `drivers/main-device.js` behaves:
- * - `is_allowed` is setable: false forces charging off (`frc` 1), true hands
- *   it back to the charger (`frc` 0), and the 5 s poll publishes the
- *   charger's `alw` on `is_allowed`.
- * - `status` follows the charger's `car` state; `is_connected` and
+ * The go-e Charger app (`com.go-e.charger` 2.11.1), as the app behaves:
+ * - `is_allowed` is setable: false forces charging off, true hands it back
+ *   to the charger, and the 5 s poll publishes the charger's own allowed
+ *   state on `is_allowed`.
+ * - `status` follows the charger's car state; `is_connected` and
  *   `is_charging` follow it.
- * - `current_limit` is read-only; the `change_current` card writes the
- *   charger's `amp` (6 A to its maximum) and the poll publishes it back.
+ * - `current_limit` is read-only; the `change_current` card sets the
+ *   charger's current (6 A to its maximum) and the poll publishes it back.
  */
 function simulateGoe(charger: MockDevice, initialA: number) {
   let backgroundW = 1000;

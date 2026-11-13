@@ -18,10 +18,9 @@ type LoggedEvent = { event?: unknown };
 
 /**
  * The community Peblar app (`com.KyleMichiels.Peblar` 4.2.8,
- * `peblar_charger` driver), as its shipped `device.js` and `domain/` planners
- * behave:
- * - `peblar_charge_limit` PATCHes `evinterface` `ChargeCurrentLimit` (whole
- *   amps, mA on the wire) and publishes the amps at once.
+ * `peblar_charger` driver), as the app behaves:
+ * - `peblar_charge_limit` sets the charger's charge limit (whole amps) and
+ *   publishes the amps at once.
  * - `evcharger_charging = true` sets the limit to the allowed maximum,
  *   `false` sets it to 0; a fourth pause inside ten minutes is refused.
  * - A 10 s poll publishes the limit, `evcharger_charging` as limit >= 6 A,

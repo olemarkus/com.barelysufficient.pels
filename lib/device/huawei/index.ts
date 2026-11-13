@@ -7,48 +7,38 @@ import { isDeviceOfAppDriver } from '../homeBatteryBinding';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 
 /*
- * Huawei LUNA2000 on its Modbus driver (`com.huawei.fusionsolar` 1.3.9,
- * driver `luna2000_modbus`), read from the shipped package:
+ * Huawei LUNA2000 on its Modbus driver (`com.huawei.fusionsolar`, driver
+ * `luna2000_modbus`):
  *
- * - The driver declares no `target_power` or `target_power_mode`
- *   (`app.json` `drivers[luna2000_modbus].capabilities`). Control is the
- *   driver's forced charge and discharge cards, app-level cards with the
- *   battery as their `device` argument (`driver_id=luna2000_modbus`),
- *   registered in `drivers/luna2000_modbus/device.js:996`.
+ * - The driver declares no `target_power` or `target_power_mode`. Control is
+ *   the driver's forced charge and discharge cards, app-level cards with the
+ *   battery as their `device` argument (`driver_id=luna2000_modbus`).
  * - `luna2000_start_force_charge_duration` and
- *   `luna2000_start_force_discharge_duration` (`app.json` `flow.actions`;
- *   `power` W, 0..100000 step 100; `duration` minutes 1..1440;
- *   `device.js:724`, `:739`) write the power (47247 charge, 47249
- *   discharge), the minutes (47083), the duration mode (47246 = 0) and the
- *   start (47100 = 1 charge, 2 discharge), in that order, each only after the
- *   one before it succeeded; a failed step fails the card and starts nothing
- *   (`forceSequence`, `:595`). The power is unsigned W, clamped to the battery's own max
- *   charge or discharge power, and a max of 0 or less fails the card
- *   (`_forcePowerW`, `:1624`). The battery's own timer ends the run after the
- *   minutes (`:729`).
- * - `luna2000_stop_force_charge_discharge` (`:675`, `forceStop` `:643`)
- *   writes the stop (47100 = 0) and then clears the discharge power, minutes
- *   and mode: the battery returns to its own working mode. It is the
- *   hand-back. A stop that cannot be written fails the card.
- * - All three run one at a time per battery, in the order asked
- *   (`forceQueue`, `:586`), and wait for their writes.
+ *   `luna2000_start_force_discharge_duration` take `power` (W, 0..100000 step
+ *   100) and `duration` (minutes, 1..1440). A card that cannot complete fails
+ *   and starts nothing. The power is unsigned W, clamped to the battery's own
+ *   max charge or discharge power, and a max of 0 or less fails the card. The
+ *   battery's own timer ends the run after the minutes.
+ * - `luna2000_stop_force_charge_discharge` ends a forced run: the battery
+ *   returns to its own working mode. It is the hand-back. A stop that cannot
+ *   be written fails the card.
+ * - The cards for one battery run one at a time, in the order asked.
  * - `measure_power` is the battery's charge/discharge power, positive while
- *   charging (`device.js:1150`, `:1157`): Homey's sign. It is read on the
- *   driver's poll, 60 s by default (`poll_interval` setting, 10..300 s).
+ *   charging: Homey's sign. It is read on the driver's poll, 60 s by default
+ *   (`poll_interval` setting, 10..300 s).
  *
  * PELS's commands: charge W = forced charge at W for 10 minutes; discharge W
  * = forced discharge at W for 10 minutes; hold 0 W = forced charge at 0 W
- * for 10 minutes, which the card accepts (power min 0, `_forcePowerW` keeps
- * 0), rather than the stop, which would hand the battery back to its own
- * mode. A command expires after its minutes, so the storage lane sends it
- * again every 200 s (a third of it); when PELS stops, the battery's timer returns it to
- * its own mode within 10 minutes.
+ * for 10 minutes, which the card accepts (power min 0), rather than the stop,
+ * which would hand the battery back to its own mode. A command expires after
+ * its minutes, so the storage lane sends it again every 200 s (a third of
+ * it); when PELS stops, the battery's timer returns it to its own mode within
+ * 10 minutes.
  *
- * Range: the battery's own max charge and discharge power (registers 47075,
- * 47077), which the poll keeps in the device settings `max_charge_power` and
- * `max_discharge_power` (W, `device.js:1455-1474`), on the cards' 100 W grid.
- * While either is unknown or 0 (which also makes its card fail), the battery
- * is unavailable and PELS only watches it.
+ * Range: the battery's own max charge and discharge power, which the app
+ * keeps in the device settings `max_charge_power` and `max_discharge_power`
+ * (W), on the cards' 100 W grid. While either is unknown or 0 (which also
+ * makes its card fail), the battery is unavailable and PELS only watches it.
  *
  * The EMMA driver `luna2000_emma_modbus` has only working-mode and grid-charge
  * cards, and the OpenAPI drivers are read-only: they keep Homey's standard

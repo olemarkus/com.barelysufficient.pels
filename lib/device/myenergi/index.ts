@@ -3,8 +3,8 @@
  * cloud) at the SDK seam. See `notes/native-wiring/zappi.md`.
  *
  * A Zappi has no current a Homey app can set: myenergi's API offers charge
- * modes. PELS switches it on and off and nothing more. The app's `onoff` and
- * `evcharger_charging` listeners do the same thing (charge mode Off, or the
+ * modes. PELS switches it on and off and nothing more. A write to the app's
+ * `onoff` or `evcharger_charging` does the same thing (charge mode Off, or the
  * owner's last mode), but the app publishes them differently: `onoff` as the
  * charge mode (on unless Off), `evcharger_charging` as "a car is drawing now",
  * which a full car, a car waiting to start, or an Eco mode waiting for solar

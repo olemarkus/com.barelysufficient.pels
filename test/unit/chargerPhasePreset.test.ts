@@ -2,7 +2,7 @@ import { resolveChargerPhasePresets, resolveChargerPhaseReport } from '../../lib
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
-// Setting values as the deployed Easee app 2.0.5 decodes them (`lib/enums.js`).
+// Setting values as the Easee app 2.0.5 publishes them.
 const easee = (settings: Record<string, unknown>): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
   id: 'easee-1',
   name: 'Elbillader',

@@ -71,13 +71,10 @@ Resumption follows the normal meter-driven admission and restore cooldown.
 - **Easee EV charger current** (`no.easee`, charger driver): native stepped
   control writes the EV preset step's whole-amp current to the setable
   `target_charger_current` (0 A for the off step) and reads the step back from
-  the same capability, replacing both halves of the bridge Flow. Checked
-  against the deployed Easee 2.0.5 build (installed on the SHS; the GitHub
-  repo is the archived community 1.9.6): the capability listener and the
-  app's "Set dynamic charger current" card (`setDynamicChargerCurrent`) both
-  call the same `setDynamicChargerCurrent` → `POST /chargers/<id>/settings
-  { dynamicChargerCurrent }`, and the app publishes the cloud's value back on
-  `target_charger_current`. Automatic derives whole-amp levels from the published
+  the same capability, replacing both halves of the bridge Flow. On Easee
+  2.0.5 a write to the capability and the app's "Set dynamic charger current"
+  card (`setDynamicChargerCurrent`) set the same dynamic charger current, and
+  the app publishes the charger's value back on `target_charger_current`. Automatic derives whole-amp levels from the published
   current maximum, phase mode, detected grid and available charger/circuit limits;
   IT three-phase uses √3 × 230 W/A. Those levels follow fresh charger settings.
   Without enough integration data, the owner can use a Manual EV phase model.

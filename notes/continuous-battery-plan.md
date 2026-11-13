@@ -206,10 +206,8 @@ They cover the planner under deterministic fixture forecasts. Use the SDK-bounda
 command path, including zero-power ownership, reserve protection, no battery
 export, permission changes and manual takeover.
 
-The inspected 2.5.119 source has SHA-256
-`b9e98fa26bef912c1818b9012d71b1d9a21a3b0e8de665d9f149cc0904cf66d6`.
-The prototype comparison produces these modeled objectives, in fixture currency
-units, including wear and the same credit for usable energy remaining at the end:
+A prototype comparison with a charging-window strategy produces these modeled
+objectives, in fixture currency units, including wear and the same credit for usable energy remaining at the end:
 
 | Fixture | Charging-window replay | PELS |
 | --- | ---: | ---: |

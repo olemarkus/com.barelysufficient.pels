@@ -127,20 +127,16 @@ limits (`measure_power.battery_group_max_consumption_w` to charge,
   `target_power_mode` accepts only `device`.
 - **Modes.** Discharge `zero_discharge_only`, hold `standby`, surplus charge
   `zero_charge_only`, grid charge `to_full` at the group's charge limit,
-  which is also its one grid-charge power. The firmware's limit can be one
-  battery's even with several (the app's own comment, `drivers/energy_v2/device.js`
-  near the WebSocket battery handler). A group whose limits the P1 has not
+  which is also its one grid-charge power. The reported limit can be one
+  battery's even with several. A group whose limits the P1 has not
   reported is watched only.
-- **Writes.** PELS writes the mode capability on the P1. Its listener drops a
-  change made within 5 s of the last one and still answers success
-  (`drivers/energy_v2/device.js`, the `battery_group_charge_mode` listener),
-  so a command is confirmed only when the P1 reports the mode; an unreported
+- **Writes.** PELS writes the mode capability on the P1. A change made within
+  5 s of the last one is dropped while the write still answers success, so a command is confirmed only when the P1 reports the mode; an unreported
   one goes out again. A hand-back is confirmed the same way: PELS keeps the
   claim record until the P1 reports the restored mode, and writes the
   hand-back again if the group still shows another mode 15 s later
-  (`HAND_BACK_REPORT_WINDOW_MS`). The listener also counts every write by another app and
-  logs it as a likely override (`capability_api_mode_changes`): each PELS
-  command adds one. That is an accepted cost; the app's Flow cards avoid the
+  (`HAND_BACK_REPORT_WINDOW_MS`). The app also logs every write by another app
+  as a likely override: each PELS command adds one. That is an accepted cost; the app's Flow cards avoid the
   counter but need the owner's Homey API key and leave no mode to restore.
 - **No export.** In every mode the group holds the P1 at zero: it covers the
   house's import or takes its export, never sells to the grid.
@@ -208,8 +204,6 @@ remove once the key is saved (`batteryUsesHomeyApiKey` on the device list).
 
 ## Batteries and their bindings
 
-Read from the shipped app packages.
-
 | Battery and Homey app | Binding | Adapter |
 |---|---|---|
 | Marstek Venus (`com.kaoh.marstek`), AlphaESS (`com.alphaess`), SOLARWATT (`com.solarwatt`), SolarEdge (`com.solaredge`, `battery_modbus`) | standard | none |
@@ -233,8 +227,7 @@ declares no range, so the edges are the app's own charge and discharge presets
 rather than Homey's ±25 kW.
 
 **Anker SOLIX.** The app's own `target_power` is titled "On-Grid Port Output
-Power (+) / Grid-to-Battery Charge Power (-)" and goes unchanged into the
-battery's setpoint register: positive discharges. Without the flip PELS would
+Power (+) / Grid-to-Battery Charge Power (-)": positive discharges. Without the flip PELS would
 discharge when it meant to charge, and the executor's sign check would
 eventually mark the battery sign-inverted and stop driving it.
 
@@ -271,83 +264,69 @@ restart, does not redirect that hand-back or authorize commands on the replaceme
 self consumption rather than the mode chosen in mySigen, and a limit the owner
 had set before PELS is not restored; neither is readable through the app.
 
-**Zendure (local app).** The app's one control is `set-power`, run on the
-battery: positive discharges (`acMode` 2, output limit), negative charges
-(`acMode` 1, input limit), and 0 sets both limits to 0 and `smartMode` 0, the
-battery's idle. The app has no card that returns the battery to a mode of its
+**Zendure (local app).** The app's one control is the `set-power` card, run on
+the battery: positive discharges, negative charges, and 0 is the battery's idle.
+The app has no card that returns the battery to a mode of its
 own, so the hand-back is that idle: the battery stays at 0 W until the owner's
 own flows set it again. A 0 W hold is the same card; that is safe for an
 app-action binding, which reads no claim back, so the hold cannot look like a
-takeover (the Zinvolt problem). The app's 15 s poll writes `smartMode` alone:
-0 when the battery reads idle (`outputLimit` 0 and both powers 0), 1 when it
-moves. A charge always has `outputLimit` 0, so a charge on a full battery, or
-one still ramping, gets `smartMode` 0 within one or two polls, and the
-battery drops the charge set in RAM for the values in its flash. So a charge
-expires: PELS declares 90 s and the storage lane sends it again every 30 s, a
-`smartMode` 1 write to RAM only. A discharge (`outputLimit` > 0) never reads
-idle and holds until the next command. The 0 W hold is the app's idle itself,
-a flash write, and holds until the next command; PELS never repeats it on a
-timer. A write that fails twice is logged and the
+takeover (the Zinvolt problem). A charge on a full battery, or one still
+ramping, is dropped within one or two of the app's 15 s polls, and the battery
+returns to its stored settings. So a charge expires: PELS declares 90 s and the
+storage lane sends it again every 30 s. A discharge holds until the next
+command. The 0 W hold is the app's idle itself and holds until the next
+command; PELS never repeats it on a timer. A failed write is logged while the
 card still succeeds, so only the executor's verification against
-`measure_power` (grid input while charging, minus home output otherwise,
-Homey's sign) sees it.
+`measure_power` (Homey's sign) sees it.
 
 **Zendure (cloud app).** Every battery driver offers AC input (charge) and AC
 output (discharge) power cards, but declares only `measure_battery` and
 `battery_charging_state`: no `measure_power`. PELS would command a battery it
-cannot verify, and the app's card handlers swallow a failure and return
-`false`. The battery stays watch-only on the standard binding.
+cannot verify, and a failed card run reports `false`. The battery stays watch-only on the standard binding.
 
-**Huawei LUNA2000 (Modbus).** The timed forced-run cards write the power, the
-minutes, the duration mode and the start in that order, starting nothing if a
-step fails, and the battery's own timer ends the run. PELS sends 10 minutes
+**Huawei LUNA2000 (Modbus).** The timed forced-run cards set the power and the
+duration and start the run, starting nothing if any part fails, and the
+battery's own timer ends the run. PELS sends 10 minutes
 and declares that lifetime, so the storage lane renews the run every 200 s
 (a third of it), and a PELS that stops leaves the battery in its own working mode
 within 10 minutes. The cards take unsigned W and clamp to the battery's max
-charge or discharge power (registers 47075 and 47077, kept in the device
-settings by the app's poll); the range is those settings on the cards' 100 W
+charge or discharge power (kept in the device settings); the range is those settings on the cards' 100 W
 grid, and while either is unknown or 0 (which also fails the card) PELS only
 watches the battery. A 0 W hold is a forced charge at 0 W, which the card
 accepts; the stop card is the hand-back, returning the battery to its working
-mode. `measure_power` is Homey's sign, read on the driver's poll (60 s by
+mode. `measure_power` is Homey's sign, updated on the app's poll (60 s by
 default), so verification is slower than for a local battery. The EMMA driver
 offers only working-mode and grid-charge cards, and the OpenAPI drivers are
 read-only: both stay watch-only.
 
 **SolaX (Modbus).** The battery device only reads the inverter it follows;
 the cards are on the inverter, one pair per inverter driver (`g4`, `g4_pro`,
-`x1_vast`, `x3_ies`, `ultra`), and G3 inverters have none. The battery's
-chosen inverter sits in the app's device store, which Homey does not list, so
-the adapter needs the only SolaX Modbus inverter and the only SolaX battery in
-the inventory; with two of either, PELS only watches. The card writes the
-inverter's VPP block in RAM, never its EEPROM. Mode 4 (Push Power) sets the
-battery's own power; the card takes it positive to charge, and the app negates
-it into the register, where positive discharges. The inverter leaves remote
-control after the timeout unless the block is written again, and the app
-writes it again every half timeout until the disable card runs. PELS sends a
+`x1_vast`, `x3_ies`, `ultra`), and G3 inverters have none. Homey does not say
+which inverter a battery follows, so the adapter needs the only SolaX Modbus inverter and the only SolaX battery in
+the inventory; with two of either, PELS only watches. The remote-control card
+sets the battery's own power, positive to charge, without a permanent settings
+write. The inverter leaves remote control after the card's timeout, and the app
+renews it until the disable card runs. PELS sends a
 300 s timeout and declares that lifetime, so its own re-send every 100 s keeps
-the command after an app restart, which drops the app's keep-alive. Because the
+the command after an app restart. Because the
 app keeps re-sending, a PELS that stops leaves the battery on its last command
 until the hand-back, as for a persistent command. The hand-back writes remote
 control off, and the inverter returns to its own work mode. The card id of the
 hand-back depends on the inverter's driver, so `handBack` takes the inventory:
 an inverter missing from it names a card no app lists, the hand-back fails,
-and the claim stays owed. The package reads no battery limit, so the range is
+and the claim stays owed. The app reports no battery limit, so the range is
 the card's ±30 kW, and a battery that delivers less teaches PELS its plateau.
 Both cards unlock the inverter first only when its `auto_unlock` setting is
 on; a refused write fails the card. `measure_power` is the inverter's battery
-power, positive while charging (the app's load is solar minus feed-in minus
-battery power): Homey's sign.
+power, positive while charging: Homey's sign.
 
-**Not bound.** Read from the shipped packages; each stays watch-only.
+**Not bound.** Each stays watch-only.
 
 - *Sonnen* (`com.sonnen.battery` 2.8.0): manual charge and discharge
   setpoints work only in the Manual operating mode, and every card run posts a
-  Homey timeline notification (`drivers/sonnenbatterie/driver.js`
-  `handleSwitchOperatingMode`, `handleManualCharging`,
-  `handleManualDischarging`), so each PELS setpoint change would post one.
+  Homey timeline notification, so each PELS setpoint change would post one.
 - *Solis* (`nl.orangeframe.solis` 1.0.0): forced charge and discharge take
-  amps, which the app converts with its own cached battery voltage, and there is
+  amps rather than watts, and there is
   no 0 W hold: the smallest charge is 1 A, and the stop card returns the battery
   to self-use.
 - *Indevolt* (`nl.robceelen.indevolt` 1.8.2): real-time control takes a state

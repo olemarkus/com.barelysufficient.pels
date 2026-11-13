@@ -3,13 +3,13 @@ import type { DeviceCapabilityMap } from '../managerControl';
 import type { CapabilityValue, HomeyDeviceLike } from '../../utils/types';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 
-// Adax Wi-Fi heaters, Adax app 2.0.6 (`drivers/heater-wt`). The heater has no
-// power meter. The app writes `measure_power` as the rated power from its
-// `ratedPower` setting whenever the heater's local status says it heats, and
-// never writes 0, so once a heater has heated, Homey reports its rated power
-// forever. PELS reads the draw from the heater's own state instead: rated
-// power while it is on and below its target, 0 once it is off or has reached
-// it. A setback write therefore reads as relief at once.
+// Adax Wi-Fi heaters, Adax app (driver `heater-wt`). The heater has no
+// power meter. The app reports `measure_power` as the rated power from its
+// `ratedPower` setting whenever the heater heats, and never reports 0, so
+// once a heater has heated, Homey reports its rated power forever. PELS
+// reads the draw from the heater's own state instead: rated power while it
+// is on and below its target, 0 once it is off or has reached it. A setback
+// write therefore reads as relief at once.
 const ADAX_HEATER_DRIVER_ID = 'homey:app:no.adax.smart-heater.homey-app:heater-wt';
 // The app's own default when the owner never set a rating.
 const DEFAULT_RATED_POWER_W = 1000;

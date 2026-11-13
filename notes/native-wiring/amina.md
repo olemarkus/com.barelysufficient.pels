@@ -1,16 +1,15 @@
 # amina compatibility
 
 `lib/device/amina/` owns the amina app (`com.aminacharging`, `amina-s`
-driver, Zigbee). Checked against the live 2.6.2 package.
+driver, Zigbee). Behaviour as of version 2.6.2.
 
 **Start and stop.** The app declares neither `evcharger_charging` nor
-`evcharger_charging_state`. Its `onoff` is the charger's Zigbee On/Off
-cluster, which enables or disables charging, and the charger keeps its level
+`evcharger_charging_state`. Its `onoff` enables or disables charging, and the charger keeps its level
 across a stop. The adapter reads and writes the switch on `onoff`, publishes
 it as `evcharger_charging`, and sends the planned current before the switch
 (`current_before_start`), so an old 32 A level cannot start the session.
 
-**Plug state.** The EV status attribute arrives as separate booleans, at most
+**Plug state.** The charger's EV status arrives as separate booleans, at most
 every 10 s. The adapter derives the plug state from them and the switch:
 
 - `ev_connected` false: `plugged_out`.
@@ -35,7 +34,7 @@ phases are not reported, because a Norwegian IT grid draws sqrt(3) * 230 W/A,
 which the three-phase preset does not model. The per-phase currents
 (`measure_current.phase_a` to `phase_c`) feed the charger's phase reading.
 
-`test/e2e/aminaChargerSdkE2E.test.ts` drives PELS against the shipped switch,
+`test/e2e/aminaChargerSdkE2E.test.ts` drives PELS against a model of the app's switch,
 status reports and card in two cases:
 
 - a stop under pressure through `onoff`, then a start when there is room;
