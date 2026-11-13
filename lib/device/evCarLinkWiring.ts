@@ -58,7 +58,11 @@ export const buildEvCarLinkChargerViews = (
         // the charger is delivering nothing. The consumer decides currency —
         // a genuinely idle charger legitimately stops emitting, so "recent" is
         // the wrong test; "observed during this session" is the right one.
-        ...(hasObservedMeasuredPower(snapshot)
+        //
+        // An unavailable charger's draw is no evidence either way: an adapter
+        // that has not accepted the session (a vehicle not opted in to control)
+        // projects it at 0 kW, which would read as idle while the car charges.
+        ...(snapshot.available && hasObservedMeasuredPower(snapshot)
             ? {
                 measuredPowerW: Math.round(snapshot.measuredPowerKw * 1000),
                 ...(snapshot.measuredPowerObservedAtMs === undefined
