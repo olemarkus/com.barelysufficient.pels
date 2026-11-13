@@ -1,3 +1,4 @@
+import { NO_CHARGING_PHASE_OWNER } from '../../lib/ports/chargingPhases';
 import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
 import { createTestPlanExecutor } from '../utils/planEngineStateFixture';
 import { NO_INVERTER_EXECUTION } from '../../lib/ports/inverterControl';
@@ -202,6 +203,7 @@ const buildHeldShedPlan = (snapshot: TransportDeviceSnapshot): DevicePlan => ({
     desiredStepId: 'off',
     reason: SHED_REASON,
   })))) as DevicePlan['devices'][number]],
+  chargingPhaseDecisions: [],
   inverterDecisions: [],
   storageReleases: [],
 });
@@ -224,6 +226,7 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
 
   const pendingBinaryCommandStore = createPendingBinaryCommandStore(state.pendingBinaryCommands);
   const deps: PlanExecutorDeps = {
+    chargingPhaseOwner: NO_CHARGING_PHASE_OWNER,
     getHomeDisplayName: () => 'Main home',
     homeId: 'main',
     persistLastControlledMs: vi.fn(),
@@ -235,6 +238,7 @@ const buildExecutor = (getSnapshot: () => TransportDeviceSnapshot, onBinaryWrite
     getObservationRevision: () => 0,
     getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     actuator: createDeviceActuator({
+requestChargingPhaseControl: async () => false,
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
       canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,

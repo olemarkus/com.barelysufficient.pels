@@ -45,6 +45,8 @@ import { isSteppedLoadRestoreFromOff } from './planExecutorPredicates';
 import { isRequestedStepMaterialized } from './steppedLoadActuation';
 import type { PlanActuationResult } from '../planContract/planActuationResult';
 import type { StorageLane } from './batteryExecutor';
+import type { ChargingPhaseExecutor } from './chargingPhaseExecutor';
+import { withChargingPhaseControl } from './chargingPhaseDispatch';
 
 const logger = getLogger('executor/plan');
 /**
@@ -308,7 +310,9 @@ export const dispatchPlanActions = async (
   plan: ExecutionPlan,
   devices: ExecutorDeviceRead[],
   storage: StorageLane,
+  chargingPhases: ChargingPhaseExecutor,
 ): Promise<PlanActuationResult> => {
+  const phaseIntents = new Map(plan.chargingPhaseDecisions.map((decision) => [decision.deviceId, decision]));
   const observedMap = new Map(devices.map((device) => [
     device.id,
     buildExecutableObservedDeviceState(device, undefined),
@@ -321,13 +325,15 @@ export const dispatchPlanActions = async (
   // devices before storage runs or the caller flushes batched persistence.
   const results = await Promise.all(plan.devices.map(async (device) => {
     try {
-      const applied = await applyDeviceIntent(
+      const applied = await withChargingPhaseControl(chargingPhases, device.commands,
+        observedMap.get(device.commands.id),
+        phaseIntents.get(device.commands.id), () => applyDeviceIntent(
         ctx,
         device.commands,
         observedMap.get(device.commands.id),
         plan.hasShedDevices,
         device.stepBaseline,
-      );
+      ), ZERO_DELTA);
       return { ok: true as const, delta: applied };
     } catch (error) {
       logger.error({

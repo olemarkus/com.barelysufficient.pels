@@ -181,6 +181,7 @@ const createScenario = (settings: DeferredObjectiveRoster) => {
     });
     lifecycle = new DeferredObjectiveLifecycleEmitter({
       source: {
+        getChargingPhaseEnvelopes: () => new Map(),
         allocationRoster: new TaskAllocationRoster(() => new Date(START_MS)),
         hasSolarProduction: () => false,
         getThermalDirection: () => 'heating',

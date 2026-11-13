@@ -1,3 +1,5 @@
+import type { ChargingPhaseRead } from '../../packages/contracts/src/chargingPhases';
+import type { ChargingPhaseEnvelope } from '../../packages/planner-types/src/chargingPhases';
 import type { PhasePower } from './phase/phasePower';
 /**
  * Narrow behavior exposed by the setup-composed planning runtime. Construction
@@ -25,6 +27,9 @@ import type { DeviceExecutionState } from '../planContract/deviceExecutionState'
 import type { ExecutionPlan } from '../planContract/executionPlan';
 
 export type PlanEngine = {
+  readChargingPhaseControl: (deviceId: string) => ChargingPhaseRead;
+  readChargingPhaseEnvelopes: () => ReadonlyMap<string, readonly ChargingPhaseEnvelope[]>;
+  readChargingPhaseExecutionGate: () => import('../ports/chargingPhases').ChargingPhaseExecutionGate;
   getDeviceExecutionStates: (plan: ExecutionPlan) => ReadonlyMap<string, DeviceExecutionState>;
   readonly state: PlanEngineState;
   readonly pendingBinaryCommandStore: PendingBinaryCommandStore;

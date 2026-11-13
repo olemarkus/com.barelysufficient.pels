@@ -1,4 +1,5 @@
 import { resolvePhaseFootprintWithSource } from '../lib/phaseFootprint/resolvePhaseFootprint';
+import { resolveOperatingChargingPhases } from '../lib/phaseFootprint/chargingPhaseFootprints';
 import type { PelsHost } from '../lib/app/pelsHost';
 import type { DecoratedDeviceSnapshot } from '../packages/contracts/src/types';
 import type { SettingsUiPhaseFootprintRead } from '../packages/contracts/src/settingsUi/devices';
@@ -15,6 +16,7 @@ export const readSettingsUiPhaseFootprint = (
     chargerPhaseCurrentsA,
     evPreset: device.targetPowerConfig?.preset,
     learned: host.capacityGuard?.phaseLearner.learnedFootprint(device.id),
+    operatingPhases: device.isEvCharger ? resolveOperatingChargingPhases(device.steppedLoadProfile) : undefined,
   });
   if (footprint.kind === 'single') return { source, phases: footprint.phase };
   return footprint.kind === 'all_three' ? { source, phases: 'all' } : { source };

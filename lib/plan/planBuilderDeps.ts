@@ -23,6 +23,8 @@ import type { ResolveTemperatureSetpoints } from '../../packages/planner-types/s
 import type { MainFuse, PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 
 export type PlanBuilderDeps = {
+  /** One coherent phase-owner read per build, before objectives and admission. */
+  getChargingPhasePlanningRead: (nowMs: number) => import('../ports/chargingPhases').ChargingPhasePlanningRead;
   inverterCurtailment: import('../ports/inverterControl').InverterPlanner;
   /** Per-home dry-run posture — the same fact `shouldApplyPlan` consults
    * before actuating. */

@@ -5,6 +5,7 @@ export const CONTESTED_SETTING_WORDS: Readonly<Record<ContestedSetting, string>>
   temperature: 'temperature',
   on_off: 'on/off setting',
   level: 'level',
+  charging_phases: 'charging phases',
 };
 
 /** A journalled event's `setting`, which comes back from storage untyped. */
@@ -14,6 +15,7 @@ export const isContestedSetting = (value: unknown): value is ContestedSetting =>
 
 /** A contested value as the warning and the event report write it: `5 °C`, `on`, or a step id. */
 export const formatContestedValue = (setting: ContestedSetting, value: ContestedValue): string => {
+  if (setting === 'charging_phases') return value === true ? 'one phase' : 'automatic phases';
   if (setting === 'on_off') return value === true ? 'on' : 'off';
   if (setting === 'temperature' && typeof value === 'number') return `${value} °C`;
   return String(value);

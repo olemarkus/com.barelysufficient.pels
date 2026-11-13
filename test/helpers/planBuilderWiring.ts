@@ -1,4 +1,5 @@
 import { NO_INVERTER_PLANNER } from '../../lib/ports/inverterControl';
+import { EMPTY_CHARGING_PHASE_READ } from '../../lib/ports/chargingPhases';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import type { PlanBuilderDeps } from '../../lib/plan/planBuilderDeps';
@@ -20,6 +21,7 @@ type PlanBuilderWiring = Omit<PlanBuilderDeps,
  * the guard, capacity settings and power tracker, and overrides the rest.
  */
 export const planBuilderWiring = (): PlanBuilderWiring => ({
+  getChargingPhasePlanningRead: () => EMPTY_CHARGING_PHASE_READ,
   getCapacityDryRun: () => false,
   getMainFuse: () => ({ kind: 'off' }),
   getInferredSurplusKw: () => 0,

@@ -1,5 +1,8 @@
 import type { DevicePlanDevice, MeteredKind, SteppedPlanDevice } from '../planTypes';
+import { planKeptChargingPhase } from './chargingPhaseRestore';
 import { isMeteredPlanDevice } from '../planMeteredDevice';
+import { isSteppedLoadDevice } from '../planSteppedLoad';
+import { sortByPriorityAsc } from '../planSort';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 import { temperatureSetpointsFor, unlimitedSetpointAddsDemand } from '../planTemperatureSetpoints';
 import {
@@ -33,6 +36,7 @@ export function applyRestoreCandidates(
   let restoredOne = restoredOneThisCycle;
   for (const candidate of restoreCandidates) {
     if (candidate.kind !== 'storage') closeBatchAtSetpointResume(cycle, candidate.device);
+    cycle.state.chargingPhaseCycle.offerRestoreBudget(candidate.device.id, ledger.axes());
     // Ledger translation: the inner gates keep their single availableKw scalar;
     // the axis choice (exempt → capacity, else min with the measured-exempt
     // budget axis) and the per-axis debit live here.
@@ -44,6 +48,8 @@ export function applyRestoreCandidates(
     if (availableForCandidate !== null && result.availableHeadroom !== null) {
       ledger.commit(candidate.device, availableForCandidate - result.availableHeadroom);
     }
+    const phaseDebit = cycle.state.chargingPhaseCycle.selectedDebit(candidate.device.id);
+    if (phaseDebit) ledger.commitPhaseVector(candidate.device, phaseDebit);
     restoredOne = result.restoredOneThisCycle;
   }
   return { restoredOneThisCycle: restoredOne };
@@ -74,7 +80,15 @@ export function applyActiveSteppedRestoreCandidates(
   candidateFilter?: (dev: DevicePlanDevice) => boolean,
 ): { restoredOneThisCycle: boolean } {
   let restoredOne = restoredOneThisCycle;
-  const activeSteppedDevices = getSteppedRestoreCandidates(Array.from(cycle.deviceMap.values()))
+  const snapshot = Array.from(cycle.deviceMap.values());
+  const ordinary = getSteppedRestoreCandidates(snapshot);
+  const ordinaryIds = new Set(ordinary.map((device) => device.id));
+  const phaseOnly = snapshot.filter((device): device is SteppedPlanDevice & MeteredKind => (
+    !ordinaryIds.has(device.id) && isMeteredPlanDevice(device) && isSteppedLoadDevice(device)
+    && cycle.state.chargingPhaseCycle.hasCandidate(device.id) && isActiveSteppedRestoreCandidate(device)
+  ));
+  const activeSteppedDevices = sortByPriorityAsc([...ordinary, ...phaseOnly])
+    .filter((dev) => !cycle.state.chargingPhaseCycle.hasDecision(dev.id))
     .filter((dev) => isActiveSteppedRestoreCandidate(dev))
     .filter((dev) => !cycle.state.shedDecisions.wasShedOrUnplanned(dev.id))
     // A step-up ranked below a waiting battery hand-back waits behind it too.
@@ -82,6 +96,7 @@ export function applyActiveSteppedRestoreCandidates(
     .filter((dev) => candidateFilter?.(dev) ?? true);
   for (const dev of activeSteppedDevices) {
     closeBatchAtSetpointResume(cycle, dev);
+    cycle.state.chargingPhaseCycle.offerRestoreBudget(dev.id, ledger.axes());
     const availableForCandidate = ledger.availableFor(dev);
     const result = planSteppedRestoreThroughSourceHold(cycle, lane, dev, {
       availableHeadroom: availableForCandidate,
@@ -90,6 +105,8 @@ export function applyActiveSteppedRestoreCandidates(
     if (availableForCandidate !== null && result.availableHeadroom !== null) {
       ledger.commit(dev, availableForCandidate - result.availableHeadroom);
     }
+    const phaseDebit = cycle.state.chargingPhaseCycle.selectedDebit(dev.id);
+    if (phaseDebit) ledger.commitPhaseVector(dev, phaseDebit);
     restoredOne = result.restoredOneThisCycle;
   }
   return { restoredOneThisCycle: restoredOne };
@@ -109,6 +126,10 @@ function applyRestoreCandidate(
   // The candidate was chosen with a power axis (`isRestoreLiveEligibleDevice`);
   // the map entry is the same device this cycle, re-read for its latest updates.
   if (!dev || !isMeteredPlanDevice(dev)) return loop;
+  if (candidate.kind === 'charging_phase') {
+    if (isBehindWaitingHandBack(cycle, dev) || !isSteppedLoadDevice(dev)) return loop;
+    return planKeptChargingPhase(cycle, dev, loop);
+  }
   if (isBehindWaitingHandBack(cycle, dev)) {
     setRestorePlanDevice(cycle.deviceMap, dev.id, {
       plannedState: 'shed', reason: { code: PLAN_REASON_CODES.waitingForOtherDevices },

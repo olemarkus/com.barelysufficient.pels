@@ -1,10 +1,11 @@
 import { isUnknownRecord } from '../recordGuards';
 
 /** How the owner says a device is wired to the main fuse's phases. An absent entry is Automatic. */
-export type DevicePhaseConnection = 'L1' | 'L2' | 'L3' | 'all' | 'self_balancing';
+export type DevicePhaseConnection = 'L1' | 'L2' | 'L3' | 'all' | 'self_balancing'
+  | 'three_L1' | 'three_L2' | 'three_L3';
 
 export const DEVICE_PHASE_CONNECTIONS_VALUES: readonly DevicePhaseConnection[] = [
-  'L1', 'L2', 'L3', 'all', 'self_balancing',
+  'L1', 'L2', 'L3', 'all', 'self_balancing', 'three_L1', 'three_L2', 'three_L3',
 ];
 
 const isDevicePhaseConnection = (value: unknown): value is DevicePhaseConnection => (

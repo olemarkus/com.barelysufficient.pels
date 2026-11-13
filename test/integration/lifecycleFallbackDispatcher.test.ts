@@ -185,6 +185,7 @@ const createTestActuator = (
 const stepActuator = (
   requestSteppedLoadStep: ActuatorTransport['requestSteppedLoadStep'],
 ): Actuator => createDeviceActuator({
+requestChargingPhaseControl: async () => false,
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
   canTurnOnDevice: () => true,
   resolveTemperatureTarget: (_deviceId, desired) => desired,
@@ -713,7 +714,7 @@ describe('LifecycleFallbackDispatcher', () => {
     // Ordinary planning owns and prunes a different target-pending map.
     prunePendingTargetCommandsForPlan(
       planState,
-      { devices: [], meta: buildPlanMeta({ totalKw: 0, softLimitKw: 10, headroomKw: 10}), inverterDecisions: [], storageReleases: [] },
+      { devices: [], meta: buildPlanMeta({ totalKw: 0, softLimitKw: 10, headroomKw: 10}), chargingPhaseDecisions: [], inverterDecisions: [], storageReleases: [] },
     );
     dispatcher.converge({ deviceId: device.id, objectiveKind: 'temperature' });
     await flush();
@@ -1391,7 +1392,7 @@ describe('LifecycleFallbackDispatcher', () => {
 
     prunePendingTargetCommandsForPlan(
       planState,
-      { devices: [], meta: buildPlanMeta({ totalKw: 0, softLimitKw: 10, headroomKw: 10}), inverterDecisions: [], storageReleases: [] },
+      { devices: [], meta: buildPlanMeta({ totalKw: 0, softLimitKw: 10, headroomKw: 10}), chargingPhaseDecisions: [], inverterDecisions: [], storageReleases: [] },
     );
     vi.advanceTimersByTime(30_000);
     dispatcher.converge({ deviceId: 'heater-1', objectiveKind: 'temperature' });

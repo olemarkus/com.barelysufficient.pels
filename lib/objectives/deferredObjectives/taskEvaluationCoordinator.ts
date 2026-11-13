@@ -17,6 +17,7 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import {
   resolveObjectiveDeviceInputs,
+  withPermittedChargingEnvelopes,
   type ObjectiveDeviceInput,
   type ObjectiveDeviceSource,
 } from '../../objectives/types';
@@ -146,6 +147,9 @@ export type TaskEvaluationReaders = {
 // create-task preview all evaluate through it, so they differ only in the
 // per-cycle inputs they hand `buildTaskEvaluationSnapshot`.
 export type TaskEvaluationSource = TaskEvaluationReaders & {
+  /** The phase owner's future permission, independent of its currently observed physical ladder. */
+  getChargingPhaseEnvelopes: (nowMs: number) => ReadonlyMap<string,
+    readonly import('../../../packages/planner-types/src/chargingPhases').ChargingPhaseEnvelope[]>;
   allocationRoster: TaskAllocationRoster;
   getTimeZone: () => string;
   getThermalDirection: (deviceId: string) => ThermalDirection;
@@ -173,7 +177,9 @@ export const buildTaskEvaluationSnapshot = (
   dailyBudgetSnapshot: DailyBudgetUiPayload | null,
   lane: TaskEvaluationLane,
 ): TaskEvaluationSnapshot => {
-  const objectiveDevices = resolveObjectiveDeviceInputs(devices, source.getThermalDirection);
+  const envelopes = source.getChargingPhaseEnvelopes(nowMs);
+  const futureDevices = withPermittedChargingEnvelopes(devices, envelopes);
+  const objectiveDevices = resolveObjectiveDeviceInputs(futureDevices, source.getThermalDirection);
   if (lane.kind === 'live') {
     source.allocationRoster.observe(
       objectiveDevices, nowMs, buildObjectiveDeviceExclusionPredicate(source.resolveDeviceExclusion),

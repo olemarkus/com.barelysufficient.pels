@@ -1,3 +1,4 @@
+import { PendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { observeOwningHomeIdleEvidence, syncOwningHomeLivePlanState } from '../../setup/appObservedControlStateRuntime';
 import type { OwningHomeHooks } from '../../setup/homeRuntime/createHomeCapacityBundle';
@@ -81,6 +82,7 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
       clearRecentBinaryOffCommand: vi.fn(),
     } as unknown as AppContext['planEngine'];
     const hooks: OwningHomeHooks = {
+      pendingBinaryCommandStore: new PendingBinaryCommandStore({}),
       observeIdleEvidence: vi.fn(),
       syncLivePlanState: vi.fn().mockResolvedValue(false),
       hasPendingBinaryCommand: subPending,
@@ -164,6 +166,7 @@ describe('owning-home routing of a realtime device observation (R7b P1#1)', () =
         'sub-dev': {
           homeId: 'h_sub',
           hooks: {
+            pendingBinaryCommandStore: new PendingBinaryCommandStore({}),
             observeIdleEvidence: vi.fn(),
             syncLivePlanState: vi.fn().mockResolvedValue(false),
       hasPendingBinaryCommand: () => false,
@@ -203,6 +206,7 @@ describe('rebuild-suppression invalidation routing (R7b P1#1)', () => {
         'sub-dev': {
           homeId: 'h_sub',
           hooks: {
+            pendingBinaryCommandStore: new PendingBinaryCommandStore({}),
             observeIdleEvidence: vi.fn(),
             syncLivePlanState: vi.fn().mockResolvedValue(false),
       hasPendingBinaryCommand: () => false,
@@ -246,6 +250,7 @@ describe('actionable-load routing', () => {
       'sub-dev': {
         homeId: 'h_sub',
         hooks: {
+            pendingBinaryCommandStore: new PendingBinaryCommandStore({}),
           observeIdleEvidence: vi.fn(),
           syncLivePlanState: vi.fn().mockResolvedValue(false),
           hasPendingBinaryCommand: () => false,
@@ -283,6 +288,7 @@ describe('owning-home idle evidence', () => {
     const ctx = createAppContextMock({ planService: { observeIdleEvidence: mainObserve,
       syncLivePlanState, rebuildPlanFromCache: rebuildPlan } as unknown as PlanService });
     const router = routerFor({ 'sub-device': { homeId: 'sub-home', hooks: {
+      pendingBinaryCommandStore: new PendingBinaryCommandStore({}),
       observeIdleEvidence: subObserve, syncLivePlanState, rebuildPlan,
       hasPendingBinaryCommand: () => false, clearRecentBinaryOffCommand: () => undefined,
       invalidateRebuildSuppression: () => undefined, isDeviceLimited: () => false,
@@ -305,6 +311,7 @@ describe('owning-home live-status refresh', () => {
     const subRefresh = vi.fn().mockResolvedValue(true);
     const ctx = createAppContextMock({ planService: { syncLivePlanState: mainRefresh } as unknown as PlanService });
     const hooks: OwningHomeHooks = {
+      pendingBinaryCommandStore: new PendingBinaryCommandStore({}),
       observeIdleEvidence: vi.fn(),
       syncLivePlanState: subRefresh,
       hasPendingBinaryCommand: () => false, clearRecentBinaryOffCommand: () => undefined,

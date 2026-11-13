@@ -22,7 +22,7 @@ import { buildCountdownTiming, buildShedCooldownReason, type RestoreTiming } fro
 export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_CODES.neutralStartupHold };
 
 export type RestoreCandidate =
-  | { kind: 'binary' | 'stepped'; device: MeteredDevicePlanDevice }
+  | { kind: 'binary' | 'stepped' | 'charging_phase'; device: MeteredDevicePlanDevice }
   | { kind: 'storage'; device: DevicePlanDevice; lever: StorageLeverState };
 
 export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): device is MeteredDevicePlanDevice {

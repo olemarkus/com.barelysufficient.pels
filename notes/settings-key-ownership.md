@@ -378,6 +378,22 @@ cannot widen. Pausing remains available, including when no active level fits.
 `device_target_power_configs` remains the charger's phase/power model; its
 persisted shape does not include these current ranges.
 
+## Charging phases
+
+`charging_phase_control` is a settings-UI-authored map keyed by charger id.
+`packages/shared-domain/src/settings/chargingPhases.ts` validates the explicit
+mode and installation confirmation for both browser and runtime. The device
+settings owner retains the last accepted map across unavailable reads; a missing
+entry leaves phase control with the charger. The installation mapping remains
+in `device_phase_connections`: `three_L1`, `three_L2` and `three_L3` identify the
+house phase used during single-phase charging.
+
+`charging_phase_claim.<deviceId>` belongs exclusively to
+`lib/chargingPhases/phaseClaimStore.ts`. The owner persists the original setting,
+switch history and conservative transition reservation before its first physical
+write. Restart recovery returns that setting before admitting another claim.
+The UI never authors these records.
+
 ## Inverter curtailment
 
 `inverter_curtailment_devices` is an explicit opt-in map owned by

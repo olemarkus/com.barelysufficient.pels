@@ -3,7 +3,8 @@ import { resolveChargerPhaseCurrentsA } from '../../lib/device/chargerPhaseCurre
 import { isDevicePhaseConnectionMap } from '../../packages/shared-domain/src/settings/devicePhaseConnections';
 
 const noFacts: PhaseFootprintFacts = {
-  ownerConnection: undefined, isEvCharger: false, chargerPhaseCurrentsA: undefined, evPreset: undefined, learned: undefined,
+  ownerConnection: undefined, isEvCharger: false, chargerPhaseCurrentsA: undefined,
+  evPreset: undefined, learned: undefined, operatingPhases: undefined,
 };
 const charger: PhaseFootprintFacts = { ...noFacts, isEvCharger: true };
 
@@ -21,6 +22,16 @@ describe('resolvePhaseFootprint', () => {
     expect(resolvePhaseFootprint({
       ...charger, chargerPhaseCurrentsA: [10, 9, 11], evPreset: 'ev_charger_1_phase',
     })).toEqual({ kind: 'all_three' });
+  });
+
+  it('uses the current operating envelope with a switchable installation mapping, including after hand-back', () => {
+    expect(resolvePhaseFootprint({ ...charger, ownerConnection: 'three_L2', operatingPhases: 1,
+      learned: { kind: 'all_three' } })).toEqual({ kind: 'single', phase: 'L2' });
+    expect(resolvePhaseFootprint({ ...charger, ownerConnection: 'three_L2', operatingPhases: 3,
+      learned: { kind: 'single', phase: 'L1' } })).toEqual({ kind: 'all_three' });
+    expect(resolvePhaseFootprint({ ...charger, ownerConnection: 'three_L2' })).toEqual({ kind: 'unknown' });
+    expect(resolvePhaseFootprint({ ...charger, ownerConnection: 'three_L2', operatingPhases: 1,
+      chargerPhaseCurrentsA: [6, 6, 6] })).toEqual({ kind: 'all_three' });
   });
 
   it('does not name a phase for a charger drawing on one, even on a three-phase mode', () => {

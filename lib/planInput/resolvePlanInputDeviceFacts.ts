@@ -36,6 +36,7 @@ import {
 import { resolveEvTargetPowerPlannerProfile } from '../device/targetPowerReachability';
 import { resolveStorageCluster } from './storageProjection';
 import { resolvePhaseFootprint } from '../phaseFootprint/resolvePhaseFootprint';
+import { resolveOperatingChargingPhases } from '../phaseFootprint/chargingPhaseFootprints';
 import { projectChargeTargetHold } from './chargeTargetHold';
 import { hasUsableSteppedLoadLadder } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { SteppedClusterFields } from '../plan/planTypes';
@@ -190,6 +191,7 @@ export const resolvePlanInputDeviceFacts = (
       chargerPhaseCurrentsA: device.chargerPhaseCurrentsA,
       evPreset: device.targetPowerConfig?.preset,
       learned: source.getLearnedPhaseFootprint(device.id),
+      operatingPhases: device.isEvCharger ? resolveOperatingChargingPhases(device.steppedLoadProfile) : undefined,
     }),
     ...resolveStorageCluster(source, device, options),
   };

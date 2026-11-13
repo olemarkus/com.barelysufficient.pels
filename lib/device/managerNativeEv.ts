@@ -1,3 +1,4 @@
+import { resolveSteppedLoadProfilePrecedence } from './steppedLoadProfilePolicy';
 import type {
   AcknowledgedStepObservation,
   AutomaticPowerControl,
@@ -47,7 +48,6 @@ import { resolveAcknowledgedStepObservation } from './acknowledgedStep';
 import { warnIfTargetPowerCapabilityViolatesContract } from './targetPowerContractWarn';
 import { resolveDeviceCompatibilityTargetPowerConfig } from './compatibility';
 import { withoutTargetPowerReachability } from './targetPowerReachability';
-import { hasUsableSteppedLoadLadder } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { resolveTargetPowerPresetPhaseCount } from '../../packages/shared-domain/src/targetPowerStepping';
 import { isBatteryOrSolarClassKey } from '../../packages/shared-domain/src/batteryOrSolarRole';
 
@@ -126,9 +126,10 @@ export function resolveFlowCapabilityOverlay(
   const controlAdapter = resolveOverlayControlAdapter(nativeEvOverlay, nativeSteppedOverlay.controlAdapter);
   const activeNativeSteppedProfile = resolveActiveNativeSteppedProfile(nativeSteppedOverlay);
   const savedFlowProfile = sources.settings.getDeviceControlProfile(deviceId);
-  const steppedLoadProfile = activeNativeSteppedProfile
-    ?? targetPowerOverlay.steppedLoadProfile
-    ?? (hasUsableSteppedLoadLadder(savedFlowProfile) ? savedFlowProfile : undefined);
+  const chargingPhaseProfile = steppedLoad ? sources.chargingPhases.profile(device) : undefined;
+  const steppedLoadProfile = resolveSteppedLoadProfilePrecedence(
+    chargingPhaseProfile, activeNativeSteppedProfile, targetPowerOverlay.steppedLoadProfile, savedFlowProfile,
+  );
   const nativeWriteCapabilities = nativeSteppedOverlay.controlAdapter
     ? resolveCandidateNativeWriteCapabilities(device, rawCapabilities, rawCapabilityObj)
     : undefined;
@@ -138,6 +139,8 @@ export function resolveFlowCapabilityOverlay(
   const finalCapabilityObj = controlAdapter
     ? getDeviceAdapter(device).finalizeObservation(controlAdapter, finalCapabilities, capabilityObj)
     : capabilityObj;
+  const reportedStepId = nativeSteppedOverlay.reportedStepId ?? targetPowerOverlay.reportedStepId;
+  const phaseStep = chargingPhaseProfile?.steps.find((step) => step.id === reportedStepId);
   return {
     capabilities: finalCapabilities,
     capabilityObj: finalCapabilityObj,
@@ -148,8 +151,8 @@ export function resolveFlowCapabilityOverlay(
     flowBackedCapabilityIds,
     requiredFlowCapabilityIds,
     reportedCapabilities,
-    reportedStepId: nativeSteppedOverlay.reportedStepId ?? targetPowerOverlay.reportedStepId,
-    reportedStepPowerW: targetPowerOverlay.reportedStepPowerW,
+    reportedStepId,
+    reportedStepPowerW: phaseStep?.planningPowerW ?? targetPowerOverlay.reportedStepPowerW,
     reportedStepObservedAtMs: targetPowerOverlay.reportedStepPowerW !== undefined
       ? targetPowerOverlay.reportedStepObservedAtMs : nativeSteppedOverlay.reportedStepObservedAtMs,
     acknowledgedStep: targetPowerOverlay.acknowledgedStep,
@@ -157,7 +160,8 @@ export function resolveFlowCapabilityOverlay(
     controlModel: steppedLoadProfile ? 'stepped_load' : undefined,
     steppedLoadProfile,
     nativeWriteCapabilities,
-    targetPowerConfig: targetPowerOverlay.targetPowerConfig,
+    // Saved nominal phase presets cannot rescale producer-resolved physical geometry.
+    targetPowerConfig: chargingPhaseProfile ? undefined : targetPowerOverlay.targetPowerConfig,
     automaticPowerControl,
     allReportedCapabilities,
   };
@@ -215,7 +219,7 @@ function applySteppedLoadOverlays(
     capabilities: nativeEvOverlay.capabilities,
     capabilityObj: nativeEvOverlay.capabilityObj,
   });
-  const nativeProfile = resolveAutomaticSteppedLoadProfile(
+  const nativeProfile = sources.chargingPhases.profile(device) ?? resolveAutomaticSteppedLoadProfile(
     device, nativeEvOverlay.capabilities, nativeEvOverlay.capabilityObj,
   );
   const automaticPowerControl: AutomaticPowerControl | undefined = nativeProfile ? {

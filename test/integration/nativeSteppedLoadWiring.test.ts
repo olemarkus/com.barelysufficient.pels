@@ -131,6 +131,7 @@ const steppedCommandContext = (
   createPlanEngineState(Date.now(), isExternalOffHeld),
   {
     actuator: createDeviceActuator({
+requestChargingPhaseControl: async () => false,
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
       canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,

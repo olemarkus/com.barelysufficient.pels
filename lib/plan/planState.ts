@@ -13,6 +13,8 @@ import type { PendingTargetCommandRead } from '../ports/pendingTargetCommand';
 import { RestoreBackoff } from './restoreBackoff';
 import { ShedDecisions } from './shedDecisions';
 import { SwapLedger } from './swap';
+import { ChargingPhasePlanningCycle } from './chargingPhasePlanning';
+import { EMPTY_CHARGING_PHASE_READ, type ChargingPhasePlanningRead } from '../ports/chargingPhases';
 import type { HeadroomReserveClock } from './admission/headroomReserve';
 import type {
   BinaryControlDiscriminantProbe,
@@ -312,6 +314,12 @@ export type OvershootTrackedPlanDevice = Pick<
  * loss of methods under a hypothetical spread is moot.
  */
 export class PlanEngineState {
+  /** Replaced once per build; all admission lanes share this cycle's phase choices. */
+  chargingPhaseCycle = new ChargingPhasePlanningCycle(EMPTY_CHARGING_PHASE_READ);
+  beginChargingPhaseCycle(read: ChargingPhasePlanningRead): void {
+    this.chargingPhaseCycle = new ChargingPhasePlanningCycle(read);
+  }
+
   appStartedAtMs: number;
 
   /** Execution-owned history, exposed here without command or hydration authority. */

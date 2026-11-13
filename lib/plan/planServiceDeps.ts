@@ -24,6 +24,9 @@ import type { HomeId } from '../utils/settingsKeys';
 type PlanServicePlanEngine = Pick<
   PlanEngine,
   | 'getDeviceExecutionStates'
+  | 'readChargingPhaseControl'
+  | 'readChargingPhaseEnvelopes'
+  | 'readChargingPhaseExecutionGate'
   | 'state'
   | 'buildDevicePlanSnapshot'
   | 'computePhysicalPowerLimit'

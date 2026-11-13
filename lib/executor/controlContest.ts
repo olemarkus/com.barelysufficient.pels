@@ -24,7 +24,7 @@ export const CONTEST_THRESHOLD = 4;
 export const CONTEST_WINDOW_MS = 60 * 60 * 1000;
 /** The rounds the journalled event carries, newest last. */
 const CONTEST_EVENT_MAX_ROUNDS = 8;
-const SETTINGS: readonly ContestedSetting[] = ['temperature', 'on_off', 'level'];
+const SETTINGS: readonly ContestedSetting[] = ['temperature', 'on_off', 'level', 'charging_phases'];
 
 /**
  * `homeId`: the home whose executor sent it latest. `contradiction`: the

@@ -817,6 +817,7 @@ describe('decoration controller: resolveDeviceExclusion dep threading', () => {
       (deviceId: string) => (deviceId === 'heater-sub' ? 'sub_home' as const : null),
     );
     const controller = new DeferredObjectiveDecorationController({
+      getChargingPhaseEnvelopes: () => new Map(),
       allocationRoster: new TaskAllocationRoster(() => new Date()),
       hasSolarProduction: () => false,
       getThermalDirection: () => 'heating',

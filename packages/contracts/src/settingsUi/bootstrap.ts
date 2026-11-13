@@ -35,6 +35,7 @@ export type SettingsUiBootstrapKey =
   | 'budget_exempt_devices'
   | 'respect_external_off_devices'
   | 'device_phase_connections'
+  | 'charging_phase_control'
   | 'main_fuse_phase_capabilities'
   | 'main_fuse_phase_meter_device_id'
   | 'device_start_policies'

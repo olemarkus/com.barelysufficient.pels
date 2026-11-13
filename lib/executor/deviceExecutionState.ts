@@ -115,15 +115,18 @@ function isStepCommandUnanswered(
  * (a setpoint before the actuator resolves it); `null` where it asks nothing.
  * A held external off asks nothing of any setting.
  */
-export type PlannedCommandValues = { on_off: boolean | null; level: string | null; temperature: number | null };
+export type PlannedCommandValues = {
+  on_off: boolean | null; level: string | null; temperature: number | null; charging_phases: boolean | null;
+};
 
 export function resolvePlannedCommandValues(
   intent: PlannedDeviceCommands,
   externalOffHeld: boolean,
 ): PlannedCommandValues {
-  if (externalOffHeld) return { on_off: null, level: null, temperature: null };
+  if (externalOffHeld) return { on_off: null, level: null, temperature: null, charging_phases: null };
   const desiredBinary = resolveDesiredBinary(intent);
   return {
+    charging_phases: null,
     on_off: desiredBinary === null ? null : desiredBinary === 'on',
     level: resolveDesiredStep(intent),
     temperature: resolveDesiredTarget(intent),

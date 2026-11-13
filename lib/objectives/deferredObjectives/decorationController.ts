@@ -3,6 +3,7 @@ import type {
   DeferredDecorationBundle,
   DeferredDecorationInput,
   DeferredHoldCause,
+  ChargingPhaseTaskRequirement,
 } from '../../../packages/planner-types/src/deferredDecoration';
 import { addPerfDuration } from '../../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../../utils/opRssTracker';
@@ -23,6 +24,7 @@ import {
 import { buildSmartTaskCycleRecord, type SmartTaskCycleRecord } from './smartTaskCycleRecord';
 import type { DeferredObjectiveRoster } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { buildObjectiveSignatureForEntry } from './activePlanSignature';
+import type { ChargingPhaseEnvelope } from '../../../packages/planner-types/src/chargingPhases';
 
 type BudgetExemptClaim = {
   taskSignature: string;
@@ -77,6 +79,9 @@ export class DeferredObjectiveDecorationController {
     this.latestCycles = recordCycles(reports, decisions, nowTs);
     this.budgetExemptClaims = recordBudgetExemptClaims(reports, decisions, settings, nowTs);
     return {
+      chargingPhaseRequirements: resolveChargingPhaseRequirements(
+        reports, decisions, this.source.getChargingPhaseEnvelopes(nowTs),
+      ),
       admittedDevices: admission.devices,
       forceShedSet: admission.forceShedSet,
       deferredHoldCauseByDeviceId: resolveDeferredHoldCauses(decisions),
@@ -149,6 +154,33 @@ export class DeferredObjectiveDecorationController {
       recordOpRssDelta('evaluate_deferred_objectives_ms', rssBefore, safeRss());
     }
   }
+}
+
+/** The horizon owns urgency: a manual boost is not a deadline power requirement. */
+function resolveChargingPhaseRequirements(
+  reports: readonly TaskEvaluationReport[],
+  decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
+  envelopes: ReadonlyMap<string, readonly ChargingPhaseEnvelope[]>,
+): ReadonlyMap<string, ChargingPhaseTaskRequirement> {
+  const requirements = new Map<string, ChargingPhaseTaskRequirement>();
+  for (const { evaluation } of reports) {
+    if (decisions.get(evaluation.deviceId)?.kind !== 'planned' || evaluation.planning.kind !== 'allocated') continue;
+    const { plan } = evaluation.planning;
+    if (!plan.currentBucket || plan.currentBucket.plannedUsefulEnergyKWh <= 0) continue;
+    const permitted = envelopes.get(evaluation.deviceId);
+    if (!permitted) continue;
+    const steps = permitted.flatMap((envelope) => envelope.profile.steps.map((step) => ({
+      id: `${envelope.phases}p:${step.id}`, admissionPowerKw: step.planningPowerW / 1000,
+    })));
+    const bucket = plan.plannedBuckets.find((entry) => entry.id === plan.currentBucket?.bucketId);
+    const admissionKw = bucket?.plannedAdmissionPowerKw
+      ?? steps.find((step) => step.id === plan.currentBucket?.expectedStepId)?.admissionPowerKw;
+    if (admissionKw === undefined || admissionKw <= 0) continue;
+    let permittedMaxKw = 0;
+    for (const step of steps) permittedMaxKw = Math.max(permittedMaxKw, step.admissionPowerKw);
+    requirements.set(evaluation.deviceId, { admissionKw, permittedMaxKw });
+  }
+  return requirements;
 }
 
 const recordBudgetExemptClaims = (

@@ -67,6 +67,20 @@ const buildSyntheticChargeStep = (
 // speed). Returns an empty list when the device has neither a stepped profile
 // nor a usable planning/expected/measured power.
 export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObjectiveStep[] => {
+  if (device.permittedChargingEnvelopes) {
+    const steps = device.permittedChargingEnvelopes.flatMap((envelope) => (
+      withResolvedAdmission(sortSteppedLoadSteps(envelope.profile.steps).map((step) => ({
+        // These are horizon operating alternatives, never executable step IDs.
+        id: `${envelope.phases}p:${step.id}`,
+        usefulPowerKw: resolveStepDeliveryUsefulKw(
+          device, `${envelope.phases}p:${step.id}`, step.planningPowerW / 1000,
+        ),
+        admissionPowerKw: resolveAdmissionPowerKw(step.planningPowerW / 1000),
+      })))
+    ));
+    // eslint-disable-next-line functional/immutable-data -- Orders newly created horizon alternatives.
+    return steps.sort((left, right) => left.admissionPowerKw - right.admissionPowerKw);
+  }
   const profile = device.steppedLoadProfile;
   if (profile) {
     return withResolvedAdmission(sortSteppedLoadSteps(profile.steps).map((step) => {

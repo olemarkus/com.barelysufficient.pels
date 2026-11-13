@@ -1,6 +1,7 @@
 import type { RetainedPowerReading } from '../retainedPowerStore';
 import type { DeviceControlSettings } from '../deviceControlSettings';
 import type { ChargingCurrentControl } from '../chargingCurrentControl';
+import type { ChargingPhaseTransport } from '../chargingPhaseTransport';
 import type { FlowBackedDeviceState } from '../flowBackedDeviceState';
 import type { DeviceManagement } from '../deviceRoleReads';
 import type {
@@ -57,6 +58,8 @@ export type DeviceParseSettings = Pick<
     | 'getDevicePowerControlMode'
     | 'resolveDevicePowerControlMode'
     | 'getEvCarAssociationCarIds'
+    | 'getDeviceChargingPhaseSettings'
+    | 'getDevicePhaseConnection'
 >;
 
 /**
@@ -84,6 +87,7 @@ export type DeviceTransportParseDeps = {
     settings: DeviceParseSettings;
     nativeWiring: NativeWiringRead;
     chargingCurrent: Pick<ChargingCurrentControl, 'requiresManualControl'>;
+    chargingPhases: Pick<ChargingPhaseTransport, 'profile'>;
     flowBacked: FlowBackedRead;
     management: DeviceManagement;
     powerState: ResolvedTransportPowerState;
@@ -106,7 +110,7 @@ export type DeviceTransportParseDeps = {
  */
 export type DeviceParseSources = Pick<
     DeviceTransportParseDeps,
-    'settings' | 'nativeWiring' | 'flowBacked' | 'management' | 'chargingCurrent'
+    'settings' | 'nativeWiring' | 'flowBacked' | 'management' | 'chargingCurrent' | 'chargingPhases'
 >;
 
 export type ParseDevicePurpose = 'runtime' | 'ui_picker';

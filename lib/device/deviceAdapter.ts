@@ -10,6 +10,22 @@ import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceCapabilityMap } from './managerControl';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { ChargerPhaseReport } from './chargerPhasePreset';
+import type { ChargingPhaseCommand, ChargingPhaseDevice } from '../ports/chargingPhases';
+import type { ChargingPhaseCount } from '../../packages/contracts/src/chargingPhases';
+
+/** A real app surface: the integration resolves reads, profiles and commands; transport owns I/O. */
+export type ChargingPhaseBinding = {
+  appUri: string;
+  read(device: HomeyDeviceLike): Pick<ChargingPhaseDevice,
+    'forceSinglePhase' | 'forceSinglePhaseObservedAtMs' | 'currentLimitA' | 'minimumCurrentA'
+    | 'maximumCurrentA' | 'powers' | 'totalPower'> | undefined;
+  profile(device: HomeyDeviceLike, phases: ChargingPhaseCount): SteppedLoadProfile | undefined;
+  command(device: HomeyDeviceLike, command: ChargingPhaseCommand): ChargingPhaseDelivery;
+};
+
+export type ChargingPhaseDelivery =
+  | { kind: 'capabilities'; writes: readonly CapabilityWrite[] }
+  | { kind: 'app_action'; step: DeviceActionStep };
 /**
  * Where an integration exposes its current ceiling: a capability, written
  * directly when the installed app declares it writable, or only the app's
@@ -248,6 +264,7 @@ export type DeviceAdapter = {
   retainsPlugObservation(device: HomeyDeviceLike): boolean;
   phaseReport(device: HomeyDeviceLike): ChargerPhaseReport;
   currentBindings(device: HomeyDeviceLike): ChargingCurrentBinding[];
+  phaseBindings(device: HomeyDeviceLike): readonly ChargingPhaseBinding[];
   nativeCurrentControls: readonly NativeCurrentControl[];
   /** How PELS drives this device when it is a home battery; read only for a battery. */
   homeBatteryBinding(device: HomeyDeviceLike): HomeBatteryBinding;

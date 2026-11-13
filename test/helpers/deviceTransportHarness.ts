@@ -80,6 +80,8 @@ export const testParseSettings = (settings: Partial<DeviceTransportOptions['sett
   getDeviceDriverIdOverride: () => undefined,
   getDeviceControlProfile: () => undefined,
   getDeviceTargetPowerConfig: () => undefined,
+  getDeviceChargingPhaseSettings: () => undefined,
+  getDevicePhaseConnection: () => undefined,
   getDevicePowerControlMode: () => undefined,
   resolveDevicePowerControlMode: (id, hasCurrent) => settings.getDevicePowerControlMode?.(id)
     ?? (settings.getDeviceTargetPowerConfig?.(id) || settings.getDeviceControlProfile?.(id) || hasCurrent
@@ -118,6 +120,7 @@ export const testParseSources = (inputs: TestTransportInputs = {}): DeviceParseS
     nativeWiring,
     flowBacked,
     chargingCurrent,
+    chargingPhases: { profile: () => undefined },
     management: new DeviceManagement(
       { isBatteryDevice: () => false, isSolarDevice: () => false },
       batteryManaged,

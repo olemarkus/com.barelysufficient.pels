@@ -1,7 +1,9 @@
+import { ChargingPhasePauseRecorder, type ChargingPhasePauseTarget } from '../../lib/executor/chargingPhasePause';
 import { ExecutionState } from '../../lib/executor/executionState';
 import type { ControlContestRecording } from '../../lib/ports/controlContest';
 import { PlanExecutionFeedback } from '../../lib/plan/planExecutionFeedback';
 import { createInverterCurtailment } from '../homeRuntime/createInverterCurtailment';
+import { createChargingPhaseControl } from '../homeRuntime/createChargingPhaseControl';
 import { buildDeviceActuator } from './buildDeviceActuator';
 import { requireDeviceManager } from './contextGuards';
 import { isExternalOffHeldForObservedDevice } from '../../lib/planInput/externalOffHoldProjection';
@@ -46,6 +48,7 @@ export type CreatePlanEngineOptions = {
   storageLane: StorageLaneBinding;
   /** The app's one record of drift corrections; this home's commands feed it (`lib/executor/controlContest.ts`). */
   controlContests: ControlContestRecording;
+  getChargingPhasePauseTarget: (deviceId: string) => ChargingPhasePauseTarget | undefined;
 };
 
 export type PlanEngineCompositionResult = {
@@ -125,7 +128,13 @@ export function createPlanEngineComposition(
   // binds them live, because the mode target is the restore anchor (see
   // `homeScope.ts`).
   const inverters = createInverterCurtailment(ctx, scope, actuator);
+  const pauseRecording = new ChargingPhasePauseRecorder(options.controlContests, (deviceId) => (
+    options.getChargingPhasePauseTarget(deviceId)
+      ?? { homeId: scope.homeId, pendingCommands: pendingBinaryCommandStore }
+  ));
+  const chargingPhases = createChargingPhaseControl(ctx, scope, actuator, options.controlContests, pauseRecording);
   const builder = new PlanBuilder({
+    getChargingPhasePlanningRead: (nowMs) => chargingPhases.readPlanning(nowMs),
     inverterCurtailment: inverters.planner,
     getCapacityDryRun: scope.getCapacityDryRun,
     capacityGuard: options.capacityGuard,
@@ -152,6 +161,7 @@ export function createPlanEngineComposition(
     pendingBinaryCommandStore,
   }, state);
   const executor = new PlanExecutor({
+    chargingPhaseOwner: chargingPhases,
     getHomeDisplayName: scope.getHomeDisplayName,
     // The id is already a plain scope field (a home id cannot change without a
     // new scope), so log correlation needs no extra getter.
@@ -198,6 +208,7 @@ export function createPlanEngineComposition(
       steppedReportedStore: ctx.steppedReportedStore,
       builder,
       executor,
+      chargingPhases,
       deviceDiagnostics,
       structuredLog,
     }),

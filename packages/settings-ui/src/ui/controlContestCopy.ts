@@ -16,6 +16,14 @@ export const controlContestNotice = (
   const commanded = formatContestedValue(setting, contest.commanded);
   const observed = formatContestedValue(setting, contest.observed);
   const title = `${name} doesn't keep PELS's changes`;
+  if (setting === 'charging_phases') {
+    return {
+      title,
+      body: `${times}, PELS changed the charging phases of ${name} and the charger then reported another setting. `
+        + 'Check the charger’s own phase control and any Flows that set it, '
+        + 'or choose Leave to charger under Charging phases.',
+    };
+  }
   if (setting === 'temperature') {
     return {
       title,

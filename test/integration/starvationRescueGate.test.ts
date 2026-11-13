@@ -200,6 +200,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
   // only soft constraint and any shed is a daily-budget shed.
   const capacityGuard = createTestCapacityGuard({ homeId: 'main' });
   const deferredController = new DeferredObjectiveDecorationController({
+    getChargingPhaseEnvelopes: () => new Map(),
     allocationRoster: new TaskAllocationRoster(() => new Date()),
     hasSolarProduction: () => false,
     getThermalDirection: () => 'heating',

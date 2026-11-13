@@ -14,6 +14,8 @@ export type PhaseLearningDeviceSample = {
   isEvCharger: boolean;
   /** An EV charger with a car connected. Ignored for every other device. */
   evSessionActive: boolean;
+  /** The resolved operating envelope, when the device's profile names one. */
+  operatingPhases: 1 | 3 | undefined;
   /** PELS's own last command to this device, if it has issued one. */
   lastCommandAtMs: number | undefined;
 };
@@ -128,6 +130,7 @@ export class PhaseFootprintLearner {
 
   /** EV charger votes live only for the session they were taken in, and are never stored. */
   private readonly sessions = new Map<string, LearnedDevice>();
+  private readonly operatingPhases = new Map<string, 1 | 3>();
 
   private store: PhaseLearningStore | null = null;
 
@@ -155,6 +158,14 @@ export class PhaseFootprintLearner {
 
   private noteDevice(device: PhaseLearningDeviceSample): void {
     if (device.isEvCharger && !device.evSessionActive) this.sessions.delete(device.deviceId);
+    if (device.isEvCharger && device.operatingPhases !== undefined) {
+      const previous = this.operatingPhases.get(device.deviceId);
+      if (previous !== undefined && previous !== device.operatingPhases) {
+        this.sessions.delete(device.deviceId);
+        this.pending = this.pending.filter((step) => step.deviceId !== device.deviceId);
+      }
+      this.operatingPhases.set(device.deviceId, device.operatingPhases);
+    }
     const { deviceId, lastCommandAtMs } = device;
     // A device's first sample only sets the baseline: its stamp may be from before this run.
     const firstSeen = !this.knownDevices.has(deviceId);

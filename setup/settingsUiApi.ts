@@ -269,6 +269,7 @@ const buildSettingsUiDeviceList = (
     const stateOfCharge = resolveStateOfCharge(device, readObservedStateOfCharge(observed));
     return {
       ...device,
+      ...(host.planService ? { chargingPhaseControl: host.planService.readChargingPhaseControl(device.id) } : {}),
       // Two absences are deliberately no-ops rather than writes, because neither
       // is a reading PELS took: a device with no projection entry keeps its
       // stored snapshot (permanent for an unmanaged PICKER row, which the

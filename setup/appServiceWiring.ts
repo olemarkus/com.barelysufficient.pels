@@ -460,6 +460,10 @@ export class AppServiceWiring {
     const { planEngine, planService, lifecycleFallbackPort } = createHomePlanRuntime(ctx, this.mainHomeScope, {
       capacityGuard: ctx.capacityGuard, isActuationFenced: () => this.isMainActuationFenced(),
       storageLane: mainStorageLane(ctx), controlContests: this.deps.controlContests,
+      getChargingPhasePauseTarget: (deviceId) => {
+        const route = this.deps.handles.homeRuntimeRegistry?.getOwningHomeRouteForDevice(deviceId);
+        return route ? { homeId: route.homeId, pendingCommands: route.hooks.pendingBinaryCommandStore } : undefined;
+      },
     });
     ctx.planEngine = planEngine;
     ctx.planService = planService;

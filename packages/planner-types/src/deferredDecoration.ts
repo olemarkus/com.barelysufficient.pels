@@ -1,6 +1,9 @@
 import type { DailyBudgetUiPayload } from '../../contracts/src/dailyBudgetTypes.js';
 import type { PlanInputDevice } from './planInputDevice.js';
 
+/** The task's real booked operating power and its separately permitted future ceiling. */
+export type ChargingPhaseTaskRequirement = { admissionKw: number; permittedMaxKw: number };
+
 /**
  * Per-cycle plan intent for a planned binary restore or an idle-bucket release.
  * Binary-controlled devices map to `binary_restore` / `binary_release` (the
@@ -73,6 +76,7 @@ export type DeferredDecorationInput = {
  *   records these on `PlanEngineState` and the executor's hold gate lets them run.
  */
 export type DeferredDecorationBundle = {
+  chargingPhaseRequirements: ReadonlyMap<string, ChargingPhaseTaskRequirement>;
   admittedDevices: PlanInputDevice[];
   forceShedSet: Set<string>;
   deferredHoldCauseByDeviceId: ReadonlyMap<string, DeferredHoldCause>;

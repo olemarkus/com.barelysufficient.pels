@@ -2,6 +2,20 @@
 module.exports = {
   forbidden: [
     {
+      name: 'charging-phase-control-is-a-leaf',
+      comment: 'Phase-control claims and transitions consume typed ports, never concrete runtime peers.',
+      severity: 'error',
+      from: { path: '^lib/chargingPhases/' },
+      to: { path: '^lib/', pathNot: '^lib/(chargingPhases|ports|utils|logging)/' },
+    },
+    {
+      name: 'no-peers-to-charging-phase-owner',
+      comment: 'Setup constructs the phase owner; runtime peers consume its port and resolved planning facts.',
+      severity: 'error',
+      from: { path: '^lib/', pathNot: '^lib/chargingPhases/' },
+      to: { path: '^lib/chargingPhases/' },
+    },
+    {
       name: 'no-schedules-to-control-or-wiring',
       comment: 'Timed actions call existing task/mode commands; the scheduler never reaches planner/device control or setup.',
       severity: 'error',

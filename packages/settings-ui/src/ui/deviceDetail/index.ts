@@ -116,6 +116,7 @@ import {
 } from './budgetExempt.ts';
 import { initRespectExternalOffHandler } from './respectExternalOff.ts';
 import { initElectricalConnectionHandler, syncElectricalConnectionRow } from './electricalConnection.ts';
+import { renderChargingPhases } from './chargingPhases.tsx';
 import { initStartPolicyHandler, revealDeviceDetailFocus, syncDevicePolicyRows } from './startPolicy.ts';
 import {
   initTemperatureControlDisabledHandler,
@@ -210,6 +211,11 @@ const resolveManagedHint = (
   return 'Include this device in modes and optimization plans.';
 };
 
+const renderDeviceDetailElectricalSetup = (deviceId: string, device: SettingsUiDeviceView | null) => {
+  syncElectricalConnectionRow(deviceId, device);
+  renderChargingPhases(deviceId, device, refreshOpenDeviceDetail);
+};
+
 const setDeviceDetailControlStates = (deviceId: string, device: SettingsUiDeviceView | null) => {
   const controlState = resolveDeviceDetailControlState(device, deviceId);
 
@@ -242,7 +248,7 @@ const setDeviceDetailControlStates = (deviceId: string, device: SettingsUiDevice
   // owns the gate — managed binary device, solar present, not temperature/stepped/EV).
   syncDeviceDetailSolarRows(deviceId, device);
   syncDevicePolicyRows(deviceId, device);
-  syncElectricalConnectionRow(deviceId, device);
+  renderDeviceDetailElectricalSetup(deviceId, device);
   syncTemperatureControlDisabledRow(device);
 
   setDeviceDetailBudgetExemptState(device);

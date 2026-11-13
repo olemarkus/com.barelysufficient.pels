@@ -155,6 +155,11 @@ const describeOverviewDecision = (
 };
 
 export class PlanService {
+  public readChargingPhaseControl(deviceId: string) {
+    return this.deps.planEngine.readChargingPhaseControl(deviceId);
+  }
+  public readChargingPhaseEnvelopes() { return this.deps.planEngine.readChargingPhaseEnvelopes(); }
+  public readChargingPhaseExecutionGate() { return this.deps.planEngine.readChargingPhaseExecutionGate(); }
   private latestPublishedPlan: PublishedPlan | null = null;
   private readonly overviewTransitions = new DeviceOverviewTransitions();
   private planOperationQueue: Promise<void> = Promise.resolve();

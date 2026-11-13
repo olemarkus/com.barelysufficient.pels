@@ -1,6 +1,7 @@
 import type { DevicePlanDevice } from '../planTypes';
 import { minLimitHeadroom, spendLimitHeadroom, type LimitHeadroom } from '../planContext';
-import { phaseRoomFor, spendPhaseRoom, type PhaseRoomAxis } from '../phase/phaseRoom';
+import { phaseRoomFor, spendPhaseRoom, spendPhaseVector, type PhaseRoomAxis } from '../phase/phaseRoom';
+import type { ChargingPhaseDebit } from '../../../packages/planner-types/src/chargingPhases';
 
 /**
  * The room left on each admission axis at the start of a restore pass, `off`
@@ -59,6 +60,8 @@ type LedgerDevice = Pick<DevicePlanDevice, 'budgetExempt' | 'phaseFootprint'>;
 export type RestoreHeadroomLedger = {
   availableFor(dev: LedgerDevice): number | null;
   commit(dev: LedgerDevice, spentKw: number): void;
+  /** A phase redistribution can consume phase room while its total-power increase is zero. */
+  commitPhaseVector(dev: Pick<LedgerDevice, 'budgetExempt'>, debit: ChargingPhaseDebit): void;
   summaryAvailableKw(): number | null;
   axes(): RestoreHeadroomAxes;
 };
@@ -86,6 +89,12 @@ export function buildRestoreHeadroomLedger(axes: RestoreHeadroomAxes): RestoreHe
       grid = spendLimitHeadroom(grid, spentKw);
       if (!dev.budgetExempt) budget = spendLimitHeadroom(budget, spentKw);
       phase = spendPhaseRoom(phase, dev.phaseFootprint, spentKw);
+    },
+    commitPhaseVector(dev, debit) {
+      capacity = spendLimitHeadroom(capacity, debit.totalKw);
+      grid = spendLimitHeadroom(grid, debit.totalKw);
+      if (!dev.budgetExempt) budget = spendLimitHeadroom(budget, debit.totalKw);
+      phase = spendPhaseVector(phase, debit.perPhaseKw);
     },
     summaryAvailableKw() {
       return availableKw(capacity, grid, budget);

@@ -46,6 +46,7 @@ const sources = (overrides: Partial<ContinuousBatteryHorizonSources> & {
   }),
   getPowerLimitSettings: () => ({ limitKw: 5, marginKw: 0, periodMinutes: 60, capacityEnabled: true, gridImportLimitKw: null }),
   taskReservations: new ObjectiveTaskReservationSource({
+    getChargingPhaseEnvelopes: () => new Map(),
     getDeferredObjectiveActivePlans: () => overrides.getActiveTasks?.() ?? { version: 2, plansByDeviceId: {} },
     getCapacitySettings: () => ({ limitKw: 5, marginKw: 0, periodMinutes: 60, capacityEnabled: true, gridImportLimitKw: null }),
     getThermalDirection: () => 'heating',

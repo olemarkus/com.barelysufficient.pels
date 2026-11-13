@@ -9,8 +9,8 @@ export type PendingBinaryCommand = {
   startedMs: number;
   logContext?: PendingBinaryCommandLogContext;
   /**
-   * True when this pending command was issued by the smart-task lifecycle-end
-   * disable path, not a capacity shed. `handleConfirmedBinaryCommand` reads it so
+   * True for a planned off that is not capacity pressure: a smart-task
+   * lifecycle-end disable or a charging-phase hand-back pause. `handleConfirmedBinaryCommand` reads it so
    * a deferred flow-backed off-confirmation routes through the diagnostic-only
    * release recorder and does NOT stamp the capacity cooldown markers
    * (`lastInstabilityMs` / `lastDeviceShedMs`). A lifecycle disable is a planning

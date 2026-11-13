@@ -42,6 +42,32 @@ const elbillader: ObjectiveDeviceInput = {
 };
 
 describe('smart-task step power: learned for energy, nameplate for room', () => {
+  it('plans future phase permission separately from the observed one-phase ladder', () => {
+    const observedProfile = elbillader.steppedLoadProfile;
+    const device: ObjectiveDeviceInput = {
+      ...elbillader,
+      permittedChargingEnvelopes: [
+        { phases: 1, footprint: { kind: 'single', phase: 'L1' }, profile: { steps: [
+          { id: '6a', planningPowerW: 1380, planningCurrentA: 6 },
+          { id: '16a', planningPowerW: 3680, planningCurrentA: 16 },
+        ] } },
+        { phases: 3, footprint: { kind: 'all_three' }, profile: { steps: [
+          { id: '6a', planningPowerW: 4140, planningCurrentA: 6 },
+          { id: '16a', planningPowerW: 11040, planningCurrentA: 16 },
+        ] } },
+      ],
+    };
+    expect(resolveObjectiveSteps(device)).toEqual([
+      { id: '1p:6a', usefulPowerKw: 1.38, admissionPowerKw: 1.38 },
+      { id: '1p:16a', usefulPowerKw: 3.68, admissionPowerKw: 3.68 },
+      { id: '3p:6a', usefulPowerKw: 4.14, admissionPowerKw: 4.14 },
+      { id: '3p:16a', usefulPowerKw: 11.04, admissionPowerKw: 11.04 },
+    ]);
+    expect(device.steppedLoadProfile).toBe(observedProfile);
+    // A current 6a sample must never be reused as another phase envelope's delivery rate.
+    expect(device.stepPowerCalibration).toEqual({ '6a': 0.7878 });
+  });
+
   it.each<[string, Partial<ObjectiveDeviceInput>, number | null]>([
     ['EV planning rate', { steppedLoadProfile: undefined, planningPowerKw: 2.3 }, 2.3],
     ['EV expected rate', { steppedLoadProfile: undefined }, 1.38],

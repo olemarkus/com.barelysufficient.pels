@@ -177,6 +177,8 @@ export class SilentMeterPlanBuilder {
       }),
       devices: decidedDevices,
       inverterDecisions: this.deps.inverterCurtailment.releaseAll(),
+      chargingPhaseDecisions: this.state.chargingPhaseCycle.decisions()
+        .filter((decision) => decision.kind === 'release'),
       storageReleases: collectAbsentStorageReleases(decidedDevices, storageRelief),
     };
   }

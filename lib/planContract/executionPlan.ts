@@ -104,6 +104,7 @@ export type DroppedSteppedShedIntent = {
 };
 /** The execution boundary excludes planner reasons, admission state, UI fields and raw inputs. */
 export type ExecutionPlan = {
+  chargingPhaseDecisions: import('./chargingPhaseDecision').ChargingPhaseDecision[];
   devices: PlannedDeviceExecution[];
   hasShedDevices: boolean;
   droppedSteppedSheds: DroppedSteppedShedIntent[];

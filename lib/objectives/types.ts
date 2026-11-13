@@ -5,6 +5,7 @@ import type {
   ThermalDirection,
 } from '../../packages/contracts/src/types';
 import type { ObjectiveProfileProgressDirection } from '../../packages/contracts/src/objectiveProfileTypes';
+import type { ChargingPhaseEnvelope } from '../../packages/planner-types/src/chargingPhases';
 import type { DeviceControlPosture } from '../../packages/planner-types/src/planInputDevice';
 
 export type {
@@ -74,6 +75,8 @@ export const resolveObjectiveProgressDirectionRead = (params: {
  * See notes/state-management/deferred-objective-lifecycle-carveout.md.
  */
 export type ObjectiveDeviceInput = {
+  /** Future permission for phase-controlled charging; never the observed physical step ladder. */
+  permittedChargingEnvelopes?: readonly ChargingPhaseEnvelope[];
   id: string;
   name: string;
   // Both are read only through the shared kind predicates — `isEvDevice` and
@@ -161,6 +164,17 @@ export type ObjectiveStateOfCharge = {
 
 /** Planner device data before metering and observer direction are resolved. */
 export type ObjectiveDeviceSource = Omit<ObjectiveDeviceInput, 'currentDrawKw' | 'thermalDirection'>;
+
+/** Future physical permission reaches every objective consumer without replacing live device geometry. */
+export function withPermittedChargingEnvelopes<T extends ObjectiveDeviceSource>(
+  devices: readonly T[],
+  envelopes: ReadonlyMap<string, readonly ChargingPhaseEnvelope[]>,
+): T[] {
+  return devices.map((device) => {
+    const permitted = envelopes.get(device.id);
+    return permitted ? { ...device, permittedChargingEnvelopes: permitted } : device;
+  });
+}
 
 /**
  * The devices a smart task can plan for: those with a power reading. A

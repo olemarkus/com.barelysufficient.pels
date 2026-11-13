@@ -49,7 +49,7 @@ const source = (
   settings: DeferredObjectiveRoster | undefined = roster(),
   devices: ObjectiveDeviceInput[] = [device],
 ) => new ObjectiveTaskReservationSource({
-  getDeferredObjectiveActivePlans: () => tasks, getCapacitySettings: () => limits, getThermalDirection: () => 'heating',
+  getChargingPhaseEnvelopes: () => new Map(), getDeferredObjectiveActivePlans: () => tasks, getCapacitySettings: () => limits, getThermalDirection: () => 'heating',
 }, () => settings, () => devices, (input) => input);
 const ids = new Set(['heater']);
 
@@ -62,7 +62,7 @@ describe('objective-owned battery task reservations', () => {
       binaryControl: { on: false }, measuredPowerKw: 0,
     }));
     const input = new ObjectiveTaskReservationSource({
-      getDeferredObjectiveActivePlans: () => active(), getCapacitySettings: () => limits, getThermalDirection: () => 'heating',
+      getChargingPhaseEnvelopes: () => new Map(), getDeferredObjectiveActivePlans: () => active(), getCapacitySettings: () => limits, getThermalDirection: () => 'heating',
     }, () => roster(), () => [snapshot('battery'), snapshot('heater')], entry => toPlanDevice(ctx, entry));
     expect(input.read(NOW, ids).kind).toBe('ready');
     expect(readBattery).not.toHaveBeenCalled();
@@ -116,7 +116,7 @@ describe('objective-owned battery task reservations', () => {
   });
 
   it('waits for unavailable settings and excludes paused, cleared, out-of-scope and satisfied tasks', () => {
-    const readers = { getDeferredObjectiveActivePlans: () => active(), getCapacitySettings: () => limits, getThermalDirection: () => 'heating' as const };
+    const readers = { getChargingPhaseEnvelopes: () => new Map(), getDeferredObjectiveActivePlans: () => active(), getCapacitySettings: () => limits, getThermalDirection: () => 'heating' as const };
     expect(new ObjectiveTaskReservationSource(readers, () => undefined, () => [device], input => input).read(NOW, ids))
       .toEqual({ kind: 'waiting' });
     const empty = { kind: 'ready', taskDeviceIds: new Set(), energy: [], admission: [] };

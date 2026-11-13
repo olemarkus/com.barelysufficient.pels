@@ -143,7 +143,7 @@ export function attemptSwapRestore(
   return { kind: 'decided', availableHeadroom, restoredOneThisCycle: false };
 }
 
-function hasUnreleasedSwapDonors(
+export function hasUnreleasedSwapDonors(
   swapLedger: SwapLedger,
   targetDeviceId: string,
   deviceMap: ReadonlyMap<string, DevicePlanDevice>,

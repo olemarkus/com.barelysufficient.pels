@@ -181,6 +181,10 @@ function resolveNativeReportedStepPowerW(
     if (!isEvTargetPowerConfig(snapshot.targetPowerConfig)) return undefined;
     if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
     if (current && value < current.minimumChargingA) return 0;
+    if (current) {
+        const phasePowerW = resolveChargingPhaseReportedPowerW(ingest, snapshot, value);
+        if (phasePowerW !== undefined) return phasePowerW;
+    }
     const raw = capabilityId === 'target_power'
         ? ingest.reader.snapshotStore.getTrackedRawDevice(snapshot.id) : undefined;
     if (capabilityId === 'target_power' && snapshot.steppedLoadProfile
@@ -193,6 +197,14 @@ function resolveNativeReportedStepPowerW(
         ? getDeviceAdapter(raw).targetPowerReading(raw, snapshot.targetPowerConfig, value) : value;
     return Math.round(planningValue
         * resolveEvStepObservationWattsPerUnit(capabilityId, snapshot.targetPowerConfig.preset));
+}
+
+function resolveChargingPhaseReportedPowerW(
+    ingest: RealtimeIngestService, snapshot: TransportDeviceSnapshot, currentA: number,
+): number | undefined {
+    const device = ingest.reader.snapshotStore.getTrackedRawDevice(snapshot.id);
+    const profile = device && ingest.reader.sources.chargingPhases.profile(device);
+    return profile?.steps.find((entry) => entry.planningCurrentA === currentA)?.planningPowerW;
 }
 
 function observeNativeTargetPowerMode(

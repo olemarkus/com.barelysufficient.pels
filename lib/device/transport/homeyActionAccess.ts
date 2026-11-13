@@ -18,11 +18,12 @@ export type HomeyFlowAction = {
  * or a home battery's command or hand-back (`homeBatteryAppActions.ts`). It
  * names the failure event only; every run follows the same rules.
  */
-export type HomeyActionPurpose = 'charging_current' | 'home_battery';
+export type HomeyActionPurpose = 'charging_current' | 'home_battery' | 'charging_phase';
 
 const ACTION_FAILED_EVENT: Record<HomeyActionPurpose, string> = {
   charging_current: 'charging_current_action_failed',
   home_battery: 'home_battery_action_failed',
+  charging_phase: 'charging_phase_action_failed',
 };
 
 /** Configuration, not a cache. Only this backend owner reads or writes it. */

@@ -5,6 +5,7 @@ import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
 
 const buildTransport = (overrides: Partial<ActuatorTransport> = {}): ActuatorTransport => ({
+  requestChargingPhaseControl: vi.fn(async () => true),
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
   requestBinaryControl: vi.fn(async () => undefined),
   requestTemperatureTarget: vi.fn(async (_deviceId: string, desired: number) => desired),

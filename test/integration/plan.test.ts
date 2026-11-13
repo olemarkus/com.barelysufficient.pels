@@ -88,6 +88,7 @@ const binaryShedPlan = (id: string, name: string): DevicePlan => ({
     controllable: true,
     reason: fixtureDeviceReason('shed due to capacity'),
   })],
+  chargingPhaseDecisions: [],
   inverterDecisions: [],
   storageReleases: [],
 });
@@ -1325,6 +1326,7 @@ describe('Device plan snapshot', () => {
           reason: fixtureDeviceReason('keep'),
         }),
       ],
+      chargingPhaseDecisions: [],
       inverterDecisions: [],
       storageReleases: [],
     };
@@ -1890,6 +1892,7 @@ describe('Device plan snapshot', () => {
           reason: fixtureDeviceReason('keep'),
         }),
       ],
+      chargingPhaseDecisions: [],
       inverterDecisions: [],
       storageReleases: [],
     };
@@ -1941,6 +1944,7 @@ describe('Device plan snapshot', () => {
           reason: fixtureDeviceReason('keep'),
         }),
       ],
+      chargingPhaseDecisions: [],
       inverterDecisions: [],
       storageReleases: [],
     };
@@ -3548,6 +3552,7 @@ describe('Dry run mode', () => {
           expectedPowerKw: 0.2,
         }),
       ],
+      chargingPhaseDecisions: [],
       inverterDecisions: [],
       storageReleases: [],
     };
@@ -3602,6 +3607,7 @@ describe('Dry run mode', () => {
           controllable: true,
         }),
       ],
+      chargingPhaseDecisions: [],
       inverterDecisions: [],
       storageReleases: [],
     };
@@ -3663,6 +3669,7 @@ describe('Dry run mode', () => {
           controllable: true,
         }),
       ],
+      chargingPhaseDecisions: [],
       inverterDecisions: [],
       storageReleases: [],
     };
@@ -3712,6 +3719,7 @@ describe('Dry run mode', () => {
           reason: fixtureDeviceReason('shed due to capacity'),
         }),
       ],
+      chargingPhaseDecisions: [],
       inverterDecisions: [],
       storageReleases: [],
     };

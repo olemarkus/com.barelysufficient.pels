@@ -5,6 +5,34 @@ description: Connect an EV charger to PELS with current control, battery reporti
 
 # Configure an EV Charger
 
+## Automatic charging phases
+
+With the community **Peblar EV Charger** integration, open the charger's
+**Charging** section and choose **Charging phases**:
+
+- **Leave to charger** leaves the phase setting with the charger.
+- **Automatic** selects one or three phases using available power, solar and
+  the current smart task.
+- **One phase** requests single-phase charging.
+- **Three phases** permits three-phase charging; the car can use fewer phases.
+
+Before enabling it, select the house phase used for single-phase charging and
+confirm that the installation has a 400 V three-phase supply with neutral and
+that the charger and car support phase switching. This uses the same electrical
+connection setting shown under **Power limiting**.
+
+PELS lowers charging current before changing phases and keeps room for the
+transition. It waits for independent power readings rather than treating the
+requested setting as completed charging. Short solar changes do not cause
+repeated switching. A transition that cannot be confirmed pauses further attempts
+until the car reconnects.
+
+Choosing **Leave to charger**, turning off management or enabling simulation
+returns the phase setting PELS recorded before taking control. Returning to a
+setting that permits more phases can pause charging first.
+
+## Charging-current setup
+
 Use this guide when an EV charger is paired in Homey and PELS should decide how much charging current is available.
 
 The convenient setup is to let PELS use an EV charger control mode. PELS then calculates the current in amps for you, and your Homey Flow only maps that value to the charger app's current-control action.

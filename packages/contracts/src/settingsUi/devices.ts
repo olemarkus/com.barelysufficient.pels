@@ -23,6 +23,7 @@ export type SettingsUiDeviceSnapshot = DecoratedDeviceSnapshot & ObservedStateOf
   // Present while the device keeps moving away from what PELS set.
   & ControlContestDecoration & { phaseFootprintRead?: SettingsUiPhaseFootprintRead }
   & {
+    chargingPhaseControl?: import('../chargingPhases.js').ChargingPhaseRead;
     /**
      * Present while PELS's level commands for this stepped device have drawn no
      * report of any level, in a row, as many times as makes its card say the

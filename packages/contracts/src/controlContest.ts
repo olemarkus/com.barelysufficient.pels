@@ -1,5 +1,5 @@
 /** The setting PELS kept setting back: a setpoint, the on/off switch, or a stepped load's level. */
-export type ContestedSetting = 'temperature' | 'on_off' | 'level';
+export type ContestedSetting = 'temperature' | 'on_off' | 'level' | 'charging_phases';
 
 /** A setpoint, an on/off state or a step id. */
 export type ContestedValue = number | boolean | string;
