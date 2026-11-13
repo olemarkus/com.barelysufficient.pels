@@ -60,11 +60,14 @@ export const resolveBinarySurplusReasonLine = (
 
 // ─── Temperature line ─────────────────────────────────────────────────────────
 
-const resolveTemperatureTargetText = (temperature: NonNullable<TemperatureDevice['temperature']>): string => (
-  temperature.currentTarget !== temperature.plannedTarget
-    ? `${temperature.currentTarget.toFixed(0)} °C → ${temperature.plannedTarget.toFixed(0)} °C`
-    : `${temperature.plannedTarget.toFixed(0)} °C`
-);
+export const formatTemperatureTarget = (target: number): string => String(Number(target.toFixed(1)));
+
+const resolveTemperatureTargetText = (temperature: NonNullable<TemperatureDevice['temperature']>): string => {
+  const planned = `${formatTemperatureTarget(temperature.plannedTarget)} °C`;
+  return temperature.currentTarget !== temperature.plannedTarget
+    ? `${formatTemperatureTarget(temperature.currentTarget)} °C → ${planned}`
+    : planned;
+};
 
 export const resolveTemperatureLine = (device: TemperatureDevice): string | null => {
   // The atomic facet is complete when present, so the line either renders in

@@ -641,7 +641,15 @@ PELS-acted claims and PELS acts on nothing in simulation, so the bold word
 shows what the device is actually doing (Running/Idle/Off) and only the reason
 line is hypothetical: `Would be limited …`, `Would be waiting to resume — 0.8 kW
 more needed (simulation)`, `Would wait for cheaper hours (simulation)`. The
-`(simulation)` tag keeps a card scrolled away from the banner honest on its own.
+reason for a device with a decided power-limiting command names that action
+while its output is on, or it is controlled by target alone: `Would turn off
+(simulation)`, `Would set target to 15 °C
+(simulation)`, or `Would set level to 6 A (simulation)`. It uses the executor's
+resolved command, never the configured limiting behaviour. A device already at
+the decided state, or a hold with no command, keeps its waiting explanation.
+Smart-task, solar and fairness holds keep their own device-specific reason.
+The action preview carries no resume countdown or resume power shortfall.
+The `(simulation)` tag keeps a card scrolled away from the banner honest on its own.
 The `Let it run now` action chip never renders under simulation (there is
 nothing to release). "Simulation" is the owner's Simulation setting for the home,
 the flag the Overview hero reads; a transient write fence (boot, meter

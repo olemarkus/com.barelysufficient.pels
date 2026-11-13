@@ -828,9 +828,9 @@ describe('resolveSteppedTemperatureText', () => {
     expect(resolveSteppedTemperatureText({})).toBeNull();
   });
 
-  it('rounds target temperature to integer', () => {
+  it('preserves fractional targets so the fact agrees with a planned target preview', () => {
     expect(resolveSteppedTemperatureText({ temperature: { currentTemperature: 37.2, plannedTarget: 49.8 } }))
-      .toBe('37.2 °C · target 50 °C');
+      .toBe('37.2 °C · target 49.8 °C');
   });
 });
 

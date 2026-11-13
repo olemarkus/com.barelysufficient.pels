@@ -1,10 +1,10 @@
 // Simulation-mode reason-line mood.
 //
 // In simulation mode PELS never actually switches or limits a device — it only
-// shows what it WOULD do. A held/limited device's state line already reads
-// hypothetically ("Would be turned off (simulation)"); this makes the reason
-// line beneath it agree in mood so the card never asserts an action that never
-// happened (notes/overview-hero-spec.md § "Simulation mode is hypothetical").
+// shows what it WOULD do. The state word stays factual; a running device with
+// a decided power-limiting command gets an explicit hypothetical action from
+// deviceStatusReadModel. This module puts the remaining hold reasons into the
+// hypothetical mood (notes/overview-hero-spec.md § "Simulation mode is hypothetical").
 //
 // Scope — ONLY would-be-acted (held/limited) reasons become hypothetical. Every
 // "Limited …" reason (hard cap, daily/hourly budget, swap, budget starvation) is

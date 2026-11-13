@@ -1,4 +1,4 @@
-import { getSteppedLoadOffStep } from '../../packages/shared-domain/src/deviceControlProfiles';
+import { getSteppedLoadOffStep, getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
 import type { DeviceStatus, DeviceStatusCountdown } from '../../packages/contracts/src/deviceStatus';
 import type { CarIdentificationState } from '../../packages/contracts/src/evCarLink';
 import {
@@ -20,7 +20,8 @@ import {
   type PlanStateKind,
 } from '../../packages/shared-domain/src/planStateLabels';
 import {
-  formatFairnessHoldCardLine, resolveHeldCardReasonLine, resolveHeldCardReasonVerb, resolveHeldCardStepView,
+  formatFairnessHoldCardLine, isCeilingHoldReasonCode, resolveHeldCardReasonLine,
+  resolveHeldCardReasonVerb, resolveHeldCardStepView,
 } from './planCardReasonLine';
 import { formatDeviceReasonUserFacing, PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveSteppedStatusLine, resolveSteppedLevelFact,
@@ -31,6 +32,7 @@ import {
 } from '../../packages/shared-domain/src/evChargingStateLabel';
 import {
   resolveTemperatureLine, resolveTemperatureReasonLine, resolveBinarySurplusReasonLine,
+  formatTemperatureTarget,
 } from './planTemperatureCardText';
 import { formatIdleClassificationCopy } from '../observer/idleClassificationCopy';
 import { toSimulationReasonLine } from './simulationReasonMood';
@@ -135,6 +137,44 @@ function resolveReason(device: DeviceStatusInput, dryRun: boolean): string | nul
   return resolveBinaryReason(device, kind, held, dryRun);
 }
 
+const ADDITIONAL_SIMULATION_POWER_HOLDS: ReadonlySet<string> = new Set([
+  PLAN_REASON_CODES.shortfall,
+  PLAN_REASON_CODES.hourlyBudget,
+  PLAN_REASON_CODES.endOfHourDrain,
+  PLAN_REASON_CODES.phaseLimit,
+  PLAN_REASON_CODES.meterSilent,
+]);
+
+// A device still on, or controlled by target alone, has not delivered the
+// simulated limit. Describe its decided command before the ordinary hold line.
+function resolveSimulatedActionLine(device: DeviceStatusInput): string | null {
+  if (device.execution.physicalState === 'off' || device.steppedFairnessHold || device.steppedStepUpHold) return null;
+  const powerHold = isCeilingHoldReasonCode(device.reason.code)
+    || ADDITIONAL_SIMULATION_POWER_HOLDS.has(device.reason.code);
+  if (!powerHold || resolveIntentStateKind({ kind: resolveBaseKind(device), reasonCode: device.reason.code,
+    starved: device.starvation?.isStarved === true }) !== 'held') return null;
+  const execution = device.execution;
+  if (execution.physicalState === 'on' && execution.desiredBinary === 'off') return 'Would turn off (simulation)';
+  return resolveSimulatedLevelLine(device) ?? resolveSimulatedTargetLine(device);
+}
+
+function resolveSimulatedLevelLine(device: DeviceStatusInput): string | null {
+  const execution = device.execution;
+  if (device.steppedLoad && execution.desiredStepId !== execution.observedStepId) {
+    const step = getSteppedLoadStep(device.steppedLoad.profile, execution.desiredStepId);
+    if (step) return `Would set level to ${formatStepDisplayLabel(step.id)} (simulation)`;
+  }
+  return null;
+}
+
+function resolveSimulatedTargetLine(device: DeviceStatusInput): string | null {
+  if (device.temperature && device.execution.targetProgress !== 'undriven'
+    && device.temperature.plannedTarget !== device.temperature.currentTarget) {
+    return `Would set target to ${formatTemperatureTarget(device.temperature.plannedTarget)} °C (simulation)`;
+  }
+  return null;
+}
+
 // A timed reason keeps its countdown even when its line says something else
 // (what a paused device still reports): the card then shows it as its ring.
 function buildCountdown(device: DeviceStatusInput, text: string, anchorMs: number): DeviceStatusCountdown | undefined {
@@ -155,6 +195,13 @@ const resolvePhaseSettingOffer = (device: DeviceStatusInput): { offersPhaseSetti
 );
 
 function buildReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus['reason'] {
+  const simulatedAction = dryRun ? resolveSimulatedActionLine(device) : null;
+  return simulatedAction
+    ? { text: simulatedAction, ...resolvePhaseSettingOffer(device) }
+    : buildOrdinaryReason(device, dryRun, nowMs);
+}
+
+function buildOrdinaryReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus['reason'] {
   const kind = resolveBaseKind(device);
   if (kind === 'unavailable' || kind === 'manual') return null;
   let text = resolveReason(device, dryRun);
@@ -210,11 +257,15 @@ function resolvePhysicalFact(device: DeviceStatusInput): string | null {
   return stepId === null ? null : formatStepDisplayLabel(stepId);
 }
 
-function resolvePower(device: DeviceStatusInput, limited: boolean): Pick<DeviceStatus, 'powerText' | 'powerVariant'> {
+function resolvePower(
+  device: DeviceStatusInput, limited: boolean, dryRun: boolean,
+): Pick<DeviceStatus, 'powerText' | 'powerVariant'> {
   const measuredOnly = device.steppedLoad !== undefined || device.temperature !== undefined;
   const draw = device.currentDrawKw;
   if (limited && !measuredOnly && draw !== undefined && draw > 0.05) {
-    return { powerText: `Reported ${draw.toFixed(1)} kW`, powerVariant: 'reported' };
+    return dryRun
+      ? { powerText: `${draw.toFixed(1)} kW`, powerVariant: 'live' }
+      : { powerText: `Reported ${draw.toFixed(1)} kW`, powerVariant: 'reported' };
   }
   if (measuredOnly) {
     return { powerText: draw === undefined ? null : `${draw.toFixed(1)} kW`, powerVariant: 'live' };
@@ -337,7 +388,7 @@ export function buildDeviceStatus(device: DeviceStatusInput, dryRun: boolean, no
   const presented = withPresentedTarget(device);
   return {
     cardKind: resolveCardKind(device), kind, tone: displayStateTone(kind), label,
-    ...resolvePower(device, limited),
+    ...resolvePower(device, limited, dryRun),
     factText: resolveFactText(presented, kind, kind === 'held' && resolvePhysicalStepId(device) !== null),
     reading: resolveReading(presented),
     reason: buildReason(device, dryRun, nowMs), rail: resolveRail(device),

@@ -26,6 +26,7 @@ import {
   resolveHeldCardReasonVerb,
 } from './planCardReasonLine';
 import type { SteppedFairnessHold } from './planTypes';
+import { formatTemperatureTarget } from './planTemperatureCardText';
 import { formatStepDisplayLabel } from '../../packages/shared-domain/src/steppedStepLabel';
 import {
   EV_ROUTINE_CHARGING_LABEL, isRoutineEvChargingState,
@@ -305,7 +306,7 @@ export const resolveSteppedTemperatureText = (device: {
   // Same `· target` grammar as the temperature card's fact line — the arrow
   // is reserved for a target CHANGE (e.g. a solar/boost lift), never the
   // routine current-vs-target pair (notes/ui-terminology.md § device cards).
-  return `${currentTemperature.toFixed(1)} °C · target ${plannedTarget.toFixed(0)} °C`;
+  return `${currentTemperature.toFixed(1)} °C · target ${formatTemperatureTarget(plannedTarget)} °C`;
 };
 
 // ─── Fact line (2026-07 card grammar) ─────────────────────────────────────────
