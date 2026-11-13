@@ -78,8 +78,8 @@ const resolveSignedRange = (
   const minW = readRangeEdge(entry, 'min', HOMEY_TARGET_POWER_DEFAULTS.minW, defaults.minW);
   const maxW = readRangeEdge(entry, 'max', HOMEY_TARGET_POWER_DEFAULTS.maxW, defaults.maxW);
   const stepW = readRangeEdge(entry, 'step', HOMEY_TARGET_POWER_DEFAULTS.stepW, defaults.stepW);
-  // Homey reads a missing exclude edge as 0 (homey-lib `lib/App/index.js`), so
-  // a device with no band resolves to the empty band (0, 0).
+  // Homey reads a missing exclude edge as 0, so a device with no band resolves
+  // to the empty band (0, 0).
   const excludeMinW = readNumericOption(entry, 'excludeMin', 0);
   const excludeMaxW = readNumericOption(entry, 'excludeMax', 0);
   if (minW === null || maxW === null || stepW === null || excludeMinW === null || excludeMaxW === null) return null;
