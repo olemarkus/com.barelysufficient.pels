@@ -45,7 +45,7 @@ export const reportEvChargingCurrent = (current: EvChargingCurrentDiagnostics): 
 export type SupportReportDeviceSnapshot = Pick<DeviceDescriptor,
   'id' | 'name' | 'deviceClass' | 'deviceType' | 'managed' | 'binaryControllable' | 'isEvCharger'
   | 'expectedPowerKw' | 'expectedPowerSource' | 'controlModel' | 'flowBacked' | 'budgetExempt'
-  | 'priority' | 'controlAdapter'>
+  | 'controlAdapter'>
   & Pick<ObservedDeviceState, 'available' | 'lastUpdated' | 'binaryControl' | 'targets'>
   & EvObservedProbe
   & MeasuredPowerObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe & TemperatureObservedProbe;
@@ -75,7 +75,6 @@ export const reportDeviceSnapshot = (device: SupportReportDeviceSnapshot): Suppo
     ...present('controlModel', device.controlModel),
     ...present('flowBacked', device.flowBacked),
     ...present('budgetExempt', device.budgetExempt),
-    ...present('priority', device.priority),
     ...present('lastUpdatedMs', device.lastUpdated),
     ...(device.binaryControl ? { binaryOn: device.binaryControl.on } : {}),
     targets: device.targets.map((target) => ({ id: target.id, unit: target.unit, ...present('value', target.value) })),
@@ -103,11 +102,15 @@ export const reportDeviceDecision = (device: DevicePlanDevice): SupportReportSec
     plannedState: device.plannedState,
     currentState: device.currentState,
     reasonCode: device.reason.code,
+    reasonDetails: { ...device.reason },
+    // A plan rank is over its active roster; configured ranks are captured separately.
     priority: device.priority,
     // Whether PELS may command it this cycle, and which standing hold keeps it
     // off: without these a held charger reads the same as a broken one.
     commandAuthority: device.control.commandAuthority,
     ...present('startPolicyHoldActive', device.startPolicyHoldActive),
+    ...present('externalOffHoldActive', device.externalOffHoldActive),
+    ...present('plannedShedTargetKind', device.plannedShedTargetKind),
     ...present('chargeTargetHeld', device.chargeTargetHeld?.kind),
     ...present('desiredStepId', device.desiredStepId),
     ...present('lastDesiredStepId', device.lastDesiredStepId),

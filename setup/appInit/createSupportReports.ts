@@ -21,6 +21,7 @@ export type SupportReportApp = Pick<PelsHost,
   | 'getLatestPlanSnapshotForUi' | 'getCapacityScalars' | 'capacityGuard'
   | 'getDailyBudgetUiPayload' | 'readPriceSetup'
   | 'getPriceTimelineForUi' | 'getUserdataDatabase' | 'readSchedules' | 'powerTracker'>
+  & Pick<PelsHost, 'readDeviceDiagnosticConfiguration'>
   & Pick<AppContext, 'deferredObjectiveActivePlanRecorder' | 'deferredObjectivePlanHistoryRecorder'>;
 
 // Each read reaches the app when a report is captured. A service that is not
@@ -31,6 +32,7 @@ export const createSupportReportReads = (
   readSmartTaskCycle: (deviceId: string) => SmartTaskCycleRecord | undefined,
   heatingShadow: Pick<HeatingShadowCollector, 'readDaily'>,
 ): SupportReportReads => ({
+  readDeviceDiagnosticConfiguration: app.readDeviceDiagnosticConfiguration,
   getDeviceSnapshot: (deviceId) => requireDeviceManager(app).getSnapshotByDeviceId(deviceId),
   getEvChargingCurrentDiagnostics: (deviceId, nowMs) => (
     requireDeviceManager(app).getEvChargingCurrentDiagnostics(deviceId, nowMs)),

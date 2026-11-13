@@ -117,6 +117,8 @@ export type ExternalOffHoldDeps = {
 export type ReleaseHoldOutcome = 'held' | 'released' | 'unavailable';
 
 export type ExternalOffHoldPolicy = {
+  /** Read-only opt-in evidence; a resolved answer may use the settings owner's last accepted map. */
+  readOptInForDevice: (deviceId: string) => ExternalOffDeviceOptInRead;
   isEnabledForDevice: (deviceId: string) => boolean;
   isHeld: (deviceId: string) => boolean;
   /** Starts a hold. Returns `true` only when one was newly created. */
@@ -141,6 +143,10 @@ export type ExternalOffHoldPolicy = {
    */
   releaseDeOptedHolds: () => string[];
 };
+
+export type ExternalOffDeviceOptInRead =
+  | { status: 'resolved'; enabled: boolean }
+  | { status: 'unavailable' };
 
 /**
  * The value written under a hold key. Never read — the key's presence is the
@@ -271,6 +277,12 @@ export const createExternalOffHoldPolicy = (
   dropDeOptedHolds();
 
   const policy: ExternalOffHoldPolicy = {
+    readOptInForDevice: (deviceId) => {
+      const read = deps.readOptIn();
+      return read.status === 'resolved'
+        ? { status: 'resolved', enabled: read.optIn[deviceId] === true }
+        : { status: 'unavailable' };
+    },
     isEnabledForDevice,
     isHeld: (deviceId) => {
       ensureMigrated();

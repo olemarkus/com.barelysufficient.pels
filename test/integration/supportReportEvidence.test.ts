@@ -7,6 +7,7 @@ import type { DailyBudgetDayPayload } from '../../packages/contracts/src/dailyBu
 import type { SupportReportEvidence, SupportReportRequest } from '../../packages/contracts/src/supportReport';
 import { pelsHostDouble } from '../helpers/pelsHostDouble';
 import { partialDouble } from '../helpers/partialDouble';
+import { deviceDiagnosticConfigurationFixture } from '../helpers/deviceDiagnosticConfigurationFixture';
 import {
   REPORT_CAPTURE_MS as now, REPORT_HOUR_MS as hour, reportActivityFixture, reportHistoryFixture,
 } from '../helpers/supportReportEvidenceFixtures';
@@ -52,6 +53,7 @@ const membership = (homeId = 'main') => partialDouble<NonNullable<PelsHost['home
   getHomeIdForDevice: () => homeId,
 });
 const currentHost = (homeId = 'main') => pelsHostDouble({
+  readDeviceDiagnosticConfiguration: vi.fn(deviceDiagnosticConfigurationFixture),
   homeMembership: membership(homeId),
   deviceManager: partialDouble<NonNullable<PelsHost['deviceManager']>>({
     getSnapshotByDeviceId: vi.fn((id: string) => id === 'heater' ? deviceSnapshot() : undefined),
@@ -154,6 +156,10 @@ describe('support report evidence capture', () => {
     const host = currentHost();
     const decision = buildPlanDevice({
       id: 'heater', currentState: 'on', plannedState: 'keep',
+      priority: 2,
+      reason: { code: 'capacity', shortfallKw: 0.6 },
+      externalOffHoldActive: true,
+      plannedShedTargetKind: 'target_value',
       currentTemperature: 18, currentTarget: 21, plannedTarget: 22,
     });
     host.planService = partialDouble<NonNullable<PelsHost['planService']>>({
@@ -170,11 +176,36 @@ describe('support report evidence capture', () => {
     });
     expect(values(report, 'Current device plan')).toMatchObject({
       currentState: 'on', plannedState: 'keep', currentTemperatureC: 18, currentTargetC: 21, plannedTargetC: 22,
+      priority: 2, reasonDetails: { code: 'capacity', shortfallKw: 0.6 }, externalOffHoldActive: true,
+      plannedShedTargetKind: 'target_value', planGeneratedAtMs: now,
+    });
+    expect(values(report, 'Current PELS device configuration')).toEqual({
+      state: 'available', configuration: deviceDiagnosticConfigurationFixture(),
     });
     expect(values(report, 'Current limits settings')).toMatchObject({ hardCapKw: 10, gridImportLimitKw: 8 });
     expect(host.refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
     expect(host.getSettingsUiManagedDevices).not.toHaveBeenCalled();
     expect(host.deviceManager.getUiPickerDevices).not.toHaveBeenCalled();
+  });
+
+  it('keeps area configuration separate from an unavailable Main-only plan decision', async () => {
+    const host = currentHost('cabin');
+    const configuration = deviceDiagnosticConfigurationFixture();
+    configuration.modes = { state: 'resolved', homeId: 'cabin', catalogHomeId: 'main', activeMode: 'Night', modes: [] };
+    host.readDeviceDiagnosticConfiguration.mockReturnValue(configuration);
+    const report = await source(host).capture({ ...request, subject: { kind: 'device', homeId: 'cabin', deviceId: 'heater' } }, now);
+    expect(values(report, 'Current PELS device configuration')).toEqual({ state: 'available', configuration });
+    expect(values(report, 'Current device plan')).toBeUndefined();
+    expect(report.omissions).toContain('Current device plan is available for Main only.');
+  });
+
+  it('records a failed device configuration as an omission without leaking the error', async () => {
+    const host = currentHost();
+    host.readDeviceDiagnosticConfiguration.mockImplementation(() => { throw new Error('private error'); });
+    const report = await source(host).capture(request, now);
+    expect(values(report, 'Current PELS device configuration')).toBeUndefined();
+    expect(report.omissions).toContain('Current PELS device configuration is unavailable.');
+    expect(JSON.stringify(report)).not.toContain('private error');
   });
 
   it('resolves removed devices from retained names and rejects unknown device ids', async () => {
@@ -804,7 +835,8 @@ describe('device support request evidence', () => {
           { id: 'relay', name: 'Water heater relay', class: 'light', ownerUri: 'homey:app:com.knx',
             driverId: 'switch', available: true },
           { id: 'heater', name: 'Hall heater', class: 'heater', ownerUri: 'homey:app:com.example.heat',
-            driverId: 'homey:app:com.example.heat:pump', available: true, managed: deviceSnapshot().managed },
+            driverId: 'homey:app:com.example.heat:pump', available: true, managed: deviceSnapshot().managed,
+            configuration: { state: 'unavailable' } },
         ],
         leftOut: 0,
       });
@@ -819,6 +851,50 @@ describe('device support request evidence', () => {
       const list = values(report, 'Current Homey devices') as { devices: unknown[]; leftOut: number };
       expect(list.devices).toHaveLength(SUPPORT_REPORT_MAX_HOMEY_DEVICES);
       expect(list.leftOut).toBe(2);
+    });
+
+    it('captures daily configuration only for retained managed devices in this home, isolating failures', async () => {
+      const devices = Array.from({ length: SUPPORT_REPORT_MAX_HOMEY_DEVICES + 2 }, (_, index) => (
+        { ...managedHeater, id: `device-${index}` }
+      ));
+      const readConfiguration = vi.fn((id: string) => {
+        if (id === 'device-3') throw new Error('private settings error');
+        return deviceDiagnosticConfigurationFixture();
+      });
+      const host = pelsHostDouble({
+        homeMembership: { ...membership(), getHomeIdForDevice: (id: string) => id === 'device-1' ? 'cabin' : 'main' },
+        readDeviceDiagnosticConfiguration: readConfiguration,
+        deviceManager: partialDouble<NonNullable<PelsHost['deviceManager']>>({
+          getSnapshotByDeviceId: (id) => ({ ...deviceSnapshot(), id, managed: id !== 'device-2' }),
+          getDevicesForDebug: vi.fn(async () => devices),
+        }),
+      });
+      const report = await source(host).capture(appReport, now, 'daily');
+      const list = values(report, 'Current Homey devices') as { devices: Array<{ configuration?: unknown }>; leftOut: number };
+      expect(list.devices[0].configuration).toEqual({ state: 'available', configuration: deviceDiagnosticConfigurationFixture() });
+      expect(list.devices[1].configuration).toBeUndefined();
+      expect(list.devices[2].configuration).toBeUndefined();
+      expect(list.devices[3].configuration).toEqual({ state: 'unavailable' });
+      expect(readConfiguration).toHaveBeenCalledTimes(SUPPORT_REPORT_MAX_HOMEY_DEVICES - 2);
+      expect(readConfiguration).not.toHaveBeenCalledWith('device-500');
+      expect(list.leftOut).toBe(2);
+      expect(JSON.stringify(report)).not.toContain('private settings error');
+    });
+
+    it('does not expose another home configuration while ownership is pending', async () => {
+      const readConfiguration = vi.fn(deviceDiagnosticConfigurationFixture);
+      const host = pelsHostDouble({
+        homeMembership: { ...membership(), hasPendingOwnershipGeneration: () => true },
+        readDeviceDiagnosticConfiguration: readConfiguration,
+        deviceManager: partialDouble<NonNullable<PelsHost['deviceManager']>>({
+          getSnapshotByDeviceId: () => deviceSnapshot(), getDevicesForDebug: vi.fn(async () => [managedHeater]),
+        }),
+      });
+      const report = await source(host).capture(appReport, now, 'daily');
+      expect(values(report, 'Current Homey devices')).toMatchObject({
+        devices: [{ configuration: { state: 'unavailable' } }],
+      });
+      expect(readConfiguration).not.toHaveBeenCalled();
     });
 
     it('still captures the report when Homey cannot list its devices, and says so', async () => {

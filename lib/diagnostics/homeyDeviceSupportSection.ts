@@ -1,6 +1,7 @@
 import type { SupportReportSection, SupportReportValue } from '../../packages/contracts/src/supportReport';
 import { isUnknownRecord } from '../../packages/shared-domain/src/recordGuards';
 import type { HomeyDeviceLike } from '../utils/types';
+import type { DeviceDiagnosticConfigurationRead } from './deviceDiagnosticConfiguration';
 
 const readCapabilityIds = (device: HomeyDeviceLike): string[] => (
   Array.isArray(device.capabilities)
@@ -89,11 +90,13 @@ export const SUPPORT_REPORT_MAX_HOMEY_DEVICES = 500;
 export const reportHomeyDevices = (
   devices: readonly HomeyDeviceLike[],
   isManaged: (deviceId: string) => boolean | undefined,
+  readConfiguration: (deviceId: string) => DeviceDiagnosticConfigurationRead | undefined,
 ): SupportReportSection => ({
   title: 'Current Homey devices',
   values: {
     devices: devices.slice(0, SUPPORT_REPORT_MAX_HOMEY_DEVICES).map((device) => {
       const managed = isManaged(device.id);
+      const configuration = readConfiguration(device.id);
       return {
         id: device.id,
         name: toReportValue(device.name),
@@ -102,6 +105,7 @@ export const reportHomeyDevices = (
         driverId: device.driverId,
         available: device.available,
         ...(managed === undefined ? {} : { managed }),
+        ...(configuration === undefined ? {} : { configuration }),
       };
     }),
     leftOut: Math.max(0, devices.length - SUPPORT_REPORT_MAX_HOMEY_DEVICES),

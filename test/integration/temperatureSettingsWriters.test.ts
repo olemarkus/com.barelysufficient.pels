@@ -34,6 +34,7 @@ describe('editDeviceModeTarget', () => {
     targets: Record<string, Record<string, number>>,
   ): DeviceModeCatalogOutcome => ({
     state: 'resolved',
+    homeId: catalogHomeId,
     catalogHomeId,
     activeMode: 'Home',
     catalog: partialDouble<HomeModeCatalogSnapshot>({ targets, aliases: { holiday: 'Away' } }),
