@@ -3,9 +3,13 @@ import { getChosenWholeHomeMeterName } from './homeyEnergyMeter.ts';
 import { settingsPowerSourceSelect } from './dom.ts';
 import { h, render } from 'preact';
 import {
-  hasOpenSmartTask, resolveHomeHasSolar, resolveSolarSurplusPending, resolveSolarSurplusPendingNote, state,
+  hasOpenSmartTask, isHomeBatteryDeviceId, resolveHomeHasSolar, resolveSolarSurplusPending,
+  resolveSolarSurplusPendingNote, state,
 } from './state.ts';
-import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
+import { supportsTemperatureControlDevice, type SettingsUiDeviceListItem } from './deviceUtils.ts';
+import {
+  getPrimaryTargetCapability, normalizeTargetCapabilityValue,
+} from '../../../shared-domain/src/targetCapabilities.ts';
 import { showTab } from './tabNavigation.ts';
 import { refreshHomeScope, selectHomeScope, subscribeToHomeScope, getHomeScope } from './homeScope.ts';
 import { MAIN_HOME_ID } from '../../../shared-domain/src/settings/settingsKeys.ts';
@@ -170,9 +174,11 @@ const limitControlActs = (device: SettingsUiDeviceListItem): boolean => (
 // What PELS will do with the device once it manages it: each saved control
 // that has something to act on. Price-based control acts while PELS responds to
 // prices, as Power-limit control does while a limit is in force.
-const describeDeviceJobs = (device: SettingsUiDeviceListItem): string => {
+const describeDeviceJobs = (device: SettingsUiDeviceListItem): string | null => {
+  if (state.loadedModeHomeId !== MAIN_HOME_ID) return null;
   const solar = resolveSolarSetupAction(device);
   const jobs = [
+    supportsTemperatureControlDevice(device) ? 'Follows mode temperatures' : null,
     isSetupDeviceLimitable(device.id) && limitControlActs(device) ? 'Power-limit control on' : null,
     isSetupBatteryPlanOn(device.id) ? 'Plan charging with PELS on' : null,
     followsPrices(device) ? 'Price-based control on' : null,
@@ -185,12 +191,30 @@ const describeDeviceJobs = (device: SettingsUiDeviceListItem): string => {
 const readReviewDevices = (): SetupReviewDevice[] => {
   const managed = readMainHomeManagedDevices();
   if (managed.state !== 'ready') return [];
-  return managed.devices.map((device) => ({
+  const mode = state.loadedModeHomeId === MAIN_HOME_ID ? state.activeMode : null;
+  const order = mode === null ? null : state.modePriorityCatalog.getOrder(
+    mode, managed.devices.map(({ id }) => id), isHomeBatteryDeviceId,
+  );
+  return [...managed.devices]
+    .sort((a, b) => order === null ? 0 : order.getPriority(a.id) - order.getPriority(b.id))
+    .map((device) => ({
       id: device.id,
       name: formatDisplayDeviceName(device.name),
       control: describeDeviceJobs(device),
       status: statuses.get(device.id) ?? null,
+      configuration: [
+        ...(order === null ? [] : [`Priority ${order.getPriority(device.id)}`]),
+        ...readReviewTarget(device, mode),
+      ],
     }));
+};
+
+const readReviewTarget = (device: SettingsUiDeviceListItem, mode: string | null): string[] => {
+  if (mode === null || !supportsTemperatureControlDevice(device)) return [];
+  const saved = state.modeTargets[mode]?.[device.id];
+  if (saved === undefined) return [];
+  const target = normalizeTargetCapabilityValue({ target: getPrimaryTargetCapability(device.targets), value: saved });
+  return [`Mode target: ${target} °C`];
 };
 
 // Solar control on its way: the review and `Choose what PELS does` say so.
@@ -214,6 +238,7 @@ const paintReview = (): void => {
   render(h(SetupReview, {
     path,
     devices,
+    activeMode: state.loadedModeHomeId === MAIN_HOME_ID ? state.activeMode : null,
     meterSummary: meterSummary(),
     busy: actionBusy || setupSavePending(),
     error,
