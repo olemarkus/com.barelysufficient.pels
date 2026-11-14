@@ -35,6 +35,11 @@ describe('resolveCommandabilityDetail — one branch per veto source', () => {
       .toBe(BINARY_COMMAND_RETRY_REASON);
   });
 
+  it('says a refused start was refused, not unanswered', () => {
+    expect(resolveCommandabilityDetail({ commandabilityReason: 'binary_command_refused' }))
+      .toBe('device refused the command');
+  });
+
   it('falls back to generic unavailability when the reason is absent', () => {
     expect(resolveCommandabilityDetail({})).toBe(DEVICE_UNAVAILABLE_REASON);
   });

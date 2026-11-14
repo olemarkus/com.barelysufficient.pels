@@ -42,10 +42,48 @@ describe('binary command reachability', () => {
     expect(requestRebuild).toHaveBeenCalledOnce();
     expect(scheduleRebuild).toHaveBeenCalledWith('heater', 910_000);
     expect(reachability.project({ deviceId: 'heater', base: true, observedOn: false, available: true }))
-      .toEqual({ commandableNow: false, reason: 'binary_command_retry' });
+      .toEqual({ commandableNow: false, reason: 'binary_command_refused' });
     vi.setSystemTime(910_000);
     expect(reachability.project({ deviceId: 'heater', base: true, observedOn: false, available: true }))
       .toEqual({ commandableNow: true, reason: 'none' });
+    vi.useRealTimers();
+  });
+
+  it('tries a refused start again, and forgets the refusal once the device runs', () => {
+    // A charger that refuses a resume (its car has finished, say) may accept the
+    // next one, and one that starts by itself needs no retry at all.
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { reachability } = buildReachability();
+    const project = (observedOn = false) => reachability
+      .project({ deviceId: 'charger', base: true, observedOn, available: true });
+
+    reachability.lifecycle.onDispatchFailed?.({ deviceId: 'charger', desired: true });
+    expect(project()).toEqual({ commandableNow: false, reason: 'binary_command_refused' });
+    vi.setSystemTime(15 * 60_000);
+    expect(project()).toEqual({ commandableNow: true, reason: 'none' });
+
+    // Refused again: the wait grows, and the retry still comes.
+    reachability.lifecycle.onDispatchFailed?.({ deviceId: 'charger', desired: true });
+    vi.setSystemTime(44 * 60_000);
+    expect(project()).toEqual({ commandableNow: false, reason: 'binary_command_refused' });
+    vi.setSystemTime(45 * 60_000);
+    expect(project()).toEqual({ commandableNow: true, reason: 'none' });
+
+    reachability.lifecycle.onDispatchFailed?.({ deviceId: 'charger', desired: true });
+    expect(project(true)).toEqual({ commandableNow: true, reason: 'none' });
+    expect(project()).toEqual({ commandableNow: true, reason: 'none' });
+    vi.useRealTimers();
+  });
+
+  it('reads a start that got no answer after a refused one as unanswered', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { reachability } = buildReachability();
+    reachability.lifecycle.onDispatchFailed?.({ deviceId: 'charger', desired: true });
+    reachability.lifecycle.onTimedOut?.({ deviceId: 'charger', desired: true });
+    expect(reachability.project({ deviceId: 'charger', base: true, observedOn: false, available: true }))
+      .toEqual({ commandableNow: false, reason: 'binary_command_retry' });
     vi.useRealTimers();
   });
 

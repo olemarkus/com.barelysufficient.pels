@@ -34,6 +34,13 @@ each has its reason line (`EV_BLOCK_REASONS`). How a `start`, `resume` or
 `offer` is carried out is the integration's: an Easee under built-in control
 resumes and offers by current and starts by its switch.
 
+A state that admits a start or resume can still be refused: an app that gives a
+paused session and one the car ended the same value takes a resume only for the
+first. A refused start reads `device refused the command`, where one that got no
+answer reads `device did not respond`. Both wait out the same backoff (15, 30,
+then 60 minutes) and are tried again, and a charger that runs clears it
+(`lib/plan/admission/binaryCommandReachability.ts`).
+
 An integration maps what its app can tell apart, and no more:
 
 | Integration | App state | Session state |

@@ -118,7 +118,7 @@ export const resolvePlanInputDeviceFacts = (
 
   const physicallyCommandable = resolveCommandableNow(device);
   const commandability = resolvePlanCommandability(device, options, physicallyCommandable);
-  const commandabilityReason = commandability.reason === 'binary_command_retry'
+  const commandabilityReason = commandability.reason !== 'none'
     ? commandability.reason
     : resolvePlanCommandabilityReason(device);
   const objective = resolvePlanObjective(device);
