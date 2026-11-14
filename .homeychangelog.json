@@ -829,5 +829,8 @@
   },
   "3.35.2": {
     "en": "A temperature Smart task now heats toward its target while PELS is still learning the device's energy use, instead of waiting at Learning energy use until its deadline. When no car selected for a charger reports a plug-in, the charger's card asks you to confirm the connected car straight away, with a Confirm car link to the button in its Car section."
+  },
+  "3.35.3": {
+    "en": "EV charger cards now read Charging finished when the car has finished charging (Easee, Tesla, go-e). A Zaptec waiting to start its own session no longer gets start commands it refuses, and its card says the charger has not started the session. A device that refuses a command now reads \"device refused the command\". Marstek: the Bluetooth and cloud devices say PELS controls the battery through its local network device, and a local device with the battery's Local API off asks you to turn it on."
   }
 }
