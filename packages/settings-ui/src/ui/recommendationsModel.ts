@@ -451,9 +451,29 @@ export const resolveControlContestRecommendations = (
 export const resolveLevelReportRecommendations = (
   devices: readonly SettingsUiDeviceDetailItem[],
   nativeWiringEnabledByDeviceId: Readonly<Record<string, boolean>>,
-): SetupRecommendation[] => devices.flatMap((device) => {
+): SetupRecommendation[] => devices.flatMap((device): SetupRecommendation[] => {
   if (device.levelUnconfirmed !== true) return [];
   const name = formatDisplayDeviceName(device.name);
+  const recommendation = {
+    id: recommendationId('level-report', device.id),
+    version: RECOMMENDATION_VERSION,
+    category: 'recommendation',
+    title: `${name} does not report its level`,
+  } as const;
+  // A Flow holds built-in control back, so the levels go through that Flow.
+  // Built-in control reads the level from the device itself and needs no Flow
+  // to report it, so it is the way out rather than a report-back Flow.
+  const conflict = device.flowConflict;
+  if (conflict !== undefined && conflict.conflictingCapabilities.length > 0) {
+    return [{
+      ...recommendation,
+      body: 'PELS changes its level through your Flow, but no level has come back, so PELS keeps asking. '
+        + 'PELS can control this device directly and read its level without a Flow. '
+        + `To use built-in device control, ${flowConflictHandoffStep(conflict.flowName)}.`,
+      actionLabel: 'Check again',
+      target: { kind: 'flow-conflict-check', deviceId: device.id },
+    }];
+  }
   const body = isBuiltInControlChosen(device, nativeWiringEnabledByDeviceId)
     ? 'PELS sets its level directly, but the device has not reported a new level. '
       + 'Check that the device is online and accepts level changes.'
@@ -461,10 +481,7 @@ export const resolveLevelReportRecommendations = (
       + 'Add the Report stepped load card to a Flow that runs when the device changes. '
       + 'If the device has no levels of its own, choose another way to control it on its device page.';
   return [{
-    id: recommendationId('level-report', device.id),
-    version: RECOMMENDATION_VERSION,
-    category: 'recommendation',
-    title: `${name} does not report its level`,
+    ...recommendation,
     body,
     actionLabel: 'Open device',
     target: { kind: 'device', deviceId: device.id },

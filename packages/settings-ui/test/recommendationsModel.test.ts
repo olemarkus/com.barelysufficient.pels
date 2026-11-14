@@ -737,4 +737,21 @@ describe('level report recommendations', () => {
     expect(recommendations[0]?.body).toContain('Report stepped load');
     expect(recommendations[0]?.body).not.toContain('—');
   });
+
+  it('points a device whose built-in control a Flow holds back at built-in control', () => {
+    const charger = device({
+      id: 'charger', name: 'Carport charger', levelUnconfirmed: true,
+      flowConflict: { conflictingCapabilities: ['setDynamicChargerCurrent'], flowName: 'Charge current' },
+    } as Partial<SettingsUiDeviceSnapshot>);
+    const [recommendation] = resolveSetupRecommendations([charger], [], {}, { charger: true })
+      .filter(({ id }) => id.startsWith('level-report:'));
+    expect(recommendation).toEqual(expect.objectContaining({
+      id: 'level-report:charger',
+      actionLabel: 'Check again',
+      target: { kind: 'flow-conflict-check', deviceId: 'charger' },
+    }));
+    expect(recommendation?.body).toContain('disable the Flow “Charge current”');
+    expect(recommendation?.body).not.toContain('Report stepped load');
+    expect(recommendation?.body).not.toContain('PELS sets its level directly');
+  });
 });

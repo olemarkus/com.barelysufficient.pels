@@ -233,6 +233,7 @@ describe('class-resolved identity through the plan build', () => {
       nowMs: FIXTURE_NOW_MS,
       observed: noPlanServiceObservedReads,
       getDeviceControlAdapter: () => undefined,
+      isBuiltInControlHeldByFlow: () => false,
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
     });
 

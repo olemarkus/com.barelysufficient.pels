@@ -45,6 +45,8 @@ import type { DevicePlanDevice } from './planTypes';
 export type DeviceStatusInput = DeviceOverviewSnapshot & {
   /** The adapter's live presentation, independently of its plan-time configuration. */
   adapterUnavailableStatus: AdapterUnavailableStatus | undefined;
+  /** A Flow writes the setting built-in control would write, so built-in control waits for it to go. */
+  builtInControlHeldByFlow: boolean;
   carIdentificationState: CarIdentificationState;
   execution: DeviceExecutionState;
   starvation?: SettingsUiPlanDeviceStarvation;
@@ -106,12 +108,15 @@ function resolveBinaryReason(
 
 // A step command nothing answers leaves the device where it is however often
 // PELS asks, and the card would otherwise keep saying it is moving. The line
-// names what carries the level back: the owner's Flow, or the device itself
-// under built-in control. Simulation sends no commands, so it has none to say.
+// names what carries the level back: the device itself under built-in control,
+// else the owner's Flow. A device whose built-in control a Flow holds back is
+// pointed at built-in control instead, which needs no Flow to report back.
+// Simulation sends no commands, so it has none to say.
 function resolveUnansweredStepLine(device: DeviceStatusInput, dryRun: boolean): string | null {
   if (dryRun || !device.execution.stepCommandUnanswered) return null;
-  return isBuiltInSteppedLoadControlEnabled(device)
-    ? 'Level change not confirmed by the device'
+  if (isBuiltInSteppedLoadControlEnabled(device)) return 'Level change not confirmed by the device';
+  return device.builtInControlHeldByFlow
+    ? 'Level change not confirmed — disable your Flow to use built-in control'
     : 'Level change not confirmed — check the Flow that reports the level back';
 }
 

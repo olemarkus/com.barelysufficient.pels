@@ -188,6 +188,7 @@ const createGatedPlanService = async (
     ...planServiceWiring(),
     hasStandingCommandGrant: () => false,
     getDeviceControlAdapter: () => undefined,
+    isBuiltInControlHeldByFlow: () => false,
     getHomeBatteryCard: () => ({ kind: 'none' } as const),
     planBuildGate: openPlanBuildGate(),
     homeId: 'main',

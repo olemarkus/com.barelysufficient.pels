@@ -396,7 +396,13 @@ executor's `stepCommandUnanswered`):
 | Device | Line |
 |---|---|
 | Levels set through the owner's Flow | `Level change not confirmed — check the Flow that reports the level back` |
+| Levels set through the owner's Flow because that Flow holds built-in control back | `Level change not confirmed — disable your Flow to use built-in control` |
 | Levels set by built-in control | `Level change not confirmed by the device` |
+
+A device whose built-in control a Flow holds back (`flowConflict`, see
+`notes/native-wiring/README.md` § "The conflict rule") is pointed at built-in
+control rather than at a report-back Flow: built-in control reads the level from
+the device itself, so it needs no Flow to carry it back.
 
 Without it the card kept saying `Increasing to 16 A`, or a retry countdown, for
 as long as PELS kept asking: the Flow that never reports back read as PELS
@@ -411,8 +417,11 @@ report its level` (source: `resolveLevelReportRecommendations` in
 `levelUnconfirmed`), because the card line reaches only an owner who opens the
 device. Under a Flow it names the card to add, **Report stepped load**, and the
 way out for a device with no levels of its own: another way to control it on its
-device page. Under built-in control it asks the owner to check that the device is
-online and accepts level changes. It leaves once a level comes back.
+device page. When a Flow holds built-in control back it instead says PELS can
+control the device directly and read its level without a Flow, gives the same
+handoff step as the conflict notice, and offers **Check again**. Under built-in
+control it asks the owner to check that the device is online and accepts level
+changes. It leaves once a level comes back.
 
 ### Device cards say what a device needs; the hero says what limits the house
 

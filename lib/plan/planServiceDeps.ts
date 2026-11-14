@@ -111,6 +111,12 @@ export type PlanServiceDeps = {
   getHomeBatteryCard: (deviceId: string) => HomeBatteryCardRead;
   /** Live adapter-owned presentation; the plan's copy may predate a device event. */
   getDeviceControlAdapter: (deviceId: string) => DeviceControlAdapterSnapshot | undefined;
+  /**
+   * Whether a Homey Flow holds this device's built-in control back: the device
+   * supports built-in control and a Flow writes the same setting
+   * (`lib/device/builtInControlFlowGate.ts`). Presentation only.
+   */
+  isBuiltInControlHeldByFlow: (deviceId: string) => boolean;
   // Producer `deviceType` map for the settings-UI control-mode card selection
   // (the planner no longer carries `controlModel`). Built once per serialize from
   /** Confirmed producer profile for UI; excludes any planner-only probe rung. */

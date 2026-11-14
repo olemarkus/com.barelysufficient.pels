@@ -5,7 +5,7 @@ const runningPowerHold = (overrides: Partial<DeviceStatusInput> = {}): DeviceSta
   currentState: 'on', plannedState: 'shed', binaryControllable: true, isEvCharger: false,
   currentDrawKw: 1.2, expectedPowerKw: 1.5, controllable: true, available: true,
   reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 2.3 },
-  priceTargetShift: { kind: 'none' }, adapterUnavailableStatus: undefined,
+  priceTargetShift: { kind: 'none' }, adapterUnavailableStatus: undefined, builtInControlHeldByFlow: false,
   carIdentificationState: 'not_waiting',
   execution: {
     available: true, physicalState: 'on', observedStepId: null,

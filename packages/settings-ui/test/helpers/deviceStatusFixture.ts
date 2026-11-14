@@ -32,6 +32,7 @@ export function uiDeviceFixture(raw: Record<string, unknown> | CardFixture = {},
     ...device, reason, controllable: device.controllable ?? true, available,
     carIdentificationState: device.carIdentificationState ?? 'not_waiting',
     adapterUnavailableStatus: undefined,
+    builtInControlHeldByFlow: false,
     binaryControllable: device.binaryControllable ?? false, isEvCharger,
     expectedPowerKw: device.expectedPowerKw ?? 0,
     // No card scenario here moves a target for price.
