@@ -9,7 +9,16 @@ export type TaskEvaluation = {
   requestedTarget: number;
   progress: { kind: 'unobserved' } | { kind: 'known'; value: number; direction: ObjectiveProgressDirection };
   completion: TaskCompletion | { kind: 'inactive' };
-  planning: { kind: 'inactive' } | { kind: 'allocated'; plan: DeferredObjectiveHorizonPlan };
+  /**
+   * `learning`: a temperature task whose device has no learned energy per degree
+   * yet. Nothing can be allocated, so the task heats toward its target on free
+   * capacity, which is also what produces the readings the rate is learned from.
+   * Once the rate is known the task is allocated as usual.
+   */
+  planning:
+    | { kind: 'inactive' }
+    | { kind: 'learning' }
+    | { kind: 'allocated'; plan: DeferredObjectiveHorizonPlan };
   permissions: { budgetExempt: boolean; limitLowerPriority: boolean; pauseLowerPriority: boolean };
   targetControl: { kind: 'none' } | { kind: 'temperature'; value: number };
 };

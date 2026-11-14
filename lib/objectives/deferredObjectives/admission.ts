@@ -69,6 +69,19 @@ const resolveDecision = (
   device: PlanInputDevice | undefined,
 ): DeferredAdmissionDecision => {
   if (evaluation.planning.kind === 'inactive') return { kind: 'inactive', budgetExempt: false };
+  if (evaluation.planning.kind === 'learning') {
+    // Runs toward the task's target like an hour booked at 0 kWh: no plan backs a
+    // promise, so it claims no exemption, boost or startup reservation and runs
+    // only on capacity that is actually free.
+    return {
+      kind: 'planned',
+      budgetExempt: false,
+      engageBoost: false,
+      reservesStartupPower: false,
+      ...resolveTaskTargetFloor(evaluation),
+      ...(usesBinaryReleaseControl(device) ? { releaseIntent: 'binary_restore' as const } : {}),
+    };
+  }
   const horizonPlan = evaluation.planning.plan;
   const releasesViaBinary = usesBinaryReleaseControl(device);
   const floor = resolveTaskTargetFloor(evaluation);

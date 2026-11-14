@@ -21,7 +21,7 @@ const PLANNED_EPSILON_KWH = 0.001;
 export const buildHoursFromHorizonPlan = (
   evaluation: TaskEvaluation,
 ): DeferredObjectivePlanInterval[] | null => {
-  if (evaluation.planning.kind === 'inactive') return null;
+  if (evaluation.planning.kind !== 'allocated') return null;
   const booked: Array<{ sourceBucketId: string; interval: DeferredObjectivePlanInterval }> = [];
   const candidates = evaluation.planning.plan.plannedBuckets.filter((bucket) => bucket.booked).map((bucket) => ({
     sourceBucketId: bucket.sourceBucketId,

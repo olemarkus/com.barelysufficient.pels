@@ -2886,7 +2886,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(buildDeferredObjectiveDebugPayload(withRescue).rescueExemptMode).toBe('always');
   });
 
-  it('still reports missing_capacity for temperature objectives without a learned profile (bootstrap is EV-only)', () => {
+  it('heats toward the target while a temperature task has no learned profile (bootstrap is EV-only)', () => {
     const heaterDevice = buildTemperatureDevice({ currentTemperature: 40 });
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
@@ -2911,6 +2911,71 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       reasonCode: 'objective_missing_capacity',
       kwhPerUnitSource: null,
     });
+    // Holding the device at its mode target would keep it from ever running, and
+    // so from ever learning the rate. The task heats toward its own target on
+    // free capacity, claiming nothing a plan would have to back.
+    expect(diagnostic.evaluation.planning).toEqual({ kind: 'learning' });
+    expect(applyDeferredObjectiveAdmission([diagnostic.evaluation]).get('heater-1')).toEqual({
+      kind: 'planned',
+      budgetExempt: false,
+      engageBoost: false,
+      reservesStartupPower: false,
+      deadlineFloorTargetC: 55,
+    });
+  });
+
+  it('starts no learning run for a committed temperature task whose rate is gone', () => {
+    // The rate's samples age out of their buffer; the task still holds settled
+    // bookings. A learning run would heat through an interval the task released.
+    const heaterDevice = buildTemperatureDevice({ currentTemperature: 40 });
+    const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
+    const objective = {
+      enabled: true, kind: 'temperature' as const, enforcement: 'soft' as const, targetTemperatureC: 55, deadlineAtMs,
+    };
+    const committedHours = [
+      { startsAtMs: NOW_MS + 2 * HOUR_MS, endsAtMs: NOW_MS + 3 * HOUR_MS, plannedKWh: 1, plannedAdmissionPowerKw: 1 },
+    ];
+    const latest = {
+      revision: 1,
+      revisedAtMs: NOW_MS - HOUR_MS,
+      computedFromPricesUpTo: deadlineAtMs,
+      reason: 'flow_card' as const,
+      hours: committedHours,
+      energyNeededKWh: 1,
+      planStatus: 'on_track' as const,
+    };
+    const activePlans: DeferredObjectiveActivePlansV2 = {
+      version: 2,
+      plansByDeviceId: {
+        'heater-1': {
+          liveCompletion: { kind: 'unavailable' as const },
+          deviceId: 'heater-1',
+          deviceName: heaterDevice.name,
+          objectiveKind: 'temperature',
+          targetValue: 55,
+          deadlineAtMs,
+          startedAtMs: NOW_MS - HOUR_MS,
+          pending: false,
+          objectiveSignature: buildObjectiveSignature({
+            objectiveKind: 'temperature', targetValue: 55, deadlineAtMs, enforcement: 'soft',
+            progressDirection: 'increasing',
+          }),
+          commitment: { committedAtMs: NOW_MS - HOUR_MS, hours: committedHours },
+          original: latest,
+          latest,
+        },
+      },
+    };
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      devices: [heaterDevice],
+      settings: { objectivesByDeviceId: { 'heater-1': objective } },
+      powerTracker: {},
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      activePlans,
+    });
+
+    expect(diagnostic.reasonCode).toBe('objective_missing_capacity');
+    expect(diagnostic.evaluation.planning).toEqual({ kind: 'inactive' });
   });
 
   it('plans a thermostat-class thermal device without stepped controls via measuredPowerKw fallback', () => {

@@ -38,6 +38,23 @@ export const buildUnallocatedTaskEvaluation = (
   };
 };
 
+/**
+ * A temperature task that cannot be allocated only because its device's energy
+ * per degree is still unknown. Holding the device at its mode target would keep
+ * it from ever running, and so from ever learning the rate; the task heats
+ * toward its own target instead until the rate is known.
+ */
+export const buildLearningTaskEvaluation = (
+  deviceId: string,
+  objective: DeferredObjectiveSettingsEntry,
+  progress: KnownProgress,
+): TaskEvaluation => {
+  const unallocated = buildUnallocatedTaskEvaluation(deviceId, objective, progress);
+  return unallocated.targetControl.kind === 'temperature'
+    ? { ...unallocated, planning: { kind: 'learning' } }
+    : unallocated;
+};
+
 /** The allocation and owner inputs produce all operational facts together. */
 export const buildAllocatedTaskEvaluation = (
   deviceId: string,

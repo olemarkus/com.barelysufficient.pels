@@ -1162,6 +1162,16 @@ both with the exact rate, see "Energy objectives"):
 3. Otherwise → `objective_missing_capacity` (thermal) or `objective_missing_charge_rate` (no
    step profile) status `unknown`; no optimistic planning.
 
+A temperature task at `objective_missing_capacity` is not left idle. Its evaluation carries
+`planning: { kind: 'learning' }`, and admission runs the device toward the task's target like an
+interval booked at 0 kWh: the task's setpoint is the floor, and it claims no budget exemption,
+boost or startup reservation, so it runs only on free capacity. Holding the device at its mode
+target would keep a room whose every mode sits below its temperature from ever heating, and so
+from ever producing the samples its rate is learned from. Once a rate is learned, the next cycle
+allocates the task as usual. A task that already holds a commitment never starts a learning run:
+if its rate samples age out mid-task, a learning run would heat through an interval the task
+released.
+
 For stepped loads, per-step useful kW comes from `resolveStepDeliveryUsefulKw`
 (`lib/objectives/deferredObjectives/objectiveStepPower.ts`), which prefers measured calibration
 (`lib/device/devicePowerCalibration.ts`) over nameplate planning power. That governs how the
