@@ -637,10 +637,10 @@ test.each(['capability', 'device_update', 'device_fetch'] as const)(
         .toEqual({ kind: 'idle', factText: 'Unplugged', reasonText: null });
 
       for (const [state, status] of [
-        ['Complete', { kind: 'idle', factText: 'Not charging', reasonText: null }],
-        ['NoPower', { kind: 'unavailable', factText: null, reasonText: 'The charger is not supplying power' }],
-        ['Unknown', { kind: 'unavailable', factText: null, reasonText: null }],
-        ['Calibrating', { kind: 'unavailable', factText: null, reasonText: null }],
+        ['Complete', { kind: 'idle', factText: 'Not charging', reasonText: 'The car finished charging' }],
+        ['NoPower', { kind: 'idle', factText: null, reasonText: 'The charger is not supplying power' }],
+        ['Unknown', { kind: 'idle', factText: null, reasonText: 'The car has not reported its charging state' }],
+        ['Calibrating', { kind: 'idle', factText: null, reasonText: 'The car has not reported its charging state' }],
         ['Disconnected', { kind: 'idle', factText: 'Unplugged', reasonText: null }],
         ['Charging', undefined],
       ] as const) {
@@ -681,7 +681,9 @@ test.each(['Disconnected', 'Complete'])(
       expect(transport.getSnapshotByDeviceId('battery')?.controlAdapter?.unavailableStatus?.kind).toBe('idle');
       emitDeviceUpdate({ ...initial[0]!, available: false });
       expect(transport.getSnapshotByDeviceId('battery')).toMatchObject({ available: false,
-        controlAdapter: { unavailableStatus: { kind: 'unavailable', factText: null, reasonText: null } },
+        controlAdapter: { unavailableStatus: {
+          kind: 'unavailable', factText: null, reasonText: 'Homey reports this device unavailable',
+        } },
       });
       const owner = session();
       owner.observeDevices(initial);
@@ -930,7 +932,73 @@ describe('a car whose charging control is turned off', () => {
     const initial = devices();
     initial[0] = { ...initial[0]!, available: false };
     const owner = session(); owner.observeDevices(initial);
-    expect(owner.project(snapshot(), off).controlAdapter?.unavailableStatus)
-      .toEqual({ kind: 'unavailable', factText: null, reasonText: null });
+    expect(owner.project(snapshot(), off).controlAdapter?.unavailableStatus).toEqual({
+      kind: 'unavailable', factText: null, reasonText: 'Homey reports this device unavailable',
+    });
+  });
+});
+
+describe('a car Homey reports that PELS cannot place at home', () => {
+  // Field report (v3.35.0): a car that paused and then fell asleep read
+  // `Unavailable` while its Homey device stayed available. Unavailable is for
+  // Homey's own unavailability; the card says what PELS waits for instead.
+  const snapshot = () => ({
+    id: 'battery', name: 'Car battery', available: true, measuredPowerKw: 0,
+    controlAdapter: { kind: 'capability_adapter', activationRequired: false, activationEnabled: false },
+  }) as unknown as import('../../lib/device/transportDeviceSnapshot').TransportDeviceSnapshot;
+  const vehicle = { method: 'flow', confirmation: 'vehicle' } as const;
+  type Patch = { device: 0 | 1 | 2; capabilitiesObj?: Record<string, ReturnType<typeof cap>>; available?: false };
+  const statusWith = (patch: Patch) => {
+    const initial = devices().map((device, index) => {
+      const base = index === 0 ? { ...device, capabilitiesObj: {
+        ...device.capabilitiesObj, charging_state: cap('Stopped'), charging_on: cap(false),
+      } } : device;
+      if (index !== patch.device) return base;
+      return { ...base, ...(patch.available === false ? { available: false } : {}),
+        capabilitiesObj: { ...base.capabilitiesObj, ...patch.capabilitiesObj } };
+    });
+    const owner = session(); owner.observeDevices(initial);
+    return owner.project(snapshot(), vehicle).controlAdapter?.unavailableStatus;
+  };
+
+  it('says an asleep car is asleep or offline', () => {
+    expect(statusWith({ device: 2, capabilitiesObj: { car_state: cap('asleep') } })).toEqual({
+      kind: 'idle', factText: 'Paused', reasonText: 'The car is asleep or offline',
+    });
+  });
+
+  it('says a car away from home is not at home', () => {
+    expect(statusWith({ device: 1, capabilitiesObj: { measure_location_latitude: cap(61) } })).toEqual({
+      kind: 'manual', factText: null, reasonText: 'The car is not at home',
+    });
+  });
+
+  it('says a moving car is driving', () => {
+    expect(statusWith({ device: 2, capabilitiesObj: { measure_car_drive_speed: cap(30) } })).toEqual({
+      kind: 'idle', factText: 'Paused', reasonText: 'The car is driving',
+    });
+  });
+
+  it('names a missing home location', () => {
+    const owner = new TeslaChargingSession({ coordinates: () => undefined });
+    const initial = devices();
+    initial[0]!.capabilitiesObj.charging_state = cap('Stopped');
+    owner.observeDevices(initial);
+    expect(owner.project(snapshot(), vehicle).controlAdapter?.unavailableStatus).toEqual({
+      kind: 'manual', factText: null,
+      reasonText: 'Set your Homey’s location so PELS can tell when the car is home',
+    });
+  });
+
+  it('reads Idle with its plug state when it is not on an AC cable', () => {
+    expect(statusWith({ device: 0, capabilitiesObj: { charging_port_cable: cap('<invalid>') } })).toEqual({
+      kind: 'idle', factText: 'Paused', reasonText: 'No AC charging cable is connected',
+    });
+  });
+
+  it('still reads Unavailable when Homey reports the battery unavailable', () => {
+    expect(statusWith({ device: 0, available: false })).toEqual({
+      kind: 'unavailable', factText: null, reasonText: 'Homey reports this device unavailable',
+    });
   });
 });

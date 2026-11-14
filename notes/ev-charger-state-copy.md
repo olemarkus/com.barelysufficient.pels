@@ -59,11 +59,38 @@ simulation uses the same factual state. It does not grant charging permission.
 The known battery level may accompany the fact, without a retained level rail
 or expected charging power.
 
-`NoPower` reads **Unavailable** with `The charger is not supplying power`.
-The card suppresses the retained plug fact: a previous `Disconnected` does not
-describe that new state. Other rejected sessions remain **Unavailable** and
-also suppress an old plug fact. Homey's physical unavailability or a cleared
-session record never earns an idle presentation. No sleep state is inferred.
+A Tesla PELS does not control always says why (owner, 2026-11-14).
+**Unavailable is Homey's word, not PELS's**: only a battery device Homey reports
+unavailable (`Homey reports this device unavailable`), or one with no accepted
+reading since a trust gap (`Waiting for Homey to report this device`), reads
+**Unavailable**. Otherwise:
+
+| Session | State | Reason line |
+|---|---|---|
+| `Disconnected` | **Idle** · `Unplugged` | none: the fact says it |
+| `Complete` | **Idle** · `Not charging` | `The car finished charging` |
+| `NoPower` | **Idle** | `The charger is not supplying power` |
+| Control charging through this car is off | **Manual** | `Turn on “Control charging through this car” to let PELS control charging` |
+| Unresolved charging state | **Idle** | `The car has not reported its charging state` |
+| No AC cable | **Idle** · plug state | `No AC charging cable is connected` |
+| DC charging | **Manual** | `The car is on a DC charger` |
+| Car asleep or offline | **Idle** · plug state | `The car is asleep or offline` |
+| Car driving / not in Park | **Idle** · plug state | `The car is driving` / `The car is not in Park` |
+| Coordinates away from home | **Manual** | `The car is not at home` |
+| Homey's location not set | **Manual** | `Set your Homey’s location so PELS can tell when the car is home` |
+
+**Idle** means the car is not charging; **Manual** means it may be charging
+where PELS cannot control it. Pairing gaps read **Manual** and name the device
+involved: `Add this car’s Car device from the
+Tesla app`, `More than one Car device matches this car`, `More than one Location
+device matches this car`, `Homey reports the car’s Car device unavailable`,
+`Homey reports the car’s Location device unavailable`, `The car has not
+reported its location`, `The car’s location has no time` and `The car’s
+location has a time in the future`. Before Homey's first full device list,
+`Waiting for Homey to list the car’s devices`. Source:
+`NOT_HOME_REASONS` in `lib/device/tesla/session.ts`. None of these grant charging
+permission; the known battery level may accompany the fact, without a retained
+level rail or expected charging power.
 
 ### Charger and associated-car observations
 
