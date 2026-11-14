@@ -127,6 +127,7 @@ const resolvePlantTarget = (devices: readonly HomeyDeviceLike[]): HomeBatteryTar
 
 const SIGENERGY_BINDING: HomeBatteryActionBinding = {
   kind: 'app_actions',
+  noReadingsCause: 'no_readings',
   appUri: `homey:app:${SIGENERGY_APP_ID}`,
   commandLifetime: () => ({ kind: 'persistent' }),
   resolve: resolveSigenergy,

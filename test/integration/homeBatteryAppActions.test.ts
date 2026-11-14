@@ -13,7 +13,7 @@ import { PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX } from '../../lib/utils/settingsKey
 
 import { createTestDeviceTransport, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import {
-  buildHuaweiLuna2000Device, buildMarstekConnectorBatteryDevice, buildSigenergyDevices, buildSolaxDevices,
+  buildHuaweiLuna2000Device, buildMarstekBluetoothBatteryDevice, buildMarstekConnectorBatteryDevice, buildSigenergyDevices, buildSolaxDevices,
   buildZendureLocalBatteryDevice,
 } from '../helpers/homeBatteryMock';
 import { mockHomeyInstance, MockDriver, setMockDrivers, type MockDevice } from '../mocks/homey';
@@ -201,7 +201,7 @@ describe('home battery app actions', () => {
       [buildMarstekConnectorBatteryDevice({ id: 'venus' })], [`${MARSTEK_APP}:marstek_passive_mode`],
     );
 
-    expect(transport.readBatteryControl('venus')).toEqual({ kind: 'observe_only' });
+    expect(transport.readBatteryControl('venus')).toEqual({ kind: 'observe_only', cause: 'other' });
     await expect(transport.requestStoragePower({ kind: 'storage_power', control: MARSTEK_CONTROL, deviceId: 'venus', setpointW: 500 }))
       .rejects.toThrow('unavailable');
     await expect(transport.releaseStorageControl({ kind: 'storage_release', deviceId: 'venus', handBack: 'app_actions', target: MARSTEK_CONTROL.target }))
@@ -284,8 +284,15 @@ describe('home battery app actions', () => {
       }),
     });
 
-    expect(transport.readBatteryControl('venus')).toEqual({ kind: 'unobserved', cause: 'no_readings' });
+    expect(transport.readBatteryControl('venus')).toEqual({ kind: 'unobserved', cause: 'local_api_off' });
     expect(unavailableWarnings()).toEqual([]);
+    expect(runs()).toEqual([]);
+  });
+
+  it('only watches a Marstek on its Bluetooth driver, saying the local driver is the one PELS controls', async () => {
+    const { transport, runs } = await setup([buildMarstekBluetoothBatteryDevice({ id: 'ble' })], MARSTEK_CARDS);
+
+    expect(transport.readBatteryControl('ble')).toEqual({ kind: 'observe_only', cause: 'controlled_through_local_device' });
     expect(runs()).toEqual([]);
   });
 
@@ -296,14 +303,14 @@ describe('home battery app actions', () => {
       const battery = buildMarstekConnectorBatteryDevice({ id: 'venus' });
       const { transport, runs } = await setup([battery], [`${MARSTEK_APP}:marstek_passive_mode`], { logger });
 
-      expect(transport.readBatteryControl('venus')).toEqual({ kind: 'observe_only' });
+      expect(transport.readBatteryControl('venus')).toEqual({ kind: 'observe_only', cause: 'other' });
       expect(unavailableWarnings()).toEqual([]);
 
       vi.setSystemTime(Date.now() + CARD_INVENTORY_RETRY_MS);
       transport.batteryAppActions.observeDevices([battery.toHomeyApiDevice() as HomeyDeviceLike], Date.now());
       await transport.batteryAppActions.refreshCards();
-      expect(transport.readBatteryControl('venus')).toEqual({ kind: 'observe_only' });
-      expect(transport.readBatteryControl('venus')).toEqual({ kind: 'observe_only' });
+      expect(transport.readBatteryControl('venus')).toEqual({ kind: 'observe_only', cause: 'other' });
+      expect(transport.readBatteryControl('venus')).toEqual({ kind: 'observe_only', cause: 'other' });
       expect(unavailableWarnings()).toEqual([
         expect.objectContaining({ reasonCode: 'action_card_missing:marstek_auto_mode' }),
       ]);
@@ -628,7 +635,7 @@ describe('home battery app actions', () => {
     vi.restoreAllMocks();
 
     const noStop = await setup([buildHuaweiLuna2000Device({ id: 'luna' })], HUAWEI_CARDS.slice(0, 2));
-    expect(noStop.transport.readBatteryControl('luna')).toEqual({ kind: 'observe_only' });
+    expect(noStop.transport.readBatteryControl('luna')).toEqual({ kind: 'observe_only', cause: 'other' });
     await expect(noStop.transport.requestStoragePower({ kind: 'storage_power', control: HUAWEI_CONTROL, deviceId: 'luna', setpointW: 500 }))
       .rejects.toThrow('unavailable');
     expect(noStop.runs()).toEqual([]);

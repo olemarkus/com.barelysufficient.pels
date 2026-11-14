@@ -66,10 +66,9 @@ export const CARD_INVENTORY_RETRY_MS = 60_000;
  * its actions yet, so a hand-back owed waits rather than failing), then
  * `observe_only`, `homey_api_key_missing`, `hand_back_only` or `app_actions`.
  */
-export type AppActionBatteryControl = Extract<BatteryControlRead,
-  | { kind: 'unobserved'; cause: BatteryUnobservedCause } | { kind: 'observe_only' } | { kind: 'homey_api_key_missing' }
-  | { kind: 'hand_back_only' } | { kind: 'app_actions' }
->;
+export type AppActionBatteryControl = Extract<BatteryControlRead, {
+  kind: 'unobserved' | 'observe_only' | 'homey_api_key_missing' | 'hand_back_only' | 'app_actions';
+}>;
 
 type CardInventory =
   | { kind: 'unread'; retryAtMs: number }
@@ -189,7 +188,7 @@ export class HomeBatteryAppActions {
     if (resolution.kind === 'unobserved') return resolution;
     if (resolution.kind === 'unavailable') {
       this.noteUnavailable(deviceId, resolution.reasonCode);
-      return { kind: 'observe_only' };
+      return { kind: 'observe_only', cause: 'other' };
     }
     const { binding, commands } = resolution.resolved;
     if (commands.kind === 'ready') this.unavailable.delete(deviceId);
@@ -324,7 +323,7 @@ export class HomeBatteryAppActions {
     // registered yet, so nothing about them is known.
     if (!isReporting(device)) {
       this.cardMissSinceMs.delete(deviceId);
-      return { kind: 'unobserved', cause: reportsNoReadings(device) ? 'no_readings' : 'unknown' };
+      return { kind: 'unobserved', cause: reportsNoReadings(device) ? binding.noReadingsCause : 'unknown' };
     }
     if (this.inventory.kind !== 'read') return { kind: 'unobserved', cause: 'unknown' };
     const devices = this.getDevices();

@@ -1028,7 +1028,8 @@ export type HomeBatteryObserveOnlyReason =
     | 'target_power_not_setable'
     | 'not_signed_range'
     | 'no_claim_capability'
-    | 'claim_value_missing';
+    | 'claim_value_missing'
+    | 'controlled_through_local_device';
 
 /**
  * How PELS could drive a home battery, resolved once at parse from its declared
@@ -1121,7 +1122,8 @@ export type HomeBatteryControlSurface =
  * priority order that protects anything.
  */
 export type HomeBatteryControlCapability =
-  'drivable' | 'watch_only' | 'observe_only' | 'not_reporting' | 'needs_homey_api_key';
+  | 'drivable' | 'watch_only' | 'observe_only' | 'not_reporting' | 'needs_local_api'
+  | 'controlled_through_local_device' | 'needs_homey_api_key';
 
 /**
  * Home-battery descriptor cluster. Present exactly on a device whose class key

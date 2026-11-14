@@ -1,6 +1,7 @@
 import type { DeviceDescriptor } from '../../../contracts/src/types.ts';
 import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';
+import { resolveBatteryUndrivableLine } from '../../../shared-domain/src/batteryControlCopy.ts';
 
 /**
  * The device-list carrier the Overview joins on. The shared list item already
@@ -38,6 +39,19 @@ export type OverviewDeviceRowsRead =
  */
 const isOverviewMember = (device: SettingsUiOverviewDevice): boolean => device.managed;
 
+/**
+ * A battery whose app reports no readings has nothing the plan can decide on,
+ * so it never gets a plan row. Its card says why, as its device page does,
+ * rather than waiting for an update that does not come.
+ */
+const resolveUndecidedText = (device: SettingsUiOverviewDevice): string => {
+  if (device.available === false) return 'Unavailable in Homey.';
+  if (device.batteryControl === 'not_reporting' || device.batteryControl === 'needs_local_api') {
+    return `${resolveBatteryUndrivableLine(device.batteryControl)}.`;
+  }
+  return 'Waiting for an update.';
+};
+
 const byPriority = (a: SettingsUiOverviewDevice, b: SettingsUiOverviewDevice): number => (
   (a.priority ?? 999) - (b.priority ?? 999)
 );
@@ -69,7 +83,7 @@ export const buildOverviewDeviceRows = (params: {
       return {
         kind: 'undecided',
         device,
-        statusText: device.available === false ? 'Unavailable in Homey.' : 'Waiting for an update.',
+        statusText: resolveUndecidedText(device),
       };
     });
 };

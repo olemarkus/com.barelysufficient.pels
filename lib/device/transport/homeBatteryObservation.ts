@@ -168,7 +168,13 @@ export const toBatteryControlRead = (
     if (!isHomeBatterySnapshot(snapshot)) return { kind: 'not_battery' };
     const surface = snapshot.homeBattery.controlSurface;
     if (surface.kind === 'app_actions') return readAppActions(snapshot.id);
-    if (surface.kind !== 'setpoint') return { kind: 'observe_only' };
+    if (surface.kind !== 'setpoint') {
+        return {
+            kind: 'observe_only',
+            cause: surface.kind === 'observe_only' && surface.reason === 'controlled_through_local_device'
+                ? 'controlled_through_local_device' : 'other',
+        };
+    }
     // No claim cluster is a battery that has reported no claim value yet.
     const claim: HomeBatteryClaimRead = snapshot.batteryClaim === undefined
         ? { kind: 'unreported' }

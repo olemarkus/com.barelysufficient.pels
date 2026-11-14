@@ -269,7 +269,7 @@ describe('HomeBatteryControlOwner admission', () => {
 
   it.each([
     { name: 'a battery PELS can only observe', params: {
-      batteries: { [BATTERY]: { kind: 'observe_only' } },
+      batteries: { [BATTERY]: { kind: 'observe_only', cause: 'other' } },
     }, reason: 'not_drivable' },
     { name: 'a battery that is not observed', params: { batteries: {} }, reason: 'not_drivable' },
     { name: 'an opted-out battery', params: {
@@ -494,7 +494,7 @@ describe('HomeBatteryControlOwner hand-back', () => {
   });
 
   it('tries a terminal hand-back again once the battery\'s control surface no longer stops it', async () => {
-    const batteries: Record<string, BatteryControlRead> = { [BATTERY]: { kind: 'observe_only' } };
+    const batteries: Record<string, BatteryControlRead> = { [BATTERY]: { kind: 'observe_only', cause: 'other' } };
     const { owner, settings, commands } = buildOwner({
       settings: settingsStore({ [CLAIM_KEY]: record('anti_feed') }),
       batteries,
@@ -822,7 +822,7 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
   it('keeps the key while a recorded app target is unresolved by the current inventory', async () => {
     const settings = settingsStore({ [CLAIM_KEY]: { handBack: 'app_actions', target: TARGET, claimedAtMs: T0 - 60_000 } });
     const removeKey = vi.fn();
-    const { owner } = buildOwner({ settings, batteries: { [BATTERY]: { kind: 'observe_only' } } });
+    const { owner } = buildOwner({ settings, batteries: { [BATTERY]: { kind: 'observe_only', cause: 'other' } } });
     await expect(owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('battery_held');
     expect(removeKey).not.toHaveBeenCalled();
     expect(settings.get(CLAIM_KEY)).toMatchObject({ target: TARGET });
@@ -894,8 +894,21 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
 
     expect(owner.readControlCapability(BATTERY)).toBe('not_reporting');
     expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'not_drivable' });
+    batteries[BATTERY] = { kind: 'unobserved', cause: 'local_api_off' };
+    expect(owner.readControlCapability(BATTERY)).toBe('needs_local_api');
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'not_drivable' });
     batteries[BATTERY] = { kind: 'unobserved', cause: 'unknown' };
     expect(owner.readControlCapability(BATTERY)).toBe('observe_only');
+  });
+
+  it('says where a battery is controlled when this device of it only reports', () => {
+    const batteries: Record<string, BatteryControlRead> = {
+      [BATTERY]: { kind: 'observe_only', cause: 'controlled_through_local_device' },
+    };
+    const { owner } = buildOwner({ batteries });
+
+    expect(owner.readControlCapability(BATTERY)).toBe('controlled_through_local_device');
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'not_drivable' });
   });
 
   it('still hands back a battery whose command actions are gone but whose hand-back actions are not', async () => {

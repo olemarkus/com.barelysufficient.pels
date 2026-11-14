@@ -80,6 +80,23 @@ describe('buildOverviewDeviceRows', () => {
     expect(rows[2]).not.toHaveProperty('plan');
   });
 
+  it('says why a battery whose app reports no readings has no decision, instead of waiting', () => {
+    const rows = buildOverviewDeviceRows({
+      devices: [
+        device({ id: 'silent', batteryControl: 'not_reporting' }),
+        device({ id: 'local-api-off', batteryControl: 'needs_local_api' }),
+        device({ id: 'starting', batteryControl: 'observe_only' }),
+      ],
+      plan: null,
+    });
+
+    expect(rows.map((row) => row.kind === 'undecided' && row.statusText)).toEqual([
+      'PELS can only watch it: its app reports no readings from the battery.',
+      'PELS can only watch it: turn on the battery\'s Local API so its app reports it.',
+      'Waiting for an update.',
+    ]);
+  });
+
   it('excludes a device the owner opted out of', () => {
     const rows = buildOverviewDeviceRows({
       devices: [device({ id: 'opted-out', managed: false })],

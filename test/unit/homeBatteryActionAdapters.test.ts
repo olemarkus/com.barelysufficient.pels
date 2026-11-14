@@ -48,9 +48,12 @@ describe('Marstek Venus Connector binding', () => {
     expect(actionBinding(venus).handBack(resolved(venus, [venus]).target, [venus])).toEqual([{ deviceId: 'venus', actionId: 'marstek_auto_mode', args: {} }]);
   });
 
-  it('leaves the cloud driver on Homey\'s standard binding', () => {
-    const cloud = device('cloud', 'homey:app:com.niewold.marstek:marstek-venus-cloud');
-    expect(getDeviceAdapter(cloud).homeBatteryBinding(cloud).kind).toBe('capability');
+  it('only watches the cloud and Bluetooth drivers, naming the local driver as the one PELS controls', () => {
+    for (const driver of ['marstek-venus-cloud', 'marstek-venus-ble']) {
+      const watched = device(driver, `homey:app:com.niewold.marstek:${driver}`);
+      expect(getDeviceAdapter(watched).homeBatteryBinding(watched))
+        .toEqual({ kind: 'watch_only', reason: 'controlled_through_local_device' });
+    }
   });
 });
 

@@ -290,6 +290,10 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     if (battery.kind === 'not_battery') return 'not_battery';
     if (battery.kind === 'homey_api_key_missing') return 'needs_homey_api_key';
     if (battery.kind === 'unobserved' && battery.cause === 'no_readings') return 'not_reporting';
+    if (battery.kind === 'unobserved' && battery.cause === 'local_api_off') return 'needs_local_api';
+    if (battery.kind === 'observe_only' && battery.cause === 'controlled_through_local_device') {
+      return 'controlled_through_local_device';
+    }
     if (battery.kind !== 'setpoint') return battery.kind === 'app_actions' ? 'drivable' : 'observe_only';
     return this.watchOnly.isWatchOnly(deviceId, battery.surface, Date.now()) ? 'watch_only' : 'drivable';
   }

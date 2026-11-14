@@ -152,6 +152,16 @@ export const buildMarstekConnectorBatteryDevice = (params: { id: string; measure
   return device;
 };
 
+/** The same app's Bluetooth driver: live readings, no power setpoint and no Flow card PELS runs. */
+export const buildMarstekBluetoothBatteryDevice = (params: { id: string }): MockDevice => {
+  const device = new MockDevice(params.id, 'Marstek Venus (Bluetooth)', ['measure_power', 'measure_battery'], 'battery');
+  device.setDriverIdentity({ driverId: 'homey:app:com.niewold.marstek:marstek-venus-ble' });
+  const quiet = { emitCapabilityEvent: false, emitDeviceUpdate: false };
+  device.setActualCapabilityValue('measure_battery', 55, quiet);
+  device.setActualCapabilityValue('measure_power', 0, quiet);
+  return device;
+};
+
 /**
  * A Sigenergy system as com.sigenergy 0.6.6 declares it: the `battery`
  * device PELS manages (its `measure_power` is the plant's ESS power) and the
