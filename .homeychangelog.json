@@ -820,5 +820,8 @@
   },
   "3.34.2": {
     "en": "Fixed: a Tesla charging at home without PELS controlling it no longer fills the diagnostics log with false \"charging elsewhere\" entries."
+  },
+  "3.35.0": {
+    "en": "New: with the Peblar EV Charger app, PELS can switch charging between one and three phases to match available power, solar and your smart task. In simulation, a device card now says what PELS would do, such as turn off, lower the level or set a lower target. Device reports include each device's modes and control settings."
   }
 }
