@@ -683,22 +683,24 @@ export const classifyEvCarSelfStop = (observation: EvCarStopObservation): EvCarS
  * prove the rise happened while idle. PELS pausing a charger just after the
  * charge went up would otherwise be misread as an away session. The caller
  * supplies when the charger last started reading idle, and the rise only counts
- * when the newer charge reading was observed after that point.
+ * when BOTH charge readings were observed after that point: a rise from a
+ * reading taken while the charger still delivered may be that charger's own.
  *
  * All inputs are required and resolved; the caller skips the check when it lacks
  * any of them.
  */
 export const isChargingElsewhere = (params: {
     previousSocPct: number;
+    previousSocAtMs: number;
     currentSocPct: number;
     currentSocAtMs: number;
     chargerPowerW: number;
     chargerIdleSinceMs: number;
 }): boolean => {
     const {
-        previousSocPct, currentSocPct, currentSocAtMs, chargerPowerW, chargerIdleSinceMs,
+        previousSocPct, previousSocAtMs, currentSocPct, currentSocAtMs, chargerPowerW, chargerIdleSinceMs,
     } = params;
     if (chargerPowerW > EV_CAR_LINK_IDLE_POWER_W) return false;
-    if (currentSocAtMs < chargerIdleSinceMs) return false;
+    if (previousSocAtMs < chargerIdleSinceMs || currentSocAtMs < chargerIdleSinceMs) return false;
     return currentSocPct > previousSocPct;
 };

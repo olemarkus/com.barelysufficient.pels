@@ -18,6 +18,12 @@ import {
 
 const logger = getLogger('device/tesla');
 
+/** A connected car whose owner has not turned on vehicle charging control. */
+const CONTROL_OFF_STATUS: AdapterUnavailableStatus = {
+  kind: 'manual', factText: null,
+  reasonText: 'Turn on “Control charging through this car” to let PELS control charging',
+};
+
 const NUMERIC_OBSERVATIONS = new Set([
   'measure_location_latitude', 'measure_location_longitude', 'measure_car_drive_speed',
   'measure_charge_current_max', 'measure_charge_current', 'measure_charge_power', 'measure_charge_power_dc',
@@ -61,14 +67,14 @@ export class TeslaChargingSession implements DeviceAdapterSession {
   project(snapshot: TransportDeviceSnapshot, setup: ChargingCurrentSetup): TransportDeviceSnapshot {
     const allowed = setup.confirmation === 'vehicle' && this.isAllowed(snapshot.id);
     const controlAdapter = snapshot.controlAdapter && { ...snapshot.controlAdapter,
-      unavailableStatus: allowed ? undefined : this.unavailableStatus(snapshot.id),
+      unavailableStatus: allowed ? undefined : this.unavailableStatus(snapshot.id, setup),
     };
     if (allowed) return { ...snapshot, controlAdapter };
     // A connected vehicle outside the accepted home session contributes no home charging power.
     return { ...snapshot, controlAdapter, available: false, measuredPowerKw: 0 };
   }
 
-  private unavailableStatus(deviceId: string): AdapterUnavailableStatus {
+  private unavailableStatus(deviceId: string, setup: ChargingCurrentSetup): AdapterUnavailableStatus {
     // A snapshot may already be projected. Only the accepted battery record
     // says whether Homey itself marked it unavailable; a trust gap clears it.
     const battery = this.devices.get(deviceId);
@@ -80,7 +86,10 @@ export class TeslaChargingSession implements DeviceAdapterSession {
       case 'Complete':
         return { kind: 'idle', factText: resolveEvChargingStateLabel('plugged_in'), reasonText: null };
       case 'NoPower': return { ...unavailable, reasonText: 'The charger is not supplying power' };
-      default: return unavailable;
+      // With control turned off, PELS has not lost the car; it was not asked
+      // to control it. Saying Unavailable there read as a fault while the car
+      // charged in the driveway.
+      default: return setup.confirmation === 'vehicle' ? unavailable : CONTROL_OFF_STATUS;
     }
   }
 

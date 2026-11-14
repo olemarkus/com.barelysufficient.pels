@@ -6,11 +6,23 @@ import { isChargingElsewhere } from './evCarLink';
 import { resolveEvCarChargeLimit } from './evCarLinkSnapshot';
 
 /** A car's charge reading held until its charger link resolves. */
-export type PendingSocShadow = { previousSocPct?: number; socPct: number; socAtMs: number };
+export type PendingSocShadow = {
+    previousSocPct?: number;
+    /** When `previousSocPct` was observed; present exactly when it is. */
+    previousSocAtMs?: number;
+    socPct: number;
+    socAtMs: number;
+};
 
 export class EvCarLinkSocShadowReporter {
     /** Charge readings awaiting link resolution, by car. */
     private readonly pending = new Map<string, PendingSocShadow>();
+    /**
+     * The session each car was last reported charging elsewhere in, by car: the
+     * verdict is about the session, so it is said once, not with every reading.
+     * One entry per car, replaced by its next session.
+     */
+    private readonly reportedElsewhere = new Map<string, number>();
 
     constructor(
         private readonly deps: EvCarLinkProducerDeps,
@@ -26,6 +38,7 @@ export class EvCarLinkSocShadowReporter {
     /** Forgets a car's held reading: it can no longer be reported against a charger. */
     drop(carId: string): void {
         this.pending.delete(carId);
+        this.reportedElsewhere.delete(carId);
     }
 
     /** Reports each held reading against the chargers its car is linked to now, then drops it. */
@@ -51,11 +64,13 @@ export class EvCarLinkSocShadowReporter {
         reading: PendingSocShadow,
         sessionStartedAtMs: number,
     ): void {
-        const { previousSocPct, socPct, socAtMs } = reading;
+        const { previousSocPct, previousSocAtMs, socPct, socAtMs } = reading;
         const carName = this.carName(carId);
         const idleSinceMs = this.selfStop.chargerIdleSinceMs(charger.id);
         if (
             previousSocPct !== undefined
+            && previousSocAtMs !== undefined
+            && this.reportedElsewhere.get(carId) !== sessionStartedAtMs
             // The idle reading must belong to THIS session. A charger that
             // reconnects carrying a retained idle value from the previous one is
             // not evidence it is delivering nothing now, and a charge rise while
@@ -64,12 +79,14 @@ export class EvCarLinkSocShadowReporter {
             && idleSinceMs !== undefined
             && isChargingElsewhere({
                 previousSocPct,
+                previousSocAtMs,
                 currentSocPct: socPct,
                 currentSocAtMs: socAtMs,
                 chargerPowerW: charger.measuredPowerW,
                 chargerIdleSinceMs: idleSinceMs,
             })
         ) {
+            this.reportedElsewhere.set(carId, sessionStartedAtMs);
             this.deps.emit({
                 component: 'devices',
                 event: 'ev_car_session_elsewhere',

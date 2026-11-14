@@ -109,6 +109,19 @@ describe('settingsOverviewReadModel', () => {
       reason: { text: 'The charger is not supplying power' }, limited: false });
   });
 
+  it('names the switch a car needs instead of calling a charging car unavailable', () => {
+    const device = steppedPlanDevice({ isEvCharger: true, available: false, currentState: 'on' });
+    const reasonText = 'Turn on “Control charging through this car” to let PELS control charging';
+    const card = buildDeviceCard(device, { ...absentTemperature,
+      observed: { ...noPlanServiceObservedReads,
+        getObservedEvChargingState: () => ({ kind: 'observed', value: 'plugged_in_charging' }),
+      },
+      getDeviceControlAdapter: () => adapterWithStatus({ kind: 'manual', factText: null, reasonText }),
+    });
+    expect(card.status).toMatchObject({ kind: 'manual', label: 'Manual', factText: null,
+      reason: { text: reasonText }, limited: false });
+  });
+
   it('uses the live adapter status instead of an idle status retained by the plan', () => {
     const device = steppedPlanDevice({ isEvCharger: true, available: false, currentState: 'off' });
     device.controlAdapter = adapterWithStatus({ kind: 'idle', factText: 'Unplugged', reasonText: null });

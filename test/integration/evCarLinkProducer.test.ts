@@ -786,12 +786,57 @@ describe('linking a car to a charger', () => {
     seedDisconnected(h, 0);
     plugIn(h, 10_000);
     // Charger goes idle but the car keeps gaining charge — it is on another plug.
+    const idleAt = 10_000 + SETTLE_MS + 10_000;
     h.setCharger({ measuredPowerW: 0 });
-    h.car(carDevice({ state: 'plugged_in_charging', socPct: 44 }), 10_000 + SETTLE_MS + 10_000);
+    h.tick(idleAt);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 42 }), idleAt + 60_000);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 44 }), idleAt + 120_000);
 
     expect(h.of('ev_car_session_elsewhere')).toEqual([
       expect.objectContaining({ reason: 'charger_idle_while_soc_rising' }),
     ]);
+  });
+
+  it('does not call a rise that began while the charger delivered an away session', () => {
+    // Field report (v3.34.1): the first reading after the charger read idle
+    // was compared with one taken before, so a rise the charger delivered
+    // counted as proof the car charged somewhere else.
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000);
+    const idleAt = 10_000 + SETTLE_MS + 10_000;
+    h.setCharger({ measuredPowerW: 0 });
+    h.tick(idleAt);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 42 }), idleAt + 60_000);
+
+    expect(h.of('ev_car_session_elsewhere')).toEqual([]);
+  });
+
+  it('reports charging elsewhere once per session, not with every reading', () => {
+    // Field report (v3.34.1): ~90 identical verdicts an hour for one session
+    // overflowed the problem report's log.
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000);
+    const idleAt = 10_000 + SETTLE_MS + 10_000;
+    h.setCharger({ measuredPowerW: 0 });
+    h.tick(idleAt);
+    for (let step = 1; step <= 6; step += 1) {
+      h.car(carDevice({ state: 'plugged_in_charging', socPct: 40 + step }), idleAt + step * 60_000);
+    }
+    expect(h.of('ev_car_session_elsewhere')).toHaveLength(1);
+
+    // A new session may be reported again.
+    const outAt = idleAt + 10 * 60_000;
+    h.setCharger({ evChargingState: 'plugged_out', controlOn: false });
+    h.car(carDevice({ state: 'plugged_out', socPct: 46 }), outAt);
+    h.tick(outAt + SESSION_GAP_MS);
+    const againAt = outAt + SESSION_GAP_MS + 10_000;
+    plugIn(h, againAt, 46);
+    const idleAgainAt = againAt + SETTLE_MS + 10_000;
+    h.setCharger({ measuredPowerW: 0 });
+    h.tick(idleAgainAt);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 47 }), idleAgainAt + 60_000);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 48 }), idleAgainAt + 120_000);
+    expect(h.of('ev_car_session_elsewhere')).toHaveLength(2);
   });
 });
 

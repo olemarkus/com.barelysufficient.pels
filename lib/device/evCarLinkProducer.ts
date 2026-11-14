@@ -296,7 +296,9 @@ export class EvCarLinkProducer {
         if (edgeKind === 'disconnect') this.clearSessionsForCar(deviceId);
         if (merged.socPct !== undefined && previous?.socPct !== merged.socPct) {
             this.socShadows.hold(deviceId, {
-                ...(previous?.socPct === undefined ? {} : { previousSocPct: previous.socPct }),
+                ...(previous?.socPct === undefined ? {} : {
+                    previousSocPct: previous.socPct, previousSocAtMs: previous.socAtMs,
+                }),
                 socPct: merged.socPct,
                 socAtMs: merged.socAtMs,
             });
