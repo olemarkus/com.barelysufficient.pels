@@ -17,6 +17,71 @@ const runningPowerHold = (overrides: Partial<DeviceStatusInput> = {}): DeviceSta
 });
 
 describe('simulation action previews', () => {
+  const modeTemperature = (plannedTarget: number, controllable: boolean): DeviceStatusInput => {
+    const device = runningPowerHold();
+    return {
+      ...device, controllable, binaryControllable: false, currentState: 'not_applicable', plannedState: 'keep',
+      reason: controllable
+        ? { code: PLAN_REASON_CODES.keep, detail: null } : { code: PLAN_REASON_CODES.capacityControlOff },
+      temperature: { currentTemperature: 50, currentTarget: 55, plannedTarget, thermalDirection: 'heating' },
+      execution: { ...device.execution, physicalState: 'not_applicable', desiredBinary: null,
+        binaryProgress: 'undriven', targetProgress: 'unmet' },
+    };
+  };
+
+  it.each([true, false])('previews ordinary mode targets with power-control authority=%s', (controllable) => {
+    for (const target of [40, 60]) {
+      const status = buildDeviceStatus(modeTemperature(target, controllable), true, 0);
+      expect(status).toMatchObject({ label: 'Running', limited: false, wouldLimit: false,
+        canEaseOff: controllable, controlOffDrawing: !controllable,
+        factText: `50.0 °C · target 55 °C → ${target} °C`,
+        reading: { kind: 'temperature', currentC: 50, targetC: target },
+        reason: { text: `Would set target to ${target} °C (simulation)` },
+      });
+    }
+  });
+
+  it.each([false, true])('keeps a settled mode-only thermostat factual in simulation=%s', (dryRun) => {
+    const device = modeTemperature(55, false);
+    const status = buildDeviceStatus({ ...device,
+      execution: { ...device.execution, targetProgress: 'settled' },
+    }, dryRun, 0);
+    expect(status).toMatchObject({ label: 'Running', reason: null, limited: false, wouldLimit: false,
+      canEaseOff: false, controlOffDrawing: true });
+  });
+
+  it.each(['undriven', 'unavailable', 'external_off'] as const)(
+    'does not preview an ordinary target when %s', (gate) => {
+      const device = modeTemperature(40, false);
+      const status = buildDeviceStatus({ ...device,
+        execution: { ...device.execution, targetProgress: gate === 'undriven' ? 'undriven' : 'unmet',
+          available: gate !== 'unavailable', externalOffHeld: gate === 'external_off' },
+      }, true, 0);
+      expect(status.reason).toBeNull();
+      if (gate === 'undriven') expect(status.label).toBe('Manual');
+      if (gate === 'unavailable') expect(status.label).toBe('Unavailable');
+    },
+  );
+
+  it('does not use hypothetical wording for an ordinary live target change', () => {
+    expect(buildDeviceStatus(modeTemperature(60, false), false, 0).reason).toBeNull();
+  });
+
+  it('keeps device warning guidance ahead of an ordinary mode target preview', () => {
+    const status = buildDeviceStatus({ ...modeTemperature(60, true), idleClassification: 'unresponsive' }, true, 0);
+    expect(status.reason).toMatchObject({ tone: 'warning' });
+    expect(status.reason?.text).not.toContain('Would set target');
+  });
+
+  it('does not replace an off device resume explanation with its temperature preparation', () => {
+    const device = modeTemperature(60, true);
+    const status = buildDeviceStatus({ ...device, binaryControllable: true, currentState: 'off', currentDrawKw: 0,
+      execution: { ...device.execution, physicalState: 'off', resumeExpected: true, desiredBinary: 'on' },
+    }, true, 0);
+    expect(status.label).toBe('Off');
+    expect(status.reason).toBeNull();
+  });
+
   it('shows the planned off action instead of treating a running load as a failed pause', () => {
     const status = buildDeviceStatus(runningPowerHold(), true, 0);
     expect(status).toMatchObject({ label: 'Running', powerText: '1.2 kW', limited: true, wouldLimit: true });

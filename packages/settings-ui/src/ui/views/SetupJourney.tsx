@@ -279,9 +279,12 @@ export const SetupJourneyHeader = (props: SetupJourneyHeaderProps) => (
   </section>
 );
 
-export type SetupReviewDevice = { id: string; name: string; control: string; status: string | null };
+export type SetupReviewDevice = {
+  id: string; name: string; control: string | null; status: string | null; configuration: readonly string[];
+};
 export type SetupReviewProps = {
   path: SetupPath | null;
+  activeMode: string | null;
   meterSummary: string | null;
   devices: readonly SetupReviewDevice[];
   busy: boolean;
@@ -305,14 +308,19 @@ export const SetupReview = (props: SetupReviewProps) => {
             PELS shows what it would do without changing your devices. Start managing lets it act on the controls you set.
           </p>}
           <dl class="setup-journey__summary">
+            {props.activeMode !== null && <div><dt>Active mode</dt><dd>{props.activeMode}</dd></div>}
             {props.path.steps.filter((step) => step.id !== 'devices').map((step) => (
               <div key={step.id}><dt>{step.title}</dt><dd>{step.id === 'power' && step.status === 'done' ? props.meterSummary ?? step.detail : step.detail}</dd></div>
             ))}
           </dl>
+          {props.activeMode !== null && props.devices.length > 1 && (
+            <p class="pels-card-supporting">Higher-priority devices keep running longest.</p>
+          )}
           {props.devices.map((device) => (
-            <div class="setup-journey__review-device" key={device.id}>
+            <div class="setup-journey__review-device" data-device-id={device.id} key={device.id}>
               <strong>{device.name}</strong>
-              <p class="pels-card-supporting">{device.control}</p>
+              {device.configuration.map((line) => <p class="pels-card-supporting" key={line}>{line}</p>)}
+              {device.control !== null && <p class="pels-card-supporting">{device.control}</p>}
               {device.status && <p class="pels-card-supporting">{device.status}</p>}
             </div>
           ))}

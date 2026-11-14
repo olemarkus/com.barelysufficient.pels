@@ -247,7 +247,7 @@ Cards, device detail, and activity logs consume the same presentation:
 | **Off** | Homey explicitly reports the device off—through its binary control or a stepped-load off step—and no higher-priority PELS state below applies. Never infer this from `0.0 kW`, temperature, or target alone. |
 | **Limited** | PELS is lowering, pausing, turning off, or making the device wait for power — including a device the planner left inactive because there is no room ("waiting to resume"). Never pair `Idle` with a waiting/hold reason. |
 | **Resuming** | PELS has decided to bring the device back and is turning it on, raising its level, or counting down a short restart wait. A device still waiting for power reads **Limited**. |
-| **Manual** | The device is managed but PELS does not have power-limit control for it right now. |
+| **Manual** | The device is managed but PELS has neither power-limit control nor a driven temperature target for it right now. A mode-only thermostat keeps its factual Running/Idle/Off state. |
 | **Unavailable** | PELS does not currently trust the device state enough to plan with it. |
 
 A vehicle adapter's confirmed unplugged or completed charging session is an
@@ -649,6 +649,12 @@ resolved command, never the configured limiting behaviour. A device already at
 the decided state, or a hold with no command, keeps its waiting explanation.
 Smart-task, solar and fairness holds keep their own device-specific reason.
 The action preview carries no resume countdown or resume power shortfall.
+Ordinary mode temperature changes also name the proposed
+target with `Would set target to 60 °C (simulation)` when the executor has a
+temperature command. Power-limit control being off does not remove temperature
+authority. Unavailable devices, external-off holds and undriven targets carry no
+ordinary action preview. Existing device warnings, price/temporary-target
+explanations, smart-task, fairness, step-up and resume reasons take precedence.
 The `(simulation)` tag keeps a card scrolled away from the banner honest on its own.
 The `Let it run now` action chip never renders under simulation (there is
 nothing to release). "Simulation" is the owner's Simulation setting for the home,
@@ -2370,7 +2376,15 @@ settings. No tour-completed flag is persisted.
   these prices` does; a source with no prices is left for the Prices step.
   Continue offers the page once per visit, never as a completion requirement,
   and a home with nothing to choose skips it.
-- The review names what PELS will do with each device: `Power-limit control on`
+- The review names the active mode and lists its managed devices in priority
+  order, with `Priority N` and each explicitly saved `Mode target: 60 °C`.
+  Those are saved mode settings, separate from runtime status and any proposed
+  action after price or power adjustments. An unreadable Main home mode catalog
+  supplies no mode, target, priority or device-job claim; another area's catalog is never
+  used. Modes labels a device without a temperature target `No temperature
+  target`, without implying that its power control is binary only.
+- The review names what PELS will do with each device: `Follows mode temperatures`
+  while temperature control is enabled, `Power-limit control on`
   while a limit is in force (for a battery also while the home has solar to
   store), `Price-based control on` while PELS responds to prices, `Smart task
   set`, and the solar label, joined with ` · `; a device with none of them

@@ -62,6 +62,23 @@ const adapterWithStatus = (status: AdapterUnavailableStatus): DeviceControlAdapt
 });
 
 describe('settingsOverviewReadModel', () => {
+  it('publishes the simulated mode target without claiming power-control authority', () => {
+    const device = buildPlanDevice({ id: 'mode-heater', deviceType: 'temperature', controllable: false,
+      binaryCapabilityId: undefined, currentState: 'not_applicable', plannedState: 'keep',
+      currentTarget: 55, currentTemperature: 50, plannedTarget: 60, currentDrawKw: 2,
+      reason: { code: PLAN_REASON_CODES.capacityControlOff },
+    });
+    const card = buildOverviewDeviceCard(device, {
+      ...overviewReadModelWiring(), ...observedTemperature(55, 50), dryRun: true, nowMs: 0,
+      getDeviceExecutionState: () => ({ ...executionStateFixture(device), targetProgress: 'unmet' }),
+    });
+    expect(card.controllable).toBe(false);
+    expect(card.status).toMatchObject({ label: 'Running', limited: false, wouldLimit: false, canEaseOff: false,
+      factText: '50.0 °C · target 55 °C → 60 °C',
+      reason: { text: 'Would set target to 60 °C (simulation)' },
+    });
+  });
+
   it.each([
     ['unplugged', 'Unplugged'], ['complete', 'Not charging'],
   ] as const)('presents a denied %s session as idle without a stale hold or expected draw', (_session, fact) => {
