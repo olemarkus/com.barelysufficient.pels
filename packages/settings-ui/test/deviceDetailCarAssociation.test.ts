@@ -768,6 +768,32 @@ describe('confirming the connected car', () => {
     expect(document.querySelector('.detail-car-confirm')).not.toBeNull();
   });
 
+  it('asks for the confirmation once PELS will not identify the car by itself', async () => {
+    const { renderCarAssociation, loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });
+    await loadEvCarAssociations();
+    renderCarAssociation(charger({ carIdentificationState: 'selected_cars_unplugged' }));
+    await flush();
+    expect(status()).toBe('No selected car reports a plug-in. Confirm the connected car below.');
+    renderCarAssociation(charger({ carIdentificationState: 'timed_out' }));
+    await flush();
+    expect(status()).toBe('Could not identify the connected car. Confirm it below.');
+  });
+
+  it('places the confirm button right under its car, ahead of its current limits', async () => {
+    const { renderCarAssociation, loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
+    getSetting.mockResolvedValue({ 'charger-1': { carIds: ['car-1'] } });
+    await loadEvCarAssociations();
+    renderCarAssociation(charger());
+    await flush();
+    const list = [...(document.querySelector('#device-detail-car-list')?.children ?? [])];
+    const row = list.findIndex((element) => element.classList.contains('detail-car-row'));
+    const button = list.findIndex((element) => element.classList.contains('detail-car-confirm'));
+    const editor = list.findIndex((element) => (element as HTMLElement).dataset.carCurrentLimits === 'car-1');
+    expect(button).toBe(row + 1);
+    expect(editor).toBeGreaterThan(button);
+  });
+
   it('does not offer confirmation for an unplugged charger or an unselected car', async () => {
     const { renderCarAssociation, loadEvCarAssociations } = await import('../src/ui/deviceDetail/carAssociation.ts');
     renderCarAssociation(charger());

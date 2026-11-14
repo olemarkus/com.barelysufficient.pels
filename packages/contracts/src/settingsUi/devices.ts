@@ -2,6 +2,7 @@ import type { BatteryEfficiencyMeasurement, ContinuousBatteryPlanRead } from '..
 import type { ControlContestDecoration } from '../controlContest.js';
 import type { DeviceOverviewStrings } from '../deviceOverview.js';
 import type { SettingsUiHomeScope } from '../homeScopedRead.js';
+import type { CarIdentificationState } from '../evCarLink.js';
 import type { SchedulesResponse } from '../schedules.js';
 import type {
   DecoratedDeviceSnapshot,
@@ -30,6 +31,8 @@ export type SettingsUiDeviceSnapshot = DecoratedDeviceSnapshot & ObservedStateOf
      * change is not confirmed (`STEP_COMMAND_UNANSWERED_AFTER`).
      */
     levelUnconfirmed?: true;
+    /** Present while a plugged-in charger waits to identify its car: the wait as its card states it. */
+    carIdentificationState?: Exclude<CarIdentificationState, 'not_waiting'>;
   };
 
 /** Which phases a device loads and how PELS knows, for the device page. */

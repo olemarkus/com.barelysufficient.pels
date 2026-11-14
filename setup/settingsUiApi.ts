@@ -264,6 +264,7 @@ const buildSettingsUiDeviceList = (
     const observed = host.observer.getObservedRecord(device.id);
     const associatedCar = host.deviceManager?.getAssociatedCar(device.id);
     const carConfirmation = host.deviceManager?.getCarConfirmation(device.id);
+    const carIdentificationState = host.deviceManager?.getCarIdentificationState(device.id, Date.now());
     const controlContest = host.controlContests.contestedControl(device.id, Date.now());
     const levelUnconfirmed = host.steppedCommandStore.isLevelUnconfirmed(device.id);
     const stateOfCharge = resolveStateOfCharge(device, readObservedStateOfCharge(observed));
@@ -278,6 +279,7 @@ const buildSettingsUiDeviceList = (
       ...(observed ? pickLiveObservedFields(observed, resolveLiveObservedFields(device)) : {}),
       ...(associatedCar ? { associatedCar } : {}),
       ...(carConfirmation ? { carConfirmation } : {}),
+      ...(carIdentificationState && carIdentificationState !== 'not_waiting' ? { carIdentificationState } : {}),
       ...(controlContest ? { controlContest } : {}),
       ...(levelUnconfirmed ? { levelUnconfirmed: true as const } : {}),
       ...(stateOfCharge ? { stateOfCharge } : {}),

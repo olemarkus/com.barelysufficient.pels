@@ -11,6 +11,7 @@ import type {
 import type { ControlContestDecoration } from '../../../contracts/src/controlContest.ts';
 import type {
   SettingsUiBatteryState,
+  SettingsUiDeviceSnapshot,
   SettingsUiPhaseFootprintRead,
 } from '../../../contracts/src/settingsUi/devices.ts';
 import { state } from './state.ts';
@@ -74,6 +75,8 @@ export type SettingsUiDeviceDetailItem = SettingsUiDeviceListItem
   & { chargingPhaseControl?: import('../../../contracts/src/chargingPhases.ts').ChargingPhaseRead }
   // Present while PELS's level changes draw no level report back (`SettingsUiDeviceSnapshot`).
   & { levelUnconfirmed?: true }
+  // Present while a plugged-in charger waits to identify its car (`SettingsUiDeviceSnapshot`).
+  & Pick<SettingsUiDeviceSnapshot, 'carIdentificationState'>
   // `steppedLoadProfile` / `targetPowerConfig` moved off `DeviceDescriptor` onto
   // the stepped-descriptor cluster; the `/ui_devices` snapshot physically carries
   // them, which the control-mode / target-power / stepped-load-draft detail panes
