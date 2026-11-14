@@ -695,6 +695,14 @@ The EV page's **Charging card** holds the charging rules, when and how much to
 charge (Charge boost, `Charge on solar surplus`). The control model is set in
 Setup only; the readout that once repeated it at the top of the Charging card was
 removed (2026-10-18) because one choice shown in two places read as two settings.
+With 15-minute pricing, the Charging card on a managed charger eligible for
+Smart tasks also offers **Prefer longer
+charging sessions**, off by default. Its hint is `For new Smart tasks, bridge
+charging gaps up to 15 minutes when planned cost rises by no more than 5%. Power
+limits still apply.` This choice is a charging preference, not permission to
+exceed a house limit. With 15-minute prices, a saved opt-in remains visible on a
+managed charger even while Smart-task eligibility is unavailable. Hourly or
+unavailable pricing hides the toggle and preserves its saved choice.
 When PELS can derive usable power levels from the integration, **Control model**
 offers **Automatic** and **Manual**. Automatic says `PELS determines the power
 levels from your charger’s settings.` and shows **Charging range**; a non-charger

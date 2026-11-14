@@ -27,12 +27,11 @@ const build = (overrides: {
   nowMs?: number;
 }) => buildFrozenHorizonPlan(
   overrides.nowMs ?? NOW_MS,
-  'dev',
-  partialDouble<DeferredObjectiveSettingsEntry>({
+  { deviceId: 'dev', prefersContinuousCharging: false, objective: partialDouble<DeferredObjectiveSettingsEntry>({
     kind: overrides.objectiveKind ?? 'temperature',
     enforcement: 'soft',
     deadlineAtMs: NOW_MS + 6 * HOUR_MS,
-  }),
+  }) },
   {
     hours: overrides.committedHours,
     floorShortfallCause: overrides.floorShortfallCause ?? 'none',

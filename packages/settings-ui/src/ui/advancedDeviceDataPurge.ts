@@ -1,6 +1,9 @@
 import {
   isEvChargingCurrentLimitsMap, normalizeEvChargingCurrentLimitsMap,
 } from '../../../shared-domain/src/settings/evChargingCurrentLimits.ts';
+import {
+  isEvChargingSessionSmoothingSettings, normalizeEvChargingSessionSmoothingSettings,
+} from '../../../shared-domain/src/settings/evChargingSessionSmoothing.ts';
 import { readModePriorityCatalog } from '../../../shared-domain/src/settings/modePriorities.ts';
 import {
   readTemperatureControlModes, temperatureControlDisabledDevices,
@@ -14,6 +17,7 @@ import {
   DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
   EV_BOOST_SETTINGS,
+  EV_CHARGING_SESSION_SMOOTHING,
   EV_CHARGE_TARGET_SETTINGS,
   EV_CAR_ASSOCIATIONS,
   EV_CAR_CURRENT_LIMITS,
@@ -81,6 +85,7 @@ const collectDeviceIdsFromSettings = (): Set<string> => {
     ...Object.keys(state.shedBehaviors),
     ...Object.keys(state.temperatureBoostSettings),
     ...Object.keys(state.evBoostSettings),
+    ...Object.keys(state.evChargingSessionSmoothingSettings),
     ...Object.keys(state.evChargeTargetSettings),
     ...Object.keys(state.evCarCurrentLimits),
     ...Object.keys(state.evChargerCurrentLimits),
@@ -255,6 +260,13 @@ const PURGED_MAPS: readonly PurgedMap[] = [
     (map) => { state.temperatureBoostSettings = map; },
   ),
   purgedRecord(EV_BOOST_SETTINGS, () => state.evBoostSettings, (map) => { state.evBoostSettings = map; }),
+  purgedMap(
+    EV_CHARGING_SESSION_SMOOTHING,
+    (value) => isEvChargingSessionSmoothingSettings(value) ? normalizeEvChargingSessionSmoothingSettings(value) : null,
+    () => state.evChargingSessionSmoothingSettings,
+    (map) => { state.evChargingSessionSmoothingSettings = map; },
+    removeDeviceIdsFromRecord,
+  ),
   purgedRecord(
     EV_CHARGE_TARGET_SETTINGS,
     () => state.evChargeTargetSettings,

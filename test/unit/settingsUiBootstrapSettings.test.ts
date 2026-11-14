@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readSettingsUiBootstrapSettings } from '../../lib/app/settingsUiBootstrapSettings';
 import type { SettingsPort } from '../../lib/ports/homeyRuntime';
-import { DEVICE_POWER_CONTROL_MODES } from '../../lib/utils/settingsKeys';
+import { DEVICE_POWER_CONTROL_MODES, EV_CHARGING_SESSION_SMOOTHING } from '../../lib/utils/settingsKeys';
 import { partialDouble } from '../helpers/partialDouble';
 
 const read = (value: unknown, keys: unknown) => readSettingsUiBootstrapSettings(partialDouble<SettingsPort>({
@@ -25,5 +25,22 @@ describe('bootstrap power-control mode authority', () => {
     [{ charger: 'invalid' }, [DEVICE_POWER_CONTROL_MODES]],
   ])('omits an unresolved map %j with key list %j', (value, keys) => {
     expect(Object.hasOwn(read(value, keys), DEVICE_POWER_CONTROL_MODES)).toBe(false);
+  });
+});
+
+describe('bootstrap EV charging continuity authority', () => {
+  const readSmoothing = (raw: unknown, keys: string[]) => readSettingsUiBootstrapSettings(partialDouble<SettingsPort>({
+    get: (key) => key === EV_CHARGING_SESSION_SMOOTHING ? raw : null,
+    getKeys: () => keys,
+  }));
+
+  it('proves absence without replacing an unavailable existing map', () => {
+    expect(readSmoothing(null, [])[EV_CHARGING_SESSION_SMOOTHING]).toEqual({});
+    expect(readSmoothing(null, [EV_CHARGING_SESSION_SMOOTHING])[EV_CHARGING_SESSION_SMOOTHING]).toBeNull();
+  });
+
+  it('preserves raw complete-map evidence so the browser can reject malformed siblings', () => {
+    const raw = { hidden: true, malformed: 'true' };
+    expect(readSmoothing(raw, [EV_CHARGING_SESSION_SMOOTHING])[EV_CHARGING_SESSION_SMOOTHING]).toEqual(raw);
   });
 });

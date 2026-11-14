@@ -107,6 +107,7 @@ const handlePlanUpdated = (plan: unknown) => {
 
 const handlePricesUpdated = () => {
   invalidateApiCache(SETTINGS_UI_PRICES_PATH);
+  document.dispatchEvent(new Event('prices-updated'));
   refreshPricesIfVisible('realtime prices_updated');
   // Prices arriving can finish price setup (Homey Energy had none until now),
   // and change what the price suggestion can say PELS already has.

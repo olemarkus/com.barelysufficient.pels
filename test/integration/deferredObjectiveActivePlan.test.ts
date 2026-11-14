@@ -73,7 +73,7 @@ const makeBucket = (
   current: false,
   usefulEnergyCapacityKWh: 3,
   plannedUsefulEnergyKWh,
-  booked: plannedUsefulEnergyKWh > 0,
+  keepCharging: false, booked: plannedUsefulEnergyKWh > 0,
   ...overrides,
 });
 
@@ -368,8 +368,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(latest.budgetContributedToShortfall).toBe(true);
     const frozen = buildFrozenHorizonPlan(
       HOUR_MS,
-      'dev',
-      TEMPERATURE_OBJECTIVE,
+      { deviceId: 'dev', objective: TEMPERATURE_OBJECTIVE, prefersContinuousCharging: false },
       {
         hours: latest.hours, planStatus: latest.planStatus,
         floorShortfallCause: latest.floorShortfallCause!,
@@ -394,7 +393,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       kwhPerUnitAcceptedSamples: 8,
       kwhPerUnitLastAcceptedAtMs: HOUR_MS,
       horizonPlan: makeHorizon([
-        makeBucket(HOUR_MS, 0, { current: true, booked: true }),
+        makeBucket(HOUR_MS, 0, { current: true, keepCharging: false, booked: true }),
         makeBucket(2 * HOUR_MS, 1.5),
       ]),
     })], HOUR_MS);
@@ -407,8 +406,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(latest.reservationSegments?.every((segment) => segment.startMs >= 2 * HOUR_MS)).toBe(true);
     const frozen = buildFrozenHorizonPlan(
       HOUR_MS + 1000,
-      'dev',
-      TEMPERATURE_OBJECTIVE,
+      { deviceId: 'dev', objective: TEMPERATURE_OBJECTIVE, prefersContinuousCharging: false },
       {
         hours: latest.hours, planStatus: latest.planStatus, floorShortfallCause: 'none',
         budgetContributedToShortfall: false, drawWindows: latest.reservationSegments!,
@@ -452,8 +450,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     });
     const frozen = buildFrozenHorizonPlan(
       nowMs + 500,
-      'dev',
-      TEMPERATURE_OBJECTIVE,
+      { deviceId: 'dev', objective: TEMPERATURE_OBJECTIVE, prefersContinuousCharging: false },
       {
         hours: latest.hours,
         planStatus: latest.planStatus,
@@ -3826,6 +3823,23 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       objectiveSignature: 'sig',
       original: { ...baseRevision, reason: 'flow_card', ...revisionOverrides },
       latest: { ...baseRevision, reason: 'flow_card', ...revisionOverrides },
+    });
+
+    it.each([true, false, 'true', 1, null])('resolves continuity intent independently of the booking (%s)', (marker) => {
+      const hours = [{ ...baseRevision.hours[0], keepCharging: marker }];
+      const normalized = normalizeDeferredObjectiveActivePlans({
+        version: 1,
+        plansByDeviceId: { dev: {
+          ...basePlan({ hours }),
+          commitment: { committedAtMs: HOUR_MS, hours },
+        } },
+      });
+      const plan = normalized.plansByDeviceId.dev;
+      expect(plan).toBeDefined();
+      expect(plan?.latest?.hours[0]?.plannedKWh).toBe(1.5);
+      expect(plan?.original?.hours[0]?.keepCharging).toBe(marker === true ? true : undefined);
+      expect(plan?.latest?.hours[0]?.keepCharging).toBe(marker === true ? true : undefined);
+      expect(plan?.commitment?.hours[0]?.keepCharging).toBe(marker === true ? true : undefined);
     });
 
     it.each([true, false, undefined])('accepts the persisted budget contribution flag %s', (flag) => {

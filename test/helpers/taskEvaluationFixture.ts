@@ -10,7 +10,9 @@ import { TaskAllocationRoster } from '../../lib/objectives/deferredObjectives/ta
 // The flat shape specs build a cycle from: its snapshot and readers together,
 // with the shared roster owner and a preview candidate as optional knobs. Runtime keeps
 // the snapshot, readers and lane apart; a fixture is easier to read and override in one literal.
-export type TaskEvaluationFixture = Omit<TaskEvaluationSnapshot, 'allocationRoster'> & TaskEvaluationReaders & {
+export type TaskEvaluationFixture = Omit<TaskEvaluationSnapshot, 'allocationRoster'>
+& Omit<TaskEvaluationReaders, 'prefersContinuousCharging'> & {
+  prefersContinuousCharging?: TaskEvaluationReaders['prefersContinuousCharging'];
   // Omitted: a roster that has seen nothing, as on a fresh runtime.
   allocationRosterOwner?: TaskAllocationRoster;
   // Set: evaluate as the preview of this candidate rather than a live lane.
@@ -21,6 +23,7 @@ const splitFixture = (
   fixture: TaskEvaluationFixture,
 ): [TaskEvaluationSnapshot, TaskEvaluationReaders, TaskEvaluationLane] => {
   const {
+    prefersContinuousCharging = () => false,
     buildPriceHorizon,
     getPrioritiesForDevices,
     resolveDeviceExclusion,
@@ -40,6 +43,7 @@ const splitFixture = (
   return [
     { ...snapshot, allocationRoster: owner.read(snapshot.nowMs) },
     {
+      prefersContinuousCharging,
       buildPriceHorizon,
       getPrioritiesForDevices,
       resolveDeviceExclusion,

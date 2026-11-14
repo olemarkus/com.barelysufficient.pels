@@ -25,6 +25,7 @@ export const buildTaskEvaluationSource = (
   getChargingPhaseEnvelopes: (_nowMs) => requirePlanService(ctx).readChargingPhaseEnvelopes(),
   allocationRoster: new TaskAllocationRoster(() => ctx.getNow()),
   getTimeZone: () => ctx.getTimeZone(),
+  prefersContinuousCharging: (deviceId) => ctx.deviceControlSettings.getPreferContinuousCharging(deviceId),
   getThermalDirection: (deviceId) => ctx.observer.getThermalDirection(deviceId),
   getPowerTracker: () => ctx.powerTracker,
   getPriceOptimizationEnabled: () => requirePriceCoordinator(ctx).getPriceOptimizationEnabled(),

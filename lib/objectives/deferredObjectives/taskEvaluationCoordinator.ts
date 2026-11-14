@@ -50,6 +50,7 @@ import {
   buildTaskAllocationContextSignature,
   orderDeferredObjectives,
   type CoordinatedDeferredObjective,
+  type ScheduledDeferredObjective,
   type OrderedDeferredObjective,
 } from './priorityAllocation';
 import {
@@ -82,6 +83,7 @@ import {
   buildFreshDiagnostic,
   buildHorizonUnavailableDiagnostic,
 } from './freshDiagnostic';
+import { isEvDevice } from '../../../packages/shared-domain/src/commandableNow';
 
 export type { DeferredObjectiveDiagnostic } from './diagnosticTypes';
 /* eslint-disable functional/immutable-data -- Local accumulator avoids per-iteration copies. */
@@ -118,6 +120,7 @@ export type TaskEvaluationSnapshot = {
 
 // The readers an evaluation consults, supplied once by the lane that owns them.
 export type TaskEvaluationReaders = {
+  prefersContinuousCharging: (deviceId: string) => boolean;
   // Price-layer source for the allocation horizon (price + grid). The snapshot's
   // daily budget is only the optional budget overlay.
   buildPriceHorizon: BuildPriceHorizon;
@@ -458,10 +461,12 @@ const buildDeferredObjectiveDiagnostic = (
     higherPriorityReservations,
     higherPriorityUnbookedPowerKw: task.higherPriorityUnbookedPowerKw,
   };
+  const scheduledTask = { ...task,
+    prefersContinuousCharging: isEvDevice(task.device) && readers.prefersContinuousCharging(deviceId) };
   const progress = resolveObjectiveProgress(objective, task.device, readers.getDeliveredEnergyKWh);
   if (isObjectiveProgressSatisfied(progress)) {
     const satisfied = buildDiagnosticWithPolicyHorizon(
-      snapshot, task, progress, EMPTY_POLICY_HORIZON, horizonInputs, null, true,
+      snapshot, scheduledTask, progress, EMPTY_POLICY_HORIZON, horizonInputs, null, true,
     );
     // A satisfied task governs its device until the deadline, but the task is
     // price-dependent: with price optimization off it governs nothing, exactly as
@@ -475,7 +480,7 @@ const buildDeferredObjectiveDiagnostic = (
   // it booked as top-ups, and plans them with no rescue permission, the same
   // acceptance the caller settles the evaluation on (`withAcceptedCompletion`).
   const planningTask = withPlanningPermissions(
-    task,
+    scheduledTask,
     buildUnallocatedTaskEvaluation(deviceId, objective, progress),
     readers.getStallClassification,
     readers.hasObservedTask(deviceId, objective),
@@ -549,7 +554,7 @@ const resolveServedFrozenRead = (
 
 const buildDiagnosticWithPolicyHorizon = (
   snapshot: TaskEvaluationSnapshot,
-  task: PresentDeferredObjective,
+  task: ScheduledDeferredObjective & { device: ObjectiveDeviceInput },
   progress: DeferredObjectiveProgressResolution,
   policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>,
   horizonInputs: DeferredObjectivePolicyHorizonInputs,
@@ -639,7 +644,7 @@ const buildDiagnosticWithPolicyHorizon = (
   // decision, read off the commitment).
   if (effectiveFrozenRead) {
     const frozenPlan = buildFrozenHorizonPlan(
-      nowMs, deviceId, objective, effectiveFrozenRead, profileEnergy.energyNeededKWh, aheadOfHourMilestone, steps,
+      nowMs, task, effectiveFrozenRead, profileEnergy.energyNeededKWh, aheadOfHourMilestone, steps,
     );
     return buildFrozenDiagnostic(
       task, base, progress, profileEnergy, effectiveFrozenRead, frozenPlan, liveStepsUnavailable,

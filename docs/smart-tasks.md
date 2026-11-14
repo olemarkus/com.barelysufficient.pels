@@ -55,6 +55,8 @@ For each active task, PELS evaluates:
 
 The Smart task plan uses the price source’s periods: whole hours or individual 15-minute periods. If prices are available for the whole window, cheaper periods are preferred. If tomorrow's prices are needed but not available yet, the task can remain pending until the price window is complete.
 
+On an eligible charger's device page, under **Charging**, **Prefer longer charging sessions** is offered with 15-minute pricing. Turn it on to keep new Smart task charging together. PELS can move charging into a gap of up to 15 minutes when that reduces separate charging blocks and raises the total planned cost by no more than 5%. It moves energy from a later block rather than adding extra charging, and also protects the value of planned solar use. The setting is off by default. Existing schedules keep their booked energy; turning the setting off allows ordinary price-based pauses again. Power limits, higher-priority devices and the task's target still apply.
+
 When several Smart tasks want the same period, PELS plans the highest-priority device first. The next task uses only the power and budget still available: it may share the period when both devices fit, move to another period, or warn that it cannot finish. Give the devices different priorities when their order matters.
 
 ![Smart task plan showing scheduled periods, expected progress and the power guarantee](screenshots/deadline-plan/480.png)

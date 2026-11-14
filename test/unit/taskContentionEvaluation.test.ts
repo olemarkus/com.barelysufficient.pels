@@ -45,7 +45,7 @@ describe('operational task contention', () => {
   });
 
   it('keeps a booked hour it would price-defer once contention leaves it short, but still cold-start releases', () => {
-    const booked = { bucketId: 'h0', sourceBucketId: 'h0', plannedUsefulEnergyKWh: 1, booked: true, expectedStepId: 'low' };
+    const booked = { bucketId: 'h0', sourceBucketId: 'h0', plannedUsefulEnergyKWh: 1, keepCharging: false, booked: true, expectedStepId: 'low' };
     const claimUnderContention = (facts: DeferredObjectiveHorizonPlan['currentHourFacts']) => {
       const result = resolveHigherPriorityContentionEvaluation(
         evaluation(1, false, { currentBucket: booked, currentHourFacts: facts }),

@@ -11,11 +11,11 @@ import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 it('keeps admission, reservations and requested completion independent of reporting columns', () => {
   const plan = partialDouble<DeferredObjectiveHorizonPlan>({
     currentHourClaim: 'claimed',
-    currentBucket: { bucketId: 'now', sourceBucketId: 'now', expectedStepId: 'on', plannedUsefulEnergyKWh: 1, booked: true },
+    currentBucket: { bucketId: 'now', sourceBucketId: 'now', expectedStepId: 'on', plannedUsefulEnergyKWh: 1, keepCharging: false, booked: true },
     plannedBuckets: [{
       id: 'now', sourceBucketId: 'now', startMs: 0, endMs: 3_600_000, durationHours: 1,
       price: null, reserve: false, current: true, usefulEnergyCapacityKWh: 1,
-      plannedUsefulEnergyKWh: 1, plannedAdmissionPowerKw: 1, booked: true,
+      plannedUsefulEnergyKWh: 1, plannedAdmissionPowerKw: 1, keepCharging: false, booked: true,
     }],
   });
   const evaluation: TaskEvaluation = {
@@ -65,7 +65,7 @@ it('caps a higher task booking at the current device maximum step', () => {
     plannedBuckets: [{
       id: 'now', sourceBucketId: 'now', startMs: 0, endMs: 3_600_000, durationHours: 1,
       price: null, reserve: false, current: true, usefulEnergyCapacityKWh: 1,
-      plannedUsefulEnergyKWh: 1, plannedAdmissionPowerKw: 5, booked: true,
+      plannedUsefulEnergyKWh: 1, plannedAdmissionPowerKw: 5, keepCharging: false, booked: true,
     }],
   });
   const evaluation: TaskEvaluation = {

@@ -389,6 +389,19 @@ const stripRetiredDiagnosticReasonCode = <T extends { diagnosticReasonCode?: unk
 
 // A plan with no readable target has nothing to plan toward: dropped like any
 // other malformed plan.
+const normalizeChargingIntervals = (hours: DeferredObjectivePlanInterval[]): DeferredObjectivePlanInterval[] => (
+  hours.map((hour) => {
+    if (hour.keepCharging === true || !Object.hasOwn(hour, 'keepCharging')) return hour;
+    const { keepCharging: _rejected, ...accepted } = hour;
+    void _rejected;
+    return accepted;
+  })
+);
+
+const normalizeChargingRevision = (
+  revision: DeferredObjectiveActivePlanRevisionV1,
+): DeferredObjectiveActivePlanRevisionV1 => ({ ...revision, hours: normalizeChargingIntervals(revision.hours) });
+
 const toLoadedPlan = (plan: StoredActivePlan): DeferredObjectiveActivePlanV1 | undefined => {
   const { targetTemperatureC: _legacyC, targetPercent: _legacyPercent, ...current } = plan;
   const targetValue = readStoredTargetValue(plan);
@@ -397,8 +410,14 @@ const toLoadedPlan = (plan: StoredActivePlan): DeferredObjectiveActivePlanV1 | u
     ...stripRetiredDiagnosticReasonCode(current),
     liveCompletion: plan.liveCompletion ?? { kind: 'unavailable' },
     targetValue,
-    latest: plan.latest === null ? null : stripRetiredRevisionFields(plan.latest),
-    ...(plan.history ? { history: plan.history.map(stripRetiredRevisionFields) } : {}),
+    original: plan.original === null ? null : normalizeChargingRevision(plan.original),
+    latest: plan.latest === null ? null : normalizeChargingRevision(stripRetiredRevisionFields(plan.latest)),
+    ...(plan.commitment ? { commitment: {
+      ...plan.commitment, hours: normalizeChargingIntervals(plan.commitment.hours),
+    } } : {}),
+    ...(plan.history ? { history: plan.history.map((revision) => (
+      normalizeChargingRevision(stripRetiredRevisionFields(revision))
+    )) } : {}),
   };
 };
 

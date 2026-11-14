@@ -97,7 +97,7 @@ const buildHorizonPlan = (overrides: Partial<DeferredObjectiveHorizonPlan> = {})
     bucketId: 'b0',
     sourceBucketId: 'b0',
     plannedUsefulEnergyKWh: 1.5,
-    booked: true,
+    keepCharging: false, booked: true,
     expectedStepId: 'low',
   },
   plannedBuckets: [],
@@ -147,7 +147,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'dev1',
       horizonPlan: buildHorizonPlan({
-        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, booked: false, expectedStepId: null },
+        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, keepCharging: false, booked: false, expectedStepId: null },
         currentHourClaim: 'released',
       }),
     });
@@ -166,7 +166,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       horizonPlan: buildHorizonPlan({
         kind: 'ev_soc',
         objectiveId: 'ev1:ev_soc',
-        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, booked: false, expectedStepId: null },
+        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, keepCharging: false, booked: false, expectedStepId: null },
         currentHourClaim: 'released',
       }),
     });
@@ -187,7 +187,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       horizonPlan: buildHorizonPlan({
         kind: 'ev_soc',
         objectiveId: 'ev1:ev_soc',
-        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, booked: false, expectedStepId: null },
+        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, keepCharging: false, booked: false, expectedStepId: null },
         currentHourClaim: 'released',
       }),
     });
@@ -228,7 +228,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       deviceType: 'onoff',
     });
     const idleHorizon = {
-      currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, booked: false, expectedStepId: null },
+      currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, keepCharging: false, booked: false, expectedStepId: null },
       currentHourClaim: 'released' as const,
     };
     for (const horizon of [{}, idleHorizon]) {
@@ -258,7 +258,7 @@ describe('applyDeferredObjectiveAdmission', () => {
   // claimed like any booked hour. The device is driven on whatever capacity is free,
   // with the task's permissions.
   const bookedEmptyHour = {
-    currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, booked: true, expectedStepId: null },
+    currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, keepCharging: false, booked: true, expectedStepId: null },
     status: 'cannot_meet' as const,
     statusDetail: 'target_cannot_be_met' as const,
     plannedUsefulEnergyKWh: 0.5,
@@ -421,7 +421,7 @@ describe('applyDeferredObjectiveAdmission', () => {
         statusDetail: 'target_cannot_be_met',
         plannedUsefulEnergyKWh: 1,
         unplannedUsefulEnergyKWh: 0.5,
-        currentBucket: { bucketId: 'b0', sourceBucketId: 'b0', plannedUsefulEnergyKWh: 1, booked: true, expectedStepId: 'low' },
+        currentBucket: { bucketId: 'b0', sourceBucketId: 'b0', plannedUsefulEnergyKWh: 1, keepCharging: false, booked: true, expectedStepId: 'low' },
       }),
     });
     const decisions = applyDeferredObjectiveAdmission(([diagnostic]).map((diagnostic) => diagnostic.evaluation));
@@ -460,7 +460,7 @@ describe('applyDeferredObjectiveAdmission', () => {
           bucketId: 'b1',
           sourceBucketId: 'b1',
           plannedUsefulEnergyKWh: 0,
-          booked: false,
+          keepCharging: false, booked: false,
           expectedStepId: null,
         },
         currentHourClaim: 'released',
@@ -612,7 +612,7 @@ describe('planned admission temperature floor', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
       horizonPlan: buildHorizonPlan({
-        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, booked: false, expectedStepId: null },
+        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, keepCharging: false, booked: false, expectedStepId: null },
         currentHourClaim: 'released',
       }),
     });

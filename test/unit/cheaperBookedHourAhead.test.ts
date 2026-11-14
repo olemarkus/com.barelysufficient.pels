@@ -21,7 +21,7 @@ const bucket = (
   current: false,
   usefulEnergyCapacityKWh: 1,
   plannedUsefulEnergyKWh: 1,
-  booked: true,
+  keepCharging: false, booked: true,
   ...overrides,
 });
 

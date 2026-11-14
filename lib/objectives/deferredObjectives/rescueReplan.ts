@@ -5,10 +5,11 @@ import {
   type DeferredObjectivePolicyHorizonInputs,
   type DeferredObjectivePolicyHorizonResult,
 } from './policyHorizon';
-import type { CoordinatedDeferredObjective } from './priorityAllocation';
+import type { ScheduledDeferredObjective } from './priorityAllocation';
 import type { DeferredObjectiveEnergyResolution } from './profileEnergyResolution';
 import { resolveCommittedHours } from './resolveCommittedHours';
 import type { DeferredObjectiveHorizonPlan, DeferredObjectiveStep } from './types';
+import { smoothEvChargingPlan } from './evChargingSessionSmoothing';
 
 // Reserve a flat 1-hour safety buffer before the deadline. The horizon planner
 // allocates into the primary window (now → deadline − reserve) first and only dips
@@ -40,7 +41,7 @@ type ResolvedHorizonBuckets = Extract<DeferredObjectivePolicyHorizonResult, { re
 // `reservedHeadroomKw` forecast as the baseline, which a fully-reserved task on
 // the exempt rebuild still needs for Slice 2's floor-step promotion.
 export const resolveHorizonPlanWithRescue = (
-  task: CoordinatedDeferredObjective,
+  task: ScheduledDeferredObjective,
   profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>,
   steps: DeferredObjectiveStep[],
   commitment: ReturnType<typeof resolveCommittedHours>,
@@ -70,26 +71,31 @@ export const resolveHorizonPlanWithRescue = (
   const powerLimit = resolveDeferredObjectivePowerLimit(horizonInputs.powerLimits, horizonInputs.hasSolarProduction);
   const planForBuckets = (
     buckets: ResolvedHorizonBuckets,
-  ): DeferredObjectiveHorizonPlan => planDeferredObjectiveHorizon({
-    nowMs: horizonInputs.nowMs,
-    objective: {
-      id: `${deviceId}:${objective.kind}`,
-      kind: objective.kind,
-      enforcement: objective.enforcement,
-      energyNeededKWh: profileEnergy.energyNeededKWh,
-      energyExpectedKWh: profileEnergy.energyExpectedKWh ?? undefined,
-      fullyReserved,
-      deadlineAtMs: objective.deadlineAtMs,
-      deadlineMarginMs: DEFAULT_DEADLINE_RESERVE_MS,
-    },
-    steps,
-    buckets,
-    powerLimit,
-    commitment: commitment === undefined
-      ? { kind: 'uncommitted' }
-      : { kind: 'committed', hours: commitment },
-    aheadOfHourMilestone,
-  });
+  ): DeferredObjectiveHorizonPlan => {
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: horizonInputs.nowMs,
+      objective: {
+        id: `${deviceId}:${objective.kind}`,
+        kind: objective.kind,
+        enforcement: objective.enforcement,
+        energyNeededKWh: profileEnergy.energyNeededKWh,
+        energyExpectedKWh: profileEnergy.energyExpectedKWh ?? undefined,
+        fullyReserved,
+        deadlineAtMs: objective.deadlineAtMs,
+        deadlineMarginMs: DEFAULT_DEADLINE_RESERVE_MS,
+      },
+      steps,
+      buckets,
+      powerLimit,
+      commitment: commitment === undefined
+        ? { kind: 'uncommitted' }
+        : { kind: 'committed', hours: commitment },
+      aheadOfHourMilestone,
+    });
+    return task.prefersContinuousCharging
+      ? smoothEvChargingPlan(plan, steps, horizonInputs.priceHorizon, commitment)
+      : plan;
+  };
 
   if (!rescuePermissions.budgetExempt) {
     return planForBuckets(policyHorizon.buckets);

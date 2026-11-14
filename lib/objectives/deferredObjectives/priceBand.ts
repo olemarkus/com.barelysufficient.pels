@@ -1,4 +1,4 @@
-import type { DeferredObjectiveAllocatedBucket, DeferredObjectivePlannedBucket } from './types';
+import type { DeferredObjectiveAllocatedBucket } from './types';
 
 // Relative price bands: when one hour is worth shifting load to from another, and
 // which hours a plan books on price. Shared by the allocator's fill order, the
@@ -148,10 +148,10 @@ export const comparePrice = (
 // off for most of them. Same-band hours are not booked either: on a flat price curve
 // that would claim every hour of the horizon. The deadline reserve is booked only
 // when it carries energy, so it stays a fallback.
-export const bookBuckets = (
-  buckets: readonly DeferredObjectiveAllocatedBucket[],
+export const bookBuckets = <Bucket extends DeferredObjectiveAllocatedBucket>(
+  buckets: readonly Bucket[],
   needsEveryHour: boolean,
-): DeferredObjectivePlannedBucket[] => {
+): Array<Bucket & { booked: boolean }> => {
   const anchor = resolvePriceAnchor(buckets);
   let dearest: DeferredObjectiveAllocatedBucket | null = null;
   for (const bucket of buckets) {

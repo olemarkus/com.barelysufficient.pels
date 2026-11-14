@@ -3,9 +3,9 @@ import type {
   DeferredObjectivePlanInterval,
   DeferredObjectiveActivePlanStatusV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { DeferredObjectiveSettingsEntry } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import { resolveCurrentHourBooking, resolveCurrentHourClaim } from './currentHourClaim';
 import { selectMinimumStepForEnergy } from './stepSelection';
+import type { ScheduledDeferredObjective } from './priorityAllocation';
 import type {
   DeferredObjectiveHorizonPlan,
   DeferredObjectiveHorizonStatus,
@@ -93,6 +93,7 @@ const toPlannableStatus = (planStatus: DeferredObjectiveActivePlanStatusV1): Def
 const buildFrozenPlannedBuckets = (
   futureHours: readonly DeferredObjectivePlanInterval[],
   nowMs: number,
+  prefersContinuousCharging: boolean,
 ): DeferredObjectivePlannedBucket[] => futureHours.map((hour) => ({
   id: `frozen-${hour.startsAtMs}`,
   sourceBucketId: new Date(hour.startsAtMs).toISOString(),
@@ -106,6 +107,7 @@ const buildFrozenPlannedBuckets = (
   plannedUsefulEnergyKWh: hour.plannedKWh,
   plannedAdmissionPowerKw: hour.plannedAdmissionPowerKw ?? 0,
   booked: true,
+  keepCharging: prefersContinuousCharging && hour.keepCharging === true,
 }));
 
 // Build a `DeferredObjectiveHorizonPlan` from the PERSISTED commitment + live
@@ -127,13 +129,13 @@ const buildFrozenPlannedBuckets = (
 //     the commitment booked (current hour 0 ⇒ idle).
 export const buildFrozenHorizonPlan = (
   nowMs: number,
-  deviceId: string,
-  objective: DeferredObjectiveSettingsEntry,
+  task: Pick<ScheduledDeferredObjective, 'deviceId' | 'objective' | 'prefersContinuousCharging'>,
   frozenRead: FrozenReadInputs,
   energyNeededKWh: number,
   aheadOfHourMilestone: boolean,
   steps: DeferredObjectiveStep[],
 ): DeferredObjectiveHorizonPlan => {
+  const { deviceId, objective, prefersContinuousCharging } = task;
   const { deadlineAtMs } = objective;
   // Every saved hour is a booking; its kWh is what it promises, possibly 0.
   const currentHour = frozenRead.hours.find((hour) => (
@@ -142,7 +144,7 @@ export const buildFrozenHorizonPlan = (
   const futureHours = frozenRead.hours
     .filter((hour) => hour.endsAtMs > nowMs)
     .sort((left, right) => left.startsAtMs - right.startsAtMs);
-  const plannedBuckets = buildFrozenPlannedBuckets(futureHours, nowMs);
+  const plannedBuckets = buildFrozenPlannedBuckets(futureHours, nowMs, prefersContinuousCharging);
 
   // The current bucket is the saved window that covers now, as the fresh allocation's
   // current bucket was: its energy over its own duration, so the requested step
@@ -164,6 +166,7 @@ export const buildFrozenHorizonPlan = (
     : null;
   const currentBucket = currentHour
     ? {
+      keepCharging: prefersContinuousCharging && currentHour.keepCharging === true,
       bucketId: `frozen-${currentHour.startsAtMs}`,
       sourceBucketId: new Date(currentHour.startsAtMs).toISOString(),
       plannedUsefulEnergyKWh: currentBookedKWh,

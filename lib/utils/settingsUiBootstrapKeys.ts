@@ -73,6 +73,7 @@ const BOOTSTRAP_KEYS: Record<SettingsUiBootstrapKey, true> = {
   homes_config: true,
   homes_config_initialized: true,
   ev_boost_settings: true,
+  ev_charging_session_smoothing: true,
   ev_charge_target_settings: true,
   device_expected_power_overrides: true,
   ev_car_associations: true,

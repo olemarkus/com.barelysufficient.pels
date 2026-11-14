@@ -1,4 +1,7 @@
 import type { SettingsPort } from '../ports/homeyRuntime';
+import { normalizeEvChargingSessionSmoothingSettings, type EvChargingSessionSmoothingSettings }
+  from '../../packages/shared-domain/src/settings/evChargingSessionSmoothing';
+import { readEvChargingSessionSmoothingSettings } from './evChargingSessionSmoothingSettings';
 import type { ChargingPhaseSettings, ChargingPhaseSettingsMap } from '../../packages/contracts/src/chargingPhases';
 import { CHARGING_PHASE_SETTINGS_KEY, isChargingPhaseSettingsMap }
   from '../../packages/shared-domain/src/settings/chargingPhases';
@@ -104,6 +107,7 @@ type DeviceControlMaps = {
   readonly temperatureControl: TemperatureControlPolicy;
   readonly temperatureBoost: TemperatureBoostSettings;
   readonly evBoost: EvBoostSettings;
+  readonly evChargingSessionSmoothing: EvChargingSessionSmoothingSettings;
   readonly evChargeTargets: EvChargeTargetSettings;
   readonly evCarAssociations: EvCarAssociations;
   readonly evCarCurrentLimits: EvChargingCurrentLimitsRead;
@@ -207,6 +211,7 @@ export class DeviceControlSettings {
     temperatureControl: { devices: {}, state: 'unavailable' },
     temperatureBoost: {},
     evBoost: {},
+    evChargingSessionSmoothing: {},
     evChargeTargets: {},
     evCarAssociations: {},
     evCarCurrentLimits: { state: 'unavailable' },
@@ -256,6 +261,9 @@ export class DeviceControlSettings {
     return this.maps.temperatureBoost[deviceId];
   }
   getEvBoostConfig(deviceId: string): EvBoostConfig | undefined { return this.maps.evBoost[deviceId]; }
+  getPreferContinuousCharging(deviceId: string): boolean {
+    return this.maps.evChargingSessionSmoothing[deviceId] === true;
+  }
   /** The charger's target battery level; `undefined` is "no target", an answer rather than a gap. */
   getEvChargeTargetConfig(deviceId: string): EvChargeTargetConfig | undefined {
     return this.maps.evChargeTargets[deviceId];
@@ -401,6 +409,10 @@ export class DeviceControlSettings {
         settings.get(TEMPERATURE_BOOST_SETTINGS), normalizeTemperatureBoostSettings, current.temperatureBoost,
       ),
       evBoost: normalizeOrKeep(settings.get(EV_BOOST_SETTINGS), normalizeEvBoostSettings, current.evBoost),
+      evChargingSessionSmoothing: normalizeOrKeep(
+        readEvChargingSessionSmoothingSettings(settings), normalizeEvChargingSessionSmoothingSettings,
+        current.evChargingSessionSmoothing,
+      ),
       evChargeTargets: normalizeOrKeep(
         settings.get(EV_CHARGE_TARGET_SETTINGS), normalizeEvChargeTargetSettings, current.evChargeTargets,
       ),
