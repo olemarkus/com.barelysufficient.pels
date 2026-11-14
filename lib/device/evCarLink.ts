@@ -675,32 +675,34 @@ export const classifyEvCarSelfStop = (observation: EvCarStopObservation): EvCarS
 };
 
 /**
- * Whether a car's charge climbed across an interval during which the linked
- * charger delivered nothing — evidence the car is plugged in somewhere else,
- * independent of any plug-edge evidence.
+ * The charge rise, in percentage points, that counts as charging elsewhere. A car
+ * that reports tenths drifts by a tenth or two while it sits idle, so a tenth up
+ * is no evidence of another plug.
+ */
+export const EV_CAR_LINK_ELSEWHERE_MIN_RISE_PCT = 1;
+
+/**
+ * Whether a car's charge climbed while the linked charger delivered nothing:
+ * evidence the car is plugged in somewhere else, independent of any plug-edge
+ * evidence.
  *
- * `idleSinceMs` is what makes this sound: a single current idle reading does NOT
- * prove the rise happened while idle. PELS pausing a charger just after the
- * charge went up would otherwise be misread as an away session. The caller
- * supplies when the charger last started reading idle, and the rise only counts
- * when BOTH charge readings were observed after that point: a rise from a
- * reading taken while the charger still delivered may be that charger's own.
+ * The rise is measured from the lowest charge reading observed since the charger
+ * started reading idle, never from a reading taken while it still delivered:
+ * that rise may be the charger's own. It must reach
+ * `EV_CAR_LINK_ELSEWHERE_MIN_RISE_PCT`, so a car's idle drift is not a verdict.
  *
- * All inputs are required and resolved; the caller skips the check when it lacks
- * any of them.
+ * All inputs are required and resolved; the caller skips the check when it has
+ * no idle-period reading yet.
  */
 export const isChargingElsewhere = (params: {
-    previousSocPct: number;
-    previousSocAtMs: number;
+    lowestIdleSocPct: number;
     currentSocPct: number;
-    currentSocAtMs: number;
     chargerPowerW: number;
-    chargerIdleSinceMs: number;
 }): boolean => {
-    const {
-        previousSocPct, previousSocAtMs, currentSocPct, currentSocAtMs, chargerPowerW, chargerIdleSinceMs,
-    } = params;
+    const { lowestIdleSocPct, currentSocPct, chargerPowerW } = params;
     if (chargerPowerW > EV_CAR_LINK_IDLE_POWER_W) return false;
-    if (previousSocAtMs < chargerIdleSinceMs || currentSocAtMs < chargerIdleSinceMs) return false;
-    return currentSocPct > previousSocPct;
+    // Rounded to the tenths cars report, so 63.1 -> 64.1 is a full point rather
+    // than binary64's 0.99999.
+    const risePct = Math.round((currentSocPct - lowestIdleSocPct) * 10) / 10;
+    return risePct >= EV_CAR_LINK_ELSEWHERE_MIN_RISE_PCT;
 };

@@ -811,6 +811,72 @@ describe('linking a car to a charger', () => {
     expect(h.of('ev_car_session_elsewhere')).toEqual([]);
   });
 
+  it('does not call an idle car\'s drift by a tenth an away session', () => {
+    // Field report (v3.35.0): a paused Tesla read 42.7, drifted down to 41.9
+    // and then read 42.0; the tenth up was logged as charging elsewhere.
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000);
+    const idleAt = 10_000 + SETTLE_MS + 10_000;
+    h.setCharger({ measuredPowerW: 0 });
+    h.tick(idleAt);
+    [42.7, 42.3, 41.9, 42].forEach((socPct, index) => {
+      h.car(carDevice({ state: 'plugged_in_paused', socPct }), idleAt + (index + 1) * 60_000);
+    });
+
+    expect(h.of('ev_car_session_elsewhere')).toEqual([]);
+  });
+
+  it('counts tenths that add up to a point while the charger sits idle', () => {
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000);
+    const idleAt = 10_000 + SETTLE_MS + 10_000;
+    h.setCharger({ measuredPowerW: 0 });
+    h.tick(idleAt);
+    [41, 41.4, 41.7].forEach((socPct, index) => {
+      h.car(carDevice({ state: 'plugged_in_charging', socPct }), idleAt + (index + 1) * 60_000);
+    });
+    expect(h.of('ev_car_session_elsewhere')).toEqual([]);
+
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 42 }), idleAt + 4 * 60_000);
+    expect(h.of('ev_car_session_elsewhere')).toHaveLength(1);
+  });
+
+  it('does not report a session again after its car was briefly unavailable', () => {
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000);
+    const idleAt = 10_000 + SETTLE_MS + 10_000;
+    h.setCharger({ measuredPowerW: 0 });
+    h.tick(idleAt);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 41 }), idleAt + 60_000);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 42 }), idleAt + 120_000);
+    expect(h.of('ev_car_session_elsewhere')).toHaveLength(1);
+
+    // The car app drops out and comes back; the persisted session resumes.
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 42, available: false }), idleAt + 180_000);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 43, available: true }), idleAt + 240_000);
+    expect(h.of('ev_car_link_resumed')).toHaveLength(1);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 44 }), idleAt + 300_000);
+    h.car(carDevice({ state: 'plugged_in_charging', socPct: 45 }), idleAt + 360_000);
+
+    expect(h.of('ev_car_session_elsewhere')).toHaveLength(1);
+  });
+
+  it('logs a car\'s charge once per whole percent, not with every tenth', () => {
+    // Field report (v3.35.0): a Tesla reporting tenths logged a shadow line
+    // per reading and overflowed the problem report's hourly log room.
+    seedDisconnected(h, 0);
+    plugIn(h, 10_000);
+    const linkedAt = 10_000 + SETTLE_MS;
+    const before = h.of('ev_car_link_soc_shadow').length;
+    [42.1, 42.4, 42.8, 43.2, 43.6].forEach((socPct, index) => {
+      h.car(carDevice({ state: 'plugged_in_charging', socPct }), linkedAt + (index + 1) * 60_000);
+    });
+
+    expect(h.of('ev_car_link_soc_shadow').slice(before).map((event) => (
+      event.event === 'ev_car_link_soc_shadow' ? event.carSocPct : null
+    ))).toEqual([42.1, 43.2]);
+  });
+
   it('reports charging elsewhere once per session, not with every reading', () => {
     // Field report (v3.34.1): ~90 identical verdicts an hour for one session
     // overflowed the problem report's log.

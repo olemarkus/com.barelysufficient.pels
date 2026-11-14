@@ -488,16 +488,9 @@ describe('classifyEvCarSelfStop', () => {
 });
 
 describe('isChargingElsewhere', () => {
-  const base = {
-    previousSocPct: 40,
-    previousSocAtMs: 1_500,
-    currentSocPct: 41,
-    currentSocAtMs: 2_000,
-    chargerPowerW: 0,
-    chargerIdleSinceMs: 1_000,
-  };
+  const base = { lowestIdleSocPct: 40, currentSocPct: 41, chargerPowerW: 0 };
 
-  it('detects charge climbing across an interval the charger sat idle', () => {
+  it('detects charge climbing a full point above its idle low', () => {
     expect(isChargingElsewhere(base)).toBe(true);
   });
 
@@ -505,21 +498,20 @@ describe('isChargingElsewhere', () => {
     expect(isChargingElsewhere({ ...base, chargerPowerW: 7_000 })).toBe(false);
   });
 
-  it('is false when the charge reading predates the idle period', () => {
-    // PELS pausing a charger just after the charge rose must not read as an
-    // away session: the current idle reading does not prove the rise happened
-    // while idle.
-    expect(isChargingElsewhere({ ...base, currentSocAtMs: 500 })).toBe(false);
+  it('counts an exact one-point rise between tenths', () => {
+    // 64.1 - 63.1 is 0.99999... in binary64.
+    expect(isChargingElsewhere({ ...base, lowestIdleSocPct: 63.1, currentSocPct: 64.1 })).toBe(true);
   });
 
-  it('is false when the earlier charge reading predates the idle period', () => {
-    // The rise from that reading may have been delivered by this charger
-    // before it went idle, so it is no evidence of another plug.
-    expect(isChargingElsewhere({ ...base, previousSocAtMs: 500 })).toBe(false);
+  it('is false for a rise below one point', () => {
+    // Field report (v3.35.0): an idle Tesla drifted 43 -> 41.9 -> 42.0, and
+    // that tenth up was logged as the car charging somewhere else.
+    expect(isChargingElsewhere({ ...base, lowestIdleSocPct: 41.9, currentSocPct: 42 })).toBe(false);
+    expect(isChargingElsewhere({ ...base, currentSocPct: 40.9 })).toBe(false);
   });
 
   it('is false when charge is flat or falling', () => {
-    expect(isChargingElsewhere({ ...base, previousSocPct: 41 })).toBe(false);
-    expect(isChargingElsewhere({ ...base, previousSocPct: 42 })).toBe(false);
+    expect(isChargingElsewhere({ ...base, currentSocPct: 40 })).toBe(false);
+    expect(isChargingElsewhere({ ...base, currentSocPct: 39 })).toBe(false);
   });
 });
