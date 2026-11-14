@@ -5,6 +5,7 @@ import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { DeviceAdapterSession, AdapterControlTarget, InventoryCompleteness } from '../deviceAdapter';
 import {
   acknowledgedTeslaCurrent, hasTeslaChargingSurface, confirmedTeslaCurrent, isTeslaChargingState,
+  resolveTeslaChargingState,
 } from './charging';
 import { ACKNOWLEDGED_CURRENT_CAPABILITY_ID } from '../deviceAdapter';
 import type { HomeyDeviceLike } from '../../utils/types';
@@ -13,7 +14,7 @@ import { isTeslaChargingDevice, teslaDriver } from './identity';
 import { getLogger } from '../../logging/logger';
 
 import {
-  lacksTeslaLocationDevice, resolveTeslaHomeEvidence, type HomeLocation, type TeslaHomeEvidence,
+  lacksTeslaLocationDevice, resolveTeslaHomeEvidence, type HomeLocation, type TeslaHomeCheck, type TeslaHomeEvidence,
 } from './evidence';
 
 const logger = getLogger('device/tesla');
@@ -22,6 +23,57 @@ const logger = getLogger('device/tesla');
 const CONTROL_OFF_STATUS: AdapterUnavailableStatus = {
   kind: 'manual', factText: null,
   reasonText: 'Turn on “Control charging through this car” to let PELS control charging',
+};
+
+const isHomeEvidence = (evidence: TeslaHomeEvidence): boolean => (
+  evidence.kind === 'home' || evidence.kind === 'home_without_location'
+);
+
+const manual = (reasonText: string): AdapterUnavailableStatus => ({ kind: 'manual', factText: null, reasonText });
+
+const idle = (factText: string | null, reasonText: string): AdapterUnavailableStatus => (
+  { kind: 'idle', factText, reasonText }
+);
+
+/**
+ * Why PELS cannot place a car Homey still reports in a home session, as the
+ * card's reason line. Every check names its cause, so the owner can tell a
+ * sleeping car from a pairing gap.
+ */
+const NOT_HOME_REASONS: Readonly<Record<TeslaHomeCheck, string>> = {
+  no_vehicle_id: 'Homey has no vehicle ID for this car',
+  battery_unavailable: 'Homey reports this device unavailable',
+  not_connected_state: 'The car has not reported its charging state',
+  no_ac_cable: 'No AC charging cable is connected',
+  dc_charging: 'The car is on a DC charger',
+  no_location_device: 'Waiting for Homey to list the car’s devices',
+  multiple_location_devices: 'More than one Location device matches this car',
+  no_car_device: 'Add this car’s Car device from the Tesla app',
+  multiple_car_devices: 'More than one Car device matches this car',
+  car_unavailable: 'Homey reports the car’s Car device unavailable',
+  car_not_online: 'The car is asleep or offline',
+  car_moving: 'The car is driving',
+  car_in_gear: 'The car is not in Park',
+  location_unavailable: 'Homey reports the car’s Location device unavailable',
+  no_car_coordinates: 'The car has not reported its location',
+  no_home_coordinates: 'Set your Homey’s location so PELS can tell when the car is home',
+  coordinates_undated: 'The car’s location has no time',
+  coordinates_in_future: 'The car’s location has a time in the future',
+};
+
+// A car that is asleep, offline or driving is not charging; neither is one off an
+// AC cable or in an unresolved state. Those read Idle with their cause. The rest
+// may charge where PELS cannot control them (away, on DC, a pairing gap): Manual.
+const IDLE_CHECKS: ReadonlySet<TeslaHomeCheck> = new Set([
+  'not_connected_state', 'no_ac_cable', 'battery_unavailable', 'car_not_online', 'car_moving', 'car_in_gear',
+]);
+
+const awayStatus = (evidence: TeslaHomeEvidence, plugLabel: string | null): AdapterUnavailableStatus => {
+  if (evidence.kind === 'too_far') return manual('The car is not at home');
+  // A home session never reaches here; this keeps the mapping total.
+  if (evidence.kind !== 'failed') return idle(plugLabel, 'The car is not charging');
+  const reason = NOT_HOME_REASONS[evidence.check];
+  return IDLE_CHECKS.has(evidence.check) ? idle(plugLabel, reason) : manual(reason);
 };
 
 const NUMERIC_OBSERVATIONS = new Set([
@@ -65,32 +117,48 @@ export class TeslaChargingSession implements DeviceAdapterSession {
   }
 
   project(snapshot: TransportDeviceSnapshot, setup: ChargingCurrentSetup): TransportDeviceSnapshot {
-    const allowed = setup.confirmation === 'vehicle' && this.isAllowed(snapshot.id);
+    const evidence = this.homeEvidence(snapshot.id);
+    const allowed = setup.confirmation === 'vehicle' && evidence !== undefined && isHomeEvidence(evidence);
     const controlAdapter = snapshot.controlAdapter && { ...snapshot.controlAdapter,
-      unavailableStatus: allowed ? undefined : this.unavailableStatus(snapshot.id, setup),
+      unavailableStatus: allowed ? undefined : this.unavailableStatus(snapshot.id, setup, evidence),
     };
     if (allowed) return { ...snapshot, controlAdapter };
     // A connected vehicle outside the accepted home session contributes no home charging power.
     return { ...snapshot, controlAdapter, available: false, measuredPowerKw: 0 };
   }
 
-  private unavailableStatus(deviceId: string, setup: ChargingCurrentSetup): AdapterUnavailableStatus {
+  /**
+   * What the card says while PELS does not control the car. Only Homey's own
+   * unavailability, or no accepted reading after a trust gap, reads Unavailable:
+   * a car Homey still reports is asleep, away, unplugged or done, and saying
+   * Unavailable there read as PELS having lost it.
+   */
+  private unavailableStatus(
+    deviceId: string,
+    setup: ChargingCurrentSetup,
+    evidence: TeslaHomeEvidence | undefined,
+  ): AdapterUnavailableStatus {
     // A snapshot may already be projected. Only the accepted battery record
     // says whether Homey itself marked it unavailable; a trust gap clears it.
     const battery = this.devices.get(deviceId);
-    const unavailable: AdapterUnavailableStatus = { kind: 'unavailable', factText: null, reasonText: null };
-    if (!battery || battery.available === false) return unavailable;
-    switch (battery.capabilitiesObj.charging_state?.value) {
+    if (!battery || evidence === undefined) {
+      return { kind: 'unavailable', factText: null, reasonText: 'Waiting for Homey to report this device' };
+    }
+    if (battery.available === false) {
+      return { kind: 'unavailable', factText: null, reasonText: 'Homey reports this device unavailable' };
+    }
+    const state = battery.capabilitiesObj.charging_state?.value;
+    switch (state) {
       case 'Disconnected':
         return { kind: 'idle', factText: resolveEvChargingStateLabel('plugged_out'), reasonText: null };
-      case 'Complete':
-        return { kind: 'idle', factText: resolveEvChargingStateLabel('plugged_in'), reasonText: null };
-      case 'NoPower': return { ...unavailable, reasonText: 'The charger is not supplying power' };
-      // With control turned off, PELS has not lost the car; it was not asked
-      // to control it. Saying Unavailable there read as a fault while the car
-      // charged in the driveway.
-      default: return setup.confirmation === 'vehicle' ? unavailable : CONTROL_OFF_STATUS;
+      case 'Complete': return idle(resolveEvChargingStateLabel('plugged_in'), 'The car finished charging');
+      case 'NoPower': return idle(null, 'The charger is not supplying power');
+      default: break;
     }
+    // With control turned off, PELS has not lost the car; it was not asked
+    // to control it.
+    if (setup.confirmation !== 'vehicle') return CONTROL_OFF_STATUS;
+    return awayStatus(evidence, resolveEvChargingStateLabel(resolveTeslaChargingState(state)));
   }
 
   controlEvents(deviceId: string, capabilityId: string, value: unknown) {
@@ -178,17 +246,23 @@ export class TeslaChargingSession implements DeviceAdapterSession {
   }
 
   isAllowed(deviceId: string): boolean {
+    const evidence = this.homeEvidence(deviceId);
+    return evidence !== undefined && isHomeEvidence(evidence);
+  }
+
+  /** Whether the car is in a home session, or undefined without an accepted battery record. */
+  private homeEvidence(deviceId: string): TeslaHomeEvidence | undefined {
     const battery = this.devices.get(deviceId);
-    if (!battery || !isTeslaChargingDevice(battery)) return false;
+    if (!battery || !isTeslaChargingDevice(battery)) return undefined;
     // Away coordinates, motion, a disconnect or an unavailable companion fail this at once.
     const evidence = resolveTeslaHomeEvidence(battery, [...this.devices.values()], this.home, this.inventoryRead);
     this.logEvidenceChange(battery, evidence);
-    return evidence.kind === 'home' || evidence.kind === 'home_without_location';
+    return evidence;
   }
 
   /**
    * One line per change of outcome, because this runs on every projection. The
-   * failing check is the only record of why a car at home reads as Unavailable.
+   * failing check is the only record of why a car at home is not controlled.
    */
   private logEvidenceChange(battery: HomeyDeviceLike, evidence: TeslaHomeEvidence): void {
     const outcome = evidence.kind === 'failed' ? evidence.check : evidence.kind;

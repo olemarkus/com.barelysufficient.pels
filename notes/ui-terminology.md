@@ -256,7 +256,13 @@ the vehicle's charging switch is off. PELS still refuses control of that
 session. The card shows no old hold reason, level rail, or expected charging
 power. Physical device unavailability takes precedence in the adapter and
 does not qualify for this exception. A confirmed no-power session reads
-**Unavailable** with `The charger is not supplying power`; it names no cause.
+**Idle** with `The charger is not supplying power`. A Tesla Homey still reports
+but PELS cannot place in a home session reads **Idle** (not charging, such as
+`The car is asleep or offline`) or **Manual** (charging where PELS cannot control
+it, such as `The car is not at home`), always with why
+(`notes/ev-charger-state-copy.md`).
+**Unavailable** is kept for Homey's own unavailability, and says so:
+`Homey reports this device unavailable`.
 A connected car whose **Control charging through this car** is off reads
 **Manual** with `Turn on “Control charging through this car” to let PELS
 control charging`: PELS was not asked to control it, so **Unavailable** would
