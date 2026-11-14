@@ -1,0 +1,283 @@
+/**
+ * Do not edit directly, this file was auto-generated.
+ */
+
+:root {
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --radius-xs: 2px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.22);
+  --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 30px 60px rgba(0, 0, 0, 0.28);
+  --shadow-panel: -4px 0 24px rgba(0, 0, 0, 0.3);
+  --shadow-inset-soft: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  --font-family-sans: 'Space Grotesk', 'Segoe UI', 'Helvetica Neue', sans-serif;
+  --font-size-xxs: 10px; /** Sub-caption font size for the smallest in-card metric scale labels (e.g. `.plan-card__metric-scale` endpoint markers under the kW reading). Promoted from the bare `font-size: 0.62rem` literal (≈9.92 px at the 16 px root) so that any future tuning of the smallest legible body size happens in the token layer. One step below `--font-size-xs` (11 px). Literal value (not an alias) — physical-pixel target chosen so the metric scale clears the side-by-side 3-column layout without overlapping the larger neighbor `--font-size-xs` reading. */
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-md: 15px;
+  --font-size-lg: 18px;
+  --font-size-xl: 20px;
+  --font-size-title-md: 16px;
+  --font-size-headline-sm: 24px;
+  --font-size-headline-md: 28px;
+  --font-size-display-sm: 36px;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-line-height-flat: 1;
+  --font-line-height-compact: 1.1;
+  --font-line-height-tight: 1.2;
+  --font-line-height-snug: 1.25;
+  --font-line-height-cozy: 1.4;
+  --font-line-height-relaxed: 1.45;
+  --font-line-height-normal: 1.5;
+  --font-line-height-comfortable: 1.6;
+  --transition-fast: 0.15s ease;
+  --transition-default: 0.2s ease;
+  --transition-slow: 0.25s ease;
+  --transition-emphasized: 0.2s cubic-bezier(0.2, 0, 0, 1);
+  --transition-panel: 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  --opacity-disabled: 0.5;
+  --color-base-black: #0c111b;
+  --color-base-black-rgb: 12, 17, 27;
+  --color-base-white: #ffffff;
+  --color-base-gray-50: #e6ecf5;
+  --color-base-gray-100: #9ba6b7;
+  --color-base-gray-200: #838c9d; /** Muted secondary-text step, raised one notch above the old dimmest grey (gray.300 #6b7280). Clears ~4.5:1 on the dark card surfaces (5.20:1 on surface-1 #141923, 4.60:1 on surface-3 #1d2430) so helper/caption copy stays legible at arm's length, while staying visibly below the brighter secondary tier (gray.100). gray.300 is now reserved for genuinely disabled controls. */
+  --color-base-gray-300: #6b7280;
+  --color-base-gray-900: #0d1117;
+  --color-base-accent-light: #4ade80;
+  --color-base-accent-default: #16a34a;
+  --color-base-accent-default-rgb: 22, 163, 74;
+  --color-base-accent-dark: #15803d;
+  --color-base-accent-on: #0c1610;
+  --color-base-good-default: #5eead4;
+  --color-base-good-soft: #a7f3d0;
+  --color-base-price-default: #c4b5fd;
+  --color-base-danger-default: #ef4444;
+  --color-base-danger-soft: #e57373;
+  --color-base-danger-strong: #b91c1c;
+  --color-base-warning-default: #f59e0b;
+  --color-base-warning-soft: #fcd34d;
+  --color-base-warning-strong: #b45309;
+  --color-base-info-default: #60a5fa;
+  --color-base-viz-mint-dim: #48a998; /** Data-viz only. Dimmer, desaturated step of the mint family (`color.base.good.default` #5eead4) for measured totals that carry no managed/background claim — visually between the bright managed mint and the neutral slate so a mixed chart can't read a plain measured column as 'fully managed'. */
+  --color-base-viz-ice: #5cbdf0; /** Data-viz only. Cyan-leaning ice-blue for projection / plan / forecast series. Bright and saturated enough that a thin dotted projection stroke reads as distinctly BLUE — not grey — against the neutral slate budget reference on a small dark 320 px chart (the previous desaturated #8ec1e4 sampled as technically distinct but read grey at mobile size). Kept cyan-leaning (more green than blue) so it never collides with the indigo `color.base.info.default` (#60a5fa) status/level tone, and clear of both the teal mint Actual and the grey slate reference. */
+  --color-base-viz-slate: #6b7280; /** Data-viz only. Neutral slate for background (non-managed) usage fills. Same rendered colour as `color.base.gray.300`, but deliberately its own value: aliasing the text tone would let a future text tweak silently recolor three charts. */
+  --color-base-viz-slate-bright: #9ba6b7; /** Data-viz only. Brighter slate step for dashed reference strokes (budget lines) that must stay findable above the gridlines while remaining a neutral non-judgment tone. Same rendered colour as `color.base.gray.100`, decoupled for the same reason as `viz.slate`. */
+  --color-surface-1: #141923;
+  --color-surface-2: #181e29;
+  --color-surface-3: #1d2430;
+  --color-surface-4: #232b38;
+  --color-surface-5: #2a3242;
+  --color-surface-elevated: #1a1a1a;
+  --color-border-default: #2a3340;
+  --color-border-medium: #3a4555;
+  --color-border-strong: #56627a;
+  --color-overlay-backdrop: rgba(0, 0, 0, 0.6);
+  --pels-touch-target-min: 48px;
+  --pels-motion-pulse-duration: 1.5s; /** Canonical loop duration for `.device-loading-notice`, `.plan-card__stepped-direction`, and `.plan-card__stepped-seg[data-pulse="true"]` opacity/transform pulses in style.css. Replaces three near-identical literals (1.4s / 1.5s / 1.6s) that produced perceptually indistinguishable cadence — single source of truth for any future tuning. Literal duration (not an alias) — pulse cadence is a perceptual constant, not theme-relative. */
+  --pels-shell-nav-tab-selected-indicator-height: 3px; /** M3 primary-tab active-indicator thickness (3 px is the Material 3 spec value). Literal px — there is no 3 px spacing step and the indicator is a fixed hairline bar, not layout spacing, so it is encoded directly at the token layer. */
+  --pels-shell-nav-tab-selected-background: transparent; /** The selected nav tab no longer fills a pill — it uses the M3 underline indicator (`selected-indicator-color`) plus a primary-text label, so the tab container stays transparent (the base `.tabs` rule already paints no container fill). Retained as the documented selected-state anchor for the strip; the layout test pins it to `transparent` to guard against a pill regression, and the `selected-hover-background` sibling is still consumed by `.plan-chip--link` hover. */
+  --pels-control-track-3x: 144px; /** Three touch-target slots wide. Encoded as the absolute px value because Style Dictionary cannot resolve a calc against another token at build time; keep in sync with pels.touch-target.min (currently 48 px) so this stays equal to 3 * pels.touch-target.min. */
+  --pels-chart-week-height: 240px; /** Power-week heatmap container height shared by `.power-week-chart` in style.css (height/min-height) and `resolveChartHeight` in powerWeekChartEcharts.ts (ECharts viewport via `initEcharts`/`chart.resize`). Promoted from parallel `240px` / `240` literals so the container box and the SVG viewport cannot drift. Literal value (not an alias) — chart heights are physical-pixel, not theme-relative; cf. `.deadline-horizon-chart`. */
+  --chip-padding-inline: 10px;
+  --chip-border-width: 1px;
+  --shadow-primary-glow: 0 16px 30px rgba(var(--color-base-accent-default-rgb), 0.25);
+  --color-role-accent: var(--color-base-accent-default);
+  --color-role-on-accent: var(--color-base-accent-on);
+  --color-role-good: var(--color-base-good-default);
+  --color-role-warn: var(--color-base-warning-default);
+  --color-role-danger: var(--color-base-danger-default);
+  --color-role-info: var(--color-base-info-default);
+  --color-semantic-bg: var(--color-base-black);
+  --color-semantic-text-primary: var(--color-base-gray-50);
+  --color-semantic-text-secondary: var(--color-base-gray-100);
+  --color-semantic-text-muted: var(--color-base-gray-200); /** Helper/caption tier. Raised from gray.300 (#6b7280, ~3.6:1 on cards — dissolved) to gray.200 (#838c9d, ~5.2:1 on surface-1) so muted copy clears WCAG AA on the dark card surfaces. The old dimmest grey now lives on `text.disabled`; chart-muted tones were decoupled to `color.base.viz.slate` so this text raise does not recolour any chart. */
+  --color-semantic-text-disabled: var(--color-base-gray-300); /** Reserved for genuinely disabled controls/text — the former (dissolved) muted grey #6b7280. Kept dim on purpose: disabled content should recede. Do not use for helper/caption copy (use text.muted). */
+  --color-semantic-text-inverse: var(--color-base-accent-on);
+  --color-semantic-accent: var(--color-base-accent-default);
+  --color-semantic-accent-strong: var(--color-base-accent-dark);
+  --color-semantic-danger: var(--color-base-danger-default);
+  --color-semantic-warning: var(--color-base-warning-default);
+  --color-semantic-info: var(--color-base-info-default);
+  --color-state-positive-bg: color-mix(in srgb, var(--color-base-good-default) 14%, var(--color-surface-1));
+  --color-state-positive-border: color-mix(in srgb, var(--color-base-good-default) 55%, var(--color-surface-3));
+  --color-state-positive-text: var(--color-base-good-soft);
+  --color-state-negative-bg: color-mix(in srgb, var(--color-base-danger-default) 14%, var(--color-surface-1));
+  --color-state-negative-border: var(--color-base-danger-strong);
+  --color-state-negative-text: var(--color-base-danger-soft);
+  --color-state-warning-bg: color-mix(in srgb, var(--color-base-warning-default) 14%, var(--color-surface-1));
+  --color-state-warning-border: var(--color-base-warning-strong);
+  --color-state-warning-text: var(--color-base-warning-soft);
+  --color-state-info-bg: color-mix(in srgb, var(--color-base-info-default) 14%, var(--color-surface-1));
+  --color-state-info-border: color-mix(in srgb, var(--color-base-info-default) 55%, var(--color-surface-3));
+  --color-focus-ring: var(--color-base-accent-default);
+  --color-overlay-toast: rgba(var(--color-base-black-rgb), 0.9);
+  --pels-surface-container-lowest: var(--color-surface-1);
+  --pels-surface-container-low: var(--color-surface-2);
+  --pels-surface-container: var(--color-surface-3);
+  --pels-surface-container-high: var(--color-surface-4);
+  --pels-surface-container-highest: var(--color-surface-5);
+  --pels-surface-elevated: var(--color-surface-elevated);
+  --pels-surface-outline: var(--color-border-default);
+  --pels-text-section-label-font-size: var(--font-size-sm);
+  --pels-text-section-label-font-weight: var(--font-weight-semibold);
+  --pels-text-section-label-font-line-height: var(--font-line-height-tight);
+  --pels-text-answer-font-size: var(--font-size-md);
+  --pels-text-answer-font-weight: var(--font-weight-semibold);
+  --pels-text-answer-font-line-height: var(--font-line-height-tight);
+  --pels-text-supporting-font-size: var(--font-size-sm);
+  --pels-text-supporting-font-line-height: var(--font-line-height-tight);
+  --pels-text-status-line-font-size: var(--font-size-sm);
+  --pels-text-status-line-font-line-height: var(--font-line-height-normal);
+  --pels-text-card-title-font-size: var(--font-size-lg);
+  --pels-text-card-title-font-weight: var(--font-weight-semibold);
+  --pels-text-card-title-font-line-height: var(--font-line-height-tight);
+  --pels-text-display-font-size: var(--font-size-display-sm);
+  --pels-text-display-font-weight: var(--font-weight-normal);
+  --pels-text-display-font-line-height: var(--font-line-height-tight);
+  --pels-text-headline-font-size: var(--font-size-headline-md);
+  --pels-text-headline-font-weight: var(--font-weight-normal);
+  --pels-text-headline-font-line-height: var(--font-line-height-tight);
+  --pels-text-section-headline-font-size: var(--font-size-headline-sm);
+  --pels-text-section-headline-font-weight: var(--font-weight-semibold);
+  --pels-text-section-headline-font-line-height: var(--font-line-height-tight);
+  --pels-text-title-font-size: var(--font-size-title-md);
+  --pels-text-title-font-weight: var(--font-weight-medium);
+  --pels-text-title-font-line-height: var(--font-line-height-tight);
+  --pels-text-body-font-size: var(--font-size-md);
+  --pels-text-body-font-weight: var(--font-weight-normal);
+  --pels-text-body-font-line-height: var(--font-line-height-normal);
+  --pels-text-caption-font-size: var(--font-size-xs);
+  --pels-text-caption-font-weight: var(--font-weight-medium);
+  --pels-text-caption-font-line-height: var(--font-line-height-tight);
+  --pels-text-card-supporting-font-size: var(--font-size-sm);
+  --pels-text-card-supporting-font-line-height: var(--font-line-height-normal);
+  --pels-text-settings-label-font-weight: var(--font-weight-semibold);
+  --pels-text-settings-trailing-font-weight: var(--font-weight-semibold);
+  --pels-hero-padding: var(--spacing-3);
+  --pels-hero-gap: var(--spacing-3);
+  --pels-hero-section-gap: var(--spacing-1);
+  --pels-card-padding: var(--spacing-3);
+  --pels-card-gap: var(--spacing-2);
+  --pels-card-radius: var(--radius-lg);
+  --pels-segmented-label-font-weight: var(--font-weight-semibold);
+  --pels-segmented-selected-background: rgba(var(--color-base-accent-default-rgb), 0.28);
+  --pels-shell-nav-container-radius: var(--radius-lg);
+  --pels-shell-nav-container-padding: var(--spacing-1);
+  --pels-shell-nav-container-gap: var(--spacing-1);
+  --pels-shell-nav-tab-height: var(--pels-touch-target-min);
+  --pels-shell-nav-tab-height-compact: var(--pels-touch-target-min);
+  --pels-shell-nav-tab-padding-inline: var(--spacing-2);
+  --pels-shell-nav-tab-padding-inline-compact: var(--spacing-1);
+  --pels-shell-nav-tab-radius: var(--radius-md);
+  --pels-shell-nav-tab-label-size: var(--font-size-sm);
+  --pels-shell-nav-tab-label-size-compact: var(--font-size-xs);
+  --pels-shell-nav-tab-label-weight: var(--font-weight-medium); /** Resting weight for inactive tabs; the `.tab.active` rule lifts the selected label to semibold so weight + underline (not a pill fill) distinguish the active destination. */
+  --pels-shell-nav-tab-selected-hover-background: rgba(var(--color-base-accent-default-rgb), 0.38); /** Tonal accent-tint hover fill. No longer used by the nav tab (which is underline-only) but still consumed by `.plan-chip--link[aria-pressed=true]:hover`, so the token stays. */
+  --pels-deadline-close-size: var(--pels-touch-target-min);
+  --pels-chart-plan: var(--color-base-viz-ice); /** Planned hourly allocation bars (Budget hourly chart's single-series legacy path, when no managed/background split exists). Ice-blue — the palette's plan/forecast family. The dashed budget REFERENCE stroke is `pels.chart.budget-reference`, not this. */
+  --pels-chart-budget-reference: var(--color-base-viz-slate-bright); /** Dashed budget reference strokes: the Budget progress chart's budget-pace line and the Usage daily chart's budget markLine, plus their legend swatches and label pills. A reference is a neutral guideline, not a judgment — so it is slate, never amber (amber = warning only). */
+  --pels-chart-measured: var(--color-base-viz-mint-dim); /** Measured totals without a managed/background claim: the Usage day chart's fallback bars, the typical-day and hourly-pattern averages, and the daily-history bars. One dim/desaturated step below the managed mint so a mixed day (split hours next to fallback hours) can't read fallback columns as 'fully managed'. Previously the saturated grass-green accent. */
+  --pels-chart-background: var(--color-base-viz-slate); /** Background (non-managed) share of a usage split. Neutral slate; its own viz value (same rendered colour as the former `color.semantic.text.muted` alias) so a future text-tone tweak can't silently recolor three charts. Deliberately NOT `color.role.info`, which the semantic viz palette reserves for projection/forecast. */
+  --pels-chart-forecast: var(--color-base-viz-ice); /** Projection / forecast strokes (Budget progress projection, comparison forecasts). Dotted ice-blue per the semantic viz palette — quiet, provisional ink, distinct from the saturated info-blue status tone. */
+  --pels-chart-price-line: var(--color-base-price-default);
+  --pels-chart-price-fill: color-mix(in srgb, var(--color-base-price-default) 18%, transparent);
+  --pels-chart-hour-tone-skipped-outline: var(--color-base-viz-slate); /** Skipped-hour outline on the price strip: a neutral non-judgment tone. Pinned to the decoupled viz slate (#6b7280, the former rendered value) so the muted TEXT tier could be raised for legibility without recolouring this chart mark. */
+  --pels-chart-heatmap-border: var(--color-surface-1);
+  --pels-chart-disabled-bar: var(--color-surface-4);
+  --pels-chart-unattributed: var(--color-surface-5); /** Usage-stack segment for measured energy the managed/background split does not attribute (gross tracking gap). One surface step above `disabled-bar` so the claim-free region is visible against the plot without claiming a meaning; deliberately off-legend — the tapped readout carries the exact numbers. */
+  --pels-chart-unreliable-cell: var(--color-surface-5);
+  --pels-chart-cell-radius: var(--radius-xs); /** Heatmap-cell corner radius shared by powerWeekChartEcharts.ts (ECharts `borderRadius`) and `.usage-legend__swatch--unreliable`. Promoted from a parallel `--radius-xs` literal so the legend/cell shape contract is enforced at the chart token layer. */
+  --pels-chart-grid: var(--color-border-medium);
+  --pels-chart-muted: var(--color-base-viz-slate); /** Chart axis/muted tone. Pinned to the decoupled viz slate (#6b7280, the former rendered value) so raising the muted TEXT tier for card legibility does not silently recolour chart axes/labels. */
+  --pels-chart-tooltip-border: var(--color-border-medium);
+  --chip-padding-block: var(--spacing-1);
+  --chip-radius: var(--radius-full);
+  --chip-font-size: var(--font-size-xs);
+  --chip-font-weight: var(--font-weight-semibold);
+  --chip-line-height: var(--font-line-height-tight);
+  --color-state-info-text: var(--color-role-info);
+  --pels-status-good: var(--color-role-good);
+  --pels-status-on-good: var(--color-state-positive-text);
+  --pels-status-good-container: var(--color-state-positive-bg);
+  --pels-status-good-surface: var(--color-state-positive-bg);
+  --pels-status-good-border: var(--color-state-positive-border);
+  --pels-status-warning: var(--color-role-warn);
+  --pels-status-on-warning: var(--color-state-warning-text);
+  --pels-status-warning-container: var(--color-state-warning-bg);
+  --pels-status-warning-surface: var(--color-state-warning-bg);
+  --pels-status-warning-border: var(--color-state-warning-border);
+  --pels-status-limited: var(--color-role-warn);
+  --pels-status-on-limited: var(--color-state-warning-text);
+  --pels-status-limited-container: var(--color-state-warning-bg);
+  --pels-status-limited-surface: var(--color-state-warning-bg);
+  --pels-status-limited-border: var(--color-state-warning-border);
+  --pels-status-critical: var(--color-role-danger);
+  --pels-status-on-critical: var(--color-state-negative-text);
+  --pels-status-critical-container: var(--color-state-negative-bg);
+  --pels-status-critical-surface: var(--color-state-negative-bg);
+  --pels-status-critical-border: var(--color-state-negative-border);
+  --pels-on-surface: var(--color-semantic-text-primary);
+  --pels-on-surface-variant: var(--color-semantic-text-secondary);
+  --pels-on-surface-muted: var(--color-semantic-text-muted);
+  --pels-on-surface-disabled: var(--color-semantic-text-disabled); /** The reserved dim grey (#6b7280) for genuinely disabled controls/text only — no longer used for helper/caption copy after the muted tier was raised. */
+  --pels-segmented-container-background: var(--pels-surface-container-low);
+  --pels-segmented-container-border: var(--pels-surface-outline);
+  --pels-shell-nav-container-background: var(--pels-surface-container-low);
+  --pels-shell-nav-container-border: var(--pels-surface-outline);
+  --pels-shell-nav-tab-selected-indicator-color: var(--color-role-accent); /** M3 underline-indicator colour for the selected nav tab. The selected tab now reads as a modern M3 tab strip — an accent underline bar plus a primary-text label — rather than a filled pill. Accent (brand green) is the canonical M3 active-indicator colour and stays distinct from the tonal segmented-control fill used elsewhere. */
+  --pels-deadline-close-background: var(--pels-surface-container-high);
+  --pels-deadline-close-outline: var(--pels-surface-outline);
+  --pels-chart-actual: var(--color-role-good); /** SEMANTIC DATA-VIZ PALETTE — one hue, one meaning across every chart: mint (`color.role.good`) = actual / measured / delivered / picked; dim mint (`color.base.viz.mint-dim`) = measured totals carrying no managed/background claim; ice-blue (`color.base.viz.ice`) = projection / plan / forecast; amber (`pels.chart.warn`) = warning only; red (`pels.chart.danger`) = error / over-hard-cap only; slate (`color.base.viz.slate`) = background / neutral, with `viz.slate-bright` for dashed reference strokes. Auxiliary identities that sit outside the series family and keep their own meaning: purple = money/price axis (`price-line`), and the price-LEVEL tones on the hour strips (`hour-tone-*`). No chart may introduce a hue outside this set. This token: the Actual (measured) stroke on the Budget charts — previously the near-white text tone. */
+  --pels-chart-managed: var(--color-role-good); /** Managed (PELS-influenceable) share of a usage split. Mint — the same family the Overview hero's managed power segment uses (`--pels-status-good`), so 'managed' reads as one colour across the hero bar, the Budget hourly stack, and the Usage stack. Previously `color.role.warn`, which collided with the amber `pels.chart.warn` unreliable-hour encoding. */
+  --pels-chart-picked: var(--color-role-good); /** Hours a smart task picked, on the schedule chart: picked hours render as filled mint bars, non-picked hours as the same hue dimmed/outlined (opacity derived in-chart). Mint = the palette's 'picked/delivered' meaning; the bar height already carries the price, so price-level colour-coding stays off this chart. */
+  --pels-chart-warn: var(--color-role-warn);
+  --pels-chart-danger: var(--color-role-danger);
+  --pels-chart-heatmap-low: color-mix(in srgb, var(--color-role-good) 18%, var(--color-surface-1));
+  --pels-chart-heatmap-high: var(--color-role-good); /** Power-week heatmap ramp = measured energy, so it runs surface→mint (the palette's measured family). Previously the saturated grass-green accent, which sat outside the semantic viz set. */
+  --pels-chart-hour-tone-cheap: var(--color-role-good);
+  --pels-chart-hour-tone-normal: var(--color-role-info);
+  --pels-chart-hour-tone-expensive: var(--color-role-danger);
+  --pels-chart-hour-tone-glow: color-mix(in srgb, var(--color-role-accent) 30%, transparent);
+  --pels-chart-current-border: var(--color-state-info-border);
+  --pels-chart-tooltip-bg: var(--color-overlay-toast);
+  --pels-chart-tooltip-text: var(--color-semantic-text-primary);
+  --pels-text-primary: var(--pels-on-surface);
+  --pels-text-secondary: var(--pels-on-surface-variant);
+  --pels-text-muted: var(--pels-on-surface-muted);
+  --pels-text-disabled: var(--pels-on-surface-disabled);
+  --pels-text-status-line-positive-color: var(--pels-status-on-good);
+  --pels-text-section-label-color: var(--pels-text-secondary);
+  --pels-text-answer-color: var(--pels-text-primary);
+  --pels-text-supporting-color: var(--pels-text-secondary);
+  --pels-text-status-line-color: var(--pels-text-secondary);
+  --pels-text-card-title-color: var(--pels-text-primary);
+  --pels-text-display-color: var(--pels-text-primary);
+  --pels-text-headline-color: var(--pels-text-primary);
+  --pels-text-section-headline-color: var(--pels-text-primary);
+  --pels-text-title-color: var(--pels-text-primary);
+  --pels-text-body-color: var(--pels-text-primary);
+  --pels-text-caption-color: var(--pels-text-secondary);
+  --pels-text-card-supporting-color: var(--pels-text-secondary);
+  --pels-text-settings-label-color: var(--pels-text-primary);
+  --pels-text-settings-trailing-color: var(--pels-text-primary);
+  --pels-segmented-label-color: var(--pels-text-secondary);
+  --pels-segmented-selected-text: var(--pels-text-primary);
+  --pels-shell-nav-tab-label-color: var(--pels-text-primary); /** Inactive tab labels raised one step (secondary → primary) so unselected destinations stay clearly readable on the strip. Selection is carried by the M3 underline + semibold weight (the base label weight drops to medium), matching M3 secondary-tab colour semantics: one on-surface label colour, the indicator marks the active tab. */
+  --pels-shell-nav-tab-label-hover-color: var(--pels-text-primary);
+  --pels-shell-nav-tab-selected-text: var(--pels-text-primary);
+  --pels-deadline-close-text: var(--pels-text-primary);
+}
