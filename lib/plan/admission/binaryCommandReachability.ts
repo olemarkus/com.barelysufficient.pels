@@ -13,11 +13,17 @@ type ReachabilityState = {
   failures: number;
   retryAtMs?: number;
   sawUnavailable?: boolean;
+  /**
+   * The last failure was a definite answer on the dispatch lane: the device
+   * said no. A command that timed out got no answer at all. Both wait out the
+   * same backoff and are tried again; only what the owner is told differs.
+   */
+  refused?: boolean;
 };
 
 export type BinaryCommandabilityProjection = {
   commandableNow: boolean;
-  reason: 'none' | 'binary_command_retry';
+  reason: 'none' | 'binary_command_retry' | 'binary_command_refused';
 };
 
 export type BinaryCommandabilityProjectionInput = {
@@ -64,7 +70,7 @@ export function createBinaryCommandReachability(
     const failures = Math.min((current?.failures ?? 0) + 1, RETRY_DELAYS_MS.length);
     const retryDelayMs = RETRY_DELAYS_MS[failures - 1] ?? RETRY_DELAYS_MS.at(-1) ?? 0;
     const retryAtMs = Date.now() + retryDelayMs;
-    stateByDevice.set(event.deviceId, { failures, retryAtMs });
+    stateByDevice.set(event.deviceId, { failures, retryAtMs, refused: lane === 'dispatch' });
     scheduleRebuild(event.deviceId, retryAtMs);
     // The arming is the fact worth logging, and it is logged HERE rather than at
     // either call site so both lanes report it identically. The sweep lane asks
@@ -96,6 +102,7 @@ export function createBinaryCommandReachability(
         stateByDevice.set(event.deviceId, {
           failures: current?.failures ?? 0,
           retryAtMs: current?.retryAtMs,
+          refused: current?.refused,
         });
         scheduleRebuild(event.deviceId, dueAtMs);
       },
@@ -183,7 +190,7 @@ export function createBinaryCommandReachability(
       if (retryAtMs === undefined || Date.now() >= retryAtMs) {
         return { commandableNow: true, reason: 'none' };
       }
-      return { commandableNow: false, reason: 'binary_command_retry' };
+      return { commandableNow: false, reason: current.refused ? 'binary_command_refused' : 'binary_command_retry' };
     },
     prune: (presentDeviceIds) => {
       if (disposed) return;

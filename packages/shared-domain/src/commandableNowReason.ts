@@ -49,9 +49,12 @@ const EV_BLOCK_REASON_BY_CODE: Record<EvBlockReasonCode, string> = {
 
 export const DEVICE_UNAVAILABLE_REASON = 'device unavailable';
 export const BINARY_COMMAND_RETRY_REASON = 'device did not respond';
+/** The device answered a start with a refusal. PELS tries again later, as after no answer. */
+export const BINARY_COMMAND_REFUSED_REASON = 'device refused the command';
 
 type CommandabilityDetailInput = {
-  commandabilityReason?: EvBlockReasonCode | 'device_unavailable' | 'binary_command_retry';
+  commandabilityReason?: EvBlockReasonCode | 'device_unavailable' | 'binary_command_retry'
+    | 'binary_command_refused';
 };
 
 /**
@@ -66,6 +69,7 @@ export const resolveCommandabilityDetail = (dev: CommandabilityDetailInput): str
   const reason = dev.commandabilityReason;
   if (reason === undefined || reason === 'device_unavailable') return DEVICE_UNAVAILABLE_REASON;
   if (reason === 'binary_command_retry') return BINARY_COMMAND_RETRY_REASON;
+  if (reason === 'binary_command_refused') return BINARY_COMMAND_REFUSED_REASON;
   return EV_BLOCK_REASON_BY_CODE[reason];
 };
 
