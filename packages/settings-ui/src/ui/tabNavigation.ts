@@ -77,10 +77,10 @@ const refreshHomeSettingsPanel = (tabId: string): void => {
     refreshHomeScope().then(async (published) => {
       // A published scope change already reloaded this visible panel through
       // its scope subscription (`uiRefreshTasks.ts`); a second reload here
-      // would only repeat the same reads. Same rule for Overview and Usage.
-      if (published) return;
+      // would only repeat the same reads. Setup review has no such subscription.
+      if (published && tabId !== 'setup-review') return;
       await loadModeAndPriorities();
-      if (state.devicesLoaded) renderPriorities(state.latestDevices);
+      if (tabId !== 'setup-review' && state.devicesLoaded) renderPriorities(state.latestDevices);
     }),
     'Failed to load modes for the selected home',
     'showTab',
@@ -170,9 +170,9 @@ const runTabActivationSideEffects = (tabId: string) => {
     }
     return;
   }
-  if (tabId === 'homes' || tabId === 'modes') {
-    // Both area-owned settings panels refresh their authoritative home view on
-    // open; Modes then reloads its selected area's catalog and filtered rows.
+  if (tabId === 'homes' || tabId === 'modes' || tabId === 'setup-review') {
+    // Mode settings reload on entry. Setup's tab-shown handler selects Main
+    // before activation work; Modes uses the selected home's catalog.
     refreshHomeSettingsPanel(tabId);
     return;
   }

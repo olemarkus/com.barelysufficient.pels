@@ -412,8 +412,19 @@ describe('Redesign plan UI', () => {
         ],
       });
       expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
-        .toBe('Quiet hour. Nothing to do.');
+        .toBe('No devices are being limited.');
     });
+
+    it.each(['capacity', 'daily_budget', 'deferred_objective_avoid'])(
+      'never claims nothing is limited beside a %s hold', async (code) => {
+        await renderPlanSnapshot({ meta: buildPlanMeta({ totalKw: 1.2, softLimitKw: 6, hardCapLimitKw: 8 }),
+          devices: [{ id: 'held-device', name: 'Heater', priority: 1, currentState: 'on', plannedState: 'shed',
+            reason: { code } }],
+        });
+        expect(document.querySelector('[data-device-id="held-device"]')?.getAttribute('data-state-kind')).toBe('held');
+        expect(document.querySelector('.plan-hero__decision')?.textContent).not.toContain('No devices are being limited');
+      },
+    );
 
     it('names no quiet hour while no limit is in force', async () => {
       await renderPlanSnapshot({

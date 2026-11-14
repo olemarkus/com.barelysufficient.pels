@@ -526,6 +526,11 @@ const resolvePhaseSentence = (input: DecisionSentenceInput): DecisionSentenceRes
   return null;
 };
 
+const buildQuietDecisionSentence = (dryRun: boolean): DecisionSentenceResult => ({
+  text: dryRun ? 'No devices would be limited right now.' : 'No devices are being limited.',
+  positive: true,
+});
+
 export const buildDecisionSentence = (
   input: DecisionSentenceInput,
 ): DecisionSentenceResult => {
@@ -598,7 +603,7 @@ export const buildDecisionSentence = (
   // sentence names what PELS does for the home. It states facts and never
   // nudges; Setup & recommendations is where PELS offers more.
   if (input.safePaceKw === null) return resolveNoLimitSentence(input.jobs);
-  return { text: 'Quiet hour. Nothing to do.', positive: true };
+  return buildQuietDecisionSentence(input.dryRun);
 };
 
 const resolveNoLimitSentence = (counts: MainHomeJobs): { text: string; positive: boolean } => {

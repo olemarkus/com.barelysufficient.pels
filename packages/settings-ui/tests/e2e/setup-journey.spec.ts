@@ -230,6 +230,83 @@ test('setup offers what PELS can do before the review, and the review names it',
   await page.screenshot({ path: testInfo.outputPath('review.png'), scale: 'css', fullPage: true });
 });
 
+const seedModeReview = async (page: Page, temperatureControlMode: 'mode' | 'external' = 'mode') => {
+  await seedHeatPumpAndCharger(page, true);
+  await page.addInitScript((temperatureControlMode) => {
+    const w = window as unknown as { __PELS_HOMEY_STUB__: { settings: Record<string, unknown> } };
+    Object.assign(w.__PELS_HOMEY_STUB__.settings, {
+      operating_mode: 'Home',
+      mode_device_targets: { Home: { 'setup-heatpump': 23 }, Night: { 'setup-heatpump': 18 } },
+      capacity_priorities: {
+        Home: { 'setup-charger': 1, 'setup-heatpump': 2 },
+        Night: { 'setup-heatpump': 1, 'setup-charger': 2 },
+      },
+      controllable_devices: { 'setup-heatpump': false, 'setup-charger': false },
+      temperature_control_modes: { 'setup-heatpump': temperatureControlMode },
+    });
+  }, temperatureControlMode);
+};
+
+test('simulation review names active mode targets and priorities rather than the edited mode', async ({ page }, testInfo) => {
+  await seedModeReview(page);
+  await page.goto('/?page=settings/modes');
+  await page.locator('#mode-select').click();
+  await page.getByRole('option', { name: 'Night', exact: true }).click();
+  await expect(page.getByRole('spinbutton', { name: 'Target temperature for Heat pump' })).toHaveValue('18');
+  await expect(page.locator('#priority-list')).toContainText('No temperature target');
+  await expect(page.locator('#priority-list')).not.toContainText('On/off only');
+  await page.locator('#simulation-disable-button').click();
+  const review = page.locator('#setup-review-root');
+  await expect(review).toContainText('Active modeHome');
+  const rows = review.locator('.setup-journey__review-device');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText('Car charger');
+  await expect(rows.nth(0)).toContainText('Priority 1');
+  await expect(rows.nth(0)).not.toContainText('Mode target');
+  const heater = review.locator('[data-device-id="setup-heatpump"]');
+  await expect(heater).toContainText('Priority 2');
+  await expect(heater).toContainText('Mode target: 23 °C');
+  await expect(heater).toContainText('Follows mode temperatures');
+  await expect(heater).not.toContainText('Nothing for PELS to do yet');
+  await expect(heater).not.toContainText('Power-limit control on');
+  expect(await stored(page, 'capacity_dry_run')).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('simulation-review-480.png'), fullPage: true, scale: 'css' });
+  await page.setViewportSize({ width: 320, height: 900 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('simulation-review-320.png'), fullPage: true, scale: 'css' });
+});
+
+test('simulation review does not promise mode temperatures when the owner keeps external changes', async ({ page }) => {
+  await seedModeReview(page, 'external');
+  await page.goto('/?page=settings/setup-review&setup=review');
+  const heater = page.locator('#setup-review-root [data-device-id="setup-heatpump"]');
+  await expect(heater).toContainText('Nothing for PELS to do yet');
+  await expect(heater).not.toContainText('Follows mode temperatures');
+  await expect(heater).not.toContainText('Mode target');
+  expect(await stored(page, 'capacity_dry_run')).toBe(true);
+});
+
+test('simulation review withdraws mode metadata when the Main catalog cannot be read', async ({ page }) => {
+  await seedModeReview(page);
+  await page.goto('/?page=settings/setup-review&setup=review');
+  const review = page.locator('#setup-review-root');
+  await expect(review).toContainText('Mode target: 23 °C');
+  await page.evaluate(() => {
+    type Callback = (error: Error | null, value?: unknown) => void;
+    const w = window as unknown as {
+      Homey: { get: (key: string, cb: Callback) => void; __stub: { emitSettingsSet: (key: string) => void } };
+    };
+    const get = w.Homey.get;
+    w.Homey.get = (key, cb) => key === 'capacity_priorities' ? cb(new Error('Offline')) : get(key, cb);
+    w.Homey.__stub.emitSettingsSet('capacity_priorities');
+  });
+  await expect(review).not.toContainText('Active mode');
+  await expect(review).not.toContainText('Mode target');
+  await expect(review.locator('.setup-journey__review-device')).not.toContainText(['Priority 1', 'Priority 2']);
+  await expect(review).not.toContainText('Follows mode temperatures');
+  await expect(review).not.toContainText('Nothing for PELS to do yet');
+});
+
 test('pending priorities remain offered after leaving, and explicit Continue skips them without looping', async ({ page }) => {
   await seedHeatPumpAndCharger(page, true);
   await page.goto('/?page=settings/devices&setup=goals');

@@ -184,15 +184,15 @@ export const getDesiredTarget = (device: SettingsUiDeviceListItem) => {
   return null;
 };
 
-const buildOnOffPlaceholder = (): HTMLElement => {
+const buildNoTemperaturePlaceholder = (): HTMLElement => {
   const placeholder = document.createElement('span');
   placeholder.className = 'mode-target-placeholder';
-  placeholder.textContent = 'On/off only';
+  placeholder.textContent = 'No temperature target';
   return placeholder;
 };
 
 const buildModeTargetInput = (device: SettingsUiDeviceListItem, desired: number | null): HTMLElement => {
-  if (!supportsTemperatureDevice(device)) return buildOnOffPlaceholder();
+  if (!supportsTemperatureDevice(device)) return buildNoTemperaturePlaceholder();
   const target = getPrimaryTemperatureTarget(device);
   const tempInput = document.createElement('md-filled-text-field') as MaterialTextFieldElement;
   tempInput.setAttribute('type', 'number');
