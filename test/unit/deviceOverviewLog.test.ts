@@ -28,6 +28,7 @@ const asOverviewLogDevice = (device: DevicePlanDevice): OverviewLogDevice => bui
   getDeviceExecutionState: () => executionStateFixture(device), dryRun: false, nowMs: 0,
   observed: noPlanServiceObservedReads,
   getDeviceControlAdapter: () => undefined,
+  isBuiltInControlHeldByFlow: () => false,
   getHomeBatteryCard: () => ({ kind: 'none' } as const),
 });
 

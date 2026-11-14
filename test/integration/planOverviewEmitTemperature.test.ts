@@ -57,6 +57,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
       ...overviewReadModelWiring(),
       getDeviceExecutionState: () => executionStateFixture(plan.devices[0]), dryRun: false, nowMs: 0,
       getDeviceControlAdapter: () => undefined,
+      isBuiltInControlHeldByFlow: () => false,
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
       observed: {
         ...noPlanServiceObservedReads,
@@ -89,6 +90,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
         ...overviewReadModelWiring(),
         getDeviceExecutionState: () => executionStateFixture(thermostat), dryRun: false, nowMs: 0,
         getDeviceControlAdapter: () => undefined,
+        isBuiltInControlHeldByFlow: () => false,
         getHomeBatteryCard: () => ({ kind: 'none' } as const),
         observed: {
           ...noPlanServiceObservedReads,
@@ -118,6 +120,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
       ...overviewReadModelWiring(),
       getDeviceExecutionState: () => executionStateFixture(thermostat), dryRun: false, nowMs: 0,
       getDeviceControlAdapter: () => undefined,
+      isBuiltInControlHeldByFlow: () => false,
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
       observed: {
         ...noPlanServiceObservedReads,
@@ -190,6 +193,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
       ...overviewReadModelWiring(),
       getDeviceExecutionState: () => executionStateFixture(onThermostat), dryRun: false, nowMs: 0,
       getDeviceControlAdapter: () => undefined,
+      isBuiltInControlHeldByFlow: () => false,
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
       observed: {
         ...noPlanServiceObservedReads,
@@ -219,6 +223,7 @@ describe('planOverviewEmit — temperature facet at the log seam', () => {
       ...overviewReadModelWiring(),
       getDeviceExecutionState: () => executionStateFixture(updatedDevice), dryRun: false, nowMs: 0,
       getDeviceControlAdapter: () => undefined,
+      isBuiltInControlHeldByFlow: () => false,
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
       observed: {
         ...noPlanServiceObservedReads,

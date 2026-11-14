@@ -16,12 +16,14 @@ type OverviewReadModelWiring = Pick<SettingsOverviewReadModelDeps,
   | 'getCarIdentificationState'
   | 'getSteppedLoadProfileById'
   | 'getDeviceControlAdapter'
+  | 'isBuiltInControlHeldByFlow'
   | 'readStarvationRescuableDeviceIds'>;
 
 /**
  * The read-model deps the plan service always wires, for a spec that is not
  * about them: the main home, no starvation, no idle classification, no
- * associated car, no stepped profiles, no rescuable device. A spec about one of
+ * associated car, no stepped profiles, no Flow holding built-in control back,
+ * no rescuable device. A spec about one of
  * them overrides it.
  */
 export const overviewReadModelWiring = (): OverviewReadModelWiring => ({
@@ -32,6 +34,7 @@ export const overviewReadModelWiring = (): OverviewReadModelWiring => ({
   getCarIdentificationState: () => 'not_waiting',
   getSteppedLoadProfileById: () => new Map(),
   getDeviceControlAdapter: () => undefined,
+  isBuiltInControlHeldByFlow: () => false,
   readStarvationRescuableDeviceIds: () => [],
 });
 

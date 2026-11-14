@@ -43,6 +43,7 @@ const buildSettingsOverviewReadModel = (
 const absentTemperature = {
   observed: noPlanServiceObservedReads,
   getDeviceControlAdapter: () => undefined,
+  isBuiltInControlHeldByFlow: () => false,
   getHomeBatteryCard: () => ({ kind: 'none' } as const),
 };
 
@@ -469,9 +470,10 @@ describe('settingsOverviewReadModel', () => {
     // to Max" for as long as PELS keeps asking. Say what to check instead.
     const flowBacked = steppedPlanDevice({ currentState: 'on', plannedState: 'keep',
       reportedStepId: 'low', selectedStepId: 'low', desiredStepId: 'max', stepCommandPending: true });
-    const unanswered = (device: DevicePlanDevice, dryRun = false) => buildOverviewDeviceCard(device, {
+    const unanswered = (device: DevicePlanDevice, dryRun = false, heldByFlow = false) => buildOverviewDeviceCard(device, {
       ...overviewReadModelWiring(),
       ...absentTemperature, dryRun, nowMs: 0,
+      isBuiltInControlHeldByFlow: () => heldByFlow,
       getDeviceExecutionState: () => ({ ...executionStateFixture(device), stepProgress: 'pending',
         steppedTransitionPending: true, stepCommandUnanswered: true }),
     }).status.reason?.text;
@@ -482,6 +484,10 @@ describe('settingsOverviewReadModel', () => {
       currentControl: 'built_in' as const,
     } };
     expect(unanswered(builtIn)).toBe('Level change not confirmed by the device');
+    // A Flow holding built-in control back routes the levels through Flows; built-in
+    // control reads the level from the device, so point there, not at a report-back Flow.
+    expect(unanswered(flowBacked, false, true))
+      .toBe('Level change not confirmed — disable your Flow to use built-in control');
     // Simulation sends no commands, so there is nothing for it to say.
     expect(unanswered(flowBacked, true)).not.toContain('Level change not confirmed');
   });

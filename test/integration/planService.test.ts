@@ -209,6 +209,7 @@ const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServ
   | 'hasStandingCommandGrant'
   | 'getHomeBatteryCard'
   | 'getDeviceControlAdapter'
+  | 'isBuiltInControlHeldByFlow'
   | 'planBuildGate'
   | 'getSteppedSettleDevices'
   | 'homeId'
@@ -220,6 +221,7 @@ const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServ
   ...planServiceWiring(),
   hasStandingCommandGrant: () => false,
   getDeviceControlAdapter: () => undefined,
+  isBuiltInControlHeldByFlow: () => false,
   getHomeBatteryCard: () => ({ kind: 'none' }),
   planBuildGate: openPlanBuildGate(),
   getSteppedSettleDevices: () => [],
@@ -1196,6 +1198,7 @@ describe('PlanService', () => {
   it('serializes enriched UI plan fields without changing the runtime snapshot', () => {
     const { service } = createPlanService({
       getDeviceControlAdapter: () => undefined,
+      isBuiltInControlHeldByFlow: () => false,
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
       observed: {
         ...noPlanServiceObservedReads,
