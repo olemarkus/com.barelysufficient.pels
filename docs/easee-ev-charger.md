@@ -13,15 +13,19 @@ PELS sets the charging current of an Easee charger itself, through the Easee app
 
 - The Easee app is installed in Homey and your charger is paired.
 
-## Step 1: Check the EV Control Mode
+## Step 1: Check the Control Model
 
-Open **More -> Apps -> PELS -> Settings -> Devices** and turn on **Managed by PELS** for the charger. If the charger has no control model yet, PELS picks **EV 1-phase** or **EV 3-phase** from how the Easee app reports the charger is wired: its phase mode, or the grid type it detected.
+Open **More -> Apps -> PELS -> Settings -> Devices** and turn on **Managed by PELS** for the charger.
 
-Open the charger and check **Control model**. PELS plans in amps for an EV charger, and the control model tells it how much power each amp is. **EV 1-phase** assumes 230 V single-phase charging; **EV 3-phase** assumes a 400 V TN supply. If the Easee app cannot tell, for example before the charger has detected its grid, confirm the supply and charging mode before choosing.
+Open the charger and check **Control model**. PELS plans in amps for an EV charger, and the control model tells it how much power each amp is.
 
-**230 V IT three-phase charging is not supported by these presets.** PELS leaves a new charger's control model unchanged when Easee reports an IT three-phase grid, unless Easee is locked to single-phase charging. This also applies when Easee is locked to three-phase charging. Do not select **EV 3-phase** as a workaround: it overestimates power on an IT grid. Existing saved models are kept, so check yours if you already use IT three-phase charging. If Easee is already configured for single-phase charging, **EV 1-phase** remains supported.
+**Automatic** is the default for a newly managed Easee. PELS takes the charging levels from the Easee app: whole amps from 6 A up to the charger's maximum current and circuit fuse, with the power per amp from the phase mode or the grid type the charger detected. That includes 230 V IT three-phase charging. The **Charging range** under the setting shows the result, and it follows changes to those settings in the Easee app.
 
-PELS picks the control model only once. If your car charges on one phase from a three-phase charger, choose **EV 1-phase** yourself, or switch between the two with the **Set EV charging phase** Flow card when you charge different cars. PELS never changes it back.
+Automatic is not offered until the Easee app reports enough to set the levels, for example before the charger has detected its grid. Then, or under **Manual**, choose the model yourself. **EV 1-phase** assumes 230 V single-phase charging; **EV 3-phase** assumes a 400 V TN supply. If no model is saved yet, PELS picks one of the two from how the Easee app reports the charger is wired.
+
+**230 V IT three-phase charging is not supported by the manual models.** PELS leaves a new charger's manual model unchanged when Easee reports an IT three-phase grid, unless Easee is locked to single-phase charging. This also applies when Easee is locked to three-phase charging. Do not select **EV 3-phase** as a workaround: it overestimates power on an IT grid. Use **Automatic** instead. If Easee is already configured for single-phase charging, **EV 1-phase** remains supported.
+
+A charger you set up before Automatic was available keeps its manual model until you choose **Automatic**. If your car charges on one phase from a three-phase charger under a manual model, choose **EV 1-phase** yourself, or switch between the two with the **Set EV charging phase** Flow card when you charge different cars. PELS never changes a manual model back.
 
 ## Step 2: Check Built-in Device Control
 
@@ -68,9 +72,9 @@ Select a supported car in the charger's **Car** section to use its battery level
 
 | Problem | What to check |
 | --- | --- |
-| **Use built-in device control** is not shown | Check that **Control model** is **EV 1-phase** or **EV 3-phase**, and that the charger is paired with the Easee app. |
+| **Use built-in device control** is not shown | Check that **Control model** is **Automatic**, **EV 1-phase** or **EV 3-phase**, and that the charger is paired with the Easee app. |
 | Built-in control stays off or is paused | Look for the Flow notice on the charger's page, disable the part of that Flow that sets the charger current, then select **Check again**. |
-| The charger uses more or less power per step than PELS expects | Check that the control model matches the charger's phases. |
+| The charger uses more or less power per step than PELS expects | Under a manual model, check that it matches the charger's phases. Under **Automatic**, check the phase mode in the Easee app. |
 | Charging does not start right after PELS resumes it | Easee waits about 5 minutes after the current is raised. Leave it: starting charging in the Easee app opens a new session at the charger's maximum current. |
 
 ## Related Pages

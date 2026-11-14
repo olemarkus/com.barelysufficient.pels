@@ -10,7 +10,7 @@ Use this pattern when a real Homey device has its own stepped power modes, but P
 Typical devices:
 
 - water heaters with `Low/Medium/Max`
-- EV chargers with stepped current/power levels
+- EV chargers PELS cannot control directly (see [Configure an EV Charger](/ev-charger#charging-current-setup))
 - other controllable loads with discrete states
 
 For built-in stepped-load devices, PELS owns the decision and your Homey Flows only do the vendor-specific mapping.

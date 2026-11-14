@@ -277,8 +277,8 @@ Recommended charger setup:
 - **Managed by PELS** on
 - **Power-limit control** off by default to prevent ordinary run-when-power-is-available behavior when no active task controls the charger. An active task may still charge in a period it keeps without planned energy; see [Smart Tasks](/smart-tasks#power-limit-control-and-tasks).
 - **Only PELS starts this device** on, if the charger should charge only for a task. A charger that starts a session by itself when the car is plugged in is turned off again, so the car charges only in the periods the task keeps. It appears on the device page, under **Power-limit control**, once the charger has had its first smart task.
-- Current control configured as described in [Configure an EV Charger](/ev-charger). A new Easee setup uses built-in device control; an existing Easee current-control Flow remains supported.
-- Battery reporting Flow configured when your car or charger app can provide it
+- Current control configured as described in [Configure an EV Charger](/ev-charger): built-in control for a supported charger, otherwise a current-control Flow.
+- A battery level for the car: a selected car, the charger's own reading, or a battery-reporting Flow
 
 ### Heat a water heater on a relay overnight
 
@@ -295,7 +295,7 @@ This is useful for rooms or water heaters where the exact ready time matters mor
 | Problem | What to check |
 | --- | --- |
 | The task stays pending | Check that **Respond to prices** is on under **Price-aware devices** and that prices are available through the ready-by time. |
-| The EV task does not change charger current | Confirm the charger is configured as EV 1-phase or EV 3-phase. Check the control method selected for the charger: built-in device control, or a current-control Flow using **EV charger current (A)**. See [Configure an EV Charger](/ev-charger). |
+| The EV task does not change charger current | Confirm the charger's **Control model** is **Automatic**, EV 1-phase or EV 3-phase. Check the control method selected for the charger: built-in device control, or a current-control Flow using **EV charger current (A)**. See [Configure an EV Charger](/ev-charger). |
 | The device starts in a period outside the plotted task plan | The task keeps that period without planned energy, because it is cheaper than the planned periods or the task cannot finish otherwise, and runs there when power is available. A deferred period is held off. With no active task controlling the device, **Power-limit control** on allows normal run-when-power-is-available behavior. |
 | The task cannot meet the target | Check target size, ready-by time, planning power/current, daily budget, and device priority. |
 | A completed task starts tracking again | This is expected if a fresh reading drops below the target before the ready-by time. |

@@ -86,7 +86,7 @@ editLink: false
 
   ### Smart EV charging within your power limit
 
-  If your charger is paired in Homey, PELS calculates the charging current while still protecting the house limit. Some chargers, such as Easee, take that current directly; for others a Flow passes it to the charger app. If the real goal is a battery target by morning, use deadline charging with state of charge.
+  If your charger is paired in Homey, PELS calculates the charging current while still protecting the house limit. PELS controls supported chargers, such as Easee, Zaptec and Alfen, directly; for another charger a Flow passes the current to the charger app. If the real goal is a battery target by morning, use deadline charging with state of charge.
 
   [Read the EV charging use case](./use-cases/homey-ev-charging-power-limit.md) · [Deadline Charging With State of Charge](./how-to-deadline-charging-soc.md) · [Configure an EV charger](./ev-charger.md) · [Easee](./easee-ev-charger.md) · [Zaptec](./zaptec-ev-charger.md)
 

@@ -53,13 +53,13 @@ To innstillinger er sentrale:
 
 Elbillading er ofte det mest fleksible forbruket i boligen. Derfor er det også et godt sted å starte. Med PELS kan laderen settes opp til å bruke mindre strøm, eller pauses, når huset nærmer seg grensen du har satt.
 
-For ladere med strømkontroll beregner PELS ønsket ladestrøm i ampere. En Homey Flow sender verdien fra PELS videre til laderappen. Hvis bilen skal nå et bestemt ladenivå før et klokkeslett, for eksempel 80 % før 07:00, kan du bruke Smart tasks i stedet for fast prisstyring.
+For ladere med strømkontroll beregner PELS ønsket ladestrøm. Easee, Zaptec, Alfen, Peblar, Enua, Futurehome og flere styrer PELS direkte gjennom laderens Homey-app, uten Flow. For andre ladere sender en Homey Flow verdien fra PELS videre til laderappen. Hvis bilen skal nå et bestemt ladenivå før et klokkeslett, for eksempel 80 % før 07:00, kan du bruke Smart tasks i stedet for fast prisstyring.
 
 Vanlig oppsett:
 
 - slå på **Managed by PELS** for laderen
-- velg **EV 1-phase** eller **EV 3-phase** etter hvordan laderen er installert
-- send ønsket ladestrøm fra PELS til laderappen med Flow
+- sjekk **Control model**: **Automatic** der det tilbys, ellers **EV 1-phase** eller **EV 3-phase** etter hvordan laderen er installert
+- bruk innebygd styring der laderen støtter det, ellers send ønsket ladestrøm fra PELS til laderappen med Flow
 - bruk Smart tasks når bilen skal være klar til et bestemt tidspunkt
 
 Se [Konfigurer elbillader](/ev-charger) for selve oppsettet. Se også [Homey EV charging without crossing your power limit](/use-cases/homey-ev-charging-power-limit) for et mer konkret bruksområde.

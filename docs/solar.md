@@ -75,7 +75,7 @@ The device shows **"Waiting for solar surplus"** on its card while PELS keeps it
 
 ### Charge a car on solar surplus
 
-On a managed device with **levels** — an EV charger set to an EV control mode, or any device you configured as a stepped load — you can turn on **"Charge on solar surplus"** (a charger) or **"Match solar surplus"** (anything else). PELS then picks the level your export covers and moves it up and down as the sun changes, instead of running the device as hard as your hard cap allows.
+On a managed device with **levels** (an EV charger with an **Automatic** or EV control model, or any device you configured as a stepped load) you can turn on **"Charge on solar surplus"** (a charger) or **"Match solar surplus"** (anything else). PELS then picks the level your export covers and moves it up and down as the sun changes, instead of running the device as hard as your hard cap allows.
 
 For an EV charger this is the "leave it plugged in all week" setting: the car charges on the sun, and stops when the sun stops.
 

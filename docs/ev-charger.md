@@ -35,26 +35,28 @@ setting that permits more phases can pause charging first.
 
 Use this guide when an EV charger is paired in Homey and PELS should decide how much charging current is available.
 
-The convenient setup is to let PELS use an EV charger control mode. PELS then calculates the current in amps for you, and your Homey Flow only maps that value to the charger app's current-control action.
+For most supported chargers PELS controls charging through the charger's Homey app, with no Flow. Only a charger PELS cannot control directly needs a Flow that passes the PELS current to the charger app.
 
-For some chargers PELS sets the current directly through the charger app, and no Flow is needed for it.
+| Charger (Homey app) | How PELS controls it |
+| --- | --- |
+| **Easee** (Easee) | Directly, no key or Flow. See the [Easee guide](/easee-ev-charger). |
+| **Alfen** (Alfen, or Alfen Pro-line/ACE) | Directly in whole amps from 6 A, no key or Flow. |
+| **Peblar** (Peblar EV Charger by Kyle Michiels) | Sets the live charge limit directly in whole amps from 6 A, no key or Flow. |
+| **Enua** (Enua) | Directly through the charger's charging power, in whole amps from 6 A, no key or Flow. PELS converts amps to watts from the charger's grid type. |
+| **Zaptec** (Zaptec) | Directly. See the [Zaptec guide](/zaptec-ev-charger) for when it needs a Homey API key. |
+| **Tesla** (Tesla Car & Energy) | Directly through the car. See [Tesla vehicle charging](/tesla-charging). |
+| **Futurehome Charge** (Futurehome) | Directly, with a Homey API key. See the [Futurehome guide](/futurehome-ev-charger). |
+| **Wallbox** (Wallbox Charger) | Directly, with a Homey API key under **Setup → Charging current**. |
+| **amina S** (amina) | Directly, with a Homey API key under **Setup → Charging current**. PELS starts and stops charging with the charger's on/off switch. |
+| **go-e Charger** (go-e Charger) | Directly, with a Homey API key under **Setup → Charging current**. PELS starts and stops charging with the charger's **Charging Allowed** switch. Set the maximum current no higher than your cable allows: the charger caps the current at the cable's rating. |
+| **Smappee EV Wall** (Smappee) | Starts and stops charging through the charging mode: it pauses the charger and resumes it in standard charging. The app offers no current control. |
+| **Zappi** (myenergi) | Starts and stops charging. The Zappi charges in the charge mode you chose in the myenergi app. |
+| Another charger whose Homey app lets Homey set its charging power and publishes a power range for it | Directly through that power setting, no key or Flow. The device page offers **Automatic** with that range. |
+| Any other charger | A current-control Flow (Step 3). |
 
-Vendor-specific guides:
+A Homey API key with **Flow** permission is created with [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro). Enter it under **Setup → Charging current** and choose **Save key and enable**; if a key is already verified, choose **Use built-in control**. One key works for all supported chargers and cars on this Homey.
 
-- [Easee EV Charger](/easee-ev-charger): PELS controls the current directly, so skip Step 3.
-- [Zaptec EV Charger](/zaptec-ev-charger): built-in control or a Flow.
-- [Futurehome EV Charger](/futurehome-ev-charger): built-in control or a Flow.
-- [Tesla vehicle charging](/tesla-charging): control the car through Tesla Car & Energy.
-
-These chargers need no vendor guide:
-
-- **Alfen** (the Alfen app, or the Alfen Pro-line/ACE app): PELS sets the current directly in whole amps from 6 A, so skip Step 3.
-- **Peblar** (the Peblar EV Charger app by Kyle Michiels): PELS sets the live charge limit directly in whole amps from 6 A, so skip Step 3.
-- **amina S** (the amina app): built-in control with a Homey API key under **Setup → Charging current**, or a Flow. PELS starts and stops charging with the charger's on/off switch.
-- **go-e Charger** (the go-e Charger app): built-in control with a Homey API key under **Setup → Charging current**, or a Flow. PELS starts and stops charging with the charger's **Charging Allowed** switch. Set the maximum current no higher than your cable allows: the charger caps the current at the cable's rating.
-- **Smappee EV Wall** (the Smappee app): PELS starts and stops charging through the charging mode. It pauses the charger and resumes it in standard charging. The app offers no current control, so skip Step 3.
-- **Wallbox** (the Wallbox Charger app): built-in control with a Homey API key under **Setup → Charging current**, or a Flow. Choose **EV 1-phase** or **EV 3-phase** as the control model.
-- **Zappi** (the myenergi app): PELS starts and stops charging, and the Zappi charges in the charge mode you chose in the myenergi app.
+If one of your Flows already sets the charger's current, PELS keeps that Flow working and leaves built-in control off or paused, because PELS cannot stop a Flow and the two would override each other. To switch, remove the Flow's current-setting action and choose **Check again**. Keep unrelated Flows, such as battery reporting.
 
 ## Before You Begin
 
@@ -68,18 +70,22 @@ If PELS is not set up yet, start with [Getting Started](/getting-started).
 
 Open **More -> Apps -> PELS -> Settings -> Devices**. The charger should appear there. Refresh the device list if it does not.
 
-## Step 2: Choose the EV Control Mode
+## Step 2: Choose the Control Model
 
-Open the charger in the **Devices** tab and choose the EV control mode that matches your installation:
+Open the charger in the **Devices** tab and check **Control model**.
 
-| Control mode | Use when |
+When PELS can read the charger's power levels from its Homey app, **Control model** offers **Automatic** and **Manual**. **Automatic** is the default for a newly managed charger: PELS takes the levels from the charger's own settings, such as its phases, grid type and current limits, and shows them as **Charging range**. It follows changes to those settings. A charger you set up before Automatic was available keeps its manual setup until you review Automatic; **Setup & recommendations** offers that review.
+
+Otherwise, or under **Manual**, choose the EV model that matches your installation:
+
+| Control model | Use when |
 | --- | --- |
 | **EV 1-phase** | 230 V single-phase charging. |
 | **EV 3-phase** | Three-phase charging on a 400 V TN supply. |
 
-The presets do not support 230 V IT three-phase charging. Neither preset is an accurate substitute for that supply and charging mode.
+The presets do not support 230 V IT three-phase charging. Neither preset is an accurate substitute for that supply and charging mode. Automatic uses the charger's own grid reading where the charger reports one, including IT three-phase.
 
-This is more convenient than a manual stepped-load setup because PELS can expose **EV charger current (A)** directly in the Flow. Manual stepped-load setup can still work, but then you must convert watts to amps yourself.
+The EV models let PELS calculate the current in amps and expose it as **EV charger current (A)**. A manual stepped-load setup can still work, but then you must convert watts to amps yourself.
 
 Then configure the charger as a normal managed device:
 
@@ -97,9 +103,9 @@ The minimum is the lowest current PELS requests while charging; PELS can still p
 
 A charger whose **Automatic** model uses power levels in watts from its own settings, such as Zaptec, charges within those levels. Current limits do not apply to it, so its Setup has no default limits, and a car's limits apply when that car charges on another charger. An on/off charger also has no current for limits to set.
 
-## Step 3: Create the Charger Current Flow
+## Step 3: Create the Charger Current Flow (Only Without Direct Control)
 
-Skip this step when using built-in current control. Easee, Alfen and Peblar need no key or Flow; supported Zaptec and Tesla devices can use a Homey API key when a writable current capability is unavailable, and Futurehome, Wallbox, amina and go-e always use one. Follow the vendor-specific guide above before selecting a method.
+Skip this step for every charger PELS controls directly (see the table above). Build it only for a charger PELS cannot control directly, or one where you chose a Flow instead: **Use a Flow** under **Setup → Charging current**, or **Use built-in device control** turned off.
 
 Create the Flows that connect PELS to the charger app. The first Flow sends PELS' desired current to the charger. The second Flow reports the selected current back to PELS when your charger app can expose it.
 
@@ -197,8 +203,8 @@ Charge boost and **Charge to a battery level** do different jobs: boost takes po
 Start with **Simulation mode** if you are still tuning the rest of PELS. Then verify:
 
 1. The charger is visible as a managed device in PELS.
-2. The charger uses **EV 1-phase** or **EV 3-phase** control mode.
-3. Current control matches the charger: a new Easee setup uses **Use built-in device control**, while an existing Easee current-control Flow remains supported. A Zaptec, Futurehome, Wallbox, amina, go-e or Tesla with built-in control shows **Built-in current control is selected** under **Setup → Charging current**. Other chargers, and any charger you chose to keep on a Flow, receive **EV charger current (A)** in their current-control Flow.
+2. **Control model** is **Automatic**, or **EV 1-phase** or **EV 3-phase**.
+3. Current control matches the charger: Easee, Peblar and Alfen Pro-line/ACE have **Use built-in device control** on. Alfen (the Alfen app), Enua and other chargers controlled through their charging power have no such switch: PELS always controls them directly. A Zaptec, Futurehome, Wallbox, amina, go-e or Tesla with built-in control shows **Built-in current control is selected** under **Setup → Charging current**. Only a charger PELS cannot control directly, or one you chose to keep on a Flow, receives **EV charger current (A)** in a current-control Flow.
 4. Charging current changes in the charger app when PELS asks for a lower or higher level.
 5. If you configured battery reporting, the charger's **Car** section or charging readout shows the battery percentage from your chosen source.
 
@@ -207,8 +213,8 @@ Start with **Simulation mode** if you are still tuning the rest of PELS. Then ve
 | Problem | What to check |
 | --- | --- |
 | The charger is not listed in PELS | Confirm the charger is paired in Homey and choose **Refresh devices** under **Settings → Devices**. If it is still missing, choose **Request support** on the **Missing a device?** card there. |
-| The Flow does not trigger | For a Flow-controlled charger, including an Easee setup you chose to keep, confirm it is managed, power-limit control is enabled, and PELS has live whole-home power data. A new Easee setup, or a Zaptec, Futurehome or Tesla, can use built-in control instead. |
-| The charger receives the wrong current | Check that the device uses the correct **EV 1-phase** or **EV 3-phase** control mode. |
+| The Flow does not trigger | For a Flow-controlled charger, confirm it is managed, power-limit control is enabled, and PELS has live whole-home power data. If the charger is in the table under [Charging-current setup](#charging-current-setup), use built-in control instead of the Flow. |
+| The charger receives the wrong current | Under **Manual**, check that the device uses the correct **EV 1-phase** or **EV 3-phase** model. Under **Automatic**, check the phase and current settings in the charger's own app. |
 | Battery level does not update in PELS | If a car is selected, check whether PELS has matched it to the charger and whether that car is available in Homey. Otherwise, check that your battery-reporting Flow selects the correct charger. |
 | PELS never limits the charger | Check the charger priority, your limits in **Limits & safety**, and whether Simulation mode is still enabled. |
 
@@ -221,6 +227,6 @@ For problems beyond the charger — budget, capacity, or a missed task — see t
 - [Flow Cards](/flow-cards)
 - [Deadline Charging With State of Charge](/how-to-deadline-charging-soc)
 - [Easee EV Charger](/easee-ev-charger)
-- [Zaptec EV Charger](/zaptec-ev-charger): built-in control or a Flow.
-- [Futurehome EV Charger](/futurehome-ev-charger): built-in control or a Flow.
+- [Zaptec EV Charger](/zaptec-ev-charger)
+- [Futurehome EV Charger](/futurehome-ev-charger)
 - [Tesla vehicle charging](/tesla-charging): control the car through Tesla Car & Energy.
