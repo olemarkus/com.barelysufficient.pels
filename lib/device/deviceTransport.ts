@@ -278,7 +278,6 @@ export class DeviceTransport {
                 this.dispatchObservedStateForDevice(chargerId, 'measure_battery');
             },
             (chargerId) => this.sources.settings.getEvCarAssociationCarIds(chargerId),
-            this.chargingCurrentControl.sessions,
         );
         this.carAssociationControl = createEvCarAssociationControl(
             this.observationProducers.evCarLink, this.sources.settings, this.snapshotStore,

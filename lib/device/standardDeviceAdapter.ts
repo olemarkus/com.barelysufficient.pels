@@ -4,7 +4,7 @@ import { STANDARD_HOME_BATTERY_BINDING } from './homeBatteryBinding';
 const unrestrictedSession: DeviceAdapterSession = {
   observeDevice() {}, observeCapability() {}, retainDevices() {}, withheldCapabilities: () => [], setTrustEpoch() {},
   observedIds: () => [], observes: () => false, controls: () => false,
-  hasCarStopEvidence: () => false, missingCompanion: () => 'none',
+  missingCompanion: () => 'none',
   project: (snapshot) => snapshot, assertAllowed() {},
   controlEvents: (_id, capabilityId, value) => [{ capabilityId, value }],
 };
@@ -39,9 +39,7 @@ export const standardDeviceAdapter: DeviceAdapter = {
     write: { ...request, capabilityId: snapshot.binaryWriteCapabilityId ?? request.capabilityId },
     readBackAsWritten: true,
   }),
-  recoverSwitchWrite: (snapshot, _raw, request, sessions) => standardDeviceAdapter.switchWrite(
-    snapshot, request, sessions,
-  ),
+  recoverSwitchWrite: (snapshot, _raw, request) => standardDeviceAdapter.switchWrite(snapshot, request),
   createSession: () => unrestrictedSession,
 };
 

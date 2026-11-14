@@ -14,6 +14,16 @@ describe('resolveEvBoostBlockReason', () => {
       .toBe(EV_BOOST_BLOCK_REASONS.plugged_in_discharging);
   });
 
+  it('blocks a session the charger has not started', () => {
+    expect(resolveEvBoostBlockReason({ ...EV, evChargingState: 'plugged_in_waiting_for_charger' }))
+      .toBe('Charger has not started the session. Boost will not activate.');
+  });
+
+  it('does not block a session that waits for a start, or one the car has finished', () => {
+    expect(resolveEvBoostBlockReason({ ...EV, evChargingState: 'plugged_in_awaiting_start' })).toBeNull();
+    expect(resolveEvBoostBlockReason({ ...EV, evChargingState: 'plugged_in_finished' })).toBeNull();
+  });
+
   it('does not block `plugged_in` — boost is just "command it on now"', () => {
     // Boost blocks on exactly what actuation blocks on, off the same
     // classification. `plugged_in` is commandable (Easee reports it while awaiting

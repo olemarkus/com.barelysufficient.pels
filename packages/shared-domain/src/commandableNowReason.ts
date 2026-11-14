@@ -21,20 +21,37 @@ import { type EvBlockingChargingState, type EvDeviceIdentity, isEvPlugStateBlock
 /**
  * TOTAL over the blocking plug-states — a `Record`, not a lookup that can miss,
  * so adding a blocking state to `isEvPlugStateCommandable` fails to compile
- * until it has wording. Both are states where the electrics say no: there is no
- * car to charge, or the session is exporting.
+ * until it has wording. In the first two the electrics say no: there is no car
+ * to charge, or the session is exporting. In the third the next move is the
+ * charger's own: it has not started the session.
  */
 export const EV_BLOCK_REASONS: Record<EvBlockingChargingState, string> = {
   plugged_out: 'charger is unplugged',
   plugged_in_discharging: 'charger is discharging',
+  plugged_in_waiting_for_charger: 'charger has not started the session',
+};
+
+/** The reason code a blocking session state resolves to on a plan device. */
+export type EvBlockReasonCode = 'charger_unplugged' | 'charger_discharging' | 'charger_waiting';
+
+/** TOTAL over the blocking states, as {@link EV_BLOCK_REASONS} is. */
+export const EV_BLOCK_REASON_CODES: Record<EvBlockingChargingState, EvBlockReasonCode> = {
+  plugged_out: 'charger_unplugged',
+  plugged_in_discharging: 'charger_discharging',
+  plugged_in_waiting_for_charger: 'charger_waiting',
+};
+
+const EV_BLOCK_REASON_BY_CODE: Record<EvBlockReasonCode, string> = {
+  charger_unplugged: EV_BLOCK_REASONS.plugged_out,
+  charger_discharging: EV_BLOCK_REASONS.plugged_in_discharging,
+  charger_waiting: EV_BLOCK_REASONS.plugged_in_waiting_for_charger,
 };
 
 export const DEVICE_UNAVAILABLE_REASON = 'device unavailable';
 export const BINARY_COMMAND_RETRY_REASON = 'device did not respond';
 
 type CommandabilityDetailInput = {
-  commandabilityReason?: 'charger_unplugged' | 'charger_discharging' | 'device_unavailable'
-    | 'binary_command_retry';
+  commandabilityReason?: EvBlockReasonCode | 'device_unavailable' | 'binary_command_retry';
 };
 
 /**
@@ -46,11 +63,10 @@ type CommandabilityDetailInput = {
  * The branches mirror the observer-resolved reasons that can veto a command.
  */
 export const resolveCommandabilityDetail = (dev: CommandabilityDetailInput): string => {
-  if (dev.commandabilityReason === 'charger_unplugged') return EV_BLOCK_REASONS.plugged_out;
-  if (dev.commandabilityReason === 'charger_discharging') return EV_BLOCK_REASONS.plugged_in_discharging;
-  if (dev.commandabilityReason === 'device_unavailable') return DEVICE_UNAVAILABLE_REASON;
-  if (dev.commandabilityReason === 'binary_command_retry') return BINARY_COMMAND_RETRY_REASON;
-  return DEVICE_UNAVAILABLE_REASON;
+  const reason = dev.commandabilityReason;
+  if (reason === undefined || reason === 'device_unavailable') return DEVICE_UNAVAILABLE_REASON;
+  if (reason === 'binary_command_retry') return BINARY_COMMAND_RETRY_REASON;
+  return EV_BLOCK_REASON_BY_CODE[reason];
 };
 
 /**
@@ -63,6 +79,7 @@ export const resolveCommandabilityDetail = (dev: CommandabilityDetailInput): str
 export const EV_BOOST_BLOCK_REASONS: Record<EvBlockingChargingState, string> = {
   plugged_out: 'Car not connected. Boost will not activate.',
   plugged_in_discharging: 'Car is discharging. Boost will not activate.',
+  plugged_in_waiting_for_charger: 'Charger has not started the session. Boost will not activate.',
 };
 
 /**

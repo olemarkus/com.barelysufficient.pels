@@ -18,7 +18,6 @@ import { createObservationEmitGate } from './observationEmitGate';
 import { SolarProductionProducer } from './solarProductionProducer';
 import type { EvCarLinkEventEmitter, EvCarLinkProducer, EvCarLinkProducerDeps } from './evCarLinkProducer';
 import { carLinkEventDeviceIds, isJournalledCarLinkEvent } from './evCarLinkEvents';
-import type { DeviceAdapterSessions } from './deviceAdapterRegistry';
 import type { DeviceJournal } from '../ports/deviceJournal';
 import type { DeviceTransportOptions } from './transport/transportTypes';
 import {
@@ -64,7 +63,6 @@ export const createObservationProducers = (
     onAssociationEnded: EvCarLinkProducerDeps['onAssociationEnded'],
     /** The cars the owner selected for a charger (`DeviceControlSettings`). */
     getSelectedCarIds: (chargerId: string) => readonly string[],
-    adapterSessions: DeviceAdapterSessions,
 ): ObservationProducers => {
     // Gated: battery and solar re-report the SAME value on every fetch (~1/min),
     // so an unchanged repeat carries nothing. The gate wraps them here rather
@@ -90,7 +88,6 @@ export const createObservationProducers = (
         onAssociatedCarStateOfCharge,
         onAssociationEnded,
         getSelectedCarIds,
-        adapterSessions,
     ),
     carLinkEvents,
     });

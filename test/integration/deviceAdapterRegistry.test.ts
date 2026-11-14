@@ -167,7 +167,7 @@ test('a go-e reads its switch from is_allowed, its plug state from the status an
   expect(plugState({ ...waiting, status: 'car_finished', is_allowed: false })).toBe('plugged_in_paused');
   // Connected and allowed, but the car takes nothing.
   expect(plugState(waiting)).toBe('plugged_in');
-  expect(plugState({ ...waiting, status: 'car_finished' })).toBe('plugged_in');
+  expect(plugState({ ...waiting, status: 'car_finished' })).toBe('plugged_in_finished');
   // An error or an unknown status leaves the state unread.
   expect(plugState({ ...waiting, status: 'station_error' })).toBeUndefined();
   expect(plugState({ status: 'station_waiting' })).toBeUndefined();
@@ -240,10 +240,9 @@ test('a Smappee EV Wall reads its switch from the charging mode and writes it as
   const switchSnapshot = partialDouble<TransportDeviceSnapshot>({
     id: 'smappee', binaryCapabilityId: 'evcharger_charging', binaryWriteCapabilityId: 'charging_mode',
   });
-  const noEvidence = { hasCarStopEvidence: () => false };
-  expect(adapter.switchWrite(switchSnapshot, { capabilityId: 'evcharger_charging', value: false }, noEvidence))
+  expect(adapter.switchWrite(switchSnapshot, { capabilityId: 'evcharger_charging', value: false }))
     .toEqual({ kind: 'write', write: { capabilityId: 'charging_mode', value: 'paused' }, readBackAsWritten: false });
-  expect(adapter.switchWrite(switchSnapshot, { capabilityId: 'evcharger_charging', value: true }, noEvidence))
+  expect(adapter.switchWrite(switchSnapshot, { capabilityId: 'evcharger_charging', value: true }))
     .toEqual({ kind: 'write', write: { capabilityId: 'charging_mode', value: 'normal' }, readBackAsWritten: false });
   const control = adapted.kind === 'adapted' ? adapted.controlAdapter : undefined;
   expect(adapter.normalize(partialDouble({ controlAdapter: control }), 'charging_mode', 'paused',

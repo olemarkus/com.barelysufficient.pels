@@ -79,12 +79,12 @@ export const wallboxAdapter: DeviceAdapter = {
       : [{ capabilityId, value }, { capabilityId: INSTALLATION_CURRENT, value: currentA }];
   }),
   // Read from the status, the switch is no observation of PELS's own write.
-  switchWrite: (snapshot, request, sessions): SwitchWrite => {
-    const plain = standardDeviceAdapter.switchWrite(snapshot, request, sessions);
+  switchWrite: (snapshot, request): SwitchWrite => {
+    const plain = standardDeviceAdapter.switchWrite(snapshot, request);
     return plain.kind === 'write' && typeof request.value === 'boolean'
       ? { ...plain, readBackAsWritten: false } : plain;
   },
-  recoverSwitchWrite: (snapshot, _raw, request, sessions) => wallboxAdapter.switchWrite(snapshot, request, sessions),
+  recoverSwitchWrite: (snapshot, _raw, request) => wallboxAdapter.switchWrite(snapshot, request),
   currentBindings: (device) => isWallbox(device) ? [{
     deviceId: device.id,
     current: { kind: 'action_only' },

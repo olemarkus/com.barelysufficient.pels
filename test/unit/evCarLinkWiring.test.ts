@@ -14,9 +14,7 @@ const charger = (overrides: Partial<ChargerViewInput>): ChargerViewInput => ({
   ...overrides,
 } as unknown as ChargerViewInput);
 
-const views = (snapshot: ChargerViewInput) => buildEvCarLinkChargerViews([snapshot], () => [], {
-  hasCarStopEvidence: () => false,
-});
+const views = (snapshot: ChargerViewInput) => buildEvCarLinkChargerViews([snapshot], () => []);
 
 describe('buildEvCarLinkChargerViews power evidence', () => {
   it('carries the measured draw of an available charger', () => {

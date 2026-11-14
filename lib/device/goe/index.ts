@@ -44,8 +44,8 @@ function readCurrentA(value: unknown): number | undefined {
 
 /**
  * The plug state from the charger's status and the switch: no car, a car
- * drawing, a car the switch holds off, or a connected car that takes nothing
- * (waiting, or finished). An error, an unknown status or a missing switch
+ * drawing, a car the switch holds off, a car that has finished, or a connected
+ * car that takes nothing yet. An error, an unknown status or a missing switch
  * leaves the state unread.
  */
 function resolvePlugValue(status: unknown, allowed: unknown): string | undefined {
@@ -53,7 +53,8 @@ function resolvePlugValue(status: unknown, allowed: unknown): string | undefined
   if (status === 'car_charging') return 'plugged_in_charging';
   if (status !== 'station_waiting' && status !== 'car_finished') return undefined;
   if (typeof allowed !== 'boolean') return undefined;
-  return allowed ? 'plugged_in' : 'plugged_in_paused';
+  if (!allowed) return 'plugged_in_paused';
+  return status === 'car_finished' ? 'plugged_in_finished' : 'plugged_in';
 }
 
 type ReadingDate = CapabilityValue<unknown>['lastUpdated'];
@@ -75,7 +76,7 @@ function resolvePlugState(values: CapabilityReadings): CapabilityValue<string> |
   const allowed = values[SWITCH_CAPABILITY];
   const value = resolvePlugValue(status?.value, allowed?.value);
   if (value === undefined) return undefined;
-  const readsSwitch = value === 'plugged_in' || value === 'plugged_in_paused';
+  const readsSwitch = value !== 'plugged_out' && value !== 'plugged_in_charging';
   const lastUpdated = readsSwitch ? newerDate(status?.lastUpdated, allowed?.lastUpdated) : status?.lastUpdated;
   return { value, lastUpdated };
 }

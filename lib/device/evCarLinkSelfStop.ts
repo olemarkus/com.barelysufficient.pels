@@ -16,7 +16,7 @@ import {
     resolveEvCarChargeLimit,
     summarizeEvCarObservedLimit,
 } from './evCarLinkSnapshot';
-import { isEvPlugStateConnected } from '../../packages/shared-domain/src/evPlugState';
+import { isEvPlugStateConnected, isEvPlugStateIdle } from '../../packages/shared-domain/src/evPlugState';
 
 /**
  * Detects a car stopping of its OWN accord — at its charge limit, on its own
@@ -127,7 +127,7 @@ export class EvCarSelfStopWatcher {
         link: SelfStopLink,
         car: CarObservation,
     ): boolean {
-        if (car.state !== 'plugged_in' || car.socPct === undefined || car.socAtMs < link.sinceMs
+        if (!isEvPlugStateIdle(car.state) || car.socPct === undefined || car.socAtMs < link.sinceMs
             || !hasSessionPowerEvidence(charger, link.sinceMs)
             || charger.measuredPowerW > EV_CAR_LINK_IDLE_POWER_W) return false;
         const limit = resolveEvCarChargeLimit(this.deps.getSnapshot(), link.carId);
@@ -223,7 +223,6 @@ export class EvCarSelfStopWatcher {
             chargerState: charger.evChargingState,
             chargerPowerW: charger.measuredPowerW,
             chargerSwitchOn: charger.controlOn,
-            carStopReported: charger.carStopReported,
             lastDeliveryReadingAtMs: delivery !== undefined && delivery.seenAtMs >= link.sinceMs
                 ? delivery.readingAtMs
                 : undefined,

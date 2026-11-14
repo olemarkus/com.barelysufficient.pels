@@ -305,9 +305,7 @@ describe('car charging current limits', () => {
     runtime.links.set('charger', associated('a'));
     expect(runtime.configurations.get('charger')?.targetPowerConfig?.currentLimits).toEqual({ minA: 10, maxA: 24 });
     expect(runtime.planned().steps.map((step) => step.id)).toEqual(['off', '10a', '12a', '14a', '16a', '20a', '24a']);
-    expect(resolveEaseeSwitchWrite(runtime.owner.projectSwitchSnapshot(snapshot), true, {
-      hasCarStopEvidence: () => false,
-    })).toEqual({ kind: 'current', write: { capabilityId: 'target_charger_current', value: 10 } });
+    expect(resolveEaseeSwitchWrite(runtime.owner.projectSwitchSnapshot(snapshot), true)).toEqual({ kind: 'current', write: { capabilityId: 'target_charger_current', value: 10 } });
     expect(ranges.a).toEqual({ minA: 9, maxA: 25 });
   });
 
@@ -320,9 +318,7 @@ describe('car charging current limits', () => {
         activationRequired: false, activationEnabled: true },
     };
     runtime.links.set('charger', associated('a'));
-    const write = resolveEaseeSwitchWrite(runtime.owner.projectSwitchSnapshot(snapshot), true, {
-      hasCarStopEvidence: () => false,
-    });
+    const write = resolveEaseeSwitchWrite(runtime.owner.projectSwitchSnapshot(snapshot), true);
     expect(write).toEqual({ kind: 'current', write: { capabilityId: 'target_charger_current', value: 9 } });
     expect(snapshot.targetPowerConfig?.currentLimits).toBeUndefined();
   });

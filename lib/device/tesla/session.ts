@@ -116,7 +116,6 @@ export class TeslaChargingSession implements DeviceAdapterSession {
   constructor(private readonly home: HomeLocation) {}
 
   controls(snapshot: AdapterControlTarget): boolean { return hasTeslaChargingSurface(snapshot); }
-  hasCarStopEvidence(): boolean { return false; }
   missingCompanion(deviceId: string): 'none' | 'vehicle_location' {
     return this.lacksLocationDevice(deviceId) ? 'vehicle_location' : 'none';
   }

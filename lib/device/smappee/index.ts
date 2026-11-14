@@ -101,8 +101,8 @@ function smappeeOverlay(device: HomeyDeviceLike, capabilities: string[], values:
  * write is no observation: the switch is read from the reported mode.
  */
 function switchWrite(...args: Parameters<DeviceAdapter['switchWrite']>): SwitchWrite {
-  const [snapshot, request, sessions] = args;
-  const plain = standardDeviceAdapter.switchWrite(snapshot, request, sessions);
+  const [snapshot, request] = args;
+  const plain = standardDeviceAdapter.switchWrite(snapshot, request);
   if (plain.kind !== 'write' || plain.write.capabilityId !== MODE_CAPABILITY || typeof request.value !== 'boolean') {
     return plain;
   }
@@ -138,5 +138,5 @@ export const smappeeAdapter: DeviceAdapter = {
     [MODE_CAPABILITY]: 'string', [CONNECTED_CAPABILITY]: 'boolean', [CHARGING_CAPABILITY]: 'boolean',
   }),
   switchWrite,
-  recoverSwitchWrite: (snapshot, _raw, request, sessions) => switchWrite(snapshot, request, sessions),
+  recoverSwitchWrite: (snapshot, _raw, request) => switchWrite(snapshot, request),
 };

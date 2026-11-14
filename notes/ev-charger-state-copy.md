@@ -9,6 +9,51 @@ Governs `resolveSteppedEvExceptionLabel`
 and `resolveSteppedLevelFact` (`lib/plan/planSteppedCardText.ts`). Vocabulary rules live in
 `notes/ui-terminology.md`; the car association itself in `notes/ev-car-link/README.md`.
 
+## Session states
+
+Signal 3 below is carried as PELS's own session vocabulary (`EvChargingState`,
+`packages/contracts/src/types.ts`). It holds Homey's five
+`evcharger_charging_state` values and three more that an integration resolves
+from its app's own states. Each state says what the session is doing and whose
+move it is, and so admits one answer to a wish to charge
+(`resolveEvChargeAction`, `packages/shared-domain/src/evPlugState.ts`):
+
+| State | Meaning | Whose move | A wish to charge |
+|---|---|---|---|
+| `plugged_out` | No car | nobody | blocked |
+| `plugged_in` | A car is connected and nothing more is known | unknown | `start`: PELS tries one |
+| `plugged_in_awaiting_start` | No session is open; a start command opens one | PELS | `start` |
+| `plugged_in_paused` | An open session the charger holds off | PELS | `resume` |
+| `plugged_in_waiting_for_charger` | The charger has not started the session: it waits for authorisation, its schedule or its load balancing | the charger | `wait`: PELS sends nothing |
+| `plugged_in_finished` | The car has stopped asking for power | the car | `offer`: PELS keeps current on offer and never starts a new session |
+| `plugged_in_charging` | Delivering | PELS | `keep`: pause it or set its current |
+| `plugged_in_discharging` | Exporting | nobody | blocked |
+
+`blocked` and `wait` states take no command (`isEvPlugStateCommandable`), and
+each has its reason line (`EV_BLOCK_REASONS`). How a `start`, `resume` or
+`offer` is carried out is the integration's: an Easee under built-in control
+resumes and offers by current and starts by its switch.
+
+An integration maps what its app can tell apart, and no more:
+
+| Integration | App state | Session state |
+|---|---|---|
+| Easee | `Car connected`, `Awaiting Authentication`, `Deauthenticating` | `plugged_in_awaiting_start` |
+| Easee | `Paused` | `plugged_in_paused` |
+| Easee | `Completed` | `plugged_in_finished` |
+| Easee | `Standby`, `Offline`, `Error` | `plugged_out` |
+| Zaptec | `plugged_in` (connected, session not started) | `plugged_in_waiting_for_charger` |
+| Zaptec | `plugged_in_paused` (paused, or ended by the car: one value for both) | `plugged_in_paused` |
+| Tesla | `Complete` | `plugged_in_finished` |
+| Tesla | `Stopped`, `Starting` | `plugged_in_paused` |
+| go-e | `car_finished`, switch on | `plugged_in_finished` |
+| go-e | `station_waiting`, switch on | `plugged_in` |
+| go-e | switch off | `plugged_in_paused` |
+
+An app that publishes only Homey's values, or whose states do not separate a
+finished session from an idle one (amina, Smappee, Wallbox, a Flow-reported
+charger), keeps `plugged_in` for a connected car that takes no power.
+
 ## Four signals, not three
 
 The two charger capabilities are frequently collapsed into "the charger's state".
@@ -106,6 +151,9 @@ Charger-only rows — everything PELS could say before the car association:
 | `plugged_in_paused` | any | Halted | **Paused** |
 | `plugged_in` | `true` | Told to deliver, no current — **the car is the holdout** | **Waiting for car** |
 | `plugged_in` | `false` | Switched off; nothing is on offer | **Not charging** |
+| `plugged_in_awaiting_start` | `true` / `false` | As `plugged_in`: no session runs yet | **Waiting for car** / **Not charging** |
+| `plugged_in_finished` | any | The car has stopped asking for power | **Charging finished** |
+| `plugged_in_waiting_for_charger` | any | The charger has not started the session | **Waiting for charger** |
 | `plugged_in_discharging` | any | V2G export | **Discharging** |
 
 Rows 5 and 6 are the ones that have caused trouble. "Waiting for car" was

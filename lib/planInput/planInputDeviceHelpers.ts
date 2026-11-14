@@ -4,7 +4,8 @@ import {
   resolveBoostRequested,
   resolveBoostSupported,
 } from '../device/deviceActionProjection';
-import { isEvDevice, isEvSessionInactive } from '../../packages/shared-domain/src/evPlugState';
+import { isEvDevice, isEvPlugStateBlocked, isEvSessionInactive } from '../../packages/shared-domain/src/evPlugState';
+import { EV_BLOCK_REASON_CODES } from '../../packages/shared-domain/src/commandableNowReason';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import { resolveResidualShedBehavior, type ResidualKwForPlanDeviceShedBehavior } from './residualKwForPlanDevice';
 import type {
@@ -310,8 +311,9 @@ export function resolvePlanCommandabilityReason(
   device: ToPlanDeviceInput & EvObservedProbe,
 ): PlanCommandabilityReason | undefined {
   if (device.available === false) return 'device_unavailable';
-  if (device.evChargingState === 'plugged_out') return 'charger_unplugged';
-  if (device.evChargingState === 'plugged_in_discharging') return 'charger_discharging';
+  if (device.evChargingState !== undefined && isEvPlugStateBlocked(device.evChargingState)) {
+    return EV_BLOCK_REASON_CODES[device.evChargingState];
+  }
   return undefined;
 }
 

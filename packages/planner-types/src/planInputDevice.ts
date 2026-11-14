@@ -399,8 +399,8 @@ export type PlanInputDeviceBase = {
    */
   commandableNow: boolean;
   /** Producer-resolved reason for a false commandableNow decision. */
-  commandabilityReason?: 'charger_unplugged' | 'charger_discharging' | 'device_unavailable'
-    | 'binary_command_retry';
+  commandabilityReason?: 'charger_unplugged' | 'charger_discharging' | 'charger_waiting'
+    | 'device_unavailable' | 'binary_command_retry';
   /** Producer-resolved objective family; never inferred from transport IDs downstream. */
   objectiveKind?: 'ev_soc' | 'temperature';
   /**

@@ -14,14 +14,14 @@ import { toCapabilityTimestampMs } from '../managerControl';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import { isSteppedLoadOffStep } from '../../../packages/shared-domain/src/deviceControlProfiles';
 import type { EvChargingState } from '../../../packages/contracts/src/types';
-import { isEvChargingState } from '../../../packages/shared-domain/src/evPlugState';
+import { isEvChargingState, resolveEvChargeAction } from '../../../packages/shared-domain/src/evPlugState';
 import {
   EASEE_CHARGER_CURRENT_CAPABILITY_ID,
   EASEE_MIN_CHARGING_CURRENT_A,
   isEaseeChargerCurrentCandidate,
 } from './current';
 import { isNativeSteppedLoadControlEnabled } from '../deviceAdapter';
-import type { CapabilityWrite, SessionEvidence } from '../deviceAdapter';
+import type { CapabilityWrite } from '../deviceAdapter';
 import { buildEvTargetPowerCandidateProfile, isEvTargetPowerConfig } from '../targetPowerReachability';
 
 /**
@@ -39,14 +39,15 @@ import { buildEvTargetPowerCandidateProfile, isEvTargetPowerConfig } from '../ta
  * - **off** writes 0 A.
  * - **on** writes the configured minimum (6 A by default). PELS sets its
  *   planned level from there with its ordinary step commands.
- * - **on** for a session known to be stopped (`plugged_in`: Easee's `Car connected`
- *   or `Awaiting Authentication`) goes to the switch, which starts a new one: a
- *   charger stopped outside PELS, in the Easee app, still gets its session
- *   started again.
- * - **on** for a session the car has completed (`Completed`, also `plugged_in`)
- *   writes the configured minimum like any open one. The car is still connected and has stopped
- *   asking for charge, and a start would open a new session at 32 A for a full
- *   car. The Easee session observes the mode (`hasCarStopEvidence`).
+ * - **on** for a session that waits for a start (`plugged_in_awaiting_start`:
+ *   Easee's `Car connected` or `Awaiting Authentication`) goes to the switch,
+ *   which starts a new one: a charger stopped outside PELS, in the Easee app,
+ *   still gets its session started again.
+ * - **on** for a session the car has completed (`Completed`,
+ *   `plugged_in_finished`) writes the configured minimum like any open one. The
+ *   car is still connected and has stopped asking for charge, and a start would
+ *   open a new session at 32 A for a full car. The session state says which of
+ *   the two a wish to charge comes to (`resolveEvChargeAction`).
  *
  * A start is kept for the one state that needs it because a start on an open
  * session opens a new one at 32 A. Easee holds a charger about 5 minutes after a
@@ -98,23 +99,19 @@ const NOTHING: EaseeSwitchWrite = { kind: 'none' };
  * control the charger's current is read from there, since the snapshot carries
  * no native step for a charger PELS does not step itself.
  */
-export function resolveEaseeSwitchWrite(
-  snapshot: TransportDeviceSnapshot,
-  desired: boolean,
-  sessions: SessionEvidence,
-): EaseeSwitchWrite {
+export function resolveEaseeSwitchWrite(snapshot: TransportDeviceSnapshot, desired: boolean): EaseeSwitchWrite {
   if (isEaseeUnderBuiltInControl(snapshot)) {
     if (!desired) return PAUSE;
-    return isStoppedSession(snapshot, sessions) ? SWITCH : resume(snapshot);
+    return needsStart(snapshot) ? SWITCH : resume(snapshot);
   }
-  return desired && isCompletedSession(snapshot, sessions) ? NOTHING : SWITCH;
+  return desired && isCompletedSession(snapshot) ? NOTHING : SWITCH;
 }
 
 export function recoverEaseeSwitchWrite(
-  snapshot: TransportDeviceSnapshot, device: HomeyDeviceLike, desired: boolean, sessions: SessionEvidence,
+  snapshot: TransportDeviceSnapshot, device: HomeyDeviceLike, desired: boolean,
 ): EaseeSwitchWrite {
   if (isEaseeUnderBuiltInControl(snapshot) || !desired || snapshot.evChargingState !== 'plugged_in_paused') {
-    return resolveEaseeSwitchWrite(snapshot, desired, sessions);
+    return resolveEaseeSwitchWrite(snapshot, desired);
   }
   const capabilityObj = getCapabilityObj(device);
   if (!isEaseeChargerCurrentCandidate(device, capabilityObj)) return SWITCH;
@@ -122,17 +119,14 @@ export function recoverEaseeSwitchWrite(
   return currentA !== undefined && !holdsChargingCurrent(currentA) ? resume(snapshot) : SWITCH;
 }
 
-/**
- * A session only a start reopens: plugged in and not charging, other than one
- * the car has completed, which is still open.
- */
-function isStoppedSession(snapshot: TransportDeviceSnapshot, sessions: SessionEvidence): boolean {
-  return snapshot.evChargingState === 'plugged_in' && !sessions.hasCarStopEvidence(snapshot.id);
+/** No session runs, and only a start opens one. */
+function needsStart(snapshot: TransportDeviceSnapshot): boolean {
+  return snapshot.evChargingState !== undefined && resolveEvChargeAction(snapshot.evChargingState) === 'start';
 }
 
 /** Plugged in, not charging, in an open session the car has completed (Easee `Completed`). */
-function isCompletedSession(snapshot: TransportDeviceSnapshot, sessions: SessionEvidence): boolean {
-  return snapshot.evChargingState === 'plugged_in' && sessions.hasCarStopEvidence(snapshot.id);
+function isCompletedSession(snapshot: TransportDeviceSnapshot): boolean {
+  return snapshot.evChargingState === 'plugged_in_finished';
 }
 
 /** A current the charger charges at; below it (0-5 A) the charger pauses. */

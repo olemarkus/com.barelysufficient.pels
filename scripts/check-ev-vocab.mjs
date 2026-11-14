@@ -1,9 +1,11 @@
 // EV-vocabulary containment guard for the planner / objectives / executor layers.
 //
 // WHY THIS EXISTS: the planner (`lib/plan`), objectives (`lib/objectives`) and
-// executor (`lib/executor`) layers must NEVER branch on raw Homey EV plug-state
+// executor (`lib/executor`) layers must NEVER branch on raw EV plug-state
 // strings (`plugged_out` / `plugged_in` / `plugged_in_paused` /
-// `plugged_in_charging` / `plugged_in_discharging`). Reading those strings in a
+// `plugged_in_charging` / `plugged_in_discharging`, and the session states an
+// integration resolves: `plugged_in_awaiting_start` /
+// `plugged_in_waiting_for_charger` / `plugged_in_finished`). Reading those strings in a
 // consumer is a bug-magnet: code starts treating `plugged_in_paused` as a
 // "kept"/user-initiated pause, or invents a notion of "user-paused", or otherwise
 // re-derives plug-state semantics the producer already resolved. Every such
@@ -40,7 +42,10 @@ const consumerDirs = ['lib/plan', 'lib/objectives', 'lib/executor'].map((d) => p
 const FORBIDDEN = new Set([
   'plugged_out',
   'plugged_in',
+  'plugged_in_awaiting_start',
   'plugged_in_paused',
+  'plugged_in_waiting_for_charger',
+  'plugged_in_finished',
   'plugged_in_charging',
   'plugged_in_discharging',
 ]);

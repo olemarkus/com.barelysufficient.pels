@@ -356,17 +356,23 @@ be idle after overshooting far above a lowered target, where “near” is false
 An EV charger's exceptional charging states lead the status fact line, before the
 level (source: `resolveSteppedEvExceptionLabel` in `packages/shared-domain/src/evChargingStateLabel.ts`, joined
 in `resolveFactText` in `lib/plan/deviceStatusReadModel.ts`): `Paused`,
-`Discharging`, `Unplugged`, and the plugged-in-idle pair below, e.g.
-`Unplugged · Level 16 A`. They are facts about the plug, so they show whatever PELS
+`Discharging`, `Unplugged`, `Charging finished`, `Waiting for charger`, and the
+plugged-in-idle pair below, e.g. `Unplugged · Level 16 A`. They are facts about the plug, so they show whatever PELS
 decided, also for a charger with Power-limit control off and beside a hold reason;
 the reason slot stays with what the device needs. Routine charging folds into the
 same line as `Charging · level 16 A` (lower-case level after the charging word).
 A charger without charging levels shows no plug label, except while it identifies
 its car: `Plugged in · no battery level`.
 
-The plugged-in-idle state (`plugged_in`) discriminates on the charger's own
-on/off capability (`evcharger_charging`), because the plug state only states a
-fact (connected, not charging), never a cause:
+`Charging finished` is a session the car has stopped asking power for (an Easee
+`Completed`, a go-e `car_finished`). `Waiting for charger` is a session the
+charger has not started: it waits for authorisation, its own schedule or its
+load balancing, and its reason line reads `charger has not started the session`.
+
+The plugged-in-idle states (`plugged_in`, and a session that waits for a start)
+discriminate on the charger's own on/off capability (`evcharger_charging`),
+because the plug state only states a fact (connected, not charging), never a
+cause:
 
 | Label | Used when |
 |---|---|

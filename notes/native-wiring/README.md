@@ -11,7 +11,11 @@ capabilities instead of round-tripping through user-authored Flow cards.
 
 - **Zaptec EV**: legacy app versions use `charging_button` for start/stop,
   with PELS exposing synthetic `evcharger_charging` / `evcharger_charging_state`.
-  Newer app versions expose those standard EV capabilities themselves. PELS
+  Newer app versions expose those standard EV capabilities themselves. On that
+  surface the app's `plugged_in` is a car connected while the charger has not
+  started its session, and Zaptec resumes only a session that was paused: the
+  adapter reads it as `plugged_in_waiting_for_charger`, which takes no start
+  (`withZaptecSessionState`, `notes/ev-charger-state-copy.md`). PELS
   offers Automatic and its recommendation only when the device publishes a
   writable `target_power` with a usable runtime range, step and exclusion band;
   the Zaptec model or app version alone grants no support. Current-only devices
@@ -88,13 +92,14 @@ Resumption follows the normal meter-driven admission and restore cooldown.
   `charger_status`, the Easee adapter uses that dated observation for the plug
   state, whether built-in control is on or off. `Completed` means the car is
   still connected but has stopped requesting charge; it resolves to
-  `plugged_in`, despite the Easee app publishing `plugged_out` for that mode.
-  `Standby` is a disconnect. Realtime status reports use the same mapping, and
+  `plugged_in_finished`, despite the Easee app publishing `plugged_out` for that
+  mode. `Car connected` and `Awaiting Authentication` have no session running
+  and resolve to `plugged_in_awaiting_start`. `Standby` is a disconnect. Realtime status reports use the same mapping, and
   the app's redundant plug-state publications do not overwrite it. A mode the
   adapter does not know (the app names it `UNKNOWN (n)`) is still a valid read,
   so the charger stays readable: a full read carries the app's own plug state,
-  and the session keeps the last mode it knew for realtime updates. The adapter
-  also supplies positive charge-completion evidence to car-link diagnostics;
+  and the session keeps the last mode it knew for realtime updates. The
+  finished state is the charge-completion evidence car-link diagnostics read;
   completion does not turn an observed off switch into an on switch.
 
   **The charging switch is translated at the SDK seam, and nowhere else.**
@@ -107,14 +112,13 @@ Resumption follows the normal meter-driven admission and restore cooldown.
   from `transport/deviceWrites.ts`) writes `false` as 0 A, which Easee
   answers with `Paused` (`plugged_in_paused`), the session still open.
   `true` writes 6 A, the smallest current it charges at, except on a session
-  known to be stopped (`plugged_in` in Easee's `Car connected` or `Awaiting
-  Authentication`: stopped in the Easee app), which still goes to the switch
-  and starts a new one: the plan decided the charger should run, and no current
-  can restart a session that is gone. A session the car has completed
-  (`Completed`, also `plugged_in`) is still open, and a start would open a new
-  one at 32 A for a full car, so it gets the current like any open session. The
-  Easee session holds the mode it last observed (`hasCarStopEvidence`), and the
-  transport hands its sessions to the switch write.
+  that waits for a start (`plugged_in_awaiting_start`: Easee's `Car connected`
+  or `Awaiting Authentication`, stopped in the Easee app), which still goes to
+  the switch and starts a new one: the plan decided the charger should run, and
+  no current can restart a session that is gone. A session the car has completed
+  (`Completed`, `plugged_in_finished`) is still open, and a start would open a
+  new one at 32 A for a full car, so it gets the current like any open session.
+  The session state says which of the two applies (`resolveEvChargeAction`).
   Every other session gets current, never a start, even while the charger
   holds off: Easee waits about 5 minutes after a current is raised before
   it offers the car current again (production, 2026-09-25: 08:11:26 to

@@ -274,7 +274,7 @@ describe('Easee native charger current', () => {
     });
     device.capabilities = [...EASEE_CAPABILITIES, 'charger_status'];
     const [parsed] = await seedTransportDevices(createEaseeTransport(builtIn), [device]);
-    expect(parsed.evChargingState).toBe('plugged_in');
+    expect(parsed.evChargingState).toBe('plugged_in_finished');
     expect(parsed.binaryControl).toEqual({ on: false });
   });
 
@@ -314,7 +314,7 @@ describe('Easee native charger current', () => {
       let [parsed] = await seedTransportDevices(transport, [device, car]);
       // A restart while Easee says Completed resumes the saved physical pair
       // immediately; it neither forgets the car nor waits for a new plug edge.
-      expect(parsed.evChargingState).toBe('plugged_in');
+      expect(parsed.evChargingState).toBe('plugged_in_finished');
       expect(transport.getAssociatedCar(EASEE_ID)).toMatchObject({ carId: 'car-1', socPct: 79 });
       const sessionStart = parsed.stateOfCharge?.sessionStartedAtMs;
       expect(parsed.stateOfCharge?.level).toMatchObject({ kind: 'known', percent: 79 });
@@ -333,7 +333,7 @@ describe('Easee native charger current', () => {
       await emitCapability(EASEE_ID, 'measure_power', 0);
       await emitCapability('car-1', 'ev_charging_state', 'plugged_in');
       await emitCapability('car-1', 'measure_battery', 80);
-      expect(parsed.evChargingState).toBe('plugged_in');
+      expect(parsed.evChargingState).toBe('plugged_in_finished');
       expect(parsed.binaryControl).toEqual({ on: false });
       expect(transport.getAssociatedCar(EASEE_ID)).toMatchObject({ carId: 'car-1', socPct: 80 });
       expect(parsed.stateOfCharge?.level).toMatchObject({ kind: 'known', percent: 80 });
@@ -359,7 +359,7 @@ describe('Easee native charger current', () => {
       await seedTransportDevices(transport, [staleStandby, car]);
       const afterStaleRead = transport.getSnapshotByDeviceId(EASEE_ID);
       expect(transport.getAssociatedCar(EASEE_ID)).toMatchObject({ carId: 'car-1', socPct: 80 });
-      expect(afterStaleRead?.evChargingState).toBe('plugged_in');
+      expect(afterStaleRead?.evChargingState).toBe('plugged_in_finished');
       expect(afterStaleRead?.stateOfCharge?.level).toMatchObject({ kind: 'known', percent: 80 });
       expect(afterStaleRead?.stateOfCharge?.sessionStartedAtMs).toBe(sessionStart);
       expect(afterStaleRead?.stateOfCharge?.invalidatedAtMs).toBeUndefined();
@@ -1071,7 +1071,7 @@ describe('Easee native charger current', () => {
       // still plugged in; the completed session is still open.
       const { deviceManager, put, refresh } = await createLiveEasee(notCharging('Completed'), WITH_STATUS);
       await refresh();
-      expect(deviceManager.getSnapshotByDeviceId(EASEE_ID)?.evChargingState).toBe('plugged_in');
+      expect(deviceManager.getSnapshotByDeviceId(EASEE_ID)?.evChargingState).toBe('plugged_in_finished');
 
       await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
 
@@ -1086,7 +1086,7 @@ describe('Easee native charger current', () => {
       await report('charger_status', 'Completed');
       await report('evcharger_charging', false);
       await report('evcharger_charging_state', 'plugged_out');
-      expect(deviceManager.getSnapshotByDeviceId(EASEE_ID)?.evChargingState).toBe('plugged_in');
+      expect(deviceManager.getSnapshotByDeviceId(EASEE_ID)?.evChargingState).toBe('plugged_in_finished');
 
       await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
 

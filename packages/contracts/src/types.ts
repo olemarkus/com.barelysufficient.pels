@@ -553,16 +553,36 @@ export type DeviceDescriptor = {
 };
 
 /**
- * Closed set of EV charger plug/charge states, mirroring the Homey
- * `evcharger_charging_state` capability enum. Producers (the capability read in
- * `getEvChargingState`, the native-EV and flow-reported derivations) resolve to
- * this union at their parse seam; consumers branch on it exhaustively. A vendor
- * value outside the set is normalised to `undefined` at the read boundary.
+ * Closed set of EV charger session states: PELS's own vocabulary for what a
+ * charging session is doing and whose move it is. It holds the five values of
+ * Homey's `evcharger_charging_state` enum, and three more that an integration
+ * resolves from its app's own states:
+ *
+ * - `plugged_in`: a car is connected and nothing more is known. The value an
+ *   app that publishes only Homey's enum gives a car that takes no power.
+ * - `plugged_in_awaiting_start`: no session is open, and a start command opens
+ *   one.
+ * - `plugged_in_paused`: an open session the charger holds off; a resume lands.
+ * - `plugged_in_waiting_for_charger`: the charger has not started the session.
+ *   It waits for authorisation, its own schedule or its load balancing, and no
+ *   command of PELS's starts it.
+ * - `plugged_in_finished`: the car has stopped asking for power. PELS keeps
+ *   current on offer, and the session charges again when the car asks.
+ *
+ * Producers (the capability read in `getEvChargingState`, the integrations'
+ * derivations, the Flow-reported one) resolve to this union at their parse
+ * seam; consumers ask the predicates in
+ * `packages/shared-domain/src/evPlugState.ts`. A value outside the set is
+ * normalised to `undefined` at the read boundary. See
+ * `notes/ev-charger-state-copy.md`.
  */
 export type EvChargingState =
     | 'plugged_in_charging'
     | 'plugged_in'
+    | 'plugged_in_awaiting_start'
     | 'plugged_in_paused'
+    | 'plugged_in_waiting_for_charger'
+    | 'plugged_in_finished'
     | 'plugged_out'
     | 'plugged_in_discharging';
 

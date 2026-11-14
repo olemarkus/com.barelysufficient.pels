@@ -140,7 +140,7 @@ describe('importLegacyEvCarLinkState', () => {
     const producer = createEvCarLinkProducer(
       () => {}, () => [],
       createPersistedEvCarLinkAccess(repository, () => NOW, (nowMs) => importLegacyEvCarLinkState(settings, repository, nowMs)),
-      undefined, undefined, () => [], { hasCarStopEvidence: () => false },
+      undefined, undefined, () => [],
     );
     expect(producer.readChargerMatchesForCar('car')).toEqual({ state: 'unavailable' });
     get.mockRestore();
@@ -255,7 +255,7 @@ describe('importLegacyEvCarLinkState', () => {
       repository, () => NOW, (nowMs) => importLegacyEvCarLinkState(settings, repository, nowMs),
     );
     const producer = createEvCarLinkProducer(
-      () => {}, () => [], access, undefined, undefined, () => [], { hasCarStopEvidence: () => false },
+      () => {}, () => [], access, undefined, undefined, () => [],
     );
     expect(producer.readChargerMatchesForCar('car')).toEqual({ state: 'unavailable' });
     expect(settings.get(EV_CAR_LINK_STATE)).toEqual(HISTORY);
@@ -292,7 +292,7 @@ describe('importLegacyEvCarLinkState', () => {
     const producer = createEvCarLinkProducer(
       () => {}, () => [],
       createPersistedEvCarLinkAccess(repository, () => NOW, (nowMs) => importLegacyEvCarLinkState(settings, repository, nowMs)),
-      undefined, undefined, () => [], { hasCarStopEvidence: () => false },
+      undefined, undefined, () => [],
     );
     expect(producer.readChargerMatchesForCar('car')).toEqual({ state: 'resolved', chargerMatches: [] });
     expect(repository.hasImportedLegacy()).toBe(true);
