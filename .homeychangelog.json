@@ -826,5 +826,8 @@
   },
   "3.35.1": {
     "en": "Tesla cards now say why PELS is not charging the car, such as asleep, not at home or charge complete. Unavailable is shown only when Homey reports the car unavailable. A charger that the car paused no longer reads \"Holding at 6 A\". New option on EV chargers with 15-minute prices: Avoid short charging breaks keeps a Smart task charging through a short, slightly pricier break."
+  },
+  "3.35.2": {
+    "en": "A temperature Smart task now heats toward its target while PELS is still learning the device's energy use, instead of waiting at Learning energy use until its deadline. When no car selected for a charger reports a plug-in, the charger's card asks you to confirm the connected car straight away, with a Confirm car link to the button in its Car section."
   }
 }
