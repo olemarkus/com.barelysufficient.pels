@@ -823,5 +823,8 @@
   },
   "3.35.0": {
     "en": "New: with the Peblar EV Charger app, PELS can switch charging between one and three phases to match available power, solar and your smart task. In simulation, a device card now says what PELS would do, such as turn off, lower the level or set a lower target. Device reports include each device's modes and control settings."
+  },
+  "3.35.1": {
+    "en": "Tesla cards now say why PELS is not charging the car, such as asleep, not at home or charge complete. Unavailable is shown only when Homey reports the car unavailable. A charger that the car paused no longer reads \"Holding at 6 A\". New option on EV chargers with 15-minute prices: Avoid short charging breaks keeps a Smart task charging through a short, slightly pricier break."
   }
 }
