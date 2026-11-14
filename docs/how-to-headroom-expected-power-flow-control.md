@@ -1,22 +1,21 @@
 ---
 title: Wire a Flow-Based Load Device
-description: Use PELS stepped-load profiles and generic Flow cards to connect devices such as Høiax Connected 300 without vendor-specific code in PELS.
+description: Use PELS stepped-load profiles and generic Flow cards to connect a device with its own power levels that PELS cannot control directly.
 ---
 
 # How-To: Wire a Flow-Based Load Device to PELS
 
-Use this pattern when a real Homey device has its own stepped power modes, but PELS should still decide which step to use.
+Use this pattern when a real Homey device has its own stepped power modes, but PELS should still decide which step to use, and PELS cannot set those modes itself.
+
+Check the device's page in PELS first. Many devices need none of these Flows: PELS sets the level of a Høiax Connected water heater, a supported EV charger, and any device whose Homey app lets Homey set its power directly. Such a device shows **Use built-in device control** under **Setup**, or a **Control model** of **Automatic**. Build the Flows below only when neither is offered.
 
 Typical devices:
 
-- water heaters with `Low/Medium/Max`
+- water heaters with `Low/Medium/Max` whose app offers only Flow action cards for them
 - EV chargers PELS cannot control directly (see [Configure an EV Charger](/ev-charger#charging-current-setup))
 - other controllable loads with discrete states
 
-For built-in stepped-load devices, PELS owns the decision and your Homey Flows only do the vendor-specific mapping.
-
-![Høiax Connected 300 stepped-load wiring example](images/howto_hoiax_stepped_load_flow_example.png)
-*Figure 1. Example wiring for Høiax Connected 300: PELS emits the desired step, and the device reports its selected step back into PELS.*
+PELS owns the decision, and your Homey Flows only do the vendor-specific mapping.
 
 ## What You Are Building
 
@@ -44,20 +43,20 @@ For stepped-load devices, `measure_power` is not enough to know the selected lev
 
 That is why PELS needs explicit step feedback from your Flows.
 
-## Example Mapping (Connected 300)
+## Example Mapping (a 3 kW water heater)
 
 | Step | Planning Power | Vendor Action |
 |------|----------------|---------------|
-| Off | 0 W | `Change Power to Off` |
-| Low | 1250 W | `Change Power to Low` |
-| Medium | 1750 W | `Change Power to Medium` |
-| Max | 3000 W | `Change Power to Max` |
+| Off | 0 W | Set power level to Off |
+| Low | 1250 W | Set power level to Low |
+| Medium | 1750 W | Set power level to Medium |
+| Max | 3000 W | Set power level to Max |
 
-In the screenshot:
+The vendor action names here stand for whatever the heater's app offers.
 
-- the top Flow reacts to **Stepped device target changed** for Connected 300
-- each branch checks the **Planning power (W)** token and calls the matching Høiax action
-- the bottom Flow listens for the device's own power or parameter change and reports the matching stepped-load level back into PELS
+- The outbound Flow reacts to **Stepped device target changed** for the heater.
+- Each branch checks the **Planning power (W)** token and calls the matching vendor action.
+- The feedback Flow listens for the device's own level or power change and reports the matching stepped-load level back into PELS.
 
 If your device app exposes a direct level trigger, prefer reporting the step directly with **Report stepped load for [device] as [step]**. If it only exposes a power value, use **Report stepped load for [device] matching [power]**.
 
