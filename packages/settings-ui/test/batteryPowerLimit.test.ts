@@ -294,6 +294,16 @@ describe('battery device list row', () => {
     expect(reasons).toEqual(['PELS can only watch it: its app reports no readings from the battery']);
   });
 
+  it.each([
+    ['needs_local_api', 'PELS can only watch it: turn on the battery\'s Local API so its app reports it'],
+    ['controlled_through_local_device',
+      'PELS can only watch this device: PELS controls this battery through its local network device'],
+  ] as const)('says what a %s battery needs in place of its Limit switch', async (batteryControl, line) => {
+    const { limit, reasons } = await renderRow({}, {}, { ...battery, batteryControl });
+    expect(limit.getAttribute('aria-disabled')).toBe('true');
+    expect(reasons).toEqual([line]);
+  });
+
   it('shows the takeover notice on the row of a battery PELS turned Managed off for', async () => {
     const { reasons } = await renderRow({ 'battery-1': false }, {}, { ...battery, batteryTakenOver: true });
     expect(reasons).toEqual([

@@ -64,6 +64,7 @@ const zendureActions = (deviceId: string): HomeBatteryActions => ({
 
 const ZENDURE_LOCAL_BINDING: HomeBatteryActionBinding = {
   kind: 'app_actions',
+  noReadingsCause: 'no_readings',
   appUri: `homey:app:${ZENDURE_LOCAL_APP_ID}`,
   // PELS's sign: a positive setpoint charges.
   commandLifetime: (setpointW) => (setpointW > 0

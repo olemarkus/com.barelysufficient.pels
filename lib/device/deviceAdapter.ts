@@ -2,8 +2,9 @@ import type { AppActionControlTarget } from '../ports/storageCommand';
 import type { HubHomeLocation } from './hubHomeLocation';
 import type { ChargingCurrentSetup, ChargingMissingCompanion } from '../../packages/contracts/src/chargingControl';
 import type { DeviceControlAdapterSnapshot, HomeBatteryClaimCapabilityId, HomeBatteryClaimRejection,
-  HomeBatteryMeterModes, HomeBatterySetpointRange, SteppedLoadProfile, SteppedLoadStep,
+  HomeBatteryMeterModes, HomeBatteryObserveOnlyReason, HomeBatterySetpointRange, SteppedLoadProfile, SteppedLoadStep,
   TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
+import type { BatteryUnobservedCause } from '../ports/batteryControlOwner';
 import type { DeviceActionStep } from './flowActionCards';
 import type { TargetPowerConfigWithReachability } from './targetPowerReachability';
 import type { HomeyDeviceLike } from '../utils/types';
@@ -190,6 +191,12 @@ export type HomeBatteryActionsResolution =
 export type HomeBatteryActionBinding = {
   kind: 'app_actions';
   appUri: string;
+  /**
+   * What it means when its app lists the battery's readings and fills none:
+   * `local_api_off` for an app that reads the battery over its local API,
+   * which reports nothing until that API is on; `no_readings` otherwise.
+   */
+  noReadingsCause: Exclude<BatteryUnobservedCause, 'unknown'>;
   commandLifetime(setpointW: number): HomeBatteryCommandLifetime;
   resolve(device: HomeyDeviceLike, devices: readonly HomeyDeviceLike[]): HomeBatteryActionsResolution;
   /** Hand-back is independent of the command range and admission gates. */
@@ -227,7 +234,18 @@ export type HomeBatteryModeBinding = {
   resolvePowers(capabilityObj: DeviceCapabilityMap): { maxDischargeW: number; maxChargeW: number } | undefined;
 };
 
-export type HomeBatteryBinding = HomeBatteryCapabilityBinding | HomeBatteryActionBinding | HomeBatteryModeBinding;
+/**
+ * `watch_only`: a driver of a battery app that cannot drive the battery,
+ * where the same app controls it through another of its drivers. PELS only
+ * watches this device and says where control lives (`reason`).
+ */
+export type HomeBatteryWatchOnlyBinding = {
+  kind: 'watch_only';
+  reason: Extract<HomeBatteryObserveOnlyReason, 'controlled_through_local_device'>;
+};
+
+export type HomeBatteryBinding =
+  | HomeBatteryCapabilityBinding | HomeBatteryActionBinding | HomeBatteryModeBinding | HomeBatteryWatchOnlyBinding;
 
 /** The host owns I/O; an integration owns the meaning of its reads and writes. */
 export type DeviceAdapter = {

@@ -119,6 +119,7 @@ export function resolveBatteryControlSurface(
 ): HomeBatteryControlSurface {
   const binding = getDeviceAdapter(device).homeBatteryBinding(device);
   if (binding.kind === 'app_actions') return { kind: 'app_actions' };
+  if (binding.kind === 'watch_only') return { kind: 'observe_only', reason: binding.reason };
   if (binding.kind === 'meter_modes') return resolveMeterModeSurface(binding, capabilities, capabilityObj);
   const targetPower = capabilities.includes(HOME_BATTERY_SETPOINT_CAPABILITY_ID)
     ? asUnknownRecord(capabilityObj[HOME_BATTERY_SETPOINT_CAPABILITY_ID])

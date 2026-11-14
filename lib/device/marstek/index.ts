@@ -1,4 +1,6 @@
-import type { DeviceAdapter, HomeBatteryActionBinding, HomeBatteryActions } from '../deviceAdapter';
+import type {
+  DeviceAdapter, HomeBatteryActionBinding, HomeBatteryActions, HomeBatteryWatchOnlyBinding,
+} from '../deviceAdapter';
 import { isDeviceOfAppDriver } from '../homeBatteryBinding';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 
@@ -33,11 +35,23 @@ import { standardDeviceAdapter } from '../standardDeviceAdapter';
  * PELS its plateau (`lib/battery/batteryVerification.ts`).
  *
  * The cloud driver `marstek-venus-cloud` offers no cards (every card is for
- * `driver_id=marstek-venus`) and keeps Homey's standard binding: with no
- * `target_power` PELS only watches it.
+ * `driver_id=marstek-venus`), and the Bluetooth driver `marstek-venus-ble`
+ * offers only an on/off work mode: PELS only watches either, and tells the
+ * owner that the local driver is the one it controls.
+ *
+ * The local driver reads the battery over its Local API. With that API off,
+ * the app lists the battery's readings and fills none, which PELS reads as
+ * the Local API being off (`noReadingsCause`).
  */
 const MARSTEK_CONNECTOR_APP_ID = 'com.niewold.marstek';
 const MARSTEK_LOCAL_DRIVER_ID = 'marstek-venus';
+/**
+ * The app's Bluetooth and cloud drivers take no power setpoint: its store page
+ * says Bluetooth sets only an on/off work mode, and the cloud driver offers no
+ * cards. The app controls the same battery through the local driver.
+ */
+const MARSTEK_WATCH_ONLY_DRIVER_IDS = ['marstek-venus-ble', 'marstek-venus-cloud'] as const;
+const MARSTEK_DRIVER_IDS = [MARSTEK_LOCAL_DRIVER_ID, ...MARSTEK_WATCH_ONLY_DRIVER_IDS] as const;
 
 /** How long one passive command lasts, s: the Open API's own example countdown. */
 export const MARSTEK_PASSIVE_SECONDS = 300;
@@ -58,6 +72,8 @@ const marstekActions = (deviceId: string): HomeBatteryActions => ({
 const MARSTEK_BINDING: HomeBatteryActionBinding = {
   kind: 'app_actions',
   appUri: `homey:app:${MARSTEK_CONNECTOR_APP_ID}`,
+  // The local driver reads the battery over its Local API, and reports nothing while that API is off.
+  noReadingsCause: 'local_api_off',
   commandLifetime: () => ({ kind: 'expires', lifetimeMs: MARSTEK_PASSIVE_SECONDS * 1000 }),
   resolveTarget: (device) => ({
     kind: 'resolved', target: { appUri: `homey:app:${MARSTEK_CONNECTOR_APP_ID}`, deviceId: device.id },
@@ -69,8 +85,17 @@ const MARSTEK_BINDING: HomeBatteryActionBinding = {
   resolve: (device) => ({ kind: 'resolved', actions: marstekActions(device.id) }),
 };
 
+const MARSTEK_WATCH_ONLY_BINDING: HomeBatteryWatchOnlyBinding = {
+  kind: 'watch_only', reason: 'controlled_through_local_device',
+};
+
 export const marstekConnectorAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
-  matches: (device) => isDeviceOfAppDriver(device, MARSTEK_CONNECTOR_APP_ID, MARSTEK_LOCAL_DRIVER_ID),
-  homeBatteryBinding: () => MARSTEK_BINDING,
+  matches: (device) => MARSTEK_DRIVER_IDS.some((driverId) => (
+    isDeviceOfAppDriver(device, MARSTEK_CONNECTOR_APP_ID, driverId)
+  )),
+  homeBatteryBinding: (device) => (
+    isDeviceOfAppDriver(device, MARSTEK_CONNECTOR_APP_ID, MARSTEK_LOCAL_DRIVER_ID)
+      ? MARSTEK_BINDING : MARSTEK_WATCH_ONLY_BINDING
+  ),
 };

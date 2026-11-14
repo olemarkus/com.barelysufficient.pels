@@ -128,6 +128,7 @@ const handBackSteps = (target: AppActionControlTarget, devices: readonly HomeyDe
 
 const SOLAX_BINDING: HomeBatteryActionBinding = {
   kind: 'app_actions',
+  noReadingsCause: 'no_readings',
   appUri: `homey:app:${SOLAX_APP_ID}`,
   commandLifetime: () => ({ kind: 'expires', lifetimeMs: SOLAX_REMOTE_CONTROL_TIMEOUT_S * 1000 }),
   resolve: resolveSolax,

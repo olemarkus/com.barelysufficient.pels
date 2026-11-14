@@ -79,7 +79,7 @@ describe('toBatteryControlRead', () => {
   });
 
   it('reads a battery without a setpoint surface as observe-only', () => {
-    expect(toBatteryControlRead(battery({}), readAppActions)).toEqual({ kind: 'observe_only' });
+    expect(toBatteryControlRead(battery({}), readAppActions)).toEqual({ kind: 'observe_only', cause: 'other' });
   });
 
   it('reads a setpoint battery with its claim, or as unreported before it reports one, holding each setpoint', () => {

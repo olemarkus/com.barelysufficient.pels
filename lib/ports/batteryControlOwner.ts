@@ -49,16 +49,26 @@ export type BatteryCommandKeepAlive = { kind: 'none' } | { kind: 'resend'; every
 /**
  * Why a battery reads `unobserved`, for the owner's copy only: `no_readings`
  * is an app-actions battery Homey lists as available whose app lists its
- * readings with no value in any; `unknown` is every other case (not observed
+ * readings with no value in any, and `local_api_off` the same for an app that
+ * reads the battery over its local API (`HomeBatteryActionBinding.noReadingsCause`);
+ * `unknown` is every other case (not observed
  * yet, its app still starting, its actions not read yet). Control treats both
  * alike.
  */
-export type BatteryUnobservedCause = 'no_readings' | 'unknown';
+export type BatteryUnobservedCause = 'no_readings' | 'local_api_off' | 'unknown';
+
+/**
+ * Why PELS only observes a battery, for the owner's copy only:
+ * `controlled_through_local_device` is a driver whose app controls the same
+ * battery through its local-network device (`HomeBatteryWatchOnlyBinding`);
+ * `other` is every other reason. Control treats both alike.
+ */
+export type BatteryObserveOnlyCause = 'controlled_through_local_device' | 'other';
 
 export type BatteryControlRead =
   | { kind: 'unobserved'; cause: BatteryUnobservedCause }
   | { kind: 'not_battery' }
-  | { kind: 'observe_only' }
+  | { kind: 'observe_only'; cause: BatteryObserveOnlyCause }
   | { kind: 'homey_api_key_missing' }
   | { kind: 'hand_back_only' }
   | {

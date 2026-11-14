@@ -168,7 +168,11 @@ remove once the key is saved (`batteryUsesHomeyApiKey` on the device list).
   `no_readings`: control treats it as not observed, and its card, device page
   and device-list row read `PELS can only watch it: its app reports no readings from the battery`
   (`not_reporting`). An app still starting has no entries yet, so it reads the
-  plain not-observed state and says nothing.
+  plain not-observed state and says nothing. A binding names what an empty
+  read means (`noReadingsCause`): `no_readings`, or `local_api_off` for an app
+  that reads the battery over a local API (`needs_local_api`). Such a battery
+  has no facet the plan can admit, so it has no plan row; its Overview card
+  shows the same line instead of `Waiting for an update.`
 - **Fail closed.** The battery is drivable only while every card its commands
   and its hand-back could run (a full charge, a full discharge, a 0 W hold, the
   hand-back) is in the last inventory read, and the adapter resolved its
@@ -253,7 +257,16 @@ countdown (`cd_time`). The power is negative to charge and positive to
 discharge, the device's convention, so the binding sends PELS's charge as a
 negative power. PELS sends a 300 s countdown and sends the
 command again every 100 s. The hand-back is the app's Auto mode, the battery's
-own self-consumption. The cloud driver offers no cards and stays watch-only.
+own self-consumption. The Bluetooth and cloud drivers take no power setpoint
+(the app's store page: Bluetooth sets only an on/off work mode; the cloud
+driver offers no cards), so the adapter binds both `watch_only` with reason
+`controlled_through_local_device`: PELS only watches them, and their card,
+device page and device-list row read `PELS can only watch this device: PELS controls this battery through its local network device`.
+The local driver reads the battery over its Local API and lists its readings
+empty while that API is off, so its binding's `noReadingsCause` is
+`local_api_off`: such a battery reads `needs_local_api`, `PELS can only watch it: turn on the battery's Local API so its app reports it`.
+An owner who pairs one battery with both drivers, as one did, sees which device
+PELS controls and what it needs.
 
 **Sigenergy.** The battery device reads the plant's ESS power; control is the
 plant device's cards. The adapter resolves the one `plant` device of the app
