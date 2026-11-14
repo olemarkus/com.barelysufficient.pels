@@ -1120,7 +1120,8 @@ export type HomeBatteryControlSurface =
  * Only a `drivable` battery has a Power-limit control and a place in the
  * priority order that protects anything.
  */
-export type HomeBatteryControlCapability = 'drivable' | 'watch_only' | 'observe_only' | 'needs_homey_api_key';
+export type HomeBatteryControlCapability =
+  'drivable' | 'watch_only' | 'observe_only' | 'not_reporting' | 'needs_homey_api_key';
 
 /**
  * Home-battery descriptor cluster. Present exactly on a device whose class key

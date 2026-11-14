@@ -37,7 +37,7 @@
  */
 import type { HomeBatterySetpointRange } from '../../packages/contracts/src/types';
 import type { AppActionControlTarget } from '../ports/storageCommand';
-import type { BatteryCommandKeepAlive, BatteryControlRead } from '../ports/batteryControlOwner';
+import type { BatteryCommandKeepAlive, BatteryControlRead, BatteryUnobservedCause } from '../ports/batteryControlOwner';
 import { normalizeError } from '../utils/errorUtils';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { toTargetPowerCapabilityValue } from '../utils/storageSetpoint';
@@ -67,7 +67,7 @@ export const CARD_INVENTORY_RETRY_MS = 60_000;
  * `observe_only`, `homey_api_key_missing`, `hand_back_only` or `app_actions`.
  */
 export type AppActionBatteryControl = Extract<BatteryControlRead,
-  | { kind: 'unobserved' } | { kind: 'observe_only' } | { kind: 'homey_api_key_missing' }
+  | { kind: 'unobserved'; cause: BatteryUnobservedCause } | { kind: 'observe_only' } | { kind: 'homey_api_key_missing' }
   | { kind: 'hand_back_only' } | { kind: 'app_actions' }
 >;
 
@@ -87,7 +87,7 @@ type ResolvedActions = ActionCards & {
 
 type Resolution =
   | { kind: 'resolved'; resolved: ResolvedActions }
-  | { kind: 'unobserved' }
+  | { kind: 'unobserved'; cause: BatteryUnobservedCause }
   | { kind: 'unavailable'; reasonCode: string };
 
 /**
@@ -116,6 +116,18 @@ const isReporting = (device: HomeyDeviceLike): boolean => device.available
   && device.capabilities.some((id) => {
     const value = device.capabilitiesObj[id]?.value;
     return value !== null && value !== undefined;
+  });
+
+/**
+ * Its app lists the battery's readings and has none: Homey reports it
+ * available, every capability it declares has an entry, and none holds a
+ * value. An app still starting has no entries yet, so it never reads so.
+ */
+const reportsNoReadings = (device: HomeyDeviceLike): boolean => device.available
+  && device.capabilities.length > 0
+  && device.capabilities.every((id) => {
+    const entry = device.capabilitiesObj[id];
+    return entry !== undefined && (entry.value === null || entry.value === undefined);
   });
 
 /** No saved key can run a hand-back. A configured key is rechecked by the runner. */
@@ -174,7 +186,7 @@ export class HomeBatteryAppActions {
   /** The battery as the owner reads it (`BatteryControlRead`). */
   readControl(deviceId: string): AppActionBatteryControl {
     const resolution = this.resolve(deviceId);
-    if (resolution.kind === 'unobserved') return { kind: 'unobserved' };
+    if (resolution.kind === 'unobserved') return resolution;
     if (resolution.kind === 'unavailable') {
       this.noteUnavailable(deviceId, resolution.reasonCode);
       return { kind: 'observe_only' };
@@ -307,18 +319,19 @@ export class HomeBatteryAppActions {
     if (device === undefined) return { kind: 'unavailable', reasonCode: 'battery_unread' };
     const binding = this.bindingOf(device);
     if (binding === undefined) return { kind: 'unavailable', reasonCode: 'not_app_actions' };
-    // Its app is still starting (every device after a Homey restart) or it is
-    // offline: its cards may not be registered yet, so nothing about them is known.
+    // Its app is still starting (every device after a Homey restart), it is
+    // offline, or its app reads nothing from the battery: its cards may not be
+    // registered yet, so nothing about them is known.
     if (!isReporting(device)) {
       this.cardMissSinceMs.delete(deviceId);
-      return { kind: 'unobserved' };
+      return { kind: 'unobserved', cause: reportsNoReadings(device) ? 'no_readings' : 'unknown' };
     }
-    if (this.inventory.kind !== 'read') return { kind: 'unobserved' };
+    if (this.inventory.kind !== 'read') return { kind: 'unobserved', cause: 'unknown' };
     const devices = this.getDevices();
     const target = binding.resolveTarget(device, devices);
     if (target.kind === 'unavailable') {
       this.noteUnavailable(deviceId, target.reasonCode);
-      return { kind: 'unobserved' };
+      return { kind: 'unobserved', cause: 'unknown' };
     }
     const handBack = binding.handBack(target.target, devices);
     const { cards } = this.inventory;

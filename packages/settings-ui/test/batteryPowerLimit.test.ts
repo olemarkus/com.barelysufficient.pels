@@ -288,6 +288,12 @@ describe('battery device list row', () => {
     expect(reasons).toEqual(['PELS can only watch it: add a Homey API key so it can help with your limit and solar']);
   });
 
+  it('says a battery whose app reports no readings is one PELS only watches, and why', async () => {
+    const { limit, reasons } = await renderRow({}, {}, { ...battery, batteryControl: 'not_reporting' as const });
+    expect(limit.getAttribute('aria-disabled')).toBe('true');
+    expect(reasons).toEqual(['PELS can only watch it: its app reports no readings from the battery']);
+  });
+
   it('shows the takeover notice on the row of a battery PELS turned Managed off for', async () => {
     const { reasons } = await renderRow({ 'battery-1': false }, {}, { ...battery, batteryTakenOver: true });
     expect(reasons).toEqual([

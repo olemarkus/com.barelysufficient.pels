@@ -164,7 +164,7 @@ export const toBatteryControlRead = (
     snapshot: TransportDeviceSnapshot | undefined,
     readAppActions: (deviceId: string) => BatteryControlRead,
 ): BatteryControlRead => {
-    if (snapshot === undefined) return { kind: 'unobserved' };
+    if (snapshot === undefined) return { kind: 'unobserved', cause: 'unknown' };
     if (!isHomeBatterySnapshot(snapshot)) return { kind: 'not_battery' };
     const surface = snapshot.homeBattery.controlSurface;
     if (surface.kind === 'app_actions') return readAppActions(snapshot.id);

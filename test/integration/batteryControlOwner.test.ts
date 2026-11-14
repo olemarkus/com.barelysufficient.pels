@@ -82,7 +82,7 @@ const buildOwner = (params: {
         return params.apply ? params.apply(command) : { requested: true };
       },
     },
-    (deviceId) => batteries[deviceId] ?? { kind: 'unobserved' },
+    (deviceId) => batteries[deviceId] ?? { kind: 'unobserved', cause: 'unknown' },
     () => params.mainMember ?? true,
     () => params.fenced ?? false,
     () => params.dryRun ?? false,
@@ -886,6 +886,16 @@ describe('HomeBatteryControlOwner claim-less battery (app actions)', () => {
     await expect(refused.owner.handBackBeforeHomeyApiKeyRemoval(removeKey)).resolves.toBe('removed');
     expect(refused.commands).toEqual([]);
     expect(removeKey).toHaveBeenCalledTimes(2);
+  });
+
+  it('tells a battery whose app reports no readings from one not observed yet, and drives neither', () => {
+    const batteries: Record<string, BatteryControlRead> = { [BATTERY]: { kind: 'unobserved', cause: 'no_readings' } };
+    const { owner } = buildOwner({ batteries });
+
+    expect(owner.readControlCapability(BATTERY)).toBe('not_reporting');
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'not_drivable' });
+    batteries[BATTERY] = { kind: 'unobserved', cause: 'unknown' };
+    expect(owner.readControlCapability(BATTERY)).toBe('observe_only');
   });
 
   it('still hands back a battery whose command actions are gone but whose hand-back actions are not', async () => {

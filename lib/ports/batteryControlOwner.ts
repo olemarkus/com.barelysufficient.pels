@@ -46,8 +46,17 @@ export type BatteryCommandKeepAlive = { kind: 'none' } | { kind: 'resend'; every
  *   owner's Homey API key, and no key that may run Flow actions is saved.
  *   PELS can neither command nor hand it back until one is.
  */
+/**
+ * Why a battery reads `unobserved`, for the owner's copy only: `no_readings`
+ * is an app-actions battery Homey lists as available whose app lists its
+ * readings with no value in any; `unknown` is every other case (not observed
+ * yet, its app still starting, its actions not read yet). Control treats both
+ * alike.
+ */
+export type BatteryUnobservedCause = 'no_readings' | 'unknown';
+
 export type BatteryControlRead =
-  | { kind: 'unobserved' }
+  | { kind: 'unobserved'; cause: BatteryUnobservedCause }
   | { kind: 'not_battery' }
   | { kind: 'observe_only' }
   | { kind: 'homey_api_key_missing' }
