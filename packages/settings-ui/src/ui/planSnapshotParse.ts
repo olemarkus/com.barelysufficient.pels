@@ -35,6 +35,8 @@ const isStatusReason = (value: unknown): boolean => {
   return typeof reason.text === 'string'
     && (reason.tone === undefined || reason.tone === 'neutral' || reason.tone === 'warning')
     && (reason.detail === undefined || typeof reason.detail === 'string')
+    && (reason.offersPhaseSetting === undefined || reason.offersPhaseSetting === true)
+    && (reason.offersCarConfirmation === undefined || reason.offersCarConfirmation === true)
     && isCountdown(reason.countdown);
 };
 

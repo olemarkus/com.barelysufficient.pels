@@ -2612,11 +2612,16 @@ has closed for most homes that reach this state.
   level · Level 16 A`, `No battery level` while off, or `Plugged in · no battery
   level` on a charger without charging levels. When nothing else explains the card
   (no other reason, or the wait for a battery level), its reason starts as `Waiting
-  to identify the connected car`; once the 20-minute matching window from the
-  plug-in has closed, it says `Could not identify the connected car. Confirm it in
-  the charger’s Car section.` Any other reason on the card (a hold for power or
+  to identify the connected car`. While every selected car reports unplugged, no
+  match can come until one reports a plug-in, so it says `No selected car reports
+  a plug-in. Confirm the connected car in the charger’s Car section.` without
+  waiting for the window. Once the 20-minute matching window from the plug-in has
+  closed, it says `Could not identify the connected car. Confirm it in the
+  charger’s Car section.` Any other reason on the card (a hold for power or
   cheaper hours, a level change not confirmed) stays, since identifying the car
-  would not change it. A charger linked to a car outside its selection, or whose
+  would not change it. In both confirm states the card also offers a quiet
+  `Confirm car` link to the charger's Car section, whichever reason holds the
+  line, because a hold does not end the wait for the car. A charger linked to a car outside its selection, or whose
   selected cars have all been removed from Homey, shows none of this. Activity
   records the same reason. Matching or explicit confirmation ends this message.
 

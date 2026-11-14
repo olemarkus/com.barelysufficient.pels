@@ -369,6 +369,18 @@ export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, children 
           Set phase
         </button>
       )}
+      {dev.status.reason?.offersCarConfirmation === true && (
+        <button
+          type="button"
+          class="hy-nostyle plan-card__quiet-link"
+          onClick={(event) => {
+            event.stopPropagation();
+            dispatchOpenDeviceDetail(dev.id, 'car');
+          }}
+        >
+          Confirm car
+        </button>
+      )}
     </div>
   );
 };

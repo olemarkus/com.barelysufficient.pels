@@ -33,6 +33,8 @@ export type DeviceStatus = {
   reason: {
     /** The device's phase is unknown and it waits for room: the card offers the setting quietly. */
     offersPhaseSetting?: true;
+    /** PELS will not identify the charger's car by itself: the card offers to confirm it. */
+    offersCarConfirmation?: true;
     text: string;
     tone?: 'neutral' | 'warning';
     detail?: string;

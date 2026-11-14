@@ -23,11 +23,22 @@ describe('a charger still identifying its car', () => {
     }).reason).toMatchObject({ text: 'Waiting to identify the connected car' });
   });
 
-  it('keeps the reason of a charger held for capacity', () => {
+  it('offers confirmation once every selected car reports unplugged', () => {
+    expect(charger({ carIdentificationState: 'selected_cars_unplugged' }).reason).toEqual({
+      text: 'No selected car reports a plug-in. Confirm the connected car in the charger’s Car section.',
+      offersCarConfirmation: true,
+    });
+    expect(charger({ carIdentificationState: 'timed_out' }).reason).toMatchObject({ offersCarConfirmation: true });
+    expect(charger({ carIdentificationState: 'waiting' }).reason).not.toHaveProperty('offersCarConfirmation');
+  });
+
+  it('keeps the reason of a charger held for capacity, and still offers confirmation', () => {
     const held = { currentState: 'off', plannedState: 'shed', reason: 'shed due to capacity' };
-    const unidentified = charger({ ...held, carIdentificationState: 'timed_out' });
-    expect(unidentified.reason).toEqual(charger(held).reason);
-    expect(unidentified.reason?.text).not.toContain('identify');
+    for (const state of ['timed_out', 'selected_cars_unplugged'] as const) {
+      const unidentified = charger({ ...held, carIdentificationState: state });
+      expect(unidentified.reason).toEqual({ ...charger(held).reason, offersCarConfirmation: true });
+      expect(unidentified.reason?.text).not.toContain('identify');
+    }
   });
 
   it('says nothing about identification for a charger that is not waiting', () => {

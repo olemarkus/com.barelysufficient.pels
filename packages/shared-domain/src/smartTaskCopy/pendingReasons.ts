@@ -57,6 +57,13 @@ export const WAITING_FOR_CAR_ASSOCIATION = 'Waiting to identify the connected ca
 /** The device card's reason once the matching window from the plug-in has closed with no car. */
 export const CAR_ASSOCIATION_TIMED_OUT = 'Could not identify the connected car. '
   + 'Confirm it in the charger’s Car section.';
+/**
+ * The device card's reason while every selected car reports unplugged: no match
+ * comes until one reports a plug-in, so the owner can confirm it without
+ * waiting for the matching window to close.
+ */
+export const CAR_ASSOCIATION_SELECTED_CARS_UNPLUGGED = 'No selected car reports a plug-in. '
+  + 'Confirm the connected car in the charger’s Car section.';
 
 // EV device-card variant of the unplugged/invalid-session pause line: a card-slot phrasing with no
 // terminal punctuation, promoted to a named constant so the card surface shares

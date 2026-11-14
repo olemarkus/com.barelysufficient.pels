@@ -2,6 +2,7 @@ import { getSteppedLoadOffStep, getSteppedLoadStep } from '../../packages/shared
 import type { DeviceStatus, DeviceStatusCountdown } from '../../packages/contracts/src/deviceStatus';
 import type { CarIdentificationState } from '../../packages/contracts/src/evCarLink';
 import {
+  CAR_ASSOCIATION_SELECTED_CARS_UNPLUGGED,
   CAR_ASSOCIATION_TIMED_OUT,
   WAITING_FOR_CAR_ASSOCIATION,
 } from '../../packages/shared-domain/src/smartTaskCopy/pendingReasons';
@@ -197,7 +198,7 @@ const resolvePhaseSettingOffer = (device: DeviceStatusInput): { offersPhaseSetti
 function buildReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus['reason'] {
   const simulatedAction = dryRun ? resolveSimulatedActionLine(device) : null;
   return simulatedAction
-    ? { text: simulatedAction, ...resolvePhaseSettingOffer(device) }
+    ? { text: simulatedAction, ...resolvePhaseSettingOffer(device), ...resolveCarConfirmationOffer(device) }
     : buildOrdinaryReason(device, dryRun, nowMs);
 }
 
@@ -226,6 +227,7 @@ function buildOrdinaryReason(device: DeviceStatusInput, dryRun: boolean, nowMs: 
     ...(idle ? { tone: idle.tone, detail: idle.detail } : {}),
     ...(countdown ? { countdown } : {}),
     ...resolvePhaseSettingOffer(device),
+    ...resolveCarConfirmationOffer(device),
   };
 }
 
@@ -237,12 +239,23 @@ function resolveCarIdentificationReason(
   device: DeviceStatusInput,
   reasonText: string | null,
 ): DeviceStatus['reason'] {
-  if (device.carIdentificationState === 'not_waiting') return null;
+  const state = device.carIdentificationState;
+  if (state === 'not_waiting') return null;
   if (reasonText !== null && reasonText !== '' && reasonText !== PLAN_STATE_AWAITING_BATTERY_LEVEL_STATUS) return null;
-  return device.carIdentificationState === 'timed_out'
-    ? { text: CAR_ASSOCIATION_TIMED_OUT, tone: 'warning' }
-    : { text: WAITING_FOR_CAR_ASSOCIATION };
+  if (state === 'timed_out') return { text: CAR_ASSOCIATION_TIMED_OUT, tone: 'warning', offersCarConfirmation: true };
+  if (state === 'selected_cars_unplugged') {
+    return { text: CAR_ASSOCIATION_SELECTED_CARS_UNPLUGGED, offersCarConfirmation: true };
+  }
+  return { text: WAITING_FOR_CAR_ASSOCIATION };
 }
+
+// A charger whose car PELS will not identify by itself offers the confirmation
+// even when another reason holds the line: a hold for power does not end the
+// wait for the car, and the reason line has room for one cause only.
+const resolveCarConfirmationOffer = (device: DeviceStatusInput): { offersCarConfirmation?: true } => (
+  device.carIdentificationState === 'timed_out' || device.carIdentificationState === 'selected_cars_unplugged'
+    ? { offersCarConfirmation: true } : {}
+);
 
 // The observed rung a held stepped device's state word names, if any.
 function resolvePhysicalStepId(device: DeviceStatusInput): string | null {
