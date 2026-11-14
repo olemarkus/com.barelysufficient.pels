@@ -1,4 +1,4 @@
-import type { DevicePlanDevice, SteppedFairnessHold } from './planTypes';
+import type { DevicePlanDevice, SteppedFairnessHold, SteppedPlanDevice } from './planTypes';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { countFairnessLimitedDevices } from './restore/coordination';
 import type { ShedDecisions } from './shedDecisions';
@@ -6,6 +6,7 @@ import { isSteppedFairnessPowerHoldReason } from './steppedFairness';
 import {
   getSteppedLoadHighestStep,
   getSteppedLoadLowestActiveStep,
+  isSteppedLoadOffStep,
 } from '../../packages/shared-domain/src/deviceControlProfiles';
 import { PLAN_REASON_CODES, type PlanReasonCode } from '../../packages/shared-domain/src/planReasonSemantics';
 
@@ -33,6 +34,13 @@ const FAIRNESS_EXPLAINS_OTHER_REASON_CODES: ReadonlySet<PlanReasonCode> = new Se
   PLAN_REASON_CODES.meterSettling,
 ]);
 
+// An off device at its lowest step is starting, not being held there. One resting
+// on its off rung (a car that paused its own charge) is not at the step the line
+// would name either: "Holding at 6 A" over "Limited · Off".
+const isRestingOff = (device: SteppedPlanDevice): boolean => (
+  device.currentState === 'off' || isSteppedLoadOffStep(device.steppedLoadProfile, device.selectedStepId)
+);
+
 const resolveSteppedFairnessHold = (
   device: DevicePlanDevice,
   deviceMap: Map<string, DevicePlanDevice>,
@@ -45,8 +53,7 @@ const resolveSteppedFairnessHold = (
   // (`countFairnessLimitedDevices`), so it reaches the count below.
   if (device.nonCapacityHoldShed === true || device.surplusTracking === true) return null;
   if (!device.control.commandAuthority || device.plannedState === 'inactive') return null;
-  // An off device at its lowest step is starting, not being held there.
-  if (device.currentState === 'off') return null;
+  if (isRestingOff(device)) return null;
   if (!isSteppedFairnessPowerHoldReason(device.reason.code)
     && !FAIRNESS_EXPLAINS_OTHER_REASON_CODES.has(device.reason.code)) return null;
   const lowest = getSteppedLoadLowestActiveStep(device.steppedLoadProfile);

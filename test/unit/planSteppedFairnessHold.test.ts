@@ -65,6 +65,12 @@ describe('stampSteppedFairnessHolds', () => {
         fromTarget: 'off', toTarget: 'low', needKw: 1.25 } }),
       limitedHeater('h')],
     },
+    {
+      // Prod 2026-11-13: a car that paused its own charge read "Limited · Off"
+      // with "Holding at 6 A — cannot increase while 1 device is limited".
+      name: 'it rests on its off rung while PELS wants its low step',
+      devices: [charger({ selectedStepId: 'off' }), limitedHeater('h')],
+    },
     { name: 'a non-capacity hold lowered it', devices: [charger({ nonCapacityHoldShed: true }), limitedHeater('h')] },
     { name: 'it tracks solar surplus', devices: [charger({ surplusTracking: true }), limitedHeater('h')] },
     { name: 'PELS cannot command it', devices: [charger({ commandAuthority: false }), limitedHeater('h')] },
