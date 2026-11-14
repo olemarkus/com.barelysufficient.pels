@@ -407,7 +407,10 @@ the device itself, so it needs no Flow to carry it back.
 Without it the card kept saying `Increasing to 16 A`, or a retry countdown, for
 as long as PELS kept asking: the Flow that never reports back read as PELS
 never resuming. One expiry is not enough, since a slow Flow or a busy device
-can miss one confirmation window. A device that reports any other level after
+can miss one confirmation window. The line stays while PELS steps the plan back
+to wait before asking again, as long as the device has reported no level at all:
+otherwise the retry countdown replaced it for all but a moment of each attempt.
+A device that reports any other level after
 a command has answered it, so it gets no such line: a charger asked for 16 A
 that clamps to 10 A and reports 10 A has a working Flow.
 

@@ -101,12 +101,18 @@ function resolveTargetProgress(
 
 // Counted for the step the plan still wants, which the device still does not report: a count
 // left over from a step the plan has since moved off says nothing about this one.
+// A count left over from a step the plan has moved off says nothing about the
+// step it wants now, unless the device has reported no level at all: then no
+// command has drawn an answer, and a plan that steps back while it waits to ask
+// again (the step-up retry) still has a device that does not report its level.
 function isStepCommandUnanswered(
   unanswered: UnansweredStepCommands,
   desiredStepId: string | null,
+  observedStepId: string | null,
   stepProgress: AxisProgress,
 ): boolean {
-  return unanswered.kind === 'unanswered' && unanswered.stepId === desiredStepId
+  return unanswered.kind === 'unanswered'
+    && (unanswered.stepId === desiredStepId || observedStepId === null)
     && stepProgress !== 'settled' && unanswered.count >= STEP_COMMAND_UNANSWERED_AFTER;
 }
 
@@ -154,7 +160,9 @@ export function resolveDeviceExecutionState(
     targetProgress: resolveTargetProgress(desiredTarget, observed, command.target),
     resumeExpected: physicalState === 'off' && resolveResumeExpected(intent, desiredBinary, desiredStepId),
     steppedTransitionPending: hasPlannedStep(intent) && (binaryProgress === 'pending' || stepProgress === 'pending'),
-    stepCommandUnanswered: isStepCommandUnanswered(command.unansweredStepCommands, desiredStepId, stepProgress),
+    stepCommandUnanswered: isStepCommandUnanswered(
+      command.unansweredStepCommands, desiredStepId, observedStepId, stepProgress,
+    ),
     externalOffHeld,
   };
 }

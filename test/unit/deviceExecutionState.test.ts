@@ -124,6 +124,18 @@ describe('resolveDeviceExecutionState', () => {
     expect(unanswered(2, 'low', 'medium')).toBe(false);
   });
 
+  it('keeps a step nothing answers while the plan steps back to retry, when the device reports no level', () => {
+    // The plan holds a running device at its assumed step between step-up attempts.
+    // A device that never reported a level has answered none of them.
+    const plan = steppedPlanDevice({ currentState: 'on', selectedStepId: 'low', plannedState: 'keep',
+      desiredStepId: 'low' });
+    const intent = buildExecutableDeviceIntent(plan);
+    const state = (observed: ReturnType<typeof observe>) => resolveDeviceExecutionState(intent, observed,
+      { ...noCommands, unansweredStepCommands: { kind: 'unanswered', stepId: 'max', count: 2 } }, false);
+    expect(state(observe(true, 'medium')).stepCommandUnanswered).toBe(false);
+    expect(state(observe(true)).stepCommandUnanswered).toBe(true);
+  });
+
   it('classifies absent observation as unavailable rather than inventing a device state', () => {
     expect(resolveDeviceExecutionState(buildExecutableDeviceIntent(offPlan), undefined, noCommands, false))
       .toMatchObject({ available: false, binaryProgress: 'unobserved' });
