@@ -74,6 +74,17 @@ const paintOpenTask = (deviceId: string, entry: DeferredObjectiveSettingsEntry):
   );
 };
 
+/** Reuse the device page's server-resolved eligibility for charger settings. */
+export const isDeviceSmartTaskCandidate = (deviceId: string): boolean => {
+  const managed = state.managedMap[deviceId] === true;
+  if (!managed) return false;
+  if (candidates?.deviceId !== deviceId || candidates.managed !== managed) {
+    void readCandidates(deviceId, managed);
+    return false;
+  }
+  return candidates.read.state === 'resolved' && candidates.read.deviceIds.has(deviceId);
+};
+
 const readCandidates = async (deviceId: string, managed: boolean): Promise<void> => {
   readGeneration += 1;
   const generation = readGeneration;
@@ -89,6 +100,7 @@ const readCandidates = async (deviceId: string, managed: boolean): Promise<void>
   }
   if (generation !== readGeneration) return;
   candidates = { deviceId, managed, read };
+  document.dispatchEvent(new Event('device-smart-task-candidates-changed'));
   renderDeviceSmartTaskBox(deviceId);
 };
 

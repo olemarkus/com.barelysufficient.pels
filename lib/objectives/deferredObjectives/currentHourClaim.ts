@@ -1,7 +1,9 @@
 import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { DeferredObjectiveCurrentHourClaim, DeferredObjectiveCurrentHourFacts } from './types';
+import type {
+  DeferredObjectiveCurrentBucketPlan, DeferredObjectiveCurrentHourClaim, DeferredObjectiveCurrentHourFacts,
+} from './types';
 
 // Shortfall causes that mean the task cannot finish within its plan: it needs every
 // hour it can get. The planner books every hour for such a task (`bookBuckets`), and
@@ -35,12 +37,14 @@ export const needsEveryHour = (cause: DeferredObjectiveActivePlanFloorShortfallC
 // How the plan books the current hour: not at all, booked with nothing promised (the
 // forecast left no room), or booked with energy. One reading for every producer, so
 // the fresh plan, the frozen read and the contention overlay cannot disagree.
-export type CurrentHourBooking = 'unbooked' | 'booked_without_energy' | 'booked_with_energy';
+export type CurrentHourBooking = 'unbooked' | 'booked_without_energy' | 'booked_with_energy' | 'booked_continuous';
 
 export const resolveCurrentHourBooking = (
-  currentBucket: { booked: boolean; plannedUsefulEnergyKWh: number } | null,
+  currentBucket: DeferredObjectiveCurrentBucketPlan | null,
 ): CurrentHourBooking => {
   if (currentBucket === null || !currentBucket.booked) return 'unbooked';
+  // Scheduling deliberately traded a bounded price premium for this run.
+  if (currentBucket.keepCharging && currentBucket.plannedUsefulEnergyKWh > 0) return 'booked_continuous';
   return currentBucket.plannedUsefulEnergyKWh > 0 ? 'booked_with_energy' : 'booked_without_energy';
 };
 

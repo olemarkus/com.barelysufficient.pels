@@ -65,7 +65,7 @@ it.each(['temperature', 'ev_soc', 'energy'] as const)('replays quarter boundarie
     budgetContributedToShortfall: false,
     drawWindows: hours.map((hour) => ({ startMs: hour.startsAtMs, endMs: hour.endsAtMs, plannedKWh: hour.plannedKWh })),
   };
-  const at = (offset: number) => buildFrozenHorizonPlan(START + offset, 'task', task, frozen, 2, false, steps);
+  const at = (offset: number) => buildFrozenHorizonPlan(START + offset, { deviceId: 'task', objective: task, prefersContinuousCharging: false }, frozen, 2, false, steps);
   expect(at(QUARTER - 1).currentHourClaim).toBe('claimed');
   expect(at(QUARTER).currentHourClaim).toBe('released');
   expect(at(2 * QUARTER).currentHourClaim).toBe('claimed');

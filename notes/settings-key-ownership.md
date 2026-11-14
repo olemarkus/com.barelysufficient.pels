@@ -153,6 +153,20 @@ Each enabled configuration records capacity, reserve, efficiency, wear allowance
 and price unit. Enabling checks the current price unit; the runtime also pauses
 execution when that unit changes until the allowance is reviewed and saved again.
 
+`ev_charging_session_smoothing` belongs to
+`packages/shared-domain/src/settings/evChargingSessionSmoothing.ts`. It is a
+per-charger true-only opt-in map; absent entries resolve false. Runtime normalization
+retains healthy true entries independently and ignores malformed siblings.
+`DeviceControlSettings` keeps the last accepted map through unavailable reads and
+forwards the resolved preference to the objective evaluation source. Changing the
+setting reloads that owner; it does not force a plan rebuild or change a committed
+plan's policy. New plans capture the preference; execution still respects house limits.
+The charger page offers the switch only for managed, server-resolved Smart-task
+candidates. Saves require a fresh, complete boolean map and preserve sibling entries;
+a null WebView read requires an uncached bootstrap owner read. The owner proves
+never-written keys with `getKeys()` and refuses an unavailable read. Browser saves
+are read-modify-write operations, not atomic across clients.
+
 `ev_charge_target_settings` (a charger's target battery level) belongs to
 `packages/shared-domain/src/settings/evChargeTarget.ts`. Its reader sanitizes and
 keeps per entry: an entry without a whole percent in 1..100 is dropped (no target),

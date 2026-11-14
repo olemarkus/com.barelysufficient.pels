@@ -29,6 +29,7 @@ export const buildHoursFromHorizonPlan = (
       startsAtMs: bucket.startMs,
       endsAtMs: bucket.endMs,
       plannedKWh: bucket.plannedUsefulEnergyKWh,
+      ...(bucket.keepCharging ? { keepCharging: true as const } : {}),
       ...(bucket.plannedAdmissionPowerKw ? { plannedAdmissionPowerKw: bucket.plannedAdmissionPowerKw } : {}),
     },
   }));
@@ -39,6 +40,7 @@ export const buildHoursFromHorizonPlan = (
     const { interval } = candidate;
     if (previous && previous.sourceBucketId === candidate.sourceBucketId
       && previous.interval.endsAtMs === interval.startsAtMs
+      && previous.interval.keepCharging === interval.keepCharging
       && previous.interval.plannedAdmissionPowerKw === interval.plannedAdmissionPowerKw) {
       previous.interval.endsAtMs = interval.endsAtMs;
       previous.interval.plannedKWh += interval.plannedKWh;

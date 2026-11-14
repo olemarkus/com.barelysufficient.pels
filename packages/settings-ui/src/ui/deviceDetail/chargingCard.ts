@@ -8,6 +8,9 @@ import {
   supportsEvChargeTargetDevice,
 } from './evChargeTarget.ts';
 
+import { initEvChargingSessionSmoothingHandlers, renderEvChargingSessionSmoothing }
+  from './evChargingSessionSmoothing.ts';
+
 // An EV charger's Charging card: when and how much to charge. It holds the
 // battery level PELS charges to (evChargeTarget.ts), Charge boost (evBoost.ts),
 // and the Charge on solar surplus row the section layout moves in.
@@ -40,9 +43,11 @@ export const setDeviceDetailChargingCardState = (
 export const renderChargingCardSettings = (device: SettingsUiDeviceView | null) => {
   renderEvChargeTargetSettings(device);
   renderEvBoostSettings(device);
+  void renderEvChargingSessionSmoothing(device);
 };
 
 export const initChargingCardHandlers = (deps: Parameters<typeof initEvBoostHandlers>[0]) => {
   initEvBoostHandlers(deps);
+  initEvChargingSessionSmoothingHandlers(deps);
   initEvChargeTargetHandlers(deps);
 };

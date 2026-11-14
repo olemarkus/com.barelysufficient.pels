@@ -32,6 +32,7 @@ import {
   DEVICE_EXPECTED_POWER_OVERRIDES,
   DEVICE_DRIVER_OVERRIDES,
   EV_BOOST_SETTINGS,
+  EV_CHARGING_SESSION_SMOOTHING,
   EV_CHARGE_TARGET_SETTINGS,
   EV_CAR_ASSOCIATIONS,
   EV_CAR_CURRENT_LIMITS,
@@ -89,6 +90,7 @@ import {
   clearEvCarAssociations,
   loadDeviceExpectedPowerOverrides,
   loadEvBoostSettings,
+  loadEvChargingSessionSmoothingSettings,
   loadEvChargeTargetSettings,
   loadEvCarAssociations,
   loadShedBehaviors,
@@ -281,7 +283,10 @@ const refreshPriceSettings = (key: string, context: 'settings.set' | 'settings.u
   // Dropped first: every reload below reads it. The page shows the source the
   // runtime has in force and which settings the owner chose, which the prices
   // read carries; a cached read would show them from before this change.
-  if (setupChanged || PRICE_REFRESH_KEYS.has(key)) invalidateApiCache(SETTINGS_UI_PRICES_PATH);
+  if (setupChanged || PRICE_REFRESH_KEYS.has(key)) {
+    invalidateApiCache(SETTINGS_UI_PRICES_PATH);
+    document.dispatchEvent(new Event('prices-updated'));
+  }
   if (PRICE_REFRESH_KEYS.has(key)) refreshPricesIfVisible(context);
   if (key === PRICE_OPTIMIZATION_ENABLED || key === PRICE_OPTIMIZATION_SETTINGS || setupChanged) {
     runLoggedTask(
@@ -559,6 +564,10 @@ const DEVICE_SETTING_RELOADERS: Readonly<Record<string, { load: () => Promise<vo
     failure: 'Failed to load temperature boost settings',
   },
   [EV_BOOST_SETTINGS]: { load: loadEvBoostSettings, failure: 'Failed to load EV boost settings' },
+  [EV_CHARGING_SESSION_SMOOTHING]: {
+    load: () => loadEvChargingSessionSmoothingSettings().then(refreshModeAndDeviceControls),
+    failure: 'Failed to load charging session settings',
+  },
   [EV_CHARGE_TARGET_SETTINGS]: { load: loadEvChargeTargetSettings, failure: 'Failed to load charge target settings' },
   [EV_CAR_CURRENT_LIMITS]: {
     load: () => loadEvCarCurrentLimits().then(refreshModeAndDeviceControls),

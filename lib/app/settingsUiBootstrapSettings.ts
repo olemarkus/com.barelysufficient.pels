@@ -8,9 +8,11 @@ import { CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY } from '../../packages/shared-doma
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { readInverterCurtailmentDevices } from '../solar/inverterCurtailmentSettings';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../utils/settingsUiBootstrapKeys';
-import { DEVICE_POWER_CONTROL_MODES } from '../../packages/shared-domain/src/settings/settingsKeys';
+import { DEVICE_POWER_CONTROL_MODES, EV_CHARGING_SESSION_SMOOTHING }
+  from '../../packages/shared-domain/src/settings/settingsKeys';
 import { normalizeDevicePowerControlModes } from '../../packages/shared-domain/src/settings/devicePowerControlModes';
 import { readSettingsKeyList } from '../utils/settingsKeyList';
+import { readEvChargingSessionSmoothingSettings } from '../device/evChargingSessionSmoothingSettings';
 
 const readPowerControlModes = (settings: SettingsPort): unknown => {
   const raw = settings.get(DEVICE_POWER_CONTROL_MODES);
@@ -22,6 +24,7 @@ const readPowerControlModes = (settings: SettingsPort): unknown => {
 };
 
 const readBootstrapSetting = (settings: SettingsPort, key: SettingsUiBootstrapKey): unknown => {
+  if (key === EV_CHARGING_SESSION_SMOOTHING) return readEvChargingSessionSmoothingSettings(settings);
   if (key === INVERTER_CURTAILMENT_DEVICES) return readInverterCurtailmentDevices(settings);
   if (key === CONTINUOUS_BATTERY_PLAN_SETTINGS_KEY) return readContinuousBatteryPlanConfigs(settings);
   if (key === DEVICE_POWER_CONTROL_MODES) return readPowerControlModes(settings);

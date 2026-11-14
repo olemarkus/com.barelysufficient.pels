@@ -61,6 +61,37 @@ actual time spans. The worked hourly examples below remain examples of this inte
 Device-presence evidence and the shared reservation-grace policy are described in
 [Device presence and task reservations](device-presence.md).
 
+## Optional EV charging continuity
+
+`ev_charging_session_smoothing` is a per-charger opt-in, off by default. The
+device settings owner supplies a narrow reader to task evaluation; the preference
+does not belong to planner device input. Evaluation resolves it once alongside
+EV identity, for both fresh and frozen serving, including energy tasks on EVs.
+
+`evChargingSessionSmoothing.ts` transforms complete, fresh, non-reserve plans
+after ordinary booking. It fills gaps of at most 15 minutes at the neighbouring
+run's guaranteed useful rate, within the gap's existing capacity, and transfers
+the same energy from the following run's tail. Only candidates with fewer booked
+runs are accepted. Import-money cost and solar-adjusted planning value each stay
+within 5% of the original complete plan, cumulatively; nonpositive baselines
+permit no increase. Ambiguous or differing charging rungs, insufficient capacity
+and unavailable prices leave the original schedule in place. Short gaps normally
+arise from quarter-hour prices. New bridges require a native 15-minute source
+period; hourly prices split by reservations do not qualify. The toggle is hidden
+without 15-minute pricing, while its saved choice is retained.
+This prefers scheduled continuity, not an uninterrupted
+physical minimum runtime.
+
+The chosen run carries `keepCharging` intent, separately from the truthful
+`cheaperHourAhead` fact. Bookings persist the intent and frozen serving resolves
+it against the current preference. It suppresses discretionary price deferral,
+never task completion or physical protection. Committed replans move no energy;
+they replay the marker by covered interval and retain previous opportunistic
+bookings without adding new zero-energy bookings merely because a bridge is
+pricier. A task that needs every available period still claims those periods.
+Disabling permits ordinary deferral on the next evaluation; enabling again can
+restore continuity for a schedule originally created with the setting on.
+
 ## Current Baseline
 
 As of this note, PELS already has internal/native EV state-of-charge plumbing:

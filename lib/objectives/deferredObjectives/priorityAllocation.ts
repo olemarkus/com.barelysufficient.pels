@@ -55,6 +55,9 @@ export type CoordinatedDeferredObjective = OrderedDeferredObjective & {
   rescuePermissions: TaskEvaluation['permissions'];
 };
 
+/** Task scheduling policy resolved once for both fresh allocation and frozen serving. */
+export type ScheduledDeferredObjective = CoordinatedDeferredObjective & { prefersContinuousCharging: boolean };
+
 // Keep the same locale-independent tie-break as `lib/plan/planSort.ts` without
 // importing across the objectives→plan boundary.
 const compareDeviceIdAsc = (left: string, right: string): number => {

@@ -101,6 +101,7 @@ const buildDeps = (overrides: LifecycleFixture = {}): DeferredObjectiveLifecycle
   } = overrides;
   return {
     source: {
+      prefersContinuousCharging: () => false,
       getChargingPhaseEnvelopes: () => new Map(),
       allocationRoster,
       hasSolarProduction,

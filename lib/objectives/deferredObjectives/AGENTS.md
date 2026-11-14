@@ -10,6 +10,14 @@ Daily-budget learning remains hourly. `policyHorizon.ts` prorates each hour's ba
 
 ## During an active smart task, the task decides whether the device runs
 
+EV charging continuity is an opt-in scheduling preference, owned after ordinary
+fresh allocation by `evChargingSessionSmoothing.ts`. It moves energy rather than
+adding it, within one original-plan 5% money and planning-value allowance. Never
+rewrite committed energy to smooth a gap. `keepCharging` records the chosen run
+independently of price facts; both fresh and frozen claims consult the current
+preference. Capacity protection, completion and short-task free-capacity claims
+retain precedence. See the continuity section of the design record.
+
 A `released` interval stands the task's device down even when Power-limit control is on. With standing command authority, `admission.ts` holds that device off; a temperature-only device with no off command keeps its configured setback. With borrowed authority, it keeps its configured release posture. Both are deferred holds, not capacity pressure, and must not clamp unrelated stepped devices. `claimed` intervals continue through normal planning. Do not infer the release rule from task status text or stored start policy; use the resolved active claim and authority.
 
 The task governs until its deadline, also once satisfied (owner ruling 2026-10-17). Satisfaction strips the rescue permissions; it does not hand the device back to normal running, and it has no lifecycle fallback of its own. A temperature task's setpoint rides every decision as `deadlineFloorTargetC`, so neither satisfaction nor a mode change writes a mode target below the task's mid-task (a more demanding one still wins, as the floor has always worked); a released interval's shed posture carries its own limit.

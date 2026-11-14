@@ -94,6 +94,8 @@ export type DeferredObjectivePlanInterval = {
   plannedUnitMilestone?: number;
   // Frozen planning-price comparison against later booked intervals.
   cheaperHourAhead?: boolean;
+  // Intentional continuous charging run; absence on older bookings means ordinary price deferral.
+  keepCharging?: true;
 };
 
 export type DeferredObjectiveActivePlanCommitmentV1 = {

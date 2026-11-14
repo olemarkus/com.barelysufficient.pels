@@ -63,6 +63,7 @@ import {
   updateSetStepOptionLabel,
 } from './steppedLoadDraft.ts';
 import { loadEvBoostSettings } from './evBoost.ts';
+import { loadEvChargingSessionSmoothingSettings } from './evChargingSessionSmoothing.ts';
 import { loadEvChargeTargetSettings } from './evChargeTarget.ts';
 import {
   initChargingCardHandlers,
@@ -436,6 +437,7 @@ export {
   clearEvCarAssociations,
   loadDeviceExpectedPowerOverrides,
   loadEvBoostSettings,
+  loadEvChargingSessionSmoothingSettings,
   loadEvChargeTargetSettings,
   loadEvCarAssociations,
   loadShedBehaviors,

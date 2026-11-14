@@ -259,7 +259,7 @@ export type DeferredObjectiveHorizonInput = {
 };
 
 export type DeferredObjectiveCommittedInterval = Pick<
-  DeferredObjectivePlanInterval, 'startsAtMs' | 'endsAtMs' | 'coversFromMs' | 'plannedKWh'
+  DeferredObjectivePlanInterval, 'startsAtMs' | 'endsAtMs' | 'coversFromMs' | 'plannedKWh' | 'keepCharging'
 >;
 
 // A bucket as the allocator leaves it: its energy, before the plan decides which
@@ -282,6 +282,8 @@ export type DeferredObjectiveAllocatedBucket = {
 };
 
 export type DeferredObjectivePlannedBucket = DeferredObjectiveAllocatedBucket & {
+  // A chosen continuous charging run does not yield solely for cheaper prices.
+  keepCharging: boolean;
   // The plan books this hour (`bookBuckets`). Distinct from its energy: an hour
   // the plan wants on price, or needs because the task falls short, but the
   // forecast left no room for is booked at 0 kWh. It promises nothing, but the
@@ -290,6 +292,7 @@ export type DeferredObjectivePlannedBucket = DeferredObjectiveAllocatedBucket & 
 };
 
 export type DeferredObjectiveCurrentBucketPlan = {
+  keepCharging: boolean;
   bucketId: string;
   sourceBucketId: string;
   plannedUsefulEnergyKWh: number;

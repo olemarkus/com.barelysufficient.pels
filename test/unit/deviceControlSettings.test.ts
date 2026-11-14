@@ -4,6 +4,7 @@ import { buildTargetPowerReachabilityState } from '../../lib/device/targetPowerR
 import {
   DEVICE_DRIVER_OVERRIDES,
   EV_CAR_ASSOCIATIONS,
+  EV_CHARGING_SESSION_SMOOTHING,
   MANAGED_DEVICES,
   TEMPERATURE_BOOST_SETTINGS,
   DEVICE_TARGET_POWER_CONFIGS,
@@ -36,6 +37,29 @@ const loaded = (port: ConstructorParameters<typeof DeviceControlSettings>[0]): D
 };
 
 const temperatureDevice = { deviceType: 'temperature' as const };
+
+describe('DeviceControlSettings EV charging continuity', () => {
+  it('defaults off and admits healthy opt-ins independently', () => {
+    const settings = loaded(settingsDouble({
+      [EV_CHARGING_SESSION_SMOOTHING]: { first: true, second: false, malformed: 'true' },
+    }).port);
+    expect(settings.getPreferContinuousCharging('first')).toBe(true);
+    expect(settings.getPreferContinuousCharging('second')).toBe(false);
+    expect(settings.getPreferContinuousCharging('malformed')).toBe(false);
+    expect(settings.getPreferContinuousCharging('missing')).toBe(false);
+  });
+
+  it('retains accepted preferences on unavailable reads and clears proven absence', () => {
+    const { port, values } = settingsDouble({ [EV_CHARGING_SESSION_SMOOTHING]: { charger: true } });
+    const settings = loaded(port);
+    values[EV_CHARGING_SESSION_SMOOTHING] = null;
+    settings.reload();
+    expect(settings.getPreferContinuousCharging('charger')).toBe(true);
+    delete values[EV_CHARGING_SESSION_SMOOTHING];
+    settings.reload();
+    expect(settings.getPreferContinuousCharging('charger')).toBe(false);
+  });
+});
 
 describe('DeviceControlSettings managed filter', () => {
   it('reports inactive for an empty managed map', () => {

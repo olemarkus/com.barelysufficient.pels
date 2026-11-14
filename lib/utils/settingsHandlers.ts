@@ -25,6 +25,7 @@ import {
   DEBUG_LOGGING_TOPICS,
   DEVICE_HOME_ASSIGNMENTS,
   EV_BOOST_SETTINGS,
+  EV_CHARGING_SESSION_SMOOTHING,
   EV_CHARGE_TARGET_SETTINGS,
   EV_CAR_ASSOCIATIONS,
   EV_CAR_CURRENT_LIMITS,
@@ -430,6 +431,9 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
     [TEMPERATURE_BOOST_SETTINGS]: async () => {
       deps.loadCapacitySettings();
       await rebuildPlanFromSettings(deps, TEMPERATURE_BOOST_SETTINGS);
+    },
+    [EV_CHARGING_SESSION_SMOOTHING]: async () => {
+      deps.loadCapacitySettings();
     },
     [EV_BOOST_SETTINGS]: async () => {
       deps.loadCapacitySettings();

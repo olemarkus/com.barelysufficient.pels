@@ -47,6 +47,8 @@ const TASK_KINDS: DeferredObjectiveSettingsKind[] = ['energy', 'temperature', 'e
 const buildDevice = (
   kind: DeferredObjectiveSettingsKind,
   nowMs: number,
+  isEvCharger: boolean,
+  percent: number,
 ): MeteredPlanInputDevice & { thermalDirection: 'heating' } => (
   withBinaryDiscriminant(withMaterializedEvPlugState(withFixtureResidualKw({
     id: DEVICE_ID,
@@ -59,7 +61,7 @@ const buildDevice = (
     targets: kind === 'temperature'
       ? [{ id: 'target_temperature', value: 42, unit: 'C', min: 0, max: 95, step: 0.5 }]
       : [],
-    binaryCapabilityId: kind === 'ev_soc' ? 'evcharger_charging' : 'onoff',
+    binaryCapabilityId: isEvCharger ? 'evcharger_charging' : 'onoff',
     binaryControl: { on: false },
     currentOn: false,
     control: fixtureControlPosture({ controllable: false }),
@@ -69,11 +71,11 @@ const buildDevice = (
     steppedLoadProfile: {
       steps: [{ id: 'off', planningPowerW: 0 }, { id: 'run', planningPowerW: 2000 }],
     },
-    isEvCharger: kind === 'ev_soc',
+    isEvCharger,
     evChargingState: 'plugged_in_paused',
     lastFreshDataMs: nowMs,
     ...(kind === 'temperature' ? { currentTemperature: 40 } : {}),
-    ...(kind === 'ev_soc' ? { stateOfCharge: stateOfChargeFixture({ percent: 40, observedAtMs: nowMs }) } : {}),
+    ...(kind === 'ev_soc' ? { stateOfCharge: stateOfChargeFixture({ percent, observedAtMs: nowMs }) } : {}),
   }))) as MeteredPlanInputDevice & { thermalDirection: 'heating' }
 );
 
@@ -94,7 +96,13 @@ const learnedProfile = (nowMs: number): PowerTrackerState => ({
   },
 });
 
-const createScenario = (kind: DeferredObjectiveSettingsKind) => {
+const createScenario = (
+  kind: DeferredObjectiveSettingsKind,
+  isEvCharger = kind === 'ev_soc',
+  targetUnits = 2,
+) => {
+  let preferContinuousCharging = false;
+  let percent = 40;
   const cache = createInMemoryPriceCache();
   const service = new PriceService(
     mockHomeyInstance as unknown as Homey.App['homey'],
@@ -105,21 +113,23 @@ const createScenario = (kind: DeferredObjectiveSettingsKind) => {
     () => ({}),
     noHomeyWebApi,
   );
-  const publishPrices = (cheapQuarters: readonly number[]): void => {
+  const publishPrices = (cheapQuarters: readonly number[], otherPrice = 100): void => {
     cache.write(FLOW_PRICES_TODAY, {
       dateKey: '2026-10-25',
       pricesByHour: {},
       pricesByPeriod: Array.from({ length: 12 }, (_, index) => ({
         startsAt: new Date(START_MS + index * QUARTER_MS).toISOString(),
         durationMinutes: 15,
-        totalPrice: cheapQuarters.includes(index) ? 1 : 100,
+        totalPrice: cheapQuarters.includes(index) ? 1 : otherPrice,
       })),
       updatedAt: new Date().toISOString(),
     });
   };
   publishPrices([0, 2]);
   const targets = {
-    energy: { targetEnergyKWh: 1 }, temperature: { targetTemperatureC: 42 }, ev_soc: { targetPercent: 42 },
+    energy: { targetEnergyKWh: targetUnits / 2 },
+    temperature: { targetTemperatureC: 40 + targetUnits },
+    ev_soc: { targetPercent: 40 + targetUnits },
   };
   const target = targets[kind];
   const settings = objectiveRosterFor({
@@ -139,9 +149,10 @@ const createScenario = (kind: DeferredObjectiveSettingsKind) => {
   const cycle = (minutes: number) => {
     const nowMs = START_MS + minutes * MINUTE_MS;
     vi.setSystemTime(nowMs);
-    const device = buildDevice(kind, nowMs);
+    const device = buildDevice(kind, nowMs, isEvCharger, percent);
     energyTracker.observe([device], settings, nowMs);
     const diagnostics = buildFixtureDiagnostics({
+      prefersContinuousCharging: () => preferContinuousCharging,
       hasSolarProduction: false,
       resolveDeviceExclusion: noDeviceExclusion,
       getStallClassification: noStallEvidence,
@@ -171,6 +182,8 @@ const createScenario = (kind: DeferredObjectiveSettingsKind) => {
 
   return {
     cycle,
+    setSmoothing: (enabled: boolean) => { preferContinuousCharging = enabled; },
+    setPercent: (value: number) => { percent = value; },
     publishPrices,
     clearPrices: () => { cache.write(FLOW_PRICES_TODAY, null); },
     restart: () => {
@@ -191,6 +204,59 @@ describe('native-quarter Smart tasks through the SDK inputs', () => {
   });
 
   afterEach(() => { vi.useRealTimers(); });
+
+  it('leaves short price gaps unchanged while the charger has not opted in', () => {
+    const scenario = createScenario('ev_soc');
+    scenario.publishPrices([0, 2], 1.08);
+    const first = scenario.cycle(0);
+    expect(first.saved?.latest?.hours.map((hour) => hour.startsAtMs))
+      .toEqual([START_MS, START_MS + 2 * QUARTER_MS]);
+    expect(scenario.cycle(15).decision?.kind).toBe('idle');
+  });
+
+  it.each(['ev_soc', 'energy'] as const)('%s on an opted-in charger keeps its selected charging run across restart', (kind) => {
+    const scenario = createScenario(kind, true, 3);
+    scenario.setSmoothing(true);
+    scenario.publishPrices([0, 2, 3], 1.08);
+    const first = scenario.cycle(0);
+    const hours = first.saved?.latest?.hours ?? [];
+    expect(hours.map((hour) => hour.startsAtMs)).toEqual([START_MS, START_MS + QUARTER_MS, START_MS + 2 * QUARTER_MS]);
+    expect(hours.reduce((sum, hour) => sum + hour.plannedKWh, 0)).toBeCloseTo(1.5);
+    expect(hours.every((hour) => hour.keepCharging === true)).toBe(true);
+    expect(first.decision?.kind).toBe('planned');
+    scenario.restart();
+    scenario.publishPrices([4, 5, 6]);
+    const bridge = scenario.cycle(15);
+    expect(bridge.diagnostic?.horizonPlan?.frozenRead).toBe(true);
+    expect(bridge.decision?.kind).toBe('planned');
+    expect(bridge.saved?.latest?.hours).toEqual(hours);
+    expect(scenario.cycle(30).decision?.kind).toBe('planned');
+    expect(scenario.cycle(45).decision?.kind).toBe('idle');
+  });
+
+  it('keeps an opted-in run ahead of its milestone, and allows price deferral again when opted out', () => {
+    const scenario = createScenario('ev_soc', true, 3);
+    scenario.setSmoothing(true);
+    scenario.publishPrices([0, 2, 3], 1.08);
+    scenario.cycle(0);
+    scenario.setPercent(42);
+    const ahead = scenario.cycle(15);
+    expect(ahead.diagnostic?.horizonPlan?.currentHourFacts.aheadOfHourMilestone).toBe(true);
+    expect(ahead.diagnostic?.horizonPlan?.currentHourFacts.cheaperHourAhead).toBe(true);
+    expect(ahead.decision?.kind).toBe('planned');
+    scenario.setSmoothing(false);
+    expect(scenario.cycle(16).decision?.kind).toBe('idle');
+    scenario.setSmoothing(true);
+    expect(scenario.cycle(17).decision?.kind).toBe('planned');
+  });
+
+  it('keeps non-EV energy tasks price-led even if the preference is present', () => {
+    const scenario = createScenario('energy', false);
+    scenario.setSmoothing(true);
+    scenario.publishPrices([0, 2], 1.08);
+    scenario.cycle(0);
+    expect(scenario.cycle(15).decision?.kind).toBe('idle');
+  });
 
   it.each(TASK_KINDS)('%s follows separated cheap quarters, survives restart and settles only at :58', (kind) => {
     const scenario = createScenario(kind);

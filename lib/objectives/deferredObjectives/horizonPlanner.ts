@@ -382,7 +382,8 @@ const buildPlanFromAllocation = (
     allocation, ENERGY_EPSILON_KWH, floorFeasibility.feasibleOnClimbedBand, budgetRole, varianceMarginKWh,
   );
   const floorShortfallCause = resolveFloorShortfallCause(statusResult.statusDetail);
-  const plannedBuckets = bookBuckets(allocation.plannedBuckets, needsEveryHour(floorShortfallCause));
+  const plannedBuckets = bookBuckets(allocation.plannedBuckets, needsEveryHour(floorShortfallCause))
+    .map((bucket) => ({ ...bucket, keepCharging: false }));
   const currentBucket = resolveCurrentBucketPlan(plannedBuckets, steps, ENERGY_EPSILON_KWH);
 
   return {
@@ -414,7 +415,7 @@ const buildPlanFromAllocation = (
   };
 };
 
-const resolveCurrentBucketPlan = (
+export const resolveCurrentBucketPlan = (
   plannedBuckets: DeferredObjectivePlannedBucket[],
   steps: DeferredObjectiveStep[],
   epsilonKWh: number,
@@ -428,6 +429,7 @@ const resolveCurrentBucketPlan = (
     epsilonKWh,
   );
   return {
+    keepCharging: currentBucket.keepCharging,
     bucketId: currentBucket.id,
     sourceBucketId: currentBucket.sourceBucketId,
     plannedUsefulEnergyKWh: currentBucket.plannedUsefulEnergyKWh,

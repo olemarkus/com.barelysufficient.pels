@@ -1,6 +1,6 @@
 import { createEmptyActivePlans } from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import { buildFixtureDiagnostics, type TaskEvaluationFixture } from '../helpers/taskEvaluationFixture';
-import { noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
+import { noDeviceExclusion, noReservationSuppression } from '../helpers/deferredObjectiveWiringFixtures';
 import { inertPlanHistoryDeps } from '../helpers/deferredObjectiveWiringFixtures';
 import { createFixturePriorityQuery } from '../helpers/modePriorityFixtures';
 import { resolveCurrentHourBooking, resolveCurrentHourClaim } from '../../lib/objectives/deferredObjectives/currentHourClaim';
@@ -957,6 +957,41 @@ describe('TaskAllocationRoster', () => {
 });
 
 describe('buildDeferredObjectiveDiagnostics', () => {
+  it('reserves the opted-in charging bridge before allocating a lower-priority task', () => {
+    const quarterMs = HOUR_MS / 4;
+    const deadlineAtMs = NOW_MS + 2 * HOUR_MS;
+    const profile = { steps: [{ id: 'off', planningPowerW: 0 }, { id: 'run', planningPowerW: 2000 }] };
+    const devices = [
+      buildDevice({ id: 'ev-1', priority: 1, steppedLoadProfile: profile, expectedPowerKw: 2 }),
+      buildDevice({ id: 'ev-2', priority: 2, steppedLoadProfile: profile, expectedPowerKw: 2 }),
+    ];
+    const objective = { enabled: true, kind: 'energy' as const, enforcement: 'soft' as const,
+      targetEnergyKWh: 1, deadlineAtMs };
+    const diagnostics = buildFixtureDiagnostics({
+      nowMs: NOW_MS, timeZone: 'UTC', devices,
+      settings: objectiveRosterFor({ objectivesByDeviceId: { 'ev-1': objective, 'ev-2': objective } }),
+      powerTracker: {}, dailyBudgetSnapshot: null, activePlans: createEmptyActivePlans(),
+      priceOptimizationEnabled: true, powerLimits: capacityOnlyPowerLimits(2), hasSolarProduction: false,
+      prefersContinuousCharging: (deviceId) => deviceId === 'ev-1',
+      getPrioritiesForDevices: createFixturePriorityQuery(devices),
+      resolveDeviceExclusion: noDeviceExclusion, getStallClassification: () => undefined,
+      hasObservedTask: () => false, isReservationSuppressed: noReservationSuppression,
+      getDeliveredEnergyKWh: () => 0,
+      buildPriceHorizon: () => Array.from({ length: 8 }, (_, index) => {
+        const price = [1, 1.08, 1, 1.08][index] ?? 100;
+        return { startMs: NOW_MS + index * quarterMs, endMs: NOW_MS + (index + 1) * quarterMs,
+          price, moneyPrice: price };
+      }),
+    });
+    const allocations = diagnostics.map((diagnostic) => diagnostic.horizonPlan?.plannedBuckets
+      .filter((bucket) => bucket.plannedUsefulEnergyKWh > 0)
+      .map((bucket) => (bucket.startMs - NOW_MS) / quarterMs));
+    expect(allocations).toEqual([[0, 1], [2, 3]]);
+    expect(diagnostics[0]?.horizonPlan?.plannedBuckets[1]).toMatchObject({
+      keepCharging: true, plannedAdmissionPowerKw: 2, plannedUsefulEnergyKWh: 0.5,
+    });
+  });
+
   it('allocates smart tasks in priority order and marks residual contention as at risk', () => {
     const deadlineAtMs = NOW_MS + 5 * HOUR_MS;
     const settings = objectiveRosterFor({
