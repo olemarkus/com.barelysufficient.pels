@@ -1,6 +1,8 @@
 import type { TaskAllocationRoster, TaskAllocationRosterSnapshot } from './taskAllocationRoster';
 import type { PowerLimitSettings } from '../../../packages/contracts/src/capacitySettings';
-import { buildUnallocatedTaskEvaluation, taskPermissionsForObjective } from './taskEvaluationProducer';
+import {
+  buildLearningTaskEvaluation, buildUnallocatedTaskEvaluation, taskPermissionsForObjective,
+} from './taskEvaluationProducer';
 import {
   completionFromEvaluation, reportAppliedPermissions, withAcceptedCompletion, withPlanningPermissions,
 } from './completionDiagnostic';
@@ -582,7 +584,16 @@ const buildDiagnosticWithPolicyHorizon = (
   const profileEnergy: DeferredObjectiveEnergyResolution = progress.remainingUnits > 0
     ? resolveProgressEnergy(powerTracker, device, objective, progress.remainingUnits, progress)
     : ZERO_ENERGY_RESOLUTION;
-  if (profileEnergy.reasonCode) return unknownWithProgress(profileEnergy.reasonCode);
+  if (profileEnergy.reasonCode) {
+    const unknown = unknownWithProgress(profileEnergy.reasonCode);
+    // A committed task whose rate samples aged out keeps its settled bookings'
+    // authority: a learning run would heat through an interval the task released.
+    if (frozenFallback) return unknown;
+    // Nothing to allocate yet, but a temperature task still heats toward its
+    // target so its device produces the readings its rate is learned from.
+    const evaluation = buildLearningTaskEvaluation(deviceId, objective, progress);
+    return { ...unknown, evaluation, completion: evaluation.completion };
+  }
 
   const steps = profileEnergy.energyNeededKWh > 0 ? resolveObjectiveSteps(device) : [];
   // Live step-ladder gap. The ladder is a live transport input — a flow-registered

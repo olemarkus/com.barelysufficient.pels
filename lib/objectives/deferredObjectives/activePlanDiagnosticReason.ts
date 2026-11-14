@@ -79,7 +79,7 @@ export const resolveLiveCompletion = (diagnostic: DeferredObjectiveDiagnostic): 
   if (isTaskSatisfied(completion)) {
     return { kind: 'satisfied' };
   }
-  if (completion.kind === 'inactive' || planning.kind === 'inactive' || planning.plan.status === 'invalid') {
+  if (completion.kind === 'inactive' || planning.kind !== 'allocated' || planning.plan.status === 'invalid') {
     return { kind: 'unavailable' };
   }
   return { kind: 'unmet', status: planning.plan.status === 'satisfied' ? 'on_track' : planning.plan.status };

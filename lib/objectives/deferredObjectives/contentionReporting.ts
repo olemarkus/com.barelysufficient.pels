@@ -8,7 +8,7 @@ export const reportHigherPriorityContention = (
   evaluation: TaskEvaluation,
 ): DeferredObjectiveDiagnostic => {
   if (evaluation === diagnostic.evaluation) return diagnostic;
-  if (evaluation.planning.kind === 'inactive') return { ...diagnostic, evaluation };
+  if (evaluation.planning.kind !== 'allocated') return { ...diagnostic, evaluation };
   const { plan } = evaluation.planning;
   return {
     ...diagnostic, evaluation, completion: evaluation.completion,

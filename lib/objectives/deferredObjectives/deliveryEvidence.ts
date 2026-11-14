@@ -30,7 +30,7 @@ const resolveObligation = (diagnostic: DeferredObjectiveDiagnostic, nowMs: numbe
   const evaluation = diagnostic.evaluation;
   if (nowMs >= evaluation.deadlineAtMs) return 'expired';
   if (isTaskSatisfied(evaluation.completion)) return 'satisfied';
-  if (evaluation.planning.kind === 'inactive') return 'unavailable';
+  if (evaluation.planning.kind !== 'allocated') return 'unavailable';
   const claim = evaluation.planning.plan.currentHourClaim;
   return claim === 'released' ? 'deferred' : claim;
 };
@@ -43,7 +43,7 @@ const resolveDraw = (diagnostic: DeferredObjectiveDiagnostic, measured: boolean)
 };
 const resolveSchedule = (diagnostic: DeferredObjectiveDiagnostic): TaskDeliveryFacts['schedule'] => {
   const { planning } = diagnostic.evaluation;
-  if (planning.kind === 'inactive') return 'unavailable';
+  if (planning.kind !== 'allocated') return 'unavailable';
   if (planning.plan.statusDetail === 'target_cannot_be_met') return 'rate_insufficient';
   if (planning.plan.statusDetail === 'estimate_uncertain') return 'estimate_uncertain';
   return 'fits';

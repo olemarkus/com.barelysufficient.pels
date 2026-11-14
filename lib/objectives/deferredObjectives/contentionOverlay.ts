@@ -17,12 +17,12 @@ export const resolveHigherPriorityContentionEvaluation = (
   higherPriorityUnbookedPowerKw: number,
   buildWithoutReservations: () => TaskEvaluation,
 ): TaskEvaluation => {
-  if (evaluation.planning.kind === 'inactive') return evaluation;
+  if (evaluation.planning.kind !== 'allocated') return evaluation;
   if (higherPriorityReservations.length === 0 && higherPriorityUnbookedPowerKw <= 0) return evaluation;
   const { plan } = evaluation.planning;
   if (plan.frozenRead || plan.unplannedUsefulEnergyKWh <= CONTENTION_EPSILON_KWH) return evaluation;
   const control = buildWithoutReservations();
-  if (control.planning.kind === 'inactive'
+  if (control.planning.kind !== 'allocated'
     || control.planning.plan.unplannedUsefulEnergyKWh > CONTENTION_EPSILON_KWH) return evaluation;
   // Cause, bookings and claim change together, so the saved hours and the frozen
   // read agree with the fresh answer: short because of a higher-priority task, this

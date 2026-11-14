@@ -18,7 +18,7 @@ import type { TaskEvaluation } from './taskEvaluation';
 export const resolveHorizonPriceWatermark = (
   evaluation: TaskEvaluation,
 ): number | null => {
-  if (evaluation.planning.kind === 'inactive') return null;
+  if (evaluation.planning.kind !== 'allocated') return null;
   const horizonPlan = evaluation.planning.plan;
   const stamped = horizonPlan.pricesAvailableUpToMs;
   if (typeof stamped === 'number' && Number.isFinite(stamped)) return stamped;
