@@ -215,27 +215,27 @@ describe('buildDecisionSentence', () => {
     });
     const named = (hold: DevicePlanDevice['storageHold'], signedW: number, available = true) => {
       const devices = [{ name: 'Sessy battery', homeBattery: buildSettingsUiPlanHomeBattery(card(signedW), hold, available, { exporting: false }) }];
-      return buildDecisionSentence(baseline({ supplyingBatteries: resolveSupplyingBatteries(devices) })).text;
+      return resolveSupplyingBatteries(devices);
     };
 
     it('names a battery PELS holds for relief that is supplying', () => {
-      expect(named({ kind: 'relief' }, -2400)).toBe('Sessy battery is supplying 2.4 kW to hold your limit.');
+      expect(named({ kind: 'relief' }, -2400)).toEqual([{ name: 'Sessy battery', kw: 2.4 }]);
     });
 
     it('does not name an unavailable battery, whose card says Unavailable', () => {
-      expect(named({ kind: 'relief' }, -2400, false)).toBe('Quiet hour. Nothing to do.');
+      expect(named({ kind: 'relief' }, -2400, false)).toEqual([]);
     });
 
     it('does not name a battery whose charge PELS caps', () => {
-      expect(named({ kind: 'charge_limit', heldBackKw: 2 }, -2400)).toBe('Quiet hour. Nothing to do.');
+      expect(named({ kind: 'charge_limit', heldBackKw: 2 }, -2400)).toEqual([]);
     });
 
     it('does not name a battery held for surplus that is discharging', () => {
-      expect(named({ kind: 'surplus' }, -2400)).toBe('Quiet hour. Nothing to do.');
+      expect(named({ kind: 'surplus' }, -2400)).toEqual([]);
     });
 
     it('does not name a battery in its own mode that is discharging', () => {
-      expect(named({ kind: 'none' }, -2400)).toBe('Quiet hour. Nothing to do.');
+      expect(named({ kind: 'none' }, -2400)).toEqual([]);
     });
   });
 
@@ -261,12 +261,12 @@ describe('buildDecisionSentence', () => {
     expect(buildDecisionSentence(baseline({
       dryRun: true,
       supplyingBatteries: [{ name: 'Sessy battery', kw: 2.4 }],
-    })).text).toBe('Quiet hour. Nothing to do.');
+    })).text).toBe('No devices would be limited right now.');
   });
 
   it('returns the quiet-hour copy when nothing is happening', () => {
     expect(buildDecisionSentence(baseline())).toEqual({
-      text: 'Quiet hour. Nothing to do.',
+      text: 'No devices are being limited.',
       positive: true,
     });
   });
@@ -421,7 +421,7 @@ describe('buildDecisionSentence', () => {
     });
 
     it('keeps the quiet hour while a limit is in force', () => {
-      expect(buildDecisionSentence(baseline({ jobs: counted(3, 0) })).text).toBe('Quiet hour. Nothing to do.');
+      expect(buildDecisionSentence(baseline({ jobs: counted(3, 0) })).text).toBe('No devices are being limited.');
     });
   });
 

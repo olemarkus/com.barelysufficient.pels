@@ -426,7 +426,10 @@ Priority order (first matching condition wins):
    the `No managed devices` empty state. Not positive: it is an unconfigured
    state, not reassurance. Every rung above it still wins, because those state
    measured facts about the house.
-7. On track: `Quiet hour. Nothing to do.` With no limit in force (the power
+7. On track: `No devices are being limited.` In simulation, `No devices would
+   be limited right now.` These describe limiting, not ordinary mode temperature
+   changes: the device card names a proposed temperature change separately.
+   With no limit in force (the power
    subline reads `Power limits off`) no hour is quiet against one, so the
    sentence says what PELS does for the home instead (added 2026-10-29 after
    the NL/DE first-run walk): `No limit to hold. 1 device follows prices,

@@ -58,7 +58,7 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   & Partial<Pick<DevicePlanDevice, 'phaseFootprint'>>;
 
 function resolveBaseKind(device: DeviceStatusInput): PlanStateKind {
-  if (!device.controllable) return 'manual';
+  if (!hasDeviceControl(device)) return 'manual';
   if (!device.execution.available) return 'unavailable';
   // A running stepped device PELS keeps below its top step for lack of room is
   // held for as long as it waits, though the plan keeps it (`steppedStepUpHold`).
@@ -75,6 +75,10 @@ function resolveBaseKind(device: DeviceStatusInput): PlanStateKind {
   if (isSatisfiedTemperatureDevice(device)) return 'idle';
   if (device.currentState === 'not_applicable' && resolveSteppedEvExceptionLabel(device) !== null) return 'idle';
   return 'active';
+}
+
+function hasDeviceControl(device: DeviceStatusInput): boolean {
+  return device.controllable || (device.temperature !== undefined && device.execution.targetProgress !== 'undriven');
 }
 
 function resolveReportedLoadReason(device: DeviceStatusInput, held: boolean, dryRun: boolean): string | null {
@@ -175,6 +179,14 @@ function resolveSimulatedTargetLine(device: DeviceStatusInput): string | null {
   return null;
 }
 
+function resolveOrdinarySimulatedTargetLine(device: DeviceStatusInput): string | null {
+  if (!device.execution.available || device.execution.externalOffHeld
+    || device.execution.physicalState === 'off' || device.steppedFairnessHold || device.steppedStepUpHold) return null;
+  const kind = resolveIntentStateKind({ kind: resolveBaseKind(device), reasonCode: device.reason.code,
+    starved: device.starvation?.isStarved === true });
+  return kind === 'held' || kind === 'manual' || kind === 'resuming' ? null : resolveSimulatedTargetLine(device);
+}
+
 // A timed reason keeps its countdown even when its line says something else
 // (what a paused device still reports): the card then shows it as its ring.
 function buildCountdown(device: DeviceStatusInput, text: string, anchorMs: number): DeviceStatusCountdown | undefined {
@@ -196,9 +208,11 @@ const resolvePhaseSettingOffer = (device: DeviceStatusInput): { offersPhaseSetti
 
 function buildReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus['reason'] {
   const simulatedAction = dryRun ? resolveSimulatedActionLine(device) : null;
-  return simulatedAction
-    ? { text: simulatedAction, ...resolvePhaseSettingOffer(device) }
-    : buildOrdinaryReason(device, dryRun, nowMs);
+  if (simulatedAction) return { text: simulatedAction, ...resolvePhaseSettingOffer(device) };
+  const ordinary = buildOrdinaryReason(device, dryRun, nowMs);
+  if (!dryRun || ordinary !== null) return ordinary;
+  const target = resolveOrdinarySimulatedTargetLine(device);
+  return target === null ? null : { text: target };
 }
 
 function buildOrdinaryReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus['reason'] {
