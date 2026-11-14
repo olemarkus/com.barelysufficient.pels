@@ -227,8 +227,21 @@ const renderStatus = (device: SettingsUiDeviceDetailItem, ticked: readonly strin
     return;
   }
   deviceDetailCarStatus.textContent = isConnectedCharger(device)
-    ? 'Waiting to identify the connected car'
+    ? resolveIdentificationStatus(device)
     : 'No car connected';
+};
+
+/**
+ * The wait as the charger's card states it, worded for this section, which holds
+ * the confirm button: once PELS will not identify the car by itself, it asks for
+ * the confirmation here too.
+ */
+const resolveIdentificationStatus = (device: SettingsUiDeviceDetailItem): string => {
+  if (device.carIdentificationState === 'selected_cars_unplugged') {
+    return 'No selected car reports a plug-in. Confirm the connected car below.';
+  }
+  if (device.carIdentificationState === 'timed_out') return 'Could not identify the connected car. Confirm it below.';
+  return 'Waiting to identify the connected car';
 };
 
 /**
@@ -351,10 +364,8 @@ const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly stri
     const selected = ticked.includes(car.id);
     deviceDetailCarList.append(carRow(device, car, selected, !orphans.includes(car)));
     if (!selected || orphans.includes(car)) continue;
-    const editor = editors.get(car.id) ?? document.createElement('div');
-    editor.dataset.carCurrentLimits = car.id;
-    deviceDetailCarList.append(editor);
-    renderCarCurrentLimits(editor, car, device, () => renderCarAssociation(currentDevice));
+    // The confirm button sits right under its car, ahead of the car's current
+    // limits, so the Car section opened to confirm shows it without a scroll.
     if (canConfirmCar(device, car.id)) {
       const button = document.createElement('md-outlined-button');
       button.textContent = 'Confirm connected car';
@@ -364,7 +375,10 @@ const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly stri
       button.addEventListener('click', () => { void updateConfirmation(deviceId, car.id); });
       deviceDetailCarList.append(button);
     }
-
+    const editor = editors.get(car.id) ?? document.createElement('div');
+    editor.dataset.carCurrentLimits = car.id;
+    deviceDetailCarList.append(editor);
+    renderCarCurrentLimits(editor, car, device, () => renderCarAssociation(currentDevice));
   }
 };
 

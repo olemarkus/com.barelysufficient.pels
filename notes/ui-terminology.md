@@ -2621,7 +2621,11 @@ has closed for most homes that reach this state.
   cheaper hours, a level change not confirmed) stays, since identifying the car
   would not change it. In both confirm states the card also offers a quiet
   `Confirm car` link to the charger's Car section, whichever reason holds the
-  line, because a hold does not end the wait for the car. A charger linked to a car outside its selection, or whose
+  line, because a hold does not end the wait for the car. The charger's Car
+  section states the same wait, worded for the page that holds the button: `No
+  selected car reports a plug-in. Confirm the connected car below.` or `Could not
+  identify the connected car. Confirm it below.` Each selected car's `Confirm
+  connected car` button sits right under that car, ahead of its current limits. A charger linked to a car outside its selection, or whose
   selected cars have all been removed from Homey, shows none of this. Activity
   records the same reason. Matching or explicit confirmation ends this message.
 

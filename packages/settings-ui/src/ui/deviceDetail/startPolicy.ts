@@ -139,12 +139,18 @@ const revealPowerLimitRow = (): void => revealDetailRow(q<HTMLElement>('#device-
  */
 const revealShedLimitRow = (): void => revealDetailRow(q<HTMLElement>('#device-detail-overshoot-temp-row'));
 
-/** The charger's Car section, expanded, where the owner confirms the connected car. */
+/**
+ * The charger's Car section, expanded, where the owner confirms the connected
+ * car: centred on the confirm button once the car list shows one.
+ */
 const revealCarSection = (): void => {
   const section = document.getElementById('device-detail-car-section');
   const collapse = section?.querySelector('details');
   if (collapse && !collapse.open) collapse.open = true;
-  if (section && !section.hidden) section.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  if (!section || section.hidden) return;
+  const confirm = section.querySelector<HTMLElement>('.detail-car-confirm');
+  if (confirm) confirm.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  else section.scrollIntoView({ block: 'start', behavior: 'smooth' });
 };
 
 /** Land on the row a deep link names; `top` leaves the page where it opened. */

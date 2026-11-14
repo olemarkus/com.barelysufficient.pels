@@ -287,7 +287,7 @@ describe('settingsUiApi', () => {
         return latestDevices;
       },
       deviceManager: partialDouble<DeviceTransport>({
-        getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, hasWarmSnapshot: () => true, readInverterControlOptions: () => [],
+        getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, getCarIdentificationState: () => 'not_waiting', hasWarmSnapshot: () => true, readInverterControlOptions: () => [],
       }),
       controlContests: { contestedControl: () => undefined },
       steppedCommandStore: { isLevelUnconfirmed: () => false },
@@ -407,7 +407,7 @@ describe('settingsUiApi', () => {
     const homey = createHomey();
     Object.assign(homey.app, {
       deviceManager: partialDouble<DeviceTransport>({
-        getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, hasWarmSnapshot: () => true,
+        getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, getCarIdentificationState: () => 'not_waiting', hasWarmSnapshot: () => true,
         readInverterControlOptions: () => [{ id: 'pv-main', name: 'Roof' }, { id: 'pv-area', name: 'Garage' }],
       }),
       homeMembership: {
