@@ -42,7 +42,7 @@ In **More -> Apps -> PELS -> Settings -> Devices**:
 2. Configure the device's normal PELS control setup.
 3. Turn **Power-limit control** off as the default if the device should only run during booked hours.
 
-For an EV charger, also complete [Configure an EV Charger](/ev-charger) so PELS can send the desired current to the charger app.
+For an EV charger, also complete [Configure an EV Charger](/ev-charger) so PELS can control the charging current.
 
 ## Step 2: Enable Control During the Cheapest Hours
 
@@ -87,8 +87,8 @@ Disabling PELS control keeps the device from starting outside the booked hours j
 Recommended device setup:
 
 - EV charger is **Managed by PELS**.
-- EV charger uses **EV 1-phase** or **EV 3-phase** control mode.
-- Current control is configured for the charger. A new Easee setup uses built-in device control, while an existing Easee current-control Flow remains supported. Other chargers use the **EV charger current (A)** Flow tag.
+- EV charger uses the **Automatic** control model where offered, otherwise **EV 1-phase** or **EV 3-phase**.
+- Current control is configured for the charger: built-in control for a supported charger, otherwise the **EV charger current (A)** Flow tag.
 - **Power-limit control** is off by default.
 
 Flows:
@@ -118,4 +118,4 @@ This lets the water heater run in the 3 cheapest hours before 06:00. If the home
 | The device never runs | Confirm prices are available, the device is managed, and the hard cap leaves enough available power. |
 | More hours match than expected | Ties at the cutoff price are included. |
 | The wrong night is selected | Use **Current price is one of the lowest before a time**, not today's-only pricing, when the window crosses midnight. |
-| Charging current does not change | For Easee, check the path you chose: **Use built-in device control**, or the existing current-control Flow. For other EV chargers, check the current-control Flow and **EV charger current (A)**. |
+| Charging current does not change | For a supported charger, check that built-in control is on and not paused by a Flow. For other EV chargers, check the current-control Flow and **EV charger current (A)**. |

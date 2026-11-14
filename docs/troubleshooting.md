@@ -230,10 +230,10 @@ The banner above the Overview tells you which state you are in:
 
 ## EV charging starts at the wrong time or won't change current
 
-- **Charging current never changes:** confirm the charger is configured as
-  **EV 1-phase** or **EV 3-phase**. For Easee, check the path you chose:
-  **Use built-in device control**, or the existing current-control Flow. For
-  other chargers, re-check the **EV charger current (A)** Flow in
+- **Charging current never changes:** confirm the charger's **Control model**
+  is **Automatic**, **EV 1-phase** or **EV 3-phase**. For a supported charger,
+  check that built-in control is on and not paused by a Flow. For other
+  chargers, re-check the **EV charger current (A)** Flow in
   [Configure an EV Charger](/ev-charger).
 - **The charger starts outside the plotted task plan:** an active task keeps
   some hours without planned energy (cheaper than its planned hours, or needed
@@ -242,7 +242,8 @@ The banner above the Overview tells you which state you are in:
   run-when-power-is-available behavior when no active task controls the charger.
   See [Smart Tasks → Power-Limit Control and Tasks](/smart-tasks#power-limit-control-and-tasks).
 - **Battery percentage doesn't appear:** if the value lives on the car device
-  rather than the charger, use **Report battery level for charger**.
+  rather than the charger, select the car in the charger's **Car** section. Use
+  **Report battery level for charger** only for a car PELS does not list there.
 
 ## My battery is stuck in Homey or API mode
 

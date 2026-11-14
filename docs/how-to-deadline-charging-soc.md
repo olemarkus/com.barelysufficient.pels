@@ -52,7 +52,7 @@ You need:
 - PELS installed and receiving live whole-home power data.
 - **Respond to prices** turned on under **Price-aware devices**, with prices available through the ready-by time.
 - An EV charger paired in Homey.
-- A Homey charger app or Flow action that can set available current or available power for the charger.
+- A charger PELS controls directly (see [Configure an EV Charger](/ev-charger#charging-current-setup)), or a Homey charger app with a Flow action that can set available current or available power.
 - A car or charger app that can expose battery percentage in Homey, or a Flow that can send that percentage to PELS.
 
 If PELS is not installed yet, start with [Getting Started](/getting-started). If your power or price source comes from Homey Energy, see [Using Homey Energy](/homey-energy). A charging task can stay at **Building plan…** until prices are available for the whole ready-by window.
@@ -70,10 +70,8 @@ First make PELS able to control charging current.
 1. Open **More -> Apps -> PELS -> Settings -> Devices**.
 2. Open the EV charger.
 3. Enable **Managed by PELS**.
-4. Choose **EV 1-phase** or **EV 3-phase**, matching your charger setup.
-5. Configure current control as described in [Configure an EV Charger](/ev-charger). A new Easee setup uses built-in device control; an existing Easee current-control Flow remains supported.
-
-For a Zaptec charger, use the shorter [Zaptec EV Charger](/zaptec-ev-charger) guide. An Easee charger needs no current-control Flow; see [Easee EV Charger](/easee-ev-charger).
+4. Check **Control model**: **Automatic** where offered, otherwise **EV 1-phase** or **EV 3-phase**, matching your charger setup.
+5. Configure current control as described in [Configure an EV Charger](/ev-charger). Supported chargers need no current-control Flow; the [Easee](/easee-ev-charger) and [Zaptec](/zaptec-ev-charger) guides cover their details.
 
 ### Choose The Default Charging Behavior
 
@@ -211,7 +209,7 @@ Use [Book Cheap Hours With Flows](/how-to-book-cheap-hours-with-flows) instead w
 | The task is **At risk** | Check that the car is plugged in, the charger current is correct, and the target is realistic for the time left. If other devices take the room, open **Review power guarantee** to preview what the task needs and the effect of extra permissions. If the reason names the car's own schedule or smart charging, turn that off in the car. |
 | The car's own charge limit is below the target | The task keeps your target. As soon as PELS knows the car's limit is lower, the task shows **At risk** (or **Cannot finish**) with the limit as the reason, and it ends as missed if the car stops there. Raise the charge limit in the car, or lower the task's target to the car's limit. While the car is still below its limit, the daily budget is named instead when it is what holds the task back. A car unplugged before it reaches the limit shows **Paused — unplugged**; plug it in. |
 | The task is **Cannot finish** | Lower the target, move the ready-by time later, plug in earlier, reduce competing load, or review the charger setup. Keep the configured house power limits matched to your home. |
-| Charging current does not change | Check the control method selected under **Setup → Charging current**. Easee, Alfen, Peblar, Zaptec, Futurehome, Wallbox, amina, go-e and Tesla can use built-in control. If you selected Flow control, recheck the current-control Flow and its **EV charger current (A)** tag. See [Configure an EV Charger](/ev-charger). |
+| Charging current does not change | Check the control method selected under **Setup → Charging current**. Easee, Alfen, Peblar, Enua, Zaptec, Futurehome, Wallbox, amina, go-e and Tesla use built-in control. If you selected Flow control, recheck the current-control Flow and its **EV charger current (A)** tag. See [Configure an EV Charger](/ev-charger). |
 
 For problems beyond charging — budget, capacity, or a missed task — see the full [Troubleshooting guide](/troubleshooting).
 
