@@ -706,10 +706,13 @@ charge (Charge boost, `Charge on solar surplus`). The control model is set in
 Setup only; the readout that once repeated it at the top of the Charging card was
 removed (2026-10-18) because one choice shown in two places read as two settings.
 With 15-minute pricing, the Charging card on a managed charger eligible for
-Smart tasks also offers **Prefer longer
-charging sessions**, off by default. Its hint is `For new Smart tasks, bridge
-charging gaps up to 15 minutes when planned cost rises by no more than 5%. Power
-limits still apply.` This choice is a charging preference, not permission to
+Smart tasks also offers **Avoid short charging breaks**, off by default. Its
+hint is `Keeps a Smart task charging through a pricier break of up to 15 minutes
+when that adds at most 5% to its cost. Turning it on applies to new Smart tasks.
+Power limits still apply.` The label names the effect the owner sees (fewer
+short stops), not the planner mechanism; it closes one 15-minute break, so
+"longer sessions" promised more than it does. Turning it off applies at once,
+which is why the hint scopes only turning it on. This choice is a charging preference, not permission to
 exceed a house limit. With 15-minute prices, a saved opt-in remains visible on a
 managed charger even while Smart-task eligibility is unavailable. Hourly or
 unavailable pricing hides the toggle and preserves its saved choice.

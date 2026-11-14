@@ -29,7 +29,9 @@ const isHomeEvidence = (evidence: TeslaHomeEvidence): boolean => (
   evidence.kind === 'home' || evidence.kind === 'home_without_location'
 );
 
-const manual = (reasonText: string): AdapterUnavailableStatus => ({ kind: 'manual', factText: null, reasonText });
+const manual = (factText: string | null, reasonText: string): AdapterUnavailableStatus => (
+  { kind: 'manual', factText, reasonText }
+);
 
 const idle = (factText: string | null, reasonText: string): AdapterUnavailableStatus => (
   { kind: 'idle', factText, reasonText }
@@ -68,12 +70,23 @@ const IDLE_CHECKS: ReadonlySet<TeslaHomeCheck> = new Set([
   'not_connected_state', 'no_ac_cable', 'battery_unavailable', 'car_not_online', 'car_moving', 'car_in_gear',
 ]);
 
-const awayStatus = (evidence: TeslaHomeEvidence, plugLabel: string | null): AdapterUnavailableStatus => {
-  if (evidence.kind === 'too_far') return manual('The car is not at home');
+// The Tesla app reports `Calibrating` while the car prepares to charge; it has
+// reported, it just is not charging yet.
+const CALIBRATING_REASON = 'The car is preparing to charge';
+
+const awayStatus = (
+  evidence: TeslaHomeEvidence,
+  state: unknown,
+  plugLabel: string | null,
+): AdapterUnavailableStatus => {
+  if (evidence.kind === 'too_far') return manual(plugLabel, 'The car is not at home');
   // A home session never reaches here; this keeps the mapping total.
   if (evidence.kind !== 'failed') return idle(plugLabel, 'The car is not charging');
-  const reason = NOT_HOME_REASONS[evidence.check];
-  return IDLE_CHECKS.has(evidence.check) ? idle(plugLabel, reason) : manual(reason);
+  const reason = state === 'Calibrating' ? CALIBRATING_REASON : NOT_HOME_REASONS[evidence.check];
+  // A car still reporting Charging is never Idle, whichever check failed: the
+  // card would read "Idle · Charging".
+  const charging = state === 'Charging';
+  return IDLE_CHECKS.has(evidence.check) && !charging ? idle(plugLabel, reason) : manual(plugLabel, reason);
 };
 
 const NUMERIC_OBSERVATIONS = new Set([
@@ -158,7 +171,7 @@ export class TeslaChargingSession implements DeviceAdapterSession {
     // With control turned off, PELS has not lost the car; it was not asked
     // to control it.
     if (setup.confirmation !== 'vehicle') return CONTROL_OFF_STATUS;
-    return awayStatus(evidence, resolveEvChargingStateLabel(resolveTeslaChargingState(state)));
+    return awayStatus(evidence, state, resolveEvChargingStateLabel(resolveTeslaChargingState(state)));
   }
 
   controlEvents(deviceId: string, capabilityId: string, value: unknown) {
