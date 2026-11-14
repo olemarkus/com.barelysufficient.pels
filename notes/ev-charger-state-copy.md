@@ -71,7 +71,7 @@ reading since a trust gap (`Waiting for Homey to report this device`), reads
 | `Complete` | **Idle** · `Not charging` | `The car finished charging` |
 | `NoPower` | **Idle** | `The charger is not supplying power` |
 | Control charging through this car is off | **Manual** | `Turn on “Control charging through this car” to let PELS control charging` |
-| Unresolved charging state | **Idle** | `The car has not reported its charging state` |
+| Unresolved charging state | **Idle** | `The car has not reported its charging state`, or `The car is preparing to charge` for `Calibrating` |
 | No AC cable | **Idle** · plug state | `No AC charging cable is connected` |
 | DC charging | **Manual** | `The car is on a DC charger` |
 | Car asleep or offline | **Idle** · plug state | `The car is asleep or offline` |
@@ -80,7 +80,9 @@ reading since a trust gap (`Waiting for Homey to report this device`), reads
 | Homey's location not set | **Manual** | `Set your Homey’s location so PELS can tell when the car is home` |
 
 **Idle** means the car is not charging; **Manual** means it may be charging
-where PELS cannot control it. Pairing gaps read **Manual** and name the device
+where PELS cannot control it. A car whose battery still reports `Charging` is
+never **Idle**, whichever check failed. **Manual** keeps the plug fact, so the
+battery level stays on the card. Pairing gaps read **Manual** and name the device
 involved: `Add this car’s Car device from the
 Tesla app`, `More than one Car device matches this car`, `More than one Location
 device matches this car`, `Homey reports the car’s Car device unavailable`,

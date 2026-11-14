@@ -640,7 +640,7 @@ test.each(['capability', 'device_update', 'device_fetch'] as const)(
         ['Complete', { kind: 'idle', factText: 'Not charging', reasonText: 'The car finished charging' }],
         ['NoPower', { kind: 'idle', factText: null, reasonText: 'The charger is not supplying power' }],
         ['Unknown', { kind: 'idle', factText: null, reasonText: 'The car has not reported its charging state' }],
-        ['Calibrating', { kind: 'idle', factText: null, reasonText: 'The car has not reported its charging state' }],
+        ['Calibrating', { kind: 'idle', factText: null, reasonText: 'The car is preparing to charge' }],
         ['Disconnected', { kind: 'idle', factText: 'Unplugged', reasonText: null }],
         ['Charging', undefined],
       ] as const) {
@@ -967,9 +967,20 @@ describe('a car Homey reports that PELS cannot place at home', () => {
     });
   });
 
+  it('never reads Idle while the car still reports charging', () => {
+    // Review 2026-11-14: a stale Car device with the battery still Charging
+    // read "Idle · Charging".
+    const initial = devices();
+    initial[2]!.capabilitiesObj!.car_state = cap('offline');
+    const owner = session(); owner.observeDevices(initial);
+    expect(owner.project(snapshot(), vehicle).controlAdapter?.unavailableStatus).toEqual({
+      kind: 'manual', factText: 'Charging', reasonText: 'The car is asleep or offline',
+    });
+  });
+
   it('says a car away from home is not at home', () => {
     expect(statusWith({ device: 1, capabilitiesObj: { measure_location_latitude: cap(61) } })).toEqual({
-      kind: 'manual', factText: null, reasonText: 'The car is not at home',
+      kind: 'manual', factText: 'Paused', reasonText: 'The car is not at home',
     });
   });
 
@@ -985,7 +996,7 @@ describe('a car Homey reports that PELS cannot place at home', () => {
     initial[0]!.capabilitiesObj.charging_state = cap('Stopped');
     owner.observeDevices(initial);
     expect(owner.project(snapshot(), vehicle).controlAdapter?.unavailableStatus).toEqual({
-      kind: 'manual', factText: null,
+      kind: 'manual', factText: 'Paused',
       reasonText: 'Set your Homey’s location so PELS can tell when the car is home',
     });
   });
