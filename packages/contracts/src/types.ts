@@ -251,7 +251,8 @@ export type AssociatedCarSnapshot = {
 
 /** An adapter's resolved presentation while its device cannot be controlled. No command authority. */
 export type AdapterUnavailableStatus = {
-    kind: 'idle' | 'unavailable';
+    /** `manual`: PELS observes the device but its owner has not turned on control. */
+    kind: 'idle' | 'manual' | 'unavailable';
     factText: string | null;
     reasonText: string | null;
 };

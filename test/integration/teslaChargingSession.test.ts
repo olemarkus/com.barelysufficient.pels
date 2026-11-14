@@ -898,3 +898,39 @@ describe('a vehicle without a Location & navigation device', () => {
     expect(owner.missingCompanion('battery')).toBe('none');
   });
 });
+
+describe('a car whose charging control is turned off', () => {
+  // Field report (v3.34.1): a car charging at home read `Unavailable` for the
+  // whole session because "Control charging through this car" was off. The
+  // card must say what the device needs, not that PELS lost it.
+  const snapshot = () => ({
+    id: 'battery', name: 'Car battery', available: true, measuredPowerKw: 4,
+    controlAdapter: { kind: 'capability_adapter', activationRequired: false, activationEnabled: false },
+  }) as unknown as import('../../lib/device/transportDeviceSnapshot').TransportDeviceSnapshot;
+  const off = { method: 'flow', confirmation: 'none' } as const;
+
+  it('reads Manual with the switch it needs while the car charges at home', () => {
+    const owner = session(); owner.observeDevices(devices());
+    expect(owner.isAllowed('battery')).toBe(true);
+    expect(owner.project(snapshot(), off).controlAdapter?.unavailableStatus).toEqual({
+      kind: 'manual', factText: null,
+      reasonText: 'Turn on “Control charging through this car” to let PELS control charging',
+    });
+  });
+
+  it('keeps the plug facts of an ended session', () => {
+    const initial = devices();
+    initial[0]!.capabilitiesObj.charging_state = cap('Disconnected');
+    const owner = session(); owner.observeDevices(initial);
+    expect(owner.project(snapshot(), off).controlAdapter?.unavailableStatus)
+      .toEqual({ kind: 'idle', factText: 'Unplugged', reasonText: null });
+  });
+
+  it('still reads Unavailable when Homey reports the device unavailable', () => {
+    const initial = devices();
+    initial[0] = { ...initial[0]!, available: false };
+    const owner = session(); owner.observeDevices(initial);
+    expect(owner.project(snapshot(), off).controlAdapter?.unavailableStatus)
+      .toEqual({ kind: 'unavailable', factText: null, reasonText: null });
+  });
+});

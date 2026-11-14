@@ -490,6 +490,7 @@ describe('classifyEvCarSelfStop', () => {
 describe('isChargingElsewhere', () => {
   const base = {
     previousSocPct: 40,
+    previousSocAtMs: 1_500,
     currentSocPct: 41,
     currentSocAtMs: 2_000,
     chargerPowerW: 0,
@@ -509,6 +510,12 @@ describe('isChargingElsewhere', () => {
     // away session: the current idle reading does not prove the rise happened
     // while idle.
     expect(isChargingElsewhere({ ...base, currentSocAtMs: 500 })).toBe(false);
+  });
+
+  it('is false when the earlier charge reading predates the idle period', () => {
+    // The rise from that reading may have been delivered by this charger
+    // before it went idle, so it is no evidence of another plug.
+    expect(isChargingElsewhere({ ...base, previousSocAtMs: 500 })).toBe(false);
   });
 
   it('is false when charge is flat or falling', () => {

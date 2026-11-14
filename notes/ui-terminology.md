@@ -257,6 +257,10 @@ session. The card shows no old hold reason, level rail, or expected charging
 power. Physical device unavailability takes precedence in the adapter and
 does not qualify for this exception. A confirmed no-power session reads
 **Unavailable** with `The charger is not supplying power`; it names no cause.
+A connected car whose **Control charging through this car** is off reads
+**Manual** with `Turn on “Control charging through this car” to let PELS
+control charging`: PELS was not asked to control it, so **Unavailable** would
+read as a fault while it charges.
 
 **Leave off until turned on again** renders `Off` + `Turned off elsewhere —
 turn it on to resume`. A waiting-for-power hold still renders `Limited`; `Off`
