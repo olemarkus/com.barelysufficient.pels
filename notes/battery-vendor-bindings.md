@@ -162,6 +162,13 @@ remove once the key is saved (`batteryUsesHomeyApiKey` on the device list).
   (`needs_homey_api_key`). A saved key not yet checked, or one whose last check
   could not reach Homey, still counts: the runner checks it before its next
   action.
+- **No readings.** A battery Homey lists as available whose app declares its
+  readings with an entry for each and a value in none (seen on a Marstek local
+  driver with the battery's Local API off) reads `unobserved` with cause
+  `no_readings`: control treats it as not observed, and its card, device page
+  and device-list row read `PELS can only watch it: its app reports no readings from the battery`
+  (`not_reporting`). An app still starting has no entries yet, so it reads the
+  plain not-observed state and says nothing.
 - **Fail closed.** The battery is drivable only while every card its commands
   and its hand-back could run (a full charge, a full discharge, a 0 W hold, the
   hand-back) is in the last inventory read, and the adapter resolved its

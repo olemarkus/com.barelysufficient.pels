@@ -70,7 +70,7 @@ describe('toBatteryControlRead', () => {
   } as const;
 
   it('reads a device not observed yet as unobserved', () => {
-    expect(toBatteryControlRead(undefined, readAppActions)).toEqual({ kind: 'unobserved' });
+    expect(toBatteryControlRead(undefined, readAppActions)).toEqual({ kind: 'unobserved', cause: 'unknown' });
   });
 
   it('reads a device without the home-battery cluster as no battery, not as an observe-only one', () => {

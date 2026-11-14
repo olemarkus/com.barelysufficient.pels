@@ -266,7 +266,25 @@ describe('home battery app actions', () => {
       logger, rawRead: (device) => ({ ...device, capabilitiesObj: {} }),
     });
 
-    expect(transport.readBatteryControl('venus')).toEqual({ kind: 'unobserved' });
+    expect(transport.readBatteryControl('venus')).toEqual({ kind: 'unobserved', cause: 'unknown' });
+    expect(unavailableWarnings()).toEqual([]);
+    expect(runs()).toEqual([]);
+  });
+
+  // A Marstek whose Local API is off: its app lists the battery's readings and
+  // fills none, for as long as it runs. Its owner is told why PELS only watches it.
+  it('reads a battery whose app lists its readings with no value as not reporting', async () => {
+    const { logger, unavailableWarnings } = warnLogger();
+    const { transport, runs } = await setup([buildMarstekConnectorBatteryDevice({ id: 'venus' })], [], {
+      logger,
+      rawRead: (device) => ({
+        ...device,
+        capabilitiesObj: Object.fromEntries(Object.entries(device.capabilitiesObj)
+          .map(([id, entry]) => [id, { ...entry, value: null }])),
+      }),
+    });
+
+    expect(transport.readBatteryControl('venus')).toEqual({ kind: 'unobserved', cause: 'no_readings' });
     expect(unavailableWarnings()).toEqual([]);
     expect(runs()).toEqual([]);
   });
@@ -306,7 +324,7 @@ describe('home battery app actions', () => {
     await seedTransportDevices(transport, [buildMarstekConnectorBatteryDevice({ id: 'venus' }).toHomeyApiDevice() as HomeyDeviceLike]);
     await transport.batteryAppActions.refreshCards();
 
-    expect(transport.readBatteryControl('venus')).toEqual({ kind: 'unobserved' });
+    expect(transport.readBatteryControl('venus')).toEqual({ kind: 'unobserved', cause: 'unknown' });
   });
 
   it('refuses a claim-value hand-back for a battery driven through its app\'s actions', async () => {
@@ -549,7 +567,7 @@ describe('home battery app actions', () => {
     const { battery } = buildSigenergyDevices({ batteryId: 'sigen', plantId: 'plant' });
     const { transport } = await setup([battery], SIGENERGY_CARDS);
 
-    expect(transport.readBatteryControl('sigen')).toEqual({ kind: 'unobserved' });
+    expect(transport.readBatteryControl('sigen')).toEqual({ kind: 'unobserved', cause: 'unknown' });
   });
   it('drives a local Zendure through set-power in the app\'s sign, keeping only a charge alive', async () => {
     const { transport, runs } = await setup([buildZendureLocalBatteryDevice({ id: 'zendure' })], [`${ZENDURE_APP}:set-power`]);

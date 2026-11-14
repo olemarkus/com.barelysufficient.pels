@@ -8,6 +8,7 @@ import type { HomeBatteryControlCapability } from '../../contracts/src/types';
  */
 const BATTERY_WATCH_ONLY_REASON_LINE = 'PELS can only watch it: its app does not accept control';
 const BATTERY_OBSERVE_ONLY_REASON_LINE = 'PELS can only watch it: its app does not give Homey control';
+const BATTERY_NOT_REPORTING_REASON_LINE = 'PELS can only watch it: its app reports no readings from the battery';
 const BATTERY_NEEDS_API_KEY_REASON_LINE = 'PELS can only watch it: add a Homey API key '
   + 'so it can help with your limit and solar';
 
@@ -17,5 +18,6 @@ export const resolveBatteryUndrivableLine = (
 ): string | null => {
   if (control === 'watch_only') return BATTERY_WATCH_ONLY_REASON_LINE;
   if (control === 'needs_homey_api_key') return BATTERY_NEEDS_API_KEY_REASON_LINE;
+  if (control === 'not_reporting') return BATTERY_NOT_REPORTING_REASON_LINE;
   return control === 'observe_only' ? BATTERY_OBSERVE_ONLY_REASON_LINE : null;
 };
