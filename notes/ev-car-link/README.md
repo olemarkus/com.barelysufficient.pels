@@ -291,6 +291,10 @@ lets a rival that a later charger report sets aside stop counting.
   either direction** — an away session is silent evidence, not counter-evidence, so it
   must never decrement the affinity prior. It is not said for a car a charger here holds
   (a confirmation whose car reported its plug-in after the window).
+- a linked car's charge rises at least one point above its lowest reading since the
+  charger started reading idle → `ev_car_session_elsewhere`
+  (`charger_idle_while_soc_rising`), once per session. A reading taken while the charger
+  still delivered never starts the rise, and an idle car's drift by a tenth is no verdict.
 
 **Contention counts devices, not edges.** A plug that bounces (plugged, unplugged and plugged
 again inside one window) gives one charger several edges of the same kind, all fitting the same

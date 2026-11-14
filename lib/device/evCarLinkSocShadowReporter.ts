@@ -6,13 +6,10 @@ import { isChargingElsewhere } from './evCarLink';
 import { resolveEvCarChargeLimit } from './evCarLinkSnapshot';
 
 /** A car's charge reading held until its charger link resolves. */
-export type PendingSocShadow = {
-    previousSocPct?: number;
-    /** When `previousSocPct` was observed; present exactly when it is. */
-    previousSocAtMs?: number;
-    socPct: number;
-    socAtMs: number;
-};
+export type PendingSocShadow = { socPct: number; socAtMs: number };
+
+/** The lowest charge a car read during one idle period of the charger it is linked to. */
+type IdleChargeLow = { chargerId: string; idleSinceMs: number; socPct: number };
 
 export class EvCarLinkSocShadowReporter {
     /** Charge readings awaiting link resolution, by car. */
@@ -23,6 +20,13 @@ export class EvCarLinkSocShadowReporter {
      * One entry per car, replaced by its next session.
      */
     private readonly reportedElsewhere = new Map<string, number>();
+    /** Each car's lowest charge since its charger went idle, by car. */
+    private readonly idleLows = new Map<string, IdleChargeLow>();
+    /**
+     * The whole percent each car's shadow line last reported, by car. A car that
+     * reports tenths would otherwise log a line every tenth it charges.
+     */
+    private readonly loggedWholePct = new Map<string, number>();
 
     constructor(
         private readonly deps: EvCarLinkProducerDeps,
@@ -35,9 +39,20 @@ export class EvCarLinkSocShadowReporter {
         this.pending.set(carId, reading);
     }
 
-    /** Forgets a car's held reading: it can no longer be reported against a charger. */
-    drop(carId: string): void {
+    /**
+     * Forgets what a car's readings built up while it cannot be read. Its session
+     * is kept for recovery, and so is that session's verdict: the same session
+     * coming back must not be reported charging elsewhere twice.
+     */
+    suspend(carId: string): void {
         this.pending.delete(carId);
+        this.idleLows.delete(carId);
+        this.loggedWholePct.delete(carId);
+    }
+
+    /** Forgets everything about a car: it can no longer be reported against a charger. */
+    drop(carId: string): void {
+        this.suspend(carId);
         this.reportedElsewhere.delete(carId);
     }
 
@@ -64,27 +79,16 @@ export class EvCarLinkSocShadowReporter {
         reading: PendingSocShadow,
         sessionStartedAtMs: number,
     ): void {
-        const { previousSocPct, previousSocAtMs, socPct, socAtMs } = reading;
+        const { socPct } = reading;
         const carName = this.carName(carId);
-        const idleSinceMs = this.selfStop.chargerIdleSinceMs(charger.id);
         if (
-            previousSocPct !== undefined
-            && previousSocAtMs !== undefined
-            && this.reportedElsewhere.get(carId) !== sessionStartedAtMs
+            this.reportedElsewhere.get(carId) !== sessionStartedAtMs
             // The idle reading must belong to THIS session. A charger that
             // reconnects carrying a retained idle value from the previous one is
             // not evidence it is delivering nothing now, and a charge rise while
             // it genuinely charges at home would be logged as an away session.
             && hasSessionPowerEvidence(charger, sessionStartedAtMs)
-            && idleSinceMs !== undefined
-            && isChargingElsewhere({
-                previousSocPct,
-                previousSocAtMs,
-                currentSocPct: socPct,
-                currentSocAtMs: socAtMs,
-                chargerPowerW: charger.measuredPowerW,
-                chargerIdleSinceMs: idleSinceMs,
-            })
+            && this.chargedWhileIdle(carId, charger, reading)
         ) {
             this.reportedElsewhere.set(carId, sessionStartedAtMs);
             this.deps.emit({
@@ -95,20 +99,24 @@ export class EvCarLinkSocShadowReporter {
                 reason: 'charger_idle_while_soc_rising',
             });
         }
-        this.deps.emit({
-            component: 'devices',
-            event: 'ev_car_link_soc_shadow',
-            carId,
-            carName,
-            chargerId: charger.id,
-            chargerName: charger.name,
-            carSocPct: socPct,
-            ...(charger.reportedSocPct === undefined ? {} : {
-                reportedSocPct: charger.reportedSocPct,
-                deltaPct: Math.round((socPct - charger.reportedSocPct) * 10) / 10,
-            }),
-            wouldAdopt: true,
-        });
+        const wholePct = Math.floor(socPct);
+        if (this.loggedWholePct.get(carId) !== wholePct || charger.reportedSocPct !== undefined) {
+            this.loggedWholePct.set(carId, wholePct);
+            this.deps.emit({
+                component: 'devices',
+                event: 'ev_car_link_soc_shadow',
+                carId,
+                carName,
+                chargerId: charger.id,
+                chargerName: charger.name,
+                carSocPct: socPct,
+                ...(charger.reportedSocPct === undefined ? {} : {
+                    reportedSocPct: charger.reportedSocPct,
+                    deltaPct: Math.round((socPct - charger.reportedSocPct) * 10) / 10,
+                }),
+                wouldAdopt: true,
+            });
+        }
         this.deps.onAssociatedCarStateOfCharge?.({
             chargerId: charger.id,
             carId,
@@ -118,4 +126,30 @@ export class EvCarLinkSocShadowReporter {
         });
     }
 
+    /**
+     * Whether this reading rose far enough above the car's lowest reading since
+     * the charger went idle, recording the reading as that low when it is one.
+     * A reading taken before the idle start, or the first of an idle period,
+     * starts no rise: a rise from a reading the charger still delivered toward
+     * may be that charger's own.
+     */
+    private chargedWhileIdle(
+        carId: string,
+        charger: EvCarLinkChargerView & { measuredPowerW: number },
+        reading: PendingSocShadow,
+    ): boolean {
+        const idleSinceMs = this.selfStop.chargerIdleSinceMs(charger.id);
+        if (idleSinceMs === undefined || reading.socAtMs < idleSinceMs) return false;
+        const low = this.idleLows.get(carId);
+        if (!low || low.chargerId !== charger.id || low.idleSinceMs !== idleSinceMs) {
+            this.idleLows.set(carId, { chargerId: charger.id, idleSinceMs, socPct: reading.socPct });
+            return false;
+        }
+        if (reading.socPct < low.socPct) this.idleLows.set(carId, { ...low, socPct: reading.socPct });
+        return isChargingElsewhere({
+            lowestIdleSocPct: low.socPct,
+            currentSocPct: reading.socPct,
+            chargerPowerW: charger.measuredPowerW,
+        });
+    }
 }

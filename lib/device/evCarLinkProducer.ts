@@ -296,9 +296,6 @@ export class EvCarLinkProducer {
         if (edgeKind === 'disconnect') this.clearSessionsForCar(deviceId);
         if (merged.socPct !== undefined && previous?.socPct !== merged.socPct) {
             this.socShadows.hold(deviceId, {
-                ...(previous?.socPct === undefined ? {} : {
-                    previousSocPct: previous.socPct, previousSocAtMs: previous.socAtMs,
-                }),
                 socPct: merged.socPct,
                 socAtMs: merged.socAtMs,
             });
@@ -369,7 +366,7 @@ export class EvCarLinkProducer {
         if (!result) return false;
         if (result.kind === 'unavailable') {
             this.cars.markUnavailable(result.deviceId, result.name);
-            this.socShadows.drop(result.deviceId);
+            this.socShadows.suspend(result.deviceId);
             this.edges = dropEvLinkCarEdges(this.edges, result.deviceId, nowMs, this.admits);
             this.clearSessionsForCar(result.deviceId, true);
             return true;
