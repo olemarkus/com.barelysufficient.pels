@@ -139,6 +139,14 @@ const revealPowerLimitRow = (): void => revealDetailRow(q<HTMLElement>('#device-
  */
 const revealShedLimitRow = (): void => revealDetailRow(q<HTMLElement>('#device-detail-overshoot-temp-row'));
 
+/** The charger's Car section, expanded, where the owner confirms the connected car. */
+const revealCarSection = (): void => {
+  const section = document.getElementById('device-detail-car-section');
+  const collapse = section?.querySelector('details');
+  if (collapse && !collapse.open) collapse.open = true;
+  if (section && !section.hidden) section.scrollIntoView({ block: 'start', behavior: 'smooth' });
+};
+
 /** Land on the row a deep link names; `top` leaves the page where it opened. */
 export const revealDeviceDetailFocus = (focus: DeviceDetailFocus): void => {
   if (focus === 'start-policy') revealStartPolicyRow();
@@ -158,6 +166,7 @@ export const revealDeviceDetailFocus = (focus: DeviceDetailFocus): void => {
     revealDetailRow(document.getElementById(`${id}-row`));
     control?.focus({ preventScroll: true });
   }
+  if (focus === 'car') revealCarSection();
   if (focus === 'solar') {
     const row = ['device-detail-surplus-opt-row', 'device-detail-dump-load-row', 'device-detail-surplus-track-row']
       .map((id) => document.getElementById(id))

@@ -160,7 +160,10 @@ more than 20 minutes after the charger's is never matched automatically, even if
 is the only car selected, because it could have plugged in anywhere in that time.
 After those 20 minutes the charger's card says **Could not identify the connected
 car**; use **Confirm connected car** in the charger's **Car** section to match it by
-hand.
+hand. When every selected car reports unplugged, the card asks for this straight away,
+since no match can come until a car reports its plug-in. In both cases the card offers
+**Confirm car**, which opens the charger's **Car** section, even while another reason
+holds the card.
 
 While any car is selected, PELS ignores the battery-reporting Flow, even before a match is available. It does not provide a fallback reading. Clear the car selection to return to the Flow.
 **Setup & recommendations** flags an enabled **Report battery level for charger** action for a charger with a selected car, so the ignored action can be removed or its Flow disabled when it is no longer needed. If no selected car has been matched to that charger yet, it instead suggests clearing the car selection so the Flow keeps working until the car shows as matched.

@@ -7,7 +7,7 @@ import type { EvCarLinkEvent } from '../evCarLinkEvents';
 import type {
   AdapterUnavailableStatus, AssociatedCarSnapshot, CarConfirmation,
 } from '../../../packages/contracts/src/types';
-import type { CarLinkDiagnostics } from '../../ports/carLinkDiagnostics';
+import type { CarLinkCarStatus, CarLinkDiagnostics } from '../../ports/carLinkDiagnostics';
 import type { CarIdentificationState } from '../../../packages/contracts/src/evCarLink';
 import { EV_CAR_LINK_COINCIDENCE_WINDOW_MS } from '../evCarLink';
 import type { DeviceParseSettings } from './managerParseDevice';
@@ -131,6 +131,20 @@ export class RealtimeIngestService {
   }
 }
 
+/**
+ * Whether every one of these cars reports unplugged. A match needs a car's
+ * plug-in, so none comes until one reports it. A car PELS cannot read says
+ * nothing about its plug, so it keeps the wait open.
+ */
+const allUnplugged = (cars: readonly CarLinkCarStatus[]): boolean => cars.every(
+    (car) => car.availability === 'observed' && !isEvPlugStateConnected(car.state));
+
+/** The charger's selected cars that are still in Homey. */
+const presentSelectedCarIds = (
+    settings: DeviceParseSettings, snapshots: TransportSnapshotStore, chargerId: string,
+): string[] => settings.getEvCarAssociationCarIds(chargerId)
+    .filter((carId) => snapshots.getDeviceMembership(carId) !== 'removed');
+
 /** Explicit identification and continuous unmatched-connection episodes. */
 export function createEvCarAssociationControl(
     probe: EvCarLinkProducer,
@@ -209,11 +223,11 @@ export function createEvCarAssociationControl(
      */
     function identificationState(chargerId: string, nowMs: number): CarIdentificationState {
         if (!isWaiting(chargerId) || probe.getAssociatedCarForCharger(chargerId) !== undefined) return 'not_waiting';
-        if (settings.getEvCarAssociationCarIds(chargerId)
-            .every((carId) => snapshots.getDeviceMembership(carId) === 'removed')) return 'not_waiting';
+        const present = presentSelectedCarIds(settings, snapshots, chargerId);
+        if (present.length === 0) return 'not_waiting';
         const sinceMs = probe.waitReports.connection(chargerId)?.atMs ?? waiting.get(chargerId)?.sinceMs;
-        return sinceMs !== undefined && nowMs - sinceMs >= EV_CAR_LINK_COINCIDENCE_WINDOW_MS
-            ? 'timed_out' : 'waiting';
+        if (sinceMs !== undefined && nowMs - sinceMs >= EV_CAR_LINK_COINCIDENCE_WINDOW_MS) return 'timed_out';
+        return allUnplugged(probe.waitReports.describeCars(chargerId, present)) ? 'selected_cars_unplugged' : 'waiting';
     }
 
     function confirm(chargerId: string, carId: string): void {

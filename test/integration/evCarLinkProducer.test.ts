@@ -2152,6 +2152,26 @@ describe('car association waiting episodes and inventory', () => {
     expect(trigger).toHaveBeenCalledTimes(2);
   });
 
+  it('offers confirmation before the window closes while every selected car reports unplugged', () => {
+    const { snapshots, control, connected } = setupControl();
+    h.car(carDevice({ state: 'plugged_out', socPct: 40 }), 0);
+    snapshots.replaceSnapshot([connected]);
+    control.observe(1_000);
+    expect(control.identificationState('charger-1', 1_000)).toBe('selected_cars_unplugged');
+    expect(control.identificationState('charger-1', 1_000 + EV_CAR_LINK_COINCIDENCE_WINDOW_MS)).toBe('timed_out');
+    h.car(carDevice({ state: 'plugged_in', socPct: 40 }), 2_000);
+    expect(control.identificationState('charger-1', 2_000)).not.toBe('selected_cars_unplugged');
+  });
+
+  it('keeps waiting while a selected car cannot be read', () => {
+    const { snapshots, control, connected, selected } = setupControl();
+    selected.push('car-2');
+    h.car(carDevice({ state: 'plugged_out', socPct: 40 }), 0);
+    snapshots.replaceSnapshot([connected]);
+    control.observe(1_000);
+    expect(control.identificationState('charger-1', 1_000)).toBe('waiting');
+  });
+
   it('retains timeout progress through a charger outage without repeating a threshold', async () => {
     const { snapshots, control, connected, trigger } = setupControl();
     snapshots.replaceSnapshot([connected]);

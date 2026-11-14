@@ -94,5 +94,11 @@ export type EvCarLinkSnapshot = {
     /** Keyed by charger device id. */
     sessions: Record<string, EvCarLinkSession>;
 };
-/** The device owner's current identification wait, for card and Activity copy. */
-export type CarIdentificationState = 'not_waiting' | 'waiting' | 'timed_out';
+/**
+ * The device owner's current identification wait, for card and Activity copy.
+ * `selected_cars_unplugged`: still inside the matching window, but every
+ * selected car reports unplugged, so no match comes until one reports a
+ * plug-in. `timed_out`: the window from the plug-in has closed.
+ * Both ask the owner to confirm the car.
+ */
+export type CarIdentificationState = 'not_waiting' | 'waiting' | 'selected_cars_unplugged' | 'timed_out';
