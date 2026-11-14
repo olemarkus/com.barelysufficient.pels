@@ -26,7 +26,7 @@ import { hasRestClient, setRawCapabilityValue } from './managerHomeyApi';
 import { recordLocalWriteObservation } from './managerObservation';
 import { isNativeSteppedLoadControlEnabled, type CapabilityWrite } from '../nativeSteppedLoadWiring';
 import { getDeviceAdapter, getSnapshotAdapter } from '../deviceAdapterRegistry';
-import type { HomeBatteryCapabilityBinding, SessionEvidence, SwitchWrite } from '../deviceAdapter';
+import type { HomeBatteryCapabilityBinding, SwitchWrite } from '../deviceAdapter';
 import type { SteppedLoadFlowTriggerCard } from './transportTypes';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
@@ -96,11 +96,10 @@ function resolveSwitchSdkWrite(
     snapshot: TransportDeviceSnapshot,
     trackedDevice: HomeyDeviceLike | undefined,
     requested: CapabilityWrite,
-    sessions: SessionEvidence,
 ): SwitchWrite {
     return trackedDevice
-        ? getDeviceAdapter(trackedDevice).recoverSwitchWrite(snapshot, trackedDevice, requested, sessions)
-        : getSnapshotAdapter(snapshot).switchWrite(snapshot, requested, sessions);
+        ? getDeviceAdapter(trackedDevice).recoverSwitchWrite(snapshot, trackedDevice, requested)
+        : getSnapshotAdapter(snapshot).switchWrite(snapshot, requested);
 }
 
 /** A non-switch write, under the capability the device's integration writes it to. */
@@ -247,7 +246,6 @@ export class DeviceWriteService {
           this.currentLimitPolicy.projectSwitchSnapshot(snapshotBefore),
           this.snapshotStore.getTrackedRawDevice(deviceId),
           requested,
-          this.chargingCurrentControl.sessions,
         )
         : {
             kind: 'write',

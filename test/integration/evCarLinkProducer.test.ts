@@ -67,7 +67,6 @@ const charger = (overrides: Partial<EvCarLinkChargerView> = {}): EvCarLinkCharge
   evChargingState: 'plugged_out',
   measuredPowerW: 0,
   controlOn: false,
-  carStopReported: false,
   selectedCarIds: [],
   ...overrides,
 });

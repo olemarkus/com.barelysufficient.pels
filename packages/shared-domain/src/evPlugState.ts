@@ -40,7 +40,10 @@ const EV_CHARGING_STATES: ReadonlySet<string> = new Set(
   Object.keys({
     plugged_in_charging: 0,
     plugged_in: 0,
+    plugged_in_awaiting_start: 0,
     plugged_in_paused: 0,
+    plugged_in_waiting_for_charger: 0,
+    plugged_in_finished: 0,
     plugged_out: 0,
     plugged_in_discharging: 0,
   } satisfies Record<EvChargingState, 0>),
@@ -72,36 +75,58 @@ export const isEvChargingState = (value: unknown): value is EvChargingState => (
 export const isEvDevice = (dev: EvDeviceIdentity): boolean => dev.isEvCharger;
 
 /**
- * Whether PELS may drive the charger, judged on plug-state alone (availability
- * is folded in by `resolveCommandableNow`).
+ * What PELS's wish to charge comes to in a session state: the one answer each
+ * state admits.
  *
- * **Only `plugged_out` and `plugged_in_discharging` block.** `plugged_in` does
- * NOT, and that is the point: the value is vendor-defined and inconsistent
- * across Homey apps. Easee maps "Awaiting Authentication" and "Ready to Charge"
- * to it (a start command is exactly what those want); Wallbox maps its `Paused`
- * state to it and never emits `plugged_in_paused` at all — so treating it as a
- * block let PELS's own pause create a state PELS then refused to leave. go-e and
- * Zaptec also use it for a finished session, where a start command may be a
- * no-op; generic command confirmation handles that like any other device.
+ * - `start`: no session runs, and a start command opens one.
+ * - `resume`: the charger holds an open session off, and a resume lands.
+ * - `keep`: the session delivers; PELS pauses it or sets its current.
+ * - `offer`: the car has stopped asking. PELS keeps current on offer for when
+ *   it asks again, and never starts a new session.
+ * - `wait`: the next move is the charger's own. PELS sends nothing, and the
+ *   session charges by itself once that move is made.
+ * - `blocked`: no session can charge: no car, or the car exports power.
+ */
+export type EvChargeAction = 'start' | 'resume' | 'keep' | 'offer' | 'wait' | 'blocked';
+
+/**
+ * TOTAL over the session states, so a new `EvChargingState` member fails to
+ * compile until it is given its action here.
  *
- * The exhaustiveness guard is load-bearing: a new `EvChargingState` member must
- * be classified here rather than inheriting the commandable default.
+ * `plugged_in` is a `start` because the value is all an app that publishes
+ * only Homey's enum can say about a car that takes no power: it covers a
+ * charger that wants a start as well as a session that needs none, and a start
+ * is what the first needs. Generic command confirmation handles the second
+ * like any other device. An integration that can tell them apart resolves the
+ * state that says so.
+ */
+const EV_CHARGE_ACTIONS: Record<EvChargingState, EvChargeAction> = {
+  plugged_out: 'blocked',
+  plugged_in_discharging: 'blocked',
+  plugged_in: 'start',
+  plugged_in_awaiting_start: 'start',
+  plugged_in_paused: 'resume',
+  plugged_in_charging: 'keep',
+  plugged_in_waiting_for_charger: 'wait',
+  plugged_in_finished: 'offer',
+};
+
+export const resolveEvChargeAction = (evChargingState: EvChargingState): EvChargeAction => (
+  EV_CHARGE_ACTIONS[evChargingState]
+);
+
+/**
+ * Whether PELS may drive the charger, judged on the session state alone
+ * (availability is folded in by `resolveCommandableNow`): true wherever a
+ * command of PELS's has an effect ({@link resolveEvChargeAction} is anything
+ * but `wait` or `blocked`).
+ *
+ * A session the charger has not started blocks like an unplugged one: a start
+ * there is refused, and the session begins by itself.
  */
 export const isEvPlugStateCommandable = (evChargingState: EvChargingState): boolean => {
-  switch (evChargingState) {
-    case 'plugged_out':
-    case 'plugged_in_discharging':
-      return false;
-    case 'plugged_in':
-    case 'plugged_in_paused':
-    case 'plugged_in_charging':
-      return true;
-    default: {
-      const exhaustive: never = evChargingState;
-      void exhaustive;
-      return true;
-    }
-  }
+  const action = resolveEvChargeAction(evChargingState);
+  return action !== 'wait' && action !== 'blocked';
 };
 
 /**
@@ -117,8 +142,33 @@ export const isEvPlugStateBlocked = (
 /** The plug-states {@link isEvPlugStateCommandable} rejects. */
 export type EvBlockingChargingState = Extract<
   EvChargingState,
-  'plugged_out' | 'plugged_in_discharging'
+  'plugged_out' | 'plugged_in_discharging' | 'plugged_in_waiting_for_charger'
 >;
+
+/**
+ * A car is connected and takes no power, and no pause of the charger's holds
+ * it: every connected state but charging, discharging and paused. What a car's
+ * own plug reads while it sits at its charge limit or waits for its charger.
+ */
+export const isEvPlugStateIdle = (evChargingState: EvChargingState): boolean => {
+  switch (evChargingState) {
+    case 'plugged_in':
+    case 'plugged_in_awaiting_start':
+    case 'plugged_in_waiting_for_charger':
+    case 'plugged_in_finished':
+      return true;
+    case 'plugged_in_charging':
+    case 'plugged_in_paused':
+    case 'plugged_in_discharging':
+    case 'plugged_out':
+      return false;
+    default: {
+      const exhaustive: never = evChargingState;
+      void exhaustive;
+      return false;
+    }
+  }
+};
 
 /**
  * No live, creditable charging session: the car is unplugged (`plugged_out`) or
@@ -126,10 +176,9 @@ export type EvBlockingChargingState = Extract<
  * cannot be driven toward a SoC target and its state-of-charge cannot be
  * credited as progress.
  *
- * Classifies the same two states as {@link isEvPlugStateCommandable} today, and
- * stays a separate function because it answers a different question — "is there
- * a creditable session" versus "may we command it" — which a future plug-state
- * could separate.
+ * A different question from {@link isEvPlugStateCommandable}: a session the
+ * charger has not started takes no command and is still a session whose state
+ * of charge counts.
  */
 export const isEvSessionInactive = (evChargingState: EvChargingState): boolean => (
   evChargingState === 'plugged_out' || evChargingState === 'plugged_in_discharging'

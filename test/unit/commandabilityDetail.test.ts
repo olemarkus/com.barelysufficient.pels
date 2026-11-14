@@ -17,6 +17,11 @@ describe('resolveCommandabilityDetail — one branch per veto source', () => {
       .toBe(EV_BLOCK_REASONS.plugged_in_discharging);
   });
 
+  it('names the charger when the session waits on it', () => {
+    expect(resolveCommandabilityDetail({ commandabilityReason: 'charger_waiting' }))
+      .toBe('charger has not started the session');
+  });
+
   it('names unavailability for any device kind', () => {
     expect(resolveCommandabilityDetail({ commandabilityReason: 'device_unavailable' }))
       .toBe(DEVICE_UNAVAILABLE_REASON);

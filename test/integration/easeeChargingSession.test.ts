@@ -13,37 +13,24 @@ describe('Easee charging-session observations', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-01T12:00:00Z')); });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('keeps newer completion evidence when a stale full read arrives', () => {
-    const session = new EaseeChargingSession();
-    session.observeDevice(device('Charging'), Date.now());
-    vi.setSystemTime(Date.now() + 10_000);
-    session.observeCapability('charger', 'charger_status', 'Completed');
-    session.observeDevice(device('Charging', Date.now() - 5_000), Date.now());
-    expect(session.hasCarStopEvidence('charger')).toBe(true);
-    session.observeCapability('charger', 'charger_status', 'Invalid status');
-    expect(session.hasCarStopEvidence('charger')).toBe(true);
-    session.observeCapability('charger', 'charger_status', 'Standby');
-    expect(session.hasCarStopEvidence('charger')).toBe(false);
-  });
-
   it('uses status events and suppresses the app duplicate instead of fabricating a reconnect', () => {
     const session = new EaseeChargingSession();
     session.observeDevice(device('Charging'), Date.now());
     expect(session.controlEvents('charger', 'charger_status', 'Completed'))
-      .toEqual([{ capabilityId: 'evcharger_charging_state', value: 'plugged_in' }]);
+      .toEqual([{ capabilityId: 'evcharger_charging_state', value: 'plugged_in_finished' }]);
     expect(session.controlEvents('charger', 'evcharger_charging_state', 'plugged_out')).toEqual([]);
     expect(session.controlEvents('charger', 'charger_status', 'Standby'))
       .toEqual([{ capabilityId: 'evcharger_charging_state', value: 'plugged_out' }]);
   });
 
-  it('does not share evidence between transports and forgets removed devices', () => {
+  it('does not share status authority between transports and forgets removed devices', () => {
     const first = new EaseeChargingSession();
     first.observeDevice(device('Completed'), Date.now());
     const second = new EaseeChargingSession();
-    expect(first.hasCarStopEvidence('charger')).toBe(true);
-    expect(second.hasCarStopEvidence('charger')).toBe(false);
+    expect(first.controls({ id: 'charger', capabilities: [] })).toBe(true);
+    expect(second.controls({ id: 'charger', capabilities: [] })).toBe(false);
     first.retainDevices([]);
-    expect(first.hasCarStopEvidence('charger')).toBe(false);
+    expect(first.controls({ id: 'charger', capabilities: [] })).toBe(false);
   });
 
   it.each(['capability', 'identity'])('relinquishes status authority when an accepted read removes its %s', removed => {
@@ -54,7 +41,6 @@ describe('Easee charging-session observations', () => {
     else next.driverId = 'homey:app:other:charger';
     session.observeDevice(next, Date.now());
     expect(session.controls({ id: 'charger', capabilities: [] })).toBe(false);
-    expect(session.hasCarStopEvidence('charger')).toBe(false);
   });
 
   it('ignores retirement from a full read begun before the newer realtime status', () => {
@@ -66,7 +52,6 @@ describe('Easee charging-session observations', () => {
     const oldRead = { ...device('Charging'), capabilities: [] };
     session.observeDevice(oldRead, oldReadAtMs);
     expect(session.controls({ id: 'charger', capabilities: [] })).toBe(true);
-    expect(session.hasCarStopEvidence('charger')).toBe(true);
   });
 
   it.each(['capability', 'identity'])('does not reclaim retired %s authority from an older delayed read', removed => {
@@ -82,12 +67,10 @@ describe('Easee charging-session observations', () => {
     // was fetched before authority was retired by the accepted newer read.
     session.observeDevice(device('Completed', atMs + 200), atMs + 200);
     expect(session.controls({ id: 'charger', capabilities: [] })).toBe(false);
-    expect(session.hasCarStopEvidence('charger')).toBe(false);
     session.observeCapability('charger', 'charger_status', 'Completed');
-    expect(session.hasCarStopEvidence('charger')).toBe(false);
+    expect(session.controls({ id: 'charger', capabilities: [] })).toBe(false);
 
     session.observeDevice(device('Completed', atMs + 400), atMs + 400);
     expect(session.controls({ id: 'charger', capabilities: [] })).toBe(true);
-    expect(session.hasCarStopEvidence('charger')).toBe(true);
   });
 });

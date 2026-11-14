@@ -198,9 +198,9 @@ export const resolveObjectiveProgress = (
     // A bare-connected charger (`plugged_in`) no longer blocks the objective. The
     // block rested on "PELS cannot drive the charger toward the target", and that
     // is false: `plugged_in` is commandable, and on prod 2026-07-26 PELS started a
-    // session on a charger sitting in exactly this state (Easee reports op mode 7
-    // "Awaiting Authentication" as `plugged_in`, and the `evcharger_charging` write
-    // IS the authorization).
+    // session on a charger sitting in exactly this state (an Easee in "Awaiting
+    // Authentication" waits for a start, and the `evcharger_charging` write IS
+    // the authorization).
     //
     // Blocking here did real damage, because it did not merely annotate — it
     // returned `remainingUnits: 0` with a reason code, so `diagnosticsBridge` could
@@ -208,11 +208,11 @@ export const resolveObjectiveProgress = (
     // energy needed. The task therefore planned no hours and never admitted the
     // charger, which is precisely the deadline PELS was supposed to be driving.
     //
-    // The charger not actually starting is still possible (a go-e reports a
-    // finished session as `plugged_in` too). That is caught downstream where the
-    // evidence lives — `activationBackoff` penalises a device commanded on that
-    // never draws, and the at-risk lane sees the missing delivery — rather than by
-    // pre-emptively refusing to plan.
+    // The charger not actually starting is still possible (an app that publishes
+    // only `plugged_in` reports a finished session that way too). That is caught
+    // downstream where the evidence lives — `activationBackoff` penalises a
+    // device commanded on that never draws, and the at-risk lane sees the missing
+    // delivery — rather than by pre-emptively refusing to plan.
     return {
       remainingUnits,
       progressDirection,

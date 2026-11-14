@@ -130,7 +130,7 @@ function resumeWatts(snapshot: TransportDeviceSnapshot): number | undefined {
 
 function switchWrite(snapshot: TransportDeviceSnapshot, request: CapabilityWrite): SwitchWrite {
   if (typeof request.value !== 'boolean' || request.capabilityId !== 'evcharger_charging') {
-    return standardDeviceAdapter.switchWrite(snapshot, request, { hasCarStopEvidence: () => false });
+    return standardDeviceAdapter.switchWrite(snapshot, request);
   }
   const watts = request.value ? resumeWatts(snapshot) : 0;
   // Without a ladder there is no safe current to start at, and the app's switch would start at 32 A.

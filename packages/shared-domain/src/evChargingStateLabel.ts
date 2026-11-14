@@ -16,6 +16,9 @@ export const EV_CHARGING_STATE_LABELS: Readonly<Record<string, string>> = {
   plugged_in_charging: 'Charging',
   plugged_in_paused: 'Paused',
   plugged_in: 'Not charging',
+  plugged_in_awaiting_start: 'Not charging',
+  plugged_in_waiting_for_charger: 'Waiting for charger',
+  plugged_in_finished: 'Charging finished',
   plugged_in_discharging: 'Discharging',
   plugged_out: 'Unplugged',
 };
@@ -28,10 +31,12 @@ export const resolveEvChargingStateLabel = (state: string | undefined): string |
   state === undefined ? null : EV_CHARGING_STATE_LABELS[state] ?? null
 );
 
-// The plugged-in-idle state (`plugged_in`) upgrades to a car-attributed label
-// only when the charger's own command (signal 2) says current is on offer (see
-// `resolveSteppedEvExceptionLabel`).
-const EV_IDLE_STATE = 'plugged_in';
+// The plugged-in-idle states (`plugged_in`, and a session that waits for a
+// start) upgrade to a car-attributed label only when the charger's own command
+// (signal 2) says current is on offer (see `resolveSteppedEvExceptionLabel`). A
+// finished session and one the charger has not started name their own holdout.
+const EV_IDLE_STATES: ReadonlySet<string> = new Set(['plugged_in', 'plugged_in_awaiting_start']);
+const isEvIdleState = (state: string): boolean => EV_IDLE_STATES.has(state);
 const EV_IDLE_COMMANDED_LABEL = 'Waiting for car';
 const EV_CAR_DISAGREES_LABEL = 'Car and charger disagree';
 const EV_CAR_PAUSED_LABEL = 'Paused by the car';
@@ -39,7 +44,8 @@ const EV_CAR_PAUSED_LABEL = 'Paused by the car';
 
 // The routine "it's doing its thing" charging state: it folds into the fact line
 // as `Charging · level 6 A`. Every other EV state (Paused / Not charging /
-// Waiting for car / Discharging / Unplugged) is an exception, which leads the
+// Waiting for car / Waiting for charger / Charging finished / Discharging /
+// Unplugged) is an exception, which leads the
 // fact line instead (`resolveSteppedEvExceptionLabel`).
 const EV_ROUTINE_STATE = 'plugged_in_charging';
 
@@ -53,8 +59,8 @@ export const isRoutineEvChargingState = (state: string | undefined): boolean => 
 const isChargerCommandedOn = (currentState: ObservedCurrentState): boolean => currentState === 'on';
 
 // Exceptional EV states for the fact line — null for the routine charging
-// state (carried by the fact line) and for non-EV devices. The idle state
-// (`plugged_in`) names the car as the holdout ("Waiting for car") only when the
+// state (carried by the fact line) and for non-EV devices. An idle state
+// (`plugged_in`, `plugged_in_awaiting_start`) names the car as the holdout ("Waiting for car") only when the
 // charger has been told to charge; a charger commanded off states the plain
 // fact ("Not charging"), because nothing is waiting on a car that has not been
 // offered any current.
@@ -76,7 +82,7 @@ export const resolveSteppedEvExceptionLabel = (device: {
   const commandedOn = isChargerCommandedOn(device.currentState);
   const carLabel = resolveEvCarExceptionLabel(device, state, commandedOn);
   if (carLabel !== null) return carLabel;
-  if (state === EV_IDLE_STATE && commandedOn) return EV_IDLE_COMMANDED_LABEL;
+  if (isEvIdleState(state) && commandedOn) return EV_IDLE_COMMANDED_LABEL;
   return EV_CHARGING_STATE_LABELS[state] ?? null;
 };
 
@@ -99,7 +105,7 @@ const resolveEvCarExceptionLabel = (
   // The charger reports current flowing, so whatever the car believes, this is
   // the routine case and the fact line already carries it.
   if (state === EV_ROUTINE_STATE) return null;
-  if (state === EV_IDLE_STATE) {
+  if (isEvIdleState(state)) {
     // A charger commanded off explains the idle plug by itself, and a car that
     // still reports charging is the expected lag behind that off command rather
     // than a fault — so neither the car-holdout claim nor the contradiction is

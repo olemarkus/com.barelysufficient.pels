@@ -103,6 +103,29 @@ function isZaptecGoNativeWiringCandidate(device: HomeyDeviceLike): boolean {
   return ZAPTEC_NATIVE_DRIVER_IDS.has(driverId);
 }
 
+/**
+ * The app's own plug state, where it publishes one, as PELS's session state.
+ *
+ * The app publishes `plugged_in` for a car that is connected while the charger
+ * has not started its session: it waits for authorisation, for its own
+ * schedule or for its load balancing. Zaptec resumes only a session that was
+ * paused, so a start there is refused, and the session begins by itself once
+ * the charger is ready. That is `plugged_in_waiting_for_charger`.
+ *
+ * `plugged_in_paused` stays as published. The app gives a session PELS paused
+ * and one the car ended the same value, and a resume lands on the first.
+ */
+export function withZaptecSessionState(device: HomeyDeviceLike, values: DeviceCapabilityMap): DeviceCapabilityMap {
+  const state = values.evcharger_charging_state;
+  if (!isZaptecGoNativeWiringCandidate(device) || state === undefined) return values;
+  const value = resolveZaptecSessionState(state.value);
+  return value === state.value ? values : { ...values, evcharger_charging_state: { ...state, value } };
+}
+
+function resolveZaptecSessionState(value: unknown): unknown {
+  return value === 'plugged_in' ? 'plugged_in_waiting_for_charger' : value;
+}
+
 function resolveZaptecChargingState(capabilityObj: DeviceCapabilityMap): string | undefined {
   const chargeMode = capabilityObj.charge_mode?.value;
   const carConnected = capabilityObj['alarm_generic.car_connected']?.value;
@@ -166,7 +189,7 @@ export function applyNativeEvWiringOverlay(
   }
   if (nativeEvCapabilitiesPresent) {
     return {
-      kind: 'adapted', capabilities, capabilityObj,
+      kind: 'adapted', capabilities, capabilityObj: withZaptecSessionState(device, capabilityObj),
       binaryTarget: { kind: 'canonical' },
       controlAdapter: {
         kind: 'capability_adapter',
@@ -224,8 +247,12 @@ export function applyNativeEvWiringOverlay(
 /* eslint-enable functional/immutable-data */
 
 export function normalizeNativeEvCapabilityUpdate(
-  snapshot: AdapterSnapshot, capabilityId: string, value: unknown,
+  snapshot: AdapterSnapshot, capabilityId: string, value: unknown, device: HomeyDeviceLike,
 ): CapabilityUpdate[] {
+  // The app's own plug state, read as on a full read (`withZaptecSessionState`).
+  if (capabilityId === 'evcharger_charging_state' && isZaptecGoNativeWiringCandidate(device)) {
+    return [{ capabilityId, value: resolveZaptecSessionState(value) }];
+  }
   if (snapshot.controlAdapter?.activationEnabled !== true) {
     return [{ capabilityId, value }];
   }

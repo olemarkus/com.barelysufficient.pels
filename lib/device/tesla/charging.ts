@@ -23,7 +23,7 @@ export function resolveTeslaChargingState(value: unknown): string | undefined {
     case 'Disconnected': return 'plugged_out';
     case 'Charging': return 'plugged_in_charging';
     case 'Starting': case 'Stopped': return 'plugged_in_paused';
-    case 'Complete': return 'plugged_in';
+    case 'Complete': return 'plugged_in_finished';
     default: return undefined;
   }
 }

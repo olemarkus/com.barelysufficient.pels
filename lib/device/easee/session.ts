@@ -3,14 +3,13 @@ import type { HomeyDeviceLike } from '../../utils/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import { toCapabilityTimestampMs } from '../managerControl';
 import { isEaseeChargerDevice } from './current';
-import { EASEE_CHARGER_STATUS, easeeChargingState, isEaseeChargingStatus,
-  type EaseeChargingStatus } from './chargingState';
+import { EASEE_CHARGER_STATUS, easeeChargingState, isEaseeChargingStatus } from './chargingState';
 
 type StatusAuthority =
-  | { kind: 'observed'; status: EaseeChargingStatus; atMs: number; readAtMs: number }
+  | { kind: 'observed'; atMs: number; readAtMs: number }
   | { kind: 'retired'; readAtMs: number };
 
-/** Trusted mode observations, owned by this transport rather than a global adapter. */
+/** Which chargers report a trusted mode, owned by this transport rather than a global adapter. */
 export class EaseeChargingSession implements DeviceAdapterSession {
   private readonly statuses = new Map<string, StatusAuthority>();
 
@@ -35,7 +34,7 @@ export class EaseeChargingSession implements DeviceAdapterSession {
     const atMs = toCapabilityTimestampMs(status?.lastUpdated);
     if (!isEaseeChargingStatus(status?.value) || atMs === undefined) return;
     if (previous?.kind === 'observed' && atMs < previous.atMs) return;
-    this.statuses.set(device.id, { kind: 'observed', status: status.value, atMs,
+    this.statuses.set(device.id, { kind: 'observed', atMs,
       readAtMs: Math.max(readAtMs, previous?.readAtMs ?? readAtMs) });
   }
 
@@ -43,7 +42,7 @@ export class EaseeChargingSession implements DeviceAdapterSession {
     if (this.statuses.get(deviceId)?.kind !== 'observed'
       || capabilityId !== EASEE_CHARGER_STATUS || !isEaseeChargingStatus(value)) return;
     const atMs = Date.now();
-    this.statuses.set(deviceId, { kind: 'observed', status: value, atMs, readAtMs: atMs });
+    this.statuses.set(deviceId, { kind: 'observed', atMs, readAtMs: atMs });
   }
 
   retainDevices(devices: readonly HomeyDeviceLike[]): void {
@@ -59,11 +58,6 @@ export class EaseeChargingSession implements DeviceAdapterSession {
   project(snapshot: TransportDeviceSnapshot): TransportDeviceSnapshot { return snapshot; }
   assertAllowed(): void {}
   missingCompanion(): 'none' { return 'none'; }
-
-  hasCarStopEvidence(deviceId: string): boolean {
-    const authority = this.statuses.get(deviceId);
-    return authority?.kind === 'observed' && authority.status === 'Completed';
-  }
 
   controlEvents(_deviceId: string, capabilityId: string, value: unknown) {
     // The app publishes charger_status, charging, then its lossy standard state.

@@ -18,6 +18,33 @@ const card = (overrides: Partial<EvCard> = {}): EvCard => ({
   ...overrides,
 });
 
+describe('EV card label for a session that names its own holdout', () => {
+  it.each(['on', 'off'] as const)('states a finished session whatever the switch reads (%s)', (currentState) => {
+    expect(resolveSteppedEvExceptionLabel(card({ evChargingState: 'plugged_in_finished', currentState })))
+      .toBe('Charging finished');
+  });
+
+  it('states a session the charger has not started, with or without a car', () => {
+    expect(resolveSteppedEvExceptionLabel(card({ evChargingState: 'plugged_in_waiting_for_charger' })))
+      .toBe('Waiting for charger');
+    expect(resolveSteppedEvExceptionLabel(card({
+      evChargingState: 'plugged_in_waiting_for_charger', carChargingState: 'plugged_in',
+    }))).toBe('Waiting for charger');
+  });
+
+  it('reads a session that waits for a start as the idle plug it is', () => {
+    expect(resolveSteppedEvExceptionLabel(card({ evChargingState: 'plugged_in_awaiting_start' })))
+      .toBe('Waiting for car');
+    expect(resolveSteppedEvExceptionLabel(card({ evChargingState: 'plugged_in_awaiting_start', currentState: 'off' })))
+      .toBe('Not charging');
+  });
+
+  it('keeps naming the car when its own plug reads finished', () => {
+    expect(resolveSteppedEvExceptionLabel(card({ carChargingState: 'plugged_in_finished' })))
+      .toBe('Waiting for car');
+  });
+});
+
 describe('EV card label with an associated car', () => {
   it('names the car as the holdout when the charger is on and no car is associated', () => {
     // The charger was told to charge and no current flows. With no car to ask,

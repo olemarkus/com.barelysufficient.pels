@@ -42,9 +42,7 @@ const charger = (at: string) => homeyDevice({
   evcharger_charging_state: 'plugged_in_paused', measure_power: 7000,
 }, at);
 
-const carViews = () => buildEvCarLinkChargerViews(transport.getSnapshot(), () => [], {
-  hasCarStopEvidence: () => false,
-});
+const carViews = () => buildEvCarLinkChargerViews(transport.getSnapshot(), () => []);
 
 const sdkWrites = () => {
   const put = vi.fn().mockResolvedValue(undefined);

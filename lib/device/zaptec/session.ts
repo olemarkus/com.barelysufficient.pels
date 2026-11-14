@@ -55,7 +55,6 @@ export class ZaptecInstallationSession implements DeviceAdapterSession {
   observedIds(): string[] { return []; }
   observes(): boolean { return false; }
   controls(): boolean { return false; }
-  hasCarStopEvidence(): boolean { return false; }
   missingCompanion(): 'none' { return 'none'; }
   project: DeviceAdapterSession['project'] = (snapshot) => snapshot;
   assertAllowed(): void {}

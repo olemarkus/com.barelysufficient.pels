@@ -72,7 +72,10 @@ export function resolveEvChargingStateBinaryEvidence(evChargingState: unknown): 
     case 'plugged_in_charging':
       return true;
     case 'plugged_in':
+    case 'plugged_in_awaiting_start':
     case 'plugged_in_paused':
+    case 'plugged_in_waiting_for_charger':
+    case 'plugged_in_finished':
     case 'plugged_out':
     case 'plugged_in_discharging':
       return false;

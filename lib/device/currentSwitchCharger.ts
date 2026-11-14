@@ -95,7 +95,6 @@ function resumeCurrent(snapshot: TransportDeviceSnapshot): number {
   return currents.length > 0 ? Math.min(...currents) : CURRENT_SWITCH_MIN_CHARGING_A;
 }
 
-const NO_SESSION_EVIDENCE = { hasCarStopEvidence: () => false };
 
 /** The adapter for one such integration. */
 export function createCurrentSwitchChargerAdapter(charger: CurrentSwitchCharger): DeviceAdapter {
@@ -117,7 +116,7 @@ export function createCurrentSwitchChargerAdapter(charger: CurrentSwitchCharger)
   };
 
   const switchWrite = (snapshot: TransportDeviceSnapshot, request: CapabilityWrite): SwitchWrite => {
-    const plain = standardDeviceAdapter.switchWrite(snapshot, request, NO_SESSION_EVIDENCE);
+    const plain = standardDeviceAdapter.switchWrite(snapshot, request);
     if (typeof request.value !== 'boolean' || plain.kind === 'none' || !isUnderBuiltInControl(snapshot)) return plain;
     // Read from the current under built-in control, the switch is no observation of either write.
     if (!request.value) return { ...plain, readBackAsWritten: false };

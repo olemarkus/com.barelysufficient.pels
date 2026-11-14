@@ -21,8 +21,9 @@ before the switch (`current_before_start`).
 - `car_charging`: `plugged_in_charging`.
 - `station_waiting` or `car_finished` with `is_allowed` false:
   `plugged_in_paused`.
-- `station_waiting` or `car_finished` with `is_allowed` true: `plugged_in`,
-  a car that takes nothing.
+- `station_waiting` with `is_allowed` true: `plugged_in`, a car that takes
+  nothing yet.
+- `car_finished` with `is_allowed` true: `plugged_in_finished`.
 - `station_error`, `unknown` or a missing switch: unread.
 
 The derived state is dated by `status`, or by the newer of `status` and

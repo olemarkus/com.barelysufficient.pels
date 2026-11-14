@@ -296,19 +296,13 @@ export type DeviceAdapter = {
   capabilityWrite(view: HomeyDeviceLike, request: CapabilityWrite): CapabilityWrite;
   /** The Homey device a view is read from and written to. */
   sourceDeviceId(view: HomeyDeviceLike): string;
-  /** `sessions`: the transport's adapter sessions, for what they have observed of the device. */
-  switchWrite(snapshot: TransportDeviceSnapshot, request: CapabilityWrite, sessions: SessionEvidence): SwitchWrite;
-  recoverSwitchWrite(
-    snapshot: TransportDeviceSnapshot, raw: HomeyDeviceLike, request: CapabilityWrite, sessions: SessionEvidence,
-  ): SwitchWrite;
+  switchWrite(snapshot: TransportDeviceSnapshot, request: CapabilityWrite): SwitchWrite;
+  recoverSwitchWrite(snapshot: TransportDeviceSnapshot, raw: HomeyDeviceLike, request: CapabilityWrite): SwitchWrite;
   createSession(home: HubHomeLocation): DeviceAdapterSession;
 };
 
 /** Whether a full device list proves that a device it lacks is absent (`DeviceAdapterSession.retainDevices`). */
 export type InventoryCompleteness = 'complete' | 'partial';
-
-/** What a write resolution may read from the transport's adapter sessions. */
-export type SessionEvidence = Pick<DeviceAdapterSession, 'hasCarStopEvidence'>;
 
 /** Session details remain behind resolved eligibility. */
 export type DeviceAdapterSession = {
@@ -331,8 +325,6 @@ export type DeviceAdapterSession = {
   observedIds(): string[];
   observes(deviceId: string): boolean;
   controls(snapshot: AdapterControlTarget): boolean;
-  /** Positive observed evidence that the car stopped accepting energy, not a controller-off command. */
-  hasCarStopEvidence(deviceId: string): boolean;
   /** A companion device the owner could pair to make control of `deviceId` more reliable. */
   missingCompanion(deviceId: string): ChargingMissingCompanion;
   /** Recompute control gates and adapter presentation, including on an already-projected snapshot. */

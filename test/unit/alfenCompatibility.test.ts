@@ -8,7 +8,6 @@ import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 const capabilities = ['target_power', 'evcharger_charging', 'measure_current.stationlimit'];
 const control = { kind: 'capability_adapter' as const, activationRequired: false, activationEnabled: true };
-const sessions = { hasCarStopEvidence: () => false };
 
 function charger(stationPhases: 1 | 3): HomeyDeviceLike {
   return { ...HOMEY_DEVICE_FIELDS,
@@ -47,7 +46,7 @@ describe('Alfen station and car phase conversion', () => {
       const step = view.steppedLoadProfile!.steps[1]!;
       const command = { capabilityId: 'target_power', value: step.planningPowerW };
       expect(adapter).toBe(getDeviceAdapter(device));
-      expect(adapter.switchWrite(view, { capabilityId: 'evcharger_charging', value: true }, sessions))
+      expect(adapter.switchWrite(view, { capabilityId: 'evcharger_charging', value: true }))
         .toEqual({ kind: 'write', write: adapter.stepCommand(device, step, command), readBackAsWritten: false });
       expect(adapter.stepCommand(device, step, command).value).toBe(6 * stationPhases * 230);
     },
@@ -112,7 +111,7 @@ describe('Alfen station and car phase conversion', () => {
       { id: 'off', planningPowerW: 0 }, { id: '6900w', planningPowerW: 6900 },
     ] };
     expect(getSnapshotAdapter(view).switchWrite(view,
-      { capabilityId: 'evcharger_charging', value: true }, sessions)).toMatchObject({
+      { capabilityId: 'evcharger_charging', value: true })).toMatchObject({
       kind: 'write', write: { capabilityId: 'target_power', value: 6900 },
     });
   });
@@ -121,10 +120,10 @@ describe('Alfen station and car phase conversion', () => {
     const view = snapshot(3, 1);
     delete view.automaticPowerControl;
     const adapter = getSnapshotAdapter(view);
-    expect(adapter.switchWrite(view, { capabilityId: 'evcharger_charging', value: true }, sessions))
+    expect(adapter.switchWrite(view, { capabilityId: 'evcharger_charging', value: true }))
       .toEqual({ kind: 'none' });
     expect(adapter.normalize(view, 'target_power', 4140, charger(3))).toEqual([{ capabilityId: 'target_power', value: 4140 }]);
-    expect(adapter.switchWrite(view, { capabilityId: 'evcharger_charging', value: false }, sessions))
+    expect(adapter.switchWrite(view, { capabilityId: 'evcharger_charging', value: false }))
       .toMatchObject({ kind: 'write', write: { capabilityId: 'target_power', value: 0 } });
   });
 });

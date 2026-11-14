@@ -19,8 +19,9 @@ const device = (status: unknown): HomeyDeviceLike => ({ ...HOMEY_DEVICE_FIELDS,
 
 describe('Easee physical connection state', () => {
   it.each([
-    ['Completed', 'plugged_in'], ['Standby', 'plugged_out'], ['Paused', 'plugged_in_paused'],
-    ['Charging', 'plugged_in_charging'], ['Car connected', 'plugged_in'],
+    ['Completed', 'plugged_in_finished'], ['Standby', 'plugged_out'], ['Paused', 'plugged_in_paused'],
+    ['Charging', 'plugged_in_charging'], ['Car connected', 'plugged_in_awaiting_start'],
+    ['Awaiting Authentication', 'plugged_in_awaiting_start'],
   ])('resolves %s at its own observation date', (status, state) => {
     const values: DeviceCapabilityMap = {
       charger_status: { value: status, lastUpdated: at },

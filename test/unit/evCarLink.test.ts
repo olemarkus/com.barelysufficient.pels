@@ -432,7 +432,6 @@ describe('classifyEvCarSelfStop', () => {
     chargerState: 'plugged_in_charging',
     chargerPowerW: 0,
     chargerSwitchOn: true,
-    carStopReported: false,
     lastDeliveryReadingAtMs: deliveredAtMs,
     lastStopCommandAtMs: undefined,
   };

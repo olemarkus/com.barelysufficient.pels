@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
-import type { EvObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { EvChargingState, EvObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { resolveFixtureDescriptorIdentity } from '../utils/deviceSnapshotFixture';
 
 // Probe-widened fixture: the base snapshot type omits `evChargingState` (that
@@ -39,8 +39,7 @@ describe('isEvObserved', () => {
     const s = snap({ deviceClass: 'evcharger', isEvCharger: true, evChargingState: 'plugged_in_paused' });
     if (isEvObserved(s)) {
       // Compile-time: `s.evChargingState` is `EvChargingState` (not `| undefined`).
-      const known: 'plugged_in_charging' | 'plugged_in' | 'plugged_in_paused' | 'plugged_out'
-        | 'plugged_in_discharging' = s.evChargingState;
+      const known: EvChargingState = s.evChargingState;
       expect(known).toBe('plugged_in_paused');
     } else {
       throw new Error('expected isEvObserved to narrow');

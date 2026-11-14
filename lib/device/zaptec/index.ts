@@ -1,7 +1,7 @@
 import type { DeviceAdapter } from '../deviceAdapter';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
 import { applyNativeEvWiringOverlay, normalizeNativeEvCapabilityUpdate,
-  buildNativeEvObservationCapabilityObj } from './charging';
+  buildNativeEvObservationCapabilityObj, withZaptecSessionState } from './charging';
 import { ZaptecInstallationSession, zaptecInstallationOf } from './session';
 import { prepareZaptecTargetPowerReassertion } from './targetPowerReassertion';
 
@@ -13,6 +13,7 @@ export const zaptecAdapter: DeviceAdapter = {
     || capabilities.includes('charge_mode'),
   overlay: applyNativeEvWiringOverlay,
   normalize: normalizeNativeEvCapabilityUpdate,
+  observation: (device) => withZaptecSessionState(device, standardDeviceAdapter.observation(device)),
   prepareTargetPowerReassertion: prepareZaptecTargetPowerReassertion,
   readRules: () => ({
     charging_button: 'boolean',
@@ -35,13 +36,13 @@ export const zaptecAdapter: DeviceAdapter = {
       currentArguments: (currentA) => ({ current1: currentA, current2: currentA, current3: currentA }),
     }];
   },
-  switchWrite: (snapshot, request, sessions) => {
+  switchWrite: (snapshot, request) => {
     if (request.capabilityId === snapshot.binaryCapabilityId && snapshot.canSetControl === false) {
       return { kind: 'none' };
     }
-    return standardDeviceAdapter.switchWrite(snapshot, request, sessions);
+    return standardDeviceAdapter.switchWrite(snapshot, request);
   },
-  recoverSwitchWrite: (snapshot, raw, request, sessions) => {
+  recoverSwitchWrite: (snapshot, raw, request) => {
     if (request.capabilityId === snapshot.binaryCapabilityId) {
       const writeId = snapshot.binaryWriteCapabilityId ?? request.capabilityId;
       const descriptor = raw.capabilitiesObj[writeId];
@@ -49,7 +50,7 @@ export const zaptecAdapter: DeviceAdapter = {
         return { kind: 'none' };
       }
     }
-    return zaptecAdapter.switchWrite(snapshot, request, sessions);
+    return zaptecAdapter.switchWrite(snapshot, request);
   },
   createSession: () => new ZaptecInstallationSession(),
 };

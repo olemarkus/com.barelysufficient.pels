@@ -83,7 +83,6 @@ export class DeviceAdapterSessions {
   setTrustEpoch(epoch: string): void { for (const session of this.sessions) session.setTrustEpoch(epoch); }
   observedIds(): string[] { return this.sessions.flatMap((session) => session.observedIds()); }
   observes(id: string): boolean { return this.sessions.some((session) => session.observes(id)); }
-  hasCarStopEvidence(id: string): boolean { return this.sessions.some(session => session.hasCarStopEvidence(id)); }
   missingCompanion(id: string): ChargingMissingCompanion {
     const companions = this.sessions.map((session) => session.missingCompanion(id));
     return companions.find((companion) => companion !== 'none') ?? 'none';
