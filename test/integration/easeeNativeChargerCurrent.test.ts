@@ -275,7 +275,8 @@ describe('Easee native charger current', () => {
     device.capabilities = [...EASEE_CAPABILITIES, 'charger_status'];
     const [parsed] = await seedTransportDevices(createEaseeTransport(builtIn), [device]);
     expect(parsed.evChargingState).toBe('plugged_in_finished');
-    expect(parsed.binaryControl).toEqual({ on: false });
+    // Under built-in control the 16 A the charger holds is current on offer.
+    expect(parsed.binaryControl).toEqual({ on: builtIn });
   });
 
   it.each([false, true])('preserves the linked car and battery session through completion and resume with built-in control %s', async (builtIn) => {
@@ -334,7 +335,8 @@ describe('Easee native charger current', () => {
       await emitCapability('car-1', 'ev_charging_state', 'plugged_in');
       await emitCapability('car-1', 'measure_battery', 80);
       expect(parsed.evChargingState).toBe('plugged_in_finished');
-      expect(parsed.binaryControl).toEqual({ on: false });
+      // Under built-in control the 10 A the charger holds is still on offer.
+      expect(parsed.binaryControl).toEqual({ on: builtIn });
       expect(transport.getAssociatedCar(EASEE_ID)).toMatchObject({ carId: 'car-1', socPct: 80 });
       expect(parsed.stateOfCharge?.level).toMatchObject({ kind: 'known', percent: 80 });
       expect(parsed.stateOfCharge?.sessionStartedAtMs).toBe(sessionStart);
@@ -1091,6 +1093,59 @@ describe('Easee native charger current', () => {
       await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
 
       expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, pelsCapabilityWrite(6)]]);
+    });
+
+    it('confirms the current it offers a completed session as on', async () => {
+      // The car takes no current, so the charger stays `Completed`. The 6 A on
+      // offer is what PELS asked for; read as off, the write never confirmed and
+      // the unconfirmed restore held every other device's restore behind it.
+      const { deviceManager, put, refresh, switchOn } = await createLiveEasee({
+        ...notCharging('Completed'),
+        target_charger_current: { value: 0, setable: true, min: 0, max: 40, lastUpdated: READ_AT },
+      }, WITH_STATUS);
+      await refresh();
+      expect(switchOn()).toEqual({ on: false });
+
+      await deviceManager.requestBinaryControl(EASEE_ID, true, triggerFlow);
+      expect(put.mock.calls).toEqual([[CHARGER_CURRENT_PATH, pelsCapabilityWrite(6)]]);
+      await emitCapability(EASEE_ID, 'target_charger_current', 6);
+      expect(switchOn()).toEqual({ on: true });
+
+      await refresh();
+      expect(switchOn()).toEqual({ on: true });
+    });
+
+    it('keeps a charger on when the car completes the session it was charging', async () => {
+      // The current PELS set stays on offer, so the car ending its session is no
+      // turn-off from outside PELS.
+      const { refresh, report, switchOn } = await createLiveEasee({
+        charger_status: { value: 'Charging', lastUpdated: READ_AT },
+      }, WITH_STATUS);
+      await refresh();
+      expect(switchOn()).toEqual({ on: true });
+
+      await report('charger_status', 'Completed');
+      await report('evcharger_charging', false);
+      await report('evcharger_charging_state', 'plugged_out');
+      expect(switchOn()).toEqual({ on: true });
+
+      await refresh();
+      expect(switchOn()).toEqual({ on: true });
+    });
+
+    it('reads a completed session PELS paused at 0 A as off', async () => {
+      const { deviceManager, refresh, report, switchOn } = await createLiveEasee({
+        charger_status: { value: 'Charging', lastUpdated: READ_AT },
+      }, WITH_STATUS);
+      await refresh();
+
+      await deviceManager.requestBinaryControl(EASEE_ID, false, triggerFlow);
+      await emitCapability(EASEE_ID, 'target_charger_current', 0);
+      await report('charger_status', 'Completed');
+      expect(switchOn()).toEqual({ on: false });
+
+      await refresh();
+      expect(switchOn()).toEqual({ on: false });
     });
 
     it.each(['Car connected', 'Awaiting Authentication'])(

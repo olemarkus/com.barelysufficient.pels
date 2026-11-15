@@ -137,8 +137,8 @@ Resumption follows the normal meter-driven admission and restore cooldown.
   `resolveEaseeRealtimeUpdates` on realtime events, both in
   `lib/device/easee/switch.ts`) from the plug state and the current,
   never from the app's own `evcharger_charging`: on while the charger is
-  `plugged_in_charging`, and while it is `plugged_in_paused` holding 6 A or
-  more; off otherwise. The app 2.0.5 derives its switch from the same charger
+  `plugged_in_charging`, and while it is `plugged_in_paused` or
+  `plugged_in_finished` holding 6 A or more; off otherwise. The app 2.0.5 derives its switch from the same charger
   mode as the plug state (on only in `Charging`) and publishes the two
   together, switch first, so the switch adds nothing the plug state does not,
   except a value PELS wrote itself: Homey keeps a written switch until the app
@@ -147,11 +147,16 @@ Resumption follows the normal meter-driven admission and restore cooldown.
   After a resume Easee holds the charger in `Awaiting Start`, which the app
   publishes as `plugged_in_paused`, for about 5 minutes before it offers the
   car current, so a charger paused at 6 A is on and waiting, and one paused
-  at 0-5 A is off. A realtime current or plug-state report carries the switch
+  at 0-5 A is off. A completed session is read the same way: its current is
+  what PELS keeps on offer for the car, so the 6 A PELS writes for a wish to
+  charge confirms as on. Read as off, that write never confirmed: the car
+  ending its session read as an outside turn-off, a restore countdown labelled
+  the charger limited, and the unconfirmed restore held every other device's
+  restore behind it (SHS lab, 2026-11-14). A realtime current or plug-state report carries the switch
   it implies (the realtime path reads the held current as the reported step,
   which puts 0-5 A on the off step); the app's switch events are dropped, and
-  a malformed plug state or current implies nothing, as does a paused report
-  while no level has been read. A read always has the current: the read
+  a malformed plug state or current implies nothing, as does a paused or
+  completed report while no level has been read. A read always has the current: the read
   contract admits no Easee read without one (`transport/deviceReadContract.ts`),
   so a current Homey never set leaves the charger not yet readable. The level
   must follow PELS's own current writes for this to hold: Easee reports a pause
