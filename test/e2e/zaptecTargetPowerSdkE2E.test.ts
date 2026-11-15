@@ -151,7 +151,7 @@ function simulateCurrentOnlyZaptec(charger: MockDevice) {
   setInterval(() => {
     report('available_installation_current', limitA);
     report('charging_button', charging);
-    report('charge_mode', charging ? 'Charging' : 'Connecting to car');
+    report('charge_mode', charging ? 'Charging' : 'Charging finished');
     report('measure_power', charging ? limitA * GRID_WATTS_PER_AMP : 0);
   }, 30_000);
   const responseHeaders: Record<string, string> = {

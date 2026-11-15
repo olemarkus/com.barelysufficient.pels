@@ -74,20 +74,23 @@ function resolveLatestLastUpdated(...values: Array<string | number | Date | null
  *     `plugged_in_paused`);
  *   - {@link resolveZaptecChargingValue}, which falls back to the plug-state when
  *     `charging_button` carries no boolean and then synthesizes
- *     `evcharger_charging = true` from `plugged_in_paused` but no value at all
- *     from `plugged_in`.
+ *     `evcharger_charging = true` from a session the charger is about to
+ *     start but no value at all from `plugged_in`.
  * A finished session is neither charging nor resumably paused, so `plugged_in`
  * is the honest answer everywhere above.
  *
- * `Connected_Requesting` is the opposite case and keeps `plugged_in_paused`:
- * the car is asking for current, so a resume is expected to land, and both the
- * `Paused` label and the fallback `evcharger_charging = true` readback match
- * what the charger is about to do.
+ * `Connected_Requesting` is a car connected while the charger has not started
+ * its session: it waits for authorisation, for its own schedule or for its load
+ * balancing. Zaptec resumes only a session that was paused, so it refuses a
+ * turn-on there ("Charging is not Paused nor Scheduled"), and the session
+ * begins by itself once the charger is ready. That is
+ * `plugged_in_waiting_for_charger`, the state the app's own plug state resolves
+ * to for the same charger mode ({@link withZaptecSessionState}).
  */
 function resolveZaptecChargingStateFromChargeMode(chargeMode: unknown): string | undefined {
   if (chargeMode === 'Connected_Charging' || chargeMode === 'Charging') return 'plugged_in_charging';
   if (chargeMode === 'Connected_Requesting' || chargeMode === 'Connecting to car') {
-    return 'plugged_in_paused';
+    return 'plugged_in_waiting_for_charger';
   }
   if (chargeMode === 'Connected_Finishing' || chargeMode === 'Charging finished') return 'plugged_in';
   if (chargeMode === 'Disconnected') return 'plugged_out';
@@ -160,7 +163,7 @@ function resolveZaptecCharging(capabilityObj: DeviceCapabilityMap): {
   }
   const evChargingState = resolveZaptecChargingState(capabilityObj);
   const stateLastUpdated = resolveZaptecChargingStateLastUpdated(capabilityObj);
-  if (evChargingState === 'plugged_in_charging' || evChargingState === 'plugged_in_paused') {
+  if (evChargingState === 'plugged_in_charging' || evChargingState === 'plugged_in_waiting_for_charger') {
     return { value: true, lastUpdated: stateLastUpdated };
   }
   if (evChargingState === 'plugged_out') return { value: false, lastUpdated: stateLastUpdated };
