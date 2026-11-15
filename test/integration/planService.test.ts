@@ -307,7 +307,7 @@ describe('PlanService', () => {
     { homeId: 'h_11111111', shown: [] },
   ] as const)('shows a home battery on the overview of $homeId only when it is Main', async ({ homeId, shown }) => {
     const battery = buildPlanDevice({ id: 'battery-1', name: 'Sessy battery', isBatteryOrSolar: true,
-      storageHold: { kind: 'relief' } });
+      storageHold: { kind: 'relief', supplyKw: 2.4 } });
     const plan: DevicePlan = { generatedAtMs: 123, meta: buildPlanMeta({}), devices: [battery], chargingPhaseDecisions: [], inverterDecisions: [], storageReleases: [] };
     const engine = { ...createMockPlanEngine(),
       getDeviceExecutionStates: vi.fn(() => new Map([[battery.id, executionStateFixture(battery)]])) };

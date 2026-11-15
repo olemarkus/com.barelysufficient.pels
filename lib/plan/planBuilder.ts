@@ -549,7 +549,7 @@ export class PlanBuilder {
       sheddingPlan,
       overshootDecision,
       storageRelief,
-      admissionPower: withoutStorageWithheld(power, storageRelief, context.devices),
+      admissionPower: withoutStorageWithheld(power, storageRelief, context.devices, followed.undeliveredW),
     };
   }
 

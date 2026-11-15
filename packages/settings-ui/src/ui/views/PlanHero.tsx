@@ -8,6 +8,7 @@ import { computeProjectedPeriodEnergyKWh, isProjectedOverHardCap } from '../../.
 import {
   buildDecisionSentence as buildSharedDecisionSentence,
   resolveSupplyingBatteries,
+  resolveWouldSupplyBatteries,
   computeEnergyBarScaleKWh,
   formatAboveSafePaceSubline,
   formatCheapestUpcomingHour,
@@ -113,6 +114,15 @@ const resolveHeldForPhase = (limited: readonly PlanDeviceSnapshot[]): { heldForP
   return phases.size === 1 && only !== undefined ? { heldForPhase: only } : {};
 };
 
+/**
+ * What the period's projection starts from: the measured energy and draw, or
+ * in Simulation mode the ones live control would have (`withControlOn`), so
+ * the projection, its tone and the hard-cap verdict follow the plan shown.
+ */
+const resolveProjectionBasis = (meta: PlanMetaSnapshot): { usedKWh: number; drawKw: number } => (
+  meta.withControlOn ?? { usedKWh: meta.usedKWh, drawKw: meta.totalKw }
+);
+
 const buildDecisionSentence = ({
   devices,
   context,
@@ -136,7 +146,8 @@ const buildDecisionSentence = ({
     projectedOverHardCap,
     projectedOverBudget: projectedOverHardCap
       || projectionTone === 'warning' || projectionTone === 'critical',
-    gridImportHigh: meta.gridImportTargetKw !== null && meta.totalKw > meta.gridImportTargetKw,
+    // In simulation, judged by the draw with control on (`withControlOn`), as the plan is.
+    gridImportHigh: meta.gridImportTargetKw !== null && resolveProjectionBasis(meta).drawKw > meta.gridImportTargetKw,
     ...(meta.powerIsMeasured && meta.unrelievedPhase ? { unrelievedPhase: meta.unrelievedPhase } : {}),
     ...(meta.powerIsMeasured && meta.exportPhase ? { exportPhase: meta.exportPhase } : {}),
     ...resolveHeldForPhase(limited),
@@ -151,6 +162,7 @@ const buildDecisionSentence = ({
     capacityControlOffCount: devices.filter(isBreachingControlOffDevice).length,
     sheddableManagedRunningCount: devices.filter(isSheddableManagedRunningDevice).length,
     supplyingBatteries: resolveSupplyingBatteries(devices),
+    wouldSupplyBatteries: resolveWouldSupplyBatteries(devices),
   });
 };
 
@@ -244,15 +256,6 @@ type EnergyBarScale = {
   withControlOnKWh: number | null;
   periodMinutes: CapacityPeriodMinutes;
 };
-
-/**
- * What the period's projection starts from: the measured energy and draw, or
- * in Simulation mode the ones live control would have (`withControlOn`), so
- * the projection, its tone and the hard-cap verdict follow the plan shown.
- */
-const resolveProjectionBasis = (meta: PlanMetaSnapshot): { usedKWh: number; drawKw: number } => (
-  meta.withControlOn ?? { usedKWh: meta.usedKWh, drawKw: meta.totalKw }
-);
 
 const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null => {
   const { usedKWh, hourControlledKWh, hourUncontrolledKWh } = meta;

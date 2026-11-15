@@ -50,7 +50,7 @@ export const ownDischargeWOf = (storage: Pick<ObservedStorageInput, 'signedPower
 /**
  * Why PELS may not take this battery over, as the reason it hands back a hold
  * for: its verdict (`not_responding`, `sign_inverted`), not admissible
- * (Managed off, not the Main home, claim not recordable, or simulation), or
+ * (Managed off, not the Main home, or claim not recordable), or
  * its Power-limit control off (`limit_off`; owner ruling, 2026-10-06: then
  * PELS never takes it over at all, with no charge cap, no discharge and no
  * surplus claim). `holdable` when none applies.

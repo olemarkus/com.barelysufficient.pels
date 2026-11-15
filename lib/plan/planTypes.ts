@@ -248,7 +248,8 @@ export type NonSteppedPlanDevice = DevicePlanDeviceBase & NonSteppedLoadKind;
 export type StorageHold =
   | { kind: 'none' }
   | { kind: 'power_limit_off' }
-  | { kind: 'relief'; exportPhase?: PhaseName }
+  /** `supplyKw`: the discharge PELS holds it at, kW (what it would supply, in simulation). */
+  | { kind: 'relief'; supplyKw: number; exportPhase?: PhaseName }
   | { kind: 'charge_limit'; heldBackKw: number; exportPhase?: PhaseName }
   | { kind: 'cap_for_device' }
   | { kind: 'surplus' }

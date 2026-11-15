@@ -470,7 +470,7 @@ class StorageReliefCycle {
     /** What the allocator offered each battery at its place in the priority order. */
     private readonly offers: ReadonlyMap<string, StorageSurplusOffer>,
     private readonly nowTs: number,
-    /** In simulation, last: what the held batteries would deliver that the reading does not show. */
+    /** In simulation, last: what held batteries would deliver (or, charging, draw) that the reading misses. */
     private phaseRoom: PhaseRoomAxis, private readonly simulatedUndeliveredW: number,
   ) {}
 
@@ -689,7 +689,7 @@ export function decideStorageRelief(
     headroomW: power.headroom.kind === 'off' ? null : Math.max(0, power.headroom.kw * 1000 + simulatedUndeliveredW),
     netImportW: power.drawKw * 1000 - simulatedUndeliveredW,
     sampledAtMs: power.sampledAtMs,
-  }, offers, nowTs, resolvePhaseRoomAxis(power.phase), Math.max(0, simulatedUndeliveredW));
+  }, offers, nowTs, resolvePhaseRoomAxis(power.phase), simulatedUndeliveredW);
   const seen = new Set<string>();
   for (const device of devices) {
     // A battery PELS only watches is decided like one without a cluster: it
@@ -778,7 +778,7 @@ const toStorageHold = (battery: StorageStateSummary): StorageHold => {
       ...(battery.exportPhase === undefined ? {} : { exportPhase: battery.exportPhase }),
     };
     case 'relief': return {
-      kind: 'relief',
+      kind: 'relief', supplyKw: Math.max(0, -battery.setpointW) / 1000,
       ...(battery.exportPhase === undefined ? {} : { exportPhase: battery.exportPhase }),
     };
     case 'raise_charge': return { kind: 'surplus' };

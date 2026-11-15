@@ -9,6 +9,7 @@ import {
   formatProjectedEnergySubline,
   formatSafePaceMeterMarkerLabels,
   resolveSupplyingBatteries,
+  resolveWouldSupplyBatteries,
   type DecisionSentenceInput,
   type PlanHeroMetaInput,
 } from '../../packages/settings-ui/src/ui/planHeroSummary';
@@ -228,11 +229,11 @@ describe('buildDecisionSentence', () => {
     };
 
     it('names a battery PELS holds for relief that is supplying', () => {
-      expect(named({ kind: 'relief' }, -2400)).toEqual([{ name: 'Sessy battery', kw: 2.4 }]);
+      expect(named({ kind: 'relief', supplyKw: 2.4 }, -2400)).toEqual([{ name: 'Sessy battery', kw: 2.4 }]);
     });
 
     it('does not name an unavailable battery, whose card says Unavailable', () => {
-      expect(named({ kind: 'relief' }, -2400, false)).toEqual([]);
+      expect(named({ kind: 'relief', supplyKw: 2.4 }, -2400, false)).toEqual([]);
     });
 
     it('does not name a battery whose charge PELS caps', () => {
@@ -245,6 +246,31 @@ describe('buildDecisionSentence', () => {
 
     it('does not name a battery in its own mode that is discharging', () => {
       expect(named({ kind: 'none' }, -2400)).toEqual([]);
+    });
+
+    // In Simulation mode PELS sends nothing: the battery is not supplying for
+    // the limit, so the hero names what it would do, hypothetically.
+    describe('in simulation', () => {
+      const wouldSupply = (hold: DevicePlanDevice['storageHold'], signedW = 0) => resolveWouldSupplyBatteries([
+        { name: 'Sessy battery', homeBattery: buildSettingsUiPlanHomeBattery(card(signedW), hold, true, { exporting: false }, true) },
+      ]);
+
+      it('names what a battery would supply, never that it supplies', () => {
+        expect(wouldSupply({ kind: 'relief', supplyKw: 2.4 })).toEqual([{ name: 'Sessy battery', kw: 2.4 }]);
+        expect(named({ kind: 'relief', supplyKw: 2.4 }, -2400)).toEqual([{ name: 'Sessy battery', kw: 2.4 }]);
+        expect(wouldSupply({ kind: 'charge_limit', heldBackKw: 2 })).toEqual([]);
+        expect(wouldSupply({ kind: 'relief', supplyKw: 1, exportPhase: 'L1' })).toEqual([]);
+      });
+
+      it('says the battery would hold the limit, alone or before the devices it would still limit', () => {
+        const batteries = [{ name: 'Sessy battery', kw: 2.4 }];
+        expect(buildDecisionSentence(baseline({ dryRun: true, wouldSupplyBatteries: batteries })))
+          .toEqual({ text: 'Sessy battery would supply 2.4 kW to hold your limit.', positive: true });
+        expect(buildDecisionSentence(baseline({ dryRun: true, limitedCount: 2, wouldSupplyBatteries: batteries })).text)
+          .toBe('Sessy battery would supply 2.4 kW to hold your limit. 2 devices would be limited right now.');
+        expect(buildDecisionSentence(baseline({ dryRun: false, wouldSupplyBatteries: batteries })).text)
+          .not.toContain('would supply');
+      });
     });
   });
 
