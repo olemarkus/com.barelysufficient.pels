@@ -1,9 +1,8 @@
 import type { MainFusePhaseCapabilities } from '../../../packages/shared-domain/src/settings/mainFusePhaseSource';
 import { getRawDevice } from './managerHomeyApi';
 import { resolveMeterPhases } from '../meterPhases';
-import type { MeterMonthlyPeakRead, MeterPhasesRead } from '../../ports/homeMeterReadings';
-import { getDeviceAdapter } from '../deviceAdapterRegistry';
-import { parseHomeyDevicePayload } from './homeyDevicePayload';
+import type { MeterPhasesRead } from '../../ports/homeMeterReadings';
+export { readMeterMonthlyPeak } from './meterMonthlyPeakRead';
 /**
  * Pull refresh pipeline for `DeviceTransport`, extracted as homey-free
  * functions owned by `SnapshotRefreshService`. It coordinates device fetches,
@@ -428,20 +427,6 @@ export async function readMeterPhases(
 ): Promise<MeterPhasesRead> {
     try {
         return resolveMeterPhases(await getRawDevice(meterDeviceId), ownerChoice);
-    } catch {
-        return { state: 'unavailable' };
-    }
-}
-
-/**
- * The month peak a home's meter reports itself, as its integration reads it
- * (`DeviceAdapter.meterMonthlyPeak`); a failed read or a payload without a
- * usable identity is `unavailable`, never no peak.
- */
-export async function readMeterMonthlyPeak(meterDeviceId: string): Promise<MeterMonthlyPeakRead> {
-    try {
-        const device = parseHomeyDevicePayload(await getRawDevice(meterDeviceId));
-        return device === null ? { state: 'unavailable' } : getDeviceAdapter(device).meterMonthlyPeak(device);
     } catch {
         return { state: 'unavailable' };
     }
