@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
+import {
+  getLatestPlanSnapshotForTests, MockDevice, MockDriver, mockHomeyInstance, resetMockHomey, setMockDrivers,
+} from '../mocks/homey';
 import { drainPending } from '../utils/asyncDrain';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import {
@@ -15,7 +17,7 @@ const poll = async (): Promise<void> => {
 
 // Only Homey reads, writes and the clock are mocked. The actual measurement,
 // planner, executor and command-confirmation path run together.
-const boot = async (capacityEnabled = false, gridEnabled = true) => {
+const boot = async (capacityEnabled = false, gridEnabled = true, simulating = false) => {
   const ev = new MockDevice('flex', 'Flexible load', ['onoff', 'measure_power', 'meter_power'], 'socket');
   const heater = new MockDevice('heater', 'Water heater', ['onoff', 'measure_power', 'meter_power'], 'socket');
   for (const [device, powerW] of [[ev, 1400], [heater, 800]] as const) {
@@ -33,7 +35,7 @@ const boot = async (capacityEnabled = false, gridEnabled = true) => {
   settings.set(CAPACITY_MARGIN_KW, 0.2);
   settings.set(GRID_IMPORT_ENABLED, gridEnabled);
   settings.set(GRID_IMPORT_LIMIT_KW, 3.3);
-  settings.set(CAPACITY_DRY_RUN, false);
+  settings.set(CAPACITY_DRY_RUN, simulating);
   settings.set(OPERATING_MODE_SETTING, 'Home');
   settings.set(CONTROLLABLE_DEVICES, { flex: true, heater: true });
   settings.set(MANAGED_DEVICES, { flex: true, heater: true });
@@ -115,6 +117,28 @@ describe('grid import control through Homey', () => {
     expect(restored).toHaveLength(2);
     const restoreTimes = home.transitions.filter((entry) => entry.value).map((entry) => entry.atMs);
     expect(restoreTimes[1] - restoreTimes[0]).toBeGreaterThanOrEqual(300_000);
+  });
+
+  // Nothing is switched in simulation, so the meter never shows a limit's
+  // relief. Simulation still holds only what live control would, and switching
+  // to live control limits only that device.
+  it('limits in simulation only what live control would, then carries out just that', async () => {
+    const home = await boot(false, true, true);
+    home.setBackground(1500); // 3.7 kW: one flexible load answers it.
+    const planned = () => Object.fromEntries((getLatestPlanSnapshotForTests()?.devices ?? [])
+      .map((device: { id: string; plannedState: string }) => [device.id, device.plannedState]));
+    for (let i = 0; i < 9; i += 1) {
+      await poll();
+      expect(planned()).toEqual({ flex: 'shed', heater: 'keep' });
+    }
+    expect(home.put.mock.calls.filter(([path]) => path.endsWith('/onoff'))).toHaveLength(0);
+
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    await drainPending();
+    for (let i = 0; i < 6; i += 1) await poll();
+    expect(await home.ev.getCapabilityValue('onoff')).toBe(false);
+    expect(await home.heater.getCapabilityValue('onoff')).toBe(true);
+    expect(home.shedCalls()).toHaveLength(1);
   });
 
   it('continues reducing when a delivered reduction is masked by new unmanaged demand', async () => {
