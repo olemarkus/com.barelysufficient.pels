@@ -545,7 +545,8 @@ export class DeviceTransport {
         return readMeterPhases(meterDeviceId, ownerChoice);
     }
     /** The month peak a home's meter reports itself (`readMeterMonthlyPeak`). */
-    readMeterMonthlyPeak = (id: string): Promise<MeterMonthlyPeakRead> => readMeterMonthlyPeak(id);
+    readMeterMonthlyPeak = (id: string): Promise<MeterMonthlyPeakRead> =>
+        readMeterMonthlyPeak(id, (device) => this.reader.applyDeviceDriverOverride(device));
     /**
      * Gross PV production for the flow source's companion poll
      * (`GenerationPollSource`) — a PURE READ that discriminates a missing
