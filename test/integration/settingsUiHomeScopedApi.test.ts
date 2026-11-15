@@ -67,7 +67,7 @@ const areaReading = (
     operatingMode: 'Home',
     dryRunEffective: false,
     lastMeterPowerKw: 1.5,
-    capacityScalars: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 1, dryRun: false, periodMinutes: 60 },
+    capacityScalars: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 1, dryRun: false, periodMinutes: 60, followMonthPeak: false },
     lastDeviceControlledMs: {},
   },
 });
@@ -173,7 +173,7 @@ const installBoundary = (options: {
     getUiPickerDevices: () => [],
     getLatestPlanSnapshotForUi: () => null,
     getCapacityScalars: () => ({
-      limitKw: 10, marginKw: 0.2, periodMinutes: 60, capacityEnabled: true, gridImportLimitKw: null, dryRun: false,
+      limitKw: 10, marginKw: 0.2, periodMinutes: 60, capacityEnabled: true, gridImportLimitKw: null, dryRun: false, followMonthPeak: false,
     }),
     powerTracker: { lastPowerW: 5200, lastTimestamp: 4242, buckets: {} },
     // The battery control owner is built before any device can be listed; this

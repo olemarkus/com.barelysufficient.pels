@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CAPACITY_DRY_RUN,
+  CAPACITY_FOLLOW_MONTH_PEAK,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_PRIORITIES,
@@ -99,12 +100,22 @@ describe('parseHomeScopedSettingsKey', () => {
   });
 });
 
+describe('the month-peak switch', () => {
+  it('is home-scopable: a meter area reads its own suffixed key', () => {
+    expect(homeScopedSettingsKey(CAPACITY_FOLLOW_MONTH_PEAK, 'cabin')).toBe('capacity_follow_month_peak:cabin');
+    expect(parseHomeScopedSettingsKey('capacity_follow_month_peak:cabin'))
+      .toEqual({ baseKey: CAPACITY_FOLLOW_MONTH_PEAK, homeId: 'cabin' });
+    expect(homeScopedSettingsKey(CAPACITY_FOLLOW_MONTH_PEAK, MAIN_HOME_ID)).toBe('capacity_follow_month_peak');
+  });
+});
+
 describe('isHomeScopableBaseKey', () => {
   it('accepts exactly the home-scopable base keys', () => {
     const scopable = [
       CAPACITY_LIMIT_KW,
       CAPACITY_MARGIN_KW,
       CAPACITY_DRY_RUN,
+      CAPACITY_FOLLOW_MONTH_PEAK,
         OPERATING_MODE_SETTING,
       MODE_ALIASES,
       CAPACITY_PRIORITIES,

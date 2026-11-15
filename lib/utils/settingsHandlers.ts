@@ -15,6 +15,7 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_PERIOD_MINUTES,
+  CAPACITY_FOLLOW_MONTH_PEAK,
   CONTROLLABLE_DEVICES,
   DEVICE_CONTROL_PROFILES,
   DEVICE_DRIVER_OVERRIDES,
@@ -451,6 +452,7 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
     [CAPACITY_LIMIT_KW]: async () => handleCapacityLimitChange(deps),
     [CAPACITY_MARGIN_KW]: async () => handleCapacityLimitChange(deps),
     [CAPACITY_PERIOD_MINUTES]: async () => handleCapacityLimitChange(deps),
+    [CAPACITY_FOLLOW_MONTH_PEAK]: async () => handleCapacityLimitChange(deps),
     [CAPACITY_DRY_RUN]: async () => {
       deps.loadCapacitySettings();
       await rebuildPlanFromSettings(deps, 'capacity_dry_run');

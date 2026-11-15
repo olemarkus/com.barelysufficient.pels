@@ -17,6 +17,7 @@ import type { PublishedPlan } from '../../lib/plan/publishedPlan';
 import { buildPlan } from '../utils/planConvergenceFixtures';
 import { buildPlanDevice } from '../utils/planTestUtils';
 import { deviceSurfacesFixtures } from '../utils/deviceSnapshotFixture';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const T0 = Date.parse('2026-07-27T10:00:00Z');
 const HALF_HOUR_MS = 30 * 60_000;
@@ -56,7 +57,7 @@ const buildPipeline = (
     noteResolvedHomeMeter: () => {},
     getPowerTracker: () => powerTracker,
     getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, periodMinutes: 60 }),
+    getHeldPowerLimits: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, periodMinutes: 60 }),
     getTimeZone: () => 'UTC',
     getPlanEngine: () => ({
       computeShortfallThreshold: () => 10,

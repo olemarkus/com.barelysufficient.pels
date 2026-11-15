@@ -1,6 +1,7 @@
 import { buildPeriodicStatusLogFields } from '../../lib/diagnostics/periodicStatus';
 import { recordPowerSample, type PowerTrackerState } from '../../lib/power/tracker';
 import { getHourBucketKey } from '../../lib/utils/hourBuckets';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 describe('periodic status used kWh', () => {
   it('keeps grid-only diagnostics separate from capacity-period pace', () => {
@@ -9,7 +10,7 @@ describe('periodic status used kWh', () => {
       sheddingActive: true,
       capacityPaceKw: null,
       powerTracker: { lastPowerW: 3500 },
-      capacitySettings: { capacityEnabled: false, gridImportLimitKw: 3.3, limitKw: 10, marginKw: 0.2, periodMinutes: 60 },
+      capacitySettings: configuredHardCap({ capacityEnabled: false, gridImportLimitKw: 3.3, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
       operatingMode: 'Home',
       capacityDryRun: false,
     });
@@ -54,7 +55,7 @@ describe('periodic status used kWh', () => {
       sheddingActive: false,
       capacityPaceKw: 6.5,
       powerTracker: state,
-      capacitySettings: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 7, marginKw: 0.5, periodMinutes: 60 },
+      capacitySettings: configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 7, marginKw: 0.5, periodMinutes: 60 }),
       operatingMode: 'Home',
       capacityDryRun: false,
     });
@@ -87,7 +88,7 @@ describe('periodic status used kWh', () => {
           [getHourBucketKey(nowMs)]: 2.52,
         },
       },
-      capacitySettings: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 1, periodMinutes: 60 },
+      capacitySettings: configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 1, periodMinutes: 60 }),
       operatingMode: 'Home',
       capacityDryRun: false,
     });
@@ -115,7 +116,7 @@ describe('periodic status used kWh', () => {
         isInShortfall: () => false,
       },
       powerTracker: { lastPowerW: 3000 },
-      capacitySettings: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 1, periodMinutes: 60 },
+      capacitySettings: configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 1, periodMinutes: 60 }),
       operatingMode: 'Home',
       capacityDryRun: false,
     });
@@ -133,7 +134,7 @@ describe('periodic status used kWh', () => {
         isInShortfall: () => false,
       },
       powerTracker: { lastPowerW: 7400 },
-      capacitySettings: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 1.2, periodMinutes: 60 },
+      capacitySettings: configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 1.2, periodMinutes: 60 }),
       operatingMode: 'Home',
       capacityDryRun: false,
     });
@@ -158,7 +159,7 @@ describe('periodic status used kWh', () => {
         isInShortfall: () => false,
       },
       powerTracker: { lastPowerW: 5200 },
-      capacitySettings: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 1.2, periodMinutes: 60 },
+      capacitySettings: configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 1.2, periodMinutes: 60 }),
       operatingMode: 'Home',
       capacityDryRun: false,
     });
@@ -181,7 +182,7 @@ describe('periodic status used kWh', () => {
         isInShortfall: () => false,
       },
       powerTracker: { lastPowerW: 3000 },
-      capacitySettings: { capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 1, periodMinutes: 60 },
+      capacitySettings: configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 1, periodMinutes: 60 }),
       operatingMode: 'Home',
       capacityDryRun: false,
       starvedDeviceCount: 2,

@@ -10,6 +10,7 @@ vi.mock('../src/ui/homey.ts', () => ({ getSetting: vi.fn(), setSetting: vi.fn().
 const unchosen: CurrentCapacitySettings = {
   limit: undefined, margin: undefined, dryRun: true, periodMinutes: undefined,
   capacityEnabled: undefined, gridImportEnabled: undefined, gridImportLimitKw: undefined, mainFuseSupply: undefined, mainFuseAmps: undefined,
+  followMonthPeak: undefined,
 };
 
 describe('explicit capacity-period selection', () => {
@@ -31,7 +32,7 @@ describe('explicit capacity-period selection', () => {
 
 describe('explicit Capacity limit off', () => {
   const running: CapacityScalarSettings = {
-    capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, dryRun: true, periodMinutes: 60,
+    capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, dryRun: true, periodMinutes: 60, followMonthPeak: false,
   };
 
   it('writes only the switch, so the built-in hard cap stays unchosen', async () => {

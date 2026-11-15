@@ -268,7 +268,7 @@ describe('support report evidence capture', () => {
       planUpdatedAtMs: now, powerTracker: {}, currentMonthCapacityPeakKw: 3,
       diagnostics: {
         homeId: 'cabin', meterDeviceId: 'cabin-meter', operatingMode: 'Away', dryRunEffective: false,
-        lastMeterPowerKw: 2, lastDeviceControlledMs: {}, capacityScalars: { ...capacity, limitKw: 4 },
+        lastMeterPowerKw: 2, lastDeviceControlledMs: {}, capacityScalars: { ...capacity, limitKw: 4, followMonthPeak: false },
       },
     } });
     const report = await source(host).capture({

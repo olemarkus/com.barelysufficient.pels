@@ -35,7 +35,7 @@ const RECEIVED = { state: 'received' as const };
 const running: CapacityScalarSettings = {
   capacityEnabled: true,
   gridImportLimitKw: null,
-  limitKw: 10, marginKw: 0.2, dryRun: true, periodMinutes: 60,
+  limitKw: 10, marginKw: 0.2, dryRun: true, periodMinutes: 60, followMonthPeak: false,
 };
 
 const hardCapDetail = (facts: Awaited<ReturnType<typeof load>>['facts']): string | undefined => {

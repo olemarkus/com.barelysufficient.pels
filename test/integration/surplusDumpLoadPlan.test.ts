@@ -52,6 +52,7 @@ import type { ReleaseHoldOutcome } from '../../lib/observer/externalOffHold';
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const PUMP = 'pool-pump';
 const PUMP_DRAW_KW = 1;
@@ -124,7 +125,7 @@ const makeHarness = (params: {
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       leaveOffOnRelease: params.leaveOffOnRelease ?? ((): ReleaseHoldOutcome => 'released'),
     capacityGuard: guard,
-    getCapacitySettings: () => capacitySettings,
+    getCapacitySettings: () => configuredHardCap(capacitySettings),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
       getPriceOptimizationSettings: () => params.priceOptSettings ?? {},
     }),

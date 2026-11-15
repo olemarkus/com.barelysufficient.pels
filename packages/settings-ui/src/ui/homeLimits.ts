@@ -1,5 +1,6 @@
 import {
   CAPACITY_DRY_RUN,
+  CAPACITY_FOLLOW_MONTH_PEAK,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_PERIOD_MINUTES,
@@ -26,6 +27,7 @@ import {
   resolveCapacityPeriodMinutes,
 } from '../../../shared-domain/src/settings/capacityPeriod.ts';
 import type { CapacityPeriodMinutes } from '../../../contracts/src/capacitySettings.ts';
+import { AreaFollowMonthPeakSwitch, readAreaFollowMonthPeak } from './homeLimitsFollowMonthPeak.ts';
 import { resolveHomeLimitsStatus } from './homeLimitsStatus.ts';
 import { getHomeScope, refreshHomeScope, subscribeToHomeScope } from './homeScope.ts';
 import {
@@ -102,6 +104,7 @@ type AreaEditorState = {
   persistedDryRun: boolean;
   /** True while a control-toggle write is in flight — serialises toggles + gates rollback. */
   dryRunWriteInFlight: boolean;
+  followMonthPeak: AreaFollowMonthPeakSwitch;
   statusRaw: unknown;
   capacityPeak: SettingsUiCapacityPeak;
 };
@@ -165,6 +168,8 @@ const buildAreaEditorView = (editor: AreaEditorState): HomeLimitsEditorView => {
     marginError: marginVsCapError(hardCapKw, marginKw),
     reactionKw: reactionKwLabel(hardCapKw, marginKw),
     capacityPeak: editor.capacityPeak,
+    followMonthPeak: editor.followMonthPeak.shown,
+    followMonthPeakBusy: editor.followMonthPeak.busy,
     // Resolve the status against the LIVE edited cap + simulation state so the
     // card's Hard cap and posture track the inputs without a re-read.
     status: resolveHomeLimitsStatus(editor.statusRaw, {
@@ -177,6 +182,7 @@ const buildAreaEditorView = (editor: AreaEditorState): HomeLimitsEditorView => {
     onMarginChange: () => { void saveAreaCaps(); },
     onPeriodChange: (periodMinutes) => { void saveAreaPeriod(periodMinutes); },
     onControlToggle: (controlEnabled) => { void saveAreaControl(controlEnabled); },
+    onFollowMonthPeakToggle: (next) => { void editor.followMonthPeak.save(next, renderSection, finishAreaWrite); },
   };
 };
 
@@ -244,15 +250,18 @@ type AreaSettingsRead = {
   marginKw: number;
   dryRun: boolean;
   periodMinutes: CapacityPeriodMinutes;
+  /** `null` when the stored switch is not a boolean: the editor keeps what it showed. */
+  followMonthPeak: boolean | null;
   power: AreaPowerRead;
 };
 
 const readAreaSettings = async (homeId: string): Promise<AreaSettingsRead> => {
-  const [limitRaw, marginRaw, dryRunRaw, periodRaw, power] = await Promise.all([
+  const [limitRaw, marginRaw, dryRunRaw, periodRaw, followRaw, power] = await Promise.all([
     getSettingFresh(homeScopedSettingsKey(CAPACITY_LIMIT_KW, homeId)),
     getSettingFresh(homeScopedSettingsKey(CAPACITY_MARGIN_KW, homeId)),
     getSettingFresh(homeScopedSettingsKey(CAPACITY_DRY_RUN, homeId)),
     getSettingFresh(homeScopedSettingsKey(CAPACITY_PERIOD_MINUTES, homeId)),
+    getSettingFresh(homeScopedSettingsKey(CAPACITY_FOLLOW_MONTH_PEAK, homeId)),
     readAreaStatus(homeId),
   ]);
   return {
@@ -260,6 +269,7 @@ const readAreaSettings = async (homeId: string): Promise<AreaSettingsRead> => {
     marginKw: typeof marginRaw === 'number' && Number.isFinite(marginRaw) ? marginRaw : DEFAULT_MARGIN_KW,
     dryRun: typeof dryRunRaw === 'boolean' ? dryRunRaw : DEFAULT_DRY_RUN,
     periodMinutes: resolveCapacityPeriodMinutes(periodRaw, fallbackPeriodMinutes(homeId, power)),
+    followMonthPeak: readAreaFollowMonthPeak(followRaw),
     power,
   };
 };
@@ -293,6 +303,7 @@ const applyAreaRead = (homeId: string, areaName: string, read: AreaSettingsRead)
       capsWriteQueue,
       persistedDryRun: dryRun,
       dryRunWriteInFlight: false,
+      followMonthPeak: new AreaFollowMonthPeakSwitch(homeId, read.followMonthPeak ?? false),
       statusRaw: power.status,
       capacityPeak: power.capacityPeak,
     };
@@ -309,6 +320,7 @@ const applyAreaRead = (homeId: string, areaName: string, read: AreaSettingsRead)
     open.dryRun = dryRun;
     open.persistedDryRun = dryRun;
     open.periodMinutes = periodMinutes;
+    open.followMonthPeak.applyRead(read.followMonthPeak);
     open.statusRaw = power.status;
     open.capacityPeak = power.capacityPeak;
   }
@@ -630,7 +642,9 @@ export const notifyHomeLimitsSettingChanged = (key: string): void => {
   if (state.activePanel !== 'limits') return;
   const { selectedHomeId } = getHomeScope();
   if (selectedHomeId === MAIN_HOME_ID || areaEditor === null) return;
-  const capKeys = [CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CAPACITY_DRY_RUN, CAPACITY_PERIOD_MINUTES]
+  const capKeys = [
+    CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CAPACITY_DRY_RUN, CAPACITY_PERIOD_MINUTES, CAPACITY_FOLLOW_MONTH_PEAK,
+  ]
     .map((base) => homeScopedSettingsKey(base, selectedHomeId));
   if (capKeys.includes(key)) rereadArea(selectedHomeId);
 };

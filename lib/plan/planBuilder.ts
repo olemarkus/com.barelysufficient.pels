@@ -89,6 +89,7 @@ import { OvershootTracker } from './planBuilderOvershoot';
 import { buildPlanMeta, type PlanMetaCycleFacts } from './planBuilderMeta';
 import { attachDeferredReleaseIntents } from './planBuilderDecoration';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
+import type { HeldPowerLimitSettings } from '../power/heldCapacityLimit';
 
 export type { PlanBuilderDeps } from './planBuilderDeps';
 /** A battery's surplus offer moves the `storage_relief_state` log only by a step this large, W. */
@@ -121,7 +122,7 @@ export class PlanBuilder {
    * to a different Capacity limit or grid limit than another. A read outside a
    * build takes its own snapshot the same way.
    */
-  private get capacitySettings(): PowerLimitSettings { return this.deps.getCapacitySettings(); }
+  private get capacitySettings(): HeldPowerLimitSettings { return this.deps.getCapacitySettings(); }
 
   private get priceOptimizationSettings(): Record<string, PriceOptDeviceConfig> {
     return this.deps.getPriceOptimizationSettings();
@@ -408,6 +409,7 @@ export class PlanBuilder {
       powerTracker: this.powerTracker,
       capacityGuard: this.capacityGuard,
       capacityLimitKw: settings.limitKw,
+      hardCapSource: settings.hardCapSource,
       hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(heldContext),
       unrelievedPhase: sheddingPlan.unrelievedPhase,
       exportPhase: sheddingPlan.exportPhase,

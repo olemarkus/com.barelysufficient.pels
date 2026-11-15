@@ -1,4 +1,4 @@
-import type { CapacityPeriodMinutes } from '../../../contracts/src/capacitySettings.ts';
+import type { CapacityPeriodMinutes, HardCapSource } from '../../../contracts/src/capacitySettings.ts';
 import { capacityPeriodNoun } from './capacityPeriodCopy.ts';
 import type { SettingsUiPlanDeviceSnapshot } from '../../../contracts/src/settingsUi/plan.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
@@ -153,6 +153,7 @@ export const formatEnergyMeterMarkerLabels = (
   kind: 'target' | 'projected' | 'projected_with_control_on' | 'cap',
   valueKWh: number,
   periodMinutes: CapacityPeriodMinutes,
+  hardCapSource: HardCapSource = 'configured',
 ): HeroMeterMarkerLabels => {
   const period = capacityPeriodNoun(periodMinutes);
   if (kind === 'projected') {
@@ -171,8 +172,11 @@ export const formatEnergyMeterMarkerLabels = (
   // numbers sit in the headline directly above the bar): the cap's hourly kWh
   // is the threshold that turns the projection red, and it is printed nowhere
   // else in kWh.
+  // A cap held at this month's peak says so, in the same "set by" voice the
+  // safe-pace line uses, because the number differs from the one the owner saved.
   if (kind === 'cap') {
-    const label = `Hard cap this ${period} ${formatKWh(valueKWh)}`;
+    const cap = `Hard cap this ${period} ${formatKWh(valueKWh)}`;
+    const label = hardCapSource === 'month_peak' ? `${cap} · set by this month's peak` : cap;
     return { short: label, aria: label };
   }
   return { short: `Budget this ${period}`, aria: `Budget this ${period} ${formatKWh(valueKWh)}` };

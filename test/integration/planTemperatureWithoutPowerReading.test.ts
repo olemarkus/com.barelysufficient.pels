@@ -7,6 +7,7 @@ import { buildPlanInputDevice } from '../utils/planTestUtils';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 /**
  * A temperature device with no power reading goes through the temperature logic
@@ -40,7 +41,7 @@ describe('temperature device without a power reading', () => {
   const buildBuilder = (shedBehavior: ShedBehavior = { action: 'turn_off' }): PlanBuilder => new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0, periodMinutes: 60 }),
+    getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0, periodMinutes: 60 }),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
       getModeDeviceTargets: () => MODE_TARGETS,
       getShedBehavior: () => shedBehavior,

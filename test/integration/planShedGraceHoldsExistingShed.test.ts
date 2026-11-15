@@ -11,6 +11,7 @@ import {
 } from '../utils/planTestUtils';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const CAPACITY_SETTINGS = {
   capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 as const,
@@ -100,7 +101,7 @@ describe('shed grace', () => {
     return new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard,
-      getCapacitySettings: () => CAPACITY_SETTINGS,
+      getCapacitySettings: () => configuredHardCap(CAPACITY_SETTINGS),
       getPowerTracker: () => withCapacityPace(
         { lastTimestamp: Date.now(), lastPowerW: getPowerW() }, CAPACITY_SETTINGS, 1.84,
       ),

@@ -9,6 +9,7 @@ import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import type { PhaseFootprint } from '../../packages/planner-types/src/phaseFootprint';
 import type { MainFuse, PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { DevicePlan } from '../../lib/plan/planTypes';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const FUSE: MainFuse = { kind: 'on', supply: 'three_phase_neutral', amps: 25 };
 // The fuse's total, as the settings store applies it to the grid axis.
@@ -37,7 +38,7 @@ const buildCycle = (state: PlanEngineState, phasesKw: PhasesKw, fuse: MainFuse =
     ...planBuilderWiring(),
     getMainFuse: () => fuse,
     capacityGuard,
-    getCapacitySettings: () => limits,
+    getCapacitySettings: () => configuredHardCap(limits),
     getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now(), lastPowerW: netKw * 1000 }),
   }, state);
 };
@@ -351,7 +352,7 @@ describe('main fuse phase protection in the planner', () => {
         guard.phaseReadings.admit({ state: 'read', capabilityIds: [], powerW: [-6200, 1000, 1000] }, -4200, Date.now());
         return guard;
       })(),
-      getCapacitySettings: () => LIMITS,
+      getCapacitySettings: () => configuredHardCap(LIMITS),
       getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now(), lastPowerW: -4200 }),
     }, state);
     await builder.buildDevicePlanSnapshot([]);

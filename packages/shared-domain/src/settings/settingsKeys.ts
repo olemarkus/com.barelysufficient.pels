@@ -23,6 +23,10 @@ export const CAPACITY_LIMIT_KW = 'capacity_limit_kw';
 export const CAPACITY_MARGIN_KW = 'capacity_margin_kw';
 export const CAPACITY_DRY_RUN = 'capacity_dry_run';
 export const CAPACITY_PERIOD_MINUTES = 'capacity_period_minutes';
+// Whether the hard cap follows this month's highest completed quarter once it
+// is higher (15-minute period only). Home-scopable. Owner:
+// `./capacityFollowMonthPeak.ts`; read by `lib/power/capacitySettingsStore.ts`.
+export const CAPACITY_FOLLOW_MONTH_PEAK = 'capacity_follow_month_peak';
 export const POWER_SOURCE = 'power_source';
 // Explicit whole-home meter for the homey_energy power source. Device id
 // string; any non-string (never written, a legacy stored-null Automatic,

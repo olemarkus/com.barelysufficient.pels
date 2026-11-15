@@ -87,6 +87,8 @@ This is where the grid import limit, the capacity settings and the whole-home po
 
 On the 15-minute period, **Highest completed quarter this month** reports PELS's largest fully tracked 15-minute average for the current month. It is an operational estimate from the readings sent to PELS, not a grid bill or a reproduction of operator rules such as a minimum monthly peak.
 
+Beside it, **Follow this month's peak** suits a tariff that bills the month's highest quarter, as in Flanders. With it on and Capacity limit on, once this month's highest completed quarter is above the hard cap, PELS lets devices use power up to that peak instead: your grid tariff already counts it, so holding the house lower saves nothing. The safety margin still applies below the peak, the grid import limit and the main fuse never move, and from the first day of the next month the hard cap you set applies again. The Overview's hard cap marker then adds `set by this month's peak`. Daily budget, smart task and price planning keep planning against the hard cap you set. New installs in Belgium start with it on; for each meter area it is set on its own Limits & safety page.
+
 Important:
 
 - The selected-period hard cap is the only limit with an urgent manual-action alert. The grid import limit shows its own status on the Overview and does not fire hard-cap Flows.

@@ -15,6 +15,7 @@ const BOOTSTRAP_KEYS: Record<SettingsUiBootstrapKey, true> = {
   capacity_limit_kw: true,
   capacity_margin_kw: true,
   capacity_period_minutes: true,
+  capacity_follow_month_peak: true,
   capacity_dry_run: true,
   homey_energy_meter_device_id: true,
   capacity_priorities: true,

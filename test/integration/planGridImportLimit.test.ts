@@ -6,6 +6,7 @@ import { buildPlanInputDevice, steppedInputDevice } from '../utils/planTestUtils
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { PlanEngineState } from '../utils/planEngineStateFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const chargerProfile = { steps: [
   { id: 'off', planningPowerW: 0 },
@@ -23,7 +24,7 @@ const buildPlanner = (
 ): PlanBuilder => new PlanBuilder({
   ...planBuilderWiring(),
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-  getCapacitySettings: () => limits,
+  getCapacitySettings: () => configuredHardCap(limits),
   getPowerTracker: () => ({ buckets: {}, lastTimestamp: Date.now(), lastPowerW: totalKw * 1000 }),
 }, state);
 

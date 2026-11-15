@@ -127,6 +127,10 @@ export const settingsCapacityMonthlyPeak = document.querySelector<HTMLElement>(
 export const settingsCapacityMonthlyPeakValue = document.querySelector<HTMLElement>(
   '#settings-capacity-monthly-peak-value',
 );
+export const settingsCapacityFollowMonthPeakRow = document.getElementById('settings-capacity-follow-month-peak-row');
+export const settingsCapacityFollowMonthPeakInput = document.querySelector<MdSwitchElement>(
+  '#settings-capacity-follow-month-peak',
+);
 export const settingsCapacityMarginAlert = document.querySelector<HTMLElement>(
   '#settings-capacity-margin-alert',
 );

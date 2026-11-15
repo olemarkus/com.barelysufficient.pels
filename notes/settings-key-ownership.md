@@ -88,6 +88,15 @@ written only by that learner through setup's wiring; the settings UI does not wr
 (`shedBehaviors.ts`), and the daily-budget option and switch keys
 (`dailyBudgetSettings.ts`), all in `packages/shared-domain/src/settings/`, plus
 the keys covered below.
+`capacity_follow_month_peak` (home-scopable) belongs to
+`packages/shared-domain/src/settings/capacityFollowMonthPeak.ts`: a boolean is the
+owner's choice, anything else is malformed, and only a boolean is written. The runtime
+reads it with the capacity block (`lib/power/capacitySettingsStore.ts`), which owns
+absence: never written is off, and a malformed read carries the last accepted value,
+which starts as off in every home, so it never makes the block unavailable. Its
+effect, the hard cap live control holds, is resolved by `lib/power/heldCapacityLimit.ts`.
+The settings UI's switch (Main form and meter-area editor) writes it, and a new install
+in Belgium has it written on once (`lib/power/capacityMarketDefault.ts`).
 `price_optimization_settings` has one shared parser for device entries, legacy defaults,
 and provenance in `packages/shared-domain/src/settings/priceOptimization.ts`.
 The same owner defines the adjustment range and stored sign. The runtime and settings

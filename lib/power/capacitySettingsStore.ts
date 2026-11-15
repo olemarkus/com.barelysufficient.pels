@@ -1,7 +1,8 @@
 /**
  * Domain-owned read boundary for the capacity scalar settings block
- * (`capacity_limit_kw`, `capacity_margin_kw`, `capacity_dry_run`, and
- * `capacity_period_minutes`, and independent Main-home grid/capacity enablement). Consumers
+ * (`capacity_limit_kw`, `capacity_margin_kw`, `capacity_dry_run`,
+ * `capacity_period_minutes` and `capacity_follow_month_peak`, and independent
+ * Main-home grid/capacity enablement). Consumers
  * depend on this type, never on `homey.settings` — the interface does not
  * expose the SDK, so capacity code cannot read or normalise the persisted
  * scalars itself. This module implements the reader over the SDK-free
@@ -41,6 +42,12 @@
  *   the window the carried value stands, without a retry, until an explicit
  *   write of one of these keys (`noteWrite`) opens a fresh window: a correction
  *   whose first read misses is still asked again.
+ *
+ * The month-peak switch (`capacity_follow_month_peak`, every home) follows the
+ * same carry, but it starts accepted as off: a never-written key is off, and a
+ * malformed read carries the last accepted value without ever making the block
+ * unavailable, because the switch can only raise the held cap and off is the
+ * posture every install ran on before it existed.
  */
 
 /**
@@ -65,6 +72,9 @@ import {
   type PowerLimitControlRead,
 } from '../../packages/shared-domain/src/settings/powerLimits';
 import {
+  resolveCapacityFollowMonthPeakSetting,
+} from '../../packages/shared-domain/src/settings/capacityFollowMonthPeak';
+import {
   MAIN_FUSE_OFF,
   effectiveGridImportLimitKw,
   resolveMainFuseSetting,
@@ -83,6 +93,7 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_PERIOD_MINUTES,
+  CAPACITY_FOLLOW_MONTH_PEAK,
   homeScopedSettingsKey,
 } from '../utils/settingsKeys';
 
@@ -118,6 +129,7 @@ const CARRIED_FIELD_KEYS: ReadonlySet<string> = new Set([
   MAIN_FUSE_SUPPLY,
   MAIN_FUSE_AMPS,
   CAPACITY_PERIOD_MINUTES,
+  CAPACITY_FOLLOW_MONTH_PEAK,
 ]);
 
 /** A field's value as this read resolved it, or the read could not produce one. */
@@ -130,15 +142,20 @@ const NOTHING_ACCEPTED: { state: 'none' } = { state: 'none' };
 
 /**
  * The fields this store carries, each on its own: the Capacity limit switch,
- * the grid import pair (switch and threshold, usable only together) and the
- * period. A malformed one never holds back another's well-formed write.
+ * the grid import pair (switch and threshold, usable only together), the
+ * period and the month-peak switch. A malformed one never holds back another's
+ * well-formed write.
  */
 type CarriedFields<T extends 'read' | 'accepted'> = {
   capacityEnabled: T extends 'read' ? FieldRead<boolean> : AcceptedField<boolean>;
   gridImportLimitKw: T extends 'read' ? FieldRead<number | null> : AcceptedField<number | null>;
   mainFuse: T extends 'read' ? FieldRead<MainFuse> : AcceptedField<MainFuse>;
   periodMinutes: T extends 'read' ? FieldRead<CapacityPeriodMinutes> : AcceptedField<CapacityPeriodMinutes>;
+  followMonthPeak: T extends 'read' ? FieldRead<boolean> : AcceptedField<boolean>;
 };
+
+/** Off until the owner turns it on, in every home; see the module contract. */
+const FOLLOW_MONTH_PEAK_OFF: AcceptedField<boolean> = { state: 'accepted', value: false };
 
 /**
  * A meter area has no switches of its own (Main-home MVP): capacity control
@@ -177,6 +194,11 @@ function readMainHomeSwitches(
       settings.get(MAIN_FUSE_AMPS),
     ),
   };
+}
+
+/** The month-peak switch as read: a never-written key is off; a listed one must read back a boolean. */
+function readFollowMonthPeak(raw: unknown, listed: boolean): FieldRead<boolean> {
+  return listed ? resolveCapacityFollowMonthPeakSetting(raw) : { state: 'resolved', value: false };
 }
 
 /**
@@ -234,6 +256,7 @@ const CAPACITY_SCALAR_KEYS: ReadonlySet<string> = new Set([
   CAPACITY_MARGIN_KW,
   CAPACITY_DRY_RUN,
   CAPACITY_PERIOD_MINUTES,
+  CAPACITY_FOLLOW_MONTH_PEAK,
 ]);
 
 /** Settings-backed capacity reader; setup supplies the SDK-free port and owns no interpretation. */
@@ -250,6 +273,7 @@ export function createCapacitySettingsStore(
     gridImportLimitKw: isMain ? NOTHING_ACCEPTED : METER_AREA_GRID_IMPORT_LIMIT,
     mainFuse: isMain ? NOTHING_ACCEPTED : METER_AREA_MAIN_FUSE,
     periodMinutes: NOTHING_ACCEPTED,
+    followMonthPeak: FOLLOW_MONTH_PEAK_OFF,
   };
   // When the open malformed-read window started; null while every carried field
   // reads well-formed, or after an explicit write until the next malformed read.
@@ -279,26 +303,30 @@ export function createCapacitySettingsStore(
         const margin = settings.get(homeScopedSettingsKey(CAPACITY_MARGIN_KW, homeId));
         const dryRun = settings.get(homeScopedSettingsKey(CAPACITY_DRY_RUN, homeId));
         const periodKey = homeScopedSettingsKey(CAPACITY_PERIOD_MINUTES, homeId);
+        const followKey = homeScopedSettingsKey(CAPACITY_FOLLOW_MONTH_PEAK, homeId);
         const fallback = lastGood();
         const read: CarriedFields<'read'> = {
           ...(isMain
             ? readMainHomeSwitches(settings, keys)
             : METER_AREA_SWITCHES_READ),
           periodMinutes: readPeriodMinutes(settings.get(periodKey), keys.includes(periodKey), fallback.periodMinutes),
+          followMonthPeak: readFollowMonthPeak(settings.get(followKey), keys.includes(followKey)),
         };
         const capacityEnabled = carryField(read.capacityEnabled, accepted.capacityEnabled);
         const gridImportLimitKw = carryField(read.gridImportLimitKw, accepted.gridImportLimitKw);
         const mainFuse = carryField(read.mainFuse, accepted.mainFuse);
         const periodMinutes = carryField(read.periodMinutes, accepted.periodMinutes);
+        const followMonthPeak = carryField(read.followMonthPeak, accepted.followMonthPeak);
         // A malformed field with nothing accepted to carry (boot): keep the
         // caller's safe boot posture, and accept nothing from this read either.
         if (
           capacityEnabled.state === 'none' || gridImportLimitKw.state === 'none'
           || mainFuse.state === 'none' || periodMinutes.state === 'none'
+          || followMonthPeak.state === 'none'
         ) {
           return { state: 'unavailable' };
         }
-        accepted = { capacityEnabled, gridImportLimitKw, mainFuse, periodMinutes };
+        accepted = { capacityEnabled, gridImportLimitKw, mainFuse, periodMinutes, followMonthPeak };
         const value: CapacityScalarSettings = {
           capacityEnabled: capacityEnabled.value,
           gridImportLimitKw: effectiveGridImportLimitKw(gridImportLimitKw.value, mainFuse.value),
@@ -306,6 +334,7 @@ export function createCapacitySettingsStore(
           marginKw: isFiniteNumber(margin) ? margin : fallback.marginKw,
           dryRun: typeof dryRun === 'boolean' ? dryRun : fallback.dryRun,
           periodMinutes: periodMinutes.value,
+          followMonthPeak: followMonthPeak.value,
         };
         if (Object.values(read).every((field) => field.state === 'resolved')) {
           malformedSinceMs = null;

@@ -187,7 +187,7 @@ describe('Choose what PELS does', () => {
       facts.publishSetupPower({ state: 'received' });
       facts.publishSetupHardCapRead(true, {
         capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2,
-        dryRun: true, periodMinutes: 60,
+        dryRun: true, periodMinutes: 60, followMonthPeak: false,
       });
       facts.publishSetupPrices({
         respondToPrices: true, budgetShapesByPrice: false,
@@ -219,7 +219,7 @@ describe('Choose what PELS does', () => {
       facts.publishSetupPower({ state: 'received' });
       facts.publishSetupHardCapRead(true, {
         capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2,
-        dryRun: true, periodMinutes: 60,
+        dryRun: true, periodMinutes: 60, followMonthPeak: false,
       });
       facts.publishSetupPrices({
         respondToPrices: true, budgetShapesByPrice: false,
@@ -241,7 +241,7 @@ describe('Choose what PELS does', () => {
       facts.publishSetupPower({ state: 'received' });
       facts.publishSetupHardCapRead(true, {
         capacityEnabled: false, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2,
-        dryRun: true, periodMinutes: 60,
+        dryRun: true, periodMinutes: 60, followMonthPeak: false,
       });
       facts.publishSetupPrices({
         respondToPrices: true, budgetShapesByPrice: false,

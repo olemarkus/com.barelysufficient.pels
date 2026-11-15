@@ -33,7 +33,7 @@ export type HomePowerPipelineDeps = Pick<PowerSamplePipelineDeps,
   | 'savePowerTracker'
   | 'planRebuildThrottle'
   | 'getPowerTracker'
-  | 'getCapacitySettings'
+  | 'getHeldPowerLimits'
   | 'getCapacityGuard'
   | 'getOutdoorTemperatureC'
   | 'recordPvGenerationSample'
@@ -69,7 +69,7 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
   return new PowerSamplePipeline({
     ingestQueue: createSampleIngestQueue(),
     getPowerTracker: deps.getPowerTracker,
-    getCapacitySettings: deps.getCapacitySettings,
+    getHeldPowerLimits: deps.getHeldPowerLimits,
     getTimeZone: ctx.getTimeZone,
     getCapacityGuard: deps.getCapacityGuard,
     getPlanEngine: deps.getPlanEngine,

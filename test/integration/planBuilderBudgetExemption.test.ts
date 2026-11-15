@@ -13,6 +13,7 @@ import { fixtureControlPosture, resolveFixtureCurrentOn, withFixtureResidualKw, 
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { capacitySettingsForPace } from '../helpers/capacityPaceFixture';
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 // `binaryControl` moved off the `PlanInputDevice` base onto the binary cluster.
 // Route a loose fixture (with `binaryCapabilityId` so the device stays binary)
@@ -144,7 +145,7 @@ describe('PlanBuilder budget exemption handling', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      getCapacitySettings: () => capacitySettingsForPace(tracker(), ROOMY_CAPACITY, dynamicSoftLimitKw),
+      getCapacitySettings: () => configuredHardCap(capacitySettingsForPace(tracker(), ROOMY_CAPACITY, dynamicSoftLimitKw)),
       getPowerTracker: tracker,
       getDailyBudgetSnapshot: () => dailyBudgetSnapshot,
     }, createPlanEngineState());
@@ -193,7 +194,7 @@ describe('PlanBuilder budget exemption handling', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
       getPowerTracker: () => ({
         buckets: {
           [currentHourIso]: 1.8,
@@ -229,7 +230,7 @@ describe('PlanBuilder budget exemption handling', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
       getPowerTracker: () => ({
         buckets: {
           [lastSampleHourIso]: 9,

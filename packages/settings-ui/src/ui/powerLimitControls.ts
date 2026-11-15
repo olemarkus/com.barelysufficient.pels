@@ -16,6 +16,8 @@ import {
   settingsCapacityMarginInput,
   settingsCapacityPeriodSelect,
   settingsCapacityMonthlyPeak,
+  settingsCapacityFollowMonthPeakRow,
+  settingsCapacityFollowMonthPeakInput,
   settingsCapacityMarginAlert,
   settingsCapacityReactionHint,
   settingsCapacityChoice,
@@ -103,8 +105,15 @@ export const syncCapacityLimitControls = (scalars: CapacityScalarSettings): void
   if (settingsCapacityMarginInput) settingsCapacityMarginInput.value = String(marginKw);
   if (settingsCapacityPeriodSelect) settingsCapacityPeriodSelect.value = String(periodMinutes);
   if (settingsCapacityMonthlyPeak) settingsCapacityMonthlyPeak.hidden = periodMinutes !== 15;
+  syncFollowMonthPeakControl(scalars);
   syncCapacityReactionHint(limitKw, marginKw);
   renderMarginAlert(getMarginVsLimitError(limitKw, marginKw));
+};
+
+/** The month-peak switch, offered with the 15-minute period only. */
+export const syncFollowMonthPeakControl = (scalars: CapacityScalarSettings): void => {
+  if (settingsCapacityFollowMonthPeakRow) settingsCapacityFollowMonthPeakRow.hidden = scalars.periodMinutes !== 15;
+  if (settingsCapacityFollowMonthPeakInput) settingsCapacityFollowMonthPeakInput.selected = scalars.followMonthPeak;
 };
 
 export const refreshLimitsValidationHints = () => {

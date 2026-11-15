@@ -21,6 +21,7 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_PERIOD_MINUTES,
+  CAPACITY_FOLLOW_MONTH_PEAK,
   HOMEY_ENERGY_METER_DEVICE_ID,
   POWER_SOURCE,
   BATTERY_CONTROL_DEVICES,
@@ -147,6 +148,7 @@ const CAPACITY_SETTINGS_KEYS = new Set([
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_PERIOD_MINUTES,
+  CAPACITY_FOLLOW_MONTH_PEAK,
   CAPACITY_DRY_RUN,
   POWER_SOURCE,
   HOMEY_ENERGY_METER_DEVICE_ID,
@@ -162,7 +164,9 @@ const refreshCapacitySettings = (key: string, context: 'settings.set' | 'setting
     invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
     refreshOverviewPlanIfVisible(context);
   }
-  if (key === CAPACITY_DRY_RUN) {
+  // The held hard cap moves with the switch: the running scalars and the hero's cap.
+  if (key === CAPACITY_DRY_RUN || key === CAPACITY_FOLLOW_MONTH_PEAK) {
+    if (key === CAPACITY_FOLLOW_MONTH_PEAK) invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
     invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
     refreshOverviewPlanIfVisible(context);
   }

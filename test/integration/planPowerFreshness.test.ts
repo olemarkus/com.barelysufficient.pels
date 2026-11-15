@@ -17,6 +17,7 @@ import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixt
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { formatDeviceReasonUserFacing } from '../../packages/shared-domain/src/planReasonFormatting';
 import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 // The producer resolves the reading. Tests state the two real inputs — what
 // the meter read and when it last sampled — and receive either a measured
@@ -204,7 +205,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     return new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => settings,
+      getCapacitySettings: () => configuredHardCap(settings),
       getPowerTracker: () => params.tracker,
       ...(params.structuredLog ? { structuredLog: params.structuredLog as never } : {}),
     }, params.state ?? createPlanEngineState());
@@ -347,7 +348,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       getPowerTracker: () => tracker,
       // A daily budget that binds: 0.3 kWh planned for this hour under a 6 kW cap.
       getDailyBudgetSnapshot: () => ({
@@ -402,7 +403,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getModeDeviceTargets: () => ({ Home: { thermo: 21 } }),
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 16 }),
@@ -441,7 +442,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getModeDeviceTargets: () => ({ Home: { unit: modeTargetC } }),
         getThermalDirection: () => direction,
@@ -478,7 +479,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       getPowerTracker: () => tracker,
       decorateDeferredObjectives: (input) => ({
         chargingPhaseRequirements: new Map(), admittedDevices: input.devices,
@@ -511,7 +512,7 @@ describe('planner behavior on the silent-meter fail-closed pass', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 6, marginKw: 0.2, periodMinutes: 60 }),
       getPowerTracker: () => tracker,
       decorateDeferredObjectives: (input) => ({
         chargingPhaseRequirements: new Map(), admittedDevices: input.devices,

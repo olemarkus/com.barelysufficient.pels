@@ -12,6 +12,7 @@ import { PriceLevel } from '../../lib/price/priceLevels';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 // The tracker is the single power latch; tests drive the whole-home total here.
 let lastPowerW = 0;
@@ -97,7 +98,7 @@ const buildBuilder = (params: {
   return new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: capacityGuard,
-    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
+    getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
       getModeDeviceTargets: () => ({
         Home: Object.fromEntries(params.deviceIds.map((id) => [id, 20])),

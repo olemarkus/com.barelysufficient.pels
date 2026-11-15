@@ -19,6 +19,7 @@ import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dail
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
 import { testLogger } from '../utils/testLogger';
 import { noDrawEvidence } from '../helpers/observedDeviceReadsDouble';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const HOUR_MS = 60 * 60 * 1000;
 const START_MS = Date.UTC(2026, 9, 5, 12, 10, 0);
@@ -90,7 +91,7 @@ const buildHarness = (scenario: Scenario) => {
     getCapacityDryRun: () => false,
     getMainFuse: () => ({ kind: 'off' }),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => scenario.settings,
+    getCapacitySettings: () => configuredHardCap(scenario.settings),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
       getOperatingMode: () => 'Home',
       getModeDeviceTargets: () => ({}),

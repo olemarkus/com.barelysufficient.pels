@@ -15,6 +15,14 @@ export type PowerLimitSettings = CapacitySettings & {
   gridImportLimitKw: number | null;
 };
 
+/**
+ * Which hard cap live control holds: the configured one, or this month's
+ * highest completed quarter once it is higher and the owner asked PELS to
+ * follow it (`capacity_follow_month_peak`). Resolved by the power owner
+ * (`lib/power/heldCapacityLimit.ts`).
+ */
+export type HardCapSource = 'configured' | 'month_peak';
+
 /** How the home's connection is wired: this decides what a fuse size means in kW. */
 export type MainFuseSupply = 'one_phase' | 'three_phase_neutral' | 'three_phase_no_neutral';
 
@@ -38,6 +46,9 @@ export type PowerLimitCeiling = {
 
 /**
  * One home's full capacity scalar block: the control settings plus the
- * dry-run flag that decides whether they actuate.
+ * dry-run flag that decides whether they actuate, and the owner's switch for
+ * holding the hard cap at this month's peak once it is higher
+ * (`capacity_follow_month_peak`). The switch is not a control setting: live
+ * control reads its effect through the held limits (`lib/power/heldCapacityLimit.ts`).
  */
-export type CapacityScalarSettings = PowerLimitSettings & { dryRun: boolean };
+export type CapacityScalarSettings = PowerLimitSettings & { dryRun: boolean; followMonthPeak: boolean };

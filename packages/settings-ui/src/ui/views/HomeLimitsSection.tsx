@@ -11,6 +11,8 @@ import {
   HOME_LIMITS_REACTION_LABEL,
   HOME_LIMITS_REACTION_NOTE,
   HOME_LIMITS_GLOBAL_SETTINGS_ELSEWHERE,
+  FOLLOW_MONTH_PEAK_HINT,
+  FOLLOW_MONTH_PEAK_LABEL,
 } from '../homeLimitsCopy.ts';
 import {
   composeHomeLimitsStateLine,
@@ -56,6 +58,10 @@ export type HomeLimitsEditorView = {
   reactionKw: string;
   /** Highest completed 15-minute average in the current local month. */
   capacityPeak: SettingsUiCapacityPeak;
+  /** The month-peak switch, offered with the 15-minute period only. */
+  followMonthPeak: boolean;
+  /** True while a month-peak write is in flight; disables the switch. */
+  followMonthPeakBusy: boolean;
   /** Resolved status blob for the card; null while the first read is in flight. */
   status: HomeLimitsStatus | null;
   onHardCapInput: (value: string) => void;
@@ -65,6 +71,7 @@ export type HomeLimitsEditorView = {
   onPeriodChange: (periodMinutes: CapacityPeriodMinutes) => void;
   /** Positive toggle: `controlEnabled` true = PELS controls this area (dry-run off). */
   onControlToggle: (controlEnabled: boolean) => void;
+  onFollowMonthPeakToggle: (followMonthPeak: boolean) => void;
 };
 
 export type HomeLimitsSectionProps = {
@@ -146,6 +153,21 @@ const CapFields = ({ editor }: { editor: HomeLimitsEditorView }) => (
           Tracked estimate; your grid operator may apply a minimum or combine several monthly peaks.
         </span>
       </div>
+    )}
+    {editor.periodMinutes === 15 && (
+      <label class="md-switch-row" id="home-limits-follow-month-peak-row">
+        <MdSwitch
+          id="home-limits-follow-month-peak"
+          aria-label={FOLLOW_MONTH_PEAK_LABEL}
+          {...(editor.followMonthPeak ? { selected: true } : {})}
+          {...(editor.followMonthPeakBusy ? { disabled: true } : {})}
+          onChange={(event: Event) => editor.onFollowMonthPeakToggle(readSwitchSelected(event))}
+        />
+        <span class="md-switch-row__content">
+          <span class="md-switch-row__label pels-text-settings-label">{FOLLOW_MONTH_PEAK_LABEL}</span>
+          <small class="field__hint">{FOLLOW_MONTH_PEAK_HINT}</small>
+        </span>
+      </label>
     )}
   </section>
 );

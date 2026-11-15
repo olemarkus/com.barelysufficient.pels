@@ -1,4 +1,4 @@
-import type { CapacityPeriodMinutes } from '../capacitySettings.js';
+import type { CapacityPeriodMinutes, HardCapSource } from '../capacitySettings.js';
 import type { DeviceOverviewSnapshot } from '../deviceOverview.js';
 import type { DeviceStatus } from '../deviceStatus.js';
 import type { SettingsUiHomeScope } from '../homeScopedRead.js';
@@ -53,8 +53,14 @@ export type SettingsUiPlanMetaSnapshotBase = {
   budgetPaceKw: number | null;
   projectedExemptKw: number | null;
   softLimitSource: SoftLimitSource;
-  /** From `capacitySettings.limitKw` — a plain number, never absent or null. */
+  /**
+   * The hard cap live control holds (`lib/power/heldCapacityLimit.ts`): the
+   * configured one, or this month's peak once it is higher and the owner asked
+   * PELS to follow it. A plain number, never absent or null.
+   */
   hardCapLimitKw: number;
+  /** Which hard cap `hardCapLimitKw` is, so a reader can say why without comparing settings. */
+  hardCapSource: HardCapSource;
   capacityPeriodMinutes: CapacityPeriodMinutes;
   /** Whether usedKWh covers the whole elapsed part of this capacity period. */
   capacityPeriodCoverageComplete: boolean;

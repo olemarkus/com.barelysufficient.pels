@@ -22,6 +22,7 @@ import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/p
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DEVICE_ID = 'dev_water_heater';
@@ -229,7 +230,7 @@ const buildBuilder = (
   return new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: capacityGuard,
-    getCapacitySettings: () => capacitySettings,
+    getCapacitySettings: () => configuredHardCap(capacitySettings),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
       getOperatingMode: () => overrides.modeRef?.current ?? 'Home',
       getPriceOptimizationEnabled: () => true,
@@ -376,7 +377,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getOperatingMode: () => modeRef.current,
         getModeDeviceTargets: () => ({ [modeRef.current]: { [DEVICE_ID]: TARGET_C - 3 } }),
@@ -639,7 +640,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getPriceOptimizationEnabled: () => true }),
       getPowerTracker: () => powerTracker,
       getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),

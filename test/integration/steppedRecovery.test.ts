@@ -12,6 +12,7 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { buildPlanCycle } from '../utils/planContextPowerFixture';
 import { applyRestorePlanForSpec, buildPlanInputDevice, steppedPlanDevice } from '../utils/planTestUtils';
 import { testLogger } from '../utils/testLogger';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const steppedLoad = (isEvCharger: boolean, overrides: Parameters<typeof steppedPlanDevice>[0] = {}) => steppedPlanDevice({
   id: 'load', name: 'Load', isEvCharger,
@@ -172,7 +173,7 @@ function recoveryTimeline(kind: LoadKind) {
   let headroom = 4;
   const builder = new PlanBuilder({
     ...planBuilderWiring(), capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => settings,
+    getCapacitySettings: () => configuredHardCap(settings),
     getShedBehavior: () => ({ action: kind === 'binary' ? 'turn_off' : 'set_step' }),
     getPowerTracker: () => withCapacityPace({
       lastTimestamp: Date.now(), lastPowerW: (5 - headroom) * 1000,

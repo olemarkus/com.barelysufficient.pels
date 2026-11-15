@@ -21,6 +21,7 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 /**
  * During an active smart task the task decides whether the device runs, also with
@@ -69,7 +70,7 @@ const buildBuilderDeps = (
   ...planBuilderWiring(),
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
   // Roomy: nothing presses on capacity, so only the task can hold the device off.
-  getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
+  getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
   resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getShedBehavior: () => ({ action: 'set_step' }) }),
   getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 500 }),
   // The owner's limiting floor is a rung, which is what the hold must NOT stop at.
@@ -227,7 +228,7 @@ describe('a smart task’s deferred hour', () => {
     let powerW = 4000;
     const builder = new PlanBuilder({
       ...buildBuilderDeps(idleDecision),
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
       getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now(), lastPowerW: powerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }), 5),
     }, createPlanEngineState());
 
@@ -248,7 +249,7 @@ describe('a smart task’s deferred hour', () => {
     // A fresh capacity reason is pressure: the hold alone is what is excluded.
     const tight = new PlanBuilder({
       ...buildBuilderDeps(idleDecision),
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 1, marginKw: 0.2, periodMinutes: 60 }),
       getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now(), lastPowerW: 4500 }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 1, marginKw: 0.2, periodMinutes: 60 }), 0.8),
     }, createPlanEngineState());
     const plan = await tight.buildDevicePlanSnapshot([steppedCharger(controllable)]);

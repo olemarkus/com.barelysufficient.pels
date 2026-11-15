@@ -10,6 +10,7 @@ import { PriceLevel } from '../../lib/price/priceLevels';
 import { buildMainHomeScopeForTest, configureHomeModeCatalog, createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { AppContext } from '../../lib/app/appContext';
 import { createLastControlledRepository } from '../../lib/plan/lastControlledStore';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 // Identity proof for the main-home scope: the persisted writers must hit the
 // EXACT unsuffixed keys the factories hardwired before the HomeScope refactor
@@ -78,7 +79,9 @@ describe('buildMainHomeScope', () => {
     ctx.capacitySettings = nextSettings;
     ctx.capacityDryRun = true;
 
-    expect(scope.getCapacitySettings()).toBe(nextSettings);
+    // Live control holds these limits; with the month-peak switch off the hard
+    // cap is the configured one.
+    expect(scope.getCapacitySettings()).toEqual(configuredHardCap(nextSettings));
     expect(scope.getCapacityDryRun()).toBe(true);
     expect(getSpy).not.toHaveBeenCalledWith(CAPACITY_LIMIT_KW);
     expect(getSpy).not.toHaveBeenCalledWith(CAPACITY_MARGIN_KW);

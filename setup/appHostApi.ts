@@ -74,7 +74,8 @@ import type { AppSmartTaskApi, SmartTaskWriteResult } from './appSmartTaskApi';
 import type { AppSmartTaskPayloads } from './appSmartTaskPayloads';
 import type { SnapshotRefreshOptions } from '../lib/device/snapshotRefreshScheduler';
 import type { AppRuntimeHandles } from './appRuntimeHandles';
-import { resolveCurrentMonthQuarterPeakKw } from '../lib/power/capacityPeak';
+import { capacityMonthPeakKw, resolveCurrentMonthCapacityPeak } from '../lib/power/capacityPeak';
+import { resolveHeldPowerLimits, type HeldPowerLimitSettings } from '../lib/power/heldCapacityLimit';
 import {
   readHomeBatteryDevices,
   resolveCapacityControlEnabled,
@@ -108,6 +109,8 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected abstract readonly smartTaskApi: AppSmartTaskApi;
   protected abstract readonly smartTaskPayloads: AppSmartTaskPayloads;
   protected abstract readonly runtime: AppRuntimeHandles;
+  /** Main's month-peak switch, held by `PelsApp` beside the scalars it installs. */
+  protected abstract capacityFollowMonthPeak: boolean;
   // The price wiring replaces PelsApp's default once the coordinator exists.
   public abstract getTaskPricePeriodsForUi: () => SettingsUiTaskPricePeriod[];
   public abstract getCombinedPricesForUi: () => unknown;
@@ -119,6 +122,7 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   public getCapacityScalars = (): CapacityScalarSettings => ({
     ...this.context.capacitySettings,
     dryRun: this.context.capacityDryRun,
+    followMonthPeak: this.capacityFollowMonthPeak,
   });
 
   public readPriceOptimizationSetup = (): PriceOptimizationSetupRead => {
@@ -148,10 +152,14 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
     return coordinator.suggestPriceSetup();
   };
 
-  public getCurrentMonthCapacityPeakKw = (): number | null => resolveCurrentMonthQuarterPeakKw(
-    this.context.powerTracker,
-    this.getTimeZone(),
-    Date.now(),
+  /** Main's limits as live control holds them (`lib/power/heldCapacityLimit.ts`). */
+  public readHeldPowerLimits = (): HeldPowerLimitSettings => resolveHeldPowerLimits(
+    this.getCapacityScalars(),
+    resolveCurrentMonthCapacityPeak(this.context.powerTracker, this.getTimeZone(), Date.now()),
+  );
+
+  public getCurrentMonthCapacityPeakKw = (): number | null => capacityMonthPeakKw(
+    resolveCurrentMonthCapacityPeak(this.context.powerTracker, this.getTimeZone(), Date.now()),
   );
 
   // The read answers `unavailable` when the service is not wired yet, because

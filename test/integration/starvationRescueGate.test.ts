@@ -25,6 +25,7 @@ import {
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 // The tracker is the single power latch; tests drive the whole-home total here.
 const LATCHED_TOTAL_W = 1.5 * 1000;
@@ -221,7 +222,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
   return new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: capacityGuard,
-    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
+    getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getPriceOptimizationEnabled: () => true }),
     getPowerTracker: () => ({ ...buildPowerTracker(DAY_START_UTC), lastPowerW: LATCHED_TOTAL_W }),
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(hoursInDay),

@@ -16,6 +16,7 @@ import { readMainFuseForm, syncMainFuseControls } from './mainFuseControls.ts';
 import {
   settingsGridImportLimitInput,
   settingsCapacityMonthlyPeakValue,
+  settingsCapacityFollowMonthPeakInput,
   settingsPowerSourceSelect,
   settingsSimulationModeInput,
   dryRunBanner,
@@ -79,7 +80,7 @@ import {
   type PowerReadingsFact,
 } from '../../../shared-domain/src/powerReadingsBanner.ts';
 import { logSettingsError } from './logging.ts';
-import { showToast } from './toast.ts';
+import { showToast, showToastError } from './toast.ts';
 import {
   readCurrentCapacitySettings,
   resolveCapacityScalars,
@@ -87,6 +88,7 @@ import {
   writeLimitsAndFuseSettings,
   writeCapacityOffSetting,
   writeCapacityPeriodSetting,
+  writeFollowMonthPeakSetting,
   writeSimulationSetting,
 } from './capacitySettingsPersistence.ts';
 import { refreshPlanSurface } from './planSurfaceRefresh.ts';
@@ -108,6 +110,7 @@ type CapacitySettingsCommand =
   | ({ kind: 'limits'; mainFuse: MainFuse } & PowerLimitSettings)
   | { kind: 'simulation'; dryRun: boolean }
   | { kind: 'period'; periodMinutes: 15 | 60 }
+  | { kind: 'follow-month-peak'; followMonthPeak: boolean }
   | { kind: 'capacity-off' };
 
 // Mirrors the runtime snapshot's lifecycle: simulation is the boot default,
@@ -119,6 +122,7 @@ let lastGoodCapacityScalars: CapacityScalarSettings = {
   marginKw: 0.2,
   dryRun: true,
   periodMinutes: DEFAULT_CAPACITY_PERIOD_MINUTES,
+  followMonthPeak: false,
 };
 
 // Whether the owner has saved a hard cap decides both the setup path's Limits
@@ -301,6 +305,7 @@ const resolveCapacitySettingsCommand = (
     periodMinutes: command.periodMinutes,
   };
   if (command.kind === 'period') return { ...stored, periodMinutes: command.periodMinutes };
+  if (command.kind === 'follow-month-peak') return { ...stored, followMonthPeak: command.followMonthPeak };
   if (command.kind === 'capacity-off') return { ...stored, capacityEnabled: false };
   return { ...stored, dryRun: command.dryRun };
 };
@@ -513,6 +518,7 @@ const writeCapacityCommand = async (
   if (command.kind === 'limits') await writeLimitsAndFuseSettings(current, stored, resolved, command.mainFuse);
   else if (command.kind === 'period') await writeCapacityPeriodSetting(current, resolved.periodMinutes);
   else if (command.kind === 'capacity-off') await writeCapacityOffSetting(stored);
+  else if (command.kind === 'follow-month-peak') await writeFollowMonthPeakSetting(stored, resolved.followMonthPeak);
   else await writeSimulationSetting(current, resolved.dryRun);
 };
 
@@ -568,7 +574,7 @@ const saveCapacitySettingsCommand = async (
   if (command.kind === 'limits') {
     publishHardCapRead(true, committed);
     syncCapacityLimitControls(committed);
-  } else if (command.kind === 'period' || command.kind === 'capacity-off') {
+  } else if (command.kind === 'period' || command.kind === 'capacity-off' || command.kind === 'follow-month-peak') {
     if (lastHardCapConfigured !== undefined) publishHardCapRead(lastHardCapConfigured, committed);
     syncCapacityLimitControls(committed);
   } else {
@@ -607,7 +613,7 @@ export const saveSettingsLimitsSettings = async () => {
 // One-tap setup actions: queued behind any form save, each writing only its own
 // field, so neither confirms the built-in hard cap.
 const saveCapacityFieldCommand = async (
-  command: Extract<CapacitySettingsCommand, { kind: 'period' | 'capacity-off' }>,
+  command: Extract<CapacitySettingsCommand, { kind: 'period' | 'capacity-off' | 'follow-month-peak' }>,
   successMessage: string,
 ): Promise<void> => {
   const previous = limitsSaveQueue;
@@ -626,6 +632,11 @@ const saveCapacityFieldCommand = async (
 export const saveCapacityPeriodSettings = (periodMinutes: 15 | 60): Promise<void> => (
   saveCapacityFieldCommand({ kind: 'period', periodMinutes }, 'Capacity period saved.')
 );
+
+// The month-peak switch saves itself, bound here beside its command like the plan-measurement subscription above.
+settingsCapacityFollowMonthPeakInput?.addEventListener('change', (event) => void saveCapacityFieldCommand({
+  kind: 'follow-month-peak', followMonthPeak: (event.currentTarget as MdSwitchElement).selected,
+}, 'Month peak setting saved.').catch((error) => showToastError(error, 'Could not save the month peak setting.')));
 
 export const saveCapacityOffSettings = (): Promise<void> => (
   saveCapacityFieldCommand({ kind: 'capacity-off' }, 'Capacity limit turned off.')

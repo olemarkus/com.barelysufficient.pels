@@ -732,6 +732,16 @@
           <strong class="settings-result__value" id="settings-capacity-monthly-peak-value">Peak unavailable</strong>
           <span class="settings-result__note">Based on readings PELS received, not your grid operator’s billing calculation.</span>
         </div>
+        <!-- Offered with the 15-minute period only, like the readout above
+             (powerLimitControls.ts syncCapacityLimitControls). Same words as
+             FOLLOW_MONTH_PEAK_LABEL / _HINT in homeLimitsCopy.ts. -->
+        <div class="md-switch-row" id="settings-capacity-follow-month-peak-row" hidden>
+          <md-switch id="settings-capacity-follow-month-peak" aria-labelledby="settings-capacity-follow-month-peak-label"></md-switch>
+          <span class="md-switch-row__content">
+            <span class="md-switch-row__label pels-text-settings-label" id="settings-capacity-follow-month-peak-label">Follow this month’s peak</span>
+            <small class="field__hint">Once this month’s highest quarter is above the hard cap, PELS lets devices use power up to that peak. Your grid tariff already counts it.</small>
+          </span>
+        </div>
       </form>
       <!-- App-GLOBAL settings, deliberately outside the Main-home cap form:
            neither `power_source` nor the whole-home meter is home-scoped, so

@@ -30,7 +30,7 @@ for (const width of [320, 480]) {
               capacity_dry_run: true, capacity_limit_kw: 10, capacity_margin_kw: 0.2,
               daily_budget_enabled: false, ui_hub_market_country: 'NO',
               plan_snapshot_meta_patch: { softLimitKw: 52.1, softLimitSource: 'capacity',
-                hardCapLimitKw: 10, capacityPeriodMinutes: 60 },
+                hardCapLimitKw: 10, hardCapSource: 'configured', capacityPeriodMinutes: 60 },
               ui_devices_has_managed_solar: false, ui_devices_has_exhibited_export: false,
               ui_devices_surplus_pool_reachable: false,
               ...(chosen ? { price_scheme: 'norway', price_area: 'NO3', nettleie_fylke: '50',

@@ -56,6 +56,8 @@ abstract class AppRuntimeApi extends Base {
   protected abstract readonly powerTrackerHelpers: AppPowerTracker;
   protected abstract overheadToken?: Homey.FlowToken;
   protected abstract readonly capacitySettingsReloader: CapacitySettingsReloader;
+  /** Main's month-peak switch, held by `PelsApp` beside the scalars it installs. */
+  protected abstract capacityFollowMonthPeak: boolean;
 
   public reloadWeatherCollector(): void {
     this.backgroundTasks.startWeatherCollector(this.runtime.backgroundCollectors?.weatherCollector);
@@ -148,13 +150,14 @@ abstract class AppRuntimeApi extends Base {
    * persisted settings reload with it either way.
    */
   protected installCapacitySettingsRead(capacityRead: CapacityScalarSettingsRead): void {
-    const { dryRun, ...capacitySettings } = resolveInstalledCapacityScalars(
+    const { dryRun, followMonthPeak, ...capacitySettings } = resolveInstalledCapacityScalars(
       capacityRead,
-      { ...this.context.capacitySettings, dryRun: this.context.capacityDryRun },
+      this.context.getCapacityScalars(),
     );
     this.context.deviceControlSettings.reload();
     this.context.capacitySettings = capacitySettings;
     this.context.capacityDryRun = dryRun;
+    this.capacityFollowMonthPeak = followMonthPeak;
     this.reloadHomeModeCatalog();
     requirePriceCoordinator(this.context).updatePriceOptimizationEnabled();
     void this.updateOverheadToken(this.context.capacitySettings.marginKw);
@@ -216,7 +219,7 @@ abstract class AppRuntimeApi extends Base {
     this.getStructuredLogger('status').info(buildPeriodicStatusLogFields({
       capacityGuard: this.context.capacityGuard,
       powerTracker: this.context.powerTracker,
-      capacitySettings: this.context.capacitySettings,
+      capacitySettings: this.readHeldPowerLimits(),
       operatingMode: this.getHomeOperatingMode(),
       capacityDryRun: this.context.capacityDryRun,
       starvedDeviceCount: this.context.deviceDiagnosticsService?.getCurrentStarvedDeviceCount?.() ?? 0,

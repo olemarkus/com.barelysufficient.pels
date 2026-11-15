@@ -143,7 +143,7 @@ describe('Belgian battery-only setup', () => {
     setup.publishSetupMarket({ state: 'resolved', country: 'BE' });
     setup.publishSetupPower({ state: 'received' });
     setup.publishSetupHardCapRead(false, {
-      capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, dryRun: true, periodMinutes: 60,
+      capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, dryRun: true, periodMinutes: 60, followMonthPeak: false,
     });
     setup.publishSetupPrices({
       respondToPrices: false, budgetShapesByPrice: false, status: { state: 'complete', summary: 'Homey Energy' },

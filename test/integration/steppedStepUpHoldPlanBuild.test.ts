@@ -8,6 +8,7 @@ import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
 import type { PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 /**
  * The wait to step up, driven through whole plan builds. A water heater is cut
@@ -63,7 +64,7 @@ describe('the wait to step up through a plan build', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => CAPACITY,
+      getCapacitySettings: () => configuredHardCap(CAPACITY),
       getPowerTracker: () => withCapacityPace({
         lastTimestamp: Date.now(),
         lastPowerW: (backgroundKw + STEP_KW[stepId]!) * 1000,

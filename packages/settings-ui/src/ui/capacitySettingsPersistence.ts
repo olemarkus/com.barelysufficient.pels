@@ -4,10 +4,15 @@ import { isFiniteNumber } from '../../../shared-domain/src/numberGuards.ts';
 import { resolveCapacityPeriodMinutes } from '../../../shared-domain/src/settings/capacityPeriod.ts';
 import { resolvePowerLimitSettings } from '../../../shared-domain/src/settings/powerLimits.ts';
 import { MAIN_FUSE_OFF, resolveMainFuseSetting } from '../../../shared-domain/src/settings/mainFuse.ts';
+import {
+  assertCapacityFollowMonthPeakWrite,
+  resolveCapacityFollowMonthPeakSetting,
+} from '../../../shared-domain/src/settings/capacityFollowMonthPeak.ts';
 import type { CapacityScalarSettings, MainFuse } from '../../../contracts/src/capacitySettings.ts';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_ENABLED,
+  CAPACITY_FOLLOW_MONTH_PEAK,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_PERIOD_MINUTES,
@@ -32,12 +37,13 @@ export type CurrentCapacitySettings = {
   gridImportLimitKw: unknown;
   mainFuseSupply: unknown;
   mainFuseAmps: unknown;
+  followMonthPeak: unknown;
 };
 
 export const readCurrentCapacitySettings = async (): Promise<CurrentCapacitySettings> => {
   const [
     limit, margin, dryRun, periodMinutes, capacityEnabled, gridImportEnabled, gridImportLimitKw,
-    mainFuseSupply, mainFuseAmps,
+    mainFuseSupply, mainFuseAmps, followMonthPeak,
   ] = await Promise.all([
     getSetting(CAPACITY_LIMIT_KW),
     getSetting(CAPACITY_MARGIN_KW),
@@ -48,10 +54,11 @@ export const readCurrentCapacitySettings = async (): Promise<CurrentCapacitySett
     getSetting(GRID_IMPORT_LIMIT_KW),
     getSetting(MAIN_FUSE_SUPPLY),
     getSetting(MAIN_FUSE_AMPS),
+    getSetting(CAPACITY_FOLLOW_MONTH_PEAK),
   ]);
   return {
     limit, margin, dryRun, periodMinutes, capacityEnabled, gridImportEnabled, gridImportLimitKw,
-    mainFuseSupply, mainFuseAmps,
+    mainFuseSupply, mainFuseAmps, followMonthPeak,
   };
 };
 
@@ -93,7 +100,15 @@ export const resolveCapacityScalars = (
     marginKw: isFiniteNumber(current.margin) ? current.margin : fallback.marginKw,
     dryRun: typeof current.dryRun === 'boolean' ? current.dryRun : fallback.dryRun,
     periodMinutes: resolveCapacityPeriodMinutes(current.periodMinutes, fallback.periodMinutes),
+    followMonthPeak: resolveSavedFollowMonthPeak(current, fallback),
   };
+};
+
+// Like the switches above: a value that is not a boolean (never written, or a
+// missed read the WebView cannot tell apart) takes the running posture.
+const resolveSavedFollowMonthPeak = (current: CurrentCapacitySettings, fallback: CapacityScalarSettings): boolean => {
+  const read = resolveCapacityFollowMonthPeakSetting(current.followMonthPeak);
+  return read.state === 'resolved' ? read.value : fallback.followMonthPeak;
 };
 
 // Within one save, thresholds land before any switch moves, and a switch turns
@@ -156,6 +171,15 @@ export const writeCapacityPeriodSetting = async (
   periodMinutes: 15 | 60,
 ): Promise<void> => {
   if (current.periodMinutes !== periodMinutes) await setSetting(CAPACITY_PERIOD_MINUTES, periodMinutes);
+};
+
+/** The month-peak switch alone; compared against the posture the page resolved. */
+export const writeFollowMonthPeakSetting = async (
+  stored: CapacityScalarSettings,
+  followMonthPeak: boolean,
+): Promise<void> => {
+  assertCapacityFollowMonthPeakWrite(followMonthPeak);
+  if (stored.followMonthPeak !== followMonthPeak) await setSetting(CAPACITY_FOLLOW_MONTH_PEAK, followMonthPeak);
 };
 
 /**

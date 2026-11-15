@@ -21,6 +21,7 @@ import { inputDevice, steppedProfile } from '../utils/planConvergenceFixtures';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 /**
  * The "Only PELS starts this device" policy, driven through a WHOLE plan build.
@@ -89,7 +90,7 @@ const buildBuilder = (
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
   // Deliberately roomy: no capacity pressure anywhere, so the only thing that can
   // put a device in the shed set is the posture under test.
-  getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
+  getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
   getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 500 }),
   // Default: no smart tasks, so the policy acts on its own. The cases that need
   // one override this with `decorateWithDecision`, which drives real admission.
@@ -263,7 +264,7 @@ describe('start policy through a whole plan build', () => {
     // capacity now, not for the start policy, and the resume request does not
     // override that.
     const plan = await buildBuilder({
-      getCapacitySettings: () => TIGHT_CAPACITY,
+      getCapacitySettings: () => configuredHardCap(TIGHT_CAPACITY),
       getPowerTracker: () => withCapacityPace({ lastTimestamp: Date.now(), lastPowerW: 500 }, TIGHT_CAPACITY, 0.8),
       decorateDeferredObjectives: decorateWithDecision('charger', plannedDecision),
     }).buildDevicePlanSnapshot([charger('pels_only', { on: false })]);
@@ -280,7 +281,7 @@ describe('start policy through a whole plan build', () => {
     // admission. Every other off device is a start, one plan later just as on
     // the first plan: 1 kW does not fit in 0.3 kW of room.
     const tightBuilder = (decide?: () => DeferredAdmissionDecision) => buildBuilder({
-      getCapacitySettings: () => TIGHT_CAPACITY,
+      getCapacitySettings: () => configuredHardCap(TIGHT_CAPACITY),
       getPowerTracker: () => withCapacityPace({ lastTimestamp: Date.now(), lastPowerW: 500 }, TIGHT_CAPACITY, 0.8),
       ...(decide ? { decorateDeferredObjectives: (input: { devices: PlanInputDevice[] }) => (
         decorateWithDecision('charger', decide())(input)
@@ -383,7 +384,7 @@ describe('start policy through a whole plan build', () => {
 
     it('keeps it off for capacity, not the policy, when there is no room', async () => {
       const plan = await buildBuilder({
-        getCapacitySettings: () => TIGHT_CAPACITY,
+        getCapacitySettings: () => configuredHardCap(TIGHT_CAPACITY),
         getPowerTracker: () => withCapacityPace({ lastTimestamp: Date.now(), lastPowerW: 500 }, TIGHT_CAPACITY, 0.8),
       }).buildDevicePlanSnapshot([limitedCharger(false)]);
 
@@ -468,7 +469,7 @@ describe('start policy through a whole plan build', () => {
     });
     let powerW = 4000;
     const builder = buildBuilder({
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
       getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now(), lastPowerW: powerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }), 5),
       getShedBehavior: (deviceId: string) => (
         deviceId === 'heater' ? { action: 'set_step' } : { action: 'turn_off' }
@@ -549,7 +550,7 @@ describe('start policy through a whole plan build', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 50, marginKw: 0.2, periodMinutes: 60 }),
       getPowerTracker: () => ({ lastTimestamp: Date.now(), lastPowerW: 500 }),
       decorateDeferredObjectives: decorateWithDecision('heater', { ...idleDecision, deadlineFloorTargetC: 65 }),
       getShedBehavior: () => setback,

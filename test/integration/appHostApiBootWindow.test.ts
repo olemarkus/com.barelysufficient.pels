@@ -42,6 +42,8 @@ const createHostApi = (
 
     protected readonly smartTaskPayloads = {} as never;
 
+    protected capacityFollowMonthPeak = false;
+
     protected readonly runtime = {
       backgroundCollectors: weatherCollector ? partialDouble<BackgroundCollectors>({ weatherCollector }) : undefined,
     };

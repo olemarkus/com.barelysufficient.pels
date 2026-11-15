@@ -7,7 +7,7 @@ import type { CapacityScalarSettings } from '../../packages/contracts/src/capaci
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 
 const SCALARS: CapacityScalarSettings = {
-  capacityEnabled: true, gridImportLimitKw: null, limitKw: 8, marginKw: 0.3, dryRun: false, periodMinutes: 60,
+  capacityEnabled: true, gridImportLimitKw: null, limitKw: 8, marginKw: 0.3, dryRun: false, periodMinutes: 60, followMonthPeak: false,
 };
 const RESOLVED: CapacityScalarSettingsRead = { state: 'resolved', value: SCALARS };
 const RETAINED: CapacityScalarSettingsRead = { state: 'retained', value: SCALARS, askAgain: true };

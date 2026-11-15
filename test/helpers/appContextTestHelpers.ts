@@ -341,13 +341,13 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     capacitySettingsStore: {
       read: () => ({
         state: 'resolved',
-        value: { ...capacitySettings, dryRun: capacityDryRun },
+        value: { ...capacitySettings, dryRun: capacityDryRun, followMonthPeak: false },
       }),
       readHardCapConfiguration: () => ({ state: 'resolved', configured: true }),
       noteWrite: () => false,
       mainFuse: () => ({ kind: 'off' }),
     },
-    getCapacityScalars: () => ({ ...capacitySettings, dryRun: capacityDryRun }),
+    getCapacityScalars: () => ({ ...capacitySettings, dryRun: capacityDryRun, followMonthPeak: false }),
     getCurrentMonthCapacityPeakKw: () => null,
     notifyOperatingModeChanged: vi.fn(),
     hydratePowerTracker: vi.fn(),

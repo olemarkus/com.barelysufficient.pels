@@ -36,12 +36,15 @@ import { mainStorageLane } from '../appInit/createBatteryControl';
 import type { HomeId } from '../../lib/power/capacitySettingsStore';
 import type { MeterSilenceMonitor } from '../../lib/power/meterSilence';
 import type { PendingTargetObservationSource, PlanInputDevice } from '../../lib/plan/planTypes';
-import type { PriceLevel } from '../../lib/price/priceLevels';
+import { PriceLevel } from '../../lib/price/priceLevels';
+import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import type { PelsStatus } from '../../lib/plan/pelsStatus';
 import type { PlanBuilderDeps } from '../../lib/plan/planBuilder';
 import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
 import type { DeviceDiagnosticsService } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { AppContext } from '../../lib/app/appContext';
+import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
+import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 import type { HomeBatteryControlCapability } from '../../packages/contracts/src/types';
 import type { ModePriorityOrder } from '../../packages/shared-domain/src/settings/modePriorities';
 import type { BinaryCommandLifecycleListener } from '../../lib/observer/pendingBinaryCommands';
@@ -58,11 +61,44 @@ import { bindTemporaryTemperatureRead } from '../appInit/temperatureSetpointsSea
 import type { SmartTaskCycleRecord } from '../../lib/objectives/deferredObjectives/smartTaskCycleRecord';
 import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
+import { createHeldCapacityLimitRead } from '../../lib/power/heldCapacityLimit';
 import { createHomeCommandReachability } from './createHomeCommandReachability';
 import { createHomeSignalWriters } from './homeSignalWriters';
 import { buildStarvedRescueDevices } from '../appInit/smartTaskHomeScope';
 import { selectRescuableDeviceIds } from '../../packages/shared-domain/src/starvationRescueShared';
 import type { ShutdownLatch } from '../../lib/utils/shutdownLatch';
+
+/**
+ * The policy members of a capacity-only home (a meter area). No price
+ * optimization and no price level, so its status reads UNKNOWN and
+ * `price_level_changed` never fires against Main's level; no surplus term, no
+ * storage discharge and no per-device price settings. No smart tasks either
+ * (multi-home v1 defers them per home), so the decoration seam is the identity
+ * one, named rather than omitted.
+ */
+export const CAPACITY_ONLY_SCOPE_POLICY = {
+  getPriceOptimizationEnabled: () => false,
+  getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
+  getInferredSurplusKw: () => 0,
+  getStorageDischargeObservations: () => new Map(),
+  getPriceOptimizationSettings: () => ({}),
+  decorateDeferredObjectives: decorateWithoutDeferredObjectives,
+} satisfies Partial<HomeScope>;
+
+/**
+ * A home's held limits for its scope (`lib/power/heldCapacityLimit.ts`): its
+ * own resolved scalars against its own tracker's month peak. Main and every
+ * meter area bind theirs here, so each resolves against its own meter.
+ */
+export const createHomeHeldPowerLimitsRead = (
+  ctx: Pick<AppContext, 'getTimeZone'>,
+  readScalars: () => CapacityScalarSettings,
+  readTracker: () => PowerTrackerState,
+): HomeScope['getCapacitySettings'] => createHeldCapacityLimitRead({
+  readScalars,
+  readTracker,
+  readTimeZone: () => ctx.getTimeZone(),
+});
 
 /**
  * The closure bundle one home hands to its plan engine/service factories.
@@ -80,9 +116,11 @@ export type HomeScope = {
    * the canonical "Main home" label; a sub-home binds its meter-area name.
    */
   getHomeDisplayName: () => string;
-  // Capacity scalars: for the MAIN home these are live reads of the in-memory
-  // snapshot (settings-handler maintained); sub-home scopes (R7b) back them
-  // with a per-home `CapacitySettingsStore` as their ONLY capacity source.
+  // The limits live control holds (`lib/power/heldCapacityLimit.ts`), read by
+  // this home's plan engine, capacity guard and shortfall alerts. For the MAIN
+  // home they resolve over live reads of the in-memory snapshot
+  // (settings-handler maintained); sub-home scopes (R7b) back them with a
+  // per-home `CapacitySettingsStore` as their ONLY capacity source.
   getCapacitySettings: PlanBuilderDeps['getCapacitySettings'];
   /** Main's fuse from its settings store; a meter area has none (`capacitySettingsStore`). */
   getMainFuse: PlanBuilderDeps['getMainFuse'];
@@ -250,7 +288,7 @@ export function buildMainHomeScope(
     getHomeDisplayName: () => HOMES_MAIN_HOME_NAME,
     // Live snapshot reads — NOT re-reads through the settings store. The
     // snapshot is the in-memory truth kept current by the settings handler.
-    getCapacitySettings: () => ctx.capacitySettings,
+    getCapacitySettings: createHomeHeldPowerLimitsRead(ctx, () => ctx.getCapacityScalars(), () => ctx.powerTracker),
     getMainFuse: () => ctx.capacitySettingsStore.mainFuse(),
     // The EFFECTIVE dry-run, the same composition a meter area makes: the
     // owner's persisted intent OR a home-wide fence that holds for the whole
