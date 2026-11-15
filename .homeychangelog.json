@@ -835,5 +835,8 @@
   },
   "3.35.4": {
     "en": "A Zaptec that PELS controls by power is no longer stopped when PELS restarts or the charger's power levels change, and it resumes after a pause instead of staying at \"Level change not confirmed\". PELS now takes Homey control of a charger's power with one setting, without a reset, and a charger whose app does not accept it is turned on and off only, with its card saying so. When the car has finished charging, an Easee keeps the lowest current on offer, its card stays at Charging finished, and other chargers are no longer held back behind it."
+  },
+  "3.35.5": {
+    "en": "A Zaptec whose car stopped charging by itself no longer gets turn-on commands it refuses; its card reads Car stopped charging, and it charges again when the car asks. Device cards PELS does not control now say why: Power-limit control is off, No power reading from this device, or Homey reports this device unavailable. A thermostat that only follows mode temperatures keeps its Running, Idle or Off state instead of Manual. In simulation, cards show the target PELS would set, and the Setup review lists the active mode with each device's priority and mode target."
   }
 }
