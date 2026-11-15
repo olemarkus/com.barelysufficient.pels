@@ -832,5 +832,8 @@
   },
   "3.35.3": {
     "en": "EV charger cards now read Charging finished when the car has finished charging (Easee, Tesla, go-e). A Zaptec waiting to start its own session no longer gets start commands it refuses, and its card says the charger has not started the session. A device that refuses a command now reads \"device refused the command\". Marstek: the Bluetooth and cloud devices say PELS controls the battery through its local network device, and a local device with the battery's Local API off asks you to turn it on."
+  },
+  "3.35.4": {
+    "en": "A Zaptec that PELS controls by power is no longer stopped when PELS restarts or the charger's power levels change, and it resumes after a pause instead of staying at \"Level change not confirmed\". PELS now takes Homey control of a charger's power with one setting, without a reset, and a charger whose app does not accept it is turned on and off only, with its card saying so. When the car has finished charging, an Easee keeps the lowest current on offer, its card stays at Charging finished, and other chargers are no longer held back behind it."
   }
 }
