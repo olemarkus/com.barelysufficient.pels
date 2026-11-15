@@ -838,5 +838,8 @@
   },
   "3.35.5": {
     "en": "A Zaptec whose car stopped charging by itself no longer gets turn-on commands it refuses; its card reads Car stopped charging, and it charges again when the car asks. Device cards PELS does not control now say why: Power-limit control is off, No power reading from this device, or Homey reports this device unavailable. A thermostat that only follows mode temperatures keeps its Running, Idle or Off state instead of Manual. In simulation, cards show the target PELS would set, and the Setup review lists the active mode with each device's priority and mode target."
+  },
+  "3.36.0": {
+    "en": "New: Follow this month's peak. With a 15-minute capacity limit, as in Flanders, PELS lets your devices use this month's highest quarter once it is above your hard cap, until the month ends, since your grid tariff already counts that peak. New installs in Belgium start with it on. When your meter reports its own monthly peak, as a HomeWizard P1 does on a Belgian digital meter, Highest completed quarter this month uses it, so a peak set while PELS was not running counts. In simulation, PELS paces each hour and plans a home battery as live control would, and the Overview shows the energy with control on beside what your meter measured."
   }
 }
