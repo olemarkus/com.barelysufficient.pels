@@ -65,7 +65,7 @@ describe('device-read contract', () => {
 
     expect(findDeviceReadContractViolation(easee(6))).toBeNull();
     expect(findDeviceReadContractViolation(easee(null)))
-      .toEqual({ reason: 'unexpected_value', capabilityId: 'target_charger_current' });
+      .toEqual({ reason: 'unexpected_value', capabilityId: 'target_charger_current', valueKind: 'null' });
   });
 
   it('reads a battery whose target_power Homey never set, but not a stepped load', () => {
@@ -85,7 +85,7 @@ describe('device-read contract', () => {
     expect(findDeviceReadContractViolation(heater({
       capabilities: ['onoff', 'measure_power', 'meter_power', 'target_power'],
       capabilitiesObj: { ...HEATER_VALUES, target_power: entry(null) },
-    }))).toEqual({ reason: 'unexpected_value', capabilityId: 'target_power' });
+    }))).toEqual({ reason: 'unexpected_value', capabilityId: 'target_power', valueKind: 'null' });
   });
 
   it('reads a solar panel whose target_power Homey never set', () => {
@@ -110,10 +110,10 @@ describe('device-read contract', () => {
 
   it('identifies a null or wrong-type field', () => {
     const withNull = heater({ capabilitiesObj: { ...HEATER_VALUES, onoff: entry(null) } });
-    expect(findDeviceReadContractViolation(withNull)).toEqual({ reason: 'unexpected_value', capabilityId: 'onoff' });
+    expect(findDeviceReadContractViolation(withNull)).toEqual({ reason: 'unexpected_value', capabilityId: 'onoff', valueKind: 'null' });
     const withString = heater({ capabilitiesObj: { ...HEATER_VALUES, measure_power: entry('1200') } });
     expect(findDeviceReadContractViolation(withString))
-      .toEqual({ reason: 'unexpected_value', capabilityId: 'measure_power' });
+      .toEqual({ reason: 'unexpected_value', capabilityId: 'measure_power', valueKind: 'string' });
   });
 
   it('identifies an undated field', () => {
@@ -137,7 +137,7 @@ describe('device-read contract', () => {
     });
     expect(findDeviceReadContractViolation(charger('plugged_in_paused'))).toBeNull();
     expect(findDeviceReadContractViolation(charger('charging_somehow')))
-      .toEqual({ reason: 'unexpected_value', capabilityId: 'evcharger_charging_state' });
+      .toEqual({ reason: 'unexpected_value', capabilityId: 'evcharger_charging_state', valueKind: 'string' });
   });
 
   it.each(['car', 'vehicle'])('checks a %s only on what PELS reads from a car', (deviceClass) => {
@@ -157,7 +157,7 @@ describe('device-read contract', () => {
     });
     expect(findDeviceReadContractViolation(car('plugged_in'))).toBeNull();
     expect(findDeviceReadContractViolation(car('parked')))
-      .toEqual({ reason: 'unexpected_value', capabilityId: 'ev_charging_state' });
+      .toEqual({ reason: 'unexpected_value', capabilityId: 'ev_charging_state', valueKind: 'string' });
     const missingStamp = {
       ...car('plugged_in'),
       capabilitiesObj: { ...car('plugged_in').capabilitiesObj, measure_battery: { value: 37 } },
@@ -193,7 +193,26 @@ describe('device-read contract', () => {
       },
     });
     expect(findDeviceReadContractViolation(thermostat))
-      .toEqual({ reason: 'unexpected_value', capabilityId: 'measure_temperature' });
+      .toEqual({ reason: 'unexpected_value', capabilityId: 'measure_temperature', valueKind: 'null' });
+  });
+
+  // A report must tell a reading the vendor does not have from one of the wrong shape.
+  it.each([
+    [null, 'null'], [undefined, 'absent'], ['21', 'string'], [true, 'boolean'],
+    [Number.NaN, 'non_finite'], [{ celsius: 21 }, 'object'],
+  ] as const)('logs the kind of a rejected target %j, never the value', (value, valueKind) => {
+    const info = vi.fn();
+    resolveDeviceRead({}, asRead({
+      id: 'thermostat-1',
+      name: 'Thermostat',
+      class: 'thermostat',
+      capabilities: ['measure_temperature', 'target_temperature'],
+      capabilitiesObj: { measure_temperature: entry(20), target_temperature: entry(value) },
+    }), 'device_fetch', { info });
+    expect(info).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      event: 'device_capabilities_withheld',
+      violations: [{ reason: 'unexpected_value', capabilityId: 'target_temperature', valueKind }],
+    }));
   });
 
   it('reads state of charge only from a charger or a home battery', () => {
@@ -237,7 +256,7 @@ describe('device-read contract', () => {
       charging_button: entry(false),
       charge_mode: entry(null),
       'alarm_generic.car_connected': entry(null),
-    }))).toEqual({ reason: 'unexpected_value', capabilityId: 'charge_mode' });
+    }))).toEqual({ reason: 'unexpected_value', capabilityId: 'charge_mode', valueKind: 'null' });
   });
 });
 
@@ -263,7 +282,7 @@ describe('Tesla home-session read contract', () => {
     device.capabilitiesObj = { [capabilityId]: { value } };
     expect(findDeviceReadContractViolation(asRead(device))).toEqual({ reason: 'missing_stamp', capabilityId });
     device.capabilitiesObj = { [capabilityId]: entry(null) };
-    expect(findDeviceReadContractViolation(asRead(device))).toEqual({ reason: 'unexpected_value', capabilityId });
+    expect(findDeviceReadContractViolation(asRead(device))).toEqual({ reason: 'unexpected_value', capabilityId, valueKind: 'null' });
   });
 });
 
@@ -278,8 +297,11 @@ describe('Tesla vendor state without an EV equivalent', () => {
   it.each(['Calibrating', 'NoPower', 'Unknown'])('accepts a complete known %s vendor read', (state) => {
     expect(findDeviceReadContractViolation(tesla(state))).toBeNull();
   });
-  it.each(['not-a-vendor-state', null, 12])('rejects malformed vendor state %s', (state) => {
-    expect(findDeviceReadContractViolation(tesla(state))).toEqual({ reason: 'unexpected_value', capabilityId: 'charging_state' });
+  it.each([
+    ['not-a-vendor-state', 'string'], [null, 'null'], [12, 'number'],
+  ] as const)('rejects malformed vendor state %s', (state, valueKind) => {
+    expect(findDeviceReadContractViolation(tesla(state)))
+      .toEqual({ reason: 'unexpected_value', capabilityId: 'charging_state', valueKind });
   });
   it('identifies an unrelated malformed field in an Unknown read', () => {
     const device = tesla('Unknown');

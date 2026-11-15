@@ -65,7 +65,7 @@ test.each(identityShapes)('validates %s Tesla vendor observations before admissi
   const battery = devicesWithIdentity(shape)[0]!;
   expect(findDeviceReadContractViolation({ ...battery, capabilitiesObj: {
     ...battery.capabilitiesObj, charging_state: cap('invalid'),
-  } })).toEqual({ reason: 'unexpected_value', capabilityId: 'charging_state' });
+  } })).toEqual({ reason: 'unexpected_value', capabilityId: 'charging_state', valueKind: 'string' });
 });
 
 test.each(['owner'] as const)('matches %s companions with a qualified battery and vice versa', (shape) => {
