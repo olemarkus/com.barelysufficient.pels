@@ -19,7 +19,7 @@ export function buildZaptecCurrentOnlyDevice(overrides: Partial<HomeyDeviceLike>
     measure_power: 0,
     charging_button: setable(false),
     cable_permanent_lock: setable(false),
-    charge_mode: 'Connecting to car',
+    charge_mode: 'Charging finished',
     'alarm_generic.car_connected': true,
     available_installation_current: { value: 16, setable: false },
     'measure_current.phase1': 0,

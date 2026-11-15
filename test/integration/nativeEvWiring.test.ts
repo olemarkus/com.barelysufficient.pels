@@ -43,7 +43,7 @@ const buildZaptecDevice = (overrides: Partial<HomeyDeviceLike> = {}): HomeyDevic
     measure_power: { value: 7200, lastUpdated: '2026-04-22T09:00:00.000Z' },
     available_installation_current: { value: 16, lastUpdated: '2026-04-22T09:00:00.000Z' },
     charging_button: { value: false, setable: true, lastUpdated: '2026-04-22T09:00:01.000Z' },
-    charge_mode: { value: 'Connecting to car', lastUpdated: '2026-04-22T09:00:02.000Z' },
+    charge_mode: { value: 'Charging finished', lastUpdated: '2026-04-22T09:00:02.000Z' },
     'alarm_generic.car_connected': { value: true, lastUpdated: '2026-04-22T09:00:03.000Z' },
   },
   data: { id: 'zaptec-go-1', installationId: 'inst-1' },
@@ -121,7 +121,7 @@ describe('native EV wiring shim', () => {
       binaryWriteCapabilityId: 'charging_button',
       binaryObservationCapabilityId: 'evcharger_charging',
       binaryControl: { on: false },
-      evChargingState: 'plugged_in_paused',
+      evChargingState: 'plugged_in',
       canSetControl: true,
     }));
   });
@@ -299,7 +299,7 @@ describe('native EV wiring shim', () => {
       binaryWriteCapabilityId: 'charging_button',
       binaryObservationCapabilityId: 'evcharger_charging',
       binaryControl: { on: false },
-      evChargingState: 'plugged_in_paused',
+      evChargingState: 'plugged_in',
       powerCapable: true,
     }));
   });
@@ -335,7 +335,7 @@ describe('native EV wiring shim', () => {
       }),
       binaryWriteCapabilityId: 'charging_button',
       binaryControl: { on: false },
-      evChargingState: 'plugged_in_paused',
+      evChargingState: 'plugged_in',
       canSetControl: true,
     }));
   });
@@ -375,7 +375,7 @@ describe('native EV wiring shim', () => {
         activationEnabled: true,
       }),
       binaryControl: { on: false },
-      evChargingState: 'plugged_in_paused',
+      evChargingState: 'plugged_in',
       canSetControl: true,
     }));
   });
@@ -600,7 +600,7 @@ describe('native EV wiring shim', () => {
       binaryCapabilityId: 'evcharger_charging',
       binaryWriteCapabilityId: 'charging_button',
       binaryControl: { on: false },
-      evChargingState: 'plugged_in_paused',
+      evChargingState: 'plugged_in',
     }));
     expect(parsed.flowBackedCapabilityIds).toBeUndefined();
   });
@@ -629,7 +629,7 @@ describe('native EV wiring shim', () => {
         activationEnabled: true,
       }),
       binaryControl: { on: false },
-      evChargingState: 'plugged_in_paused',
+      evChargingState: 'plugged_in',
     }));
     expect(parsed.flowBackedCapabilityIds).toBeUndefined();
   });
@@ -690,6 +690,37 @@ describe('native EV wiring shim', () => {
       'manager/devices/device/zaptec-go-1/capability/charging_button',
       pelsCapabilityWrite(true),
     );
+  });
+
+  // Zaptec refuses a turn-on while it has not started the session ("Charging is
+  // not Paused nor Scheduled"), and starts it by itself once ready. Observed on a
+  // Go whose car waited there for hours while PELS was refused every retry.
+  it('sends no Zaptec turn-on while the charger has not started the session', async () => {
+    const deviceManager = createTestDeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {
+        nativeWiring: { resolveNativeWiringEnabled: () => true },
+      },
+    );
+    const device = buildZaptecDevice();
+    const [parsed] = await seedTransportDevices(deviceManager, [{
+      ...device,
+      capabilitiesObj: {
+        ...device.capabilitiesObj,
+        charge_mode: { value: 'Connecting to car', lastUpdated: '2026-04-22T09:00:02.000Z' },
+      },
+    }]);
+    const restClient = {
+      get: vi.fn(),
+      put: vi.fn().mockResolvedValue(undefined),
+    };
+    setRestClient(restClient);
+
+    expect(parsed.evChargingState).toBe('plugged_in_waiting_for_charger');
+    await expect(deviceManager.setCapability(parsed.id, 'evcharger_charging', true))
+      .rejects.toThrow('Device is not ready to start.');
+    expect(restClient.put).not.toHaveBeenCalled();
   });
 
   it('maps the real Zaptec charge_mode strings into EV charger states', () => {
@@ -753,7 +784,7 @@ describe('native EV wiring shim', () => {
   // and a synthesized `evcharger_charging = true` readback.
   it.each([
     ['Connected_Charging', 'Charging', 'plugged_in_charging'],
-    ['Connected_Requesting', 'Connecting to car', 'plugged_in_paused'],
+    ['Connected_Requesting', 'Connecting to car', 'plugged_in_waiting_for_charger'],
     ['Connected_Finishing', 'Charging finished', 'plugged_in'],
   ])('resolves Zaptec %s and %s alike, to %s', (operationMode, label, expected) => {
     const device = buildZaptecDevice();
