@@ -84,8 +84,11 @@ const resolveHeroStatus = (
   if (projectedOverHardCap) return 'over-hard-cap';
   // Surface the simulation-mode chip whenever there is anything the decision
   // sentence has to phrase hypothetically — that includes devices stuck `held`
-  // from before simulation was enabled.
-  if (dryRun && devices.some((d) => isWouldLimitDevice(d) || isLimitedDevice(d))) return 'dry-run';
+  // from before simulation was enabled, and a battery that would hold the
+  // limit (the measured draw above safe pace is what it would cover).
+  if (dryRun && devices.some((d) => isWouldLimitDevice(d) || isLimitedDevice(d) || isWouldSupplyBattery(d))) {
+    return 'dry-run';
+  }
   if (headline.overSoftLimit) return 'above-safe-pace';
   if (projectionTone === 'warning') return 'projected-over-budget';
   return 'on-track';
@@ -96,6 +99,7 @@ const isResumingDevice = (device: PlanDeviceSnapshot): boolean => device.status.
 const isSheddableManagedRunningDevice = (device: PlanDeviceSnapshot): boolean => device.status.canEaseOff;
 const isBreachingControlOffDevice = (device: PlanDeviceSnapshot): boolean => device.status.controlOffDrawing;
 const isWouldLimitDevice = (device: PlanDeviceSnapshot): boolean => device.status.wouldLimit;
+const isWouldSupplyBattery = (device: PlanDeviceSnapshot): boolean => device.homeBattery?.wouldSupplyKw !== undefined;
 
 // Decision sentence priority order. Voice + wording live in shared-domain
 // (`planHeroSummary.buildDecisionSentence`) so that a runtime log breadcrumb,
