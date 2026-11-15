@@ -240,8 +240,19 @@ type EnergyBarScale = {
   controlledKWh: number;
   uncontrolledKWh: number;
   projectedKWh: number | null;
+  /** In Simulation mode, the energy so far as live control would have it; the projection follows it. */
+  withControlOnKWh: number | null;
   periodMinutes: CapacityPeriodMinutes;
 };
+
+/**
+ * What the period's projection starts from: the measured energy and draw, or
+ * in Simulation mode the ones live control would have (`withControlOn`), so
+ * the projection, its tone and the hard-cap verdict follow the plan shown.
+ */
+const resolveProjectionBasis = (meta: PlanMetaSnapshot): { usedKWh: number; drawKw: number } => (
+  meta.withControlOn ?? { usedKWh: meta.usedKWh, drawKw: meta.totalKw }
+);
 
 const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null => {
   const { usedKWh, hourControlledKWh, hourUncontrolledKWh } = meta;
@@ -255,8 +266,9 @@ const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null =>
   // The zero floor for net-export hours lives in the shared helper (also used
   // by the `pels_status` producer for the "Above hard cap" trajectory flag).
   // Keep `null` (no power/time signal) distinct from a clamped 0.
+  const basis = resolveProjectionBasis(meta);
   const projectedKWh = totalKw !== null && minutesRemaining !== null
-    ? computeProjectedPeriodEnergyKWh(usedKWh, totalKw, minutesRemaining)
+    ? computeProjectedPeriodEnergyKWh(basis.usedKWh, basis.drawKw, minutesRemaining)
     : null;
   return {
     usedKWh,
@@ -265,6 +277,7 @@ const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null =>
     controlledKWh: typeof hourControlledKWh === 'number' ? Math.max(0, hourControlledKWh) : 0,
     uncontrolledKWh: typeof hourUncontrolledKWh === 'number' ? Math.max(0, hourUncontrolledKWh) : 0,
     projectedKWh,
+    withControlOnKWh: meta.withControlOn?.usedKWh ?? null,
     periodMinutes: meta.capacityPeriodMinutes,
   };
 };
@@ -611,8 +624,13 @@ const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
       kind: 'projected',
       positionPct: pctOf(scale.projectedKWh, scaleKWh),
       tone: projectionTone,
-      tooltip: `Projected this ${capacityPeriodNoun(scale.periodMinutes)} ${scale.projectedKWh.toFixed(2)} kWh`,
-      labels: formatEnergyMeterMarkerLabels('projected', scale.projectedKWh, scale.periodMinutes),
+      tooltip: `Projected this ${capacityPeriodNoun(scale.periodMinutes)}`
+        + `${scale.withControlOnKWh === null ? '' : ' with control on'} ${scale.projectedKWh.toFixed(2)} kWh`,
+      labels: formatEnergyMeterMarkerLabels(
+        scale.withControlOnKWh === null ? 'projected' : 'projected_with_control_on',
+        scale.projectedKWh,
+        scale.periodMinutes,
+      ),
     });
   }
   // The cap's hourly kWh — the line that turns the projection red — renders in
@@ -657,7 +675,7 @@ const EnergySection = ({
   // status chip says "Above budget". The minutes-remaining subline was
   // dropped for the same reason (the projection marker implies the time
   // axis). Reducing the subline count keeps the energy section calm.
-  const projectedText = formatProjectedEnergySubline(scale.projectedKWh);
+  const projectedText = formatProjectedEnergySubline(scale.projectedKWh, scale.withControlOnKWh);
   // Tone mapping mirrors the CSS contract in style.css (".plan-hero__subline
   // [data-tone='warn']"): only the warn rung paints amber. The critical /
   // alert rung deliberately falls through to the neutral subline color so
@@ -790,10 +808,11 @@ export const PlanHero = ({
   // snapshot always carries its reading), and `usedKWh` / `minutesRemaining`
   // are required. The three `typeof` guards this replaces were the last place
   // the hero re-asked whether the planner had produced its own required fields.
+  const projectionBasis = resolveProjectionBasis(meta);
   const projectedOverHardCap = meta.capacitySoftLimitKw !== null && meta.capacityPeriodCoverageComplete && isProjectedOverHardCap({
     projectedKWh: computeProjectedPeriodEnergyKWh(
-      meta.usedKWh,
-      meta.totalKw,
+      projectionBasis.usedKWh,
+      projectionBasis.drawKw,
       meta.minutesRemaining,
     ),
     hardCapKWh: capacityPeriodEnergyKWh(headline.hardLimitKw, meta.capacityPeriodMinutes),

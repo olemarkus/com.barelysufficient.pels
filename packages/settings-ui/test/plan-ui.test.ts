@@ -535,6 +535,40 @@ describe('Redesign plan UI', () => {
         .toBe('Above hard cap');
     });
 
+    it('in simulation, follows the hour with control on: no hard-cap alarm the plan would avoid', async () => {
+      // Measured: 0.8 + 12 × 38/60 = 8.4 kWh, past the 8 kWh cap. With control
+      // on the plan holds 6 kW off: 0.5 + 6 × 38/60 = 4.3 kWh. The hero shows
+      // the measured energy and the hour with control on, and judges the cap
+      // by the latter, as the plan does.
+      vi.resetModules();
+      setupPlanDom();
+      const { state } = await import('../src/ui/state.ts');
+      state.dryRun = true;
+      const { renderPlan } = await import('../src/ui/plan.ts');
+      renderPlan(normalizePlanSnapshot({
+        meta: {
+          ...buildPlanMeta({
+            totalKw: 12,
+            softLimitKw: 6,
+            hardCapLimitKw: 8,
+            controlledKw: 3.0,
+            uncontrolledKw: 9.0,
+            usedKWh: 0.8,
+            hourBudgetKWh: 5,
+            minutesRemaining: 38}),
+          withControlOn: { usedKWh: 0.5, drawKw: 6 },
+        },
+        devices: [],
+      }) as Parameters<typeof renderPlan>[0]);
+      expect(document.querySelector('.plan-hero .plan-chip--alert')).toBeNull();
+      const energySection = document.querySelectorAll('.plan-hero .plan-hero__section')[1]!;
+      expect(energySection.textContent).toContain('0.8');
+      expect(energySection.textContent).toContain('With control on: about 0.50 kWh, projected 4.30 kWh');
+      const labels = Array.from(energySection.querySelectorAll('.pels-meter-track__marker'))
+        .map((m) => m.getAttribute('aria-label'));
+      expect(labels).toContain('Projected this hour with control on 4.3 kWh');
+    });
+
     it('keeps the over-cap alarm when a zero-allocation budget hour hides the energy section', async () => {
       // Codex post-merge review: the projection tone is gated on the energy
       // bar existing (`hourBudgetKWh > 0`), but a zero-weighted daily-budget

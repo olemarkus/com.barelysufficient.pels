@@ -105,9 +105,19 @@ export const formatEnergyUsedOfBudgetParts = (
  * Solar-now line is celebrating export. Mirrors the plan_budget widget's clamp
  * (`planPriceWidgetCopy.ts`) so the two projected surfaces never diverge.
  */
-export const formatProjectedEnergySubline = (projectedKWh: number | null): string | null => {
-  if (projectedKWh === null) return null;
-  return `projected ${Math.max(0, projectedKWh).toFixed(2)} kWh`;
+/**
+ * The line under the energy used. In Simulation mode (`withControlOnKWh` set)
+ * the headline stays the measured energy, and this line gives the period as
+ * live control would have it, which the projection follows.
+ */
+export const formatProjectedEnergySubline = (
+  projectedKWh: number | null,
+  withControlOnKWh: number | null,
+): string | null => {
+  const projected = projectedKWh === null ? null : `projected ${Math.max(0, projectedKWh).toFixed(2)} kWh`;
+  if (withControlOnKWh === null) return projected;
+  const about = `With control on: about ${Math.max(0, withControlOnKWh).toFixed(2)} kWh`;
+  return projected === null ? about : `${about}, ${projected}`;
 };
 
 // ─── Hero meter marker labels ────────────────────────────────────────────────
@@ -140,7 +150,7 @@ export const formatSafePaceMeterMarkerLabels = (valueKw: number): HeroMeterMarke
 };
 
 export const formatEnergyMeterMarkerLabels = (
-  kind: 'target' | 'projected' | 'cap',
+  kind: 'target' | 'projected' | 'projected_with_control_on' | 'cap',
   valueKWh: number,
   periodMinutes: CapacityPeriodMinutes,
 ): HeroMeterMarkerLabels => {
@@ -149,6 +159,12 @@ export const formatEnergyMeterMarkerLabels = (
     return {
       short: `Projected this ${period}`,
       aria: `Projected this ${period} ${formatKWh(valueKWh)}`,
+    };
+  }
+  if (kind === 'projected_with_control_on') {
+    return {
+      short: `Projected with control on`,
+      aria: `Projected this ${period} with control on ${formatKWh(valueKWh)}`,
     };
   }
   // The cap marker carries its value visibly (unlike budget/projected, whose

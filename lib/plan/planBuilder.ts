@@ -408,6 +408,7 @@ export class PlanBuilder {
       hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(heldContext),
       unrelievedPhase: sheddingPlan.unrelievedPhase,
       exportPhase: sheddingPlan.exportPhase,
+      simulatedReliefKw: this.deps.getCapacityDryRun() ? this.state.simulatedPeriodEnergy.heldReliefKw() : null,
     };
     trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState(
       metaFacts, power, overshootDecision, nowTs,

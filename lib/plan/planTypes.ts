@@ -840,7 +840,16 @@ export type PlanMetaBase = {
   // out of range (`extractDailyBudgetHourKWh`).
   dailyBudgetHourKWh?: number;
   lastPowerUpdateMs: number;
+  /**
+   * In Simulation mode, the capacity period as live control would have it:
+   * its energy so far less what the simulated decisions kept off the meter,
+   * and the reading less what the plan holds (`simulatedPeriodEnergy.ts`).
+   * `usedKWh` above stays measured. Absent under live control.
+   */
+  withControlOn?: PeriodWithControlOn;
 };
+
+export type PeriodWithControlOn = { usedKWh: number; drawKw: number };
 
 /**
  * The power-derived figures exist ONLY on a measured cycle.

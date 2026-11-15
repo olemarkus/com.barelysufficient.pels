@@ -70,7 +70,11 @@ const plannedShed = (): string => (getLatestPlanSnapshotForTests()?.devices ?? [
   .sort()
   .join('+') || '-';
 
-type HourRun = { timeline: string[]; usedKWh: number };
+type HourRun = {
+  timeline: string[];
+  usedKWh: number;
+  withControlOn: { usedKWh: number; drawKw: number } | undefined;
+};
 
 const runHour = async (simulating: boolean): Promise<HourRun> => {
   await boot(simulating);
@@ -80,7 +84,8 @@ const runHour = async (simulating: boolean): Promise<HourRun> => {
     await poll();
     timeline.push(plannedShed());
   }
-  return { timeline, usedKWh: getLatestPlanSnapshotForTests()?.meta?.usedKWh ?? 0 };
+  const meta = getLatestPlanSnapshotForTests()?.meta;
+  return { timeline, usedKWh: meta?.usedKWh ?? 0, withControlOn: meta?.withControlOn };
 };
 
 describe('simulation paces the period as live control would', () => {
@@ -113,5 +118,10 @@ describe('simulation paces the period as live control would', () => {
     expect(simulated.timeline).toEqual(live.timeline);
     // The energy shown as used stays measured: in simulation both heaters ran.
     expect(simulated.usedKWh).toBeGreaterThan(live.usedKWh + 1.5);
+    // Beside it, simulation gives the hour as live control had it.
+    expect(live.withControlOn).toBeUndefined();
+    // Both heaters drew 6.6 kW in simulation; with control on the house drew 4.6 kW.
+    expect(simulated.withControlOn?.usedKWh).toBeCloseTo(simulated.usedKWh * (4.6 / 6.6), 1);
+    expect(simulated.withControlOn?.drawKw).toBeCloseTo(4.6, 1);
   });
 });

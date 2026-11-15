@@ -35,10 +35,14 @@ type HeldRelief = {
   /** The reading the holding plan decided on: relief counts from here. */
   fromMs: number;
   reliefKw: number;
+  /** The part of it from budget-exempt devices, which the daily budget never counted. */
+  exemptReliefKw: number;
 };
 
+type Avoided = { kWh: number; exemptKWh: number };
+
 export class SimulatedPeriodEnergy {
-  private readonly avoidedKWhByHour = new Map<string, number>();
+  private readonly avoidedByHour = new Map<string, Avoided>();
   private avoidedQuarter: { startMs: number; kWh: number } | null = null;
   private held: HeldRelief | null = null;
 
@@ -49,15 +53,16 @@ export class SimulatedPeriodEnergy {
   accrue(tracker: PowerTrackerState): void {
     const untilMs = tracker.lastTimestamp;
     if (this.held === null || typeof untilMs !== 'number' || untilMs <= this.held.fromMs) return;
-    const { fromMs, reliefKw } = this.held;
+    const { fromMs, reliefKw, exemptReliefKw } = this.held;
     if (reliefKw > 0) {
       for (let startMs = fromMs; startMs < untilMs;) {
         const endMs = Math.min(untilMs, nextBoundaryMs(startMs));
-        this.add(startMs, (reliefKw * (endMs - startMs)) / HOUR_MS);
+        const hours = (endMs - startMs) / HOUR_MS;
+        this.add(startMs, { kWh: reliefKw * hours, exemptKWh: exemptReliefKw * hours });
         startMs = endMs;
       }
     }
-    this.held = { fromMs: untilMs, reliefKw };
+    this.held = { ...this.held, fromMs: untilMs };
     this.prune(untilMs);
   }
 
@@ -65,13 +70,24 @@ export class SimulatedPeriodEnergy {
   hold(devices: readonly DevicePlanDevice[], tracker: PowerTrackerState): void {
     const fromMs = tracker.lastTimestamp;
     if (typeof fromMs !== 'number') return;
-    const reliefKw = devices.reduce((sum, device) => sum + resolveHeldReliefKw(device), 0);
-    this.held = { fromMs, reliefKw };
+    let reliefKw = 0;
+    let exemptReliefKw = 0;
+    for (const device of devices) {
+      const deviceKw = resolveHeldReliefKw(device);
+      reliefKw += deviceKw;
+      if (device.budgetExempt) exemptReliefKw += deviceKw;
+    }
+    this.held = { fromMs, reliefKw, exemptReliefKw };
+  }
+
+  /** What the last simulated plan would be keeping off the reading, kW. */
+  heldReliefKw(): number {
+    return this.held?.reliefKw ?? 0;
   }
 
   /** A build that actuates: live control's own meter is the period's energy again. */
   clear(): void {
-    this.avoidedKWhByHour.clear();
+    this.avoidedByHour.clear();
     this.avoidedQuarter = null;
     this.held = null;
   }
@@ -79,38 +95,54 @@ export class SimulatedPeriodEnergy {
   /**
    * The tracker as the planner paces from it in simulation: each hour's and the
    * current quarter's energy less what the simulated decisions would have kept
-   * off it. An hour that exported (a negative bucket) is left as measured.
+   * off it, and each hour's budget-exempt energy less the exempt devices' part,
+   * so the daily budget counts that relief once. An hour that exported (a
+   * negative bucket) is left as measured.
    */
   planningView(tracker: PowerTrackerState): PowerTrackerState {
-    if (this.avoidedKWhByHour.size === 0 && this.avoidedQuarter === null) return tracker;
+    if (this.avoidedByHour.size === 0 && this.avoidedQuarter === null) return tracker;
     const buckets = { ...tracker.buckets };
-    for (const [key, avoidedKWh] of this.avoidedKWhByHour) {
+    const exemptBuckets = { ...tracker.exemptBuckets };
+    for (const [key, avoided] of this.avoidedByHour) {
       const measuredKWh = buckets[key];
-      if (typeof measuredKWh === 'number' && measuredKWh > 0) buckets[key] = Math.max(0, measuredKWh - avoidedKWh);
+      if (measuredKWh !== undefined) buckets[key] = lessAvoided(measuredKWh, avoided.kWh);
+      const exemptKWh = exemptBuckets[key];
+      if (exemptKWh !== undefined) exemptBuckets[key] = lessAvoided(exemptKWh, avoided.exemptKWh);
     }
     const quarter = tracker.capacityQuarter;
     const avoided = this.avoidedQuarter;
     const capacityQuarter = quarter !== undefined && avoided !== null && quarter.startMs === avoided.startMs
       ? { ...quarter, energyKWh: Math.max(0, quarter.energyKWh - avoided.kWh) }
       : quarter;
-    return { ...tracker, buckets, capacityQuarter };
+    return {
+      ...tracker,
+      buckets,
+      ...(tracker.exemptBuckets === undefined ? {} : { exemptBuckets }),
+      capacityQuarter,
+    };
   }
 
-  private add(startMs: number, kWh: number): void {
+  private add(startMs: number, avoided: Avoided): void {
     const hourKey = getHourBucketKey(startMs);
-    this.avoidedKWhByHour.set(hourKey, (this.avoidedKWhByHour.get(hourKey) ?? 0) + kWh);
+    const hour = this.avoidedByHour.get(hourKey) ?? { kWh: 0, exemptKWh: 0 };
+    this.avoidedByHour.set(hourKey, { kWh: hour.kWh + avoided.kWh, exemptKWh: hour.exemptKWh + avoided.exemptKWh });
     const quarterStartMs = Math.floor(startMs / CAPACITY_QUARTER_MS) * CAPACITY_QUARTER_MS;
     this.avoidedQuarter = this.avoidedQuarter?.startMs === quarterStartMs
-      ? { startMs: quarterStartMs, kWh: this.avoidedQuarter.kWh + kWh }
-      : { startMs: quarterStartMs, kWh };
+      ? { startMs: quarterStartMs, kWh: this.avoidedQuarter.kWh + avoided.kWh }
+      : { startMs: quarterStartMs, kWh: avoided.kWh };
   }
 
   private prune(nowMs: number): void {
-    for (const key of this.avoidedKWhByHour.keys()) {
-      if (new Date(key).getTime() < nowMs - RETAINED_MS) this.avoidedKWhByHour.delete(key);
+    for (const key of this.avoidedByHour.keys()) {
+      if (new Date(key).getTime() < nowMs - RETAINED_MS) this.avoidedByHour.delete(key);
     }
   }
 }
+
+/** A measured hour's energy less what simulation avoided, never below zero; an exporting hour stays as measured. */
+const lessAvoided = (measuredKWh: number, avoidedKWh: number): number => (
+  measuredKWh > 0 ? Math.max(0, measuredKWh - avoidedKWh) : measuredKWh
+);
 
 /** The next hour or quarter boundary after `ms`; every hour boundary is a quarter boundary. */
 const nextBoundaryMs = (ms: number): number => (Math.floor(ms / CAPACITY_QUARTER_MS) + 1) * CAPACITY_QUARTER_MS;

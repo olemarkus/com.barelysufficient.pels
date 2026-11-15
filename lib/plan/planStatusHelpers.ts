@@ -130,6 +130,12 @@ export const normalizePlanMeta = (meta: DevicePlan['meta']): DevicePlan['meta'] 
     hourUncontrolledKWh: roundTo(meta.hourUncontrolledKWh, PLAN_META_KWH_STEP),
     dailyBudgetRemainingKWh: roundTo(meta.dailyBudgetRemainingKWh, PLAN_META_KWH_STEP),
     dailyBudgetHourKWh: roundTo(meta.dailyBudgetHourKWh, PLAN_META_KWH_STEP),
+    ...(meta.withControlOn === undefined ? {} : {
+      withControlOn: {
+        usedKWh: roundTo(meta.withControlOn.usedKWh, PLAN_META_KWH_STEP),
+        drawKw: roundTo(meta.withControlOn.drawKw, PLAN_META_KW_STEP),
+      },
+    }),
     ...normalizeMeasuredMetaFields(meta),
   };
 };
