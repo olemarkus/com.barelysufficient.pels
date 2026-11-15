@@ -9,7 +9,8 @@
  *
  * This ledger is the planner's own bookkeeping about its own simulated
  * decisions. Each simulated build leaves the relief its plan holds (what the
- * devices it holds would stop drawing); the next build accrues that relief over
+ * devices it holds would stop drawing, and what the batteries it holds would
+ * take off the house's import); the next build accrues that relief over
  * the interval the tracker has since counted, per hour and per quarter. While
  * simulating, the planner paces from a view of the tracker with that energy
  * taken off (`planningView`). It is never written back: usage history, budgets,
@@ -23,9 +24,11 @@ import type { PowerTrackerState } from '../power/tracker';
 import { getHourBucketKey } from '../utils/hourBuckets';
 import { CAPACITY_QUARTER_MS } from '../../packages/shared-domain/src/settings/capacityPeriod';
 import { getSteppedLoadStep } from '../../packages/shared-domain/src/deviceControlProfiles';
-import type { DevicePlanDevice } from './planTypes';
+import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isMeteredPlanDevice } from './planMeteredDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
+import { hasStorageInput } from './battery/storageLadder';
+import type { StorageRelief } from './battery/storageReliefTypes';
 
 const HOUR_MS = 60 * 60 * 1000;
 /** Hours older than this cannot pace anything: the daily budget's day is the longest window. */
@@ -67,10 +70,15 @@ export class SimulatedPeriodEnergy {
   }
 
   /** What the plan just built would keep off the meter from the reading it decided on. */
-  hold(devices: readonly DevicePlanDevice[], tracker: PowerTrackerState): void {
+  hold(
+    devices: readonly DevicePlanDevice[],
+    storage: StorageRelief,
+    inputs: readonly PlanInputDevice[],
+    tracker: PowerTrackerState,
+  ): void {
     const fromMs = tracker.lastTimestamp;
     if (typeof fromMs !== 'number') return;
-    let reliefKw = 0;
+    let reliefKw = resolveStorageReliefKw(storage, inputs);
     let exemptReliefKw = 0;
     for (const device of devices) {
       const deviceKw = resolveHeldReliefKw(device);
@@ -80,16 +88,24 @@ export class SimulatedPeriodEnergy {
     this.held = { fromMs, reliefKw, exemptReliefKw };
   }
 
-  /** What the last simulated plan would be keeping off the reading, kW. */
+  /**
+   * What the last simulated plan would be keeping off this reading, kW: a
+   * reading under live control would already show it.
+   */
   heldReliefKw(): number {
     return this.held?.reliefKw ?? 0;
   }
 
-  /** A build that actuates: live control's own meter is the period's energy again. */
-  clear(): void {
+  /**
+   * A build that actuates: live control's own meter is the period's energy
+   * again. True when the build before it was simulated.
+   */
+  endSimulation(): boolean {
+    const wasSimulating = this.held !== null;
     this.avoidedByHour.clear();
     this.avoidedQuarter = null;
     this.held = null;
+    return wasSimulating;
   }
 
   /**
@@ -146,6 +162,26 @@ const lessAvoided = (measuredKWh: number, avoidedKWh: number): number => (
 
 /** The next hour or quarter boundary after `ms`; every hour boundary is a quarter boundary. */
 const nextBoundaryMs = (ms: number): number => (Math.floor(ms / CAPACITY_QUARTER_MS) + 1) * CAPACITY_QUARTER_MS;
+
+/**
+ * What the batteries the plan holds would take off the house's import, kW: the
+ * held setpoint below what each battery measured (more discharge, or less
+ * charge), as the storage stage counts it in the house's balance.
+ */
+function resolveStorageReliefKw(storage: StorageRelief, inputs: readonly PlanInputDevice[]): number {
+  const signedWById = new Map(inputs.flatMap((device) => (
+    hasStorageInput(device) && device.storage.reading === 'observed'
+      ? [[device.id, device.storage.signedPowerW] as const] : []
+  )));
+  let reliefKw = 0;
+  for (const battery of storage.batteries) {
+    const signedW = signedWById.get(battery.deviceId);
+    if (battery.decision.kind === 'setpoint' && signedW !== undefined) {
+      reliefKw += Math.max(0, signedW - battery.setpointW) / 1000;
+    }
+  }
+  return reliefKw;
+}
 
 /**
  * What a device the plan holds would stop drawing, kW: all of it for a turn-off,

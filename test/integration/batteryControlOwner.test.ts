@@ -635,6 +635,35 @@ describe('HomeBatteryControlOwner lever read and plan hand-back', () => {
     expect(settings.get(CLAIM_KEY)).toBeNull();
   });
 
+  // Simulation holds only a write back: the planner decides for the battery as
+  // live control would, while the owner still refuses every claim.
+  it('in simulation, reads a battery live control could claim as admissible, and refuses the claim', () => {
+    const { owner, settings } = buildOwner({ dryRun: true });
+    expect(owner.readControl(BATTERY)).toMatchObject({ kind: 'setpoint', admissible: true, claimHeld: false });
+    expect(owner.admitClaim(BATTERY)).toEqual({ status: 'refused', reason: 'dry_run' });
+    expect(settings.get(CLAIM_KEY)).toBeNull();
+  });
+
+  it.each([
+    { name: 'an opted-out battery', params: {
+      settings: settingsStore({ [BATTERY_CONTROL_DEVICES]: { [BATTERY]: false } }),
+    } },
+    { name: 'an unreadable opt-out', params: { settings: settingsStore({ [BATTERY_CONTROL_DEVICES]: 'junk' }) } },
+    { name: 'a meter-area battery', params: { mainMember: false } },
+    { name: 'a battery already under Homey\'s claim with no record', params: {
+      batteries: { [BATTERY]: setpointBattery('homey') },
+    } },
+    { name: 'a pre-claim value the battery does not declare', params: {
+      batteries: { [BATTERY]: setpointBattery('device') },
+    } },
+    { name: 'its own unreadable record', params: {
+      settings: settingsStore({ [CLAIM_KEY]: { capabilityId: 'target_power_mode' } }),
+    } },
+  ] as const)('in simulation, still keeps $name out of the plan', ({ params }) => {
+    const { owner } = buildOwner({ ...params, dryRun: true } as Parameters<typeof buildOwner>[0]);
+    expect(owner.readControl(BATTERY)).toMatchObject({ admissible: false });
+  });
+
   it('hands a claimed battery back itself once capacity simulation is switched on', async () => {
     let dryRun = false;
     const settings = settingsStore();

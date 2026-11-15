@@ -950,6 +950,22 @@ keeps the word for what PELS holds it to do.
 | Overview hero, one battery supplying while PELS holds it for the limit (only while it supplies: a capped charge holds nothing) | `Sessy battery is supplying 2.4 kW to hold your limit.` |
 | Overview hero, several | `2 batteries are supplying 4.2 kW to hold your limit.` |
 | Overview hero, a battery supplying while devices are also limited | `Sessy battery is supplying 2.4 kW to hold your limit. Holding back 2 devices…` |
+
+In **Simulation mode** PELS plans the battery as live control would but sends
+nothing, so the battery stays in its own mode. Its state word is what it
+reports (`Supplying`, `Charging`, or `Own mode` when it reports neither), never
+`Limited`, and the hero does not name it holding the limit. Only the reason
+line names the hold, hypothetically, with the `(simulation)` tag (source:
+`BATTERY_SIMULATED_REASON_LINES` in `lib/plan/batteryStatusReadModel.ts`):
+
+| Hold | Simulation reason |
+|---|---|
+| Holding the limit | `Would supply power to hold your limit (simulation)` |
+| Capping its charge | `Would charge slower to hold your limit (simulation)` |
+| Easing discharge for an exporting phase | `Would discharge less so L1 stays under your main fuse (simulation)` |
+| Storing solar the devices leave | `Would store the solar power your devices leave (simulation)` |
+| Capping its charge so a device can use the solar | `Would charge less so a device can use the solar (simulation)` |
+| Battery plan: charge / store solar / supply / sell / keep | `Would buy cheap electricity for later` / `Would store solar for later household use` / `Would use stored energy while power is expensive` / `Would sell stored energy while export pays more` / `Would keep stored energy for later`, each with ` (simulation)` |
 | Device page, Managed hint | `PELS takes it over to hold your limit or store spare solar, then hands it back.`; with Power limits off, `PELS shares spare solar between it and your devices, then hands it back.` |
 | Setup, `Choose what PELS does`, battery row | Switch `Plan charging with PELS` (the device page's), `PELS plans charging and household supply around your prices and solar. The battery’s own schedule resumes when you turn this off.`; while off, a `Usable capacity (kWh)` field (`From your battery’s specification. PELS needs it to plan.`), empty until a capacity was saved, and the switch waits for it; while on, `Planned for 10 kWh usable capacity.` (+ ` The plan runs once you start managing.` in Simulation mode). Review lists `Plan charging with PELS on`. |
 | Device page, Managed hint, a battery PELS cannot drive | `PELS reads its power and charge level and shows it on the Overview.` |

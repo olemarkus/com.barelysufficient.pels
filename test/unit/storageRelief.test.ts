@@ -105,7 +105,7 @@ const cycle = (
   drawKw = 5,
   offers: ReadonlyMap<string, SpecOffer> = NO_OFFERS,
 ): StorageRelief => decideStorageRelief(
-  [device], buildMeasuredPower({ drawKw, headroomKw }), levers, withAddedBack(device, levers, drawKw, offers), nowTs,
+  [device], buildMeasuredPower({ drawKw, headroomKw }), levers, withAddedBack(device, levers, drawKw, offers), nowTs, 0,
 );
 
 /** A cycle in an exporting house, offering the battery this much surplus, W, after the consumers above it. */
@@ -326,12 +326,12 @@ describe('storage relief without a reading', () => {
 
   it('hands back a hold whose battery left the plan after the missing-input window', () => {
     const heater = buildPlanInputDevice({ id: 'heater', controllable: true });
-    const kept = decideStorageRelief([heater], buildMeasuredPower(), { battery: lever() }, new Map(), NOW);
+    const kept = decideStorageRelief([heater], buildMeasuredPower(), { battery: lever() }, new Map(), NOW, 0);
     expect(kept.levers.battery).toBeDefined();
     expect(decisionsOf(kept).size).toBe(0);
 
     const dropped = decideStorageRelief(
-      [heater], buildMeasuredPower(), kept.levers, new Map(), NOW + STORAGE_INPUT_MISSING_RELEASE_MS,
+      [heater], buildMeasuredPower(), kept.levers, new Map(), NOW + STORAGE_INPUT_MISSING_RELEASE_MS, 0,
     );
     expect(dropped.levers).toEqual({});
     expect(decisionsOf(dropped).get('battery')).toEqual({ kind: 'release', reason: 'not_admissible' });
@@ -578,7 +578,7 @@ describe('a raise past the own mode\'s charge, ranked against the consumers belo
       nowTs: NOW,
     });
     const relief = decideStorageRelief(
-      devices, buildMeasuredPower({ drawKw: signedNetW / 1000, headroomKw: 8 }), levers, offers, NOW,
+      devices, buildMeasuredPower({ drawKw: signedNetW / 1000, headroomKw: 8 }), levers, offers, NOW, 0,
     );
     const chargeOf = (id: string, observedW: number): number => {
       const decision: StorageDecision | undefined = decisionsOf(relief).get(id);

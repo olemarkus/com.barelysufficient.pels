@@ -37,7 +37,7 @@ const phases = (roomKw: Record<PhaseName, number>): PhasePower => ({
 // Each phase keeps its clear band (`SHEDDING_CLEAR_THRESHOLD_KW`, 0.4 kW) free.
 const decide = (devices: readonly PlanInputDevice[], roomKw: Record<PhaseName, number>) => decideStorageRelief(
   devices, buildMeasuredPower({ drawKw: 3, headroomKw: 10, phase: phases(roomKw) }), {},
-  offers(devices.map(device => device.id)), NOW,
+  offers(devices.map(device => device.id)), NOW, 0,
 ).levers;
 
 describe('battery charge within its phases', () => {
@@ -71,7 +71,7 @@ describe('battery charge within its phases', () => {
 
   it('charges as before when phases are not protected', () => {
     const levers = decideStorageRelief([battery('first', { kind: 'single', phase: 'L1' })],
-      buildMeasuredPower({ drawKw: 3, headroomKw: 10 }), {}, offers(['first']), NOW).levers;
+      buildMeasuredPower({ drawKw: 3, headroomKw: 10 }), {}, offers(['first']), NOW, 0).levers;
     expect(levers.first.setpointW).toBe(2000);
   });
 });

@@ -149,9 +149,11 @@ import { BatteryWatchOnlyLedger } from './batteryWatchOnly';
 const logger = getLogger('battery');
 
 /**
- * Whether an admission check holds the moments that only hold a write back
- * (Main's write fence, a contested claim) against the battery. Neither is a
- * reason to hand the battery back, so the lever read ignores them.
+ * Whether an admission check holds what only holds a write back (Main's write
+ * fence, a contested claim, capacity simulation) against the battery. None is
+ * a reason to hand the battery back, so the lever read ignores them: in
+ * simulation the planner decides for the battery as live control would, while
+ * every claim and write is still refused (`admitClaim`).
  */
 type MomentaryHolds = 'holds_apply' | 'holds_ignored';
 
@@ -549,6 +551,12 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     return isDrivableBattery(battery) && !(battery.kind === 'app_actions' && this.homeyApiKeyRemovals > 0);
   }
 
+  /** What holds only a write back (`MomentaryHolds`): Main's write fence, then capacity simulation. */
+  private resolveWriteOnlyRefusal(): 'actuation_fenced' | 'dry_run' | null {
+    if (this.isActuationFenced()) return 'actuation_fenced';
+    return this.isCapacityDryRun() ? 'dry_run' : null;
+  }
+
   /** Every admission check, writing nothing. */
   private checkClaim(deviceId: string, holds: MomentaryHolds): BatteryClaimRefusal | ClaimCheck {
     const battery = this.getBattery(deviceId);
@@ -558,8 +566,8 @@ export class HomeBatteryControlOwner implements BatteryControlOwner {
     if (control.status !== 'resolved') return 'control_setting_unreadable';
     if (!isBatteryControlEnabled(control.devices, deviceId)) return 'control_disabled';
     if (!this.isMainHomeMember(deviceId)) return 'not_main_home';
-    if (holds === 'holds_apply' && this.isActuationFenced()) return 'actuation_fenced';
-    if (this.isCapacityDryRun()) return 'dry_run';
+    const momentary = holds === 'holds_apply' ? this.resolveWriteOnlyRefusal() : null;
+    if (momentary !== null) return momentary;
     if (this.releasing.has(deviceId) || this.pending.holdsClaim(deviceId, Date.now())) return 'release_in_flight';
     const claims = this.loadClaims();
     if (claims.status !== 'loaded') return 'claim_records_unread';

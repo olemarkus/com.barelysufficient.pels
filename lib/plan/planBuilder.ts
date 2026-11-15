@@ -55,7 +55,6 @@ import {
 } from './phase/phasePower';
 import { buildSheddingPlan, type SheddingPlan } from './shedding';
 import {
-  NO_STORAGE_RELIEF,
   attachStorageDecisions,
   collectAbsentStorageReleases,
   decideStorageRelief,
@@ -64,7 +63,9 @@ import {
   resumeContinuousStorage,
   type StorageRelief,
 } from './battery/storageRelief';
-import { applyStorageHandBacks, applyStorageLimits, withoutStorageWithheld } from './battery/storageLimit';
+import {
+  applyStorageHandBacks, applyStorageLimits, simulateFollowedHolds, withoutStorageWithheld,
+} from './battery/storageLimit';
 import { buildSheddingDeps, SilentMeterPlanBuilder } from './planBuilderSilentMeter';
 import {
   retainSolarWhileDemandSettles,
@@ -342,7 +343,9 @@ export class PlanBuilder {
     // The first measured build inside this hour's drain keeps what the house
     // drew as the level the drain falls from (`CapacityDrainStart`). Before
     // that, this build's pace already started from the same draw.
-    this.state.capacityDrainStart.record(settings, this.powerTracker, nowTs, reading.totalKw);
+    this.state.capacityDrainStart.record(
+      settings, this.pacingTracker, nowTs, this.resolvePacingDrawKw(reading.totalKw),
+    );
     const power = resolveMeasuredPower(reading, context, admittedDevices, this.deps.getMainFuse());
     // Smart-task precedence for the standing postures, shared by the
     // allocator and the hold so the two can never disagree.
@@ -396,7 +399,7 @@ export class PlanBuilder {
     const decidedDevices = attachStorageDecisions(
       this.stages.finalizePlan(planDevices, heldContext.temperatureSetpoints, nowTs).planDevices, storageRelief,
     );
-    this.recordPlannedShed(decidedDevices, decoration);
+    this.recordPlannedShed(decidedDevices, decoration, storageRelief, heldContext.devices);
     const metaFacts: PlanMetaCycleFacts = {
       context: heldContext,
       reading,
@@ -488,7 +491,7 @@ export class PlanBuilder {
   }
 
   private async decideShedding(
-    context: PlanContext,
+    planned: PlanContext,
     power: MeasuredPower,
     surplusOffers: ReadonlyMap<string, StorageSurplusOffer>,
     settings: PowerLimitSettings,
@@ -498,6 +501,12 @@ export class PlanBuilder {
     storageRelief: StorageRelief;
     admissionPower: MeasuredPower;
   }> {
+    // In simulation a held battery is read as if it followed its hold
+    // (`simulateFollowedHolds`); the reading's missing relief is credited.
+    const followed = this.deps.getCapacityDryRun()
+      ? simulateFollowedHolds(planned.devices, this.state.storageLeverByDevice)
+      : { devices: planned.devices, undeliveredW: 0 };
+    const context: PlanContext = { ...planned, devices: [...followed.devices] };
     const { nowTs } = context;
     // The batteries' holds as this reading leaves them, and the surplus each
     // battery stores from its offer (`lib/plan/battery/storageRelief.ts`). A held discharge
@@ -505,9 +514,9 @@ export class PlanBuilder {
     // the overshoot grace that gates it count it as their own term, and
     // everything else keeps the measured draw. Whether a battery is limited
     // further is shedding's choice, at its place in the priority order.
-    const heldStorage = this.deps.getCapacityDryRun()
-      ? NO_STORAGE_RELIEF
-      : decideStorageRelief(context.devices, power, this.state.storageLeverByDevice, surplusOffers, nowTs);
+    const heldStorage = decideStorageRelief(
+      context.devices, power, this.state.storageLeverByDevice, surplusOffers, nowTs, followed.undeliveredW,
+    );
     const overshootDecision = this.state.overshoot.decidePacing(
       context, power, settings, heldStorage.shed,
       requireLatchedMeterReading(this.powerTracker),
@@ -617,16 +626,31 @@ export class PlanBuilder {
   }
 
   /**
+   * The draw the period's pace starts its end-of-hour drain from: the reading,
+   * less in simulation what the last plan would already be keeping off it.
+   */
+  private resolvePacingDrawKw(totalKw: number): number {
+    return this.deps.getCapacityDryRun() ? totalKw - this.state.simulatedPeriodEnergy.heldReliefKw() : totalKw;
+  }
+
+  /**
    * Which devices this plan holds shed and under which posture (semantics on
    * `ShedDecisions.recordPlannedShed`), and in simulation what holding them
    * would keep off the meter until the next build.
    */
-  private recordPlannedShed(decidedDevices: DevicePlanDevice[], decoration: DeferredDecorationBundle): void {
+  private recordPlannedShed(
+    decidedDevices: DevicePlanDevice[],
+    decoration: DeferredDecorationBundle,
+    storageRelief: StorageRelief,
+    inputs: readonly PlanInputDevice[],
+  ): void {
     const simulating = this.deps.getCapacityDryRun();
     this.state.shedDecisions.recordPlannedShed(
       decidedDevices, decoration, this.deps.pendingBinaryCommandStore, !simulating,
     );
-    if (simulating) this.state.simulatedPeriodEnergy.hold(decidedDevices, this.powerTracker);
+    if (simulating) {
+      this.state.simulatedPeriodEnergy.hold(decidedDevices, storageRelief, inputs, this.powerTracker);
+    }
   }
 
   /**
@@ -634,8 +658,13 @@ export class PlanBuilder {
    * that plan's reading; a build that actuates drops the count.
    */
   private accrueSimulatedPeriodEnergy(): void {
-    if (this.deps.getCapacityDryRun()) this.state.simulatedPeriodEnergy.accrue(this.powerTracker);
-    else this.state.simulatedPeriodEnergy.clear();
+    if (this.deps.getCapacityDryRun()) {
+      this.state.simulatedPeriodEnergy.accrue(this.powerTracker);
+      return;
+    }
+    // The batteries' simulated holds were never sent: live control decides
+    // them afresh from its first reading, as from a battery's own mode.
+    if (this.state.simulatedPeriodEnergy.endSimulation()) this.state.storageLeverByDevice = {};
   }
 
   private recordCleanWholeHomeSample(devices: PlanInputDevice[], sampleAtMs: number | undefined): void {

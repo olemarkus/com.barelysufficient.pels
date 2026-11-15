@@ -26,21 +26,40 @@ const battery = (signedW: number, percent: number): HomeBatteryCard => ({
   level: { kind: 'observed', percent },
 });
 
-const batteryDevice = (card: HomeBatteryCard, hold: StorageHold, exporting = false): PlanDeviceSnapshot => ({
+const batteryDevice = (
+  card: HomeBatteryCard, hold: StorageHold, exporting = false, dryRun = false,
+): PlanDeviceSnapshot => ({
   ...uiDeviceFixture({ id: 'battery-1', name: 'Sessy battery', controllable: false }),
-  status: buildHomeBatteryStatus(card, hold, true, false, { exporting }),
-  homeBattery: buildSettingsUiPlanHomeBattery(card, hold, true, { exporting }),
+  status: buildHomeBatteryStatus(card, hold, true, dryRun, { exporting }),
+  homeBattery: buildSettingsUiPlanHomeBattery(card, hold, true, { exporting }, dryRun),
 });
 
-const renderCard = (dev: PlanDeviceSnapshot): HTMLDivElement => {
+const renderCard = (dev: PlanDeviceSnapshot, dryRun = false): HTMLDivElement => {
   const mount = document.createElement('div');
   act(() => {
-    render(h(PlanGenericCard, { dev, dryRun: false, nowMs: 1_000, evStateLine: null }), mount);
+    render(h(PlanGenericCard, { dev, dryRun, nowMs: 1_000, evStateLine: null }), mount);
   });
   return mount;
 };
 
 describe('home battery Overview card', () => {
+  // In Simulation mode PELS sends nothing: the battery stays in its own mode.
+  // The state word says what it reports; only the reason line names the hold.
+  it('in simulation, names what the battery reports and what PELS would have it do', () => {
+    const lines = (dev: PlanDeviceSnapshot) => [...renderCard(dev, true)
+      .querySelectorAll('.plan-card__state-row > span, .plan-card__secondary-line, p')].map((el) => el.textContent);
+    const idle = batteryDevice(battery(0, 64), { kind: 'relief' }, false, true);
+    expect(lines(idle)).toEqual(['Own mode', '64 % charged', 'Would supply power to hold your limit (simulation)']);
+    expect(idle.homeBattery).toMatchObject({ activity: 'own_mode', holdsLimit: false });
+
+    const charging = batteryDevice(battery(600, 52), { kind: 'charge_limit', heldBackKw: 2.4 }, false, true);
+    expect(lines(charging)).toEqual([
+      'Charging', '0.6 kW', '52 % charged', 'Would charge slower to hold your limit (simulation)',
+    ]);
+    expect(lines(batteryDevice(battery(0, 40), { kind: 'plan_charge' }, false, true)))
+      .toContain('Would buy cheap electricity for later (simulation)');
+  });
+
   it('shows the state and power, then the charge level, then the reason', () => {
     const card = renderCard(batteryDevice(battery(-2400, 64), { kind: 'relief' }));
     const lines = [...card.querySelectorAll('.plan-card__state-row > span, .plan-card__secondary-line, p')].map((el) => el.textContent);

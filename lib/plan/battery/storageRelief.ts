@@ -88,9 +88,8 @@ import type { PhaseFootprint } from '../../../packages/planner-types/src/phaseFo
  * discharging battery counts that discharge as deficit only when hand-back
  * can be attempted, so shedding is ready before the import lands. A deferred
  * hand-back still withholds discharge from restore without adding a deficit.
- * Capacity simulation writes nothing, so the planner decides nothing for a
- * battery then (`NO_STORAGE_RELIEF`); the battery's owner hands a held one
- * back itself.
+ * In capacity simulation a held battery is read as if it followed its last
+ * setpoint (`simulateFollowedHolds`); its owner refuses every claim, and hands a held one back.
  */
 import type { StorageDischargeObservation } from '../../../packages/planner-types/src/storageDischarge';
 import type {
@@ -149,9 +148,7 @@ export const STORAGE_DECREASE_MIN_INTERVAL_MS = 60 * 1000;
 export const STORAGE_INPUT_MISSING_RELEASE_MS = 2 * 60 * 1000;
 
 /**
- * No battery decided, held or credited: capacity simulation (which writes
- * nothing, so the planner decides nothing for a battery), and the base of the
- * silent-meter hand-back.
+ * No battery decided, held or credited: the base of the silent-meter hand-back.
  */
 export const NO_STORAGE_RELIEF: StorageRelief = Object.freeze({
   shed: NO_STORAGE_SHED_TERM,
@@ -473,7 +470,8 @@ class StorageReliefCycle {
     /** What the allocator offered each battery at its place in the priority order. */
     private readonly offers: ReadonlyMap<string, StorageSurplusOffer>,
     private readonly nowTs: number,
-    private phaseRoom: PhaseRoomAxis,
+    /** In simulation, last: what the held batteries would deliver that the reading does not show. */
+    private phaseRoom: PhaseRoomAxis, private readonly simulatedUndeliveredW: number,
   ) {}
 
   release(
@@ -610,7 +608,7 @@ class StorageReliefCycle {
   toRelief(): StorageRelief {
     return {
       shed: {
-        netCreditKw: (this.creditW - this.releasedDischargeW) / 1000,
+        netCreditKw: (this.creditW + this.simulatedUndeliveredW - this.releasedDischargeW) / 1000,
         relieving: Object.values(this.levers).some((lever) => lever.setpointW < 0),
         drawMarginKw: this.drawMarginW / 1000,
       },
@@ -683,13 +681,15 @@ export function decideStorageRelief(
   levers: Readonly<Record<string, StorageLeverState>>,
   offers: ReadonlyMap<string, StorageSurplusOffer>,
   nowTs: number,
+  /** In simulation, what held batteries deliver that the reading misses (`simulateFollowedHolds`), W. */
+  simulatedUndeliveredW: number,
 ): StorageRelief {
   const cycle = new StorageReliefCycle({
-    deficitW: power.headroom.kind === 'off' ? 0 : Math.max(0, -power.headroom.kw * 1000),
-    headroomW: power.headroom.kind === 'off' ? null : Math.max(0, power.headroom.kw * 1000),
-    netImportW: power.drawKw * 1000,
+    deficitW: power.headroom.kind === 'off' ? 0 : Math.max(0, -power.headroom.kw * 1000 - simulatedUndeliveredW),
+    headroomW: power.headroom.kind === 'off' ? null : Math.max(0, power.headroom.kw * 1000 + simulatedUndeliveredW),
+    netImportW: power.drawKw * 1000 - simulatedUndeliveredW,
     sampledAtMs: power.sampledAtMs,
-  }, offers, nowTs, resolvePhaseRoomAxis(power.phase));
+  }, offers, nowTs, resolvePhaseRoomAxis(power.phase), Math.max(0, simulatedUndeliveredW));
   const seen = new Set<string>();
   for (const device of devices) {
     // A battery PELS only watches is decided like one without a cluster: it

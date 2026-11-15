@@ -23,9 +23,9 @@ const battery = (targetW: number, observedW: number): PlanInputDevice & { storag
 function transition(previousW: number, targetW: number, observedW: number) {
   const state = createPlanEngineState(NOW);
   const power = buildMeasuredPower({ drawKw: 5, headroomKw: 4 });
-  state.storageLeverByDevice = { ...decideStorageRelief([battery(previousW, previousW)], power, {}, offers, NOW - 60_000).levers };
+  state.storageLeverByDevice = { ...decideStorageRelief([battery(previousW, previousW)], power, {}, offers, NOW - 60_000, 0).levers };
   const devices: PlanInputDevice[] = [battery(targetW, observedW)];
-  const storage = decideStorageRelief(devices, power, state.storageLeverByDevice, offers, NOW);
+  const storage = decideStorageRelief(devices, power, state.storageLeverByDevice, offers, NOW, 0);
   return { state, devices, storage, power };
 }
 
