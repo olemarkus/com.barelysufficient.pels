@@ -79,6 +79,23 @@ describe('MeterMonthlyPeaks', () => {
     expect(peaks.current('b')).toBeNull();
   });
 
+  it('keeps one read under way at a time, however long a meter device takes', async () => {
+    const peaks = new MeterMonthlyPeaks();
+    let answer: (value: MeterMonthlyPeakRead) => void = () => undefined;
+    const reader = vi.fn(() => new Promise<MeterMonthlyPeakRead>((resolve) => { answer = resolve; }));
+    const first = peaks.refresh(['a'], 'a', reader, nowMs);
+    // A minute later the read has not come back: the next poll does not start another.
+    const second = peaks.refresh(['a'], 'a', reader, nowMs + METER_MONTHLY_PEAK_READ_INTERVAL_MS);
+    expect(reader).toHaveBeenCalledOnce();
+
+    answer(read(5));
+    await Promise.all([first, second]);
+    expect(peaks.current('a')?.peakKw).toBe(5);
+    // Once it has, the next minute's poll reads again.
+    void peaks.refresh(['a'], 'a', reader, nowMs + 2 * METER_MONTHLY_PEAK_READ_INTERVAL_MS);
+    expect(reader).toHaveBeenCalledTimes(2);
+  });
+
   it("answers Main's peak for the meter the poll names Main's, even between reads", async () => {
     const peaks = new MeterMonthlyPeaks();
     const reader = vi.fn(async (meterDeviceId: string) => read(meterDeviceId === 'main' ? 6 : 2));
