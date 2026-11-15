@@ -262,6 +262,36 @@ describe('Zaptec legacy current and native watt control at the SDK boundary', ()
     expect(mockHomeyInstance.settings.get(DEVICE_POWER_CONTROL_MODES)).toEqual({ [ID]: 'automatic' });
   });
 
+  it('writes nothing to the charger in simulation, then limits it once simulation is switched off', async () => {
+    const charger = await buildCharger();
+    const simulation = simulateZaptec(charger);
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, HOUSE_LIMIT_W / 1000);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, true);
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
+    mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, { [ID]: true });
+    mockHomeyInstance.settings.set(MANAGED_DEVICES, { [ID]: true });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { [ID]: { action: 'set_step' } });
+    mockHomeyInstance.settings.set(DEVICE_POWER_CONTROL_MODES, { [ID]: 'automatic' });
+
+    await createApp().onInit();
+    // Several minutes of meter readings well over the limit.
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    await drainPending();
+    expect(simulation.housePowerW()).toBeGreaterThan(HOUSE_LIMIT_W);
+    const devicePrefix = `manager/devices/device/${ID}/capability/`;
+    expect(simulation.put.mock.calls.filter(([path]) => String(path).startsWith(devicePrefix))).toEqual([]);
+
+    // Going live, PELS may pause the charger first and resume it at a level that fits.
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    await advanceMeterDecisionsUntil(() => simulation.powerWrites().some((watts) => watts > 0)
+      && simulation.housePowerW() > BACKGROUND_W);
+    await drainPending();
+    expect(simulation.housePowerW()).toBeLessThanOrEqual(HOUSE_LIMIT_W);
+  });
+
   it.each(['flow', 'built_in'] as const)('limits IT charging in watts with legacy %s current control selected', async (method) => {
     const charger = await buildCharger();
     const simulation = simulateZaptec(charger);

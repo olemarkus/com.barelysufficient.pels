@@ -134,7 +134,7 @@ test.describe('Settings UI (smoke)', () => {
     expect(stored).toBe('Away');
   });
 
-  test('lets users turn off simulation mode from the warning banner', async ({ page }) => {
+  test('lets users start managing from the warning banner through the setup review', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     await expect(page.locator('#dry-run-banner')).toContainText('Simulation on — devices stay as-is');
