@@ -108,6 +108,51 @@ clean; the cost is the leftover allowance it could have used in those minutes. A
 stepped device steps down instead, and smaller devices are limited one at a
 time.
 
+### Timed run of an on/off device
+
+The pace asks whether the house could hold its draw until `:00`. An on/off
+device bigger than the gap it could fill never passes that test until most
+of the hour has gone, and the drain then cuts it. Prod 2026-11-15: a 0.42 kW
+gap and a 0.8 kW heater, which fits for about half the hour, ran only
+`:36`-`:52`, and every night hour ended at 4.47-4.59 of 4.7 kWh.
+
+`capacityTimedRun.ts` lets the hour's marginal on/off device run for part of
+the hour and stop in time. Each build, from the measurement alone:
+
+- **Start.** The device restore would start first, when it is an on/off device
+  PELS holds off, may start if it then gets at least `TIMED_RUN_MIN_START_MIN`
+  (10) minutes before it has to stop.
+- **Keep.** Once it runs and the house is over the pace, the device shedding
+  would limit first, when it is that running on/off device and limiting it
+  alone would bring the house under the pace, goes on until its stop.
+- **Stop.** The stop is when the energy left covers only the rest of the house
+  at its current draw, plus a reserve: half the margin in kW for the time left,
+  and the device's draw for `TIMED_RUN_STOP_RESPONSE_MIN` (2) while its stop
+  lands. It is never later than `:50`, so the drain finds the house at its base
+  load and the next hour starts clean.
+- **Hard cap.** Every start and keep also follows the slow-response rule
+  (`notes/slow-response-control.md`). The draw, held unchanged to `:00`, must
+  leave the protected half of the margin under the hard cap. So a stop that
+  never lands still leaves the hard cap as safe as an ordinary cut would. The
+  device therefore runs off-first: it starts once enough of the hour is unused
+  that its draw passes this rule (owner ruling 2026-11-15; an on-first run from
+  `:00` would hold a draw that crosses the hard cap and rely on the stop).
+
+The run is a raised capacity pace (`applyCapacityTimedRun`, `planBudget.ts`),
+not a device command: shedding, restore admission, the grace period and the
+Overview read one limit, and at the stop the ordinary shedding lane limits the
+device in priority order. It is worked out again every build, so a rise in
+background load moves the stop earlier.
+
+It never applies:
+- in a quarter;
+- before the hour is fully sampled;
+- inside the drain;
+- to a device the last plan limited (only `start` reopens it);
+- to stepped devices, chargers and batteries;
+- to a device a smart task holds off;
+- past a lower-ranked device that is not on/off.
+
 ### Why not the old exponential ceiling
 
 Until 2026-10-25 the ceiling was `sustainable * e^(minutesRemaining / 4)`:
@@ -139,6 +184,10 @@ the drain from the house's draw keeps that from happening.
 - **Admission in the window fits the next hour.** Restores and step-ups spend
   only the room under the lower of the pace and the sustainable rate; shedding
   reads the drain ceiling.
+- **A timed run ends before the drain and keeps the hard cap.** It raises the
+  pace only while the hour covers stopping its device by `:50` with the
+  reserve to spare, and while its draw held to `:00` leaves the protected half
+  of the margin under the hard cap.
 - **A quarter's pace never exceeds the sustainable rate.** `min(burstRate,
   sustainable)` from the first minute; the burst rate can only pull it lower.
 - **Hourly pacing uses actual remaining time.** There is no hourly divisor floor.

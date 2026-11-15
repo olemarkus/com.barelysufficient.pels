@@ -420,7 +420,7 @@ Heaters and chargers on local protocols respond within seconds; cloud-mediated d
 
 ### Capacity-period enforcement
 
-PELS enforces the hard cap on the selected **capacity period**: a clock hour for hourly tariffs or an aligned 15-minute quarter for quarter-hour peak tariffs. In hourly mode, the period-end drain brings the safe pace down to the sustainable rate over the last ten minutes of the hour. In 15-minute mode the safe pace never rises above that rate. Either way the house enters the next period at that steady rate.
+PELS enforces the hard cap on the selected **capacity period**: a clock hour for hourly tariffs or an aligned 15-minute quarter for quarter-hour peak tariffs. In hourly mode, the period-end drain brings the safe pace down to the sustainable rate over the last ten minutes of the hour. In 15-minute mode the safe pace never rises above that rate. Either way the house enters the next period at that steady rate. With an hourly period, an on/off device that is bigger than the room it could fill can run for part of the hour: once enough of the hour is unused, PELS starts it and turns it off again when the energy left only covers the rest of the house, with a reserve, and always before the last ten minutes. The hard cap keeps its full safety margin while it runs.
 
 ### Local Control
 

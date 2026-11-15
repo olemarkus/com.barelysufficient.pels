@@ -71,6 +71,17 @@ function seedPreviouslyShedDevice(app: MyApp, deviceId: string): void {
   shedDecisions.lastPlannedShedIds = new Set([...shedDecisions.lastPlannedShedIds, deviceId]);
 }
 
+/**
+ * Pins the clock to `minute` past an hour. A capacity timed run
+ * (`lib/plan/capacityTimedRun.ts`) depends on the time left, so a case about
+ * the ordinary pace states a minute where no timed run applies: from :41 none
+ * can start (fewer than ten minutes before the drain), and from :50 none runs.
+ */
+function pinClockAtMinute(minute: number): void {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date', 'performance'] });
+  vi.setSystemTime(new Date(Date.UTC(2025, 0, 15, 12, minute, 0)));
+}
+
 async function advanceTimeAndRecordPower(app: MyApp, advanceMs: number, powerW: number): Promise<void> {
   vi.advanceTimersByTime(advanceMs);
   await app['powerSamplePipeline'].recordPowerSample(powerW);
@@ -486,6 +497,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('marks overshoot contributors inside a pending binary off window', async () => {
+    pinClockAtMinute(52);
     const heater = await buildOnOffLoad('dev-off-pending', 'Heater Awaiting Off', 700);
     setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
     setManagedAndControllableDevices({
@@ -567,6 +579,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('marks overshoot contributors inside a pending target command window', async () => {
+    pinClockAtMinute(52);
     const heater = new MockDevice('dev-target-pending', 'Target Heater', ['target_temperature', 'onoff']);
     await heater.setCapabilityValue('target_temperature', 21);
     await heater.setCapabilityValue('measure_temperature', 21);
@@ -2072,6 +2085,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('swaps low-priority ON device with high-priority OFF device when headroom is insufficient', async () => {
+    pinClockAtMinute(45);
     // High priority device (OFF, needs restoration) - priority 1 = most important
     const highPri = new MockDevice('dev-high', 'High Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
     await highPri.setCapabilityValue('measure_power', 1500); // 1.5 kW
@@ -2546,6 +2560,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('does not re-plan swap when swap is already pending (e.g. after API timeout)', async () => {
+    pinClockAtMinute(45);
     // This test reproduces the bug where API timeouts caused repeated swap planning.
     // When the binary shed times out, the target keeps its reservation
     // but the device wasn't actually shed, so next power sample re-plans the same swap.
@@ -2620,6 +2635,7 @@ describe('Device plan snapshot', () => {
   });
 
   it('does not attempt another swap for the same target without a new measurement', async () => {
+    pinClockAtMinute(45);
     const highPri = new MockDevice('dev-high', 'High Priority Heater', ['target_temperature', 'onoff', 'measure_power']);
     await highPri.setCapabilityValue('measure_power', 1500);
     await highPri.setCapabilityValue('onoff', false);

@@ -35,6 +35,7 @@ import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes'
 import type { PlanEngineState } from './planState';
 import {
   computeDailyUsageSoftLimit,
+  applyCapacityTimedRun,
   computeDynamicSoftLimit,
   isDailyBudgetBelowPlanningCeiling,
   resolveShortfallThresholdKw,
@@ -328,7 +329,14 @@ export class PlanBuilder {
       // The limits this cycle is decided against — one resolution, held by the
       // frame both passes build.
       buildPlanLimits(
-        settings, capacity, this.computeDailySoftLimit(dailyBudgetSnapshot, admittedDevices, nowTs),
+        settings,
+        // The hour's marginal on/off device may run for part of it: every stage
+        // below reads the capacity axis with that allowance.
+        applyCapacityTimedRun({
+          capacity, settings, powerTracker: this.powerTracker, reading, devices: admittedDevices,
+          forceShedIds: decoration.forceShedSet, state: this.state, nowMs: nowTs,
+        }),
+        this.computeDailySoftLimit(dailyBudgetSnapshot, admittedDevices, nowTs),
       ),
       // After the decoration, which is what stamps a smart task's deadline floor.
       this.deps.resolveTemperatureSetpoints(admittedDevices),

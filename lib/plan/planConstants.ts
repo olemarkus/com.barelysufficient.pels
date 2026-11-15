@@ -38,6 +38,8 @@ export const SOFT_OVERSHOOT_PERSIST_MS = 20 * 1000;
 // At most half the configured period margin funds discretionary patience;
 // the rest remains response reserve. The same0.2kW setting therefore provides
 //100Wh for an hour,25Wh for a quarter. This is estimated exposure accounting.
+// The hourly end-of-hour drain window (`notes/end-of-hour-mode.md`).
+export const EOH_DRAIN_WINDOW_MIN = 10;
 export const SHED_GRACE_MARGIN_FRACTION = 0.5;
 // One episode may wait at most a minute; its next meter-driven build checks
 // expiry. Every wait must fund one whole observed meter interval first.
