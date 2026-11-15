@@ -121,7 +121,7 @@ describe('which devices have a watt target to claim', () => {
     } }), 0)).toBeUndefined();
   });
 
-  it('reads an app that reports homey and puts its own mode back within a minute as a refusal', () => {
+  it('reads an app that reports homey and puts its own mode back within the landing window as a refusal', () => {
     const claimsForDevice = new TargetPowerControlClaims();
     const homey = device({ capabilitiesObj: {
       ...base.capabilitiesObj,
@@ -130,7 +130,7 @@ describe('which devices have a watt target to claim', () => {
     claimsForDevice.noteAccepted(base.id, 0);
     expect(claimsForDevice.resolve(homey, 10_000)).toBe('held');
     expect(claimsForDevice.resolve(base, 30_000)).toBe('held');
-    expect(claimsForDevice.resolve(base, 61_000)).toBe('refused');
+    expect(claimsForDevice.resolve(base, 6 * 60_000)).toBe('refused');
   });
 
   it('forgets a claim once the device has held homey past the landing window', () => {
@@ -140,9 +140,9 @@ describe('which devices have a watt target to claim', () => {
       target_power_mode: { ...base.capabilitiesObj.target_power_mode, value: 'homey' },
     } });
     claimsForDevice.noteAccepted(base.id, 0);
-    expect(claimsForDevice.resolve(homey, 70_000)).toBe('held');
+    expect(claimsForDevice.resolve(homey, 6 * 60_000)).toBe('held');
     // A later change of mode is a new claim, not a refusal of the old one.
-    expect(claimsForDevice.resolve(base, 80_000)).toBe('needed');
+    expect(claimsForDevice.resolve(base, 6 * 60_000 + 10_000)).toBe('needed');
   });
 
   it('leaves a device with no watt mode', () => {

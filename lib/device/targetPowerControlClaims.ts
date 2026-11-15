@@ -11,7 +11,8 @@ import { isHomeBatteryDevice, isSolarPanelDevice } from './managerEnergy';
  * whenever its mode reads anything else, an unknown value included, and is then
  * left there. PELS never writes another mode.
  *
- * - `held`: the mode reads `homey`, or a claim Homey accepted is still landing.
+ * - `held`: the mode reads `homey`, or a claim Homey accepted, or did not
+ *   answer, is still landing.
  * - `needed`: the mode reads anything else. The plan decides the claim and the
  *   executor writes it (`requestTargetPowerControlClaim`).
  * - `refused`: the device's app rejected the claim, or put the mode back
@@ -25,7 +26,13 @@ export type TargetPowerControlClaim = 'held' | 'needed' | 'refused';
 
 const WITHHELD: readonly string[] = ['target_power', 'target_power_mode'];
 const NOTHING: readonly string[] = [];
-const CLAIM_LANDING_MS = 60_000;
+/**
+ * How long an accepted or unanswered claim waits for the device's mode to read
+ * `homey`. PELS's own write is not read back as an observation, so the reading
+ * comes from a later device read: the refresh after the command, or the periodic
+ * full read every 5 minutes if that one is missed. The window covers one of them.
+ */
+const CLAIM_LANDING_MS = 6 * 60_000;
 const RETRY_DELAYS_MS = [15, 30, 60].map((minutes) => minutes * 60_000);
 
 type ClaimRecord = {

@@ -73,7 +73,8 @@ the new ladder without stopping the device. A device
 PELS only watches, a charger on an installation shared with another Zaptec, and
 a Zaptec whose Manual model steps installation current are not claimed.
 
-A device whose app rejects the claim, or puts the mode back within a minute,
+A device whose app rejects the claim, or whose mode does not read `homey` within
+six minutes (which covers the periodic full device read),
 is read without `target_power` and `target_power_mode` until the claim is
 tried again, after 15, 30, then 60 minutes. Until then PELS plans it through
 its switch alone, and its card reads `PELS can only turn it on and off: its app

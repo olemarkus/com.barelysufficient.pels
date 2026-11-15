@@ -566,8 +566,13 @@ export class DeviceWriteService {
       claims.noteAccepted(deviceId, Date.now());
       return { kind: 'claimed' };
     } catch (error) {
-      // Only an answer from the device's app is a refusal; anything else is retried as it comes.
-      if (resolveHomeyHttpStatusCode(error) === undefined) throw error;
+      // Only an answer from the device's app is a refusal. A claim with no answer
+      // may still have landed: it waits out the landing window like an accepted
+      // one, so it is not written again on every rebuild.
+      if (resolveHomeyHttpStatusCode(error) === undefined) {
+        claims.noteAccepted(deviceId, Date.now());
+        throw error;
+      }
       claims.noteRefused(deviceId, Date.now());
       return { kind: 'refused', errorMessage: normalizeError(error).message };
     }
