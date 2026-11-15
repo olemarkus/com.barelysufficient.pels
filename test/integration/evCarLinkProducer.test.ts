@@ -2095,14 +2095,17 @@ describe('car association waiting episodes and inventory', () => {
   const setupControl = () => {
     const snapshots = new TransportSnapshotStore();
     const selected = ['car-1'];
-    const settings = partialDouble<DeviceParseSettings>({ getEvCarAssociationCarIds: () => selected });
+    const assumed: { carId?: string } = {};
+    const settings = partialDouble<DeviceParseSettings>({
+      getEvCarAssociationCarIds: () => selected, getEvCarAssumedCarId: () => assumed.carId,
+    });
     const trigger = vi.fn();
     const emit = vi.fn<EvCarLinkEventEmitter>();
     const control = createEvCarAssociationControl(h.producer, settings, snapshots, () => ({ trigger }), emit);
     const connected = partialDouble<TransportDeviceSnapshot>({
       id: 'charger-1', name: 'Garage', isEvCharger: true, available: true, evChargingState: 'plugged_in_paused',
     });
-    return { snapshots, selected, trigger, control, connected };
+    return { snapshots, selected, assumed, trigger, control, connected, emit };
   };
 
   it('preserves confirmation before inventory resolves, then removes a missing endpoint', () => {
@@ -2191,6 +2194,97 @@ describe('car association waiting episodes and inventory', () => {
     });
   });
 
+  /** The charger plugs in at `atMs`, seen by the probe and the snapshot alike. */
+  const plugIn = (
+    snapshots: TransportSnapshotStore, connected: TransportDeviceSnapshot, control: { observe(nowMs: number): void },
+    atMs: number,
+  ): void => {
+    h.setCharger({ evChargingState: 'plugged_in_paused', selectedCarIds: ['car-1'] });
+    h.tick(atMs);
+    snapshots.replaceSnapshot([connected]);
+    control.observe(atMs);
+  };
+
+  const seedUnplugged = (snapshots: TransportSnapshotStore, connected: TransportDeviceSnapshot): void => {
+    h.car(carDevice({ state: 'plugged_out', socPct: 40 }), 0);
+    h.setCharger({ selectedCarIds: ['car-1'] });
+    h.tick(500);
+    snapshots.replaceSnapshot([{ ...connected, evChargingState: 'plugged_out' }]);
+  };
+
+  it('confirms the standing car at plug-in though its app still reports it unplugged', () => {
+    const { snapshots, control, connected, assumed, emit } = setupControl();
+    assumed.carId = 'car-1';
+    seedUnplugged(snapshots, connected);
+    control.observe(500);
+    plugIn(snapshots, connected, control, 1_000);
+    expect(h.producer.getCarConfirmation('charger-1')).toMatchObject({ carId: 'car-1' });
+    expect(h.producer.getAssociatedCarForCharger('charger-1')).toMatchObject({ carId: 'car-1', socPct: 40 });
+    const names = emit.mock.calls.map(([event]) => event.event);
+    expect(names).toContain('ev_car_link_assumed');
+    expect(names).not.toContain('ev_car_link_waiting_started');
+    expect(control.identificationState('charger-1', 1_000 + EV_CAR_LINK_COINCIDENCE_WINDOW_MS)).toBe('not_waiting');
+  });
+
+  it('leaves a cleared plug-in to the owner and assumes the car again on the next one', () => {
+    const { snapshots, control, connected, assumed } = setupControl();
+    assumed.carId = 'car-1';
+    seedUnplugged(snapshots, connected);
+    control.observe(500);
+    plugIn(snapshots, connected, control, 1_000);
+    control.clear('charger-1');
+    control.observe(2_000);
+    control.tick(32_000);
+    expect(h.producer.getCarConfirmation('charger-1')).toBeUndefined();
+    expect(control.isWaiting('charger-1')).toBe(true);
+    h.setCharger({ evChargingState: 'plugged_out' });
+    h.tick(40_000);
+    snapshots.replaceSnapshot([{ ...connected, evChargingState: 'plugged_out' }]);
+    control.observe(40_000);
+    plugIn(snapshots, connected, control, 50_000);
+    expect(h.producer.getCarConfirmation('charger-1')).toMatchObject({ carId: 'car-1' });
+  });
+
+  it('does not assume the standing car for a charger found plugged in at start', () => {
+    const { snapshots, control, connected, assumed } = setupControl();
+    assumed.carId = 'car-1';
+    h.setCharger({ evChargingState: 'plugged_in_paused', selectedCarIds: ['car-1'] });
+    h.car(carDevice({ state: 'plugged_out', socPct: 40 }), 1_000);
+    h.tick(1_000);
+    snapshots.replaceSnapshot([connected]);
+    control.observe(1_000);
+    expect(h.producer.getCarConfirmation('charger-1')).toBeUndefined();
+    expect(control.isWaiting('charger-1')).toBe(true);
+  });
+
+  it('waits for a standing car whose app is unavailable, then confirms it on that plug-in', () => {
+    const { snapshots, control, connected, assumed } = setupControl();
+    assumed.carId = 'car-1';
+    seedUnplugged(snapshots, connected);
+    control.observe(500);
+    h.car(carDevice({ state: 'plugged_out', socPct: 40, available: false }), 700);
+    plugIn(snapshots, connected, control, 1_000);
+    expect(h.producer.getCarConfirmation('charger-1')).toBeUndefined();
+    h.car(carDevice({ state: 'plugged_out', socPct: 40, available: true }), 2_000);
+    control.observe(2_000);
+    expect(h.producer.getCarConfirmation('charger-1')).toMatchObject({ carId: 'car-1' });
+  });
+
+  it('waits while another charger still holds the standing car, then confirms it on that plug-in', () => {
+    const { snapshots, control, connected, assumed, emit } = setupControl();
+    assumed.carId = 'car-1';
+    seedUnplugged(snapshots, connected);
+    control.observe(500);
+    h.snapshot.sessions['charger-2'] = { carId: 'car-1', sinceMs: 100 };
+    plugIn(snapshots, connected, control, 1_000);
+    control.observe(1_500);
+    expect(h.producer.getCarConfirmation('charger-1')).toBeUndefined();
+    expect(emit.mock.calls.map(([event]) => event.event)).not.toContain('ev_car_link_confirmation_rejected');
+    delete h.snapshot.sessions['charger-2'];
+    control.observe(2_000);
+    expect(h.producer.getCarConfirmation('charger-1')).toMatchObject({ carId: 'car-1' });
+  });
+
   it('ends a waiting episode on deselection even while the charger is unavailable', async () => {
     const { snapshots, control, connected, trigger, selected } = setupControl();
     snapshots.replaceSnapshot([connected]);
@@ -2252,7 +2346,7 @@ describe('car association waiting episodes and inventory', () => {
   it('rejects unselected cars before altering the current connection', () => {
     const { snapshots, control, connected } = setupControl();
     snapshots.replaceSnapshot([connected]);
-    expect(() => control.confirm('charger-1', 'guest')).toThrow('Select this car');
+    expect(() => control.confirm('charger-1', 'guest', 1_000)).toThrow('Select this car');
     expect(h.snapshot.sessions).toEqual({});
   });
 });
@@ -2610,7 +2704,9 @@ describe('waiting to identify the connected car, as the journal records it', () 
   const setup = () => {
     const snapshots = new TransportSnapshotStore();
     const selected = ['car-1'];
-    const settings = partialDouble<DeviceParseSettings>({ getEvCarAssociationCarIds: () => selected });
+    const settings = partialDouble<DeviceParseSettings>({
+      getEvCarAssociationCarIds: () => selected, getEvCarAssumedCarId: () => undefined,
+    });
     const emit = vi.fn<EvCarLinkEventEmitter>();
     const control = createEvCarAssociationControl(h.producer, settings, snapshots, () => undefined, emit);
     const connected = partialDouble<TransportDeviceSnapshot>({

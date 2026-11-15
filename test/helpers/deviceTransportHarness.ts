@@ -87,6 +87,7 @@ export const testParseSettings = (settings: Partial<DeviceTransportOptions['sett
     ?? (settings.getDeviceTargetPowerConfig?.(id) || settings.getDeviceControlProfile?.(id) || hasCurrent
       ? 'manual' : 'automatic'),
   getEvCarAssociationCarIds: () => [],
+  getEvCarAssumedCarId: () => undefined,
   resolveEvCarCurrentLimits: () => ({ kind: 'unrestricted' }),
   resolveEvChargerCurrentLimits: () => ({ kind: 'unrestricted' }),
   ...settings,

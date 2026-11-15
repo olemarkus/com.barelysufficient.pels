@@ -4446,7 +4446,8 @@ label.pels-text-settings-label {
   display: flex;
   align-items: center;
   gap: var(--spacing-3);
-  z-index: 20;
+  /* Above the device and plan overlays (1000), which raise toasts of their own. */
+  z-index: 1010;
 }
 
 .toast.show {

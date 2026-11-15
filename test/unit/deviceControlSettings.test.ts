@@ -400,7 +400,7 @@ describe('DeviceControlSettings reload generations', () => {
   it('keeps the boost settings and car associations across a read that is not a map', () => {
     const { port, values } = settingsDouble({
       [TEMPERATURE_BOOST_SETTINGS]: { heater: { enabled: true, boostBelowC: 18 } },
-      [EV_CAR_ASSOCIATIONS]: { charger: { carIds: ['car-1'] } },
+      [EV_CAR_ASSOCIATIONS]: { charger: { carIds: ['car-1'], assumedCarId: 'car-1' } },
     });
     const settings = loaded(port);
 
@@ -410,5 +410,6 @@ describe('DeviceControlSettings reload generations', () => {
 
     expect(settings.getTemperatureBoostConfig('heater')).toMatchObject({ boostBelowC: 18 });
     expect(settings.getEvCarAssociationCarIds('charger')).toEqual(['car-1']);
+    expect(settings.getEvCarAssumedCarId('charger')).toBe('car-1');
   });
 });

@@ -2675,6 +2675,14 @@ has closed for most homes that reach this state.
   the user to identify the car again. **Clear confirmation** ends the explicit
   identification for this connection without changing the selected cars.
   An unplugged charger shows `No car connected` without a confirmation warning.
+- A charger with exactly one selected car offers the switch **Confirm at every
+  plug-in**, hint `PELS confirms <car> each time this charger is plugged in,
+  even before the car's app reports it. When another car is connected, clear
+  the confirmation.` It is the owner saying it is always this car, for a car
+  app that reports plug-ins late or not at all. Confirming that car by hand
+  while the switch is off raises the toast `<car> confirmed. Confirm at every
+  plug-in?` with the action `Yes`, which turns it on. A confirmation it makes
+  reads like one made by hand: `<car> · confirmed for this connection`.
 - Flow advice (removal or the no-battery-level warning) needs a car list that
   refreshed successfully and readable match history; otherwise Setup gives
   neither and reports that some checks could not be refreshed.

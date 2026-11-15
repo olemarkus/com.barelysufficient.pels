@@ -614,6 +614,25 @@ reading for this connection without changing the selected cars. Automatic
 matching remains enabled, and a connected unidentified charger starts a new wait. Confirmations persist across restart;
 unknown inventory at startup cannot disprove a session.
 
+**Confirm at every plug-in** is the same confirmation, made by PELS for the
+owner (`assumedCarId` in a charger's `ev_car_associations` entry, kept only
+while that car is the charger's sole selected car). It is for a car whose app
+reports its plug-in late or not at all: past matches never link a car that
+reported after the window (owner, 2026-10-25), and that rule stands, because
+here the owner, not PELS, says which car it is. On each plug-in the probe saw,
+while the charger waits for a car, the device owner confirms the standing car
+through the confirm path (`lib/device/transport/standingCarConfirmations.ts`,
+event `ev_car_link_assumed`), so the wait never starts and no timeout report is
+sent. A car PELS cannot read at the plug-in, or one another charger still
+holds because its unplug has not been reported, is confirmed once that
+clears, without a rejected attempt on every pass. An attempt that is rejected
+anyway is reported as a manual one is, once, and leaves the plug-in to the
+owner. Each plug-in is settled once: after the owner clears the confirmation
+or confirms another car, that plug-in stays theirs, and the next plug-in
+confirms the standing car again. A charger found plugged in when PELS started
+is left alone: a confirmed session resumes by itself, and a cleared one stays
+cleared.
+
 **No car matched to [charger] after [minutes]** accepts 1–60 minutes independently
 of the automatic coincidence window. Start with one minute for a mobile
 confirmation Flow. The thirty-second heartbeat emits elapsed-time crossings;

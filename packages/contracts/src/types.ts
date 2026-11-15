@@ -199,6 +199,12 @@ export type DeviceExpectedPowerOverrides = Record<string, ExpectedPowerOverride>
  */
 export type EvCarAssociationConfig = {
     carIds: string[];
+    /**
+     * The owner's standing statement that this car is the one on this charger:
+     * PELS confirms it at each plug-in, as the confirm button would. Only kept
+     * while it is the charger's sole selected car.
+     */
+    assumedCarId?: string;
 };
 
 export type EvCarAssociations = Record<string, EvCarAssociationConfig>;

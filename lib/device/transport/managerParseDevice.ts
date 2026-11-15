@@ -58,6 +58,7 @@ export type DeviceParseSettings = Pick<
     | 'getDevicePowerControlMode'
     | 'resolveDevicePowerControlMode'
     | 'getEvCarAssociationCarIds'
+    | 'getEvCarAssumedCarId'
     | 'getDeviceChargingPhaseSettings'
     | 'getDevicePhaseConnection'
 >;
