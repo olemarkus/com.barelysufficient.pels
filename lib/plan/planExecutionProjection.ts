@@ -11,7 +11,7 @@ import {
 import { hasStorageDecision } from '../planContract/storageDecision';
 import { hasPlannedStep, type PlannedDeviceCommands, type PlannedBinaryCommand, type PlannedReleaseCommand,
   type StableExecutionOperation, type PlannedSteppedCommand, type ExecutionPlan,
-  type PlannedCommandAxes } from '../planContract/executionPlan';
+  type PlannedCommandAxes, type PlannedTargetPowerClaim } from '../planContract/executionPlan';
 import type { DroppedSteppedShedIntent } from '../planContract/executionPlan';
 type PlanDevice = DevicePlan['devices'][number];
 type PlanMeta = DevicePlan['meta'];
@@ -27,6 +27,11 @@ export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: P
   const binary = buildPlannedBinaryCommand(planDevice);
   const release = buildPlannedReleaseCommand(planDevice, planMeta);
   const steppedLoad = buildPlannedSteppedCommand(planDevice);
+  // The claim follows from PELS's authority over the device this cycle, a
+  // smart task's included, and not from this cycle's step: a device the plan
+  // leaves alone or holds off is claimed too. A device PELS only watches is not.
+  const targetPowerClaim: PlannedTargetPowerClaim | undefined = planDevice.targetPowerClaimNeeded === true
+    && planDevice.control.commandAuthority ? { deviceId: planDevice.id, name: planDevice.name } : undefined;
   // Attach a command only for an axis the plan drives; absence IS the answer, so
   // no consumer re-derives it. See `PlannedDeviceCommands` and `PlannedCommandAxes`.
   const commands: PlannedDeviceCommands & PlannedCommandAxes = {
@@ -38,6 +43,7 @@ export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: P
     ...(binary ? { binary } : {}),
     ...(release ? { release } : {}),
     ...(steppedLoad ? { steppedLoad } : {}),
+    ...(targetPowerClaim ? { targetPowerClaim } : {}),
   };
   return commands;
 }

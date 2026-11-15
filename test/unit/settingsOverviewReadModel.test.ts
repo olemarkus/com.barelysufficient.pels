@@ -44,6 +44,7 @@ const absentTemperature = {
   observed: noPlanServiceObservedReads,
   getDeviceControlAdapter: () => undefined,
   isBuiltInControlHeldByFlow: () => false,
+  isTargetPowerControlRefused: () => false,
   getHomeBatteryCard: () => ({ kind: 'none' } as const),
 };
 
@@ -474,6 +475,7 @@ describe('settingsOverviewReadModel', () => {
       ...overviewReadModelWiring(),
       ...absentTemperature, dryRun, nowMs: 0,
       isBuiltInControlHeldByFlow: () => heldByFlow,
+      isTargetPowerControlRefused: () => false,
       getDeviceExecutionState: () => ({ ...executionStateFixture(device), stepProgress: 'pending',
         steppedTransitionPending: true, stepCommandUnanswered: true }),
     }).status.reason?.text;

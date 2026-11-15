@@ -1,6 +1,7 @@
 import {
-  hasPlannedStep, type ExecutionPlan, type PlannedDeviceCommands, type PlannedStepBaseline,
+  hasPlannedStep, hasTargetPowerClaim, type ExecutionPlan, type PlannedDeviceCommands, type PlannedStepBaseline,
 } from '../planContract/executionPlan';
+import { applyTargetPowerClaim } from './targetPowerClaim';
 import { isBinaryDrivenIntent } from './executableDesiredState';
 import {
   hasBinaryCommand,
@@ -272,6 +273,20 @@ const applyDeviceIntent = async (
   steppedFallback: PlannedStepBaseline | undefined,
 ): Promise<DispatchDelta> => {
   if (intent.projection === 'failed') throw intent.error;
+  if (shouldSkipUnavailable(observed?.snapshot, intent.name, 'actuation')) return ZERO_DELTA;
+  // Homey's control of the watt target first: a step that follows is written under it.
+  const claimed = hasTargetPowerClaim(intent) && await applyTargetPowerClaim(ctx, intent.targetPowerClaim);
+  const applied = await applyDecidedCommands(ctx, intent, observed, hasShedDevices, steppedFallback);
+  return claimed ? delta(applied.deviceWriteCount, applied.commandRequestCount + 1) : applied;
+};
+
+const applyDecidedCommands = async (
+  ctx: ExecutorCommandContext,
+  intent: PlannedDeviceCommands,
+  observed: ExecutableObservedDeviceState | undefined,
+  hasShedDevices: boolean,
+  steppedFallback: PlannedStepBaseline | undefined,
+): Promise<DispatchDelta> => {
   const commands = resolveDeviceCommands(intent);
   const { steppedCommand } = commands;
   const steppedAction = buildExecutableSteppedLoadDevice(
@@ -281,7 +296,6 @@ const applyDeviceIntent = async (
     ctx.getSteppedLoadCommandSession(intent.id),
   );
   const snapshot = observed?.snapshot;
-  if (shouldSkipUnavailable(snapshot, intent.name, 'actuation')) return ZERO_DELTA;
   const device: ResolvedDeviceIntent = {
     observed, snapshot, hasShedDevices, steppedAction, ...commands,
   };

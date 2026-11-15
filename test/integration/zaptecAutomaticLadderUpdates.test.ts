@@ -46,7 +46,7 @@ describe.each(['full read', 'device.update'] as const)('Zaptec Automatic setting
     });
   });
 
-  it.each(CHANGES)('adopts $change and refuses commands from the old ladder', async (change) => {
+  it.each(CHANGES)('adopts $change, refuses commands from the old ladder and steps in the new one without a stop', async (change) => {
     const stopCommand = vi.spyOn(EvCarLinkProducer.prototype, 'noteStopCommand');
     mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, { [ID]: structuredClone(SAVED_MODEL) });
     mockHomeyInstance.settings.set(DEVICE_POWER_CONTROL_MODES, { [ID]: 'automatic' });
@@ -77,6 +77,7 @@ describe.each(['full read', 'device.update'] as const)('Zaptec Automatic setting
     expect(profile.steps[1]).toEqual({ id: `${change.firstW}w`, planningPowerW: change.firstW });
     expect(profile.steps.at(-1)).toEqual({ id: `${change.lastW}w`, planningPowerW: change.lastW });
     expect(current?.targetPowerConfig).toBeUndefined();
+    // The held target was set under the old ladder: it is no step reading on the new one.
     expect(current?.reportedStepId).toBeUndefined();
     expect(transport.deviceConfigurationStore.get(ID)?.controlModel).toBe('stepped_load');
 
@@ -87,38 +88,17 @@ describe.each(['full read', 'device.update'] as const)('Zaptec Automatic setting
       planningPowerW: change.staleW, planningCurrentA: 0,
     })).toEqual({ requested: false });
     expect(put).not.toHaveBeenCalled();
-    expect(stopCommand).not.toHaveBeenCalled();
 
+    // The new ladder's step is written under the control PELS already holds:
+    // the charger is not stopped, and its mode is not reset.
     expect(await transport.requestSteppedLoadStep({
       deviceId: ID, profile, desiredStepId: `${change.firstW}w`, planningPowerW: change.firstW, planningCurrentA: 0,
-    })).toEqual({ requested: false, preparation: 'binary_off' });
-    expect(put).not.toHaveBeenCalled();
-    expect(stopCommand).not.toHaveBeenCalled();
-    // The executor carries this preparation through ordinary binary dispatch.
-    await transport.requestBinaryControl(ID, false, vi.fn());
-    expect(put).toHaveBeenCalledExactlyOnceWith(
-      `manager/devices/device/${ID}/capability/evcharger_charging`, pelsCapabilityWrite(false),
-    );
-    expect(stopCommand).toHaveBeenCalledExactlyOnceWith(ID, Date.now());
-    stopCommand.mockRestore();
-    put.mockClear();
-    vi.setSystemTime(Date.now() + 30_000);
-    const stopped = buildZaptecTargetPowerDevice({ ...updated, capabilitiesObj: {
-      ...updated.capabilitiesObj,
-      evcharger_charging: { value: false, setable: true, lastUpdated: new Date().toISOString() },
-      evcharger_charging_state: { value: 'plugged_in_paused', lastUpdated: new Date().toISOString() },
-      measure_power: { value: 0, lastUpdated: new Date().toISOString() },
-    } });
-    await seedTransportDevices(transport, [stopped]);
-    setRestClient({ get: vi.fn(), put });
-    await transport.requestSteppedLoadStep({
-      deviceId: ID, profile, desiredStepId: `${change.firstW}w`, planningPowerW: change.firstW, planningCurrentA: 0,
-    });
+    })).toEqual({ requested: true, acknowledged: true, transport: 'native_capability' });
     expect(put.mock.calls).toEqual([
-      [`manager/devices/device/${ID}/capability/target_power_mode`, pelsCapabilityWrite('device')],
       [`manager/devices/device/${ID}/capability/target_power`, pelsCapabilityWrite(change.firstW)],
-      [`manager/devices/device/${ID}/capability/target_power_mode`, pelsCapabilityWrite('homey')],
     ]);
+    expect(stopCommand).not.toHaveBeenCalled();
+    stopCommand.mockRestore();
     vi.setSystemTime(Date.now() + 30_000);
     await emitCapability(ID, 'target_power', change.firstW);
     expect(transport.getSnapshotByDeviceId(ID)?.reportedStepId).toBe(`${change.firstW}w`);

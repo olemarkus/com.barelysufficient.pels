@@ -1,5 +1,5 @@
 import {
-  hasPlannedStep, type PlannedDeviceCommands, type PlannedDeviceExecution,
+  hasPlannedStep, hasTargetPowerClaim, type PlannedDeviceCommands, type PlannedDeviceExecution,
 } from '../planContract/executionPlan';
 import type { DriftCommandRead } from './driftObservedDevice';
 import type { ExecutorDeviceRead } from './executorDeviceRead';
@@ -57,6 +57,11 @@ export function hasPlanDeviceExecutionDrift(
   // a posture rather than a reading, and this layer never asks why.
   if (externalOffHeld) return false;
   const intent = device.commands;
+  // A planned claim of the watt target is work by itself: the plan decides it
+  // only while the device reads a mode other than `homey` and no accepted or
+  // refused claim is still settling (`lib/device/targetPowerControlClaims.ts`),
+  // so a device that keeps its step is still claimed, and never twice in a row.
+  if (hasTargetPowerClaim(intent)) return true;
   // The observation comes from the observer and the ladder from the intent —
   // no plan decision passes through either. The one observed-state producer
   // resolves the rung, the on/off fold and the draw, so the comparison below

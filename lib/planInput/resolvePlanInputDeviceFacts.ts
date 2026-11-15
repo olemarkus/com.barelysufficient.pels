@@ -89,6 +89,17 @@ const resolveFinishedSessionProfile = (
   return { ...profile, steps: profile.steps.filter((step) => isSteppedLoadStepOff(step) || step.id === lowest.id) };
 };
 
+/**
+ * Whether a managed device's watt target is Homey's to claim. The plan claims
+ * it in the cycles PELS may command the device (`buildExecutableDeviceIntent`).
+ */
+const resolveTargetPowerClaim = (
+  source: PlanInputProjectionSource, device: ToPlanDeviceInput, managed: boolean,
+): Pick<ResolvedPlanInputFacts, 'targetPowerClaimNeeded'> => (
+  managed && device.available !== false && source.getTargetPowerControlClaim(device.id) === 'needed'
+    ? { targetPowerClaimNeeded: true as const } : {}
+);
+
 /** Resolve the command ladder and an incompatible car range together at the input boundary. */
 const resolveSteppedPlanInputFields = (
   source: PlanInputProjectionSource,
@@ -199,6 +210,7 @@ export const resolvePlanInputDeviceFacts = (
     ...(commandabilityReason ? { commandabilityReason } : {}),
     ...objective,
     waitingForCarAssociation: source.isWaitingForCarAssociation(device.id),
+    ...resolveTargetPowerClaim(source, device, control.managed),
     ...resolvePlanBoostFields(boostInput),
     canSetControlResolved,
     startPolicy,

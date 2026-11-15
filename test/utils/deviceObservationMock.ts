@@ -31,6 +31,8 @@ export const withGetSnapshotByDeviceId = <T extends { getSnapshot: () => TargetD
   getSnapshotByDeviceId: (deviceId: string) => (TargetDeviceSnapshot & TransportControlBindingProbe) | undefined;
   getAssociatedCar: (deviceId: string) => AssociatedCarSnapshot | undefined;
   isWaitingForCarAssociation: (deviceId: string) => boolean;
+  getTargetPowerControlClaim: (deviceId: string) => 'needed' | 'refused' | undefined;
+  isTargetPowerControlRefused: (deviceId: string) => boolean;
   dispatchObservedStateForDevice: (deviceId: string, capabilityId?: string) => void;
   isFlowBackedCapability: (deviceId: string, capabilityId: string) => boolean;
 } => {
@@ -45,6 +47,8 @@ export const withGetSnapshotByDeviceId = <T extends { getSnapshot: () => TargetD
     deviceConfigurationStore,
     getAssociatedCar: () => undefined,
     isWaitingForCarAssociation: () => false,
+    getTargetPowerControlClaim: () => undefined,
+    isTargetPowerControlRefused: () => false,
     isFlowBackedCapability: (deviceId, capabilityId) => {
     const snapshot = mock.getSnapshot().find((entry) => entry.id === deviceId) as
       | (TargetDeviceSnapshot & TransportControlBindingProbe)

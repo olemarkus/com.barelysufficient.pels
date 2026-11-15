@@ -3,7 +3,6 @@ import { standardDeviceAdapter } from '../standardDeviceAdapter';
 import { applyNativeEvWiringOverlay, normalizeNativeEvCapabilityUpdate,
   buildNativeEvObservationCapabilityObj, withZaptecSessionState } from './charging';
 import { ZaptecInstallationSession, zaptecInstallationOf } from './session';
-import { prepareZaptecTargetPowerReassertion } from './targetPowerReassertion';
 
 export const zaptecAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
@@ -14,7 +13,6 @@ export const zaptecAdapter: DeviceAdapter = {
   overlay: applyNativeEvWiringOverlay,
   normalize: normalizeNativeEvCapabilityUpdate,
   observation: (device) => withZaptecSessionState(device, standardDeviceAdapter.observation(device)),
-  prepareTargetPowerReassertion: prepareZaptecTargetPowerReassertion,
   readRules: () => ({
     charging_button: 'boolean',
     charge_mode: 'string',

@@ -303,6 +303,7 @@ export function buildBasePlanDevice(inputs: BasePlanDeviceInputs): DevicePlanDev
   // says "absent" by omission the way the spread literals did.
   if (dev.surplusOnly === true) loose.surplusOnly = true;
   if (dev.externalOffHoldActive === true) loose.externalOffHoldActive = true;
+  if (dev.targetPowerClaimNeeded === true) loose.targetPowerClaimNeeded = true;
   if (dev.reservesStartupPower === true) loose.reservesStartupPower = true;
 
   return withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant(withMeteredDiscriminant(loose))));

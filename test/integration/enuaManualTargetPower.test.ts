@@ -58,11 +58,11 @@ describe.each(['homey', 'device'] as const)('Enua Manual native target with init
         deviceId: ID, profile, desiredStepId: step.id,
         planningPowerW: step.planningPowerW, planningCurrentA: step.planningCurrentA ?? 0,
       })).toEqual({ requested: true, acknowledged: true, transport: 'native_capability' });
+      // The step is the watt target alone; Homey's control of it is claimed on its own.
       expect(put.mock.calls).toEqual([
         [`manager/devices/device/${ID}/capability/target_power`, pelsCapabilityWrite(desiredPowerW)],
-        ...(mode === 'device'
-          ? [[`manager/devices/device/${ID}/capability/target_power_mode`, pelsCapabilityWrite('homey')]] : []),
       ]);
+      expect(transport.getTargetPowerControlClaim(ID)).toBe(mode === 'device' ? 'needed' : undefined);
       expect(trigger).not.toHaveBeenCalled();
     } finally {
       transport.destroy();

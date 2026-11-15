@@ -1,3 +1,4 @@
+import { TargetPowerControlClaims, type TargetPowerControlClaim } from './targetPowerControlClaims';
 import type { ChargingCurrentSetup, ChargingMissingCompanion } from '../../packages/contracts/src/chargingControl';
 import type { HubHomeLocation } from './hubHomeLocation';
 import { teslaAdapter } from './tesla';
@@ -53,9 +54,21 @@ export function getSnapshotAdapter(snapshot: AdapterObservation): DeviceAdapter 
   return getCapabilityAdapter(snapshot.capabilities ?? []);
 }
 
+function without(device: HomeyDeviceLike, withheld: readonly string[]): HomeyDeviceLike {
+  if (withheld.length === 0) return device;
+  return {
+    ...device,
+    capabilities: device.capabilities.filter((capabilityId) => !withheld.includes(capabilityId)),
+    capabilitiesObj: Object.fromEntries(Object.entries(device.capabilitiesObj)
+      .filter(([capabilityId]) => !withheld.includes(capabilityId))),
+  };
+}
+
 /** Runtime-owned instances: no session state is shared between transports. */
 export class DeviceAdapterSessions {
   private readonly sessions: readonly DeviceAdapterSession[];
+  /** Homey's control of the watt target of the devices PELS steps through it. */
+  readonly targetPowerClaims = new TargetPowerControlClaims();
   constructor(home: HubHomeLocation) { this.sessions = adapters.map((adapter) => adapter.createSession(home)); }
   observeDevices(devices: readonly HomeyDeviceLike[], readAtMs: number): void {
     for (const device of devices) this.observeDevice(device, readAtMs);
@@ -68,17 +81,21 @@ export class DeviceAdapterSessions {
   }
   retainDevices(devices: readonly HomeyDeviceLike[], inventory: InventoryCompleteness): void {
     for (const session of this.sessions) session.retainDevices(devices, inventory);
+    if (inventory === 'complete') this.targetPowerClaims.retainDevices(new Set(devices.map((device) => device.id)));
   }
-  /** `device` as it is parsed: without the capabilities a session withholds from it. */
-  withholdCapabilities(device: HomeyDeviceLike): HomeyDeviceLike {
-    const withheld = new Set(this.sessions.flatMap((session) => session.withheldCapabilities(device)));
-    if (withheld.size === 0) return device;
-    return {
-      ...device,
-      capabilities: (device.capabilities).filter((capabilityId) => !withheld.has(capabilityId)),
-      capabilitiesObj: Object.fromEntries(Object.entries(device.capabilitiesObj)
-        .filter(([capabilityId]) => !withheld.has(capabilityId))),
-    };
+  /**
+   * `device` as it is parsed: without the capabilities a session withholds from
+   * it, and without the watt control of a device whose app refused Homey's
+   * control of it (`TargetPowerControlClaims`).
+   */
+  withholdCapabilities(device: HomeyDeviceLike, nowMs = Date.now()): HomeyDeviceLike {
+    const shared = without(device, this.sessions.flatMap((session) => session.withheldCapabilities(device)));
+    return without(shared, this.targetPowerClaims.withheldCapabilities(shared, nowMs));
+  }
+  /** Homey's control of `device`'s watt target, read as the sessions parse the device. */
+  targetPowerClaimOf(device: HomeyDeviceLike, nowMs: number): TargetPowerControlClaim | undefined {
+    const shared = without(device, this.sessions.flatMap((session) => session.withheldCapabilities(device)));
+    return this.targetPowerClaims.resolve(shared, nowMs);
   }
   setTrustEpoch(epoch: string): void { for (const session of this.sessions) session.setTrustEpoch(epoch); }
   observedIds(): string[] { return this.sessions.flatMap((session) => session.observedIds()); }

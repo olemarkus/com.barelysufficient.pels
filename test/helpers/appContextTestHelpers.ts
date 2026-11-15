@@ -305,6 +305,8 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
     getTaskPricePeriodsForUi: () => [],
     deviceManager: partialDouble<NonNullable<AppContext['deviceManager']>>({
       isWaitingForCarAssociation: () => false,
+      getTargetPowerControlClaim: () => undefined,
+      isTargetPowerControlRefused: () => false,
     }),
     deviceReads,
     deviceConfiguration: createDeviceConfiguration(getDeviceConfigurationStore),
@@ -560,6 +562,8 @@ export function createInitializedAppContextMock(options: AppContextMockOptions =
       getSnapshot: vi.fn(() => []),
       getPeriodicStatusMetrics: vi.fn(() => null),
       isWaitingForCarAssociation: () => false,
+      getTargetPowerControlClaim: () => undefined,
+      isTargetPowerControlRefused: () => false,
     } as never,
     planEngine: {
       state: { sheddingActive: false },

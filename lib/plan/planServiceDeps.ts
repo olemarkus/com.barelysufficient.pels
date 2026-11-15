@@ -117,6 +117,12 @@ export type PlanServiceDeps = {
    * (`lib/device/builtInControlFlowGate.ts`). Presentation only.
    */
   isBuiltInControlHeldByFlow: (deviceId: string) => boolean;
+  /**
+   * Whether the device's app refused Homey's control of its watt target, so
+   * PELS plans it through its switch alone until the claim is retried
+   * (`lib/device/targetPowerControlClaims.ts`). Presentation only.
+   */
+  isTargetPowerControlRefused: (deviceId: string) => boolean;
   // Producer `deviceType` map for the settings-UI control-mode card selection
   // (the planner no longer carries `controlModel`). Built once per serialize from
   /** Confirmed producer profile for UI; excludes any planner-only probe rung. */

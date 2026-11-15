@@ -17,6 +17,7 @@ type OverviewReadModelWiring = Pick<SettingsOverviewReadModelDeps,
   | 'getSteppedLoadProfileById'
   | 'getDeviceControlAdapter'
   | 'isBuiltInControlHeldByFlow'
+  | 'isTargetPowerControlRefused'
   | 'readStarvationRescuableDeviceIds'>;
 
 /**
@@ -35,6 +36,7 @@ export const overviewReadModelWiring = (): OverviewReadModelWiring => ({
   getSteppedLoadProfileById: () => new Map(),
   getDeviceControlAdapter: () => undefined,
   isBuiltInControlHeldByFlow: () => false,
+  isTargetPowerControlRefused: () => false,
   readStarvationRescuableDeviceIds: () => [],
 });
 

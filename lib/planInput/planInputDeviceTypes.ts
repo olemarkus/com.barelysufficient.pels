@@ -22,6 +22,8 @@ import type { ContinuousBatteryPlanRead } from '../../packages/contracts/src/con
 export type PlanInputProjectionSource = {
   getNow: () => Date;
   isWaitingForCarAssociation: (deviceId: string) => boolean;
+  /** Homey's control of a watt-stepped device, from its owner (`DeviceTransport.getTargetPowerControlClaim`). */
+  getTargetPowerControlClaim: (deviceId: string) => 'needed' | 'refused' | undefined;
   getPowerCalibrationSnapshot: () => PowerCalibrationSnapshot;
   /**
    * The owner's device-control settings: target-power, boost and charge-target
@@ -67,7 +69,7 @@ export type ResolvedPlanInputFacts = Pick<PlanInputDeviceBase,
   | 'objectiveKind' | 'objectiveSessionInactive' | 'waitingForCarAssociation' | 'boostSupported' | 'boostRequested'
   | 'canSetControlResolved' | 'startPolicy' | 'control' | 'startPolicyInForce' | 'chargeTargetHold'
   | 'surplusOnly' | 'surplusTracking' | 'externalOffHoldActive' | 'steppedLadderMissing'
-  | 'carCurrentRangeUnavailable' | 'phaseFootprint'
+  | 'carCurrentRangeUnavailable' | 'targetPowerClaimNeeded' | 'phaseFootprint'
   | 'stepPowerCalibration' | 'hasStandingDemand' | 'residualKw' | 'budgetExempt'>
   & SteppedClusterFields
   // Not `StorageClusterFields`: its empty member is `Record<string, never>`,

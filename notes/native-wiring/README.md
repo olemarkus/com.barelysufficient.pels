@@ -49,29 +49,43 @@ capabilities instead of round-tripping through user-authored Flow cards.
 
 Generic target-power ladders use multiples of the advertised watt step from
 zero, starting at the first multiple at or above `excludeMax` and ending at
-the last multiple within `max`. For a switchable device, PELS stores the
-admitted watt target before selecting `target_power_mode = homey`, because
-the mode change may immediately apply the saved target. A saved target in
-`device` mode is dormant and cannot confirm a PELS step. Accepted mode reports
-invalidate or restore that step evidence through the normal observation path.
-When taking control, successful watt requests invalidate superseded target evidence; mode changes
-alone cannot restore it. Only a newer independent target report or read can.
-Zaptec caches its last applied automatic current independently of legacy current
-writes. Reclaiming that control first stops charging and waits until the
-charger's own reports show it stopped and drawing nothing. Zero power is the
-independent evidence; a charger already stopped when the reclaim begins proves
-it with its existing reports, since Homey republishes nothing unchanged. Only
-then may an exclusive installation release the cached mode, receive the newly
-admitted watt target, and return to Homey control. Native watt limits are
-prepared before the planner resumes charging. Only `homey` mode caches a
-current. A shared installation, one without a writable control mode, and a mode
-in `device` or never set (Zaptec 1.12 declares `target_power_mode` in its
-manifest, so a paired or updated charger starts with no value) have nothing to
-reset: the watt target is written and Homey control claimed, without a reclaim
-stop.
-The pause uses the ordinary binary command lane, so pending confirmation, car
-stop attribution and external-off detection recognize it as PELS's request.
-Resumption follows the normal meter-driven admission and restore cooldown.
+the last multiple within `max`.
+
+`target_power_mode` is Homey's: `homey` means the device carries out the watt
+target Homey sets, and any other value means it controls its own power and
+ignores that target. A saved target in another mode is dormant and cannot
+confirm a PELS step; under `homey` the target the device holds is the step it
+runs. PELS's own Manual and Automatic are a different question and never map
+onto the mode.
+
+For a device PELS steps through `target_power`, the plan claims the watt target
+for Homey in every cycle PELS may command the device (Power-limit control, or a
+smart task's authority) while the mode reads anything but `homey`, an unknown or
+never-set value included (`lib/device/targetPowerControlClaims.ts`). The claim
+is one write, `target_power_mode = homey`, dispatched before the device's other
+commands, and the mode is then left there. PELS writes no other mode: it never
+hands the target back to reset a device, on a restart, a ladder change or a
+switch between Manual and Automatic. A step is the watt target alone. When an
+Automatic watt ladder changes, the target the device holds was set under the
+old one, where the same watts could come to another current, so it is no step
+reading until the device reports a target again; PELS then writes its step in
+the new ladder without stopping the device. A device
+PELS only watches, a charger on an installation shared with another Zaptec, and
+a Zaptec whose Manual model steps installation current are not claimed.
+
+A device whose app rejects the claim, or puts the mode back within a minute,
+is read without `target_power` and `target_power_mode` until the claim is
+tried again, after 15, 30, then 60 minutes. Until then PELS plans it through
+its switch alone, and its card reads `PELS can only turn it on and off: its app
+does not accept level control`. A battery or solar inverter is claimed by its
+own owner.
+
+Zaptec 1.13.0 has two behaviours that matter here and are the app's to
+fix; PELS does not work around them. When the mode becomes `homey`, the charger
+applies the `target_power` it already holds, which the app keeps across a
+return to its own control. And a watt target that comes to the current the app
+last applied is not sent to the charger again, so a current changed outside
+Homey stays until the target changes.
 - **Easee EV charger current** (`no.easee`, charger driver): native stepped
   control writes the EV preset step's whole-amp current to the setable
   `target_charger_current` (0 A for the off step) and reads the step back from

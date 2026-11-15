@@ -177,7 +177,7 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
     flow_backed_device_stop_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
   } as const;
   const state = createPlanEngineState();
-  const nativeSteppedAdapters = new NativeSteppedLoadCommandAdapters(() => [device]);
+  const nativeSteppedAdapters = new NativeSteppedLoadCommandAdapters();
   const deviceManager = withGetSnapshotByDeviceId({
     getSnapshot: vi.fn(() => [snapshotHolder.current]),
     setCapability: vi.fn().mockResolvedValue(undefined),
@@ -226,6 +226,7 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
     actuator: createDeviceActuator({
 requestChargingPhaseControl: async () => false,
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
+requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
       canTurnOnDevice: () => true,
       resolveTemperatureTarget: (_deviceId, desired) => desired,
       requestBinaryControl: async (deviceId, desired) => {

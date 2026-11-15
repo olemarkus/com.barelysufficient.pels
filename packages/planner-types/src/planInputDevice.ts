@@ -380,6 +380,14 @@ export type PlanInputDeviceBase = {
   /** The identified car has no usable charging level within its authored current range. */
   carCurrentRangeUnavailable?: true;
   /**
+   * PELS manages this device, it is stepped through its watt target, and Homey
+   * does not hold that target (`target_power_mode` reads anything but `homey`):
+   * the plan claims it in the cycles PELS may command the device, a smart
+   * task's authority included. Resolved by the device owner
+   * (`lib/device/targetPowerControlClaims.ts`); absent, never `false`, otherwise.
+   */
+  targetPowerClaimNeeded?: true;
+  /**
    * This device's rank in the home's active mode: unique, gap-free `1..N`, lower
    * wins. REQUIRED — the producer (`buildHomePlanDevices`) ranks the whole planned
    * set through the mode catalog owner before any consumer sees it

@@ -92,6 +92,7 @@ const claimOwner = (transport: DeviceTransport) => {
   const actuator = createDeviceActuator({
     requestChargingPhaseControl: async () => false,
     requestProductionControl: (command) => transport.requestProductionControl(command),
+requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
     canTurnOnDevice: (id) => transport.canTurnOnDevice(id),
     requestBinaryControl: (id, desired) => transport.requestBinaryControl(id, desired, async () => {
       throw new Error('Unexpected binary Flow in battery test');

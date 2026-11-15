@@ -32,7 +32,8 @@ import type { CarIdentificationState } from '../../packages/contracts/src/evCarL
  */
 import { RetainedPowerPersistence } from './retainedPowerPersistence';
 import type Homey from 'homey';
-import type { SteppedLoadWrite } from '../ports/steppedLoadWrite';
+import type { SteppedLoadWrite, TargetPowerControlClaimResult as ClaimResult,
+  TargetPowerControlClaimWrite } from '../ports/steppedLoadWrite';
 import type { EvChargingCurrentDiagnostics } from '../ports/evChargingCurrentDiagnostics';
 import type { HomeBatteryDevicesRead } from '../ports/homeBatteryDevices';
 import type { BatteryControlRead } from '../ports/batteryControlOwner';
@@ -669,6 +670,17 @@ export class DeviceTransport {
         request: SteppedLoadWrite,
     ): Promise<SteppedLoadStepRequestResult> {
         return this.writeService.requestSteppedLoadStep(request);
+    }
+
+    /** Homey's control of a watt-stepped device PELS manages (`TargetPowerControlClaims`). */
+    getTargetPowerControlClaim(deviceId: string): 'needed' | 'refused' | undefined {
+        return this.writeService.getTargetPowerControlClaim(deviceId);
+    }
+
+    isTargetPowerControlRefused(id: string): boolean { return this.writeService.isTargetPowerControlRefused(id); }
+
+    requestTargetPowerControlClaim(request: TargetPowerControlClaimWrite): Promise<ClaimResult> {
+        return this.writeService.requestTargetPowerControlClaim(request);
     }
 
     /** A home battery's signed setpoint; the claim and the range stay this owner's binding. */

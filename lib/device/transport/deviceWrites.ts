@@ -11,7 +11,9 @@ import { resolveChargingCurrentAdapter } from '../chargingCurrentAdapter';
  *
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
-import type { SteppedLoadWrite, SteppedLoadStepRequestResult } from '../../ports/steppedLoadWrite';
+import type {
+  SteppedLoadWrite, SteppedLoadStepRequestResult, TargetPowerControlClaimResult, TargetPowerControlClaimWrite,
+} from '../../ports/steppedLoadWrite';
 import type { StoragePowerCommand, StoragePowerWrite, StorageReleaseCommand } from '../../ports/storageCommand';
 import type { HomeBatteryControlSurface } from '../../../packages/contracts/src/types';
 import type { InverterControlBinding, InverterControlSurface } from '../../../packages/contracts/src/inverterControl';
@@ -526,11 +528,49 @@ export class DeviceWriteService {
       deviceId, profile, desiredStepId,
       (capabilityId, value) => this.setNativeStepCapability(deviceId, capabilityId, value),
     );
-    if (nativeRequested === 'binary_off_required') return { requested: false, preparation: 'binary_off' };
-    if (nativeRequested === 'preparation_issued') return { requested: false, preparation: 'issued' };
     return nativeRequested
       ? { requested: true, acknowledged: true, transport: 'native_capability' }
       : { requested: false };
+  }
+
+  /**
+   * Homey's control of a watt-stepped device, which the plan claims while the
+   * device is managed and its mode reads anything but `homey`: `needed`. A
+   * device whose app refused the claim is `refused` until its retry is due.
+   */
+  getTargetPowerControlClaim(deviceId: string): 'needed' | 'refused' | undefined {
+    const raw = this.snapshotStore.getLastAcceptedRawDevice(deviceId);
+    if (!raw) return undefined;
+    const claim = this.chargingCurrentControl.sessions.targetPowerClaimOf(raw, Date.now());
+    if (claim === 'refused') return claim;
+    return claim === 'needed' && this.snapshotStore.nativeSteppedAdapters.controlsTargetPower(deviceId)
+      ? claim : undefined;
+  }
+
+  /** Whether the device's app refused Homey's control of its watt target, until the claim is retried. */
+  isTargetPowerControlRefused(deviceId: string): boolean {
+    return this.getTargetPowerControlClaim(deviceId) === 'refused';
+  }
+
+  /** Write `target_power_mode = homey`. */
+  async requestTargetPowerControlClaim(
+    request: TargetPowerControlClaimWrite,
+  ): Promise<TargetPowerControlClaimResult> {
+    const { deviceId } = request;
+    const claims = this.chargingCurrentControl.sessions.targetPowerClaims;
+    try {
+      const claimed = await this.snapshotStore.nativeSteppedAdapters.claimTargetPower(
+        deviceId, (capabilityId, value) => this.setCapability(deviceId, capabilityId, value),
+      );
+      if (!claimed) return { kind: 'not_sent' };
+      claims.noteAccepted(deviceId, Date.now());
+      return { kind: 'claimed' };
+    } catch (error) {
+      // Only an answer from the device's app is a refusal; anything else is retried as it comes.
+      if (resolveHomeyHttpStatusCode(error) === undefined) throw error;
+      claims.noteRefused(deviceId, Date.now());
+      return { kind: 'refused', errorMessage: normalizeError(error).message };
+    }
   }
 
   private setNativeStepCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {

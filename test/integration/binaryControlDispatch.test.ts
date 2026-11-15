@@ -29,6 +29,7 @@ const buildTransport = (
     actuator: createDeviceActuator({
 requestChargingPhaseControl: async () => false,
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
+requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
       requestBinaryControl,
       requestTemperatureTarget: vi.fn(async (_deviceId: string, desired: number) => desired),
       canTurnOnDevice: () => true,
@@ -252,6 +253,7 @@ describe('binary command dispatch', () => {
     const actuator = createDeviceActuator({
 requestChargingPhaseControl: async () => false,
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
+requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
       requestBinaryControl: async () => {
         const pending = store.peek('flow-load');
         expect(pending).toMatchObject({ desired: true });

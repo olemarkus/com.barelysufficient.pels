@@ -185,6 +185,8 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     serviceCtx.deviceManager = {
       getAssociatedCar: () => undefined,
       isWaitingForCarAssociation: () => false,
+      getTargetPowerControlClaim: () => undefined,
+      isTargetPowerControlRefused: () => false,
       getSnapshot: () => serviceCtx.latestTargetSnapshot,
     } as unknown as AppContext['deviceManager'];
     const service = createPlanService(serviceCtx, buildMainHomeScopeForTest(serviceCtx, () => false), planEngine);

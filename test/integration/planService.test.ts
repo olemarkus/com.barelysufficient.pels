@@ -210,6 +210,7 @@ const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServ
   | 'getHomeBatteryCard'
   | 'getDeviceControlAdapter'
   | 'isBuiltInControlHeldByFlow'
+  | 'isTargetPowerControlRefused'
   | 'planBuildGate'
   | 'getSteppedSettleDevices'
   | 'homeId'
@@ -222,6 +223,7 @@ const planServiceDeps = (): ReturnType<typeof planServiceWiring> & Pick<PlanServ
   hasStandingCommandGrant: () => false,
   getDeviceControlAdapter: () => undefined,
   isBuiltInControlHeldByFlow: () => false,
+  isTargetPowerControlRefused: () => false,
   getHomeBatteryCard: () => ({ kind: 'none' }),
   planBuildGate: openPlanBuildGate(),
   getSteppedSettleDevices: () => [],
@@ -1199,6 +1201,7 @@ describe('PlanService', () => {
     const { service } = createPlanService({
       getDeviceControlAdapter: () => undefined,
       isBuiltInControlHeldByFlow: () => false,
+      isTargetPowerControlRefused: () => false,
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
       observed: {
         ...noPlanServiceObservedReads,

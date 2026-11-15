@@ -1,6 +1,8 @@
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { SteppedLoadStepRequestResult, SteppedLoadStepRequestTransport } from '../ports/steppedLoadWrite';
-import type { SteppedLoadWrite } from '../ports/steppedLoadWrite';
+import type {
+  SteppedLoadWrite, TargetPowerControlClaimResult, TargetPowerControlClaimWrite,
+} from '../ports/steppedLoadWrite';
 import type {
   StorageClaimRejected,
   StoragePowerCommand,
@@ -45,6 +47,8 @@ export type DeviceCommand =
     planningCurrentA: number;
     previousStepId?: string;
   }
+  // Homey's control of a watt-stepped device PELS manages (`lib/ports/steppedLoadWrite.ts`).
+  | ({ kind: 'target_power_claim' } & TargetPowerControlClaimWrite)
   // A home battery's signed setpoint and its hand-back (`lib/ports/storageCommand.ts`).
   | StoragePowerCommand
   | StorageReleaseCommand;
@@ -67,6 +71,7 @@ export type ActuatorTransport = {
   /** Resolve the exact semantic setpoint before pending/retry preflight. */
   resolveTemperatureTarget: (deviceId: string, desired: number) => number;
   requestSteppedLoadStep: (request: SteppedLoadWrite) => Promise<SteppedLoadStepRequestResult>;
+  requestTargetPowerControlClaim: (request: TargetPowerControlClaimWrite) => Promise<TargetPowerControlClaimResult>;
   /** Claim the battery for Homey, then write the setpoint: the watts sent, or the claim its app rejected. */
   requestStoragePower: (command: StoragePowerCommand) => Promise<StoragePowerWrite>;
   /** Write a zero setpoint, then restore the recorded claim value. */
@@ -87,7 +92,6 @@ export type ActuatorOutcome =
   | {
     requested: false;
   }
-  | { requested: false; preparation: 'binary_off' | 'issued' }
   | {
     requested: false;
     /**
@@ -106,6 +110,9 @@ export type ActuatorOutcome =
     reason: StorageClaimRejected['kind'];
     errorMessage: string;
   }
+  /** The device's app rejected Homey's control of its watt target. */
+  | { requested: false; reason: 'target_power_claim_refused'; errorMessage: string }
+  | { requested: true; kind: 'target_power_claim' }
   | {
     requested: true;
     kind: 'binary';

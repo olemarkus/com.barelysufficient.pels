@@ -46,7 +46,8 @@ import type { PlanServiceDeps } from './planServiceDeps';
  */
 export type SettingsOverviewReadModelDeps = Pick<PlanServiceDeps,
   | 'homeId' | 'observed' | 'getAssociatedCarChargingState' | 'getCarIdentificationState'
-  | 'getHomeBatteryCard' | 'getDeviceControlAdapter' | 'isBuiltInControlHeldByFlow' | 'getSteppedLoadProfileById'
+  | 'getHomeBatteryCard' | 'getDeviceControlAdapter' | 'isBuiltInControlHeldByFlow' | 'isTargetPowerControlRefused'
+  | 'getSteppedLoadProfileById'
   | 'readStarvationRescuableDeviceIds'> & {
   getDeviceExecutionState: (deviceId: string) => DeviceExecutionState;
   dryRun: boolean;
@@ -236,6 +237,7 @@ function buildLoadOverviewDevice(
     ...device,
     adapterUnavailableStatus: deps.getDeviceControlAdapter(device.id)?.unavailableStatus,
     builtInControlHeldByFlow: deps.isBuiltInControlHeldByFlow(device.id),
+    targetPowerControlRefused: deps.isTargetPowerControlRefused(device.id),
     controllable: device.control.commandAuthority,
     ...temperatureFields,
     steppedLoad,

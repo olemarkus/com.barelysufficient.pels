@@ -58,6 +58,7 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine:
     getCarIdentificationState: (deviceId, nowMs) => deviceManager.getCarIdentificationState(deviceId, nowMs),
     getDeviceControlAdapter: (deviceId) => ctx.deviceConfiguration.get(deviceId)?.controlAdapter,
     isBuiltInControlHeldByFlow: (deviceId) => deviceManager.getSnapshotByDeviceId(deviceId)?.flowConflict !== undefined,
+    isTargetPowerControlRefused: (deviceId) => deviceManager.isTargetPowerControlRefused(deviceId),
     getHomeBatteryCard: (deviceId) => readHomeBatteryCard(
       deviceManager.getSnapshotByDeviceId(deviceId),
       ctx.observer.getObservedRecord(deviceId),

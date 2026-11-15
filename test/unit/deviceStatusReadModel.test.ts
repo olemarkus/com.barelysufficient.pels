@@ -5,7 +5,7 @@ const runningPowerHold = (overrides: Partial<DeviceStatusInput> = {}): DeviceSta
   currentState: 'on', plannedState: 'shed', binaryControllable: true, isEvCharger: false,
   currentDrawKw: 1.2, expectedPowerKw: 1.5, controllable: true, available: true,
   reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 2.3 },
-  priceTargetShift: { kind: 'none' }, adapterUnavailableStatus: undefined, builtInControlHeldByFlow: false,
+  priceTargetShift: { kind: 'none' }, adapterUnavailableStatus: undefined, builtInControlHeldByFlow: false, targetPowerControlRefused: false,
   carIdentificationState: 'not_waiting',
   execution: {
     available: true, physicalState: 'on', observedStepId: null,
@@ -214,5 +214,26 @@ describe('simulation action previews', () => {
     expect(status.label).toBe('Limited');
     expect(status.reason?.text).toBe('Waiting to resume — 2.3 kW more needed');
     expect(status.wouldLimit).toBe(false);
+  });
+});
+
+describe('a device whose app refused level control', () => {
+  const kept = (overrides: Partial<DeviceStatusInput> = {}) => buildDeviceStatus(runningPowerHold({
+    plannedState: 'keep', reason: { code: PLAN_REASON_CODES.keep, detail: null }, targetPowerControlRefused: true,
+    execution: { ...runningPowerHold().execution, desiredBinary: 'on', binaryProgress: 'settled' },
+    ...overrides,
+  }), false, 0);
+
+  it('says PELS can only switch it, where the card has nothing else to say', () => {
+    expect(kept().reason).toEqual({ text: 'PELS can only turn it on and off: its app does not accept level control' });
+  });
+
+  it('keeps the hold reason of a limited device', () => {
+    const status = kept({ plannedState: 'shed', reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 2.3 } });
+    expect(status.reason?.text).not.toContain('level control');
+  });
+
+  it('says nothing for a device with level control', () => {
+    expect(kept({ targetPowerControlRefused: false }).reason).toBeNull();
   });
 });
