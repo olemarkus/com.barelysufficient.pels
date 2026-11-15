@@ -6,7 +6,8 @@ import { resolveObservedCurrentState } from '../observer/observedState';
 import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { resolveCanSetControl } from '../device/deviceActionProjection';
 import type { BoostResolveInput } from '../device/deviceActionProjection';
-import { isEvDevice } from '../../packages/shared-domain/src/evPlugState';
+import { isEvDevice, resolveEvChargeAction } from '../../packages/shared-domain/src/evPlugState';
+import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
 import {
@@ -38,7 +39,10 @@ import { resolveStorageCluster } from './storageProjection';
 import { resolvePhaseFootprint } from '../phaseFootprint/resolvePhaseFootprint';
 import { resolveOperatingChargingPhases } from '../phaseFootprint/chargingPhaseFootprints';
 import { projectChargeTargetHold } from './chargeTargetHold';
-import { hasUsableSteppedLoadLadder } from '../../packages/shared-domain/src/deviceControlProfiles';
+import {
+  getSteppedLoadLowestActiveStep, hasUsableSteppedLoadLadder, isSteppedLoadStepOff,
+} from '../../packages/shared-domain/src/deviceControlProfiles';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { SteppedClusterFields } from '../plan/planTypes';
 
 /**
@@ -66,6 +70,25 @@ const resolvePresenceFlags = (
   ...(externalOffHoldActive ? { externalOffHoldActive: true as const } : {}),
 });
 
+/**
+ * The ladder PELS plans a charger on while its car has finished the session
+ * (`offer`, `resolveEvChargeAction`): its off step and its lowest charging
+ * step. PELS keeps that current on offer for when the car asks again, and never
+ * raises it. A higher step offers a car that takes nothing more current, and
+ * queues ahead of a charger whose car is charging; the switch-on write sends
+ * the same minimum (`lib/device/easee/switch.ts`). The full ladder returns with
+ * the next session state.
+ */
+const resolveFinishedSessionProfile = (
+  device: ToPlanDeviceInput,
+  profile: SteppedLoadProfile,
+): SteppedLoadProfile => {
+  if (!isEvObserved(device) || resolveEvChargeAction(device.evChargingState) !== 'offer') return profile;
+  const lowest = getSteppedLoadLowestActiveStep(profile);
+  if (lowest === null) return profile;
+  return { ...profile, steps: profile.steps.filter((step) => isSteppedLoadStepOff(step) || step.id === lowest.id) };
+};
+
 /** Resolve the command ladder and an incompatible car range together at the input boundary. */
 const resolveSteppedPlanInputFields = (
   source: PlanInputProjectionSource,
@@ -87,7 +110,8 @@ const resolveSteppedPlanInputFields = (
   // An impossible car/charger range is a forced-off policy, not a missing
   // control channel. Retain the real usable ladder so the pause can execute.
   const plannerSteppedLoadProfile = carCurrentRangeUnavailable && isSteppedDevice
-    ? device.steppedLoadProfile : limitedSteppedLoadProfile;
+    ? device.steppedLoadProfile
+    : limitedSteppedLoadProfile && resolveFinishedSessionProfile(device, limitedSteppedLoadProfile);
   return {
     ...resolveSteppedClusterFields(plannerSteppedLoadProfile, device),
     ...(carCurrentRangeUnavailable ? { carCurrentRangeUnavailable: true as const } : {}),
