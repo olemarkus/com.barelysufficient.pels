@@ -153,9 +153,21 @@ function holdsChargingCurrent(currentA: number): boolean {
  * is off. A charger still charging is on whatever its current: after PELS's
  * 0 A the switch reads off once Easee reports the pause, when the charger has
  * stopped drawing, not when the current lands.
+ *
+ * A session the car has completed (`Completed`, `plugged_in_finished`) is read
+ * the same way as a pause. Its current is the current on offer: PELS's wish to
+ * charge writes the configured minimum there (`resolveEaseeSwitchWrite`), and
+ * the car takes it when it asks again. A completed charger holding 6 A is on,
+ * waiting for the car, so that write is confirmed. A completed charger holding
+ * 0-5 A is off.
  */
 function isChargingSwitchOn(state: EvChargingState, holdsCurrent: boolean): boolean {
-  return state === 'plugged_in_charging' || (state === 'plugged_in_paused' && holdsCurrent);
+  return state === 'plugged_in_charging' || (readsSwitchFromCurrent(state) && holdsCurrent);
+}
+
+/** A connected session the charger holds open without charging: its current is its switch. */
+function readsSwitchFromCurrent(state: EvChargingState): boolean {
+  return state === 'plugged_in_paused' || state === 'plugged_in_finished';
 }
 
 /** An Easee charger whose current PELS writes itself (built-in device control on). */
@@ -169,9 +181,10 @@ export function isEaseeUnderBuiltInControl(
 /**
  * `capabilityObj` with its charging switch read the way `isChargingSwitchOn`
  * reads it, for a charger `isEaseeUnderBuiltInControl` admits. The switch is
- * dated by the facts it was read from: the plug state, and for a paused charger
- * the current too, whichever Homey updated last. A rejected current leaves
- * the independently reported switch alone rather than implying a zero current.
+ * dated by the facts it was read from: the plug state, and for a paused or
+ * completed charger the current too, whichever Homey updated last. A rejected
+ * current leaves the independently reported switch alone rather than implying
+ * a zero current.
  */
 export function withEaseeObservedCharging(capabilityObj: DeviceCapabilityMap): DeviceCapabilityMap {
   const charging = capabilityObj.evcharger_charging;
@@ -180,9 +193,10 @@ export function withEaseeObservedCharging(capabilityObj: DeviceCapabilityMap): D
   if (charging === undefined || state === undefined || !isEvChargingState(stateValue)) return capabilityObj;
   const current = capabilityObj[EASEE_CHARGER_CURRENT_CAPABILITY_ID];
   const currentA = readCurrentA(current?.value);
-  if (stateValue === 'plugged_in_paused' && currentA === undefined) return capabilityObj;
+  const fromCurrent = readsSwitchFromCurrent(stateValue);
+  if (fromCurrent && currentA === undefined) return capabilityObj;
   const on = isChargingSwitchOn(stateValue, currentA !== undefined && holdsChargingCurrent(currentA));
-  const datedBy = stateValue === 'plugged_in_paused' && current !== undefined ? latestOf(state, current) : state;
+  const datedBy = fromCurrent && current !== undefined ? latestOf(state, current) : state;
   return {
     ...capabilityObj,
     evcharger_charging: { ...charging, value: on, lastUpdated: datedBy.lastUpdated },
@@ -197,11 +211,12 @@ export function withEaseeObservedCharging(capabilityObj: DeviceCapabilityMap): D
  * handlers that drop it, and implies nothing. For a charger
  * `isEaseeUnderBuiltInControl` admits.
  *
- * A pause report is read against the current the charger holds, which is the
- * level `reportedStepId` reads from it (0-5 A is the off step). Every current
- * report sets that level, PELS's own included: Homey's echo of a current PELS
- * wrote is the current the charger now holds (`transport/nativeSteppedRealtime.ts`).
- * With no level read, a pause report says nothing about the switch.
+ * A pause or completion report is read against the current the charger holds,
+ * which is the level `reportedStepId` reads from it (0-5 A is the off step).
+ * Every current report sets that level, PELS's own included: Homey's echo of a
+ * current PELS wrote is the current the charger now holds
+ * (`transport/nativeSteppedRealtime.ts`). With no level read, such a report
+ * says nothing about the switch.
  */
 export function resolveEaseeRealtimeUpdates(
   snapshot: Pick<TransportDeviceSnapshot, 'evChargingState' | 'reportedStepId' | 'steppedLoadProfile'>,
@@ -214,7 +229,7 @@ export function resolveEaseeRealtimeUpdates(
       return [];
     case 'evcharger_charging_state': {
       if (!isEvChargingState(value)) return [event];
-      if (value !== 'plugged_in_paused') return [event, switchEvent(isChargingSwitchOn(value, false))];
+      if (!readsSwitchFromCurrent(value)) return [event, switchEvent(isChargingSwitchOn(value, false))];
       const { reportedStepId, steppedLoadProfile } = snapshot;
       if (reportedStepId === undefined || steppedLoadProfile === undefined) return [event];
       return [event, switchEvent(!isSteppedLoadOffStep(steppedLoadProfile, reportedStepId))];
