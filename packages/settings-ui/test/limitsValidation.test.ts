@@ -585,6 +585,28 @@ describe('Limits & safety inline validation', () => {
     expect(simulation.selected).toBe(false);
   });
 
+  it('puts the Simulation switch back when turning simulation off could not be saved', async () => {
+    buildLimitsDom();
+    const { capacity, settingsStore } = await loadCapacityModuleWithWriter(
+      {},
+      undefined,
+      { state: 'recorded', peakKw: 4.75 },
+      async (key, value, store) => {
+        if (key === 'capacity_dry_run') throw new Error('write failed');
+        store[key] = value;
+      },
+    );
+    await capacity.loadCapacitySettings();
+    const simulation = document.querySelector('#settings-simulation-mode') as HTMLElement & { selected: boolean };
+    expect(simulation.selected).toBe(true);
+
+    simulation.selected = false;
+    await expect(capacity.saveSimulationModeSettings()).rejects.toThrow('write failed');
+
+    expect(settingsStore.capacity_dry_run).toBe(true);
+    expect(simulation.selected).toBe(true);
+  });
+
   it('keeps valid Belgian settings visible when the optional peak read fails', async () => {
     const dom = buildLimitsDom();
     const { capacity } = await loadCapacityModule(
