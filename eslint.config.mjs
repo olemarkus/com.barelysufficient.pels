@@ -812,7 +812,7 @@ export default tseslint.config(
     files: ['lib/device/deviceAdapterRegistry.ts'],
     plugins: { 'import-x': importX },
     rules: {
-      'import-x/max-dependencies': ['error', { max: 30, ignoreTypeImports: true }],
+      'import-x/max-dependencies': ['error', { max: 31, ignoreTypeImports: true }],
     },
   },
   // lib/store is the one place `node:sqlite` is named (dependency-cruiser's
