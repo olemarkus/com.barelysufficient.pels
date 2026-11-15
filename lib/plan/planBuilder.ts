@@ -31,7 +31,7 @@ import { resolvePriceOptimizationConfig } from '../price/priceOptimizer';
 import type { PowerTrackerState } from '../power/tracker';
 import type { PlanBuilderDeps } from './planBuilderDeps';
 import { resolvePowerCycleReading } from '../power/powerCycleReading';
-import type { DevicePlan, PlanInputDevice } from './planTypes';
+import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
 import {
   computeDailyUsageSoftLimit,
@@ -130,6 +130,19 @@ export class PlanBuilder {
     return this.deps.getPowerTracker();
   }
 
+  /**
+   * The tracker the period's pace is read from. In capacity simulation it is
+   * the measured one less the energy the simulated decisions would have kept
+   * off the meter (`simulatedPeriodEnergy.ts`), so a simulated period paces as
+   * live control's would. The reading, its freshness and every displayed figure
+   * stay on the measured tracker.
+   */
+  private get pacingTracker(): PowerTrackerState {
+    return this.deps.getCapacityDryRun()
+      ? this.state.simulatedPeriodEnergy.planningView(this.powerTracker)
+      : this.powerTracker;
+  }
+
   // Resolve owner inputs once before decoration; objective evaluation shares the phase owner's
   // permitted envelopes, while the execution hold gate reads the admitted task authority.
   private prepareDevicePlanningInputs(
@@ -208,8 +221,9 @@ export class PlanBuilder {
     remainingKWh: number;
     hourlyBudgetExhausted: boolean;
   } {
-    const drainStart = this.state.capacityDrainStart.startFor(settings, this.powerTracker, nowTs);
-    const result = computeDynamicSoftLimit(settings, this.powerTracker, nowTs, drainStart);
+    const tracker = this.pacingTracker;
+    const drainStart = this.state.capacityDrainStart.startFor(settings, tracker, nowTs);
+    const result = computeDynamicSoftLimit(settings, tracker, nowTs, drainStart);
     return {
       paceKw: result.allowedKw,
       remainingKWh: result.remainingKWh,
@@ -236,7 +250,7 @@ export class PlanBuilder {
   }
 
   public computeShortfallThreshold(): number | null {
-    return resolveShortfallThresholdKw(this.capacitySettings, this.powerTracker, Date.now());
+    return resolveShortfallThresholdKw(this.capacitySettings, this.pacingTracker, Date.now());
   }
 
   /**
@@ -257,12 +271,15 @@ export class PlanBuilder {
     settings: PowerLimitSettings,
     nowTs: number,
   ): Promise<CapacityPlanLimit> {
+    this.accrueSimulatedPeriodEnergy();
     const paceKw = this.stampCapacityPace(settings, nowTs);
     if (paceKw === null) {
       await this.capacityGuard.recordCapacityDisabled();
       return { kind: 'off' };
     }
-    return { kind: 'on', paceKw, shortfallThresholdKw: computeShortfallThreshold(settings, this.powerTracker, nowTs) };
+    return {
+      kind: 'on', paceKw, shortfallThresholdKw: computeShortfallThreshold(settings, this.pacingTracker, nowTs),
+    };
   }
 
   public async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
@@ -305,7 +322,7 @@ export class PlanBuilder {
     const context = trackPlanStage('plan_context_ms', () => buildPlanContext(
       admittedDevices,
       settings,
-      this.powerTracker,
+      this.pacingTracker,
       // The limits this cycle is decided against — one resolution, held by the
       // frame both passes build.
       buildPlanLimits(
@@ -379,11 +396,7 @@ export class PlanBuilder {
     const decidedDevices = attachStorageDecisions(
       this.stages.finalizePlan(planDevices, heldContext.temperatureSetpoints, nowTs).planDevices, storageRelief,
     );
-    // Which devices this plan holds shed and under which posture — semantics
-    // on `ShedDecisions.recordPlannedShed`.
-    this.state.shedDecisions.recordPlannedShed(
-      decidedDevices, decoration, this.deps.pendingBinaryCommandStore, !this.deps.getCapacityDryRun(),
-    );
+    this.recordPlannedShed(decidedDevices, decoration);
     const metaFacts: PlanMetaCycleFacts = {
       context: heldContext,
       reading,
@@ -602,6 +615,28 @@ export class PlanBuilder {
     });
   }
 
+  /**
+   * Which devices this plan holds shed and under which posture (semantics on
+   * `ShedDecisions.recordPlannedShed`), and in simulation what holding them
+   * would keep off the meter until the next build.
+   */
+  private recordPlannedShed(decidedDevices: DevicePlanDevice[], decoration: DeferredDecorationBundle): void {
+    const simulating = this.deps.getCapacityDryRun();
+    this.state.shedDecisions.recordPlannedShed(
+      decidedDevices, decoration, this.deps.pendingBinaryCommandStore, !simulating,
+    );
+    if (simulating) this.state.simulatedPeriodEnergy.hold(decidedDevices, this.powerTracker);
+  }
+
+  /**
+   * Simulation counts what its last plan would have kept off the meter since
+   * that plan's reading; a build that actuates drops the count.
+   */
+  private accrueSimulatedPeriodEnergy(): void {
+    if (this.deps.getCapacityDryRun()) this.state.simulatedPeriodEnergy.accrue(this.powerTracker);
+    else this.state.simulatedPeriodEnergy.clear();
+  }
+
   private recordCleanWholeHomeSample(devices: PlanInputDevice[], sampleAtMs: number | undefined): void {
     if (sampleAtMs === undefined) return;
     for (const device of devices) {
@@ -614,7 +649,7 @@ export class PlanBuilder {
     devices: PlanInputDevice[],
     nowTs: number,
   ): DailySoftLimitResolution | null {
-    const bucket = resolveDailySoftLimitBucket(snapshot, this.powerTracker, nowTs);
+    const bucket = resolveDailySoftLimitBucket(snapshot, this.pacingTracker, nowTs);
     if (!bucket) return null;
     // No `?? 0` here any more. The sum used to return `null` when exempt devices
     // existed but none reported power, and defaulting that to 0 shortened the

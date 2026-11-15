@@ -4,6 +4,7 @@ import type { PendingBinaryCommandRead } from '../ports/pendingBinaryCommand';
 import type { PlanRebuildTrigger } from './planRebuildTrigger';
 import { NO_PHASE_SHED_STATE, type PhaseShedState } from './phase/phaseShedState';
 import { ShedReliefAudit } from './shedding/shedReliefAudit';
+import { SimulatedPeriodEnergy } from './simulatedPeriodEnergy';
 import type { PlanLimits } from './planContext';
 import { OvershootIncident } from './overshootIncident';
 import { CapacityDrainStart } from './capacityDrainStart';
@@ -410,6 +411,9 @@ export class PlanEngineState {
 
   /** Credited relief beside the meter's response, for the logs (`shedding/shedReliefAudit.ts`). */
   readonly shedReliefAudit = new ShedReliefAudit();
+
+  /** What simulated decisions would have kept off the meter this period (`simulatedPeriodEnergy.ts`). */
+  readonly simulatedPeriodEnergy = new SimulatedPeriodEnergy();
 
   /**
    * Drop the shed-plan latch when the overshoot it belongs to is over. The

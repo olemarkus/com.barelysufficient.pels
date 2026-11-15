@@ -339,6 +339,8 @@ Simulation mode lets you test behavior without switching devices.
 
 Use this while you are tuning priorities, power estimates, and limits. Turn it off when you are ready for PELS to control devices.
 
+While simulating, PELS paces each hour as if the devices it shows it would limit had been limited, so what it shows matches what it would do with control on, through the whole hour. **Energy used this hour** still shows what your meter measured.
+
 Simulation mode covers your Main home. Each [meter area](/meter-areas) has its own **Control devices in this area** switch under **Limits & safety**, so an area can keep limiting its devices while Simulation mode is on.
 
 ## Settings > Report a problem
