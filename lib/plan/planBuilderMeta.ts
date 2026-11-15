@@ -18,6 +18,7 @@ import type { CapacityPlanLimit, MeasuredPower, PlanContext, PlanLimits } from '
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { splitControlledUsageKwFor } from '../power/usageAttribution';
 import { toMeteredUsageDevices } from './planUsage';
+import { getCurrentCapacityPeriodContext, getCurrentHourContext } from './planHourContext';
 import {
   extractDailyBudgetHourKWh as extractPlanDailyBudgetHourKWh,
   getHourUsageSplit,
@@ -87,8 +88,11 @@ export function buildPlanMetaBase(facts: PlanMetaCycleFacts): PlanMetaBase {
     capacityPeriodMinutes: context.capacityPeriodMinutes,
     capacityPeriodCoverageComplete: context.capacityPeriodCoverageComplete,
     hourlyBudgetExhausted,
-    hourUsedKWh: context.hourUsedKWh,
-    usedKWh: context.usedKWh,
+    // Measured, from the meter's own tracker: in simulation the context paces
+    // from what live control would have used (`simulatedPeriodEnergy.ts`), and
+    // that is never shown as energy used.
+    hourUsedKWh: getCurrentHourContext(powerTracker, context.nowTs).usedKWh,
+    usedKWh: getCurrentCapacityPeriodContext(powerTracker, context.capacityPeriodMinutes, context.nowTs).usedKWh,
     budgetKWh: context.budgetKWh,
     capacityLimitKw,
     minutesRemaining: context.minutesRemaining,
