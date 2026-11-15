@@ -21,6 +21,7 @@ import type {
   DecoratedDeviceSnapshot,
   EvObservedProbe,
   MeasuredPowerObservedProbe,
+  SteppedLoadProfile,
   TargetDeviceSnapshot,
   TemperatureObservedProbe,
   ThermostatModeObservedProbe,
@@ -237,6 +238,50 @@ describe('toPlanDevice — R7b per-home options', () => {
     expect(result.residualKw.shed).toBeGreaterThan(0);
     expect('currentTemperature' in result).toBe(false);
     expect('currentOn' in result).toBe(false);
+  });
+
+  it.each([
+    ['plugged_in_finished', ['off', '6a']],
+    ['plugged_in_charging', ['off', '6a', '10a', '16a']],
+  ] as const)('plans a charger in %s on %j', (evChargingState, stepIds) => {
+    // A finished session keeps the minimum on offer: its car takes nothing more,
+    // and a higher step would queue ahead of a charger whose car is charging.
+    const ctx = createAppContextMock();
+    ctx.isCapacityControlEnabled = vi.fn(() => true);
+    ctx.resolveManagedState = vi.fn(() => true);
+    const charger = {
+      available: true,
+      id: 'charger',
+      name: 'Charger',
+      targets: [],
+      deviceClass: 'evcharger',
+      deviceType: 'onoff',
+      isEvCharger: true,
+      isBatteryOrSolar: false,
+      binaryControllable: true,
+      managed: true,
+      expectedPowerKw: 11,
+      expectedPowerSource: 'default',
+      controlModel: 'stepped_load',
+      steppedLoadProfile: {
+        steps: [
+          { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
+          { id: '6a', planningPowerW: 4_140, planningCurrentA: 6 },
+          { id: '10a', planningPowerW: 6_900, planningCurrentA: 10 },
+          { id: '16a', planningPowerW: 11_040, planningCurrentA: 16 },
+        ],
+      },
+      selectedStepId: '10a',
+      reportedStepId: '10a',
+      planningPowerKw: 6.9,
+      measuredPowerKw: 0,
+      evChargingState,
+    } satisfies DecoratedDeviceSnapshot & MeasuredPowerObservedProbe & EvObservedProbe;
+
+    const result = toPlanDevice(ctx, withDeviceConfiguration(charger));
+
+    const { steppedLoadProfile } = result as { steppedLoadProfile?: SteppedLoadProfile };
+    expect(steppedLoadProfile?.steps.map((step) => step.id)).toEqual(stepIds);
   });
 
   it('DEFAULT stamps surplusOnly for a surplusWilling metered dump load (main-home behavior)', () => {

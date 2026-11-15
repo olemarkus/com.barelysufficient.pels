@@ -25,7 +25,7 @@ move it is, and so admits one answer to a wish to charge
 | `plugged_in_awaiting_start` | No session is open; a start command opens one | PELS | `start` |
 | `plugged_in_paused` | An open session the charger holds off | PELS | `resume` |
 | `plugged_in_waiting_for_charger` | The charger has not started the session: it waits for authorisation, its schedule or its load balancing | the charger | `wait`: PELS sends nothing |
-| `plugged_in_finished` | The car has stopped asking for power | the car | `offer`: PELS keeps current on offer and never starts a new session |
+| `plugged_in_finished` | The car has stopped asking for power | the car | `offer`: PELS keeps its lowest charging step on offer and never starts a new session |
 | `plugged_in_charging` | Delivering | PELS | `keep`: pause it or set its current |
 | `plugged_in_discharging` | Exporting | nobody | blocked |
 
@@ -33,6 +33,13 @@ move it is, and so admits one answer to a wish to charge
 each has its reason line (`EV_BLOCK_REASONS`). How a `start`, `resume` or
 `offer` is carried out is the integration's: an Easee under built-in control
 resumes and offers by current and starts by its switch.
+
+An `offer` session is planned on its off step and its lowest charging step
+only (`resolveFinishedSessionProfile`, `lib/planInput/resolvePlanInputDeviceFacts.ts`).
+A car that takes nothing gains nothing from more current, and a step-up queued
+for it held a charger whose car was charging at its lowest step (SHS lab,
+2026-11-15: a full car's Easee climbed from 6 A to 28 A while a Zaptec waited).
+The full ladder returns with the next session state.
 
 A state that admits a start or resume can still be refused: an app that gives a
 paused session and one the car ended the same value takes a resume only for the
