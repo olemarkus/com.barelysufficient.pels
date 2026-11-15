@@ -63,11 +63,11 @@ export const createHomeyEnergyPollSource = (
       const read = await host.deviceManager?.readMeterPhases(sample.meterDeviceId, capabilities);
       if (read) host.capacityGuard?.phaseReadings.admit(read, sample.powerW, Date.now());
     },
-    async (meterDeviceIds, mainMeterDeviceId) => {
+    (meterDeviceIds, mainMeterDeviceId) => {
       const manager = host.deviceManager;
       if (manager === undefined) return;
       const read = (id: string) => manager.readMeterMonthlyPeak(id);
-      await meterMonthlyPeaks.refresh(meterDeviceIds, mainMeterDeviceId, read, Date.now());
+      meterMonthlyPeaks.refreshInBackground(meterDeviceIds, mainMeterDeviceId, read, Date.now());
     },
   );
   return new HomeyEnergyPollSource({

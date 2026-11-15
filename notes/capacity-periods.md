@@ -53,7 +53,9 @@ your meter.` when the meter's value is the higher. Recognising the capability is
 the meter integration's job (`DeviceAdapter.meterMonthlyPeak`; the HomeWizard P1
 publishes `measure_power.montly_power_peak` in W). The Homey Energy poll reads
 each home's meter at most once a minute into `lib/power/meterMonthlyPeak.ts`, in
-memory and keyed by meter: a failed or malformed read keeps the last accepted
+memory and keyed by meter. The read runs in the background, one at a time, and
+never holds the poll's samples, which use the last accepted peak until it lands.
+A failed or malformed read keeps the last accepted
 peak, and a value Homey last dated in an earlier local month is not this month's,
 so after the 1st the meter counts again once it reports in the new month. A home
 on the Flow source has no meter peak.

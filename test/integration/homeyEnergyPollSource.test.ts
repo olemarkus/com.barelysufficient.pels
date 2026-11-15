@@ -349,12 +349,36 @@ describe('HomeyEnergyPollSource', () => {
       meterDeviceId: 'meter-main',
     });
     // Every polled meter's own month peak is read with the poll, Main's and the area's.
+    await vi.waitFor(() => expect(meterMonthlyPeaks.current('m-area')).toEqual({ peakKw: 4.1, observedAtMs }));
     expect(readMeterMonthlyPeak.mock.calls.map(([id]) => id)).toEqual(['meter-main', 'm-area']);
-    expect(meterMonthlyPeaks.current('m-area')).toEqual({ peakKw: 4.1, observedAtMs });
     expect(meterMonthlyPeaks.current('meter-main')).toBeNull();
     // A minute has not passed: the next poll does not read the meter devices again.
     await source.pollNow();
     expect(readMeterMonthlyPeak).toHaveBeenCalledTimes(2);
+  });
+
+  it('records the sample without waiting on a meter device that does not answer its month peak', async () => {
+    mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
+    const recordPowerSample = vi.fn().mockResolvedValue({ state: 'admitted', revision: 1 });
+    const readMeters = vi.fn().mockResolvedValue({ meterPowerW: { 'meter-main': 2_100 }, generationW: null });
+    // The meter device's read never settles, as on a Homey too busy to answer.
+    const readMeterMonthlyPeak = vi.fn(() => new Promise<never>(() => undefined));
+    const meterMonthlyPeaks = new MeterMonthlyPeaks();
+    const source = createHomeyEnergyPollSource({
+      getPowerSource: () => 'homey_energy',
+      timers: new TimerRegistry(),
+      homey: mockHomeyInstance,
+      deviceManager: { readMeters, readMeterPhases: async () => ({ state: 'unavailable' as const }), readMeterMonthlyPeak },
+      capacityGuard: { phaseReadings: new PhaseReadingTracker() },
+      getSubHomeMeters: () => undefined,
+      error: vi.fn(),
+    }, { recordPowerSample }, meterMonthlyPeaks);
+
+    await source.pollNow();
+
+    expect(readMeterMonthlyPeak).toHaveBeenCalledOnce();
+    expect(recordPowerSample).toHaveBeenCalledWith(2_100, undefined, expect.objectContaining({ meterDeviceId: 'meter-main' }));
+    expect(meterMonthlyPeaks.currentMain()).toBeNull();
   });
 });
 

@@ -1,4 +1,5 @@
 import { getDebugEmitter } from '../logging/logger';
+import { normalizeError } from '../utils/errorUtils';
 import type { MeterMonthlyPeakRead } from '../ports/homeMeterReadings';
 
 const emitDebug = getDebugEmitter('power', 'plan');
@@ -28,22 +29,55 @@ export const METER_MONTHLY_PEAK_READ_INTERVAL_MS = 60 * 1000;
 export class MeterMonthlyPeaks {
   private readonly accepted = new Map<string, MeterMonthlyPeak>();
   private lastReadAtMs: number | null = null;
+  /** The read under way, so a slow meter device never has two. */
+  private inFlight: Promise<void> | null = null;
   /** Main's meter as the poll last requested it; null while Main has none selected. */
   private mainMeterDeviceId: string | null = null;
 
   /**
-   * Read the meters' peaks, at most once per `METER_MONTHLY_PEAK_READ_INTERVAL_MS`.
+   * Start reading the meters' peaks without waiting for them: the poll records
+   * its samples at once, so a slow or stalled meter device never holds one, and
+   * a sample uses the last accepted peak until the read lands.
+   */
+  refreshInBackground(
+    meterDeviceIds: readonly string[],
+    mainMeterDeviceId: string | null,
+    read: (meterDeviceId: string) => Promise<MeterMonthlyPeakRead>,
+    nowMs: number,
+  ): void {
+    this.refresh(meterDeviceIds, mainMeterDeviceId, read, nowMs).catch((error: unknown) => {
+      emitDebug({ event: 'meter_monthly_peak_refresh_failed', error: normalizeError(error).message });
+    });
+  }
+
+  /**
+   * Read the meters' peaks, at most once per `METER_MONTHLY_PEAK_READ_INTERVAL_MS`
+   * and one read at a time: a call while a read is under way gets that read.
    * `mainMeterDeviceId` is Main's meter among them, as the poll resolved it.
    */
-  async refresh(
+  refresh(
     meterDeviceIds: readonly string[],
     mainMeterDeviceId: string | null,
     read: (meterDeviceId: string) => Promise<MeterMonthlyPeakRead>,
     nowMs: number,
   ): Promise<void> {
     this.mainMeterDeviceId = mainMeterDeviceId;
-    if (this.lastReadAtMs !== null && nowMs - this.lastReadAtMs < METER_MONTHLY_PEAK_READ_INTERVAL_MS) return;
+    if (this.inFlight !== null) return this.inFlight;
+    if (this.lastReadAtMs !== null && nowMs - this.lastReadAtMs < METER_MONTHLY_PEAK_READ_INTERVAL_MS) {
+      return Promise.resolve();
+    }
     this.lastReadAtMs = nowMs;
+    const reading = this.readAll(meterDeviceIds, read).finally(() => {
+      this.inFlight = null;
+    });
+    this.inFlight = reading;
+    return reading;
+  }
+
+  private async readAll(
+    meterDeviceIds: readonly string[],
+    read: (meterDeviceId: string) => Promise<MeterMonthlyPeakRead>,
+  ): Promise<void> {
     const forgotten = Array.from(this.accepted.keys()).filter((id) => !meterDeviceIds.includes(id));
     for (const meterDeviceId of forgotten) this.accepted.delete(meterDeviceId);
     for (const meterDeviceId of meterDeviceIds) {
