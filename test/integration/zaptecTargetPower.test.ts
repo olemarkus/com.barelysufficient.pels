@@ -492,17 +492,37 @@ describe('Zaptec native target power', () => {
       setRestClient({ get: vi.fn(), put: vi.fn().mockResolvedValue(undefined) });
       await transport.requestTargetPowerControlClaim({ deviceId: device.id });
 
-      vi.setSystemTime(Date.now() + 61_000);
+      // Still landing while the next periodic full read can bring the new mode.
+      vi.setSystemTime(Date.now() + 5 * 60_000 + 30_000);
+      expect(transport.getTargetPowerControlClaim(device.id)).toBeUndefined();
+      vi.setSystemTime(Date.now() + 31_000);
       expect(transport.getTargetPowerControlClaim(device.id)).toBe('refused');
     });
 
-    it('does not take a failure that is no answer from the device for a refusal', async () => {
+    it('waits out a claim that got no answer instead of writing it on every rebuild', async () => {
       const device = withMode('device');
       const { transport } = await start(device);
       setRestClient({ get: vi.fn(), put: vi.fn().mockRejectedValue(new Error('Socket closed')) });
 
       await expect(transport.requestTargetPowerControlClaim({ deviceId: device.id })).rejects.toThrow('Socket closed');
-      expect(transport.getTargetPowerControlClaim(device.id)).toBe('needed');
+      // It may have landed: not planned again while a device read can still say so.
+      expect(transport.getTargetPowerControlClaim(device.id)).toBeUndefined();
+      vi.setSystemTime(Date.now() + 6 * 60_000);
+      expect(transport.getTargetPowerControlClaim(device.id)).toBe('refused');
+    });
+
+    it('lands a claim the device reads back as homey on a later full read', async () => {
+      const device = withMode('device');
+      const { transport } = await start(device);
+      setRestClient({ get: vi.fn(), put: vi.fn().mockResolvedValue(undefined) });
+      await transport.requestTargetPowerControlClaim({ deviceId: device.id });
+
+      // The refresh after the command was missed; the periodic full read brings it.
+      vi.setSystemTime(Date.now() + 5 * 60_000);
+      await seedTransportDevices(transport, [withMode('homey')]);
+      vi.setSystemTime(Date.now() + 2 * 60_000);
+      expect(transport.getTargetPowerControlClaim(device.id)).toBeUndefined();
+      expect(transport.isTargetPowerControlRefused(device.id)).toBe(false);
     });
   });
 
