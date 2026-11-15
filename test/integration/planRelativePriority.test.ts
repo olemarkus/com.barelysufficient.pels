@@ -5,6 +5,7 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const buildDevice = (id: string, priority: number): PlanInputDevice => withBinaryDiscriminant({
   ...buildPlanInputDevice({
@@ -36,7 +37,7 @@ describe('PlanBuilder relative priority constraint', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0, periodMinutes: 60 }),
       getPowerTracker: () => ({ lastTimestamp: Date.now() , lastPowerW }),
       // The live dependency is intentionally stale: every consumer in this
       // cycle must use the relative ranks snapshotted on the input devices.

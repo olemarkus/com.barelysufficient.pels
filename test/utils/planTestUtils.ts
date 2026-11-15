@@ -1349,6 +1349,7 @@ const buildPlanMetaBase = (
   // measured default `shortfallBudgetHeadroomKw: 1` implies at 5 kW drawn.
   shortfallBudgetThresholdKw: 6,
   hardCapLimitKw: 10,
+  hardCapSource: 'configured',
   capacityPeriodMinutes: 60,
   capacityPeriodCoverageComplete: true,
   hourlyBudgetExhausted: false,
@@ -1392,6 +1393,7 @@ const buildSettingsUiPlanMetaBase = (
   projectedExemptKw: null,
   softLimitSource: 'capacity',
   hardCapLimitKw: 10,
+  hardCapSource: 'configured',
   capacityPeriodMinutes: 60,
   capacityPeriodCoverageComplete: true,
   usedKWh: 1,

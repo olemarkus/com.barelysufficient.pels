@@ -23,6 +23,7 @@ import { capacityOnlyPowerLimits } from '../helpers/powerLimitSettings';
 import { deviceSurfacesFixtures } from '../utils/deviceSnapshotFixture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const START_MS = Date.UTC(2026, 9, 2, 0);
 const QUARTER_MS = 15 * 60_000;
@@ -108,7 +109,7 @@ const buildHarness = (controllable: boolean, decisionDelayMs = 0) => {
     noteResolvedHomeMeter: () => {},
     getPowerTracker: () => tracker,
     getCapacityGuard: () => guard,
-    getCapacitySettings: () => capacityOnlyPowerLimits(10),
+    getHeldPowerLimits: () => configuredHardCap(capacityOnlyPowerLimits(10)),
     getTimeZone: () => 'UTC',
     getPlanEngine: () => partialDouble<PlanEngine>({
       computeShortfallThreshold: () => 10,

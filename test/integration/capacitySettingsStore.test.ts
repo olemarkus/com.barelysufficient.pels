@@ -19,11 +19,12 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_PERIOD_MINUTES,
+  CAPACITY_FOLLOW_MONTH_PEAK,
   MAIN_HOME_ID,
 } from '../../lib/utils/settingsKeys';
 import { MockSettings } from '../mocks/homey';
 
-const fallback = (): CapacityScalarSettings => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, dryRun: false, periodMinutes: 60 });
+const fallback = (): CapacityScalarSettings => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, dryRun: false, periodMinutes: 60, followMonthPeak: false });
 const resolvedValue = (read: CapacityScalarSettingsRead): CapacityScalarSettings => {
   expect(read.state).toBe('resolved');
   if (read.state === 'unavailable') throw new Error('expected resolved capacity settings');
@@ -247,7 +248,7 @@ describe('createCapacitySettingsStore', () => {
     const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
 
     expect(store.readHardCapConfiguration()).toEqual({ state: 'resolved', configured: true });
-    expect(resolvedValue(store.read())).toEqual({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 7.5, marginKw: 0.4, dryRun: true, periodMinutes: 60 });
+    expect(resolvedValue(store.read())).toEqual({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 7.5, marginKw: 0.4, dryRun: true, periodMinutes: 60, followMonthPeak: false });
   });
 
   it('resolves an unwritten hard cap from key presence without mistaking the fallback for a saved value', () => {
@@ -295,7 +296,7 @@ describe('createCapacitySettingsStore', () => {
 
     const store = createCapacitySettingsStore(settings, 'cabin', fallback);
 
-    expect(resolvedValue(store.read())).toEqual({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0.1, dryRun: false, periodMinutes: 60 });
+    expect(resolvedValue(store.read())).toEqual({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0.1, dryRun: false, periodMinutes: 60, followMonthPeak: false });
   });
 
   it('does not bleed main-home values into a home whose keys are unset', () => {
@@ -323,7 +324,7 @@ describe('createCapacitySettingsStore', () => {
 
     const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
 
-    expect(resolvedValue(store.read())).toEqual({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, dryRun: false, periodMinutes: 60 });
+    expect(resolvedValue(store.read())).toEqual({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, dryRun: false, periodMinutes: 60, followMonthPeak: false });
   });
 
   it.each([
@@ -402,7 +403,7 @@ describe('createCapacitySettingsStore', () => {
 
     const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
 
-    expect(resolvedValue(store.read())).toEqual({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 0, marginKw: -0.3, dryRun: false, periodMinutes: 60 });
+    expect(resolvedValue(store.read())).toEqual({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 0, marginKw: -0.3, dryRun: false, periodMinutes: 60, followMonthPeak: false });
   });
 
   it('resolves each field independently when only some persisted values are junk', () => {
@@ -413,13 +414,65 @@ describe('createCapacitySettingsStore', () => {
 
     const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
 
-    expect(resolvedValue(store.read())).toEqual({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 8, marginKw: 0.5, dryRun: false, periodMinutes: 60 });
+    expect(resolvedValue(store.read())).toEqual({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 8, marginKw: 0.5, dryRun: false, periodMinutes: 60, followMonthPeak: false });
   });
 });
 
 // The store and the retry policy wired as both consumers wire them
 // (`setup/appRuntimeApi.ts`, `setup/homeRuntime/homeCapacityBundleApi.ts`): a
 // read schedules its own re-read until one resolves.
+describe('the month-peak switch', () => {
+  it('reads a never-written switch as off', () => {
+    const store = createCapacitySettingsStore(new MockSettings(), MAIN_HOME_ID, fallback);
+    expect(resolvedValue(store.read()).followMonthPeak).toBe(false);
+  });
+
+  it('reads the owner\'s choice', () => {
+    const settings = new MockSettings();
+    settings.set(CAPACITY_FOLLOW_MONTH_PEAK, true);
+    const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
+    expect(resolvedValue(store.read()).followMonthPeak).toBe(true);
+    settings.set(CAPACITY_FOLLOW_MONTH_PEAK, false);
+    expect(resolvedValue(store.read()).followMonthPeak).toBe(false);
+  });
+
+  it('carries the accepted switch through a malformed read, without making the block unavailable', () => {
+    const settings = new MockSettings();
+    settings.set(CAPACITY_FOLLOW_MONTH_PEAK, true);
+    const store = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback);
+    store.read();
+    settings.set(CAPACITY_FOLLOW_MONTH_PEAK, 'yes');
+    const read = store.read();
+    expect(read.state).toBe('retained');
+    if (read.state === 'unavailable') throw new Error('expected a value');
+    expect(read.value.followMonthPeak).toBe(true);
+  });
+
+  it('reads a malformed switch as off at boot, and still resolves the rest of the block', () => {
+    const settings = new MockSettings();
+    settings.set(CAPACITY_FOLLOW_MONTH_PEAK, 1);
+    settings.set(CAPACITY_LIMIT_KW, 6);
+    const read = createCapacitySettingsStore(settings, MAIN_HOME_ID, fallback).read();
+    expect(read.state).toBe('retained');
+    if (read.state === 'unavailable') throw new Error('expected a value');
+    expect(read.value).toMatchObject({ followMonthPeak: false, limitKw: 6 });
+  });
+
+  it('opens a fresh retry window on an explicit write of the switch', () => {
+    const store = createCapacitySettingsStore(new MockSettings(), MAIN_HOME_ID, fallback);
+    expect(store.noteWrite(CAPACITY_FOLLOW_MONTH_PEAK)).toBe(true);
+  });
+
+  it('reads a meter area\'s own suffixed switch, never Main\'s', () => {
+    const settings = new MockSettings();
+    settings.set(CAPACITY_FOLLOW_MONTH_PEAK, true);
+    const area = createCapacitySettingsStore(settings, 'cabin', fallback);
+    expect(resolvedValue(area.read()).followMonthPeak).toBe(false);
+    settings.set(`${CAPACITY_FOLLOW_MONTH_PEAK}:cabin`, true);
+    expect(resolvedValue(area.read()).followMonthPeak).toBe(true);
+  });
+});
+
 describe('capacity settings read retry', () => {
   beforeEach(() => {
     vi.useFakeTimers();

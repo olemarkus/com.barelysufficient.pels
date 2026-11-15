@@ -14,6 +14,7 @@ const SUB_HOME_CAPACITY_DEFAULTS: CapacityScalarSettings = {
   marginKw: 0.2,
   dryRun: true,
   periodMinutes: 60,
+  followMonthPeak: false,
 };
 
 const unboundSourceActuationRetry = (): void => {

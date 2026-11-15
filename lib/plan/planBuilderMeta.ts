@@ -6,6 +6,7 @@
  */
 import type CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
+import type { HardCapSource } from '../../packages/contracts/src/capacitySettings';
 import type { PowerCycleDisplay } from '../power/powerCycleReading';
 import type { PhaseName } from '../../packages/planner-types/src/phaseFootprint';
 import type {
@@ -45,7 +46,9 @@ export type PlanMetaCycleFacts = {
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   powerTracker: PowerTrackerState;
   capacityGuard: CapacityGuard;
+  /** The held hard cap this cycle decided against (`lib/power/heldCapacityLimit.ts`). */
   capacityLimitKw: number;
+  hardCapSource: HardCapSource;
   hourlyBudgetExhausted: boolean;
   /** The worst phase still breached with nothing left to limit on it. */
   unrelievedPhase: PhaseName | null;
@@ -79,7 +82,7 @@ export function projectPlanLimits(limits: PlanLimits): Pick<PlanMetaBase,
 export function buildPlanMetaBase(facts: PlanMetaCycleFacts): PlanMetaBase {
   const {
     context, reading, dailyBudgetSnapshot, powerTracker, capacityGuard,
-    capacityLimitKw, hourlyBudgetExhausted,
+    capacityLimitKw, hardCapSource, hourlyBudgetExhausted,
   } = facts;
   const currentHourUsageSplit = getHourUsageSplit(powerTracker, context.hourBucketKey);
   const today = dailyBudgetSnapshot?.days[dailyBudgetSnapshot.todayKey] ?? null;
@@ -90,6 +93,7 @@ export function buildPlanMetaBase(facts: PlanMetaCycleFacts): PlanMetaBase {
     // anything read the guard (`PlanBuilder.buildPlanSnapshotWithTimings`).
     capacityShortfall: capacityGuard.isInShortfall(),
     hardCapLimitKw: capacityLimitKw,
+    hardCapSource,
     capacityPeriodMinutes: context.capacityPeriodMinutes,
     capacityPeriodCoverageComplete: context.capacityPeriodCoverageComplete,
     hourlyBudgetExhausted,

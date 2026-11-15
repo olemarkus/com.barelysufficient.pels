@@ -2,7 +2,7 @@ import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/setti
 import { getLogger } from '../logging/logger';
 import type { SettingsPort } from '../ports/homeyRuntime';
 import { normalizeError } from '../utils/errorUtils';
-import { CAPACITY_ENABLED } from '../utils/settingsKeys';
+import { CAPACITY_ENABLED, CAPACITY_FOLLOW_MONTH_PEAK } from '../utils/settingsKeys';
 import { readSettingsKeyList, type InstallAtBoot } from '../utils/settingsKeyList';
 import type { TimerRegistry } from '../utils/timerRegistry';
 
@@ -20,6 +20,13 @@ const MAX_ATTEMPTS = 20;
  * country code cannot tell Flanders from Wallonia and Brussels.
  */
 const MEASURED_PEAK_MARKETS: ReadonlySet<string> = new Set(['NO', 'BE']);
+
+/**
+ * Markets whose tariff bills the month's highest quarter-hour: there, once a
+ * higher quarter is set, holding the house below it saves nothing, so a new
+ * install follows the month's peak (`capacity_follow_month_peak`).
+ */
+const MONTH_PEAK_MARKETS: ReadonlySet<string> = new Set(['BE']);
 
 export type CapacityMarketDefaultDeps = {
   /**
@@ -40,10 +47,10 @@ type AttemptResult =
   | { result: 'turn_off'; country: string }
   | { result: 'retry'; reasonCode: 'settings_unreadable' | 'market_unavailable' };
 
-const readSwitchState = (settings: Pick<SettingsPort, 'getKeys'>): SwitchState => {
+const readSwitchState = (settings: Pick<SettingsPort, 'getKeys'>, key: string): SwitchState => {
   const list = readSettingsKeyList(settings);
   if (list.status === 'unavailable') return 'unreadable';
-  return list.keys.includes(CAPACITY_ENABLED) ? 'written' : 'unwritten';
+  return list.keys.includes(key) ? 'written' : 'unwritten';
 };
 
 /**
@@ -53,6 +60,10 @@ const readSwitchState = (settings: Pick<SettingsPort, 'getKeys'>): SwitchState =
  * has already written settles the question, and the write itself is the same
  * one the owner's Turn off Capacity limit makes, so the settings handlers react
  * to it like an owner's change.
+ *
+ * In a market that bills the month's highest quarter (Belgium), the same
+ * attempt also turns on Main's month-peak switch, unless the owner has already
+ * written it; again the write is the one the settings page makes.
  */
 export class CapacityMarketDefault {
   private attempt = 0;
@@ -91,10 +102,10 @@ export class CapacityMarketDefault {
   }
 
   private async attemptOnce(): Promise<AttemptResult> {
-    if (readSwitchState(this.deps.settings) === 'written') return { result: 'owner_chose' };
+    if (readSwitchState(this.deps.settings, CAPACITY_ENABLED) === 'written') return { result: 'owner_chose' };
     const market = await this.deps.readHubMarket();
     // Read again after the await: the settings UI is reachable meanwhile.
-    const state = readSwitchState(this.deps.settings);
+    const state = readSwitchState(this.deps.settings, CAPACITY_ENABLED);
     if (state === 'written') return { result: 'owner_chose' };
     if (state === 'unreadable') return { result: 'retry', reasonCode: 'settings_unreadable' };
     if (market.state !== 'resolved') return { result: 'retry', reasonCode: 'market_unavailable' };
@@ -118,10 +129,14 @@ export class CapacityMarketDefault {
       return;
     }
     if (step.result === 'turn_off') this.deps.settings.set(CAPACITY_ENABLED, false);
+    const followsMonthPeak = step.result === 'keep_on' && MONTH_PEAK_MARKETS.has(step.country)
+      && readSwitchState(this.deps.settings, CAPACITY_FOLLOW_MONTH_PEAK) === 'unwritten';
+    if (followsMonthPeak) this.deps.settings.set(CAPACITY_FOLLOW_MONTH_PEAK, true);
     defaultLogger.info({
       event: 'capacity_market_default_settled',
       outcome: step.result,
       ...(step.result === 'owner_chose' ? {} : { country: step.country }),
+      followsMonthPeak,
     });
     this.finish();
   }

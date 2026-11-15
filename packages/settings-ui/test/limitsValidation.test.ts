@@ -19,6 +19,7 @@ const LIMITS_FORM_TEMPLATE = [
   '<md-filled-select id="settings-capacity-period"></md-filled-select>',
   '<span id="settings-capacity-reaction"></span>',
   '<div id="settings-capacity-monthly-peak" hidden><span id="settings-capacity-monthly-peak-value">Peak unavailable</span></div>',
+  '<div id="settings-capacity-follow-month-peak-row" hidden><md-switch id="settings-capacity-follow-month-peak"></md-switch></div>',
   '<small id="settings-capacity-margin-alert" hidden></small>',
   '<div id="settings-capacity-choice" hidden><small id="settings-capacity-choice-text"></small>',
   '<md-outlined-button id="settings-capacity-keep"></md-outlined-button></div>',
@@ -96,6 +97,7 @@ const loadCapacityModuleWithWriter = async (
             marginKw: settingsStore.capacity_margin_kw,
             periodMinutes: settingsStore.capacity_period_minutes ?? 60,
             dryRun: settingsStore.capacity_dry_run,
+            followMonthPeak: settingsStore.capacity_follow_month_peak === true,
             ...resolvePowerLimitSettings(
               settingsStore.capacity_enabled ?? true,
               settingsStore.grid_import_enabled ?? false,
@@ -264,7 +266,7 @@ describe('Limits & safety inline validation', () => {
       capacityPeak: { state: 'recorded', peakKw: 4.75 },
       capacityScalars: {
         state: 'resolved',
-        scalars: { limitKw: 8, marginKw: 0.5, periodMinutes: 60, dryRun: true,
+        scalars: { limitKw: 8, marginKw: 0.5, periodMinutes: 60, dryRun: true, followMonthPeak: false,
           capacityEnabled: false, gridImportLimitKw: 3.3 },
       },
       hardCapConfiguration: { state: 'resolved', configured: true },
@@ -384,7 +386,7 @@ describe('Limits & safety inline validation', () => {
       capacityPeak: { state: 'recorded', peakKw: 4.75 },
       capacityScalars: {
         state: 'resolved',
-        scalars: { limitKw: 8, marginKw: 0.5, periodMinutes: 60, dryRun: true,
+        scalars: { limitKw: 8, marginKw: 0.5, periodMinutes: 60, dryRun: true, followMonthPeak: false,
           capacityEnabled: true, gridImportLimitKw: 3.3 },
       },
       hardCapConfiguration: { state: 'resolved', configured: true },
@@ -515,6 +517,31 @@ describe('Limits & safety inline validation', () => {
     dom.period.value = '60';
     await capacity.saveSettingsLimitsSettings();
     expect(setSetting).toHaveBeenCalledWith('capacity_period_minutes', 60);
+  });
+
+  it('offers following this month\'s peak with the quarter-hour period, and saves only that switch', async () => {
+    buildLimitsDom();
+    const { capacity, setSetting } = await loadCapacityModule({ capacity_period_minutes: 15 });
+
+    await capacity.loadCapacitySettings();
+    const row = document.querySelector('#settings-capacity-follow-month-peak-row');
+    const sw = document.querySelector('#settings-capacity-follow-month-peak') as HTMLElement & { selected: boolean };
+    expect(row?.hasAttribute('hidden')).toBe(false);
+    expect(sw.selected).toBe(false);
+
+    sw.selected = true;
+    sw.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(setSetting.mock.calls).toEqual([['capacity_follow_month_peak', true]]));
+  });
+
+  it('shows a saved month-peak switch, and hides it for the hourly period', async () => {
+    buildLimitsDom();
+    const { capacity } = await loadCapacityModule({ capacity_follow_month_peak: true });
+
+    await capacity.loadCapacitySettings();
+    const sw = document.querySelector('#settings-capacity-follow-month-peak') as HTMLElement & { selected: boolean };
+    expect(sw.selected).toBe(true);
+    expect(document.querySelector('#settings-capacity-follow-month-peak-row')?.hasAttribute('hidden')).toBe(true);
   });
 
   it('does not restore stale simulation state when an older limits save finishes last', async () => {

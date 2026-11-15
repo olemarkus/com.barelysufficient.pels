@@ -14,17 +14,17 @@ export const classifyCapacityScalarsRead = (value: unknown): SettingsUiCapacityS
     return { state: 'unavailable' };
   }
   const {
-    limitKw, marginKw, periodMinutes, dryRun, capacityEnabled, gridImportLimitKw,
+    limitKw, marginKw, periodMinutes, dryRun, capacityEnabled, gridImportLimitKw, followMonthPeak,
   } = value.scalars;
   const controls = resolvePowerLimitSettings(capacityEnabled, gridImportLimitKw !== null, gridImportLimitKw);
   if (
     typeof limitKw !== 'number' || !Number.isFinite(limitKw)
     || typeof marginKw !== 'number' || !Number.isFinite(marginKw)
     || !isCapacityPeriodMinutes(periodMinutes)
-    || typeof dryRun !== 'boolean' || controls === null
+    || typeof dryRun !== 'boolean' || typeof followMonthPeak !== 'boolean' || controls === null
   ) return { state: 'unavailable' };
   return {
     state: 'resolved',
-    scalars: { limitKw, marginKw, periodMinutes, dryRun, ...controls },
+    scalars: { limitKw, marginKw, periodMinutes, dryRun, followMonthPeak, ...controls },
   };
 };

@@ -143,6 +143,14 @@ describe('hero meter marker labels', () => {
       aria: 'Hard cap this hour 8.0 kWh',
     });
   });
+
+  it('says when the cap marker is this month\'s peak rather than the configured hard cap', () => {
+    expect(formatEnergyMeterMarkerLabels('cap', 1.9, 15, 'month_peak')).toEqual({
+      short: 'Hard cap this quarter 1.9 kWh · set by this month\'s peak',
+      aria: 'Hard cap this quarter 1.9 kWh · set by this month\'s peak',
+    });
+    expect(formatEnergyMeterMarkerLabels('cap', 1.2, 15, 'configured').short).toBe('Hard cap this quarter 1.2 kWh');
+  });
 });
 
 describe('buildDecisionSentence', () => {

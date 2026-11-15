@@ -14,7 +14,7 @@ import type { SubHomeOwnershipGeneration } from '../../lib/home/subHomeOwnership
 import type { HomeRuntimeDiagnostics } from '../../lib/home/homeRuntimeRead';
 import type { PlanService } from '../../lib/plan/planService';
 import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
-import { resolveCurrentMonthQuarterPeakKw } from '../../lib/power/capacityPeak';
+import { capacityMonthPeakKw, resolveCurrentMonthCapacityPeak } from '../../lib/power/capacityPeak';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import {
@@ -137,7 +137,9 @@ const buildHomeCapacityBundleReads = (
       plan: planService.getLatestPlanSnapshotForUi(),
       planUpdatedAtMs: planService.getLatestPlanSnapshotUpdatedAtMs(),
       powerTracker: tracker.getState(),
-      currentMonthCapacityPeakKw: resolveCurrentMonthQuarterPeakKw(tracker.getState(), ctx.getTimeZone(), Date.now()),
+      currentMonthCapacityPeakKw: capacityMonthPeakKw(
+        resolveCurrentMonthCapacityPeak(tracker.getState(), ctx.getTimeZone(), Date.now()),
+      ),
       diagnostics: readDiagnostics(),
     }),
   };

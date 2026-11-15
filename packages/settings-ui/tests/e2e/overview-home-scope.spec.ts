@@ -39,6 +39,7 @@ const buildPlanFixture = (totalKw: number, device: { id: string; name: string })
     capacityPeriodCoverageComplete: true,
     powerIsMeasured: true,
     hardCapLimitKw: 10,
+    hardCapSource: 'configured',
     controlledKw: 0.5,
     uncontrolledKw: Math.max(0, totalKw - 0.5),
     usedKWh: 0.2,

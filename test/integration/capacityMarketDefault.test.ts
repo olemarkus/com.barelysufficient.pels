@@ -1,6 +1,6 @@
 import { readHubMarket } from '../../lib/home/hubMarket';
 import { CapacityMarketDefault } from '../../lib/power/capacityMarketDefault';
-import { CAPACITY_ENABLED } from '../../lib/utils/settingsKeys';
+import { CAPACITY_ENABLED, CAPACITY_FOLLOW_MONTH_PEAK } from '../../lib/utils/settingsKeys';
 import { classifyInstallAtBoot, type InstallAtBoot } from '../../lib/utils/settingsKeyList';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { SettingsUiHubMarketRead } from '../../packages/contracts/src/settingsUiApi';
@@ -63,6 +63,7 @@ describe('the Capacity limit default on a new install', () => {
 
     expect(settings.get(CAPACITY_ENABLED)).toBe(false);
     expect(written).toEqual([CAPACITY_ENABLED]);
+    expect(settings.getKeys()).not.toContain(CAPACITY_FOLLOW_MONTH_PEAK);
     expect(api.requestedPaths).toEqual(['manager/system']);
     expect(timers.has('capacityMarketDefault')).toBe(false);
   });
@@ -103,6 +104,52 @@ describe('the Capacity limit default on a new install', () => {
 
     expect(settings.getKeys()).not.toContain(CAPACITY_ENABLED);
     expect(timers.has('capacityMarketDefault')).toBe(false);
+  });
+
+  it('turns on following this month\'s peak for a new install in Belgium', async () => {
+    const settings = settingsWith(NEW_INSTALL_KEYS);
+    const written: string[] = [];
+    settings.on('set', (key: string) => written.push(key));
+    const api = hubIn('BE');
+    start(settings, () => readHubMarket(api.get));
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(settings.get(CAPACITY_FOLLOW_MONTH_PEAK)).toBe(true);
+    expect(written).toEqual([CAPACITY_FOLLOW_MONTH_PEAK]);
+  });
+
+  it('leaves following this month\'s peak off in Norway, which bills the hourly peak', async () => {
+    const settings = settingsWith(NEW_INSTALL_KEYS);
+    const api = hubIn('NO');
+    start(settings, () => readHubMarket(api.get));
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(settings.getKeys()).not.toContain(CAPACITY_FOLLOW_MONTH_PEAK);
+  });
+
+  it('keeps a month-peak switch the owner set while the country was being read', async () => {
+    const settings = settingsWith(NEW_INSTALL_KEYS);
+    const api = hubIn('BE');
+    start(settings, async () => {
+      settings.set(CAPACITY_FOLLOW_MONTH_PEAK, false);
+      return readHubMarket(api.get);
+    });
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(settings.get(CAPACITY_FOLLOW_MONTH_PEAK)).toBe(false);
+  });
+
+  it('never turns on following this month\'s peak for an existing install in Belgium', async () => {
+    const settings = settingsWith({ setup_notification_handled: true });
+    const api = hubIn('BE');
+    start(settings, () => readHubMarket(api.get), 'existing');
+
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+    expect(settings.getKeys()).not.toContain(CAPACITY_FOLLOW_MONTH_PEAK);
   });
 
   it('never touches an existing install, and never asks where the hub is', async () => {

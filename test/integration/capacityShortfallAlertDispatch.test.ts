@@ -17,6 +17,7 @@ import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames
 import { partialDouble } from '../helpers/partialDouble';
 import { planVerdictSummaryFixture } from '../helpers/createTestCapacityGuard';
 import { testLogger } from '../utils/testLogger';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 // The guard no longer resolves the hard-cap budget itself; callers pass it in.
 const TEST_SHORTFALL_THRESHOLD_KW = 6;
@@ -149,7 +150,7 @@ describe('capacity shortfall alert dispatch', () => {
     const scope = partialDouble<HomeScope>({
       homeId: MAIN_HOME_ID,
       getHomeDisplayName: () => HOMES_MAIN_HOME_NAME,
-      getCapacitySettings: () => ctx.capacitySettings,
+      getCapacitySettings: () => configuredHardCap(ctx.capacitySettings),
       getPowerTracker: () => ctx.powerTracker,
     });
     const { guard } = createHomeCapacityGuard(

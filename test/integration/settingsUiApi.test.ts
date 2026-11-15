@@ -256,7 +256,9 @@ describe('settingsUiApi', () => {
         powerhourToday: null,
         powerhourTomorrow: null,
       }),
-      getCapacityScalars: () => ({ ...capacitySettings, dryRun: options.capacityDryRun ?? false }),
+      getCapacityScalars: () => ({
+        ...capacitySettings, dryRun: options.capacityDryRun ?? false, followMonthPeak: false,
+      }),
       readHardCapConfiguration: () => ({
         state: 'resolved' as const,
         configured: store.has('capacity_limit_kw'),
@@ -362,7 +364,7 @@ describe('settingsUiApi', () => {
       capacityPeak: { state: 'no_completed_quarter' },
       capacityScalars: {
         state: 'resolved',
-        scalars: { limitKw: 12, marginKw: 0.5, periodMinutes: 60, dryRun: false },
+        scalars: { limitKw: 12, marginKw: 0.5, periodMinutes: 60, dryRun: false, followMonthPeak: false },
       },
       hardCapConfiguration: { state: 'resolved', configured: false },
       // No solarpanel-class device in the fixture candidates.
@@ -431,7 +433,7 @@ describe('settingsUiApi', () => {
 
     expect(getSettingsUiPowerPayload({ homey: homey as never }).capacityScalars).toEqual({
       state: 'resolved',
-      scalars: { limitKw: 12, marginKw: 0.4, periodMinutes: 15, dryRun: false },
+      scalars: { limitKw: 12, marginKw: 0.4, periodMinutes: 15, dryRun: false, followMonthPeak: false },
     });
     expect(getSettingsUiPowerPayload({ homey: homey as never }).hardCapConfiguration).toEqual({
       state: 'resolved', configured: false,
@@ -713,7 +715,7 @@ describe('settingsUiApi', () => {
       capacityPeak: { state: 'no_completed_quarter' },
       capacityScalars: {
         state: 'resolved',
-        scalars: { limitKw: 12, marginKw: 0.5, periodMinutes: 60, dryRun: false },
+        scalars: { limitKw: 12, marginKw: 0.5, periodMinutes: 60, dryRun: false, followMonthPeak: false },
       },
       hardCapConfiguration: { state: 'resolved', configured: false },
       // No solarpanel-class device in the fixture candidates.

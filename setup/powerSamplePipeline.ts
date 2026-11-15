@@ -19,7 +19,7 @@ import type { SampleIngestQueue, StableSampleRevision } from '../lib/power/sampl
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import type { DeviceSurfaces } from '../packages/contracts/src/deviceSurfaces';
 import type { PowerSampleAdmission } from '../lib/app/appContext';
-import type { PowerLimitSettings } from '../packages/contracts/src/capacitySettings';
+import { configuredPowerLimits, type HeldPowerLimitSettings } from '../lib/power/heldCapacityLimit';
 import type { GenerationSegment } from '../lib/power/trackerTypes';
 import type { ThermalDirection } from '../packages/contracts/src/types';
 import { recordShortfallPeriodAvailability } from '../lib/plan/shedding/shortfallAvailability';
@@ -35,7 +35,13 @@ export type PowerSamplePipelineDeps = {
   // never share a tracker, capacity scalars or a guard, so there is no home for
   // which one of these is the obvious default.
   getPowerTracker: () => PowerTrackerState;
-  getCapacitySettings: () => PowerLimitSettings;
+  /**
+   * The limits live control holds (`lib/power/heldCapacityLimit.ts`). The
+   * tracker records the hourly budget against the configured hard cap behind
+   * them; the rebuild throttle reads them again after the sample is in, because
+   * a quarter this sample completed may have raised the held hard cap.
+   */
+  getHeldPowerLimits: () => HeldPowerLimitSettings;
   getTimeZone: () => string;
   /**
    * Late-bound by necessity: main's pipeline is a `PelsApp` field
@@ -304,7 +310,7 @@ export class PowerSamplePipeline {
       const posture = resolvePlanRebuildPosture(
         latestPlanSummary, planState, publishedMeta?.powerIsMeasured === true && publishedMeta.unrelievedPhase !== null,
       );
-      const capacitySettings = this.deps.getCapacitySettings();
+      const capacitySettings = configuredPowerLimits(this.deps.getHeldPowerLimits());
       await recordPowerSampleForApp({
         currentPowerW,
         generationW,
@@ -332,6 +338,9 @@ export class PowerSamplePipeline {
           // This runs inside the tracker's post-`saveState` callback, so the
           // latch is this sample by construction.
           const admittedTracker = this.deps.getPowerTracker();
+          // Read after the sample is in, not with `capacitySettings` above: a
+          // quarter this sample completed may have raised the held hard cap.
+          const heldLimits = this.deps.getHeldPowerLimits();
           const capacityGuard = this.deps.getCapacityGuard();
           feedPhaseLearning(capacityGuard, this.deps.getDeviceSurfaces(), planEngine.state.actuation, nowMs);
           feedPhasePeaks(
@@ -343,15 +352,15 @@ export class PowerSamplePipeline {
           recordShortfallPeriodAvailability(
             capacityGuard,
             admittedTracker,
-            capacitySettings.periodMinutes,
+            heldLimits.periodMinutes,
             nowMs,
           );
           await this.deps.planRebuildThrottle.onSample(
             {
               currentPowerW,
-              gridImportLimitKw: capacitySettings.gridImportLimitKw,
+              gridImportLimitKw: heldLimits.gridImportLimitKw,
               totalKw: requireLastTotalPowerKw(admittedTracker),
-              limitKw: capacitySettings.limitKw,
+              limitKw: heldLimits.limitKw,
               powerLimitKw: planService.computePhysicalPowerLimit(),
               shortfallThresholdKw: planEngine.computeShortfallThreshold(),
               phaseDeficitKw: planEngine.computePhaseDeficitKw(requireLastTotalPowerKw(admittedTracker)),

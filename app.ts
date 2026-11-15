@@ -147,10 +147,10 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     limitKw: 10, marginKw: 0.2, periodMinutes: 60, capacityEnabled: true, gridImportLimitKw: null,
   };
   public capacityDryRun = true;
+  /** Main's `capacity_follow_month_peak`, as the store last resolved it. */
+  protected capacityFollowMonthPeak = false;
   public readonly capacitySettingsStore = createCapacitySettingsStore(
-    this.homey.settings,
-    MAIN_HOME_ID,
-    () => ({ ...this.capacitySettings, dryRun: this.capacityDryRun }),
+    this.homey.settings, MAIN_HOME_ID, () => this.getCapacityScalars(),
   );
   public readonly deviceControlSettings = new DeviceControlSettings(this.homey.settings);
   public readonly batteryManaged = new BatteryManagedSettings(this.homey.settings);
@@ -336,7 +336,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     // used to default to them; the pipeline is a per-home component either way,
     // so the home it serves says where its state lives.
     getPowerTracker: () => this.powerTracker,
-    getCapacitySettings: () => this.capacitySettings,
+    getHeldPowerLimits: () => this.readHeldPowerLimits(),
     getCapacityGuard: () => this.capacityGuard,
     // Main's meter IS the whole-home meter, so Main is the home that feeds
     // membership's sampled-meter ownership fence. Lazy: membership is wired

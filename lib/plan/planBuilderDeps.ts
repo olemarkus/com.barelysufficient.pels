@@ -20,7 +20,8 @@ import type {
   DeferredDecorationInput,
 } from '../../packages/planner-types/src/deferredDecoration';
 import type { ResolveTemperatureSetpoints } from '../../packages/planner-types/src/temperatureSetpoints';
-import type { MainFuse, PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
+import type { MainFuse } from '../../packages/contracts/src/capacitySettings';
+import type { HeldPowerLimitSettings } from '../power/heldCapacityLimit';
 
 export type PlanBuilderDeps = {
   /** One coherent phase-owner read per build, before objectives and admission. */
@@ -30,7 +31,13 @@ export type PlanBuilderDeps = {
    * before actuating. */
   getCapacityDryRun: () => boolean;
   capacityGuard: CapacityGuard;
-  getCapacitySettings: () => PowerLimitSettings;
+  /**
+   * The limits live control holds (`lib/power/heldCapacityLimit.ts`): the
+   * configured settings, with the hard cap raised to this month's peak once it
+   * is higher and the owner follows it. Forward planning reads the configured
+   * hard cap from its own owners, never from here.
+   */
+  getCapacitySettings: () => HeldPowerLimitSettings;
   /** The owner's main fuse; off for a meter area. */
   getMainFuse: () => MainFuse;
   // The surplus allocator's opt-in (`surplusWilling`, a lift configured at all).

@@ -28,7 +28,7 @@ setup/appServiceWiring.ts 2  # observer, plan
 setup/appSnapshotHelpers.ts 3  # device, plan, power
 setup/appTargetPowerReachabilityWiring.ts 2  # device, plan
 setup/backgroundTasksController.ts 2  # objectives, weather
-setup/homeRuntime/createHomeCapacityBundle.ts 4  # home, plan, power, price
+setup/homeRuntime/createHomeCapacityBundle.ts 3  # home, plan, power
 setup/homeRuntime/createHomeCapacityGuard.ts 2  # plan, power
 setup/homeRuntime/createHomePowerPipeline.ts 2  # observer, power
 setup/homeRuntime/homeCapacityBundleApi.ts 3  # home, plan, power

@@ -10,6 +10,7 @@ import { createPlanEngineState } from '../utils/planEngineStateFixture';
 import { steppedInputDevice } from '../utils/planTestUtils';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 // The step the plan admits a stepped restore to is the step the executor's Flow
 // feedback lifecycle reads back (`resolveLatestPlanDesiredStepId`). When the plan
@@ -30,7 +31,7 @@ const SOFT_LIMIT_KW = 8;
 const buildPlanner = (availableKw: number): PlanBuilder => new PlanBuilder({
   ...planBuilderWiring(),
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-  getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
+  getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60 }),
   getPowerTracker: () => withCapacityPace(({
     buckets: {},
     lastTimestamp: Date.now(),

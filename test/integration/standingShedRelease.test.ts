@@ -26,6 +26,7 @@ import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { noStorageTransport } from '../helpers/storageTransportStub';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 /**
  * The shed PELS undoes when it loses its authority, driven through real plan
@@ -65,7 +66,7 @@ const makeHarness = (shedBehavior: ShedBehavior = { action: 'turn_off' }): Harne
   const builder = new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => CAPACITY,
+    getCapacitySettings: () => configuredHardCap(CAPACITY),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getShedBehavior: () => shedBehavior }),
     getPowerTracker: () => withCapacityPace({ lastTimestamp: Date.now(), lastPowerW: totalW }, CAPACITY, paceKw),
     getShedBehavior: () => shedBehavior,

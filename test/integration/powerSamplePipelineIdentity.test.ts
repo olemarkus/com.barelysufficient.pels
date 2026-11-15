@@ -20,6 +20,7 @@ import { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import { OvershootIncident } from '../../lib/plan/overshootIncident';
 import type CapacityGuard from '../../lib/power/capacityGuard';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const buildPipeline = (
   noteResolvedHomeMeter: (deviceId: string, sampleAtMs: number) => void,
@@ -59,7 +60,7 @@ const buildPipeline = (
     ingestQueue: createSampleIngestQueue(),
     getPowerTracker: () => powerTracker,
     getCapacityGuard: () => capacityGuard,
-    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, periodMinutes }),
+    getHeldPowerLimits: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, periodMinutes }),
     getTimeZone: () => 'UTC',
     getPlanEngine: () => ({
       computeShortfallThreshold: () => 10,

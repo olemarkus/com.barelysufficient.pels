@@ -16,6 +16,7 @@ import { fixtureControlPosture, fixtureResidualKw, resolveFixtureCurrentOn } fro
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 // Drives the REAL PlanBuilder to prove the startup reservation: a device flagged
 // `reservesStartupPower` holds its lowest-active-step power back from LOWER-PRIORITY devices'
@@ -72,7 +73,7 @@ const makeBuilder = (params: {
   const builder = new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: capacityGuard,
-    getCapacitySettings: () => capacitySettings,
+    getCapacitySettings: () => configuredHardCap(capacitySettings),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
       getShedBehavior: (deviceId: string) => params.shedBehaviors?.[deviceId]
         ?? { action: 'turn_off' },

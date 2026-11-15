@@ -26,6 +26,8 @@ const baseEditor = (overrides: Partial<HomeLimitsEditorView> = {}): HomeLimitsEd
   marginError: null,
   reactionKw: '6.7 kW',
   capacityPeak: { state: 'no_completed_quarter' },
+  followMonthPeak: false,
+  followMonthPeakBusy: false,
   status: resolveHomeLimitsStatus(
     { controlledKw: 2, uncontrolledKw: 1, powerNowKw: 3, hasLivePowerSample: true, devicesOff: 1, limitReason: 'hourly' },
     { dryRun: true, hardCapKw: 7 },
@@ -36,6 +38,7 @@ const baseEditor = (overrides: Partial<HomeLimitsEditorView> = {}): HomeLimitsEd
   onMarginChange: noop,
   onPeriodChange: noop,
   onControlToggle: noop,
+  onFollowMonthPeakToggle: noop,
   ...overrides,
 });
 
@@ -84,6 +87,33 @@ describe('meter-area editor', () => {
     document.body.innerHTML = '';
     const hourly = mountWith(baseProps({ editor: baseEditor({ periodMinutes: 60 }) }));
     expect(hourly.querySelector('#home-limits-monthly-peak')).toBeNull();
+  });
+
+  it('offers following this month\'s peak only for the quarter-hour period', () => {
+    const quarter = mountWith(baseProps({ editor: baseEditor({ periodMinutes: 15, followMonthPeak: true }) }));
+    const sw = quarter.querySelector('#home-limits-follow-month-peak') as HTMLElement & { selected?: boolean };
+    expect(sw).not.toBeNull();
+    expect(sw.selected).toBe(true);
+    expect(quarter.textContent).toContain('Follow this month’s peak');
+
+    document.body.innerHTML = '';
+    const hourly = mountWith(baseProps({ editor: baseEditor({ periodMinutes: 60, followMonthPeak: true }) }));
+    expect(hourly.querySelector('#home-limits-follow-month-peak')).toBeNull();
+  });
+
+  it('drives the month-peak callback and disables the switch while its write is in flight', () => {
+    const onFollowMonthPeakToggle = vi.fn();
+    const surface = mountWith(baseProps({
+      editor: baseEditor({ periodMinutes: 15, onFollowMonthPeakToggle }),
+    }));
+    const sw = surface.querySelector('#home-limits-follow-month-peak') as HTMLElement & { selected: boolean };
+    sw.selected = true;
+    sw.dispatchEvent(new Event('change'));
+    expect(onFollowMonthPeakToggle).toHaveBeenCalledWith(true);
+
+    document.body.innerHTML = '';
+    const busy = mountWith(baseProps({ editor: baseEditor({ periodMinutes: 15, followMonthPeakBusy: true }) }));
+    expect(busy.querySelector('#home-limits-follow-month-peak')!.hasAttribute('disabled')).toBe(true);
   });
 
   it('distinguishes an unavailable peak from a month with no completed quarter', () => {

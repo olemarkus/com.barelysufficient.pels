@@ -1,5 +1,6 @@
 import type CapacityGuard from '../power/capacityGuard';
-import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
+import type { HardCapSource, PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
+import type { HeldPowerLimitSettings } from '../power/heldCapacityLimit';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
 import { resolveLastTotalPowerKw } from '../power/lastTotalPower';
 import { resolveShortfallThresholdKw } from '../plan/planBudget';
@@ -39,6 +40,10 @@ export type PeriodicStatusLogFields = {
   shortfallBudgetThresholdKw: number | null;
   shortfallBudgetHeadroomKw: number | null;
   hardCapHeadroomKw: number | null;
+  /** The hard cap live control holds, which one it is, and the configured one beside it. */
+  hardCapKw: number;
+  hardCapSource: HardCapSource;
+  configuredHardCapKw: number;
   usedKWh: number;
   hourRemainingKWh: number;
   sheddingActive: boolean;
@@ -56,7 +61,8 @@ export type PeriodicStatusLogFields = {
 export function buildPeriodicStatusLogFields(params: {
   capacityGuard: CapacityGuardView;
   powerTracker: PowerTrackerState;
-  capacitySettings: PowerLimitSettings;
+  /** The limits live control holds (`lib/power/heldCapacityLimit.ts`). */
+  capacitySettings: HeldPowerLimitSettings;
   operatingMode: string;
   capacityDryRun: boolean;
   starvedDeviceCount?: number;
@@ -104,6 +110,9 @@ export function buildPeriodicStatusLogFields(params: {
     shortfallBudgetThresholdKw: metrics.shortfallBudgetThreshold,
     shortfallBudgetHeadroomKw: metrics.shortfallBudgetHeadroom,
     hardCapHeadroomKw: metrics.hardCapHeadroom,
+    hardCapKw: capacitySettings.limitKw,
+    hardCapSource: capacitySettings.hardCapSource,
+    configuredHardCapKw: capacitySettings.configuredLimitKw,
     usedKWh: usage.usedKWh,
     hourRemainingKWh,
     sheddingActive,

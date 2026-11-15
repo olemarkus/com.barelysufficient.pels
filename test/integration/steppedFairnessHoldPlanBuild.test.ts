@@ -8,6 +8,7 @@ import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
 import type { PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
 import { buildExecutionPlan } from '../../lib/plan/planExecutionProjection';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 /**
  * The stepped fairness hold, driven through a whole plan build (report
@@ -100,7 +101,7 @@ describe('stepped fairness hold through a plan build', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => CAPACITY,
+      getCapacitySettings: () => configuredHardCap(CAPACITY),
       getPowerTracker: () => withCapacityPace({
         lastTimestamp: Date.now(),
         lastPowerW: (backgroundKw + (heaterOn ? 2 : 0) + STEP_KW[chargerStepId]) * 1000,
@@ -136,7 +137,7 @@ describe('stepped fairness hold through a plan build', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => CAPACITY,
+      getCapacitySettings: () => configuredHardCap(CAPACITY),
       getPowerTracker: () => withCapacityPace({ lastTimestamp: Date.now(), lastPowerW: houseKw * 1000 }, CAPACITY, 8),
       getShedBehavior: (deviceId: string) => (
         deviceId === 'charger' ? { action: 'set_step' } : { action: 'turn_off' }
@@ -188,7 +189,7 @@ describe('stepped fairness hold through a plan build', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-      getCapacitySettings: () => capacity,
+      getCapacitySettings: () => configuredHardCap(capacity),
       getPowerTracker: () => withCapacityPace({ lastTimestamp: Date.now(), lastPowerW: 4900 }, capacity, 5),
       getShedBehavior: (deviceId) => (
         deviceId === charging.id ? { action: 'set_step' } : { action: 'turn_off' }

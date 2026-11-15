@@ -162,7 +162,7 @@ corresponding detailed form:
 7.0 kW reserved for devices allowed beyond it; PELS starts reacting here.`
 Do not call those devices "exempt" in user-facing copy.
 
-The hard cap is an average over the selected capacity period, not an instantaneous power threshold. Do not put a hard-cap tick on the Power-now gauge. The energy bar renders the cap as its period-equivalent energy value, labelled `Hard cap this hour N kWh` or `Hard cap this quarter N kWh` — the threshold that turns the projection critical, printed in kWh where the judgement is made. Never say "breaker trips": an average-power tariff ceiling cannot prevent them (see § "Hard cap is a capacity-period ceiling").
+The hard cap is an average over the selected capacity period, not an instantaneous power threshold. Do not put a hard-cap tick on the Power-now gauge. The energy bar renders the cap as its period-equivalent energy value, labelled `Hard cap this hour N kWh` or `Hard cap this quarter N kWh` (followed by ` · set by this month's peak` while live control holds this month's peak, `capacity_follow_month_peak`) — the threshold that turns the projection critical, printed in kWh where the judgement is made. Never say "breaker trips": an average-power tariff ceiling cannot prevent them (see § "Hard cap is a capacity-period ceiling").
 
 ### Safe pace, hard cap, and safety margin
 

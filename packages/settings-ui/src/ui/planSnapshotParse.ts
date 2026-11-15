@@ -136,6 +136,7 @@ const REQUIRED_META_NULLABLE_NUMBERS = [
 ] as const;
 
 const SOFT_LIMIT_SOURCES: ReadonlySet<unknown> = new Set(['capacity', 'daily', 'grid', null]);
+const HARD_CAP_SOURCES: ReadonlySet<unknown> = new Set(['configured', 'month_peak']);
 const isValidPlanMeta = (value: unknown): boolean => {
   if (!value || typeof value !== 'object') return false;
   const meta = value as Record<string, unknown>;
@@ -144,6 +145,7 @@ const isValidPlanMeta = (value: unknown): boolean => {
       (key) => meta[key] === null || isFiniteNumber(meta[key]),
     )
     && SOFT_LIMIT_SOURCES.has(meta.softLimitSource)
+    && HARD_CAP_SOURCES.has(meta.hardCapSource)
     && ((meta.softLimitKw === null) === (meta.softLimitSource === null))
     && isCapacityPeriodMinutes(meta.capacityPeriodMinutes)
     && typeof meta.capacityPeriodCoverageComplete === 'boolean'

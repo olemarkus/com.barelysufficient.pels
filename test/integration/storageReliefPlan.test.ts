@@ -30,6 +30,7 @@ import type { Logger } from '../../lib/logging/logger';
 import type { StorageLeverState } from '../../lib/plan/planState';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const HOUR_MS = 60 * 60 * 1000;
 const START_MS = Date.UTC(2026, 9, 5, 12, 10, 0);
@@ -229,7 +230,7 @@ const buildHarness = (scenario: Scenario) => {
     ...planBuilderWiring(),
     getStorageDischargeObservations: () => storageDischargeObservationsFixture(observedDevices),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => capacitySettings,
+    getCapacitySettings: () => configuredHardCap(capacitySettings),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getPriceOptimizationSettings: () => SURPLUS_SETTINGS }),
     getPriceOptimizationSettings: () => SURPLUS_SETTINGS,
     getPowerTracker: () => (scenario.paceKw === null || capacitySettings.capacityEnabled === false

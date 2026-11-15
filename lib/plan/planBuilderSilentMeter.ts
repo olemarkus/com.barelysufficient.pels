@@ -31,7 +31,7 @@
  */
 import { isMeteredPlanDevice } from './planMeteredDevice';
 import type { SilentMeterReading } from '../power/powerCycleReading';
-import type { PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
+import type { HeldPowerLimitSettings } from '../power/heldCapacityLimit';
 import type { PlanBuilderDeps } from './planBuilderDeps';
 import { attachDeferredReleaseIntents } from './planBuilderDecoration';
 import type { PlanMaterializationStages } from './planBuilderMaterialization';
@@ -109,7 +109,7 @@ export class SilentMeterPlanBuilder {
     context: PlanContext,
     reading: SilentMeterReading,
     decoration: DeferredDecorationBundle,
-    settings: PowerLimitSettings,
+    settings: HeldPowerLimitSettings,
     nowTs: number,
   ): DevicePlan {
     const powerTracker = this.deps.getPowerTracker();
@@ -169,6 +169,7 @@ export class SilentMeterPlanBuilder {
         powerTracker,
         capacityGuard: this.deps.capacityGuard,
         capacityLimitKw: settings.limitKw,
+        hardCapSource: settings.hardCapSource,
         hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(context),
         unrelievedPhase: null,
         exportPhase: null,

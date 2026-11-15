@@ -38,6 +38,7 @@ import {
 import { buildMainHomeScopeForTest, createAppContextMock } from '../helpers/appContextTestHelpers';
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { testLogger } from '../utils/testLogger';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
@@ -476,7 +477,7 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
       readTaskBudgetExemptDeviceIds: () => new Set(),
       getPlanService: () => planService,
       getPowerTracker: () => ctx.powerTracker,
-      getCapacitySettings: () => ctx.capacitySettings,
+      getHeldPowerLimits: () => configuredHardCap(ctx.capacitySettings),
       getCapacityGuard: () => guard,
       // Never called: these samples carry no meter identity.
       noteResolvedHomeMeter: () => {},

@@ -12,9 +12,10 @@ const {
 const blank = {
   limit: 10, margin: 0.2, dryRun: false, periodMinutes: 60, capacityEnabled: true,
   gridImportEnabled: null, gridImportLimitKw: null, mainFuseSupply: null, mainFuseAmps: null,
+  followMonthPeak: null,
 };
 const running = {
-  capacityEnabled: true, gridImportLimitKw: 17.25, limitKw: 10, marginKw: 0.2, dryRun: false, periodMinutes: 60,
+  capacityEnabled: true, gridImportLimitKw: 17.25, limitKw: 10, marginKw: 0.2, dryRun: false, periodMinutes: 60, followMonthPeak: false,
 } as const;
 
 describe('main fuse persistence', () => {

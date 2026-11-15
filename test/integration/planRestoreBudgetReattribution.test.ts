@@ -13,6 +13,7 @@ import {
 import { buildBindingDailyBudgetSnapshot } from '../helpers/bindingDailyBudgetFixture';
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 // Full-builder wiring regression for the `insufficientHeadroom` → `dailyBudget`
 // re-attribution (prod 2026-08-01). The isolated `normalizeShedReasons` tests in
@@ -64,7 +65,7 @@ const buildBuilder = (params: {
 }): PlanBuilder => new PlanBuilder({
   ...planBuilderWiring(),
   capacityGuard: params.capacityGuard,
-  getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: params.limitKw, marginKw: 0, periodMinutes: 60 }),
+  getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: params.limitKw, marginKw: 0, periodMinutes: 60 }),
   getPowerTracker: () => params.tracker,
   getDailyBudgetSnapshot: () => (params.dailyBudget ? buildBindingDailyBudgetSnapshot(DAY_START_UTC) : null),
 }, createPlanEngineState());

@@ -9,6 +9,7 @@ import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const NOW_MS = Date.UTC(2026, 0, 15, 12, 30);
 const LIMITED_TARGET = 19;
@@ -40,7 +41,7 @@ async function recoveryPlan(devices: MeteredPlanInputDevice[], paceKw = 10, prev
   const builder = new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => SETTINGS,
+    getCapacitySettings: () => configuredHardCap(SETTINGS),
     // The meter sees the pump's 1 kW, or a 1 kW background while a pump is OFF.
     getPowerTracker: () => withCapacityPace({ lastTimestamp: Date.now(), lastPowerW: 1000 }, SETTINGS, paceKw),
     getShedBehavior,

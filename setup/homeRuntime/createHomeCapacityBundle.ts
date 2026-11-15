@@ -8,9 +8,9 @@
  * persisted keys are never written by bundle code.
  *
  * Capacity-only by construction: the sub-home `HomeScope` binds
- * `getDailyBudgetSnapshot: () => null`, price-optimization/cheap/expensive to
- * `false`, the surplus term to `null`, and `decorateWithoutDeferredObjectives`
- * for the smart-task seam — the shared plan factories then collapse to pure
+ * `getDailyBudgetSnapshot: () => null` and `CAPACITY_ONLY_SCOPE_POLICY`
+ * (`homeScope.ts`): price optimization off, no price level or surplus term, and
+ * `decorateWithoutDeferredObjectives` for the smart-task seam — the shared plan factories then collapse to pure
  * capacity control without branching on which home they serve.
  *
  * That is a claim about POLICY INPUTS, not about the write surface. The mode
@@ -45,7 +45,6 @@ import type {
   PowerTrackerState,
 } from '../../lib/power/trackerTypes';
 import type { PlanService } from '../../lib/plan/planService';
-import { decorateWithoutDeferredObjectives } from '../../lib/plan/planBuilderDecoration';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import { createHomeRebuildRuntime } from '../../lib/plan/rebuildScheduler/homeRebuildRuntime';
 import { createCapacitySettingsStore } from '../../lib/power/capacitySettingsStore';
@@ -65,7 +64,7 @@ import type { SubHomeRecoveryDeps } from '../../lib/home/subHomeRecovery';
 import { SubHomeMembershipReadyEdge } from '../../lib/home/subHomeMembershipReadyEdge';
 import { SubHomeSourceRecovery } from '../../lib/home/subHomeSourceRecovery';
 import { SubHomeOwnershipGeneration } from '../../lib/home/subHomeOwnershipGeneration';
-import type { HomeScope } from './homeScope';
+import { CAPACITY_ONLY_SCOPE_POLICY, createHomeHeldPowerLimitsRead, type HomeScope } from './homeScope';
 import { createHomePlanRuntime } from './createHomePlanRuntime';
 import { createHomeCommandReachability } from './createHomeCommandReachability';
 import { createHomeSignalWriters } from './homeSignalWriters';
@@ -77,7 +76,6 @@ import {
 import type { SubHomeRuntime } from '../../lib/home/subHomeRuntime';
 import { createHomeCapacityGuard } from './createHomeCapacityGuard';
 import type { PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
-import { PriceLevel } from '../../lib/price/priceLevels';
 
 /**
  * Every seam that must be answered by the home that OWNS a device rather than by
@@ -167,10 +165,7 @@ function buildSubHomeScope(
     // Live read: a rename lands via `updateHomeConfig` without a teardown.
     getHomeDisplayName: () => resolveHomeAreaDisplayName(runtime.getHomeConfig().name),
     getMainFuse: () => ({ kind: 'off' }),
-    getCapacitySettings: () => {
-      const { dryRun: _dryRun, ...capacitySettings } = runtime.getCapacityScalars();
-      return capacitySettings;
-    },
+    getCapacitySettings: createHomeHeldPowerLimitsRead(ctx, runtime.getCapacityScalars, getPowerTracker),
     // The canonical no-actuation switch. This is the CONTROL path, so it asks
     // the execution form — the one that also arms source recovery.
     getCapacityDryRun: runtime.isEffectiveDryRunForExecution,
@@ -200,15 +195,9 @@ function buildSubHomeScope(
     disposeBinaryCommandReachability: binaryCommandReachability.dispose,
     // Teardown fence: a post-teardown continuation cannot persist a suffixed key.
     ...createHomeSignalWriters(ctx, homeId, isTornDown),
-    // Capacity-only policy: no price optimization, no price level (so its status
-    // reads UNKNOWN and `price_level_changed` never fires against MAIN's level),
-    // no surplus term, no dynamic-soft-limit override. The smart-task seam is
-    // bound to the identity decoration further down, not left off.
-    getPriceOptimizationEnabled: () => false,
-    getCurrentHourPriceLevel: () => PriceLevel.UNKNOWN,
-    getInferredSurplusKw: () => 0,
-    getStorageDischargeObservations: () => new Map(),
-    getPriceOptimizationSettings: () => ({}),
+    // Capacity-only policy (`CAPACITY_ONLY_SCOPE_POLICY`): no price, surplus or
+    // smart-task inputs.
+    ...CAPACITY_ONLY_SCOPE_POLICY,
     // Mode targets are the RESTORE ANCHOR, not a price/budget policy, so they
     // bind live for every home. Binding them to `{}` made the kept setpoint
     // fall back to the device's live setpoint (`lib/thermostat/temperatureSetpoints.ts`); while
@@ -224,9 +213,6 @@ function buildSubHomeScope(
     // succeeds.
     getOperatingMode: modeCatalog.getOperatingMode,
     getModeDeviceTargets: modeCatalog.getModeDeviceTargets,
-    // No smart tasks in a meter area (multi-home v1 defers them per home), so
-    // the decoration seam is the identity one, named rather than omitted.
-    decorateDeferredObjectives: decorateWithoutDeferredObjectives,
     // Capacity-only UI/side-effect posture: no shared `plan_updated` emit (the
     // settings UI reads only MAIN's plan stream), and no shared diagnostics
     // recorder (a sub-home plan pollutes main's per-boot epoch).
@@ -272,7 +258,7 @@ function createBundleSamplePipeline(
     readTaskBudgetExemptDeviceIds: () => new Set(),
     savePowerTracker: tracker.save,
     getPowerTracker: tracker.getState,
-    getCapacitySettings: scope.getCapacitySettings,
+    getHeldPowerLimits: scope.getCapacitySettings,
     getCapacityGuard: () => guard,
     // A meter area's meter is not the whole-home meter, so this area has no
     // identity to publish into membership's sampled-meter ownership fence —

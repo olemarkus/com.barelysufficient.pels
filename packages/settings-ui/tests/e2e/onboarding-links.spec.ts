@@ -468,6 +468,7 @@ test.describe('Onboarding links', () => {
           capacityPeriodCoverageComplete: true,
           powerIsMeasured: true,
           hardCapLimitKw: 10,
+          hardCapSource: 'configured',
           usedKWh: 0,
           hourBudgetKWh: 5,
           minutesRemaining: 30,

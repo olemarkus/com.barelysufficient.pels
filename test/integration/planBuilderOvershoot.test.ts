@@ -16,6 +16,7 @@ import { fixtureControlPosture, fixtureCurrentDrawKw, fixtureResidualKw, resolve
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { withCapacityPace } from '../helpers/capacityPaceFixture';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & TemperatureDiscriminantProbe
@@ -73,7 +74,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getShedBehavior: (deviceId: string) => (
           deviceId === 'at-temp'
@@ -142,7 +143,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const builder = new PlanBuilder({
         ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         getPowerTracker: () => withCapacityPace(({ lastTimestamp: now , lastPowerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }), 0.81),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
       }, state);
@@ -204,7 +205,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const builder = new PlanBuilder({
         ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now() , lastPowerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }), 0.7),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
       }, state);
@@ -264,7 +265,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
       resolveTemperatureSetpoints: fixtureTemperatureSetpoints({
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
       }),
@@ -319,7 +320,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
       getPowerTracker: () => withCapacityPace(({ lastTimestamp: sampleTs, lastPowerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }), 2.1),
       structuredLog: partialDouble<PinoLogger>(structuredLog),
     }, state);
@@ -366,7 +367,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     const builder = new PlanBuilder({
       ...planBuilderWiring(),
       capacityGuard: capacityGuard,
-      getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
+      getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
       getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now() , lastPowerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }), 2.1),
       structuredLog: partialDouble<PinoLogger>(structuredLog),
     }, state);
@@ -406,7 +407,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const builder = new PlanBuilder({
         ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        getCapacitySettings: () => DEADBAND_CAPACITY,
+        getCapacitySettings: () => configuredHardCap(DEADBAND_CAPACITY),
         getPowerTracker: () => withCapacityPace({ lastTimestamp: Date.now(), lastPowerW }, DEADBAND_CAPACITY, paceKw),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
       }, state);
@@ -455,7 +456,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const builder = new PlanBuilder({
         ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now() , lastPowerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }), 0.7),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
       }, state);
@@ -508,7 +509,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const builder = new PlanBuilder({
         ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now() , lastPowerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }), 0.7),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
       }, state);
@@ -567,7 +568,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const builder = new PlanBuilder({
         ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now() , lastPowerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }), 0.7),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
       }, state);
@@ -621,7 +622,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const builder = new PlanBuilder({
         ...planBuilderWiring(),
         capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now() , lastPowerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }), 0.7),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
       }, state);
@@ -663,7 +664,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const builder = new PlanBuilder({
         ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now() , lastPowerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }), 1.0),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
       }, state);
@@ -728,7 +729,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const builder = new PlanBuilder({
         ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now() , lastPowerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }), 1.0),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
       }, state);
@@ -791,7 +792,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const builder = new PlanBuilder({
         ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now() , lastPowerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }), 1.0),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
       }, state);
@@ -877,7 +878,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const builder = new PlanBuilder({
         ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now() , lastPowerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }), 1.0),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
       }, state);
@@ -968,7 +969,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const builder = new PlanBuilder({
         ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         getPowerTracker: () => withCapacityPace(({ lastTimestamp , lastPowerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }), 1.0),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
       }, state);
@@ -1058,7 +1059,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const builder = new PlanBuilder({
         ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }),
         getPowerTracker: () => withCapacityPace(({ lastTimestamp: Date.now() , lastPowerW }), ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 4, marginKw: 0, periodMinutes: 60 }), 1.0),
         structuredLog: partialDouble<PinoLogger>(structuredLog),
       }, state);
@@ -1127,7 +1128,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const builder = new PlanBuilder({
         ...planBuilderWiring(),
         capacityGuard: capacityGuard,
-        getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 3, marginKw: 0, periodMinutes: 60 }),
+        getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 3, marginKw: 0, periodMinutes: 60 }),
         getPowerTracker: () => withCapacityPace(powerTracker, ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 3, marginKw: 0, periodMinutes: 60 }), 2.538),
         structuredLog: partialDouble<PinoLogger>({ info: vi.fn() }),
       }, state);

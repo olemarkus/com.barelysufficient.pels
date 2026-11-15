@@ -20,6 +20,9 @@ import { getHourBucketKey } from '../../lib/utils/hourBuckets';
 import { createTestCapacityGuard } from '../helpers/createTestCapacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { configuredHardCap } from '../helpers/configuredHardCap';
+import { createHeldCapacityLimitRead } from '../../lib/power/heldCapacityLimit';
+import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 
 /** 5 kWh of hourly allowance, so a 6 kWh bucket is a spent hour and 1 kWh is not. */
 const buildPaceBuilder = (params: {
@@ -28,7 +31,7 @@ const buildPaceBuilder = (params: {
 }): PlanBuilder => new PlanBuilder({
   ...planBuilderWiring(),
   capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
-  getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
+  getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 5, marginKw: 0, periodMinutes: 60 }),
   getPowerTracker: params.getPowerTracker,
 }, params.state);
 
@@ -81,5 +84,64 @@ describe('capacity pace: the build stamps, everyone else reads', () => {
     await builder.buildDevicePlanSnapshot([]);
     expect(state.hourlyBudgetExhausted).toBe(false);
     expect(state.hourlyRemainingKWh).toBe(4);
+  });
+});
+
+describe('capacity pace on the held hard cap', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-15T11:00:30.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const SCALARS: CapacityScalarSettings = {
+    capacityEnabled: true, gridImportLimitKw: 6, limitKw: 5, marginKw: 0.2, periodMinutes: 15,
+    dryRun: false, followMonthPeak: true,
+  };
+  const quarterTracker = (): PowerTrackerState => ({
+    lastTimestamp: Date.now(),
+    lastPowerW: 1_000,
+    capacityQuarter: { startMs: Date.parse('2026-04-15T11:00:00.000Z'), energyKWh: 0, trackedMs: 30_000 },
+    capacityMonthlyPeak: { monthKey: '2026-04', peakKw: 8 },
+  });
+  const builderFor = (scalars: CapacityScalarSettings): PlanBuilder => {
+    const getPowerTracker = quarterTracker;
+    return new PlanBuilder({
+      ...planBuilderWiring(),
+      capacityGuard: createTestCapacityGuard({ homeId: 'main' }),
+      getCapacitySettings: createHeldCapacityLimitRead({
+        readScalars: () => scalars,
+        readTracker: getPowerTracker,
+        readTimeZone: () => 'Europe/Brussels',
+      }),
+      getPowerTracker,
+    }, createPlanEngineState());
+  };
+
+  it('paces against this month\'s peak once it is above the hard cap, and publishes which cap it holds', async () => {
+    const builder = builderFor({ ...SCALARS, gridImportLimitKw: null });
+    expect(builder.computeCapacityPace()).toBeCloseTo(7.8, 6);
+
+    const plan = await builder.buildDevicePlanSnapshot([]);
+    expect(plan.meta.hardCapLimitKw).toBe(8);
+    expect(plan.meta.hardCapSource).toBe('month_peak');
+  });
+
+  it('never raises the grid import limit', () => {
+    const builder = builderFor(SCALARS);
+    expect(builder.computeCapacityPace()).toBeCloseTo(7.8, 6);
+    expect(builder.computePhysicalPowerLimit()).toBeCloseTo(5.7, 6);
+  });
+
+  it('paces against the configured hard cap with the switch off', async () => {
+    const builder = builderFor({ ...SCALARS, gridImportLimitKw: null, followMonthPeak: false });
+    expect(builder.computeCapacityPace()).toBeCloseTo(4.8, 6);
+
+    const plan = await builder.buildDevicePlanSnapshot([]);
+    expect(plan.meta.hardCapLimitKw).toBe(5);
+    expect(plan.meta.hardCapSource).toBe('configured');
   });
 });

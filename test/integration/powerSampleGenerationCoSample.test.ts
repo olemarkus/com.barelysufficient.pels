@@ -27,6 +27,7 @@ import type { PowerTrackerState } from '../../packages/contracts/src/powerTracke
 import { OvershootIncident } from '../../lib/plan/overshootIncident';
 import type { GenerationSegment } from '../../lib/power/trackerTypes';
 import type { DeviceSurfaces } from '../../packages/contracts/src/deviceSurfaces';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const T0 = Date.parse('2026-07-27T10:00:00Z');
 
@@ -69,7 +70,7 @@ const buildPipeline = (
     noteResolvedHomeMeter: () => {},
     getPowerTracker: () => powerTracker,
     getCapacityGuard: () => createTestCapacityGuard({ homeId: 'main' }),
-    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, periodMinutes: 60 }),
+    getHeldPowerLimits: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.5, periodMinutes: 60 }),
     getTimeZone: () => 'UTC',
     getPlanEngine: () => ({
       computeShortfallThreshold: () => 10,

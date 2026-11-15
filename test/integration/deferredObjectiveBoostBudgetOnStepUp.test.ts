@@ -40,6 +40,7 @@ import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/price
 import { fixtureControlPosture, withFixtureResidualKw } from '../utils/planTestUtils';
 import { fixtureTemperatureSetpoints } from '../helpers/temperatureSetpointsFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_START_UTC = Date.UTC(2026, 4, 10, 0, 0, 0);
@@ -298,7 +299,7 @@ const runCycleAtHour = async (hour: number): Promise<CycleResult> => {
   const builder = new PlanBuilder({
     ...planBuilderWiring(),
     capacityGuard: capacityGuard,
-    getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: LIMIT_KW, marginKw: 0, periodMinutes: 60 }),
+    getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: LIMIT_KW, marginKw: 0, periodMinutes: 60 }),
     resolveTemperatureSetpoints: fixtureTemperatureSetpoints({ getPriceOptimizationEnabled: () => true }),
     getPowerTracker: () => powerTracker,
     // Daily budget ON: the per-hour budget slice is the binding soft limit.

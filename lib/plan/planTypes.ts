@@ -2,7 +2,7 @@ import type { PhasePower } from './phase/phasePower';
 import type { PhaseName } from '../../packages/planner-types/src/phaseFootprint';
 import type { PlannedTargetCommand } from '../planContract/targetCommand';
 import type { PlannedReleaseIntent } from '../planContract/releaseIntent';
-import type { CapacityPeriodMinutes } from '../../packages/contracts/src/capacitySettings';
+import type { CapacityPeriodMinutes, HardCapSource } from '../../packages/contracts/src/capacitySettings';
 import type { SoftLimitSource } from '../../packages/contracts/src/settingsUi/plan';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isSteppedLoadSnapshot } from '../../packages/shared-domain/src/steppedLoadObservedState';
@@ -818,9 +818,12 @@ export type PlanMetaBase = {
   // hard-cap breach to project, so no threshold exists
   // (`resolveShortfallThresholdKw`, its one owner).
   shortfallBudgetThresholdKw: number | null;
-  // From `capacitySettings.limitKw`, a plain required `number` passed straight
-  // through — so neither `?` nor `| null` was ever right here.
+  // The held hard cap (`HeldPowerLimitSettings.limitKw`, `lib/power/heldCapacityLimit.ts`):
+  // the configured one, or this month's peak once it is higher and followed.
+  // A plain required `number` passed straight through.
   hardCapLimitKw: number;
+  /** Which hard cap `hardCapLimitKw` is; the softLimitSource precedent (`docs/architecture.md`). */
+  hardCapSource: HardCapSource;
   capacityPeriodMinutes: CapacityPeriodMinutes;
   /** False while a 15-minute period's elapsed energy is only partially observed. */
   capacityPeriodCoverageComplete: boolean;

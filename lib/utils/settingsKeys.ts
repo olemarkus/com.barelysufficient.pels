@@ -3,6 +3,7 @@
 // re-exported here, so runtime code imports every key constant from this module.
 import {
   CAPACITY_DRY_RUN,
+  CAPACITY_FOLLOW_MONTH_PEAK,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_PERIOD_MINUTES,
@@ -29,6 +30,7 @@ export {
   CAPACITY_MARGIN_KW,
   CAPACITY_DRY_RUN,
   CAPACITY_PERIOD_MINUTES,
+  CAPACITY_FOLLOW_MONTH_PEAK,
   POWER_SOURCE,
   HOMEY_ENERGY_METER_DEVICE_ID,
   OPERATING_MODE_SETTING,
@@ -115,6 +117,7 @@ const HOME_SCOPABLE_BASE_KEYS: ReadonlySet<string> = new Set([
   CAPACITY_MARGIN_KW,
   CAPACITY_DRY_RUN,
   CAPACITY_PERIOD_MINUTES,
+  CAPACITY_FOLLOW_MONTH_PEAK,
   // Main keeps the historical unsuffixed mode catalog. Meter areas use these
   // suffixed keys and commit MODE_CATALOG_INITIALIZED last.
   OPERATING_MODE_SETTING,

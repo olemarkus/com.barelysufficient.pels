@@ -94,7 +94,7 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
   });
 
   it('uses the running Main posture after a reload when the persisted key is absent', async () => {
-    setup(undefined, true, { capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60, dryRun: false });
+    setup(undefined, true, { capacityEnabled: true, gridImportLimitKw: null, limitKw: 10, marginKw: 0.2, periodMinutes: 60, dryRun: false, followMonthPeak: false });
 
     await loadCapacitySettings();
 
@@ -103,7 +103,7 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
   });
 
   it('does not materialize retained Main limits during a simulation-only save', async () => {
-    setup(undefined, true, { capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.4, periodMinutes: 60, dryRun: false });
+    setup(undefined, true, { capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.4, periodMinutes: 60, dryRun: false, followMonthPeak: false });
     delete homey.__settingsStore[CAPACITY_LIMIT_KW];
     delete homey.__settingsStore[CAPACITY_MARGIN_KW];
 
@@ -115,7 +115,7 @@ describe('external capacity_dry_run settings.set refreshes the plan surface', ()
   });
 
   it('does not materialize the runtime Belgian period during a simulation-only save', async () => {
-    setup(undefined, true, { capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.4, periodMinutes: 15, dryRun: false });
+    setup(undefined, true, { capacityEnabled: true, gridImportLimitKw: null, limitKw: 12, marginKw: 0.4, periodMinutes: 15, dryRun: false, followMonthPeak: false });
     delete homey.__settingsStore[CAPACITY_PERIOD_MINUTES];
 
     await loadCapacitySettings();

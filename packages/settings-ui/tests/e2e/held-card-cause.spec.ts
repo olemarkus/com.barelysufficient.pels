@@ -57,6 +57,7 @@ const applyProdHeldState = async (page: Page) => {
         powerIsMeasured: true,
         softLimitSource: 'daily',
         hardCapLimitKw: 10.05,
+        hardCapSource: 'configured',
       },
       devices: [
         {

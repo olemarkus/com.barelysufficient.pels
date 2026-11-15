@@ -25,6 +25,7 @@ import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/pla
 import { buildBindingDailyBudgetSnapshot } from '../helpers/bindingDailyBudgetFixture';
 import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { testLogger } from '../utils/testLogger';
+import { configuredHardCap } from '../helpers/configuredHardCap';
 
 // A plain, unremarkable meter reading: fixtures that only need power to be
 // MEASURED say so through the reading, the way production does.
@@ -332,7 +333,7 @@ const buildBuilder = (params: {
 }): PlanBuilder => new PlanBuilder({
   ...planBuilderWiring(),
   capacityGuard: params.capacityGuard,
-  getCapacitySettings: () => ({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
+  getCapacitySettings: () => configuredHardCap({ capacityEnabled: true, gridImportLimitKw: null, limitKw: 100, marginKw: 0, periodMinutes: 60 }),
   getPowerTracker: () => params.tracker,
   getDailyBudgetSnapshot: () => buildBindingDailyBudgetSnapshot(DAY_START_UTC),
 }, params.state);
