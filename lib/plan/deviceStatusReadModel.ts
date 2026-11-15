@@ -62,6 +62,9 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
 } & Pick<DevicePlanDevice, 'steppedFairnessHold' | 'steppedStepUpHold'>
   & Partial<Pick<DevicePlanDevice, 'phaseFootprint'>>;
 
+/** The reason line of every Manual card: the setting that makes it Manual. */
+export const MANUAL_REASON_TEXT = 'Power-limit control is off';
+
 function resolveBaseKind(device: DeviceStatusInput): PlanStateKind {
   if (!device.controllable) return 'manual';
   if (!device.execution.available) return 'unavailable';
@@ -214,7 +217,11 @@ function buildReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number):
 
 function buildOrdinaryReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus['reason'] {
   const kind = resolveBaseKind(device);
-  if (kind === 'unavailable' || kind === 'manual') return null;
+  if (kind === 'unavailable') return null;
+  // Manual says PELS is not limiting this device; the line says why, which is
+  // the owner's own Power-limit control setting. It names the setting rather
+  // than asking for it: a device left off on purpose (a fridge, a PC) is fine.
+  if (kind === 'manual') return { text: MANUAL_REASON_TEXT };
   let text = resolveReason(device, dryRun);
   const identification = resolveCarIdentificationReason(device, text);
   if (identification) return identification;

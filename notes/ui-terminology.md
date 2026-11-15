@@ -247,7 +247,7 @@ Cards, device detail, and activity logs consume the same presentation:
 | **Off** | Homey explicitly reports the device off—through its binary control or a stepped-load off step—and no higher-priority PELS state below applies. Never infer this from `0.0 kW`, temperature, or target alone. |
 | **Limited** | PELS is lowering, pausing, turning off, or making the device wait for power — including a device the planner left inactive because there is no room ("waiting to resume"). Never pair `Idle` with a waiting/hold reason. |
 | **Resuming** | PELS has decided to bring the device back and is turning it on, raising its level, or counting down a short restart wait. A device still waiting for power reads **Limited**. |
-| **Manual** | The device is managed but PELS does not have power-limit control for it right now. |
+| **Manual** | The device is managed but PELS does not have power-limit control for it right now. Its reason line is `Power-limit control is off`: it names the owner's setting and asks for nothing, because a device left unlimited on purpose (a fridge, a PC) is fine as it is. |
 | **Unavailable** | PELS does not currently trust the device state enough to plan with it. |
 
 A vehicle adapter's confirmed unplugged or completed charging session is an
