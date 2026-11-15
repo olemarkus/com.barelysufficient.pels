@@ -49,6 +49,14 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   builtInControlHeldByFlow: boolean;
   /** The device's app refused Homey's control of its power level, so PELS only switches it. */
   targetPowerControlRefused: boolean;
+  /**
+   * The owner granted PELS standing authority over the device: Power-limit
+   * control, or "Only PELS starts this device" (`hasStandingCommandGrant`).
+   * Read now, from the settings that seed the plan's authority.
+   */
+  standingCommandGrant: boolean;
+  /** The plan had a power reading for the device (`isMeteredPlanDevice`), which authority also takes. */
+  hasPowerReading: boolean;
   carIdentificationState: CarIdentificationState;
   execution: DeviceExecutionState;
   starvation?: SettingsUiPlanDeviceStarvation;
@@ -65,8 +73,11 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
 /** The reason line of a card Homey reports unavailable, as the Tesla adapter words it. */
 export const HOMEY_UNAVAILABLE_REASON_TEXT = 'Homey reports this device unavailable';
 
-/** The reason line of every Manual card: the setting that makes it Manual. */
+/** The reason line of a Manual card whose owner did not grant PELS control of it. */
 export const MANUAL_REASON_TEXT = 'Power-limit control is off';
+
+/** The reason line of a Manual card PELS may control but has no power reading from. */
+export const NO_POWER_READING_REASON_TEXT = 'No power reading from this device';
 
 function resolveBaseKind(device: DeviceStatusInput): PlanStateKind {
   if (!device.controllable) return 'manual';
@@ -223,16 +234,31 @@ function buildReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number):
  *
  * Every device but a Tesla is unavailable only when Homey says so, and a Tesla's
  * adapter explains its own (`buildUnavailableAdapterStatus`). An available device
- * whose plan could not be built for it says nothing here. Manual says PELS is not
- * limiting the device; the line names the owner's own Power-limit control
- * setting rather than asking for it, because a device left off on purpose (a
- * fridge, a PC) is fine.
+ * whose plan could not be built for it says nothing here.
  */
 function resolveNotControlledReason(
   device: DeviceStatusInput, kind: 'unavailable' | 'manual',
 ): DeviceStatus['reason'] {
-  if (kind === 'manual') return { text: MANUAL_REASON_TEXT };
+  if (kind === 'manual') return resolveManualReason(device);
   return device.available ? null : { text: HOMEY_UNAVAILABLE_REASON_TEXT };
+}
+
+/**
+ * Why a Manual card is Manual, named only from a fact that says so. PELS holds
+ * authority over a device when the owner granted it, the device has a power
+ * reading, and it has something PELS could switch or step
+ * (`resolveDeviceControlPosture`).
+ *
+ * Without the grant the line names the owner's Power-limit control setting
+ * rather than asking for it, because a device left unlimited on purpose (a
+ * fridge, a PC) is fine. With the grant but no power reading it says that. Any
+ * other Manual card (a thermostat whose only control is switched off, or a plan
+ * built before the owner's grant) says nothing rather than name a setting the
+ * owner has already turned on.
+ */
+function resolveManualReason(device: DeviceStatusInput): DeviceStatus['reason'] {
+  if (!device.standingCommandGrant) return { text: MANUAL_REASON_TEXT };
+  return device.hasPowerReading ? null : { text: NO_POWER_READING_REASON_TEXT };
 }
 
 function buildOrdinaryReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus['reason'] {

@@ -33,6 +33,8 @@ export function uiDeviceFixture(raw: Record<string, unknown> | CardFixture = {},
     carIdentificationState: device.carIdentificationState ?? 'not_waiting',
     adapterUnavailableStatus: undefined,
     builtInControlHeldByFlow: false, targetPowerControlRefused: false,
+    // A card fixture that is Manual reads Power-limit control off.
+    standingCommandGrant: false, hasPowerReading: true,
     binaryControllable: device.binaryControllable ?? false, isEvCharger,
     expectedPowerKw: device.expectedPowerKw ?? 0,
     // No card scenario here moves a target for price.

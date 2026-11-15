@@ -18,13 +18,15 @@ type OverviewReadModelWiring = Pick<SettingsOverviewReadModelDeps,
   | 'getDeviceControlAdapter'
   | 'isBuiltInControlHeldByFlow'
   | 'isTargetPowerControlRefused'
+  | 'hasStandingCommandGrant'
   | 'readStarvationRescuableDeviceIds'>;
 
 /**
  * The read-model deps the plan service always wires, for a spec that is not
  * about them: the main home, no starvation, no idle classification, no
  * associated car, no stepped profiles, no Flow holding built-in control back,
- * no rescuable device. A spec about one of
+ * no standing command grant (a Manual card reads Power-limit control off), no
+ * rescuable device. A spec about one of
  * them overrides it.
  */
 export const overviewReadModelWiring = (): OverviewReadModelWiring => ({
@@ -37,6 +39,7 @@ export const overviewReadModelWiring = (): OverviewReadModelWiring => ({
   getDeviceControlAdapter: () => undefined,
   isBuiltInControlHeldByFlow: () => false,
   isTargetPowerControlRefused: () => false,
+  hasStandingCommandGrant: () => false,
   readStarvationRescuableDeviceIds: () => [],
 });
 
