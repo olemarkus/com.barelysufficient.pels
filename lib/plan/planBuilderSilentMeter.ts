@@ -170,6 +170,7 @@ export class SilentMeterPlanBuilder {
         capacityGuard: this.deps.capacityGuard,
         capacityLimitKw: settings.limitKw,
         hardCapSource: settings.hardCapSource,
+        configuredHardCapLimitKw: settings.configuredLimitKw,
         hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(context),
         unrelievedPhase: null,
         exportPhase: null,

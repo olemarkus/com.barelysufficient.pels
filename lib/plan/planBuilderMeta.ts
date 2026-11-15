@@ -49,6 +49,8 @@ export type PlanMetaCycleFacts = {
   /** The held hard cap this cycle decided against (`lib/power/heldCapacityLimit.ts`). */
   capacityLimitKw: number;
   hardCapSource: HardCapSource;
+  /** The hard cap the owner set; equal to `capacityLimitKw` unless this month's peak holds. */
+  configuredHardCapLimitKw: number;
   hourlyBudgetExhausted: boolean;
   /** The worst phase still breached with nothing left to limit on it. */
   unrelievedPhase: PhaseName | null;
@@ -82,7 +84,7 @@ export function projectPlanLimits(limits: PlanLimits): Pick<PlanMetaBase,
 export function buildPlanMetaBase(facts: PlanMetaCycleFacts): PlanMetaBase {
   const {
     context, reading, dailyBudgetSnapshot, powerTracker, capacityGuard,
-    capacityLimitKw, hardCapSource, hourlyBudgetExhausted,
+    capacityLimitKw, hardCapSource, configuredHardCapLimitKw, hourlyBudgetExhausted,
   } = facts;
   const currentHourUsageSplit = getHourUsageSplit(powerTracker, context.hourBucketKey);
   const today = dailyBudgetSnapshot?.days[dailyBudgetSnapshot.todayKey] ?? null;
@@ -94,6 +96,7 @@ export function buildPlanMetaBase(facts: PlanMetaCycleFacts): PlanMetaBase {
     capacityShortfall: capacityGuard.isInShortfall(),
     hardCapLimitKw: capacityLimitKw,
     hardCapSource,
+    configuredHardCapLimitKw,
     capacityPeriodMinutes: context.capacityPeriodMinutes,
     capacityPeriodCoverageComplete: context.capacityPeriodCoverageComplete,
     hourlyBudgetExhausted,

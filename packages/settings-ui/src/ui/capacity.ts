@@ -4,6 +4,7 @@ import {
   syncPowerLimitSwitches,
   syncCapacityLimitControls,
   syncHardCapChoice,
+  syncMonthlyQuarterPeak,
   validatePowerLimitSettings,
 } from './powerLimitControls.ts';
 export {
@@ -15,7 +16,6 @@ import { syncSettingsHubChips } from './settingsHubChips.ts';
 import { readMainFuseForm, syncMainFuseControls } from './mainFuseControls.ts';
 import {
   settingsGridImportLimitInput,
-  settingsCapacityMonthlyPeakValue,
   settingsCapacityFollowMonthPeakInput,
   settingsPowerSourceSelect,
   settingsSimulationModeInput,
@@ -70,10 +70,7 @@ import {
   type SimulationBannerScope,
 } from '../../../shared-domain/src/simulationPosture.ts';
 import { syncSimulationHomeScopeNote } from './simulationScopeNote.ts';
-import type {
-  SettingsUiCapacityPeak,
-  SettingsUiPowerPayload,
-} from '../../../contracts/src/settingsUi/power.ts';
+import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUi/power.ts';
 import {
   classifyPowerReadingsFact,
   resolvePowerReadingsBannerContent,
@@ -92,6 +89,7 @@ import {
   writeSimulationSetting,
 } from './capacitySettingsPersistence.ts';
 import { refreshPlanSurface } from './planSurfaceRefresh.ts';
+import { FOLLOW_MONTH_PEAK_SAVE_FAILED_TOAST, followMonthPeakSavedToast } from './homeLimitsCopy.ts';
 import { isPlanUnmeasured, onPlanMeasurementChange } from './planMeasurementSignal.ts';
 import {
   isNoReadingsCarriedBySetupPath,
@@ -102,7 +100,6 @@ import {
   publishSetupPower,
   publishSetupPowerUnavailable,
 } from './setupPathFacts.ts';
-import { formatCapacityPeak } from './capacityPeakRead.ts';
 
 export type PowerSource = 'flow' | 'homey_energy';
 
@@ -133,14 +130,6 @@ const publishHardCapRead = (configured: boolean, scalars: CapacityScalarSettings
   lastHardCapConfigured = configured;
   publishSetupHardCapRead(configured, scalars);
   syncHardCapChoice(configured, scalars);
-};
-
-// An unavailable read is a no-op: the last shown peak (or the template's
-// "Peak unavailable") stays until a read that knows the answer.
-const renderMonthlyQuarterPeak = (peak: SettingsUiCapacityPeak): void => {
-  if (settingsCapacityMonthlyPeakValue && peak.state !== 'unavailable') {
-    settingsCapacityMonthlyPeakValue.textContent = formatCapacityPeak(peak);
-  }
 };
 
 const commitCapacityScalars = (scalars: CapacityScalarSettings): void => {
@@ -400,7 +389,7 @@ export const loadStaleDataStatus = async () => {
     return;
   }
   const power = read.payload;
-  renderMonthlyQuarterPeak(power.capacityPeak);
+  syncMonthlyQuarterPeak(power.capacityPeak);
   // Producer-resolved fact, classified ONCE at this transport seam (the GET
   // response is untrusted): a junk payload keeps the last-known fact rather
   // than fabricating `never` — and before any render, resolves to `never`.
@@ -490,7 +479,7 @@ export const loadCapacitySettings = async () => {
     const configuration = powerRead.payload.hardCapConfiguration;
     if (configuration.state === 'resolved') publishHardCapRead(configuration.configured, resolved);
     else publishSetupHardCapUnavailable();
-    renderMonthlyQuarterPeak(powerRead.payload.capacityPeak);
+    syncMonthlyQuarterPeak(powerRead.payload.capacityPeak);
   } else publishSetupHardCapUnavailable();
   syncDryRunBannerVisibility();
   syncSettingsHubChips();
@@ -634,9 +623,12 @@ export const saveCapacityPeriodSettings = (periodMinutes: 15 | 60): Promise<void
 );
 
 // The month-peak switch saves itself, bound here beside its command like the plan-measurement subscription above.
-settingsCapacityFollowMonthPeakInput?.addEventListener('change', (event) => void saveCapacityFieldCommand({
-  kind: 'follow-month-peak', followMonthPeak: (event.currentTarget as MdSwitchElement).selected,
-}, 'Month peak setting saved.').catch((error) => showToastError(error, 'Could not save the month peak setting.')));
+settingsCapacityFollowMonthPeakInput?.addEventListener('change', (event) => {
+  const followMonthPeak = (event.currentTarget as MdSwitchElement).selected;
+  const savedToast = followMonthPeakSavedToast(followMonthPeak);
+  void saveCapacityFieldCommand({ kind: 'follow-month-peak', followMonthPeak }, savedToast)
+    .catch((error) => showToastError(error, FOLLOW_MONTH_PEAK_SAVE_FAILED_TOAST));
+});
 
 export const saveCapacityOffSettings = (): Promise<void> => (
   saveCapacityFieldCommand({ kind: 'capacity-off' }, 'Capacity limit turned off.')

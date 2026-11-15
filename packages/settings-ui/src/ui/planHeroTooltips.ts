@@ -175,12 +175,21 @@ export const formatSafePaceComposition = (
 // Energy-bar variant: the cap expressed as this hour's kWh ceiling. Appears on
 // the bar that carries the "Above hard cap" judgement, so the tooltip names
 // the consequence of crossing it.
+// While this month's peak holds, it ties the number back to the owner's own cap.
+export type HeroHardCap = Pick<PlanMetaSnapshot, 'hardCapSource' | 'hardCapLimitKw' | 'configuredHardCapLimitKw'>;
+
+const formatCapKw = (kw: number): string => `${Number(kw.toFixed(1))} kW`;
+
 export const formatHardCapEnergyTooltip = (
   hardCapKWh: number,
   periodMinutes: CapacityPeriodMinutes,
+  hardCap: HeroHardCap,
 ): string => {
   const period = capacityPeriodNoun(periodMinutes);
-  return `Hard cap this ${period} ${hardCapKWh.toFixed(1)} kWh — landing past this raises the measured peak.`;
+  const base = `Hard cap this ${period} ${hardCapKWh.toFixed(1)} kWh — landing past this raises the measured peak.`;
+  if (hardCap.hardCapSource !== 'month_peak') return base;
+  return `${base} Held at ${formatCapKw(hardCap.hardCapLimitKw)}, this month's highest completed quarter. `
+    + `Your hard cap of ${formatCapKw(hardCap.configuredHardCapLimitKw)} applies again from the 1st of next month.`;
 };
 
 /** Explain an above-cap pace while an hourly capacity limit is active. */

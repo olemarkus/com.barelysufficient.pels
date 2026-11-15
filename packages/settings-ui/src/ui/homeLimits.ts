@@ -29,6 +29,7 @@ import {
 import type { CapacityPeriodMinutes } from '../../../contracts/src/capacitySettings.ts';
 import { AreaFollowMonthPeakSwitch, readAreaFollowMonthPeak } from './homeLimitsFollowMonthPeak.ts';
 import { resolveHomeLimitsStatus } from './homeLimitsStatus.ts';
+import { resolveMonthPeakReadout } from './monthPeakHoldCopy.ts';
 import { getHomeScope, refreshHomeScope, subscribeToHomeScope } from './homeScope.ts';
 import {
   getApiReadModel, getSettingFresh, homeScopedApiUri, invalidateApiCache, setSetting,
@@ -157,6 +158,10 @@ const setMainHardCapHint = (areasExist: boolean): void => {
 const buildAreaEditorView = (editor: AreaEditorState): HomeLimitsEditorView => {
   const hardCapKw = parseFiniteOrNull(editor.hardCapValue);
   const marginKw = parseFiniteOrNull(editor.marginValue);
+  // What the area's live control holds, restated from the values this editor shows.
+  const monthPeak = resolveMonthPeakReadout(
+    hardCapKw, editor.periodMinutes, editor.followMonthPeak.shown, editor.capacityPeak,
+  );
   return {
     areaName: editor.areaName,
     hardCapValue: editor.hardCapValue,
@@ -166,8 +171,9 @@ const buildAreaEditorView = (editor: AreaEditorState): HomeLimitsEditorView => {
     dryRun: editor.dryRun,
     controlBusy: editor.dryRunWriteInFlight,
     marginError: marginVsCapError(hardCapKw, marginKw),
-    reactionKw: reactionKwLabel(hardCapKw, marginKw),
+    reactionKw: reactionKwLabel(monthPeak.hold?.heldKw ?? hardCapKw, marginKw),
     capacityPeak: editor.capacityPeak,
+    monthPeak,
     followMonthPeak: editor.followMonthPeak.shown,
     followMonthPeakBusy: editor.followMonthPeak.busy,
     // Resolve the status against the LIVE edited cap + simulation state so the

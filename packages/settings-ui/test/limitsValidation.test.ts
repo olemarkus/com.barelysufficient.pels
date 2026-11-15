@@ -17,8 +17,11 @@ const LIMITS_FORM_TEMPLATE = [
   '<md-filled-text-field id="settings-capacity-limit"></md-filled-text-field>',
   '<md-filled-text-field id="settings-capacity-margin"></md-filled-text-field>',
   '<md-filled-select id="settings-capacity-period"></md-filled-select>',
+  '<span id="settings-capacity-reaction-label">With these settings, safe pace starts each period at</span>',
   '<span id="settings-capacity-reaction"></span>',
-  '<div id="settings-capacity-monthly-peak" hidden><span id="settings-capacity-monthly-peak-value">Peak unavailable</span></div>',
+  '<span id="settings-capacity-reaction-note">(hard cap minus safety margin; it adapts as the period is used)</span>',
+  '<div id="settings-capacity-monthly-peak" hidden><span id="settings-capacity-monthly-peak-value">Peak unavailable</span>',
+  '<span id="settings-capacity-monthly-peak-state" hidden></span></div>',
   '<div id="settings-capacity-follow-month-peak-row" hidden><md-switch id="settings-capacity-follow-month-peak"></md-switch></div>',
   '<small id="settings-capacity-margin-alert" hidden></small>',
   '<div id="settings-capacity-choice" hidden><small id="settings-capacity-choice-text"></small>',
@@ -532,6 +535,51 @@ describe('Limits & safety inline validation', () => {
     sw.selected = true;
     sw.dispatchEvent(new Event('change'));
     await vi.waitFor(() => expect(setSetting.mock.calls).toEqual([['capacity_follow_month_peak', true]]));
+  });
+
+  it('says what PELS holds while this month\'s peak is above the hard cap and followed', async () => {
+    buildLimitsDom();
+    const { capacity } = await loadCapacityModule(
+      { capacity_limit_kw: 4, capacity_margin_kw: 0.2, capacity_period_minutes: 15, capacity_follow_month_peak: true },
+      undefined,
+      { state: 'recorded', peakKw: 6.4 },
+    );
+
+    await capacity.loadCapacitySettings();
+    expect(document.querySelector('#settings-capacity-reaction-label')?.textContent)
+      .toBe('This month PELS holds 6.4 kW, your highest completed quarter so far. Safe pace starts each period at');
+    expect(document.querySelector('#settings-capacity-reaction')?.textContent).toBe('6.2 kW');
+    expect(document.querySelector('#settings-capacity-reaction-note')?.textContent)
+      .toBe('(that peak minus the safety margin). Your hard cap of 4 kW applies again from the 1st of next month.');
+    expect(document.querySelector('#settings-capacity-monthly-peak-state')?.hasAttribute('hidden')).toBe(true);
+  });
+
+  it('points to the switch while it is off and this month\'s peak is above the hard cap', async () => {
+    buildLimitsDom();
+    const { capacity } = await loadCapacityModule(
+      { capacity_limit_kw: 4, capacity_margin_kw: 0.2, capacity_period_minutes: 15 },
+      undefined,
+      { state: 'recorded', peakKw: 6.4 },
+    );
+
+    await capacity.loadCapacitySettings();
+    expect(document.querySelector('#settings-capacity-reaction-label')?.textContent)
+      .toBe('With these settings, safe pace starts each period at');
+    expect(document.querySelector('#settings-capacity-reaction')?.textContent).toBe('3.8 kW');
+    const stateLine = document.querySelector('#settings-capacity-monthly-peak-state');
+    expect(stateLine?.hasAttribute('hidden')).toBe(false);
+    expect(stateLine?.textContent).toBe('Above your hard cap. Turn on Follow this month’s peak to let devices use it.');
+  });
+
+  it('toasts which way the month-peak switch moved', async () => {
+    buildLimitsDom();
+    const { capacity, showToast } = await loadCapacityModule({ capacity_period_minutes: 15 });
+
+    await capacity.loadCapacitySettings();
+    const sw = document.querySelector('#settings-capacity-follow-month-peak') as HTMLElement & { selected: boolean };
+    sw.selected = true;
+    sw.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(showToast).toHaveBeenCalledWith('Follow this month’s peak turned on.', 'ok'));
   });
 
   it('shows a saved month-peak switch, and hides it for the hourly period', async () => {

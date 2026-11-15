@@ -30,6 +30,7 @@ const PLAN_SNAPSHOT = {
     capacitySoftLimitKw: 5,
     hardCapLimitKw: 8,
     hardCapSource: 'configured',
+    configuredHardCapLimitKw: 8,
   }),
   devices: [],
   rescuableDeviceIds: [],

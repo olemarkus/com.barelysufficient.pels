@@ -3,7 +3,7 @@ import {
   assertCapacityFollowMonthPeakWrite,
   resolveCapacityFollowMonthPeakSetting,
 } from '../../../shared-domain/src/settings/capacityFollowMonthPeak.ts';
-import { FOLLOW_MONTH_PEAK_SAVE_FAILED_TOAST, FOLLOW_MONTH_PEAK_SAVED_TOAST } from './homeLimitsCopy.ts';
+import { FOLLOW_MONTH_PEAK_SAVE_FAILED_TOAST, followMonthPeakSavedToast } from './homeLimitsCopy.ts';
 import { beginAreaWrite } from './homeLimitsWriteQueues.ts';
 import { setSetting } from './homey.ts';
 import { logSettingsError } from './logging.ts';
@@ -68,7 +68,7 @@ export class AreaFollowMonthPeakSwitch {
       return;
     }
     this.settle(render, finishWrite);
-    await showToast(FOLLOW_MONTH_PEAK_SAVED_TOAST, 'ok');
+    await showToast(followMonthPeakSavedToast(next), 'ok');
   }
 
   private settle(render: () => void, finishWrite: (homeId: string) => void): void {

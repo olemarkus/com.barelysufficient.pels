@@ -724,13 +724,14 @@
         <div class="settings-result" role="group" aria-labelledby="settings-capacity-reaction-label">
           <span class="settings-result__label" id="settings-capacity-reaction-label">With these settings, safe pace starts each period at</span>
           <strong class="settings-result__value" id="settings-capacity-reaction">&mdash;</strong>
-          <span class="settings-result__note">(hard cap minus safety margin; it adapts as the period is used)</span>
+          <span class="settings-result__note" id="settings-capacity-reaction-note">(hard cap minus safety margin; it adapts as the period is used)</span>
         </div>
         </div>
         <div class="settings-result" id="settings-capacity-monthly-peak" role="group" aria-labelledby="settings-capacity-monthly-peak-label" hidden>
           <span class="settings-result__label" id="settings-capacity-monthly-peak-label">Highest completed quarter this month</span>
           <strong class="settings-result__value" id="settings-capacity-monthly-peak-value">Peak unavailable</strong>
           <span class="settings-result__note">Based on readings PELS received, not your grid operator’s billing calculation.</span>
+          <span class="settings-result__note" id="settings-capacity-monthly-peak-state" hidden></span>
         </div>
         <!-- Offered with the 15-minute period only, like the readout above
              (powerLimitControls.ts syncCapacityLimitControls). Same words as
@@ -739,7 +740,7 @@
           <md-switch id="settings-capacity-follow-month-peak" aria-labelledby="settings-capacity-follow-month-peak-label"></md-switch>
           <span class="md-switch-row__content">
             <span class="md-switch-row__label pels-text-settings-label" id="settings-capacity-follow-month-peak-label">Follow this month’s peak</span>
-            <small class="field__hint">Once this month’s highest quarter is above the hard cap, PELS lets devices use power up to that peak. Your grid tariff already counts it.</small>
+            <small class="field__hint">When this month’s highest completed quarter is above the hard cap, PELS uses that peak, minus the safety margin, until the month ends. Your grid tariff already counts that peak.</small>
           </span>
         </div>
       </form>

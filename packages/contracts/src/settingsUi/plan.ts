@@ -61,6 +61,8 @@ export type SettingsUiPlanMetaSnapshotBase = {
   hardCapLimitKw: number;
   /** Which hard cap `hardCapLimitKw` is, so a reader can say why without comparing settings. */
   hardCapSource: HardCapSource;
+  /** The hard cap the owner set; equals `hardCapLimitKw` while `hardCapSource` is `'configured'`. */
+  configuredHardCapLimitKw: number;
   capacityPeriodMinutes: CapacityPeriodMinutes;
   /** Whether usedKWh covers the whole elapsed part of this capacity period. */
   capacityPeriodCoverageComplete: boolean;

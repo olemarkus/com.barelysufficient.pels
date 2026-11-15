@@ -824,6 +824,8 @@ export type PlanMetaBase = {
   hardCapLimitKw: number;
   /** Which hard cap `hardCapLimitKw` is; the softLimitSource precedent (`docs/architecture.md`). */
   hardCapSource: HardCapSource;
+  /** The hard cap the owner set (`HeldPowerLimitSettings.configuredLimitKw`); `hardCapLimitKw` while configured. */
+  configuredHardCapLimitKw: number;
   capacityPeriodMinutes: CapacityPeriodMinutes;
   /** False while a 15-minute period's elapsed energy is only partially observed. */
   capacityPeriodCoverageComplete: boolean;

@@ -410,6 +410,7 @@ export class PlanBuilder {
       capacityGuard: this.capacityGuard,
       capacityLimitKw: settings.limitKw,
       hardCapSource: settings.hardCapSource,
+      configuredHardCapLimitKw: settings.configuredLimitKw,
       hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(heldContext),
       unrelievedPhase: sheddingPlan.unrelievedPhase,
       exportPhase: sheddingPlan.exportPhase,

@@ -140,6 +140,7 @@ function buildSettingsOverviewMetaReadModel(meta: DevicePlan['meta']): SettingsU
     softLimitSource: normalizedMeta.softLimitSource,
     hardCapLimitKw: normalizedMeta.hardCapLimitKw,
     hardCapSource: normalizedMeta.hardCapSource,
+    configuredHardCapLimitKw: normalizedMeta.configuredHardCapLimitKw,
     capacityPeriodMinutes: normalizedMeta.capacityPeriodMinutes,
     capacityPeriodCoverageComplete: normalizedMeta.capacityPeriodCoverageComplete,
     usedKWh: normalizedMeta.usedKWh,

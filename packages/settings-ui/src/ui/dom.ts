@@ -121,12 +121,15 @@ export const settingsCapacityKeepButton = document.getElementById('settings-capa
 export const settingsCapacityReactionHint = document.querySelector<HTMLElement>(
   '#settings-capacity-reaction',
 );
+export const settingsCapacityReactionLabel = document.getElementById('settings-capacity-reaction-label');
+export const settingsCapacityReactionNote = document.getElementById('settings-capacity-reaction-note');
 export const settingsCapacityMonthlyPeak = document.querySelector<HTMLElement>(
   '#settings-capacity-monthly-peak',
 );
 export const settingsCapacityMonthlyPeakValue = document.querySelector<HTMLElement>(
   '#settings-capacity-monthly-peak-value',
 );
+export const settingsCapacityMonthlyPeakState = document.getElementById('settings-capacity-monthly-peak-state');
 export const settingsCapacityFollowMonthPeakRow = document.getElementById('settings-capacity-follow-month-peak-row');
 export const settingsCapacityFollowMonthPeakInput = document.querySelector<MdSwitchElement>(
   '#settings-capacity-follow-month-peak',

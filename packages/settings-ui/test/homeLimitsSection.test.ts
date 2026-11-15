@@ -5,6 +5,7 @@ import {
   type HomeLimitsSectionProps,
 } from '../src/ui/views/HomeLimitsSection.tsx';
 import { resolveHomeLimitsStatus } from '../src/ui/homeLimitsStatus.ts';
+import { MONTH_PEAK_ABOVE_HARD_CAP_NOTE } from '../src/ui/monthPeakHoldCopy.ts';
 
 /* -------------------------------------------------------------------------- *
  * Per-home Limits section render tests: progressive-disclosure visibility, the
@@ -26,6 +27,7 @@ const baseEditor = (overrides: Partial<HomeLimitsEditorView> = {}): HomeLimitsEd
   marginError: null,
   reactionKw: '6.7 kW',
   capacityPeak: { state: 'no_completed_quarter' },
+  monthPeak: { hold: null, stateLine: null },
   followMonthPeak: false,
   followMonthPeakBusy: false,
   status: resolveHomeLimitsStatus(
@@ -114,6 +116,31 @@ describe('meter-area editor', () => {
     document.body.innerHTML = '';
     const busy = mountWith(baseProps({ editor: baseEditor({ periodMinutes: 15, followMonthPeakBusy: true }) }));
     expect(busy.querySelector('#home-limits-follow-month-peak')!.hasAttribute('disabled')).toBe(true);
+  });
+
+  it('says what the area holds while this month\'s peak stands in for its hard cap', () => {
+    const surface = mountWith(baseProps({
+      editor: baseEditor({
+        periodMinutes: 15,
+        followMonthPeak: true,
+        reactionKw: '6.2 kW',
+        monthPeak: { hold: { heldKw: 6.4, hardCapKw: 4 }, stateLine: null },
+      }),
+    }));
+    expect(surface.querySelector('#home-limits-reaction-label')?.textContent)
+      .toBe('This month PELS holds 6.4 kW, your highest completed quarter so far. Safe pace starts each period at');
+    expect(surface.querySelector('#home-limits-reaction')?.textContent).toBe('6.2 kW');
+    expect(surface.querySelector('#home-limits-reaction-note')?.textContent)
+      .toBe('(that peak minus the safety margin). Your hard cap of 4 kW applies again from the 1st of next month.');
+    expect(surface.querySelector('#home-limits-monthly-peak-state')).toBeNull();
+  });
+
+  it('shows the month peak state line under the readout only when there is one', () => {
+    const surface = mountWith(baseProps({
+      editor: baseEditor({ periodMinutes: 15, monthPeak: { hold: null, stateLine: MONTH_PEAK_ABOVE_HARD_CAP_NOTE } }),
+    }));
+    expect(surface.querySelector('#home-limits-monthly-peak-state')?.textContent)
+      .toBe('Above your hard cap. Turn on Follow this month’s peak to let devices use it.');
   });
 
   it('distinguishes an unavailable peak from a month with no completed quarter', () => {

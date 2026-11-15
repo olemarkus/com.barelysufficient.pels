@@ -116,7 +116,7 @@ const withValidatedFacets = (device: PlanDeviceSnapshot): PlanDeviceSnapshot => 
 // realtime handler drops the push and logs, the scoped reader reports
 // `unavailable`.
 const REQUIRED_META_NUMBERS = [
-  'hardCapLimitKw',
+  'hardCapLimitKw', 'configuredHardCapLimitKw',
   'usedKWh', 'hourBudgetKWh', 'minutesRemaining',
   // The meter total and its stamp: always numbers — a snapshot exists only
   // behind the measurement gate, so its cycle always carried a reading.

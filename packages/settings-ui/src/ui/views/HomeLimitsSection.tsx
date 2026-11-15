@@ -8,8 +8,6 @@ import {
   HOME_LIMITS_HARD_CAP_HINT,
   HOME_LIMITS_HARD_CAP_LABEL,
   HOME_LIMITS_MARGIN_LABEL,
-  HOME_LIMITS_REACTION_LABEL,
-  HOME_LIMITS_REACTION_NOTE,
   HOME_LIMITS_GLOBAL_SETTINGS_ELSEWHERE,
   FOLLOW_MONTH_PEAK_HINT,
   FOLLOW_MONTH_PEAK_LABEL,
@@ -28,6 +26,7 @@ import { MdFilledSelect, MdSelectOption, MdSwitch, readSwitchSelected } from './
 import type { CapacityPeriodMinutes } from '../../../../contracts/src/capacitySettings.ts';
 import type { SettingsUiCapacityPeak } from '../../../../contracts/src/settingsUi/power.ts';
 import { formatCapacityPeak } from '../capacityPeakRead.ts';
+import { composeSafePaceSummaryCopy, type MonthPeakReadout } from '../monthPeakHoldCopy.ts';
 import { resolveCapacityPeriodMinutes } from '../../../../shared-domain/src/settings/capacityPeriod.ts';
 
 // Per-home "Limits & safety" surface (multi-home U3). Progressive disclosure:
@@ -58,6 +57,8 @@ export type HomeLimitsEditorView = {
   reactionKw: string;
   /** Highest completed 15-minute average in the current local month. */
   capacityPeak: SettingsUiCapacityPeak;
+  /** This month's peak against the hard cap: the hold that sets `reactionKw`, and the line under the readout. */
+  monthPeak: MonthPeakReadout;
   /** The month-peak switch, offered with the 15-minute period only. */
   followMonthPeak: boolean;
   /** True while a month-peak write is in flight; disables the switch. */
@@ -81,6 +82,18 @@ export type HomeLimitsSectionProps = {
    * render the meter-area editor.
    */
   editor: HomeLimitsEditorView | null;
+};
+
+// The words around the figure name this month's peak while it holds.
+const SafePaceResult = ({ editor }: { editor: HomeLimitsEditorView }) => {
+  const copy = composeSafePaceSummaryCopy(editor.monthPeak.hold);
+  return (
+    <div class="settings-result" role="group" aria-labelledby="home-limits-reaction-label">
+      <span class="settings-result__label" id="home-limits-reaction-label">{copy.label}</span>
+      <strong class="settings-result__value" id="home-limits-reaction">{editor.reactionKw}</strong>
+      <span class="settings-result__note" id="home-limits-reaction-note">{copy.note}</span>
+    </div>
+  );
 };
 
 const CapFields = ({ editor }: { editor: HomeLimitsEditorView }) => (
@@ -136,11 +149,7 @@ const CapFields = ({ editor }: { editor: HomeLimitsEditorView }) => (
         <small class="field__hint field__hint--alert" id="home-limits-margin-alert">{editor.marginError}</small>
       )}
     </label>
-    <div class="settings-result" role="group" aria-labelledby="home-limits-reaction-label">
-      <span class="settings-result__label" id="home-limits-reaction-label">{HOME_LIMITS_REACTION_LABEL}</span>
-      <strong class="settings-result__value" id="home-limits-reaction">{editor.reactionKw}</strong>
-      <span class="settings-result__note">{HOME_LIMITS_REACTION_NOTE}</span>
-    </div>
+    <SafePaceResult editor={editor} />
     {editor.periodMinutes === 15 && (
       <div class="settings-result" role="group" aria-labelledby="home-limits-monthly-peak-label">
         <span class="settings-result__label" id="home-limits-monthly-peak-label">
@@ -152,6 +161,9 @@ const CapFields = ({ editor }: { editor: HomeLimitsEditorView }) => (
         <span class="settings-result__note">
           Tracked estimate; your grid operator may apply a minimum or combine several monthly peaks.
         </span>
+        {editor.monthPeak.stateLine !== null && (
+          <span class="settings-result__note" id="home-limits-monthly-peak-state">{editor.monthPeak.stateLine}</span>
+        )}
       </div>
     )}
     {editor.periodMinutes === 15 && (
