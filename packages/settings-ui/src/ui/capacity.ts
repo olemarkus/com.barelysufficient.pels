@@ -516,6 +516,23 @@ const writeCapacityCommand = async (
   else await writeSimulationSetting(current, resolved.dryRun);
 };
 
+// Started writes have settled, and each one that landed is already in the
+// settings cache. Reconcile the switches from it, as a load would, before the
+// next queued save can start; keep the typed fields available for correction.
+const reconcileAfterFailedCapacitySave = async (): Promise<void> => {
+  const after = await readCurrentCapacitySettings().catch(() => null);
+  if (after !== null) {
+    const effective = resolveCapacityScalars(after, lastGoodCapacityScalars);
+    commitCapacityScalars(effective);
+    syncPowerLimitSwitches(effective);
+    syncDryRunBannerVisibility();
+    syncSettingsHubChips();
+  }
+  // The Simulation page hides the banner, so its switch is the only thing
+  // there that says whether PELS is simulating: it goes back to the value in force.
+  syncSimulationModeControl(lastGoodCapacityScalars.dryRun);
+};
+
 const saveCapacitySettingsCommand = async (
   command: CapacitySettingsCommand,
   successMessage = 'Capacity settings saved.',
@@ -533,17 +550,7 @@ const saveCapacitySettingsCommand = async (
     // own change goes through the guarded seam (`savePowerSourceSetting`).
     await writeCapacityCommand(command, current, stored, resolved);
   } catch (caught) {
-    // Started writes have settled, and each one that landed is already in the
-    // settings cache. Reconcile the switches from it, as a load would, before the
-    // next queued save can start; keep the typed fields available for correction.
-    const after = await readCurrentCapacitySettings().catch(() => null);
-    if (after !== null) {
-      const effective = resolveCapacityScalars(after, lastGoodCapacityScalars);
-      commitCapacityScalars(effective);
-      syncPowerLimitSwitches(effective);
-      syncDryRunBannerVisibility();
-      syncSettingsHubChips();
-    }
+    await reconcileAfterFailedCapacitySave();
     throw caught;
   } finally {
     // A load that started while these writes were landing read a store this save

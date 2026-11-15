@@ -16,8 +16,17 @@ test('hub chips: simulation On shows while active and clears when turned off', a
   // The prices feed is healthy in the fixture — exception chip stays hidden.
   await expect(page.locator('#settings-nav-chip-prices')).toBeHidden();
 
-  // Turning simulation off (the banner's inline action) clears the chip.
-  await page.locator('#simulation-disable-button').click();
+  // Turning simulation off on its own page clears the chip on the hub.
+  const simCard = page.locator('[data-settings-target="simulation"]');
+  await simCard.click();
+  await page.locator('#settings-simulation-mode').click();
+  await expect.poll(() => page.evaluate(() => (
+    (window as unknown as { Homey: { __stub: { getSetting: (k: string) => unknown } } })
+      .Homey.__stub.getSetting('capacity_dry_run')
+  ))).toBe(false);
+  await page.goBack();
+  // The hub is showing again, so a hidden chip is the chip's own state.
+  await expect(simCard).toBeVisible();
   await expect(simChip).toBeHidden();
 });
 
