@@ -561,3 +561,46 @@ test('the simulation banner on unfinished setup also offers Simulation mode, for
   await expect(page.locator('.setup-journey:visible')).toBeVisible();
   await expect(exit).toBeHidden();
 });
+
+test('a fresh install goes from the Overview setup card to Start managing in one visit', async ({ page }) => {
+  await seed(page, 'NO', false, false);
+  await page.goto('/');
+  const setupCard = page.locator('#overview-setup-path');
+  await expect(setupCard).toContainText('Simulation mode is on');
+  // The setup card speaks for simulation while setup is unfinished.
+  await expect(page.locator('#dry-run-banner')).toBeHidden();
+
+  await setupCard.getByText('Devices', { exact: true }).click();
+  await expect(page).toHaveURL(/setup=devices/);
+  await choosePump(page);
+  await page.locator('#devices-panel .setup-journey').getByRole('button', { name: 'Continue', exact: true }).click();
+
+  await expect(page).toHaveURL(/setup=hardCap/);
+  await expect(page.locator('#dry-run-banner')).toBeHidden();
+  await page.locator('#settings-capacity-keep').click();
+  await expect.poll(() => stored(page, 'capacity_limit_kw')).toBe(10);
+  const limitsHeader = page.locator('#limits-panel .setup-journey');
+  await expect(limitsHeader.getByRole('button', { name: /^(Continue|Review setup)$/ })).toBeEnabled();
+  await limitsHeader.getByRole('button', { name: /^(Continue|Review setup)$/ }).click();
+
+  // Optional pages may follow; each moves on without a choice.
+  for (let step = 0; step < 3 && !/setup=review/.test(page.url()); step += 1) {
+    await page.locator('[data-setup-journey-panel] .setup-journey')
+      .getByRole('button', { name: /^(Continue|Review setup)$/ }).click();
+  }
+  await expect(page).toHaveURL(/setup=review/);
+  const review = page.locator('#setup-review-root');
+  await expect(review).toContainText('Simulation mode is on');
+  await expect(review).toContainText('Pool pump');
+  await expect(review).toContainText('10 kW hard cap');
+  expect(await stored(page, 'capacity_dry_run')).toBe(true);
+
+  await review.getByText('Start managing', { exact: true }).click();
+  await expect(page.locator('#overview-panel')).toBeVisible();
+  expect(await stored(page, 'capacity_dry_run')).toBe(false);
+  await expect(page.locator('#dry-run-banner')).toBeHidden();
+  await expect(setupCard).toBeHidden();
+  await page.getByRole('tab', { name: 'Settings', exact: true }).click();
+  await expect(page.locator('#settings-nav-chip-simulation')).toBeHidden();
+  await expect(page.locator('[data-settings-target="simulation"]')).toBeVisible();
+});

@@ -2850,6 +2850,32 @@ describe('Dry run mode', () => {
     expect(app.capacityDryRun).toBe(true);
   });
 
+  it('writes the shed it planned in simulation once simulation is switched off', async () => {
+    const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
+    await dev1.setCapabilityValue('measure_power', 2000);
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+    setManagedControllableDevices({ 'dev-1': true });
+
+    const app = createApp();
+    await app.onInit();
+    steerCapacityPace(app, 2);
+    await app['powerSamplePipeline'].recordPowerSample(4000);
+
+    const simulated = getLatestPlanSnapshotForTests().devices.find((d: { id: string }) => d.id === 'dev-1');
+    expect(simulated?.plannedState).toBe('shed');
+    expect(await dev1.getCapabilityValue('onoff')).toBe(true);
+
+    mockHomeyInstance.settings.set('capacity_dry_run', false);
+    await flushPromises();
+
+    expect(app.capacityDryRun).toBe(false);
+    expect(await dev1.getCapabilityValue('onoff')).toBe(false);
+  });
+
   it('does not shed a device in dry run mode', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater A', ['onoff', 'measure_power']);
     await dev1.setCapabilityValue('measure_power', 2000);
