@@ -91,18 +91,27 @@ describe('formatEnergyUsedOfBudgetParts', () => {
 
 describe('formatProjectedEnergySubline', () => {
   it('returns null when no projection is available', () => {
-    expect(formatProjectedEnergySubline(null)).toBeNull();
+    expect(formatProjectedEnergySubline(null, null)).toBeNull();
   });
 
   it('renders "projected X.XX kWh" with two-decimal precision', () => {
-    expect(formatProjectedEnergySubline(2.347)).toBe('projected 2.35 kWh');
-    expect(formatProjectedEnergySubline(5)).toBe('projected 5.00 kWh');
-    expect(formatProjectedEnergySubline(0)).toBe('projected 0.00 kWh');
+    expect(formatProjectedEnergySubline(2.347, null)).toBe('projected 2.35 kWh');
+    expect(formatProjectedEnergySubline(5, null)).toBe('projected 5.00 kWh');
+    expect(formatProjectedEnergySubline(0, null)).toBe('projected 0.00 kWh');
   });
 
   it('floors a negative projection at zero (net-export hour) — never prints a minus', () => {
-    expect(formatProjectedEnergySubline(-1.42)).toBe('projected 0.00 kWh');
-    expect(formatProjectedEnergySubline(-0.01)).toBe('projected 0.00 kWh');
+    expect(formatProjectedEnergySubline(-1.42, null)).toBe('projected 0.00 kWh');
+    expect(formatProjectedEnergySubline(-0.01, null)).toBe('projected 0.00 kWh');
+  });
+
+  it('in simulation, gives the period as live control would have it, which the projection follows', () => {
+    expect(formatProjectedEnergySubline(2.9, 2.4)).toBe('With control on: about 2.40 kWh, projected 2.90 kWh');
+    expect(formatProjectedEnergySubline(null, 2.4)).toBe('With control on: about 2.40 kWh');
+    expect(formatEnergyMeterMarkerLabels('projected_with_control_on', 2.9, 60)).toEqual({
+      short: 'Projected with control on',
+      aria: 'Projected this hour with control on 2.9 kWh',
+    });
   });
 });
 

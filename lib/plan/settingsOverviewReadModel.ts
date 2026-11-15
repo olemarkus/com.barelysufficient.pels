@@ -151,6 +151,7 @@ function buildSettingsOverviewMetaReadModel(meta: DevicePlan['meta']): SettingsU
     hourControlledKWh: normalizedMeta.hourControlledKWh,
     hourUncontrolledKWh: normalizedMeta.hourUncontrolledKWh,
     lastPowerUpdateMs: normalizedMeta.lastPowerUpdateMs,
+    ...(normalizedMeta.withControlOn === undefined ? {} : { withControlOn: normalizedMeta.withControlOn }),
     ...resolveWireMeasuredFields(normalizedMeta),
   };
 }

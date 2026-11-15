@@ -51,6 +51,11 @@ export type PlanMetaCycleFacts = {
   unrelievedPhase: PhaseName | null;
   /** The worst phase exporting past its target this cycle. */
   exportPhase: PhaseName | null;
+  /**
+   * In Simulation mode, what this plan's held decisions would keep off the
+   * reading, kW (`simulatedPeriodEnergy.ts`); `null` under live control.
+   */
+  simulatedReliefKw: number | null;
 };
 
 /** Nullable scalar fields belong to the published meta and logs, never the planner's policy. */
@@ -116,6 +121,22 @@ export function buildPlanMeta(facts: PlanMetaCycleFacts, power: MeasuredPower): 
       power, facts.reading, facts.planDevices, facts.capacityLimitKw, facts.context.capacity, facts.unrelievedPhase,
     ),
     exportPhase: facts.exportPhase,
+    ...resolveWithControlOn(facts),
+  };
+}
+
+/**
+ * In Simulation mode, the period as live control would have it: the energy
+ * the planner paces from (the context's) and the reading less what the plan
+ * holds. Absent under live control, where the meter already shows both.
+ */
+function resolveWithControlOn(facts: PlanMetaCycleFacts): Pick<DevicePlan['meta'], 'withControlOn'> {
+  if (facts.simulatedReliefKw === null) return {};
+  return {
+    withControlOn: {
+      usedKWh: facts.context.usedKWh,
+      drawKw: facts.reading.totalKw - facts.simulatedReliefKw,
+    },
   };
 }
 

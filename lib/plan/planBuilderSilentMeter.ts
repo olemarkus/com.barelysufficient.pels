@@ -174,6 +174,7 @@ export class SilentMeterPlanBuilder {
         hourlyBudgetExhausted: this.state.capacityPeriodSpentFor(context),
         unrelievedPhase: null,
         exportPhase: null,
+        simulatedReliefKw: null,
       }),
       devices: decidedDevices,
       inverterDecisions: this.deps.inverterCurtailment.releaseAll(),

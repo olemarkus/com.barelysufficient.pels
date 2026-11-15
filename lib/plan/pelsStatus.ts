@@ -211,9 +211,11 @@ function resolveProjectedOverHardCap(meta: PlanMeta): boolean | undefined {
     || typeof minutesRemaining !== 'number' || typeof hardCapLimitKw !== 'number') {
     return false;
   }
+  // In Simulation mode the trajectory is the one live control would be on.
+  const basis = meta.withControlOn ?? { usedKWh, drawKw: totalKw };
   const projectedKWh = computeProjectedPeriodEnergyKWh(
-    usedKWh,
-    totalKw,
+    basis.usedKWh,
+    basis.drawKw,
     minutesRemaining,
   );
   return isProjectedOverHardCap({

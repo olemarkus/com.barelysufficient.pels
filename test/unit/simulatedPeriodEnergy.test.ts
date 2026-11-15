@@ -66,6 +66,20 @@ describe('SimulatedPeriodEnergy', () => {
     expect(ledger.planningView(measured).buckets?.[key(HOUR_12)]).toBe(3);
   });
 
+  it('takes a budget-exempt device\'s relief off the exempt energy too, so the budget counts it once', () => {
+    const ledger = new SimulatedPeriodEnergy();
+    ledger.hold([buildPlanDevice({
+      id: 'exempt', plannedState: 'shed', plannedShedTargetKind: 'binary_off', currentDrawKw: 2, budgetExempt: true,
+    })], tracker(HOUR_12, {}));
+    ledger.accrue(tracker(HOUR_12 + 30 * MIN, {}));
+    const view = ledger.planningView({
+      ...tracker(HOUR_12 + 30 * MIN, { [key(HOUR_12)]: 3 }),
+      exemptBuckets: { [key(HOUR_12)]: 1.5 },
+    } as PowerTrackerState);
+    expect(view.buckets?.[key(HOUR_12)]).toBeCloseTo(2);
+    expect(view.exemptBuckets?.[key(HOUR_12)]).toBeCloseTo(0.5);
+  });
+
   it('paces from the measured tracker again once cleared', () => {
     const ledger = new SimulatedPeriodEnergy();
     ledger.hold([heldOff(2)], tracker(HOUR_12, {}));

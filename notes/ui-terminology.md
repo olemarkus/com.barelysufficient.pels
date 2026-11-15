@@ -81,6 +81,18 @@ The overview hero uses a specific vocabulary to keep the power/energy distinctio
 
 Projection formula: `projectedKWh = usedKWh + (currentKw × minutesRemaining / 60)`
 
+In **Simulation mode** nothing is limited, so the measured energy runs ahead of
+the period live control would have had. **Energy used this hour** stays the
+measured figure, and the line under it gives the period with control on, which
+the projection, its marker, the `Above hard cap` verdict and the status chip
+follow (`withControlOn` on the plan meta; `formatProjectedEnergySubline` in
+`planHeroSummary.ts`):
+
+| Concept | Text |
+|---|---|
+| Line under the energy used, in simulation | `With control on: about 2.40 kWh, projected 2.90 kWh` |
+| Projection marker legend, in simulation | `Projected with control on` |
+
 ### Time anchors — every projected/budget figure names its window
 
 The same words (`Projected`, `Budget`) describe an **hour** figure on the

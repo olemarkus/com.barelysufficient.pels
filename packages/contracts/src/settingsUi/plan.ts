@@ -71,6 +71,12 @@ export type SettingsUiPlanMetaSnapshotBase = {
    * fact instead, which moves back earlier, as soon as the reading is suspect.
    */
   lastPowerUpdateMs: number;
+  /**
+   * In Simulation mode, the capacity period as live control would have it:
+   * energy so far and the house draw, less what PELS would be keeping off the
+   * meter. `usedKWh` stays measured. Absent under live control.
+   */
+  withControlOn?: { usedKWh: number; drawKw: number };
 };
 
 /**
