@@ -569,6 +569,38 @@ describe('Redesign plan UI', () => {
       expect(labels).toContain('Projected this hour with control on 4.3 kWh');
     });
 
+    it('in simulation, names the battery that would hold the limit, under the simulation chip', async () => {
+      // Measured 4.5 kW over a 3 kW safe pace; the plan would hold it with the
+      // battery, so no device would be limited and nothing alarms.
+      vi.resetModules();
+      setupPlanDom();
+      const { state } = await import('../src/ui/state.ts');
+      state.dryRun = true;
+      const { renderPlan } = await import('../src/ui/plan.ts');
+      const plan = normalizePlanSnapshot({
+        meta: {
+          ...buildPlanMeta({
+            totalKw: 4.5, softLimitKw: 3, hardCapLimitKw: 5, controlledKw: 2, uncontrolledKw: 2.5,
+            usedKWh: 1.2, hourBudgetKWh: 4.8, minutesRemaining: 30}),
+          withControlOn: { usedKWh: 1.0, drawKw: 3 },
+        },
+        devices: [
+          { id: 'heater', name: 'Heater', currentState: 'on', plannedState: 'keep' },
+          { id: 'battery', name: 'Sessy battery', currentState: 'on', plannedState: 'keep' },
+        ],
+      }) as { devices: Array<Record<string, unknown>> };
+      // The device fixture carries no battery facts; the producer's are set here.
+      plan.devices[1]!.homeBattery = {
+        activity: 'own_mode', power: { kind: 'absent' }, holdsLimit: false, wouldSupplyKw: 1.5,
+      };
+      renderPlan(plan as Parameters<typeof renderPlan>[0]);
+      expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
+        .toBe('Sessy battery would supply 1.5 kW to hold your limit.');
+      expect(document.querySelector('.plan-hero')?.textContent).toContain('Simulation mode');
+      expect(document.querySelector('.plan-hero')?.textContent).not.toContain('Above safe pace');
+      expect(document.querySelector('.plan-hero .plan-chip--alert')).toBeNull();
+    });
+
     it('keeps the over-cap alarm when a zero-allocation budget hour hides the energy section', async () => {
       // Codex post-merge review: the projection tone is gated on the energy
       // bar existing (`hourBudgetKWh > 0`), but a zero-weighted daily-budget

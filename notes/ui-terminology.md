@@ -969,7 +969,9 @@ neither), never `Limited` or `Selling to grid`; one PELS would leave alone reads
 `Own mode`, as under live control. Only the reason line names the hold,
 hypothetically, with the `(simulation)` tag (source:
 `BATTERY_SIMULATED_REASON_LINES` in `lib/plan/batteryStatusReadModel.ts`), and
-the hero names the battery hypothetically, never as supplying:
+the hero names the battery hypothetically, never as supplying, under the
+`Simulation mode` chip rather than `Above safe pace` (the measured draw over
+the safe pace is what the battery would cover):
 
 | Hold | Simulation reason |
 |---|---|
