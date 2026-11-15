@@ -183,6 +183,8 @@ export const PER_DEVICE_BATTERY_CLAIM_KEY_PREFIX = 'battery_control_claim.';
  * by the one-shot import into the userdata store (`lib/device/learnedPowerPeakStore.ts`).
  */
 export const DEVICE_POWER_PEAKS = 'device_power_peaks';
+// Runtime-owned week of hard-cap incidents (`lib/power/hardCapShortfallLog.ts`), Main home only.
+export const HARD_CAP_SHORTFALLS = 'hard_cap_shortfalls';
 export const DEFERRED_OBJECTIVE_PLAN_HISTORY_V4_SETTING = 'deferred_objective_plan_history';
 export const DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING = 'deferred_objective_plan_history_v5';
 export const DEFERRED_OBJECTIVE_PLAN_HISTORY_INITIALIZED = 'deferred_objective_plan_history_v5_initialized';

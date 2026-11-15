@@ -370,6 +370,7 @@ const getSettingsUiPower = (host: PelsHost): SettingsUiPowerPayload => {
       host.capacityGuard.phaseReadings.meterCapabilityIds(),
     ),
     phasePeaks: host.capacityGuard.phasePeaks.recent(Date.now()),
+    hardCapShortfalls: host.capacityGuard.shortfallLog.recent(Date.now()),
     capacityScalars: { state: 'resolved', scalars: host.getCapacityScalars() },
     hardCapConfiguration: host.readHardCapConfiguration(),
     capacityPeak: host.getCurrentMonthCapacityPeak(),

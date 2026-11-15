@@ -2,6 +2,7 @@ import { PhaseReadingTracker } from './phaseReading';
 import { PhaseReadFlight } from './phaseReadFlight';
 import { PhaseFootprintLearner } from '../phaseFootprint/phaseFootprintLearner';
 import { PhasePeakLog } from './phasePeakLog';
+import { HardCapShortfallLog } from './hardCapShortfallLog';
 import { randomUUID } from 'node:crypto';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { HomeId } from '../utils/settingsKeys';
@@ -78,6 +79,9 @@ export default class CapacityGuard {
 
   /** Episodes of a phase past its share of the fuse, for the Usage page. */
   public readonly phasePeaks = new PhasePeakLog();
+
+  /** The week's incidents, for telling a cap the home cannot meet from an occasional one. */
+  public readonly shortfallLog = new HardCapShortfallLog();
 
   private static readonly SHORTFALL_CLEAR_MARGIN_KW = 0.2;
   private static readonly SHORTFALL_CLEAR_SUSTAIN_MS = 60000; // 60 seconds of sustained positive headroom
@@ -250,6 +254,7 @@ export default class CapacityGuard {
     });
     this.inShortfall = true;
     this.shortfallClearStartTime = null;
+    this.shortfallLog.record(this.incidentStartMs, capacityStateSummary.uncontrolledPowerW);
     await this.onShortfall(totalKw - shortfallThresholdKw);
   }
 

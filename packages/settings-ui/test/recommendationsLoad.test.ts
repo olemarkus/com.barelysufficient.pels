@@ -64,6 +64,13 @@ vi.mock('../src/ui/setupPricesLoad.ts', () => ({
   loadSetupPrices: () => Promise.resolve(),
 }));
 
+// The hard-cap read is the power payload's; it has its own spec.
+vi.mock('../src/ui/hardCapReachRecommendation.ts', () => ({
+  loadHardCapReachFacts: () => Promise.resolve(),
+  readHardCapReachFacts: () => null,
+  resolveHardCapReachRecommendations: () => [],
+}));
+
 const loadAfterSetupFacts = vi.fn(() => Promise.resolve());
 vi.mock('../src/ui/afterSetupFacts.ts', () => ({
   loadAfterSetupFacts: () => loadAfterSetupFacts(),
