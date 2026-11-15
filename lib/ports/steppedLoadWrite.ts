@@ -21,16 +21,23 @@ export class SteppedLoadTransportError extends Error {
   }
 }
 
+/** Take Homey's control of a device's watt target: `target_power_mode = homey`, and no watt target. */
+export type TargetPowerControlClaimWrite = { deviceId: string };
+
 /**
- * Whether the rung was issued, and over which channel, or needs an ordinary
- * binary pause before retrying. Acceptance only: the device's reported step
- * reaches the executor through the observer.
+ * `claimed`: Homey accepted the claim. `refused`: the device's app rejected it.
+ * `not_sent`: PELS does not step the device through its watt target.
+ */
+export type TargetPowerControlClaimResult =
+  | { kind: 'claimed' }
+  | { kind: 'refused'; errorMessage: string }
+  | { kind: 'not_sent' };
+
+/**
+ * Whether the rung was issued, and over which channel. Acceptance only: the
+ * device's reported step reaches the executor through the observer.
  */
 export type SteppedLoadStepRequestResult =
   | { requested: false }
-  /** The step is not issued until its binary pause has been observed. */
-  | { requested: false; preparation: 'binary_off' }
-  /** A preparation write went out instead of the step, which waits for the next decision. */
-  | { requested: false; preparation: 'issued' }
   | { requested: true; acknowledged: true; transport: SteppedLoadStepRequestTransport }
   | { requested: true; acknowledged: false; transport: 'flow'; reasonCode: 'flow_trigger_timeout' };

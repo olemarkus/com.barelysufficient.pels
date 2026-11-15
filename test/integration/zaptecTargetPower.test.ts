@@ -2,49 +2,35 @@ import Homey from 'homey';
 import { getLogger } from '../../lib/logging/logger';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
-import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices, onObservedControlState } from '../helpers/deviceTransportHarness';
+import { createTestDeviceTransport, initWithLiveFeed, seedTransportDevices } from '../helpers/deviceTransportHarness';
 import { emitCapability, emitDeviceUpdate, settleLiveFeed } from '../helpers/liveFeedSocketHarness';
 import {
   buildZaptecCurrentOnlyDevice, buildZaptecSenseDevice, buildZaptecTargetPowerDevice,
 } from '../helpers/zaptecDeviceFixture';
 import { capabilityReadings } from '../helpers/homeyDevicePayload';
 import { mockHomeyInstance } from '../mocks/homey';
-import { ownWriteTransactionId, pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
+import { pelsCapabilityWrite } from '../helpers/ownCapabilityWrites';
 import { DeviceConfigurationStore } from '../../lib/device/deviceConfiguration';
+import { HomeyHttpStatusError } from '../../lib/utils/homeyHttpStatusError';
 import { DeviceTargetPowerReachabilityOwner } from '../../lib/device/deviceTargetPowerReachabilityOwner';
 
 const logger = (): Logger => ({ log: vi.fn(), error: vi.fn(), structuredLog: getLogger('test/zaptec') });
 
 beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); });
 
-/** Establish a native claim through fresh stopped proof and independent target readback. */
+/** A later full read of the charger holding `watts` under Homey's control. */
 async function settleNativeTarget(
   transport: ReturnType<typeof createTestDeviceTransport>, device: HomeyDeviceLike, watts: number,
 ) {
-  const read = (overrides: HomeyDeviceLike['capabilitiesObj']) => ({
+  vi.setSystemTime(Date.now() + 2000);
+  const [confirmed] = await seedTransportDevices(transport, [{
     ...device,
-    capabilitiesObj: Object.fromEntries(Object.entries({ ...device.capabilitiesObj, ...overrides })
-      .map(([id, capability]) => [id, { ...capability, lastUpdated: new Date().toISOString() }])),
-  });
-  vi.setSystemTime(Date.now() + 1000);
-  const stopped = read({
-    evcharger_charging: { ...device.capabilitiesObj?.evcharger_charging, value: false },
-    measure_power: { ...device.capabilitiesObj?.measure_power, value: 0 },
-    target_power_mode: { ...device.capabilitiesObj?.target_power_mode, value: 'homey' },
-  });
-  const [preparing] = await seedTransportDevices(transport, [stopped]);
-  const profile = preparing.steppedLoadProfile;
-  if (!profile) throw new Error('Expected a native watt ladder');
-  const put = vi.fn().mockResolvedValue(undefined);
-  setRestClient({ get: async () => stopped, put });
-  await transport.requestSteppedLoadStep({
-    deviceId: device.id, profile, desiredStepId: `${watts}w`, planningPowerW: watts, planningCurrentA: 0,
-  });
-  vi.setSystemTime(Date.now() + 1000);
-  const [confirmed] = await seedTransportDevices(transport, [read({
-    target_power: { ...device.capabilitiesObj?.target_power, value: watts },
-    target_power_mode: { ...device.capabilitiesObj?.target_power_mode, value: 'homey' },
-  })]);
+    capabilitiesObj: Object.fromEntries(Object.entries({
+      ...device.capabilitiesObj,
+      target_power: { ...device.capabilitiesObj?.target_power, value: watts },
+      target_power_mode: { ...device.capabilitiesObj?.target_power_mode, value: 'homey' },
+    }).map(([id, capability]) => [id, { ...capability, lastUpdated: new Date().toISOString() }])),
+  }]);
   return confirmed;
 }
 
@@ -219,14 +205,12 @@ describe('Zaptec native target power', () => {
     await transport.requestSteppedLoadStep({
       deviceId: device.id, profile, desiredStepId: '6440w', planningPowerW: 6440, planningCurrentA: 0,
     });
+    // A step is the watt target alone: Homey's control of it is claimed on its own.
     expect(put.mock.calls).toEqual([
       [`manager/devices/device/${device.id}/capability/target_power`, pelsCapabilityWrite(6440)],
-      [`manager/devices/device/${device.id}/capability/target_power_mode`, pelsCapabilityWrite('homey')],
     ]);
-    await emitCapability(device.id, 'target_power_mode', 'homey');
     await emitCapability(device.id, 'available_installation_current', 16);
     expect(transport.getSnapshotByDeviceId(device.id)?.steppedLoadProfile).toEqual(profile);
-    expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBeUndefined();
   });
 
   it.each([
@@ -256,8 +240,7 @@ describe('Zaptec native target power', () => {
     expect(parsed.targetPowerConfig?.preset).toBeUndefined();
   });
 
-  it('stores the desired watt limit before claiming control over a saved higher target', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
+  it('writes a step as the watt target alone, and reads the held target once Homey holds it', async () => {
     const base = buildZaptecTargetPowerDevice();
     const device = buildZaptecTargetPowerDevice({
       capabilitiesObj: { target_power: { ...base.capabilitiesObj?.target_power, value: 11040 } },
@@ -267,54 +250,23 @@ describe('Zaptec native target power', () => {
     const [parsed] = await seedTransportDevices(transport, [device]);
     const profile = parsed.steppedLoadProfile;
     if (!profile) throw new Error('Expected native target-power control');
+    // The device runs its own power logic: its saved target is no step.
+    expect(parsed.reportedStepId).toBeUndefined();
     const put = vi.fn().mockResolvedValue(undefined);
     setRestClient({ get: vi.fn(), put });
 
-    vi.setSystemTime(Date.now() + 1000);
     await expect(transport.requestSteppedLoadStep({
       deviceId: device.id, profile, desiredStepId: '2530w', planningPowerW: 2530, planningCurrentA: 0,
     })).resolves.toEqual({ requested: true, acknowledged: true, transport: 'native_capability' });
-
     expect(put.mock.calls).toEqual([
       [`manager/devices/device/${device.id}/capability/target_power`, pelsCapabilityWrite(2530)],
-      [`manager/devices/device/${device.id}/capability/target_power_mode`, pelsCapabilityWrite('homey')],
     ]);
-    // Homey may report the newer mode alongside the target held before the
-    // successful write, before either capability's realtime echo arrives.
-    const claimedMode = buildZaptecTargetPowerDevice();
-    const [staleRead] = await seedTransportDevices(transport, [buildZaptecTargetPowerDevice({
-      capabilitiesObj: {
-        target_power: { ...device.capabilitiesObj?.target_power, value: 11040 },
-        target_power_mode: { ...claimedMode.capabilitiesObj?.target_power_mode, value: 'homey' },
-      },
-    })]);
-    expect(staleRead.reportedStepId).toBeUndefined();
-    await emitCapability(device.id, 'target_power', 2530, ownWriteTransactionId(put, device.id, 'target_power'));
-    await emitCapability(
-      device.id, 'target_power_mode', 'homey', ownWriteTransactionId(put, device.id, 'target_power_mode'),
-    );
-    // The watt echo is PELS's own write, recognised by its transaction id. A mode echo cannot
-    // resurrect the superseded 11,040 W target as a delivered step.
-    expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBeUndefined();
-    vi.setSystemTime(Date.now() + 1000);
-    const delivered = buildZaptecTargetPowerDevice();
-    const [observed] = await seedTransportDevices(transport, [buildZaptecTargetPowerDevice({
-      capabilitiesObj: {
-        target_power: { ...delivered.capabilitiesObj?.target_power, value: 2530 },
-        target_power_mode: { ...delivered.capabilitiesObj?.target_power_mode, value: 'homey' },
-      },
-    })]);
-    expect(observed.reportedStepId).toBe('2530w');
-    // A malformed event cannot revoke the last accepted mode observation.
-    await emitCapability(device.id, 'target_power_mode', 'external');
-    put.mockClear();
-    setRestClient({ get: vi.fn(), put });
-    await transport.requestSteppedLoadStep({
-      deviceId: device.id, profile, desiredStepId: '2760w', planningPowerW: 2760, planningCurrentA: 0,
-    });
-    expect(put.mock.calls).toEqual([
-      [`manager/devices/device/${device.id}/capability/target_power`, pelsCapabilityWrite(2760)],
-    ]);
+
+    // Under Homey's control the target the device holds is the step it runs.
+    await emitCapability(device.id, 'target_power_mode', 'homey');
+    expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBe('11040w');
+    await emitCapability(device.id, 'target_power', 2530);
+    expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBe('2530w');
   });
 
   describe('on an installation shared with another charger', () => {
@@ -388,8 +340,7 @@ describe('Zaptec native target power', () => {
       const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
       await seedTransportDevices(transport, [claimed, onInstallation('zaptec-second', 'zaptec-installation')]);
       const parsed = transport.getSnapshotByDeviceId(ZAPTEC_ID);
-      expect(parsed).toMatchObject({ nativeWriteCapabilities: ['target_power'] });
-      expect(parsed?.reportedStepId).toBeUndefined();
+      expect(parsed).toMatchObject({ nativeWriteCapabilities: ['target_power'], reportedStepId: '2530w' });
       const profile = parsed?.steppedLoadProfile;
       if (!profile) throw new Error('Expected native target-power control');
       const put = vi.fn().mockResolvedValue(undefined);
@@ -455,7 +406,107 @@ describe('Zaptec native target power', () => {
     });
   });
 
-  it('does not claim Homey control when the requested watt limit fails', async () => {
+  describe("Homey's control of the watt target", () => {
+    const pathFor = (capability: string) => `manager/devices/device/zaptec-target-power/capability/${capability}`;
+    const withMode = (value: unknown, watts = 2530): HomeyDeviceLike => {
+      const base = buildZaptecTargetPowerDevice();
+      return buildZaptecTargetPowerDevice({ capabilitiesObj: {
+        target_power: { ...base.capabilitiesObj?.target_power, value: watts },
+        target_power_mode: { ...base.capabilitiesObj?.target_power_mode, value },
+      } });
+    };
+    const start = async (device: HomeyDeviceLike) => {
+      const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
+      await initWithLiveFeed(transport);
+      const [parsed] = await seedTransportDevices(transport, [device]);
+      return { transport, parsed };
+    };
+
+    it.each(['device', 'self_use', null])('needs a claim while the mode reads %s', async (mode) => {
+      const { transport } = await start(withMode(mode));
+      expect(transport.getTargetPowerControlClaim('zaptec-target-power')).toBe('needed');
+    });
+
+    it('needs none once the mode reads homey', async () => {
+      const { transport } = await start(withMode('homey'));
+      expect(transport.getTargetPowerControlClaim('zaptec-target-power')).toBeUndefined();
+    });
+
+    it('claims with the mode alone, and never writes a watt target or another mode', async () => {
+      const { transport } = await start(withMode('device'));
+      const put = vi.fn().mockResolvedValue(undefined);
+      setRestClient({ get: vi.fn(), put });
+
+      await expect(transport.requestTargetPowerControlClaim({ deviceId: 'zaptec-target-power' }))
+        .resolves.toEqual({ kind: 'claimed' });
+      expect(put.mock.calls).toEqual([[pathFor('target_power_mode'), pelsCapabilityWrite('homey')]]);
+      // The accepted claim is landing: it is not planned again before the device reports.
+      expect(transport.getTargetPowerControlClaim('zaptec-target-power')).toBeUndefined();
+
+      await emitCapability('zaptec-target-power', 'target_power_mode', 'homey');
+      expect(transport.getTargetPowerControlClaim('zaptec-target-power')).toBeUndefined();
+      expect(transport.getSnapshotByDeviceId('zaptec-target-power')?.reportedStepId).toBe('2530w');
+    });
+
+    it('plans a refused device through its switch alone, and claims again after 15 minutes', async () => {
+      const device = withMode('device');
+      const { transport, parsed } = await start(device);
+      expect(parsed).toMatchObject({ controlModel: 'stepped_load', nativeWriteCapabilities: ['target_power'] });
+      setRestClient({ get: vi.fn(), put: vi.fn().mockRejectedValue(new HomeyHttpStatusError(400, 'Not supported')) });
+
+      await expect(transport.requestTargetPowerControlClaim({ deviceId: device.id }))
+        .resolves.toMatchObject({ kind: 'refused' });
+      expect(transport.getTargetPowerControlClaim(device.id)).toBe('refused');
+      const [refused] = await seedTransportDevices(transport, [device]);
+      expect(refused.steppedLoadProfile).toBeUndefined();
+      expect(refused.nativeWriteCapabilities).toBeUndefined();
+      expect(refused.binaryCapabilityId).toBe('evcharger_charging');
+
+      vi.setSystemTime(Date.now() + 15 * 60_000);
+      const [retried] = await seedTransportDevices(transport, [device]);
+      expect(retried.steppedLoadProfile).toBeDefined();
+      expect(transport.getTargetPowerControlClaim(device.id)).toBe('needed');
+    });
+
+    it('waits 30 minutes after a second refusal', async () => {
+      const device = withMode('device');
+      const { transport } = await start(device);
+      setRestClient({ get: vi.fn(), put: vi.fn().mockRejectedValue(new HomeyHttpStatusError(400, 'Not supported')) });
+      await transport.requestTargetPowerControlClaim({ deviceId: device.id });
+      vi.setSystemTime(Date.now() + 15 * 60_000);
+      await seedTransportDevices(transport, [device]);
+      expect(transport.getTargetPowerControlClaim(device.id)).toBe('needed');
+      setRestClient({ get: vi.fn(), put: vi.fn().mockRejectedValue(new HomeyHttpStatusError(400, 'Not supported')) });
+      await transport.requestTargetPowerControlClaim({ deviceId: device.id });
+
+      vi.setSystemTime(Date.now() + 29 * 60_000);
+      expect(transport.getTargetPowerControlClaim(device.id)).toBe('refused');
+      vi.setSystemTime(Date.now() + 60_000);
+      await seedTransportDevices(transport, [device]);
+      expect(transport.getTargetPowerControlClaim(device.id)).toBe('needed');
+    });
+
+    it('reads a claim the device puts back as refused, instead of writing it every cycle', async () => {
+      const device = withMode('device');
+      const { transport } = await start(device);
+      setRestClient({ get: vi.fn(), put: vi.fn().mockResolvedValue(undefined) });
+      await transport.requestTargetPowerControlClaim({ deviceId: device.id });
+
+      vi.setSystemTime(Date.now() + 61_000);
+      expect(transport.getTargetPowerControlClaim(device.id)).toBe('refused');
+    });
+
+    it('does not take a failure that is no answer from the device for a refusal', async () => {
+      const device = withMode('device');
+      const { transport } = await start(device);
+      setRestClient({ get: vi.fn(), put: vi.fn().mockRejectedValue(new Error('Socket closed')) });
+
+      await expect(transport.requestTargetPowerControlClaim({ deviceId: device.id })).rejects.toThrow('Socket closed');
+      expect(transport.getTargetPowerControlClaim(device.id)).toBe('needed');
+    });
+  });
+
+  it('does not write the mode when the requested watt limit fails', async () => {
     const device = buildZaptecTargetPowerDevice();
     const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
     const [parsed] = await seedTransportDevices(transport, [device]);
@@ -472,65 +523,6 @@ describe('Zaptec native target power', () => {
     ]);
   });
 
-  it('retries a failed mode claim and reports the saved watts only while Homey owns control', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    const device = buildZaptecTargetPowerDevice();
-    const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
-    await initWithLiveFeed(transport);
-    const [parsed] = await seedTransportDevices(transport, [device]);
-    const profile = parsed.steppedLoadProfile;
-    if (!profile) throw new Error('Expected native target-power control');
-    const put = vi.fn(async (path: string) => {
-      if (path.endsWith('/target_power_mode')) throw new Error('Mode claim rejected');
-    });
-    setRestClient({ get: vi.fn(), put });
-
-    await expect(transport.requestSteppedLoadStep({
-      deviceId: device.id, profile, desiredStepId: '2530w', planningPowerW: 2530, planningCurrentA: 0,
-    })).rejects.toThrow();
-    expect(put.mock.calls.map(([path]) => path)).toEqual([
-      `manager/devices/device/${device.id}/capability/target_power`,
-      `manager/devices/device/${device.id}/capability/target_power_mode`,
-    ]);
-
-    vi.setSystemTime(Date.now() + 1000);
-    const later = buildZaptecTargetPowerDevice();
-    const [unclaimed] = await seedTransportDevices(transport, [buildZaptecTargetPowerDevice({
-      capabilitiesObj: { target_power: { ...later.capabilitiesObj?.target_power, value: 2530 } },
-    })]);
-    // Successful storage of a target cannot confirm the step when mode is still device.
-    expect(unclaimed.reportedStepId).toBeUndefined();
-
-    const retryPut = vi.fn().mockResolvedValue(undefined);
-    setRestClient({ get: vi.fn(), put: retryPut });
-    await transport.requestSteppedLoadStep({
-      deviceId: device.id, profile, desiredStepId: '2530w', planningPowerW: 2530, planningCurrentA: 0,
-    });
-    expect(retryPut.mock.calls).toEqual([
-      [`manager/devices/device/${device.id}/capability/target_power`, pelsCapabilityWrite(2530)],
-      [`manager/devices/device/${device.id}/capability/target_power_mode`, pelsCapabilityWrite('homey')],
-    ]);
-    await emitCapability(device.id, 'target_power_mode', 'homey');
-    expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBeUndefined();
-    vi.setSystemTime(Date.now() + 1000);
-    await emitCapability(device.id, 'target_power', 2530);
-    expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBe('2530w');
-
-    const controlChanged = vi.fn();
-    onObservedControlState(transport, controlChanged);
-    await transport.setCapability(device.id, 'target_power_mode', 'device');
-    await emitCapability(
-      device.id, 'target_power_mode', 'device', ownWriteTransactionId(retryPut, device.id, 'target_power_mode'),
-    );
-    expect(controlChanged).toHaveBeenCalledWith(expect.objectContaining({ pelsEcho: true }));
-    expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBeUndefined();
-
-    controlChanged.mockClear();
-    await emitCapability(device.id, 'target_power_mode', 'homey');
-    expect(controlChanged).toHaveBeenCalledWith(expect.objectContaining({ pelsEcho: false }));
-    expect(transport.getSnapshotByDeviceId(device.id)?.reportedStepId).toBe('2530w');
-  });
-
   it('retains an unchanged accepted watt observation when reasserting the same limit', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     const base = buildZaptecTargetPowerDevice();
@@ -543,7 +535,8 @@ describe('Zaptec native target power', () => {
     const transport = createTestDeviceTransport(mockHomeyInstance as unknown as Homey.App, logger(), {});
     await initWithLiveFeed(transport);
     const [cold] = await seedTransportDevices(transport, [device]);
-    expect(cold.reportedStepId).toBeUndefined();
+    // Under Homey's control the target the charger holds is the step it runs.
+    expect(cold.reportedStepId).toBe('2530w');
     const parsed = await settleNativeTarget(transport, device, 2530);
     const readAt = Date.now();
     const profile = parsed.steppedLoadProfile;
@@ -585,7 +578,8 @@ describe('Zaptec native target power', () => {
         target_power_mode: { ...device.capabilitiesObj?.target_power_mode, value: 'homey' },
       },
     })]);
-    expect(claimed.reportedStepId).toBeUndefined();
+    // Under Homey's control the target the charger holds is the step it runs.
+    expect(claimed.reportedStepId).toBe('2530w');
     expect((await settleNativeTarget(transport, device, 2530)).reportedStepId).toBe('2530w');
 
     vi.setSystemTime(Date.now() + 1000);
@@ -613,7 +607,8 @@ describe('Zaptec native target power', () => {
         target_power_mode: { ...device.capabilitiesObj?.target_power_mode, value: 'homey' },
       },
     })]);
-    expect(claimed.reportedStepId).toBeUndefined();
+    // Under Homey's control the target the charger holds is the step it runs.
+    expect(claimed.reportedStepId).toBe('2530w');
     const confirmed = await settleNativeTarget(transport, device, 2530);
     expect(confirmed.reportedStepId).toBe('2530w');
     expect(confirmed.targetPowerConfig).toBeUndefined();
@@ -654,7 +649,6 @@ describe('Zaptec native target power', () => {
         available_installation_current: { ...base.capabilitiesObj?.available_installation_current, value: 10 },
       },
     })]);
-    expect(parsed.reportedStepId).toBeUndefined();
     expect((await settleNativeTarget(transport, base, 4140)).reportedStepId).toBe('4140w');
     expect(parsed.targetPowerConfig).toBeUndefined();
 
@@ -689,7 +683,8 @@ describe('Zaptec native target power', () => {
         target_power_mode: { ...device.capabilitiesObj?.target_power_mode, value: 'homey' },
       },
     })]);
-    expect(parsed.reportedStepId).toBeUndefined();
+    // Under Homey's control the target the charger holds is the step it runs.
+    expect(parsed.reportedStepId).toBe('2530w');
     expect((await settleNativeTarget(transport, device, 2530)).reportedStepId).toBe('2530w');
 
     await emitCapability(device.id, 'target_power', value);
@@ -708,7 +703,6 @@ describe('Zaptec native target power', () => {
         target_power_mode: { ...device.capabilitiesObj?.target_power_mode, value: 'homey' },
       },
     })]);
-    expect(parsed.reportedStepId).toBeUndefined();
     expect((await settleNativeTarget(transport, device, 2530)).reportedStepId).toBe('2530w');
     const profile = parsed.steppedLoadProfile;
     if (!profile) throw new Error('Expected native target-power control');

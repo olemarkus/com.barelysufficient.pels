@@ -47,6 +47,8 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
   adapterUnavailableStatus: AdapterUnavailableStatus | undefined;
   /** A Flow writes the setting built-in control would write, so built-in control waits for it to go. */
   builtInControlHeldByFlow: boolean;
+  /** The device's app refused Homey's control of its power level, so PELS only switches it. */
+  targetPowerControlRefused: boolean;
   carIdentificationState: CarIdentificationState;
   execution: DeviceExecutionState;
   starvation?: SettingsUiPlanDeviceStarvation;
@@ -80,6 +82,8 @@ function resolveBaseKind(device: DeviceStatusInput): PlanStateKind {
   return 'active';
 }
 
+const TARGET_POWER_CONTROL_REFUSED_LINE = 'PELS can only turn it on and off: its app does not accept level control';
+
 function resolveReportedLoadReason(device: DeviceStatusInput, held: boolean, dryRun: boolean): string | null {
   if (!held || device.currentDrawKw === undefined || device.currentDrawKw <= 0.05) return null;
   if (device.reason.code === PLAN_REASON_CODES.awaitingSolarSurplus) {
@@ -102,8 +106,9 @@ function resolveBinaryReason(
     device.starvation,
     resolveHeldCardReasonVerb({ ...resolveHeldCardStepView(device), currentState: device.currentState }),
   );
-  return device.reason.code === PLAN_REASON_CODES.keep
-    ? null : formatDeviceReasonUserFacing(device.reason);
+  if (device.reason.code !== PLAN_REASON_CODES.keep) return formatDeviceReasonUserFacing(device.reason);
+  // A kept device has nothing else to say, so the card says why it has no level.
+  return device.targetPowerControlRefused ? TARGET_POWER_CONTROL_REFUSED_LINE : null;
 }
 
 // A step command nothing answers leaves the device where it is however often

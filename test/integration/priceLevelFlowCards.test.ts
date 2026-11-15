@@ -128,6 +128,7 @@ describe('Price level flow cards', () => {
       hasStandingCommandGrant: () => false,
       getDeviceControlAdapter: () => undefined,
       isBuiltInControlHeldByFlow: () => false,
+      isTargetPowerControlRefused: () => false,
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
       planBuildGate: openPlanBuildGate(),
       getSteppedSettleDevices: () => [],

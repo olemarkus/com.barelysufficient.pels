@@ -16,7 +16,6 @@ import type { SteppedLoadStepRequestTransport } from '../ports/steppedLoadWrite'
 import type { ActuatorOutcome } from '../actuator/deviceCommand';
 import { getDebugEmitter, getLogger } from '../logging/logger';
 import { isHeldByLifecycleLane, type ExecutorCommandContext } from './executorCommandContext';
-import { runBinaryControl } from './binaryControlShared';
 
 const logger = getLogger('executor/stepped-load');
 /**
@@ -377,37 +376,20 @@ const recordAcceptedSteppedLoadCommand = (
 };
 
 /**
- * A step the actuator did not issue: a binary pause it needs first, a
- * preparation that already wrote to the device, a busy device whose previous
- * command is still running, or no command transport at all.
+ * A step the actuator did not issue: a busy device whose previous command is
+ * still running, or no command transport at all.
  */
-const handleUnrequestedStep = async (
-  ctx: ExecutorCommandContext,
+const handleUnrequestedStep = (
   intent: ExecutableSteppedLoadIntent,
   desiredStep: SteppedLoadStep,
   result: Extract<ActuatorOutcome, { requested: false }>,
-): Promise<boolean> => {
-  if ('preparation' in result && result.preparation === 'binary_off') {
-    const stopped = await runBinaryControl(ctx, {
-      deviceId: intent.id, name: intent.name, desired: false, logContext: 'capacity',
-    }, ctx.readDevice(intent.id));
-    return stopped.applied;
-  }
+): boolean => {
   if ('reason' in result && result.reason === 'previous_command_in_flight') {
     return logSteppedLoadCommandSkip(
       intent, 'previous_command_in_flight',
       `Capacity: skip stepped-load command for ${intent.name}, its previous command is still running`,
       { desiredStepId: desiredStep.id },
     );
-  }
-  if ('preparation' in result && result.preparation === 'issued') {
-    logger.info({
-      event: 'stepped_load_preparation_issued',
-      deviceId: intent.id,
-      deviceName: intent.name,
-      desiredStepId: desiredStep.id,
-    });
-    return true;
   }
   return logSteppedLoadCommandSkip(
     intent, 'command_unavailable',
@@ -440,7 +422,7 @@ export const executeSteppedLoadCommand = async (
       desiredStepId: desiredStep.id, planningPowerW: desiredStep.planningPowerW,
       planningCurrentA: resolvePlanningCurrentA(desiredStep), previousStepId: resolveCommandPreviousStepId(action),
     });
-    if (!result.requested) return await handleUnrequestedStep(ctx, intent, desiredStep, result);
+    if (!result.requested) return handleUnrequestedStep(intent, desiredStep, result);
     if (result.kind !== 'step') throw new Error(`Step actuator returned ${result.kind} outcome for ${intent.id}`);
     if (!ctx.isAuthorityCurrent()) return false;
     accepted = result.acknowledged

@@ -6,7 +6,6 @@ import { buildExecutableObservedDeviceState } from '../../lib/executor/executabl
 import { buildExecutableSteppedLoadDevice } from '../../lib/executor/executableSteppedLoadProjection';
 import { applySteppedLoadCommand } from '../../lib/executor/steppedLoadExecutor';
 import type { ExecutorDeviceRead } from '../../lib/executor/executorDeviceRead';
-import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
 import { createTestExecutorCommandContext, PRIOR_STEP_COMMAND_SESSION } from '../helpers/executorCommandContext';
 import { executionDeviceForFixture } from '../utils/executionDecisionFixture';
 import { createPlanEngineState } from '../utils/planEngineStateFixture';
@@ -76,55 +75,4 @@ describe('preparing an unknown native limit under capacity pressure', () => {
     }));
     expect(context.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
   });
-
-  it('counts an issued native preparation as a write, without a binary stop or a step record', async () => {
-    const initial = liveRead(12.75);
-    const action = buildExecutableSteppedLoadDevice(buildPlannedSteppedCommand(unknownDevice()),
-      buildExecutableObservedDeviceState(initial, steppedProfile), undefined, PRIOR_STEP_COMMAND_SESSION);
-    if (!action) throw new Error('Expected executable preparation');
-    const apply = vi.fn(async (_command: DeviceCommand): Promise<ActuatorOutcome> => ({
-      requested: false, preparation: 'issued',
-    }));
-    const context = createTestExecutorCommandContext(createPlanEngineState(), {
-      readDevice: () => initial, getObservedState: () => initial,
-      actuator: { canTurnOnDevice: () => true, resolveTemperatureTarget: (_id, desired) => desired, apply },
-    });
-    expect(await applySteppedLoadCommand(context, action, initial)).toBe(true);
-    expect(apply.mock.calls.map(([command]) => command.kind)).toEqual(['step']);
-    expect(context.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
-  });
-
-  it.each(['accepted', 'timed out', 'rejected'] as const)(
-    'attributes its binary preparation before dispatch when the stop is %s', async (outcome) => {
-      const initial = liveRead(12.75);
-      const action = buildExecutableSteppedLoadDevice(buildPlannedSteppedCommand(unknownDevice()),
-        buildExecutableObservedDeviceState(initial, steppedProfile), undefined, PRIOR_STEP_COMMAND_SESSION);
-      if (!action) throw new Error('Expected executable preparation');
-      const apply = vi.fn(async (command: DeviceCommand): Promise<ActuatorOutcome> => {
-        if (command.kind === 'step') return { requested: false, preparation: 'binary_off' };
-        if (command.kind !== 'binary') throw new Error('Unexpected command');
-        // The ordinary binary owner records provenance BEFORE calling the SDK.
-        expect(context.pendingBinaryCommandStore.peek('charger')).toMatchObject({
-          desired: false, dispatchState: 'dispatching', logContext: 'capacity',
-        });
-        expect(context.pendingBinaryCommandStore.isBinaryChangeAttributableToPels('charger')).toBe(true);
-        if (outcome === 'rejected') throw new Error('Stop rejected');
-        return outcome === 'accepted'
-          ? { requested: true, kind: 'binary', acknowledged: true }
-          : { requested: true, kind: 'binary', acknowledged: false, err: new Error('No response') };
-      });
-      const context = createTestExecutorCommandContext(createPlanEngineState(), {
-        readDevice: () => initial, getObservedState: () => initial,
-        actuator: { canTurnOnDevice: () => true, resolveTemperatureTarget: (_id, desired) => desired, apply },
-      });
-      expect(await applySteppedLoadCommand(context, action, initial)).toBe(outcome !== 'rejected');
-      expect(apply.mock.calls.map(([command]) => command.kind)).toEqual(['step', 'binary']);
-      expect(apply).toHaveBeenCalledWith({ kind: 'binary', deviceId: 'charger', desired: false });
-      expect(context.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
-      if (outcome === 'rejected') expect(context.pendingBinaryCommandStore.peek('charger')).toBeUndefined();
-      else expect(context.pendingBinaryCommandStore.peek('charger')).toMatchObject({
-        desired: false, dispatchState: 'accepted',
-      });
-    },
-  );
 });

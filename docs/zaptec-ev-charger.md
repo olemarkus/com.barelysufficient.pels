@@ -15,6 +15,8 @@ A Zaptec app version that lets Homey set the charger's charging power offers **A
 
 The Zaptec app applies that power to the whole installation, so PELS uses it only for a charger with no other Zaptec charger on its installation.
 
+While PELS controls the charger, it keeps the charger's power control in Homey set to **Homey**. If you change it to **Automatic** in the Zaptec device, PELS sets it back.
+
 ## Built-in current control
 
 Without **Automatic**, PELS sets the charging current. Open the charger's **Setup → Charging current** section. For an installation with one charger, confirm **This installation has only one charger**. PELS uses a writable current capability when the installed Zaptec app exposes one. Otherwise, create a Homey API key with **Flow** permission using [Homey's API-key guide](https://support.homey.app/hc/en-us/articles/8178797067292-Create-and-use-API-Keys-on-Homey-Pro), enter it here, and choose **Save key and enable**. If a key is already verified or the charger has a writable current capability, choose **Use built-in control**. One key works for all supported chargers on this Homey.

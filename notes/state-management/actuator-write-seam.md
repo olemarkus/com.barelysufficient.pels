@@ -178,6 +178,7 @@ type DeviceCommand =
   | { kind: 'target'; deviceId: string; target: 'temperature'; value: number }
   | { kind: 'step';   deviceId: string; profile: SteppedLoadProfile; desiredStepId: string;
       planningPowerW: number; planningCurrentA: number; previousStepId?: string }
+  | { kind: 'target_power_claim'; deviceId: string }
   | { kind: 'storage_power';   deviceId: string; setpointW: number }
   | { kind: 'storage_release'; deviceId: string; restoreClaimValue: string }
   | { kind: 'production_limit';   deviceId: string; limitW: number }

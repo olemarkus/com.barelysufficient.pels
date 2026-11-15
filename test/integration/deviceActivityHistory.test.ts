@@ -25,6 +25,7 @@ const device = () => {
     observed: noPlanServiceObservedReads,
     getDeviceControlAdapter: () => undefined,
     isBuiltInControlHeldByFlow: () => false,
+    isTargetPowerControlRefused: () => false,
     getHomeBatteryCard: () => ({ kind: 'none' }),
   });
 };

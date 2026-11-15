@@ -52,10 +52,6 @@ export type CapabilityWrite = { capabilityId: string; value: unknown };
 export type CapabilityUpdate = CapabilityWrite;
 /** A live report's view and capability as that view reads it (`DeviceAdapter.routeReport`). */
 export type CapabilityRoute = { deviceId: string; capabilityId: string };
-/** Preparation before reclaiming a native watt target: stop first, or safely reset its owner. */
-export type TargetPowerReassertionPreparation =
-  | { kind: 'stop'; write: CapabilityWrite }
-  | { kind: 'ready'; resetWrites: readonly CapabilityWrite[] };
 export type AdapterSnapshot = Pick<TransportDeviceSnapshot,
   'controlAdapter' | 'capabilities' | 'binaryControl' | 'evChargingState' | 'reportedStepId' | 'steppedLoadProfile'
   | 'automaticPowerControl'>;
@@ -261,10 +257,6 @@ export type DeviceAdapter = {
   targetPowerReading(device: HomeyDeviceLike, config: TargetPowerSteppedLoadConfig, value: number): number;
   stepCommand(device: HomeyDeviceLike, step: SteppedLoadStep, command: CapabilityWrite): CapabilityWrite;
   stepActivationOrder: 'current_before_start' | 'start_before_current';
-  /** Reads the device's own stop evidence from the accepted inventory; never starts a device. */
-  prepareTargetPowerReassertion(
-    device: HomeyDeviceLike, inventory: readonly HomeyDeviceLike[],
-  ): TargetPowerReassertionPreparation;
   /**
    * One live report as PELS reads it, for every device the adapter matches. `device` is the
    * device's last accepted read with this report already applied.

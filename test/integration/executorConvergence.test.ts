@@ -86,6 +86,22 @@ describe('executorConvergence stepped device drift', () => {
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
     });
 
+    it('counts a planned claim of the watt target as work on a device that has no other drift', () => {
+      const converged = {
+        currentState: 'not_applicable' as const, plannedState: 'keep' as const, binaryCapabilityId: undefined,
+        currentTarget: 21, currentTemperature: 21, plannedTarget: 21,
+      };
+      const liveDevices: PlanInputDevice[] = [inputDevice({
+        id: 'dev-2', name: 'Heater', binaryCapabilityId: undefined,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      })];
+      expect(hasPlanExecutionDriftForDevice(buildPlan([buildBinaryDevice(converged)]), liveDevices, 'dev-2'))
+        .toBe(false);
+      expect(hasPlanExecutionDriftForDevice(buildPlan([buildBinaryDevice({
+        ...converged, targetPowerClaimNeeded: true,
+      })]), liveDevices, 'dev-2')).toBe(true);
+    });
+
     it('does not treat target-only keep devices as binary drift', () => {
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'not_applicable' as const,
@@ -1029,6 +1045,7 @@ describe('executor drift through PlanExecutor.driftObservationDeps', () => {
       actuator: createDeviceActuator({
 requestChargingPhaseControl: async () => false,
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
+requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
         canTurnOnDevice: () => true,
         resolveTemperatureTarget: (_deviceId, desired) => desired,
         requestBinaryControl: vi.fn(async () => undefined),

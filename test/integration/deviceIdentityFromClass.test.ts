@@ -234,6 +234,7 @@ describe('class-resolved identity through the plan build', () => {
       observed: noPlanServiceObservedReads,
       getDeviceControlAdapter: () => undefined,
       isBuiltInControlHeldByFlow: () => false,
+      isTargetPowerControlRefused: () => false,
       getHomeBatteryCard: () => ({ kind: 'none' } as const),
     });
 

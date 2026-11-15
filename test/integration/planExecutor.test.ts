@@ -257,7 +257,7 @@ const buildExecutor = (
     flow_backed_device_start_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
     flow_backed_device_stop_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
   } as const;
-  const nativeSteppedAdapters = new NativeSteppedLoadCommandAdapters(() => []);
+  const nativeSteppedAdapters = new NativeSteppedLoadCommandAdapters();
   const deviceManager = withGetSnapshotByDeviceId({
     getSnapshot: vi.fn().mockReturnValue(snapshot),
     setCapability: vi.fn().mockResolvedValue(undefined),
@@ -316,6 +316,7 @@ const buildExecutor = (
     actuator: createDeviceActuator({
 requestChargingPhaseControl: async () => false,
 requestProductionControl: async () => { throw new Error('Unexpected inverter control'); },
+requestTargetPowerControlClaim: async () => ({ kind: 'not_sent' as const }),
       canTurnOnDevice: () => true,
       resolveTemperatureTarget: (deviceId, desired) => {
         const target = deviceManager.getSnapshotByDeviceId(deviceId)?.targets?.[0];

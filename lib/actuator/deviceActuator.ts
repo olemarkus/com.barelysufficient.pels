@@ -96,6 +96,13 @@ const applyCommand = (transport: ActuatorTransport, command: DeviceCommand): Pro
       return applyTarget(transport, command);
     case 'step':
       return applyStep(transport, command);
+    case 'target_power_claim':
+      return transport.requestTargetPowerControlClaim(command).then((result): ActuatorOutcome => {
+        if (result.kind === 'claimed') return { requested: true, kind: command.kind };
+        return result.kind === 'refused'
+          ? { requested: false, reason: 'target_power_claim_refused', errorMessage: result.errorMessage }
+          : { requested: false };
+      });
     case 'storage_power':
       return applyStoragePower(transport, command);
     case 'storage_release':

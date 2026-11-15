@@ -265,18 +265,9 @@ describe('partial device reads after newer realtime observations', () => {
 
     vi.setSystemTime(at(3));
     await seedTransportDevices(transport, [unreadableMode]);
-    const profile = transport.getSnapshotByDeviceId(initial.id)?.steppedLoadProfile;
-    if (!profile) throw new Error('Expected native watt-control support to remain');
-    const put = vi.fn().mockResolvedValue(undefined);
-    setRestClient({ get: path => mockHomeyInstance.api.get(path), put });
-    await transport.requestSteppedLoadStep({
-      deviceId: initial.id, profile, desiredStepId: '2530w', planningPowerW: 2530, planningCurrentA: 0,
-    });
-    // The last accepted mode was device, so a write must reclaim Homey control.
+    expect(transport.getSnapshotByDeviceId(initial.id)?.steppedLoadProfile).toBeDefined();
+    // The last accepted mode was device, so Homey's control is still to claim.
     // Keeping the stale initial homey field instead would silently omit this.
-    expect(put.mock.calls.map(([path]) => path)).toEqual([
-      `manager/devices/device/${initial.id}/capability/target_power`,
-      `manager/devices/device/${initial.id}/capability/target_power_mode`,
-    ]);
+    expect(transport.getTargetPowerControlClaim(initial.id)).toBe('needed');
   });
 });

@@ -71,7 +71,9 @@ function simulateZaptec(charger: MockDevice) {
     limitA = amps;
     targetCurrentA = amps;
   };
+  // Homey drops a driver's republish of an unchanged value: no event, and its date stays.
   const report = (capability: string, value: unknown) => {
+    if (charger.getActualCapabilityValue(capability) === value) return;
     charger.setActualCapabilityValue(capability, value, { emitDeviceUpdate: false });
   };
   const publish = () => {
@@ -132,6 +134,9 @@ function simulateZaptec(charger: MockDevice) {
     housePowerW: () => BACKGROUND_W + drawW(),
     powerWrites: () => put.mock.calls.filter(([path]) => path === pathFor('target_power'))
       .map(([, body]) => (body as { value: number }).value),
+    modeWrites: () => put.mock.calls.filter(([path]) => path === pathFor('target_power_mode'))
+      .map(([, body]) => (body as { value: string }).value),
+    setMode: (next: string) => { mode = next; publish(); },
   };
 }
 
@@ -329,10 +334,39 @@ describe('Zaptec legacy current and native watt control at the SDK boundary', ()
         && simulation.housePowerW() > BACKGROUND_W);
       expect(simulation.housePowerW()).toBeLessThanOrEqual(HOUSE_LIMIT_W);
       expect(simulation.housePowerW()).toBeGreaterThan(BACKGROUND_W);
-      expect(simulation.resetHousePowers.length).toBeGreaterThan(0);
-      expect(simulation.resetHousePowers.every((watts) => watts === BACKGROUND_W)).toBe(true);
+      // Back in Automatic, PELS writes its watt target under the control it kept.
+      expect(simulation.resetHousePowers).toEqual([]);
       expect(mockHomeyInstance.settings.get(DEVICE_TARGET_POWER_CONFIGS)).toEqual(savedConfig);
     }
+  });
+
+  it('takes Homey control of a charger running its own power logic with the mode alone, without stopping it', async () => {
+    const charger = await buildCharger();
+    const simulation = simulateZaptec(charger);
+    simulation.setMode('device');
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    mockHomeyInstance.settings.set('homey_energy_meter_device_id', 'meter-main');
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, HOUSE_LIMIT_W / 1000);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
+    mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, { [ID]: true });
+    mockHomeyInstance.settings.set(MANAGED_DEVICES, { [ID]: true });
+    mockHomeyInstance.settings.set('overshoot_behaviors', { [ID]: { action: 'set_step' } });
+    mockHomeyInstance.settings.set(DEVICE_POWER_CONTROL_MODES, { [ID]: 'automatic' });
+    await createApp().onInit();
+    await vi.advanceTimersByTimeAsync(125_000);
+    await advanceMeterDecisionsUntil(() => simulation.powerWrites().some((watts) => watts > 0)
+      && simulation.housePowerW() <= HOUSE_LIMIT_W && simulation.housePowerW() > BACKGROUND_W);
+
+    // The claim is the first write to the charger, and the mode is never handed back.
+    expect(simulation.put.mock.calls[0]).toEqual([
+      pathFor('target_power_mode'), expect.objectContaining({ value: 'homey' }),
+    ]);
+    expect(simulation.modeWrites()).toEqual(['homey']);
+    expect(simulation.put).not.toHaveBeenCalledWith(
+      pathFor('evcharger_charging'), expect.objectContaining({ value: false }),
+    );
   });
 
   it.each([
@@ -385,6 +419,11 @@ describe('Zaptec legacy current and native watt control at the SDK boundary', ()
       expect(watts).toBeLessThanOrEqual(change.lastW);
     }
     expect(simulation.housePowerW()).toBeLessThanOrEqual(HOUSE_LIMIT_W);
+    // The charger is neither stopped nor handed back to take the new ladder.
+    expect(simulation.modeWrites().every((value) => value === 'homey')).toBe(true);
+    expect(simulation.put).not.toHaveBeenCalledWith(
+      pathFor('evcharger_charging'), expect.objectContaining({ value: false }),
+    );
     expect(mockHomeyInstance.settings.get(DEVICE_TARGET_POWER_CONFIGS)).toEqual(savedConfig);
     expect(mockHomeyInstance.settings.get(DEVICE_POWER_CONTROL_MODES)).toEqual({ [ID]: 'automatic' });
   });

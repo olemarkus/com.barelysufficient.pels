@@ -21,8 +21,6 @@ export class NativeSteppedLoadCommandAdapters {
   private readonly adapters = new Map<string, NativeSteppedLoadCommandAdapter>();
   private readonly powerControlModes = new Map<string, DevicePowerControlMode>();
 
-  constructor(private readonly getInventory: () => readonly HomeyDeviceLike[]) {}
-
   /** Keep a device's adapter in step with a fresh read of it. */
   observe(deviceId: string, device: HomeyDeviceLike): void {
     if (!Array.isArray(device.capabilities) || !isNativeSteppedLoadWiringCandidate({
@@ -38,9 +36,7 @@ export class NativeSteppedLoadCommandAdapters {
     if (existing) existing.syncDevice(device);
     else {
       const initialMode = this.powerControlModes.get(deviceId);
-      this.adapters.set(deviceId, new CapabilityNativeSteppedLoadCommandAdapter(
-        device, initialMode, this.getInventory,
-      ));
+      this.adapters.set(deviceId, new CapabilityNativeSteppedLoadCommandAdapter(device, initialMode));
     }
   }
 
@@ -71,6 +67,19 @@ export class NativeSteppedLoadCommandAdapters {
     const adapter = this.adapters.get(deviceId);
     if (!adapter) return false;
     return adapter.setStep(profile, desiredStepId, setCapability);
+  }
+
+  /** Whether PELS steps `deviceId` through its watt target. */
+  controlsTargetPower(deviceId: string): boolean {
+    return this.adapters.get(deviceId)?.controlsTargetPower() === true;
+  }
+
+  /** Take Homey's control of the watt target; `false` when nothing was sent. */
+  async claimTargetPower(
+    deviceId: string,
+    setCapability: (capabilityId: string, value: unknown) => Promise<unknown>,
+  ): Promise<boolean> {
+    return (await this.adapters.get(deviceId)?.claimTargetPower(setCapability)) === true;
   }
 
   observeCapabilityUpdate(deviceId: string, capabilityId: string, value: unknown): void {

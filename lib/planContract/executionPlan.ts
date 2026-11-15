@@ -47,6 +47,15 @@ export type PlannedSteppedCommand = {
 };
 
 /**
+ * Take Homey's control of a device's watt target (`target_power_mode = homey`).
+ * Decided whenever PELS may command the device this cycle and its owner reads
+ * the target as not Homey's (`PlanInputDevice.targetPowerClaimNeeded`),
+ * whatever this cycle's step decision. It carries no watt target: that is the
+ * step command's. Dispatched before the device's other commands.
+ */
+export type PlannedTargetPowerClaim = { deviceId: string; name: string };
+
+/**
  * The binary axis a stepped command drives: attached only when this cycle's
  * decision moves the on/off handle. Consumers reach it through
  * `isBinaryDrivenIntent` (`lib/executor/executableDesiredState.ts`).
@@ -78,6 +87,7 @@ export type PlannedCommandAxes = {
   binary?: PlannedBinaryCommand;
   release?: PlannedReleaseCommand;
   steppedLoad?: PlannedSteppedCommand;
+  targetPowerClaim?: PlannedTargetPowerClaim;
 };
 export type PlannedStepBaseline = {
   /** Historical effective state at decision time; never published as live observation. */
@@ -112,6 +122,10 @@ export type ExecutionPlan = {
   storageReleases: StorageReleaseIntent[];
   inverterDecisions: InverterDecision[];
 };
+export const hasTargetPowerClaim = <T extends PlannedDeviceCommands>(
+  i: T,
+): i is T & { targetPowerClaim: PlannedTargetPowerClaim } =>
+  'targetPowerClaim' in i && i.targetPowerClaim != null;
 export const hasPlannedStep = <T extends PlannedDeviceCommands>(
   i: T,
 ): i is T & { steppedLoad: PlannedSteppedCommand } =>

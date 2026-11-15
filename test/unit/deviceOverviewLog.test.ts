@@ -29,6 +29,7 @@ const asOverviewLogDevice = (device: DevicePlanDevice): OverviewLogDevice => bui
   observed: noPlanServiceObservedReads,
   getDeviceControlAdapter: () => undefined,
   isBuiltInControlHeldByFlow: () => false,
+  isTargetPowerControlRefused: () => false,
   getHomeBatteryCard: () => ({ kind: 'none' } as const),
 });
 
