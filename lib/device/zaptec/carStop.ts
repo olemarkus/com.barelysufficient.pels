@@ -80,21 +80,23 @@ export class ZaptecCarStops {
   }
 
   /**
-   * Car-stopped reads the app's paused state as `plugged_in_car_stopped`; any
-   * other state is newer news and stands. A released stop gives the paused state
-   * back once, so a report that superseded it without changing the state (Homey
-   * publishes no unchanged value) does not leave the device reading car-stopped.
+   * Car-stopped reads the app's paused state as `plugged_in_car_stopped`. Any
+   * other state is newer news: it stands and ends the stop, so a later pause by
+   * someone else is not read as the car's (a full read reaches
+   * {@link noteRead} only while the live feed is trusted, and this does not
+   * depend on it). A released stop gives the paused state back once, so a report
+   * that superseded it without changing the state (Homey publishes no unchanged
+   * value) does not leave the device reading car-stopped.
    */
   project(snapshot: TransportDeviceSnapshot): TransportDeviceSnapshot {
     const stop = this.stops.get(snapshot.id);
     if (stop === undefined) return snapshot;
-    if (stop.kind === 'released') {
+    const state = snapshot.evChargingState;
+    if (stop.kind === 'released' || (state !== 'plugged_in_paused' && state !== 'plugged_in_car_stopped')) {
       this.stops.delete(snapshot.id);
-      return snapshot.evChargingState === 'plugged_in_car_stopped'
-        ? { ...snapshot, evChargingState: 'plugged_in_paused' } : snapshot;
+      return state === 'plugged_in_car_stopped' ? { ...snapshot, evChargingState: 'plugged_in_paused' } : snapshot;
     }
-    return snapshot.evChargingState === 'plugged_in_paused'
-      ? { ...snapshot, evChargingState: 'plugged_in_car_stopped' } : snapshot;
+    return state === 'plugged_in_paused' ? { ...snapshot, evChargingState: 'plugged_in_car_stopped' } : snapshot;
   }
 
   private release(deviceId: string): boolean {

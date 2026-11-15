@@ -584,10 +584,17 @@ export class DeviceWriteService {
   ): Promise<void> {
     const failure = await setRawCapabilityValue(homeyDeviceId, write.capabilityId, write.value, transactionId)
       .then(() => null, (error: unknown) => ({ error }));
-    const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
-    if (this.chargingCurrentControl.observeWriteOutcome(deviceId, write, failure) && snapshot) {
-      this.snapshotStore.replaceSnapshotEntry(deviceId, this.chargingCurrentControl.projectControl(snapshot));
-      this.dispatchObservedStateForDevice(deviceId);
+    try {
+      const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
+      if (this.chargingCurrentControl.observeWriteOutcome(deviceId, write, failure) && snapshot) {
+        this.snapshotStore.replaceSnapshotEntry(deviceId, this.chargingCurrentControl.projectControl(snapshot));
+        this.dispatchObservedStateForDevice(deviceId);
+      }
+    } catch (error) {
+      // The write's own answer stands: an accepted write stays accepted.
+      this.logger.structuredLog.error({
+        event: 'write_outcome_projection_failed', deviceId, err: normalizeError(error),
+      });
     }
     if (failure) throw failure.error;
   }
