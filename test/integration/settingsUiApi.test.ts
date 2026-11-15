@@ -362,6 +362,7 @@ describe('settingsUiApi', () => {
       // The fixture app has recorded no completed quarter this month.
       phaseLoad: { state: 'none' },
       phasePeaks: [],
+      hardCapShortfalls: [],
       capacityPeak: { state: 'no_completed_quarter' },
       capacityScalars: {
         state: 'resolved',
@@ -715,6 +716,7 @@ describe('settingsUiApi', () => {
       // The fixture app has recorded no completed quarter this month.
       phaseLoad: { state: 'none' },
       phasePeaks: [],
+      hardCapShortfalls: [],
       capacityPeak: { state: 'no_completed_quarter' },
       capacityScalars: {
         state: 'resolved',

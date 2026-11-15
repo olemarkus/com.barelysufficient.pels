@@ -33,6 +33,7 @@ vi.mock('../../lib/power/capacityGuard', () => ({
     phaseReadings = { reset: vi.fn(), admit: vi.fn(), current: () => ({ kind: 'none' }) };
     phaseLearner = { bindStore: vi.fn(), observe: vi.fn(), learnedFootprint: vi.fn() };
     phasePeaks = { bindStore: vi.fn(), observe: vi.fn(), recent: () => [] };
+    shortfallLog = { bindStore: vi.fn(), record: vi.fn(), recent: () => [] };
 
     public setLimit = vi.fn();
     public setSoftMargin = vi.fn();

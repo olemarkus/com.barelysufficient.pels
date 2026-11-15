@@ -5,7 +5,9 @@ import { type SettingsUiRecommendationCar } from '../../../contracts/src/setting
 import {
   SETTINGS_UI_RECOMMENDATION_CARS_PATH,
 } from '../../../contracts/src/settingsUi/paths.ts';
-import { callApi, coldStartReadRetryDelays, getSetting, getSettingFresh, sleep } from './homey.ts';
+import {
+  callApi, coldStartReadRetryDelays, getHomeyTimezone, getSetting, getSettingFresh, sleep,
+} from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { isUnknownRecord } from '../../../shared-domain/src/recordGuards.ts';
 import {
@@ -52,6 +54,11 @@ import { showToastError } from './toast.ts';
 import { resolveRecommendationTask, type RecommendationNavigation } from './recommendationActions.ts';
 export type { RecommendationNavigation } from './recommendationActions.ts';
 import { subscribeToHomeScope } from './homeScope.ts';
+import {
+  loadHardCapReachFacts,
+  readHardCapReachFacts,
+  resolveHardCapReachRecommendations,
+} from './hardCapReachRecommendation.ts';
 
 // Browser-owned acknowledgement state. The runtime acts on none of it; it only
 // serves the key in the settings bootstrap.
@@ -203,6 +210,7 @@ const resolveCurrentRecommendations = (
       evSocReporters,
     ),
     ...resolveDeviceSettingRecommendations(),
+    ...resolveHardCapReachRecommendations(readHardCapReachFacts(), Date.now(), getHomeyTimezone()),
   ];
 };
 
@@ -466,6 +474,7 @@ export const loadRecommendationData = async (): Promise<void> => {
     ensureCarInventory(),
     loadSmartTaskUsage(),
     loadAfterSetupFacts().then(refreshRecommendationSurfaces),
+    loadHardCapReachFacts().then(refreshRecommendationSurfaces),
     loadEvSocReportersIfNeeded(),
     // Both publish to the setup path, which redraws these surfaces on a change.
     loadHubMarket(),
@@ -542,6 +551,7 @@ export const initRecommendationSurfaces = (nextNavigation: RecommendationNavigat
         flowFactsLoad,
         loadChargingRecommendations(true),
         loadSmartTaskUsage(),
+        loadHardCapReachFacts(),
       ]).then(refreshRecommendationSurfaces);
     } else if (panelId === 'overview' || panelId === 'settings') {
       refreshRecommendationSurfaces();

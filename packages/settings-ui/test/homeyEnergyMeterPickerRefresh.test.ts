@@ -16,6 +16,7 @@ const callApiMock = vi.fn();
 vi.mock('../src/ui/homey.ts', () => ({
   callApi: (...args: unknown[]) => callApiMock(...args),
   applySettingsPatch: vi.fn(),
+  getHomeyTimezone: () => 'Europe/Oslo',
 }));
 vi.mock('../src/ui/toast.ts', () => ({
   showToast: vi.fn().mockResolvedValue(undefined),

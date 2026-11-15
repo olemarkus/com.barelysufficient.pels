@@ -1,4 +1,6 @@
-import { DEVICE_PHASE_LEARNING, MAIN_FUSE_PHASE_PEAKS, MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
+import {
+  DEVICE_PHASE_LEARNING, HARD_CAP_SHORTFALLS, MAIN_FUSE_PHASE_PEAKS, MAIN_HOME_ID,
+} from '../../lib/utils/settingsKeys';
 /**
  * One home's capacity guard: the immediate shortfall transition it drives on
  * that home's own plan service, and the two hard-cap Flow alert lanes it feeds.
@@ -126,7 +128,7 @@ export const createHomeCapacityGuard = (
     // definite logger and never branches on whether logging came up.
     structuredLog: ctx.getStructuredLogger('capacity'),
   });
-  // Only Main's meter has phases to learn from.
+  // Only Main's meter has phases to learn from, and only Main keeps a shortfall log.
   if (scope.homeId === MAIN_HOME_ID) {
     guard.phaseLearner.bindStore({
       get: () => ctx.homey.settings.get(DEVICE_PHASE_LEARNING),
@@ -136,6 +138,10 @@ export const createHomeCapacityGuard = (
       get: () => ctx.homey.settings.get(MAIN_FUSE_PHASE_PEAKS),
       set: (entries) => ctx.homey.settings.set(MAIN_FUSE_PHASE_PEAKS, entries),
     });
+    guard.shortfallLog.bindStore({
+      get: () => ctx.homey.settings.get(HARD_CAP_SHORTFALLS),
+      set: (entries) => ctx.homey.settings.set(HARD_CAP_SHORTFALLS, entries),
+    }, () => scope.getCapacitySettings().limitKw);
   }
   return { guard, shortfallSideEffectGate };
 };

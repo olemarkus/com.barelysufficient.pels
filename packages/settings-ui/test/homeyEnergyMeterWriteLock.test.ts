@@ -32,6 +32,7 @@ const logSettingsErrorMock = vi.fn().mockResolvedValue(undefined);
 vi.mock('../src/ui/homey.ts', () => ({
   callApi: (...args: unknown[]) => callApiMock(...args),
   applySettingsPatch: (...args: unknown[]) => applySettingsPatchMock(...args),
+  getHomeyTimezone: () => 'Europe/Oslo',
 }));
 vi.mock('../src/ui/toast.ts', () => ({
   showToast: (...args: unknown[]) => showToastMock(...args),

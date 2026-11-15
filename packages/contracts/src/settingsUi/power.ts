@@ -160,6 +160,17 @@ export type SettingsUiPhasePeak = {
   readonly devices: readonly string[];
 };
 
+/**
+ * One time this week PELS had eased off everything it could and the home still
+ * went past the hard cap (`lib/power/hardCapShortfallLog.ts`): when, the hard
+ * cap then, and what devices PELS does not control drew.
+ */
+export type SettingsUiHardCapShortfall = {
+  readonly atMs: number;
+  readonly hardCapKw: number;
+  readonly uncontrolledW: number;
+};
+
 export type SettingsUiPowerPayload = {
   /**
    * Usage HISTORY (buckets, daily totals, solar families) — always an object;
@@ -173,6 +184,8 @@ export type SettingsUiPowerPayload = {
   phaseLoad: SettingsUiPhaseLoad;
   /** Recent episodes of a phase past its share of the main fuse, oldest first. */
   phasePeaks?: readonly SettingsUiPhasePeak[];
+  /** This week's hard-cap incidents, oldest first; Main home only, like `phasePeaks`. */
+  hardCapShortfalls?: readonly SettingsUiHardCapShortfall[];
   /**
    * The running app's own capacity scalars for the home this payload
    * describes. The running app retains its last-good values when a persisted

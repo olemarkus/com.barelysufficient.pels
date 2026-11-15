@@ -2615,6 +2615,28 @@ has closed for most homes that reach this state.
 - Action: `Review device`, opening the device page.
 - Saving a usable key removes the recommendation; dismissing it is retained.
 
+### A hard cap the home keeps running into
+
+When PELS has eased off every device it controls and the home is still on pace
+to exceed the hard cap on 3 or more of the last 7 local days, under the hard cap
+in force now, Setup & recommendations shows a recommendation
+(`resolveHardCapReachRecommendations` in
+`packages/settings-ui/src/ui/hardCapReachRecommendation.ts`, from the Main home's
+`hard_cap_shortfalls` log served on the power payload).
+
+- Title: `The {5.0 kW} hard cap is often out of reach`.
+- Body: `On {N} of the last 7 days, PELS had eased off every device it controls and
+  the home was still on pace to exceed the hard cap. Devices PELS does not control
+  drew about {2.7 kW} at those times. To stay under it, let PELS control more of the
+  load: add devices, or turn Power-limit control back on for a device.` The
+  uncontrolled-load sentence is left out when that load averaged under 0.05 kW.
+- Action: `Review devices`, opening the Devices page.
+- It never suggests raising the hard cap or names a cap figure to move to: the cap
+  is the owner's tariff step (§ "Hard cap is a capacity-period ceiling").
+- Changing the hard cap starts a new record, and the dismissal is kept per cap, so
+  a later run of days under another cap shows it again. With Capacity limit off it
+  does not show.
+
 ### Car battery recommendations
 
 - The charger's Car section opens with `Select the cars that charge here. Once
