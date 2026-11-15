@@ -232,6 +232,12 @@ device's commanded state):
   household load drops at `:50`, and the next hour starts at its target with
   nothing limited at the boundary.
 
+`test/e2e/capacityTimedRun.e2e.test.ts` replays the 2026-11-15 lab house (3 kW
+background, five on/off heaters, a 0.42 kW gap): the 0.8 kW heater runs from
+about `:17` to `:45` instead of `:35` to `:51`, and the hour reaches about 4.65
+kWh instead of 4.49 without passing its 4.7 kWh target. `test/unit/capacityTimedRun.test.ts`
+pins the start, keep, stop and every rule that keeps a run from applying.
+
 `test/e2e/capacityQuarterPace.e2e.test.ts` is the quarter counterpart: an
 under-used quarter whose load jumps above hard cap minus margin at `:08` is
 limited within a minute, rather than left running on saved energy until the
