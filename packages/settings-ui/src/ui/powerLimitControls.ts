@@ -20,24 +20,68 @@ import {
   settingsCapacityFollowMonthPeakInput,
   settingsCapacityMarginAlert,
   settingsCapacityReactionHint,
+  settingsCapacityReactionLabel,
+  settingsCapacityReactionNote,
+  settingsCapacityMonthlyPeakValue,
+  settingsCapacityMonthlyPeakState,
   settingsCapacityChoice,
   settingsCapacityChoiceText,
   settingsCapacityKeepButton,
   type MdFilledTextFieldElement,
 } from './dom.ts';
+import type { SettingsUiCapacityPeak } from '../../../contracts/src/settingsUi/power.ts';
+import { formatCapacityPeak } from './capacityPeakRead.ts';
+import {
+  composeSafePaceSummaryCopy,
+  formatHardCapKw,
+  resolveMonthPeakReadout,
+  type MonthPeakHold,
+} from './monthPeakHoldCopy.ts';
 
-export const syncCapacityReactionHint = (limit: number, margin: number) => {
-  if (!settingsCapacityReactionHint) return;
-  // The result row's static label ("With these settings, safe pace starts each period at")
-  // frames this as a ceiling derived from the current inputs, not an absolute
-  // "safe pace now" — that live value is the Overview hero's job and can differ
-  // when today's daily budget is the tighter constraint. This element carries
-  // only the loud accent value so the two surfaces never contradict.
-  const reactionAt = usableCapacityKw(limit, margin).toFixed(1);
-  settingsCapacityReactionHint.textContent = `${reactionAt} kW`;
+// The scalars and month peak the form last showed: the safe-pace summary and
+// the line under the month's peak read both, and each arrives on its own read.
+let shownScalars: CapacityScalarSettings | null = null;
+let shownCapacityPeak: SettingsUiCapacityPeak = { state: 'unavailable' };
+
+const renderSafePaceSummary = (scalars: CapacityScalarSettings, hold: MonthPeakHold | null): void => {
+  // The result row frames this as a ceiling derived from the saved settings,
+  // not an absolute "safe pace now": that live value is the Overview hero's
+  // job and can differ when today's daily budget is the tighter constraint.
+  // The value element carries only the loud accent value so the two surfaces
+  // never contradict. While this month's peak holds, the words around it say so.
+  const copy = composeSafePaceSummaryCopy(hold);
+  if (settingsCapacityReactionLabel) settingsCapacityReactionLabel.textContent = copy.label;
+  if (settingsCapacityReactionNote) settingsCapacityReactionNote.textContent = copy.note;
+  if (settingsCapacityReactionHint) {
+    const reactionAt = usableCapacityKw(hold?.heldKw ?? scalars.limitKw, scalars.marginKw).toFixed(1);
+    settingsCapacityReactionHint.textContent = `${reactionAt} kW`;
+  }
 };
 
-const formatHardCapKw = (limitKw: number): string => `${Number(limitKw.toFixed(1))} kW`;
+const renderMonthPeakHold = (): void => {
+  if (shownScalars === null) return;
+  const { limitKw, periodMinutes, followMonthPeak, capacityEnabled } = shownScalars;
+  const { hold, stateLine } = resolveMonthPeakReadout(limitKw, periodMinutes, followMonthPeak, shownCapacityPeak);
+  renderSafePaceSummary(shownScalars, hold);
+  // With Capacity limit off there is no hard cap for the peak to be above.
+  const shownStateLine = capacityEnabled ? stateLine : null;
+  if (settingsCapacityMonthlyPeakState) {
+    settingsCapacityMonthlyPeakState.textContent = shownStateLine ?? '';
+    settingsCapacityMonthlyPeakState.hidden = shownStateLine === null;
+  }
+};
+
+/**
+ * This month's highest completed quarter. An unavailable read is a no-op: the
+ * last shown peak (or the template's "Peak unavailable") stays until a read
+ * that knows the answer.
+ */
+export const syncMonthlyQuarterPeak = (peak: SettingsUiCapacityPeak): void => {
+  if (peak.state === 'unavailable') return;
+  shownCapacityPeak = peak;
+  if (settingsCapacityMonthlyPeakValue) settingsCapacityMonthlyPeakValue.textContent = formatCapacityPeak(peak);
+  renderMonthPeakHold();
+};
 
 /**
  * Until the owner saves a hard cap, the field shows the built-in one, and the
@@ -106,7 +150,8 @@ export const syncCapacityLimitControls = (scalars: CapacityScalarSettings): void
   if (settingsCapacityPeriodSelect) settingsCapacityPeriodSelect.value = String(periodMinutes);
   if (settingsCapacityMonthlyPeak) settingsCapacityMonthlyPeak.hidden = periodMinutes !== 15;
   syncFollowMonthPeakControl(scalars);
-  syncCapacityReactionHint(limitKw, marginKw);
+  shownScalars = scalars;
+  renderMonthPeakHold();
   renderMarginAlert(getMarginVsLimitError(limitKw, marginKw));
 };
 

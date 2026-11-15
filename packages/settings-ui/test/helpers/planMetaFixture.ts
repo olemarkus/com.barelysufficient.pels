@@ -56,6 +56,7 @@ const buildPlanMetaBase = (
   softLimitSource: 'capacity',
   hardCapLimitKw: 12,
   hardCapSource: 'configured',
+  configuredHardCapLimitKw: 12,
   capacityPeriodMinutes: 60,
   capacityPeriodCoverageComplete: true,
   usedKWh: 1.2,

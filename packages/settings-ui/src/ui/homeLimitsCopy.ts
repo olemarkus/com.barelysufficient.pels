@@ -58,10 +58,13 @@ export const HOME_LIMITS_MARGIN_LABEL = 'Safety margin (kW)';
 // The month-peak switch, shown with the 15-minute period beside the month's
 // peak readout. The Main-home form ships the same words in its static markup.
 export const FOLLOW_MONTH_PEAK_LABEL = 'Follow this month’s peak';
-export const FOLLOW_MONTH_PEAK_HINT = 'Once this month’s highest quarter is above the hard cap, '
-  + 'PELS lets devices use power up to that peak. Your grid tariff already counts it.';
-export const FOLLOW_MONTH_PEAK_SAVED_TOAST = 'Month peak setting saved.';
-export const FOLLOW_MONTH_PEAK_SAVE_FAILED_TOAST = 'Could not save the month peak setting.';
+export const FOLLOW_MONTH_PEAK_HINT = 'When this month’s highest completed quarter is above the hard cap, '
+  + 'PELS uses that peak, minus the safety margin, until the month ends. '
+  + 'Your grid tariff already counts that peak.';
+export const followMonthPeakSavedToast = (followMonthPeak: boolean): string => (
+  followMonthPeak ? 'Follow this month’s peak turned on.' : 'Follow this month’s peak turned off.'
+);
+export const FOLLOW_MONTH_PEAK_SAVE_FAILED_TOAST = 'Could not save Follow this month’s peak.';
 // Save-time validation copy. Byte-aligned with the Main-home form's messages
 // (`capacity.ts`); these existing copies stay in step by convention (the
 // notes/ui-terminology copy-origin rule yields to the byte-identical-main constraint).

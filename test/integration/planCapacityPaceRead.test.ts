@@ -128,6 +128,7 @@ describe('capacity pace on the held hard cap', () => {
     const plan = await builder.buildDevicePlanSnapshot([]);
     expect(plan.meta.hardCapLimitKw).toBe(8);
     expect(plan.meta.hardCapSource).toBe('month_peak');
+    expect(plan.meta.configuredHardCapLimitKw).toBe(5);
   });
 
   it('never raises the grid import limit', () => {
@@ -143,5 +144,6 @@ describe('capacity pace on the held hard cap', () => {
     const plan = await builder.buildDevicePlanSnapshot([]);
     expect(plan.meta.hardCapLimitKw).toBe(5);
     expect(plan.meta.hardCapSource).toBe('configured');
+    expect(plan.meta.configuredHardCapLimitKw).toBe(5);
   });
 });

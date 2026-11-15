@@ -3,6 +3,7 @@ import type { PlanMetaSnapshot } from '../../packages/settings-ui/src/ui/planTyp
 import {
   HERO_INFO_TOOLTIP_TEXT,
   SAFE_PACE_TOOLTIP_BY_SOURCE,
+  formatHardCapEnergyTooltip,
   formatHeroInfoTooltip,
   formatHourlyPaceExplanation,
   formatSafePaceComposition,
@@ -144,5 +145,21 @@ describe('hourly pace explanation', () => {
     expect(formatHourlyPaceExplanation({ ...meta, softLimitKw: 10.04 })).toBeNull();
     expect(formatHourlyPaceExplanation({ ...meta, softLimitKw: 9 })).toBeNull();
     expect(formatHourlyPaceExplanation({ ...meta, softLimitKw: null })).toBeNull();
+  });
+
+  describe('formatHardCapEnergyTooltip', () => {
+    it('ties a cap held at this month\'s peak back to the configured hard cap', () => {
+      expect(formatHardCapEnergyTooltip(1.6, 15, {
+        hardCapSource: 'month_peak', hardCapLimitKw: 6.4, configuredHardCapLimitKw: 4,
+      })).toBe('Hard cap this quarter 1.6 kWh — landing past this raises the measured peak. '
+        + 'Held at 6.4 kW, this month\'s highest completed quarter. '
+        + 'Your hard cap of 4 kW applies again from the 1st of next month.');
+    });
+
+    it('says only the cap while the configured hard cap holds', () => {
+      expect(formatHardCapEnergyTooltip(1, 15, {
+        hardCapSource: 'configured', hardCapLimitKw: 4, configuredHardCapLimitKw: 4,
+      })).toBe('Hard cap this quarter 1.0 kWh — landing past this raises the measured peak.');
+    });
   });
 });

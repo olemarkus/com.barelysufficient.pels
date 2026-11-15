@@ -1,6 +1,6 @@
 import { Chip } from './components/Chip.tsx';
 import type { ChipTone } from './components/chipTone.ts';
-import type { CapacityPeriodMinutes, HardCapSource } from '../../../../contracts/src/capacitySettings.ts';
+import type { CapacityPeriodMinutes } from '../../../../contracts/src/capacitySettings.ts';
 import { capacityPeriodEnergyKWh } from '../../../../shared-domain/src/settings/capacityPeriod.ts';
 import { capacityPeriodNoun } from '../capacityPeriodCopy.ts';
 import type { ComponentChild } from 'preact';
@@ -26,6 +26,7 @@ import {
   formatHeroInfoTooltip,
   formatHourlyPaceExplanation,
   formatHardCapEnergyTooltip,
+  type HeroHardCap,
   formatSafePaceComposition,
   formatSafePaceTooltip,
   resolveSafePaceSourceText,
@@ -253,8 +254,8 @@ type EnergyBarScale = {
   // it is what "Above hard cap" means (an hourly-average tariff-step boundary,
   // never an instantaneous kW comparison).
   hardCapKWh: number | null;
-  /** Which hard cap `hardCapKWh` is: the configured one, or this month's peak. */
-  hardCapSource: HardCapSource;
+  /** Which hard cap `hardCapKWh` is (the configured one, or this month's peak) and the configured one. */
+  hardCap: HeroHardCap;
   controlledKWh: number;
   uncontrolledKWh: number;
   projectedKWh: number | null;
@@ -283,7 +284,7 @@ const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null =>
     usedKWh,
     budgetKWh,
     hardCapKWh: capacityPeriodEnergyKWh(meta.hardCapLimitKw, meta.capacityPeriodMinutes),
-    hardCapSource: meta.hardCapSource,
+    hardCap: meta,
     controlledKWh: typeof hourControlledKWh === 'number' ? Math.max(0, hourControlledKWh) : 0,
     uncontrolledKWh: typeof hourUncontrolledKWh === 'number' ? Math.max(0, hourUncontrolledKWh) : 0,
     projectedKWh,
@@ -652,8 +653,8 @@ const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
     markers.push({
       kind: 'cap',
       positionPct: pctOf(scale.hardCapKWh, scaleKWh),
-      tooltip: formatHardCapEnergyTooltip(scale.hardCapKWh, scale.periodMinutes),
-      labels: formatEnergyMeterMarkerLabels('cap', scale.hardCapKWh, scale.periodMinutes, scale.hardCapSource),
+      tooltip: formatHardCapEnergyTooltip(scale.hardCapKWh, scale.periodMinutes, scale.hardCap),
+      labels: formatEnergyMeterMarkerLabels('cap', scale.hardCapKWh, scale.periodMinutes, scale.hardCap.hardCapSource),
     });
   }
   return (

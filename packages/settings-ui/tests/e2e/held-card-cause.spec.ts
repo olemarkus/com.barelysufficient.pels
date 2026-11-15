@@ -58,6 +58,7 @@ const applyProdHeldState = async (page: Page) => {
         softLimitSource: 'daily',
         hardCapLimitKw: 10.05,
         hardCapSource: 'configured',
+        configuredHardCapLimitKw: 10.05,
       },
       devices: [
         {
