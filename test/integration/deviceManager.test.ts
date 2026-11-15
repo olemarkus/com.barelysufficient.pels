@@ -363,7 +363,7 @@ describe('DeviceTransport', () => {
             {
                 label: 'a non-boolean onoff',
                 entries: { onoff: { value: 'unexpected' as unknown as boolean, id: 'onoff', lastUpdated: stampedNow() } },
-                violation: { reason: 'unexpected_value', capabilityId: 'onoff' },
+                violation: { reason: 'unexpected_value', capabilityId: 'onoff', valueKind: 'string' },
             },
             {
                 label: 'an onoff stamped with an invalid Date',
@@ -377,7 +377,7 @@ describe('DeviceTransport', () => {
                         value: '21' as unknown as number, id: 'target_temperature', units: '°C', lastUpdated: stampedNow(),
                     },
                 },
-                violation: { reason: 'unexpected_value', capabilityId: 'target_temperature' },
+                violation: { reason: 'unexpected_value', capabilityId: 'target_temperature', valueKind: 'string' },
             },
         ])('keeps independent controls on a cold read carrying $label', async ({ entries, violation }) => {
             const parsed = await seedTransportDevices(deviceManager, [{ ...HOMEY_DEVICE_FIELDS,
@@ -577,7 +577,7 @@ describe('DeviceTransport', () => {
             }));
             expect(loggerMock.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_capabilities_withheld', deviceId: 'neverConformingUnmanaged', source: 'device_fetch',
-                violations: [{ reason: 'unexpected_value', capabilityId: 'onoff' }],
+                violations: [{ reason: 'unexpected_value', capabilityId: 'onoff', valueKind: 'absent' }],
                 withheldCapabilityIds: ['onoff'],
             }));
             dm.destroy();

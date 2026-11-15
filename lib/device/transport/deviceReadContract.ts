@@ -127,9 +127,24 @@ function resolveModelCapabilityTypes(
     return modelTypes;
 }
 
+/**
+ * What kind of value a rejected reading held, never the value itself. It tells
+ * a reading the vendor does not have (`null`) from one of the wrong shape.
+ */
+export type RejectedValueKind = 'null' | 'absent' | 'boolean' | 'string' | 'number' | 'non_finite' | 'object';
+
+const resolveRejectedValueKind = (value: unknown): RejectedValueKind => {
+    if (value === null) return 'null';
+    if (value === undefined) return 'absent';
+    if (typeof value === 'number') return Number.isFinite(value) ? 'number' : 'non_finite';
+    if (typeof value === 'boolean') return 'boolean';
+    if (typeof value === 'string') return 'string';
+    return 'object';
+};
+
 export type DeviceReadContractViolation =
     | { reason: 'missing_capability_entry'; capabilityId: string }
-    | { reason: 'unexpected_value'; capabilityId: string }
+    | { reason: 'unexpected_value'; capabilityId: string; valueKind: RejectedValueKind }
     | { reason: 'missing_stamp'; capabilityId: string };
 
 const hasModelType = (value: unknown, type: ModelValueType): boolean => {
@@ -304,7 +319,9 @@ function findEntryViolation(
     type: ModelValueType,
 ): CapabilityViolation | null {
     if (!isUnknownRecord(entry)) return { reason: 'missing_capability_entry', capabilityId };
-    if (!isModelValue(capabilityId, entry.value, type)) return { reason: 'unexpected_value', capabilityId };
+    if (!isModelValue(capabilityId, entry.value, type)) {
+        return { reason: 'unexpected_value', capabilityId, valueKind: resolveRejectedValueKind(entry.value) };
+    }
     if (toCapabilityTimestampMs(entry.lastUpdated) === undefined) return { reason: 'missing_stamp', capabilityId };
     return null;
 }

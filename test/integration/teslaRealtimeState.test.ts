@@ -58,7 +58,7 @@ test.each(['not-a-vendor-state', '', null, 12])(
 
     expect(findDeviceReadContractViolation({ ...initial[0]!, capabilitiesObj: {
       ...initial[0]!.capabilitiesObj, charging_state: cap(value),
-    } })).toEqual({ reason: 'unexpected_value', capabilityId: 'charging_state' });
+    } })).toMatchObject({ reason: 'unexpected_value', capabilityId: 'charging_state' });
     await emitCapability('battery', 'charging_state', value);
 
     expect(transport.getSnapshotByDeviceId('battery')).toEqual(before);

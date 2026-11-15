@@ -42,9 +42,11 @@ describe('Easee physical connection state', () => {
     expect(findDeviceReadContractViolation(read)).toBeNull();
   });
 
-  it.each([null, 4])('rejects a complete read with malformed declared status %s', status => {
+  it.each([
+    [null, 'null'], [4, 'number'],
+  ] as const)('rejects a complete read with malformed declared status %s', (status, valueKind) => {
     expect(findDeviceReadContractViolation(device(status))).toEqual({
-      reason: 'unexpected_value', capabilityId: 'charger_status',
+      reason: 'unexpected_value', capabilityId: 'charger_status', valueKind,
     });
   });
 
