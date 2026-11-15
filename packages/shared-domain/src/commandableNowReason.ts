@@ -29,22 +29,26 @@ export const EV_BLOCK_REASONS: Record<EvBlockingChargingState, string> = {
   plugged_out: 'charger is unplugged',
   plugged_in_discharging: 'charger is discharging',
   plugged_in_waiting_for_charger: 'charger has not started the session',
+  plugged_in_car_stopped: 'car stopped charging',
 };
 
 /** The reason code a blocking session state resolves to on a plan device. */
-export type EvBlockReasonCode = 'charger_unplugged' | 'charger_discharging' | 'charger_waiting';
+export type EvBlockReasonCode = 'charger_unplugged' | 'charger_discharging' | 'charger_waiting'
+  | 'car_stopped';
 
 /** TOTAL over the blocking states, as {@link EV_BLOCK_REASONS} is. */
 export const EV_BLOCK_REASON_CODES: Record<EvBlockingChargingState, EvBlockReasonCode> = {
   plugged_out: 'charger_unplugged',
   plugged_in_discharging: 'charger_discharging',
   plugged_in_waiting_for_charger: 'charger_waiting',
+  plugged_in_car_stopped: 'car_stopped',
 };
 
 const EV_BLOCK_REASON_BY_CODE: Record<EvBlockReasonCode, string> = {
   charger_unplugged: EV_BLOCK_REASONS.plugged_out,
   charger_discharging: EV_BLOCK_REASONS.plugged_in_discharging,
   charger_waiting: EV_BLOCK_REASONS.plugged_in_waiting_for_charger,
+  car_stopped: EV_BLOCK_REASONS.plugged_in_car_stopped,
 };
 
 export const DEVICE_UNAVAILABLE_REASON = 'device unavailable';
@@ -84,6 +88,7 @@ export const EV_BOOST_BLOCK_REASONS: Record<EvBlockingChargingState, string> = {
   plugged_out: 'Car not connected. Boost will not activate.',
   plugged_in_discharging: 'Car is discharging. Boost will not activate.',
   plugged_in_waiting_for_charger: 'Charger has not started the session. Boost will not activate.',
+  plugged_in_car_stopped: 'The car stopped charging. Boost will not activate.',
 };
 
 /**

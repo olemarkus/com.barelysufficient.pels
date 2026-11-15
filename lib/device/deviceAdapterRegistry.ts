@@ -31,7 +31,8 @@ import { solaxBatteryAdapter } from './solax';
 import { homeWizardAdapter } from './homewizard';
 import { plainDeviceAdapter } from './standardDeviceAdapter';
 import type {
-  DeviceAdapter, AdapterObservation, AdapterControlTarget, DeviceAdapterSession, InventoryCompleteness,
+  DeviceAdapter, AdapterObservation, AdapterControlTarget, CapabilityWrite, DeviceAdapterSession,
+  InventoryCompleteness,
 } from './deviceAdapter';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../utils/types';
@@ -116,6 +117,13 @@ export class DeviceAdapterSessions {
     if (!snapshot.controlAdapter?.unavailableStatus) return snapshot;
     const { unavailableStatus: _previousStatus, ...controlAdapter } = snapshot.controlAdapter;
     return { ...snapshot, controlAdapter };
+  }
+  /** Whether any session now projects the device differently. */
+  observeRefusedWrite(deviceId: string, write: CapabilityWrite, message: string, atMs: number): boolean {
+    return this.sessions.map((session) => session.observeRefusedWrite(deviceId, write, message, atMs)).includes(true);
+  }
+  observeAcceptedWrite(deviceId: string, write: CapabilityWrite): boolean {
+    return this.sessions.map((session) => session.observeAcceptedWrite(deviceId, write)).includes(true);
   }
   controlEvents(snapshot: TransportDeviceSnapshot, capabilityId: string, value: unknown) {
     return this.sessions.find((session) => session.controls(snapshot))?.controlEvents(snapshot.id, capabilityId, value)

@@ -1,6 +1,7 @@
-import type { DeviceAdapterSession } from '../deviceAdapter';
+import type { AdapterControlTarget, CapabilityWrite, DeviceAdapterSession } from '../deviceAdapter';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { normalizeText } from './charging';
+import { ZaptecCarStops } from './carStop';
 
 /**
  * The installation a Zaptec charger is on, by the id the app gives it. A Sense
@@ -31,7 +32,15 @@ export const zaptecInstallationOf = (device: HomeyDeviceLike): string | undefine
 export class ZaptecInstallationSession implements DeviceAdapterSession {
   private sharedInstallations: ReadonlySet<string> = new Set();
 
+  /** The Zaptec chargers this transport has read, the only devices a car-stop is recorded for. */
+  private readonly chargers = new Set<string>();
+
+  private readonly carStops = new ZaptecCarStops();
+
   retainDevices(devices: readonly HomeyDeviceLike[]): void {
+    const ids = new Set(devices.map((device) => device.id));
+    this.carStops.retain(ids);
+    for (const id of this.chargers) if (!ids.has(id)) this.chargers.delete(id);
     const seen = new Set<string>();
     const shared = new Set<string>();
     for (const device of devices) {
@@ -49,14 +58,35 @@ export class ZaptecInstallationSession implements DeviceAdapterSession {
     return device.capabilitiesObj.target_power_mode?.value === 'homey' ? [] : ['target_power', 'target_power_mode'];
   }
 
-  observeDevice(): void {}
-  observeCapability(): void {}
+  observeDevice(device: HomeyDeviceLike): void {
+    if (!isZaptecCharger(device)) return;
+    this.chargers.add(device.id);
+    this.carStops.noteRead(device);
+  }
+
+  observeCapability(deviceId: string, capabilityId: string): void {
+    this.carStops.noteReport(deviceId, capabilityId);
+  }
+
+  observeRefusedWrite(deviceId: string, write: CapabilityWrite, message: string, atMs: number): boolean {
+    return this.chargers.has(deviceId) && this.carStops.noteRefused(deviceId, write, message, atMs);
+  }
+
+  observeAcceptedWrite(deviceId: string, write: CapabilityWrite): boolean {
+    return this.carStops.noteAccepted(deviceId, write);
+  }
+
   setTrustEpoch(): void {}
   observedIds(): string[] { return []; }
   observes(): boolean { return false; }
-  controls(): boolean { return false; }
+  /** A charger whose car stopped its session is read through {@link project}. */
+  controls(snapshot: AdapterControlTarget): boolean { return this.carStops.has(snapshot.id); }
   missingCompanion(): 'none' { return 'none'; }
-  project: DeviceAdapterSession['project'] = (snapshot) => snapshot;
+  project: DeviceAdapterSession['project'] = (snapshot) => this.carStops.project(snapshot);
   assertAllowed(): void {}
   controlEvents: DeviceAdapterSession['controlEvents'] = (_deviceId, capabilityId, value) => [{ capabilityId, value }];
 }
+
+const isZaptecCharger = (device: HomeyDeviceLike): boolean => (
+  device.driverId.startsWith('homey:app:com.zaptec:') && normalizeText(device.class) === 'evcharger'
+);

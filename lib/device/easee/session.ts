@@ -58,6 +58,8 @@ export class EaseeChargingSession implements DeviceAdapterSession {
   project(snapshot: TransportDeviceSnapshot): TransportDeviceSnapshot { return snapshot; }
   assertAllowed(): void {}
   missingCompanion(): 'none' { return 'none'; }
+  observeRefusedWrite(): boolean { return false; }
+  observeAcceptedWrite(): boolean { return false; }
 
   controlEvents(_deviceId: string, capabilityId: string, value: unknown) {
     // The app publishes charger_status, charging, then its lossy standard state.

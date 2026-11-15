@@ -7,6 +7,7 @@ const unrestrictedSession: DeviceAdapterSession = {
   missingCompanion: () => 'none',
   project: (snapshot) => snapshot, assertAllowed() {},
   controlEvents: (_id, capabilityId, value) => [{ capabilityId, value }],
+  observeRefusedWrite: () => false, observeAcceptedWrite: () => false,
 };
 
 /** Default behavior for standard Homey capabilities and unsupported integration facets. */

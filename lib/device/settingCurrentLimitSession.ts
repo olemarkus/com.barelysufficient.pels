@@ -84,4 +84,6 @@ export class SettingCurrentLimitSession implements DeviceAdapterSession {
 
   assertAllowed(): void {}
   controlEvents(_deviceId: string, capabilityId: string, value: unknown) { return [{ capabilityId, value }]; }
+  observeRefusedWrite(): boolean { return false; }
+  observeAcceptedWrite(): boolean { return false; }
 }

@@ -44,6 +44,7 @@ const EV_CHARGING_STATES: ReadonlySet<string> = new Set(
     plugged_in_paused: 0,
     plugged_in_waiting_for_charger: 0,
     plugged_in_finished: 0,
+    plugged_in_car_stopped: 0,
     plugged_out: 0,
     plugged_in_discharging: 0,
   } satisfies Record<EvChargingState, 0>),
@@ -109,6 +110,7 @@ const EV_CHARGE_ACTIONS: Record<EvChargingState, EvChargeAction> = {
   plugged_in_charging: 'keep',
   plugged_in_waiting_for_charger: 'wait',
   plugged_in_finished: 'offer',
+  plugged_in_car_stopped: 'wait',
 };
 
 export const resolveEvChargeAction = (evChargingState: EvChargingState): EvChargeAction => (
@@ -142,7 +144,7 @@ export const isEvPlugStateBlocked = (
 /** The plug-states {@link isEvPlugStateCommandable} rejects. */
 export type EvBlockingChargingState = Extract<
   EvChargingState,
-  'plugged_out' | 'plugged_in_discharging' | 'plugged_in_waiting_for_charger'
+  'plugged_out' | 'plugged_in_discharging' | 'plugged_in_waiting_for_charger' | 'plugged_in_car_stopped'
 >;
 
 /**
@@ -156,6 +158,7 @@ export const isEvPlugStateIdle = (evChargingState: EvChargingState): boolean => 
     case 'plugged_in_awaiting_start':
     case 'plugged_in_waiting_for_charger':
     case 'plugged_in_finished':
+    case 'plugged_in_car_stopped':
       return true;
     case 'plugged_in_charging':
     case 'plugged_in_paused':

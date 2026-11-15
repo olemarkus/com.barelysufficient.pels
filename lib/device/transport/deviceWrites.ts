@@ -42,14 +42,14 @@ import {
   toTargetPowerCapabilityValue,
 } from '../batteryControlWiring';
 import { isHomeBatterySnapshot } from './homeBatteryObservation';
-import { TransportSnapshotStore } from './transportSnapshotStore';
+import type { TransportSnapshotStore } from './transportSnapshotStore';
 import type { NativeWiringRead } from './managerParseDevice';
-import { TransportObservationState } from './transportObservationState';
+import type { TransportObservationState } from './transportObservationState';
 import { resolveInverterControl } from './solarInverterObservation';
 import { inverterBindingsMatch, inverterRestorationLimitW } from '../../planContract/inverterDecision';
+import { FLOW_TRIGGER_ACCEPTANCE_TIMEOUT_MS, awaitFlowTriggerAcceptance } from './flowTriggerAcceptance';
 
 const emitTransportDebug = getDebugEmitter('devices', 'devices');
-const FLOW_TRIGGER_ACCEPTANCE_TIMEOUT_MS = 10_000;
 
 function normalizeCapabilityValue(
     snapshotStore: TransportSnapshotStore,
@@ -277,7 +277,7 @@ export class DeviceWriteService {
         normalizedValue,
         write,
     );
-    await setRawCapabilityValue(homeyDeviceId, write.capabilityId, write.value, ownWrite.transactionId);
+    await this.sendCapabilityWrite(deviceId, homeyDeviceId, write, ownWrite.transactionId);
     emitCapabilityWriteDebug(
         'device_capability_write_accepted',
         deviceId,
@@ -578,6 +578,20 @@ export class DeviceWriteService {
     }
   }
 
+  /** Send `write`; a session that reads the device differently after the answer has it published again. */
+  private async sendCapabilityWrite(
+    deviceId: string, homeyDeviceId: string, write: CapabilityWrite, transactionId: string,
+  ): Promise<void> {
+    const failure = await setRawCapabilityValue(homeyDeviceId, write.capabilityId, write.value, transactionId)
+      .then(() => null, (error: unknown) => ({ error }));
+    const snapshot = this.snapshotStore.getSnapshotByDeviceId(deviceId);
+    if (this.chargingCurrentControl.observeWriteOutcome(deviceId, write, failure) && snapshot) {
+      this.snapshotStore.replaceSnapshotEntry(deviceId, this.chargingCurrentControl.projectControl(snapshot));
+      this.dispatchObservedStateForDevice(deviceId);
+    }
+    if (failure) throw failure.error;
+  }
+
   private setNativeStepCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {
     // A device without a binary pause can stop through its watt target.
     if (capabilityId === 'target_power' && value === 0) {
@@ -631,22 +645,4 @@ export class DeviceWriteService {
       return { requested: false };
     }
   }
-}
-
-async function awaitFlowTriggerAcceptance(
-    trigger: () => Promise<unknown> | unknown,
-): Promise<'accepted' | 'timed_out'> {
-    let acceptanceTimeout: ReturnType<typeof setTimeout> | undefined;
-    try {
-        const triggerResult = Promise.resolve()
-            .then(trigger)
-            .then(() => 'accepted' as const);
-        const timeoutResult = new Promise<'timed_out'>((resolve) => {
-            acceptanceTimeout = setTimeout(() => resolve('timed_out'), FLOW_TRIGGER_ACCEPTANCE_TIMEOUT_MS);
-            acceptanceTimeout.unref();
-        });
-        return await Promise.race([triggerResult, timeoutResult]);
-    } finally {
-        if (acceptanceTimeout) clearTimeout(acceptanceTimeout);
-    }
 }

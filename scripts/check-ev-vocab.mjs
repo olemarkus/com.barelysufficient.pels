@@ -46,6 +46,7 @@ const FORBIDDEN = new Set([
   'plugged_in_paused',
   'plugged_in_waiting_for_charger',
   'plugged_in_finished',
+  'plugged_in_car_stopped',
   'plugged_in_charging',
   'plugged_in_discharging',
 ]);

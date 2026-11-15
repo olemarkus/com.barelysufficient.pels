@@ -9,12 +9,13 @@ import { readFlowCapabilityWrites, type FlowReadResult } from '../flowApi/readUs
 import type { FlowCapabilityWrites, UserFlowFacts } from '../flowApi/userFlows';
 import type { AcceptedFlowConflictSlice } from '../flowApi/acceptedFlowConflictStore';
 import { normalizeError } from '../utils/errorUtils';
+import { resolveHomeyHttpStatusCode } from '../utils/homeyHttpStatusError';
 import { HomeyRequestInFlightError } from '../utils/homeyRequestInFlightError';
 import { isBuiltInControlInEffect } from './builtInControlFlowGate';
 import {
   hasSharedChargingInstallation, resolveChargingCurrentAdapter, resolveChargingCurrentAction,
 } from './chargingCurrentAdapter';
-import type { ChargingCurrentBinding } from './deviceAdapter';
+import type { CapabilityWrite, ChargingCurrentBinding } from './deviceAdapter';
 import type { HomeyActionAccess } from './transport/homeyActionAccess';
 import { FLOW_ACTION_CARDS_API_PATH } from './flowActionCards';
 import type { Logger } from '../utils/types';
@@ -219,6 +220,18 @@ export class ChargingCurrentControl {
   private builtInRouteKey(): string {
     return this.knownDevices().filter((device) => this.routesBuiltIn(device.id)).map((device) => device.id)
       .sort().join('|');
+  }
+
+  /**
+   * What the device's app answered a write PELS sent: `failure` is null when it
+   * accepted it. Only an HTTP error status is a refusal; a write with no answer
+   * (a timeout) may still land and says nothing about the device. Returns whether
+   * a session now reads the device differently, so the transport projects it again.
+   */
+  observeWriteOutcome(deviceId: string, write: CapabilityWrite, failure: { error: unknown } | null): boolean {
+    if (failure === null) return this.sessions.observeAcceptedWrite(deviceId, write);
+    if (resolveHomeyHttpStatusCode(failure.error) === undefined) return false;
+    return this.sessions.observeRefusedWrite(deviceId, write, normalizeError(failure.error).message, Date.now());
   }
 
   projectControl(source: TransportDeviceSnapshot): TransportDeviceSnapshot {

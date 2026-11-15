@@ -13,7 +13,7 @@ and `resolveSteppedLevelFact` (`lib/plan/planSteppedCardText.ts`). Vocabulary ru
 
 Signal 3 below is carried as PELS's own session vocabulary (`EvChargingState`,
 `packages/contracts/src/types.ts`). It holds Homey's five
-`evcharger_charging_state` values and three more that an integration resolves
+`evcharger_charging_state` values and four more that an integration resolves
 from its app's own states. Each state says what the session is doing and whose
 move it is, and so admits one answer to a wish to charge
 (`resolveEvChargeAction`, `packages/shared-domain/src/evPlugState.ts`):
@@ -26,6 +26,7 @@ move it is, and so admits one answer to a wish to charge
 | `plugged_in_paused` | An open session the charger holds off | PELS | `resume` |
 | `plugged_in_waiting_for_charger` | The charger has not started the session: it waits for authorisation, its schedule or its load balancing | the charger | `wait`: PELS sends nothing |
 | `plugged_in_finished` | The car has stopped asking for power | the car | `offer`: PELS keeps its lowest charging step on offer and never starts a new session |
+| `plugged_in_car_stopped` | The car stopped the session itself, and the charger takes no command to start it again | the car | `wait`: PELS sends nothing; the charger charges again when the car asks |
 | `plugged_in_charging` | Delivering | PELS | `keep`: pause it or set its current |
 | `plugged_in_discharging` | Exporting | nobody | blocked |
 
@@ -48,6 +49,18 @@ answer reads `device did not respond`. Both wait out the same backoff (15, 30,
 then 60 minutes) and are tried again, and a charger that runs clears it
 (`lib/plan/admission/binaryCommandReachability.ts`).
 
+Where the refusal itself says which of the two it was, the integration reads it.
+A Zaptec refuses a turn-on on a session the car stopped with `Charging is not
+Paused nor Scheduled`, and the app publishes the same `plugged_in_paused` for
+both (observed on a Zaptec Go, 2026-11-14). After that answer the Zaptec session
+reads the app's paused state as `plugged_in_car_stopped`
+(`lib/device/zaptec/carStop.ts`), so PELS stops asking, and the charger charges
+again when the car asks. Every newer fact ends it: any session report from the
+app (state, switch, car connected), a full read with a session report dated
+after the refusal, PELS's own accepted pause, the device leaving Homey, or an app
+restart. A report that ends it without changing the state gives the paused state
+back at once, because Homey publishes no unchanged value.
+
 An integration maps what its app can tell apart, and no more:
 
 | Integration | App state | Session state |
@@ -58,6 +71,7 @@ An integration maps what its app can tell apart, and no more:
 | Easee | `Standby`, `Offline`, `Error` | `plugged_out` |
 | Zaptec | `plugged_in` (connected, session not started) | `plugged_in_waiting_for_charger` |
 | Zaptec | `plugged_in_paused` (paused, or ended by the car: one value for both) | `plugged_in_paused` |
+| Zaptec | `plugged_in_paused` after a turn-on refused with `Charging is not Paused nor Scheduled` | `plugged_in_car_stopped` |
 | Tesla | `Complete` | `plugged_in_finished` |
 | Tesla | `Stopped`, `Starting` | `plugged_in_paused` |
 | go-e | `car_finished`, switch on | `plugged_in_finished` |
@@ -168,6 +182,7 @@ Charger-only rows — everything PELS could say before the car association:
 | `plugged_in_awaiting_start` | `true` / `false` | As `plugged_in`: no session runs yet | **Waiting for car** / **Not charging** |
 | `plugged_in_finished` | any | The car has stopped asking for power | **Charging finished** |
 | `plugged_in_waiting_for_charger` | any | The charger has not started the session | **Waiting for charger** |
+| `plugged_in_car_stopped` | any | The car stopped the session, and the charger said so | **Car stopped charging** |
 | `plugged_in_discharging` | any | V2G export | **Discharging** |
 
 Rows 5 and 6 are the ones that have caused trouble. "Waiting for car" was
@@ -242,8 +257,10 @@ as it goes, because *why* the car refused is exactly what the car cannot report.
 Separating them needs the session history `classifyEvCarSelfStop` keeps (did
 current ever flow this session, and did PELS stop it?); the card sees one instant, so a commanded-on
 charger drawing nothing reads **Waiting for car** whether or not a session
-started earlier. `Car stopped charging` is the self-stop producer's vocabulary
-and is not card copy today.
+started earlier. `Car stopped charging` is the self-stop producer's vocabulary.
+It is card copy only where the charger itself said so: a Zaptec's
+`plugged_in_car_stopped`, which comes from the charger's own refusal, not from
+session history.
 
 ## Rules
 
