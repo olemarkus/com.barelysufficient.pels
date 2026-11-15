@@ -49,6 +49,7 @@ For most supported chargers PELS controls charging through the charger's Homey a
 | **Wallbox** (Wallbox Charger) | Directly, with a Homey API key under **Setup → Charging current**. |
 | **amina S** (amina) | Directly, with a Homey API key under **Setup → Charging current**. PELS starts and stops charging with the charger's on/off switch. |
 | **go-e Charger** (go-e Charger) | Directly, with a Homey API key under **Setup → Charging current**. PELS starts and stops charging with the charger's **Charging Allowed** switch. Set the maximum current no higher than your cable allows: the charger caps the current at the cable's rating. |
+| **OCPP 1.6 chargers** (OCPP Server) | Directly through the charger's charging power, in whole amps from 6 A, no key or Flow. PELS reads the charger's phases from the app's phases setting, and starts and stops charging with the charger's charging switch. |
 | **Smappee EV Wall** (Smappee) | Starts and stops charging through the charging mode: it pauses the charger and resumes it in standard charging. The app offers no current control. |
 | **Zappi** (myenergi) | Starts and stops charging. The Zappi charges in the charge mode you chose in the myenergi app. |
 | Another charger whose Homey app lets Homey set its charging power and publishes a power range for it | Directly through that power setting, no key or Flow. The device page offers **Automatic** with that range. |
