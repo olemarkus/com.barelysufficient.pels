@@ -16,6 +16,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import { buildOverviewSteppedLoad } from './planOverviewSteppedState';
 import { isBinaryPlanDevice } from './planBinaryDevice';
+import { isMeteredPlanDevice } from './planMeteredDevice';
 import {
   resolveOverviewTemperatureFacet,
 } from './planOverviewTemperatureState';
@@ -47,6 +48,7 @@ import type { PlanServiceDeps } from './planServiceDeps';
 export type SettingsOverviewReadModelDeps = Pick<PlanServiceDeps,
   | 'homeId' | 'observed' | 'getAssociatedCarChargingState' | 'getCarIdentificationState'
   | 'getHomeBatteryCard' | 'getDeviceControlAdapter' | 'isBuiltInControlHeldByFlow' | 'isTargetPowerControlRefused'
+  | 'hasStandingCommandGrant'
   | 'getSteppedLoadProfileById'
   | 'readStarvationRescuableDeviceIds'> & {
   getDeviceExecutionState: (deviceId: string) => DeviceExecutionState;
@@ -238,6 +240,8 @@ function buildLoadOverviewDevice(
     adapterUnavailableStatus: deps.getDeviceControlAdapter(device.id)?.unavailableStatus,
     builtInControlHeldByFlow: deps.isBuiltInControlHeldByFlow(device.id),
     targetPowerControlRefused: deps.isTargetPowerControlRefused(device.id),
+    standingCommandGrant: deps.hasStandingCommandGrant(device.id),
+    hasPowerReading: isMeteredPlanDevice(device),
     controllable: device.control.commandAuthority,
     ...temperatureFields,
     steppedLoad,

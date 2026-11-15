@@ -6,6 +6,7 @@ const runningPowerHold = (overrides: Partial<DeviceStatusInput> = {}): DeviceSta
   currentDrawKw: 1.2, expectedPowerKw: 1.5, controllable: true, available: true,
   reason: { code: PLAN_REASON_CODES.capacity, shortfallKw: 2.3 },
   priceTargetShift: { kind: 'none' }, adapterUnavailableStatus: undefined, builtInControlHeldByFlow: false, targetPowerControlRefused: false,
+  standingCommandGrant: true, hasPowerReading: true,
   carIdentificationState: 'not_waiting',
   execution: {
     available: true, physicalState: 'on', observedStepId: null,
@@ -239,14 +240,31 @@ describe('a device whose app refused level control', () => {
 });
 
 describe('Manual cards', () => {
-  // Every card PELS does not control says why (owner, 2026-11-14). A Manual card's
-  // reason is the owner's own Power-limit control setting.
-  it.each([false, true])('names Power-limit control as the reason, in simulation %s', (dryRun) => {
-    const status = buildDeviceStatus(runningPowerHold({
-      controllable: false, plannedState: 'keep', reason: { code: PLAN_REASON_CODES.capacityControlOff },
-    }), dryRun, 0);
+  // Every card PELS does not control says why (owner, 2026-11-14), and names only
+  // what the facts say: the owner's grant first, then the power reading.
+  const manual = (overrides: Partial<DeviceStatusInput>, dryRun = false) => buildDeviceStatus(runningPowerHold({
+    controllable: false, plannedState: 'keep', reason: { code: PLAN_REASON_CODES.capacityControlOff }, ...overrides,
+  }), dryRun, 0);
+
+  it.each([false, true])('names Power-limit control when the owner granted none, in simulation %s', (dryRun) => {
+    const status = manual({ standingCommandGrant: false }, dryRun);
     expect(status.label).toBe('Manual');
     expect(status.reason).toEqual({ text: 'Power-limit control is off' });
+  });
+
+  it('names Power-limit control over a missing power reading when both hold', () => {
+    expect(manual({ standingCommandGrant: false, hasPowerReading: false }).reason)
+      .toEqual({ text: 'Power-limit control is off' });
+  });
+
+  it('says there is no power reading when the owner granted control', () => {
+    const status = manual({ standingCommandGrant: true, hasPowerReading: false });
+    expect(status.label).toBe('Manual');
+    expect(status.reason).toEqual({ text: 'No power reading from this device' });
+  });
+
+  it('names no setting the owner has turned on when no fact explains it', () => {
+    expect(manual({ standingCommandGrant: true, hasPowerReading: true }).reason).toBeNull();
   });
 });
 

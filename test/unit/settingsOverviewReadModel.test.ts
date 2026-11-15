@@ -516,6 +516,16 @@ describe('settingsOverviewReadModel', () => {
     expect(wire.status.reason).toEqual({ text: kind === 'manual' ? 'Power-limit control is off' : 'Homey reports this device unavailable' });
   });
 
+  it('says a Manual card has no power reading when the owner granted Power-limit control', () => {
+    // Authority also takes a power reading, so this card is Manual with the toggle on.
+    const device = buildPlanDevice({ controllable: false, unmetered: true });
+    const card = (granted: boolean) => buildDeviceCard(device, {
+      ...absentTemperature, hasStandingCommandGrant: () => granted,
+    }).status;
+    expect(card(true)).toMatchObject({ kind: 'manual', reason: { text: 'No power reading from this device' } });
+    expect(card(false)).toMatchObject({ kind: 'manual', reason: { text: 'Power-limit control is off' } });
+  });
+
   it('calls a charger a charger before it has reported any plug-state', () => {
     const device = buildPlanDevice({
       id: 'ev-1',
