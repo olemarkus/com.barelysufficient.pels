@@ -237,3 +237,15 @@ describe('a device whose app refused level control', () => {
     expect(kept({ targetPowerControlRefused: false }).reason).toBeNull();
   });
 });
+
+describe('Manual cards', () => {
+  // Every card PELS does not control says why (owner, 2026-11-14). A Manual card's
+  // reason is the owner's own Power-limit control setting.
+  it.each([false, true])('names Power-limit control as the reason, in simulation %s', (dryRun) => {
+    const status = buildDeviceStatus(runningPowerHold({
+      controllable: false, plannedState: 'keep', reason: { code: PLAN_REASON_CODES.capacityControlOff },
+    }), dryRun, 0);
+    expect(status.label).toBe('Manual');
+    expect(status.reason).toEqual({ text: 'Power-limit control is off' });
+  });
+});

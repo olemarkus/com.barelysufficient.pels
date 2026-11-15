@@ -513,7 +513,7 @@ describe('settingsOverviewReadModel', () => {
       getIdleClassification: () => 'unresponsive',
     });
     expect(wire.status.kind).toBe(kind);
-    expect(wire.status.reason).toBeNull();
+    expect(wire.status.reason).toEqual(kind === 'manual' ? { text: 'Power-limit control is off' } : null);
   });
 
   it('calls a charger a charger before it has reported any plug-state', () => {
@@ -590,7 +590,7 @@ describe('settingsOverviewReadModel', () => {
   });
 
   it.each([
-    ['a charger with power-limit control off', { controllable: false }, 'Unplugged · Level Low', null],
+    ['a charger with power-limit control off', { controllable: false }, 'Unplugged · Level Low', 'Power-limit control is off'],
     // The held charger's state word names its level ("Limited · Low"), so its
     // fact line keeps only the exception.
     ['a charger PELS holds at a lower level', { plannedState: 'shed' as const,
