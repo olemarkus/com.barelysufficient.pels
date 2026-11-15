@@ -195,7 +195,7 @@ export type ObservedStorageInput = {
   observedAtMs: number;
   /** PELS holds a recorded claim on the battery (it owes a hand-back). */
   claimHeld: boolean;
-  /** PELS may hold the battery: control on, Main home, claim recordable, not in simulation. */
+  /** PELS may hold the battery: control on, Main home, claim recordable (in simulation too: it plans the hold and sends nothing). */
   admissible: boolean;
   /**
    * The owner's Power-limit control for this battery, read through the

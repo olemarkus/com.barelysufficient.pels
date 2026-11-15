@@ -57,7 +57,7 @@ export class SimulatedPeriodEnergy {
     const untilMs = tracker.lastTimestamp;
     if (this.held === null || typeof untilMs !== 'number' || untilMs <= this.held.fromMs) return;
     const { fromMs, reliefKw, exemptReliefKw } = this.held;
-    if (reliefKw > 0) {
+    if (reliefKw !== 0) {
       for (let startMs = fromMs; startMs < untilMs;) {
         const endMs = Math.min(untilMs, nextBoundaryMs(startMs));
         const hours = (endMs - startMs) / HOUR_MS;
@@ -164,9 +164,10 @@ const lessAvoided = (measuredKWh: number, avoidedKWh: number): number => (
 const nextBoundaryMs = (ms: number): number => (Math.floor(ms / CAPACITY_QUARTER_MS) + 1) * CAPACITY_QUARTER_MS;
 
 /**
- * What the batteries the plan holds would take off the house's import, kW: the
- * held setpoint below what each battery measured (more discharge, or less
- * charge), as the storage stage counts it in the house's balance.
+ * What the batteries the plan holds would change in the house's import, kW:
+ * the measured power less the held setpoint, positive for more discharge or
+ * less charge, negative for a charge the battery's own mode would not take
+ * (planned grid charging), as the storage stage counts it in its balance.
  */
 function resolveStorageReliefKw(storage: StorageRelief, inputs: readonly PlanInputDevice[]): number {
   const signedWById = new Map(inputs.flatMap((device) => (
@@ -177,7 +178,7 @@ function resolveStorageReliefKw(storage: StorageRelief, inputs: readonly PlanInp
   for (const battery of storage.batteries) {
     const signedW = signedWById.get(battery.deviceId);
     if (battery.decision.kind === 'setpoint' && signedW !== undefined) {
-      reliefKw += Math.max(0, signedW - battery.setpointW) / 1000;
+      reliefKw += (signedW - battery.setpointW) / 1000;
     }
   }
   return reliefKw;

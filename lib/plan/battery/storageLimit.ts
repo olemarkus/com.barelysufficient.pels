@@ -134,9 +134,15 @@ export function withoutStorageWithheld(
   power: MeasuredPower,
   relief: StorageRelief,
   devices: readonly Pick<PlanInputDevice, 'id' | 'phaseFootprint'>[],
+  /**
+   * In capacity simulation, what the held batteries would deliver that the
+   * reading does not show (`simulateFollowedHolds`), W: live control's reading
+   * would already have that room, before its discharge is withheld. 0 live.
+   */
+  simulatedUndeliveredW: number,
 ): MeasuredPower {
-  const withheldKw = sumWithheldKw(relief.batteries);
-  if (withheldKw <= 0) return power;
+  const withheldKw = sumWithheldKw(relief.batteries) - simulatedUndeliveredW / 1000;
+  if (withheldKw === 0) return power;
   const footprintOf = (deviceId: string): PhaseFootprint => (
     devices.find((device) => device.id === deviceId)?.phaseFootprint ?? { kind: 'unknown' }
   );

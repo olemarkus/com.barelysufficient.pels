@@ -99,6 +99,19 @@ describe('SimulatedPeriodEnergy', () => {
     expect(view.buckets?.[key(HOUR_12)]).toBeCloseTo(3 - (1.5 + 1) * 0.5);
   });
 
+  it('counts the import a held battery would add, as planned grid charging does', () => {
+    const storage: StorageRelief = { ...NO_STORAGE_RELIEF, batteries: [partialDouble<StorageStateSummary>({
+      deviceId: 'buying', setpointW: 2000, decision: { kind: 'setpoint', setpointW: 2000, stepW: 5 },
+    })] };
+    const idle = partialDouble<PlanInputDevice>({ id: 'buying', storage: { reading: 'observed', signedPowerW: 0 } } as Partial<PlanInputDevice>);
+    const ledger = new SimulatedPeriodEnergy();
+    ledger.hold([], storage, [idle], tracker(HOUR_12, {}));
+    expect(ledger.heldReliefKw()).toBeCloseTo(-2);
+    ledger.accrue(tracker(HOUR_12 + 30 * MIN, {}));
+    expect(ledger.planningView(tracker(HOUR_12 + 30 * MIN, { [key(HOUR_12)]: 3 })).buckets?.[key(HOUR_12)])
+      .toBeCloseTo(4);
+  });
+
   it('paces from the measured tracker again once simulation ends', () => {
     const ledger = new SimulatedPeriodEnergy();
     ledger.hold([heldOff(2)], NO_STORAGE_RELIEF, [], tracker(HOUR_12, {}));

@@ -112,7 +112,7 @@ export const BATTERY_REASON_LINES = {
  * hold, hypothetically (`notes/ui-terminology.md`).
  */
 export const BATTERY_SIMULATED_REASON_LINES = {
-  relief: 'Would supply power to hold your limit',
+  relief: 'Would hold your limit so your devices keep running',
   charge_limit: 'Would charge slower to hold your limit',
   surplus: 'Would store the solar power your devices leave',
   cap_for_device: 'Would charge less so a device can use the solar',
@@ -168,7 +168,7 @@ export function buildSettingsUiPlanHomeBattery(
   const power: SettingsUiPlanHomeBattery['power'] = direction !== null && battery.power.kind === 'observed'
     ? { kind: 'observed', kw: Math.abs(battery.power.signedW) / 1000 }
     : { kind: 'absent' };
-  if (dryRun) return { activity: direction ?? 'own_mode', power, holdsLimit: false };
+  if (dryRun) return buildSimulatedHomeBattery(hold, available, direction, power);
   // Only a battery PELS holds for relief that is supplying holds the limit: a
   // surplus or capped hold, or a battery in its own mode, discharges for
   // reasons of its own.
@@ -180,6 +180,23 @@ export function buildSettingsUiPlanHomeBattery(
   }
   return { activity: direction ?? INTENDED_DIRECTION[hold.kind], power, holdsLimit };
 }
+
+/**
+ * In simulation PELS holds nothing: the battery is in its own mode, named by
+ * what it reports, and one PELS would leave alone reads `Own mode` as under
+ * live control. A battery PELS would discharge for the limit carries what it
+ * would supply, for the hero to name hypothetically.
+ */
+const buildSimulatedHomeBattery = (
+  hold: StorageHold,
+  available: boolean,
+  direction: Direction | null,
+  power: SettingsUiPlanHomeBattery['power'],
+): SettingsUiPlanHomeBattery => {
+  const activity = isOwnModeHold(hold) ? 'own_mode' : direction ?? 'own_mode';
+  const wouldSupply = available && hold.kind === 'relief' && hold.exportPhase === undefined && hold.supplyKw > 0;
+  return { activity, power, holdsLimit: false, ...(wouldSupply ? { wouldSupplyKw: hold.supplyKw } : {}) };
+};
 
 const resolveFactText = (battery: HomeBatteryCard, hold: StorageHold): string | null => {
   const parts = [

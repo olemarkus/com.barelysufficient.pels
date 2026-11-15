@@ -48,9 +48,15 @@ describe('home battery Overview card', () => {
   it('in simulation, names what the battery reports and what PELS would have it do', () => {
     const lines = (dev: PlanDeviceSnapshot) => [...renderCard(dev, true)
       .querySelectorAll('.plan-card__state-row > span, .plan-card__secondary-line, p')].map((el) => el.textContent);
-    const idle = batteryDevice(battery(0, 64), { kind: 'relief' }, false, true);
-    expect(lines(idle)).toEqual(['Own mode', '64 % charged', 'Would supply power to hold your limit (simulation)']);
-    expect(idle.homeBattery).toMatchObject({ activity: 'own_mode', holdsLimit: false });
+    const idle = batteryDevice(battery(0, 64), { kind: 'relief', supplyKw: 2.4 }, false, true);
+    expect(lines(idle)).toEqual(['Own mode', '64 % charged', 'Would hold your limit so your devices keep running (simulation)']);
+    expect(idle.homeBattery).toMatchObject({ activity: 'own_mode', holdsLimit: false, wouldSupplyKw: 2.4 });
+
+    // One PELS would leave alone reads as under live control: its own mode, the direction on the fact line.
+    const leftAlone = batteryDevice(battery(600, 64), { kind: 'none' }, false, true);
+    expect(lines(leftAlone)[0]).toBe('Own mode');
+    expect(leftAlone.homeBattery).toMatchObject({ activity: 'own_mode' });
+    expect(leftAlone.homeBattery?.wouldSupplyKw).toBeUndefined();
 
     const charging = batteryDevice(battery(600, 52), { kind: 'charge_limit', heldBackKw: 2.4 }, false, true);
     expect(lines(charging)).toEqual([
@@ -61,7 +67,7 @@ describe('home battery Overview card', () => {
   });
 
   it('shows the state and power, then the charge level, then the reason', () => {
-    const card = renderCard(batteryDevice(battery(-2400, 64), { kind: 'relief' }));
+    const card = renderCard(batteryDevice(battery(-2400, 64), { kind: 'relief', supplyKw: 2.4 }));
     const lines = [...card.querySelectorAll('.plan-card__state-row > span, .plan-card__secondary-line, p')].map((el) => el.textContent);
     expect(lines).toEqual([
       'Supplying',

@@ -120,6 +120,11 @@ export type SettingsUiPlanHomeBattery = {
   activity: 'supplying' | 'selling' | 'charging' | 'own_mode' | 'waiting';
   power: { kind: 'observed'; kw: number } | { kind: 'absent' };
   holdsLimit: boolean;
+  /**
+   * In Simulation mode, the discharge PELS would hold it at to hold the limit,
+   * kW; absent when it would not, and always under live control.
+   */
+  wouldSupplyKw?: number;
 };
 
 /**

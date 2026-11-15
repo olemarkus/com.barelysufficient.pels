@@ -917,7 +917,7 @@ describe('settingsOverviewReadModel home battery card', () => {
   });
 
   it('says a battery PELS holds for the limit is supplying, without a sign', () => {
-    const card = buildDeviceCard(batteryDevice({ kind: 'relief' }), battery());
+    const card = buildDeviceCard(batteryDevice({ kind: 'relief', supplyKw: 2.4 }), battery());
     expect(card.status).toMatchObject({
       label: 'Supplying',
       kind: 'active',
@@ -930,14 +930,14 @@ describe('settingsOverviewReadModel home battery card', () => {
   });
 
   it('never says an unavailable battery holds the limit, so the hero does not name it supplying', () => {
-    const device = { ...batteryDevice({ kind: 'relief' }), available: false };
+    const device = { ...batteryDevice({ kind: 'relief', supplyKw: 2.4 }), available: false };
     const card = buildDeviceCard(device, battery());
     expect(card.status).toMatchObject({ kind: 'unavailable', powerText: null });
     expect(card.homeBattery).toEqual({ activity: 'supplying', power: { kind: 'observed', kw: 2.4 }, holdsLimit: false });
   });
 
   it('names what a battery held for the limit still does, not what the plan asked', () => {
-    const card = buildDeviceCard(batteryDevice({ kind: 'relief' }), battery({ signedW: 1500 }));
+    const card = buildDeviceCard(batteryDevice({ kind: 'relief', supplyKw: 2.4 }), battery({ signedW: 1500 }));
     expect(card.status).toMatchObject({
       label: 'Charging',
       powerText: '1.5 kW',
@@ -951,7 +951,7 @@ describe('settingsOverviewReadModel home battery card', () => {
     { name: 'too little to name', signedW: -30 },
     { name: 'no power reading', signedW: null },
   ])('gives a held battery reporting $name no power, so the hero has no figure', ({ signedW }) => {
-    const card = buildDeviceCard(batteryDevice({ kind: 'relief' }), battery({ signedW }));
+    const card = buildDeviceCard(batteryDevice({ kind: 'relief', supplyKw: 2.4 }), battery({ signedW }));
     expect(card.status).toMatchObject({ label: 'Supplying', powerText: null });
     expect(card.homeBattery).toEqual({ activity: 'supplying', power: { kind: 'absent' }, holdsLimit: false });
   });
@@ -1054,7 +1054,7 @@ describe('settingsOverviewReadModel home battery card', () => {
     const readModel = buildSettingsOverviewReadModel({
       meta: buildPlanMeta({}),
       devices: [
-        batteryDevice({ kind: 'relief' }),
+        batteryDevice({ kind: 'relief', supplyKw: 2.4 }),
         buildPlanDevice({ id: 'pv-1', name: 'Roof', isBatteryOrSolar: true }),
       ],
       chargingPhaseDecisions: [],

@@ -316,9 +316,20 @@ export type DecisionSentenceInput = {
   // power each supplies. The battery's discharge is the limit holding without
   // a device limited, which the sentence names instead of a quiet hour.
   supplyingBatteries?: readonly SupplyingBattery[];
+  // In Simulation mode, the batteries PELS would discharge to hold the limit,
+  // with the power each would supply: the reason a device stays on there.
+  wouldSupplyBatteries?: readonly SupplyingBattery[];
 };
 
 export type SupplyingBattery = { name: string; kw: number };
+
+/** In Simulation mode, the batteries the hero names as what would hold the limit (`wouldSupplyKw`). */
+export const resolveWouldSupplyBatteries = (
+  devices: readonly Pick<SettingsUiPlanDeviceSnapshot, 'name' | 'homeBattery'>[],
+): SupplyingBattery[] => devices.flatMap((device) => {
+  const kw = device.homeBattery?.wouldSupplyKw;
+  return kw === undefined ? [] : [{ name: formatDisplayDeviceName(device.name), kw }];
+});
 
 /**
  * The batteries the hero names as holding the limit: the producer's
@@ -427,6 +438,14 @@ const formatBatterySupply = (batteries: readonly SupplyingBattery[]): string => 
   const [only] = batteries;
   if (batteries.length === 1 && only) return `${only.name} is supplying ${formatKw(totalKw)}`;
   return `${batteries.length} batteries are supplying ${formatKw(totalKw)}`;
+};
+
+// The same clause in Simulation mode, hypothetically: PELS sends nothing.
+const formatBatteryWouldSupply = (batteries: readonly SupplyingBattery[]): string => {
+  const totalKw = batteries.reduce((sum, battery) => sum + battery.kw, 0);
+  const [only] = batteries;
+  const subject = batteries.length === 1 && only ? only.name : `${batteries.length} batteries`;
+  return `${subject} would supply ${formatKw(totalKw)} to hold your limit.`;
 };
 
 // Resolve the on-pace-over-hard-cap decision sentence (rule 2 of
@@ -542,6 +561,27 @@ const resolvePhaseSentence = (input: DecisionSentenceInput): DecisionSentenceRes
   return null;
 };
 
+// Simulation would limit devices: named after the batteries that would supply first.
+const resolveSimulatedLimitingSentence = (input: DecisionSentenceInput): DecisionSentenceResult => {
+  const devicesText = `${formatDevices(input.limitedCount)} would be limited right now.`;
+  const wouldSupply = input.wouldSupplyBatteries ?? [];
+  return {
+    text: wouldSupply.length > 0 ? `${formatBatteryWouldSupply(wouldSupply)} ${devicesText}` : devicesText,
+    positive: false,
+  };
+};
+
+// The batteries holding the limit with no device limited; in simulation, the ones that would.
+const resolveBatteryHoldSentence = (input: DecisionSentenceInput): DecisionSentenceResult | null => {
+  if (input.dryRun) {
+    const wouldSupply = input.wouldSupplyBatteries ?? [];
+    return wouldSupply.length > 0 ? { text: formatBatteryWouldSupply(wouldSupply), positive: true } : null;
+  }
+  const batteries = input.supplyingBatteries ?? [];
+  if (batteries.length === 0) return null;
+  return { text: `${formatBatterySupply(batteries)} to hold your limit.`, positive: true };
+};
+
 const buildQuietDecisionSentence = (dryRun: boolean): DecisionSentenceResult => ({
   text: dryRun ? 'No devices would be limited right now.' : 'No devices are being limited.',
   positive: true,
@@ -567,12 +607,7 @@ export const buildDecisionSentence = (
   // already name simulation on the Overview; this conclusion drops the
   // redundant "if simulation mode were off" tail so simulation is stated at
   // most twice. It stays hypothetical (`would`) — never implying PELS acted.
-  if (input.dryRun && input.limitedCount > 0) {
-    return {
-      text: `${formatDevices(input.limitedCount)} would be limited right now.`,
-      positive: false,
-    };
-  }
+  if (input.dryRun && input.limitedCount > 0) return resolveSimulatedLimitingSentence(input);
 
   const batteries = input.dryRun ? [] : input.supplyingBatteries ?? [];
 
@@ -603,10 +638,10 @@ export const buildDecisionSentence = (
     };
   }
 
-  // 7. A battery holds the limit, so no device needs to be limited.
-  if (batteries.length > 0) {
-    return { text: `${formatBatterySupply(batteries)} to hold your limit.`, positive: true };
-  }
+  // 7. A battery holds the limit, so no device needs to be limited; in
+  // simulation, a battery would.
+  const batteryHold = resolveBatteryHoldSentence(input);
+  if (batteryHold !== null) return batteryHold;
 
   // 8. Nothing managed. "Quiet hour" would be a verdict on devices PELS does not
   // have; a brand-new owner reads it as an assessed-calm home. Not positive:
