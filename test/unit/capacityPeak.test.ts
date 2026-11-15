@@ -1,17 +1,21 @@
-import { capacityMonthPeakKw, resolveCurrentMonthCapacityPeak } from '../../lib/power/capacityPeak';
+import { resolveCurrentMonthCapacityPeak } from '../../lib/power/capacityPeak';
+import type { PowerTrackerState } from '../../lib/power/trackerTypes';
 import { MAX_POWER_SAMPLE_GAP_MS } from '../../lib/power/trackerTypes';
 
-const peakKw = (...args: Parameters<typeof resolveCurrentMonthCapacityPeak>): number | null => (
-  capacityMonthPeakKw(resolveCurrentMonthCapacityPeak(...args))
-);
+// The tracked peak alone: no meter-reported peak beside it.
+const peakKw = (tracker: PowerTrackerState, timeZone: string, nowMs: number): number | null => {
+  const peak = resolveCurrentMonthCapacityPeak(tracker, null, timeZone, nowMs);
+  return peak.state === 'recorded' ? peak.peakKw : null;
+};
 
 describe('resolveCurrentMonthCapacityPeak', () => {
   it('names a recorded peak and a month without a completed quarter as two states', () => {
     const nowMs = Date.parse('2026-09-17T10:08:00.000Z');
     expect(resolveCurrentMonthCapacityPeak({
       capacityMonthlyPeak: { monthKey: '2026-09', peakKw: 5.6 },
-    }, 'Europe/Brussels', nowMs)).toEqual({ state: 'recorded', peakKw: 5.6 });
-    expect(resolveCurrentMonthCapacityPeak({}, 'Europe/Brussels', nowMs)).toEqual({ state: 'no_completed_quarter' });
+    }, null, 'Europe/Brussels', nowMs)).toEqual({ state: 'recorded', peakKw: 5.6, source: 'tracked' });
+    expect(resolveCurrentMonthCapacityPeak({}, null, 'Europe/Brussels', nowMs))
+      .toEqual({ state: 'no_completed_quarter' });
   });
 
   it('reports the highest completed quarter in the current local month', () => {
@@ -80,5 +84,44 @@ describe('resolveCurrentMonthCapacityPeak', () => {
     }, 'Europe/Brussels', lastTimestamp + MAX_POWER_SAMPLE_GAP_MS + 1);
 
     expect(result).toBeCloseTo(4, 6);
+  });
+});
+
+describe('resolveCurrentMonthCapacityPeak with the meter\'s own peak', () => {
+  const nowMs = Date.parse('2026-09-17T10:08:00.000Z');
+  const tracked: PowerTrackerState = { capacityMonthlyPeak: { monthKey: '2026-09', peakKw: 5.6 } };
+
+  it('takes the meter\'s peak when it is above the tracked one, and says so', () => {
+    const meter = { peakKw: 6.4, observedAtMs: Date.parse('2026-09-03T18:15:00.000Z') };
+    expect(resolveCurrentMonthCapacityPeak(tracked, meter, 'Europe/Brussels', nowMs))
+      .toEqual({ state: 'recorded', peakKw: 6.4, source: 'meter' });
+  });
+
+  it('keeps the tracked peak when it is above the meter\'s', () => {
+    const meter = { peakKw: 4.9, observedAtMs: Date.parse('2026-09-03T18:15:00.000Z') };
+    expect(resolveCurrentMonthCapacityPeak(tracked, meter, 'Europe/Brussels', nowMs))
+      .toEqual({ state: 'recorded', peakKw: 5.6, source: 'tracked' });
+  });
+
+  it('counts the meter\'s peak in a month PELS has no completed quarter for', () => {
+    const meter = { peakKw: 3.2, observedAtMs: Date.parse('2026-09-02T07:30:00.000Z') };
+    expect(resolveCurrentMonthCapacityPeak({}, meter, 'Europe/Brussels', nowMs))
+      .toEqual({ state: 'recorded', peakKw: 3.2, source: 'meter' });
+  });
+
+  it('ignores last month\'s meter value still showing after local midnight on the 1st', () => {
+    // 21:45 UTC on 31 August is 23:45 in Brussels: still August's value.
+    const meter = { peakKw: 9, observedAtMs: Date.parse('2026-08-31T21:45:00.000Z') };
+    const firstOfMonthMs = Date.parse('2026-08-31T22:20:00.000Z');
+    expect(resolveCurrentMonthCapacityPeak({}, meter, 'Europe/Brussels', firstOfMonthMs))
+      .toEqual({ state: 'no_completed_quarter' });
+    expect(resolveCurrentMonthCapacityPeak(tracked, meter, 'Europe/Brussels', nowMs))
+      .toEqual({ state: 'recorded', peakKw: 5.6, source: 'tracked' });
+  });
+
+  it('counts the meter again once it reports in the new month', () => {
+    const meter = { peakKw: 1.8, observedAtMs: Date.parse('2026-08-31T22:15:00.000Z') };
+    expect(resolveCurrentMonthCapacityPeak({}, meter, 'Europe/Brussels', Date.parse('2026-08-31T22:20:00.000Z')))
+      .toEqual({ state: 'recorded', peakKw: 1.8, source: 'meter' });
   });
 });

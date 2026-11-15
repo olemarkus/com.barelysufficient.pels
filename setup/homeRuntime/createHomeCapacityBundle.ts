@@ -76,6 +76,7 @@ import {
 import type { SubHomeRuntime } from '../../lib/home/subHomeRuntime';
 import { createHomeCapacityGuard } from './createHomeCapacityGuard';
 import type { PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
+import type { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
 
 /**
  * Every seam that must be answered by the home that OWNS a device rather than by
@@ -148,9 +149,18 @@ function buildSubHomeScope(
   getServiceForSync: () => PlanService | undefined,
   getPlanEngineForCommandProvenance: () => PlanEngine | undefined,
   modeCatalog: HomeModeCatalog,
-  meterSilenceMonitor: MeterSilenceMonitor,
+  meterMonthlyPeaks: MeterMonthlyPeaks,
 ): HomeScope {
   const { homeId, isTornDown } = runtime;
+  // This home's meter-silence policy: shared by the composed plan-build gate
+  // (via the scope), the pipeline's admitted-sample push, and the freshness
+  // escalation's shed-pass protocol, which read it from the scope.
+  const meterSilenceMonitor = new MeterSilenceMonitor({
+    homeId,
+    getPowerTracker,
+    nowMs: () => Date.now(),
+    structuredLog: () => ctx.getStructuredLogger('power'),
+  });
   // Same lane the main home wires, with this area's own way of reaching its
   // plan service: a torn-down bundle drops the rebuild rather than driving a
   // service it no longer owns. The scheduled timer key is cleared either way,
@@ -165,7 +175,12 @@ function buildSubHomeScope(
     // Live read: a rename lands via `updateHomeConfig` without a teardown.
     getHomeDisplayName: () => resolveHomeAreaDisplayName(runtime.getHomeConfig().name),
     getMainFuse: () => ({ kind: 'off' }),
-    getCapacitySettings: createHomeHeldPowerLimitsRead(ctx, runtime.getCapacityScalars, getPowerTracker),
+    getCapacitySettings: createHomeHeldPowerLimitsRead(
+      ctx,
+      runtime.getCapacityScalars,
+      getPowerTracker,
+      () => meterMonthlyPeaks.current(runtime.getHomeConfig().meterDeviceId),
+    ),
     // The canonical no-actuation switch. This is the CONTROL path, so it asks
     // the execution form — the one that also arms source recovery.
     getCapacityDryRun: runtime.isEffectiveDryRunForExecution,
@@ -282,19 +297,12 @@ function createBundlePlanningRuntime(
   tracker: HomeTrackerPersistence,
   modeCatalog: HomeModeCatalog,
   controlContests: ControlContestRecording,
+  meterMonthlyPeaks: MeterMonthlyPeaks,
 ) {
-  // This home's meter-silence policy: shared by the composed plan-build gate
-  // (via the scope), the pipeline's admitted-sample push, and the freshness
-  // escalation's shed-pass protocol.
-  const meterSilenceMonitor = new MeterSilenceMonitor({
-    homeId: runtime.homeId,
-    getPowerTracker: tracker.getState,
-    nowMs: () => Date.now(),
-    structuredLog: () => ctx.getStructuredLogger('power'),
-  });
   const scope = buildSubHomeScope(
-    ctx, runtime, tracker.getState, () => planService, () => planEngine, modeCatalog, meterSilenceMonitor,
+    ctx, runtime, tracker.getState, () => planService, () => planEngine, modeCatalog, meterMonthlyPeaks,
   );
+  const meterSilenceMonitor = scope.getMeterSilenceMonitor();
   // The pipeline is built below; its prepared-reconcile fence is asked only at
   // actuation, which needs the finished bundle.
   const isActuationFenced = (): boolean => runtime.isActuationFenced(
@@ -369,6 +377,8 @@ export function createHomeCapacityBundle(
   powerTrackerMeterIdentity: PowerTrackerMeterIdentity,
   /** The app's record of drift corrections, which this area's plan engine feeds. */
   controlContests: ControlContestRecording,
+  /** The month peaks the polled meters report; this area reads its meter's. */
+  meterMonthlyPeaks: MeterMonthlyPeaks,
 ): HomeCapacityBundle {
   const { homeId } = runtime;
   const logger = () => ctx.getStructuredLogger('homes');
@@ -408,7 +418,7 @@ export function createHomeCapacityBundle(
     planRebuildScheduler,
     planRebuildThrottle,
     meterSilenceMonitor,
-  } = createBundlePlanningRuntime(ctx, runtime, timerKey, tracker, modeCatalog, controlContests);
+  } = createBundlePlanningRuntime(ctx, runtime, timerKey, tracker, modeCatalog, controlContests, meterMonthlyPeaks);
   const beginPreparedReconcile = (sampleRevision: number): (() => void) => {
     holdDeferredShortfallSideEffect();
     return pipeline.preparedReconcileFence.begin(sampleRevision);
@@ -458,6 +468,7 @@ export function createHomeCapacityBundle(
     membershipReadyEdge, ownershipGeneration,
     reloadModeCatalog: modeCatalog.reload,
     isModeCatalogInitialized: modeCatalog.isInitialized,
+    meterMonthlyPeaks,
   });
   // The dry-run defaults above are the safe boot posture. Let the API's owned
   // retry lane recover the real scalars before allowing them to drive plans.

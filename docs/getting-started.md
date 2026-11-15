@@ -56,7 +56,7 @@ In Flanders, use **15-minute average** if your bill uses measured quarter-hour p
 
 Dutch bills also use “capacity tariff” for connection-capacity charges. PELS's **Capacity limit** concerns measured average peaks. [ACM guidance](https://consument.acm.nl/elektriciteit-en-gas/wat-betaal-ik-voor-mijn-energie/wat-zijn-netwerkkosten-capaciteitstarief-aansluittarief-meettarief).
 
-For eligible Flemish digital-meter households, the **2.5 kW billing minimum** is a billing rule, not a recommended PELS target. **Highest completed quarter this month** is based on readings received by PELS. It does not reproduce the operator's billing calculation, which applies its own minimums and aggregation. [Vlaamse Nutsregulator guidance](https://www.vlaamsenutsregulator.be/elektriciteit-en-aardgas/nettarieven/capaciteitstarief).
+For eligible Flemish digital-meter households, the **2.5 kW billing minimum** is a billing rule, not a recommended PELS target. **Highest completed quarter this month** is based on readings received by PELS, or on the monthly peak your meter reports when it reports one. It does not reproduce the operator's billing calculation, which applies its own minimums and aggregation. [Vlaamse Nutsregulator guidance](https://www.vlaamsenutsregulator.be/elektriciteit-en-aardgas/nettarieven/capaciteitstarief).
 
 </details>
 

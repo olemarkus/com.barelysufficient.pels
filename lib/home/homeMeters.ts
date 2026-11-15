@@ -55,6 +55,11 @@ export class HomeMeters {
     private readonly getSubHomes: () => SubHomeMeters | undefined,
     /** Read Main's phases beside its net sample, before the sample can reach a plan. */
     private readonly observeMainPhases: (sample: MeterPowerSample) => Promise<void>,
+    /** Read the polled meters' own month peaks, before their samples can reach a plan. */
+    private readonly observeMeterMonthlyPeaks: (
+      meterDeviceIds: readonly string[],
+      mainMeterDeviceId: string | null,
+    ) => Promise<void>,
   ) {}
 
   /**
@@ -74,6 +79,7 @@ export class HomeMeters {
     return {
       meterDeviceIds,
       record: async (readings) => {
+        await this.observeMeterMonthlyPeaks(meterDeviceIds, main.meterDeviceIds[0] ?? null);
         routeSubHomeReadings(subHomes, readings);
         const sample = main.sampleFrom(readings);
         if (sample === null) return;

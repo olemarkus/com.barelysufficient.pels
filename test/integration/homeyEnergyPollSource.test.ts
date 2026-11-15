@@ -7,6 +7,7 @@ import { requireConfiguredPowerSource } from '../../setup/powerSourceSettings';
 import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import type { HomeMeterRequest, LiveMeterReadings, MeterPowerSample } from '../../lib/ports/homeMeterReadings';
 import { readMeterSample } from '../../lib/home/homeMeters';
+import { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
 
 const mockPowerSource = () => requireConfiguredPowerSource(mockHomeyInstance.settings);
 
@@ -323,15 +324,20 @@ describe('HomeyEnergyPollSource', () => {
       meterPowerW: { 'meter-main': 2_100, 'm-area': 700 },
       generationW: 300,
     });
+    const observedAtMs = Date.parse('2026-04-02T18:15:00.000Z');
+    const readMeterMonthlyPeak = vi.fn(async (meterDeviceId: string) => (meterDeviceId === 'm-area'
+      ? { state: 'read' as const, peakKw: 4.1, observedAtMs }
+      : { state: 'none' as const }));
+    const meterMonthlyPeaks = new MeterMonthlyPeaks();
     const source = createHomeyEnergyPollSource({
       getPowerSource: () => 'homey_energy',
       timers: new TimerRegistry(),
       homey: mockHomeyInstance,
-      deviceManager: { readMeters, readMeterPhases: async () => ({ state: 'unavailable' as const }) },
+      deviceManager: { readMeters, readMeterPhases: async () => ({ state: 'unavailable' as const }), readMeterMonthlyPeak },
       capacityGuard: { phaseReadings: new PhaseReadingTracker() },
       getSubHomeMeters: () => ({ getMeterDeviceIds: () => ['m-area'], routeMeterReadings }),
       error: vi.fn(),
-    }, { recordPowerSample });
+    }, { recordPowerSample }, meterMonthlyPeaks);
 
     await source.pollNow();
 
@@ -342,6 +348,13 @@ describe('HomeyEnergyPollSource', () => {
       generationW: 300,
       meterDeviceId: 'meter-main',
     });
+    // Every polled meter's own month peak is read with the poll, Main's and the area's.
+    expect(readMeterMonthlyPeak.mock.calls.map(([id]) => id)).toEqual(['meter-main', 'm-area']);
+    expect(meterMonthlyPeaks.current('m-area')).toEqual({ peakKw: 4.1, observedAtMs });
+    expect(meterMonthlyPeaks.current('meter-main')).toBeNull();
+    // A minute has not passed: the next poll does not read the meter devices again.
+    await source.pollNow();
+    expect(readMeterMonthlyPeak).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -368,11 +381,12 @@ describe('phase source for a Flow-source home', () => {
       getPowerSource: () => 'flow',
       timers: new TimerRegistry(),
       homey: { settings: { get: (key: string) => (key === 'main_fuse_phase_meter_device_id' ? 'meter' : null) } },
-      deviceManager: { readMeters: async () => null, readMeterPhases: async () => ({ state: 'unavailable' as const }) },
+      deviceManager: { readMeters: async () => null, readMeterPhases: async () => ({ state: 'unavailable' as const }),
+        readMeterMonthlyPeak: async () => ({ state: 'none' as const }) },
       capacityGuard: { phaseReadings: { reset } },
       getSubHomeMeters: () => undefined,
       error: vi.fn(),
-    } as never, { recordPowerSample: vi.fn() } as never);
+    } as never, { recordPowerSample: vi.fn() } as never, new MeterMonthlyPeaks());
     source.start();
     expect(reset).not.toHaveBeenCalled();
   });
@@ -383,11 +397,12 @@ describe('phase source for a Flow-source home', () => {
       getPowerSource: () => 'flow',
       timers: new TimerRegistry(),
       homey: { settings: { get: () => null } },
-      deviceManager: { readMeters: async () => null, readMeterPhases: async () => ({ state: 'unavailable' as const }) },
+      deviceManager: { readMeters: async () => null, readMeterPhases: async () => ({ state: 'unavailable' as const }),
+        readMeterMonthlyPeak: async () => ({ state: 'none' as const }) },
       capacityGuard: { phaseReadings: { reset } },
       getSubHomeMeters: () => undefined,
       error: vi.fn(),
-    } as never, { recordPowerSample: vi.fn() } as never).start();
+    } as never, { recordPowerSample: vi.fn() } as never, new MeterMonthlyPeaks()).start();
     expect(reset).toHaveBeenCalledOnce();
   });
 });

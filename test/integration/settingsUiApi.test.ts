@@ -36,6 +36,7 @@ import { overviewReadModelWiring } from '../utils/settingsOverviewFixture';
 import { captureLogger } from '../utils/loggerCapture';
 import { DEFAULT_CONTINUOUS_BATTERY_PLAN_CONFIG } from '../../packages/shared-domain/src/settings/continuousBatteryPlan';
 import { noPlanServiceObservedReads } from '../helpers/observedDeviceReadsDouble';
+import type { CapacityMonthPeak } from '../../lib/power/capacityPeak';
 
 describe('settingsUiApi', () => {
   const overviewFixture = (
@@ -460,11 +461,13 @@ describe('settingsUiApi', () => {
       capacityQuarter: { startMs: 0, energyKWh: 0.5, trackedMs: 900_000 },
       capacityMonthlyPeak: { monthKey: '2026-03', peakKw: 6.25 },
     };
-    (homey.app as unknown as { getCurrentMonthCapacityPeakKw: () => number }).getCurrentMonthCapacityPeakKw = () => 6.25;
+    (homey.app as unknown as { getCurrentMonthCapacityPeak: () => CapacityMonthPeak }).getCurrentMonthCapacityPeak = (
+      () => ({ state: 'recorded', peakKw: 6.25, source: 'meter' })
+    );
 
     const payload = getSettingsUiPowerPayload({ homey: homey as never });
 
-    expect(payload.capacityPeak).toEqual({ state: 'recorded', peakKw: 6.25 });
+    expect(payload.capacityPeak).toEqual({ state: 'recorded', peakKw: 6.25, source: 'meter' });
     expect((payload.tracker as Record<string, unknown>).capacityQuarter).toBeUndefined();
     expect((payload.tracker as Record<string, unknown>).capacityMonthlyPeak).toBeUndefined();
   });

@@ -63,7 +63,7 @@ export const pelsHostDouble = <T extends object>(fixture: T): T & PelsHost => {
     } as unknown as PelsHost['capacityGuard'],
     deviceControlSettings: deviceControlSettingsFixture(),
     capacitySettingsStore: { mainFuse: () => ({ kind: 'off' }) } as unknown as PelsHost['capacitySettingsStore'],
-    getCurrentMonthCapacityPeakKw: () => null,
+    getCurrentMonthCapacityPeak: () => ({ state: 'no_completed_quarter' }),
     getPriceSourcePayloadsForUi: () => NO_PRICE_SOURCE_PAYLOADS,
     getPvForecastSourceUiStatus: () => ({ kind: 'unknown' }),
     getHomeyPriceFormulaUiStatus: () => ({ kind: 'unknown' }),

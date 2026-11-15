@@ -45,3 +45,15 @@ average kW in the current Homey-local month. The in-progress and partially
 tracked quarters are omitted. This is tracked operational evidence, not a bill
 estimate: grid-operator minimums and rolling multi-month billing formulas are
 deliberately out of scope.
+
+A meter that reports its own month peak raises it: the month peak is the higher
+of the tracked one and the meter's (`resolveCurrentMonthCapacityPeak`), so a peak
+set while PELS was not running still counts, and the readout says `Reported by
+your meter.` when the meter's value is the higher. Recognising the capability is
+the meter integration's job (`DeviceAdapter.meterMonthlyPeak`; the HomeWizard P1
+publishes `measure_power.montly_power_peak` in W). The Homey Energy poll reads
+each home's meter at most once a minute into `lib/power/meterMonthlyPeak.ts`, in
+memory and keyed by meter: a failed or malformed read keeps the last accepted
+peak, and a value Homey last dated in an earlier local month is not this month's,
+so after the 1st the meter counts again once it reports in the new month. A home
+on the Flow source has no meter peak.

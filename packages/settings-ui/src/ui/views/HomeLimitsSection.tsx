@@ -11,6 +11,7 @@ import {
   HOME_LIMITS_GLOBAL_SETTINGS_ELSEWHERE,
   FOLLOW_MONTH_PEAK_HINT,
   FOLLOW_MONTH_PEAK_LABEL,
+  HOME_LIMITS_TRACKED_PEAK_NOTE,
 } from '../homeLimitsCopy.ts';
 import {
   composeHomeLimitsStateLine,
@@ -25,7 +26,7 @@ import { composeHomeScopedTitle } from '../homeScopeCopy.ts';
 import { MdFilledSelect, MdSelectOption, MdSwitch, readSwitchSelected } from './materialWebJSX.tsx';
 import type { CapacityPeriodMinutes } from '../../../../contracts/src/capacitySettings.ts';
 import type { SettingsUiCapacityPeak } from '../../../../contracts/src/settingsUi/power.ts';
-import { formatCapacityPeak } from '../capacityPeakRead.ts';
+import { capacityPeakNote, formatCapacityPeak } from '../capacityPeakRead.ts';
 import { composeSafePaceSummaryCopy, type MonthPeakReadout } from '../monthPeakHoldCopy.ts';
 import { resolveCapacityPeriodMinutes } from '../../../../shared-domain/src/settings/capacityPeriod.ts';
 
@@ -158,8 +159,8 @@ const CapFields = ({ editor }: { editor: HomeLimitsEditorView }) => (
         <strong class="settings-result__value" id="home-limits-monthly-peak">
           {formatCapacityPeak(editor.capacityPeak)}
         </strong>
-        <span class="settings-result__note">
-          Tracked estimate; your grid operator may apply a minimum or combine several monthly peaks.
+        <span class="settings-result__note" id="home-limits-monthly-peak-note">
+          {capacityPeakNote(editor.capacityPeak, HOME_LIMITS_TRACKED_PEAK_NOTE)}
         </span>
         {editor.monthPeak.stateLine !== null && (
           <span class="settings-result__note" id="home-limits-monthly-peak-state">{editor.monthPeak.stateLine}</span>

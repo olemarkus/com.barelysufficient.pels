@@ -14,7 +14,7 @@ import type { SubHomeOwnershipGeneration } from '../../lib/home/subHomeOwnership
 import type { HomeRuntimeDiagnostics } from '../../lib/home/homeRuntimeRead';
 import type { PlanService } from '../../lib/plan/planService';
 import { resolveLastTotalPowerKw } from '../../lib/power/lastTotalPower';
-import { capacityMonthPeakKw, resolveCurrentMonthCapacityPeak } from '../../lib/power/capacityPeak';
+import { resolveCurrentMonthCapacityPeak } from '../../lib/power/capacityPeak';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import {
@@ -27,6 +27,7 @@ import type { HomeScope } from './homeScope';
 import type { HomeCapacityBundle } from './createHomeCapacityBundle';
 import type { HomeTrackerPersistence } from '../../lib/power/homeTrackerPersistence';
 import type { PlanRebuildThrottle } from '../../lib/plan/rebuildScheduler/throttle';
+import type { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
 export const startHomeCapacityBundle = (
   planService: PlanService,
   logger: () => ReturnType<AppContext['getStructuredLogger']>,
@@ -94,7 +95,7 @@ const buildSettingsRebuild = (
  */
 type HomeCapacityBundleReadDeps = Pick<
   HomeCapacityBundleApiParams,
-  'ctx' | 'runtime' | 'planEngine' | 'planService' | 'tracker'
+  'ctx' | 'runtime' | 'planEngine' | 'planService' | 'tracker' | 'meterMonthlyPeaks'
 > & { getOperatingMode: () => string };
 
 /**
@@ -117,7 +118,7 @@ const buildHomeCapacityBundleReads = (
   deps: HomeCapacityBundleReadDeps,
 ): Pick<HomeCapacityBundle, 'getDiagnostics' | 'getReadModel'> => {
   const {
-    ctx, runtime, planEngine, planService, tracker, getOperatingMode,
+    ctx, runtime, planEngine, planService, tracker, getOperatingMode, meterMonthlyPeaks,
   } = deps;
   const { homeId } = runtime;
   const readDiagnostics = (): HomeRuntimeDiagnostics => ({
@@ -137,8 +138,11 @@ const buildHomeCapacityBundleReads = (
       plan: planService.getLatestPlanSnapshotForUi(),
       planUpdatedAtMs: planService.getLatestPlanSnapshotUpdatedAtMs(),
       powerTracker: tracker.getState(),
-      currentMonthCapacityPeakKw: capacityMonthPeakKw(
-        resolveCurrentMonthCapacityPeak(tracker.getState(), ctx.getTimeZone(), Date.now()),
+      currentMonthCapacityPeak: resolveCurrentMonthCapacityPeak(
+        tracker.getState(),
+        meterMonthlyPeaks.current(runtime.getHomeConfig().meterDeviceId),
+        ctx.getTimeZone(),
+        Date.now(),
       ),
       diagnostics: readDiagnostics(),
     }),
@@ -166,6 +170,8 @@ type HomeCapacityBundleApiParams = {
   isModeCatalogInitialized: () => boolean;
   /** THIS bundle's own rebuild throttle (never main's) — see `OwningHomeHooks`. */
   planRebuildThrottle: PlanRebuildThrottle;
+  /** The month peaks the polled meters report; the read model takes this area's meter's. */
+  meterMonthlyPeaks: MeterMonthlyPeaks;
 };
 
 export function buildHomeCapacityBundleApi(params: HomeCapacityBundleApiParams): HomeCapacityBundle {

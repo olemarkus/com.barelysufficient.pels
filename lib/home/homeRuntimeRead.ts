@@ -38,6 +38,7 @@
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUi/plan';
+import type { CapacityMonthPeak } from '../../packages/contracts/src/settingsUi/power';
 import type { HomeId } from './homeConfig';
 
 /** A home runtime's diagnostics block — the single declaration, served by each `SubHomeBundle`. */
@@ -66,7 +67,8 @@ export type HomeRuntimeReading = Readonly<{
   planUpdatedAtMs: number | null;
   /** This home's own power tracker state (its meter only, never the whole home). */
   powerTracker: PowerTrackerState;
-  currentMonthCapacityPeakKw: number | null;
+  /** This home's month peak (`resolveCurrentMonthCapacityPeak`), against its own tracker and meter. */
+  currentMonthCapacityPeak: CapacityMonthPeak;
   diagnostics: HomeRuntimeDiagnostics;
 }>;
 

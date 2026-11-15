@@ -7,13 +7,25 @@ import type { SettingsUiCapacityPeak } from '../../../contracts/src/settingsUi/p
  */
 export const classifyCapacityPeak = (value: unknown): SettingsUiCapacityPeak => {
   if (typeof value !== 'object' || value === null) return { state: 'unavailable' };
-  const { state, peakKw } = value as { state?: unknown; peakKw?: unknown };
+  const { state, peakKw, source } = value as { state?: unknown; peakKw?: unknown; source?: unknown };
   if (state === 'no_completed_quarter') return { state };
-  if (state === 'recorded' && typeof peakKw === 'number' && Number.isFinite(peakKw) && peakKw >= 0) {
-    return { state, peakKw };
+  if (state === 'recorded' && typeof peakKw === 'number' && Number.isFinite(peakKw) && peakKw >= 0
+    && (source === 'tracked' || source === 'meter')) {
+    return { state, peakKw, source };
   }
   return { state: 'unavailable' };
 };
+
+/** The Main home's readout note while PELS's own tracked quarters set the peak. */
+export const TRACKED_CAPACITY_PEAK_NOTE = 'Based on readings PELS received, '
+  + 'not your grid operator’s billing calculation.';
+/** The readout note while the peak is the one the meter reports itself. */
+export const METER_CAPACITY_PEAK_NOTE = 'Reported by your meter.';
+
+/** The readout's note: the meter's own peak says so; otherwise the page's tracked-peak note. */
+export const capacityPeakNote = (peak: SettingsUiCapacityPeak, trackedNote: string): string => (
+  peak.state === 'recorded' && peak.source === 'meter' ? METER_CAPACITY_PEAK_NOTE : trackedNote
+);
 
 export const formatCapacityPeak = (peak: SettingsUiCapacityPeak): string => {
   switch (peak.state) {

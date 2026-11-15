@@ -21,6 +21,7 @@ const LIMITS_FORM_TEMPLATE = [
   '<span id="settings-capacity-reaction"></span>',
   '<span id="settings-capacity-reaction-note">(hard cap minus safety margin; it adapts as the period is used)</span>',
   '<div id="settings-capacity-monthly-peak" hidden><span id="settings-capacity-monthly-peak-value">Peak unavailable</span>',
+  '<span id="settings-capacity-monthly-peak-note">Based on readings PELS received</span>',
   '<span id="settings-capacity-monthly-peak-state" hidden></span></div>',
   '<div id="settings-capacity-follow-month-peak-row" hidden><md-switch id="settings-capacity-follow-month-peak"></md-switch></div>',
   '<small id="settings-capacity-margin-alert" hidden></small>',
@@ -137,7 +138,7 @@ const persistSettingImmediately = async (
 const loadCapacityModule = async (
   settings: Record<string, unknown> = {},
   powerReadError?: Error,
-  capacityPeak: SettingsUiCapacityPeak = { state: 'recorded', peakKw: 4.75 },
+  capacityPeak: SettingsUiCapacityPeak = { state: 'recorded', peakKw: 4.75, source: 'tracked' },
 ) => loadCapacityModuleWithWriter(
   settings,
   powerReadError,
@@ -201,7 +202,7 @@ describe('Limits & safety inline validation', () => {
     const marginStarted = new Promise<void>((resolve) => { markMarginStarted = resolve; });
     const marginWrite = new Promise<void>((resolve) => { releaseMargin = resolve; });
     const { capacity, settingsStore } = await loadCapacityModuleWithWriter(
-      {}, undefined, { state: 'recorded', peakKw: 4.75 },
+      {}, undefined, { state: 'recorded', peakKw: 4.75, source: 'tracked' },
       async (key, value, store) => {
         if (key === 'capacity_limit_kw') throw new Error('capacity write failed');
         if (key === 'capacity_margin_kw') {
@@ -266,7 +267,7 @@ describe('Limits & safety inline validation', () => {
     vi.mocked(power.getPowerReadModel).mockResolvedValue({ phaseLoad: { state: 'none' },
       tracker: {}, readings: { state: 'never' },
       status: { state: 'unavailable', reason: 'no_measurement' },
-      capacityPeak: { state: 'recorded', peakKw: 4.75 },
+      capacityPeak: { state: 'recorded', peakKw: 4.75, source: 'tracked' },
       capacityScalars: {
         state: 'resolved',
         scalars: { limitKw: 8, marginKw: 0.5, periodMinutes: 60, dryRun: true, followMonthPeak: false,
@@ -303,7 +304,7 @@ describe('Limits & safety inline validation', () => {
     const { capacity, settingsStore } = await loadCapacityModuleWithWriter(
       { capacity_enabled: false, grid_import_enabled: true, grid_import_limit_kw: 3.3, capacity_period_minutes: 60 },
       undefined,
-      { state: 'recorded', peakKw: 4.75 },
+      { state: 'recorded', peakKw: 4.75, source: 'tracked' },
       async (key, value, store) => {
         if (key === 'capacity_enabled') {
           markEnableStarted();
@@ -350,7 +351,7 @@ describe('Limits & safety inline validation', () => {
     const { capacity, settingsStore } = await loadCapacityModuleWithWriter(
       { capacity_enabled: false, grid_import_enabled: true, grid_import_limit_kw: 3.3, capacity_period_minutes: 60 },
       new Error('power read failed'),
-      { state: 'recorded', peakKw: 4.75 },
+      { state: 'recorded', peakKw: 4.75, source: 'tracked' },
       async (key, value, store) => {
         if (key === 'grid_import_enabled') throw new Error('grid switch write failed');
         store[key] = value;
@@ -386,7 +387,7 @@ describe('Limits & safety inline validation', () => {
     vi.mocked(power.getPowerReadModel).mockResolvedValue({ phaseLoad: { state: 'none' },
       tracker: {}, readings: { state: 'never' },
       status: { state: 'unavailable', reason: 'no_measurement' },
-      capacityPeak: { state: 'recorded', peakKw: 4.75 },
+      capacityPeak: { state: 'recorded', peakKw: 4.75, source: 'tracked' },
       capacityScalars: {
         state: 'resolved',
         scalars: { limitKw: 8, marginKw: 0.5, periodMinutes: 60, dryRun: true, followMonthPeak: false,
@@ -516,10 +517,24 @@ describe('Limits & safety inline validation', () => {
     expect(dom.period.value).toBe('15');
     expect(document.querySelector('#settings-capacity-monthly-peak')?.hasAttribute('hidden')).toBe(false);
     expect(document.querySelector('#settings-capacity-monthly-peak-value')?.textContent).toBe('4.75 kW');
+    expect(document.querySelector('#settings-capacity-monthly-peak-note')?.textContent).toContain('not your grid operator');
 
     dom.period.value = '60';
     await capacity.saveSettingsLimitsSettings();
     expect(setSetting).toHaveBeenCalledWith('capacity_period_minutes', 60);
+  });
+
+  it('says the meter reported the month peak when its own value is in use', async () => {
+    buildLimitsDom();
+    const { capacity } = await loadCapacityModule(
+      { capacity_period_minutes: 15 },
+      undefined,
+      { state: 'recorded', peakKw: 6.8, source: 'meter' },
+    );
+
+    await capacity.loadCapacitySettings();
+    expect(document.querySelector('#settings-capacity-monthly-peak-value')?.textContent).toBe('6.80 kW');
+    expect(document.querySelector('#settings-capacity-monthly-peak-note')?.textContent).toBe('Reported by your meter.');
   });
 
   it('offers following this month\'s peak with the quarter-hour period, and saves only that switch', async () => {
@@ -542,7 +557,7 @@ describe('Limits & safety inline validation', () => {
     const { capacity } = await loadCapacityModule(
       { capacity_limit_kw: 4, capacity_margin_kw: 0.2, capacity_period_minutes: 15, capacity_follow_month_peak: true },
       undefined,
-      { state: 'recorded', peakKw: 6.4 },
+      { state: 'recorded', peakKw: 6.4, source: 'tracked' },
     );
 
     await capacity.loadCapacitySettings();
@@ -559,7 +574,7 @@ describe('Limits & safety inline validation', () => {
     const { capacity } = await loadCapacityModule(
       { capacity_limit_kw: 4, capacity_margin_kw: 0.2, capacity_period_minutes: 15 },
       undefined,
-      { state: 'recorded', peakKw: 6.4 },
+      { state: 'recorded', peakKw: 6.4, source: 'tracked' },
     );
 
     await capacity.loadCapacitySettings();
@@ -601,7 +616,7 @@ describe('Limits & safety inline validation', () => {
     const { capacity, settingsStore } = await loadCapacityModuleWithWriter(
       {},
       undefined,
-      { state: 'recorded', peakKw: 4.75 },
+      { state: 'recorded', peakKw: 4.75, source: 'tracked' },
       async (key, value, store) => {
         if (key === 'capacity_limit_kw') {
           markLimitWriteStarted();
@@ -635,7 +650,7 @@ describe('Limits & safety inline validation', () => {
     const { capacity, settingsStore } = await loadCapacityModuleWithWriter(
       {},
       undefined,
-      { state: 'recorded', peakKw: 4.75 },
+      { state: 'recorded', peakKw: 4.75, source: 'tracked' },
       async (key, value, store) => {
         if (key === 'capacity_dry_run') {
           markSimulationWriteStarted();
@@ -665,7 +680,7 @@ describe('Limits & safety inline validation', () => {
     const { capacity, settingsStore } = await loadCapacityModuleWithWriter(
       {},
       undefined,
-      { state: 'recorded', peakKw: 4.75 },
+      { state: 'recorded', peakKw: 4.75, source: 'tracked' },
       async (key, value, store) => {
         if (key === 'capacity_dry_run') throw new Error('write failed');
         store[key] = value;
@@ -767,7 +782,7 @@ describe('readPowerLimitFormSettings', () => {
       '<md-filled-text-field id="settings-main-fuse-amps"></md-filled-text-field>',
     ].join(''));
     let releaseSupply: () => void = () => undefined;
-    const { capacity, settingsStore } = await loadCapacityModuleWithWriter({}, undefined, { state: 'recorded', peakKw: 4.75 },
+    const { capacity, settingsStore } = await loadCapacityModuleWithWriter({}, undefined, { state: 'recorded', peakKw: 4.75, source: 'tracked' },
       async (key, value, store) => {
         if (key === 'main_fuse_supply') await new Promise<void>((resolve) => { releaseSupply = resolve; });
         store[key] = value;

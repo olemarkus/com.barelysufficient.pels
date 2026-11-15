@@ -265,7 +265,7 @@ describe('support report evidence capture', () => {
     const host = currentHost('cabin');
     vi.spyOn(host.homeRuntimeRead, 'readHome').mockReturnValue({ state: 'resolved', reading: {
       homeId: 'cabin', plan: { generatedAtMs: now, meta: buildSettingsUiPlanMeta({ totalKw: 2 }), rescuableDeviceIds: [] },
-      planUpdatedAtMs: now, powerTracker: {}, currentMonthCapacityPeakKw: 3,
+      planUpdatedAtMs: now, powerTracker: {}, currentMonthCapacityPeak: { state: 'recorded', peakKw: 3, source: 'tracked' },
       diagnostics: {
         homeId: 'cabin', meterDeviceId: 'cabin-meter', operatingMode: 'Away', dryRunEffective: false,
         lastMeterPowerKw: 2, lastDeviceControlledMs: {}, capacityScalars: { ...capacity, limitKw: 4, followMonthPeak: false },

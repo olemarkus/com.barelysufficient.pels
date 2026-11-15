@@ -9,6 +9,7 @@ import type { ObservedTemperatureModeUpdates } from '../home/observedTemperature
 import type { DeviceControlSettings } from '../device/deviceControlSettings';
 import type { TrackerStore } from '../power/trackerStore';
 import type { CapacitySettingsStore } from '../power/capacitySettingsStore';
+import type { CapacityMonthPeak } from '../power/capacityPeak';
 import type { CapacityScalarSettings, PowerLimitSettings } from '../../packages/contracts/src/capacitySettings';
 import type { UserdataDatabase } from '../store/userdataDatabase';
 import type { PowerCalibrationStore } from '../device/devicePowerCalibrationStore';
@@ -209,7 +210,8 @@ export type AppContext = {
   resetMainPowerTrackerFreshness(): void;
   /** This home's capacity scalars as the running app holds them, already resolved. */
   getCapacityScalars(): CapacityScalarSettings;
-  getCurrentMonthCapacityPeakKw(): number | null;
+  /** Main's month peak (`resolveCurrentMonthCapacityPeak`). */
+  getCurrentMonthCapacityPeak(): CapacityMonthPeak;
   get capacitySettings(): PowerLimitSettings;
   set capacitySettings(value: PowerLimitSettings);
   get capacityDryRun(): boolean;

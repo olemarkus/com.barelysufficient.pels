@@ -57,6 +57,10 @@ export const HOME_LIMITS_MARGIN_LABEL = 'Safety margin (kW)';
 
 // The month-peak switch, shown with the 15-minute period beside the month's
 // peak readout. The Main-home form ships the same words in its static markup.
+/** A meter area's month-peak note while PELS's own tracked quarters set the peak. */
+export const HOME_LIMITS_TRACKED_PEAK_NOTE = 'Tracked estimate; your grid operator may apply a minimum '
+  + 'or combine several monthly peaks.';
+
 export const FOLLOW_MONTH_PEAK_LABEL = 'Follow this month’s peak';
 export const FOLLOW_MONTH_PEAK_HINT = 'When this month’s highest completed quarter is above the hard cap, '
   + 'PELS uses that peak, minus the safety margin, until the month ends. '

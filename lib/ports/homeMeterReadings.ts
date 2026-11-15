@@ -69,3 +69,20 @@ export type MeterPhasesRead =
     readonly currentA?: PhaseTriple;
     readonly voltageV?: PhaseTriple;
   };
+
+/**
+ * One read of the month peak a whole-home meter reports itself: the highest
+ * 15-minute average import of the current month as the meter counts it, which
+ * is what a grid operator bills from such a meter. Which capability holds it is
+ * the meter integration's answer (`DeviceAdapter.meterMonthlyPeak`).
+ *
+ * - `none`: the meter reports no month peak.
+ * - `unavailable`: the read failed, or the meter's value was malformed or
+ *   undated. Not zero: the last accepted value stands.
+ * - `read`: the peak in kW and when the meter last changed it (Homey's
+ *   `lastUpdated`), which says which month it belongs to.
+ */
+export type MeterMonthlyPeakRead =
+  | { readonly state: 'none' }
+  | { readonly state: 'unavailable' }
+  | { readonly state: 'read'; readonly peakKw: number; readonly observedAtMs: number };

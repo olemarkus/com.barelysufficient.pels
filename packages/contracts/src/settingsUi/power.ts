@@ -92,13 +92,25 @@ export type SettingsUiPowerReadings =
   | { readonly state: 'received'; readonly lastPowerUpdateMs: number };
 
 /**
- * The highest completed 15-minute average in the current Homey-local month.
- * `no_completed_quarter` is the genuine domain state of a month that has not
- * finished one yet; `unavailable` is a runtime that could not answer.
+ * Which value set this month's peak: PELS's own tracked quarters, or the month
+ * peak the home's meter reports itself (the one its grid operator bills).
  */
+export type CapacityMonthPeakSource = 'tracked' | 'meter';
+
+/**
+ * The highest completed 15-minute average in the current Homey-local month,
+ * the higher of PELS's tracked quarters and the meter's own month peak
+ * (`resolveCurrentMonthCapacityPeak`, `lib/power/capacityPeak.ts`).
+ * `no_completed_quarter` is the genuine domain state of a month that has
+ * neither yet.
+ */
+export type CapacityMonthPeak =
+  | { readonly state: 'recorded'; readonly peakKw: number; readonly source: CapacityMonthPeakSource }
+  | { readonly state: 'no_completed_quarter' };
+
+/** This month's peak for the settings UI; `unavailable` is a runtime that could not answer. */
 export type SettingsUiCapacityPeak =
-  | { readonly state: 'recorded'; readonly peakKw: number }
-  | { readonly state: 'no_completed_quarter' }
+  | CapacityMonthPeak
   | { readonly state: 'unavailable' };
 
 /**

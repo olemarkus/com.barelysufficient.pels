@@ -1,5 +1,6 @@
 import type { CapabilityRoute, DeviceAdapter, HomeBatteryBinding, HomeBatteryModeBinding } from '../deviceAdapter';
-import type { DeviceCapabilityMap } from '../managerControl';
+import { toCapabilityTimestampMs, type DeviceCapabilityMap } from '../managerControl';
+import type { MeterMonthlyPeakRead } from '../../ports/homeMeterReadings';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { isDeviceOfAppDriver, STANDARD_HOME_BATTERY_BINDING } from '../homeBatteryBinding';
 import { standardDeviceAdapter } from '../standardDeviceAdapter';
@@ -13,6 +14,11 @@ import { standardDeviceAdapter } from '../standardDeviceAdapter';
 // itself, under its own id, the meter it is. The batteries' own devices are
 // dropped: their power and level are the group's again, and their app accepts
 // no control of them.
+//
+// The P1 also publishes the meter's own month peak, the highest 15-minute
+// average import of the current month as a Belgian digital meter counts it,
+// in W under `measure_power.montly_power_peak` (the app's spelling). PELS reads
+// it as the meter's month peak (`meterMonthlyPeak`) when the P1 is a home's meter.
 
 const APP_ID = 'com.homewizard';
 const P1_DRIVER = 'energy_v2';
@@ -25,6 +31,7 @@ const GROUP_LEVEL = 'battery_group_average_soc';
 const MAX_CHARGE = 'measure_power.battery_group_max_consumption_w';
 const MAX_DISCHARGE = 'measure_power.battery_group_max_production_w';
 const GROUP_CAPACITY = 'battery_group_total_capacity_kwh';
+const MONTHLY_PEAK = 'measure_power.montly_power_peak';
 
 /** The group's own reads, by the names the battery view gives them. */
 const GROUP_RENAMES: Readonly<Record<string, string>> = {
@@ -119,11 +126,28 @@ const homeWizardSourceDeviceId = (view: HomeyDeviceLike): string => (
   isGroupView(view) ? view.id.slice(0, -GROUP_SUFFIX.length) : view.id
 );
 
+/**
+ * The P1's month peak: W to kW, finite and not negative, dated by Homey. A
+ * value that fails is `unavailable`, never zero, so the last accepted peak
+ * stands; a P1 without the capability (another meter type) reports none.
+ */
+function readHomeWizardMonthlyPeak(device: HomeyDeviceLike): MeterMonthlyPeakRead {
+  if (!isP1(device) || !device.capabilities.includes(MONTHLY_PEAK)) return { state: 'none' };
+  const entry = device.capabilitiesObj[MONTHLY_PEAK];
+  const value = entry?.value;
+  const observedAtMs = toCapabilityTimestampMs(entry?.lastUpdated);
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || observedAtMs === undefined) {
+    return { state: 'unavailable' };
+  }
+  return { state: 'read', peakKw: value / 1000, observedAtMs };
+}
+
 export const homeWizardAdapter: DeviceAdapter = {
   ...standardDeviceAdapter,
   matches: (device) => isP1(device) || isPlugInBattery(device),
   projectRead: projectHomeWizardRead,
   routeReport: routeHomeWizardReport,
   homeBatteryBinding: homeWizardBatteryBinding,
+  meterMonthlyPeak: readHomeWizardMonthlyPeak,
   sourceDeviceId: homeWizardSourceDeviceId,
 };

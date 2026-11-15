@@ -348,7 +348,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): Mutab
       mainFuse: () => ({ kind: 'off' }),
     },
     getCapacityScalars: () => ({ ...capacitySettings, dryRun: capacityDryRun, followMonthPeak: false }),
-    getCurrentMonthCapacityPeakKw: () => null,
+    getCurrentMonthCapacityPeak: () => ({ state: 'no_completed_quarter' }),
     notifyOperatingModeChanged: vi.fn(),
     hydratePowerTracker: vi.fn(),
     getTrackerStore: () => trackerStore,
