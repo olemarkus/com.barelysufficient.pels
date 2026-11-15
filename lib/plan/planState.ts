@@ -409,6 +409,9 @@ export class PlanEngineState {
    */
   shedPlanLatch: ShedPlanLatch | null = null;
 
+  /** The device of the last logged capacity timed run (`applyCapacityTimedRun`), for change-only logging. */
+  capacityTimedRunDeviceId: string | null = null;
+
   /** Credited relief beside the meter's response, for the logs (`shedding/shedReliefAudit.ts`). */
   readonly shedReliefAudit = new ShedReliefAudit();
 

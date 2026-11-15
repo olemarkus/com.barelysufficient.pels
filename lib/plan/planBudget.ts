@@ -24,6 +24,13 @@ import {
   resolveHardCapacityKWh, resolvePlanningCeilingKw, resolveUsableCapacityKWh, resolveUsableCapacityKw,
 } from '../power/capacityModel';
 import { getCurrentCapacityPeriodContext } from './planHourContext';
+import { EOH_DRAIN_WINDOW_MIN } from './planConstants';
+import { describeTimedRunChange, resolveCapacityTimedRun, type CapacityTimedRun } from './capacityTimedRun';
+import type { PowerCycleReading } from '../power/powerCycleReading';
+import type { PlanInputDevice } from './planTypes';
+import type { PlanEngineState } from './planState';
+import type { CapacityPlanLimit } from './planContext';
+import { getLogger } from '../logging/logger';
 import type { DrainStart } from './capacityDrainStart';
 import type { DailySoftLimitBucket } from './planDailyBudgetWindow';
 import type { DailyBudgetUiPayload } from '../../packages/contracts/src/dailyBudgetTypes';
@@ -46,7 +53,6 @@ const QUARTER_BURST_RATE_MIN_REMAINING_HOURS = 10 / 3600;
 // next hour must hold, so the next hour does not start over its limit. The
 // curve is exponential with time constant EOH_DRAIN_TAU_MIN: small cuts first,
 // the largest near the end. See notes/end-of-hour-mode.md.
-const EOH_DRAIN_WINDOW_MIN = 10;
 const EOH_DRAIN_TAU_MIN = 4;
 const EOH_DRAIN_SPAN = Math.expm1(EOH_DRAIN_WINDOW_MIN / EOH_DRAIN_TAU_MIN);
 
@@ -147,6 +153,59 @@ export function computeDynamicSoftLimit(
   // The remaining allowance is a period fact used for exhaustion and display.
   // Discretionary pacing patience has its own configured-margin allowance.
   return { allowedKw, hourlyBudgetExhausted, remainingKWh };
+}
+
+const timedRunLogger = getLogger('plan/capacity-timed-run');
+
+/**
+ * The build's capacity axis with this cycle's timed run applied
+ * (`capacityTimedRun.ts`): the pace rises to what the hour's marginal on/off
+ * device needs while the hour still covers stopping it in time. Read from the
+ * tracker as the pace itself is, and logged when the run starts, moves or
+ * ends. Unchanged with Capacity limit off or without a measurement.
+ */
+export function applyCapacityTimedRun(params: {
+  capacity: CapacityPlanLimit;
+  settings: CapacitySettings;
+  powerTracker: PowerTrackerState;
+  reading: PowerCycleReading;
+  devices: readonly PlanInputDevice[];
+  forceShedIds: ReadonlySet<string>;
+  state: PlanEngineState;
+  nowMs: number;
+}): CapacityPlanLimit {
+  const { capacity, reading, state } = params;
+  const run: CapacityTimedRun = capacity.kind === 'off' || !reading.isMeasured
+    ? { kind: 'none' }
+    : resolveTimedRunFor(capacity, reading.totalKw, params);
+  const change = describeTimedRunChange(state.capacityTimedRunDeviceId, run);
+  if (change !== null) timedRunLogger.info(change);
+  // eslint-disable-next-line functional/immutable-data -- The builder's own change-log cursor.
+  state.capacityTimedRunDeviceId = run.kind === 'none' ? null : run.deviceId;
+  return run.kind === 'none' || capacity.kind === 'off' ? capacity : { ...capacity, paceKw: run.allowedKw };
+}
+
+function resolveTimedRunFor(
+  capacity: Extract<CapacityPlanLimit, { kind: 'on' }>,
+  drawKw: number,
+  params: Parameters<typeof applyCapacityTimedRun>[0],
+): CapacityTimedRun {
+  const { settings, nowMs } = params;
+  const period = getCurrentCapacityPeriodContext(params.powerTracker, settings.periodMinutes, nowMs);
+  return resolveCapacityTimedRun({
+    settings,
+    paceKw: capacity.paceKw,
+    shortfallThresholdKw: capacity.shortfallThresholdKw,
+    usedKWh: period.usedKWh,
+    budgetKWh: resolveUsableCapacityKWh(settings),
+    minutesRemaining: period.minutesRemaining,
+    coverageComplete: period.coverageComplete,
+    drawKw,
+    devices: params.devices,
+    heldOffIds: params.state.shedDecisions.lastPlannedShedIds,
+    forceShedIds: params.forceShedIds,
+    nowMs,
+  });
 }
 
 /**
