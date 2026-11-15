@@ -95,6 +95,8 @@ reads it with the capacity block (`lib/power/capacitySettingsStore.ts`), which o
 absence: never written is off, and a malformed read carries the last accepted value,
 which starts as off in every home, so it never makes the block unavailable. Its
 effect, the hard cap live control holds, is resolved by `lib/power/heldCapacityLimit.ts`.
+The month peak it follows includes a meter's own reported peak, which is held in memory
+(`lib/power/meterMonthlyPeak.ts`) and has no settings key.
 The settings UI's switch (Main form and meter-area editor) writes it, and a new install
 in Belgium has it written on once (`lib/power/capacityMarketDefault.ts`).
 `price_optimization_settings` has one shared parser for device entries, legacy defaults,

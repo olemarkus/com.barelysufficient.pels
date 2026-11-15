@@ -18,6 +18,7 @@ import {
 } from '../../lib/home/homeRuntimeRegistry';
 import type { ModeOwnershipTransfer } from '../../lib/home/modeOwnershipTransfer';
 import { SubHomeRuntime } from '../../lib/home/subHomeRuntime';
+import type { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
 import { PowerSourceEpochFence } from '../../lib/power/powerSourceEpochFence';
 import { requireTrackerForMeter } from '../../lib/power/trackerMeterIdentity';
 import type { PowerTrackerMeterIdentity } from '../../lib/power/trackerTypes';
@@ -38,6 +39,8 @@ export function createHomeRuntimeRegistry(
   modeOwnershipTransfer: ModeOwnershipTransfer,
   /** The app's record of drift corrections, which every area's plan engine feeds. */
   controlContests: ControlContestRecording,
+  /** The month peaks the polled meters report; each area reads its own meter's. */
+  meterMonthlyPeaks: MeterMonthlyPeaks,
 ): HomeRuntimeRegistry {
   const sourceEpoch = new PowerSourceEpochFence(() => readConfiguredPowerSource(ctx.homey.settings));
   const bundleFactory: SubHomeBundleFactory<OwningHomeHooks> = {
@@ -56,6 +59,7 @@ export function createHomeRuntimeRegistry(
         initialPowerTrackerState,
         meterIdentity,
         controlContests,
+        meterMonthlyPeaks,
       );
     },
   };

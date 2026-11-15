@@ -26,6 +26,8 @@ export const createHomeRuntimeRegistryForApp = (
   homeModeCatalog: HomeModeCatalog,
   membership: Pick<HomeMembershipService, 'isSubHomeExecutionReady'>,
   controlContests: ControlContestRecording,
+  /** The month peaks the polled meters report; each area reads its own meter's. */
+  meterMonthlyPeaks: Parameters<typeof createHomeRuntimeRegistry>[6],
 ): HomeRuntimeRegistry => {
   const registry = createHomeRuntimeRegistry(
     ctx,
@@ -34,6 +36,7 @@ export const createHomeRuntimeRegistryForApp = (
     createHomesStore(ctx.homey.settings),
     createModeOwnershipTransfer(ctx, homeModeCatalog),
     controlContests,
+    meterMonthlyPeaks,
   );
   registry.reconcile();
   return registry;

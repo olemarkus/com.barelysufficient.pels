@@ -23,6 +23,7 @@ import {
   settingsCapacityReactionLabel,
   settingsCapacityReactionNote,
   settingsCapacityMonthlyPeakValue,
+  settingsCapacityMonthlyPeakNote,
   settingsCapacityMonthlyPeakState,
   settingsCapacityChoice,
   settingsCapacityChoiceText,
@@ -30,7 +31,7 @@ import {
   type MdFilledTextFieldElement,
 } from './dom.ts';
 import type { SettingsUiCapacityPeak } from '../../../contracts/src/settingsUi/power.ts';
-import { formatCapacityPeak } from './capacityPeakRead.ts';
+import { capacityPeakNote, formatCapacityPeak, TRACKED_CAPACITY_PEAK_NOTE } from './capacityPeakRead.ts';
 import {
   composeSafePaceSummaryCopy,
   formatHardCapKw,
@@ -80,6 +81,9 @@ export const syncMonthlyQuarterPeak = (peak: SettingsUiCapacityPeak): void => {
   if (peak.state === 'unavailable') return;
   shownCapacityPeak = peak;
   if (settingsCapacityMonthlyPeakValue) settingsCapacityMonthlyPeakValue.textContent = formatCapacityPeak(peak);
+  if (settingsCapacityMonthlyPeakNote) {
+    settingsCapacityMonthlyPeakNote.textContent = capacityPeakNote(peak, TRACKED_CAPACITY_PEAK_NOTE);
+  }
   renderMonthPeakHold();
 };
 

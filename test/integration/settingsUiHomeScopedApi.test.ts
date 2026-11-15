@@ -60,7 +60,7 @@ const areaReading = (
   plan: AREA_PLAN,
   planUpdatedAtMs: 42,
   powerTracker: tracker as unknown as HomeRuntimeReading['powerTracker'],
-  currentMonthCapacityPeakKw: null,
+  currentMonthCapacityPeak: { state: 'no_completed_quarter' },
   diagnostics: {
     homeId: AREA_ID,
     meterDeviceId: 'meter-1',

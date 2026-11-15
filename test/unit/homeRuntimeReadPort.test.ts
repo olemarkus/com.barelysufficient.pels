@@ -14,7 +14,7 @@ const readingFor = (homeId: string): HomeRuntimeReading => ({
   plan: { generatedAtMs: 1_000, devices: [], rescuableDeviceIds: [] },
   planUpdatedAtMs: 1_000,
   powerTracker: { lastPowerW: 2_400 },
-  currentMonthCapacityPeakKw: null,
+  currentMonthCapacityPeak: { state: 'no_completed_quarter' },
   diagnostics: {
     homeId,
     meterDeviceId: 'm-a',

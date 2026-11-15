@@ -20,6 +20,7 @@ import type { WeatherCollector } from '../../lib/weather/weatherCollector';
 import { createWeatherCollector } from '../../setup/appInit/createWeatherCollector';
 import type { BackgroundCollectors } from '../../setup/appInit/startBackgroundCollectors';
 import { MockSettings } from '../mocks/homey';
+import { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
 
 const createHostApi = (
   dailyBudgetService: AppContext['dailyBudgetService'],
@@ -43,6 +44,8 @@ const createHostApi = (
     protected readonly smartTaskPayloads = {} as never;
 
     protected capacityFollowMonthPeak = false;
+
+    protected readonly meterMonthlyPeaks = new MeterMonthlyPeaks();
 
     protected readonly runtime = {
       backgroundCollectors: weatherCollector ? partialDouble<BackgroundCollectors>({ weatherCollector }) : undefined,

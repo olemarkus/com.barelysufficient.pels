@@ -730,7 +730,8 @@
         <div class="settings-result" id="settings-capacity-monthly-peak" role="group" aria-labelledby="settings-capacity-monthly-peak-label" hidden>
           <span class="settings-result__label" id="settings-capacity-monthly-peak-label">Highest completed quarter this month</span>
           <strong class="settings-result__value" id="settings-capacity-monthly-peak-value">Peak unavailable</strong>
-          <span class="settings-result__note">Based on readings PELS received, not your grid operator’s billing calculation.</span>
+          <!-- Same words as TRACKED_CAPACITY_PEAK_NOTE in capacityPeakRead.ts; METER_CAPACITY_PEAK_NOTE while the meter's own peak is in use. -->
+          <span class="settings-result__note" id="settings-capacity-monthly-peak-note">Based on readings PELS received, not your grid operator’s billing calculation.</span>
           <span class="settings-result__note" id="settings-capacity-monthly-peak-state" hidden></span>
         </div>
         <!-- Offered with the 15-minute period only, like the readout above

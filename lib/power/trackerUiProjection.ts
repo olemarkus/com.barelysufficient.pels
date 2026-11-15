@@ -1,8 +1,5 @@
 import type { SettingsUiPowerTracker } from '../../packages/contracts/src/powerTrackerTypes';
-import type {
-  SettingsUiCapacityPeak,
-  SettingsUiPowerReadings,
-} from '../../packages/contracts/src/settingsUi/power';
+import type { SettingsUiPowerReadings } from '../../packages/contracts/src/settingsUi/power';
 import { hasPowerMeasurement, resolveDisplayedPowerUpdateMs } from './lastTotalPower';
 import type { PowerTrackerState } from './trackerTypes';
 
@@ -15,10 +12,6 @@ const HOUR_MS = 60 * 60 * 1000;
  * (`MAX_DEADLINE_HORIZON_MS`), and its page is still read for a while after.
  */
 export const SETTINGS_UI_RECENT_HOURS = 72;
-
-export const projectCapacityPeakForUi = (peakKw: number | null): SettingsUiCapacityPeak => (
-  peakKw === null ? { state: 'no_completed_quarter' } : { state: 'recorded', peakKw }
-);
 
 // Local accumulators: this runs on every WebView read of the power payload,
 // so the cut families are built in place, not through entries/fromEntries pairs.

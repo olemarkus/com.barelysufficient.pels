@@ -130,6 +130,9 @@ export const settingsCapacityMonthlyPeakValue = document.querySelector<HTMLEleme
   '#settings-capacity-monthly-peak-value',
 );
 export const settingsCapacityMonthlyPeakState = document.getElementById('settings-capacity-monthly-peak-state');
+export const settingsCapacityMonthlyPeakNote = document.querySelector<HTMLElement>(
+  '#settings-capacity-monthly-peak-note',
+);
 export const settingsCapacityFollowMonthPeakRow = document.getElementById('settings-capacity-follow-month-peak-row');
 export const settingsCapacityFollowMonthPeakInput = document.querySelector<MdSwitchElement>(
   '#settings-capacity-follow-month-peak',

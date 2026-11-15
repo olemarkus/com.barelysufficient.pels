@@ -61,7 +61,8 @@ import { bindTemporaryTemperatureRead } from '../appInit/temperatureSetpointsSea
 import type { SmartTaskCycleRecord } from '../../lib/objectives/deferredObjectives/smartTaskCycleRecord';
 import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homeNames';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
-import { createHeldCapacityLimitRead } from '../../lib/power/heldCapacityLimit';
+import { createHeldCapacityLimitRead, resolveHeldPowerLimits } from '../../lib/power/heldCapacityLimit';
+import type { MeterMonthlyPeak } from '../../lib/power/meterMonthlyPeak';
 import { createHomeCommandReachability } from './createHomeCommandReachability';
 import { createHomeSignalWriters } from './homeSignalWriters';
 import { buildStarvedRescueDevices } from '../appInit/smartTaskHomeScope';
@@ -86,17 +87,19 @@ export const CAPACITY_ONLY_SCOPE_POLICY = {
 } satisfies Partial<HomeScope>;
 
 /**
- * A home's held limits for its scope (`lib/power/heldCapacityLimit.ts`): its
- * own resolved scalars against its own tracker's month peak. Main and every
- * meter area bind theirs here, so each resolves against its own meter.
+ * A meter area's held limits for its scope (`lib/power/heldCapacityLimit.ts`):
+ * its own resolved scalars against its own tracker's and its own meter's month
+ * peak. Main resolves the same way through `getCurrentMonthCapacityPeak`.
  */
 export const createHomeHeldPowerLimitsRead = (
   ctx: Pick<AppContext, 'getTimeZone'>,
   readScalars: () => CapacityScalarSettings,
   readTracker: () => PowerTrackerState,
+  readMeterPeak: () => MeterMonthlyPeak | null,
 ): HomeScope['getCapacitySettings'] => createHeldCapacityLimitRead({
   readScalars,
   readTracker,
+  readMeterPeak,
   readTimeZone: () => ctx.getTimeZone(),
 });
 
@@ -288,7 +291,9 @@ export function buildMainHomeScope(
     getHomeDisplayName: () => HOMES_MAIN_HOME_NAME,
     // Live snapshot reads — NOT re-reads through the settings store. The
     // snapshot is the in-memory truth kept current by the settings handler.
-    getCapacitySettings: createHomeHeldPowerLimitsRead(ctx, () => ctx.getCapacityScalars(), () => ctx.powerTracker),
+    // Main's month peak is the one its readout shows (`getCurrentMonthCapacityPeak`):
+    // its tracker against the peak its selected meter reports.
+    getCapacitySettings: () => resolveHeldPowerLimits(ctx.getCapacityScalars(), ctx.getCurrentMonthCapacityPeak()),
     getMainFuse: () => ctx.capacitySettingsStore.mainFuse(),
     // The EFFECTIVE dry-run, the same composition a meter area makes: the
     // owner's persisted intent OR a home-wide fence that holds for the whole

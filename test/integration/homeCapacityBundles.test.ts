@@ -65,6 +65,7 @@ import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { PlanRebuildRequestOptions, PlanRebuildTrigger } from '../../lib/plan/planRebuildTrigger';
 import { testLogger } from '../utils/testLogger';
 import { createLastControlledRepository } from '../../lib/plan/lastControlledStore';
+import { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
@@ -122,6 +123,7 @@ requestProductionControl: async () => { throw new Error('Unexpected inverter con
     createRawHomesStore(ctx.homey.settings),
     createModeOwnershipTransfer(ctx, getHomeModeCatalogForTest(ctx)),
     controlContestsForTest().contests,
+    new MeterMonthlyPeaks(),
   );
   return {
     ctx,

@@ -13,6 +13,7 @@ import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { ChargerPhaseReport } from './chargerPhasePreset';
 import type { ChargingPhaseCommand, ChargingPhaseDevice } from '../ports/chargingPhases';
 import type { ChargingPhaseCount } from '../../packages/contracts/src/chargingPhases';
+import type { MeterMonthlyPeakRead } from '../ports/homeMeterReadings';
 
 /** A real app surface: the integration resolves reads, profiles and commands; transport owns I/O. */
 export type ChargingPhaseBinding = {
@@ -278,6 +279,12 @@ export type DeviceAdapter = {
   nativeCurrentControls: readonly NativeCurrentControl[];
   /** How PELS drives this device when it is a home battery; read only for a battery. */
   homeBatteryBinding(device: HomeyDeviceLike): HomeBatteryBinding;
+  /**
+   * The month peak a whole-home meter reports itself, read only for a home's
+   * meter (`MeterMonthlyPeakRead`). An app that publishes one names it its own
+   * way, so the integration recognises and validates it; `none` otherwise.
+   */
+  meterMonthlyPeak(device: HomeyDeviceLike): MeterMonthlyPeakRead;
   readBackAfterWrite: boolean;
   /** Whether standard production-cap writes are suitable for repeated live control. */
   supportsProductionLimits: boolean;

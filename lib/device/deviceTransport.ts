@@ -64,7 +64,7 @@ import {
   type DeviceDebugObservedSources,
 } from './transport/managerObservation';
 import type { DeviceParseSources } from './transport/managerParseDevice';
-import type { LiveMeterReadings, MeterPhasesRead } from '../ports/homeMeterReadings';
+import type { LiveMeterReadings, MeterMonthlyPeakRead, MeterPhasesRead } from '../ports/homeMeterReadings';
 import {
   createEstimateDecisionLogState,
   createPeakPowerLogState,
@@ -90,7 +90,8 @@ import {
   SnapshotRefreshService,
   SnapshotRefreshState,
   readLiveMeters,
-    readMeterPhases,
+  readMeterMonthlyPeak,
+  readMeterPhases,
 } from './transport/snapshotRefresh';
 import { DeviceSnapshotReader, createDeviceParseSources } from './transport/deviceSnapshotReader';
 import { createEvCarAssociationControl, RealtimeIngestService } from './transport/transportServices';
@@ -543,6 +544,8 @@ export class DeviceTransport {
     ): Promise<MeterPhasesRead> {
         return readMeterPhases(meterDeviceId, ownerChoice);
     }
+    /** The month peak a home's meter reports itself (`readMeterMonthlyPeak`). */
+    readMeterMonthlyPeak = (id: string): Promise<MeterMonthlyPeakRead> => readMeterMonthlyPeak(id);
     /**
      * Gross PV production for the flow source's companion poll
      * (`GenerationPollSource`) — a PURE READ that discriminates a missing

@@ -1033,7 +1033,7 @@
         configured: Object.prototype.hasOwnProperty.call(settings, 'capacity_limit_kw'),
       },
       capacityPeak: Number.isFinite(settings.ui_current_month_quarter_peak_kw)
-        ? { state: 'recorded', peakKw: settings.ui_current_month_quarter_peak_kw }
+        ? { state: 'recorded', peakKw: settings.ui_current_month_quarter_peak_kw, source: 'tracked' }
         : { state: 'no_completed_quarter' },
       // Mirrors the real producer (setup/settingsUiApi.ts getSettingsUiPower):
       // a solarpanel device in the snapshot AND the homey_energy power source
@@ -1923,7 +1923,7 @@
       },
       hardCapConfiguration: { state: 'unavailable' },
       capacityPeak: Number.isFinite(settings[`ui_current_month_quarter_peak_kw:${scope.homeId}`])
-        ? { state: 'recorded', peakKw: settings[`ui_current_month_quarter_peak_kw:${scope.homeId}`] }
+        ? { state: 'recorded', peakKw: settings[`ui_current_month_quarter_peak_kw:${scope.homeId}`], source: 'tracked' }
         : { state: 'no_completed_quarter' },
       // Same source gate as `buildPowerPayload` above, because the scoped
       // producer (`powerPayloadForHome`) applies it too: `readPowerSource()`

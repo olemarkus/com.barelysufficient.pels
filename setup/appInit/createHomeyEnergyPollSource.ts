@@ -8,8 +8,12 @@ import { HomeMeters, type SubHomeMeters } from '../../lib/home/homeMeters';
 
 // The snapshot refresh reads Main by the same rule as this poll.
 export { resolveMainMeterRead } from '../../lib/home/homeMeters';
+// Re-exported so `app.ts` constructs the store this poll fills without another
+// module dependency (its `import-x/max-dependencies` ceiling is a ratchet).
+export { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
 import type { MainMeterSelectionSettings } from '../../lib/home/mainMeterSelection';
-import type { LiveMeterReadings, MeterPhasesRead } from '../../lib/ports/homeMeterReadings';
+import type { LiveMeterReadings, MeterMonthlyPeakRead, MeterPhasesRead } from '../../lib/ports/homeMeterReadings';
+import type { MeterMonthlyPeaks } from '../../lib/power/meterMonthlyPeak';
 import type { PhaseReadingTracker } from '../../lib/power/phaseReading';
 
 /**
@@ -23,6 +27,7 @@ export type HomeyEnergyPollSourceHost = {
   readonly deviceManager?: {
     readMeters(meterDeviceIds: readonly string[]): Promise<LiveMeterReadings | null>;
     readMeterPhases(meterDeviceId: string, ownerChoice: MainFusePhaseCapabilities | null): Promise<MeterPhasesRead>;
+    readMeterMonthlyPeak(meterDeviceId: string): Promise<MeterMonthlyPeakRead>;
   };
   readonly capacityGuard?: { readonly phaseReadings: PhaseReadingTracker };
   /** The sub-homes, once the registry exists. */
@@ -44,6 +49,8 @@ export type HomeyEnergyPollSourceHost = {
 export const createHomeyEnergyPollSource = (
   host: HomeyEnergyPollSourceHost,
   pipeline: Pick<PowerSamplePipeline, 'recordPowerSample'>,
+  /** The app's one store of the month peaks the polled meters report; this poll fills it. */
+  meterMonthlyPeaks: MeterMonthlyPeaks,
 ): HomeyEnergyPollSource => {
   const homeMeters = new HomeMeters(
     host.homey.settings,
@@ -55,6 +62,12 @@ export const createHomeyEnergyPollSource = (
       const { capabilities } = readMainFusePhaseSource(host.homey.settings);
       const read = await host.deviceManager?.readMeterPhases(sample.meterDeviceId, capabilities);
       if (read) host.capacityGuard?.phaseReadings.admit(read, sample.powerW, Date.now());
+    },
+    async (meterDeviceIds, mainMeterDeviceId) => {
+      const manager = host.deviceManager;
+      if (manager === undefined) return;
+      const read = (id: string) => manager.readMeterMonthlyPeak(id);
+      await meterMonthlyPeaks.refresh(meterDeviceIds, mainMeterDeviceId, read, Date.now());
     },
   );
   return new HomeyEnergyPollSource({

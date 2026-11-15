@@ -18,6 +18,7 @@ import { readFlowDevices } from '../lib/device/deviceFlowRead';
 import type { FlowCardDeps } from '../flowCards/registerFlowCards';
 import { registerDeviceWidgetSettings } from './appInit/registerDeviceWidgetSettings';
 import type { PowerSource } from '../lib/power/powerSource';
+import type { MeterMonthlyPeaks } from '../lib/power/meterMonthlyPeak';
 import type {
   DailyBudgetModelPreviewResponse,
   DailyBudgetSettingsInput,
@@ -74,7 +75,7 @@ import type { AppSmartTaskApi, SmartTaskWriteResult } from './appSmartTaskApi';
 import type { AppSmartTaskPayloads } from './appSmartTaskPayloads';
 import type { SnapshotRefreshOptions } from '../lib/device/snapshotRefreshScheduler';
 import type { AppRuntimeHandles } from './appRuntimeHandles';
-import { capacityMonthPeakKw, resolveCurrentMonthCapacityPeak } from '../lib/power/capacityPeak';
+import { resolveCurrentMonthCapacityPeak, type CapacityMonthPeak } from '../lib/power/capacityPeak';
 import { resolveHeldPowerLimits, type HeldPowerLimitSettings } from '../lib/power/heldCapacityLimit';
 import {
   readHomeBatteryDevices,
@@ -111,6 +112,8 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   protected abstract readonly runtime: AppRuntimeHandles;
   /** Main's month-peak switch, held by `PelsApp` beside the scalars it installs. */
   protected abstract capacityFollowMonthPeak: boolean;
+  /** The month peaks the polled meters report, constructed by `PelsApp` and filled by its poll. */
+  protected abstract readonly meterMonthlyPeaks: MeterMonthlyPeaks;
   // The price wiring replaces PelsApp's default once the coordinator exists.
   public abstract getTaskPricePeriodsForUi: () => SettingsUiTaskPricePeriod[];
   public abstract getCombinedPricesForUi: () => unknown;
@@ -155,11 +158,15 @@ abstract class AppHostApi extends Base implements PelsWidgetHostApi {
   /** Main's limits as live control holds them (`lib/power/heldCapacityLimit.ts`). */
   public readHeldPowerLimits = (): HeldPowerLimitSettings => resolveHeldPowerLimits(
     this.getCapacityScalars(),
-    resolveCurrentMonthCapacityPeak(this.context.powerTracker, this.getTimeZone(), Date.now()),
+    this.getCurrentMonthCapacityPeak(),
   );
 
-  public getCurrentMonthCapacityPeakKw = (): number | null => capacityMonthPeakKw(
-    resolveCurrentMonthCapacityPeak(this.context.powerTracker, this.getTimeZone(), Date.now()),
+  /** Main's month peak: its tracker against its selected meter's own peak. */
+  public getCurrentMonthCapacityPeak = (): CapacityMonthPeak => resolveCurrentMonthCapacityPeak(
+    this.context.powerTracker,
+    this.meterMonthlyPeaks.currentMain(),
+    this.getTimeZone(),
+    Date.now(),
   );
 
   // The read answers `unavailable` when the service is not wired yet, because

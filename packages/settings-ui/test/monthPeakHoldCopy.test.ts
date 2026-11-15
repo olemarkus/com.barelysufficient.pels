@@ -6,7 +6,7 @@ import {
   resolveMonthPeakReadout,
 } from '../src/ui/monthPeakHoldCopy.ts';
 
-const PEAK = { state: 'recorded', peakKw: 6.4 } as const;
+const PEAK = { state: 'recorded', peakKw: 6.4, source: 'tracked' } as const;
 
 describe('month peak hold copy', () => {
   it('holds this month\'s peak only with the switch on, the 15-minute period and a peak above the hard cap', () => {

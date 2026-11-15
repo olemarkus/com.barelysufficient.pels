@@ -68,7 +68,8 @@ import { createModeDeviceTargetFill } from './setup/appInit/createSnapshotSettin
 import { normalizeError } from './lib/utils/errorUtils';
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import { createGenerationPollSource } from './setup/appInit/createGenerationPollSource';
-import { createHomeyEnergyPollSource, resolveMainMeterRead } from './setup/appInit/createHomeyEnergyPollSource';
+import { createHomeyEnergyPollSource, MeterMonthlyPeaks, resolveMainMeterRead }
+  from './setup/appInit/createHomeyEnergyPollSource';
 import type { SubHomeMeters } from './lib/home/homeMeters';
 import { AppSnapshotHelpers, createTargetPowerReachabilityAppWiring } from './setup/appSnapshotHelpers';
 import { createFlowBackedDeviceState } from './setup/flowBackedCardAccess';
@@ -121,8 +122,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   public readonly deferredObjectiveStatusBus: DeferredObjectiveStatusBus = createDeferredObjectiveStatusBus();
   public readonly deferredObjectivePlanRevisionBus: DeferredObjectivePlanRevisionBus
     = createDeferredObjectivePlanRevisionBus();
-  public readonly deferredObjectiveEndedBus: DeferredObjectiveEndedBus
-    = createDeferredObjectiveEndedBus();
+  public readonly deferredObjectiveEndedBus: DeferredObjectiveEndedBus = createDeferredObjectiveEndedBus();
   public readonly deferredObjectiveHoursRemainingBus: DeferredObjectiveHoursRemainingBus
     = createDeferredObjectiveHoursRemainingBus();
   // Persist the integer-hour crossing latch via settings so an already-crossed
@@ -510,7 +510,14 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     readMainMeter: resolveMainMeterRead,
     ...this.targetPowerReachabilityWiring.snapshotDeps,
   });
-  public readonly homeyEnergyHelpers = createHomeyEnergyPollSource(this, this.powerSamplePipeline);
+  /**
+   * The month peaks the polled meters report, by meter: one app-wide store,
+   * filled by the Homey Energy poll and read by Main's and each meter area's
+   * held cap and readout (`lib/power/meterMonthlyPeak.ts`).
+   */
+  protected readonly meterMonthlyPeaks = new MeterMonthlyPeaks();
+  public readonly homeyEnergyHelpers
+    = createHomeyEnergyPollSource(this, this.powerSamplePipeline, this.meterMonthlyPeaks);
   public readonly generationPollSource = createGenerationPollSource(this, this.observedHomePower);
   /**
    * The executor's commanded axis for stepped loads. Constructed here because
@@ -594,10 +601,7 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
     getModeDeviceTargets: () => this.homeModeCatalog.getModeDeviceTargets(),
     resolveOperatingModeForDevice: (deviceId) => this.homeModeCatalog.resolveOperatingModeForDevice(deviceId),
     createHomeRuntimeRegistry: (membership) => createHomeRuntimeRegistryForApp(
-      this.ctx,
-      this.homeModeCatalog,
-      membership,
-      this.controlContests,
+      this.ctx, this.homeModeCatalog, membership, this.controlContests, this.meterMonthlyPeaks,
     ),
     controlContests: this.controlContests,
     handles: this.runtime,

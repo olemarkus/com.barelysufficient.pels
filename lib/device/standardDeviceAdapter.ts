@@ -29,6 +29,7 @@ export const standardDeviceAdapter: DeviceAdapter = {
   readRules: () => ({}), retainsPlugObservation: () => false,
   phaseReport: () => ({ kind: 'not_reported' }), currentBindings: () => [], phaseBindings: () => [],
   nativeCurrentControls: [], homeBatteryBinding: () => STANDARD_HOME_BATTERY_BINDING,
+  meterMonthlyPeak: () => ({ state: 'none' }),
   readBackAfterWrite: true, supportsProductionLimits: true,
   projectRead: (device) => [device],
   routeReport: (device, capabilityId) => ({ deviceId: device.id, capabilityId }),

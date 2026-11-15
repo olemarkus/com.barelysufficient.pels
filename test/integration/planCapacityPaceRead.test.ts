@@ -23,6 +23,10 @@ import { planBuilderWiring } from '../helpers/planBuilderWiring';
 import { configuredHardCap } from '../helpers/configuredHardCap';
 import { createHeldCapacityLimitRead } from '../../lib/power/heldCapacityLimit';
 import type { CapacityScalarSettings } from '../../packages/contracts/src/capacitySettings';
+import { MeterMonthlyPeaks, type MeterMonthlyPeak } from '../../lib/power/meterMonthlyPeak';
+import { homeWizardAdapter } from '../../lib/device/homewizard';
+import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { HOMEY_DEVICE_FIELDS } from '../helpers/homeyDevicePayload';
 
 /** 5 kWh of hourly allowance, so a 6 kWh bucket is a spent hour and 1 kWh is not. */
 const buildPaceBuilder = (params: {
@@ -107,7 +111,10 @@ describe('capacity pace on the held hard cap', () => {
     capacityQuarter: { startMs: Date.parse('2026-04-15T11:00:00.000Z'), energyKWh: 0, trackedMs: 30_000 },
     capacityMonthlyPeak: { monthKey: '2026-04', peakKw: 8 },
   });
-  const builderFor = (scalars: CapacityScalarSettings): PlanBuilder => {
+  const builderFor = (
+    scalars: CapacityScalarSettings,
+    readMeterPeak: () => MeterMonthlyPeak | null = () => null,
+  ): PlanBuilder => {
     const getPowerTracker = quarterTracker;
     return new PlanBuilder({
       ...planBuilderWiring(),
@@ -115,6 +122,7 @@ describe('capacity pace on the held hard cap', () => {
       getCapacitySettings: createHeldCapacityLimitRead({
         readScalars: () => scalars,
         readTracker: getPowerTracker,
+        readMeterPeak,
         readTimeZone: () => 'Europe/Brussels',
       }),
       getPowerTracker,
@@ -145,5 +153,26 @@ describe('capacity pace on the held hard cap', () => {
     expect(plan.meta.hardCapLimitKw).toBe(5);
     expect(plan.meta.hardCapSource).toBe('configured');
     expect(plan.meta.configuredHardCapLimitKw).toBe(5);
+  });
+
+  it('rises to the peak a HomeWizard P1 reports when it is above the tracked one', async () => {
+    const p1: HomeyDeviceLike = {
+      ...HOMEY_DEVICE_FIELDS,
+      id: 'p1', name: 'P1 meter', class: 'sensor', driverId: 'homey:app:com.homewizard:energy_v2',
+      ownerUri: 'homey:app:com.homewizard',
+      capabilities: ['measure_power', 'measure_power.montly_power_peak'],
+      capabilitiesObj: {
+        measure_power: { value: 1_000, lastUpdated: '2026-04-15T11:00:20.000Z' },
+        'measure_power.montly_power_peak': { value: 9_200, lastUpdated: '2026-04-09T18:15:00.000Z' },
+      },
+    };
+    const peaks = new MeterMonthlyPeaks();
+    await peaks.refresh(['p1'], 'p1', async () => homeWizardAdapter.meterMonthlyPeak(p1), Date.now());
+    const builder = builderFor({ ...SCALARS, gridImportLimitKw: null }, () => peaks.current('p1'));
+
+    expect(builder.computeCapacityPace()).toBeCloseTo(9, 6);
+    const plan = await builder.buildDevicePlanSnapshot([]);
+    expect(plan.meta.hardCapLimitKw).toBe(9.2);
+    expect(plan.meta.hardCapSource).toBe('month_peak');
   });
 });

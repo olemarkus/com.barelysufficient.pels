@@ -5,6 +5,7 @@ import type {
 } from '../../packages/contracts/src/capacitySettings';
 import type { PowerTrackerState } from './trackerTypes';
 import { resolveCurrentMonthCapacityPeak, type CapacityMonthPeak } from './capacityPeak';
+import type { MeterMonthlyPeak } from './meterMonthlyPeak';
 
 export type { HardCapSource } from '../../packages/contracts/src/capacitySettings';
 
@@ -52,10 +53,14 @@ export const configuredPowerLimits = (held: HeldPowerLimitSettings): PowerLimitS
   return { ...settings, limitKw: configuredLimitKw };
 };
 
-/** One home's reads behind its held limits: its resolved scalars, its tracker and the time zone. */
+/**
+ * One home's reads behind its held limits: its resolved scalars, its tracker,
+ * its meter's own month peak and the time zone.
+ */
 export type HeldCapacityLimitPorts = {
   readScalars: () => CapacityScalarSettings;
   readTracker: () => PowerTrackerState;
+  readMeterPeak: () => MeterMonthlyPeak | null;
   readTimeZone: () => string;
 };
 
@@ -67,6 +72,6 @@ export type HeldCapacityLimitPorts = {
 export const createHeldCapacityLimitRead = (ports: HeldCapacityLimitPorts): () => HeldPowerLimitSettings => (
   () => resolveHeldPowerLimits(
     ports.readScalars(),
-    resolveCurrentMonthCapacityPeak(ports.readTracker(), ports.readTimeZone(), Date.now()),
+    resolveCurrentMonthCapacityPeak(ports.readTracker(), ports.readMeterPeak(), ports.readTimeZone(), Date.now()),
   )
 );

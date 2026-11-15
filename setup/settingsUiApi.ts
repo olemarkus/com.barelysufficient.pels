@@ -59,7 +59,6 @@ import { hasSolarProductionCandidate } from '../lib/device/solarPresence';
 import { readChargerPhasePresetsFromHomey } from '../lib/device/settingsUiDeviceReads';
 import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
 import {
-  projectCapacityPeakForUi,
   projectPowerTrackerForUi,
   resolvePowerReadingsForUi,
 } from '../lib/power/trackerUiProjection';
@@ -373,7 +372,7 @@ const getSettingsUiPower = (host: PelsHost): SettingsUiPowerPayload => {
     phasePeaks: host.capacityGuard.phasePeaks.recent(Date.now()),
     capacityScalars: { state: 'resolved', scalars: host.getCapacityScalars() },
     hardCapConfiguration: host.readHardCapConfiguration(),
-    capacityPeak: projectCapacityPeakForUi(host.getCurrentMonthCapacityPeakKw()),
+    capacityPeak: host.getCurrentMonthCapacityPeak(),
     // Home-level "this home has PRODUCTION surfaces" gate for the Usage tab's
     // Solar card (the device list is lazy-loaded, so the card can't read the
     // ui_devices flag). A role-detected PV device is now the whole condition:
@@ -523,7 +522,7 @@ const powerPayloadForHome = (
     tracker: projectPowerTrackerForUi(reading.powerTracker, Date.now()),
     readings: resolvePowerReadingsForUi(reading.powerTracker),
     status: classifyPowerStatusRead(latchEvidence(hasPowerMeasurement(reading.powerTracker)), statusRead),
-    capacityPeak: projectCapacityPeakForUi(reading.currentMonthCapacityPeakKw),
+    capacityPeak: reading.currentMonthCapacityPeak,
     phaseLoad: { state: 'none' },
     capacityScalars: { state: 'resolved', scalars: reading.diagnostics.capacityScalars },
     // Sub-home diagnostics expose running scalars but not persisted key

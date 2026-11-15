@@ -82,13 +82,22 @@ describe('meter-area editor', () => {
 
   it('shows the tracked monthly peak only for the Belgian quarter-hour period', () => {
     const quarter = mountWith(baseProps({
-      editor: baseEditor({ periodMinutes: 15, capacityPeak: { state: 'recorded', peakKw: 6.24 } }),
+      editor: baseEditor({ periodMinutes: 15, capacityPeak: { state: 'recorded', peakKw: 6.24, source: 'tracked' } }),
     }));
     expect(quarter.querySelector('#home-limits-monthly-peak')?.textContent).toBe('6.24 kW');
+    expect(quarter.querySelector('#home-limits-monthly-peak-note')?.textContent).toContain('Tracked estimate');
 
     document.body.innerHTML = '';
     const hourly = mountWith(baseProps({ editor: baseEditor({ periodMinutes: 60 }) }));
     expect(hourly.querySelector('#home-limits-monthly-peak')).toBeNull();
+  });
+
+  it('says the meter reported the peak when its own value is in use', () => {
+    const surface = mountWith(baseProps({
+      editor: baseEditor({ periodMinutes: 15, capacityPeak: { state: 'recorded', peakKw: 6.8, source: 'meter' } }),
+    }));
+    expect(surface.querySelector('#home-limits-monthly-peak')?.textContent).toBe('6.80 kW');
+    expect(surface.querySelector('#home-limits-monthly-peak-note')?.textContent).toBe('Reported by your meter.');
   });
 
   it('offers following this month\'s peak only for the quarter-hour period', () => {
