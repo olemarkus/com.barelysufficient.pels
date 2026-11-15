@@ -188,7 +188,7 @@ export class DeviceTransport {
     }
 
     confirmCarAssociation(chargerId: string, carId: string): void {
-        this.carAssociationControl.confirm(chargerId, carId);
+        this.carAssociationControl.confirm(chargerId, carId, Date.now());
     }
 
     getCarConfirmation(chargerId: string): CarConfirmation | undefined {
@@ -198,7 +198,7 @@ export class DeviceTransport {
     }
 
     clearCarConfirmation(chargerId: string): void {
-        this.observationProducers.evCarLink.clearCarConfirmation(chargerId);
+        this.carAssociationControl.clear(chargerId);
         this.carAssociationControl.observe(Date.now());
     }
 

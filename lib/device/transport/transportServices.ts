@@ -13,6 +13,7 @@ import { EV_CAR_LINK_COINCIDENCE_WINDOW_MS } from '../evCarLink';
 import type { DeviceParseSettings } from './managerParseDevice';
 import type { TransportSnapshotStore } from './transportSnapshotStore';
 import type { DeviceTransportOptions } from './transportTypes';
+import { StandingCarConfirmations } from './standingCarConfirmations';
 
 import type { TemperatureRecoveryService } from './temperatureRecovery';
 import type { BinarySettleEvidenceService } from './binarySettleEvidence';
@@ -158,6 +159,7 @@ export function createEvCarAssociationControl(
     emit: EvCarLinkEventEmitter,
 ) {
     const waiting = new Map<string, { sinceMs: number; elapsedMinutes: number }>();
+    const standing = new StandingCarConfirmations(probe, settings, snapshots, emit);
 
     const chargerName = (chargerId: string): string => snapshots.getSnapshotByDeviceId(chargerId)?.name ?? chargerId;
 
@@ -234,16 +236,14 @@ export function createEvCarAssociationControl(
         return allUnplugged(probe.waitReports.describeCars(chargerId, present)) ? 'selected_cars_unplugged' : 'waiting';
     }
 
-    function confirm(chargerId: string, carId: string): void {
+    function confirm(chargerId: string, carId: string, nowMs: number): void {
         try {
             if (!settings.getEvCarAssociationCarIds(chargerId).includes(carId)) {
                 throw new Error('Select this car for the charger before confirming it.');
             }
-            if (!snapshots.getSnapshotByDeviceId(chargerId)?.available) {
-                throw new Error('The charger is unavailable.');
-            }
-            const nowMs = Date.now();
+            if (!snapshots.getSnapshotByDeviceId(chargerId)?.available) throw new Error('The charger is unavailable.');
             probe.confirmAssociation(chargerId, carId, nowMs);
+            standing.settle(chargerId);
             const read = readWait(chargerId);
             if (!read.waiting) endWaiting(chargerId, nowMs, read.end);
         } catch (error) {
@@ -267,6 +267,7 @@ export function createEvCarAssociationControl(
             return read.waiting ? [] : [[id, read.end]];
         });
         for (const [id, end] of ended) endWaiting(id, nowMs, end);
+        standing.assume(nowMs, isWaiting, confirm);
         for (const charger of snapshots.getSnapshot()) {
             if (isWaiting(charger.id) && !waiting.has(charger.id)) startWaiting(charger.id, nowMs);
         }
@@ -291,7 +292,7 @@ export function createEvCarAssociationControl(
     function diagnostics(deviceId: string, reads: CarLinkAssociationReads): CarLinkDiagnostics | undefined {
         return resolveCarLinkDiagnostics(deviceId, probe, settings, snapshots, waiting.get(deviceId)?.sinceMs, reads);
     }
-    return { isWaiting, identificationState, diagnostics, confirm, observe, tick };
+    return { isWaiting, identificationState, diagnostics, confirm, observe, tick, clear: standing.clear };
 }
 
 function connectionEnded(snapshots: TransportSnapshotStore, chargerId: string): boolean {

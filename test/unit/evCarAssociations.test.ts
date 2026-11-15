@@ -32,4 +32,18 @@ describe('normalizeEvCarAssociations', () => {
     // charger reading as configured everywhere downstream.
     expect(normalizeEvCarAssociations({ 'charger-1': { carIds: [] }, 'charger-2': { carIds: [123] } })).toEqual({});
   });
+
+  it('keeps a standing car only while it is the sole selected car', () => {
+    expect(normalizeEvCarAssociations({ 'charger-1': { carIds: ['car-a'], assumedCarId: 'car-a' } }))
+      .toEqual({ 'charger-1': { carIds: ['car-a'], assumedCarId: 'car-a' } });
+    expect(normalizeEvCarAssociations({
+      'charger-1': { carIds: ['car-a', 'car-b'], assumedCarId: 'car-a' },
+      'charger-2': { carIds: ['car-a'], assumedCarId: 'car-b' },
+      'charger-3': { carIds: ['car-a'], assumedCarId: 42 },
+    })).toEqual({
+      'charger-1': { carIds: ['car-a', 'car-b'] },
+      'charger-2': { carIds: ['car-a'] },
+      'charger-3': { carIds: ['car-a'] },
+    });
+  });
 });

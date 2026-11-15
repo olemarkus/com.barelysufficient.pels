@@ -1,4 +1,5 @@
 import { expect, test, injectHomeyHostCss, type Page } from './fixtures/test';
+import type { StubWindow } from './stubWindow';
 import {
   readMdSwitchSelected,
   readMdValue,
@@ -404,6 +405,61 @@ test.describe('Device detail panel', () => {
     await expect(section).toContainText('Waiting to identify the connected car');
     await expect(button).toBeVisible();
     await expect(page.locator('#device-detail-soc-value')).not.toHaveText('63 %');
+  });
+
+  test('Offers to confirm the sole selected car at every plug-in at 320 px', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 320, height: 900 });
+    await injectHomeyHostCss(page);
+    await page.addInitScript(() => {
+      const car = {
+        carId: 'car_polestar', carName: 'Polestar 3', confirmed: true,
+        chargingState: 'plugged_out', chargingStateObservedAtMs: Date.now(), socPct: 63,
+      };
+      (window as unknown as { __PELS_HOMEY_STUB__: unknown }).__PELS_HOMEY_STUB__ = {
+        recommendationCars: [{
+          id: car.carId, name: car.carName, matchHistory: { state: 'resolved', chargerMatches: [] },
+        }],
+        settings: {
+          ev_car_associations: { dev_evcharger: { carIds: [car.carId] } },
+          target_devices_snapshot: [{
+            id: 'dev_evcharger', name: 'Garage charger', deviceClass: 'evcharger',
+            available: true, isEvCharger: true, evChargingState: 'plugged_in_paused',
+            capabilities: ['evcharger_charging', 'evcharger_charging_state'],
+            targets: [], currentOn: false,
+          }],
+        },
+        apiHandlers: {
+          'POST /ui_car_association_confirm': () => ({
+            carConfirmation: { carId: car.carId, carName: car.carName, available: true },
+            associatedCar: car,
+            stateOfCharge: { level: { kind: 'known', percent: 63, observedAtMs: Date.now() } },
+          }),
+        },
+      };
+    });
+    const readAssociations = () => page.evaluate(() => new Promise<unknown>((resolve, reject) => {
+      (window as unknown as StubWindow).Homey.get('ev_car_associations', (error, value) => {
+        if (error) reject(error);
+        else resolve(value);
+      });
+    }));
+    await openDeviceDetail(page, 'dev_evcharger');
+    const section = page.locator('#device-detail-car-section');
+    const standing = section.getByRole('switch', { name: 'Confirm at every plug-in' });
+    await expect(standing).toBeVisible();
+    await expect(standing).not.toBeChecked();
+    await section.getByRole('button', { name: 'Confirm Polestar 3 as the connected car' }).click();
+    const toast = page.locator('#toast.show');
+    await expect(toast).toContainText('Polestar 3 confirmed. Confirm at every plug-in?');
+    await toast.locator('.toast__action').click();
+    await expect.poll(readAssociations).toEqual({
+      dev_evcharger: { carIds: ['car_polestar'], assumedCarId: 'car_polestar' },
+    });
+    await expect(standing).toBeChecked();
+    expect(await section.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(false);
+    await testInfo.attach('standing-car-320', { body: await section.screenshot(), contentType: 'image/png' });
+    await standing.click();
+    await expect.poll(readAssociations).toEqual({ dev_evcharger: { carIds: ['car_polestar'] } });
   });
 
   test('Keeps confirmed identity during a car app outage at 320 px', async ({ page }, testInfo) => {

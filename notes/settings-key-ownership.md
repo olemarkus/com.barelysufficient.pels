@@ -83,7 +83,7 @@ Keys with owners so far include `mode_aliases`, `mode_device_targets`, `pv_forec
 `lib/power/mainFusePhaseSource.ts`), `main_fuse_phase_peaks` (runtime-owned, `lib/power/phasePeakLog.ts`, validated
 on read), `device_phase_learning`
 (runtime-owned, validated entry by entry by `parsePhaseLearning` in `lib/phaseFootprint/phaseFootprintLearner.ts`,
-written only by that learner through setup's wiring; the settings UI does not write it), `ev_car_associations` (`evCarAssociations.ts`),
+written only by that learner through setup's wiring; the settings UI does not write it), `ev_car_associations` (`evCarAssociations.ts`; a charger's entry may carry the standing `assumedCarId`, kept only while it is the sole selected car),
 `export_price_source` (`exportPriceSource.ts`), `overshoot_behaviors`
 (`shedBehaviors.ts`), and the daily-budget option and switch keys
 (`dailyBudgetSettings.ts`), all in `packages/shared-domain/src/settings/`, plus

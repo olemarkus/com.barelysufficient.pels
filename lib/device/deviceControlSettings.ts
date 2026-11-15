@@ -269,6 +269,11 @@ export class DeviceControlSettings {
     return this.maps.evChargeTargets[deviceId];
   }
   getEvCarAssociationCarIds(deviceId: string): string[] { return this.maps.evCarAssociations[deviceId]?.carIds ?? []; }
+
+  /** The car the owner said is always the one on this charger; absent when they have not. */
+  getEvCarAssumedCarId(deviceId: string): string | undefined {
+    return this.maps.evCarAssociations[deviceId]?.assumedCarId;
+  }
   resolveEvCarCurrentLimits(carId: string): EvChargingCurrentPolicy {
     if (this.maps.evCarCurrentLimits.state === 'unavailable') {
       this.maps = { ...this.maps,

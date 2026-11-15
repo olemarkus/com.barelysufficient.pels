@@ -183,9 +183,7 @@ export class EvCarLinkProducer {
             throw new Error('The charger is not connected.');
         }
         if (!this.cars.observed.has(carId)) throw new Error('The selected car is unavailable.');
-        const sessions = this.deps.getSnapshot().sessions;
-        if (Object.entries(sessions).some(([id, session]) => id !== chargerId && session.carId === carId)
-            || [...this.activeLinks].some(([id, link]) => id !== chargerId && link.carId === carId)) {
+        if (this.isCarHeldElsewhere(chargerId, carId)) {
             throw new Error('The car is already associated with another charger.');
         }
         if (this.activeLinks.get(chargerId)?.carId === carId && this.activeLinks.get(chargerId)?.confirmed) return;
@@ -195,6 +193,13 @@ export class EvCarLinkProducer {
         this.deps.setSnapshot(recordEvCarLinkSession(this.deps.getSnapshot(), chargerId, session));
         this.deps.emit({ component: 'devices', event: 'ev_car_link_confirmed', chargerId, carId });
         this.publishAssociatedCarLevels();
+    }
+
+    /** Whether another charger holds this car, by a session or a link, provisional included. */
+    isCarHeldElsewhere(chargerId: string, carId: string): boolean {
+        const sessions = Object.entries(this.deps.getSnapshot().sessions);
+        return sessions.some(([id, session]) => id !== chargerId && session.carId === carId)
+            || [...this.activeLinks].some(([id, link]) => id !== chargerId && link.carId === carId);
     }
 
     /** Configuration and inventory invalidate confirmations even during a car outage. */

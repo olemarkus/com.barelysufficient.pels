@@ -21,7 +21,9 @@ import { isEvChargerDevice } from '../deviceKind.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { EV_CAR_ASSOCIATIONS } from '../../../../shared-domain/src/settings/settingsKeys.ts';
-import { normalizeEvCarAssociations } from '../../../../shared-domain/src/settings/evCarAssociations.ts';
+import {
+  buildEvCarAssociationConfig, normalizeEvCarAssociations,
+} from '../../../../shared-domain/src/settings/evCarAssociations.ts';
 import { isUnknownRecord } from '../../../../shared-domain/src/recordGuards.ts';
 import { resolveEvChargingStateLabel } from '../../../../shared-domain/src/evChargingStateLabel.ts';
 import {
@@ -43,7 +45,8 @@ import {
 import { logSettingsError } from '../logging.ts';
 import { isEvObserved } from '../../../../shared-domain/src/evObservedState.ts';
 import { isEvPlugStateConnected } from '../../../../shared-domain/src/evPlugState.ts';
-import { showToastError } from '../toast.ts';
+import { showToast, showToastError } from '../toast.ts';
+import { createSwitchField } from '../components.ts';
 import { state } from '../state.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 
@@ -186,6 +189,8 @@ const orphanedCarIds = (ticked: readonly string[], known: CarOption[]): CarOptio
 const tickedCarIds = (deviceId: string): readonly string[] => (
   state.evCarAssociations[deviceId]?.carIds ?? []
 );
+
+const assumedCarId = (deviceId: string): string | undefined => state.evCarAssociations[deviceId]?.assumedCarId;
 
 const positionCarStatus = (confirmed: boolean): void => {
   if (!deviceDetailCarList || !deviceDetailCarStatus) return;
@@ -366,20 +371,45 @@ const renderCarRows = (device: SettingsUiDeviceDetailItem, ticked: readonly stri
     if (!selected || orphans.includes(car)) continue;
     // The confirm button sits right under its car, ahead of the car's current
     // limits, so the Car section opened to confirm shows it without a scroll.
-    if (canConfirmCar(device, car.id)) {
-      const button = document.createElement('md-outlined-button');
-      button.textContent = 'Confirm connected car';
-      button.setAttribute('aria-label', `Confirm ${formatDisplayDeviceName(car.name)} as the connected car`);
-      button.className = 'detail-car-confirm';
-      button.toggleAttribute('disabled', confirmationPending);
-      button.addEventListener('click', () => { void updateConfirmation(deviceId, car.id); });
-      deviceDetailCarList.append(button);
-    }
+    if (canConfirmCar(device, car.id)) deviceDetailCarList.append(confirmButton(deviceId, car));
+    if (ticked.length === 1) deviceDetailCarList.append(standingCarSwitch(deviceId, car));
     const editor = editors.get(car.id) ?? document.createElement('div');
     editor.dataset.carCurrentLimits = car.id;
     deviceDetailCarList.append(editor);
     renderCarCurrentLimits(editor, car, device, () => renderCarAssociation(currentDevice));
   }
+};
+
+const confirmButton = (deviceId: string, car: CarOption): HTMLElement => {
+  const button = document.createElement('md-outlined-button');
+  button.textContent = 'Confirm connected car';
+  button.setAttribute('aria-label', `Confirm ${formatDisplayDeviceName(car.name)} as the connected car`);
+  button.className = 'detail-car-confirm';
+  button.toggleAttribute('disabled', confirmationPending);
+  button.addEventListener('click', () => { void updateConfirmation(deviceId, car.id); });
+  return button;
+};
+
+/**
+ * The owner's standing confirmation: offered for the charger's one selected car,
+ * since with two the plug-in could be either car's.
+ */
+const standingCarSwitch = (deviceId: string, car: CarOption): HTMLElement => {
+  const name = formatDisplayDeviceName(car.name);
+  const { element, input } = createSwitchField({
+    id: `detail-car-standing-${car.id}`,
+    label: 'Confirm at every plug-in',
+    hint: `PELS confirms ${name} each time this charger is plugged in, even before the car's app reports it. `
+      + 'When another car is connected, clear the confirmation.',
+    selected: assumedCarId(deviceId) === car.id,
+  });
+  element.classList.add('detail-car-standing');
+  // The visible label sits outside the switch's shadow root, where its id cannot be referenced.
+  input.setAttribute('aria-label', 'Confirm at every plug-in');
+  input.addEventListener('change', () => {
+    void runSerializedCarWrite(() => writeAssumedCar(deviceId, input.selected ? car.id : undefined));
+  });
+  return element;
 };
 
 const hint = (text: string): HTMLElement => {
@@ -441,7 +471,7 @@ const writeAssociation = async (deviceId: string, carId: string, ticked: boolean
       // An empty set is indistinguishable from "off", so the entry goes away
       // rather than persisting as a configured-but-empty charger.
       if (nextIds.length === 0) delete next[deviceId];
-      else next[deviceId] = { carIds: nextIds };
+      else next[deviceId] = buildEvCarAssociationConfig(nextIds, current[deviceId]?.assumedCarId);
       return next;
     },
     commit: (next) => {
@@ -450,6 +480,46 @@ const writeAssociation = async (deviceId: string, carId: string, ticked: boolean
       document.dispatchEvent(new Event('ev-car-associations-updated'));
     },
     rollback: () => renderCarAssociation(getRenderDevice()),
+  });
+};
+
+const writeAssumedCar = async (deviceId: string, carId: string | undefined): Promise<void> => {
+  await writeFreshSetting<EvCarAssociations>({
+    key: EV_CAR_ASSOCIATIONS,
+    context: 'device detail',
+    logMessage: 'Failed to update the standing car confirmation',
+    toastMessage: 'Failed to update the car list.',
+    fallbackValue: state.evCarAssociations,
+    readFresh: (value) => (isUnknownRecord(value)
+      ? normalizeEvCarAssociations(value)
+      : null),
+    mutate: (current) => {
+      const entry = current[deviceId];
+      if (!entry) return current;
+      return { ...current, [deviceId]: buildEvCarAssociationConfig(entry.carIds, carId) };
+    },
+    commit: (next) => {
+      state.evCarAssociations = next;
+      renderCarAssociation(getRenderDevice());
+      document.dispatchEvent(new Event('ev-car-associations-updated'));
+    },
+    rollback: () => renderCarAssociation(getRenderDevice()),
+  });
+};
+
+/**
+ * After the owner confirms the charger's one selected car by hand, offer to do
+ * it for them from now on: the moment they confirm is when they know it is
+ * always this car.
+ */
+const offerStandingCar = (chargerId: string, carId: string, carName: string): void => {
+  const ticked = tickedCarIds(chargerId);
+  if (ticked.length !== 1 || ticked[0] !== carId || assumedCarId(chargerId) === carId) return;
+  void showToast(`${formatDisplayDeviceName(carName)} confirmed. Confirm at every plug-in?`, 'ok', {
+    action: {
+      label: 'Yes',
+      onClick: () => runSerializedCarWrite(() => writeAssumedCar(chargerId, carId)),
+    },
   });
 };
 
@@ -502,6 +572,7 @@ const updateConfirmation = async (chargerId: string, carId?: string): Promise<vo
       currentDevice = { ...currentDevice, carConfirmation, associatedCar, stateOfCharge };
     }
     document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices: state.latestDevices } }));
+    if (carId && carConfirmation?.carId === carId) offerStandingCar(chargerId, carId, carConfirmation.carName);
   } catch (error) {
     await logSettingsError('Failed to update the car confirmation', error, 'carAssociation');
     await showToastError(error, carId ? 'Could not confirm the connected car.' : 'Could not clear the confirmation.');

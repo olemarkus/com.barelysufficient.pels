@@ -12,7 +12,7 @@ import type { EvCarSelfStopReason, EvLinkEdgeKind, EvLinkRefusalReason } from '.
 
 export type EvCarLinkEvent =
     | {
-        component: 'devices'; event: 'ev_car_link_confirmed' | 'ev_car_link_confirmation_ended';
+        component: 'devices'; event: 'ev_car_link_confirmed' | 'ev_car_link_confirmation_ended' | 'ev_car_link_assumed';
         chargerId: string; carId: string;
     }
     | {
