@@ -513,7 +513,7 @@ describe('settingsOverviewReadModel', () => {
       getIdleClassification: () => 'unresponsive',
     });
     expect(wire.status.kind).toBe(kind);
-    expect(wire.status.reason).toEqual(kind === 'manual' ? { text: 'Power-limit control is off' } : null);
+    expect(wire.status.reason).toEqual({ text: kind === 'manual' ? 'Power-limit control is off' : 'Homey reports this device unavailable' });
   });
 
   it('calls a charger a charger before it has reported any plug-state', () => {

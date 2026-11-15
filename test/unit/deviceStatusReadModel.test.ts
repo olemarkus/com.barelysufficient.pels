@@ -249,3 +249,20 @@ describe('Manual cards', () => {
     expect(status.reason).toEqual({ text: 'Power-limit control is off' });
   });
 });
+
+describe('Unavailable cards', () => {
+  // Unavailable is Homey's word (owner, 2026-11-14), and the card says so.
+  it('says Homey reports the device unavailable', () => {
+    const device = runningPowerHold({ available: false, plannedState: 'keep', reason: { code: PLAN_REASON_CODES.keep, detail: null } });
+    const status = buildDeviceStatus({ ...device, execution: { ...device.execution, available: false } }, false, 0);
+    expect(status.label).toBe('Unavailable');
+    expect(status.reason).toEqual({ text: 'Homey reports this device unavailable' });
+  });
+
+  it('claims nothing for an available device whose plan could not be built', () => {
+    const device = runningPowerHold({ plannedState: 'keep', reason: { code: PLAN_REASON_CODES.keep, detail: null } });
+    const status = buildDeviceStatus({ ...device, execution: { ...device.execution, available: false } }, false, 0);
+    expect(status.label).toBe('Unavailable');
+    expect(status.reason).toBeNull();
+  });
+});
