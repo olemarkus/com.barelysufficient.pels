@@ -201,7 +201,7 @@ function buildHomeBatteryOverviewDevice(
     isEvCharger: false,
     budgetExempt: device.budgetExempt,
     boostActive: false,
-    homeBattery: buildSettingsUiPlanHomeBattery(battery, device.storageHold, available, mainExport),
+    homeBattery: buildSettingsUiPlanHomeBattery(battery, device.storageHold, available, mainExport, deps.dryRun),
   };
 }
 

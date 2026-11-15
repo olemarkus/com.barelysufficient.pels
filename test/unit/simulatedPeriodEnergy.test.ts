@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { SimulatedPeriodEnergy } from '../../lib/plan/simulatedPeriodEnergy';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { buildPlanDevice } from '../utils/planTestUtils';
+import { NO_STORAGE_RELIEF } from '../../lib/plan/battery/storageRelief';
+import type { StorageRelief, StorageStateSummary } from '../../lib/plan/battery/storageReliefTypes';
+import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import { partialDouble } from '../helpers/partialDouble';
 
 const HOUR_12 = Date.UTC(2026, 9, 6, 12);
 const MIN = 60_000;
@@ -23,7 +27,7 @@ const heldOff = (drawKw: number) => buildPlanDevice({
 describe('SimulatedPeriodEnergy', () => {
   it('takes the held relief off each hour and the current quarter, from the tracker it counted against', () => {
     const ledger = new SimulatedPeriodEnergy();
-    ledger.hold([heldOff(2)], tracker(HOUR_12 + 50 * MIN, {}));
+    ledger.hold([heldOff(2)], NO_STORAGE_RELIEF, [], tracker(HOUR_12 + 50 * MIN, {}));
     // Ten minutes later, across the 13:00 boundary.
     ledger.accrue(tracker(HOUR_12 + 70 * MIN, {}));
     const view = ledger.planningView(tracker(HOUR_12 + 70 * MIN, {
@@ -37,7 +41,7 @@ describe('SimulatedPeriodEnergy', () => {
 
   it('counts only what the tracker has counted, and never an interval twice', () => {
     const ledger = new SimulatedPeriodEnergy();
-    ledger.hold([heldOff(3)], tracker(HOUR_12, {}));
+    ledger.hold([heldOff(3)], NO_STORAGE_RELIEF, [], tracker(HOUR_12, {}));
     ledger.accrue(tracker(HOUR_12, {}));
     ledger.accrue(tracker(HOUR_12 + 6 * MIN, {}));
     ledger.accrue(tracker(HOUR_12 + 6 * MIN, {}));
@@ -47,7 +51,7 @@ describe('SimulatedPeriodEnergy', () => {
 
   it('leaves an exporting hour as measured and never takes an hour below zero', () => {
     const ledger = new SimulatedPeriodEnergy();
-    ledger.hold([heldOff(6)], tracker(HOUR_12, {}));
+    ledger.hold([heldOff(6)], NO_STORAGE_RELIEF, [], tracker(HOUR_12, {}));
     ledger.accrue(tracker(HOUR_12 + 30 * MIN, {}));
     const view = ledger.planningView(tracker(HOUR_12 + 30 * MIN, { [key(HOUR_12)]: 1 }));
     expect(view.buckets?.[key(HOUR_12)]).toBe(0);
@@ -60,7 +64,7 @@ describe('SimulatedPeriodEnergy', () => {
     ledger.hold([
       buildPlanDevice({ id: 'kept', currentDrawKw: 2 }),
       buildPlanDevice({ id: 'cooler', plannedState: 'shed', plannedShedTargetKind: 'target_value', currentDrawKw: 2 }),
-    ], tracker(HOUR_12, {}));
+    ], NO_STORAGE_RELIEF, [], tracker(HOUR_12, {}));
     ledger.accrue(tracker(HOUR_12 + 30 * MIN, {}));
     const measured = tracker(HOUR_12 + 30 * MIN, { [key(HOUR_12)]: 3 });
     expect(ledger.planningView(measured).buckets?.[key(HOUR_12)]).toBe(3);
@@ -70,7 +74,7 @@ describe('SimulatedPeriodEnergy', () => {
     const ledger = new SimulatedPeriodEnergy();
     ledger.hold([buildPlanDevice({
       id: 'exempt', plannedState: 'shed', plannedShedTargetKind: 'binary_off', currentDrawKw: 2, budgetExempt: true,
-    })], tracker(HOUR_12, {}));
+    })], NO_STORAGE_RELIEF, [], tracker(HOUR_12, {}));
     ledger.accrue(tracker(HOUR_12 + 30 * MIN, {}));
     const view = ledger.planningView({
       ...tracker(HOUR_12 + 30 * MIN, { [key(HOUR_12)]: 3 }),
@@ -80,11 +84,26 @@ describe('SimulatedPeriodEnergy', () => {
     expect(view.exemptBuckets?.[key(HOUR_12)]).toBeCloseTo(0.5);
   });
 
-  it('paces from the measured tracker again once cleared', () => {
+  it('counts what a held battery would take off the import: more discharge, or less charge', () => {
+    const held = (deviceId: string, setpointW: number) => partialDouble<StorageStateSummary>({
+      deviceId, setpointW, decision: { kind: 'setpoint', setpointW, stepW: 5 },
+    });
+    const storage: StorageRelief = { ...NO_STORAGE_RELIEF, batteries: [held('idle', -1500), held('charging', 0)] };
+    const observed = (id: string, signedPowerW: number) => partialDouble<PlanInputDevice>({
+      id, storage: { reading: 'observed', signedPowerW },
+    } as Partial<PlanInputDevice>);
     const ledger = new SimulatedPeriodEnergy();
-    ledger.hold([heldOff(2)], tracker(HOUR_12, {}));
+    ledger.hold([], storage, [observed('idle', 0), observed('charging', 1000)], tracker(HOUR_12, {}));
     ledger.accrue(tracker(HOUR_12 + 30 * MIN, {}));
-    ledger.clear();
+    const view = ledger.planningView(tracker(HOUR_12 + 30 * MIN, { [key(HOUR_12)]: 3 }));
+    expect(view.buckets?.[key(HOUR_12)]).toBeCloseTo(3 - (1.5 + 1) * 0.5);
+  });
+
+  it('paces from the measured tracker again once simulation ends', () => {
+    const ledger = new SimulatedPeriodEnergy();
+    ledger.hold([heldOff(2)], NO_STORAGE_RELIEF, [], tracker(HOUR_12, {}));
+    ledger.accrue(tracker(HOUR_12 + 30 * MIN, {}));
+    expect(ledger.endSimulation()).toBe(true);
     const measured = tracker(HOUR_12 + 30 * MIN, { [key(HOUR_12)]: 3 });
     expect(ledger.planningView(measured)).toBe(measured);
   });

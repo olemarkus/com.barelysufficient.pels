@@ -45,7 +45,7 @@ import type { TemperatureSetpointsByDevice } from '../../packages/planner-types/
 import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { runSilentMeterSurplusHold } from './planBuilderSurplus';
 import {
-  NO_STORAGE_RELIEF, attachStorageDecisions, collectAbsentStorageReleases, releaseStorageOnSilentMeter,
+  attachStorageDecisions, collectAbsentStorageReleases, releaseStorageOnSilentMeter,
 } from './battery/storageRelief';
 import {
   buildSheddingCandidates,
@@ -142,9 +142,7 @@ export class SilentMeterPlanBuilder {
     );
     // No measurement, no deficit to relieve: every battery PELS holds is handed
     // back, and the loads are shed to their floor exactly as without one.
-    const storageRelief = this.deps.getCapacityDryRun()
-      ? NO_STORAGE_RELIEF
-      : releaseStorageOnSilentMeter(context.devices, this.state.storageLeverByDevice);
+    const storageRelief = releaseStorageOnSilentMeter(context.devices, this.state.storageLeverByDevice);
     this.state.storageLeverByDevice = storageRelief.levers;
     const decidedDevices = attachStorageDecisions(finalized.planDevices, storageRelief);
     // Recorded like any other shed: the first measured cycle after the meter

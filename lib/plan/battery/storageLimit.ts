@@ -15,7 +15,7 @@ import type { MeasuredPower } from '../planContext';
 import type { StorageDecision } from '../../planContract/storageDecision';
 import type { StorageLeverState } from '../planState';
 import type { StorageSetpoint } from '../shedding/types';
-import { STORAGE_RELIEF_SETTLE_WINDOW_MS, ownDischargeWOf } from './storageLadder';
+import { STORAGE_RELIEF_SETTLE_WINDOW_MS, hasStorageLeverInput, ownDischargeWOf } from './storageLadder';
 import {
   isSettling,
   sumWithheldKw,
@@ -154,3 +154,24 @@ export function withoutStorageWithheld(
   };
 }
 
+/**
+ * In capacity simulation nothing is sent, so a held battery never moves to its
+ * setpoint and the reading never shows it. Each held battery is read as if it
+ * had followed its last setpoint, as it would under live control, and the
+ * difference is what the reading is missing, W: the storage stage's room and
+ * import, and shedding's credit, count it as delivered. The battery's measured
+ * reading stays as it is outside this cycle's storage and shedding stages.
+ */
+export function simulateFollowedHolds(
+  devices: readonly PlanInputDevice[],
+  levers: Readonly<Record<string, StorageLeverState>>,
+): { devices: readonly PlanInputDevice[]; undeliveredW: number } {
+  let undeliveredW = 0;
+  const followed = devices.map((device) => {
+    const lever = levers[device.id];
+    if (lever === undefined || !hasStorageLeverInput(device) || device.storage.reading !== 'observed') return device;
+    undeliveredW += device.storage.signedPowerW - lever.setpointW;
+    return { ...device, storage: { ...device.storage, signedPowerW: lever.setpointW } };
+  });
+  return { devices: followed, undeliveredW };
+}

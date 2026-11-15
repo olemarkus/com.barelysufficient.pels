@@ -106,6 +106,25 @@ export const BATTERY_REASON_LINES = {
   plan_wait: 'Keeping stored energy for later',
 } as const satisfies Record<StorageHoldKind, string>;
 
+/**
+ * What PELS would have a battery do, in Simulation mode, where it sends
+ * nothing: the battery keeps its own mode, so only the reason line names the
+ * hold, hypothetically (`notes/ui-terminology.md`).
+ */
+export const BATTERY_SIMULATED_REASON_LINES = {
+  relief: 'Would supply power to hold your limit',
+  charge_limit: 'Would charge slower to hold your limit',
+  surplus: 'Would store the solar power your devices leave',
+  cap_for_device: 'Would charge less so a device can use the solar',
+  plan_charge: 'Would buy cheap electricity for later',
+  plan_solar: 'Would store solar for later household use',
+  plan_supply: 'Would use stored energy while power is expensive',
+  plan_export: 'Would sell stored energy while export pays more',
+  plan_wait: 'Would keep stored energy for later',
+} as const satisfies Record<Exclude<StorageHoldKind, OwnModeHoldKind>, string>;
+
+const SIMULATION_TAG = ' (simulation)';
+
 /** Below this, the charge a cap holds back is not worth naming, kW. */
 const HELD_BACK_MIN_KW = 0.05;
 
@@ -135,18 +154,21 @@ const resolveObservedDirection = (battery: HomeBatteryCard): Direction | null =>
  * battery's word is its observed direction; one that reports none yet keeps
  * the word for what PELS holds it to do, with no power. Power is present only
  * with an observed direction. An unavailable battery holds nothing: its card
- * says Unavailable, so the hero must not name it supplying.
+ * says Unavailable, so the hero must not name it supplying. In simulation PELS
+ * holds nothing either: the battery is in its own mode, named by what it reports.
  */
 export function buildSettingsUiPlanHomeBattery(
   battery: HomeBatteryCard,
   hold: StorageHold,
   available: boolean,
   mainExport: MainExportEvidence,
+  dryRun: boolean,
 ): SettingsUiPlanHomeBattery {
   const direction = resolveObservedDirection(battery);
   const power: SettingsUiPlanHomeBattery['power'] = direction !== null && battery.power.kind === 'observed'
     ? { kind: 'observed', kw: Math.abs(battery.power.signedW) / 1000 }
     : { kind: 'absent' };
+  if (dryRun) return { activity: direction ?? 'own_mode', power, holdsLimit: false };
   // Only a battery PELS holds for relief that is supplying holds the limit: a
   // surplus or capped hold, or a battery in its own mode, discharges for
   // reasons of its own.
@@ -176,6 +198,8 @@ const resolveReason = (battery: HomeBatteryCard, hold: StorageHold, dryRun: bool
     if (undrivableLine !== null) return { text: undrivableLine };
     // One PELS is only simulating has nothing more to say than its own reading.
     if (dryRun) return null;
+  } else if (dryRun) {
+    return { text: `${resolveSimulatedLine(hold)}${SIMULATION_TAG}` };
   }
   if ((hold.kind === 'relief' || hold.kind === 'charge_limit') && hold.exportPhase !== undefined) {
     return { text: `Discharging less so ${hold.exportPhase} stays under your main fuse` };
@@ -185,6 +209,12 @@ const resolveReason = (battery: HomeBatteryCard, hold: StorageHold, dryRun: bool
   }
   return { text: BATTERY_REASON_LINES[hold.kind] };
 };
+
+const resolveSimulatedLine = (hold: Exclude<StorageHold, { kind: OwnModeHoldKind }>): string => (
+  (hold.kind === 'relief' || hold.kind === 'charge_limit') && hold.exportPhase !== undefined
+    ? `Would discharge less so ${hold.exportPhase} stays under your main fuse`
+    : BATTERY_SIMULATED_REASON_LINES[hold.kind]
+);
 
 export function buildHomeBatteryStatus(
   battery: HomeBatteryCard,
@@ -215,8 +245,8 @@ export function buildHomeBatteryStatus(
       reason: null,
     };
   }
-  const { activity, power } = buildSettingsUiPlanHomeBattery(battery, hold, available, mainExport);
-  if (hold.kind === 'charge_limit') {
+  const { activity, power } = buildSettingsUiPlanHomeBattery(battery, hold, available, mainExport, dryRun);
+  if (hold.kind === 'charge_limit' && !dryRun) {
     return {
       ...common,
       kind: 'held',
