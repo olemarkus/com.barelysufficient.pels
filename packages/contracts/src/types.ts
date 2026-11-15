@@ -555,7 +555,7 @@ export type DeviceDescriptor = {
 /**
  * Closed set of EV charger session states: PELS's own vocabulary for what a
  * charging session is doing and whose move it is. It holds the five values of
- * Homey's `evcharger_charging_state` enum, and three more that an integration
+ * Homey's `evcharger_charging_state` enum, and four more that an integration
  * resolves from its app's own states:
  *
  * - `plugged_in`: a car is connected and nothing more is known. The value an
@@ -568,6 +568,9 @@ export type DeviceDescriptor = {
  *   command of PELS's starts it.
  * - `plugged_in_finished`: the car has stopped asking for power. PELS keeps
  *   current on offer, and the session charges again when the car asks.
+ * - `plugged_in_car_stopped`: the car stopped the session itself, and the
+ *   charger takes no command of PELS's to start it again. It charges again by
+ *   itself when the car asks.
  *
  * Producers (the capability read in `getEvChargingState`, the integrations'
  * derivations, the Flow-reported one) resolve to this union at their parse
@@ -583,6 +586,7 @@ export type EvChargingState =
     | 'plugged_in_paused'
     | 'plugged_in_waiting_for_charger'
     | 'plugged_in_finished'
+    | 'plugged_in_car_stopped'
     | 'plugged_out'
     | 'plugged_in_discharging';
 

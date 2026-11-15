@@ -75,13 +75,17 @@ export class RealtimeIngestService {
       const availabilityChanged = previousAvailability !== available;
       snapshot.available = available;
       snapshot.controlAdapter = resolved.controlAdapter;
+      // A session that reads the session state itself (a charger whose refusal
+      // said the car stopped) changes it here too, on the report that ends it.
+      const sessionStateChanged = snapshot.evChargingState !== resolved.evChargingState;
+      snapshot.evChargingState = resolved.evChargingState;
       const statusChanged = adapterStatusChanged(previousStatus, snapshot.controlAdapter?.unavailableStatus);
       const powerKw = resolved.measuredPowerKw;
       if (powerKw !== undefined && powerKw !== snapshot.measuredPowerKw) {
         handleRealtimeCapabilityUpdateWithProbe(this, snapshot.id, 'measure_power', powerKw * 1000, false);
       }
       this.deviceConfiguration.set(snapshot);
-      if (availabilityChanged || statusChanged) {
+      if (availabilityChanged || statusChanged || sessionStateChanged) {
         this.observationBridge.dispatchStateForDevice(snapshot.id);
       }
     }

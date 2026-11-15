@@ -120,6 +120,9 @@ export class TeslaChargingSession implements DeviceAdapterSession {
     return this.lacksLocationDevice(deviceId) ? 'vehicle_location' : 'none';
   }
 
+  observeRefusedWrite(): boolean { return false; }
+  observeAcceptedWrite(): boolean { return false; }
+
   assertAllowed(device: HomeyDeviceLike, setup: ChargingCurrentSetup, connected: boolean): void {
     if (!isTeslaChargingDevice(device)) return;
     if (!connected) throw new Error('Tesla charging requires a connected Homey device feed.');

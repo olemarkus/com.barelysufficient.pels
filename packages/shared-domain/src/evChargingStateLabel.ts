@@ -19,6 +19,7 @@ export const EV_CHARGING_STATE_LABELS: Readonly<Record<string, string>> = {
   plugged_in_awaiting_start: 'Not charging',
   plugged_in_waiting_for_charger: 'Waiting for charger',
   plugged_in_finished: 'Charging finished',
+  plugged_in_car_stopped: 'Car stopped charging',
   plugged_in_discharging: 'Discharging',
   plugged_out: 'Unplugged',
 };

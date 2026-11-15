@@ -341,6 +341,15 @@ export type DeviceAdapterSession = {
   project(snapshot: TransportDeviceSnapshot, setup: ChargingCurrentSetup): TransportDeviceSnapshot;
   assertAllowed(device: HomeyDeviceLike, setup: ChargingCurrentSetup, connected: boolean): void;
   controlEvents(deviceId: string, capabilityId: string, value: unknown): CapabilityUpdate[];
+  /**
+   * The device's app answered a write PELS sent with a refusal: an HTTP error
+   * from the app, not a timeout, which is no answer at all. `message` is the
+   * app's own words. Returns whether that changed how the session projects the
+   * device, so the host projects it again.
+   */
+  observeRefusedWrite(deviceId: string, write: CapabilityWrite, message: string, atMs: number): boolean;
+  /** The device's app accepted a write PELS sent. Returns what `observeRefusedWrite` returns. */
+  observeAcceptedWrite(deviceId: string, write: CapabilityWrite): boolean;
 };
 
 /**
