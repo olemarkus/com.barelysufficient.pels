@@ -62,6 +62,9 @@ export type DeviceStatusInput = DeviceOverviewSnapshot & {
 } & Pick<DevicePlanDevice, 'steppedFairnessHold' | 'steppedStepUpHold'>
   & Partial<Pick<DevicePlanDevice, 'phaseFootprint'>>;
 
+/** The reason line of a card Homey reports unavailable, as the Tesla adapter words it. */
+export const HOMEY_UNAVAILABLE_REASON_TEXT = 'Homey reports this device unavailable';
+
 /** The reason line of every Manual card: the setting that makes it Manual. */
 export const MANUAL_REASON_TEXT = 'Power-limit control is off';
 
@@ -215,13 +218,26 @@ function buildReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number):
     : buildOrdinaryReason(device, dryRun, nowMs);
 }
 
+/**
+ * Why PELS does not control a device, for the two states that say so.
+ *
+ * Every device but a Tesla is unavailable only when Homey says so, and a Tesla's
+ * adapter explains its own (`buildUnavailableAdapterStatus`). An available device
+ * whose plan could not be built for it says nothing here. Manual says PELS is not
+ * limiting the device; the line names the owner's own Power-limit control
+ * setting rather than asking for it, because a device left off on purpose (a
+ * fridge, a PC) is fine.
+ */
+function resolveNotControlledReason(
+  device: DeviceStatusInput, kind: 'unavailable' | 'manual',
+): DeviceStatus['reason'] {
+  if (kind === 'manual') return { text: MANUAL_REASON_TEXT };
+  return device.available ? null : { text: HOMEY_UNAVAILABLE_REASON_TEXT };
+}
+
 function buildOrdinaryReason(device: DeviceStatusInput, dryRun: boolean, nowMs: number): DeviceStatus['reason'] {
   const kind = resolveBaseKind(device);
-  if (kind === 'unavailable') return null;
-  // Manual says PELS is not limiting this device; the line says why, which is
-  // the owner's own Power-limit control setting. It names the setting rather
-  // than asking for it: a device left off on purpose (a fridge, a PC) is fine.
-  if (kind === 'manual') return { text: MANUAL_REASON_TEXT };
+  if (kind === 'unavailable' || kind === 'manual') return resolveNotControlledReason(device, kind);
   let text = resolveReason(device, dryRun);
   const identification = resolveCarIdentificationReason(device, text);
   if (identification) return identification;
