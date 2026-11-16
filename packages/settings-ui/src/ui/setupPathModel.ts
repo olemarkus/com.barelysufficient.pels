@@ -89,6 +89,13 @@ export type SetupPathFacts = {
    * but does not finish the Devices step on its own.
    */
   actionableDeviceCount: number;
+  /**
+   * Devices PELS could run that the owner has not managed, counted only while
+   * every actionable managed device is a home battery. PELS manages a battery
+   * by itself, so that battery is not the owner's choice: the Devices step
+   * stays open while a charger or heater waits unchosen.
+   */
+  unchosenBesideBatteryCount: number;
   /** Managed devices that also have Limit on: the ones PELS may actually turn down. */
   limitableDeviceCount: number;
   simulating: boolean;
@@ -211,8 +218,11 @@ const resolveHardCapDetail = (facts: SetupPathFacts): string => {
 // A fact, never an instruction. Devices that cannot be limited (no power
 // reading) or that the owner chose not to limit are a finished choice; telling
 // that owner to go turn Limit on asks for something they did not come for.
+const BATTERY_ONLY_DEVICES_DETAIL = 'Your home battery is managed. Choose the other devices PELS should run';
+
 const resolveDevicesDetail = (facts: SetupPathFacts): string => {
   if (facts.actionableDeviceCount === 0) return 'Choose one device to start';
+  if (facts.unchosenBesideBatteryCount > 0) return BATTERY_ONLY_DEVICES_DETAIL;
   return facts.limitableDeviceCount > 0
     ? `${countDevices(facts.limitableDeviceCount)} PELS may limit`
     : `${countDevices(facts.actionableDeviceCount)} managed`;
@@ -244,7 +254,7 @@ export const resolveSetupSteps = (facts: SetupPathFacts): SetupPath => {
     },
     {
       id: 'devices',
-      done: facts.actionableDeviceCount > 0,
+      done: facts.actionableDeviceCount > 0 && facts.unchosenBesideBatteryCount === 0,
       title: 'Devices',
       detail: resolveDevicesDetail(facts),
       target: { panel: 'devices' },

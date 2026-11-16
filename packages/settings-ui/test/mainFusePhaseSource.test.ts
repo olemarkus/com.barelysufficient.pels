@@ -44,7 +44,7 @@ describe('phase peaks card', () => {
 
 describe('setup Limits step by market', () => {
   const facts = (market: unknown) => ({
-    actionableDeviceCount: 1, limitableDeviceCount: 1, market,
+    actionableDeviceCount: 1, unchosenBesideBatteryCount: 0, limitableDeviceCount: 1, market,
     hardCap: { state: 'unset', runningLimitKw: 5, periodMinutes: 60 },
     power: { state: 'received' }, prices: { state: 'used', complete: true, summary: 'x' },
   }) as never;
