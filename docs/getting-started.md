@@ -46,6 +46,7 @@ Review the choices PELS shows for this home:
 
 - **Capacity limit** applies to measured hourly or 15-minute average grid import. A new install starts with it on in Norway and Belgium, where households pay for measured peaks, and off everywhere else. Choose the period, hard cap, and safety margin, or turn it on or off to match how your grid charges you.
   Dutch household grid charges depend on connection size. When Capacity limit is on in the Netherlands, setup offers **Turn off Capacity limit** in one tap. Prices and solar keep working.
+  French household grid charges depend on the subscribed power in kVA. In France, setup points to **Main fuse**, where you enter your subscription in kVA, and offers **Turn off Capacity limit** the same way.
 - **Grid import limit** is a separate choice for limiting current grid import. Use either limit, both, or neither.
 - **Prices** appears in setup only when an enabled feature uses them.
 
