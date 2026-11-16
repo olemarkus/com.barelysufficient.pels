@@ -651,8 +651,17 @@
             </md-filled-select>
           </div>
           <div class="field">
+            <span class="field__label pels-text-settings-label" id="settings-main-fuse-unit-label">Enter as</span>
+            <div class="segmented" id="settings-main-fuse-unit-segmented" role="radiogroup" aria-labelledby="settings-main-fuse-unit-label"></div>
+            <md-filled-select id="settings-main-fuse-unit" hidden aria-hidden="true">
+              <md-select-option value="amps" selected><div slot="headline">Amps</div></md-select-option>
+              <md-select-option value="kva"><div slot="headline">kVA</div></md-select-option>
+            </md-filled-select>
+          </div>
+          <div class="field">
             <span class="field__label pels-text-settings-label" id="settings-main-fuse-amps-label">Fuse size per phase</span>
-            <md-filled-text-field id="settings-main-fuse-amps" name="settings_main_fuse_amps" type="number" step="1" min="6" max="250" inputmode="numeric" autocomplete="off" suffix-text="A" aria-labelledby="settings-main-fuse-amps-label"></md-filled-text-field>
+            <md-filled-text-field id="settings-main-fuse-amps" name="settings_main_fuse_amps" type="number" step="0.1" min="6" max="250" inputmode="decimal" autocomplete="off" suffix-text="A" aria-labelledby="settings-main-fuse-amps-label"></md-filled-text-field>
+            <md-filled-select id="settings-main-fuse-kva" name="settings_main_fuse_kva" aria-labelledby="settings-main-fuse-amps-label" hidden></md-filled-select>
             <small class="field__hint" id="settings-main-fuse-hint"></small>
           </div>
           <div class="form-grid" id="settings-main-fuse-phase-source" hidden>

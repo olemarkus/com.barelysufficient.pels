@@ -40,6 +40,11 @@ connection carries, for example 17.3 kW on 3x25 A with neutral, and starts reduc
 95% of it. It works from meter readings, so a short overshoot is possible while the meter
 updates and devices respond.
 
+Where the contract states a subscribed power instead, as in France, choose **kVA** under **Enter as**
+and pick your subscribed power. PELS splits it evenly over the phases: 12 kVA on three phases with neutral is
+4 kVA per phase, and PELS starts reducing loads near 3.8 kW per phase. Switching between amps and kVA keeps the fuse you
+saved until you pick a new size or subscribed power. In France the form opens in kVA unless you choose amps.
+
 With three phases and neutral, PELS also keeps each phase under the fuse (L1, L2 and L3 separately) when the
 home meter reports phases, limiting in priority order the devices that use the full phase. Tell it how a device is
 wired under **Electrical connection** on the device page. PELS reads three-phase EV chargers from the charger itself and
