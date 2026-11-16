@@ -28,7 +28,7 @@ export const standardDeviceAdapter: DeviceAdapter = {
   finalizeObservation: (_control, _capabilities, values) => values,
   readRules: () => ({}), retainsPlugObservation: () => false,
   phaseReport: () => ({ kind: 'not_reported' }), currentBindings: () => [], phaseBindings: () => [],
-  nativeCurrentControls: [], homeBatteryBinding: () => STANDARD_HOME_BATTERY_BINDING,
+  nativeCurrentControls: [], nativeLevelControls: [], homeBatteryBinding: () => STANDARD_HOME_BATTERY_BINDING,
   meterMonthlyPeak: () => ({ state: 'none' }),
   readBackAfterWrite: true, supportsProductionLimits: true,
   projectRead: (device) => [device],

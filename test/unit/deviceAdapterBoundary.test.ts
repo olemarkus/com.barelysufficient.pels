@@ -13,6 +13,11 @@ test.each([
   "const driver = 'homey:app:no.enua:enua-charger';",
   "import { adapter } from './knx';",
   "const driver = 'homey:app:org.knx:knx_light';",
+  "import { hoiaxAdapter } from './hoiax';",
+  "const owner = 'homey:app:no.hoiax';",
+  "const driver = 'homey:app:com.myuplink:hoiax';",
+  "import { adaxAdapter } from './adax';",
+  "const driver = 'homey:app:no.adax.smart-heater.homey-app:heater-wt';",
 ])('rejects downstream integration coupling: %s', (source) => {
   expect(findDeviceAdapterViolations('lib/device/common.ts', source)).not.toEqual([]);
 });
@@ -28,7 +33,6 @@ test('permits private vendor interpretation, internal imports, and explanatory c
   expect(findDeviceAdapterViolations('lib/device/common.ts', "// Tesla exposes charging_on.\nconst label = 'Car charging';")).toEqual([]);
 });
 
-
 test.each([
   "import type { Plan } from '../../plan/types';",
   "import { observe } from '../../observer/index';",
@@ -36,4 +40,10 @@ test.each([
   "import type { View } from '../../../packages/settings-ui/src/view';",
 ])('rejects integration dependencies on downstream consumers: %s', (source) => {
   expect(findDeviceAdapterViolations('lib/device/tesla/index.ts', source)).not.toEqual([]);
+});
+
+test('reads the Høiax and Adax directories as integrations', () => {
+  expect(findDeviceAdapterViolations('lib/device/hoiax/index.ts', "const owner = 'homey:app:no.hoiax';")).toEqual([]);
+  expect(findDeviceAdapterViolations('lib/device/adax/index.ts', "import type { Plan } from '../../plan/types';"))
+    .not.toEqual([]);
 });
