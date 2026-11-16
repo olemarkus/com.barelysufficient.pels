@@ -46,7 +46,7 @@ and pick your subscribed power. PELS splits it evenly over the phases: 12 kVA on
 saved until you pick a new size or subscribed power. In France the form opens in kVA unless you choose amps.
 
 With three phases and neutral, PELS also keeps each phase under the fuse (L1, L2 and L3 separately) when the
-home meter reports phases, limiting in priority order the devices that use the full phase. Tell it how a device is
+home meter reports phases (a LiXee ZLinky on a three-phase Linky and the Nous D4Z clamp meter among them), limiting in priority order the devices that use the full phase. Tell it how a device is
 wired under **Electrical connection** on the device page. PELS reads three-phase EV chargers from the charger itself and
 learns other devices from how the phases move when it switches them. Export past the fuse on a
 phase is turned down too: first a battery on that phase, then solar, and finally surplus loads on it start up.

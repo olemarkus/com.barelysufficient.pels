@@ -542,7 +542,7 @@ export class DeviceTransport {
         meterDeviceId: string,
         ownerChoice: MainFusePhaseCapabilities | null,
     ): Promise<MeterPhasesRead> {
-        return readMeterPhases(meterDeviceId, ownerChoice);
+        return readMeterPhases(meterDeviceId, ownerChoice, (device) => this.reader.applyDeviceDriverOverride(device));
     }
     /** The month peak a home's meter reports itself (`readMeterMonthlyPeak`). */
     readMeterMonthlyPeak = (id: string): Promise<MeterMonthlyPeakRead> =>

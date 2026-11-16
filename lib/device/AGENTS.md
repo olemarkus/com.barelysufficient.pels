@@ -29,12 +29,13 @@ Realtime observations update the observed view before any convergence decision. 
 
 Tesla vehicle charging, Easee, Enua, Alfen (official app), Alfen Pro-line/ACE, Peblar, Zappi, Wallbox, Zaptec,
 Futurehome, amina, go-e, Smappee EV Wall, OCPP Server chargers, OSO, Adax, Høiax, SMA, KNX, NIBE myUplink, Stiebel Eltron heat pumps, Sessy, Anker SOLIX, Zinvolt, Marstek Venus (Connector app), Sigenergy, Zendure
-(local app), Huawei LUNA2000 (Modbus), SolaX (Modbus) and HomeWizard Plug-In Batteries interpretation belongs in `tesla/`, `easee/`, `enua/`, `alfen/`,
+(local app), Huawei LUNA2000 (Modbus), SolaX (Modbus), HomeWizard Plug-In Batteries, the LiXee ZLinky and the Nous D4Z meter interpretation belongs in `tesla/`, `easee/`, `enua/`, `alfen/`,
 `alfenProline/`, `peblar/`, `myenergi/`, `wallbox/`, `zaptec/`, `futurehome/`, `amina/`, `goe/`, `smappee/`, `ocppServer/`, `oso/`, `adax/`, `hoiax/`, `sma/`, `knx/`,
-`nibe/`, `stiebel/`, `sessy/`, `anker/`, `zinvolt/`, `marstek/`, `sigenergy/`, `zendure/`, `huawei/`, `solax/` and `homewizard/`. Chargers stepped through one whole-amp
+`nibe/`, `stiebel/`, `sessy/`, `anker/`, `zinvolt/`, `marstek/`, `sigenergy/`, `zendure/`, `huawei/`, `solax/`, `homewizard/`, `lixee/` and `nous/`. Chargers stepped through one whole-amp
 current whose app starts at a current PELS did not choose share `currentSwitchCharger.ts`. Chargers whose app
 saves the current it last sent in a device setting (Futurehome, amina) date it with
-`settingCurrentLimitSession.ts`. A home
+`settingCurrentLimitSession.ts`. Meters whose app keeps its phases under its own capability names
+rename them to the standard ones with `meterPhaseNames.ts`. A home
 battery's control binding (claim, setpoint sign, range defaults, or its app's Flow actions) is the adapter's
 `homeBatteryBinding`; see `notes/battery-vendor-bindings.md`. Battery app actions run through the common host
 `homeBatteryAppActions.ts` on the shared Homey API key (`transport/homeyActionAccess.ts`).
