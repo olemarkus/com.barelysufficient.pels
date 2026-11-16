@@ -43,7 +43,7 @@ export class ObservedTemperatureModeUpdates {
     private readonly isLimited: (deviceId: string) => boolean,
     /** Every setpoint a limit may write to this device, as the shed-behaviour producer resolves it. */
     private readonly readLimitTemperatures: (deviceId: string) => readonly number[],
-    /** A Flow's temporary temperature while it is in force, already normalized, or `null`. */
+    /** A temperature override while it is in force, already normalized, or `null`. */
     private readonly readTemporaryTemperatureC: (deviceId: string) => number | null,
   ) {}
 
@@ -70,7 +70,7 @@ export class ObservedTemperatureModeUpdates {
    * A queued adjustment cannot outlive a switch to manual target ownership.
    *
    * Under "Save as current mode target" three writes are legitimate: the saved
-   * mode target itself, a Flow's temporary temperature while it is in force, and
+   * mode target itself, a temperature override while it is in force, and
    * a limit — either direction's, because the fence
    * does not know which way the device is moving demand. The limits are the
    * shed-behaviour producer's, so a limit the planner derives is one the fence
@@ -83,7 +83,7 @@ export class ObservedTemperatureModeUpdates {
     if (this.readLimitTemperatures(deviceId).some((limit) => this.normalizeTarget(deviceId, limit) === value)) {
       return true;
     }
-    // A Flow's temporary temperature is the owner's own choice for now, the way
+    // A temperature override is the owner's own choice for now, the way
     // the saved target is; the resolver applies no offset to it.
     if (this.readTemporaryTemperatureC(deviceId) === value) return true;
     try {
@@ -151,7 +151,9 @@ export class ObservedTemperatureModeUpdates {
    * turn "I nudged the thermostat back up during a peak" into the mode's target
    * for good. Not adopted, so the executor sees observed and desired disagree
    * and converges the device back onto its limit: ordinary drift, like any
-   * other external change.
+   * other external change. The same holds while a temperature override is in
+   * force: the change is aimed at the override, which ends by itself, and the
+   * mode's target is what the device returns to afterwards.
    */
   private adopts(adjustment: ExternalTemperatureAdjustment): boolean {
     // A fresh read, not the retained policy: adopting PERSISTS a target, and a
@@ -159,11 +161,18 @@ export class ObservedTemperatureModeUpdates {
     const modes = readTemperatureControlModes(this.settings.get(TEMPERATURE_CONTROL_MODES));
     if (modes === null || modes[adjustment.deviceId] !== 'update_mode') return false;
     if (!this.isManaged(adjustment.deviceId)) return false;
-    if (!this.isLimited(adjustment.deviceId)) return true;
-    getLogger('home/temperature-mode').info({
-      event: 'observed_temperature_mode_update_skipped_while_limited', ...adjustment,
-    });
+    const skipped = this.skipReason(adjustment.deviceId);
+    if (skipped === null) return true;
+    getLogger('home/temperature-mode').info({ event: skipped, ...adjustment });
     return false;
+  }
+
+  private skipReason(deviceId: string): string | null {
+    if (this.isLimited(deviceId)) return 'observed_temperature_mode_update_skipped_while_limited';
+    if (this.readTemporaryTemperatureC(deviceId) !== null) {
+      return 'observed_temperature_mode_update_skipped_while_overridden';
+    }
+    return null;
   }
 
   private update(adjustment: ExternalTemperatureAdjustment): void {

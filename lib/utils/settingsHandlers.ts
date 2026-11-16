@@ -1,6 +1,9 @@
 import type { HomeyRuntime } from '../ports/homeyRuntime';
 import { CHARGING_PHASE_SETTINGS_KEY } from '../../packages/shared-domain/src/settings/chargingPhases';
 import {
+  DEVICE_OVERRIDE_PREFIX, isDeviceOverrideKey,
+} from '../../packages/shared-domain/src/settings/deviceOverrides';
+import {
   BATTERY_CONTROL_DEVICES,
   BUDGET_EXEMPT_DEVICES,
   RESPECT_EXTERNAL_OFF_DEVICES,
@@ -45,7 +48,6 @@ import {
   TEMPERATURE_BOOST_SETTINGS,
   TEMPERATURE_CONTROL_DISABLED_DEVICES,
   TEMPERATURE_CONTROL_MODES,
-  TEMPORARY_TEMPERATURE_TARGETS,
   OPERATING_MODE_SETTING,
   HOMEY_ENERGY_METER_DEVICE_ID,
   parseHomeScopedSettingsKey,
@@ -260,7 +262,7 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
     // `scoped.homeId === MAIN_HOME_ID` implies `scoped.baseKey === key`, so
     // main-home dispatch below stays exact-key and byte-identical to before.
     deps.noteCapacitySettingWritten(key);
-    const keyHandler = handlers[key];
+    const keyHandler = handlers[isDeviceOverrideKey(key) ? DEVICE_OVERRIDE_PREFIX : key];
     if (!keyHandler) return;
     queue = queue.then(() => runIfChanged(
       key, keyHandler, () => deps.recoverCapacitySettingsAfterSkippedWrite(key),
@@ -352,10 +354,10 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       await rebuildPlanFromSettings(deps, TEMPERATURE_CONTROL_MODES);
       deps.rebuildAllHomeRuntimePlansForDeviceControlChange();
     },
-    // A Flow started or ended a temporary temperature. Its end needs no event:
-    // each build reads whether it is still in force.
-    [TEMPORARY_TEMPERATURE_TARGETS]: async () => {
-      await rebuildPlanFromSettings(deps, TEMPORARY_TEMPERATURE_TARGETS);
+    // A device override was started, changed or ended early, under any device's
+    // key. Running out needs no event: each build reads whether it is in force.
+    [DEVICE_OVERRIDE_PREFIX]: async () => {
+      await rebuildPlanFromSettings(deps, DEVICE_OVERRIDE_PREFIX);
       deps.rebuildAllHomeRuntimePlansForDeviceControlChange();
     },
     [TEMPERATURE_CONTROL_DISABLED_DEVICES]: async () => {

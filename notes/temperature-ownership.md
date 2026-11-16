@@ -125,15 +125,20 @@ pass that keeps it complete — never by adding a second place that also knows
 what a device should be set to. Two sources of a device's intended setpoint is
 the problem, not the safety net.
 
-**A Flow's temporary temperature is not a second target.** It is an input to
-the same resolver, standing where the mode target stands until its stored end
-time (`lib/thermostat/temporaryTemperatureTargets.ts`): no price shift, no
-surplus lift, the shed limit unchanged. It outranks a Smart task: the task's
-decoration decides nothing for the device while it is in force, so no deadline
-floor or deferred hold reaches it, and a deadline reached meanwhile disarms the
-task without the fallback write. It records no
-restore value either: when it ends, the next build reads the mode target. The
-"Save as current mode target" fence admits it beside the saved target.
+**A temperature override is not a second target.** It is an input to the
+same resolver, standing where the mode target stands until its stored end time
+(`lib/overrides/deviceOverrides.ts`, one `device_override.<deviceId>` key per
+device, written by the settings UI or started by a Flow's temporary-temperature
+card): no price shift, no surplus lift, the shed limit unchanged, and no change
+when the home switches mode. It outranks a Smart task: the task's decoration
+decides nothing for the device while it is in force, so no deadline floor or
+deferred hold reaches it, and a deadline reached meanwhile disarms the task
+without the fallback write. It records no restore value either: when it ends,
+the next build reads the mode target. The "Save as current mode target" fence
+admits it beside the saved target. Under that policy a change made on the device while
+the override is in force is not saved to the mode
+(`observed_temperature_mode_update_skipped_while_overridden`): the device
+converges back onto the override, as it does onto a limit.
 
 ## Consequences to keep true
 

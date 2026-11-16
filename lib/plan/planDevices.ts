@@ -199,7 +199,7 @@ function resolvePriceTargetShift(
   return plannedTarget === setpoints.keepC ? setpoints.keepPriceShift : NO_PRICE_TARGET_SHIFT;
 }
 
-/** The plan commands a Flow's temporary temperature: the kept setpoint, while one is in force. */
+/** The plan commands a temperature override: the kept setpoint, while one is in force. */
 function isKeptAtTemporaryTemperature(
   dev: PlanInputDevice,
   temperatureSetpoints: TemperatureSetpointsByDevice,

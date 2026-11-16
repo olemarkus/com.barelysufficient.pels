@@ -68,7 +68,7 @@ export type TemperatureIntentReads = {
   getThermalDirection: (deviceId: string) => ThermalDirection;
   /** Already resolved for the device's direction and policy (`AppHostApi.getShedBehavior`). */
   getShedBehavior: (deviceId: string) => ShedBehavior;
-  /** A Flow's temporary temperature while it is in force (`temporaryTemperatureTargets.ts`), or `null`. */
+  /** A temperature override while it is in force (`lib/overrides/deviceOverrides.ts`), or `null`. */
   getTemporaryTemperatureC: (deviceId: string) => number | null;
 };
 
@@ -160,10 +160,10 @@ function resolveDeviceSetpoints(
 ): TemperatureSetpoints {
   const direction = reads.getThermalDirection(device.id);
   const target = getPrimaryTargetCapability(device.targets);
-  // A Flow's temporary temperature stands in for the mode target, literally: no
+  // A temperature override stands in for the mode target, literally: no
   // price shift and no surplus lift. The shed limit below still applies to it. A
   // Smart task stamps no deadline floor while it is in force: the task's
-  // decoration leaves the device alone (`temporaryTemperatureTargets.ts`).
+  // decoration leaves the device alone (`lib/overrides/deviceOverrides.ts`).
   const temporaryC = reads.getTemporaryTemperatureC(device.id);
   const storedIntendedC = intent.modeTargets[device.id];
   const modeIntendedC = typeof storedIntendedC === 'number' ? storedIntendedC : device.currentTarget;

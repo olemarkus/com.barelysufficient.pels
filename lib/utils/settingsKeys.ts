@@ -252,8 +252,9 @@ export const DEVICE_HOME_ASSIGNMENTS_INITIALIZED = 'device_home_assignments_init
 // state; the settings UI never reads either key.
 export const MODE_TARGET_OWNERSHIP_STATE = 'mode_target_ownership_state';
 export const MODE_TARGET_OWNERSHIP_STATE_INITIALIZED = 'mode_target_ownership_state_initialized';
-// A Flow's temporary temperature per device, with the time it ends. Runtime-only;
-// owned by `lib/thermostat/temporaryTemperatureTargets.ts`.
+// Where a Flow's temporary temperature was stored before device overrides had a
+// key per device. Read only, until its entries have ended
+// (`lib/overrides/deviceOverrides.ts`).
 export const TEMPORARY_TEMPERATURE_TARGETS = 'temporary_temperature_targets';
 /**
  * The LEGACY power-calibration key, from before the learned per-step power

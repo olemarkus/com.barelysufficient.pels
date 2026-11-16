@@ -1,5 +1,5 @@
 import { createTemperatureSetpointResolver } from '../../lib/thermostat/temperatureSetpoints';
-import { readActiveTemporaryTemperatureC } from '../../lib/thermostat/temporaryTemperatureTargets';
+import { readActiveTemperatureOverride } from '../../lib/overrides/deviceOverrides';
 import type { ResolveTemperatureSetpoints } from '../../packages/planner-types/src/temperatureSetpoints';
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomeScope } from '../homeRuntime/homeScope';
@@ -9,16 +9,16 @@ import type { HomeScope } from '../homeRuntime/homeScope';
  * plan builder. Construction only: each read is the home's own member, passed
  * through unchanged, and no value is looked at here.
  *
- * The temporary-temperature read is bound here too, for the write fence's
- * wiring, so `lib/thermostat` stays named in this one file.
+ * The temperature-override read is bound here too, for the resolver, the write
+ * fence and the smart-task lanes, so its owner is named in this one file.
  *
  * A file of its own for one reason: the setup-boundary check budgets how many
  * domain peers each wiring file names, and `createPlanEngine.ts` is at its
  * budget. Naming `lib/thermostat` here keeps that file's count where it was.
  */
-/** A Flow's temporary temperature for a device while it is in force, read through the key's owner. */
+/** A device's temperature override while it is in force, read through the key's owner. */
 export const bindTemporaryTemperatureRead = (ctx: AppContext) => (deviceId: string): number | null => (
-  readActiveTemporaryTemperatureC(ctx.homey.settings, deviceId, ctx.getNow().getTime())
+  readActiveTemperatureOverride(ctx.homey.settings, deviceId, ctx.getNow().getTime())?.targetC ?? null
 );
 
 export const bindTemperatureSetpoints = (scope: HomeScope, ctx: AppContext): ResolveTemperatureSetpoints => (

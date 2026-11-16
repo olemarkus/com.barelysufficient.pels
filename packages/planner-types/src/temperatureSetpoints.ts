@@ -54,16 +54,16 @@ export type PriceTargetShift =
 
 export type TemperatureSetpoints = {
   /**
-   * A Flow's temporary temperature while one is in force; otherwise the active
+   * A temperature override while one is in force; otherwise the active
    * mode's target for the device, or its own setpoint when the mode has none.
    */
   intendedC: number;
   /**
    * `intendedC` with this hour's price shift applied: what the owner wants the
-   * device at now. Equal to `intendedC` under a temporary temperature.
+   * device at now. Equal to `intendedC` under a temperature override.
    */
   desiredC: number;
-  /** `intendedC` is a Flow's temporary temperature, not the mode target. */
+  /** `intendedC` is a temperature override, not the mode target. */
   temporaryTemperatureActive: boolean;
   /**
    * What PELS commands when it neither limits the device nor lifts it for

@@ -11,9 +11,8 @@ import {
   OPERATING_MODE_SETTING,
   PRICE_OPTIMIZATION_SETTINGS,
   TEMPERATURE_CONTROL_MODES,
-  TEMPORARY_TEMPERATURE_TARGETS,
 } from '../../lib/utils/settingsKeys';
-import { readActiveTemporaryTemperatureC } from '../../lib/thermostat/temporaryTemperatureTargets';
+import { readActiveTemperatureOverride } from '../../lib/overrides/deviceOverrides';
 import type { HomeMembershipPort } from '../../lib/home/membership';
 import type { DeviceDescriptorRead } from '../../packages/contracts/src/types';
 import type { SmartTaskInProgressRead } from '../../packages/shared-domain/src/settings/deferredObjectiveSettings';
@@ -22,6 +21,10 @@ import { mockHomeyInstance, resetMockHomey } from '../mocks/homey';
 import { testLogger } from '../utils/testLogger';
 
 const settings = mockHomeyInstance.settings;
+const HEATER_OVERRIDE = 'device_override.heater';
+const readActiveTemporaryTemperatureC = (store: typeof settings, deviceId: string, nowMs: number): number | null => (
+  readActiveTemperatureOverride(store, deviceId, nowMs)?.targetC ?? null
+);
 
 const descriptor = (overrides: Partial<DeviceDescriptorRead>): DeviceDescriptorRead => partialDouble<DeviceDescriptorRead>({
   id: 'heater',
@@ -262,7 +265,9 @@ describe('set_device_temporary_temperature and end_device_temporary_temperature'
     await expect(run('set_device_temporary_temperature', { device: HEATER, temperature: 23.2, minutes: 90 }))
       .resolves.toBe(true);
 
-    expect(settings.get(TEMPORARY_TEMPERATURE_TARGETS)).toEqual({ heater: { targetC: 23, untilMs: NOW_MS + 90 * 60_000 } });
+    expect(settings.get(HEATER_OVERRIDE)).toEqual({
+      untilMs: NOW_MS + 90 * 60_000, setting: { type: 'temperature', targetC: 23 },
+    });
     expect(readActiveTemporaryTemperatureC(settings, 'heater', NOW_MS + 89 * 60_000)).toBe(23);
     expect(readActiveTemporaryTemperatureC(settings, 'heater', NOW_MS + 90 * 60_000)).toBeNull();
     // The mode target is untouched: it is where the device returns.
@@ -288,7 +293,7 @@ describe('set_device_temporary_temperature and end_device_temporary_temperature'
       await expect(run('set_device_temporary_temperature', { device: HEATER, temperature: 23, minutes }))
         .rejects.toThrow('Duration must be a whole number of minutes from 1 to 1440.');
     }
-    expect(settings.get(TEMPORARY_TEMPERATURE_TARGETS)).toBeNull();
+    expect(settings.get(HEATER_OVERRIDE)).toBeNull();
   });
 
   it('refuses a device set to Keep the new temperature', async () => {
@@ -297,7 +302,7 @@ describe('set_device_temporary_temperature and end_device_temporary_temperature'
 
     await expect(run('set_device_temporary_temperature', { device: HEATER, temperature: 23, minutes: 30 }))
       .rejects.toThrow('set to Keep the new temperature');
-    expect(settings.get(TEMPORARY_TEMPERATURE_TARGETS)).toBeNull();
+    expect(settings.get(HEATER_OVERRIDE)).toBeNull();
   });
 
   it('accepts a device set to Save as current mode target', async () => {
@@ -306,17 +311,6 @@ describe('set_device_temporary_temperature and end_device_temporary_temperature'
 
     await run('set_device_temporary_temperature', { device: HEATER, temperature: 23, minutes: 30 });
     expect(readActiveTemporaryTemperatureC(settings, 'heater', NOW_MS)).toBe(23);
-  });
-
-  it('drops entries that have ended when it writes', async () => {
-    settings.set(TEMPORARY_TEMPERATURE_TARGETS, {
-      old: { targetC: 18, untilMs: NOW_MS - 1 },
-      broken: { targetC: 'warm' },
-    });
-    const { run } = register();
-
-    await run('set_device_temporary_temperature', { device: HEATER, temperature: 23, minutes: 30 });
-    expect(Object.keys(settings.get(TEMPORARY_TEMPERATURE_TARGETS) as object)).toEqual(['heater']);
   });
 
   it('fails for a device that is not a managed temperature device', async () => {

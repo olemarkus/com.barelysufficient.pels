@@ -137,6 +137,17 @@ describe('createSettingsHandler', () => {
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
   });
 
+  it('rebuilds every home\'s plan when any device\'s override key is written', async () => {
+    const rebuildAllHomeRuntimePlansForDeviceControlChange = vi.fn();
+    const deps = buildDeps({ rebuildAllHomeRuntimePlansForDeviceControlChange });
+    const handler = createSettingsHandler(deps);
+
+    await handler('device_override.heater-1');
+
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('device_override.');
+    expect(rebuildAllHomeRuntimePlansForDeviceControlChange).toHaveBeenCalledTimes(1);
+  });
+
   it('fans an overshoot behavior update out to sub-home plans', async () => {
     const rebuildHomeRuntimePlansForModeChange = vi.fn();
     const deps = buildDeps({ rebuildHomeRuntimePlansForModeChange });

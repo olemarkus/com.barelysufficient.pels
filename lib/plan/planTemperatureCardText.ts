@@ -121,10 +121,10 @@ export const resolvePriceTargetReason = (
   return `${shift.direction === 'raised' ? 'Raised' : 'Lowered'} while power is ${shift.priceLevel}`;
 };
 
-export const TEMPORARY_TEMPERATURE_REASON = 'Temporary temperature from a Flow';
+export const TEMPORARY_TEMPERATURE_REASON = 'Override';
 
 /**
- * Why the target sits off the mode's own while a Flow's temporary temperature
+ * Why the target sits off the mode's own while a temperature override
  * is in force, on the same cards as the price line: running, or idle at that
  * target with its output on. A held card says what holds it, and the plan
  * device carries the flag only while the plan keeps the device at it.

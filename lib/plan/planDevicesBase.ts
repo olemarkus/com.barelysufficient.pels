@@ -183,7 +183,7 @@ export type BasePlanDeviceInputs = {
   surplusHoldShed: boolean;
   surplusAbsorbActive: boolean;
   priceTargetShift: PriceTargetShift;
-  /** The plan commands a Flow's temporary temperature (`DevicePlanDevice.temporaryTemperatureActive`). */
+  /** The plan commands a temperature override (`DevicePlanDevice.temporaryTemperatureActive`). */
   temporaryTemperatureActive: boolean;
   /**
    * The rung this cycle's surplus allocation bought a surplus-TRACKING device,
