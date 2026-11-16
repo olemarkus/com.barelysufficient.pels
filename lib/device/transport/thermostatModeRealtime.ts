@@ -71,6 +71,7 @@ export function handleThermostatModeCapabilityUpdate(
         deviceId: snapshot.id,
         capabilityId,
         changes: [change],
+        pelsEcho: false,
     });
     const cursor = nextObservationCursor(snapshot.id);
     dispatchObservedStateChanged({

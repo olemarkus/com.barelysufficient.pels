@@ -59,7 +59,11 @@ export function dispatchRealtimeObservation(
     return cursor;
 }
 
-/** Log a realtime control-state drift and dispatch it under the report's `cursor`. */
+/**
+ * Log a realtime control-state change and dispatch it under the report's
+ * `cursor`. The log carries `pelsEcho` so a reader can tell PELS's own writes
+ * coming back from a change someone else made.
+ */
 export function dispatchRealtimeDrift(
     ingest: RealtimeIngestService,
     snapshot: TransportDeviceSnapshot,
@@ -73,6 +77,7 @@ export function dispatchRealtimeDrift(
         deviceId: snapshot.id,
         capabilityId,
         changes,
+        pelsEcho,
     });
     ingest.observationBridge.dispatchControlStateChanged({
         pelsEcho,
