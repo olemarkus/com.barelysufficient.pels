@@ -13,6 +13,7 @@ import {
   deviceDetailSurplusOptRow,
   deviceDetailControlModelRow,
   deviceDetailControlModel,
+  deviceDetailControlModelLabel,
 } from '../dom.ts';
 import { renderDevices } from '../devices.ts';
 import { refreshRecommendationSurfaces } from '../recommendations.ts';
@@ -217,6 +218,27 @@ const renderDeviceDetailElectricalSetup = (deviceId: string, device: SettingsUiD
   renderChargingPhases(deviceId, device, refreshOpenDeviceDetail);
 };
 
+// The control-model select; its label names the manual model while automatic
+// power control is available.
+const syncControlModelRow = (
+  device: SettingsUiDeviceView | null,
+  controlState: ReturnType<typeof resolveDeviceDetailControlState>,
+): void => {
+  if (!deviceDetailControlModel || !deviceDetailControlModelRow) return;
+  const effectiveControlMode = device ? resolveDeviceDetailControlMode(device) : 'default';
+  const nativeSteppedLoadLocked = isNativeSteppedLoadProfileActive(device);
+  syncDeviceDetailControlModeOptions(deviceDetailControlModel, device, effectiveControlMode);
+  deviceDetailControlModel.value = effectiveControlMode;
+  // Not gated on "Disable temperature control": picking a control model is
+  // configuration, not a `target_temperature` write, and locking the select
+  // is what kept a flagged device from ever being given a step ladder.
+  deviceDetailControlModel.disabled = !controlState.canManageDevice || nativeSteppedLoadLocked;
+  const controlModelLabel = device?.automaticPowerControl ? 'Manual model' : 'Control model';
+  deviceDetailControlModel.setAttribute('aria-label', controlModelLabel);
+  if (deviceDetailControlModelLabel) deviceDetailControlModelLabel.textContent = controlModelLabel;
+  deviceDetailControlModelRow.hidden = !controlState.canManageDevice || isAutomaticPowerControlActive(device);
+};
+
 const setDeviceDetailControlStates = (deviceId: string, device: SettingsUiDeviceView | null) => {
   const controlState = resolveDeviceDetailControlState(device, deviceId);
 
@@ -254,18 +276,7 @@ const setDeviceDetailControlStates = (deviceId: string, device: SettingsUiDevice
 
   setDeviceDetailBudgetExemptState(device);
   setDeviceDetailSocState(device);
-  if (deviceDetailControlModel && deviceDetailControlModelRow) {
-    const effectiveControlMode = device ? resolveDeviceDetailControlMode(device) : 'default';
-    const nativeSteppedLoadLocked = isNativeSteppedLoadProfileActive(device);
-    syncDeviceDetailControlModeOptions(deviceDetailControlModel, device, effectiveControlMode);
-    deviceDetailControlModel.value = effectiveControlMode;
-    // Not gated on "Disable temperature control": picking a control model is
-    // configuration, not a `target_temperature` write, and locking the select
-    // is what kept a flagged device from ever being given a step ladder.
-    deviceDetailControlModel.disabled = !controlState.canManageDevice || nativeSteppedLoadLocked;
-    deviceDetailControlModel.setAttribute('label', device?.automaticPowerControl ? 'Manual model' : 'Control model');
-    deviceDetailControlModelRow.hidden = !controlState.canManageDevice || isAutomaticPowerControlActive(device);
-  }
+  syncControlModelRow(device, controlState);
   if (device) renderAutomaticPowerControl(device);
 
   setDeviceDetailChargingCardState(device, controlState);

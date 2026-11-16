@@ -9,7 +9,12 @@ import { ChargingCurrentSetupView, ChargingCurrentLoadView } from '../views/Char
 let selectedDeviceId = '';
 let loadVersion = 0;
 
-export function setChargingCurrentDevice(deviceId: string): void {
+/**
+ * @param showProgress Whether this page may show the read's loading and failure
+ *   states. Only a charger's page can: any other device appears here only once
+ *   the read lists it, so a failed read leaves no charger block on a heater.
+ */
+export function setChargingCurrentDevice(deviceId: string, showProgress: boolean): void {
   if (deviceId === selectedDeviceId) return;
   selectedDeviceId = deviceId;
   const version = ++loadVersion;
@@ -75,10 +80,12 @@ export function setChargingCurrentDevice(deviceId: string): void {
   };
   const loadInitial = async (): Promise<void> => {
     if (version !== loadVersion) return;
-    render(<ChargingCurrentLoadView busy onRetry={loadInitial} />, container);
+    if (showProgress) render(<ChargingCurrentLoadView busy onRetry={loadInitial} />, container);
     try { await load(); }
     catch {
-      if (version === loadVersion) render(<ChargingCurrentLoadView busy={false} onRetry={loadInitial} />, container);
+      if (version === loadVersion && showProgress) {
+        render(<ChargingCurrentLoadView busy={false} onRetry={loadInitial} />, container);
+      }
     }
   };
   void loadInitial();

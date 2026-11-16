@@ -127,6 +127,7 @@ const applyTrackingCopy = (device: SettingsUiDeviceDetailItem): void => {
   const kind = resolveCopyKind(device);
   if (deviceDetailSurplusTrackLabel) {
     deviceDetailSurplusTrackLabel.textContent = SURPLUS_TRACKING_LABELS[kind];
+    deviceDetailSurplusTrackOpt?.setAttribute('aria-label', SURPLUS_TRACKING_LABELS[kind]);
   }
   if (deviceDetailSurplusTrackHint) {
     deviceDetailSurplusTrackHint.textContent

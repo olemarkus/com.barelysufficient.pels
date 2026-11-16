@@ -1,5 +1,6 @@
 import { setChargingCurrentDevice } from './chargingCurrent.tsx';
 import { isAutomaticPowerControlActive } from '../deviceControlProfiles.ts';
+import { isEvChargerDevice } from '../deviceKind.ts';
 import { NATIVE_EV_WIRING_DEVICES } from '../../../../shared-domain/src/settings/settingsKeys.ts';
 import {
   deviceDetailFlowConflictBody,
@@ -83,7 +84,10 @@ const syncSetupAutoExpand = (device: SettingsUiDeviceDetailItem | null, shouldEx
 };
 
 export const setDeviceDetailNativeWiringState = (device: SettingsUiDeviceDetailItem | null) => {
-  setChargingCurrentDevice(isAutomaticPowerControlActive(device) ? '' : device?.id ?? '');
+  setChargingCurrentDevice(
+    isAutomaticPowerControlActive(device) ? '' : device?.id ?? '',
+    isEvChargerDevice(device),
+  );
   const nativeWiringSupported = supportsNativeWiringActivation(device);
   const builtInChosen = device ? isBuiltInControlChosen(device, state.nativeWiringMap) : false;
   const nativeWiringRequiredAndMissing = requiresNativeWiringForActivation(device);

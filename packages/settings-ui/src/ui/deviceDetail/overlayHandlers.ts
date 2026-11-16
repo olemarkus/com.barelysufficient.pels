@@ -2,7 +2,6 @@ import {
   deviceDetailClose,
   deviceDetailDiagnosticsDisclosure,
   deviceDetailOverlay,
-  deviceDetailPanel,
   deviceDetailShedAction,
 } from '../dom.ts';
 import { bindSegmentedToSelect } from '../components.ts';
@@ -100,28 +99,6 @@ const initDeviceDetailCloseHandlers = (
     if (event.target === deviceDetailOverlay) {
       requestDeviceDetailClose(ctx.closeDeviceDetail);
     }
-  });
-};
-
-// md-switch only flips when the user hits the small thumb. Restore the
-// legacy whole-row tap behavior by toggling the switch when its label
-// area is clicked.
-const initDeviceDetailSwitchRowClick = () => {
-  if (!deviceDetailPanel) return;
-  deviceDetailPanel.addEventListener('click', (event) => {
-    const target = event.target as HTMLElement | null;
-    if (!target) return;
-    const row = target.closest<HTMLElement>('.md-switch-row');
-    if (!row) return;
-    // The user already interacted with the switch itself or an inner
-    // focusable element — let the native behavior handle it.
-    if (target.closest('md-switch, a, button, input, select, textarea')) return;
-    const swEl = row.querySelector('md-switch') as
-      | (HTMLElement & { selected: boolean; disabled: boolean })
-      | null;
-    if (!swEl || swEl.disabled) return;
-    swEl.selected = !swEl.selected;
-    swEl.dispatchEvent(new Event('change', { bubbles: true }));
   });
 };
 
@@ -251,7 +228,6 @@ export const initDeviceDetailOverlayChrome = (
   initDeviceDetailCloseHandlers(ctx);
   initDeviceDetailHistoryHandler(ctx);
   initDeviceDetailSmartTaskChipHandler(ctx);
-  initDeviceDetailSwitchRowClick();
   initOvershootSegmented();
 };
 

@@ -404,8 +404,6 @@ const standingCarSwitch = (deviceId: string, car: CarOption): HTMLElement => {
     selected: assumedCarId(deviceId) === car.id,
   });
   element.classList.add('detail-car-standing');
-  // The visible label sits outside the switch's shadow root, where its id cannot be referenced.
-  input.setAttribute('aria-label', 'Confirm at every plug-in');
   input.addEventListener('change', () => {
     void runSerializedCarWrite(() => writeAssumedCar(deviceId, input.selected ? car.id : undefined));
   });

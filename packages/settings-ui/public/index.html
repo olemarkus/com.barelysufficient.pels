@@ -645,17 +645,17 @@
         </div>
       </md-dialog>
       <form id="settings-limits-form" class="form-grid settings-form-card">
-        <div class="md-switch-row">
-          <md-switch id="settings-main-fuse-enabled" aria-labelledby="settings-main-fuse-enabled-label"></md-switch>
+        <label class="md-switch-row">
+          <md-switch aria-label="Main fuse" id="settings-main-fuse-enabled"></md-switch>
           <span class="md-switch-row__content">
             <span class="md-switch-row__label pels-text-settings-label" id="settings-main-fuse-enabled-label">Main fuse</span>
             <small class="field__hint">Reduce flexible loads before the home reaches what your main fuse carries.</small>
           </span>
-        </div>
+        </label>
         <div id="settings-main-fuse-fields" class="form-grid" hidden>
           <div class="field">
             <span class="field__label pels-text-settings-label" id="settings-main-fuse-supply-label">Connection</span>
-            <md-filled-select id="settings-main-fuse-supply" name="settings_main_fuse_supply" aria-labelledby="settings-main-fuse-supply-label">
+            <md-filled-select id="settings-main-fuse-supply" name="settings_main_fuse_supply" aria-label="Connection">
               <md-select-option value="three_phase_neutral" selected><div slot="headline">Three phases with neutral (like 3x25 A, 400 V)</div></md-select-option>
               <md-select-option value="three_phase_no_neutral"><div slot="headline">Three phases without neutral (like 3x25 A, 230 V)</div></md-select-option>
               <md-select-option value="one_phase"><div slot="headline">One phase (like 1x35 A)</div></md-select-option>
@@ -671,52 +671,52 @@
           </div>
           <div class="field">
             <span class="field__label pels-text-settings-label" id="settings-main-fuse-amps-label">Fuse size per phase</span>
-            <md-filled-text-field id="settings-main-fuse-amps" name="settings_main_fuse_amps" type="number" step="0.1" min="6" max="250" inputmode="decimal" autocomplete="off" suffix-text="A" aria-labelledby="settings-main-fuse-amps-label"></md-filled-text-field>
-            <md-filled-select id="settings-main-fuse-kva" name="settings_main_fuse_kva" aria-labelledby="settings-main-fuse-amps-label" hidden></md-filled-select>
+            <md-filled-text-field id="settings-main-fuse-amps" name="settings_main_fuse_amps" type="number" step="0.1" min="6" max="250" inputmode="decimal" autocomplete="off" suffix-text="A" aria-label="Fuse size per phase"></md-filled-text-field>
+            <md-filled-select id="settings-main-fuse-kva" name="settings_main_fuse_kva" aria-label="Fuse size per phase" hidden></md-filled-select>
             <small class="field__hint" id="settings-main-fuse-hint"></small>
             <small class="field__hint field__hint--alert" id="settings-main-fuse-usage-alert" role="status" hidden></small>
           </div>
           <div class="form-grid" id="settings-main-fuse-phase-source" hidden>
             <div class="field" id="settings-main-fuse-phase-meter-field" hidden>
               <span class="field__label pels-text-settings-label" id="settings-main-fuse-phase-meter-label">Phase meter</span>
-              <md-filled-select id="settings-main-fuse-phase-meter" aria-labelledby="settings-main-fuse-phase-meter-label"></md-filled-select>
+              <md-filled-select id="settings-main-fuse-phase-meter" aria-label="Phase meter"></md-filled-select>
               <small class="field__hint">The meter PELS reads each phase from when your power comes from a Flow.</small>
             </div>
             <div class="field" id="settings-main-fuse-phase-capabilities-field" hidden>
               <span class="field__label pels-text-settings-label" id="settings-main-fuse-phase-capabilities-label">Meter phases</span>
-              <md-filled-select class="main-fuse-phase-select" id="settings-main-fuse-phase-L1" label="L1" aria-labelledby="settings-main-fuse-phase-capabilities-label"></md-filled-select>
-              <md-filled-select class="main-fuse-phase-select" id="settings-main-fuse-phase-L2" label="L2" aria-labelledby="settings-main-fuse-phase-capabilities-label"></md-filled-select>
-              <md-filled-select class="main-fuse-phase-select" id="settings-main-fuse-phase-L3" label="L3" aria-labelledby="settings-main-fuse-phase-capabilities-label"></md-filled-select>
+              <md-filled-select class="main-fuse-phase-select" id="settings-main-fuse-phase-L1" label="L1" aria-label="Meter phase L1"></md-filled-select>
+              <md-filled-select class="main-fuse-phase-select" id="settings-main-fuse-phase-L2" label="L2" aria-label="Meter phase L2"></md-filled-select>
+              <md-filled-select class="main-fuse-phase-select" id="settings-main-fuse-phase-L3" label="L3" aria-label="Meter phase L3"></md-filled-select>
               <small class="field__hint">Pick which reading is each phase, all power or all current.</small>
               <small class="field__hint" id="settings-main-fuse-phase-capabilities-hint" hidden>Choose all three, all power or all current.</small>
             </div>
           </div>
         </div>
-        <div class="md-switch-row">
-          <md-switch id="settings-grid-import-enabled" aria-labelledby="settings-grid-import-enabled-label"></md-switch>
+        <label class="md-switch-row">
+          <md-switch aria-label="Grid import limit" id="settings-grid-import-enabled"></md-switch>
           <span class="md-switch-row__content">
             <span class="md-switch-row__label pels-text-settings-label" id="settings-grid-import-enabled-label">Grid import limit</span>
             <small class="field__hint">Reduce flexible loads when household import approaches this level.</small>
           </span>
-        </div>
+        </label>
         <div class="field" id="settings-grid-import-field" hidden>
           <span class="field__label pels-text-settings-label" id="settings-grid-import-limit-label">Grid import limit</span>
-          <md-filled-text-field id="settings-grid-import-limit" name="settings_grid_import_limit" type="number" step="0.1" min="0.1" inputmode="decimal" autocomplete="off" suffix-text="kW" aria-labelledby="settings-grid-import-limit-label"></md-filled-text-field>
+          <md-filled-text-field id="settings-grid-import-limit" name="settings_grid_import_limit" type="number" step="0.1" min="0.1" inputmode="decimal" autocomplete="off" suffix-text="kW" aria-label="Grid import limit"></md-filled-text-field>
           <small class="field__hint" id="settings-grid-import-hint"></small>
           <small class="field__hint field__hint--alert" id="settings-grid-import-usage-alert" role="status" hidden></small>
           <small class="field__hint">Uses the latest whole-home net grid import reading. Solar export increases available power. Temporary overshoot is possible: response depends on meter updates and device response time. PELS is not a circuit breaker.</small>
         </div>
-        <div class="md-switch-row">
-          <md-switch id="settings-capacity-enabled" selected aria-labelledby="settings-capacity-enabled-label"></md-switch>
+        <label class="md-switch-row">
+          <md-switch aria-label="Capacity limit" id="settings-capacity-enabled" selected></md-switch>
           <span class="md-switch-row__content">
             <span class="md-switch-row__label pels-text-settings-label" id="settings-capacity-enabled-label">Capacity limit</span>
             <small class="field__hint">Limit measured hourly or 15-minute average grid import.</small>
           </span>
-        </div>
+        </label>
         <div id="settings-capacity-fields" class="form-grid">
         <div class="field">
           <span class="field__label pels-text-settings-label" id="settings-capacity-period-label">Capacity period</span>
-          <md-filled-select id="settings-capacity-period" name="settings_capacity_period" aria-labelledby="settings-capacity-period-label">
+          <md-filled-select id="settings-capacity-period" name="settings_capacity_period" aria-label="Capacity period">
             <md-select-option value="60" selected><div slot="headline">Hourly average</div></md-select-option>
             <md-select-option value="15"><div slot="headline">15-minute average</div></md-select-option>
           </md-filled-select>
@@ -724,7 +724,7 @@
         </div>
         <label class="field">
           <span class="field__label pels-text-settings-label" id="settings-capacity-limit-label">Hard cap</span>
-          <md-filled-text-field id="settings-capacity-limit" name="settings_capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required suffix-text="kW" aria-labelledby="settings-capacity-limit-label"></md-filled-text-field>
+          <md-filled-text-field id="settings-capacity-limit" name="settings_capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required suffix-text="kW" aria-label="Hard cap"></md-filled-text-field>
           <!-- Text owned by homeLimits once meter areas exist: "your" stops
                meaning the whole house the moment the home is split. -->
           <small class="field__hint" id="settings-capacity-limit-hint">The peak or tariff step you want to protect. PELS keeps each selected period&rsquo;s average power under this. Not charged for measured peaks? You can turn off Capacity limit.</small>
@@ -741,7 +741,7 @@
         </div>
         <label class="field">
           <span class="field__label pels-text-settings-label" id="settings-capacity-margin-label">Safety margin</span>
-          <md-filled-text-field id="settings-capacity-margin" name="settings_capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required suffix-text="kW" aria-labelledby="settings-capacity-margin-label"></md-filled-text-field>
+          <md-filled-text-field id="settings-capacity-margin" name="settings_capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required suffix-text="kW" aria-label="Safety margin"></md-filled-text-field>
           <small class="field__hint field__hint--alert" id="settings-capacity-margin-alert" hidden></small>
         </label>
         <div class="settings-result" role="group" aria-labelledby="settings-capacity-reaction-label">
@@ -760,13 +760,13 @@
         <!-- Offered with the 15-minute period only, like the readout above
              (powerLimitControls.ts syncCapacityLimitControls). Same words as
              FOLLOW_MONTH_PEAK_LABEL / _HINT in homeLimitsCopy.ts. -->
-        <div class="md-switch-row" id="settings-capacity-follow-month-peak-row" hidden>
-          <md-switch id="settings-capacity-follow-month-peak" aria-labelledby="settings-capacity-follow-month-peak-label"></md-switch>
+        <label class="md-switch-row" id="settings-capacity-follow-month-peak-row" hidden>
+          <md-switch aria-label="Follow this month’s peak" id="settings-capacity-follow-month-peak"></md-switch>
           <span class="md-switch-row__content">
             <span class="md-switch-row__label pels-text-settings-label" id="settings-capacity-follow-month-peak-label">Follow this month’s peak</span>
             <small class="field__hint">When this month’s highest completed quarter is above the hard cap, PELS uses that peak, minus the safety margin, until the month ends. Your grid tariff already counts that peak.</small>
           </span>
-        </div>
+        </label>
       </form>
       <!-- App-GLOBAL settings, deliberately outside the Main-home cap form:
            neither `power_source` nor the whole-home meter is home-scoped, so
@@ -776,7 +776,7 @@
       <div class="form-grid settings-form-card" id="settings-limits-global">
         <div class="field">
           <span class="field__label pels-text-settings-label" id="settings-power-source-label">Power source</span>
-          <md-filled-select id="settings-power-source" name="settings_power_source" aria-labelledby="settings-power-source-label">
+          <md-filled-select id="settings-power-source" name="settings_power_source" aria-label="Power source">
             <!-- Value must match POWER_SOURCE_NOT_SET_VALUE in powerSourceSave.ts. Shown until a
                  persisted source paints over it; disabled, so it can never be picked or posted,
                  and choosing Flow card from it is a real change that saves. -->
@@ -788,7 +788,7 @@
         </div>
         <div class="field" id="settings-homey-energy-meter-field" hidden>
           <span class="field__label pels-text-settings-label" id="settings-homey-energy-meter-label">Whole-home meter</span>
-          <md-filled-select id="settings-homey-energy-meter" name="settings_homey_energy_meter" aria-labelledby="settings-homey-energy-meter-label">
+          <md-filled-select id="settings-homey-energy-meter" name="settings_homey_energy_meter" aria-label="Whole-home meter">
             <!-- Placeholder value must match METER_NOT_CHOSEN_VALUE in homeyEnergyMeter.ts:
                  md-filled-select renders an empty closed field for value="", and PELS field
                  labels sit outside the control (same sentinel discipline as GRID_COMPANY_NONE). -->
@@ -810,13 +810,13 @@
         </md-icon-button>
         <h2 class="pels-appbar__title" id="simulation-title">Simulation mode</h2>
       </div>
-      <div class="md-switch-row settings-form-card">
-        <md-switch id="settings-simulation-mode" name="settings_simulation_mode" aria-labelledby="settings-simulation-mode-label"></md-switch>
+      <label class="md-switch-row settings-form-card">
+        <md-switch aria-label="Simulation mode" id="settings-simulation-mode" name="settings_simulation_mode"></md-switch>
         <span class="md-switch-row__content">
           <span class="md-switch-row__label pels-text-settings-label" id="settings-simulation-mode-label">Simulation mode</span>
           <small class="field__hint">PELS shows what it would do, but devices are not switched automatically.</small>
         </span>
-      </div>
+      </label>
       <!-- Honest scope note (multi-home): this page carries only the Main
            home's switch, yet the Settings hub's "Partly on" chip routes here
            for any split posture. Copy is set from shared-domain
@@ -864,7 +864,7 @@
         </ol>
         <div class="field" hidden>
           <span class="field__label pels-text-settings-label" id="web-app-homey-address-label">This Homey's address</span>
-          <md-filled-text-field id="web-app-homey-address" readonly aria-labelledby="web-app-homey-address-label"></md-filled-text-field>
+          <md-filled-text-field id="web-app-homey-address" readonly aria-label="This Homey&#x27;s address"></md-filled-text-field>
           <md-text-button type="button" id="web-app-copy-address">Copy address</md-text-button>
         </div>
         <p class="field__hint">The key can read and change the settings of every app on this Homey. It is kept only in the browsers you add it to, never sent to the PELS website; delete it in Homey to disconnect.</p>
@@ -897,20 +897,20 @@
           <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
         </summary>
         <div class="collapse-content">
-          <div class="md-switch-row">
-            <md-switch id="advanced-daily-report" disabled aria-labelledby="advanced-daily-report-label"></md-switch>
+          <label class="md-switch-row">
+            <md-switch aria-label="Send a daily diagnostics report" id="advanced-daily-report" disabled></md-switch>
             <span class="md-switch-row__content">
               <span class="md-switch-row__label pels-text-settings-label" id="advanced-daily-report-label">Send a daily diagnostics report</span>
               <small class="field__hint">About once a day, at a different time of day each time, PELS sends the developer a report like Report a problem does, covering the last day.</small>
             </span>
-          </div>
-          <div class="md-switch-row">
-            <md-switch id="advanced-event-reports" disabled aria-labelledby="advanced-event-reports-label"></md-switch>
+          </label>
+          <label class="md-switch-row">
+            <md-switch aria-label="Send a report on specific events" id="advanced-event-reports" disabled></md-switch>
             <span class="md-switch-row__content">
               <span class="md-switch-row__label pels-text-settings-label" id="advanced-event-reports-label">Send a report on specific events</span>
               <small class="field__hint">When PELS sees something go wrong, such as a charger that could not identify the connected car, or a Flow or another app that keeps changing a device back, it sends the developer a report about it a few minutes later.</small>
             </span>
-          </div>
+          </label>
           <p class="muted">To send a report yourself and describe what you noticed:</p>
           <div class="inline-actions">
             <md-text-button type="button" data-settings-target="report-problem" id="advanced-report-problem-link">Report a problem</md-text-button>
@@ -942,7 +942,7 @@
           <div class="form-grid">
             <div class="field">
               <span class="field__label pels-text-settings-label" id="advanced-device-select-label">Device</span>
-              <md-filled-select id="advanced-device-select" aria-labelledby="advanced-device-select-label"></md-filled-select>
+              <md-filled-select id="advanced-device-select" aria-label="Device"></md-filled-select>
               <small class="field__hint">Removes PELS settings for this device only.</small>
             </div>
             <div class="inline-actions">
@@ -962,7 +962,7 @@
           <div class="form-grid">
             <div class="field">
               <span class="field__label pels-text-settings-label" id="advanced-api-device-select-label">Homey device</span>
-              <md-filled-select id="advanced-api-device-select" aria-labelledby="advanced-api-device-select-label"></md-filled-select>
+              <md-filled-select id="advanced-api-device-select" aria-label="Homey device"></md-filled-select>
               <small class="field__hint">Loads the raw device from the Homey API.</small>
             </div>
             <div class="inline-actions">
@@ -1080,9 +1080,10 @@
               <p class="muted detail-gate-hint" id="device-detail-delta-gate-hint" hidden></p>
               <div class="detail-deltas form-grid">
                 <div class="md-field-row">
+                  <span class="field__label pels-text-settings-label" id="device-detail-cheap-delta-label">Cheap-hour boost</span>
                   <md-filled-text-field
                     id="device-detail-cheap-delta"
-                    label="Cheap-hour boost"
+                    aria-label="Cheap-hour boost"
                     type="number"
                     step="0.5"
                     value="5"
@@ -1092,9 +1093,10 @@
                   <small class="field__hint">How much harder this device works during cheap hours, for example 2 °C.</small>
                 </div>
                 <div class="md-field-row">
+                  <span class="field__label pels-text-settings-label" id="device-detail-expensive-delta-label">Expensive-hour reduction</span>
                   <md-filled-text-field
                     id="device-detail-expensive-delta"
-                    label="Expensive-hour reduction"
+                    aria-label="Expensive-hour reduction"
                     type="number"
                     step="0.5"
                     value="5"
@@ -1120,9 +1122,10 @@
               <p class="muted detail-gate-hint" id="device-detail-surplus-gate-hint" hidden></p>
               <div class="detail-deltas form-grid">
                 <div class="md-field-row">
+                  <span class="field__label pels-text-settings-label" id="device-detail-surplus-delta-label">Solar-surplus boost</span>
                   <md-filled-text-field
                     id="device-detail-surplus-delta"
-                    label="Solar-surplus boost"
+                    aria-label="Solar-surplus boost"
                     type="number"
                     step="0.5"
                     value="2"
@@ -1157,9 +1160,10 @@
                 <small class="field__hint" id="device-detail-shed-hint">PELS uses this action when it needs to lower power: to stay under your grid import limit or hard cap, to keep to your daily budget, or when solar surplus runs out.</small>
               </div>
               <div class="md-field-row" id="device-detail-overshoot-temp-row" hidden>
+                <span class="field__label pels-text-settings-label" id="device-detail-overshoot-temp-label">Limited temperature</span>
                 <md-filled-text-field
                   id="device-detail-overshoot-temp"
-                  label="Limited temperature"
+                  aria-label="Limited temperature"
                   type="number"
                   step="0.5"
                   min="-20"
@@ -1172,9 +1176,10 @@
               <!-- Only for a device that reports a heating/cooling mode. While cooling,
                    the limit is a ceiling the device may rise to, not a floor. -->
               <div class="md-field-row" id="device-detail-overshoot-cooling-temp-row" hidden>
+                <span class="field__label pels-text-settings-label" id="device-detail-overshoot-cooling-temp-label">Limited temperature when cooling</span>
                 <md-filled-text-field
                   id="device-detail-overshoot-cooling-temp"
-                  label="Limited temperature when cooling"
+                  aria-label="Limited temperature when cooling"
                   type="number"
                   step="0.5"
                   min="16"
@@ -1186,12 +1191,13 @@
                 <small class="field__hint" id="device-detail-overshoot-cooling-temp-hint"></small>
               </div>
               <div class="md-field-row" id="device-detail-overshoot-step-row" hidden>
-                <md-filled-select id="device-detail-overshoot-step" label="Limited step"></md-filled-select>
+                <span class="field__label pels-text-settings-label" id="device-detail-overshoot-step-label">Limited step</span>
+                <md-filled-select id="device-detail-overshoot-step" aria-label="Limited step"></md-filled-select>
                 <small class="field__hint">For stepped loads, PELS will step down to this level or lower.</small>
               </div>
               <div class="field" id="device-detail-electrical-connection-row" hidden>
                 <span class="field__label pels-text-settings-label" id="device-detail-electrical-connection-label">Electrical connection</span>
-                <md-filled-select id="device-detail-electrical-connection" aria-labelledby="device-detail-electrical-connection-label">
+                <md-filled-select id="device-detail-electrical-connection" aria-label="Electrical connection">
                   <md-select-option value="automatic"><div slot="headline">Automatic</div></md-select-option>
                   <md-select-option value="L1"><div slot="headline">L1</div></md-select-option>
                   <md-select-option value="L2"><div slot="headline">L2</div></md-select-option>
@@ -1294,17 +1300,18 @@
               </div>
 
               <div class="detail-stepped-boost" id="device-detail-temperature-boost" hidden>
-                <div class="md-switch-row">
-                  <md-switch id="device-detail-temperature-boost-enabled"></md-switch>
+                <label class="md-switch-row">
+                  <md-switch aria-label="Temperature boost" id="device-detail-temperature-boost-enabled"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Temperature boost</span>
                     <small class="field__hint">Step this load up when it is cold, drawing from lower-priority devices.</small>
                   </span>
-                </div>
+                </label>
                 <div class="md-field-row" id="device-detail-temperature-boost-below-row">
+                  <span class="field__label pels-text-settings-label" id="device-detail-temperature-boost-below-label">Boost below</span>
                   <md-filled-text-field
                     id="device-detail-temperature-boost-below"
-                    label="Boost below"
+                    aria-label="Boost below"
                     type="number"
                     step="0.5"
                     min="0"
@@ -1338,17 +1345,18 @@
                    charger off at the level; a smart task in its booked hours
                    charges past it. -->
               <div class="detail-stepped-boost" id="device-detail-charge-target" hidden>
-                <div class="md-switch-row">
-                  <md-switch id="device-detail-charge-target-enabled"></md-switch>
+                <label class="md-switch-row">
+                  <md-switch aria-label="Charge to a battery level" id="device-detail-charge-target-enabled"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Charge to a battery level</span>
                     <small class="field__hint">PELS stops charging here. A smart task can charge further.</small>
                   </span>
-                </div>
+                </label>
                 <div class="md-field-row">
+                  <span class="field__label pels-text-settings-label" id="device-detail-charge-target-percent-label">Battery level</span>
                   <md-filled-text-field
                     id="device-detail-charge-target-percent"
-                    label="Battery level"
+                    aria-label="Battery level"
                     type="number"
                     step="1"
                     min="1"
@@ -1358,33 +1366,34 @@
                   ></md-filled-text-field>
                 </div>
                 <p class="muted" id="device-detail-charge-target-status" hidden></p>
-                <div class="md-switch-row">
-                  <md-switch id="device-detail-charge-target-unknown"></md-switch>
+                <label class="md-switch-row">
+                  <md-switch aria-label="Charge before the battery level is known" id="device-detail-charge-target-unknown"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Charge before the battery level is known</span>
                     <small class="field__hint" id="device-detail-charge-target-unknown-hint"></small>
                   </span>
-                </div>
+                </label>
               </div>
-              <div class="md-switch-row" id="device-detail-charging-session-smoothing" hidden>
-                <md-switch id="device-detail-charging-session-smoothing-enabled" aria-label="Avoid short charging breaks"></md-switch>
+              <label class="md-switch-row" id="device-detail-charging-session-smoothing" hidden>
+                <md-switch aria-label="Avoid short charging breaks" id="device-detail-charging-session-smoothing-enabled"></md-switch>
                 <span class="md-switch-row__content">
                   <span class="md-switch-row__label pels-text-settings-label">Avoid short charging breaks</span>
                   <small class="field__hint">Keeps a Smart task charging through a pricier break of up to 15 minutes when that adds at most 5% to its cost. Turning it on applies to new Smart tasks. Power limits still apply.</small>
                 </span>
-              </div>
+              </label>
               <div class="detail-stepped-boost" id="device-detail-ev-boost" hidden>
-                <div class="md-switch-row">
-                  <md-switch id="device-detail-ev-boost-enabled"></md-switch>
+                <label class="md-switch-row">
+                  <md-switch aria-label="Charge boost" id="device-detail-ev-boost-enabled"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Charge boost</span>
                     <small class="field__hint">Take power from lower-priority devices while the battery is below this level.</small>
                   </span>
-                </div>
+                </label>
                 <div class="md-field-row">
+                  <span class="field__label pels-text-settings-label" id="device-detail-ev-boost-below-label">Boost below</span>
                   <md-filled-text-field
                     id="device-detail-ev-boost-below"
-                    label="Boost below"
+                    aria-label="Boost below"
                     type="number"
                     step="1"
                     min="0"
@@ -1534,17 +1543,17 @@
                     <small class="detail-setup-notice__body" id="device-detail-control-contest-body"></small>
                   </div>
                 </div>
-                <div class="md-switch-row" id="device-detail-managed-row">
-                  <md-switch id="device-detail-managed"></md-switch>
+                <label class="md-switch-row" id="device-detail-managed-row">
+                  <md-switch aria-label="Managed by PELS" id="device-detail-managed"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Managed by PELS</span>
                     <small class="field__hint" id="device-detail-managed-hint">Include this device in modes and optimization plans.</small>
                   </span>
-                </div>
+                </label>
 
                 <div class="field" id="device-detail-temperature-control-disabled-row" hidden>
                   <label class="pels-text-settings-label" id="device-detail-temperature-control-label">When the temperature changes outside PELS</label>
-                  <md-filled-select id="device-detail-temperature-control-disabled" aria-labelledby="device-detail-temperature-control-label">
+                  <md-filled-select id="device-detail-temperature-control-disabled" aria-label="When the temperature changes outside PELS">
                     <md-select-option value="mode" selected><div slot="headline">Return to mode target</div></md-select-option>
                     <md-select-option value="external"><div slot="headline">Keep the new temperature</div></md-select-option>
                     <md-select-option value="update_mode"><div slot="headline">Save as current mode target</div></md-select-option>
@@ -1556,8 +1565,8 @@
 
                 <!-- Moved into the Battery section, under Managed, on a
                      battery's page (sectionLayout.ts), with its battery hint. -->
-                <div class="md-switch-row" id="device-detail-controllable-row">
-                  <md-switch id="device-detail-controllable"></md-switch>
+                <label class="md-switch-row" id="device-detail-controllable-row">
+                  <md-switch aria-label="Power-limit control" id="device-detail-controllable"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Power-limit control</span>
                     <small class="field__hint" id="device-detail-controllable-hint">Allow PELS to limit this device: to stay under your grid import limit or hard cap, to keep to your daily budget, or to follow your solar surplus.</small>
@@ -1568,7 +1577,7 @@
                     <small class="field__hint" id="device-detail-start-rule" hidden></small>
                     <small class="field__hint" id="device-detail-controllable-battery-hint" hidden>PELS may cap its charge, call on it to hold your limit and share your solar between it and your devices, each at its turn in your priority order.</small>
                   </span>
-                </div>
+                </label>
 
                 <!-- The complement of "Leave off until turned on again" below.
                      That switch answers "who may turn it OFF"; this one answers
@@ -1579,18 +1588,18 @@
                      says the setting is paused. It is shown only for a device
                      with a Smart task: it means "runs only for a Smart task"
                      (startPolicy.ts). -->
-                <div class="md-switch-row" id="device-detail-start-policy-row" hidden>
-                  <md-switch id="device-detail-start-policy"></md-switch>
+                <label class="md-switch-row" id="device-detail-start-policy-row" hidden>
+                  <md-switch aria-label="Only PELS starts this device" id="device-detail-start-policy"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Only PELS starts this device</span>
                     <small class="field__hint">If this device is started in Homey, on the device, or by another Flow, PELS turns it off again. It runs when a smart task needs it to, and not otherwise.</small>
                     <small class="field__hint" id="device-detail-start-policy-no-task-hint" hidden>This device has no smart task, so nothing will start it while this is on.</small>
                     <small class="field__hint" id="device-detail-start-policy-paused-hint" hidden>Paused while Power-limit control is on, because PELS already decides when this device runs. It applies again if Power-limit control is turned off.</small>
                   </span>
-                </div>
+                </label>
 
-                <div class="md-switch-row" id="device-detail-respect-external-off-row" hidden>
-                  <md-switch id="device-detail-respect-external-off"></md-switch>
+                <label class="md-switch-row" id="device-detail-respect-external-off-row" hidden>
+                  <md-switch aria-label="Leave off until turned on again" id="device-detail-respect-external-off"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Leave off until turned on again</span>
                     <small class="field__hint">If this device is turned off in Homey, on the device, or by another Flow, PELS will leave it off until it is turned on again. Devices turned off by PELS still resume automatically. Turning it on again returns it to normal PELS control.</small>
@@ -1598,14 +1607,14 @@
                     <small class="field__hint" id="device-detail-respect-external-off-power-limit-hint" hidden>Turn on Power-limit control above first — this setting applies when PELS controls whether the device runs.</small>
                     <small class="field__hint" id="device-detail-respect-external-off-smart-task-hint" hidden>This device has an active smart task. In its booked hours, PELS can turn the device on when there is available power, even after it was turned off elsewhere.</small>
                   </span>
-                </div>
+                </label>
 
                 <!-- Kind-inapplicable on devices with no temperature target (EV
                      chargers, plain on/off devices): hidden outright there — a
                      temperature promise on a socket is not a gate the user can
                      lift from this page. -->
-                <div class="md-switch-row" id="device-detail-price-opt-row">
-                  <md-switch id="device-detail-price-opt"></md-switch>
+                <label class="md-switch-row" id="device-detail-price-opt-row">
+                  <md-switch aria-label="Price-based control" id="device-detail-price-opt"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Price-based control</span>
                     <small class="field__hint">Adjust temperature based on electricity price fluctuations.</small>
@@ -1614,21 +1623,21 @@
                          on must never hide an unset price source. -->
                     <small class="field__hint" id="device-detail-price-source-hint" hidden></small>
                   </span>
-                </div>
+                </label>
                 <div class="form__actions" id="device-detail-price-source-action" hidden>
                   <md-text-button type="button" data-settings-target="electricity-prices" data-settings-anchor="#price-source-select">Set up prices</md-text-button>
                 </div>
 
-                <div class="md-switch-row" id="device-detail-surplus-opt-row" hidden>
-                  <md-switch id="device-detail-surplus-opt"></md-switch>
+                <label class="md-switch-row" id="device-detail-surplus-opt-row" hidden>
+                  <md-switch aria-label="Use solar surplus" id="device-detail-surplus-opt"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Use solar surplus</span>
                     <small class="field__hint">Raise this device's target while you are exporting solar.</small>
                   </span>
-                </div>
+                </label>
 
-                <div class="md-switch-row" id="device-detail-dump-load-row" hidden>
-                  <md-switch id="device-detail-dump-load-opt"></md-switch>
+                <label class="md-switch-row" id="device-detail-dump-load-row" hidden>
+                  <md-switch aria-label="Run on solar surplus" id="device-detail-dump-load-opt"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Run on solar surplus</span>
                     <small class="field__hint">PELS keeps this device off and turns it on when your home is exporting enough solar power to cover it. If you switch it on yourself while there is no surplus, PELS will switch it off again.</small>
@@ -1636,30 +1645,31 @@
                     <small class="field__hint" id="device-detail-dump-load-disabled-hint" hidden>Unavailable while this device has an active smart task — the task's schedule decides when it runs.</small>
                     <small class="field__hint" id="device-detail-dump-load-power-limit-hint" hidden>Turn on Power-limit control above first — PELS needs it to switch this device on and off.</small>
                   </span>
-                </div>
+                </label>
 
-                <div class="md-switch-row" id="device-detail-surplus-track-row" hidden>
-                  <md-switch id="device-detail-surplus-track-opt"></md-switch>
+                <label class="md-switch-row" id="device-detail-surplus-track-row" hidden>
+                  <md-switch aria-label="Match solar surplus" id="device-detail-surplus-track-opt"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label" id="device-detail-surplus-track-label">Match solar surplus</span>
                     <small class="field__hint" id="device-detail-surplus-track-hint"></small>
                     <small class="field__hint" id="device-detail-surplus-track-disabled-hint" hidden>Unavailable while this device has an active smart task — the task's schedule decides when it runs.</small>
                     <small class="field__hint" id="device-detail-surplus-track-power-limit-hint" hidden>Turn on Power-limit control first. PELS needs it to set this device's level.</small>
                   </span>
-                </div>
+                </label>
 
                 <small class="field__hint" id="device-detail-solar-pending-hint" hidden></small>
 
-                <div class="md-switch-row" id="device-detail-budget-exempt-row">
-                  <md-switch id="device-detail-budget-exempt"></md-switch>
+                <label class="md-switch-row" id="device-detail-budget-exempt-row">
+                  <md-switch aria-label="Budget exempt" id="device-detail-budget-exempt"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Budget exempt</span>
                     <small class="field__hint">Exclude this device from daily budget enforcement.</small>
                   </span>
-                </div>
+                </label>
 
                 <div class="md-field-row" id="device-detail-power-control-row" hidden>
-                  <md-filled-select id="device-detail-power-control-mode" label="Control model">
+                  <span class="field__label pels-text-settings-label" id="device-detail-power-control-mode-label">Control model</span>
+                  <md-filled-select id="device-detail-power-control-mode" aria-label="Control model">
                     <md-select-option value="automatic"><div slot="headline">Automatic</div></md-select-option>
                     <md-select-option value="manual"><div slot="headline">Manual</div></md-select-option>
                   </md-filled-select>
@@ -1668,16 +1678,17 @@
                 </div>
                 <div id="device-detail-charging-current"></div>
                 <div id="device-detail-charger-current-limits" hidden></div>
-                <div class="md-switch-row" id="device-detail-native-wiring-row" hidden>
-                  <md-switch id="device-detail-native-wiring"></md-switch>
+                <label class="md-switch-row" id="device-detail-native-wiring-row" hidden>
+                  <md-switch aria-label="Use built-in device control" id="device-detail-native-wiring"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Use built-in device control</span>
                     <small class="field__hint">Lets PELS use this device app's own capabilities instead of Flow wiring.</small>
                   </span>
-                </div>
+                </label>
 
                 <div class="md-field-row" id="device-detail-control-model-row">
-                  <md-filled-select id="device-detail-control-model" label="Control model">
+                  <span class="field__label pels-text-settings-label" id="device-detail-control-model-label">Control model</span>
+                  <md-filled-select id="device-detail-control-model" aria-label="Control model">
                     <md-select-option value="default"><div slot="headline">Default</div></md-select-option>
                     <md-select-option value="stepped_load"><div slot="headline">Stepped load</div></md-select-option>
                     <md-select-option value="continuous"><div slot="headline">Continuous</div></md-select-option>
@@ -1692,9 +1703,10 @@
                      load, or anything with no power reading) hides the row
                      rather than leaving the field out of the document. -->
                 <div class="md-field-row" id="device-detail-expected-power-row" hidden>
+                  <span class="field__label pels-text-settings-label" id="device-detail-expected-power-label">Power when running</span>
                   <md-filled-text-field
                     id="device-detail-expected-power"
-                    label="Power when running"
+                    aria-label="Power when running"
                     type="number"
                     step="1"
                     min="0"

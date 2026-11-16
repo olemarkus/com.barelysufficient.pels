@@ -787,6 +787,20 @@ test.describe('Device detail panel', () => {
     });
   }
 
+  test('Setup switches and fields carry their visible labels as names', async ({ page }) => {
+    await openDeviceDetail(page, 'dev_heatpump');
+    await page.locator('#device-detail-setup-section summary').click();
+    const panel = page.locator('#device-detail-panel');
+    for (const name of ['Managed by PELS', 'Power-limit control', 'Price-based control', 'Budget exempt']) {
+      await expect(panel.getByRole('switch', { name, exact: true })).toBeVisible();
+    }
+    await expect(panel.getByRole('spinbutton', { name: 'Cheap-hour boost', exact: true })).toBeVisible();
+    await expect(panel.getByRole('combobox', { name: 'Control model', exact: true })).toBeVisible();
+    await expect(panel.getByRole('combobox', {
+      name: 'When the temperature changes outside PELS', exact: true,
+    })).toBeVisible();
+  });
+
   test('Switch row label is clickable to toggle the switch', async ({ page }) => {
     await openDeviceDetail(page, 'dev_heatpump');
     await page.locator('#device-detail-setup-section summary').click();

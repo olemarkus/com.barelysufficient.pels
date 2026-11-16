@@ -218,10 +218,10 @@ describe('native target-power device setup', () => {
     const { setDeviceDetailNativeWiringState } = await import('../src/ui/deviceDetail/nativeWiring.ts');
     const device = nativeDevice({ automaticPowerControl: { mode: 'manual', profile: nativeProfile } });
     setDeviceDetailNativeWiringState(device);
-    expect(setChargingCurrentDevice).toHaveBeenLastCalledWith(device.id);
+    expect(setChargingCurrentDevice).toHaveBeenLastCalledWith(device.id, true);
 
     setDeviceDetailNativeWiringState(nativeDevice());
-    expect(setChargingCurrentDevice).toHaveBeenLastCalledWith('');
+    expect(setChargingCurrentDevice).toHaveBeenLastCalledWith('', true);
   });
 
   it.each(['manual', 'automatic'] as const)('shows the Manual model row only while %s controls the charger', async (mode) => {

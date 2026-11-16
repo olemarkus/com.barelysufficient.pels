@@ -198,7 +198,6 @@ export const advancedApiDeviceRefreshButton = document.querySelector(
 export const advancedApiDeviceLogButton = document.querySelector('#advanced-api-device-log') as MdButtonElement;
 
 export const deviceDetailOverlay = qs('#device-detail-overlay');
-export const deviceDetailPanel = qs('#device-detail-panel');
 export const deviceDetailTitle = qs('#device-detail-title');
 export const deviceDetailClose = qs('#device-detail-close') as MdButtonElement;
 export const deviceDetailNativeWiringRow = qs('#device-detail-native-wiring-row');
@@ -228,6 +227,7 @@ export const deviceDetailSocValue = qs('#device-detail-soc-value');
 export const deviceDetailSocUpdated = qs('#device-detail-soc-updated');
 export const deviceDetailControlModelRow = qs('#device-detail-control-model-row');
 export const deviceDetailControlModel = document.querySelector('#device-detail-control-model') as MdFilledSelectElement;
+export const deviceDetailControlModelLabel = document.getElementById('device-detail-control-model-label');
 export const deviceDetailExpectedPowerRow = qs('#device-detail-expected-power-row');
 export const deviceDetailExpectedPower = document.querySelector(
   '#device-detail-expected-power',
@@ -272,6 +272,7 @@ export const deviceDetailShedTempRow = qs('#device-detail-overshoot-temp-row');
 export const deviceDetailShedTemp = document.querySelector(
   '#device-detail-overshoot-temp',
 ) as MdFilledTextFieldElement;
+export const deviceDetailShedTempLabel = document.getElementById('device-detail-overshoot-temp-label');
 export const deviceDetailShedTempHint = qs('#device-detail-overshoot-temp-hint');
 export const deviceDetailShedCoolingTempRow = qs('#device-detail-overshoot-cooling-temp-row');
 export const deviceDetailShedCoolingTempHint = qs('#device-detail-overshoot-cooling-temp-hint');

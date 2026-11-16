@@ -187,6 +187,8 @@ hr {
   --radius: var(--radius-lg);
   --font-sans: var(--font-family-sans);
   --pels-md-primary: var(--accent);
+  /* Material's switch track height, named so a switch row can line up with it. */
+  --pels-switch-track-height: 32px;
   --pels-md-on-primary: var(--color-semantic-text-inverse);
   --pels-md-primary-container: var(--color-surface-4);
   --pels-md-on-primary-container: var(--text);
@@ -1176,6 +1178,12 @@ md-primary-tab.tab[active] {
   margin-bottom: var(--spacing-6);
 }
 
+/* Inside a card that spaces its children with a gap, the margin only adds an
+ * empty band below the last field. */
+:is(.settings-form-card, .collapse-content) > .form-grid {
+  margin-bottom: 0;
+}
+
 .settings-form-card {
   display: grid;
   gap: var(--pels-form-card-gap);
@@ -1225,6 +1233,12 @@ md-primary-tab.tab[active] {
   padding-inline: var(--spacing-1);
   gap: var(--spacing-3);
   min-width: 0;
+}
+
+/* Actions keep their own width and start edge, like every other device-page
+   action; the grid would otherwise stretch them across the card. */
+.charging-current-setup :is(md-filled-button, md-outlined-button, md-text-button) {
+  justify-self: start;
 }
 
 .continuous-battery-plan {
@@ -4694,14 +4708,21 @@ label.pels-text-settings-label {
   margin-bottom: var(--spacing-4);
 }
 
+/* Title with its hint underneath and the chevron at the end, as in the
+ * Settings list: beside the title the hint squeezed the title into a column at
+ * 360 px. */
 .settings-collapse summary {
   cursor: pointer;
   padding: var(--spacing-4);
   list-style: none;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-3);
+  gap: var(--spacing-half) var(--spacing-3);
+}
+
+.settings-collapse summary > :is(.section-title, .section-hint) {
+  grid-column: 1;
 }
 
 .settings-collapse summary::-webkit-details-marker {
@@ -4721,6 +4742,12 @@ summary .disclosure-chevron {
 
 .settings-collapse summary .disclosure-chevron {
   color: var(--muted);
+}
+
+.settings-collapse summary > .disclosure-chevron {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
 }
 
 details[open] > summary .disclosure-chevron {
@@ -4825,8 +4852,7 @@ details[open] > summary .disclosure-chevron {
 }
 
 .detail-mode-list,
-.detail-stepped-list,
-.detail-deltas {
+.detail-stepped-list {
   display: block;
 }
 
@@ -4927,10 +4953,10 @@ details[open] > summary .disclosure-chevron {
   color: var(--text-secondary);
 }
 
+/* No top margin: the card's grid gap already separates it from the row above. */
 .detail-stepped-boost {
   display: grid;
   gap: var(--spacing-3);
-  margin-top: var(--spacing-3);
 }
 
 .detail-stepped-boost[hidden] {
@@ -7886,6 +7912,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
  * card so the off state is discoverable. Token-only per
  * `feedback_design_tokens`. */
 md-switch {
+  --md-switch-track-height: var(--pels-switch-track-height);
   --md-switch-track-color: var(--pels-surface-container-high);
   --md-switch-track-outline-color: var(--pels-md-outline);
   --md-switch-handle-color: var(--pels-md-on-surface-variant);
@@ -7896,10 +7923,19 @@ md-switch {
  * enable/cheaper-hours rows). The switch is authored first in the DOM for a
  * stable label association, then flex `order` moves it to the trailing edge so
  * every enable-toggle in the app sits in the same position. The row's
- * `min-height` keeps the whole tap surface at the M3 48 px minimum. */
+ * `min-height` keeps the whole tap surface at the M3 48 px minimum.
+ *
+ * The switch lines up with the label, not with the middle of the label and its
+ * hint: a long hint would otherwise leave it floating beside a paragraph. The
+ * content column drops by half the difference between the switch and one
+ * label line, so a row without a hint still centres both in 48 px. */
 .md-switch-row {
+  --pels-switch-row-label-offset: calc(
+    (var(--pels-switch-track-height) - var(--pels-text-settings-label-font-size)
+      * var(--pels-text-settings-label-font-line-height)) / 2
+  );
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--spacing-3);
   padding: var(--spacing-2) 0;
   min-height: var(--pels-touch-target-min);
@@ -7920,6 +7956,7 @@ md-switch {
 
 .md-switch-row__content {
   order: 1;
+  padding-top: var(--pels-switch-row-label-offset);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-half);
@@ -8260,9 +8297,12 @@ md-switch {
   margin: 0;
 }
 
+/* One row of equal options, as a segmented button is: the options are the
+ * limiting actions, at most three short labels. */
 #device-detail-panel .segmented {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
 }
 
 /* The `#device-detail-panel .segmented__option` override block was removed:
@@ -8334,10 +8374,6 @@ md-switch {
   :where(
     #advanced-panel,
     #device-detail-panel
-  ) .settings-collapse summary,
-  :where(
-    #advanced-panel,
-    #device-detail-panel
   ) .settings-collapse-header {
     align-items: flex-start;
   }
@@ -8347,16 +8383,6 @@ md-switch {
     .target-power-grid,
     .detail-deadline-form .form-grid
   ) {
-    grid-template-columns: 1fr;
-  }
-
-  /* At ≤430 px the device-detail slide-over collapses to a single column;
-   * the segmented control follows so the option labels stay readable instead
-   * of being squeezed into a 96 px floor that wraps mid-word. Lives inside
-   * the existing narrow-viewport media query rather than under a per-page
-   * `--power-limiting` modifier so the primitive stays free of panel-scoped
-   * tonal variants. */
-  #device-detail-panel .segmented {
     grid-template-columns: 1fr;
   }
 }

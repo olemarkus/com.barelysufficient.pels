@@ -18,7 +18,13 @@ export function renderChargingPhases(
   const container = document.getElementById('device-detail-charging-phases');
   if (!container) return;
   const read = device?.chargingPhaseControl;
-  if (deviceId === null || !read || read.kind !== 'supported') { render(null, container); return; }
+  // Hidden while empty, so the Charging card's grid leaves no gap for it.
+  if (deviceId === null || !read || read.kind !== 'supported') {
+    container.hidden = true;
+    render(null, container);
+    return;
+  }
+  container.hidden = false;
   const connection = state.devicePhaseConnectionMap[deviceId];
   const singlePhase: ChargingPhaseName | 'unselected' = connection === 'three_L1' ? 'L1'
     : connection === 'three_L2' ? 'L2' : connection === 'three_L3' ? 'L3' : 'unselected';

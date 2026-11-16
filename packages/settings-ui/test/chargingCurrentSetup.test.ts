@@ -17,18 +17,26 @@ beforeEach(() => {
   callApi.mockImplementation(async (_method: string, path: string) => path === '/ui_charging_current'
     ? [charger] : { configured: false, state: 'not_configured' });
 });
-afterEach(() => { act(() => setChargingCurrentDevice('')); });
+afterEach(() => { act(() => setChargingCurrentDevice('', false)); });
 
 const button = (text: string): HTMLElement => {
-  const match = [...document.querySelectorAll<HTMLElement>('md-outlined-button, md-filled-button')]
+  const match = [...document.querySelectorAll<HTMLElement>('md-outlined-button, md-filled-button, md-text-button')]
     .find((element) => element.textContent === text);
   if (!match) throw new Error(`Missing button: ${text}`);
   return match;
 };
 
+test('a device that is not a charger shows nothing when the read fails', async () => {
+  callApi.mockRejectedValue(new Error('Unavailable'));
+  await act(async () => setChargingCurrentDevice('heater', false));
+  await vi.waitFor(() => expect(callApi).toHaveBeenCalled());
+  await act(async () => { await Promise.resolve(); });
+  expect(document.getElementById('device-detail-charging-current')?.textContent).toBe('');
+});
+
 test('shows failed initial reads and retries from the same device page', async () => {
   callApi.mockRejectedValueOnce(new Error('Unavailable'));
-  await act(async () => setChargingCurrentDevice('charger'));
+  await act(async () => setChargingCurrentDevice('charger', true));
   await vi.waitFor(() => expect(document.querySelector('[role="alert"]')?.textContent).toContain('could not be loaded'));
   await act(async () => button('Try again').click());
   expect(document.body.textContent).toContain('Built-in current control is not enabled');
@@ -36,7 +44,7 @@ test('shows failed initial reads and retries from the same device page', async (
 });
 
 test('retains the entered key after a failed save and clears it after success', async () => {
-  await act(async () => setChargingCurrentDevice('charger'));
+  await act(async () => setChargingCurrentDevice('charger', true));
   const field = document.querySelector<HTMLElement & { value: string }>('md-filled-text-field');
   if (!field) throw new Error('Missing key field');
   await act(async () => { field.value = 'private-test-key'; field.dispatchEvent(new Event('input')); });
@@ -51,8 +59,8 @@ test('retains the entered key after a failed save and clears it after success', 
 test('ignores a stale failed read after selecting another device', async () => {
   let rejectRead!: (error: Error) => void;
   callApi.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectRead = reject; }));
-  await act(async () => setChargingCurrentDevice('old-device'));
-  await act(async () => setChargingCurrentDevice('charger'));
+  await act(async () => setChargingCurrentDevice('old-device', true));
+  await act(async () => setChargingCurrentDevice('charger', true));
   await act(async () => rejectRead(new Error('Old read failed')));
   expect(document.body.textContent).toContain('Built-in current control is not enabled');
   expect(document.querySelector('[role="alert"]')).toBeNull();
@@ -74,7 +82,7 @@ function savedSetup(failEnable = false) {
 }
 
 async function enterKeyAndEnable() {
-  await act(async () => setChargingCurrentDevice('charger'));
+  await act(async () => setChargingCurrentDevice('charger', true));
   const field = document.querySelector<HTMLElement & { value: string }>('md-filled-text-field')!;
   await act(async () => { field.value = 'test-key'; field.dispatchEvent(new Event('input')); });
   await act(async () => button('Save key and enable').click());
@@ -105,7 +113,7 @@ test('a failed activation shows the saved key and offers activation again withou
 test.each(['conflict', 'unavailable'] as const)('does not enable built-in control while Flow checks are %s', async (flowCheck) => {
   callApi.mockImplementation(async (_method: string, path: string) => path === '/ui_charging_current'
     ? [{ ...charger, flowCheck }] : { configured: false, state: 'not_configured' });
-  await act(async () => setChargingCurrentDevice('charger'));
+  await act(async () => setChargingCurrentDevice('charger', true));
   const field = document.querySelector<HTMLElement & { value: string }>('md-filled-text-field')!;
   await act(async () => { field.value = 'test-key'; field.dispatchEvent(new Event('input')); });
   expect(button('Save key and enable').hasAttribute('disabled')).toBe(true);
@@ -119,7 +127,7 @@ test('allows replacing an existing key without enabling control when a Flow conf
   callApi.mockImplementation(async (_method: string, path: string) => path === '/ui_charging_current'
     ? [{ ...charger, flowCheck: 'conflict' }]
     : { configured: true, state: 'permission_denied' });
-  await act(async () => setChargingCurrentDevice('charger'));
+  await act(async () => setChargingCurrentDevice('charger', true));
   const field = document.querySelector<HTMLElement & { value: string }>('md-filled-text-field')!;
   await act(async () => { field.value = 'replacement-key'; field.dispatchEvent(new Event('input')); });
   expect(button('Replace key').hasAttribute('disabled')).toBe(false);
@@ -136,7 +144,7 @@ test.each(['conflict', 'unavailable'] as const)('explains blocked activation bes
   callApi.mockImplementation(async (_method: string, path: string) => path === '/ui_charging_current'
     ? [{ ...charger, scope: 'vehicle', setup: { method: 'flow', confirmation: 'vehicle' }, flowCheck, flowNames: ['Current bridge'] }]
     : { configured: true, state: 'ready' });
-  await act(async () => setChargingCurrentDevice('charger'));
+  await act(async () => setChargingCurrentDevice('charger', true));
   const action = button('Use built-in control');
   expect(action.hasAttribute('disabled')).toBe(true);
   const guidance = action.parentElement?.previousElementSibling;
@@ -154,7 +162,7 @@ test('a charger-scoped device enables built-in control without a scope confirmat
     }
     return path === '/ui_charging_current' ? [device] : { configured: true, state: 'ready' };
   });
-  await act(async () => setChargingCurrentDevice('charger'));
+  await act(async () => setChargingCurrentDevice('charger', true));
   expect(document.body.textContent).not.toContain('only one charger');
   expect(document.body.textContent).not.toContain('Control charging through this car');
   await act(async () => button('Use built-in control').click());
@@ -165,7 +173,7 @@ test('says a selected built-in route is paused while a Flow sets the same curren
   callApi.mockImplementation(async (_method: string, path: string) => path === '/ui_charging_current'
     ? [{ ...charger, setup: { method: 'built_in', confirmation: 'single_charger' }, flowCheck: 'conflict', flowNames: ['Night charge'], currentRoute: 'flow' }]
     : { configured: true, state: 'ready' });
-  await act(async () => setChargingCurrentDevice('charger'));
+  await act(async () => setChargingCurrentDevice('charger', true));
   expect(document.body.textContent).toContain('Built-in current control is paused.');
   expect(document.body.textContent).toContain('The Flow Night charge sets the same charging current, and PELS cannot stop a Flow.');
   expect(document.body.textContent).toContain('choose “Use a Flow” below');
@@ -179,7 +187,7 @@ test('Check again also runs the Flow scan that resumes a paused route', async ()
     if (path === '/ui_refresh_flow_conflicts') return { devices: [], evSocReporters: [] };
     return { configured: true, state: 'ready' };
   });
-  await act(async () => setChargingCurrentDevice('charger'));
+  await act(async () => setChargingCurrentDevice('charger', true));
   await act(async () => button('Check again').click());
   await vi.waitFor(() => expect(callApi).toHaveBeenCalledWith('POST', '/ui_refresh_flow_conflicts', {}));
   expect(callApi).toHaveBeenCalledWith('POST', '/ui_charging_access/check');

@@ -186,14 +186,18 @@ export type SwitchFieldResult = {
 export const createSwitchField = (options: SwitchFieldOptions): SwitchFieldResult => {
     const { id, label, hint, selected = false } = options;
 
-    const wrapper = document.createElement('div');
+    // A <label> row: a tap anywhere on the row toggles the switch, as in every
+    // Preact switch row.
+    const wrapper = document.createElement('label');
     wrapper.className = 'md-switch-row';
 
     const labelId = `${id}-label`;
     const input = document.createElement('md-switch') as MaterialSwitchElement;
     input.id = id;
     input.selected = selected;
-    input.setAttribute('aria-labelledby', labelId);
+    // The visible label sits outside the switch's shadow root, where an id
+    // reference cannot reach, so the name is set directly.
+    input.setAttribute('aria-label', label);
 
     const content = document.createElement('span');
     content.className = 'md-switch-row__content';
