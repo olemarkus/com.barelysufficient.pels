@@ -88,7 +88,9 @@ test.describe('Create smart task from settings', () => {
     await afterTask.getByRole('button', { name: 'Change' }).click();
     const overlay = page.locator('#device-detail-overlay');
     await expect(overlay).toBeVisible();
-    await expect(overlay.locator('#device-detail-setup-disclosure')).toHaveAttribute('open', '');
+    // Change lands on Power-limit control, in the Power limiting card.
+    await expect(overlay.locator('#device-detail-shedding-section details')).toHaveAttribute('open', '');
+    await expect(overlay.locator('#device-detail-start-rule')).toBeVisible();
     await expect(overlay.locator('#device-detail-start-rule')).toHaveText(
       'PELS turns it on whenever power allows, even after it was turned off elsewhere.',
     );

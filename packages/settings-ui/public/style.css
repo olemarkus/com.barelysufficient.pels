@@ -4953,6 +4953,16 @@ details[open] > summary .disclosure-chevron {
   color: var(--text-secondary);
 }
 
+/* The temperature lift in the Solar surplus card, spaced like the card. */
+.detail-surplus-temperature {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.detail-surplus-temperature[hidden] {
+  display: none;
+}
+
 /* No top margin: the card's grid gap already separates it from the row above. */
 .detail-stepped-boost {
   display: grid;

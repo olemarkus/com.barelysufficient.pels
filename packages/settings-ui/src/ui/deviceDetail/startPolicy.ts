@@ -110,8 +110,8 @@ const shouldShowStartPolicyRow = (
   || isPelsOnly(deviceId)
 );
 
-// The row lives in Setup, or in the limiting card on an EV charger's page
-// (sectionLayout.ts), so the card that holds it is the one to expand.
+// Each row sits in the card it governs (sectionLayout.ts), so the card that
+// holds it is the one to expand; Setup when there is no row.
 const revealDetailRow = (row: HTMLElement | null): void => {
   const disclosure = row?.closest('details') ?? deviceDetailSetupDisclosure;
   if (disclosure && !disclosure.open) disclosure.open = true;

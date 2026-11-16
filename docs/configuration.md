@@ -112,19 +112,19 @@ Top-level controls:
 | **Limit** | PELS may lower, pause or turn off this device: to stay under your grid import limit or hard cap, to keep to your daily budget, or to follow your solar surplus. |
 | **Price** | PELS adjusts the temperature target around electricity prices. |
 
-Device detail sections. The page composes per device kind — an EV charger, a thermostat, a stepped load (such as a water heater), and a plain on/off device each lead with the sections that matter for that device, and sections that do not apply are not shown. The top of every managed device's page is a live status header: state, current draw, one fact line (temperature and target, or charging state, battery, and level), the reason the device is limited when it is, and a Smart task link when one is scheduled. A device PELS does not manage has no live status to report, so its page shows no header, and its Setup section starts expanded.
+Device detail sections. Each switch sits in the section it governs: **Price-based control** heads Price response, the solar switches head Solar surplus, and **Power-limit control** heads Power limiting. The page composes per device kind — an EV charger, a thermostat, a stepped load (such as a water heater), and a plain on/off device each lead with the sections that matter for that device, and sections that do not apply are not shown. The top of every managed device's page is a live status header: state, current draw, one fact line (temperature and target, or charging state, battery, and level), the reason the device is limited when it is, and a Smart task link when one is scheduled. A device PELS does not manage has no live status to report, so its page shows no header, and its Setup section starts expanded.
 
 | Section | Shown for | What it contains |
 | --- | --- | --- |
 | **Charging** | Managed EV chargers | When and how much to charge: **Charge to a battery level** (with **Charge before the battery level is known**), charge boost, and **Charge on solar surplus**. |
 | **Car** | EV chargers | Which cars charge here, the battery level PELS reads from the car, and where the level comes from. |
-| **Temperature per mode** | Temperature devices | Per-mode target temperatures, with each mode's resume priority (reordered in Modes). |
-| **Price response** | Temperature devices | Cheap-hour boost and expensive-hour reduction. Stays visible with a hint naming the switch that enables it when price control is off. |
-| **Solar surplus** (prosumer) | Temperature devices in homes with solar | **Solar-surplus boost**: how far the target rises while your panels are exporting. Switch it on with **Use solar surplus** in Setup. See [Solar and Self-Consumption](/solar). |
+| **Temperature per mode** | Temperature devices | Per-mode target temperatures, with each mode's resume priority (reordered in Modes), and **When the temperature changes outside PELS**. |
+| **Price response** | Temperature devices | **Price-based control**, then the cheap-hour boost and expensive-hour reduction. |
+| **Solar surplus** (prosumer) | Devices that can use solar, in homes with solar | **Use solar surplus** and the **Solar-surplus boost** on a temperature device (how far the target rises while your panels are exporting), **Run on solar surplus** on an on/off device, or **Match solar surplus** on a stepped device. An EV charger has **Charge on solar surplus** in Charging instead. See [Solar and Self-Consumption](/solar). |
 | **Stepped load profile** | Stepped loads | Step names, planning power values, target-power range, and temperature boost. Hidden for EV chargers using an EV preset, because the preset owns the steps. On any other EV charger it follows Setup, collapsed, with the number of steps and the highest power in its header. |
-| **Power limiting** | All devices PELS can limit | On an EV charger it also holds **Power-limit control**, **Only PELS starts this device** and **Leave off until turned on again**, and is hidden while the charger is not managed. How far PELS may go when limiting this device — off, a limited temperature, or a lowest step — when there is a real choice; a device with only one possible limit gets a statement of what PELS does instead of a one-button choice. PELS goes only as deep as it needs. A device that reports whether it is heating or cooling gets a second limit, **Limited temperature when cooling**; see [Limited temperature for a heating and cooling device](/technical#limited-temperature-for-a-heating-and-cooling-device). |
+| **Power limiting** | All devices PELS can limit | **Power-limit control**, **Only PELS starts this device** and **Leave off until turned on again**; on an EV charger it is hidden while the charger is not managed. How far PELS may go when limiting this device — off, a limited temperature, or a lowest step — when there is a real choice; a device with only one possible limit gets a statement of what PELS does instead of a one-button choice. PELS goes only as deep as it needs. A device that reports whether it is heating or cooling gets a second limit, **Limited temperature when cooling**; see [Limited temperature for a heating and cooling device](/technical#limited-temperature-for-a-heating-and-cooling-device). |
 | **Battery** | Home batteries | Managed by PELS, power-limit control, and the battery's place in the priority order (**Reorder**). |
-| **Setup** | All devices except home batteries | Managed by PELS, power-limit control, only PELS starts this device and leave off until turned on again (all three in **Power limiting** on an EV charger), **When the temperature changes outside PELS**, price-based control, **Use solar surplus**, **Run on solar surplus** or **Match solar surplus** (**Charge on solar surplus**, in Charging, on an EV charger), budget exemption, built-in device control, control model, and **Power when running**. Opens automatically for devices that are not set up yet. |
+| **Setup** | All devices except home batteries | Managed by PELS, budget exemption, built-in device control, control model, and **Power when running**. Opens automatically for devices that are not managed yet. |
 | **Smart task** | Devices that can take a task | **Add smart task**, or **View task** when one is scheduled. |
 | **Activity log** | All devices | Recent state changes PELS recorded for this device. |
 | **Advanced diagnostics** | All devices | Read-only history of waiting time, failed restarts, and restart backoff. |
@@ -146,7 +146,7 @@ battery level because the retained car data cannot be trusted. The charger remai
 normally. If the car becomes available again while both it and the charger still report a
 connection, PELS resumes the association automatically; no physical replug is needed.
 
-![PELS device detail page for a heat pump showing the live status header, Temperature per mode, Price response, Solar surplus, Power limiting, and the Setup section with Managed by PELS, Power-limit control, Control model, and Power when running](/screenshots/device-detail/mw-thermostat-heatpump-full.png)
+![PELS device detail page for a heat pump showing the live status header, Temperature per mode, Price response, Solar surplus, Power limiting, and the Setup section with Managed by PELS, Budget exempt, Control model, and Power when running](/screenshots/device-detail/mw-thermostat-heatpump-full.png)
 
 Notes:
 
@@ -323,7 +323,7 @@ PELS then schedules against the blended **planning price** (what your energy is 
 
 ## Settings > Price-Aware Devices
 
-This page adjusts devices that already have price response enabled. To add a device here, first open the device under **Settings > Devices** and enable **Price** or **Setup > Price-based control**.
+This page adjusts devices that already have price response enabled. To add a device here, first open the device under **Settings > Devices** and enable **Price** or **Price response > Price-based control**.
 
 The page starts with **Prices from**: the price source these devices respond to, marked **Not set up** while PELS prices with a source or a Norway setting you have not chosen, or the source has no prices. The device's **Price-based control** says the same.
 

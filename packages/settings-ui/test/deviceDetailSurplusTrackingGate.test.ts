@@ -327,7 +327,7 @@ describe('device detail solar-surplus tracking gating', () => {
     expect(powerLimitHint()?.hidden).toBe(false);
     expect(resolveSolarSetupAction(device)).toMatchObject({
       actionLabel: 'Set up solar control',
-      hint: 'Turn on Power-limit control in Setup.',
+      hint: 'Turn on Power-limit control in Power limiting.',
       focus: 'power-limit',
     });
   });

@@ -9,6 +9,9 @@ import {
   deviceDetailSurplusGateHint,
   deviceDetailSurplusOpt,
   deviceDetailSurplusSection,
+  deviceDetailSurplusTemperature,
+  deviceDetailSurplusTrackRow,
+  deviceDetailSolarPendingHint,
 } from '../dom.ts';
 import {
   supportsPowerDevice,
@@ -75,25 +78,38 @@ const resolveSurplusGateHint = (
   }
   if (!isManaged) return 'Turn on Managed by PELS in Setup to use solar surplus.';
   if (!selected) {
-    return 'Turn on Use solar surplus in Setup to lift the target while you export solar.';
+    return 'Turn on Use solar surplus above to lift the target while you export solar.';
   }
   return null;
 };
 
+/**
+ * The Solar surplus card holds every solar switch the page offers: Use solar
+ * surplus on a temperature device, Run on solar surplus on an on/off device,
+ * Match solar surplus on a stepped or continuous one (an EV charger keeps that
+ * one in its Charging card), and the note that stands in for them while solar
+ * is on its way. Runs after those rows are synced; the card shows while any of
+ * them does.
+ */
 export const updateSurplusSectionVisibility = (device: SettingsUiDeviceDetailItem | null) => {
   if (!deviceDetailSurplusSection || !deviceDetailSurplusOpt) return;
-  const isManaged = device ? resolveManagedState(device.id) : false;
-  // Section visibility follows the toggle row's own offer gate (pool reachable
-  // or already opted in): a non-solar home never sees the section at all, while
-  // an opted-in device keeps it reachable regardless of reachability — an
-  // install that opted in before the gate existed must be able to see and clear
-  // its stored setting.
+  const temperatureShown = syncSurplusTemperatureBlock(device);
+  const rowShown = [deviceDetailDumpLoadRow, deviceDetailSurplusTrackRow, deviceDetailSolarPendingHint]
+    .some((row) => row !== null && !row.hidden && deviceDetailSurplusSection?.contains(row));
+  deviceDetailSurplusSection.style.display = temperatureShown || rowShown ? 'block' : 'none';
+};
+
+// The temperature lift: its switch, explanation and boost field. Shown only for
+// a temperature device the home's surplus pool can reach, or one already opted
+// in, so an install that opted in before the pool gate existed can still see
+// and clear its setting. Returns whether it shows.
+const syncSurplusTemperatureBlock = (device: SettingsUiDeviceDetailItem | null): boolean => {
+  if (!deviceDetailSurplusOpt) return false;
   const offered = device ? surplusControlVisibleFor(device.id) : false;
   const applicable = supportsTemperatureDevice(device) && (offered || deviceDetailSurplusOpt.selected);
-  if (!applicable) {
-    deviceDetailSurplusSection.style.display = 'none';
-    return;
-  }
+  if (deviceDetailSurplusTemperature) deviceDetailSurplusTemperature.hidden = !applicable;
+  if (!applicable) return false;
+  const isManaged = device ? resolveManagedState(device.id) : false;
   // The surplus lift reaches only a device with a power reading
   // (`lib/plan/planSurplusAbsorb.ts`), unlike its mode target and price shift.
   const supportsPower = supportsPowerDevice(device);
@@ -105,12 +121,12 @@ export const updateSurplusSectionVisibility = (device: SettingsUiDeviceDetailIte
     isManaged,
     deviceDetailSurplusOpt.selected,
   );
-  deviceDetailSurplusSection.style.display = 'block';
   if (deviceDetailSurplusDelta) deviceDetailSurplusDelta.disabled = gateHint !== null;
   if (deviceDetailSurplusGateHint) {
     deviceDetailSurplusGateHint.textContent = gateHint ?? '';
     deviceDetailSurplusGateHint.hidden = gateHint === null;
   }
+  return true;
 };
 
 export const initDeviceDetailSurplusOptHandlers = (params: {

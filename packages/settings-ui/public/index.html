@@ -1062,6 +1062,17 @@
             <div class="collapse-content">
               <p class="muted" id="device-detail-modes-help">Set the target temperature for each mode. PELS will set this when the mode is active. Priority is this device’s place in that mode’s pecking order — higher-priority devices keep running longer and resume sooner; reorder it in Modes.</p>
               <div id="device-detail-modes" class="detail-mode-list"></div>
+              <div class="field" id="device-detail-temperature-control-disabled-row" hidden>
+                <label class="pels-text-settings-label" id="device-detail-temperature-control-label">When the temperature changes outside PELS</label>
+                <md-filled-select id="device-detail-temperature-control-disabled" aria-label="When the temperature changes outside PELS">
+                  <md-select-option value="mode" selected><div slot="headline">Return to mode target</div></md-select-option>
+                  <md-select-option value="external"><div slot="headline">Keep the new temperature</div></md-select-option>
+                  <md-select-option value="update_mode"><div slot="headline">Save as current mode target</div></md-select-option>
+                </md-filled-select>
+                <small class="field__hint pels-text-body" id="device-detail-temperature-control-hint"></small>
+                <small class="field__hint pels-text-body" id="device-detail-temperature-control-power-hint" hidden></small>
+                <small class="field__hint pels-text-body" id="device-detail-temperature-control-disabled-smart-task-hint" hidden>Clear this device&rsquo;s active smart task before changing how PELS handles its temperature.</small>
+              </div>
             </div>
           </details>
         </section>
@@ -1074,6 +1085,24 @@
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
+              <!-- Kind-inapplicable on devices with no temperature target (EV
+                   chargers, plain on/off devices): hidden outright there — a
+                   temperature promise on a socket is not a gate the user can
+                   lift from this page. -->
+              <label class="md-switch-row" id="device-detail-price-opt-row">
+                <md-switch aria-label="Price-based control" id="device-detail-price-opt"></md-switch>
+                <span class="md-switch-row__content">
+                  <span class="md-switch-row__label pels-text-settings-label">Price-based control</span>
+                  <small class="field__hint">Adjust temperature based on electricity price fluctuations.</small>
+                  <!-- Where the prices come from, and whether they are set up
+                       (deviceDetail/priceSourceHint.ts): turning price control
+                       on must never hide an unset price source. -->
+                  <small class="field__hint" id="device-detail-price-source-hint" hidden></small>
+                </span>
+              </label>
+              <div class="form__actions" id="device-detail-price-source-action" hidden>
+                <md-text-button type="button" data-settings-target="electricity-prices" data-settings-anchor="#price-source-select">Set up prices</md-text-button>
+              </div>
               <p class="muted">Temperature changes applied during cheap and expensive electricity hours. PELS follows the device's own heating or cooling mode, so a cooling unit moves its target the opposite way.</p>
               <!-- Why these values are inert right now (kept, not applied) — the
                    suppressed-control treatment is visible-but-disabled + hint. -->
@@ -1118,21 +1147,50 @@
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
-              <p class="muted">While your home is exporting solar, this lifts the target so you use your own power instead of exporting it.</p>
-              <p class="muted detail-gate-hint" id="device-detail-surplus-gate-hint" hidden></p>
-              <div class="detail-deltas form-grid">
-                <div class="md-field-row">
-                  <span class="field__label pels-text-settings-label" id="device-detail-surplus-delta-label">Solar-surplus boost</span>
-                  <md-filled-text-field
-                    id="device-detail-surplus-delta"
-                    aria-label="Solar-surplus boost"
-                    type="number"
-                    step="0.5"
-                    value="2"
-                    inputmode="decimal"
-                    suffix-text="°C"
-                  ></md-filled-text-field>
-                  <small class="field__hint">Added to the target while exporting solar, for example +2 °C.</small>
+              <label class="md-switch-row" id="device-detail-surplus-opt-row" hidden>
+                <md-switch aria-label="Use solar surplus" id="device-detail-surplus-opt"></md-switch>
+                <span class="md-switch-row__content">
+                  <span class="md-switch-row__label pels-text-settings-label">Use solar surplus</span>
+                  <small class="field__hint">Raise this device's target while you are exporting solar.</small>
+                </span>
+              </label>
+              <label class="md-switch-row" id="device-detail-dump-load-row" hidden>
+                <md-switch aria-label="Run on solar surplus" id="device-detail-dump-load-opt"></md-switch>
+                <span class="md-switch-row__content">
+                  <span class="md-switch-row__label pels-text-settings-label">Run on solar surplus</span>
+                  <small class="field__hint">PELS keeps this device off and turns it on when your home is exporting enough solar power to cover it. If you switch it on yourself while there is no surplus, PELS will switch it off again.</small>
+                  <small class="field__hint">Good for pool pumps, towel dryers, and garage or cabin heaters. Not for your only water heater — on a run of cloudy days it would stay cold.</small>
+                  <small class="field__hint" id="device-detail-dump-load-disabled-hint" hidden>Unavailable while this device has an active smart task — the task's schedule decides when it runs.</small>
+                  <small class="field__hint" id="device-detail-dump-load-power-limit-hint" hidden>Turn on Power-limit control in Power limiting first. PELS needs it to switch this device on and off.</small>
+                </span>
+              </label>
+              <label class="md-switch-row" id="device-detail-surplus-track-row" hidden>
+                <md-switch aria-label="Match solar surplus" id="device-detail-surplus-track-opt"></md-switch>
+                <span class="md-switch-row__content">
+                  <span class="md-switch-row__label pels-text-settings-label" id="device-detail-surplus-track-label">Match solar surplus</span>
+                  <small class="field__hint" id="device-detail-surplus-track-hint"></small>
+                  <small class="field__hint" id="device-detail-surplus-track-disabled-hint" hidden>Unavailable while this device has an active smart task — the task's schedule decides when it runs.</small>
+                  <small class="field__hint" id="device-detail-surplus-track-power-limit-hint" hidden>Turn on Power-limit control first. PELS needs it to set this device's level.</small>
+                </span>
+              </label>
+              <small class="field__hint" id="device-detail-solar-pending-hint" hidden></small>
+              <div class="detail-surplus-temperature" id="device-detail-surplus-temperature">
+                <p class="muted">While your home is exporting solar, this lifts the target so you use your own power instead of exporting it.</p>
+                <p class="muted detail-gate-hint" id="device-detail-surplus-gate-hint" hidden></p>
+                <div class="detail-deltas form-grid">
+                  <div class="md-field-row">
+                    <span class="field__label pels-text-settings-label" id="device-detail-surplus-delta-label">Solar-surplus boost</span>
+                    <md-filled-text-field
+                      id="device-detail-surplus-delta"
+                      aria-label="Solar-surplus boost"
+                      type="number"
+                      step="0.5"
+                      value="2"
+                      inputmode="decimal"
+                      suffix-text="°C"
+                    ></md-filled-text-field>
+                    <small class="field__hint">Added to the target while exporting solar, for example +2 °C.</small>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1146,6 +1204,39 @@
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
+              <!-- Moved into the Battery section, under Managed, on a
+                   battery's page (sectionLayout.ts), with its battery hint. -->
+              <label class="md-switch-row" id="device-detail-controllable-row">
+                <md-switch aria-label="Power-limit control" id="device-detail-controllable"></md-switch>
+                <span class="md-switch-row__content">
+                  <span class="md-switch-row__label pels-text-settings-label">Power-limit control</span>
+                  <small class="field__hint" id="device-detail-controllable-hint">Allow PELS to limit this device: to stay under your grid import limit or hard cap, to keep to your daily budget, or to follow your solar surplus.</small>
+                  <!-- Who starts the device with these settings (deviceStartRule.ts),
+                       the half of Power-limit control owners do not expect: PELS
+                       also turns the device on. A Smart task states the same rule
+                       for after the task. -->
+                  <small class="field__hint" id="device-detail-start-rule" hidden></small>
+                  <small class="field__hint" id="device-detail-controllable-battery-hint" hidden>PELS may cap its charge, call on it to hold your limit and share your solar between it and your devices, each at its turn in your priority order.</small>
+                </span>
+              </label>
+              <!-- The complement of "Leave off until turned on again" below.
+                   That switch answers "who may turn it OFF"; this one answers
+                   "who may turn it ON". It applies only while Power-limit
+                   control is off, where it is the only lever PELS has; with
+                   power limiting on PELS already decides when the device runs,
+                   so the row is hidden unless the device is opted in, where it
+                   says the setting is paused. It is shown only for a device
+                   with a Smart task: it means "runs only for a Smart task"
+                   (startPolicy.ts). -->
+              <label class="md-switch-row" id="device-detail-start-policy-row" hidden>
+                <md-switch aria-label="Only PELS starts this device" id="device-detail-start-policy"></md-switch>
+                <span class="md-switch-row__content">
+                  <span class="md-switch-row__label pels-text-settings-label">Only PELS starts this device</span>
+                  <small class="field__hint">If this device is started in Homey, on the device, or by another Flow, PELS turns it off again. It runs when a smart task needs it to, and not otherwise.</small>
+                  <small class="field__hint" id="device-detail-start-policy-no-task-hint" hidden>This device has no smart task, so nothing will start it while this is on.</small>
+                  <small class="field__hint" id="device-detail-start-policy-paused-hint" hidden>Paused while Power-limit control is on, because PELS already decides when this device runs. It applies again if Power-limit control is turned off.</small>
+                </span>
+              </label>
               <div class="field" id="device-detail-shed-field">
                 <span class="field__label pels-text-settings-label" id="device-detail-overshoot-segmented-label">What PELS does when limiting this device</span>
                 <div class="segmented" id="device-detail-overshoot-segmented" role="radiogroup" aria-labelledby="device-detail-overshoot-segmented-label"></div>
@@ -1195,6 +1286,16 @@
                 <md-filled-select id="device-detail-overshoot-step" aria-label="Limited step"></md-filled-select>
                 <small class="field__hint">For stepped loads, PELS will step down to this level or lower.</small>
               </div>
+              <label class="md-switch-row" id="device-detail-respect-external-off-row" hidden>
+                <md-switch aria-label="Leave off until turned on again" id="device-detail-respect-external-off"></md-switch>
+                <span class="md-switch-row__content">
+                  <span class="md-switch-row__label pels-text-settings-label">Leave off until turned on again</span>
+                  <small class="field__hint">If this device is turned off in Homey, on the device, or by another Flow, PELS will leave it off until it is turned on again. Devices turned off by PELS still resume automatically. Turning it on again returns it to normal PELS control.</small>
+                  <small class="field__hint" id="device-detail-respect-external-off-temperature-hint" hidden>This covers on and off only. PELS still sets this device’s temperature as usual, unless Keep the new temperature is selected above.</small>
+                  <small class="field__hint" id="device-detail-respect-external-off-power-limit-hint" hidden>Turn on Power-limit control above first — this setting applies when PELS controls whether the device runs.</small>
+                  <small class="field__hint" id="device-detail-respect-external-off-smart-task-hint" hidden>This device has an active smart task. In its booked hours, PELS can turn the device on when there is available power, even after it was turned off elsewhere.</small>
+                </span>
+              </label>
               <div class="field" id="device-detail-electrical-connection-row" hidden>
                 <span class="field__label pels-text-settings-label" id="device-detail-electrical-connection-label">Electrical connection</span>
                 <md-filled-select id="device-detail-electrical-connection" aria-label="Electrical connection">
@@ -1551,113 +1652,14 @@
                   </span>
                 </label>
 
-                <div class="field" id="device-detail-temperature-control-disabled-row" hidden>
-                  <label class="pels-text-settings-label" id="device-detail-temperature-control-label">When the temperature changes outside PELS</label>
-                  <md-filled-select id="device-detail-temperature-control-disabled" aria-label="When the temperature changes outside PELS">
-                    <md-select-option value="mode" selected><div slot="headline">Return to mode target</div></md-select-option>
-                    <md-select-option value="external"><div slot="headline">Keep the new temperature</div></md-select-option>
-                    <md-select-option value="update_mode"><div slot="headline">Save as current mode target</div></md-select-option>
-                  </md-filled-select>
-                  <small class="field__hint pels-text-body" id="device-detail-temperature-control-hint"></small>
-                  <small class="field__hint pels-text-body" id="device-detail-temperature-control-power-hint" hidden></small>
-                  <small class="field__hint pels-text-body" id="device-detail-temperature-control-disabled-smart-task-hint" hidden>Clear this device&rsquo;s active smart task before changing how PELS handles its temperature.</small>
-                </div>
 
-                <!-- Moved into the Battery section, under Managed, on a
-                     battery's page (sectionLayout.ts), with its battery hint. -->
-                <label class="md-switch-row" id="device-detail-controllable-row">
-                  <md-switch aria-label="Power-limit control" id="device-detail-controllable"></md-switch>
-                  <span class="md-switch-row__content">
-                    <span class="md-switch-row__label pels-text-settings-label">Power-limit control</span>
-                    <small class="field__hint" id="device-detail-controllable-hint">Allow PELS to limit this device: to stay under your grid import limit or hard cap, to keep to your daily budget, or to follow your solar surplus.</small>
-                    <!-- Who starts the device with these settings (deviceStartRule.ts),
-                         the half of Power-limit control owners do not expect: PELS
-                         also turns the device on. A Smart task states the same rule
-                         for after the task. -->
-                    <small class="field__hint" id="device-detail-start-rule" hidden></small>
-                    <small class="field__hint" id="device-detail-controllable-battery-hint" hidden>PELS may cap its charge, call on it to hold your limit and share your solar between it and your devices, each at its turn in your priority order.</small>
-                  </span>
-                </label>
 
-                <!-- The complement of "Leave off until turned on again" below.
-                     That switch answers "who may turn it OFF"; this one answers
-                     "who may turn it ON". It applies only while Power-limit
-                     control is off, where it is the only lever PELS has; with
-                     power limiting on PELS already decides when the device runs,
-                     so the row is hidden unless the device is opted in, where it
-                     says the setting is paused. It is shown only for a device
-                     with a Smart task: it means "runs only for a Smart task"
-                     (startPolicy.ts). -->
-                <label class="md-switch-row" id="device-detail-start-policy-row" hidden>
-                  <md-switch aria-label="Only PELS starts this device" id="device-detail-start-policy"></md-switch>
-                  <span class="md-switch-row__content">
-                    <span class="md-switch-row__label pels-text-settings-label">Only PELS starts this device</span>
-                    <small class="field__hint">If this device is started in Homey, on the device, or by another Flow, PELS turns it off again. It runs when a smart task needs it to, and not otherwise.</small>
-                    <small class="field__hint" id="device-detail-start-policy-no-task-hint" hidden>This device has no smart task, so nothing will start it while this is on.</small>
-                    <small class="field__hint" id="device-detail-start-policy-paused-hint" hidden>Paused while Power-limit control is on, because PELS already decides when this device runs. It applies again if Power-limit control is turned off.</small>
-                  </span>
-                </label>
 
-                <label class="md-switch-row" id="device-detail-respect-external-off-row" hidden>
-                  <md-switch aria-label="Leave off until turned on again" id="device-detail-respect-external-off"></md-switch>
-                  <span class="md-switch-row__content">
-                    <span class="md-switch-row__label pels-text-settings-label">Leave off until turned on again</span>
-                    <small class="field__hint">If this device is turned off in Homey, on the device, or by another Flow, PELS will leave it off until it is turned on again. Devices turned off by PELS still resume automatically. Turning it on again returns it to normal PELS control.</small>
-                    <small class="field__hint" id="device-detail-respect-external-off-temperature-hint" hidden>This covers on and off only. PELS still sets this device’s temperature as usual, unless Keep the new temperature is selected above.</small>
-                    <small class="field__hint" id="device-detail-respect-external-off-power-limit-hint" hidden>Turn on Power-limit control above first — this setting applies when PELS controls whether the device runs.</small>
-                    <small class="field__hint" id="device-detail-respect-external-off-smart-task-hint" hidden>This device has an active smart task. In its booked hours, PELS can turn the device on when there is available power, even after it was turned off elsewhere.</small>
-                  </span>
-                </label>
 
-                <!-- Kind-inapplicable on devices with no temperature target (EV
-                     chargers, plain on/off devices): hidden outright there — a
-                     temperature promise on a socket is not a gate the user can
-                     lift from this page. -->
-                <label class="md-switch-row" id="device-detail-price-opt-row">
-                  <md-switch aria-label="Price-based control" id="device-detail-price-opt"></md-switch>
-                  <span class="md-switch-row__content">
-                    <span class="md-switch-row__label pels-text-settings-label">Price-based control</span>
-                    <small class="field__hint">Adjust temperature based on electricity price fluctuations.</small>
-                    <!-- Where the prices come from, and whether they are set up
-                         (deviceDetail/priceSourceHint.ts): turning price control
-                         on must never hide an unset price source. -->
-                    <small class="field__hint" id="device-detail-price-source-hint" hidden></small>
-                  </span>
-                </label>
-                <div class="form__actions" id="device-detail-price-source-action" hidden>
-                  <md-text-button type="button" data-settings-target="electricity-prices" data-settings-anchor="#price-source-select">Set up prices</md-text-button>
-                </div>
 
-                <label class="md-switch-row" id="device-detail-surplus-opt-row" hidden>
-                  <md-switch aria-label="Use solar surplus" id="device-detail-surplus-opt"></md-switch>
-                  <span class="md-switch-row__content">
-                    <span class="md-switch-row__label pels-text-settings-label">Use solar surplus</span>
-                    <small class="field__hint">Raise this device's target while you are exporting solar.</small>
-                  </span>
-                </label>
 
-                <label class="md-switch-row" id="device-detail-dump-load-row" hidden>
-                  <md-switch aria-label="Run on solar surplus" id="device-detail-dump-load-opt"></md-switch>
-                  <span class="md-switch-row__content">
-                    <span class="md-switch-row__label pels-text-settings-label">Run on solar surplus</span>
-                    <small class="field__hint">PELS keeps this device off and turns it on when your home is exporting enough solar power to cover it. If you switch it on yourself while there is no surplus, PELS will switch it off again.</small>
-                    <small class="field__hint">Good for pool pumps, towel dryers, and garage or cabin heaters. Not for your only water heater — on a run of cloudy days it would stay cold.</small>
-                    <small class="field__hint" id="device-detail-dump-load-disabled-hint" hidden>Unavailable while this device has an active smart task — the task's schedule decides when it runs.</small>
-                    <small class="field__hint" id="device-detail-dump-load-power-limit-hint" hidden>Turn on Power-limit control above first — PELS needs it to switch this device on and off.</small>
-                  </span>
-                </label>
 
-                <label class="md-switch-row" id="device-detail-surplus-track-row" hidden>
-                  <md-switch aria-label="Match solar surplus" id="device-detail-surplus-track-opt"></md-switch>
-                  <span class="md-switch-row__content">
-                    <span class="md-switch-row__label pels-text-settings-label" id="device-detail-surplus-track-label">Match solar surplus</span>
-                    <small class="field__hint" id="device-detail-surplus-track-hint"></small>
-                    <small class="field__hint" id="device-detail-surplus-track-disabled-hint" hidden>Unavailable while this device has an active smart task — the task's schedule decides when it runs.</small>
-                    <small class="field__hint" id="device-detail-surplus-track-power-limit-hint" hidden>Turn on Power-limit control first. PELS needs it to set this device's level.</small>
-                  </span>
-                </label>
 
-                <small class="field__hint" id="device-detail-solar-pending-hint" hidden></small>
 
                 <label class="md-switch-row" id="device-detail-budget-exempt-row">
                   <md-switch aria-label="Budget exempt" id="device-detail-budget-exempt"></md-switch>
