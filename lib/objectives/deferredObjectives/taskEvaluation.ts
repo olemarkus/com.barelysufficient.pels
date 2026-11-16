@@ -14,10 +14,15 @@ export type TaskEvaluation = {
    * yet. Nothing can be allocated, so the task heats toward its target on free
    * capacity, which is also what produces the readings the rate is learned from.
    * Once the rate is known the task is allocated as usual.
+   *
+   * `awaiting_prices`: prices do not yet reach the deadline, so nothing can be
+   * allocated. The task holds its device until the latest start that still
+   * meets the deadline, then runs it on free capacity (`withAwaitingPricesPlanning`).
    */
   planning:
     | { kind: 'inactive' }
     | { kind: 'learning' }
+    | { kind: 'awaiting_prices'; device: 'held' | 'running' }
     | { kind: 'allocated'; plan: DeferredObjectiveHorizonPlan };
   permissions: { budgetExempt: boolean; limitLowerPriority: boolean; pauseLowerPriority: boolean };
   targetControl: { kind: 'none' } | { kind: 'temperature'; value: number };

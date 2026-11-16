@@ -72,6 +72,48 @@ export const buildHorizonUnavailableDiagnostic = (
   horizonBucketCount: rawPolicyHorizon.horizonBucketCount,
 }, rawPolicyHorizon.reasonCode);
 
+// The allocator keeps the last hour before the deadline as its reserve
+// (`rescueReplan.ts`); the latest start leaves the same room.
+const LATEST_START_RESERVE_MS = 60 * 60 * 1000;
+const MS_PER_HOUR = 60 * 60 * 1000;
+
+/**
+ * A task that cannot be allocated because prices do not yet reach its deadline
+ * (before the next day's prices are published, for a deadline the next day)
+ * still governs its device. It holds the device, as an interval it released for
+ * cheaper hours, until the latest start: the last moment the remaining energy
+ * still fits before the deadline reserve at the device's slowest useful rung.
+ * From then the device runs toward the target on free capacity, so prices that
+ * never arrive cannot make the task miss.
+ *
+ * The latest start needs the task's progress, its remaining energy and the
+ * device's speed. A task missing any of them stays inactive: PELS does not hold
+ * a device it cannot say when to start.
+ *
+ * Waiting means prices exist for now and stop short of the deadline. With no
+ * price for the current interval there is nothing cheaper to wait for, so the
+ * task stays inactive and the device keeps its normal control.
+ */
+export const withAwaitingPricesPlanning = (
+  diagnostic: DeferredObjectiveDiagnostic,
+  priceHorizon: readonly PriceHorizonEntry[],
+  nowMs: number,
+): DeferredObjectiveDiagnostic => {
+  const { evaluation, energyNeededKWh, planningSpeedKw } = diagnostic;
+  if (!priceHorizon.some((entry) => entry.startMs <= nowMs && nowMs < entry.endMs)) return diagnostic;
+  if (evaluation.progress.kind !== 'known') return diagnostic;
+  if (energyNeededKWh === null || planningSpeedKw === null) return diagnostic;
+  const runMs = (energyNeededKWh / planningSpeedKw) * MS_PER_HOUR;
+  const latestStartMs = evaluation.deadlineAtMs - LATEST_START_RESERVE_MS - runMs;
+  return {
+    ...diagnostic,
+    evaluation: {
+      ...evaluation,
+      planning: { kind: 'awaiting_prices', device: nowMs < latestStartMs ? 'held' : 'running' },
+    },
+  };
+};
+
 // Fresh-path diagnostic: shape the plan the allocator produced (via the rescue
 // resolver). The bootstrap / `:58`-settle counterpart to `buildFrozenDiagnostic`.
 export const buildFreshDiagnostic = (

@@ -195,6 +195,17 @@ deadline is far enough in the future that tomorrow's prices are required, planni
 `unknown` with `objective_missing_price_horizon` until those prices are available. It must not
 fall back to neutral or whole-range planning when the price horizon is incomplete.
 
+A task waiting for prices still governs its device (owner ruling 2026-11-16). Before the next
+day's prices are published this is the normal state of a task due the next day, not a read
+gap. The task holds the device as it holds an interval it released for cheaper hours, until its
+latest start: the deadline, less the one-hour reserve, less the remaining energy at the device's
+slowest useful rung. From the latest start the device runs toward the target on free capacity
+with no rescue permission, so prices that never arrive cannot make the task miss. A task whose
+progress, remaining energy or speed is unknown has no latest start and stays `inactive`
+(`withAwaitingPricesPlanning`). Waiting means prices exist for the current interval and stop short of the
+deadline; with no price for now there is nothing cheaper to wait for, and the task stays
+`inactive`.
+
 That gate applies only while the objective still needs future energy. When fresh EV SoC or
 temperature progress has reached the target in its progress direction, the bridge emits `satisfied` before price or
 horizon gating because no future allocation is needed. `satisfied` remains a live evaluation,
@@ -237,7 +248,8 @@ fallback actuation stays on the independent lifecycle clock:
   decision maps the resolved interval claim: `claimed` becomes `planned`, `released` becomes `idle`,
   and a claimed interval booked at 0 kWh is driven on free capacity only. Only an evaluation whose
   planning is `inactive` (an `unknown` or `invalid` objective, or any task while price optimization
-  is off) resolves to `inactive`, returning the device to its normal behavior. A `satisfied` task
+  is off) resolves to `inactive`, returning the device to its normal behavior. A task waiting for
+  prices is not inactive: it resolves to `idle` until its latest start and to `planned` after. A `satisfied` task
   keeps governing its device until the deadline: its booked intervals stay as top-ups and every
   unbooked interval holds the device off (`holdCause: 'task_done'`, owner ruling 2026-10-17).
 - Capacity-based control on/off is treated purely as device visibility for the planner: cap-on

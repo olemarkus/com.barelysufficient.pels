@@ -64,15 +64,35 @@ const resolveReleaseIntent = (
   return device?.control.commandAuthority === false ? 'shed_release' : undefined;
 };
 
+// No prices reach the deadline yet, and the task can still finish later: the
+// device waits for them as it waits through an interval the task released.
+const resolvePriceWaitHold = (
+  evaluation: TaskEvaluation,
+  device: PlanInputDevice | undefined,
+): DeferredAdmissionDecision => {
+  const releaseIntent = resolveReleaseIntent(usesBinaryReleaseControl(device), device);
+  return {
+    kind: 'idle',
+    budgetExempt: false,
+    holdCause: 'cheaper_hours',
+    ...resolveTaskTargetFloor(evaluation),
+    ...(releaseIntent ? { releaseIntent } : {}),
+  };
+};
+
 const resolveDecision = (
   evaluation: TaskEvaluation,
   device: PlanInputDevice | undefined,
 ): DeferredAdmissionDecision => {
   if (evaluation.planning.kind === 'inactive') return { kind: 'inactive', budgetExempt: false };
-  if (evaluation.planning.kind === 'learning') {
+  if (evaluation.planning.kind === 'awaiting_prices' && evaluation.planning.device === 'held') {
+    return resolvePriceWaitHold(evaluation, device);
+  }
+  if (evaluation.planning.kind === 'learning' || evaluation.planning.kind === 'awaiting_prices') {
     // Runs toward the task's target like an hour booked at 0 kWh: no plan backs a
     // promise, so it claims no exemption, boost or startup reservation and runs
-    // only on capacity that is actually free.
+    // only on capacity that is actually free. A task still without prices at its
+    // latest start runs the same way.
     return {
       kind: 'planned',
       budgetExempt: false,

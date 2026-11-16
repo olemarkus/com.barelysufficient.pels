@@ -20,6 +20,8 @@ retain precedence. See the continuity section of the design record.
 
 A `released` interval stands the task's device down even when Power-limit control is on. With standing command authority, `admission.ts` holds that device off; a temperature-only device with no off command keeps its configured setback. With borrowed authority, it keeps its configured release posture. Both are deferred holds, not capacity pressure, and must not clamp unrelated stepped devices. `claimed` intervals continue through normal planning. Do not infer the release rule from task status text or stored start policy; use the resolved active claim and authority.
 
+A task that cannot be allocated because prices do not yet reach its deadline also governs its device: `withAwaitingPricesPlanning` holds it until the latest start that still meets the deadline, then runs it on free capacity (owner ruling 2026-11-16). This applies when prices exist for the current interval; with none, the task stays inactive. Do not treat prices that stop short of the deadline as a read gap that returns the device to normal control.
+
 The task governs until its deadline, also once satisfied (owner ruling 2026-10-17). Satisfaction strips the rescue permissions; it does not hand the device back to normal running, and it has no lifecycle fallback of its own. A temperature task's setpoint rides every decision as `deadlineFloorTargetC`, so neither satisfaction nor a mode change writes a mode target below the task's mid-task (a more demanding one still wins, as the floor has always worked); a released interval's shed posture carries its own limit.
 
 ## The step-ladder gap is the producer's answer
