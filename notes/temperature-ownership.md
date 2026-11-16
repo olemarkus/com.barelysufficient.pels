@@ -138,7 +138,9 @@ the next build reads the mode target. The "Save as current mode target" fence
 admits it beside the saved target. Under that policy a change made on the device while
 the override is in force is not saved to the mode
 (`observed_temperature_mode_update_skipped_while_overridden`): the device
-converges back onto the override, as it does onto a limit.
+converges back onto the override, as it does onto a limit. The stored value is brought into
+the device's range and onto its step in the resolver, whoever wrote it. While
+the device is set to "Keep the new temperature" an override is not in force.
 
 ## Consequences to keep true
 

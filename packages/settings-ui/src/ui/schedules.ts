@@ -30,6 +30,13 @@ const SCHEDULE_PARAM = 'schedule';
 const DEVICE_PARAM = 'scheduleDevice';
 // `override` opens a new schedule for the device as an override, not a Smart task.
 const ACTION_PARAM = 'scheduleAction';
+// The temperature a new override schedule opens with: the one the owner was looking at.
+const TEMPERATURE_PARAM = 'scheduleTemperature';
+const requestedTemperature = (params: URLSearchParams): number | null => {
+  const raw = params.get(TEMPERATURE_PARAM);
+  const value = raw === null || raw === '' ? Number.NaN : Number(raw);
+  return Number.isFinite(value) ? value : null;
+};
 const FILTER_PARAM = 'scheduleFilter';
 
 const paint = (): void => {
@@ -80,14 +87,17 @@ const hydrateEditor = (id: string, read: SchedulesSnapshot, params: URLSearchPar
   if (id === 'new') {
     const device = newScheduleDevice(params);
     const requested = params.get(DEVICE_PARAM);
+    const wantsOverride = params.get(ACTION_PARAM) === 'override';
     if (requested !== null && device?.deviceId !== requested) {
-      view = { ...view, editor: null, error: 'This device is not available for a scheduled Smart task.' };
+      view = { ...view, editor: null, error: wantsOverride
+        ? 'This device is not available for a scheduled override.'
+        : 'This device is not available for a scheduled Smart task.' };
       return;
     }
     const created = createScheduleDraft(device, read.modes[0] ?? '', today, pendingSchedules(read));
-    const asOverride = params.get(ACTION_PARAM) === 'override' && device !== undefined
-      && scheduleOverrideDevices([device]).length > 0;
-    const override = asOverride ? { ...created, ...overrideDraftPatch(created, device) } : null;
+    const asOverride = wantsOverride && device !== undefined;
+    const override = asOverride
+      ? { ...created, ...overrideDraftPatch(created, device, requestedTemperature(params)) } : null;
     const draft = override === null ? created : withOverrideEnd({
       ...override,
       name: automaticScheduleName(override, view.devices),
@@ -187,6 +197,7 @@ export const backFromScheduleEditor = (): void => {
   params.delete(SCHEDULE_PARAM);
   params.delete(DEVICE_PARAM);
   params.delete(ACTION_PARAM);
+  params.delete(TEMPERATURE_PARAM);
   window.history.replaceState(window.history.state, '', `${window.location.pathname}?${params}${window.location.hash}`);
   view = { ...view, editor: null, error: '' };
   paint();
@@ -304,6 +315,8 @@ export const initSchedulesNavigation = (showPanel: (panel: string) => void, clos
     if (target.dataset.scheduleDevice) params.set(DEVICE_PARAM, target.dataset.scheduleDevice);
     if (target.dataset.scheduleAction) params.set(ACTION_PARAM, target.dataset.scheduleAction);
     else params.delete(ACTION_PARAM);
+    if (target.dataset.scheduleTemperature) params.set(TEMPERATURE_PARAM, target.dataset.scheduleTemperature);
+    else params.delete(TEMPERATURE_PARAM);
     if (target.dataset.scheduleId) params.set(SCHEDULE_PARAM, target.dataset.scheduleId);
     else if (target.dataset.scheduleDevice) params.set(SCHEDULE_PARAM, 'new');
     window.history.replaceState(

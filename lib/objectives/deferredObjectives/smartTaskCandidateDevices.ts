@@ -64,6 +64,9 @@ const buildCandidateDevice = (
     // devices helps at any priority, and swap selection already refuses
     // anything not strictly lower.
     supportsLimitLowerPriority: deviceSupportsLimitLowerPriority(device),
+    // A settable temperature target PELS may write: the device a temperature override applies to.
+    ...(device.targets.length > 0 && device.temperatureControlDisabled !== true
+      ? { overridable: true as const } : {}),
     rescue: device.rescue,
   };
 };

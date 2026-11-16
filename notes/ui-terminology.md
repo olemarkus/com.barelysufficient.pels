@@ -824,39 +824,46 @@ temperature on a managed thermostat. The card is first on that device's page
 
 | State | Text |
 |---|---|
-| None in force | `Hold a temperature for a while. Prices and mode changes do not move it; power limits still apply.` + `Set an override` |
-| Form | `Temperature (°C)`, `Ends`: `In 2 hours` / `At 08:00` / `Pick a time` (then `Date` and `Time`), `Start override`, `Cancel` |
-| In force | `22° until 21:30`, or `22° until Sun 21:30` when it ends on a later day, + `Change`, `End now` |
-| Keep the new temperature selected | `PELS does not set this device’s temperature while Keep the new temperature is selected.` |
+| None in force | `Hold a temperature for a while. Prices and mode changes do not move it; power limits still apply.` + tonal `Set an override` |
+| Form | `Temperature (°C)`, `Ends`: `In 2 hours` / `At 08:00` / `Pick a time` (then `Date` and `Time`), the resolved end (`Ends today 21:48`, `Ends tomorrow 08:00`, `Ends Sun 18:00`), `Start override`, `Cancel` |
+| In force | `22° until 21:30`, or `22° until Sun 21:30` when it ends on a later day, `Then back to the mode target. Power limits still apply.` + `Change`, `End now` |
+| Changing one in force | The form opens on `Pick a time` with the override's own end, and its button reads `Save` |
+| Keep the new temperature selected | `Override is not available while this device is set to Keep the new temperature. Change it under When the temperature changes outside PELS.` |
 
-Form errors: `Enter a temperature from 5 to 35 °C.` (`Enter a temperature.` when
-the device declares no range), `Choose an end time in the future.`, `Choose an
-end time within seven days.`, `Choose a date and time that exists in the Homey
-time zone.` Toasts: `Override started.`, `Override ended.`, `Could not save the
-override.` The overview card carries an `Override` chip beside its state chip
-while one is in force, limited or not, and no reason line for it. The two Flow cards that start and end one are still titled
-"temporary temperature".
+A new override starts from the device's target in the active mode. It ends `At
+08:00` by default from 15:00, `In 2 hours` earlier in the day. Form errors:
+`Enter a temperature from 5 to 35 °C.` (`Enter a temperature.` when the device
+declares no range), `Choose an end time in the future.`, `Choose an end time
+within seven days.`, `Choose a date and time that exists in the Homey time zone.`
+Toasts: `Override started.`, `Override changed.`, `Override ended.`, `Could not
+save the override.` The overview card carries an `Override` chip beside its state
+chip while one is in force, limited or not, and no reason line for it. The two
+Flow cards that start and end one are still titled "temporary temperature".
 
 An override outranks a Smart task on the device, and three places say so. The
 form, when the device has an open task: `The Smart task on this device waits
 until the override ends.`, or, when the task's ready-by time comes before the
 chosen end, `The Smart task on this device ends without running: its ready-by
 time comes first.` The device page's Smart task box appends `· Waiting for the
-override to end` to the open task's line. The New smart task page, for a device
-with one in force: `This device has an override until 21:30. The Smart task
-waits until it ends.`
+override to end` to the open task's line, or `· Ends without running: the
+override lasts past its ready-by time`. The New smart task page, for a device
+with one in force: `This device has an override until 21:30. A Smart task waits
+until it ends; one that must be ready before then ends without running.`
 
 A schedule can start an override: the editor's action control reads `Smart task`
-/ `Override` / `Mode`, and an override asks for `Device`, `Temperature (°C)` and
-`Until` (hint: `Ends the following day. ` when the end is at or before the start,
-then `Prices and mode changes do not move the temperature meanwhile; power limits
-still apply.`), with the trigger time labelled `Start override at`. A new one is
+/ `Override` / `Mode`. An override asks for `Device` and `Temperature (°C)` (hint:
+`Prices and mode changes do not move the temperature meanwhile; power limits
+still apply.`), and under When?, `Start override at` and `End override at` (hint
+`Ends the following day.` when the end is at or before the start). A new one is
 named `<device> override` and runs 06:00 to 07:00 until the owner changes it. Its
-row reads `<device> · Override 26 °C · 1 h`; the list filter adds `Overrides`. Its
-results: `Override started.`, `Skipped because this device already has an
-override.`, `Skipped because the override would already have ended.`, `Skipped
-because the device is set to Keep the new temperature.` The Override card links to
-it with `Repeat on a schedule`.
+row reads `<device> · Override 26 °C until 07:00`; the list filter adds
+`Overrides`, and a device group counts `N schedules` when it holds more than one
+kind. Its results: `Override started.`, `Skipped because this device already has
+an override.`, `Skipped because the override would already have ended.`, `Skipped
+because the device is set to Keep the new temperature.`; paused, it reads
+`Scheduled overrides for this device are off`. The Override card links to it with
+`Repeat on a schedule`, for a device a schedule can act on, opening it at the
+override's temperature.
 
 ### Device-page limited temperature on a setpoint-only device
 

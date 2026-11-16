@@ -43,7 +43,7 @@ export class ObservedTemperatureModeUpdates {
     private readonly isLimited: (deviceId: string) => boolean,
     /** Every setpoint a limit may write to this device, as the shed-behaviour producer resolves it. */
     private readonly readLimitTemperatures: (deviceId: string) => readonly number[],
-    /** A temperature override while it is in force, already normalized, or `null`. */
+    /** A temperature override while it is in force, as stored, or `null`. */
     private readonly readTemporaryTemperatureC: (deviceId: string) => number | null,
   ) {}
 
@@ -85,7 +85,10 @@ export class ObservedTemperatureModeUpdates {
     }
     // A temperature override is the owner's own choice for now, the way
     // the saved target is; the resolver applies no offset to it.
-    if (this.readTemporaryTemperatureC(deviceId) === value) return true;
+    // Compared as the resolver commands it: a stored value off the device's step is
+    // commanded on it.
+    const overrideC = this.readTemporaryTemperatureC(deviceId);
+    if (overrideC !== null && this.normalizeTarget(deviceId, overrideC) === value) return true;
     try {
       const active = this.resolveDeviceMode(deviceId);
       if (active.state !== 'resolved' || active.mode === null) return false;

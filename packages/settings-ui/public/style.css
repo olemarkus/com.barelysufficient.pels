@@ -3375,7 +3375,12 @@ md-filled-tonal-button.is-busy {
   gap: var(--spacing-3);
 }
 
+.device-detail-override__custom-end {
+  grid-column: 1 / -1;
+}
+
 .device-detail-override__actions {
+  align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: var(--spacing-2);

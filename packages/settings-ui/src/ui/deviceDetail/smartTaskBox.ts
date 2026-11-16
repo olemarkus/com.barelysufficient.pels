@@ -5,7 +5,7 @@ import type {
 import type { SettingsUiSmartTaskDevicesResponse } from '../../../../contracts/src/smartTaskEdit.ts';
 import { SMART_TASK_CREATE_PAGE_COPY } from '../../../../shared-domain/src/smartTaskCopy/createEditCopy.ts';
 import { hasLoadedDeferredObjectiveSettings } from '../deferredObjectiveSettings.ts';
-import { OVERRIDE_COPY } from '../deviceOverrideDraft.ts';
+import { resolveOverrideSmartTaskBoxNote } from '../deviceOverrideDraft.ts';
 import { DEVICE_OVERRIDE_CHANGED_EVENT, getActiveDeviceOverride } from '../deviceOverrideStore.ts';
 import { callApi } from '../homey.ts';
 import { isSmartTaskCreateOpenFor } from '../smartTaskCreate.ts';
@@ -33,6 +33,8 @@ type CandidateRead =
 // The read this box holds, and the device and Managed state it was read for.
 let candidates: { deviceId: string; managed: boolean; read: CandidateRead } | null = null;
 let readGeneration = 0;
+// The device whose page the box is on, while that page is open.
+let shownDeviceId: string | null = null;
 
 const box = (): HTMLElement | null => document.getElementById('device-detail-smart-task');
 
@@ -56,6 +58,7 @@ const hide = (): void => {
 };
 
 export const hideDeviceSmartTaskBox = (): void => {
+  shownDeviceId = null;
   readGeneration += 1;
   candidates = null;
   hide();
@@ -70,9 +73,9 @@ const textButton = (label: string, data: Record<string, string>): HTMLElement =>
 
 const paintOpenTask = (deviceId: string, entry: DeferredObjectiveSettingsEntry): void => {
   const line = formatOpenSmartTaskLine(entry);
-  const waiting = getActiveDeviceOverride(deviceId, Date.now()) !== null;
+  const override = getActiveDeviceOverride(deviceId, Date.now());
   paint(
-    waiting ? `${line} · ${OVERRIDE_COPY.smartTaskBoxWaiting}` : line,
+    override ? `${line} · ${resolveOverrideSmartTaskBoxNote(override.untilMs, entry.deadlineAtMs)}` : line,
     textButton(SMART_TASK_CREATE_PAGE_COPY.viewTask, { smartTaskView: deviceId }),
     deviceId,
   );
@@ -109,6 +112,7 @@ const readCandidates = async (deviceId: string, managed: boolean): Promise<void>
 };
 
 export const renderDeviceSmartTaskBox = (deviceId: string): void => {
+  shownDeviceId = deviceId;
   // Until the stored tasks have loaded, an empty map reads like a device with
   // no task, which would offer Add over a task the page cannot see yet. While
   // the device's first task is being created (the page was opened over the
@@ -143,5 +147,5 @@ export const renderDeviceSmartTaskBox = (deviceId: string): void => {
 // the override's reads and writes.
 document.addEventListener(DEVICE_OVERRIDE_CHANGED_EVENT, (event) => {
   const { deviceId } = (event as CustomEvent<{ deviceId: string }>).detail;
-  if (candidates?.deviceId === deviceId) renderDeviceSmartTaskBox(deviceId);
+  if (shownDeviceId === deviceId) renderDeviceSmartTaskBox(deviceId);
 });

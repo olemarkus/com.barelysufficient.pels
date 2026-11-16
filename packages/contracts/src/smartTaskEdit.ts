@@ -50,6 +50,10 @@ export type SmartTaskCandidateDevice = SmartTaskCandidateGoal & {
   // a permission that would be a no-op for a binary device. The budget-exempt
   // toggle has no such gate (any device can exceed the soft daily budget).
   supportsLimitLowerPriority: boolean;
+  // PELS sets this device's temperature, so a schedule can start a temperature
+  // override on it. Absent for a device PELS only switches or steps, whatever
+  // temperature its Smart task reads.
+  overridable?: true;
   rescue?: DeferredObjectiveRescuePermissions;
 };
 
