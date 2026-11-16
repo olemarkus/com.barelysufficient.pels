@@ -77,6 +77,9 @@ export const updateDeltaSectionVisibility = (device: SettingsUiDeviceDetailItem 
   deviceDetailDeltaSection.style.display = 'block';
   // The fields are Price-based control's settings: hidden while it is off.
   if (deviceDetailDeltaFields) deviceDetailDeltaFields.hidden = !deviceDetailPriceOpt.selected;
+  // The direction note is for a device that can cool: one that reports a mode.
+  const directionHint = document.getElementById('device-detail-delta-direction-hint');
+  if (directionHint) directionHint.hidden = device?.capabilities?.includes('thermostat_mode') !== true;
   if (deviceDetailCheapDelta) deviceDetailCheapDelta.disabled = gateHint !== null;
   if (deviceDetailExpensiveDelta) deviceDetailExpensiveDelta.disabled = gateHint !== null;
   if (deviceDetailDeltaGateHint) {

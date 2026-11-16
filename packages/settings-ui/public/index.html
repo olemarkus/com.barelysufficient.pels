@@ -1083,10 +1083,12 @@
         </section>
 
         <section class="detail-section" id="device-detail-delta-section">
-          <details class="settings-collapse detail-collapse" open>
+          <!-- Closed when the page opens; the header summarises the setting
+               (deviceDetail/sectionSummaries.ts). -->
+          <details class="settings-collapse detail-collapse" id="device-detail-delta-disclosure">
             <summary>
               <h3 class="section-title">Price response</h3>
-              <span class="section-hint">Cheap-hour boost and expensive-hour reduction</span>
+              <span class="section-hint" id="device-detail-delta-summary"></span>
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
@@ -1113,7 +1115,8 @@
                    hint. They are hidden while the switch is off. -->
               <p class="muted detail-gate-hint" id="device-detail-delta-gate-hint" hidden></p>
               <div class="detail-deltas form-grid" id="device-detail-delta-fields">
-                <p class="muted">PELS follows the device's own heating or cooling mode, so a cooling unit moves its target the opposite way.</p>
+                <!-- Only for a device that reports a heating or cooling mode (deviceDetail/priceOpt.ts). -->
+                <p class="muted" id="device-detail-delta-direction-hint" hidden>PELS follows the device's own heating or cooling mode, so a cooling unit moves its target the opposite way.</p>
                 <div class="md-field-row">
                   <span class="field__label pels-text-settings-label" id="device-detail-cheap-delta-label">Cheap-hour boost</span>
                   <md-filled-text-field
@@ -1204,9 +1207,10 @@
         </section>
 
         <section class="detail-section" id="device-detail-shedding-section">
-          <details class="settings-collapse detail-collapse" open>
+          <details class="settings-collapse detail-collapse" id="device-detail-shedding-disclosure">
             <summary>
               <h3 class="section-title">Power limiting</h3>
+              <span class="section-hint" id="device-detail-shedding-summary"></span>
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
@@ -1254,7 +1258,7 @@
                 <!-- With one action (or limiting switched off) there is nothing to choose:
                      the radiogroup gives way to a statement of what PELS does. -->
                 <p class="pels-text-status-line detail-shed-statement" id="device-detail-shed-statement" hidden></p>
-                <small class="field__hint" id="device-detail-shed-hint">PELS uses this action when it needs to lower power: to stay under your grid import limit or hard cap, to keep to your daily budget, or when solar surplus runs out.</small>
+                <small class="field__hint" id="device-detail-shed-hint">PELS uses this action when it needs to lower power.</small>
               </div>
               <div class="md-field-row" id="device-detail-overshoot-temp-row" hidden>
                 <span class="field__label pels-text-settings-label" id="device-detail-overshoot-temp-label">Limited temperature</span>
@@ -1756,6 +1760,10 @@
               <div id="device-detail-activity-log-body" class="device-log"></div>
             </div>
           </details>
+        </section>
+
+        <!-- Last on the page for every kind (deviceDetail/sectionLayout.ts). -->
+        <section class="detail-section" id="device-detail-report-section">
           <div class="inline-actions">
             <md-outlined-button type="button" id="device-detail-report-problem">Report a problem</md-outlined-button>
           </div>

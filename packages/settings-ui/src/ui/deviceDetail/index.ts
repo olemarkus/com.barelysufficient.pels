@@ -3,6 +3,7 @@ import { hideDeviceDetailLiveStatus, renderDeviceDetailLiveStatus } from './live
 import { initContinuousBatteryPlanRefresh, setContinuousBatteryPlanDevice } from './continuousBatteryPlan.tsx';
 import { setBatteryApiKeyDevice } from './batteryApiKey.tsx';
 import { hideDeviceTemporaryCard, renderDeviceTemporaryCard } from './temporaryCard.ts';
+import { renderDeviceDetailSectionSummaries, resetDeviceDetailSectionDisclosures } from './sectionSummaries.ts';
 import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
 import {
   deviceDetailOverlay,
@@ -326,6 +327,7 @@ const refreshOpenDeviceDetail = () => {
   applyDeviceDetailSectionLayout(device);
   void renderDeviceDetailLiveStatus(currentDetailDeviceId);
   renderDeviceTemporaryCard(currentDetailDeviceId);
+  renderDeviceDetailSectionSummaries(device);
   setDeviceDetailControlStates(currentDetailDeviceId, device);
   setDeviceDetailShedBehavior(currentDetailDeviceId, device, updateSetStepOptionLabel);
   renderDeviceDetailPowerModel(device);
@@ -366,6 +368,7 @@ export const openDeviceDetail = (deviceId: string) => {
   applyDeviceDetailSectionLayout(device);
   void renderDeviceDetailLiveStatus(deviceId);
   renderDeviceTemporaryCard(deviceId);
+  renderDeviceDetailSectionSummaries(device);
   setDeviceDetailControlStates(deviceId, device);
   setDeviceDetailShedBehavior(deviceId, device, updateSetStepOptionLabel);
   renderDeviceDetailPowerModel(device);
@@ -402,6 +405,7 @@ export const closeDeviceDetail = () => {
   resetDeviceDetailControlContest();
   hideDeviceDetailLiveStatus();
   hideDeviceTemporaryCard();
+  resetDeviceDetailSectionDisclosures();
   currentDetailDeviceId = null;
   if (deviceDetailOverlay) {
     deviceDetailOverlay.hidden = true;

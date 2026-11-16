@@ -8058,7 +8058,8 @@ md-switch {
 }
 
 #device-detail-panel .detail-mode-row md-filled-text-field.detail-mode-temp {
-  width: 120px;
+  width: 96px;
+  max-width: none;
   justify-self: end;
 }
 
@@ -9480,4 +9481,29 @@ md-switch {
   width: 100%;
   min-width: 0;
   max-width: 100%;
+}
+
+/* Device page, Temperature per mode: one line per mode. The mode's name, its
+ * Active chip and its priority on the left, the temperature on the right, as a
+ * flat list with dividers at every width. */
+#device-detail-panel .detail-mode-list {
+  gap: 0;
+}
+
+#device-detail-panel .detail-mode-row {
+  grid-template-columns: minmax(0, 1fr) 96px;
+  padding: var(--spacing-2) 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+#device-detail-panel .detail-mode-row + .detail-mode-row {
+  border-top: 1px solid var(--panel-border);
+}
+
+/* Report a problem ends the device page as a section of its own; the gap above
+ * it is the section gap, not the action row's. */
+#device-detail-report-section .inline-actions {
+  margin: 0;
 }

@@ -798,6 +798,16 @@ own limit. Lower the level to stop earlier.` (with the no-level toggle off: `The
 car charges to its own limit. Now 100%.`, and the lever lines name `hold a car
 until its level is known` instead of a percent).
 
+Device-page length: the page reads as a summary first. **Price response** and
+**Power limiting** are closed when the page opens and close again for the next
+page; each header's hint line is its summary (`deviceDetail/sectionSummaries.ts`):
+`Off`, `On`, `On · +2.5° cheap, −2° expensive`; `Off`, `On · turns off when
+limiting`, `On · lowers to 16° when limiting`, `On · steps down when limiting`.
+Temperature per mode is one line per mode: name, `Active` chip and priority on
+the left, the temperature on the right. The heating-or-cooling note in Price
+response shows only for a device that reports a mode. `Report a problem` is the
+last thing on the page.
+
 Device-page switches: **each switch heads the card it governs** (Price-based
 control in Price response, the solar switches in Solar surplus, Power-limit
 control in Power limiting); Setup keeps what is set once. A switch the owner
