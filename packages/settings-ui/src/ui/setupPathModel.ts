@@ -90,10 +90,10 @@ export type SetupPathFacts = {
    */
   actionableDeviceCount: number;
   /**
-   * Devices PELS could run that the owner has not managed, counted only while
-   * every actionable managed device is a home battery. PELS manages a battery
-   * by itself, so that battery is not the owner's choice: the Devices step
-   * stays open while a charger or heater waits unchosen.
+   * EV chargers PELS could run that the owner has not managed, counted only
+   * while the home is simulating and every actionable managed device is a home
+   * battery. PELS manages a battery by itself, so that battery is not the
+   * owner's choice: the Devices step stays open while a charger waits unchosen.
    */
   unchosenBesideBatteryCount: number;
   /** Managed devices that also have Limit on: the ones PELS may actually turn down. */
