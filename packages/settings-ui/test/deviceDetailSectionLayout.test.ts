@@ -9,6 +9,7 @@ const SURPLUS_ROW_ORDER = [
   'device-detail-surplus-opt-row',
   'device-detail-dump-load-row',
   'device-detail-surplus-track-row',
+  'device-detail-solar-pending-hint',
 ];
 
 const SHEDDING_ROW_ORDER = [
@@ -135,8 +136,17 @@ describe('applyDeviceDetailSectionLayout', () => {
       'device-detail-overshoot-step-row',
       'device-detail-respect-external-off-row',
     ]);
-    // Charge on solar surplus is a charging rule.
-    expect(childIds('device-detail-charging-section')).toEqual(['device-detail-surplus-track-row']);
+    // Charge on solar surplus is a charging rule, and the note that stands in
+    // for it while solar is on its way goes with it: the charger's page places
+    // no Solar surplus card.
+    expect(childIds('device-detail-charging-section')).toEqual([
+      'device-detail-surplus-track-row',
+      'device-detail-solar-pending-hint',
+    ]);
+    expect(childIds('device-detail-surplus-section')).toEqual([
+      'device-detail-surplus-opt-row',
+      'device-detail-dump-load-row',
+    ]);
     // Activity log reads before advanced diagnostics.
     const order = sectionOrder();
     expect(order.indexOf('device-detail-activity-log-section'))

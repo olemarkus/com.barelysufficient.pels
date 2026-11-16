@@ -146,14 +146,26 @@ const placeElectricalConnectionRow = (kind: DeviceDetailKind): void => {
 
 // "Charge on solar surplus" is a charging rule on an EV charger's page, so it
 // joins Charge boost in the Charging card; every other page keeps it in the
-// Solar surplus card with the other solar switches.
+// Solar surplus card with the other solar switches. The note that stands in
+// for the solar switches while solar is on its way goes with it: a charger's
+// page places no Solar surplus card, so a note left there would show in a card
+// of its own at the foot of the page.
 const placeSurplusTrackRow = (kind: DeviceDetailKind): void => {
   const row = document.getElementById('device-detail-surplus-track-row');
+  const pendingNote = document.getElementById('device-detail-solar-pending-hint');
   if (kind === 'ev_charger') {
-    appendTo(row, sectionContent('charging'));
+    // The note closes the card and the row sits just above it, so a refresh
+    // finds both in place and moves nothing.
+    if (!pendingNote) {
+      appendTo(row, sectionContent('charging'));
+      return;
+    }
+    appendTo(pendingNote, sectionContent('charging'));
+    placeBefore(row, pendingNote);
     return;
   }
   placeAfter(row, document.getElementById('device-detail-dump-load-row'));
+  placeAfter(pendingNote, row);
 };
 
 // A battery's page shows its own section and none of a load's: Setup holds
