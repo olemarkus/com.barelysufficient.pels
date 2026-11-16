@@ -224,6 +224,48 @@ const SETTINGS_UI_SNAPSHOT_FORBID_PATTERN = {
     + 'carriers in deviceUtils.ts). See notes/state-management/snapshot-decomposition.md.',
 };
 
+// The size and complexity limits apply to the settings views (.tsx) as to every
+// .ts module. These views already exceeded them when the limits reached .tsx,
+// so each is held at its current worst value. Lower a ceiling when a view
+// shrinks, delete the entry once it is within the limits, and never raise one.
+const TSX_SIZE_CEILINGS = {
+  'BudgetOverview.tsx': { lines: 1113, functionLines: 311, complexity: 43, cognitive: 29 },
+  'ChargingCurrentSetup.tsx': { complexity: 47, cognitive: 20 },
+  'ContinuousBatteryPlan.tsx': { complexity: 31 },
+  'DeadlinePlan.tsx': { lines: 1275, functionLines: 163, complexity: 43 },
+  'DeadlinePlanHistoryDetail.tsx': { lines: 1072, functionLines: 153, complexity: 29, cognitive: 18 },
+  'ElectricityPricesView.tsx': { lines: 1158, functionLines: 222, complexity: 50, cognitive: 23 },
+  'PlanHero.tsx': { lines: 635 },
+  'PlanOverview.tsx': { complexity: 18 },
+  'Schedules.tsx': { complexity: 23 },
+  'SetupJourney.tsx': { complexity: 16 },
+  'SupportReportView.tsx': { complexity: 23 },
+  'WeatherInsight.tsx': { complexity: 45 },
+  'WeatherInsightChart.tsx': { functionLines: 153 },
+};
+
+const TSX_SIZE_RULES = {
+  'max-lines': sharedGeneralRules['max-lines'],
+  'max-lines-per-function': sharedGeneralRules['max-lines-per-function'],
+  'max-depth': sharedGeneralRules['max-depth'],
+  'max-params': sharedGeneralRules['max-params'],
+  'max-statements': sharedGeneralRules['max-statements'],
+  'complexity': sharedGeneralRules.complexity,
+  'sonarjs/cognitive-complexity': sharedSonarRules['sonarjs/cognitive-complexity'],
+};
+
+const tsxSizeCeilingBlocks = Object.entries(TSX_SIZE_CEILINGS).map(([file, ceiling]) => ({
+  files: [`packages/settings-ui/src/ui/views/${file}`],
+  rules: {
+    ...(ceiling.lines ? { 'max-lines': ['warn', { max: ceiling.lines, skipBlankLines: true, skipComments: true }] } : {}),
+    ...(ceiling.functionLines
+      ? { 'max-lines-per-function': ['warn', { max: ceiling.functionLines, skipBlankLines: true, skipComments: true }] }
+      : {}),
+    ...(ceiling.complexity ? { 'complexity': ['warn', ceiling.complexity] } : {}),
+    ...(ceiling.cognitive ? { 'sonarjs/cognitive-complexity': ['warn', ceiling.cognitive] } : {}),
+  },
+}));
+
 export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -629,6 +671,12 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    files: ['packages/settings-ui/src/**/*.tsx'],
+    plugins: { sonarjs },
+    rules: TSX_SIZE_RULES,
+  },
+  ...tsxSizeCeilingBlocks,
   {
     // The WebView bundle: each widget's public/** and the browser-safe
     // widgets/_shared modules bundled into it.
