@@ -129,9 +129,21 @@ describe('resolveCapacityTimedRun', () => {
       .toMatchObject({ kind: 'keep' });
     expect(resolveCapacityTimedRun(frame({ drawKw: 4.9, shortfallThresholdKw: 5.04, ...running })))
       .toEqual({ kind: 'none' });
-    // A start is judged at the draw it would reach: 4.28 + 0.8 kW.
-    expect(resolveCapacityTimedRun(frame({ shortfallThresholdKw: 5.23 }))).toMatchObject({ kind: 'start' });
-    expect(resolveCapacityTimedRun(frame({ shortfallThresholdKw: 5.22 }))).toEqual({ kind: 'none' });
+    // A start is judged at the draw it would reach plus its restore buffer:
+    // 4.28 + 0.8 + 0.2 kW (5.43 kW leaves exactly 0.15 kWh), so the keep that
+    // follows has 0.2 kW of room.
+    expect(resolveCapacityTimedRun(frame({ shortfallThresholdKw: 5.44 }))).toMatchObject({ kind: 'start' });
+    expect(resolveCapacityTimedRun(frame({ shortfallThresholdKw: 5.42 }))).toEqual({ kind: 'none' });
+  });
+
+  it('keeps a device it only just started when the next reading is a little higher', () => {
+    const shortfallThresholdKw = 5.44;
+    expect(resolveCapacityTimedRun(frame({ shortfallThresholdKw }))).toMatchObject({ kind: 'start' });
+    // Started: the heater draws, and the background is 0.15 kW up on the next reading.
+    expect(resolveCapacityTimedRun(frame({
+      shortfallThresholdKw, drawKw: 4.28 + 0.8 + 0.15, devices: [heater('small', 1, 0.5, true), heater('mid', 2, 0.8, true)],
+      heldOffIds: new Set(),
+    }))).toMatchObject({ kind: 'keep', deviceId: 'mid' });
   });
 
   it('runs nothing past a lower-ranked device that is not on/off', () => {

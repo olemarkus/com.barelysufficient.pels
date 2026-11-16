@@ -167,7 +167,10 @@ function resolveStart(hour: TimedRunHour): CapacityTimedRun {
   const runHours = hour.spareKWh(input.drawKw, deviceKw) / deviceKw;
   if (Math.min(runHours * 60, hour.runWindowMin) < TIMED_RUN_MIN_START_MIN) return { kind: 'none' };
   const allowedKw = input.drawKw + deviceKw + computeRestoreBufferKw(deviceKw);
-  if (allowedKw <= input.paceKw || !hour.holdsHardCap(input.drawKw + deviceKw)) return { kind: 'none' };
+  // Judged with the restore buffer on top, so the keep that follows, on a
+  // reading a few tens of watts higher, still passes: without that margin a
+  // start that only just fits is cut again a minute later.
+  if (allowedKw <= input.paceKw || !hour.holdsHardCap(allowedKw)) return { kind: 'none' };
   return timedRun('start', device, deviceKw, hour.stopAt(runHours), allowedKw);
 }
 
