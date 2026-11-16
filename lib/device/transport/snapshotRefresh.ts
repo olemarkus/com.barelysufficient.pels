@@ -1,8 +1,5 @@
-import type { MainFusePhaseCapabilities } from '../../../packages/shared-domain/src/settings/mainFusePhaseSource';
-import { getRawDevice } from './managerHomeyApi';
-import { resolveMeterPhases } from '../meterPhases';
-import type { MeterPhasesRead } from '../../ports/homeMeterReadings';
 export { readMeterMonthlyPeak } from './meterMonthlyPeakRead';
+export { readMeterPhases } from './meterPhasesRead';
 /**
  * Pull refresh pipeline for `DeviceTransport`, extracted as homey-free
  * functions owned by `SnapshotRefreshService`. It coordinates device fetches,
@@ -419,18 +416,6 @@ type RefreshLivePower = {
     byDeviceId: LiveDevicePowerWatts;
     meterReadings: LiveMeterReadings | null;
 };
-
-/** The meter's per-phase capabilities; a failed read is `unavailable`, never no phases. */
-export async function readMeterPhases(
-    meterDeviceId: string,
-    ownerChoice: MainFusePhaseCapabilities | null,
-): Promise<MeterPhasesRead> {
-    try {
-        return resolveMeterPhases(await getRawDevice(meterDeviceId), ownerChoice);
-    } catch {
-        return { state: 'unavailable' };
-    }
-}
 
 /** One poll's read of the requested meters (`DeviceTransport.readMeters`). */
 export async function readLiveMeters(
