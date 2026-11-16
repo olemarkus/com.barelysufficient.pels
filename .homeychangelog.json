@@ -847,5 +847,8 @@
   },
   "3.38.0": {
     "en": "New: enter the main fuse as your subscribed power in kVA, as French contracts state it. A smart task due tomorrow, set before tomorrow's prices are out, now holds its device until it has to start instead of running at once. With an hourly capacity limit, a water heater's part-hour run now starts only when it can keep running. Device lists name each device's room. In the web app, your own changes now show up while live updates are not arriving. In setup, a battery home is asked to choose its charger, and outside Norway and Belgium setup says how to turn on Capacity limit if your grid company charges for peaks."
+  },
+  "3.39.0": {
+    "en": "New: Main fuse reads each phase from the LiXee ZLinky and the Nous D4Z meters. Settings warn before you save a limit or main fuse below what your home already uses, so devices are not held back by surprise. In setup, French homes are offered their subscribed power under Main fuse. Device settings are tidier: each switch sits in the card it controls, and its settings show only while it is on. Diagnostics reports state the app's memory as Homey measures it."
   }
 }
