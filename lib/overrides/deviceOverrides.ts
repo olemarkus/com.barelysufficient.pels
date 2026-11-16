@@ -23,7 +23,7 @@
  * inert after: the next plan build reads what PELS would otherwise decide, with
  * no timer and no transition to run, and no record of what the device was set to
  * before. It is ended early by storing an end time of now. An end time further
- * ahead than {@link MAX_DEVICE_OVERRIDE_MINUTES} is not an override.
+ * ahead than `MAX_DEVICE_OVERRIDE_MINUTES` is not an override.
  *
  * ## Who writes
  *
@@ -42,8 +42,8 @@
  * cut one short. Nothing writes that map any more.
  */
 import {
-  MAX_DEVICE_OVERRIDE_MINUTES,
   deviceOverrideKey,
+  isDeviceOverrideInForce,
   isDeviceOverrideKey,
   parseDeviceOverride,
   type DeviceOverride,
@@ -54,14 +54,9 @@ import type { SettingsPort } from '../ports/homeyRuntime';
 import { readSettingsKeyList } from '../utils/settingsKeyList';
 import { TEMPERATURE_CONTROL_MODES, TEMPORARY_TEMPERATURE_TARGETS } from '../utils/settingsKeys';
 
-const MAX_OVERRIDE_MS = MAX_DEVICE_OVERRIDE_MINUTES * 60_000;
 // How long the older map's entries could last. An ended override's key is kept
 // this long, so that it keeps hiding an entry in that map for the same device.
 const LEGACY_MAX_MS = 24 * 60 * 60_000;
-
-const inForce = (override: DeviceOverride, nowMs: number): boolean => (
-  override.untilMs > nowMs && override.untilMs - nowMs <= MAX_OVERRIDE_MS
-);
 
 function readLegacyTemperature(
   settings: Pick<SettingsPort, 'get'>,
@@ -84,7 +79,7 @@ export function readActiveDeviceOverride(
   try {
     const override = parseDeviceOverride(settings.get(deviceOverrideKey(deviceId)))
       ?? readLegacyTemperature(settings, deviceId);
-    return override !== null && inForce(override, nowMs) ? override : null;
+    return override !== null && isDeviceOverrideInForce(override, nowMs) ? override : null;
   } catch {
     return null;
   }
@@ -135,7 +130,7 @@ function dropEndedOverrides(settings: SettingsPort, nowMs: number): void {
 /**
  * Start (or replace) a device's override, ending `minutes` from `nowMs`. The
  * caller has normalized the setting for the device and bounded `minutes` to
- * 1–{@link MAX_DEVICE_OVERRIDE_MINUTES}.
+ * 1–`MAX_DEVICE_OVERRIDE_MINUTES`.
  */
 export function startDeviceOverride(
   settings: SettingsPort,

@@ -36,6 +36,11 @@ const parseSetting = (raw: unknown): DeviceOverrideSetting | null => {
   return typeof targetC === 'number' && Number.isFinite(targetC) ? { type: 'temperature', targetC } : null;
 };
 
+/** In force while its end is ahead, and no further ahead than the maximum. */
+export const isDeviceOverrideInForce = (override: DeviceOverride, nowMs: number): boolean => (
+  override.untilMs > nowMs && override.untilMs - nowMs <= MAX_DEVICE_OVERRIDE_MINUTES * 60_000
+);
+
 /** `null` for anything that is not a well-formed override. */
 export const parseDeviceOverride = (raw: unknown): DeviceOverride | null => {
   if (!isRecord(raw)) return null;

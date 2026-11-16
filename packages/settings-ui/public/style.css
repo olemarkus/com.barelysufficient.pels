@@ -3348,6 +3348,39 @@ md-filled-tonal-button.is-busy {
   justify-self: start;
 }
 
+/* The device page's Override card: a title, one line or a short form, and
+ * quiet text actions at the start edge. */
+.device-detail-override {
+  gap: var(--spacing-2);
+  height: max-content;
+}
+
+.device-detail-override > h3,
+.device-detail-override > p {
+  margin: 0;
+}
+
+.device-detail-override > md-text-button {
+  justify-self: start;
+}
+
+.device-detail-override__form {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.device-detail-override__custom {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-3);
+}
+
+.device-detail-override__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
 /* Recourse action row beneath the cannot-finish meta line. The 48 px floor
  * matches the touch-target token used elsewhere on PELS — see
  * `feedback_design_tokens.md` plus the upstream "Lift `.pels-icon-toggle` and

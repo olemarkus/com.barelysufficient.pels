@@ -3,6 +3,7 @@ import {
 } from './deviceDetail/chargingCurrentLimits.tsx';
 import { invalidateDeferredObjectiveHistoryRead } from './deferredObjectiveHistoryRead.ts';
 import { notifySchedulesSettingChanged } from './schedules.ts';
+import { notifyDeviceOverrideSettingChanged } from './deviceDetail/overrideCard.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
 import {
   SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH,
@@ -609,6 +610,7 @@ export const createSettingsSetHandler = () => (key: string) => {
   invalidateSettingCache(key);
   notifyInverterCurtailmentSettingChanged(key);
   notifySchedulesSettingChanged(key);
+  notifyDeviceOverrideSettingChanged(key);
 
   reloadObjectivesIfObjectiveKey(key, 'settings.set');
   reloadWeatherInsightIfWeatherKey(key, 'settings.set');
