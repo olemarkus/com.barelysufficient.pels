@@ -316,8 +316,8 @@ line says what a paused device still reports) shows only as the card's ring.
 from lower-priority devices only and yields to a limited device ranked above it
 (owner ruling 2026-11-03); "other devices" promised priority over every device.
 The boost setting hints say the same: `Take power from lower-priority devices
-while the battery is below this level.` and `Step this load up when it is cold,
-drawing from lower-priority devices.`
+while the battery is low.` and `Step this load up when it is cold, drawing from
+lower-priority devices.`
 **Retired 2026-08-16: `Temperature boost is active`, `EV boost is active`.**
 Two spellings existed because the wire carried two per-axis flags, and both were
 wrong twice over: a tank's temperature and a car's battery percentage are the
@@ -773,8 +773,8 @@ current. On a charger using its own watt levels, a car's limits editor adds
 `This charger uses the power levels from its own settings, so these limits apply
 only on other chargers.`
 The **Power limiting** card gathers `Power-limit control`, `Only PELS starts this
-device`, what limiting does, and `Leave off until turned on again`, so the switch and what it governs read
-together. An unmanaged charger's page shows neither card: there is nothing to
+device`, what limiting does, and `Leave off until turned on again` on every device
+page, so the switch and what it governs read together. An unmanaged charger's page shows neither card: there is nothing to
 charge toward or limit, and the Managed switch's hint names what turning it on
 adds (`Turn on to set how this charger charges and how PELS limits it.`).
 
@@ -798,11 +798,23 @@ own limit. Lower the level to stop earlier.` (with the no-level toggle off: `The
 car charges to its own limit. Now 100%.`, and the lever lines name `hold a car
 until its level is known` instead of a percent).
 
-Suppressed-control treatment (device page): **applicable-but-unavailable
-renders visible-but-disabled with a gate hint naming the real switch**
-(`Turn on Price-based control in Setup …`); only kind- or home-inapplicable
-sections are structurally absent. Never vanish a control the user could
-re-enable from this page.
+Device-page switches: **each switch heads the card it governs** (Price-based
+control in Price response, the solar switches in Solar surplus, Power-limit
+control in Power limiting); Setup keeps what is set once. A switch the owner
+could turn on is never hidden: while a prerequisite is missing it renders
+greyed with a hint naming that prerequisite (`Turn on Managed by PELS in Setup
+to use price response.`). Only kind- or home-inapplicable switches and sections
+are structurally absent. **The fields under a switch are its settings and are
+hidden while it is off** (the price deltas, the solar boost, a boost's level,
+the charge target's level); with the switch on but unable to apply, they stay
+in view, disabled, under the gate hint. A companion that is a setting of its
+own (**Charge before the battery level is known**) stays in view while its
+parent is off: greyed, shown off, with `Applies once Charge to a battery level
+is on.` A switch's first hint says what it is for; a hint about what happens
+once it is on (`data-shown-when-on`) shows only while it is on, for example
+**Leave off until turned on again**'s `Devices turned off by PELS still resume
+automatically. …` and **Run on solar surplus**'s `If you switch it on yourself
+while there is no surplus, PELS will switch it off again.`
 
 ### Device-page limited temperature on a setpoint-only device
 

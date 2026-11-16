@@ -1,6 +1,7 @@
 import { supportsTemperatureAdjustments, temperatureAdjustmentGateHint } from './temperaturePolicy.ts';
 import {
   deviceDetailCheapDelta,
+  deviceDetailDeltaFields,
   deviceDetailDeltaGateHint,
   deviceDetailDeltaSection,
   deviceDetailExpensiveDelta,
@@ -44,22 +45,18 @@ export const setDeviceDetailDeltaValues = (deviceId: string) => {
   }
 };
 
-// Why the delta fields are inert right now. Applicable-but-unavailable renders
-// visible-but-disabled with this hint; only kind-inapplicable devices (no
-// temperature target at all) hide the section outright.
+// Why price response cannot apply right now, while it may: the switch is
+// disabled and, if it is on, its fields are too. Only kind-inapplicable devices
+// (no temperature target at all) hide the section outright.
 const resolveDeltaGateHint = (params: {
   canControlTemperature: boolean;
   disabledHint: string;
   isManaged: boolean;
-  selected: boolean;
 }): string | null => {
   if (!params.canControlTemperature) {
     return params.disabledHint;
   }
   if (!params.isManaged) return 'Turn on Managed by PELS in Setup to use price response.';
-  if (!params.selected) {
-    return 'Turn on Price-based control above to adjust this device’s temperature with electricity prices.';
-  }
   return null;
 };
 
@@ -76,9 +73,10 @@ export const updateDeltaSectionVisibility = (device: SettingsUiDeviceDetailItem 
     canControlTemperature: supportsTemperatureAdjustments(device),
     disabledHint: temperatureAdjustmentGateHint(device),
     isManaged,
-    selected: deviceDetailPriceOpt.selected,
   });
   deviceDetailDeltaSection.style.display = 'block';
+  // The fields are Price-based control's settings: hidden while it is off.
+  if (deviceDetailDeltaFields) deviceDetailDeltaFields.hidden = !deviceDetailPriceOpt.selected;
   if (deviceDetailCheapDelta) deviceDetailCheapDelta.disabled = gateHint !== null;
   if (deviceDetailExpensiveDelta) deviceDetailExpensiveDelta.disabled = gateHint !== null;
   if (deviceDetailDeltaGateHint) {
@@ -128,6 +126,11 @@ export const initDeviceDetailPriceOptHandlers = (params: {
     renderPriceOptDependents();
   };
 
+  // The fields follow the switch at once, before the save resolves.
+  deviceDetailPriceOpt?.addEventListener('change', () => {
+    const deviceId = params.getCurrentDetailDeviceId();
+    updateDeltaSectionVisibility(deviceId ? findLatestDevice(deviceId) : null);
+  });
   deviceDetailPriceOpt?.addEventListener('change', autoSavePriceOpt);
   deviceDetailCheapDelta?.addEventListener('change', autoSavePriceOpt);
   deviceDetailExpensiveDelta?.addEventListener('change', autoSavePriceOpt);

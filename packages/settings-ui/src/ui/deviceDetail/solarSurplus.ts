@@ -10,6 +10,7 @@ import {
   deviceDetailSurplusOpt,
   deviceDetailSurplusSection,
   deviceDetailSurplusTemperature,
+  deviceDetailSurplusFields,
   deviceDetailSurplusTrackRow,
   deviceDetailSolarPendingHint,
 } from '../dom.ts';
@@ -64,22 +65,19 @@ export const surplusControlVisibleFor = (deviceId: string): boolean => (
   || state.priceOptimizationSettings[deviceId]?.surplusWilling === true
 );
 
-// Why the boost field is inert right now. Applicable-but-unavailable renders
-// visible-but-disabled with this hint; only kind- or home-inapplicable states
-// (no temperature target, or no surplus pool to opt into) hide the section.
+// Why the solar lift cannot apply right now, while it may: the switch is
+// disabled and, if it is on, its boost field is too. Only kind- or
+// home-inapplicable states (no temperature target, or no surplus pool to opt
+// into) hide the block.
 const resolveSurplusGateHint = (
   canControlTemperature: boolean,
   disabledHint: string,
   isManaged: boolean,
-  selected: boolean,
 ): string | null => {
   if (!canControlTemperature) {
     return disabledHint;
   }
   if (!isManaged) return 'Turn on Managed by PELS in Setup to use solar surplus.';
-  if (!selected) {
-    return 'Turn on Use solar surplus above to lift the target while you export solar.';
-  }
   return null;
 };
 
@@ -119,8 +117,9 @@ const syncSurplusTemperatureBlock = (device: SettingsUiDeviceDetailItem | null):
       ? temperatureAdjustmentGateHint(device)
       : `Solar surplus needs a power reading: ${POWER_READING_REMEDY}.`,
     isManaged,
-    deviceDetailSurplusOpt.selected,
   );
+  // The boost field is Use solar surplus's setting: hidden while it is off.
+  if (deviceDetailSurplusFields) deviceDetailSurplusFields.hidden = !deviceDetailSurplusOpt.selected;
   if (deviceDetailSurplusDelta) deviceDetailSurplusDelta.disabled = gateHint !== null;
   if (deviceDetailSurplusGateHint) {
     deviceDetailSurplusGateHint.textContent = gateHint ?? '';
@@ -162,6 +161,11 @@ export const initDeviceDetailSurplusOptHandlers = (params: {
     }
   };
 
+  // The boost field follows the switch at once, before the save resolves.
+  deviceDetailSurplusOpt?.addEventListener('change', () => {
+    const deviceId = params.getCurrentDetailDeviceId();
+    updateSurplusSectionVisibility(deviceId ? findLatestDevice(deviceId) : null);
+  });
   deviceDetailSurplusOpt?.addEventListener('change', autoSaveSurplus);
   deviceDetailSurplusDelta?.addEventListener('change', autoSaveSurplus);
   initDeviceDetailDumpLoadHandlers(params);

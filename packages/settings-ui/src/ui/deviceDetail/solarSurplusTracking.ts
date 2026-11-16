@@ -5,6 +5,7 @@ import {
   deviceDetailSurplusTrackOpt,
   deviceDetailSurplusTrackPowerLimitHint,
   deviceDetailSurplusTrackRow,
+  deviceDetailSurplusTrackSmartTaskNote,
 } from '../dom.ts';
 import {
   supportsTemperatureDevice,
@@ -130,8 +131,11 @@ const applyTrackingCopy = (device: SettingsUiDeviceDetailItem): void => {
     deviceDetailSurplusTrackOpt?.setAttribute('aria-label', SURPLUS_TRACKING_LABELS[kind]);
   }
   if (deviceDetailSurplusTrackHint) {
-    deviceDetailSurplusTrackHint.textContent
-      = `${SURPLUS_TRACKING_HINTS[kind]} ${SURPLUS_TRACKING_SMART_TASK_NOTE}`;
+    deviceDetailSurplusTrackHint.textContent = SURPLUS_TRACKING_HINTS[kind];
+  }
+  // Shown once the switch is on (data-shown-when-on): what tracking means for a Smart task.
+  if (deviceDetailSurplusTrackSmartTaskNote) {
+    deviceDetailSurplusTrackSmartTaskNote.textContent = SURPLUS_TRACKING_SMART_TASK_NOTE;
   }
 };
 

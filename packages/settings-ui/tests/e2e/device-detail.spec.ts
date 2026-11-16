@@ -266,25 +266,22 @@ test.describe('Device detail panel', () => {
       .evaluate((field) => (field as HTMLInputElement).value), { timeout: 3000 }).toBe('3');
   });
 
-  test('Use solar surplus toggle reveals the boost section and persists', async ({ page }) => {
+  test('Use solar surplus toggle reveals the boost field and persists', async ({ page }) => {
     await openDeviceDetail(page, 'dev_heatpump');
-    await page.locator('#device-detail-setup-section summary').click();
 
     const section = page.locator('#device-detail-surplus-section');
     const delta = page.locator('#device-detail-surplus-delta');
     const gateHint = page.locator('#device-detail-surplus-gate-hint');
 
-    // With the toggle off the section stays visible but disabled, and the gate
-    // hint names the real switch — the suppressed-control treatment is
-    // visible-but-disabled, never vanish.
+    // With the toggle off the card and its switch stay in view; the boost is
+    // the switch's setting, so it waits until the switch is on.
     await expect(section).toBeVisible();
-    await expect(gateHint).toBeVisible();
-    await expect(gateHint).toContainText('Use solar surplus');
-    expect(await readMaterialDisabled(page, '#device-detail-surplus-delta')).toBe(true);
+    await expect(page.locator('#device-detail-surplus-opt-row')).toBeVisible();
+    await expect(delta).toBeHidden();
+    await expect(gateHint).toBeHidden();
     await setMdSwitch(page, '#device-detail-surplus-opt', true);
     await expect(section).toBeVisible();
     await expect(delta).toBeVisible();
-    await expect(gateHint).toBeHidden();
     await expect.poll(() => readMaterialDisabled(page, '#device-detail-surplus-delta')).toBe(false);
 
     await setMdValue(page, '#device-detail-surplus-delta', '3');
@@ -296,11 +293,10 @@ test.describe('Device detail panel', () => {
       return settings?.dev_heatpump;
     }, { timeout: 3000 }).toMatchObject({ surplusWilling: true, surplusDelta: 3 });
 
-    // Disabling returns the section to visible-but-disabled with the hint.
+    // Turning it off hides the boost again; the card and switch stay.
     await setMdSwitch(page, '#device-detail-surplus-opt', false);
     await expect(section).toBeVisible();
-    await expect(gateHint).toBeVisible();
-    await expect.poll(() => readMaterialDisabled(page, '#device-detail-surplus-delta')).toBe(true);
+    await expect(delta).toBeHidden();
   });
 
   test('Sections compose per device kind: EV leads with Charging, thermostat with modes', async ({ page }) => {
@@ -799,6 +795,29 @@ test.describe('Device detail panel', () => {
     await expect(panel.getByRole('combobox', {
       name: 'When the temperature changes outside PELS', exact: true,
     })).toBeVisible();
+  });
+
+  test('A switch\'s settings and its on-only hints follow the switch', async ({ page }) => {
+    await openDeviceDetail(page, 'dev_heatpump');
+    const price = page.locator('#device-detail-price-opt');
+    const fields = page.locator('#device-detail-delta-fields');
+    // The heat pump's price response is on in the fixture.
+    await expect(fields).toBeVisible();
+    await page.locator('#device-detail-price-opt-row .md-switch-row__label').click();
+    await expect.poll(() => readMdSwitchSelected(page, '#device-detail-price-opt')).toBe(false);
+    await expect(fields).toBeHidden();
+    // The switch itself stays in view.
+    await expect(price).toBeVisible();
+    await page.locator('#device-detail-price-opt-row .md-switch-row__label').click();
+    await expect(fields).toBeVisible();
+
+    await openDeviceDetail(page, 'dev_poolpump');
+    const leaveOffRow = page.locator('#device-detail-respect-external-off-row');
+    const onlyWhenOn = leaveOffRow.locator('[data-shown-when-on]');
+    await expect(leaveOffRow).toBeVisible();
+    await expect(onlyWhenOn).toBeHidden();
+    await leaveOffRow.locator('.md-switch-row__label').click();
+    await expect(onlyWhenOn).toBeVisible();
   });
 
   test('Switch row label is clickable to toggle the switch', async ({ page }) => {

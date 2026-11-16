@@ -158,7 +158,7 @@ const refreshCurrentDeviceControlStates = () => {
   // control, so a toggle must re-resolve it without reopening the panel.
   setDeviceDetailShedBehavior(activeDeviceId, device, updateSetStepOptionLabel);
   updateShedFieldVisibility(device);
-  syncSwitchRowDisabledStyling();
+  syncSwitchRowStates();
 };
 
 const notifyDevicesUpdated = () => {
@@ -176,10 +176,15 @@ const showDeviceDetailOverlay = () => {
 // md-switch.disabled flips, so the row label stays full-strength and the row
 // looks live. Mirror the switch's disabled state onto the row's dim class
 // (`.md-switch-row--disabled`, the treatment DeadlinePlan already uses).
-const syncSwitchRowDisabledStyling = () => {
+// A hint marked `data-shown-when-on` says what the switch does once it is on,
+// so it shows only then; the row's first hint says what the switch is for.
+const syncSwitchRowStates = () => {
   document.querySelectorAll('#device-detail-panel .md-switch-row').forEach((row) => {
-    const switchEl = row.querySelector<HTMLElement & { disabled?: boolean }>('md-switch');
+    const switchEl = row.querySelector<HTMLElement & { disabled?: boolean; selected?: boolean }>('md-switch');
     row.classList.toggle('md-switch-row--disabled', switchEl?.disabled === true);
+    row.querySelectorAll('[data-shown-when-on]').forEach((hint) => {
+      hint.toggleAttribute('hidden', switchEl?.selected !== true);
+    });
   });
 };
 
@@ -334,7 +339,7 @@ const refreshOpenDeviceDetail = () => {
   updateDeltaSectionVisibility(device);
   updateSurplusSectionVisibility(device);
   updateShedFieldVisibility(device);
-  syncSwitchRowDisabledStyling();
+  syncSwitchRowStates();
 };
 
 const renderDeviceDetailPowerModel = (device: SettingsUiDeviceView): void => {
@@ -376,7 +381,7 @@ export const openDeviceDetail = (deviceId: string) => {
   updateSurplusSectionVisibility(device);
   updateShedFieldVisibility(device);
 
-  syncSwitchRowDisabledStyling();
+  syncSwitchRowStates();
 
   resetDeviceDetailDiagnosticsView();
   resetDeviceDetailActivityLogView();
@@ -459,6 +464,9 @@ export const openDeviceDetailAt = (deviceId: string, focus: DeviceDetailFocus): 
 
 export const initDeviceDetailHandlers = () => {
   initContinuousBatteryPlanRefresh();
+  // An owner's toggle shows or hides its on-only hints at once; a save that
+  // fails redraws the page, which syncs them again.
+  document.getElementById('device-detail-panel')?.addEventListener('change', syncSwitchRowStates);
   const overlayContext = {
     getCurrentDetailDeviceId,
     openDeviceDetailAt,

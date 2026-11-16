@@ -42,10 +42,7 @@ test('solar surplus control and boost', async ({ page }) => {
   // The fixture home has a tracked solar/PV device, so the "Use solar surplus"
   // control is offered on this managed thermostat. Used by docs/solar.md.
   await openDeviceDetail(page, 'dev_heatpump');
-  // The toggle lives in the Setup cluster; expand it, then turn it on so the
-  // field-only "Solar surplus" boost card is revealed.
-  await page.locator('#device-detail-setup-section summary').click();
-  await page.waitForTimeout(150);
+  // The toggle heads the Solar surplus card; turning it on reveals the boost.
   await setMdSwitch(page, '#device-detail-surplus-opt', true);
   await setMdValue(page, '#device-detail-surplus-delta', '2');
   await page.waitForTimeout(250);

@@ -9,6 +9,7 @@ import { isEvChargerDevice } from '../deviceKind.ts';
 import {
   deviceDetailEvBoost,
   deviceDetailEvBoostBelow,
+  deviceDetailEvBoostBelowRow,
   deviceDetailEvBoostEnabled,
   deviceDetailEvBoostStatus,
 } from '../dom.ts';
@@ -55,8 +56,9 @@ export const renderEvBoostSettings = (device: SettingsUiDeviceView | null) => {
   deviceDetailEvBoostEnabled.selected = enabled;
   deviceDetailEvBoostEnabled.disabled = false;
   deviceDetailEvBoostBelow.value = String(config?.boostBelowPercent ?? DEFAULT_BOOST_BELOW_PERCENT);
-  // Visible-but-disabled while boost is off — the toggle's hint names this
-  // field, so hiding it left the sentence pointing at nothing.
+  // The level is Charge boost's setting: hidden while boost is off. The switch's
+  // hint says what boost does without pointing at the field.
+  if (deviceDetailEvBoostBelowRow) deviceDetailEvBoostBelowRow.hidden = !enabled;
   deviceDetailEvBoostBelow.disabled = !enabled;
   const boostBelowPercent = normalizeBoostBelowPercent(
     config?.boostBelowPercent ?? DEFAULT_BOOST_BELOW_PERCENT,

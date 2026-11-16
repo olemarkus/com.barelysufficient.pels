@@ -1103,11 +1103,12 @@
               <div class="form__actions" id="device-detail-price-source-action" hidden>
                 <md-text-button type="button" data-settings-target="electricity-prices" data-settings-anchor="#price-source-select">Set up prices</md-text-button>
               </div>
-              <p class="muted">Temperature changes applied during cheap and expensive electricity hours. PELS follows the device's own heating or cooling mode, so a cooling unit moves its target the opposite way.</p>
-              <!-- Why these values are inert right now (kept, not applied) — the
-                   suppressed-control treatment is visible-but-disabled + hint. -->
+              <!-- Why the switch's values cannot apply right now (kept, not
+                   applied): the fields stay visible but disabled, with this
+                   hint. They are hidden while the switch is off. -->
               <p class="muted detail-gate-hint" id="device-detail-delta-gate-hint" hidden></p>
-              <div class="detail-deltas form-grid">
+              <div class="detail-deltas form-grid" id="device-detail-delta-fields">
+                <p class="muted">PELS follows the device's own heating or cooling mode, so a cooling unit moves its target the opposite way.</p>
                 <div class="md-field-row">
                   <span class="field__label pels-text-settings-label" id="device-detail-cheap-delta-label">Cheap-hour boost</span>
                   <md-filled-text-field
@@ -1158,8 +1159,8 @@
                 <md-switch aria-label="Run on solar surplus" id="device-detail-dump-load-opt"></md-switch>
                 <span class="md-switch-row__content">
                   <span class="md-switch-row__label pels-text-settings-label">Run on solar surplus</span>
-                  <small class="field__hint">PELS keeps this device off and turns it on when your home is exporting enough solar power to cover it. If you switch it on yourself while there is no surplus, PELS will switch it off again.</small>
-                  <small class="field__hint">Good for pool pumps, towel dryers, and garage or cabin heaters. Not for your only water heater — on a run of cloudy days it would stay cold.</small>
+                  <small class="field__hint">PELS keeps this device off and turns it on when your home is exporting enough solar power to cover it. Not for your only water heater: on a run of cloudy days it would stay cold.</small>
+                  <small class="field__hint" data-shown-when-on>If you switch it on yourself while there is no surplus, PELS will switch it off again.</small>
                   <small class="field__hint" id="device-detail-dump-load-disabled-hint" hidden>Unavailable while this device has an active smart task — the task's schedule decides when it runs.</small>
                   <small class="field__hint" id="device-detail-dump-load-power-limit-hint" hidden>Turn on Power-limit control in Power limiting first. PELS needs it to switch this device on and off.</small>
                 </span>
@@ -1169,15 +1170,15 @@
                 <span class="md-switch-row__content">
                   <span class="md-switch-row__label pels-text-settings-label" id="device-detail-surplus-track-label">Match solar surplus</span>
                   <small class="field__hint" id="device-detail-surplus-track-hint"></small>
+                  <small class="field__hint" id="device-detail-surplus-track-smart-task-note" data-shown-when-on></small>
                   <small class="field__hint" id="device-detail-surplus-track-disabled-hint" hidden>Unavailable while this device has an active smart task — the task's schedule decides when it runs.</small>
                   <small class="field__hint" id="device-detail-surplus-track-power-limit-hint" hidden>Turn on Power-limit control first. PELS needs it to set this device's level.</small>
                 </span>
               </label>
               <small class="field__hint" id="device-detail-solar-pending-hint" hidden></small>
               <div class="detail-surplus-temperature" id="device-detail-surplus-temperature">
-                <p class="muted">While your home is exporting solar, this lifts the target so you use your own power instead of exporting it.</p>
                 <p class="muted detail-gate-hint" id="device-detail-surplus-gate-hint" hidden></p>
-                <div class="detail-deltas form-grid">
+                <div class="detail-deltas form-grid" id="device-detail-surplus-fields">
                   <div class="md-field-row">
                     <span class="field__label pels-text-settings-label" id="device-detail-surplus-delta-label">Solar-surplus boost</span>
                     <md-filled-text-field
@@ -1290,7 +1291,8 @@
                 <md-switch aria-label="Leave off until turned on again" id="device-detail-respect-external-off"></md-switch>
                 <span class="md-switch-row__content">
                   <span class="md-switch-row__label pels-text-settings-label">Leave off until turned on again</span>
-                  <small class="field__hint">If this device is turned off in Homey, on the device, or by another Flow, PELS will leave it off until it is turned on again. Devices turned off by PELS still resume automatically. Turning it on again returns it to normal PELS control.</small>
+                  <small class="field__hint">If this device is turned off in Homey, on the device, or by another Flow, PELS will leave it off until it is turned on again.</small>
+                  <small class="field__hint" data-shown-when-on>Devices turned off by PELS still resume automatically. Turning it on again returns it to normal PELS control.</small>
                   <small class="field__hint" id="device-detail-respect-external-off-temperature-hint" hidden>This covers on and off only. PELS still sets this device’s temperature as usual, unless Keep the new temperature is selected above.</small>
                   <small class="field__hint" id="device-detail-respect-external-off-power-limit-hint" hidden>Turn on Power-limit control above first — this setting applies when PELS controls whether the device runs.</small>
                   <small class="field__hint" id="device-detail-respect-external-off-smart-task-hint" hidden>This device has an active smart task. In its booked hours, PELS can turn the device on when there is available power, even after it was turned off elsewhere.</small>
@@ -1450,10 +1452,10 @@
                   <md-switch aria-label="Charge to a battery level" id="device-detail-charge-target-enabled"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Charge to a battery level</span>
-                    <small class="field__hint">PELS stops charging here. A smart task can charge further.</small>
+                    <small class="field__hint">PELS stops charging at the level you set. A smart task can charge further.</small>
                   </span>
                 </label>
-                <div class="md-field-row">
+                <div class="md-field-row" id="device-detail-charge-target-percent-row">
                   <span class="field__label pels-text-settings-label" id="device-detail-charge-target-percent-label">Battery level</span>
                   <md-filled-text-field
                     id="device-detail-charge-target-percent"
@@ -1487,10 +1489,10 @@
                   <md-switch aria-label="Charge boost" id="device-detail-ev-boost-enabled"></md-switch>
                   <span class="md-switch-row__content">
                     <span class="md-switch-row__label pels-text-settings-label">Charge boost</span>
-                    <small class="field__hint">Take power from lower-priority devices while the battery is below this level.</small>
+                    <small class="field__hint">Take power from lower-priority devices while the battery is low.</small>
                   </span>
                 </label>
-                <div class="md-field-row">
+                <div class="md-field-row" id="device-detail-ev-boost-below-row">
                   <span class="field__label pels-text-settings-label" id="device-detail-ev-boost-below-label">Boost below</span>
                   <md-filled-text-field
                     id="device-detail-ev-boost-below"
