@@ -7,13 +7,11 @@ import {
   syncMonthlyQuarterPeak,
   validatePowerLimitSettings,
 } from './powerLimitControls.ts';
-export {
-  MARGIN_NOT_BELOW_LIMIT_MESSAGE,
-  refreshLimitsValidationHints,
-  refreshPowerLimitControls,
-} from './powerLimitControls.ts';
+export { MARGIN_NOT_BELOW_LIMIT_MESSAGE, refreshLimitsValidationHints } from './powerLimitControls.ts';
+export { refreshPowerLimitControls } from './powerLimitControls.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
 import { readMainFuseForm, syncMainFuseControls } from './mainFuseControls.ts';
+import { allowLimitsSave, publishLimitUsagePower } from './limitUsageAlerts.ts';
 import {
   settingsGridImportLimitInput,
   settingsCapacityFollowMonthPeakInput,
@@ -445,8 +443,7 @@ export const loadCapacitySettings = async () => {
   // The power payload carries two runtime-owned facts settings values cannot
   // establish: last-good running scalars and whether the hard-cap key exists.
   const powerRead = await readCapacityPowerModel();
-  const powerSource = await getSetting(POWER_SOURCE);
-  const meterDeviceId = await getSetting(HOMEY_ENERGY_METER_DEVICE_ID);
+  const [powerSource, meterDeviceId] = [await getSetting(POWER_SOURCE), await getSetting(HOMEY_ENERGY_METER_DEVICE_ID)];
   // Persisted first, then the running app's own block, then the last good.
   const runtime = powerRead.state === 'resolved'
     ? powerRead.payload.capacityScalars
@@ -467,6 +464,7 @@ export const loadCapacitySettings = async () => {
   }
   syncCapacityOwnedControls(resolved);
   syncMainFuseControls(resolveSavedMainFuse(current), current.mainFuseAmps);
+  publishLimitUsagePower(powerRead.state === 'resolved' ? powerRead.payload : null);
   // Meter selection is independently persisted. A power-source save may fence
   // source-owned paint while this load is in flight, but it must not discard a
   // concurrent Whole-home meter refresh that this snapshot already read.
@@ -586,6 +584,7 @@ export const saveSettingsLimitsSettings = async () => {
       mainFuse: readMainFuseForm(),
       ...readPowerLimitSettings(lastGoodCapacityScalars),
     };
+    if (!(await allowLimitsSave(command, lastGoodCapacityScalars))) return;
     const previous = limitsSaveQueue;
     const save = trackSetupSave('limits', () => previous.then(
       () => saveCapacitySettingsCommand(command, 'Limits & safety saved.'),

@@ -26,6 +26,8 @@ for (const theme of ['light', 'dark'] as const) {
         element.dispatchEvent(new Event('input', { bubbles: true }));
         element.dispatchEvent(new Event('change', { bubbles: true }));
       });
+      // The stub home draws more than 3.3 kW, so PELS asks before saving it.
+      await page.locator('#limits-usage-confirm-dialog').getByText('Save anyway').click();
       await expect.poll(() => page.evaluate(() => new Promise<unknown>((resolve) => {
         (window as unknown as StubWindow).Homey.get('grid_import_enabled', (_error, value) => resolve(value));
       }))).toBe(true);

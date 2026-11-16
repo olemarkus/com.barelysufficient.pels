@@ -271,3 +271,12 @@ export const readMainFuseForm = (): MainFuse => {
     ? 'Pick your subscribed power for the main fuse.'
     : 'Main fuse size must be between 6 and 250 A.');
 };
+
+/** The form's fuse without throwing: `null` while it holds no fuse PELS can use. */
+export const peekMainFuseForm = (): MainFuse | null => readFormFuse();
+
+/** The fuse as last stored, for a save that compares against it. */
+export const readSavedMainFuse = (): MainFuse => savedFuse;
+
+/** Put the form back to the stored fuse, after the owner kept the saved limits. */
+export const restoreSavedMainFuseForm = (): void => syncMainFuseControls(savedFuse, savedAmps);
