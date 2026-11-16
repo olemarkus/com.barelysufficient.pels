@@ -32,6 +32,7 @@ export const OVERRIDE_COPY = {
   end: 'End now',
   save: 'Start override',
   cancel: 'Cancel',
+  repeat: 'Repeat on a schedule',
   temperatureLabel: 'Temperature (°C)',
   endLabel: 'Ends',
   blocked: 'PELS does not set this device’s temperature while Keep the new temperature is selected.',

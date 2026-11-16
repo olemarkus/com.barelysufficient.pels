@@ -1,7 +1,10 @@
-import type { Schedule, ScheduleCommand, ScheduleModeCondition } from '../../../contracts/src/schedules';
+import type {
+  Schedule, ScheduleCommand, ScheduleModeCondition, ScheduleOverrideAction,
+} from '../../../contracts/src/schedules';
 import type { SmartTaskCandidateDevice } from '../../../contracts/src/smartTaskEdit';
 import { isUnknownRecord } from '../recordGuards';
 import { resolveSmartTaskCandidateGoal } from '../smartTaskCandidateGoal';
+import { MAX_DEVICE_OVERRIDE_MINUTES } from './deviceOverrides';
 
 export const MAX_SCHEDULES = 100;
 export const SCHEDULE_DELETION = { deleted: true } as const;
@@ -67,8 +70,27 @@ const parseTask = (task: unknown): Extract<Schedule['action'], { type: 'task' }>
   };
 };
 
+const parseOverride = (raw: Record<string, unknown>): ScheduleOverrideAction => {
+  const { setting, minutes } = raw;
+  if (!text(raw.deviceId, 200) || !isUnknownRecord(setting) || setting.type !== 'temperature'
+    || typeof setting.targetC !== 'number' || !Number.isFinite(setting.targetC)
+    || typeof minutes !== 'number' || !Number.isInteger(minutes)
+    || minutes < 1 || minutes > MAX_DEVICE_OVERRIDE_MINUTES) throw new Error('Invalid override');
+  return {
+    type: 'override', deviceId: text(raw.deviceId, 200),
+    setting: { type: 'temperature', targetC: setting.targetC }, minutes,
+  };
+};
+
+/** The device a schedule's action is about; `null` for a mode change. */
+export const scheduleActionDeviceId = (action: Schedule['action']): string | null => {
+  if (action.type === 'task') return action.task.deviceId;
+  return action.type === 'override' ? action.deviceId : null;
+};
+
 const parseAction = (raw: unknown): Schedule['action'] => {
   if (!isUnknownRecord(raw)) throw new Error('Choose a schedule action');
+  if (raw.type === 'override') return parseOverride(raw);
   if (raw.type === 'mode' && text(raw.mode, 100)) return { type: 'mode', mode: text(raw.mode, 100) };
   if (raw.type === 'task') return { type: 'task', task: parseTask(raw.task) };
   throw new Error('Choose a schedule action');
@@ -110,6 +132,15 @@ export const SCHEDULE_ELIGIBILITY_REASONS: Record<ScheduleEligibilityIssue, stri
   target_out_of_range: 'The target is outside this device’s range.',
 };
 
+/** The target a task or an override asks of its device, checked against the same range. */
+const deviceActionTarget = (
+  action: Exclude<Schedule['action'], { type: 'mode' }>,
+): { deviceId: string; kind: SmartTaskCandidateDevice['kind']; target: number } => (
+  action.type === 'task'
+    ? { deviceId: action.task.deviceId, kind: action.task.kind, target: action.task.target }
+    : { deviceId: action.deviceId, kind: 'temperature', target: action.setting.targetC }
+);
+
 export const scheduleEligibilityIssue = (
   schedule: Schedule,
   modes: readonly string[],
@@ -119,13 +150,18 @@ export const scheduleEligibilityIssue = (
     return 'condition_mode_missing';
   }
   if (schedule.action.type === 'mode') return modes.includes(schedule.action.mode) ? null : 'mode_missing';
-  const { task } = schedule.action;
-  const device = devices.find((entry) => entry.deviceId === task.deviceId);
-  const goal = device ? resolveSmartTaskCandidateGoal(device, task.kind) : null;
+  const asked = deviceActionTarget(schedule.action);
+  const device = devices.find((entry) => entry.deviceId === asked.deviceId);
+  const goal = device ? resolveSmartTaskCandidateGoal(device, asked.kind) : null;
   if (!goal) return 'device_unavailable';
-  if (task.target < goal.goalMin || task.target > goal.goalMax) return 'target_out_of_range';
+  if (asked.target < goal.goalMin || asked.target > goal.goalMax) return 'target_out_of_range';
   return null;
 };
+
+/** Eligibility wording names a Smart task; an override schedule reads it about its override. */
+export const forScheduleAction = (action: Schedule['action'], wording: string): string => (
+  action.type === 'override' ? wording.replace('this Smart task', 'this override') : wording
+);
 
 export const scheduleEligibilityReason = (
   schedule: Schedule,
@@ -133,7 +169,7 @@ export const scheduleEligibilityReason = (
   devices: readonly SmartTaskCandidateDevice[],
 ): string => {
   const issue = scheduleEligibilityIssue(schedule, modes, devices);
-  return issue === null ? '' : SCHEDULE_ELIGIBILITY_REASONS[issue];
+  return issue === null ? '' : forScheduleAction(schedule.action, SCHEDULE_ELIGIBILITY_REASONS[issue]);
 };
 
 const repeatsOverlap = (left: Schedule['repeat'], right: Schedule['repeat']): boolean => {
@@ -148,8 +184,8 @@ export const scheduleConflict = (
   schedules: readonly Schedule[],
 ): boolean => schedules.some((other) => {
   if (schedule.id === other.id || !schedule.enabled || !other.enabled || schedule.at !== other.at) return false;
-  const sameTarget = schedule.action.type === 'mode' ? other.action.type === 'mode'
-    : other.action.type === 'task' && other.action.task.deviceId === schedule.action.task.deviceId;
+  const sameTarget = schedule.action.type === other.action.type
+    && scheduleActionDeviceId(schedule.action) === scheduleActionDeviceId(other.action);
   return sameTarget && repeatsOverlap(schedule.repeat, other.repeat);
 });
 

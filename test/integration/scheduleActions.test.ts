@@ -27,7 +27,23 @@ const host = () => {
       return { persisted: true };
     }),
     handleOperatingModeChange: vi.fn(async () => {}),
+    settings: overrideSettings(),
+    getNowMs: () => Date.now(),
   };
+};
+const overrideSettings = () => {
+  const store = new Map<string, unknown>();
+  return {
+    get: (key: string) => store.get(key) ?? null,
+    set: (key: string, value: unknown) => { store.set(key, value); },
+    unset: (key: string) => { store.delete(key); },
+    getKeys: () => [...store.keys()],
+  };
+};
+const morningHeat: Schedule = {
+  id: 'bathroom', name: 'Bathroom mornings', enabled: true, at: '06:00',
+  repeat: { type: 'weekly', days: [1, 2, 3, 4, 5] }, condition: { type: 'any' },
+  action: { type: 'override', deviceId: 'floor', setting: { type: 'temperature', targetC: 26 }, minutes: 60 },
 };
 
 describe('scheduled action integration', () => {
@@ -67,6 +83,33 @@ describe('scheduled action integration', () => {
     commands.resolveSmartTaskHomeScope.mockReturnValue('sub_home');
     await expect(executor.execute(schedule, Date.now())).rejects.toThrow(ScheduleSkip);
     expect(commands.upsertDeferredObjectiveForDevice).not.toHaveBeenCalled();
+  });
+  it('starts an override that ends its minutes after the occurrence, even from a late trigger', async () => {
+    const commands = host();
+    const occurrence = Date.now() - 10 * 60_000;
+    await new ScheduleActionExecutor(commands, { getTimezone: () => 'Europe/Oslo' }).execute(morningHeat, occurrence);
+    expect(commands.settings.get('device_override.floor')).toEqual({
+      untilMs: occurrence + 60 * 60_000, setting: { type: 'temperature', targetC: 26 },
+    });
+    expect(commands.upsertDeferredObjectiveForDevice).not.toHaveBeenCalled();
+  });
+  it('leaves an override already in force on the device alone', async () => {
+    const commands = host();
+    const inForce = { untilMs: Date.now() + 3 * 60 * 60_000, setting: { type: 'temperature', targetC: 21 } };
+    commands.settings.set('device_override.floor', inForce);
+    await expect(new ScheduleActionExecutor(commands, { getTimezone: () => 'Europe/Oslo' })
+      .execute(morningHeat, Date.now())).rejects.toThrow('Skipped because this device already has an override.');
+    expect(commands.settings.get('device_override.floor')).toEqual(inForce);
+  });
+  it('skips an override whose time has passed or whose device keeps its own temperature', async () => {
+    const commands = host();
+    const executor = new ScheduleActionExecutor(commands, { getTimezone: () => 'Europe/Oslo' });
+    await expect(executor.execute(morningHeat, Date.now() - 61 * 60_000))
+      .rejects.toThrow('Skipped because the override would already have ended.');
+    commands.settings.set('temperature_control_modes', { floor: 'external' });
+    await expect(executor.execute(morningHeat, Date.now()))
+      .rejects.toThrow('Skipped because the device is set to Keep the new temperature.');
+    expect(commands.settings.get('device_override.floor')).toBeNull();
   });
   it('words a refused create without its reason code', async () => {
     const commands = host();

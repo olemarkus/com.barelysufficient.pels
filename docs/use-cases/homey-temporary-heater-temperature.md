@@ -7,6 +7,22 @@ description: Use a PELS Flow card to warm one room for an hour or a session, the
 
 Warm the bathroom for an hour, heat the basement for a film, or keep a guest room at a fixed temperature overnight. PELS holds the thermostat at the temperature for the time you choose, then returns it to normal control.
 
+## Without a Flow
+
+Open the thermostat's device page in PELS. The **Override** card is first on the page.
+
+1. Tap **Set an override**.
+2. Enter the temperature and choose when it ends: in 2 hours, at 08:00, or a date and time up to seven days ahead.
+3. Tap **Start override**.
+
+The card then shows the temperature and its end time, with **Change** and **End now**. The device card on the overview shows an **Override** chip meanwhile.
+
+To repeat it, tap **Repeat on a schedule**, or open **Settings → Schedules → New schedule** and choose **Override**. Set the temperature, the start and end times, the days, and the modes it applies in. Weekday mornings 06:00 to 07:00 in the bathroom is one schedule, where it used to take an extra mode.
+
+An override works the same way as the Flow card in "Keep PELS in control" below.
+
+## With a Flow
+
 Choose by who should set the temperature meanwhile.
 
 | | Keep PELS in control | Hand the thermostat to a Flow |

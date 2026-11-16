@@ -2,9 +2,29 @@ import type { Schedule, ScheduleAction, ScheduleEntry, ScheduleRepeat } from '..
 import type { SmartTaskCandidateDevice } from '../../../contracts/src/smartTaskEdit.ts';
 import { deadlineLabels } from '../../../shared-domain/src/smartTaskCopy/deadlineLabels.ts';
 import { resolveSmartTaskCandidateGoal } from '../../../shared-domain/src/smartTaskCandidateGoal.ts';
+import { scheduleActionDeviceId } from '../../../shared-domain/src/settings/schedules.ts';
 import type { SmartTaskEditPermissions } from './smartTaskEdit.ts';
 import { isScheduleModeAvailable } from './scheduleModeReferences.ts';
 import { parseSmartTaskGoal, SMART_TASK_READY_BY_PATTERN } from './smartTaskDraft.ts';
+
+export type ScheduleActionType = ScheduleAction['type'];
+const DAY_MINUTES = 24 * 60;
+const clockMinutes = (time: string): number => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+const clockTime = (minutes: number): string => {
+  const wrapped = ((minutes % DAY_MINUTES) + DAY_MINUTES) % DAY_MINUTES;
+  return `${String(Math.floor(wrapped / 60)).padStart(2, '0')}:${String(wrapped % 60).padStart(2, '0')}`;
+};
+/** How long an override from `at` until `until` lasts; an end at or before the start is the next day's. */
+export const scheduleOverrideMinutes = (at: string, until: string): number => {
+  const minutes = clockMinutes(until) - clockMinutes(at);
+  return minutes > 0 ? minutes : minutes + DAY_MINUTES;
+};
+/** The devices an override can be scheduled for: those PELS sets a temperature on. */
+export const scheduleOverrideDevices = (
+  devices: readonly SmartTaskCandidateDevice[],
+): SmartTaskCandidateDevice[] => (
+  devices.filter((device) => resolveSmartTaskCandidateGoal(device, 'temperature') !== undefined)
+);
 
 export const SCHEDULE_DAYS = [
   { value: 1, label: 'Mon' }, { value: 2, label: 'Tue' }, { value: 3, label: 'Wed' },
@@ -15,13 +35,16 @@ export type ScheduleDraft = {
   id: string;
   name: string;
   enabled: boolean;
-  actionType: 'mode' | 'task';
+  actionType: ScheduleActionType;
   mode: string;
   deviceId: string;
   taskKind: SmartTaskCandidateDevice['kind'] | null;
   target: string;
   readyBy: string;
   permissions: SmartTaskEditPermissions;
+  /** The override's temperature and the time it ends (`HH:MM`). */
+  overrideTarget: string;
+  overrideUntil: string;
   at: string;
   repeat: ScheduleRepeatChoice;
   days: number[];
@@ -59,13 +82,15 @@ export const scheduleRepeatLabel = (repeat: ScheduleRepeat): string => {
 export const automaticScheduleName = (draft: ScheduleDraft, devices: readonly SmartTaskCandidateDevice[]): string => {
   if (draft.actionType === 'mode') return `${draft.mode} mode`;
   const device = devices.find((candidate) => candidate.deviceId === draft.deviceId);
-  return device ? `${device.deviceName} task` : draft.name;
+  if (!device) return draft.name;
+  return draft.actionType === 'override' ? `${device.deviceName} override` : `${device.deviceName} task`;
 };
 
 const performsSameAction = (draft: ScheduleDraft, schedule: Schedule): boolean => (
-  draft.actionType === 'mode' ? schedule.action.type === 'mode'
-    : schedule.action.type === 'task' && schedule.action.task.deviceId === draft.deviceId
+  schedule.action.type === draft.actionType
+    && (draft.actionType === 'mode' || scheduleActionDeviceId(schedule.action) === draft.deviceId)
 );
+const START_HOURS: Record<ScheduleActionType, number> = { task: 18, mode: 22, override: 6 };
 
 /**
  * The first whole hour from the action's usual time that no other schedule
@@ -76,7 +101,7 @@ export const automaticScheduleTime = (draft: ScheduleDraft, schedules: readonly 
   const taken = new Set(schedules
     .filter((schedule) => schedule.id !== draft.id && schedule.enabled && performsSameAction(draft, schedule))
     .map((schedule) => schedule.at));
-  const startHour = draft.actionType === 'task' ? 18 : 22;
+  const startHour = START_HOURS[draft.actionType];
   const free = Array.from({ length: 24 }, (_, offset) => `${String((startHour + offset) % 24).padStart(2, '0')}:00`)
     .find((time) => !taken.has(time));
   return free ?? `${startHour}:00`;
@@ -99,6 +124,8 @@ export const createScheduleDraft = (
     target: device ? String(device.defaultGoal) : '',
     readyBy: '07:00',
     permissions: { ...EMPTY_PERMISSIONS },
+    overrideTarget: '',
+    overrideUntil: '',
     at: '',
     repeat: 'daily',
     days: daysForRepeat('daily'),
@@ -109,27 +136,60 @@ export const createScheduleDraft = (
   return { ...draft, at: automaticScheduleTime(draft, schedules) };
 };
 
-export const editScheduleDraft = (schedule: Schedule, today: string): ScheduleDraft => {
-  const task = schedule.action.type === 'task' ? schedule.action.task : null;
+/** A new override's end, an hour after its trigger time, until the owner chooses one. */
+export const withOverrideEnd = (draft: ScheduleDraft): ScheduleDraft => (
+  draft.actionType === 'override' && draft.overrideUntil === '' && SMART_TASK_READY_BY_PATTERN.test(draft.at)
+    ? { ...draft, overrideUntil: clockTime(clockMinutes(draft.at) + 60) } : draft
+);
+
+/** The draft as an override for a device, at the device's usual temperature goal. */
+export const overrideDraftPatch = (
+  draft: ScheduleDraft,
+  device: SmartTaskCandidateDevice,
+): Pick<ScheduleDraft, 'actionType' | 'deviceId' | 'overrideTarget' | 'overrideUntil'> => ({
+  actionType: 'override',
+  deviceId: device.deviceId,
+  overrideTarget: device.kind === 'temperature' ? String(device.defaultGoal) : '',
+  overrideUntil: draft.overrideUntil,
+});
+
+type ActionDraftFields = Pick<ScheduleDraft,
+  'mode' | 'deviceId' | 'target' | 'taskKind' | 'readyBy' | 'permissions' | 'overrideTarget' | 'overrideUntil'>;
+const NO_ACTION_FIELDS: ActionDraftFields = {
+  mode: '', deviceId: '', target: '', taskKind: null, readyBy: '07:00', permissions: { ...EMPTY_PERMISSIONS },
+  overrideTarget: '', overrideUntil: '',
+};
+const actionDraftFields = (schedule: Schedule): ActionDraftFields => {
+  const { action } = schedule;
+  if (action.type === 'mode') return { ...NO_ACTION_FIELDS, mode: action.mode };
+  if (action.type === 'override') {
+    return {
+      ...NO_ACTION_FIELDS, deviceId: action.deviceId, overrideTarget: String(action.setting.targetC),
+      overrideUntil: clockTime(clockMinutes(schedule.at) + action.minutes),
+    };
+  }
+  const { task } = action;
   return {
-    id: schedule.id, name: schedule.name, enabled: schedule.enabled,
-    actionType: schedule.action.type,
-    mode: schedule.action.type === 'mode' ? schedule.action.mode : '',
-    deviceId: task?.deviceId ?? '', target: task ? String(task.target) : '',
-    taskKind: task ? task.kind : null,
-    readyBy: task?.readyByLocalTime ?? '07:00',
+    ...NO_ACTION_FIELDS, deviceId: task.deviceId, target: String(task.target), taskKind: task.kind,
+    readyBy: task.readyByLocalTime,
     permissions: {
-      exemptFromBudget: task?.exemptFromBudget === true,
-      limitLowerPriorityDevices: task?.limitLowerPriorityDevices === true,
-      pauseLowerPriorityDevices: task?.pauseLowerPriorityDevices === true,
+      exemptFromBudget: task.exemptFromBudget === true,
+      limitLowerPriorityDevices: task.limitLowerPriorityDevices === true,
+      pauseLowerPriorityDevices: task.pauseLowerPriorityDevices === true,
     },
-    at: schedule.at, repeat: repeatChoice(schedule.repeat),
-    days: schedule.repeat.type === 'weekly' ? [...schedule.repeat.days] : daysForRepeat('daily'),
-    date: schedule.repeat.type === 'once' ? schedule.repeat.date : today,
-    conditionType: schedule.condition.type,
-    conditionModes: schedule.condition.type === 'any' ? [] : [...schedule.condition.modes],
   };
 };
+
+export const editScheduleDraft = (schedule: Schedule, today: string): ScheduleDraft => ({
+  id: schedule.id, name: schedule.name, enabled: schedule.enabled,
+  actionType: schedule.action.type,
+  ...actionDraftFields(schedule),
+  at: schedule.at, repeat: repeatChoice(schedule.repeat),
+  days: schedule.repeat.type === 'weekly' ? [...schedule.repeat.days] : daysForRepeat('daily'),
+  date: schedule.repeat.type === 'once' ? schedule.repeat.date : today,
+  conditionType: schedule.condition.type,
+  conditionModes: schedule.condition.type === 'any' ? [] : [...schedule.condition.modes],
+});
 
 type TaskActionDraftResult = { ok: true; action: ScheduleAction } | { ok: false; error: string };
 const taskActionFromDraft = (
@@ -164,6 +224,41 @@ const taskActionFromDraft = (
   };
 };
 
+const overrideActionFromDraft = (
+  draft: ScheduleDraft,
+  devices: readonly SmartTaskCandidateDevice[],
+): TaskActionDraftResult => {
+  const device = devices.find((candidate) => candidate.deviceId === draft.deviceId);
+  const goal = device && resolveSmartTaskCandidateGoal(device, 'temperature');
+  if (!device || !goal) return { ok: false, error: 'Choose an available device for this override.' };
+  const targetC = parseSmartTaskGoal(draft.overrideTarget);
+  if (targetC === null || targetC < goal.goalMin || targetC > goal.goalMax) {
+    return { ok: false, error: `Choose a temperature between ${goal.goalMin} and ${goal.goalMax} °C.` };
+  }
+  if (!SMART_TASK_READY_BY_PATTERN.test(draft.overrideUntil)) {
+    return { ok: false, error: 'Choose a valid end time.' };
+  }
+  return {
+    ok: true,
+    action: {
+      type: 'override', deviceId: device.deviceId, setting: { type: 'temperature', targetC },
+      minutes: scheduleOverrideMinutes(draft.at, draft.overrideUntil),
+    },
+  };
+};
+
+const actionFromDraft = (
+  draft: ScheduleDraft,
+  devices: readonly SmartTaskCandidateDevice[],
+  modeAvailable: boolean,
+): TaskActionDraftResult => {
+  if (draft.actionType === 'override') return overrideActionFromDraft(draft, devices);
+  if (draft.actionType === 'task') return taskActionFromDraft(draft, devices);
+  return modeAvailable
+    ? { ok: true, action: { type: 'mode', mode: draft.mode } }
+    : { ok: false, error: 'Choose an available mode.' };
+};
+
 export type ScheduleDraftResult = { ok: true; schedule: Schedule } | { ok: false; error: string };
 export const buildScheduleFromDraft = (
   draft: ScheduleDraft,
@@ -192,14 +287,8 @@ export const buildScheduleFromDraft = (
       ? { type: 'any' as const }
       : { type: draft.conditionType, modes: [...draft.conditionModes] },
   };
-  if (draft.actionType === 'mode') {
-    if (!isScheduleModeAvailable(draft.mode, modes, modeReferences)) {
-      return { ok: false, error: 'Choose an available mode.' };
-    }
-    return { ok: true, schedule: { ...common, action: { type: 'mode', mode: draft.mode } } };
-  }
-  const task = taskActionFromDraft(draft, devices);
-  return task.ok ? { ok: true, schedule: { ...common, action: task.action } } : task;
+  const action = actionFromDraft(draft, devices, isScheduleModeAvailable(draft.mode, modes, modeReferences));
+  return action.ok ? { ok: true, schedule: { ...common, action: action.action } } : action;
 };
 
 export const scheduleReadyByDay = (at: string, readyBy: string): string => (

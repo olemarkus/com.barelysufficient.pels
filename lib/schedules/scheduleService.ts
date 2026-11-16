@@ -5,8 +5,8 @@ import type {
   SettingsUiSmartTaskDevicesResponse, SmartTaskCandidateDevice,
 } from '../../packages/contracts/src/smartTaskEdit';
 import {
-  MAX_SCHEDULES, SCHEDULE_ELIGIBILITY_REASONS, isScheduleDeletion, isScheduleId, parseSchedule,
-  parseScheduleCommand, scheduleConflict, scheduleConflictOnDate, scheduleEligibilityIssue,
+  MAX_SCHEDULES, SCHEDULE_ELIGIBILITY_REASONS, forScheduleAction, isScheduleDeletion, isScheduleId, parseSchedule,
+  parseScheduleCommand, scheduleActionDeviceId, scheduleConflict, scheduleConflictOnDate, scheduleEligibilityIssue,
   scheduleEligibilityReason, type ScheduleEligibilityIssue,
 } from '../../packages/shared-domain/src/settings/schedules';
 import type { SettingsPort } from '../ports/homeyRuntime';
@@ -27,6 +27,10 @@ const ELIGIBILITY_SKIP_RESULTS: Record<ScheduleEligibilityIssue, string> = {
   mode_missing: 'Skipped because the mode was no longer available.',
   device_unavailable: 'Skipped because the device was not available for this Smart task.',
   target_out_of_range: 'Skipped because the target was outside the device’s range.',
+};
+
+const SUCCESS_RESULTS: Record<Schedule['action']['type'], string> = {
+  mode: 'Mode changed.', task: 'Smart task created.', override: 'Override started.',
 };
 
 // Results stored by earlier versions read "Skipped: …" and "Could not run: …", and the
@@ -73,8 +77,10 @@ export type ScheduleRuntimePort = {
   execute(schedule: Schedule, scheduledAtMs: number): Promise<void>;
 };
 
-const groupPaused = (schedule: Schedule, controls: ScheduleControls): boolean => schedule.action.type === 'mode'
-  ? !controls.modeChangesEnabled : controls.disabledTaskDeviceIds.includes(schedule.action.task.deviceId);
+const groupPaused = (schedule: Schedule, controls: ScheduleControls): boolean => {
+  const deviceId = scheduleActionDeviceId(schedule.action);
+  return deviceId === null ? !controls.modeChangesEnabled : controls.disabledTaskDeviceIds.includes(deviceId);
+};
 
 const controlBoolean = (settings: ScheduleRuntimePort['settings'], keys: readonly string[], key: string): boolean => {
   if (!keys.includes(key)) return true;
@@ -293,7 +299,7 @@ export class ScheduleService {
   }
 
   private eligibility(schedule: Schedule): ScheduleEligibilityIssue | null {
-    const devices = schedule.action.type === 'task' ? this.port.listTaskDevices() : [];
+    const devices = schedule.action.type === 'mode' ? [] : this.port.listTaskDevices();
     return scheduleEligibilityIssue(this.resolveModes(schedule), this.port.listModes(), devices);
   }
 
@@ -416,7 +422,7 @@ export class ScheduleService {
 
   private skipReason(schedule: Schedule, date: string): string {
     const issue = this.eligibility(schedule);
-    if (issue) return ELIGIBILITY_SKIP_RESULTS[issue];
+    if (issue) return forScheduleAction(schedule.action, ELIGIBILITY_SKIP_RESULTS[issue]);
     if (scheduleConflictOnDate(schedule, [...this.schedules.values()], date)) {
       return 'Skipped because another schedule has the same time and target.';
     }
@@ -431,7 +437,7 @@ export class ScheduleService {
     try {
       await this.port.execute(schedule, atMs);
       logger.info({ event: 'schedule_triggered', scheduleId: schedule.id, scheduledAtMs: atMs });
-      return schedule.action.type === 'mode' ? 'Mode changed.' : 'Smart task created.';
+      return SUCCESS_RESULTS[schedule.action.type];
     } catch (error) {
       return this.failureResult(schedule, error);
     }

@@ -21,5 +21,5 @@ export type SchedulesViewSnapshot = {
   busy: boolean;
   error: string;
   editor: ScheduleEditor | null;
-  filter: 'all' | 'mode' | 'task';
+  filter: 'all' | 'mode' | 'task' | 'override';
 };

@@ -5,9 +5,9 @@ import { MdFilledButton, MdFilledTextField, MdTextButton } from './materialWebJS
 import { SegmentedControl } from './SegmentedControl.tsx';
 
 export type DeviceOverrideCardState =
-  | { kind: 'idle' }
+  | { kind: 'idle'; deviceId: string }
   | { kind: 'blocked' }
-  | { kind: 'active'; line: string; busy: boolean }
+  | { kind: 'active'; deviceId: string; line: string; busy: boolean }
   | {
     kind: 'editing';
     draft: OverrideDraft;
@@ -71,6 +71,13 @@ const OverrideForm = ({ state, actions }: { state: EditingState; actions: Device
   );
 };
 
+/** Opens a new schedule that starts an override for this device (`schedules.ts`). */
+const RepeatLink = ({ deviceId }: { deviceId: string }) => (
+  <MdTextButton type="button" data-open-schedules="" data-schedule-device={deviceId} data-schedule-action="override">
+    {OVERRIDE_COPY.repeat}
+  </MdTextButton>
+);
+
 /** The device page's Override card: start one, see the one in force, end it. */
 export const DeviceOverrideCard = (
   { state, actions }: { state: DeviceOverrideCardState; actions: DeviceOverrideCardActions },
@@ -80,7 +87,12 @@ export const DeviceOverrideCard = (
     {state.kind === 'blocked' && <p class="pels-card-supporting">{OVERRIDE_COPY.blocked}</p>}
     {state.kind === 'idle' && <>
       <p class="pels-card-supporting">{OVERRIDE_COPY.hint}</p>
-      <MdTextButton type="button" data-override-action="start" onClick={actions.onStart}>{OVERRIDE_COPY.start}</MdTextButton>
+      <div class="device-detail-override__actions">
+        <MdTextButton type="button" data-override-action="start" onClick={actions.onStart}>
+          {OVERRIDE_COPY.start}
+        </MdTextButton>
+        <RepeatLink deviceId={state.deviceId} />
+      </div>
     </>}
     {state.kind === 'active' && <>
       <p class="pels-text-answer" data-override-active>{state.line}</p>
@@ -91,6 +103,7 @@ export const DeviceOverrideCard = (
         <MdTextButton type="button" disabled={state.busy} data-override-action="end" onClick={actions.onEndNow}>
           {OVERRIDE_COPY.end}
         </MdTextButton>
+        <RepeatLink deviceId={state.deviceId} />
       </div>
     </>}
     {state.kind === 'editing' && <OverrideForm state={state} actions={actions} />}

@@ -4,8 +4,16 @@ import type { SmartTaskCandidateRequest } from './smartTaskEdit.js';
 export type ScheduleRepeat = { type: 'weekly'; days: number[] } | { type: 'once'; date: string };
 export type ScheduleModeCondition = { type: 'any' }
   | { type: 'include' | 'exclude'; modes: string[] };
+/** A device override started at the occurrence and ending `minutes` later; a temperature today. */
+export type ScheduleOverrideAction = {
+  type: 'override';
+  deviceId: string;
+  setting: { type: 'temperature'; targetC: number };
+  minutes: number;
+};
 export type ScheduleAction = { type: 'mode'; mode: string }
-  | { type: 'task'; task: Omit<SmartTaskCandidateRequest, 'deadlineAtMs'> };
+  | { type: 'task'; task: Omit<SmartTaskCandidateRequest, 'deadlineAtMs'> }
+  | ScheduleOverrideAction;
 export type Schedule = {
   id: string;
   name: string;

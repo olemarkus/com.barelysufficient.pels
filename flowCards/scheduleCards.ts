@@ -18,13 +18,14 @@ function selectedSchedule(owner: ScheduleCardsOwner, args: unknown): Schedule {
 }
 
 function scheduleDescription(schedule: Schedule, catalog: SettingsUiSmartTaskDevicesResponse): string {
-  if (schedule.action.type === 'mode') return `Change mode to ${schedule.action.mode} at ${schedule.at}`;
-  const task = schedule.action.task;
+  const { action } = schedule;
+  if (action.type === 'mode') return `Change mode to ${action.mode} at ${schedule.at}`;
+  const deviceId = action.type === 'task' ? action.task.deviceId : action.deviceId;
   const device = catalog.state === 'ready'
-    ? catalog.devices.find((candidate) => candidate.deviceId === task.deviceId) : undefined;
-  const target = task.target;
-  const goal = `${target}${deadlineLabels(task.kind).targetUnit}`;
+    ? catalog.devices.find((candidate) => candidate.deviceId === deviceId) : undefined;
   const name = device?.deviceName ?? (catalog.state === 'ready' ? 'Unavailable device' : 'Device details unavailable');
+  if (action.type === 'override') return `${name} · Override ${action.setting.targetC}°C · Start at ${schedule.at}`;
+  const goal = `${action.task.target}${deadlineLabels(action.task.kind).targetUnit}`;
   return `${name} · ${goal} · Create at ${schedule.at}`;
 }
 
