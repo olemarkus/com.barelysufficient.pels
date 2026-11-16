@@ -24,6 +24,19 @@ const clickDeviceDetailButton = async (page: Page, deviceId: string) => {
   // A separate scroll holds an element handle that can detach during that refresh.
   await detailButton.click();
   await expect(page.locator('#device-detail-overlay')).toBeVisible({ timeout: 10000 });
+  await openTuningCards(page);
+};
+
+// Price response and Power limiting are closed when the page opens. These
+// tests are about the controls inside, so they open both first; the closed
+// default has its own test.
+const openTuningCards = async (page: Page) => {
+  await page.evaluate(() => {
+    for (const id of ['device-detail-delta-disclosure', 'device-detail-shedding-disclosure']) {
+      const disclosure = document.getElementById(id);
+      if (disclosure instanceof HTMLDetailsElement) disclosure.open = true;
+    }
+  });
 };
 
 const openDeviceDetail = async (page: Page, deviceId: string) => {
@@ -64,6 +77,35 @@ const readMaterialDisabled = async (page: Page, selector: string): Promise<boole
 );
 
 test.describe('Device detail panel', () => {
+  test('Price response and Power limiting open closed, each summarised in its header', async ({ page }) => {
+    await openDevices(page);
+    const row = page.locator('#devices-panel [data-device-id="dev_heatpump"]').first();
+    await row.locator('.pels-device-card__detail-button').click();
+    await expect(page.locator('#device-detail-overlay')).toBeVisible({ timeout: 10000 });
+
+    const price = page.locator('#device-detail-delta-disclosure');
+    const limiting = page.locator('#device-detail-shedding-disclosure');
+    await expect(price).not.toHaveAttribute('open', '');
+    await expect(limiting).not.toHaveAttribute('open', '');
+    await expect(page.locator('#device-detail-delta-summary')).toHaveText(/^(Off|On( · .+)?)$/u);
+    await expect(page.locator('#device-detail-shedding-summary')).toHaveText(/^(Off|On · .+ when limiting)$/u);
+    // The Temporary card leads, and the report action ends the page.
+    await expect(page.locator('#device-detail-temporary')).toBeVisible();
+    const sections = await page.locator('#device-detail-panel .detail-section').evaluateAll((els) => (
+      els.filter((el) => (el as HTMLElement).offsetParent !== null).map((el) => el.id)));
+    expect(sections.at(-1)).toBe('device-detail-report-section');
+
+    // A card the owner opens closes again for the next device page.
+    await price.locator('summary').click();
+    await expect(price).toHaveAttribute('open', '');
+    await page.locator('#device-detail-close').click();
+    await row.locator('.pels-device-card__detail-button').click();
+    await expect(price).not.toHaveAttribute('open', '');
+    if (process.env.PELS_OVERRIDE_SHOTS) {
+      await page.screenshot({ path: `${process.env.PELS_OVERRIDE_SHOTS}/tidy-device-page.png` });
+    }
+  });
+
   test('checks a fixed Flow conflict immediately from the warning', async ({ page }) => {
     await page.addInitScript(() => {
       const conflicted = {
@@ -313,6 +355,7 @@ test.describe('Device detail panel', () => {
       'device-detail-stepped-section',
       'device-detail-activity-log-section',
       'device-detail-diagnostics-section',
+      'device-detail-report-section',
     ]);
     await expect(page.locator('#device-detail-shedding-section #device-detail-controllable-row')).toBeVisible();
     await expect(page.locator('#device-detail-charging-section #device-detail-surplus-track-row')).toBeAttached();
@@ -327,6 +370,7 @@ test.describe('Device detail panel', () => {
       'device-detail-setup-section',
       'device-detail-activity-log-section',
       'device-detail-diagnostics-section',
+      'device-detail-report-section',
     ]);
     await expect(page.locator('#device-detail-managed-hint'))
       .toHaveText('Turn on to set how this charger charges and how PELS limits it.');
@@ -346,6 +390,7 @@ test.describe('Device detail panel', () => {
       'device-detail-setup-section',
       'device-detail-activity-log-section',
       'device-detail-diagnostics-section',
+      'device-detail-report-section',
     ]);
   });
 

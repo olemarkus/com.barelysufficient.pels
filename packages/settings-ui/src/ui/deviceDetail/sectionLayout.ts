@@ -47,6 +47,8 @@ const SECTION_IDS = {
   setup: 'device-detail-setup-section',
   activityLog: 'device-detail-activity-log-section',
   diagnostics: 'device-detail-diagnostics-section',
+  // Report a problem: last for every kind, so it is in no kind's own list.
+  report: 'device-detail-report-section',
 } as const;
 
 type SectionKey = keyof typeof SECTION_IDS;
