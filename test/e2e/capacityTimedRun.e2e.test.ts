@@ -159,7 +159,7 @@ describe('Capacity timed run of an on/off heater (SDK-boundary e2e)', () => {
     expect(hourKWh).toBeGreaterThan(4.6);
     expect(hourKWh).toBeLessThanOrEqual(4.7);
     // The big heaters never came on: the timed run never reached past the margin.
-    expect(putSpy.mock.calls.some(([path, body]) => (
+    expect(putSpy.mock.calls.some(([path, body]: unknown[]) => (
       (path === onoffPath('h110') || path === onoffPath('h140')) && (body as { value?: unknown }).value === true
     ))).toBe(false);
   });
