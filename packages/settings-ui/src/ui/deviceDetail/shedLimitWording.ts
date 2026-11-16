@@ -7,6 +7,7 @@
 import {
   deviceDetailShedCoolingTempHint,
   deviceDetailShedTemp,
+  deviceDetailShedTempLabel,
   deviceDetailShedTempHint,
 } from '../dom.ts';
 import { isTemperatureDeviceWithoutOnOff, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
@@ -45,7 +46,8 @@ export const describeLimitFields = (device: SettingsUiDeviceDetailItem): {
 /** Write the wording onto the fields. Guarded per handle: the stub harnesses omit some. */
 export const applyLimitWording = (device: SettingsUiDeviceDetailItem): void => {
   const wording = describeLimitFields(device);
-  if (deviceDetailShedTemp) deviceDetailShedTemp.label = wording.heatingLabel;
+  if (deviceDetailShedTemp) deviceDetailShedTemp.setAttribute('aria-label', wording.heatingLabel);
+  if (deviceDetailShedTempLabel) deviceDetailShedTempLabel.textContent = wording.heatingLabel;
   if (deviceDetailShedTempHint) deviceDetailShedTempHint.textContent = wording.heatingHint;
   if (deviceDetailShedCoolingTempHint) deviceDetailShedCoolingTempHint.textContent = wording.coolingHint;
 };

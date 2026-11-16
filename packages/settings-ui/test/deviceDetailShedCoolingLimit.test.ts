@@ -42,8 +42,9 @@ const loadHarness = async () => {
   const listening = (name: string) => ({
     addEventListener: (type: string, fn: () => Promise<void> | void) => { listeners[`${name}:${type}`] = fn; },
   });
-  const shedTemp = { value: '', label: '', disabled: false, validity: { badInput: false }, reportValidity: vi.fn(), ...listening('temp') };
+  const shedTemp = { value: '', disabled: false, setAttribute: vi.fn(), validity: { badInput: false }, reportValidity: vi.fn(), ...listening('temp') };
   const shedTempRow = { hidden: true };
+  const shedTempLabel = { textContent: '' };
   const shedTempHint = { textContent: '' };
   const shedCoolingTemp = { value: '', disabled: false, ...listening('cooling') };
   const shedCoolingTempRow = { hidden: true };
@@ -59,6 +60,7 @@ const loadHarness = async () => {
     deviceDetailShedHint: { hidden: false },
     deviceDetailShedTemp: shedTemp,
     deviceDetailShedTempRow: shedTempRow,
+    deviceDetailShedTempLabel: shedTempLabel,
     deviceDetailShedTempHint: shedTempHint,
     deviceDetailShedCoolingTemp: shedCoolingTemp,
     deviceDetailShedCoolingTempRow: shedCoolingTempRow,
@@ -107,7 +109,7 @@ const loadHarness = async () => {
   };
 
   return {
-    state, shedTemp, shedTempRow, shedTempHint, shedCoolingTemp, shedCoolingTempRow, shedCoolingTempHint,
+    state, shedTemp, shedTempLabel, shedTempRow, shedTempHint, shedCoolingTemp, shedCoolingTempRow, shedCoolingTempHint,
     setSetting, show, changeCoolingLimit, changeHeatingLimit,
   };
 };
@@ -134,12 +136,13 @@ describe('limited temperature when cooling', () => {
   });
 
   it('words both limits for a reversible unit, and starts the cooling limit at the default', async () => {
-    const { state, shedTemp, shedTempHint, shedCoolingTemp, shedCoolingTempHint, show } = await loadHarness();
+    const { state, shedTemp, shedTempLabel, shedTempHint, shedCoolingTemp, shedCoolingTempHint, show } = await loadHarness();
     state.shedBehaviors = { 'device-1': { action: 'set_temperature', temperature: 16, coolingTemperature: 28 } };
 
     // A plain heater: one limit, the familiar label.
     show(buildDevice());
-    expect(shedTemp.label).toBe('Limited temperature');
+    expect(shedTempLabel.textContent).toBe('Limited temperature');
+    expect(shedTemp.setAttribute).toHaveBeenLastCalledWith('aria-label', 'Limited temperature');
 
     // A reversible unit: both fields name their direction, and an entry saved
     // before the cooling limit existed shows the default rather than nothing.
@@ -147,7 +150,8 @@ describe('limited temperature when cooling', () => {
       deviceClass: 'heatpump',
       capabilities: ['measure_power', 'onoff', 'measure_temperature', 'target_temperature', 'thermostat_mode'],
     }));
-    expect(shedTemp.label).toBe('Limited temperature when heating');
+    expect(shedTempLabel.textContent).toBe('Limited temperature when heating');
+    expect(shedTemp.setAttribute).toHaveBeenLastCalledWith('aria-label', 'Limited temperature when heating');
     expect(shedTempHint.textContent).toContain('While heating');
     expect(shedCoolingTempHint.textContent).toContain('While cooling, PELS raises');
     expect(shedCoolingTemp.value).toBe('28');

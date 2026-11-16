@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { ChargingAccessStatus, ChargingCurrentRead, ChargingCurrentSetup } from '../../../../contracts/src/chargingControl.ts';
-import { MdFilledButton, MdOutlinedButton, MdSwitch, readSwitchSelected } from './materialWebJSX.tsx';
+import { MdFilledButton, MdOutlinedButton, MdSwitch, MdTextButton, readSwitchSelected } from './materialWebJSX.tsx';
 import { HomeyApiKeySetup, resolveHomeyApiKeySaveLabel, type HomeyApiKeyCopy } from './HomeyApiKeySetup.tsx';
 
 export type ChargingCurrentSetupProps = {
@@ -21,7 +21,7 @@ export function ChargingCurrentLoadView(props: { busy: boolean; onRetry: () => P
     {props.busy
       ? <p class="field__hint" role="status">Loading charging setup…</p>
       : <p class="field__hint" role="alert">Charging setup could not be loaded. Try again.</p>}
-    <MdOutlinedButton disabled={props.busy} onClick={props.onRetry}>Try again</MdOutlinedButton>
+    <MdTextButton disabled={props.busy} onClick={props.onRetry}>Try again</MdTextButton>
   </section>;
 }
 

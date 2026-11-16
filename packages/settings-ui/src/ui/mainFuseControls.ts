@@ -159,7 +159,11 @@ const renderUnit = (fuse: MainFuse | null): void => {
   const shown = shownFuse(fuse);
   if (settingsMainFuseUnitSelect) settingsMainFuseUnitSelect.value = unit;
   if (settingsMainFuseSizeLabel) {
-    settingsMainFuseSizeLabel.textContent = unit === 'kva' ? 'Subscribed power' : 'Fuse size per phase';
+    const label = unit === 'kva' ? 'Subscribed power' : 'Fuse size per phase';
+    settingsMainFuseSizeLabel.textContent = label;
+    // A Material field's shadow root cannot reach the visible label by id.
+    settingsMainFuseAmpsInput?.setAttribute('aria-label', label);
+    settingsMainFuseKvaSelect?.setAttribute('aria-label', label);
   }
   if (settingsMainFuseAmpsInput) {
     settingsMainFuseAmpsInput.hidden = unit === 'kva';

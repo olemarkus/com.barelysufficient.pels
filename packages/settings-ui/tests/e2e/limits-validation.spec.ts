@@ -16,6 +16,33 @@ const setNumericFieldValue = async (page: Page, selector: string, value: string)
   }, value);
 };
 
+test.describe('Limits & safety controls', () => {
+  // Material fields keep their input in a shadow root, where an id reference
+  // to the visible label does not resolve; each control carries its own name.
+  test('every switch and field has an accessible name', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await openLimitsAndSafety(page);
+    const panel = page.locator('#limits-panel');
+    for (const name of ['Main fuse', 'Grid import limit', 'Capacity limit']) {
+      await expect(panel.getByRole('switch', { name, exact: true })).toBeVisible();
+    }
+    await expect(panel.getByRole('spinbutton', { name: 'Hard cap', exact: true })).toBeVisible();
+    await expect(panel.getByRole('spinbutton', { name: 'Safety margin', exact: true })).toBeVisible();
+    await expect(panel.getByRole('combobox', { name: 'Capacity period', exact: true })).toBeVisible();
+    await expect(panel.getByRole('combobox', { name: 'Power source', exact: true })).toBeVisible();
+  });
+
+  test('tapping a switch row label turns the limit on', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await openLimitsAndSafety(page);
+    const gridImport = page.getByRole('switch', { name: 'Grid import limit', exact: true });
+    await expect(gridImport).not.toBeChecked();
+    await page.locator('#settings-grid-import-enabled-label').click();
+    await expect(gridImport).toBeChecked();
+    await expect(page.locator('#settings-grid-import-field')).toBeVisible();
+  });
+});
+
 test.describe('Limits & safety inline validation', () => {
   test('shows an inline alert when safety margin meets or exceeds the hard cap', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
