@@ -2,6 +2,7 @@ import type { Logger as PinoLogger } from 'pino';
 import { startPerfLogger } from '../lib/diagnostics/perfLogging';
 import { startResourceWarningListeners as startResourceWarnings } from '../lib/diagnostics/resourceWarnings';
 import { installHeapSnapshotHandler } from '../lib/diagnostics/heapSnapshotHandler';
+import type { AppMemoryUsageSampler } from '../lib/diagnostics/appMemoryFootprint';
 import { wirePriceLowestTrigger } from './wirePriceLowestTrigger';
 import type { AppContext } from '../lib/app/appContext';
 import { startDeferredObjectiveLifecycleClock } from './deferredObjectiveLifecycleClock';
@@ -55,6 +56,7 @@ export class BackgroundTasksController {
   constructor(
     private readonly ctx: AppContext,
     private readonly teardown: TeardownRegistry,
+    private readonly appMemory: AppMemoryUsageSampler,
   ) {}
 
   /**
@@ -77,7 +79,10 @@ export class BackgroundTasksController {
   }
 
   startResourceWarningListeners(): void {
-    this.restart('resourceWarnings', () => startResourceWarnings({ homey: this.ctx.homey }));
+    this.restart('resourceWarnings', () => startResourceWarnings({
+      homey: this.ctx.homey,
+      memoryUsage: this.appMemory,
+    }));
   }
 
   installHeapSnapshotHandler(structuredLogger: PinoLogger): void {

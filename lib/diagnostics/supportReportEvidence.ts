@@ -22,6 +22,7 @@ import {
   type DeviceDiagnosticConfiguration, type DeviceDiagnosticConfigurationRead,
 } from './deviceDiagnosticConfiguration';
 import type { LogTailRead } from './logTailStore';
+import type { AppMemorySnapshot } from './appMemoryFootprint';
 import { MAIN_HOME_ID } from '../home/homeConfig';
 import type { HomeRuntimeReadPort, HomeRuntimeReading } from '../home/homeRuntimeRead';
 import type { HomeMembershipPort } from '../home/membership';
@@ -95,6 +96,8 @@ export type SupportReportReads = {
   readLogTail(fromMs: number, toMs: number, maxBytes: number, omittedEvents: readonly string[]): LogTailRead;
   /** Retained passive completed-day evidence; no sampling or refresh. */
   readHeatingShadowDaily(capturedAtMs: number): SupportReportSection | undefined;
+  /** The app's memory now: Homey's fresh reading (or the last one, with its age) and V8's. */
+  readAppMemory(): Promise<AppMemorySnapshot>;
 };
 
 type ReportSubject = {
@@ -517,6 +520,29 @@ const readHeatingShadowSection = (
   }
 };
 
+export const APP_MEMORY_REPORT_TITLE = 'App memory';
+
+/**
+ * Every report states the app's memory, so reports from many homes can be
+ * compared: high or unexpectedly low use against their devices, apps and
+ * settings. Homey's reading is the one its memory warning acts on.
+ */
+const readAppMemorySection = async (host: SupportReportReads): Promise<SectionRead[]> => {
+  let snapshot: AppMemorySnapshot;
+  try {
+    snapshot = await host.readAppMemory();
+  } catch {
+    return [{ state: 'unavailable', reason: `${APP_MEMORY_REPORT_TITLE} is unavailable.` }];
+  }
+  const { usage, ...rest } = snapshot;
+  return [
+    { state: 'available', section: { title: APP_MEMORY_REPORT_TITLE, values: usage ? snapshot : rest } },
+    ...(usage ? [] : [{
+      state: 'unavailable' as const, reason: 'Homey\'s reading of the app\'s memory is unavailable.',
+    }]),
+  ];
+};
+
 /** Captures existing owner readouts without refreshing devices, planning, or actuating. */
 export class SupportReportEvidenceSource {
   constructor(private readonly host: SupportReportReads, private readonly homey: SupportReportHomey) {}
@@ -538,6 +564,7 @@ export class SupportReportEvidenceSource {
     // Read before the log, which gives up the room these take.
     const heating = readHeatingShadowSection(host, request, capturedAtMs, trigger);
     const homeyDevices = await readHomeyDevicesSection(host, request.subject);
+    const appMemory = await readAppMemorySection(host);
     const sectionReads: SectionRead[] = [
       ...(supportSubject?.sections ?? []).map((section): SectionRead => ({ state: 'available', section })),
       ...readDeviceSections(host, request.subject, subject.currentDevice, plan, capturedAtMs),
@@ -547,6 +574,7 @@ export class SupportReportEvidenceSource {
       ...readHomeSections(host, request.subject.homeId, plan, area),
       ...readPriceSections(host, capturedAtMs),
       homeyDevices,
+      ...appMemory,
     ];
     return {
       subjectName: subject.name,

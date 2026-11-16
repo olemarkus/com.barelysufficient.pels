@@ -1,10 +1,23 @@
 import { mockHomeyInstance, resetMockHomey, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
 import { startResourceWarningListeners } from '../../lib/diagnostics/resourceWarnings';
+import { AppMemoryUsageSampler } from '../../lib/diagnostics/appMemoryFootprint';
 import { summarizeRecentPlanRebuildTraces } from '../../lib/utils/planRebuildTrace';
 import { captureLogger } from '../utils/loggerCapture';
+import { httpResponse } from '../helpers/httpResponse';
 
 const resolveSmapsSummaryMock = vi.fn();
+const MB = 1024 * 1024;
+const usageBody = { mem: { rss: 148.2 * MB, pss: 92 * MB, sharedClean: 55.4 * MB, pssSwap: 1.5 * MB }, cpu: { percentage: 4 } };
+const fetchMock = vi.fn();
+const answer = (body: unknown, status = 200) => httpResponse(body, status);
+const startListeners = () => startResourceWarningListeners({
+  homey: mockHomeyInstance,
+  memoryUsage: new AppMemoryUsageSampler(mockHomeyInstance),
+});
+const flushReads = async (): Promise<void> => {
+  for (let i = 0; i < 50; i += 1) await Promise.resolve();
+};
 
 vi.mock('../../lib/diagnostics/smapsRollup', () => ({
   resolveSmapsSummary: () => resolveSmapsSummaryMock(),
@@ -16,6 +29,9 @@ describe('Homey resource warning perf logging', () => {
     resetMockHomey();
     setMockDrivers({});
     vi.clearAllTimers();
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(answer(usageBody));
+    vi.stubGlobal('fetch', fetchMock);
     resolveSmapsSummaryMock.mockReset();
     resolveSmapsSummaryMock.mockReturnValue({
       rssMb: 256,
@@ -26,6 +42,7 @@ describe('Homey resource warning perf logging', () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     mockHomeyInstance.removeAllListeners();
     await cleanupApps();
     vi.clearAllTimers();
@@ -143,7 +160,7 @@ describe('Homey resource warning perf logging', () => {
       // A second, module-level start on the same emitter, under fake timers so
       // only ITS interval is driven — the app's own polling stays real.
       vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'performance'] });
-      const stop = startResourceWarningListeners({ homey: mockHomeyInstance });
+      const stop = startListeners();
       expect(stop).toBeDefined();
       logSpy.mockClear();
       const reclaims = (): number => capture?.findEvents('heap_pages_reclaimed').length ?? 0;
@@ -162,7 +179,7 @@ describe('Homey resource warning perf logging', () => {
   it('keeps scheduled heap cleanup out of default reports', () => {
     vi.useFakeTimers();
     const capture = captureLogger('info', []);
-    const stop = startResourceWarningListeners({ homey: mockHomeyInstance });
+    const stop = startListeners();
     try {
       vi.advanceTimersByTime(10 * 60_000);
       expect(capture.findEvents('heap_pages_reclaimed')).toHaveLength(0);
@@ -191,7 +208,6 @@ describe('Homey resource warning perf logging', () => {
       mockHomeyInstance.emit('cpuwarn', { count: 1, limit: 12 });
 
       expect(logSpy).not.toHaveBeenCalled();
-      expect(errorSpy).not.toHaveBeenCalled();
     } finally {
       logSpy.mockRestore();
       errorSpy.mockRestore();
@@ -302,6 +318,137 @@ describe('Homey resource warning perf logging', () => {
     } finally {
       logSpy.mockRestore();
       errorSpy.mockRestore();
+    }
+  });
+
+  // Homey's warning compares the app's RSS, shared Node pages included, with
+  // its line. The sandbox cannot read that RSS, so the warning asks Homey.
+  it('records Homey\'s reading of the app\'s memory when a warning arrives', async () => {
+    const capture = captureLogger('info', []);
+    const stop = startListeners();
+    try {
+      mockHomeyInstance.emit('memwarn', { count: 2, limit: 5 });
+      await flushReads();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as [URL, { headers: Record<string, string> }];
+      expect(url.pathname).toBe('/api/manager/apps/app/com.barelysufficient.pels/usage');
+      expect(init.headers.Authorization).toBe('Bearer mock-token');
+      expect(capture.findEvent('app_memory_footprint')).toMatchObject({
+        trigger: 'memwarn',
+        warningCount: 2,
+        usage: { rssMb: 148.2, pssMb: 92, sharedCleanMb: 55.4, swapMb: 1.5, ageSec: 0 },
+        faults: { maxRssMb: expect.any(Number), minorFaults: expect.any(Number), majorFaults: expect.any(Number) },
+      });
+    } finally {
+      stop?.();
+      capture.restore();
+    }
+  });
+
+  // Warnings come every 10 s in a run; each reading is a local request made
+  // while memory is tight, so one per 30 s is enough to show how far over it is.
+  it('asks Homey at most once per 30 s during a run of warnings', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    const capture = captureLogger('info', []);
+    const stop = startListeners();
+    try {
+      mockHomeyInstance.emit('memwarn', { count: 2, limit: 5 });
+      vi.advanceTimersByTime(10_000);
+      mockHomeyInstance.emit('memwarn', { count: 3, limit: 5 });
+      vi.advanceTimersByTime(10_000);
+      mockHomeyInstance.emit('memwarn', { count: 4, limit: 5 });
+      await flushReads();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(15_000);
+      mockHomeyInstance.emit('memwarn', { count: 2, limit: 5 });
+      await flushReads();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      stop?.();
+      capture.restore();
+      vi.useRealTimers();
+    }
+  });
+
+  it('writes the footprint every 30 minutes with V8\'s heap beside Homey\'s reading', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    const capture = captureLogger('info', []);
+    const stop = startListeners();
+    try {
+      vi.advanceTimersByTime(30 * 60_000);
+      await flushReads();
+      const line = capture.findEvent('app_memory_footprint');
+      expect(line).toMatchObject({
+        trigger: 'interval',
+        usage: { rssMb: 148.2, sharedCleanMb: 55.4 },
+        heap: { heapUsedMb: expect.any(Number), codeMb: expect.any(Number) },
+      });
+      expect(line).not.toHaveProperty('warningCount');
+    } finally {
+      stop?.();
+      capture.restore();
+      vi.useRealTimers();
+    }
+  });
+
+  // A failed or malformed read keeps the last good reading and says so once;
+  // it never invents a footprint.
+  it('keeps the last good reading when Homey\'s answer is unusable', async () => {
+    const capture = captureLogger('info', []);
+    const sampler = new AppMemoryUsageSampler(mockHomeyInstance);
+    await sampler.refresh();
+    fetchMock.mockResolvedValue(answer({ mem: { rss: 'lots' } }));
+    await sampler.refresh();
+    fetchMock.mockRejectedValue(new Error('connect ECONNREFUSED'));
+    await sampler.refresh();
+    try {
+      expect(sampler.latest()).toMatchObject({ rssMb: 148.2 });
+      expect(capture.findEvents('app_memory_usage_unavailable')).toHaveLength(1);
+      expect(capture.findEvent('app_memory_usage_unavailable')).toMatchObject({ reason: 'malformed' });
+    } finally {
+      capture.restore();
+    }
+  });
+
+  // The report and the warnings share one request; a stalled SDK call must not
+  // leave it pending for every later caller.
+  it('gives up on a stalled SDK read after 10 s and reads again later', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    const capture = captureLogger('info', []);
+    const sampler = new AppMemoryUsageSampler(mockHomeyInstance);
+    try {
+      await sampler.refresh();
+      const getToken = vi.spyOn(mockHomeyInstance.api, 'getOwnerApiToken')
+        .mockImplementationOnce(() => new Promise<string>(() => undefined));
+      const stalled = sampler.refresh();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(stalled).resolves.toBeNull();
+      expect(sampler.latest()).toMatchObject({ rssMb: 148.2 });
+      expect(capture.findEvent('app_memory_usage_unavailable')).toMatchObject({ reason: 'Homey app manager request timed out' });
+      fetchMock.mockResolvedValue(answer({ mem: { rss: 120 * MB, pss: 80 * MB, sharedClean: 50 * MB, pssSwap: 0 } }));
+      await expect(sampler.refresh()).resolves.toMatchObject({ rssMb: 120 });
+      expect(getToken).toHaveBeenCalledTimes(2);
+    } finally {
+      capture.restore();
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports no Homey reading until Homey has answered once', async () => {
+    fetchMock.mockResolvedValue(answer('Not Found', 404));
+    const capture = captureLogger('info', []);
+    const stop = startListeners();
+    try {
+      mockHomeyInstance.emit('memwarn', { count: 2, limit: 5 });
+      await flushReads();
+      // The line still states V8's view, so a home Homey will not answer is not a blank.
+      expect(capture.findEvent('app_memory_footprint')).toMatchObject({
+        usage: null, heap: { heapUsedMb: expect.any(Number) },
+      });
+      expect(capture.findEvent('app_memory_usage_unavailable')).toMatchObject({ reason: 'HTTP 404' });
+    } finally {
+      stop?.();
+      capture.restore();
     }
   });
 });

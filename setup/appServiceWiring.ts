@@ -67,6 +67,7 @@ import {
 } from './appInit/startPostStartupBackgroundTasks';
 import { classifyInstallAtBoot, type InstallAtBoot } from '../lib/utils/settingsKeyList';
 import type { BackgroundTasksController } from './backgroundTasksController';
+import type { AppMemoryUsageSampler } from '../lib/diagnostics/appMemoryFootprint';
 import type { AppPowerTracker } from './appPowerTracker';
 
 import type { PlanRebuildTrigger } from '../lib/plan/planRebuildTrigger';
@@ -186,8 +187,14 @@ export class AppServiceWiring {
     return this.mainHomeScope.readTaskBudgetExemptDeviceIds(nowMs);
   }
 
-  createSupportReports(app: SupportReportApp, heatingShadow: Pick<HeatingShadowCollector, 'readDaily'>) {
-    return createSupportReports(this.deps.homeyApp.homey, app, this.mainHomeScope.readSmartTaskCycle, heatingShadow);
+  createSupportReports(
+    app: SupportReportApp,
+    heatingShadow: Pick<HeatingShadowCollector, 'readDaily'>,
+    appMemory: AppMemoryUsageSampler,
+  ) {
+    return createSupportReports(
+      this.deps.homeyApp.homey, app, this.mainHomeScope.readSmartTaskCycle, heatingShadow, appMemory,
+    );
   }
 
   createObservedTemperatureModeUpdates() {

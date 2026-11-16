@@ -9,6 +9,7 @@ import { readSmartTaskDeviceIds, readSmartTaskRuns } from '../../lib/diagnostics
 import { createDeviceEventStore } from '../../lib/diagnostics/deviceEventStore';
 import { createLogTailStore } from '../../lib/diagnostics/logTailStore';
 import type { HeatingShadowCollector } from '../../lib/diagnostics/heatingShadowCollector';
+import { type AppMemoryUsageSampler, captureAppMemorySnapshot } from '../../lib/diagnostics/appMemoryFootprint';
 import {
   readObjectiveForDeviceState, type ObjectiveSettingsStore,
 } from '../../lib/objectives/deferredObjectives/objectiveStore';
@@ -31,6 +32,7 @@ export const createSupportReportReads = (
   objectiveSettings: ObjectiveSettingsStore,
   readSmartTaskCycle: (deviceId: string) => SmartTaskCycleRecord | undefined,
   heatingShadow: Pick<HeatingShadowCollector, 'readDaily'>,
+  appMemory: AppMemoryUsageSampler,
 ): SupportReportReads => ({
   readDeviceDiagnosticConfiguration: app.readDeviceDiagnosticConfiguration,
   getDeviceSnapshot: (deviceId) => requireDeviceManager(app).getSnapshotByDeviceId(deviceId),
@@ -75,6 +77,7 @@ export const createSupportReportReads = (
   },
   readObjectiveProfiles: () => app.powerTracker.objectiveProfiles,
   readHeatingShadowDaily: (capturedAtMs) => heatingShadow.readDaily(capturedAtMs),
+  readAppMemory: () => captureAppMemorySnapshot(appMemory),
   // Built per capture: the database opens after the report service is constructed.
   readDeviceEvents: (deviceIds, fromMs, toMs) => (
     createDeviceEventStore(app.getUserdataDatabase()).read(deviceIds, fromMs, toMs)),
@@ -87,9 +90,10 @@ export const createSupportReports = (
   app: SupportReportApp,
   readSmartTaskCycle: (deviceId: string) => SmartTaskCycleRecord | undefined,
   heatingShadow: Pick<HeatingShadowCollector, 'readDaily'>,
+  appMemory: AppMemoryUsageSampler,
 ): SupportReportService => new SupportReportService(
   new SupportReportEvidenceSource(
-    createSupportReportReads(app, homey.settings, readSmartTaskCycle, heatingShadow), homey,
+    createSupportReportReads(app, homey.settings, readSmartTaskCycle, heatingShadow, appMemory), homey,
   ),
   new HomeyReportTransport(homey),
 );

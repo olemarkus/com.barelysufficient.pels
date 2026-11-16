@@ -671,7 +671,9 @@ class PelsApp extends PelsAppBase implements AppContext, PelsHost {
   }
 
   public readonly observedTemperatureModeUpdates = this.serviceWiring.createObservedTemperatureModeUpdates();
-  public readonly supportReports = this.serviceWiring.createSupportReports(this, this.heatingShadow);
+  public readonly supportReports = this.serviceWiring.createSupportReports(
+    this, this.heatingShadow, this.backgroundTaskBundle.appMemory,
+  );
 }
 
 export = PelsApp;

@@ -1,6 +1,7 @@
 import { BackgroundTasksController } from '../backgroundTasksController';
 import { TeardownRegistry } from '../../lib/utils/teardownRegistry';
 import type { AppContext } from '../../lib/app/appContext';
+import { AppMemoryUsageSampler } from '../../lib/diagnostics/appMemoryFootprint';
 
 /**
  * The background tasks, and the store their stop callbacks live in.
@@ -14,12 +15,17 @@ import type { AppContext } from '../../lib/app/appContext';
 export type BackgroundTasks = {
   controller: BackgroundTasksController;
   teardown: TeardownRegistry;
+  // One reader of Homey's view of the app's memory, shared by the warning
+  // listener and the support report so both state the same last reading.
+  appMemory: AppMemoryUsageSampler;
 };
 
 export const createBackgroundTasks = (ctx: AppContext): BackgroundTasks => {
   const teardown = new TeardownRegistry();
+  const appMemory = new AppMemoryUsageSampler(ctx.homey);
   return {
-    controller: new BackgroundTasksController(ctx, teardown),
+    controller: new BackgroundTasksController(ctx, teardown, appMemory),
     teardown,
+    appMemory,
   };
 };
