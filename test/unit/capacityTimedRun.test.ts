@@ -148,7 +148,7 @@ describe('resolveCapacityTimedRun', () => {
   it('leaves stepped, EV, smart-task-held and owner-switched-off devices alone', () => {
     const stepped = buildPlanInputDevice({
       id: 'mid', priority: 2, currentDrawKw: 0,
-      steppedLoadProfile: { model: 'stepped_load', steps: [{ id: 'off', planningPowerW: 0 }, { id: 'on', planningPowerW: 800 }] },
+      steppedLoadProfile: { steps: [{ id: 'off', planningPowerW: 0 }, { id: 'on', planningPowerW: 800 }] },
       selectedStepId: 'off',
     });
     expect(resolveCapacityTimedRun(frame({ devices: [stepped] }))).toEqual({ kind: 'none' });
