@@ -1,3 +1,4 @@
+import { CapacityTimedRunLog } from './capacityTimedRun';
 import type { PhaseName } from '../../packages/planner-types/src/phaseFootprint';
 import type { ContinuousStoragePlan } from '../../packages/planner-types/src/planInputDevice';
 import type { PendingBinaryCommandRead } from '../ports/pendingBinaryCommand';
@@ -409,8 +410,8 @@ export class PlanEngineState {
    */
   shedPlanLatch: ShedPlanLatch | null = null;
 
-  /** The device of the last logged capacity timed run (`applyCapacityTimedRun`), for change-only logging. */
-  capacityTimedRunDeviceId: string | null = null;
+  /** Change-only log of the capacity timed run (`applyCapacityTimedRun`). */
+  readonly capacityTimedRunLog = new CapacityTimedRunLog();
 
   /** Credited relief beside the meter's response, for the logs (`shedding/shedReliefAudit.ts`). */
   readonly shedReliefAudit = new ShedReliefAudit();

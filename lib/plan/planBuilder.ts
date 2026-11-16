@@ -332,10 +332,7 @@ export class PlanBuilder {
         settings,
         // The hour's marginal on/off device may run for part of it: every stage
         // below reads the capacity axis with that allowance.
-        applyCapacityTimedRun({
-          capacity, settings, powerTracker: this.powerTracker, reading, devices: admittedDevices,
-          forceShedIds: decoration.forceShedSet, state: this.state, nowMs: nowTs,
-        }),
+        applyCapacityTimedRun(capacity, settings, this.powerTracker, reading, decoration, this.state, nowTs),
         this.computeDailySoftLimit(dailyBudgetSnapshot, admittedDevices, nowTs),
       ),
       // After the decoration, which is what stamps a smart task's deadline floor.

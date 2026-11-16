@@ -25,6 +25,7 @@
  */
 import type { CapacitySettings } from '../../packages/contracts/src/capacitySettings';
 import { resolveCapacityMarginKWh } from '../power/capacityModel';
+import { getLogger } from '../logging/logger';
 import { isMeteredPlanDevice } from './planMeteredDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { computeRestoreBufferKw } from './restore/accounting';
@@ -191,6 +192,22 @@ function pickHighestPriority<T extends PlanInputDevice>(devices: readonly T[]): 
   let best: T | null = null;
   for (const device of devices) if (best === null || device.priority < best.priority) best = device;
   return best;
+}
+
+/**
+ * One info line when a timed run starts, moves to another device or ends;
+ * silent while it holds. Held by the planner state across builds.
+ */
+export class CapacityTimedRunLog {
+  private readonly logger = getLogger('plan/capacity-timed-run');
+
+  private deviceId: string | null = null;
+
+  record(run: CapacityTimedRun): void {
+    const change = describeTimedRunChange(this.deviceId, run);
+    if (change !== null) this.logger.info(change);
+    this.deviceId = run.kind === 'none' ? null : run.deviceId;
+  }
 }
 
 /** The info line for a timed run that started, moved device or ended; `null` while it holds. */

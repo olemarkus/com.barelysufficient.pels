@@ -25,12 +25,11 @@ import {
 } from '../power/capacityModel';
 import { getCurrentCapacityPeriodContext } from './planHourContext';
 import { EOH_DRAIN_WINDOW_MIN } from './planConstants';
-import { describeTimedRunChange, resolveCapacityTimedRun, type CapacityTimedRun } from './capacityTimedRun';
+import { resolveCapacityTimedRun, type CapacityTimedRun } from './capacityTimedRun';
 import type { PowerCycleReading } from '../power/powerCycleReading';
-import type { PlanInputDevice } from './planTypes';
+import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
 import type { PlanEngineState } from './planState';
 import type { CapacityPlanLimit } from './planContext';
-import { getLogger } from '../logging/logger';
 import type { DrainStart } from './capacityDrainStart';
 import type { DailySoftLimitBucket } from './planDailyBudgetWindow';
 import type { DailyBudgetUiPayload } from '../../packages/contracts/src/dailyBudgetTypes';
@@ -155,8 +154,6 @@ export function computeDynamicSoftLimit(
   return { allowedKw, hourlyBudgetExhausted, remainingKWh };
 }
 
-const timedRunLogger = getLogger('plan/capacity-timed-run');
-
 /**
  * The build's capacity axis with this cycle's timed run applied
  * (`capacityTimedRun.ts`): the pace rises to what the hour's marginal on/off
@@ -164,48 +161,35 @@ const timedRunLogger = getLogger('plan/capacity-timed-run');
  * tracker as the pace itself is, and logged when the run starts, moves or
  * ends. Unchanged with Capacity limit off or without a measurement.
  */
-export function applyCapacityTimedRun(params: {
-  capacity: CapacityPlanLimit;
-  settings: CapacitySettings;
-  powerTracker: PowerTrackerState;
-  reading: PowerCycleReading;
-  devices: readonly PlanInputDevice[];
-  forceShedIds: ReadonlySet<string>;
-  state: PlanEngineState;
-  nowMs: number;
-}): CapacityPlanLimit {
-  const { capacity, reading, state } = params;
-  const run: CapacityTimedRun = capacity.kind === 'off' || !reading.isMeasured
-    ? { kind: 'none' }
-    : resolveTimedRunFor(capacity, reading.totalKw, params);
-  const change = describeTimedRunChange(state.capacityTimedRunDeviceId, run);
-  if (change !== null) timedRunLogger.info(change);
-  // eslint-disable-next-line functional/immutable-data -- The builder's own change-log cursor.
-  state.capacityTimedRunDeviceId = run.kind === 'none' ? null : run.deviceId;
+export function applyCapacityTimedRun(
+  capacity: CapacityPlanLimit,
+  settings: CapacitySettings,
+  powerTracker: PowerTrackerState,
+  reading: PowerCycleReading,
+  decoration: DeferredDecorationBundle,
+  state: PlanEngineState,
+  nowMs: number,
+): CapacityPlanLimit {
+  let run: CapacityTimedRun = { kind: 'none' };
+  if (capacity.kind === 'on' && reading.isMeasured) {
+    const period = getCurrentCapacityPeriodContext(powerTracker, settings.periodMinutes, nowMs);
+    run = resolveCapacityTimedRun({
+      settings,
+      paceKw: capacity.paceKw,
+      shortfallThresholdKw: capacity.shortfallThresholdKw,
+      usedKWh: period.usedKWh,
+      budgetKWh: resolveUsableCapacityKWh(settings),
+      minutesRemaining: period.minutesRemaining,
+      coverageComplete: period.coverageComplete,
+      drawKw: reading.totalKw,
+      devices: decoration.admittedDevices,
+      heldOffIds: state.shedDecisions.lastPlannedShedIds,
+      forceShedIds: decoration.forceShedSet,
+      nowMs,
+    });
+  }
+  state.capacityTimedRunLog.record(run);
   return run.kind === 'none' || capacity.kind === 'off' ? capacity : { ...capacity, paceKw: run.allowedKw };
-}
-
-function resolveTimedRunFor(
-  capacity: Extract<CapacityPlanLimit, { kind: 'on' }>,
-  drawKw: number,
-  params: Parameters<typeof applyCapacityTimedRun>[0],
-): CapacityTimedRun {
-  const { settings, nowMs } = params;
-  const period = getCurrentCapacityPeriodContext(params.powerTracker, settings.periodMinutes, nowMs);
-  return resolveCapacityTimedRun({
-    settings,
-    paceKw: capacity.paceKw,
-    shortfallThresholdKw: capacity.shortfallThresholdKw,
-    usedKWh: period.usedKWh,
-    budgetKWh: resolveUsableCapacityKWh(settings),
-    minutesRemaining: period.minutesRemaining,
-    coverageComplete: period.coverageComplete,
-    drawKw,
-    devices: params.devices,
-    heldOffIds: params.state.shedDecisions.lastPlannedShedIds,
-    forceShedIds: params.forceShedIds,
-    nowMs,
-  });
 }
 
 /**
