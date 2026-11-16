@@ -38,6 +38,9 @@ export const OVERRIDE_COPY = {
   started: 'Override started.',
   ended: 'Override ended.',
   saveFailed: 'Could not save the override.',
+  smartTaskWaits: 'The Smart task on this device waits until the override ends.',
+  smartTaskEnds: 'The Smart task on this device ends without running: its ready-by time comes first.',
+  smartTaskBoxWaiting: 'Waiting for the override to end',
 } as const;
 
 const clock = (atMs: number, timeZone: string): string => (
@@ -57,6 +60,21 @@ const formatTemperature = (targetC: number): string => `${Number(targetC.toFixed
 /** The card's line for an override in force: `22° until Sun 21:30`. */
 export const formatActiveOverride = (override: DeviceOverride, nowMs: number, timeZone: string): string => (
   `${formatTemperature(override.setting.targetC)} until ${formatOverrideEnd(override.untilMs, nowMs, timeZone)}`
+);
+
+/**
+ * What an override means for the device's open Smart task: it waits, or, when
+ * its ready-by time comes first, it ends without running. `untilMs` is `null`
+ * while the draft has no valid end yet.
+ */
+export const resolveOverrideSmartTaskNote = (untilMs: number | null, taskDeadlineAtMs: number): string => (
+  untilMs !== null && taskDeadlineAtMs <= untilMs ? OVERRIDE_COPY.smartTaskEnds : OVERRIDE_COPY.smartTaskWaits
+);
+
+/** For the New smart task page: the device has an override until then. */
+export const formatOverrideSmartTaskCreateNote = (untilMs: number, nowMs: number, timeZone: string): string => (
+  `This device has an override until ${formatOverrideEnd(untilMs, nowMs, timeZone)}. `
+  + 'The Smart task waits until it ends.'
 );
 
 /** The next 08:00 in the Homey time zone. */

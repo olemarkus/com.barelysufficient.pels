@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  formatActiveOverride, newOverrideDraft, resolveOverrideDraft,
+  formatActiveOverride, formatOverrideSmartTaskCreateNote, newOverrideDraft, resolveOverrideDraft,
+  resolveOverrideSmartTaskNote,
 } from '../src/ui/deviceOverrideDraft.ts';
 
 const ZONE = 'Europe/Oslo';
@@ -49,5 +50,21 @@ describe('device override draft', () => {
     expect(formatActiveOverride({ untilMs: NOW_MS + 3 * HOUR_MS, setting }, NOW_MS, ZONE)).toBe('22° until 21:30');
     expect(formatActiveOverride({ untilMs: Date.UTC(2026, 10, 22, 20, 30), setting: { ...setting, targetC: 21.5 } }, NOW_MS, ZONE))
       .toBe('21.5° until Sun 21:30');
+  });
+
+  it('says the open Smart task waits, or ends when its ready-by time comes first', () => {
+    const untilMs = NOW_MS + 3 * HOUR_MS;
+
+    expect(resolveOverrideSmartTaskNote(untilMs, untilMs + HOUR_MS))
+      .toBe('The Smart task on this device waits until the override ends.');
+    expect(resolveOverrideSmartTaskNote(untilMs, untilMs - HOUR_MS))
+      .toBe('The Smart task on this device ends without running: its ready-by time comes first.');
+    expect(resolveOverrideSmartTaskNote(null, untilMs))
+      .toBe('The Smart task on this device waits until the override ends.');
+  });
+
+  it('tells a new Smart task when the device\'s override ends', () => {
+    expect(formatOverrideSmartTaskCreateNote(NOW_MS + 3 * HOUR_MS, NOW_MS, ZONE))
+      .toBe('This device has an override until 21:30. The Smart task waits until it ends.');
   });
 });

@@ -22,7 +22,7 @@ import {
   loadDeferredObjectiveSettings,
 } from './deferredObjectiveSettings.ts';
 import { resolveAfterTaskLine } from './deviceStartRule.ts';
-import { callApi } from './homey.ts';
+import { callApi, getHomeyTimezone } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { refreshPlanSurface } from './planSurfaceRefresh.ts';
 import {
@@ -34,6 +34,10 @@ import {
 import type { SmartTaskEditPermissionKey, SmartTaskEditPermissions } from './smartTaskEdit.ts';
 import type { SetupJourneyStep } from './setupJourneyState.ts';
 import { hasActiveDeadlineObjective, hasOpenSmartTask, state } from './state.ts';
+import { formatOverrideSmartTaskCreateNote } from './deviceOverrideDraft.ts';
+import {
+  DEVICE_OVERRIDE_CHANGED_EVENT, getActiveDeviceOverride, primeDeviceOverride,
+} from './deviceOverrideStore.ts';
 
 // Controller for the Smart tasks page's New smart task flow: choose a device,
 // set a goal and ready-by time, preview, create. It owns the flow's state and
@@ -160,7 +164,11 @@ const pickStep = (devices: readonly SmartTaskCandidateDevice[]): SmartTaskCreate
 const composeStep = (
   device: SmartTaskCandidateDevice,
   draft: SmartTaskCreateDraft = initialDraft(device),
-): SmartTaskCreateStep => ({ kind: 'compose', device, draft });
+): SmartTaskCreateStep => {
+  // The page says when an override holds the device (`overrideNote`).
+  primeDeviceOverride(device.deviceId);
+  return { kind: 'compose', device, draft };
+};
 
 // An open task blocks a create, so the flow must know the stored tasks before
 // it offers one. They load at boot; a boot load that failed is retried here.
@@ -372,6 +380,13 @@ export const resolveSmartTaskCreateAfterTaskLine = (deviceId: string): string | 
   return device ? resolveAfterTaskLine(device) : null;
 };
 
+/** The device has an override in force, which a new task waits for; `null` otherwise. */
+export const resolveSmartTaskCreateOverrideNote = (deviceId: string): string | null => {
+  const nowMs = Date.now();
+  const override = getActiveDeviceOverride(deviceId, nowMs);
+  return override === null ? null : formatOverrideSmartTaskCreateNote(override.untilMs, nowMs, getHomeyTimezone());
+};
+
 /**
  * "Change": the device page opens over the flow, on Power-limit control, and
  * the flow repaints when it closes (`device-detail-closed`), with the draft kept.
@@ -426,4 +441,5 @@ export const initSmartTaskCreateController = (
   });
   document.addEventListener('device-detail-closed', repaint);
   document.addEventListener('devices-updated', repaint);
+  document.addEventListener(DEVICE_OVERRIDE_CHANGED_EVENT, repaint);
 };

@@ -56,6 +56,29 @@ test.describe('Create smart task from settings', () => {
     await page.setViewportSize({ width: 320, height: 900 });
   });
 
+  test('says a new task waits for an override in force on the device', async ({ page }) => {
+    await page.addInitScript(() => {
+      const stubWindow = window as typeof window & { __PELS_HOMEY_STUB__?: { settings?: Record<string, unknown> } };
+      stubWindow.__PELS_HOMEY_STUB__ = {
+        ...stubWindow.__PELS_HOMEY_STUB__,
+        settings: {
+          'device_override.dev_connected300': {
+            untilMs: Date.now() + 3 * 60 * 60_000, setting: { type: 'temperature', targetC: 65 },
+          },
+        },
+      };
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('tab', { name: 'Smart tasks' }).click();
+    await page.getByRole('button', { name: 'New smart task' }).click();
+    const composer = page.locator('#smart-task-create-root');
+    await composer.getByRole('button', { name: /Connected 300/ }).click();
+
+    await expect(composer.locator('[data-override-note]')).toContainText(
+      /^This device has an override until .*\d{2}:\d{2}\. The Smart task waits until it ends\.$/u,
+    );
+  });
+
   test('offers creation on the Smart tasks page and creates the previewed goal', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.getByRole('tab', { name: 'Smart tasks' }).click();

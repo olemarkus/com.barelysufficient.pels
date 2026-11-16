@@ -3,7 +3,7 @@ import {
 } from './deviceDetail/chargingCurrentLimits.tsx';
 import { invalidateDeferredObjectiveHistoryRead } from './deferredObjectiveHistoryRead.ts';
 import { notifySchedulesSettingChanged } from './schedules.ts';
-import { notifyDeviceOverrideSettingChanged } from './deviceDetail/overrideCard.ts';
+import { notifyDeviceOverrideSettingChanged } from './deviceOverrideStore.ts';
 import { syncSettingsHubChips } from './settingsHubChips.ts';
 import {
   SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH,

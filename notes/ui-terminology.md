@@ -837,6 +837,15 @@ override.` The overview card carries an `Override` chip beside its state chip
 while one is in force, limited or not, and no reason line for it. The two Flow cards that start and end one are still titled
 "temporary temperature".
 
+An override outranks a Smart task on the device, and three places say so. The
+form, when the device has an open task: `The Smart task on this device waits
+until the override ends.`, or, when the task's ready-by time comes before the
+chosen end, `The Smart task on this device ends without running: its ready-by
+time comes first.` The device page's Smart task box appends `· Waiting for the
+override to end` to the open task's line. The New smart task page, for a device
+with one in force: `This device has an override until 21:30. The Smart task
+waits until it ends.`
+
 ### Device-page limited temperature on a setpoint-only device
 
 On a temperature device without on/off or power levels, **Limited temperature**

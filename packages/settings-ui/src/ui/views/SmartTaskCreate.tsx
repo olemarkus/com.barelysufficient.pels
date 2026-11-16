@@ -40,6 +40,8 @@ export type SmartTaskCreateViewProps = {
   // on the preview; null when there is nothing to state.
   afterTaskLine: string | null;
   solarNote: string | null;
+  // The device has an override in force, which the task waits for; null otherwise.
+  overrideNote: string | null;
   actions: SmartTaskCreateActions;
 };
 
@@ -87,6 +89,7 @@ const ComposeFields = ({ step, view }: {
   return (
     <>
       {view.solarNote && <p class="pels-notice-info">{view.solarNote}</p>}
+      {view.overrideNote && <p class="pels-notice-info" data-override-note>{view.overrideNote}</p>}
       <label class="field">
         <span class="field__label pels-text-settings-label">
           {CREATE_SMART_TASK_WIDGET_COPY.goalLabel} ({device.unitSymbol})
