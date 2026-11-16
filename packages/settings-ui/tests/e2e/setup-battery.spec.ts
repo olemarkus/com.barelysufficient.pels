@@ -39,6 +39,14 @@ const seedBatteryHome = async (page: Page, hasPrices = true) => {
       },
       continuousBatteryPlans: () => ({ [battery.id]: planRead() }),
       apiHandlers: {
+        // The battery alone: the stub's default list adds an EV charger, which
+        // would leave the Devices step open for the owner to choose it.
+        'GET /ui_devices': () => ({
+          devices: [{ ...battery, managed: true, binaryControllable: false }], inverterDevices: [],
+          continuousBatteryPlans: { [battery.id]: planRead() },
+          chargerPhasePresets: { state: 'resolved', presets: {} },
+          hasManagedSolarDevice: true, hasExhibitedExport: true, surplusPoolReachable: true,
+        }),
         'GET /ui_prices': () => ({
           combinedPrices: { priceUnit: 'EUR/kWh' },
           priceTimeline: hasPrices

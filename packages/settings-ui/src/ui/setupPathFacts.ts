@@ -16,6 +16,7 @@ import {
 } from './setupPathModel.ts';
 import type { ResolvedPriceSetupStatus } from './priceSetupStatus.ts';
 import { supportsTemperatureDevice } from './deviceUtils.ts';
+import { resolveDeviceManageability } from './deviceListPresentation.ts';
 import { readHomeMembership, subscribeToHomeScope } from './homeScope.ts';
 import {
   hasActiveDeadlineObjective, isHomeBatteryDeviceId, resolveBatteryPowerLimitOn, resolveManagedState, state,
@@ -241,6 +242,17 @@ const isSetupDeviceActionable = (deviceId: string): boolean => {
   return device?.batteryControl === 'drivable';
 };
 
+/**
+ * Devices PELS could run that the owner left unmanaged, while the only
+ * actionable managed devices are home batteries (managed by default, so not
+ * the owner's choice); 0 once the owner has chosen any other device.
+ */
+const countUnchosenBesideBattery = (knownIds: ReadonlySet<string>, actionableIds: readonly string[]): number => {
+  if (actionableIds.length === 0 || !actionableIds.every(isHomeBatteryDeviceId)) return 0;
+  return state.latestDevices.filter((device) => knownIds.has(device.id) && !isHomeBatteryDeviceId(device.id)
+    && !resolveManagedState(device.id) && resolveDeviceManageability(device).canManage).length;
+};
+
 /** `loading` until every fact has arrived once, so no step is judged on a guess. */
 const readSetupFacts = (): SetupFactsRead<SetupPathFacts> => {
   const membership = readHomeMembership();
@@ -255,11 +267,13 @@ const readSetupFacts = (): SetupFactsRead<SetupPathFacts> => {
   // An unread battery plan must not let Review offer activation without its Prices step.
   if (managedIds.some(isHomeBatteryDeviceId) && batteryPlans.state !== 'ready') return { state: batteryPlans.state };
   const limitableIds = managedIds.filter(isSetupDeviceLimitable);
+  const actionableIds = managedIds.filter(isSetupDeviceActionable);
   return { state: 'ready', value: {
     power: power.value,
     hardCap: hardCap.value,
     market,
-    actionableDeviceCount: managedIds.filter(isSetupDeviceActionable).length,
+    actionableDeviceCount: actionableIds.length,
+    unchosenBesideBatteryCount: countUnchosenBesideBattery(knownIds, actionableIds),
     limitableDeviceCount: limitableIds.length,
     simulating: state.dryRun,
     prices: resolveSetupPrices(managedIds),
