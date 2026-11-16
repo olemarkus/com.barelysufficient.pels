@@ -57,6 +57,7 @@ import type {
 import { hasObservedStateOfCharge } from '../packages/shared-domain/src/stateOfChargeObservedState';
 import { hasSolarProductionCandidate } from '../lib/device/solarPresence';
 import { readChargerPhasePresetsFromHomey } from '../lib/device/settingsUiDeviceReads';
+import { zoneNameField } from '../lib/device/homeyDeviceInventory';
 import { hasPowerMeasurement } from '../lib/power/lastTotalPower';
 import {
   projectPowerTrackerForUi,
@@ -255,6 +256,7 @@ const buildSettingsUiDeviceList = (
 ): SettingsUiDeviceSnapshot[] => {
   if (devices.length === 0) return [];
   const priorities = host.getModePrioritiesForUi(devices.map((device) => device.id));
+  const zoneTree = host.deviceManager?.getZoneTree() ?? null;
   return devices.map((device) => {
     // The live observed record and car association, never the stored copy: the
     // stored device snapshot is rebuilt on the device poll, so its observed half
@@ -282,6 +284,7 @@ const buildSettingsUiDeviceList = (
       ...(controlContest ? { controlContest } : {}),
       ...(levelUnconfirmed ? { levelUnconfirmed: true as const } : {}),
       ...(stateOfCharge ? { stateOfCharge } : {}),
+      ...zoneNameField(zoneTree, device.zoneId),
       ...readSettingsUiBatteryState(host, device),
       phaseFootprintRead: readSettingsUiPhaseFootprint(host, device, observed?.chargerPhaseCurrentsA),
       priority: priorities.getPriority(device.id),

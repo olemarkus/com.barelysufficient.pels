@@ -33,6 +33,8 @@ export type SettingsUiDeviceSnapshot = DecoratedDeviceSnapshot & ObservedStateOf
     levelUnconfirmed?: true;
     /** Present while a plugged-in charger waits to identify its car: the wait as its card states it. */
     carIdentificationState?: Exclude<CarIdentificationState, 'not_waiting'>;
+    /** The name of the device's Homey zone; absent until PELS has read a zone tree that holds it. */
+    zoneName?: string;
   };
 
 /** Which phases a device loads and how PELS knows, for the device page. */

@@ -124,7 +124,7 @@ export const readSetupDeviceChoices = (devices: SettingsUiDeviceListItem[]): Set
         name: formatDisplayDeviceName(device.name),
         detail: [
           resolveDeviceClassLabel(device.deviceClass),
-          device.zone,
+          device.zoneName,
           hasObservedMeasuredPower(device) ? formatSetupPower(device.measuredPowerKw) : null,
         ].filter(Boolean).join(' · '),
         managed: manageability.isManaged,

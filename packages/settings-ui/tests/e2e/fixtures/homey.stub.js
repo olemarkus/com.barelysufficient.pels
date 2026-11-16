@@ -1960,6 +1960,9 @@
     batteryControl: device.deviceClass === 'battery' ? 'drivable' : 'not_battery',
     batteryTakenOver: false,
     batteryUsesHomeyApiKey: false,
+    // The fixture names each device's zone in `zone`; the runtime serves the
+    // zone tree's name as `zoneName` (`zone` is Homey's zone id there).
+    ...(device.zone ? { zoneName: device.zone } : {}),
     ...device,
   });
 
