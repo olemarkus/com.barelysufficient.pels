@@ -143,6 +143,10 @@ const start = async () => {
   await bootComplete;
 };
 
+// How often the page catches up on its own while Homey's live events are not
+// arriving: a few calls, well inside the cloud relay's limit.
+const OFFLINE_CATCH_UP_MS = 30_000;
+
 // Homey's live events, from wherever the page's calls go. Leaving the home
 // network moves the calls to the cloud; the socket follows, and the settings
 // catch-up after it reconnects covers the gap.
@@ -167,6 +171,9 @@ const followRealtime = (
     },
   );
   let closeRealtime = connectRealtime();
+  // The first tick takes the copy later ticks compare with, so the page's
+  // initial loading path gains no read.
+  window.setInterval(() => resync.onOfflineTick(), OFFLINE_CATCH_UP_MS);
   target.onMove(() => {
     closeRealtime();
     closeRealtime = connectRealtime();

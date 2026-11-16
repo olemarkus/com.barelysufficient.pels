@@ -13,8 +13,19 @@ import { PELS_APP_ID } from './remoteConnection.ts';
 // on their own refresh timers or with the next event. The smart-task active
 // plans have neither: they arrive only as a push on each change, so a reconnect
 // re-reads them from the bootstrap and replays that push.
+//
+// While the socket is down nothing announces the page's own writes either: a
+// device the owner just managed, or a smart task just created, stayed off the
+// Overview until a reload. So the same catch-up also runs on the page's offline
+// timer, and a catch-up that found a change re-reads the device list too, as
+// the runtime's `devices_updated` push would have made the page do. Its first
+// run compares with the bootstrap, which names only the settings the page
+// loaded; later runs compare every key.
 
 type SettingsSnapshot = Map<string, string>;
+
+// The runtime's push after its device snapshot changes; the page re-reads its device list on it.
+const DEVICES_UPDATED_EVENT = 'devices_updated';
 
 const snapshot = (settings: Record<string, unknown>): SettingsSnapshot => (
   new Map(Object.entries(settings).map(([key, value]) => [key, JSON.stringify(value)]))
@@ -41,8 +52,9 @@ export const createSettingsResync = (
   let announced = new Set<string>();
   let live = false;
   let connectionGeneration = 0;
+  let offlineCatchUp: Promise<void> | null = null;
 
-  const catchUp = async (generation: number) => {
+  const catchUp = async (generation: number, offline = false) => {
     const seeded = await initial;
     if (generation !== connectionGeneration) return;
     const current = await readSnapshot(request);
@@ -56,15 +68,14 @@ export const createSettingsResync = (
     const keys = previous
       ? new Set([...previous.keys(), ...current.keys(), ...touched])
       : new Set([...seeded.keys(), ...touched]);
-    for (const key of keys) {
+    const changedKeys = [...keys].filter((key) => touched.has(key) || (previous
+      ? previous.get(key) !== current.get(key)
       // Bootstrap reads absent settings as null; the full snapshot omits them.
-      const unchanged = previous
-        ? previous.get(key) === current.get(key)
-        : seeded.get(key) === (current.get(key) ?? 'null');
-      if (!touched.has(key) && unchanged) continue;
-      dispatch(current.has(key) ? 'settings.set' : 'settings.unset', key);
-    }
-    if (previous) await catchUpActivePlans(generation);
+      : seeded.get(key) !== (current.get(key) ?? 'null')));
+    for (const key of changedKeys) dispatch(current.has(key) ? 'settings.set' : 'settings.unset', key);
+    const changed = changedKeys.length > 0;
+    if (previous || offline) await catchUpActivePlans(generation);
+    if (offline && changed && generation === connectionGeneration) dispatch(DEVICES_UPDATED_EVENT, undefined);
   };
 
   const catchUpActivePlans = async (generation: number) => {
@@ -87,6 +98,12 @@ export const createSettingsResync = (
       live = true;
       connectionGeneration += 1;
       void catchUp(connectionGeneration);
+    },
+    // Called on the page's timer: while the socket is not live, catch up as a
+    // reconnect would, one catch-up at a time.
+    onOfflineTick: (): void => {
+      if (live || offlineCatchUp) return;
+      offlineCatchUp = catchUp(connectionGeneration, true).finally(() => { offlineCatchUp = null; });
     },
     // A key announced while live is announced again after the next reconnect,
     // whatever it holds by then, so a value changed live and changed back or

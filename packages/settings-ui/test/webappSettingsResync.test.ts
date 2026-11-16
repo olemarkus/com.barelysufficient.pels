@@ -157,4 +157,44 @@ describe('settings resync after a dropped socket', () => {
     await reconnect(resync);
     expect(dispatch).toHaveBeenCalledExactlyOnceWith(DEFERRED_OBJECTIVE_ACTIVE_PLANS_UPDATED_EVENT, plans);
   });
+
+  it('announces the page\'s own writes on the offline timer while the socket is down', async () => {
+    const { resync, dispatch, store, planActive } = setup(Promise.resolve({ settings: { managed_devices: {} } }));
+    const plans = { version: 1, plansByDeviceId: {} };
+    planActive(plans);
+    store({ managed_devices: {} });
+    // The socket never came up: the first tick takes the copy.
+    resync.onOfflineTick();
+    await flush();
+    dispatch.mockClear();
+    // The owner managed a charger and made a smart task.
+    store({ managed_devices: { charger: true }, 'deferred_objective.charger': { kind: 'energy' } });
+    resync.onOfflineTick();
+    await flush();
+    expect(dispatch.mock.calls).toEqual([
+      ['settings.set', 'managed_devices'],
+      ['settings.set', 'deferred_objective.charger'],
+      [DEFERRED_OBJECTIVE_ACTIVE_PLANS_UPDATED_EVENT, plans],
+      ['devices_updated', undefined],
+    ]);
+
+    // Nothing changed since: the plans are replayed, the device list is not re-read.
+    dispatch.mockClear();
+    resync.onOfflineTick();
+    await flush();
+    expect(dispatch.mock.calls).toEqual([[DEFERRED_OBJECTIVE_ACTIVE_PLANS_UPDATED_EVENT, plans]]);
+  });
+
+  it('leaves catching up to Homey\'s events while the socket is live', async () => {
+    const { resync, dispatch, request, store } = setup(Promise.resolve({ settings: {} }));
+    store({});
+    resync.onStatus('live');
+    await flush();
+    vi.mocked(request).mockClear();
+    store({ mode: 'Away' });
+    resync.onOfflineTick();
+    await flush();
+    expect(request).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
+  });
 });
