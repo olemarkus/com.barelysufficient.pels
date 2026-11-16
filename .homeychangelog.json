@@ -841,5 +841,8 @@
   },
   "3.36.0": {
     "en": "New: Follow this month's peak. With a 15-minute capacity limit, as in Flanders, PELS lets your devices use this month's highest quarter once it is above your hard cap, until the month ends, since your grid tariff already counts that peak. New installs in Belgium start with it on. When your meter reports its own monthly peak, as a HomeWizard P1 does on a Belgian digital meter, Highest completed quarter this month uses it, so a peak set while PELS was not running counts. In simulation, PELS paces each hour and plans a home battery as live control would, and the Overview shows the energy with control on beside what your meter measured."
+  },
+  "3.37.0": {
+    "en": "New: chargers connected through the OCPP Server app, controlled from 6 A. The Smappee EV Wall stays under control on version 1.4 of the Smappee app. A charger with one selected car can now confirm that car at every plug-in. With an hourly capacity limit, an on/off device such as a water heater can run for part of the hour when the hour has room for it, and stops in time. When the home goes past the hard cap on several days a week with nothing left for PELS to ease off, Setup recommends letting PELS control more of the load."
   }
 }
