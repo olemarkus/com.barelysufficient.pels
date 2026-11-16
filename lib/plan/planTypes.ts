@@ -719,9 +719,9 @@ type DevicePlanDeviceBase = Pick<PlanInputDeviceBase, CarriedInputKey> & {
    */
   priceTargetShift: PriceTargetShift;
   /**
-   * Producer-resolved: the planned target is a temperature override, kept as is
-   * (not a limit). `false` for every other temperature outcome, absent on a device with no
-   * temperature target. Drives the card's "Override" reason line.
+   * Producer-resolved: a temperature override is in force on the device, whether the plan
+   * keeps it there or limits it below. `false` otherwise, absent on a device with no
+   * temperature target. Drives the card's Override chip.
    */
   temporaryTemperatureActive?: boolean;
   // Forwarded flat from `PlanInputDevice.reservesStartupPower` (see its doc block): this device

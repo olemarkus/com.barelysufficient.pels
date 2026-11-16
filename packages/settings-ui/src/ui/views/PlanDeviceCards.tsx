@@ -354,6 +354,7 @@ export const PlanCardShell = ({ dev, dryRun, nowMs, kind, leadingChip, children 
           {leadingChip}
           <PlanCardStatusChipView dev={dev} displayKind={stateKind} dryRun={dryRun} />
           <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />
+          {dev.status.override === true && <span class="plan-chip plan-chip--info" data-override-chip>Override</span>}
         </div>
       </div>
       {children}

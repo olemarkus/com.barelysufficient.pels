@@ -45,6 +45,8 @@ export type DeviceStatus = {
   wouldLimit: boolean;
   canEaseOff: boolean;
   controlOffDrawing: boolean;
+  /** An override is in force on the device: the card shows the Override chip. */
+  override?: true;
   /** The phase this device is held for, when a phase is what holds it. */
   heldForPhase?: 'L1' | 'L2' | 'L3';
   holdCause: 'smart_task' | 'smart_task_done' | 'daily_budget' | null;

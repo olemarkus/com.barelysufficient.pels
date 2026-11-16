@@ -69,7 +69,7 @@ describe('the price shift behind a planned target', () => {
   });
 });
 
-describe('a Flow\'s temporary temperature behind a planned target', () => {
+describe('a temperature override behind a planned target', () => {
   it('is what the plan commands, flagged on the plan device, with no price shift', () => {
     expect(planDevice({ level: PriceLevel.CHEAP, temporaryC: 24 })).toMatchObject({
       plannedTarget: 24,
@@ -78,7 +78,7 @@ describe('a Flow\'s temporary temperature behind a planned target', () => {
     });
   });
 
-  it('is not flagged when no temporary temperature is in force', () => {
+  it('is not flagged when no override is in force', () => {
     expect(planDevice({ level: PriceLevel.CHEAP })?.temporaryTemperatureActive).toBe(false);
   });
 });
