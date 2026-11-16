@@ -816,6 +816,27 @@ once it is on (`data-shown-when-on`) shows only while it is on, for example
 automatically. …` and **Run on solar surplus**'s `If you switch it on yourself
 while there is no surplus, PELS will switch it off again.`
 
+### Device-page Override card
+
+**Override** is one setting PELS holds on a device until a chosen time; today a
+temperature on a managed thermostat. The card is first on that device's page
+(`deviceDetail/overrideCard.ts`, copy in `deviceOverrideDraft.ts`).
+
+| State | Text |
+|---|---|
+| None in force | `Hold a temperature for a while. Prices and mode changes do not move it; power limits still apply.` + `Set an override` |
+| Form | `Temperature (°C)`, `Ends`: `In 2 hours` / `At 08:00` / `Pick a time` (then `Date` and `Time`), `Start override`, `Cancel` |
+| In force | `22° until 21:30`, or `22° until Sun 21:30` when it ends on a later day, + `Change`, `End now` |
+| Keep the new temperature selected | `PELS does not set this device’s temperature while Keep the new temperature is selected.` |
+
+Form errors: `Enter a temperature from 5 to 35 °C.` (`Enter a temperature.` when
+the device declares no range), `Choose an end time in the future.`, `Choose an
+end time within seven days.`, `Choose a date and time that exists in the Homey
+time zone.` Toasts: `Override started.`, `Override ended.`, `Could not save the
+override.` The overview card's reason line reads `Override` while the plan keeps
+the device at it. The two Flow cards that start and end one are still titled
+"temporary temperature".
+
 ### Device-page limited temperature on a setpoint-only device
 
 On a temperature device without on/off or power levels, **Limited temperature**
