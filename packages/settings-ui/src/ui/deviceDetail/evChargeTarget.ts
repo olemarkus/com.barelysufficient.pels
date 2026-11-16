@@ -14,6 +14,7 @@ import {
   deviceDetailChargeTarget,
   deviceDetailChargeTargetEnabled,
   deviceDetailChargeTargetPercent,
+  deviceDetailChargeTargetPercentRow,
   deviceDetailChargeTargetStatus,
   deviceDetailChargeTargetUnknown,
   deviceDetailChargeTargetUnknownHint,
@@ -34,6 +35,10 @@ const runSerializedChargeTargetWrite = createSerializedAsyncRunner();
 const DEFAULT_TARGET_PERCENT = 100;
 
 const UNKNOWN_LEVEL_CHARGES_HINT = "A car that doesn't report its level charges to its own limit.";
+const UNKNOWN_LEVEL_NEEDS_TARGET_HINT = 'Applies once Charge to a battery level is on.';
+// What "Charge before the battery level is known" starts at when a target is
+// turned on: there is no stored choice while the target is off.
+const DEFAULT_CHARGE_BEFORE_LEVEL_KNOWN = true;
 const UNKNOWN_LEVEL_HELD_HINT = "A car that doesn't report its level won't charge here. That includes a car "
   + "not selected under Car, a car whose app doesn't share its battery level, and a selected car while its "
   + "app isn't reporting. An energy smart task still charges them in its booked hours.";
@@ -121,6 +126,17 @@ export const buildChargeTargetStatus = (device: SettingsUiDeviceDetailItem, conf
   return buildUnreportedStatus(device.id, lever, config);
 };
 
+// A setting of its own, so it stays in view while the target is off: greyed,
+// shown off (it does nothing then), with the reason.
+const renderChargeBeforeLevelKnown = (targetOn: boolean, chargeBeforeLevelKnown: boolean): void => {
+  if (!deviceDetailChargeTargetUnknown || !deviceDetailChargeTargetUnknownHint) return;
+  deviceDetailChargeTargetUnknown.selected = targetOn && chargeBeforeLevelKnown;
+  deviceDetailChargeTargetUnknown.disabled = !targetOn;
+  let hint = UNKNOWN_LEVEL_NEEDS_TARGET_HINT;
+  if (targetOn) hint = chargeBeforeLevelKnown ? UNKNOWN_LEVEL_CHARGES_HINT : UNKNOWN_LEVEL_HELD_HINT;
+  deviceDetailChargeTargetUnknownHint.textContent = hint;
+};
+
 export const renderEvChargeTargetSettings = (device: SettingsUiDeviceDetailItem | null) => {
   if (
     !deviceDetailChargeTarget || !deviceDetailChargeTargetEnabled || !deviceDetailChargeTargetPercent
@@ -132,17 +148,13 @@ export const renderEvChargeTargetSettings = (device: SettingsUiDeviceDetailItem 
 
   const config = state.evChargeTargetSettings[device.id];
   const enabled = config !== undefined;
-  const chargeBeforeLevelKnown = config?.chargeBeforeLevelKnown ?? true;
+  const chargeBeforeLevelKnown = config?.chargeBeforeLevelKnown ?? DEFAULT_CHARGE_BEFORE_LEVEL_KNOWN;
   deviceDetailChargeTargetEnabled.selected = enabled;
   deviceDetailChargeTargetPercent.value = String(config?.targetPercent ?? DEFAULT_TARGET_PERCENT);
-  // Visible-but-disabled while the target is off, as Charge boost does: the
-  // fields say what turning it on offers.
+  // The level is the target's setting: hidden while the target is off.
+  if (deviceDetailChargeTargetPercentRow) deviceDetailChargeTargetPercentRow.hidden = !enabled;
   deviceDetailChargeTargetPercent.disabled = !enabled;
-  deviceDetailChargeTargetUnknown.selected = chargeBeforeLevelKnown;
-  deviceDetailChargeTargetUnknown.disabled = !enabled;
-  deviceDetailChargeTargetUnknownHint.textContent = chargeBeforeLevelKnown
-    ? UNKNOWN_LEVEL_CHARGES_HINT
-    : UNKNOWN_LEVEL_HELD_HINT;
+  renderChargeBeforeLevelKnown(enabled, chargeBeforeLevelKnown);
   const statusText = config ? buildChargeTargetStatus(device, config) : '';
   deviceDetailChargeTargetStatus.textContent = statusText;
   deviceDetailChargeTargetStatus.hidden = statusText.length === 0;
@@ -204,8 +216,11 @@ export const initEvChargeTargetHandlers = (deps: {
     if (!deviceId) return;
     const enable = deviceDetailChargeTargetEnabled.selected;
     const targetPercent = readTargetPercentField() ?? DEFAULT_TARGET_PERCENT;
-    const chargeBeforeLevelKnown = deviceDetailChargeTargetUnknown?.selected ?? true;
-    await persist(deviceId, () => (enable ? { targetPercent, chargeBeforeLevelKnown } : null));
+    // The switch below reads off while the target is off, so it is no source
+    // for the value a new target starts with.
+    await persist(deviceId, () => (
+      enable ? { targetPercent, chargeBeforeLevelKnown: DEFAULT_CHARGE_BEFORE_LEVEL_KNOWN } : null
+    ));
   });
 
   // An edit to a field applies only while a target is stored; with none, the

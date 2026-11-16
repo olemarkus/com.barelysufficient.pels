@@ -11,6 +11,7 @@ import type { EvChargingState } from '../../contracts/src/types';
 const IDS = [
   ['div', 'device-detail-charge-target'],
   ['md-switch', 'device-detail-charge-target-enabled'],
+  ['div', 'device-detail-charge-target-percent-row'],
   ['md-filled-text-field', 'device-detail-charge-target-percent'],
   ['p', 'device-detail-charge-target-status'],
   ['md-switch', 'device-detail-charge-target-unknown'],
@@ -153,18 +154,31 @@ describe('charge target status', () => {
     );
   });
 
-  it('shows no status and disables the fields while the target is off', async () => {
+  it('shows no status and hides the level while the target is off', async () => {
     const { module, state, status } = await load();
     state.evChargeTargetSettings = {};
     module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 70, observedAtMs: 0, carId: null }));
     expect(status().hidden).toBe(true);
+    expect(document.getElementById('device-detail-charge-target-percent-row')!.hidden).toBe(true);
     const percent = document.getElementById('device-detail-charge-target-percent') as HTMLElement & {
-      disabled: boolean;
       value: string;
     };
-    expect(percent.disabled).toBe(true);
     // Turning it on offers 100%, which is how the charger charged before.
     expect(percent.value).toBe('100');
+
+    // The companion is a setting of its own: in view, greyed, shown off, with why.
+    const unknown = document.getElementById('device-detail-charge-target-unknown') as HTMLElement & {
+      selected: boolean;
+      disabled: boolean;
+    };
+    expect(unknown).toMatchObject({ selected: false, disabled: true });
+    expect(document.getElementById('device-detail-charge-target-unknown-hint')!.textContent)
+      .toBe('Applies once Charge to a battery level is on.');
+
+    state.evChargeTargetSettings = { [CHARGER_ID]: { targetPercent: 60, chargeBeforeLevelKnown: true } };
+    module.renderEvChargeTargetSettings(buildCharger({ kind: 'known', percent: 70, observedAtMs: 0, carId: null }));
+    expect(document.getElementById('device-detail-charge-target-percent-row')!.hidden).toBe(false);
+    expect(unknown).toMatchObject({ selected: true, disabled: false });
   });
 
   it('words the unknown-level hint by the choice, never naming whose car it is', async () => {
@@ -182,6 +196,26 @@ describe('charge target status', () => {
 });
 
 describe('charge target saves', () => {
+  it('starts a new target charging before the level is known, though the greyed switch reads off', async () => {
+    const { module, state } = await load();
+    state.evChargeTargetSettings = {};
+    const homey = createHomeyMock({ settings: { ev_charge_target_settings: {} } });
+    const { setHomeyClient } = await import('../src/ui/homey.ts');
+    setHomeyClient(homey);
+    module.renderEvChargeTargetSettings(buildCharger(null));
+    module.initEvChargeTargetHandlers({ getCurrentDetailDeviceId: () => CHARGER_ID, refreshOpenDeviceDetail: () => undefined });
+    const enabled = document.getElementById('device-detail-charge-target-enabled') as HTMLElement & { selected: boolean };
+
+    enabled.selected = true;
+    enabled.dispatchEvent(new Event('change'));
+
+    await vi.waitFor(() => {
+      expect(homey.__settingsStore.ev_charge_target_settings).toEqual({
+        [CHARGER_ID]: { targetPercent: 100, chargeBeforeLevelKnown: true },
+      });
+    });
+  });
+
   it('keeps the stored target when the field is cleared', async () => {
     const { module, state } = await load();
     const homey = createHomeyMock({ settings: {

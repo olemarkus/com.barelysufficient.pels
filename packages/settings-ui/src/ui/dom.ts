@@ -237,8 +237,10 @@ export const deviceDetailModesSection = qs('#device-detail-modes-section');
 export const deviceDetailModes = qs('#device-detail-modes');
 export const deviceDetailDeltaSection = qs('#device-detail-delta-section');
 export const deviceDetailDeltaGateHint = qs('#device-detail-delta-gate-hint');
+export const deviceDetailDeltaFields = qs('#device-detail-delta-fields');
 export const deviceDetailSurplusGateHint = qs('#device-detail-surplus-gate-hint');
 export const deviceDetailSurplusTemperature = qs('#device-detail-surplus-temperature');
+export const deviceDetailSurplusFields = qs('#device-detail-surplus-fields');
 export const deviceDetailCheapDelta = document.querySelector('#device-detail-cheap-delta') as MdFilledTextFieldElement;
 export const deviceDetailExpensiveDelta = document.querySelector(
   '#device-detail-expensive-delta',
@@ -260,6 +262,7 @@ export const deviceDetailSurplusTrackOpt = document.querySelector(
   '#device-detail-surplus-track-opt',
 ) as MdSwitchElement;
 export const deviceDetailSurplusTrackLabel = qs('#device-detail-surplus-track-label');
+export const deviceDetailSurplusTrackSmartTaskNote = qs('#device-detail-surplus-track-smart-task-note');
 export const deviceDetailSurplusTrackHint = qs('#device-detail-surplus-track-hint');
 export const deviceDetailSurplusTrackDisabledHint = qs('#device-detail-surplus-track-disabled-hint');
 export const deviceDetailSurplusTrackPowerLimitHint
@@ -331,6 +334,7 @@ export const deviceDetailChargeTargetEnabled = document.querySelector(
 export const deviceDetailChargeTargetPercent = document.querySelector(
   '#device-detail-charge-target-percent',
 ) as MdFilledTextFieldElement;
+export const deviceDetailChargeTargetPercentRow = qs('#device-detail-charge-target-percent-row');
 export const deviceDetailChargeTargetStatus = qs('#device-detail-charge-target-status');
 export const deviceDetailChargeTargetUnknown = document.querySelector(
   '#device-detail-charge-target-unknown',
@@ -343,6 +347,7 @@ export const deviceDetailEvBoostEnabled = document.querySelector(
 export const deviceDetailEvBoostBelow = document.querySelector(
   '#device-detail-ev-boost-below',
 ) as MdFilledTextFieldElement;
+export const deviceDetailEvBoostBelowRow = qs('#device-detail-ev-boost-below-row');
 export const deviceDetailEvBoostStatus = qs('#device-detail-ev-boost-status');
 export const deviceDetailCarSection = qs('#device-detail-car-section');
 export const deviceDetailCarIntro = qs('#device-detail-car-intro');
