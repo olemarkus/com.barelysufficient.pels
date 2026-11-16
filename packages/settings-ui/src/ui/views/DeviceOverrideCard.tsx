@@ -14,6 +14,8 @@ export type DeviceOverrideCardState =
     range: OverrideTemperatureRange & { step: number };
     error: string | null;
     busy: boolean;
+    /** What the override means for the device's open Smart task; `null` without one. */
+    smartTaskNote: string | null;
   };
 
 export type DeviceOverrideCardActions = {
@@ -35,7 +37,7 @@ const inputValue = (event: Event): string => (event.currentTarget as HTMLInputEl
 type EditingState = Extract<DeviceOverrideCardState, { kind: 'editing' }>;
 
 const OverrideForm = ({ state, actions }: { state: EditingState; actions: DeviceOverrideCardActions }) => {
-  const { draft, range, error, busy } = state;
+  const { draft, range, error, busy, smartTaskNote } = state;
   return (
     <div class="device-detail-override__form">
       <MdFilledTextField type="number" inputmode="decimal" label={OVERRIDE_COPY.temperatureLabel}
@@ -55,6 +57,7 @@ const OverrideForm = ({ state, actions }: { state: EditingState; actions: Device
           <input type="time" class="smart-task-edit__time-input" value={draft.at} disabled={busy}
             data-override-field="time" onInput={(event) => actions.onDraftChange({ at: inputValue(event) })} /></label>
       </div>}
+      {smartTaskNote !== null && <p class="pels-notice-info" data-override-smart-task-note>{smartTaskNote}</p>}
       {error !== null && <small class="field__hint smart-task-edit__error" role="alert">{error}</small>}
       <div class="device-detail-override__actions">
         <MdFilledButton type="button" disabled={busy} data-override-action="save" onClick={actions.onSave}>

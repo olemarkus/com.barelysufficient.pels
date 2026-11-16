@@ -5,6 +5,8 @@ import type {
 import type { SettingsUiSmartTaskDevicesResponse } from '../../../../contracts/src/smartTaskEdit.ts';
 import { SMART_TASK_CREATE_PAGE_COPY } from '../../../../shared-domain/src/smartTaskCopy/createEditCopy.ts';
 import { hasLoadedDeferredObjectiveSettings } from '../deferredObjectiveSettings.ts';
+import { OVERRIDE_COPY } from '../deviceOverrideDraft.ts';
+import { DEVICE_OVERRIDE_CHANGED_EVENT, getActiveDeviceOverride } from '../deviceOverrideStore.ts';
 import { callApi } from '../homey.ts';
 import { isSmartTaskCreateOpenFor } from '../smartTaskCreate.ts';
 import { formatOpenSmartTaskLine } from '../smartTaskSummary.ts';
@@ -67,8 +69,10 @@ const textButton = (label: string, data: Record<string, string>): HTMLElement =>
 };
 
 const paintOpenTask = (deviceId: string, entry: DeferredObjectiveSettingsEntry): void => {
+  const line = formatOpenSmartTaskLine(entry);
+  const waiting = getActiveDeviceOverride(deviceId, Date.now()) !== null;
   paint(
-    formatOpenSmartTaskLine(entry),
+    waiting ? `${line} · ${OVERRIDE_COPY.smartTaskBoxWaiting}` : line,
     textButton(SMART_TASK_CREATE_PAGE_COPY.viewTask, { smartTaskView: deviceId }),
     deviceId,
   );
@@ -134,3 +138,10 @@ export const renderDeviceSmartTaskBox = (deviceId: string): void => {
   }
   hide();
 };
+
+// The open task's line says when an override holds the device, so it follows
+// the override's reads and writes.
+document.addEventListener(DEVICE_OVERRIDE_CHANGED_EVENT, (event) => {
+  const { deviceId } = (event as CustomEvent<{ deviceId: string }>).detail;
+  if (candidates?.deviceId === deviceId) renderDeviceSmartTaskBox(deviceId);
+});

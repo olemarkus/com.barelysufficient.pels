@@ -1,19 +1,22 @@
 import { h, render } from 'preact';
-import {
-  deviceOverrideKey, isDeviceOverrideInForce, parseDeviceOverride, type DeviceOverride,
-} from '../../../../shared-domain/src/settings/deviceOverrides.ts';
+import type { DeviceOverride } from '../../../../shared-domain/src/settings/deviceOverrides.ts';
 import {
   getPrimaryTargetCapability, normalizeTargetCapabilityValue,
 } from '../../../../shared-domain/src/targetCapabilities.ts';
 import { resolveTemperatureControlMode } from '../../../../shared-domain/src/settings/temperatureControl.ts';
 import {
-  OVERRIDE_COPY, formatActiveOverride, newOverrideDraft, resolveOverrideDraft, type OverrideDraft,
+  OVERRIDE_COPY, formatActiveOverride, newOverrideDraft, resolveOverrideDraft, resolveOverrideSmartTaskNote,
+  type OverrideDraft,
   type OverrideTemperatureRange,
 } from '../deviceOverrideDraft.ts';
 import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
-import { getHomeyTimezone, getSetting, setSetting } from '../homey.ts';
+import {
+  DEVICE_OVERRIDE_CHANGED_EVENT, getActiveDeviceOverride, hasLoadedDeviceOverride, loadDeviceOverride,
+  saveDeviceOverride,
+} from '../deviceOverrideStore.ts';
+import { getHomeyTimezone } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
-import { resolveManagedState, state } from '../state.ts';
+import { hasOpenSmartTask, resolveManagedState, state } from '../state.ts';
 import { getTargetCapabilityStep } from '../targetCapabilityStep.ts';
 import { showToast, showToastError } from '../toast.ts';
 import { DeviceOverrideCard, type DeviceOverrideCardState } from '../views/DeviceOverrideCard.tsx';
@@ -22,22 +25,19 @@ import { DeviceOverrideCard, type DeviceOverrideCardState } from '../views/Devic
  * The device page's Override card, first on a managed thermostat's page: start
  * a temperature override, see the one in force, end it early.
  *
- * The card writes the device's `device_override.<deviceId>` key through the
- * settings bridge and reads it back the same way; the runtime owner
- * (`lib/overrides/deviceOverrides.ts`) decides what the plan does with it.
- * Ending early stores an end time of now.
+ * The device's stored override lives in `deviceOverrideStore.ts`, which reads
+ * and writes its `device_override.<deviceId>` key through the settings bridge;
+ * the runtime owner (`lib/overrides/deviceOverrides.ts`) decides what the plan
+ * does with it. Ending early stores an end time of now.
  */
 type CardSession = {
   deviceId: string;
-  /** The stored override, in force or not; `null` until read, or when none is stored. */
-  override: DeviceOverride | null;
   draft: OverrideDraft | null;
   error: string | null;
   busy: boolean;
 };
 
 let session: CardSession | null = null;
-let readGeneration = 0;
 
 const root = (): HTMLElement | null => document.getElementById('device-detail-override');
 
@@ -56,8 +56,16 @@ const temperatureRange = (device: SettingsUiDeviceDetailItem): OverrideTemperatu
 };
 
 const activeOverride = (current: CardSession, nowMs: number): DeviceOverride | null => (
-  current.override !== null && isDeviceOverrideInForce(current.override, nowMs) ? current.override : null
+  getActiveDeviceOverride(current.deviceId, nowMs)
 );
+
+/** What the draft means for the device's open Smart task, when it has one. */
+const smartTaskNote = (current: CardSession, draft: OverrideDraft, range: OverrideTemperatureRange): string | null => {
+  const task = state.deferredObjectiveSettings.objectivesByDeviceId[current.deviceId];
+  if (!task || !hasOpenSmartTask(current.deviceId)) return null;
+  const resolved = resolveOverrideDraft(draft, range, Date.now(), getHomeyTimezone());
+  return resolveOverrideSmartTaskNote(resolved.ok ? resolved.untilMs : null, task.deadlineAtMs);
+};
 
 const resolveCardState = (current: CardSession, device: SettingsUiDeviceDetailItem): DeviceOverrideCardState | null => {
   const range = temperatureRange(device);
@@ -67,7 +75,10 @@ const resolveCardState = (current: CardSession, device: SettingsUiDeviceDetailIt
   );
   if (mode === 'external') return { kind: 'blocked' };
   if (current.draft !== null) {
-    return { kind: 'editing', draft: current.draft, range, error: current.error, busy: current.busy };
+    return {
+      kind: 'editing', draft: current.draft, range, error: current.error, busy: current.busy,
+      smartTaskNote: smartTaskNote(current, current.draft, range),
+    };
   }
   const nowMs = Date.now();
   const active = activeOverride(current, nowMs);
@@ -79,7 +90,8 @@ const paint = (): void => {
   const el = root();
   if (!el || !session) return;
   const device = findDevice(session.deviceId);
-  const applies = device !== undefined && supportsTemperatureDevice(device) && resolveManagedState(device.id);
+  const applies = device !== undefined && hasLoadedDeviceOverride(session.deviceId)
+    && supportsTemperatureDevice(device) && resolveManagedState(device.id);
   const cardState = applies ? resolveCardState(session, device) : null;
   if (cardState === null) {
     el.hidden = true;
@@ -88,20 +100,6 @@ const paint = (): void => {
   const actions = { onStart, onEndNow, onDraftChange, onSave, onCancel };
   render(h(DeviceOverrideCard, { state: cardState, actions }), el);
   el.hidden = false;
-};
-
-const readOverride = async (deviceId: string): Promise<void> => {
-  readGeneration += 1;
-  const generation = readGeneration;
-  let override: DeviceOverride | null = null;
-  try {
-    override = parseDeviceOverride(await getSetting(deviceOverrideKey(deviceId)));
-  } catch (error) {
-    void logSettingsError('Failed to read device override', error, 'device override');
-  }
-  if (generation !== readGeneration || session?.deviceId !== deviceId) return;
-  session = { ...session, override };
-  paint();
 };
 
 const onStart = (): void => {
@@ -132,9 +130,9 @@ const write = async (current: CardSession, override: DeviceOverride, done: strin
   session = { ...current, busy: true, error: null };
   paint();
   try {
-    await setSetting(deviceOverrideKey(current.deviceId), override);
+    await saveDeviceOverride(current.deviceId, override);
     if (session?.deviceId !== current.deviceId) return;
-    session = { ...session, override, draft: null, busy: false };
+    session = { ...session, draft: null, busy: false };
     void showToast(done, 'ok');
   } catch (error) {
     void logSettingsError('Failed to save device override', error, 'device override');
@@ -171,23 +169,22 @@ const onEndNow = (): void => {
 /** Paint the card for a device; a different device starts from a fresh read. */
 export const renderDeviceOverrideCard = (deviceId: string): void => {
   if (session?.deviceId !== deviceId) {
-    session = { deviceId, override: null, draft: null, error: null, busy: false };
+    session = { deviceId, draft: null, error: null, busy: false };
     const el = root();
     if (el) el.hidden = true;
-    void readOverride(deviceId);
+    void loadDeviceOverride(deviceId);
     return;
   }
   paint();
 };
 
 export const hideDeviceOverrideCard = (): void => {
-  readGeneration += 1;
   session = null;
   const el = root();
   if (el) el.hidden = true;
 };
 
-/** A Flow or another session changed the open device's override. */
-export const notifyDeviceOverrideSettingChanged = (key: string): void => {
-  if (session && key === deviceOverrideKey(session.deviceId) && !session.busy) void readOverride(session.deviceId);
-};
+document.addEventListener(DEVICE_OVERRIDE_CHANGED_EVENT, (event) => {
+  const { deviceId } = (event as CustomEvent<{ deviceId: string }>).detail;
+  if (session?.deviceId === deviceId && !session.busy) paint();
+});

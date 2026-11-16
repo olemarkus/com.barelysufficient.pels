@@ -33,6 +33,7 @@ import {
   registerSmartTaskCreateRenderer,
   requestSmartTaskCreatePreview,
   resolveSmartTaskCreateAfterTaskLine,
+  resolveSmartTaskCreateOverrideNote,
   retrySmartTaskCreateLoad,
   selectSmartTaskCreateDevice,
   setSmartTaskCreateGoal,
@@ -409,6 +410,8 @@ const paintSmartTaskCreate = (snapshot: SmartTaskCreateSnapshot | null): void =>
     solarNote: (step.kind === 'compose' || step.kind === 'preview')
       && state.priceOptimizationSettings[step.device.deviceId]?.surplusWilling === true
       ? 'While active, the Smart task decides when this device runs and may use grid electricity.' : null,
+    overrideNote: step.kind === 'compose' || step.kind === 'preview'
+      ? resolveSmartTaskCreateOverrideNote(step.device.deviceId) : null,
     actions: smartTaskCreateActions,
   });
 };
