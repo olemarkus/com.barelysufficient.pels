@@ -10,9 +10,12 @@ import {
   SMART_TASK_EXTRA_PERMISSION_LABELS,
   SMART_TASK_EXTRA_PERMISSIONS_TITLE,
 } from '../../../../shared-domain/src/smartTaskCopy/permissionsCopy.ts';
-import type { ScheduleDraft, ScheduleRepeatChoice } from '../scheduleDraft.ts';
+import { scheduleActionDeviceId } from '../../../../shared-domain/src/settings/schedules.ts';
+import type { ScheduleActionType, ScheduleDraft, ScheduleRepeatChoice } from '../scheduleDraft.ts';
 import { scheduleModeLabel, scheduleModeOptions } from '../scheduleModeReferences.ts';
-import { SCHEDULE_DAYS, scheduleReadyByDay, scheduleRepeatLabel, scheduleTaskUnit } from '../scheduleDraft.ts';
+import {
+  SCHEDULE_DAYS, scheduleOverrideDevices, scheduleReadyByDay, scheduleRepeatLabel, scheduleTaskUnit,
+} from '../scheduleDraft.ts';
 import type { SchedulesViewSnapshot } from '../schedulesTypes.ts';
 import { SegmentedControl } from './SegmentedControl.tsx';
 import { SmartTaskPermissionRow } from './DeadlinePlan.tsx';
@@ -28,7 +31,7 @@ export type SchedulesActions = {
   onEdit(id: string): void;
   onBack(): void;
   onDraftChange(patch: Partial<ScheduleDraft>): void;
-  onSelectAction(type: 'mode' | 'task'): void;
+  onSelectAction(type: ScheduleActionType): void;
   onDevice(deviceId: string): void;
   onRepeat(repeat: ScheduleRepeatChoice): void;
   onDay(day: number): void;
@@ -38,7 +41,7 @@ export type SchedulesActions = {
   onToggle(id: string, enabled: boolean): void;
   onModeGroup(enabled: boolean): void;
   onDeviceGroup(deviceId: string, enabled: boolean): void;
-  onFilter(filter: 'all' | 'mode' | 'task'): void;
+  onFilter(filter: 'all' | 'mode' | 'task' | 'override'): void;
 };
 type View = { snapshot: SchedulesViewSnapshot; actions: SchedulesActions };
 const inputValue = (event: Event): string => (event.currentTarget as HTMLInputElement).value;
@@ -50,6 +53,12 @@ const REPEATS: { value: ScheduleRepeatChoice; label: string }[] = [
   { value: 'weekends', label: 'Sat–Sun' }, { value: 'custom', label: 'Choose days' },
   { value: 'once', label: 'Once, on a date' },
 ];
+const ACTION_TIME_LABELS: Record<ScheduleActionType, string> = {
+  task: 'Create task at', mode: 'Change mode at', override: 'Start override at',
+};
+const ACTION_CONFLICTS: Record<ScheduleActionType, string> = {
+  task: 'creates a task for this device', mode: 'changes mode', override: 'starts an override for this device',
+};
 const Choice = ({ value, children }: { value: string; children: ComponentChildren }) => (
   <MdSelectOption value={value}><span slot="headline">{children}</span></MdSelectOption>
 );
@@ -58,10 +67,15 @@ const actionSummary = (entry: ScheduleEntry, devices: readonly SmartTaskCandidat
   if (schedule.action.type === 'mode') {
     return `Set mode to ${scheduleModeLabel(schedule.action.mode, entry.modeReferences)}`;
   }
+  const deviceId = scheduleActionDeviceId(schedule.action);
+  const name = devices.find((candidate) => candidate.deviceId === deviceId)?.deviceName ?? 'Unavailable device';
+  if (schedule.action.type === 'override') {
+    const { setting, minutes } = schedule.action;
+    return `${name} · Override ${setting.targetC} °C · ${formatOverrideDuration(minutes)}`;
+  }
   const { task } = schedule.action;
-  const device = devices.find((candidate) => candidate.deviceId === task.deviceId);
   const unit = scheduleTaskUnit(task.kind);
-  return `${device?.deviceName ?? 'Unavailable device'} · ${task.target} ${unit} · Ready by ${task.readyByLocalTime}`;
+  return `${name} · ${task.target} ${unit} · Ready by ${task.readyByLocalTime}`;
 };
 
 const ScheduleRow = ({ entry, view }: { entry: ScheduleEntry; view: View }) => {
@@ -144,7 +158,7 @@ const List = (view: View) => {
   const shown = entries.filter((entry) => snapshot.filter === 'all' || entry.schedule.action.type === snapshot.filter);
   const groups = new Map<string, ScheduleEntry[]>();
   shown.forEach((entry) => {
-    const key = entry.schedule.action.type === 'mode' ? 'mode' : entry.schedule.action.task.deviceId;
+    const key = scheduleActionDeviceId(entry.schedule.action) ?? 'mode';
     const group = groups.get(key) ?? [];
     group.push(entry);
     groups.set(key, group);
@@ -155,7 +169,7 @@ const List = (view: View) => {
     <>
       <div class="pels-appbar"><MdIconButton class="pels-appbar__back" data-settings-target="settings" aria-label="Back to Settings"><ArrowBackIcon /></MdIconButton>
         <h2 class="pels-appbar__title" id="schedules-title">Schedules</h2></div>
-      <p class="pels-card-supporting">Create Smart tasks and change mode at the times you choose.</p>
+      <p class="pels-card-supporting">Create Smart tasks, start overrides and change mode at the times you choose.</p>
       <div class="schedules-toolbar">
         <MdFilledButton disabled={snapshot.load !== 'ready' || snapshot.busy} onClick={actions.onNew}>New schedule</MdFilledButton>
         <MdTextButton disabled={snapshot.busy} onClick={actions.onRetry}>Refresh</MdTextButton>
@@ -165,7 +179,9 @@ const List = (view: View) => {
         <p class="pels-text-settings-label">Next: {next.nextLabel}</p><p>{next.schedule.name}</p>
       </section>}
       <SegmentedControl contentSized value={snapshot.filter} ariaLabel="Schedule type"
-        options={([['all', 'All'], ['task', 'Smart tasks'], ['mode', 'Modes']] as const).map(([value, label]) => ({
+        options={([
+          ['all', 'All'], ['task', 'Smart tasks'], ['override', 'Overrides'], ['mode', 'Modes'],
+        ] as const).map(([value, label]) => ({
           value, label, disabled: snapshot.busy,
         }))} onChange={actions.onFilter} />
       {snapshot.load === 'loading' && <p role="status">Loading schedules…</p>}
@@ -204,6 +220,49 @@ const TaskTargetFields = ({ draft, view }: { draft: ScheduleDraft; view: View })
           Use {TASK_TARGET_NAMES[device.kind]} target
         </MdTextButton>
       </div>}
+    </>
+  );
+};
+const formatOverrideDuration = (minutes: number): string => {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return `${rest} min`;
+  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
+};
+const OverrideFields = ({ draft, view }: { draft: ScheduleDraft; view: View }) => {
+  const { snapshot, actions } = view;
+  const devices = scheduleOverrideDevices(snapshot.devices);
+  const device = devices.find((candidate) => candidate.deviceId === draft.deviceId);
+  const goal = device && resolveSmartTaskCandidateGoal(device, 'temperature');
+  const disabled = snapshot.busy || snapshot.load !== 'ready';
+  const endsNextDay = draft.overrideUntil !== '' && draft.overrideUntil <= draft.at;
+  return (
+    <>
+      <div class="field"><span class="field__label pels-text-settings-label">Device</span>
+        <MdFilledSelect value={draft.deviceId} aria-label="Override device" disabled={disabled}
+          onChange={(event: Event) => actions.onDevice(inputValue(event))}>
+          {!device && <Choice value={draft.deviceId}>Choose an available device</Choice>}
+          {devices.map((candidate) => (
+            <Choice key={candidate.deviceId} value={candidate.deviceId}>{candidate.deviceName}</Choice>
+          ))}
+        </MdFilledSelect>
+      </div>
+      <label class="field"><span class="field__label pels-text-settings-label">Temperature (°C)</span>
+        <MdFilledTextField key={`${draft.deviceId}:${Boolean(goal)}`} type="number" value={draft.overrideTarget}
+          min={goal?.goalMin.toString()} max={goal?.goalMax.toString()} step={goal?.goalStep.toString()}
+          disabled={disabled || !goal} aria-label="Temperature (°C)"
+          onInput={(event: Event) => actions.onDraftChange({ overrideTarget: inputValue(event) })} />
+        {goal && <small class="field__hint">{formatSmartTaskGoalRangeHint(goal.goalMin, goal.goalMax, '°C')}</small>}
+      </label>
+      <label class="field"><span class="field__label pels-text-settings-label">Until</span>
+        <input type="time" class="smart-task-edit__time-input" value={draft.overrideUntil} disabled={disabled}
+          data-schedule-field="override-until"
+          onInput={(event) => actions.onDraftChange({ overrideUntil: inputValue(event) })} />
+        <small class="field__hint">
+          {endsNextDay ? 'Ends the following day. ' : ''}Prices and mode changes do not move the temperature
+          meanwhile; power limits still apply.
+        </small>
+      </label>
     </>
   );
 };
@@ -288,10 +347,13 @@ const Editor = (view: View) => {
           </label>
           <SegmentedControl contentSized value={draft.actionType} ariaLabel="Scheduled action"
             options={[
-              { value: 'task', label: 'Create Smart task', disabled },
-              { value: 'mode', label: 'Change mode', disabled },
+              { value: 'task', label: 'Smart task', disabled },
+              { value: 'override', label: 'Override', disabled },
+              { value: 'mode', label: 'Mode', disabled },
             ]} onChange={actions.onSelectAction} />
-          {draft.actionType === 'task' ? <TaskFields draft={draft} view={view} /> : <>
+          {draft.actionType === 'override' && <OverrideFields draft={draft} view={view} />}
+          {draft.actionType === 'task' && <TaskFields draft={draft} view={view} />}
+          {draft.actionType === 'mode' && <>
             <div class="field"><span class="field__label pels-text-settings-label">Set mode to</span>
               <MdFilledSelect value={draft.mode} aria-label="Set mode to" disabled={disabled}
                 onChange={(event: Event) => actions.onDraftChange({ mode: inputValue(event) })}>
@@ -317,13 +379,13 @@ const Editor = (view: View) => {
           {draft.repeat === 'once' && <label class="field"><span class="field__label pels-text-settings-label">Date</span>
             <input type="date" class="smart-task-edit__time-input" value={draft.date} disabled={disabled}
               onInput={(event) => actions.onDraftChange({ date: inputValue(event) })} /></label>}
-          <label class="field"><span class="field__label pels-text-settings-label">{draft.actionType === 'task' ? 'Create task at' : 'Change mode at'}</span>
+          <label class="field"><span class="field__label pels-text-settings-label">{ACTION_TIME_LABELS[draft.actionType]}</span>
             <input type="time" class="smart-task-edit__time-input" value={draft.at} disabled={disabled}
               data-schedule-field="time" aria-invalid={timeConflict} aria-describedby={timeConflict ? 'schedule-time-conflict' : undefined}
               onInput={(event) => actions.onDraftChange({ at: inputValue(event) })} />
             {timeConflict
               ? <small class="field__hint smart-task-edit__error" id="schedule-time-conflict" role="alert">
-                Another schedule {draft.actionType === 'task' ? 'creates a task for this device' : 'changes mode'} at this time. Choose another time or day.
+                Another schedule {ACTION_CONFLICTS[draft.actionType]} at this time. Choose another time or day.
               </small>
               : draft.actionType === 'task' && draft.repeat !== 'once' && <small class="field__hint">
                 The repeat days count from this time, even when the task is ready the following day.

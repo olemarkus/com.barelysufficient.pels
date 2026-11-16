@@ -470,6 +470,8 @@ The userdata `schedule_receipts` table stores the latest consumed local occurren
 and its result per schedule. Consumption is committed before the action, so a
 restart cannot replay the same occurrence. Startup, edits and enabling schedules
 arm future triggers; old triggers are skipped. A trigger may create a fresh Smart
-task or invoke a mode change; it never holds a mode, cancels an existing task, or
-replaces an open task. Task definitions snapshot their Extra permissions and each
+task, start a device override (`{ type: 'override', deviceId, setting, minutes }`,
+running from the occurrence, through `lib/overrides/deviceOverrides.ts`) or invoke
+a mode change; it never holds a mode, cancels an existing task, or
+replaces an open task or an override already in force. Task definitions snapshot their Extra permissions and each
 created task carries its source schedule ID/name independently of later edits.

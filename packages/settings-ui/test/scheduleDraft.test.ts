@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { SmartTaskCandidateDevice } from '../../contracts/src/smartTaskEdit.ts';
 import {
-  buildScheduleFromDraft, createScheduleDraft, daysForRepeat, editScheduleDraft,
-  scheduleReadyByDay, scheduleRepeatLabel,
+  automaticScheduleName, automaticScheduleTime, buildScheduleFromDraft, createScheduleDraft, daysForRepeat,
+  editScheduleDraft, overrideDraftPatch, scheduleOverrideDevices, scheduleOverrideMinutes,
+  scheduleReadyByDay, scheduleRepeatLabel, withOverrideEnd,
 } from '../src/ui/scheduleDraft.ts';
 
 const HEATER: SmartTaskCandidateDevice = {
@@ -139,4 +140,46 @@ describe('Schedule composition', () => {
     expect(buildScheduleFromDraft(draft, [], MODES, []).ok).toBe(false);
   });
 
+  describe('an override', () => {
+    const overrideDraft = () => {
+      const created = createScheduleDraft(HEATER, 'Home', '2026-11-02', []);
+      const asOverride = { ...created, ...overrideDraftPatch(created, HEATER) };
+      return withOverrideEnd({ ...asOverride, at: automaticScheduleTime(asOverride, []) });
+    };
+
+    it('starts at 06:00 for an hour, at the device\'s usual temperature, named after the device', () => {
+      const draft = overrideDraft();
+      expect([draft.at, draft.overrideUntil, draft.overrideTarget]).toEqual(['06:00', '07:00', '65']);
+      expect(automaticScheduleName(draft, [HEATER])).toBe('Water heater override');
+    });
+
+    it('saves the temperature and the minutes until its end, and edits back to the same draft', () => {
+      const draft = { ...overrideDraft(), name: 'Morning water', overrideTarget: '70', overrideUntil: '07:30' };
+      const built = buildScheduleFromDraft(draft, [HEATER], MODES, []);
+      expect(built).toMatchObject({ ok: true, schedule: {
+        at: '06:00',
+        action: { type: 'override', deviceId: 'heater', setting: { type: 'temperature', targetC: 70 }, minutes: 90 },
+      } });
+      if (!built.ok) throw new Error('expected a schedule');
+      expect(editScheduleDraft(built.schedule, '2026-11-02')).toMatchObject({
+        actionType: 'override', deviceId: 'heater', overrideTarget: '70', overrideUntil: '07:30', at: '06:00',
+      });
+    });
+
+    it('counts an end at or before the start as the following day', () => {
+      expect(scheduleOverrideMinutes('22:00', '06:00')).toBe(8 * 60);
+      expect(scheduleOverrideMinutes('06:00', '06:00')).toBe(24 * 60);
+    });
+
+    it('asks for a temperature inside the device range and an available device', () => {
+      expect(buildScheduleFromDraft({ ...overrideDraft(), overrideTarget: '90' }, [HEATER], MODES, []))
+        .toEqual({ ok: false, error: 'Choose a temperature between 30 and 75 °C.' });
+      expect(buildScheduleFromDraft(overrideDraft(), [EV], MODES, []))
+        .toEqual({ ok: false, error: 'Choose an available device for this override.' });
+    });
+
+    it('is offered only for devices PELS sets a temperature on', () => {
+      expect(scheduleOverrideDevices([HEATER, EV, ENERGY]).map((device) => device.deviceId)).toEqual(['heater']);
+    });
+  });
 });

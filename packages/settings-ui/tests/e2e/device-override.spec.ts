@@ -68,3 +68,14 @@ test('the override form asks for a date and time when the owner picks one', asyn
   await card.locator('[data-override-action="save"]').click();
   await expect(card.getByRole('alert')).toHaveText('Choose an end time in the future.');
 });
+
+test('the Override card links to a new schedule that repeats an override for the device', async ({ page }) => {
+  await openDeviceDetail(page, 'dev_heatpump');
+  const link = page.locator('#device-detail-override').getByText('Repeat on a schedule');
+
+  await expect(link).toHaveAttribute('data-schedule-device', 'dev_heatpump');
+  await expect(link).toHaveAttribute('data-schedule-action', 'override');
+  await link.click();
+  await expect(page.locator('#schedules-panel')).toBeVisible();
+  await expect.poll(() => page.url()).toContain('scheduleAction=override');
+});

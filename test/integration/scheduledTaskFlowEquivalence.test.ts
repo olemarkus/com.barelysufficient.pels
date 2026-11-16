@@ -136,7 +136,7 @@ function fixture(kind: DeferredObjectiveSettingsKind, existing?: DeferredObjecti
   registerDeadlineObjectiveCards(flowDeps);
   registerAllowSmartTaskRescueCard(flowDeps);
   const receipts = new Map<string, ScheduleReceipt>();
-  const executor = new ScheduleActionExecutor(host, CLOCK);
+  const executor = new ScheduleActionExecutor({ ...host, settings, getNowMs: () => Date.now() }, CLOCK);
   const execute = vi.fn((schedule: Schedule, atMs: number) => executor.execute(schedule, atMs));
   const service = new ScheduleService({
     settings, clock: CLOCK, timers: new TimerRegistry(), getNowMs: Date.now,

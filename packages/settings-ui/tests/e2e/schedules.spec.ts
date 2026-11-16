@@ -44,9 +44,12 @@ const installSchedules = async (page: Page): Promise<void> => {
         const raw = stub.getSetting(`schedule.${id}`);
         if (!raw || (raw as { deleted?: boolean }).deleted) return [];
         const schedule = raw as Schedule;
-        const paused = schedule.action.type === 'mode'
+        const { action } = schedule;
+        const actionDeviceId = action.type === 'task' ? action.task.deviceId
+          : action.type === 'override' ? action.deviceId : null;
+        const paused = actionDeviceId === null
           ? !controls.modeChangesEnabled
-          : controls.disabledTaskDeviceIds.includes(schedule.action.task.deviceId);
+          : controls.disabledTaskDeviceIds.includes(actionDeviceId);
         const state = !schedule.enabled ? 'off' : paused ? 'paused' : 'on';
         return [{ schedule, modeReferences: [], state,
           reason: !schedule.enabled ? 'No future actions.' : paused ? schedule.action.type === 'mode'
@@ -83,6 +86,28 @@ const installSchedules = async (page: Page): Promise<void> => {
 const readStored = (page: Page, key: string): Promise<unknown> => page.evaluate((settingKey) => (
   (window as unknown as { Homey: { __stub: { getSetting(key: string): unknown } } }).Homey.__stub.getSetting(settingKey)
 ), key);
+
+test('opens a new schedule as an override for the device, an hour from 06:00', async ({ page }) => {
+  await installSchedules(page);
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.goto('/?page=settings/schedules&schedule=new&scheduleDevice=heater&scheduleAction=override', {
+    waitUntil: 'domcontentloaded',
+  });
+  const panel = page.locator('#schedules-panel');
+
+  await expect(panel.getByRole('button', { name: 'Override', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(panel.getByRole('textbox', { name: 'Schedule name', exact: true })).toHaveValue('Water heater override');
+  await expect(panel.getByRole('spinbutton', { name: 'Temperature (°C)', exact: true })).toHaveValue('65');
+  await expect(panel.locator('[data-schedule-field="override-until"]')).toHaveValue('07:00');
+  await expect(panel.locator('[data-schedule-field="time"]')).toHaveValue('06:00');
+  expect(await panel.getByRole('group', { name: 'Scheduled action', exact: true })
+    .locator('button').evaluateAll((buttons) => buttons
+      .filter((button) => button.scrollWidth > button.clientWidth)
+      .map((button) => button.textContent))).toEqual([]);
+  if (process.env.PELS_OVERRIDE_SHOTS) {
+    await panel.screenshot({ path: `${process.env.PELS_OVERRIDE_SHOTS}/override-schedule.png` });
+  }
+});
 
 test('changing an unavailable battery target stays in the editor until explicitly saved', async ({ page }) => {
   const errors: string[] = [];
@@ -291,7 +316,7 @@ for (const width of [320, 480]) {
         await panel.getByRole('switch', { name: 'May go over daily budget', exact: true }).click();
         const targetField = panel.getByRole('spinbutton', { name: 'Target (°C)', exact: true });
         await targetField.fill('70');
-        await panel.getByRole('button', { name: 'Create Smart task', exact: true }).click();
+        await panel.getByRole('button', { name: 'Smart task', exact: true }).click();
         await expect(targetField).toHaveValue('70');
         expect(await panel.getByRole('group', { name: 'Scheduled action', exact: true })
           .locator('button').evaluateAll((buttons) => buttons

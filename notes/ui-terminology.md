@@ -846,6 +846,18 @@ override to end` to the open task's line. The New smart task page, for a device
 with one in force: `This device has an override until 21:30. The Smart task
 waits until it ends.`
 
+A schedule can start an override: the editor's action control reads `Smart task`
+/ `Override` / `Mode`, and an override asks for `Device`, `Temperature (°C)` and
+`Until` (hint: `Ends the following day. ` when the end is at or before the start,
+then `Prices and mode changes do not move the temperature meanwhile; power limits
+still apply.`), with the trigger time labelled `Start override at`. A new one is
+named `<device> override` and runs 06:00 to 07:00 until the owner changes it. Its
+row reads `<device> · Override 26 °C · 1 h`; the list filter adds `Overrides`. Its
+results: `Override started.`, `Skipped because this device already has an
+override.`, `Skipped because the override would already have ended.`, `Skipped
+because the device is set to Keep the new temperature.` The Override card links to
+it with `Repeat on a schedule`.
+
 ### Device-page limited temperature on a setpoint-only device
 
 On a temperature device without on/off or power levels, **Limited temperature**

@@ -82,8 +82,11 @@ const resolveCardState = (current: CardSession, device: SettingsUiDeviceDetailIt
   }
   const nowMs = Date.now();
   const active = activeOverride(current, nowMs);
-  if (active === null) return { kind: 'idle' };
-  return { kind: 'active', line: formatActiveOverride(active, nowMs, getHomeyTimezone()), busy: current.busy };
+  if (active === null) return { kind: 'idle', deviceId: device.id };
+  return {
+    kind: 'active', deviceId: device.id, busy: current.busy,
+    line: formatActiveOverride(active, nowMs, getHomeyTimezone()),
+  };
 };
 
 const paint = (): void => {

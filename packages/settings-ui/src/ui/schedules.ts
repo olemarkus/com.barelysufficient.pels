@@ -13,8 +13,8 @@ export { persistScheduleCommand, readSchedules } from './schedulesTransport.ts';
 import { state } from './state.ts';
 import {
   automaticScheduleName, automaticScheduleTime, buildScheduleFromDraft, createScheduleDraft, daysForRepeat,
-  editScheduleDraft,
-  type ScheduleDraft, type ScheduleRepeatChoice,
+  editScheduleDraft, overrideDraftPatch, scheduleOverrideDevices, withOverrideEnd,
+  type ScheduleActionType, type ScheduleDraft, type ScheduleRepeatChoice,
 } from './scheduleDraft.ts';
 import { renderSchedules } from './views/Schedules.tsx';
 
@@ -28,6 +28,8 @@ let openPanel: (panel: string) => void = () => {};
 let closeDevice: () => void = () => {};
 const SCHEDULE_PARAM = 'schedule';
 const DEVICE_PARAM = 'scheduleDevice';
+// `override` opens a new schedule for the device as an override, not a Smart task.
+const ACTION_PARAM = 'scheduleAction';
 const FILTER_PARAM = 'scheduleFilter';
 
 const paint = (): void => {
@@ -82,10 +84,16 @@ const hydrateEditor = (id: string, read: SchedulesSnapshot, params: URLSearchPar
       view = { ...view, editor: null, error: 'This device is not available for a scheduled Smart task.' };
       return;
     }
-    view = { ...view, editor: {
-      kind: 'new', draft: createScheduleDraft(device, read.modes[0] ?? '', today, pendingSchedules(read)),
-      timeConflict: false, nameSet: false, timeSet: false,
-    } };
+    const created = createScheduleDraft(device, read.modes[0] ?? '', today, pendingSchedules(read));
+    const asOverride = params.get(ACTION_PARAM) === 'override' && device !== undefined
+      && scheduleOverrideDevices([device]).length > 0;
+    const override = asOverride ? { ...created, ...overrideDraftPatch(created, device) } : null;
+    const draft = override === null ? created : withOverrideEnd({
+      ...override,
+      name: automaticScheduleName(override, view.devices),
+      at: automaticScheduleTime(override, pendingSchedules(read)),
+    });
+    view = { ...view, editor: { kind: 'new', draft, timeConflict: false, nameSet: false, timeSet: false } };
     return;
   }
   const schedule = read.entries.find((entry) => entry.schedule.id === id)?.schedule;
@@ -100,7 +108,7 @@ const hydrateEditor = (id: string, read: SchedulesSnapshot, params: URLSearchPar
 const updateEditorFromRoute = (): void => {
   const params = new URLSearchParams(window.location.search);
   const filter = params.get(FILTER_PARAM);
-  view = { ...view, filter: filter === 'mode' || filter === 'task' ? filter : 'all' };
+  view = { ...view, filter: filter === 'mode' || filter === 'task' || filter === 'override' ? filter : 'all' };
   const id = params.get(SCHEDULE_PARAM);
   if (!id) { view = { ...view, editor: null }; return; }
   if (!view.read || view.load !== 'ready') return;
@@ -178,6 +186,7 @@ export const backFromScheduleEditor = (): void => {
   const params = new URLSearchParams(window.location.search);
   params.delete(SCHEDULE_PARAM);
   params.delete(DEVICE_PARAM);
+  params.delete(ACTION_PARAM);
   window.history.replaceState(window.history.state, '', `${window.location.pathname}?${params}${window.location.hash}`);
   view = { ...view, editor: null, error: '' };
   paint();
@@ -190,17 +199,23 @@ export const changeScheduleDraft = (patch: Partial<ScheduleDraft>): void => {
   const next = { ...view.editor.draft, ...patch };
   // A name or time the owner has not set follows the action, device and mode.
   const schedules = view.read ? pendingSchedules(view.read) : [];
-  const draft = {
+  const draft = withOverrideEnd({
     ...next,
     name: nameSet ? next.name : automaticScheduleName(next, view.devices),
     at: timeSet ? next.at : automaticScheduleTime(next, schedules),
-  };
+  });
   view = { ...view, editor: { ...view.editor, draft, timeConflict: false, nameSet, timeSet }, error: '' };
   paint();
 };
-const selectScheduleAction = (actionType: 'mode' | 'task'): void => {
+const selectScheduleAction = (actionType: ScheduleActionType): void => {
   if (!view.editor || !view.read) return;
   const draft = view.editor.draft;
+  if (actionType === 'override') {
+    const eligible = scheduleOverrideDevices(view.devices);
+    const device = eligible.find((candidate) => candidate.deviceId === draft.deviceId) ?? eligible[0];
+    changeScheduleDraft(device ? overrideDraftPatch(draft, device) : { actionType });
+    return;
+  }
   const current = view.devices.find((candidate) => candidate.deviceId === draft.deviceId);
   const fallback = current ?? view.devices[0];
   if (actionType === 'task' && !current && fallback) selectScheduleDevice(fallback.deviceId);
@@ -209,6 +224,10 @@ const selectScheduleAction = (actionType: 'mode' | 'task'): void => {
 const selectScheduleDevice = (deviceId: string): void => {
   const device = view.devices.find((candidate) => candidate.deviceId === deviceId);
   if (!device) return;
+  if (view.editor?.draft.actionType === 'override') {
+    changeScheduleDraft(overrideDraftPatch(view.editor.draft, device));
+    return;
+  }
   changeScheduleDraft({
     deviceId, taskKind: device.kind, target: String(device.defaultGoal),
     permissions: { exemptFromBudget: false, limitLowerPriorityDevices: false, pauseLowerPriorityDevices: false },
@@ -252,7 +271,7 @@ const deleteScheduleDraft = async (): Promise<void> => {
   if (!view.editor || view.editor.kind !== 'existing' || view.busy) return;
   if (await writeCommand({ type: 'delete', id: view.editor.draft.id })) backFromScheduleEditor();
 };
-const setScheduleFilter = (filter: 'all' | 'mode' | 'task'): void => {
+const setScheduleFilter = (filter: SchedulesViewSnapshot['filter']): void => {
   const params = new URLSearchParams(window.location.search);
   if (filter === 'all') params.delete(FILTER_PARAM); else params.set(FILTER_PARAM, filter);
   window.history.replaceState(window.history.state, '', `${window.location.pathname}?${params}${window.location.hash}`);
@@ -283,6 +302,8 @@ export const initSchedulesNavigation = (showPanel: (panel: string) => void, clos
     const params = new URLSearchParams(window.location.search);
     if (target.dataset.scheduleFilter) params.set(FILTER_PARAM, target.dataset.scheduleFilter);
     if (target.dataset.scheduleDevice) params.set(DEVICE_PARAM, target.dataset.scheduleDevice);
+    if (target.dataset.scheduleAction) params.set(ACTION_PARAM, target.dataset.scheduleAction);
+    else params.delete(ACTION_PARAM);
     if (target.dataset.scheduleId) params.set(SCHEDULE_PARAM, target.dataset.scheduleId);
     else if (target.dataset.scheduleDevice) params.set(SCHEDULE_PARAM, 'new');
     window.history.replaceState(

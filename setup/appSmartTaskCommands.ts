@@ -19,4 +19,6 @@ export const createScheduledSmartTaskHost = (ctx: AppContext, listTaskDevices: (
   listTaskDevices,
   resolveSmartTaskHomeScope: (deviceId: string) => resolveSmartTaskHomeScope(ctx, deviceId),
   handleOperatingModeChange: (mode: string) => ctx.handleOperatingModeChange(mode),
+  settings: ctx.homey.settings,
+  getNowMs: () => ctx.getNow().getTime(),
 });
