@@ -365,7 +365,7 @@ const refreshDeviceZones = async (): Promise<void> => {
     deviceZoneById = new Map(payload.devices.map((device) => [device.id, {
       name: device.name,
       zoneId: device.zoneId ?? null,
-      zoneName: device.zone ?? null,
+      zoneName: device.zoneName ?? null,
     }]));
     renderSection();
   } catch (error) {

@@ -446,11 +446,11 @@ export type DeviceDescriptor = {
      */
     deviceClass: string;
     deviceType: 'temperature' | 'onoff';
+    /** The zone as Homey's device payload names it: its id, not a name to show. */
     zone?: string;
     // Zone IDENTITY (uuid) retained from the raw payload (string or `{id}`
-    // shape), distinct from the `zone` display label. Additive/dormant: no
-    // consumer reads it yet — multi-home membership will join it against the
-    // transport's zone tree (`DeviceTransport.getZoneTree`).
+    // shape). Multi-home membership joins it against the transport's zone
+    // tree (`DeviceTransport.getZoneTree`).
     zoneId?: string;
     controlModel?: DeviceControlModel;
     controlAdapter?: DeviceControlAdapterSnapshot;

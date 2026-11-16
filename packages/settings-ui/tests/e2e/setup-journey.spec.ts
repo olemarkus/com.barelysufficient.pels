@@ -143,14 +143,14 @@ test('one solar device can be configured without prices and the action reaches i
 const seedHeatPumpAndCharger = async (page: Page, managedAtStart = false) => {
   await page.addInitScript(({ managedAtStart }) => {
     const devices = [{
-      id: 'setup-heatpump', name: 'Heat pump', zone: 'Hall', available: true,
+      id: 'setup-heatpump', name: 'Heat pump', zone: 'z-hall', zoneName: 'Hall', available: true,
       deviceClass: 'heater', deviceType: 'temperature', isEvCharger: false,
       isBatteryOrSolar: false, binaryControllable: true, canSetControl: true,
       powerCapable: true, capabilities: ['onoff', 'target_temperature', 'measure_power'],
       targets: [{ name: 'target_temperature', value: 21 }],
       measuredPowerKw: 0, expectedPowerKw: 2, expectedPowerSource: 'measured-peak',
     }, {
-      id: 'setup-charger', name: 'Car charger', zone: 'Garage', available: true,
+      id: 'setup-charger', name: 'Car charger', zone: 'z-garage', zoneName: 'Garage', available: true,
       deviceClass: 'evcharger', deviceType: 'onoff', isEvCharger: true,
       isBatteryOrSolar: false, binaryControllable: true, canSetControl: true, controlModel: 'binary_power',
       powerCapable: true, capabilities: ['onoff', 'evcharger_charging', 'measure_power'], targets: [],

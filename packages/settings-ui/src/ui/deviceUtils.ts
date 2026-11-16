@@ -49,14 +49,16 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
   & ObservedStateOfChargeProbe
   & MeasuredPowerObservedProbe
   & Pick<DeviceDescriptor,
-    | 'deviceClass' | 'deviceType' | 'zone' | 'budgetExempt' | 'flowBacked'
+    | 'deviceClass' | 'deviceType' | 'budgetExempt' | 'flowBacked'
     | 'powerCapable' | 'expectedPowerKw' | 'expectedPowerSource'
     | 'controlAdapter' | 'binaryControllable' | 'isEvCharger' | 'isBatteryOrSolar' | 'managed'
   >
   // Whether PELS can drive a home battery and whether the owner took it over,
   // resolved by the runtime for every listed device (`not_battery` / false
   // for the rest).
-  & SettingsUiBatteryState;
+  & SettingsUiBatteryState
+  // The zone's name; the descriptor's `zone` is Homey's zone id, never shown.
+  & Pick<SettingsUiDeviceSnapshot, 'zoneName'>;
 
 // The device fields the settings-UI device DETAIL surface reads — a superset of
 // the LIST carrier (detail calls the shared list predicates, so its device must

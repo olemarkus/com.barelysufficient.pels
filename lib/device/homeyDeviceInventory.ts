@@ -11,6 +11,18 @@ const readCapabilityIds = (device: HomeyDeviceLike): string[] => (
     : []
 );
 
+/** A zone's name as the zone tree holds it; `undefined` before the tree holds the zone. */
+const zoneNameOf = (zoneTree: ZoneTree | null, zoneId: string | undefined): string | undefined => {
+  const name = zoneId === undefined ? undefined : zoneTree?.[zoneId]?.name;
+  return typeof name === 'string' && name ? name : undefined;
+};
+
+/** A device's `zoneName`, present only once the zone tree holds its zone. */
+export const zoneNameField = (zoneTree: ZoneTree | null, zoneId: string | undefined): { zoneName?: string } => {
+  const zoneName = zoneNameOf(zoneTree, zoneId);
+  return zoneName ? { zoneName } : {};
+};
+
 /**
  * Every Homey device, PELS-listed or not, as the full-inventory pickers show
  * it. The zone name comes from the transport's zone tree: the local Web API
@@ -21,13 +33,11 @@ export const listHomeyDevices = (
   zoneTree: ZoneTree | null,
 ): HomeyDeviceListEntry[] => devices.map((device) => {
   const capabilities = readCapabilityIds(device);
-  const zoneId = resolveZoneId(device);
-  const zoneName = zoneId === undefined ? undefined : zoneTree?.[zoneId]?.name;
   return {
     id: device.id,
     name: device.name,
     class: device.class,
-    zoneName: typeof zoneName === 'string' && zoneName ? zoneName : null,
+    zoneName: zoneNameOf(zoneTree, resolveZoneId(device)) ?? null,
     hasTemperature: capabilities.includes('measure_temperature'),
     hasPower: hasPowerCapability(capabilities),
   };

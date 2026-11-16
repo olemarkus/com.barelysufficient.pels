@@ -39,7 +39,8 @@ describe('Setup device choices', () => {
   it('shows class, zone and zero observed power, without inventing absent readings', async () => {
     const { readSetupDeviceChoices } = await load();
     const choices = readSetupDeviceChoices([
-      device('a', 'Alpha', { zone: 'Living room', measuredPowerKw: 0 }),
+      device('a', 'Alpha', { zoneName: 'Living room', measuredPowerKw: 0 }),
+      // Before the zone tree holds the zone, the row names no zone rather than its id.
       device('b', 'Beta', { expectedPowerKw: 2 }),
     ]);
     if (choices.state !== 'ready') throw new Error('Choices unavailable');

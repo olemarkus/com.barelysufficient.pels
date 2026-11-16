@@ -67,6 +67,7 @@ describe('settingsUiApi', () => {
       latestDevicesOverride?: Record<string, unknown>[];
       uiPickerDevices?: Record<string, unknown>[];
       observedStateById?: Record<string, Record<string, unknown>>;
+      zoneTree?: Record<string, { id: string; name: string; parent: string | null }>;
     } = {},
   ) => {
     const store = new Map<string, unknown>([
@@ -293,6 +294,7 @@ describe('settingsUiApi', () => {
       },
       deviceManager: partialDouble<DeviceTransport>({
         getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, getCarIdentificationState: () => 'not_waiting', hasWarmSnapshot: () => true, readInverterControlOptions: () => [],
+        getZoneTree: () => options.zoneTree ?? null,
       }),
       controlContests: { contestedControl: () => undefined },
       steppedCommandStore: { isLevelUnconfirmed: () => false },
@@ -414,6 +416,7 @@ describe('settingsUiApi', () => {
     Object.assign(homey.app, {
       deviceManager: partialDouble<DeviceTransport>({
         getAssociatedCar: () => undefined, getCarConfirmation: () => undefined, getCarIdentificationState: () => 'not_waiting', hasWarmSnapshot: () => true,
+        getZoneTree: () => null,
         readInverterControlOptions: () => [{ id: 'pv-main', name: 'Roof' }, { id: 'pv-area', name: 'Garage' }],
       }),
       homeMembership: {
@@ -986,6 +989,19 @@ describe('settingsUiApi', () => {
     expect(devices.find(({ id }) => id === 'calm')).not.toHaveProperty('controlContest');
     // The settings UI, not the route, leaves out a device the owner let go.
     expect(devices.find(({ id }) => id === 'let-go')?.controlContest).toEqual(contest);
+  });
+
+  it('names each device\'s zone from the zone tree, and no zone the tree does not hold', () => {
+    const homey = createHomey({
+      latestDevicesOverride: [
+        { id: 'hall', name: 'Element hall', deviceType: 'temperature', available: true, managed: true, zone: 'z-hall', zoneId: 'z-hall' },
+        { id: 'new', name: 'Laddbox', deviceType: 'onoff', available: true, managed: false, zone: 'z-new', zoneId: 'z-new' },
+      ],
+      zoneTree: { 'z-hall': { id: 'z-hall', name: 'Hall', parent: null } },
+    });
+    const devices = getSettingsUiDevicesPayload({ homey: homey as never }).devices;
+    expect(devices.find(({ id }) => id === 'hall')?.zoneName).toBe('Hall');
+    expect(devices.find(({ id }) => id === 'new')).not.toHaveProperty('zoneName');
   });
 
   it('marks a stepped device whose level changes draw no level report back', () => {
