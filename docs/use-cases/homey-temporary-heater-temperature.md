@@ -15,7 +15,7 @@ Open the thermostat's device page in PELS. The **Override** card is first on the
 2. Enter the temperature and choose when it ends: in 2 hours, at 08:00, or a date and time up to seven days ahead.
 3. Tap **Start override**.
 
-The card then shows the temperature and its end time, with **Change** and **End now**. The device card on the overview shows an **Override** chip meanwhile.
+The card then shows the temperature and its end time, with **Change** and **End now**. **Change** keeps the end time unless you pick another. The device card on the overview shows an **Override** chip meanwhile.
 
 To repeat it, tap **Repeat on a schedule**, or open **Settings → Schedules → New schedule** and choose **Override**. Set the temperature, the start and end times, the days, and the modes it applies in. Weekday mornings 06:00 to 07:00 in the bathroom is one schedule, where it used to take an extra mode.
 

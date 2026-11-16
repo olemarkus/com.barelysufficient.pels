@@ -13,7 +13,7 @@ const override = (patch: Partial<Schedule> = {}): Schedule => ({
 });
 const floor = partialDouble<SmartTaskCandidateDevice>({
   deviceId: 'floor', deviceName: 'Bathroom floor', kind: 'temperature', goalMin: 5, goalMax: 30, goalStep: 0.5,
-  unitSymbol: '°C',
+  unitSymbol: '°C', overridable: true,
 });
 
 describe('a scheduled override', () => {
@@ -40,6 +40,9 @@ describe('a scheduled override', () => {
       action: { type: 'override', deviceId: 'floor', setting: { type: 'temperature', targetC: 35 }, minutes: 60 },
     });
     expect(scheduleEligibilityIssue(hot, ['Home'], [floor])).toBe('target_out_of_range');
+    // A device PELS only switches or steps has a temperature goal for a Smart task, and no setpoint to hold.
+    expect(scheduleEligibilityIssue(override(), ['Home'], [{ ...floor, overridable: undefined }]))
+      .toBe('device_unavailable');
   });
 
   it('conflicts with another override of the same device at the same time, not with its Smart task', () => {

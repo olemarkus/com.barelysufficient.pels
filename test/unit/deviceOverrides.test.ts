@@ -88,6 +88,16 @@ describe('device overrides', () => {
     expect(settings.store.has('device_override.heater')).toBe(false);
   });
 
+  it('is not in force as a temperature while the device is set to Keep the new temperature', () => {
+    const settings = createSettings({
+      'device_override.heater': { untilMs: NOW_MS + HOUR_MS, setting: temperature(23) },
+    });
+    expect(readActiveTemperatureOverride(settings, 'heater', NOW_MS)?.targetC).toBe(23);
+
+    settings.set('temperature_control_modes', { heater: 'external' });
+    expect(readActiveTemperatureOverride(settings, 'heater', NOW_MS)).toBeNull();
+  });
+
   it('removes a key a day after its override ended, and keeps the rest', () => {
     const settings = createSettings({
       'device_override.old': { untilMs: NOW_MS - DAY_MS, setting: temperature(18) },

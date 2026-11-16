@@ -14,7 +14,8 @@ import { scheduleActionDeviceId } from '../../../../shared-domain/src/settings/s
 import type { ScheduleActionType, ScheduleDraft, ScheduleRepeatChoice } from '../scheduleDraft.ts';
 import { scheduleModeLabel, scheduleModeOptions } from '../scheduleModeReferences.ts';
 import {
-  SCHEDULE_DAYS, scheduleOverrideDevices, scheduleReadyByDay, scheduleRepeatLabel, scheduleTaskUnit,
+  SCHEDULE_DAYS, scheduleOverrideDevices, scheduleOverrideEnd, scheduleReadyByDay, scheduleRepeatLabel,
+  scheduleTaskUnit,
 } from '../scheduleDraft.ts';
 import type { SchedulesViewSnapshot } from '../schedulesTypes.ts';
 import { SegmentedControl } from './SegmentedControl.tsx';
@@ -71,7 +72,7 @@ const actionSummary = (entry: ScheduleEntry, devices: readonly SmartTaskCandidat
   const name = devices.find((candidate) => candidate.deviceId === deviceId)?.deviceName ?? 'Unavailable device';
   if (schedule.action.type === 'override') {
     const { setting, minutes } = schedule.action;
-    return `${name} · Override ${setting.targetC} °C · ${formatOverrideDuration(minutes)}`;
+    return `${name} · Override ${setting.targetC} °C until ${scheduleOverrideEnd(schedule.at, minutes)}`;
   }
   const { task } = schedule.action;
   const unit = scheduleTaskUnit(task.kind);
@@ -135,13 +136,13 @@ const Group = ({ group, view }: { group: ScheduleGroup; view: View }) => {
     <section class="pels-surface-card schedule-group" aria-label={`${name} schedules`}>
       <div class="schedule-group__bar">
         <div><h3 class="pels-text-section-headline">{name}</h3>
-          <p class="pels-card-supporting">{entries.length} {modeGroup ? 'mode' : 'task'} schedule{entries.length === 1 ? '' : 's'}</p>
+          <p class="pels-card-supporting">{entries.length} {groupKind(entries)}schedule{entries.length === 1 ? '' : 's'}</p>
         </div>
         <div class="schedule-group__switch">
           <span>{on ? 'On' : 'Off'}</span>
           <MdSwitch key={`${id}:${on}:${view.snapshot.busy}`} selected={on}
             disabled={view.snapshot.busy || view.snapshot.load !== 'ready'}
-            aria-label={modeGroup ? 'Scheduled mode changes' : `Scheduled tasks for ${deviceName}`}
+            aria-label={modeGroup ? 'Scheduled mode changes' : `Schedules for ${deviceName}`}
             onChange={(event: Event) => modeGroup
               ? view.actions.onModeGroup(readSwitchSelected(event))
               : view.actions.onDeviceGroup(id, readSwitchSelected(event))} />
@@ -223,11 +224,27 @@ const TaskTargetFields = ({ draft, view }: { draft: ScheduleDraft; view: View })
     </>
   );
 };
-const formatOverrideDuration = (minutes: number): string => {
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  if (hours === 0) return `${rest} min`;
-  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
+// What a group's schedules are, when they are all of one kind.
+const GROUP_KINDS = { mode: 'mode ', task: 'task ', override: 'override ' } as const;
+const groupKind = (entries: readonly ScheduleEntry[]): string => {
+  const types = new Set(entries.map((entry) => entry.schedule.action.type));
+  const [only] = types;
+  return types.size === 1 && only ? GROUP_KINDS[only] : '';
+};
+/** When a scheduled override ends, under its start time; nothing for the other actions. */
+const OverrideEndField = ({ draft, view }: { draft: ScheduleDraft; view: View }) => {
+  if (draft.actionType !== 'override') return null;
+  const disabled = view.snapshot.busy || view.snapshot.load !== 'ready';
+  const onChange = view.actions.onDraftChange;
+  const endsNextDay = draft.overrideUntil !== '' && draft.overrideUntil <= draft.at;
+  return (
+    <label class="field">
+      <span class="field__label pels-text-settings-label">End override at</span>
+      <input type="time" class="smart-task-edit__time-input" value={draft.overrideUntil} disabled={disabled}
+        data-schedule-field="override-until" onInput={(event) => onChange({ overrideUntil: inputValue(event) })} />
+      {endsNextDay && <small class="field__hint">Ends the following day.</small>}
+    </label>
+  );
 };
 const OverrideFields = ({ draft, view }: { draft: ScheduleDraft; view: View }) => {
   const { snapshot, actions } = view;
@@ -235,7 +252,6 @@ const OverrideFields = ({ draft, view }: { draft: ScheduleDraft; view: View }) =
   const device = devices.find((candidate) => candidate.deviceId === draft.deviceId);
   const goal = device && resolveSmartTaskCandidateGoal(device, 'temperature');
   const disabled = snapshot.busy || snapshot.load !== 'ready';
-  const endsNextDay = draft.overrideUntil !== '' && draft.overrideUntil <= draft.at;
   return (
     <>
       <div class="field"><span class="field__label pels-text-settings-label">Device</span>
@@ -253,14 +269,8 @@ const OverrideFields = ({ draft, view }: { draft: ScheduleDraft; view: View }) =
           disabled={disabled || !goal} aria-label="Temperature (°C)"
           onInput={(event: Event) => actions.onDraftChange({ overrideTarget: inputValue(event) })} />
         {goal && <small class="field__hint">{formatSmartTaskGoalRangeHint(goal.goalMin, goal.goalMax, '°C')}</small>}
-      </label>
-      <label class="field"><span class="field__label pels-text-settings-label">Until</span>
-        <input type="time" class="smart-task-edit__time-input" value={draft.overrideUntil} disabled={disabled}
-          data-schedule-field="override-until"
-          onInput={(event) => actions.onDraftChange({ overrideUntil: inputValue(event) })} />
         <small class="field__hint">
-          {endsNextDay ? 'Ends the following day. ' : ''}Prices and mode changes do not move the temperature
-          meanwhile; power limits still apply.
+          Prices and mode changes do not move the temperature meanwhile; power limits still apply.
         </small>
       </label>
     </>
@@ -391,6 +401,7 @@ const Editor = (view: View) => {
                 The repeat days count from this time, even when the task is ready the following day.
               </small>}
           </label>
+          <OverrideEndField draft={draft} view={view} />
         </section>
         <section class="pels-surface-card schedules-form__section">
           <h3 class="pels-text-card-title">Only in selected modes?</h3>

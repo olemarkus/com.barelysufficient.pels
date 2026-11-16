@@ -2,7 +2,7 @@ import type { DeviceOverride } from '../../../shared-domain/src/settings/deviceO
 import { MAX_DEVICE_OVERRIDE_MINUTES } from '../../../shared-domain/src/settings/deviceOverrides.ts';
 import { scheduleInstant } from '../../../shared-domain/src/scheduleTime.ts';
 import {
-  formatTimeInTimeZone, getDateKeyInTimeZone, shiftDateKey,
+  formatTimeInTimeZone, getDateKeyInTimeZone, getZonedParts, shiftDateKey,
 } from '../../../shared-domain/src/utils/dateUtils.ts';
 
 /**
@@ -22,7 +22,11 @@ export type OverrideDraft = {
 
 export const OVERRIDE_MORNING_AT = '08:00';
 const TWO_HOURS_MS = 2 * 60 * 60_000;
-const MAX_MS = MAX_DEVICE_OVERRIDE_MINUTES * 60_000;
+// The phone's clock writes the end time and the Homey's reads it. This much
+// difference between them is allowed for: an end is kept that far inside the
+// maximum, and an override ended early is stored as having ended that long ago.
+export const CLOCK_ALLOWANCE_MS = 5 * 60_000;
+const MAX_MS = MAX_DEVICE_OVERRIDE_MINUTES * 60_000 - CLOCK_ALLOWANCE_MS;
 
 export const OVERRIDE_COPY = {
   title: 'Override',
@@ -31,17 +35,22 @@ export const OVERRIDE_COPY = {
   change: 'Change',
   end: 'End now',
   save: 'Start override',
+  saveChange: 'Save',
+  thenBack: 'Then back to the mode target. Power limits still apply.',
   cancel: 'Cancel',
   repeat: 'Repeat on a schedule',
   temperatureLabel: 'Temperature (°C)',
   endLabel: 'Ends',
-  blocked: 'PELS does not set this device’s temperature while Keep the new temperature is selected.',
+  blocked: 'Override is not available while this device is set to Keep the new temperature. '
+    + 'Change it under When the temperature changes outside PELS.',
   started: 'Override started.',
+  changed: 'Override changed.',
   ended: 'Override ended.',
   saveFailed: 'Could not save the override.',
   smartTaskWaits: 'The Smart task on this device waits until the override ends.',
   smartTaskEnds: 'The Smart task on this device ends without running: its ready-by time comes first.',
   smartTaskBoxWaiting: 'Waiting for the override to end',
+  smartTaskBoxEnds: 'Ends without running: the override lasts past its ready-by time',
 } as const;
 
 const clock = (atMs: number, timeZone: string): string => (
@@ -75,7 +84,12 @@ export const resolveOverrideSmartTaskNote = (untilMs: number | null, taskDeadlin
 /** For the New smart task page: the device has an override until then. */
 export const formatOverrideSmartTaskCreateNote = (untilMs: number, nowMs: number, timeZone: string): string => (
   `This device has an override until ${formatOverrideEnd(untilMs, nowMs, timeZone)}. `
-  + 'The Smart task waits until it ends.'
+  + 'A Smart task waits until it ends; one that must be ready before then ends without running.'
+);
+
+/** What the Smart task box appends to an open task's line while an override holds the device. */
+export const resolveOverrideSmartTaskBoxNote = (untilMs: number, taskDeadlineAtMs: number): string => (
+  taskDeadlineAtMs <= untilMs ? OVERRIDE_COPY.smartTaskBoxEnds : OVERRIDE_COPY.smartTaskBoxWaiting
 );
 
 /** The next 08:00 in the Homey time zone. */
@@ -86,12 +100,32 @@ const nextMorning = (nowMs: number, timeZone: string): number | undefined => {
   return scheduleInstant(shiftDateKey(today, 1), OVERRIDE_MORNING_AT, timeZone);
 };
 
+// From mid-afternoon a change is usually for the night, so it ends in the morning.
+const EVENING_FROM_HOUR = 15;
+
 export const newOverrideDraft = (temperatureC: number | null, nowMs: number, timeZone: string): OverrideDraft => ({
   temperature: temperatureC === null ? '' : String(temperatureC),
-  end: 'two_hours',
+  end: getZonedParts(new Date(nowMs), timeZone).hour >= EVENING_FROM_HOUR ? 'morning' : 'two_hours',
   date: getDateKeyInTimeZone(new Date(nowMs + 24 * 60 * 60_000), timeZone),
   at: OVERRIDE_MORNING_AT,
 });
+
+/** The draft for changing an override in force: its own temperature and end time. */
+export const changeOverrideDraft = (override: DeviceOverride, timeZone: string): OverrideDraft => ({
+  temperature: String(override.setting.targetC),
+  end: 'custom',
+  date: getDateKeyInTimeZone(new Date(override.untilMs), timeZone),
+  at: clock(override.untilMs, timeZone),
+});
+
+/** The end the draft resolves to, spelled out: `Ends today 21:48`, `Ends tomorrow 08:00`, `Ends Sun 18:00`. */
+export const formatOverrideEndLine = (untilMs: number, nowMs: number, timeZone: string): string => {
+  const endDay = getDateKeyInTimeZone(new Date(untilMs), timeZone);
+  const today = getDateKeyInTimeZone(new Date(nowMs), timeZone);
+  if (endDay === today) return `Ends today ${clock(untilMs, timeZone)}`;
+  if (endDay === shiftDateKey(today, 1)) return `Ends tomorrow ${clock(untilMs, timeZone)}`;
+  return `Ends ${formatOverrideEnd(untilMs, nowMs, timeZone)}`;
+};
 
 /** The device's own setpoint range; a bound it does not declare is `null`. */
 export type OverrideTemperatureRange = { min: number | null; max: number | null };

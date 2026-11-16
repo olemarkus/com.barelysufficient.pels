@@ -29,6 +29,11 @@ const ELIGIBILITY_SKIP_RESULTS: Record<ScheduleEligibilityIssue, string> = {
   target_out_of_range: 'Skipped because the target was outside the device’s range.',
 };
 
+const PAUSED_REASONS: Record<Schedule['action']['type'], string> = {
+  mode: 'Scheduled mode changes are off',
+  task: 'Scheduled Smart tasks for this device are off',
+  override: 'Scheduled overrides for this device are off',
+};
 const SUCCESS_RESULTS: Record<Schedule['action']['type'], string> = {
   mode: 'Mode changed.', task: 'Smart task created.', override: 'Override started.',
 };
@@ -243,8 +248,7 @@ export class ScheduleService {
     }
     if (!next) return { ...base, state: 'finished', reason: 'No future triggers' };
     if (groupPaused(schedule, this.controls)) return {
-      ...base, state: 'paused', reason: schedule.action.type === 'mode'
-        ? 'Scheduled mode changes are off' : 'Scheduled Smart tasks for this device are off',
+      ...base, state: 'paused', reason: PAUSED_REASONS[schedule.action.type],
     };
     return {
       ...base, state: 'on', reason: '', nextAtMs: next.atMs, nextLabel: formatScheduleTime(next.atMs, timeZone),

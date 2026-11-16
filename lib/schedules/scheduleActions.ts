@@ -105,8 +105,7 @@ export class ScheduleActionExecutor {
     if (readActiveDeviceOverride(settings, action.deviceId, nowMs) !== null) {
       throw new ScheduleSkip('Skipped because this device already has an override.');
     }
-    const request = { setting: action.setting, minutes: action.minutes };
-    const outcome = startDeviceOverride(settings, action.deviceId, request, scheduledAtMs);
+    const outcome = startDeviceOverride(settings, action.deviceId, action, scheduledAtMs);
     if (outcome === 'temperature_control_off') {
       throw new ScheduleSkip('Skipped because the device is set to Keep the new temperature.');
     }

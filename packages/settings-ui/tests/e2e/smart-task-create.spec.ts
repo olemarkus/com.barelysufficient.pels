@@ -75,7 +75,7 @@ test.describe('Create smart task from settings', () => {
     await composer.getByRole('button', { name: /Connected 300/ }).click();
 
     await expect(composer.locator('[data-override-note]')).toContainText(
-      /^This device has an override until .*\d{2}:\d{2}\. The Smart task waits until it ends\.$/u,
+      /^This device has an override until .*\d{2}:\d{2}\. A Smart task waits until it ends; one that must be ready before then ends without running\.$/u,
     );
   });
 

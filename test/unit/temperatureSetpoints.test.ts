@@ -207,6 +207,14 @@ describe('temperature setpoints, resolved before the planner', () => {
       expect([heater.intendedC, heater.keepC, heater.temporaryTemperatureActive]).toEqual([21, 21, false]);
     });
 
+    it('is measured as what the device can hold when stored outside its range or off its step', () => {
+      // The settings UI, a schedule or a script stores the value; the device's range is 5-35 in 0.5 steps.
+      const tooHot = resolve(device({ currentTarget: 21, currentTemperature: 20 }), { ...modeTarget(21), ...temporary(100) });
+      expect([tooHot.intendedC, tooHot.keepC, tooHot.keepAsksLessThanIntended]).toEqual([35, 35, false]);
+      const offStep = resolve(device({ currentTarget: 21, currentTemperature: 20 }), { ...modeTarget(21), ...temporary(21.3) });
+      expect([offStep.intendedC, offStep.keepC]).toEqual([21.5, 21.5]);
+    });
+
     it('keeps the configured limit, measured against the temporary temperature', () => {
       const heater = resolve(device({ currentTarget: 21, currentTemperature: 20 }), {
         ...modeTarget(21),

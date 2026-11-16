@@ -70,7 +70,7 @@ const installSchedules = async (page: Page): Promise<void> => {
         'GET /ui_smart_task_devices': () => ({ state: 'ready', devices: [{
           deviceId: 'heater', deviceName: 'Water heater', kind: 'temperature', group: 'heating',
           unitSymbol: '°C', goalMin: 30, goalMax: 75, goalStep: 0.5, defaultGoal: 65, currentValue: 40,
-          supportsLimitLowerPriority: false, offersQuickTargets: false, otherGoals: [],
+          supportsLimitLowerPriority: false, offersQuickTargets: false, otherGoals: [], overridable: true,
         }] }),
       },
     };
@@ -106,6 +106,23 @@ test('opens a new schedule as an override for the device, an hour from 06:00', a
       .map((button) => button.textContent))).toEqual([]);
   if (process.env.PELS_OVERRIDE_SHOTS) {
     await panel.screenshot({ path: `${process.env.PELS_OVERRIDE_SHOTS}/override-schedule.png` });
+  }
+});
+
+test('the schedule type filter fits four choices at 320 px', async ({ page }) => {
+  await installSchedules(page);
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.goto('/?page=settings/schedules', { waitUntil: 'domcontentloaded' });
+  const filters = page.locator('#schedules-panel').getByRole('group', { name: 'Schedule type', exact: true });
+
+  await expect(filters.getByRole('button', { name: 'Overrides', exact: true })).toBeVisible();
+  expect(await filters.locator('button').evaluateAll((buttons) => buttons
+    .filter((button) => button.scrollWidth > button.clientWidth)
+    .map((button) => button.textContent))).toEqual([]);
+  const box = await filters.boundingBox();
+  expect(box && box.x + box.width).toBeLessThanOrEqual(320);
+  if (process.env.PELS_OVERRIDE_SHOTS) {
+    await page.locator('#schedules-panel').screenshot({ path: `${process.env.PELS_OVERRIDE_SHOTS}/override-schedule-list.png` });
   }
 });
 

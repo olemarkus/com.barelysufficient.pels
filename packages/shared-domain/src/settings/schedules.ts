@@ -153,7 +153,7 @@ export const scheduleEligibilityIssue = (
   const asked = deviceActionTarget(schedule.action);
   const device = devices.find((entry) => entry.deviceId === asked.deviceId);
   const goal = device ? resolveSmartTaskCandidateGoal(device, asked.kind) : null;
-  if (!goal) return 'device_unavailable';
+  if (!goal || (schedule.action.type === 'override' && device?.overridable !== true)) return 'device_unavailable';
   if (asked.target < goal.goalMin || asked.target > goal.goalMax) return 'target_out_of_range';
   return null;
 };

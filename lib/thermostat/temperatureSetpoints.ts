@@ -164,7 +164,12 @@ function resolveDeviceSetpoints(
   // price shift and no surplus lift. The shed limit below still applies to it. A
   // Smart task stamps no deadline floor while it is in force: the task's
   // decoration leaves the device alone (`lib/overrides/deviceOverrides.ts`).
-  const temporaryC = reads.getTemporaryTemperatureC(device.id);
+  // Brought into the device's range and onto its step first: the settings UI, a
+  // schedule or a script may have stored a value the device cannot hold, and
+  // everything below measures the device against what it is asked for.
+  const storedTemporaryC = reads.getTemporaryTemperatureC(device.id);
+  const temporaryC = storedTemporaryC === null
+    ? null : normalizeTargetCapabilityValue({ target, value: storedTemporaryC });
   const storedIntendedC = intent.modeTargets[device.id];
   const modeIntendedC = typeof storedIntendedC === 'number' ? storedIntendedC : device.currentTarget;
   const intendedC = temporaryC ?? modeIntendedC;

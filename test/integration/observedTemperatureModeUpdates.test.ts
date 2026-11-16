@@ -63,6 +63,13 @@ describe('observation-origin mode edits', () => {
     );
     expect(service.allowsTarget('heater', 18)).toBe(true);
     expect(service.allowsTarget('heater', 19)).toBe(false);
+
+    // A stored value off the device's step is commanded on it, so that is what the fence admits.
+    const offStep = new ObservedTemperatureModeUpdates(
+      settings, resolveMode, () => true, vi.fn(), () => [], (_id, value) => Math.round(value), () => false, () => [],
+      () => 21.3,
+    );
+    expect(offStep.allowsTarget('heater', 21)).toBe(true);
   });
 
   it('allows limiting under Save as current mode target and denies it only under Keep the new temperature', () => {

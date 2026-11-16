@@ -19,11 +19,14 @@ export const scheduleOverrideMinutes = (at: string, until: string): number => {
   const minutes = clockMinutes(until) - clockMinutes(at);
   return minutes > 0 ? minutes : minutes + DAY_MINUTES;
 };
+/** When an override starting at `at` and lasting `minutes` ends (`HH:MM`). */
+export const scheduleOverrideEnd = (at: string, minutes: number): string => clockTime(clockMinutes(at) + minutes);
 /** The devices an override can be scheduled for: those PELS sets a temperature on. */
 export const scheduleOverrideDevices = (
   devices: readonly SmartTaskCandidateDevice[],
 ): SmartTaskCandidateDevice[] => (
-  devices.filter((device) => resolveSmartTaskCandidateGoal(device, 'temperature') !== undefined)
+  devices.filter((device) => device.overridable === true
+    && resolveSmartTaskCandidateGoal(device, 'temperature') !== undefined)
 );
 
 export const SCHEDULE_DAYS = [
@@ -142,14 +145,19 @@ export const withOverrideEnd = (draft: ScheduleDraft): ScheduleDraft => (
     ? { ...draft, overrideUntil: clockTime(clockMinutes(draft.at) + 60) } : draft
 );
 
-/** The draft as an override for a device, at the device's usual temperature goal. */
+const usualOverrideTarget = (device: SmartTaskCandidateDevice): string => (
+  device.kind === 'temperature' ? String(device.defaultGoal) : ''
+);
+
+/** The draft as an override for a device, at the given temperature or the device's usual goal. */
 export const overrideDraftPatch = (
   draft: ScheduleDraft,
   device: SmartTaskCandidateDevice,
+  temperatureC: number | null = null,
 ): Pick<ScheduleDraft, 'actionType' | 'deviceId' | 'overrideTarget' | 'overrideUntil'> => ({
   actionType: 'override',
   deviceId: device.deviceId,
-  overrideTarget: device.kind === 'temperature' ? String(device.defaultGoal) : '',
+  overrideTarget: temperatureC !== null ? String(temperatureC) : usualOverrideTarget(device),
   overrideUntil: draft.overrideUntil,
 });
 
@@ -165,7 +173,7 @@ const actionDraftFields = (schedule: Schedule): ActionDraftFields => {
   if (action.type === 'override') {
     return {
       ...NO_ACTION_FIELDS, deviceId: action.deviceId, overrideTarget: String(action.setting.targetC),
-      overrideUntil: clockTime(clockMinutes(schedule.at) + action.minutes),
+      overrideUntil: scheduleOverrideEnd(schedule.at, action.minutes),
     };
   }
   const { task } = action;
@@ -228,7 +236,7 @@ const overrideActionFromDraft = (
   draft: ScheduleDraft,
   devices: readonly SmartTaskCandidateDevice[],
 ): TaskActionDraftResult => {
-  const device = devices.find((candidate) => candidate.deviceId === draft.deviceId);
+  const [device] = scheduleOverrideDevices(devices.filter((candidate) => candidate.deviceId === draft.deviceId));
   const goal = device && resolveSmartTaskCandidateGoal(device, 'temperature');
   if (!device || !goal) return { ok: false, error: 'Choose an available device for this override.' };
   const targetC = parseSmartTaskGoal(draft.overrideTarget);

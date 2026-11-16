@@ -88,14 +88,19 @@ export function readActiveDeviceOverride(
 /** A temperature override in force on a device: the temperature and when it ends. */
 export type ActiveTemperatureOverride = { targetC: number; untilMs: number };
 
-/** The device's temperature override while it is in force, or `null`. */
+/**
+ * The device's temperature override while it is in force, or `null`. Not in
+ * force while the device is set to "Keep the new temperature": PELS writes no
+ * setpoint there, so nothing waits on the override either.
+ */
 export function readActiveTemperatureOverride(
   settings: Pick<SettingsPort, 'get'>,
   deviceId: string,
   nowMs: number,
 ): ActiveTemperatureOverride | null {
   const override = readActiveDeviceOverride(settings, deviceId, nowMs);
-  return override === null ? null : { targetC: override.setting.targetC, untilMs: override.untilMs };
+  if (override === null || temperatureControlAllows(settings, deviceId) === false) return null;
+  return { targetC: override.setting.targetC, untilMs: override.untilMs };
 }
 
 export type DeviceOverrideWrite =
@@ -129,8 +134,9 @@ function dropEndedOverrides(settings: SettingsPort, nowMs: number): void {
 
 /**
  * Start (or replace) a device's override, ending `minutes` from `nowMs`. The
- * caller has normalized the setting for the device and bounded `minutes` to
- * 1–`MAX_DEVICE_OVERRIDE_MINUTES`.
+ * caller has bounded `minutes` to
+ * 1–`MAX_DEVICE_OVERRIDE_MINUTES`. A temperature need not be on the device's
+ * step: the setpoint resolver brings it into range.
  */
 export function startDeviceOverride(
   settings: SettingsPort,

@@ -1,22 +1,29 @@
 import {
   OVERRIDE_COPY, OVERRIDE_MORNING_AT, type OverrideDraft, type OverrideEndChoice, type OverrideTemperatureRange,
 } from '../deviceOverrideDraft.ts';
-import { MdFilledButton, MdFilledTextField, MdTextButton } from './materialWebJSX.tsx';
+import { MdFilledButton, MdFilledTextField, MdFilledTonalButton, MdTextButton } from './materialWebJSX.tsx';
 import { SegmentedControl } from './SegmentedControl.tsx';
 
 export type DeviceOverrideCardState =
-  | { kind: 'idle'; deviceId: string }
+  | { kind: 'idle'; schedule: OverrideScheduleLink | null }
   | { kind: 'blocked' }
-  | { kind: 'active'; deviceId: string; line: string; busy: boolean }
+  | { kind: 'active'; schedule: OverrideScheduleLink | null; line: string; busy: boolean }
   | {
     kind: 'editing';
     draft: OverrideDraft;
     range: OverrideTemperatureRange & { step: number };
     error: string | null;
     busy: boolean;
+    /** The end the draft resolves to, spelled out; `null` while it has none. */
+    endLine: string | null;
+    /** An override in force is being changed, not a new one started. */
+    changing: boolean;
     /** What the override means for the device's open Smart task; `null` without one. */
     smartTaskNote: string | null;
   };
+
+/** The schedule a card's Repeat link opens: an override for this device at this temperature. */
+export type OverrideScheduleLink = { deviceId: string; temperatureC: number | null };
 
 export type DeviceOverrideCardActions = {
   onStart: () => void;
@@ -37,7 +44,7 @@ const inputValue = (event: Event): string => (event.currentTarget as HTMLInputEl
 type EditingState = Extract<DeviceOverrideCardState, { kind: 'editing' }>;
 
 const OverrideForm = ({ state, actions }: { state: EditingState; actions: DeviceOverrideCardActions }) => {
-  const { draft, range, error, busy, smartTaskNote } = state;
+  const { draft, range, error, busy, smartTaskNote, endLine, changing } = state;
   return (
     <div class="device-detail-override__form">
       <MdFilledTextField type="number" inputmode="decimal" label={OVERRIDE_COPY.temperatureLabel}
@@ -48,6 +55,7 @@ const OverrideForm = ({ state, actions }: { state: EditingState; actions: Device
         <span class="field__label pels-text-settings-label">{OVERRIDE_COPY.endLabel}</span>
         <SegmentedControl options={END_OPTIONS} value={draft.end} ariaLabel={OVERRIDE_COPY.endLabel}
           onChange={(end) => actions.onDraftChange({ end })} />
+        {endLine !== null && draft.end !== 'custom' && <small class="field__hint" data-override-end-line>{endLine}</small>}
       </div>
       {draft.end === 'custom' && <div class="device-detail-override__custom">
         <label class="field"><span class="field__label pels-text-settings-label">Date</span>
@@ -56,12 +64,15 @@ const OverrideForm = ({ state, actions }: { state: EditingState; actions: Device
         <label class="field"><span class="field__label pels-text-settings-label">Time</span>
           <input type="time" class="smart-task-edit__time-input" value={draft.at} disabled={busy}
             data-override-field="time" onInput={(event) => actions.onDraftChange({ at: inputValue(event) })} /></label>
+        {endLine !== null && <small class="field__hint device-detail-override__custom-end" data-override-end-line>
+          {endLine}
+        </small>}
       </div>}
       {smartTaskNote !== null && <p class="pels-notice-info" data-override-smart-task-note>{smartTaskNote}</p>}
       {error !== null && <small class="field__hint smart-task-edit__error" role="alert">{error}</small>}
       <div class="device-detail-override__actions">
         <MdFilledButton type="button" disabled={busy} data-override-action="save" onClick={actions.onSave}>
-          {OVERRIDE_COPY.save}
+          {changing ? OVERRIDE_COPY.saveChange : OVERRIDE_COPY.save}
         </MdFilledButton>
         <MdTextButton type="button" disabled={busy} data-override-action="cancel" onClick={actions.onCancel}>
           {OVERRIDE_COPY.cancel}
@@ -72,8 +83,9 @@ const OverrideForm = ({ state, actions }: { state: EditingState; actions: Device
 };
 
 /** Opens a new schedule that starts an override for this device (`schedules.ts`). */
-const RepeatLink = ({ deviceId }: { deviceId: string }) => (
-  <MdTextButton type="button" data-open-schedules="" data-schedule-device={deviceId} data-schedule-action="override">
+const RepeatLink = ({ link }: { link: OverrideScheduleLink }) => (
+  <MdTextButton type="button" data-open-schedules="" data-schedule-device={link.deviceId}
+    data-schedule-action="override" data-schedule-temperature={link.temperatureC ?? undefined}>
     {OVERRIDE_COPY.repeat}
   </MdTextButton>
 );
@@ -88,14 +100,15 @@ export const DeviceOverrideCard = (
     {state.kind === 'idle' && <>
       <p class="pels-card-supporting">{OVERRIDE_COPY.hint}</p>
       <div class="device-detail-override__actions">
-        <MdTextButton type="button" data-override-action="start" onClick={actions.onStart}>
+        <MdFilledTonalButton type="button" data-override-action="start" onClick={actions.onStart}>
           {OVERRIDE_COPY.start}
-        </MdTextButton>
-        <RepeatLink deviceId={state.deviceId} />
+        </MdFilledTonalButton>
+        {state.schedule && <RepeatLink link={state.schedule} />}
       </div>
     </>}
     {state.kind === 'active' && <>
       <p class="pels-text-answer" data-override-active>{state.line}</p>
+      <p class="pels-card-supporting">{OVERRIDE_COPY.thenBack}</p>
       <div class="device-detail-override__actions">
         <MdTextButton type="button" disabled={state.busy} data-override-action="start" onClick={actions.onStart}>
           {OVERRIDE_COPY.change}
@@ -103,7 +116,7 @@ export const DeviceOverrideCard = (
         <MdTextButton type="button" disabled={state.busy} data-override-action="end" onClick={actions.onEndNow}>
           {OVERRIDE_COPY.end}
         </MdTextButton>
-        <RepeatLink deviceId={state.deviceId} />
+        {state.schedule && <RepeatLink link={state.schedule} />}
       </div>
     </>}
     {state.kind === 'editing' && <OverrideForm state={state} actions={actions} />}

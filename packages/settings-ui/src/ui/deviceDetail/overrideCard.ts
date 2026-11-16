@@ -5,7 +5,8 @@ import {
 } from '../../../../shared-domain/src/targetCapabilities.ts';
 import { resolveTemperatureControlMode } from '../../../../shared-domain/src/settings/temperatureControl.ts';
 import {
-  OVERRIDE_COPY, formatActiveOverride, newOverrideDraft, resolveOverrideDraft, resolveOverrideSmartTaskNote,
+  CLOCK_ALLOWANCE_MS, OVERRIDE_COPY, changeOverrideDraft, formatActiveOverride, formatOverrideEndLine, newOverrideDraft,
+  resolveOverrideDraft, resolveOverrideSmartTaskNote,
   type OverrideDraft,
   type OverrideTemperatureRange,
 } from '../deviceOverrideDraft.ts';
@@ -19,7 +20,10 @@ import { logSettingsError } from '../logging.ts';
 import { hasOpenSmartTask, resolveManagedState, state } from '../state.ts';
 import { getTargetCapabilityStep } from '../targetCapabilityStep.ts';
 import { showToast, showToastError } from '../toast.ts';
-import { DeviceOverrideCard, type DeviceOverrideCardState } from '../views/DeviceOverrideCard.tsx';
+import {
+  DeviceOverrideCard, type DeviceOverrideCardState, type OverrideScheduleLink,
+} from '../views/DeviceOverrideCard.tsx';
+import { isDeviceSmartTaskCandidate } from './smartTaskBox.ts';
 
 /**
  * The device page's Override card, first on a managed thermostat's page: start
@@ -33,6 +37,8 @@ import { DeviceOverrideCard, type DeviceOverrideCardState } from '../views/Devic
 type CardSession = {
   deviceId: string;
   draft: OverrideDraft | null;
+  /** The draft changes an override in force; `false` for a new one. */
+  changing: boolean;
   error: string | null;
   busy: boolean;
 };
@@ -75,19 +81,37 @@ const resolveCardState = (current: CardSession, device: SettingsUiDeviceDetailIt
   );
   if (mode === 'external') return { kind: 'blocked' };
   if (current.draft !== null) {
+    const resolved = resolveOverrideDraft(current.draft, range, Date.now(), getHomeyTimezone());
     return {
       kind: 'editing', draft: current.draft, range, error: current.error, busy: current.busy,
       smartTaskNote: smartTaskNote(current, current.draft, range),
+      endLine: resolved.ok ? formatOverrideEndLine(resolved.untilMs, Date.now(), getHomeyTimezone()) : null,
+      changing: current.changing,
     };
   }
   const nowMs = Date.now();
   const active = activeOverride(current, nowMs);
-  if (active === null) return { kind: 'idle', deviceId: device.id };
+  const schedule = scheduleLink(device, active);
+  if (active === null) return { kind: 'idle', schedule };
   return {
-    kind: 'active', deviceId: device.id, busy: current.busy,
+    kind: 'active', schedule, busy: current.busy,
     line: formatActiveOverride(active, nowMs, getHomeyTimezone()),
   };
 };
+
+/**
+ * The Repeat link, for a device a schedule can start an override on: the
+ * devices the app lists for scheduled actions. It opens the schedule at the
+ * override's temperature, or the device's usual one.
+ */
+const scheduleLink = (
+  device: SettingsUiDeviceDetailItem,
+  active: DeviceOverride | null,
+): OverrideScheduleLink | null => (
+  isDeviceSmartTaskCandidate(device.id)
+    ? { deviceId: device.id, temperatureC: active?.setting.targetC ?? usualTemperature(device) }
+    : null
+);
 
 const paint = (): void => {
   const el = root();
@@ -105,15 +129,28 @@ const paint = (): void => {
   el.hidden = false;
 };
 
+/**
+ * Where a new override starts from: the device's target in the active mode,
+ * which is what it returns to. The device's own setpoint may be a price shift
+ * or a limit away from that; it stands in only when the mode has no target.
+ */
+const usualTemperature = (device: SettingsUiDeviceDetailItem): number | null => {
+  const modeTarget = state.modeTargets[state.activeMode]?.[device.id];
+  if (typeof modeTarget === 'number' && Number.isFinite(modeTarget)) return modeTarget;
+  const setpoint = getPrimaryTargetCapability(device.targets)?.value;
+  return typeof setpoint === 'number' && Number.isFinite(setpoint) ? setpoint : null;
+};
+
 const onStart = (): void => {
   if (!session) return;
   const device = findDevice(session.deviceId);
   if (!device) return;
   const nowMs = Date.now();
   const active = activeOverride(session, nowMs);
-  const target = getPrimaryTargetCapability(device.targets);
-  const currentC = active?.setting.targetC ?? (typeof target?.value === 'number' ? target.value : null);
-  session = { ...session, draft: newOverrideDraft(currentC, nowMs, getHomeyTimezone()), error: null };
+  const timeZone = getHomeyTimezone();
+  const draft = active
+    ? changeOverrideDraft(active, timeZone) : newOverrideDraft(usualTemperature(device), nowMs, timeZone);
+  session = { ...session, draft, changing: active !== null, error: null };
   paint();
 };
 
@@ -159,20 +196,21 @@ const onSave = (): void => {
   const targetC = normalizeTargetCapabilityValue({
     target: getPrimaryTargetCapability(device.targets), value: resolved.targetC,
   });
-  void write(session, { untilMs: resolved.untilMs, setting: { type: 'temperature', targetC } }, OVERRIDE_COPY.started);
+  const done = session.changing ? OVERRIDE_COPY.changed : OVERRIDE_COPY.started;
+  void write(session, { untilMs: resolved.untilMs, setting: { type: 'temperature', targetC } }, done);
 };
 
 const onEndNow = (): void => {
   if (!session || session.busy) return;
   const active = activeOverride(session, Date.now());
   if (active === null) return;
-  void write(session, { ...active, untilMs: Date.now() }, OVERRIDE_COPY.ended);
+  void write(session, { ...active, untilMs: Date.now() - CLOCK_ALLOWANCE_MS }, OVERRIDE_COPY.ended);
 };
 
 /** Paint the card for a device; a different device starts from a fresh read. */
 export const renderDeviceOverrideCard = (deviceId: string): void => {
   if (session?.deviceId !== deviceId) {
-    session = { deviceId, draft: null, error: null, busy: false };
+    session = { deviceId, draft: null, changing: false, error: null, busy: false };
     const el = root();
     if (el) el.hidden = true;
     void loadDeviceOverride(deviceId);
@@ -186,6 +224,11 @@ export const hideDeviceOverrideCard = (): void => {
   const el = root();
   if (el) el.hidden = true;
 };
+
+// The Repeat link follows the app's list of schedulable devices, read by the Smart task box.
+document.addEventListener('device-smart-task-candidates-changed', () => {
+  if (session && !session.busy) paint();
+});
 
 document.addEventListener(DEVICE_OVERRIDE_CHANGED_EVENT, (event) => {
   const { deviceId } = (event as CustomEvent<{ deviceId: string }>).detail;

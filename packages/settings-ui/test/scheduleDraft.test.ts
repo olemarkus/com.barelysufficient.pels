@@ -9,7 +9,7 @@ import {
 const HEATER: SmartTaskCandidateDevice = {
   deviceId: 'heater', deviceName: 'Water heater', kind: 'temperature', group: 'heating',
   unitSymbol: '°C', goalMin: 30, goalMax: 75, goalStep: 0.5, defaultGoal: 65, currentValue: 40,
-  supportsLimitLowerPriority: false, offersQuickTargets: false, otherGoals: [],
+  supportsLimitLowerPriority: false, offersQuickTargets: false, otherGoals: [], overridable: true,
 };
 const EV: SmartTaskCandidateDevice = {
   ...HEATER, deviceId: 'charger', deviceName: 'Charger', kind: 'ev_soc', group: 'ev_charger',
@@ -174,12 +174,14 @@ describe('Schedule composition', () => {
     it('asks for a temperature inside the device range and an available device', () => {
       expect(buildScheduleFromDraft({ ...overrideDraft(), overrideTarget: '90' }, [HEATER], MODES, []))
         .toEqual({ ok: false, error: 'Choose a temperature between 30 and 75 °C.' });
-      expect(buildScheduleFromDraft(overrideDraft(), [EV], MODES, []))
+      expect(buildScheduleFromDraft(overrideDraft(), [{ ...HEATER, overridable: undefined }], MODES, []))
         .toEqual({ ok: false, error: 'Choose an available device for this override.' });
     });
 
     it('is offered only for devices PELS sets a temperature on', () => {
-      expect(scheduleOverrideDevices([HEATER, EV, ENERGY]).map((device) => device.deviceId)).toEqual(['heater']);
+      const steppedTank = { ...HEATER, deviceId: 'tank', overridable: undefined };
+      expect(scheduleOverrideDevices([HEATER, steppedTank, { ...EV, overridable: undefined }])
+        .map((device) => device.deviceId)).toEqual(['heater']);
     });
   });
 });
