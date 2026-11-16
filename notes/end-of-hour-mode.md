@@ -121,7 +121,11 @@ the hour and stop in time. Each build, from the measurement alone:
 
 - **Start.** The device restore would start first, when it is an on/off device
   PELS holds off, may start if it then gets at least `TIMED_RUN_MIN_START_MIN`
-  (10) minutes before it has to stop.
+  (10) minutes before it has to stop. Its draw is judged with its restore
+  buffer on top, so the keep that follows still passes on a reading a few tens
+  of watts higher: without that margin, on a background that moves by
+  ±0.1 kW, a start was cut again ten seconds later and the hour fell below
+  where it was without any timed run.
 - **Keep.** Once it runs and the house is over the pace, the device shedding
   would limit first, when it is that running on/off device and limiting it
   alone would bring the house under the pace, goes on until its stop.
@@ -233,9 +237,11 @@ device's commanded state):
   nothing limited at the boundary.
 
 `test/e2e/capacityTimedRun.e2e.test.ts` replays the 2026-11-15 lab house (3 kW
-background, five on/off heaters, a 0.42 kW gap): the 0.8 kW heater runs from
-about `:17` to `:45` instead of `:35` to `:51`, and the hour reaches about 4.65
-kWh instead of 4.49 without passing its 4.7 kWh target. `test/unit/capacityTimedRun.test.ts`
+background, five on/off heaters, a 0.42 kW gap). The 0.8 kW heater runs once,
+from about `:26` to the drain, instead of `:35` to `:51`. The hour reaches
+about 4.61 kWh instead of 4.49 without passing its 4.7 kWh target, and with a
+background that moves by ±0.1 kW about 4.63 kWh, still with one start.
+`test/unit/capacityTimedRun.test.ts`
 pins the start, keep, stop and every rule that keeps a run from applying.
 
 `test/e2e/capacityQuarterPace.e2e.test.ts` is the quarter counterpart: an
