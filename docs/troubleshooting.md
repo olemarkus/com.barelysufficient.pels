@@ -27,8 +27,8 @@ PELS only acts on devices it is allowed to act on. For a managed device to be
 lowered, paused, or turned off, three things must all be true:
 
 1. **Managed by PELS** is on for the device (Settings → Devices).
-2. **Power-limit control** is on (Settings → Devices → the device → Setup;
-   **Power limiting** on an EV charger, **Battery** on a home battery).
+2. **Power-limit control** is on (Settings → Devices → the device → Power
+   limiting; **Battery** on a home battery).
 3. The device's home isn't simulating. For a Main-home device that means
    **Simulation mode** is off (Settings → Simulation mode) — in simulation PELS
    calculates what it *would* do but never switches anything. For a device in a
@@ -54,8 +54,8 @@ What to do, in order:
 
 - **Look for a device with Power-limit control turned off.** The most common
   cause is that a large load PELS *could* have eased off is excluded. Turn its
-  **Power-limit control** back on (Settings → Devices → the device → Setup, or
-  **Power limiting** on an EV charger) so
+  **Power-limit control** back on (Settings → Devices → the device → Power
+  limiting) so
   PELS can lower it next time.
 - **Reduce fixed load you're running by hand.** If the breach is from
   unmanaged usage (an oven, a kettle, a charger PELS doesn't control), the only
@@ -222,7 +222,7 @@ The banner above the Overview tells you which state you are in:
   **No device chosen** / **Price device is gone** means PELS needs you to say which of
   its price devices prices your home. Prices only start at the hour you pick the source;
   earlier hours of that day stay blank, which is normal.
-- For price-based temperature shifts, the device needs **Price** (or **Setup → Price-based control**)
+- For price-based temperature shifts, the device needs **Price** (or **Price response → Price-based control**)
   enabled and **When the temperature changes outside PELS** set to **Return to mode target**, and
   **Respond to prices** must be on globally.
 - A Smart task that stays at **Building plan…** is usually waiting for prices

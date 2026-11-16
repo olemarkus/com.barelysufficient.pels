@@ -108,7 +108,7 @@ import {
 import { resolveDeviceDetailControlState, setPowerLimitSwitch, setTemperatureGatedSwitch } from './controlState.ts';
 import {
   applyDeviceDetailSectionLayout,
-  autoExpandSetupWhenBare,
+  autoExpandSetupWhenUnmanaged,
 } from './sectionLayout.ts';
 import { resolveDeviceDetailControlMode, resolveDeviceDetailKind } from '../deviceKind.ts';
 import { createPendingDeviceDetailOpen, type DeviceDetailFocus } from './focus.ts';
@@ -280,11 +280,7 @@ const setDeviceDetailControlStates = (deviceId: string, device: SettingsUiDevice
   if (device) renderAutomaticPowerControl(device);
 
   setDeviceDetailChargingCardState(device, controlState);
-  autoExpandSetupWhenBare({
-    deviceId,
-    device,
-    isManaged: controlState.isManaged,
-  });
+  autoExpandSetupWhenUnmanaged({ deviceId, isManaged: controlState.isManaged });
 };
 
 /**

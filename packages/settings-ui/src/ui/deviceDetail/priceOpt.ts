@@ -58,7 +58,7 @@ const resolveDeltaGateHint = (params: {
   }
   if (!params.isManaged) return 'Turn on Managed by PELS in Setup to use price response.';
   if (!params.selected) {
-    return 'Turn on Price-based control in Setup to adjust this device’s temperature with electricity prices.';
+    return 'Turn on Price-based control above to adjust this device’s temperature with electricity prices.';
   }
   return null;
 };

@@ -11,19 +11,22 @@ import { resolveDeviceDetailKind, type DeviceDetailKind } from '../deviceKind.ts
 // A reorder is also skipped while focus sits inside a section, so a node
 // holding focus is never moved mid-interaction — the next open applies it.
 //
+// Each behaviour switch heads the card it governs: Price-based control in
+// Price response, the solar switches in Solar surplus, Power-limit control and
+// the rows that refine it in Power limiting. Setup keeps what is set once:
+// Managed, Budget exempt, the control model and the wiring.
+//
 // Ordering rationale (importance × frequency of use):
 // - EV charger: Charging (when and how much to charge: boost, solar surplus)
 //   is the device's identity; Car says where the battery level comes from;
-//   Power limiting gathers Power-limit control with what limiting does and
-//   the rows that refine it. Setup is set-once, and the step editor (only for
+//   then Power limiting. Setup is set-once, and the step editor (only for
 //   non-preset chargers) follows it, collapsed.
 // - Temperature: per-mode targets are the controls owners revisit; price and
 //   solar are the tuning layer; the limiting choice is consequential but
 //   set-once, so it closes the open cards.
 // - Stepped: the profile is the device's identity and the thing verified
-//   after installation; the limiting choice follows it.
-// - Binary: almost nothing to configure — the limiting statement up top and
-//   Setup auto-expanded (see autoExpandSetupWhenBare).
+//   after installation; the limiting choice and solar follow it.
+// - Binary: the limiting choice, then running on solar surplus.
 // - Battery: continuous planning, its Managed and Power-limit control switches,
 //   and its place in the priority order; none of a load's sections apply, so they are hidden
 //   here rather than by their own gates (`applyBatteryKindVisibility`).
@@ -62,7 +65,7 @@ const SECTION_HEAD: Record<DeviceDetailKind, readonly SectionKey[]> = {
   temperature: [
     'modes', 'delta', 'surplus', 'stepped', 'shedding', 'setup', 'smartTask', 'activityLog', 'diagnostics',
   ],
-  stepped: ['stepped', 'shedding', 'setup', 'smartTask', 'activityLog', 'diagnostics'],
+  stepped: ['stepped', 'shedding', 'surplus', 'setup', 'smartTask', 'activityLog', 'diagnostics'],
   binary: ['shedding', 'surplus', 'setup', 'smartTask', 'activityLog', 'diagnostics'],
 };
 
@@ -98,7 +101,7 @@ const appendTo = (node: HTMLElement | null, parent: HTMLElement | null): void =>
 };
 
 // The Managed switch is a singleton: a battery's page carries it in its own
-// section, every other page in Setup, ahead of the temperature-control row.
+// section, every other page at the head of Setup.
 const placeManagedRow = (kind: DeviceDetailKind): void => {
   const row = document.getElementById('device-detail-managed-row');
   if (!row) return;
@@ -108,18 +111,16 @@ const placeManagedRow = (kind: DeviceDetailKind): void => {
     if (batteryList && row.parentElement !== batteryList) batteryList.insertBefore(row, notice?.nextSibling ?? null);
     return;
   }
-  placeBefore(row, document.getElementById('device-detail-temperature-control-disabled-row'));
+  placeBefore(row, document.getElementById('device-detail-budget-exempt-row'));
 };
 
 // Power-limit control and the two rows that refine it ("Only PELS starts this
-// device", "Leave off until turned on again") are singletons.
-// - Battery: Power-limit control sits under Managed in its own section (the
-//   other two never show there). Runs after placeManagedRow, so the battery's
-//   Managed row is already in place to anchor it.
-// - EV charger: all three join the Power limiting card. The switch and the
-//   start policy lead, ahead of what limiting does; "Leave off" closes the
-//   card, after the limited step that belongs to the limiting choice.
-// - Every other page: Setup, ahead of Price-based control, which never moves.
+// device", "Leave off until turned on again") are singletons in the Power
+// limiting card: the switch and the start policy lead, ahead of what limiting
+// does; "Leave off" follows the limited fields. A battery's page carries
+// Power-limit control under Managed in its own section instead (the other two
+// never show there). Runs after placeManagedRow, so the battery's Managed row
+// is already in place to anchor it.
 const placePowerLimitRows = (kind: DeviceDetailKind): void => {
   const controllable = document.getElementById('device-detail-controllable-row');
   const startPolicy = document.getElementById('device-detail-start-policy-row');
@@ -128,21 +129,15 @@ const placePowerLimitRows = (kind: DeviceDetailKind): void => {
     placeAfter(controllable, document.getElementById('device-detail-managed-row'));
     return;
   }
-  if (kind === 'ev_charger') {
-    const shedField = document.getElementById('device-detail-shed-field');
-    placeBefore(startPolicy, shedField);
-    placeBefore(controllable, startPolicy);
-    appendTo(respectExternalOff, sectionContent('shedding'));
-    return;
-  }
-  const priceOptRow = document.getElementById('device-detail-price-opt-row');
-  placeBefore(respectExternalOff, priceOptRow);
-  placeBefore(startPolicy, respectExternalOff);
+  const shedField = document.getElementById('device-detail-shed-field');
+  placeBefore(startPolicy, shedField);
   placeBefore(controllable, startPolicy);
+  placeBefore(respectExternalOff, document.getElementById('device-detail-electrical-connection-row'));
 };
 
 // A battery's page has no Power limiting section; its Electrical connection row
-// joins the battery's own control settings.
+// joins the battery's own control settings. Runs before placePowerLimitRows,
+// which anchors "Leave off" on it.
 const placeElectricalConnectionRow = (kind: DeviceDetailKind): void => {
   const row = document.getElementById('device-detail-electrical-connection-row');
   const home = kind === 'battery' ? document.getElementById('device-detail-battery-list') : sectionContent('shedding');
@@ -150,15 +145,15 @@ const placeElectricalConnectionRow = (kind: DeviceDetailKind): void => {
 };
 
 // "Charge on solar surplus" is a charging rule on an EV charger's page, so it
-// joins Charge boost in the Charging card; every other page keeps the
-// solar-surplus row in Setup, ahead of Budget exempt.
+// joins Charge boost in the Charging card; every other page keeps it in the
+// Solar surplus card with the other solar switches.
 const placeSurplusTrackRow = (kind: DeviceDetailKind): void => {
   const row = document.getElementById('device-detail-surplus-track-row');
   if (kind === 'ev_charger') {
     appendTo(row, sectionContent('charging'));
     return;
   }
-  placeBefore(row, document.getElementById('device-detail-budget-exempt-row'));
+  placeAfter(row, document.getElementById('device-detail-dump-load-row'));
 };
 
 // A battery's page shows its own section and none of a load's: Setup holds
@@ -177,9 +172,9 @@ export const applyDeviceDetailSectionLayout = (
 ): void => {
   const kind = resolveDeviceDetailKind(device);
   placeManagedRow(kind);
+  placeElectricalConnectionRow(kind);
   placePowerLimitRows(kind);
   placeSurplusTrackRow(kind);
-  placeElectricalConnectionRow(kind);
   applyBatteryKindVisibility(kind);
   if (appliedKind === kind) return;
 
@@ -196,21 +191,17 @@ export const applyDeviceDetailSectionLayout = (
   appliedKind = kind;
 };
 
-// A page whose open cards carry no interactive control has one job: get the
-// device set up. Expand Setup once per device for unmanaged devices and for
-// plain binary devices (their behavior area is a single statement).
+// An unmanaged device has one job on its page: get it managed. Expand Setup,
+// where Managed by PELS lives, once per device.
 // Per-device memory: returning to a device whose Setup the user already
 // closed must not re-expand it.
 const setupAutoExpandedDeviceIds = new Set<string>();
 
-export const autoExpandSetupWhenBare = (params: {
+export const autoExpandSetupWhenUnmanaged = (params: {
   deviceId: string;
-  device: Parameters<typeof resolveDeviceDetailKind>[0];
   isManaged: boolean;
 }): void => {
-  const kind = resolveDeviceDetailKind(params.device);
-  const shouldExpand = !params.isManaged || kind === 'binary';
-  if (!shouldExpand) {
+  if (params.isManaged) {
     setupAutoExpandedDeviceIds.delete(params.deviceId);
     return;
   }

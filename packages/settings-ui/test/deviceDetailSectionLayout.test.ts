@@ -1,9 +1,29 @@
 // Per-kind section layout: the device page composes by reparenting singleton
 // section nodes. These tests assert the visible order per kind, the EV row
-// relocations, idempotence, and the bare-page Setup auto-expand.
+// relocations, idempotence, and the unmanaged-page Setup auto-expand.
 
 import { withDescriptorIdentity } from './helpers/deviceSnapshotFixture.ts';
 import type { SettingsUiDeviceSnapshot } from '../../contracts/src/settingsUi/devices';
+
+const SURPLUS_ROW_ORDER = [
+  'device-detail-surplus-opt-row',
+  'device-detail-dump-load-row',
+  'device-detail-surplus-track-row',
+];
+
+const SHEDDING_ROW_ORDER = [
+  'device-detail-controllable-row',
+  'device-detail-start-policy-row',
+  'device-detail-shed-field',
+  'device-detail-overshoot-temp-row',
+  'device-detail-overshoot-step-row',
+  'device-detail-respect-external-off-row',
+];
+
+const SETUP_ROW_ORDER = [
+  'device-detail-managed-row',
+  'device-detail-budget-exempt-row',
+];
 
 const SECTION_IDS = [
   'device-detail-modes-section',
@@ -36,37 +56,22 @@ const buildDom = () => {
     row.id = id;
     parent.appendChild(row);
   });
-  addRows(document.querySelector('#device-detail-shedding-section .collapse-content')!, [
-    'device-detail-shed-field',
-    'device-detail-overshoot-temp-row',
-    'device-detail-overshoot-step-row',
-  ]);
-  addRows(document.querySelector('#device-detail-setup-section .collapse-content')!, [
-    'device-detail-managed-row',
+  // As in index.html: each switch heads the card it governs.
+  addRows(document.querySelector('#device-detail-modes-section .collapse-content')!, [
     'device-detail-temperature-control-disabled-row',
-    'device-detail-controllable-row',
-    'device-detail-start-policy-row',
-    'device-detail-respect-external-off-row',
-    'device-detail-price-opt-row',
-    'device-detail-surplus-track-row',
-    'device-detail-budget-exempt-row',
   ]);
+  addRows(document.querySelector('#device-detail-delta-section .collapse-content')!, [
+    'device-detail-price-opt-row',
+  ]);
+  addRows(document.querySelector('#device-detail-surplus-section .collapse-content')!, SURPLUS_ROW_ORDER);
+  addRows(document.querySelector('#device-detail-shedding-section .collapse-content')!, SHEDDING_ROW_ORDER);
+  addRows(document.querySelector('#device-detail-setup-section .collapse-content')!, SETUP_ROW_ORDER);
 };
 
 const childIds = (sectionId: string): string[] => Array.from(
   document.querySelector(`#${sectionId} .collapse-content`)!.children,
 ).map((el) => el.id);
 
-const SETUP_ROW_ORDER = [
-  'device-detail-managed-row',
-  'device-detail-temperature-control-disabled-row',
-  'device-detail-controllable-row',
-  'device-detail-start-policy-row',
-  'device-detail-respect-external-off-row',
-  'device-detail-price-opt-row',
-  'device-detail-surplus-track-row',
-  'device-detail-budget-exempt-row',
-];
 
 const buildDevice = (
   overrides: Partial<SettingsUiDeviceSnapshot> = {},
@@ -188,10 +193,26 @@ describe('applyDeviceDetailSectionLayout', () => {
 
     module.applyDeviceDetailSectionLayout(device);
 
-    expect(sectionOrder().slice(0, 2)).toEqual([
+    expect(sectionOrder().slice(0, 3)).toEqual([
       'device-detail-stepped-section',
       'device-detail-shedding-section',
+      'device-detail-surplus-section',
     ]);
+  });
+
+  it('keeps every switch of a temperature page in the card it governs', async () => {
+    const { module } = await loadLayout();
+    module.applyDeviceDetailSectionLayout(buildDevice({
+      deviceClass: 'thermostat',
+      deviceType: 'temperature',
+      targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+    }));
+
+    expect(childIds('device-detail-modes-section')).toEqual(['device-detail-temperature-control-disabled-row']);
+    expect(childIds('device-detail-delta-section')).toEqual(['device-detail-price-opt-row']);
+    expect(childIds('device-detail-surplus-section')).toEqual(SURPLUS_ROW_ORDER);
+    expect(childIds('device-detail-shedding-section')).toEqual(SHEDDING_ROW_ORDER);
+    expect(childIds('device-detail-setup-section')).toEqual(SETUP_ROW_ORDER);
   });
 
   it('puts the Smart task box after Setup and before the activity log', async () => {
@@ -221,7 +242,7 @@ describe('applyDeviceDetailSectionLayout', () => {
     expect(sectionOrder()[0]).toBe('device-detail-charging-section');
   });
 
-  it('returns the limiting and solar rows to Setup on the way back from EV', async () => {
+  it('returns Charge on solar surplus to the Solar surplus card on the way back from EV', async () => {
     const { module, state } = await loadLayout();
     const ev = buildDevice({ deviceClass: 'evcharger', deviceType: 'onoff' });
     state.deviceTargetPowerConfigs = {
@@ -237,12 +258,9 @@ describe('applyDeviceDetailSectionLayout', () => {
     });
     module.applyDeviceDetailSectionLayout(thermostat);
 
+    expect(childIds('device-detail-surplus-section')).toEqual(SURPLUS_ROW_ORDER);
+    expect(childIds('device-detail-shedding-section')).toEqual(SHEDDING_ROW_ORDER);
     expect(childIds('device-detail-setup-section')).toEqual(SETUP_ROW_ORDER);
-    expect(childIds('device-detail-shedding-section')).toEqual([
-      'device-detail-shed-field',
-      'device-detail-overshoot-temp-row',
-      'device-detail-overshoot-step-row',
-    ]);
     expect(childIds('device-detail-charging-section')).toEqual([]);
   });
 
@@ -290,34 +308,28 @@ describe('applyDeviceDetailSectionLayout', () => {
   });
 });
 
-describe('autoExpandSetupWhenBare', () => {
-  it('expands Setup once for a plain binary device and unmanaged devices', async () => {
+describe('autoExpandSetupWhenUnmanaged', () => {
+  it('expands Setup once for an unmanaged device', async () => {
     const { module } = await loadLayout();
     const disclosure = document.getElementById('device-detail-setup-disclosure') as HTMLDetailsElement;
     disclosure.open = false;
-    const socket = buildDevice({ deviceClass: 'socket', deviceType: 'onoff' });
 
-    module.autoExpandSetupWhenBare({ deviceId: socket.id, device: socket, isManaged: true });
+    module.autoExpandSetupWhenUnmanaged({ deviceId: 'device-1', isManaged: false });
     expect(disclosure.open).toBe(true);
 
     // Re-closing sticks: the once-per-device guard stops refresh loops from
     // fighting the user.
     disclosure.open = false;
-    module.autoExpandSetupWhenBare({ deviceId: socket.id, device: socket, isManaged: true });
+    module.autoExpandSetupWhenUnmanaged({ deviceId: 'device-1', isManaged: false });
     expect(disclosure.open).toBe(false);
   });
 
-  it('leaves Setup collapsed for a managed temperature device', async () => {
+  it('leaves Setup collapsed for a managed device, whose switches sit in their own cards', async () => {
     const { module } = await loadLayout();
     const disclosure = document.getElementById('device-detail-setup-disclosure') as HTMLDetailsElement;
     disclosure.open = false;
-    const thermostat = buildDevice({
-      deviceClass: 'thermostat',
-      deviceType: 'temperature',
-      targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
-    });
 
-    module.autoExpandSetupWhenBare({ deviceId: thermostat.id, device: thermostat, isManaged: true });
+    module.autoExpandSetupWhenUnmanaged({ deviceId: 'device-1', isManaged: true });
     expect(disclosure.open).toBe(false);
   });
 });

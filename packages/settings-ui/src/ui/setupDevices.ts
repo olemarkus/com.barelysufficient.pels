@@ -63,7 +63,7 @@ const solarSetupPrerequisite = (device: SettingsUiDeviceListItem): SolarSetupPre
     };
   }
   if (state.controllableMap[device.id] !== true) {
-    return { hint: 'Turn on Power-limit control in Setup.', focus: 'power-limit' };
+    return { hint: 'Turn on Power-limit control in Power limiting.', focus: 'power-limit' };
   }
   if (hasActiveDeadlineObjective(device.id)) {
     return { hint: 'Solar-only control can be changed after the active Smart task ends.', focus: 'solar' };

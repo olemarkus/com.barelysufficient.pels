@@ -132,12 +132,17 @@ describe('battery device page', () => {
           <div id="device-detail-battery-priority-row"></div>
         </div>
       </section>
+      <section id="device-detail-shedding-section">
+        <div id="shedding-list">
+          <div id="device-detail-controllable-row"></div>
+          <div id="device-detail-start-policy-row"></div>
+          <div id="device-detail-shed-field"></div>
+        </div>
+      </section>
       <section id="device-detail-setup-section">
         <div id="setup-list">
           <div id="device-detail-managed-row"></div>
-          <div id="device-detail-temperature-control-disabled-row"></div>
-          <div id="device-detail-controllable-row"></div>
-          <div id="device-detail-start-policy-row"></div>
+          <div id="device-detail-budget-exempt-row"></div>
         </div>
       </section>
     `;
@@ -154,11 +159,11 @@ describe('battery device page', () => {
     ]);
 
     layout.applyDeviceDetailSectionLayout(heater);
-    expect(ids('setup-list')).toEqual([
-      'device-detail-managed-row',
-      'device-detail-temperature-control-disabled-row',
+    expect(ids('setup-list')).toEqual(['device-detail-managed-row', 'device-detail-budget-exempt-row']);
+    expect(ids('shedding-list')).toEqual([
       'device-detail-controllable-row',
       'device-detail-start-policy-row',
+      'device-detail-shed-field',
     ]);
   });
 
